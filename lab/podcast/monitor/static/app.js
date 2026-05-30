@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31c";
+const APP_VERSION = "2026-05-31d";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -186,6 +186,7 @@ async function loadWorkspaces({ quiet = false } = {}) {
 
   // Render sidebar with the decided active selection so the highlight matches.
   renderSidebar(summaries, selection);
+  renderAdvance();  // refresh the contextual RESUME/APPROVE button on each poll
 
   if (!quiet || prevList.length === 0) {
     // Explicit load: switch to the (preserved or first) selection so the
@@ -531,6 +532,7 @@ async function switchWorkspace(ws) {
   // call) ends with the correct card highlighted — without waiting for the
   // 8s poll.
   if (state.workspaceSummaries) renderSidebar(state.workspaceSummaries, ws);
+  renderAdvance();  // contextual RESUME/APPROVE for the newly-selected ws
 
   renderAll();
   renderCost({ total_usd: 0, by_stage: {}, by_model: {}, warnings: [] });
@@ -1073,6 +1075,76 @@ async function actionRerunStage(stage, episode = null) {
   }
 }
 
+// ─── Contextual advance button (RESUME / APPROVE) ───
+//
+// One button that always means "move this podcast forward", whose action
+// depends on where the workspace is parked:
+//   awaiting plan gate   → APPROVE PLAN   (write .plan_approved + resume)
+//   awaiting script gate → APPROVE SCRIPTS(write .script_approved + resume)
+//   idle/failed, work left → RESUME       (pipeline.py <ws>, auto-resume forward)
+//   running              → disabled "RUNNING…"
+//   complete             → hidden
+// Reads the same summary the sidebar uses (status + gates + milestones), so it
+// refreshes on switchWorkspace + every workspace poll.
+function renderAdvance() {
+  const btn = $("#act-advance");
+  if (!btn) return;
+  const sum = (state.workspaceSummaries || []).find(s => s.name === state.ws);
+  if (!sum) { btn.hidden = true; return; }
+
+  if (sum.status === "running") {
+    btn.hidden = false;
+    btn.disabled = true;
+    btn.className = "action-btn advance";
+    btn.textContent = "● RUNNING…";
+    btn.dataset.mode = "";
+    return;
+  }
+  const gst = k => (sum.gates || []).find(g => g.key === k)?.state || "pending";
+  const incomplete = (sum.milestones || []).some(m => (m.ratio || 0) < 1);
+
+  let mode, label, approve = false;
+  if (gst("plan") === "awaiting") { mode = "approve:plan"; label = "▶ APPROVE PLAN"; approve = true; }
+  else if (gst("script") === "awaiting") { mode = "approve:script"; label = "▶ APPROVE SCRIPTS"; approve = true; }
+  else if (incomplete) { mode = "resume"; label = "▶ RESUME"; }
+  else { btn.hidden = true; return; }  // nothing to advance → READY
+
+  btn.hidden = false;
+  btn.disabled = false;
+  btn.className = "action-btn advance" + (approve ? " approve" : "");
+  btn.textContent = label;
+  btn.dataset.mode = mode;
+}
+
+async function actionResume() {
+  if (!state.ws) return toast("no workspace selected", "warn");
+  if (!confirm(`Resume ${state.ws} from where it left off?\n\nRuns forward until the next approval gate or completion.`)) return;
+  try {
+    const r = await fetch(`/api/workspace/${state.ws}/resume`, { method: "POST" });
+    const b = await r.json();
+    if (!r.ok) throw new Error(b.detail || `HTTP ${r.status}`);
+    toast(`resume started · job ${b.job_id}`, "info");
+    refreshJobs();
+    loadWorkspaces({ quiet: true });
+  } catch (e) { toast(`resume failed: ${e.message}`, "error", 7000); }
+}
+
+async function actionApprove(gate) {
+  if (!state.ws) return toast("no workspace selected", "warn");
+  const what = gate === "plan"
+    ? "approve the plan and start writing scripts"
+    : "approve the scripts and synthesize audio (incurs TTS cost)";
+  if (!confirm(`Approve the ${gate} gate for ${state.ws}?\n\nThis will ${what}.`)) return;
+  try {
+    const r = await fetch(`/api/workspace/${state.ws}/approve?gate=${encodeURIComponent(gate)}`, { method: "POST" });
+    const b = await r.json();
+    if (!r.ok) throw new Error(b.detail || `HTTP ${r.status}`);
+    toast(`${gate} gate approved · job ${b.job_id}`, "info");
+    refreshJobs();
+    loadWorkspaces({ quiet: true });
+  } catch (e) { toast(`approve failed: ${e.message}`, "error", 7000); }
+}
+
 // ─── Recent jobs panel ───
 async function refreshJobs() {
   // Debounce: if the previous request hasn't returned yet, don't pile on.
@@ -1385,6 +1457,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#act-new").addEventListener("click", openNewPodcastModal);
   $("#act-upload").addEventListener("click", actionUpload);
   $("#act-delete").addEventListener("click", actionDelete);
+  $("#act-advance").addEventListener("click", () => {
+    const mode = $("#act-advance").dataset.mode || "";
+    if (mode === "resume") actionResume();
+    else if (mode.startsWith("approve:")) actionApprove(mode.split(":")[1]);
+  });
 
   // ─── Sidebar interactive controls (P3) ──────────────────────────────────
   // All re-renders consume state.workspaceSummaries (no extra fetch) so the
