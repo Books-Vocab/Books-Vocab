@@ -57,11 +57,12 @@ EPUB
 
 | flag | 行為 |
 |---|---|
-| `--skip-to S` | 從 stage S 起跑 |
+| `--skip-to S` | 從 stage S 起跑;前置 stage marker 缺失會 abort 並列出缺項 |
 | `--stop-after S` | 跑到 S 為止 |
-| `--only-stage S` | 只跑 S(等價 skip-to=stop-after) |
+| `--only-stage S` | 只跑 S(等價 skip-to=stop-after,同樣驗證前置 marker) |
 | `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
 | `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
+| `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用) |
 
 ### 四個 QA gate
 
