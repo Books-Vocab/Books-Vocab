@@ -300,7 +300,6 @@ iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress
 | 中 | Whisper speaker tag word-index 對齊脆弱、無 assertion |
 | 中 | 缺 unit test:`chunk_turns` / `_parse_overview_hosts` / `parse_script` / `script_word_count` |
 | 低 | `chunk_turns` 邊界 turn 可超出 800 word soft budget(無硬上限) |
-| 低 | `convert_tts.py` + `split.py` 是死碼(寫死 Maya/Kai，不在 13-stage 路徑) |
 | 低 | `author` 欄位塞書籍類型而非作者 |
 | 低 | `color`/`coverPattern` 全 series 硬編碼 |
 | 低 | metadata.json `subtitleContent` 缺與否未做 schema validation(`subtitle_content=null` iOS 會 fetch fallback，但無 warning) |
