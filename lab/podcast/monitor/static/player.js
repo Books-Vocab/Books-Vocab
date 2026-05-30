@@ -39,26 +39,24 @@
     return out;
   }
 
-  // Find the cue active at `t` (binary search, returns index or -1).
+  // Find the cue active at `t`. Returns the cue index, or -1 before first cue.
+  //
+  // Algorithm: largest i where cues[i].start <= t. This is a clean predicate
+  // for binary search and gives the correct answer for three cases at once —
+  // inside a cue (start <= t < end), in a gap (previous cue stays highlighted),
+  // and past the last cue (last index stays "sticky" until reset). Before the
+  // first cue's start time we return -1 so nothing highlights.
+  //
+  // Previous version tried to special-case the gap by inspecting cues[mid+1]
+  // mid-loop and was incorrect for sparse SRT — the recursive search direction
+  // could skip past the true answer. The simpler invariant is robust.
   function findCueIdx(cues, t) {
+    if (!cues.length || t < cues[0].start) return -1;
     let lo = 0, hi = cues.length - 1, ans = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      const c = cues[mid];
-      if (t < c.start) hi = mid - 1;
-      else if (t >= c.end) {
-        // Could be in a gap between cues — keep searching higher in case there's
-        // a later one we just passed, but remember this as a candidate.
-        if (t < (cues[mid + 1]?.start ?? Infinity)) {
-          // We're past this cue and before the next one starts — return previous
-          // to keep the highlight sticky between cues.
-          return mid;
-        }
-        lo = mid + 1;
-        ans = mid;
-      } else {
-        return mid;
-      }
+      if (cues[mid].start <= t) { ans = mid; lo = mid + 1; }
+      else hi = mid - 1;
     }
     return ans;
   }
@@ -126,10 +124,18 @@
     }
 
     async load(workspaceName) {
+      // Stop any currently playing audio before swapping workspaces —
+      // otherwise the previous episode keeps streaming until selectEpisode
+      // sets a new src, causing brief cross-workspace audio leak.
+      this.elAudio.pause();
+      this.elAudio.removeAttribute("src");
+      this.elAudio.load();
+
       this.workspace = workspaceName;
       this.episodes = [];
       this.currentEp = null;
       this.cues = [];
+      this.cueEls = [];
       this.lastCueIdx = -1;
       this.elBody.hidden = true;
       this.elChips.innerHTML = "";
@@ -212,20 +218,24 @@
         return `<span class="cue" data-cue="${i}" data-start="${c.start}">${text}</span>`;
       }).join(" ");
       this.elCues.innerHTML = html || `<div class="cue-loading muted">subtitle empty</div>`;
+      // Cache the cue elements in index order so timeupdate's hot path can
+      // toggle the highlight class via O(1) array lookup instead of
+      // querySelector on every tick. Matters for 30-min episodes (6000+ cues).
+      this.cueEls = Array.from(this.elCues.querySelectorAll(".cue"));
     }
 
     _onTime() {
-      if (!this.cues.length) return;
+      if (!this.cues.length || !this.cueEls?.length) return;
       const t = this.elAudio.currentTime;
       const idx = findCueIdx(this.cues, t);
       if (idx === this.lastCueIdx) return;
-      // Update highlight
+      // O(1) class toggles via cached element refs — see _renderCues comment.
       if (this.lastCueIdx >= 0) {
-        const prev = this.elCues.querySelector(`[data-cue="${this.lastCueIdx}"]`);
+        const prev = this.cueEls[this.lastCueIdx];
         if (prev) prev.classList.remove("cue-active");
       }
       if (idx >= 0) {
-        const cur = this.elCues.querySelector(`[data-cue="${idx}"]`);
+        const cur = this.cueEls[idx];
         if (cur) {
           cur.classList.add("cue-active");
           // Scroll into view only when the active cue moves out of the viewport
