@@ -125,6 +125,7 @@ async function switchWorkspace(ws) {
 
   renderAll();
   renderCost({ total_usd: 0, by_stage: {}, by_model: {}, warnings: [] });
+  if (state.player) state.player.load(ws);
 
   const r = await fetch(`/api/workspace/${ws}/snapshot`);
   const snap = await r.json();
@@ -503,5 +504,11 @@ setInterval(() => {
 
 document.addEventListener("DOMContentLoaded", () => {
   $("#ws-refresh").addEventListener("click", loadWorkspaces);
+  // Attach the inline player (Phase 2). Player loads its workspace via
+  // switchWorkspace() once the workspace list resolves.
+  const playerRoot = $("#player-panel");
+  if (playerRoot && window.PodcastPlayer) {
+    state.player = window.PodcastPlayer.attach(playerRoot);
+  }
   loadWorkspaces();
 });

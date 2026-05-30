@@ -1,0 +1,268 @@
+// Podcast Player — inline audio + word-synced subtitles.
+// Single class operates on a fixed DOM root (#player-panel). Exposes:
+//   PodcastPlayer.attach(rootEl) → returns instance
+//   instance.load(workspaceName) → fetch episodes, render UI
+//   instance.clear() → tear down audio + DOM
+//
+// Subtitle sync: SRT cues map start/end times to lines. The audio element's
+// `timeupdate` event fires at ~250ms cadence; we look up the active cue by
+// binary searching the cue array (O(log n), no per-tick scan) and apply a
+// CSS class. Click on a cue → seek there.
+
+(function () {
+  "use strict";
+
+  // ─── SRT parser ────────────────────────────────────────────────────────
+  // Cues: [{ start: seconds, end: seconds, text: "…" }, …]
+  // The pipeline emits per-word SRT (one word per cue), so 8-min episodes
+  // → ~1500 cues. Binary search keeps the hot loop cheap.
+  function parseSrt(text) {
+    const out = [];
+    const blocks = text.replace(/\r\n/g, "\n").split(/\n\n+/);
+    for (const block of blocks) {
+      const lines = block.split("\n").filter(Boolean);
+      if (lines.length < 2) continue;
+      // Format: index / "HH:MM:SS,mmm --> HH:MM:SS,mmm" / text lines…
+      const timeLineIdx = lines.findIndex(l => l.includes("-->"));
+      if (timeLineIdx < 0) continue;
+      const m = lines[timeLineIdx].match(
+        /(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)/
+      );
+      if (!m) continue;
+      const start =
+        Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+      const end =
+        Number(m[5]) * 3600 + Number(m[6]) * 60 + Number(m[7]) + Number(m[8]) / 1000;
+      const text = lines.slice(timeLineIdx + 1).join(" ").trim();
+      if (text) out.push({ start, end, text });
+    }
+    return out;
+  }
+
+  // Find the cue active at `t` (binary search, returns index or -1).
+  function findCueIdx(cues, t) {
+    let lo = 0, hi = cues.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const c = cues[mid];
+      if (t < c.start) hi = mid - 1;
+      else if (t >= c.end) {
+        // Could be in a gap between cues — keep searching higher in case there's
+        // a later one we just passed, but remember this as a candidate.
+        if (t < (cues[mid + 1]?.start ?? Infinity)) {
+          // We're past this cue and before the next one starts — return previous
+          // to keep the highlight sticky between cues.
+          return mid;
+        }
+        lo = mid + 1;
+        ans = mid;
+      } else {
+        return mid;
+      }
+    }
+    return ans;
+  }
+
+  function fmtTime(sec) {
+    if (!Number.isFinite(sec)) return "0:00";
+    const s = Math.floor(sec);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${r.toString().padStart(2, "0")}`;
+  }
+
+  // ─── Player class ──────────────────────────────────────────────────────
+  class PodcastPlayer {
+    static attach(rootEl) {
+      return new PodcastPlayer(rootEl);
+    }
+
+    constructor(rootEl) {
+      this.root = rootEl;
+      this.workspace = null;
+      this.episodes = [];
+      this.currentEp = null;
+      this.cues = [];
+      this.lastCueIdx = -1;
+      this.audio = null;
+      this._build();
+    }
+
+    _build() {
+      this.root.innerHTML = `
+        <div class="panel-head">
+          <span class="micro-label">EPISODES</span>
+          <span class="panel-sub" id="player-status">no workspace selected</span>
+        </div>
+        <div class="ep-chips" id="ep-chips"></div>
+        <div class="player-body" id="player-body" hidden>
+          <div class="player-controls">
+            <audio id="audio" preload="metadata" controls></audio>
+            <div class="player-meta" id="player-meta"></div>
+          </div>
+          <div class="cue-list" id="cue-list"></div>
+        </div>
+      `;
+      this.elChips = this.root.querySelector("#ep-chips");
+      this.elBody = this.root.querySelector("#player-body");
+      this.elAudio = this.root.querySelector("#audio");
+      this.elMeta = this.root.querySelector("#player-meta");
+      this.elCues = this.root.querySelector("#cue-list");
+      this.elStatus = this.root.querySelector("#player-status");
+
+      this.elAudio.addEventListener("timeupdate", () => this._onTime());
+      this.elAudio.addEventListener("loadedmetadata", () => this._updateMeta());
+      // Click outside a cue link still scrolls — rebind via delegation.
+      this.elCues.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-cue]");
+        if (target) {
+          const t = Number(target.dataset.start);
+          if (Number.isFinite(t)) {
+            this.elAudio.currentTime = t;
+            if (this.elAudio.paused) this.elAudio.play().catch(() => {});
+          }
+        }
+      });
+    }
+
+    async load(workspaceName) {
+      this.workspace = workspaceName;
+      this.episodes = [];
+      this.currentEp = null;
+      this.cues = [];
+      this.lastCueIdx = -1;
+      this.elBody.hidden = true;
+      this.elChips.innerHTML = "";
+      this.elStatus.textContent = "loading…";
+
+      if (!workspaceName) { this.elStatus.textContent = "no workspace selected"; return; }
+
+      let list;
+      try {
+        const r = await fetch(`/api/workspace/${workspaceName}/episodes`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        list = await r.json();
+      } catch (e) {
+        this.elStatus.textContent = `failed to load episodes: ${e.message}`;
+        return;
+      }
+
+      this.episodes = list;
+      if (!list.length) {
+        this.elStatus.textContent = "no audio yet — run synthesize stage";
+        return;
+      }
+      this.elStatus.textContent = `${list.length} episode${list.length > 1 ? "s" : ""} ready`;
+      this._renderChips();
+      // Auto-select first ep for instant play; user can click another chip.
+      this.selectEpisode(list[0].episode);
+    }
+
+    _renderChips() {
+      this.elChips.innerHTML = "";
+      for (const ep of this.episodes) {
+        const chip = document.createElement("button");
+        chip.className = "ep-chip";
+        chip.dataset.ep = ep.episode;
+        const sizeMb = (ep.audio_bytes / (1 << 20)).toFixed(1);
+        chip.innerHTML = `
+          <span class="ep-chip-num">EP${ep.episode}</span>
+          <span class="ep-chip-meta">${ep.variant} · ${sizeMb}MB${ep.has_subtitle ? "" : " · no SRT"}</span>
+        `;
+        chip.addEventListener("click", () => this.selectEpisode(ep.episode));
+        this.elChips.appendChild(chip);
+      }
+    }
+
+    async selectEpisode(epNum) {
+      this.currentEp = epNum;
+      this.cues = [];
+      this.lastCueIdx = -1;
+      // Highlight selected chip
+      for (const c of this.elChips.children) {
+        c.classList.toggle("active", Number(c.dataset.ep) === epNum);
+      }
+
+      const ep = this.episodes.find(e => e.episode === epNum);
+      if (!ep) return;
+      this.elBody.hidden = false;
+      this.elAudio.src = `/api/workspace/${this.workspace}/episode/${epNum}/audio`;
+      this.elMeta.textContent = `EP${epNum} · ${ep.variant}`;
+      this.elCues.innerHTML = ep.has_subtitle
+        ? `<div class="cue-loading">loading subtitle…</div>`
+        : `<div class="cue-loading muted">no subtitle for this episode</div>`;
+
+      if (!ep.has_subtitle) return;
+      try {
+        const r = await fetch(`/api/workspace/${this.workspace}/episode/${epNum}/subtitle`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const text = await r.text();
+        this.cues = parseSrt(text);
+        this._renderCues();
+      } catch (e) {
+        this.elCues.innerHTML = `<div class="cue-loading warn">subtitle load failed: ${e.message}</div>`;
+      }
+    }
+
+    _renderCues() {
+      // Render as flowing inline words for a transcript feel — clicks seek.
+      // Per-word SRT means we'd never want each on its own line.
+      const html = this.cues.map((c, i) => {
+        const text = c.text.replace(/[<>&]/g, ch => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[ch]));
+        return `<span class="cue" data-cue="${i}" data-start="${c.start}">${text}</span>`;
+      }).join(" ");
+      this.elCues.innerHTML = html || `<div class="cue-loading muted">subtitle empty</div>`;
+    }
+
+    _onTime() {
+      if (!this.cues.length) return;
+      const t = this.elAudio.currentTime;
+      const idx = findCueIdx(this.cues, t);
+      if (idx === this.lastCueIdx) return;
+      // Update highlight
+      if (this.lastCueIdx >= 0) {
+        const prev = this.elCues.querySelector(`[data-cue="${this.lastCueIdx}"]`);
+        if (prev) prev.classList.remove("cue-active");
+      }
+      if (idx >= 0) {
+        const cur = this.elCues.querySelector(`[data-cue="${idx}"]`);
+        if (cur) {
+          cur.classList.add("cue-active");
+          // Scroll into view only when the active cue moves out of the viewport
+          // — frequent scrollIntoView during fast playback is jarring.
+          const r = cur.getBoundingClientRect();
+          const cr = this.elCues.getBoundingClientRect();
+          if (r.top < cr.top + 20 || r.bottom > cr.bottom - 20) {
+            cur.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        }
+      }
+      this.lastCueIdx = idx;
+    }
+
+    _updateMeta() {
+      if (!this.elAudio.duration || !Number.isFinite(this.elAudio.duration)) return;
+      const dur = fmtTime(this.elAudio.duration);
+      const ep = this.episodes.find(e => e.episode === this.currentEp);
+      if (ep) {
+        this.elMeta.textContent = `EP${this.currentEp} · ${ep.variant} · ${dur}`;
+      }
+    }
+
+    clear() {
+      this.elAudio.pause();
+      this.elAudio.removeAttribute("src");
+      this.elAudio.load();
+      this.workspace = null;
+      this.episodes = [];
+      this.currentEp = null;
+      this.cues = [];
+      this.lastCueIdx = -1;
+      this.elBody.hidden = true;
+      this.elChips.innerHTML = "";
+      this.elStatus.textContent = "no workspace selected";
+    }
+  }
+
+  window.PodcastPlayer = PodcastPlayer;
+})();
