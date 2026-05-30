@@ -2,7 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BASE="$ROOT_DIR/devops.sh"
+# KG_DEVOPS_BASE is a test seam (point it at a stub like /usr/bin/true to assert
+# the blocklist without invoking the real remote wrapper). Defaults to devops.sh.
+BASE="${KG_DEVOPS_BASE:-$ROOT_DIR/devops.sh}"
 
 [[ -x "$BASE" ]] || { echo "✗ base devops.sh not found or not executable: $BASE" >&2; exit 1; }
 
@@ -45,8 +47,60 @@ preflight() {
 }
 
 is_blocked_run() {
-  local cmd="$1"
-  [[ "$cmd" =~ (down[[:space:]]+-v|docker[[:space:]]+system[[:space:]]+prune|rm[[:space:]]+-rf[[:space:]]+/|rm[[:space:]]+-rf[[:space:]]+~|delete-user) ]]
+  # Normalise so equivalent-but-differently-typed destructive commands can't
+  # slip past a literal match:
+  #   - lowercase (RM -RF)
+  #   - drop quotes/backticks ("/home/ubuntu", '/')
+  #   - ${HOME} brace form -> $home
+  #   - collapse repeated slashes (/home//ubuntu)
+  #   - turn shell separators ; | & ( ) into spaces so a protected path is
+  #     always whitespace/EOL/'>'-bounded (rm -rf /home/ubuntu;)
+  local cmd
+  cmd="$(printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr -d '\042\047\140' \
+    | sed -E 's#\$\{home\}#$home#g; s#/+#/#g; s/[;|&()]/ /g')"
+
+  # delete-user CLI
+  [[ "$cmd" =~ delete-user ]] && return 0
+
+  # Docker destructive cleanup: prune (system/volume/image/builder), volume rm,
+  # and `compose down` with volume removal — all cause prod data loss.
+  [[ "$cmd" =~ docker[[:space:]]+(system|volume|image|builder)[[:space:]]+prune ]] && return 0
+  [[ "$cmd" =~ docker[[:space:]]+volume[[:space:]]+rm[[:space:]] ]] && return 0
+  if [[ "$cmd" =~ (^|[[:space:]])down([[:space:]]|$) ]] \
+     && [[ "$cmd" =~ (^|[[:space:]])(-v|--volume|--volumes)([[:space:]]|=|$) ]]; then
+    return 0
+  fi
+
+  # Reference to a protected production path. Bare `/`, `~`, `$HOME` need a
+  # trailing boundary so ordinary paths (/tmp/foo) don't match; named dirs
+  # match themselves or any sub-path.
+  # Bare `/` includes `*` and `.` in its trailing boundary so `rm -rf /*` and
+  # `/.` (machine-wipe equivalents) are caught, not just a lone `rm -rf /`.
+  local prot='(/([[:space:]>*.]|$)|~([[:space:]/>]|$)|\$home([[:space:]/>]|$)|/home/ubuntu([[:space:]/>]|$)|/root([[:space:]/>]|$)|/app/data([[:space:]/>]|$)|knowledge_graph_api|knowledge-graph-api_data)'
+
+  # Recursive `rm` (any flag order/long form; also /bin/rm) at a protected path.
+  if [[ "$cmd" =~ (^|[[:space:]]|/)rm[[:space:]] ]] \
+     && [[ "$cmd" =~ ((^|[[:space:]])-[a-z]*r[a-z]*([[:space:]]|$)|--recursive|--no-preserve-root) ]] \
+     && [[ "$cmd" =~ [[:space:]]$prot ]]; then
+    return 0
+  fi
+
+  # find-based recursive deletion at a protected path.
+  if [[ "$cmd" =~ (^|[[:space:]]|/)find[[:space:]] ]] \
+     && [[ "$cmd" =~ (-delete|-exec[[:space:]]+rm) ]] \
+     && [[ "$cmd" =~ [[:space:]]$prot ]]; then
+    return 0
+  fi
+
+  # Clobbering a protected file: redirect, tee, truncate, or dd of=.
+  [[ "$cmd" =~ \>[[:space:]]*$prot ]] && return 0
+  if [[ "$cmd" =~ (^|[[:space:]]|/)(truncate|dd|tee)[[:space:]] ]] && [[ "$cmd" =~ $prot ]]; then
+    return 0
+  fi
+
+  return 1
 }
 
 main() {
