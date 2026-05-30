@@ -1246,7 +1246,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const v = document.querySelector("#nav-version");
   if (v) v.textContent = `v${APP_VERSION}`;
 
-  $("#ws-refresh").addEventListener("click", loadWorkspaces);
+  $("#ws-refresh")?.addEventListener("click", loadWorkspaces);
   $("#act-new").addEventListener("click", openNewPodcastModal);
   $("#act-upload").addEventListener("click", actionUpload);
   $("#act-delete").addEventListener("click", actionDelete);
