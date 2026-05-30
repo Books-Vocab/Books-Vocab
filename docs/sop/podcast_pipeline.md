@@ -346,6 +346,7 @@ Endpoints:
 - `GET /api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
 - `GET /api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
 - `GET /api/workspace/{ws}/episodes` — list 已生成的 episode + variant(pro/flash)+ `model`(完整 TTS id,從 sidecar `.meta.json` 讀;舊集數無 sidecar 時為 `null`,UI 顯示「pro (?)」/「flash (?)」表示世代未知)+ size + has_subtitle
+- `GET /api/workspace/{ws}/episodes/status` — 每集四關卡布林 `{ep,plan,script,audio,subtitle,variant,audio_bytes}`,artifact-derived(集合 = plan ∪ scripts,idle workspace 亦回傳);前端 episode matrix 資料源,排除 `ep_N_review.md`/`ep_N_voice_preview.mp3` 干擾項
 - `GET /api/workspace/{ws}/episode/{ep}/audio` — MP3 stream(`FileResponse` 處理 Range / 206)
 - `GET /api/workspace/{ws}/episode/{ep}/subtitle` — SRT 純文字
 
