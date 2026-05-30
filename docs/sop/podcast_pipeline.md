@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 17d8eb22
+verified_against: df42f6e2
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -307,12 +307,48 @@ iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress
 
 ---
 
-## 8. 監控(`monitor/server.py`)
+## 8. 監控(`monitor/server.py` + `monitor/cost.py`)
 
 本機 FastAPI + uvicorn dashboard，預設 `127.0.0.1:8765`。
 
+**單命令流程**(預設):跑 `uv run pipeline.py <epub>` 時,`pipeline.py:_ensure_dashboard_running()` 會自動 idempotent 起 dashboard + open 瀏覽器到 `?ws=<workspace>`。`PODCAST_VERBOSE` 預設 `"1"`(設 `"0"` 才關),events.jsonl 一定產生。
+
+Env opt-out:
+- `PODCAST_NO_DASHBOARD=1` — 不起 dashboard、不開瀏覽器
+- `PODCAST_DASHBOARD_PORT=N` — 換 port
+- `PODCAST_VERBOSE=0` — 關 stream-json(events.jsonl 不寫,cost 不算)
+
+純手動操作 dashboard(不跑 pipeline,單看舊 workspace):`./start.sh [port] | --stop`。idempotent 啟停 wrapper(PID file、`lsof` 清 port、`nohup uv run`、curl 健康檢查)。
+
+Endpoints:
 - `/api/workspaces` — workspace 列表
 - `/api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
-- `/api/workspace/{ws}/stream` — SSE，每 0.5s tail jsonl，15s heartbeat
+- `/api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
+- `/api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
 
-`events.jsonl` 僅在 `PODCAST_VERBOSE=1` 才有內容(stream-json tool-use 事件)。`start.sh` 是 idempotent 啟停 wrapper(寫 PID file、`lsof` 清 port、`nohup uv run`、curl 健康檢查)。
+`events.jsonl` 內容:claude CLI stream-json 的 tool-use + `result.modelUsage[*].costUSD`,以及 `synthesize.py` 寫的 `tts_usage` events。
+
+### 8.1 成本聚合(`monitor/cost.py`)
+
+逐行掃 `events.jsonl`,輸出 `{total_usd, by_stage, by_model, pricing, warnings}`。
+
+**成本來源**:
+- **Stage 1-10(Claude)**:直接讀 `result.modelUsage[model].costUSD`。這是 claude CLI 套 Anthropic 官方單價(含 cache 折扣、1M context premium)算好的值。不自己重算 — Anthropic 改價時 CLI 會自動拿到新價,不會有對不上的風險。
+- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-3.1-flash-tts-preview`,$1.00/$20 per 1M(audio = 25 tok/sec,無 long tier;源自 ai.google.dev 的 TTS-specific row,Vertex preview 鏡像 AI Studio rates)。舊 `gemini-2.5-pro-tts` 保留 $1.25/$10(≤200K)、$2.50/$15(>200K) — Vertex 官方 base Gemini 2.5 Pro rate。`verified_against: 2026-05-30`。
+- **Stage 12-13**:本地 pydub / Whisper,$0。
+
+**Token 來源優先序**(`synthesize.py:_synthesize_one`):
+1. `response.usage_metadata.prompt_token_count` / `candidates_token_count` — Vertex 回傳真值
+2. Fallback 估算:`input ≈ len(prompt)/4`、`output ≈ audio_seconds × 25`(Google 官方 25 tokens/sec)。event 標 `usage_source: "estimated"`,dashboard 顯示 ⚠ warning。
+
+**改 Vertex 單價**:編輯 `VERTEX_PRICING`(SoT 即程式碼),或 env `PODCAST_TTS_PRICING='{"model":{...}}'` 暫覆寫。改完同步本節 `verified_against` 日期。
+
+### 8.2 Dashboard UI
+
+四段:
+1. **KPI strip** — TOTAL COST(claude $ / tts $ 拆分) / ELAPSED / CONTEXT NOW(% of 1M + peak) / TOKENS OUT(+ fresh / cache R / cache W)
+2. **13-stage 進度條** — pending / running / done / failed 四態;`scriptwrite` / `script-review` / `synthesize` 是平行階段,每集顯示為 EP tile(running 會脈衝)
+3. **COST BREAKDOWN 表** — stage × (model, calls, input, output, cache R/W, audio, USD),底列 TOTAL
+4. **LIVE ACTIVITY feed** — `tool_use` / `text` / `result` / `tts_usage` / stage 邊界,新事件插頂
+
+KPI 之外的數字會即時更新;cost 表用 polling(events.jsonl tail 完一輪後 server 端重算,前端每 4s fetch)。**pipeline 未開 `PODCAST_VERBOSE=1` 時**,events.jsonl 不存在 → cost 表顯示「No cost data yet」+ warning bar 提示開 flag。

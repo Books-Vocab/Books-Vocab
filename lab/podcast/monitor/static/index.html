@@ -12,10 +12,11 @@
 <body>
 
 <nav class="nav">
-  <div class="nav-brand">PODCAST · PIPELINE MONITOR</div>
+  <div class="nav-brand">PODCAST · MONITOR</div>
   <div class="nav-ws">
     <label class="micro-label">WORKSPACE</label>
     <select id="ws-select" class="ws-select"></select>
+    <button id="ws-refresh" class="icon-btn" title="Reload workspace list">↻</button>
   </div>
   <div class="nav-status">
     <span id="status-dot" class="status-dot"></span>
@@ -25,46 +26,71 @@
 
 <main class="main">
 
-  <!-- Metrics row -->
-  <section class="metrics">
-    <div class="metric-card">
-      <div class="metric-label">ELAPSED</div>
-      <div class="metric-value" id="m-elapsed">—</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">CURRENT STAGE</div>
-      <div class="metric-value" id="m-stage">—</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">CONTEXT · NOW</div>
-      <div class="metric-value tabular" id="m-ctx">0</div>
-      <div class="metric-sub">
-        <span id="m-ctx-pct">0%</span> of 1M · PEAK
-        <span class="tabular" id="m-ctx-peak">0</span>
+  <!-- Top KPIs: cost + elapsed + current + context — one tight strip -->
+  <section class="kpis">
+    <div class="kpi kpi-primary">
+      <div class="kpi-label">TOTAL COST</div>
+      <div class="kpi-value" id="k-cost">$0.00</div>
+      <div class="kpi-sub">
+        <span id="k-cost-claude">$0.00</span> claude ·
+        <span id="k-cost-tts">$0.00</span> tts
       </div>
-      <div class="bar"><div class="bar-fill" id="m-ctx-bar"></div></div>
     </div>
-    <div class="metric-card">
-      <div class="metric-label">OUTPUT · CUMULATIVE</div>
-      <div class="metric-value tabular" id="m-tok-total">0</div>
-      <div class="metric-sub">
-        FRESH IN <span class="tabular" id="m-tok-in">0</span> ·
-        CACHE READ <span class="tabular" id="m-tok-out">0</span> ·
-        CACHE WRITE <span class="tabular" id="m-tok-cache">0</span>
+    <div class="kpi">
+      <div class="kpi-label">ELAPSED</div>
+      <div class="kpi-value" id="k-elapsed">—</div>
+      <div class="kpi-sub" id="k-current">idle</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">CONTEXT NOW</div>
+      <div class="kpi-value tabular" id="k-ctx">0</div>
+      <div class="kpi-sub">
+        <span id="k-ctx-pct">0%</span> of 1M · peak <span class="tabular" id="k-ctx-peak">0</span>
+      </div>
+      <div class="bar"><div class="bar-fill" id="k-ctx-bar"></div></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">TOKENS OUT</div>
+      <div class="kpi-value tabular" id="k-tok-out">0</div>
+      <div class="kpi-sub">
+        fresh in <span class="tabular" id="k-tok-fresh">0</span> ·
+        cache R <span class="tabular" id="k-tok-cr">0</span> ·
+        W <span class="tabular" id="k-tok-cc">0</span>
       </div>
     </div>
   </section>
 
-  <!-- Stage grid -->
-  <section class="stage-grid" id="stage-grid"></section>
+  <!-- Stage strip: one row, compact tiles -->
+  <section class="stages" id="stage-grid"></section>
 
-  <!-- Live activity feed -->
-  <section class="activity">
-    <div class="activity-head">
-      <span class="micro-label">LIVE ACTIVITY</span>
-      <span class="activity-sub" id="activity-stage">—</span>
+  <!-- Cost breakdown table -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="micro-label">COST BREAKDOWN</span>
+      <span class="panel-sub" id="cost-pricing-src"></span>
     </div>
-    <div class="activity-feed" id="activity-feed"></div>
+    <table class="cost-table" id="cost-table">
+      <thead><tr>
+        <th>STAGE</th><th>MODEL</th><th class="r">CALLS</th>
+        <th class="r">INPUT</th><th class="r">OUTPUT</th>
+        <th class="r">CACHE R/W</th><th class="r">AUDIO</th><th class="r">USD</th>
+      </tr></thead>
+      <tbody id="cost-tbody"></tbody>
+      <tfoot><tr>
+        <td colspan="7" class="r"><strong>TOTAL</strong></td>
+        <td class="r"><strong id="cost-total">$0.00</strong></td>
+      </tr></tfoot>
+    </table>
+    <div class="cost-warnings" id="cost-warnings"></div>
+  </section>
+
+  <!-- Live activity -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="micro-label">LIVE ACTIVITY</span>
+      <span class="panel-sub" id="activity-stage">idle</span>
+    </div>
+    <div class="feed" id="activity-feed"></div>
   </section>
 
 </main>
