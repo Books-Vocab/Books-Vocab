@@ -6,6 +6,24 @@ Working directory: `{workspace}`
 
 ---
 
+## Step 0: Resume Check (do this FIRST)
+
+This stage may be re-run after a transient interruption. Your edits are in-place
+and surgical, so a blind re-run would **double-apply** callbacks and word-swaps,
+blowing the <150-words/episode budget and corrupting the scripts. Guard against it:
+
+1. **If `plan/series_polish.md` already exists**, a prior pass completed. Do NOT
+   touch any script. Report "already polished — no-op" and stop.
+2. Otherwise, read `plan/.polish_progress` if present — it lists the per-episode
+   edits a crashed prior attempt already applied. **Skip any edit it records.**
+3. As you apply edits, append each one to `plan/.polish_progress` immediately
+   (one line per edit: `ep_N: <short description of the exact change>`), BEFORE
+   moving on — so a later crash + retry can resume without re-applying it.
+4. Before inserting ANY callback or bit, search the target script for the exact
+   line you would add; if it is already there, skip it (idempotent by construction).
+
+---
+
 ## Input
 
 Read in this order:
