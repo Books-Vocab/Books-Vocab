@@ -1112,22 +1112,31 @@ def main():
     parser = argparse.ArgumentParser(
         description="Book-to-Podcast Pipeline: EPUB → analysis → plan → scripts → audio → subtitles",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""stages (in order):
+        epilog="""stages (in order; ┃ = human approval gate, run pauses until approved):
    1. prep          extract + classify chapters from EPUB
    2. analyst       deep book analysis (structure, arguments, quotes)
    3. architect     production plan (episodes, hosts, pacing)
    4. plan-review   QA gate — verify plan completeness
    5. enricher-gap  identify where external research is needed
    6. enricher      web search to fill research gaps
+  ┃ .plan_approved  ── approve the plan before scripts are written ──
    7. scriptwrite   parallel dialogue script generation
-   8. script-review QA gate — verify script quality
-   9. synthesize    TTS audio generation (Vertex AI Gemini)
-  10. subtitle      word-level subtitle alignment (Whisper)
+   8. series-polish cross-episode continuity polish
+   9. script-review QA gate — verify script quality
+  ┃ .script_approved ── approve scripts before audio is synthesized (TTS $$) ──
+  10. tts-prep       prepare scripts for TTS
+  11. synthesize     TTS audio generation (Vertex AI Gemini)
+  12. audio-qa       audio quality check
+  13. subtitle       word-level subtitle alignment
 
 examples:
-  uv run pipeline.py book.epub                          # full pipeline
-  uv run pipeline.py workspaces/my_book/                # auto-resume
+  uv run pipeline.py book.epub                          # run until plan gate, then pause
+  uv run pipeline.py workspaces/my_book/                # auto-resume to next gate / finish
   uv run pipeline.py workspaces/my_book/ --status       # show progress + commands
+
+  # approval gates
+  touch workspaces/my_book/.plan_approved               # approve plan → next run writes scripts
+  uv run pipeline.py ws/ --ignore-gates                 # run straight through, no pausing
 
   # stage control
   uv run pipeline.py ws/ --skip-to enricher             # start from enricher
