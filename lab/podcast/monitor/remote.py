@@ -55,17 +55,26 @@ def _ssh_base() -> list[str]:
     ]
 
 
-def _run_ssh(remote_cmd: str, *, timeout: int | None = None) -> str:
+def _run_ssh(
+    remote_cmd: str,
+    *,
+    timeout: int | None = None,
+    stdin_data: str | None = None,
+) -> str:
     """Run a remote command, return stdout. Raise RemoteError on non-zero.
 
     `remote_cmd` is passed as a single arg to ssh, which then hands it to
     the user's login shell. CALLERS must not template untrusted input —
     use validate_series_id() for series IDs and never interpolate raw user
     strings into shell commands.
+
+    `stdin_data` lets callers pipe a multi-line script (e.g. python -c <stdin)
+    instead of cramming everything into a one-liner — vastly cleaner than
+    semicolon-chained statements when we need try/except.
     """
     cmd = _ssh_base() + [remote_cmd]
     proc = subprocess.run(
-        cmd, capture_output=True, text=True,
+        cmd, input=stdin_data, capture_output=True, text=True,
         timeout=timeout or (SSH_TIMEOUT + 10),
     )
     if proc.returncode != 0:
@@ -170,40 +179,93 @@ def remote_disk_usage() -> dict:
     }
 
 
+_REBUILD_SCRIPT = r"""
+import sys, os, re, json, glob, shutil
+
+pdir = os.path.expanduser(sys.argv[1])
+sid = sys.argv[2]
+
+# Defense-in-depth — caller already validated, but assert can be stripped
+# with -O so use a real check that survives.
+if not re.match(r"^[a-z0-9_]+$", sid):
+    print(json.dumps({"error": f"bad series_id: {sid}"}), file=sys.stderr)
+    sys.exit(2)
+
+target = os.path.join(pdir, sid)
+
+# Track rm errors so the API can surface partial deletes instead of
+# silently lying. shutil.rmtree(onerror=...) lets us collect each failure
+# without aborting (we want index rebuild to still happen, but the response
+# must mark the series as not-fully-deleted so the dashboard knows.)
+rm_errors = []
+def _onerr(func, path, exc_info):
+    rm_errors.append({"path": path, "err": f"{exc_info[0].__name__}: {exc_info[1]}"})
+
+if os.path.exists(target):
+    shutil.rmtree(target, onerror=_onerr)
+
+# Verify the directory actually disappeared. If it didn't (permission, EBUSY,
+# something half-removed), report fully deleted=False.
+still_exists = os.path.exists(target)
+
+# Rebuild index, skipping any metadata.json we can't parse so one corrupt
+# series doesn't take down the entire index.json. Bad files are reported.
+idx = []
+bad_files = []
+for p in sorted(glob.glob(os.path.join(pdir, "*/metadata.json"))):
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        bad_files.append({"path": p, "err": f"{type(e).__name__}: {e}"})
+        continue
+    entry = {k: v for k, v in meta.items() if k != "episodes"}
+    entry["episodeCount"] = len(meta.get("episodes", []))
+    idx.append(entry)
+
+tmp = os.path.join(pdir, "index.json.tmp")
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(idx, f, indent=2, ensure_ascii=False)
+    f.write("\n")  # match podcast_upload.sh trailing newline expectation
+os.replace(tmp, os.path.join(pdir, "index.json"))
+
+print(json.dumps({
+    "deleted": sid,
+    "fully_deleted": not still_exists,
+    "remaining": len(idx),
+    "rm_errors": rm_errors,
+    "bad_metadata_files": bad_files,
+}))
+"""
+
+
 def delete_remote_series(series_id: str) -> dict:
     """rm -rf the series dir, then rebuild index.json (flock-serialized,
-    same lock as ops/podcast_upload.sh)."""
+    same lock as ops/podcast_upload.sh).
+
+    Returns the parsed JSON from the remote script. Caller MUST check
+    `fully_deleted` — if False, `rm_errors` lists which files survived. The
+    bad_metadata_files key lists any per-series metadata.json that couldn't
+    be parsed (those series are dropped from the rebuilt index, mirroring
+    what the user would observe in the API anyway).
+    """
     validate_series_id(series_id)
-    # Build the rm command separately so series_id is not splat into the
-    # shell pipeline as a string fragment. Use python on the remote side
-    # to do the deletion + index rebuild in one atomic-ish hop.
-    rebuild_py = (
-        "import sys, json, os, glob, shutil; "
-        "pdir = os.path.expanduser(sys.argv[1]); "
-        "sid = sys.argv[2]; "
-        "target = os.path.join(pdir, sid); "
-        "import re; assert re.match(r'^[a-z0-9_]+$', sid), 'bad sid'; "
-        "shutil.rmtree(target, ignore_errors=True); "
-        "idx = []; "
-        "[idx.append({k:v for k,v in json.load(open(p)).items() if k!='episodes'} "
-        "  | {'episodeCount': len(json.load(open(p)).get('episodes', []))}) "
-        "  for p in sorted(glob.glob(os.path.join(pdir, '*/metadata.json')))]; "
-        "tmp = os.path.join(pdir, 'index.json.tmp'); "
-        "json.dump(idx, open(tmp, 'w'), indent=2, ensure_ascii=False); "
-        "os.replace(tmp, os.path.join(pdir, 'index.json')); "
-        "print(json.dumps({'deleted': sid, 'remaining': len(idx)}))"
-    )
+    # Pipe the multi-line python script via stdin so we can have real
+    # try/except blocks instead of semicolon-chained one-liners. Series_id
+    # still goes through argv with _sh_quote so the user-supplied value is
+    # never spliced into the script source itself.
     cmd = (
-        f"flock /tmp/podcast_index.lock python3 -c "
-        f"{_sh_quote(rebuild_py)} "
+        f"flock /tmp/podcast_index.lock python3 - "
         f"{_sh_quote(REMOTE_PODCAST_DIR)} "
         f"{_sh_quote(series_id)}"
     )
-    out = _run_ssh(cmd, timeout=60)
+    out = _run_ssh(cmd, stdin_data=_REBUILD_SCRIPT, timeout=60)
     try:
         return json.loads(out.strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
-        return {"deleted": series_id, "remaining": None, "raw": out}
+        # Script malformed its own output — surface to caller as a 502 by
+        # raising RemoteError instead of pretending it succeeded.
+        raise RemoteError(0, f"remote script returned unparseable output: {out!r}", [])
 
 
 def _sh_quote(s: str) -> str:
