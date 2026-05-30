@@ -101,7 +101,65 @@ html, body {
 }
 .icon-btn:hover { color: var(--ink); border-color: var(--ink); }
 
+.action-btn {
+  background: var(--surface);
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.action-btn:hover {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+}
+.action-btn.danger:hover {
+  background: var(--dev);
+  border-color: var(--dev);
+  color: #FCFBFA;
+}
+
 .nav-status { display: flex; align-items: center; gap: 8px; }
+
+/* ─── Toast stack ─── */
+.toasts {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  padding: 10px 14px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  border-left: 3px solid var(--contra);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  min-width: 240px;
+  max-width: 400px;
+  pointer-events: auto;
+  animation: toast-in 0.2s ease;
+}
+.toast-error { border-left-color: var(--dev); }
+.toast-warn  { border-left-color: var(--dual); }
+.toast-leaving { opacity: 0; transition: opacity 0.4s ease; }
+
+@keyframes toast-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
 
 .status-dot {
   width: 8px; height: 8px;
@@ -274,6 +332,32 @@ html, body {
   margin-top: auto;
 }
 
+.stage-rerun {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sub);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+.stage:hover .stage-rerun { opacity: 0.7; }
+.stage-rerun:hover {
+  opacity: 1 !important;
+  color: var(--ink);
+  border-color: var(--borderBase);
+  background: var(--bg);
+}
+
 .ep-tiles {
   display: flex;
   flex-wrap: wrap;
@@ -403,6 +487,74 @@ html, body {
   padding: 4px 8px;
   background: rgba(211, 84, 0, 0.06);
   border-left: 2px solid var(--dual);
+}
+
+/* ─── Recent jobs panel (Phase 3) ─── */
+.jobs-table {
+  font-family: var(--mono);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.job-row {
+  display: grid;
+  grid-template-columns: 80px 1fr auto auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px dashed var(--borderL);
+}
+.job-row:last-child { border-bottom: none; }
+.job-status {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  text-align: center;
+}
+.job-running   { background: var(--contra); color: #FCFBFA; }
+.job-succeeded { background: var(--ink); color: #FCFBFA; }
+.job-failed    { background: var(--dev); color: #FCFBFA; }
+.job-killed    { background: var(--sub); color: #FCFBFA; }
+.job-pending   { background: transparent; border: 1px solid var(--borderBase); color: var(--sub); }
+.job-label {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.job-dur { color: var(--sub); font-size: 10px; }
+.job-action {
+  background: transparent;
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  color: var(--inkLight);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.job-action:hover {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+}
+.job-action.danger:hover {
+  background: var(--dev);
+  border-color: var(--dev);
+  color: #FCFBFA;
+}
+.jobs-table .empty {
+  padding: 14px;
+  text-align: center;
+  color: var(--sub);
+  font-size: 10px;
 }
 
 /* ─── Inline player (Phase 2) ─── */

@@ -11,6 +11,7 @@ const STAGES = [
 
 const OPUS_CTX_MAX = 1_000_000;
 const COST_REFRESH_MS = 4000;
+const JOBS_REFRESH_MS = 3000;
 
 const state = {
   ws: null,
@@ -30,6 +31,8 @@ const state = {
   maxFeed: 200,
   eventSource: null,
   costTimer: null,
+  jobsTimer: null,
+  recentJobs: [],
 };
 
 // Map an agent stage_label from events.jsonl to its pipeline stage + episode.
@@ -114,6 +117,7 @@ function resetState() {
   state.feed = [];
   if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
   if (state.costTimer) { clearInterval(state.costTimer); state.costTimer = null; }
+  if (state.jobsTimer) { clearInterval(state.jobsTimer); state.jobsTimer = null; }
 }
 
 async function switchWorkspace(ws) {
@@ -150,6 +154,10 @@ async function switchWorkspace(ws) {
 
   // Cost polled (events.jsonl is tailed but we recompute server-side for accuracy)
   state.costTimer = setInterval(refreshCost, COST_REFRESH_MS);
+  // Jobs panel polls separately — independent cadence so a slow cost call
+  // doesn't make recent-jobs status look stale.
+  state.jobsTimer = setInterval(refreshJobs, JOBS_REFRESH_MS);
+  refreshJobs();
 }
 
 async function refreshCost() {
@@ -286,6 +294,142 @@ function pushFeed(ts, stage, entry) {
   if (state.feed.length > state.maxFeed) state.feed.length = state.maxFeed;
 }
 
+// ─── Toast (transient notifications) ───
+function toast(msg, kind = "info", ttlMs = 4500) {
+  const stack = $("#toasts");
+  if (!stack) return;
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind}`;
+  el.textContent = msg;
+  stack.appendChild(el);
+  // Fade-out animation handled by CSS; remove from DOM after.
+  setTimeout(() => el.classList.add("toast-leaving"), Math.max(ttlMs - 400, 0));
+  setTimeout(() => el.remove(), ttlMs);
+}
+
+// ─── Action handlers ───
+async function actionUpload() {
+  if (!state.ws) return toast("no workspace selected", "warn");
+  // No confirm dialog — upload is idempotent + non-destructive (rsync into
+  // a series-namespaced remote dir, atomic index rebuild).
+  try {
+    const r = await fetch(`/api/workspace/${state.ws}/upload`, { method: "POST" });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+    toast(`upload started · job ${body.job_id}`, "info");
+    refreshJobs();
+  } catch (e) {
+    toast(`upload failed: ${e.message}`, "error", 7000);
+  }
+}
+
+async function actionDelete() {
+  if (!state.ws) return toast("no workspace selected", "warn");
+  // Destructive — require user to type the workspace name to confirm.
+  // window.prompt is OK here; this is localhost-only ops tooling.
+  const typed = window.prompt(
+    `DELETE local workspace '${state.ws}'?\n` +
+    `(does NOT touch the remote server)\n\n` +
+    `Type the workspace name to confirm:`
+  );
+  if (typed !== state.ws) {
+    if (typed != null) toast("name mismatch — delete cancelled", "warn");
+    return;
+  }
+  try {
+    const r = await fetch(
+      `/api/workspace/${state.ws}?confirm=${encodeURIComponent(state.ws)}`,
+      { method: "DELETE" }
+    );
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+    toast(`deleted ${body.deleted}`, "info");
+    loadWorkspaces();
+  } catch (e) {
+    toast(`delete failed: ${e.message}`, "error", 7000);
+  }
+}
+
+async function actionRerunStage(stage, episode = null) {
+  if (!state.ws) return toast("no workspace selected", "warn");
+  const epLabel = episode != null ? ` ep${episode}` : "";
+  if (!confirm(`Re-run ${stage}${epLabel} on ${state.ws}?\n\nDrops the .stage_${stage}_done marker so the stage actually executes.`)) {
+    return;
+  }
+  const params = new URLSearchParams({ stage });
+  if (episode != null) params.set("episode", String(episode));
+  try {
+    const r = await fetch(`/api/workspace/${state.ws}/rerun?${params}`, { method: "POST" });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+    toast(`rerun started · job ${body.job_id}`, "info");
+    refreshJobs();
+  } catch (e) {
+    toast(`rerun failed: ${e.message}`, "error", 7000);
+  }
+}
+
+// ─── Recent jobs panel ───
+async function refreshJobs() {
+  try {
+    const r = await fetch("/api/jobs?limit=8");
+    if (!r.ok) return;
+    state.recentJobs = await r.json();
+    renderJobs();
+  } catch { /* network blip */ }
+}
+
+function renderJobs() {
+  const table = $("#jobs-table");
+  const meta = $("#jobs-meta");
+  if (!table) return;
+  if (!state.recentJobs.length) {
+    table.innerHTML = `<div class="empty">no jobs yet — click ↑ UPLOAD or use a stage ↻</div>`;
+    meta.textContent = "none";
+    return;
+  }
+  const running = state.recentJobs.filter(j => j.status === "running").length;
+  meta.textContent = running ? `${running} running · ${state.recentJobs.length} recent` : `${state.recentJobs.length} recent`;
+  table.innerHTML = state.recentJobs.map(j => {
+    const dur = j.duration_s != null ? `${j.duration_s.toFixed(1)}s` : "—";
+    const statusCls = `job-status job-${j.status}`;
+    return `
+      <div class="job-row" data-job="${j.id}">
+        <span class="${statusCls}">${j.status}</span>
+        <span class="job-label">${escapeHtml(j.label)}</span>
+        <span class="job-dur tabular">${dur}</span>
+        <button class="job-action" data-action="log" data-job="${j.id}">log</button>
+        ${j.status === "running" ? `<button class="job-action danger" data-action="kill" data-job="${j.id}">kill</button>` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+// Delegate job-row actions.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".job-action");
+  if (!btn) return;
+  const id = btn.dataset.job;
+  const action = btn.dataset.action;
+  if (action === "log") {
+    try {
+      const r = await fetch(`/api/jobs/${id}?log_bytes=16384`);
+      const j = await r.json();
+      // Cheap in-browser log viewer — alert is ugly but localhost dev.
+      // Replace with a modal in a later phase if it gets used heavily.
+      window.alert(`# ${j.label}\nstatus=${j.status} exit=${j.exit_code} dur=${j.duration_s}s\n\n${j.log_tail || "(empty)"}`);
+    } catch (err) { toast(`log fetch failed: ${err.message}`, "error"); }
+  } else if (action === "kill") {
+    if (!confirm("Kill this running job?")) return;
+    try {
+      const r = await fetch(`/api/jobs/${id}/kill`, { method: "POST" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      toast("kill signal sent", "info");
+      refreshJobs();
+    } catch (err) { toast(`kill failed: ${err.message}`, "error"); }
+  }
+});
+
 // ─── Renderers ───
 function renderAll() {
   renderStages();
@@ -327,6 +471,7 @@ function renderStages() {
       </div>
       ${epLine}
       ${elapsed ? `<div class="stage-meta">${elapsed}</div>` : ""}
+      <button class="stage-rerun" data-rerun-stage="${stage}" title="Re-run ${stage}">↻</button>
     `;
     grid.appendChild(card);
   }
@@ -504,6 +649,14 @@ setInterval(() => {
 
 document.addEventListener("DOMContentLoaded", () => {
   $("#ws-refresh").addEventListener("click", loadWorkspaces);
+  $("#act-upload").addEventListener("click", actionUpload);
+  $("#act-delete").addEventListener("click", actionDelete);
+  // Stage rerun button — delegated since renderStages re-creates the DOM.
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-rerun-stage]");
+    if (btn) actionRerunStage(btn.dataset.rerunStage);
+  });
+
   // Attach the inline player (Phase 2). Player loads its workspace via
   // switchWorkspace() once the workspace list resolves.
   const playerRoot = $("#player-panel");
