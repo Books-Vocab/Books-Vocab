@@ -1,11 +1,17 @@
 <!-- doc-meta
 tier: sop
 authority: derived
-update_trigger: code-change
+update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: aa47c723
+verified_against: 17d8eb22
+-->
+<!--
+  tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
+  本檔雖也是 lab/podcast 程式碼變動的契約,但 lab/podcast 屬實驗 / 工具
+  程式碼非 user-facing surface,維持 sop tier、靠 review agent 主動同步,
+  不走 reference tier 的硬性 doc-as-code 要求。
 -->
 # KG Podcast Pipeline SOP
 
@@ -57,7 +63,7 @@ EPUB
 | `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
 | `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
 
-### 三個 QA gate
+### 四個 QA gate
 
 | stage | gate 條件 | 判讀檔 |
 |---|---|---|
@@ -70,7 +76,7 @@ EPUB
 
 ## 2. overview.md 格式契約
 
-**Voice Mapping 是 host 名 + voice 配對的唯一 source of truth。** `synthesize.py:101` `_parse_overview_hosts` 與 `ops/podcast_upload.sh:117` 都解析這個區塊;格式不對 = host 解析失敗。
+**Voice Mapping 是 host 名 + voice 配對的唯一 source of truth。** `synthesize.py:101` `_parse_overview_hosts` 與 `ops/podcast_upload.sh:118` 都解析這個區塊;格式不對 = host 解析失敗。
 
 ```markdown
 ### Voice Mapping
@@ -82,7 +88,7 @@ Regex: `\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])`
 
 ### 強制規則(architect.md prompt 已寫入)
 
-1. **必須有兩條** `**Name (Voice)**: SpeakerN` 行，否則 synthesize 在 `_parse_overview_hosts:110-125` hard-fail。
+1. **必須有兩條** `**Name (Voice)**: SpeakerN` 行，否則 synthesize 在 `_parse_overview_hosts:110-117` hard-fail。
 2. **host 名不可含 `:` 或 `*`**——`audio_qa.py:47` / `synthesize.py:177` / `subtitle.py:55` 統一用 `[^:*]+` 解析 speaker tag(commit `aa47c723` 後對齊)。空格、連字號、unicode 字母都可以。單詞名仍較好讀但已非硬性要求。
 3. **tts-prep 之前 voice 必須是 `(TBD)`**，tts-prep stage 才替換成實際 Gemini voice 名。
 
@@ -100,7 +106,7 @@ Regex: `\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])`
 GCP_PROJECT_ID=gen-lang-client-*****
 GCP_LOCATION=us-central1
 GOOGLE_APPLICATION_CREDENTIALS=gen-lang-client-*****-*.json
-TTS_MODEL=gemini-2.5-pro-tts
+TTS_MODEL=gemini-2.5-pro-tts   # 部署預設(.env);synthesize.py:62 程式碼預設是 flash-tts
 ```
 
 - 走 **Vertex AI 模式**(`vertexai=True`, `synthesize.py:326`)，非 AI Studio API key。
