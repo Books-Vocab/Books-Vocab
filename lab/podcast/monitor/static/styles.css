@@ -68,6 +68,13 @@ html, body {
   letter-spacing: 0.16em;
   color: var(--ink);
 }
+.nav-version {
+  font-weight: 400;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--sub);
+  margin-left: 8px;
+}
 
 .nav-ws {
   display: flex;
