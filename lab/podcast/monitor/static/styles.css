@@ -48,13 +48,14 @@ html, body {
 
 /* ─── Nav ─── */
 .nav {
-  height: 44px;
+  min-height: 44px;
   background: var(--surface);
   border-bottom: 1px solid var(--borderBase);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0 20px;
-  gap: 24px;
+  padding: 6px 20px;
+  gap: 14px 24px;
   position: sticky;
   top: 0;
   z-index: 20;
@@ -123,6 +124,23 @@ html, body {
   background: var(--dev);
   border-color: var(--dev);
   color: #FCFBFA;
+}
+.action-btn.primary {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+}
+.action-btn.primary:hover {
+  background: var(--contra);
+  border-color: var(--contra);
+}
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.action-btn:disabled:hover {
+  background: var(--ink);
+  color: var(--surface);
 }
 
 .nav-status { display: flex; align-items: center; gap: 8px; }
@@ -350,12 +368,18 @@ html, body {
   opacity: 0;
   transition: all 0.15s ease;
 }
-.stage:hover .stage-rerun { opacity: 0.7; }
+.stage:hover .stage-rerun,
+.stage:focus-within .stage-rerun,
+.stage-rerun:focus { opacity: 1; }
 .stage-rerun:hover {
   opacity: 1 !important;
   color: var(--ink);
   border-color: var(--borderBase);
   background: var(--bg);
+}
+.stage-rerun:focus-visible {
+  outline: 2px solid var(--contra);
+  outline-offset: 1px;
 }
 
 .ep-tiles {
@@ -487,6 +511,136 @@ html, body {
   padding: 4px 8px;
   background: rgba(211, 84, 0, 0.06);
   border-left: 2px solid var(--dual);
+}
+
+/* ─── Modal (Phase 4) ─── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(42, 37, 32, 0.55);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: backdrop-in 0.18s ease;
+}
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  background: var(--surface);
+  border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  width: 100%;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  animation: modal-in 0.2s ease;
+}
+@keyframes modal-in {
+  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--borderL);
+}
+.modal-title {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--ink);
+}
+
+.modal-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dropzone {
+  border: 2px dashed var(--borderBase);
+  border-radius: 3px;
+  padding: 32px 18px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--bg);
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--contra);
+  background: rgba(74, 107, 140, 0.04);
+}
+.dropzone-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.dropzone-icon { font-size: 32px; }
+.dropzone-text {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+.dropzone-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sub);
+  letter-spacing: 0.06em;
+}
+
+.modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--sub);
+  text-transform: uppercase;
+}
+.field-input {
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--ink);
+  width: 100px;
+}
+.field-input:focus { outline: 1px solid var(--contra); border-color: var(--contra); }
+.field-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sub);
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--borderL);
+  margin-top: 4px;
+  padding-top: 12px;
 }
 
 /* ─── Recent jobs panel (Phase 3) ─── */
