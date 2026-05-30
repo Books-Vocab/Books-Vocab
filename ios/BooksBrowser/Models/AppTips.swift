@@ -44,11 +44,14 @@ struct SyncPendingTip: Tip {
 // MARK: - EPUB Guide
 
 struct EPUBGuideTip: Tip {
+    /// Shared id so the action declaration and the TipView handler can't drift.
+    static let guideActionID = "epub_guide_action"
+
     var title: Text { Text(verbatim: L10n.string("tip_epub_guide_title")) }
     var message: Text? { Text(verbatim: L10n.string("tip_epub_guide_message")) }
     var options: [TipOption] { [Tips.MaxDisplayCount(1)] }
 
     var actions: [Action] {
-        [Action(id: "epub_guide_action", title: L10n.string("tip_epub_guide_action"))]
+        [Action(id: Self.guideActionID, title: L10n.string("tip_epub_guide_action"))]
     }
 }

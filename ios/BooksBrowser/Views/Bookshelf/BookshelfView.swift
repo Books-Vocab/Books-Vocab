@@ -138,7 +138,7 @@ struct BookshelfView: View {
             ) {
                 Button("確定".localized, role: .cancel, action: coordinator.dismissError)
             } message: {
-                Text((coordinator.errorMessage ?? "未知錯誤").localized)
+                Text(coordinator.errorMessage ?? "未知錯誤".localized)
             }
             .toastSheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
@@ -175,7 +175,7 @@ struct BookshelfView: View {
                 )
 
                 TipView(EPUBGuideTip()) { action in
-                    if action.id == "查看指南" {
+                    if action.id == EPUBGuideTip.guideActionID {
                         openURL(AppURLs.guide)
                     }
                 }
