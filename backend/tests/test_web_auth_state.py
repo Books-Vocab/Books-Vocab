@@ -69,6 +69,20 @@ def test_google_login_sets_oauth_state_cookie(web_auth_env):
     assert state and len(state) >= 16
 
 
+def test_apple_login_state_cookie_is_samesite_none(web_auth_env):
+    # Apple sign-in uses response_mode=form_post → the callback is a cross-site
+    # top-level POST. Browsers do NOT attach a SameSite=Lax cookie to that, so
+    # the Apple-bound state cookie must be SameSite=None; Secure (CSRF is still
+    # enforced by the nonce comparison in _verify_state).
+    resp = web_auth_env.client.get("/auth/web/apple/login", follow_redirects=False)
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert "oauth_state=" in set_cookie
+    lower = set_cookie.lower()
+    assert "samesite=none" in lower
+    assert "secure" in lower
+    assert "httponly" in lower
+
+
 def test_google_login_state_in_cookie_matches_redirect(web_auth_env):
     resp = web_auth_env.client.get("/auth/web/google/login", follow_redirects=False)
     state_in_url = _extract_state_from_redirect(resp.headers["location"])
