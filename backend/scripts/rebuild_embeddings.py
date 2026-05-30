@@ -13,6 +13,24 @@ from kg.cards import CardStore
 from kg.embeddings import EMBEDDING_MODEL, EmbeddingStore
 from kg.service_factories import create_gemini_client
 
+# Cap a single embedding API request size. Each chunk = one API call + one full
+# embeddings.npy save, so chunking keeps us at O(N/chunk) round-trips and saves
+# instead of the old O(N) per-card hammering.
+_EMBED_CHUNK_SIZE = 100
+
+
+def rebuild_user_embeddings(emb, cards, chunk_size: int = _EMBED_CHUNK_SIZE) -> int:
+    """Embed every card via batched `add_batch` calls (chunk_size per call).
+
+    Replaces the old per-card `emb.add(...)` loop, which issued one API call and
+    one full-matrix disk save *per card* (N round-trips, O(N^2) bytes written).
+    Returns the number of cards processed.
+    """
+    items = [(c.id, c.embed_text()) for c in cards]
+    for start in range(0, len(items), chunk_size):
+        emb.add_batch(items[start:start + chunk_size])
+    return len(items)
+
 
 def main():
     data_dir = Path(os.getenv("KG_DATA_DIR", Path(__file__).parent.parent / "data"))
@@ -45,8 +63,7 @@ def main():
             client,
         )
 
-        for card in all_cards:
-            emb.add(card.id, card.embed_text())
+        rebuild_user_embeddings(emb, all_cards)
 
         total_cards += len(all_cards)
 
