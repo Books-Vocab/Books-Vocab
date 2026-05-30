@@ -328,7 +328,8 @@ _FATAL_PHRASES = (
 
 class _ClaudeFailure(NamedTuple):
     """Why a `claude -p` invocation failed. `status` is the API HTTP status
-    (e.g. "400", "429") when known, else a tag like "timeout"/"exit"."""
+    coerced to str (the wire `api_error_status` is an int, e.g. 400 → "400")
+    when known, else a tag like "timeout". May be None (status-less stderr)."""
     status: str | None
     reason: str
 
