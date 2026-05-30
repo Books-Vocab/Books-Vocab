@@ -149,8 +149,27 @@ def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
     }, chapters
 
 
+def _sanitize_slug(title: str, max_len: int = 30) -> str:
+    """Produce a workspace slug that matches backend ``_SERIES_ID_RE``.
+
+    Backend (`backend/src/kg/routers/podcast.py`) and `ops/podcast_upload.sh`
+    both enforce ``^[a-z0-9_]+$`` on ``series_id``. The upload script derives
+    ``series_id`` from ``basename(workspace)``, so the slug MUST satisfy that
+    regex — otherwise upload succeeds but every API call 404s.
+
+    Algorithm: lowercase → collapse non-alphanumeric runs into single ``_`` →
+    strip leading/trailing ``_`` → truncate to ``max_len`` → re-rstrip ``_``
+    in case truncation landed mid-segment. Empty result falls back to
+    ``"untitled"`` (still regex-valid).
+    """
+    s = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
+    if len(s) > max_len:
+        s = s[:max_len].rstrip("_")
+    return s or "untitled"
+
+
 def setup_workspace(metadata: dict, chapters: list[tuple[str, str]]) -> Path:
-    slug = metadata["title"].lower().replace(" ", "_")[:30]
+    slug = _sanitize_slug(metadata["title"])
     book_hash = hashlib.md5(
         f"{metadata['title']}_{metadata['author']}".encode()
     ).hexdigest()[:8]
@@ -188,7 +207,7 @@ def find_workspace(epub_path: Path) -> Path | None:
     book = epub.read_epub(str(epub_path))
     title = book.get_metadata("DC", "title")[0][0]
     author = book.get_metadata("DC", "creator")[0][0]
-    slug = title.lower().replace(" ", "_")[:30]
+    slug = _sanitize_slug(title)
     book_hash = hashlib.md5(f"{title}_{author}".encode()).hexdigest()[:8]
     ws = WORKSPACES_DIR / f"{slug}_{book_hash}"
     return ws if ws.exists() else None
