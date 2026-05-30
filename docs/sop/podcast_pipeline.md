@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: df42f6e2
+verified_against: 6c3a1acc
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -321,12 +321,45 @@ Env opt-out:
 純手動操作 dashboard(不跑 pipeline,單看舊 workspace):`./start.sh [port] | --stop`。idempotent 啟停 wrapper(PID file、`lsof` 清 port、`nohup uv run`、curl 健康檢查)。
 
 Endpoints:
-- `/api/workspaces` — workspace 列表
-- `/api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
-- `/api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
-- `/api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
+
+**Read**(觀測):
+- `GET /api/workspaces` — workspace 列表
+- `GET /api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
+- `GET /api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
+- `GET /api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
+- `GET /api/workspace/{ws}/episodes` — list 已生成的 episode + variant(pro/flash)+ size + has_subtitle
+- `GET /api/workspace/{ws}/episode/{ep}/audio` — MP3 stream(`FileResponse` 處理 Range / 206)
+- `GET /api/workspace/{ws}/episode/{ep}/subtitle` — SRT 純文字
+
+**Action**(製作:spawn 子程序回 job_id):
+- `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3
+- `DELETE /api/workspace/{ws}?confirm=<ws>` — 本地砍 workspace,confirm 字串必須等於 ws_name
+- `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程
+
+**Jobs**:
+- `GET /api/jobs?limit=N`、`GET /api/jobs/{id}?log_bytes=N`、`POST /api/jobs/{id}/kill`
+- 同時 running cap = `PODCAST_MAX_ACTIVE_JOBS`(預設 4);超過 spawn 回 HTTP 429
+
+**Remote**(SSH → Lightsail,共用 `ops/podcast_upload.sh` 的 SSH key + host):
+- `GET /api/remote/series` — 解析遠端 `index.json` + 每 series du size + orphan(沒在 index 但有 dir)
+- `GET /api/remote/disk` — `df -B1` + `du` for podcast dir
+- `DELETE /api/remote/series/{id}?confirm=<id>` — flock-serialized rm + index 重建;回 `{deleted, fully_deleted, remaining, rm_errors, bad_metadata_files}` — caller 必須檢查 `fully_deleted`,partial delete 是真實情境(EBUSY / permission)
 
 `events.jsonl` 內容:claude CLI stream-json 的 tool-use + `result.modelUsage[*].costUSD`,以及 `synthesize.py` 寫的 `tts_usage` events。
+
+### Monitor env vars(額外於 .env 的 pipeline 變數)
+
+| 變數 | 預設 | 說明 |
+|------|------|------|
+| `PODCAST_SSH_KEY` | `~/.ssh/lightsail_default.pem` | SSH key path(共用 `ops/podcast_upload.sh`)|
+| `PODCAST_REMOTE_SERVER` | `ubuntu@13.193.212.134` | 連線目標 |
+| `PODCAST_REMOTE_DIR` | `~/knowledge_graph_api/data/podcasts` | 遠端資產根 |
+| `PODCAST_SSH_TIMEOUT` | `20` | SSH ConnectTimeout 秒 |
+| `PODCAST_MAX_ACTIVE_JOBS` | `4` | 同時 running 上限,超過 spawn 回 429 |
+| `PODCAST_JOB_HISTORY` | `100` | 完成 job log LRU 保留筆數 |
+| `PODCAST_MAX_EPUB_BYTES` | `200*1024*1024` | `/api/pipeline/start` upload cap |
+| `PODCAST_TTS_PRICING` | (unset) | 暫時覆寫 `VERTEX_PRICING` dict 的 JSON 字串(見 §8.1) |
 
 ### 8.1 成本聚合(`monitor/cost.py`)
 

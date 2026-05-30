@@ -26,9 +26,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
@@ -38,8 +40,13 @@ from fastapi.staticfiles import StaticFiles
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
 sys.path.insert(0, str(Path(__file__).parent))
 from cost import aggregate_workspace  # noqa: E402
-from jobs import tracker as jobs  # noqa: E402
+from jobs import tracker as jobs, JobLimitReached  # noqa: E402
 import remote as remote_ops  # noqa: E402
+
+# Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
+# almost certainly someone uploading the wrong file by accident. Protects
+# the 2GB VPS from getting wedged by a runaway multipart body.
+MAX_EPUB_BYTES = int(os.getenv("PODCAST_MAX_EPUB_BYTES", str(200 * 1024 * 1024)))
 
 ROOT = Path(__file__).parent.parent
 WORKSPACES_DIR = ROOT / "workspaces"
@@ -303,13 +310,16 @@ def upload_workspace(ws_name: str):
     if not upload_sh.exists():
         raise HTTPException(500, f"upload script missing at {upload_sh}")
 
-    job = jobs.spawn(
-        ["bash", str(upload_sh), str(ws)],
-        label=f"upload:{ws_name}",
-        kind="upload",
-        cwd=ROOT.parent.parent,  # repo root (rsync uses relative ops/ path internally)
-        metadata={"workspace": ws_name},
-    )
+    try:
+        job = jobs.spawn(
+            ["bash", str(upload_sh), str(ws)],
+            label=f"upload:{ws_name}",
+            kind="upload",
+            cwd=ROOT.parent.parent,  # repo root (rsync uses relative ops/ path internally)
+            metadata={"workspace": ws_name},
+        )
+    except JobLimitReached as e:
+        raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label}
 
 
@@ -354,46 +364,73 @@ def rerun_stage(
     if episode is not None:
         cmd += ["--only-episode", str(episode)]
 
-    job = jobs.spawn(
-        cmd,
-        label=f"rerun:{ws_name}:{stage}" + (f":ep{episode}" if episode else ""),
-        kind="rerun",
-        cwd=ROOT,
-        # Producer-triggered reruns inherit dashboard's verbose setting; user
-        # already opted into events.jsonl by being here.
-        env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
-        metadata={"workspace": ws_name, "stage": stage, "episode": episode},
-    )
+    try:
+        job = jobs.spawn(
+            cmd,
+            label=f"rerun:{ws_name}:{stage}" + (f":ep{episode}" if episode else ""),
+            kind="rerun",
+            cwd=ROOT,
+            # Producer-triggered reruns inherit dashboard's verbose setting; user
+            # already opted into events.jsonl by being here.
+            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            metadata={"workspace": ws_name, "stage": stage, "episode": episode},
+        )
+    except JobLimitReached as e:
+        raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label}
 
 
 @app.post("/api/pipeline/start")
 async def start_pipeline(
     epub: UploadFile = File(...),
-    parallel: int = Form(3),
+    parallel: int = Form(3, ge=1, le=10),
 ):
     """Receive an EPUB upload, save to staging, spawn pipeline.py.
     Returns job_id immediately; the new workspace name appears in the
     pipeline's first few seconds of stdout (or after extract_epub finishes).
+
+    `parallel` is bounded 1-10 — typical books have <=10 episodes and 10 is
+    already aggressive for the 2GB VPS during scriptwrite/script-review.
     """
     if not epub.filename or not epub.filename.lower().endswith(".epub"):
         raise HTTPException(415, "expected .epub file")
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename)
-    dest = UPLOAD_STAGING / safe_name
-    with dest.open("wb") as f:
-        # Stream to avoid loading large EPUBs into memory.
-        while chunk := await epub.read(1 << 20):
-            f.write(chunk)
+    # Strip leading dots/hyphens so `....epub` doesn't land as a hidden file.
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
+    # Prefix with a monotonic timestamp so concurrent uploads of the same
+    # filename don't race on the destination (last-writer-wins corruption).
+    dest = UPLOAD_STAGING / f"{int(time.time())}_{safe_name}"
+
+    written = 0
+    try:
+        with dest.open("wb") as f:
+            # Stream to avoid loading large EPUBs into memory; enforce the
+            # cap inline so we never spool the whole oversized body to disk.
+            while chunk := await epub.read(1 << 20):
+                written += len(chunk)
+                if written > MAX_EPUB_BYTES:
+                    raise HTTPException(
+                        413,
+                        f"epub too large (>{MAX_EPUB_BYTES // (1 << 20)}MB) — "
+                        "this is almost certainly the wrong file",
+                    )
+                f.write(chunk)
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
 
     cmd = ["uv", "run", "pipeline.py", str(dest), "--parallel", str(parallel)]
-    job = jobs.spawn(
-        cmd,
-        label=f"pipeline:{safe_name}",
-        kind="pipeline",
-        cwd=ROOT,
-        env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
-        metadata={"epub": safe_name, "parallel": parallel},
-    )
+    try:
+        job = jobs.spawn(
+            cmd,
+            label=f"pipeline:{safe_name}",
+            kind="pipeline",
+            cwd=ROOT,
+            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            metadata={"epub": safe_name, "parallel": parallel, "bytes": written},
+        )
+    except JobLimitReached as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label, "epub": safe_name}
 
 
