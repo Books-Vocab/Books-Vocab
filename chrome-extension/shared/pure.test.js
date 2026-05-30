@@ -135,9 +135,13 @@ test('classifyError maps auth_expired / 401 to the login flow', () => {
   assert.equal(classifyError({ status: 401 }).icon, '🔒');
 });
 
-test('classifyError maps quota_exceeded / 403 to the settings flow', () => {
+test('classifyError maps quota_exceeded / 429 to the settings flow', () => {
+  // Backend raises QuotaExceededError with HTTP 429 (not 403).
   assert.equal(classifyError({ code: 'quota_exceeded' }).action, 'settings');
-  assert.equal(classifyError({ status: 403 }).action, 'settings');
+  assert.equal(classifyError({ status: 429 }).action, 'settings');
+  // A genuine 403 (ForbiddenError, e.g. another user's notebook) is NOT a quota
+  // hit and must not surface the quota UI.
+  assert.notEqual(classifyError({ status: 403 }).action, 'settings');
 });
 
 test('classifyError maps network_error / status 0 to a reloadable state', () => {
@@ -445,9 +449,20 @@ test('safeUrl respects custom fallback', () => {
 });
 
 test('safeUrl treats scheme-relative URLs as http(s) via base', () => {
-  // `//evil.example/x` resolves against the https base → becomes https — safe.
+  // `//evil.example/x` resolves against the https base → normalized to https — safe.
   // This is acceptable: the destination is a regular network URL, not a script.
-  assert.equal(safeUrl('//evil.example/x'), '//evil.example/x');
+  assert.equal(safeUrl('//evil.example/x'), 'https://evil.example/x');
+});
+
+test('safeUrl normalizes (percent-encodes) the returned URL — no raw quotes survive', () => {
+  // Attribute-breakout XSS guard: a captured source.url with a raw `"` must be
+  // percent-encoded in the returned href, not passed through verbatim.
+  assert.equal(
+    safeUrl('https://x.com/"onmouseover=alert(1)'),
+    'https://x.com/%22onmouseover=alert(1)',
+  );
+  // Clean URLs are unaffected (normalize to themselves).
+  assert.equal(safeUrl('https://wordnexus.lol/a/b'), 'https://wordnexus.lol/a/b');
 });
 
 // ---------------------------------------------------------------------------
@@ -463,12 +478,16 @@ test('escapeHtml encodes the markup-significant trio &<>', () => {
   assert.equal(escapeHtml('a < b && b > c'), 'a &lt; b &amp;&amp; b &gt; c');
 });
 
-test('escapeHtml leaves quotes alone (matches DOM round-trip)', () => {
-  // textContent → innerHTML does NOT encode `"` or `'`. Call sites that drop
-  // the output into an attribute context rely on the attribute being wrapped
-  // in `"`, so leaving `'` untouched is safe and matches prior behaviour.
-  assert.equal(escapeHtml(`he said "hi"`), `he said "hi"`);
-  assert.equal(escapeHtml("it's fine"), "it's fine");
+test('escapeHtml encodes quotes so attribute interpolation cannot break out', () => {
+  // Security: call sites interpolate escaped values into `"`-wrapped attributes
+  // (e.g. `href="${esc(url)}"`). A raw `"` would break out of the attribute and
+  // inject markup — so we encode both `"` and `'`.
+  assert.equal(escapeHtml(`he said "hi"`), 'he said &quot;hi&quot;');
+  assert.equal(escapeHtml("it's fine"), 'it&#39;s fine');
+  assert.equal(
+    escapeHtml('"onmouseover="alert(1)'),
+    '&quot;onmouseover=&quot;alert(1)',
+  );
 });
 
 test('escapeHtml escapes & first so subsequent entities are not double-encoded', () => {
