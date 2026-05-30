@@ -24,7 +24,8 @@ import re
 import sys
 from pathlib import Path
 
-VIEWS_ROOT = Path("ios/BooksBrowser/Views")
+ROOT = Path(__file__).resolve().parent.parent
+VIEWS_ROOT = ROOT / "ios/BooksBrowser/Views"
 SKIP_PATH_FRAGMENTS = ("Debug/", "Readium", "PDFReader")
 
 STRUCT_VIEW_RE = re.compile(
