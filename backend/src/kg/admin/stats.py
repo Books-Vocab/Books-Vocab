@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger("kg.admin_handlers")
 
@@ -20,7 +21,6 @@ def admin_stats_response(
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     data_dir: Any,
     card_store_factory: Callable[[Any], Any],
-    jwt_secret: str = "",
 ) -> dict[str, Any]:
     from ..quota_service import get_all_quota_usage, token_cost_usd
 
@@ -38,7 +38,7 @@ def admin_stats_response(
         try:
             store = card_store_factory(user_dir)
             vocab_count = store.count()
-        except (OSError, ValueError):
+        except (OSError, ValueError, SQLAlchemyError):
             logger.warning("Failed to load card store for user %s", uid, exc_info=True)
 
         utoken = token_stats.get(uid, {})

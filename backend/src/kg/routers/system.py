@@ -15,6 +15,9 @@ _logger = logging.getLogger(__name__)
 
 VERSION_FILE = Path("/app/VERSION")
 
+# VERSION cannot change without a process restart, so read it once at import.
+_VERSION: str = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "unknown"
+
 _STARTED_AT: float = time.time()
 
 MIGRATION_NAMES = ["root_form", "inflections"]
@@ -38,9 +41,7 @@ router = APIRouter()
 
 @router.get("/api/system/info", response_model=SystemInfoResponse)
 def system_info() -> SystemInfoResponse:
-    version = "unknown"
-    if VERSION_FILE.exists():
-        version = VERSION_FILE.read_text().strip()
+    version = _VERSION
 
     from datetime import UTC, datetime
     started_at = datetime.fromtimestamp(_STARTED_AT, tz=UTC).isoformat()

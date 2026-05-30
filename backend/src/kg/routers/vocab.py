@@ -70,7 +70,7 @@ def list_vocab(
     result = list_vocab_response(
         since=since, user=user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
-        card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
@@ -151,7 +151,7 @@ def lookup_word(
     return lookup_word_response(
         word, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
-        card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )

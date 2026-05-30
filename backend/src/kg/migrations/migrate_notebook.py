@@ -45,10 +45,18 @@ def migrate_user(user_dir: Path) -> None:
         if old_path.exists() and not new_path.exists():
             old_path.rename(new_path)
             logger.info("  Renamed %s -> %s", old_name, new_name)
-            # Also rename .bak files if present
+            # Also rename .bak files if present, mirroring the primary guard so
+            # an existing destination .bak is never clobbered.
             bak = old_path.with_suffix(old_path.suffix + ".bak")
+            dst_bak = new_path.with_suffix(new_path.suffix + ".bak")
             if bak.exists():
-                bak.rename(new_path.with_suffix(new_path.suffix + ".bak"))
+                if not dst_bak.exists():
+                    bak.rename(dst_bak)
+                else:
+                    logger.warning(
+                        "  Skipped %s -> %s: destination .bak already exists, reconcile manually",
+                        bak.name, dst_bak.name,
+                    )
 
 
 def main() -> None:

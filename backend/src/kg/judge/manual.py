@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from ..tracked_llm import TrackedLLM
 from .models import Judgement
@@ -37,6 +38,21 @@ class ManualLinkJudge:
         except Exception:
             logger.warning("Failed to write judge_log (manual)", exc_info=True)
 
+    @staticmethod
+    def _parse_judgement(content: str) -> dict | None:
+        """Parse the LLM response into a dict, tolerating a JSON object embedded
+        in surrounding prose. Returns None when no valid object can be recovered."""
+        try:
+            return json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+            if not m:
+                return None
+            try:
+                return json.loads(m.group())
+            except (json.JSONDecodeError, ValueError):
+                return None
+
     def evaluate(
         self,
         word_a: str,
@@ -65,23 +81,11 @@ class ManualLinkJudge:
 
         content = resp.choices[0].message.content or ""
 
-        import re
-
-        try:
-            data = json.loads(content)
-        except (json.JSONDecodeError, ValueError):
-            m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
-            if m:
-                try:
-                    data = json.loads(m.group())
-                except (json.JSONDecodeError, ValueError):
-                    j = Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
-                    self._log(from_id=from_id, to_id=to_id, judgement=j)
-                    return j
-            else:
-                j = Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
-                self._log(from_id=from_id, to_id=to_id, judgement=j)
-                return j
+        data = self._parse_judgement(content)
+        if data is None:
+            j = Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+            self._log(from_id=from_id, to_id=to_id, judgement=j)
+            return j
 
         link_val = data.get("link", "shares_usage")
         reason_val = data.get("reason", "使用者認為這兩個詞相關。")
