@@ -200,7 +200,7 @@ struct PodcastEpisodeListView: View {
             AppToolbarGlyph(systemImage: isFollowed ? "star.fill" : "star")
         }
         .disabled(currentSeries == nil)
-        .accessibilityLabel(isFollowed ? "取消追蹤" : "追蹤")
+        .accessibilityLabel((isFollowed ? "取消追蹤" : "追蹤").localized)
         .accessibilityIdentifier("podcast.followToggle")
     }
 
@@ -262,7 +262,7 @@ struct PodcastEpisodeListView: View {
             parts.append(series.hostNames.joined(separator: ", "))
         }
         if series.episodeCount > 0 {
-            parts.append("\(series.episodeCount) 集")
+            parts.append(L10n.format("%@ 集", String(series.episodeCount)))
         }
         if series.totalDurationSec > 0 {
             parts.append(formatTotalDuration(series.totalDurationSec))

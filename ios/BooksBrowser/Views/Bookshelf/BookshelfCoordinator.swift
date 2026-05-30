@@ -172,7 +172,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                         AppLog.book.info("Book saved: \(book.title)")
                         succeeded += 1
                     } else {
-                        failures.append((url.lastPathComponent, .unknown(underlying: "儲存失敗")))
+                        failures.append((url.lastPathComponent, .unknown(underlying: "儲存失敗".localized)))
                     }
                 } catch {
                     AppLog.book.error("BookshelfCoordinator import error: \(error.localizedDescription)")
@@ -203,12 +203,12 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 showError = true
             case (0, let n):
                 errorMessage = batchFailureMessage(failures: failures)
-                errorDiagnosis = "\(n) 本匯入失敗"
+                errorDiagnosis = L10n.format("%@ 本匯入失敗", String(n))
                 showError = true
             case (let s, let n):
-                toastCoordinator.warning("已匯入 \(s) 本，\(n) 本失敗")
+                toastCoordinator.warning(L10n.format("已匯入 %@ 本，%@ 本失敗", String(s), String(n)))
                 errorMessage = batchFailureMessage(failures: failures)
-                errorDiagnosis = "部分匯入失敗"
+                errorDiagnosis = "部分匯入失敗".localized
                 showError = true
             }
         }

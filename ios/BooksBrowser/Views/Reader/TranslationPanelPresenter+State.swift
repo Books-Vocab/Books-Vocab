@@ -79,11 +79,11 @@ extension TranslationPanelPresenterState {
     }
 
     var loadingTitle: String {
-        statusMessage ?? "翻譯中..."
+        statusMessage ?? "翻譯中...".localized
     }
 
     var guestMessageTitle: String {
-        isSaved ? "已加入待收錄" : "正在記錄…"
+        isSaved ? "已加入待收錄".localized : "正在記錄…".localized
     }
 
     var guestMessageIcon: String {
