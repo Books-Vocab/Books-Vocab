@@ -685,88 +685,100 @@ body.sidebar-open .sidebar-backdrop {
 }
 
 /* ─── Stages strip ─── */
-.stages {
+/* ── Stage timeline: top→bottom = pipeline order. State reads from the spine
+   dot + connector colour + name tint; no per-row "DONE" pill noise. ── */
+.stages { display: block; }
+
+.timeline { display: flex; flex-direction: column; }
+
+.tl-row {
   display: grid;
-  /* Auto-fit: chips stay >= 95px wide; wrap to a second row when the
-     viewport shrinks (e.g. sidebar takes 280px from a 1400px main). */
-  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
-  gap: 4px;
-}
-
-.stage {
-  background: var(--surface);
-  border: 1px solid var(--borderBase);
-  border-radius: 3px;
-  padding: 8px 8px 6px;
-  min-height: 62px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  transition: all 0.15s ease;
-  position: relative;
-}
-
-.stage.stage-wide { grid-column: span 2; }
-
-.stage.running {
-  border-color: var(--contra);
-  box-shadow: inset 2px 0 0 var(--contra);
-}
-.stage.done { opacity: 0.7; }
-.stage.failed {
-  border-color: var(--dev);
-  background: rgba(192, 57, 43, 0.04);
-  box-shadow: inset 2px 0 0 var(--dev);
-}
-
-.stage-head {
-  display: flex;
+  grid-template-columns: 22px minmax(120px, 200px) 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
+  gap: 10px;
+  min-height: 30px;
+  font-size: 11px;
 }
 
-.stage-name {
+/* Spine: a continuous vertical line through the dot column; the completed
+   prefix is inked so the spine itself reads as a progress bar. */
+.tl-spine { position: relative; align-self: stretch; }
+.tl-spine::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--borderL);
+}
+.tl-row:first-child .tl-spine::before { top: 50%; }
+.tl-row:last-child .tl-spine::before { bottom: 50%; }
+.tl-done .tl-spine::before,
+.tl-running .tl-spine::before { background: var(--ink); }
+.tl-failed .tl-spine::before { background: var(--dev); }
+
+.tl-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--borderBase);
+  background: var(--surface);
+  z-index: 1;
+}
+.tl-done .tl-dot { background: var(--ink); border-color: var(--ink); }
+.tl-running .tl-dot {
+  background: var(--contra);
+  border-color: var(--contra);
+  animation: pulse-tile 2s ease-in-out infinite;
+}
+.tl-failed .tl-dot { background: var(--dev); border-color: var(--dev); }
+
+.tl-name {
   font-family: var(--mono);
   font-weight: 500;
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.tl-pending .tl-name { color: var(--sub); font-weight: 400; }
+.tl-running .tl-name { color: var(--contra); }
+.tl-failed .tl-name { color: var(--dev); }
 
-.stage-pill {
-  display: inline-block;
+.tl-eps { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
+
+.tl-meta { display: flex; align-items: center; gap: 8px; justify-self: end; }
+
+.tl-pill {
   padding: 1px 6px;
   border-radius: 8px;
   font-family: var(--mono);
   font-size: 8px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  border: 1px solid var(--borderBase);
-  color: var(--sub);
-  background: transparent;
-  flex-shrink: 0;
 }
-.stage-pill.running { background: var(--contra); border-color: var(--contra); color: #FCFBFA; }
-.stage-pill.done    { background: var(--ink); border-color: var(--ink); color: #FCFBFA; }
-.stage-pill.failed  { background: var(--dev); border-color: var(--dev); color: #FCFBFA; }
+.tl-pill-running { background: var(--contra); color: #FCFBFA; }
+.tl-pill-failed  { background: var(--dev); color: #FCFBFA; }
 
-.stage-meta {
+.tl-time {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--sub);
-  margin-top: auto;
+  min-width: 38px;
+  text-align: right;
 }
+.tl-pending .tl-time { color: var(--borderBase); }
 
-.stage-rerun {
-  position: absolute;
-  top: 4px;
-  right: 4px;
+.tl-rerun {
   width: 18px;
   height: 18px;
   padding: 0;
@@ -781,24 +793,17 @@ body.sidebar-open .sidebar-backdrop {
   opacity: 0;
   transition: all 0.15s ease;
 }
-.stage:hover .stage-rerun,
-.stage:focus-within .stage-rerun,
-.stage-rerun:focus { opacity: 1; }
-.stage-rerun:hover {
+.tl-row:hover .tl-rerun,
+.tl-rerun:focus { opacity: 1; }
+.tl-rerun:hover {
   opacity: 1 !important;
   color: var(--ink);
   border-color: var(--borderBase);
   background: var(--bg);
 }
-.stage-rerun:focus-visible {
+.tl-rerun:focus-visible {
   outline: 2px solid var(--contra);
   outline-offset: 1px;
-}
-
-.ep-tiles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
 }
 
 .ep-tile {
@@ -1077,7 +1082,7 @@ body.sidebar-open .sidebar-backdrop {
    on hover/state changes remain — they're still tasteful at zero distance. */
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop, .modal, .toast { animation: none; }
-  .status-dot.running, .ep-tile.running { animation: none; }
+  .status-dot.running, .ep-tile.running, .tl-running .tl-dot { animation: none; }
 }
 
 /* ─── Recent jobs panel (Phase 3) ─── */
