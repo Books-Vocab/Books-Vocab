@@ -920,3 +920,20 @@
 "已封存 %@ 個" = "Archived %@";
 "已匯入 %@ 本" = "Imported %@";
 "無法取得認證 token：%@" = "Couldn't get auth token: %@";
+
+/* i18n: podcast / reader / bookshelf status messages (medium-tier blindspot) */
+"字幕載入失敗" = "Subtitle failed to load";
+"音訊仍可正常播放" = "Audio still plays normally";
+"無法載入集數" = "Couldn't load episodes";
+"尚無集數" = "No episodes yet";
+"此系列目前沒有可播放的集數" = "This series has no playable episodes yet";
+"取消追蹤" = "Unfollow";
+"追蹤" = "Follow";
+"播放中斷" = "Playback interrupted";
+"音訊項目失敗" = "Audio item failed";
+"音訊無法播放" = "Audio can't be played";
+"網路緩衝逾時" = "Network buffering timed out";
+"分析中…" = "Analyzing…";
+"部分匯入失敗" = "Some imports failed";
+"%@ 本匯入失敗" = "%@ failed to import";
+"已匯入 %@ 本，%@ 本失敗" = "Imported %@, %@ failed";
