@@ -941,6 +941,31 @@ def approve_gate(ws_name: str, gate: str = Query(...)):
     return {"job_id": job.id, "status": job.status, "label": job.label, "approved": gate}
 
 
+@app.post("/api/workspace/{ws_name}/resume")
+def resume_workspace(ws_name: str):
+    """Resume the pipeline from where it left off — spawn `pipeline.py <ws>`
+    (flagless auto-resume: continues from the first stage without a completion
+    marker, pausing at the next approval gate or running to completion).
+
+    Distinct from /rerun (one stage only) and /approve (write a gate marker
+    THEN resume). Used when a workspace is idle/failed mid-production and not
+    parked at a gate.
+    """
+    ws = _resolve_ws(ws_name)
+    try:
+        job = jobs.spawn(
+            ["uv", "run", "pipeline.py", str(ws)],
+            label=f"resume:{ws_name}",
+            kind="pipeline",
+            cwd=ROOT,
+            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            metadata={"workspace": ws_name},
+        )
+    except JobLimitReached as e:
+        raise HTTPException(429, str(e)) from e
+    return {"job_id": job.id, "status": job.status, "label": job.label}
+
+
 @app.post("/api/pipeline/start")
 async def start_pipeline(
     epub: UploadFile = File(...),

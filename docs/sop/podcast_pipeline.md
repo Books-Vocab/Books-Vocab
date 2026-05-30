@@ -372,6 +372,7 @@ Endpoints:
 - `DELETE /api/workspace/{ws}?confirm=<ws>` — 本地砍 workspace,confirm 字串必須等於 ws_name
 - `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
 - `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
+- `POST /api/workspace/{ws}/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);前端情境式推進鈕在「非 gate、有未完工」時呼叫(rerun=單階、approve=寫標記再續、resume=純續跑)
 - `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)
 
 **Jobs**:
