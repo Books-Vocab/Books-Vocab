@@ -89,41 +89,6 @@ async def _step_enrich(
     return updated
 
 
-def _sync_embed_loop(
-    missing: list[Any],
-    embeddings: Any,
-    graph: Any,
-    uid: str,
-    logger: logging.Logger,
-) -> int:
-    # Batch embed all missing cards in a single API call
-    items = [(card.id, card.embed_text()) for card in missing]
-    try:
-        embeddings.add_batch(items)
-    except (OpenAIError, OSError, ValueError) as exc:
-        logger.warning("[%s] Batch embedding failed: %s", uid, exc)
-        return 0
-
-    # Link candidates for newly embedded cards — batch to avoid per-pair disk writes
-    backfilled = 0
-    candidate_items: list[tuple[str, str, float]] = []
-    for card in missing:
-        if not embeddings.has(card.id):
-            continue
-        try:
-            similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
-            for other_id, score in similar:
-                if score > SIMILARITY_THRESHOLD:
-                    candidate_items.append((card.id, other_id, score))
-            backfilled += 1
-        except (OSError, ValueError) as exc:
-            logger.warning("[%s] Link candidate failed for '%s': %s", uid, card.content, exc)
-
-    if candidate_items:
-        graph.batch_add_candidates(candidate_items)
-    return backfilled
-
-
 async def _step_embed_and_judge(
     uid: str,
     user: UserRecord,
