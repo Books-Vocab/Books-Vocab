@@ -1021,6 +1021,16 @@ examples:
         show_status(workspace)
         return
 
+    # If spawned by the dashboard JobTracker, drop a sidecar so the dashboard
+    # can pair this pipeline run with the workspace it'll end up writing into.
+    # JobTracker injects PODCAST_JOB_ID into the env; absent for manual CLI runs.
+    _job_id = os.getenv("PODCAST_JOB_ID")
+    if _job_id:
+        try:
+            (workspace / ".pipeline_job_id").write_text(_job_id)
+        except OSError:
+            pass  # sidecar is best-effort; never block the actual pipeline
+
     # Auto-start dashboard + open browser — single-command UX.
     # Idempotent: no-op if already running. Skip with PODCAST_NO_DASHBOARD=1.
     _ensure_dashboard_running(workspace)

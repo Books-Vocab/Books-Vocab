@@ -323,7 +323,8 @@ Env opt-out:
 Endpoints:
 
 **Read**(觀測):
-- `GET /api/workspaces` — workspace 列表
+- `GET /api/workspaces` — workspace 名稱列表(`[name, ...]`,back-compat 形狀)
+- `GET /api/workspaces?full=1` — sidebar 用,每個 workspace 回 `{name, status, n_stages_done, n_stages_total, episode_count, last_updated, total_usd, claude_usd, tts_usd, has_cost_data, active_job}`。status ∈ `running|done|failed|idle|fresh`,cascade 優先序如左所列;cost 按 model family 切(`tts` substring → tts_usd,其餘 → claude_usd);`active_job` 為 `{job_id,label,kind}` 或 null。pipeline kind 的 job 透過 `<ws>/.pipeline_job_id` sidecar(由 pipeline.py 在 PODCAST_JOB_ID env 存在時寫入)反查 workspace
 - `GET /api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
 - `GET /api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
 - `GET /api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
