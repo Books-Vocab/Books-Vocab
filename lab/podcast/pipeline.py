@@ -57,6 +57,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import ebooklib
 from bs4 import BeautifulSoup
@@ -296,6 +297,75 @@ _STAGE_TIMEOUTS = {
 }
 _DEFAULT_TIMEOUT = 1500
 
+# ─── Transient-failure retry ───
+# Agent stages shell out to `claude -p`. Its agent loop occasionally dies on a
+# transient API error — most notably `400 ... thinking/redacted_thinking blocks
+# ... cannot be modified`, a CLI-internal message-history corruption that a FRESH
+# conversation sidesteps (the poisoned thinking block lives in the saved
+# transcript, so --resume/--continue/--fork all reproduce it; only a brand-new
+# `claude -p` escapes it). Retrying here turns a whole-pipeline abort into a
+# self-healing blip. Idempotent stages re-read on-disk artifacts, so a retry
+# resumes work rather than redoing it — disk is the durable checkpoint, the
+# conversation is disposable.
+_STAGE_RETRY_ATTEMPTS = int(os.getenv("PODCAST_STAGE_RETRIES", "3"))  # total tries
+_STAGE_RETRY_BASE = float(os.getenv("PODCAST_STAGE_RETRY_BASE", "5"))  # backoff base (s)
+
+# HTTP statuses worth retrying with a fresh conversation.
+_RETRYABLE_HTTP = {"408", "409", "425", "429", "500", "502", "503", "504", "529"}
+# Phrases that mark a transient/recoverable failure regardless of status code.
+_RETRYABLE_PHRASES = (
+    "overloaded", "rate limit", "rate_limit", "service unavailable",
+    "internal server error", "bad gateway", "gateway timeout",
+    "connection reset", "connection error", "econnreset", "etimedout",
+    "temporarily unavailable", "please try again",
+)
+# Phrases that mark a deterministic/fatal failure — never retry (fail fast).
+_FATAL_PHRASES = (
+    "authentication", "unauthorized", "invalid x-api-key", "invalid api key",
+    "permission denied", "permission_error", "invalid model", "not_found_error",
+)
+
+
+class _ClaudeFailure(NamedTuple):
+    """Why a `claude -p` invocation failed. `status` is the API HTTP status
+    (e.g. "400", "429") when known, else a tag like "timeout"/"exit"."""
+    status: str | None
+    reason: str
+
+
+def _is_retryable_claude_failure(status: str | None, reason: str) -> bool:
+    """Classify a `claude -p` failure as retryable (fresh-conversation may fix)
+    vs fatal (deterministic — retrying just burns tokens).
+
+    Retryable: transient API statuses (429/5xx), overload/rate-limit/connection
+    phrases, AND the 400 thinking-block corruption (a CLI-loop bug a new
+    conversation escapes). Fatal: auth/permission/config errors, generic 400
+    bad-requests, and subprocess timeouts (retrying a 25-min timeout 3× is pure
+    waste — raise PODCAST_STAGE_TIMEOUT instead).
+    """
+    text = (reason or "").lower()
+    code = (str(status).strip().lower() if status is not None else "")
+
+    # Subprocess timeout: deterministic-enough that retrying is too costly.
+    if code == "timeout" or "timeout after" in text:
+        return False
+    # Fatal config/auth errors — fail fast.
+    if any(p in text for p in _FATAL_PHRASES):
+        return False
+    # The 400 thinking/redacted_thinking corruption — a fresh conversation fixes
+    # it. Must come BEFORE the generic-400 fallthrough below.
+    if ("thinking" in text or "redacted_thinking" in text) and (
+        "block" in text or "modified" in text
+    ):
+        return True
+    # Transient HTTP statuses.
+    if code in _RETRYABLE_HTTP:
+        return True
+    # Transient phrases (covers status-less stderr/connection failures).
+    if any(p in text for p in _RETRYABLE_PHRASES):
+        return True
+    return False
+
 
 def _fmt_tool_event(event: dict) -> str | None:
     """Turn a stream-json event into a one-line human summary. Returns None to skip."""
@@ -370,6 +440,7 @@ def _run_claude_subprocess(
             env=_UNBUF_ENV,
             bufsize=1,
         )
+        result_event: dict | None = None
         try:
             with events_path.open("a", encoding="utf-8") as ev_f:
                 for line in proc.stdout:  # type: ignore[union-attr]
@@ -380,6 +451,11 @@ def _run_claude_subprocess(
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    # The terminal `result` event carries is_error / api_error_status
+                    # even when the agent printed an error and the CLI still exits 0
+                    # — capture it as the authoritative success signal.
+                    if event.get("type") == "result":
+                        result_event = event
                     # Wrap with stage/label/ts for the monitor to correlate
                     wrapped = {
                         "ts": datetime.now().isoformat(timespec="seconds"),
@@ -402,17 +478,29 @@ def _run_claude_subprocess(
                 log.error(f"{label} TIMEOUT after {timeout}s",
                           timeout=True, elapsed_s=round(elapsed, 1),
                           stderr_tail=raw[-500:])
-            return False, elapsed
+            return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
         elapsed = time.time() - t0
         stderr_text = proc.stderr.read() if proc.stderr else ""
-        success = proc.returncode == 0
-        if not success:
-            if stderr_text:
-                stderr_log.write_text(stderr_text)
-            if log:
-                log.error(f"{label} exited with code {proc.returncode}",
-                          stderr_tail=stderr_text[-500:])
-        return success, elapsed
+        # An is_error result event means the agent loop failed (e.g. API 400)
+        # even if subtype=="success" and the CLI exit code is 0 — trust is_error.
+        api_error = bool(result_event and result_event.get("is_error"))
+        success = proc.returncode == 0 and not api_error
+        if success:
+            return True, elapsed, None
+        status = None
+        reason = ""
+        if result_event:
+            status = str(result_event.get("api_error_status") or "").strip() or None
+            reason = str(result_event.get("result") or "").strip()
+        if not reason:
+            reason = stderr_text[-500:].strip() or f"exit code {proc.returncode}"
+        if stderr_text:
+            stderr_log.write_text(stderr_text)
+        if log:
+            log.error(f"{label} failed (exit={proc.returncode}, api_error={api_error})",
+                      api_error_status=status, stderr_tail=stderr_text[-500:],
+                      reason=reason[:300])
+        return False, elapsed, _ClaudeFailure(status, reason)
 
     # Non-verbose mode: inherit stdout
     try:
@@ -439,20 +527,69 @@ def _run_claude_subprocess(
                 timeout=True, elapsed_s=round(elapsed, 1),
                 stderr_tail=tail[-500:],
             )
-        return False, elapsed
+        return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
 
     elapsed = time.time() - t0
     success = proc.returncode == 0
-    if not success:
-        stderr_text = proc.stderr or ""
-        if stderr_text:
-            stderr_log.write_text(stderr_text)
+    if success:
+        return True, elapsed, None
+    # Non-stream mode has no result event — classify from stderr text alone.
+    stderr_text = proc.stderr or ""
+    if stderr_text:
+        stderr_log.write_text(stderr_text)
+    reason = stderr_text[-500:].strip() or f"exit code {proc.returncode}"
+    if log:
+        log.error(
+            f"{label} exited with code {proc.returncode}",
+            stderr_tail=stderr_text[-500:],
+        )
+    return False, elapsed, _ClaudeFailure(None, reason)
+
+
+def _run_claude_with_retry(
+    cmd: list[str],
+    workspace: Path | None,
+    label: str,
+    log: "PipelineLog | None",
+    timeout: int,
+) -> tuple[bool, float]:
+    """Run `claude -p` with bounded retries on transient failures.
+
+    Each attempt is a FRESH `claude -p` invocation (no --resume): a new
+    conversation escapes the poisoned thinking-block history that makes the 400
+    reproduce. Idempotent stages re-read on-disk artifacts, so a retry resumes
+    work. Fatal failures (auth/config/timeout) fail fast — no wasted retries.
+    """
+    import random
+    attempts = max(1, _STAGE_RETRY_ATTEMPTS)
+    last_elapsed = 0.0
+    for attempt in range(1, attempts + 1):
+        success, elapsed, failure = _run_claude_subprocess(cmd, workspace, label, log, timeout)
+        last_elapsed = elapsed
+        if success:
+            if attempt > 1 and log:
+                log.event(f"{label} recovered on attempt {attempt}/{attempts}")
+            return True, elapsed
+        retryable = failure is not None and _is_retryable_claude_failure(failure.status, failure.reason)
+        reason = (failure.reason if failure else "unknown")[:160]
+        if not retryable or attempt >= attempts:
+            if log:
+                log.error(f"{label} failed permanently",
+                          attempt=attempt, attempts=attempts, retryable=retryable,
+                          status=(failure.status if failure else None), reason=reason)
+            return False, elapsed
+        backoff = min(90.0, _STAGE_RETRY_BASE * (2 ** (attempt - 1))) + random.random() * 2
+        # 429 = per-minute quota exhausted; needs ≥60s for the window to reset.
+        if failure and str(failure.status) == "429":
+            backoff = max(backoff, 60.0)
         if log:
-            log.error(
-                f"{label} exited with code {proc.returncode}",
-                stderr_tail=stderr_text[-500:],
-            )
-    return success, elapsed
+            log.event(f"{label} transient failure — retry {attempt + 1}/{attempts}",
+                      status=(failure.status if failure else None),
+                      reason=reason, backoff_s=round(backoff, 1))
+        print(f"  [{label}] transient failure (attempt {attempt}/{attempts}) — "
+              f"retry in {backoff:.0f}s: {reason}", flush=True)
+        time.sleep(backoff)
+    return False, last_elapsed
 
 
 def run_claude(
@@ -472,7 +609,7 @@ def run_claude(
 
     log.event("claude invocation", tools=tools, model=MODEL, prompt_len=len(prompt), timeout_s=timeout)
 
-    success, _ = _run_claude_subprocess(cmd, workspace, label, log, timeout)
+    success, _ = _run_claude_with_retry(cmd, workspace, label, log, timeout)
     return success
 
 
@@ -487,7 +624,7 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     timeout = _STAGE_TIMEOUTS["Scriptwriter"]
 
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_subprocess(cmd, workspace, label, None, timeout)
+    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout)
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -504,7 +641,7 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     timeout = _STAGE_TIMEOUTS["Script Review"]
 
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_subprocess(cmd, workspace, label, None, timeout)
+    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout)
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
