@@ -16,6 +16,12 @@
   // Cues: [{ start: seconds, end: seconds, text: "…" }, …]
   // The pipeline emits per-word SRT (one word per cue), so 8-min episodes
   // → ~1500 cues. Binary search keeps the hot loop cheap.
+  // Speaker prefix pattern: per-word SRT lines look like "[Dev] Welcome",
+  // "[Maren] Today:". We strip the prefix at parse time so the rendered word
+  // span is clean ("Welcome", not "[Dev] Welcome"), and remember the speaker
+  // on the cue itself for chat-bubble grouping below.
+  const SPEAKER_RE = /^\[([^\]]+)\]\s*/;
+
   function parseSrt(text) {
     const out = [];
     const blocks = text.replace(/\r\n/g, "\n").split(/\n\n+/);
@@ -33,10 +39,21 @@
         Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
       const end =
         Number(m[5]) * 3600 + Number(m[6]) * 60 + Number(m[7]) + Number(m[8]) / 1000;
-      const text = lines.slice(timeLineIdx + 1).join(" ").trim();
-      if (text) out.push({ start, end, text });
+      let txt = lines.slice(timeLineIdx + 1).join(" ").trim();
+      if (!txt) continue;
+      let speaker = "";
+      const sm = txt.match(SPEAKER_RE);
+      if (sm) { speaker = sm[1].trim(); txt = txt.slice(sm[0].length); }
+      out.push({ start, end, text: txt, speaker });
     }
     return out;
+  }
+
+  // Slugify speaker name for stable CSS class. "Dev" → "dev",
+  // "Maren K." → "maren-k". Used so two distinct speakers reliably get the
+  // two pre-styled accent colors regardless of casing/punctuation.
+  function speakerSlug(name) {
+    return (name || "unknown").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
   }
 
   // Find the cue active at `t`. Returns the cue index, or -1 before first cue.
@@ -211,15 +228,59 @@
     }
 
     _renderCues() {
-      // Render as flowing inline words for a transcript feel — clicks seek.
-      // Per-word SRT means we'd never want each on its own line.
-      const html = this.cues.map((c, i) => {
-        const text = c.text.replace(/[<>&]/g, ch => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[ch]));
-        return `<span class="cue" data-cue="${i}" data-start="${c.start}">${text}</span>`;
-      }).join(" ");
-      this.elCues.innerHTML = html || `<div class="cue-loading muted">subtitle empty</div>`;
-      // Cache the cue elements in index order so timeupdate's hot path can
-      // toggle the highlight class via O(1) array lookup instead of
+      // Chat-style rendering: group consecutive same-speaker cues into one
+      // bubble with the speaker name above. Each word inside the bubble is
+      // still its own <span class="cue"> so timeupdate's binary-search
+      // highlight + click-to-seek behavior stays intact — the bubble is
+      // purely a presentational wrapper.
+      //
+      // Speaker-side alternation: the first two distinct speakers we see
+      // claim the "left" and "right" sides respectively (think iMessage).
+      // A third speaker (rare; usually means the script broke convention)
+      // falls back to the left side, sharing the first speaker's color.
+      // Cues with no speaker prefix (legacy SRTs, narration) get a
+      // speaker-less bubble on the left.
+      if (!this.cues.length) {
+        this.elCues.innerHTML = `<div class="cue-loading muted">subtitle empty</div>`;
+        this.cueEls = [];
+        return;
+      }
+      const sideOf = new Map();
+      const slotOf = new Map(); // speaker slug → "a" | "b" (color slot)
+      const parts = [];
+      let i = 0;
+      while (i < this.cues.length) {
+        const speaker = this.cues[i].speaker || "";
+        const slug = speakerSlug(speaker);
+        if (!sideOf.has(slug)) {
+          const claimed = sideOf.size;
+          sideOf.set(slug, claimed === 1 ? "right" : "left");
+          slotOf.set(slug, claimed === 1 ? "b" : "a");
+        }
+        const side = sideOf.get(slug);
+        const slot = slotOf.get(slug);
+        // Collect this speaker's run.
+        const words = [];
+        const runStart = i;
+        while (i < this.cues.length && (this.cues[i].speaker || "") === speaker) {
+          const c = this.cues[i];
+          const t = c.text.replace(/[<>&]/g, ch => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[ch]));
+          words.push(`<span class="cue" data-cue="${i}" data-start="${c.start}">${t}</span>`);
+          i++;
+        }
+        const speakerLabel = speaker
+          ? `<div class="chat-speaker">${speaker.replace(/[<>&]/g, ch => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[ch]))}</div>`
+          : "";
+        parts.push(
+          `<div class="chat-turn chat-turn-${side} chat-slot-${slot}" data-run-start="${runStart}">` +
+          speakerLabel +
+          `<div class="chat-bubble">${words.join(" ")}</div>` +
+          `</div>`
+        );
+      }
+      this.elCues.innerHTML = parts.join("");
+      // Cache the word elements in cue-index order so timeupdate's hot path
+      // can toggle the highlight class via O(1) array lookup instead of
       // querySelector on every tick. Matters for 30-min episodes (6000+ cues).
       this.cueEls = Array.from(this.elCues.querySelectorAll(".cue"));
     }
