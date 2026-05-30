@@ -84,6 +84,26 @@ def _resolve_ws(ws_name: str) -> Path:
 app = FastAPI(title="Podcast Pipeline Monitor")
 
 
+@app.middleware("http")
+async def _no_cache_static(request, call_next):
+    """Force the dashboard's HTML/JS/CSS to always revalidate.
+
+    Default browser caching of `static/app.js` was the worst class of bug to
+    debug — Phase 4 added modal close handlers, the user's browser kept
+    serving the Phase 3 app.js, and ✕ / CANCEL silently no-op'd because the
+    listeners weren't attached. For a single-user localhost dashboard,
+    aggressive no-cache is cheap and removes a whole category of "did you
+    hard-refresh?" surprise.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
