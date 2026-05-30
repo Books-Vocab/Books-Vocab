@@ -152,6 +152,7 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
+| `PODCAST_CLAUDE_MODEL` | `opus[1m]` | 全 13 stage 的 `claude -p` model;改 `sonnet` / `opus` 等 |
 | `TTS_MODEL` | `gemini-2.5-flash-tts`(`.env` 覆寫為 `gemini-2.5-pro-tts`) | Vertex TTS 模型;部署實際用 Pro,程式碼預設 Flash |
 | `TTS_MAX_CONCURRENT` | `10` | TTS batch 並發上限 |
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
