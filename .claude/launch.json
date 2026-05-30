@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "podcast-monitor",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "cd lab/podcast && ./start.sh --bg 8765 && tail -f monitor.log"],
+      "port": 8765
+    }
+  ]
+}
