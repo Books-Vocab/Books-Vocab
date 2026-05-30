@@ -28,17 +28,20 @@ Usage:
     uv run pipeline.py workspaces/flow_950f1a7d/ --status
     uv run pipeline.py <book.epub> --dry-run
 
-Stages:
-    1. prep          — extract + classify chapters
-    2. analyst       — deep book analysis
-    3. architect     — plan episodes + host design
-    4. plan-review   — QA gate on production plan
-    5. enricher-gap  — identify research needs
-    6. enricher      — web research enrichment
-    7. scriptwrite   — parallel dialogue scripts
-    8. script-review — QA gate on scripts
-    9. synthesize    — Vertex AI Gemini TTS → MP3
-   10. subtitle      — Whisper forced alignment → SRT
+Stages (authoritative source: ``STAGES`` constant below — keep in sync):
+    1.  prep           — extract + classify chapters
+    2.  analyst        — deep book analysis
+    3.  architect      — plan episodes + host design
+    4.  plan-review    — QA gate on production plan
+    5.  enricher-gap   — identify research needs
+    6.  enricher       — web research enrichment
+    7.  scriptwrite    — parallel dialogue scripts
+    8.  series-polish  — cross-episode callbacks / running bits / persona drift
+    9.  script-review  — QA gate on scripts
+    10. tts-prep       — pick voice pair + fix parse-breaks + resolve (TBD)
+    11. synthesize     — Vertex AI Gemini TTS → MP3 (loudnorm mastering)
+    12. audio-qa       — wpm / silence / clipping checks (hard gate)
+    13. subtitle       — Whisper forced alignment → word-level SRT
 """
 
 from __future__ import annotations
