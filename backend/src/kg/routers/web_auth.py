@@ -3,10 +3,13 @@
 Provides browser-based Google/Apple sign-in that passes JWT back to the extension.
 
 CSRF protection: every login endpoint mints a `secrets.token_urlsafe(32)` nonce,
-stores it in an HttpOnly Secure SameSite=Lax cookie (`oauth_state`, path
-`/auth/web/`, 10 min TTL) and includes it in the upstream provider redirect /
-form. The matching callback compares the cookie against the value returned by
-the provider; mismatches return HTTP 400 and the cookie is cleared on success.
+stores it in an HttpOnly Secure cookie (`oauth_state`, path `/auth/web/`, 10 min
+TTL) and includes it in the upstream provider redirect / form. SameSite is
+`Lax` for the Google flow (top-level GET callback) but `None` for the Apple flow
+(`response_mode=form_post` → cross-site top-level POST, which a Lax cookie would
+not accompany). The matching callback compares the cookie against the value
+returned by the provider; mismatches return HTTP 400 and the cookie is cleared
+on success.
 """
 
 from __future__ import annotations
@@ -40,14 +43,18 @@ _OAUTH_STATE_TTL_SECONDS = 600  # 10 min
 _OAUTH_STATE_PATH = "/auth/web/"
 
 
-def _set_state_cookie(response: Response, nonce: str) -> None:
+def _set_state_cookie(response: Response, nonce: str, *, samesite: str = "lax") -> None:
+    # Google's callback is a top-level GET redirect → SameSite=Lax suffices.
+    # Apple uses response_mode=form_post → a cross-site top-level POST, to which
+    # browsers do NOT attach a Lax cookie; those call sites pass samesite="none"
+    # (still Secure + HttpOnly, so CSRF stays enforced via the nonce comparison).
     response.set_cookie(
         key=_OAUTH_STATE_COOKIE,
         value=nonce,
         max_age=_OAUTH_STATE_TTL_SECONDS,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite=samesite,
         path=_OAUTH_STATE_PATH,
     )
 
@@ -74,7 +81,8 @@ async def login_page(request: Request):
         "apple_redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
         "apple_state": nonce,
     })
-    _set_state_cookie(response, nonce)
+    # This page serves the Apple form_post flow → cross-site POST callback.
+    _set_state_cookie(response, nonce, samesite="none")
     return response
 
 
@@ -108,7 +116,8 @@ async def apple_login(request: Request):
     """
     nonce = secrets.token_urlsafe(32)
     response = RedirectResponse(url="/login", status_code=307)
-    _set_state_cookie(response, nonce)
+    # Apple form_post callback is cross-site → needs SameSite=None.
+    _set_state_cookie(response, nonce, samesite="none")
     return response
 
 
