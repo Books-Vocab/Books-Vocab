@@ -353,6 +353,45 @@ def _episode_status(ws: Path) -> list[dict]:
     return out
 
 
+# ─── Approval-gate states (Phase 2 gates → dashboard tri-state) ─────────────
+#
+# pipeline.py pauses at two gates (.plan_approved before scriptwrite,
+# .script_approved before tts-prep). The dashboard derives each gate's state
+# from disk so it works for idle workspaces AND legacy ones (artifacts but no
+# approval markers — those count as de-facto approved because the next phase's
+# artifacts only exist if the gate was crossed).
+def _gate_states(
+    ws: Path, *, has_plan: bool, n_script: int, n_audio: int, target: int,
+) -> list[dict]:
+    """Tri-state for the two approval gates: passed / awaiting / pending.
+
+    gate1 (plan→script):
+      passed   — n_script>0 OR .plan_approved exists (de-facto or explicit)
+      awaiting — plan complete, no scripts yet, not approved
+      pending  — plan not complete
+    gate2 (script→audio):
+      passed   — n_audio>0 OR .script_approved exists
+      awaiting — scripts complete (n_script==target>0), no audio, not approved
+      pending  — scripts not complete
+    """
+    if n_script > 0 or (ws / ".plan_approved").exists():
+        g1 = "passed"
+    elif has_plan:
+        g1 = "awaiting"
+    else:
+        g1 = "pending"
+
+    scripts_complete = target > 0 and n_script >= target
+    if n_audio > 0 or (ws / ".script_approved").exists():
+        g2 = "passed"
+    elif scripts_complete:
+        g2 = "awaiting"
+    else:
+        g2 = "pending"
+
+    return [{"key": "plan", "state": g1}, {"key": "script", "state": g2}]
+
+
 def _ensure_created(ws: Path) -> float:
     """Return the workspace 'added' timestamp (epoch seconds), backfilling it.
 
@@ -414,13 +453,37 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
             if m:
                 episodes.add(int(m.group(1)))
 
-    # ─── Status (running > done > failed > idle > fresh) ───
+    # ─── Artifact-derived progress + approval-gate states ───
+    # Computed BEFORE status so the AWAITING state derives from the gate
+    # frontier. Defensive: one bad glob/stat must never 500 the ?full=1 list.
+    try:
+        milestones, progress = _milestones(ws)
+    except Exception:
+        milestones, progress = [], 0.0
+    _ms = {m["key"]: m for m in milestones}
+    has_plan = bool(_ms.get("plan", {}).get("done"))
+    n_script = int(_ms.get("script", {}).get("done", 0))
+    n_audio = int(_ms.get("audio", {}).get("done", 0))
+    target = int(_ms.get("script", {}).get("total", 0))
+    try:
+        gates = _gate_states(ws, has_plan=has_plan, n_script=n_script,
+                             n_audio=n_audio, target=target)
+    except Exception:
+        gates = []
+    _gate_state = {g["key"]: g["state"] for g in gates}
+
+    # ─── Status (running > done > failed > awaiting > idle > fresh) ───
+    # "awaiting" = paused at an approval gate (Phase 2). Disk-derived so legacy
+    # workspaces (artifacts but no *_approved markers) classify by the gate
+    # frontier, not by marker presence.
     if active_job:
         status = "running"
     elif _FINAL_STAGE in stages_done:
         status = "done"
     elif _scan_pipeline_log_status(ws / "pipeline_log.jsonl", stages_done):
         status = "failed"
+    elif "awaiting" in (_gate_state.get("plan"), _gate_state.get("script")):
+        status = "awaiting"
     elif n_done == 0 and not episodes:
         # Truly untouched — no markers, no artifacts.
         status = "fresh"
@@ -490,14 +553,6 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         # Never let a bad workspace break the whole sidebar list.
         pass
 
-    # ─── Artifact-derived progress (the honest bar) ───
-    # Defensive: never let a glob/stat hiccup on one workspace 500 the whole
-    # ?full=1 response (see _ensure_created above for the same contract).
-    try:
-        milestones, progress = _milestones(ws)
-    except Exception:
-        milestones, progress = [], 0.0
-
     return {
         "name": name,
         "status": status,
@@ -508,6 +563,9 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         "n_stages_total": _STAGE_COUNT,
         # Honest progress: four artifact-derived gates + overall fill.
         "milestones": milestones,
+        # Two approval-gate tri-states (plan→script, script→audio) for the
+        # sidebar's 3-phase / 2-gate track + the AWAITING status.
+        "gates": gates,
         "progress": round(progress, 4),
         "episode_count": len(episodes),
         "created": created,
@@ -832,6 +890,55 @@ def rerun_stage(
     except JobLimitReached as e:
         raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label}
+
+
+_GATE_MARKERS = {"plan": ".plan_approved", "script": ".script_approved"}
+
+
+@app.post("/api/workspace/{ws_name}/approve")
+def approve_gate(ws_name: str, gate: str = Query(...)):
+    """Approve an approval gate → write the marker + resume production.
+
+    `gate=plan` writes `.plan_approved` and spawns the SCRIPT phase;
+    `gate=script` writes `.script_approved` and spawns the AUDIO phase. The
+    spawned `pipeline.py <ws>` auto-resumes and pauses at the NEXT gate (or
+    completes). Idempotent: re-approving a passed gate just re-touches it.
+    Guarded: a `pending` gate (prior phase incomplete) is rejected 409 so the
+    producer can't approve work that doesn't exist yet.
+    """
+    ws = _resolve_ws(ws_name)
+    marker = _GATE_MARKERS.get(gate)
+    if marker is None:
+        raise HTTPException(400, f"unknown gate {gate!r} (expect 'plan' or 'script')")
+
+    # Readiness guard — reuse the same disk-derived tri-state the sidebar shows.
+    milestones, _ = _milestones(ws)
+    _ms = {m["key"]: m for m in milestones}
+    gst = _gate_states(
+        ws,
+        has_plan=bool(_ms.get("plan", {}).get("done")),
+        n_script=int(_ms.get("script", {}).get("done", 0)),
+        n_audio=int(_ms.get("audio", {}).get("done", 0)),
+        target=int(_ms.get("script", {}).get("total", 0)),
+    )
+    state = next((g["state"] for g in gst if g["key"] == gate), None)
+    if state == "pending":
+        raise HTTPException(409, f"gate {gate!r} not ready — prior phase incomplete")
+
+    (ws / marker).write_text(time.strftime("approved %Y-%m-%dT%H:%M:%S\n"))
+
+    try:
+        job = jobs.spawn(
+            ["uv", "run", "pipeline.py", str(ws)],
+            label=f"produce:{ws_name}:{gate}",
+            kind="pipeline",
+            cwd=ROOT,
+            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            metadata={"workspace": ws_name, "gate": gate},
+        )
+    except JobLimitReached as e:
+        raise HTTPException(429, str(e)) from e
+    return {"job_id": job.id, "status": job.status, "label": job.label, "approved": gate}
 
 
 @app.post("/api/pipeline/start")

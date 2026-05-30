@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 5d5277ae
+verified_against: 34412a54
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -36,16 +36,31 @@ EPUB
  ├ 4. plan-review     QA gate(REWRITE_NEEDED / FAIL>2 → 失敗)
  ├ 5. enricher-gap    識別研究需求
  ├ 6. enricher        web 搜尋外部佐證(+WebSearch/WebFetch)
+ ╎ ┃ .plan_approved   ── 人工核准 gate 1:放行才寫腳本 ──
  ├ 7. scriptwrite     ×N 平行寫稿(ProcessPoolExecutor)
  ├ 8. series-polish   跨集拋光(callback/running bits/弧收束)
  ├ 9. script-review   ×N 平行 QA(REWRITE_NEEDED → 失敗)
+ ╎ ┃ .script_approved ── 人工核准 gate 2:放行才合成音頻(TTS $$)──
  ├10. tts-prep        最終 TTS 審查 + Voice Mapping TBD→實際 voice
  ├11. synthesize      Vertex Gemini TTS + ffmpeg loudnorm
  ├12. audio-qa        pydub wpm/silence/clipping(FAIL 阻斷)
  └13. subtitle        Whisper forced alignment → 詞級 SRT
 ```
 
-> ⚠ `pipeline.py:31-42` docstring 與 argparse epilog 仍寫「10 stages」，是過時資訊，實際 `STAGES` list (`pipeline.py:74-81`) 為 13 個。
+> `STAGES` list 為 13 個(`pipeline.py` 內,搜 `STAGES = [`)。argparse epilog 已同步 13 階 + 兩道 gate;若見 `pipeline.py` 頂部 docstring 仍寫「10 stages」即為殘留,以 `STAGES` 為準。
+
+### 兩道人工核准 gate(`approval_gate_block`)
+
+QA gate(下節)是**機器**判 pass/fail;這兩道是**人工**審查攔截 —— 在燒錢的兩相前停下等製作人放行:
+
+```
+PLAN(prep→enricher) ┃.plan_approved┃ SCRIPT(scriptwrite→script-review) ┃.script_approved┃ AUDIO(tts-prep→subtitle)
+```
+
+- 全新 run **預設**跑到 `enricher` 就停(exit 0,非失敗),`script-review` 後再停一次。
+- 放行:`touch <ws>/.plan_approved`(或 `.script_approved`)後再 `uv run pipeline.py <ws>`(auto-resume 到下一道 gate 或完成),或 dashboard `POST /approve`。
+- **bypass 認顯式 `--skip-to`/`--only-stage`(製作人主動驅動=核准),不認 auto-resume** —— 否則未核准就再跑 `pipeline.py <ws>`,auto-resume 把 start_idx 推到 scriptwrite 會靜默跳閘。`--ignore-gates` 一路跑到底(還原舊全自動)。
+- monitor 工作區狀態 `awaiting` 從磁碟推導:`.*_approved` 存在 **或** 下一相已有產物(legacy 無標記但有腳本/音頻)→ 視為已過閘,不誤判 awaiting。
 
 ### Stage marker / resume
 
@@ -63,6 +78,7 @@ EPUB
 | `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
 | `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
 | `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用) |
+| `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動) |
 
 ### 四個 QA gate
 
@@ -338,10 +354,11 @@ Endpoints:
 
 **Read**(觀測):
 - `GET /api/workspaces` — workspace 名稱列表(`[name, ...]`,back-compat 形狀)
-- `GET /api/workspaces?full=1` — sidebar 用,每個 workspace 回 `{name, status, milestones, progress, n_stages_done, n_stages_total, episode_count, created, last_updated, total_usd, claude_usd, tts_usd, has_cost_data, active_job}`。
+- `GET /api/workspaces?full=1` — sidebar 用,每個 workspace 回 `{name, status, milestones, gates, progress, n_stages_done, n_stages_total, episode_count, created, last_updated, total_usd, claude_usd, tts_usd, has_cost_data, active_job}`。
   - **`milestones[]`(進度真相層)** — 四個產物關卡 `{key,label,done,total,ratio}`,順序 `plan→script→audio→subtitle`。`target` 集數 = `max(plan/episodes/ep_*.md, scripts/ep_*_script.md, ep_*_{pro,flash}.mp3, ep_*_{pro,flash}.srt)`;plan 關卡 binary(`plan/overview.md` 存在 → ratio 1.0),其餘三關 `ratio = min(1, done/target)`。`progress` = 四 ratio 均值(整體進度標量;前端 sidebar 改以四條 per-gate ratio bar 各自渲染,此值目前不直接渲染,保留供排序/未來用)。**刻意不用 stage marker**:marker 是 pipeline 自我記帳,rerun 砍 marker / 部分還原 / 手動清都會與實際產物脫鉤,實測 marker 數與「離成品多遠」近乎反相關(`flow` 0 markers 卻有 8 集音訊 vs 他者 9/13 markers 零音訊)。`n_stages_*` 保留僅供 status cascade + 向後相容。
   - **`created`** — workspace 加入時間 epoch。SoT 為 `<ws>/.created` sidecar(epoch float);不存在時灌目錄 birthtime(macOS `st_birthtime`,Linux 退 `st_mtime`)並寫回 `.created`,防後續 rsync/還原重設 inode birth time。sidebar 按此分組。
-  - status ∈ `running|done|failed|idle|fresh`,cascade 優先序如左所列;cost 按 model family 切(`tts` substring → tts_usd,其餘 → claude_usd);`active_job` 為 `{job_id,label,kind}` 或 null。pipeline kind 的 job 透過 `<ws>/.pipeline_job_id` sidecar(由 pipeline.py 在 PODCAST_JOB_ID env 存在時寫入)反查 workspace
+  - **`gates[]`(兩道核准 gate 三態)** — `[{key:"plan",state},{key:"script",state}]`,`state ∈ passed|awaiting|pending`。`passed` ⇔ 下一相已有產物(`n_script>0` / `n_audio>0`)或 `.*_approved` 標記存在;`awaiting` ⇔ 本相完成、下一相空、未核准;`pending` ⇔ 本相未完成。前端側欄三相雙閘軌 + `awaiting` 狀態由此渲染。
+  - status ∈ `running|done|failed|awaiting|idle|fresh`,cascade 優先序如左所列(`awaiting` 介於 failed 與 idle:任一 gate `awaiting` → 工作區 `awaiting`);cost 按 model family 切(`tts` substring → tts_usd,其餘 → claude_usd);`active_job` 為 `{job_id,label,kind}` 或 null。pipeline kind 的 job 透過 `<ws>/.pipeline_job_id` sidecar(由 pipeline.py 在 PODCAST_JOB_ID env 存在時寫入)反查 workspace
 - `GET /api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
 - `GET /api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
 - `GET /api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
@@ -354,7 +371,8 @@ Endpoints:
 - `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3
 - `DELETE /api/workspace/{ws}?confirm=<ws>` — 本地砍 workspace,confirm 字串必須等於 ws_name
 - `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
-- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程
+- `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)
 
 **Jobs**:
 - `GET /api/jobs?limit=N`、`GET /api/jobs/{id}?log_bytes=N`、`POST /api/jobs/{id}/kill`
