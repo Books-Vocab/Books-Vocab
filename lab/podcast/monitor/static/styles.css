@@ -637,10 +637,17 @@ html, body {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding-top: 6px;
   border-top: 1px solid var(--borderL);
   margin-top: 4px;
   padding-top: 12px;
+}
+
+/* Honor users who opt out of motion: kill keyframe animations app-wide
+   (modal in/out, toast slide-in, pulse on running stage/EP tiles). Transitions
+   on hover/state changes remain — they're still tasteful at zero distance. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop, .modal, .toast { animation: none; }
+  .status-dot.running, .ep-tile.running { animation: none; }
 }
 
 /* ─── Recent jobs panel (Phase 3) ─── */
@@ -705,6 +712,86 @@ html, body {
   color: #FCFBFA;
 }
 .jobs-table .empty {
+  padding: 14px;
+  text-align: center;
+  color: var(--sub);
+  font-size: 10px;
+}
+
+/* ─── Remote (Lightsail) series panel (Phase 5) ─── */
+.disk-bar {
+  height: 4px;
+  background: var(--borderBase);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.disk-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.4s ease;
+}
+.disk-bar-fill.warn { background: var(--dev); }
+
+#remote-disk {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--sub);
+}
+.disk-podcasts { color: var(--inkLight); }
+.disk-warn {
+  margin-left: 8px;
+  color: var(--dev);
+  font-weight: 500;
+}
+
+.remote-series {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.series-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px dashed var(--borderL);
+}
+.series-row:last-child { border-bottom: none; }
+.series-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.series-title {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.series-id {
+  color: var(--sub);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.series-meta {
+  color: var(--inkLight);
+  font-size: 10px;
+}
+.orphan-flag {
+  color: var(--dual);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+.remote-series .empty {
   padding: 14px;
   text-align: center;
   color: var(--sub);
