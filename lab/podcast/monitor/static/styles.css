@@ -569,6 +569,56 @@ body.sidebar-open .sidebar-backdrop {
   gap: 14px;
 }
 
+/* ── Scope zones: structurally separate "this workspace" data from
+   "server-wide" data so scrolling never silently crosses scopes. ── */
+.scope-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.scope-zone + .scope-zone { margin-top: 8px; }
+
+/* Server zone reads as a distinct, secondary surface. */
+.scope-server {
+  padding: 14px 14px 4px;
+  background: var(--bg);
+  border: 1px solid var(--borderL);
+  border-radius: 4px;
+}
+
+.scope-band {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 2px 7px;
+  border-bottom: 1.5px solid var(--ink);
+}
+.scope-band-server { border-bottom-color: var(--borderBase); }
+
+.scope-band-icon { font-size: 11px; color: var(--contra); line-height: 1; }
+.scope-band-server .scope-band-icon { color: var(--sub); }
+
+.scope-band-title {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.scope-band-server .scope-band-title { color: var(--sub); }
+
+.scope-band-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.scope-band-name.empty { font-style: italic; }
+
 /* ─── KPI strip (top) ─── */
 .kpis {
   display: grid;
