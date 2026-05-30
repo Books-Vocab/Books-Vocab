@@ -110,10 +110,190 @@ def index():
 
 
 @app.get("/api/workspaces")
-def list_workspaces():
+def list_workspaces(full: bool = Query(False)):
+    """List workspaces. `?full=1` returns rich summaries (status, progress,
+    cost, episodes, last_updated) for the sidebar list view — single call
+    avoids N+1 per-workspace fetches. Bare call still returns `[name, ...]`
+    for back-compat with callers that only need names.
+    """
     if not WORKSPACES_DIR.exists():
         return []
-    return sorted(p.name for p in WORKSPACES_DIR.iterdir() if p.is_dir())
+    names = sorted(p.name for p in WORKSPACES_DIR.iterdir() if p.is_dir())
+    if not full:
+        return names
+
+    # Single job-table scan, then O(1) lookup per workspace.
+    active_by_ws: dict[str, dict] = {}
+    for j in jobs.list(limit=200):
+        if j.status != "running":
+            continue
+        ws = (j.metadata or {}).get("workspace")
+        if ws and ws not in active_by_ws:
+            active_by_ws[ws] = {
+                "job_id": j.id,
+                "label": j.label,
+                "kind": j.kind,
+            }
+
+    return [_workspace_summary(WORKSPACES_DIR / n, active_by_ws.get(n)) for n in names]
+
+
+# Total stage count, surfaced in the summary so the frontend can render
+# progress without hardcoding the number (and stay correct if we add stages).
+_STAGE_COUNT = len(_STAGE_NAMES)
+# Final stage — when its done-marker exists, the whole workspace is "done".
+_FINAL_STAGE = "subtitle"
+
+
+def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
+    """Return True if any stage's *latest* stage_end was success=false AND that
+    stage lacks a done marker (i.e. the failure was never resolved by a rerun).
+
+    A stage that failed once then succeeded on rerun gets its done marker
+    written, so `stages_done` membership already absolves it — we only flag
+    truly-unresolved failures. Reading the tail (last 64KB) is sufficient:
+    a stage_end is one line, even a verbose run rarely produces >64KB after
+    the latest failure.
+    """
+    if not plog.exists():
+        return False
+    try:
+        size = plog.stat().st_size
+        with plog.open("rb") as f:
+            f.seek(max(0, size - 65536))
+            tail = f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return False
+
+    # Track latest stage_end success-flag per stage from the tail window.
+    latest: dict[str, bool] = {}
+    for line in tail.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("event") == "stage_end":
+            stage = obj.get("stage")
+            if stage:
+                latest[stage] = bool(obj.get("success", True))
+
+    return any(
+        success is False and stage not in stages_done
+        for stage, success in latest.items()
+    )
+
+
+def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
+    """Cheap-ish per-workspace summary for the sidebar list.
+
+    Cost: one `aggregate_workspace` call (reads events.jsonl) + small dir
+    scans. For ~70 workspaces this stays under ~200ms total on warm cache;
+    if it ever becomes a bottleneck, add mtime-keyed memoization at this
+    layer (events.jsonl mtime alone is enough since cost only depends on it).
+    """
+    name = ws.name
+
+    # ─── Stage progress (from done markers) ───
+    stages_done: set[str] = set()
+    for marker in ws.glob(".stage_*_done"):
+        stages_done.add(marker.name.replace(".stage_", "").replace("_done", ""))
+    n_done = len(stages_done)
+
+    # ─── Episodes (synthesized audio count) — needed before status so the
+    # "fresh" cascade can account for workspaces that have audio artifacts
+    # but lost their done-markers (e.g. partial restore from backup).
+    scripts = ws / "scripts"
+    episodes: set[int] = set()
+    if scripts.is_dir():
+        for f in scripts.glob("ep_*.mp3"):
+            m = re.match(r"ep_(\d+)_(pro|flash)\.mp3$", f.name)
+            if m:
+                episodes.add(int(m.group(1)))
+
+    # ─── Status (running > done > failed > idle > fresh) ───
+    if active_job:
+        status = "running"
+    elif _FINAL_STAGE in stages_done:
+        status = "done"
+    elif _scan_pipeline_log_status(ws / "pipeline_log.jsonl", stages_done):
+        status = "failed"
+    elif n_done == 0 and not episodes:
+        # Truly untouched — no markers, no artifacts.
+        status = "fresh"
+    else:
+        status = "idle"
+
+    # ─── last_updated (max mtime among activity-indicating files) ───
+    candidates: list[float] = []
+    for rel in ("events.jsonl", "pipeline_log.jsonl"):
+        p = ws / rel
+        if p.exists():
+            try:
+                candidates.append(p.stat().st_mtime)
+            except OSError:
+                pass
+    if scripts.is_dir():
+        # Newest script artifact (mp3 / srt / json) — caught by stat on dir
+        # iter; we cap to 200 entries so a synthesize stage with hundreds of
+        # chunk files doesn't dominate.
+        try:
+            for f in list(scripts.iterdir())[:200]:
+                try:
+                    candidates.append(f.stat().st_mtime)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    if not candidates:
+        try:
+            candidates.append(ws.stat().st_mtime)
+        except OSError:
+            candidates.append(0.0)
+    last_updated = max(candidates)
+
+    # ─── Cost (totals only; full breakdown stays on /cost endpoint) ───
+    # Split by *model family*, not by stage: the synthesize stage logs BOTH
+    # Claude calls (labelled "Synthesize EP*") and Vertex tts_usage events
+    # into by_stage["synthesize"], so attributing that whole bucket to TTS
+    # would double-count any Claude work. by_model is the clean axis.
+    total_usd = claude_usd = tts_usd = 0.0
+    has_cost_data = False
+    try:
+        cost = aggregate_workspace(ws)
+        total_usd = float(cost.get("total_usd") or 0.0)
+        for model, mb in (cost.get("by_model") or {}).items():
+            usd = float(mb.get("usd") or 0.0)
+            ml = model.lower()
+            if ml.startswith("claude"):
+                claude_usd += usd
+            elif "gemini" in ml or "tts" in ml or ml.startswith("vertex"):
+                tts_usd += usd
+            else:
+                # Unknown model — bucket into claude side conservatively so
+                # the totals still match (rather than vanishing).
+                claude_usd += usd
+        has_cost_data = (ws / "events.jsonl").exists() and total_usd > 0
+    except Exception:
+        # Never let a bad workspace break the whole sidebar list.
+        pass
+
+    return {
+        "name": name,
+        "status": status,
+        "stages_done": sorted(stages_done),
+        "n_stages_done": n_done,
+        "n_stages_total": _STAGE_COUNT,
+        "episode_count": len(episodes),
+        "last_updated": last_updated,
+        "total_usd": round(total_usd, 4),
+        "claude_usd": round(max(claude_usd, 0.0), 4),
+        "tts_usd": round(tts_usd, 4),
+        "has_cost_data": has_cost_data,
+        "active_job": active_job,
+    }
 
 
 @app.get("/api/workspace/{ws_name}/snapshot")
