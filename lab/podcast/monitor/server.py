@@ -32,6 +32,10 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+# Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
+sys.path.insert(0, str(Path(__file__).parent))
+from cost import aggregate_workspace  # noqa: E402
+
 ROOT = Path(__file__).parent.parent
 WORKSPACES_DIR = ROOT / "workspaces"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -83,6 +87,16 @@ def snapshot(ws_name: str):
         "events": events,
         "stages_done": stages_done,
     }
+
+
+@app.get("/api/workspace/{ws_name}/cost")
+def cost(ws_name: str):
+    """Aggregate USD spend across all stages — Claude (from CLI result events)
+    + Vertex TTS (computed from per-batch tts_usage events)."""
+    ws = WORKSPACES_DIR / ws_name
+    if not ws.is_dir():
+        return JSONResponse({"error": "workspace not found"}, status_code=404)
+    return aggregate_workspace(ws)
 
 
 async def _tail(path: Path, last_size: int) -> tuple[str, int]:
