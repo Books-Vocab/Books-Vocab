@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from pathlib import Path
@@ -125,11 +124,11 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
 
     def _load(self) -> None:
         if self.blocked_path and self.blocked_path.exists():
-            data = json.loads(self.blocked_path.read_text())
+            data = self._read_json_list(self.blocked_path)
             self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
             self._known_blocked_pairs |= self._blocked_pairs
         if self.links_path.exists():
-            data = json.loads(self.links_path.read_text())
+            data = self._read_json_list(self.links_path)
             dirty = False
             for lk in data:
                 if lk.get("kind") in self._RETIRED_KINDS:
@@ -149,7 +148,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 self._save_links()
                 self._save_blocked()
         if self.candidates_path.exists():
-            data = json.loads(self.candidates_path.read_text())
+            data = self._read_json_list(self.candidates_path)
             self._candidates = [CandidatePair.model_validate(c) for c in data]
             for c in self._candidates:
                 self._known_candidate_pairs.add(
@@ -157,7 +156,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 )
         # Load pending_judge
         if self.pending_judge_path and self.pending_judge_path.exists():
-            pj_data = json.loads(self.pending_judge_path.read_text())
+            pj_data = self._read_json_list(self.pending_judge_path)
             if isinstance(pj_data, list):
                 self._pending_judge = {x for x in pj_data if isinstance(x, str)}
                 self._known_pending_judge |= self._pending_judge
