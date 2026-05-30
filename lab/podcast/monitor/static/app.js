@@ -517,8 +517,13 @@ function openNewPodcastModal() {
 }
 
 function closeNewPodcastModal() {
-  if (modalState.submitting) return;  // don't dismiss mid-upload
+  // Always allow close. The submit job runs server-side and is tracked by
+  // /api/jobs — dismissing the modal doesn't cancel it. The previous
+  // `if (modalState.submitting) return` guard was over-cautious: if a
+  // submit threw before the error handler reset the flag, ✕ and CANCEL
+  // would silently no-op and trap the user inside.
   $("#modal-backdrop").hidden = true;
+  modalState.submitting = false;
 }
 
 function refreshDropzonePrompt() {
