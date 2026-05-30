@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30k";
+const APP_VERSION = "2026-05-30m";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -309,12 +309,59 @@ function toggleSidebarDrawer() {
   else openSidebarDrawer();
 }
 
+// The four production gates, in pipeline order, with the short labels shown
+// in the sidebar. Whitelisting the keys here (rather than trusting whatever
+// the server sends) keeps the segment CSS class injection-safe.
+const MILESTONE_SHORT = { plan: "PLAN", script: "SCRIPT", audio: "AUDIO", subtitle: "SUB" };
+
+// Build the four-segment depth-shaded progress bar from server-derived
+// milestones. Each gate owns a fixed 1/4 slot; the inner fill width is the
+// gate's completion ratio, coloured by depth (plan darkest → subtitle
+// lightest). The label names the *frontier* — the first gate that isn't yet
+// full — so the producer sees at a glance which stage a workspace is stuck on
+// ("AUDIO 0/10"), or "READY" when all four gates are complete.
+function milestoneBar(s) {
+  const ms = Array.isArray(s.milestones) ? s.milestones : null;
+  if (!ms || !ms.length) {
+    // Back-compat: a cached/placeholder summary without milestones falls
+    // back to the legacy single-bar marker ratio.
+    const pct = s.n_stages_total ? Math.round((s.n_stages_done / s.n_stages_total) * 100) : 0;
+    return {
+      segs: `<div class="ws-mseg ws-mseg-legacy"><i style="width:${pct}%"></i></div>`,
+      label: `${s.n_stages_done || 0}/${s.n_stages_total || 13}`,
+    };
+  }
+  // The pipeline is sequential, so the bar must read as ONE monotonic fill,
+  // not four independently-filled slots. Filling each slot by its own ratio
+  // produced a visual "gap": audio at 62% left a void, then subtitle's 37%
+  // re-appeared to its right, looking broken. Instead fill cumulatively up to
+  // the *frontier* — the first gate that isn't full. Gates before it show
+  // 100%, the frontier shows its own ratio, and gates AFTER it show 0% even
+  // if they have stray artifacts (the workspace is, as a whole, stuck at the
+  // frontier — a later gate can't truly outrun an earlier one). Continuous,
+  // no gap, and consistent with the precise "AUDIO 5/8" label.
+  const frontierIdx = ms.findIndex(m => (m.ratio || 0) < 1);
+  const segs = ms.map((m, i) => {
+    const key = MILESTONE_SHORT[m.key] ? m.key : "legacy"; // whitelist for class safety
+    let w;
+    if (frontierIdx === -1 || i < frontierIdx) w = 100;          // all-done, or a completed gate
+    else if (i === frontierIdx) w = Math.max(0, Math.min(100, Math.round((m.ratio || 0) * 100)));
+    else w = 0;                                                   // beyond the frontier — not yet reached
+    return `<div class="ws-mseg ws-mseg-${key}"><i style="width:${w}%"></i></div>`;
+  }).join("");
+  const frontier = frontierIdx === -1 ? null : ms[frontierIdx];
+  const label = frontier
+    ? `${MILESTONE_SHORT[frontier.key] || frontier.key.toUpperCase()} ${frontier.done}/${frontier.total}`
+    : "READY";
+  return { segs, label };
+}
+
 function sidebarCardHtml(s, isActive) {
-  const pct = s.n_stages_total ? Math.round((s.n_stages_done / s.n_stages_total) * 100) : 0;
   const cost = s.total_usd >= 0.01 ? `$${s.total_usd.toFixed(2)}` : "<$0.01";
   const costClass = s.total_usd >= 0.01 ? "ws-cost" : "ws-cost zero";
   const ep = s.episode_count ? `${s.episode_count} ep` : "—";
   const time = relativeTime(s.last_updated);
+  const { segs, label } = milestoneBar(s);
   // Status text override for clarity (active job kind tells you more than "running")
   const statusText = s.status === "running" && s.active_job
     ? (s.active_job.kind || "running")
@@ -336,8 +383,8 @@ function sidebarCardHtml(s, isActive) {
     <span class="ws-time" title="${absTime}">${time}</span>
   </div>
   <div class="ws-card-bar">
-    <div class="ws-card-bar-track"><div class="ws-card-bar-fill" style="width:${pct}%"></div></div>
-    <span class="ws-card-progress">${s.n_stages_done}/${s.n_stages_total}</span>
+    <div class="ws-mstrip">${segs}</div>
+    <span class="ws-card-progress">${escapeHtml(label)}</span>
   </div>
   <div class="ws-card-meta">
     <span class="${costClass}">${cost}</span>

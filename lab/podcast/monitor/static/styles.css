@@ -472,19 +472,39 @@ body.sidebar-open .sidebar-backdrop {
   align-items: center;
   gap: 8px;
 }
-.ws-card-bar-track {
-  height: 3px;
-  background: var(--borderL);
+/* ── Four-segment milestone bar ───────────────────────────────────────
+   One continuous bar split into four equal slots (PLAN→SCRIPT→AUDIO→
+   SUBTITLE). Each slot's inner fill = that gate's completion ratio,
+   coloured by depth (darkest blue left → lightest right) so a glance
+   tells you both overall progress AND which stage a workspace is in.
+   Replaces the old marker-ratio single bar, which lied (markers drift
+   from real artifacts). */
+.ws-mstrip {
+  display: flex;
+  gap: 1px;
+  height: 4px;
   border-radius: 2px;
   overflow: hidden;
 }
-.ws-card-bar-fill {
+.ws-mseg {
+  flex: 1;
+  background: var(--borderL);   /* empty-slot track */
+  overflow: hidden;
+}
+.ws-mseg > i {
+  display: block;
   height: 100%;
-  background: var(--contra);
   transition: width 0.3s ease;
 }
-.ws-card.ws-card-done   .ws-card-bar-fill { background: var(--money); }
-.ws-card.ws-card-failed .ws-card-bar-fill { background: var(--dev); }
+/* Depth ramp — monotonic blue, dark→light along the pipeline. */
+.ws-mseg-plan     > i { background: #15406b; }
+.ws-mseg-script   > i { background: #1d5f9c; }
+.ws-mseg-audio    > i { background: #2f81c4; }
+.ws-mseg-subtitle > i { background: #6fb1e0; }
+.ws-mseg-legacy   > i { background: var(--contra); }
+/* failed workspaces tint the whole strip's fills red so the status reads
+   even before you parse the label. */
+.ws-card.ws-card-failed .ws-mseg > i { background: var(--dev); }
 .ws-card-progress {
   font-family: var(--mono);
   font-size: 9px;
