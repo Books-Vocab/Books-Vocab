@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30m";
+const APP_VERSION = "2026-05-30n";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -331,25 +331,20 @@ function milestoneBar(s) {
       label: `${s.n_stages_done || 0}/${s.n_stages_total || 13}`,
     };
   }
-  // The pipeline is sequential, so the bar must read as ONE monotonic fill,
-  // not four independently-filled slots. Filling each slot by its own ratio
-  // produced a visual "gap": audio at 62% left a void, then subtitle's 37%
-  // re-appeared to its right, looking broken. Instead fill cumulatively up to
-  // the *frontier* — the first gate that isn't full. Gates before it show
-  // 100%, the frontier shows its own ratio, and gates AFTER it show 0% even
-  // if they have stray artifacts (the workspace is, as a whole, stuck at the
-  // frontier — a later gate can't truly outrun an earlier one). Continuous,
-  // no gap, and consistent with the precise "AUDIO 5/8" label.
-  const frontierIdx = ms.findIndex(m => (m.ratio || 0) < 1);
-  const segs = ms.map((m, i) => {
+  // Four visually-separated bars, one per gate, each filled by its OWN ratio.
+  // The gates sit in fixed pipeline order (PLAN→SCRIPT→AUDIO→SUBTITLE), so
+  // position + the label identify the stage; colour is a single blue (no
+  // depth ramp). Showing each gate's real ratio is the most informative —
+  // the_let_them reads "audio 5/8 AND subtitle 3/8" at a glance, instead of
+  // a cumulative fill that would hide the subtitle progress. Because the bars
+  // are clearly separated (gap + own rounding), a partial-then-partial
+  // sequence reads as two independent bars, not a broken-looking gap.
+  const segs = ms.map(m => {
     const key = MILESTONE_SHORT[m.key] ? m.key : "legacy"; // whitelist for class safety
-    let w;
-    if (frontierIdx === -1 || i < frontierIdx) w = 100;          // all-done, or a completed gate
-    else if (i === frontierIdx) w = Math.max(0, Math.min(100, Math.round((m.ratio || 0) * 100)));
-    else w = 0;                                                   // beyond the frontier — not yet reached
+    const w = Math.max(0, Math.min(100, Math.round((m.ratio || 0) * 100)));
     return `<div class="ws-mseg ws-mseg-${key}"><i style="width:${w}%"></i></div>`;
   }).join("");
-  const frontier = frontierIdx === -1 ? null : ms[frontierIdx];
+  const frontier = ms.find(m => (m.ratio || 0) < 1);
   const label = frontier
     ? `${MILESTONE_SHORT[frontier.key] || frontier.key.toUpperCase()} ${frontier.done}/${frontier.total}`
     : "READY";
