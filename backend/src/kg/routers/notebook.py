@@ -84,17 +84,14 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
     cards_deleted = 0
     if result is True:
         cards_deleted = cards.soft_delete_by_notebook(nb_id)
-        # Delete graph files
-        for pattern in [
-            f"graph_{nb_id}.json", f"candidates_{nb_id}.json", f"blocked_{nb_id}.json",
-            f"pending_judge_{nb_id}.json",
-        ]:
+        # Remove every per-notebook artifact. Filenames come from the
+        # ops_shared.NOTEBOOK_FILE_SPECS SoT (the same source service_factories
+        # uses to create them), so a new artifact kind can't silently orphan a
+        # file here as the two lists drift.
+        from ..ops_shared import notebook_files
+        for path in notebook_files(user["dir"], nb_id).values():
             for suffix in ("", ".bak", ".tmp"):
-                (user["dir"] / (pattern + suffix)).unlink(missing_ok=True)
-        # Delete embedding files
-        for pattern in [f"embeddings_{nb_id}.npy", f"card_ids_{nb_id}.json"]:
-            for suffix in ("", ".bak", ".tmp"):
-                (user["dir"] / (pattern + suffix)).unlink(missing_ok=True)
+                path.with_name(path.name + suffix).unlink(missing_ok=True)
         # Evict cached stores
         from ..service_factories import evict_notebook_cache
         evict_notebook_cache(user["dir"], nb_id)
