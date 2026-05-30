@@ -133,6 +133,13 @@ cat workspaces/<name>/scripts/ep_1_review.md
 - `overview.md` 的 Voice Mapping section 定義 name → Speaker1/Speaker2 映射
 - `synthesize.py` 和 `subtitle.py` 從 `overview.md` 動態讀取
 
+## Workspace 命名規則（series_id 約束）
+
+- Workspace 目錄名格式：`<slug>_<hash>`，其中 `slug` 由 `pipeline.py:_sanitize_slug()` 從書名產生
+- **必須符合 `^[a-z0-9_]+$`**（backend `_SERIES_ID_RE` 與 `ops/podcast_upload.sh` 強制）
+- Sanitize 演算法：lowercase → 非字母數字 → `_` → strip 首尾 `_` → 截斷 30 chars
+- `ops/podcast_upload.sh` 直接用 `basename(workspace)` 當 `series_id`；不合法時上傳成功但 API 全 404
+
 ## 限制 / 依賴
 
 - `subtitle.py` 不可平行（Whisper 每集 load_model 重載，記憶體大）；預設 `--model medium`，非英文無法正確對齊
