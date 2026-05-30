@@ -10,6 +10,25 @@ Read the Analyst's deep analysis and the source material, then produce a Product
 - `{workspace}/source/metadata.md` — book metadata
 - `{workspace}/source/chapters/ch_*.md` — clean chapter files (read as needed — the analysis has chapter summaries, but verify against source when making split decisions)
 
+## Step 0: Resume Check (do this FIRST)
+
+This stage may be re-run after a transient interruption (a previous attempt can
+crash mid-way and leave partial output on disk). Your on-disk files are the
+durable checkpoint — never blindly redo finished work:
+
+1. List `{workspace}/plan/overview.md` and `{workspace}/plan/episodes/ep_*.md`.
+2. If `overview.md` already exists and is complete (has Host Profiles + Voice
+   Mapping + a full Episode Map), treat it as **authoritative** — do NOT
+   regenerate it, and do NOT change host names, voice mapping, show name, or the
+   episode count. Later episode plans must stay consistent with it.
+3. For each episode in the Episode Map, check whether `ep_NN.md` already exists
+   and is complete (has all required sections from Step 4). **Skip episodes that
+   are already complete.** Only write the missing or truncated ones.
+4. If nothing exists yet, produce everything from scratch as described below.
+
+State up front what you found (e.g. "overview.md + ep_01–ep_09 present; writing
+ep_10–ep_12") so the run is auditable.
+
 ## Step 1: Read the Analysis
 
 Read `analysis.md` thoroughly. It contains:
