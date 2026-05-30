@@ -109,14 +109,19 @@ title = title_m.group(1).strip() if title_m else series_id
 author_m = re.search(r'\*\*Type\*\*:\s*(.+)', text)
 author = author_m.group(1).strip() if author_m else ""
 
-# Host names from Host A / Host B sections
-host_a_m = re.search(r'###\s+Host\s+A:\s*(\w+)', text)
-host_b_m = re.search(r'###\s+Host\s+B:\s*(\w+)', text)
-host_names = []
-if host_a_m:
-    host_names.append(host_a_m.group(1))
-if host_b_m:
-    host_names.append(host_b_m.group(1))
+# Host names from the Voice Mapping section — the single source of truth the
+# tts-prep stage writes and synthesize.py consumes. Regex kept in sync with
+# synthesize.py `_parse_overview_hosts` (format: `**Name (Voice)**: SpeakerN`).
+# The old `### Host A:` heading regex matched NOTHING for modern workspaces:
+# the architect prompt never emitted that format, so every series shipped with
+# hostNames=[]. Voice Mapping is the format actually present in all overviews.
+voice_map_re = re.compile(r"\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])")
+host_names = [m.group(1).strip() for m in voice_map_re.finditer(text)]
+if not host_names:
+    print(
+        "⚠ no Voice Mapping section found in overview.md — hostNames left empty "
+        "(legacy workspace without the tts-prep voice block?)"
+    )
 
 # Parse episode map table
 episodes = []

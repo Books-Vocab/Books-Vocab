@@ -44,7 +44,11 @@ SILENCE_THRESH_DBFS = -40
 PEAK_CLIP_DBFS = -0.5          # >= -0.5 dBFS = clipping risk
 LOUDNESS_MIN_DBFS = -30        # avg below this = near-silent render
 
-_DIALOGUE_RE = re.compile(r"\*\*(\w+):\*\*\s*(.*)")
+# `[^:*]+` (not `\w+`) to stay in sync with synthesize.py and subtitle.py —
+# those parse the SAME script with the same speaker-tag regex, so wpm/silence
+# QA must count the same turns. `\w+` silently dropped multi-word/hyphenated
+# host names, undercounting words and skewing the wpm check.
+_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
 _DIRECTION_RE = re.compile(r"\[.*?\]")
 _SSML_RE = re.compile(r"<[^>]+>")
 
