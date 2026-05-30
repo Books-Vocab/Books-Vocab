@@ -124,7 +124,7 @@ struct PodcastPlayerView: View {
                         toastCoordinator.info(L10n.string("podcast.sleepTimer.fired.toast"))
                     }
             } else {
-                ProgressView("載入中…")
+                ProgressView(L10n.string("載入中…"))
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -362,7 +362,7 @@ struct PodcastPlayerView: View {
             }()
             guard let audioURL = localURL
                 ?? episode.audioURL.flatMap(URL.init(string:)) else {
-                await MainActor.run { vm.reportError("無音訊 URL") }
+                await MainActor.run { vm.reportError(L10n.string("無音訊 URL")) }
                 return
             }
             let isLocal = localURL != nil
@@ -412,7 +412,7 @@ struct PodcastPlayerView: View {
                     return
                 } catch {
                     await MainActor.run {
-                        vm.reportError("無法取得認證 token：\(error.localizedDescription)")
+                        vm.reportError(L10n.format("無法取得認證 token：%@", error.localizedDescription))
                     }
                     return
                 }

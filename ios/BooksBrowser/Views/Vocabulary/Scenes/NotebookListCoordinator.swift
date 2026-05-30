@@ -199,10 +199,10 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             nb.syncStatus = 1
             modelContext.insert(nb)
             if modelContext.safeSaveWithToast(toastCoordinator) {
-                toastCoordinator.success("已建立")
+                toastCoordinator.success("已建立".localized)
             }
         } catch {
-            toastCoordinator.error("建立失敗")
+            toastCoordinator.error("建立失敗".localized)
             AppLog.kg.error("createNotebook failed: \(error.localizedDescription)")
         }
     }
@@ -223,10 +223,10 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             notebook.coverPattern = remote.coverPattern
             notebook.updatedAt = Date()
             if modelContext.safeSaveWithToast(toastCoordinator) {
-                toastCoordinator.success("已更新")
+                toastCoordinator.success("已更新".localized)
             }
         } catch {
-            toastCoordinator.error("更新失敗")
+            toastCoordinator.error("更新失敗".localized)
             AppLog.kg.error("updateNotebook failed: \(error.localizedDescription)")
         }
     }
@@ -270,10 +270,10 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             }
 
             if modelContext.safeSaveWithToast(toastCoordinator) {
-                toastCoordinator.success("已刪除")
+                toastCoordinator.success("已刪除".localized)
             }
         } catch {
-            toastCoordinator.error("刪除失敗")
+            toastCoordinator.error("刪除失敗".localized)
             AppLog.kg.error("deleteNotebook failed: \(error.localizedDescription)")
         }
     }
