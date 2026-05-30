@@ -205,6 +205,164 @@ html, body {
   50% { box-shadow: 0 0 0 7px rgba(74, 107, 140, 0.25); }
 }
 
+/* ─── App shell (sidebar + main) ─── */
+.app-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: start;
+  /* nav is sticky 44px+; sidebar gets the remaining viewport for its own scroll. */
+}
+
+/* ─── Sidebar ─── */
+.sidebar {
+  position: sticky;
+  top: 44px;                          /* under the sticky nav */
+  height: calc(100vh - 44px);
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--borderBase);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  border-bottom: 1px solid var(--borderL);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.sidebar-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+
+.sidebar-empty {
+  padding: 16px 14px;
+  font-size: 11px;
+  color: var(--sub);
+  text-align: center;
+}
+
+/* Workspace card */
+.ws-card {
+  /* Reset button defaults — cards are <button> for native keyboard focus. */
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--borderL);
+  padding: 9px 12px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--sans);
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: background-color 0.12s ease;
+}
+.ws-card:hover { background: var(--bg); }
+.ws-card:focus-visible {
+  outline: 2px solid var(--contra);
+  outline-offset: -2px;
+}
+.ws-card.is-active {
+  background: var(--bg);
+  border-left-color: var(--contra);
+}
+
+.ws-card-head {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sub);
+  display: inline-block;
+}
+.ws-status-running { background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.ws-status-done    { background: var(--money); }
+.ws-status-failed  { background: var(--dev); }
+.ws-status-idle    { background: var(--contra); }
+.ws-status-fresh   { background: var(--borderBase); }
+
+.ws-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+.ws-card.is-active .ws-name { color: var(--contra); }
+
+.ws-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ws-card-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.ws-card-bar-track {
+  height: 3px;
+  background: var(--borderL);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ws-card-bar-fill {
+  height: 100%;
+  background: var(--contra);
+  transition: width 0.3s ease;
+}
+.ws-card.ws-card-done   .ws-card-bar-fill { background: var(--money); }
+.ws-card.ws-card-failed .ws-card-bar-fill { background: var(--dev); }
+.ws-card-progress {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.ws-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+.ws-card-meta .ws-cost { color: var(--money); }
+.ws-card-meta .ws-cost.zero { color: var(--sub); }
+.ws-card-meta .ws-sep { opacity: 0.5; }
+.ws-card-meta .ws-status-text { text-transform: uppercase; letter-spacing: 0.08em; }
+
 /* ─── Main ─── */
 .main {
   padding: 16px 20px 32px;
@@ -283,7 +441,9 @@ html, body {
 /* ─── Stages strip ─── */
 .stages {
   display: grid;
-  grid-template-columns: repeat(13, 1fr);
+  /* Auto-fit: chips stay >= 95px wide; wrap to a second row when the
+     viewport shrinks (e.g. sidebar takes 280px from a 1400px main). */
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
   gap: 4px;
 }
 
