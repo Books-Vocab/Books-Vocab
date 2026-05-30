@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 6c3a1acc
+verified_against: a44d0c80
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -184,6 +184,7 @@ lab/podcast/workspaces/<slug>_<hash>/
   plan/overview.md                  ← Voice Mapping(host SoT)
   scripts/ep_N_{pro,flash}.mp3      ← TTS 產出
   scripts/ep_N_{pro,flash}.srt      ← Whisper 對齊
+  scripts/ep_N_{pro,flash}.meta.json ← {"tts_model": "<full TTS model id>"} sidecar(monitor 顯示用;檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容)
   scripts/ep_N_script.md            ← 原稿
        │
        │  ./ops/podcast_upload.sh <workspace>
@@ -328,7 +329,7 @@ Endpoints:
 - `GET /api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
 - `GET /api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
 - `GET /api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
-- `GET /api/workspace/{ws}/episodes` — list 已生成的 episode + variant(pro/flash)+ size + has_subtitle
+- `GET /api/workspace/{ws}/episodes` — list 已生成的 episode + variant(pro/flash)+ `model`(完整 TTS id,從 sidecar `.meta.json` 讀;舊集數無 sidecar 時為 `null`,UI 顯示「pro (?)」/「flash (?)」表示世代未知)+ size + has_subtitle
 - `GET /api/workspace/{ws}/episode/{ep}/audio` — MP3 stream(`FileResponse` 處理 Range / 206)
 - `GET /api/workspace/{ws}/episode/{ep}/subtitle` — SRT 純文字
 

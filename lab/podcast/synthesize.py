@@ -754,6 +754,20 @@ def process_file(
     )
     combine_and_export(segments, output_path)
 
+    # Sidecar metadata: filename keeps the legacy `_pro` / `_flash` short tag
+    # for backward compat with podcast_upload.sh / monitor regexes, but the
+    # short tag drops the generation (gemini-2.5-pro vs 3.1-pro both collapse
+    # to "pro"). Write the full TTS model id beside the audio so the monitor
+    # UI can display the real name. Same dir, same stem, `.meta.json` suffix.
+    meta_path = output_path.with_suffix(".meta.json")
+    try:
+        meta_path.write_text(
+            json.dumps({"tts_model": TTS_MODEL}, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as e:
+        print(f"  warn: could not write sidecar {meta_path.name}: {e}")
+
     return output_path
 
 
