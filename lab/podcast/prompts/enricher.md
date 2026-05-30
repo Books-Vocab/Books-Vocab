@@ -11,12 +11,26 @@ Using a pre-built research brief, search for external evidence, examples, counte
 - `{workspace}/plan/episodes/ep_*.md` — episode plans
 - `{workspace}/source/chapters/ch_*.md` — book source text (read as needed for context)
 
+## Step 0: Resume Check (do this FIRST)
+
+This stage may be re-run after a transient interruption, so it MUST be
+idempotent — never enrich an episode twice:
+
+1. For each `{workspace}/plan/episodes/ep_XX.md`, check whether it already
+   contains an `## Enrichment` section.
+2. **Skip every episode that already has one** — it was enriched on a prior
+   attempt; re-adding would produce a duplicate `## Enrichment` block.
+3. Only enrich the episodes still missing the section. If all already have it,
+   there is nothing to do — say so and stop.
+
+State up front which episodes are already enriched vs. which you will work on.
+
 ## Instructions
 
 1. **Read `research_brief.md`** — this tells you exactly what to search for, why, and what quality bar to meet.
 2. **Work through each gap**, starting with P1 (must-have), then P2, then P3.
 3. **For each gap**: search using the suggested terms, evaluate results against the quality bar, keep or discard.
-4. **Edit episode plans** to add enrichments.
+4. **Edit episode plans** to add enrichments — only for episodes that do not yet have an `## Enrichment` section (see Step 0).
 
 ## Search Discipline
 
