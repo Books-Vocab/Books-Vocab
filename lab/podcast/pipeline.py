@@ -155,6 +155,55 @@ STAGES = [
 _STAGE_MARKER = ".stage_{name}_done"
 
 
+# ─── Approval gates (human-in-the-loop) ─────────────────────────────────────
+# Two producer checkpoints split the 13 stages into 3 phases. The autonomous
+# run STOPS at each gate until the producer writes the approval marker, so a
+# bad plan never burns scriptwrite tokens and a bad script never burns TTS:
+#     PLAN(prep→enricher) ┃.plan_approved┃ SCRIPT(scriptwrite→script-review)
+#                         ┃.script_approved┃ AUDIO(tts-prep→subtitle)
+# Each gate keys on the FIRST stage of the phase it guards.
+_APPROVAL_GATES = {
+    "scriptwrite": ".plan_approved",   # gate 1 — PLAN done → produce SCRIPTs
+    "tts-prep": ".script_approved",    # gate 2 — SCRIPT done → produce AUDIO
+}
+
+
+def approval_gate_block(
+    stage_name: str,
+    workspace: Path,
+    *,
+    explicit_skip_idx: int | None = None,
+    ignore_gates: bool = False,
+) -> str | None:
+    """Return the approval-marker filename blocking entry to `stage_name`, or
+    None if the stage may run.
+
+    A gate blocks the autonomous forward run from crossing into an expensive
+    phase until the producer writes the marker (dashboard "approve" or
+    `touch workspace/<marker>`). Bypassed when:
+      - ``ignore_gates`` (the --ignore-gates escape hatch / fully autonomous run),
+      - the marker already exists (approved), or
+      - the run was EXPLICITLY told to start at/after the gated stage via
+        --skip-to / --only-stage. That is the producer's deliberate drive and
+        counts as approval.
+
+    Critically this tests the EXPLICIT skip index, NOT the auto-resume start
+    index: re-running ``pipeline.py <ws>`` on a plan-complete-but-unapproved
+    workspace auto-resumes start_idx to scriptwrite, and trusting that index
+    would silently jump the gate. Pass ``explicit_skip_idx=None`` for an
+    auto-resume run so the gate still holds.
+    """
+    marker = _APPROVAL_GATES.get(stage_name)
+    if not marker or ignore_gates:
+        return None
+    gate_idx = STAGES.index(stage_name)
+    if explicit_skip_idx is not None and explicit_skip_idx >= gate_idx:
+        return None
+    if (workspace / marker).exists():
+        return None
+    return marker
+
+
 # ─── Logging ───
 
 
@@ -187,6 +236,13 @@ class PipelineLog:
         if success:
             marker = self.workspace / _STAGE_MARKER.format(name=stage)
             marker.write_text(datetime.now().isoformat())
+
+    def gate_wait(self, stage: str, marker: str, phase: str) -> None:
+        """Pipeline paused at an approval gate — NOT a failure (exit 0). The
+        dashboard derives AWAITING_*_APPROVAL from disk state; this event also
+        drives the live activity feed."""
+        self._write({"event": "gate_wait", "stage": stage, "marker": marker, "phase": phase})
+        print(f"\n  ⏸ awaiting {phase} approval — paused before {stage}")
 
     def event(self, msg: str, **extra: object) -> None:
         self._write({"event": "info", "msg": msg, **extra})
@@ -1099,6 +1155,12 @@ examples:
         help="Bypass prereq marker check when using --skip-to / --only-stage. "
         "Use only after manually verifying earlier stages' artifacts exist.",
     )
+    parser.add_argument(
+        "--ignore-gates",
+        action="store_true",
+        help="Run straight through the plan/script approval gates without "
+        "pausing (restores the old fully-autonomous end-to-end run).",
+    )
     parser.add_argument("--status", action="store_true", help="Show workspace status and exit")
     parser.add_argument("--dry-run", action="store_true", help="Extract EPUB and setup workspace only")
     args = parser.parse_args()
@@ -1125,6 +1187,11 @@ examples:
     # Determine stage range
     start_idx = STAGES.index(args.skip_to) if args.skip_to else 0
     stop_idx = STAGES.index(args.stop_after) if args.stop_after else len(STAGES) - 1
+
+    # Explicit start index for approval-gate bypass — set ONLY when the user
+    # passed --skip-to / --only-stage (a deliberate drive past the gate). Stays
+    # None for auto-resume runs so the gate still holds (see approval_gate_block).
+    explicit_skip_idx = STAGES.index(args.skip_to) if args.skip_to else None
 
     if start_idx > stop_idx:
         parser.error(f"--skip-to {args.skip_to} is after --stop-after {args.stop_after}")
@@ -1219,6 +1286,28 @@ examples:
     print()
 
     for i, stage_name in enumerate(stages_to_run, 1):
+        # Human-in-the-loop approval gate: pause (exit 0) before entering an
+        # expensive phase until the producer approves the prior one.
+        blocked_by = approval_gate_block(
+            stage_name, workspace,
+            explicit_skip_idx=explicit_skip_idx,
+            ignore_gates=args.ignore_gates,
+        )
+        if blocked_by:
+            phase = "plan" if blocked_by == ".plan_approved" else "script"
+            next_phase = "scripts" if phase == "plan" else "audio"
+            elapsed = time.time() - t0
+            log.gate_wait(stage_name, blocked_by, phase)
+            print(f"\n{'='*60}")
+            print(f"  ⏸ AWAITING {phase.upper()} APPROVAL ({elapsed:.0f}s so far)")
+            print(f"  {phase.capitalize()} phase complete — review it, then approve to produce {next_phase}:")
+            print(f"    Dashboard: click ▶ APPROVE in the episode panel")
+            print(f"    CLI:       touch {workspace}/{blocked_by} && uv run pipeline.py {workspace}")
+            print(f"    Bypass:    uv run pipeline.py {workspace} --ignore-gates")
+            print(f"  Workspace: {workspace}")
+            print(f"{'='*60}")
+            return  # paused, not failed
+
         stage_t0 = time.time()
         log.stage_start(stage_name, step=f"{i}/{total_stages}")
 
