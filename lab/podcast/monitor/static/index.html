@@ -17,6 +17,7 @@
     <label class="micro-label">WORKSPACE</label>
     <select id="ws-select" class="ws-select"></select>
     <button id="ws-refresh" class="icon-btn" title="Reload workspace list">↻</button>
+    <button id="act-new" class="action-btn primary" title="Start a new podcast from an EPUB">+ NEW PODCAST</button>
     <button id="act-upload" class="action-btn" title="Upload this workspace to production">↑ UPLOAD</button>
     <button id="act-delete" class="action-btn danger" title="Delete local workspace (does not touch server)">✕ DELETE</button>
   </div>
@@ -28,6 +29,37 @@
 
 <!-- Toast stack — actions push transient messages here -->
 <div id="toasts" class="toasts"></div>
+
+<!-- New-podcast modal (hidden by default) -->
+<div id="modal-backdrop" class="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <h2 id="modal-title" class="modal-title">NEW PODCAST</h2>
+      <button id="modal-close" class="icon-btn" title="Close">✕</button>
+    </div>
+    <form id="new-podcast-form" class="modal-body">
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="epub-input" accept=".epub" hidden>
+        <div class="dropzone-prompt" id="dropzone-prompt">
+          <span class="dropzone-icon">📚</span>
+          <span class="dropzone-text">drag an EPUB here, or click to pick</span>
+          <span class="dropzone-hint">max 200MB · pipeline runs all 13 stages</span>
+        </div>
+      </label>
+      <div class="modal-fields">
+        <label class="field">
+          <span class="field-label">PARALLEL WORKERS</span>
+          <input type="number" id="parallel-input" min="1" max="10" value="3" class="field-input tabular">
+          <span class="field-hint">scriptwrite / script-review concurrency (1–10)</span>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="modal-cancel" class="action-btn">CANCEL</button>
+        <button type="submit" id="modal-submit" class="action-btn primary" disabled>↑ START PIPELINE</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <main class="main">
 

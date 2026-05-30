@@ -307,6 +307,140 @@ function toast(msg, kind = "info", ttlMs = 4500) {
   setTimeout(() => el.remove(), ttlMs);
 }
 
+// ─── New-podcast modal (Phase 4) ───
+const modalState = {
+  file: null,       // selected File
+  submitting: false,
+};
+
+function openNewPodcastModal() {
+  $("#modal-backdrop").hidden = false;
+  // Reset state so re-opening starts fresh.
+  modalState.file = null;
+  modalState.submitting = false;
+  $("#epub-input").value = "";
+  $("#parallel-input").value = "3";
+  $("#modal-submit").disabled = true;
+  refreshDropzonePrompt();
+  // Trap initial focus on the file input for keyboard users.
+  setTimeout(() => $("#epub-input").focus(), 50);
+}
+
+function closeNewPodcastModal() {
+  if (modalState.submitting) return;  // don't dismiss mid-upload
+  $("#modal-backdrop").hidden = true;
+}
+
+function refreshDropzonePrompt() {
+  const promptEl = $("#dropzone-prompt");
+  if (!promptEl) return;
+  if (modalState.file) {
+    const mb = (modalState.file.size / (1 << 20)).toFixed(1);
+    promptEl.innerHTML = `
+      <span class="dropzone-icon">✓</span>
+      <span class="dropzone-text">${escapeHtml(modalState.file.name)}</span>
+      <span class="dropzone-hint">${mb} MB · click to pick a different file</span>
+    `;
+  } else {
+    promptEl.innerHTML = `
+      <span class="dropzone-icon">📚</span>
+      <span class="dropzone-text">drag an EPUB here, or click to pick</span>
+      <span class="dropzone-hint">max 200MB · pipeline runs all 13 stages</span>
+    `;
+  }
+}
+
+function setModalFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".epub")) {
+    toast(`not an EPUB: ${file.name}`, "warn");
+    return;
+  }
+  if (file.size > 200 * (1 << 20)) {
+    toast(`file too large (>200 MB)`, "error");
+    return;
+  }
+  modalState.file = file;
+  $("#modal-submit").disabled = false;
+  refreshDropzonePrompt();
+}
+
+async function submitNewPodcast(e) {
+  e.preventDefault();
+  if (!modalState.file || modalState.submitting) return;
+  modalState.submitting = true;
+  const submitBtn = $("#modal-submit");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "STARTING…";
+
+  const fd = new FormData();
+  fd.append("epub", modalState.file);
+  fd.append("parallel", $("#parallel-input").value || "3");
+
+  let job;
+  try {
+    const r = await fetch("/api/pipeline/start", { method: "POST", body: fd });
+    job = await r.json();
+    if (!r.ok) throw new Error(job.detail || `HTTP ${r.status}`);
+  } catch (err) {
+    toast(`start failed: ${err.message}`, "error", 8000);
+    modalState.submitting = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "↑ START PIPELINE";
+    return;
+  }
+
+  toast(`pipeline started · ${job.label} · job ${job.job_id}`, "info");
+  closeNewPodcastModal();
+  modalState.submitting = false;
+  submitBtn.disabled = false;
+  submitBtn.textContent = "↑ START PIPELINE";
+
+  // The workspace name isn't known until pipeline.py:setup_workspace runs
+  // (slug derived from book title + content hash). Poll workspaces list
+  // for ~90s; switch to the first new entry that appears.
+  watchForNewWorkspace(job.job_id);
+}
+
+async function watchForNewWorkspace(jobId) {
+  // Snapshot the workspace list at start so we can spot the new one.
+  let before;
+  try {
+    before = new Set(await (await fetch("/api/workspaces")).json());
+  } catch { return; }
+
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 2500));
+    // Job might have crashed fast — stop watching if it failed.
+    try {
+      const jr = await fetch(`/api/jobs/${jobId}?log_bytes=0`);
+      if (jr.ok) {
+        const j = await jr.json();
+        if (j.status === "failed" || j.status === "killed") {
+          toast(`pipeline ${j.status} before workspace created — check job log`, "error", 8000);
+          return;
+        }
+      }
+    } catch { /* keep watching */ }
+
+    try {
+      const list = await (await fetch("/api/workspaces")).json();
+      const fresh = list.find(name => !before.has(name));
+      if (fresh) {
+        toast(`workspace created: ${fresh}`, "info");
+        // Update the select + switch.
+        await loadWorkspaces();
+        const sel = $("#ws-select");
+        sel.value = fresh;
+        switchWorkspace(fresh);
+        return;
+      }
+    } catch { /* keep watching */ }
+  }
+  toast("workspace didn't appear in 90s — pipeline may be slow on prep", "warn", 6000);
+}
+
 // ─── Action handlers ───
 async function actionUpload() {
   if (!state.ws) return toast("no workspace selected", "warn");
@@ -371,12 +505,31 @@ async function actionRerunStage(stage, episode = null) {
 
 // ─── Recent jobs panel ───
 async function refreshJobs() {
+  // Debounce: if the previous request hasn't returned yet, don't pile on.
+  // Action handlers may call this immediately after a slow tick fires; we
+  // want one in-flight at a time, not stacked GETs.
+  if (state.jobsInflight) return;
+  state.jobsInflight = true;
   try {
     const r = await fetch("/api/jobs?limit=8");
     if (!r.ok) return;
-    state.recentJobs = await r.json();
+    const prev = state.recentJobs;
+    const next = await r.json();
+    state.recentJobs = next;
+    // Detect status transitions running → failed/killed so the user gets a
+    // toast even if they weren't watching the panel.
+    const prevById = new Map(prev.map(j => [j.id, j.status]));
+    for (const j of next) {
+      const was = prevById.get(j.id);
+      if (was === "running" && (j.status === "failed" || j.status === "killed")) {
+        toast(`job ${j.status}: ${j.label}`, "error", 8000);
+      } else if (was === "running" && j.status === "succeeded") {
+        toast(`✓ ${j.label}`, "info");
+      }
+    }
     renderJobs();
   } catch { /* network blip */ }
+  finally { state.jobsInflight = false; }
 }
 
 function renderJobs() {
@@ -385,11 +538,11 @@ function renderJobs() {
   if (!table) return;
   if (!state.recentJobs.length) {
     table.innerHTML = `<div class="empty">no jobs yet — click ↑ UPLOAD or use a stage ↻</div>`;
-    meta.textContent = "none";
+    if (meta) meta.textContent = "none";
     return;
   }
   const running = state.recentJobs.filter(j => j.status === "running").length;
-  meta.textContent = running ? `${running} running · ${state.recentJobs.length} recent` : `${state.recentJobs.length} recent`;
+  if (meta) meta.textContent = running ? `${running} running · ${state.recentJobs.length} recent` : `${state.recentJobs.length} recent`;
   table.innerHTML = state.recentJobs.map(j => {
     const dur = j.duration_s != null ? `${j.duration_s.toFixed(1)}s` : "—";
     const statusCls = `job-status job-${j.status}`;
@@ -649,8 +802,32 @@ setInterval(() => {
 
 document.addEventListener("DOMContentLoaded", () => {
   $("#ws-refresh").addEventListener("click", loadWorkspaces);
+  $("#act-new").addEventListener("click", openNewPodcastModal);
   $("#act-upload").addEventListener("click", actionUpload);
   $("#act-delete").addEventListener("click", actionDelete);
+
+  // Modal: close (esc / backdrop click / cancel / X)
+  $("#modal-close").addEventListener("click", closeNewPodcastModal);
+  $("#modal-cancel").addEventListener("click", closeNewPodcastModal);
+  $("#modal-backdrop").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeNewPodcastModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#modal-backdrop").hidden) closeNewPodcastModal();
+  });
+
+  // Modal: file picker + drag/drop
+  $("#epub-input").addEventListener("change", (e) => setModalFile(e.target.files[0]));
+  const dz = $("#dropzone");
+  dz.addEventListener("dragenter", (e) => { e.preventDefault(); dz.classList.add("drag-over"); });
+  dz.addEventListener("dragover",  (e) => { e.preventDefault(); dz.classList.add("drag-over"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("drag-over"));
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dz.classList.remove("drag-over");
+    setModalFile(e.dataTransfer.files[0]);
+  });
+  $("#new-podcast-form").addEventListener("submit", submitNewPodcast);
   // Stage rerun button — delegated since renderStages re-creates the DOM.
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-rerun-stage]");
