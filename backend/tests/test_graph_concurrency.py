@@ -104,3 +104,61 @@ class TestGraphStoreLocking:
         assert not errors
         # The new link must exist
         assert store.has_link("new_a", "new_b")
+
+    def test_concurrent_reads_during_writes_no_error(self, store):
+        """Read methods must hold _lock — reading while a writer mutates _links
+        must not raise `dictionary changed size during iteration` (all_links /
+        link_count) or KeyError (get_links_for / find_link_between)."""
+        n = 300
+        writer_done = threading.Event()
+        errors: list[Exception] = []
+
+        def writer():
+            try:
+                for i in range(n):
+                    store.add_link(
+                        "hub", f"to_{i}", LinkKind.CONTRASTS_WITH, 0.9, f"r{i}"
+                    )
+            except Exception as exc:  # writer errors are a separate concern
+                errors.append(exc)
+            finally:
+                writer_done.set()
+
+        def reader():
+            try:
+                while not writer_done.is_set():
+                    # Each of these iterates shared dicts/index sets that the
+                    # writer is concurrently mutating.
+                    list(store.all_links())
+                    store.link_count()
+                    store.get_links_for("hub")
+                    store.find_link_between("hub", "to_0")
+            except Exception as exc:
+                errors.append(exc)
+
+        readers = [threading.Thread(target=reader) for _ in range(2)]
+        w = threading.Thread(target=writer)
+        w.start()
+        for r in readers:
+            r.start()
+        # Writer rewrites the full links.json each add (O(n^2) disk), so give it
+        # room — the point is that readers never raise, not raw throughput.
+        w.join(timeout=120)
+        for r in readers:
+            r.join(timeout=10)
+
+        assert writer_done.is_set(), "writer did not finish within timeout"
+        assert not errors, f"Concurrent read/write raised: {errors}"
+        assert store.link_count() == n
+
+    def test_all_links_returns_materialized_snapshot(self, store):
+        """all_links() must return a concrete sequence (snapshot taken under the
+        lock), not a lazy view over the live dict."""
+        for i in range(5):
+            store.add_link("a", f"b_{i}", LinkKind.SHARES_USAGE, 0.8, f"r{i}")
+        # Materialized: mutating the store afterwards must not change the snapshot.
+        before = len(store.all_links())
+        snapshot = list(store.all_links())
+        store.add_link("a", "b_new", LinkKind.SHARES_USAGE, 0.8, "rn")
+        assert len(snapshot) == before
+        assert len(list(store.all_links())) == before + 1

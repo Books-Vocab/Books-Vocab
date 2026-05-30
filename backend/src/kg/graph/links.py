@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterator
 from typing import Any
 
 from .models import GraphLink, LinkKind
@@ -83,8 +82,16 @@ class _LinksMixin:
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
         """Get all active and hidden links involving a card."""
-        link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
-        return [self._links[lid] for lid in link_ids if self._links[lid].status in ("active", "hidden")]
+        # Lock: the index sets and _links are mutated by concurrent writers on the
+        # same cached instance; reading them lock-free risks a KeyError when a
+        # link was just hard-deleted between the index read and the dict lookup.
+        with self._lock:
+            link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
+            return [
+                self._links[lid]
+                for lid in link_ids
+                if lid in self._links and self._links[lid].status in ("active", "hidden")
+            ]
 
     def _has_link_unlocked(self, id_a: str, id_b: str) -> bool:
         """Check link existence without acquiring the lock (internal use)."""
@@ -103,20 +110,24 @@ class _LinksMixin:
 
     def has_link(self, id_a: str, id_b: str) -> bool:
         """Check if a link exists between two cards (active or rejected counts)."""
-        return self._has_link_unlocked(id_a, id_b)
+        # _has_link_unlocked is the lock-free variant for internal callers that
+        # already hold _lock; the public entry point must take the lock itself.
+        with self._lock:
+            return self._has_link_unlocked(id_a, id_b)
 
     def find_link_between(self, id_a: str, id_b: str) -> GraphLink | None:
         """Find active or hidden link between two cards (bidirectional). Returns None for deprecated/absent."""
-        candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
-        for lid in candidates:
-            lk = self._links[lid]
-            if lk.status not in ("active", "hidden"):
-                continue
-            if (lk.from_id == id_a and lk.to_id == id_b) or (
-                lk.from_id == id_b and lk.to_id == id_a
-            ):
-                return lk
-        return None
+        with self._lock:
+            candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
+            for lid in candidates:
+                lk = self._links.get(lid)
+                if lk is None or lk.status not in ("active", "hidden"):
+                    continue
+                if (lk.from_id == id_a and lk.to_id == id_b) or (
+                    lk.from_id == id_b and lk.to_id == id_a
+                ):
+                    return lk
+            return None
 
     def get_link(self, link_id: str) -> GraphLink | None:
         """Return a link by ID, or None if not found."""
@@ -198,8 +209,13 @@ class _LinksMixin:
             snapshot = self._blocked_to_serializable()
         self._flush_blocked(snapshot)
 
-    def all_links(self) -> Iterator[GraphLink]:
-        yield from self._links.values()
+    def all_links(self) -> list[GraphLink]:
+        # Return a snapshot list taken under the lock, not a lazy view: iterating
+        # _links.values() while a writer inserts raises "dictionary changed size
+        # during iteration".
+        with self._lock:
+            return list(self._links.values())
 
     def link_count(self) -> int:
-        return sum(1 for lk in self._links.values() if lk.status == "active")
+        with self._lock:
+            return sum(1 for lk in self._links.values() if lk.status == "active")
