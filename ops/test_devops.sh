@@ -57,6 +57,70 @@ echo "$output" | grep -q "blocked" && ok "KG safe wrapper blocks docker system p
 output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" setup 2>&1 || true)
 echo "$output" | grep -q "blocked" && ok "KG safe wrapper blocks setup" || fail_t "KG safe wrapper did NOT block setup"
 
+# Flag/case variants that the original literal-byte regex let slip through.
+output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "docker compose down -v" 2>&1 || true)
+echo "$output" | grep -q "blocked" && ok "blocks 'compose down -v'" || fail_t "did NOT block 'compose down -v'"
+
+output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "docker compose down --volumes" 2>&1 || true)
+echo "$output" | grep -q "blocked" && ok "blocks 'down --volumes' long form" || fail_t "did NOT block 'down --volumes'"
+
+output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "rm -fr /home/ubuntu" 2>&1 || true)
+echo "$output" | grep -q "blocked" && ok "blocks 'rm -fr' swapped flags" || fail_t "did NOT block 'rm -fr /home/ubuntu'"
+
+output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "rm -r -f /" 2>&1 || true)
+echo "$output" | grep -q "blocked" && ok "blocks 'rm -r -f /' split flags" || fail_t "did NOT block 'rm -r -f /'"
+
+output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "rm --recursive --force ~" 2>&1 || true)
+echo "$output" | grep -q "blocked" && ok "blocks 'rm --recursive --force ~' long form" || fail_t "did NOT block long-form rm"
+
+output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "RM -RF /home/ubuntu" 2>&1 || true)
+echo "$output" | grep -q "blocked" && ok "blocks upper-case 'RM -RF'" || fail_t "did NOT block upper-case rm"
+
+# Adversarial bypass variants (negative controls — must stay BLOCKED so a future
+# regex regression can't silently reopen them).
+declare -a BYPASS=(
+  'rm -rf "/home/ubuntu"@quoted path'
+  "rm -rf '/'@quoted root"
+  'rm -rf /home/ubuntu;@trailing semicolon'
+  'rm -rf /*@root glob wipe'
+  'rm -rf /.@root dot wipe'
+  'find /* -delete@find root glob'
+  'echo x > /*@redirect root glob'
+  'echo x | tee /app/data/db@tee clobber'
+  'rm -rf /home//ubuntu@double slash'
+  'rm -rf ${HOME}@brace HOME'
+  '/bin/rm -rf /home/ubuntu@absolute rm path'
+  'find / -delete@find -delete root'
+  'find /home/ubuntu -delete@find -delete home'
+  'cat foo > /home/ubuntu/data.db@redirect clobber'
+  'truncate -s0 /home/ubuntu/x@truncate clobber'
+  'docker volume rm knowledge-graph-api_data@docker volume rm'
+  'docker volume prune -f@docker volume prune'
+  'docker compose -f x.yml down -v@compose -f down -v'
+)
+for entry in "${BYPASS[@]}"; do
+  cmd="${entry%%@*}"; label="${entry##*@}"
+  output=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" run "$cmd" 2>&1 || true)
+  echo "$output" | grep -q "blocked" && ok "blocks bypass: $label" || fail_t "BYPASS NOT BLOCKED: $label ($cmd)"
+done
+
+# False-positive controls — legitimate commands must pass the guard. Stub BASE
+# with /usr/bin/true so the wrapper does not invoke the real remote.
+declare -a SAFE=(
+  'rm -rf ./build@relative build dir'
+  'rm -rf /tmp/foo@tmp path'
+  'rm -rf node_modules@relative no-slash'
+  'rm -f /home/ubuntu/single.log@non-recursive single file'
+  'ls -la /home/ubuntu@listing prod dir'
+  'tar czf x.tgz /home/ubuntu@backup read of prod dir'
+  'grep -r foo /home/ubuntu@recursive grep read'
+)
+for entry in "${SAFE[@]}"; do
+  cmd="${entry%%@*}"; label="${entry##*@}"
+  output=$(KG_DEVOPS_BASE=/usr/bin/true bash "$WORKSPACE/ops/devops_kg_safe.sh" run "$cmd" 2>&1 || true)
+  echo "$output" | grep -q "blocked" && fail_t "FALSE POSITIVE blocked safe cmd: $label ($cmd)" || ok "allows safe: $label"
+done
+
 # ── 6. Preflight 檔案驗證（靜態） ─────────────────────────────────────────
 section "Preflight file validation (static)"
 awk '/^preflight\(\)/,/^}/' "$KG" | grep -q 'require_local_files' \
