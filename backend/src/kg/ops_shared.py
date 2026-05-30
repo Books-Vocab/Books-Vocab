@@ -26,6 +26,10 @@ NOTEBOOK_FILE_SPECS: dict[str, tuple[str, str | None]] = {
     "pending_judge": ("pending_judge_{nb}.json", None),
     "embeddings": ("embeddings_{nb}.npy", "embeddings.npy"),
     "card_ids": ("card_ids_{nb}.json", "card_ids.json"),
+    # Model/dim guard sidecar written alongside embeddings (see embeddings.py).
+    # Listed here so notebook deletion cleans it up; service_factories resolves
+    # stores by explicit key, so the extra kind doesn't affect store creation.
+    "embeddings_meta": ("embeddings_meta_{nb}.json", "embeddings_meta.json"),
 }
 
 
