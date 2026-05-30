@@ -183,7 +183,7 @@ extension KGService {
             if case .failure(let error) = result {
                 if error is KGError, case KGError.unauthorized = error {
                     await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-                    lastBackgroundSyncError = "Session expired"
+                    lastBackgroundSyncError = L10n.string("登入已過期")
                     return
                 }
                 AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
@@ -219,7 +219,7 @@ extension KGService {
             if case .failure(let error) = result {
                 if error is KGError, case KGError.unauthorized = error {
                     await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-                    lastBackgroundSyncError = "Session expired"
+                    lastBackgroundSyncError = L10n.string("登入已過期")
                     return
                 }
                 AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
