@@ -15,9 +15,8 @@
   <button type="button" id="sidebar-toggle" class="icon-btn nav-hamburger" title="Toggle workspace list" aria-label="Toggle workspace list" aria-expanded="false">☰</button>
   <div class="nav-brand">PODCAST · MONITOR <span class="nav-version" id="nav-version"></span></div>
   <div class="nav-ws">
-    <label class="micro-label">WORKSPACE</label>
-    <select id="ws-select" class="ws-select"></select>
-    <button id="ws-refresh" class="icon-btn" title="Reload workspace list">↻</button>
+    <span class="micro-label">CURRENT</span>
+    <span id="nav-current-ws" class="nav-current-ws" title="—">—</span>
     <button id="act-new" class="action-btn primary" title="Start a new podcast from an EPUB">+ NEW PODCAST</button>
     <button id="act-upload" class="action-btn" title="Upload this workspace to production">↑ UPLOAD</button>
     <button id="act-delete" class="action-btn danger" title="Delete local workspace (does not touch server)">✕ DELETE</button>
@@ -71,21 +70,25 @@
   <div class="sidebar-head">
     <div class="sidebar-title">
       <span class="micro-label">WORKSPACES</span>
-      <span class="sidebar-count" id="sidebar-count">0</span>
+      <span class="sidebar-title-right">
+        <span class="sidebar-count" id="sidebar-count">0</span>
+        <button id="ws-refresh" class="icon-btn sidebar-refresh-btn" title="Reload workspace list" aria-label="Reload workspace list">↻</button>
+      </span>
     </div>
     <input type="search" id="sidebar-search" class="sidebar-search"
            placeholder="filter…" autocomplete="off" spellcheck="false"
            aria-label="Filter workspaces by name">
     <div class="sidebar-controls">
-      <div class="sidebar-chips" id="sidebar-chips" role="tablist" aria-label="Filter by status">
-        <button type="button" class="sidebar-chip is-active" data-status="all"  role="tab" aria-selected="true">ALL</button>
-        <button type="button" class="sidebar-chip" data-status="running" role="tab" aria-selected="false">RUN</button>
-        <button type="button" class="sidebar-chip" data-status="failed"  role="tab" aria-selected="false">FAIL</button>
-        <button type="button" class="sidebar-chip" data-status="idle"    role="tab" aria-selected="false">IDLE</button>
-        <button type="button" class="sidebar-chip" data-status="done"    role="tab" aria-selected="false">DONE</button>
+      <div class="sidebar-chips" id="sidebar-chips" role="group" aria-label="Filter by status">
+        <button type="button" class="sidebar-chip is-active" data-status="all"     data-label="ALL"  aria-pressed="true">ALL</button>
+        <button type="button" class="sidebar-chip"           data-status="running" data-label="RUN"  aria-pressed="false">RUN</button>
+        <button type="button" class="sidebar-chip"           data-status="failed"  data-label="FAIL" aria-pressed="false">FAIL</button>
+        <button type="button" class="sidebar-chip"           data-status="idle"    data-label="IDLE" aria-pressed="false">IDLE</button>
+        <button type="button" class="sidebar-chip"           data-status="done"    data-label="DONE" aria-pressed="false">DONE</button>
       </div>
       <button type="button" id="sidebar-sort" class="icon-btn sidebar-sort-btn"
-              title="Toggle sort (recent / name)" aria-label="Toggle sort">⇅</button>
+              title="Toggle sort (recent / name)" aria-label="Toggle sort"
+              aria-pressed="false"></button>
     </div>
   </div>
   <div class="sidebar-list" id="sidebar-list">

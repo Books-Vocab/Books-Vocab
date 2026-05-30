@@ -4,16 +4,25 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30h";
+const APP_VERSION = "2026-05-30i";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
 const SIDEBAR_LS_KEY = "podcast-monitor:sidebar";
+const SIDEBAR_STATUS_VALUES = new Set(["all", "running", "failed", "idle", "done", "fresh"]);
+const SIDEBAR_SORT_VALUES = new Set(["recent", "name"]);
 const sidebarUI = (() => {
+  // Defaults are the authoritative shape; any stored value not matching the
+  // current enum (e.g. after a release renames "warning" → "failed") gets
+  // dropped silently rather than wedging the filter to show zero cards.
   const defaults = { query: "", status: "all", sort: "recent" };
   try {
     const stored = JSON.parse(localStorage.getItem(SIDEBAR_LS_KEY) || "{}");
-    return { ...defaults, ...stored };
+    return {
+      query: typeof stored.query === "string" ? stored.query : defaults.query,
+      status: SIDEBAR_STATUS_VALUES.has(stored.status) ? stored.status : defaults.status,
+      sort: SIDEBAR_SORT_VALUES.has(stored.sort) ? stored.sort : defaults.sort,
+    };
   } catch { return { ...defaults }; }
 })();
 function persistSidebarUI() {
@@ -152,29 +161,17 @@ async function loadWorkspaces({ quiet = false } = {}) {
 
   const list = summaries.map(s => s.name);
   state.workspaceSummaries = summaries;
-
-  const sel = $("#ws-select");
-  const prevSelection = sel.value;
   const prevList = state.workspaceList || [];
 
-  // Mirror into the legacy <select> (kept until P4 retires it; remains the
-  // a11y fallback + the source of truth for the active workspace value).
-  sel.innerHTML = "";
-  for (const name of list) {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    sel.appendChild(opt);
-  }
-  sel.onchange = () => switchWorkspace(sel.value);
-
-  // Preserve selection across the rebuild — otherwise the quiet poll would
-  // re-trigger switchWorkspace every tick and tear down SSE / player state.
-  if (prevSelection && list.includes(prevSelection)) {
-    sel.value = prevSelection;
-  } else {
+  // Decide which workspace to select: priority order is
+  //   1. whatever's already active (state.ws set by a prior switch)
+  //   2. ?ws= URL param (deep link / page reload)
+  //   3. first workspace in the (newly sorted) list
+  // Resolved here so renderSidebar can highlight + switchWorkspace can fire.
+  let selection = state.ws;
+  if (!selection || !list.includes(selection)) {
     const wsFromUrl = new URLSearchParams(location.search).get("ws");
-    if (wsFromUrl && list.includes(wsFromUrl)) sel.value = wsFromUrl;
+    selection = (wsFromUrl && list.includes(wsFromUrl)) ? wsFromUrl : list[0];
   }
 
   // Detect newly-appeared workspaces. Skip toasting on the very first load
@@ -182,21 +179,19 @@ async function loadWorkspaces({ quiet = false } = {}) {
   const fresh = list.filter(n => !prevList.includes(n));
   state.workspaceList = list;
 
-  // Render sidebar AFTER deciding sel.value so the highlight matches.
-  renderSidebar(summaries, sel.value);
+  // Render sidebar with the decided active selection so the highlight matches.
+  renderSidebar(summaries, selection);
 
   if (!quiet || prevList.length === 0) {
     // Explicit load: switch to the (preserved or first) selection so the
     // dashboard fills with data.
-    if (list.length && !state.ws) switchWorkspace(sel.value);
+    if (list.length && !state.ws) switchWorkspace(selection);
   } else {
     // Quiet poll: workspace appeared while user wasn't watching. Toast it.
     // If user has nothing selected yet, auto-switch to the newest.
     for (const n of fresh) toast(`new workspace: ${n}`, "info", 6000);
     if (fresh.length && !state.ws) {
-      sel.value = fresh[fresh.length - 1];
-      renderSidebar(summaries, sel.value);
-      switchWorkspace(sel.value);
+      switchWorkspace(fresh[fresh.length - 1]);
     }
   }
 }
@@ -235,12 +230,13 @@ function renderSidebar(summaries, activeName) {
   for (const chip of document.querySelectorAll(".sidebar-chip")) {
     const k = chip.dataset.status;
     const n = counts[k] ?? 0;
-    // Compact label "ALL·6"; count gets its own span so CSS can dim it
-    // without dimming the label. Cache the base label on first render.
-    if (!chip.dataset.label) chip.dataset.label = chip.textContent.trim();
-    chip.innerHTML = `${escapeHtml(chip.dataset.label)}<span class="sidebar-chip-count">${n}</span>`;
+    // Label authored in HTML (data-label) so it survives an initial render
+    // before any user interaction.  Count gets its own span so CSS can dim
+    // it without dimming the label.
+    const label = chip.dataset.label || chip.textContent.trim();
+    chip.innerHTML = `${escapeHtml(label)}<span class="sidebar-chip-count">${n}</span>`;
     chip.classList.toggle("is-active", k === sidebarUI.status);
-    chip.setAttribute("aria-selected", k === sidebarUI.status ? "true" : "false");
+    chip.setAttribute("aria-pressed", k === sidebarUI.status ? "true" : "false");
   }
 
   if (!filtered.length) {
@@ -267,14 +263,17 @@ function renderSidebar(summaries, activeName) {
   list.innerHTML = sorted.map(s => sidebarCardHtml(s, s.name === activeName)).join("");
   list.scrollTop = prevScroll;
 
-  // Reflect sort mode on the sort button (icon class).
+  // Reflect sort mode on the sort button (icon class + aria + title).
+  // The button's text node is empty in HTML; ::before paints the active
+  // glyph (clock for recent, "A→Z" for name) so we never see both at once.
   const sortBtn = $("#sidebar-sort");
   if (sortBtn) {
     sortBtn.classList.toggle("by-recent", sidebarUI.sort === "recent");
     sortBtn.classList.toggle("by-name", sidebarUI.sort === "name");
+    sortBtn.setAttribute("aria-pressed", sidebarUI.sort === "name" ? "true" : "false");
     sortBtn.title = sidebarUI.sort === "recent"
-      ? "Sort: recent activity first (click for name)"
-      : "Sort: name A-Z (click for recent)";
+      ? "Sort: recent activity (click for A→Z)"
+      : "Sort: A→Z (click for recent)";
   }
 
   // Single delegated click handler — replaced every render, no leak.
@@ -283,7 +282,6 @@ function renderSidebar(summaries, activeName) {
     if (!card) return;
     const name = card.dataset.ws;
     if (!name || name === state.ws) return;
-    $("#ws-select").value = name;
     switchWorkspace(name);
     for (const el of list.querySelectorAll(".ws-card")) {
       el.classList.toggle("is-active", el.dataset.ws === name);
@@ -391,8 +389,17 @@ async function switchWorkspace(ws) {
   url.searchParams.set("ws", ws);
   history.replaceState(null, "", url);
 
-  // Re-render sidebar so any path (dropdown change, URL ?ws=, direct click)
-  // ends with the correct card highlighted — without waiting for the 8s poll.
+  // Update the nav "CURRENT" display (replaced the old <select> in P4).
+  const cur = $("#nav-current-ws");
+  if (cur) {
+    cur.textContent = ws || "—";
+    cur.title = ws || "—";
+    cur.classList.toggle("empty", !ws);
+  }
+
+  // Re-render sidebar so any path (URL ?ws=, direct click, programmatic
+  // call) ends with the correct card highlighted — without waiting for the
+  // 8s poll.
   if (state.workspaceSummaries) renderSidebar(state.workspaceSummaries, ws);
 
   renderAll();
@@ -850,10 +857,9 @@ async function watchForNewWorkspace(jobId) {
       const fresh = list.find(name => !before.has(name));
       if (fresh) {
         toast(`workspace created: ${fresh}`, "info");
-        // Update the select + switch.
+        // Refresh the sidebar list, then switch — switchWorkspace will
+        // re-render the sidebar so the new card is highlighted.
         await loadWorkspaces();
-        const sel = $("#ws-select");
-        sel.value = fresh;
         switchWorkspace(fresh);
         return;
       }
@@ -1252,25 +1258,32 @@ document.addEventListener("DOMContentLoaded", () => {
     renderSidebar(state.workspaceSummaries || [], state.ws);
 
   // Search: input fires on every keystroke (incl. the X clear button on type=search).
-  $("#sidebar-search").addEventListener("input", (e) => {
-    sidebarUI.query = e.target.value;
-    persistSidebarUI();
-    reRenderFromCache();
-  });
-  // Restore persisted search on load.
-  $("#sidebar-search").value = sidebarUI.query;
+  const searchEl = $("#sidebar-search");
+  if (searchEl) {
+    searchEl.addEventListener("input", (e) => {
+      sidebarUI.query = e.target.value;
+      persistSidebarUI();
+      reRenderFromCache();
+    });
+    // Restore persisted search on load.
+    searchEl.value = sidebarUI.query;
+  }
 
   // Status filter chips (delegated to the chip row).
-  $("#sidebar-chips").addEventListener("click", (e) => {
+  $("#sidebar-chips")?.addEventListener("click", (e) => {
     const chip = e.target.closest(".sidebar-chip");
     if (!chip) return;
-    sidebarUI.status = chip.dataset.status;
+    const next = chip.dataset.status;
+    // Guard against a malformed chip — only allow known enum values to land
+    // in persistent state (same defense as the localStorage load path).
+    if (!SIDEBAR_STATUS_VALUES.has(next)) return;
+    sidebarUI.status = next;
     persistSidebarUI();
     reRenderFromCache();
   });
 
   // Sort toggle (recent ⇄ name).
-  $("#sidebar-sort").addEventListener("click", () => {
+  $("#sidebar-sort")?.addEventListener("click", () => {
     sidebarUI.sort = sidebarUI.sort === "recent" ? "name" : "recent";
     persistSidebarUI();
     reRenderFromCache();
