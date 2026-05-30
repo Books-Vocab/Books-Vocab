@@ -973,6 +973,7 @@ examples:
             print(f"  Either resume from the earliest missing stage:")
             print(f"    uv run pipeline.py {workspace} --skip-to {missing[0]}")
             print(f"  Or pass --force to override (downstream may fail on absent artifacts).")
+            print(f"  See .claude/skills/podcast/SKILL.md §階段控制 for details.")
             sys.exit(1)
 
     log = PipelineLog(workspace)
