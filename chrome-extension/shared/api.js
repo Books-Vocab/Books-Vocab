@@ -23,7 +23,7 @@ async function getToken() {
  * Authenticated fetch wrapper.
  * - Attaches Authorization: Bearer header when token exists.
  * - On 401 clears the token and dispatches a re-login notification.
- * - On 403 rejects with a quota-exceeded error.
+ * - On 429 rejects with a quota-exceeded error (matches backend QuotaExceededError).
  *
  * @param {string} path — relative to API_BASE (e.g. '/api/translate')
  * @param {RequestInit} [opts]
@@ -61,8 +61,11 @@ async function apiFetch(path, opts = {}) {
     throw new ApiError('auth_expired', '登入已過期，請重新登入', 401);
   }
 
-  if (res.status === 403) {
-    throw new ApiError('quota_exceeded', '已達使用上限', 403);
+  // Backend QuotaExceededError surfaces as HTTP 429 (exceptions.py). A 403 is a
+  // genuine ForbiddenError (e.g. another user's notebook) — let it fall through
+  // to the generic branch rather than mislabel it as a quota hit.
+  if (res.status === 429) {
+    throw new ApiError('quota_exceeded', '已達使用上限', 429);
   }
 
   if (!res.ok) {

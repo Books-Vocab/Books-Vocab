@@ -85,7 +85,7 @@ function classifyError(response) {
     };
   }
 
-  if (code === 'quota_exceeded' || status === 403) {
+  if (code === 'quota_exceeded' || status === 429) {
     return {
       icon: '⏳',
       title: '已達使用上限',
@@ -307,7 +307,10 @@ function safeUrl(raw, fallback = '#') {
     const parsed = new URL(trimmed, 'https://invalid.example/');
     const proto = parsed.protocol;
     if (proto === 'http:' || proto === 'https:' || proto === 'chrome-extension:') {
-      return trimmed;
+      // Return the normalized href, not the raw input: `URL` percent-encodes
+      // characters that are dangerous in an attribute context (notably `"`),
+      // closing the attribute-breakout vector at the source.
+      return parsed.href;
     }
     return fallback;
   } catch (_err) {
@@ -319,12 +322,10 @@ function safeUrl(raw, fallback = '#') {
  * Escape HTML special characters so a user-controlled string can be safely
  * concatenated into a markup template literal (e.g. `innerHTML = ...`).
  *
- * Mirrors the encoding the browser applies when round-tripping a string
- * through `textContent` → `innerHTML` (the prior implementation used a
- * detached `<span>` for exactly that). Encodes `&`, `<`, `>`. Browsers don't
- * encode `"` or `'` in that round-trip (those characters are only ambiguous
- * inside attribute values, which the DOM already handles), so neither do we
- * — preserving the previous behaviour byte-for-byte.
+ * Encodes `&`, `<`, `>`, `"` and `'`. The quote characters are encoded so the
+ * output is safe to interpolate into a `"`-wrapped (or `'`-wrapped) attribute
+ * value — e.g. `href="${escapeHtml(url)}"` — without a raw quote breaking out
+ * of the attribute and injecting markup.
  *
  * Pure (no DOM dependency) so it's testable under `node:test`. Mirrored
  * inline by `content/content.js`, which runs in an isolated world without
@@ -337,7 +338,9 @@ function escapeHtml(str) {
   return String(str == null ? '' : str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 const KGPureExports = {
