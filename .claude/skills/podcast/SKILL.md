@@ -138,9 +138,9 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 ## Workspace 命名規則（series_id 約束）
 
-- Workspace 目錄名格式：`<slug>_<hash>`，其中 `slug` 由 `pipeline.py:_sanitize_slug()` 從書名產生
+- Workspace 目錄名格式：`<slug>_<hash>`，其中 `slug` 由 `pipeline.py:_sanitize_slug()`（SoT，`max_len=30`）從書名產生
 - **必須符合 `^[a-z0-9_]+$`**（backend `_SERIES_ID_RE` 與 `ops/podcast_upload.sh` 強制）
-- Sanitize 演算法：lowercase → 非字母數字 → `_` → strip 首尾 `_` → 截斷 30 chars
+- Sanitize 演算法：lowercase → 非字母數字 → `_` → strip 首尾 `_` → 截斷 30 chars → re-rstrip
 - `ops/podcast_upload.sh` 直接用 `basename(workspace)` 當 `series_id`；不合法時上傳成功但 API 全 404
 
 ## 限制 / 依賴
@@ -155,7 +155,7 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
-| `PODCAST_CLAUDE_MODEL` | `opus[1m]` | 全 13 stage 的 `claude -p` model;改 `sonnet` / `opus` 等 |
+| `PODCAST_CLAUDE_MODEL` | `opus[1m]` | Stage 1-10(Claude agent)的 `claude -p` model;stage 11-13 是 Vertex TTS / pydub / Whisper 不受影響。`[1m]` 是 deliberate default — scriptwriter / enricher / series-polish 跨多章推理需 1M context window,改 `sonnet` 前先確認 |
 | `TTS_MODEL` | `gemini-2.5-flash-tts`(`.env` 覆寫為 `gemini-2.5-pro-tts`) | Vertex TTS 模型;部署實際用 Pro,程式碼預設 Flash |
 | `TTS_MAX_CONCURRENT` | `10` | TTS batch 並發上限 |
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
