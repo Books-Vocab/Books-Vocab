@@ -902,3 +902,21 @@
 "a11y.toggle.on" = "On";
 "a11y.toggle.off" = "Off";
 "todayReview.fold.collapse" = "Collapse";
+
+/* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
+"匯出失敗" = "Export failed";
+"設定儲存失敗" = "Failed to save settings";
+"已刪除" = "Deleted";
+"已複製" = "Copied";
+"已取消封存" = "Unarchived";
+"已建立" = "Created";
+"建立失敗" = "Create failed";
+"已更新" = "Updated";
+"更新失敗" = "Update failed";
+"追蹤狀態儲存失敗" = "Failed to save follow state";
+"已匯入" = "Imported";
+"載入中…" = "Loading…";
+"已刪除 %@ 個" = "Deleted %@";
+"已封存 %@ 個" = "Archived %@";
+"已匯入 %@ 本" = "Imported %@";
+"無法取得認證 token：%@" = "Couldn't get auth token: %@";

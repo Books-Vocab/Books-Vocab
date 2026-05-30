@@ -116,7 +116,7 @@ struct CardHeroSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(card.word)
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製")
+                toastCoordinator.success("已複製".localized)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -162,7 +162,7 @@ struct CardExamplesSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(examples.joined(separator: "\n"))
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製")
+                toastCoordinator.success("已複製".localized)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -207,7 +207,7 @@ struct CardSourceSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(copyText)
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製")
+                toastCoordinator.success("已複製".localized)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -250,7 +250,7 @@ struct CardExplanationSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(explanation)
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製")
+                toastCoordinator.success("已複製".localized)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -289,7 +289,7 @@ struct CardFormsSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(forms.joined(separator: ", "))
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製")
+                toastCoordinator.success("已複製".localized)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
