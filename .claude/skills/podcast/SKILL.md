@@ -183,6 +183,7 @@ opt-out env:
 - `DELETE /api/workspace/<n>?confirm=<n>` — 本地砍 workspace(confirm 必須等於名字)
 - `POST /api/workspace/<n>/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`
 - `POST /api/workspace/<n>/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;`pending`(前一相未完成)回 409
+- `POST /api/workspace/<n>/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);與 rerun(單階)、approve(寫標記再續)區隔
 - `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 上傳 EPUB + 跑全流程(預設停在計畫 gate)
 
 **Jobs API**:
