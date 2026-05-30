@@ -140,7 +140,12 @@ class JobTracker:
         # 100 finished-but-retained jobs would hold 100 FDs.
         log_fh = open(log_path, "a", encoding="utf-8")
         try:
-            full_env = {**os.environ, **(env or {})}
+            # PODCAST_JOB_ID lets the child write a `<workspace>/.pipeline_job_id`
+            # sidecar so the dashboard's "active workspace" lookup can pair a
+            # running pipeline job (which doesn't know its workspace at spawn
+            # time, since the EPUB hash determines it inside stage 1) back to
+            # the workspace it created.
+            full_env = {**os.environ, **(env or {}), "PODCAST_JOB_ID": job_id}
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(cwd),

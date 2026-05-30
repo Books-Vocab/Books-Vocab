@@ -122,18 +122,35 @@ def list_workspaces(full: bool = Query(False)):
     if not full:
         return names
 
-    # Single job-table scan, then O(1) lookup per workspace.
+    # Pair running jobs back to their workspaces.
+    # Two routes:
+    #   1. metadata.workspace is set — upload / rerun jobs know the workspace
+    #      at spawn time (caller passed it in).
+    #   2. Sidecar `<ws>/.pipeline_job_id` written by pipeline.py once stage 1
+    #      resolves the EPUB→workspace mapping. Used by the pipeline kind,
+    #      whose spawn-time metadata only knows the EPUB filename.
+    running_jobs = {j.id: j for j in jobs.list(limit=200) if j.status == "running"}
     active_by_ws: dict[str, dict] = {}
-    for j in jobs.list(limit=200):
-        if j.status != "running":
-            continue
+    # Route 1: explicit metadata.
+    for j in running_jobs.values():
         ws = (j.metadata or {}).get("workspace")
         if ws and ws not in active_by_ws:
-            active_by_ws[ws] = {
-                "job_id": j.id,
-                "label": j.label,
-                "kind": j.kind,
-            }
+            active_by_ws[ws] = {"job_id": j.id, "label": j.label, "kind": j.kind}
+    # Route 2: sidecar discovery for pipeline (full-EPUB) jobs.
+    if running_jobs:
+        for p in WORKSPACES_DIR.iterdir():
+            if not p.is_dir() or p.name in active_by_ws:
+                continue
+            sidecar = p / ".pipeline_job_id"
+            if not sidecar.exists():
+                continue
+            try:
+                jid = sidecar.read_text().strip()
+            except OSError:
+                continue
+            j = running_jobs.get(jid)
+            if j:
+                active_by_ws[p.name] = {"job_id": j.id, "label": j.label, "kind": j.kind}
 
     return [_workspace_summary(WORKSPACES_DIR / n, active_by_ws.get(n)) for n in names]
 
@@ -267,13 +284,16 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         for model, mb in (cost.get("by_model") or {}).items():
             usd = float(mb.get("usd") or 0.0)
             ml = model.lower()
-            if ml.startswith("claude"):
-                claude_usd += usd
-            elif "gemini" in ml or "tts" in ml or ml.startswith("vertex"):
+            # TTS bucket: must be an actual TTS model. Gemini base models
+            # (gemini-2.5-pro, gemini-2.5-flash) are general LLMs; if a future
+            # stage routes Claude → Gemini for non-audio work, those costs
+            # belong in the LLM bucket, not "tts".
+            if "tts" in ml:
                 tts_usd += usd
             else:
-                # Unknown model — bucket into claude side conservatively so
-                # the totals still match (rather than vanishing).
+                # Everything else (Claude, base Gemini, other LLMs) → claude_usd
+                # bucket. Frontend labels this as "LLM" in the sidebar; the full
+                # /cost endpoint still shows per-model breakdown.
                 claude_usd += usd
         has_cost_data = (ws / "events.jsonl").exists() and total_usd > 0
     except Exception:
