@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31a";
+const APP_VERSION = "2026-05-31b";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -1148,43 +1148,48 @@ function renderAll() {
   renderNavStatus();
 }
 
+// Vertical timeline: one row per stage, top→bottom = pipeline order. State reads
+// from the spine dot + connector colour + name tint; the redundant per-stage
+// "DONE" pill is dropped (it was 11 identical noisy chips) — only the states the
+// producer acts on (running / failed) get an explicit pill.
+const PARALLEL_STAGES = new Set(["scriptwrite", "script-review", "synthesize"]);
+
 function renderStages() {
   const grid = $("#stage-grid");
-  grid.innerHTML = "";
-  for (const stage of STAGES) {
+  const rows = STAGES.map(stage => {
     const s = state.stages[stage] || { status: "pending" };
-    const card = document.createElement("div");
-    const isParallel = stage === "scriptwrite" || stage === "script-review" || stage === "synthesize";
-    card.className = `stage ${s.status || "pending"}${isParallel ? " stage-wide" : ""}`;
+    const status = s.status || "pending";
 
-    let epLine = "";
-    if (isParallel) {
-      const eps = state.parallelEps[stage] || {};
-      const epNums = Object.keys(eps).map(Number).sort((a, b) => a - b);
-      if (epNums.length) {
-        const tiles = epNums.map(n => {
-          const st = eps[n] || "pending";
-          return `<span class="ep-tile ${st}" title="EP${n} · ${st}">${n}</span>`;
-        }).join("");
-        epLine = `<div class="ep-tiles">${tiles}</div>`;
-      }
+    let eps = "";
+    if (PARALLEL_STAGES.has(stage)) {
+      const e = state.parallelEps[stage] || {};
+      const nums = Object.keys(e).map(Number).sort((a, b) => a - b);
+      eps = nums.map(n => {
+        const st = e[n] || "pending";
+        return `<span class="ep-tile ${st}" title="EP${n} · ${st}">${n}</span>`;
+      }).join("");
     }
 
-    const elapsed = s.elapsed_s ? `${s.elapsed_s}s`
-      : s.started_ts ? `started ${fmtTime(s.started_ts)}`
-      : "";
+    const time = s.elapsed_s != null ? `${s.elapsed_s}s`
+      : s.started_ts ? fmtTime(s.started_ts)
+      : "—";
+    const label = stage.toUpperCase();
+    const pill = (status === "running" || status === "failed")
+      ? `<span class="tl-pill tl-pill-${status}">${status}</span>` : "";
 
-    card.innerHTML = `
-      <div class="stage-head">
-        <span class="stage-name">${stage}</span>
-        <span class="stage-pill ${s.status}">${s.status}</span>
-      </div>
-      ${epLine}
-      ${elapsed ? `<div class="stage-meta">${elapsed}</div>` : ""}
-      <button class="stage-rerun" data-rerun-stage="${stage}" title="Re-run ${stage}">↻</button>
-    `;
-    grid.appendChild(card);
-  }
+    return `
+      <div class="tl-row tl-${status}">
+        <span class="tl-spine"><span class="tl-dot"></span></span>
+        <span class="tl-name" title="${label}">${label}</span>
+        <span class="tl-eps">${eps}</span>
+        <span class="tl-meta">
+          ${pill}
+          <span class="tl-time tabular">${time}</span>
+          <button class="tl-rerun" data-rerun-stage="${stage}" title="Re-run ${label}" aria-label="Re-run ${label}">↻</button>
+        </span>
+      </div>`;
+  }).join("");
+  grid.innerHTML = `<div class="timeline">${rows}</div>`;
 }
 
 function renderKpis() {
