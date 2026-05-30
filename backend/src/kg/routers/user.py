@@ -31,9 +31,8 @@ router = APIRouter()
 
 
 @router.get("/api/user/config", response_model=UserConfigResponse)
-def get_user_config(request: Request, user: dict = Depends(get_current_user)):
-    settings = request.app.state.kg_settings
-    return get_user_config_response(user, jwt_secret=settings.jwt_secret)
+def get_user_config(user: dict = Depends(get_current_user)):
+    return get_user_config_response(user)
 
 
 @router.get("/api/user/entitlements", response_model=EntitlementsResponse)
@@ -55,7 +54,6 @@ def update_user_config(req: UserConfigRequest, request: Request, user: dict = De
         users_lock_file=settings.users_lock_file,
         load_users=request.app.state.load_users,
         save_users=request.app.state.save_users,
-        jwt_secret=settings.jwt_secret,
     )
 
 

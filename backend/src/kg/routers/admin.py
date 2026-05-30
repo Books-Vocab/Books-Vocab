@@ -21,7 +21,7 @@ def build_login_routes(
     router = APIRouter()
 
     @router.get("/admin/login", response_class=HTMLResponse, include_in_schema=False)
-    async def admin_login_get(request: Request):
+    async def admin_login_get():
         from ..admin_handlers import admin_login_page
         settings = runtime_settings_fn()
         return admin_login_page(password_enabled=bool(settings.admin_password))
@@ -54,7 +54,7 @@ def build_html_admin_router(
 ) -> APIRouter:
     router = APIRouter()
 
-    def _is_authed(request: Request, token, authorization, cookie_token) -> bool:
+    def _is_authed(token, authorization, cookie_token) -> bool:
         admin_token = runtime_settings_fn().admin_token
         return check_admin_auth(
             token=token,
@@ -70,7 +70,7 @@ def build_html_admin_router(
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
     ):
-        if not _is_authed(request, token, authorization, admin_session):
+        if not _is_authed(token, authorization, admin_session):
             return RedirectResponse("/admin/login", status_code=302)
         return admin_ui()
 
@@ -81,7 +81,7 @@ def build_html_admin_router(
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
     ):
-        if not _is_authed(request, token, authorization, admin_session):
+        if not _is_authed(token, authorization, admin_session):
             return RedirectResponse("/admin/login", status_code=302)
         return admin_tests_ui()
 
@@ -92,7 +92,7 @@ def build_html_admin_router(
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
     ):
-        if not _is_authed(request, token, authorization, admin_session):
+        if not _is_authed(token, authorization, admin_session):
             return RedirectResponse("/admin/login", status_code=302)
         return admin_tests_ui()
 
@@ -105,7 +105,7 @@ def build_html_admin_router(
             authorization: str | None = Header(None),
             admin_session: str | None = Cookie(None),
         ):
-            if not _is_authed(request, token, authorization, admin_session):
+            if not _is_authed(token, authorization, admin_session):
                 return RedirectResponse("/admin/login", status_code=302)
             return admin_user_detail_ui()
 
