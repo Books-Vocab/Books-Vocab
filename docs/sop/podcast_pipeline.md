@@ -1,0 +1,312 @@
+<!-- doc-meta
+tier: sop
+authority: derived
+update_trigger: code-change
+scope:
+  - lab/podcast/
+  - ops/podcast_upload.sh
+verified_against: aa47c723
+-->
+# KG Podcast Pipeline SOP
+
+書 → podcast 全流程的工程文檔。`.claude/skills/podcast/SKILL.md` 是 agent 操作手冊（CLI 速查）；這份是**為什麼這樣做、壞了怎麼救**。
+
+關聯文檔:
+- `docs/reference/feature_boundary/podcast.md` — iOS player 邊界
+- `docs/sop/backend.md` §podcast — `/api/podcasts*` serving
+- `docs/reference/tech_index.md` — `podcast.py` router + `podcast_progress.py` SoT
+
+---
+
+## 1. 13 階段架構
+
+主控 `lab/podcast/pipeline.py`，順序執行：
+
+```
+EPUB
+ ├ 1. prep            raw chapters → clean chapters
+ ├ 2. analyst         深度分析(結構/論證/概念/引句)
+ ├ 3. architect       製作決策 + Voice Mapping(host TBD)
+ ├ 4. plan-review     QA gate(REWRITE_NEEDED / FAIL>2 → 失敗)
+ ├ 5. enricher-gap    識別研究需求
+ ├ 6. enricher        web 搜尋外部佐證(+WebSearch/WebFetch)
+ ├ 7. scriptwrite     ×N 平行寫稿(ProcessPoolExecutor)
+ ├ 8. series-polish   跨集拋光(callback/running bits/弧收束)
+ ├ 9. script-review   ×N 平行 QA(REWRITE_NEEDED → 失敗)
+ ├10. tts-prep        最終 TTS 審查 + Voice Mapping TBD→實際 voice
+ ├11. synthesize      Vertex Gemini TTS + ffmpeg loudnorm
+ ├12. audio-qa        pydub wpm/silence/clipping(FAIL 阻斷)
+ └13. subtitle        Whisper forced alignment → 詞級 SRT
+```
+
+> ⚠ `pipeline.py:31-42` docstring 與 argparse epilog 仍寫「10 stages」，是過時資訊，實際 `STAGES` list (`pipeline.py:74-81`) 為 13 個。
+
+### Stage marker / resume
+
+每 stage 成功 `stage_end()` 寫 `.stage_<name>_done`（內容 ISO timestamp）。`detect_resume_point()` 找第一個沒 marker 的 stage。傳 workspace 目錄無 `--skip-to` 時自動 resume。
+
+**脆弱點**:marker 僅代表「stage 函式回傳 True」，不驗證產物完整性、不對 EPUB/prompt 做 input-hash。手動刪中間檔但留 marker → resume 會跳過。改 prompt 不會讓下游 marker 失效——大改 prompt 後請手動 `rm -f .stage_*_done` 從適當階段重跑。
+
+### Range 控制
+
+| flag | 行為 |
+|---|---|
+| `--skip-to S` | 從 stage S 起跑 |
+| `--stop-after S` | 跑到 S 為止 |
+| `--only-stage S` | 只跑 S(等價 skip-to=stop-after) |
+| `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
+| `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
+
+### 三個 QA gate
+
+| stage | gate 條件 | 判讀檔 |
+|---|---|---|
+| plan-review | 含 `REWRITE_NEEDED` 或 `FAIL` 計數 >2 → 失敗 | `plan/review.md` |
+| script-review | 任一集 `ep_N_review.md` 含 `REWRITE_NEEDED` → 失敗 | `scripts/ep_N_review.md` |
+| series-polish | 含 `STRUCTURAL_ISSUES_NEED_RESCRIPT` → 失敗;guard 每個 script 仍以 `END_OF_SCRIPT` 結尾(polish 不可剝 sentinel) | `plan/series_polish.md` |
+| tts-prep | `plan/tts_prep.md` 含 `READY_FOR_TTS` 且不含 `BLOCKED` | `plan/tts_prep.md` |
+
+---
+
+## 2. overview.md 格式契約
+
+**Voice Mapping 是 host 名 + voice 配對的唯一 source of truth。** `synthesize.py:101` `_parse_overview_hosts` 與 `ops/podcast_upload.sh:117` 都解析這個區塊;格式不對 = host 解析失敗。
+
+```markdown
+### Voice Mapping
+- **Marcus (Charon)**: Speaker1
+- **Priya (Leda)**: Speaker2
+```
+
+Regex: `\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])`
+
+### 強制規則(architect.md prompt 已寫入)
+
+1. **必須有兩條** `**Name (Voice)**: SpeakerN` 行，否則 synthesize 在 `_parse_overview_hosts:110-125` hard-fail。
+2. **host 名不可含 `:` 或 `*`**——`audio_qa.py:47` / `synthesize.py:177` / `subtitle.py:55` 統一用 `[^:*]+` 解析 speaker tag(commit `aa47c723` 後對齊)。空格、連字號、unicode 字母都可以。單詞名仍較好讀但已非硬性要求。
+3. **tts-prep 之前 voice 必須是 `(TBD)`**，tts-prep stage 才替換成實際 Gemini voice 名。
+
+> 歷史 bug:upload.sh 曾用 `### Host A:` regex 抓 host(prompt 從未規範的格式)，5/6 production workspace 全空 → metadata.json `hostNames=[]`。修於 `aa47c723`，改用 Voice Mapping。
+
+---
+
+## 3. 音頻生成（最容易壞的那段）
+
+### Vertex 認證
+
+`synthesize.py:43-51` `load_dotenv(ROOT/.env)` 讀 `lab/podcast/.env`:
+
+```
+GCP_PROJECT_ID=gen-lang-client-*****
+GCP_LOCATION=us-central1
+GOOGLE_APPLICATION_CREDENTIALS=gen-lang-client-*****-*.json
+TTS_MODEL=gemini-2.5-pro-tts
+```
+
+- 走 **Vertex AI 模式**(`vertexai=True`, `synthesize.py:326`)，非 AI Studio API key。
+- `GOOGLE_APPLICATION_CREDENTIALS` 是 service account JSON 路徑(相對路徑會解析成 script-dir 絕對路徑)。
+- **金鑰歸屬與輪替**:當前 SA 是 GCE 預設 compute SA(`986467056383-compute@developer.gserviceaccount.com`)，權限過大。中期應換成 minimal-scope SA(僅 `roles/aiplatform.user`) + 定期輪替。換機/換帳號時更新 `.env` 與金鑰 JSON 即可，不需改 code。
+- `.env` 與金鑰 JSON 已被 `.gitignore`(`lab/podcast/.env`、`lab/podcast/gen-lang-client-*.json`)。
+
+### 模型選擇
+
+| TTS_MODEL | 用途 |
+|---|---|
+| `gemini-2.5-pro-tts` | 預設，自然度高，配額嚴(易 429) |
+| `gemini-2.5-flash-tts` | 降級備援，速度快、配額寬，但表情/節奏較弱 |
+| `gemini-2.5-flash-preview-tts` | preview 用，舊命名 |
+
+`prompts/tts_prep.md:24` 仍寫「backend is Gemini 2.5 Flash」是過時文案，實際以 `.env:TTS_MODEL` 為準。pro/flash 在單一 workspace 內可混用(每集分別 synth)，但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用，難 debug。
+
+### 655s padding bug 防線(必讀)
+
+Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922):batch 結尾若是很短的 turn，音檔會被 silence 強制 pad 到 ~655s。**`synthesize.py` 有三層防線**:
+
+1. **`MIN_BATCH_END_WORDS=5`(`:256`)** + **`MAX_WORDS_PER_BATCH=800`(`:67`)**:`chunk_turns()` 確保 batch 不結束於 <5 字 turn(`:289`/`:303`)。
+2. **system prompt 刻意不用 `Speaker1:` 行格式**(`:128-139`):那行被 TTS 當對白唸出 persona 描述，會撐到 655s。
+3. **`_trim_trailing_silence()`(`:374`)**:reverse + `detect_leading_silence` 切 <-45dBFS 尾巴，保留 400ms 自然呼吸。
+
+> 改 `chunk_turns` 或 system prompt 前先讀完上述三段。動掉任何一層都會復發 655s bug。
+
+### 並發 / 重試 / timeout
+
+| env | default | 說明 |
+|---|---|---|
+| `TTS_MAX_CONCURRENT` | 10 | ThreadPoolExecutor batch 並發上限 |
+| `TTS_RETRY_ATTEMPTS` | 4 | 429/503 outer-level 重試 |
+| `TTS_BATCH_TIMEOUT` | 600 | 單 batch 的 future wall-clock timeout(秒) |
+| `TTS_MASTER_LUFS` | -16 | Apple Podcasts 標準整合響度 |
+| `TTS_MASTER` | 1 | 設 0 跳過 loudnorm(無 ffmpeg 自動降級) |
+
+**429 特殊退避**(`synthesize.py:419-422`):per-minute quota 必須等 ≥60s，所以 backoff = `60 + 15*attempt + random*5`，其他 transient 用 `2^attempt`。**這條不能改成統一指數退避**——429 用指數退避會 thrash。
+
+### ffmpeg loudnorm mastering
+
+兩遍 EBU R128(`_master_with_loudnorm` `:550`)。Pass1 跑 `loudnorm=...:print_format=json`，從 **stderr** 用 `re.search(r"\{[\s\S]*?\}")` 撈 measured params;Pass2 套 `linear=true` + 48kHz MP3 192k 輸出。Target `-16 LUFS / TP=-1.5 / LRA=11`。失敗 fallback 純 export(`:628`)，音量不會正規化但不阻斷。
+
+**ffmpeg 必裝**:`brew install ffmpeg`。
+
+### Batch 快取
+
+`<cache>/batch_NN.wav` 存單 batch 中間結果。Phase 1 載入既有 wav(跳過 API)，Phase 2 只跑缺的。synthesize **中斷續跑** = 直接重跑同指令，已成功的 batch 自動 skip。
+
+---
+
+## 4. 字幕(Whisper forced alignment)
+
+`subtitle.py` 用 **`stable-whisper`**(stable-ts 套件)`model.align(audio, plain_text, language="en")`——**forced alignment 而非轉錄**，餵 script 文字當 ground truth。
+
+| 設定 | 值 | 備註 |
+|---|---|---|
+| 預設模型 | `medium`(`:238`) | docstring `:22` 寫 `base` 是過時 |
+| 語言 | 寫死 `"en"`(`:219`) | **非英文 podcast 無法正確對齊**——未支援中文 |
+| 平行度 | 不可平行 | 每集 `load_model` 重載(`:212`)，RAM 大；序列 for-loop 處理多集 |
+
+### speaker 對齊的隱形假設
+
+`build_word_speaker_map`(`:116`)按 **word index** 對應 speaker:假設 Whisper 對齊出的字數 **完全等於 script 字數**。若 alignment 漏字/多字 → speaker tag 整段位移，且**無 assertion、無 warning**(silent corruption)。
+
+**判讀**:聽 SRT 開頭幾秒，若 speaker tag 與真實對話對不上 → alignment 出問題。當前無自動偵測。
+
+---
+
+## 5. 從生成到上線(銜接資料流)
+
+```
+lab/podcast/workspaces/<slug>_<hash>/
+  plan/overview.md                  ← Voice Mapping(host SoT)
+  scripts/ep_N_{pro,flash}.mp3      ← TTS 產出
+  scripts/ep_N_{pro,flash}.srt      ← Whisper 對齊
+  scripts/ep_N_script.md            ← 原稿
+       │
+       │  ./ops/podcast_upload.sh <workspace>
+       ▼
+staging /tmp/podcast_upload_<sid>/   ← 重組成 ep_NN/ 結構
+       │  rsync -avz --partial --partial-dir=.rsync-partial --delay-updates
+       ▼
+SERVER:~/knowledge_graph_api/data/podcasts/<sid>/
+  metadata.json                     ← upload.sh 從 overview.md 解析生成
+  ep_NN/{audio.mp3, subtitle.srt, script.md}
+       │
+       │  ssh flock /tmp/podcast_index.lock → 重建 data/podcasts/index.json
+       ▼
+backend /api/podcasts*               ← podcast.py router(全認證)
+       │
+       ▼
+iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress
+```
+
+### upload.sh idempotent 保證
+
+- `_SERIES_ID_RE = ^[a-z0-9_]+$` 預先驗證 series_id(對齊 backend `_SERIES_ID_RE`)
+- 抓遠端既有 `metadata.json` 保留 `createdAt`(避免 re-upload 重設創建時間)
+- pro/flash 同集去重(pro 優先)
+- rsync `--delay-updates` = 原子換檔(防半傳輸 mp3 被 serve)
+- index 重建走 `flock` + tmp + `os.replace` 原子 swap
+
+### metadata.json schema
+
+由 `ops/podcast_upload.sh:185-196` 產生，`PodcastSeriesDetail`(`SyncService.swift:17`)消費:
+
+| 欄位 | 來源 | 備註 |
+|---|---|---|
+| `id` | basename(workspace) | = series_id |
+| `title` | overview.md H1 | |
+| `author` | overview.md `**Type**:` | **語意錯置**——實際是書籍類型而非作者(未修;影響低) |
+| `hostNames` | Voice Mapping `**Name (...)**: SpeakerN` | 已修於 aa47c723 |
+| `color` / `coverPattern` | 硬編碼 `#5B8C5A` / `waves` | 永遠固定;未來改差異化封面要 overview.md 新增欄位 |
+| `episodes[].durationSec` | ffprobe(缺則 0) | |
+| `episodes[].subtitleContent` | inline SRT 全文 | iOS 端直接消費，省一次認證 RTT |
+
+`index.json` = `metadata.json` 去掉 `episodes` + 加 `episodeCount`。
+
+`localAudioPath` **不在後端 JSON**，是 iOS SwiftData 欄位，由 `PodcastDownloadManager` 寫入 `Documents/podcast-downloads/<sid>/<remoteId>.mp3`(離線下載)。
+
+### legacy mount 已下線
+
+`/api/podcast-media/` StaticFiles mount 已於 **2026-05** 移除(commit `7353d31a`)。
+- 移除依據:生產 deprecation log 12 天零 hit + 認證端點 734 hit → 全 client 已遷移。
+- 唯一 audio 路徑:`GET /api/podcasts/{sid}/{ep_num}/audio`(Bearer JWT，支援 Range/206)。
+- 防回歸測試:`test_legacy_podcast_media_mount_removed`(test_podcast_api.py)。
+
+---
+
+## 6. 排障 runbook
+
+### Synthesize 中途中斷(let_them 案例)
+
+症狀:某些 ep 有 pro.mp3、某些只有 flash.mp3、某些缺;`pipeline_log.jsonl` 顯示 synthesize 後沒有 `.stage_synthesize_done`。
+
+排查:
+1. `rm .stage_synthesize_done`(若存在)。
+2. `uv run synthesize.py workspaces/<name>/scripts/` 直接重跑——已成功的 batch 走 cache，缺的補。
+3. 若混用 pro/flash 想統一回 pro:`rm scripts/ep_N_flash.{mp3,srt}` + `rm -rf scripts/.cache/*` 後重跑。
+4. 若連續 429:檢查 `TTS_MAX_CONCURRENT`(降到 3-5)、確認金鑰專案配額(`gcloud --project <pid> ai-platform quotas list`)。
+
+### scriptwrite/script-review 失敗看不到 log
+
+根因:`pipeline.py:401,418` 平行子行程傳 `log=None`，agent stderr 不進 `pipeline_log.jsonl`，只到 stdout。
+
+繞道:
+1. `--parallel 1` 改序列跑，stderr 進 `pipeline_log.jsonl`。
+2. 或 `--only-stage scriptwrite --only-episode N` 跑單集直接看 stdout。
+3. 各 worker 失敗仍會寫 `claude_<label>.stderr.log`(workspace 根目錄)。
+
+### audio-qa FAIL 判讀
+
+`audio_qa.json` 內每集會有 `wpm`、`max_silence_ms`、`peak_dbfs`、`avg_dbfs`。
+- `wpm < 110 or > 200` = TTS 撐長或念太快;通常是 chunk 問題或 655s padding 沒清乾淨。
+- `max_silence_ms > 4000` = 中間有可疑長靜音;聽 audio 確認。
+- `peak_dbfs >= -0.5` = clipping;loudnorm 失敗或 fallback 純 export。
+- `avg_dbfs < -30` = 整體幾乎靜音;TTS 失敗或檔損。
+
+### 字幕 speaker tag 整段錯位
+
+根因:Whisper 對齊字數 ≠ script 字數(見 §4)。當前無自動修復。
+- 短期:用文字編輯器手動切 SRT 修正開頭 speaker tag。
+- 長期:`build_word_speaker_map` 應改成 token-overlap 對齊而非 index 對齊。
+
+### plan-review / script-review REWRITE_NEEDED
+
+不是錯誤，是 QA gate。讀對應 review.md 看 reviewer 指出的問題:
+- plan-review:`plan/review.md`
+- script-review:`scripts/ep_N_review.md`
+
+調整 prompt / source 後 `rm .stage_<stage>_done` + 重跑該 stage。連續 REWRITE 3 次以上要懷疑是 reviewer prompt 過嚴而非 plan 真的壞。
+
+### Voice Mapping 解析失敗
+
+症狀:synthesize `_parse_overview_hosts` 報 `Expected 2 hosts in Voice Mapping`，或 upload.sh 印 `⚠ no Voice Mapping section found`。
+
+修法:
+1. 確認 `plan/overview.md` 內有 `### Voice Mapping` 區塊且兩行 host 都是 `**Name (Voice)**: SpeakerN` 格式(見 §2)。
+2. 確認 voice 不再是 `(TBD)`——tts-prep stage 應已替換。若沒，`rm .stage_tts-prep_done` 重跑 tts-prep。
+
+---
+
+## 7. 已知技術債(優先級排序)
+
+| 優先 | 項目 |
+|---|---|
+| 高 | compute 預設 SA 金鑰權限過大，應換 minimal-scope SA 並輪替 |
+| 中 | `pipeline.py` docstring 寫 10 stages 實 13;`subtitle.py:22` 寫 base 實 medium;`tts_prep.md:24` 寫 Flash 實 pro |
+| 中 | scriptwrite/script-review 平行 stage 吞 agent 錯誤(`log=None`) |
+| 中 | Whisper speaker tag word-index 對齊脆弱、無 assertion |
+| 中 | 缺 unit test:`chunk_turns` / `_parse_overview_hosts` / `parse_script` / `script_word_count` |
+| 低 | `chunk_turns` 邊界 turn 可超出 800 word soft budget(無硬上限) |
+| 低 | `convert_tts.py` + `split.py` 是死碼(寫死 Maya/Kai，不在 13-stage 路徑) |
+| 低 | `author` 欄位塞書籍類型而非作者 |
+| 低 | `color`/`coverPattern` 全 series 硬編碼 |
+| 低 | metadata.json `subtitleContent` 缺與否未做 schema validation(`subtitle_content=null` iOS 會 fetch fallback，但無 warning) |
+
+---
+
+## 8. 監控(`monitor/server.py`)
+
+本機 FastAPI + uvicorn dashboard，預設 `127.0.0.1:8765`。
+
+- `/api/workspaces` — workspace 列表
+- `/api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
+- `/api/workspace/{ws}/stream` — SSE，每 0.5s tail jsonl，15s heartbeat
+
+`events.jsonl` 僅在 `PODCAST_VERBOSE=1` 才有內容(stream-json tool-use 事件)。`start.sh` 是 idempotent 啟停 wrapper(寫 PID file、`lsof` 清 port、`nohup uv run`、curl 健康檢查)。

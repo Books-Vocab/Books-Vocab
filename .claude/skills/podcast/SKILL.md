@@ -6,6 +6,8 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 # Podcast Pipeline Skill
 
+> 工程細節(架構/排障/契約)見 `docs/sop/podcast_pipeline.md`。本檔僅 CLI 速查。
+
 ## 觸發條件
 
 使用者提供一本書的路徑（EPUB），要求產生播客。
@@ -133,8 +135,8 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 ## 限制 / 依賴
 
-- `subtitle.py` 不可平行（Whisper 記憶體大）
-- `synthesize.py` 內部已平行，但 `TTS_MAX_CONCURRENT=3`（避免撞 Vertex 429）
+- `subtitle.py` 不可平行（Whisper 每集 load_model 重載，記憶體大）；預設 `--model medium`，非英文無法正確對齊
+- `synthesize.py` 內部已平行，`TTS_MAX_CONCURRENT=10`（撞 Vertex 429 時降到 3-5）
 - `scriptwrite` / `script-review` 平行度預設 3，用 `--parallel N` 調整
 - **`ffmpeg` 需安裝**（mastering loudnorm 用）；無 ffmpeg 時自動降級為純 export，音量不會正規化
 - Claude agent 每 stage 有 timeout（Enricher 2700s / Scriptwriter 1800s / Reviewer 1200s / 其他 1500s）
@@ -143,8 +145,8 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
-| `TTS_MODEL` | `gemini-2.5-flash-tts` | Vertex TTS 模型（Pro 版：`gemini-2.5-pro-tts`） |
-| `TTS_MAX_CONCURRENT` | `3` | TTS batch 並發上限 |
+| `TTS_MODEL` | `gemini-2.5-pro-tts` | Vertex TTS 模型（降級用 Flash：`gemini-2.5-flash-tts`） |
+| `TTS_MAX_CONCURRENT` | `10` | TTS batch 並發上限 |
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
 | `TTS_MASTER` | `1` | 設 `0` 關閉 loudnorm mastering |
 | `TTS_MASTER_LUFS` | `-16` | 目標整合響度（Apple Podcasts 標準） |
