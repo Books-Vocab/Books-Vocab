@@ -197,13 +197,14 @@
         // sidecar landed have no `model` field — fall back to the short
         // variant tag with a "(?)" suffix to signal the generation is
         // unknown, and surface the same info in the title for clarity.
-        const modelLabel = ep.model || `${ep.variant} (?)`;
-        const modelTitle = ep.model
+        const esc = str => String(str).replace(/[<>&]/g, ch => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[ch]));
+        const modelLabel = esc(ep.model || `${ep.variant} (?)`);
+        const modelTitle = (ep.model
           ? `TTS model: ${ep.model}`
-          : `legacy artifact — full model name unavailable (${ep.variant})`;
+          : `legacy artifact — full model name unavailable (${ep.variant})`).replace(/"/g, "&quot;");
         chip.innerHTML = `
           <span class="ep-chip-num">EP${ep.episode}</span>
-          <span class="ep-chip-meta" title="${modelTitle.replace(/"/g, "&quot;")}">${modelLabel} · ${sizeMb}MB${ep.has_subtitle ? "" : " · no SRT"}</span>
+          <span class="ep-chip-meta" title="${modelTitle}">${modelLabel} · ${sizeMb}MB${ep.has_subtitle ? "" : " · no SRT"}</span>
         `;
         chip.addEventListener("click", () => this.selectEpisode(ep.episode));
         this.elChips.appendChild(chip);
