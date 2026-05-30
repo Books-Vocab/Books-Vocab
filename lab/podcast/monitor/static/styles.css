@@ -532,6 +532,11 @@ html, body {
   padding: 20px;
   animation: backdrop-in 0.18s ease;
 }
+/* The HTML `hidden` attribute is supposed to set display:none, but the rule
+   above has higher specificity than the UA `[hidden] { display: none }` so
+   the attribute had no effect — the modal would never close. Re-state the
+   override with matching specificity + !important so .hidden always wins. */
+.modal-backdrop[hidden] { display: none !important; }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 
 .modal {
