@@ -163,6 +163,7 @@ opt-out env:
 - `GET /api/workspace/<n>/stream` — SSE,tail `pipeline_log.jsonl` + `events.jsonl`
 - `GET /api/workspace/<n>/cost` — 成本聚合(前端每 4 秒 poll)
 - `GET /api/workspace/<n>/episodes` — list ep + variant(pro/flash)+ `model`(full TTS id from sidecar，舊集數無 sidecar 時為 `null`)+ size + has_subtitle
+- `GET /api/workspace/<n>/episodes/status` — 每集四關卡 `{ep,plan,script,audio,subtitle,variant,audio_bytes}`,artifact-derived(plan ∪ scripts,idle workspace 亦回傳);前端 episode matrix 資料源
 - `GET /api/workspace/<n>/episode/<ep>/audio` — MP3 stream(Range / 206 OK)
 - `GET /api/workspace/<n>/episode/<ep>/subtitle` — SRT plain text
 
