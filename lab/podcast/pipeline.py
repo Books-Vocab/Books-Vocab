@@ -69,7 +69,10 @@ ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
 WORKSPACES_DIR = ROOT / "workspaces"
 _UNBUF_ENV = {**os.environ, "PYTHONUNBUFFERED": "1"}
-MODEL = "opus[1m]"
+# Override with PODCAST_CLAUDE_MODEL env (e.g. "sonnet", "opus", "opus[1m]").
+# Default opus[1m] is intentional: pipeline agents (scriptwriter / enricher /
+# series-polish) reason over multi-chapter context and benefit from 1M window.
+MODEL = os.getenv("PODCAST_CLAUDE_MODEL", "opus[1m]")
 # Set PODCAST_VERBOSE=1 to stream claude CLI tool-use events live via stream-json
 _STREAM_JSON = os.getenv("PODCAST_VERBOSE") == "1"
 _VERBOSE_FLAGS = ["--output-format", "stream-json", "--verbose"] if _STREAM_JSON else []
