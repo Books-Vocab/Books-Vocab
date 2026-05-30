@@ -577,6 +577,18 @@ html, body {
   border-color: var(--contra);
   background: rgba(74, 107, 140, 0.04);
 }
+
+/* One-shot pulse on modal open so the click target is unmistakable.
+   Respects prefers-reduced-motion (Phase 4 review nit). */
+@media (prefers-reduced-motion: no-preference) {
+  .dropzone.dropzone-pulse {
+    animation: dz-pulse 0.9s ease-in-out 2;
+  }
+}
+@keyframes dz-pulse {
+  0%, 100% { border-color: var(--borderBase); }
+  50%      { border-color: var(--contra); box-shadow: 0 0 0 4px rgba(74,107,140,0.10); }
+}
 .dropzone-prompt {
   display: flex;
   flex-direction: column;
