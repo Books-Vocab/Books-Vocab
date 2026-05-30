@@ -2,6 +2,20 @@
 // Streams pipeline_log.jsonl + events.jsonl via SSE; pulls cost summary from
 // /api/workspace/<n>/cost (claude CLI's costUSD + Vertex TTS calc).
 
+// Build stamp — visible in the nav so we can tell at-a-glance whether the
+// browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
+const APP_VERSION = "2026-05-30c";
+console.info(`[monitor] app.js loaded · version ${APP_VERSION}`);
+
+// Surface any uncaught JS error to the toast stack so the user sees it
+// instead of having to open DevTools to discover the dashboard is broken.
+window.addEventListener("error", (e) => {
+  console.error("[monitor] uncaught:", e.error || e.message);
+  try { document.querySelector("#toasts") &&
+        document.dispatchEvent(new CustomEvent("monitor-error", { detail: String(e.message) })); }
+  catch {}
+});
+
 const STAGES = [
   "prep", "analyst", "architect", "plan-review",
   "enricher-gap", "enricher", "scriptwrite",
@@ -1015,19 +1029,38 @@ setInterval(() => {
 }, 1000);
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Stamp the loaded version in the nav so user can confirm at a glance
+  // whether the browser is serving fresh JS or a stale cache.
+  const v = document.querySelector("#nav-version");
+  if (v) v.textContent = `v${APP_VERSION}`;
+
   $("#ws-refresh").addEventListener("click", loadWorkspaces);
   $("#act-new").addEventListener("click", openNewPodcastModal);
   $("#act-upload").addEventListener("click", actionUpload);
   $("#act-delete").addEventListener("click", actionDelete);
 
   // Modal: close (esc / backdrop click / cancel / X)
-  $("#modal-close").addEventListener("click", closeNewPodcastModal);
-  $("#modal-cancel").addEventListener("click", closeNewPodcastModal);
-  $("#modal-backdrop").addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) closeNewPodcastModal();
+  //
+  // Delegated on document so a JS error earlier in DOMContentLoaded can't
+  // silently leave the close buttons inert. Whichever code path got the user
+  // INTO the modal also gets them OUT. Even if openNewPodcastModal somehow
+  // ran but this DOMContentLoaded block didn't, the delegated listener on
+  // document still catches the click.
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("#modal-close, #modal-cancel")) {
+      console.debug("[monitor] modal close via button");
+      closeNewPodcastModal();
+      return;
+    }
+    // Backdrop click (outside the modal box) — only when the click landed
+    // ON the backdrop itself, not on a child inside.
+    if (e.target.id === "modal-backdrop") {
+      console.debug("[monitor] modal close via backdrop");
+      closeNewPodcastModal();
+    }
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("#modal-backdrop").hidden) closeNewPodcastModal();
+    if (e.key === "Escape" && !$("#modal-backdrop")?.hidden) closeNewPodcastModal();
   });
 
   // Modal: file picker + drag/drop. The <label class="dropzone"> wrapping
