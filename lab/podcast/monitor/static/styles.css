@@ -472,38 +472,30 @@ body.sidebar-open .sidebar-backdrop {
   align-items: center;
   gap: 8px;
 }
-/* ── Four-segment milestone bar ───────────────────────────────────────
-   One continuous bar split into four equal slots (PLAN→SCRIPT→AUDIO→
-   SUBTITLE). Each slot's inner fill = that gate's completion ratio,
-   coloured by depth (darkest blue left → lightest right) so a glance
-   tells you both overall progress AND which stage a workspace is in.
-   Replaces the old marker-ratio single bar, which lied (markers drift
-   from real artifacts). */
+/* ── Four independent milestone bars ──────────────────────────────────
+   One bar per production gate (PLAN→SCRIPT→AUDIO→SUBTITLE), visually
+   SEPARATED so each reads as its own mini progress bar filled by that
+   gate's real ratio. Position + label identify the stage; a single blue
+   fill (no depth ramp) keeps it calm. Replaces the marker-ratio single
+   bar, which lied (markers drift from real artifacts). */
 .ws-mstrip {
   display: flex;
-  gap: 1px;
+  gap: 4px;          /* clear separation → reads as four distinct bars */
   height: 4px;
-  border-radius: 2px;
-  overflow: hidden;
 }
 .ws-mseg {
   flex: 1;
-  background: var(--borderL);   /* empty-slot track */
+  background: var(--borderL);   /* empty-bar track */
+  border-radius: 2px;           /* each bar rounded independently */
   overflow: hidden;
 }
 .ws-mseg > i {
   display: block;
   height: 100%;
+  background: #2f81c4;          /* one blue for every gate */
   transition: width 0.3s ease;
 }
-/* Depth ramp — monotonic blue, dark→light along the pipeline. */
-.ws-mseg-plan     > i { background: #15406b; }
-.ws-mseg-script   > i { background: #1d5f9c; }
-.ws-mseg-audio    > i { background: #2f81c4; }
-.ws-mseg-subtitle > i { background: #6fb1e0; }
-.ws-mseg-legacy   > i { background: var(--contra); }
-/* failed workspaces tint the whole strip's fills red so the status reads
-   even before you parse the label. */
+/* failed workspaces tint the fills red so status reads before the label. */
 .ws-card.ws-card-failed .ws-mseg > i { background: var(--dev); }
 .ws-card-progress {
   font-family: var(--mono);
