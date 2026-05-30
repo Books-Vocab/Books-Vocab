@@ -203,6 +203,99 @@ def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
     )
 
 
+# ─── Milestone progress (artifact-derived, NOT marker-derived) ──────────────
+#
+# Stage done-markers (.stage_<n>_done) are the pipeline's self-accounting and
+# DRIFT from reality: a rerun drops a marker, a partial restore loses them,
+# a manual clean wipes them — while the actual audio/scripts survive. Real
+# data proved markers are near-INVERSELY correlated with "how close to a
+# finished product": `flow` had 0 markers but 8 finished mp3s, while four
+# other workspaces showed 9/13 markers with zero audio (scripts only).
+#
+# So progress is derived from ARTIFACTS, the only trustworthy source. The
+# producer's mental model isn't 13 stages — it's four gates:
+#     PLAN → SCRIPT → AUDIO → SUBTITLE (shippable)
+# Each gate's completion ratio is (artifacts present / target episode count).
+# The frontend renders these as four depth-shaded segments of one bar.
+_MILESTONE_KEYS = ("plan", "script", "audio", "subtitle")
+
+
+def _milestones(ws: Path) -> tuple[list[dict], float]:
+    """Derive the four production gates from on-disk artifacts.
+
+    Returns (milestones, overall_progress) where milestones is a list of
+    {key,label,done,total,ratio} (one per gate, in pipeline order) and
+    overall_progress is the 0..1 bar fill = mean of the four ratios.
+
+    Target episode count = max(planned episodes, scripts, audio, subtitle) so
+    a gate ratio never exceeds 1.0 even when, say, audio was synthesized for
+    more episodes than the plan dir currently lists.
+    """
+    scripts = ws / "scripts"
+    plan_eps = ws / "plan" / "episodes"
+
+    n_plan_eps = len(list(plan_eps.glob("ep_*.md"))) if plan_eps.is_dir() else 0
+    if scripts.is_dir():
+        n_script = sum(1 for _ in scripts.glob("ep_*_script.md"))
+        n_audio = sum(
+            1 for f in scripts.glob("ep_*.mp3")
+            if re.match(r"ep_\d+_(pro|flash)\.mp3$", f.name)
+        )
+        n_srt = sum(
+            1 for f in scripts.glob("ep_*.srt")
+            if re.match(r"ep_\d+_(pro|flash)\.srt$", f.name)
+        )
+    else:
+        n_script = n_audio = n_srt = 0
+
+    target = max(n_plan_eps, n_script, n_audio, n_srt)
+    has_plan = (ws / "plan" / "overview.md").exists()
+
+    # PLAN gate is binary on overview.md (the architect's deliverable); the
+    # other three scale with episode artifacts against `target`.
+    def ratio(done: int) -> float:
+        return min(1.0, done / target) if target else 0.0
+
+    milestones = [
+        {"key": "plan", "label": "PLAN",
+         "done": 1 if has_plan else 0, "total": 1,
+         "ratio": 1.0 if has_plan else 0.0},
+        {"key": "script", "label": "SCRIPT",
+         "done": n_script, "total": target, "ratio": ratio(n_script)},
+        {"key": "audio", "label": "AUDIO",
+         "done": n_audio, "total": target, "ratio": ratio(n_audio)},
+        {"key": "subtitle", "label": "SUBTITLE",
+         "done": n_srt, "total": target, "ratio": ratio(n_srt)},
+    ]
+    overall = sum(m["ratio"] for m in milestones) / len(milestones)
+    return milestones, overall
+
+
+def _ensure_created(ws: Path) -> float:
+    """Return the workspace 'added' timestamp (epoch seconds), backfilling it.
+
+    Ground truth is a `.created` sidecar holding an epoch float. If absent
+    (every pre-existing workspace), seed it from the directory's real birth
+    time — st_birthtime on APFS/macOS, falling back to st_mtime on filesystems
+    that don't track it (Linux ext4). Persisting it to `.created` shields the
+    value from later rsync/restore operations that would otherwise reset the
+    inode's birth time.
+    """
+    marker = ws / ".created"
+    try:
+        raw = marker.read_text().strip()
+        return float(raw)
+    except (OSError, ValueError):
+        pass
+    st = ws.stat()
+    created = getattr(st, "st_birthtime", None) or st.st_mtime
+    try:
+        marker.write_text(f"{created}\n")
+    except OSError:
+        pass  # read-only mount etc. — still return the derived value
+    return created
+
+
 def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
     """Cheap-ish per-workspace summary for the sidebar list.
 
@@ -213,7 +306,8 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
     """
     name = ws.name
 
-    # ─── Stage progress (from done markers) ───
+    # ─── Stage progress (from done markers) — kept for status cascade + the
+    # legacy n_stages_* fields; progress display now uses _milestones() below.
     stages_done: set[str] = set()
     for marker in ws.glob(".stage_*_done"):
         stages_done.add(marker.name.replace(".stage_", "").replace("_done", ""))
@@ -300,13 +394,23 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         # Never let a bad workspace break the whole sidebar list.
         pass
 
+    # ─── Artifact-derived progress (the honest bar) + added-date ───
+    milestones, progress = _milestones(ws)
+    created = _ensure_created(ws)
+
     return {
         "name": name,
         "status": status,
+        # Legacy marker fields — retained for back-compat; NOT used for the
+        # progress bar anymore (see _milestones docstring for why markers lie).
         "stages_done": sorted(stages_done),
         "n_stages_done": n_done,
         "n_stages_total": _STAGE_COUNT,
+        # Honest progress: four artifact-derived gates + overall fill.
+        "milestones": milestones,
+        "progress": round(progress, 4),
         "episode_count": len(episodes),
+        "created": created,
         "last_updated": last_updated,
         "total_usd": round(total_usd, 4),
         "claude_usd": round(max(claude_usd, 0.0), 4),
