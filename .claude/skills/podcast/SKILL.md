@@ -15,8 +15,12 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ## 管線總覽（13 階段）
 
 ```
-EPUB → prep → analyst → architect → plan-review → enricher-gap → enricher → scriptwrite → series-polish → script-review → tts-prep → synthesize → audio-qa → subtitle
+EPUB → prep → analyst → architect → plan-review → enricher-gap → enricher
+       ┃ .plan_approved ┃ → scriptwrite → series-polish → script-review
+       ┃ .script_approved ┃ → tts-prep → synthesize → audio-qa → subtitle
 ```
+
+**兩道人工核准 gate**(`approval_gate_block`):全新 run **預設**跑到 `enricher` 就停(`AWAITING_PLAN_APPROVAL`),`script-review` 後再停一次(`AWAITING_SCRIPT_APPROVAL`)—— 避免在爛計畫上燒 scriptwrite token、爛腳本上燒 TTS。放行:`touch workspaces/<n>/.plan_approved`(或 `.script_approved`)後再 `uv run pipeline.py workspaces/<n>/`,或 dashboard 按 ▶ APPROVE。`--ignore-gates` 還原舊全自動。gate 暫停 = **exit 0**(非失敗);工作區狀態由 monitor 從磁碟 artifact 推導(`.*_approved` 存在或下一相已有產物 → 視為已過閘)。
 
 | # | 階段 | 工具 | 說明 |
 |---|------|------|------|
@@ -71,6 +75,13 @@ uv run pipeline.py workspaces/<name>/ --only-stage scriptwrite --only-episode 4
 
 # 跳過前置 marker 檢查（手動驗證 artifacts 完整時用）
 uv run pipeline.py workspaces/<name>/ --skip-to scriptwrite --force
+
+# 核准 gate 後續跑（touch marker 等價 dashboard ▶ APPROVE）
+touch workspaces/<name>/.plan_approved   && uv run pipeline.py workspaces/<name>/
+touch workspaces/<name>/.script_approved && uv run pipeline.py workspaces/<name>/
+
+# 無視兩道 gate，一路跑到底（還原舊全自動行為）
+uv run pipeline.py workspaces/<name>/ --ignore-gates
 
 # 調整平行度（scriptwrite 和 script-review 適用）
 uv run pipeline.py workspaces/<name>/ --parallel 5
@@ -171,7 +182,8 @@ opt-out env:
 - `POST /api/workspace/<n>/upload` — 跑 `ops/podcast_upload.sh`,422 if 無 ep_*.mp3
 - `DELETE /api/workspace/<n>?confirm=<n>` — 本地砍 workspace(confirm 必須等於名字)
 - `POST /api/workspace/<n>/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`
-- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 上傳 EPUB + 跑全流程
+- `POST /api/workspace/<n>/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;`pending`(前一相未完成)回 409
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 上傳 EPUB + 跑全流程(預設停在計畫 gate)
 
 **Jobs API**:
 - `GET /api/jobs?limit=N`、`GET /api/jobs/<id>?log_bytes=N`、`POST /api/jobs/<id>/kill`
