@@ -43,7 +43,11 @@
       if (!txt) continue;
       let speaker = "";
       const sm = txt.match(SPEAKER_RE);
-      if (sm) { speaker = sm[1].trim(); txt = txt.slice(sm[0].length); }
+      if (sm) { speaker = sm[1].trim(); txt = txt.slice(sm[0].length).trim(); }
+      // After stripping the speaker prefix the line could be empty (`[Dev]`
+      // with nothing after it). Skip — keeping the cue would push a
+      // zero-width invisible <span class="cue"> into the DOM.
+      if (!txt) continue;
       out.push({ start, end, text: txt, speaker });
     }
     return out;
@@ -188,9 +192,18 @@
         chip.className = "ep-chip";
         chip.dataset.ep = ep.episode;
         const sizeMb = (ep.audio_bytes / (1 << 20)).toFixed(1);
+        // Prefer the full TTS model id from the sidecar (e.g.
+        // "gemini-2.5-flash-tts"). Legacy episodes synthesized before the
+        // sidecar landed have no `model` field — fall back to the short
+        // variant tag with a "(?)" suffix to signal the generation is
+        // unknown, and surface the same info in the title for clarity.
+        const modelLabel = ep.model || `${ep.variant} (?)`;
+        const modelTitle = ep.model
+          ? `TTS model: ${ep.model}`
+          : `legacy artifact — full model name unavailable (${ep.variant})`;
         chip.innerHTML = `
           <span class="ep-chip-num">EP${ep.episode}</span>
-          <span class="ep-chip-meta">${ep.variant} · ${sizeMb}MB${ep.has_subtitle ? "" : " · no SRT"}</span>
+          <span class="ep-chip-meta" title="${modelTitle.replace(/"/g, "&quot;")}">${modelLabel} · ${sizeMb}MB${ep.has_subtitle ? "" : " · no SRT"}</span>
         `;
         chip.addEventListener("click", () => this.selectEpisode(ep.episode));
         this.elChips.appendChild(chip);
