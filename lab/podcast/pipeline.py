@@ -77,6 +77,8 @@ MODEL = os.getenv("PODCAST_CLAUDE_MODEL", "opus[1m]")
 _STREAM_JSON = os.getenv("PODCAST_VERBOSE") == "1"
 _VERBOSE_FLAGS = ["--output-format", "stream-json", "--verbose"] if _STREAM_JSON else []
 
+# Authoritative stage order. When changing this list, also update the module
+# docstring stage list above and `.claude/skills/podcast/SKILL.md` §管線總覽.
 STAGES = [
     "prep", "analyst", "architect", "plan-review",
     "enricher-gap", "enricher", "scriptwrite",
