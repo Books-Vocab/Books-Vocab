@@ -42,17 +42,17 @@ class TestSystemInfoEndpoint:
         body = r.json()
         assert "migration_version" in body
 
-    def test_version_reads_from_file(self, tmp_path):
-        version_file = tmp_path / "VERSION"
-        version_file.write_text("abc1234\n")
-        with patch("kg.routers.system.VERSION_FILE", version_file):
+    def test_version_surfaces_captured_value(self):
+        # VERSION is read once at import into _VERSION (immutable per process);
+        # the endpoint must surface that captured value.
+        with patch("kg.routers.system._VERSION", "abc1234"):
             client = TestClient(app, raise_server_exceptions=False)
             r = client.get("/api/system/info")
         assert r.json()["version"] == "abc1234"
 
-    def test_version_unknown_when_file_missing(self, tmp_path):
-        missing = tmp_path / "NO_SUCH_FILE"
-        with patch("kg.routers.system.VERSION_FILE", missing):
+    def test_version_unknown_when_file_missing(self):
+        # When the VERSION file is absent at import the captured value is "unknown".
+        with patch("kg.routers.system._VERSION", "unknown"):
             client = TestClient(app, raise_server_exceptions=False)
             r = client.get("/api/system/info")
         assert r.json()["version"] == "unknown"

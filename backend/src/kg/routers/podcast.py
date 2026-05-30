@@ -70,7 +70,11 @@ def list_podcasts(request: Request, user: dict = Depends(get_current_user)):
     index_file = _podcasts_dir(request) / "index.json"
     if not index_file.exists():
         return []
-    return _read_json_file(index_file, context="index")
+    data = _read_json_file(index_file, context="index")
+    if not isinstance(data, list):
+        logger.error("Podcast index malformed (expected list) at %s", index_file)
+        raise HTTPException(500, detail="Malformed index")
+    return data
 
 
 # ---------------------------------------------------------------------------

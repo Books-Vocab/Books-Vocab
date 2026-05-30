@@ -21,7 +21,7 @@ from .api_models import (
 )
 
 
-def _build_user_config_response(config: dict[str, Any], jwt_secret: str = "") -> UserConfigResponse:
+def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     translation_data = config.get("translation")
     if isinstance(translation_data, dict):
         translation = TranslationLanguageConfig(
@@ -45,8 +45,8 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
 
 
-def get_user_config_response(user: dict[str, Any], jwt_secret: str = "") -> UserConfigResponse:
-    return _build_user_config_response(user["config"], jwt_secret)
+def get_user_config_response(user: dict[str, Any]) -> UserConfigResponse:
+    return _build_user_config_response(user["config"])
 
 
 def get_user_entitlements_response(
@@ -64,7 +64,6 @@ def update_user_config_response(
     users_lock_file: Path,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     save_users: Callable[[dict[str, dict[str, Any]]], None],
-    jwt_secret: str = "",
 ) -> UserConfigResponse:
     with FileLock(str(users_lock_file)):
         users = load_users()
@@ -80,7 +79,7 @@ def update_user_config_response(
 
         save_users(users)
 
-    return _build_user_config_response(users[user_id]["config"], jwt_secret)
+    return _build_user_config_response(users[user_id]["config"])
 
 
 def delete_user_account_response(
