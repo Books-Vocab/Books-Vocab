@@ -57,17 +57,20 @@ uv run pipeline.py /path/to/book.epub --dry-run
 ### 階段控制
 
 ```bash
-# 從指定階段開始
+# 從指定階段開始（會驗證前置 stage marker 都存在,否則拒跑並提示）
 uv run pipeline.py workspaces/<name>/ --skip-to enricher
 
 # 跑到指定階段就停
 uv run pipeline.py workspaces/<name>/ --stop-after architect
 
-# 只跑一個階段
+# 只跑一個階段（同樣驗證前置 marker）
 uv run pipeline.py workspaces/<name>/ --only-stage scriptwrite
 
 # 組合：只跑某階段的某一集
 uv run pipeline.py workspaces/<name>/ --only-stage scriptwrite --only-episode 4
+
+# 跳過前置 marker 檢查（手動驗證 artifacts 完整時用）
+uv run pipeline.py workspaces/<name>/ --skip-to scriptwrite --force
 
 # 調整平行度（scriptwrite 和 script-review 適用）
 uv run pipeline.py workspaces/<name>/ --parallel 5
