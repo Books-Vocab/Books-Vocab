@@ -287,8 +287,16 @@ def _ensure_created(ws: Path) -> float:
         return float(raw)
     except (OSError, ValueError):
         pass
-    st = ws.stat()
-    created = getattr(st, "st_birthtime", None) or st.st_mtime
+    # No (or unreadable) sidecar — derive from inode birth time. Guard the
+    # stat() too: the dir can vanish in the TOCTOU window between the route's
+    # directory listing and this call. Returning 0.0 keeps the contract that
+    # one bad workspace never breaks the whole sidebar list.
+    try:
+        st = ws.stat()
+    except OSError:
+        return 0.0
+    bt = getattr(st, "st_birthtime", None)
+    created = bt if bt is not None else st.st_mtime  # 0.0 birthtime is valid, don't `or`
     try:
         marker.write_text(f"{created}\n")
     except OSError:
@@ -358,11 +366,17 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
                     pass
         except OSError:
             pass
+    # Added-date — computed here so a truly-fresh workspace (no events /
+    # scripts) can fall back to its creation time for last_updated instead of
+    # ws.stat().st_mtime, which _ensure_created itself pollutes by writing the
+    # .created sidecar. Both new calls are wrapped: per the file invariant, one
+    # bad workspace must never break the whole sidebar list.
+    try:
+        created = _ensure_created(ws)
+    except Exception:
+        created = 0.0
     if not candidates:
-        try:
-            candidates.append(ws.stat().st_mtime)
-        except OSError:
-            candidates.append(0.0)
+        candidates.append(created)
     last_updated = max(candidates)
 
     # ─── Cost (totals only; full breakdown stays on /cost endpoint) ───
@@ -394,9 +408,13 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         # Never let a bad workspace break the whole sidebar list.
         pass
 
-    # ─── Artifact-derived progress (the honest bar) + added-date ───
-    milestones, progress = _milestones(ws)
-    created = _ensure_created(ws)
+    # ─── Artifact-derived progress (the honest bar) ───
+    # Defensive: never let a glob/stat hiccup on one workspace 500 the whole
+    # ?full=1 response (see _ensure_created above for the same contract).
+    try:
+        milestones, progress = _milestones(ws)
+    except Exception:
+        milestones, progress = [], 0.0
 
     return {
         "name": name,
