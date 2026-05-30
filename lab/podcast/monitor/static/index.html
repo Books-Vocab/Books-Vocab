@@ -98,6 +98,14 @@
 
 <main class="main">
 
+  <!-- ══════ THIS PODCAST — everything scoped to the selected workspace ══════ -->
+  <div class="scope-zone scope-workspace">
+  <div class="scope-band scope-band-workspace">
+    <span class="scope-band-icon" aria-hidden="true">▸</span>
+    <span class="scope-band-title">THIS PODCAST</span>
+    <span class="scope-band-name" id="scope-ws-name" title="—">—</span>
+  </div>
+
   <!-- Top KPIs: cost + elapsed + current + context — one tight strip -->
   <section class="kpis">
     <div class="kpi kpi-primary">
@@ -159,6 +167,25 @@
   <!-- Inline player -->
   <section class="panel" id="player-panel"></section>
 
+  <!-- Live activity: this workspace's pipeline event stream -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="micro-label">LIVE ACTIVITY</span>
+      <span class="panel-sub" id="activity-stage">idle</span>
+    </div>
+    <div class="feed" id="activity-feed"></div>
+  </section>
+
+  </div><!-- /scope-workspace -->
+
+  <!-- ══════ SERVER — state shared across all podcasts ══════ -->
+  <div class="scope-zone scope-server">
+  <div class="scope-band scope-band-server">
+    <span class="scope-band-icon" aria-hidden="true">▸</span>
+    <span class="scope-band-title">SERVER</span>
+    <span class="scope-band-name">all podcasts</span>
+  </div>
+
   <!-- Recent jobs -->
   <section class="panel">
     <div class="panel-head">
@@ -181,14 +208,7 @@
     <div class="remote-series" id="remote-series"></div>
   </section>
 
-  <!-- Live activity -->
-  <section class="panel">
-    <div class="panel-head">
-      <span class="micro-label">LIVE ACTIVITY</span>
-      <span class="panel-sub" id="activity-stage">idle</span>
-    </div>
-    <div class="feed" id="activity-feed"></div>
-  </section>
+  </div><!-- /scope-server -->
 
 </main>
 

@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30o";
+const APP_VERSION = "2026-05-31a";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -504,6 +504,14 @@ async function switchWorkspace(ws) {
     cur.textContent = ws || "—";
     cur.title = ws || "—";
     cur.classList.toggle("empty", !ws);
+  }
+
+  // Mirror into the THIS PODCAST scope-band so the workspace zone is self-labelling.
+  const band = $("#scope-ws-name");
+  if (band) {
+    band.textContent = ws || "—";
+    band.title = ws || "—";
+    band.classList.toggle("empty", !ws);
   }
 
   // Re-render sidebar so any path (URL ?ws=, direct click, programmatic
