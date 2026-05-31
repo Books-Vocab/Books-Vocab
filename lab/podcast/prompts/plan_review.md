@@ -65,6 +65,16 @@ Run every check below. For each, write PASS or FAIL with details.
 - Every major concept should appear in at least one episode's key points
 - WARN if important concepts from the analysis are not covered in any episode
 
+### 9. Genre Type Vocabulary
+- `overview.md`'s `**Type**` first label (before any parenthetical) must be one of the architect's controlled Book Type rows: Fiction epic, Fiction mystery, Fiction literary, Nonfiction self-help, Nonfiction business, Nonfiction science, Biography, Technical.
+- FAIL if it's an off-list freeform label (the scriptwriter can't map it to a guidance bucket).
+
+### 10. Content-Flag Propagation
+- Read `analysis.md`'s `**Content flags**` line and its per-chapter notes.
+- For every flag (`spoiler` / `trauma`), verify each episode whose source chapters include a flagged chapter carries that flag in its `Content flags` line; and that no episode invents a flag for chapters that weren't flagged.
+- FAIL if a flagged chapter's episode is missing its flag (silent loss of spoiler/trauma handling is a content-safety failure).
+- WARN if analysis flagged `none` but a chapter's content obviously warrants a flag.
+
 ## Output
 
 Write `{workspace}/plan/review.md`:
