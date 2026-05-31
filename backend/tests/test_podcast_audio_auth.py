@@ -173,3 +173,79 @@ def test_audio_ep_num_rejects_non_integer(audio_api):
     api, _ = audio_api
     resp = api.client.get("/api/podcasts/series_a/abc/audio", headers=api.headers)
     assert resp.status_code == 422
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Track B (2026-06): disk-mode m4a + m4a-over-mp3 precedence.
+# These cover the audio-format transition window. S3 mode is exercised
+# separately (it requires a moto/botocore fixture); these prove the on-disk
+# fallback layer that keeps dev and pre-bucket prod working.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def m4a_only_api(isolated_api):
+    podcasts = isolated_api.data_dir / "podcasts"
+    podcasts.mkdir(exist_ok=True)
+    ep_dir = podcasts / "series_m" / "ep_01"
+    ep_dir.mkdir(parents=True)
+    (ep_dir / "audio.m4a").write_bytes(PAYLOAD)
+    return isolated_api, podcasts
+
+
+@pytest.fixture()
+def m4a_and_mp3_api(isolated_api):
+    """Series with BOTH m4a and mp3 present — m4a must win (post-Track-B default)."""
+    podcasts = isolated_api.data_dir / "podcasts"
+    podcasts.mkdir(exist_ok=True)
+    ep_dir = podcasts / "series_dual" / "ep_01"
+    ep_dir.mkdir(parents=True)
+    (ep_dir / "audio.m4a").write_bytes(PAYLOAD)
+    # different payload so we can tell which one was served
+    (ep_dir / "audio.mp3").write_bytes(b"\x00" * len(PAYLOAD))
+    return isolated_api, podcasts
+
+
+def test_audio_m4a_served_with_audio_mp4_content_type(m4a_only_api):
+    """Post-Track-B series uploaded as m4a must serve with `audio/mp4`.
+
+    The Content-Type is wire-load-bearing: AVPlayer chooses the demuxer
+    by MIME and rejects an mp4 container labelled `audio/mpeg`.
+    """
+    api, _ = m4a_only_api
+    resp = api.client.get("/api/podcasts/series_m/1/audio", headers=api.headers)
+    assert resp.status_code == 200
+    assert resp.content == PAYLOAD
+    assert resp.headers.get("content-type", "").startswith("audio/mp4")
+    assert resp.headers.get("accept-ranges") == "bytes"
+
+
+def test_audio_m4a_supports_range_206(m4a_only_api):
+    api, _ = m4a_only_api
+    resp = api.client.get(
+        "/api/podcasts/series_m/1/audio",
+        headers={**api.headers, "Range": "bytes=0-99"},
+    )
+    assert resp.status_code == 206
+    assert resp.content == PAYLOAD[:100]
+    assert resp.headers.get("content-type", "").startswith("audio/mp4")
+    assert resp.headers.get("content-range") == f"bytes 0-99/{len(PAYLOAD)}"
+
+
+def test_audio_m4a_wins_over_mp3_when_both_present(m4a_and_mp3_api):
+    """Transition-window guarantee: m4a probed first, mp3 only if missing."""
+    api, _ = m4a_and_mp3_api
+    resp = api.client.get("/api/podcasts/series_dual/1/audio", headers=api.headers)
+    assert resp.status_code == 200
+    # Served body must be the m4a payload, not the all-zero mp3 stub.
+    assert resp.content == PAYLOAD
+    assert resp.headers.get("content-type", "").startswith("audio/mp4")
+
+
+def test_audio_mp3_fallback_still_works_when_only_mp3_present(audio_api):
+    """Legacy (pre-Track-B) series with only audio.mp3 keep working."""
+    api, _ = audio_api
+    resp = api.client.get("/api/podcasts/series_a/1/audio", headers=api.headers)
+    assert resp.status_code == 200
+    assert resp.content == PAYLOAD
+    assert resp.headers.get("content-type", "").startswith("audio/mpeg")
