@@ -66,9 +66,6 @@ struct TodayReviewView: View {
     @State private var isHelpPresented = false
     @State private var showAddLink = false
     @State private var explainSheetItem: CollocationExplainItem? = nil
-    @State private var hasConsumedShortcutHint = false
-    @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
-    @State private var shortcutHintTask: Task<Void, Never>?
 
     private let allEntries: [VocabularyEntry]
     let onClose: () -> Void
@@ -204,34 +201,11 @@ struct TodayReviewView: View {
                 await kgService.pushReviewQuietly(container: modelContext.container)
             }
         }
-        #if os(macOS)
-        .macKeyResponder(active: state.linkedCardStack.isEmpty) { key in
-            handleMacKeyPress(key)
-        }
-        .onAppear {
-            guard !hasShownShortcutHint else { return }
-            shortcutHintTask?.cancel()
-            shortcutHintTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(3 * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-                hasConsumedShortcutHint = true
-                hasShownShortcutHint = true
-            }
-        }
-        .onDisappear {
-            shortcutHintTask?.cancel()
-            shortcutHintTask = nil
-        }
-        #endif
         .enableInjection()
     }
 
     private var shouldShowFirstRunHint: Bool {
-        #if os(macOS)
-        return !hasShownShortcutHint && !hasConsumedShortcutHint && !state.isAutoPlaying && state.currentIndex < min(state.queue.count, 3)
-        #else
-        return false
-        #endif
+        false
     }
 
     private func handleAddLink(_ target: VocabularyEntry, for entry: VocabularyEntry) {
@@ -352,43 +326,6 @@ struct TodayReviewView: View {
         }
     }
 
-    #if os(macOS)
-    private func handleMacKeyPress(_ key: MacKeyPress) -> Bool {
-        guard state.linkedCardStack.isEmpty else { return false }
-
-        switch key {
-        case .space:
-            return perform(state.revealStage == .front ? .reveal : .collapse)
-        case .leftArrow:
-            return perform(state.isAutoPlaying ? .previous : .forgot)
-        case .rightArrow:
-            return perform(state.isAutoPlaying ? .next : .remembered)
-        case .upArrow:
-            return perform(.previous)
-        case .downArrow:
-            return perform(.next)
-        case .escape:
-            if isHelpPresented {
-                isHelpPresented = false
-                return true
-            }
-            return perform(.close)
-        case .character(let chars):
-            switch chars {
-            case "d":
-                return perform(.showDetail)
-            case "s":
-                return perform(.shuffle)
-            case "p":
-                return perform(state.isAutoPlaying ? .toggleAutoplayPause : .toggleAutoplay)
-            case "?", "/":
-                return perform(.showHelp)
-            default:
-                return false
-            }
-        }
-    }
-    #endif
 }
 
 // MARK: - Preview

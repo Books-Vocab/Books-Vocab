@@ -215,24 +215,6 @@ struct NotebookEditSheet: View {
             return
         }
 
-        #if os(macOS)
-        guard let nsImage = NSImage(data: data) else {
-            photoError = "圖片格式不支援".localized
-            return
-        }
-        let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        guard let cg = cgImage else {
-            photoError = "圖片格式不支援".localized
-            return
-        }
-        let resized = NSImage(cgImage: cg, size: NSSize(width: min(CGFloat(cg.width), 600), height: min(CGFloat(cg.height), 400)))
-        guard let tiffData = resized.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiffData),
-              let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else {
-            photoError = "圖片處理失敗".localized
-            return
-        }
-        #else
         guard let uiImage = UIImage(data: data) else {
             photoError = "圖片格式不支援".localized
             return
@@ -246,7 +228,6 @@ struct NotebookEditSheet: View {
             photoError = "圖片處理失敗".localized
             return
         }
-        #endif
 
         guard jpegData.count <= 500_000 else {
             photoError = "圖片太大，請選擇較小的圖片".localized
