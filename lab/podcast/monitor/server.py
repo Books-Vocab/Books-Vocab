@@ -902,6 +902,13 @@ def rerun_stage(
     if stage not in _STAGE_NAMES:
         raise HTTPException(400, f"unknown stage {stage!r}")
 
+    # Busy guard MUST run before any state mutation: a 409 must leave the ws
+    # untouched, otherwise a concurrent pipeline.py would see the deleted
+    # stage_done marker and think the stage isn't complete.
+    busy = _active_job_for_ws(ws_name)
+    if busy:
+        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+
     if drop_marker:
         # Per-stage marker → re-execute. Some stages (parallel scriptwrite/
         # script-review) use per-episode artifacts too; the pipeline knows to
@@ -913,10 +920,6 @@ def rerun_stage(
     cmd = ["uv", "run", "pipeline.py", str(ws), "--only-stage", stage]
     if episode is not None:
         cmd += ["--only-episode", str(episode)]
-
-    busy = _active_job_for_ws(ws_name)
-    if busy:
-        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
 
     try:
         job = jobs.spawn(

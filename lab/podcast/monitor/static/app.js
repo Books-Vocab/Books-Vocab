@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31e";
+const APP_VERSION = "2026-05-31f";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -1333,7 +1333,7 @@ const MX_GATES = [
   { key: "subtitle", label: "SUB", stage: "subtitle" },
 ];
 // Map a gate to the parallelEps stage that carries its live running/failed state.
-const MX_LIVE_STAGE = { script: "scriptwrite", audio: "synthesize" };
+const MX_LIVE_STAGE = { script: "scriptwrite", audio: "synthesize", subtitle: "subtitle" };
 
 async function refreshEpisodeStatus() {
   if (!state.ws || state.matrixInflight) return;
@@ -1362,7 +1362,7 @@ function mxCell(gate, row) {
   const title = `EP${row.ep} · ${gate.label} · ${cellState}` +
     (canRerun ? ` · click to re-run ${gate.stage} ep${row.ep}` : "");
   if (!canRerun) {
-    return `<span class="mx-cell mx-${cellState}" title="${title}">${icon}</span>`;
+    return `<span class="mx-cell mx-${cellState}" title="${escapeAttr(title)}">${icon}</span>`;
   }
   return `<button class="mx-cell mx-click mx-${cellState}" title="${escapeAttr(title)}"
     data-rerun-stage="${gate.stage}" data-rerun-ep="${row.ep}">${icon}</button>`;
