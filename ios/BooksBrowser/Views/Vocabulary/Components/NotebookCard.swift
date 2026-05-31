@@ -240,6 +240,7 @@ struct NotebookCard: View {
                 }
             }
         }
+        .appHoverLift()
         .enableInjection()
     }
 
