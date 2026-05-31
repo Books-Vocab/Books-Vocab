@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
-verified_against: c642ed18
+verified_against: 7482c5ee
 -->
 # BooksBrowser UI Design System
 
@@ -47,12 +47,16 @@ KG UI 對齊 [mochi.cards](https://mochi.cards/docs/api/) editorial 質感。以
 
 > 落地原則：北極星規則先於 token。新 token 於 Phase N 真正需要時才加入 `AppColors` / `AppTheme.Palette` / `AppMetrics`，避免提前累積 dormant token。Phase 路線：1 = AppSurface flat / 2 = Bookshelf / 3 = Notebook / 4 = Reader / 5 = Today Review motion / 6 = Settings / 7 = Auth / 8 = 全域 motion / 9 = docs + review。
 
-### macOS 平台適配
+### Mac Catalyst 平台適配
 
-- `Platform/PlatformRepresentable.swift`：跨平台 typealias（PlatformView / Color / Image / Font）
-- `Platform/PlatformCompatibility.swift`：iOS-only modifier 的 macOS fallback
-- Reader 系列以 `#if os(iOS)` 整檔隔離，macOS 暫不啟用
-- 其餘 View 共用，平台差異以條件編譯處理
+KG 的 Mac 支援走 **Mac Catalyst**（`SUPPORTS_MACCATALYST = YES`），**非原生 macOS**（核心依賴 Readium 僅宣告 `platforms: [.iOS]`）。Catalyst 下 `os(iOS)` 為 true、`os(macOS)` 為 false。
+
+- **分流一律 `#if targetEnvironment(macCatalyst)`，禁 `#if os(macOS)`**（死碼，永不編譯）。Mac 專屬 UX 用 Catalyst 可用的 iOS API（`.onKeyPress` / `UIPointerInteraction` / `UIWindowScene`），不用 AppKit；`.pointerStyle`(iOS 18+) 在 Catalyst 不可用。
+- `Platform/PlatformRepresentable.swift`：UIKit typealias（PlatformView / Color / Image / Font）。
+- `Platform/PlatformCompatibility.swift`：iOS / Catalyst SwiftUI modifier wrapper；含取 `UIWindowScene` 的先例（`connectedScenes.compactMap { $0 as? UIWindowScene }.first`）。
+- `Platform/MacWindowChrome.swift`：Catalyst 視窗 chrome 單一來源。`.defaultSize` / `.windowResizability` 在 Catalyst **靜默無效**，視窗尺寸改走 UIKit `sizeRestrictions.minimumSize` + `requestGeometryUpdate(.Mac(...))`，尺寸常數集中此處。Reader 沉浸 title bar 走 `setTitlebarHidden` **scoped 可逆**（進 Reader 隱藏、離開復原，不可在 App 啟動時全域設死，否則其他頁失去標題列）。
+- Reader 系列以 `#if os(iOS)` 整檔隔離 —— Catalyst 下 `os(iOS)` true **仍編譯仍啟用**（非死碼）。
+- 其餘 View 共用，平台差異以條件編譯處理。
 
 ---
 
