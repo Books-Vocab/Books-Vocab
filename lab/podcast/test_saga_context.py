@@ -52,6 +52,18 @@ def test_defaults_to_readalong_when_sidecar_missing(tmp_path: Path) -> None:
     assert "readalong" in ctx
 
 
+def test_corrupt_manifest_fails_loud(tmp_path: Path) -> None:
+    # A saga whose series.md exists but is unparseable must NOT silently degrade
+    # to an unprotected single-book run — that would strip spoiler protection.
+    ws = tmp_path / "ws"
+    (ws / "source" / "chapters").mkdir(parents=True)
+    (ws / "series.md").write_text("# Saga\ngarbage, no READING_ORDER markers")
+    (ws / ".spoiler_mode").write_text("readalong")
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        pipeline.build_saga_context(ws)
+
+
 def test_context_injects_via_token_only_for_saga(tmp_path: Path) -> None:
     # The base prompts carry a literal {saga_context} token; run_claude replaces
     # it. Here we just confirm a single-book workspace yields empty injection so
