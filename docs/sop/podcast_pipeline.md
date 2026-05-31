@@ -216,30 +216,32 @@ lab/podcast/workspaces/<slug>_<hash>/
   scripts/ep_N_{pro,flash}.meta.json ← {"tts_model": "<full TTS model id>"} sidecar(monitor 顯示用;檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容)
   scripts/ep_N_script.md            ← 原稿
        │
-       │  ./ops/podcast_upload.sh <workspace>
+       │  ./ops/podcast_upload.sh <workspace>   (env: PODCAST_BUCKET, PODCAST_BUCKET_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
        ▼
 staging /tmp/podcast_upload_<sid>/   ← 重組成 ep_NN/ 結構
-       │  rsync -avz --partial --partial-dir=.rsync-partial --delay-updates
+       │  aws s3 sync --delete  (Lightsail Object Storage)
        ▼
-SERVER:~/knowledge_graph_api/data/podcasts/<sid>/
+s3://kg-podcasts-prod/<sid>/
   metadata.json                     ← upload.sh 從 overview.md 解析生成
-  ep_NN/{audio.mp3, subtitle.srt, script.md}
+  ep_NN/{audio.m4a, subtitle.srt, script.md}
        │
-       │  ssh flock /tmp/podcast_index.lock → 重建 data/podcasts/index.json
+       │  本機 Python boto3 → 重建 s3://kg-podcasts-prod/index.json(put_object)
        ▼
-backend /api/podcasts*               ← podcast.py router(全認證)
+backend /api/podcasts*               ← podcast.py router(全認證,proxy 走 boto3 GetObject)
        │
        ▼
-iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress
+iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress(無 iOS 改動)
 ```
 
 ### upload.sh idempotent 保證
 
 - `_SERIES_ID_RE = ^[a-z0-9_]+$` 預先驗證 series_id(對齊 backend `_SERIES_ID_RE`)
-- 抓遠端既有 `metadata.json` 保留 `createdAt`(避免 re-upload 重設創建時間)
+- 抓 S3 上既有 `metadata.json` 保留 `createdAt`(避免 re-upload 重設創建時間)
 - pro/flash 同集去重(pro 優先)
-- rsync `--delay-updates` = 原子換檔(防半傳輸 mp3 被 serve)
-- index 重建走 `flock` + tmp + `os.replace` 原子 swap
+- m4a 與 mp3 同檔名時 m4a 優先(post-Track-B 預設)
+- `aws s3 sync --delete` = 原子換檔(S3 GetObject 永遠對 object 整版,無「半傳輸」概念)
+- index 重建本機跑 boto3 → `put_object`,**不需 flock**(S3 last-writer-wins;比舊 SSH+flock 弱,但 race window 只有秒級,影響限於 dashboard 暫時看到舊 index)
+- Content-Type 逐檔覆寫(`.m4a`→`audio/mp4`, `.srt`→`text/plain`, `.json`→`application/json`),預防 AVPlayer 拒收 `binary/octet-stream`
 
 ### metadata.json schema
 
@@ -380,10 +382,10 @@ Endpoints:
 - `GET /api/jobs?limit=N`、`GET /api/jobs/{id}?log_bytes=N`、`POST /api/jobs/{id}/kill`
 - 同時 running cap = `PODCAST_MAX_ACTIVE_JOBS`(預設 4);超過 spawn 回 HTTP 429
 
-**Remote**(SSH → Lightsail,共用 `ops/podcast_upload.sh` 的 SSH key + host):
-- `GET /api/remote/series` — 解析遠端 `index.json` + 每 series du size + orphan(沒在 index 但有 dir)
-- `GET /api/remote/disk` — `df -B1` + `du` for podcast dir
-- `DELETE /api/remote/series/{id}?confirm=<id>` — flock-serialized rm + index 重建;回 `{deleted, fully_deleted, remaining, rm_errors, bad_metadata_files}` — caller 必須檢查 `fully_deleted`,partial delete 是真實情境(EBUSY / permission)
+**Remote**(boto3 → Lightsail Object Storage,2026-06 Track B 後不再走 SSH):
+- `GET /api/remote/series` — 抓 S3 `index.json` + 用 `list_objects_v2` 算 per-series size + orphan(沒在 index 但有 prefix)
+- `GET /api/remote/disk` — bucket 總用量;total 由 `PODCAST_BUCKET_QUOTA_BYTES` env 配置(預設 25 GiB,對應 Lightsail Plan 2)
+- `DELETE /api/remote/series/{id}?confirm=<id>` — `delete_objects` 批刪 `{id}/` 下所有 key + 重建 `index.json`(`put_object`);回 `{deleted, fully_deleted, remaining, rm_errors, bad_metadata_files}`;`fully_deleted` 走「再 `list_objects_v2` 確認」(防 eventual consistency)
 
 `events.jsonl` 內容:claude CLI stream-json 的 tool-use + `result.modelUsage[*].costUSD`,以及 `synthesize.py` 寫的 `tts_usage` events。
 
@@ -391,10 +393,13 @@ Endpoints:
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
-| `PODCAST_SSH_KEY` | `~/.ssh/lightsail_default.pem` | SSH key path(共用 `ops/podcast_upload.sh`)|
-| `PODCAST_REMOTE_SERVER` | `ubuntu@13.193.212.134` | 連線目標 |
-| `PODCAST_REMOTE_DIR` | `~/knowledge_graph_api/data/podcasts` | 遠端資產根 |
-| `PODCAST_SSH_TIMEOUT` | `20` | SSH ConnectTimeout 秒 |
+| `PODCAST_BUCKET` | *(必填)* | Lightsail Object Storage bucket(e.g. `kg-podcasts-prod`) |
+| `PODCAST_BUCKET_REGION` | `ap-northeast-1` | 同 Lightsail instance region(免 egress 費)|
+| `PODCAST_BUCKET_ENDPOINT_URL` | *unset* | S3-compatible endpoint URL;Lightsail/AWS 留空,R2/minio 才設 |
+| `PODCAST_BUCKET_QUOTA_BYTES` | `26843545600`(25 GiB) | UI 顯示「磁碟」總量基準 |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | *(必填)* | Lightsail Object Storage access key |
+
+> 2026-06 Track B 前的 `PODCAST_SSH_KEY` / `PODCAST_REMOTE_SERVER` / `PODCAST_REMOTE_DIR` / `PODCAST_SSH_TIMEOUT` 已**廢棄**,monitor 不再讀。**舊 `.env` 留著無害但無效果**。
 | `PODCAST_MAX_ACTIVE_JOBS` | `4` | 同時 running 上限,超過 spawn 回 429 |
 | `PODCAST_JOB_HISTORY` | `100` | 完成 job log LRU 保留筆數 |
 | `PODCAST_MAX_EPUB_BYTES` | `200*1024*1024` | `/api/pipeline/start` upload cap |
