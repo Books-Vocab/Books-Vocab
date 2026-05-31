@@ -6,6 +6,10 @@ import Inject
 struct PodcastPlayerView: View {
     @ObserveInjection private var inject
     let episodeId: String
+    /// 預設 false → push caller（BookshelfView navigationDestination）零改動、沿用父
+    /// NavigationStack。inline 雙欄右欄傳 true → 自帶 NavigationStack host 住設定
+    /// ToolbarItem(.topBarTrailing)（.topBarTrailing 需 ambient nav bar）。
+    var wrapInNavigation: Bool = false
     @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
@@ -101,6 +105,15 @@ struct PodcastPlayerView: View {
 
     @ViewBuilder
     private var fullBody: some View {
+        if wrapInNavigation {
+            NavigationStack { playerCore }
+        } else {
+            playerCore
+        }
+    }
+
+    @ViewBuilder
+    private var playerCore: some View {
         Group {
             if let vm = viewModel {
                 playerContent(vm)
@@ -128,7 +141,11 @@ struct PodcastPlayerView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        // inline 雙欄（wrapInNavigation）時不隱藏 tab bar：右欄自帶 NavigationStack，
+        // 隱藏 tab bar 會誤動到父層 scene。Catalyst 無 tab bar 故整段略過。
+        #if !targetEnvironment(macCatalyst)
+        .toolbar(wrapInNavigation ? .visible : .hidden, for: .tabBar)
+        #endif
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
