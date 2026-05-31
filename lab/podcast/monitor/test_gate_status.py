@@ -213,14 +213,31 @@ def test_resume_rejected_when_job_running(tmp_path, monkeypatch):
 
 
 def test_rerun_rejected_when_job_running(tmp_path, monkeypatch):
+    """409 必須在 marker 砍除之前。drop_marker=True(預設)時若守衛在後,
+    409'd 請求仍會 unlink stage_done marker → 還在跑的 pipeline 會誤判
+    stage 未完成。回歸鎖此排序。"""
     monkeypatch.setattr(server, "WORKSPACES_DIR", tmp_path)
     ws = tmp_path / "busy3_abcd1234"
     _plan(ws, 3)
+    marker = ws / ".stage_synthesize_done"
+    marker.write_text("done")
     monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy3_abcd1234")])
     monkeypatch.setattr(server.jobs, "spawn", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")))
     with pytest.raises(server.HTTPException) as e:
-        server.rerun_stage("busy3_abcd1234", stage="synthesize", episode=1, drop_marker=False)
+        server.rerun_stage("busy3_abcd1234", stage="synthesize", episode=1, drop_marker=True)
     assert e.value.status_code == 409
+    assert marker.exists(), "guard must precede marker deletion"
+
+
+def test_active_job_other_ws_does_not_block(tmp_path, monkeypatch):
+    """負向案例:running job 屬於 *別的* workspace → 本 ws 應放行(非守衛回歸:
+    helper 不可變成「任一 running job 都擋所有 ws」)。"""
+    monkeypatch.setattr(server, "WORKSPACES_DIR", tmp_path)
+    (tmp_path / "free_abcd1234").mkdir()
+    (tmp_path / "other_abcd1234").mkdir()
+    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jO", ws="other_abcd1234")])
+    assert server._active_job_for_ws("free_abcd1234") is None
+    assert server._active_job_for_ws("other_abcd1234")["job_id"] == "jO"
 
 
 def test_upload_rejected_when_job_running(tmp_path, monkeypatch):
