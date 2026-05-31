@@ -1,6 +1,13 @@
 import SwiftUI
 
 extension TodayReviewPresenter {
+    struct ShortcutHint: Identifiable {
+        let id: String
+        let key: String
+        let label: String
+        var isPrimary = false
+    }
+
     // MARK: - Top Bar
 
     var topBar: some View {
@@ -44,6 +51,14 @@ extension TodayReviewPresenter {
                 action: onToggleAutoPlay
             )
 
+            #if targetEnvironment(macCatalyst)
+            VocabChromeIconButton(
+                systemImage: "questionmark.circle",
+                label: L10n.string("vocab.chromeIcon.todayReview.help"),
+                action: onToggleHelp
+            )
+            #endif
+
             VocabChromeIconButton(
                 systemImage: "xmark",
                 label: L10n.string("vocab.chromeIcon.todayReview.close"),
@@ -59,6 +74,9 @@ extension TodayReviewPresenter {
 
     var bottomToolbar: some View {
         VStack(spacing: 10) {
+            #if targetEnvironment(macCatalyst)
+            shortcutRail
+            #endif
             toolbarControls
         }
         .padding(.horizontal, TodayReviewMetrics.toolbarHorizontalInset)
@@ -92,6 +110,127 @@ extension TodayReviewPresenter {
         .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
         .animateSpring(state.isAutoPlaying)
     }
+
+    #if targetEnvironment(macCatalyst)
+    var shortcutRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: appSkin.spacing.microGap) {
+                ForEach(activeShortcutHints) { hint in
+                    ShortcutHintChip(hint: hint)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottomLeading) {
+            if showFirstRunHint && !isHelpPresented {
+                Text("可用方向鍵評分，按 Space 展開答案".localized)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .padding(.top, 28)
+                    .transition(.overlayFade)
+            }
+        }
+        .opacity(isHelpPresented ? 0.35 : 1)
+    }
+
+    var shortcutHelpOverlay: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            HStack {
+                Text("快捷鍵".localized)
+                    .font(appSkin.typography.sectionTitle)
+                    .foregroundStyle(appSkin.palette.primaryText)
+                Spacer()
+                Button("完成".localized, action: onToggleHelp)
+                    .buttonStyle(.ghost(appSkin.palette.secondaryText))
+            }
+
+            shortcutHelpSection(
+                title: "複習".localized,
+                hints: state.isAutoPlaying ? autoplayShortcutHints : reviewShortcutHints
+            )
+            shortcutHelpSection(title: "導覽".localized, hints: navigationShortcutHints)
+            shortcutHelpSection(title: "工作階段".localized, hints: sessionShortcutHints)
+        }
+        .padding(appSkin.spacing.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+                .fill(appSkin.palette.overlayFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+                        .stroke(appSkin.palette.cardBorder.opacity(0.55), lineWidth: 1)
+                )
+                .appElevation(.z3)
+        )
+        .frame(maxWidth: 420, alignment: .topLeading)
+    }
+
+    func shortcutHelpSection(title: String, hints: [ShortcutHint]) -> some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
+            Text(title)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.secondaryText)
+
+            ForEach(hints) { hint in
+                HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.inlineGap) {
+                    ShortcutKeyCap(key: hint.key)
+                    Text(hint.label)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.primaryText)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    var activeShortcutHints: [ShortcutHint] {
+        if state.currentCard == nil {
+            return [
+                .init(id: "esc", key: "Esc", label: "返回".localized, isPrimary: true),
+                .init(id: "help", key: "?", label: "快捷鍵".localized)
+            ]
+        }
+        return state.isAutoPlaying ? autoplayShortcutHints : reviewShortcutHints
+    }
+
+    var reviewShortcutHints: [ShortcutHint] {
+        let spaceLabel = state.revealStage == .front ? "展開".localized : "收回".localized
+        return [
+            .init(id: "space", key: "Space", label: spaceLabel, isPrimary: true),
+            .init(id: "left", key: "←", label: "忘記".localized, isPrimary: true),
+            .init(id: "right", key: "→", label: "記得".localized, isPrimary: true),
+            .init(id: "detail", key: "D", label: "詳情".localized),
+            .init(id: "help", key: "?", label: "快捷鍵".localized)
+        ]
+    }
+
+    var autoplayShortcutHints: [ShortcutHint] {
+        [
+            .init(id: "pause", key: "P", label: state.isAutoPlayPaused ? "繼續".localized : "暫停".localized, isPrimary: true),
+            .init(id: "left", key: "←", label: "上一張".localized, isPrimary: true),
+            .init(id: "right", key: "→", label: "下一張".localized, isPrimary: true),
+            .init(id: "esc", key: "Esc", label: "關閉".localized),
+            .init(id: "help", key: "?", label: "快捷鍵".localized)
+        ]
+    }
+
+    var navigationShortcutHints: [ShortcutHint] {
+        [
+            .init(id: "up", key: "↑", label: "上一張".localized),
+            .init(id: "down", key: "↓", label: "下一張".localized),
+            .init(id: "shuffle", key: "S", label: "洗牌".localized),
+            .init(id: "detail", key: "D", label: "查看詳情".localized)
+        ]
+    }
+
+    var sessionShortcutHints: [ShortcutHint] {
+        [
+            .init(id: "play", key: "P", label: "自動播放".localized),
+            .init(id: "esc", key: "Esc", label: "關閉".localized),
+            .init(id: "help", key: "?", label: "顯示快捷鍵".localized)
+        ]
+    }
+    #endif
 
     // MARK: - Autoplay Controls
 
@@ -224,3 +363,52 @@ extension TodayReviewPresenter {
     var rememberedButtonOpacity: Double  { 1.0 - max(-swipeIntensity, 0) * 0.45 }
     var rememberedButtonGlow: Double     { max(swipeIntensity, 0) }
 }
+
+#if targetEnvironment(macCatalyst)
+private struct ShortcutHintChip: View {
+    @Environment(\.appSkin) private var appSkin
+
+    let hint: TodayReviewPresenter.ShortcutHint
+
+    var body: some View {
+        HStack(spacing: appSkin.spacing.microGap) {
+            ShortcutKeyCap(key: hint.key)
+            Text(hint.label)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(hint.isPrimary ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
+        }
+        .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+        .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
+        .background(
+            Capsule()
+                .fill(appSkin.palette.mutedFill.opacity(hint.isPrimary ? 0.95 : 0.72))
+        )
+        .overlay(
+            Capsule()
+                .stroke(appSkin.palette.cardBorder.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+private struct ShortcutKeyCap: View {
+    @Environment(\.appSkin) private var appSkin
+
+    let key: String
+
+    var body: some View {
+        Text(key)
+            .font(AppFonts.monoNumbers(size: 12))
+            .foregroundStyle(appSkin.palette.primaryText)
+            .padding(.horizontal, 6)
+            .padding(.vertical, AppSpacing.s1)
+            .background(
+                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                    .fill(appSkin.palette.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                            .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
+                    )
+            )
+    }
+}
+#endif

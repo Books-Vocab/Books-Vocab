@@ -163,6 +163,20 @@ struct TodayReviewPresenter: View {
                     completionState
                 }
             }
+            #if targetEnvironment(macCatalyst)
+            .overlay {
+                if isHelpPresented {
+                    appSkin.palette.shadow.opacity(0.25)
+                        .ignoresSafeArea()
+                        .onTapGesture { onToggleHelp() }
+                        .transition(.overlayFade)
+
+                    shortcutHelpOverlay
+                        .transition(.overlayFade)
+                }
+            }
+            .animation(AppMotion.panelState, value: isHelpPresented)
+            #endif
             .platformContentMaxWidth(for: LayoutMode(horizontalSizeClass: sizeClass))
             .vocabCanvasBackground()
             .platformHideNavigationBar()
@@ -232,6 +246,13 @@ struct TodayReviewPresenter: View {
             )
             .opacity(cardOpacity)
             .simultaneousGesture(swipeDragGesture)
+            #if targetEnvironment(macCatalyst)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard isCardInteractive, state.revealStage == .front else { return }
+                onAdvanceReveal()
+            }
+            #endif
         }
     }
 
