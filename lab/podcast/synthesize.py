@@ -90,8 +90,10 @@ from pydub import AudioSegment
 
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "").strip()
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1").strip()
-# Vertex Gemini-TTS GA name (no `-preview`). Override via env if needed.
-TTS_MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-tts").strip()
+# Default matches .env: Gemini 3.1 Flash TTS (preview on Vertex AI). Pinned to
+# -preview until 3.1 GA; do NOT fall back to 2.5 — that silently downgrades
+# prosody and the audio-tag palette. Override via TTS_MODEL env when GA lands.
+TTS_MODEL = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()
 TTS_MAX_CONCURRENT = int(os.getenv("TTS_MAX_CONCURRENT", "10"))
 TTS_RETRY_ATTEMPTS = int(os.getenv("TTS_RETRY_ATTEMPTS", "4"))
 VOICE_SPEAKER1 = ""  # set from overview.md Voice Mapping
@@ -181,14 +183,24 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
             lines = section_match.group(1).strip().splitlines()
             personality = ""
             style = ""
+            voice_dir = ""
             for line in lines:
                 if "**Personality**" in line:
                     personality = line.split(":", 1)[-1].strip()
                 elif "**Speaking style**" in line:
                     style = line.split(":", 1)[-1].strip()
-            if personality or style:
+                elif "**Voice direction**" in line:
+                    voice_dir = line.split(":", 1)[-1].strip()
+            if personality or style or voice_dir:
                 desc = f"{personality} {style}".strip()
-                prompt_parts.append(f"- {name} (voiced by {alias}): {desc}")
+                entry = f"- {name} (voiced by {alias}): {desc}"
+                # Voice direction = explicit TTS performance notes (accent, energy,
+                # timbre, signature delivery). Gemini 3.1 leans on this framing for
+                # expressive, distinct voices. Optional — older overview.md files
+                # without the field fall back to personality+style only.
+                if voice_dir:
+                    entry += f" Performance: {voice_dir}"
+                prompt_parts.append(entry)
 
     prompt_parts.append(
         "\nThey interrupt each other naturally, react with genuine surprise or amusement, "

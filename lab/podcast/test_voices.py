@@ -33,7 +33,7 @@ from google import genai
 from google.genai import types as genai_types
 from pydub import AudioSegment
 
-MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-preview-tts").strip()
+MODEL = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()
 
 SCRIPT = """Speaker1: So I've been reading this book about habits, and it completely changed how I think about change.
 Speaker2: Oh really? What was the big insight for you?
