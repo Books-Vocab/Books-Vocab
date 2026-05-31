@@ -30,6 +30,7 @@ struct BooksBrowserApp: App {
     let networkMonitor = NetworkMonitor.shared
     let syncCoordinator = SyncCoordinator()
     let toastCoordinator = AppToastCoordinator()
+    let appCommandCoordinator = AppCommandCoordinator()
     let localDataCleaner: any LocalDataClearing = LocalDataCleanerService()
 
     init() {
@@ -90,6 +91,15 @@ struct BooksBrowserApp: App {
             #endif
         }
         .modelContainer(modelContainer)
+        #if targetEnvironment(macCatalyst)
+        .commands {
+            MacMenuCommands(
+                coordinator: appCommandCoordinator,
+                kgService: kgService,
+                modelContainer: modelContainer
+            )
+        }
+        #endif
     }
 
     private var mainAppContent: some View {
@@ -119,6 +129,7 @@ struct BooksBrowserApp: App {
                 .environment(\.quotaStore, QuotaStore.shared)
                 .environment(\.speechService, SpeechService.shared)
                 .environment(\.toastCoordinator, toastCoordinator)
+                .environment(\.appCommandCoordinator, appCommandCoordinator)
                 .toastOverlay()
         }
         .environmentObject(appearanceStore)
@@ -134,6 +145,7 @@ struct BooksBrowserApp: App {
         } else {
             ContentView()
                 .modifier(AutoSyncMonitor())
+                .macSettingsCommandSheet()
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
                 }
