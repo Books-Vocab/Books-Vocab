@@ -55,6 +55,7 @@ struct BookCard: View {
         .task(id: book.coverImageData) {
             await decodeCoverImage()
         }
+        .appHoverLift()
         .enableInjection()
     }
 
