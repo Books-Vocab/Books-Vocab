@@ -41,6 +41,11 @@ struct PodcastEpisodeListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.kgService) private var kgService
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// regular（Mac/iPad）雙欄右欄選定的集數；compact 為 nil（走 NavigationLink push）。
+    @State private var detailRouter = PodcastDetailRouter()
+    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
     // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
@@ -141,6 +146,8 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.podcastDetailRouter, detailRouter)
+        .podcastDetailPresentation(router: detailRouter, layoutMode: layoutMode)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 followToggleButton
@@ -331,23 +338,9 @@ struct PodcastEpisodeListView: View {
             }
             .padding(.horizontal, skin.spacing.microGap)
 
-            VStack(spacing: 0) {
+            ListSectionCard {
                 ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in
-                    NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
-                        PodcastEpisodeRow(
-                            episode: episode,
-                            progress: progressMap[episode.remoteId]
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!episode.audioAvailable || navigationLocked)
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            beginNavigationLock()
-                            warmConnection(for: episode)
-                        }
-                    )
+                    episodeRow(episode)
 
                     if index < episodes.count - 1 {
                         Divider()
@@ -356,14 +349,43 @@ struct PodcastEpisodeListView: View {
                     }
                 }
             }
-            .padding(.vertical, skin.spacing.microGap)
+        }
+    }
+
+    /// 集數 row 依 layoutMode 分支：
+    /// - regular（Mac/iPad）：選定載入右欄 inline player（detailRouter.show），不 push。
+    /// - compact（iPhone）：沿用 value-based NavigationLink push（freeze-fix 契約，見檔頭註解）。
+    @ViewBuilder
+    private func episodeRow(_ episode: PodcastEpisode) -> some View {
+        let row = PodcastEpisodeRow(
+            episode: episode,
+            progress: progressMap[episode.remoteId]
+        )
+        .contentShape(Rectangle())
+
+        if layoutMode.usesInlineDetail {
+            Button {
+                detailRouter.show(episodeRemoteId: episode.remoteId)
+                warmConnection(for: episode)
+            } label: { row }
+            .buttonStyle(.plain)
+            .disabled(!episode.audioAvailable)
             .background(
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                    .fill(skin.palette.cardBackground)
+                episode.remoteId == detailRouter.selectedEpisodeRemoteId
+                    ? skin.palette.accentSubtle
+                    : Color.clear
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                    .stroke(skin.palette.cardBorder, lineWidth: 0.5)
+        } else {
+            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
+                row
+            }
+            .buttonStyle(.plain)
+            .disabled(!episode.audioAvailable || navigationLocked)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    beginNavigationLock()
+                    warmConnection(for: episode)
+                }
             )
         }
     }
