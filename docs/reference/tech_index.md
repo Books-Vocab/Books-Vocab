@@ -109,6 +109,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
+| `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
 | `i18n_lint.sh` | iOS 字串在地化掃描(`--report` / `--baseline` / `--baseline-check` / `--strict`),擋 raw 中文、static formatter、`.xcstrings needs_review`。詳見 `docs/sop/i18n_lint.md` |
 | `inject_codemod.py` | iOS InjectionNext 三件套自動注入(`import Inject` / `@ObserveInjection` / `.enableInjection()`)。`--dry-run` / `--apply` / `--scope <subdir>` |
@@ -121,14 +122,14 @@ Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` 
 | 項目 | 值 / 路徑 |
 |------|-----------|
 | L1 Lightsail AutoSnapshot | 每日 UTC 22:00,保留 7 份 |
-| L3 S3 bucket | `s3://kg-backups-prod-967512079054`(ap-northeast-1, Versioning + MFA Delete + SSE-S3) |
+| L3 S3 bucket | `s3://kg-backups-prod-967512079054`(ap-northeast-1, Versioning + MFA Delete + SSE-S3,**無 lifecycle**) |
 | S3 IAM user | `kg-backup-agent` — 僅 `s3:PutObject*`,無 Delete / List |
 | Server backup script | `/usr/local/bin/kg_backup.sh`(root 755) |
 | Server cron | `/etc/cron.d/kg-backup` — daily UTC 03:00 |
 | Server log | `/var/log/kg_backup.log`(每執行一行:exit / bytes / sha256 / key) |
 | Server AWS profile | `/home/ubuntu/.aws/`(uid 1000)+ `/root/.aws/`(cron 用) |
 | S3 key 格式 | `data/YYYY-MM-DD.tar.gz`(UTC 日期) |
-| Lifecycle | current 30 天,noncurrent 35 天後 permanently delete |
+| Lifecycle | 無(MFA Delete 互斥)— 永久累積,手動清見 `backup_restore.md §7` |
 | 手動觸發 | `./ops/devops_kg_safe.sh backup-s3-test` |
 | Restore SOP | `docs/sop/backup_restore.md` |
 | 三層策略總覽 | `docs/sop/backup.md` |

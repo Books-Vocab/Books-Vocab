@@ -38,7 +38,7 @@ verified_against: 61b0d14f
 | Versioning | Enabled + **MFA Delete**(由 root user 設) |
 | Public access | Block all |
 | Encryption | SSE-S3 (AES256) |
-| Lifecycle | current versions expire 30 天;noncurrent 35 天後 permanently delete |
+| Lifecycle | **無**(AWS 強制 lifecycle 與 MFA Delete 互斥)— backup 永久累積,要清舊版需手動走 root+MFA(見 §7) |
 | Key 格式 | `data/YYYY-MM-DD.tar.gz`(UTC 日期) |
 | Cron | `/etc/cron.d/kg-backup` → 每天 UTC 03:00(台北 11:00) |
 | Script | `/usr/local/bin/kg_backup.sh`(root:root, 755) |
@@ -228,17 +228,41 @@ cd /tmp && rm -rf "$DRILL"
 
 ---
 
-## 7. 反向操作(刻意刪 backup)
+## 7. 反向操作(刪舊 backup / 清空間)
 
-正常運維**不需要**手動刪 S3 backup,lifecycle 會自動清。但若要刪:
+> Bucket 沒設 lifecycle(MFA Delete 互斥),backup 永久累積。約每年 ~128 GB(${'\$'}3/月),前 2-3 年不痛,之後可手動清。
 
-```bash
-# 仍要 MFA。bucket 沒開 MFADelete 時跳過 --mfa 旗標
-aws s3api delete-object \
-  --bucket kg-backups-prod-967512079054 \
-  --key "data/<date>.tar.gz" \
-  --version-id "<id>" \
-  --mfa "arn:aws:iam::967512079054:mfa/<device> <code>"
-```
+**刪除任何 version 都要走 root user + TOTP MFA**(這正是 MFA Delete 的保護)。流程同 §A2 開 MFA Delete 那次:
 
-**`kg-backup-agent` 完全沒有 Delete 權限**,要刪只能用本機 admin profile。這是設計上的硬阻擋,不要繞過。
+1. AWS Console 用 root user 登入,IAM → Security credentials → Create access key(臨時)
+2. 本機 `aws configure --profile root-tmp` 灌進去
+3. 對單一 version 刪:
+   ```bash
+   aws s3api delete-object \
+     --bucket kg-backups-prod-967512079054 \
+     --key "data/2025-12-01.tar.gz" \
+     --version-id "<VersionId>" \
+     --mfa "arn:aws:iam::967512079054:mfa/root-totp <6-digit>" \
+     --profile root-tmp
+   ```
+4. 批量清(例如保留最近 90 天):
+   ```bash
+   # 列出 90 天前的 versions(用平常 admin profile 就能 list,只有 delete 才需要 root+MFA)
+   CUTOFF=$(date -u -v-90d +%Y-%m-%d 2>/dev/null || date -u -d '90 days ago' +%Y-%m-%d)
+   aws s3api list-object-versions \
+     --bucket kg-backups-prod-967512079054 \
+     --prefix data/ \
+     --query "Versions[?LastModified<'${CUTOFF}'].[Key,VersionId]" \
+     --output text \
+   | while read key vid; do
+       echo "Will delete: $key $vid"
+       # 確認沒問題後加 root+MFA 跑下面這條(每次都要輸入新的 6 位數)
+       # aws s3api delete-object --bucket kg-backups-prod-967512079054 \
+       #   --key "$key" --version-id "$vid" \
+       #   --mfa "arn:aws:iam::967512079054:mfa/root-totp <code>" \
+       #   --profile root-tmp
+     done
+   ```
+5. **清完立刻刪 root access key + 清 profile**(同 §A2 步驟 4-5)
+
+**`kg-backup-agent`(server cron 用的身份)完全沒有 Delete 權限**,任何刪除動作只能透過 root+MFA。這是設計上的硬阻擋,不要繞過。
