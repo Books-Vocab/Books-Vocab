@@ -21,7 +21,7 @@ Read these files in order:
 
 ## Part 1 — Voice Pair Selection
 
-The TTS backend is **Gemini 2.5 Flash multi-speaker**. Five curated voice pairs
+The TTS backend is **Gemini 3.1 Flash TTS multi-speaker**. Five curated voice pairs
 are pre-tested and known to produce distinct, non-overlapping audio.
 
 ### Voice Catalog
@@ -73,7 +73,7 @@ The parser expects:
 - Structural lines `#`/`##`/`>`/`---`/HTML comment are SKIPPED (not concat'd onto previous turn). Parser removes them defensively, but a clean script shouldn't need that defense.
 - Any non-skip, non-tag line that follows a speaker line becomes **continuation** of that speaker.
 - Inline `**bold**` and `*italic*` emphasis are STRIPPED before TTS — authors should not use them, but parser sanitizes.
-- TTS tags like `[excited]`, `[speaking slowly]`, and SSML `<break time="1s"/>`, `<prosody>` are passed through verbatim.
+- TTS tags like `[excitement]`, `[slow]`, and SSML `<break time="1s"/>`, `<prosody>` are passed through verbatim.
 
 ### Hard Failures (must fix — edit the script in place)
 
@@ -91,7 +91,7 @@ The parser expects:
 ### Soft Warnings (note in report but don't auto-fix)
 
 1. Over 800 words between two speaker tags (may hit TTS batch limit)
-2. Same bracket tag used 6+ times in one episode (e.g., `[speaking slowly]` — monotonous)
+2. Same bracket tag used 6+ times in one episode (e.g., `[slow]` — monotonous)
 3. Emotion tag diversity <3 unique tags across episode
 4. Any TTS tag on a line by itself outside a speaker turn
 
@@ -158,7 +158,7 @@ The **architect stage already wrote** the Voice Mapping section to `plan/overvie
 - ...
 
 ### Soft Warnings (no action, listener may notice)
-- ep_4_script.md: `[speaking slowly]` used 7 times — monotonous
+- ep_4_script.md: `[slow]` used 7 times — monotonous
 - ...
 
 ## Verdict

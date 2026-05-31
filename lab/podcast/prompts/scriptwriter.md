@@ -82,7 +82,7 @@ Real people don't speak in clean paragraphs. They restart, trail off, interrupt 
 
 **Trail off (searching for it):**
 ```
-**Kai:** So the thing about compound interest isn't the math, it's... [thoughtful] it's that the math feels like nothing until it feels like everything.
+**Kai:** So the thing about compound interest isn't the math, it's... [slow] it's that the math feels like nothing until it feels like everything.
 ```
 
 **Getting interrupted (next line starts with em-dash):**
@@ -93,8 +93,8 @@ Real people don't speak in clean paragraphs. They restart, trail off, interrupt 
 
 **Overlapping reaction (two consecutive short lines, both laugh-tagged or react-tagged):**
 ```
-**Maya:** [laughing] Oh no.
-**Kai:** [laughing] Oh YES.
+**Maya:** [laughs] Oh no.
+**Kai:** [laughs] Oh YES.
 ```
 
 **Mid-thought pivot:**
@@ -123,13 +123,13 @@ A host suddenly reading a perfect sentence from the book breaks the illusion. Re
 ```
 **Ethan:** And his big line is — "we are what we—"
 **Priya:** "—repeatedly do. Excellence is not an act, but a habit." Except that's Aristotle, not Clear.
-**Ethan:** [laughing] Right, he's quoting Aristotle. Which is its own flex.
+**Ethan:** [laughs] Right, he's quoting Aristotle. Which is its own flex.
 ```
 
 **Partial quote + reaction:**
 ```
 **Rachel:** She writes — and this part I had to underline — "I was safer when I was alone." Just that. No elaboration.
-**Marcus:** [thoughtful] Yeah. That's the whole chapter in one sentence.
+**Marcus:** [low energy] Yeah. That's the whole chapter in one sentence.
 ```
 
 Save full verbatim reading for **1-2 must-quote moments per episode max** — usually the single most important line. Everything else paraphrases.
@@ -157,7 +157,7 @@ Every reaction should do one of these:
 **Push back softly:** "I want to believe that, but the 66-day number feels suspiciously clean."
 **Admit confusion:** "Hold on, I lost you at the dopamine part. Say it again?"
 **Get specific:** "When you say 'environment design,' what does that actually look like Monday morning?"
-**Feel it, honestly:** "That's... [thoughtful] yeah, that's one of those facts I wish I could un-learn."
+**Feel it, honestly:** "That's... [melancholy] yeah, that's one of those facts I wish I could un-learn."
 
 ### 5. Disagreement That Doesn't Resolve
 
@@ -252,43 +252,51 @@ At least **2-3 breath moments per episode**.
 
 ## TTS Voice Direction
 
-Embed tags for expressive TTS. Use sparingly — flat delivery with peaks is more natural than constant emotion. **Keep tags simple — single word or two-word bracket tags only.** Combined or complex bracket contents are unreliable.
+Embed tags for expressive TTS. The engine is **Gemini 3.1 Flash TTS** — every tag below maps to its official audio-tag set, which yields the strongest, most natural prosody. Use sparingly: flat delivery with emotional peaks beats constant emotion. **Single-word or two-word bracket tags only** — combined/complex bracket contents are unreliable.
 
 ### Tag Palette
 
-**Emotion** (pick from this richer set — don't default to the same 3):
-`[excited]` `[skeptical]` `[deadpan]` `[thoughtful]` `[amused]` `[somber]` `[uncertain]` `[warm]` `[empathetic]` `[sad]` `[surprised]` `[sarcastic]` `[happy]` `[serious]` `[tender]`
+Pull every tag from this set. It is the canonical Gemini 3.1 palette — the reviewer rejects anything outside it.
 
-**Pacing**:
-`[speaking slowly]` — revelations, powerful quotes (most powerful tool)
-`[speaking quickly]` — rapid-fire energy, excited tangents
-`[whispering]` — max 1-2 per episode, intimate moments
-`[sighing]` — resignation, processing weight
-`[laughing]` — genuine amusement
-`[chuckling]` — softer laugh, shared joke
+<!-- TTS_PALETTE:START -->
+**Emotion** (noun forms — strongest 3.1 prosody; don't default to the same 3):
+`[curiosity]` `[interest]` `[excitement]` `[enthusiasm]` `[amusement]` `[humor]` `[joy]` `[happiness]` `[awe]` `[admiration]` `[surprise]` `[shock]` `[skepticism]` `[doubt]` `[confusion]` `[uncertainty]` `[determination]` `[confidence]` `[sympathy]` `[caring]` `[melancholy]` `[nostalgia]` `[sadness]` `[grief]` `[relief]` `[satisfaction]` `[frustration]` `[disappointment]` `[tension]` `[anticipation]` `[hope]` `[sarcasm]` `[passion]` `[yearning]`
 
-**SSML** (for precise timing and emphasis):
+**Energy** (3.1 — shape paragraph-level dynamics; lift or settle a whole stretch):
+`[high energy]` `[low energy]`
+
+**Pacing / non-verbal**:
+`[slow]` — revelations, powerful quotes (most powerful tool)
+`[fast]` — rapid-fire energy, excited tangents
+`[whispers]` — max 1-2 per episode, intimate moments
+`[sighs]` — resignation, processing weight
+`[laughs]` — genuine amusement
+`[giggles]` — softer, shared-joke laugh
+`[gasp]` — genuine shock or surprise beat
+<!-- TTS_PALETTE:END -->
+
+**SSML** (precise timing and emphasis — separate mechanism from the tag palette):
 - `<break time="1s"/>` / `<break time="2s"/>` / `<break time="3s"/>` — vary these, don't always use 1s
 - `<emphasis level="strong">word</emphasis>` — stress a key word
 - `<prosody rate="slow">text</prosody>` — slow for impact (1-2 sentences max)
 
 ### Tag Usage Rules
-- One tag at a time per line (not `[excited, laughing]`)
-- Place tag at start of the affected text, not after
-- **Vary the palette** — if you've used `[speaking slowly]` four times already, reach for `[thoughtful]` or `[somber]` instead
-- **Tag budget**: ~1 tag per 200-300 words. For a 4000-word script, roughly 15-20 tags total.
-- Under-tagging (flat audio) is worse than slight over-tagging.
+- One tag at a time per line (not `[excitement, laughs]`); **never place two tags adjacent** — separate them with text or punctuation, or 3.1 errors.
+- Place the tag at the start of the affected text, not after.
+- **Within a tagged stretch, join clauses with commas, not periods** — period-broken fragments make 3.1 sound chopped.
+- **Vary the palette** — if you've used `[slow]` four times, reach for `[melancholy]` or `[nostalgia]`; use `[high energy]` / `[low energy]` to shape whole segments.
+- **Tag budget**: ~1 tag per 200-300 words. For a 4000-word script, roughly 15-20 tags total. Over-tagging makes 3.1 unstable / overperformed; under-tagging (flat audio) is worse than slight over-tagging.
 
 ### Well-Tagged Example
 
 ```
-**Maya:** [excited] OK wait — so you're telling me that the same factory, same assembly line, and one person is miserable while the other is having the time of their life?
+**Maya:** [excitement] OK wait — so you're telling me that the same factory, same assembly line, and one person is miserable while the other is having the time of their life?
 
-**Kai:** [speaking slowly] Same building. Same job. <break time="0.5s"/> Completely different inner experience. <break time="1s"/> And <emphasis level="strong">that's</emphasis> the whole thesis.
+**Kai:** [slow] Same building. Same job. <break time="0.5s"/> Completely different inner experience. <break time="1s"/> And <emphasis level="strong">that's</emphasis> the whole thesis.
 
-**Maya:** [somber] That's either incredibly inspiring or deeply unsettling.
+**Maya:** [melancholy] That's either incredibly inspiring or deeply unsettling.
 
-**Kai:** [amused] Why not both?
+**Kai:** [amusement] Why not both?
 ```
 
 ---

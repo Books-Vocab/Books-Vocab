@@ -123,7 +123,7 @@ Regex: `\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])`
 GCP_PROJECT_ID=gen-lang-client-*****
 GCP_LOCATION=us-central1
 GOOGLE_APPLICATION_CREDENTIALS=gen-lang-client-*****-*.json
-TTS_MODEL=gemini-2.5-pro-tts   # 部署預設(.env);synthesize.py:62 程式碼預設是 flash-tts
+TTS_MODEL=gemini-3.1-flash-tts-preview   # 部署預設(.env);synthesize.py 程式碼預設亦同
 ```
 
 - 走 **Vertex AI 模式**(`vertexai=True`, `synthesize.py:326`)，非 AI Studio API key。
@@ -135,11 +135,11 @@ TTS_MODEL=gemini-2.5-pro-tts   # 部署預設(.env);synthesize.py:62 程式碼�
 
 | TTS_MODEL | 用途 |
 |---|---|
-| `gemini-2.5-pro-tts` | 預設，自然度高，配額嚴(易 429) |
-| `gemini-2.5-flash-tts` | 降級備援，速度快、配額寬，但表情/節奏較弱 |
-| `gemini-2.5-flash-preview-tts` | preview 用，舊命名 |
+| `gemini-3.1-flash-tts-preview` | **當前預設**，3.1 官方 audio-tag 名詞情緒集 + per-host director notes(`### PERFORMANCE`)，表情/節奏最佳 |
+| `gemini-2.5-pro-tts` | 歷史備援，自然度高但配額嚴(易 429)、無 3.1 tag 集 |
+| `gemini-2.5-flash-tts` | 歷史備援，速度快、配額寬，但表情/節奏較弱 |
 
-`prompts/tts_prep.md:24` 仍寫「backend is Gemini 2.5 Flash」是過時文案，實際以 `.env:TTS_MODEL` 為準。pro/flash 在單一 workspace 內可混用(每集分別 synth)，但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用，難 debug。
+model 一律以 `.env:TTS_MODEL` 為準(`prompts/tts_prep.md` 已同步為 3.1)。不同 model 在單一 workspace 內可混用(每集分別 synth)，但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用，難 debug。
 
 ### 655s padding bug 防線(必讀)
 
@@ -406,7 +406,7 @@ Endpoints:
 
 **成本來源**:
 - **Stage 1-10(Claude)**:直接讀 `result.modelUsage[model].costUSD`。這是 claude CLI 套 Anthropic 官方單價(含 cache 折扣、1M context premium)算好的值。不自己重算 — Anthropic 改價時 CLI 會自動拿到新價,不會有對不上的風險。
-- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-3.1-flash-tts-preview`,$1.00/$20 per 1M(audio = 25 tok/sec,無 long tier;源自 ai.google.dev 的 TTS-specific row,Vertex preview 鏡像 AI Studio rates)。舊 `gemini-2.5-pro-tts` 保留 $1.25/$10(≤200K)、$2.50/$15(>200K) — Vertex 官方 base Gemini 2.5 Pro rate。`verified_against: 2026-05-30`。
+- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-3.1-flash-tts-preview`,$1.00/$20 per 1M(audio = 25 tok/sec,無 long tier;源自 ai.google.dev 的 TTS-specific row,Vertex preview 鏡像 AI Studio rates)。舊 `gemini-2.5-pro-tts` 保留 $1.25/$10(≤200K)、$2.50/$15(>200K) — Vertex 官方 base Gemini 2.5 Pro rate。`verified_against: 2026-05-31`。
 - **Stage 12-13**:本地 pydub / Whisper,$0。
 
 **Token 來源優先序**(`synthesize.py:_synthesize_one`):

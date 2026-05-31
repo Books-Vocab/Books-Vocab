@@ -30,7 +30,7 @@ client = genai.Client(
     location=os.getenv("GCP_LOCATION", "us-central1").strip(),
 )
 
-model = os.getenv("TTS_MODEL", "gemini-2.5-flash-preview-tts").strip()
+model = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()
 
 response = client.models.generate_content(
     model=model,
