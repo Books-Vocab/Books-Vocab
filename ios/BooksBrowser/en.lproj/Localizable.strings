@@ -564,6 +564,7 @@
 "已追蹤" = "Following";
 "%@ 集" = "%@ episodes";
 "追隨當前" = "Follow current";
+"停止跟隨" = "Stop following";
 "集數" = "Episodes";
 
 /* i18n sweep — append for missing keys */
