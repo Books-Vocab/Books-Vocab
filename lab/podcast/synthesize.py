@@ -100,8 +100,13 @@ VOICE_SPEAKER1 = ""  # set from overview.md Voice Mapping
 VOICE_SPEAKER2 = ""
 MAX_WORDS_PER_BATCH = int(os.getenv("TTS_MAX_WORDS_PER_BATCH", "800"))
 SILENCE_MS = int(os.getenv("TTS_SILENCE_MS", "50"))
-OUTPUT_FORMAT = os.getenv("TTS_OUTPUT_FORMAT", "mp3").strip().lower()
+OUTPUT_FORMAT = os.getenv("TTS_OUTPUT_FORMAT", "m4a").strip().lower()
 MP3_BITRATE = os.getenv("TTS_MP3_BITRATE", "192k").strip()
+# AAC at 128k is roughly transparent for spoken voice and ~30% smaller than
+# 192k MP3. `+faststart` reorders MP4 boxes so the `moov` atom precedes `mdat`,
+# letting AVPlayer start playback during the first Range request instead of
+# waiting for the whole file (which is the entire point of moving to S3).
+AAC_BITRATE = os.getenv("TTS_AAC_BITRATE", "128k").strip()
 # Per-batch wall-clock timeout. A single stuck Gemini call should not block the
 # whole episode. Raised timeout → stuck batch re-queues on next run; cached
 # siblings on disk survive.
@@ -689,6 +694,11 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
             apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
                          "-af", af_apply, "-ar", "48000",
                          "-codec:a", "libmp3lame", "-b:a", MP3_BITRATE, str(dst)]
+        elif OUTPUT_FORMAT == "m4a":
+            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
+                         "-af", af_apply, "-ar", "48000",
+                         "-codec:a", "aac", "-b:a", AAC_BITRATE,
+                         "-movflags", "+faststart", str(dst)]
         else:
             apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
                          "-af", af_apply, "-ar", "48000", str(dst)]
@@ -728,6 +738,14 @@ def combine_and_export(segments: List[AudioSegment], output_path: Path) -> None:
     if not mastered:
         if OUTPUT_FORMAT == "mp3":
             combined.export(str(output_path), format="mp3", bitrate=MP3_BITRATE)
+        elif OUTPUT_FORMAT == "m4a":
+            # pydub passes format="mp4" to ffmpeg for the container; the codec is
+            # selected via parameters. +faststart matches the mastering path.
+            combined.export(
+                str(output_path), format="mp4",
+                parameters=["-codec:a", "aac", "-b:a", AAC_BITRATE,
+                            "-movflags", "+faststart"],
+            )
         else:
             combined.export(str(output_path), format="wav")
 
@@ -774,7 +792,7 @@ def process_file(
         cache_dir=cache_dir, episode_label=episode_label,
     )
 
-    ext = "mp3" if OUTPUT_FORMAT == "mp3" else "wav"
+    ext = OUTPUT_FORMAT if OUTPUT_FORMAT in ("mp3", "m4a") else "wav"
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3
     model_tag = TTS_MODEL.split("-")[1] if "-" in TTS_MODEL else TTS_MODEL  # "2.5" → too long
     if "pro" in TTS_MODEL:
@@ -811,7 +829,7 @@ def _output_path_for(script_path: Path) -> Path:
         model_tag = "flash"
     else:
         model_tag = TTS_MODEL.split("-")[1] if "-" in TTS_MODEL else TTS_MODEL
-    ext = "mp3" if OUTPUT_FORMAT == "mp3" else "wav"
+    ext = OUTPUT_FORMAT if OUTPUT_FORMAT in ("mp3", "m4a") else "wav"
     return script_path.with_name(
         script_path.stem.replace("_script", "") + f"_{model_tag}.{ext}"
     )
