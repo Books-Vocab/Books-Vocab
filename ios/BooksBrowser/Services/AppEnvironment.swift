@@ -60,6 +60,12 @@ private struct AppToastCoordinatorKey: EnvironmentKey {
     }
 }
 
+private struct AppCommandCoordinatorKey: EnvironmentKey {
+    static var defaultValue: AppCommandCoordinator {
+        MainActor.assumeIsolated { AppCommandCoordinator() }
+    }
+}
+
 private struct NetworkMonitorKey: EnvironmentKey {
     static let defaultValue: NetworkMonitor = .shared
 }
@@ -94,6 +100,10 @@ extension EnvironmentValues {
     var toastCoordinator: AppToastCoordinator {
         get { self[AppToastCoordinatorKey.self] }
         set { self[AppToastCoordinatorKey.self] = newValue }
+    }
+    var appCommandCoordinator: AppCommandCoordinator {
+        get { self[AppCommandCoordinatorKey.self] }
+        set { self[AppCommandCoordinatorKey.self] = newValue }
     }
     var authManager: any AuthManaging {
         get { self[AuthManagerEnvironmentKey.self] }
