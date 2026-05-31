@@ -43,7 +43,8 @@ struct PodcastEpisodeListView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    /// regular（Mac/iPad）雙欄右欄選定的集數；compact 為 nil（走 NavigationLink push）。
+    /// regular（Mac/iPad）雙欄右欄選定的集數；compact 下其 selectedEpisodeRemoteId
+    /// 恆為 nil（改走 NavigationLink push）。
     @State private var detailRouter = PodcastDetailRouter()
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
