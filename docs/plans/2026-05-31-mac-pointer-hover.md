@@ -60,11 +60,14 @@ import SwiftUI
 
 private struct AppHoverLift: ViewModifier {
     var scale: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
+        // Reduce Motion 仍關 scale 動畫(ui-design.md:170);hover 改 no-op,觸控本就無 hover。
+        let effectiveScale = reduceMotion ? 1.0 : scale
         content
-            .scaleEffect(isHovered ? scale : 1.0)
+            .scaleEffect(isHovered ? effectiveScale : 1.0)
             .animation(AppMotion.quickEaseOut, value: isHovered)
             .onHover { isHovered = $0 }
     }
