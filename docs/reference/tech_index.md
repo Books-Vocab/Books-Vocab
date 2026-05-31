@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 7482c5ee
+verified_against: e8e4ccf3
 -->
 # Technical Reference Index
 
@@ -72,7 +72,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 | `Services/` | 後端通訊(`KGService`)、認證、雲同步、analytics、sentry |
 | `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`) |
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
-| `Platform/` | iOS / Mac Catalyst 橋接(`PlatformRepresentable` 型別 alias、`PlatformCompatibility` modifier wrapper、`LayoutMode`、`MacWindowChrome` Catalyst 視窗尺寸+沉浸 title bar) |
+| `Platform/` | iOS / Mac Catalyst 橋接(`PlatformRepresentable` 型別 alias、`PlatformCompatibility` modifier wrapper、`LayoutMode`、`MacWindowChrome` Catalyst 視窗尺寸+沉浸 title bar、`MacMenuCommands` Catalyst 頂部選單列+⌘ 快捷鍵、`AppCommandCoordinator` app-global menu intent、`FocusedCommandValues` focusedSceneValue 動作通道) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
 | `Debug/` | DEBUG-only — `CatalogScene` + `Scenarios/*Scenarios.swift`(Playbook iOS catalog,啟用方式見 `docs/sop/ios.md §Playbook Catalog`) |
 
