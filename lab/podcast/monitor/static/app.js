@@ -472,6 +472,7 @@ function sidebarCardHtml(s, isActive) {
   <div class="ws-card-head">
     <span class="ws-status-dot ws-status-${s.status}"></span>
     <span class="ws-name">${escapeHtml(s.name)}</span>
+    ${s.is_saga ? `<span class="ws-saga-badge" title="${escapeAttr((s.display || "saga") + " · " + (s.book_count || 0) + " books · " + (s.spoiler_mode || ""))}">📚 ${escapeHtml(String(s.book_count || 0))} · ${escapeHtml(s.spoiler_mode || "saga")}</span>` : ""}
     <span class="ws-time" title="${absTime}">${time}</span>
   </div>
   <div class="ws-card-bar">
@@ -870,16 +871,20 @@ document.addEventListener("click", (e) => {
 
 // ─── New-podcast modal (Phase 4) ───
 const modalState = {
-  file: null,       // selected File
+  files: [],        // selected Files, in reading order (= saga arg order)
   submitting: false,
 };
 
 function openNewPodcastModal() {
   $("#modal-backdrop").hidden = false;
   // Reset state so re-opening starts fresh.
-  modalState.file = null;
+  modalState.files = [];
   modalState.submitting = false;
   $("#epub-input").value = "";
+  $("#saga-title").value = "";
+  const ra = $("#new-podcast-form").querySelector('input[name="spoiler-mode"][value="readalong"]');
+  if (ra) ra.checked = true;
+  renderFileList();
   // Belt-and-suspenders on the parallel default — HTML carries value="3" but
   // browser autofill / stale cached HTML can leave it blank. Set both the
   // attribute and the live value so neither path can drop it.
@@ -892,6 +897,7 @@ function openNewPodcastModal() {
   submit.disabled = true;
   submit.textContent = "↑ PICK AN EPUB ABOVE";
   refreshDropzonePrompt();
+  refreshSagaFields();
   // Add a one-shot pulse to the dropzone so the click target is obvious.
   const dz = $("#dropzone");
   dz.classList.add("dropzone-pulse");
@@ -911,69 +917,157 @@ function closeNewPodcastModal() {
 function refreshDropzonePrompt() {
   const promptEl = $("#dropzone-prompt");
   if (!promptEl) return;
-  if (modalState.file) {
-    const mb = (modalState.file.size / (1 << 20)).toFixed(1);
+  const n = modalState.files.length;
+  if (n === 0) {
     promptEl.innerHTML = `
-      <span class="dropzone-icon">✓</span>
-      <span class="dropzone-text">${escapeHtml(modalState.file.name)}</span>
-      <span class="dropzone-hint">${mb} MB · click to pick a different file</span>
+      <span class="dropzone-icon">📚</span>
+      <span class="dropzone-text">drag EPUB(s) here, or click to pick</span>
+      <span class="dropzone-hint">max 200MB each · 1 book = single · 2+ books = saga</span>
     `;
   } else {
     promptEl.innerHTML = `
-      <span class="dropzone-icon">📚</span>
-      <span class="dropzone-text">drag an EPUB here, or click to pick</span>
-      <span class="dropzone-hint">max 200MB · pipeline runs all 13 stages</span>
+      <span class="dropzone-icon">✓</span>
+      <span class="dropzone-text">${n} file${n > 1 ? "s" : ""} selected</span>
+      <span class="dropzone-hint">click to add more · reorder below</span>
     `;
   }
 }
 
-function setModalFile(file) {
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".epub")) {
-    toast(`not an EPUB: ${file.name}`, "warn");
-    return;
+// Render the ordered selected-files list. Order = reading order = saga arg order.
+function renderFileList() {
+  const ol = $("#file-list");
+  if (!ol) return;
+  const files = modalState.files;
+  if (files.length === 0) {
+    ol.hidden = true;
+    ol.innerHTML = "";
+  } else {
+    ol.hidden = false;
+    ol.innerHTML = files.map((f, i) => {
+      const mb = (f.size / (1 << 20)).toFixed(1);
+      const upDis = i === 0 ? "disabled" : "";
+      const downDis = i === files.length - 1 ? "disabled" : "";
+      return `
+<li class="file-item">
+  <span class="file-ord">${i + 1}</span>
+  <span class="file-name" title="${escapeAttr(f.name)}">${escapeHtml(f.name)}</span>
+  <span class="file-size tabular">${mb} MB</span>
+  <span class="file-actions">
+    <button type="button" class="icon-btn file-move" data-move="up" data-idx="${i}" title="Move up" ${upDis}>↑</button>
+    <button type="button" class="icon-btn file-move" data-move="down" data-idx="${i}" title="Move down" ${downDis}>↓</button>
+    <button type="button" class="icon-btn file-remove" data-idx="${i}" title="Remove">✕</button>
+  </span>
+</li>`;
+    }).join("");
   }
-  if (file.size > 200 * (1 << 20)) {
-    toast(`file too large (>200 MB)`, "error");
-    return;
-  }
-  modalState.file = file;
-  const submit = $("#modal-submit");
-  submit.disabled = false;
-  submit.textContent = "↑ START PIPELINE";
   refreshDropzonePrompt();
+  refreshSagaFields();
+}
+
+// Show/hide saga fields + drive submit label/enabled based on file count.
+function refreshSagaFields() {
+  const n = modalState.files.length;
+  const isSaga = n >= 2;
+  $("#saga-fields").hidden = !isSaga;
+  const submit = $("#modal-submit");
+  if (n === 0) {
+    submit.disabled = true;
+    submit.textContent = "↑ PICK AN EPUB ABOVE";
+    return;
+  }
+  if (isSaga) {
+    submit.textContent = "↑ START SAGA";
+    const title = $("#saga-title").value.trim();
+    const radio = $("#new-podcast-form").querySelector('input[name="spoiler-mode"]:checked');
+    submit.disabled = !(title && radio);
+  } else {
+    submit.textContent = "↑ START PIPELINE";
+    submit.disabled = false;
+  }
+}
+
+// Append + validate (.epub, <200MB) + dedupe by name+size. Then re-render.
+function setModalFiles(fileList) {
+  const incoming = Array.from(fileList || []);
+  if (incoming.length === 0) return;
+  for (const file of incoming) {
+    if (!file.name.toLowerCase().endsWith(".epub")) {
+      toast(`not an EPUB: ${file.name}`, "warn");
+      continue;
+    }
+    if (file.size > 200 * (1 << 20)) {
+      toast(`file too large (>200 MB): ${file.name}`, "error");
+      continue;
+    }
+    const dup = modalState.files.some(f => f.name === file.name && f.size === file.size);
+    if (dup) {
+      toast(`already added: ${file.name}`, "warn");
+      continue;
+    }
+    modalState.files.push(file);
+  }
+  renderFileList();
+}
+
+function moveModalFile(idx, dir) {
+  const files = modalState.files;
+  const j = dir === "up" ? idx - 1 : idx + 1;
+  if (j < 0 || j >= files.length) return;
+  [files[idx], files[j]] = [files[j], files[idx]];
+  renderFileList();
+}
+
+function removeModalFile(idx) {
+  modalState.files.splice(idx, 1);
+  renderFileList();
 }
 
 async function submitNewPodcast(e) {
   e.preventDefault();
-  if (!modalState.file || modalState.submitting) return;
+  if (modalState.files.length === 0 || modalState.submitting) return;
+  const isSaga = modalState.files.length >= 2;
   modalState.submitting = true;
   const submitBtn = $("#modal-submit");
+  const restoreLabel = isSaga ? "↑ START SAGA" : "↑ START PIPELINE";
   submitBtn.disabled = true;
   submitBtn.textContent = "STARTING…";
 
+  const parallel = $("#parallel-input").value || "3";
   const fd = new FormData();
-  fd.append("epub", modalState.file);
-  fd.append("parallel", $("#parallel-input").value || "3");
+  let url;
+  if (isSaga) {
+    const title = $("#saga-title").value.trim();
+    const radio = $("#new-podcast-form").querySelector('input[name="spoiler-mode"]:checked');
+    // Append in reading order — this is the saga argument order.
+    for (const f of modalState.files) fd.append("epubs", f);
+    fd.append("title", title);
+    fd.append("spoiler_mode", radio.value);
+    fd.append("parallel", parallel);
+    url = "/api/pipeline/start-saga";
+  } else {
+    fd.append("epub", modalState.files[0]);
+    fd.append("parallel", parallel);
+    url = "/api/pipeline/start";
+  }
 
   let job;
   try {
-    const r = await fetch("/api/pipeline/start", { method: "POST", body: fd });
+    const r = await fetch(url, { method: "POST", body: fd });
     job = await r.json();
     if (!r.ok) throw new Error(job.detail || `HTTP ${r.status}`);
   } catch (err) {
     toast(`start failed: ${err.message}`, "error", 8000);
     modalState.submitting = false;
     submitBtn.disabled = false;
-    submitBtn.textContent = "↑ START PIPELINE";
+    submitBtn.textContent = restoreLabel;
     return;
   }
 
-  toast(`pipeline started · ${job.label} · job ${job.job_id}`, "info");
+  toast(`${isSaga ? "saga" : "pipeline"} started · ${job.label} · job ${job.job_id}`, "info");
   closeNewPodcastModal();
   modalState.submitting = false;
   submitBtn.disabled = false;
-  submitBtn.textContent = "↑ START PIPELINE";
+  submitBtn.textContent = restoreLabel;
 
   // The workspace name isn't known until pipeline.py:setup_workspace runs
   // (slug derived from book title + content hash). Poll workspaces list
@@ -1806,7 +1900,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Modal: file picker + drag/drop. The <label class="dropzone"> wrapping
   // the hidden file input already triggers the OS picker on click via HTML —
   // no JS click handler needed (and adding one would double-fire the picker).
-  $("#epub-input").addEventListener("change", (e) => setModalFile(e.target.files[0]));
+  $("#epub-input").addEventListener("change", (e) => setModalFiles(e.target.files));
   const dz = $("#dropzone");
   dz.addEventListener("dragenter", (e) => { e.preventDefault(); dz.classList.add("drag-over"); });
   dz.addEventListener("dragover",  (e) => { e.preventDefault(); dz.classList.add("drag-over"); });
@@ -1814,8 +1908,18 @@ document.addEventListener("DOMContentLoaded", () => {
   dz.addEventListener("drop", (e) => {
     e.preventDefault();
     dz.classList.remove("drag-over");
-    setModalFile(e.dataTransfer.files[0]);
+    setModalFiles(e.dataTransfer.files);
   });
+  // File-list reorder/remove via delegation — the list is re-rendered on change.
+  $("#file-list").addEventListener("click", (e) => {
+    const mv = e.target.closest(".file-move");
+    if (mv) { moveModalFile(Number(mv.dataset.idx), mv.dataset.move); return; }
+    const rm = e.target.closest(".file-remove");
+    if (rm) { removeModalFile(Number(rm.dataset.idx)); return; }
+  });
+  // Saga title / spoiler radios gate the submit button.
+  $("#saga-title").addEventListener("input", refreshSagaFields);
+  $("#saga-fields").addEventListener("change", refreshSagaFields);
   $("#new-podcast-form").addEventListener("submit", submitNewPodcast);
   // Stage / per-episode rerun — delegated since renderStages + renderMatrix
   // re-create the DOM. Matrix cells carry data-rerun-ep for single-episode
