@@ -49,6 +49,7 @@ struct DraggableDivider: View {
             }
             #if targetEnvironment(macCatalyst)
             .onTapGesture(count: 2) { onDoubleClick() }
+            .overlay { MacColumnResizeCursor() }
             #endif
             .enableInjection()
     }
