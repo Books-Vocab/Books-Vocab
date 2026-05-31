@@ -15,11 +15,7 @@ enum LayoutMode: Equatable {
     static let notebookCardAspectRatio: CGFloat = 3.0 / 4.0
 
     init(horizontalSizeClass: UserInterfaceSizeClass?) {
-        #if os(macOS)
-        self = .regular
-        #else
         self = (horizontalSizeClass == .compact) ? .compact : .regular
-        #endif
     }
 
     /// 是否使用 inline detail panel（而非 sheet）

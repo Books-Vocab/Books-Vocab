@@ -9,11 +9,7 @@
 //
 
 import SwiftUI
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 import CoreText
 import os
 
@@ -48,11 +44,7 @@ enum AppFonts {
     // MARK: - Font Builders
 
     private static func platformFont(descriptor: PlatformFontDescriptor, size: CGFloat) -> PlatformFont {
-        #if os(iOS)
         return PlatformFont(descriptor: descriptor, size: size)
-        #elseif os(macOS)
-        return PlatformFont(descriptor: descriptor, size: size) ?? PlatformFont.systemFont(ofSize: size)
-        #endif
     }
 
     private static let cascadeListKey = PlatformFontDescriptor.AttributeName(

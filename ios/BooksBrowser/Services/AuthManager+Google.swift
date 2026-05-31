@@ -1,11 +1,7 @@
 import Foundation
 import GoogleSignIn
 import SwiftData
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 import os
 
 extension AuthManager {
@@ -15,7 +11,6 @@ extension AuthManager {
             message: "login.start",
             data: ["provider": "google"]
         )
-        #if os(iOS)
         let window = UIApplication.shared.connectedScenes
             .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
             .first { $0.isKeyWindow }
@@ -29,18 +24,6 @@ extension AuthManager {
                 self?.handleGoogleSignInResult(result: result, error: error, modelContainer: modelContainer)
             }
         }
-        #elseif os(macOS)
-        guard let window = NSApplication.shared.keyWindow else {
-            AppLog.auth.error("Unable to find key window")
-            return
-        }
-
-        GIDSignIn.sharedInstance.signIn(withPresenting: window) { [weak self] result, error in
-            Task { @MainActor in
-                self?.handleGoogleSignInResult(result: result, error: error, modelContainer: modelContainer)
-            }
-        }
-        #endif
     }
 
     private func handleGoogleSignInResult(result: GIDSignInResult?, error: Error?, modelContainer: ModelContainer?) {
