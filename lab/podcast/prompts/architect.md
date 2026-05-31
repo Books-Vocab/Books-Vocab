@@ -111,6 +111,7 @@ Write `{workspace}/plan/overview.md`:
 - **Role**: [e.g. curious practitioner, grounded skeptic]
 - **Personality**: [detailed — what drives them, how they think]
 - **Speaking style**: [sentence length, vocabulary, humor type]
+- **Voice direction**: [TTS performance notes for Gemini 3.1, one line — accent/region, energy baseline (animated vs measured), timbre (bright / warm / low), and a signature delivery quirk (dry wit / earnest / rapid-fire). This steers the actual voice and is separate from written style; synthesize.py feeds it to the model as performance direction.]
 - **Verbal habits**: [specific catchphrases, filler patterns, reaction words — at least 3-4]
 - **Strengths**: [what they bring to conversations about THIS book's topics]
 
@@ -118,6 +119,7 @@ Write `{workspace}/plan/overview.md`:
 - **Role**: [e.g. deep researcher, pattern connector]
 - **Personality**: [detailed]
 - **Speaking style**: [how they talk differently from Host A]
+- **Voice direction**: [accent/region, energy baseline, timbre, signature delivery — and how it contrasts *audibly* with Host A so the two voices never blur]
 - **Verbal habits**: [specific — at least 3-4]
 - **Strengths**: [complementary to Host A]
 
@@ -132,7 +134,7 @@ Write `{workspace}/plan/overview.md`:
 
 **Required**: write these two lines verbatim with `(TBD)` literally in the parentheses. The `tts-prep` stage substitutes `TBD` with the chosen Gemini voice after seeing the finished scripts — do NOT pick a voice yourself, and do NOT drop the `(TBD)` placeholder (synthesize.py's parser requires the `(...)` to be present).
 
-**Host name rule**: use a single-word host name (e.g. `Marcus`, `Priya`). Avoid spaces, hyphens, or surnames — the TTS parser matches speaker tags `**Name:**` with `\w+`, so multi-word names break audio generation silently.
+**Host name rule**: prefer a single-word host name (e.g. `Marcus`, `Priya`) for readability. Multi-word, hyphenated, and unicode names now parse correctly (synthesize.py / subtitle.py / audio_qa.py match `**Name:**` with `[^:*]+`), but a `:` or `*` inside the name still breaks parsing — never use those.
 
 ## Series Format
 
