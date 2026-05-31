@@ -41,8 +41,11 @@ struct MacMenuCommands: Commands {
             .keyboardShortcut("r", modifiers: .command)
         }
 
-        // 匯入書籍 ⌘I / 新增單字本 ⌘N — File menu。disabled 由 focusedSceneValue 有無決定。
-        CommandGroup(after: .newItem) {
+        // 匯入書籍 ⌘I / 新增單字本 ⌘N — File menu。`replacing: .newItem` 取代 SwiftUI 自動
+        // 注入的「新增視窗 ⌘N」(requestNewScene:),否則 Catalyst 啟動即因 ⌘N 重複綁定 fatal。
+        // KG 為單視窗(多視窗為 Non-Goal),移除 New Window 同時讓 ⌘N 回歸 app 主要新增動作。
+        // disabled 由 focusedSceneValue 有無決定。
+        CommandGroup(replacing: .newItem) {
             Button(L10n.string("新增單字本")) { newNotebook?.run() }
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(newNotebook == nil)
