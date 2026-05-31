@@ -121,6 +121,7 @@ struct PDFReaderView: View {
         }
         .task { loadDocument() }
         .navigationBarTitleDisplayMode(.inline)
+        .macReaderImmersion()
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
         }
