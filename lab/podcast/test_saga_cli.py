@@ -84,6 +84,21 @@ def test_multi_target_without_saga_rejected(tmp_path: Path) -> None:
     assert "only allowed with --saga" in r.stderr
 
 
+def test_corrupt_manifest_preflight_friendly_error(tmp_path: Path) -> None:
+    # A saga workspace with a corrupt series.md must fail with a friendly
+    # workspace-path error (rc=1), not a raw traceback, before any stage runs.
+    ws = tmp_path / "saga_ws"
+    (ws / "source" / "chapters").mkdir(parents=True)
+    ws.joinpath("log.md").write_text("x")
+    ws.joinpath(".mode").write_text("saga")
+    ws.joinpath(".spoiler_mode").write_text("readalong")
+    ws.joinpath("series.md").write_text("# Saga\nno reading-order markers")
+    r = _run(str(ws), "--skip-to", "analyst", "--force")
+    assert r.returncode == 1, r.stderr + r.stdout
+    assert "saga manifest is unreadable" in (r.stdout + r.stderr)
+    assert "Traceback" not in (r.stdout + r.stderr)
+
+
 def test_saga_nonepub_target_rejected(tmp_path: Path) -> None:
     a = tmp_path / "a.epub"
     b = tmp_path / "b.txt"

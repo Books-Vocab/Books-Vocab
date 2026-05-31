@@ -1529,6 +1529,19 @@ examples:
         print(f"Mode: {effective_mode} ({label})"
               + (f" · spoiler={effective_spoiler}" if effective_spoiler else ""))
 
+    # Saga preflight: build_saga_context() raises on a corrupt series.md (fail
+    # closed — never run a saga spoiler-blind). Validate it ONCE here with a
+    # friendly error + resume hint, before any stage spends tokens, instead of
+    # surfacing a raw traceback deep inside stage_prep.
+    if is_saga(workspace):
+        try:
+            build_saga_context(workspace)
+        except (OSError, ValueError) as e:
+            print(f"\nERROR: saga manifest is unreadable — {e}")
+            print(f"  Workspace: {workspace}")
+            print(f"  Fix {workspace}/series.md (it needs a valid READING_ORDER block), then re-run.")
+            sys.exit(1)
+
     if args.dry_run:
         print("\n[Dry run] Workspace created.")
         show_status(workspace)
