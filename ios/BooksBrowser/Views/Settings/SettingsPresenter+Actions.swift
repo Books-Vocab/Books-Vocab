@@ -31,6 +31,7 @@ struct SettingsNavigationRow<Trailing: View>: View {
                     SettingsTrailingChevronIcon()
                 }
             }
+            .appHoverRowTint()
         }
         .buttonStyle(.plain)
         .enableInjection()
@@ -67,6 +68,7 @@ struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
             }
             .padding(.horizontal, appSkin.spacing.cardPadding)
             .padding(.vertical, 13)
+            .appHoverRowTint()
         }
         .buttonStyle(.plain)
         .enableInjection()
