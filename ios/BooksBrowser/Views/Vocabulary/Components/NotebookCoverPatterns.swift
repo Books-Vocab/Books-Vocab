@@ -177,21 +177,12 @@ struct NotebookCoverView: View {
         .enableInjection()
     }
 
-    #if os(macOS)
-    private func loadImage(from path: String) -> NSImage? {
-        NSImage(contentsOfFile: path)
-    }
-    private func platformImage(_ image: NSImage) -> Image {
-        Image(nsImage: image)
-    }
-    #else
     private func loadImage(from path: String) -> UIImage? {
         UIImage(contentsOfFile: path)
     }
     private func platformImage(_ image: UIImage) -> Image {
         Image(uiImage: image)
     }
-    #endif
 }
 
 #Preview {

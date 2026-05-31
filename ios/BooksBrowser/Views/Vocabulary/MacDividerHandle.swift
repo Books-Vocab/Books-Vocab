@@ -40,9 +40,6 @@ struct DraggableDivider: View {
                     ))
                     .frame(width: 1)
             }
-            #if os(macOS)
-            .modifier(CursorModifier())
-            #endif
             .highPriorityGesture(dragGesture)
             .onChange(of: isActiveDrag) { _, active in
                 if !active && dragWidth != nil {
@@ -50,9 +47,6 @@ struct DraggableDivider: View {
                     dragWidth = nil
                 }
             }
-            #if os(macOS)
-            .onTapGesture(count: 2) { onDoubleClick() }
-            #endif
             .enableInjection()
     }
 
@@ -78,34 +72,6 @@ struct DraggableDivider: View {
             }
     }
 }
-
-// MARK: - macOS Cursor
-
-#if os(macOS)
-import AppKit
-
-private struct CursorModifier: ViewModifier {
-    @State private var isHovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                isHovering = hovering
-                if hovering {
-                    NSCursor.resizeLeftRight.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-            .onDisappear {
-                if isHovering {
-                    NSCursor.pop()
-                    isHovering = false
-                }
-            }
-    }
-}
-#endif
 
 // MARK: - Helpers
 

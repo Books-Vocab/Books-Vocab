@@ -18,10 +18,6 @@ struct ContentView: View {
     // 詳見 docs/sop/ios.md §Hot Reload。
     @ObserveInjection private var inject
 
-    #if os(macOS)
-    @State private var showSettings = false
-    #endif
-
     var body: some View {
         VStack(spacing: 0) {
             if authManager.isDemoMode {
@@ -43,20 +39,6 @@ struct ContentView: View {
         }
         .appOfflineBanner()
         .animatePhaseChange(authManager.isDemoMode)
-        #if os(macOS)
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    showSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-        }
-        #endif
         .enableInjection()
     }
 }
