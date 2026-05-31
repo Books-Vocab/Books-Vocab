@@ -40,13 +40,38 @@
     </div>
     <form id="new-podcast-form" class="modal-body">
       <label class="dropzone" id="dropzone">
-        <input type="file" id="epub-input" accept=".epub" hidden>
+        <input type="file" id="epub-input" accept=".epub" multiple hidden>
         <div class="dropzone-prompt" id="dropzone-prompt">
           <span class="dropzone-icon">📚</span>
-          <span class="dropzone-text">drag an EPUB here, or click to pick</span>
-          <span class="dropzone-hint">max 200MB · pipeline runs all 13 stages</span>
+          <span class="dropzone-text">drag EPUB(s) here, or click to pick</span>
+          <span class="dropzone-hint">max 200MB each · 1 book = single · 2+ books = saga</span>
         </div>
       </label>
+      <ol id="file-list" class="file-list" hidden></ol>
+      <div id="saga-fields" class="saga-fields" hidden>
+        <label class="field">
+          <span class="field-label">SAGA TITLE</span>
+          <input type="text" id="saga-title" class="field-input" placeholder="e.g. The Lord of the Rings" autocomplete="off" spellcheck="false">
+          <span class="field-hint">series name for the continuous feed</span>
+        </label>
+        <fieldset class="saga-spoiler">
+          <legend class="field-label">SPOILER MODE</legend>
+          <label class="radio-row">
+            <input type="radio" name="spoiler-mode" value="readalong" checked>
+            <span class="radio-body">
+              <span class="radio-title">read-along</span>
+              <span class="radio-desc">each book knows only up to itself — safe for first-time readers</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="spoiler-mode" value="retrospective">
+            <span class="radio-body">
+              <span class="radio-title">retrospective</span>
+              <span class="radio-desc">whole saga known — richer callbacks, spoilers allowed</span>
+            </span>
+          </label>
+        </fieldset>
+      </div>
       <div class="modal-fields">
         <label class="field">
           <span class="field-label">PARALLEL WORKERS</span>
