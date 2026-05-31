@@ -1,90 +1,127 @@
-"""Thin SSH/rsync wrappers for the Lightsail backend.
+"""S3 (Lightsail Object Storage) client for the monitor dashboard.
 
-Mirrors the constants in ops/podcast_upload.sh so the dashboard and the bash
-script speak to the same host. Used by:
-  - GET  /api/remote/series      — list what's published
-  - GET  /api/remote/disk        — df -h on the data volume
-  - DELETE /api/remote/series/{id} — rm -rf on a single series
+Post-Track-B: podcast media lives in S3, not on the Lightsail instance disk.
+This module replaces the prior SSH/rsync wrappers but keeps the same public
+API so ``server.py`` doesn't need to know which backend it's talking to:
 
-We deliberately keep these as `subprocess.run` calls (sync, blocking) instead
-of going through paramiko — same auth path as the existing bash tooling, no
-new dependency, and identical key/known-hosts behavior.
+- ``list_remote_series()``      — list what's published (from ``index.json``)
+- ``remote_disk_usage()``       — bucket usage (no real "disk" concept in S3,
+                                  but the dashboard's storage-pressure UI still
+                                  expects total/used/avail bytes)
+- ``delete_remote_series(id)``  — delete all keys under ``{id}/`` then rebuild
+                                  ``index.json``
+
+Configuration is via env vars, NOT the ``ops/podcast_upload.sh`` constants:
+``PODCAST_BUCKET`` (required), ``PODCAST_BUCKET_REGION`` (default
+``ap-northeast-1``), optional ``PODCAST_BUCKET_ENDPOINT_URL`` for non-AWS S3-
+compatible providers. AWS credentials follow the standard boto3 chain (env →
+``~/.aws/credentials`` → IAM role).
+
+The previous PODCAST_SSH_KEY / PODCAST_REMOTE_SERVER / PODCAST_REMOTE_DIR
+envs are now unused — kept undocumented for one release so a stale shell that
+exports them doesn't actively break, but they have no effect.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-import subprocess
-from pathlib import Path
+from typing import Any
 
-HOME = Path.home()
-
-SSH_KEY = Path(os.getenv("PODCAST_SSH_KEY", str(HOME / ".ssh" / "lightsail_default.pem")))
-SERVER = os.getenv("PODCAST_REMOTE_SERVER", "ubuntu@13.193.212.134")
-REMOTE_PODCAST_DIR = os.getenv(
-    "PODCAST_REMOTE_DIR", "~/knowledge_graph_api/data/podcasts"
-)
-SSH_TIMEOUT = int(os.getenv("PODCAST_SSH_TIMEOUT", "20"))
+# Quota knob for the dashboard storage UI. Bucket plans on Lightsail Object
+# Storage are tiered (1 / 25 / 250 GB) — pick whichever matches the deployed
+# plan so the avail_bytes math reflects what the user actually has.
+BUCKET_QUOTA_BYTES = int(os.getenv("PODCAST_BUCKET_QUOTA_BYTES", str(25 * 1024**3)))
 
 # Series ID validation — MUST mirror backend `_SERIES_ID_RE` in routers/podcast.py.
-# Any divergence means the dashboard could try to delete a path the server
-# refuses to serve (or worse, escape into a parent dir).
 _SERIES_ID_RE = re.compile(r"\A[a-z0-9_]+\Z")
 
 
 class RemoteError(RuntimeError):
-    """SSH command failed. Carries exit code + stderr tail for the API layer."""
+    """S3 operation failed. Same wire shape as the SSH era so server.py is
+    backend-agnostic.
+
+    Fields kept for log/API compatibility:
+      * ``code``: HTTP status from S3 when available (0 otherwise)
+      * ``stderr``: error message string
+      * ``cmd``: best-effort operation label list (was the ssh argv)
+    """
 
     def __init__(self, code: int, stderr: str, cmd: list[str]):
         self.code = code
         self.stderr = stderr
         self.cmd = cmd
-        super().__init__(f"ssh exited {code}: {stderr.strip()[:200]}")
+        super().__init__(f"s3 op failed ({code}): {stderr.strip()[:200]}")
 
 
-def _ssh_base() -> list[str]:
-    return [
-        "ssh",
-        "-T",
-        "-i", str(SSH_KEY),
-        "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "BatchMode=yes",
-        "-o", f"ConnectTimeout={SSH_TIMEOUT}",
-        SERVER,
-    ]
+# ─── boto3 client (lazy) ─────────────────────────────────────────────────────
 
 
-def _run_ssh(
-    remote_cmd: str,
-    *,
-    timeout: int | None = None,
-    stdin_data: str | None = None,
-) -> str:
-    """Run a remote command, return stdout. Raise RemoteError on non-zero.
+def _bucket() -> str:
+    bucket = os.getenv("PODCAST_BUCKET", "").strip()
+    if not bucket:
+        raise RemoteError(
+            0,
+            "PODCAST_BUCKET env not set — monitor cannot reach the podcast bucket",
+            ["env", "PODCAST_BUCKET"],
+        )
+    return bucket
 
-    `remote_cmd` is passed as a single arg to ssh, which then hands it to
-    the user's login shell. CALLERS must not template untrusted input —
-    use validate_series_id() for series IDs and never interpolate raw user
-    strings into shell commands.
 
-    `stdin_data` lets callers pipe a multi-line script (e.g. python -c <stdin)
-    instead of cramming everything into a one-liner — vastly cleaner than
-    semicolon-chained statements when we need try/except.
-    """
-    cmd = _ssh_base() + [remote_cmd]
-    proc = subprocess.run(
-        cmd, input=stdin_data, capture_output=True, text=True,
-        timeout=timeout or (SSH_TIMEOUT + 10),
+def _region() -> str:
+    return os.getenv("PODCAST_BUCKET_REGION", "ap-northeast-1")
+
+
+def _endpoint_url() -> str | None:
+    url = os.getenv("PODCAST_BUCKET_ENDPOINT_URL", "").strip()
+    return url or None
+
+
+_client_cache: dict[tuple[str, str | None], Any] = {}
+
+
+def _client():
+    """Lazy boto3 client — local import so the monitor's test runner doesn't
+    need boto3 just to import this module. Cached per (region, endpoint)."""
+    key = (_region(), _endpoint_url())
+    cached = _client_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise RemoteError(
+            0,
+            f"boto3 not installed in monitor env: {exc}",
+            ["import", "boto3"],
+        ) from exc
+    client = boto3.client(
+        "s3",
+        region_name=key[0],
+        endpoint_url=key[1],
+        config=Config(
+            signature_version="s3v4",
+            retries={"max_attempts": 3, "mode": "standard"},
+        ),
     )
-    if proc.returncode != 0:
-        raise RemoteError(proc.returncode, proc.stderr, cmd)
-    return proc.stdout
+    _client_cache[key] = client
+    return client
+
+
+def _map_client_error(exc: Exception, op: str) -> RemoteError:
+    """Translate a botocore ClientError into RemoteError preserving HTTP code."""
+    response = getattr(exc, "response", {}) or {}
+    http = int(response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
+    code = response.get("Error", {}).get("Code", type(exc).__name__)
+    msg = response.get("Error", {}).get("Message") or str(exc)
+    return RemoteError(http, f"{op}: {code} {msg}", [op])
+
+
+# ─── Public API ──────────────────────────────────────────────────────────────
 
 
 def validate_series_id(series_id: str) -> str:
-    """Reject anything that doesn't match the backend regex. Returns the id
-    unchanged on success (convenience for inline use)."""
     if not _SERIES_ID_RE.match(series_id):
         raise ValueError(
             f"invalid series_id {series_id!r} — must match {_SERIES_ID_RE.pattern}"
@@ -92,60 +129,68 @@ def validate_series_id(series_id: str) -> str:
     return series_id
 
 
-# ─── High-level operations ───────────────────────────────────────────────────
-
-
 def list_remote_series() -> list[dict]:
-    """Return the parsed remote index.json + per-series disk size.
+    """Return parsed ``index.json`` + per-series byte size.
 
-    Falls back to scanning metadata.json files if index.json is missing.
+    Surfaces "orphan" series (present as a directory but not in the index)
+    the same way as the SSH version so the dashboard can flag half-uploaded
+    series for cleanup.
     """
-    # Single SSH round-trip: cat index.json + du for each series dir.
-    # The shell snippet below is fixed (no interpolation) — safe.
-    #
-    # `printf '\n'` after `cat` is load-bearing: ops/podcast_upload.sh's
-    # `json.dump` does not emit a trailing newline, so without it the `]`
-    # collapses onto the next `---SIZES---` line and the sentinel parser
-    # below fails to split sections. (Caught in Phase 1 smoke test.)
-    script = (
-        f"cd {REMOTE_PODCAST_DIR} 2>/dev/null || exit 0; "
-        "echo '---INDEX---'; "
-        "cat index.json 2>/dev/null || echo '[]'; "
-        "printf '\\n'; "
-        "echo '---SIZES---'; "
-        "for d in */; do "
-        '  size=$(du -sb "$d" 2>/dev/null | cut -f1); '
-        '  echo "${d%/}:$size"; '
-        "done"
-    )
-    out = _run_ssh(script)
-    sizes: dict[str, int] = {}
-    index: list[dict] = []
-    section = None
-    for line in out.splitlines():
-        if line == "---INDEX---":
-            section = "index"
-            buf: list[str] = []
-            continue
-        if line == "---SIZES---":
-            section = "sizes"
-            if buf:
-                try:
-                    index = json.loads("\n".join(buf))
-                except json.JSONDecodeError:
-                    index = []
-            continue
-        if section == "index":
-            buf.append(line)
-        elif section == "sizes" and ":" in line:
-            sid, sz = line.split(":", 1)
-            try:
-                sizes[sid] = int(sz)
-            except ValueError:
-                pass
+    bucket = _bucket()
+    s3 = _client()
 
-    # Stitch sizes onto index entries; surface orphan dirs (size present but
-    # missing from index) so the user can spot a half-uploaded series.
+    # 1. Pull the published index (one GetObject).
+    try:
+        obj = s3.get_object(Bucket=bucket, Key="index.json")
+        index_raw = obj["Body"].read().decode("utf-8", errors="replace")
+        index = json.loads(index_raw) if index_raw.strip() else []
+    except s3.exceptions.NoSuchKey:
+        index = []
+    except json.JSONDecodeError:
+        # Mirror SSH behaviour: index unreadable → treat as empty + show orphans.
+        index = []
+    except Exception as exc:  # noqa: BLE001
+        if hasattr(exc, "response"):
+            err = exc.response.get("Error", {})  # type: ignore[attr-defined]
+            if err.get("Code") in ("NoSuchKey", "404"):
+                index = []
+            else:
+                raise _map_client_error(exc, "get_object index.json") from exc
+        else:
+            raise RemoteError(0, f"get_object index.json: {exc}", ["get_object"]) from exc
+
+    if not isinstance(index, list):
+        index = []
+
+    # 2. List one level deep to compute per-series byte sizes.
+    #    Use delimiter='/' to discover series prefixes; then per-series
+    #    list_objects_v2 to sum sizes. The total object count is bounded by
+    #    the number of episodes — well under any pagination concern.
+    sizes: dict[str, int] = {}
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        # First pass: find the set of series prefixes.
+        prefixes: list[str] = []
+        for page in paginator.paginate(Bucket=bucket, Delimiter="/"):
+            for p in page.get("CommonPrefixes", []) or []:
+                pref = p["Prefix"]
+                sid = pref.rstrip("/")
+                if sid:
+                    prefixes.append(pref)
+        # Second pass: tally bytes per prefix.
+        for pref in prefixes:
+            sid = pref.rstrip("/")
+            total = 0
+            for page in paginator.paginate(Bucket=bucket, Prefix=pref):
+                for obj in page.get("Contents", []) or []:
+                    total += int(obj.get("Size", 0))
+            sizes[sid] = total
+    except Exception as exc:  # noqa: BLE001
+        if hasattr(exc, "response"):
+            raise _map_client_error(exc, "list_objects_v2") from exc
+        raise RemoteError(0, f"list_objects_v2: {exc}", ["list_objects_v2"]) from exc
+
+    # Stitch + flag orphans (same shape as the SSH version).
     indexed_ids = {e.get("id") for e in index if isinstance(e, dict)}
     for entry in index:
         if isinstance(entry, dict) and entry.get("id") in sizes:
@@ -159,115 +204,142 @@ def list_remote_series() -> list[dict]:
 
 
 def remote_disk_usage() -> dict:
-    """`df -h` on the data volume + the podcasts dir size. One byte-level
-    number is enough — UI does the formatting."""
-    script = (
-        f"df -B1 --output=size,used,avail,pcent {REMOTE_PODCAST_DIR} | tail -1; "
-        f"du -sb {REMOTE_PODCAST_DIR} 2>/dev/null | cut -f1"
-    )
-    out = _run_ssh(script).strip().splitlines()
-    if len(out) < 2:
-        raise RemoteError(0, "df output malformed: " + repr(out), [])
-    parts = out[0].split()
-    podcast_bytes = int(out[1]) if out[1].isdigit() else 0
+    """Bucket usage in the same JSON shape the dashboard expects.
+
+    S3 has no real "disk" — ``total_bytes`` is the configured plan quota
+    (``PODCAST_BUCKET_QUOTA_BYTES`` env, default 25 GiB for Lightsail Plan 2).
+    ``used_bytes`` is the live sum of every object in the bucket.
+    """
+    bucket = _bucket()
+    s3 = _client()
+    used = 0
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket):
+            for obj in page.get("Contents", []) or []:
+                used += int(obj.get("Size", 0))
+    except Exception as exc:  # noqa: BLE001
+        if hasattr(exc, "response"):
+            raise _map_client_error(exc, "list_objects_v2") from exc
+        raise RemoteError(0, f"list_objects_v2: {exc}", ["list_objects_v2"]) from exc
+    total = BUCKET_QUOTA_BYTES
+    avail = max(0, total - used)
+    pct = f"{(used * 100) // total}%" if total > 0 else "?"
     return {
-        "total_bytes": int(parts[0]),
-        "used_bytes": int(parts[1]),
-        "avail_bytes": int(parts[2]),
-        "use_percent": parts[3],
-        "podcast_bytes": podcast_bytes,
+        "total_bytes": total,
+        "used_bytes": used,
+        "avail_bytes": avail,
+        "use_percent": pct,
+        "podcast_bytes": used,
     }
 
 
-_REBUILD_SCRIPT = r"""
-import sys, os, re, json, glob, shutil
-
-pdir = os.path.expanduser(sys.argv[1])
-sid = sys.argv[2]
-
-# Defense-in-depth — caller already validated, but assert can be stripped
-# with -O so use a real check that survives.
-if not re.match(r"^[a-z0-9_]+$", sid):
-    print(json.dumps({"error": f"bad series_id: {sid}"}), file=sys.stderr)
-    sys.exit(2)
-
-target = os.path.join(pdir, sid)
-
-# Track rm errors so the API can surface partial deletes instead of
-# silently lying. shutil.rmtree(onerror=...) lets us collect each failure
-# without aborting (we want index rebuild to still happen, but the response
-# must mark the series as not-fully-deleted so the dashboard knows.)
-rm_errors = []
-def _onerr(func, path, exc_info):
-    rm_errors.append({"path": path, "err": f"{exc_info[0].__name__}: {exc_info[1]}"})
-
-if os.path.exists(target):
-    shutil.rmtree(target, onerror=_onerr)
-
-# Verify the directory actually disappeared. If it didn't (permission, EBUSY,
-# something half-removed), report fully deleted=False.
-still_exists = os.path.exists(target)
-
-# Rebuild index, skipping any metadata.json we can't parse so one corrupt
-# series doesn't take down the entire index.json. Bad files are reported.
-idx = []
-bad_files = []
-for p in sorted(glob.glob(os.path.join(pdir, "*/metadata.json"))):
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
-        bad_files.append({"path": p, "err": f"{type(e).__name__}: {e}"})
-        continue
-    entry = {k: v for k, v in meta.items() if k != "episodes"}
-    entry["episodeCount"] = len(meta.get("episodes", []))
-    idx.append(entry)
-
-tmp = os.path.join(pdir, "index.json.tmp")
-with open(tmp, "w", encoding="utf-8") as f:
-    json.dump(idx, f, indent=2, ensure_ascii=False)
-    f.write("\n")  # match podcast_upload.sh trailing newline expectation
-os.replace(tmp, os.path.join(pdir, "index.json"))
-
-print(json.dumps({
-    "deleted": sid,
-    "fully_deleted": not still_exists,
-    "remaining": len(idx),
-    "rm_errors": rm_errors,
-    "bad_metadata_files": bad_files,
-}))
-"""
-
-
 def delete_remote_series(series_id: str) -> dict:
-    """rm -rf the series dir, then rebuild index.json (flock-serialized,
-    same lock as ops/podcast_upload.sh).
+    """Delete every object under ``{series_id}/`` then rebuild ``index.json``.
 
-    Returns the parsed JSON from the remote script. Caller MUST check
-    `fully_deleted` — if False, `rm_errors` lists which files survived. The
-    bad_metadata_files key lists any per-series metadata.json that couldn't
-    be parsed (those series are dropped from the rebuilt index, mirroring
-    what the user would observe in the API anyway).
+    Return shape matches the SSH version so the dashboard / API needs no
+    change:
+      * ``deleted``: the series id
+      * ``fully_deleted``: True if zero residual objects exist under the prefix
+      * ``remaining``: number of series in the rebuilt index
+      * ``rm_errors``: list of per-object delete errors (empty on success)
+      * ``bad_metadata_files``: list of metadata.json keys that wouldn't parse
+        (those series are skipped in the rebuilt index)
     """
     validate_series_id(series_id)
-    # Pipe the multi-line python script via stdin so we can have real
-    # try/except blocks instead of semicolon-chained one-liners. Series_id
-    # still goes through argv with _sh_quote so the user-supplied value is
-    # never spliced into the script source itself.
-    cmd = (
-        f"flock /tmp/podcast_index.lock python3 - "
-        f"{_sh_quote(REMOTE_PODCAST_DIR)} "
-        f"{_sh_quote(series_id)}"
-    )
-    out = _run_ssh(cmd, stdin_data=_REBUILD_SCRIPT, timeout=60)
+    bucket = _bucket()
+    s3 = _client()
+    prefix = f"{series_id}/"
+
+    # 1. Collect all keys under the prefix.
+    keys: list[str] = []
     try:
-        return json.loads(out.strip().splitlines()[-1])
-    except (json.JSONDecodeError, IndexError):
-        # Script malformed its own output — surface to caller as a 502 by
-        # raising RemoteError instead of pretending it succeeded.
-        raise RemoteError(0, f"remote script returned unparseable output: {out!r}", [])
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []) or []:
+                keys.append(obj["Key"])
+    except Exception as exc:  # noqa: BLE001
+        if hasattr(exc, "response"):
+            raise _map_client_error(exc, "list_objects_v2 (delete)") from exc
+        raise RemoteError(0, f"list_objects_v2: {exc}", ["list_objects_v2"]) from exc
 
+    # 2. Batch-delete (up to 1000 per call per S3 API).
+    rm_errors: list[dict] = []
+    for batch_start in range(0, len(keys), 1000):
+        batch = keys[batch_start : batch_start + 1000]
+        try:
+            resp = s3.delete_objects(
+                Bucket=bucket,
+                Delete={
+                    "Objects": [{"Key": k} for k in batch],
+                    "Quiet": False,
+                },
+            )
+            for err in resp.get("Errors", []) or []:
+                rm_errors.append(
+                    {"path": err.get("Key", ""), "err": f"{err.get('Code')}: {err.get('Message')}"},
+                )
+        except Exception as exc:  # noqa: BLE001
+            if hasattr(exc, "response"):
+                raise _map_client_error(exc, "delete_objects") from exc
+            raise RemoteError(0, f"delete_objects: {exc}", ["delete_objects"]) from exc
 
-def _sh_quote(s: str) -> str:
-    """POSIX shell single-quote — never breaks even on '$', backticks, etc."""
-    return "'" + s.replace("'", "'\\''") + "'"
+    # 3. Re-verify the prefix is empty (catches eventual-consistency surprises).
+    still_exists = False
+    try:
+        check = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=1)
+        if int(check.get("KeyCount", 0)) > 0:
+            still_exists = True
+    except Exception as exc:  # noqa: BLE001
+        # Don't blow up the delete on a verify failure — log via rm_errors.
+        rm_errors.append({"path": prefix, "err": f"verify list_objects_v2: {exc}"})
+
+    # 4. Rebuild index.json by walking remaining series.
+    bad_metadata_files: list[dict] = []
+    rebuilt: list[dict] = []
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        series_ids: list[str] = []
+        for page in paginator.paginate(Bucket=bucket, Delimiter="/"):
+            for p in page.get("CommonPrefixes", []) or []:
+                sid = p["Prefix"].rstrip("/")
+                if sid and sid != series_id:  # the just-deleted one
+                    series_ids.append(sid)
+        for sid in sorted(series_ids):
+            key = f"{sid}/metadata.json"
+            try:
+                obj = s3.get_object(Bucket=bucket, Key=key)
+                meta = json.loads(obj["Body"].read())
+            except Exception as exc:  # noqa: BLE001
+                bad_metadata_files.append(
+                    {"path": key, "err": f"{type(exc).__name__}: {exc}"},
+                )
+                continue
+            entry = {k: v for k, v in meta.items() if k != "episodes"}
+            entry["episodeCount"] = len(meta.get("episodes", []))
+            rebuilt.append(entry)
+    except Exception as exc:  # noqa: BLE001
+        if hasattr(exc, "response"):
+            raise _map_client_error(exc, "rebuild index list_objects_v2") from exc
+        raise RemoteError(0, f"rebuild index: {exc}", ["list_objects_v2"]) from exc
+
+    # 5. Write the rebuilt index back.
+    try:
+        s3.put_object(
+            Bucket=bucket,
+            Key="index.json",
+            Body=(json.dumps(rebuilt, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+            ContentType="application/json; charset=utf-8",
+        )
+    except Exception as exc:  # noqa: BLE001
+        if hasattr(exc, "response"):
+            raise _map_client_error(exc, "put_object index.json") from exc
+        raise RemoteError(0, f"put_object index.json: {exc}", ["put_object"]) from exc
+
+    return {
+        "deleted": series_id,
+        "fully_deleted": not still_exists and not rm_errors,
+        "remaining": len(rebuilt),
+        "rm_errors": rm_errors,
+        "bad_metadata_files": bad_metadata_files,
+    }

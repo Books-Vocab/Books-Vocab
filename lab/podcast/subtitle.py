@@ -127,8 +127,12 @@ def find_audio(script_path: Path) -> Path | None:
     """Find matching audio file for a script."""
     stem = script_path.stem.replace("_script", "")
     parent = script_path.parent
-    # Try: ep_1_pro.mp3, ep_1_flash.mp3, ep_1.mp3, ep_1.wav
-    for pattern in [f"{stem}_pro.mp3", f"{stem}_flash.mp3", f"{stem}.mp3", f"{stem}.wav"]:
+    # Try m4a first (post-Track-B default), then mp3 (legacy), then wav (unmastered).
+    for pattern in [
+        f"{stem}_pro.m4a", f"{stem}_flash.m4a", f"{stem}.m4a",
+        f"{stem}_pro.mp3", f"{stem}_flash.mp3", f"{stem}.mp3",
+        f"{stem}.wav",
+    ]:
         candidate = parent / pattern
         if candidate.exists():
             return candidate

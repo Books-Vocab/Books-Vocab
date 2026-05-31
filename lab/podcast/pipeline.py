@@ -1151,9 +1151,15 @@ def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None
 def stage_audio_qa(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
     scripts_dir = workspace / "scripts"
     if only_episode:
-        # Exact-match episode number: ep_1_pro.mp3 must NOT catch ep_10_pro.mp3.
-        pattern = re.compile(rf"^ep_{only_episode}_[A-Za-z]+\.mp3$")
-        candidates = sorted(f for f in scripts_dir.glob("ep_*.mp3") if pattern.match(f.name))
+        # Exact-match episode number: ep_1_pro.{mp3,m4a} must NOT catch ep_10_pro.
+        # m4a is the post-Track-B default; mp3 stays for legacy series.
+        pattern = re.compile(rf"^ep_{only_episode}_[A-Za-z]+\.(?:mp3|m4a)$")
+        candidates = sorted(
+            f for f in (
+                *scripts_dir.glob("ep_*.mp3"),
+                *scripts_dir.glob("ep_*.m4a"),
+            ) if pattern.match(f.name)
+        )
         if not candidates:
             log.error(f"No audio for episode {only_episode}")
             return False
@@ -1248,9 +1254,10 @@ def show_status(workspace: Path) -> None:
             else:
                 rev = "·"
 
-            mp3_files = list((workspace / "scripts").glob(f"ep_{n}_*.mp3"))
-            if mp3_files:
-                f = mp3_files[0]
+            audio_files = list((workspace / "scripts").glob(f"ep_{n}_*.mp3")) \
+                        + list((workspace / "scripts").glob(f"ep_{n}_*.m4a"))
+            if audio_files:
+                f = audio_files[0]
                 size_mb = f.stat().st_size / (1024 * 1024)
                 mp3 = f"✓ {f.name} ({size_mb:.1f}MB)"
             else:
@@ -1648,17 +1655,20 @@ examples:
     elapsed = time.time() - t0
 
     # Final summary
-    mp3s = sorted((workspace / "scripts").glob("*.mp3"))
+    audio_files = sorted(
+        list((workspace / "scripts").glob("*.mp3"))
+        + list((workspace / "scripts").glob("*.m4a"))
+    )
     srts = sorted((workspace / "scripts").glob("*.srt"))
-    total_audio_mb = sum(f.stat().st_size for f in mp3s) / (1024 * 1024)
+    total_audio_mb = sum(f.stat().st_size for f in audio_files) / (1024 * 1024)
 
     print(f"\n{'='*60}")
     print(f"  PIPELINE COMPLETE — {elapsed:.0f}s")
     print(f"  Stages: {' → '.join(stages_to_run)}")
     print(f"  Workspace: {workspace}")
-    if mp3s:
-        print(f"  Audio: {len(mp3s)} files, {total_audio_mb:.1f} MB")
-        for f in mp3s:
+    if audio_files:
+        print(f"  Audio: {len(audio_files)} files, {total_audio_mb:.1f} MB")
+        for f in audio_files:
             print(f"    {f.name} ({f.stat().st_size / (1024 * 1024):.1f} MB)")
     if srts:
         print(f"  Subtitles: {len(srts)} files")
