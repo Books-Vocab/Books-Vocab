@@ -1,7 +1,7 @@
 <!-- doc-meta
-tier: plan
+tier: snapshot
 authority: derived
-update_trigger: manual
+update_trigger: plan-execution
 scope:
   - ios/BooksBrowser/Platform/
   - ios/BooksBrowser/BooksBrowserApp.swift
