@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: c642ed18
+verified_against: 7482c5ee
 -->
 # BooksBrowser iOS 開發技能
 
@@ -14,7 +14,7 @@ verified_against: c642ed18
 - **專案路徑**: `ios/BooksBrowser.xcodeproj`
 - **Scheme**: `BooksBrowser`
 - **工作目錄**: repo root（`~/kg/`）
-- **Destinations**: iOS 17+ / macOS 15.0+（macOS Reader 暫不啟用）
+- **Destinations**: iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，非原生 macOS）
 - **平台抽象**: `Platform/PlatformRepresentable.swift`、`Platform/PlatformCompatibility.swift`
 
 ---
