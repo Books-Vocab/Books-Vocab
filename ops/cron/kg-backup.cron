@@ -1,0 +1,10 @@
+# KG production data backup → AWS S3.
+# Daily at UTC 03:00 (Taipei 11:00). Runs as root so it can read
+# data/ regardless of container UID drift and write to /var/log/.
+#
+# Deployed to /etc/cron.d/kg-backup (mode 644, owned root:root).
+# Cron requires LF endings and a trailing newline.
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+HOME=/root
+0 3 * * * root /usr/local/bin/kg_backup.sh >/dev/null 2>&1
