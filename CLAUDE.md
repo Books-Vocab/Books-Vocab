@@ -106,6 +106,8 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 
 ## Doc Freshness 自動同步
 
+> **執行方式(預設)**:doc 同步**派 background doc-sync agent**,不佔主線。code task commit 後,`Agent(subagent_type: general-purpose, model: opus, run_in_background: true)` + 極短 prompt:「讀 `docs/sop/doc_sync.md`。依其規則同步 git commit `<hash>` 的文檔並 commit。改動摘要:<一兩句>」。agent 自讀路由表、判斷影響範圍、bump verified_against、跑 docs_lint、自行 `docs:` commit。主線不阻塞。下方規則為 agent 的判斷依據(亦即 `doc_sync.md` 的路由來源)。純樣板(typo/rename)或 doc-only commit 不必派。
+
 - 修改 backend router / DB schema / env var / ops 腳本 → 同 PR 更新 `docs/reference/tech_index.md`
 - 新增 user-facing feature(iOS / backend / admin / chrome) → 同 PR 在 `docs/reference/product_surface.md` 追加 bullet
 - iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
