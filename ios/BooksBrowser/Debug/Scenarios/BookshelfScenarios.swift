@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG && canImport(Playbook)
 import Playbook
 import SwiftData
 import SwiftUI
