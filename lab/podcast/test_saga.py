@@ -82,6 +82,38 @@ def test_spoiler_horizon_is_later_books_only() -> None:
     assert saga.spoiler_horizon_books(books, current_index=3) == []
 
 
+def test_flatten_chapters_continuous_numbering() -> None:
+    books = saga.plan_books(MISTBORN)
+    per_book = [
+        [("a.x", "A1"), ("b.x", "A2")],          # book 1: 2 chapters
+        [("c.x", "B1"), ("d.x", "B2"), ("e.x", "B3")],  # book 2: 3 chapters
+        [("f.x", "C1")],                          # book 3: 1 chapter
+    ]
+    flat = saga.flatten_chapters(books, per_book)
+    assert [fc.seq for fc in flat] == [1, 2, 3, 4, 5, 6]
+    assert [fc.book_index for fc in flat] == [1, 1, 2, 2, 2, 3]
+    # provenance preserved
+    assert flat[2].name == "c.x" and flat[2].text == "B1"
+    assert flat[2].book_slug == "02_the_well_of_ascension"
+
+
+def test_flatten_rejects_length_mismatch() -> None:
+    books = saga.plan_books(MISTBORN)
+    with pytest.raises(ValueError, match="mismatch"):
+        saga.flatten_chapters(books, [[("a", "x")]])  # only 1 book's chapters for 3 books
+
+
+def test_book_boundaries() -> None:
+    books = saga.plan_books(MISTBORN)
+    per_book = [
+        [("a.x", "A1"), ("b.x", "A2")],
+        [("c.x", "B1"), ("d.x", "B2"), ("e.x", "B3")],
+        [("f.x", "C1")],
+    ]
+    flat = saga.flatten_chapters(books, per_book)
+    assert saga.book_boundaries(flat) == {1: (1, 2), 2: (3, 5), 3: (6, 6)}
+
+
 def test_separator_row_not_parsed_as_book() -> None:
     # The markdown separator |---|...| must not be mistaken for a data row.
     books = saga.plan_books(MISTBORN)
