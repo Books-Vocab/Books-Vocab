@@ -39,9 +39,13 @@ from fastapi.staticfiles import StaticFiles
 
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
 sys.path.insert(0, str(Path(__file__).parent))
+# Saga (multi-book continuous-feed) modules live one level up in lab/podcast/.
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from cost import aggregate_workspace  # noqa: E402
 from jobs import tracker as jobs, JobLimitReached  # noqa: E402
 import remote as remote_ops  # noqa: E402
+import saga  # noqa: E402  — parse series.md for the workspace summary
+import archetypes  # noqa: E402  — validate spoiler_mode for a saga upload
 
 # Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
 # almost certainly someone uploading the wrong file by accident. Protects
@@ -584,9 +588,43 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         # Never let a bad workspace break the whole sidebar list.
         pass
 
+    # ─── Saga (multi-book continuous feed) fields ───
+    # A workspace is a saga iff it carries a series.md manifest. All saga
+    # parsing is wrapped: a legacy/single-book workspace, or a saga with a
+    # malformed manifest, must degrade gracefully and never raise (this runs
+    # once per workspace in the ?full=1 sidebar list).
+    is_saga = (ws / "series.md").exists()
+    saga_fields: dict = {"is_saga": is_saga}
+    if is_saga:
+        book_count = 0
+        display = name
+        try:
+            books = saga.parse_series_manifest((ws / "series.md").read_text(encoding="utf-8"))
+            book_count = len(books)
+        except Exception:
+            pass
+        # Saga display title = the manifest's H1 ("# <title>"); fall back to the
+        # workspace dir name if the heading is missing/unreadable.
+        try:
+            for line in (ws / "series.md").read_text(encoding="utf-8").splitlines():
+                if line.startswith("# "):
+                    display = line[2:].strip() or name
+                    break
+        except Exception:
+            pass
+        spoiler_mode = ""
+        try:
+            spoiler_mode = (ws / ".spoiler_mode").read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+        saga_fields.update(
+            book_count=book_count, spoiler_mode=spoiler_mode, display=display
+        )
+
     return {
         "name": name,
         "status": status,
+        **saga_fields,
         # Legacy marker fields — retained for back-compat; NOT used for the
         # progress bar anymore (see _milestones docstring for why markers lie).
         "stages_done": sorted(stages_done),
@@ -1070,6 +1108,94 @@ async def start_pipeline(
         dest.unlink(missing_ok=True)
         raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label, "epub": safe_name}
+
+
+@app.post("/api/pipeline/start-saga")
+async def start_saga(
+    epubs: list[UploadFile] = File(...),
+    title: str = Form(...),
+    spoiler_mode: str = Form(...),
+    parallel: int = Form(3, ge=1, le=10),
+):
+    """Receive >=2 EPUB uploads + a saga title + spoiler policy, stage every
+    file, then spawn `pipeline.py <epub>... --saga <title> --spoiler-mode <m>
+    --parallel <n>`. `--saga` implies `--mode saga` in pipeline.py, so we never
+    pass `--mode` here.
+
+    On ANY failure (validation, oversize, job-limit) EVERY already-staged file
+    is unlinked — a partial upload must not leave orphaned EPUBs in staging.
+    EPUB order is the saga reading order, so staged paths are passed to argv in
+    exactly the order received.
+    """
+    title = title.strip()
+    if not title:
+        raise HTTPException(400, "saga title is required")
+    if len(epubs) < 2:
+        raise HTTPException(400, "a saga needs at least 2 EPUBs")
+    # Spoiler mode is validated against the saga archetype's allowed set
+    # (readalong | retrospective). validate_spoiler_mode returns an error
+    # string (not an exception) or None when the pair is valid.
+    err = archetypes.validate_spoiler_mode("saga", spoiler_mode)
+    if err:
+        raise HTTPException(400, err)
+    for up in epubs:
+        if not up.filename or not up.filename.lower().endswith(".epub"):
+            raise HTTPException(400, "all saga files must be .epub")
+
+    UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
+    staged: list[Path] = []
+    # Monotonic ms prefix + per-file index so concurrent same-name uploads
+    # don't collide and reading order survives in the staged filename.
+    ts = int(time.time() * 1000)
+    try:
+        for i, up in enumerate(epubs):
+            # Same sanitize as start_pipeline; strip leading dots/hyphens so a
+            # crafted name can't land as a hidden file.
+            safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", up.filename).lstrip(".-") or "upload.epub"
+            dest = UPLOAD_STAGING / f"{ts}_{i}_{safe_name}"
+            staged.append(dest)
+            written = 0
+            with dest.open("wb") as f:
+                while chunk := await up.read(1 << 20):
+                    written += len(chunk)
+                    if written > MAX_EPUB_BYTES:
+                        raise HTTPException(
+                            413,
+                            f"epub too large (>{MAX_EPUB_BYTES // (1 << 20)}MB) — "
+                            "this is almost certainly the wrong file",
+                        )
+                    f.write(chunk)
+    except HTTPException:
+        for p in staged:
+            p.unlink(missing_ok=True)
+        raise
+
+    cmd = [
+        "uv", "run", "pipeline.py",
+        *[str(p) for p in staged],
+        "--saga", title,
+        "--spoiler-mode", spoiler_mode,
+        "--parallel", str(parallel),
+    ]
+    try:
+        job = jobs.spawn(
+            cmd,
+            label=title,
+            kind="pipeline",
+            cwd=ROOT,
+            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            metadata={"saga": title, "books": len(staged), "parallel": parallel},
+        )
+    except JobLimitReached as e:
+        for p in staged:
+            p.unlink(missing_ok=True)
+        raise HTTPException(429, str(e)) from e
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "label": title,
+        "books": len(staged),
+    }
 
 
 # ─── Job introspection ──────────────────────────────────────────────────────
