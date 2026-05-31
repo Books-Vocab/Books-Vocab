@@ -93,9 +93,19 @@ verified_against: 3d4ed997
 | `PodcastPlayerMetrics` | Podcast 專屬尺寸常數 |
 | `VocabularyContextProtocol` | reader-parity 翻譯/查詞橋接 |
 
+## Storage backend(2026-06 Track B)
+
+- **音頻格式**: AAC/M4A(128k,`+faststart`)。`.mp3` 仍可播,backend `audio.m4a` → `audio.mp3` fallback 涵蓋過渡期 series。
+- **位置**: Lightsail Object Storage `s3://kg-podcasts-prod/{series_id}/ep_NN/{audio.m4a,subtitle.srt,script.md,metadata.json}`(舊 disk-mode 路徑 `data/podcasts/...` 仍由 backend 處理,當 `PODCAST_BUCKET` env 未設時)。
+- **iOS 變更**: 零。`AVURLAssetHTTPHeaderFields` 帶 `Authorization: Bearer`,backend 走 proxy 模式(不 302 redirect 到 presigned URL,避免 AWS sig + Bearer header 衝突 → 403)。
+- **Range 支援**: backend 把 `Range` header 原樣轉給 S3 `get_object(Range=...)`,S3 回 206 + `Content-Range`,backend 透傳。
+- **過渡期回退**: `PODCAST_BUCKET` env unset → backend 改走 disk fallback,舊 series 仍可播。
+- 詳見 `docs/sop/podcast_pipeline.md §Storage`。
+
 ## 相關 doc
 
 - `docs/reference/feature_boundary/reader.md` — reader 翻譯流程,podcast `VocabularyContext` 必須 mirror
 - `docs/reference/sync_lifecycle.md` — 詞彙加入後的 sync 規則(**SoT**)
 - `docs/sop/backend.md` — `/api/podcasts*` endpoint 與 progress LWW 後端細節
+- `docs/sop/podcast_pipeline.md` — pipeline(synthesize → upload → S3)
 - `docs/reference/product_surface.md` §Podcast player — 已實作功能清冊(避免重做)

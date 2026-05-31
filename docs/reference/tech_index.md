@@ -102,6 +102,8 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `devops_kg_safe.sh` | 部署 / 維護 safe wrapper |
 | `status_all.sh` | 一覽 backend / caddy / 容器狀態 |
 | `backup_verify.sh` | tarball 還原演練 + SQLite integrity |
+| `kg_backup.sh` | server 端 streaming tar → S3 backup;cron 觸發,日誌 `/var/log/kg_backup.log` |
+| `cron/kg-backup.cron` | `/etc/cron.d/kg-backup`(daily UTC 03:00) |
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
 | `podcast_upload.sh` | 播客資源上傳(idempotent + 遠端 `index.json` flock) |
 | `test_devops.sh` | devops 工具測試 |
@@ -113,3 +115,33 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `injection_lint.sh` | iOS hot reload 覆蓋率守門(同 `i18n_lint` 四模式)。三規則:View struct 有 `@ObserveInjection`、per-file arity、`import Inject` 共存性。詳見 `docs/sop/ios.md §Hot Reload` |
 
 Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。
+
+## Backup / Disaster Recovery
+
+| 項目 | 值 / 路徑 |
+|------|-----------|
+| L1 Lightsail AutoSnapshot | 每日 UTC 22:00,保留 7 份 |
+| L3 S3 bucket | `s3://kg-backups-prod-967512079054`(ap-northeast-1, Versioning + MFA Delete + SSE-S3) |
+| S3 IAM user | `kg-backup-agent` — 僅 `s3:PutObject*`,無 Delete / List |
+| Server backup script | `/usr/local/bin/kg_backup.sh`(root 755) |
+| Server cron | `/etc/cron.d/kg-backup` — daily UTC 03:00 |
+| Server log | `/var/log/kg_backup.log`(每執行一行:exit / bytes / sha256 / key) |
+| Server AWS profile | `/home/ubuntu/.aws/`(uid 1000)+ `/root/.aws/`(cron 用) |
+| S3 key 格式 | `data/YYYY-MM-DD.tar.gz`(UTC 日期) |
+| Lifecycle | current 30 天,noncurrent 35 天後 permanently delete |
+| 手動觸發 | `./ops/devops_kg_safe.sh backup-s3-test` |
+| Restore SOP | `docs/sop/backup_restore.md` |
+| 三層策略總覽 | `docs/sop/backup.md` |
+
+## Podcast Object Storage (Track B, 2026-06)
+
+| 項目 | 值 / 路徑 |
+|------|-----------|
+| Bucket | Lightsail Object Storage `kg-podcasts-prod`(ap-northeast-1) |
+| Key 結構 | `index.json`、`{series_id}/metadata.json`、`{series_id}/ep_NN/{audio.m4a,subtitle.srt,script.md}` |
+| 上傳工具 | `ops/podcast_upload.sh`(`aws s3 sync` + content-type per file) |
+| Monitor 客戶端 | `lab/podcast/monitor/remote.py`(boto3) |
+| Backend 客戶端 | `backend/src/kg/routers/podcast.py`(boto3,proxy 模式;`Range` 直接轉給 S3) |
+| 設定 env | `PODCAST_BUCKET` / `PODCAST_BUCKET_REGION` / `PODCAST_BUCKET_ENDPOINT_URL` / `PODCAST_BUCKET_QUOTA_BYTES` |
+| 過渡 fallback | `PODCAST_BUCKET` unset → backend 回 disk `data/podcasts/`,且 `audio.m4a` → `audio.mp3` 探測 |
+| 音頻格式 | AAC/M4A 128k `+faststart`(`TTS_OUTPUT_FORMAT=m4a`,`TTS_AAC_BITRATE=128k`) |
