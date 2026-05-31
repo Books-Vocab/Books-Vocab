@@ -372,6 +372,18 @@ struct NotebookListView: View {
             isEditingDetailEntry: $isEditingDetailEntry,
             navigationPath: $navigationPath
         ))
+        // 新增單字本 ⌘N(Mac menu)— 未登入不 publish → menu 自動 disable(對應 view 內 .disabled(!isLoggedIn))。
+        .focusedSceneValue(
+            \.newNotebook,
+            authManager.isLoggedIn ? NewNotebookAction { showCreateSheet = true } : nil
+        )
+        // 開始今日複習 ⌘⏎(Mac menu)— 預設「全部」模式;無可複習項不 publish → menu disable。
+        .focusedSceneValue(
+            \.startReview,
+            (filteredDueEntries + filteredUnlearnedEntries).isEmpty
+                ? nil
+                : StartReviewAction { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
+        )
         .enableInjection()
     }
 
