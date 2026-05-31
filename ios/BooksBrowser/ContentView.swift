@@ -39,6 +39,7 @@ struct ContentView: View {
         }
         .appOfflineBanner()
         .animatePhaseChange(authManager.isDemoMode)
+        .macWindowChrome()
         .enableInjection()
     }
 }
