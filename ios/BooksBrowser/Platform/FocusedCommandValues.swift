@@ -15,10 +15,14 @@ import SwiftUI
 struct ImportBookAction { let run: () -> Void }
 struct NewNotebookAction { let run: () -> Void }
 struct StartReviewAction { let run: () -> Void }
+struct FocusSearchAction { let run: () -> Void }
+struct ShowReviewHelpAction { let run: () -> Void }
 
 private struct ImportBookKey: FocusedValueKey { typealias Value = ImportBookAction }
 private struct NewNotebookKey: FocusedValueKey { typealias Value = NewNotebookAction }
 private struct StartReviewKey: FocusedValueKey { typealias Value = StartReviewAction }
+private struct FocusSearchKey: FocusedValueKey { typealias Value = FocusSearchAction }
+private struct ShowReviewHelpKey: FocusedValueKey { typealias Value = ShowReviewHelpAction }
 
 extension FocusedValues {
     var importBook: ImportBookAction? {
@@ -32,5 +36,13 @@ extension FocusedValues {
     var startReview: StartReviewAction? {
         get { self[StartReviewKey.self] }
         set { self[StartReviewKey.self] = newValue }
+    }
+    var focusSearch: FocusSearchAction? {
+        get { self[FocusSearchKey.self] }
+        set { self[FocusSearchKey.self] = newValue }
+    }
+    var showReviewHelp: ShowReviewHelpAction? {
+        get { self[ShowReviewHelpKey.self] }
+        set { self[ShowReviewHelpKey.self] = newValue }
     }
 }

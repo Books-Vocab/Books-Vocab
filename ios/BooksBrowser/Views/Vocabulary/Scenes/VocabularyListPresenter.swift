@@ -43,6 +43,9 @@ struct VocabularyListPresenter<Content: View>: View {
             dismissKeyboard()
         }
         .background {
+            // 非-Catalyst(含 iPad 外接鍵盤)走隱藏 button 提供 ⌘F;
+            // Catalyst 改由 Edit menu(focusSearch focusedSceneValue)提供,避免雙重 ⌘F 綁定衝突。
+            #if !targetEnvironment(macCatalyst)
             if showsSearchField {
                 Button {
                     searchFocused = true
@@ -54,7 +57,10 @@ struct VocabularyListPresenter<Content: View>: View {
                 .hidden()
                 .accessibilityHidden(true)
             }
+            #endif
         }
+        // Catalyst ⌘F(Edit menu)— 僅在搜尋欄可用時 publish → menu 自動 disable。
+        .focusedSceneValue(\.focusSearch, showsSearchField ? FocusSearchAction { searchFocused = true } : nil)
         .enableInjection()
     }
 }

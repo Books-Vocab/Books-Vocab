@@ -225,6 +225,8 @@ struct TodayReviewView: View {
             shortcutHintTask?.cancel()
             shortcutHintTask = nil
         }
+        // 複習快捷鍵說明(View menu)— review session active 時才 publish → menu 自動 disable。
+        .focusedSceneValue(\.showReviewHelp, ShowReviewHelpAction { isHelpPresented = true })
         #endif
         .enableInjection()
     }
