@@ -206,6 +206,7 @@ struct SettingsPresenter: View {
                     )
                 }
             }
+            .appHoverRowTint()
         }
         .buttonStyle(.plain)
         .disabled(summary.isSyncing)
