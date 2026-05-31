@@ -35,6 +35,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
@@ -580,31 +581,50 @@ def synthesize_batches(
     workers = max(1, min(len(pending), TTS_MAX_CONCURRENT))
     print(f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)...")
 
-    # Phase 2 — synthesize pending batches, isolate stuck ones via per-future timeout
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {}
-        for i, batch in pending:
-            prompt = format_prompt(system_instructions, batch)
-            batch_words = sum(_word_count(t["text"]) for t in batch)
-            cache_path = (cache_dir / f"batch_{i:02d}.wav") if cache_dir else None
-            fut = pool.submit(
-                _synthesize_one, client, speech_config, prompt,
-                i, total, batch_words, len(batch), cache_path, episode_label,
-            )
-            futures[fut] = i
+    # Phase 2 — synthesize pending batches, isolate stuck ones via a wall-clock
+    # cap. Pool is managed manually (not via `with`) so that on timeout we can
+    # shut down WITHOUT waiting — a `with` block's __exit__ joins every worker,
+    # which would re-block on the very batch we just declared stuck.
+    pool = ThreadPoolExecutor(max_workers=workers)
+    futures = {}
+    for i, batch in pending:
+        prompt = format_prompt(system_instructions, batch)
+        batch_words = sum(_word_count(t["text"]) for t in batch)
+        cache_path = (cache_dir / f"batch_{i:02d}.wav") if cache_dir else None
+        fut = pool.submit(
+            _synthesize_one, client, speech_config, prompt,
+            i, total, batch_words, len(batch), cache_path, episode_label,
+        )
+        futures[fut] = i
 
-        stuck: list[int] = []
-        deadline = time.time() + TTS_BATCH_TIMEOUT
-        for fut in as_completed(futures):
+    stuck: list[int] = []
+    deadline = time.time() + TTS_BATCH_TIMEOUT
+    try:
+        # as_completed's own timeout enforces the wall-clock cap: fut.result()
+        # alone never times out here because as_completed only yields ALREADY
+        # finished futures, so a hung batch would otherwise block forever.
+        for fut in as_completed(futures, timeout=max(1, deadline - time.time())):
             i = futures[fut]
-            remaining = max(1, deadline - time.time())
             try:
-                _, segment = fut.result(timeout=remaining)
+                _, segment = fut.result()
                 results[i] = segment
             except Exception as e:
                 name = type(e).__name__
                 print(f"  batch {i}/{total}: FAILED — {name}: {e!s}"[:200])
                 stuck.append(i)
+    except FuturesTimeoutError:
+        # Wall-clock cap hit: as_completed stopped yielding. Every future still
+        # unfinished is stuck — mark it. Their cached siblings survive on disk;
+        # the next run only retries the missing batches.
+        for fut, i in futures.items():
+            if not fut.done():
+                print(f"  batch {i}/{total}: FAILED — TimeoutError: exceeded {TTS_BATCH_TIMEOUT}s wall-clock")
+                stuck.append(i)
+    finally:
+        # wait=False when something is stuck: don't freeze the episode on a hung
+        # Gemini call (its daemon thread is abandoned). cancel_futures drops any
+        # batch that hadn't started yet.
+        pool.shutdown(wait=not stuck, cancel_futures=True)
 
     if stuck:
         raise RuntimeError(
