@@ -28,10 +28,10 @@ import os
 import re
 from typing import Any
 
-# Quota knob for the dashboard storage UI. Bucket plans on Lightsail Object
-# Storage are tiered (1 / 25 / 250 GB) — pick whichever matches the deployed
-# plan so the avail_bytes math reflects what the user actually has.
-BUCKET_QUOTA_BYTES = int(os.getenv("PODCAST_BUCKET_QUOTA_BYTES", str(25 * 1024**3)))
+# Quota knob for the dashboard storage UI. Lightsail Object Storage bundles
+# (as of 2026-06): small_1_0=5GB/$1, medium_1_0=100GB/$3, large_1_0=250GB/$5.
+# Default matches the deployed small_1_0; override via env when upgrading.
+BUCKET_QUOTA_BYTES = int(os.getenv("PODCAST_BUCKET_QUOTA_BYTES", str(5 * 1024**3)))
 
 # Series ID validation — MUST mirror backend `_SERIES_ID_RE` in routers/podcast.py.
 _SERIES_ID_RE = re.compile(r"\A[a-z0-9_]+\Z")
@@ -207,7 +207,7 @@ def remote_disk_usage() -> dict:
     """Bucket usage in the same JSON shape the dashboard expects.
 
     S3 has no real "disk" — ``total_bytes`` is the configured plan quota
-    (``PODCAST_BUCKET_QUOTA_BYTES`` env, default 25 GiB for Lightsail Plan 2).
+    (``PODCAST_BUCKET_QUOTA_BYTES`` env, default 5 GiB = Lightsail small_1_0).
     ``used_bytes`` is the live sum of every object in the bucket.
     """
     bucket = _bucket()
