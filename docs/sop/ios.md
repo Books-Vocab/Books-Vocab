@@ -25,6 +25,17 @@ verified_against: 7482c5ee
 
 ---
 
+## Mac Catalyst 雷區（編譯過 ≠ 不崩）
+
+Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法**編譯通過但在 Catalyst runtime crash**，CI 由 `ops/catalyst_lint.sh` 擋：
+
+- **`.popover` 掛在 `.toolbar` / `ToolbarItem` 的 Button 上** → present 過場走 UIKit `_pinInputViewsForKeyboardSceneDelegate`，scene 未就緒時 trap（`EXC_BREAKPOINT`，backtrace 全在 UIKitCore、無 app frame）。**改用 `.sheet`**（不同 presentation controller，亦免疫 popover resize 時的 willReposition recursion crash）。豁免：同行 `// catalyst-allow: <reason>`。
+- 判讀法：`brk #1` + backtrace 唯一 app frame 是 `main` = framework trap，非 app force-unwrap；務必先取 lldb `bt`。
+
+`ops/catalyst_lint.sh [--report|--strict]`，baseline 0 命中。
+
+---
+
 ## iOS 編譯 3 步驟 SOP
 
 ### Step 1：靜默編譯，直擊錯誤
