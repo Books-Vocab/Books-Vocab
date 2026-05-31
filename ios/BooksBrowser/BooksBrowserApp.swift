@@ -79,7 +79,7 @@ struct BooksBrowserApp: App {
 
     var body: some Scene {
         WindowGroup {
-            #if DEBUG
+            #if DEBUG && canImport(Playbook)
             if ProcessInfo.processInfo.arguments.contains("-catalog") {
                 CatalogScene()
             } else {

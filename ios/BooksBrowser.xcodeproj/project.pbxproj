@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA000001READIUM01 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000004READIUM04 /* ReadiumShared */; };
-		AA000002READIUM02 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000005READIUM05 /* ReadiumStreamer */; };
-		AA000003READIUM03 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000006READIUM06 /* ReadiumNavigator */; };
-		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
+		AA000001READIUM01 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = AA000004READIUM04 /* ReadiumShared */; };
+		AA000002READIUM02 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000005READIUM05 /* ReadiumStreamer */; };
+		AA000003READIUM03 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = AA000006READIUM06 /* ReadiumNavigator */; };
+		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
 		E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E9677BD92F6056C80095D2E1 /* StoreKit.framework */; };
 		E97244ED2FC095AB0038B2FA /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = E97244EC2FC095AB0038B2FA /* Inject */; };
 		E97244F02FC09DCA0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97244EF2FC09DCA0038B2FA /* Playbook */; };
@@ -489,8 +489,8 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -525,8 +525,8 @@
 				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
