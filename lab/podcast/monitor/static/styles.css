@@ -742,75 +742,128 @@ body.sidebar-open .sidebar-backdrop {
   transition: width 0.3s ease;
 }
 
+/* ─── Phase rail + episode matrix: side-by-side work row ─── */
+.work-row { display: flex; gap: 14px; align-items: flex-start; }
+.work-row .panel { margin: 0; }
+.stages-panel { flex: 0 0 38%; min-width: 300px; }
+.panel-episodes { flex: 1 1 0; min-width: 0; }
+@media (max-width: 1180px) {
+  .work-row { flex-direction: column; }
+  .stages-panel { flex: none; width: 100%; }
+}
+
 /* ─── Stages strip ─── */
-/* ── Stage timeline: top→bottom = pipeline order. State reads from the spine
-   dot + connector colour + name tint; no per-row "DONE" pill noise. ── */
+/* ── Pipeline = 4 production phases (PLAN/SCRIPT/AUDIO/SUB), the same vocabulary
+   the episode matrix speaks. A frontier banner answers "where are we, blocked on
+   me or the machine"; each phase is one collapsible row (active phase auto-opens
+   to its constituent stages) instead of 13 equal-weight rows. ── */
 .stages { display: block; }
 
-.timeline { display: flex; flex-direction: column; }
+/* Frontier banner — one line, the single most important fact on the panel. */
+.frontier {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 7px 10px; margin-bottom: 10px;
+  border: 1px solid var(--borderBase); border-left-width: 3px;
+  border-radius: 3px;
+  background: var(--bg); color: var(--ink);
+}
+.fr-icon { font-size: 12px; }
+.fr-running { border-left-color: var(--contra); color: var(--contra); }
+.fr-await   { border-left-color: var(--accent); color: var(--ink);
+              background: rgba(230, 179, 0, 0.10); animation: pulse-await 2s ease-in-out infinite; }
+.fr-failed  { border-left-color: var(--dev); color: var(--dev); }
+.fr-ready   { border-left-color: var(--money); color: var(--money); }
+.fr-next    { border-left-color: var(--sub); color: var(--sub); }
+.fr-idle    { border-left-color: var(--borderBase); color: var(--sub); }
+@keyframes pulse-await {
+  0%, 100% { background: rgba(230, 179, 0, 0.08); }
+  50%      { background: rgba(230, 179, 0, 0.18); }
+}
 
-.tl-row {
+.timeline { display: flex; flex-direction: column; gap: 2px; }
+
+/* Phase header row: dot · chevron · LABEL · segmented stage bar · n/total · time */
+.ph-row {
   display: grid;
-  grid-template-columns: 22px minmax(120px, 200px) 1fr auto;
+  grid-template-columns: 16px 1fr;
   align-items: center;
-  gap: 10px;
-  min-height: 30px;
-  font-size: 11px;
+  gap: 8px;
 }
-
-/* Spine: a continuous vertical line through the dot column; the completed
-   prefix is inked so the spine itself reads as a progress bar. */
-.tl-spine { position: relative; align-self: stretch; }
-.tl-spine::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  transform: translateX(-50%);
-  background: var(--borderL);
-}
-.tl-row:first-child .tl-spine::before { top: 50%; }
-.tl-row:last-child .tl-spine::before { bottom: 50%; }
-.tl-done .tl-spine::before,
-.tl-running .tl-spine::before { background: var(--ink); }
-.tl-failed .tl-spine::before { background: var(--dev); }
-
-.tl-dot {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 9px;
-  height: 9px;
+.ph-dot {
+  width: 9px; height: 9px; margin: 0 auto;
   border-radius: 50%;
   border: 2px solid var(--borderBase);
   background: var(--surface);
-  z-index: 1;
 }
-.tl-done .tl-dot { background: var(--ink); border-color: var(--ink); }
-.tl-running .tl-dot {
-  background: var(--contra);
-  border-color: var(--contra);
+.ph-done .ph-dot { background: var(--ink); border-color: var(--ink); }
+.ph-running .ph-dot {
+  background: var(--contra); border-color: var(--contra);
   animation: pulse-tile 2s ease-in-out infinite;
 }
-.tl-failed .tl-dot { background: var(--dev); border-color: var(--dev); }
+.ph-failed .ph-dot { background: var(--dev); border-color: var(--dev); }
 
-.tl-name {
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.ph-head {
+  display: grid;
+  grid-template-columns: 12px 56px 1fr 30px 52px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0; background: none; cursor: pointer;
+  font-family: var(--mono); text-align: left;
+  border-radius: 3px;
 }
-.tl-pending .tl-name { color: var(--sub); font-weight: 400; }
-.tl-running .tl-name { color: var(--contra); }
-.tl-failed .tl-name { color: var(--dev); }
+.ph-head:hover { background: var(--bg); }
+.ph-head:focus-visible { outline: 2px solid var(--contra); outline-offset: 1px; }
+.ph-chevron::before {
+  content: "▸"; color: var(--sub); font-size: 9px;
+  display: inline-block; transition: transform 0.15s ease;
+}
+.ph-row.is-open .ph-chevron::before { transform: rotate(90deg); }
+.ph-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink);
+}
+.ph-pending .ph-label { color: var(--sub); font-weight: 400; }
+.ph-running .ph-label { color: var(--contra); }
+.ph-failed .ph-label { color: var(--dev); }
+
+.ph-bar { display: flex; gap: 2px; height: 6px; }
+.ph-seg { flex: 1; min-width: 4px; border-radius: 1px; background: var(--borderL); }
+.ph-seg-done { background: var(--ink); }
+.ph-seg-running { background: var(--contra); animation: pulse-tile 2s ease-in-out infinite; }
+.ph-seg-failed { background: var(--dev); }
+
+.ph-count, .ph-time {
+  font-family: var(--mono); font-size: 10px; color: var(--sub); text-align: right;
+}
+.ph-pending .ph-count, .ph-pending .ph-time { color: var(--borderBase); }
+
+/* Constituent stages of the active phase — indented under a hairline rail. */
+.ph-sub {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 2px 0 6px 24px;
+  margin-left: 7px;
+  border-left: 2px solid var(--borderL);
+}
+.tl-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 200px) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  font-size: 11px;
+}
+.tl-substage {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--sub);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tl-done .tl-substage { color: var(--inkLight); }
+.tl-running .tl-substage { color: var(--contra); }
+.tl-failed .tl-substage { color: var(--dev); }
 
 .tl-eps { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
 
@@ -895,57 +948,85 @@ body.sidebar-open .sidebar-backdrop {
 }
 
 /* ─── Episode matrix ──────────────────────────────────────────────────
-   Per-episode artifact gates. One row per episode × four gate cells; the
-   three producible gates are click-to-rerun that single episode's stage. */
+   Each episode is a left→right dependency track PLAN ▸ SCRIPT ▸ AUDIO ▸ SUB.
+   The ratchet is baked into the geometry — fill flows rightward, the frontier
+   (first not-done gate) is ringed, so "ep7 stuck at SCRIPT, ep8 in AUDIO" is
+   scannable straight down the column. script/audio/sub segments click-to-rerun
+   that one episode's stage. */
 .matrix {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   font-family: var(--mono);
   font-size: 11px;
 }
 .mx-row {
   display: grid;
-  grid-template-columns: 40px repeat(4, 1fr);
+  grid-template-columns: 32px 1fr;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 .mx-head {
   font-size: 9px;
   letter-spacing: 0.08em;
   color: var(--sub);
   text-transform: uppercase;
-  padding-bottom: 2px;
+  padding-bottom: 3px;
   border-bottom: 1px solid var(--borderL);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
-.mx-head .mx-col { text-align: center; }
 .mx-ep {
   color: var(--sub);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
-.mx-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-  border: 0;
-  background: none;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--borderBase);   /* missing → faint hollow ring tone */
+
+/* The track: segments (flex:1) separated by ▸ gate dividers (fixed width) so
+   the body cells align under the head labels. */
+.mx-track { display: flex; align-items: center; gap: 0; }
+.mx-col { flex: 1; text-align: center; }
+.mx-div {
+  flex: 0 0 14px; text-align: center;
+  font-size: 9px; color: var(--borderBase);
 }
-.mx-cell.mx-done { color: var(--ink); }
-.mx-cell.mx-running { color: var(--contra); animation: pulse-tile 2s ease-in-out infinite; }
-.mx-cell.mx-failed { color: var(--dev); }
-/* Re-runnable cells (script/audio/sub) get a button affordance on hover. */
-.mx-cell.mx-click {
-  cursor: pointer;
-  border-radius: 3px;
-  transition: background 0.12s ease;
+.mx-div.is-passed { color: var(--ink); }          /* gate to the left has passed */
+.mx-track-head .mx-div { color: var(--sub); }
+
+.mx-seg {
+  flex: 1; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; padding: 0;
+  font-size: 9px; line-height: 1; color: #FCFBFA;
+  background: var(--borderL);
+  border-radius: 2px;
 }
-.mx-cell.mx-click:hover { background: var(--borderL); }
-.mx-cell.mx-click:focus-visible { outline: 2px solid var(--contra); outline-offset: 1px; }
+.mx-seg-missing { background: var(--bg); box-shadow: inset 0 0 0 1px var(--borderL); }
+.mx-seg-done    { background: var(--ink); }
+.mx-seg-running { background: var(--contra); animation: pulse-tile 2s ease-in-out infinite; }
+.mx-seg-failed  { background: var(--dev); }
+
+/* Frontier = the moving edge; ring it so the eye lands on each ep's position. */
+.mx-seg.is-frontier { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.mx-seg-missing.is-frontier { box-shadow: inset 0 0 0 1.5px var(--sub); }
+.mx-seg-running.is-frontier { box-shadow: inset 0 0 0 1.5px var(--contra); }
+.mx-seg-failed.is-frontier  { box-shadow: inset 0 0 0 1.5px var(--dev); }
+
+.mx-seg.mx-click { cursor: pointer; transition: filter 0.12s ease, background 0.12s ease; }
+.mx-seg.mx-click:hover { filter: brightness(1.12) saturate(1.1); }
+.mx-seg-missing.mx-click:hover { background: var(--borderL); filter: none; }
+.mx-seg.mx-click:focus-visible { outline: 2px solid var(--contra); outline-offset: 1px; }
+
+/* Locked = a producible gate whose upstream isn't ready (predecessor artifact
+   missing or the approval gate hasn't passed). Not clickable — you can't trigger
+   scriptwrite before the plan is approved. Dimmed, hatched, no pointer. */
+.mx-seg.mx-locked {
+  cursor: not-allowed;
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    -45deg, var(--bg), var(--bg) 4px, var(--borderL) 4px, var(--borderL) 5px);
+  box-shadow: inset 0 0 0 1px var(--borderL);
+}
+.mx-seg.mx-locked.is-frontier { box-shadow: inset 0 0 0 1px var(--sub); }
 
 /* ─── Panels (cost + activity) ─── */
 .panel {
@@ -1193,7 +1274,8 @@ body.sidebar-open .sidebar-backdrop {
    on hover/state changes remain — they're still tasteful at zero distance. */
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop, .modal, .toast { animation: none; }
-  .status-dot.running, .ep-tile.running, .tl-running .tl-dot { animation: none; }
+  .status-dot.running, .ep-tile.running,
+  .ph-running .ph-dot, .ph-seg-running, .mx-seg-running, .frontier.fr-await { animation: none; }
   .gate-awaiting, .action-btn.advance.approve { animation: none; }
 }
 
