@@ -15,7 +15,7 @@ KG 用**三層 backup**互相補位。各層獨立,單一層失效不阻擋整�
 |---|---|---|---|---|---|---|---|
 | L1 | Lightsail AutoSnapshot | **整個 instance**(docker / `.env` / certs / data / OS) | 每日 UTC 22:00 | 7 份 | 24h | 30–60 min | 整機 down,還原慢但完整 |
 | L2 | 本機 `devops.sh cmd_backup` + `backup_verify.sh` | `~/knowledge_graph_api/`(scp tar 到本機) | 手動(發版前 / 事故前) | 全部歷史(本機磁碟) | 視操作時機 | 5–10 min | 本機磁碟掛 |
-| L3 | AWS S3(本 SOP) | `data/`(tar+gz streaming) | 每日 UTC 03:00 (cron) | 30 天 + noncurrent 35 天 + MFA Delete | 24h | ~15 min | S3 region 級故障 |
+| L3 | AWS S3(本 SOP) | `data/`(tar+gz streaming) | 每日 UTC 03:00 (cron) | Versioning + **MFA Delete**,**無 lifecycle**(AWS 限制兩者互斥)→ 永久累積,需手動清(見 `backup_restore.md §7`) | 24h | ~15 min | S3 region 級故障 |
 
 ## 為什麼三層
 
@@ -31,6 +31,7 @@ KG 用**三層 backup**互相補位。各層獨立,單一層失效不阻擋整�
 | 跨雲(R2 / GCS / B2) | 過度防護 |  |
 | PITR / SQLite WAL streaming | RPO 24h 達標 |  |
 | Backup 完整性 alarm | 之後再加,CloudWatch alarm + SNS |  |
+| 自動清舊 backup | **AWS 限制**:lifecycle 與 MFA Delete 不可共存,選了 MFA Delete | 約 1-2 年後手動清一次(`backup_restore.md §7`);若每月成本超 ${'\$'}10 提前處理 |
 | `.env` / `certs/` 異地 backup | 本機 Time Machine 涵蓋,且都可重生 | 月度 reminder:檢查本機 backup 含 `~/.ssh/`、`~/kg/backend/{.env,certs/}` |
 
 ## 監控
