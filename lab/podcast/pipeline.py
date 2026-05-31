@@ -67,6 +67,7 @@ from ebooklib import epub
 sys.stdout.reconfigure(line_buffering=True)
 
 import archetypes
+import saga
 
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
@@ -343,22 +344,11 @@ def setup_workspace(metadata: dict, chapters: list[tuple[str, str]]) -> Path:
     ).hexdigest()[:8]
     workspace = WORKSPACES_DIR / f"{slug}_{book_hash}"
 
-    for d in ["source/chapters", "plan/episodes", "scripts", "raw_chapters"]:
+    for d in ["plan/episodes", "scripts"]:
         (workspace / d).mkdir(parents=True, exist_ok=True)
-
-    meta_lines = [
-        f"# {metadata['title']}",
-        f"- **Author**: {metadata['author']}",
-        f"- **Language**: {metadata['language']}",
-        f"- **Raw chapters**: {metadata['total_raw_chapters']}",
-        f"- **Raw chars**: {metadata['total_raw_chars']:,}",
-    ]
-    (workspace / "source" / "metadata.md").write_text("\n".join(meta_lines))
-
-    for i, (name, text) in enumerate(chapters):
-        (workspace / "raw_chapters" / f"raw_ch_{i + 1:02d}.md").write_text(
-            f"<!-- source: {name} -->\n\n{text}"
-        )
+    # source/chapters, raw_chapters, and metadata.md are written by the shared
+    # per-book helper (same layout each saga sub-book gets).
+    _write_book_dir(workspace, metadata, chapters)
 
     (workspace / "log.md").write_text(
         f"# Podcast Pipeline Log\n\n"
@@ -366,6 +356,69 @@ def setup_workspace(metadata: dict, chapters: list[tuple[str, str]]) -> Path:
         f"- Started: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
     )
 
+    return workspace
+
+
+def _write_book_dir(book_dir: Path, metadata: dict, chapters: list[tuple[str, str]]) -> None:
+    """Materialize one book's source layout under ``book_dir`` (shared by the
+    single-book and saga paths)."""
+    for d in ["source/chapters", "raw_chapters"]:
+        (book_dir / d).mkdir(parents=True, exist_ok=True)
+    meta_lines = [
+        f"# {metadata['title']}",
+        f"- **Author**: {metadata['author']}",
+        f"- **Language**: {metadata.get('language', 'en')}",
+        f"- **Raw chapters**: {metadata['total_raw_chapters']}",
+        f"- **Raw chars**: {metadata['total_raw_chars']:,}",
+    ]
+    (book_dir / "source" / "metadata.md").write_text("\n".join(meta_lines))
+    for i, (name, text) in enumerate(chapters):
+        (book_dir / "raw_chapters" / f"raw_ch_{i + 1:02d}.md").write_text(
+            f"<!-- source: {name} -->\n\n{text}"
+        )
+
+
+def setup_saga_workspace(
+    saga_title: str, books: list[tuple[dict, list[tuple[str, str]]]]
+) -> Path:
+    """Create ONE saga workspace grouping N books in reading order.
+
+    `books` is an ordered list (reading order = list order) of
+    ``(metadata, chapters)`` tuples as produced by `extract_epub`. Layout:
+
+        workspaces/<saga_slug>_<hash>/
+          series.md                 ← reading order + spoiler-horizon SoT
+          books/NN_<slug>/source/…  ← per-book source, reading-order prefixed
+          plan/ scripts/            ← series-level plan + unified episode feed
+          log.md                    ← saga run log
+
+    The .mode/.spoiler_mode sidecars are written later by main() (the CLI
+    integration phase), same as the single-book path — not here.
+
+    Returns the saga workspace path. Idempotent on re-run: existing book dirs are
+    overwritten with the same content; series.md is rewritten from the manifest.
+    """
+    book_metas = [m for m, _ in books]
+    entries = saga.plan_books(book_metas)
+    dirname = saga.saga_dirname(saga_title, [m["title"] for m in book_metas])
+    workspace = WORKSPACES_DIR / dirname
+
+    for d in ["plan/episodes", "scripts", "books"]:
+        (workspace / d).mkdir(parents=True, exist_ok=True)
+
+    for entry, (metadata, chapters) in zip(entries, books):
+        _write_book_dir(workspace / "books" / entry.slug, metadata, chapters)
+
+    (workspace / "series.md").write_text(
+        saga.render_series_manifest(saga_title, entries)
+    )
+    (workspace / "log.md").write_text(
+        f"# Podcast Pipeline Log (Saga)\n\n"
+        f"- Saga: {saga_title}\n"
+        f"- Books ({len(entries)}): "
+        + ", ".join(f"{e.index}. {e.title}" for e in entries)
+        + f"\n- Started: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    )
     return workspace
 
 
