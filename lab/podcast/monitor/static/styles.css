@@ -894,6 +894,59 @@ body.sidebar-open .sidebar-backdrop {
   50% { box-shadow: 0 0 0 2px rgba(74, 107, 140, 0.12); }
 }
 
+/* ─── Episode matrix ──────────────────────────────────────────────────
+   Per-episode artifact gates. One row per episode × four gate cells; the
+   three producible gates are click-to-rerun that single episode's stage. */
+.matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.mx-row {
+  display: grid;
+  grid-template-columns: 40px repeat(4, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+.mx-head {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--sub);
+  text-transform: uppercase;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--borderL);
+  margin-bottom: 2px;
+}
+.mx-head .mx-col { text-align: center; }
+.mx-ep {
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+.mx-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--borderBase);   /* missing → faint hollow ring tone */
+}
+.mx-cell.mx-done { color: var(--ink); }
+.mx-cell.mx-running { color: var(--contra); animation: pulse-tile 2s ease-in-out infinite; }
+.mx-cell.mx-failed { color: var(--dev); }
+/* Re-runnable cells (script/audio/sub) get a button affordance on hover. */
+.mx-cell.mx-click {
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.12s ease;
+}
+.mx-cell.mx-click:hover { background: var(--borderL); }
+.mx-cell.mx-click:focus-visible { outline: 2px solid var(--contra); outline-offset: 1px; }
+
 /* ─── Panels (cost + activity) ─── */
 .panel {
   background: var(--surface);

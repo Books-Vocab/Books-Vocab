@@ -373,6 +373,7 @@ Endpoints:
 - `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
 - `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
 - `POST /api/workspace/{ws}/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);前端情境式推進鈕在「非 gate、有未完工」時呼叫(rerun=單階、approve=寫標記再續、resume=純續跑)
+- **per-workspace 併發守衛**:`approve` / `resume` / `upload` / `rerun` 四個 spawn endpoint 在開子行程前皆檢查 `_active_job_for_ws(ws_name)`(配對 route 同 sidebar:`metadata.workspace` 或 `<ws>/.pipeline_job_id` sidecar)。同一 workspace 已有 running job → 一律回 **409**,不 spawn、不寫 gate marker、不砍 stage marker。global 上限 `MAX_ACTIVE_JOBS`(預設 4)獨立守不同 workspace 的合計上限
 - `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)
 
 **Jobs**:

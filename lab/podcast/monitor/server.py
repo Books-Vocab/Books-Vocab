@@ -57,12 +57,15 @@ UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
 # Workspace name regex — same constraint as backend _SERIES_ID_RE plus a
 # safety guard against `..` / absolute paths sneaking in via FastAPI path params.
 _WS_NAME_RE = re.compile(r"\A[a-z0-9_]+\Z")
-_STAGE_NAMES = {
+# Pipeline stage order (mirror of pipeline.py STAGES) — used for the
+# marker-based resume point. Keep in sync with pipeline.py.
+_STAGES_ORDERED = (
     "prep", "analyst", "architect", "plan-review",
     "enricher-gap", "enricher", "scriptwrite",
     "series-polish", "script-review",
     "tts-prep", "synthesize", "audio-qa", "subtitle",
-}
+)
+_STAGE_NAMES = set(_STAGES_ORDERED)
 
 
 def _resolve_ws(ws_name: str) -> Path:
@@ -109,6 +112,38 @@ def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+def _active_job_for_ws(ws_name: str, running: dict | None = None) -> dict | None:
+    """Return `{job_id,label,kind}` for a running job bound to this workspace,
+    or None.
+
+    Pairs jobs to workspaces via two routes (same logic the sidebar list uses):
+      1. `metadata.workspace` — upload / rerun / approve / resume jobs know the
+         workspace at spawn time (caller passed it in).
+      2. `<ws>/.pipeline_job_id` sidecar — written by pipeline.py once it
+         resolves EPUB→workspace, used by full-pipeline jobs whose spawn-time
+         metadata only knows the EPUB filename.
+
+    `running` may be passed in to amortize `jobs.list()` across many lookups
+    (list_workspaces calls this once per ws); if omitted we fetch ourselves.
+    Used both for the sidebar's `active_job` field and as the per-workspace
+    concurrency guard on every spawn endpoint — two pipeline.py on the same
+    workspace would race on markers/scripts/mp3s with no mutual exclusion.
+    """
+    if running is None:
+        running = {j.id: j for j in jobs.list(limit=200) if j.status == "running"}
+    # Route 1: explicit metadata.workspace.
+    for j in running.values():
+        if (j.metadata or {}).get("workspace") == ws_name:
+            return {"job_id": j.id, "label": j.label, "kind": j.kind}
+    # Route 2: sidecar.
+    try:
+        jid = (WORKSPACES_DIR / ws_name / ".pipeline_job_id").read_text().strip()
+    except OSError:
+        return None
+    j = running.get(jid)
+    return {"job_id": j.id, "label": j.label, "kind": j.kind} if j else None
+
+
 @app.get("/api/workspaces")
 def list_workspaces(full: bool = Query(False)):
     """List workspaces. `?full=1` returns rich summaries (status, progress,
@@ -122,37 +157,14 @@ def list_workspaces(full: bool = Query(False)):
     if not full:
         return names
 
-    # Pair running jobs back to their workspaces.
-    # Two routes:
-    #   1. metadata.workspace is set — upload / rerun jobs know the workspace
-    #      at spawn time (caller passed it in).
-    #   2. Sidecar `<ws>/.pipeline_job_id` written by pipeline.py once stage 1
-    #      resolves the EPUB→workspace mapping. Used by the pipeline kind,
-    #      whose spawn-time metadata only knows the EPUB filename.
+    # Pair running jobs back to their workspaces via the shared helper. Fetch
+    # the running-jobs map ONCE and pass it in so this stays O(jobs) for the
+    # whole list instead of O(workspaces × jobs).
     running_jobs = {j.id: j for j in jobs.list(limit=200) if j.status == "running"}
-    active_by_ws: dict[str, dict] = {}
-    # Route 1: explicit metadata.
-    for j in running_jobs.values():
-        ws = (j.metadata or {}).get("workspace")
-        if ws and ws not in active_by_ws:
-            active_by_ws[ws] = {"job_id": j.id, "label": j.label, "kind": j.kind}
-    # Route 2: sidecar discovery for pipeline (full-EPUB) jobs.
-    if running_jobs:
-        for p in WORKSPACES_DIR.iterdir():
-            if not p.is_dir() or p.name in active_by_ws:
-                continue
-            sidecar = p / ".pipeline_job_id"
-            if not sidecar.exists():
-                continue
-            try:
-                jid = sidecar.read_text().strip()
-            except OSError:
-                continue
-            j = running_jobs.get(jid)
-            if j:
-                active_by_ws[p.name] = {"job_id": j.id, "label": j.label, "kind": j.kind}
-
-    return [_workspace_summary(WORKSPACES_DIR / n, active_by_ws.get(n)) for n in names]
+    return [
+        _workspace_summary(WORKSPACES_DIR / n, _active_job_for_ws(n, running_jobs))
+        for n in names
+    ]
 
 
 # Total stage count, surfaced in the summary so the frontend can render
@@ -472,6 +484,25 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         gates = []
     _gate_state = {g["key"]: g["state"] for g in gates}
 
+    # Marker-based resume point (what flagless `pipeline.py <ws>` auto-resume
+    # would do) + whether it DRIFTS behind the artifacts. Markers can lag
+    # reality (a rerun drops them, a restore loses them); if the resume stage
+    # is earlier than the artifacts already reach, a plain resume would redo +
+    # overwrite finished work. The dashboard surfaces resume_drift as a loud
+    # warning on the RESUME action so the producer isn't surprised by a full
+    # re-run + re-spend.
+    resume_stage = next((s for s in _STAGES_ORDERED if s not in stages_done), None)
+    resume_drift = False
+    if resume_stage is not None:
+        ridx = _STAGES_ORDERED.index(resume_stage)
+        n_srt = int(_ms.get("subtitle", {}).get("done", 0))
+        frontier = -1
+        if has_plan:     frontier = max(frontier, _STAGES_ORDERED.index("architect"))
+        if n_script > 0: frontier = max(frontier, _STAGES_ORDERED.index("scriptwrite"))
+        if n_audio > 0:  frontier = max(frontier, _STAGES_ORDERED.index("synthesize"))
+        if n_srt > 0:    frontier = max(frontier, _STAGES_ORDERED.index("subtitle"))
+        resume_drift = frontier > ridx
+
     # ─── Status (running > done > failed > awaiting > idle > fresh) ───
     # "awaiting" = paused at an approval gate (Phase 2). Disk-derived so legacy
     # workspaces (artifacts but no *_approved markers) classify by the gate
@@ -566,6 +597,9 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         # Two approval-gate tri-states (plan→script, script→audio) for the
         # sidebar's 3-phase / 2-gate track + the AWAITING status.
         "gates": gates,
+        # Marker-based resume point + drift warning for the RESUME action.
+        "resume_stage": resume_stage,
+        "resume_drift": resume_drift,
         "progress": round(progress, 4),
         "episode_count": len(episodes),
         "created": created,
@@ -822,6 +856,10 @@ def upload_workspace(ws_name: str):
     if not upload_sh.exists():
         raise HTTPException(500, f"upload script missing at {upload_sh}")
 
+    busy = _active_job_for_ws(ws_name)
+    if busy:
+        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+
     try:
         job = jobs.spawn(
             ["bash", str(upload_sh), str(ws)],
@@ -876,6 +914,10 @@ def rerun_stage(
     if episode is not None:
         cmd += ["--only-episode", str(episode)]
 
+    busy = _active_job_for_ws(ws_name)
+    if busy:
+        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+
     try:
         job = jobs.spawn(
             cmd,
@@ -925,6 +967,10 @@ def approve_gate(ws_name: str, gate: str = Query(...)):
     if state == "pending":
         raise HTTPException(409, f"gate {gate!r} not ready — prior phase incomplete")
 
+    busy = _active_job_for_ws(ws_name)
+    if busy:
+        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+
     (ws / marker).write_text(time.strftime("approved %Y-%m-%dT%H:%M:%S\n"))
 
     try:
@@ -952,6 +998,9 @@ def resume_workspace(ws_name: str):
     parked at a gate.
     """
     ws = _resolve_ws(ws_name)
+    busy = _active_job_for_ws(ws_name)
+    if busy:
+        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
     try:
         job = jobs.spawn(
             ["uv", "run", "pipeline.py", str(ws)],

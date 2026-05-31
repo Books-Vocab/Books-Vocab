@@ -144,6 +144,17 @@
   <!-- Stage strip: one row, compact tiles -->
   <section class="stages" id="stage-grid"></section>
 
+  <!-- Episode matrix: per-episode artifact gates + per-episode control.
+       Disk-derived (works idle) — the heart of "is ep N's script/audio done,
+       and let me re-run just that cell". -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="micro-label">EPISODES</span>
+      <span class="panel-sub" id="matrix-meta">—</span>
+    </div>
+    <div class="matrix" id="episode-matrix"></div>
+  </section>
+
   <!-- Cost breakdown table -->
   <section class="panel">
     <div class="panel-head">
