@@ -73,17 +73,17 @@ The parser expects:
 - Structural lines `#`/`##`/`>`/`---`/HTML comment are SKIPPED (not concat'd onto previous turn). Parser removes them defensively, but a clean script shouldn't need that defense.
 - Any non-skip, non-tag line that follows a speaker line becomes **continuation** of that speaker.
 - Inline `**bold**` and `*italic*` emphasis are STRIPPED before TTS — authors should not use them, but parser sanitizes.
-- TTS tags like `[excitement]`, `[slow]`, and SSML `<break time="1s"/>`, `<prosody>` are passed through verbatim.
+- TTS tags like `[excitement]`, `[slow]`, `[long pause]` are passed through verbatim. Gemini 3.1 does NOT support SSML — `<break>` / `<prosody>` / `<emphasis>` are not recognized (ignored at best, read aloud at worst). Pauses use `[short pause]` / `[medium pause]` / `[long pause]`, not `<break>`.
 
 ### Hard Failures (must fix — edit the script in place)
 
 1. **Missing or malformed speaker tag** — e.g., `Maya:` (no bold), `**Maya**:` (colon outside bold), `** Maya:**` (leading space).
 2. **Unknown speaker name** — any `**XYZ:**` where XYZ is not one of the hosts in the Voice Mapping. Parser now raises on these; must be fixed.
 3. **Orphan text** before the first speaker tag (other than title/blockquote) — will attach to nothing or get lost.
-4. **Inline `*emphasis*` or `**bold**` inside dialogue** — e.g. `**Dev:** This is *wild*.` → rewrite as `This is wild.` or `<emphasis level="strong">wild</emphasis>`. Parser strips them but authors must not introduce.
+4. **Inline `*emphasis*` or `**bold**` inside dialogue** — e.g. `**Dev:** This is *wild*.` → rewrite as `This is wild.` (Gemini 3.1 has no `<emphasis>`; let the wording or an emotion tag carry the stress). Parser strips them but authors must not introduce.
 5. **`---` horizontal rules or `##`/`###` section headers inside episode body** — remove them. Parser skips but they're forbidden by style.
 6. **Trailing italic `*takeaway*` line** — remove. Replace the beat with an explicit `**Host:**` turn (Sign-Off already covers this).
-7. **Malformed SSML** — unclosed `<prosody>`, missing `/>` on `<break>`, unbalanced tags.
+7. **SSML angle-bracket tags** — any `<break>`, `<prosody>`, `<emphasis>`. Gemini 3.1 does not parse SSML; these get ignored or vocalized. Replace `<break time="1s"/>`/`2s` with `[long pause]` (shorter → `[medium pause]`); unwrap `<prosody>`/`<emphasis>`, keeping the inner text.
 8. **Empty speaker turns** — `**Maya:** ` with nothing after, produces garbage audio.
 9. **Speaker tag name containing `:` or `*`** — parser splits on `:` and matches `**[^:*]+:**`, so colons or asterisks inside the name break parsing. Spaces, hyphens, and unicode letters in the host name are now permitted (synthesize.py / subtitle.py / audio_qa.py all use `[^:*]+`). Single-word names are still preferred for readability but no longer required.
 10. **Missing `<!-- END_OF_SCRIPT -->` sentinel** at very end (pipeline resume logic depends on it).

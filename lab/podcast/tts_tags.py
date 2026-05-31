@@ -39,9 +39,19 @@ CANONICAL_PACING_NONVERBAL: frozenset[str] = frozenset(
     {"slow", "fast", "whispers", "laughs", "giggles", "sighs", "gasp"}
 )
 
+# Pause tags — Gemini 3.1 Mode 4 ("Pacing and pauses"), all High reliability.
+# These insert measured silence and REPLACE SSML <break time="Ns"/> (Gemini 3.1
+# does not parse SSML). [short pause]≈250ms, [medium pause]≈500ms, [long pause]≈1s+.
+CANONICAL_PAUSE: frozenset[str] = frozenset(
+    {"short pause", "medium pause", "long pause"}
+)
+
 # The full palette the scriptwriter may use and the reviewer must enforce.
 CANONICAL: frozenset[str] = (
-    CANONICAL_EMOTION | CANONICAL_ENERGY | CANONICAL_PACING_NONVERBAL
+    CANONICAL_EMOTION
+    | CANONICAL_ENERGY
+    | CANONICAL_PACING_NONVERBAL
+    | CANONICAL_PAUSE
 )
 
 # 2.5-era adjective form → 3.1 noun form. Used by the reviewer's auto-fix and as
