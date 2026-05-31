@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31d";
+const APP_VERSION = "2026-05-31e";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -55,6 +55,7 @@ const STAGES = [
 const OPUS_CTX_MAX = 1_000_000;
 const COST_REFRESH_MS = 4000;
 const JOBS_REFRESH_MS = 3000;
+const MATRIX_REFRESH_MS = 5000;  // per-episode artifact gates poll cadence
 const REMOTE_REFRESH_MS = 30000;  // SSH each tick — gentle cadence
 const REMOTE_LOW_FREE_BYTES = 500 * 1024 * 1024;  // warn at <500MB free
 
@@ -78,6 +79,9 @@ const state = {
   costTimer: null,
   jobsTimer: null,
   jobsInflight: false,
+  episodeStatus: [],     // per-episode artifact gates from /episodes/status
+  matrixTimer: null,
+  matrixInflight: false,
   recentJobs: [],
   remoteTimer: null,
   remoteInflight: false,
@@ -412,17 +416,28 @@ function milestoneBar(s) {
   // Phase key is whitelisted (PLAN/SCRIPT/AUDIO) → safe to inject as a class.
   const phase = (key, extra = "") =>
     `<span class="ph ph-${key}"><i style="width:${w(key)}%"></i>${extra}</span>`;
-  const gate = (state, name) =>
-    `<span class="gate gate-${state}" title="${name} gate · ${state}"></span>`;
+  // Clamp gate state to the known enum before it lands in a class + title —
+  // defense-in-depth so a malformed/stale summary can't inject markup (matches
+  // the milestone-key whitelist this view replaced).
+  const GATE_STATES = { passed: 1, awaiting: 1, pending: 1 };
+  const gate = (rawState, name) => {
+    const st = GATE_STATES[rawState] ? rawState : "pending";
+    return `<span class="gate gate-${st}" title="${name} gate · ${st}"></span>`;
+  };
   const subTick = `<b class="ph-sub" style="width:${w("subtitle")}%"></b>`;
 
   const segs =
     phase("plan") + gate(g1, "plan") + phase("script") + gate(g2, "script") +
     phase("audio", subTick);
 
+  // Gate the amber "⏸ APPROVE" label on the workspace STATUS (not just the
+  // gate flags) so it derives from the same source as the card's amber border
+  // (`ws-card-${status}`). Otherwise a failed/running workspace whose gate
+  // frontier still reads "awaiting" would show an amber label on a red card.
   let label, awaiting = false;
-  if (g1 === "awaiting") { label = "⏸ APPROVE PLAN"; awaiting = true; }
-  else if (g2 === "awaiting") { label = "⏸ APPROVE SCRIPTS"; awaiting = true; }
+  const parked = s.status === "awaiting";
+  if (parked && g1 === "awaiting") { label = "⏸ APPROVE PLAN"; awaiting = true; }
+  else if (parked && g2 === "awaiting") { label = "⏸ APPROVE SCRIPTS"; awaiting = true; }
   else {
     const frontier = ms.find(m => (m.ratio || 0) < 1);
     label = frontier
@@ -498,9 +513,11 @@ function resetState() {
   state.pipelineStartTs = null;
   state.pipelineEndTs = null;
   state.feed = [];
+  state.episodeStatus = [];
   if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
   if (state.costTimer) { clearInterval(state.costTimer); state.costTimer = null; }
   if (state.jobsTimer) { clearInterval(state.jobsTimer); state.jobsTimer = null; }
+  if (state.matrixTimer) { clearInterval(state.matrixTimer); state.matrixTimer = null; }
   // remoteTimer is NOT cleared here — it's workspace-independent (shows
   // server-wide state), started once at DOMContentLoaded.
 }
@@ -546,6 +563,7 @@ async function switchWorkspace(ws) {
   }
   renderAll();
   await refreshCost();
+  await refreshEpisodeStatus();
 
   // Live updates
   const es = new EventSource(`/api/workspace/${ws}/stream`);
@@ -565,6 +583,10 @@ async function switchWorkspace(ws) {
   // doesn't make recent-jobs status look stale.
   state.jobsTimer = setInterval(refreshJobs, JOBS_REFRESH_MS);
   refreshJobs();
+  // Episode matrix: poll artifacts so per-episode gates fill in as a run
+  // produces scripts/audio/srt (the live parallelEps overlay updates faster
+  // via renderAll on each SSE event).
+  state.matrixTimer = setInterval(refreshEpisodeStatus, MATRIX_REFRESH_MS);
 }
 
 async function refreshCost() {
@@ -1106,7 +1128,7 @@ function renderAdvance() {
   let mode, label, approve = false;
   if (gst("plan") === "awaiting") { mode = "approve:plan"; label = "▶ APPROVE PLAN"; approve = true; }
   else if (gst("script") === "awaiting") { mode = "approve:script"; label = "▶ APPROVE SCRIPTS"; approve = true; }
-  else if (incomplete) { mode = "resume"; label = "▶ RESUME"; }
+  else if (incomplete) { mode = "resume"; label = sum.status === "fresh" ? "▶ START" : "▶ RESUME"; }
   else { btn.hidden = true; return; }  // nothing to advance → READY
 
   btn.hidden = false;
@@ -1118,7 +1140,17 @@ function renderAdvance() {
 
 async function actionResume() {
   if (!state.ws) return toast("no workspace selected", "warn");
-  if (!confirm(`Resume ${state.ws} from where it left off?\n\nRuns forward until the next approval gate or completion.`)) return;
+  const sum = (state.workspaceSummaries || []).find(s => s.name === state.ws) || {};
+  const stage = sum.resume_stage || "prep";
+  let msg = `Resume ${state.ws} from stage "${stage}"?\n\nRuns forward to the next approval gate or completion.`;
+  if (sum.resume_drift) {
+    // Markers lag the artifacts — a plain resume restarts from `stage` and
+    // overwrites finished work. Warn loudly (the reviewer's footgun).
+    msg += `\n\n⚠ Stage markers are missing for this workspace — resuming will RE-RUN from "${stage}" even though later artifacts already exist, re-spending cost and overwriting them. To fill a single gap instead, use a cell's ↻ in the EPISODES matrix.`;
+  }
+  if (!confirm(msg)) return;
+  const btn = $("#act-advance");
+  if (btn) btn.disabled = true;  // optimistic — block a double-spawn in the poll window
   try {
     const r = await fetch(`/api/workspace/${state.ws}/resume`, { method: "POST" });
     const b = await r.json();
@@ -1126,7 +1158,10 @@ async function actionResume() {
     toast(`resume started · job ${b.job_id}`, "info");
     refreshJobs();
     loadWorkspaces({ quiet: true });
-  } catch (e) { toast(`resume failed: ${e.message}`, "error", 7000); }
+  } catch (e) {
+    toast(`resume failed: ${e.message}`, "error", 7000);
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function actionApprove(gate) {
@@ -1135,6 +1170,8 @@ async function actionApprove(gate) {
     ? "approve the plan and start writing scripts"
     : "approve the scripts and synthesize audio (incurs TTS cost)";
   if (!confirm(`Approve the ${gate} gate for ${state.ws}?\n\nThis will ${what}.`)) return;
+  const btn = $("#act-advance");
+  if (btn) btn.disabled = true;  // optimistic — block a double-spawn in the poll window
   try {
     const r = await fetch(`/api/workspace/${state.ws}/approve?gate=${encodeURIComponent(gate)}`, { method: "POST" });
     const b = await r.json();
@@ -1142,7 +1179,10 @@ async function actionApprove(gate) {
     toast(`${gate} gate approved · job ${b.job_id}`, "info");
     refreshJobs();
     loadWorkspaces({ quiet: true });
-  } catch (e) { toast(`approve failed: ${e.message}`, "error", 7000); }
+  } catch (e) {
+    toast(`approve failed: ${e.message}`, "error", 7000);
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ─── Recent jobs panel ───
@@ -1228,6 +1268,7 @@ document.addEventListener("click", async (e) => {
 // ─── Renderers ───
 function renderAll() {
   renderStages();
+  renderMatrix();   // cheap; refreshes the live running/failed overlay from parallelEps
   renderKpis();
   renderFeed();
   renderNavStatus();
@@ -1275,6 +1316,84 @@ function renderStages() {
       </div>`;
   }).join("");
   grid.innerHTML = `<div class="timeline">${rows}</div>`;
+}
+
+// ─── Episode matrix ───
+//
+// Per-episode artifact gates (PLAN/SCRIPT/AUDIO/SUB) from /episodes/status —
+// disk-derived so it works for idle workspaces (live parallelEps is empty once
+// a run ends). The three producible gates (script/audio/sub) are click-to-rerun
+// that ONE episode's stage; the plan gate is status-only (architect is
+// series-level). Live running/failed overlays from parallelEps when a run is
+// active. The whole grid is artifact truth — "ep 3 has a script but no audio".
+const MX_GATES = [
+  { key: "plan",     label: "PLAN", stage: null },          // series-level → no per-ep rerun
+  { key: "script",   label: "SCRIPT", stage: "scriptwrite" },
+  { key: "audio",    label: "AUDIO", stage: "synthesize" },
+  { key: "subtitle", label: "SUB", stage: "subtitle" },
+];
+// Map a gate to the parallelEps stage that carries its live running/failed state.
+const MX_LIVE_STAGE = { script: "scriptwrite", audio: "synthesize" };
+
+async function refreshEpisodeStatus() {
+  if (!state.ws || state.matrixInflight) return;
+  state.matrixInflight = true;
+  try {
+    const r = await fetch(`/api/workspace/${state.ws}/episodes/status`);
+    if (!r.ok) return;
+    state.episodeStatus = await r.json();
+    renderMatrix();
+  } catch { /* network blip; next tick */ }
+  finally { state.matrixInflight = false; }
+}
+
+function mxCell(gate, row) {
+  const done = !!row[gate.key];
+  // Live overlay: a running/failed episode runner (only for script/audio).
+  let live = null;
+  const liveStage = MX_LIVE_STAGE[gate.key];
+  if (liveStage) {
+    const st = (state.parallelEps[liveStage] || {})[row.ep];
+    if (st === "running" || st === "failed") live = st;
+  }
+  const cellState = live || (done ? "done" : "missing");
+  const icon = { done: "●", running: "◐", failed: "✗", missing: "○" }[cellState];
+  const canRerun = gate.stage != null;
+  const title = `EP${row.ep} · ${gate.label} · ${cellState}` +
+    (canRerun ? ` · click to re-run ${gate.stage} ep${row.ep}` : "");
+  if (!canRerun) {
+    return `<span class="mx-cell mx-${cellState}" title="${title}">${icon}</span>`;
+  }
+  return `<button class="mx-cell mx-click mx-${cellState}" title="${escapeAttr(title)}"
+    data-rerun-stage="${gate.stage}" data-rerun-ep="${row.ep}">${icon}</button>`;
+}
+
+function renderMatrix() {
+  const grid = $("#episode-matrix");
+  if (!grid) return;
+  const rows = state.episodeStatus || [];
+  const meta = $("#matrix-meta");
+
+  if (!rows.length) {
+    grid.innerHTML = `<div class="empty">no episodes yet — episode plans appear after the architect stage</div>`;
+    if (meta) meta.textContent = "—";
+    return;
+  }
+
+  // Summary counts for the panel sub-label.
+  const n = rows.length;
+  const cnt = k => rows.filter(r => r[k]).length;
+  if (meta) meta.textContent = `${n} ep · script ${cnt("script")}/${n} · audio ${cnt("audio")}/${n} · sub ${cnt("subtitle")}/${n}`;
+
+  const head = `<div class="mx-row mx-head">
+    <span class="mx-ep">EP</span>
+    ${MX_GATES.map(g => `<span class="mx-col">${g.label}</span>`).join("")}
+  </div>`;
+  const body = rows.map(row => `<div class="mx-row">
+    <span class="mx-ep tabular">${row.ep}</span>
+    ${MX_GATES.map(g => mxCell(g, row)).join("")}
+  </div>`).join("");
+  grid.innerHTML = head + body;
 }
 
 function renderKpis() {
@@ -1548,10 +1667,14 @@ document.addEventListener("DOMContentLoaded", () => {
     setModalFile(e.dataTransfer.files[0]);
   });
   $("#new-podcast-form").addEventListener("submit", submitNewPodcast);
-  // Stage rerun button — delegated since renderStages re-creates the DOM.
+  // Stage / per-episode rerun — delegated since renderStages + renderMatrix
+  // re-create the DOM. Matrix cells carry data-rerun-ep for single-episode
+  // reruns; the timeline's stage ↻ has no ep (whole-stage rerun).
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-rerun-stage]");
-    if (btn) actionRerunStage(btn.dataset.rerunStage);
+    if (!btn) return;
+    const ep = btn.dataset.rerunEp ? Number(btn.dataset.rerunEp) : null;
+    actionRerunStage(btn.dataset.rerunStage, ep);
   });
 
   // Attach the inline player (Phase 2). Player loads its workspace via
