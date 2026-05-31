@@ -32,3 +32,29 @@ extension View {
         modifier(AppHoverLift(scale: scale))
     }
 }
+
+// MARK: - List row hover tint
+
+private struct AppHoverRowTint: ViewModifier {
+    let cornerRadius: CGFloat
+    @Environment(\.appTheme) private var theme
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(theme.palette.primaryText.opacity(isHovered ? 0.05 : 0))
+            )
+            .animation(AppMotion.quickEaseOut, value: isHovered)
+            .onHover { isHovered = $0 }
+    }
+}
+
+extension View {
+    /// list row 指標 hover 時 bg tint(只動 background,合 motion 契約「非按鈕互動禁 transform」)。
+    /// 觸控 iPhone 無 hover event → no-op。
+    func appHoverRowTint(cornerRadius: CGFloat = AppRadius.md) -> some View {
+        modifier(AppHoverRowTint(cornerRadius: cornerRadius))
+    }
+}
