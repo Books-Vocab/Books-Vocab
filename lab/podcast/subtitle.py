@@ -58,9 +58,10 @@ _SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
 # Inline emphasis stripped from spoken text — mirror of synthesize.py
 _INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
 _INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
-# Voice direction tags [excited] / [laughing] / [speaking slowly]
+# Audio tags [excitement] / [laughs] / [slow] / [long pause] — stripped from subtitles
 _DIRECTION_RE = re.compile(r"\[.*?\]")
-# SSML-like tags <break ... /> / <emphasis>...</emphasis> / <prosody ...>
+# Defensive: strip any stray angle-bracket markup (legacy SSML in old scripts).
+# Gemini 3.1 has no SSML, but old workspaces may still contain <break>/<emphasis>.
 _SSML_RE = re.compile(r"<[^>]+>")
 
 
