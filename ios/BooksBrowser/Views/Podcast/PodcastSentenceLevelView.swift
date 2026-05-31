@@ -7,9 +7,11 @@ import Inject
 ///
 /// Design principles:
 ///   • flat — no shadow, no scale lift, no blur
-///   • follow-by-default: auto-scrolls with the current sentence; user drag
-///     disables follow and surfaces a "追隨當前" pill that, when tapped,
-///     re-enables follow and scrolls back to center.
+///   • follow-by-default: auto-scrolls with the current sentence. On iOS a user
+///     drag disables follow and surfaces a "追隨當前" pill (tap → re-enable +
+///     recenter). On Mac Catalyst, mouse-wheel/trackpad scrolling is indirect
+///     and never fires DragGesture, so the pill is always shown as an explicit
+///     toggle ("停止跟隨" ⇄ "追隨當前"). See `shouldShowFollowControl`.
 ///   • alignment distinguishes speakers (host[0] → left, host[1] → right);
 ///     the speaker label is shown only when it changes from the previous row.
 ///   • layout transitions are explicitly animated (bubble bg, underline,
@@ -85,17 +87,10 @@ struct PodcastSentenceLevelView: View {
                         }
                 )
 
-                if !isFollowing && selectionState == nil {
-                    followPill {
-                        isFollowing = true
-                        if let id = currentId {
-                            withAnimation(AppMotion.standardSpring) {
-                                proxy.scrollTo(id, anchor: .center)
-                            }
-                        }
-                    }
-                    .padding(.bottom, skin.spacing.sectionGap)
-                    .transition(.readerPanelReveal)
+                if shouldShowFollowControl {
+                    followPill(proxy: proxy)
+                        .padding(.bottom, skin.spacing.sectionGap)
+                        .transition(.readerPanelReveal)
                 }
             }
             .onAppear {
@@ -275,10 +270,43 @@ struct PodcastSentenceLevelView: View {
 
     // MARK: - Follow pill
 
+    // Mac Catalyst 的滑鼠滾輪/觸控板捲動是 indirect scroll,不觸發 SwiftUI DragGesture
+    // (平台限制,Apple 至今無 API),故無法像 iOS 那樣隱式偵測「使用者捲離當前句」。
+    // 因此 Catalyst 上 pill 常駐為明確 toggle(跟隨中 ⇄ 追隨當前);iPhone/iPad 維持
+    // 手指拖曳隱式脫離 follow 的既有體驗(pill 僅在已脫離時出現)。
+    private var shouldShowFollowControl: Bool {
+        guard selectionState == nil else { return false }
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return !isFollowing
+        #endif
+    }
+
     @ViewBuilder
-    private func followPill(_ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
+    private func followPill(proxy: ScrollViewProxy) -> some View {
+        if isFollowing {
+            // iPhone/iPad 在 following 時 shouldShowFollowControl 為 false,不會到這;
+            // 僅 Catalyst 顯示此態,作為「停止跟隨、自由瀏覽」開關。
+            pillCapsule {
+                isFollowing = false
+            } content: {
+                Image(systemName: "pause.fill")
+                    .font(skin.typography.iconTiny)
+                    .foregroundStyle(skin.palette.secondaryText)
+                Text(L10n.string("停止跟隨"))
+                    .font(skin.typography.caption)
+                    .foregroundStyle(skin.palette.primaryText)
+            }
+        } else {
+            pillCapsule {
+                isFollowing = true
+                if let id = currentId {
+                    withAnimation(AppMotion.standardSpring) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+            } content: {
                 if let speaker = renderState?.speaker {
                     let idx = hostNames.firstIndex(of: speaker)
                     Circle()
@@ -292,13 +320,23 @@ struct PodcastSentenceLevelView: View {
                     .font(skin.typography.iconTiny)
                     .foregroundStyle(skin.palette.secondaryText)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, AppSpacing.s2)
-            .background(
-                Capsule()
-                    .fill(skin.palette.cardBackground.opacity(0.96))
-                    .overlay(Capsule().stroke(skin.palette.cardBorder, lineWidth: 1))
-            )
+        }
+    }
+
+    @ViewBuilder
+    private func pillCapsule<Content: View>(
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) { content() }
+                .padding(.horizontal, 14)
+                .padding(.vertical, AppSpacing.s2)
+                .background(
+                    Capsule()
+                        .fill(skin.palette.cardBackground.opacity(0.96))
+                        .overlay(Capsule().stroke(skin.palette.cardBorder, lineWidth: 1))
+                )
         }
         .buttonStyle(.plain)
     }
