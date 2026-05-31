@@ -1,5 +1,10 @@
 <!-- doc-meta
 tier: snapshot
+authority: derived
+update_trigger: plan-execution
+scope:
+  - ios/BooksBrowser/Views/Podcast/
+  - ios/BooksBrowser/UIComponents/ListSectionCard.swift
 verified_against: 689bac12
 -->
 
