@@ -19,6 +19,7 @@ usage:
   $0 status
   $0 logs [n]
   $0 backup
+  $0 backup-s3-test
   $0 env-check
   $0 env-drift
   $0 migrate
@@ -112,6 +113,13 @@ main() {
     deploy|restart|status|backup|env-check|env-drift|migrate|users)
       preflight
       "$BASE" "$sub"
+      ;;
+    backup-s3-test)
+      # Manually trigger /usr/local/bin/kg_backup.sh on prod and tail the log.
+      # Cron does the same daily at UTC 03:00 — use this for ad-hoc verification
+      # (e.g. after editing kg_backup.sh, before relying on it for a release).
+      preflight
+      "$BASE" run "sudo /usr/local/bin/kg_backup.sh && sudo tail -1 /var/log/kg_backup.log"
       ;;
     logs)
       preflight
