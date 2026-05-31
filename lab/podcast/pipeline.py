@@ -406,11 +406,39 @@ def setup_saga_workspace(
     for d in ["plan/episodes", "scripts", "books"]:
         (workspace / d).mkdir(parents=True, exist_ok=True)
 
+    # Per-book provenance copy (books/NN_slug/) — durable record of the original
+    # split, used by series-level review and any future per-book resume.
     for entry, (metadata, chapters) in zip(entries, books):
         _write_book_dir(workspace / "books" / entry.slug, metadata, chapters)
 
+    # Approach B: also write a FLATTENED root-level raw_chapters/ with continuous
+    # cross-book numbering, so the existing single-book prep/analyst stages run
+    # UNCHANGED on a saga. Each raw chapter records its source book in a comment
+    # so prep can preserve the boundary, and series.md carries the authoritative
+    # chapter→book map + spoiler horizon.
+    flat = saga.flatten_chapters(entries, [ch for _, ch in books])
+    (workspace / "raw_chapters").mkdir(parents=True, exist_ok=True)
+    for fc in flat:
+        (workspace / "raw_chapters" / f"raw_ch_{fc.seq:02d}.md").write_text(
+            f"<!-- saga_book: {fc.book_index} ({fc.book_slug}) -->\n"
+            f"<!-- source: {fc.name} -->\n\n{fc.text}"
+        )
+    (workspace / "source").mkdir(parents=True, exist_ok=True)
+    (workspace / "source" / "chapters").mkdir(parents=True, exist_ok=True)
+    total_chars = sum(len(fc.text) for fc in flat)
+    saga_meta = [
+        f"# {saga_title}",
+        f"- **Saga**: {saga_title} ({len(entries)} books)",
+        "- **Books (reading order)**: "
+        + "; ".join(f"{e.index}. {e.title} — {e.author}" for e in entries),
+        f"- **Raw chapters**: {len(flat)}",
+        f"- **Raw chars**: {total_chars:,}",
+    ]
+    (workspace / "source" / "metadata.md").write_text("\n".join(saga_meta))
+
     (workspace / "series.md").write_text(
         saga.render_series_manifest(saga_title, entries)
+        + saga.render_chapter_map(flat)
     )
     (workspace / "log.md").write_text(
         f"# Podcast Pipeline Log (Saga)\n\n"
