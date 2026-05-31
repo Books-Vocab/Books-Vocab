@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31f";
+const APP_VERSION = "2026-05-31g";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -86,6 +86,7 @@ const state = {
   remoteTimer: null,
   remoteInflight: false,
   remote: { series: [], disk: null },
+  phaseExpand: {},     // phase.key -> bool override of the agg-derived default
 };
 
 // Map an agent stage_label from events.jsonl to its pipeline stage + episode.
@@ -1274,48 +1275,139 @@ function renderAll() {
   renderNavStatus();
 }
 
-// Vertical timeline: one row per stage, top→bottom = pipeline order. State reads
-// from the spine dot + connector colour + name tint; the redundant per-stage
-// "DONE" pill is dropped (it was 11 identical noisy chips) — only the states the
-// producer acts on (running / failed) get an explicit pill.
+// The 13 linear stages map onto the SAME four production phases the episode
+// matrix speaks (PLAN/SCRIPT/AUDIO/SUB) — so the timeline and the matrix share
+// one vocabulary instead of being two redundant views. A phase here == a gate
+// column there. Completed/pending phases collapse to one row; the active phase
+// auto-expands to its constituent stages (times + per-stage ↻ rerun).
 const PARALLEL_STAGES = new Set(["scriptwrite", "script-review", "synthesize"]);
+const STAGE_PHASES = [
+  { key: "plan",     label: "PLAN",   stages: ["prep", "analyst", "architect", "plan-review", "enricher-gap", "enricher"] },
+  { key: "script",   label: "SCRIPT", stages: ["scriptwrite", "series-polish", "script-review"] },
+  { key: "audio",    label: "AUDIO",  stages: ["tts-prep", "synthesize", "audio-qa"] },
+  { key: "subtitle", label: "SUB",    stages: ["subtitle"] },
+];
+
+// Aggregate a phase's constituent stage statuses into one state + totals.
+// failed > running/partial > done > pending. Partial-done counts as running so
+// a half-finished phase reads "in progress", not "done".
+function phaseAgg(phase) {
+  const sts = phase.stages.map(s => (state.stages[s] || {}).status || "pending");
+  const doneN = sts.filter(s => s === "done").length;
+  let agg;
+  if (sts.includes("failed")) agg = "failed";
+  else if (sts.includes("running")) agg = "running";
+  else if (doneN === sts.length) agg = "done";
+  else if (doneN > 0) agg = "running";
+  else agg = "pending";
+  const elapsed = phase.stages.reduce((a, s) => a + ((state.stages[s] || {}).elapsed_s || 0), 0);
+  return { agg, doneN, total: sts.length, sts, elapsed };
+}
+
+function fmtPhaseElapsed(sec) {
+  if (!sec) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
+// One-line "where is this whole podcast, and is it blocked on ME or the machine".
+// Derives from the live currentStage first, then the workspace summary's
+// gate/milestone/status (same source as the sidebar's milestoneBar + the nav
+// ADVANCE button) so all three agree. Display-only — ADVANCE carries the action.
+function frontierBannerHtml() {
+  const sum = (state.workspaceSummaries || []).find(s => s.name === state.ws);
+  let cls = "fr-idle", icon = "▸", text = "idle — no run active";
+  if (state.currentStage) {
+    let epPart = "";
+    if (PARALLEL_STAGES.has(state.currentStage)) {
+      const e = state.parallelEps[state.currentStage] || {};
+      const done = Object.values(e).filter(v => v === "done").length;
+      const tot = (state.episodeStatus || []).length || Object.keys(e).length;
+      if (tot) epPart = ` · ep ${done}/${tot}`;
+    }
+    cls = "fr-running"; icon = "▶";
+    text = `RUNNING · ${state.currentStage.toUpperCase()}${epPart}`;
+  } else if (sum) {
+    const gst = k => ((sum.gates || []).find(g => g.key === k) || {}).state || "pending";
+    const incomplete = (sum.milestones || []).some(m => (m.ratio || 0) < 1);
+    if (sum.status === "failed") { cls = "fr-failed"; icon = "✗"; text = "FAILED · see live activity below"; }
+    else if (gst("plan") === "awaiting") { cls = "fr-await"; icon = "⏸"; text = "AWAITING YOU · approve plan → scripts"; }
+    else if (gst("script") === "awaiting") { cls = "fr-await"; icon = "⏸"; text = "AWAITING YOU · approve scripts → audio"; }
+    else if (incomplete) { cls = "fr-next"; icon = "▸"; text = `IDLE · resume from ${(sum.resume_stage || "prep").toUpperCase()}`; }
+    else { cls = "fr-ready"; icon = "✓"; text = "READY · all episodes through to subtitle"; }
+  }
+  return `<div class="frontier ${cls}"><span class="fr-icon" aria-hidden="true">${icon}</span><span class="fr-text">${escapeHtml(text)}</span></div>`;
+}
+
+function stageSubRowHtml(stage) {
+  const s = state.stages[stage] || { status: "pending" };
+  const status = s.status || "pending";
+  let eps = "";
+  if (PARALLEL_STAGES.has(stage)) {
+    const e = state.parallelEps[stage] || {};
+    const nums = Object.keys(e).map(Number).sort((a, b) => a - b);
+    eps = nums.map(n => {
+      const st = e[n] || "pending";
+      return `<span class="ep-tile ${st}" title="EP${n} · ${st}">${n}</span>`;
+    }).join("");
+  }
+  const time = s.elapsed_s != null ? `${s.elapsed_s}s`
+    : s.started_ts ? fmtTime(s.started_ts) : "—";
+  const label = stage.toUpperCase();
+  const pill = (status === "running" || status === "failed")
+    ? `<span class="tl-pill tl-pill-${status}">${status}</span>` : "";
+  return `
+    <div class="tl-row tl-${status}">
+      <span class="tl-substage" title="${label}">${label}</span>
+      <span class="tl-eps">${eps}</span>
+      <span class="tl-meta">
+        ${pill}
+        <span class="tl-time tabular">${time}</span>
+        <button class="tl-rerun" data-rerun-stage="${stage}" title="Re-run ${label}" aria-label="Re-run ${label}">↻</button>
+      </span>
+    </div>`;
+}
+
+function phaseRowHtml(phase) {
+  const { agg, doneN, total, sts, elapsed } = phaseAgg(phase);
+  // Auto-open only the phase with a live running stage, or a failed phase —
+  // a partial-but-idle phase stays collapsed (its segmented bar already shows
+  // "2/3"), so an idle workspace doesn't re-inflate into a tall list.
+  const hasLiveStage = state.currentStage != null && phase.stages.includes(state.currentStage);
+  const expandedDefault = hasLiveStage || agg === "failed";
+  const override = state.phaseExpand[phase.key];
+  const expanded = override == null ? expandedDefault : override;
+
+  // Segmented bar — one segment per constituent stage, inked by status. Carries
+  // the detail a collapsed phase would otherwise hide ("5/6 done, 1 failed").
+  const segs = phase.stages.map((st, i) =>
+    `<span class="ph-seg ph-seg-${sts[i]}" title="${st.toUpperCase()} · ${sts[i]}"></span>`
+  ).join("");
+
+  const header = `
+    <div class="ph-row ph-${agg}${expanded ? " is-open" : ""}">
+      <span class="ph-dot"></span>
+      <button class="ph-head" data-phase-toggle="${phase.key}" aria-expanded="${expanded}">
+        <span class="ph-chevron" aria-hidden="true"></span>
+        <span class="ph-label">${phase.label}</span>
+        <span class="ph-bar">${segs}</span>
+        <span class="ph-count tabular">${doneN}/${total}</span>
+        <span class="ph-time tabular">${fmtPhaseElapsed(elapsed)}</span>
+      </button>
+    </div>`;
+  const sub = expanded
+    ? `<div class="ph-sub">${phase.stages.map(stageSubRowHtml).join("")}</div>`
+    : "";
+  return header + sub;
+}
 
 function renderStages() {
+  const fb = $("#frontier-bar");
+  if (fb) fb.innerHTML = frontierBannerHtml();
   const grid = $("#stage-grid");
-  const rows = STAGES.map(stage => {
-    const s = state.stages[stage] || { status: "pending" };
-    const status = s.status || "pending";
-
-    let eps = "";
-    if (PARALLEL_STAGES.has(stage)) {
-      const e = state.parallelEps[stage] || {};
-      const nums = Object.keys(e).map(Number).sort((a, b) => a - b);
-      eps = nums.map(n => {
-        const st = e[n] || "pending";
-        return `<span class="ep-tile ${st}" title="EP${n} · ${st}">${n}</span>`;
-      }).join("");
-    }
-
-    const time = s.elapsed_s != null ? `${s.elapsed_s}s`
-      : s.started_ts ? fmtTime(s.started_ts)
-      : "—";
-    const label = stage.toUpperCase();
-    const pill = (status === "running" || status === "failed")
-      ? `<span class="tl-pill tl-pill-${status}">${status}</span>` : "";
-
-    return `
-      <div class="tl-row tl-${status}">
-        <span class="tl-spine"><span class="tl-dot"></span></span>
-        <span class="tl-name" title="${label}">${label}</span>
-        <span class="tl-eps">${eps}</span>
-        <span class="tl-meta">
-          ${pill}
-          <span class="tl-time tabular">${time}</span>
-          <button class="tl-rerun" data-rerun-stage="${stage}" title="Re-run ${label}" aria-label="Re-run ${label}">↻</button>
-        </span>
-      </div>`;
-  }).join("");
-  grid.innerHTML = `<div class="timeline">${rows}</div>`;
+  grid.innerHTML = `<div class="timeline">${STAGE_PHASES.map(phaseRowHtml).join("")}</div>`;
 }
 
 // ─── Episode matrix ───
@@ -1347,25 +1439,77 @@ async function refreshEpisodeStatus() {
   finally { state.matrixInflight = false; }
 }
 
-function mxCell(gate, row) {
+// Live state for one gate of one episode: a running/failed runner overlay
+// (script/audio only) wins over the disk-derived done/missing truth.
+function mxGateState(gate, row) {
   const done = !!row[gate.key];
-  // Live overlay: a running/failed episode runner (only for script/audio).
-  let live = null;
   const liveStage = MX_LIVE_STAGE[gate.key];
   if (liveStage) {
     const st = (state.parallelEps[liveStage] || {})[row.ep];
-    if (st === "running" || st === "failed") live = st;
+    if (st === "running" || st === "failed") return st;
   }
-  const cellState = live || (done ? "done" : "missing");
-  const icon = { done: "●", running: "◐", failed: "✗", missing: "○" }[cellState];
-  const canRerun = gate.stage != null;
-  const title = `EP${row.ep} · ${gate.label} · ${cellState}` +
-    (canRerun ? ` · click to re-run ${gate.stage} ep${row.ep}` : "");
-  if (!canRerun) {
-    return `<span class="mx-cell mx-${cellState}" title="${escapeAttr(title)}">${icon}</span>`;
-  }
-  return `<button class="mx-cell mx-click mx-${cellState}" title="${escapeAttr(title)}"
-    data-rerun-stage="${gate.stage}" data-rerun-ep="${row.ep}">${icon}</button>`;
+  return done ? "done" : "missing";
+}
+
+// Is the series-level approval gate `key` currently blocking? A gate model that's
+// absent (older auto-approved workspace) never blocks; a present gate blocks
+// until it reads "passed".
+function mxGateBlocking(sum, key) {
+  const gates = sum && Array.isArray(sum.gates) ? sum.gates : null;
+  if (!gates) return false;
+  const g = gates.find(x => x.key === key);
+  return g ? g.state !== "passed" : false;
+}
+
+// Can we trigger this gate's stage for THIS episode right now? Two gates must
+// both clear, mirroring the real pipeline order:
+//   1. per-episode ratchet — the previous gate's artifact must already exist
+//      (no scriptwriting an episode that has no plan).
+//   2. series approval — SCRIPT needs the plan gate approved, AUDIO needs the
+//      script gate approved (SUB has no approval gate, only AUDIO done).
+// The `!row[gate.key]` escape lets an already-produced artifact be re-run even
+// if a stale marker says its gate hasn't passed.
+function mxActionable(gate, row, sum) {
+  if (!gate.stage) return false;                 // plan is series-level, never per-ep
+  const idx = MX_GATES.findIndex(g => g.key === gate.key);
+  const prev = MX_GATES[idx - 1];
+  if (prev && !row[prev.key]) return false;      // predecessor artifact missing
+  const gov = gate.key === "script" ? "plan" : gate.key === "audio" ? "script" : null;
+  if (gov && mxGateBlocking(sum, gov) && !row[gate.key]) return false;
+  return true;
+}
+
+// One episode as a left→right dependency track: PLAN ▸ SCRIPT ▸ AUDIO ▸ SUB.
+// The ratchet is baked into the geometry — fill flows rightward and the frontier
+// (first not-done gate) is the only edge that moves, so "ep7 stuck at SCRIPT,
+// ep8 synthesizing AUDIO" is scannable straight down the column. The ▸ dividers
+// double as the gate markers (inked once the gate to their left has passed).
+// A producible segment is clickable ONLY when mxActionable — otherwise it's a
+// locked span, so you can't trigger scriptwrite before the plan is approved.
+function mxTrack(row, sum) {
+  const frontierIdx = MX_GATES.findIndex(g => !row[g.key]);  // -1 → fully done
+  const parts = [];
+  MX_GATES.forEach((gate, i) => {
+    if (i > 0) {
+      const prevDone = !!row[MX_GATES[i - 1].key];
+      parts.push(`<span class="mx-div${prevDone ? " is-passed" : ""}" aria-hidden="true">▸</span>`);
+    }
+    const cs = mxGateState(gate, row);
+    const isFrontier = i === frontierIdx;
+    const glyph = cs === "running" ? "◐" : cs === "failed" ? "✗" : "";
+    let cls = `mx-seg mx-seg-${cs}${isFrontier ? " is-frontier" : ""}`;
+    let title = `EP${row.ep} · ${gate.label} · ${cs}`;
+    if (gate.stage && mxActionable(gate, row, sum)) {
+      title += ` · click to re-run ${gate.stage} ep${row.ep}`;
+      parts.push(`<button class="${cls} mx-click" title="${escapeAttr(title)}" data-rerun-stage="${gate.stage}" data-rerun-ep="${row.ep}">${glyph}</button>`);
+    } else {
+      // Hatch the lock ONLY on the frontier (the next, blocked edge) — deeper
+      // downstream cells stay plain faint so the column stays scannable.
+      if (gate.stage && isFrontier && !row[gate.key]) { cls += " mx-locked"; title += " · locked · approve upstream first"; }
+      parts.push(`<span class="${cls}" title="${escapeAttr(title)}">${glyph}</span>`);
+    }
+  });
+  return `<div class="mx-track">${parts.join("")}</div>`;
 }
 
 function renderMatrix() {
@@ -1385,13 +1529,19 @@ function renderMatrix() {
   const cnt = k => rows.filter(r => r[k]).length;
   if (meta) meta.textContent = `${n} ep · script ${cnt("script")}/${n} · audio ${cnt("audio")}/${n} · sub ${cnt("subtitle")}/${n}`;
 
+  const sum = (state.workspaceSummaries || []).find(s => s.name === state.ws);
   const head = `<div class="mx-row mx-head">
     <span class="mx-ep">EP</span>
-    ${MX_GATES.map(g => `<span class="mx-col">${g.label}</span>`).join("")}
+    <div class="mx-track mx-track-head">
+      ${MX_GATES.map((g, i) =>
+        (i > 0 ? `<span class="mx-div" aria-hidden="true">▸</span>` : "") +
+        `<span class="mx-col">${g.label}</span>`
+      ).join("")}
+    </div>
   </div>`;
   const body = rows.map(row => `<div class="mx-row">
     <span class="mx-ep tabular">${row.ep}</span>
-    ${MX_GATES.map(g => mxCell(g, row)).join("")}
+    ${mxTrack(row, sum)}
   </div>`).join("");
   grid.innerHTML = head + body;
 }
@@ -1675,6 +1825,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!btn) return;
     const ep = btn.dataset.rerunEp ? Number(btn.dataset.rerunEp) : null;
     actionRerunStage(btn.dataset.rerunStage, ep);
+  });
+  // Phase rail expand/collapse — toggles the override, then re-renders. Separate
+  // from the rerun handler (phase headers carry no data-rerun-stage).
+  document.addEventListener("click", (e) => {
+    const head = e.target.closest("[data-phase-toggle]");
+    if (!head) return;
+    const key = head.dataset.phaseToggle;
+    const cur = head.getAttribute("aria-expanded") === "true";
+    state.phaseExpand[key] = !cur;
+    renderStages();
   });
 
   // Attach the inline player (Phase 2). Player loads its workspace via
