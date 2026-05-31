@@ -153,6 +153,8 @@ struct BookshelfView: View {
                 }
             }
         }
+        // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
+        .focusedSceneValue(\.importBook, ImportBookAction { coordinator.presentImporter() })
         .enableInjection()
     }
 
