@@ -41,6 +41,17 @@ def test_setup_saga_workspace_builds_grouped_layout(tmp_path, monkeypatch) -> No
     assert (ws / "scripts").is_dir()
     assert (ws / "log.md").exists()
 
+    # Approach B: flattened root raw_chapters/ with continuous numbering, so the
+    # existing single-book prep/analyst stages run unchanged. 3 books × 2 ch = 6.
+    raw = sorted((ws / "raw_chapters").glob("raw_ch_*.md"))
+    assert [p.name for p in raw] == [f"raw_ch_{i:02d}.md" for i in range(1, 7)]
+    # Each flattened chapter records its source book for boundary preservation.
+    assert "<!-- saga_book: 1 (01_the_final_empire) -->" in raw[0].read_text()
+    assert "<!-- saga_book: 3 (03_the_hero_of_ages) -->" in raw[5].read_text()
+    # Root metadata.md + chapter map exist for prep/analyst/architect.
+    assert (ws / "source" / "metadata.md").read_text().startswith("# Mistborn")
+    assert "<!-- CHAPTER_MAP:START -->" in (ws / "series.md").read_text()
+
 
 def test_setup_saga_workspace_is_idempotent(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(pipeline, "WORKSPACES_DIR", tmp_path)

@@ -153,3 +153,91 @@ def spoiler_horizon_books(books: list[BookEntry], current_index: int) -> list[Bo
     """Books that are OFF-LIMITS when discussing the book at `current_index`
     under readalong spoiler mode — i.e. every later book in reading order."""
     return [b for b in books if b.index > current_index]
+
+
+@dataclass(frozen=True)
+class FlatChapter:
+    """One source chapter in the saga's continuous, cross-book numbering."""
+
+    seq: int  # 1-based position across the WHOLE saga
+    book_index: int  # which book (reading order) it belongs to
+    book_slug: str
+    name: str  # original in-book section name (provenance)
+    text: str
+
+
+def flatten_chapters(
+    books: list[BookEntry], per_book_chapters: list[list[tuple[str, str]]]
+) -> list[FlatChapter]:
+    """Map per-book chapter lists onto ONE continuous saga-wide sequence.
+
+    `books` is the reading order (from `plan_books`); `per_book_chapters[i]` is
+    book i's ``[(name, text), ...]`` as produced by extract_epub, in the SAME
+    order as `books`. Returns a flat list whose `seq` runs 1..N across all books
+    — so the existing single-book prep/analyst stages, which expect a flat
+    `raw_chapters/`, work unchanged on a saga while each chapter still records
+    which book it came from (the book boundary the spoiler horizon needs).
+    """
+    if len(books) != len(per_book_chapters):
+        raise ValueError(
+            f"books ({len(books)}) and per_book_chapters ({len(per_book_chapters)}) length mismatch"
+        )
+    flat: list[FlatChapter] = []
+    seq = 1
+    for book, chapters in zip(books, per_book_chapters):
+        for name, text in chapters:
+            flat.append(
+                FlatChapter(
+                    seq=seq, book_index=book.index, book_slug=book.slug,
+                    name=name, text=text,
+                )
+            )
+            seq += 1
+    return flat
+
+
+def render_chapter_map(flat: list[FlatChapter]) -> str:
+    """Render the chapter→book boundary map appended to series.md.
+
+    Gives the architect the book boundaries in the flattened raw-chapter
+    numbering. NOTE: prep drops front/back matter and may split oversized
+    chapters, so these RAW ranges shift after cleaning — they are an initial
+    guide, NOT a post-prep guarantee. The durable per-chapter signal is the
+    `<!-- saga_book: N -->` comment prep copies onto each cleaned ch_NN.md; the
+    architect should trust that marker over these raw ranges when they disagree.
+    """
+    bounds = book_boundaries(flat)
+    lines = [
+        "",
+        "## Chapter Map (flattened raw_chapters → book)",
+        "",
+        "Book boundaries in the ORIGINAL raw_ch numbering. prep preserves the "
+        "per-chapter `<!-- saga_book: N -->` marker, which is authoritative after "
+        "cleaning; these raw ranges are the pre-prep guide. Use book membership "
+        "to keep episodes within book boundaries and enforce the reading-order "
+        "spoiler horizon (later books off-limits in readalong).",
+        "",
+        "<!-- CHAPTER_MAP:START -->",
+        "| Book | Raw chapter range |",
+        "|------|-------------------|",
+    ]
+    for idx in sorted(bounds):
+        lo, hi = bounds[idx]
+        lines.append(f"| {idx} | raw_ch_{lo:02d}–raw_ch_{hi:02d} |")
+    lines.append("<!-- CHAPTER_MAP:END -->")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def book_boundaries(flat: list[FlatChapter]) -> dict[int, tuple[int, int]]:
+    """Map each book_index → (first_seq, last_seq) in the flat numbering.
+
+    This is what `architect` needs to know where one book ends and the next
+    begins in the continuous chapter stream, and what the spoiler horizon uses to
+    bound "chapters belonging to later books."
+    """
+    bounds: dict[int, tuple[int, int]] = {}
+    for fc in flat:
+        lo, hi = bounds.get(fc.book_index, (fc.seq, fc.seq))
+        bounds[fc.book_index] = (min(lo, fc.seq), max(hi, fc.seq))
+    return bounds

@@ -21,6 +21,7 @@ Each file is named `raw_ch_XX.md` and contains the raw text of one EPUB section.
    - `ch_01.md`, `ch_02.md`, ...
    - Each file starts with a header: `# Chapter N: [title if available]`
    - Preserve the original text exactly (no summarizing, no rewriting)
+   - **Saga marker (multi-book only)**: if a raw file begins with a `<!-- saga_book: N (...) -->` comment, COPY that comment verbatim onto the first line of the cleaned `ch_NN.md` (before the `# Chapter` header). This is how downstream stages recover which book each chapter belongs to after renaming — never drop it. Single-book runs have no such marker; do nothing extra.
 4. **Split oversized chapters**: If any chapter exceeds 80,000 characters (~20K tokens), split it at natural paragraph boundaries into `ch_XX_part1.md`, `ch_XX_part2.md`, etc. Each part should start with `# Chapter N (Part M)`.
 5. **Update `metadata.md`** with:
    - `content_chapters`: number of content chapters extracted
