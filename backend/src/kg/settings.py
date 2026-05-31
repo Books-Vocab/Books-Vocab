@@ -49,6 +49,20 @@ class KGSettings:
         "http://127.0.0.1:8000",
     )
 
+    # Podcast storage backend.
+    # When `podcast_bucket` is set, audio + subtitle reads go to S3-compatible
+    # object storage (Lightsail Object Storage in prod). When unset, the
+    # backend falls back to the on-disk layout under `data_dir/podcasts/` —
+    # this preserves dev-time iteration and provides a transition window
+    # before older series are re-uploaded in m4a form.
+    podcast_bucket: str | None = None
+    podcast_bucket_region: str = "ap-northeast-1"
+    # Optional S3-compatible endpoint URL. Standard AWS S3 leaves this empty;
+    # Lightsail Object Storage works with the default region-derived URL too,
+    # but the env var is wired through for custom endpoints (e.g. R2 / minio
+    # during local testing).
+    podcast_bucket_endpoint_url: str | None = None
+
     @property
     def users_file(self) -> Path:
         return self.data_dir / "users.json"
@@ -106,4 +120,7 @@ def load_settings() -> KGSettings:
         cors_origins=tuple(
             os.getenv("CORS_ORIGINS", "https://wordnexus.lol,http://localhost:8000,http://127.0.0.1:8000").split(",")
         ),
+        podcast_bucket=(os.getenv("PODCAST_BUCKET") or None),
+        podcast_bucket_region=os.getenv("PODCAST_BUCKET_REGION", "ap-northeast-1"),
+        podcast_bucket_endpoint_url=(os.getenv("PODCAST_BUCKET_ENDPOINT_URL") or None),
     )
