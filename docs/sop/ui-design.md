@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
-verified_against: 7482c5ee
+verified_against: 5f2c8e64
 -->
 # BooksBrowser UI Design System
 
@@ -57,6 +57,13 @@ KG 的 Mac 支援走 **Mac Catalyst**（`SUPPORTS_MACCATALYST = YES`），**非�
 - `Platform/MacWindowChrome.swift`：Catalyst 視窗 chrome 單一來源。`.defaultSize` / `.windowResizability` 在 Catalyst **靜默無效**，視窗尺寸改走 UIKit `sizeRestrictions.minimumSize` + `requestGeometryUpdate(.Mac(...))`，尺寸常數集中此處。Reader 沉浸 title bar 走 `setTitlebarHidden` **scoped 可逆**（進 Reader 隱藏、離開復原，不可在 App 啟動時全域設死，否則其他頁失去標題列）。
 - Reader 系列以 `#if os(iOS)` 整檔隔離 —— Catalyst 下 `os(iOS)` true **仍編譯仍啟用**（非死碼）。
 - 其餘 View 共用，平台差異以條件編譯處理。
+
+**指標 / hover 回饋**（`UIComponents/HoverHighlight.swift`）：
+
+- `.appHoverLift()`：卡片 hover 時輕微 scale 浮起（1.02）。卡片屬按鈕互動，scale 合 Motion Contract；已 gate `accessibilityReduceMotion`（Reduce Motion 退回無 transform）。
+- `.appHoverRowTint()`：扁平可點 list-row hover 時 bg tint（`primaryText.opacity(0.05)`，只動 background，合「非按鈕互動禁 transform」）。卡片型可點走 `.appHoverLift` / 既有 `.liftable`，不重複套 tint。
+- **不分流**：`.onHover` 在純觸控 iPhone 無指標事件自動 no-op，iPad 觸控板 + Mac Catalyst 共益，故 hover modifier **不**包 `#if`。
+- **欄寬游標**（`Platform/MacColumnResizeCursor.swift`，**Catalyst-only**）：`.pointerStyle`(iOS 18+) 在 Catalyst 不可用，改走 UIKit `UIPointerInteraction` + `UIPointerStyle(shape: .verticalBeam(length:))`，疊到 `DraggableDivider`。其 `PassthroughPointerView` 對 `event.type == .touches` 的 hitTest 回 nil（touch 穿透到底下 SwiftUI `dragGesture` / 雙擊），hover 才回 self（pointer region 生效），故游標與拖曳並存不衝突。
 
 ---
 
