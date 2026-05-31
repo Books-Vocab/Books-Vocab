@@ -8,7 +8,7 @@
 //  for `kg-catalog-snapshots`. 詳見 docs/sop/ios.md §Catalog Snapshot Export。
 //
 
-#if DEBUG
+#if DEBUG && canImport(Playbook)
 import Foundation
 import Testing
 import Playbook

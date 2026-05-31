@@ -18,7 +18,9 @@ final class PodcastAudioEngine: NSObject {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var stallWatchdog: Task<Void, Never>?
+    #if os(iOS)
     private var remoteCommandTargets: [(MPRemoteCommand, Any)] = []
+    #endif
     private var nowPlayingTitle: String = ""
     private var nowPlayingArtist: String = ""
     private var timeControlObserver: NSKeyValueObservation?
