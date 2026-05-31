@@ -137,22 +137,36 @@ struct PodcastPlayerView: View {
                     Image(systemName: "textformat.size")
                 }
                 .accessibilityLabel(L10n.string("podcast.player.subtitleSettings"))
-                .popover(isPresented: $showSettingsPopover, arrowEdge: .top) {
-                    PodcastSettingsPopover(
-                        subtitleSize: subtitleSizeBinding,
-                        autoPauseOnLookup: Binding(
-                            get: { autoPauseOnLookup },
-                            set: { autoPauseOnLookup = $0 }
-                        ),
-                        sleepTimerMode: Binding(
-                            get: { viewModel?.sleepTimerMode ?? .off },
-                            set: { viewModel?.setSleepTimer($0) }
-                        ),
-                        sleepDeadline: viewModel?.sleepDeadline
-                    )
-                    .presentationCompactAdaptation(.popover)
+            }
+        }
+        // 字幕設定改用 sheet。Mac Catalyst 上「從 toolbar 按鈕掛 .popover」會在 present
+        // 過場走 UIKit keyboard-scene pin 路徑觸發內部 trap(EXC_BREAKPOINT,backtrace 全在
+        // UIKitCore 無 app frame);sheet 走不同 presentation controller,徹底避開此 framework
+        // bug(亦含 popover resize 時的 willReposition recursion crash)。
+        .sheet(isPresented: $showSettingsPopover) {
+            NavigationStack {
+                PodcastSettingsPopover(
+                    subtitleSize: subtitleSizeBinding,
+                    autoPauseOnLookup: Binding(
+                        get: { autoPauseOnLookup },
+                        set: { autoPauseOnLookup = $0 }
+                    ),
+                    sleepTimerMode: Binding(
+                        get: { viewModel?.sleepTimerMode ?? .off },
+                        set: { viewModel?.setSleepTimer($0) }
+                    ),
+                    sleepDeadline: viewModel?.sleepDeadline
+                )
+                .navigationTitle(L10n.string("podcast.player.subtitleSettings"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.string("完成")) { showSettingsPopover = false }
+                    }
                 }
             }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .task(id: episodeId) {
             guard loadedEpisodeId != episodeId else { return }
