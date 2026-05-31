@@ -35,8 +35,12 @@ struct PodcastEpisodeRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: skin.spacing.rowContentSpacing) {
-            VStack(alignment: .leading, spacing: skin.spacing.tinyGap) {
+        // 對齊單字 WordRow 的列節奏：水平 wordRowHorizontalGap、垂直 wordRowVerticalGap、
+        // metadata monoLabel、compactRowVerticalPadding（皆與 WordRow 一致）。標題刻意保留
+        // serif sectionTitle —— WordRow 的 rowWord 是 systemMono（適合單字 token），但 episode
+        // 標題為散文，套 mono 反而視覺退步，故只對齊版面節奏不對齊標題字體。
+        HStack(alignment: .top, spacing: skin.spacing.wordRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: skin.spacing.wordRowVerticalGap) {
                 Text(episode.title)
                     .font(skin.typography.sectionTitle)
                     .foregroundStyle(episode.audioAvailable ? skin.palette.primaryText : skin.palette.tertiaryText)
