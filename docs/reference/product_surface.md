@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: c042c06b
+verified_against: 7482c5ee
 -->
 # Implemented Product Surface
 
@@ -31,7 +31,7 @@ verified_against: c042c06b
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
 - **AppStartupRecoveryView** 三層 recovery
 - **App-intent / background sync** + preview matrix
-- **Mac Catalyst** (macOS 15.0+): iOS app runs natively on Mac via Catalyst (`SUPPORTS_MACCATALYST`, App Sandbox); Cmd+F search shortcut (`VocabularyListPresenter`)
+- **Mac Catalyst** (macOS 15.0+): iOS app runs natively on Mac via Catalyst (`SUPPORTS_MACCATALYST`, App Sandbox); 原生視窗尺寸(最小 900×640 / 首發 1100×760 置中)+ Reader 沉浸閱讀(EPUB/PDF 隱藏 title bar,`MacWindowChrome`); Cmd+F search shortcut (`VocabularyListPresenter`)
 - **Notebook robustness**: `resolveNotebookId` chokepoint + `sanitizeOutbox` orphan migration + `triggerPipelinesIsolated` per-notebook isolation + stale `activeNotebookId` cleanup + tombstone defense
 - **Notebook bookshelf**: LazyVStack book-row list + `NotebookCard` HStack layout (cover 40% left + metadata right, fixed-height 72pt rows) + serif italic name (`AppFonts.serif(17, bold).italic`) + active small dot (5pt, darken 0.5) + 1pt darken rule overlay + cover system (12-color Morandi palette + 6 SwiftUI Canvas patterns + unified noise pattern 0.04 + PhotosPicker custom image) + `N 詞` monoLabel + ProgressCapsule (cover-tinted fill, 4pt) + 條件 due dot (warning) + 空 notebook placeholder + page section header `今日複習` + inline pill cluster (`VocabReviewCTAPill` + filter + 新增, replaces VocabReviewBanner + toolbar buttons) + pending sync via TipView → SyncView integration + export dual-entry + sort menu + empty-state CTA + `NotebookCardActions` reusable context menu + dark mode cover auto-darken via `NotebookPalette.darken`
 - **Podcast player**: audio + sentence-level SRT highlight + reader-parity 翻譯 via `VocabularyContextProtocol` + phrase 長按整句 + auto-pause-on-lookup + subtitle size S/M/L/XL/XXL + series 追蹤 toggle + 已追蹤浮上書庫頂端 + per-user progress sync to backend + YouTube-style buffered seek-bar overlay + tap-to-warm AVFoundation connection (DNS/TLS/Range pre-fired during navigation push) + bookshelf-appear predictive prefetch of followed-series first episode + inline subtitle in metadata.json (zero subtitle RTT) + background episode download (URLSession.background, file:// local-first playback, context-menu Download/Cancel/Remove, compact progress ring in row) + 睡眠定時 (5/15/30/60min + end-of-episode, wall-clock DispatchSourceTimer)
