@@ -66,6 +66,11 @@ struct TodayReviewView: View {
     @State private var isHelpPresented = false
     @State private var showAddLink = false
     @State private var explainSheetItem: CollocationExplainItem? = nil
+    #if targetEnvironment(macCatalyst)
+    @State private var hasConsumedShortcutHint = false
+    @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
+    @State private var shortcutHintTask: Task<Void, Never>?
+    #endif
 
     private let allEntries: [VocabularyEntry]
     let onClose: () -> Void
@@ -201,12 +206,70 @@ struct TodayReviewView: View {
                 await kgService.pushReviewQuietly(container: modelContext.container)
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .focusable()
+        .onKeyPress { press in
+            handleCatalystKey(press) ? .handled : .ignored
+        }
+        .onAppear {
+            guard !hasShownShortcutHint else { return }
+            shortcutHintTask?.cancel()
+            shortcutHintTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(3 * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                hasConsumedShortcutHint = true
+                hasShownShortcutHint = true
+            }
+        }
+        .onDisappear {
+            shortcutHintTask?.cancel()
+            shortcutHintTask = nil
+        }
+        #endif
         .enableInjection()
     }
 
     private var shouldShowFirstRunHint: Bool {
-        false
+        #if targetEnvironment(macCatalyst)
+        return !hasShownShortcutHint && !hasConsumedShortcutHint && !state.isAutoPlaying && state.currentIndex < min(state.queue.count, 3)
+        #else
+        return false
+        #endif
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Hardware-keyboard shortcuts on Mac Catalyst (replaces the old AppKit
+    /// macKeyResponder path). Requires the view to hold keyboard focus.
+    private func handleCatalystKey(_ press: KeyPress) -> Bool {
+        guard state.linkedCardStack.isEmpty else { return false }
+        switch press.key {
+        case .space:
+            return perform(state.revealStage == .front ? .reveal : .collapse)
+        case .leftArrow:
+            return perform(state.isAutoPlaying ? .previous : .forgot)
+        case .rightArrow:
+            return perform(state.isAutoPlaying ? .next : .remembered)
+        case .upArrow:
+            return perform(.previous)
+        case .downArrow:
+            return perform(.next)
+        case .escape:
+            if isHelpPresented {
+                isHelpPresented = false
+                return true
+            }
+            return perform(.close)
+        default:
+            switch press.characters.lowercased() {
+            case "d": return perform(.showDetail)
+            case "s": return perform(.shuffle)
+            case "p": return perform(state.isAutoPlaying ? .toggleAutoplayPause : .toggleAutoplay)
+            case "?", "/": return perform(.showHelp)
+            default: return false
+            }
+        }
+    }
+    #endif
 
     private func handleAddLink(_ target: VocabularyEntry, for entry: VocabularyEntry) {
         guard let fromId = entry.kgCardId, let toId = target.kgCardId else { return }

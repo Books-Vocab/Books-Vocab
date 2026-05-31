@@ -47,6 +47,9 @@ struct DraggableDivider: View {
                     dragWidth = nil
                 }
             }
+            #if targetEnvironment(macCatalyst)
+            .onTapGesture(count: 2) { onDoubleClick() }
+            #endif
             .enableInjection()
     }
 
