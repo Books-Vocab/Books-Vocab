@@ -46,6 +46,16 @@ enum MacWindowChrome {
         )
         scene.requestGeometryUpdate(geometry)
     }
+
+    /// Reader 沉浸:隱藏/復原 title bar。Reader 與其他 tab 共用同一 window,
+    /// 故只能 per-presentation scoped 切換,不可在 App 啟動時設死。
+    @MainActor
+    static func setTitlebarHidden(_ hidden: Bool) {
+        guard let titlebar = currentWindowScene?.titlebar else { return }
+        titlebar.titleVisibility = hidden ? .hidden : .visible
+        // 不碰 titlebar.toolbar — KG 從不設 mac toolbar;若 Workstream C 未來
+        // 掛 toolbar,此處清空會在 Reader 進出時誤傷,故不動。
+    }
     #endif
 }
 
@@ -55,6 +65,18 @@ extension View {
     func macWindowChrome() -> some View {
         #if targetEnvironment(macCatalyst)
         self.onAppear { MacWindowChrome.applyDefaults() }
+        #else
+        self
+        #endif
+    }
+
+    /// Reader 沉浸:進入隱藏 title bar、離開復原。非 Catalyst 為 no-op。
+    @ViewBuilder
+    func macReaderImmersion() -> some View {
+        #if targetEnvironment(macCatalyst)
+        self
+            .onAppear { MacWindowChrome.setTitlebarHidden(true) }
+            .onDisappear { MacWindowChrome.setTitlebarHidden(false) }
         #else
         self
         #endif
