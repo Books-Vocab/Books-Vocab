@@ -1,5 +1,9 @@
 <!-- doc-meta
 tier: snapshot
+authority: derived
+update_trigger: plan-execution
+scope:
+  - ios/BooksBrowser/Views/Podcast/
 verified_against: 689bac12
 -->
 
