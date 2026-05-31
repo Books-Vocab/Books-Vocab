@@ -196,22 +196,6 @@ struct KGVocabView: View {
                     }
                 }
             }
-            #if os(macOS)
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    Task {
-                        await coordinator.forceRefresh(
-                            kgService: kgService,
-                            modelContext: modelContext
-                        )
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .keyboardShortcut("r", modifiers: .command)
-                .help("重新整理".localized)
-            }
-            #endif
         }
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()

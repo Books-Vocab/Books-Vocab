@@ -104,11 +104,7 @@ struct BookCard: View {
     }
 
     private func platformCoverImage(_ image: PlatformImage) -> Image {
-        #if os(iOS)
         Image(uiImage: image)
-        #elseif os(macOS)
-        Image(nsImage: image)
-        #endif
     }
 
     private func decodeCoverImage() async {

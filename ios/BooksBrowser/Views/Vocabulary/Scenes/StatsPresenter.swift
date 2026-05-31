@@ -54,21 +54,9 @@ struct StatsPresenter: View {
             if let summary {
                 ScrollView {
                     VStack(spacing: appSkin.spacing.sectionGap) {
-                        #if os(macOS)
-                        HStack(alignment: .top, spacing: appSkin.spacing.sectionGap) {
-                            graphEntrySection
-                                .frame(maxWidth: .infinity)
-                            VStack(spacing: appSkin.spacing.sectionGap) {
-                                streakSection(summary)
-                                heatmapSection(summary)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        #else
                         graphEntrySection
                         streakSection(summary)
                         heatmapSection(summary)
-                        #endif
                         forecastSection(summary)
                         totalsFooter(summary)
                     }
@@ -231,11 +219,7 @@ struct StatsPresenter: View {
                     graphEntryHeader(nodeCount: 0, showsChevron: false)
                         .padding(appSkin.metrics.cardBlockPadding)
                     graphErrorBody
-                        #if os(macOS)
-                        .frame(minHeight: 280)
-                        #else
                         .aspectRatio(1, contentMode: .fit)
-                        #endif
                 }
             }
         } else {
@@ -248,11 +232,7 @@ struct StatsPresenter: View {
                             .padding(appSkin.metrics.cardBlockPadding)
 
                         graphEntryBody(nodes: nodes, edges: edges)
-                            #if os(macOS)
-                            .frame(minHeight: 280)
-                            #else
                             .aspectRatio(1, contentMode: .fit)
-                            #endif
 
                         if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
                             healthBar(ratio: avgRatio)

@@ -13,16 +13,12 @@ final class GraphThumbnailHolder {
         config.userContentController.add(coordinator, name: "graphBridge")
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        #if os(iOS)
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.isUserInteractionEnabled = false
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
         webView.scrollView.backgroundColor = .clear
-        #elseif os(macOS)
-        webView.setValue(false, forKey: "drawsBackground")
-        #endif
         coordinator.webView = webView
 
         self.webView = webView
@@ -69,7 +65,6 @@ final class GraphThumbnailCoordinator: NSObject, WKScriptMessageHandler {
 
 // MARK: - SwiftUI representable (reuses holder's WKWebView)
 
-#if os(iOS)
 struct GraphThumbnailWebView: UIViewRepresentable {
     let holder: GraphThumbnailHolder
     let nodes: [KnowledgeGraphNode]
@@ -89,27 +84,6 @@ struct GraphThumbnailWebView: UIViewRepresentable {
         // No-op: holder owns the webview lifecycle
     }
 }
-#elseif os(macOS)
-struct GraphThumbnailWebView: NSViewRepresentable {
-    let holder: GraphThumbnailHolder
-    let nodes: [KnowledgeGraphNode]
-    let edges: [KnowledgeGraphEdge]
-    let theme: KnowledgeGraphTheme
-    let colorScheme: ColorScheme
-
-    func makeCoordinator() -> GraphThumbnailCoordinator { holder.coordinator }
-
-    func makeNSView(context: Context) -> WKWebView { holder.webView }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        Self.performUpdate(webView, coordinator: holder.coordinator, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
-    }
-
-    static func dismantleNSView(_ webView: WKWebView, coordinator: GraphThumbnailCoordinator) {
-        // No-op: holder owns the webview lifecycle
-    }
-}
-#endif
 
 // MARK: - Shared update + payload
 

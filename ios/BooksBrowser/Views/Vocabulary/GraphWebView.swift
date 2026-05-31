@@ -19,7 +19,6 @@ struct GraphForces: Equatable, Encodable {
 
 // MARK: - GraphWebView
 
-#if os(iOS)
 struct GraphWebView: UIViewRepresentable {
     let nodes: [KnowledgeGraphNode]
     let edges: [KnowledgeGraphEdge]
@@ -55,39 +54,6 @@ struct GraphWebView: UIViewRepresentable {
         Self.dismantleWebView(webView, coordinator: coordinator)
     }
 }
-#elseif os(macOS)
-struct GraphWebView: NSViewRepresentable {
-    let nodes: [KnowledgeGraphNode]
-    let edges: [KnowledgeGraphEdge]
-    let colorScheme: ColorScheme
-    let backgroundHex: String
-    let tierHexes: [String: String]
-    let edgeHexes: [String: String]
-    let labelHex: String
-    let labelShadowHex: String
-    let forces: GraphForces
-    var onNodeTap: (String) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onNodeTap: onNodeTap)
-    }
-
-    func makeNSView(context: Context) -> WKWebView {
-        Self.createWebView(context: context)
-    }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        Self.updateWebView(webView, context: context, nodes: nodes, edges: edges,
-                           colorScheme: colorScheme, backgroundHex: backgroundHex,
-                           tierHexes: tierHexes, edgeHexes: edgeHexes, labelHex: labelHex,
-                           labelShadowHex: labelShadowHex, forces: forces, onNodeTap: onNodeTap)
-    }
-
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
-        Self.dismantleWebView(webView, coordinator: coordinator)
-    }
-}
-#endif
 
 // MARK: - Shared implementation
 
@@ -97,12 +63,8 @@ extension GraphWebView {
         config.userContentController.add(context.coordinator, name: "graphBridge")
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        #if os(iOS)
         webView.isOpaque = false
         webView.backgroundColor = .clear
-        #elseif os(macOS)
-        webView.setValue(false, forKey: "drawsBackground")
-        #endif
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
 
