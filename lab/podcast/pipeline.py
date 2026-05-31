@@ -66,6 +66,8 @@ from ebooklib import epub
 # Force line-buffered stdout so pipeline progress is visible in real time
 sys.stdout.reconfigure(line_buffering=True)
 
+import archetypes
+
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
 WORKSPACES_DIR = ROOT / "workspaces"
@@ -153,6 +155,45 @@ STAGES = [
 
 # Stage completion markers — written to workspace after each stage succeeds
 _STAGE_MARKER = ".stage_{name}_done"
+
+# ─── Archetype prompt resolution + mode sidecars ────────────────────────────
+# An archetype selects a prompt SET via filename suffix. `_prompt` returns the
+# variant `<name>_<suffix>.md` when it exists, else the base `<name>.md`. So an
+# archetype only forks the stages it ships a variant for, and the default
+# nonfiction archetype (suffix=None) provably always uses the base prompt.
+_MODE_SIDECAR = ".mode"
+_SPOILER_SIDECAR = ".spoiler_mode"
+
+
+def _prompt(name: str, archetype: str) -> str:
+    """Resolve a stage prompt for an archetype, falling through to the base file."""
+    suffix = archetypes.get(archetype)["suffix"]
+    if suffix:
+        variant = PROMPTS_DIR / f"{name}_{suffix}.md"
+        if variant.exists():
+            return variant.read_text()
+    return (PROMPTS_DIR / f"{name}.md").read_text()
+
+
+def write_mode_sidecar(workspace: Path, archetype: str, spoiler_mode: str | None) -> None:
+    """Persist the production mode so resume re-reads it (never trusts argv)."""
+    (workspace / _MODE_SIDECAR).write_text(archetype)
+    sp = workspace / _SPOILER_SIDECAR
+    if spoiler_mode:
+        sp.write_text(spoiler_mode)
+    elif sp.exists():
+        sp.unlink()  # clearing a previously-set mode (e.g. mode change on resume)
+
+
+def read_mode(workspace: Path) -> str:
+    """Read the archetype sidecar; legacy workspaces with none → nonfiction."""
+    f = workspace / _MODE_SIDECAR
+    return f.read_text().strip() if f.exists() else archetypes.DEFAULT_ARCHETYPE
+
+
+def read_spoiler_mode(workspace: Path) -> str | None:
+    f = workspace / _SPOILER_SIDECAR
+    return f.read_text().strip() if f.exists() else None
 
 
 # ─── Approval gates (human-in-the-loop) ─────────────────────────────────────
@@ -671,7 +712,7 @@ def run_claude(
 
 
 def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
-    prompt_template = (PROMPTS_DIR / "scriptwriter.md").read_text()
+    prompt_template = _prompt("scriptwriter", read_mode(workspace))
     prompt = prompt_template.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
@@ -688,7 +729,7 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
 
 
 def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
-    prompt_template = (PROMPTS_DIR / "script_review.md").read_text()
+    prompt_template = _prompt("script_review", read_mode(workspace))
     prompt = prompt_template.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
@@ -724,19 +765,19 @@ def detect_resume_point(workspace: Path) -> int:
 
 
 def stage_prep(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude((PROMPTS_DIR / "prep.md").read_text(), workspace, "Prep", log)
+    return run_claude(_prompt("prep", read_mode(workspace)), workspace, "Prep", log)
 
 
 def stage_analyst(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude((PROMPTS_DIR / "analyst.md").read_text(), workspace, "Analyst", log)
+    return run_claude(_prompt("analyst", read_mode(workspace)), workspace, "Analyst", log)
 
 
 def stage_architect(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude((PROMPTS_DIR / "architect.md").read_text(), workspace, "Architect", log)
+    return run_claude(_prompt("architect", read_mode(workspace)), workspace, "Architect", log)
 
 
 def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
-    ok = run_claude((PROMPTS_DIR / "plan_review.md").read_text(), workspace, "Plan Review", log)
+    ok = run_claude(_prompt("plan_review", read_mode(workspace)), workspace, "Plan Review", log)
     if not ok:
         return False
 
@@ -757,12 +798,12 @@ def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
 
 
 def stage_enricher_gap(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude((PROMPTS_DIR / "enricher_gap.md").read_text(), workspace, "Enricher Gap", log)
+    return run_claude(_prompt("enricher_gap", read_mode(workspace)), workspace, "Enricher Gap", log)
 
 
 def stage_enricher(workspace: Path, log: PipelineLog) -> bool:
     return run_claude(
-        (PROMPTS_DIR / "enricher.md").read_text(), workspace, "Enricher", log,
+        _prompt("enricher", read_mode(workspace)), workspace, "Enricher", log,
         extra_tools=["WebSearch", "WebFetch"],
     )
 
@@ -871,7 +912,7 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
 
 def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
     """Cross-episode polish pass: callbacks, running bits, character drift, series arc."""
-    ok = run_claude((PROMPTS_DIR / "series_polish.md").read_text(), workspace, "Series Polish", log)
+    ok = run_claude(_prompt("series_polish", read_mode(workspace)), workspace, "Series Polish", log)
     if not ok:
         return False
 
@@ -896,7 +937,7 @@ def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
 
 
 def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
-    ok = run_claude((PROMPTS_DIR / "tts_prep.md").read_text(), workspace, "TTS Prep", log)
+    ok = run_claude(_prompt("tts_prep", read_mode(workspace)), workspace, "TTS Prep", log)
     if not ok:
         return False
 
@@ -1159,6 +1200,16 @@ examples:
     parser.add_argument("--stop-after", choices=STAGES, help="Stop after this stage")
     parser.add_argument("--only-stage", choices=STAGES, help="Run exactly one stage")
     parser.add_argument(
+        "--mode", choices=list(archetypes.ARCHETYPES),
+        help="Production archetype (default: nonfiction). Selects the prompt set. "
+        "On resume the workspace's saved .mode wins; a conflicting --mode errors.",
+    )
+    parser.add_argument(
+        "--spoiler-mode", choices=["readalong", "retrospective"],
+        help="Spoiler policy for narrative archetypes (required for fiction/saga, "
+        "forbidden otherwise).",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Bypass prereq marker check when using --skip-to / --only-stage. "
@@ -1229,6 +1280,35 @@ examples:
             print(f"  Chars:    {metadata['total_raw_chars']:,}")
             workspace = setup_workspace(metadata, chapters)
             print(f"  Workspace: {workspace}")
+
+    # Resolve production mode. Fresh setup takes it from argv (default nonfiction);
+    # resume takes it from the saved sidecar, and a conflicting --mode is an error
+    # (mixing prompt sets mid-run corrupts the workspace). The sidecar is the
+    # single source of truth every stage reads via read_mode().
+    saved_mode = read_mode(workspace) if (workspace / _MODE_SIDECAR).exists() else None
+    if saved_mode is not None:
+        if args.mode and args.mode != saved_mode:
+            parser.error(
+                f"workspace was created with --mode {saved_mode}; cannot resume as "
+                f"--mode {args.mode}. Omit --mode to use the saved one."
+            )
+        effective_mode = saved_mode
+        effective_spoiler = read_spoiler_mode(workspace)
+        # Allow tightening/setting spoiler mode on resume only if not yet set.
+        if args.spoiler_mode and effective_spoiler is None:
+            effective_spoiler = args.spoiler_mode
+    else:
+        effective_mode = args.mode or archetypes.DEFAULT_ARCHETYPE
+        effective_spoiler = args.spoiler_mode
+
+    spoiler_err = archetypes.validate_spoiler_mode(effective_mode, effective_spoiler)
+    if spoiler_err:
+        parser.error(spoiler_err)
+    write_mode_sidecar(workspace, effective_mode, effective_spoiler)
+    if effective_mode != archetypes.DEFAULT_ARCHETYPE:
+        label = archetypes.get(effective_mode)["label"]
+        print(f"Mode: {effective_mode} ({label})"
+              + (f" · spoiler={effective_spoiler}" if effective_spoiler else ""))
 
     if args.dry_run:
         print("\n[Dry run] Workspace created.")
