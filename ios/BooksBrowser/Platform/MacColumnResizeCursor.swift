@@ -34,7 +34,8 @@ struct MacColumnResizeCursor: UIViewRepresentable {
             styleFor region: UIPointerRegion
         ) -> UIPointerStyle? {
             // 垂直 beam = 直立分隔線上的欄寬調整提示(Catalyst 無原生 resize-LR 游標,
-            // verticalBeam 為最接近的近似)。length 配 divider 視覺高度感。
+            // verticalBeam 為最接近的近似)。length 為 cursor glyph 長度(與 divider 實際高度無關),
+            // 24pt 為視覺上讀得出「直立 beam」的經驗值。
             UIPointerStyle(shape: .verticalBeam(length: 24))
         }
     }
