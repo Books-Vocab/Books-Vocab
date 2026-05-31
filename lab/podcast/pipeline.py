@@ -197,6 +197,30 @@ def read_spoiler_mode(workspace: Path) -> str | None:
     return f.read_text().strip() if f.exists() else None
 
 
+def is_saga(workspace: Path) -> bool:
+    """A saga workspace is identified by its series manifest."""
+    return (workspace / "series.md").exists()
+
+
+_SAGA_MARKER_RE = re.compile(r"<!--\s*saga_book:\s*\d+")
+
+
+def check_saga_marker_coverage(workspace: Path) -> list[str]:
+    """Return cleaned chapter files missing their `<!-- saga_book: N -->` marker.
+
+    The cross-book spoiler horizon depends on every cleaned chapter knowing which
+    book it came from. prep is told to copy the marker (prep.md), but that's an
+    LLM instruction — this is the deterministic guard that turns a silently
+    dropped marker into a fail-fast instead of an unrecoverable downstream
+    spoiler leak. Empty list = full coverage.
+    """
+    missing: list[str] = []
+    for ch in sorted((workspace / "source" / "chapters").glob("ch_*.md")):
+        if not _SAGA_MARKER_RE.search(ch.read_text(encoding="utf-8")):
+            missing.append(ch.name)
+    return missing
+
+
 # ─── Approval gates (human-in-the-loop) ─────────────────────────────────────
 # Two producer checkpoints split the 13 stages into 3 phases. The autonomous
 # run STOPS at each gate until the producer writes the approval marker, so a
@@ -846,7 +870,22 @@ def detect_resume_point(workspace: Path) -> int:
 
 
 def stage_prep(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude(_prompt("prep", read_mode(workspace)), workspace, "Prep", log)
+    if not run_claude(_prompt("prep", read_mode(workspace)), workspace, "Prep", log):
+        return False
+    # Saga guard: prep must preserve every chapter's book-membership marker, or
+    # the cross-book spoiler horizon silently breaks. Deterministic fail-fast.
+    if is_saga(workspace):
+        missing = check_saga_marker_coverage(workspace)
+        if missing:
+            log.error(
+                f"Saga prep dropped the saga_book marker on {len(missing)} chapter(s): "
+                f"{', '.join(missing[:10])}{' …' if len(missing) > 10 else ''}. "
+                f"Each ch_*.md must keep its <!-- saga_book: N --> comment; "
+                f"re-run prep (the markers are in raw_chapters/)."
+            )
+            return False
+        log.event("Saga marker coverage OK (all chapters tagged with source book)")
+    return True
 
 
 def stage_analyst(workspace: Path, log: PipelineLog) -> bool:
@@ -1274,7 +1313,16 @@ examples:
   uv run subtitle.py ws/scripts/                         # subtitles for all
   uv run preview.py ws/scripts/ep_1_pro.mp3              # play audio""",
     )
-    parser.add_argument("target", help="Path to EPUB file or workspace directory")
+    parser.add_argument(
+        "target", nargs="+",
+        help="One EPUB / workspace dir for a single book; OR multiple EPUBs (in "
+        "reading order) with --saga to build one continuous multi-book feed.",
+    )
+    parser.add_argument(
+        "--saga", metavar="TITLE",
+        help="Group the given EPUBs (reading order = argument order) into one "
+        "saga workspace titled TITLE. Implies --mode saga; requires --spoiler-mode.",
+    )
     parser.add_argument("--parallel", type=int, default=3, help="Max parallel workers (default: 3)")
     parser.add_argument("--only-episode", type=int, help="Only process this episode number")
     parser.add_argument("--skip-to", choices=STAGES, help="Start from this stage")
@@ -1312,7 +1360,39 @@ examples:
         args.skip_to = args.only_stage
         args.stop_after = args.only_stage
 
-    epub_path, workspace = resolve_target(args.target)
+    # Saga vs single-book input resolution. A saga is the ONLY case that takes
+    # multiple targets; everything else takes exactly one (EPUB or workspace dir).
+    saga_epubs: list[Path] | None = None
+    epub_path = workspace = None
+    if args.saga is not None:
+        if args.mode and args.mode != "saga":
+            parser.error(f"--saga implies --mode saga; got --mode {args.mode}")
+        args.mode = "saga"
+        if len(args.target) < 2:
+            parser.error("--saga needs at least 2 EPUBs (reading order = argument order)")
+        saga_epubs = []
+        for t in args.target:
+            p = Path(t)
+            if not (p.is_file() and p.suffix.lower() == ".epub"):
+                parser.error(f"--saga targets must be EPUB files; got {t}")
+            saga_epubs.append(p)
+    else:
+        if len(args.target) != 1:
+            parser.error("multiple targets are only allowed with --saga")
+        epub_path, workspace = resolve_target(args.target[0])
+
+    # Build the saga workspace up-front (extract every EPUB, group + flatten).
+    # After this the saga is just a normal workspace the 13 stages run against.
+    if saga_epubs is not None:
+        if workspace is None:
+            print(f"Saga: {args.saga} ({len(saga_epubs)} books)")
+            books = []
+            for i, p in enumerate(saga_epubs, 1):
+                meta, chapters = extract_epub(str(p))
+                print(f"  {i}. {meta['title']} — {meta['total_raw_chapters']} ch, {meta['total_raw_chars']:,} chars")
+                books.append((meta, chapters))
+            workspace = setup_saga_workspace(args.saga, books)
+            print(f"  Workspace: {workspace}")
 
     if args.status:
         if workspace:
