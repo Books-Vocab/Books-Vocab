@@ -57,6 +57,7 @@ struct PodcastSeriesCard: View {
                     .foregroundStyle(appTheme.palette.tertiaryText)
             }
         }
+        .appHoverLift()
         .enableInjection()
     }
 
