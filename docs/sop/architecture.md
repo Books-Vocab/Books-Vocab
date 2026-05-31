@@ -5,15 +5,15 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 3d4ed997
+verified_against: 7482c5ee
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
 BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝置端的 `SwiftData` 為唯一資訊來源 (Single Source of Truth)，並透過背景同步與遠端 Knowledge Graph (KG) 伺服器保持資料一致。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
 
-**平台**：iOS 17+ / macOS 15.0+（macOS Reader 暫不啟用，其餘功能共用）
+**平台**：iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，`SUPPORTS_MACCATALYST`，非原生 macOS — 核心依賴 Readium 僅 iOS）
 
-**Client 端**：iOS/macOS app、Chrome Extension（side panel 選詞翻譯）
+**Client 端**：iOS / Mac Catalyst app、Chrome Extension（side panel 選詞翻譯）
 
 ---
 
@@ -54,7 +54,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ## 閱讀器 (ReaderView) 的離線運作
 
-支援格式：EPUB、TXT、MD、PDF（`BookshelfImportService` 統一入口，TXT/MD 經 `EPUBConverter` 轉 EPUB 後閱讀，PDF 走 `PDFReaderView` 獨立路徑）。`EPUBConverter` 拆三檔：核心 `EPUBConverter.swift`、Markdown 解析 `EPUBConverter+Markdown.swift`、純 Swift ZIP 寫入 `EPUBConverter+MinimalZIP.swift`（避免 ZipFoundation 依賴）。macOS 端 Reader 暫不啟用（以 `#if os(iOS)` 隔離）。
+支援格式：EPUB、TXT、MD、PDF（`BookshelfImportService` 統一入口，TXT/MD 經 `EPUBConverter` 轉 EPUB 後閱讀，PDF 走 `PDFReaderView` 獨立路徑）。`EPUBConverter` 拆三檔：核心 `EPUBConverter.swift`、Markdown 解析 `EPUBConverter+Markdown.swift`、純 Swift ZIP 寫入 `EPUBConverter+MinimalZIP.swift`（避免 ZipFoundation 依賴）。Reader 以 `#if os(iOS)` 隔離 —— Catalyst 下 `os(iOS)` 為 true 故仍編譯仍啟用（非原生 macOS，無 AppKit 路徑）。
 
 1. **底線渲染 (Underline Rendering)**:
    打開書籍時，撈出所有非刪除的 `VocabularyEntry`，注入 JS 顯示底線。離線亦可。

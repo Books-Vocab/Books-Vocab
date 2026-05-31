@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: c02b5221
+verified_against: 7482c5ee
 -->
 # UI Component & Pattern Inventory
 
@@ -111,7 +111,7 @@ Scope: `ios/BooksBrowser`
 - `VocabTimelineRow`
 - `VocabActionButtonStyle`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
-- `GraphThumbnailWebView` — 雙平台（iOS `UIViewRepresentable` / macOS `NSViewRepresentable`）小型圖譜預覽，用於 StatsPresenter
+- `GraphThumbnailWebView` — `UIViewRepresentable` 小型圖譜預覽（iOS / Catalyst 共用，無原生 macOS `NSViewRepresentable` 分支），用於 StatsPresenter
 - `NotebookStackedCoverView` — Editorial 立體堆卡（**目前由 Bookshelf / Podcast / EditSheet preview 使用,NotebookCard book-row 不再用**）：彩色封面 + cream 紙頁三階 ghost（`paperLight/paperSepia/paperSepiaDeep`）；幾何走 `NotebookStackMetrics`（dy/dx=4pt / rotation ±1.5° / jitter ±1pt / rotationOverhang 8pt / `patternOpacity` 0.12）；每層 0.5pt `cardBorder` hairline；rotation 由 `stableSeed(for:)` djb2 hash 保證跨 launch 同字串同角度；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 關 offset/scale 但 **保留 rotation**（靜態 layout 非 motion）；`showsName: Bool = true` opt-in 開關
 - `EditorialCoverComposition`(private in `NotebookCard.swift`) — **dead code remnant**(book-row redesign 後 `body` 改用 inline HStack,不再 overlay)。原意:serif name 左上 + hairline rule + `N 詞` 右下 + 3pt spine。待清。
 - `VocabReviewCTAPill` — 用於 detail 頁(KGVocabPresenter)與 **NotebookListView 頂部 section header**(D4 editorial),brandHero 奶黃 capsule + onBrandHero 前景。Both 同視覺族群,page-level 標題不需卡片框包裹。
@@ -146,7 +146,7 @@ Scope: `ios/BooksBrowser`
 責任：
 - reader loading / overlay / header / translation / settings panel
 - PDF reader 獨立路徑
-- 整層以 `#if os(iOS)` 隔離，macOS 暫不啟用
+- 整層以 `#if os(iOS)` 隔離 —— Catalyst 下 `os(iOS)` 為 true 仍編譯仍啟用
 
 目前狀態：
 - motion 已大幅收斂
