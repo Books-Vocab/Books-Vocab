@@ -2,6 +2,11 @@
 tier: plan
 authority: derived
 update_trigger: manual
+scope:
+  - ios/BooksBrowser/Platform/
+  - ios/BooksBrowser/BooksBrowserApp.swift
+  - ios/BooksBrowser/Views/Bookshelf/
+  - ios/BooksBrowser/Views/Vocabulary/
 verified_against: 39ad829c
 -->
 # Plan: Workstream C — Mac Catalyst 選單列 + 全域快捷鍵
