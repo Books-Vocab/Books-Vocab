@@ -885,12 +885,8 @@ function openNewPodcastModal() {
   const ra = $("#new-podcast-form").querySelector('input[name="spoiler-mode"][value="readalong"]');
   if (ra) ra.checked = true;
   renderFileList();
-  // Belt-and-suspenders on the parallel default — HTML carries value="3" but
-  // browser autofill / stale cached HTML can leave it blank. Set both the
-  // attribute and the live value so neither path can drop it.
-  const pi = $("#parallel-input");
-  pi.value = "3";
-  pi.setAttribute("value", "3");
+  // PARALLEL WORKERS is now a global nav setting — do NOT reset it on open;
+  // the value the user picked should persist across modal sessions.
   // Make the disabled button SAY what's blocking it — "↑ START PIPELINE"
   // greyed out with no explanation is the screenshot bug user hit.
   const submit = $("#modal-submit");
