@@ -25,6 +25,10 @@ Read the entire book and produce a structured deep analysis. You do NOT make pro
 - **Narrative structure**: [linear / nonlinear / modular / cumulative] — [1-2 sentence rationale]
 - **Information density**: [low / medium / high] — [rationale]
 - **Argument style**: [anecdotal / data-driven / philosophical / narrative / mixed]
+- **Content flags**: [comma-separated subset of `spoiler`, `trauma`, or `none`] — these are cross-cutting handling concerns the downstream scriptwriter must honor; flag conservatively but do not over-flag.
+  - `spoiler`: the book has a central twist, mystery, whodunit, or staged reveal whose value depends on NOT being given away early (any genre — a nonfiction book built around a final reveal counts).
+  - `trauma`: the book contains heavy clinical / abuse / sexual-violence / graphic-violence / acute-grief material that needs a content warning and careful framing.
+  - For each flag you raise, note in one line WHICH chapters carry it (e.g. `spoiler: ch_11 final reveal; trauma: ch_03, ch_07 abuse accounts`) so the architect can route per-episode.
 
 ## Chapter Map
 

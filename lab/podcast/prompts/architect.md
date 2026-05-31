@@ -46,8 +46,13 @@ This is your primary input. Read source chapters only when you need to verify a 
 
 ### Book Classification & Compression
 
-Use the analysis's classification + density to decide compression ratio:
+Use the analysis's classification + density to decide compression ratio. The
+**Book Type** column is a controlled vocabulary — pick the single closest row and
+write that exact label as `**Type**` in overview.md. Downstream the scriptwriter
+maps each type to a writing-guidance bucket, so an off-list label silently loses
+its tailored guidance.
 
+<!-- GENRE_TYPES:START -->
 | Book Type | Density | Compression | Duration/ep | Sweet spot |
 |-----------|---------|-------------|-------------|------------|
 | Fiction epic | low | 8:1-12:1 | 30-45 min | 35 min |
@@ -58,6 +63,11 @@ Use the analysis's classification + density to decide compression ratio:
 | Nonfiction science | med-high | 3:1-5:1 | 20-30 min | 25 min |
 | Biography | medium | 5:1-8:1 | 25-35 min | 30 min |
 | Technical | high | 2:1-3:1 | 15-20 min | 18 min |
+<!-- GENRE_TYPES:END -->
+
+If the book genuinely spans two types, pick the dominant one for compression and
+note the secondary in the overview's `Type` line (e.g. `Biography (narrative)`);
+the scriptwriter still maps on the first word.
 
 Speech rate: ~150 words/min English, ~200 chars/min Chinese.
 
@@ -93,7 +103,7 @@ Write `{workspace}/plan/overview.md`:
 > [Subtitle — one line]
 
 ## Book Analysis
-- **Type**: [genre/sub-genre]
+- **Type**: [exact label from the Book Type controlled vocabulary above — e.g. `Biography`, `Nonfiction business`. The scriptwriter maps this to a writing bucket, so it MUST be an on-list label, optionally with a parenthetical secondary.]
 - **Language**: [language]
 - **Narrative structure**: [from analysis]
 - **Information density**: [from analysis]
@@ -209,6 +219,7 @@ For each episode, write `{workspace}/plan/episodes/ep_XX.md`:
 ## Scriptwriter Instructions
 - **Read these files**: [exact list: ch_05.md, ch_06.md]
 - **Do NOT cover**: [content assigned to other episodes — be specific]
+- **Content flags**: [subset of `spoiler`, `trauma`, or `none` — propagate from analysis.md's Content flags, but ONLY the flags whose cited chapters fall in THIS episode's source chapters. The scriptwriter applies the matching overlay. If analysis flagged `spoiler` for ch_11 and this episode covers ch_11, write `spoiler` here.]
 - **Style notes**: [episode-specific tone/approach]
 - **Context from previous episode**: [last 2-3 sentences of EP N-1's planned ending, or "N/A — first episode"]
 - **[Host A] focus**: [what Host A should drive in this episode]
