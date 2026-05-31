@@ -213,10 +213,12 @@ def build_saga_context(workspace: Path) -> str:
     """
     if not is_saga(workspace):
         return ""
-    try:
-        books = saga.parse_series_manifest((workspace / "series.md").read_text())
-    except (OSError, ValueError):
-        return ""
+    # is_saga() already confirmed series.md exists. A read/parse failure here is
+    # an INTEGRITY error, not a "treat as single book" signal: silently returning
+    # "" would strip all spoiler protection + book boundaries from a run the user
+    # explicitly asked to protect. Fail loud (fail-closed), matching the
+    # deterministic marker guard in stage_prep.
+    books = saga.parse_series_manifest((workspace / "series.md").read_text())
     spoiler_mode = read_spoiler_mode(workspace) or "readalong"
     order = "\n".join(
         f"  {b.index}. {b.title} — {b.author}  (chapters tagged `<!-- saga_book: {b.index} -->`)"
@@ -872,7 +874,8 @@ def run_claude(
 
 def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt_template = _prompt("scriptwriter", read_mode(workspace))
-    prompt = prompt_template.replace("{workspace}", str(workspace))
+    prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
+    prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
@@ -889,7 +892,8 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
 
 def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt_template = _prompt("script_review", read_mode(workspace))
-    prompt = prompt_template.replace("{workspace}", str(workspace))
+    prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
+    prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
