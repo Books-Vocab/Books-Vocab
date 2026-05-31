@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SERVER="${SERVER:-ubuntu@13.193.212.134}"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/lightsail_default.pem}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/lightsail_kg_prod}"
 SSH_OPTS=( -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
 
 run_remote() {

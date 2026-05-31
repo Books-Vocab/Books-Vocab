@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # ── Config (mirrors devops.sh) ──────────────────────────────────────────────
-SSH_KEY="$HOME/.ssh/lightsail_default.pem"
+SSH_KEY="$HOME/.ssh/lightsail_kg_prod"
 SERVER="ubuntu@13.193.212.134"
 REMOTE_PODCAST_DIR="~/knowledge_graph_api/data/podcasts"
 
