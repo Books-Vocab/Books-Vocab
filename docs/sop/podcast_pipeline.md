@@ -384,7 +384,7 @@ Endpoints:
 
 **Remote**(boto3 → Lightsail Object Storage,2026-06 Track B 後不再走 SSH):
 - `GET /api/remote/series` — 抓 S3 `index.json` + 用 `list_objects_v2` 算 per-series size + orphan(沒在 index 但有 prefix)
-- `GET /api/remote/disk` — bucket 總用量;total 由 `PODCAST_BUCKET_QUOTA_BYTES` env 配置(預設 25 GiB,對應 Lightsail Plan 2)
+- `GET /api/remote/disk` — bucket 總用量;total 由 `PODCAST_BUCKET_QUOTA_BYTES` env 配置(預設 5 GiB,對應 Lightsail `small_1_0`)
 - `DELETE /api/remote/series/{id}?confirm=<id>` — `delete_objects` 批刪 `{id}/` 下所有 key + 重建 `index.json`(`put_object`);回 `{deleted, fully_deleted, remaining, rm_errors, bad_metadata_files}`;`fully_deleted` 走「再 `list_objects_v2` 確認」(防 eventual consistency)
 
 `events.jsonl` 內容:claude CLI stream-json 的 tool-use + `result.modelUsage[*].costUSD`,以及 `synthesize.py` 寫的 `tts_usage` events。
@@ -396,7 +396,7 @@ Endpoints:
 | `PODCAST_BUCKET` | *(必填)* | Lightsail Object Storage bucket(e.g. `kg-podcasts-prod`) |
 | `PODCAST_BUCKET_REGION` | `ap-northeast-1` | 同 Lightsail instance region(免 egress 費)|
 | `PODCAST_BUCKET_ENDPOINT_URL` | *unset* | S3-compatible endpoint URL;Lightsail/AWS 留空,R2/minio 才設 |
-| `PODCAST_BUCKET_QUOTA_BYTES` | `26843545600`(25 GiB) | UI 顯示「磁碟」總量基準 |
+| `PODCAST_BUCKET_QUOTA_BYTES` | `5368709120`(5 GiB) | UI 顯示「磁碟」總量基準;升級 bundle 時改這個 |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | *(必填)* | Lightsail Object Storage access key |
 
 > 2026-06 Track B 前的 `PODCAST_SSH_KEY` / `PODCAST_REMOTE_SERVER` / `PODCAST_REMOTE_DIR` / `PODCAST_SSH_TIMEOUT` 已**廢棄**,monitor 不再讀。**舊 `.env` 留著無害但無效果**。
