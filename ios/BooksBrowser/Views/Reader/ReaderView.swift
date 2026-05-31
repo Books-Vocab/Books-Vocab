@@ -91,6 +91,7 @@ struct ReaderView: View {
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
+        .macReaderImmersion()
         .toastSheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
             if let publication = publication {
                 TOCView(
