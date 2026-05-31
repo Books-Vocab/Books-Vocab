@@ -268,6 +268,16 @@ struct BookshelfView: View {
                             .buttonStyle(.bookshelfCard)
                             .accessibilityLabel("\(series.title), podcast")
                             .transition(.bookshelfCard)
+                            .contextMenu {
+                                Button {
+                                    toggleFollow(series)
+                                } label: {
+                                    Label(
+                                        (series.isFollowed ? "取消追蹤" : "追蹤").localized,
+                                        systemImage: series.isFollowed ? "star.slash" : "star"
+                                    )
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -372,6 +382,21 @@ struct BookshelfView: View {
                 let url = URL(string: urlStr)
             else { continue }
             PodcastAssetPreloader.shared.preload(url: url, headers: headers)
+        }
+    }
+
+    /// Series 右鍵/長按選單的追蹤切換。樂觀翻轉 + 失敗回滾,與
+    /// `PodcastEpisodeListView.toggleFollow` 共用 `PodcastFollowToggle` 契約。
+    @MainActor
+    private func toggleFollow(_ series: PodcastSeries) {
+        var outcome: PodcastFollowToggle.Outcome = .saved
+        withAnimation(AppMotion.phaseChange) {
+            outcome = PodcastFollowToggle.perform(series: series) {
+                modelContext.safeSave()
+            }
+        }
+        if outcome == .rolledBack {
+            toastCoordinator.error("追蹤狀態儲存失敗".localized)
         }
     }
 }
