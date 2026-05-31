@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: 5f2c8e64
+verified_against: 132bc746
 -->
 # UI Component & Pattern Inventory
 
@@ -297,6 +297,7 @@ Scope: `ios/BooksBrowser`
 - filter / tab / count / row list / divider
 
 優先元件：
+- `ListSectionCard`（`ios/BooksBrowser/UIComponents/ListSectionCard.swift`）— 扁平列表共用卡片容器（`VStack(spacing:0)` + `cardBackground` fill + `cardBorder` stroke + `clipShape` 圓角讓 per-row 選中底色不溢出）。podcast 集數列表與單字列表共同骨架；divider 由 caller 在 `ForEach` 內插（不塞進容器，保語意）
 - `VocabListCard`
 - `VocabTabSelector`
 - `VocabSearchField`
@@ -306,9 +307,11 @@ Scope: `ios/BooksBrowser`
 - `KGVocabPresenter`
 - `PendingVocabPresenter`
 - `VocabularyListPresenter`
+- `PodcastEpisodeListView`
 
 規則：
 - tab + header + list content 優先收斂到同一殼層
+- 扁平 row list 的卡片容器收斂到 `ListSectionCard`
 
 ### 5. Overlay / Panel Pattern
 
