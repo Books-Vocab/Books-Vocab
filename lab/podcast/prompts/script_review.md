@@ -60,12 +60,13 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 
 **j. Sign-Off compliance** — Last three speaker lines (immediately before `<!-- END_OF_SCRIPT -->`) must match overview.md Series Format: Host A verdict, Host B Next-time hook (or finale parting question), Host A catchphrase (exact match across all episodes). If pattern is broken → NEEDS_WORK.
 
-**k. TTS palette purity** — Every bracket tag must be in the canonical Gemini 3.1 palette below. Any out-of-palette tag → NEEDS_WORK; auto-fix by mapping to the nearest allowed tag. This includes **2.5-era adjective forms** (`[sad]`, `[amused]`, `[whispering]`, `[speaking slowly]`...) and freeform tags (`[quietly]`, `[reading]`). Use the legacy map in `tts_tags.py` (`[sad]`→`[sadness]`, `[whispering]`→`[whispers]`, `[speaking slowly]`→`[slow]`, etc.); tags with no noun equivalent (`[deadpan]`/`[thoughtful]`/`[somber]`/`[warm]`/`[tender]`) → drop the inline tag and let the host's Voice direction carry that tone.
+**k. TTS palette purity** — Every bracket tag must be in the canonical Gemini 3.1 palette below. Any out-of-palette tag → NEEDS_WORK; auto-fix by mapping to the nearest allowed tag. This includes **2.5-era adjective forms** (`[sad]`, `[amused]`, `[whispering]`, `[speaking slowly]`...) and freeform tags (`[quietly]`, `[reading]`). Use the legacy map in `tts_tags.py` (`[sad]`→`[sadness]`, `[whispering]`→`[whispers]`, `[speaking slowly]`→`[slow]`, etc.); tags with no noun equivalent (`[deadpan]`/`[thoughtful]`/`[somber]`/`[warm]`/`[tender]`) → drop the inline tag and let the host's Voice direction carry that tone. **SSML is forbidden** — Gemini 3.1 does not parse it. Convert `<break time="1s"/>`/`<break time="2s"/>` → `[long pause]`, shorter breaks → `[medium pause]`; unwrap `<emphasis>`/`<prosody>`, keeping the inner text.
 
 <!-- TTS_PALETTE:START -->
 **Emotion**: `[curiosity]` `[interest]` `[excitement]` `[enthusiasm]` `[amusement]` `[humor]` `[joy]` `[happiness]` `[awe]` `[admiration]` `[surprise]` `[shock]` `[skepticism]` `[doubt]` `[confusion]` `[uncertainty]` `[determination]` `[confidence]` `[sympathy]` `[caring]` `[melancholy]` `[nostalgia]` `[sadness]` `[grief]` `[relief]` `[satisfaction]` `[frustration]` `[disappointment]` `[tension]` `[anticipation]` `[hope]` `[sarcasm]` `[passion]` `[yearning]`
 **Energy**: `[high energy]` `[low energy]`
 **Pacing / non-verbal**: `[slow]` `[fast]` `[whispers]` `[laughs]` `[giggles]` `[sighs]` `[gasp]`
+**Pauses**: `[short pause]` `[medium pause]` `[long pause]`
 <!-- TTS_PALETTE:END -->
 
 **l. TTS parser cleanliness** — Script must NOT contain: `---` horizontal rules, `##` / `###` section headers, orphan italic lines `*text*` alone, inline `**bold**` or `*italic*` emphasis inside dialogue, multi-word speaker names. Any occurrence → NEEDS_WORK; fix via Edit (strip bold/italic, delete structural lines).
@@ -73,10 +74,10 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 ### 4. TTS Tag Health
 - Count emotion tags and list the **distinct** ones used (e.g. `[excitement]`, `[melancholy]`, `[skepticism]`, `[amusement]`...)
 - Count pacing / energy / non-verbal tags: `[slow]` `[fast]` `[high energy]` `[low energy]` `[whispers]` `[sighs]` `[laughs]` `[giggles]` `[gasp]`
-- Count SSML: `<break>` (note the time values — are they varied or all 1s?), `<emphasis>`, `<prosody>`
+- Count pause tags: `[short pause]` `[medium pause]` `[long pause]` — are they varied, or all the same? Reserve `[long pause]` for the heaviest beats.
+- **No SSML**: any `<break>` / `<emphasis>` / `<prosody>` → NEEDS_WORK (Gemini 3.1 ignores or vocalizes them). Auto-fix per palette-purity rule above.
 - **Tag density target**: ~1 per 200-300 words
 - **Palette breadth target**: ≥6 distinct tags across the episode. If only 3 tags repeat → NEEDS_WORK on palette.
-- **Break variation**: if every `<break>` is `time="1s"` → NEEDS_WORK (reach for 2s / 3s for heavy moments).
 - WARN if density <1 per 500 words (flat) or >1 per 100 words (manic)
 - WARN if `[whispers]` used >2 times (loses impact)
 - Check: do tags match content? (`[excitement]` before a mundane line = mismatch, flag it)
@@ -130,7 +131,7 @@ Write `{workspace}/scripts/ep_{N}_review.md`:
 ## TTS Tags
 - Total: N (1 per ~M words)
 - Distinct tags used: [list] (N distinct)
-- Break times used: [list, e.g. 1s×8, 2s×2]
+- Pause tags used: [list, e.g. short×4, medium×2, long×3]
 - Distribution: [even / front-loaded / back-loaded / clustered]
 - Issues: [mismatches or complex brackets]
 
@@ -149,7 +150,7 @@ Write `{workspace}/scripts/ep_{N}_review.md`:
 Fix directly with Edit tool:
 - Missing `<!-- END_OF_SCRIPT -->` sentinel → append as last line (non-negotiable)
 - Complex bracket tags → split into consecutive simple tags (e.g. `[both laugh, overlap]` → two lines each `[laughs]`)
-- Missing `<break>` before must-quote passages; promote 1s→2s around heavy moments
+- Missing pause before must-quote passages; add `[long pause]` around heavy moments. Convert any leftover `<break>` SSML → `[long pause]` / `[medium pause]`
 - Obvious tag mismatches (`[happiness]` before a tragic moment)
 - Minor continuity fixes (wrong host name, wrong concept reference)
 - Swap a signposted transition ("Now let's move on to X") to a curiosity-based bridge
