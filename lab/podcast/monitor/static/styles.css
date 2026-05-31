@@ -1227,11 +1227,6 @@ body.sidebar-open .sidebar-backdrop {
   letter-spacing: 0.06em;
 }
 
-.modal-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
 .field {
   display: flex;
   flex-direction: column;
