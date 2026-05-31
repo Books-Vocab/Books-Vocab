@@ -202,6 +202,59 @@ def is_saga(workspace: Path) -> bool:
     return (workspace / "series.md").exists()
 
 
+def build_saga_context(workspace: Path) -> str:
+    """Build the `{saga_context}` injection for analyst/architect prompts.
+
+    Returns "" for a single-book workspace (so base prompts are unchanged), or a
+    block describing the reading order, per-book chapter boundaries, and the
+    spoiler policy (from the .spoiler_mode sidecar) for a saga. This is what makes
+    the unified feed book-aware: episodes stay within book boundaries and, in
+    readalong mode, never reference a later book while discussing an earlier one.
+    """
+    if not is_saga(workspace):
+        return ""
+    try:
+        books = saga.parse_series_manifest((workspace / "series.md").read_text())
+    except (OSError, ValueError):
+        return ""
+    spoiler_mode = read_spoiler_mode(workspace) or "readalong"
+    order = "\n".join(
+        f"  {b.index}. {b.title} — {b.author}  (chapters tagged `<!-- saga_book: {b.index} -->`)"
+        for b in books
+    )
+    if spoiler_mode == "readalong":
+        policy = (
+            "SPOILER POLICY = readalong (STRICT reading order). When planning or "
+            "writing any episode whose chapters belong to book K, you MUST NOT "
+            "reference, foreshadow, or reveal ANYTHING from books with index > K "
+            "— no character fates, plot turns, or twists the listener hasn't "
+            "reached yet. Treat each later book as if it does not exist yet. "
+            "Earlier books (index < K) are fair game for callbacks."
+        )
+    else:
+        policy = (
+            "SPOILER POLICY = retrospective (whole saga assumed read). You may "
+            "freely cross-reference any book in either direction; lean into "
+            "foreshadowing payoffs and long-arc callbacks across the series."
+        )
+    return (
+        "\n\n## SAGA CONTEXT (multi-book continuous feed)\n\n"
+        "This workspace is a multi-book saga rendered as ONE continuous podcast "
+        "feed. Source chapters from all books are flattened into one numbered "
+        "`source/chapters/ch_*.md` sequence; each chapter carries a "
+        "`<!-- saga_book: N -->` comment identifying its source book. The "
+        "authoritative reading order + per-book chapter ranges are in "
+        "`{workspace}/series.md` (read it).\n\n"
+        f"Reading order:\n{order}\n\n"
+        "Episode numbering is CONTINUOUS across the whole saga (book 1 = EP1..n, "
+        "book 2 continues at EP n+1, …). Keep every episode within a single "
+        "book's chapters — do not blend chapters from different books into one "
+        "episode. Open each new book with a brief recap of where the prior book "
+        "left off.\n\n"
+        f"{policy}\n"
+    )
+
+
 _SAGA_MARKER_RE = re.compile(r"<!--\s*saga_book:\s*\d+")
 
 
@@ -802,6 +855,7 @@ def run_claude(
     log: PipelineLog,
     extra_tools: list[str] | None = None,
 ) -> bool:
+    prompt = prompt.replace("{saga_context}", build_saga_context(workspace))
     prompt = prompt.replace("{workspace}", str(workspace))
     tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
     if extra_tools:
