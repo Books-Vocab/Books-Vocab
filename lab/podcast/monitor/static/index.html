@@ -141,19 +141,31 @@
     </div>
   </section>
 
-  <!-- Stage strip: one row, compact tiles -->
-  <section class="stages" id="stage-grid"></section>
+  <!-- Frontier status — full width, the single most important line. -->
+  <div id="frontier-bar"></div>
 
-  <!-- Episode matrix: per-episode artifact gates + per-episode control.
-       Disk-derived (works idle) — the heart of "is ep N's script/audio done,
-       and let me re-run just that cell". -->
-  <section class="panel">
-    <div class="panel-head">
-      <span class="micro-label">EPISODES</span>
-      <span class="panel-sub" id="matrix-meta">—</span>
-    </div>
-    <div class="matrix" id="episode-matrix"></div>
-  </section>
+  <!-- Phase rail (left) + episode matrix (right), side by side. The rail's
+       segmented bars no longer stretch the full width; the matrix gets the room
+       it needs for 4 per-episode tracks. Stacks on narrow viewports. -->
+  <div class="work-row">
+    <section class="panel stages-panel">
+      <div class="panel-head">
+        <span class="micro-label">PIPELINE</span>
+      </div>
+      <div class="stages" id="stage-grid"></div>
+    </section>
+
+    <!-- Episode matrix: per-episode artifact gates + per-episode control.
+         Disk-derived (works idle) — the heart of "is ep N's script/audio done,
+         and let me re-run just that cell". -->
+    <section class="panel panel-episodes">
+      <div class="panel-head">
+        <span class="micro-label">EPISODES</span>
+        <span class="panel-sub" id="matrix-meta">—</span>
+      </div>
+      <div class="matrix" id="episode-matrix"></div>
+    </section>
+  </div>
 
   <!-- Cost breakdown table -->
   <section class="panel">
