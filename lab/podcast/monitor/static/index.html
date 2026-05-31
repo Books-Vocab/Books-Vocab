@@ -22,6 +22,10 @@
     <button id="act-upload" class="action-btn" title="Upload this workspace to production">↑ UPLOAD</button>
     <button id="act-delete" class="action-btn danger" title="Delete local workspace (does not touch server)">✕ DELETE</button>
   </div>
+  <div class="nav-parallel" title="scriptwrite / script-review concurrency (1–10) — applies to the next pipeline you start">
+    <span class="micro-label">PARALLEL</span>
+    <input type="number" id="parallel-input" min="1" max="10" value="3" class="field-input tabular nav-parallel-input">
+  </div>
   <div class="nav-status">
     <span id="status-dot" class="status-dot"></span>
     <span id="status-text" class="micro-label">IDLE</span>
@@ -71,13 +75,6 @@
             </span>
           </label>
         </fieldset>
-      </div>
-      <div class="modal-fields">
-        <label class="field">
-          <span class="field-label">PARALLEL WORKERS</span>
-          <input type="number" id="parallel-input" min="1" max="10" value="3" class="field-input tabular">
-          <span class="field-hint">scriptwrite / script-review concurrency (1–10)</span>
-        </label>
       </div>
       <div class="modal-foot">
         <button type="button" id="modal-cancel" class="action-btn">CANCEL</button>

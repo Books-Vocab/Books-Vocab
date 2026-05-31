@@ -1690,3 +1690,19 @@ body.sidebar-open .sidebar-backdrop {
 .feed-error { color: var(--dev); font-weight: 500; }
 .feed-usage { color: var(--dual); font-size: 10px; }
 .feed-tts   { color: var(--money); font-size: 10px; }
+
+/* Global PARALLEL WORKERS control — moved from new-podcast modal to nav. */
+.nav-parallel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nav-parallel-input {
+  width: 3.5rem;
+  text-align: center;
+  padding: 4px 6px;
+}
+@media (max-width: 899px) {
+  .nav-parallel .micro-label { display: none; }
+  .nav-parallel-input { width: 3rem; }
+}
