@@ -69,6 +69,12 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 **Pauses**: `[short pause]` `[medium pause]` `[long pause]`
 <!-- TTS_PALETTE:END -->
 
+**l-genre. Genre & overlay fit** — Read overview.md's `**Type**` and this episode plan's `Content flags:` line. Verify the script applies the matching guidance:
+- Primary bucket cues present (e.g. business → a pressure-tested case study or named incentive; biography → scenes not a CV with critical distance; technical → a worked example + bridged prerequisite; fiction → prose-level observation / reader memory).
+- `spoiler` flag → a spoken spoiler warning + `[medium pause]` precedes any reveal, and the biggest twist is gated/late. A whodunit or twist discussed with NO warning → **NEEDS_WORK** (content-safety, not style).
+- `trauma` flag → content warning present (mandatory on EP1 and any episode naming specific abuse), no second-person victim immersion, pauses around survivor stories. Missing content warning on a flagged episode → **FAIL** (not auto-fixable here — flag for rewrite).
+- A script that reads genre-blind (generic talk-show patter on a book that needed bucket-specific handling) → NEEDS_WORK.
+
 **l. TTS parser cleanliness** — Script must NOT contain: `---` horizontal rules, `##` / `###` section headers, orphan italic lines `*text*` alone, inline `**bold**` or `*italic*` emphasis inside dialogue, multi-word speaker names. Any occurrence → NEEDS_WORK; fix via Edit (strip bold/italic, delete structural lines).
 
 ### 4. TTS Tag Health

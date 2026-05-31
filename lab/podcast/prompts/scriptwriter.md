@@ -224,29 +224,77 @@ At least **2-3 breath moments per episode**.
 
 ## Genre-Specific Guidance
 
-### If the book is **fiction / narrative**:
+The overview's `**Type**` line comes from the architect's controlled vocabulary.
+Map it to ONE primary bucket below, then stack any overlay the episode plan flags
+(`Content flags:` line). A literary novel about abuse is **fiction-narrative +
+trauma overlay**; a whodunit is **fiction-narrative + spoiler overlay**.
+
+| Architect `Type` | Primary bucket |
+|---|---|
+| Fiction epic / mystery / literary | `fiction-narrative` |
+| Nonfiction self-help | `self-help-practical` |
+| Nonfiction business | `business` |
+| Nonfiction science | `research-academic` |
+| Biography | `biography` |
+| Technical | `technical` |
+
+If the type is somehow off-list, pick the nearest bucket and lean on the generic
+craft guidelines above — never write a genre-blind script.
+
+<!-- GENRE_GUIDANCE:START -->
+#### Bucket: fiction-narrative
 - Lean on **personal reading memory** — "I remember where I was when I read the Saolin pool scene."
 - Point at the **prose itself** — "Sanderson uses the word 'flickered' three times in one paragraph. Why?"
 - **Name your frustrations with the author** — pacing issues, thin motivations, clunky sentences. Real readers have opinions.
 - Use scholarly cross-references **sparingly** (≤2 per episode). In fiction discussion, loading up on academic citations signals you don't trust the text to be interesting on its own.
 
-### If the book deals with **trauma / heavy clinical material**:
+#### Bucket: self-help-practical
+- At least one concrete **"try this" moment** per episode — a specific Monday-morning action.
+- **Name the book's weaknesses openly** — evidence quality, replication issues, cultural scope. Listeners trust you more for it.
+- **Role-play scenarios** can be gold — one host voices a situation, the other responds as the book would advise.
+
+#### Bucket: business
+- **Pressure-test the case studies** — survivorship bias, n=1 anecdotes, "this worked at one company in one decade." Ask whether the framework generalizes.
+- **Translate jargon into a concrete decision** — "so on Monday, what does a manager actually do differently?"
+- **Name the incentives** — who benefits if you believe this? (consultant selling a method, founder mythologizing their own path).
+- Use one **counter-example** per episode — a company that did the opposite and won, or did this and failed.
+
+#### Bucket: research-academic
+- Paraphrase studies before naming them — don't lead with "A 2019 meta-analysis by..."
+- When citing, **include uncertainty** — effect size, sample, replication status.
+- Cross-reference with other fields when it illuminates, not to show off.
+- **Flag the gap between finding and headline** — what the study actually showed vs. how the book frames it.
+
+#### Bucket: biography
+- **Anchor in scenes, not a CV** — pick the vivid moment over the date list; let one decision reveal the person.
+- **Keep critical distance** — a biography is an argument about a life, not the life itself. Ask what the author is selling (hagiography? takedown? rehabilitation?).
+- **Mind chronology vs. theme** — tell the listener when you jump in time so the arc stays legible.
+- **Separate the figure's myth from the evidence** — "that's the story they told about themselves; here's what the record shows."
+
+#### Bucket: technical
+- **One worked example beats three definitions** — walk a single concrete case end-to-end instead of abstract enumeration.
+- **Name the prerequisite, then bridge it** — "if you've never seen a hash map, here's the 20-second version" before building on it.
+- **Use analogy for mechanism, then drop it** — analogies onboard, but flag where the analogy breaks so no one over-extends it.
+- Skip exhaustive API/syntax detail — convey the **mental model** and why it matters; the listener can't pause to read code.
+
+#### Overlay: spoiler
+Stacks on any narrative book (fiction mystery/thriller, or nonfiction with a
+central twist/reveal). Audio listeners can't skim ahead — an unguarded reveal is
+unrecoverable.
+- **Spoiler warning before any reveal** — `**Host:** Spoiler warning — we're about to discuss the ending.` then a `[medium pause]` before continuing.
+- **Gate the biggest twist** — discuss the setup and themes freely, but signpost clearly before naming whodunit / the final reveal, and consider saving it for late in the episode.
+- **Respect the episode boundary** — never reveal something the series hasn't reached yet in its reading order.
+- If the episode plan's `Content flags:` line does NOT list `spoiler`, you still apply this the moment you're about to spoil a genuine twist.
+
+#### Overlay: trauma
+Stacks on any book with heavy clinical / abuse / violence / grief content.
 - **Content warning at the top of Episode 1** and at the start of any episode that names specific abuse. Model:
   > Before we start — this episode includes descriptions of childhood abuse and sexual violence. Take care of yourself.
 - **Avoid second-person immersion** ("Imagine you're a seven-year-old...") for victim POV. Use third-person or clinical framing instead.
 - **Host self-disclosure** when it fits: "I'll say honestly — reading this chapter was hard for me." Not gratuitous, but not purely detached either.
 - **Open with orientation, not statistics**. A shocking number is a true-crime move. Orient the listener with a question, image, or frame instead.
 - Use `[long pause]` generously around survivor stories.
-
-### If the book is **self-help / practical**:
-- At least one concrete **"try this" moment** per episode — a specific Monday-morning action.
-- **Name the book's weaknesses openly** — evidence quality, replication issues, cultural scope. Listeners trust you more for it.
-- **Role-play scenarios** can be gold — one host voices a situation, the other responds as the book would advise.
-
-### If the book is **research-heavy / academic**:
-- Paraphrase studies before naming them — don't lead with "A 2019 meta-analysis by..."
-- When citing, **include uncertainty** — effect size, sample, replication status.
-- Cross-reference with other fields when it illuminates, not to show off.
+<!-- GENRE_GUIDANCE:END -->
 
 ---
 
@@ -323,7 +371,8 @@ Before finalizing, verify:
 - [ ] Ending uses one of the 5 forms (open question / experiment / uncertainty / concrete hook / echo)
 - [ ] Tag palette spans 6+ distinct tags, not just 3 on repeat
 - [ ] Both hosts have roughly equal talk time (±15%)
-- [ ] Genre-specific guidance applied (if fiction / trauma / self-help / research)
+- [ ] Primary genre bucket applied (fiction-narrative / self-help-practical / business / research-academic / biography / technical)
+- [ ] Every overlay flagged in the episode plan's `Content flags:` applied (spoiler reveal discipline / trauma content warning) — and any unflagged twist or heavy content you encounter still handled
 
 ## After Writing
 
