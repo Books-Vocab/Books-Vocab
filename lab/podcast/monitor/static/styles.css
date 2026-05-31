@@ -489,11 +489,12 @@ body.sidebar-open .sidebar-backdrop {
 }
 
 .ws-card-head {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 8px;
 }
+.ws-card-head .ws-name { flex: 1; min-width: 0; }
+.ws-card-head .ws-time { flex: none; }
 
 .ws-status-dot {
   width: 8px;
@@ -1258,6 +1259,58 @@ body.sidebar-open .sidebar-backdrop {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--sub);
+}
+
+/* ── Selected-files list (reading order = saga arg order) ── */
+.file-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.file-item {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg); border: 1px solid var(--borderBase);
+  border-radius: 4px; padding: 6px 8px;
+}
+.file-ord {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--borderBase); color: var(--ink);
+  font-family: var(--mono); font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.file-name {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--ink);
+  font-family: var(--mono);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.file-size { flex: none; font-size: 10px; color: var(--sub); }
+.file-actions { flex: none; display: flex; gap: 2px; }
+.file-move:disabled { opacity: 0.3; cursor: not-allowed; }
+.file-remove { color: var(--dev); }
+
+/* ── Saga fields (shown for 2+ books) ── */
+.saga-fields {
+  display: flex; flex-direction: column; gap: 12px;
+  border: 1px solid var(--borderBase); border-radius: 4px;
+  padding: 12px; background: var(--surface);
+}
+.saga-fields .field-input { width: 100%; box-sizing: border-box; }
+.saga-spoiler {
+  border: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.saga-spoiler legend { padding: 0; margin-bottom: 2px; }
+.radio-row { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.radio-row input { margin-top: 3px; accent-color: var(--contra); }
+.radio-body { display: flex; flex-direction: column; gap: 1px; }
+.radio-title { font-size: 12px; color: var(--ink); font-family: var(--mono); }
+.radio-desc { font-size: 10px; color: var(--sub); }
+
+/* ── Saga badge on sidebar workspace cards ── */
+.ws-saga-badge {
+  flex: none; font-size: 9px; font-family: var(--mono);
+  color: var(--contra); background: var(--borderL);
+  border: 1px solid var(--borderBase); border-radius: 4px;
+  padding: 1px 5px; white-space: nowrap;
 }
 
 .modal-foot {
