@@ -92,6 +92,52 @@ def _s3_client(request: Request):
     return _s3_client_cached(cfg.podcast_bucket_region, cfg.podcast_bucket_endpoint_url)
 
 
+# Per-(bucket, series) resolved audio extension. A series' format is fixed at
+# publish time (all episodes share one format), so resolving it once and
+# caching avoids an S3 metadata read on every Range request during streaming.
+# Cleared implicitly on process restart — acceptable staleness for a re-publish
+# that changes format (rare; restart or a new bucket clears it).
+_S3_AUDIO_FMT_CACHE: dict[tuple[str | None, str], str] = {}
+
+
+def _s3_audio_format(request: Request, series_id: str) -> str:
+    """Resolve a series' audio extension (``"m4a"`` / ``"mp3"``) in S3 mode.
+
+    Trusts ``metadata.json``'s ``audioFormat`` field (written by
+    ``ops/podcast_upload.sh`` / the backfill script). Legacy series whose
+    metadata predates that field fall back to probing the bucket in
+    m4a → mp3 order. Result cached per ``(bucket, series_id)``.
+    """
+    cfg = _settings(request)
+    cache_key = (cfg.podcast_bucket, series_id)
+    cached = _S3_AUDIO_FMT_CACHE.get(cache_key)
+    if cached:
+        return cached
+
+    fmt: str | None = None
+    meta = _read_json_from_s3(request, f"{series_id}/metadata.json", context="metadata")
+    if isinstance(meta, dict):
+        raw = meta.get("audioFormat")
+        if isinstance(raw, str) and raw in ("m4a", "mp3"):
+            fmt = raw
+
+    if fmt is None:
+        # Legacy metadata without audioFormat — probe ep_01 (representative,
+        # since all episodes in a series share one format).
+        s3 = _s3_client(request)
+        for cand in ("m4a", "mp3"):
+            try:
+                s3.head_object(Bucket=cfg.podcast_bucket, Key=f"{series_id}/ep_01/audio.{cand}")
+                fmt = cand
+                break
+            except Exception:  # noqa: BLE001 — any miss → try next candidate
+                continue
+
+    fmt = fmt or "m4a"
+    _S3_AUDIO_FMT_CACHE[cache_key] = fmt
+    return fmt
+
+
 def _audio_filename(request: Request, series_id: str, ep_num: int) -> str:
     """Resolve the audio filename for an episode, honouring m4a-first / mp3-fallback.
 
@@ -101,8 +147,7 @@ def _audio_filename(request: Request, series_id: str, ep_num: int) -> str:
     Track B keep playing without manual migration.
     """
     if _using_s3(request):
-        # Disk fallback removed in S3 mode; metadata says what we have.
-        return "audio.m4a"
+        return f"audio.{_s3_audio_format(request, series_id)}"
     base = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}"
     for name in ("audio.m4a", "audio.mp3"):
         if (base / name).exists():
