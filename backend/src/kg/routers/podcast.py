@@ -92,6 +92,17 @@ def _s3_client(request: Request):
     return _s3_client_cached(cfg.podcast_bucket_region, cfg.podcast_bucket_endpoint_url)
 
 
+def _is_s3_not_found(exc: Exception, s3) -> bool:
+    """True iff ``exc`` is a 404 / NoSuchKey (Lightsail sometimes returns a
+    ClientError("404") instead of NoSuchKey for missing keys). Any other error
+    is a real fault the caller must surface, not swallow."""
+    if isinstance(exc, s3.exceptions.NoSuchKey):
+        return True
+    response = getattr(exc, "response", None)
+    code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
+    return code in ("NoSuchKey", "404")
+
+
 # Per-(bucket, series) resolved audio extension. A series' format is fixed at
 # publish time (all episodes share one format), so resolving it once and
 # caching avoids an S3 metadata read on every Range request during streaming.
@@ -130,8 +141,15 @@ def _s3_audio_format(request: Request, series_id: str) -> str:
                 s3.head_object(Bucket=cfg.podcast_bucket, Key=f"{series_id}/ep_01/audio.{cand}")
                 fmt = cand
                 break
-            except Exception:  # noqa: BLE001 — any miss → try next candidate
-                continue
+            except Exception as exc:  # noqa: BLE001
+                if _is_s3_not_found(exc, s3):
+                    continue
+                # Loud-fail on real faults (perms / throttle / network): caching
+                # a default here would pin a wrong format until restart and mask
+                # the error as a downstream 404. Mirror _read_json_from_s3.
+                logger.error("Podcast audio-format probe failed for %s/ep_01/audio.%s: %s",
+                             series_id, cand, exc)
+                raise HTTPException(502, detail="Storage error resolving audio format") from exc
 
     fmt = fmt or "m4a"
     _S3_AUDIO_FMT_CACHE[cache_key] = fmt
