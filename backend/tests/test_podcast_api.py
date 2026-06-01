@@ -227,3 +227,92 @@ def test_subtitle_traversal_in_ep_segment_does_not_escape(podcast_api):
     # FastAPI either 404s the route (no match) or 422s on int parsing; either
     # is acceptable as long as we don't reach the filesystem with `..`.
     assert resp.status_code in (404, 422)
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: S3-mode audio filename resolution must honour metadata audioFormat.
+#
+# Regression: `_audio_filename` previously returned a hardcoded "audio.m4a" in
+# S3 mode, ignoring metadata. Legacy series are mp3 → audio endpoint built the
+# wrong key (audio.m4a) → 404. Masked only because the prod bucket was empty.
+# These unit-test the resolver directly (S3 mode needs no HTTP fixture).
+# ---------------------------------------------------------------------------
+from types import SimpleNamespace  # noqa: E402
+
+from kg.routers import podcast as _podcast_mod  # noqa: E402
+
+
+def _s3_request(bucket: str = "kg-podcasts-prod"):
+    settings = SimpleNamespace(
+        podcast_bucket=bucket,
+        podcast_bucket_region="ap-northeast-1",
+        podcast_bucket_endpoint_url=None,
+    )
+    app = SimpleNamespace(state=SimpleNamespace(kg_settings=settings))
+    return SimpleNamespace(app=app)
+
+
+@pytest.fixture()
+def _clear_audio_fmt_cache():
+    _podcast_mod._S3_AUDIO_FMT_CACHE.clear()
+    yield
+    _podcast_mod._S3_AUDIO_FMT_CACHE.clear()
+
+
+def test_audio_format_honoured_from_metadata_s3(monkeypatch, _clear_audio_fmt_cache):
+    req = _s3_request()
+    monkeypatch.setattr(
+        _podcast_mod, "_read_json_from_s3",
+        lambda request, key, *, context: {"audioFormat": "mp3"},
+    )
+    assert _podcast_mod._audio_filename(req, "flow_x", 1) == "audio.mp3"
+
+
+def test_audio_format_m4a_from_metadata_s3(monkeypatch, _clear_audio_fmt_cache):
+    req = _s3_request()
+    monkeypatch.setattr(
+        _podcast_mod, "_read_json_from_s3",
+        lambda request, key, *, context: {"audioFormat": "m4a"},
+    )
+    assert _podcast_mod._audio_filename(req, "flow_x", 1) == "audio.m4a"
+
+
+def test_audio_format_probes_bucket_when_metadata_lacks_field(monkeypatch, _clear_audio_fmt_cache):
+    """Legacy metadata.json without audioFormat → probe bucket; mp3 wins when
+    only mp3 exists (m4a head_object 404s)."""
+    req = _s3_request()
+    monkeypatch.setattr(
+        _podcast_mod, "_read_json_from_s3",
+        lambda request, key, *, context: {"title": "x"},  # no audioFormat
+    )
+
+    class _NoSuchKey(Exception):
+        pass
+
+    class _FakeS3:
+        exceptions = SimpleNamespace(NoSuchKey=_NoSuchKey)
+
+        def head_object(self, Bucket, Key):  # noqa: N803
+            if Key.endswith("audio.m4a"):
+                raise _NoSuchKey()
+            return {"ContentLength": 10}
+
+    monkeypatch.setattr(_podcast_mod, "_s3_client", lambda request: _FakeS3())
+    assert _podcast_mod._audio_filename(req, "legacy_mp3", 1) == "audio.mp3"
+
+
+def test_audio_format_cached_per_series_s3(monkeypatch, _clear_audio_fmt_cache):
+    """Format resolved once per (bucket, series): metadata read is not repeated
+    on subsequent audio requests (streaming issues many Range calls)."""
+    req = _s3_request()
+    calls = {"n": 0}
+
+    def _meta(request, key, *, context):
+        calls["n"] += 1
+        return {"audioFormat": "mp3"}
+
+    monkeypatch.setattr(_podcast_mod, "_read_json_from_s3", _meta)
+    _podcast_mod._audio_filename(req, "flow_x", 1)
+    _podcast_mod._audio_filename(req, "flow_x", 2)
+    _podcast_mod._audio_filename(req, "flow_x", 3)
+    assert calls["n"] == 1
