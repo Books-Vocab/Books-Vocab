@@ -17,4 +17,22 @@ struct ReaderOverlayPanelPlacementTests {
         #expect(placement.maxWidth == 460)
         #expect(placement.horizontalInset == AppSpacing.s5)
     }
+
+    @Test func compactPanelsKeepBottomSheetChrome() {
+        let chrome = ReaderPanelChromeStyle(layoutMode: .compact)
+
+        #expect(chrome == .bottomSheet)
+        #expect(chrome.showsDragHandle)
+        #expect(chrome.allowsDragDismiss)
+        #expect(chrome.contentTopInset == 0)
+    }
+
+    @Test func regularPanelsUseInspectorChrome() {
+        let chrome = ReaderPanelChromeStyle(layoutMode: .regular)
+
+        #expect(chrome == .floatingInspector)
+        #expect(!chrome.showsDragHandle)
+        #expect(!chrome.allowsDragDismiss)
+        #expect(chrome.contentTopInset == AppSpacing.s4)
+    }
 }

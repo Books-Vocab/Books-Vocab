@@ -8,6 +8,7 @@ struct ReaderSettingsPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appTheme) var appTheme
     @Environment(\.appSkin) var appSkin
+    @Environment(\.horizontalSizeClass) var sizeClass
 
     struct State {
         let fontSizeText: String

@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Reader/
-verified_against: 8a564dd6
+verified_against: 9449bc29
 -->
 # Reader Feature Boundary
 
@@ -24,7 +24,7 @@ verified_against: 8a564dd6
 |------|------|------|
 | `ReaderViewPresenter.swift` | 57 | 主佈局 `struct ReaderViewPresenter<...>: View` |
 | `ReaderViewPresenter+Headers.swift` | 207 | header 區域 extension |
-| `ReaderViewPresenter+Overlays.swift` | ~154 | overlay 區域 extension；translation / settings panel 依 `ReaderOverlayPanelPlacement` 分流：compact 底部居中，regular / Catalyst 右下 inspector |
+| `ReaderViewPresenter+Overlays.swift` | 126 | overlay 區域 extension；translation / settings panel 依 `ReaderOverlayPanelPlacement` 分流：compact 底部居中，regular / Catalyst 右下 inspector |
 | `ReaderViewPresenter+Preview.swift` | 207 | preview 資料 |
 | `QuotaBar.swift` | 51 | `struct QuotaBar: View`，quota 顯示列 |
 
@@ -61,18 +61,18 @@ verified_against: 8a564dd6
 | `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
-| `ReaderContentStyle.swift` | ~190 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` |
+| `ReaderContentStyle.swift` | 225 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` |
 
 ### Feature Panels
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `TranslationPanel.swift` | 240 | `struct TranslationPanel: View`，翻譯面板 UI |
+| `TranslationPanel.swift` | 255 | `struct TranslationPanel: View`，翻譯面板 UI；compact 支援拖曳關閉，regular / Catalyst 關閉 bottom-sheet 拖曳語意 |
 | `TranslationPanelPresenter.swift` | 581 | 翻譯面板佈局（最大檔案）|
-| `TranslationVocabPresenter.swift` | 295 | 翻譯詞彙呈現 |
+| `TranslationVocabPresenter.swift` | 337 | 翻譯詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
 | `ReaderSettingsPanel.swift` | 184 | `struct ReaderSettingsPanel: View`，閱讀設定面板 |
-| `ReaderSettingsPanelPresenter.swift` | 290 | 設定面板佈局 |
-| `ReaderSettingsVocabPresenter.swift` | 414 | 設定詞彙呈現 |
+| `ReaderSettingsPresenter.swift` | 111 | 設定面板 presenter facade，持有設定狀態與 layout environment |
+| `ReaderSettingsPresenter+Vocab.swift` | 240 | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
 | `TOCView.swift` | 203 | `struct TOCView: View`，目錄 |
 
 ---

@@ -175,6 +175,30 @@ enum ReaderOverlayPanelPlacement: Equatable {
     }
 }
 
+enum ReaderPanelChromeStyle: Equatable {
+    case bottomSheet
+    case floatingInspector
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .floatingInspector : .bottomSheet
+    }
+
+    var showsDragHandle: Bool {
+        self == .bottomSheet
+    }
+
+    var allowsDragDismiss: Bool {
+        self == .bottomSheet
+    }
+
+    var contentTopInset: CGFloat {
+        switch self {
+        case .bottomSheet: return 0
+        case .floatingInspector: return AppSpacing.s4
+        }
+    }
+}
+
 private extension ReaderContentStyle {
     static let vocab = ReaderContentStyle(
         pageGutterTop: 76,

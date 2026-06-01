@@ -14,6 +14,7 @@ import Inject
 struct TranslationVocabPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     let state: TranslationPanelPresenterState
     let onSpeak: () -> Void
@@ -26,22 +27,27 @@ struct TranslationVocabPresenter: View {
     var onRetryExplanation: (() -> Void)? = nil
 
     var body: some View {
-        VocabCard(padding: 0) {
+        let chrome = ReaderPanelChromeStyle(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
+
+        return VocabCard(padding: 0) {
             VStack(spacing: 0) {
-                Capsule(style: .continuous)
-                    .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
-                    .frame(
-                        width: ReaderMetrics.panelHandleWidth,
-                        height: ReaderMetrics.panelHandleHeight
-                    )
-                    .padding(.top, ReaderMetrics.panelHandleTopInset)
-                    .padding(.bottom, ReaderMetrics.panelHandleBottomInset)
+                if chrome.showsDragHandle {
+                    Capsule(style: .continuous)
+                        .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
+                        .frame(
+                            width: ReaderMetrics.panelHandleWidth,
+                            height: ReaderMetrics.panelHandleHeight
+                        )
+                        .padding(.top, ReaderMetrics.panelHandleTopInset)
+                        .padding(.bottom, ReaderMetrics.panelHandleBottomInset)
+                }
 
                 VStack(alignment: .leading, spacing: AppSpacing.s3) {
                     heroSection
                     panelBody
                 }
                 .padding(.horizontal, ReaderMetrics.panelHorizontalInset)
+                .padding(.top, chrome.contentTopInset)
                 .padding(.bottom, ReaderMetrics.panelBottomInset)
             }
         }
