@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: 132bc746
+verified_against: 28792d35
 -->
 # UI Component & Pattern Inventory
 
@@ -38,6 +38,7 @@ Scope: `ios/BooksBrowser`
 ### App Shell Layer
 
 主要檔案：
+- `ios/BooksBrowser/ContentView.swift`
 - `ios/BooksBrowser/UIComponents/AppShellComponents.swift`
 - `ios/BooksBrowser/UIComponents/AppSurface.swift`
 
@@ -61,6 +62,9 @@ Scope: `ios/BooksBrowser`
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
 - `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
 - `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；**目前 zero callsites，dormant**；新 loading state 應改用此元件而非自製 placeholder
+
+主導航 pattern：
+- `ContentView` 以 `AppPrimarySection` 定義全 app 一級資訊架構（書庫 → 單字本 → 總覽）。iPhone / iPad 保留 `TabView`；Mac Catalyst 走 `NavigationSplitView` + `.sidebar` list，將主區切換移到左側側欄，避免桌面版沿用手機底部分頁。Catalyst 不用 `List(selection:)`（iOS SDK availability unavailable），改以 sidebar `Button` row + `selectedSection` 狀態維持選取背景。
 
 #### Toast 子系統
 

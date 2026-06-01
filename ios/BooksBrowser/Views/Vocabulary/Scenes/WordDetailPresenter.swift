@@ -1,6 +1,15 @@
 import SwiftUI
 import Inject
 
+enum WordDetailInspectorMetrics {
+    static let maxContentWidth: CGFloat = 640
+    static let minReadableWidth: CGFloat = 320
+
+    static func contentWidth(containerWidth: CGFloat) -> CGFloat {
+        min(max(containerWidth, minReadableWidth), maxContentWidth)
+    }
+}
+
 struct WordDetailPresenter: View {
     @ObserveInjection private var inject
     struct State {
@@ -60,54 +69,65 @@ struct WordDetailPresenter: View {
     }
 
     private var detailContentScroll: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                VocabCard(padding: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        CardDocumentView(document: state.card.document)
-
-                        if !state.card.forms.isEmpty {
-                            CardSectionDivider()
-                            CardFormsSection(
-                                forms: state.card.forms,
-                                rootForm: state.rootForm,
-                                colorScheme: colorScheme
-                            )
-                            .padding(appSkin.metrics.cardBlockPadding)
-                        }
-
-                        if !state.card.activeLinkGroups.isEmpty || !state.card.hiddenLinks.isEmpty || onAddLink != nil {
-                            CardSectionDivider()
-                            linksSection
-                                .padding(appSkin.metrics.cardBlockPadding)
-                        }
-
-                        if let reviewProgress = state.reviewProgress {
-                            CardSectionDivider()
-                            reviewProgressSection(reviewProgress)
-                                .padding(appSkin.metrics.cardBlockPadding)
-                        }
-
-                        CardSectionDivider()
-                        metadataFooter
-                            .padding(appSkin.metrics.cardBlockPadding)
-                    }
-                }
-                .padding(appSkin.metrics.cardBlockPadding)
-
-                if let onToggleExcludeFromReader {
-                    excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
-                        .padding(.horizontal, appSkin.metrics.cardBlockPadding)
-                        .padding(.top, appSkin.metrics.cardBlockInnerGap)
-                }
-
-                Spacer()
-                    .frame(height: appSkin.metrics.cardBlockPadding * 2)
+        GeometryReader { proxy in
+            ScrollView {
+                detailContent
+                    .frame(
+                        maxWidth: WordDetailInspectorMetrics.contentWidth(containerWidth: proxy.size.width),
+                        alignment: .leading
+                    )
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
+            .scrollContentBackground(.hidden)
         }
-        .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
         .animateContentFade(state.title)
+    }
+
+    private var detailContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VocabCard(padding: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    CardDocumentView(document: state.card.document)
+
+                    if !state.card.forms.isEmpty {
+                        CardSectionDivider()
+                        CardFormsSection(
+                            forms: state.card.forms,
+                            rootForm: state.rootForm,
+                            colorScheme: colorScheme
+                        )
+                        .padding(appSkin.metrics.cardBlockPadding)
+                    }
+
+                    if !state.card.activeLinkGroups.isEmpty || !state.card.hiddenLinks.isEmpty || onAddLink != nil {
+                        CardSectionDivider()
+                        linksSection
+                            .padding(appSkin.metrics.cardBlockPadding)
+                    }
+
+                    if let reviewProgress = state.reviewProgress {
+                        CardSectionDivider()
+                        reviewProgressSection(reviewProgress)
+                            .padding(appSkin.metrics.cardBlockPadding)
+                    }
+
+                    CardSectionDivider()
+                    metadataFooter
+                        .padding(appSkin.metrics.cardBlockPadding)
+                }
+            }
+            .padding(appSkin.metrics.cardBlockPadding)
+
+            if let onToggleExcludeFromReader {
+                excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
+                    .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+                    .padding(.top, appSkin.metrics.cardBlockInnerGap)
+            }
+
+            Spacer()
+                .frame(height: appSkin.metrics.cardBlockPadding * 2)
+        }
     }
 
     private var linksSection: some View {
@@ -193,13 +213,19 @@ struct WordDetailPresenter: View {
     }
 
     private var metadataFooter: some View {
-        HStack(spacing: appSkin.metrics.cardBlockPadding) {
+        CollocationFlowLayout(spacing: AppSpacing.s2) {
             ForEach(Array(state.metadataItems.enumerated()), id: \.offset) { _, item in
                 HStack(spacing: AppSpacing.s1) {
                     Image(systemName: item.icon)
                         .font(appSkin.typography.iconTiny)
                     Text(item.text.localized)
                 }
+                .padding(.horizontal, AppSpacing.s2)
+                .padding(.vertical, AppSpacing.s1)
+                .background(
+                    Capsule()
+                        .fill(appSkin.palette.buttonIdleFill)
+                )
             }
         }
         .font(appSkin.typography.caption)

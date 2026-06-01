@@ -10,6 +10,23 @@ enum PodcastPlayerState: Equatable {
     case error(String)
 }
 
+enum PodcastPlayerBootstrapPhase: Equatable {
+    case loading
+    case missingEpisode
+    case ready
+
+    static func phase(
+        hasViewModel: Bool,
+        loadAttempted: Bool,
+        hasEpisode: Bool,
+        hasSeries: Bool
+    ) -> PodcastPlayerBootstrapPhase {
+        if hasViewModel { return .ready }
+        if loadAttempted && (!hasEpisode || !hasSeries) { return .missingEpisode }
+        return .loading
+    }
+}
+
 /// Lifecycle of the subtitle (SRT) load, tracked separately from audio.
 ///
 /// A failed subtitle fetch used to be swallowed by `try?` — audio kept
