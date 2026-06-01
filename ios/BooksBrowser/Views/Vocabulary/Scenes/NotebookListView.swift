@@ -18,6 +18,12 @@ enum NotebookActivationMode: Equatable {
     }
 }
 
+enum NotebookSelectionPolicy {
+    static func shouldDismissDetail(currentNotebookId: String?, nextNotebookId: String) -> Bool {
+        currentNotebookId != nextNotebookId
+    }
+}
+
 enum NotebookMasterDetailMetrics {
     static let leftMinimumWidth: CGFloat = 320
     static let detailMinimumWidth: CGFloat = 420
@@ -474,7 +480,7 @@ struct NotebookListView: View {
             .buttonStyle(.plain)
         case .selectInline:
             Button {
-                selectedNotebookId = notebook.remoteId
+                selectNotebookInline(notebook.remoteId)
             } label: {
                 content()
                     .overlay {
@@ -498,7 +504,12 @@ struct NotebookListView: View {
 
     private func reconcileSelectedNotebook(_ sortedNotebooks: [Notebook]) {
         guard activationMode == .selectInline else { return }
-        selectedNotebookId = selectedDetailNotebookId(from: sortedNotebooks)
+        let nextID = selectedDetailNotebookId(from: sortedNotebooks)
+        if selectedNotebookId != nextID {
+            detailState.dismiss()
+            isEditingDetailEntry = false
+        }
+        selectedNotebookId = nextID
     }
 
     @ViewBuilder
@@ -512,6 +523,17 @@ struct NotebookListView: View {
                 .id(notebookId)
         }
         .background(skin.palette.pageBackground)
+    }
+
+    private func selectNotebookInline(_ notebookId: String) {
+        if NotebookSelectionPolicy.shouldDismissDetail(
+            currentNotebookId: selectedNotebookId,
+            nextNotebookId: notebookId
+        ) {
+            detailState.dismiss()
+            isEditingDetailEntry = false
+        }
+        selectedNotebookId = notebookId
     }
 
     // MARK: - Sort Menu
