@@ -103,12 +103,26 @@ def _metadata_body_with_audioformat(series_dir: Path) -> bytes:
     return json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+def _is_not_found(exc: Exception, s3) -> bool:
+    """True iff exc is a 404 / NoSuchKey. Any other fault (perms / throttle /
+    network) must surface, not be mistaken for 'key absent' — otherwise the
+    --check reconcile both false-alarms and could false-clear (KG 鐵律 1)."""
+    nsk = getattr(getattr(s3, "exceptions", None), "NoSuchKey", ())
+    if nsk and isinstance(exc, nsk):
+        return True
+    response = getattr(exc, "response", None)
+    code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
+    return code in ("NoSuchKey", "404")
+
+
 def _key_exists(s3, bucket: str, key: str) -> bool:
     try:
         s3.head_object(Bucket=bucket, Key=key)
         return True
-    except Exception:  # noqa: BLE001 — any miss (404/NoSuchKey) → not present
-        return False
+    except Exception as exc:  # noqa: BLE001
+        if _is_not_found(exc, s3):
+            return False
+        raise  # real S3 fault — loud-fail, don't treat as absent
 
 
 def _put(s3, bucket: str, key: str, body: bytes, *, dry_run: bool) -> None:
@@ -120,10 +134,11 @@ def _put(s3, bucket: str, key: str, body: bytes, *, dry_run: bool) -> None:
 
 
 def backfill(s3, *, bucket: str, data_dir: Path, dry_run: bool = True,
-             skip_existing: bool = True, rebuild_index: bool = False) -> dict:
+             skip_existing: bool = True, rebuild_index: bool = False,
+             series_filter: list[str] | None = None) -> dict:
     """Upload every series' files to S3. Never deletes. Returns a summary."""
     data_dir = Path(data_dir)
-    series = _series_dirs(data_dir, None)
+    series = _series_dirs(data_dir, series_filter)
     planned = 0
     uploaded = 0
     skipped = 0
@@ -145,18 +160,19 @@ def backfill(s3, *, bucket: str, data_dir: Path, dry_run: bool = True,
             if not dry_run:
                 uploaded += 1
 
-    # index.json at bucket root
+    # index.json at bucket root — ALWAYS re-PUT (never skip): it's tiny and a
+    # stale/partial index left in the bucket is exactly the visibility bug we
+    # are recovering from. Last-writer-wins, same model as podcast_upload.sh.
     index_key = "index.json"
     if rebuild_index:
         body = _rebuild_index_body(series)
     else:
         idx = data_dir / "index.json"
         body = idx.read_bytes() if idx.is_file() else _rebuild_index_body(series)
-    if not (skip_existing and not dry_run and _key_exists(s3, bucket, index_key)):
-        planned += 1
-        _put(s3, bucket, index_key, body, dry_run=dry_run)
-        if not dry_run:
-            uploaded += 1
+    planned += 1
+    _put(s3, bucket, index_key, body, dry_run=dry_run)
+    if not dry_run:
+        uploaded += 1
 
     return {"series": [s.name for s in series], "planned": planned,
             "uploaded": uploaded, "skipped": skipped, "dry_run": dry_run}
@@ -173,11 +189,12 @@ def _rebuild_index_body(series: list[Path]) -> bytes:
     return json.dumps(entries, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def reconcile(s3, *, bucket: str, data_dir: Path) -> dict:
+def reconcile(s3, *, bucket: str, data_dir: Path,
+              series_filter: list[str] | None = None) -> dict:
     """Read-only disk↔S3 drift report. missing_in_s3 = on disk but not in
     bucket (the failure mode that caused the incident)."""
     data_dir = Path(data_dir)
-    series = _series_dirs(data_dir, None)
+    series = _series_dirs(data_dir, series_filter)
     expected_keys = {"index.json"}
     for sdir in series:
         for path in _series_files(sdir):
@@ -214,6 +231,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rebuild-index", action="store_true",
                    help="rebuild index.json from per-series metadata instead of "
                         "uploading the on-disk index.json verbatim")
+    p.add_argument("--series", action="append", default=None,
+                   help="limit to these series ids (repeatable); default: all on disk")
     p.add_argument("--check", action="store_true",
                    help="read-only disk↔S3 drift report; exit non-zero on drift")
     args = p.parse_args(argv)
@@ -229,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.check:
-        report = reconcile(s3, bucket=args.bucket, data_dir=data_dir)
+        report = reconcile(s3, bucket=args.bucket, data_dir=data_dir, series_filter=args.series)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         if not report["in_sync"]:
             print(f"✗ drift: {len(report['missing_in_s3'])} key(s) missing in S3", file=sys.stderr)
@@ -242,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=not args.execute,
         skip_existing=not args.no_skip_existing,
         rebuild_index=args.rebuild_index,
+        series_filter=args.series,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if report["dry_run"]:
