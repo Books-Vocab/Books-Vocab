@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: e8e4ccf3
+verified_against: 23521f39
 -->
 # Technical Reference Index
 
@@ -146,3 +146,21 @@ Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` 
 | 設定 env | `PODCAST_BUCKET` / `PODCAST_BUCKET_REGION` / `PODCAST_BUCKET_ENDPOINT_URL` / `PODCAST_BUCKET_QUOTA_BYTES` |
 | 過渡 fallback | `PODCAST_BUCKET` unset → backend 回 disk `data/podcasts/`,且 `audio.m4a` → `audio.mp3` 探測 |
 | 音頻格式 | AAC/M4A 128k `+faststart`(`TTS_OUTPUT_FORMAT=m4a`,`TTS_AAC_BITRATE=128k`) |
+
+## Cost & Billing(2026-06)
+
+| 項目 | 值 / 路徑 |
+|------|-----------|
+| AWS account | `967512079054`(ap-northeast-1) |
+| GCP billing account(Gemini) | `011E6D-6EE0E0-B1F479` |
+| DeepSeek 入口 | `https://platform.deepseek.com/usage`(無 CLI) |
+| Lightsail instance | `booksbrowser-kg-api-2gb` @ `small_3_0`(月費見 `cost_baseline.md §1`) |
+| Lightsail Object Storage | `kg-podcasts-prod` @ `medium_1_0`(月費見 `cost_baseline.md §1`) |
+| LLM usage DB | `{KG_DATA_DIR}/token_usage.db` table `token_usage` — `(user_id, call_type, input_tokens, output_tokens, provider, model, created_at)` |
+| Pricing SoT | `backend/src/kg/llm/providers.py:REGISTRY`(per-token 快照與費率變更歷史見 `cost_baseline.md §2`) |
+| Service mapping | `backend/src/kg/admin_cost_summary.py:_SERVICE_MAP` — translate / judge / pipeline / other |
+| 自家 cost endpoint | `GET /api/admin/user-cost-summary?user_id=&range={24h\|7d\|30d\|month\|all}` |
+| Lightsail 在 `aws ce` 回 $0 | Fixed bundle 不走 usage-based;查 bundle 走 `aws lightsail get-{instances,buckets}` |
+| Baseline 月費表 / drift 閾值 / 變更歷史 | `docs/reference/cost_baseline.md` **(SoT)** |
+| 月度盤點 / 異常追 SOP | `docs/sop/cost_review.md` |
+| 觸發 skill | `billing`(read-only 分析+建議,執行交給 `devops`) |

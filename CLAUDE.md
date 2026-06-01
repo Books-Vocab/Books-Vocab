@@ -22,13 +22,14 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 3. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 opus general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
 
-## Skill 系統(KG 專屬 7 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 8 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
 | `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
+| `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
 | `cleanup` | `/cleanup` 或「收尾」 | merge PRs → update docs → git cleanup → test → deploy |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
@@ -79,6 +80,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | 寫 backend test | `docs/reference/testing/backend_strategy.md` |
 | 發版前 smoke(15 分鐘) | `docs/reference/testing/smoke_checklist.md` |
 | 部署 / 用戶查詢 / 額度 / 遠端 / 維護 | 觸發 `devops` skill(內含 SOP) |
+| cost / 帳單 / 月費 / drift / 升降 bundle / 預算 | 觸發 `billing` skill;baseline 數字看 `docs/reference/cost_baseline.md` **(SoT)**;盤點 SOP 看 `docs/sop/cost_review.md` |
 | 502 / Caddy / SSL / DB 直查 / pipeline 鎖 / 用戶資料 | `docs/sop/debug.md` |
 | 部署流程 / env / migration / Sentry env | `docs/sop/deploy.md` |
 | backend 測試 / uv / provider registry / 任務派遣 | `docs/sop/backend.md` |
@@ -112,5 +114,6 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 - 新增 user-facing feature(iOS / backend / admin / chrome) → 同 PR 在 `docs/reference/product_surface.md` 追加 bullet
 - iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
 - sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
+- `backend/src/kg/llm/providers.py:REGISTRY` 費率變動 / Lightsail bundle 變更 / 新供應商接入 → 同 PR 更新 `docs/reference/cost_baseline.md`(對應段 §2 pricing / §1 月費表 / §5 變更歷史)
 - iOS 大規模重構 PR 合併後執行 `ops/gen_ios_baseline.sh` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改)
 - PR 開出前跑 `ops/docs_lint.sh` 確認 frontmatter 完整 + verified_against 沒落後 HEAD 超過 30 commit;PR template(`.github/PULL_REQUEST_TEMPLATE.md`)Doc-Sync 段必須逐項勾選或明示不適用
