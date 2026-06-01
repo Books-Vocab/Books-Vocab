@@ -301,6 +301,38 @@ def test_audio_format_probes_bucket_when_metadata_lacks_field(monkeypatch, _clea
     assert _podcast_mod._audio_filename(req, "legacy_mp3", 1) == "audio.mp3"
 
 
+def test_audio_format_probe_propagates_non_404(monkeypatch, _clear_audio_fmt_cache):
+    """A real S3 fault (e.g. AccessDenied) during the probe must surface loud
+    (502), NOT silently default to m4a and pin it in cache (鐵律 1: no silent
+    fallback)."""
+    from fastapi import HTTPException
+
+    req = _s3_request()
+    monkeypatch.setattr(
+        _podcast_mod, "_read_json_from_s3",
+        lambda request, key, *, context: {"title": "x"},  # no audioFormat → probe
+    )
+
+    class _NoSuchKey(Exception):
+        pass
+
+    class _AccessDenied(Exception):
+        def __init__(self):
+            self.response = {"Error": {"Code": "AccessDenied"}}
+
+    class _FakeS3:
+        exceptions = SimpleNamespace(NoSuchKey=_NoSuchKey)
+
+        def head_object(self, Bucket, Key):  # noqa: N803
+            raise _AccessDenied()
+
+    monkeypatch.setattr(_podcast_mod, "_s3_client", lambda request: _FakeS3())
+    with pytest.raises(HTTPException) as ei:
+        _podcast_mod._audio_filename(req, "legacy", 1)
+    assert ei.value.status_code == 502
+    assert ("kg-podcasts-prod", "legacy") not in _podcast_mod._S3_AUDIO_FMT_CACHE
+
+
 def test_audio_format_cached_per_series_s3(monkeypatch, _clear_audio_fmt_cache):
     """Format resolved once per (bucket, series): metadata read is not repeated
     on subsequent audio requests (streaming issues many Range calls)."""
