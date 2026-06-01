@@ -33,6 +33,7 @@ struct KGVocabView: View {
     @State private var selectedReviewStates: Set<VocabularyReviewState> = []
     @State private var sortOption: KGVocabSortOption = .default
     @State private var selectionState = SelectionModeState()
+    @State private var selectedRowID: UUID?
     @State private var showLoginSheet = false
     @Query private var pendingDeletes: [VocabularyEntry]
 
@@ -135,7 +136,8 @@ struct KGVocabView: View {
                 description: emptyStateDescription,
                 action: emptyStateAction
             ),
-            reviewCTA: reviewCTA
+            reviewCTA: reviewCTA,
+            selectedRowID: selectedRowID
         )
 
         return KGVocabPresenter(
@@ -180,6 +182,11 @@ struct KGVocabView: View {
         }
         .onChange(of: filteredEntries.count) { _, newCount in
             selectionState.updateVisibleCount(newCount)
+        }
+        .onChange(of: filteredEntries.map(\.id)) { _, ids in
+            if let selectedRowID, !ids.contains(selectedRowID) {
+                self.selectedRowID = nil
+            }
         }
         .toolbar {
             if selectionState.isSelecting {
@@ -309,6 +316,7 @@ struct KGVocabView: View {
     // MARK: - Helpers
 
     private func handleRowTap(_ entryID: UUID) {
+        selectedRowID = entryID
         coordinator.handleRowTap(entryID, syncedEntries: syncedEntries)
     }
 

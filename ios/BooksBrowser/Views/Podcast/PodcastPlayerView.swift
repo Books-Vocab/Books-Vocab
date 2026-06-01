@@ -54,6 +54,15 @@ struct PodcastPlayerView: View {
         loadedEpisode?.series
     }
 
+    private var bootstrapPhase: PodcastPlayerBootstrapPhase {
+        PodcastPlayerBootstrapPhase.phase(
+            hasViewModel: viewModel != nil,
+            loadAttempted: loadedEpisodeId == episodeId,
+            hasEpisode: loadedEpisode != nil,
+            hasSeries: loadedSeries != nil
+        )
+    }
+
     private static let activeNotebookIdKey = "activeNotebookId"
 
     private var vocabularyContext: PodcastVocabularyContext? {
@@ -137,7 +146,12 @@ struct PodcastPlayerView: View {
                         toastCoordinator.info(L10n.string("podcast.sleepTimer.fired.toast"))
                     }
             } else {
-                ProgressView(L10n.string("載入中…"))
+                switch bootstrapPhase {
+                case .loading, .ready:
+                    ProgressView(L10n.string("載入中…"))
+                case .missingEpisode:
+                    missingEpisodeView
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -218,6 +232,26 @@ struct PodcastPlayerView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { saveProgress() }
         }
+    }
+
+    private var missingEpisodeView: some View {
+        VStack(spacing: skin.spacing.sectionGap) {
+            Image(systemName: "waveform.badge.exclamationmark")
+                .font(skin.typography.symbolHero)
+                .foregroundStyle(skin.palette.secondaryText)
+            Text(L10n.string("podcast.player.missingEpisode.title"))
+                .font(skin.typography.sectionTitle)
+                .foregroundStyle(skin.palette.primaryText)
+            Text(L10n.string("podcast.player.missingEpisode.description"))
+                .font(skin.typography.caption)
+                .foregroundStyle(skin.palette.secondaryText)
+                .multilineTextAlignment(.center)
+            Button(L10n.string("重試")) { reloadEpisode() }
+                .buttonStyle(.appCompactAction(.primary))
+        }
+        .padding(AppSpacing.s6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.palette.pageBackground)
     }
 
     @ViewBuilder

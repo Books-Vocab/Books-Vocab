@@ -14,22 +14,22 @@ verified_against: 226c306c
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerView.swift` | ~560 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列。`wrapInNavigation: Bool = false` 參數：預設 false → push caller（BookshelfView `navigationDestination`）沿用父 `NavigationStack`；雙欄右欄 inline 嵌入傳 true → 自帶 `NavigationStack` host 住設定 `ToolbarItem(.topBarTrailing)`（`.topBarTrailing` 需 ambient nav bar） |
-| `PodcastEpisodeListView.swift` | ~430 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View`。Mac/iPad regular 走左右雙欄（左集數列表常駐 + 右欄 inline player，點集數即時 swap，選中 row 染 `accentSubtle`，靠 `detailRouter.show` 不 push）；iPhone compact 沿用 value-based `NavigationLink push`（freeze-fix 契約，見檔頭註解）。分支以 `LayoutMode(horizontalSizeClass:).usesInlineDetail` 切換 |
+| `PodcastPlayerView.swift` | ~590 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列。`wrapInNavigation: Bool = false` 參數：預設 false → push caller（BookshelfView `navigationDestination`）沿用父 `NavigationStack`；雙欄右欄 inline 嵌入傳 true → 自帶 `NavigationStack` host 住設定 `ToolbarItem(.topBarTrailing)`（`.topBarTrailing` 需 ambient nav bar）。啟動期透過 `PodcastPlayerBootstrapPhase` 區分未嘗試載入、已嘗試但 SwiftData 缺 episode/series、播放器 ready，避免 missing local row 時永久 spinner |
+| `PodcastEpisodeListView.swift` | ~450 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View`。Mac/iPad regular 走左右雙欄（左集數列表常駐 + 右欄 inline player，點集數或頂部開始/繼續播放 CTA 即時 swap，選中 row 染 `accentSubtle`，靠 `detailRouter.show` 不 push）；iPhone compact 沿用 value-based `NavigationLink push`（freeze-fix 契約，見檔頭註解）。分支以 `PodcastEpisodeActivation.activation(..., layoutMode:)` 集中切換 |
 | `PodcastSentenceLevelView.swift` | ~390 | 句級字幕 + 長按整句翻譯 + 點詞查詞 + follow-mode pill `struct PodcastSentenceLevelView: View`（iPhone/iPad：拖曳隱式脫離 follow，pill 僅在脫離時顯示；Mac Catalyst：滑鼠滾輪/觸控板 indirect scroll 不觸發 DragGesture，pill 常駐為明確 toggle「停止跟隨 ⇄ 追隨當前」，邏輯在 `shouldShowFollowControl`） |
 
 ### Master-Detail Layer（Mac/iPad 雙欄）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastDetailRouter.swift` | ~30 | `@Observable` 集數 master-detail 狀態（`selectedEpisodeRemoteId` / `show` / `dismiss` / `hasDetail`），鏡射 vocab/notebook detail router。透過 `\.podcastDetailRouter` environment 注入。compact 下右欄不掛，`selectedEpisodeRemoteId` 恆 nil |
+| `PodcastDetailRouter.swift` | ~45 | `@Observable` 集數 master-detail 狀態（`selectedEpisodeRemoteId` / `show` / `dismiss` / `hasDetail`），鏡射 vocab/notebook detail router；同檔 `PodcastEpisodeActivation` 是 compact push vs regular inline detail 的單一決策點。透過 `\.podcastDetailRouter` environment 注入。compact 下右欄不掛，`selectedEpisodeRemoteId` 恆 nil |
 | `PodcastDetailPresentation.swift` | 74 | `struct PodcastDetailPresentation: ViewModifier`（`.podcastDetailPresentation(router:layoutMode:)`），鏡射 `NotebookDetailPresentation`。inline mode（iPad/Mac regular）右側 `safeAreaInset(edge:.trailing)` 掛可拖拉 panel（複用 `DraggableDivider` + `@AppStorage("kg_podcast_panel_width")` + `MacDetailPanelMetrics`），單一 `PodcastPlayerView(wrapInNavigation:true)` 靠 `.task(id:)` swap 集數；compact 不掛右欄。`layoutMode` 退出 inline 時 `router.dismiss()` |
 
 ### ViewModel Layer（播放狀態機）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerViewModel.swift` | ~355 | `@Observable @MainActor final class PodcastPlayerViewModel`,播放/暫停/seek + auto-pause-on-lookup + per-user progress LWW sync + sleep timer(`sleepTimerMode` / `sleepDeadline` / `DispatchSourceTimer` wall-clock;`.endOfEpisode` 由 audio engine load 換集 callback reset) + `bufferedEnd`(YouTube-style buffer overlay) + `subtitleState: PodcastSubtitleLoadState`(idle/loading/loaded/failed + inline retry) + `onSystemPause` / `onSystemResume` interruption hooks + `prefetchedDurationSec` + `audioHTTPHeaders` 透傳 + `stop()`(session-internal teardown) vs `shutdown()`(terminal cleanup) |
+| `PodcastPlayerViewModel.swift` | ~375 | `@Observable @MainActor final class PodcastPlayerViewModel`,播放/暫停/seek + auto-pause-on-lookup + per-user progress LWW sync + sleep timer(`sleepTimerMode` / `sleepDeadline` / `DispatchSourceTimer` wall-clock;`.endOfEpisode` 由 audio engine load 換集 callback reset) + `bufferedEnd`(YouTube-style buffer overlay) + `subtitleState: PodcastSubtitleLoadState`(idle/loading/loaded/failed + inline retry) + `PodcastPlayerBootstrapPhase`(播放器啟動期 loading / missingEpisode / ready 分類) + `onSystemPause` / `onSystemResume` interruption hooks + `prefetchedDurationSec` + `audioHTTPHeaders` 透傳 + `stop()`(session-internal teardown) vs `shutdown()`(terminal cleanup) |
 
 ### Domain / Integration（翻譯與詞彙橋接）
 
@@ -62,7 +62,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastControlsView.swift` | 148 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target） |
+| `PodcastControlsView.swift` | ~150 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target；seek bar 整條 20pt hit area 可點/拖，幾何換算由 `PodcastSeekBarGeometry` 測試鎖住） |
 | `PodcastEpisodeRow.swift` | 130 | 單集 list row（標題、長度、追蹤 chevron），row 節奏 token 對齊 `WordRow` |
 | `PodcastSubtitleView.swift` | 55 | 字幕單行渲染 |
 | `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數。**呈現方式**:`PodcastPlayerView` 從 ToolbarItem 以 `.sheet`(`NavigationStack` + 完成鈕)叫出，**非** `.popover`——toolbar-anchored `.popover` 在 Mac Catalyst present 過場 trap(`ops/catalyst_lint.sh` 守門) |
@@ -76,7 +76,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerMetrics.swift` | 11 | 播放器 feature-local 尺寸常數 |
+| `PodcastPlayerMetrics.swift` | ~35 | 播放器 feature-local 尺寸常數 + `PodcastSeekBarGeometry` 純幾何 helper（track position → time / progress width / buffered width） |
 
 ---
 

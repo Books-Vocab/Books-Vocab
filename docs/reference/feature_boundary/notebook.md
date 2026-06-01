@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: c642ed18
+verified_against: c9f2ce50
 -->
 # Notebook Feature Boundary
 
@@ -21,7 +21,7 @@ verified_against: c642ed18
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/NotebookListView.swift` | ~520 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
+| `Scenes/NotebookListView.swift` | ~650 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**Desktop master-detail** — `NotebookActivationMode` 在 compact 維持 `NavigationLink` push；regular / Catalyst 改為 row button selection，右側 `safeAreaInset` inline 掛 `VocabularyListView(notebookId:)`，由 `NotebookMasterDetailMetrics` 鎖右欄 420–720pt 並保留左欄至少 320pt；`NotebookSelectionPolicy` 確保切換 notebook 時 dismiss 舊 word detail / edit sheet，避免跨 notebook 殘留第三欄內容。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
 | `Scenes/NotebookListCoordinator.swift` | 282 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原） |
 | `Scenes/NotebookEditSheet.swift` | 279 | `struct NotebookEditSheet: View`，建立/編輯 notebook sheet（含 cover system 選色/選 pattern/匯入照片） |
 

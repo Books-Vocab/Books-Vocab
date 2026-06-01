@@ -138,6 +138,120 @@ enum ReaderPresentationMetrics {
     }
 }
 
+enum ReaderOverlayPanelPlacement: Equatable {
+    case centeredBottom
+    case trailingInspector
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .trailingInspector : .centeredBottom
+    }
+
+    var alignment: Alignment {
+        switch self {
+        case .centeredBottom: return .center
+        case .trailingInspector: return .trailing
+        }
+    }
+
+    var horizontalInset: CGFloat {
+        switch self {
+        case .centeredBottom: return AppSpacing.s4
+        case .trailingInspector: return AppSpacing.s5
+        }
+    }
+
+    var bottomInset: CGFloat {
+        switch self {
+        case .centeredBottom: return ReaderPresentationMetrics.Overlay.bottomInset
+        case .trailingInspector: return AppSpacing.s5
+        }
+    }
+
+    var maxWidth: CGFloat {
+        switch self {
+        case .centeredBottom: return ReaderPresentationMetrics.Overlay.panelMaxWidth
+        case .trailingInspector: return 460
+        }
+    }
+}
+
+enum ReaderPanelChromeStyle: Equatable {
+    case bottomSheet
+    case floatingInspector
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .floatingInspector : .bottomSheet
+    }
+
+    var showsDragHandle: Bool {
+        self == .bottomSheet
+    }
+
+    var allowsDragDismiss: Bool {
+        self == .bottomSheet
+    }
+
+    var contentTopInset: CGFloat {
+        switch self {
+        case .bottomSheet: return 0
+        case .floatingInspector: return AppSpacing.s4
+        }
+    }
+}
+
+enum ReaderTOCPresentation: Equatable {
+    case compact
+    case regular
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .regular : .compact
+    }
+
+    var contentMaxWidth: CGFloat {
+        switch self {
+        case .compact: return .infinity
+        case .regular: return 560
+        }
+    }
+
+    var stateCardMaxWidth: CGFloat {
+        switch self {
+        case .compact: return .infinity
+        case .regular: return 440
+        }
+    }
+
+    var horizontalPadding: CGFloat {
+        switch self {
+        case .compact: return 0
+        case .regular: return AppSpacing.s5
+        }
+    }
+}
+
+enum ReaderNotebookPickerPresentation: Equatable {
+    case compact
+    case regular
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .regular : .compact
+    }
+
+    var contentMaxWidth: CGFloat {
+        switch self {
+        case .compact: return .infinity
+        case .regular: return 500
+        }
+    }
+
+    var horizontalPadding: CGFloat {
+        switch self {
+        case .compact: return 0
+        case .regular: return AppSpacing.s5
+        }
+    }
+}
+
 private extension ReaderContentStyle {
     static let vocab = ReaderContentStyle(
         pageGutterTop: 76,

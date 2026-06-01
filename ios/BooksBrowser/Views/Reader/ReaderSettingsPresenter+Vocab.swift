@@ -8,17 +8,22 @@ extension ReaderSettingsPresenter {
     // MARK: Layout
 
     var vocabLayout: some View {
-        VocabCard(padding: 0) {
+        let chrome = ReaderPanelChromeStyle(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
+
+        return VocabCard(padding: 0) {
             VStack(spacing: 0) {
-                Capsule(style: .continuous)
-                    .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
-                    .frame(
-                        width: ReaderMetrics.settingsHandleWidth,
-                        height: ReaderMetrics.settingsHandleHeight
-                    )
-                    .padding(.top, ReaderMetrics.settingsHandleTopInset)
-                    .padding(.bottom, ReaderMetrics.settingsHandleBottomInset)
+                if chrome.showsDragHandle {
+                    Capsule(style: .continuous)
+                        .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
+                        .frame(
+                            width: ReaderMetrics.settingsHandleWidth,
+                            height: ReaderMetrics.settingsHandleHeight
+                        )
+                        .padding(.top, ReaderMetrics.settingsHandleTopInset)
+                        .padding(.bottom, ReaderMetrics.settingsHandleBottomInset)
+                }
                 vocabHeaderBlock
+                    .padding(.top, chrome.contentTopInset)
                 ScrollView {
                     // Mochi 北極星 #2：群組分隔靠 AppAirDivider + 留白,
                     // 不再用 settings card 背景色塊包每個 section。

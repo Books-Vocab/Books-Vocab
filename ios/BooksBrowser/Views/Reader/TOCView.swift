@@ -17,66 +17,78 @@ struct TOCView: View {
     let onSelect: (ReadiumShared.Link) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var tocLinks: [ReadiumShared.Link] = []
     @State private var loadState: LoadState = .loading
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch loadState {
-                case .loading:
-                    VStack {
-                        Spacer()
-                        AppStateMessageCard(
-                            title: "載入目錄中".localized,
-                            systemImage: "text.book.closed",
-                            description: "正在整理這本書的章節結構。".localized
-                        ) {
-                            ProgressView()
-                                .controlSize(.small)
+        let presentation = ReaderTOCPresentation(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
+
+        return NavigationStack {
+            ZStack {
+                appTheme.palette.pageBackground.ignoresSafeArea()
+
+                Group {
+                    switch loadState {
+                    case .loading:
+                        VStack {
+                            Spacer()
+                            AppStateMessageCard(
+                                title: "載入目錄中".localized,
+                                systemImage: "text.book.closed",
+                                description: "正在整理這本書的章節結構。".localized
+                            ) {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            .frame(maxWidth: presentation.stateCardMaxWidth)
+                            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                            Spacer()
                         }
-                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                        Spacer()
-                    }
-                case .loaded:
-                    List {
-                        ForEach(tocLinks.indices, id: \.self) { index in
-                            let link = tocLinks[index]
-                            Button {
-                                onSelect(link)
-                                dismiss()
-                            } label: {
-                                Text(link.title ?? "Untitled")
-                                    .font(AppFonts.body())
+                    case .loaded:
+                        List {
+                            ForEach(tocLinks.indices, id: \.self) { index in
+                                let link = tocLinks[index]
+                                Button {
+                                    onSelect(link)
+                                    dismiss()
+                                } label: {
+                                    Text(link.title ?? "Untitled")
+                                        .font(AppFonts.body())
+                                }
                             }
                         }
-                    }
-                case .empty:
-                    VStack {
-                        Spacer()
-                        AppEmptyStateCard(
-                            title: "這本書沒有目錄".localized,
-                            systemImage: "list.bullet.rectangle",
-                            description: "出版內容沒有提供可導覽的章節列表。".localized
-                        )
-                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                        Spacer()
-                    }
-                case .failed(let message):
-                    VStack {
-                        Spacer()
-                        AppStateMessageCard(
-                            title: "目錄載入失敗".localized,
-                            systemImage: "exclamationmark.triangle.fill",
-                            description: message
-                        )
-                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                        Spacer()
+                        .listStyle(.plain)
+                    case .empty:
+                        VStack {
+                            Spacer()
+                            AppEmptyStateCard(
+                                title: "這本書沒有目錄".localized,
+                                systemImage: "list.bullet.rectangle",
+                                description: "出版內容沒有提供可導覽的章節列表。".localized
+                            )
+                            .frame(maxWidth: presentation.stateCardMaxWidth)
+                            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                            Spacer()
+                        }
+                    case .failed(let message):
+                        VStack {
+                            Spacer()
+                            AppStateMessageCard(
+                                title: "目錄載入失敗".localized,
+                                systemImage: "exclamationmark.triangle.fill",
+                                description: message
+                            )
+                            .frame(maxWidth: presentation.stateCardMaxWidth)
+                            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                            Spacer()
+                        }
                     }
                 }
+                .frame(maxWidth: presentation.contentMaxWidth)
+                .padding(.horizontal, presentation.horizontalPadding)
             }
             .animatePhaseChange(tocLinks.isEmpty)
-            .background(appTheme.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("目錄".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
