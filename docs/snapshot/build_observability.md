@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksBrowser/
   - ops/
-verified_against: d96d08ca
+verified_against: a17b7c4d
 -->
 # Build 可觀測性
 
