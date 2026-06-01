@@ -8,6 +8,9 @@
 "(無法讀取)" = "(읽을 수 없음)";
 "AI 翻譯・知識圖譜・雲端同步" = "AI 번역・지식 그래프・클라우드 동기화";
 "English" = "English";
+"app.section.bookshelf" = "라이브러리";
+"app.section.notebooks" = "단어장";
+"app.section.overview" = "개요";
 "API 錯誤：%@" = "API 오류: %@";
 "KG 伺服器未連線" = "KG 서버 미연결";
 "KG 伺服器錯誤：%@" = "KG 서버 오류: %@";
@@ -819,6 +822,7 @@
 "podcast.controls.playpause.play" = "재생";
 "podcast.controls.playpause.pause" = "일시정지";
 "podcast.controls.cycleRate" = "재생 속도 전환";
+"podcast.controls.seek" = "재생 위치";
 "podcast.player.subtitleSettings" = "자막 설정";
 
 // MARK: - Podcast episode row a11y (track-9)

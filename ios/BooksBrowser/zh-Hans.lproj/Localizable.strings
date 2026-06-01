@@ -8,6 +8,9 @@
 "(無法讀取)" = "(无法读取)";
 "AI 翻譯・知識圖譜・雲端同步" = "AI 翻译・知识图谱・云端同步";
 "English" = "English";
+"app.section.bookshelf" = "书库";
+"app.section.notebooks" = "单字本";
+"app.section.overview" = "总览";
 "API 錯誤：%@" = "API 错误：%@";
 "KG 伺服器未連線" = "KG 服务器未连线";
 "KG 伺服器錯誤：%@" = "KG 服务器错误：%@";
@@ -819,6 +822,7 @@
 "podcast.controls.playpause.play" = "播放";
 "podcast.controls.playpause.pause" = "暂停";
 "podcast.controls.cycleRate" = "切换播放速率";
+"podcast.controls.seek" = "播放进度";
 "podcast.player.subtitleSettings" = "字幕设置";
 
 // MARK: - Podcast episode row a11y (track-9)

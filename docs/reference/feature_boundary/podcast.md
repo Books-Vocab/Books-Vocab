@@ -62,7 +62,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastControlsView.swift` | 148 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target） |
+| `PodcastControlsView.swift` | ~150 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target；seek bar 整條 20pt hit area 可點/拖，幾何換算由 `PodcastSeekBarGeometry` 測試鎖住） |
 | `PodcastEpisodeRow.swift` | 130 | 單集 list row（標題、長度、追蹤 chevron），row 節奏 token 對齊 `WordRow` |
 | `PodcastSubtitleView.swift` | 55 | 字幕單行渲染 |
 | `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數。**呈現方式**:`PodcastPlayerView` 從 ToolbarItem 以 `.sheet`(`NavigationStack` + 完成鈕)叫出，**非** `.popover`——toolbar-anchored `.popover` 在 Mac Catalyst present 過場 trap(`ops/catalyst_lint.sh` 守門) |
@@ -76,7 +76,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerMetrics.swift` | 11 | 播放器 feature-local 尺寸常數 |
+| `PodcastPlayerMetrics.swift` | ~35 | 播放器 feature-local 尺寸常數 + `PodcastSeekBarGeometry` 純幾何 helper（track position → time / progress width / buffered width） |
 
 ---
 

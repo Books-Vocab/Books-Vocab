@@ -8,6 +8,9 @@
 "(無法讀取)" = "(読み取り不可)";
 "AI 翻譯・知識圖譜・雲端同步" = "AI翻訳・ナレッジグラフ・クラウド同期";
 "English" = "English";
+"app.section.bookshelf" = "ライブラリ";
+"app.section.notebooks" = "単語帳";
+"app.section.overview" = "概要";
 "API 錯誤：%@" = "APIエラー：%@";
 "KG 伺服器未連線" = "KGサーバー未接続";
 "KG 伺服器錯誤：%@" = "KGサーバーエラー：%@";
@@ -818,6 +821,7 @@
 "podcast.controls.playpause.play" = "再生";
 "podcast.controls.playpause.pause" = "一時停止";
 "podcast.controls.cycleRate" = "再生速度を切り替え";
+"podcast.controls.seek" = "再生位置";
 "podcast.player.subtitleSettings" = "字幕設定";
 
 // MARK: - Podcast episode row a11y (track-9)
