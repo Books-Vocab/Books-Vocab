@@ -21,9 +21,12 @@ struct ReaderNotebookPicker: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        NavigationStack {
+        let presentation = ReaderNotebookPickerPresentation(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
+
+        return NavigationStack {
             List {
                 // 跟隨全域設定
                 Section {
@@ -99,6 +102,10 @@ struct ReaderNotebookPicker: View {
                         .font(AppFonts.caption(weight: .medium))
                 }
             }
+            .frame(maxWidth: presentation.contentMaxWidth)
+            .padding(.horizontal, presentation.horizontalPadding)
+            .frame(maxWidth: .infinity)
+            .background(theme.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("選擇單字本".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

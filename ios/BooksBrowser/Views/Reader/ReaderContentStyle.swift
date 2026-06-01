@@ -229,6 +229,29 @@ enum ReaderTOCPresentation: Equatable {
     }
 }
 
+enum ReaderNotebookPickerPresentation: Equatable {
+    case compact
+    case regular
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .regular : .compact
+    }
+
+    var contentMaxWidth: CGFloat {
+        switch self {
+        case .compact: return .infinity
+        case .regular: return 500
+        }
+    }
+
+    var horizontalPadding: CGFloat {
+        switch self {
+        case .compact: return 0
+        case .regular: return AppSpacing.s5
+        }
+    }
+}
+
 private extension ReaderContentStyle {
     static let vocab = ReaderContentStyle(
         pageGutterTop: 76,

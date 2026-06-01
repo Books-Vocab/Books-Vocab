@@ -51,4 +51,18 @@ struct ReaderOverlayPanelPlacementTests {
         #expect(presentation.stateCardMaxWidth == 440)
         #expect(presentation.horizontalPadding == AppSpacing.s5)
     }
+
+    @Test func compactNotebookPickerUsesFullWidthSheetContent() {
+        let presentation = ReaderNotebookPickerPresentation(layoutMode: .compact)
+
+        #expect(presentation.contentMaxWidth == .infinity)
+        #expect(presentation.horizontalPadding == 0)
+    }
+
+    @Test func regularNotebookPickerConstrainShortChoiceList() {
+        let presentation = ReaderNotebookPickerPresentation(layoutMode: .regular)
+
+        #expect(presentation.contentMaxWidth == 500)
+        #expect(presentation.horizontalPadding == AppSpacing.s5)
+    }
 }
