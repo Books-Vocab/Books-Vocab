@@ -100,6 +100,17 @@ enum ReaderPresentationMetrics {
         static let topInset: CGFloat = 8
         static let bottomInset: CGFloat = 8
         static let panelMaxWidth: CGFloat = 520
+        static let trailingInspectorMaxWidth: CGFloat = 460
+    }
+
+    /// Max content widths for regular-layout (Mac/iPad) inline panels, kept
+    /// here so the per-presentation getters reference named constants rather
+    /// than scattering bare literals (matches MacDetailPanelMetrics /
+    /// NotebookMasterDetailMetrics convention).
+    enum RegularPanel {
+        static let tocContentMaxWidth: CGFloat = 560
+        static let tocStateCardMaxWidth: CGFloat = 440
+        static let notebookPickerContentMaxWidth: CGFloat = 500
     }
 
     enum Header {
@@ -170,7 +181,7 @@ enum ReaderOverlayPanelPlacement: Equatable {
     var maxWidth: CGFloat {
         switch self {
         case .centeredBottom: return ReaderPresentationMetrics.Overlay.panelMaxWidth
-        case .trailingInspector: return 460
+        case .trailingInspector: return ReaderPresentationMetrics.Overlay.trailingInspectorMaxWidth
         }
     }
 }
@@ -210,14 +221,14 @@ enum ReaderTOCPresentation: Equatable {
     var contentMaxWidth: CGFloat {
         switch self {
         case .compact: return .infinity
-        case .regular: return 560
+        case .regular: return ReaderPresentationMetrics.RegularPanel.tocContentMaxWidth
         }
     }
 
     var stateCardMaxWidth: CGFloat {
         switch self {
         case .compact: return .infinity
-        case .regular: return 440
+        case .regular: return ReaderPresentationMetrics.RegularPanel.tocStateCardMaxWidth
         }
     }
 
@@ -240,7 +251,7 @@ enum ReaderNotebookPickerPresentation: Equatable {
     var contentMaxWidth: CGFloat {
         switch self {
         case .compact: return .infinity
-        case .regular: return 500
+        case .regular: return ReaderPresentationMetrics.RegularPanel.notebookPickerContentMaxWidth
         }
     }
 
