@@ -274,8 +274,103 @@ workspaces/<slug>_<hash>/
 
 ## Agent 行為指引
 
-1. 確認 EPUB 路徑存在
-2. 執行 `uv run pipeline.py <path>`
-3. 若失敗，讀 `pipeline_log.jsonl` 和 review 檔案判斷原因
-4. 用 `--skip-to` 從斷點續跑
-5. 完成後告知：workspace 路徑、各集音訊長度、檔案大小
+### 偵測 dashboard
+
+```bash
+curl -sf --max-time 2 http://127.0.0.1:8765/api/workspaces > /dev/null \
+  && echo API || echo CLI
+```
+
+- **API**（dashboard 在跑）→ 走下方「HTTP API 路徑」
+- **CLI**（dashboard 不在）→ 走下方「直接 CLI fallback」
+
+---
+
+### HTTP API 路徑（優先）
+
+GUI 可完整監控：jobs panel、kill、APPROVE 按鈕、SSE 即時 feed 全部有效。
+
+```bash
+cd /Users/chenliangyu/kg/lab/podcast
+
+# 1. 確保 dashboard 啟動（idempotent）
+./start.sh
+
+# 2. 上傳 EPUB 並啟動全流程（停在 plan gate）
+JOB=$(curl -sf -X POST http://127.0.0.1:8765/api/pipeline/start \
+  -F "epub=@/path/to/book.epub" -F "parallel=3" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+
+# 3. Poll job 直到 gate 或完成（每 15s 查一次）
+while true; do
+  STATUS=$(curl -sf "http://127.0.0.1:8765/api/jobs/$JOB?log_bytes=0" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['status'])")
+  echo "job $JOB: $STATUS"
+  [ "$STATUS" != "running" ] && break
+  sleep 15
+done
+
+# 4. 查 workspace 名（從 jobs API 取 metadata.workspace）
+WS=$(curl -sf "http://127.0.0.1:8765/api/jobs/$JOB?log_bytes=0" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('metadata',{}).get('workspace',''))")
+
+# 5. Plan gate → 審 plan/overview.md + plan/review.md 後 approve
+curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/approve?gate=plan"
+# （approve 會自動 spawn resume，不用另外 resume）
+
+# 6. Poll 到 script gate，審後 approve
+curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/approve?gate=script"
+
+# 7. Poll 到 done，上傳到 S3
+curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/upload"
+```
+
+**Resume / 重跑單 stage**（pipeline 中途斷掉）：
+
+```bash
+# 從斷點自動續跑
+curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/resume"
+
+# 只重跑某 stage（例如 scriptwrite 第 2 集）
+curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/rerun?stage=scriptwrite&episode=2&drop_marker=true"
+```
+
+**失敗診斷**：
+
+```bash
+# 看 job log 最後 8KB
+curl -sf "http://127.0.0.1:8765/api/jobs/$JOB?log_bytes=8192" | python3 -c "import sys,json; print(json.load(sys.stdin)['log'])"
+
+# 也可直接讀 jsonl
+grep '"error"' workspaces/$WS/pipeline_log.jsonl
+```
+
+---
+
+### 直接 CLI fallback
+
+dashboard 未啟動時使用。GUI 的 jobs panel 看不到此 process，但 SSE feed + stage 進度仍會反映（dashboard 若之後再啟動可補看）。
+
+```bash
+cd /Users/chenliangyu/kg/lab/podcast
+
+# 全流程
+uv run pipeline.py /path/to/book.epub
+
+# 自動續跑
+uv run pipeline.py workspaces/<name>/
+
+# 查進度
+uv run pipeline.py workspaces/<name>/ --status
+
+# Gate 核准
+touch workspaces/<name>/.plan_approved   && uv run pipeline.py workspaces/<name>/
+touch workspaces/<name>/.script_approved && uv run pipeline.py workspaces/<name>/
+```
+
+若失敗：讀 `pipeline_log.jsonl` 和 review 檔案判斷原因，用 `--skip-to` 從斷點續跑。
+
+---
+
+### 完成後回報
+
+workspace 路徑、各集音訊長度（`ffprobe` 或 `/api/workspace/{ws}/episodes`）、總檔案大小。
