@@ -8,6 +8,9 @@
 "(無法讀取)" = "(읽을 수 없음)";
 "AI 翻譯・知識圖譜・雲端同步" = "AI 번역・지식 그래프・클라우드 동기화";
 "English" = "English";
+"app.section.bookshelf" = "라이브러리";
+"app.section.notebooks" = "단어장";
+"app.section.overview" = "개요";
 "API 錯誤：%@" = "API 오류: %@";
 "KG 伺服器未連線" = "KG 서버 미연결";
 "KG 伺服器錯誤：%@" = "KG 서버 오류: %@";
@@ -819,6 +822,7 @@
 "podcast.controls.playpause.play" = "재생";
 "podcast.controls.playpause.pause" = "일시정지";
 "podcast.controls.cycleRate" = "재생 속도 전환";
+"podcast.controls.seek" = "재생 위치";
 "podcast.player.subtitleSettings" = "자막 설정";
 
 // MARK: - Podcast episode row a11y (track-9)
@@ -903,3 +907,5 @@
 "部分匯入失敗" = "일부 가져오기에 실패했습니다";
 "%@ 本匯入失敗" = "%@권 가져오기 실패";
 "已匯入 %@ 本，%@ 本失敗" = "%@권 가져옴, %@권 실패";
+"podcast.player.missingEpisode.title" = "에피소드가 아직 동기화되지 않았습니다";
+"podcast.player.missingEpisode.description" = "이 에피소드의 로컬 데이터가 아직 준비되지 않았습니다. 잠시 후 다시 시도하거나 보관함으로 돌아가 다시 동기화하세요.";

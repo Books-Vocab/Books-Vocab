@@ -290,17 +290,34 @@ struct PodcastEpisodeListView: View {
                 return L10n.string("開始播放")
             }()
             let icon = unavailable ? "icloud.slash" : "play.fill"
-            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
-                Label(label, systemImage: icon)
-            }
-            .buttonStyle(.appAction(.primary))
-            .disabled(unavailable || navigationLocked)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    beginNavigationLock()
+            switch PodcastEpisodeActivation.activation(
+                episodeRemoteId: target.remoteId,
+                layoutMode: layoutMode
+            ) {
+            case .inlineDetail(let episodeRemoteId):
+                Button {
+                    detailRouter.show(episodeRemoteId: episodeRemoteId)
+                    warmConnection(for: target)
+                } label: {
+                    Label(label, systemImage: icon)
                 }
-            )
-            .frame(maxWidth: 280)
+                .buttonStyle(.appAction(.primary))
+                .disabled(unavailable)
+                .frame(maxWidth: 280)
+            case .push(let route):
+                NavigationLink(value: route) {
+                    Label(label, systemImage: icon)
+                }
+                .buttonStyle(.appAction(.primary))
+                .disabled(unavailable || navigationLocked)
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        beginNavigationLock()
+                        warmConnection(for: target)
+                    }
+                )
+                .frame(maxWidth: 280)
+            }
         }
     }
 
@@ -364,9 +381,13 @@ struct PodcastEpisodeListView: View {
         )
         .contentShape(Rectangle())
 
-        if layoutMode.usesInlineDetail {
+        switch PodcastEpisodeActivation.activation(
+            episodeRemoteId: episode.remoteId,
+            layoutMode: layoutMode
+        ) {
+        case .inlineDetail(let episodeRemoteId):
             Button {
-                detailRouter.show(episodeRemoteId: episode.remoteId)
+                detailRouter.show(episodeRemoteId: episodeRemoteId)
                 warmConnection(for: episode)
             } label: { row }
             .buttonStyle(.plain)
@@ -376,8 +397,8 @@ struct PodcastEpisodeListView: View {
                     ? skin.palette.accentSubtle
                     : Color.clear
             )
-        } else {
-            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
+        case .push(let route):
+            NavigationLink(value: route) {
                 row
             }
             .buttonStyle(.plain)

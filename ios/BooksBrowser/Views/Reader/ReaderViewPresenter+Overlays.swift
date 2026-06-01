@@ -38,22 +38,24 @@ extension ReaderViewPresenter {
     }
 
     var bottomOverlay: some View {
-        VStack {
+        let placement = ReaderOverlayPanelPlacement(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
+
+        return VStack {
             Spacer()
 
             if state.chrome.overlay == .translation {
                 translationPanel
-                    .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
+                    .frame(maxWidth: placement.maxWidth)
+                    .frame(maxWidth: .infinity, alignment: placement.alignment)
+                    .padding(.horizontal, placement.horizontalInset)
+                    .padding(.bottom, placement.bottomInset)
                     .transition(.readerPanelReveal)
             } else if state.chrome.overlay == .settings {
                 settingsPanel
-                    .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
+                    .frame(maxWidth: placement.maxWidth)
+                    .frame(maxWidth: .infinity, alignment: placement.alignment)
+                    .padding(.horizontal, placement.horizontalInset)
+                    .padding(.bottom, placement.bottomInset)
                     .transition(.readerPanelReveal)
             }
         }

@@ -9,10 +9,35 @@ import SwiftUI
 import SwiftData
 import Inject
 
+enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
+    case bookshelf
+    case notebooks
+    case overview
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .bookshelf: return "app.section.bookshelf"
+        case .notebooks: return "app.section.notebooks"
+        case .overview: return "app.section.overview"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .bookshelf: return "books.vertical"
+        case .notebooks: return "character.book.closed"
+        case .overview: return "chart.bar"
+        }
+    }
+}
+
 /// 主介面 — Tab 導航
 struct ContentView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.modelContext) private var modelContext
+    @State private var selectedSection: AppPrimarySection = .bookshelf
 
     // Why: Hot-reload hook. Release builds: LLVM-strip 成 no-op，零 runtime cost。
     // 詳見 docs/sop/ios.md §Hot Reload。
@@ -26,21 +51,65 @@ struct ContentView: View {
                 }
             }
 
-            TabView {
-                #if os(iOS)
-                BookshelfView()
-                    .tabItem { Label("書庫".localized, systemImage: "books.vertical") }
-                #endif
-                NotebookListView()
-                    .tabItem { Label("單字本".localized, systemImage: "character.book.closed") }
-                OverviewTab()
-                    .tabItem { Label("總覽".localized, systemImage: "chart.bar") }
-            }
+            primaryNavigation
         }
         .appOfflineBanner()
         .animatePhaseChange(authManager.isDemoMode)
         .macWindowChrome()
         .enableInjection()
+    }
+
+    @ViewBuilder
+    private var primaryNavigation: some View {
+        #if targetEnvironment(macCatalyst)
+        NavigationSplitView {
+            List {
+                ForEach(AppPrimarySection.allCases) { section in
+                    Button {
+                        selectedSection = section
+                    } label: {
+                        Label(L10n.string(section.titleKey), systemImage: section.systemImage)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(selectedSection == section ? Color.accentColor.opacity(0.14) : Color.clear)
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("KG")
+        } detail: {
+            sectionContent(selectedSection)
+                .id(selectedSection)
+        }
+        .navigationSplitViewStyle(.balanced)
+        #else
+        TabView {
+            #if os(iOS)
+            BookshelfView()
+                .tabItem { Label(L10n.string(AppPrimarySection.bookshelf.titleKey), systemImage: AppPrimarySection.bookshelf.systemImage) }
+            #endif
+            NotebookListView()
+                .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage) }
+            OverviewTab()
+                .tabItem { Label(L10n.string(AppPrimarySection.overview.titleKey), systemImage: AppPrimarySection.overview.systemImage) }
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func sectionContent(_ section: AppPrimarySection) -> some View {
+        switch section {
+        case .bookshelf:
+            #if os(iOS)
+            BookshelfView()
+            #else
+            EmptyView()
+            #endif
+        case .notebooks:
+            NotebookListView()
+        case .overview:
+            OverviewTab()
+        }
     }
 }
 

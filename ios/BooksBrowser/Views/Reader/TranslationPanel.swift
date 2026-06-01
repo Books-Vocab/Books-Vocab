@@ -38,6 +38,7 @@ struct TranslationPanel: View {
     var onRetryExplanation: (() -> Void)? = nil
 
     @Environment(\.speechService) private var speechService
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var dragOffset: CGFloat = 0
     @State private var isSpeaking = false
     @State private var elapsedTime: Double = 0
@@ -66,24 +67,7 @@ struct TranslationPanel: View {
     }
 
     var body: some View {
-        panelContent
-            .offset(y: dragOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            dragOffset = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 100 {
-                            onDismiss()
-                        }
-                        withAnimation(AppMotion.panelState) {
-                            dragOffset = 0
-                        }
-                    }
-            )
+        interactivePanelContent
             .transition(.readerPanelReveal)
             .sensoryFeedback(.success, trigger: isSaved)
             .onChange(of: isLoading) { _, new in
@@ -102,6 +86,36 @@ struct TranslationPanel: View {
                 stopTimer()
             }
             .enableInjection()
+    }
+
+    @ViewBuilder
+    private var interactivePanelContent: some View {
+        let chrome = ReaderPanelChromeStyle(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
+
+        if chrome.allowsDragDismiss {
+            panelContent
+                .offset(y: dragOffset)
+                .gesture(dragDismissGesture)
+        } else {
+            panelContent
+        }
+    }
+
+    private var dragDismissGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if value.translation.height > 0 {
+                    dragOffset = value.translation.height
+                }
+            }
+            .onEnded { value in
+                if value.translation.height > 100 {
+                    onDismiss()
+                }
+                withAnimation(AppMotion.panelState) {
+                    dragOffset = 0
+                }
+            }
     }
 
     private func startTimer() {

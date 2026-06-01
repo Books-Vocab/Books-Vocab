@@ -44,7 +44,16 @@ struct PodcastReconcileTests {
     }
 
     private func detail(_ id: String, episodes: [Int]) -> PodcastSeriesDetail {
-        let eps = episodes.map { PodcastEpisodeDetail(episodeNumber: $0, title: "Ep\($0)", durationSec: 60, audioAvailable: true, subtitleAvailable: true) }
+        let eps = episodes.map {
+            PodcastEpisodeDetail(
+                episodeNumber: $0,
+                title: "Ep\($0)",
+                durationSec: 60,
+                audioAvailable: true,
+                subtitleAvailable: true,
+                subtitleContent: nil
+            )
+        }
         return PodcastSeriesDetail(id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil, totalDurationSec: nil, episodes: eps, createdAt: nil, updatedAt: nil)
     }
 

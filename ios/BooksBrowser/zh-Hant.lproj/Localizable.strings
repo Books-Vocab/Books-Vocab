@@ -8,6 +8,9 @@
 "(無法讀取)" = "(無法讀取)";
 "AI 翻譯・知識圖譜・雲端同步" = "AI 翻譯・知識圖譜・雲端同步";
 "English" = "English";
+"app.section.bookshelf" = "書庫";
+"app.section.notebooks" = "單字本";
+"app.section.overview" = "總覽";
 "API 錯誤：%@" = "API 錯誤：%@";
 "KG 伺服器未連線" = "KG 伺服器未連線";
 "KG 伺服器錯誤：%@" = "KG 伺服器錯誤：%@";
@@ -837,6 +840,7 @@
 "podcast.controls.playpause.play" = "播放";
 "podcast.controls.playpause.pause" = "暫停";
 "podcast.controls.cycleRate" = "切換播放速率";
+"podcast.controls.seek" = "播放進度";
 "podcast.player.subtitleSettings" = "字幕設定";
 
 // MARK: - Podcast episode row a11y (track-9)
@@ -921,3 +925,5 @@
 "部分匯入失敗" = "部分匯入失敗";
 "%@ 本匯入失敗" = "%@ 本匯入失敗";
 "已匯入 %@ 本，%@ 本失敗" = "已匯入 %@ 本，%@ 本失敗";
+"podcast.player.missingEpisode.title" = "集數尚未同步";
+"podcast.player.missingEpisode.description" = "這集的本機資料還沒準備好。請稍後重試，或回到書庫重新同步。";
