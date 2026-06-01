@@ -280,10 +280,9 @@ curl -sf -X DELETE "$BASE/api/workspace/$WS?confirm=$WS"
 
 | 碼 | 意義 |
 |----|------|
-| 409 | per-workspace 已有 running job（守衛擋） |
-| 412 | pending 狀態（前一相未完成，approve 拒）|
+| 409 | ① per-workspace 已有 running job（守衛擋）② approve 時前一相未完成（pending gate） |
 | 422 | 無可上傳的音訊（upload 拒）|
-| 413 | EPUB > 200MB |
+| 413 | EPUB 超過 `PODCAST_MAX_EPUB_BYTES`（預設 200MB，可 env 覆寫）|
 | 429 | 超過 global `MAX_ACTIVE_JOBS`（預設 4）|
 
 ## 主持人動態命名
@@ -372,54 +371,83 @@ curl -sf --max-time 2 http://127.0.0.1:8765/api/workspaces > /dev/null \
 GUI 可完整監控：jobs panel、kill、APPROVE 按鈕、SSE 即時 feed 全部有效。
 
 ```bash
+BASE=http://127.0.0.1:8765
 cd /Users/chenliangyu/kg/lab/podcast
 
 # 1. 確保 dashboard 啟動（idempotent）
 ./start.sh
 
 # 2. 上傳 EPUB 並啟動全流程（停在 plan gate）
-JOB=$(curl -sf -X POST http://127.0.0.1:8765/api/pipeline/start \
-  -F "epub=@/path/to/book.epub" -F "parallel=3" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+JOB=$(curl -sf -X POST "$BASE/api/pipeline/start" \
+  -F "epub=@/path/to/book.epub" -F "parallel=3" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
 
-# 3. Poll job 直到 gate 或完成（每 15s 查一次）
-while true; do
-  STATUS=$(curl -sf "http://127.0.0.1:8765/api/jobs/$JOB?log_bytes=0" \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['status'])")
-  echo "job $JOB: $STATUS"
-  [ "$STATUS" != "running" ] && break
-  sleep 15
+# 3. 等 workspace 出現
+#    pipeline 解析 EPUB→slug 後寫 .pipeline_job_id sidecar，dashboard 才能反查。
+#    start_pipeline metadata 不含 workspace，必須從 active_job 比對取得。
+WS=""
+while [ -z "$WS" ]; do
+  sleep 5
+  WS=$(curl -sf "$BASE/api/workspaces?full=1" | python3 -c "
+import sys, json
+for w in json.load(sys.stdin):
+  if isinstance(w, dict) and (w.get('active_job') or {}).get('job_id') == '$JOB':
+    print(w['name']); break
+" 2>/dev/null)
 done
+echo "workspace: $WS"
 
-# 4. 查 workspace 名（從 jobs API 取 metadata.workspace）
-WS=$(curl -sf "http://127.0.0.1:8765/api/jobs/$JOB?log_bytes=0" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin).get('metadata',{}).get('workspace',''))")
+# _poll JOB_ID — 等 job 結束；succeeded=gate 或完成；failed/killed=中止
+_poll() {
+  while true; do
+    S=$(curl -sf "$BASE/api/jobs/$1?log_bytes=0" \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+    echo "job $1: $S"
+    case "$S" in
+      pending|running) sleep 15 ;;
+      succeeded)       break ;;
+      *)               echo "ERROR: job $1 → $S"; exit 1 ;;
+    esac
+  done
+}
 
-# 5. Plan gate → 審 plan/overview.md + plan/review.md 後 approve
-curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/approve?gate=plan"
-# （approve 會自動 spawn resume，不用另外 resume）
+# 4. Poll 到 plan gate
+_poll "$JOB"
 
-# 6. Poll 到 script gate，審後 approve
-curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/approve?gate=script"
+# 5. 審 plan/overview.md + plan/review.md → approve（自動 spawn resume，回傳新 job_id）
+JOB=$(curl -sf -X POST "$BASE/api/workspace/$WS/approve?gate=plan" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
 
-# 7. Poll 到 done，上傳到 S3
-curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/upload"
+# 6. Poll 到 script gate
+_poll "$JOB"
+
+# 7. 審 scripts/ep_*_review.md → approve（自動 spawn resume，回傳新 job_id）
+JOB=$(curl -sf -X POST "$BASE/api/workspace/$WS/approve?gate=script" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+
+# 8. Poll 到全部完成（subtitle done）
+_poll "$JOB"
+
+# 9. 上傳到 S3
+curl -sf -X POST "$BASE/api/workspace/$WS/upload"
 ```
 
 **Resume / 重跑單 stage**（pipeline 中途斷掉）：
 
 ```bash
 # 從斷點自動續跑
-curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/resume"
+curl -sf -X POST "$BASE/api/workspace/$WS/resume"
 
 # 只重跑某 stage（例如 scriptwrite 第 2 集）
-curl -sf -X POST "http://127.0.0.1:8765/api/workspace/$WS/rerun?stage=scriptwrite&episode=2&drop_marker=true"
+curl -sf -X POST "$BASE/api/workspace/$WS/rerun?stage=scriptwrite&episode=2&drop_marker=true"
 ```
 
 **失敗診斷**：
 
 ```bash
-# 看 job log 最後 8KB
-curl -sf "http://127.0.0.1:8765/api/jobs/$JOB?log_bytes=8192" | python3 -c "import sys,json; print(json.load(sys.stdin)['log'])"
+# 看 job log 最後 8KB（key 是 log_tail）
+curl -sf "$BASE/api/jobs/$JOB?log_bytes=8192" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['log_tail'])"
 
 # 也可直接讀 jsonl
 grep '"error"' workspaces/$WS/pipeline_log.jsonl
