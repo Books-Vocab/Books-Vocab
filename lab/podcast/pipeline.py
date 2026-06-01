@@ -1192,6 +1192,11 @@ def stage_subtitle(workspace: Path, log: PipelineLog, only_episode: int | None =
     return proc.returncode == 0
 
 
+# 375MB+ over a slow uplink can take a while; cap so a hung upload can't block
+# the pipeline forever (a failed attempt retries).
+_PUBLISH_TIMEOUT = 1800  # seconds
+
+
 def _verify_published(series_id: str) -> bool:
     """Read the bucket's index.json and confirm series_id is present — proves
     the upload actually made the series visible to /api/podcasts, not just
@@ -1238,11 +1243,21 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     series_id = workspace.name
     backoff = 2.0
     for attempt in range(1, max_retries + 1):
-        proc = subprocess.run(
-            ["bash", str(upload_sh), str(workspace)],
-            cwd=str(ROOT.parent.parent), capture_output=False, text=True,
-            env=os.environ.copy(),
-        )
+        try:
+            proc = subprocess.run(
+                ["bash", str(upload_sh), str(workspace)],
+                cwd=str(ROOT.parent.parent), capture_output=False, text=True,
+                env=os.environ.copy(), timeout=_PUBLISH_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            # A hung upload (network stall / half-dead creds) must not block the
+            # pipeline forever — treat as a failed attempt and retry.
+            log.error(f"publish attempt {attempt}/{max_retries} timed out after "
+                      f"{_PUBLISH_TIMEOUT}s")
+            if attempt < max_retries:
+                time.sleep(backoff)
+                backoff *= 2
+            continue
         if proc.returncode == 0 and _verify_published(series_id):
             log.event(f"publish: {series_id} live in S3 catalog (attempt {attempt})")
             return True
