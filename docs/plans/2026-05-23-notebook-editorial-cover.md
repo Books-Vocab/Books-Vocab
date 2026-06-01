@@ -4,7 +4,7 @@ authority: derived
 update_trigger: plan-execution
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: f63ace78
+verified_against: a17b7c4d
 -->
 # Notebook Editorial Cover & List Implementation Plan
 

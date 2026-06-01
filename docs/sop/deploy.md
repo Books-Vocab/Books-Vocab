@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: a706c53
+verified_against: a17b7c4d
 -->
 # 後端部署指南
 
@@ -15,7 +15,7 @@ verified_against: a706c53
 
 - **伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb`（small_3_0, 2GB RAM），IP `13.193.212.134`
 - **Domain**: `wordnexus.lol`（Porkbun DNS → Caddy → Docker FastAPI）
-- **SSH Key**: `~/.ssh/lightsail_default.pem`
+- **SSH Key**: `~/.ssh/lightsail_kg_prod`（2026-05-30 事故後輪替；舊 `lightsail_default.pem` 已撤銷）
 - **本地工作區**: `~/kg/`
 - **devops.sh 位置**: KG workspace 根目錄
 
@@ -127,7 +127,7 @@ sha256sum -c ~/kg/backups/data_<timestamp>.tar.gz.sha256
 # 3. 停容器（不刪 volume！docker compose down -v 是鐵律 7 禁用）
 ./devops.sh run "cd ~/knowledge_graph_api && docker compose down"
 # 4. scp 備份上去並用「原子 mv」還原 — 保留壞掉的 data 以便事故後回查 / 救回
-scp -i ~/.ssh/lightsail_default.pem ~/kg/backups/data_<timestamp>.tar.gz ubuntu@13.193.212.134:/tmp/
+scp -i ~/.ssh/lightsail_kg_prod ~/kg/backups/data_<timestamp>.tar.gz ubuntu@13.193.212.134:/tmp/
 ./devops.sh run "cd /tmp && tar -xzf data_<timestamp>.tar.gz && \
   sudo mv ~/knowledge_graph_api/data ~/knowledge_graph_api/data.broken.\$(date +%s) && \
   sudo mv data_<timestamp> ~/knowledge_graph_api/data"
@@ -300,7 +300,7 @@ aws lightsail put-instance-public-ports \
 deploy 失敗
 │
 ├─ env-check → 遠端 .env 缺 key → ./devops.sh push-env
-├─ rsync → SSH 問題 → 測試 ssh -i ~/.ssh/lightsail_default.pem ubuntu@13.193.212.134
+├─ rsync → SSH 問題 → 測試 ssh -i ~/.ssh/lightsail_kg_prod ubuntu@13.193.212.134
 ├─ docker build → Python 依賴錯誤 → ./devops.sh logs 100
 ├─ migrate → SQL 語法錯誤 → 確認 MIGRATIONS 是 idempotent
 └─ health check 非 200 → FastAPI 啟動失敗 → ./devops.sh logs 100
@@ -316,12 +316,14 @@ deploy 失敗
 
 ## 備份 SOP
 
+> 🔒 **異地 S3 backup（事故後新增）**：伺服器 cron 每日 UTC 03:00 跑 `ops/kg_backup.sh`，把 `data/` 串流上傳到 `s3://kg-backups-prod-967512079054/data/<UTC-date>.tar.gz`（versioning + SSE-S3 + 30/35d lifecycle；IAM principal `kg-backup-agent` 只有 `s3:PutObject*`，無 Delete/List，host 上的 `rm -rf` 碰不到歷史備份）。**從零還原（事故當下下一個 agent 直接照做）的權威 SOP 是 [`docs/sop/backup_restore.md`](backup_restore.md)，不是本段。** 本段的 `./devops.sh backup` 是本地 ad-hoc 快照，僅作補充。`devops_kg_safe.sh backup-s3-test` 可手動觸發一次 S3 備份。
+
 ```bash
 ./devops.sh backup
 # 等同：scp -r ubuntu@13.193.212.134:~/knowledge_graph_api/data backups/data_YYYYMMDD
 
 # 恢復
-scp -i ~/.ssh/lightsail_default.pem -r \
+scp -i ~/.ssh/lightsail_kg_prod -r \
   ~/kg/backups/data_<日期> \
   ubuntu@13.193.212.134:~/knowledge_graph_api/data
 ./devops.sh restart
@@ -369,7 +371,7 @@ data 目錄由容器 root 寫入，host ubuntu user 無法直接 rm，需進容�
 
 ```bash
 rsync -avz --delete \
-  -e "ssh -i ~/.ssh/lightsail_default.pem" \
+  -e "ssh -i ~/.ssh/lightsail_kg_prod" \
   --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
   ~/kg/backend/ \
   ubuntu@13.193.212.134:~/knowledge_graph_api/

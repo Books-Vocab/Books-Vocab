@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 7482c5ee
+verified_against: a17b7c4d
 -->
 # BooksBrowser iOS 開發技能
 
@@ -41,11 +41,14 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ### Step 1：靜默編譯，直擊錯誤
 
 ```bash
-./ops/ios_build.sh
+./ops/ios_build.sh                 # 預設 iPhone Simulator
+./ops/ios_build.sh --catalyst      # Mac Catalyst（platform=macOS,variant=Mac Catalyst）
+./ops/ios_build.sh --destination '<xcodebuild destination>'  # 自訂 destination
 ```
 
 - Exit Code `0` → 完成，停止
 - Exit Code 非 `0` → 畫面殘留的就是純淨錯誤清單，進 Step 2
+- 動到三平台 navigation / Catalyst 專屬路徑時，`--catalyst` 與預設各跑一次驗證（`--timeout` 預設 600s）
 
 ### Step 2：還原案發現場
 

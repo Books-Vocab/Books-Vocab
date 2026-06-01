@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 57f744f
+verified_against: a17b7c4d
 -->
 # 伺服器排障指南
 
@@ -17,7 +17,7 @@ verified_against: 57f744f
 
 - **伺服器 IP**: `13.193.212.134`（AWS Lightsail，ap-northeast-1a）
 - **Domain**: `wordnexus.lol`（Porkbun DNS A record）
-- **SSH**: `ssh -i ~/.ssh/lightsail_default.pem ubuntu@13.193.212.134`
+- **SSH**: `ssh -i ~/.ssh/lightsail_kg_prod ubuntu@13.193.212.134`（舊 `lightsail_default.pem` 已於 2026-05-31 洩漏後撤銷，勿再使用）
 - **Stack**: Caddy（443/80）→ Docker FastAPI（localhost:8000）→ SQLite（/app/data/）
 
 ---
@@ -247,12 +247,12 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 ./devops.sh run "cd ~/knowledge_graph_api && docker compose stop"
 
 # 2. 備份當前損壞資料
-scp -i ~/.ssh/lightsail_default.pem -r \
+scp -i ~/.ssh/lightsail_kg_prod -r \
   ubuntu@13.193.212.134:~/knowledge_graph_api/data \
   ~/Desktop/broken_data_$(date +%Y%m%d_%H%M)
 
 # 3. 推回好的備份
-scp -i ~/.ssh/lightsail_default.pem -r \
+scp -i ~/.ssh/lightsail_kg_prod -r \
   ~/kg/backups/data_<日期> \
   ubuntu@13.193.212.134:~/knowledge_graph_api/data
 
