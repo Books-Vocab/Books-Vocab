@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 132bc746
+verified_against: f69e15c4
 -->
 # Podcast Feature Boundary
 
@@ -44,6 +44,14 @@ verified_against: 132bc746
 |------|------|
 | `PodcastAssetPreloader.swift` | @MainActor singleton；warm AVFoundation HTTP/2 連線（tap-on-row + bookshelf-appear）；LRU-5, 60s TTL；失敗即 evict |
 | `PodcastDownloadManager.swift` | @MainActor @Observable singleton；URLSession.background 跑離線下載；落地 `episode.localAudioPath`（Documents/podcast-downloads/<seriesId>/<remoteId>.mp3）；progress / failed 由 `@Query` 觀察 |
+| `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空回傳不刪 series、不 throw。**觸發來源**：BookshelfView `.task`/`.refreshable` + `KGService.backgroundSync`（Phase 3，序執行於 vocab pull 後，見 §同步觸發） |
+
+### 同步觸發
+
+podcast catalog 同步現有兩條觸發鏈：
+
+1. **BookshelfView 局部觸發** — `.task`（每 view identity 跑一次）+ `.refreshable`（下拉，Mac Catalyst 不可用）。
+2. **`KGService.backgroundSync` Phase 3**（`KGService+Sync.swift`，序執行於 vocab pull 之後）— 共用所有既有 resync 觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。補上 Catalyst 下「`.refreshable` 不可用、`.task` 僅跑一次」造成書架 podcast 區塊一旦未載入便無路徑復原的缺口（書為本地 `@Query` 故恆在）。token 過期已由 vocab pull 的 401 分支提早 return。
 
 ### metadata.json contract
 
