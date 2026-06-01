@@ -31,7 +31,7 @@ KG 用**三層 backup**互相補位。各層獨立,單一層失效不阻擋整�
 | 跨雲(R2 / GCS / B2) | 過度防護 |  |
 | PITR / SQLite WAL streaming | RPO 24h 達標 |  |
 | Backup 完整性 alarm | 之後再加,CloudWatch alarm + SNS |  |
-| 自動清舊 backup | **AWS 限制**:lifecycle 與 MFA Delete 不可共存,選了 MFA Delete | 約 1-2 年後手動清一次(`backup_restore.md §7`);若每月成本超 ${'\$'}10 提前處理 |
+| 自動清舊 backup | **AWS 限制**:lifecycle 與 MFA Delete 不可共存,選了 MFA Delete | 約 1-2 年後手動清一次(`backup_restore.md §7`);成本閾值與動作判準走 `docs/reference/cost_baseline.md` **(SoT)** |
 | `.env` / `certs/` 異地 backup | 本機 Time Machine 涵蓋,且都可重生 | 月度 reminder:檢查本機 backup 含 `~/.ssh/`、`~/kg/backend/{.env,certs/}` |
 
 ## 監控
