@@ -42,6 +42,7 @@ Stages (authoritative source: ``STAGES`` constant below — keep in sync):
     11. synthesize     — Vertex AI Gemini TTS → MP3 (loudnorm mastering)
     12. audio-qa       — wpm / silence / clipping checks (hard gate)
     13. subtitle       — Whisper forced alignment → word-level SRT
+    14. publish        — upload workspace → S3 + verify live in catalog index
 """
 
 from __future__ import annotations
@@ -152,6 +153,7 @@ STAGES = [
     "script-review",
     "tts-prep",
     "synthesize", "audio-qa", "subtitle",
+    "publish",
 ]
 
 # Stage completion markers — written to workspace after each stage succeeds
@@ -1190,6 +1192,70 @@ def stage_subtitle(workspace: Path, log: PipelineLog, only_episode: int | None =
     return proc.returncode == 0
 
 
+def _verify_published(series_id: str) -> bool:
+    """Read the bucket's index.json and confirm series_id is present — proves
+    the upload actually made the series visible to /api/podcasts, not just
+    that the upload command exited 0."""
+    bucket = os.getenv("PODCAST_BUCKET")
+    if not bucket:
+        return False
+    import boto3  # local import: keeps non-publish runs off boto3
+    kwargs = {"region_name": os.getenv("PODCAST_BUCKET_REGION", "ap-northeast-1")}
+    endpoint = os.getenv("PODCAST_BUCKET_ENDPOINT_URL") or None
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
+    s3 = boto3.client("s3", **kwargs)
+    try:
+        body = s3.get_object(Bucket=bucket, Key="index.json")["Body"].read()
+        idx = json.loads(body)
+    except Exception:  # noqa: BLE001 — verify is best-effort; miss → retry/fail
+        return False
+    return isinstance(idx, list) and any(
+        isinstance(e, dict) and e.get("id") == series_id for e in idx
+    )
+
+
+def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) -> bool:
+    """Closed-loop publish: upload the finished workspace to S3 via
+    ops/podcast_upload.sh, then verify the series is live in the catalog index.
+    Runs automatically as the terminal stage so a completed pipeline
+    self-publishes — no manual dashboard upload, no silent disk↔S3 drift.
+
+    Loud-fails (returns False, never crashes) when PODCAST_BUCKET / AWS creds
+    are absent from the environment, or when the series can't be confirmed in
+    the index after max_retries upload+verify attempts.
+    """
+    if not os.getenv("PODCAST_BUCKET"):
+        log.error("publish: PODCAST_BUCKET not set — export it + AWS creds before "
+                  "running the pipeline so the finished series uploads to S3.")
+        return False
+
+    upload_sh = (ROOT.parent.parent / "ops" / "podcast_upload.sh").resolve()
+    if not upload_sh.is_file():
+        log.error(f"publish: upload script missing at {upload_sh}")
+        return False
+
+    series_id = workspace.name
+    backoff = 2.0
+    for attempt in range(1, max_retries + 1):
+        proc = subprocess.run(
+            ["bash", str(upload_sh), str(workspace)],
+            cwd=str(ROOT.parent.parent), capture_output=False, text=True,
+            env=os.environ.copy(),
+        )
+        if proc.returncode == 0 and _verify_published(series_id):
+            log.event(f"publish: {series_id} live in S3 catalog (attempt {attempt})")
+            return True
+        log.error(f"publish attempt {attempt}/{max_retries} failed "
+                  f"(upload rc={proc.returncode}, verified={proc.returncode == 0})")
+        if attempt < max_retries:
+            time.sleep(backoff)
+            backoff *= 2
+
+    log.error(f"publish: {series_id} not confirmed in S3 index after {max_retries} attempts")
+    return False
+
+
 # ─── Status ───
 
 
@@ -1603,6 +1669,7 @@ examples:
         "synthesize": lambda: stage_synthesize(workspace, log, args.only_episode),
         "audio-qa": lambda: stage_audio_qa(workspace, log, args.only_episode),
         "subtitle": lambda: stage_subtitle(workspace, log, args.only_episode),
+        "publish": lambda: stage_publish(workspace, log),
     }
 
     stages_to_run = STAGES[start_idx:stop_idx + 1]
