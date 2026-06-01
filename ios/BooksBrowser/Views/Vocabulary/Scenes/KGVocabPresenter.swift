@@ -1,6 +1,12 @@
 import SwiftUI
 import Inject
 
+enum KGVocabRowSelection {
+    static func isHighlighted(rowID: UUID, selectedRowID: UUID?, isSelecting: Bool) -> Bool {
+        !isSelecting && selectedRowID == rowID
+    }
+}
+
 struct KGVocabPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -46,19 +52,22 @@ struct KGVocabPresenter: View {
         let rows: [RowItem]
         let emptyState: EmptyState
         let reviewCTA: ReviewCTA?
+        let selectedRowID: UUID?
 
         init(
             banner: Banner?,
             reviewStateOptions: [VocabTabOption<VocabularyReviewState>],
             rows: [RowItem],
             emptyState: EmptyState,
-            reviewCTA: ReviewCTA? = nil
+            reviewCTA: ReviewCTA? = nil,
+            selectedRowID: UUID? = nil
         ) {
             self.banner = banner
             self.reviewStateOptions = reviewStateOptions
             self.rows = rows
             self.emptyState = emptyState
             self.reviewCTA = reviewCTA
+            self.selectedRowID = selectedRowID
         }
     }
 
@@ -129,6 +138,11 @@ struct KGVocabPresenter: View {
                                     entry: item.entry,
                                     isSelecting: selectionState.isSelecting,
                                     isSelected: selectionState.selectedIDs.contains(item.id),
+                                    isHighlighted: KGVocabRowSelection.isHighlighted(
+                                        rowID: item.id,
+                                        selectedRowID: state.selectedRowID,
+                                        isSelecting: selectionState.isSelecting
+                                    ),
                                     onTap: {
                                         if selectionState.isSelecting {
                                             selectionState.toggle(item.id)
@@ -184,6 +198,7 @@ private struct KGVocabRow: View {
     let entry: VocabularyEntry
     let isSelecting: Bool
     let isSelected: Bool
+    let isHighlighted: Bool
     let onTap: () -> Void
     let onToggleSelection: () -> Void
     let onLongPress: () -> Void
@@ -213,6 +228,14 @@ private struct KGVocabRow: View {
                 .onLongPressGesture(perform: onLongPress)
         }
         .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
+        .padding(.vertical, AppSpacing.s1)
+        .background {
+            if isHighlighted {
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(appSkin.palette.accent.opacity(0.08))
+            }
+        }
+        .padding(.horizontal, AppSpacing.s1)
         .transition(.listSwap)
     }
 }

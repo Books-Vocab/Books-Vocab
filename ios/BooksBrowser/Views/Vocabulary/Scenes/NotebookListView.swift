@@ -9,6 +9,28 @@ import SwiftData
 import TipKit
 import Inject
 
+enum NotebookActivationMode: Equatable {
+    case navigate
+    case selectInline
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .selectInline : .navigate
+    }
+}
+
+enum NotebookMasterDetailMetrics {
+    static let leftMinimumWidth: CGFloat = 320
+    static let detailMinimumWidth: CGFloat = 420
+    static let detailMaximumWidth: CGFloat = 720
+    static let detailWidthRatio: CGFloat = 0.58
+
+    static func detailWidth(containerWidth: CGFloat) -> CGFloat {
+        let available = max(containerWidth - leftMinimumWidth, detailMinimumWidth)
+        let preferred = containerWidth * detailWidthRatio
+        return min(max(preferred, detailMinimumWidth), min(detailMaximumWidth, available))
+    }
+}
+
 struct NotebookListView: View {
     @ObserveInjection private var inject
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
@@ -46,8 +68,11 @@ struct NotebookListView: View {
     @State private var navigationPath = NavigationPath()
     @State private var detailState = DetailRouter()
     @State private var isEditingDetailEntry = false
+    @State private var selectedNotebookId: String?
+    @State private var containerWidth: CGFloat = 1024
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
+    private var activationMode: NotebookActivationMode { NotebookActivationMode(layoutMode: layoutMode) }
 
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
@@ -229,14 +254,13 @@ struct NotebookListView: View {
                         LazyVStack(spacing: editorialGridSpacing) {
                             ForEach(sortedNotebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
-                                NavigationLink(value: notebook.remoteId) {
+                                notebookActivationSurface(for: notebook) {
                                     NotebookCard(
                                         data: notebookCardData(for: notebook, stats: s),
                                         style: .grid,
                                         actions: notebookCardActions(for: notebook)
                                     )
                                 }
-                                .buttonStyle(.plain)
                                 .transition(.listSwap)
                             }
                         }
@@ -265,6 +289,25 @@ struct NotebookListView: View {
             }
             .navigationDestination(for: String.self) { notebookId in
                 VocabularyListView(notebookId: notebookId)
+            }
+            .safeAreaInset(edge: .trailing, spacing: 0) {
+                if activationMode == .selectInline,
+                   let notebookId = selectedDetailNotebookId(from: sortedNotebooks) {
+                    inlineNotebookDetail(notebookId: notebookId)
+                        .frame(width: NotebookMasterDetailMetrics.detailWidth(containerWidth: containerWidth))
+                        .transition(.drawerReveal)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { geo in
+                geo.size.width
+            } action: { newWidth in
+                containerWidth = newWidth
+            }
+            .onAppear {
+                reconcileSelectedNotebook(sortedNotebooks)
+            }
+            .onChange(of: sortedNotebooks.map(\.remoteId)) { _, _ in
+                reconcileSelectedNotebook(sortedNotebooks)
             }
             .toastSheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { appearance in
@@ -418,6 +461,59 @@ struct NotebookListView: View {
         )
     }
 
+    @ViewBuilder
+    private func notebookActivationSurface<Content: View>(
+        for notebook: Notebook,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        switch activationMode {
+        case .navigate:
+            NavigationLink(value: notebook.remoteId) {
+                content()
+            }
+            .buttonStyle(.plain)
+        case .selectInline:
+            Button {
+                selectedNotebookId = notebook.remoteId
+            } label: {
+                content()
+                    .overlay {
+                        if selectedNotebookId == notebook.remoteId {
+                            RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
+                                .stroke(skin.palette.accent, lineWidth: 1.5)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func selectedDetailNotebookId(from sortedNotebooks: [Notebook]) -> String? {
+        if let selectedNotebookId,
+           sortedNotebooks.contains(where: { $0.remoteId == selectedNotebookId }) {
+            return selectedNotebookId
+        }
+        return sortedNotebooks.first?.remoteId
+    }
+
+    private func reconcileSelectedNotebook(_ sortedNotebooks: [Notebook]) {
+        guard activationMode == .selectInline else { return }
+        selectedNotebookId = selectedDetailNotebookId(from: sortedNotebooks)
+    }
+
+    @ViewBuilder
+    private func inlineNotebookDetail(notebookId: String) -> some View {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(skin.palette.divider)
+                .frame(width: 1)
+
+            VocabularyListView(notebookId: notebookId)
+                .id(notebookId)
+        }
+        .background(skin.palette.pageBackground)
+    }
+
     // MARK: - Sort Menu
 
     @ViewBuilder
@@ -546,4 +642,3 @@ struct NotebookListView: View {
         activeNotebookId = id
     }
 }
-

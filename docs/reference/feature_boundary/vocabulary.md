@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: 800386c5
+verified_against: c9f2ce50
 -->
 # Vocabulary Feature Boundary
 
@@ -38,7 +38,7 @@ verified_against: 800386c5
 |------|------|------|
 | `Scenes/VocabularyListPresenter.swift` | 54 | `struct VocabularyListPresenter<Content>: View` + `VocabularyListPresenterState` |
 | `Scenes/PendingVocabPresenter.swift` | 94 | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
-| `Scenes/KGVocabPresenter.swift` | 254 | KG 詞彙列表佈局 |
+| `Scenes/KGVocabPresenter.swift` | ~270 | KG 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆 |
 | `Scenes/KnowledgeGraphPresenter.swift` | 255 | 知識圖譜佈局 |
 | `Scenes/WordDetailPresenter.swift` | 141 | `struct WordDetailPresenter: View` |
 | `Scenes/SyncPresenter.swift` | 140 | 同步主佈局 |
@@ -76,7 +76,7 @@ verified_against: 800386c5
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/KGVocabView.swift` | 367 | `struct KGVocabView: View`，KG 詞彙列表場景 |
+| `Scenes/KGVocabView.swift` | ~375 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空 |
 | `Scenes/TodayReviewView.swift` | 437 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
 | `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
