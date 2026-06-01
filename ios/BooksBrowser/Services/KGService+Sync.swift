@@ -230,6 +230,15 @@ extension KGService {
             }
         }
 
+        // Phase 3: podcast catalog（序執行於 vocab pull 之後）。
+        // 把 podcast catalog 同步併入 backgroundSync，使其共用所有既有 resync 觸發
+        // （post-login / scenePhase→active / ⌘R menu / Settings 手動同步），補上
+        // 「Mac Catalyst 下 .refreshable 下拉不可用、BookshelfView .task 每 view identity
+        // 僅跑一次」造成的書架 podcast 區塊一旦未載入便無法復原的缺口。
+        // syncAll 內部自我防禦（list fetch 失敗即 skip、空回傳不刪 series），不 throw；
+        // 失敗僅記 log，不影響 vocab 結果。token 過期已在前面 vocab pull 的 401 分支提早 return。
+        await syncPodcastCatalog(container: container)
+
         if failures.isEmpty {
             lastBackgroundSyncError = nil
             lastSyncDate = .now
@@ -243,6 +252,15 @@ extension KGService {
                 data: ["failures": failures]
             )
         }
+    }
+
+    /// Podcast catalog 同步 helper。`PodcastSyncService.syncAll` 為 `@MainActor`，
+    /// 需以 main-actor `ModelContext` 呼叫（沿用 `BookshelfView` 既有契約：傳 mainContext，
+    /// upsert 在 main actor、@Query 直接取得更新）。整段標 @MainActor 使
+    /// `container.mainContext` 存取合法。
+    @MainActor
+    private func syncPodcastCatalog(container: ModelContainer) async {
+        await PodcastSyncService(kgService: self).syncAll(context: container.mainContext)
     }
 
     func pushReviewQuietly(container: ModelContainer) async {
