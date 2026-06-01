@@ -519,8 +519,16 @@ struct NotebookListView: View {
                 .fill(skin.palette.divider)
                 .frame(width: 1)
 
-            VocabularyListView(notebookId: notebookId)
-                .id(notebookId)
+            // Own NavigationStack so the inline panel's navigationTitle/toolbar
+            // stay self-contained instead of leaking into the master list's
+            // outer stack (mirrors PodcastPlayerView(wrapInNavigation:) for the
+            // podcast two-column). VocabularyListView carries no NavigationStack
+            // of its own; in the compact path it's pushed onto the master stack
+            // instead, so this wrapper applies only to the regular inline panel.
+            NavigationStack {
+                VocabularyListView(notebookId: notebookId)
+            }
+            .id(notebookId)
         }
         .background(skin.palette.pageBackground)
     }
