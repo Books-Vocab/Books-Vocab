@@ -903,3 +903,5 @@
 "部分匯入失敗" = "部分导入失败";
 "%@ 本匯入失敗" = "%@ 本导入失败";
 "已匯入 %@ 本，%@ 本失敗" = "已导入 %@ 本，%@ 本失败";
+"podcast.player.missingEpisode.title" = "集数尚未同步";
+"podcast.player.missingEpisode.description" = "这一集的本机数据还没准备好。请稍后重试，或回到书库重新同步。";

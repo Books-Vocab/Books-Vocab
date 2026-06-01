@@ -9,6 +9,20 @@
 
 import SwiftUI
 
+enum PodcastEpisodeActivation: Equatable {
+    case inlineDetail(episodeRemoteId: String)
+    case push(route: PodcastNavRoute)
+
+    static func activation(
+        episodeRemoteId: String,
+        layoutMode: LayoutMode
+    ) -> PodcastEpisodeActivation {
+        layoutMode.usesInlineDetail
+            ? .inlineDetail(episodeRemoteId: episodeRemoteId)
+            : .push(route: .episode(episodeRemoteId: episodeRemoteId))
+    }
+}
+
 @Observable @MainActor
 final class PodcastDetailRouter {
     var selectedEpisodeRemoteId: String?

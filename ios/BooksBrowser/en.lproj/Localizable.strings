@@ -938,3 +938,5 @@
 "部分匯入失敗" = "Some imports failed";
 "%@ 本匯入失敗" = "%@ failed to import";
 "已匯入 %@ 本，%@ 本失敗" = "Imported %@, %@ failed";
+"podcast.player.missingEpisode.title" = "Episode not synced yet";
+"podcast.player.missingEpisode.description" = "Local data for this episode is not ready. Try again shortly, or return to the library and sync again.";

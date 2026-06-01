@@ -32,4 +32,22 @@ struct PodcastDetailRouterTests {
         r.show(episodeRemoteId: "ep-2")
         #expect(r.selectedEpisodeRemoteId == "ep-2")
     }
+
+    @Test func activationUsesInlineDetailOnRegularLayout() {
+        #expect(
+            PodcastEpisodeActivation.activation(
+                episodeRemoteId: "ep-1",
+                layoutMode: .regular
+            ) == .inlineDetail(episodeRemoteId: "ep-1")
+        )
+    }
+
+    @Test func activationUsesPushOnCompactLayout() {
+        #expect(
+            PodcastEpisodeActivation.activation(
+                episodeRemoteId: "ep-1",
+                layoutMode: .compact
+            ) == .push(route: .episode(episodeRemoteId: "ep-1"))
+        )
+    }
 }
