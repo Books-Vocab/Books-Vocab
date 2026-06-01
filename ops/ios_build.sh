@@ -17,10 +17,13 @@ set -euo pipefail
 LOCK_FILE="/tmp/kg-ios-build.lock"
 TIMEOUT=600
 POLL_INTERVAL=3
+DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro Max'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout) TIMEOUT="$2"; shift 2 ;;
+    --destination) DESTINATION="$2"; shift 2 ;;
+    --catalyst) DESTINATION='platform=macOS,variant=Mac Catalyst'; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -66,7 +69,7 @@ set +e
 xcodebuild \
   -project "$XCODEPROJ" \
   -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -destination "$DESTINATION" \
   -quiet build
 EXIT_CODE=$?
 set -e
