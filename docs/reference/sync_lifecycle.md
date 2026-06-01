@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: d96d08ca
+verified_against: f69e15c4
 -->
 # Sync Lifecycle
 
@@ -61,6 +61,13 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 2. 同步頁仍會把它算進待處理項目
 3. 下一次同步前，App 會自動把 `failed` 轉回 `pending` 再重試
 4. 若失敗的是刪除，單字仍維持隱藏，避免違反使用者已經做出的刪除決定
+
+## 同步觸發鏈
+
+`KGService.backgroundSync` 是共用 resync 入口，由以下觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。其執行序：
+
+1. vocab pull / push（本文上述狀態流轉）
+2. **podcast catalog**（Phase 3，序執行於 vocab pull 後）— `PodcastSyncService.syncAll` 併入 backgroundSync，使 podcast catalog 共用上述所有觸發；自我防禦、不 throw，失敗僅記 log 不影響 vocab。詳見 `docs/reference/feature_boundary/podcast.md §同步觸發`。
 
 ## Phase 2 之後的建議
 
