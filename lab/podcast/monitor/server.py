@@ -1243,6 +1243,42 @@ def remote_disk():
         raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
 
 
+def _workspace_has_audio(ws: Path) -> bool:
+    """A workspace counts as 'synthesized' once it holds at least one audio
+    artifact — the same files ops/podcast_upload.sh would publish."""
+    scripts = ws / "scripts"
+    if not scripts.is_dir():
+        return False
+    return any(scripts.glob("ep_*.mp3")) or any(scripts.glob("ep_*.m4a"))
+
+
+def reconcile_workspaces(workspaces_dir: Path, published_ids: set[str]) -> list[dict]:
+    """Drift report: workspaces that have synthesized audio but whose series id
+    is absent from the S3 catalog — i.e. publish never succeeded. This is the
+    forward-looking net that catches a silently-failed auto-upload, distinct
+    from the served-disk↔S3 reconcile (ops/podcast_backfill_disk.py --check)
+    which covers the legacy instance-disk series."""
+    if not workspaces_dir.exists():
+        return []
+    drifted = []
+    for ws in sorted(p for p in workspaces_dir.iterdir() if p.is_dir()):
+        if _workspace_has_audio(ws) and ws.name not in published_ids:
+            drifted.append({"workspace": ws.name, "reason": "synthesized_not_published"})
+    return drifted
+
+
+@app.get("/api/remote/reconcile")
+def remote_reconcile():
+    """Surface synthesized-but-unpublished workspaces (workspace↔S3 drift)."""
+    try:
+        series = remote_ops.list_remote_series()
+    except remote_ops.RemoteError as e:
+        raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
+    published_ids = {e.get("id") for e in series if isinstance(e, dict)}
+    drifted = reconcile_workspaces(WORKSPACES_DIR, published_ids)
+    return {"drifted": drifted, "publishedCount": len(published_ids)}
+
+
 @app.delete("/api/remote/series/{series_id}")
 def remote_delete(series_id: str, confirm: str = Query(...)):
     """SSH rm -rf + rebuild remote index.json. confirm must match series_id —
