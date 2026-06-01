@@ -105,7 +105,8 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `kg_backup.sh` | server 端 streaming tar → S3 backup;cron 觸發,日誌 `/var/log/kg_backup.log` |
 | `cron/kg-backup.cron` | `/etc/cron.d/kg-backup`(daily UTC 03:00) |
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
-| `podcast_upload.sh` | 播客資源上傳(idempotent + 遠端 `index.json` flock) |
+| `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
+| `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
@@ -139,10 +140,12 @@ Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` 
 | 項目 | 值 / 路徑 |
 |------|-----------|
 | Bucket | Lightsail Object Storage `kg-podcasts-prod`(ap-northeast-1) |
-| Key 結構 | `index.json`、`{series_id}/metadata.json`、`{series_id}/ep_NN/{audio.m4a,subtitle.srt,script.md}` |
-| 上傳工具 | `ops/podcast_upload.sh`(`aws s3 sync` + content-type per file) |
+| Key 結構 | `index.json`、`{series_id}/metadata.json`、`{series_id}/ep_NN/{audio.{m4a,mp3},subtitle.srt,script.md}` |
+| 上傳工具 | `ops/podcast_upload.sh`(workspace 佈局,`aws s3 sync` + content-type)；`ops/podcast_backfill_disk.py`(served-disk 佈局,boto3) |
+| 閉環觸發 | pipeline `publish` stage(`STAGES` 末)合成完成自動上傳 + verify;`GET /api/remote/reconcile`(monitor)報 workspace↔S3 drift |
 | Monitor 客戶端 | `lab/podcast/monitor/remote.py`(boto3) |
 | Backend 客戶端 | `backend/src/kg/routers/podcast.py`(boto3,proxy 模式;`Range` 直接轉給 S3) |
+| audio 副檔名解析 | S3 模式 `_audio_filename` 讀 series `metadata.json` 的 `audioFormat`(缺則 probe m4a→mp3,per-series 快取);非-404 故障 loud-fail |
 | 設定 env | `PODCAST_BUCKET` / `PODCAST_BUCKET_REGION` / `PODCAST_BUCKET_ENDPOINT_URL` / `PODCAST_BUCKET_QUOTA_BYTES` |
 | 過渡 fallback | `PODCAST_BUCKET` unset → backend 回 disk `data/podcasts/`,且 `audio.m4a` → `audio.mp3` 探測 |
 | 音頻格式 | AAC/M4A 128k `+faststart`(`TTS_OUTPUT_FORMAT=m4a`,`TTS_AAC_BITRATE=128k`) |
