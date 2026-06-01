@@ -30,7 +30,7 @@ struct PodcastUpsertSeriesTests {
     private func detail(_ id: String, episodes: [Int], title: String? = nil) -> PodcastSeriesDetail {
         let eps = episodes.map {
             PodcastEpisodeDetail(episodeNumber: $0, title: "Ep\($0)", durationSec: 60,
-                                 audioAvailable: true, subtitleAvailable: true)
+                                 audioAvailable: true, subtitleAvailable: true, subtitleContent: nil)
         }
         return PodcastSeriesDetail(id: id, title: title ?? id, author: nil, hostNames: nil,
                                    color: nil, coverPattern: nil, totalDurationSec: nil,

@@ -94,9 +94,9 @@ struct PodcastControlsView: View {
                 Capsule()
                     .fill(skin.palette.accent.opacity(0.25))
                     .frame(width: bufferedWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
-                    // easeOut (non-bouncy) matches YouTube/Spotify buffer fill;
-                    // springs wobble on frequent KVO updates from loadedTimeRanges.
-                    .animation(.easeOut(duration: 0.2), value: viewModel.bufferedEnd)
+                    // Non-bouncy token: springs wobble on frequent KVO updates
+                    // from loadedTimeRanges.
+                    .animation(AppMotion.controlEaseOut, value: viewModel.bufferedEnd)
                 Capsule()
                     .fill(skin.palette.accent)
                     .frame(width: progressWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
@@ -108,36 +108,49 @@ struct PodcastControlsView: View {
                     )
                     .appElevation(.z1)
                     .offset(x: max(0, progressWidth(in: w) - PodcastPlayerMetrics.seekBarThumbOffset))
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { v in
-                                // Block scrubbing until AVPlayer reports duration;
-                                // dragging earlier silently resolves to seek(0).
-                                guard viewModel.duration > 0 else { return }
-                                isDragging = true
-                                dragTime = max(0, min(viewModel.duration, Double(v.location.x / w) * viewModel.duration))
-                            }
-                            .onEnded { _ in
-                                guard viewModel.duration > 0, isDragging else { return }
-                                isDragging = false
-                                viewModel.seek(to: dragTime)
-                            }
-                    )
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        // Block scrubbing until AVPlayer reports duration;
+                        // dragging earlier silently resolves to seek(0).
+                        guard viewModel.duration > 0 else { return }
+                        isDragging = true
+                        dragTime = PodcastSeekBarGeometry.time(
+                            locationX: v.location.x,
+                            width: w,
+                            duration: viewModel.duration
+                        )
+                    }
+                    .onEnded { _ in
+                        guard viewModel.duration > 0, isDragging else { return }
+                        isDragging = false
+                        viewModel.seek(to: dragTime)
+                    }
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.string("podcast.controls.seek"))
+            .accessibilityValue("\(formatTime(activeTime)) / \(formatTime(viewModel.duration))")
         }
         .frame(height: PodcastPlayerMetrics.seekBarHitArea)
         .animation(AppMotion.swipeTrackingSpring, value: isDragging)
     }
 
     private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
-        guard viewModel.duration > 0 else { return 0 }
-        return CGFloat(activeTime / viewModel.duration) * totalWidth
+        PodcastSeekBarGeometry.progressWidth(
+            time: activeTime,
+            duration: viewModel.duration,
+            totalWidth: totalWidth
+        )
     }
 
     private func bufferedWidth(in totalWidth: CGFloat) -> CGFloat {
-        guard viewModel.duration > 0 else { return 0 }
-        let ratio = min(1, max(0, viewModel.bufferedEnd / viewModel.duration))
-        return CGFloat(ratio) * totalWidth
+        PodcastSeekBarGeometry.bufferedWidth(
+            bufferedEnd: viewModel.bufferedEnd,
+            duration: viewModel.duration,
+            totalWidth: totalWidth
+        )
     }
 
     private func formatTime(_ t: TimeInterval) -> String {
