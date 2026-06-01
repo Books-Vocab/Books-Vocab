@@ -1244,12 +1244,20 @@ def remote_disk():
 
 
 def _workspace_has_audio(ws: Path) -> bool:
-    """A workspace counts as 'synthesized' once it holds at least one audio
-    artifact — the same files ops/podcast_upload.sh would publish."""
+    """A workspace counts as 'synthesized' once it holds an audio artifact that
+    ops/podcast_upload.sh would actually publish. MUST mirror upload.sh's stage
+    glob (ep_*_{pro,flash}.{m4a,mp3}, :64-67) — matching a looser ep_*.mp3 would
+    flag a workspace holding only intermediate audio (e.g. ep_1_raw.mp3) as
+    synthesized, stranding it as permanently 'drifted' since upload.sh would
+    stage nothing for it."""
     scripts = ws / "scripts"
     if not scripts.is_dir():
         return False
-    return any(scripts.glob("ep_*.mp3")) or any(scripts.glob("ep_*.m4a"))
+    return any(
+        any(scripts.glob(f"ep_*_{variant}.{ext}"))
+        for variant in ("pro", "flash")
+        for ext in ("m4a", "mp3")
+    )
 
 
 def reconcile_workspaces(workspaces_dir: Path, published_ids: set[str]) -> list[dict]:
@@ -1274,6 +1282,10 @@ def remote_reconcile():
         series = remote_ops.list_remote_series()
     except remote_ops.RemoteError as e:
         raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
+    # Orphans (in-bucket-but-not-indexed, orphan=True) are intentionally folded
+    # in: the audio DID reach the bucket (publish succeeded, only index regen
+    # lagged), so this workspace↔S3 net must not false-flag it. The distinct
+    # bucket-has-files-but-index-missing concern is surfaced by /api/remote/series.
     published_ids = {e.get("id") for e in series if isinstance(e, dict)}
     drifted = reconcile_workspaces(WORKSPACES_DIR, published_ids)
     return {"drifted": drifted, "publishedCount": len(published_ids)}

@@ -58,6 +58,22 @@ def test_reconcile_ignores_workspaces_without_audio(tmp_path):
     assert drifted == []
 
 
+def test_reconcile_ignores_intermediate_audio_not_staged_by_upload(tmp_path):
+    """A workspace with only intermediate audio (ep_1_raw.mp3 — NOT
+    ep_*_{pro,flash}) must not be flagged: upload.sh would stage nothing, so
+    flagging it strands it as permanently drifted."""
+    ws = tmp_path / "raw_only"
+    (ws / "scripts").mkdir(parents=True)
+    (ws / "scripts" / "ep_1_raw.mp3").write_bytes(b"\x00")
+    (ws / "scripts" / "ep_1_tts.m4a").write_bytes(b"\x00")
+    drifted = server.reconcile_workspaces(tmp_path, published_ids=set())
+    assert drifted == []
+
+
+def test_reconcile_nonexistent_dir_returns_empty(tmp_path):
+    assert server.reconcile_workspaces(tmp_path / "nope", published_ids=set()) == []
+
+
 def test_reconcile_detects_m4a_audio(tmp_path):
     ws = tmp_path / "flow_m4a"
     (ws / "scripts").mkdir(parents=True)
@@ -80,6 +96,20 @@ def test_reconcile_endpoint(monkeypatch, tmp_path):
     assert resp.status_code == 200
     body = resp.json()
     assert [d["workspace"] for d in body["drifted"]] == ["flow_y"]
+
+
+def test_reconcile_endpoint_orphan_counts_as_published(monkeypatch, tmp_path):
+    """An orphan entry (in bucket, not in index) means audio reached S3 →
+    must NOT be flagged as drift."""
+    _ws_with_audio(tmp_path, "flow_orphan")
+    monkeypatch.setattr(server, "WORKSPACES_DIR", tmp_path)
+    monkeypatch.setattr(
+        server.remote_ops, "list_remote_series",
+        lambda: [{"id": "flow_orphan", "orphan": True, "sizeBytes": 123}],
+    )
+    resp = TestClient(server.app).get("/api/remote/reconcile")
+    assert resp.status_code == 200
+    assert resp.json()["drifted"] == []
 
 
 def test_reconcile_endpoint_propagates_remote_error(monkeypatch, tmp_path):
