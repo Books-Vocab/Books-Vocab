@@ -162,6 +162,7 @@ struct PodcastEpisodeListView: View {
         .onDisappear {
             navigationUnlockTask?.cancel()
             navigationUnlockTask = nil
+            navigationLocked = false
         }
         .task(id: seriesId) {
             await reloadFromStore()
@@ -309,7 +310,7 @@ struct PodcastEpisodeListView: View {
                     Label(label, systemImage: icon)
                 }
                 .buttonStyle(.appAction(.primary))
-                .disabled(unavailable || navigationLocked)
+                .disabled(unavailable)
                 .simultaneousGesture(
                     TapGesture().onEnded {
                         beginNavigationLock()
@@ -402,7 +403,7 @@ struct PodcastEpisodeListView: View {
                 row
             }
             .buttonStyle(.plain)
-            .disabled(!episode.audioAvailable || navigationLocked)
+            .disabled(!episode.audioAvailable)
             .simultaneousGesture(
                 TapGesture().onEnded {
                     beginNavigationLock()
