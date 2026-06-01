@@ -60,8 +60,6 @@ struct PodcastEpisodeListView: View {
     @State private var progressArray: [PodcastProgress] = []
     @State private var currentSeries: PodcastSeries?
     @State private var sort: EpisodeSort = .ascending
-    @State private var navigationLocked = false
-    @State private var navigationUnlockTask: Task<Void, Never>?
     /// hasLoadedOnce 區分「首次未載入 (.loading)」與「載入後空集數 (.empty)」，
     /// 避免 0 集 series 在 task 啟動前閃 empty。
     @State private var hasLoadedOnce = false
@@ -153,16 +151,6 @@ struct PodcastEpisodeListView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 followToggleButton
             }
-        }
-        .onAppear {
-            navigationUnlockTask?.cancel()
-            navigationUnlockTask = nil
-            navigationLocked = false
-        }
-        .onDisappear {
-            navigationUnlockTask?.cancel()
-            navigationUnlockTask = nil
-            navigationLocked = false
         }
         .task(id: seriesId) {
             await reloadFromStore()
@@ -313,7 +301,6 @@ struct PodcastEpisodeListView: View {
                 .disabled(unavailable)
                 .simultaneousGesture(
                     TapGesture().onEnded {
-                        beginNavigationLock()
                         warmConnection(for: target)
                     }
                 )
@@ -406,7 +393,6 @@ struct PodcastEpisodeListView: View {
             .disabled(!episode.audioAvailable)
             .simultaneousGesture(
                 TapGesture().onEnded {
-                    beginNavigationLock()
                     warmConnection(for: episode)
                 }
             )
@@ -441,19 +427,6 @@ struct PodcastEpisodeListView: View {
             return L10n.format("共 %@ 小時 %@ 分", String(h), String(m))
         }
         return L10n.format("共 %@ 分鐘", String(m))
-    }
-
-    @MainActor
-    private func beginNavigationLock() {
-        guard !navigationLocked else { return }
-        navigationLocked = true
-        navigationUnlockTask?.cancel()
-        navigationUnlockTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            navigationLocked = false
-            navigationUnlockTask = nil
-        }
     }
 
     /// Fires AVFoundation's DNS/TLS/first-Range while the navigation transition
