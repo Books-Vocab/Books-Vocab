@@ -113,6 +113,27 @@ struct PodcastReconcileTests {
         #expect(tombB?.isDeleted == true)
     }
 
+    @Test func reconcile_empty_server_list_does_not_tombstone() throws {
+        // 根因回歸網：/api/podcasts 在 S3 index.json 短暫讀不到時回 `[]`（HTTP 200），
+        // fetchSeriesList 不拋例外 → summaries 為空。空 list 必須當非權威跳過 tombstone，
+        // 否則整個本地 catalog 被 soft-delete，書架 podcast 區塊整片消失。
+        let ctx = try makeContext()
+        let s1 = makeSeries("a")
+        let s2 = makeSeries("b")
+        ctx.insert(s1); ctx.insert(s2)
+        try ctx.save()
+
+        PodcastSyncService.reconcileLocalState(
+            serverSummaries: [],
+            fetchedDetails: [:],
+            context: ctx
+        )
+        try ctx.save()
+
+        let all = try ctx.fetch(FetchDescriptor<PodcastSeries>())
+        #expect(all.allSatisfy { $0.isDeleted == false }, "空 server list 不可 tombstone 任何 series")
+    }
+
     @Test func reconcile_resurrects_returned_series() throws {
         let ctx = try makeContext()
         let s = makeSeries("a")

@@ -264,18 +264,28 @@ final class PodcastSyncService {
     ) {
         let serverSeriesIds = Set(serverSummaries.map(\.id))
 
-        // 1 + 2: Series tombstone / resurrection
-        let allSeriesDescriptor = FetchDescriptor<PodcastSeries>()
-        let allSeries = (try? context.fetch(allSeriesDescriptor)) ?? []
-        for series in allSeries {
-            let onServer = serverSeriesIds.contains(series.remoteId)
-            if onServer && series.isDeleted {
-                series.isDeleted = false
-                series.updatedAt = Date()
-            } else if !onServer && !series.isDeleted {
-                series.isDeleted = true
-                series.updatedAt = Date()
+        // 1 + 2: Series tombstone / resurrection.
+        // Empty `serverSummaries` is treated as a transient server hiccup and skipped —
+        // `/api/podcasts` returns `[]` with HTTP 200 when its S3 index.json is momentarily
+        // missing/unreadable (見 podcast.py list_podcasts)，而 syncAll 的 fetch guard 只擋
+        // 拋例外、擋不到成功的空回應。若不守衛，空 list → serverSeriesIds 為空 → 整個本地
+        // catalog 全被 soft-delete（即書架 podcast 區塊整片消失的根因）。對稱於下方 episode
+        // 層的 empty-episodes 守衛。
+        if !serverSummaries.isEmpty {
+            let allSeriesDescriptor = FetchDescriptor<PodcastSeries>()
+            let allSeries = (try? context.fetch(allSeriesDescriptor)) ?? []
+            for series in allSeries {
+                let onServer = serverSeriesIds.contains(series.remoteId)
+                if onServer && series.isDeleted {
+                    series.isDeleted = false
+                    series.updatedAt = Date()
+                } else if !onServer && !series.isDeleted {
+                    series.isDeleted = true
+                    series.updatedAt = Date()
+                }
             }
+        } else {
+            AppLog.kg.warning("[PodcastSync] empty server series list — skip series tombstone (avoid mass-delete on transient empty 200)")
         }
 
         // 3: Episode hard-delete (only for series whose detail we fetched)
