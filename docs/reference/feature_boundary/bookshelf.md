@@ -14,7 +14,7 @@ verified_against: 3d4ed997
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `BookshelfView.swift` | 396 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；row 子 view 已抽出至 `Components/` |
+| `BookshelfView.swift` | 397 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；row 子 view 已抽出至 `Components/`。**Navigation 契約**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`。podcast regular inline（iPad/Mac Catalyst）點集數 → `detailRouter.show` → 右欄 `safeAreaInset` 掛 `PodcastPlayerView` 會牽動 BookshelfView body 重評；bare stack 在重評時整個重建、隱式 path reset → 已 push 的集數列表/播放器被 pop 回書架根（runtime log 實證：`BookshelfView NavigationStack ROOT (re)built, path reset`）。path-bound 後 path 是 @State、body 重評保留，不再 pop。鏡射 `NotebookListView.swift` |
 | `BookshelfPreviews.swift` | 133 | `#Preview` 集中地（mock data scaffolds、各 row 型態樣本） |
 
 ### Coordinator Layer（導航協調）
