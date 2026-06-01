@@ -105,3 +105,72 @@ def test_publish_loud_fails_without_bucket(monkeypatch, tmp_path):
     log = _FakeLog()
     assert pipeline.stage_publish(ws, log) is False
     assert any(level == "error" for level, _ in log.msgs)
+
+
+def test_publish_upload_failure_short_circuits_verify(monkeypatch, tmp_path):
+    """upload rc != 0 must NOT call verify (short-circuit) and must retry."""
+    ws = tmp_path / "flow_x"
+    ws.mkdir()
+    _patch_upload(monkeypatch, rc=1)
+    verify_calls = {"n": 0}
+    monkeypatch.setattr(pipeline, "_verify_published",
+                        lambda sid: verify_calls.__setitem__("n", verify_calls["n"] + 1) or True)
+    assert pipeline.stage_publish(ws, _FakeLog(), max_retries=2) is False
+    assert verify_calls["n"] == 0  # never reached verify on rc!=0
+
+
+def test_publish_loud_fails_when_upload_script_missing(monkeypatch, tmp_path):
+    ws = tmp_path / "flow_x"
+    ws.mkdir()
+    monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
+    monkeypatch.setattr(pipeline.Path, "is_file", lambda self: False)
+    log = _FakeLog()
+    assert pipeline.stage_publish(ws, log) is False
+    assert any("upload script missing" in m for level, m in log.msgs)
+
+
+def test_publish_timeout_is_retried(monkeypatch, tmp_path):
+    ws = tmp_path / "flow_x"
+    ws.mkdir()
+    monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
+    monkeypatch.setattr(pipeline.Path, "is_file", lambda self: True)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda *_: None)
+
+    def _boom(*a, **k):
+        raise pipeline.subprocess.TimeoutExpired(cmd="bash", timeout=1)
+
+    monkeypatch.setattr(pipeline.subprocess, "run", _boom)
+    monkeypatch.setattr(pipeline, "_verify_published", lambda sid: True)
+    assert pipeline.stage_publish(ws, _FakeLog(), max_retries=2) is False
+
+
+def test_verify_published_matches_series_in_index(monkeypatch):
+    """_verify_published reads index.json from S3 and matches by id."""
+    monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
+    import json as _json
+
+    class _Body:
+        def __init__(self, b): self._b = b
+        def read(self): return self._b
+
+    class _S3:
+        def __init__(self, idx): self._idx = idx
+        def get_object(self, Bucket, Key):
+            return {"Body": _Body(_json.dumps(self._idx).encode())}
+
+    import boto3
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: _S3([{"id": "flow_x"}, {"id": "other"}]))
+    assert pipeline._verify_published("flow_x") is True
+    assert pipeline._verify_published("missing") is False
+
+
+def test_verify_published_false_when_index_unreadable(monkeypatch):
+    monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
+
+    class _S3:
+        def get_object(self, Bucket, Key):
+            raise RuntimeError("NoSuchKey")
+
+    import boto3
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: _S3())
+    assert pipeline._verify_published("flow_x") is False
