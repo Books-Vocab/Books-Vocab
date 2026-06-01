@@ -66,7 +66,8 @@ verified_against: 132bc746
 - **Translate singleflight dedup**: 120s follower timeout + N>2 loop semantics
 - **Translate cache**: env-tunable TTL `TRANSLATE_CACHE_TTL_DAYS` + model-key column migration
 - **Log retention env vars**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS` + pruners + CLI + admin trigger endpoint + flat aliases
-- **Podcast API**: `/api/podcasts*` 認證端點（手刻 Range/206 音訊串流 + `ep_num` Path 驗證）+ per-user podcast progress LWW SQLite store（legacy 無認證 `/api/podcast-media/` StaticFiles 掛載已於 2026-05 移除，零生產流量後關閉公開讀取繞道）。生成 pipeline 工程文檔:`docs/sop/podcast_pipeline.md`
+- **Podcast API**: `/api/podcasts*` 認證端點（手刻 Range/206 音訊串流 + `ep_num` Path 驗證；S3 模式 audio 副檔名由 metadata `audioFormat` 決定，相容 legacy mp3）+ per-user podcast progress LWW SQLite store（legacy 無認證 `/api/podcast-media/` StaticFiles 掛載已於 2026-05 移除，零生產流量後關閉公開讀取繞道）。生成 pipeline 工程文檔:`docs/sop/podcast_pipeline.md`
+- **Podcast 上傳閉環 + drift 安全網**: pipeline 終端 `publish` stage 合成完成即自動上傳 S3 + verify（無手動步驟）;`ops/podcast_backfill_disk.py` served-disk→S3 回填 + `--check` reconcile;monitor `GET /api/remote/reconcile` 報 workspace↔S3「合成了但沒上傳」drift
 - **EmbeddingStore env wiring**: `EMBEDDING_MODEL` / `EMBEDDING_DIM` 透過 factory 傳入 + dim mismatch guard + cache key 含 model+dim + `_load` shape verification 防 silent corruption
 - **`cards.batch_touch(notebook_id=...)`** scope filter
 - **`orphan_scan`** cross-DB consistency scanner + admin endpoint
