@@ -138,6 +138,43 @@ enum ReaderPresentationMetrics {
     }
 }
 
+enum ReaderOverlayPanelPlacement: Equatable {
+    case centeredBottom
+    case trailingInspector
+
+    init(layoutMode: LayoutMode) {
+        self = layoutMode.usesInlineDetail ? .trailingInspector : .centeredBottom
+    }
+
+    var alignment: Alignment {
+        switch self {
+        case .centeredBottom: return .center
+        case .trailingInspector: return .trailing
+        }
+    }
+
+    var horizontalInset: CGFloat {
+        switch self {
+        case .centeredBottom: return AppSpacing.s4
+        case .trailingInspector: return AppSpacing.s5
+        }
+    }
+
+    var bottomInset: CGFloat {
+        switch self {
+        case .centeredBottom: return ReaderPresentationMetrics.Overlay.bottomInset
+        case .trailingInspector: return AppSpacing.s5
+        }
+    }
+
+    var maxWidth: CGFloat {
+        switch self {
+        case .centeredBottom: return ReaderPresentationMetrics.Overlay.panelMaxWidth
+        case .trailingInspector: return 460
+        }
+    }
+}
+
 private extension ReaderContentStyle {
     static let vocab = ReaderContentStyle(
         pageGutterTop: 76,

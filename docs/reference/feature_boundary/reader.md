@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Reader/
-verified_against: dba5d4e1
+verified_against: 8a564dd6
 -->
 # Reader Feature Boundary
 
@@ -24,7 +24,7 @@ verified_against: dba5d4e1
 |------|------|------|
 | `ReaderViewPresenter.swift` | 57 | 主佈局 `struct ReaderViewPresenter<...>: View` |
 | `ReaderViewPresenter+Headers.swift` | 207 | header 區域 extension |
-| `ReaderViewPresenter+Overlays.swift` | 154 | overlay 區域 extension |
+| `ReaderViewPresenter+Overlays.swift` | ~154 | overlay 區域 extension；translation / settings panel 依 `ReaderOverlayPanelPlacement` 分流：compact 底部居中，regular / Catalyst 右下 inspector |
 | `ReaderViewPresenter+Preview.swift` | 207 | preview 資料 |
 | `QuotaBar.swift` | 51 | `struct QuotaBar: View`，quota 顯示列 |
 
@@ -61,7 +61,7 @@ verified_against: dba5d4e1
 | `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
-| `ReaderContentStyle.swift` | 164 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` |
+| `ReaderContentStyle.swift` | ~190 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` |
 
 ### Feature Panels
 
