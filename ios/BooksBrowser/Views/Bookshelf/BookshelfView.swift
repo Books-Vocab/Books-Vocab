@@ -43,13 +43,14 @@ struct BookshelfView: View {
     }
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
+    @State private var navigationPath = NavigationPath()
 
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
 
     private var coverHeight: CGFloat { layoutMode.bookshelfCoverHeight }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ZStack {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
