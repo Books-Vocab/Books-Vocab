@@ -197,6 +197,22 @@ opt-out env:
 
 429 表示同時 job 太多(預設 cap 4 個 running),412 → 422 → 413(epub >200MB)→ 500 各有意義。
 
+**Agent 走 HTTP API 後 GUI 可見性**：
+
+| GUI 面板 | 可見？ | 說明 |
+|----------|--------|------|
+| Jobs 面板（running/done/failed） | ✅ | job 進 registry，即時狀態 |
+| Job log tail | ✅ | `GET /api/jobs/{id}?log_bytes=N` |
+| Kill 按鈕 | ✅ | `POST /api/jobs/{id}/kill`（SIGTERM process group） |
+| Stage 進度條 | ✅ | SSE tail `pipeline_log.jsonl`，0.5s 延遲 |
+| Live Activity feed | ✅ | SSE tail `events.jsonl`，0.5s 延遲 |
+| Cost breakdown | ✅ | 每 4s poll `events.jsonl` |
+| Episode matrix | ✅ | 每 5s poll artifact 目錄 |
+| APPROVE 按鈕（409 守衛） | ✅ | per-workspace 守衛正確感知此 job |
+| RESUME 按鈕（409 守衛） | ✅ | 同上，不重複 spawn |
+
+直接 CLI（不走 API）：Jobs 面板、Kill、APPROVE/RESUME 守衛全部 ❌；SSE + stage 進度仍 ✅（dashboard 讀的是磁碟檔案）。
+
 UI:KPI strip(TOTAL COST / ELAPSED / CONTEXT NOW / TOKENS OUT) + 13 stage 進度條(scriptwrite / script-review / synthesize 三段平行階段展開顯示每集 EP tile) + COST BREAKDOWN 表(逐 stage:model、calls、input/output tokens、cache R/W、audio、$) + LIVE ACTIVITY feed。
 
 **成本計算來源**(`monitor/cost.py`):
@@ -204,6 +220,71 @@ UI:KPI strip(TOTAL COST / ELAPSED / CONTEXT NOW / TOKENS OUT) + 13 stage 進度�
 - Stage 11(Vertex TTS):從 `tts_usage` event 取 `input_tokens` × `output_tokens`,套 `VERTEX_PRICING` dict。當前 default `gemini-3.1-flash-tts-preview` $1.00/$20 per 1M(audio = 25 tok/sec,無 long tier);舊 `gemini-2.5-pro-tts` $1.25/$10 也保留。`response.usage_metadata` 缺失時 fallback 估算(`input ≈ chars/4`、`output ≈ audio_sec × 25`),event 標 `usage_source: "estimated"`
 - Stage 12-13(audio_qa / Whisper):本地跑,$0
 - Pricing 來源:Vertex Gemini 3.1 Flash TTS 用 AI Studio TTS-specific row($1/$20);2.5-pro-tts 用 Vertex 公告 base Gemini 2.5 Pro rate。`verified_against: "2026-05-30"`。改單價編輯 `VERTEX_PRICING` 或 env `PODCAST_TTS_PRICING='{"model":{...}}'` 覆寫。
+
+## Dashboard HTTP API 完整速查
+
+`BASE=http://127.0.0.1:8765`（本機，無 auth）
+
+### 觀測（Read-only）
+
+```bash
+# Workspace 列表（附完整 sidebar 資料）
+curl -sf "$BASE/api/workspaces?full=1" | python3 -m json.tool
+
+# 單 workspace 概況（stage markers + 歷史 events）
+curl -sf "$BASE/api/workspace/$WS/snapshot" | python3 -m json.tool
+
+# 每集四關卡（plan/script/audio/subtitle artifact 推導）
+curl -sf "$BASE/api/workspace/$WS/episodes/status" | python3 -m json.tool
+
+# 成本明細（逐 stage USD）
+curl -sf "$BASE/api/workspace/$WS/cost" | python3 -m json.tool
+
+# Jobs 列表（最新 8 筆）
+curl -sf "$BASE/api/jobs?limit=8" | python3 -m json.tool
+
+# 單 job 狀態 + log tail
+curl -sf "$BASE/api/jobs/$JOB?log_bytes=8192" | python3 -m json.tool
+```
+
+### Action（spawn subprocess，回傳 `{job_id}`）
+
+```bash
+# 全流程啟動（停在 plan gate）
+curl -sf -X POST "$BASE/api/pipeline/start" \
+  -F "epub=@/path/to/book.epub" -F "parallel=3"
+
+# Gate 核准 + 自動 resume（寫 marker + spawn）
+curl -sf -X POST "$BASE/api/workspace/$WS/approve?gate=plan"
+curl -sf -X POST "$BASE/api/workspace/$WS/approve?gate=script"
+
+# 從斷點自動續跑（不寫 marker，只 spawn）
+curl -sf -X POST "$BASE/api/workspace/$WS/resume"
+
+# 重跑單 stage（砍 marker + spawn）
+curl -sf -X POST "$BASE/api/workspace/$WS/rerun?stage=scriptwrite&drop_marker=true"
+# 單集
+curl -sf -X POST "$BASE/api/workspace/$WS/rerun?stage=scriptwrite&episode=2&drop_marker=true"
+
+# 上傳到 S3（跑 ops/podcast_upload.sh）
+curl -sf -X POST "$BASE/api/workspace/$WS/upload"
+
+# Kill running job（SIGTERM process group）
+curl -sf -X POST "$BASE/api/jobs/$JOB/kill"
+
+# 刪除 workspace（不可逆，confirm 必須等於 ws 名）
+curl -sf -X DELETE "$BASE/api/workspace/$WS?confirm=$WS"
+```
+
+### 錯誤碼速查
+
+| 碼 | 意義 |
+|----|------|
+| 409 | per-workspace 已有 running job（守衛擋） |
+| 412 | pending 狀態（前一相未完成，approve 拒）|
+| 422 | 無可上傳的音訊（upload 拒）|
+| 413 | EPUB > 200MB |
+| 429 | 超過 global `MAX_ACTIVE_JOBS`（預設 4）|
 
 ## 主持人動態命名
 
