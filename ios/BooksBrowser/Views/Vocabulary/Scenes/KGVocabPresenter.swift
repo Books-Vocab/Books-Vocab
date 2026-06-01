@@ -7,6 +7,10 @@ enum KGVocabRowSelection {
     }
 }
 
+enum KGVocabRowChrome {
+    static let hoverCornerRadius: CGFloat = AppRadius.sm
+}
+
 struct KGVocabPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -231,10 +235,11 @@ private struct KGVocabRow: View {
         .padding(.vertical, AppSpacing.s1)
         .background {
             if isHighlighted {
-                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                RoundedRectangle(cornerRadius: KGVocabRowChrome.hoverCornerRadius, style: .continuous)
                     .fill(appSkin.palette.accent.opacity(0.08))
             }
         }
+        .appHoverRowTint(cornerRadius: KGVocabRowChrome.hoverCornerRadius)
         .padding(.horizontal, AppSpacing.s1)
         .transition(.listSwap)
     }

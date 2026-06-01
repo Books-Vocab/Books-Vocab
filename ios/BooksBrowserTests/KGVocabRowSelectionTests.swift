@@ -17,4 +17,8 @@ struct KGVocabRowSelectionTests {
         #expect(!KGVocabRowSelection.isHighlighted(rowID: selected, selectedRowID: selected, isSelecting: true))
         #expect(!KGVocabRowSelection.isHighlighted(rowID: selected, selectedRowID: nil, isSelecting: false))
     }
+
+    @Test func rowHoverAndSelectionUseTheSameCornerRadius() {
+        #expect(KGVocabRowChrome.hoverCornerRadius == AppRadius.sm)
+    }
 }
