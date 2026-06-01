@@ -100,11 +100,9 @@ struct ContentView: View {
     private func sectionContent(_ section: AppPrimarySection) -> some View {
         switch section {
         case .bookshelf:
-            #if os(iOS)
+            // sectionContent is only invoked from the macCatalyst NavigationSplitView
+            // branch, where os(iOS) is always true — the #else was dead code.
             BookshelfView()
-            #else
-            EmptyView()
-            #endif
         case .notebooks:
             NotebookListView()
         case .overview:
