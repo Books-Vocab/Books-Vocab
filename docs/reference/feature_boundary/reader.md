@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Reader/
-verified_against: 9449bc29
+verified_against: c1d7a3b5
 -->
 # Reader Feature Boundary
 
@@ -61,7 +61,7 @@ verified_against: 9449bc29
 | `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
-| `ReaderContentStyle.swift` | 225 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` |
+| `ReaderContentStyle.swift` | 255 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` + `ReaderTOCPresentation` |
 
 ### Feature Panels
 
@@ -73,7 +73,7 @@ verified_against: 9449bc29
 | `ReaderSettingsPanel.swift` | 184 | `struct ReaderSettingsPanel: View`，閱讀設定面板 |
 | `ReaderSettingsPresenter.swift` | 111 | 設定面板 presenter facade，持有設定狀態與 layout environment |
 | `ReaderSettingsPresenter+Vocab.swift` | 240 | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
-| `TOCView.swift` | 203 | `struct TOCView: View`，目錄 |
+| `TOCView.swift` | 222 | `struct TOCView: View`，目錄；regular / Catalyst 收斂內容寬度，compact 維持 full-width sheet |
 
 ---
 

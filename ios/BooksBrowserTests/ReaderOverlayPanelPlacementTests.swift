@@ -35,4 +35,20 @@ struct ReaderOverlayPanelPlacementTests {
         #expect(!chrome.allowsDragDismiss)
         #expect(chrome.contentTopInset == AppSpacing.s4)
     }
+
+    @Test func compactTOCUsesFullWidthSheetContent() {
+        let presentation = ReaderTOCPresentation(layoutMode: .compact)
+
+        #expect(presentation.contentMaxWidth == .infinity)
+        #expect(presentation.stateCardMaxWidth == .infinity)
+        #expect(presentation.horizontalPadding == 0)
+    }
+
+    @Test func regularTOCConstrainContentForDesktopScanning() {
+        let presentation = ReaderTOCPresentation(layoutMode: .regular)
+
+        #expect(presentation.contentMaxWidth == 560)
+        #expect(presentation.stateCardMaxWidth == 440)
+        #expect(presentation.horizontalPadding == AppSpacing.s5)
+    }
 }
