@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 111b2a4f
+verified_against: 29b85b87
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -24,7 +24,7 @@ verified_against: 111b2a4f
 
 ---
 
-## 1. 13 階段架構
+## 1. 14 階段架構
 
 主控 `lab/podcast/pipeline.py`，順序執行：
 
@@ -44,10 +44,11 @@ EPUB
  ├10. tts-prep        最終 TTS 審查 + Voice Mapping TBD→實際 voice
  ├11. synthesize      Vertex Gemini TTS + ffmpeg loudnorm
  ├12. audio-qa        pydub wpm/silence/clipping(FAIL 阻斷)
- └13. subtitle        Whisper forced alignment → 詞級 SRT
+ ├13. subtitle        Whisper forced alignment → 詞級 SRT
+ └14. publish         ops/podcast_upload.sh → S3 + verify 現身 catalog index
 ```
 
-> `STAGES` list 為 13 個(`pipeline.py` 內,搜 `STAGES = [`)。argparse epilog 已同步 13 階 + 兩道 gate;若見 `pipeline.py` 頂部 docstring 仍寫「10 stages」即為殘留,以 `STAGES` 為準。
+> `STAGES` list 為 14 個(`pipeline.py` 內,搜 `STAGES = [`)。`publish` 為終端 stage,合成完成即自動上傳 S3(關閉「合成了但沒上傳」的 drift 缺口)——**不設 approval gate**(全自動),失敗 loud-fail（PODCAST_BUCKET/creds 未設或 verify 耗盡即回 False,寫 error log,非 silent）。monitor dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。若見 `pipeline.py` 頂部 docstring 仍寫舊階數即為殘留,以 `STAGES` 為準。
 
 ### 兩道人工核准 gate(`approval_gate_block`)
 
@@ -267,6 +268,33 @@ iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress(
 - 移除依據:生產 deprecation log 12 天零 hit + 認證端點 734 hit → 全 client 已遷移。
 - 唯一 audio 路徑:`GET /api/podcasts/{sid}/{ep_num}/audio`(Bearer JWT，支援 Range/206)。
 - 防回歸測試:`test_legacy_podcast_media_mount_removed`(test_podcast_api.py)。
+
+### 自動上傳閉環(pipeline `publish` stage)
+
+`pipeline.py` 跑完 `subtitle` 後自動執行 `publish` stage → `ops/podcast_upload.sh <workspace>` → verify series 現身 `index.json`(retry+backoff,1800s timeout)。**合成完成即上線,無手動步驟**。本機跑 pipeline 須先 `export PODCAST_BUCKET=... AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...`;未設則 publish loud-fail（回 False,寫 error log,不 crash、不靜默)。dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。
+
+### audioFormat 解析(S3 模式 mp3/m4a)
+
+backend `_audio_filename`(podcast.py)S3 模式**讀 series `metadata.json` 的 `audioFormat`** 決定 `audio.{m4a,mp3}` key;欄位缺失則 probe bucket(head_object m4a→mp3),per-(bucket,series) 快取。upload.sh 與 backfill 都會寫 `audioFormat`。**歷史 bug**:舊碼 S3 模式硬回 `audio.m4a`,legacy mp3 series 的 audio 端點 404(bucket 一直空才沒爆),修於 `f4f6b013`/`beaa33c4`。
+
+### served-disk → S3 回填 + drift reconcile(`ops/podcast_backfill_disk.py`)
+
+Track-B 切 S3-only 時,既有在 backend 實例磁碟 `/app/data/podcasts/`(served 佈局)的 series 未遷移 → bucket 空 → `/api/podcasts` 回 `[]`(2026-06 incident)。回填工具消費 served-disk 佈局(非 workspace),容器內 boto3 執行:
+
+```bash
+# 1. dry-run 看計畫(預設;不寫)
+./ops/devops_kg_safe.sh container-script ops/podcast_backfill_disk.py
+# 2. 實際上傳(純新增、不刪、head_object 冪等 skip-existing)
+./ops/devops_kg_safe.sh container-script ops/podcast_backfill_disk.py --execute
+# 3. drift 檢查(唯讀;disk 有/S3 缺 → 報 missing_in_s3 + exit≠0)
+./ops/devops_kg_safe.sh container-script ops/podcast_backfill_disk.py --check
+```
+
+注入 `audioFormat`(探 ep_01 副檔名)、content-type 對齊 upload.sh、`index.json` 永遠重傳(防殘留空 index)、`_key_exists` 對非-404 故障 loud-fail(不誤報 drift)。`--series <id>` 限定範圍。
+
+**drift 安全網兩面**(來源不同,勿混):
+- **served-disk↔S3**(上述 `--check`):覆蓋 legacy 實例磁碟 series。回填後恆 in-sync,ad-hoc 驗證用。
+- **workspace↔S3**(monitor `GET /api/remote/reconcile`):覆蓋「pipeline 合成 audio 但 publish 上傳靜默失敗」。新世界 series 直接 pipeline→S3、不落實例磁碟,故 drift 來源是 lab workspaces。回 `{drifted:[{workspace, reason:"synthesized_not_published"}], publishedCount}`。
 
 ---
 
