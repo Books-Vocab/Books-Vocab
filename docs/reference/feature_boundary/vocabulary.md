@@ -40,7 +40,7 @@ verified_against: c9f2ce50
 | `Scenes/PendingVocabPresenter.swift` | 94 | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
 | `Scenes/KGVocabPresenter.swift` | ~270 | KG 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆 |
 | `Scenes/KnowledgeGraphPresenter.swift` | 255 | 知識圖譜佈局 |
-| `Scenes/WordDetailPresenter.swift` | 141 | `struct WordDetailPresenter: View` |
+| `Scenes/WordDetailPresenter.swift` | ~175 | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆 |
 | `Scenes/SyncPresenter.swift` | 140 | 同步主佈局 |
 | `Scenes/SyncPresenter+Header.swift` | 94 | 同步 header |
 | `Scenes/SyncPresenter+ActionArea.swift` | 86 | 同步 action 區域 |
