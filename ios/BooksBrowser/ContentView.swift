@@ -65,14 +65,14 @@ struct ContentView: View {
         NavigationSplitView {
             List {
                 ForEach(AppPrimarySection.allCases) { section in
-                    Button {
-                        selectedSection = section
-                    } label: {
-                        Label(L10n.string(section.titleKey), systemImage: section.systemImage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(selectedSection == section ? Color.accentColor.opacity(0.14) : Color.clear)
+                    AppSidebarRow(
+                        systemImage: section.systemImage,
+                        title: L10n.string(section.titleKey),
+                        isSelected: selectedSection == section,
+                        action: { selectedSection = section }
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 }
             }
             .listStyle(.sidebar)
