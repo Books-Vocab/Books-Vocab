@@ -332,46 +332,81 @@ class TestEnrichCardsStream:
             "would let workers buffer unlimited messages."
         )
 
+    @staticmethod
+    async def _drain_with_timeout(agen_factory, timeout: float = 5.0):
+        """Drain an async generator, failing the test (rather than hanging the
+        whole suite) if it doesn't complete within `timeout`. Used to detect
+        the consumer/worker deadlock regression."""
+        async def _drain():
+            out = []
+            async for msg in agen_factory():
+                out.append(msg)
+            return out
+
+        try:
+            return await asyncio.wait_for(_drain(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pytest.fail(
+                "enrich_cards_stream deadlocked: a batch worker failed to emit "
+                "its terminal message, tasks_remaining never reached 0, and the "
+                "consumer's `await queue.get()` blocked forever."
+            )
+
     @pytest.mark.asyncio
     async def test_stream_does_not_deadlock_on_scalar_json_response(self):
-        """Regression: a malformed LLM response whose top-level JSON is a
-        scalar/null (e.g. `"x"`, `5`, `null`) makes _parse_enrich_response
-        call `.values()` on a non-dict → AttributeError. That exception is
-        NOT in the worker's catch tuple, so it escapes the worker, no
-        terminal message is enqueued, tasks_remaining never reaches 0, and
-        the consumer's `await queue.get()` blocks forever (ThreadPoolExecutor
-        also never releases). The stream MUST instead emit a terminal error
-        for that batch, decrement tasks_remaining, and complete.
-        """
+        """Regression (first-line defense): a malformed LLM response whose
+        top-level JSON is a scalar/null (e.g. `"x"`, `5`, `null`) used to make
+        _parse_enrich_response call `.values()` on a non-dict → AttributeError,
+        which was NOT in the worker's catch tuple. It escaped the worker, no
+        terminal message was enqueued, tasks_remaining never reached 0, and the
+        consumer blocked forever. The stream MUST now complete with exactly one
+        terminal message for the single batch (scalar JSON parses to an empty
+        enrichment list — a clean success — instead of crashing)."""
         from kg.enrich import enrich_cards_stream
 
-        # Top-level scalar JSON → `for v in data.values()` raises AttributeError
         resp = _mock_response('"unexpected-scalar"')
-        llm = TrackedLLM(MagicMock(), "u_deadlock")
+        llm = TrackedLLM(MagicMock(), "u_deadlock_scalar")
 
         with patch("kg.enrich.sync_retry", return_value=resp):
-            cards = [_make_card("hello", "你好")]
-
-            async def _drain():
-                out = []
-                async for msg in enrich_cards_stream(llm, cards, batch_size=1):
-                    out.append(msg)
-                return out
-
-            # If the deadlock regresses, this never completes → wait_for fires.
-            try:
-                results = await asyncio.wait_for(_drain(), timeout=5.0)
-            except asyncio.TimeoutError:
-                pytest.fail(
-                    "enrich_cards_stream deadlocked on a scalar-JSON response: "
-                    "the batch worker raised an uncaught exception, no terminal "
-                    "message was sent, and the consumer blocked forever."
+            results = await self._drain_with_timeout(
+                lambda: enrich_cards_stream(
+                    llm, [_make_card("hello", "你好")], batch_size=1
                 )
+            )
 
-        # The single batch must have produced exactly one terminal error msg.
+        # tasks_remaining reached 0: the final yielded message accounts for the
+        # batch (current == total) and the stream ended without blocking.
+        assert results, "stream produced no messages"
+        assert results[-1]["status"] in ("running", "error")
+        assert results[-1]["current"] == results[-1]["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_stream_does_not_deadlock_on_unexpected_worker_exception(self):
+        """Regression (catch-all guarantee): even an exception that bypasses
+        _parse_enrich_response's defensive shaping — i.e. a brand-new exception
+        type the original narrow catch tuple never anticipated — must still
+        produce an error terminal and let the stream complete, rather than
+        escaping the worker and deadlocking. Here parsing itself raises an
+        unexpected error type."""
+        from kg.enrich import enrich_cards_stream
+
+        class WeirdError(Exception):
+            """Not in any historical catch tuple."""
+
+        resp = _mock_response('[{"word": "x"}]')
+        llm = TrackedLLM(MagicMock(), "u_deadlock_weird")
+
+        with patch("kg.enrich.sync_retry", return_value=resp), \
+             patch("kg.enrich._parse_enrich_response", side_effect=WeirdError("boom")):
+            results = await self._drain_with_timeout(
+                lambda: enrich_cards_stream(
+                    llm, [_make_card("hello", "你好")], batch_size=1
+                )
+            )
+
         errors = [r for r in results if r["status"] == "error"]
         assert len(errors) == 1, f"expected one error terminal, got: {results}"
-        # Stream completed cleanly (no leftover running with current<total stuck).
+        assert "boom" in errors[0]["detail"]
         assert results[-1]["status"] == "error"
 
     @pytest.mark.asyncio

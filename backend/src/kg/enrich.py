@@ -56,7 +56,12 @@ def _parse_enrich_response(raw_content: str) -> list[dict]:
     data = json.loads(raw_content or "{}")
     if isinstance(data, list):
         return data
-    if isinstance(data, dict) and "results" in data:
+    # First-line defense: a top-level scalar/null (e.g. `"x"`, `5`, `null`)
+    # is not a container — `.values()` on it would raise AttributeError.
+    # Treat any non-dict shape as "no enrichments".
+    if not isinstance(data, dict):
+        return []
+    if "results" in data:
         return data["results"]
     for v in data.values():
         if isinstance(v, list):
@@ -137,12 +142,43 @@ async def enrich_cards_stream(
     total_cards = len(cards)
     completed_cards = 0
 
-    from openai import OpenAIError
-
     def _process_batch_with_retry(batch: list[Card], loop: asyncio.AbstractEventLoop, queue: asyncio.Queue):
-        """Worker function that handles retries and pushes progress to the async queue."""
+        """Worker function that handles retries and pushes progress to the async queue.
+
+        Contract: this worker MUST enqueue exactly one terminal message
+        ("success" or "error") for its batch, no matter what happens. The
+        consumer decrements tasks_remaining on each terminal message and only
+        unblocks once all batches are accounted for. A single escaped
+        exception (or a dropped terminal message) leaves tasks_remaining > 0
+        forever → the consumer's `await queue.get()` blocks and the
+        ThreadPoolExecutor never releases. So the whole body is wrapped, and
+        terminal delivery is guaranteed (see _put_terminal).
+        """
+        def _put_terminal(msg: dict) -> None:
+            """Deliver a terminal message, guaranteeing it is never dropped.
+
+            Plain put_nowait (used for non-terminal 'retry' hints) raises
+            QueueFull when the bounded queue is full; inside a
+            call_soon_threadsafe callback that exception is swallowed by
+            asyncio's default handler, silently losing the message and
+            deadlocking the consumer. Terminal messages are delivery-critical,
+            so we schedule a loop callback that retries put_nowait via
+            call_later until it lands. This stays on the loop thread (no
+            cross-thread coroutine-future wait, which would itself deadlock the
+            worker against the loop), and a transiently full queue only delays
+            the terminal rather than losing it."""
+            def _try_put() -> None:
+                try:
+                    queue.put_nowait(msg)
+                except asyncio.QueueFull:
+                    # Consumer is draining concurrently; re-attempt shortly.
+                    loop.call_later(0.01, _try_put)
+
+            loop.call_soon_threadsafe(_try_put)
+
         def _delay_fn(attempt: int, exc: BaseException) -> float | None:
             wait_time = 2 ** (attempt + 1)
+            # Non-terminal progress hint: safe to drop if the queue is full.
             loop.call_soon_threadsafe(queue.put_nowait, {
                 "type": "retry",
                 "detail": _retry_detail(wait_time),
@@ -159,9 +195,18 @@ async def enrich_cards_stream(
                 step_name="Enrich stream",
             )
             results = _parse_enrich_response(response.choices[0].message.content)
-            loop.call_soon_threadsafe(queue.put_nowait, {"type": "success", "results": results, "count": len(batch)})
-        except (OpenAIError, json.JSONDecodeError, KeyError, TypeError, OSError) as e:
-            loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
+            _put_terminal({"type": "success", "results": results, "count": len(batch)})
+        except BaseException as e:  # noqa: BLE001 — terminal guarantee trumps catch-specificity
+            # Any escaped exception (known or future) becomes an error terminal
+            # so tasks_remaining is always decremented. Without this, a new
+            # uncaught exception type would silently re-introduce the deadlock.
+            try:
+                _put_terminal({"type": "error", "error": str(e)})
+            except BaseException:  # noqa: BLE001
+                # Terminal delivery itself failed (e.g. loop torn down). Nothing
+                # more we can safely do from a worker thread; re-raise the
+                # original so it surfaces on the future rather than vanishing.
+                raise e from None
 
     # Bounded queue: with max_workers=5 the natural in-flight count is small,
     # but cap at 100 so a stalled consumer can't let workers buffer unlimited
