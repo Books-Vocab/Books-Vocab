@@ -284,13 +284,10 @@ struct PodcastEpisodeListView: View {
                 return L10n.string("開始播放")
             }()
             let icon = unavailable ? "icloud.slash" : "play.fill"
-            switch PodcastEpisodeActivation.activation(
-                episodeRemoteId: target.remoteId,
-                layoutMode: layoutMode
-            ) {
-            case .inlineDetail(let episodeRemoteId):
+            if let onSelectEpisode {
+                // workspace 模式：hero CTA 同 episodeRow，開 player 子欄（不走內建 inline player）。
                 Button {
-                    detailRouter.show(episodeRemoteId: episodeRemoteId)
+                    onSelectEpisode(target.remoteId)
                     warmConnection(for: target)
                 } label: {
                     Label(label, systemImage: icon)
@@ -298,18 +295,34 @@ struct PodcastEpisodeListView: View {
                 .buttonStyle(.appAction(.primary))
                 .disabled(unavailable)
                 .frame(maxWidth: 280)
-            case .push(let route):
-                NavigationLink(value: route) {
-                    Label(label, systemImage: icon)
-                }
-                .buttonStyle(.appAction(.primary))
-                .disabled(unavailable)
-                .simultaneousGesture(
-                    TapGesture().onEnded {
+            } else {
+                switch PodcastEpisodeActivation.activation(
+                    episodeRemoteId: target.remoteId,
+                    layoutMode: layoutMode
+                ) {
+                case .inlineDetail(let episodeRemoteId):
+                    Button {
+                        detailRouter.show(episodeRemoteId: episodeRemoteId)
                         warmConnection(for: target)
+                    } label: {
+                        Label(label, systemImage: icon)
                     }
-                )
-                .frame(maxWidth: 280)
+                    .buttonStyle(.appAction(.primary))
+                    .disabled(unavailable)
+                    .frame(maxWidth: 280)
+                case .push(let route):
+                    NavigationLink(value: route) {
+                        Label(label, systemImage: icon)
+                    }
+                    .buttonStyle(.appAction(.primary))
+                    .disabled(unavailable)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            warmConnection(for: target)
+                        }
+                    )
+                    .frame(maxWidth: 280)
+                }
             }
         }
     }
