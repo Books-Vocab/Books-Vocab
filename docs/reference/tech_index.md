@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: cb1ef202
+verified_against: d52ace71
 -->
 # Technical Reference Index
 
@@ -73,7 +73,6 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 | `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`) |
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
 | `Platform/` | iOS / Mac Catalyst 橋接(`PlatformRepresentable` 型別 alias、`PlatformCompatibility` modifier wrapper、`LayoutMode`、`MacWindowChrome` Catalyst 視窗尺寸+沉浸 title bar、`MacMenuCommands` Catalyst 頂部選單列+⌘ 快捷鍵、`AppCommandCoordinator` app-global menu intent、`FocusedCommandValues` focusedSceneValue 動作通道) |
-| `Platform/PanelWorkspace/` | Catalyst/iPad regular 的 2D 可堆疊 block workspace 引擎(取代各 feature 各自的 `safeAreaInset` 假兩欄;compact 零改動)。`PanelWorkspace`(`@Observable` coordinator,SoT:水平 column stack Miller 截斷 + 每欄垂直 block stack,維持「無空欄」不變式)、`PanelKind`(封閉 enum payload:podcastSeries/podcastEpisode/wordDetail/reviewSession/linkedWord,value-pure 帶 id 快照)、`PanelModels`(`Block`/`WorkColumn` 值型別)、`PanelHost`(集中 resolver,kind→feature view,經 env 注入 entries/service 反查 live model)、`PanelProxy`(block 內導航/自關握把)、`PanelWorkspaceContainer`(水平 Miller column shell + 可拖寬欄,compact 只渲染 root)、`VerticalBlockStack`+`BlockChrome`(欄內垂直堆疊 + 每 block ✕ 關閉 + 可拖高 divider)、`ResizableDivider`(axis-generic callback-based 拖拉分隔線,coordinator 為 SoT)、`BlockStackMetrics`、`ReviewPanel`(entry-id 快照重建 `TodayReviewSession`)、`PanelDataEnvironment`(`\.panelWorkspace`/`\.panelVocabEntries` env key)、`WorkspaceDetailRouter`(`DetailRouting` adapter,把既有 `\.detailRouter.show*` 入口路由到 workspace 開欄)。section wrapper:`Views/Bookshelf/BookshelfWorkspaceSection`(包 `BookshelfView` + podcast 子欄)、`Views/Vocabulary/VocabWorkspaceSection`(包 `NotebookListView` + 注入 live entries),由 `ContentView` 的 `NavigationSplitView` detail 分支使用。**休眠未刪**:`PodcastDetailRouter`/`PodcastDetailPresentation`、`NotebookDetailPresentation` regular 分支、舊 `DetailRouter` 仍為 compact/休眠路徑 |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
 | `Debug/` | DEBUG-only — `CatalogScene` + `Scenarios/*Scenarios.swift`(Playbook iOS catalog,啟用方式見 `docs/sop/ios.md §Playbook Catalog`) |
 
