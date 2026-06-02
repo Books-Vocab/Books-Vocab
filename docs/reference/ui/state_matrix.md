@@ -4,11 +4,11 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: d96d08ca
+verified_against: 19469953
 -->
 # UI State Matrix
 
-Date: 2026-03-09
+Date: 2026-06-02
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
@@ -58,13 +58,13 @@ Scope: `ios/BooksBrowser`
 | Translation result | `contentMode == .translation` | translation body | 已覆蓋 |
 | Explanation only | `contentMode == .explanationOnly` | explanation body | 已覆蓋 |
 | Explanation loading | `isLoadingExplanation == true` | shared state message | 已覆蓋 |
-| Translation / explanation failed | `translationResult` or `explanationText` 填錯誤文案 | 文本內顯示錯誤 | 部分覆蓋 |
+| Translation / explanation failed | `translationErrorMessage` / `explanationErrorMessage` 有值 | `VocabStateMessageCard` 錯誤卡 + 重試 CTA（`onRetryTranslation` / `onRetryExplanation`，wire 在 `ReaderView+Panels.swift` + `PDFReaderView.swift`） | 已覆蓋 |
 | Empty panel | `contentMode == .empty` | `VocabStateMessageCard("尚未取得翻譯", "text.viewfinder", "請重新選取文字，或稍後再試一次。")` + footer toolbar（含 dismiss） | 已覆蓋 |
 
 判斷：
 - Reader 主容器狀態已經清楚
 - Translation panel 所有 contentMode 分支皆有明確 UX；`.empty` 透過 `VocabStateMessageCard` 提示用戶重新選字
-- 錯誤目前多數只是文案，不是明確 error state
+- 翻譯 / 解釋失敗已是明確 error state（`VocabStateMessageCard` 錯誤卡 + 重試 CTA）
 
 ---
 
@@ -139,7 +139,7 @@ Scope: `ios/BooksBrowser`
 | Details | `revealStage == .details` | detail fold | 已覆蓋 |
 | Completion | `currentCard == nil` | completion empty state | 已覆蓋 |
 | Remembered / forgot feedback | submit action | haptic + card swap | 已覆蓋 |
-| Save failure / persistence failure | `modelContext.save()` 失敗 | 無顯式 UI | 缺口 |
+| Save failure / persistence failure | `modelContext.save()` 失敗 | `onSaveFailure` → `toast.error(L10n.string("todayReview.saveFailure"))` | 已覆蓋 |
 
 ---
 
@@ -182,11 +182,11 @@ Scope: `ios/BooksBrowser`
 | Purchase / refresh loading | `subscriptionManager.isLoading` | CTA loading spinner | 已覆蓋 |
 | Purchase status message | `purchaseStatusMessage != nil` | shared state message card | 已覆蓋 |
 | App Store error | `lastError != nil` | shared state message card | 已覆蓋 |
-| Product pricing unavailable | `priceLine` fallback | inline text only | 部分覆蓋 |
+| Product pricing unavailable | `state.pricingUnavailableMessage != nil` | `pricingUnavailableCard`（`VocabStateMessageCard`） | 已覆蓋 |
 
 判斷：
 - Settings 的 section-level state 已經不差
-- 最大缺口是有些 fallback 仍然只用 detail text，而不是明確 state 分層
+- pricing unavailable 已收斂到 `VocabStateMessageCard`；殘留的 detail-text fallback（auth error、offline label）仍非明確 state 分層
 
 ---
 
@@ -220,13 +220,13 @@ Scope: `ios/BooksBrowser`
 
 ## Next UX Priorities
 
-### Priority 1
+### Priority 1（已完成）
 
-把這些狀態補成明確 presentation：
-- Reader translation `empty`
-- Reader translation / explanation error
-- Today Review persistence failure
-- Settings subscription fallback / unavailable pricing
+原列項皆已補成明確 presentation：
+- Reader translation `empty` → `VocabStateMessageCard`
+- Reader translation / explanation error → 錯誤卡 + 重試 CTA
+- Today Review persistence failure → `todayReview.saveFailure` toast
+- Settings subscription unavailable pricing → `pricingUnavailableCard`
 
 ### Priority 2
 
@@ -417,7 +417,7 @@ Preview matrix 已補齊：
 | 查詢中 | `translationHandler.isTranslating == true` | `TranslationPanel` shared state message + spinner | 已覆蓋（共用 Reader pattern） |
 | 翻譯結果 | `translationResult` 有值 | translation body | 已覆蓋 |
 | Explain only | `isExplanationOnly == true` | explanation body | 已覆蓋 |
-| 翻譯 / 解釋失敗 | `translationErrorMessage` / `explanationErrorMessage` | 內嵌文字 | 部分覆蓋（同 Reader 缺口） |
+| 翻譯 / 解釋失敗 | `translationErrorMessage` / `explanationErrorMessage` | 共用 `TranslationPanel` 渲染 `VocabStateMessageCard` 錯誤卡 | 已覆蓋（缺重試 CTA — Reader 有、podcast surface 未 wire `onRetryTranslation` / `onRetryExplanation`；backlog） |
 | 自動暫停 | `autoPauseOnLookup` + panel 出現 | VM `pause()` + `autoPausedByTranslation = true`，dismiss 後自動 resume | 已覆蓋 |
 
 ### Controls / Seek Bar State
@@ -437,7 +437,7 @@ Preview matrix 已補齊：
 | `.off` | 預設 | popover Picker 顯示「關閉」 | 已覆蓋 |
 | `.minutes(N)` | 5 / 15 / 30 / 60 | Picker 選中 + `TimelineView` 每秒 tick 顯示「剩餘 mm:ss」 | 已覆蓋 |
 | `.endOfEpisode` | 「結束本集」 | Picker 選中，無 deadline 倒數（依靠 `onPlaybackFinished` 結束時自動 reset） | 已覆蓋 |
-| 倒數結束 | timer fire | engine pause + mode 回 `.off`（無顯式 toast） | 部分覆蓋 — 缺結束反饋 |
+| 倒數結束 | timer fire（`sleepTimerFiredTick`） | engine pause + mode 回 `.off` + `.sensoryFeedback(.success)` + `toastCoordinator.info(L10n.string("podcast.sleepTimer.fired.toast"))` | 已覆蓋 |
 
 ### Settings Popover
 
@@ -449,20 +449,22 @@ Preview matrix 已補齊：
 
 判斷：
 - Player error / subtitle failure 是目前 podcast 最成熟的 state machine（hero error + inline retry）
-- 主要缺口在「沒有結果的時刻」：subtitle loading 沒提示、unavailable 與 idle 視覺合一、sleep timer 觸發時無 toast
-- Episode list 的 stale-data + load error 同時發生時 error 被吃掉，是少數 silent-fail 路徑
+- subtitle `.loading` hint、`.unavailable` 與 `.idle` 區分、sleep timer fire toast、episode list stale banner 皆已補齊
+- 殘留缺口：podcast translation 錯誤卡未 wire 重試 CTA（Reader 已有）；Bookshelf 背景 podcast sync running / failed 仍靜默
 
 ### Next UX Priorities（Bookshelf + Podcast 補充）
 
-#### Priority 1
-- Podcast subtitle `.loading` 加 inline hint（shimmer or "字幕載入中"），與 `.idle` 視覺拉開
-- Sleep timer 倒數結束 toast / haptic 反饋（目前靜默 pause）
-- Podcast subtitle "unavailable" 與 "idle" 區分（caption icon + 文字說明 "本集無字幕"）
+#### Priority 1（已完成）
+- Podcast subtitle `.loading` inline hint（spinner + `字幕載入中…`，`PodcastSubtitleView.subtitleLoadingHint`）
+- Sleep timer 倒數結束 toast + haptic（`.sensoryFeedback(.success)` + `podcast.sleepTimer.fired.toast`）
+- Podcast subtitle `.unavailable` 與 `.idle` 區分（`subtitleUnavailableHint` + `此集無逐句字幕`）
 
 #### Priority 2
-- Episode list 「load error 但有殘留資料」的 stale banner
+- Podcast translation 錯誤卡 wire 重試 CTA（`onRetryTranslation` / `onRetryExplanation`，Reader 已有、podcast surface 未傳）
 - Bookshelf background podcast sync 失敗 toast / status row
 - iCloud 書籍下載失敗 vs notDownloaded 的徽章區分
+
+> Episode list 「load error 但有殘留資料」的 stale banner 已完成（`AppBanner` + `podcast.episodeList.staleBanner`）。
 
 #### Priority 3
 - Bookshelf podcast sync running 的微 indicator（pull-to-refresh 期間 OK，自動 sync 期間缺）
