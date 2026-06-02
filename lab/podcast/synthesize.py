@@ -44,6 +44,7 @@ from tts_config import (
     INLINE_BOLD_RE as _INLINE_BOLD_RE,
     INLINE_ITALIC_RE as _INLINE_ITALIC_RE,
     tts_family as _tts_family,
+    DEFAULT_TTS_MODEL as _DEFAULT_TTS_MODEL,
 )
 from tts_tags import sanitize_tags_for_family as _sanitize_tags_for_family
 
@@ -101,7 +102,7 @@ GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1").strip()
 # verified sufficient, ~8x cheaper than 3.1-flash-preview). 3.1-flash-preview and
 # 2.5-pro-tts stay selectable via --tts-model / TTS_MODEL env. Bracket [] audio-tag
 # handling differs by family — see tts_config.tts_family() and scriptwriter prompt.
-TTS_MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-tts").strip()
+TTS_MODEL = os.getenv("TTS_MODEL", _DEFAULT_TTS_MODEL).strip()
 # Synthesis family ("3.1" / "2.5"). Scripts are authored for the 3.1 palette, so
 # on a non-3.1 family _sanitize_dialogue rewrites/strips 3.1-only tags before they
 # reach the API (an unsupported tag is otherwise SPOKEN ALOUD, not dropped).
