@@ -51,6 +51,10 @@ struct ReaderView: View {
     // 單字本選擇
     @State private var showNotebookPicker = false
     @State var showLoginSheet = false
+    /// retry 重新載入的 in-flight handle。`.task` 走結構化作用域隨 view 自動取消，
+    /// 但 retry 是手動觸發的非結構化 Task — 持 handle 以便 onDisappear 一併取消，
+    /// 否則 retry 載入中途 dismiss 仍會 fire-and-forget 寫回已棄置的 handler。
+    @State private var retryLoadTask: Task<Void, Never>?
 
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) var authManager
@@ -121,6 +125,9 @@ struct ReaderView: View {
             // 用 onDisappear 而非 @MainActor @Observable 的 deinit
             // （時序與 actor 隔離易出錯）。
             handler.cancelCurrentTranslationTask()
+            // retry 走非結構化 Task，不隨 view 生命週期自動取消 —
+            // 在此一併取消其 in-flight extractUniqueWords，避免寫回已棄置的 handler。
+            retryLoadTask?.cancel()
         }
         .onChange(of: liveNotebooks.map(\.remoteId)) { _, _ in
             sanitizeStaleBoundNotebook()
@@ -183,7 +190,10 @@ struct ReaderView: View {
         readerState.isLoading = true
         readerState.isWebViewReady = false
         readerState.loadingPhase = L10n.string("開啟書本…")
-        Task { await loadPublication() }
+        // 持 handle：retry 為非結構化 Task，需 onDisappear 顯式取消（見 retryLoadTask 宣告）。
+        // 重入先取消舊 retry，避免連點時舊 in-flight 載入洩漏（與 onDisappear 對稱）。
+        retryLoadTask?.cancel()
+        retryLoadTask = Task { await loadPublication() }
     }
 
     private func loadPublication() async {
@@ -205,6 +215,8 @@ struct ReaderView: View {
             // 隨 view 生命週期自動取消，不再 fire-and-forget。
             // dismiss 中途離開時整條鏈一併取消，避免寫回已棄置的 handler。
             let uniqueWords = await result.extractUniqueWords()
+            // cancel 後（dismiss 中途離開 / retry 被 onDisappear 取消）不寫回已棄置的 handler。
+            guard !Task.isCancelled else { return }
             handler.bookUniqueWords = uniqueWords
         } catch {
             await MainActor.run {
