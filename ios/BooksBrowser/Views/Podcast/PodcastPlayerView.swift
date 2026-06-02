@@ -6,17 +6,13 @@ import Inject
 struct PodcastPlayerView: View {
     @ObserveInjection private var inject
     let episodeId: String
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    /// player 的 chrome 依 layout 自判，**不**再自帶內層 NavigationStack：
-    /// - compact（iPhone push detail）：有 ambient push nav bar → 設定鍵走 toolbar。
-    /// - regular（iPad/Catalyst inline 右欄）：身處 safeAreaInset、無專屬 nav bar →
-    ///   設定鍵改 content overlay。
-    /// 過去 inline 傳 `wrapInNavigation:true` 自帶 `NavigationStack` 來 host
-    /// `.topBarTrailing` 設定鍵，但該內層 NavigationStack 嵌在 BookshelfView 外層
-    /// NavigationStack subtree 內，會**持久破壞外層 value-based push**（NAVDBG 坐實：
-    /// 顯示過 inline player 後 reader 永久無法 push，內層 stack 銷毀後也不恢復 —
-    /// Catalyst SwiftUI 缺陷）。移除內層 stack 即根除。
-    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
+    /// episode player 一律經 push detail 進入（#672 收斂掉 regular 的 inline
+    /// 右欄），故 chrome 不再依 sizeClass / layoutMode 分支：tab bar 恆隱藏、
+    /// 設定鍵恆走 ambient push nav bar 的 toolbar。亦**不**自帶內層
+    /// NavigationStack —— 過去 inline 傳 `wrapInNavigation:true` 自帶
+    /// `NavigationStack` host 設定鍵，但該內層 stack 嵌在 BookshelfView 外層
+    /// NavigationStack subtree 內，會**持久破壞外層 value-based push**（NAVDBG
+    /// 坐實：顯示過 inline player 後 reader 永久無法 push，Catalyst SwiftUI 缺陷）。
     @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
@@ -124,8 +120,7 @@ struct PodcastPlayerView: View {
         playerCore
     }
 
-    /// 字幕設定鍵核心。compact 放 toolbar；regular inline 包進 `inlineSettingsButton`
-    /// 浮在 content 右上角。
+    /// 字幕設定鍵，恆掛 push detail 的 `.topBarTrailing` toolbar。
     private var settingsButton: some View {
         Button {
             showSettingsPopover = true
@@ -134,16 +129,6 @@ struct PodcastPlayerView: View {
         }
         .accessibilityLabel(L10n.string("podcast.player.subtitleSettings"))
         .accessibilityIdentifier("podcast.player.settingsButton")
-    }
-
-    /// inline 右欄無 nav bar，設定鍵浮在 player content 右上角，自帶 circular
-    /// material chrome 以維持可點性與對比。
-    private var inlineSettingsButton: some View {
-        settingsButton
-            .padding(AppSpacing.s2)
-            .background(.regularMaterial, in: Circle())
-            .padding(.top, AppSpacing.s2)
-            .padding(.trailing, AppSpacing.s2)
     }
 
     @ViewBuilder
@@ -180,28 +165,19 @@ struct PodcastPlayerView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // inline（regular 右欄）時不隱藏 tab bar：右欄寄生於父層 scene，
-        // 隱藏會誤動父層。compact（push detail）全屏才隱藏。Catalyst 無 tab bar
-        // 故整段略過。
+        // episode player 一律 push detail（compact iPhone push、regular iPad/
+        // Catalyst 亦走 BookshelfView root 的 value-based push，見 #672 收斂；
+        // regular 右欄 inline player 已絕跡）→ 永遠隱藏 tab bar 取得全屏。
+        // Catalyst 無 tab bar 故整段略過。
         #if !targetEnvironment(macCatalyst)
-        .toolbar(layoutMode.usesInlineDetail ? .visible : .hidden, for: .tabBar)
+        .toolbar(.hidden, for: .tabBar)
         #endif
-        // 設定鍵 chrome：compact 有 ambient push nav bar → toolbar；regular inline
-        // 無專屬 nav bar（且不可再用內層 NavigationStack）→ content overlay（見
-        // playerContent .ready/.playing/.paused 的 topTrailing overlay）。
+        // 設定鍵恆走 push detail 的 ambient nav bar toolbar（與 compact 對齊）。
+        // 過去 regular inline 右欄無專屬 nav bar 才改 content overlay；inline
+        // 絕跡後浮角多餘（且可能與字幕/內容衝突），統一回 toolbar。
         .toolbar {
-            if !layoutMode.usesInlineDetail {
-                ToolbarItem(placement: .topBarTrailing) {
-                    settingsButton
-                }
-            }
-        }
-        // inline 設定鍵掛在 playerCore 層（與 compact 的 toolbar 同層），覆蓋
-        // 所有狀態（loading / error / missingEpisode / ready…），與 compact
-        // toolbar 行為對齊。translation panel 走 .bottom overlay，角不衝突。
-        .overlay(alignment: .topTrailing) {
-            if layoutMode.usesInlineDetail {
-                inlineSettingsButton
+            ToolbarItem(placement: .topBarTrailing) {
+                settingsButton
             }
         }
         // 字幕設定改用 sheet。Mac Catalyst 上「從 toolbar 按鈕掛 .popover」會在 present
@@ -248,8 +224,16 @@ struct PodcastPlayerView: View {
             pushState = PodcastProgressPushState()
             loadEpisode()
         }
-        .onChange(of: allVocabulary) { _, newValue in
-            translationHandler.loadLookedUpWords(from: newValue)
+        // Trigger on `.count` (新增/刪除 entry) rather than the whole array,
+        // matching ReaderView.swift's deliberate choice (see its
+        // `.onChange(of: allVocabulary.count)`). The lookedUp set is derived
+        // purely from word identity (word + inflections + rootForm of entries
+        // passing `shouldAppearInReader`), so a background-sync LWW write that
+        // only bumps an existing entry's `updatedAt` must NOT force a full
+        // `loadLookedUpWords` recompute. Keying on the entire `[VocabularyEntry]`
+        // re-ran it on every field mutation — pure waste during sync.
+        .onChange(of: allVocabulary.count) { _, _ in
+            translationHandler.loadLookedUpWords(from: allVocabulary)
         }
         .onAppear {
             translationHandler.loadLookedUpWords(from: allVocabulary)

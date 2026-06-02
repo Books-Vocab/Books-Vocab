@@ -71,6 +71,15 @@ struct ReaderPublicationLoader {
                     updatePhase(L10n.format("正在從 iCloud 下載… %@%%", String(Int(progress * 100))))
                 case .notDownloaded:
                     break
+                case .failed:
+                    AppLog.readium.error("iCloud download failed for: \(fileName)")
+                    throw NSError(
+                        domain: "Book",
+                        code: 4,
+                        userInfo: [NSLocalizedDescriptionKey: L10n.string(
+                            "iCloud 下載失敗。請確認網路連線後，在書架上點按書本重試下載。"
+                        )]
+                    )
                 }
             }
 

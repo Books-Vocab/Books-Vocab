@@ -529,7 +529,7 @@ struct NotebookListView: View {
                 title: "還沒有單字本".localized,
                 systemImage: "books.vertical",
                 description: "登入後自動建立預設單字本".localized,
-                action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { showLoginSheet = true })
             )) {
                 EmptyView()
             }
