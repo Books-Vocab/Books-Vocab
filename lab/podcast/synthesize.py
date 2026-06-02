@@ -808,7 +808,7 @@ def process_file(
     if _TAG_SANITIZE_LOG:
         n = sum(_TAG_SANITIZE_LOG.values())
         detail = ", ".join(f"{k}×{v}" for k, v in sorted(_TAG_SANITIZE_LOG.items()))
-        print(f"  tag-sanitize (family {TTS_FAMILY}): {n} 3.1-only tag(s) made safe — {detail}")
+        print(f"  tag-sanitize (family {TTS_FAMILY}): {n} cross-family tag(s) made safe — {detail}")
 
     if not turns:
         raise RuntimeError(
