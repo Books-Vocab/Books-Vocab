@@ -147,7 +147,44 @@ struct PodcastEpisodeListView: View {
         .task(id: seriesId) {
             await reloadFromStore()
         }
+        // Background sync (scenePhase active / ⌘R / login / parent
+        // pull-to-refresh) upserts episodes/progress without changing seriesId,
+        // so `.task(id:)` never re-fires and the frozen @State snapshot goes
+        // stale. This is a *discrete* re-read on a one-shot Notification — it
+        // does NOT reintroduce the continuous cross-store @Query observation
+        // the freeze-fix removed (reloadFromStore uses explicit
+        // modelContext.fetch, no @Query). The (b) guard skips the fetch when
+        // the series row is unchanged to avoid needless work.
+        .onReceive(NotificationCenter.default.publisher(for: .podcastCatalogDidSync)) { _ in
+            Task { await reloadIfCatalogChanged() }
+        }
         .enableInjection()
+    }
+
+    /// (b) guard: a background sync just reconciled the catalog. Re-read only
+    /// if *this* series actually changed — `upsertSeries` bumps `updatedAt` on
+    /// every touched series and `episodeCount` on episode add/remove, so an
+    /// unchanged pair means our snapshot is already current and we can skip the
+    /// full multi-store fetch. Avoids hammering the store for every sync of an
+    /// unrelated series while the detail view is open.
+    @MainActor
+    private func reloadIfCatalogChanged() async {
+        let sid = seriesId
+        let descriptor = FetchDescriptor<PodcastSeries>(
+            predicate: #Predicate { $0.remoteId == sid && !$0.isDeleted }
+        )
+        guard let latest = try? modelContext.fetch(descriptor).first else {
+            // Series gone (tombstoned) — fall through to full reload so the
+            // empty/error phase reflects reality.
+            await reloadFromStore()
+            return
+        }
+        if let current = currentSeries,
+           current.updatedAt == latest.updatedAt,
+           current.episodeCount == latest.episodeCount {
+            return
+        }
+        await reloadFromStore()
     }
 
     @MainActor
