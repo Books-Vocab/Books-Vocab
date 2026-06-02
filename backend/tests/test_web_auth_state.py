@@ -148,6 +148,27 @@ def test_google_callback_with_matching_state_proceeds(web_auth_env):
     assert "oauth_state=" in set_cookie
 
 
+def test_google_callback_token_exchange_network_error_returns_502(web_auth_env):
+    """If reaching Google's token endpoint fails (DNS/connect/timeout — all
+    httpx.HTTPError), the callback must return a semantic 502, not a bare 500.
+    """
+    login_resp = web_auth_env.client.get("/auth/web/google/login", follow_redirects=False)
+    state = _extract_state_from_redirect(login_resp.headers["location"])
+
+    async def fake_post(self, url, data=None, **kwargs):
+        raise httpx.ConnectError(
+            "connection refused",
+            request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
+        )
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        resp = web_auth_env.client.get(
+            f"/auth/web/google/callback?code=fake-code&state={state}",
+            follow_redirects=False,
+        )
+    assert resp.status_code == 502, resp.text
+
+
 # ---------- Apple ----------
 
 def test_apple_login_sets_oauth_state_cookie(web_auth_env):

@@ -137,15 +137,22 @@ async def google_callback(
 
     settings = request.app.state.kg_settings
 
-    # Exchange code for tokens
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(GOOGLE_TOKEN_URL, data={
-            "code": code,
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
-            "redirect_uri": settings.google_redirect_uri,
-            "grant_type": "authorization_code",
-        })
+    # Exchange code for tokens. Network failures (DNS, connect, timeout, read)
+    # all subclass httpx.HTTPError; surface them as a 502 instead of a bare 500.
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(GOOGLE_TOKEN_URL, data={
+                "code": code,
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "redirect_uri": settings.google_redirect_uri,
+                "grant_type": "authorization_code",
+            })
+    except httpx.HTTPError as exc:
+        logger.warning("Google token exchange request failed: %s", exc, exc_info=True)
+        raise HTTPException(  # noqa: B904
+            status_code=502, detail="Failed to reach Google authentication service"
+        )
     if resp.status_code != 200:
         logger.warning("Google token exchange failed: %s %s", resp.status_code, resp.text)
         raise HTTPException(status_code=401, detail="Failed to exchange authorization code")
