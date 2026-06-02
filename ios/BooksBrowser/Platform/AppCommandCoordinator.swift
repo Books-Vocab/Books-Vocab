@@ -35,9 +35,7 @@ private struct MacSettingsCommandSheet: ViewModifier {
 
     func body(content: Content) -> some View {
         @Bindable var coordinator = coordinator
-        content.toastSheet(isPresented: $coordinator.presentingSettings) {
-            SettingsView()
-        }
+        content.settingsSheet(isPresented: $coordinator.presentingSettings)
     }
 }
 #endif
