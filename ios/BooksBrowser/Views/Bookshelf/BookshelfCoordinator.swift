@@ -35,6 +35,13 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     var showError = false
     var showSettings = false
 
+    // Tracks the in-flight batch-import loop. Held so a new batch cancels a
+    // stale one (no two loops racing on loadingProgress/isLoading) and so the
+    // session can be torn down. The loop is [weak self] + checks Task.isCancelled
+    // per file, so a cancelled import stops promptly instead of running every
+    // remaining file to completion and mutating state on a dead coordinator.
+    private var importTask: Task<Void, Never>?
+
     func presentImporter() {
         // 新一輪匯入觸發前清掉殘留的 inline error，避免持續顯示已過期的失敗訊息
         clearError()
@@ -124,6 +131,10 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         importService: any BookshelfImporting,
         toastCoordinator: AppToastCoordinator
     ) {
+        // Cancel any prior in-flight batch so two loops can't race on shared
+        // loading state.
+        importTask?.cancel()
+
         isLoading = true
         loadingProgress = nil
         let total = urls.count
@@ -131,11 +142,15 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             ? L10n.format("正在匯入 %@ / %@...", "1", String(total))
             : L10n.string("正在匯入...")
 
-        Task {
+        importTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             var succeeded = 0
             var failures: [(name: String, diagnosed: BookshelfImportError)] = []
 
             for (index, url) in urls.enumerated() {
+                // Stop promptly if the import was cancelled (new batch / teardown)
+                // instead of running every remaining file and mutating dead state.
+                guard !Task.isCancelled else { return }
                 if total > 1 {
                     loadingMessage = L10n.format("正在匯入 %@ / %@...", String(index + 1), String(total))
                 }
@@ -187,6 +202,10 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 }
             }
 
+            // If cancelled mid-loop, leave the final result reporting to whoever
+            // cancelled (e.g. the superseding batch) rather than overwriting it.
+            guard !Task.isCancelled else { return }
+
             isLoading = false
             loadingMessage = ""
             loadingProgress = nil
@@ -217,6 +236,15 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 showError = true
             }
         }
+    }
+
+    /// Cancel any in-flight batch import. Idempotent. The loop checks
+    /// `Task.isCancelled` per file and before its final state writes, so this
+    /// stops it promptly without leaving `isLoading` stuck (a superseding batch
+    /// re-arms it; a pure teardown lets the view's own state reset).
+    func cancelImport() {
+        importTask?.cancel()
+        importTask = nil
     }
 
     private func batchFailureMessage(failures: [(name: String, diagnosed: BookshelfImportError)]) -> String {
