@@ -38,7 +38,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   if (!globalThis.KGPure.isTrustedExternalOrigin(sender && sender.url)) {
     sendResponse({ error: true, message: 'unauthorized origin' });
-    return;
+    return false; // responded synchronously — close the channel
   }
 
   if (msg && msg.type === 'auth_token' && typeof msg.token === 'string') {
@@ -52,6 +52,7 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   }
 
   sendResponse({ error: true, message: 'unknown external message type' });
+  return false; // responded synchronously — close the channel
 });
 
 // ---------------------------------------------------------------------------

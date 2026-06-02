@@ -62,8 +62,25 @@
         : container.innerText || container.textContent || '';
     if (!text) return '';
 
+    // `range.startOffset` is only a character offset into `text` when the
+    // start container is a text node. For an Element container it is a
+    // child-node *index*, so convert it to a character offset by summing the
+    // text length of the children preceding that index (matching `innerText`/
+    // `textContent` used above). Falls back to 0 when conversion is impossible.
+    let offset;
+    if (container.nodeType === Node.TEXT_NODE) {
+      offset = range.startOffset;
+    } else {
+      const childIndex = range.startOffset;
+      let charOffset = 0;
+      const children = container.childNodes;
+      for (let i = 0; i < childIndex && i < children.length; i++) {
+        charOffset += (children[i].textContent || '').length;
+      }
+      offset = charOffset;
+    }
+
     // Find sentence boundaries around the selection
-    const offset = range.startOffset;
     const sentenceBreaks = /[.!?\u3002\uff01\uff1f\n]/;
     let start = offset;
     while (start > 0 && !sentenceBreaks.test(text[start - 1])) start--;
