@@ -22,7 +22,7 @@ struct PlaybackAnchor: Equatable {
 }
 
 /// Pure clock math for the continuous subtitle playhead. No SwiftUI / AVFoundation
-/// dependency so it is unit-testable in isolation (see `PodcastSeekBarGeometry`).
+/// dependency so it is unit-testable in isolation (see `PodcastPlaybackGeometryTests`).
 enum PodcastPlaybackClock {
     static func makeAnchor(mediaTime: TimeInterval, now: TimeInterval, rate: Double) -> PlaybackAnchor {
         PlaybackAnchor(mediaTime: mediaTime, wallClock: now, rate: rate)
