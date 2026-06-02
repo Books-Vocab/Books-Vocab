@@ -1255,6 +1255,12 @@ body.sidebar-open .sidebar-backdrop {
   font-size: 10px;
   color: var(--sub);
 }
+/* Cross-family TTS caveat — louder than a plain hint. */
+.field-warn {
+  color: var(--dev);
+  margin-top: 4px;
+  line-height: 1.4;
+}
 
 /* ── Selected-files list (reading order = saga arg order) ── */
 .file-list {
@@ -1686,18 +1692,14 @@ body.sidebar-open .sidebar-backdrop {
 .feed-usage { color: var(--dual); font-size: 10px; }
 .feed-tts   { color: var(--money); font-size: 10px; }
 
-/* Global PARALLEL WORKERS control — moved from new-podcast modal to nav. */
-.nav-parallel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.nav-parallel-input {
-  width: 3.5rem;
-  text-align: center;
-  padding: 4px 6px;
-}
-@media (max-width: 899px) {
-  .nav-parallel .micro-label { display: none; }
-  .nav-parallel-input { width: 3rem; }
+/* Inline highlight for [bracketed] tags inside feed lines — TTS tone/action
+   tags ([amused], [sighing]) and status episode lists ([1, 2, 3]). */
+.feed-tag {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--borderL);
+  color: var(--contra);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
 }
