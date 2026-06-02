@@ -64,22 +64,33 @@ struct BookshelfView: View {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
 
+                // root content 恒定：books grid / empty。這是 NavigationStack
+                // 的直接 root subtree，其 structural identity **必須穩定**。
+                // 過去用 `if/else` 在 bookGrid ↔ PodcastEpisodeListView 之間
+                // 替換 root content，會在顯示過 podcast pane 後**永久破壞**該
+                // NavigationStack 的 value-based push（NAVDBG 坐實：碰過 podcast
+                // 後 `NavigationLink(value: book)` 不再驅動 navigationPath，
+                // reader 於 path=0 短暫 onAppear 後立即 onDisappear，無法進入
+                // 閱讀頁）。對齊 NotebookListView 的 root-恒定模式。
+                if books.isEmpty && podcastSeries.isEmpty {
+                    emptyState
+                } else {
+                    bookGrid
+                }
+
                 // regular (Mac/iPad): a selected podcast series renders its
-                // episode-list + inline player as a root-level master pane
-                // (depth=0) — NOT a push. This is the structural fix for the
-                // Catalyst remount/pop (the trailing safeAreaInset player lives
-                // on root content, mirroring NotebookListView). compact never
-                // sets `selectedSeriesRemoteId` (it pushes instead), so this
-                // branch is regular-only.
+                // episode-list + inline player as an **overlay pane** stacked
+                // on top of the (always-present) book grid — NOT a push, and
+                // NOT a root-content swap. Showing / hiding only mutates this
+                // overlay layer, so the book grid's root identity is untouched
+                // and reader push stays intact. The pane paints an opaque
+                // background to fully cover the grid beneath. compact never
+                // sets `selectedSeriesRemoteId` (it pushes instead), so this is
+                // regular-only.
                 if layoutMode.usesInlineDetail, let seriesId = selectedSeriesRemoteId {
                     PodcastEpisodeListView(seriesId: seriesId)
                         .id(seriesId)
-                        .transition(.contentSwap)
-                } else if books.isEmpty && podcastSeries.isEmpty {
-                    emptyState
-                        .transition(.contentSwap)
-                } else {
-                    bookGrid
+                        .background(appTheme.palette.pageBackground.ignoresSafeArea())
                         .transition(.contentSwap)
                 }
 
