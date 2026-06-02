@@ -934,7 +934,7 @@ struct BooksBrowserTests {
 
     // MARK: - batch-delete not_found convergence (track-7)
 
-    @Test
+    @Test @MainActor
     func locallyResolvableDeletes_unionsDeletedAndNotFound() {
         // not_found = server 上已不存在 = 刪除意圖已達成 = 可本地收斂。
         // 必須與 deleted_words 走同一條本地刪除路徑，否則永久卡死重試。
@@ -947,7 +947,7 @@ struct BooksBrowserTests {
         #expect(resolvable == ["alpha", "beta", "gamma", "delta"])
     }
 
-    @Test
+    @Test @MainActor
     func locallyResolvableDeletes_overlapIsDeduped() {
         // 防禦：deleted_words 與 not_found 若 server 端意外重疊，Set union 去重。
         let response = KGBatchDeleteResponse(
@@ -999,7 +999,7 @@ struct BooksBrowserTests {
                 entry.markSyncFailed()
             }
         }
-        ctx.save()
+        try ctx.save()
         // --- end mirror ---
 
         // not_found + deleted_words → locally hard-deleted (tombstoned).
