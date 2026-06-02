@@ -47,3 +47,7 @@ __pycache__/
 .worktrees/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Codex tooling (local agent config, not shared)
+AGENTS.md
+.codex/
