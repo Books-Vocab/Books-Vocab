@@ -2,24 +2,30 @@
 //  PodcastDetailRouter.swift
 //  BooksBrowser
 //
-//  Podcast 集數 master-detail 路由 — regular 雙欄右欄選定的 episode。
-//  鏡射 DetailRouter，但僅持有 selection（player 狀態由 PodcastPlayerView
-//  自身的 .task(id:) 管理，不在此）。
+//  Podcast 路由 activation 決策。
+//
+//  episode-list → player 曾在 regular layout 走右欄 inline detail（雙欄）；
+//  該分支已收斂成單欄 push：tap episode 一律把 `PodcastPlayerView` push 上
+//  BookshelfView 的 NavigationStack（`PodcastNavRoute.episode`），所有 layout
+//  皆然。`PodcastEpisodeActivation.activation` 因此恆回 `.push`，inline 分支、
+//  其驅動的 `PodcastDetailRouter` selection state、`PodcastDetailPresentation`
+//  右欄 modifier 一併移除。
+//
+//  Series-layer 路由（`PodcastSeriesActivation`）維持原狀 — regular 下 series
+//  仍以 root-level overlay master pane 呈現（見 BookshelfView `selectedSeriesRemoteId`），
+//  不在本次收斂範圍。
 //
 
 import SwiftUI
 
 enum PodcastEpisodeActivation: Equatable {
-    case inlineDetail(episodeRemoteId: String)
     case push(route: PodcastNavRoute)
 
     static func activation(
         episodeRemoteId: String,
         layoutMode: LayoutMode
     ) -> PodcastEpisodeActivation {
-        layoutMode.usesInlineDetail
-            ? .inlineDetail(episodeRemoteId: episodeRemoteId)
-            : .push(route: .episode(episodeRemoteId: episodeRemoteId))
+        .push(route: .episode(episodeRemoteId: episodeRemoteId))
     }
 }
 
@@ -42,33 +48,5 @@ enum PodcastSeriesActivation: Equatable {
         layoutMode.usesInlineDetail
             ? .selectInline(seriesRemoteId: seriesRemoteId)
             : .push(route: .series(seriesRemoteId: seriesRemoteId))
-    }
-}
-
-@Observable @MainActor
-final class PodcastDetailRouter {
-    var selectedEpisodeRemoteId: String?
-
-    var hasDetail: Bool { selectedEpisodeRemoteId != nil }
-
-    func show(episodeRemoteId: String) {
-        selectedEpisodeRemoteId = episodeRemoteId
-    }
-
-    func dismiss() {
-        selectedEpisodeRemoteId = nil
-    }
-}
-
-// MARK: - Environment Key
-
-private struct PodcastDetailRouterKey: EnvironmentKey {
-    static let defaultValue: PodcastDetailRouter? = nil
-}
-
-extension EnvironmentValues {
-    var podcastDetailRouter: PodcastDetailRouter? {
-        get { self[PodcastDetailRouterKey.self] }
-        set { self[PodcastDetailRouterKey.self] = newValue }
     }
 }
