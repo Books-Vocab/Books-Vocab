@@ -147,6 +147,26 @@ struct PodcastEpisodeListView: View {
         .task(id: seriesId) {
             await reloadFromStore()
         }
+        // Background sync (scenePhase active / ⌘R / login / parent
+        // pull-to-refresh) upserts episodes/progress without changing seriesId,
+        // so `.task(id:)` never re-fires and the frozen @State snapshot goes
+        // stale. This is a *discrete* re-read on a one-shot Notification — it
+        // does NOT reintroduce the continuous cross-store @Query observation
+        // the freeze-fix removed (reloadFromStore uses explicit
+        // modelContext.fetch, no @Query).
+        //
+        // We deliberately do NOT guard on "did this series change". syncAll
+        // runs on `container.mainContext` (KGService+Sync.swift) — the very
+        // same context backing this view's @Environment(\.modelContext) — so a
+        // re-fetched series row is the *identical* live managed object as our
+        // held `currentSeries`. upsertSeries mutates that object in place, so
+        // any `current.updatedAt == latest.updatedAt` comparison is self==self
+        // → always true → the reload would never fire. Catalog sync is a
+        // discrete, low-frequency event, so an unconditional reload (3 cheap
+        // fetches) is both correct and negligible.
+        .onReceive(NotificationCenter.default.publisher(for: .podcastCatalogDidSync)) { _ in
+            Task { await reloadFromStore() }
+        }
         .enableInjection()
     }
 
