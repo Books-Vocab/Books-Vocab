@@ -33,7 +33,8 @@ VERTEX_PRICING: dict[str, dict] = {
     # Defaults match Vertex / AI Studio billing for our `vertexai=True` client.
     # Long-context tier kicks in above 200K input tokens.
     #
-    # gemini-3.1-flash-tts-preview (current default in .env):
+    # gemini-2.5-flash-tts is the current default in .env (since 2026-06-02).
+    # gemini-3.1-flash-tts-preview (selectable via --tts-model):
     #   Source: https://ai.google.dev/gemini-api/docs/pricing (TTS-specific row)
     #   $1.00/1M input + $20.00/1M output (audio = 25 tok/sec). No long-tier.
     #   Vertex preview mirrors AI Studio rates for TTS models.
@@ -250,7 +251,9 @@ def aggregate_workspace(ws_dir: Path) -> dict:
 
             # ─── Our tts_usage events ───
             elif ev_type == "tts_usage":
-                model = ev.get("model", "gemini-2.5-pro-tts")
+                # Fallback only fires for malformed events; synthesize.py always
+                # writes "model" into tts_usage. Match the live default (2.5-flash).
+                model = ev.get("model", "gemini-2.5-flash-tts")
                 in_tok = int(ev.get("input_tokens") or 0)
                 out_tok = int(ev.get("output_tokens") or 0)
                 audio_s = float(ev.get("audio_seconds") or 0.0)

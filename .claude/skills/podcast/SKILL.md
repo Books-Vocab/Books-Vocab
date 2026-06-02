@@ -222,7 +222,7 @@ UI:KPI strip(TOTAL COST / ELAPSED / CONTEXT NOW / TOKENS OUT) + 13 stage 進度�
 
 **成本計算來源**(`monitor/cost.py`):
 - Stage 1-10(Claude):直接讀 `result.modelUsage[model].costUSD` — 這是 claude CLI 官方算的值(含 cache 折扣 + 1M context premium),不自己算
-- Stage 11(Vertex TTS):從 `tts_usage` event 取 `input_tokens` × `output_tokens`,套 `VERTEX_PRICING` dict。當前 default `gemini-3.1-flash-tts-preview` $1.00/$20 per 1M(audio = 25 tok/sec,無 long tier);舊 `gemini-2.5-pro-tts` $1.25/$10 也保留。`response.usage_metadata` 缺失時 fallback 估算(`input ≈ chars/4`、`output ≈ audio_sec × 25`),event 標 `usage_source: "estimated"`
+- Stage 11(Vertex TTS):從 `tts_usage` event 取 `input_tokens` × `output_tokens`,套 `VERTEX_PRICING` dict。當前 default `gemini-2.5-flash-tts` $0.30/$2.50 per 1M(audio = 25 tok/sec,無 long tier);`gemini-3.1-flash-tts-preview` $1.00/$20、舊 `gemini-2.5-pro-tts` $1.25/$10 也保留。`response.usage_metadata` 缺失時 fallback 估算(`input ≈ chars/4`、`output ≈ audio_sec × 25`),event 標 `usage_source: "estimated"`
 - Stage 12-13(audio_qa / Whisper):本地跑,$0
 - Pricing 來源:Vertex Gemini 3.1 Flash TTS 用 AI Studio TTS-specific row($1/$20);2.5-pro-tts 用 Vertex 公告 base Gemini 2.5 Pro rate。`verified_against: "2026-05-30"`。改單價編輯 `VERTEX_PRICING` 或 env `PODCAST_TTS_PRICING='{"model":{...}}'` 覆寫。
 
@@ -317,7 +317,7 @@ curl -sf -X DELETE "$BASE/api/workspace/$WS?confirm=$WS"
 |------|------|------|
 | `PODCAST_CLAUDE_MODEL` | `opus[1m]` | Stage 1-10(Claude agent)的 `claude -p` model;stage 11-13 是 Vertex TTS / pydub / Whisper 不受影響。`[1m]` 是 deliberate default — scriptwriter / enricher / series-polish 跨多章推理需 1M context window,改 `sonnet` 前先確認 |
 | `PODCAST_STAGE_RETRIES` | `3` | 每個 agent stage 的總嘗試次數。transient 失敗(thinking-block 400 / 429 / 5xx)以**全新** `claude -p` 重試(繞過被汙染的 thinking 對話歷史);auth / 一般 400 / timeout 不重試。詳見 `docs/sop/podcast_pipeline.md` §Agent-stage 重試 |
-| `TTS_MODEL` | `gemini-3.1-flash-tts-preview`(code 預設與 `.env` 一致) | Vertex TTS 模型;Gemini 3.1 Flash TTS(2.5 pro/flash 為歷史備援) |
+| `TTS_MODEL` | `gemini-2.5-flash-tts`(code 預設與 `.env` 一致,2026-06-02 起) | Vertex TTS 模型;3.1-flash-preview / 2.5-pro 可選。非-3.1 family 時 synthesize 端自動淨化 3.1-only audio tag(`tts_tags.sanitize_tags_for_family`) |
 | `TTS_MAX_CONCURRENT` | `10` | TTS batch 並發上限 |
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
 | `TTS_MASTER` | `1` | 設 `0` 關閉 loudnorm mastering |

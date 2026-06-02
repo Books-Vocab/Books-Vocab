@@ -17,6 +17,8 @@ Source: Gemini 3.1 official `example_audio_tags` array
 
 from __future__ import annotations
 
+import re
+
 # Curated emotion tags (noun forms — strongest 3.1 prosody). Picked for the
 # range a two-host book discussion actually needs.
 CANONICAL_EMOTION: frozenset[str] = frozenset(
@@ -75,3 +77,61 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "speaking slowly": "slow",
     "speaking quickly": "fast",
 }
+
+# 3.1 canonical (noun/energy/pause) form → the 2.5-era form the model actually
+# voices, derived by inverting LEGACY_TO_CANONICAL. Used when synthesizing on a
+# non-3.1 family so 3.1-authored tags are never read aloud as literal words.
+CANONICAL_TO_LEGACY: dict[str, str] = {v: k for k, v in LEGACY_TO_CANONICAL.items()}
+
+# Bracket-tag matcher (single level — content placeholders never nest tags).
+_TAG_RE = re.compile(r"\[([^\[\]]+)\]")
+
+
+def sanitize_tags_for_family(text: str, family: str) -> tuple[str, dict[str, int]]:
+    """Make 3.1-authored audio tags safe for a non-3.1 synthesis family.
+
+    Gemini does NOT silently drop an unsupported inline tag — it speaks it as
+    literal text. Scripts are authored against the 3.1 palette (noun emotions,
+    energy/pause tags), so on a 2.5-family synth we must rewrite or remove any
+    3.1-only tag *before* the text reaches the API.
+
+    Policy (family != "3.1"):
+      • palette tag with a known 2.5-era form  → rewrite ([excitement]→[excited],
+        [whispers]→[whispering], [slow]→[speaking slowly], …)
+      • palette tag with no 2.5 form (energy, pause, abstract emotion nouns like
+        [awe]/[determination], [gasp])          → strip
+      • non-palette bracket (e.g. [NEW HABIT])  → leave untouched (it is spoken
+        CONTENT — a habit-stacking placeholder, not an audio direction)
+
+    On family == "3.1" the text is returned verbatim (full palette is valid).
+
+    Returns the cleaned text and a {change_key: count} map for logging.
+    """
+    if family == "3.1":
+        return text, {}
+
+    changes: dict[str, int] = {}
+
+    def _bump(key: str) -> None:
+        changes[key] = changes.get(key, 0) + 1
+
+    def _repl(m: re.Match) -> str:
+        key = m.group(1).strip().lower()
+        if key in CANONICAL_TO_LEGACY:           # rewrite to the 2.5-era form
+            new = CANONICAL_TO_LEGACY[key]
+            _bump(f"{key}->{new}")
+            return f"[{new}]"
+        if key in CANONICAL:                     # 3.1-only palette tag, no 2.5 form
+            _bump(f"{key}(strip)")
+            return ""                            # strip so it is never voiced
+        return m.group(0)                        # unknown bracket = content, keep
+
+    out = _TAG_RE.sub(_repl, text)
+    if changes:
+        # Tidy whitespace left by stripped tags: collapse runs of spaces/tabs
+        # (never newlines) and drop spaces before punctuation.
+        out = re.sub(r"[ \t]{2,}", " ", out)
+        out = re.sub(r" +([,.!?;:])", r"\1", out)
+        out = re.sub(r"(?m)^[ \t]+", "", out)   # leading space from a line-start strip
+        out = re.sub(r"(?m)[ \t]+$", "", out)
+    return out, changes
