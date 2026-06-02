@@ -77,10 +77,11 @@ extension ReaderTranslationHandler {
                     word: word,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        guard let self else { return }
                         await MainActor.run {
                             // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
                             guard !Task.isCancelled else { return }
-                            self?.translationStatus = L10n.format(
+                            self.translationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
                                 "\(total)"
@@ -144,10 +145,11 @@ extension ReaderTranslationHandler {
                     phrase: phrase,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        guard let self else { return }
                         await MainActor.run {
                             // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
                             guard !Task.isCancelled else { return }
-                            self?.translationStatus = L10n.format(
+                            self.translationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
                                 "\(total)"
@@ -211,10 +213,11 @@ extension ReaderTranslationHandler {
                     word: text,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        guard let self else { return }
                         await MainActor.run {
                             // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
                             guard !Task.isCancelled else { return }
-                            self?.explanationStatus = L10n.format(
+                            self.explanationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
                                 "\(total)"
@@ -275,10 +278,11 @@ extension ReaderTranslationHandler {
                     word: selection.word,
                     context: selection.context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        guard let self else { return }
                         await MainActor.run {
                             // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
                             guard !Task.isCancelled else { return }
-                            self?.explanationStatus = L10n.format(
+                            self.explanationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
                                 "\(total)"
