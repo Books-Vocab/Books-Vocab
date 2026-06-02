@@ -30,9 +30,28 @@ struct PanelHost: View {
         case .podcastEpisode(let remoteID):
             PodcastPlayerView(episodeId: remoteID, wrapInNavigation: true)
 
-        // Phase 4 接 vocab。
-        default:
-            Color.clear
+        case .wordDetail(let entryID), .linkedWord(let entryID):
+            // entry-id 反查 live VocabularyEntry（由 vocab section wrapper 注入 entries）。
+            // BlockChrome 提供 ✕；showsInlineChrome:false 不重複 header。
+            if let entry = entries.first(where: { $0.id == entryID }) {
+                WordDetailSheet(
+                    entry: entry,
+                    allEntries: entries,
+                    wrapInNavigation: false,
+                    showsInlineChrome: false,
+                    onClose: { proxy.closeSelf() }
+                )
+            } else {
+                Color.clear   // entry 已刪 → fallback
+            }
+
+        case .reviewSession(let entryIDs):
+            ReviewPanel(
+                entryIDs: entryIDs,
+                allEntries: entries,
+                currentUserID: authManager.userId,
+                onClose: { proxy.closeSelf() }
+            )
         }
     }
 }
