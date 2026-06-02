@@ -194,6 +194,9 @@ struct TodayReviewView: View {
             // keeps mutating currentIndex/revealStage in the background and
             // retains the state object. stopAutoPlay() is idempotent.
             state.stopAutoPlay()
+            // Cancel the init-time background cache build too, so an early
+            // dismiss does not run it to completion and mutate torn-down state.
+            state.cancelBackgroundWork()
 
             if state.currentIndex < state.queue.count {
                 let durationMs = Int(Date().timeIntervalSince(state.sessionStartTime) * 1000)
