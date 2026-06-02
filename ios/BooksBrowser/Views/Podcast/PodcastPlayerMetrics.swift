@@ -98,7 +98,7 @@ enum PodcastUnderlineGeometry {
     /// toggle is gated at the call site (the overlay closure), not here.
     static func bar(wordRects: [Int: CGRect], activeIndex: Int, fraction: Double) -> Bar? {
         guard activeIndex >= 0, let a = wordRects[activeIndex] else { return nil }
-        guard let b = wordRects[activeIndex + 1], b.minY == a.minY else {
+        guard let b = wordRects[activeIndex + 1], abs(b.minY - a.minY) < a.height * 0.5 else {
             return Bar(minX: a.minX, width: a.width, bottomY: a.maxY)
         }
         let t = CGFloat(min(1, max(0, fraction)))
