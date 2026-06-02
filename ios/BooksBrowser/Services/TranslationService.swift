@@ -287,8 +287,9 @@ final class TranslationService: Translating {
         }
         let responseRequestID = RequestObservation.responseRequestID(from: httpResponse, fallback: requestID)
 
-        // Update quota from response headers (before status check)
-        quotaStore.update(from: httpResponse)
+        // Update quota from response headers (before status check).
+        // QuotaStore is @Observable (non-isolated) and drives SwiftUI — mutate on main.
+        await MainActor.run { quotaStore.update(from: httpResponse) }
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")
