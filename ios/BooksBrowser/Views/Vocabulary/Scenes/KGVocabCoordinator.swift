@@ -90,13 +90,15 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             let words = entries.map(\.word)
             do {
                 let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
-                let deletedSet = Set(response.deleted_words)
+                // not_found = 已不存在於 server → 刪除意圖已達成，與 deleted_words
+                // 走同一條本地收斂路徑；否則該字永遠 failed+delete → 永久卡死重試。
+                let resolvableSet = SyncCoordinator.locallyResolvableDeletes(from: response)
                 for entry in entries {
-                    if deletedSet.contains(entry.word) {
+                    if resolvableSet.contains(entry.word) {
                         modelContext.delete(entry)
                     } else {
                         failedCount += 1
-                        AppLog.kg.error("batchDelete: word not found '\(entry.word)'")
+                        AppLog.kg.error("batchDelete: word unresolved on server '\(entry.word)'")
                     }
                 }
             } catch {
