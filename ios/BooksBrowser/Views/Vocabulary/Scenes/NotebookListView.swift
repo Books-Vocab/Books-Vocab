@@ -463,6 +463,8 @@ struct NotebookListView: View {
         }
         if let url {
             coordinator.exportURL = url
+        } else {
+            toastCoordinator.error("匯出失敗".localized)
         }
     }
 
