@@ -52,3 +52,24 @@ class TestManualLinkJudge:
         result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
         assert result is not None
         assert result.link == "shares_usage"
+
+    def test_transport_failure_returns_degraded_judgement(self):
+        """Provider 5xx穿透 SDK max_retries 後不外漏例外，走與 parse 失敗
+        同一條 graceful fallback（never returns None），不碰 quota。"""
+        import httpx
+        from openai import APIError
+
+        request = httpx.Request("POST", "https://api.test/chat")
+        client = MagicMock()
+        client.chat.completions.create.side_effect = APIError(
+            "provider 5xx", request, body=None
+        )
+        judge = ManualLinkJudge(TrackedLLM(client, "test_user"))
+
+        # 改前：例外外漏 → 此處 raise，紅燈。
+        result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
+
+        assert result is not None
+        assert result.link == "shares_usage"
+        assert result.confidence == 1.0
+        assert result.reason  # degraded reason 非空
