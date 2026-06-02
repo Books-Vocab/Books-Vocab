@@ -302,7 +302,7 @@ struct AppSectionBlock<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 if let eyebrow, !eyebrow.isEmpty {
-                    Text(eyebrow)
+                    Text(eyebrow.localized)
                         .font(appSkin.typography.monoLabel)
                         .foregroundStyle(appSkin.palette.quaternaryText)
                         .tracking(1.0)
