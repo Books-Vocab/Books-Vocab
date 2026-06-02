@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from .api_models import DailyReviewStatEntry, ReviewStateEntry
+from .exceptions import BadRequestError
 from .user_store import parse_datetime
 from .vocab_shared import _normalize_word
 
@@ -128,8 +130,20 @@ def pull_daily_review_stats(
     since: str | None,
     stats_store: Any,
 ) -> list[DailyReviewStatEntry]:
-    """Return all daily review stats, optionally filtered by since day_key."""
+    """Return all daily review stats, optionally filtered by since day_key.
+
+    ``since`` must be a strict ``YYYY-MM-DD`` calendar day to match the stored
+    ``day_key`` format: filtering is a raw string ``>=`` comparison, so a
+    full ISO timestamp or malformed input would silently mis-filter instead
+    of erroring. Reject anything that is not exactly ``YYYY-MM-DD``.
+    """
     if since:
+        try:
+            datetime.strptime(since, "%Y-%m-%d")
+        except ValueError:
+            raise BadRequestError(
+                "Invalid since format. Expected YYYY-MM-DD."
+            ) from None
         stats = stats_store.get_since(since)
     else:
         stats = stats_store.all()
