@@ -850,6 +850,8 @@
 "podcast.sleepTimer.fired.toast" = "スリープタイマーが終了し、再生を一時停止しました";
 
 // MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loadFailed.title" = "字幕の読み込みに失敗しました";
+"podcast.subtitle.loadFailed.description" = "オーディオは引き続き正常に再生されます";
 "podcast.subtitle.loading.hint" = "字幕を読み込み中…";
 "podcast.subtitle.unavailable.title" = "このエピソードには文単位の字幕がありません";
 "podcast.subtitle.unavailable.description" = "オーディオは引き続き正常に再生されます";
