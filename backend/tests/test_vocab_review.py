@@ -186,6 +186,77 @@ class TestPushReviewStatesFakes:
         assert result == {"updated": 0, "skipped": 1}
         assert store.batch_update_calls == []
 
+    def test_malformed_next_review_at_warns_but_still_accepts(self, caplog):
+        """Client is newer + next_review_at present but unparseable.
+
+        The schedule is silently reset to None today; this must now emit a
+        WARNING (with card id + raw value) so the reset is diagnosable — while
+        keeping the existing accept/write behaviour unchanged.
+        """
+        c1 = _ReviewCard(id="c1", content="cat")
+        store = _FakeCardsStore([c1])
+        client_time = datetime.now(UTC)
+        entry = _entry(
+            word="cat",
+            card_id="c1",
+            last_reviewed_at=_iso(client_time),
+            next_review_at="garbage-not-a-date",  # present, but parse_datetime -> None
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
+
+        # Behaviour is unchanged: card is still accepted/written, next_review_at=None.
+        assert result == {"updated": 1, "skipped": 0}
+        flushed = store.batch_update_calls[0][0][1]
+        assert flushed["next_review_at"] is None
+        assert flushed["last_reviewed_at"] == client_time
+        # The silent reset is now visible: a WARNING naming the card + raw value.
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        msg = warnings[0].getMessage()
+        assert "c1" in msg
+        assert "garbage-not-a-date" in msg
+
+    def test_valid_next_review_at_does_not_warn(self, caplog):
+        """Normal payload (parseable next_review_at) must not emit any warning."""
+        c1 = _ReviewCard(id="c1", content="cat")
+        store = _FakeCardsStore([c1])
+        client_time = datetime.now(UTC)
+        entry = _entry(
+            word="cat",
+            card_id="c1",
+            last_reviewed_at=_iso(client_time),
+            next_review_at=_iso(client_time + timedelta(hours=24)),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
+
+        assert result == {"updated": 1, "skipped": 0}
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_empty_next_review_at_does_not_warn(self, caplog):
+        """Empty next_review_at == 'not meaningfully sent' -> reset is expected,
+        no false-positive warning. Distinguishes 'absent/empty' from 'malformed'."""
+        c1 = _ReviewCard(id="c1", content="cat")
+        store = _FakeCardsStore([c1])
+        client_time = datetime.now(UTC)
+        entry = _entry(
+            word="cat",
+            card_id="c1",
+            last_reviewed_at=_iso(client_time),
+            next_review_at="   ",  # whitespace-only -> parse None, but not a real value
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
+
+        # Still accepted (behaviour unchanged), but no warning fired.
+        assert result == {"updated": 1, "skipped": 0}
+        assert store.batch_update_calls[0][0][1]["next_review_at"] is None
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
     def test_server_newer_takes_max_counts(self):
         server_time = datetime.now(UTC)
         client_time = server_time - timedelta(hours=1)
