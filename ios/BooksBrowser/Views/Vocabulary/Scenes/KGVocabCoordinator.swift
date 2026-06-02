@@ -187,6 +187,9 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 let successCount = entries.count - failCount
                 errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
             } else {
+                // 全數封存成功 → 清空前次部分失敗殘留的 error banner，
+                // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
+                errorMessage = nil
                 toastCoordinator.success(L10n.format("已封存 %@ 個", String(entries.count)))
             }
         }
