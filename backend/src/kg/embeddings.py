@@ -331,7 +331,22 @@ class EmbeddingStore:
                 # the first element — coerce to 0 so sorting doesn't crash.
                 sorted_data = sorted(response.data, key=lambda d: d.index if d.index is not None else 0)
                 vecs = np.array([d.embedding for d in sorted_data], dtype=np.float32)
-                if vecs.ndim >= 2 and vecs.shape[1] != self.dim:
+                # An empty/truncated upstream batch (``response.data == []`` or
+                # per-item embeddings dropped) collapses to a 1-D ``shape (0,)``
+                # array. That slips past the dim check below (``shape[1]`` doesn't
+                # exist on a 1-D array) and would be assigned straight into
+                # ``_embeddings``, only to detonate later inside ``np.vstack`` /
+                # ``find_similar`` / ``_get_norms`` with a cryptic AxisError. Reject
+                # it here so the failure names the real cause (upstream returned
+                # nothing) and ``add_batch`` aborts before mutating ``_ids``.
+                if vecs.ndim != 2 or vecs.shape[0] == 0:
+                    raise ValueError(
+                        f"Empty or malformed embedding response: expected a 2-D "
+                        f"(N, {self.dim}) matrix, got shape {vecs.shape} "
+                        f"(model={self.model!r}). The upstream returned no usable "
+                        f"vectors for {len(texts)} input text(s)."
+                    )
+                if vecs.shape[1] != self.dim:
                     raise ValueError(
                         f"Embedding dim mismatch: got {vecs.shape[1]}, expected {self.dim} "
                         f"(model={self.model!r}). Check EMBEDDING_DIM env var."
