@@ -44,6 +44,10 @@ def _get_conn() -> sqlite3.Connection:
             _conn.execute("ALTER TABLE token_usage ADD COLUMN model TEXT")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
+        # Bare created_at index for the retention pruner's
+        # `DELETE ... WHERE created_at < ?`; the two composite indexes lead
+        # with user_id so SQLite can't use them for a bare-created_at predicate.
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tu_created ON token_usage(created_at)")
         _conn.commit()
     return _conn
 
