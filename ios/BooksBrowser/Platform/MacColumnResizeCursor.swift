@@ -17,6 +17,9 @@ import SwiftUI
 /// 查詢不帶 touch event。故 `PassthroughPointerView` 對 touch hitTest 回 nil(讓拖曳穿透到
 /// SwiftUI),其餘(hover)回 self(pointer interaction 生效)。
 struct MacColumnResizeCursor: UIViewRepresentable {
+    /// `.horizontal` 分隔線（調欄寬）→ 直立 beam；`.vertical` 分隔線（調 block 高）→ 橫向 beam。
+    var axis: Axis = .horizontal
+
     func makeUIView(context: Context) -> UIView {
         let view = PassthroughPointerView()
         view.backgroundColor = .clear
@@ -26,17 +29,23 @@ struct MacColumnResizeCursor: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(axis: axis) }
 
     final class Coordinator: NSObject, UIPointerInteractionDelegate {
+        let axis: Axis
+        init(axis: Axis) { self.axis = axis }
+
         func pointerInteraction(
             _ interaction: UIPointerInteraction,
             styleFor region: UIPointerRegion
         ) -> UIPointerStyle? {
-            // 垂直 beam = 直立分隔線上的欄寬調整提示(Catalyst 無原生 resize-LR 游標,
-            // verticalBeam 為最接近的近似)。length 為 cursor glyph 長度(與 divider 實際高度無關),
-            // 24pt 為視覺上讀得出「直立 beam」的經驗值。
-            UIPointerStyle(shape: .verticalBeam(length: 24))
+            // beam = 分隔線上的尺寸調整提示(Catalyst 無原生 resize 游標,beam 為最接近近似)。
+            // length 為 cursor glyph 長度(與 divider 實際長度無關),24pt 為經驗值。
+            // 水平 divider(調寬)→ verticalBeam;垂直 divider(調高)→ horizontalBeam。
+            let shape: UIPointerShape = axis == .horizontal
+                ? .verticalBeam(length: 24)
+                : .horizontalBeam(length: 24)
+            return UIPointerStyle(shape: shape)
         }
     }
 
