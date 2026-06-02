@@ -137,7 +137,7 @@ TTS_MODEL=gemini-2.5-flash-tts   # 部署預設(.env,2026-06-02 起);synthesize.
 
 | TTS_MODEL | 用途 |
 |---|---|
-| `gemini-2.5-flash-tts` | **當前預設**(2026-06-02 起)，速度快、配額寬、最便宜($0.30/$2.50 per 1M);品質實測足夠。3.1-only audio-tag 由 synthesize 端自動淨化(見下) |
+| `gemini-2.5-flash-tts` | **當前預設**(2026-06-02 起)，速度快、配額寬、最便宜($0.30/$2.50 per 1M);品質實測足夠。腳本依此 family 的 palette 生成(見下 family-parametric) |
 | `gemini-3.1-flash-tts-preview` | 可選,3.1 官方 audio-tag 名詞情緒集 + per-host director notes(`### PERFORMANCE`)，表情/節奏最佳但 ~8× 貴 |
 | `gemini-2.5-pro-tts` | 可選,自然度高但配額嚴(易 429) |
 
@@ -145,11 +145,11 @@ TTS_MODEL=gemini-2.5-flash-tts   # 部署預設(.env,2026-06-02 起);synthesize.
 - **per-workspace 凍結（建議）**：`--tts-model M`(或 dashboard SETTINGS 面板的 TTS MODEL 下拉)→ 寫 `.tts_model` sidecar → `stage_synthesize` 在 synth 前讀回注入 `TTS_MODEL` env。這是**單一還原點**,`/start`、`/resume`、`/approve`、手動 `--skip-to synthesize` 全部經此,故選定後整個 workspace 一致。resume 時 sidecar 為準,衝突的 `--tts-model` 報錯(同 `--mode` 慣例)。
 - **全域預設**：沒給 `--tts-model` / sidecar 不存在 → 落 `synthesize.py` 的 `TTS_MODEL` env 預設(`.env`)。
 
-**scriptwrite 與 TTS model 解耦 + 跨 family tag 淨化(重要)**：腳本由 Claude(`PODCAST_CLAUDE_MODEL`,預設 `opus[1m]`)在 scriptwrite 階段生成**一次**,`prompts/scriptwriter.md` 的 audio-tag palette 是**寫死的 canonical Gemini 3.1 集**。換 `TTS_MODEL`(2.5↔3.1、pro↔flash)**不會重生腳本**,只換音訊合成。預設既已是 2.5-flash,常態就是「3.1-palette 腳本餵 2.5 引擎」。關鍵事實:Gemini 對**不支援的 inline `[tag]` 不是靜默丟棄,而是當字面唸出來**(社群實證,Google 無 unsupported-tag 契約)。
+**audio-tag palette 是 family-parametric(重要)**：palette 的**唯一 SoT 是 `tts_tags.py:TAG_CONCEPTS`** —— 每個 delivery concept(excitement / whisper / 停頓…)一列,每個 TTS family("3.1"/"2.5"…)一欄(該 family 的 surface tag,缺欄=該 family 不支援)。`palette(family)` / `sanitize_tags_for_family()` / `render_palette_md(family)` 全衍生自它,加新世代 = 加一欄。關鍵事實:Gemini 對**不支援的 inline `[tag]` 不是靜默丟棄,而是當字面唸出來**(社群實證,Google 無 unsupported-tag 契約)—— 所以 palette 必須跟著合成的 family 走。
 
-- **自動淨化(choke point)**:`synthesize.py:_sanitize_dialogue` 對每句套 `tts_tags.sanitize_tags_for_family(text, TTS_FAMILY)`。family≠`3.1` 時:有 2.5 形的 palette tag 用反轉的 `LEGACY_TO_CANONICAL` 改寫(`[excitement]`→`[excited]`、`[whispers]`→`[whispering]`、`[slow]`→`[speaking slowly]`);無 2.5 形者(energy `[high energy]`/`[low energy]`、pause `[short/medium/long pause]`、抽象名詞情緒 `[awe]`/`[determination]`、`[gasp]`)直接 strip;**非 palette 的括號(如 habit-stacking 佔位 `[NEW HABIT]`)原樣保留**(那是要唸出來的內容)。family==`3.1` 則 verbatim 通過。每集 parse 後印 `tag-sanitize (family 2.5): N 3.1-only tag(s) made safe — ...`。
-- **顯性化偵測**:scriptwrite 成功寫 `.script_tts_family`(目前恆 `3.1`);`stage_synthesize` 比對它與 `.tts_model` 的 family,**缺 sidecar 視為 `3.1`**(legacy workspace 亦觸發),不一致就在 `pipeline_log` 記一筆說明「synthesize 會改寫/strip 該 family-only tag」。非硬 block —— 因為淨化已在 synth 端保證安全。
-- **根治(Phase 2,未做)**:讓 `scriptwriter.md`/`tts_tags.py` 依目標 model family 出對應 palette,從源頭相容。現靠 synth 端淨化保安全,非緊急。
+- **源頭相容(scriptwrite 注入)**:腳本由 Claude(`PODCAST_CLAUDE_MODEL`,預設 `opus[1m]`)生成**一次**。`pipeline.py:inject_tts_palette` 在組 scriptwriter / script_review / tts_prep prompt 時,依該 workspace 實際合成的 family(`resolve_tts_family` = `.tts_model` sidecar → `DEFAULT_TTS_MODEL`)注入 `{tts_engine}`/`{tts_family}`/`{tts_palette}`(= `render_palette_md(family)`)。**腳本天生只用目標 family 的 tag**,reviewer 也按同一 palette 驗。未知 family → loud-fail(要求先在 `TAG_CONCEPTS` 註冊,不靜默猜)。`prompts/*.md` 不再手抄 palette(`test_palette_consistency` 從「3 處一致」改為「placeholder + render round-trip」,drift 結構上不可能)。
+- **記錄真實 family**:scriptwrite 成功寫 `.script_tts_family = resolve_tts_family(workspace)`(**非寫死 3.1**)。
+- **合成端 backstop(defense-in-depth)**:`synthesize.py:_sanitize_dialogue` 仍對每句套 `sanitize_tags_for_family(text, TTS_FAMILY)` —— 把任何非目標 family 形的 tag 改寫成該 family 形 / 無對應則 strip,**非 palette 括號(如 `[NEW HABIT]`)原樣保留**。這在「腳本 family ≠ 合成 family」(跨 family 混用、或 registry 之前寫的 legacy 腳本)時兜底,正常流程下因源頭已相容多為 no-op。每集 parse 後印 `tag-sanitize (family X): N tag(s) made safe`。`stage_synthesize` 另比對 `.script_tts_family` 與 `.tts_model`(缺 sidecar 視為 `3.1`),不一致記一筆 informational(非硬 block —— sanitize 已保安全)。
 - 不同 model 在單一 workspace 混用仍可(每集分別 synth)但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用,難 debug —— per-workspace 凍結正是為了根治此問題。
 
 ### 655s padding bug 防線(必讀)
@@ -469,7 +469,7 @@ Endpoints:
 
 **nav SETTINGS(⚙)面板**(localStorage `podcast-monitor:settings`,套用於下一條 pipeline,非追溯)。**每個旋鈕單一來源**——PARALLEL/TTS model 只在此調,不在 nav 或其他 modal 重複:
 - **PARALLEL WORKERS**(1-10):scriptwrite/script-review/synthesize 並發度(原 nav 常駐 input 已移除,收斂於此)
-- **TTS MODEL**:下拉(空=env 預設 `gemini-2.5-flash-tts` / 三個白名單 model);選非-3.1 family 時提示跨 family(腳本 3.1-palette,synth 端自動淨化,見 §3)。submit 時隨 `tts_model` 送出
+- **TTS MODEL**:下拉(空=env 預設 `gemini-2.5-flash-tts` / 三個白名單 model);選定後腳本即依該 family 的 palette 生成(family-parametric,見 §3)。submit 時隨 `tts_model` 送出
 
 (spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。)
 
