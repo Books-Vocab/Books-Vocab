@@ -117,6 +117,9 @@ extension ReaderView {
     @ViewBuilder
     var translationPanelContent: some View {
         if let selection = handler.wordSelection {
+            // 快取一次詞庫查找，避免 body 重算時 existingEntry() 在 nil 檢查與
+            // closure 內各掃一次（1000+ 詞庫下為 O(n)×2 線性掃 + lowercased）。
+            let existingDetailEntry = vocabularyContext.existingEntry(matching: selection.word)
             TranslationPanel(
                 word: selection.word,
                 result: handler.translationResult,
@@ -135,8 +138,8 @@ extension ReaderView {
                     handler.deleteFromVocabulary(selection.word, context: vocabularyContext)
                     closeOverlay(.translation)
                 },
-                onShowDetail: vocabularyContext.existingEntry(matching: selection.word) != nil ? {
-                    if let entry = vocabularyContext.existingEntry(matching: selection.word) {
+                onShowDetail: existingDetailEntry != nil ? {
+                    if let entry = existingDetailEntry {
                         readerState.detailEntry = entry
                     }
                 } : nil,
