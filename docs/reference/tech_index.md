@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 23521f39
+verified_against: 78617510
 -->
 # Technical Reference Index
 
@@ -149,6 +149,7 @@ Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` 
 | 設定 env | `PODCAST_BUCKET` / `PODCAST_BUCKET_REGION` / `PODCAST_BUCKET_ENDPOINT_URL` / `PODCAST_BUCKET_QUOTA_BYTES` |
 | 過渡 fallback | `PODCAST_BUCKET` unset → backend 回 disk `data/podcasts/`,且 `audio.m4a` → `audio.mp3` 探測 |
 | 音頻格式 | AAC/M4A 128k `+faststart`(`TTS_OUTPUT_FORMAT=m4a`,`TTS_AAC_BITRATE=128k`) |
+| TTS model 凍結 | `POST /api/pipeline/start[-saga]` 選填 `tts_model`(白名單 `tts_config.ALLOWED_TTS_MODELS`,非法 422)→ `pipeline.py --tts-model` 寫 `<ws>/.tts_model` sidecar → `stage_synthesize` 讀回注入 `TTS_MODEL` env(單一還原點,涵蓋 /start·/resume·/approve·CLI)。`<ws>/.script_tts_family`(scriptwrite 寫,目前恆 `3.1`)供 synth 階段比對,跨 family 打 WARN。詳見 `docs/sop/podcast_pipeline.md §3` |
 
 ## Cost & Billing(2026-06)
 
