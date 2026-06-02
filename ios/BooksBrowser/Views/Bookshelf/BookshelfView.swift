@@ -109,12 +109,9 @@ struct BookshelfView: View {
                     PDFReaderView(book: book)
                 }
             }
-            // Both `.series` and `.episode` cases are kept for the compact
-            // (iPhone) push path. In regular (Mac/iPad) `.series` is never
-            // pushed (it renders as a root-level master via
-            // `selectedSeriesRemoteId`) and `.episode` is never pushed either
-            // (the inline player handles it), but the destination must stay
-            // registered — removing it would break the compact route.
+            // `.series`/`.episode` cases are kept for the compact (iPhone) push
+            // path. In regular (Mac/iPad) podcast 走 2D workspace（series 開欄、
+            // episode 開 player 子欄），不經此 push，但 destination 須保留供 compact。
             .navigationDestination(for: PodcastNavRoute.self) { route in
                 switch route {
                 case .series(let seriesRemoteId):
@@ -331,10 +328,8 @@ struct BookshelfView: View {
     }
 
     /// Series row activation branch:
-    /// - regular (Mac/iPad): tap drives `@State selectedSeriesRemoteId` so the
-    ///   episode-list renders as a root-level master pane (no push) — the
-    ///   structural Catalyst remount fix. Selected card gets an accent stroke
-    ///   overlay (mirrors `NotebookActivationSurface` selectInline).
+    /// - regular (Mac/iPad): tap → `panelWorkspace.openColumn(.podcastSeries)` 開
+    ///   series 子欄（Miller column）；卡片高亮 = workspace 首欄為該 series。
     /// - compact (iPhone): bit-for-bit unchanged value-based push via
     ///   `navigationDestination(for: PodcastNavRoute.self)`.
     @ViewBuilder
