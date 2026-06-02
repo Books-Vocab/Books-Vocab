@@ -37,6 +37,7 @@ verified_against: bb5c4b8a
 - [ ] **Step 1: 寫 failing test**（`ios/BooksBrowserTests/PanelWorkspace/PanelModelsTests.swift`）
 ```swift
 import Testing
+import Foundation
 @testable import BooksBrowser
 
 @Suite struct PanelModelsTests {
@@ -47,9 +48,10 @@ import Testing
         #expect(a.kind == b.kind)
     }
     @Test func columnDefaultsToSingleBlock() {
-        let c = WorkColumn(kind: .wordDetail(entryID: "w1"))
+        let w = UUID()
+        let c = WorkColumn(kind: .wordDetail(entryID: w))
         #expect(c.blocks.count == 1)
-        #expect(c.blocks[0].kind == .wordDetail(entryID: "w1"))
+        #expect(c.blocks[0].kind == .wordDetail(entryID: w))
     }
 }
 ```
@@ -61,13 +63,16 @@ import Testing
 // PanelKind.swift
 import Foundation
 
-/// 每個 block 承載的 payload。擴展點：加 case 即加一種 block 類型，引擎零改動。
+/// 每個 block 承載的 payload。**value-pure**（Equatable/Hashable，無 @Model 物件）
+/// → 供 SwiftUI 穩定 diff + coordinator 測試。live model 物件由 PanelHost resolver
+/// 經 id 反查（Task 4/10），payload 只帶可重建的 id 快照。
+/// 擴展點：加 case 即加一種 block 類型，引擎零改動。
 enum PanelKind: Equatable, Hashable {
-    case podcastSeries(remoteID: String)
+    case podcastSeries(remoteID: String)     // 經 service 反查（非 SwiftData）
     case podcastEpisode(remoteID: String)
-    case wordDetail(entryID: String)
-    case reviewSession(id: UUID)
-    case linkedWord(entryID: String)   // 垂直軸用例（Phase 4）
+    case wordDetail(entryID: UUID)           // VocabularyEntry.id: UUID
+    case reviewSession(entryIDs: [UUID])     // entry-id 快照 → resolver 重建 TodayReviewSession
+    case linkedWord(entryID: UUID)           // 垂直軸用例（Phase 4）
 }
 
 struct BlockID: Hashable { let raw = UUID() }
@@ -140,16 +145,16 @@ import Testing
     }
     @Test func stackAppendsBlockVertically() {
         let ws = PanelWorkspace()
-        let c1 = ws.openColumn(.wordDetail(entryID: "w1"), after: nil)
-        let b2 = ws.stack(.linkedWord(entryID: "w2"), in: c1)
+        let c1 = ws.openColumn(.wordDetail(entryID: UUID()), after: nil)
+        let b2 = ws.stack(.linkedWord(entryID: UUID()), in: c1)
         #expect(ws.columns[0].blocks.count == 2)
         #expect(b2 != nil)
     }
     @Test func closeBlockRemovesIt_AndCollapsesEmptyColumnWithCascade() {
         let ws = PanelWorkspace()
-        let c1 = ws.openColumn(.wordDetail(entryID: "w1"), after: nil)
-        let b2 = ws.stack(.linkedWord(entryID: "w2"), in: c1)!
-        let c2 = ws.openColumn(.reviewSession(id: UUID()), after: c1)
+        let c1 = ws.openColumn(.wordDetail(entryID: UUID()), after: nil)
+        let b2 = ws.stack(.linkedWord(entryID: UUID()), in: c1)!
+        let c2 = ws.openColumn(.reviewSession(entryIDs: []), after: c1)
         ws.closeBlock(b2)                  // 移除垂直 block，欄不空 → 欄保留
         #expect(ws.columns[0].blocks.count == 1)
         #expect(ws.columns.count == 2)
@@ -160,16 +165,29 @@ import Testing
     }
     @Test func resetClearsAll() {
         let ws = PanelWorkspace()
-        _ = ws.openColumn(.wordDetail(entryID: "w1"), after: nil)
+        _ = ws.openColumn(.wordDetail(entryID: UUID()), after: nil)
         ws.reset()
         #expect(ws.columns.isEmpty)
     }
     @Test func invariantNoEmptyColumns() {
         let ws = PanelWorkspace()
-        let c1 = ws.openColumn(.wordDetail(entryID: "w1"), after: nil)
+        let c1 = ws.openColumn(.wordDetail(entryID: UUID()), after: nil)
         ws.closeBlock(ws.columns[0].blocks[0].id)
         #expect(ws.columns.allSatisfy { !$0.blocks.isEmpty })
         _ = c1
+    }
+    @Test func setWidthMutatesColumnByID() {
+        let ws = PanelWorkspace()
+        let c1 = ws.openColumn(.podcastSeries(remoteID: "s1"), after: nil)
+        ws.setWidth(333, for: c1)
+        #expect(ws.columns[0].width == 333)
+    }
+    @Test func setHeightMutatesBlockByID() {
+        let ws = PanelWorkspace()
+        let c1 = ws.openColumn(.wordDetail(entryID: UUID()), after: nil)
+        let b2 = ws.stack(.linkedWord(entryID: UUID()), in: c1)!
+        ws.setHeight(222, for: b2)
+        #expect(ws.columns[0].blocks[1].height == 222)
     }
 }
 ```
@@ -226,10 +244,23 @@ final class PanelWorkspace {
         }
     }
 
+    // MARK: 尺寸 mutator（container/divider 的 commit 寫回；coordinator 為 SoT）
+    /// 兩者皆 by-id 查找（非 index）→ insert/remove 下穩定。供 ResizableDivider onCommit。
+    func setWidth(_ width: CGFloat, for columnID: ColumnID) {
+        guard let idx = columns.firstIndex(where: { $0.id == columnID }) else { return }
+        columns[idx].width = width
+    }
+    func setHeight(_ height: CGFloat, for blockID: BlockID) {
+        guard let cIdx = columns.firstIndex(where: { $0.blocks.contains(where: { $0.id == blockID }) }),
+              let bIdx = columns[cIdx].blocks.firstIndex(where: { $0.id == blockID }) else { return }
+        columns[cIdx].blocks[bIdx].height = height
+    }
+
     func reset() { columns = [] }
 }
 ```
 > **YAGNI 收斂**：spec 曾列 `replaceColumns(after:)` — 與 `openColumn(after:)`（已截斷再 append）語意重複，移除，drill 一律走 `openColumn`。
+> **mutator 為何 by-id**：`width`/`height` 寫回不能走 `@Bindable` 雙向綁進 `private(set)` array（編譯不過），由 divider `onCommit` callback 呼叫 by-id mutator（Task 3/5/6）。
 
 - [ ] **Step 4: 跑 test 確認通過**
 - [ ] **Step 5: Commit** `ios: add PanelWorkspace 2D stacking coordinator (TDD)`
@@ -275,13 +306,16 @@ enum BlockStackMetrics {
 ```
 ```swift
 // ResizableDivider.swift — axis-generic 拖拉欄（重寫自 DraggableDivider）
+// callback-based:不持有尺寸 state(coordinator 為 SoT)。parent 用 onDrag 更新
+// 即時 transient、onCommit 寫回 coordinator。**無 .constant(nil) hack**。
 import SwiftUI
 
 struct ResizableDivider: View {
     let axis: Axis                       // .horizontal → 調寬；.vertical → 調高
-    @Binding var length: CGFloat
-    @Binding var dragLength: CGFloat?
+    let currentLength: CGFloat           // 已 commit 的尺寸(唯讀,作 drag 起點)
     let bounds: ClosedRange<CGFloat>
+    let onDrag: (CGFloat) -> Void        // 拖曳中即時值 → parent 更新 transient
+    let onCommit: (CGFloat) -> Void      // 放開最終值 → coordinator setWidth/setHeight
     var onDoubleClick: () -> Void = {}
 
     @Environment(\.appTheme) private var theme
@@ -304,30 +338,31 @@ struct ResizableDivider: View {
                     .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
             }
             .highPriorityGesture(drag)
-            .onChange(of: isActiveDrag) { _, active in
-                if !active, let d = dragLength { length = d; dragLength = nil }
-            }
             #if targetEnvironment(macCatalyst)
             .onTapGesture(count: 2) { onDoubleClick() }
-            .overlay { MacColumnResizeCursor(axis: axis) }   // Task: cursor 加 axis
+            .overlay { MacColumnResizeCursor(axis: axis) }   // cursor 加 axis
             #endif
+    }
+
+    private func length(from translation: CGSize) -> CGFloat {
+        // 水平：欄在右,往左拖變寬 → 減 translation.width(鏡射舊 divider)
+        // 垂直：block 在下,往上拖變高 → 減 translation.height
+        let delta = axis == .horizontal ? translation.width : translation.height
+        return Self.clamp(dragStart - delta, to: bounds)
     }
 
     private var drag: some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .global)
             .updating($isActiveDrag) { _, s, _ in s = true }
             .onChanged { v in
-                if dragLength == nil { dragStart = length }
-                // 水平：欄在右，往左拖變寬 → 減 translation.width（鏡射舊 divider）
-                // 垂直：block 在下，往上拖變高 → 減 translation.height
-                let delta = axis == .horizontal ? v.translation.width : v.translation.height
-                dragLength = Self.clamp(dragStart - delta, to: bounds)
+                if !isActiveDrag { dragStart = currentLength }   // 首幀記起點
+                onDrag(length(from: v.translation))
             }
-            .onEnded { _ in if let d = dragLength { length = d }; dragLength = nil }
+            .onEnded { v in onCommit(length(from: v.translation)) }
     }
 }
 ```
-> `MacColumnResizeCursor` 加 `axis` 參數：horizontal → `.resizeLeftRight`，vertical → `.resizeUpDown`（NSCursor 經 Catalyst）。
+> `MacColumnResizeCursor` 加 `axis` 參數：horizontal → `.resizeLeftRight`，vertical → `.resizeUpDown`（NSCursor 經 Catalyst）。`dragStart` 於 `onChanged` 首幀（`isActiveDrag` 尚 false）以 `currentLength` 記錄。
 
 - [ ] **Step 4:** `ios_build.sh` exit 0（含 `--catalyst`）。test 綠。
 - [ ] **Step 5: Commit** `ios: add BlockStackMetrics + axis-generic ResizableDivider (TDD)`
@@ -355,11 +390,27 @@ struct ResizableDivider: View {
 }
 ```
 
-- [ ] **Step 2:** `PanelHost` — 集中 resolver（`PanelKind` 封閉 → 引擎 core 不 import feature view）：
+- [ ] **Step 2:** resolver 資料注入 — **panel 是 root 的 sibling（非 child）**，讀不到 root closure 的 `@Query`。故由 section wrapper 在 **container 層**經 environment 注入 live 資料：
+```swift
+// PanelDataEnvironment.swift
+private struct PanelVocabEntriesKey: EnvironmentKey { static let defaultValue: [VocabularyEntry] = [] }
+extension EnvironmentValues {
+    var panelVocabEntries: [VocabularyEntry] {
+        get { self[PanelVocabEntriesKey.self] }
+        set { self[PanelVocabEntriesKey.self] = newValue }
+    }
+}
+```
+> currentUserID 經既有 `@Environment(\.authManager).userId`；podcast 經既有 service env（remoteId 反查，無 SwiftData）。
+
+- [ ] **Step 3:** `PanelHost` — 集中 resolver（`PanelKind` 封閉 → 引擎 core 不 import feature view）：
 ```swift
 struct PanelHost: View {
     let kind: PanelKind
     let proxy: PanelProxy
+    @Environment(\.panelVocabEntries) private var entries
+    @Environment(\.authManager) private var authManager
+
     var body: some View {
         switch kind {
         // Phase 3 接 podcast；Phase 4 接 vocab。先放 placeholder 確保編譯。
@@ -368,10 +419,36 @@ struct PanelHost: View {
     }
 }
 ```
-> resolver 分支於 Phase 3/4 逐步填入，避免一次大爆。
+> resolver 分支於 Phase 3/4 逐步填入。vocab 分支用 `entries.first { $0.id == entryID }` 反查 live `VocabularyEntry`（找不到 → `Color.clear` fallback）；review 用下方 `ReviewPanel` wrapper。
 
-- [ ] **Step 3:** `ios_build.sh` exit 0。
-- [ ] **Step 4: Commit** `ios: add PanelProxy + PanelHost resolver skeleton`
+- [ ] **Step 4:** `ReviewPanel` — 由 entry-id 快照**建 session 一次**（穩定 UUID，避免每 render 重置）：
+```swift
+struct ReviewPanel: View {
+    let entryIDs: [UUID]
+    let allEntries: [VocabularyEntry]
+    let currentUserID: String?
+    let onClose: () -> Void
+    @State private var session: TodayReviewSession?
+    var body: some View {
+        Group {
+            if let session {
+                TodayReviewPhaseView(session: session, allEntries: allEntries,
+                                     currentUserID: currentUserID, onClose: onClose)
+            } else { Color.clear }
+        }
+        .onAppear {
+            if session == nil {
+                let resolved = entryIDs.compactMap { id in allEntries.first { $0.id == id } }
+                session = TodayReviewSession(entries: resolved)   // 建一次,Block.id 穩定故不重建
+            }
+        }
+    }
+}
+```
+> session 建立一次靠 `ReviewPanel` 的 `@State` + 外層 `ForEach(blocks, id: \.id)` 穩定 identity（Block.id 不變 → PanelHost/ReviewPanel 實例延續）。
+
+- [ ] **Step 5:** `ios_build.sh` exit 0。
+- [ ] **Step 6: Commit** `ios: add PanelProxy + PanelHost resolver + data injection + ReviewPanel`
 
 ---
 
@@ -401,34 +478,37 @@ struct BlockChrome<Content: View>: View {
 }
 ```
 
-- [ ] **Step 2:** `VerticalBlockStack` — 一欄內垂直堆疊 block + 欄內 `ResizableDivider(.vertical)`：
+- [ ] **Step 2:** `VerticalBlockStack` — 欄內垂直堆疊 block + callback `ResizableDivider(.vertical)`。`liveDrag` transient（一次只一條 divider 拖曳）：
 ```swift
 struct VerticalBlockStack: View {
-    @Bindable var workspace: PanelWorkspace
+    let workspace: PanelWorkspace
     let column: WorkColumn
+    @State private var liveDrag: (id: BlockID, value: CGFloat)?
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(column.blocks.enumerated()), id: \.element.id) { idx, block in
                 if idx > 0 {
-                    ResizableDivider(axis: .vertical,
-                                     length: bindingHeight(block),
-                                     dragLength: .constant(nil),       // 簡化：階段內精修
-                                     bounds: BlockStackMetrics.minHeight...600)
+                    ResizableDivider(
+                        axis: .vertical,
+                        currentLength: block.height ?? BlockStackMetrics.defaultHeight,
+                        bounds: BlockStackMetrics.minHeight...600,
+                        onDrag: { liveDrag = (block.id, $0) },
+                        onCommit: { workspace.setHeight($0, for: block.id); liveDrag = nil })
                 }
                 BlockChrome(onClose: { workspace.closeBlock(block.id) }) {
                     PanelHost(kind: block.kind,
                               proxy: PanelProxy(columnID: column.id, blockID: block.id, workspace: workspace))
                 }
-                .frame(maxHeight: block.height ?? .infinity)
+                .frame(maxHeight: liveDrag?.id == block.id ? liveDrag!.value
+                                  : (block.height ?? .infinity))
                 .transition(.statusRowReveal)            // 垂直 insert/remove
             }
         }
         .animation(AppMotion.panelState, value: column.blocks)
     }
-    // height binding：寫回 workspace.columns[col].blocks[block].height
 }
 ```
-> block height 持久化於 `Block.height`（coordinator 為 SoT）；binding helper 寫回對應 index。
+> 拖拉中 frame 讀 `liveDrag.value`（即時跟手）；放開 `onCommit` → `setHeight` 寫回 coordinator（SoT）、`liveDrag` 清空。`workspace` 為 @Observable class，傳值即共享參考。
 
 - [ ] **Step 3:** `ios_build.sh` exit 0 + `i18n_lint.sh` 0。
 - [ ] **Step 4: Commit** `ios: add BlockChrome + VerticalBlockStack`
@@ -443,9 +523,10 @@ struct VerticalBlockStack: View {
 - [ ] **Step 1:** 容器 — regular 渲染 root + 水平欄；compact 只渲染 root：
 ```swift
 struct PanelWorkspaceContainer<Root: View>: View {
-    @Bindable var workspace: PanelWorkspace
+    let workspace: PanelWorkspace
     let layoutMode: LayoutMode
     @ViewBuilder var root: () -> Root
+    @State private var liveDrag: (id: ColumnID, value: CGFloat)?
 
     var body: some View {
         if layoutMode.usesInlineDetail {
@@ -455,13 +536,15 @@ struct PanelWorkspaceContainer<Root: View>: View {
                         root()
                             .frame(minWidth: MacDetailPanelMetrics.leftMinWidth)
                         ForEach(workspace.columns) { column in
-                            ResizableDivider(axis: .horizontal,
-                                             length: bindingWidth(column),
-                                             dragLength: .constant(nil),     // 階段內精修即時拖拉
-                                             bounds: MacDetailPanelMetrics.minWidth...MacDetailPanelMetrics.maxWidth,
-                                             onDoubleClick: { resetWidth(column) })
+                            ResizableDivider(
+                                axis: .horizontal,
+                                currentLength: column.width,
+                                bounds: MacDetailPanelMetrics.minWidth...MacDetailPanelMetrics.maxWidth,
+                                onDrag: { liveDrag = (column.id, $0) },
+                                onCommit: { workspace.setWidth($0, for: column.id); liveDrag = nil },
+                                onDoubleClick: { workspace.setWidth(MacDetailPanelMetrics.defaultWidth, for: column.id) })
                             VerticalBlockStack(workspace: workspace, column: column)
-                                .frame(width: column.width)
+                                .frame(width: liveDrag?.id == column.id ? liveDrag!.value : column.width)
                                 .id(column.id)
                                 .transition(.drawerReveal)        // 水平 insert/remove
                         }
@@ -476,7 +559,6 @@ struct PanelWorkspaceContainer<Root: View>: View {
             root()           // compact：drill 走既有 NavigationStack push（零改動）
         }
     }
-    // bindingWidth：寫回 workspace.columns[idx].width；resetWidth：回 defaultWidth
 }
 ```
 > **INV 驗證點（D6×D7）**：`ForEach(workspace.columns)` 以穩定 `column.id` 為 identity；block 內 `NavigationStack`（若有，Task 7 player）深度恆 0。開新欄只 append 末端、不改既存欄 identity/樹位置 → 既存欄不 remount。
@@ -512,7 +594,7 @@ struct PanelWorkspaceContainer<Root: View>: View {
 - Delete: `ios/BooksBrowser/Views/Podcast/PodcastDetailRouter.swift`
 
 - [ ] **Step 1:** bookshelf section root 包進 `PanelWorkspaceContainer(workspace:layoutMode:) { BookshelfView() }`。series 卡片點擊 regular → `workspace.openColumn(.podcastSeries(...), after: nil)`；compact → 維持既有 NavigationStack push。
-- [ ] **Step 2:** 移除 `BookshelfView.selectedSeriesRemoteId` master-pane hack（`413912b3`）+ `PodcastSeriesActivation`/`PodcastEpisodeActivation`（被 workspace 取代；保留若 compact push 仍需 route enum）。
+- [ ] **Step 2:** 移除 `BookshelfView.selectedSeriesRemoteId` master-pane hack（`413912b3`）。**activation enum 規則（一次定義，貫穿 Task 8/14）**：compact push 路徑**保留** `PodcastSeriesActivation`/`PodcastEpisodeActivation`（仍驅動 NavigationStack push）；本 Task 只刪 regular 的 `selectedSeriesRemoteId` hack。enum 本身延至 **Task 14** 才刪，且僅在 grep 確認 compact 已不引用時。
 - [ ] **Step 3:** 刪 `PodcastDetailPresentation` / `PodcastDetailRouter` + 所有 caller（`.podcastDetailPresentation` / `\.podcastDetailRouter` 注入）。grep 確認零殘留。
 - [ ] **Step 4:** `ios_build.sh --catalyst` + iPhone sim 雙跑 exit 0 + `i18n_lint.sh` 0 + 同步檢查 `.claude/skills/`、`docs/reference/product_surface.md`、`tech_index.md` 引用（鐵律：改 user-facing 介面同 PR 同步）。
 - [ ] **Step 5: Commit** `ios: migrate podcast to PanelWorkspace, remove bespoke detail presentation`
@@ -536,7 +618,20 @@ struct PanelWorkspaceContainer<Root: View>: View {
 **Files:**
 - Modify: `ios/BooksBrowser/Platform/PanelWorkspace/PanelHost.swift`
 
-- [ ] **Step 1:** 補分支：`.wordDetail(entryID)` → `WordDetailSheet(wrapInNavigation:false, showsInlineChrome:false)`（鏡射 `NotebookDetailPresentation.inlineDetailPanel`）；`.reviewSession(id)` → `TodayReviewPhaseView(...)`；`.linkedWord(entryID)` → linked word detail（Task 12）。entryID→`VocabularyEntry` 查詢經既有 context。
+- [ ] **Step 1:** `PanelHost` 補 vocab 分支（用 Task 4 注入的 `entries` + `authManager`）：
+```swift
+case .wordDetail(let entryID), .linkedWord(let entryID):
+    if let entry = entries.first(where: { $0.id == entryID }) {
+        WordDetailSheet(entry: entry, allEntries: entries,
+                        wrapInNavigation: false, showsInlineChrome: false,
+                        onClose: { proxy.closeSelf() })
+    } else { Color.clear }                       // 已刪除 entry → fallback
+case .reviewSession(let entryIDs):
+    ReviewPanel(entryIDs: entryIDs, allEntries: entries,
+                currentUserID: authManager.userId, onClose: { proxy.closeSelf() })
+```
+> `.wordDetail`/`.linkedWord` 共用同一 detail 呈現（差別僅觸發軸：word=水平開欄、linked=垂直疊，見 Task 12）。`WordDetailSheet` 簽章已驗證：`init(entry:allEntries:wrapInNavigation:showsInlineChrome:onClose:linkedCardStack:)`。
+
 - [ ] **Step 2:** `ios_build.sh --catalyst` exit 0。
 - [ ] **Step 3: Commit** `ios: resolve vocab word/review panels in PanelHost`
 
@@ -545,14 +640,33 @@ struct PanelWorkspaceContainer<Root: View>: View {
 ### Task 11: 接線 NotebookListView + 刪舊 vocab detail（regular 分支）
 
 **Files:**
+- Create: `ios/BooksBrowser/Views/Vocabulary/VocabWorkspaceSection.swift`（section wrapper）
 - Modify: `ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift`
+- Modify: `ios/BooksBrowser/ContentView.swift`（notebooks section 改用 wrapper）
 - Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookDetailPresentation.swift`（移除 regular 分支，僅留 compact sheet）
 - Modify: `ios/BooksBrowser/Platform/DetailRouter.swift`（評估是否整體由 workspace 取代）
 
-- [ ] **Step 1:** notebook section root 包 `PanelWorkspaceContainer { NotebookListView() }`。word 點擊 regular → `workspace.openColumn(.wordDetail(...))`；today-review → `workspace.openColumn(.reviewSession(...))`。compact → 維持既有 sheet/fullScreenCover（`NotebookDetailPresentation` else 分支保留）。
-- [ ] **Step 2:** 移除 `NotebookDetailPresentation` 的 `usesInlineDetail` 分支（safeAreaInset 那段）；`DetailRouter` 若 regular 已全由 workspace 取代則刪、compact 仍需則保留 compact 用法。grep 確認。
-- [ ] **Step 3:** `ios_build.sh --catalyst` + iPhone sim 雙跑 exit 0 + `i18n_lint.sh` 0。
-- [ ] **Step 4: Commit** `ios: migrate vocab word/review to PanelWorkspace on regular`
+- [ ] **Step 1:** 新 `VocabWorkspaceSection` wrapper — **在 container 層**持有 workspace + `@Query allEntries`，注入 environment 給 sibling panel（panel 讀不到 root child 的 @Query）：
+```swift
+struct VocabWorkspaceSection: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Query private var allEntries: [VocabularyEntry]   // 同 NotebookListView predicate
+    @State private var workspace = PanelWorkspace()
+    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
+    var body: some View {
+        PanelWorkspaceContainer(workspace: workspace, layoutMode: layoutMode) {
+            NotebookListView()                         // root，經 env 取 workspace 開欄
+        }
+        .environment(\.panelVocabEntries, allEntries)  // 給 PanelHost resolver
+        .environment(\.panelWorkspace, workspace)      // 給 NotebookListView 開欄
+    }
+}
+```
+（新增 `EnvironmentValues.panelWorkspace: PanelWorkspace?` key。）`ContentView` notebooks section 改 `VocabWorkspaceSection()`。
+- [ ] **Step 2:** `NotebookListView` regular 路徑：word row 點擊 → `panelWorkspace?.openColumn(.wordDetail(entryID: entry.id), after: nil)`；today-review → `panelWorkspace?.openColumn(.reviewSession(entryIDs: entries.map(\.id)), after: nil)`。compact → 維持既有 sheet/fullScreenCover（`NotebookDetailPresentation` else 分支保留）。
+- [ ] **Step 3:** 移除 `NotebookDetailPresentation` 的 `usesInlineDetail` 分支（safeAreaInset 那段）；`DetailRouter` 若 regular 已全由 workspace 取代則刪、compact 仍需則保留 compact 用法。grep 確認。
+- [ ] **Step 4:** `ios_build.sh --catalyst` + iPhone sim 雙跑 exit 0 + `i18n_lint.sh` 0。
+- [ ] **Step 5: Commit** `ios: migrate vocab word/review to PanelWorkspace on regular`
 
 ---
 
@@ -571,6 +685,8 @@ struct PanelWorkspaceContainer<Root: View>: View {
 ---
 
 ## Phase 5 — 折入 fluidity audit findings（perf）
+
+> **⛔ BLOCKED until `catalyst-fluidity-audit` workflow 產出落地。** phased-workflow agent 不得在 audit 結果 append 進本 Task 前啟動 Phase 5（否則無清單可做、空轉）。
 
 ### Task 13: 依 audit 排序逐項處理
 
