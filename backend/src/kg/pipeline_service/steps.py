@@ -144,7 +144,12 @@ async def _step_embed_and_judge(
     logger.info("[%s] Judging %d pending cards", uid, len(pending))
     judge_provider = provider_for("judge")
     judge_llm = TrackedLLM(client_factory(judge_provider), uid, provider=judge_provider)
-    judge = Judge(judge_llm, model=judge_provider.chat_model, user_id=uid, notebook_id=notebook_id)
+    from ..settings import load_settings
+    judge = Judge(
+        judge_llm, model=judge_provider.chat_model,
+        user_id=uid, notebook_id=notebook_id,
+        confidence_threshold=load_settings().judge_confidence_threshold,
+    )
 
     # Pre-fetch pending cards
     cards_cache = cards.get_batch(set(pending))

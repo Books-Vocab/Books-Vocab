@@ -118,6 +118,28 @@ class TestJudgeEvaluateBatch:
         assert results["id1"] is None
 
 
+# ── Judge confidence_threshold pass-through (Defect 2) ──
+
+class TestJudgeConfidenceThreshold:
+    def test_default_threshold_is_0_7(self):
+        # 0.6 link rejected under default threshold
+        content = '[{"word": "x", "link": "shares_usage", "confidence": 0.6, "reason": "r"}]'
+        judge = _judge_with(content)
+        results = judge.evaluate_batch("a", "m", [("id1", "x", "mx")])
+        assert results["id1"] is None
+
+    def test_lowered_threshold_accepts_mid_confidence(self):
+        from kg.tracked_llm import TrackedLLM
+        content = '[{"word": "x", "link": "shares_usage", "confidence": 0.6, "reason": "r"}]'
+        judge = Judge(
+            llm=TrackedLLM(_make_client(content), "test_user"),
+            confidence_threshold=0.55,
+        )
+        results = judge.evaluate_batch("a", "m", [("id1", "x", "mx")])
+        assert results["id1"] is not None
+        assert results["id1"].confidence == 0.6
+
+
 # ── _parse_batch_response unit tests ──
 
 class TestParseBatchResponse:
