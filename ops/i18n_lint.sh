@@ -30,7 +30,8 @@
 #   - Text("中") / Button("中") / Label("中") / .navigationTitle("中") / Section("中")
 #   - Text(verbatim: "中") / .alert("中") / Toggle("中") / Picker("中") / Menu("中")
 #   - .confirmationDialog("中") / TextField(".*中") / .accessibilityHint("中")
-#   - toastCoordinator.(success|error|info|warning)("中") / reportError("中")
+#   - <*toast*>.(success|error|info|warning)("中") / reportError("中")
+#     (matches toastCoordinator AND local aliases like `let toast = toastCoordinator`)
 #   - ProgressView("中") / vocabLabelChip(title: "中") / .accessibilityLabel("中")
 #   - static let \w+ = (DateFormatter|RelativeDateTimeFormatter|NumberFormatter)
 #
@@ -59,7 +60,7 @@ fi
 # Raw Chinese in SwiftUI text-bearing positions.
 # Unicode range [\x{4e00}-\x{9fff}] covers CJK Unified Ideographs Block.
 # We anchor on the opening API call to reduce false positives.
-RAW_CHINESE_PATTERN='(Text|Button|Label|Section|Toggle|Picker|Menu|TextField)\("[^"]*[\x{4e00}-\x{9fff}]|\.navigationTitle\("[^"]*[\x{4e00}-\x{9fff}]|Text\(verbatim:\s*"[^"]*[\x{4e00}-\x{9fff}]|\.alert\("[^"]*[\x{4e00}-\x{9fff}]|\.confirmationDialog\("[^"]*[\x{4e00}-\x{9fff}]|\.accessibilityHint\("[^"]*[\x{4e00}-\x{9fff}]|toastCoordinator\.(success|error|info|warning)\("[^"]*[\x{4e00}-\x{9fff}]|\breportError\("[^"]*[\x{4e00}-\x{9fff}]|ProgressView\("[^"]*[\x{4e00}-\x{9fff}]|vocabLabelChip\(title:\s*"[^"]*[\x{4e00}-\x{9fff}]|\.accessibilityLabel\("[^"]*[\x{4e00}-\x{9fff}]'
+RAW_CHINESE_PATTERN='(Text|Button|Label|Section|Toggle|Picker|Menu|TextField)\("[^"]*[\x{4e00}-\x{9fff}]|\.navigationTitle\("[^"]*[\x{4e00}-\x{9fff}]|Text\(verbatim:\s*"[^"]*[\x{4e00}-\x{9fff}]|\.alert\("[^"]*[\x{4e00}-\x{9fff}]|\.confirmationDialog\("[^"]*[\x{4e00}-\x{9fff}]|\.accessibilityHint\("[^"]*[\x{4e00}-\x{9fff}]|\b\w*[Tt]oast\w*\.(success|error|info|warning)\("[^"]*[\x{4e00}-\x{9fff}]|\breportError\("[^"]*[\x{4e00}-\x{9fff}]|ProgressView\("[^"]*[\x{4e00}-\x{9fff}]|vocabLabelChip\(title:\s*"[^"]*[\x{4e00}-\x{9fff}]|\.accessibilityLabel\("[^"]*[\x{4e00}-\x{9fff}]'
 
 # Raw Chinese returned from a function / computed property — catches the
 # enum-label-getter blind spot (e.g. `var label: String { case .x: return "中" }`).

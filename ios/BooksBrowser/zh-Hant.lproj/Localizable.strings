@@ -892,6 +892,7 @@
 "a11y.toggle.on" = "開";
 "a11y.toggle.off" = "關";
 "todayReview.fold.collapse" = "收合";
+"todayReview.saveFailure" = "複習結果未存檔，請稍後再試";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "匯出失敗";

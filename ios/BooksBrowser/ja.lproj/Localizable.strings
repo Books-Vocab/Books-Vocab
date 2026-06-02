@@ -873,6 +873,7 @@
 "a11y.toggle.on" = "オン";
 "a11y.toggle.off" = "オフ";
 "todayReview.fold.collapse" = "折りたたむ";
+"todayReview.saveFailure" = "復習結果が保存されませんでした。後でもう一度お試しください。";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "エクスポートに失敗しました";
