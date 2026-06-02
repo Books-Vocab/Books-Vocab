@@ -1,6 +1,15 @@
 import Foundation
 import SwiftData
 
+extension Notification.Name {
+    /// Posted by `PodcastSyncService.syncAll` after a successful catalog
+    /// reconcile (`.completed`). Views that froze their `@Query` into a
+    /// one-shot `@State` snapshot (see `PodcastEpisodeListView`'s freeze-fix)
+    /// listen for this to discretely re-read the store — `seriesId` is stable
+    /// across a background upsert so `.task(id:)` won't re-fire on its own.
+    static let podcastCatalogDidSync = Notification.Name("podcastCatalogDidSync")
+}
+
 // MARK: - API Response Models
 
 struct PodcastSeriesSummary: Codable {
@@ -160,6 +169,10 @@ final class PodcastSyncService {
             AppLog.kg.warning("[PodcastSync] context save failed: \(error.localizedDescription)")
             AppCrashReporting.record(error, context: "podcast.sync.save")
         }
+        // Notify frozen-snapshot views (e.g. PodcastEpisodeListView) that the
+        // store changed so they can discretely re-read. seriesId is stable
+        // across a background upsert, so their `.task(id:)` won't re-fire.
+        NotificationCenter.default.post(name: .podcastCatalogDidSync, object: nil)
         return .completed
     }
 
