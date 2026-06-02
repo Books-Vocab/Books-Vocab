@@ -181,20 +181,6 @@ struct PodcastUnderlineGeometryTests {
 }
 
 struct PodcastScrollGeometryTests {
-    @Test func anchorClimbsThroughCenter() {
-        // Larger anchor.y → sentence lower in viewport. Climb = start below center
-        // (fraction 0 → y > 0.5), end above center (fraction 1 → y < 0.5).
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 0.5).y == 0.5)
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 0).y > 0.5)
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 1).y < 0.5)
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 0.5).x == 0.5)
-    }
-
-    @Test func anchorClampsOutOfRangeFraction() {
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: -1) == PodcastScrollGeometry.centerAnchor(fraction: 0))
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 2) == PodcastScrollGeometry.centerAnchor(fraction: 1))
-    }
-
     @Test func sentenceFractionRampsAndClamps() {
         #expect(PodcastScrollGeometry.sentenceFraction(time: 10, start: 10, end: 20) == 0)
         #expect(PodcastScrollGeometry.sentenceFraction(time: 15, start: 10, end: 20) == 0.5)
@@ -207,5 +193,41 @@ struct PodcastScrollGeometryTests {
         // Zero-length sentence: before start → 0, at/after → 1 (no divide-by-zero).
         #expect(PodcastScrollGeometry.sentenceFraction(time: 10, start: 10, end: 10) == 1)
         #expect(PodcastScrollGeometry.sentenceFraction(time: 9, start: 10, end: 10) == 0)
+    }
+
+    private func sentence(_ id: Int, _ start: TimeInterval, _ end: TimeInterval) -> PodcastSentence {
+        PodcastSentence(id: id, speaker: "A", text: "x", startTime: start, endTime: end, words: [])
+    }
+
+    @Test func centerOffsetEmptyOrUnmeasuredIsNil() {
+        #expect(PodcastScrollGeometry.centerOffset(time: 0, sentences: [], centers: [:], viewportHeight: 800) == nil)
+        let s = [sentence(0, 0, 2)]
+        #expect(PodcastScrollGeometry.centerOffset(time: 1, sentences: s, centers: [:], viewportHeight: 800) == nil)
+    }
+
+    @Test func centerOffsetCentersCurrentSentence() {
+        // Single sentence centered: offset = viewportH/2 - center.
+        let s = [sentence(0, 0, 2)]
+        #expect(PodcastScrollGeometry.centerOffset(time: 1, sentences: s, centers: [0: 300], viewportHeight: 800) == 100)
+    }
+
+    @Test func centerOffsetInterpolatesTowardNext() {
+        let s = [sentence(0, 0, 2), sentence(1, 2, 4)]
+        let centers: [Int: CGFloat] = [0: 100, 1: 300]
+        // fraction 0 → focal 100 → offset 400-100=300
+        #expect(PodcastScrollGeometry.centerOffset(time: 0, sentences: s, centers: centers, viewportHeight: 800) == 300)
+        // fraction 0.5 → focal 200 → offset 200
+        #expect(PodcastScrollGeometry.centerOffset(time: 1, sentences: s, centers: centers, viewportHeight: 800) == 200)
+    }
+
+    @Test func centerOffsetIsContinuousAcrossBoundary() {
+        // End of sentence 0 (fraction→1) must equal start of sentence 1 (fraction 0):
+        // both put sentence 1's center at viewport center → no jump at the boundary.
+        let s = [sentence(0, 0, 2), sentence(1, 2, 4)]
+        let centers: [Int: CGFloat] = [0: 100, 1: 300]
+        let endOfFirst = PodcastScrollGeometry.centerOffset(time: 2, sentences: s, centers: centers, viewportHeight: 800)
+        let startOfSecond = PodcastScrollGeometry.centerOffset(time: 2.0001, sentences: s, centers: centers, viewportHeight: 800)
+        #expect(endOfFirst == 100)        // 400 - 300
+        #expect(startOfSecond == 100)     // seamless
     }
 }
