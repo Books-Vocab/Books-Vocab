@@ -242,6 +242,7 @@ struct PodcastPlayerView: View {
             saveProgress()
             loadTask?.cancel()
             loadTask = nil
+            translationHandler.cancelCurrentTranslationTask()
             viewModel?.shutdown()
             viewModel = nil
             loadedEpisodeId = nil
