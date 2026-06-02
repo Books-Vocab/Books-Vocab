@@ -182,9 +182,11 @@ struct PodcastUnderlineGeometryTests {
 
 struct PodcastScrollGeometryTests {
     @Test func anchorClimbsThroughCenter() {
+        // Larger anchor.y → sentence lower in viewport. Climb = start below center
+        // (fraction 0 → y > 0.5), end above center (fraction 1 → y < 0.5).
         #expect(PodcastScrollGeometry.centerAnchor(fraction: 0.5).y == 0.5)
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 0).y < 0.5)
-        #expect(PodcastScrollGeometry.centerAnchor(fraction: 1).y > 0.5)
+        #expect(PodcastScrollGeometry.centerAnchor(fraction: 0).y > 0.5)
+        #expect(PodcastScrollGeometry.centerAnchor(fraction: 1).y < 0.5)
         #expect(PodcastScrollGeometry.centerAnchor(fraction: 0.5).x == 0.5)
     }
 
