@@ -12,10 +12,20 @@ private struct PanelVocabEntriesKey: EnvironmentKey {
     static let defaultValue: [VocabularyEntry] = []
 }
 
+private struct PanelWorkspaceKey: EnvironmentKey {
+    static let defaultValue: PanelWorkspace? = nil
+}
+
 extension EnvironmentValues {
     /// 供 `PanelHost` resolver 反查 live `VocabularyEntry`（由 vocab section wrapper 注入）。
     var panelVocabEntries: [VocabularyEntry] {
         get { self[PanelVocabEntriesKey.self] }
         set { self[PanelVocabEntriesKey.self] = newValue }
+    }
+
+    /// 供 section root（BookshelfView / NotebookListView）開欄（由 section wrapper 注入）。
+    var panelWorkspace: PanelWorkspace? {
+        get { self[PanelWorkspaceKey.self] }
+        set { self[PanelWorkspaceKey.self] = newValue }
     }
 }
