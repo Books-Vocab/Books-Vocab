@@ -93,8 +93,8 @@ extension GraphWebView {
         let dataSig = dataSignature(nodes: nodes, edges: edges)
         let themeChanged = coord.lastThemeSignature != sig || coord.lastColorScheme != colorScheme
         // count-only diff missed per-node visual changes after a review (tier gray→gradient,
-        // colorHex nil→cssHex, ratio set/drift) while node/edge counts stay constant — so the
-        // graph kept rendering stale colors. Diff a content signature instead of counts.
+        // colorHex nil→cssHex) while node/edge counts stay constant — so the graph kept
+        // rendering stale colors. Diff a content signature instead of counts.
         let dataChanged = coord.lastDataSignature != dataSig
 
         if themeChanged || dataChanged {
@@ -199,16 +199,23 @@ extension GraphWebView {
     /// Content signature over the node/edge fields that drive rendering.
     ///
     /// Invariant: stable when nothing visual changed (so identical input never triggers a
-    /// redundant redraw / layout reset), but changes whenever a reviewed node's `tier`,
-    /// `colorHex`, or `ratio` shifts (gray→gradient, nil→cssHex, ratio drift) even though
-    /// node/edge counts stay constant — which is exactly what the old count-only diff missed.
-    /// `ratio` is fixed to 4 decimals so floating-point jitter doesn't force needless redraws.
-    private static func dataSignature(
+    /// redundant redraw / layout reset), but changes whenever a reviewed node's `tier` or
+    /// `colorHex` shifts (gray→gradient, nil→cssHex) even though node/edge counts stay
+    /// constant — which is exactly what the old count-only diff missed.
+    ///
+    /// `ratio` is deliberately excluded (matching `GraphThumbnailWebView.performUpdate`):
+    /// it derives from `Date()` in `KnowledgeGraphPresentation.reviewRatio`, so it drifts on
+    /// every SwiftUI `body` recomputation. Even `%.4f` formatting can't pin it — under the
+    /// 6h SRS floor, ratio crosses a 0.0001 quantum roughly every ~2.2s, so any two updates
+    /// >2s apart would flip the signature and force a spurious redraw + d3 layout reset (the
+    /// very jitter this diff exists to prevent). `colorHex = ReviewGradient.cssHex(for: ratio)`
+    /// already quantizes ratio to 8-bit RGB, so a review that changes the color necessarily
+    /// changes `colorHex` and still triggers a redraw — raw `ratio` is redundant and toxic.
+    static func dataSignature(
         nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge]
     ) -> String {
         let nodeSig = nodes.map { node -> String in
-            let ratio = node.ratio.map { String(format: "%.4f", $0) } ?? "-"
-            return "\(node.id)|\(node.tier ?? "-")|\(node.colorHex ?? "-")|\(ratio)|\(node.degree)"
+            "\(node.id)|\(node.tier ?? "-")|\(node.colorHex ?? "-")|\(node.degree)"
         }.joined(separator: ";")
         let edgeSig = edges.map { "\($0.id)|\($0.from)|\($0.to)|\($0.kind)" }
             .joined(separator: ";")
