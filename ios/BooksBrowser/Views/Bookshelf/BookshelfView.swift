@@ -54,6 +54,13 @@ struct BookshelfView: View {
     /// root cause).
     @State private var selectedSeriesRemoteId: String?
 
+    /// remoteIds of the currently-live (non-soft-deleted) podcast series.
+    /// Used as the `onChange` key that auto-dismisses a stranded overlay: a
+    /// plain `[String]` is `Equatable`, so the observer fires only when the set
+    /// actually changes (a series appears / disappears) rather than on every
+    /// body pass — same discipline as the `onChange(of: layoutMode)` below.
+    private var liveSeriesRemoteIds: [String] { podcastSeries.map(\.remoteId) }
+
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
 
     private var coverHeight: CGFloat { layoutMode.bookshelfCoverHeight }
@@ -144,6 +151,21 @@ struct BookshelfView: View {
             .onChange(of: layoutMode) { _, newMode in
                 if !newMode.usesInlineDetail {
                     selectedSeriesRemoteId = nil
+                }
+            }
+            // regular: the open overlay's series was soft-deleted by a reconcile
+            // mid-view (isDeleted=true → gone from the `!isDeleted` @Query). The
+            // overlay would otherwise stay mounted on a now-nonexistent series,
+            // whose `PodcastEpisodeListView` fetch (also `!isDeleted`) yields an
+            // empty "尚無集數" state requiring a manual back-tap. Drop the
+            // selection to auto-collapse back to the grid. Keyed on the live
+            // remoteId set, so it fires only on add/remove — never on normal
+            // open (the tapped series is present) or switch (target is present).
+            .onChange(of: liveSeriesRemoteIds) { _, ids in
+                if let selected = selectedSeriesRemoteId, !ids.contains(selected) {
+                    withAnimation(AppMotion.phaseChange) {
+                        selectedSeriesRemoteId = nil
+                    }
                 }
             }
             .toolbar {
