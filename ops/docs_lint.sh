@@ -119,7 +119,9 @@ while IFS= read -r f; do
   fi
 
   # Count commits in scope between verified..HEAD
-  commits_in_scope=$(echo "$scope_paths" | xargs git log --oneline "$verified..HEAD" -- 2>/dev/null | wc -l | tr -d ' ')
+  # NUL-delimit so scope paths containing whitespace survive as single args
+  # (plain `xargs` word-splits on spaces → undercounts staleness). -0 is BSD-safe.
+  commits_in_scope=$(printf '%s\n' "$scope_paths" | tr '\n' '\0' | xargs -0 git log --oneline "$verified..HEAD" -- 2>/dev/null | wc -l | tr -d ' ')
 
   if [ "$commits_in_scope" -gt "$STALE_THRESHOLD" ]; then
     echo "STALE $f — $verified..HEAD 期間 $commits_in_scope 個 commit 動到 scope(閾值 $STALE_THRESHOLD)"
