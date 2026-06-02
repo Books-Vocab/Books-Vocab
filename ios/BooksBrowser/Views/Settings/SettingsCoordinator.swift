@@ -55,8 +55,13 @@ final class SettingsCoordinator: SettingsCoordinating {
         connectionPulse.toggle()
 
         if authManager.isLoggedIn {
-            if let config = try? await kgService.fetchUserConfig() {
+            do {
+                let config = try await kgService.fetchUserConfig()
                 applyServerTranslationConfig(config.translation)
+            } catch {
+                // Non-fatal: local + iCloud KV remain the fallback authority for
+                // translation config, so we log rather than report to Sentry.
+                AppLog.kg.warning("fetchUserConfig failed: \(error.localizedDescription)")
             }
         }
     }
