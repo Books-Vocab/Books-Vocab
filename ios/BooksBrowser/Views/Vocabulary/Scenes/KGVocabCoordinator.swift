@@ -122,6 +122,10 @@ final class KGVocabCoordinator: KGVocabCoordinating {
 
         if failedCount > 0 {
             errorMessage = L10n.format("刪除失敗 %@ 筆，稍後將自動重試", "\(failedCount)")
+        } else {
+            // 全數收斂成功 → 清空前次失敗殘留的 error banner，
+            // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
+            errorMessage = nil
         }
 
         await kgService.healthCheck()
