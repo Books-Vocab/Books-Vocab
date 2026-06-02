@@ -317,7 +317,7 @@ curl -sf -X DELETE "$BASE/api/workspace/$WS?confirm=$WS"
 |------|------|------|
 | `PODCAST_CLAUDE_MODEL` | `opus[1m]` | Stage 1-10(Claude agent)的 `claude -p` model;stage 11-13 是 Vertex TTS / pydub / Whisper 不受影響。`[1m]` 是 deliberate default — scriptwriter / enricher / series-polish 跨多章推理需 1M context window,改 `sonnet` 前先確認 |
 | `PODCAST_STAGE_RETRIES` | `3` | 每個 agent stage 的總嘗試次數。transient 失敗(thinking-block 400 / 429 / 5xx)以**全新** `claude -p` 重試(繞過被汙染的 thinking 對話歷史);auth / 一般 400 / timeout 不重試。詳見 `docs/sop/podcast_pipeline.md` §Agent-stage 重試 |
-| `TTS_MODEL` | `gemini-2.5-flash-tts`(code 預設與 `.env` 一致,2026-06-02 起) | Vertex TTS 模型;3.1-flash-preview / 2.5-pro 可選。非-3.1 family 時 synthesize 端自動淨化 3.1-only audio tag(`tts_tags.sanitize_tags_for_family`) |
+| `TTS_MODEL` | `gemini-2.5-flash-tts`(code 預設與 `.env` 一致,2026-06-02 起) | Vertex TTS 模型;3.1-flash-preview / 2.5-pro 可選。audio-tag palette 為 family-parametric(SoT `tts_tags.py:TAG_CONCEPTS`):scriptwrite 依目標 family 注入對應 palette,synthesize 端 `sanitize_tags_for_family` 兜底跨 family tag |
 | `TTS_MAX_CONCURRENT` | `10` | TTS batch 並發上限 |
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
 | `TTS_MASTER` | `1` | 設 `0` 關閉 loudnorm mastering |

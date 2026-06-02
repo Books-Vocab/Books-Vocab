@@ -24,11 +24,29 @@ import pytest
 import tts_tags
 
 PROMPTS = Path(__file__).parent / "prompts"
-# Prompts that receive {tts_palette} injection (pipeline.inject_tts_palette).
+# Prompts whose palette block is injected (need the full {tts_palette}).
 PALETTE_PROMPTS = [PROMPTS / "scriptwriter.md", PROMPTS / "script_review.md"]
+# Every prompt pipeline runs through inject_tts_palette (run_scriptwriter,
+# run_script_reviewer, run_claude(inject_tts=True) for tts_prep). A prompt here
+# with no {tts_*} target, or a typo'd placeholder, would silently ship a stale
+# 3.1-hardcoded prompt — inject does a no-op .replace(), it does not raise.
+INJECT_PROMPTS = PALETTE_PROMPTS + [PROMPTS / "tts_prep.md"]
+KNOWN_PLACEHOLDERS = {"tts_engine", "tts_family", "tts_palette"}
+_PLACEHOLDER_RE = re.compile(r"\{(tts_[a-z_]+)\}")
 
 # Tag names: lowercase words, optional single spaces (e.g. "high energy").
 _TAG_RE = re.compile(r"\[([a-z][a-z ]*[a-z])\]")
+
+
+@pytest.mark.parametrize("path", INJECT_PROMPTS, ids=lambda p: p.name)
+def test_inject_prompt_uses_only_known_placeholders(path: Path) -> None:
+    found = set(_PLACEHOLDER_RE.findall(path.read_text(encoding="utf-8")))
+    assert found, f"{path.name}: inject_tts prompt has no {{tts_*}} placeholder (stale/hardcoded?)"
+    unknown = found - KNOWN_PLACEHOLDERS
+    assert not unknown, (
+        f"{path.name}: unknown placeholder(s) {sorted(unknown)} — inject_tts_palette "
+        f"only fills {sorted(KNOWN_PLACEHOLDERS)}; a typo here ships silently (no-op replace)"
+    )
 
 
 @pytest.mark.parametrize("path", PALETTE_PROMPTS, ids=lambda p: p.name)
