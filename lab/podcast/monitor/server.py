@@ -46,6 +46,7 @@ from jobs import tracker as jobs, JobLimitReached  # noqa: E402
 import remote as remote_ops  # noqa: E402
 import saga  # noqa: E402  — parse series.md for the workspace summary
 import archetypes  # noqa: E402  — validate spoiler_mode for a saga upload
+from tts_config import ALLOWED_TTS_MODELS  # noqa: E402  — server-side TTS model allowlist
 
 # Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
 # almost certainly someone uploading the wrong file by accident. Protects
@@ -1060,6 +1061,7 @@ def resume_workspace(ws_name: str):
 async def start_pipeline(
     epub: UploadFile = File(...),
     parallel: int = Form(3, ge=1, le=10),
+    tts_model: str = Form(""),
 ):
     """Receive an EPUB upload, save to staging, spawn pipeline.py.
     Returns job_id immediately; the new workspace name appears in the
@@ -1070,6 +1072,8 @@ async def start_pipeline(
     """
     if not epub.filename or not epub.filename.lower().endswith(".epub"):
         raise HTTPException(415, "expected .epub file")
+    if tts_model and tts_model not in ALLOWED_TTS_MODELS:
+        raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
     # Strip leading dots/hyphens so `....epub` doesn't land as a hidden file.
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
     # Prefix with a monotonic timestamp so concurrent uploads of the same
@@ -1095,6 +1099,8 @@ async def start_pipeline(
         raise
 
     cmd = ["uv", "run", "pipeline.py", str(dest), "--parallel", str(parallel)]
+    if tts_model:
+        cmd += ["--tts-model", tts_model]
     try:
         job = jobs.spawn(
             cmd,
@@ -1102,7 +1108,7 @@ async def start_pipeline(
             kind="pipeline",
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
-            metadata={"epub": safe_name, "parallel": parallel, "bytes": written},
+            metadata={"epub": safe_name, "parallel": parallel, "bytes": written, "tts_model": tts_model or None},
         )
     except JobLimitReached as e:
         dest.unlink(missing_ok=True)
@@ -1116,6 +1122,7 @@ async def start_saga(
     title: str = Form(...),
     spoiler_mode: str = Form(...),
     parallel: int = Form(3, ge=1, le=10),
+    tts_model: str = Form(""),
 ):
     """Receive >=2 EPUB uploads + a saga title + spoiler policy, stage every
     file, then spawn `pipeline.py <epub>... --saga <title> --spoiler-mode <m>
@@ -1138,6 +1145,8 @@ async def start_saga(
     err = archetypes.validate_spoiler_mode("saga", spoiler_mode)
     if err:
         raise HTTPException(400, err)
+    if tts_model and tts_model not in ALLOWED_TTS_MODELS:
+        raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
     for up in epubs:
         if not up.filename or not up.filename.lower().endswith(".epub"):
             raise HTTPException(400, "all saga files must be .epub")
@@ -1177,6 +1186,8 @@ async def start_saga(
         "--spoiler-mode", spoiler_mode,
         "--parallel", str(parallel),
     ]
+    if tts_model:
+        cmd += ["--tts-model", tts_model]
     try:
         job = jobs.spawn(
             cmd,
@@ -1184,7 +1195,7 @@ async def start_saga(
             kind="pipeline",
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
-            metadata={"saga": title, "books": len(staged), "parallel": parallel},
+            metadata={"saga": title, "books": len(staged), "parallel": parallel, "tts_model": tts_model or None},
         )
     except JobLimitReached as e:
         for p in staged:
