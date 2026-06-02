@@ -93,9 +93,9 @@ enum PodcastUnderlineGeometry {
         var bottomY: CGFloat  // word baseline bottom; view adds the 3pt offset
     }
 
-    /// Returns nil when there is no active word (`activeIndex < 0`) or its rect
-    /// is not yet measured — this is also how `wordFollowEnabled == false` and
-    /// pre-highlight states render no underline.
+    /// Returns nil when there is no active word (`activeIndex < 0`, e.g. before
+    /// the first word) or its rect is not yet measured. The `wordFollowEnabled`
+    /// toggle is gated at the call site (the overlay closure), not here.
     static func bar(wordRects: [Int: CGRect], activeIndex: Int, fraction: Double) -> Bar? {
         guard activeIndex >= 0, let a = wordRects[activeIndex] else { return nil }
         guard let b = wordRects[activeIndex + 1], b.minY == a.minY else {
