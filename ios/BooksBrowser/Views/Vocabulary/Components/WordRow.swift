@@ -52,7 +52,7 @@ struct WordRow: View {
         guard let progress = viewData.reviewProgress else { return "" }
         var parts = [progress.statusLabel]
         if let ratio = progress.ratio {
-            parts.append("進度 \(Int(min(ratio, 1.0) * 100))%")
+            parts.append(L10n.format("進度 %d%%", Int(min(ratio, 1.0) * 100)))
         }
         if let detail = progress.detailLabel {
             parts.append(detail)
