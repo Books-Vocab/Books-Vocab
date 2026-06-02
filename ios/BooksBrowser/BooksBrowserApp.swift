@@ -226,6 +226,10 @@ struct BooksBrowserApp: App {
                         SessionMetrics.shared.snapshot().logSummary()
                         SessionMetrics.shared.reset()
                         AppAnalytics.track(.appEnteredBackground)
+                        // Flush any debounced iCloud KVS write before the OS may suspend
+                        // us — covers the normal exit path so the debounce window only
+                        // risks loss on a foreground force-quit.
+                        CloudPreferencesSync.shared.forceFlush()
                         Task {
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
                             await kgService.pushReviewQuietly(container: modelContainer)
