@@ -368,24 +368,73 @@ private struct PDFKitRepresentable: UIViewRepresentable {
                   let pageText = page.string
             else { return selection.string ?? "" }
 
-            let selectedText = selection.string ?? ""
-            guard let range = pageText.range(of: selectedText) else {
-                return selectedText
+            // 用 PDFKit 提供的「實際選取字元範圍」定位上下文,而非以
+            // selection.string 在頁面字串中 range(of:) 抓首個 match。
+            // 後者對頁面中後段重複出現的常見詞(如 "the")會取到頁首
+            // 的上下文造成偏移。rangeAtIndex:onPage: 回傳的 NSRange 是
+            // 對 page.string 的字元索引,與這裡用的 pageText 一致。
+            guard let selectionRange = pageTextRange(for: selection, on: page, in: pageText) else {
+                // Fallback:API 取不到範圍(極少數情況)時退回字串搜尋,
+                // 仍優於回傳裸選取詞。
+                return fallbackContext(selectedText: selection.string ?? "", in: pageText)
             }
 
             // ~100 chars around the selection
             let contextRadius = 100
             let start = pageText.index(
-                range.lowerBound,
+                selectionRange.lowerBound,
                 offsetBy: -contextRadius,
                 limitedBy: pageText.startIndex
             ) ?? pageText.startIndex
             let end = pageText.index(
-                range.upperBound,
+                selectionRange.upperBound,
                 offsetBy: contextRadius,
                 limitedBy: pageText.endIndex
             ) ?? pageText.endIndex
 
+            return String(pageText[start..<end])
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        /// 將 PDFSelection 在指定 page 上的實際字元範圍(NSRange,對 page.string)
+        /// 轉成 Swift `Range<String.Index>`。多段選取時取「最前 lowerBound ~
+        /// 最後 upperBound」的涵蓋範圍,使上下文窗以實際選取位置為中心。
+        private func pageTextRange(
+            for selection: PDFSelection,
+            on page: PDFPage,
+            in pageText: String
+        ) -> Range<String.Index>? {
+            let rangeCount = selection.numberOfTextRanges(on: page)
+            guard rangeCount > 0 else { return nil }
+
+            var minLocation = Int.max
+            var maxEnd = Int.min
+            for index in 0..<rangeCount {
+                let nsRange = selection.range(at: index, on: page)
+                guard nsRange.location != NSNotFound, nsRange.length >= 0 else { continue }
+                minLocation = min(minLocation, nsRange.location)
+                maxEnd = max(maxEnd, nsRange.location + nsRange.length)
+            }
+            guard minLocation != Int.max, maxEnd >= minLocation else { return nil }
+
+            // NSRange 對的是 NSString(UTF-16)索引,轉回 Swift String.Index
+            // 需經 UTF-16 視圖,避免 emoji / 組合字偏移。
+            let coveringNSRange = NSRange(location: minLocation, length: maxEnd - minLocation)
+            return Range(coveringNSRange, in: pageText)
+        }
+
+        private func fallbackContext(selectedText: String, in pageText: String) -> String {
+            guard !selectedText.isEmpty, let range = pageText.range(of: selectedText) else {
+                return selectedText
+            }
+            let contextRadius = 100
+            let start = pageText.index(
+                range.lowerBound, offsetBy: -contextRadius, limitedBy: pageText.startIndex
+            ) ?? pageText.startIndex
+            let end = pageText.index(
+                range.upperBound, offsetBy: contextRadius, limitedBy: pageText.endIndex
+            ) ?? pageText.endIndex
             return String(pageText[start..<end])
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
