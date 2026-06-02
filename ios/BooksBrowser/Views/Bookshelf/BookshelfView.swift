@@ -469,7 +469,7 @@ struct BookshelfView: View {
         let headers = ["Authorization": "Bearer \(token)"]
         for series in podcastSeries where series.isFollowed {
             guard
-                let first = (series.episodes ?? [])
+                let first = series.episodes
                     .filter({ $0.audioAvailable })
                     .min(by: { $0.episodeNumber < $1.episodeNumber }),
                 let urlStr = first.audioURL,
