@@ -72,6 +72,9 @@ extension ReaderTranslationHandler {
                     word: word,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        // 在父 task context 同步擷取取消狀態：dismiss / 新查詢都會 cancel 父 task，
+                        // 此時不可再寫回 status，否則 panel 已關仍殘留「正在重試…」。
+                        guard !Task.isCancelled else { return }
                         Task { @MainActor in
                             self?.translationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
@@ -141,6 +144,8 @@ extension ReaderTranslationHandler {
                     phrase: phrase,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                        guard !Task.isCancelled else { return }
                         Task { @MainActor in
                             self?.translationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
@@ -205,6 +210,8 @@ extension ReaderTranslationHandler {
                     word: text,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                        guard !Task.isCancelled else { return }
                         Task { @MainActor in
                             self?.explanationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
@@ -255,6 +262,7 @@ extension ReaderTranslationHandler {
 
         explanationText = nil
         isLoadingExplanation = true
+        translationStatus = nil
         explanationStatus = nil
         explanationErrorMessage = nil
 
@@ -264,6 +272,8 @@ extension ReaderTranslationHandler {
                     word: selection.word,
                     context: selection.context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
+                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                        guard !Task.isCancelled else { return }
                         Task { @MainActor in
                             self?.explanationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
