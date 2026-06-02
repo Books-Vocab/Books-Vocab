@@ -19,7 +19,8 @@ struct VocabCalendarGrid: View {
     private static let calendar = Calendar.current
     private static let dayFormatter = AppDateFormatters.dayKey
 
-    private let weekdaySymbols = ["一", "二", "三", "四", "五", "六", "日"]
+    // Locale-aware, Monday-first (matches the Monday-start day grid below).
+    private let weekdaySymbols = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: AppSpacing.s1), count: 7)
     private let todayKey = VocabCalendarGrid.dayFormatter.string(from: Date())
 
@@ -60,7 +61,7 @@ struct VocabCalendarGrid: View {
         VStack(spacing: appSkin.spacing.microGap) {
             // Weekday header
             LazyVGrid(columns: columns, spacing: AppSpacing.s1) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
+                ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                     Text(symbol)
                         .font(appSkin.typography.monoLabel)
                         .foregroundStyle(appSkin.palette.quaternaryText)
