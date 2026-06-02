@@ -524,6 +524,9 @@
 
 /* Track B — i18n residual top-5 */
 "翻譯語言" = "翻译语言";
+"複習模式" = "复习模式";
+"自訂參數" = "自定义参数";
+"閱讀語言" = "阅读语言";
 "載入音訊…" = "正在加载音频…";
 "音訊載入失敗" = "音频加载失败";
 "點兩下查看詳細資訊" = "双击查看详细信息";
@@ -871,6 +874,7 @@
 "calendar.month.next" = "下个月";
 "notebook.toolbar.archive" = "归档";
 "notebook.list.loading" = "正在加载单词本…";
+"a11y.action.close" = "关闭";
 "a11y.toggle.on" = "开";
 "a11y.toggle.off" = "关";
 "todayReview.fold.collapse" = "收起";
