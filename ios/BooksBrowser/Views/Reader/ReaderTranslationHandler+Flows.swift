@@ -177,6 +177,7 @@ extension ReaderTranslationHandler {
                     )
                 }
             } catch {
+                guard !(error is CancellationError), !Task.isCancelled else { return }
                 translationResult = nil
                 isTranslating = false
                 translationStatus = nil
