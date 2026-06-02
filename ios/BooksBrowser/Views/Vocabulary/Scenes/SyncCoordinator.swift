@@ -258,7 +258,19 @@ final class SyncCoordinator: SyncCoordinating {
                 self.updateStep("pull", status: .running, detail: L10n.string("正在下載單字..."))
                 var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
                     Task { @MainActor in
-                        self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
+                        guard let self else { return }
+                        // The progress closure fires off ordering-free unstructured
+                        // Tasks; a stale lower `current` can land after a newer higher
+                        // one and rewind the count (SyncPresenter animates `step.current`,
+                        // making the regression a visible bounce-back). Drop any callback
+                        // that would move this pull's count backward. The guard lives
+                        // here — NOT in updateStep — because updateStep is shared by every
+                        // step's start/reset/retry paths that legitimately set current=0.
+                        if let idx = self.steps.firstIndex(where: { $0.id == "pull" }),
+                           current < self.steps[idx].current {
+                            return
+                        }
+                        self.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
                 }, notebookId: nil)
 
