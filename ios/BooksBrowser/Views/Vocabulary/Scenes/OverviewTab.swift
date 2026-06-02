@@ -44,7 +44,7 @@ struct OverviewTab: View {
                     title: "需登入帳號".localized,
                     systemImage: "person.crop.circle.badge.exclamationmark",
                     description: "總覽功能需要登入帳號後才能存取您的雲端資料。".localized,
-                    action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+                    action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { showLoginSheet = true })
                 )
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
