@@ -304,3 +304,54 @@ class TestRawDecisionsNone:
     def test_none_content_no_raw_decisions_no_crash(self):
         result = _parse_batch_response(None, CANDIDATES)
         assert len(result) == 3
+
+
+# ── Defect 1: confidence clamping [0, 1] ─────────────────────
+
+class TestConfidenceClamp:
+    def test_confidence_above_one_clamped_to_one(self):
+        items = [{"word": "word1", "link": "contrasts_with", "confidence": 2.5, "reason": "r"}]
+        cands = [("c1", "word1", "m1")]
+        result = _parse_batch_response(json.dumps(items), cands)
+        assert isinstance(result["c1"], Judgement)
+        assert result["c1"].confidence == 1.0
+
+    def test_confidence_below_zero_clamped_to_zero(self):
+        # -0.3 < threshold → rejected, but persisted confidence must be clamped to 0.0
+        items = [{"word": "word1", "link": "contrasts_with", "confidence": -0.3, "reason": "r"}]
+        cands = [("c1", "word1", "m1")]
+        raw: list[dict] = []
+        result = _parse_batch_response(json.dumps(items), cands, raw_decisions=raw)
+        assert result["c1"] is None
+        assert raw[0]["confidence"] == 0.0
+
+    def test_in_range_confidence_unchanged(self):
+        items = [{"word": "word1", "link": "contrasts_with", "confidence": 0.85, "reason": "r"}]
+        cands = [("c1", "word1", "m1")]
+        result = _parse_batch_response(json.dumps(items), cands)
+        assert result["c1"].confidence == 0.85
+
+
+# ── Defect 2: parameterized confidence threshold ─────────────
+
+class TestConfidenceThreshold:
+    def test_default_threshold_unchanged(self):
+        # 0.6 < default 0.7 → rejected (backward compatible)
+        items = [{"word": "word1", "link": "contrasts_with", "confidence": 0.6, "reason": "r"}]
+        cands = [("c1", "word1", "m1")]
+        result = _parse_batch_response(json.dumps(items), cands)
+        assert result["c1"] is None
+
+    def test_lower_threshold_accepts_mid_confidence(self):
+        # 0.6 link accepted when threshold lowered to 0.55
+        items = [{"word": "word1", "link": "contrasts_with", "confidence": 0.6, "reason": "r"}]
+        cands = [("c1", "word1", "m1")]
+        result = _parse_batch_response(json.dumps(items), cands, confidence_threshold=0.55)
+        assert isinstance(result["c1"], Judgement)
+        assert result["c1"].confidence == 0.6
+
+    def test_lower_threshold_still_rejects_below(self):
+        items = [{"word": "word1", "link": "contrasts_with", "confidence": 0.5, "reason": "r"}]
+        cands = [("c1", "word1", "m1")]
+        result = _parse_batch_response(json.dumps(items), cands, confidence_threshold=0.55)
+        assert result["c1"] is None
