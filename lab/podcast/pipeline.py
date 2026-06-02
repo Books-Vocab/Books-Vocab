@@ -69,7 +69,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import archetypes
 import saga
-from tts_config import ALLOWED_TTS_MODELS, tts_family
+from tts_config import ALLOWED_TTS_MODELS, sanitize_slug as _sanitize_slug, tts_family
 
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
@@ -412,25 +412,6 @@ def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
     }, chapters
 
 
-def _sanitize_slug(title: str, max_len: int = 30) -> str:
-    """Produce a workspace slug that matches backend ``_SERIES_ID_RE``.
-
-    Backend (`backend/src/kg/routers/podcast.py`) and `ops/podcast_upload.sh`
-    both enforce ``^[a-z0-9_]+$`` on ``series_id``. The upload script derives
-    ``series_id`` from ``basename(workspace)``, so the slug MUST satisfy that
-    regex — otherwise upload succeeds but every API call 404s.
-
-    Algorithm: lowercase → collapse non-alphanumeric runs into single ``_`` →
-    strip leading/trailing ``_`` → truncate to ``max_len`` → re-rstrip ``_``
-    in case truncation landed mid-segment. Empty result falls back to
-    ``"untitled"`` (still regex-valid).
-    """
-    s = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
-    if len(s) > max_len:
-        s = s[:max_len].rstrip("_")
-    return s or "untitled"
-
-
 def setup_workspace(metadata: dict, chapters: list[tuple[str, str]]) -> Path:
     slug = _sanitize_slug(metadata["title"])
     book_hash = hashlib.md5(
@@ -553,6 +534,24 @@ def find_workspace(epub_path: Path) -> Path | None:
     slug = _sanitize_slug(title)
     book_hash = hashlib.md5(f"{title}_{author}".encode()).hexdigest()[:8]
     ws = WORKSPACES_DIR / f"{slug}_{book_hash}"
+    return ws if ws.exists() else None
+
+
+def find_saga_workspace(saga_title: str, epub_paths: list[Path]) -> Path | None:
+    """Return the existing saga workspace for this title + ordered EPUB set, or None.
+
+    Reads only DC metadata from each EPUB (cheap — no chapter extraction) to
+    reproduce the deterministic dirname that ``setup_saga_workspace`` would
+    produce. Mirrors ``find_workspace`` for the multi-book path.
+    """
+    if not WORKSPACES_DIR.exists():
+        return None
+    book_titles = []
+    for p in epub_paths:
+        b = epub.read_epub(str(p))
+        book_titles.append(b.get_metadata("DC", "title")[0][0])
+    dirname = saga.saga_dirname(saga_title, book_titles)
+    ws = WORKSPACES_DIR / dirname
     return ws if ws.exists() else None
 
 
@@ -689,15 +688,20 @@ def _run_claude_subprocess(
     label: str,
     log: PipelineLog | None,
     timeout: int,
+    prompt: str | None = None,
 ) -> tuple[bool, float]:
     """Shared subprocess runner with timeout + stderr tail capture.
 
     If PODCAST_VERBOSE=1 (stream-json), stdout is piped through a line-reader
     that pretty-prints tool-use events live. Otherwise stdout is inherited
     (claude's natural-language summary goes straight to TTY).
+
+    ``prompt`` is delivered via stdin to avoid exposing book content / workspace
+    paths in argv (visible to any local user via ps/proc listings).
     """
     t0 = time.time()
     stderr_log = workspace / f"claude_{label.lower().replace(' ', '_')}.stderr.log"
+    stdin_bytes = prompt.encode() if prompt else b""
 
     if _STREAM_JSON:
         # Live tool-use rendering via stream-json NDJSON. Also tees each event
@@ -707,17 +711,23 @@ def _run_claude_subprocess(
         proc = subprocess.Popen(
             cmd,
             cwd=str(workspace),
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            text=False,
             env=_UNBUF_ENV,
-            bufsize=1,
+            bufsize=0,
         )
+        try:
+            proc.stdin.write(stdin_bytes)
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
         result_event: dict | None = None
         try:
             with events_path.open("a", encoding="utf-8") as ev_f:
-                for line in proc.stdout:  # type: ignore[union-attr]
-                    line = line.strip()
+                for raw_line in proc.stdout:  # type: ignore[union-attr]
+                    line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line:
                         continue
                     try:
@@ -744,7 +754,7 @@ def _run_claude_subprocess(
         except subprocess.TimeoutExpired:
             proc.kill()
             elapsed = time.time() - t0
-            raw = proc.stderr.read() if proc.stderr else ""
+            raw = (proc.stderr.read() if proc.stderr else b"").decode("utf-8", errors="replace")
             if raw:
                 stderr_log.write_text(raw[-2000:])
             if log:
@@ -753,7 +763,7 @@ def _run_claude_subprocess(
                           stderr_tail=raw[-500:])
             return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
         elapsed = time.time() - t0
-        stderr_text = proc.stderr.read() if proc.stderr else ""
+        stderr_text = (proc.stderr.read() if proc.stderr else b"").decode("utf-8", errors="replace")
         # An is_error result event means the agent loop failed (e.g. API 400)
         # even if subtype=="success" and the CLI exit code is 0 — trust is_error.
         api_error = bool(result_event and result_event.get("is_error"))
@@ -780,9 +790,9 @@ def _run_claude_subprocess(
         proc = subprocess.run(
             cmd,
             cwd=str(workspace),
+            input=stdin_bytes,
             stdout=None,
             stderr=subprocess.PIPE,
-            text=True,
             env=_UNBUF_ENV,
             timeout=timeout,
         )
@@ -807,7 +817,7 @@ def _run_claude_subprocess(
     if success:
         return True, elapsed, None
     # Non-stream mode has no result event — classify from stderr text alone.
-    stderr_text = proc.stderr or ""
+    stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace")
     if stderr_text:
         stderr_log.write_text(stderr_text)
     reason = stderr_text[-500:].strip() or f"exit code {proc.returncode}"
@@ -825,6 +835,7 @@ def _run_claude_with_retry(
     label: str,
     log: "PipelineLog | None",
     timeout: int,
+    prompt: str | None = None,
 ) -> tuple[bool, float]:
     """Run `claude -p` with bounded retries on transient failures.
 
@@ -837,7 +848,7 @@ def _run_claude_with_retry(
     attempts = max(1, _STAGE_RETRY_ATTEMPTS)
     last_elapsed = 0.0
     for attempt in range(1, attempts + 1):
-        success, elapsed, failure = _run_claude_subprocess(cmd, workspace, label, log, timeout)
+        success, elapsed, failure = _run_claude_subprocess(cmd, workspace, label, log, timeout, prompt)
         last_elapsed = elapsed
         if success:
             if attempt > 1 and log:
@@ -878,12 +889,13 @@ def run_claude(
     if extra_tools:
         tools.extend(extra_tools)
 
-    cmd = ["claude", "-p", prompt, *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", ",".join(tools)]
+    # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
+    cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", ",".join(tools)]
     timeout = _STAGE_TIMEOUTS.get(label, _DEFAULT_TIMEOUT)
 
     log.event("claude invocation", tools=tools, model=MODEL, prompt_len=len(prompt), timeout_s=timeout)
 
-    success, _ = _run_claude_with_retry(cmd, workspace, label, log, timeout)
+    success, _ = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
     return success
 
 
@@ -894,12 +906,13 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
-    cmd = ["claude", "-p", prompt, *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
+    cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
     label = f"Scriptwriter EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Scriptwriter"]
 
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout)
+    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout, prompt)
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -912,12 +925,13 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
-    cmd = ["claude", "-p", prompt, *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
+    cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
     label = f"Script Review EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Script Review"]
 
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout)
+    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout, prompt)
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -1072,7 +1086,7 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
 
     ep_nums = [int(f.stem.split("_")[1]) for f in script_files]
     # Skip episodes that already have reviews
-    existing = {int(re.search(r"ep_(\d+)", f.stem).group(1)) for f in (workspace / "scripts").glob("ep_*_review.md")}
+    existing = {int(m.group(1)) for f in (workspace / "scripts").glob("ep_*_review.md") if (m := re.search(r"ep_(\d+)", f.stem))}
     todo = [n for n in ep_nums if n not in existing]
 
     if not todo:
@@ -1249,7 +1263,8 @@ def _verify_published(series_id: str) -> bool:
     try:
         body = s3.get_object(Bucket=bucket, Key="index.json")["Body"].read()
         idx = json.loads(body)
-    except Exception:  # noqa: BLE001 — verify is best-effort; miss → retry/fail
+    except Exception as e:  # noqa: BLE001 — verify is best-effort; miss → retry/fail
+        print(f"[verify] {type(e).__name__}: {e}", flush=True)
         return False
     return isinstance(idx, list) and any(
         isinstance(e, dict) and e.get("id") == series_id for e in idx
@@ -1308,6 +1323,13 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
 
 
 # ─── Status ───
+
+
+def _try_parse_json(line: str) -> dict | None:
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return None
 
 
 def show_status(workspace: Path) -> None:
@@ -1389,7 +1411,7 @@ def show_status(workspace: Path) -> None:
     log_file = workspace / "pipeline_log.jsonl"
     if log_file.exists():
         lines = log_file.read_text().strip().splitlines()
-        errors = [json.loads(l) for l in lines if '"error"' in l]
+        errors = [obj for l in lines if '"error"' in l for obj in [_try_parse_json(l)] if obj]
         if errors:
             print(f"\n  Recent Errors ({len(errors)}):")
             for e in errors[-5:]:
@@ -1573,6 +1595,7 @@ examples:
     # Build the saga workspace up-front (extract every EPUB, group + flatten).
     # After this the saga is just a normal workspace the 13 stages run against.
     if saga_epubs is not None:
+        workspace = find_saga_workspace(args.saga, saga_epubs)
         if workspace is None:
             print(f"Saga: {args.saga} ({len(saga_epubs)} books)")
             books = []
@@ -1582,6 +1605,8 @@ examples:
                 books.append((meta, chapters))
             workspace = setup_saga_workspace(args.saga, books)
             print(f"  Workspace: {workspace}")
+        else:
+            print(f"Resuming saga: {args.saga} → {workspace}")
 
     if args.status:
         if workspace:

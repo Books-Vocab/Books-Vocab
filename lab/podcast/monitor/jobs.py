@@ -106,11 +106,6 @@ class JobTracker:
         # Atomic capacity check + reservation. Without the lock here, two
         # concurrent POST /upload could both observe active=MAX-1 and both
         # spawn, breaking the cap on the 2GB VPS. Reserve a slot up-front.
-        with self._lock:
-            active = sum(1 for j in self._jobs.values() if j.status == "running")
-            if active >= MAX_ACTIVE:
-                raise JobLimitReached(active, MAX_ACTIVE)
-
         job_id = uuid.uuid4().hex[:12]
         log_path = JOBS_DIR / f"{job_id}.log"
         job = Job(
@@ -124,6 +119,15 @@ class JobTracker:
             log_path=str(log_path),
             metadata=dict(metadata or {}),
         )
+
+        with self._lock:
+            active = sum(
+                1 for j in self._jobs.values() if j.status in {"running", "pending"}
+            )
+            if active >= MAX_ACTIVE:
+                raise JobLimitReached(active, MAX_ACTIVE)
+            # Reserve the slot atomically before releasing the lock.
+            self._jobs[job_id] = job
 
         # Write a header to the log so post-mortem readers know what ran.
         with open(log_path, "w", encoding="utf-8") as f:
@@ -164,7 +168,6 @@ class JobTracker:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n[spawn failed] {type(exc).__name__}: {exc}\n")
             with self._lock:
-                self._jobs[job_id] = job
                 self._prune_locked()
             return job
         finally:
@@ -178,7 +181,6 @@ class JobTracker:
         job.pid = proc.pid
         job.status = "running"
         with self._lock:
-            self._jobs[job_id] = job
             self._procs[job_id] = proc
             self._prune_locked()
 

@@ -73,7 +73,7 @@ def test_retry_recovers_after_transient(monkeypatch):
     _patch_no_sleep(monkeypatch)
     calls = {"n": 0}
 
-    def fake(cmd, workspace, label, log, timeout):
+    def fake(cmd, workspace, label, log, timeout, prompt=None):
         calls["n"] += 1
         if calls["n"] == 1:
             return False, 1.0, pipeline._ClaudeFailure("400", THINKING_400)
@@ -89,7 +89,7 @@ def test_no_retry_on_fatal(monkeypatch):
     _patch_no_sleep(monkeypatch)
     calls = {"n": 0}
 
-    def fake(cmd, workspace, label, log, timeout):
+    def fake(cmd, workspace, label, log, timeout, prompt=None):
         calls["n"] += 1
         return False, 1.0, pipeline._ClaudeFailure("401", "authentication_error")
 
@@ -103,7 +103,7 @@ def test_retry_exhausts(monkeypatch):
     _patch_no_sleep(monkeypatch)
     calls = {"n": 0}
 
-    def fake(cmd, workspace, label, log, timeout):
+    def fake(cmd, workspace, label, log, timeout, prompt=None):
         calls["n"] += 1
         return False, 1.0, pipeline._ClaudeFailure("503", "service unavailable")
 

@@ -50,7 +50,18 @@ def test_setup_saga_workspace_builds_grouped_layout(tmp_path, monkeypatch) -> No
     assert "<!-- saga_book: 3 (03_the_hero_of_ages) -->" in raw[5].read_text()
     # Root metadata.md + chapter map exist for prep/analyst/architect.
     assert (ws / "source" / "metadata.md").read_text().startswith("# Mistborn")
-    assert "<!-- CHAPTER_MAP:START -->" in (ws / "series.md").read_text()
+    series_text = (ws / "series.md").read_text()
+    assert "<!-- CHAPTER_MAP:START -->" in series_text
+    # Verify chapter ranges are correct for 3 books × 2 chapters each.
+    # Book 1 → raw_ch_01–raw_ch_02, book 2 → raw_ch_03–raw_ch_04, book 3 → raw_ch_05–raw_ch_06.
+    import re
+    rows = re.findall(r"\|\s*(\d+)\s*\|\s*(raw_ch_\d+–raw_ch_\d+)\s*\|", series_text)
+    chapter_map = {int(book): rng for book, rng in rows}
+    assert chapter_map == {
+        1: "raw_ch_01–raw_ch_02",
+        2: "raw_ch_03–raw_ch_04",
+        3: "raw_ch_05–raw_ch_06",
+    }
 
 
 def test_setup_saga_workspace_is_idempotent(tmp_path, monkeypatch) -> None:
