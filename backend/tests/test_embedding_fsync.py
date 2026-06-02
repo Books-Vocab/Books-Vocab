@@ -12,6 +12,7 @@ the swap, mirroring ``kg.graph.persistence._atomic_json_write``.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -19,8 +20,25 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from kg.embeddings import EMBEDDING_DIM, EMBEDDING_MODEL, EmbeddingStore
+from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
 from kg.tracked_llm import TrackedLLM
+
+
+def _fd_to_path(fd: int) -> str:
+    """Resolve an open fd back to its on-disk path, cross-platform.
+
+    Linux exposes ``/dev/fd/N`` as a readable symlink; macOS does not, so we
+    prefer ``fcntl.F_GETPATH`` there. Falls back to the raw fd repr if neither
+    works (still lets the assertion fail loudly rather than silently pass).
+    """
+    try:
+        return fcntl.fcntl(fd, fcntl.F_GETPATH, b"\0" * 1024).rstrip(b"\0").decode()
+    except (OSError, AttributeError, ValueError):
+        pass
+    try:
+        return os.readlink(f"/dev/fd/{fd}")
+    except OSError:
+        return repr(fd)
 
 
 def _make_store(tmp_path: Path):
@@ -60,10 +78,7 @@ def test_save_fsyncs_both_tmp_files_before_replace(tmp_path: Path, monkeypatch):
         # Resolve the fd back to its on-disk path so we can assert *which*
         # files were synced (a bare call count would not distinguish the
         # matrix tmp from the ids tmp, nor a stray dir fsync).
-        try:
-            synced_paths.append(os.readlink(f"/dev/fd/{fd}"))
-        except OSError:
-            synced_paths.append(repr(fd))
+        synced_paths.append(_fd_to_path(fd))
         real_fsync(fd)
 
     monkeypatch.setattr(os, "fsync", spy_fsync)
@@ -99,10 +114,7 @@ def test_save_without_embeddings_still_fsyncs_ids(tmp_path: Path, monkeypatch):
     real_fsync = os.fsync
 
     def spy_fsync(fd: int) -> None:
-        try:
-            synced_paths.append(os.readlink(f"/dev/fd/{fd}"))
-        except OSError:
-            synced_paths.append(repr(fd))
+        synced_paths.append(_fd_to_path(fd))
         real_fsync(fd)
 
     monkeypatch.setattr(os, "fsync", spy_fsync)

@@ -4,12 +4,47 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 from openai import OpenAIError
+
+
+def _fsync_path(path: Path) -> None:
+    """fsync a closed file by path so its bytes are durable before a rename.
+
+    ``np.save`` writes and closes the .npy itself (no fd to reach), so we
+    reopen read-only purely to fsync. Mirrors the durability guarantee of
+    ``kg.graph.persistence._atomic_json_write`` (flush + fsync before replace).
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Best-effort fsync of a directory so a rename within it is durable.
+
+    Some filesystems disallow directory fsync (raises) — tolerated: the tmp
+    fsync already covers data durability, this only hardens the rename's
+    directory entry where the platform supports it. Same helper shape as
+    ``kg.graph.persistence._fsync_dir``.
+    """
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
@@ -289,28 +324,41 @@ class EmbeddingStore:
 
         The matrix and the id list live in two files, so a save can never be
         fully atomic. We shrink the corruption window as much as possible:
-        fully materialise *both* temp files first, then issue the two
-        ``replace()`` calls back-to-back so a crash can only land in the
+        fully materialise *and fsync* *both* temp files first, then issue the
+        two ``replace()`` calls back-to-back so a crash can only land in the
         narrow gap between them. Any residual desync from that gap is caught
         at load time by ``_load_validated`` (via ``_row_id_violation``) and
         degraded to an empty store rather than silently misattributing rows
         in ``find_similar``.
+
+        Durability: each temp file is fsynced before its ``replace()`` (and the
+        parent directory fsynced after) so the rename can never be persisted
+        ahead of the data on an OS/power crash — otherwise next boot sees a
+        zero-length / torn primary file. This mirrors the graph persistence
+        standard ``kg.graph.persistence._atomic_json_write``.
         """
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Phase 1: write both temp files completely before touching live files.
+        # Phase 1: write + fsync both temp files before touching live files.
         tmp_emb: Path | None = None
         if self._embeddings is not None:
             # np.save() auto-appends .npy if missing, so tmp must already end in .npy
             tmp_emb = self.embeddings_path.with_name(self.embeddings_path.stem + "_tmp.npy")
             np.save(tmp_emb, self._embeddings)
+            _fsync_path(tmp_emb)
         tmp_ids = self.ids_path.with_suffix(".json.tmp")
-        tmp_ids.write_text(json.dumps(self._ids))
+        with open(tmp_ids, "w", encoding="utf-8") as f:
+            f.write(json.dumps(self._ids))
+            f.flush()
+            os.fsync(f.fileno())
 
         # Phase 2: swap into place back-to-back to minimise the desync window.
         if tmp_emb is not None:
             tmp_emb.replace(self.embeddings_path)
         tmp_ids.replace(self.ids_path)
+        # Persist the renames (directory entries) too, so the swap survives a
+        # crash. Best-effort: a filesystem that rejects dir fsync is tolerated.
+        _fsync_dir(self.embeddings_path.parent)
 
         # Persist (or refresh) the model/dim sidecar alongside the vectors,
         # so a fresh store (no legacy files) still gets a guard on first save.
