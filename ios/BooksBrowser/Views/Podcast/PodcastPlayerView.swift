@@ -322,7 +322,15 @@ struct PodcastPlayerView: View {
                         onDismiss: {
                             translationHandler.dismiss()
                             vm.dismissWordSelection()
-                        }
+                        },
+                        onRetryTranslation: (translationHandler.translationErrorMessage != nil
+                            && translationHandler.lastLookup != nil)
+                            ? { translationHandler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                            : nil,
+                        onRetryExplanation: (translationHandler.explanationErrorMessage != nil
+                            && translationHandler.lastLookup != nil)
+                            ? { translationHandler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                            : nil
                     )
                     .transition(.readerPanelReveal)
                 }
