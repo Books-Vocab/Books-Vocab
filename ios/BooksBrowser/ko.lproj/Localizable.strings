@@ -874,6 +874,7 @@
 "a11y.toggle.on" = "켜짐";
 "a11y.toggle.off" = "꺼짐";
 "todayReview.fold.collapse" = "접기";
+"todayReview.saveFailure" = "복습 결과가 저장되지 않았습니다. 잠시 후 다시 시도해 주세요.";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "내보내기 실패";

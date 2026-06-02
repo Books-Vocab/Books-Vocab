@@ -344,7 +344,7 @@ struct TodayReviewView: View {
                 .forgot,
                 container: modelContext.container,
                 reviewSettings: reviewSettingsStore.settings,
-                onSaveFailure: { toast.error("複習結果未存檔，請稍後再試") }
+                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
             )
             return true
 
@@ -355,7 +355,7 @@ struct TodayReviewView: View {
                 .remembered,
                 container: modelContext.container,
                 reviewSettings: reviewSettingsStore.settings,
-                onSaveFailure: { toast.error("複習結果未存檔，請稍後再試") }
+                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
             )
             return true
 
