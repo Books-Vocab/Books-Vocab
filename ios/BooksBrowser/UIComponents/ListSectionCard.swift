@@ -29,3 +29,34 @@ struct ListSectionCard<Content: View>: View {
             )
     }
 }
+
+#Preview("ListSectionCard") {
+    AppThemeContainer {
+        ListSectionCardPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct ListSectionCardPreview: View {
+    @Environment(\.appSkin) private var skin
+
+    var body: some View {
+        ListSectionCard {
+            ForEach(0..<3) { index in
+                if index > 0 {
+                    Rectangle()
+                        .fill(skin.palette.divider)
+                        .frame(height: AppMetrics.dividerStandard)
+                }
+                Text("項目 \(index + 1)")
+                    .font(skin.typography.body)
+                    .foregroundStyle(skin.palette.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AppSpacing.s4)
+                    .padding(.vertical, AppSpacing.s3)
+            }
+        }
+        .padding()
+        .background(skin.palette.pageBackground.ignoresSafeArea())
+    }
+}

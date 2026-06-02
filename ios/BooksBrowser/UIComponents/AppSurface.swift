@@ -138,3 +138,42 @@ extension View {
         }
     }
 }
+
+#Preview("AppCard variants") {
+    AppThemeContainer {
+        AppCardPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct AppCardPreview: View {
+    @Environment(\.appTheme) private var appTheme
+
+    var body: some View {
+        VStack(spacing: AppSpacing.s4) {
+            AppCard(variant: .elevated) {
+                row("elevated", systemImage: "square.stack.3d.up")
+            }
+            AppCard(variant: .flat) {
+                row("flat", systemImage: "rectangle")
+            }
+            AppCard(variant: .ghost) {
+                row("ghost", systemImage: "rectangle.dashed")
+            }
+        }
+        .padding()
+        .background(appTheme.palette.pageBackground.ignoresSafeArea())
+    }
+
+    private func row(_ label: String, systemImage: String) -> some View {
+        HStack(spacing: AppSpacing.s3) {
+            Image(systemName: systemImage)
+                .foregroundStyle(appTheme.palette.accent)
+            Text(label)
+                .font(AppFonts.body())
+                .foregroundStyle(appTheme.palette.primaryText)
+            Spacer()
+            AppTag(text: label, tone: appTheme.palette.accent)
+        }
+    }
+}
