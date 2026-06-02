@@ -43,7 +43,9 @@ from tts_config import (
     SKIP_LINE_RE as _SKIP_LINE_RE,
     INLINE_BOLD_RE as _INLINE_BOLD_RE,
     INLINE_ITALIC_RE as _INLINE_ITALIC_RE,
+    tts_family as _tts_family,
 )
+from tts_tags import sanitize_tags_for_family as _sanitize_tags_for_family
 
 # ─── Events.jsonl emission (cost / usage tracking) ───
 # Writes one NDJSON line per TTS batch + episode boundary so the dashboard's
@@ -95,10 +97,18 @@ from pydub import AudioSegment
 
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "").strip()
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1").strip()
-# Default matches .env: Gemini 3.1 Flash TTS (preview on Vertex AI). Pinned to
-# -preview until 3.1 GA; do NOT fall back to 2.5 — that silently downgrades
-# prosody and the audio-tag palette. Override via TTS_MODEL env when GA lands.
-TTS_MODEL = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()
+# Default matches .env: Gemini 2.5 Flash TTS (default since 2026-06-02 — quality
+# verified sufficient, ~8x cheaper than 3.1-flash-preview). 3.1-flash-preview and
+# 2.5-pro-tts stay selectable via --tts-model / TTS_MODEL env. Bracket [] audio-tag
+# handling differs by family — see tts_config.tts_family() and scriptwriter prompt.
+TTS_MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-tts").strip()
+# Synthesis family ("3.1" / "2.5"). Scripts are authored for the 3.1 palette, so
+# on a non-3.1 family _sanitize_dialogue rewrites/strips 3.1-only tags before they
+# reach the API (an unsupported tag is otherwise SPOKEN ALOUD, not dropped).
+TTS_FAMILY = _tts_family(TTS_MODEL)
+# Per-episode accumulator of tag rewrites/strips, reset in parse_script, reported
+# in synthesize_script. {change_key: count}.
+_TAG_SANITIZE_LOG: dict[str, int] = {}
 TTS_MAX_CONCURRENT = int(os.getenv("TTS_MAX_CONCURRENT", "10"))
 TTS_RETRY_ATTEMPTS = int(os.getenv("TTS_RETRY_ATTEMPTS", "4"))
 VOICE_SPEAKER1 = ""  # set from overview.md Voice Mapping
@@ -257,9 +267,12 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
 # ─── Parse ───
 
 def _sanitize_dialogue(text: str) -> str:
-    """Strip inline markdown emphasis from TTS-bound dialogue text."""
+    """Strip inline markdown emphasis + make audio tags safe for TTS_FAMILY."""
     text = _INLINE_BOLD_RE.sub(r"\1", text)
     text = _INLINE_ITALIC_RE.sub(r"\1", text)
+    text, changes = _sanitize_tags_for_family(text, TTS_FAMILY)
+    for k, n in changes.items():
+        _TAG_SANITIZE_LOG[k] = _TAG_SANITIZE_LOG.get(k, 0) + n
     return text
 
 
@@ -279,6 +292,7 @@ def parse_script(path: Path, speaker_map: dict[str, str]) -> list[dict[str, str]
     text = path.read_text(encoding="utf-8")
     turns: list[dict[str, str]] = []
     lower_map = {k.lower(): v for k, v in speaker_map.items()}
+    _TAG_SANITIZE_LOG.clear()  # per-script tally for synthesize_script to report
 
     for ln_idx, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
@@ -790,6 +804,10 @@ def process_file(
     turns = parse_script(script_path, speaker_map)
     total_words = sum(_word_count(t["text"]) for t in turns)
     print(f"  {len(turns)} turns, {total_words} words")
+    if _TAG_SANITIZE_LOG:
+        n = sum(_TAG_SANITIZE_LOG.values())
+        detail = ", ".join(f"{k}×{v}" for k, v in sorted(_TAG_SANITIZE_LOG.items()))
+        print(f"  tag-sanitize (family {TTS_FAMILY}): {n} 3.1-only tag(s) made safe — {detail}")
 
     if not turns:
         raise RuntimeError(

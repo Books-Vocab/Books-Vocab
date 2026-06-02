@@ -1220,17 +1220,21 @@ def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None
     chosen = read_tts_model(workspace)
     if chosen:
         env = {**_UNBUF_ENV, "TTS_MODEL": chosen}
-        # Loud (not blocking) cross-family check: scripts carry a 3.1-only tag
-        # palette today, so synthesizing on a different family is a known risk
-        # we surface rather than silently mis-render. Phase 2 turns this hard.
-        wrote_for = (workspace / _SCRIPT_TTS_FAMILY_SIDECAR)
-        if wrote_for.exists():
-            sf, mf = wrote_for.read_text().strip(), tts_family(chosen)
-            if sf != mf:
-                log.event(
-                    f"⚠ TTS family mismatch: scripts authored for {sf} palette, "
-                    f"synthesizing with {chosen} (family {mf}) — prosody/tags may misrender"
-                )
+        # Cross-family check. Scripts carry the 3.1 tag palette, so synthesizing
+        # on another family needs the 3.1-only tags neutralized — synthesize.py's
+        # _sanitize_dialogue does that at the choke point (tts_tags.sanitize_tags
+        # _for_family). A MISSING sidecar means a legacy (pre-2026-06) workspace,
+        # which was also 3.1-authored — default to "3.1" so legacy runs trip the
+        # notice too (the old `if exists()` guard let them synth silently).
+        wrote_for = workspace / _SCRIPT_TTS_FAMILY_SIDECAR
+        sf = wrote_for.read_text().strip() if wrote_for.exists() else "3.1"
+        mf = tts_family(chosen)
+        if sf != mf:
+            log.event(
+                f"TTS family mismatch: scripts authored for {sf} palette, "
+                f"synthesizing with {chosen} (family {mf}) — synthesize.py will "
+                f"rewrite/strip {sf}-only audio tags so they are never voiced"
+            )
 
     proc = subprocess.run(
         ["uv", "run", str(ROOT / "synthesize.py"), str(target)],
