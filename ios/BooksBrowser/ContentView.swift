@@ -101,8 +101,9 @@ struct ContentView: View {
         switch section {
         case .bookshelf:
             // sectionContent is only invoked from the macCatalyst NavigationSplitView
-            // branch, where os(iOS) is always true — the #else was dead code.
-            BookshelfView()
+            // branch (regular). Wrap in the 2D panel workspace so podcast series/
+            // episode/player render as stackable Miller columns alongside the grid.
+            BookshelfWorkspaceSection()
         case .notebooks:
             NotebookListView()
         case .overview:
