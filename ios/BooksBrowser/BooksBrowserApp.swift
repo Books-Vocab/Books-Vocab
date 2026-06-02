@@ -16,6 +16,10 @@ import GoogleSignIn
 struct BooksBrowserApp: App {
     @StateObject private var appLanguage = AppLanguageStore.shared
     @StateObject private var appearanceStore = AppAppearanceStore.shared
+    #if targetEnvironment(macCatalyst)
+    // Catalyst 選單客製（移除衝突的系統 Find ⌘F）— 見 CatalystAppDelegate。
+    @UIApplicationDelegateAdaptor(CatalystAppDelegate.self) private var catalystAppDelegate
+    #endif
     @State var modelContainer: ModelContainer
     @State var startupFailure: AppStartupFailure?
     let authManager = AuthManager.shared
