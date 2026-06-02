@@ -76,7 +76,7 @@ python3 ops/data_inspect.py [command]
 | 偵測結果 | 路徑 | 耗時 |
 |----------|------|------|
 | 只有 .py / .html / 靜態檔 | **fast**: rsync → restart → health | ~15s |
-| Dockerfile / docker-compose / pyproject.toml | **full**: backup → env-check → rsync → build → migrate → health → env-drift | ~2min |
+| Dockerfile / docker-compose / pyproject.toml | **full**: backup（rsync 增量）→ env-check → rsync → build → migrate → health → env-drift | ~2min |
 | 無上次 deploy 記錄 / sha 不存在 | **full** | ~2min |
 
 偵測依據：`git diff <last_deploy_sha>..HEAD -- backend/`，last_deploy_sha 來自 `deploy.log`。

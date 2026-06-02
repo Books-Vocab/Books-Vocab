@@ -320,7 +320,7 @@ deploy 失敗
 
 ```bash
 ./devops.sh backup
-# 等同：scp -r ubuntu@13.193.212.134:~/knowledge_graph_api/data backups/data_YYYYMMDD
+# 等同：rsync -az --link-dest=<上一份> ubuntu@13.193.212.134:~/knowledge_graph_api/data/ backups/data_YYYYMMDD/（增量快照，未變的 db 走硬連結不重傳）
 
 # 恢復
 scp -i ~/.ssh/lightsail_kg_prod -r \
