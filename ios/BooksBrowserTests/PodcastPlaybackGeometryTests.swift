@@ -158,6 +158,45 @@ struct PodcastUnderlineGeometryTests {
         #expect(end.width == 40)
     }
 
+    @Test func subPixelMinYDeltaStillCountsAsSameRow() {
+        // Layout rounding can leave two words on the same visual row with a tiny
+        // minY delta; that must not be read as a line break (regression guard for
+        // the float-tolerance fix replacing exact minY equality).
+        let rects = [
+            0: CGRect(x: 0, y: 0, width: 20, height: 20),
+            1: CGRect(x: 30, y: 0.3, width: 40, height: 20),  // 0.3 ≪ height*0.5
+        ]
+        let mid = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.5)!
+        #expect(mid.minX == 15)   // interpolated → treated as same row
+        #expect(mid.width == 30)
+    }
+
+    @Test func fullLineMinYDeltaDegeneratesToActiveWord() {
+        // A full line-height jump (25 > height*0.5=10) is a real line break →
+        // no horizontal drag, stays on the active word.
+        let rects = [
+            0: CGRect(x: 50, y: 0, width: 20, height: 20),
+            1: CGRect(x: 0, y: 25, width: 40, height: 20),
+        ]
+        let bar = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.9)!
+        #expect(bar.minX == 50)
+        #expect(bar.width == 20)
+    }
+
+    @Test func sameRowFractionEndpointsHitWordEdges() {
+        // fraction 0 → active word start; fraction 1 → next word's geometry.
+        let rects = [
+            0: CGRect(x: 0, y: 0, width: 20, height: 18),
+            1: CGRect(x: 30, y: 0, width: 40, height: 18),
+        ]
+        let start = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0)!
+        #expect(start.minX == 0)
+        #expect(start.width == 20)
+        let end = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 1)!
+        #expect(end.minX == 30)
+        #expect(end.width == 40)
+    }
+
     @Test func staysOnActiveWordAcrossLineBreak() {
         let rects = [
             0: CGRect(x: 50, y: 0, width: 20, height: 18),
