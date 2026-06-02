@@ -37,6 +37,11 @@ private enum EpisodeSort: String, CaseIterable, Identifiable {
 struct PodcastEpisodeListView: View {
     @ObserveInjection private var inject
     let seriesId: String
+    /// workspace 模式（Catalyst 2D block stack）：set 時集數 tap 改呼此 closure 開
+    /// player **子欄**（不走內建 inline player / push）。nil = 既有行為（regular inline
+    /// player / compact push）。`podcastDetailPresentation` 留著但休眠（detailRouter
+    /// 永不被 show → hasDetail 恆 false → inline player 不渲染）。
+    var onSelectEpisode: ((String) -> Void)? = nil
     @Environment(\.appSkin) private var skin
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -369,11 +374,20 @@ struct PodcastEpisodeListView: View {
         )
         .contentShape(Rectangle())
 
-        switch PodcastEpisodeActivation.activation(
-            episodeRemoteId: episode.remoteId,
-            layoutMode: layoutMode
-        ) {
-        case .inlineDetail(let episodeRemoteId):
+        if let onSelectEpisode {
+            // workspace 模式：tap → 開 player 子欄（Miller 截斷右側）。
+            Button {
+                onSelectEpisode(episode.remoteId)
+                warmConnection(for: episode)
+            } label: { row }
+            .buttonStyle(.plain)
+            .disabled(!episode.audioAvailable)
+        } else {
+            switch PodcastEpisodeActivation.activation(
+                episodeRemoteId: episode.remoteId,
+                layoutMode: layoutMode
+            ) {
+            case .inlineDetail(let episodeRemoteId):
             Button {
                 detailRouter.show(episodeRemoteId: episodeRemoteId)
                 warmConnection(for: episode)
@@ -396,6 +410,7 @@ struct PodcastEpisodeListView: View {
                     warmConnection(for: episode)
                 }
             )
+            }
         }
     }
 
