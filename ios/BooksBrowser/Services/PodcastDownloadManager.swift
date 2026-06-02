@@ -99,7 +99,9 @@ final class PodcastDownloadManager: NSObject {
         episode.localAudioPath = nil
         // Save on the episode's own context so the mutation persists —
         // creating a fresh ModelContext wouldn't see this object's edits.
-        try? episode.modelContext?.save()
+        // safeSave logs on failure so a stuck localAudioPath (UI shows
+        // "deleted" but the record still points at a removed file) is visible.
+        episode.modelContext?.safeSave()
     }
 
     static func downloadsRoot() -> URL {
