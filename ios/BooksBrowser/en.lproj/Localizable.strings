@@ -464,6 +464,7 @@
 "語氣標記" = "Tone Marker";
 "難度等級：%@" = "Difficulty: %@";
 "複習進度" = "Review Progress";
+"進度 %d%%" = "Progress %d%%";
 "載入解釋..." = "Loading explanation...";
 
 // Review Settings
