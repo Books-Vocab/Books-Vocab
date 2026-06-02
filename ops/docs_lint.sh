@@ -21,7 +21,14 @@
 
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
+# 切到 main checkout（cwd 無關）。--show-toplevel 從 linked worktree 內會回傳【該 worktree】路徑，
+# 致 staleness 用 worktree 不完整歷史計算（verified_against commit 可能不可達 → 誤判 / ERROR）。
+# 改用 --git-common-dir 派生 main checkout：從 main / 任意 worktree / 子目錄皆正確。
+if _gcd="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [ -n "$_gcd" ]; then
+  cd "$(dirname "$_gcd")"                 # git >= 2.31
+else
+  cd "$(git rev-parse --git-common-dir)/.."   # 古董 git fallback（git-common-dir 從 worktree 回絕對；從 main 回相對亦正確）
+fi
 
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
 STRICT=0

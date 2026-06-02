@@ -40,12 +40,39 @@ user-invocable: true
 派 write agent 前，你親手做：
 
 ```bash
+# === orchestrator 啟動第一步：派生 MAIN_ROOT（cwd 無關，禁用 git rev-parse --show-toplevel）===
+# 你（orchestrator）可能正從某 worktree 裡被 /swarm 啟動。--show-toplevel 從 worktree 內回傳【該 worktree】
+# 路徑而非 main checkout，會讓 $WORKTREES 嵌進 worktree 內 → nested worktree（反 pattern #14，災難）。
+main_root() {
+  local cdir
+  if cdir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && [ -n "$cdir" ]; then
+    ( cd "$cdir/.." && pwd -P )          # git>=2.31 主路徑：已物理絕對，不依賴 shell builtin
+  else
+    cdir=$(git rev-parse --git-common-dir) || return 1
+    ( cd "$cdir/.." && pwd -P )          # 古董 git fallback；pwd -P 強制 physical，與主路徑字串一致
+  fi
+}
+MAIN_ROOT="$(main_root)"
+WORKTREES="$MAIN_ROOT/.claude/worktrees"   # 永遠 sibling 於 main 的 .claude，絕不 nested
+
+# === 啟動自檢：任一 FATAL 即停，不得進入建 worktree 流程 ===
+# ASSERT 1：MAIN_ROOT 必須 == porcelain 第一筆（永遠是 main worktree），交叉驗證解析正確
+PORC="$(git -C "$MAIN_ROOT" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
+[ "$MAIN_ROOT" = "$PORC" ] || { echo "FATAL: MAIN_ROOT($MAIN_ROOT) != porcelain-main($PORC)"; exit 1; }
+# ASSERT 2：$WORKTREES 不得落在任何 linked worktree 內（否則 nested → 父 remove 連帶刪子）
+while IFS= read -r w; do
+  [ "$w" = "$MAIN_ROOT" ] && continue
+  case "$WORKTREES/" in "$w/"*) echo "FATAL: \$WORKTREES nested under linked worktree: $w"; exit 1;; esac
+done < <(git -C "$MAIN_ROOT" worktree list --porcelain | sed -n 's/^worktree //p')
+
+# === 每條 track ===
 slug=track-N-<短描述>
-WORKTREES=<repo-root-absolute-path>/.claude/worktrees   # 一次定好，絕不用相對路徑
-git worktree add -b swarm/$slug $WORKTREES/$slug origin/main
+git -C "$MAIN_ROOT" worktree add -b swarm/$slug "$WORKTREES/$slug" origin/main
 ```
 
-> **`git worktree add` 的路徑參數一律絕對路徑** — Bash cwd 在多 Bash call 間會漂移（特別是上一個 call 結尾在某 worktree 內），相對路徑會把新 worktree 建到漂移點之下，釀成 nested worktree。父 worktree 被 `remove` 時連帶 rm-rf 子 worktree dir，in-flight agent 工作目錄被刪 + uncommitted 全失。歷次 session 已撞多次，**用絕對路徑是結構性修正，不靠記憶**。
+> **`git worktree add` 的路徑參數一律絕對路徑（`$WORKTREES/$slug`）** — Bash cwd 在多 Bash call 間會漂移（特別是上一個 call 結尾在某 worktree 內），相對路徑會把新 worktree 建到漂移點之下，釀成 nested worktree。父 worktree 被 `remove` 時連帶 rm-rf 子 worktree dir，in-flight agent 工作目錄被刪 + uncommitted 全失。歷次 session 已撞多次。
+>
+> **更上游的陷阱：$WORKTREES 的 root 怎麼算。** 用 `pwd` 或 `git rev-parse --show-toplevel` 填 root，從 worktree 啟動時兩者都回【該 worktree】路徑（實測 GROUND TRUTH），$WORKTREES 自己就 nested 了，絕對路徑也救不了。**唯一正確：上方 `main_root`（`git rev-parse --path-format=absolute --git-common-dir` 派生）**，從 main / 任意 worktree / 子目錄 / 含空白或 symlink 路徑一律回真 main checkout。**禁用 `--show-toplevel` 算 root**。
 
 然後 agent 的 prompt 必含：
 - 「你的工作目錄是絕對路徑 `<.../.claude/worktrees/$slug>`，第一件事 `cd` 進去」
@@ -115,7 +142,9 @@ Swarm 模式的工作軸線**只**沿著這四條走：
 ## 啟動流程（使用者剛給方向）
 
 ```
-0. 在背景同時做（不等任何一件完成）：
+0. **先跑啟動自檢**（第一個 bash call，先於一切）：用「隔離基建」§ 的 `main_root()` 派生 `MAIN_ROOT`/`WORKTREES`，
+   驗兩道斷言（`MAIN_ROOT` == porcelain 第一筆；`$WORKTREES` 不在任何 linked worktree 內）。任一 FATAL 即停 —
+   這擋下「你自己從 worktree 啟動 → `$WORKTREES` nested」的災難根因。通過後，在背景同時做（不等任何一件完成）：
    a. 派 5-7 個 opus 唯讀 deep-scan agent 平行收集上下文
    b. 對「顯而易見、無爭議」的 track：orchestrator 預建 worktree → 派 3-5 個 write agent
    c. TaskCreate 追蹤每條 track
@@ -148,7 +177,7 @@ scan agent 的 medium-severity 發現約**半數是誤報**（查證後常發現
 |---|---|
 | write agent 完工 | 1) `cd worktree` **機械驗 branch**（見下）2) 驗過才 push 3) 開 PR 4) 派 reviewer 5) 派下一條 |
 | write agent「等 build 通知」訊息 | **視為待 commit** — 立即 `cd worktree && git status`，有未 commit 就親手 commit |
-| reviewer PASS | 先 `cd` 回 repo root → `git worktree remove` 該 track 的 worktree → `gh pr merge <n> --squash --admin --delete-branch`（順序與理由見「worktree 生命週期衛生」；`--squash` 避開 main worktree 衝突） |
+| reviewer PASS | `git -C "$MAIN_ROOT" worktree remove` 該 track 的 worktree → `gh pr merge <n> --squash --admin --delete-branch`（順序與理由見「worktree 生命週期衛生」；`--squash` 避開 main worktree 衝突） |
 | reviewer NEEDS-FIX | 立即派 fixer，PR 留 open |
 | reviewer BLOCKER | 立即派 fixer 或廢棄 PR；不問 |
 | merge conflict | 派 rebase agent；agent 再失敗就親手 rebase |
@@ -170,8 +199,8 @@ git diff --stat origin/main..HEAD       # 必須剛好命中預期檔案，無�
 
 swarm session 末段最常見的事故不在 agent，而在 orchestrator 自己的 worktree 拆除操作。兩條硬規則：
 
-1. **`git worktree remove` 前，cwd 必須先 `cd` 回 repo root 絕對路徑。**
-   `cd <worktree> && gh pr create` 之類複合指令會把 Bash cwd 留在 worktree 內 → 下一條 `git worktree remove <該 worktree>` 觸發 `fatal: Unable to read current working directory`，merge chain 當場中斷。不要假設「cwd 應該還在 root」，每次拆除前顯式 `cd <repo root 絕對路徑>`。
+1. **優先用 `git -C "$MAIN_ROOT" worktree remove`，不靠 cd 回 root。**
+   `cd <worktree> && gh pr create` 之類複合指令會把 Bash cwd 留在 worktree 內。若仍用 `cd <root> && git worktree remove`，會在 cwd 恰落在被移除 worktree 自身時觸發 `fatal: Unable to read current working directory`（注意 shell builtin `pwd` 讀 $PWD cache 會騙你回 exit 0，真相要 `/bin/pwd` 或任何 git 命令才暴露）。`git -C "$MAIN_ROOT"` 把 cwd 從風險公式刪掉：移除【別條】worktree 時 cwd 在哪都安全；唯一不可的是 cwd 在【正被移除的那條】自身內。
 2. **`gh pr merge --delete-branch` 前，該 branch 不可被任何 worktree 佔用。**
    順序固定且不可交錯：**先 `git worktree remove <path>`（cwd 已在 root）→ 再 merge**，branch 隨 merge 刪除。worktree 還佔著 branch 時帶 `--delete-branch` merge 會失敗。
 
@@ -181,14 +210,15 @@ swarm session 末段最常見的事故不在 agent，而在 orchestrator 自己�
 
 ```bash
 # Push 從 worktree 內做（無法避免 cd 進去），push 完該 Bash call 就結束
-cd $WORKTREES/track-X && git push -u origin swarm/track-X && gh pr create ...
+cd "$WORKTREES/track-X" && git push -u origin swarm/track-X && gh pr create ...
 
-# 下一個 Bash call **必定獨立**，用 git -C 顯式指定工作目錄，免去 cd
-# 即使 cwd 漂移在別處也不會撞 worktree 生命週期
-git -C $REPO_ROOT worktree remove $WORKTREES/track-X && gh pr merge $PR --squash --admin --delete-branch
+# 下一個 Bash call **必定獨立**，用 git -C "$MAIN_ROOT" 顯式指定工作目錄，免去 cd
+# 即使 cwd 漂移在別處（甚至 cwd 還在別條 worktree 內）也不會撞 worktree 生命週期
+# 硬限制：cwd 不可在「正被 remove 的那條 worktree 自身」內 — 移別條則安全（不同 inode，實測）
+git -C "$MAIN_ROOT" worktree remove "$WORKTREES/track-X" && gh pr merge $PR --squash --admin --delete-branch
 ```
 
-`git -C <path>` 等同臨時切到該路徑跑 git 命令，但不污染 Bash cwd。所有跨 worktree 的 git 操作（特別是 `worktree remove` / `worktree list` / `worktree prune`）優先用 `git -C $REPO_ROOT`，把 cwd 漂移從風險公式裡刪掉。
+`git -C <path>` 等同臨時切到該路徑跑 git 命令，但不污染 Bash cwd。所有跨 worktree 的 git 操作（特別是 `worktree remove` / `worktree list` / `worktree prune`）優先用 `git -C "$MAIN_ROOT"`，把 cwd 漂移從風險公式裡刪掉。
 
 ## Write-agent prompt 模板（每次 dispatch 必含）
 
@@ -242,7 +272,7 @@ git fetch origin main && git merge origin/main
 11. **詢問小改** — 「要不要 merge？」「方向對嗎？」**修**：能猜就猜，使用者會糾正。
 12. **worktree 拆除踩 cwd / merge 順序** — cwd 留在 worktree 內就 `git worktree remove` → cwd 自刪、pipeline 中斷；branch 還被 worktree 佔就 `--delete-branch` merge → 失敗。**修**：見「worktree 生命週期衛生」——拆除前 cd 回 root，先移 worktree 再 merge。
 13. **wakeup 疊加 notification** — pipeline 已由 task 完工 notification 驅動，還額外排 `ScheduleWakeup`「以防萬一」→ 任務結束後 stale wakeup prompt 連環觸發成尾端噪音。**修**：notification 已是驅動器時不排 wakeup，二者擇一。
-14. **cwd 漂移 + 相對路徑建 nested worktree** — `cd <worktree-A> && <cmd>` 後 cwd 留 A；下一個 Bash call `git worktree add -b ... <relative-path> origin/main` 把新 worktree B 建到 `A/<relative-path>` 內（nested）。A 被 `git worktree remove` 時連帶 rm-rf B 的工作目錄，B 的 in-flight agent 工作目錄被刪 + uncommitted 全失（branch 上 commit 仍在，但 work 從零再做）。**修**：見「隔離基建」—— `git worktree add` 路徑參數**一律絕對路徑**（`$WORKTREES/$slug` 而非 `.claude/worktrees/$slug`）；跨 worktree git 操作優先 `git -C $REPO_ROOT`。歷史 session 撞多次。
+14. **cwd 漂移 + 相對路徑建 nested worktree** — `cd <worktree-A> && <cmd>` 後 cwd 留 A；下一個 Bash call `git worktree add -b ... <relative-path> origin/main` 把新 worktree B 建到 `A/<relative-path>` 內（nested）。A 被 `git worktree remove` 時連帶 rm-rf B 的工作目錄，B 的 in-flight agent 工作目錄被刪 + uncommitted 全失（branch 上 commit 仍在，但 work 從零再做）。**修**：見「隔離基建」—— `git worktree add` 路徑參數**一律絕對路徑**（`$WORKTREES/$slug` 而非 `.claude/worktrees/$slug`）；`$WORKTREES` 的 root 用 `main_root`（`--path-format=absolute --git-common-dir` 派生）而非 `--show-toplevel`；跨 worktree git 操作優先 `git -C "$MAIN_ROOT"`。歷史 session 撞多次。
 15. **cold-review finding 直接投 write 不 confirm** — cold-review agent 標的 ⚠️/🛑 看似具體（含 file:line + 修補方向），最誘人直接派 fixer；但 trace 深度比 scan 更淺，誤報率極高（曾出現 4/4 全 false alarm）。**修**：見「scan 發現 → 廉價確認 → 才投入」段；cold-review finding 與 scan finding 同等紀律，必過唯讀 confirm 才投 write。
 16. **L10n.string("inline 中文 literal") 過 extractor 漏網** — 部分 i18n lint extractor 只解析 `L10n.string(<constant>)` 而非 inline literal，inline literal 寫法 → strict lint pass 但 5 lproj 全缺 key → production fallback 到 raw 中文。reviewer 若只看 lint 結果而沒 grep 5 lproj 對 key 就過了。**修**：iOS PR review 強制條目「新 L10n key 必須 grep 5 lproj 各自確認 entry 存在，非 raw 中文 fallback」；prefer dotted-key 命名（`module.context.action`）而非 inline 中文 literal。曾走 3 輪 review 才解決同一 PR。
 
@@ -283,7 +313,8 @@ git fetch origin main && git merge origin/main
 - ❌ 對「大改」**不問就動**（破壞 Scope 守則）
 - ❌ 讓 agent 自建 worktree / 自取 branch 名（破壞隔離基建）
 - ❌ 開 PR 前不機械驗 branch 組成
-- ❌ `git worktree remove` 前 cwd 不在 repo root，或 `--delete-branch` merge 前 branch 仍被 worktree 佔用
+- ❌ 用 `git rev-parse --show-toplevel` 或 `pwd` 算 `$MAIN_ROOT`/`$WORKTREES`（必須 `--path-format=absolute --git-common-dir` 派生），或啟動時未自檢 `$WORKTREES` 不落在任何 linked worktree 內
+- ❌ `git worktree remove` 未用 `git -C "$MAIN_ROOT"` 且 cwd 落在被移除 worktree 自身內，或 `--delete-branch` merge 前 branch 仍被 worktree 佔用
 - ❌ notification-driven pipeline 還疊 `ScheduleWakeup`
 - ❌ write agent >5，或在飛的 write PR 超過 review 頻寬
 - ❌ 總並行數 <10 超過 1 個 turn（唯讀 agent 撐不起來沒藉口）
