@@ -221,13 +221,16 @@ struct PodcastScrollGeometryTests {
     }
 
     @Test func centerOffsetIsContinuousAcrossBoundary() {
-        // End of sentence 0 (fraction→1) must equal start of sentence 1 (fraction 0):
-        // both put sentence 1's center at viewport center → no jump at the boundary.
+        // Just before the boundary (still sentence 0, fraction≈1) the focal point
+        // has interpolated to sentence 1's center; at/after the boundary sentence 1
+        // becomes current (startTime 2 ≤ time) with focal = its own center. Both
+        // sides put sentence 1's center at the viewport center → no jump.
         let s = [sentence(0, 0, 2), sentence(1, 2, 4)]
         let centers: [Int: CGFloat] = [0: 100, 1: 300]
-        let endOfFirst = PodcastScrollGeometry.centerOffset(time: 2, sentences: s, centers: centers, viewportHeight: 800)
-        let startOfSecond = PodcastScrollGeometry.centerOffset(time: 2.0001, sentences: s, centers: centers, viewportHeight: 800)
-        #expect(endOfFirst == 100)        // 400 - 300
-        #expect(startOfSecond == 100)     // seamless
+        let beforeBoundary = PodcastScrollGeometry.centerOffset(time: 1.9999, sentences: s, centers: centers, viewportHeight: 800)
+        let atBoundary = PodcastScrollGeometry.centerOffset(time: 2, sentences: s, centers: centers, viewportHeight: 800)
+        // 1.9999: idx 0, fraction ≈1 → focal ≈300 → offset ≈100.
+        #expect(abs((beforeBoundary ?? 0) - 100) < 0.1)
+        #expect(atBoundary == 100)        // idx 1, focal 300 (no next) → 400-300
     }
 }
