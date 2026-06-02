@@ -22,11 +22,10 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 3. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 opus general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
 
-## Skill 系統(KG 專屬 8 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 7 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
-| `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
@@ -35,7 +34,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 | `swarm` | 「瘋狂做」「不要問」「壓榨我」「≥10 agents 並行」等情緒語境,或使用者明示「autonomous 多 agent 執行 + don't-ask」 | 切「專案維護者」模式 — 自主補上下文、決策、組織 ≥10 並行 agent 直到任務閉環 |
 
-**另有 plugin skill 全域可用**(`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
+**另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
 
 ### 規則
 - 觸發條件符合就**立即** `Skill()` 調用,不問使用者。多個同時符合則全部載入。
