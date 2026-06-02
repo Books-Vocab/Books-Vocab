@@ -62,7 +62,6 @@ final class PodcastPlayerViewModel {
     /// "已載入" overlay on the seek bar. 0 until the first range arrives.
     private(set) var bufferedEnd: TimeInterval = 0
     private(set) var currentSentence: PodcastSentence?
-    private(set) var currentCue: PodcastSubtitleCue?
     private(set) var renderState: SubtitleRenderState?
     /// Anchor for extrapolating a continuous playhead between 15 Hz ticks (see
     /// `PodcastPlaybackClock`). Refreshed on every tick / seek / play / pause /
@@ -381,8 +380,6 @@ final class PodcastPlayerViewModel {
 
     private func handleTimeUpdate(_ time: TimeInterval) {
         currentTime = time
-        let cue = subtitleEngine.currentCue(at: time)
-        currentCue = cue
 
         // Low-frequency path: only rebuild renderState when sentence changes
         let sentence = subtitleEngine.currentSentence(at: time)
