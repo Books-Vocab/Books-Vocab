@@ -1335,7 +1335,7 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     for attempt in range(1, max_retries + 1):
         try:
             proc = subprocess.run(
-                ["bash", str(upload_sh), str(workspace)],
+                ["bash", str(upload_sh), str(workspace.resolve())],
                 cwd=str(ROOT.parent.parent), capture_output=False, text=True,
                 env=os.environ.copy(), timeout=_PUBLISH_TIMEOUT,
             )

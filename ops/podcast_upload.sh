@@ -11,14 +11,15 @@ REGION="${PODCAST_BUCKET_REGION:-ap-northeast-1}"
 # derives it from region when --endpoint-url isn't passed AND the bucket lives
 # in standard S3 namespace (Lightsail Object Storage does). Override here only
 # if AWS_ENDPOINT_URL is exported.
-ENDPOINT_OPT=()
-[[ -n "${AWS_ENDPOINT_URL:-}" ]] && ENDPOINT_OPT=( --endpoint-url "$AWS_ENDPOINT_URL" )
 S3_PREFIX="s3://$BUCKET"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 info()  { echo "▶ $*"; }
 ok()    { echo "✓ $*"; }
 err()   { echo "✗ $*" >&2; exit 1; }
+# Wrapper so --endpoint-url is injected only when AWS_ENDPOINT_URL is set.
+# Avoids the bash 3.x set -u + empty-array expansion bug on macOS.
+run_aws() { [[ -n "${AWS_ENDPOINT_URL:-}" ]] && aws --endpoint-url "$AWS_ENDPOINT_URL" "$@" || aws "$@"; }
 
 DRY_RUN=0
 
@@ -97,7 +98,7 @@ ok "Staged $EP_COUNT episodes (format: $AUDIO_EXT)"
 # ── Fetch existing remote metadata (for createdAt preservation) ──────────────
 EXISTING_META=""
 if [[ $DRY_RUN -eq 0 ]]; then
-  EXISTING_META="$(aws s3 cp "${ENDPOINT_OPT[@]}" \
+  EXISTING_META="$(run_aws s3 cp \
     --region "$REGION" \
     "$S3_PREFIX/$SERIES_ID/metadata.json" - 2>/dev/null || true)"
 fi
@@ -131,7 +132,7 @@ if not host_names:
 
 episodes = []
 for m in re.finditer(
-    r'\|\s*(\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(\d+)\s*min\s*\|',
+    r'\|\s*(\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*~?(\d+)\s*min\s*\|',
     text
 ):
     ep_num = int(m.group(1))
@@ -239,7 +240,7 @@ info "Syncing to $S3_PREFIX/$SERIES_ID/ ..."
 # We then loop again to fix Content-Type per file because `aws s3 sync` only
 # accepts ONE --content-type and we have heterogeneous extensions. Copy-in-
 # place is the documented way to alter metadata.
-aws s3 sync "${ENDPOINT_OPT[@]}" \
+run_aws s3 sync \
   --region "$REGION" \
   --delete \
   --no-progress \
@@ -249,7 +250,7 @@ info "Fixing Content-Type per file ..."
 find "$STAGING" -type f | while read -r f; do
   rel="${f#$STAGING/}"
   ct="$(content_type_for "$f")"
-  aws s3 cp "${ENDPOINT_OPT[@]}" \
+  run_aws s3 cp \
     --region "$REGION" \
     --no-progress \
     --metadata-directive REPLACE \
@@ -300,7 +301,7 @@ with open(out_path, "w") as f:
 print(f"index.json: {len(entries)} series")
 PYEOF
 
-aws s3 cp "${ENDPOINT_OPT[@]}" \
+run_aws s3 cp \
   --region "$REGION" \
   --no-progress \
   --content-type "application/json; charset=utf-8" \
