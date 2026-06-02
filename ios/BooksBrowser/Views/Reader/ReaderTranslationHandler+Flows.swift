@@ -221,6 +221,7 @@ extension ReaderTranslationHandler {
                         }
                     }
                 )
+                guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.feedbackPulse) {
                     explanationText = explanation
                     isLoadingExplanation = false
@@ -228,6 +229,7 @@ extension ReaderTranslationHandler {
                     explanationErrorMessage = nil
                 }
             } catch {
+                guard !(error is CancellationError), !Task.isCancelled else { return }
                 explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil
@@ -283,6 +285,7 @@ extension ReaderTranslationHandler {
                         }
                     }
                 )
+                guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.feedbackPulse) {
                     explanationText = explanation
                     isLoadingExplanation = false
@@ -294,6 +297,7 @@ extension ReaderTranslationHandler {
                     }
                 }
             } catch {
+                guard !(error is CancellationError), !Task.isCancelled else { return }
                 AppLog.reader.error("解釋錯誤: \(error.localizedDescription)")
                 explanationText = nil
                 isLoadingExplanation = false
