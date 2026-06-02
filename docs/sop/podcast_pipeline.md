@@ -227,22 +227,30 @@ lab/podcast/workspaces/<slug>_<hash>/
   scripts/ep_N_{pro,flash}.meta.json ← {"tts_model": "<full TTS model id>"} sidecar(monitor 顯示用;檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容)
   scripts/ep_N_script.md            ← 原稿
        │
-       │  ./ops/podcast_upload.sh <workspace>   (env: PODCAST_BUCKET, PODCAST_BUCKET_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+       │  ./ops/podcast_upload.sh <workspace>   (config gap-filled from lab/podcast/.env)
        ▼
 staging /tmp/podcast_upload_<sid>/   ← 重組成 ep_NN/ 結構
-       │  aws s3 sync --delete  (Lightsail Object Storage)
+       │  aws s3 sync --delete  (Lightsail Object Storage, AWS_PROFILE=kg-podcast)
        ▼
 s3://kg-podcasts-prod/<sid>/
-  metadata.json                     ← upload.sh 從 overview.md 解析生成
+  metadata.json                     ← upload.sh 從 overview.md 解析生成(內嵌逐集字幕)
   ep_NN/{audio.m4a, subtitle.srt, script.md}
        │
-       │  本機 Python boto3 → 重建 s3://kg-podcasts-prod/index.json(put_object)
+       │  uv run --with boto3 python → 重建 s3://kg-podcasts-prod/index.json(put_object)
        ▼
 backend /api/podcasts*               ← podcast.py router(全認證,proxy 走 boto3 GetObject)
        │
        ▼
 iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress(無 iOS 改動)
 ```
+
+### upload.sh 憑證 / 環境模型(踩雷史,必讀)
+
+bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `579635680285`**。寫入只認該 bucket 自身的 access key = 本機 `~/.aws` 的 **`kg-podcast` profile**(`obj-mgmt` user)。default profile(`MaxChen228` @ `967512079054`)對它**只有跨帳號讀**,寫 `PutObject` 一律 `AccessDenied`。
+
+`podcast_upload.sh` 開頭 **gap-fill** 從 `lab/podcast/.env`(gitignored)讀 `AWS_*` / `PODCAST_*`(僅補 caller 未 export 的 key,caller 優先)。故 dashboard ▶ upload / publish stage / 裸 CLI **三條路**都自動拿到 `AWS_PROFILE=kg-podcast` + `PODCAST_BUCKET`(monitor **不** load .env,過去就是這個缺口導致 publish 全 AccessDenied)。`aws` 與 boto3 都自動讀環境的 `AWS_PROFILE`。`.env` 必含:`PODCAST_BUCKET=kg-podcasts-prod` / `PODCAST_BUCKET_REGION=ap-northeast-1` / `AWS_PROFILE=kg-podcast`(profile 名非密鑰)。**值需 bare 不加引號**(gap-fill 用 `read`,不做去引號;`AWS_PROFILE="kg-podcast"` 會連引號一起 export)。
+
+兩段內嵌 Python **一律走 `uv run`**(禁裸 `python3`):metadata 段 `uv run python`、index 段 `uv run --with boto3 python`(host python3 無 boto3,過去靜默留下 stale index)。metadata 段把既有 remote metadata 經 **temp file** 傳入(內嵌逐集字幕 ~1MB,當 argv 會 `Argument list too long`)。
 
 ### upload.sh idempotent 保證
 

@@ -37,7 +37,7 @@ EPUB → prep → analyst → architect → plan-review → enricher-gap → enr
 | 11 | `synthesize` | Vertex AI Gemini TTS + ffmpeg loudnorm | 腳本 → MP3 音訊（-16 LUFS mastering） |
 | 12 | `audio-qa` | pydub | wpm / silence / clipping 檢查 → `audio_qa.json`；FAIL 阻斷 |
 | 13 | `subtitle` | Whisper forced alignment | 音訊 + 腳本 → 詞級 SRT 字幕 |
-| 14 | `publish` | `ops/podcast_upload.sh` + boto3 verify | 上傳 workspace → S3 + 確認 series 現身 catalog index（retry/backoff、1800s timeout）。**終端 stage、不設 gate**：合成完成即自動上線。PODCAST_BUCKET/creds 未設則 loud-fail（回 False，不靜默）。手動補傳：dashboard ▶ upload 或 `ops/podcast_upload.sh <ws>` |
+| 14 | `publish` | `ops/podcast_upload.sh` + boto3 verify | 上傳 workspace → S3 + 確認 series 現身 catalog index（retry/backoff、1800s timeout）。**終端 stage、不設 gate**：合成完成即自動上線。憑證/環境從 `lab/podcast/.env` gap-fill(`AWS_PROFILE=kg-podcast` 寫權限、`PODCAST_BUCKET`;monitor 不 load .env 故腳本自補)— 詳見 `docs/sop/podcast_pipeline.md` §upload.sh 憑證模型。手動補傳：dashboard ▶ upload 或 `ops/podcast_upload.sh <ws>` |
 
 ## 完整 CLI 參考
 

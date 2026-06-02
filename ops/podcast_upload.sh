@@ -4,6 +4,30 @@
 # Usage: ./ops/podcast_upload.sh <workspace_path> [--dry-run]
 set -euo pipefail
 
+# ── Machine-local config (gap-fill) ──────────────────────────────────────────
+# The monitor does NOT load .env, and a launching shell / cron may not export
+# the bucket or AWS profile — both used to fall through to the default AWS
+# identity, which is read-only on kg-podcasts-prod (Lightsail Object Storage in
+# a separate account) → PutObject AccessDenied. Pull AWS_*/PODCAST_* from
+# lab/podcast/.env for any key the caller did NOT already set (caller env wins).
+# `aws` and boto3 both honor AWS_PROFILE from the environment automatically.
+_ENV_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lab/podcast/.env"
+if [[ -f "$_ENV_FILE" ]]; then
+  while IFS='=' read -r _k _v || [[ -n "$_k" ]]; do
+    if [[ ! "$_k" =~ ^(AWS|PODCAST)_[A-Za-z0-9_]*$ ]]; then continue; fi
+    if [[ -n "${!_k:-}" ]]; then continue; fi  # caller-provided env wins
+    export "$_k=${_v%$'\r'}"
+  done < "$_ENV_FILE"
+fi
+
+# Python entrypoint — go through uv (project rule: never invoke bare python3;
+# the host python3 lacks boto3 and uv guarantees a consistent interpreter).
+UV_BIN="$(command -v uv || echo "$HOME/.local/bin/uv")"
+[[ -x "$UV_BIN" ]] || { echo "✗ uv not found: $UV_BIN" >&2; exit 1; }
+
+# Clean up temp files on ANY exit (incl. set -e abort mid-metadata/index build).
+trap 'rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"' EXIT
+
 # ── Config ───────────────────────────────────────────────────────────────────
 BUCKET="${PODCAST_BUCKET:?PODCAST_BUCKET not set (e.g. kg-podcasts-prod)}"
 REGION="${PODCAST_BUCKET_REGION:-ap-northeast-1}"
@@ -106,11 +130,21 @@ fi
 # ── Generate metadata.json ───────────────────────────────────────────────────
 OVERVIEW="$WORKSPACE/plan/overview.md"
 
-python3 - "$OVERVIEW" "$STAGING" "$SERIES_ID" "$AUDIO_EXT" "$EXISTING_META" <<'PYEOF'
+# Pass existing metadata via a temp FILE, not argv: it now embeds full inline
+# subtitle text per episode (~1 MB for a long series), which overflows ARG_MAX
+# ("Argument list too long") when passed as a command-line argument.
+EXISTING_META_TMP="$(mktemp)"
+printf '%s' "$EXISTING_META" > "$EXISTING_META_TMP"
+
+"$UV_BIN" run python - "$OVERVIEW" "$STAGING" "$SERIES_ID" "$AUDIO_EXT" "$EXISTING_META_TMP" <<'PYEOF'
 import sys, json, os, re, subprocess
 
 overview_path, staging_dir, series_id, audio_ext = sys.argv[1:5]
-existing_meta_raw = sys.argv[5] if len(sys.argv) > 5 else ""
+existing_meta_path = sys.argv[5] if len(sys.argv) > 5 else ""
+existing_meta_raw = ""
+if existing_meta_path and os.path.isfile(existing_meta_path):
+    with open(existing_meta_path, "r", encoding="utf-8") as mf:
+        existing_meta_raw = mf.read()
 
 with open(overview_path, "r") as f:
     text = f.read()
@@ -206,6 +240,7 @@ with open(out_path, "w") as f:
 
 print(f"✓ metadata.json: {len(episodes)} episodes")
 PYEOF
+rm -f "$EXISTING_META_TMP"
 
 # ── Dry-run: show tree and exit ──────────────────────────────────────────────
 if [[ $DRY_RUN -eq 1 ]]; then
@@ -266,7 +301,9 @@ ok "Upload complete"
 # us anything stronger on object storage.
 info "Rebuilding index.json from bucket listing..."
 INDEX_TMP="$(mktemp)"
-python3 - "$BUCKET" "$REGION" "${AWS_ENDPOINT_URL:-}" "$INDEX_TMP" <<'PYEOF'
+# Run through uv so boto3 is guaranteed present — the host `python3` (homebrew)
+# has no boto3, which silently left index.json stale after a successful upload.
+"$UV_BIN" run --with boto3 python - "$BUCKET" "$REGION" "${AWS_ENDPOINT_URL:-}" "$INDEX_TMP" <<'PYEOF'
 import sys, json, boto3
 bucket, region, endpoint, out_path = sys.argv[1:5]
 kwargs = {"region_name": region}
