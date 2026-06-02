@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: a17b7c4d
+verified_against: 60b1bd59
 -->
 # BooksBrowser iOS 開發技能
 
@@ -165,11 +165,16 @@ DEBUG-only 元件 catalog，讓 simulator 啟動時直接進入「狀態矩陣�
 - `ios/BooksBrowser/Debug/CatalogScene.swift` — 入口 view + `static func buildPlaybook()`(BooksBrowserTests 也 reuse 同一份 surface registration)
 - `ios/BooksBrowser/Debug/Scenarios/*Scenarios.swift` — 每個 surface 一檔，通過 `register(in:)` 加 scenarios
 
-**目前涵蓋**（Phase 3 / 19 scenarios）：
+**目前涵蓋**（9 groups / 60 scenarios — 數字由 `CatalogCoverageTests` 把關，新增 surface 漏掉 `register(in:)` 會紅）：
 - Settings × 6（Logged Out / Subscribed Active / Subscription Loading / Deleting Account / Pricing Unavailable / Debug Backend Local）
 - Today Review × 4（Front / Back / Completed / Autoplay）
 - Bookshelf × 5（Card Progress / Card Placeholder / Empty / With Books / Loading）
 - Welcome × 4（Step 1 Capture / Step 2 Link / Step 3 Review / Step 3 Dark）
+- Notebooks · Card × 4（Hero heavy / Hero fresh / Grid two-up / Hero long-name truncate）
+- Notebooks · Stack × 22（stress / depth 1-4 層 / active·inactive × light·dark state / a11y / editorial seeds / cover composition）
+- Notebook Detail · Row × 6（happy / long word truncate / long translation / 4-digit numbers / 320pt narrow / accessibility3）
+- Notebook Detail · CTA Pill × 5（due only / unlearned only / both / large numbers / no-CTA）
+- Design Tokens × 4（Palette light·dark / Typography / Radii & Spacing）
 
 **未涵蓋**（留待 future phase）：
 - Reader 本體（Readium SDK runtime 太重，需先抽 `ReaderViewPresenter` chrome layer）
@@ -199,7 +204,7 @@ enum FooScenarios {
 #endif
 ```
 
-寫完別忘了在 `CatalogScene.playbook` 的 static initializer 加一行 `FooScenarios.register(in: pb)`。
+寫完別忘了在 `CatalogScene.buildPlaybook()` 加一行 `FooScenarios.register(in: pb)`，並把新 group 名加進 `CatalogCoverageTests.expectedGroups`（漏 register 會被該 test 擋紅）。
 
 **simctl 截圖協作**：
 
@@ -211,7 +216,7 @@ xcrun simctl io booted screenshot /tmp/kg-catalog-page.png
 
 ### Catalog Snapshot Export（PlaybookSnapshot → PNG batch）
 
-`BooksBrowserTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把 19 scenarios × 2 devices（iPhone15Pro portrait light/dark）渲染成 PNG，**不用人工逐頁截**。
+`BooksBrowserTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把 60 scenarios × 2 devices（iPhone15Pro portrait light/dark）渲染成 PNG，**不用人工逐頁截**。
 
 **執行方式**（manual，**不要主動跑** — 遵守 CLAUDE.md 鐵律 7 `ios_test.sh` 規則）：
 
