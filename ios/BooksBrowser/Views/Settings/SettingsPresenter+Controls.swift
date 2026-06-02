@@ -55,18 +55,27 @@ extension View {
     }
 }
 
+/// Settings control chrome — `pageBackground` 底 + `cardBorder` 描邊 + `control` 圓角的同構樣式，
+/// 透過共用 `AppSectionCard` 渲染（不手刻 border+bg），給 stepper / 按鈕 / 輸入欄等控件容器複用。
+private extension AppSectionCardStyle {
+    static func settingsControl(_ skin: AppSkin) -> AppSectionCardStyle {
+        .init(
+            background: skin.palette.pageBackground,
+            border: skin.palette.cardBorder,
+            cornerRadius: skin.radii.control,
+            borderOpacity: 1,
+            elevation: .z0
+        )
+    }
+}
+
 struct SettingsButtonChromeModifier: ViewModifier {
     @Environment(\.appSkin) private var appSkin
 
     func body(content: Content) -> some View {
-        content
-            .padding(appSkin.spacing.cardPadding)
-            .background(appSkin.palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
-                    .stroke(appSkin.palette.cardBorder, lineWidth: 1)
-            )
+        AppSectionCard(padding: appSkin.spacing.cardPadding, style: .settingsControl(appSkin)) {
+            content
+        }
     }
 }
 
@@ -94,20 +103,15 @@ struct SettingsLabeledInputField<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
-            Text(title)
-                .font(appSkin.typography.caption)
-                .foregroundStyle(appSkin.palette.tertiaryText)
+        AppSectionCard(padding: appSkin.spacing.cardPadding, style: .settingsControl(appSkin)) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+                Text(title)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
 
-            content
+                content
+            }
         }
-        .padding(appSkin.spacing.cardPadding)
-        .background(appSkin.palette.pageBackground)
-        .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
-                .stroke(appSkin.palette.cardBorder, lineWidth: 1)
-        )
         .enableInjection()
     }
 }
