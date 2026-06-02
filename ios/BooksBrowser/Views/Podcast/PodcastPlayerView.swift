@@ -6,10 +6,17 @@ import Inject
 struct PodcastPlayerView: View {
     @ObserveInjection private var inject
     let episodeId: String
-    /// 預設 false → push caller（BookshelfView navigationDestination）零改動、沿用父
-    /// NavigationStack。inline 雙欄右欄傳 true → 自帶 NavigationStack host 住設定
-    /// ToolbarItem(.topBarTrailing)（.topBarTrailing 需 ambient nav bar）。
-    var wrapInNavigation: Bool = false
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// player 的 chrome 依 layout 自判，**不**再自帶內層 NavigationStack：
+    /// - compact（iPhone push detail）：有 ambient push nav bar → 設定鍵走 toolbar。
+    /// - regular（iPad/Catalyst inline 右欄）：身處 safeAreaInset、無專屬 nav bar →
+    ///   設定鍵改 content overlay。
+    /// 過去 inline 傳 `wrapInNavigation:true` 自帶 `NavigationStack` 來 host
+    /// `.topBarTrailing` 設定鍵，但該內層 NavigationStack 嵌在 BookshelfView 外層
+    /// NavigationStack subtree 內，會**持久破壞外層 value-based push**（NAVDBG 坐實：
+    /// 顯示過 inline player 後 reader 永久無法 push，內層 stack 銷毀後也不恢復 —
+    /// Catalyst SwiftUI 缺陷）。移除內層 stack 即根除。
+    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
     @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
@@ -114,11 +121,29 @@ struct PodcastPlayerView: View {
 
     @ViewBuilder
     private var fullBody: some View {
-        if wrapInNavigation {
-            NavigationStack { playerCore }
-        } else {
-            playerCore
+        playerCore
+    }
+
+    /// 字幕設定鍵核心。compact 放 toolbar；regular inline 包進 `inlineSettingsButton`
+    /// 浮在 content 右上角。
+    private var settingsButton: some View {
+        Button {
+            showSettingsPopover = true
+        } label: {
+            AppToolbarGlyph(systemImage: "textformat.size")
         }
+        .accessibilityLabel(L10n.string("podcast.player.subtitleSettings"))
+        .accessibilityIdentifier("podcast.player.settingsButton")
+    }
+
+    /// inline 右欄無 nav bar，設定鍵浮在 player content 右上角，自帶 circular
+    /// material chrome 以維持可點性與對比。
+    private var inlineSettingsButton: some View {
+        settingsButton
+            .padding(AppSpacing.s2)
+            .background(.regularMaterial, in: Circle())
+            .padding(.top, AppSpacing.s2)
+            .padding(.trailing, AppSpacing.s2)
     }
 
     @ViewBuilder
@@ -155,19 +180,28 @@ struct PodcastPlayerView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // inline 雙欄（wrapInNavigation）時不隱藏 tab bar：右欄自帶 NavigationStack，
-        // 隱藏 tab bar 會誤動到父層 scene。Catalyst 無 tab bar 故整段略過。
+        // inline（regular 右欄）時不隱藏 tab bar：右欄寄生於父層 scene，
+        // 隱藏會誤動父層。compact（push detail）全屏才隱藏。Catalyst 無 tab bar
+        // 故整段略過。
         #if !targetEnvironment(macCatalyst)
-        .toolbar(wrapInNavigation ? .visible : .hidden, for: .tabBar)
+        .toolbar(layoutMode.usesInlineDetail ? .visible : .hidden, for: .tabBar)
         #endif
+        // 設定鍵 chrome：compact 有 ambient push nav bar → toolbar；regular inline
+        // 無專屬 nav bar（且不可再用內層 NavigationStack）→ content overlay（見
+        // playerContent .ready/.playing/.paused 的 topTrailing overlay）。
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showSettingsPopover = true
-                } label: {
-                    Image(systemName: "textformat.size")
+            if !layoutMode.usesInlineDetail {
+                ToolbarItem(placement: .topBarTrailing) {
+                    settingsButton
                 }
-                .accessibilityLabel(L10n.string("podcast.player.subtitleSettings"))
+            }
+        }
+        // inline 設定鍵掛在 playerCore 層（與 compact 的 toolbar 同層），覆蓋
+        // 所有狀態（loading / error / missingEpisode / ready…），與 compact
+        // toolbar 行為對齊。translation panel 走 .bottom overlay，角不衝突。
+        .overlay(alignment: .topTrailing) {
+            if layoutMode.usesInlineDetail {
+                inlineSettingsButton
             }
         }
         // 字幕設定改用 sheet。Mac Catalyst 上「從 toolbar 按鈕掛 .popover」會在 present
