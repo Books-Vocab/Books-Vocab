@@ -95,6 +95,12 @@ struct PodcastSentenceLevelView: View {
                         : manualOffset
                     transcriptColumn
                         .offset(y: offset)
+                        // Until centers are first measured, `offset` falls back to
+                        // 0 (column pinned to top). Hide that one pre-measurement
+                        // frame so the content appears already-centered instead of
+                        // snapping top→center on load. The column still lays out
+                        // while invisible, so the GeometryReaders populate centers.
+                        .opacity(sentenceCenters.isEmpty ? 0 : 1)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .clipped()
