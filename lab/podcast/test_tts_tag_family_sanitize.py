@@ -14,8 +14,8 @@ BEFORE the text reaches the TTS API, while leaving non-palette content brackets
 from tts_tags import sanitize_tags_for_family
 
 
-def test_3_1_family_is_passthrough():
-    # On the native family the full palette is valid — nothing is touched.
+def test_3_1_native_forms_are_noop():
+    # Tags already in their 3.1 surface form are unchanged (target == current).
     src = "I felt [determination] and then [high energy] [long pause] done."
     out, changes = sanitize_tags_for_family(src, "3.1")
     assert out == src

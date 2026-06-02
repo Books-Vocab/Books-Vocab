@@ -53,7 +53,7 @@ Read in this order:
 
 - **No `---` horizontal rules anywhere** in the script body. Gemini will vocalize "dash dash dash."
 - **No `##` or `###` section headers** anywhere inside the dialogue.
-- **No inline `*emphasis*` or `**bold**` within dialogue text.** Reserve `**` exclusively for the speaker prefix `**Name:**` at the start of a line. Gemini will attempt to vocalize lone asterisks (e.g. "asterisk Let Me asterisk"). For emphasis, rephrase so the key word lands naturally, or let an emotion tag carry it — Gemini 3.1 has no SSML `<emphasis>`.
+- **No inline `*emphasis*` or `**bold**` within dialogue text.** Reserve `**` exclusively for the speaker prefix `**Name:**` at the start of a line. Gemini will attempt to vocalize lone asterisks (e.g. "asterisk Let Me asterisk"). For emphasis, rephrase so the key word lands naturally, or let an emotion tag carry it — Gemini TTS has no SSML `<emphasis>`.
 - **No trailing italic `*takeaway*` line.** The Sign-Off's three speaker lines already deliver the closing beat. Any narration must be an explicit `**Host:**` turn.
 - The only non-dialogue lines allowed are: `# Episode N: Title`, `> subtitle`, blank lines, and the final `<!-- END_OF_SCRIPT -->` sentinel.
 
@@ -302,42 +302,22 @@ Stacks on any book with heavy clinical / abuse / violence / grief content.
 
 ## TTS Voice Direction
 
-Embed tags for expressive TTS. The engine is **Gemini 3.1 Flash TTS** — every tag below maps to its official audio-tag set, which yields the strongest, most natural prosody. Use sparingly: flat delivery with emotional peaks beats constant emotion. **Single-word or two-word bracket tags only** — combined/complex bracket contents are unreliable.
+Embed tags for expressive TTS. The engine is **{tts_engine}** (family `{tts_family}`) — every tag in the palette below maps to its official audio-tag set, which yields the strongest, most natural prosody. Use sparingly: flat delivery with emotional peaks beats constant emotion. **Single-word or two-word bracket tags only** — combined/complex bracket contents are unreliable.
 
 ### Tag Palette
 
-Pull every tag from this set. It is the canonical Gemini 3.1 palette — the reviewer rejects anything outside it.
+{tts_palette}
 
-<!-- TTS_PALETTE:START -->
-**Emotion** (noun forms — strongest 3.1 prosody; don't default to the same 3):
-`[curiosity]` `[interest]` `[excitement]` `[enthusiasm]` `[amusement]` `[humor]` `[joy]` `[happiness]` `[awe]` `[admiration]` `[surprise]` `[shock]` `[skepticism]` `[doubt]` `[confusion]` `[uncertainty]` `[determination]` `[confidence]` `[sympathy]` `[caring]` `[melancholy]` `[nostalgia]` `[sadness]` `[grief]` `[relief]` `[satisfaction]` `[frustration]` `[disappointment]` `[tension]` `[anticipation]` `[hope]` `[sarcasm]` `[passion]` `[yearning]`
+Pull every tag from the palette above — the reviewer rejects anything outside it. Lead with emotion variety (don't default to the same 3); reserve pacing / non-verbal for revelations, intimate moments, and genuine beats (`[whispers]`/whispering max 1-2 per episode); use whatever energy and pause tags the palette lists to shape dynamics and time the heaviest lines.
 
-**Energy** (3.1 — shape paragraph-level dynamics; lift or settle a whole stretch):
-`[high energy]` `[low energy]`
-
-**Pacing / non-verbal**:
-`[slow]` — revelations, powerful quotes (most powerful tool)
-`[fast]` — rapid-fire energy, excited tangents
-`[whispers]` — max 1-2 per episode, intimate moments
-`[sighs]` — resignation, processing weight
-`[laughs]` — genuine amusement
-`[giggles]` — softer, shared-joke laugh
-`[gasp]` — genuine shock or surprise beat
-
-**Pauses** (insert measured silence — these are tags, NOT SSML):
-`[short pause]` — a beat, ~250ms (like a comma)
-`[medium pause]` — ~500ms (like a sentence break)
-`[long pause]` — dramatic silence, ~1s+ (reveals, gut-punch lines)
-<!-- TTS_PALETTE:END -->
-
-**No SSML.** Gemini 3.1 does NOT parse `<break>`, `<prosody>`, or `<emphasis>` — they get ignored or read aloud. Use `[long pause]` for timing and `[slow]` for slowed delivery instead. For emphasis, rephrase or let the emotion tag carry it.
+**No SSML.** {tts_engine} does NOT parse `<break>`, `<prosody>`, or `<emphasis>` — they get ignored or read aloud. Use a pause tag for timing and a slow-delivery tag for slowed delivery (when the palette lists them), otherwise let punctuation and wording carry the beat. For emphasis, rephrase or let the emotion tag carry it.
 
 ### Tag Usage Rules
-- One tag at a time per line (not `[excitement, laughs]`); **never place two tags adjacent** — separate them with text or punctuation, or 3.1 errors.
+- One tag at a time per line (not `[excitement, laughs]`); **never place two tags adjacent** — separate them with text or punctuation, or the engine errors.
 - Place the tag at the start of the affected text, not after.
-- **Within a tagged stretch, join clauses with commas, not periods** — period-broken fragments make 3.1 sound chopped.
-- **Vary the palette** — if you've used `[slow]` four times, reach for `[melancholy]` or `[nostalgia]`; use `[high energy]` / `[low energy]` to shape whole segments.
-- **Tag budget**: ~1 tag per 200-300 words. For a 4000-word script, roughly 15-20 tags total. Over-tagging makes 3.1 unstable / overperformed; under-tagging (flat audio) is worse than slight over-tagging.
+- **Within a tagged stretch, join clauses with commas, not periods** — period-broken fragments make the engine sound chopped.
+- **Vary the palette** — don't lean on the same 2-3 tags; rotate your emotion picks, and use the energy tags (when the palette lists them) to shape whole segments rather than repeating a pacing tag.
+- **Tag budget**: ~1 tag per 200-300 words. For a 4000-word script, roughly 15-20 tags total. Over-tagging makes the engine unstable / overperformed; under-tagging (flat audio) is worse than slight over-tagging.
 
 ### Well-Tagged Example
 
