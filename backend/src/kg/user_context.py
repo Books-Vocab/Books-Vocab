@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -9,6 +10,15 @@ from fastapi import HTTPException
 
 from .settings import KGSettings
 from .types import UserRecord
+
+# `user_id` is the JWT `sub`, which is later joined into a filesystem path
+# (`data_dir / "users" / user_id`). It MUST be constrained to a path-safe
+# allowlist so a crafted `sub` cannot escape the per-user sandbox via `/` or
+# `..`. This mirrors the notebook_id allowlist in
+# `service_factories._resolve_notebook_paths`, extended with `.` because real
+# Apple subs are dotted (`<numeric>.<hex>.<numeric>`); Google subs are numeric.
+# `..` is rejected separately since `.` is now an allowed character.
+_USER_ID_ALLOWED = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 
 def resolve_current_user(
@@ -57,6 +67,18 @@ def resolve_current_user(
         ) from exc
 
     if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Path-traversal guard (R8#1): reject any `sub` that is not path-safe
+    # before it is used for user lookup or directory creation. `..` is
+    # rejected explicitly because the allowlist permits the dot for Apple
+    # subs. A failed match means a forged/malformed token, so surface the
+    # same opaque 401 as other auth failures.
+    if ".." in user_id or not _USER_ID_ALLOWED.match(user_id):
         raise HTTPException(
             status_code=401,
             detail="Invalid token",

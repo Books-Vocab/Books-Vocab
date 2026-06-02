@@ -103,6 +103,91 @@ def test_random_string_token_raises_401_not_used_as_user_id(tmp_path):
     assert exc_info.value.status_code == 401
 
 
+# ============================================================================
+# Path-traversal hardening (R8#1) — `sub` flows into
+# `data_dir / "users" / user_id`. A `sub` carrying `/` or `..` must be
+# rejected with 401 BEFORE any directory is created, so it can never escape
+# the per-user sandbox. Mirror the notebook_id allowlist
+# (service_factories._resolve_notebook_paths), extended to permit the dot in
+# real Apple subs (`<numeric>.<hex>.<numeric>`) while still blocking `..`.
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "malicious_sub",
+    [
+        "../etc",
+        "../../etc/passwd",
+        "..",
+        "foo/bar",
+        "/abs/path",
+        "users/../../escape",
+        "a/../b",
+        "..\\windows",
+        "with space",
+        "semi;colon",
+        "null\x00byte",
+        "..",
+    ],
+)
+def test_traversal_sub_rejected_and_no_dir_escapes(tmp_path, malicious_sub):
+    """A JWT whose `sub` contains path-traversal characters must raise 401
+    and MUST NOT create any directory outside ``data_dir/users``.
+    """
+    users_file = tmp_path / "users.json"
+    users_file.write_text(json.dumps({malicious_sub: {"config": {}}}))
+    settings = _make_settings(tmp_path)
+
+    token = _make_jwt(malicious_sub)
+
+    with pytest.raises(HTTPException) as exc_info:
+        resolve_current_user(
+            token,
+            settings=settings,
+            load_users=_load_users_fn(users_file),
+            parse_datetime=_parse_datetime,
+        )
+
+    assert exc_info.value.status_code == 401
+    # No directory may have escaped the sandbox: data_dir must contain only
+    # the users.json we wrote plus (at most) an empty users/ dir.
+    escaped = [
+        p
+        for p in tmp_path.rglob("*")
+        if p.is_dir() and "users" not in p.relative_to(tmp_path).parts[:1]
+    ]
+    assert not escaped, f"traversal created stray dirs: {escaped}"
+
+
+@pytest.mark.parametrize(
+    "legit_sub",
+    [
+        "001234.fedcba9876543210abcdef0123456789.1234",  # Apple opaque sub
+        "117209385123456789012",                          # Google numeric sub
+        "user-abc",
+        "user_abc",
+        "ABC123",
+    ],
+)
+def test_legitimate_provider_subs_still_resolve(tmp_path, legit_sub):
+    """Real Apple (dotted) and Google (numeric) subs must continue to resolve
+    so the path guard never locks out legitimate users.
+    """
+    users_file = tmp_path / "users.json"
+    users_file.write_text(json.dumps({legit_sub: {"config": {}}}))
+    settings = _make_settings(tmp_path)
+
+    token = _make_jwt(legit_sub)
+    result = resolve_current_user(
+        token,
+        settings=settings,
+        load_users=_load_users_fn(users_file),
+        parse_datetime=_parse_datetime,
+    )
+    assert result["id"] == legit_sub
+    assert result["dir"] == tmp_path / "users" / legit_sub
+
+
 def test_expired_jwt_raises_401(tmp_path):
     users_file = tmp_path / "users.json"
     user_id = "user-expired"
