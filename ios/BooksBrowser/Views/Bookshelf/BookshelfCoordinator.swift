@@ -238,15 +238,6 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         }
     }
 
-    /// Cancel any in-flight batch import. Idempotent. The loop checks
-    /// `Task.isCancelled` per file and before its final state writes, so this
-    /// stops it promptly without leaving `isLoading` stuck (a superseding batch
-    /// re-arms it; a pure teardown lets the view's own state reset).
-    func cancelImport() {
-        importTask?.cancel()
-        importTask = nil
-    }
-
     private func batchFailureMessage(failures: [(name: String, diagnosed: BookshelfImportError)]) -> String {
         failures
             .map { "・\($0.name)：\($0.diagnosed.diagnosisLabel)" }
