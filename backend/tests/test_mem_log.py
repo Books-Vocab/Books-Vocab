@@ -57,6 +57,30 @@ def test_get_returns_tail_n():
     assert [r["msg"] for r in rows] == ["m15", "m16", "m17", "m18", "m19"]
 
 
+def test_get_n_zero_does_not_return_all():
+    """``n=0`` must NOT degenerate into ``rows[0:]`` (whole buffer).
+
+    Tail-of-zero is an empty tail; the slice ``rows[-0:]`` == ``rows[:]``
+    is the SQLite-style ``LIMIT -1`` footgun. Clamp to a single row.
+    """
+    h = _MemoryLogHandler(maxlen=100)
+    for i in range(20):
+        h.emit(_record(msg=f"m{i}"))
+    rows = h.get(n=0)
+    assert len(rows) <= 1
+    assert len(rows) < 20  # the regression: do not dump the whole buffer
+
+
+def test_get_negative_n_does_not_misalign():
+    """``n=-5`` must not become ``rows[5:]`` (head-drop misalignment)."""
+    h = _MemoryLogHandler(maxlen=100)
+    for i in range(20):
+        h.emit(_record(msg=f"m{i}"))
+    rows = h.get(n=-5)
+    # Must behave like the smallest legal tail, never a forward slice.
+    assert [r["msg"] for r in rows] == ["m19"]
+
+
 # ---- emit must swallow exceptions ----------------------------------------
 
 class _BrokenRecord:
