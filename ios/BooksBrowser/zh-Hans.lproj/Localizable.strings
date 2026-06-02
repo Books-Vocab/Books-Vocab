@@ -874,6 +874,7 @@
 "a11y.toggle.on" = "开";
 "a11y.toggle.off" = "关";
 "todayReview.fold.collapse" = "收起";
+"todayReview.saveFailure" = "复习结果未存档，请稍后再试";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
 "匯出失敗" = "导出失败";

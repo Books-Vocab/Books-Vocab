@@ -188,6 +188,13 @@ struct TodayReviewView: View {
             .appSheet(.medium)
         }
         .onDisappear {
+            // Stop autoplay on dismiss — this onDisappear runs on every target
+            // (it sits outside the macCatalyst #if below), so it is the single
+            // teardown point for the 4s autoplay loop. Without this the loop
+            // keeps mutating currentIndex/revealStage in the background and
+            // retains the state object. stopAutoPlay() is idempotent.
+            state.stopAutoPlay()
+
             if state.currentIndex < state.queue.count {
                 let durationMs = Int(Date().timeIntervalSince(state.sessionStartTime) * 1000)
                 AppAnalytics.track(.reviewSessionEnded(
@@ -337,7 +344,7 @@ struct TodayReviewView: View {
                 .forgot,
                 container: modelContext.container,
                 reviewSettings: reviewSettingsStore.settings,
-                onSaveFailure: { toast.error("複習結果未存檔，請稍後再試") }
+                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
             )
             return true
 
@@ -348,7 +355,7 @@ struct TodayReviewView: View {
                 .remembered,
                 container: modelContext.container,
                 reviewSettings: reviewSettingsStore.settings,
-                onSaveFailure: { toast.error("複習結果未存檔，請稍後再試") }
+                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
             )
             return true
 
