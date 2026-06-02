@@ -153,7 +153,16 @@ enum ReviewSessionPersistence {
         let baseline = queueBaselines[index]
         Task.detached(priority: .utility) {
             let ctx = ModelContext(container)
-            guard let entry = try? fetchEntry(for: persistenceID, in: ctx) else { return }
+            guard let entry = try? fetchEntry(for: persistenceID, in: ctx) else {
+                // Entry fetch failed (DB error) or entry missing — the review
+                // result can't be persisted. Report so the caller (and user) knows
+                // the answer wasn't saved instead of silently advancing.
+                AppLog.data.error("flushSubmittedAnswer: entry not found for \(persistenceID), review result not saved")
+                if let onSaveFailure {
+                    await onSaveFailure()
+                }
+                return
+            }
 
             applySubmittedAnswer(
                 answer,
