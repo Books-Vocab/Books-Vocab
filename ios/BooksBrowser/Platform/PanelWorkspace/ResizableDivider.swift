@@ -20,6 +20,7 @@ struct ResizableDivider: View {
     @Environment(\.appTheme) private var theme
     @GestureState private var isActiveDrag = false
     @State private var dragStart: CGFloat = 0
+    @State private var dragValue: CGFloat?
 
     static func clamp(_ v: CGFloat, to r: ClosedRange<CGFloat>) -> CGFloat {
         Swift.min(Swift.max(v, r.lowerBound), r.upperBound)
@@ -44,6 +45,14 @@ struct ResizableDivider: View {
                            height: axis == .vertical ? 1 : nil)
             }
             .highPriorityGesture(drag)
+            // commit 走 isActiveDrag false-transition（@GestureState 在 end **與 cancel**
+            // 皆保證歸 false）→ 取代脆弱的 .onEnded，避免 cancel 時 parent transient 殘留。
+            .onChange(of: isActiveDrag) { _, active in
+                if !active, let v = dragValue {
+                    onCommit(v)
+                    dragValue = nil
+                }
+            }
             #if targetEnvironment(macCatalyst)
             .onTapGesture(count: 2) { onDoubleClick() }
             .overlay { MacColumnResizeCursor(axis: axis) }
@@ -61,9 +70,10 @@ struct ResizableDivider: View {
         DragGesture(minimumDistance: 3, coordinateSpace: .global)
             .updating($isActiveDrag) { _, state, _ in state = true }
             .onChanged { value in
-                if !isActiveDrag { dragStart = currentLength }   // 首幀記起點
-                onDrag(length(from: value.translation))
+                if dragValue == nil { dragStart = currentLength }   // 首幀記起點(nil-gate,穩健)
+                let v = length(from: value.translation)
+                dragValue = v
+                onDrag(v)
             }
-            .onEnded { value in onCommit(length(from: value.translation)) }
     }
 }

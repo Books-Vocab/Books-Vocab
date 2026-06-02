@@ -21,7 +21,7 @@ struct VerticalBlockStack: View {
                     ResizableDivider(
                         axis: .vertical,
                         currentLength: block.height ?? BlockStackMetrics.defaultHeight,
-                        bounds: BlockStackMetrics.minHeight...600,
+                        bounds: BlockStackMetrics.minHeight...BlockStackMetrics.maxHeight,
                         onDrag: { liveDrag = (block.id, $0) },
                         onCommit: { workspace.setHeight($0, for: block.id); liveDrag = nil }
                     )
