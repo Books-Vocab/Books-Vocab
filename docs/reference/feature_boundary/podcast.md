@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 90bb62e2
+verified_against: cb1ef202
 -->
 # Podcast Feature Boundary
 
@@ -15,17 +15,21 @@ verified_against: 90bb62e2
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `PodcastPlayerView.swift` | ~590 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列。`wrapInNavigation: Bool = false` 參數：預設 false → push caller（BookshelfView `navigationDestination`）沿用父 `NavigationStack`；雙欄右欄 inline 嵌入傳 true → 自帶 `NavigationStack` host 住設定 `ToolbarItem(.topBarTrailing)`（`.topBarTrailing` 需 ambient nav bar）。啟動期透過 `PodcastPlayerBootstrapPhase` 區分未嘗試載入、已嘗試但 SwiftData 缺 episode/series、播放器 ready，避免 missing local row 時永久 spinner |
-| `PodcastEpisodeListView.swift` | ~430 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View`。Mac/iPad regular 走左右雙欄（左集數列表常駐 + 右欄 inline player，點集數或頂部開始/繼續播放 CTA 即時 swap，選中 row 染 `accentSubtle`，靠 `detailRouter.show` 不 push）；iPhone compact 沿用 value-based `NavigationLink push`（freeze-fix 契約，見檔頭註解）。分支以 `PodcastEpisodeActivation.activation(..., layoutMode:)` 集中切換。⚠️ regular inline 的 pop-to-root 防護依賴 **BookshelfView root 為 path-bound `NavigationStack(path:)`**（見 `bookshelf.md` Navigation 契約）；compact push 路徑無 `navigationLocked`（已移除的死碼，曾與 freeze 無關） |
+| `PodcastEpisodeListView.swift` | ~430 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View`。**regular（Mac/iPad）由 `PanelHost` resolve 成 list-only block**（集數 tap → `onSelectEpisode` 開 player sibling 子欄；不再於本 view 內掛 inline player）；iPhone compact 沿用 value-based `NavigationLink push`（freeze-fix 契約，見檔頭註解）。分支以 `PodcastEpisodeActivation.activation(..., layoutMode:)` 集中切換。⚠️ compact push 路徑無 `navigationLocked`（已移除的死碼，曾與 freeze 無關） |
 | `PodcastSentenceLevelView.swift` | ~390 | 句級字幕 + 長按整句翻譯 + 點詞查詞 + follow-mode pill `struct PodcastSentenceLevelView: View`（iPhone/iPad：拖曳隱式脫離 follow，pill 僅在脫離時顯示；Mac Catalyst：滑鼠滾輪/觸控板 indirect scroll 不觸發 DragGesture，pill 常駐為明確 toggle「停止跟隨 ⇄ 追隨當前」，邏輯在 `shouldShowFollowControl`） |
 
-### Master-Detail Layer（Mac/iPad 雙欄）
+### Regular（Mac/iPad）導航 — 2D panel workspace
 
-> **regular（iPad/Mac Catalyst）master-detail 掛在 `BookshelfView` NavigationStack root（depth=0）。** 點 series 卡片**不 push**——由 `BookshelfView` 的 `@State selectedSeriesRemoteId` 把 `PodcastEpisodeListView`（master）渲染為 root 級子 view，其 `safeAreaInset(.trailing)` player（detail）隨之掛在 depth=0 的 root content 上。如此 Catalyst 不再因「掛在 push depth=1 子層的 safeAreaInset 擾動外層容器 → NavigationStack 子樹 remount → 集數列表+player 被 pop 回書架」而崩（NAVDBG log 坐實的根因；鏡射 `NotebookListView` selectInline）。series 層 push 只留給 compact（iPhone）。決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`（`PodcastDetailRouter.swift`）：regular→`.selectInline`、compact→`.push(.series)`。regular 返回入口為 `BookshelfView` toolbar `.topBarLeading` chevron-left（depth=0 無 system back）；regular→compact 翻轉時 `selectedSeriesRemoteId` reset nil（鏡射 `PodcastDetailPresentation` dismiss）。
+> **regular（iPad/Mac Catalyst）podcast 導航走 `Platform/PanelWorkspace/` 2D 可堆疊 block workspace（主路徑）**，取代舊 `safeAreaInset` 假兩欄。`BookshelfWorkspaceSection`（`Views/Bookshelf/`）在 container 層持 `PanelWorkspace` 並注入 `\.panelWorkspace`，`BookshelfView`（root master）與 podcast 子欄共享同一 workspace。點 series 卡片 → `panelWorkspace.openColumn(.podcastSeries(remoteID:), after: nil)` 開 series 子欄（Miller column，`after: nil` 截斷既有成首欄）；卡片高亮 = workspace 首欄是否為該 series（`openSeriesRemoteId` 反查）。`PanelHost` 把 `.podcastSeries` resolve 成 `PodcastEpisodeListView`（list-only，depth-0 NavigationStack host，永不 push），集數 tap → `proxy.openChildColumn(.podcastEpisode(remoteID:))` 開 sibling player 子欄（`PodcastPlayerView(wrapInNavigation:true)`）。每欄自帶 `BlockChrome` ✕ 關閉（不再需書架層級返回鍵；toolbar 只剩設定齒輪）。regular→compact 翻轉 `.onChange(of: layoutMode)` 呼 `panelWorkspace.reset()` 收欄。
+>
+> **休眠未刪（Task 14 deferred）**：`PodcastDetailRouter.swift` / `PodcastDetailPresentation.swift` 的 regular inline-detail 分支不再為 regular 主路徑，現僅供 compact push 決策 + 休眠保留，尚未刪除。下方仍列其檔案供 compact 路徑參照。
+
+> **compact（iPhone）series/episode 沿用 value-based push**（freeze-fix 契約不變）。series 層決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`（`PodcastDetailRouter.swift`）：regular→`.selectInline`（現開 workspace 欄）、compact→`.push(.series)`。`navigationDestination(for: PodcastNavRoute.self)` 的 `.series`/`.episode` case 保留供 compact push（regular 不經此）。
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastDetailRouter.swift` | ~70 | `@Observable` 集數 master-detail 狀態（`selectedEpisodeRemoteId` / `show` / `dismiss` / `hasDetail`），鏡射 vocab/notebook detail router；同檔 `PodcastEpisodeActivation`（episode 層 compact push vs regular inline detail）+ `PodcastSeriesActivation`（series 層 compact push vs regular selectInline）兩個純函式決策點。透過 `\.podcastDetailRouter` environment 注入。compact 下右欄不掛，`selectedEpisodeRemoteId` 恆 nil |
-| `PodcastDetailPresentation.swift` | 74 | `struct PodcastDetailPresentation: ViewModifier`（`.podcastDetailPresentation(router:layoutMode:)`），鏡射 `NotebookDetailPresentation`。inline mode（iPad/Mac regular）右側 `safeAreaInset(edge:.trailing)` 掛可拖拉 panel（複用 `DraggableDivider` + `@AppStorage("kg_podcast_panel_width")` + `MacDetailPanelMetrics`），單一 `PodcastPlayerView(wrapInNavigation:true)` 靠 `.task(id:)` swap 集數；compact 不掛右欄。`layoutMode` 退出 inline 時 `router.dismiss()` |
+| `PodcastDetailRouter.swift` | ~70 | `@Observable` 集數 master-detail 狀態（`selectedEpisodeRemoteId` / `show` / `dismiss` / `hasDetail`），鏡射 vocab/notebook detail router；同檔 `PodcastEpisodeActivation`（episode 層 compact push vs regular inline detail）+ `PodcastSeriesActivation`（series 層 compact push vs regular selectInline）兩個純函式決策點。透過 `\.podcastDetailRouter` environment 注入。**regular 已改走 PanelWorkspace**，本 router 的 inline 分支為休眠（compact push 決策仍用）；compact 下右欄不掛，`selectedEpisodeRemoteId` 恆 nil |
+| `PodcastDetailPresentation.swift` | 74 | `struct PodcastDetailPresentation: ViewModifier`（`.podcastDetailPresentation(router:layoutMode:)`），鏡射 `NotebookDetailPresentation`。inline mode 右側 `safeAreaInset(edge:.trailing)` 掛可拖拉 panel（複用 `DraggableDivider` + `@AppStorage("kg_podcast_panel_width")` + `MacDetailPanelMetrics`）。**regular 主路徑已遷至 PanelWorkspace，本 modifier 休眠未刪（Task 14 deferred）**，目前未掛入 regular UI |
 
 ### ViewModel Layer（播放狀態機）
 
@@ -88,7 +92,7 @@ podcast catalog 同步現有兩條觸發鏈：
 - **新增字幕呈現邏輯** → `PodcastSentenceLevelView` 或 `PodcastSubtitleView`,layout 計算抽到 `CachedFlowLayout` 或 `SubtitleRenderState`
 - **新增播放狀態（speed / region / queue）** → `PodcastPlayerViewModel`,View 不放 mutable state
 - **新增 series / episode 列表 UI** → `PodcastEpisodeListView` + `PodcastEpisodeRow`；列表卡片骨架走共用 `ListSectionCard`（UIComponents，與單字列表共用，見 `docs/reference/ui/components.md` §List Shell），divider 由 caller 在 `ForEach` 內插
-- **新增雙欄 master-detail 行為** → `PodcastDetailRouter`（狀態）+ `PodcastDetailPresentation`（呈現分支）；compact 不適用（沿用 push）
+- **新增 regular（Mac/iPad）多欄/開欄行為** → `Platform/PanelWorkspace/`（coordinator `PanelWorkspace` + resolver `PanelHost` 加 `PanelKind` case + `BookshelfWorkspaceSection` 注入）；**勿**再擴充休眠的 `PodcastDetailRouter` inline 分支 / `PodcastDetailPresentation`（Task 14 待刪）。compact push 行為改 `PodcastSeriesActivation` / `PodcastEpisodeActivation` 純函式決策點
 - **新增 user-tunable 播放參數(字幕 / 跟隨 / 計時器 等)** → `PodcastSettingsPopover`(集中所有 user-tunable 播放參數;非字幕專屬)
 - **新增詞彙互動** → `PodcastVocabularyContext`(reader-parity:任何 reader 詞彙流程都要在此鏡像)
 - **新增 metric token** → 跨 feature 用升 `AppMetrics`;單 feature 用留 `PodcastPlayerMetrics`
@@ -122,7 +126,8 @@ podcast catalog 同步現有兩條觸發鏈：
 
 ## 架構債
 
-- **podcast 無頂層 section、被迫經 `BookshelfView` 進入。** Notebook 是 `ContentView` 頂層 section（自帶 NavigationStack root，master-detail 天生 depth=0、remount 無感）；podcast 沒有頂層 section，regular 下靠 `BookshelfView` 的 `@State selectedSeriesRemoteId` 升為 root 級兩窗格才取得同等免疫。未來可評估平台原生 `NavigationSplitView` 收斂 podcast master-detail（廢手刻 `safeAreaInset` 假兩欄），但需先驗證 Catalyst 巢狀 split（`ContentView` 已用 `NavigationSplitView`）穩定性，本輪不做。
+- **podcast 無頂層 section、經 `BookshelfView` 進入。** Notebook 是 `ContentView` 頂層 section；podcast 沒有頂層 section，regular 下由 `BookshelfWorkspaceSection` 包住 `BookshelfView` + podcast workspace 子欄取得導航免疫（series→episodes→player 為 Miller 子欄，非 push）。已**廢除舊 `safeAreaInset` 假兩欄主路徑**，改用 `Platform/PanelWorkspace/` 2D 引擎。
+- **休眠舊碼待刪（Task 14 deferred）**：`PodcastDetailRouter` 的 regular inline 分支 + `PodcastDetailPresentation` ViewModifier 已非 regular 主路徑（compact push 決策仍用前者），尚未刪除。清理時須保留 compact 用的 `PodcastSeriesActivation`/`PodcastEpisodeActivation` 純函式 + `PodcastDetailRouter` 的 episode-level 狀態。
 
 ## 相關 doc
 
