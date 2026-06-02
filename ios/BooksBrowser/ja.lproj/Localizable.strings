@@ -523,6 +523,9 @@
 
 /* Track B — i18n residual top-5 */
 "翻譯語言" = "翻訳言語";
+"複習模式" = "復習モード";
+"自訂參數" = "カスタムパラメータ";
+"閱讀語言" = "読書言語";
 "載入音訊…" = "音声を読み込み中…";
 "音訊載入失敗" = "音声の読み込みに失敗しました";
 "點兩下查看詳細資訊" = "ダブルタップで詳細を表示";
@@ -870,6 +873,7 @@
 "calendar.month.next" = "翌月";
 "notebook.toolbar.archive" = "アーカイブ";
 "notebook.list.loading" = "単語帳を読み込み中…";
+"a11y.action.close" = "閉じる";
 "a11y.toggle.on" = "オン";
 "a11y.toggle.off" = "オフ";
 "todayReview.fold.collapse" = "折りたたむ";

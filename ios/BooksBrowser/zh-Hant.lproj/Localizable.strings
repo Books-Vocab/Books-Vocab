@@ -889,6 +889,7 @@
 "calendar.month.next" = "下個月";
 "notebook.toolbar.archive" = "封存";
 "notebook.list.loading" = "載入單字本中…";
+"a11y.action.close" = "關閉";
 "a11y.toggle.on" = "開";
 "a11y.toggle.off" = "關";
 "todayReview.fold.collapse" = "收合";
