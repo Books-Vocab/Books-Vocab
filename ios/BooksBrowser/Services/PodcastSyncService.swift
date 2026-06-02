@@ -89,22 +89,42 @@ final class PodcastSyncService {
         return try JSONDecoder().decode(PodcastSeriesDetail.self, from: data)
     }
 
+    /// Outcome of a `syncAll` pass. Only the list fetch is fatal (a complete
+    /// no-op refresh the user explicitly triggered); detail / progress / save
+    /// failures are partial or auxiliary and stay swallowed as before.
+    enum SyncOutcome: Equatable {
+        /// List fetch returned (catalog reconciled); refresh did something.
+        case completed
+        /// Cancelled mid-flight (view torn down / task superseded) — not an error.
+        case cancelled
+        /// Series-list fetch failed → nothing refreshed. Surface to user when
+        /// the sync was an explicit pull-to-refresh.
+        case listFetchFailed
+    }
+
     /// Full sync: fetch all series, upsert into SwiftData, then reconcile orphans.
     /// Detail fetch failures for individual series are swallowed — we still
     /// upsert what succeeded and feed only the succeeded set to reconcile so
     /// transient 404/timeout cannot trigger episode mass-deletion.
+    ///
+    /// Returns a `SyncOutcome`; callers that ran a silent/background sync ignore
+    /// it (`@discardableResult`), while pull-to-refresh checks it to surface a
+    /// toast on `.listFetchFailed`.
     @MainActor
-    func syncAll(context: ModelContext) async {
+    @discardableResult
+    func syncAll(context: ModelContext) async -> SyncOutcome {
         let summaries: [PodcastSeriesSummary]
         do {
             summaries = try await fetchSeriesList()
+        } catch is CancellationError {
+            // Task superseded / view torn down mid-fetch — not a user-facing error.
+            AppLog.kg.warning("[PodcastSync] list fetch cancelled")
+            return .cancelled
         } catch {
             // List fetch failure → skip reconcile (空 list 會誤刪所有 series).
             AppLog.kg.warning("[PodcastSync] list fetch failed: \(error.localizedDescription)")
-            if !(error is CancellationError) {
-                AppCrashReporting.record(error, context: "podcast.sync.list")
-            }
-            return
+            AppCrashReporting.record(error, context: "podcast.sync.list")
+            return .listFetchFailed
         }
         var details: [String: PodcastSeriesDetail] = [:]
         for summary in summaries {
@@ -140,6 +160,7 @@ final class PodcastSyncService {
             AppLog.kg.warning("[PodcastSync] context save failed: \(error.localizedDescription)")
             AppCrashReporting.record(error, context: "podcast.sync.save")
         }
+        return .completed
     }
 
     @MainActor
