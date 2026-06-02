@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 
 from ..graph import LinkKind
 from .models import Judgement
@@ -86,8 +87,13 @@ def _parse_batch_response(
         try:
             link_val = item.get("link", "not_applicable")
             confidence = float(item.get("confidence", 0.0))
-            # Clamp to [0, 1] — LLM may emit out-of-range values; keep the link
-            # (don't reject) but never persist an invalid confidence.
+            # Reject non-finite confidence (NaN/inf) outright: bare JSON `NaN`/
+            # `Infinity` survives json.loads, and "NaN"/"inf" survive float(),
+            # then clamp would silently coerce them to 1.0 and poison the graph.
+            if not math.isfinite(confidence):
+                raise ValueError(f"non-finite confidence: {confidence!r}")
+            # Clamp finite values to [0, 1] — LLM may emit out-of-range values;
+            # keep the link (don't reject) but never persist an invalid confidence.
             confidence = max(0.0, min(1.0, confidence))
             reason_val = item.get("reason", "")
         except (ValueError, TypeError):
