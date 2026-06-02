@@ -21,11 +21,17 @@ struct PanelWorkspaceContainer<Root: View>: View {
 
     var body: some View {
         if layoutMode.usesInlineDetail {
+            // GeometryReader：空欄時讓 root master 填滿視窗（水平 ScrollView 對 child 出
+            // unbounded 提案,minWidth 只是地板 → 無此會釘在 leftMinWidth）。root 結構位置
+            // 不變(始終 HStack 首位)→ 開第一欄不 remount root。
+            GeometryReader { geo in
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {
                         root()
-                            .frame(minWidth: MacDetailPanelMetrics.leftMinWidth)
+                            .frame(minWidth: workspace.columns.isEmpty
+                                   ? geo.size.width
+                                   : MacDetailPanelMetrics.leftMinWidth)
 
                         ForEach(workspace.columns) { column in
                             ResizableDivider(
@@ -49,6 +55,7 @@ struct PanelWorkspaceContainer<Root: View>: View {
                         withAnimation(AppMotion.panelState) { proxy.scrollTo(last, anchor: .trailing) }
                     }
                 }
+            }
             }
         } else {
             root()
