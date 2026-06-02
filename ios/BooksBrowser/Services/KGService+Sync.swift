@@ -148,6 +148,13 @@ extension KGService {
         }
         defer { releaseBackgroundSync() }
 
+        // 每輪開始即重置 error-tracking 欄位：四個 trigger（post-login / scenePhase
+        // / ⌘R menu / Settings 手動）共用此全域欄位，但只有 App 層 scenePhase 兩處
+        // read-then-clear。claim 鎖已序列化整段（同時間僅一輪執行），於 claim 成功後、
+        // offline guard 前清空，可消除跨-trigger 殘留 → 避免 consumer 讀到上一輪 stale
+        // 值造成的 analytics 誤判與舊 toast 重彈。失敗時下方會再 set 為本輪正確值。
+        lastBackgroundSyncError = nil
+
         // 離線時跳過整個背景同步，不產生無意義的錯誤日誌
         guard NetworkMonitor.shared.isConnected else {
             AppLog.kg.info("backgroundSync skipped: offline")
