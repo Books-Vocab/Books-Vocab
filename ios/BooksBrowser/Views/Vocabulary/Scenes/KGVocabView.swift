@@ -219,7 +219,7 @@ struct KGVocabView: View {
                 title: "尚未登入".localized,
                 systemImage: "person.crop.circle.badge.exclamationmark",
                 description: "登入後，您在閱讀時標記的生詞將會自動整理於此。".localized,
-                action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { showLoginSheet = true })
             )
         } else if coordinator.errorMessage != nil && syncedEntries.isEmpty {
             return .error(
