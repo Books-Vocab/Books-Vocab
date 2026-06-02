@@ -5,7 +5,7 @@
 //  TodayReview 四態包裝層：loading / empty / error / session。
 //  對齊 StatsPresenter / NotebookListView 採用的 VocabSceneShell pattern。
 //  TodayReviewView 本身負責 session 內容；本檔只處理外層狀態矩陣。
-//  唯一的 today-review 呈現入口 — NotebookDetailPresentation 兩種 layout 分支皆經此。
+//  唯一的 today-review 呈現入口 — NotebookDetailPresentation 經此 modal 呈現。
 //
 
 import SwiftUI
@@ -30,7 +30,7 @@ enum TodayReviewPhase {
 
 /// 將 TodayReview 包成統一狀態矩陣（loading / empty / error / success）。
 ///
-/// 唯一的 today-review 呈現入口：`NotebookDetailPresentation` 兩種 layout 分支皆走本 view，
+/// 唯一的 today-review 呈現入口：`NotebookDetailPresentation` 經 modal 走本 view，
 /// 4-state phase matrix 因此真正生效。session 內容委派給 `TodayReviewView`；
 /// 空待複習集合落在 `.empty` 分支提供關閉回饋。
 struct TodayReviewPhaseView: View {

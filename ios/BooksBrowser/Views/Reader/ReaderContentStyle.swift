@@ -105,8 +105,7 @@ enum ReaderPresentationMetrics {
 
     /// Max content widths for regular-layout (Mac/iPad) inline panels, kept
     /// here so the per-presentation getters reference named constants rather
-    /// than scattering bare literals (matches MacDetailPanelMetrics /
-    /// NotebookMasterDetailMetrics convention).
+    /// than scattering bare literals.
     enum RegularPanel {
         static let tocContentMaxWidth: CGFloat = 560
         static let tocStateCardMaxWidth: CGFloat = 440
