@@ -23,14 +23,18 @@ trap cleanup EXIT
 
 mkdir -p "$FIX/Views" "$FIX/Debug" "$FIX/Models"
 
-# A genuinely dirty view file: raw padding number, raw shadow, raw cornerRadius,
-# raw hex color, raw system font size.
+# A genuinely dirty view file: raw padding number, directional raw padding,
+# raw shadow, raw cornerRadius, raw hex color, raw system font size.
 cat > "$FIX/Views/Dirty.swift" <<'SWIFT'
 import SwiftUI
 struct Dirty: View {
     var body: some View {
         Text("x")
             .padding(7)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 6)
+            .padding(.top, 9)
+            .padding(.leading, -4)
             .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             .background(RoundedRectangle(cornerRadius: 12))
             .foregroundColor(Color(hex: "#FF0000"))
@@ -40,16 +44,21 @@ struct Dirty: View {
 SWIFT
 
 # A clean view file: everything tokenized, plus one exempted raw value.
+# The directional .padding(.edge, AppSpacing.*) form is the SANCTIONED token
+# usage and must NOT be flagged.
 cat > "$FIX/Views/Clean.swift" <<'SWIFT'
 import SwiftUI
 struct Clean: View {
     var body: some View {
         Text("x")
             .padding(AppSpacing.s2)
+            .padding(.vertical, AppSpacing.s3)
+            .padding(.horizontal, skin.spacing.microGap)
             .appElevation(.z1)
             .background(RoundedRectangle(cornerRadius: AppRadius.card))
             .foregroundColor(AppColors.accent)
             .padding(3) // token-allow: intentional one-off hairline
+            .padding(.bottom, 8) // token-allow: exempted directional one-off
     }
 }
 SWIFT
@@ -96,9 +105,15 @@ for pat in 'padding' 'shadow' 'cornerRadius|RoundedRectangle' 'hex|Color' 'syste
   echo "$out" | grep -qiE "$pat" && ok "strict detects category /$pat/" || fail_t "missing category /$pat/"
 done
 
+# Directional raw padding must be caught (each edge variant + negative).
+echo "$out" | grep -q '.padding(.vertical, 13)'   && ok "padding caught .vertical raw"   || fail_t "missed directional .vertical raw padding"
+echo "$out" | grep -q '.padding(.horizontal, 6)'  && ok "padding caught .horizontal raw" || fail_t "missed directional .horizontal raw padding"
+echo "$out" | grep -q '.padding(.top, 9)'         && ok "padding caught .top raw"        || fail_t "missed directional .top raw padding"
+echo "$out" | grep -q '.padding(.leading, -4)'    && ok "padding caught negative raw"    || fail_t "missed directional negative raw padding"
+
 # ── 4. Exclusions & exemptions produce no Clean/excluded findings ─────────────
 section "Exclusions & inline exemption"
-echo "$out" | grep -q 'Clean.swift'        && fail_t "Clean.swift wrongly flagged" || ok "Clean.swift not flagged"
+echo "$out" | grep -q 'Clean.swift'        && fail_t "Clean.swift wrongly flagged (token-form directional padding false-positive?)" || ok "Clean.swift not flagged"
 echo "$out" | grep -q 'DebugScratch.swift' && fail_t "Debug/ wrongly flagged"      || ok "Debug/ excluded"
 echo "$out" | grep -q 'Thing_Preview.swift' && fail_t "*Preview* wrongly flagged"  || ok "*Preview* excluded"
 echo "$out" | grep -q 'ThingTests.swift'   && fail_t "*Tests* wrongly flagged"     || ok "*Tests* excluded"

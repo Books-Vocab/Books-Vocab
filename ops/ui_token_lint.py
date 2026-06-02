@@ -59,8 +59,16 @@ SKIP_NAME_GLOBS = ("*Preview*.swift", "*Tests*.swift")
 # (pattern_id, compiled regex, remediation hint). Order = report order.
 PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
     (
+        # Single-arg `.padding(12)` OR directional `.padding(.vertical, 13)`.
+        # The directional branch requires the value arg to *begin* with a numeric
+        # literal so token forms like `.padding(.vertical, AppSpacing.s3)` or
+        # `.padding(.horizontal, skin.spacing.microGap)` are not flagged.
         "padding",
-        re.compile(r"\.padding\(\s*-?\d+(?:\.\d+)?\s*\)"),
+        re.compile(
+            r"\.padding\(\s*-?\d+(?:\.\d+)?\s*\)"
+            r"|\.padding\(\s*\.(?:vertical|horizontal|top|bottom|leading|trailing)\s*,"
+            r"\s*-?\d+(?:\.\d+)?\s*\)"
+        ),
         "use AppSpacing.sN",
     ),
     (
