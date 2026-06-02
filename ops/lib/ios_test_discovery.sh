@@ -49,18 +49,39 @@ _discover_file() {
         sub(/^(@Suite([ \t]*\([^)]*\))?[ \t]+)?((public|internal|private|fileprivate|final)[ \t]+)*(struct|class|actor)[ \t]+/, "", name)
         sub(/[^A-Za-z0-9_].*$/, "", name)
         container = name
-        pending_test = 0
+        pending_test = 0   # a new container boundary cancels any dangling arm
         next
       }
       # Bare top-level @Suite line (attribute above the struct) — keep scanning;
       # the struct on the next line sets the container.
       if (line ~ /^@Suite([ \t]*\([^)]*\))?[ \t]*$/) next
 
-      # An attribute line carrying @Test on its OWN line (e.g. "@Test @MainActor")
-      # arms the next member func as a Swift Testing test.
-      if (line ~ /^[ \t]*@Test([ \t]+@[A-Za-z]|[ \t]*$)/ && line !~ /func[ \t]/) {
+      # A @Test attribute line that does NOT itself declare the func arms the
+      # next member func as a Swift Testing test. This covers every form whose
+      # `func` lands on a later line:
+      #   @Test                         (bare)
+      #   @Test @MainActor              (chained attribute, no func yet)
+      #   @Test("display name")         (display-name only)
+      #   @Test(.tags(...))             (trait only)
+      #   @Test(arguments: [1, 2, 3])   (single-line argument list)
+      #   @Test(arguments: [           (MULTILINE argument list — paren stays
+      #       ...                        open; intervening rows are ignored by
+      #   ])                             the awaiting-func state below)
+      # The arm persists across argument/comment rows until a `func` consumes
+      # it; a container declaration (handled above) resets it.
+      if (line ~ /^[ \t]*@Test([ \t(]|$)/ && line !~ /(^|[ \t])func[ \t]/) {
         pending_test = 1
         next
+      }
+      # While a @Test arm is pending, swallow intervening rows (argument tuples,
+      # closing `])`, blank lines, comments) so they do not clear the arm before
+      # the func that the attribute decorates is reached.
+      if (pending_test) {
+        if (line ~ /^[ \t]+(@Test[ \t]+)?((@[A-Za-z]+([ \t]*\([^)]*\))?[ \t]+)*)?((public|internal|private|fileprivate|static|final|mutating|override|nonisolated)[ \t]+)*func[ \t]+[A-Za-z0-9_]+[ \t]*\(/) {
+          # fall through to the member-func handler below to emit + reset.
+        } else {
+          next
+        }
       }
 
       # Member func (indented). Top-level funcs are never tests.
