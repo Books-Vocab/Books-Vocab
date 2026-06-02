@@ -945,6 +945,8 @@
 "音訊無法播放" = "Audio can't be played";
 "網路緩衝逾時" = "Network buffering timed out";
 "分析中…" = "Analyzing…";
+"對比" = "Contrast";
+"相關" = "Related";
 "部分匯入失敗" = "Some imports failed";
 "%@ 本匯入失敗" = "%@ failed to import";
 "已匯入 %@ 本，%@ 本失敗" = "Imported %@, %@ failed";
