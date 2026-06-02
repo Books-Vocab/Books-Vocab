@@ -124,6 +124,14 @@ enum PodcastScrollGeometry {
         let f = CGFloat(min(1, max(0, fraction)))
         return UnitPoint(x: 0.5, y: 0.5 + (f - 0.5) * span)
     }
+
+    /// Progress (0…1) of `time` through a sentence's `[start, end]` window.
+    /// Degenerate / zero-length sentences (and `time` at/after end) return 1;
+    /// `time` before start returns 0.
+    static func sentenceFraction(time: TimeInterval, start: TimeInterval, end: TimeInterval) -> Double {
+        guard end > start else { return time < start ? 0 : 1 }
+        return min(1, max(0, (time - start) / (end - start)))
+    }
 }
 
 enum PodcastSeekBarGeometry {
