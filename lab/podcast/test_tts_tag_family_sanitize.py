@@ -81,6 +81,64 @@ def test_changes_are_reported():
     assert sum(changes.values()) == 3
 
 
+# ─── concept×family registry (Phase 1) ───
+
+def test_registry_reproduces_legacy_3_1_palette():
+    # The 3.1 palette derived from the registry must equal the historical
+    # CANONICAL set (46 tags) so nothing silently drops on the migration.
+    import tts_tags
+    assert tts_tags.palette("3.1") == set(tts_tags.CANONICAL)
+    assert len(tts_tags.palette("3.1")) == 46
+
+
+def test_25_palette_is_the_15_safe_forms():
+    import tts_tags
+    p = tts_tags.palette("2.5")
+    assert p == {
+        "excited", "skeptical", "amused", "uncertain", "sad", "surprised",
+        "happy", "sarcastic", "empathetic", "whispering", "sighing", "laughing",
+        "chuckling", "speaking slowly", "speaking quickly",
+    }
+
+
+def test_form_index_is_collision_free():
+    # Every surface form across all families maps to exactly one concept.
+    import tts_tags
+    seen: dict[str, str] = {}
+    for c in tts_tags.TAG_CONCEPTS:
+        for fam, form in c.forms.items():
+            assert form not in seen or seen[form] == c.id, (
+                f"form {form!r} claimed by both {seen.get(form)} and {c.id}"
+            )
+            seen[form] = c.id
+
+
+def test_normalization_upgrades_25_form_on_3_1():
+    # On 3.1 a 2.5-era form is upgraded to the stronger noun form (not passthrough).
+    out, changes = sanitize_tags_for_family("So [excited] today.", "3.1")
+    assert out == "So [excitement] today."
+    assert sum(changes.values()) == 1
+
+
+def test_unknown_family_is_passthrough():
+    # No registry for the family → cannot know what to strip → leave verbatim
+    # (defense-in-depth; prompt injection raises loudly instead, see Phase 2).
+    src = "Big [determination] and [high energy] here."
+    out, changes = sanitize_tags_for_family(src, "9.9")
+    assert out == src and changes == {}
+
+
+def test_render_palette_md_omits_empty_groups_for_25():
+    import tts_tags
+    md = tts_tags.render_palette_md("2.5")
+    assert "[excited]" in md
+    # 2.5 has no energy/pause forms → those groups must not appear with tags
+    assert "high energy" not in md and "long pause" not in md
+    # 3.1 render includes them
+    md31 = tts_tags.render_palette_md("3.1")
+    assert "high energy" in md31 and "long pause" in md31
+
+
 if __name__ == "__main__":
     import sys
     import traceback
