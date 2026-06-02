@@ -26,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import sys
 import time
@@ -33,6 +34,8 @@ from pathlib import Path
 
 # Force line-buffered stdout for real-time progress visibility
 sys.stdout.reconfigure(line_buffering=True)
+
+logger = logging.getLogger("podcast.subtitle")
 
 import stable_whisper
 
@@ -161,6 +164,33 @@ def write_compact_srt(
         srt_path.write_text("", encoding="utf-8")
         return
 
+    # ── Observability guard (no algorithm change) ──
+    # `word_speakers` is built from script str.split() (build_word_speaker_map),
+    # but `words` here comes from whisper/stable-ts re-tokenization (splits on
+    # punctuation/hyphens/contractions), so the counts routinely diverge. The
+    # cue→speaker mapping below is positional (`word_speakers[i]`), so any
+    # divergence silently misattributes speaker tags from the first mismatch
+    # onward and leaves trailing cues untagged. We do NOT fix the mapping here
+    # (algorithm choice is out of scope) — we only loud-warn so the operator
+    # knows this episode's speaker tags are unreliable and the .srt needs
+    # regenerating once a word-aligned mapping lands.
+    n_whisper = len(words)
+    n_speakers = len(word_speakers)
+    if n_whisper != n_speakers:
+        diff = n_whisper - n_speakers
+        logger.warning(
+            "[%s] speaker-map desync: whisper produced %d words but script "
+            "speaker-map has %d entries (diff %+d). Per-cue speaker tags are "
+            "UNRELIABLE (misattributed from first divergence; %s). Regenerate "
+            "this .srt after the word-aligned mapping fix.",
+            srt_path.stem,
+            n_whisper,
+            n_speakers,
+            diff,
+            f"{diff} trailing cue(s) untagged" if diff > 0
+            else f"{-diff} script word(s) dropped",
+        )
+
     # Stitch gaps: cue[i].end = cue[i+1].start (seamless, no blank frames)
     stitched: list[tuple[float, float, str]] = []
     for i, (start, end, text) in enumerate(words):
@@ -225,6 +255,14 @@ def main():
     parser.add_argument("--audio", help="Explicit audio file path")
     parser.add_argument("--model", default="medium", help="Whisper model (tiny/base/small/medium/large)")
     args = parser.parse_args()
+
+    # Route guard warnings to stderr so they stay visible even when the pipeline
+    # captures this subprocess's stdout.
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+    )
 
     target = Path(args.target)
 
