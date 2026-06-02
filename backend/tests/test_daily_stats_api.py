@@ -98,6 +98,33 @@ def test_daily_stats_since_filter(isolated_api):
     assert "2026-03-15" not in day_keys
 
 
+def test_daily_stats_since_malformed_returns_400(isolated_api):
+    """A malformed `since` (not strict YYYY-MM-DD) must 400, not silently
+    mis-filter via raw string comparison against day_key.
+
+    `'garbage' >= '2026-03-16'` is True, so without validation the endpoint
+    silently returns *all* rows; a full ISO timestamp likewise breaks the
+    raw-string cutoff. Both are user-input errors and must surface as 400.
+    """
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    client.patch(
+        "/api/vocab/daily-stats",
+        json={
+            "entries": [
+                {"day_key": "2026-03-15", "total": 5, "remembered": 4, "forgot": 1},
+                {"day_key": "2026-03-18", "total": 10, "remembered": 8, "forgot": 2},
+            ]
+        },
+        headers=headers,
+    )
+
+    for bad in ("garbage", "2026-01-01T00:00:00Z", "2026-13-99", "03-18-2026", "2026/03/18"):
+        r = client.get("/api/vocab/daily-stats", params={"since": bad}, headers=headers)
+        assert r.status_code == 400, f"since={bad!r} -> {r.status_code}: {r.text}"
+
+
 def test_daily_stats_push_empty_entries(isolated_api):
     """Pushing an empty list should succeed with upserted=0."""
     client = isolated_api.client
