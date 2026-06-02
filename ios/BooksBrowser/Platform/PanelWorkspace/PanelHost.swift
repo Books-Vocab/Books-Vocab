@@ -18,7 +18,19 @@ struct PanelHost: View {
 
     var body: some View {
         switch kind {
-        // Phase 3 接 podcast；Phase 4 接 vocab。骨架先回 placeholder 確保編譯。
+        case .podcastSeries(let remoteID):
+            // 集數列表（list-only）。NavigationStack 為 depth-0 host(follow toggle toolbar)，
+            // 永不 push(集數 tap 開 sibling 子欄)→ 不重現 413912b3 remount。
+            NavigationStack {
+                PodcastEpisodeListView(
+                    seriesId: remoteID,
+                    onSelectEpisode: { proxy.openChildColumn(.podcastEpisode(remoteID: $0)) }
+                )
+            }
+        case .podcastEpisode(let remoteID):
+            PodcastPlayerView(episodeId: remoteID, wrapInNavigation: true)
+
+        // Phase 4 接 vocab。
         default:
             Color.clear
         }
