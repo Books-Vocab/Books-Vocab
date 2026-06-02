@@ -175,6 +175,82 @@ def test_prune_translate_log_preserves_index(isolated_logs):
     assert "idx_tl_user" in names
 
 
+def test_translate_log_has_bare_created_at_index(isolated_logs):
+    """Fix A (R8#3): retention DELETE filters bare ``created_at``; without a
+    ``(created_at)`` index SQLite full-scans. ``idx_tl_user`` leads with
+    user_id so it can't serve a bare-created_at predicate."""
+    translate_log._get_conn()  # force schema/index init
+    rows = translate_log._get_conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='translate_log'"
+    ).fetchall()
+    names = {r[0] for r in rows}
+    assert "idx_tl_created" in names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# translate_cache_hits — Fix B (R8#2): was never pruned → monotonic growth.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _insert_cache_hit_row(created_at: str) -> None:
+    translate_log.record_cache_hit(
+        user_id="u1",
+        operation="translate",
+        word="word",
+        context_hash="h",
+        source_lang="en",
+        target_lang="zh",
+    )
+    # record_cache_hit stamps "now"; rewrite created_at to the desired age.
+    conn = translate_log._get_conn()
+    conn.execute(
+        "UPDATE translate_cache_hits SET created_at=? WHERE id=(SELECT MAX(id) FROM translate_cache_hits)",
+        (created_at,),
+    )
+    conn.commit()
+
+
+def test_prune_translate_cache_hits_drops_only_old_rows(isolated_logs):
+    _insert_cache_hit_row(_iso(20))   # old (>14d)
+    _insert_cache_hit_row(_iso(15))   # old
+    _insert_cache_hit_row(_iso(13))   # recent
+    _insert_cache_hit_row(_iso(1))    # recent
+
+    deleted, remaining = log_retention.prune_translate_cache_hits(days=14)
+
+    assert deleted == 2
+    assert remaining == 2
+
+
+def test_prune_translate_cache_hits_reuses_translate_log_retention_env(isolated_logs, monkeypatch):
+    """Fix B reuses ``TRANSLATE_LOG_RETENTION_DAYS`` — no new env/knob."""
+    monkeypatch.setenv("TRANSLATE_LOG_RETENTION_DAYS", "3")
+    _insert_cache_hit_row(_iso(4))   # >3d → pruned
+    _insert_cache_hit_row(_iso(2))   # inside 3d → survives
+
+    deleted, remaining = log_retention.prune_translate_cache_hits()  # env default
+
+    assert deleted == 1
+    assert remaining == 1
+
+
+def test_prune_translate_cache_hits_safe_with_no_data(isolated_logs):
+    translate_log._get_conn()  # force schema, no rows
+    deleted, remaining = log_retention.prune_translate_cache_hits(days=14)
+    assert deleted == 0
+    assert remaining == 0
+
+
+def test_prune_translate_cache_hits_preserves_index(isolated_logs):
+    _insert_cache_hit_row(_iso(30))
+    log_retention.prune_translate_cache_hits(days=14)
+    rows = translate_log._get_conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='translate_cache_hits'"
+    ).fetchall()
+    names = {r[0] for r in rows}
+    assert "idx_tch_created" in names
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # token_usage
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,6 +288,17 @@ def test_prune_token_usage_preserves_index(isolated_logs):
     assert "idx_user_created" in names
 
 
+def test_token_usage_has_bare_created_at_index(isolated_logs):
+    """Fix A (R8#3): both composite indexes lead with user_id, so the bare
+    ``created_at`` retention DELETE full-scans. Needs a ``(created_at)`` index."""
+    token_tracker._get_conn()  # force schema/index init
+    rows = token_tracker._get_conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='token_usage'"
+    ).fetchall()
+    names = {r[0] for r in rows}
+    assert "idx_tu_created" in names
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # run_all
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +309,7 @@ def test_run_all_invokes_every_pruner(isolated_logs):
     _insert_judge_row(_iso(80))
     _insert_translate_row(_iso(20))
     _insert_token_row(_iso(120))
+    _insert_cache_hit_row(_iso(20))
 
     report = log_retention.run_all()
 
@@ -229,11 +317,14 @@ def test_run_all_invokes_every_pruner(isolated_logs):
     assert report["judge_log"]["deleted"] == 1
     assert report["translate_log"]["deleted"] == 1
     assert report["token_usage"]["deleted"] == 1
+    assert report["translate_cache_hits"]["deleted"] == 1
     # Defaults must match brief.
     assert report["pipeline_log"]["days"] == 30
     assert report["judge_log"]["days"] == 60
     assert report["translate_log"]["days"] == 14
     assert report["token_usage"]["days"] == 90
+    # Fix B reuses the translate_log retention window.
+    assert report["translate_cache_hits"]["days"] == 14
 
 
 # ─────────────────────────────────────────────────────────────────────────────
