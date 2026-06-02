@@ -36,33 +36,16 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import stable_whisper
 
-# ─── Host Config ───
-
-
-def _parse_overview_speakers(overview_path: Path) -> list[str]:
-    """Extract host names from overview.md for speaker tagging."""
-    if not overview_path.exists():
-        return []
-    text = overview_path.read_text(encoding="utf-8")
-    host_re = re.compile(r"^###\s+(?:Host [AB]:\s*)?(.+?)$", re.MULTILINE)
-    hosts = [m.group(1).strip() for m in host_re.finditer(text)]
-    return [h for h in hosts if h not in ("Host Dynamics", "Voice Mapping")]
-
+from tts_config import (
+    DIALOGUE_RE as _DIALOGUE_RE,
+    SKIP_LINE_RE as _SKIP_LINE_RE,
+    INLINE_BOLD_RE as _INLINE_BOLD_RE,
+    INLINE_ITALIC_RE as _INLINE_ITALIC_RE,
+    DIRECTION_RE as _DIRECTION_RE,
+    SSML_RE as _SSML_RE,
+)
 
 # ─── Parse script → plain text ───
-
-# Dialogue speaker line — mirror of synthesize.py (allow multi-word host names)
-_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
-# Structural lines to skip (never treated as dialogue/continuation) — mirror of synthesize.py
-_SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
-# Inline emphasis stripped from spoken text — mirror of synthesize.py
-_INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
-_INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
-# Audio tags [excitement] / [laughs] / [slow] / [long pause] — stripped from subtitles
-_DIRECTION_RE = re.compile(r"\[.*?\]")
-# Defensive: strip any stray angle-bracket markup (legacy SSML in old scripts).
-# Gemini 3.1 has no SSML, but old workspaces may still contain <break>/<emphasis>.
-_SSML_RE = re.compile(r"<[^>]+>")
 
 
 def _clean_spoken(text: str) -> str:

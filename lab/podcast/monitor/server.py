@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
@@ -68,7 +68,7 @@ _STAGES_ORDERED = (
     "prep", "analyst", "architect", "plan-review",
     "enricher-gap", "enricher", "scriptwrite",
     "series-polish", "script-review",
-    "tts-prep", "synthesize", "audio-qa", "subtitle",
+    "tts-prep", "synthesize", "audio-qa", "subtitle", "publish",
 )
 _STAGE_NAMES = set(_STAGES_ORDERED)
 
@@ -176,7 +176,7 @@ def list_workspaces(full: bool = Query(False)):
 # progress without hardcoding the number (and stay correct if we add stages).
 _STAGE_COUNT = len(_STAGE_NAMES)
 # Final stage — when its done-marker exists, the whole workspace is "done".
-_FINAL_STAGE = "subtitle"
+_FINAL_STAGE = "publish"
 
 
 def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
@@ -255,8 +255,8 @@ def _milestones(ws: Path) -> tuple[list[dict], float]:
     if scripts.is_dir():
         n_script = sum(1 for _ in scripts.glob("ep_*_script.md"))
         n_audio = sum(
-            1 for f in scripts.glob("ep_*.mp3")
-            if re.match(r"ep_\d+_(pro|flash)\.mp3$", f.name)
+            1 for f in [*scripts.glob("ep_*.mp3"), *scripts.glob("ep_*.m4a")]
+            if re.match(r"ep_\d+_(pro|flash)\.(mp3|m4a)$", f.name)
         )
         n_srt = sum(
             1 for f in scripts.glob("ep_*.srt")
@@ -298,7 +298,7 @@ def _milestones(ws: Path) -> tuple[list[dict], float]:
 # without its plan (manual restore, deleted plan) is still surfaced.
 _EP_PLAN_RE = re.compile(r"ep_0*(\d+)\.md$")
 _EP_SCRIPT_RE = re.compile(r"ep_0*(\d+)_script\.md$")
-_EP_AUDIO_RE = re.compile(r"ep_0*(\d+)_(pro|flash)\.mp3$")
+_EP_AUDIO_RE = re.compile(r"ep_0*(\d+)_(pro|flash)\.(mp3|m4a)$")
 _EP_SRT_RE = re.compile(r"ep_0*(\d+)_(pro|flash)\.srt$")
 
 
@@ -334,7 +334,7 @@ def _episode_status(ws: Path) -> list[dict]:
                 n = int(m.group(1))
                 eps.add(n)
                 script_set.add(n)
-        for f in scripts.glob("ep_*.mp3"):
+        for f in [*scripts.glob("ep_*.mp3"), *scripts.glob("ep_*.m4a")]:
             m = _EP_AUDIO_RE.match(f.name)
             if not m:
                 continue  # skip ep_N_voice_preview.mp3 etc.
@@ -465,8 +465,8 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
     scripts = ws / "scripts"
     episodes: set[int] = set()
     if scripts.is_dir():
-        for f in scripts.glob("ep_*.mp3"):
-            m = re.match(r"ep_(\d+)_(pro|flash)\.mp3$", f.name)
+        for f in [*scripts.glob("ep_*.mp3"), *scripts.glob("ep_*.m4a")]:
+            m = re.match(r"ep_(\d+)_(pro|flash)\.(mp3|m4a)$", f.name)
             if m:
                 episodes.add(int(m.group(1)))
 
@@ -786,12 +786,13 @@ def episode_audio(ws_name: str, ep: int):
     ws = _resolve_ws(ws_name)
     if not 1 <= ep <= 999:
         raise HTTPException(400, "ep out of range")
-    f = _ep_file(ws, ep, (("pro", "mp3"), ("flash", "mp3")))
+    f = _ep_file(ws, ep, (("pro", "mp3"), ("flash", "mp3"), ("pro", "m4a"), ("flash", "m4a")))
     if not f:
         raise HTTPException(404, f"no audio for ep {ep}")
     # FileResponse handles Range requests, content-type, length headers, and
     # the conditional GET dance browsers do when seeking inside <audio>.
-    return FileResponse(str(f), media_type="audio/mpeg", filename=f.name)
+    media_type = "audio/mp4" if f.suffix == ".m4a" else "audio/mpeg"
+    return FileResponse(str(f), media_type=media_type, filename=f.name)
 
 
 @app.get("/api/workspace/{ws_name}/episode/{ep}/subtitle")
@@ -818,9 +819,9 @@ def workspace_episodes(ws_name: str):
     if not scripts.is_dir():
         return []
     seen: dict[int, dict] = {}
-    for f in sorted(scripts.glob("ep_*.mp3")):
-        # ep_N_pro.mp3 / ep_N_flash.mp3
-        m = re.match(r"ep_(\d+)_(pro|flash)\.mp3$", f.name)
+    for f in sorted([*scripts.glob("ep_*.mp3"), *scripts.glob("ep_*.m4a")]):
+        # ep_N_pro.mp3 / ep_N_flash.mp3 / ep_N_pro.m4a / ep_N_flash.m4a
+        m = re.match(r"ep_(\d+)_(pro|flash)\.(mp3|m4a)$", f.name)
         if not m:
             continue
         n = int(m.group(1))
@@ -887,9 +888,10 @@ def upload_workspace(ws_name: str):
         raise HTTPException(422, "plan/overview.md missing — run pipeline first")
     scripts = ws / "scripts"
     if not scripts.is_dir() or not any(
-        scripts.glob("ep_*_pro.mp3")
-    ) and not any(scripts.glob("ep_*_flash.mp3")):
-        raise HTTPException(422, "no ep_*_pro.mp3 or _flash.mp3 — synthesize stage incomplete")
+        f for ext in ("mp3", "m4a") for pat in (f"ep_*_pro.{ext}", f"ep_*_flash.{ext}")
+        for f in scripts.glob(pat)
+    ):
+        raise HTTPException(422, "no ep_*_pro/flash .mp3/.m4a — synthesize stage incomplete")
 
     upload_sh = (ROOT.parent.parent / "ops" / "podcast_upload.sh").resolve()
     if not upload_sh.exists():
