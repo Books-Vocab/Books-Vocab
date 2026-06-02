@@ -1,6 +1,7 @@
 """Tests for kg.enrich — LLM-powered card enrichment."""
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -330,6 +331,48 @@ class TestEnrichCardsStream:
             "enrich_cards_stream queue is unbounded — a stalled consumer "
             "would let workers buffer unlimited messages."
         )
+
+    @pytest.mark.asyncio
+    async def test_stream_does_not_deadlock_on_scalar_json_response(self):
+        """Regression: a malformed LLM response whose top-level JSON is a
+        scalar/null (e.g. `"x"`, `5`, `null`) makes _parse_enrich_response
+        call `.values()` on a non-dict → AttributeError. That exception is
+        NOT in the worker's catch tuple, so it escapes the worker, no
+        terminal message is enqueued, tasks_remaining never reaches 0, and
+        the consumer's `await queue.get()` blocks forever (ThreadPoolExecutor
+        also never releases). The stream MUST instead emit a terminal error
+        for that batch, decrement tasks_remaining, and complete.
+        """
+        from kg.enrich import enrich_cards_stream
+
+        # Top-level scalar JSON → `for v in data.values()` raises AttributeError
+        resp = _mock_response('"unexpected-scalar"')
+        llm = TrackedLLM(MagicMock(), "u_deadlock")
+
+        with patch("kg.enrich.sync_retry", return_value=resp):
+            cards = [_make_card("hello", "你好")]
+
+            async def _drain():
+                out = []
+                async for msg in enrich_cards_stream(llm, cards, batch_size=1):
+                    out.append(msg)
+                return out
+
+            # If the deadlock regresses, this never completes → wait_for fires.
+            try:
+                results = await asyncio.wait_for(_drain(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pytest.fail(
+                    "enrich_cards_stream deadlocked on a scalar-JSON response: "
+                    "the batch worker raised an uncaught exception, no terminal "
+                    "message was sent, and the consumer blocked forever."
+                )
+
+        # The single batch must have produced exactly one terminal error msg.
+        errors = [r for r in results if r["status"] == "error"]
+        assert len(errors) == 1, f"expected one error terminal, got: {results}"
+        # Stream completed cleanly (no leftover running with current<total stuck).
+        assert results[-1]["status"] == "error"
 
     @pytest.mark.asyncio
     async def test_stream_token_tracking_via_tracked_llm(self):
