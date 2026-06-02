@@ -89,6 +89,47 @@ final class FoxtrotTests: XCTestCase {
 }
 SWIFT
 
+# Parameterized @Test(arguments:) — single-line AND multiline-spanning forms.
+# The func name does NOT start with `test`, so it is ONLY discoverable via the
+# @Test attribute. The multiline `@Test(arguments: [ \n ... \n ])` must arm the
+# next `func` across the intervening argument rows (the historical drop bug).
+cat > "$FIX/ParamTests.swift" <<'SWIFT'
+import Testing
+
+struct GolfTests {
+    // Single-line argument form (paren closes same line).
+    @Test(arguments: [1, 2, 3])
+    func golfSingleLine(_ n: Int) {}
+
+    // Multiline argument form — paren opens here, rows below, closes later.
+    @Test(arguments: [
+        (1, 2.0),
+        (3, 4.0),
+    ])
+    func golfMultiLine(_ a: Int, _ b: Double) {}
+
+    // Display-name form on its own line above the func.
+    @Test("a display name")
+    func golfDisplayName() {}
+
+    // Plain helper between tests — must NOT be armed/emitted.
+    func makeFixture() -> Int { 0 }
+
+    // Same-line @Test func still works after the multiline arm was consumed.
+    @Test func golfSameLine() {}
+}
+
+// A second container right after a multiline @Test arm scenario: ensure the
+// arm does not bleed across the container boundary onto Hotel's first func.
+struct HotelTests {
+    @Test(arguments: [
+        "x",
+        "y",
+    ])
+    func hotelMultiLine(_ s: String) {}
+}
+SWIFT
+
 # No container at all — must be skipped, never emit a bogus flag.
 cat > "$FIX/NoContainer.swift" <<'SWIFT'
 import Foundation
@@ -147,6 +188,16 @@ printf '%s\n' "$ONLY_ALPHA" | grep -qF "charlieOne" && fail_t "pattern 'alpha' l
 section "Case-insensitive pattern"
 ONLY_FOX="$(discover_only_flags "$FIX" "FOXTROT")"
 has_flag "$ONLY_FOX" "FoxtrotTests/testFoxtrotOne" && ok "uppercase pattern matches" || fail_t "lost case-insensitivity"
+
+# ── 10. parameterized @Test(arguments:) single + multiline ───────────────────
+section "Parameterized @Test(arguments:) discovery"
+has_flag "$FLAGS" "GolfTests/golfSingleLine" && ok "golfSingleLine (single-line args) → GolfTests" || fail_t "single-line @Test(arguments:) dropped"
+has_flag "$FLAGS" "GolfTests/golfMultiLine" && ok "golfMultiLine (multiline args) → GolfTests" || fail_t "multiline @Test(arguments:) dropped"
+has_flag "$FLAGS" "GolfTests/golfDisplayName" && ok "golfDisplayName (@Test display name) → GolfTests" || fail_t "@Test(display-name) dropped"
+has_flag "$FLAGS" "GolfTests/golfSameLine" && ok "golfSameLine (@Test func after multiline arm) → GolfTests" || fail_t "same-line @Test regressed after multiline arm"
+printf '%s\n' "$FLAGS" | grep -qF "makeFixture" && fail_t "plain helper makeFixture leaked" || ok "plain helper makeFixture excluded"
+has_flag "$FLAGS" "HotelTests/hotelMultiLine" && ok "hotelMultiLine → HotelTests (no cross-container bleed)" || fail_t "multiline arm dropped in HotelTests"
+printf '%s\n' "$FLAGS" | grep -qF "GolfTests/hotelMultiLine" && fail_t "hotelMultiLine WRONGLY under GolfTests (arm bled across container)" || ok "no arm bleed across struct boundary"
 
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
