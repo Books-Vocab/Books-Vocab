@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 78617510
+verified_against: 3875f3cb
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -289,7 +289,7 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 
 ### 自動上傳閉環(pipeline `publish` stage)
 
-`pipeline.py` 跑完 `subtitle` 後自動執行 `publish` stage → `ops/podcast_upload.sh <workspace>` → verify series 現身 `index.json`(retry+backoff,1800s timeout)。**合成完成即上線,無手動步驟**。本機跑 pipeline 須先 `export PODCAST_BUCKET=... AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...`;未設則 publish loud-fail（回 False,寫 error log,不 crash、不靜默)。dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。
+`pipeline.py` 跑完 `subtitle` 後自動執行 `publish` stage → `ops/podcast_upload.sh <workspace>` → verify series 現身 `index.json`(retry+backoff,1800s timeout)。**合成完成即上線,無手動步驟**。憑證/bucket 由 `ops/podcast_upload.sh` 從 `lab/podcast/.env` gap-fill(`AWS_PROFILE=kg-podcast` 寫權限 + `PODCAST_BUCKET`,見 §upload.sh 憑證/環境模型);caller 已 export 則優先。未設且 .env 缺則 publish loud-fail（回 False,寫 error log,不 crash、不靜默)。dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。
 
 ### audioFormat 解析(S3 模式 mp3/m4a)
 
@@ -444,7 +444,7 @@ Endpoints:
 | `PODCAST_BUCKET_REGION` | `ap-northeast-1` | 同 Lightsail instance region(免 egress 費)|
 | `PODCAST_BUCKET_ENDPOINT_URL` | *unset* | S3-compatible endpoint URL;Lightsail/AWS 留空,R2/minio 才設 |
 | `PODCAST_BUCKET_QUOTA_BYTES` | `5368709120`(5 GiB) | UI 顯示「磁碟」總量基準;升級 bundle 時改這個 |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | *(必填)* | Lightsail Object Storage access key |
+| `AWS_PROFILE` | `kg-podcast`(從 .env gap-fill) | bucket 寫權限身分(Lightsail Object Storage obj-mgmt key,account 579635680285);default profile 跨帳號只讀。亦可改用 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` 直接帶 key |
 
 > 2026-06 Track B 前的 `PODCAST_SSH_KEY` / `PODCAST_REMOTE_SERVER` / `PODCAST_REMOTE_DIR` / `PODCAST_SSH_TIMEOUT` 已**廢棄**,monitor 不再讀。**舊 `.env` 留著無害但無效果**。
 | `PODCAST_MAX_ACTIVE_JOBS` | `4` | 同時 running 上限,超過 spawn 回 429 |
