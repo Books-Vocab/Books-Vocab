@@ -50,9 +50,9 @@ struct PodcastSubtitleView: View {
     @ViewBuilder
     private var subtitleFailureOverlay: some View {
         AppStateMessageCard(
-            title: "字幕載入失敗",
+            title: L10n.string("podcast.subtitle.loadFailed.title"),
             systemImage: "captions.bubble",
-            description: "音訊仍可正常播放",
+            description: L10n.string("podcast.subtitle.loadFailed.description"),
             style: .vocab(skin)
         ) {
             Button {
