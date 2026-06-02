@@ -68,6 +68,9 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         kgService: any KGServing,
         modelContext: ModelContext
     ) async {
+        isLoading = true
+        defer { isLoading = false }
+
         async let health: Void = kgService.healthCheck()
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
