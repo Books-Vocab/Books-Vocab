@@ -101,6 +101,23 @@ struct SettingsView: View {
     }
 }
 
+extension View {
+    /// 呈現 SettingsView，並在 sheet 邊界 re-inject 它依賴的兩個 app 級
+    /// ObservableObject。SwiftUI `.sheet` 會傳遞 value-based `.environment(\.key)`，
+    /// 但【不】跨 sheet 邊界傳遞 `@EnvironmentObject` —— 少了這層，SettingsView
+    /// 讀 appLanguage 時即 fatal "No ObservableObject of type AppLanguageStore found"。
+    /// 兩者皆為 .shared singleton，重複注入冪等無害。所有設定入口統一走此。
+    func settingsSheet(isPresented: Binding<Bool>) -> some View {
+        toastSheet(isPresented: isPresented) {
+            SettingsView()
+                .environmentObject(AppLanguageStore.shared)
+                .environmentObject(AppAppearanceStore.shared)
+        }
+    }
+}
+
 #Preview {
     SettingsView()
+        .environmentObject(AppLanguageStore.shared)
+        .environmentObject(AppAppearanceStore.shared)
 }

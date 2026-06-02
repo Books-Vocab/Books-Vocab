@@ -32,9 +32,7 @@ struct SyncView: View {
                 onPendingRowTapped: handlePendingRowTap,
                 onPendingActionTapped: handlePendingActionTap
             )
-            .toastSheet(isPresented: $showSettings) {
-                SettingsView()
-            }
+            .settingsSheet(isPresented: $showSettings)
             .task {
                 refreshStepLayoutIfIdle()
             }
