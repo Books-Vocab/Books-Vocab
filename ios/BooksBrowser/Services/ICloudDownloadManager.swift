@@ -13,6 +13,8 @@ enum ICloudFileState: Equatable {
     case downloading(Double)
     /// 未下載，等待觸發
     case notDownloaded
+    /// 下載失敗（terminal）— 等待使用者重試
+    case failed
 }
 
 /// 使用 NSMetadataQuery 監控 iCloud ubiquity container 中的 EPUB 下載狀態，
@@ -104,11 +106,16 @@ final class ICloudDownloadManager {
         let url = dir.appendingPathComponent(fileName)
         do {
             try FileManager.default.startDownloadingUbiquitousItem(at: url)
-            if fileStates[fileName] == nil || fileStates[fileName] == .notDownloaded {
+            if fileStates[fileName] == nil
+                || fileStates[fileName] == .notDownloaded
+                || fileStates[fileName] == .failed {
                 fileStates[fileName] = .downloading(0)
             }
             AppLog.book.info("ICloudDownloadManager: download triggered — \(fileName)")
         } catch {
+            // 觸發失敗為 terminal error：標記 .failed 並允許重觸發
+            fileStates[fileName] = .failed
+            triggeredFiles.remove(fileName)
             AppLog.book.error("ICloudDownloadManager: trigger failed — \(fileName): \(error.localizedDescription)")
         }
     }
@@ -141,15 +148,23 @@ final class ICloudDownloadManager {
             let uploadPercent = item.value(
                 forAttribute: NSMetadataUbiquitousItemPercentUploadedKey
             ) as? Double
+            // 下載過程中的錯誤（中途失敗 NSMetadataQuery 不改 status，靠此 key 偵測）
+            let downloadError = item.value(
+                forAttribute: NSMetadataUbiquitousItemDownloadingErrorKey
+            ) as? NSError
 
             if isGather {
-                AppLog.book.info("  [\(fileName)] status=\(status ?? "nil") dl%=\(percent ?? -1) uploading=\(isUploading) ul%=\(uploadPercent ?? -1)")
+                AppLog.book.info("  [\(fileName)] status=\(status ?? "nil") dl%=\(percent ?? -1) uploading=\(isUploading) ul%=\(uploadPercent ?? -1) err=\(downloadError?.localizedDescription ?? "nil")")
             }
 
             let newState: ICloudFileState
             if status == NSMetadataUbiquitousItemDownloadingStatusCurrent
                 || status == NSMetadataUbiquitousItemDownloadingStatusDownloaded {
                 newState = .current
+            } else if let err = downloadError {
+                // 中途下載錯誤 → terminal failed，允許使用者重試
+                newState = .failed
+                AppLog.book.error("ICloudDownloadManager: download error — \(fileName): \(err.localizedDescription)")
             } else if let p = percent, p > 0, p < 100 {
                 newState = .downloading(p / 100.0)
             } else {
@@ -161,7 +176,12 @@ final class ICloudDownloadManager {
                 AppLog.book.info("ICloudDownloadManager: \(fileName) → \(String(describing: newState))")
             }
 
-            // 自動觸發未下載檔案的下載
+            // 失敗後解除觸發鎖，讓使用者重試（或下次 query 變回 notDownloaded）可重觸發
+            if newState == .failed {
+                triggeredFiles.remove(fileName)
+            }
+
+            // 自動觸發未下載檔案的下載（.failed 不自動重觸發，避免持續錯誤無限迴圈）
             if newState == .notDownloaded, !triggeredFiles.contains(fileName) {
                 triggeredFiles.insert(fileName)
                 triggerDownload(for: fileName)

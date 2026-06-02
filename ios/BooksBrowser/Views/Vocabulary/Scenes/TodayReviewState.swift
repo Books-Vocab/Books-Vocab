@@ -41,6 +41,12 @@ final class TodayReviewState {
     var isAutoPlayPaused = false
     var autoplayTask: Task<Void, Never>?
 
+    // MARK: - Cache build
+    // Background full-cache build kicked off in init. Tracked so an early
+    // dismiss (onDisappear) can cancel it instead of letting it run to
+    // completion and mutate preparedCardCache on a torn-down session.
+    private var cacheBuildTask: Task<Void, Never>?
+
     // MARK: - Analytics
 
     let sessionStartTime: Date
@@ -79,10 +85,15 @@ final class TodayReviewState {
             preparedCardCache = Self.buildPreparedCardCache(from: [first])
         }
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
-        // Build remaining cards asynchronously to avoid blocking main thread
+        // Build remaining cards asynchronously to avoid blocking main thread.
+        // [weak self] + handle so an early dismiss can cancel it; without this
+        // the build runs to completion and mutates preparedCardCache on a
+        // torn-down session.
         if queue.count > 1 {
-            Task { @MainActor in
+            cacheBuildTask = Task { @MainActor [weak self] in
+                guard let self else { return }
                 let fullCache = Self.buildPreparedCardCache(from: self.queue)
+                guard !Task.isCancelled else { return }
                 self.preparedCardCache = fullCache
             }
         }
@@ -268,6 +279,14 @@ final class TodayReviewState {
         autoplayTask = nil
         isAutoPlaying = false
         isAutoPlayPaused = false
+    }
+
+    /// Cancel any background work tied to the session lifecycle. Called from the
+    /// view's `onDisappear` so an early dismiss tears down the in-flight cache
+    /// build instead of letting it run to completion and mutate state. Idempotent.
+    func cancelBackgroundWork() {
+        cacheBuildTask?.cancel()
+        cacheBuildTask = nil
     }
 
     func startAutoPlayLoop() {

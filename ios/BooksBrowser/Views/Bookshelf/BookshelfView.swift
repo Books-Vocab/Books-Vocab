@@ -273,9 +273,7 @@ struct BookshelfView: View {
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
         .refreshable {
-            if authManager.isLoggedIn {
-                await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-            }
+            await refreshPodcastCatalog()
         }
     }
 
@@ -350,9 +348,22 @@ struct BookshelfView: View {
                 .padding(.bottom, AppSpacing.s7)
         }
         .refreshable {
-            if authManager.isLoggedIn {
-                await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-            }
+            await refreshPodcastCatalog()
+        }
+    }
+
+    /// Pull-to-refresh entry. Unlike the silent `.task` / background sync, an
+    /// explicit pull that fails its series-list fetch surfaces a warning toast —
+    /// otherwise the user sees the spinner end with no feedback (the bug this
+    /// fixes; mirrors `NotebookListView`'s reconcile-error surface). Partial
+    /// (per-series) and auxiliary (progress/save) failures stay silent: the
+    /// catalog still reconciled, so a toast would be noise.
+    @MainActor
+    private func refreshPodcastCatalog() async {
+        guard authManager.isLoggedIn else { return }
+        let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+        if outcome == .listFetchFailed {
+            toastCoordinator.warning("同步失敗".localized)
         }
     }
 

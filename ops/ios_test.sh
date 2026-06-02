@@ -20,11 +20,13 @@ TIMEOUT=600
 POLL_INTERVAL=3
 GREP_PATTERN=""
 SPECIFIC_TESTS=()
+LIST_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -g|--grep) GREP_PATTERN="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
+    --list) LIST_ONLY=1; shift ;;   # dry-run: print resolved -only-testing flags, no xcodebuild
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
@@ -32,6 +34,9 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
+
+# shellcheck source=lib/ios_test_discovery.sh
+source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
 
 [[ -d "$XCODEPROJ" ]] || { echo "error: $XCODEPROJ not found" >&2; exit 1; }
 
@@ -41,21 +46,13 @@ CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev
 ONLY_FLAGS=()
 
 if [[ -n "$GREP_PATTERN" ]]; then
-  # Auto-discover test method names matching the pattern from all test files.
-  # Swift Testing puts @Test on the line ABOVE `func`, so we grep for `func`
-  # names that appear within the test struct and filter by the user's pattern.
+  # Auto-discover test funcs matching the pattern, attributing each func to its
+  # OWN enclosing top-level container (struct / @Suite struct / class). See
+  # lib/ios_test_discovery.sh for the discovery contract.
   TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
-  for TEST_FILE in "$TEST_DIR"/*.swift; do
-    [[ -f "$TEST_FILE" ]] || continue
-    # Extract struct name from the file
-    STRUCT_NAME=$(grep -E '^struct [a-zA-Z0-9_]+' "$TEST_FILE" | head -1 | sed -E 's/struct ([a-zA-Z0-9_]+).*/\1/')
-    [[ -n "$STRUCT_NAME" ]] || continue
-    while IFS= read -r name; do
-      ONLY_FLAGS+=("-only-testing:BooksBrowserTests/$STRUCT_NAME/$name")
-    done < <(grep -E '^\s+(@Test\s+)?func [a-zA-Z0-9_]+\(' "$TEST_FILE" \
-             | sed -E 's/.*func ([a-zA-Z0-9_]+)\(.*/\1/' \
-             | grep -i "$GREP_PATTERN")
-  done
+  while IFS= read -r flag; do
+    [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
+  done < <(discover_only_flags "$TEST_DIR" "$GREP_PATTERN")
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests matching pattern '$GREP_PATTERN'" >&2
     exit 1
@@ -65,6 +62,16 @@ elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
   for t in "${SPECIFIC_TESTS[@]}"; do
     ONLY_FLAGS+=("-only-testing:BooksBrowserTests/BooksBrowserTests/$t")
   done
+fi
+
+# Dry-run: print resolved flags and exit before touching the lock / xcodebuild.
+if [[ "$LIST_ONLY" -eq 1 ]]; then
+  if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
+    echo "[ios_test] (no -only-testing flags — would run ALL tests)"
+  else
+    printf '%s\n' "${ONLY_FLAGS[@]}"
+  fi
+  exit 0
 fi
 
 # --- Lock acquire (shared with ios_build.sh) ---
@@ -111,10 +118,43 @@ set -e
 
 ELAPSED=$(( $(date +%s) - START ))
 
+# Count tests xcodebuild actually executed, so a SUCCEEDED with zero tests run
+# (bogus -only-testing IDs → "TEST SUCCEEDED" but nothing executed) is caught as
+# a false green instead of being reported as a pass. Sums both reporters:
+#   XCTest:        "Executed N tests, ..."   (one line per suite)
+#   Swift Testing: "✔ Test ... passed" / "✘ Test ... failed" per-test ticks,
+#                  and "Test run with N test(s)" summary.
+count_executed_tests() {
+  local n xc st
+  # XCTest: sum the per-suite "Executed N tests" counts.
+  xc=$(grep -oE 'Executed [0-9]+ test' "$TMPOUT" 2>/dev/null \
+       | grep -oE '[0-9]+' | awk '{s+=$1} END{print s+0}')
+  xc=${xc:-0}
+  # Swift Testing: count per-test pass/fail ticks (grep -c always prints one int).
+  st=$(grep -cE '^[[:space:]]*[✔✘✓✗] Test .+ (passed|failed)' "$TMPOUT" 2>/dev/null)
+  st=${st:-0}
+  n=$(( xc + st ))
+  # Fallback: Swift Testing summary line "Test run with N test(s)".
+  if [[ "$n" -eq 0 ]]; then
+    n=$(grep -oE 'Test run with [0-9]+ test' "$TMPOUT" 2>/dev/null \
+        | grep -oE '[0-9]+' | head -1)
+    n=${n:-0}
+  fi
+  echo "$n"
+}
+
 # Extract summary from xcresult if available
 if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
+  EXECUTED=$(count_executed_tests)
+  if [[ "$EXECUTED" -eq 0 ]]; then
+    echo ""
+    echo "[ios_test] ✗ FALSE GREEN: xcodebuild reported TEST SUCCEEDED but 0 tests executed" >&2
+    echo "[ios_test]   (likely a stale/bogus -only-testing test ID matched nothing) — $CALLER" >&2
+    rm -f "$TMPOUT"
+    exit 1
+  fi
   echo ""
-  echo "[ios_test] ✓ all tests passed (${ELAPSED}s) — $CALLER"
+  echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER"
 elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   # Show failing test details
