@@ -851,6 +851,8 @@
 "podcast.sleepTimer.fired.toast" = "절전 타이머가 종료되어 재생을 일시정지했습니다";
 
 // MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loadFailed.title" = "자막을 불러오지 못했습니다";
+"podcast.subtitle.loadFailed.description" = "오디오는 계속 정상적으로 재생됩니다";
 "podcast.subtitle.loading.hint" = "자막 로드 중…";
 "podcast.subtitle.unavailable.title" = "이 에피소드에는 문장 단위 자막이 없습니다";
 "podcast.subtitle.unavailable.description" = "오디오는 계속 정상적으로 재생됩니다";

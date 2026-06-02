@@ -869,6 +869,8 @@
 "podcast.sleepTimer.fired.toast" = "睡眠定時已結束，播放已暫停";
 
 // MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loadFailed.title" = "字幕載入失敗";
+"podcast.subtitle.loadFailed.description" = "音訊仍可正常播放";
 "podcast.subtitle.loading.hint" = "字幕載入中…";
 "podcast.subtitle.unavailable.title" = "此集無逐句字幕";
 "podcast.subtitle.unavailable.description" = "音訊仍可正常播放";

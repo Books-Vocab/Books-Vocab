@@ -886,6 +886,8 @@
 "podcast.sleepTimer.fired.toast" = "Sleep timer ended — playback paused";
 
 // MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loadFailed.title" = "Subtitle failed to load";
+"podcast.subtitle.loadFailed.description" = "Audio playback continues normally";
 "podcast.subtitle.loading.hint" = "Loading subtitles…";
 "podcast.subtitle.unavailable.title" = "No sentence-level subtitles for this episode";
 "podcast.subtitle.unavailable.description" = "Audio playback continues normally";
