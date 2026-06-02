@@ -22,4 +22,28 @@ struct ReaderSelectionTile<Content: View>: View {
         .enableInjection()
     }
 }
+
+#Preview("ReaderSelectionTile") {
+    AppThemeContainer {
+        ReaderSelectionTilePreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct ReaderSelectionTilePreview: View {
+    @Environment(\.appSkin) private var appSkin
+
+    var body: some View {
+        HStack(spacing: AppSpacing.s3) {
+            ReaderSelectionTile(isSelected: true) {
+                Text("已選").padding(AppSpacing.s3)
+            }
+            ReaderSelectionTile(isSelected: false) {
+                Text("未選").padding(AppSpacing.s3)
+            }
+        }
+        .padding()
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
+    }
+}
 #endif
