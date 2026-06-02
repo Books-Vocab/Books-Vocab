@@ -2,52 +2,42 @@ import Foundation
 import Testing
 @testable import BooksBrowser
 
+/// Episode-layer activation decision.
+///
+/// The episode-list → player split-pane (inline detail on regular layouts) was
+/// collapsed into a single-column push navigation: tapping an episode now always
+/// pushes `PodcastPlayerView` onto BookshelfView's NavigationStack via
+/// `PodcastNavRoute.episode`, on every layout. `activation` therefore returns
+/// `.push` unconditionally — there is no longer an inline branch.
+///
+/// (Series-layer activation is unchanged; see `PodcastSeriesActivationTests`.)
 @MainActor
-@Suite("PodcastDetailRouter")
-struct PodcastDetailRouterTests {
-    @Test func defaultHasNoDetail() {
-        let r = PodcastDetailRouter()
-        #expect(r.selectedEpisodeRemoteId == nil)
-        #expect(r.hasDetail == false)
-    }
-
-    @Test func showDrivesHasDetail() {
-        let r = PodcastDetailRouter()
-        r.show(episodeRemoteId: "ep-1")
-        #expect(r.selectedEpisodeRemoteId == "ep-1")
-        #expect(r.hasDetail == true)
-    }
-
-    @Test func dismissClearsSelection() {
-        let r = PodcastDetailRouter()
-        r.show(episodeRemoteId: "ep-1")
-        r.dismiss()
-        #expect(r.selectedEpisodeRemoteId == nil)
-        #expect(r.hasDetail == false)
-    }
-
-    @Test func showReplacesSelection() {
-        let r = PodcastDetailRouter()
-        r.show(episodeRemoteId: "ep-1")
-        r.show(episodeRemoteId: "ep-2")
-        #expect(r.selectedEpisodeRemoteId == "ep-2")
-    }
-
-    @Test func activationUsesInlineDetailOnRegularLayout() {
+@Suite("PodcastEpisodeActivation")
+struct PodcastEpisodeActivationTests {
+    @Test func pushesOnRegularLayout() {
         #expect(
             PodcastEpisodeActivation.activation(
                 episodeRemoteId: "ep-1",
                 layoutMode: .regular
-            ) == .inlineDetail(episodeRemoteId: "ep-1")
+            ) == .push(route: .episode(episodeRemoteId: "ep-1"))
         )
     }
 
-    @Test func activationUsesPushOnCompactLayout() {
+    @Test func pushesOnCompactLayout() {
         #expect(
             PodcastEpisodeActivation.activation(
                 episodeRemoteId: "ep-1",
                 layoutMode: .compact
             ) == .push(route: .episode(episodeRemoteId: "ep-1"))
+        )
+    }
+
+    @Test func pushRouteCarriesEpisodeIdVerbatim() {
+        #expect(
+            PodcastEpisodeActivation.activation(
+                episodeRemoteId: "abc-xyz-42",
+                layoutMode: .regular
+            ) == .push(route: .episode(episodeRemoteId: "abc-xyz-42"))
         )
     }
 }
