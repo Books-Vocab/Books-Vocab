@@ -27,8 +27,13 @@ struct VocabActivityHeatmap: View {
 
     private let cellSize: CGFloat = 13
     private let cellSpacing: CGFloat = 3
-    private let weekdayLabels = ["一", "三", "五", "日"]
     private let weekdayIndices = [0, 2, 4, 6] // Mon, Wed, Fri, Sun (Monday=0)
+    // Locale-aware, Monday-first; subset to alternate rows (Mon/Wed/Fri/Sun)
+    // to match the heatmap's every-other-row label layout.
+    private let weekdayLabels: [String] = {
+        let all = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
+        return [0, 2, 4, 6].compactMap { all.indices.contains($0) ? all[$0] : nil }
+    }()
 
     @State private var grid: [[CellData]] = []
 
