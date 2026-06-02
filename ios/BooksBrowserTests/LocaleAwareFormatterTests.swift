@@ -71,6 +71,23 @@ struct LocaleAwareFormatterTests {
         }
     }
 
+    @Test func test_mondayFirstWeekdaySymbols_count_and_locale() async throws {
+        let store = AppLanguageStore.shared
+        defer { store.setLanguage(.system) }
+
+        store.setLanguage(.english)
+        let en = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
+        #expect(en.count == 7)
+        // veryShort English: Sun..Sat = S,M,T,W,T,F,S → Monday-first = M,T,W,T,F,S,S
+        #expect(en == ["M", "T", "W", "T", "F", "S", "S"])
+
+        store.setLanguage(.japanese)
+        let ja = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
+        #expect(ja.count == 7)
+        // Japanese veryShort weekday symbols are 月火水木金土日; Monday-first:
+        #expect(ja == ["月", "火", "水", "木", "金", "土", "日"])
+    }
+
     @Test func test_dateStyle_returns_locale_bound_copy() async throws {
         let store = AppLanguageStore.shared
         store.setLanguage(.japanese)
