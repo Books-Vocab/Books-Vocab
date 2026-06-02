@@ -58,6 +58,12 @@ extension KGService {
             await MainActor.run { QuotaStore.shared.update(fraction: payload.fraction, resetSeconds: payload.reset_seconds) }
         } catch {
             AppLog.kg.warning("fetchQuota failed: \(error.localizedDescription)")
+            // fetchQuota runs on a timer — only surface unexpected (non-network/cancel)
+            // failures so quota response schema drift doesn't fail silently.
+            if !(error is CancellationError),
+               !(error is URLError) {
+                AppCrashReporting.record(error, context: "kg.quota.decode")
+            }
         }
     }
 }
