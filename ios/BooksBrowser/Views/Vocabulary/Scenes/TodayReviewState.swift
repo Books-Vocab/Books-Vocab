@@ -272,29 +272,33 @@ final class TodayReviewState {
 
     func startAutoPlayLoop() {
         autoplayTask?.cancel()
-        autoplayTask = Task { @MainActor in
-            while !Task.isCancelled && isAutoPlaying && !isAutoPlayPaused {
-                guard currentIndex < queue.count else {
-                    stopAutoPlay()
+        autoplayTask = Task { @MainActor [weak self] in
+            // [weak self] breaks the state → autoplayTask → closure → state
+            // retain cycle. If state is deallocated mid-loop the guard exits
+            // and the cancelled task tears down naturally.
+            while !Task.isCancelled {
+                guard let self, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
+                guard self.currentIndex < self.queue.count else {
+                    self.stopAutoPlay()
                     return
                 }
 
-                if revealStage == .front {
+                if self.revealStage == .front {
                     try? await Task.sleep(for: .seconds(2))
-                    guard !Task.isCancelled && isAutoPlaying && !isAutoPlayPaused else { return }
-                    advanceReveal()
+                    guard let self, !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
+                    self.advanceReveal()
                 }
 
                 try? await Task.sleep(for: .seconds(4))
-                guard !Task.isCancelled && isAutoPlaying && !isAutoPlayPaused else { return }
+                guard let self, !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
 
-                if currentIndex < queue.count - 1 {
+                if self.currentIndex < self.queue.count - 1 {
                     withAnimation(AppMotion.reviewNavigationSpring) {
-                        revealStage = .front
-                        currentIndex += 1
+                        self.revealStage = .front
+                        self.currentIndex += 1
                     }
                 } else {
-                    stopAutoPlay()
+                    self.stopAutoPlay()
                     return
                 }
             }
