@@ -224,8 +224,16 @@ struct PodcastPlayerView: View {
             pushState = PodcastProgressPushState()
             loadEpisode()
         }
-        .onChange(of: allVocabulary) { _, newValue in
-            translationHandler.loadLookedUpWords(from: newValue)
+        // Trigger on `.count` (新增/刪除 entry) rather than the whole array,
+        // matching ReaderView.swift's deliberate choice (see its
+        // `.onChange(of: allVocabulary.count)`). The lookedUp set is derived
+        // purely from word identity (word + inflections + rootForm of entries
+        // passing `shouldAppearInReader`), so a background-sync LWW write that
+        // only bumps an existing entry's `updatedAt` must NOT force a full
+        // `loadLookedUpWords` recompute. Keying on the entire `[VocabularyEntry]`
+        // re-ran it on every field mutation — pure waste during sync.
+        .onChange(of: allVocabulary.count) { _, _ in
+            translationHandler.loadLookedUpWords(from: allVocabulary)
         }
         .onAppear {
             translationHandler.loadLookedUpWords(from: allVocabulary)
