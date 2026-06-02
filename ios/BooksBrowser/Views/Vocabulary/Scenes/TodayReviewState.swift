@@ -156,8 +156,16 @@ final class TodayReviewState {
         tappedLink = nil
         guard let entry = currentEntry else { return }
         entry.mutateLink(id: link.id) { $0.withHidden(true) }
-        linkedEntryLookup[link.cardId]?.mutateLink(id: link.id) { $0.withHidden(true) }
         rebuildCacheForEntry(entry)
+        // Bidirectional link target: if it lives in the review queue its
+        // prepared-card cache is now stale too. VocabularyEntry is a class, so
+        // match by identity. currentEntry (always in queue) is rebuilt above.
+        if let target = linkedEntryLookup[link.cardId] {
+            target.mutateLink(id: link.id) { $0.withHidden(true) }
+            if target !== entry, queue.contains(where: { $0 === target }) {
+                rebuildCacheForEntry(target)
+            }
+        }
     }
 
     func rebuildCacheForEntry(_ entry: VocabularyEntry) {
