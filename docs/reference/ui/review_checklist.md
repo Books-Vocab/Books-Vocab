@@ -4,7 +4,7 @@ authority: derived
 update_trigger: manual
 scope:
   - ios/BooksBrowser/
-verified_against: d96d08ca
+verified_against: 7fcbcffc
 -->
 # UI Review Checklist
 
@@ -68,7 +68,7 @@ Scope: `ios/BooksBrowser`
 對齊 `docs/sop/ui-design.md` 的 Mochi 化北極星：
 
 - [ ] 頁面 bg 與 toolbar / tab bar 是否同色？（避免 chrome 改色分區）
-- [ ] cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 32` 的 hr-style divider？
+- [ ] cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 16` 的 hr-style divider？
 - [ ] shadow 是否限制在 z0 / z1（list/resting）或 z3+（modal/overlay）？無 raw `.shadow(...)`？
 - [ ] 強調色是否限制在四軸（`brandHero` / `ctaCritical` / `accent` / `inlineCode`）內？無第五色亂入？
 - [ ] 非按鈕互動是否只動 bg-color / opacity，無 transform？
