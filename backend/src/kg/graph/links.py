@@ -42,7 +42,15 @@ class _LinksMixin:
         confidence: float,
         reason: str,
     ) -> GraphLink:
-        """Create and store a new link. Disk write happens outside the lock."""
+        """Create and store a new link. Idempotent per pair; disk write outside lock.
+
+        The sole caller (create_manual_link) does check-then-act: it reads
+        find_link_between == None, runs a multi-second LLM call without holding
+        _lock, then calls add_link. Two concurrent manual-link requests for the
+        same pair therefore both reach add_link. Re-checking existence *inside*
+        _lock closes the TOCTOU gap: an already-linked (active/hidden) pair
+        returns the existing link instead of inserting a duplicate.
+        """
         link = GraphLink(
             from_id=from_id,
             to_id=to_id,
@@ -51,6 +59,9 @@ class _LinksMixin:
             reason=reason,
         )
         with self._lock:
+            existing = self._find_link_between_unlocked(from_id, to_id)
+            if existing is not None:
+                return existing
             self._links[link.id] = link
             self._index_link(link)
             snapshot = self._links_to_serializable()
@@ -115,19 +126,27 @@ class _LinksMixin:
         with self._lock:
             return self._has_link_unlocked(id_a, id_b)
 
+    def _find_link_between_unlocked(self, id_a: str, id_b: str) -> GraphLink | None:
+        """Lock-free find of an active/hidden link for a pair (internal use).
+
+        Callers must already hold _lock. The public find_link_between takes the
+        lock; add_link reuses this while holding the lock to dedup in-place.
+        """
+        candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
+        for lid in candidates:
+            lk = self._links.get(lid)
+            if lk is None or lk.status not in ("active", "hidden"):
+                continue
+            if (lk.from_id == id_a and lk.to_id == id_b) or (
+                lk.from_id == id_b and lk.to_id == id_a
+            ):
+                return lk
+        return None
+
     def find_link_between(self, id_a: str, id_b: str) -> GraphLink | None:
         """Find active or hidden link between two cards (bidirectional). Returns None for deprecated/absent."""
         with self._lock:
-            candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
-            for lid in candidates:
-                lk = self._links.get(lid)
-                if lk is None or lk.status not in ("active", "hidden"):
-                    continue
-                if (lk.from_id == id_a and lk.to_id == id_b) or (
-                    lk.from_id == id_b and lk.to_id == id_a
-                ):
-                    return lk
-            return None
+            return self._find_link_between_unlocked(id_a, id_b)
 
     def get_link(self, link_id: str) -> GraphLink | None:
         """Return a link by ID, or None if not found."""
