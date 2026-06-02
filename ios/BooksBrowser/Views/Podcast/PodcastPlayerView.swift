@@ -558,12 +558,29 @@ struct PodcastPlayerView: View {
         saveProgress(vm: vm, episodeRemoteId: episodeId, reason: reason)
     }
 
+    /// Decides whether a `position == 0` write is meaningful.
+    ///
+    /// A `.tick` at position 0 is pure noise (audio not advanced yet) and must
+    /// be dropped. But an explicit `.pause` / `.episodeSwitch` at position 0 is
+    /// a real user-visible transition that must persist — notably when a
+    /// *completed* episode is reopened: `restoreProgress` skips the seek for
+    /// completed rows (see L541-545), so `currentTime` stays 0; if the user
+    /// then pauses immediately, the only way to record that (and let the row
+    /// drop out of "completed") is to honour the position-0 pause write.
+    static func shouldPersist(
+        currentTime: TimeInterval,
+        reason: PodcastProgressPushState.Reason
+    ) -> Bool {
+        if currentTime == 0 && reason == .tick { return false }
+        return true
+    }
+
     private func saveProgress(
         vm: PodcastPlayerViewModel,
         episodeRemoteId: String,
         reason: PodcastProgressPushState.Reason = .pause
     ) {
-        if vm.currentTime == 0 { return }
+        guard Self.shouldPersist(currentTime: vm.currentTime, reason: reason) else { return }
         let targetId = episodeRemoteId
         let descriptor = FetchDescriptor<PodcastProgress>(
             predicate: #Predicate { $0.episodeRemoteId == targetId },
