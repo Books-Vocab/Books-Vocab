@@ -62,4 +62,4 @@ INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
 # Audio direction tags [excitement] / [laughs] — stripped before alignment/QA.
 DIRECTION_RE = re.compile(r"\[.*?\]")
 # Legacy SSML markup in old workspaces (Gemini 3.1 has no SSML).
-SSML_RE = re.compile(r"<[^>]+")
+SSML_RE = re.compile(r"<[^>]+>")
