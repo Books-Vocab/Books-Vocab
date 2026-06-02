@@ -340,17 +340,28 @@ final class TodayReviewState {
         revealStage = .front
         currentIndex += 1
 
-        if currentIndex >= queue.count {
-            ReviewSessionStore.clear()
-            clearSnapshot()
-            let durationMs = Int(Date().timeIntervalSince(sessionStartTime) * 1000)
-            AppAnalytics.track(.reviewSessionEnded(
-                remembered: rememberedCount,
-                forgot: forgotCount,
-                completed: true,
-                durationMs: durationMs
-            ))
-        }
+        finishSessionIfComplete()
+    }
+
+    /// Session-completion teardown. Runs once `currentIndex` has advanced past
+    /// the last card (`currentIndex >= queue.count`), at which point
+    /// `currentEntry` is nil and the presenter shows `completionState`. Idempotent
+    /// on the index check, but the side effects (clear / analytics) are NOT — only
+    /// call this on the *transition* into completion (i.e. right after the index
+    /// that advanced past the end). All paths that can reach the end-of-queue
+    /// (normal final submit + repeated submit on the already-scored last card)
+    /// funnel through here so the completion contract stays single-sourced.
+    private func finishSessionIfComplete() {
+        guard currentIndex >= queue.count else { return }
+        ReviewSessionStore.clear()
+        clearSnapshot()
+        let durationMs = Int(Date().timeIntervalSince(sessionStartTime) * 1000)
+        AppAnalytics.track(.reviewSessionEnded(
+            remembered: rememberedCount,
+            forgot: forgotCount,
+            completed: true,
+            durationMs: durationMs
+        ))
     }
 
     func persistSnapshot() {
@@ -417,9 +428,13 @@ final class TodayReviewState {
 
     private func advancePastAlreadyScoredCard() {
         revealStage = .front
-        if currentIndex < queue.count - 1 {
-            currentIndex += 1
-        }
+        // Always advance, including past the last card: when the user
+        // re-submits on an already-scored final card we must push currentIndex
+        // to queue.count so currentEntry becomes nil and the session reaches its
+        // completion state. Previously this guarded `< queue.count - 1`, which
+        // pinned the last card forever and the completion teardown never ran.
+        currentIndex += 1
         persistSnapshot()
+        finishSessionIfComplete()
     }
 }
