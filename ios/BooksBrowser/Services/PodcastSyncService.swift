@@ -84,7 +84,7 @@ final class PodcastSyncService {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await sharedURLSession.data(for: request)
         return data
     }
 
