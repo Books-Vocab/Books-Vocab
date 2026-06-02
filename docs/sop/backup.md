@@ -14,7 +14,7 @@ KG 用**三層 backup**互相補位。各層獨立,單一層失效不阻擋整�
 | 層 | 工具 | 範圍 | 頻率 | 保留 | RPO | RTO | 失敗代價 |
 |---|---|---|---|---|---|---|---|
 | L1 | Lightsail AutoSnapshot | **整個 instance**(docker / `.env` / certs / data / OS) | 每日 UTC 22:00 | 7 份 | 24h | 30–60 min | 整機 down,還原慢但完整 |
-| L2 | 本機 `devops.sh cmd_backup` + `backup_verify.sh` | `~/knowledge_graph_api/`(scp tar 到本機) | 手動(發版前 / 事故前) | 全部歷史(本機磁碟) | 視操作時機 | 5–10 min | 本機磁碟掛 |
+| L2 | 本機 `devops.sh cmd_backup` + `backup_verify.sh` | `~/knowledge_graph_api/`(rsync 增量 + tar 到本機) | 手動(發版前 / 事故前) | 全部歷史(本機磁碟) | 視操作時機 | 5–10 min | 本機磁碟掛 |
 | L3 | AWS S3(本 SOP) | `data/`(tar+gz streaming) | 每日 UTC 03:00 (cron) | Versioning + **MFA Delete**,**無 lifecycle**(AWS 限制兩者互斥)→ 永久累積,需手動清(見 `backup_restore.md §7`) | 24h | ~15 min | S3 region 級故障 |
 
 ## 為什麼三層
