@@ -195,6 +195,11 @@ def render_palette_md(family: str) -> str:
     and called out, so e.g. the 2.5 block tells the author it has no energy/pause
     tags (use prose/pacing instead) rather than silently leaving them available.
     """
+    if family not in KNOWN_FAMILIES:
+        raise ValueError(
+            f"no audio-tag palette registered for family {family!r}; "
+            f"known: {sorted(KNOWN_FAMILIES)}. Add it to TAG_CONCEPTS."
+        )
     groups: list[tuple[str, str]] = [
         ("emotion", "Emotion"),
         ("energy", "Energy (paragraph-level dynamics)"),
