@@ -37,14 +37,15 @@ private enum EpisodeSort: String, CaseIterable, Identifiable {
 struct PodcastEpisodeListView: View {
     @ObserveInjection private var inject
     let seriesId: String
-    /// workspace 模式（Catalyst 2D block stack）：set 時集數 tap 改呼此 closure 開
-    /// player **子欄**。nil = compact push（regular 永遠經 workspace 注入此 closure）。
-    var onSelectEpisode: ((String) -> Void)? = nil
     @Environment(\.appSkin) private var skin
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.kgService) private var kgService
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// regular（Mac/iPad）雙欄右欄選定的集數；compact 下其 selectedEpisodeRemoteId
+    /// 恆為 nil（改走 NavigationLink push）。
+    @State private var detailRouter = PodcastDetailRouter()
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
@@ -144,6 +145,8 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.podcastDetailRouter, detailRouter)
+        .podcastDetailPresentation(router: detailRouter, layoutMode: layoutMode)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 followToggleButton
@@ -276,10 +279,13 @@ struct PodcastEpisodeListView: View {
                 return L10n.string("開始播放")
             }()
             let icon = unavailable ? "icloud.slash" : "play.fill"
-            if let onSelectEpisode {
-                // workspace 模式：hero CTA 同 episodeRow，開 player 子欄（不走內建 inline player）。
+            switch PodcastEpisodeActivation.activation(
+                episodeRemoteId: target.remoteId,
+                layoutMode: layoutMode
+            ) {
+            case .inlineDetail(let episodeRemoteId):
                 Button {
-                    onSelectEpisode(target.remoteId)
+                    detailRouter.show(episodeRemoteId: episodeRemoteId)
                     warmConnection(for: target)
                 } label: {
                     Label(label, systemImage: icon)
@@ -287,9 +293,8 @@ struct PodcastEpisodeListView: View {
                 .buttonStyle(.appAction(.primary))
                 .disabled(unavailable)
                 .frame(maxWidth: 280)
-            } else {
-                // 非 workspace = compact push（regular 已走 workspace via onSelectEpisode）。
-                NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
+            case .push(let route):
+                NavigationLink(value: route) {
                     Label(label, systemImage: icon)
                 }
                 .buttonStyle(.appAction(.primary))
@@ -364,17 +369,24 @@ struct PodcastEpisodeListView: View {
         )
         .contentShape(Rectangle())
 
-        if let onSelectEpisode {
-            // workspace 模式：tap → 開 player 子欄（Miller 截斷右側）。
+        switch PodcastEpisodeActivation.activation(
+            episodeRemoteId: episode.remoteId,
+            layoutMode: layoutMode
+        ) {
+        case .inlineDetail(let episodeRemoteId):
             Button {
-                onSelectEpisode(episode.remoteId)
+                detailRouter.show(episodeRemoteId: episodeRemoteId)
                 warmConnection(for: episode)
             } label: { row }
             .buttonStyle(.plain)
             .disabled(!episode.audioAvailable)
-        } else {
-            // 非 workspace = compact push（regular 已走 workspace via onSelectEpisode）。
-            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
+            .background(
+                episode.remoteId == detailRouter.selectedEpisodeRemoteId
+                    ? skin.palette.accentSubtle
+                    : Color.clear
+            )
+        case .push(let route):
+            NavigationLink(value: route) {
                 row
             }
             .buttonStyle(.plain)
