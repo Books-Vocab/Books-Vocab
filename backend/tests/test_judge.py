@@ -197,6 +197,53 @@ class TestParseBatchResponse:
         assert results["id2"] is None  # beta missing from response
         assert results["id3"].link == "contrasts_with"  # found via word fallback
 
+    def test_out_of_range_confidence_is_clamped(self):
+        """Finite out-of-range confidence stays clamped to [0,1] and keeps the link."""
+        content = '[{"link": "shares_usage", "confidence": 1.5, "reason": "r"}]'
+        raw: list[dict] = []
+        results = _parse_batch_response(content, [("id1", "a", "ma")], raw_decisions=raw)
+        assert results["id1"] is not None
+        assert results["id1"].confidence == 1.0
+        assert raw[0]["accepted"] == 1
+        assert raw[0]["confidence"] == 1.0
+
+    def test_nan_confidence_bare_json_rejected(self):
+        """Bare JSON NaN must NOT be accepted as confidence=1.0 (graph poisoning)."""
+        content = '[{"link": "shares_usage", "confidence": NaN, "reason": "r"}]'
+        raw: list[dict] = []
+        results = _parse_batch_response(content, [("id1", "a", "ma")], raw_decisions=raw)
+        assert results["id1"] is None
+        assert raw[0]["verdict"] == "parse_error"
+        assert raw[0]["accepted"] == 0
+        assert raw[0]["confidence"] == 0.0
+
+    def test_infinity_confidence_bare_json_rejected(self):
+        """Bare JSON Infinity must NOT be accepted as confidence=1.0."""
+        content = '[{"link": "shares_usage", "confidence": Infinity, "reason": "r"}]'
+        raw: list[dict] = []
+        results = _parse_batch_response(content, [("id1", "a", "ma")], raw_decisions=raw)
+        assert results["id1"] is None
+        assert raw[0]["verdict"] == "parse_error"
+        assert raw[0]["accepted"] == 0
+
+    def test_nan_confidence_string_rejected(self):
+        """String "NaN" coerced via float() must NOT be accepted as confidence=1.0."""
+        content = '[{"link": "shares_usage", "confidence": "NaN", "reason": "r"}]'
+        raw: list[dict] = []
+        results = _parse_batch_response(content, [("id1", "a", "ma")], raw_decisions=raw)
+        assert results["id1"] is None
+        assert raw[0]["verdict"] == "parse_error"
+        assert raw[0]["accepted"] == 0
+
+    def test_inf_confidence_string_rejected(self):
+        """String "inf" coerced via float() must NOT be accepted as confidence=1.0."""
+        content = '[{"link": "shares_usage", "confidence": "inf", "reason": "r"}]'
+        raw: list[dict] = []
+        results = _parse_batch_response(content, [("id1", "a", "ma")], raw_decisions=raw)
+        assert results["id1"] is None
+        assert raw[0]["verdict"] == "parse_error"
+        assert raw[0]["accepted"] == 0
+
 
 class TestJudgeChunking:
     def test_large_batch_splits_into_chunks(self):
