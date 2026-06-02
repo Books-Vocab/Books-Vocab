@@ -121,6 +121,13 @@ struct PDFReaderView: View {
             }
         }
         .task { loadDocument() }
+        .onDisappear {
+            // dismiss / pop 時取消 in-flight 翻譯 task，避免網路 Task
+            // 續跑到完成後寫回已棄置的 handler（多餘網路/寫入）。
+            // 用 onDisappear 而非 @MainActor @Observable 的 deinit
+            // （時序與 actor 隔離易出錯）。
+            handler.cancelCurrentTranslationTask()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .macReaderImmersion()
         .sheet(isPresented: $showLoginSheet) {
