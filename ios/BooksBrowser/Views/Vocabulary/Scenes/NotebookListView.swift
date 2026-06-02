@@ -19,7 +19,6 @@ struct NotebookListView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.appSkin) private var skin
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var coordinator = NotebookListCoordinator()
     @State private var showLoginSheet = false
@@ -45,9 +44,6 @@ struct NotebookListView: View {
     @State private var showFilterSheet = false
     @State private var navigationPath = NavigationPath()
     @State private var detailState = DetailRouter()
-    @State private var isEditingDetailEntry = false
-
-    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
@@ -365,11 +361,8 @@ struct NotebookListView: View {
         .environment(\.detailRouter, detailState)
         .modifier(NotebookDetailPresentation(
             detailState: detailState,
-            layoutMode: layoutMode,
             allEntries: allEntries,
-            currentUserID: authManager.userId,
-            isEditingDetailEntry: $isEditingDetailEntry,
-            navigationPath: $navigationPath
+            currentUserID: authManager.userId
         ))
         // 新增單字本 ⌘N(Mac menu)— 未登入不 publish → menu 自動 disable(對應 view 內 .disabled(!isLoggedIn))。
         .focusedSceneValue(
