@@ -285,12 +285,12 @@ final class TodayReviewState {
 
                 if self.revealStage == .front {
                     try? await Task.sleep(for: .seconds(2))
-                    guard let self, !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
+                    guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
                     self.advanceReveal()
                 }
 
                 try? await Task.sleep(for: .seconds(4))
-                guard let self, !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
+                guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
 
                 if self.currentIndex < self.queue.count - 1 {
                     withAnimation(AppMotion.reviewNavigationSpring) {
