@@ -7,9 +7,11 @@
 //    掛單一 PodcastPlayerView，靠其 .task(id:) swap 集數。
 //  - compact（iPhone）：右欄不掛，沿用 episodesSection 的 NavigationLink push。
 //
-//  刻意偏離 vocab（後者用 WordDetailSheet wrapInNavigation:false + 自製 header，
-//  不嵌套 NavigationStack）：此處為 host player 既有 ToolbarItem(.topBarTrailing)
-//  設定鍵，傳 wrapInNavigation:true，由 player 自帶 NavigationStack。
+//  與 vocab 一致：inline player **不**嵌套 NavigationStack。早期 inline 為了 host
+//  player 的 .topBarTrailing 設定鍵而傳 wrapInNavigation:true 自帶 NavigationStack，
+//  但該內層 stack 嵌在 BookshelfView 外層 NavigationStack subtree 內，會持久破壞
+//  外層 reader push（NAVDBG 坐實，Catalyst SwiftUI 缺陷）。現 player 依 layout 自判
+//  chrome：inline 設定鍵走 content overlay，不再需要 nav bar / 內層 stack。
 //
 
 import SwiftUI
@@ -48,7 +50,11 @@ struct PodcastDetailPresentation: ViewModifier {
                                         }
                                     }
                                 )
-                                PodcastPlayerView(episodeId: id, wrapInNavigation: true)  // 唯一傳 true 處
+                                // player 不再自帶內層 NavigationStack（過去的
+                                // wrapInNavigation:true 會持久破壞 BookshelfView 外層
+                                // NavigationStack 的 reader push — NAVDBG 坐實）。
+                                // inline 設定鍵改由 player 自身 content overlay 呈現。
+                                PodcastPlayerView(episodeId: id)
                                     .frame(width: dragWidth ?? effectivePanelWidth)
                             }
                             .transition(.drawerReveal)
