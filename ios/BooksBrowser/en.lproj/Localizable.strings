@@ -906,6 +906,7 @@
 "calendar.month.next" = "Next month";
 "notebook.toolbar.archive" = "Archive";
 "notebook.list.loading" = "Loading notebooks…";
+"a11y.action.close" = "Close";
 "a11y.toggle.on" = "On";
 "a11y.toggle.off" = "Off";
 "todayReview.fold.collapse" = "Collapse";
