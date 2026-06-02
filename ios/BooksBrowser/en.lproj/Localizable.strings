@@ -948,3 +948,4 @@
 "已匯入 %@ 本，%@ 本失敗" = "Imported %@, %@ failed";
 "podcast.player.missingEpisode.title" = "Episode not synced yet";
 "podcast.player.missingEpisode.description" = "Local data for this episode is not ready. Try again shortly, or return to the library and sync again.";
+"iCloud 下載失敗，點擊重試" = "iCloud download failed. Tap to retry.";

@@ -915,3 +915,4 @@
 "已匯入 %@ 本，%@ 本失敗" = "%@冊をインポート、%@冊が失敗";
 "podcast.player.missingEpisode.title" = "エピソードはまだ同期されていません";
 "podcast.player.missingEpisode.description" = "このエピソードのローカルデータはまだ準備できていません。少し待ってから再試行するか、ライブラリに戻って再同期してください。";
+"iCloud 下載失敗，點擊重試" = "iCloudのダウンロードに失敗しました。タップして再試行。";

@@ -931,3 +931,4 @@
 "已匯入 %@ 本，%@ 本失敗" = "已匯入 %@ 本，%@ 本失敗";
 "podcast.player.missingEpisode.title" = "集數尚未同步";
 "podcast.player.missingEpisode.description" = "這集的本機資料還沒準備好。請稍後重試，或回到書庫重新同步。";
+"iCloud 下載失敗，點擊重試" = "iCloud 下載失敗，點擊重試";

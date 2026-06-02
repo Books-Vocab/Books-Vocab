@@ -916,3 +916,4 @@
 "已匯入 %@ 本，%@ 本失敗" = "已导入 %@ 本，%@ 本失败";
 "podcast.player.missingEpisode.title" = "集数尚未同步";
 "podcast.player.missingEpisode.description" = "这一集的本机数据还没准备好。请稍后重试，或回到书库重新同步。";
+"iCloud 下載失敗，點擊重試" = "iCloud 下载失败，点击重试";
