@@ -116,10 +116,12 @@ final class SyncCoordinator: SyncCoordinating {
                         let words = entries.map(\.word)
                         do {
                             let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
-                            // Delete locally for successfully deleted words
-                            let deletedSet = Set(response.deleted_words)
+                            // Locally converge both server-deleted AND not_found words.
+                            // not_found = 已不存在於 server，刪除意圖已達成，必須本地移除，
+                            // 否則永遠 failed+delete → 每次 sync 回 not_found → 卡死。
+                            let resolvableSet = Self.locallyResolvableDeletes(from: response)
                             for entry in entries {
-                                if deletedSet.contains(entry.word) {
+                                if resolvableSet.contains(entry.word) {
                                     modelContext.delete(entry)
                                     deleted += 1
                                 } else {
@@ -355,6 +357,22 @@ final class SyncCoordinator: SyncCoordinating {
         if sanitized > 0 {
             modelContext.safeSave()
         }
+    }
+
+    /// Batch-delete 回應中「可在本地安全收斂(刪除)」的字集合。
+    ///
+    /// = `deleted_words ∪ not_found`。兩者都是 happy-path:
+    /// - `deleted_words`：server 這次成功刪掉的字。
+    /// - `not_found`：server 上本就不存在的字（前一次已刪 / race）。對本地而言
+    ///   刪除意圖已達成，必須同樣本地移除，否則該 entry 永遠標 `failed+delete`
+    ///   → 每次 sync server 都回 `not_found` → 永久卡死的隱形重試迴圈。
+    ///
+    /// 只有「既不在 deleted_words 也不在 not_found」的字才是真正的 server 異常，
+    /// 應 `markSyncFailed()` 重試。Set union 自然去重（兩集合理論上不重疊，但不依賴此前提）。
+    static func locallyResolvableDeletes(
+        from response: KGBatchDeleteResponse
+    ) -> Set<String> {
+        Set(response.deleted_words).union(response.not_found)
     }
 
     /// Per-notebook isolated trigger pipeline 呼叫迴圈。

@@ -932,6 +932,86 @@ struct BooksBrowserTests {
         #expect(adds.first?.word == "alive")
     }
 
+    // MARK: - batch-delete not_found convergence (track-7)
+
+    @Test
+    func locallyResolvableDeletes_unionsDeletedAndNotFound() {
+        // not_found = server 上已不存在 = 刪除意圖已達成 = 可本地收斂。
+        // 必須與 deleted_words 走同一條本地刪除路徑，否則永久卡死重試。
+        let response = KGBatchDeleteResponse(
+            deleted: 2,
+            deleted_words: ["alpha", "beta"],
+            not_found: ["gamma", "delta"]
+        )
+        let resolvable = SyncCoordinator.locallyResolvableDeletes(from: response)
+        #expect(resolvable == ["alpha", "beta", "gamma", "delta"])
+    }
+
+    @Test
+    func locallyResolvableDeletes_overlapIsDeduped() {
+        // 防禦：deleted_words 與 not_found 若 server 端意外重疊，Set union 去重。
+        let response = KGBatchDeleteResponse(
+            deleted: 1,
+            deleted_words: ["alpha"],
+            not_found: ["alpha"]
+        )
+        #expect(SyncCoordinator.locallyResolvableDeletes(from: response) == ["alpha"])
+    }
+
+    @Test @MainActor
+    func batchDeleteClassification_notFoundConvergesLocally_notMarkedFailed() throws {
+        // Full-fidelity regression guard: replays the EXACT classification loop
+        // from startSync's batch-delete happy path over real VocabularyEntry +
+        // ModelContext. Asserts a not_found word is LOCALLY DELETED (intent met),
+        // a deleted_words word is locally deleted, and a genuinely-unresolved word
+        // (in neither list = real server anomaly) is markSyncFailed for retry.
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let ctx = ModelContext(container)
+
+        func makePendingDelete(_ word: String) -> VocabularyEntry {
+            let e = VocabularyEntry(word: word, translation: "t", context: "ctx", bookTitle: "B")
+            e.markSynced()
+            e.queueDelete()
+            ctx.insert(e)
+            return e
+        }
+        let deletedWord = makePendingDelete("alpha")    // server deleted this call
+        let notFoundWord = makePendingDelete("gamma")   // server: already gone
+        let stuckWord = makePendingDelete("omega")      // neither → real anomaly
+        try ctx.save()
+
+        let entries = [deletedWord, notFoundWord, stuckWord]
+        let response = KGBatchDeleteResponse(
+            deleted: 1,
+            deleted_words: ["alpha"],
+            not_found: ["gamma"]
+        )
+
+        // --- Production classification loop (mirror of SyncCoordinator) ---
+        let resolvableSet = SyncCoordinator.locallyResolvableDeletes(from: response)
+        for entry in entries {
+            if resolvableSet.contains(entry.word) {
+                ctx.delete(entry)
+            } else {
+                entry.markSyncFailed()
+            }
+        }
+        ctx.save()
+        // --- end mirror ---
+
+        // not_found + deleted_words → locally hard-deleted (tombstoned).
+        #expect(deletedWord.isDeleted)
+        #expect(notFoundWord.isDeleted)
+        #expect(!notFoundWord.isFailed)  // crucial: NOT stuck in failed+delete retry
+
+        // Only the genuinely-unresolved word stays as a retryable failure.
+        #expect(!stuckWord.isDeleted)
+        #expect(stuckWord.isFailedDelete)
+    }
+
     @Test func mutateLinkCleansUpEmptyGroup() {
         let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
         let link1 = KGCardLinkSummary(id: "link-1", cardId: "c1", word: "alpha", kind: "synonym", label: "synonym", confidence: 0.9, reason: "test")
