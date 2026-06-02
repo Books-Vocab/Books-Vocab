@@ -33,6 +33,10 @@ class KGSettings:
     embedding_dim: int = 3072
     gemini_temperature: float = 0.3
     judge_temperature: float = 0.1
+    # Minimum confidence for a judge link to be accepted. Lower this when
+    # switching to a lower-calibrated judge model to avoid silently rejecting
+    # all links. Default 0.7 preserves prior hardcoded behavior.
+    judge_confidence_threshold: float = 0.7
 
     # Graph
     similarity_threshold: float = 0.70
@@ -117,6 +121,7 @@ def load_settings() -> KGSettings:
         admin_password=os.getenv("ADMIN_PASSWORD", ""),
         pro_daily_limit_usd=float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30")),
         free_daily_limit_usd=float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03")),
+        judge_confidence_threshold=float(os.getenv("JUDGE_CONFIDENCE_THRESHOLD", "0.7")),
         cors_origins=tuple(
             os.getenv("CORS_ORIGINS", "https://wordnexus.lol,http://localhost:8000,http://127.0.0.1:8000").split(",")
         ),

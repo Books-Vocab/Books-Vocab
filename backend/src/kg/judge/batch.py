@@ -16,11 +16,13 @@ class Judge:
     """LLM-based relationship judge (batch mode)."""
 
     def __init__(self, llm: TrackedLLM, model: str | None = None,
-                 *, user_id: str = "", notebook_id: str = "default") -> None:
+                 *, user_id: str = "", notebook_id: str = "default",
+                 confidence_threshold: float = 0.7) -> None:
         self.llm = llm
         self.model = model
         self.user_id = user_id
         self.notebook_id = notebook_id
+        self.confidence_threshold = confidence_threshold
 
     def evaluate_batch(
         self,
@@ -91,7 +93,11 @@ class Judge:
 
         content = resp.choices[0].message.content
         raw_decisions: list[dict] = []
-        result = _parse_batch_response(content, candidates, raw_decisions=raw_decisions)
+        result = _parse_batch_response(
+            content, candidates,
+            raw_decisions=raw_decisions,
+            confidence_threshold=self.confidence_threshold,
+        )
         if self.user_id and raw_decisions:
             try:
                 from .. import judge_log
