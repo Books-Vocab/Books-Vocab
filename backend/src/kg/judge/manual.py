@@ -6,11 +6,31 @@ import json
 import logging
 import re
 
+from ..retry import sync_retry
 from ..tracked_llm import TrackedLLM
 from .models import Judgement
 from .prompts import MANUAL_LINK_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+# Default degraded verdict — used for BOTH unparseable responses and
+# transport failures (provider 5xx surviving sync_retry). Honors the
+# "never returns None" contract: the user asked to link these two cards,
+# so we keep a neutral shares_usage link rather than dropping the request.
+_DEGRADED_LINK = "shares_usage"
+_DEGRADED_REASON = "使用者認為這兩個詞相關。"
+
+# Transport errors worth retrying before degrading. Lazily imported so the
+# openai dependency stays optional at module import time (mirrors enrich.py).
+_JUDGE_RETRYABLE: tuple[type[Exception], ...] = ()
+
+
+def _get_judge_retryable() -> tuple[type[Exception], ...]:
+    global _JUDGE_RETRYABLE
+    if not _JUDGE_RETRYABLE:
+        from openai import APIError, InternalServerError, RateLimitError
+        _JUDGE_RETRYABLE = (RateLimitError, APIError, InternalServerError)
+    return _JUDGE_RETRYABLE
 
 
 class ManualLinkJudge:
@@ -53,6 +73,12 @@ class ManualLinkJudge:
             except (json.JSONDecodeError, ValueError):
                 return None
 
+    def _degraded(self, *, from_id: str, to_id: str) -> Judgement:
+        """Neutral fallback shared by parse failures and transport failures."""
+        j = Judgement(link=_DEGRADED_LINK, confidence=1.0, reason=_DEGRADED_REASON)
+        self._log(from_id=from_id, to_id=to_id, judgement=j)
+        return j
+
     def evaluate(
         self,
         word_a: str,
@@ -65,33 +91,48 @@ class ManualLinkJudge:
     ) -> Judgement:
         user_msg = f"Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
 
-        resp = self.llm.chat(
-            # call_type group "JUDGE" — shares LLM_PROVIDER_JUDGE routing with
-            # the auto pipeline judge ("judge"). Renamed from "manual_link_judge"
-            # so the group split (key.split("_",1)[0]) lands on JUDGE not MANUAL.
-            "judge_manual",
-            model=self.model,
-            messages=[
-                {"role": "system", "content": MANUAL_LINK_SYSTEM_PROMPT},
-                {"role": "user", "content": user_msg},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-        )
+        try:
+            # sync_retry rides out transient provider 5xx / rate limits (aligned
+            # with enrich.py). Anything still failing after retries falls through
+            # to the same graceful degrade as an unparseable response — the
+            # exception must never surface to the route (never returns None).
+            resp = sync_retry(
+                self.llm.chat,
+                # call_type group "JUDGE" — shares LLM_PROVIDER_JUDGE routing with
+                # the auto pipeline judge ("judge"). Renamed from "manual_link_judge"
+                # so the group split (key.split("_",1)[0]) lands on JUDGE not MANUAL.
+                "judge_manual",
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": MANUAL_LINK_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                max_attempts=3,
+                base_delay=2.0,
+                retryable_exceptions=_get_judge_retryable(),
+                step_name="Manual judge LLM",
+                uid=self.user_id,
+            )
+        except Exception:
+            logger.warning(
+                "Manual judge LLM transport failure; degrading to %s",
+                _DEGRADED_LINK, exc_info=True,
+            )
+            return self._degraded(from_id=from_id, to_id=to_id)
 
         content = resp.choices[0].message.content or ""
 
         data = self._parse_judgement(content)
         if data is None:
-            j = Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
-            self._log(from_id=from_id, to_id=to_id, judgement=j)
-            return j
+            return self._degraded(from_id=from_id, to_id=to_id)
 
-        link_val = data.get("link", "shares_usage")
-        reason_val = data.get("reason", "使用者認為這兩個詞相關。")
+        link_val = data.get("link", _DEGRADED_LINK)
+        reason_val = data.get("reason", _DEGRADED_REASON)
 
         if link_val not in ("contrasts_with", "shares_usage"):
-            link_val = "shares_usage"
+            link_val = _DEGRADED_LINK
 
         j = Judgement(link=link_val, confidence=1.0, reason=reason_val)
         self._log(from_id=from_id, to_id=to_id, judgement=j)
