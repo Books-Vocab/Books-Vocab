@@ -70,7 +70,13 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import archetypes
 import saga
-from tts_config import ALLOWED_TTS_MODELS, sanitize_slug as _sanitize_slug, tts_family
+import tts_tags
+from tts_config import (
+    ALLOWED_TTS_MODELS,
+    DEFAULT_TTS_MODEL,
+    sanitize_slug as _sanitize_slug,
+    tts_family,
+)
 
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
@@ -211,6 +217,37 @@ def read_tts_model(workspace: Path) -> str | None:
     """Read the frozen TTS model sidecar; None → synthesize.py's env default."""
     f = workspace / _TTS_MODEL_SIDECAR
     return f.read_text().strip() if f.exists() else None
+
+
+def resolve_tts_family(workspace: Path) -> str:
+    """The TTS family the scripts will actually be synthesized on.
+
+    Mirrors stage_synthesize's model resolution (sidecar → env default) so the
+    authoring/review/prep prompts get the palette for the SAME family that synth
+    will use. No sidecar → DEFAULT_TTS_MODEL (the env/.env default lives there).
+    """
+    return tts_family(read_tts_model(workspace) or DEFAULT_TTS_MODEL)
+
+
+def inject_tts_palette(prompt: str, workspace: Path) -> str:
+    """Fill {tts_family}/{tts_engine}/{tts_palette} for the synthesis family.
+
+    Loud-fail on a family with no registered palette: authoring a script for a
+    family we cannot render tags for would silently ship mis-tagged audio. The
+    fix is to register the family in tts_tags.TAG_CONCEPTS, not to guess.
+    """
+    fam = resolve_tts_family(workspace)
+    if fam not in tts_tags.KNOWN_FAMILIES:
+        raise RuntimeError(
+            f"No audio-tag palette registered for TTS family {fam!r} "
+            f"(model {read_tts_model(workspace) or DEFAULT_TTS_MODEL}). "
+            f"Add it to tts_tags.TAG_CONCEPTS before authoring."
+        )
+    return (
+        prompt.replace("{tts_family}", fam)
+        .replace("{tts_engine}", tts_tags.engine_name(fam))
+        .replace("{tts_palette}", tts_tags.render_palette_md(fam))
+    )
 
 
 def is_saga(workspace: Path) -> bool:
@@ -883,9 +920,12 @@ def run_claude(
     label: str,
     log: PipelineLog,
     extra_tools: list[str] | None = None,
+    inject_tts: bool = False,
 ) -> bool:
     prompt = prompt.replace("{saga_context}", build_saga_context(workspace))
     prompt = prompt.replace("{workspace}", str(workspace))
+    if inject_tts:
+        prompt = inject_tts_palette(prompt, workspace)
     tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
     if extra_tools:
         tools.extend(extra_tools)
@@ -905,6 +945,7 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
+    prompt = inject_tts_palette(prompt, workspace)
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
     # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
@@ -933,6 +974,7 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
+    prompt = inject_tts_palette(prompt, workspace)
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
     # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
@@ -1092,10 +1134,11 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
         log.error(f"Failed episodes: {failed}")
         return False
 
-    # Record which TTS family these scripts were authored for. The palette in
-    # scriptwriter.md is currently the canonical Gemini 3.1 set, so this is "3.1"
-    # until Phase 2 makes the palette family-parametric.
-    (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text("3.1")
+    # Record which TTS family these scripts were authored for. The scriptwriter
+    # prompt was injected with this family's palette (inject_tts_palette), so the
+    # sidecar records the REAL family — stage_synthesize compares it to .tts_model
+    # to detect a later cross-family synth.
+    (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text(resolve_tts_family(workspace))
 
     log.event(f"All {len(todo)} episodes scripted")
     return True
@@ -1188,7 +1231,7 @@ def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
 
 
 def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
-    ok = run_claude(_prompt("tts_prep", read_mode(workspace)), workspace, "TTS Prep", log)
+    ok = run_claude(_prompt("tts_prep", read_mode(workspace)), workspace, "TTS Prep", log, inject_tts=True)
     if not ok:
         return False
 

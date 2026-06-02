@@ -62,14 +62,9 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 
 **j. Sign-Off compliance** — Last three speaker lines (immediately before `<!-- END_OF_SCRIPT -->`) must match overview.md Series Format: Host A verdict, Host B Next-time hook (or finale parting question), Host A catchphrase (exact match across all episodes). If pattern is broken → NEEDS_WORK.
 
-**k. TTS palette purity** — Every bracket tag must be in the canonical Gemini 3.1 palette below. Any out-of-palette tag → NEEDS_WORK; auto-fix by mapping to the nearest allowed tag. This includes **2.5-era adjective forms** (`[sad]`, `[amused]`, `[whispering]`, `[speaking slowly]`...) and freeform tags (`[quietly]`, `[reading]`). Use the legacy map in `tts_tags.py` (`[sad]`→`[sadness]`, `[whispering]`→`[whispers]`, `[speaking slowly]`→`[slow]`, etc.); tags with no noun equivalent (`[deadpan]`/`[thoughtful]`/`[somber]`/`[warm]`/`[tender]`) → drop the inline tag and let the host's Voice direction carry that tone. **SSML is forbidden** — Gemini 3.1 does not parse it. Convert `<break time="1s"/>`/`<break time="2s"/>` → `[long pause]`, shorter breaks → `[medium pause]`; unwrap `<emphasis>`/`<prosody>`, keeping the inner text.
+**k. TTS palette purity** — Every bracket tag must be in the **{tts_engine}** palette below (family `{tts_family}`). Any out-of-palette tag → NEEDS_WORK; auto-fix by mapping to the nearest palette tag. `tts_tags.sanitize_tags_for_family()` performs exactly this rewrite/strip for the target family — it rewrites a cross-family form to this family's form and strips any tag this family has no form for; mirror its decisions. Out-of-palette includes **cross-family forms** (a tag valid on another Gemini family but not this one — e.g. a noun emotion `[sadness]` when this palette lists the adjective `[sad]`, or the reverse) and freeform tags (`[quietly]`, `[reading]`). Tags with no equivalent in this palette (`[deadpan]`/`[thoughtful]`/`[somber]`/`[warm]`/`[tender]`, plus any emotion/energy/pause tag the palette below omits) → drop the inline tag and let the host's Voice direction carry that tone. **SSML is forbidden** — {tts_engine} does not parse it. Convert `<break time="1s"/>`/`<break time="2s"/>` → a long-pause tag, shorter breaks → a medium-pause tag (only if this palette lists pause tags; otherwise drop and rely on punctuation); unwrap `<emphasis>`/`<prosody>`, keeping the inner text.
 
-<!-- TTS_PALETTE:START -->
-**Emotion**: `[curiosity]` `[interest]` `[excitement]` `[enthusiasm]` `[amusement]` `[humor]` `[joy]` `[happiness]` `[awe]` `[admiration]` `[surprise]` `[shock]` `[skepticism]` `[doubt]` `[confusion]` `[uncertainty]` `[determination]` `[confidence]` `[sympathy]` `[caring]` `[melancholy]` `[nostalgia]` `[sadness]` `[grief]` `[relief]` `[satisfaction]` `[frustration]` `[disappointment]` `[tension]` `[anticipation]` `[hope]` `[sarcasm]` `[passion]` `[yearning]`
-**Energy**: `[high energy]` `[low energy]`
-**Pacing / non-verbal**: `[slow]` `[fast]` `[whispers]` `[laughs]` `[giggles]` `[sighs]` `[gasp]`
-**Pauses**: `[short pause]` `[medium pause]` `[long pause]`
-<!-- TTS_PALETTE:END -->
+{tts_palette}
 
 **l-genre. Genre & overlay fit** — Read overview.md's `**Type**` and this episode plan's `Content flags:` line. Verify the script applies the matching guidance:
 - Primary bucket cues present (e.g. business → a pressure-tested case study or named incentive; biography → scenes not a CV with critical distance; technical → a worked example + bridged prerequisite; fiction → prose-level observation / reader memory).
@@ -81,9 +76,9 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 
 ### 4. TTS Tag Health
 - Count emotion tags and list the **distinct** ones used (e.g. `[excitement]`, `[melancholy]`, `[skepticism]`, `[amusement]`...)
-- Count pacing / energy / non-verbal tags: `[slow]` `[fast]` `[high energy]` `[low energy]` `[whispers]` `[sighs]` `[laughs]` `[giggles]` `[gasp]`
-- Count pause tags: `[short pause]` `[medium pause]` `[long pause]` — are they varied, or all the same? Reserve `[long pause]` for the heaviest beats.
-- **No SSML**: any `<break>` / `<emphasis>` / `<prosody>` → NEEDS_WORK (Gemini 3.1 ignores or vocalizes them). Auto-fix per palette-purity rule above.
+- Count pacing / energy / non-verbal tags (the pacing, energy, and non-verbal rows of the palette above).
+- Count pause tags (if this palette lists any) — are they varied, or all the same? Reserve the longest pause for the heaviest beats.
+- **No SSML**: any `<break>` / `<emphasis>` / `<prosody>` → NEEDS_WORK ({tts_engine} ignores or vocalizes them). Auto-fix per palette-purity rule above.
 - **Tag density target**: ~1 per 200-300 words
 - **Palette breadth target**: ≥6 distinct tags across the episode. If only 3 tags repeat → NEEDS_WORK on palette.
 - WARN if density <1 per 500 words (flat) or >1 per 100 words (manic)
@@ -158,7 +153,7 @@ Write `{workspace}/scripts/ep_{N}_review.md`:
 Fix directly with Edit tool:
 - Missing `<!-- END_OF_SCRIPT -->` sentinel → append as last line (non-negotiable)
 - Complex bracket tags → split into consecutive simple tags (e.g. `[both laugh, overlap]` → two lines each `[laughs]`)
-- Missing pause before must-quote passages; add `[long pause]` around heavy moments. Convert any leftover `<break>` SSML → `[long pause]` / `[medium pause]`
+- Missing beat before must-quote passages; add a long-pause tag around heavy moments (if this palette has pause tags; otherwise rephrase / use punctuation). Convert any leftover `<break>` SSML the same way.
 - Obvious tag mismatches (`[happiness]` before a tragic moment)
 - Minor continuity fixes (wrong host name, wrong concept reference)
 - Swap a signposted transition ("Now let's move on to X") to a curiosity-based bridge

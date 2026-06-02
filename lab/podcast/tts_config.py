@@ -19,6 +19,11 @@ ALLOWED_TTS_MODELS = (
     "gemini-2.5-pro-tts",
 )
 
+# The default synthesis model — single source for synthesize.py's env fallback
+# and pipeline.py's family resolution when a workspace has no .tts_model sidecar.
+# First entry of the allowlist by construction (the canonical default sits first).
+DEFAULT_TTS_MODEL = ALLOWED_TTS_MODELS[0]
+
 
 def sanitize_slug(title: str, max_len: int = 30) -> str:
     """Produce a workspace slug that matches backend ``_SERIES_ID_RE``.
