@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 7fcbcffc
+verified_against: f59c6004
 -->
 # Sync Lifecycle
 
@@ -55,12 +55,21 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 2. 若遠端卡片存在且未刪除，合併內容後呼叫 `markSynced()`
 3. 若遠端回傳 soft delete，本地直接刪除
 
+### 批次刪除：`deleted_words` 與 `not_found`
+
+batch-delete API（`POST /api/vocab/batch-delete`）回傳 `deleted_words`（這次成功刪）與 `not_found`（server 上本就不存在的字，例：前一次已刪 / race）兩個清單。**兩者皆為成功語意**：對本地而言刪除意圖已達成，必須一律本地移除（`modelContext.delete`）。
+
+- **可本地收斂集合 = `deleted_words ∪ not_found`**（`SyncCoordinator.locallyResolvableDeletes(from:)`，`SyncCoordinator` 與 `KGVocabCoordinator.retryPendingDeletes` 共用此純函數）。
+- 只有「既不在 `deleted_words` 也不在 `not_found`」的字才是真正的 server 異常，才 `markSyncFailed()` 進重試。
+- **不變式**：絕不可把 `not_found` 當刪除失敗。否則該字永遠 `failed + delete` → 每次 sync server 都回 `not_found` → 永久卡死的隱形重試迴圈（使用者看不到、但永不消失）。
+
 ### 同步失敗後重試
 
 1. 上傳新增或刪除失敗時，單字會先標記為 `failed`
 2. 同步頁仍會把它算進待處理項目
 3. 下一次同步前，App 會自動把 `failed` 轉回 `pending` 再重試
 4. 若失敗的是刪除，單字仍維持隱藏，避免違反使用者已經做出的刪除決定
+5. **`not_found` 不是失敗**（見上節）— 已不存在於 server 的字本地直接收斂，不進此重試迴圈
 
 ## 同步觸發鏈
 
