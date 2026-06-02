@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Bookshelf/
-verified_against: cb1ef202
+verified_against: 90bb62e2
 -->
 # Bookshelf Feature Boundary
 
@@ -14,8 +14,7 @@ verified_against: cb1ef202
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `BookshelfView.swift` | ~440 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；row 子 view 已抽出至 `Components/`。**Navigation 契約**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`。**podcast series 在 regular（iPad/Mac Catalyst）走 2D panel workspace**——點 series 卡片 → `panelWorkspace.openColumn(.podcastSeries(remoteID:), after: nil)` 開 Miller 子欄（episodes→player 為 sibling 子欄，由 `BookshelfWorkspaceSection` 注入的 `\.panelWorkspace` 驅動，BookshelfView 本身只渲染書架 grid / empty state）；卡片高亮 = workspace 首欄是否為該 series（`openSeriesRemoteId`）。決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`：regular→`.selectInline`（開 workspace 欄）、compact→`.push(.series)`。**compact（iPhone）series/episode 沿用 value-based push**，path-bound `NavigationStack` 契約仍守。每個 podcast 子欄自帶 ✕ 關閉 → 書架 toolbar 不再需返回鍵，`.topBarLeading` 只剩設定齒輪（Catalyst/iPad 唯一入口）；regular→compact 翻轉 `.onChange(of: layoutMode)` 呼 `panelWorkspace.reset()` 收欄。`navigationDestination(for: PodcastNavRoute.self)` 的 `.series`/`.episode` case 保留供 compact push（regular 不經此但不可移除）。鏡射 `NotebookListView.swift` |
-| `BookshelfWorkspaceSection.swift` | 25 | `struct BookshelfWorkspaceSection: View` — Catalyst/iPad section wrapper，container 層持 `@State PanelWorkspace` 並注入 `\.panelWorkspace`，用 `PanelWorkspaceContainer` 包 `BookshelfView`（root master）+ podcast Miller 子欄。**僅** `ContentView` 的 `NavigationSplitView` detail 分支（`.bookshelf`）使用；compact（iPhone）TabView 直接用 `BookshelfView`（`panelWorkspace` 為 nil → 走既有 push）。引擎見 `tech_index.md §Platform/PanelWorkspace/` |
+| `BookshelfView.swift` | ~440 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；row 子 view 已抽出至 `Components/`。**Navigation 契約**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`。**podcast series 在 regular（iPad/Mac Catalyst）不再 push**——點 series 卡片走 `@State selectedSeriesRemoteId`，把 `PodcastEpisodeListView` 渲染為 root 級 master（depth=0），其右欄 `safeAreaInset` player 隨之掛 root content，消除 Catalyst「掛在 push depth=1 子層的 safeAreaInset 擾外層容器 → NavigationStack 子樹 remount → 集數列表/player 被 pop 回書架根」的崩潰（NAVDBG log 坐實；鏡射 `NotebookListView` selectInline）。決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`：regular→`.selectInline`、compact→`.push(.series)`。**compact（iPhone）series/episode 沿用 value-based push**，path-bound `NavigationStack` 契約仍守（path 是 @State、body 重評保留，不 pop）。regular 返回入口為 toolbar `.topBarLeading` chevron-left（depth=0 無 system back）；regular→compact 翻轉 `.onChange` reset selection nil。`navigationDestination(for: PodcastNavRoute.self)` 的 `.series`/`.episode` case 保留供 compact push（regular 永不觸發但不可移除）。鏡射 `NotebookListView.swift` |
 | `BookshelfPreviews.swift` | 133 | `#Preview` 集中地（mock data scaffolds、各 row 型態樣本） |
 
 ### Coordinator Layer（導航協調）
