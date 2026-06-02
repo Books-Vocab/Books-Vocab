@@ -19,12 +19,9 @@
     <span id="nav-current-ws" class="nav-current-ws empty" title="—">—</span>
     <button id="act-advance" class="action-btn advance" hidden title="Move this podcast forward"></button>
     <button id="act-new" class="action-btn primary" title="Start a new podcast from an EPUB">+ NEW PODCAST</button>
+    <button id="act-settings" class="icon-btn" title="Pipeline run settings (PARALLEL · TTS model · spoiler default)" aria-label="Settings">⚙</button>
     <button id="act-upload" class="action-btn" title="Upload this workspace to production">↑ UPLOAD</button>
     <button id="act-delete" class="action-btn danger" title="Delete local workspace (does not touch server)">✕ DELETE</button>
-  </div>
-  <div class="nav-parallel" title="scriptwrite / script-review concurrency (1–10) — applies to the next pipeline you start">
-    <span class="micro-label">PARALLEL</span>
-    <input type="number" id="parallel-input" min="1" max="10" value="3" class="field-input tabular nav-parallel-input" aria-label="parallel workers (1-10)">
   </div>
   <div class="nav-status">
     <span id="status-dot" class="status-dot"></span>
@@ -81,6 +78,38 @@
         <button type="submit" id="modal-submit" class="action-btn primary" disabled>↑ START PIPELINE</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Settings modal — pipeline run knobs, persisted to localStorage. Applies to
+     the NEXT pipeline you start (not retroactive to running jobs). -->
+<div id="settings-backdrop" class="modal-backdrop" hidden>
+  <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-head">
+      <h2 id="settings-title" class="modal-title">SETTINGS</h2>
+      <button id="settings-close" class="icon-btn" title="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field">
+        <span class="field-label">PARALLEL WORKERS</span>
+        <input type="number" id="set-parallel" min="1" max="10" class="field-input tabular" aria-label="parallel workers (1-10)">
+        <span class="field-hint">scriptwrite / script-review / synthesize concurrency (1–10) · applies to the next pipeline</span>
+      </label>
+      <label class="field">
+        <span class="field-label">TTS MODEL</span>
+        <select id="set-tts-model" class="field-input">
+          <option value="">default (gemini-3.1-flash-tts-preview)</option>
+          <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview</option>
+          <option value="gemini-2.5-pro-tts">gemini-2.5-pro-tts</option>
+          <option value="gemini-2.5-flash-tts">gemini-2.5-flash-tts</option>
+        </select>
+        <span class="field-hint">frozen for the workspace at creation; read back by the synthesize stage</span>
+        <span id="set-tts-risk" class="field-hint field-warn" hidden>⚠ scripts are authored for the Gemini 3.1 tag palette — a 2.5 model will synthesize 3.1-palette scripts (prosody/tags may misrender). Full 2.5 palette support is Phase 2.</span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="settings-done" class="action-btn primary">DONE</button>
+    </div>
   </div>
 </div>
 

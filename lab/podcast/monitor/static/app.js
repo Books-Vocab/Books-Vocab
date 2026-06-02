@@ -34,6 +34,30 @@ function persistSidebarUI() {
   try { localStorage.setItem(SIDEBAR_LS_KEY, JSON.stringify(sidebarUI)); }
   catch { /* private mode etc. — silently skip */ }
 }
+
+// Pipeline run settings (PARALLEL workers, TTS model, default spoiler policy).
+// Persisted so they survive reloads and apply to the next pipeline you start.
+// Must mirror server-side ALLOWED_TTS_MODELS (tts_config.py) — an empty ttsModel
+// means "let synthesize.py use its env default" and sends no --tts-model.
+const SETTINGS_LS_KEY = "podcast-monitor:settings";
+const ALLOWED_TTS_MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-pro-tts", "gemini-2.5-flash-tts"];
+const settings = (() => {
+  const defaults = { parallel: 3, ttsModel: "" };
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_LS_KEY) || "{}");
+    const p = Number(s.parallel);
+    return {
+      parallel: Number.isInteger(p) && p >= 1 && p <= 10 ? p : defaults.parallel,
+      ttsModel: ALLOWED_TTS_MODELS.includes(s.ttsModel) ? s.ttsModel : defaults.ttsModel,
+    };
+  } catch { return { ...defaults }; }
+})();
+function persistSettings() {
+  try { localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(settings)); }
+  catch { /* private mode etc. — silently skip */ }
+}
+function getSettings() { return settings; }
+function setSetting(key, value) { settings[key] = value; persistSettings(); }
 console.info(`[monitor] app.js loaded · version ${APP_VERSION}`);
 
 // Surface any uncaught JS error to the toast stack so the user sees it
@@ -885,8 +909,8 @@ function openNewPodcastModal() {
   const ra = $("#new-podcast-form").querySelector('input[name="spoiler-mode"][value="readalong"]');
   if (ra) ra.checked = true;
   renderFileList();
-  // PARALLEL WORKERS is now a global nav setting — do NOT reset it on open;
-  // the value the user picked should persist across modal sessions.
+  // PARALLEL / TTS model live in the SETTINGS modal (single home each) and
+  // persist via localStorage — nothing to reset here.
   // Make the disabled button SAY what's blocking it — "↑ START PIPELINE"
   // greyed out with no explanation is the screenshot bug user hit.
   const submit = $("#modal-submit");
@@ -908,6 +932,24 @@ function closeNewPodcastModal() {
   // would silently no-op and trap the user inside.
   $("#modal-backdrop").hidden = true;
   modalState.submitting = false;
+}
+
+// ─── Settings modal ─────────────────────────────────────────────────────────
+function openSettingsModal() {
+  // Populate every field from the persisted store each open.
+  $("#set-parallel").value = getSettings().parallel;
+  $("#set-tts-model").value = getSettings().ttsModel;
+  refreshTtsRisk();
+  $("#settings-backdrop").hidden = false;
+}
+function closeSettingsModal() { $("#settings-backdrop").hidden = true; }
+
+// Show the cross-family caveat only when a non-3.1 model is selected — scripts
+// carry a 3.1-only tag palette today (see plan Phase 2 / .script_tts_family).
+function refreshTtsRisk() {
+  const v = $("#set-tts-model").value;
+  const risky = v && !v.includes("3.1");
+  $("#set-tts-risk").hidden = !risky;
 }
 
 function refreshDropzonePrompt() {
@@ -1028,7 +1070,8 @@ async function submitNewPodcast(e) {
   submitBtn.disabled = true;
   submitBtn.textContent = "STARTING…";
 
-  const parallel = $("#parallel-input").value || "3";
+  const parallel = String(getSettings().parallel);
+  const ttsModel = getSettings().ttsModel;  // "" → server omits --tts-model
   const fd = new FormData();
   let url;
   if (isSaga) {
@@ -1039,10 +1082,12 @@ async function submitNewPodcast(e) {
     fd.append("title", title);
     fd.append("spoiler_mode", radio.value);
     fd.append("parallel", parallel);
+    if (ttsModel) fd.append("tts_model", ttsModel);
     url = "/api/pipeline/start-saga";
   } else {
     fd.append("epub", modalState.files[0]);
     fd.append("parallel", parallel);
+    if (ttsModel) fd.append("tts_model", ttsModel);
     url = "/api/pipeline/start";
   }
 
@@ -1765,17 +1810,23 @@ function renderEntry(e) {
       }
       return `<span class="feed-tool">→ ${escapeHtml(e.tool)}</span><span class="feed-text">${escapeHtml(detail)}</span>`;
     }
-    case "text":      return `<span class="feed-text">💬 ${escapeHtml(e.msg)}</span>`;
-    case "stage_start": return `<span class="feed-text strong contra">▸ ${escapeHtml(e.msg)}</span>`;
-    case "stage_done":  return `<span class="feed-text strong">✓ ${escapeHtml(e.msg)}</span>`;
+    case "text":      return `<span class="feed-text">💬 ${highlightTags(e.msg)}</span>`;
+    case "stage_start": return `<span class="feed-text strong contra">▸ ${highlightTags(e.msg)}</span>`;
+    case "stage_done":  return `<span class="feed-text strong">✓ ${highlightTags(e.msg)}</span>`;
     case "stage_fail":  return `<span class="feed-error">✗ ${escapeHtml(e.msg)}</span>`;
     case "error":       return `<span class="feed-error">✗ ${escapeHtml(e.msg)}</span>`;
-    case "sys":         return `<span class="feed-text muted">· ${escapeHtml(e.msg)}</span>`;
-    case "result":      return `<span class="feed-usage">· ${escapeHtml(e.msg)}</span>`;
-    case "tts":         return `<span class="feed-tts">♪ ${escapeHtml(e.msg)}</span>`;
+    case "sys":         return `<span class="feed-text muted">· ${highlightTags(e.msg)}</span>`;
+    case "result":      return `<span class="feed-usage">· ${highlightTags(e.msg)}</span>`;
+    case "tts":         return `<span class="feed-tts">♪ ${highlightTags(e.msg)}</span>`;
     case "info":
-    default:            return `<span class="feed-text muted">${escapeHtml(e.msg || "")}</span>`;
+    default:            return `<span class="feed-text muted">${highlightTags(e.msg || "")}</span>`;
   }
+}
+
+// Escape first (XSS-safe), then wrap [bracketed] segments in a styled badge.
+// MUST NOT call escapeHtml on the result again — that would literalize the span.
+function highlightTags(s) {
+  return escapeHtml(s).replace(/\[[^\]]+\]/g, (m) => `<span class="feed-tag">${m}</span>`);
 }
 
 function escapeHtml(s) {
@@ -1820,6 +1871,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const mode = $("#act-advance").dataset.mode || "";
     if (mode === "resume") actionResume();
     else if (mode.startsWith("approve:")) actionApprove(mode.split(":")[1]);
+  });
+
+  // ─── Run settings (PARALLEL · TTS model) ────────────────────────────────
+  // Single home for each knob: PARALLEL and TTS model live ONLY in this modal.
+  $("#act-settings")?.addEventListener("click", openSettingsModal);
+  $("#set-parallel")?.addEventListener("change", (e) => {
+    setSetting("parallel", Math.min(10, Math.max(1, Number(e.target.value) || 3)));
+  });
+  $("#set-tts-model")?.addEventListener("change", (e) => {
+    setSetting("ttsModel", ALLOWED_TTS_MODELS.includes(e.target.value) ? e.target.value : "");
+    refreshTtsRisk();
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("#settings-close, #settings-done")) { closeSettingsModal(); return; }
+    if (e.target.id === "settings-backdrop") closeSettingsModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#settings-backdrop")?.hidden) closeSettingsModal();
   });
 
   // ─── Sidebar interactive controls (P3) ──────────────────────────────────
