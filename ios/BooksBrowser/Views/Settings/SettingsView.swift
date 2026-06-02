@@ -32,6 +32,10 @@ struct SettingsView: View {
     }) var allEntries: [VocabularyEntry]
 
     var body: some View {
+#if DEBUG
+        let _ = RenderStormProbe.shared.tick("SettingsView")
+        let _ = RenderStormProbe.printChangesEnabled ? Self._printChanges() : ()
+#endif
         SettingsPresenter(
             state: presenterState,
             translationSourceLang: translationSourceLangBinding,
