@@ -517,7 +517,7 @@ struct NotebookListView: View {
                 systemImage: "books.vertical",
                 description: "建立第一本，開始整理你的單字".localized,
                 action: .init(
-                    title: "建立第一本單字本",
+                    title: "建立第一本單字本".localized,
                     systemImage: "plus.circle.fill",
                     handler: { showCreateSheet = true }
                 )
