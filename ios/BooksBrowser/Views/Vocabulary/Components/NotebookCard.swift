@@ -32,7 +32,7 @@ struct NotebookCardData {
     let coverPattern: String?
     let coverImagePath: String?
     let cardCount: Int
-    var cardCountLabel: String = "個單字"
+    var cardCountLabel: String = "個單字".localized
     let dueCount: Int
     let unlearnedCount: Int
     let reviewedCount: Int
@@ -341,10 +341,10 @@ struct NotebookCard: View {
 
     private var accessibilityDescription: String {
         var parts = [data.name, "\(data.cardCount) \(data.cardCountLabel)"]
-        if data.dueCount > 0 { parts.append("\(data.dueCount) 到期") }
-        if data.unlearnedCount > 0 { parts.append("\(data.unlearnedCount) 未學") }
-        if data.isActive { parts.append("使用中") }
-        return parts.joined(separator: "，")
+        if data.dueCount > 0 { parts.append(L10n.format("%d 到期", data.dueCount)) }
+        if data.unlearnedCount > 0 { parts.append(L10n.format("%d 未學", data.unlearnedCount)) }
+        if data.isActive { parts.append("使用中".localized) }
+        return parts.joined(separator: "，".localized)
     }
 }
 
