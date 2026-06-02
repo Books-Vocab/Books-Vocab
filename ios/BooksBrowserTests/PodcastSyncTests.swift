@@ -26,6 +26,38 @@ struct PodcastSyncTests {
         #expect(detail.episodes[0].title == "The Happiness Trap")
     }
 
+    @Test func episode_detail_tolerates_missing_optional_fields() throws {
+        // S3 metadata.json is hand-assembled by ops/podcast_upload.sh (not
+        // Pydantic-validated). A single episode missing durationSec /
+        // audioAvailable / subtitleAvailable must NOT fail the whole series
+        // decode — graceful-degrade with safe defaults instead.
+        let json = """
+        {"id":"flow_950f1a7d","title":"Flow",
+         "episodes":[{"episodeNumber":3,"title":"Partial Episode"}]}
+        """.data(using: .utf8)!
+        let detail = try JSONDecoder().decode(PodcastSeriesDetail.self, from: json)
+        #expect(detail.episodes.count == 1)
+        let ep = detail.episodes[0]
+        #expect(ep.episodeNumber == 3)
+        #expect(ep.title == "Partial Episode")
+        #expect(ep.durationSec == 0)
+        #expect(ep.audioAvailable == false)
+        #expect(ep.subtitleAvailable == false)
+        #expect(ep.subtitleContent == nil)
+    }
+
+    @Test func episode_detail_still_requires_identity_fields() {
+        // episodeNumber / title are identity-critical — a missing one makes the
+        // episode meaningless, so that single episode's decode SHOULD throw.
+        let json = """
+        {"id":"x","title":"X",
+         "episodes":[{"durationSec":100,"audioAvailable":true,"subtitleAvailable":false}]}
+        """.data(using: .utf8)!
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(PodcastSeriesDetail.self, from: json)
+        }
+    }
+
     @Test func episode_remote_id_format() {
         let remoteId = PodcastSyncService.episodeRemoteId(seriesId: "flow_950f1a7d", episodeNumber: 1)
         #expect(remoteId == "flow_950f1a7d_ep_01")
