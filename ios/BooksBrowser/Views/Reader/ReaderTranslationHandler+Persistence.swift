@@ -20,6 +20,8 @@ extension ReaderTranslationHandler {
             isSaved = false
             isExpanded = false
             explanationText = nil
+            translationStatus = nil
+            explanationStatus = nil
             translationErrorMessage = nil
             explanationErrorMessage = nil
         }
