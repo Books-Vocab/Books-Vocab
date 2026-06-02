@@ -951,3 +951,12 @@
 "podcast.player.missingEpisode.title" = "Episode not synced yet";
 "podcast.player.missingEpisode.description" = "Local data for this episode is not ready. Try again shortly, or return to the library and sync again.";
 "iCloud 下載失敗，點擊重試" = "iCloud download failed. Tap to retry.";
+
+/* track-16 notebook i18n */
+"個單字" = "words";
+"%d 到期" = "%d due";
+"%d 未學" = "%d unlearned";
+"使用中" = "Active";
+"，" = ", ";
+"建立第一本單字本" = "Create your first deck";
+"無" = "None";

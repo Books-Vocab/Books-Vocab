@@ -98,7 +98,7 @@ struct NotebookEditSheet: View {
                 Section("圖案".localized) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: AppSpacing.s2) {
-                            patternOption(nil, label: "無")
+                            patternOption(nil, label: "無".localized)
                             ForEach(NotebookCoverPattern.allCases) { pattern in
                                 patternOption(pattern.rawValue, label: pattern.label)
                             }
