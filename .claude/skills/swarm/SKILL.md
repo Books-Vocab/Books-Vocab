@@ -25,7 +25,7 @@ user-invocable: true
 
 1. **小改不問**（見下方 Scope）— 維護性、擴展性、健康度、小功能改動自主決定，不問「需要嗎？」「方向對嗎？」。能猜就猜，猜錯使用者會說。
 2. **大改先討論**（不可繞過）— 觸及產品定位 / 新增大功能 / 改既有功能語意 / 後端 schema 變更 / 移除既有功能 → **停下來和使用者討論一句話**。不討論就動 = 規範違反，會被換 codex。
-3. **≥10 agents 並行，讀寫分流** — 唯讀 agent（scan / confirm / review）零碰撞，可無限並行，用它們撐滿 ≥10。**write agent ≤5**，且數量對齊你的 review 頻寬 — 在飛的 write PR 數不可超過你能好好 review 的量。
+3. **≥10 agents 並行，讀寫分流，但啟動分批 ramp** — 唯讀 agent（scan / confirm / review）零碰撞，可無限並行，用它們撐滿 ≥10。**write agent ≤5**，數量對齊你的 review 頻寬。**但「≥10」是穩態目標，不是啟動瞬間目標**：啟動一次派 ~10 個 background agent 會撞 harness 並發尖峰，部分 agent 靜默死亡且零信號（見反 pattern #17 / F6 — 實測 4/4 write 全死）。**啟動務必分批 ramp：每批 ≤3，確認前批已啟動（worktree 有 commit/log 進展）再加下一批。** 並行數隨 pipeline 呼吸自然起伏，收尾期（backlog 空 + write 觸頂）降到 <10 是合理的，非違規。
 4. **全部背景**（CLAUDE.md 鐵律 #5）— Agent + 耗時 Bash 一律 `run_in_background: true`。主線不阻塞。
 5. **逐項 review**（CLAUDE.md 鐵律 #4）— 每 PR 都派 reviewer，PASS 才 merge。
 6. **報告精簡** — 短句 + `result:` 結尾。不要列出「已 dispatch 13 個 agent」之類流水帳。
@@ -144,10 +144,11 @@ Swarm 模式的工作軸線**只**沿著這四條走：
 ```
 0. **先跑啟動自檢**（第一個 bash call，先於一切）：用「隔離基建」§ 的 `main_root()` 派生 `MAIN_ROOT`/`WORKTREES`，
    驗兩道斷言（`MAIN_ROOT` == porcelain 第一筆；`$WORKTREES` 不在任何 linked worktree 內）。任一 FATAL 即停 —
-   這擋下「你自己從 worktree 啟動 → `$WORKTREES` nested」的災難根因。通過後，在背景同時做（不等任何一件完成）：
-   a. 派 5-7 個 opus 唯讀 deep-scan agent 平行收集上下文
-   b. 對「顯而易見、無爭議」的 track：orchestrator 預建 worktree → 派 3-5 個 write agent
-   c. TaskCreate 追蹤每條 track
+   這擋下「你自己從 worktree 啟動 → `$WORKTREES` nested」的災難根因。通過後，**分批 ramp 啟動（絕不一次派 ~10，見反 pattern #17 / F6）**：
+   a. 第一批：派 2-3 個 opus 唯讀 deep-scan agent
+   b. 確認第一批已真正啟動（output 有寫入 / git 有進展，不是 174B symlink），再加下一批 scan + 預建第一條 write worktree
+   c. write agent 每批 ≤3，前批 worktree 有 commit/log 進展再派下一批
+   d. **TaskCreate 建持久 ledger**：每條 confirmed track 一個 task（狀態 未投/在飛/merged/駁回/擱置），動態插隊（regression hotfix / 冷複審 follow-up）不擠掉舊項可見性（F7）
 
 1. 不等 scan 回來。先做。回來的資訊用來加新 track —
    但 scan 發現的疑似 bug 先過「廉價確認」（見下），不直接投 write agent。
