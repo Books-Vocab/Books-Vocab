@@ -45,6 +45,15 @@ struct BookshelfView: View {
     @State private var showLoginSheet = false
     @State private var navigationPath = NavigationPath()
 
+    /// regular (Mac/iPad) only: the podcast series whose episode-list + player
+    /// render as a root-level master pane on this NavigationStack root (depth=0)
+    /// instead of being pushed. compact keeps this `nil` and pushes via
+    /// `PodcastNavRoute.series` instead (see `PodcastSeriesActivation`). Driving
+    /// selection from a root-level `@State` is what makes the trailing
+    /// `safeAreaInset` player immune to the depth=1 remount/pop (runtime-confirmed
+    /// root cause; mirrors `NotebookListView.selectedNotebookId`).
+    @State private var selectedSeriesRemoteId: String?
+
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
 
     private var coverHeight: CGFloat { layoutMode.bookshelfCoverHeight }
@@ -55,7 +64,18 @@ struct BookshelfView: View {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
 
-                if books.isEmpty && podcastSeries.isEmpty {
+                // regular (Mac/iPad): a selected podcast series renders its
+                // episode-list + inline player as a root-level master pane
+                // (depth=0) — NOT a push. This is the structural fix for the
+                // Catalyst remount/pop (the trailing safeAreaInset player lives
+                // on root content, mirroring NotebookListView). compact never
+                // sets `selectedSeriesRemoteId` (it pushes instead), so this
+                // branch is regular-only.
+                if layoutMode.usesInlineDetail, let seriesId = selectedSeriesRemoteId {
+                    PodcastEpisodeListView(seriesId: seriesId)
+                        .id(seriesId)
+                        .transition(.contentSwap)
+                } else if books.isEmpty && podcastSeries.isEmpty {
                     emptyState
                         .transition(.contentSwap)
                 } else {
@@ -93,6 +113,12 @@ struct BookshelfView: View {
                     PDFReaderView(book: book)
                 }
             }
+            // Both `.series` and `.episode` cases are kept for the compact
+            // (iPhone) push path. In regular (Mac/iPad) `.series` is never
+            // pushed (it renders as a root-level master via
+            // `selectedSeriesRemoteId`) and `.episode` is never pushed either
+            // (the inline player handles it), but the destination must stay
+            // registered — removing it would break the compact route.
             .navigationDestination(for: PodcastNavRoute.self) { route in
                 switch route {
                 case .series(let seriesRemoteId):
@@ -101,8 +127,32 @@ struct BookshelfView: View {
                     PodcastPlayerView(episodeId: episodeRemoteId)
                 }
             }
+            // regular → compact flip (iPad multitasking shrink / Catalyst window
+            // resize): drop the root-level master selection so we don't strand a
+            // two-pane layout or an orphaned player in compact. Mirrors
+            // `PodcastDetailPresentation` dismiss + `NotebookListView` reconcile.
+            .onChange(of: layoutMode) { _, newMode in
+                if !newMode.usesInlineDetail {
+                    selectedSeriesRemoteId = nil
+                }
+            }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    // regular: a root-level podcast master pane is showing →
+                    // prepend an explicit back (no system back exists at depth=0).
+                    // Settings stays reachable alongside it (its only entry point
+                    // on Catalyst/iPad is this gear — must not be replaced).
+                    if layoutMode.usesInlineDetail, selectedSeriesRemoteId != nil {
+                        Button {
+                            withAnimation(AppMotion.phaseChange) {
+                                selectedSeriesRemoteId = nil
+                            }
+                        } label: {
+                            AppToolbarGlyph(systemImage: "chevron.left")
+                        }
+                        .accessibilityLabel("返回".localized)
+                        .accessibilityIdentifier("bookshelf.podcastBackButton")
+                    }
                     Button(action: coordinator.presentSettings) {
                         AppToolbarGlyph(systemImage: "gearshape")
                     }
@@ -141,9 +191,7 @@ struct BookshelfView: View {
             } message: {
                 Text(coordinator.errorMessage ?? "未知錯誤".localized)
             }
-            .toastSheet(isPresented: $coordinator.showSettings) {
-                SettingsView()
-            }
+            .settingsSheet(isPresented: $coordinator.showSettings)
             .sheet(isPresented: $showLoginSheet) {
                 LoginSheet()
             }
@@ -265,22 +313,20 @@ struct BookshelfView: View {
                 if !sortedPodcastSeries.isEmpty {
                     LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
                         ForEach(sortedPodcastSeries) { series in
-                            NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
-                                PodcastSeriesCard(series: series, coverHeight: coverHeight)
-                            }
-                            .buttonStyle(.bookshelfCard)
-                            .accessibilityLabel("\(series.title), podcast")
-                            .transition(.bookshelfCard)
-                            .contextMenu {
-                                Button {
-                                    toggleFollow(series)
-                                } label: {
-                                    Label(
-                                        (series.isFollowed ? "取消追蹤" : "追蹤").localized,
-                                        systemImage: series.isFollowed ? "star.slash" : "star"
-                                    )
+                            seriesCard(series)
+                                .buttonStyle(.bookshelfCard)
+                                .accessibilityLabel("\(series.title), podcast")
+                                .transition(.bookshelfCard)
+                                .contextMenu {
+                                    Button {
+                                        toggleFollow(series)
+                                    } label: {
+                                        Label(
+                                            (series.isFollowed ? "取消追蹤" : "追蹤").localized,
+                                            systemImage: series.isFollowed ? "star.slash" : "star"
+                                        )
+                                    }
                                 }
-                            }
                         }
                     }
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -296,6 +342,40 @@ struct BookshelfView: View {
         .refreshable {
             if authManager.isLoggedIn {
                 await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+            }
+        }
+    }
+
+    /// Series row activation branch:
+    /// - regular (Mac/iPad): tap drives `@State selectedSeriesRemoteId` so the
+    ///   episode-list renders as a root-level master pane (no push) — the
+    ///   structural Catalyst remount fix. Selected card gets an accent stroke
+    ///   overlay (mirrors `NotebookActivationSurface` selectInline).
+    /// - compact (iPhone): bit-for-bit unchanged value-based push via
+    ///   `navigationDestination(for: PodcastNavRoute.self)`.
+    @ViewBuilder
+    private func seriesCard(_ series: PodcastSeries) -> some View {
+        switch PodcastSeriesActivation.activation(
+            seriesRemoteId: series.remoteId,
+            layoutMode: layoutMode
+        ) {
+        case .selectInline(let seriesRemoteId):
+            Button {
+                withAnimation(AppMotion.phaseChange) {
+                    selectedSeriesRemoteId = seriesRemoteId
+                }
+            } label: {
+                PodcastSeriesCard(series: series, coverHeight: coverHeight)
+                    .overlay {
+                        if selectedSeriesRemoteId == seriesRemoteId {
+                            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                                .stroke(appTheme.palette.accent, lineWidth: 1.5)
+                        }
+                    }
+            }
+        case .push(let route):
+            NavigationLink(value: route) {
+                PodcastSeriesCard(series: series, coverHeight: coverHeight)
             }
         }
     }
