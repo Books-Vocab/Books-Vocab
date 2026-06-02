@@ -45,14 +45,18 @@ struct BookshelfView: View {
     @State private var showLoginSheet = false
     @State private var navigationPath = NavigationPath()
 
-    /// regular (Mac/iPad) only: the podcast series whose episode-list + player
-    /// render as a root-level master pane on this NavigationStack root (depth=0)
-    /// instead of being pushed. compact keeps this `nil` and pushes via
-    /// `PodcastNavRoute.series` instead (see `PodcastSeriesActivation`). Driving
-    /// selection from a root-level `@State` is what makes the trailing
-    /// `safeAreaInset` player immune to the depth=1 remount/pop (runtime-confirmed
-    /// root cause; mirrors `NotebookListView.selectedNotebookId`).
-    @State private var selectedSeriesRemoteId: String?
+    /// regular (Mac/iPad): podcast 導航走 2D panel workspace（series/episode/player
+    /// 為可堆疊 Miller 子欄），由 section wrapper 注入。compact (iPhone) 為 nil → 沿用
+    /// `PodcastNavRoute` push。series 卡片是否高亮 = workspace 首欄是否為該 series。
+    @Environment(\.panelWorkspace) private var panelWorkspace
+
+    /// workspace 首欄選定的 series remoteId（驅動卡片高亮）。
+    private var openSeriesRemoteId: String? {
+        if case .podcastSeries(let rid)? = panelWorkspace?.columns.first?.blocks.first?.kind {
+            return rid
+        }
+        return nil
+    }
 
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
 
@@ -64,18 +68,10 @@ struct BookshelfView: View {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
 
-                // regular (Mac/iPad): a selected podcast series renders its
-                // episode-list + inline player as a root-level master pane
-                // (depth=0) — NOT a push. This is the structural fix for the
-                // Catalyst remount/pop (the trailing safeAreaInset player lives
-                // on root content, mirroring NotebookListView). compact never
-                // sets `selectedSeriesRemoteId` (it pushes instead), so this
-                // branch is regular-only.
-                if layoutMode.usesInlineDetail, let seriesId = selectedSeriesRemoteId {
-                    PodcastEpisodeListView(seriesId: seriesId)
-                        .id(seriesId)
-                        .transition(.contentSwap)
-                } else if books.isEmpty && podcastSeries.isEmpty {
+                // regular (Mac/iPad): podcast series 點選改開 2D workspace 子欄
+                // (PanelWorkspaceContainer，BookshelfView 的 sibling)，不再於此渲染
+                // master pane。此處只負責書架 grid / empty state。
+                if books.isEmpty && podcastSeries.isEmpty {
                     emptyState
                         .transition(.contentSwap)
                 } else {
@@ -132,27 +128,15 @@ struct BookshelfView: View {
             // two-pane layout or an orphaned player in compact. Mirrors
             // `PodcastDetailPresentation` dismiss + `NotebookListView` reconcile.
             .onChange(of: layoutMode) { _, newMode in
+                // regular → compact flip：收掉 workspace 子欄，避免 compact 殘留兩欄狀態。
                 if !newMode.usesInlineDetail {
-                    selectedSeriesRemoteId = nil
+                    panelWorkspace?.reset()
                 }
             }
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    // regular: a root-level podcast master pane is showing →
-                    // prepend an explicit back (no system back exists at depth=0).
-                    // Settings stays reachable alongside it (its only entry point
-                    // on Catalyst/iPad is this gear — must not be replaced).
-                    if layoutMode.usesInlineDetail, selectedSeriesRemoteId != nil {
-                        Button {
-                            withAnimation(AppMotion.phaseChange) {
-                                selectedSeriesRemoteId = nil
-                            }
-                        } label: {
-                            AppToolbarGlyph(systemImage: "chevron.left")
-                        }
-                        .accessibilityLabel("返回".localized)
-                        .accessibilityIdentifier("bookshelf.podcastBackButton")
-                    }
+                ToolbarItem(placement: .topBarLeading) {
+                    // workspace 模式下每個 podcast 子欄自帶 ✕ 關閉 → 不再需要書架層級的
+                    // 返回鍵。設定齒輪保留（Catalyst/iPad 唯一入口）。
                     Button(action: coordinator.presentSettings) {
                         AppToolbarGlyph(systemImage: "gearshape")
                     }
@@ -362,12 +346,13 @@ struct BookshelfView: View {
         case .selectInline(let seriesRemoteId):
             Button {
                 withAnimation(AppMotion.phaseChange) {
-                    selectedSeriesRemoteId = seriesRemoteId
+                    // 開 series 子欄（after: nil → 截斷既有、成為首欄 master）。
+                    _ = panelWorkspace?.openColumn(.podcastSeries(remoteID: seriesRemoteId), after: nil)
                 }
             } label: {
                 PodcastSeriesCard(series: series, coverHeight: coverHeight)
                     .overlay {
-                        if selectedSeriesRemoteId == seriesRemoteId {
+                        if openSeriesRemoteId == seriesRemoteId {
                             RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                                 .stroke(appTheme.palette.accent, lineWidth: 1.5)
                         }
