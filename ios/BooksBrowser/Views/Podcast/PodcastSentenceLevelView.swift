@@ -119,10 +119,28 @@ struct PodcastSentenceLevelView: View {
                     didInitialScroll = true
                     return
                 }
-                // Auto-follow: smoothly recenter when the sentence advances.
+                // Sentence advanced: seed the recenter at fraction 0 (slightly
+                // below center). The playbackAnchor driver below then drifts it
+                // continuously upward through center as the sentence plays.
                 guard isFollowing else { return }
                 withAnimation(AppMotion.standardSpring) {
-                    proxy.scrollTo(newId, anchor: .center)
+                    proxy.scrollTo(newId, anchor: PodcastScrollGeometry.centerAnchor(fraction: 0))
+                }
+            }
+            // Continuous centering: the 15 Hz playbackAnchor refresh drives a
+            // drifting scroll anchor so the current sentence eases through center
+            // instead of snapping once per sentence. Each short linear step
+            // re-targets the previous in-flight scroll → smooth glide. Reuses the
+            // existing ScrollViewReader (LazyVStack-safe; no offset/window rewrite,
+            // no Catalyst/a11y regression).
+            .onChange(of: playbackAnchor) { _, anchor in
+                guard didInitialScroll, isFollowing, let id = currentId,
+                      let sentence = sentences.first(where: { $0.id == id }) else { return }
+                let fraction = PodcastScrollGeometry.sentenceFraction(
+                    time: anchor.mediaTime, start: sentence.startTime, end: sentence.endTime
+                )
+                withAnimation(.linear(duration: 0.1)) {
+                    proxy.scrollTo(id, anchor: PodcastScrollGeometry.centerAnchor(fraction: fraction))
                 }
             }
             .animation(AppMotion.contentFade, value: isFollowing)

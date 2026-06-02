@@ -28,6 +28,20 @@ struct PodcastPlaybackClockTests {
         #expect(PodcastPlaybackClock.projectedTime(anchor: a, now: 1000, duration: 120) == 33)
     }
 
+    @Test func unknownDurationSkipsUpperClamp() {
+        // duration <= 0 (not yet loaded): lower-bound at 0 only, no upper clamp.
+        let a = PodcastPlaybackClock.makeAnchor(mediaTime: 10, now: 1000, rate: 1)
+        #expect(PodcastPlaybackClock.projectedTime(anchor: a, now: 1100, duration: 0) == 110)
+    }
+
+    @Test func rateChangeWhilePausedHoldsPosition() {
+        // cycleRate while paused → newRate 0: position frozen at the projected media time.
+        let old = PodcastPlaybackClock.makeAnchor(mediaTime: 20, now: 1000, rate: 0)
+        let new = PodcastPlaybackClock.anchorAfterRateChange(old: old, now: 1005, newRate: 0, duration: 120)
+        #expect(new.mediaTime == 20)
+        #expect(PodcastPlaybackClock.projectedTime(anchor: new, now: 1099, duration: 120) == 20)
+    }
+
     @Test func rateChangeReanchorsWithoutJump() {
         // Position at switch instant must be continuous: projecting just-before
         // and just-after the rate change yields the same media time.
@@ -147,7 +161,18 @@ struct PodcastUnderlineGeometryTests {
     @Test func staysOnActiveWordAcrossLineBreak() {
         let rects = [
             0: CGRect(x: 50, y: 0, width: 20, height: 18),
-            1: CGRect(x: 0, y: 30, width: 40, height: 18),  // next row
+            1: CGRect(x: 0, y: 30, width: 40, height: 18),  // next row (below)
+        ]
+        let bar = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.9)!
+        #expect(bar.minX == 50)
+        #expect(bar.width == 20)
+    }
+
+    @Test func staysOnActiveWordWhenNextWordOnAnyOtherRow() {
+        // Different row regardless of direction (next word above) → no horizontal drag.
+        let rects = [
+            0: CGRect(x: 50, y: 30, width: 20, height: 18),
+            1: CGRect(x: 0, y: 0, width: 40, height: 18),  // different row (above)
         ]
         let bar = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.9)!
         #expect(bar.minX == 50)
@@ -166,5 +191,19 @@ struct PodcastScrollGeometryTests {
     @Test func anchorClampsOutOfRangeFraction() {
         #expect(PodcastScrollGeometry.centerAnchor(fraction: -1) == PodcastScrollGeometry.centerAnchor(fraction: 0))
         #expect(PodcastScrollGeometry.centerAnchor(fraction: 2) == PodcastScrollGeometry.centerAnchor(fraction: 1))
+    }
+
+    @Test func sentenceFractionRampsAndClamps() {
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 10, start: 10, end: 20) == 0)
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 15, start: 10, end: 20) == 0.5)
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 20, start: 10, end: 20) == 1)
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 5, start: 10, end: 20) == 0)
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 99, start: 10, end: 20) == 1)
+    }
+
+    @Test func sentenceFractionDegenerateWindow() {
+        // Zero-length sentence: before start → 0, at/after → 1 (no divide-by-zero).
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 10, start: 10, end: 10) == 1)
+        #expect(PodcastScrollGeometry.sentenceFraction(time: 9, start: 10, end: 10) == 0)
     }
 }
