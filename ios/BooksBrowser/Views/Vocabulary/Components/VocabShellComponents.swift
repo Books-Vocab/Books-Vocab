@@ -191,7 +191,7 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
 
             trailingAccessory
 
-            VocabChromeIconButton(systemImage: "xmark", label: "關閉", action: onClose)
+            VocabChromeIconButton(systemImage: "xmark", label: L10n.string("a11y.action.close"), action: onClose)
         }
         .padding(.horizontal, appSkin.metrics.overlayHeaderHorizontalInset)
         .padding(.vertical, appSkin.metrics.overlayHeaderVerticalInset)
