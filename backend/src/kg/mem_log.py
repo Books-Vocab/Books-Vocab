@@ -34,6 +34,10 @@ class _MemoryLogHandler(logging.Handler):
             pass  # handler must never crash the application
 
     def get(self, n: int = 200, level: str | None = None) -> list[dict]:
+        # Clamp the lower bound: n=0 makes rows[-0:] == rows[:] (whole
+        # buffer) and n<0 makes rows[n:] a forward slice (head-dropped,
+        # misaligned). Both are the wrong "tail". Floor at a single row.
+        n = max(1, n)
         rows = list(self._buf)
         if level:
             rows = [r for r in rows if r["level"] == level]
