@@ -25,7 +25,6 @@ extension ReaderView {
             ReadiumNavigatorView(
                 publication: publication,
                 initialLocator: initialLocator,
-                httpServer: readiumService.httpServer,
                 lookedUpWords: handler.lookedUpWords,
                 bookUniqueWords: handler.bookUniqueWords,
                 viewConfiguration: viewConfiguration,
