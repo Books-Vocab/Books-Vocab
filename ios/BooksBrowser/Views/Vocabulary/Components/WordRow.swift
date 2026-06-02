@@ -177,3 +177,78 @@ struct WordRow: View {
     }
 
 }
+
+#Preview("WordRow") {
+    func make(
+        word: String,
+        tone: WordRow.ViewData.Tone = .primary,
+        strike: Bool = false,
+        pos: String? = "n.",
+        translation: String? = "a placeholder gloss for preview",
+        book: String? = "Sample Book",
+        chapter: String? = "Chapter One",
+        tier: String? = "B2",
+        progress: VocabReviewProgress? = nil,
+        leadingImage: String? = nil,
+        trailing: String? = nil,
+        trailingTone: WordRow.ViewData.Tone? = nil,
+        status: String? = nil,
+        statusTone: WordRow.ViewData.Tone? = nil
+    ) -> WordRow.ViewData {
+        WordRow.ViewData(
+            id: UUID(),
+            word: word,
+            wordTone: tone,
+            isStrikethrough: strike,
+            partOfSpeech: pos,
+            translation: translation,
+            bookTitle: book,
+            chapterTitle: chapter,
+            difficultyTier: tier,
+            reviewProgress: progress,
+            leadingSystemImage: leadingImage,
+            leadingTone: nil,
+            trailingLabel: trailing,
+            trailingTone: trailingTone,
+            statusText: status,
+            statusTone: statusTone
+        )
+    }
+
+    let rows: [WordRow.ViewData] = [
+        make(word: "serendipity"),
+        make(
+            word: "ephemeral",
+            tone: .reviewDue,
+            tier: nil,
+            progress: VocabReviewProgress(statusLabel: "Due", detailLabel: "2 / 5", ratio: 0.4),
+            leadingImage: "clock"
+        ),
+        make(
+            word: "ubiquitous",
+            tone: .secondary,
+            translation: nil,
+            tier: "C1",
+            trailing: "42",
+            trailingTone: .tertiary
+        ),
+        make(
+            word: "obsolete",
+            tone: .tertiary,
+            strike: true,
+            translation: "no longer in use",
+            tier: nil
+        )
+    ]
+
+    return AppThemeContainer {
+        VStack(spacing: 0) {
+            ForEach(rows) { row in
+                WordRow(viewData: row)
+                    .padding(.horizontal)
+            }
+        }
+        .padding(.vertical)
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}

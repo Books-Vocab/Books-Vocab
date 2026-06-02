@@ -150,3 +150,32 @@ private struct DayCell: Identifiable {
     let dayKey: String?
     let isToday: Bool
 }
+
+#Preview("VocabCalendarGrid") {
+    @Previewable @State var selectedDay: String?
+
+    let cal = Calendar.current
+    let formatter = AppDateFormatters.dayKey
+    let month = Date()
+    var activity: [String: Int] = [:]
+    if let firstOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: month)),
+       let range = cal.range(of: .day, in: .month, for: firstOfMonth) {
+        for day in range where day % 3 != 0 {
+            var comps = cal.dateComponents([.year, .month], from: month)
+            comps.day = day
+            if let date = cal.date(from: comps) {
+                activity[formatter.string(from: date)] = (day % 11) + 1
+            }
+        }
+    }
+
+    return AppThemeContainer {
+        VocabCalendarGrid(
+            displayedMonth: month,
+            activityMap: activity,
+            selectedDay: $selectedDay
+        )
+        .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
