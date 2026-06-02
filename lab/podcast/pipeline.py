@@ -56,6 +56,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -911,8 +912,17 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     label = f"Scriptwriter EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Scriptwriter"]
 
+    # Each worker runs in its OWN process (ProcessPoolExecutor), so it builds its
+    # own PipelineLog instead of inheriting the parent's. PipelineLog holds no
+    # shared state and appends single short lines via open("a") (O_APPEND →
+    # atomic append-to-EOF on POSIX), so concurrent workers writing the same
+    # pipeline_log.jsonl never interleave or clobber each other. Passing log=None
+    # here used to silently swallow agent failures — the `if log:` guards in
+    # _run_claude_subprocess skip the timeout/api_error/exit logging — so the
+    # dashboard's `grep '"error"'` saw nothing for parallel-stage failures.
+    log = PipelineLog(workspace)
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout, prompt)
+    success, elapsed = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -930,8 +940,11 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     label = f"Script Review EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Script Review"]
 
+    # Own-process worker → own PipelineLog (see run_scriptwriter for the O_APPEND
+    # safety rationale). Replaces the former log=None that swallowed failures.
+    log = PipelineLog(workspace)
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_with_retry(cmd, workspace, label, None, timeout, prompt)
+    success, elapsed = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -1057,7 +1070,21 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
     with ProcessPoolExecutor(max_workers=max_parallel) as pool:
         futures = {pool.submit(run_scriptwriter, workspace, n): n for n in todo}
         for future in as_completed(futures):
-            ep_num, success = future.result()
+            ep_num = futures[future]
+            # A worker that OOMs / SIGKILLs / segfaults dies before it can return
+            # (ep, False), so future.result() raises BrokenProcessPool (which would
+            # propagate out of the `with` block, discarding every sibling's already-
+            # collected result and aborting the stage non-gracefully). Catch it (and
+            # any other worker exception) → mark just that episode failed, keep the
+            # siblings, and let the stage report which episodes failed below.
+            try:
+                ep_num, success = future.result()
+            except BrokenProcessPool as e:
+                log.error(f"Scriptwriter EP{ep_num} worker crashed (BrokenProcessPool: {e})")
+                success = False
+            except Exception as e:  # noqa: BLE001 — worker death must not abort the stage
+                log.error(f"Scriptwriter EP{ep_num} worker raised {type(e).__name__}: {e}")
+                success = False
             results[ep_num] = success
 
     failed = [n for n, ok in results.items() if not ok]
@@ -1099,7 +1126,19 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
     with ProcessPoolExecutor(max_workers=max_parallel) as pool:
         futures = {pool.submit(run_script_reviewer, workspace, n): n for n in todo}
         for future in as_completed(futures):
-            ep_num, success = future.result()
+            ep_num = futures[future]
+            # Same crash-resilience as stage_scriptwriters: a worker that dies
+            # before returning raises BrokenProcessPool; catch it (and any other
+            # worker exception) so one crashed episode never discards the siblings'
+            # results or aborts the stage non-gracefully.
+            try:
+                ep_num, success = future.result()
+            except BrokenProcessPool as e:
+                log.error(f"Script Review EP{ep_num} worker crashed (BrokenProcessPool: {e})")
+                success = False
+            except Exception as e:  # noqa: BLE001 — worker death must not abort the stage
+                log.error(f"Script Review EP{ep_num} worker raised {type(e).__name__}: {e}")
+                success = False
             results[ep_num] = success
 
     failed = [n for n, ok in results.items() if not ok]
