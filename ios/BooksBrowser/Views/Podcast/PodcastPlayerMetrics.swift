@@ -118,11 +118,13 @@ enum PodcastScrollGeometry {
     /// Default vertical drift span (in viewport-height units) across one sentence.
     static let centerDriftSpan: CGFloat = 0.18
 
-    /// fraction 0 → sentence sits slightly below center (anchor.y < 0.5),
-    /// fraction 1 → slightly above (anchor.y > 0.5), so it climbs through center.
+    /// Drives `scrollTo(anchor:)`, where a LARGER `anchor.y` places the target
+    /// sentence LOWER in the viewport. To make the current sentence climb upward
+    /// through center as it plays: fraction 0 → below center (anchor.y > 0.5),
+    /// fraction 1 → above center (anchor.y < 0.5).
     static func centerAnchor(fraction: Double, span: CGFloat = centerDriftSpan) -> UnitPoint {
         let f = CGFloat(min(1, max(0, fraction)))
-        return UnitPoint(x: 0.5, y: 0.5 + (f - 0.5) * span)
+        return UnitPoint(x: 0.5, y: 0.5 - (f - 0.5) * span)
     }
 
     /// Progress (0…1) of `time` through a sentence's `[start, end]` window.
