@@ -42,8 +42,20 @@ struct PodcastSentenceLevelView: View {
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
 
     @State private var isFollowing = true
-    @State private var didInitialScroll = false
     @State private var selectionState: SentenceSelectionState?
+    /// Measured vertical center of each sentence within the transcript column's
+    /// OWN coordinate space (offset-independent), keyed by sentence id. Drives
+    /// the continuous follow offset.
+    @State private var sentenceCenters: [Int: CGFloat] = [:]
+    /// Content offset while NOT following (manual browse). Seeded from the live
+    /// follow offset the instant follow disengages → seamless hand-off, no jump.
+    @State private var manualOffset: CGFloat = 0
+    @State private var dragStartOffset: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+
+    /// Named coordinate space for measuring sentence centers, independent of the
+    /// outer `.offset` (which is a render transform, not a layout change).
+    private static let transcriptSpace = "podcastTranscript"
 
     private var currentId: Int? { renderState?.sentenceId }
 
@@ -69,83 +81,115 @@ struct PodcastSentenceLevelView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        GeometryReader { vp in
             ZStack(alignment: .bottom) {
-                ScrollView {
-                    LazyVStack(spacing: skin.spacing.inlineGap) {
-                        ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
-                            let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
-                            let showSpeaker = sentence.speaker != prevSpeaker
-                            bubbleRow(sentence, showSpeaker: showSpeaker)
-                                .id(sentence.id)
-                        }
-                    }
-                    .padding(.vertical, skin.spacing.sectionGap)
-                    .padding(.horizontal, skin.spacing.cardPadding)
+                // Offset-driven follow: a single continuous `.offset` positions
+                // the transcript so the spoken sentence glides through the
+                // viewport center with NO per-sentence jump. (`scrollTo` can only
+                // align same-fraction points of view+viewport, so it cannot keep
+                // an intra-sentence point centered — a manual offset is required.)
+                // When not following, the same offset is driven by the user's drag.
+                TimelineView(.animation(paused: !isPlaying || !isFollowing)) { ctx in
+                    let offset = isFollowing
+                        ? followOffset(viewportHeight: vp.size.height, now: ctx.date.timeIntervalSinceReferenceDate)
+                        : manualOffset
+                    transcriptColumn
+                        .offset(y: offset)
                 }
-                // User drag disables follow mode. `minimumDistance: 24` avoids
-                // cancelling follow on a finger-tremor tap (10pt contact +
-                // small slide during release). Genuine scroll easily clears it.
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 24)
-                        .onChanged { _ in
-                            if isFollowing { isFollowing = false }
-                        }
-                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .clipped()
+                .contentShape(Rectangle())
+                // Manual browse: drag hands off seamlessly from the live follow
+                // offset (no jump), then moves 1:1. `simultaneousGesture` so word
+                // tap / long-press still resolve (they have ~0 movement).
+                .simultaneousGesture(browseDrag(viewportHeight: vp.size.height))
+                .onPreferenceChange(SentenceCenterKey.self) { sentenceCenters = $0 }
+                .onAppear { viewportHeight = vp.size.height }
+                .onChange(of: vp.size.height) { _, h in viewportHeight = h }
 
                 if shouldShowFollowControl {
-                    followPill(proxy: proxy)
+                    followPill()
                         .padding(.bottom, skin.spacing.sectionGap)
                         .transition(.readerPanelReveal)
-                }
-            }
-            .onAppear {
-                // If currentId is already known at appear, do the one-shot scroll.
-                // Otherwise the .onChange below will handle it when the first
-                // sentence resolves after restoreProgress / first time-tick.
-                if !didInitialScroll, let id = currentId {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        proxy.scrollTo(id, anchor: .center)
-                        didInitialScroll = true
-                    }
-                }
-            }
-            .onChange(of: currentId) { _, newId in
-                guard let newId else { return }
-                // First non-nil currentId → one-shot initial scroll without animation
-                // so restored positions appear immediately.
-                if !didInitialScroll {
-                    proxy.scrollTo(newId, anchor: .center)
-                    didInitialScroll = true
-                    return
-                }
-                // Sentence advanced: seed the recenter at fraction 0 (slightly
-                // below center). The playbackAnchor driver below then drifts it
-                // continuously upward through center as the sentence plays.
-                guard isFollowing else { return }
-                withAnimation(AppMotion.standardSpring) {
-                    proxy.scrollTo(newId, anchor: PodcastScrollGeometry.centerAnchor(fraction: 0))
-                }
-            }
-            // Continuous centering: the 15 Hz playbackAnchor refresh drives a
-            // drifting scroll anchor so the current sentence eases through center
-            // instead of snapping once per sentence. Each short linear step
-            // re-targets the previous in-flight scroll → smooth glide. Reuses the
-            // existing ScrollViewReader (LazyVStack-safe; no offset/window rewrite,
-            // no Catalyst/a11y regression).
-            .onChange(of: playbackAnchor) { _, anchor in
-                guard didInitialScroll, isFollowing, let id = currentId,
-                      let sentence = sentences.first(where: { $0.id == id }) else { return }
-                let fraction = PodcastScrollGeometry.sentenceFraction(
-                    time: anchor.mediaTime, start: sentence.startTime, end: sentence.endTime
-                )
-                withAnimation(.linear(duration: 0.1)) {
-                    proxy.scrollTo(id, anchor: PodcastScrollGeometry.centerAnchor(fraction: fraction))
                 }
             }
             .animation(AppMotion.contentFade, value: isFollowing)
         }
         .enableInjection()
+    }
+
+    /// Non-lazy column of every sentence. Non-lazy (not `LazyVStack`) is required
+    /// because `.offset` does not move a `LazyVStack`'s realization window —
+    /// off-window cells would blank out. Each bubble reports its center in the
+    /// column's own coordinate space for the continuous follow offset.
+    private var transcriptColumn: some View {
+        VStack(spacing: skin.spacing.inlineGap) {
+            ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
+                let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
+                bubbleRow(sentence, showSpeaker: sentence.speaker != prevSpeaker)
+                    .id(sentence.id)
+                    .background(
+                        GeometryReader { g in
+                            Color.clear.preference(
+                                key: SentenceCenterKey.self,
+                                value: [sentence.id: g.frame(in: .named(Self.transcriptSpace)).midY]
+                            )
+                        }
+                    )
+            }
+        }
+        .padding(.vertical, skin.spacing.sectionGap)
+        .padding(.horizontal, skin.spacing.cardPadding)
+        .coordinateSpace(name: Self.transcriptSpace)
+    }
+
+    /// Continuous content offset that keeps the spoken sentence at viewport
+    /// center. Falls back to the last manual offset until centers are measured.
+    private func followOffset(viewportHeight: CGFloat, now: TimeInterval) -> CGFloat {
+        let t = PodcastPlaybackClock.projectedTime(anchor: playbackAnchor, now: now, duration: duration)
+        return PodcastScrollGeometry.centerOffset(
+            time: t, sentences: sentences, centers: sentenceCenters, viewportHeight: viewportHeight
+        ) ?? manualOffset
+    }
+
+    /// Snapshot the live follow offset into the manual offset so disengaging
+    /// follow (drag / long-press select / Catalyst stop pill) never jumps.
+    private func seedManualOffsetFromFollow() {
+        let off = followOffset(viewportHeight: viewportHeight, now: Date().timeIntervalSinceReferenceDate)
+        manualOffset = off
+        dragStartOffset = off
+    }
+
+    private func browseDrag(viewportHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                if isFollowing {
+                    // First drag event: hand off from the live follow position,
+                    // then disengage. Translation (~0 here) applied next event.
+                    let off = followOffset(
+                        viewportHeight: viewportHeight, now: Date().timeIntervalSinceReferenceDate
+                    )
+                    manualOffset = off
+                    dragStartOffset = off
+                    isFollowing = false
+                } else {
+                    manualOffset = clampOffset(
+                        dragStartOffset + value.translation.height, viewportHeight: viewportHeight
+                    )
+                }
+            }
+            .onEnded { _ in dragStartOffset = manualOffset }
+    }
+
+    /// Clamp so the user can't drag the transcript into empty space beyond the
+    /// first/last sentence (each still centerable).
+    private func clampOffset(_ y: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+        guard let minC = sentenceCenters.values.min(),
+              let maxC = sentenceCenters.values.max() else { return y }
+        let maxOffset = viewportHeight / 2 - minC  // first sentence centered
+        let minOffset = viewportHeight / 2 - maxC  // last sentence centered
+        guard minOffset <= maxOffset else { return y }
+        return min(maxOffset, max(minOffset, y))
     }
 
     // MARK: - Bubble row
@@ -341,11 +385,12 @@ struct PodcastSentenceLevelView: View {
     }
 
     @ViewBuilder
-    private func followPill(proxy: ScrollViewProxy) -> some View {
+    private func followPill() -> some View {
         if isFollowing {
             // iPhone/iPad 在 following 時 shouldShowFollowControl 為 false,不會到這;
             // 僅 Catalyst 顯示此態,作為「停止跟隨、自由瀏覽」開關。
             pillCapsule {
+                seedManualOffsetFromFollow()
                 isFollowing = false
             } content: {
                 Image(systemName: "pause.fill")
@@ -357,11 +402,10 @@ struct PodcastSentenceLevelView: View {
             }
         } else {
             pillCapsule {
-                isFollowing = true
-                if let id = currentId {
-                    withAnimation(AppMotion.standardSpring) {
-                        proxy.scrollTo(id, anchor: .center)
-                    }
+                // Re-engage follow: the offset container snaps back to the live
+                // follow offset (animated by the body's isFollowing animation).
+                withAnimation(AppMotion.standardSpring) {
+                    isFollowing = true
                 }
             } content: {
                 if let speaker = renderState?.speaker {
@@ -419,6 +463,7 @@ struct PodcastSentenceLevelView: View {
     }
 
     private func enterSelectionMode(for sentence: PodcastSentence, wordIndex: Int) {
+        seedManualOffsetFromFollow()
         isFollowing = false
         selectionState = SentenceSelectionState(
             sentenceId: sentence.id,
@@ -451,6 +496,15 @@ struct PodcastSentenceLevelView: View {
 private struct WordFrameKey: PreferenceKey {
     static let defaultValue: [Int: Anchor<CGRect>] = [:]
     static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Collects each sentence's vertical center (in the transcript column's own
+/// coordinate space) keyed by sentence id, for the offset-driven follow scroll.
+private struct SentenceCenterKey: PreferenceKey {
+    static let defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
         value.merge(nextValue()) { _, new in new }
     }
 }
