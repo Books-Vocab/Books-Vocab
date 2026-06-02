@@ -106,7 +106,7 @@ struct PodcastEpisodeListView: View {
         }
         if loadError != nil, rawEpisodes.isEmpty {
             return .error(
-                title: "無法載入集數",
+                title: "無法載入集數".localized,
                 systemImage: "exclamationmark.triangle",
                 retryAction: {
                     Task { await reloadFromStore() }
@@ -115,9 +115,9 @@ struct PodcastEpisodeListView: View {
         }
         if rawEpisodes.isEmpty && hasLoadedOnce {
             return .empty(
-                title: "尚無集數",
+                title: "尚無集數".localized,
                 systemImage: "waveform.slash",
-                description: "此系列目前沒有可播放的集數",
+                description: "此系列目前沒有可播放的集數".localized,
                 action: nil
             )
         }
