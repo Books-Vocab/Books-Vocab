@@ -29,6 +29,7 @@ final class LocaleAwareFormatter: @unchecked Sendable {
         var styleFormatters: [String: DateFormatter] = [:]
         var relativeFormatters: [RelativeDateTimeFormatter.UnitsStyle: RelativeDateTimeFormatter] = [:]
         var numberFormatters: [NumberFormatter.Style: NumberFormatter] = [:]
+        var weekdaySymbols: [String: [String]] = [:]
     }
 
     private let lock = OSAllocatedUnfairLock<Storage>(initialState: Storage())
@@ -145,6 +146,36 @@ final class LocaleAwareFormatter: @unchecked Sendable {
                 formatter = f
             }
             return formatter.string(from: number) ?? ""
+        }
+    }
+
+    // MARK: - Weekday symbols (locale-aware, Monday-first)
+
+    /// Locale-aware weekday symbols rotated to Monday-first order
+    /// (`[Mon, Tue, Wed, Thu, Fri, Sat, Sun]`), following AppLanguage.
+    ///
+    /// Apple's `veryShortWeekdaySymbols` / `shortWeekdaySymbols` are always
+    /// Sunday-indexed (index 0 = Sunday) regardless of calendar `firstWeekday`,
+    /// so we rotate by moving Sunday (index 0) to the tail. Callers render a
+    /// fixed Monday-start grid, so we rotate deterministically rather than by
+    /// locale `firstWeekday`.
+    ///
+    /// - Parameter short: `true` → single-glyph `veryShortWeekdaySymbols`
+    ///   (zh `一`, en `M`); `false` → `shortWeekdaySymbols` (en `Mon`).
+    func mondayFirstWeekdaySymbols(short: Bool = true) -> [String] {
+        let locale = AppLanguageStore.shared.formatLocale
+        let cacheKey = "WD|\(short ? "vs" : "s")|\(locale.identifier)"
+        return lock.withLock { storage in
+            if let cached = storage.weekdaySymbols[cacheKey] { return cached }
+            let f = DateFormatter()
+            f.locale = locale
+            let sundayFirst = (short ? f.veryShortWeekdaySymbols : f.shortWeekdaySymbols) ?? []
+            // Rotate Sunday (index 0) to the end → Monday-first.
+            let mondayFirst = sundayFirst.count == 7
+                ? Array(sundayFirst[1...]) + [sundayFirst[0]]
+                : sundayFirst
+            storage.weekdaySymbols[cacheKey] = mondayFirst
+            return mondayFirst
         }
     }
 
