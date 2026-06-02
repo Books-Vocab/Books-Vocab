@@ -128,7 +128,7 @@ struct AppSectionFooter: View {
 /// }
 /// ```
 ///
-/// 規格：1pt hairline、`palette.divider` 色、上下各 `AppMetrics.dividerAirMargin = 32` margin。
+/// 規格：1pt hairline、`palette.divider` 色、上下各 `AppMetrics.dividerAirMargin = 16` margin。
 struct AppAirDivider: View {
     @Environment(\.appTheme) private var appTheme
 

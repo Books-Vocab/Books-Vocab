@@ -36,7 +36,7 @@ BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、bor
 KG UI 對齊 [mochi.cards](https://mochi.cards/docs/api/) editorial 質感。以下五條為 hard rule，新 view / refactor PR 違反 → review block。
 
 1. **單色頁面、無 chrome 分隔**　top toolbar、tab bar、content 共用 `pageBackground`。禁止用 navigation chrome 改色分區（toolbar bg ≠ content bg 屬違反）。
-2. **border 退場、divider 進場**　list cards 預設無 border。分區走 `hr-style divider`（hairline + 32pt 上下 margin，Phase 1 會在 `AppMetrics` 落 `dividerAirMargin` token）+ 留白。例外：modal / popover / sticky group 必須有邊界，可保留 border。
+2. **border 退場、divider 進場**　list cards 預設無 border。分區走 `hr-style divider`（hairline + `AppMetrics.dividerAirMargin = 16` 上下 margin）+ 留白。例外：modal / popover / sticky group 必須有邊界，可保留 border。
 3. **shadow 收到 z0 / z1 兩階**　list / resting cards 用 z0（無 shadow，純背景區分）或 z1（極輕）。z2 以上保留給 sheet / drawer / modal / overlay。禁止 raw `.shadow(...)`，一律走 `.appElevation(.zN)`。
 4. **單一強調色策略**　全 app 強調色只有以下軸線，禁止為了好看引入新色：
    - `brandHero` 奶黃 — 日常 CTA（既有）
