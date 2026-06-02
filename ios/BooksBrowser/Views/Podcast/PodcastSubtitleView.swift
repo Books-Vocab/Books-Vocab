@@ -16,7 +16,9 @@ struct PodcastSubtitleView: View {
             PodcastSentenceLevelView(
                 sentences: viewModel.visibleSentences,
                 renderState: viewModel.renderState,
-                highlightedWordIndex: viewModel.highlightedWordIndex,
+                playbackAnchor: viewModel.playbackAnchor,
+                duration: viewModel.duration,
+                isPlaying: viewModel.state == .playing,
                 hostNames: viewModel.hostNames,
                 subtitleSize: subtitleSize,
                 onSentenceTap: { viewModel.seek(to: $0.startTime) },

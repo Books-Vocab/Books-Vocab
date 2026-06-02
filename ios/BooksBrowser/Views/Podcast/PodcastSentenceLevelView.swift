@@ -25,7 +25,13 @@ struct PodcastSentenceLevelView: View {
 
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
-    let highlightedWordIndex: Int
+    /// Continuous-playhead inputs (Phase 2): the active word + its underline are
+    /// derived every frame by extrapolating `playbackAnchor` and running
+    /// `PodcastWordProgress.locate` over the current sentence's cues — replacing
+    /// the discrete `highlightedWordIndex` snap the view used to consume.
+    let playbackAnchor: PlaybackAnchor
+    let duration: TimeInterval
+    let isPlaying: Bool
     let hostNames: [String]
     let subtitleSize: PodcastSubtitleSize
     let onSentenceTap: (PodcastSentence) -> Void
@@ -225,20 +231,12 @@ struct PodcastSentenceLevelView: View {
         if isCurrent, let rs = renderState, rs.sentenceId == sentence.id {
             CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
                 ForEach(Array(rs.words.enumerated()), id: \.element.id) { index, word in
-                    let isActive = word.id == highlightedWordIndex
-                    let showsActiveUnderline = wordFollowEnabled && isActive
                     Text(word.text)
                         .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
-                        .overlay(alignment: .bottom) {
-                            if showsActiveUnderline {
-                                Capsule()
-                                    .fill(tint)
-                                    .frame(height: 3)
-                                    .offset(y: 3)
-                                    .transition(.overlayFade)
-                            }
-                        }
+                        // Report each word's frame so the single continuous
+                        // underline can be positioned/sized against real geometry.
+                        .anchorPreference(key: WordFrameKey.self, value: .bounds) { [index: $0] }
                         .onTapGesture {
                             onWordTap(word.text, rs.sentenceText)
                         }
@@ -247,7 +245,13 @@ struct PodcastSentenceLevelView: View {
                         }
                 }
             }
-            .animation(AppMotion.standardSpring, value: highlightedWordIndex)
+            // Single continuous capsule driven by the extrapolated playhead —
+            // replaces the prior per-word overlay + `.animation(value:)` snap,
+            // which strobed off on sub-130ms words. Gated by `wordFollowEnabled`
+            // (false → bar(...) gets no chance to render).
+            .overlayPreferenceValue(WordFrameKey.self) { anchors in
+                continuousUnderline(anchors: anchors, words: sentence.words, tint: tint)
+            }
         } else {
             CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
                 // Use sentence.words (same source the current-branch uses) so
@@ -263,6 +267,41 @@ struct PodcastSentenceLevelView: View {
                         .onLongPressGesture(minimumDuration: 0.35) {
                             enterSelectionMode(for: sentence, wordIndex: index)
                         }
+                }
+            }
+        }
+    }
+
+    /// The single continuous underline. `rects` are resolved once per layout
+    /// pass (from anchor preferences); the inner `TimelineView` re-evaluates at
+    /// the display refresh rate and only lerps the capsule — it does NOT rebuild
+    /// the word tokens, so `CachedFlowLayout` never re-runs per frame.
+    /// `words` MUST be the current sentence's cues (sentence-relative indices),
+    /// matching `PodcastWordProgress.locate`'s array basis.
+    @ViewBuilder
+    private func continuousUnderline(
+        anchors: [Int: Anchor<CGRect>],
+        words: [PodcastSubtitleCue],
+        tint: Color
+    ) -> some View {
+        GeometryReader { geo in
+            let rects = anchors.mapValues { geo[$0] }
+            TimelineView(.animation(paused: !isPlaying)) { ctx in
+                let t = PodcastPlaybackClock.projectedTime(
+                    anchor: playbackAnchor,
+                    now: ctx.date.timeIntervalSinceReferenceDate,
+                    duration: duration
+                )
+                let loc = PodcastWordProgress.locate(time: t, words: words)
+                if wordFollowEnabled,
+                   let bar = PodcastUnderlineGeometry.bar(
+                       wordRects: rects, activeIndex: loc.index, fraction: loc.fraction
+                   ) {
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: bar.width, height: 3)
+                        // bottomY (word bottom) + 3pt offset + half the 3pt height.
+                        .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
                 }
             }
         }
@@ -388,6 +427,16 @@ struct PodcastSentenceLevelView: View {
     }
 }
 
+/// Collects each word's frame (as a resolvable `Anchor<CGRect>`) keyed by its
+/// index within the current sentence, so the continuous underline overlay can
+/// position itself against real word geometry without re-running the layout.
+private struct WordFrameKey: PreferenceKey {
+    static let defaultValue: [Int: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 #Preview("Podcast Subtitle XL") {
     let cues1 = [
         PodcastSubtitleCue(id: 1, startTime: 0, endTime: 0.4, speaker: "Maya", word: "OK"),
@@ -412,7 +461,9 @@ struct PodcastSentenceLevelView: View {
         PodcastSentenceLevelView(
             sentences: [s1, s2],
             renderState: SubtitleRenderState(from: s2, hostNames: ["Maya", "Kai"]),
-            highlightedWordIndex: 4,
+            playbackAnchor: PlaybackAnchor(mediaTime: 4.3, wallClock: 0, rate: 0),
+            duration: 5.2,
+            isPlaying: false,
             hostNames: ["Maya", "Kai"],
             subtitleSize: .xLarge,
             onSentenceTap: { _ in },
