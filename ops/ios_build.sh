@@ -49,8 +49,13 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
   # Check if holder PID is still alive; if not, steal lock
   HOLDER_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
   if [[ -n "$HOLDER_PID" ]] && ! kill -0 "$HOLDER_PID" 2>/dev/null; then
-    echo "[ios_build] stale lock (pid=$HOLDER_PID dead), stealing"
-    rm -f "$LOCK_FILE"
+    # Re-check the lock still holds the SAME dead PID before stealing — another
+    # waiter may have acquired it fresh between our cat and rm (steal only our
+    # observed dead lock, never a live one).
+    if [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$HOLDER_PID" ]]; then
+      echo "[ios_build] stale lock (pid=$HOLDER_PID dead), stealing"
+      rm -f "$LOCK_FILE"
+    fi
     continue
   fi
   if (( WAITED >= TIMEOUT )); then
