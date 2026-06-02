@@ -276,6 +276,7 @@ def create_admin_handlers(
             "pipeline_deleted": report["pipeline_log"]["deleted"],
             "judge_deleted": report["judge_log"]["deleted"],
             "translate_deleted": report["translate_log"]["deleted"],
+            "translate_cache_hits_deleted": report["translate_cache_hits"]["deleted"],
             "token_deleted": report["token_usage"]["deleted"],
         }
 

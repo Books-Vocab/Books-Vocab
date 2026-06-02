@@ -94,6 +94,11 @@ def _get_conn() -> sqlite3.Connection:
         _conn.execute("DROP INDEX IF EXISTS idx_tl_cache")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation, model)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
+        # Bare created_at index for the retention pruner's
+        # `DELETE ... WHERE created_at < ?`; idx_tl_user leads with user_id so
+        # SQLite can't use it for a bare-created_at predicate (idx_tch_created
+        # already covers translate_cache_hits the same way).
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_created ON translate_log(created_at)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
         _conn.commit()
     return _conn

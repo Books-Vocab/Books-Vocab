@@ -136,6 +136,23 @@ def prune_translate_log(days: int | None = None) -> tuple[int, int]:
         return _delete_and_count(conn, "translate_log", "created_at", cutoff)
 
 
+def prune_translate_cache_hits(days: int | None = None) -> tuple[int, int]:
+    """Delete translate_cache_hits rows whose ``created_at`` is older than ``days``.
+
+    Reuses the translate-log retention window: when ``days`` is ``None``,
+    falls back to ``TRANSLATE_LOG_RETENTION_DAYS`` env var, then
+    ``DEFAULT_DAYS_TRANSLATE``. This table records one row per translate cache
+    hit (`translate_log.record_cache_hit`) and is only read by admin
+    observability counters, so without this pruner it grows monotonically.
+    """
+    if days is None:
+        days = _env_days("TRANSLATE_LOG_RETENTION_DAYS", DEFAULT_DAYS_TRANSLATE)
+    cutoff = _cutoff(days)
+    with translate_log._lock:
+        conn = translate_log._get_conn()
+        return _delete_and_count(conn, "translate_cache_hits", "created_at", cutoff)
+
+
 def prune_token_usage(days: int | None = None) -> tuple[int, int]:
     """Delete token_usage rows whose ``created_at`` is older than ``days``.
 
@@ -183,6 +200,11 @@ def run_all(
     deleted, remaining = prune_translate_log(translate_days)
     report["translate_log"] = {"deleted": deleted, "remaining": remaining,
                                "days": _effective_days("translate", translate_days)}
+
+    # Shares the translate-log retention window (TRANSLATE_LOG_RETENTION_DAYS).
+    deleted, remaining = prune_translate_cache_hits(translate_days)
+    report["translate_cache_hits"] = {"deleted": deleted, "remaining": remaining,
+                                      "days": _effective_days("translate", translate_days)}
 
     deleted, remaining = prune_token_usage(token_days)
     report["token_usage"] = {"deleted": deleted, "remaining": remaining,
@@ -244,6 +266,10 @@ def _run_from_args(args: argparse.Namespace) -> dict[str, dict[str, int]]:
         d, r = prune_translate_log(args.days)
         report["translate_log"] = {"deleted": d, "remaining": r,
                                    "days": _effective_days("translate", args.days)}
+        # translate_cache_hits shares the translate window — prune it alongside.
+        d, r = prune_translate_cache_hits(args.days)
+        report["translate_cache_hits"] = {"deleted": d, "remaining": r,
+                                          "days": _effective_days("translate", args.days)}
     if args.token:
         d, r = prune_token_usage(args.days)
         report["token_usage"] = {"deleted": d, "remaining": r,
