@@ -76,6 +76,17 @@ def push_review_states(
 
             # Client is newer — accept all fields
             client_next = parse_datetime(entry.next_review_at)
+            # Observability: a present-but-unparseable next_review_at silently
+            # resets this card's schedule to None below. Surface it so bad/stale
+            # client payloads are diagnosable. Skip whitespace-only / empty
+            # values, which mean "not meaningfully sent" rather than malformed.
+            if client_next is None and str(entry.next_review_at).strip():
+                logger.warning(
+                    "push_review_states: card %s has unparseable next_review_at %r; "
+                    "schedule reset to None",
+                    card.id,
+                    entry.next_review_at,
+                )
             pending_updates.append((card.id, dict(
                 review_interval_hours=entry.review_interval_hours,
                 next_review_at=client_next,
