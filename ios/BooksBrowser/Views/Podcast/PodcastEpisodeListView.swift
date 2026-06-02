@@ -38,19 +38,13 @@ struct PodcastEpisodeListView: View {
     @ObserveInjection private var inject
     let seriesId: String
     /// workspace 模式（Catalyst 2D block stack）：set 時集數 tap 改呼此 closure 開
-    /// player **子欄**（不走內建 inline player / push）。nil = 既有行為（regular inline
-    /// player / compact push）。`podcastDetailPresentation` 留著但休眠（detailRouter
-    /// 永不被 show → hasDetail 恆 false → inline player 不渲染）。
+    /// player **子欄**。nil = compact push（regular 永遠經 workspace 注入此 closure）。
     var onSelectEpisode: ((String) -> Void)? = nil
     @Environment(\.appSkin) private var skin
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.kgService) private var kgService
     @Environment(\.horizontalSizeClass) private var sizeClass
-
-    /// regular（Mac/iPad）雙欄右欄選定的集數；compact 下其 selectedEpisodeRemoteId
-    /// 恆為 nil（改走 NavigationLink push）。
-    @State private var detailRouter = PodcastDetailRouter()
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
@@ -150,8 +144,6 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
-        .environment(\.podcastDetailRouter, detailRouter)
-        .podcastDetailPresentation(router: detailRouter, layoutMode: layoutMode)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 followToggleButton
@@ -296,33 +288,18 @@ struct PodcastEpisodeListView: View {
                 .disabled(unavailable)
                 .frame(maxWidth: 280)
             } else {
-                switch PodcastEpisodeActivation.activation(
-                    episodeRemoteId: target.remoteId,
-                    layoutMode: layoutMode
-                ) {
-                case .inlineDetail(let episodeRemoteId):
-                    Button {
-                        detailRouter.show(episodeRemoteId: episodeRemoteId)
-                        warmConnection(for: target)
-                    } label: {
-                        Label(label, systemImage: icon)
-                    }
-                    .buttonStyle(.appAction(.primary))
-                    .disabled(unavailable)
-                    .frame(maxWidth: 280)
-                case .push(let route):
-                    NavigationLink(value: route) {
-                        Label(label, systemImage: icon)
-                    }
-                    .buttonStyle(.appAction(.primary))
-                    .disabled(unavailable)
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            warmConnection(for: target)
-                        }
-                    )
-                    .frame(maxWidth: 280)
+                // 非 workspace = compact push（regular 已走 workspace via onSelectEpisode）。
+                NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
+                    Label(label, systemImage: icon)
                 }
+                .buttonStyle(.appAction(.primary))
+                .disabled(unavailable)
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        warmConnection(for: target)
+                    }
+                )
+                .frame(maxWidth: 280)
             }
         }
     }
@@ -396,24 +373,8 @@ struct PodcastEpisodeListView: View {
             .buttonStyle(.plain)
             .disabled(!episode.audioAvailable)
         } else {
-            switch PodcastEpisodeActivation.activation(
-                episodeRemoteId: episode.remoteId,
-                layoutMode: layoutMode
-            ) {
-            case .inlineDetail(let episodeRemoteId):
-            Button {
-                detailRouter.show(episodeRemoteId: episodeRemoteId)
-                warmConnection(for: episode)
-            } label: { row }
-            .buttonStyle(.plain)
-            .disabled(!episode.audioAvailable)
-            .background(
-                episode.remoteId == detailRouter.selectedEpisodeRemoteId
-                    ? skin.palette.accentSubtle
-                    : Color.clear
-            )
-        case .push(let route):
-            NavigationLink(value: route) {
+            // 非 workspace = compact push（regular 已走 workspace via onSelectEpisode）。
+            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
                 row
             }
             .buttonStyle(.plain)
@@ -423,7 +384,6 @@ struct PodcastEpisodeListView: View {
                     warmConnection(for: episode)
                 }
             )
-            }
         }
     }
 
