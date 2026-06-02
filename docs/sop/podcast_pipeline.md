@@ -125,7 +125,7 @@ Regex: `\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])`
 GCP_PROJECT_ID=gen-lang-client-*****
 GCP_LOCATION=us-central1
 GOOGLE_APPLICATION_CREDENTIALS=gen-lang-client-*****-*.json
-TTS_MODEL=gemini-3.1-flash-tts-preview   # 部署預設(.env);synthesize.py 程式碼預設亦同
+TTS_MODEL=gemini-2.5-flash-tts   # 部署預設(.env,2026-06-02 起);synthesize.py 程式碼預設亦同
 ```
 
 - 走 **Vertex AI 模式**(`vertexai=True`, `synthesize.py:326`)，非 AI Studio API key。
@@ -137,15 +137,20 @@ TTS_MODEL=gemini-3.1-flash-tts-preview   # 部署預設(.env);synthesize.py 程�
 
 | TTS_MODEL | 用途 |
 |---|---|
-| `gemini-3.1-flash-tts-preview` | **當前預設**，3.1 官方 audio-tag 名詞情緒集 + per-host director notes(`### PERFORMANCE`)，表情/節奏最佳 |
-| `gemini-2.5-pro-tts` | 歷史備援，自然度高但配額嚴(易 429)、無 3.1 tag 集 |
-| `gemini-2.5-flash-tts` | 歷史備援，速度快、配額寬，但表情/節奏較弱 |
+| `gemini-2.5-flash-tts` | **當前預設**(2026-06-02 起)，速度快、配額寬、最便宜($0.30/$2.50 per 1M);品質實測足夠。3.1-only audio-tag 由 synthesize 端自動淨化(見下) |
+| `gemini-3.1-flash-tts-preview` | 可選,3.1 官方 audio-tag 名詞情緒集 + per-host director notes(`### PERFORMANCE`)，表情/節奏最佳但 ~8× 貴 |
+| `gemini-2.5-pro-tts` | 可選,自然度高但配額嚴(易 429) |
 
 **選法（兩種,優先序）**：
 - **per-workspace 凍結（建議）**：`--tts-model M`(或 dashboard SETTINGS 面板的 TTS MODEL 下拉)→ 寫 `.tts_model` sidecar → `stage_synthesize` 在 synth 前讀回注入 `TTS_MODEL` env。這是**單一還原點**,`/start`、`/resume`、`/approve`、手動 `--skip-to synthesize` 全部經此,故選定後整個 workspace 一致。resume 時 sidecar 為準,衝突的 `--tts-model` 報錯(同 `--mode` 慣例)。
 - **全域預設**：沒給 `--tts-model` / sidecar 不存在 → 落 `synthesize.py` 的 `TTS_MODEL` env 預設(`.env`)。
 
-**scriptwrite 與 TTS model 解耦(重要)**：腳本由 Claude(`PODCAST_CLAUDE_MODEL`,預設 `opus[1m]`)在 scriptwrite 階段生成**一次**,`prompts/scriptwriter.md` 的 audio-tag palette 是**寫死的 canonical Gemini 3.1 集**。換 `TTS_MODEL`(2.5↔3.1、pro↔flash)**不會重生腳本**,只換音訊合成。故選 2.5 = 用 3.1-palette 的腳本去餵 2.5 引擎(tag 語意可能不匹配)。為把這個耦合**顯性化**:scriptwrite 成功時寫 `.script_tts_family`(目前恆 `3.1`),`stage_synthesize` 比對它與 `.tts_model` 的 family,不一致就在 `pipeline_log` 打 `⚠ TTS family mismatch` WARN(非硬 block)。**完整 per-family palette 切換是 Phase 2**(需 audio eval)。不同 model 在單一 workspace 混用仍可(每集分別 synth)但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用,難 debug —— per-workspace 凍結正是為了根治此問題。
+**scriptwrite 與 TTS model 解耦 + 跨 family tag 淨化(重要)**：腳本由 Claude(`PODCAST_CLAUDE_MODEL`,預設 `opus[1m]`)在 scriptwrite 階段生成**一次**,`prompts/scriptwriter.md` 的 audio-tag palette 是**寫死的 canonical Gemini 3.1 集**。換 `TTS_MODEL`(2.5↔3.1、pro↔flash)**不會重生腳本**,只換音訊合成。預設既已是 2.5-flash,常態就是「3.1-palette 腳本餵 2.5 引擎」。關鍵事實:Gemini 對**不支援的 inline `[tag]` 不是靜默丟棄,而是當字面唸出來**(社群實證,Google 無 unsupported-tag 契約)。
+
+- **自動淨化(choke point)**:`synthesize.py:_sanitize_dialogue` 對每句套 `tts_tags.sanitize_tags_for_family(text, TTS_FAMILY)`。family≠`3.1` 時:有 2.5 形的 palette tag 用反轉的 `LEGACY_TO_CANONICAL` 改寫(`[excitement]`→`[excited]`、`[whispers]`→`[whispering]`、`[slow]`→`[speaking slowly]`);無 2.5 形者(energy `[high energy]`/`[low energy]`、pause `[short/medium/long pause]`、抽象名詞情緒 `[awe]`/`[determination]`、`[gasp]`)直接 strip;**非 palette 的括號(如 habit-stacking 佔位 `[NEW HABIT]`)原樣保留**(那是要唸出來的內容)。family==`3.1` 則 verbatim 通過。每集 parse 後印 `tag-sanitize (family 2.5): N 3.1-only tag(s) made safe — ...`。
+- **顯性化偵測**:scriptwrite 成功寫 `.script_tts_family`(目前恆 `3.1`);`stage_synthesize` 比對它與 `.tts_model` 的 family,**缺 sidecar 視為 `3.1`**(legacy workspace 亦觸發),不一致就在 `pipeline_log` 記一筆說明「synthesize 會改寫/strip 該 family-only tag」。非硬 block —— 因為淨化已在 synth 端保證安全。
+- **根治(Phase 2,未做)**:讓 `scriptwriter.md`/`tts_tags.py` 依目標 model family 出對應 palette,從源頭相容。現靠 synth 端淨化保安全,非緊急。
+- 不同 model 在單一 workspace 混用仍可(每集分別 synth)但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用,難 debug —— per-workspace 凍結正是為了根治此問題。
 
 ### 655s padding bug 防線(必讀)
 
@@ -445,7 +450,7 @@ Endpoints:
 
 **成本來源**:
 - **Stage 1-10(Claude)**:直接讀 `result.modelUsage[model].costUSD`。這是 claude CLI 套 Anthropic 官方單價(含 cache 折扣、1M context premium)算好的值。不自己重算 — Anthropic 改價時 CLI 會自動拿到新價,不會有對不上的風險。
-- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-3.1-flash-tts-preview`,$1.00/$20 per 1M(audio = 25 tok/sec,無 long tier;源自 ai.google.dev 的 TTS-specific row,Vertex preview 鏡像 AI Studio rates)。舊 `gemini-2.5-pro-tts` 保留 $1.25/$10(≤200K)、$2.50/$15(>200K) — Vertex 官方 base Gemini 2.5 Pro rate。`verified_against: 2026-05-31`。
+- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-2.5-flash-tts`,$0.30/$2.50 per 1M(audio = 25 tok/sec,無 long tier)。`gemini-3.1-flash-tts-preview` $1.00/$20、舊 `gemini-2.5-pro-tts` $1.25/$10(≤200K)、$2.50/$15(>200K)。event 缺 `model` 欄時 fallback 取當前預設 `gemini-2.5-flash-tts`(`monitor/cost.py:254`)。`verified_against: 2026-06-02`。
 - **Stage 12-13**:本地 pydub / Whisper,$0。
 
 **Token 來源優先序**(`synthesize.py:_synthesize_one`):
@@ -464,7 +469,7 @@ Endpoints:
 
 **nav SETTINGS(⚙)面板**(localStorage `podcast-monitor:settings`,套用於下一條 pipeline,非追溯)。**每個旋鈕單一來源**——PARALLEL/TTS model 只在此調,不在 nav 或其他 modal 重複:
 - **PARALLEL WORKERS**(1-10):scriptwrite/script-review/synthesize 並發度(原 nav 常駐 input 已移除,收斂於此)
-- **TTS MODEL**:下拉(空=env 預設 / 三個白名單 model);選非-3.1 family 時顯示跨 family 風險紅字(腳本 3.1-palette,見 §3)。submit 時隨 `tts_model` 送出
+- **TTS MODEL**:下拉(空=env 預設 `gemini-2.5-flash-tts` / 三個白名單 model);選非-3.1 family 時提示跨 family(腳本 3.1-palette,synth 端自動淨化,見 §3)。submit 時隨 `tts_model` 送出
 
 (spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。)
 

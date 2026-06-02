@@ -14,9 +14,9 @@ import re
 # format validation, so this is the only gate. An empty/absent choice falls
 # through to synthesize.py's TTS_MODEL env default.
 ALLOWED_TTS_MODELS = (
+    "gemini-2.5-flash-tts",          # default (synthesize.py env default + .env)
     "gemini-3.1-flash-tts-preview",
     "gemini-2.5-pro-tts",
-    "gemini-2.5-flash-tts",
 )
 
 
