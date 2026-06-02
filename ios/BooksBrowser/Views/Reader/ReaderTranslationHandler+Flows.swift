@@ -68,16 +68,18 @@ extension ReaderTranslationHandler {
             guard !Task.isCancelled else { return }
 
             do {
-                // onRetry 必須直接落在父 task body（而非內層 unstructured Task）才能讀到父 task 的
-                // 取消旗標 — dismiss / 新查詢 cancel 的是父 task，內層 Task 不繼承取消。
+                // onRetry 是 @Sendable async closure，service 以 structured `await` 呼叫，
+                // 故 `await MainActor.run { ... }` 仍在父 task 的取消鏈內 — guard 讀到父 task flag。
+                // 不可用內層 `Task { @MainActor in }`：unstructured Task 不繼承取消，其
+                // Task.isCancelled 恆 false，dismiss / 新查詢 cancel 父 task 後仍會寫回 stale status。
                 // 與 handlePhrase / handleExplain / handleExpand 三 site 對稱。
                 let result = try await translationService.translateQuick(
                     word: word,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
-                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                        guard !Task.isCancelled else { return }
-                        Task { @MainActor in
+                        await MainActor.run {
+                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                            guard !Task.isCancelled else { return }
                             self?.translationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
@@ -142,9 +144,9 @@ extension ReaderTranslationHandler {
                     phrase: phrase,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
-                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                        guard !Task.isCancelled else { return }
-                        Task { @MainActor in
+                        await MainActor.run {
+                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                            guard !Task.isCancelled else { return }
                             self?.translationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
@@ -208,9 +210,9 @@ extension ReaderTranslationHandler {
                     word: text,
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
-                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                        guard !Task.isCancelled else { return }
-                        Task { @MainActor in
+                        await MainActor.run {
+                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                            guard !Task.isCancelled else { return }
                             self?.explanationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
@@ -270,9 +272,9 @@ extension ReaderTranslationHandler {
                     word: selection.word,
                     context: selection.context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
-                        // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                        guard !Task.isCancelled else { return }
-                        Task { @MainActor in
+                        await MainActor.run {
+                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
+                            guard !Task.isCancelled else { return }
                             self?.explanationStatus = L10n.format(
                                 "正在重試 (%@/%@)...",
                                 "\(attempt)",
