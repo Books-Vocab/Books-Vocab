@@ -135,6 +135,10 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         // loading state.
         importTask?.cancel()
 
+        // 新一輪批次開始前清掉前次失敗殘留的 inline error，否則全成功時只發
+        // 成功 toast、舊 error banner 仍掛著會誤導使用者以為這次也沒匯成功。
+        clearError()
+
         isLoading = true
         loadingProgress = nil
         let total = urls.count
