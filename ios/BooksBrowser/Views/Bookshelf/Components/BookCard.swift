@@ -131,6 +131,8 @@ struct BookCard: View {
                     .padding(AppBookshelfMetrics.badgePadding)
             case .notDownloaded:
                 cloudIconBadge
+            case .failed:
+                retryBadge
             case .current:
                 EmptyView()
             }
@@ -146,6 +148,22 @@ struct BookCard: View {
             .padding(AppBookshelfMetrics.badgePadding)
             .background(.ultraThinMaterial, in: Circle())
             .padding(AppBookshelfMetrics.badgePadding)
+    }
+
+    /// 下載失敗 → 可點重試徽章
+    private var retryBadge: some View {
+        Button {
+            downloadManager.triggerDownload(for: book.epubFileName)
+        } label: {
+            Image(systemName: "exclamationmark.icloud")
+                .font(AppFonts.caption2(weight: .semibold))
+                .foregroundStyle(appTheme.palette.warning)
+                .padding(AppBookshelfMetrics.badgePadding)
+                .background(.ultraThinMaterial, in: Circle())
+                .padding(AppBookshelfMetrics.badgePadding)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("iCloud 下載失敗，點擊重試".localized)
     }
 
     private func progressBar(_ progress: Double) -> some View {
