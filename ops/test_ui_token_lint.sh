@@ -92,7 +92,7 @@ if run --strict >/dev/null 2>&1; then fail_t "--strict exited 0 despite findings
 else ok "--strict exits non-zero with findings"; fi
 
 # Each pattern category fires.
-for pat in 'padding' 'shadow' 'cornerRadius\|RoundedRectangle' 'hex\|Color' 'system'; do
+for pat in 'padding' 'shadow' 'cornerRadius|RoundedRectangle' 'hex|Color' 'system'; do
   echo "$out" | grep -qiE "$pat" && ok "strict detects category /$pat/" || fail_t "missing category /$pat/"
 done
 
