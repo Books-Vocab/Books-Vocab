@@ -22,15 +22,15 @@ struct ReaderTranslationHandlerTests {
         var phraseCalls = 0
         var explanationCalls = 0
 
-        func translateQuick(word: String, context: String, onRetry: ((Int, Int) -> Void)?) async throws -> TranslationResult {
+        func translateQuick(word: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> TranslationResult {
             quickCalls += 1
             return try quickResult.get()
         }
-        func translatePhrase(phrase: String, context: String, onRetry: ((Int, Int) -> Void)?) async throws -> String {
+        func translatePhrase(phrase: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> String {
             phraseCalls += 1
             return try phraseResult.get()
         }
-        func fetchExplanation(word: String, context: String, onRetry: ((Int, Int) -> Void)?) async throws -> (explanation: String, latency: TimeInterval) {
+        func fetchExplanation(word: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> (explanation: String, latency: TimeInterval) {
             explanationCalls += 1
             return try explanationResult.get()
         }
