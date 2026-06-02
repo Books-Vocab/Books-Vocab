@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 29b85b87
+verified_against: 78617510
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -78,6 +78,7 @@ PLAN(prep→enricher) ┃.plan_approved┃ SCRIPT(scriptwrite→script-review) �
 | `--only-stage S` | 只跑 S(等價 skip-to=stop-after,同樣驗證前置 marker) |
 | `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
 | `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
+| `--tts-model M` | 凍結該 workspace 的 TTS model(`gemini-3.1-flash-tts-preview` / `gemini-2.5-pro-tts` / `gemini-2.5-flash-tts`),寫入 `.tts_model` sidecar,synthesize stage 讀回。resume 以 sidecar 為準;衝突的 `--tts-model` 報錯。省略 = 用 `synthesize.py` 的 env 預設。詳見 §3 |
 | `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用) |
 | `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動) |
 
@@ -140,7 +141,11 @@ TTS_MODEL=gemini-3.1-flash-tts-preview   # 部署預設(.env);synthesize.py 程�
 | `gemini-2.5-pro-tts` | 歷史備援，自然度高但配額嚴(易 429)、無 3.1 tag 集 |
 | `gemini-2.5-flash-tts` | 歷史備援，速度快、配額寬，但表情/節奏較弱 |
 
-model 一律以 `.env:TTS_MODEL` 為準(`prompts/tts_prep.md` 已同步為 3.1)。不同 model 在單一 workspace 內可混用(每集分別 synth)，但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用，難 debug。
+**選法（兩種,優先序）**：
+- **per-workspace 凍結（建議）**：`--tts-model M`(或 dashboard SETTINGS 面板的 TTS MODEL 下拉)→ 寫 `.tts_model` sidecar → `stage_synthesize` 在 synth 前讀回注入 `TTS_MODEL` env。這是**單一還原點**,`/start`、`/resume`、`/approve`、手動 `--skip-to synthesize` 全部經此,故選定後整個 workspace 一致。resume 時 sidecar 為準,衝突的 `--tts-model` 報錯(同 `--mode` 慣例)。
+- **全域預設**：沒給 `--tts-model` / sidecar 不存在 → 落 `synthesize.py` 的 `TTS_MODEL` env 預設(`.env`)。
+
+**scriptwrite 與 TTS model 解耦(重要)**：腳本由 Claude(`PODCAST_CLAUDE_MODEL`,預設 `opus[1m]`)在 scriptwrite 階段生成**一次**,`prompts/scriptwriter.md` 的 audio-tag palette 是**寫死的 canonical Gemini 3.1 集**。換 `TTS_MODEL`(2.5↔3.1、pro↔flash)**不會重生腳本**,只換音訊合成。故選 2.5 = 用 3.1-palette 的腳本去餵 2.5 引擎(tag 語意可能不匹配)。為把這個耦合**顯性化**:scriptwrite 成功時寫 `.script_tts_family`(目前恆 `3.1`),`stage_synthesize` 比對它與 `.tts_model` 的 family,不一致就在 `pipeline_log` 打 `⚠ TTS family mismatch` WARN(非硬 block)。**完整 per-family palette 切換是 Phase 2**(需 audio eval)。不同 model 在單一 workspace 混用仍可(每集分別 synth)但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用,難 debug —— per-workspace 凍結正是為了根治此問題。
 
 ### 655s padding bug 防線(必讀)
 
@@ -404,7 +409,8 @@ Endpoints:
 - `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
 - `POST /api/workspace/{ws}/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);前端情境式推進鈕在「非 gate、有未完工」時呼叫(rerun=單階、approve=寫標記再續、resume=純續跑)
 - **per-workspace 併發守衛**:`approve` / `resume` / `upload` / `rerun` 四個 spawn endpoint 在開子行程前皆檢查 `_active_job_for_ws(ws_name)`(配對 route 同 sidebar:`metadata.workspace` 或 `<ws>/.pipeline_job_id` sidecar)。同一 workspace 已有 running job → 一律回 **409**,不 spawn、不寫 gate marker、不砍 stage marker。global 上限 `MAX_ACTIVE_JOBS`(預設 4)獨立守不同 workspace 的合計上限
-- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10 + 選填 `tts_model`) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)。`tts_model` 經 server 端 `ALLOWED_TTS_MODELS`(`tts_config.py`)白名單驗證,非法值回 **422**;合法值 append `--tts-model`(寫 `.tts_model` sidecar)
+- `POST /api/pipeline/start-saga` (multipart `epubs[]` ≥2 + `title` + `spoiler_mode` + `parallel` + 選填 `tts_model`) — saga(多書連續 feed);`tts_model` 同上驗證/凍結。注意 `approve`/`resume` 續跑無需再帶 `tts_model`——synth 階段一律從 `.tts_model` sidecar 還原
 
 **Jobs**:
 - `GET /api/jobs?limit=N`、`GET /api/jobs/{id}?log_bytes=N`、`POST /api/jobs/{id}/kill`
@@ -454,6 +460,12 @@ Endpoints:
 1. **KPI strip** — TOTAL COST(claude $ / tts $ 拆分) / ELAPSED / CONTEXT NOW(% of 1M + peak) / TOKENS OUT(+ fresh / cache R / cache W)
 2. **13-stage 進度條** — pending / running / done / failed 四態;`scriptwrite` / `script-review` / `synthesize` 是平行階段,每集顯示為 EP tile(running 會脈衝)
 3. **COST BREAKDOWN 表** — stage × (model, calls, input, output, cache R/W, audio, USD),底列 TOTAL
-4. **LIVE ACTIVITY feed** — `tool_use` / `text` / `result` / `tts_usage` / stage 邊界,新事件插頂
+4. **LIVE ACTIVITY feed** — `tool_use` / `text` / `result` / `tts_usage` / stage 邊界,新事件插頂;**`[...]` 方括號內容(TTS 情緒 tag 如 `[amused]`、集數清單如 `[1, 2, 3]`)行內高亮成 badge**(`highlightTags()`,先 escape 再包 span;`error`/`stage_fail` 行不高亮)
+
+**nav SETTINGS(⚙)面板**(localStorage `podcast-monitor:settings`,套用於下一條 pipeline,非追溯)。**每個旋鈕單一來源**——PARALLEL/TTS model 只在此調,不在 nav 或其他 modal 重複:
+- **PARALLEL WORKERS**(1-10):scriptwrite/script-review/synthesize 並發度(原 nav 常駐 input 已移除,收斂於此)
+- **TTS MODEL**:下拉(空=env 預設 / 三個白名單 model);選非-3.1 family 時顯示跨 family 風險紅字(腳本 3.1-palette,見 §3)。submit 時隨 `tts_model` 送出
+
+(spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。)
 
 KPI 之外的數字會即時更新;cost 表用 polling(events.jsonl tail 完一輪後 server 端重算,前端每 4s fetch)。**pipeline 未開 `PODCAST_VERBOSE=1` 時**,events.jsonl 不存在 → cost 表顯示「No cost data yet」+ warning bar 提示開 flag。
