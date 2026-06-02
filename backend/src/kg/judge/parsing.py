@@ -16,6 +16,7 @@ def _parse_batch_response(
     candidates: list[tuple[str, str, str]],
     *,
     raw_decisions: list[dict] | None = None,
+    confidence_threshold: float = 0.7,
 ) -> dict[str, Judgement | None]:
     """Parse LLM batch response, matching back to candidate card_ids.
 
@@ -85,6 +86,9 @@ def _parse_batch_response(
         try:
             link_val = item.get("link", "not_applicable")
             confidence = float(item.get("confidence", 0.0))
+            # Clamp to [0, 1] — LLM may emit out-of-range values; keep the link
+            # (don't reject) but never persist an invalid confidence.
+            confidence = max(0.0, min(1.0, confidence))
             reason_val = item.get("reason", "")
         except (ValueError, TypeError):
             if raw_decisions is not None:
@@ -92,7 +96,7 @@ def _parse_batch_response(
             results[cid] = None
             continue
 
-        if link_val == "not_applicable" or confidence < 0.7:
+        if link_val == "not_applicable" or confidence < confidence_threshold:
             reject = "not_applicable" if link_val == "not_applicable" else "low_confidence"
             if raw_decisions is not None:
                 raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 0, "reject_reason": reject, "reason": reason_val})
