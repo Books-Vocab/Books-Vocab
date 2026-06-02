@@ -19,7 +19,7 @@ enum VocabularyExporter {
             let fields = [
                 escapeCSV(entry.word),
                 escapeCSV(entry.translation),
-                escapeCSV(""),
+                escapeCSV(entry.partOfSpeech ?? ""),
                 escapeCSV(entry.context),
                 escapeCSV(entry.bookTitle),
                 escapeCSV(entry.chapterTitle ?? ""),
@@ -42,6 +42,7 @@ enum VocabularyExporter {
             ]
 
             if let exp = entry.explanation { dict["explanation"] = exp }
+            if let pos = entry.partOfSpeech { dict["partOfSpeech"] = pos }
             if let ch = entry.chapterTitle { dict["chapterTitle"] = ch }
             return dict
         }
@@ -61,6 +62,7 @@ enum VocabularyExporter {
             let front = "\(entry.word)\n<small>\(entry.context)</small>"
             var back = entry.translation
 
+            if let pos = entry.partOfSpeech, !pos.isEmpty { back = "(\(pos)) \(back)" }
             if let exp = entry.explanation { back += "\n\(exp)" }
 
             tsv += "\(escapeTab(front))\t\(escapeTab(back))\n"
