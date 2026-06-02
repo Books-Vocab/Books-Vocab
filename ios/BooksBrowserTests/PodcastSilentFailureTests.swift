@@ -110,5 +110,38 @@ struct PodcastSilentFailureTests {
         vm.markSubtitleUnavailable()
         #expect(vm.subtitleState == .unavailable)
     }
+
+    // MARK: - #20  Completed-episode position-0 explicit save
+
+    // The confirmed bug: `saveProgress` had an unconditional
+    // `if currentTime == 0 { return }`. When a *completed* episode is reopened,
+    // `restoreProgress` deliberately skips the seek, so `currentTime` stays 0.
+    // If the user pauses immediately, the explicit `.pause` write was silently
+    // dropped — the pause position never recorded and the row could never leave
+    // the "completed" state. The decision is hoisted to `shouldPersist`.
+
+    @Test func position_zero_pause_persists() {
+        // Completed episode reopened then paused at 0 — must persist.
+        #expect(PodcastPlayerView.shouldPersist(currentTime: 0, reason: .pause))
+    }
+
+    @Test func position_zero_episode_switch_persists() {
+        // Switching away at position 0 is a durable, user-visible transition.
+        #expect(PodcastPlayerView.shouldPersist(currentTime: 0, reason: .episodeSwitch))
+    }
+
+    @Test func position_zero_tick_is_dropped() {
+        // An automatic tick at 0 is noise (audio hasn't advanced) — drop it.
+        #expect(PodcastPlayerView.shouldPersist(currentTime: 0, reason: .tick) == false)
+    }
+
+    @Test func nonzero_tick_persists() {
+        // Normal mid-playback tick must continue to persist unchanged.
+        #expect(PodcastPlayerView.shouldPersist(currentTime: 42, reason: .tick))
+    }
+
+    @Test func nonzero_pause_persists() {
+        #expect(PodcastPlayerView.shouldPersist(currentTime: 42, reason: .pause))
+    }
 }
 #endif
