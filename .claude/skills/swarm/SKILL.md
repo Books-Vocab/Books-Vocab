@@ -172,12 +172,15 @@ scan agent 的 medium-severity 發現約**半數是誤報**（查證後常發現
 
 **嚴重度由 orchestrator 落地，不照單全收。** scan / audit agent 標的 🛑/⚠️ 是**程式碼層嚴重度** — agent 不知道部署拓樸。真實嚴重度 = 程式碼層嚴重度 × 部署事實（worker 數、實例數、該路徑當前是否真的會觸發）。例：agent 把一個並發 race 標 🛑，你先查 `Dockerfile` 確認單 worker → 該 race 當前不觸發 → 降為「潛在」，不急著投昂貴的 write agent，也不引入新風險。**先確認部署事實，再定投入與優先序。** 這點也寫進 audit 類 agent 的 prompt：要求它分開報「程式碼層嚴重度」與「觸發前提」。
 
+**confirmed 供料 ≠ 免 scope（強制 gate，F2）。** 即使上游 pipeline 已標「全 confirmed」，投 write 前仍須對每項做唯讀二次 scope，過兩道閘才投：① **部署事實校準**（該路徑生產真的觸發嗎）② **不可逆契約檢查**（是否觸及 sync 收斂語意 / wire schema / iOS↔backend 對稱設計）—— 觸及即降級為 🛑 須先討論，不可當「健康度」自主投。實測：標 confirmed 的清單仍漏網兩項，二次 scope 各攔下一個 —— #1（race 根因不成立，直接投 = 無用 fix 還改正常路徑）、#9（tie-break 是刻意對稱契約且會收斂，改 device-id 須加 wire+DB 欄位+migration 屬不可逆 → 轉 design）。盲信 confirmed 直接投 = 浪費 write 頻寬 + 恐破壞契約釀不可逆事故。
+
 ## 收到通知時（pipeline 模式）
 
 | 事件 | 立即動作（全部 background） |
 |---|---|
 | write agent 完工 | 1) `cd worktree` **機械驗 branch**（見下）2) 驗過才 push 3) 開 PR 4) 派 reviewer 5) 派下一條 |
 | write agent「等 build 通知」訊息 | **視為待 commit** — 立即 `cd worktree && git status`，有未 commit 就親手 commit |
+| 派出 agent 後久無通知 | **健康巡檢（防 F6 靜默死亡）**：`git -C "$WORKTREES/track-X" log --oneline / status` 交叉比對「預期完工時間」；超時且零 commit 進展 = 疑似靜默死亡 → `TaskStop <id>` 試探（回「No task found」= 已死）→ 清 worktree、分批重派（加啟動心跳）。**靜默死亡無 harness 信號，不主動巡檢就永遠以為它「還在飛」。** 側查禁忌：`stat` .output 看的是 symlink（size=路徑長、mtime=建立時）必誤導；TaskOutput/Read transcript 會 overflow — 只信 `git -C worktree` 進展 + TaskStop 試探。 |
 | reviewer PASS | `git -C "$MAIN_ROOT" worktree remove` 該 track 的 worktree → `gh pr merge <n> --squash --admin --delete-branch`（順序與理由見「worktree 生命週期衛生」；`--squash` 避開 main worktree 衝突） |
 | reviewer NEEDS-FIX | 立即派 fixer，PR 留 open |
 | reviewer BLOCKER | 立即派 fixer 或廢棄 PR；不問 |
@@ -233,6 +236,10 @@ git -C "$MAIN_ROOT" worktree remove "$WORKTREES/track-X" && gh pr merge $PR --sq
 - main checkout (<repo root>) 對你唯讀 — 絕不在那裡 Edit/Write
 - 不要 push — 只在 worktree 內 commit，push 由 orchestrator 做
 
+## 啟動心跳（防靜默死亡 F6 — 必含）
+- cd 進去後 **30 秒內務必做第一個留痕動作**（git log 一行 / 讀目標檔 / log 一句），讓 orchestrator 能從 worktree 進展確認你活著。
+- 不要 cd 後就長時間靜默 trace —— 啟動瞬間高並發下，靜默 agent 會被誤判（或實際被）回收且零信號。
+
 ## 開始前（防 stale base regression）
 git fetch origin main && git merge origin/main
 
@@ -258,6 +265,19 @@ git fetch origin main && git merge origin/main
 所有改動已 commit + 回報 <300 字（含 branch 組成：N commits、碰了哪些檔案）
 ```
 
+## Reviewer / 冷複審 prompt 必含（F4/F5 教訓）
+
+reviewer 與冷複審是擋 regression 的兩層，各有強制條目：
+
+**reviewer（審 open PR）必含：**
+- 「**不要信 agent 對機制/因果鏈的自述，逐一獨立驗證**」——特別 async / Task / cancel / race 這類 agent 易想當然的領域。實測 track-8 fixer 自述「4 site guard 機制成立」，reviewer 逐 site 追因果鏈抓到 site 1 跑在內層 unstructured Task、guard 讀錯旗標失效（F5）。**reviewer prompt 沒點名驗機制，這類 MEDIUM 殘留會 merge 進 main。**
+- iOS：若 PR 在 property setter / didSet 內加 side-effect（synchronize / 網路 / 寫檔），**必須 grep 該 property 的所有 SwiftUI binding**，確認沒被 `Slider`/`Stepper`/連續 gesture 等高頻控制綁定（單看 setter 無法判斷頻率）。
+- iOS：新 L10n key 必 grep 5 lproj 各自確認 entry 存在（反 pattern #16）。
+- 忽略 base 落後 origin/main 的反向 diff，只看本 PR 實質改動（用 three-dot / merge-base）。
+
+**冷複審（審已 merged track，收尾強制階段）必含：**
+- 「**主動枚舉 PR 自述未提及的鄰近路徑**」——dismiss / retry / error / cancel / 其他 binding 端。實測 2/2 命中：兩次都是「reviewer 查了被點名的路徑，缺陷在未被點名的鄰近路徑」（F4）。挖到就開 follow-up track 修。
+
 ## 反 pattern（真實 swarm session 教訓）
 
 1. **隔離外包** — agent 自建 worktree/branch → 撞名、污染 main。**修**：見「隔離基建」，orchestrator 獨佔 worktree 與 branch 命名。
@@ -276,6 +296,8 @@ git fetch origin main && git merge origin/main
 14. **cwd 漂移 + 相對路徑建 nested worktree** — `cd <worktree-A> && <cmd>` 後 cwd 留 A；下一個 Bash call `git worktree add -b ... <relative-path> origin/main` 把新 worktree B 建到 `A/<relative-path>` 內（nested）。A 被 `git worktree remove` 時連帶 rm-rf B 的工作目錄，B 的 in-flight agent 工作目錄被刪 + uncommitted 全失（branch 上 commit 仍在，但 work 從零再做）。**修**：見「隔離基建」—— `git worktree add` 路徑參數**一律絕對路徑**（`$WORKTREES/$slug` 而非 `.claude/worktrees/$slug`）；`$WORKTREES` 的 root 用 `main_root`（`--path-format=absolute --git-common-dir` 派生）而非 `--show-toplevel`；跨 worktree git 操作優先 `git -C "$MAIN_ROOT"`。歷史 session 撞多次。
 15. **cold-review finding 直接投 write 不 confirm** — cold-review agent 標的 ⚠️/🛑 看似具體（含 file:line + 修補方向），最誘人直接派 fixer；但 trace 深度比 scan 更淺，誤報率極高（曾出現 4/4 全 false alarm）。**修**：見「scan 發現 → 廉價確認 → 才投入」段；cold-review finding 與 scan finding 同等紀律，必過唯讀 confirm 才投 write。
 16. **L10n.string("inline 中文 literal") 過 extractor 漏網** — 部分 i18n lint extractor 只解析 `L10n.string(<constant>)` 而非 inline literal，inline literal 寫法 → strict lint pass 但 5 lproj 全缺 key → production fallback 到 raw 中文。reviewer 若只看 lint 結果而沒 grep 5 lproj 對 key 就過了。**修**：iOS PR review 強制條目「新 L10n key 必須 grep 5 lproj 各自確認 entry 存在，非 raw 中文 fallback」；prefer dotted-key 命名（`module.context.action`）而非 inline 中文 literal。曾走 3 輪 review 才解決同一 PR。
+17. **🔴 啟動批量並發 → agent 靜默死亡（最重磅）** — 啟動為衝 ≥10 一次派 ~10 background agent（每個還要 git fetch/merge + 載大 skill listing）→ 撞 harness 並發尖峰，部分 agent **啟動後即被靜默回收**：transcript 止於派發後數十秒、零完工/零 failed 通知，orchestrator 不主動側查就永遠以為它們「還在飛」。實測啟動派 ~10 → 4/4 write 全靜默死亡（35 分鐘零信號），分批 ramp（2+2）+ 啟動心跳重派 → 4/4 全活。**修**：啟動分批 ramp 每批 ≤3、前批 worktree 有 commit 進展再加（見「啟動流程」）；write prompt 加「啟動心跳」；久無通知必健康巡檢（見「收到通知時」表）。**側查陷阱**：`stat` .output 是 symlink（誤導）、TaskOutput/Read transcript overflow，只信 `git -C worktree log/status` 凍結 + `TaskStop` 回 No task found 交叉確認。
+18. **confirmed 盲投不二次 scope** — 上游標 confirmed 仍有前提錯誤項（根因不成立 / 觸及不可逆契約）。**修**：見「confirmed 供料 ≠ 免 scope」強制 gate；投 write 前校準部署觸發 + 不可逆契約（F2 實測攔下 #1/#9）。
 
 ## 並行維持策略
 
@@ -294,7 +316,8 @@ git fetch origin main && git merge origin/main
 - 任何 reviewer 留下的 follow-up suggestion
 - 已 merged 的 swarm PR 冷複審 — 高壓並行下的 review 會漏「修不完整 / 漏鄰近 case」，冷複審常挖出真缺陷
 
-**永遠有唯讀 agent 可加。** ≥10 靠讀 agent 撐，不靠硬塞 write agent。
+**唯讀 agent 來源優先序**（撐 ≥10 時按此序，不為數字塞垃圾）：擱置項 owner-決策 brief > 下批 backlog scope > **已 merged PR 冷複審（高價值，見 F4）** > backlog 修法獨立驗證。
+**收尾期例外（F3）**：當 write 觸頂 5 + backlog 全 scope 完 + brief 全收割時，唯讀任務自然枯竭，並行掉到 <10 屬合理 —— 此時**等 pipeline 呼吸**（reviewer 完工→merge→補 write 自動回升），不要硬塞重複 scope / 為數字 scan。≥10 是手段不是 KPI。
 
 ## 收尾條件
 
@@ -303,8 +326,9 @@ git fetch origin main && git merge origin/main
 收到「總結」要求時：
 1. 等真正在跑的 agent 完工（**不主動停** — 等通知）
 2. 處理完所有 ready-to-merge 的 PR
-3. 給簡短總結：N PR merged / M 條 open（含原因）/ 學到的事
-4. **不要列每條 PR 的細節**（commit history 自己看），給 axis 級總覽
+3. **強制冷複審（F4）**：對每條 merged track（至少觸及共享 service / setter side-effect 者）派一個冷複審 agent，prompt 含「枚舉 PR 自述未提及的鄰近路徑」。實測 2/2 命中單層 reviewer 漏的真 regression —— 冷複審不是可選來源，是收尾必經。挖到開 follow-up track 修。
+4. **強制對賬（F7）**：把 confirmed 清單逐項標去向（merged PR# / 駁回理由 / 擱置 owner 決策 / **未投**）。未投項必須明確交代 —— 高壓動態插隊會擠掉先規劃項（實測 #20 被擠掉，靠收尾 grep 才補）。對賬靠 TaskCreate ledger，不靠記憶。
+5. 給簡短總結：N PR merged / M 條 open（含原因）/ 學到的事；**不要列每條 PR 細節**（commit history 自己看），給 axis 級總覽
 
 ## 取代條款（使用者保留隨時換 codex 的權力）
 
@@ -318,7 +342,11 @@ git fetch origin main && git merge origin/main
 - ❌ `git worktree remove` 未用 `git -C "$MAIN_ROOT"` 且 cwd 落在被移除 worktree 自身內，或 `--delete-branch` merge 前 branch 仍被 worktree 佔用
 - ❌ notification-driven pipeline 還疊 `ScheduleWakeup`
 - ❌ write agent >5，或在飛的 write PR 超過 review 頻寬
-- ❌ 總並行數 <10 超過 1 個 turn（唯讀 agent 撐不起來沒藉口）
+- ❌ 啟動一次派 ~10 個 background agent 製造並發尖峰（致靜默死亡）—— 必分批 ramp 每批 ≤3（反 pattern #17 / F6）
+- ❌ 背景 agent 久無通知卻不健康巡檢，誤報「還在飛」（靜默死亡無 harness 信號 — F6）
+- ❌ 把 confirmed 供料當免 scope 直接投 write（須過部署觸發 + 不可逆契約二次 gate — F2）
+- ❌ 收尾不對賬 confirmed 清單去向（漏投項靜默蒸發 — F7）/ merged track 不派冷複審（單層 review 漏 regression — F4）
+- ❌ 總並行數 <10 超過 1 個 turn（唯讀 agent 撐不起來沒藉口）—— **除收尾期**（write 觸頂 + backlog 全 scope 完，並行隨 pipeline 自然降，見 F3）
 - ❌ 主線同步等 build / pytest
 - ❌ scan 或 cold-review 誤報未經 confirm 就投 dev agent
 - ❌ `git worktree add` 用相對路徑（必須絕對路徑，避免 nested worktree）
