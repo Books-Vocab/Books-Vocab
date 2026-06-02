@@ -46,6 +46,33 @@ struct PodcastEpisodeDetail: Codable {
     /// player skips the per-episode subtitle fetch entirely. Optional —
     /// older series uploaded before the embed change won't carry it.
     let subtitleContent: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case episodeNumber, title, durationSec, audioAvailable, subtitleAvailable, subtitleContent
+    }
+
+    /// Custom decode for resilience against hand-assembled S3 metadata.json
+    /// (`ops/podcast_upload.sh` stitches it by hand — no Pydantic guarantee).
+    /// One episode dropping a non-identity field used to throw and make the
+    /// *entire series* invisible (whole-detail decode is all-or-nothing, and
+    /// `syncAll` swallows the per-series failure). Identity fields
+    /// (`episodeNumber` / `title`) stay required — a missing one makes the
+    /// episode meaningless. The rest graceful-degrade to safe defaults:
+    /// - `durationSec` → 0 (renders 0:00; the only divisor site,
+    ///   `PodcastEpisodeRow.progressFraction`, is guarded by `durationSec > 0`,
+    ///   so 0 cannot divide-by-zero).
+    /// - `audioAvailable` → false (shows non-playable, far better than the
+    ///   whole series vanishing).
+    /// - `subtitleAvailable` → false (no subtitle).
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        episodeNumber = try c.decode(Int.self, forKey: .episodeNumber)
+        title = try c.decode(String.self, forKey: .title)
+        durationSec = try c.decodeIfPresent(Double.self, forKey: .durationSec) ?? 0
+        audioAvailable = try c.decodeIfPresent(Bool.self, forKey: .audioAvailable) ?? false
+        subtitleAvailable = try c.decodeIfPresent(Bool.self, forKey: .subtitleAvailable) ?? false
+        subtitleContent = try c.decodeIfPresent(String.self, forKey: .subtitleContent)
+    }
 }
 
 // MARK: - Sync Service
