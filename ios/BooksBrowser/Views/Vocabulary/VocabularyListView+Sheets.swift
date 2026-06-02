@@ -14,9 +14,7 @@ struct VocabularyListSheets: ViewModifier {
             .toastSheet(isPresented: $coordinator.showSyncView) {
                 SyncView()
             }
-            .toastSheet(isPresented: $coordinator.showSettings) {
-                SettingsView()
-            }
+            .settingsSheet(isPresented: $coordinator.showSettings)
             .toastSheet(item: $coordinator.exportURL) { url in
                 PlatformShareView(url: url)
             }
