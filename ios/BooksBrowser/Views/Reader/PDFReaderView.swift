@@ -144,6 +144,13 @@ struct PDFReaderView: View {
             AppLog.reader.error("PDF load failed: \(url.lastPathComponent)")
             return
         }
+        // PDFDocument(url:) 對結構完整但 0 頁的損毀 PDF 仍回非 nil,會通過上面的 guard
+        // 後渲染空白 PDFView 而無任何提示。明確擋掉 0 頁,走既有 error 呈現路徑。
+        guard document.pageCount > 0 else {
+            loadError = "這份 PDF 沒有任何可顯示的頁面，檔案可能已損毀或不完整。".localized
+            AppLog.reader.error("PDF has zero pages: \(url.lastPathComponent)")
+            return
+        }
         loadError = nil
         pdfDocument = document
     }
