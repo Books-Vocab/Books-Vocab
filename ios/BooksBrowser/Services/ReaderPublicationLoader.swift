@@ -4,7 +4,11 @@ import ReadiumShared
 
 struct ReaderPublicationLoadResult {
     let publication: Publication
-    let uniqueWordsTask: Task<Set<String>, Never>
+    /// 唯一詞擷取以 closure 回傳，而非預先包成 unstructured `Task`，
+    /// 讓呼叫端可在自身結構化作用域（`.task`）內 `await`，
+    /// view 中途 dismiss 時隨作用域取消，不留 fire-and-forget 殘留。
+    /// MainActor-isolated（與 loader / ReadiumServing 一致，Publication 非 Sendable）。
+    let extractUniqueWords: @MainActor () async -> Set<String>
 }
 
 @MainActor
@@ -26,10 +30,10 @@ struct ReaderPublicationLoader {
         let publication = try await readiumService.openPublication(at: url)
         updatePhase(L10n.string("渲染頁面…"))
 
-        let uniqueWordsTask = Task(priority: .utility) {
-            await readiumService.extractUniqueWords(from: publication)
-        }
-        return ReaderPublicationLoadResult(publication: publication, uniqueWordsTask: uniqueWordsTask)
+        return ReaderPublicationLoadResult(
+            publication: publication,
+            extractUniqueWords: { await readiumService.extractUniqueWords(from: publication) }
+        )
     }
 
     private func waitForICloudFile(

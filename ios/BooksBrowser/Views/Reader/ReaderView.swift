@@ -115,6 +115,13 @@ struct ReaderView: View {
             sanitizeStaleBoundNotebook()
             await loadPublication()
         }
+        .onDisappear {
+            // dismiss / pop 時取消 in-flight 翻譯 task，避免網路 Task
+            // 續跑到完成後寫回已棄置的 handler（多餘網路/寫入）。
+            // 用 onDisappear 而非 @MainActor @Observable 的 deinit
+            // （時序與 actor 隔離易出錯）。
+            handler.cancelCurrentTranslationTask()
+        }
         .onChange(of: liveNotebooks.map(\.remoteId)) { _, _ in
             sanitizeStaleBoundNotebook()
         }
@@ -194,12 +201,11 @@ struct ReaderView: View {
                 handler.loadLookedUpWords(from: allVocabulary)
             }
 
-            Task {
-                let uniqueWords = await result.uniqueWordsTask.value
-                await MainActor.run {
-                    handler.bookUniqueWords = uniqueWords
-                }
-            }
+            // 收進 `.task` 結構化作用域：擷取在同一 async 流程內 `await`，
+            // 隨 view 生命週期自動取消，不再 fire-and-forget。
+            // dismiss 中途離開時整條鏈一併取消，避免寫回已棄置的 handler。
+            let uniqueWords = await result.extractUniqueWords()
+            handler.bookUniqueWords = uniqueWords
         } catch {
             await MainActor.run {
                 readerState.errorMessage = error.localizedDescription
