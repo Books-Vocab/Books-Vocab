@@ -30,17 +30,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-
-def _sanitize_slug(text: str, max_len: int = 30) -> str:
-    """Lowercase → collapse non-alphanumerics to `_` → trim → cap length.
-
-    Mirrors pipeline._sanitize_slug so saga slugs satisfy the same backend
-    ``^[a-z0-9_]+$`` series_id contract that single-book slugs do.
-    """
-    s = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-    if len(s) > max_len:
-        s = s[:max_len].rstrip("_")
-    return s or "untitled"
+from tts_config import sanitize_slug as _sanitize_slug
 
 
 @dataclass(frozen=True)
