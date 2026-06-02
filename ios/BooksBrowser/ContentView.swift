@@ -105,7 +105,7 @@ struct ContentView: View {
             // episode/player render as stackable Miller columns alongside the grid.
             BookshelfWorkspaceSection()
         case .notebooks:
-            NotebookListView()
+            VocabWorkspaceSection()
         case .overview:
             OverviewTab()
         }
