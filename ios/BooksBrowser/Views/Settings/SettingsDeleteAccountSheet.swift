@@ -90,6 +90,10 @@ struct SettingsDeleteAccountSheet: View {
                     countdownRemaining = Self.countdownSeconds
                 }
             }
+            .onDisappear {
+                countdownTask?.cancel()
+                countdownTask = nil
+            }
             .animation(AppMotion.standardSpring, value: allAcknowledged)
             .animation(AppMotion.standardSpring, value: confirmTextMatches)
             .animation(AppMotion.contentFade, value: countdownRemaining)
