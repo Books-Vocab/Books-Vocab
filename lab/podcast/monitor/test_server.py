@@ -51,6 +51,7 @@ class _SpawnRecorder:
         class _Job:
             id = "job-123"
             status = "running"
+            label = "job-label"
 
         return _Job()
 
@@ -165,6 +166,80 @@ def test_start_saga_job_limit_returns_429_and_cleans_up(client, monkeypatch):
     )
     assert resp.status_code == 429
     assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+# ── tts_model plumbing (start + start-saga) ────────────────────────────────
+
+
+def test_start_pipeline_valid_tts_model_appends_flag(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3", "tts_model": "gemini-2.5-pro-tts"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 200, resp.text
+    argv = spawn.argv
+    assert argv[-2:] == ["--tts-model", "gemini-2.5-pro-tts"]
+    assert spawn.kwargs["metadata"]["tts_model"] == "gemini-2.5-pro-tts"
+
+
+def test_start_pipeline_omits_flag_when_tts_model_blank(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "--tts-model" not in spawn.argv
+    assert spawn.kwargs["metadata"]["tts_model"] is None
+
+
+def test_start_pipeline_rejects_unknown_tts_model(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3", "tts_model": "gpt-voice-9000"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 422
+    assert spawn.argv is None
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+def test_start_saga_valid_tts_model_appends_flag(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong", "tts_model": "gemini-2.5-flash-tts"},
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 200, resp.text
+    assert spawn.argv[-2:] == ["--tts-model", "gemini-2.5-flash-tts"]
+    assert spawn.kwargs["metadata"]["tts_model"] == "gemini-2.5-flash-tts"
+
+
+def test_start_saga_rejects_unknown_tts_model(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong", "tts_model": "bogus-tts"},
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 422
+    assert spawn.argv is None
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+def test_tts_allowlist_parity_frontend_backend():
+    """The TTS allowlist lives in three places (tts_config.py SoT + app.js mirror
+    + index.html <option>s). Guard against silent drift: a model added server-side
+    but missing from the UI is unselectable; one removed server-side but left in
+    the UI 422s on submit."""
+    from tts_config import ALLOWED_TTS_MODELS
+
+    static = Path(__file__).parent / "static"
+    app_js = (static / "app.js").read_text()
+    index_html = (static / "index.html").read_text()
+    for model in ALLOWED_TTS_MODELS:
+        assert f'"{model}"' in app_js, f"{model} missing from app.js ALLOWED_TTS_MODELS"
+        assert f'value="{model}"' in index_html, f"{model} missing from index.html <option>"
 
 
 # ── _workspace_summary saga fields ─────────────────────────────────────────

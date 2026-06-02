@@ -69,6 +69,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 import archetypes
 import saga
+from tts_config import ALLOWED_TTS_MODELS, tts_family
 
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
@@ -166,6 +167,12 @@ _STAGE_MARKER = ".stage_{name}_done"
 # nonfiction archetype (suffix=None) provably always uses the base prompt.
 _MODE_SIDECAR = ".mode"
 _SPOILER_SIDECAR = ".spoiler_mode"
+# TTS model is frozen at workspace creation and read back by stage_synthesize —
+# the single restore point so every spawn path (/start, /resume, /approve, manual
+# `--skip-to synthesize`) injects the same TTS_MODEL. The family marker records
+# which TTS family scriptwrite authored for, so a cross-family synth is loud.
+_TTS_MODEL_SIDECAR = ".tts_model"
+_SCRIPT_TTS_FAMILY_SIDECAR = ".script_tts_family"
 
 
 def _prompt(name: str, archetype: str) -> str:
@@ -196,6 +203,12 @@ def read_mode(workspace: Path) -> str:
 
 def read_spoiler_mode(workspace: Path) -> str | None:
     f = workspace / _SPOILER_SIDECAR
+    return f.read_text().strip() if f.exists() else None
+
+
+def read_tts_model(workspace: Path) -> str | None:
+    """Read the frozen TTS model sidecar; None → synthesize.py's env default."""
+    f = workspace / _TTS_MODEL_SIDECAR
     return f.read_text().strip() if f.exists() else None
 
 
@@ -1038,6 +1051,11 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
         log.error(f"Failed episodes: {failed}")
         return False
 
+    # Record which TTS family these scripts were authored for. The palette in
+    # scriptwriter.md is currently the canonical Gemini 3.1 set, so this is "3.1"
+    # until Phase 2 makes the palette family-parametric.
+    (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text("3.1")
+
     log.event(f"All {len(todo)} episodes scripted")
     return True
 
@@ -1143,9 +1161,27 @@ def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None
     scripts_dir = workspace / "scripts"
     target = scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
 
+    # Restore the frozen TTS model here — the single point every spawn path
+    # funnels through, mirroring how every stage reads .mode via read_mode().
+    env = _UNBUF_ENV
+    chosen = read_tts_model(workspace)
+    if chosen:
+        env = {**_UNBUF_ENV, "TTS_MODEL": chosen}
+        # Loud (not blocking) cross-family check: scripts carry a 3.1-only tag
+        # palette today, so synthesizing on a different family is a known risk
+        # we surface rather than silently mis-render. Phase 2 turns this hard.
+        wrote_for = (workspace / _SCRIPT_TTS_FAMILY_SIDECAR)
+        if wrote_for.exists():
+            sf, mf = wrote_for.read_text().strip(), tts_family(chosen)
+            if sf != mf:
+                log.event(
+                    f"⚠ TTS family mismatch: scripts authored for {sf} palette, "
+                    f"synthesizing with {chosen} (family {mf}) — prosody/tags may misrender"
+                )
+
     proc = subprocess.run(
         ["uv", "run", str(ROOT / "synthesize.py"), str(target)],
-        cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
+        cwd=str(ROOT), capture_output=False, text=True, env=env,
     )
     return proc.returncode == 0
 
@@ -1485,6 +1521,13 @@ examples:
         "forbidden otherwise).",
     )
     parser.add_argument(
+        "--tts-model", choices=list(ALLOWED_TTS_MODELS),
+        help="TTS model to synthesize with, frozen for the workspace at creation "
+        "(written to .tts_model, read back by the synthesize stage). On resume the "
+        "saved sidecar wins; a conflicting --tts-model errors. Omit to use the "
+        "synthesize.py env default.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Bypass prereq marker check when using --skip-to / --only-stage. "
@@ -1616,6 +1659,19 @@ examples:
         label = archetypes.get(effective_mode)["label"]
         print(f"Mode: {effective_mode} ({label})"
               + (f" · spoiler={effective_spoiler}" if effective_spoiler else ""))
+
+    # Freeze the TTS model the same way as .mode: fresh setup takes it from argv,
+    # resume reads the saved sidecar and a conflicting --tts-model is an error.
+    saved_tts = read_tts_model(workspace)
+    if saved_tts is not None:
+        if args.tts_model and args.tts_model != saved_tts:
+            parser.error(
+                f"workspace was created with --tts-model {saved_tts}; cannot resume "
+                f"as --tts-model {args.tts_model}. Omit it to use the saved one."
+            )
+    elif args.tts_model:
+        (workspace / _TTS_MODEL_SIDECAR).write_text(args.tts_model)
+        print(f"TTS model: {args.tts_model} (family {tts_family(args.tts_model)})")
 
     # Saga preflight: build_saga_context() raises on a corrupt series.md (fail
     # closed — never run a saga spoiler-blind). Validate it ONCE here with a
