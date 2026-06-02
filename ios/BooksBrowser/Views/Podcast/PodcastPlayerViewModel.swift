@@ -65,6 +65,12 @@ final class PodcastPlayerViewModel {
     private(set) var currentCue: PodcastSubtitleCue?
     private(set) var renderState: SubtitleRenderState?
     private(set) var highlightedWordIndex: Int = -1
+    /// Anchor for extrapolating a continuous playhead between 15 Hz ticks (see
+    /// `PodcastPlaybackClock`). Refreshed on every tick / seek / play / pause /
+    /// rate change. `wallClock` uses `Date.timeIntervalSinceReferenceDate`.
+    private(set) var playbackAnchor = PlaybackAnchor(
+        mediaTime: 0, wallClock: Date().timeIntervalSinceReferenceDate, rate: 0
+    )
     private(set) var playbackRate: Float = 1.0
     /// Subtitle load lifecycle — drives the inline retry UI. Independent of
     /// `state` so a subtitle failure never blocks or interrupts audio.
@@ -231,11 +237,17 @@ final class PodcastPlayerViewModel {
     func play() {
         audioEngine.play()
         state = .playing
+        playbackAnchor = PodcastPlaybackClock.makeAnchor(
+            mediaTime: currentTime, now: nowRef(), rate: Double(playbackRate)
+        )
     }
 
     func pause() {
         audioEngine.pause()
         state = .paused
+        playbackAnchor = PodcastPlaybackClock.makeAnchor(
+            mediaTime: currentTime, now: nowRef(), rate: 0
+        )
     }
 
     /// Mid-session teardown — releases the current player/item so a new load
@@ -264,6 +276,11 @@ final class PodcastPlayerViewModel {
         let shouldResume = state == .playing
         audioEngine.seek(to: time, autoResume: shouldResume)
         handleTimeUpdate(time)
+        // Hold the playhead still during the seek gap (rate 0): AVPlayer hasn't
+        // actually reached `time` yet, so extrapolating forward would front-run.
+        // The engine's seek-completion tick re-anchors with the real rate via
+        // handleTimeUpdate once playback genuinely resumes.
+        playbackAnchor = PodcastPlaybackClock.makeAnchor(mediaTime: time, now: nowRef(), rate: 0)
     }
 
     func skip(seconds: Double) {
@@ -275,6 +292,12 @@ final class PodcastPlayerViewModel {
         let next = PodcastAudioEngine.nextRate(after: playbackRate)
         playbackRate = next
         audioEngine.setRate(next)
+        // Re-anchor at the new slope without a position jump (order pinned in the
+        // pure helper). Rate is 0 while paused so the playhead stays put.
+        let effective = state == .playing ? Double(next) : 0
+        playbackAnchor = PodcastPlaybackClock.anchorAfterRateChange(
+            old: playbackAnchor, now: nowRef(), newRate: effective, duration: duration
+        )
     }
 
     // MARK: - Sleep Timer
@@ -382,5 +405,16 @@ final class PodcastPlayerViewModel {
         } else {
             highlightedWordIndex = -1
         }
+
+        // Re-anchor the continuous playhead on every real tick (~66 ms) so the
+        // View-side extrapolation never drifts beyond one tick. Rate is 0 unless
+        // actively playing (paused / .ready / seeking hold the playhead still).
+        playbackAnchor = PodcastPlaybackClock.makeAnchor(
+            mediaTime: time, now: nowRef(), rate: state == .playing ? Double(playbackRate) : 0
+        )
     }
+
+    /// Reference-clock now, shared basis with the consuming `TimelineView`'s
+    /// `context.date.timeIntervalSinceReferenceDate`.
+    private func nowRef() -> TimeInterval { Date().timeIntervalSinceReferenceDate }
 }
