@@ -51,7 +51,7 @@ struct BookshelfView: View {
     /// `PodcastNavRoute.series` instead (see `PodcastSeriesActivation`). Driving
     /// selection from a root-level `@State` is what makes the trailing
     /// `safeAreaInset` player immune to the depth=1 remount/pop (runtime-confirmed
-    /// root cause; mirrors `NotebookListView.selectedNotebookId`).
+    /// root cause).
     @State private var selectedSeriesRemoteId: String?
 
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
@@ -140,8 +140,7 @@ struct BookshelfView: View {
             }
             // regular → compact flip (iPad multitasking shrink / Catalyst window
             // resize): drop the root-level master selection so we don't strand a
-            // two-pane layout or an orphaned player in compact. Mirrors
-            // `PodcastDetailPresentation` dismiss + `NotebookListView` reconcile.
+            // two-pane layout or an orphaned player in compact.
             .onChange(of: layoutMode) { _, newMode in
                 if !newMode.usesInlineDetail {
                     selectedSeriesRemoteId = nil
