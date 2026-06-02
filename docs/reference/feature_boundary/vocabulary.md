@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: cb1ef202
+verified_against: c9f2ce50
 -->
 # Vocabulary Feature Boundary
 
@@ -20,7 +20,6 @@ verified_against: cb1ef202
 | `VocabularyListView+State.swift` | 161 | 狀態持有 extension |
 | `VocabularyListView+Toolbar.swift` | 125 | toolbar extension |
 | `VocabularyListView+Sheets.swift` | 74 | sheet 槽 extension |
-| `VocabWorkspaceSection.swift` | 38 | `struct VocabWorkspaceSection: View` — Catalyst/iPad section wrapper，container 層持 `@State PanelWorkspace` + 以 `@Query`（predicate 鏡射 `NotebookListView` knowledge entries）取 live `[VocabularyEntry]`，注入 `\.panelVocabEntries` + `\.panelWorkspace`，用 `PanelWorkspaceContainer` 包 `NotebookListView`（root master）+ word detail / review 開欄。**僅** `ContentView` 的 `NavigationSplitView` detail 分支（`.notebooks`）使用；compact（iPhone）TabView 直接用 `NotebookListView`（不經此，detail 走既有 sheet）。引擎見 `tech_index.md §Platform/PanelWorkspace/` |
 | `SyncView.swift` | 89 | `struct SyncView: View`，同步畫面容器 |
 | `KnowledgeGraphView.swift` | 73 | `struct KnowledgeGraphView: View`，知識圖譜容器 |
 
@@ -135,12 +134,6 @@ verified_against: cb1ef202
 - **新增可復用元件** → `Components/VocabShellComponents*.swift`（shell 級）或 `Components/VocabComponents.swift`（skin 級）
 - **新增場景** → `Scenes/` 新增 View + Presenter + Coordinator，並在對應 container 的 Sheets extension 掛載
 - **新增 design token** → `ios/BooksBrowser/Models/AppSkin.swift`（全 app 共用；禁止在 feature 檔案裡硬編碼顏色/間距）
-
-## Detail 路由（regular vs compact）
-
-- 既有 word-tap / review 入口（`VocabularyListView` / `KnowledgeGraphView` / `WordDetailSheet` linked card）一律走 `\.detailRouter.show*`（`DetailRouting` protocol）。`NotebookListView` 依 `layoutMode` 注入不同 router：**regular + `panelWorkspace` 注入** → `WorkspaceDetailRouter`（`Platform/PanelWorkspace/`，stateless forwarder，把 `showWordDetail` / `showReview` 路由到 `PanelWorkspace.openColumn`，word detail 與 review 在 2D workspace 開欄）；**compact** → 既有 `detailState`（sheet）。call site 零散改。
-- regular word detail 由 `PanelHost` resolve `.wordDetail(entryID:)` → `WordDetailSheet(wrapInNavigation:false, showsInlineChrome:false)`（✕ 由 `BlockChrome` 提供）；review 由 `.reviewSession(entryIDs:)` → `ReviewPanel`（entry-id 快照重建一次性 `TodayReviewSession` → `TodayReviewPhaseView`）。切換單字本（`reconcile` / `selectNotebook`）時 `detailRouterForLayout.dismiss()` 收掉 workspace 末欄。
-- **休眠未刪（Task 14 deferred）**：`NotebookDetailPresentation` 的 regular inline 分支非 regular 主路徑，尚未刪除。
 
 ## State 邊界
 
