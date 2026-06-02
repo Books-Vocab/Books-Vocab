@@ -156,3 +156,24 @@ private struct CellData {
     let count: Int
     let isFuture: Bool
 }
+
+#Preview("VocabActivityHeatmap") {
+    let cal = Calendar.current
+    let formatter = AppDateFormatters.dayKey
+    var activity: [String: Int] = [:]
+    for offset in 0..<120 where offset % 4 != 0 {
+        if let date = cal.date(byAdding: .day, value: -offset, to: Date()) {
+            activity[formatter.string(from: date)] = (offset % 13) + 1
+        }
+    }
+
+    return AppThemeContainer {
+        VocabActivityHeatmap(
+            activity: activity,
+            thresholds: [2, 5, 9],
+            weeks: 20
+        )
+        .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
