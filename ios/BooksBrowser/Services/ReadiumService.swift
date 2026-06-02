@@ -11,7 +11,6 @@ import UIKit
 import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
-import ReadiumAdapterGCDWebServer
 import os
 
 /// Readium 服務 — 封裝 EPUB 開啟與 Publication 管理
@@ -22,12 +21,10 @@ final class ReadiumService: ReadiumServing {
     private let httpClient: HTTPClient
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
-    private(set) var httpServer: GCDHTTPServer
 
     private init() {
         httpClient = DefaultHTTPClient()
         assetRetriever = AssetRetriever(httpClient: httpClient)
-        httpServer = GCDHTTPServer(assetRetriever: assetRetriever)
         publicationOpener = PublicationOpener(
             parser: DefaultPublicationParser(
                 httpClient: httpClient,
