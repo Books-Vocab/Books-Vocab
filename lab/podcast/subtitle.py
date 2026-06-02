@@ -95,11 +95,6 @@ def script_to_segments(path: Path) -> list[tuple[str, str]]:
     return segments
 
 
-def script_to_plain_text(path: Path) -> str:
-    """Extract spoken dialogue from markdown script, strip directions."""
-    return " ".join(text for _, text in script_to_segments(path))
-
-
 def build_word_speaker_map(segments: list[tuple[str, str]]) -> list[str]:
     """Build a list mapping each word index (in concatenated text) to its speaker."""
     word_speakers: list[str] = []
