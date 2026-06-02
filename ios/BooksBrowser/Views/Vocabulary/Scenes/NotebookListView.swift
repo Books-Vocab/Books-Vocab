@@ -521,10 +521,14 @@ struct NotebookListView: View {
 
             // Own NavigationStack so the inline panel's navigationTitle/toolbar
             // stay self-contained instead of leaking into the master list's
-            // outer stack (mirrors PodcastPlayerView(wrapInNavigation:) for the
-            // podcast two-column). VocabularyListView carries no NavigationStack
-            // of its own; in the compact path it's pushed onto the master stack
-            // instead, so this wrapper applies only to the regular inline panel.
+            // outer stack. Safe here — unlike podcast's removed inline-player
+            // NavigationStack — because notebook's regular path never *pushes*
+            // onto the master stack (the detail IS this inline panel), so a
+            // nested stack can't break an outer push. VocabularyListView carries
+            // no NavigationStack of its own; the compact path pushes it instead,
+            // where this wrapper doesn't apply. (Podcast broke precisely because
+            // bookshelf's regular path keeps pushing reader onto the same stack
+            // that hosted the inline player's nested stack — NAVDBG-confirmed.)
             NavigationStack {
                 VocabularyListView(notebookId: notebookId)
             }
