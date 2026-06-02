@@ -186,7 +186,10 @@ def create_admin_handlers(
     def admin_pipeline_runs(user_id: str, limit: int = 20):
         """Return pipeline run history for a user."""
         from .pipeline_log import get_runs
-        return {"user_id": user_id, "runs": get_runs(user_id, limit=min(limit, 100))}
+        # Clamp to [1, 100]: a negative limit reaches SQLite LIMIT -1 (no
+        # limit) and dumps the whole table past the cap. Mirror the
+        # max(1, min(limit, CAP)) pattern used by admin_audit.list_audit.
+        return {"user_id": user_id, "runs": get_runs(user_id, limit=max(1, min(limit, 100)))}
 
     def admin_judge_stats(user_id: str):
         """Return per-user judge acceptance stats."""
@@ -207,9 +210,11 @@ def create_admin_handlers(
             ``translate_phrase`` / ``translate_explain``).
         """
         from .translate_log import get_log
+        # Clamp to [1, 200] for the same SQLite LIMIT -1 reason as
+        # admin_pipeline_runs above.
         return {
             "user_id": user_id,
-            "history": get_log(user_id, limit=min(limit, 200), q=q, op=op),
+            "history": get_log(user_id, limit=max(1, min(limit, 200)), q=q, op=op),
             "q": q or "",
             "op": op or "",
         }
