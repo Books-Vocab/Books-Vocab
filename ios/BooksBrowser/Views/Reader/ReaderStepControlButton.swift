@@ -27,4 +27,24 @@ struct ReaderStepControlButton: View {
         .enableInjection()
     }
 }
+
+#Preview("ReaderStepControlButton") {
+    AppThemeContainer {
+        ReaderStepControlButtonPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct ReaderStepControlButtonPreview: View {
+    @Environment(\.appSkin) private var appSkin
+
+    var body: some View {
+        HStack(spacing: AppSpacing.s3) {
+            ReaderStepControlButton(label: "A−", font: appSkin.typography.body, enabled: true) {}
+            ReaderStepControlButton(label: "A＋", font: appSkin.typography.body, enabled: false) {}
+        }
+        .padding()
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
+    }
+}
 #endif

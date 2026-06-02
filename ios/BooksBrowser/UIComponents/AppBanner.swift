@@ -58,3 +58,20 @@ struct AppBanner: View {
         .transition(.bannerReveal)
     }
 }
+
+#Preview("AppBanner") {
+    AppThemeContainer {
+        VStack(spacing: AppSpacing.s4) {
+            AppBanner(message: "目前無網路連線，部分功能暫不可用。")
+            AppBanner(
+                message: "同步失敗，請稍後再試。",
+                systemImage: "exclamationmark.icloud",
+                onRetry: {},
+                onDismiss: {}
+            )
+            Spacer()
+        }
+        .padding(.top, AppSpacing.s4)
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}

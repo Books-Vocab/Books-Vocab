@@ -57,3 +57,32 @@ struct AppSidebarRow: View {
         isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText
     }
 }
+
+#Preview("AppSidebarRow") {
+    AppThemeContainer {
+        AppSidebarRowPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct AppSidebarRowPreview: View {
+    @Environment(\.appSkin) private var appSkin
+    @State private var selected = "book"
+
+    var body: some View {
+        VStack(spacing: 0) {
+            AppSidebarRow(systemImage: "book", title: "書架", isSelected: selected == "book") {
+                selected = "book"
+            }
+            AppSidebarRow(systemImage: "list.bullet.rectangle", title: "詞庫", isSelected: selected == "vocab") {
+                selected = "vocab"
+            }
+            AppSidebarRow(systemImage: "gearshape", title: "設定", isSelected: selected == "settings") {
+                selected = "settings"
+            }
+        }
+        .padding(AppSpacing.s3)
+        .frame(width: 260)
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
+    }
+}

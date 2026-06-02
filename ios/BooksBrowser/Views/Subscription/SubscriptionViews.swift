@@ -45,3 +45,26 @@ struct ProAccessGateCard: View {
         .enableInjection()
     }
 }
+
+#Preview("ProAccessGateCard") {
+    AppThemeContainer {
+        ProAccessGateCardPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct ProAccessGateCardPreview: View {
+    @Environment(\.appSkin) private var appSkin
+
+    var body: some View {
+        ProAccessGateCard(
+            title: "解鎖知識圖譜",
+            description: "升級至 Pro 即可使用知識圖譜、Today Review 與播客功能。",
+            actionTitle: "升級 Pro",
+            systemImage: "sparkles",
+            onAction: {}
+        )
+        .padding()
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
+    }
+}
