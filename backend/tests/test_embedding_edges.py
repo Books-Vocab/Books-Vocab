@@ -160,6 +160,59 @@ class TestEmbeddingDimMismatchClearError:
 
 
 # --------------------------------------------------------------------- #
+# 1b. empty / malformed upstream response must raise — not poison state
+# --------------------------------------------------------------------- #
+class TestEmbeddingEmptyResponseRaises:
+    """When the upstream returns an empty ``response.data`` (provider hiccup,
+    truncated batch, OpenAI-compat quirk), ``np.array([...])`` collapses to a
+    1-D ``shape (0,)`` array that slips past the ``ndim >= 2`` dim guard.
+    Returning it lets ``add_batch`` assign a 1-D matrix to ``_embeddings``,
+    which later detonates cryptically inside ``np.vstack`` / ``find_similar`` /
+    ``_get_norms``. ``_embed`` must reject it up front with a clear message and
+    leave the store's state untouched (the id list extends *after* ``_embed``).
+    """
+
+    def test_empty_response_data_raises_clear_error(self, tmp_path: Path):
+        """resp.data == [] → ValueError naming an empty/malformed response,
+        NOT a silent 1-D array return."""
+        client = _mock_client_with_dim(dim=768, n=0)  # resp.data == []
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(
+            embeddings_path=tmp_path / "embeddings_default.npy",
+            ids_path=tmp_path / "card_ids_default.json",
+            llm=llm,
+            model="m-active",
+            dim=768,
+        )
+        with pytest.raises(ValueError) as exc_info:
+            store.add("c1", "hello")
+        msg = str(exc_info.value).lower()
+        assert "empty" in msg or "malformed" in msg, (
+            f"error must flag empty/malformed embedding response, got: {msg!r}"
+        )
+
+    def test_empty_response_leaves_state_clean(self, tmp_path: Path):
+        """After the raise, the store stays pristine: no ids leaked into
+        ``_ids``, ``_embeddings`` still ``None``, ``count() == 0``. A retry /
+        next request must see a clean store, never a half-populated one."""
+        client = _mock_client_with_dim(dim=768, n=0)
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(
+            embeddings_path=tmp_path / "embeddings_default.npy",
+            ids_path=tmp_path / "card_ids_default.json",
+            llm=llm,
+            model="m-active",
+            dim=768,
+        )
+        with pytest.raises(ValueError):
+            store.add("c1", "hello")
+        assert store.count() == 0
+        assert store._embeddings is None
+        assert store._ids == []
+        assert "c1" not in store._id_set
+
+
+# --------------------------------------------------------------------- #
 # 2. cache key must include BOTH model AND dim
 # --------------------------------------------------------------------- #
 class TestCacheKeyIncludesModelAndDim:
