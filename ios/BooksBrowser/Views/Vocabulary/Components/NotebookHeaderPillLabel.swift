@@ -25,3 +25,38 @@ struct NotebookHeaderPillLabel<Content: View>: View {
             .background(Capsule(style: .continuous).fill(fillColor))
     }
 }
+
+private struct NotebookHeaderPillLabelPreview: View {
+    @Environment(\.appSkin) private var skin
+
+    var body: some View {
+        HStack(spacing: AppSpacing.s2) {
+            NotebookHeaderPillLabel(
+                fillColor: skin.palette.accent,
+                foregroundColor: skin.palette.cardBackground
+            ) {
+                Label("review.start", systemImage: "play.fill")
+            }
+            NotebookHeaderPillLabel(
+                fillColor: skin.palette.mutedFill,
+                foregroundColor: skin.palette.secondaryText
+            ) {
+                Image(systemName: "line.3.horizontal.decrease")
+            }
+            NotebookHeaderPillLabel(
+                fillColor: skin.palette.mutedFill,
+                foregroundColor: skin.palette.secondaryText
+            ) {
+                Image(systemName: "plus")
+            }
+        }
+        .padding()
+    }
+}
+
+#Preview("NotebookHeaderPillLabel") {
+    AppThemeContainer {
+        NotebookHeaderPillLabelPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}

@@ -126,3 +126,17 @@ struct NotebookFilterPickerSheet: View {
         filter.save()
     }
 }
+
+#Preview("NotebookFilterChip") {
+    @Previewable @State var filter = NotebookFilter()
+
+    return AppThemeContainer {
+        VStack(spacing: AppSpacing.s4) {
+            NotebookFilterChip(filter: $filter)
+            NotebookFilterChip(filter: .constant(NotebookFilter(selectedIds: ["nb-1", "nb-2"])))
+        }
+        .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+    .modelContainer(for: [Notebook.self], inMemory: true)
+}

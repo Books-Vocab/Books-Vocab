@@ -151,3 +151,17 @@ struct VocabForecastChart: View {
             .transition(.overlayFade)
     }
 }
+
+#Preview("VocabForecastChart") {
+    let counts = [12, 5, 8, 3, 6, 9, 4, 2, 7, 1, 5, 3, 6, 2]
+    let buckets = counts.enumerated().map { index, count in
+        StatsPresentation.ForecastBucket(id: "d\(index)", label: "+\(index)d", count: count)
+    }
+
+    return AppThemeContainer {
+        VocabForecastChart(buckets: buckets)
+            .frame(height: 160)
+            .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
