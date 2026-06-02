@@ -80,6 +80,16 @@ struct NotebookListView: View {
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
     private var activationMode: NotebookActivationMode { NotebookActivationMode(layoutMode: layoutMode) }
 
+    /// regular + workspace 注入 → word-tap / review 路由到 2D panel 開欄（stateless
+    /// forwarder，per-render 建立無妨）；compact → 既有 detailState（sheet）。
+    @Environment(\.panelWorkspace) private var panelWorkspace
+    private var detailRouterForLayout: any DetailRouting {
+        if layoutMode.usesInlineDetail, let panelWorkspace {
+            return WorkspaceDetailRouter(workspace: panelWorkspace)
+        }
+        return detailState
+    }
+
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
     }
@@ -358,7 +368,7 @@ struct NotebookListView: View {
             }
             .onChange(of: activeReviewSession) { _, session in
                 if let session {
-                    detailState.showReview(session, allEntries: allEntries)
+                    detailRouterForLayout.showReview(session, allEntries: allEntries)
                     activeReviewSession = nil
                 }
             }
@@ -412,7 +422,7 @@ struct NotebookListView: View {
                 Text("此單字本及所有單字將被永久刪除，無法復原。".localized)
             }
         }
-        .environment(\.detailRouter, detailState)
+        .environment(\.detailRouter, detailRouterForLayout)
         .modifier(NotebookDetailPresentation(
             detailState: detailState,
             layoutMode: layoutMode,
