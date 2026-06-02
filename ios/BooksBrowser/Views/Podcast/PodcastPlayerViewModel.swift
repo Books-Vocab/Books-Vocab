@@ -64,7 +64,6 @@ final class PodcastPlayerViewModel {
     private(set) var currentSentence: PodcastSentence?
     private(set) var currentCue: PodcastSubtitleCue?
     private(set) var renderState: SubtitleRenderState?
-    private(set) var highlightedWordIndex: Int = -1
     /// Anchor for extrapolating a continuous playhead between 15 Hz ticks (see
     /// `PodcastPlaybackClock`). Refreshed on every tick / seek / play / pause /
     /// rate change. `wallClock` uses `Date.timeIntervalSinceReferenceDate`.
@@ -394,16 +393,6 @@ final class PodcastPlayerViewModel {
             } else {
                 renderState = nil
             }
-        }
-
-        // High-frequency path: highlight = index of current cue within sentence.words.
-        // With compact SRT, sentence.words is 1:1 with word cues, so we find the cue
-        // position directly (no fuzzy text match needed).
-        if let cue, let sentence = currentSentence,
-           let idx = sentence.words.firstIndex(where: { $0.id == cue.id }) {
-            highlightedWordIndex = idx
-        } else {
-            highlightedWordIndex = -1
         }
 
         // Re-anchor the continuous playhead on every real tick (~66 ms) so the
