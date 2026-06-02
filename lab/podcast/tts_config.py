@@ -48,3 +48,18 @@ def tts_family(model_id: str) -> str:
     """
     m = re.search(r"(\d+\.\d+)", model_id)
     return m.group(1) if m else model_id
+
+
+# ─── Script parsing regexes (shared by synthesize, subtitle, audio_qa) ───
+
+# Matches **AnyName:** at start of line — multi-word/hyphenated host names.
+DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
+# Structural lines to skip: headings, blockquotes, rules, HTML comments.
+SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
+# Inline markdown emphasis stripped from spoken text.
+INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+# Audio direction tags [excitement] / [laughs] — stripped before alignment/QA.
+DIRECTION_RE = re.compile(r"\[.*?\]")
+# Legacy SSML markup in old workspaces (Gemini 3.1 has no SSML).
+SSML_RE = re.compile(r"<[^>]+")

@@ -1325,6 +1325,13 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
 # ─── Status ───
 
 
+def _try_parse_json(line: str) -> dict | None:
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return None
+
+
 def show_status(workspace: Path) -> None:
     print(f"\n{'='*60}")
     print(f"  WORKSPACE: {workspace.name}")
@@ -1404,7 +1411,7 @@ def show_status(workspace: Path) -> None:
     log_file = workspace / "pipeline_log.jsonl"
     if log_file.exists():
         lines = log_file.read_text().strip().splitlines()
-        errors = [json.loads(l) for l in lines if '"error"' in l]
+        errors = [obj for l in lines if '"error"' in l for obj in [_try_parse_json(l)] if obj]
         if errors:
             print(f"\n  Recent Errors ({len(errors)}):")
             for e in errors[-5:]:

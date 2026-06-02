@@ -38,7 +38,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict
+from tts_config import (
+    DIALOGUE_RE as _DIALOGUE_RE,
+    SKIP_LINE_RE as _SKIP_LINE_RE,
+    INLINE_BOLD_RE as _INLINE_BOLD_RE,
+    INLINE_ITALIC_RE as _INLINE_ITALIC_RE,
+)
 
 # ─── Events.jsonl emission (cost / usage tracking) ───
 # Writes one NDJSON line per TTS batch + episode boundary so the dashboard's
@@ -251,21 +256,6 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
 
 # ─── Parse ───
 
-# Matches **AnyName:** at start of line. `[^:*]+` allows multi-word / hyphenated
-# host names. Lookup into speaker_map is case-insensitive.
-_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
-
-# Lines that must be SKIPPED (never concat'd onto previous turn):
-#   Title `# ...`, subtitle `> ...`, horizontal rule `---`, section `## ...`,
-#   HTML comments (sentinel `<!-- END_OF_SCRIPT -->` etc.), stray `###`.
-_SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
-
-# Inline markdown emphasis that Gemini may literalize as "asterisk …". We keep
-# speaker prefix intact (matched first) then strip remaining *..* / **..**.
-_INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
-_INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
-
-
 def _sanitize_dialogue(text: str) -> str:
     """Strip inline markdown emphasis from TTS-bound dialogue text."""
     text = _INLINE_BOLD_RE.sub(r"\1", text)
@@ -273,7 +263,7 @@ def _sanitize_dialogue(text: str) -> str:
     return text
 
 
-def parse_script(path: Path, speaker_map: dict[str, str]) -> List[Dict[str, str]]:
+def parse_script(path: Path, speaker_map: dict[str, str]) -> list[dict[str, str]]:
     """Parse a markdown script → list of {speaker, text} turns.
 
     Hardened rules:
@@ -287,7 +277,7 @@ def parse_script(path: Path, speaker_map: dict[str, str]) -> List[Dict[str, str]
       path (the wrong speaker would eat the rest of the line).
     """
     text = path.read_text(encoding="utf-8")
-    turns: list[Dict[str, str]] = []
+    turns: list[dict[str, str]] = []
     lower_map = {k.lower(): v for k, v in speaker_map.items()}
 
     for ln_idx, line in enumerate(text.splitlines(), 1):
@@ -336,8 +326,8 @@ MIN_BATCH_END_WORDS = 5
 
 
 def chunk_turns(
-    turns: List[Dict[str, str]], max_words: int
-) -> List[List[Dict[str, str]]]:
+    turns: list[dict[str, str]], max_words: int
+) -> list[list[dict[str, str]]]:
     """Split turns into batches that fit within the word budget.
 
     Constraint: a batch never ends on a turn shorter than MIN_BATCH_END_WORDS.
@@ -349,8 +339,8 @@ def chunk_turns(
     if max_words <= 0:
         raise ValueError("max_words must be > 0")
 
-    batches: list[list[Dict[str, str]]] = []
-    current: list[Dict[str, str]] = []
+    batches: list[list[dict[str, str]]] = []
+    current: list[dict[str, str]] = []
     current_words = 0
 
     for turn in turns:
@@ -389,7 +379,7 @@ def chunk_turns(
     return batches
 
 
-def format_prompt(system_instructions: str, turns: List[Dict[str, str]]) -> str:
+def format_prompt(system_instructions: str, turns: list[dict[str, str]]) -> str:
     dialogue = "\n".join(f"{t['speaker']}: {t['text']}" for t in turns)
     return f"{system_instructions}\n\n{dialogue}".strip()
 
@@ -593,10 +583,10 @@ def synthesize_batches(
     client: genai.Client,
     speech_config: genai_types.SpeechConfig,
     system_instructions: str,
-    batches: List[List[Dict[str, str]]],
+    batches: list[list[dict[str, str]]],
     cache_dir: Path | None = None,
     episode_label: str = "Synthesize",
-) -> List[AudioSegment]:
+) -> list[AudioSegment]:
     """Synthesize batches with per-batch disk caching + wall-clock timeout.
 
     - Each successful batch writes `<cache_dir>/batch_N.wav` immediately.
@@ -609,7 +599,7 @@ def synthesize_batches(
     results: dict[int, AudioSegment] = {}
 
     # Phase 1 — load cached batches
-    pending: list[tuple[int, list[Dict[str, str]]]] = []
+    pending: list[tuple[int, list[dict[str, str]]]] = []
     if cache_dir:
         cache_dir.mkdir(parents=True, exist_ok=True)
         for i, batch in enumerate(batches, 1):
@@ -744,7 +734,7 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
         return False
 
 
-def combine_and_export(segments: List[AudioSegment], output_path: Path) -> None:
+def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
     combined = AudioSegment.empty()
     silence = AudioSegment.silent(duration=SILENCE_MS)
 

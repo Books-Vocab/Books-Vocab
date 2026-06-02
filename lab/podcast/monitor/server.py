@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
