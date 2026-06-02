@@ -389,6 +389,13 @@ actor BackgroundSyncActor {
 
     // MARK: - Review State Merge Helper
 
+    /// Observability counter for the equal-instant (serverLast == localLast)
+    /// branch where server-wins silently overwrites equally-fresh local
+    /// feedback. Pure telemetry — does NOT change the >= merge decision.
+    /// Merge runs single-threaded on the sync path; `nonisolated(unsafe)` is
+    /// safe (statics are not actor-isolated, observation only).
+    nonisolated(unsafe) static var reviewMergeEqualInstantConflicts = 0
+
     private static func mergeReviewState(from card: KGCard, into entry: VocabularyEntry) {
         guard let serverLastStr = card.lastReviewedAt,
               let serverLast = parseISO8601(serverLastStr) else { return }
@@ -396,6 +403,10 @@ actor BackgroundSyncActor {
         let localLast = entry.lastReviewedAt ?? .distantPast
         if serverLast >= localLast {
             if localLast != .distantPast {
+                if serverLast == localLast {
+                    reviewMergeEqualInstantConflicts += 1
+                    AppLog.sync.info("Review merge conflict (equal-instant): server overwrites equally-fresh local feedback for '\(entry.word)' at \(serverLastStr); total=\(reviewMergeEqualInstantConflicts)")
+                }
                 AppLog.sync.info("Review merge: server wins for '\(entry.word)' (server=\(serverLastStr), local=\(AppDateFormatters.iso8601.string(from: localLast)))")
             }
             entry.reviewIntervalHours = card.reviewIntervalHours ?? entry.reviewIntervalHours
