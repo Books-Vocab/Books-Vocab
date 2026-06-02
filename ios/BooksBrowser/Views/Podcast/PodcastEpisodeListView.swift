@@ -41,12 +41,6 @@ struct PodcastEpisodeListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.kgService) private var kgService
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    /// regular（Mac/iPad）雙欄右欄選定的集數；compact 下其 selectedEpisodeRemoteId
-    /// 恆為 nil（改走 NavigationLink push）。
-    @State private var detailRouter = PodcastDetailRouter()
-    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
     // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
@@ -145,8 +139,6 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
-        .environment(\.podcastDetailRouter, detailRouter)
-        .podcastDetailPresentation(router: detailRouter, layoutMode: layoutMode)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 followToggleButton
@@ -279,33 +271,17 @@ struct PodcastEpisodeListView: View {
                 return L10n.string("開始播放")
             }()
             let icon = unavailable ? "icloud.slash" : "play.fill"
-            switch PodcastEpisodeActivation.activation(
-                episodeRemoteId: target.remoteId,
-                layoutMode: layoutMode
-            ) {
-            case .inlineDetail(let episodeRemoteId):
-                Button {
-                    detailRouter.show(episodeRemoteId: episodeRemoteId)
-                    warmConnection(for: target)
-                } label: {
-                    Label(label, systemImage: icon)
-                }
-                .buttonStyle(.appAction(.primary))
-                .disabled(unavailable)
-                .frame(maxWidth: 280)
-            case .push(let route):
-                NavigationLink(value: route) {
-                    Label(label, systemImage: icon)
-                }
-                .buttonStyle(.appAction(.primary))
-                .disabled(unavailable)
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        warmConnection(for: target)
-                    }
-                )
-                .frame(maxWidth: 280)
+            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
+                Label(label, systemImage: icon)
             }
+            .buttonStyle(.appAction(.primary))
+            .disabled(unavailable)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    warmConnection(for: target)
+                }
+            )
+            .frame(maxWidth: 280)
         }
     }
 
@@ -358,10 +334,11 @@ struct PodcastEpisodeListView: View {
         }
     }
 
-    /// 集數 row 依 layoutMode 分支：
-    /// - regular（Mac/iPad）：選定載入右欄 inline player（detailRouter.show），不 push。
-    /// - compact（iPhone）：沿用 value-based NavigationLink push（freeze-fix 契約，見檔頭註解）。
-    @ViewBuilder
+    /// 集數 row → value-based NavigationLink push（所有 layout 一致，單欄）。
+    /// 過去 regular 走右欄 inline player；雙欄已收斂成 push（見 PodcastDetailRouter
+    /// 檔頭）。push 目標 `PodcastPlayerView` 由 BookshelfView root 的
+    /// `navigationDestination(for: PodcastNavRoute.self)` 接住。value-based +
+    /// root 統一註冊是 freeze-fix 契約（PR #366/#368/#370/#373，見檔頭註解）。
     private func episodeRow(_ episode: PodcastEpisode) -> some View {
         let row = PodcastEpisodeRow(
             episode: episode,
@@ -369,34 +346,16 @@ struct PodcastEpisodeListView: View {
         )
         .contentShape(Rectangle())
 
-        switch PodcastEpisodeActivation.activation(
-            episodeRemoteId: episode.remoteId,
-            layoutMode: layoutMode
-        ) {
-        case .inlineDetail(let episodeRemoteId):
-            Button {
-                detailRouter.show(episodeRemoteId: episodeRemoteId)
-                warmConnection(for: episode)
-            } label: { row }
-            .buttonStyle(.plain)
-            .disabled(!episode.audioAvailable)
-            .background(
-                episode.remoteId == detailRouter.selectedEpisodeRemoteId
-                    ? skin.palette.accentSubtle
-                    : Color.clear
-            )
-        case .push(let route):
-            NavigationLink(value: route) {
-                row
-            }
-            .buttonStyle(.plain)
-            .disabled(!episode.audioAvailable)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    warmConnection(for: episode)
-                }
-            )
+        return NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
+            row
         }
+        .buttonStyle(.plain)
+        .disabled(!episode.audioAvailable)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                warmConnection(for: episode)
+            }
+        )
     }
 
     private var sortMenu: some View {
