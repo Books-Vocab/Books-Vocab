@@ -1,113 +1,160 @@
-"""Canonical Gemini 3.1 Flash TTS audio-tag palette — single source of truth.
+"""Audio-tag palette — single source of truth, keyed by TTS model family.
 
-The podcast pipeline steers vocal delivery with inline `[...]` audio tags. Gemini
-3.1 Flash TTS gives the strongest prosody for tags drawn from its official
-`example_audio_tags` set (noun forms like `[sadness]`, `[amusement]`), NOT the
-2.5-era adjective forms (`[sad]`, `[amused]`) the pipeline originally shipped.
+The podcast pipeline steers vocal delivery with inline `[...]` audio tags. Each
+*delivery concept* (excitement, whisper, a measured pause …) renders to a
+different surface tag per Gemini TTS family — and some concepts only exist on
+one family. Gemini does NOT silently drop an unsupported tag; it speaks it as
+literal text. So the family the script is synthesized on decides which tags are
+safe.
 
-This module is the ONE place the palette is defined. Two prompt files
-(`prompts/scriptwriter.md`, `prompts/script_review.md`) mirror it inside
-`<!-- TTS_PALETTE:START -->` / `<!-- TTS_PALETTE:END -->` markers, and
-`test_palette_consistency.py` asserts all three agree — so the palette can never
-silently drift or fossilize again.
+`TAG_CONCEPTS` is the ONE table that encodes this. Everything else is derived:
 
-Source: Gemini 3.1 official `example_audio_tags` array
-(GoogleCloudPlatform/generative-ai · audio/speech/getting-started/gemini_3_1_flash_tts.ipynb).
+    • palette(family)               → the tags an author/reviewer may use
+    • sanitize_tags_for_family()    → rewrite/strip tags to a target family
+    • render_palette_md(family)     → the palette block injected into prompts
+
+Adding a new family = add one column to the relevant concepts. Adding a concept
+= add one row. No palette text is duplicated anywhere — the authoring prompts
+get `render_palette_md()` injected at runtime (see pipeline.py), so the old
+"mirror the list in three files + a drift test" cycle is gone.
+
+3.1 source: Gemini 3.1 official `example_audio_tags` array. 2.5 forms are the
+adjective/gerund set Gemini 2.5 TTS reliably honors (the pipeline's original
+pre-3.1 palette); concepts with no 2.5 column are stripped when synthesizing on
+2.5 rather than voiced as literal words.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-# Curated emotion tags (noun forms — strongest 3.1 prosody). Picked for the
-# range a two-host book discussion actually needs.
-CANONICAL_EMOTION: frozenset[str] = frozenset(
-    {
-        "curiosity", "interest", "excitement", "enthusiasm", "amusement",
-        "humor", "joy", "happiness", "awe", "admiration", "surprise", "shock",
-        "skepticism", "doubt", "confusion", "uncertainty", "determination",
-        "confidence", "sympathy", "caring", "melancholy", "nostalgia",
-        "sadness", "grief", "relief", "satisfaction", "frustration",
-        "disappointment", "tension", "anticipation", "hope", "sarcasm",
-        "passion", "yearning",
-    }
+
+@dataclass(frozen=True)
+class TagConcept:
+    """One delivery intent and its surface tag per family.
+
+    ``forms`` maps family id ("3.1", "2.5", …) → the lowercase text inside the
+    brackets. A family absent from ``forms`` has no supported tag for this
+    concept, so on that family the tag is stripped (never spoken).
+    """
+
+    id: str
+    kind: str  # "emotion" | "energy" | "pacing_nonverbal" | "pause"
+    forms: dict[str, str]
+
+
+# ─────────────────────────── the table ───────────────────────────
+# Emotion concepts carry a 2.5 adjective form only where Gemini 2.5 honors one;
+# the rest are 3.1-only (richer prosody, no reliable 2.5 surface form).
+TAG_CONCEPTS: tuple[TagConcept, ...] = (
+    # — emotion: 3.1 noun ⇄ 2.5 adjective —
+    TagConcept("excitement", "emotion", {"3.1": "excitement", "2.5": "excited"}),
+    TagConcept("skepticism", "emotion", {"3.1": "skepticism", "2.5": "skeptical"}),
+    TagConcept("amusement", "emotion", {"3.1": "amusement", "2.5": "amused"}),
+    TagConcept("uncertainty", "emotion", {"3.1": "uncertainty", "2.5": "uncertain"}),
+    TagConcept("sadness", "emotion", {"3.1": "sadness", "2.5": "sad"}),
+    TagConcept("surprise", "emotion", {"3.1": "surprise", "2.5": "surprised"}),
+    TagConcept("happiness", "emotion", {"3.1": "happiness", "2.5": "happy"}),
+    TagConcept("sarcasm", "emotion", {"3.1": "sarcasm", "2.5": "sarcastic"}),
+    TagConcept("sympathy", "emotion", {"3.1": "sympathy", "2.5": "empathetic"}),
+    # — emotion: 3.1-only —
+    TagConcept("curiosity", "emotion", {"3.1": "curiosity"}),
+    TagConcept("interest", "emotion", {"3.1": "interest"}),
+    TagConcept("enthusiasm", "emotion", {"3.1": "enthusiasm"}),
+    TagConcept("humor", "emotion", {"3.1": "humor"}),
+    TagConcept("joy", "emotion", {"3.1": "joy"}),
+    TagConcept("awe", "emotion", {"3.1": "awe"}),
+    TagConcept("admiration", "emotion", {"3.1": "admiration"}),
+    TagConcept("shock", "emotion", {"3.1": "shock"}),
+    TagConcept("doubt", "emotion", {"3.1": "doubt"}),
+    TagConcept("confusion", "emotion", {"3.1": "confusion"}),
+    TagConcept("determination", "emotion", {"3.1": "determination"}),
+    TagConcept("confidence", "emotion", {"3.1": "confidence"}),
+    TagConcept("caring", "emotion", {"3.1": "caring"}),
+    TagConcept("melancholy", "emotion", {"3.1": "melancholy"}),
+    TagConcept("nostalgia", "emotion", {"3.1": "nostalgia"}),
+    TagConcept("grief", "emotion", {"3.1": "grief"}),
+    TagConcept("relief", "emotion", {"3.1": "relief"}),
+    TagConcept("satisfaction", "emotion", {"3.1": "satisfaction"}),
+    TagConcept("frustration", "emotion", {"3.1": "frustration"}),
+    TagConcept("disappointment", "emotion", {"3.1": "disappointment"}),
+    TagConcept("tension", "emotion", {"3.1": "tension"}),
+    TagConcept("anticipation", "emotion", {"3.1": "anticipation"}),
+    TagConcept("hope", "emotion", {"3.1": "hope"}),
+    TagConcept("passion", "emotion", {"3.1": "passion"}),
+    TagConcept("yearning", "emotion", {"3.1": "yearning"}),
+    # — energy: 3.1-only (paragraph-level dynamics) —
+    TagConcept("high_energy", "energy", {"3.1": "high energy"}),
+    TagConcept("low_energy", "energy", {"3.1": "low energy"}),
+    # — pacing / non-verbal: 3.1 base ⇄ 2.5 gerund —
+    TagConcept("whisper", "pacing_nonverbal", {"3.1": "whispers", "2.5": "whispering"}),
+    TagConcept("sigh", "pacing_nonverbal", {"3.1": "sighs", "2.5": "sighing"}),
+    TagConcept("laugh", "pacing_nonverbal", {"3.1": "laughs", "2.5": "laughing"}),
+    TagConcept("giggle", "pacing_nonverbal", {"3.1": "giggles", "2.5": "chuckling"}),
+    TagConcept("slow", "pacing_nonverbal", {"3.1": "slow", "2.5": "speaking slowly"}),
+    TagConcept("fast", "pacing_nonverbal", {"3.1": "fast", "2.5": "speaking quickly"}),
+    # — non-verbal: 3.1-only —
+    TagConcept("gasp", "pacing_nonverbal", {"3.1": "gasp"}),
+    # — pauses: 3.1-only (Mode 4 measured silence; REPLACE SSML <break>) —
+    TagConcept("short_pause", "pause", {"3.1": "short pause"}),
+    TagConcept("medium_pause", "pause", {"3.1": "medium pause"}),
+    TagConcept("long_pause", "pause", {"3.1": "long pause"}),
 )
 
-# Energy tags — new in 3.1, drive paragraph-level dynamics.
-CANONICAL_ENERGY: frozenset[str] = frozenset({"high energy", "low energy"})
-
-# Pacing + non-verbal vocalizations (official forms).
-CANONICAL_PACING_NONVERBAL: frozenset[str] = frozenset(
-    {"slow", "fast", "whispers", "laughs", "giggles", "sighs", "gasp"}
-)
-
-# Pause tags — Gemini 3.1 Mode 4 ("Pacing and pauses"), all High reliability.
-# These insert measured silence and REPLACE SSML <break time="Ns"/> (Gemini 3.1
-# does not parse SSML). [short pause]≈250ms, [medium pause]≈500ms, [long pause]≈1s+.
-CANONICAL_PAUSE: frozenset[str] = frozenset(
-    {"short pause", "medium pause", "long pause"}
-)
-
-# The full palette the scriptwriter may use and the reviewer must enforce.
-CANONICAL: frozenset[str] = (
-    CANONICAL_EMOTION
-    | CANONICAL_ENERGY
-    | CANONICAL_PACING_NONVERBAL
-    | CANONICAL_PAUSE
-)
-
-# 2.5-era adjective form → 3.1 noun form. Used by the reviewer's auto-fix and as
-# reference when reading old scripts (which are NOT rewritten). Tags with no
-# direct noun equivalent (deadpan/thoughtful/somber/warm/tender) move to the
-# host's Voice direction (Director's Notes), not an inline tag.
-LEGACY_TO_CANONICAL: dict[str, str] = {
-    "excited": "excitement",
-    "skeptical": "skepticism",
-    "amused": "amusement",
-    "uncertain": "uncertainty",
-    "sad": "sadness",
-    "surprised": "surprise",
-    "happy": "happiness",
-    "sarcastic": "sarcasm",
-    "empathetic": "sympathy",
-    "whispering": "whispers",
-    "sighing": "sighs",
-    "laughing": "laughs",
-    "chuckling": "giggles",
-    "speaking slowly": "slow",
-    "speaking quickly": "fast",
+# Human-facing engine name per family (used in injected prompt prose).
+ENGINE_NAMES: dict[str, str] = {
+    "3.1": "Gemini 3.1 Flash TTS",
+    "2.5": "Gemini 2.5 TTS",
 }
 
-# 3.1 canonical (noun/energy/pause) form → the 2.5-era form the model actually
-# voices, derived by inverting LEGACY_TO_CANONICAL. Used when synthesizing on a
-# non-3.1 family so 3.1-authored tags are never read aloud as literal words.
-CANONICAL_TO_LEGACY: dict[str, str] = {v: k for k, v in LEGACY_TO_CANONICAL.items()}
+# Families the registry can author/sanitize for.
+KNOWN_FAMILIES: frozenset[str] = frozenset(
+    f for c in TAG_CONCEPTS for f in c.forms
+)
+
+# Surface form (any family) → owning concept. Asserted collision-free below.
+_FORM_TO_CONCEPT: dict[str, TagConcept] = {}
+for _c in TAG_CONCEPTS:
+    for _form in _c.forms.values():
+        if _form in _FORM_TO_CONCEPT and _FORM_TO_CONCEPT[_form].id != _c.id:
+            raise AssertionError(
+                f"audio-tag form {_form!r} claimed by two concepts: "
+                f"{_FORM_TO_CONCEPT[_form].id} and {_c.id}"
+            )
+        _FORM_TO_CONCEPT[_form] = _c
 
 # Bracket-tag matcher (single level — content placeholders never nest tags).
 _TAG_RE = re.compile(r"\[([^\[\]]+)\]")
 
 
+def palette(family: str) -> set[str]:
+    """The set of inline tags valid for ``family`` (the authoring whitelist)."""
+    return {c.forms[family] for c in TAG_CONCEPTS if family in c.forms}
+
+
+def engine_name(family: str) -> str:
+    return ENGINE_NAMES.get(family, f"Gemini {family} TTS")
+
+
 def sanitize_tags_for_family(text: str, family: str) -> tuple[str, dict[str, int]]:
-    """Make 3.1-authored audio tags safe for a non-3.1 synthesis family.
+    """Rewrite/strip audio tags so they are safe to synthesize on ``family``.
 
-    Gemini does NOT silently drop an unsupported inline tag — it speaks it as
-    literal text. Scripts are authored against the 3.1 palette (noun emotions,
-    energy/pause tags), so on a 2.5-family synth we must rewrite or remove any
-    3.1-only tag *before* the text reaches the API.
+    For every ``[tag]``:
+      • not a known palette form anywhere  → kept (it is spoken CONTENT, e.g. a
+        habit-stacking placeholder ``[NEW HABIT]``)
+      • concept HAS a form on ``family``   → rewritten to that form (a no-op when
+        it is already the right form; upgrades a 2.5 form to its 3.1 noun, or
+        downgrades a 3.1 noun to its 2.5 adjective)
+      • concept has NO form on ``family``  → stripped (would otherwise be voiced)
 
-    Policy (family != "3.1"):
-      • palette tag with a known 2.5-era form  → rewrite ([excitement]→[excited],
-        [whispers]→[whispering], [slow]→[speaking slowly], …)
-      • palette tag with no 2.5 form (energy, pause, abstract emotion nouns like
-        [awe]/[determination], [gasp])          → strip
-      • non-palette bracket (e.g. [NEW HABIT])  → leave untouched (it is spoken
-        CONTENT — a habit-stacking placeholder, not an audio direction)
+    Unknown ``family`` (no registry) → text returned verbatim: we cannot know
+    what is safe, so we leave it rather than strip everything. Prompt injection
+    fails loudly on an unknown family instead (see pipeline.py).
 
-    On family == "3.1" the text is returned verbatim (full palette is valid).
-
-    Returns the cleaned text and a {change_key: count} map for logging.
+    Returns the cleaned text and a ``{change_key: count}`` map for logging.
     """
-    if family == "3.1":
+    if family not in KNOWN_FAMILIES:
         return text, {}
 
     changes: dict[str, int] = {}
@@ -117,21 +164,68 @@ def sanitize_tags_for_family(text: str, family: str) -> tuple[str, dict[str, int
 
     def _repl(m: re.Match) -> str:
         key = m.group(1).strip().lower()
-        if key in CANONICAL_TO_LEGACY:           # rewrite to the 2.5-era form
-            new = CANONICAL_TO_LEGACY[key]
-            _bump(f"{key}->{new}")
-            return f"[{new}]"
-        if key in CANONICAL:                     # 3.1-only palette tag, no 2.5 form
-            _bump(f"{key}(strip)")
-            return ""                            # strip so it is never voiced
-        return m.group(0)                        # unknown bracket = content, keep
+        concept = _FORM_TO_CONCEPT.get(key)
+        if concept is None:
+            return m.group(0)  # non-palette bracket = spoken content, keep
+        target = concept.forms.get(family)
+        if target is None:
+            _bump(f"{key}(strip)")  # 3.1-only tag on a family without it
+            return ""
+        if target == key:
+            return m.group(0)  # already the right form
+        _bump(f"{key}->{target}")
+        return f"[{target}]"
 
     out = _TAG_RE.sub(_repl, text)
     if changes:
-        # Tidy whitespace left by stripped tags: collapse runs of spaces/tabs
-        # (never newlines) and drop spaces before punctuation.
+        # Tidy whitespace left by stripped tags: collapse interior space runs,
+        # drop space-before-punct, strip line-leading/trailing space. Never
+        # touches newlines (parse_script is line-based).
         out = re.sub(r"[ \t]{2,}", " ", out)
         out = re.sub(r" +([,.!?;:])", r"\1", out)
-        out = re.sub(r"(?m)^[ \t]+", "", out)   # leading space from a line-start strip
+        out = re.sub(r"(?m)^[ \t]+", "", out)
         out = re.sub(r"(?m)[ \t]+$", "", out)
     return out, changes
+
+
+def render_palette_md(family: str) -> str:
+    """Render the palette block injected into the authoring/review prompts.
+
+    Self-describing per family: groups with no tags on this family are omitted
+    and called out, so e.g. the 2.5 block tells the author it has no energy/pause
+    tags (use prose/pacing instead) rather than silently leaving them available.
+    """
+    groups: list[tuple[str, str]] = [
+        ("emotion", "Emotion"),
+        ("energy", "Energy (paragraph-level dynamics)"),
+        ("pacing_nonverbal", "Pacing & non-verbal"),
+        ("pause", "Pauses (measured silence — these are tags, NOT SSML)"),
+    ]
+    lines = [
+        f"Audio-tag palette for **{engine_name(family)}** (family `{family}`). "
+        f"Use ONLY these inline tags — the reviewer rejects anything outside this set."
+    ]
+    present_kinds: set[str] = set()
+    for kind, heading in groups:
+        tags = sorted(c.forms[family] for c in TAG_CONCEPTS if c.kind == kind and family in c.forms)
+        if not tags:
+            continue
+        present_kinds.add(kind)
+        rendered = ", ".join(f"`[{t}]`" for t in tags)
+        lines.append(f"- **{heading}**: {rendered}")
+    if "energy" not in present_kinds:
+        lines.append("- _No energy tags on this family — shape dynamics through prose and pacing._")
+    if "pause" not in present_kinds:
+        lines.append("- _No pause tags on this family — let em-dashes / ellipses carry beats._")
+    return "\n".join(lines)
+
+
+# ─────────────────────── backward-compat exports ───────────────────────
+# Consumers that predate the registry. Derived, never hand-maintained.
+# CANONICAL = the 3.1 palette; LEGACY_TO_CANONICAL = 2.5 form → 3.1 form.
+CANONICAL: frozenset[str] = frozenset(palette("3.1"))
+LEGACY_TO_CANONICAL: dict[str, str] = {
+    c.forms["2.5"]: c.forms["3.1"]
+    for c in TAG_CONCEPTS
+    if "2.5" in c.forms and "3.1" in c.forms
+}
