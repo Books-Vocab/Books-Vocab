@@ -333,7 +333,7 @@ PY
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
 # 自動偵測改動範圍，決定 fast path 或 full path：
 #   fast: rsync → restart → health check           (~15s)
-#   full: backup → env-check → rsync → build → migrate → health → env-drift (~2min)
+#   full: backup（rsync 增量）→ env-check → rsync → build → migrate → health → env-drift (~2min)
 #
 # 觸發 full 的條件（任一命中）：
 #   - Dockerfile / docker-compose.yml / pyproject.toml 有改動
@@ -598,7 +598,16 @@ cmd_backup() {
   mkdir -p "$BACKUP_DIR"
 
   info "備份 $REMOTE_DIR/data → $dest"
-  "${SCP_CMD[@]}" -r "$SERVER:$REMOTE_DIR/data" "$dest"
+
+  # 找最近一份備份目錄當增量基準（未變的 db 走硬連結，只傳當日有寫入的）
+  local prev
+  prev=$(ls -1dt "$BACKUP_DIR"/data_*/ 2>/dev/null | grep -vF "/data_${date_str}/" | head -1) || true  # grep 無匹配 exit 1，避免 set -e 在首次（無既有備份）誤殺
+  mkdir -p "$dest"
+  rsync -az --delete ${prev:+--link-dest="$prev"} \
+    -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+    "$SERVER:$REMOTE_DIR/data/" "$dest/"
+  [[ -n "$prev" ]] && info "增量基準: $(basename "$prev")（未變檔走硬連結）" \
+                   || info "首次全量備份（無基準）"
 
   # ── 完整性驗證：SQLite integrity_check ──────────────────────────────────
   section "驗證備份完整性"
