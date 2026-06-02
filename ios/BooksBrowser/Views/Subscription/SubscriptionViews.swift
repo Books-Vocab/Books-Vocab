@@ -20,11 +20,11 @@ struct ProAccessGateCard: View {
                     .transition(.contentSwap)
 
                 VStack(spacing: 6) {
-                    Text(title)
+                    Text(title.localized)
                         .font(appSkin.typography.sectionTitle)
                         .foregroundStyle(appSkin.palette.primaryText)
 
-                    Text(description)
+                    Text(description.localized)
                         .font(appSkin.typography.body)
                         .foregroundStyle(appSkin.palette.secondaryText)
                         .multilineTextAlignment(.center)
@@ -32,7 +32,7 @@ struct ProAccessGateCard: View {
                 }
 
                 Button(action: onAction) {
-                    Text(actionTitle)
+                    Text(actionTitle.localized)
                         .font(appSkin.typography.body.weight(.medium))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, appSkin.spacing.rowContentSpacing)
