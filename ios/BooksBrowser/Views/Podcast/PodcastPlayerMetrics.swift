@@ -110,10 +110,9 @@ enum PodcastUnderlineGeometry {
     }
 }
 
-/// Continuous scroll centering for the follow-mode "替代 A" path: keep
-/// `scrollTo(currentId, anchor:)` but drift the anchor with intra-sentence
-/// progress so the current sentence eases upward through center instead of
-/// snapping once per sentence.
+/// Geometry for offset-driven continuous follow scrolling: the transcript is
+/// positioned by a single `.offset` so the spoken sentence stays at the viewport
+/// center, gliding continuously across sentence boundaries (no per-sentence jump).
 enum PodcastScrollGeometry {
     /// Progress (0…1) of `time` through a sentence's `[start, end]` window.
     /// Degenerate / zero-length sentences (and `time` at/after end) return 1;
