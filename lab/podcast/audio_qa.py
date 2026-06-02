@@ -152,14 +152,18 @@ def analyze(audio_path: Path) -> dict:
 
 def resolve_targets(target: Path) -> list[Path]:
     if target.is_file():
-        if target.suffix.lower() not in {".mp3", ".wav"}:
+        if target.suffix.lower() not in {".mp3", ".wav", ".m4a"}:
             print(f"ERROR: {target} is not an audio file")
             sys.exit(2)
         return [target]
     if target.is_dir():
-        files = sorted(list(target.glob("*_pro.mp3")) + list(target.glob("*_flash.mp3")))
+        files = sorted(
+            list(target.glob("*_pro.mp3")) + list(target.glob("*_flash.mp3"))
+            + list(target.glob("*_pro.m4a")) + list(target.glob("*_flash.m4a"))
+        )
         if not files:
-            files = sorted(target.glob("*.mp3")) + sorted(target.glob("*.wav"))
+            files = (sorted(target.glob("*.mp3")) + sorted(target.glob("*.wav"))
+                     + sorted(target.glob("*.m4a")))
         return files
     print(f"ERROR: {target} not found")
     sys.exit(2)

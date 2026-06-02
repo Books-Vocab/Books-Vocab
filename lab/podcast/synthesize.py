@@ -121,54 +121,57 @@ MASTER_LRA = float(os.getenv("TTS_MASTER_LRA", "11"))        # loudness range
 # ─── Dynamic Host Config ───
 
 
-def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
-    """Extract speaker map + TTS system prompt from overview.md.
+def _read_voice_mapping(
+    text: str, overview_path: Path
+) -> tuple[dict[str, str], str, str]:
+    """Parse Voice Mapping section from overview.md text.
 
-    Requires Voice Mapping section with format:
-        **HostName (VoiceName)**: Speaker1
-        **HostName (VoiceName)**: Speaker2
-    The tts-prep stage agent writes this; no defaults or fallbacks.
+    Returns (speaker_map, voice_speaker1, voice_speaker2).
+    Pure text parsing — no file I/O, no global state mutations.
     """
-    global VOICE_SPEAKER1, VOICE_SPEAKER2
-
-    if not overview_path.exists():
-        raise RuntimeError(f"{overview_path} missing — run pipeline tts-prep stage first")
-
-    text = overview_path.read_text(encoding="utf-8")
-
     speaker_map: dict[str, str] = {}
+    voice1 = ""
+    voice2 = ""
     voice_map_re = re.compile(r"\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])")
     for m in voice_map_re.finditer(text):
         name, voice, alias = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
         speaker_map[name] = alias
         if alias == "Speaker1":
-            VOICE_SPEAKER1 = voice
+            voice1 = voice
         else:
-            VOICE_SPEAKER2 = voice
+            voice2 = voice
 
-    if len(speaker_map) != 2 or not VOICE_SPEAKER1 or not VOICE_SPEAKER2:
+    if len(speaker_map) != 2 or not voice1 or not voice2:
         raise RuntimeError(
             f"Voice Mapping in {overview_path} incomplete — "
             f"expected 2 entries of form '**Host (Voice)**: SpeakerN'. "
-            f"Got speakers={speaker_map}, voices=({VOICE_SPEAKER1!r}, {VOICE_SPEAKER2!r}). "
+            f"Got speakers={speaker_map}, voices=({voice1!r}, {voice2!r}). "
             f"Run tts-prep stage to fix."
         )
 
     # Architect writes the placeholder `(TBD)`; tts-prep is responsible for
     # replacing it with a real Gemini voice. If we see TBD here, tts-prep
     # didn't run — fail loud rather than ship to TTS with a bogus voice name.
-    if VOICE_SPEAKER1.upper() == "TBD" or VOICE_SPEAKER2.upper() == "TBD":
+    if voice1.upper() == "TBD" or voice2.upper() == "TBD":
         raise RuntimeError(
             f"Voice Mapping still contains TBD placeholder in {overview_path}. "
             f"Run the tts-prep pipeline stage to assign real voices before synthesizing."
         )
 
-    # Build system prompt from host profiles.
-    # IMPORTANT: do NOT use "Speaker1: ..." / "Speaker2: ..." format here —
-    # Gemini multi-speaker parses those lines as dialogue and will vocalize
-    # the persona description in that speaker's voice at the start of every
-    # batch, padding audio out to the model's max output (~655s). Use a plain
-    # narrative frame instead.
+    return speaker_map, voice1, voice2
+
+
+def _build_system_prompt(text: str, speaker_map: dict[str, str]) -> str:
+    """Construct TTS system prompt from host profile sections in overview.md text.
+
+    Pure text transformation — no file I/O, no global state.
+
+    IMPORTANT: do NOT use "Speaker1: ..." / "Speaker2: ..." format here —
+    Gemini multi-speaker parses those lines as dialogue and will vocalize
+    the persona description in that speaker's voice at the start of every
+    batch, padding audio out to the model's max output (~655s). Use a plain
+    narrative frame instead.
+    """
     prompt_parts = [
         "Read aloud as a two-host podcast conversation. Warm, intellectual, and engaging "
         "— like two smart friends discussing a book over coffee. Natural pacing with "
@@ -215,8 +218,35 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
         "The dialogue to perform follows below. Speak ONLY the dialogue; do not read the voice direction."
     )
 
+    return "\n".join(prompt_parts)
+
+
+def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
+    """Extract speaker map + TTS system prompt from overview.md.
+
+    Requires Voice Mapping section with format:
+        **HostName (VoiceName)**: Speaker1
+        **HostName (VoiceName)**: Speaker2
+    The tts-prep stage agent writes this; no defaults or fallbacks.
+
+    Composes _read_voice_mapping (pure parse) and _build_system_prompt (pure
+    transform); this function owns file I/O and global voice state updates.
+    """
+    global VOICE_SPEAKER1, VOICE_SPEAKER2
+
+    if not overview_path.exists():
+        raise RuntimeError(f"{overview_path} missing — run pipeline tts-prep stage first")
+
+    text = overview_path.read_text(encoding="utf-8")
+
+    speaker_map, voice1, voice2 = _read_voice_mapping(text, overview_path)
+    VOICE_SPEAKER1 = voice1
+    VOICE_SPEAKER2 = voice2
+
+    system_prompt = _build_system_prompt(text, speaker_map)
+
     print(f"  Hosts: {', '.join(f'{n} → {a}' for n, a in speaker_map.items())}")
-    return speaker_map, "\n".join(prompt_parts)
+    return speaker_map, system_prompt
 
 
 # ─── Parse ───
@@ -440,8 +470,9 @@ def _generate_with_retry(client, prompt, speech_config, index):
     not enough under burst; this adds outer-level retry to handle 429/503/504.
     """
     import random
+    attempts = max(1, TTS_RETRY_ATTEMPTS)
     last_exc = None
-    for attempt in range(TTS_RETRY_ATTEMPTS):
+    for attempt in range(attempts):
         try:
             return client.models.generate_content(
                 model=TTS_MODEL,
@@ -461,7 +492,7 @@ def _generate_with_retry(client, prompt, speech_config, index):
                             "DeadlineExceeded", "InternalServerError",
                             "APIError", "ClientError", "ServerError"}
             )
-            if not transient or attempt == TTS_RETRY_ATTEMPTS - 1:
+            if not transient or attempt == attempts - 1:
                 raise
             # 429 = per-minute quota exhausted; must wait ≥60s for quota reset.
             # Other transients use standard exponential backoff.
@@ -469,7 +500,7 @@ def _generate_with_retry(client, prompt, speech_config, index):
                 backoff = 60 + 15 * attempt + random.random() * 5
             else:
                 backoff = (2 ** attempt) + random.random()
-            print(f"  batch {index}: {name} code={code} — retry {attempt + 1}/{TTS_RETRY_ATTEMPTS} after {backoff:.1f}s")
+            print(f"  batch {index}: {name} code={code} — retry {attempt + 1}/{attempts} after {backoff:.1f}s")
             time.sleep(backoff)
     raise last_exc  # pragma: no cover — loop always returns or raises
 
