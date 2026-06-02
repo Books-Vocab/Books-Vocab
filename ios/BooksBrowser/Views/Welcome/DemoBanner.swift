@@ -24,3 +24,22 @@ struct DemoBanner: View {
         .enableInjection()
     }
 }
+
+#Preview("DemoBanner") {
+    AppThemeContainer {
+        DemoBannerPreview()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+private struct DemoBannerPreview: View {
+    @Environment(\.appTheme) private var appTheme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DemoBanner(onExit: {})
+            Spacer()
+        }
+        .background(appTheme.palette.pageBackground.ignoresSafeArea())
+    }
+}
