@@ -35,6 +35,11 @@ from pathlib import Path
 
 from pydub import AudioSegment
 from pydub.silence import detect_silence
+from tts_config import (
+    DIALOGUE_RE as _DIALOGUE_RE,
+    DIRECTION_RE as _DIRECTION_RE,
+    SSML_RE as _SSML_RE,
+)
 
 # Speech rate: ~150 wpm conversational, 130-200 acceptable. Outside = suspect.
 WPM_MIN = 110
@@ -45,14 +50,6 @@ PEAK_CLIP_DBFS = -0.5          # >= -0.5 dBFS = clipping risk
 LOUDNESS_MIN_DBFS = -30        # avg below this = near-silent render
 
 # `[^:*]+` (not `\w+`) to stay in sync with synthesize.py and subtitle.py —
-# those parse the SAME script with the same speaker-tag regex, so wpm/silence
-# QA must count the same turns. `\w+` silently dropped multi-word/hyphenated
-# host names, undercounting words and skewing the wpm check.
-_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
-_DIRECTION_RE = re.compile(r"\[.*?\]")
-_SSML_RE = re.compile(r"<[^>]+>")
-
-
 def script_word_count(script_path: Path) -> int:
     if not script_path.exists():
         return 0
@@ -152,14 +149,18 @@ def analyze(audio_path: Path) -> dict:
 
 def resolve_targets(target: Path) -> list[Path]:
     if target.is_file():
-        if target.suffix.lower() not in {".mp3", ".wav"}:
+        if target.suffix.lower() not in {".mp3", ".wav", ".m4a"}:
             print(f"ERROR: {target} is not an audio file")
             sys.exit(2)
         return [target]
     if target.is_dir():
-        files = sorted(list(target.glob("*_pro.mp3")) + list(target.glob("*_flash.mp3")))
+        files = sorted(
+            list(target.glob("*_pro.mp3")) + list(target.glob("*_flash.mp3"))
+            + list(target.glob("*_pro.m4a")) + list(target.glob("*_flash.m4a"))
+        )
         if not files:
-            files = sorted(target.glob("*.mp3")) + sorted(target.glob("*.wav"))
+            files = (sorted(target.glob("*.mp3")) + sorted(target.glob("*.wav"))
+                     + sorted(target.glob("*.m4a")))
         return files
     print(f"ERROR: {target} not found")
     sys.exit(2)

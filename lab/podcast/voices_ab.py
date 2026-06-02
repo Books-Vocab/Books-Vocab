@@ -11,8 +11,8 @@
 """Quick A/B test — render the same 10s dialogue with different voice pairs.
 
 Usage:
-    uv run test_voices.py                    # run all default pairs
-    uv run test_voices.py Puck Kore          # single pair
+    uv run voices_ab.py                    # run all default pairs
+    uv run voices_ab.py Puck Kore          # single pair
 """
 
 import io
