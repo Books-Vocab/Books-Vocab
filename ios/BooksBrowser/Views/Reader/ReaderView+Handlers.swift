@@ -75,17 +75,20 @@ extension ReaderView {
     }
 
     func handleWordDeselected() {
+        // translation overlay 走 dismiss，自帶清除語意，不需另發清高亮信號；
+        // 其餘情況（settings / 無 overlay）統一在分支前設一次 clearHighlightTrigger，
+        // dedup 掉 <1% fast-tap race 下重複觸發。
         if chromeState.overlay == .translation {
             withAnimation(AppMotion.panelState) {
                 handler.dismiss()
                 closeOverlay(.translation)
             }
-        } else if chromeState.overlay == .settings {
-            withAnimation(AppMotion.panelState) {
-                closeOverlay(.settings)
-            }
-            handler.clearHighlightTrigger = UUID()
         } else {
+            if chromeState.overlay == .settings {
+                withAnimation(AppMotion.panelState) {
+                    closeOverlay(.settings)
+                }
+            }
             handler.clearHighlightTrigger = UUID()
         }
     }

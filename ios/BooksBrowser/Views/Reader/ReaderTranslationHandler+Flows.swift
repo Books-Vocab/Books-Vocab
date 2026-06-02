@@ -27,6 +27,7 @@ extension ReaderTranslationHandler {
                 isTranslating = false
                 isExpanded = false
                 explanationText = nil
+                explanationStatus = nil
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
@@ -41,6 +42,7 @@ extension ReaderTranslationHandler {
                 isSaved = false
                 isExpanded = false
                 explanationText = nil
+                explanationStatus = nil
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
@@ -57,6 +59,7 @@ extension ReaderTranslationHandler {
             isSaved = false
             isExpanded = false
             explanationText = nil
+            explanationStatus = nil
             translationErrorMessage = nil
             explanationErrorMessage = nil
         }
@@ -127,6 +130,7 @@ extension ReaderTranslationHandler {
             isSaved = false
             isExpanded = false
             explanationText = nil
+            explanationStatus = nil
             translationErrorMessage = nil
             explanationErrorMessage = nil
         }
@@ -190,6 +194,7 @@ extension ReaderTranslationHandler {
             isExpanded = true
             isLoadingExplanation = true
             explanationText = nil
+            translationStatus = nil
             translationErrorMessage = nil
             explanationErrorMessage = nil
         }
