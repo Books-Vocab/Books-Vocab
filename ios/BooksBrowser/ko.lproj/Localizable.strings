@@ -524,6 +524,9 @@
 
 /* Track B — i18n residual top-5 */
 "翻譯語言" = "번역 언어";
+"複習模式" = "복습 모드";
+"自訂參數" = "사용자 지정 매개변수";
+"閱讀語言" = "읽기 언어";
 "載入音訊…" = "오디오를 불러오는 중…";
 "音訊載入失敗" = "오디오를 불러오지 못했습니다";
 "點兩下查看詳細資訊" = "두 번 탭하여 세부 정보 보기";
@@ -871,6 +874,7 @@
 "calendar.month.next" = "다음 달";
 "notebook.toolbar.archive" = "보관";
 "notebook.list.loading" = "단어장 불러오는 중…";
+"a11y.action.close" = "닫기";
 "a11y.toggle.on" = "켜짐";
 "a11y.toggle.off" = "꺼짐";
 "todayReview.fold.collapse" = "접기";
