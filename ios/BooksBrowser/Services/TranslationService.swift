@@ -43,7 +43,7 @@ final class TranslationService: Translating {
     func translateQuick(
         word: String,
         context: String,
-        onRetry: ((Int, Int) -> Void)? = nil
+        onRetry: (@Sendable (Int, Int) async -> Void)? = nil
     ) async throws -> TranslationResult {
         let startTime = Date()
         AppAnalytics.track(.translationRequested(word: word, type: .quick))
@@ -96,7 +96,7 @@ final class TranslationService: Translating {
     func translatePhrase(
         phrase: String,
         context: String,
-        onRetry: ((Int, Int) -> Void)? = nil
+        onRetry: (@Sendable (Int, Int) async -> Void)? = nil
     ) async throws -> String {
         let startTime = Date()
         AppAnalytics.track(.translationRequested(word: phrase, type: .phrase))
@@ -131,7 +131,7 @@ final class TranslationService: Translating {
     func fetchExplanation(
         word: String,
         context: String,
-        onRetry: ((Int, Int) -> Void)? = nil
+        onRetry: (@Sendable (Int, Int) async -> Void)? = nil
     ) async throws -> (explanation: String, latency: TimeInterval) {
         let startTime = Date()
         AppAnalytics.track(.translationRequested(word: word, type: .explanation))
@@ -201,14 +201,14 @@ final class TranslationService: Translating {
         word: String,
         context: String,
         retryPolicy: RetryPolicy = .default,
-        onRetry: ((Int, Int) -> Void)? = nil
+        onRetry: (@Sendable (Int, Int) async -> Void)? = nil
     ) async throws -> Data {
         var lastError: Error?
 
         for attempt in 1...retryPolicy.maxAttempts {
             do {
                 if attempt > 1 {
-                    onRetry?(attempt - 1, retryPolicy.maxAttempts - 1)
+                    await onRetry?(attempt - 1, retryPolicy.maxAttempts - 1)
                     let delay = retryPolicy.baseDelay * pow(2.0, Double(attempt - 2))
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
