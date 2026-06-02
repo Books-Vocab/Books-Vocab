@@ -516,7 +516,7 @@ struct NotebookListView: View {
         guard activationMode == .selectInline else { return }
         let nextID = selectedDetailNotebookId(from: sortedNotebooks)
         if selectedNotebookId != nextID {
-            detailState.dismiss()
+            detailRouterForLayout.dismiss()
             isEditingDetailEntry = false
         }
         selectedNotebookId = nextID
@@ -548,7 +548,7 @@ struct NotebookListView: View {
             currentNotebookId: selectedNotebookId,
             nextNotebookId: notebookId
         ) {
-            detailState.dismiss()
+            detailRouterForLayout.dismiss()
             isEditingDetailEntry = false
         }
         selectedNotebookId = notebookId
