@@ -115,24 +115,49 @@ enum PodcastUnderlineGeometry {
 /// progress so the current sentence eases upward through center instead of
 /// snapping once per sentence.
 enum PodcastScrollGeometry {
-    /// Default vertical drift span (in viewport-height units) across one sentence.
-    static let centerDriftSpan: CGFloat = 0.18
-
-    /// Drives `scrollTo(anchor:)`, where a LARGER `anchor.y` places the target
-    /// sentence LOWER in the viewport. To make the current sentence climb upward
-    /// through center as it plays: fraction 0 → below center (anchor.y > 0.5),
-    /// fraction 1 → above center (anchor.y < 0.5).
-    static func centerAnchor(fraction: Double, span: CGFloat = centerDriftSpan) -> UnitPoint {
-        let f = CGFloat(min(1, max(0, fraction)))
-        return UnitPoint(x: 0.5, y: 0.5 - (f - 0.5) * span)
-    }
-
     /// Progress (0…1) of `time` through a sentence's `[start, end]` window.
     /// Degenerate / zero-length sentences (and `time` at/after end) return 1;
     /// `time` before start returns 0.
     static func sentenceFraction(time: TimeInterval, start: TimeInterval, end: TimeInterval) -> Double {
         guard end > start else { return time < start ? 0 : 1 }
         return min(1, max(0, (time - start) / (end - start)))
+    }
+
+    /// Continuous content offset for an offset-driven (non-`scrollTo`) follow
+    /// mode. `centers[id]` is each sentence's vertical center in the content's
+    /// own coordinate space (offset-independent). The focal point is the current
+    /// sentence's center, interpolated toward the NEXT sentence's center by the
+    /// intra-sentence progress — so the focus glides continuously through the
+    /// viewport center with NO per-sentence jump (at a boundary, fraction→1 lands
+    /// exactly on the next center, which then becomes `current` at fraction 0).
+    /// Returns `viewportHeight/2 - focalY`. nil when the current center is not
+    /// yet measured (caller holds the last good offset).
+    ///
+    /// `sentences` MUST be ordered by `startTime` (as the engine emits them).
+    static func centerOffset(
+        time: TimeInterval,
+        sentences: [PodcastSentence],
+        centers: [Int: CGFloat],
+        viewportHeight: CGFloat
+    ) -> CGFloat? {
+        guard !sentences.isEmpty else { return nil }
+        // Current = last sentence with startTime <= time (clamp to first before start).
+        var idx = 0
+        var lo = 0, hi = sentences.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            if sentences[mid].startTime <= time { idx = mid; lo = mid + 1 } else { hi = mid - 1 }
+        }
+        let cur = sentences[idx]
+        guard let curCenter = centers[cur.id] else { return nil }
+        let focalY: CGFloat
+        if idx + 1 < sentences.count, let nextCenter = centers[sentences[idx + 1].id] {
+            let f = CGFloat(sentenceFraction(time: time, start: cur.startTime, end: cur.endTime))
+            focalY = curCenter + (nextCenter - curCenter) * f
+        } else {
+            focalY = curCenter
+        }
+        return viewportHeight / 2 - focalY
     }
 }
 
