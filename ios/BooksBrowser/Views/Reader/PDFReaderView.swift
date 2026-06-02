@@ -98,9 +98,10 @@ struct PDFReaderView: View {
                             showTranslation = false
                         }
                     },
-                    onShowDetail: vocabularyContext.existingEntry(matching: selection.word) != nil
-                        ? { /* detail navigation not applicable in PDF reader */ }
-                        : nil,
+                    // PDF reader 沒有「查看詳情」導航目的地,一律傳 nil 讓 TranslationPanel
+                    // 隱藏該按鈕(VocabChromeIconButton 由 `if let onShowDetail` 控制),
+                    // 避免顯示點了沒反應的死按鈕。
+                    onShowDetail: nil,
                     onDismiss: {
                         handler.dismiss()
                         withAnimation(AppMotion.panelState) {
