@@ -112,6 +112,19 @@ struct PodcastSentenceLevelView: View {
                 .onPreferenceChange(SentenceCenterKey.self) { sentenceCenters = $0 }
                 .onAppear { viewportHeight = vp.size.height }
                 .onChange(of: vp.size.height) { _, h in viewportHeight = h }
+                // In-place episode swap: the player reuses this same view instance
+                // (`.task(id:)` / `reloadEpisode()`) and replaces `sentences` without
+                // tearing down/recreating the view, so `sentenceCenters` keeps the
+                // PREVIOUS episode's measurements. That left the no-jump guard
+                // (`.opacity(sentenceCenters.isEmpty ? 0 : 1)`) armed against stale
+                // data → the first frame of the new transcript rendered with old
+                // centers, flashing a misaligned frame before snapping correct.
+                // Reset to empty so the guard re-arms (hides the pre-measurement
+                // frame) until the new episode's preference pass repopulates centers.
+                // Sentence ids restart at 0 each episode, so an id-only key could
+                // collide; full-array equality (PodcastSentence: Equatable) reliably
+                // detects the swap and never fires during same-episode playback.
+                .onChange(of: sentences) { _, _ in sentenceCenters = [:] }
 
                 if shouldShowFollowControl {
                     followPill()
