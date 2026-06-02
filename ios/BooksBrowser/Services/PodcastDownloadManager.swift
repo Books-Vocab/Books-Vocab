@@ -125,7 +125,10 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
         let taskId = downloadTask.taskIdentifier
         Task { @MainActor in
             guard let remoteId = self.taskToRemoteId[taskId] else { return }
-            self.progress[remoteId] = fraction
+            // High-frequency nonisolated callbacks hop to MainActor out of order:
+            // a stale lower fraction can land after a newer higher one and visibly
+            // rewind the progress bar. Monotonic guard — never move backward.
+            self.progress[remoteId] = max(self.progress[remoteId] ?? 0, fraction)
         }
     }
 
