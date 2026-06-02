@@ -204,3 +204,36 @@ struct PodcastEpisodeRow: View {
         return LocaleAwareFormatter.shared.string(from: date, template: template)
     }
 }
+
+#if os(iOS)
+#Preview("PodcastEpisodeRow") {
+    func makeEpisode(_ number: Int, _ title: String, audio: Bool = true, subtitle: Bool = true) -> PodcastEpisode {
+        let ep = PodcastEpisode(remoteId: "ep-\(number)", episodeNumber: number, title: title, durationSec: 932)
+        ep.audioAvailable = audio
+        ep.subtitleAvailable = subtitle
+        return ep
+    }
+
+    let plain = makeEpisode(1, "The Comfort Crisis")
+    let inProgress = makeEpisode(2, "On Deep Work and Attention")
+    let completed = makeEpisode(3, "Habits That Compound")
+    let unavailable = makeEpisode(4, "Pending Upload", audio: false, subtitle: false)
+
+    return AppThemeContainer {
+        VStack(spacing: 0) {
+            PodcastEpisodeRow(episode: plain)
+            PodcastEpisodeRow(
+                episode: inProgress,
+                progress: PodcastProgress(episodeRemoteId: "ep-2", lastPlayedTime: 410)
+            )
+            PodcastEpisodeRow(
+                episode: completed,
+                progress: PodcastProgress(episodeRemoteId: "ep-3", lastPlayedTime: 932, completed: true)
+            )
+            PodcastEpisodeRow(episode: unavailable)
+        }
+        .padding(.vertical)
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+#endif

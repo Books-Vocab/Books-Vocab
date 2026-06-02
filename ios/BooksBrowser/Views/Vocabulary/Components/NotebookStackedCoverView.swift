@@ -174,3 +174,25 @@ struct NotebookDeckButtonStyle: ButtonStyle {
             }
     }
 }
+
+#Preview("NotebookStackedCoverView") {
+    AppThemeContainer {
+        HStack(alignment: .top, spacing: AppSpacing.s4) {
+            ForEach([1, 2, 4], id: \.self) { layers in
+                NotebookStackedCoverView(
+                    color: AppColors.accentLight,
+                    pattern: .dots,
+                    coverImagePath: nil,
+                    name: "Field Notes",
+                    layerCount: layers,
+                    aspectRatio: 0.72,
+                    seed: layers * 7,
+                    showsName: true
+                )
+                .frame(width: 96)
+            }
+        }
+        .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
