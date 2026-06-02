@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: c9f2ce50
+verified_against: 3bec5ff6
 -->
 # Notebook Feature Boundary
 
@@ -21,7 +21,7 @@ verified_against: c9f2ce50
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/NotebookListView.swift` | ~650 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**Desktop master-detail** — `NotebookActivationMode` 在 compact 維持 `NavigationLink` push；regular / Catalyst 改為 row button selection，右側 `safeAreaInset` inline 掛 `VocabularyListView(notebookId:)`，由 `NotebookMasterDetailMetrics` 鎖右欄 420–720pt 並保留左欄至少 320pt；`NotebookSelectionPolicy` 確保切換 notebook 時 dismiss 舊 word detail / edit sheet，避免跨 notebook 殘留第三欄內容。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
+| `Scenes/NotebookListView.swift` | ~553 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**單欄 drill-down 導航(2026-06 #671 收斂)** — notebook row 一律 `NavigationLink(value: notebook.remoteId)` → `navigationDestination(for: String.self)` push `VocabularyListView(notebookId:)`,所有 layout(含 regular / Catalyst)皆然;舊「regular row button selection + 右側 `safeAreaInset` inline 第二欄 + 可拖拉分隔線」雙欄已移除,連帶刪 `NotebookActivationMode` / `NotebookSelectionPolicy` / `NotebookMasterDetailMetrics`(收斂後零引用)及 `selectedNotebookId` / `containerWidth` / `reconcileSelectedNotebook` 等 inline 專屬 state。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
 | `Scenes/NotebookListCoordinator.swift` | 282 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原） |
 | `Scenes/NotebookEditSheet.swift` | 279 | `struct NotebookEditSheet: View`，建立/編輯 notebook sheet（含 cover system 選色/選 pattern/匯入照片） |
 
@@ -36,7 +36,7 @@ verified_against: c9f2ce50
 | `Components/NotebookPalette.swift` | ~55 | 12 色 Morandi 色票 + `color(for:)` + **新增 `darken(_:by:)` HSB helper**(brightness ×(1-amount),hue/sat 保留;cover hairline rule / D3 spine / dark mode cover 用)。 |
 | `Components/NotebookFilterChip.swift` | 123 | filter chip：全部 / 有待複習 / 已學完 / 自訂排序 |
 | `Components/NotebookStatsCalculator.swift` | 64 | `struct NotebookStats` + `enum NotebookStatsCalculator { static compute, static filtered }`。Pure 聚合與篩選邏輯，從 NotebookListView 抽出後可獨立 unit test（覆蓋 due/unlearned/reviewed/pending/lastActivity 分支）。`NotebookSortOption.sort(stats:)` 唯一外部 caller。 |
-| `Components/NotebookDetailPresentation.swift` | 141 | `struct NotebookDetailPresentation: ViewModifier`，NotebookListView 唯一的 detail/review 呈現分支（inline panel for iPad/Mac vs sheet+fullScreenCover for iPhone）。持 `@AppStorage("kg_detail_panel_width")` 與可拖拉 divider。 |
+| `Components/NotebookDetailPresentation.swift` | 42 | `struct NotebookDetailPresentation: ViewModifier`，NotebookListView 唯一的 word-detail/today-review 呈現分支。**2026-06 #671 收斂後一律 modal**(不再分 layout):word-detail → `toastSheet(WordDetailSheet.appSheet(.large))`、today-review → `platformFullScreenCover(TodayReviewPhaseView)`。舊 iPad/Mac inline 可拖拉 panel(`safeAreaInset(.trailing)` + `DraggableDivider` + `@AppStorage("kg_detail_panel_width")` + `layoutMode` 分支)已移除。today-review 唯一 inline 入口仍經 shared `DetailRouter`(`.environment(\.detailRouter)`)觸發。 |
 | `Components/NotebookHeaderPillLabel.swift` | 26 | `struct NotebookHeaderPillLabel<Content>: View`，Today Review action bar 三 pill（CTA/filter/plus）共用的視覺規格（Capsule，~27pt 高）。 |
 
 ---
