@@ -147,10 +147,15 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     continue
                 }
 
-                // 背景 callback hop 回 MainActor 更新 UI
+                // 背景 callback hop 回 MainActor 更新 UI。
+                // 多個 detached Task 的 MainActor 執行順序不保證 → 高 ratio 可能先寫、
+                // 低 ratio 後到致進度條倒退。以 monotonic guard 取 max 防回退。
+                // reset（loadingProgress = 0.0，:142）是同步直接賦值、不走此 guard，
+                // 故跨檔換檔時新檔的 0 起點不會被舊檔高值卡住。
                 let onProgress: @Sendable (Double) -> Void = { ratio in
                     Task { @MainActor [weak self] in
-                        self?.loadingProgress = ratio
+                        guard let self else { return }
+                        self.loadingProgress = max(self.loadingProgress ?? 0, ratio)
                     }
                 }
 
