@@ -9,34 +9,6 @@ import SwiftData
 import TipKit
 import Inject
 
-enum NotebookActivationMode: Equatable {
-    case navigate
-    case selectInline
-
-    init(layoutMode: LayoutMode) {
-        self = layoutMode.usesInlineDetail ? .selectInline : .navigate
-    }
-}
-
-enum NotebookSelectionPolicy {
-    static func shouldDismissDetail(currentNotebookId: String?, nextNotebookId: String) -> Bool {
-        currentNotebookId != nextNotebookId
-    }
-}
-
-enum NotebookMasterDetailMetrics {
-    static let leftMinimumWidth: CGFloat = 320
-    static let detailMinimumWidth: CGFloat = 420
-    static let detailMaximumWidth: CGFloat = 720
-    static let detailWidthRatio: CGFloat = 0.58
-
-    static func detailWidth(containerWidth: CGFloat) -> CGFloat {
-        let available = max(containerWidth - leftMinimumWidth, detailMinimumWidth)
-        let preferred = containerWidth * detailWidthRatio
-        return min(max(preferred, detailMinimumWidth), min(detailMaximumWidth, available))
-    }
-}
-
 struct NotebookListView: View {
     @ObserveInjection private var inject
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
@@ -74,11 +46,8 @@ struct NotebookListView: View {
     @State private var navigationPath = NavigationPath()
     @State private var detailState = DetailRouter()
     @State private var isEditingDetailEntry = false
-    @State private var selectedNotebookId: String?
-    @State private var containerWidth: CGFloat = 1024
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
-    private var activationMode: NotebookActivationMode { NotebookActivationMode(layoutMode: layoutMode) }
 
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
@@ -296,25 +265,6 @@ struct NotebookListView: View {
             .navigationDestination(for: String.self) { notebookId in
                 VocabularyListView(notebookId: notebookId)
             }
-            .safeAreaInset(edge: .trailing, spacing: 0) {
-                if activationMode == .selectInline,
-                   let notebookId = selectedDetailNotebookId(from: sortedNotebooks) {
-                    inlineNotebookDetail(notebookId: notebookId)
-                        .frame(width: NotebookMasterDetailMetrics.detailWidth(containerWidth: containerWidth))
-                        .transition(.drawerReveal)
-                }
-            }
-            .onGeometryChange(for: CGFloat.self) { geo in
-                geo.size.width
-            } action: { newWidth in
-                containerWidth = newWidth
-            }
-            .onAppear {
-                reconcileSelectedNotebook(sortedNotebooks)
-            }
-            .onChange(of: sortedNotebooks.map(\.remoteId)) { _, _ in
-                reconcileSelectedNotebook(sortedNotebooks)
-            }
             .toastSheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { appearance in
                     Task { @MainActor in
@@ -472,80 +422,12 @@ struct NotebookListView: View {
         for notebook: Notebook,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        switch activationMode {
-        case .navigate:
-            NavigationLink(value: notebook.remoteId) {
-                content()
-            }
-            .buttonStyle(.plain)
-        case .selectInline:
-            Button {
-                selectNotebookInline(notebook.remoteId)
-            } label: {
-                content()
-                    .overlay {
-                        if selectedNotebookId == notebook.remoteId {
-                            RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
-                                .stroke(skin.palette.accent, lineWidth: 1.5)
-                        }
-                    }
-            }
-            .buttonStyle(.plain)
+        // 單欄收斂後 notebook row 一律 drill-down：走 NavigationLink(value:) →
+        // navigationDestination(for: String.self) push VocabularyListView。
+        NavigationLink(value: notebook.remoteId) {
+            content()
         }
-    }
-
-    private func selectedDetailNotebookId(from sortedNotebooks: [Notebook]) -> String? {
-        if let selectedNotebookId,
-           sortedNotebooks.contains(where: { $0.remoteId == selectedNotebookId }) {
-            return selectedNotebookId
-        }
-        return sortedNotebooks.first?.remoteId
-    }
-
-    private func reconcileSelectedNotebook(_ sortedNotebooks: [Notebook]) {
-        guard activationMode == .selectInline else { return }
-        let nextID = selectedDetailNotebookId(from: sortedNotebooks)
-        if selectedNotebookId != nextID {
-            detailState.dismiss()
-            isEditingDetailEntry = false
-        }
-        selectedNotebookId = nextID
-    }
-
-    @ViewBuilder
-    private func inlineNotebookDetail(notebookId: String) -> some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(skin.palette.divider)
-                .frame(width: 1)
-
-            // Own NavigationStack so the inline panel's navigationTitle/toolbar
-            // stay self-contained instead of leaking into the master list's
-            // outer stack. Safe here — unlike podcast's removed inline-player
-            // NavigationStack — because notebook's regular path never *pushes*
-            // onto the master stack (the detail IS this inline panel), so a
-            // nested stack can't break an outer push. VocabularyListView carries
-            // no NavigationStack of its own; the compact path pushes it instead,
-            // where this wrapper doesn't apply. (Podcast broke precisely because
-            // bookshelf's regular path keeps pushing reader onto the same stack
-            // that hosted the inline player's nested stack — NAVDBG-confirmed.)
-            NavigationStack {
-                VocabularyListView(notebookId: notebookId)
-            }
-            .id(notebookId)
-        }
-        .background(skin.palette.pageBackground)
-    }
-
-    private func selectNotebookInline(_ notebookId: String) {
-        if NotebookSelectionPolicy.shouldDismissDetail(
-            currentNotebookId: selectedNotebookId,
-            nextNotebookId: notebookId
-        ) {
-            detailState.dismiss()
-            isEditingDetailEntry = false
-        }
-        selectedNotebookId = notebookId
+        .buttonStyle(.plain)
     }
 
     // MARK: - Sort Menu
