@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
-verified_against: 5f2c8e64
+verified_against: a5e194dc
 -->
 # BooksBrowser UI Design System
 
@@ -21,7 +21,7 @@ BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、bor
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
-| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRadius`/`AppElevation`/`AppLayout`/`AppMotion`/`AppShadows`/`AppShellMetrics`） | 全 app chrome（toolbar、tab、banner、toast） |
+| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRadius`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast） |
 | Vocabulary Skin | `VocabSkin`（Palette / Typography / Spacing） | Vocabulary feature 所有 View |
 | Reader | `ReaderContentStyle` | EPUB/PDF reader 內容樣式 |
 
@@ -160,10 +160,9 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 |-----------|------|--------|
 | `AppSpacing` | 8pt grid：`s0=0/s1=4/s2=8/.../s7=64`、`hairline=1`；語意 alias `cardOuterPadding/innerGap/sectionGap` | 部分 — 新元件已切，舊 view 仍多 raw 數字 |
 | `AppRadius` | `xs=4/sm=8/md=12/lg=16/xl=24/pill=999`；禁用鄰近半階值（7/9/13/14/18） | 部分 |
-| `AppElevation` | `z0...z4` 替代 `paperFloat`/`cover`/`panel` 命名；`.appElevation(.z2)` modifier；dark mode 透過 `AppElevationModifier` 自動加強 opacity | **首批 callsite — `NotebookStackedCoverView`**（頂層 z2、ghost z1）。其餘 surface 仍待遷移。 |
-| `AppLayout` | `maxReadableWidth=680`、`maxContentWidth=920`、compact/regular/expanded page padding (20/32/48)；`.appReadableFrame()` modifier | **dormant — zero callsites** |
-| `AppFonts.display1/display2` | 56/48pt serif hero typography；hero / onboarding 用 | **dormant — zero callsites** |
-| `AppFonts.Tracking` / `LineSpacing` | letter-spacing / 行高 token | dormant |
+| `AppElevation` | `z0...z4` 替代 `paperFloat`/`cover`/`panel` 命名；`.appElevation(.zN)` modifier；dark mode 透過 `AppElevationModifier` 自動加強 opacity | **live — 全 app shadow 唯一入口，~24 callsites**（AppSurface / AppToast / Card / cover / overlay / 各 presenter）。raw `.shadow(...)` 一律改走此 token。 |
+| `AppFonts.hero` / `TypeScale.hero` | 40pt serif hero typography（`TypeScale`：caption2/caption/subhead/body/h2/h1/hero，無 display1/2）；`AppFonts.hero(weight:)` 取用 | 視場景使用 |
+| `AppFonts.Tracking` / `LineSpacing` | letter-spacing / 行高 token | 部分 |
 
 舊 `AppShadows.panelOpacity` 在本 PR 由 0.70 → 0.18（paper-tone shadows）；後續逐步以 `AppElevation` 取代分散的 paperFloat/cover/panel 命名。
 
@@ -218,7 +217,7 @@ PR #402 引入：
 1. **`AppOfflineBanner` light mode 對比 ≈ 3.21:1**（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**。修法：darken text 或 fall back 到 `primaryText` 配 destructive icon。
 2. ~~**`accentHero` dark mode footgun**~~ — 已解除。Phase 1b 起 brandHero 改奶黃，前景採 `AppColors.onBrandHero` deep charcoal `#1C1A17`，light/dark 變體配 onBrandHero 對比 5.11/7.05:1 ✓ AA/AAA。
 3. ~~**`AppCompactActionButtonStyle` primary foreground raw `.white`**~~ — 已解除。改走 `AppColors.onBrandHero` token；奶黃 + 白字 fail AA → onBrandHero 強制 deep charcoal 是 token-level 保證。
-4. **Dormant tokens（~60% 新 surface）**：`AppSkeleton`、`display1/2`、`appReadableFrame`、`AppElevation` 已定義但 0 callsite，使用前注意可能無實際 reference 樣本。
+4. **低採用率 tokens**：`AppSkeletonLine` 目前無外部直接 callsite（僅 def + `AppSkeletonCard` 內部 + preview）；`AppSkeletonCard` 已用於 `VocabSceneShell`、`AppElevation` 已是全 app shadow 唯一入口（~24 callsites）。注意 PR #402 曾規劃的 `display1/2` / `appReadableFrame` / `AppLayout` token **從未進入 codebase**，勿引用。
 
 ---
 

@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: 07489e52
+verified_against: a5e194dc
 -->
 # UI Component & Pattern Inventory
 
@@ -61,7 +61,7 @@ Scope: `ios/BooksBrowser`
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
 - `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
-- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；**目前 zero callsites，dormant**；新 loading state 應改用此元件而非自製 placeholder
+- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；`AppSkeletonCard` 已被 `VocabSceneShell` list 場景採用（1 處），`AppSkeletonLine` 目前僅 def + `AppSkeletonCard` 內部組合 + preview 使用（無外部直接 callsite）；新 loading state 應改用此元件而非自製 placeholder
 - `AppSidebarRow` — Catalyst 側邊欄列（`ContentView` `NavigationSplitView` sidebar 用），取代系統 `.listStyle(.sidebar)` 預設樣式（系統半透明材質 + 系統藍選取色與 app Notion 風割裂）。整列可點（`HStack` + `Spacer` 撐滿 + `.contentShape(Rectangle())` 把整矩形納入 hit-test，水平 padding 由元件內 `appSkin` token 控不靠 List inset）；走 appSkin typography/spacing/palette，選取/未選以灰階配色（`secondaryText`→`primaryText`）+ `primaryText.opacity(0.08)` 自繪 `AppRadius.sm` 圓角背景區分（自訂字體 ElmsSans 不響應 `.fontWeight`，故以配色而非字重表達選取）；hover 走既有 `.appHoverRowTint`；a11y icon `accessibilityHidden` + row 掛 `accessibilityLabel` + selected 加 `.isSelected`；selection 由 caller 自管 `@State`，不用 `List(selection:)`
 
 主導航 pattern：
@@ -118,7 +118,7 @@ Scope: `ios/BooksBrowser`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
 - `GraphThumbnailWebView` — `UIViewRepresentable` 小型圖譜預覽（iOS / Catalyst 共用，無原生 macOS `NSViewRepresentable` 分支），用於 StatsPresenter
 - `NotebookStackedCoverView` — Editorial 立體堆卡（**目前由 Bookshelf / Podcast / EditSheet preview 使用,NotebookCard book-row 不再用**）：彩色封面 + cream 紙頁三階 ghost（`paperLight/paperSepia/paperSepiaDeep`）；幾何走 `NotebookStackMetrics`（dy/dx=4pt / rotation ±1.5° / jitter ±1pt / rotationOverhang 8pt / `patternOpacity` 0.12）；每層 0.5pt `cardBorder` hairline；rotation 由 `stableSeed(for:)` djb2 hash 保證跨 launch 同字串同角度；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 關 offset/scale 但 **保留 rotation**（靜態 layout 非 motion）；`showsName: Bool = true` opt-in 開關
-- `EditorialCoverComposition`(private in `NotebookCard.swift`) — **dead code remnant**(book-row redesign 後 `body` 改用 inline HStack,不再 overlay)。原意:serif name 左上 + hairline rule + `N 詞` 右下 + 3pt spine。待清。
+- `EditorialCoverComposition`(private in `NotebookCard.swift`) — **live**：D1 editorial cover overlay，由 `coverArea` 以 `.overlay` 套在 cover view 之上（grid + hero 兩 style 皆套），跟外層 `rotationEffect` 一起旋轉。內容:serif name 左上(grid 22pt / hero 32pt)+ hairline rule(cover 寬 ×0.25)+ `N 詞` 右下(cardCount > 0)+ 3pt spine(grid && isActive)。cover view 以 `showsName: false` 把 name 渲染交給此 overlay。
 - `VocabReviewCTAPill` — 用於 detail 頁(KGVocabPresenter)與 **NotebookListView 頂部 section header**(D4 editorial),brandHero 奶黃 capsule + onBrandHero 前景。Both 同視覺族群,page-level 標題不需卡片框包裹。
 - `VocabReviewBanner` — **(已從 NotebookListView 解除引用)** 元件保留於 codebase 作 future use / preview;NotebookListView 現走 page section header `今日複習` + `VocabReviewCTAPill` 取代。
 
@@ -186,8 +186,8 @@ Scope: `ios/BooksBrowser`
 
 主要檔案：
 - `ios/BooksBrowser/Networking/RetryPolicy.swift`
-- `ios/BooksBrowser/Models/AppMetrics.swift` — AppSpacing / AppRadius / AppElevation / AppLayout / AppMotion / AppShadows / AppTransition / AppShellMetrics / AppBookshelfMetrics
-- `ios/BooksBrowser/Models/AppFonts.swift` — AppFonts.body/caption/display1/2 + Tracking + LineSpacing
+- `ios/BooksBrowser/Models/AppMetrics.swift` — AppMetrics / AppSpacing / AppRadius / AppElevation / AppMotion / ElevationDirection（無 AppLayout — readable-width 由 `WordDetailPresenter` local `maxContentWidth=640` 控）
+- `ios/BooksBrowser/Models/AppFonts.swift` — AppFonts.serif/sans/mono + TypeScale(caption2/caption/subhead/body/h2/h1/hero) + Tracking + LineSpacing
 - `ios/BooksBrowser/Models/AppColors.swift` — semantic palette tokens（含 brandHero light/dark）
 - `ios/BooksBrowser/Models/AppTheme.swift` — `@Environment(\.appTheme)` 注入點，Palette/Typography 三組（light/dark/highContrast）
 
@@ -195,11 +195,10 @@ Scope: `ios/BooksBrowser`
 - `RetryPolicy` — 網路重試策略，實作指數退避（exponential backoff）+ Retry-After header 解析；所有 authenticated request 統一使用，不各自硬編 retry 邏輯
 - `AppSpacing` — 8pt grid 語意 token（s0–s7 + `cardOuterPadding/innerGap/sectionGap`），取代 raw padding magic number
 - `AppRadius` — 4 主階圓角（`xs/sm/md/lg`）+ `pill`，禁用鄰近半階值
-- `AppElevation` — z0–z4 shadow token + `.appElevation(.zN)` modifier；dark mode 自動加強 opacity（**dormant：zero callsites**）
-- `AppLayout` — `maxReadableWidth/maxContentWidth` + `.appReadableFrame()` modifier（**dormant：zero callsites**）
+- `AppElevation` — z0–z4 shadow token + `.appElevation(.zN)` modifier；dark mode 自動加強 opacity（**live：~24 callsites**，全 app shadow 唯一入口 — AppSurface / AppToast / Card / cover / overlay 等）
 - `AppMotion` — 動畫語意層 token（`emphasizedDecelerate/Accelerate`、`subtleBreath`、`panelState`、`feedbackPulse`、`phaseChange`、`shimmer`、`TapFeedback` triplet）
 - Animation convenience methods — `View.animatePhaseChange()`、`View.animateFeedback()` 等擴充，將常用 `withAnimation` 組合收斂為語意化呼叫
-- `AppFonts.display1/display2` — 56/48pt serif hero typography（**dormant：zero callsites**）
+- `AppFonts.hero(weight:)` / `TypeScale.hero` — 40pt serif hero typography（`TypeScale` 階梯：`caption2/caption/subhead/body/h2/h1/hero`，無 display1/2）
 - `AppColors.brandHero(_:scheme)` + `AppTheme.palette.accentHero/accentSubtle/successBg/warningBg/infoBg/destructiveBg/borderStrong` — 品牌 hero + 狀態 bg 色彩 token
 
 責任：
@@ -417,14 +416,15 @@ Scope: `ios/BooksBrowser`
 影響：
 - 開發時無法快速預覽，UI 變更驗證效率低
 
-### Gap 4: Dormant design system surface
+### Gap 4: 低採用率 design system surface
 
 現況：
-- `AppSkeletonLine/Card`、`AppFonts.display1/2`、`.appReadableFrame()`、`.appElevation()` token 已定義但 zero callsites（約 60% PR #402 新 surface）
-- 已有 callsite 的：`AppCompactActionButtonStyle`（4 處）、`AppOfflineBanner`（ContentView 1 處）、`AppMotion.emphasizedDecelerate`（AppOfflineBanner 內部）
+- `AppSkeletonLine` 目前無外部直接 callsite（僅 def + `AppSkeletonCard` 內部 + preview）；`AppSkeletonCard` 已被 `VocabSceneShell` 採用（1 處）
+- `AppElevation` 已是全 app shadow 唯一入口（~24 callsites）；`AppCompactActionButtonStyle`（4 處）、`AppOfflineBanner`（ContentView 1 處）、`AppMotion.emphasizedDecelerate`（AppOfflineBanner 內部）皆已落地
+- PR #402 曾規劃的 `AppLayout` / `AppFonts.display1/2` token **從未進入 codebase**（doc 舊版誤記為已定義）；readable-width 實際由 `WordDetailPresenter` local `maxContentWidth=640` 控
 
 影響：
-- token 漂移風險 — 定義與消費者語意可能脫節；安排 callsite migration 鎖定語意
+- 仍有 primitive（如 `AppSkeletonLine`）採用率低，token 漂移風險 — 安排 callsite migration 鎖定語意
 
 ### Gap 5: 已知對比缺陷
 
@@ -454,7 +454,7 @@ Scope: `ios/BooksBrowser`
 - 是 list + tabs + search？先看 `VocabListCard` + `VocabTabSelector` + `VocabSearchField`
 - 是 panel / drawer / overlay？先看 `TranslationPanel` / `ReaderSettingsPanel` / `VocabOverlayHeader` + motion tokens
 - 是 inline 小型主 CTA？先看 `.buttonStyle(.appCompactAction(...))`，不直接 `.borderedProminent`
-- 是 loading list / card？先看 `AppSkeletonLine` / `AppSkeletonCard`（dormant 但已備齊）
+- 是 loading list / card？先看 `AppSkeletonLine` / `AppSkeletonCard`（`AppSkeletonCard` 已用於 `VocabSceneShell`）
 - 是離線 / 網路狀態提示？root 層套 `.appOfflineBanner()`；transient 錯誤仍用 `AppBanner` / `AppStateMessage*`
 - raw `.shadow(...)`？改用 `.appElevation(.zN)`
 - raw spacing 數字？改用 `AppSpacing.sN`
