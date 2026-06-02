@@ -19,3 +19,11 @@ struct PodcastBadge: View {
             .enableInjection()
     }
 }
+
+#Preview("PodcastBadge") {
+    AppThemeContainer {
+        PodcastBadge()
+            .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}

@@ -45,3 +45,20 @@ struct SpeakerChip: View {
             .enableInjection()
     }
 }
+
+#Preview("SpeakerAccentBar + Chip") {
+    let hosts = ["Maya", "Kai"]
+    return AppThemeContainer {
+        VStack(alignment: .leading, spacing: AppSpacing.s4) {
+            ForEach(hosts + ["Guest"], id: \.self) { speaker in
+                HStack(spacing: AppSpacing.s3) {
+                    SpeakerAccentBar(speaker: speaker, hostNames: hosts)
+                        .frame(height: 32)
+                    SpeakerChip(speaker: speaker, hostNames: hosts)
+                }
+            }
+        }
+        .padding()
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
