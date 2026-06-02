@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 90bb62e2
+verified_against: 4c1f0ee4
 -->
 # Podcast Feature Boundary
 
@@ -14,18 +14,18 @@ verified_against: 90bb62e2
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerView.swift` | ~590 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列。`wrapInNavigation: Bool = false` 參數：預設 false → push caller（BookshelfView `navigationDestination`）沿用父 `NavigationStack`；雙欄右欄 inline 嵌入傳 true → 自帶 `NavigationStack` host 住設定 `ToolbarItem(.topBarTrailing)`（`.topBarTrailing` 需 ambient nav bar）。啟動期透過 `PodcastPlayerBootstrapPhase` 區分未嘗試載入、已嘗試但 SwiftData 缺 episode/series、播放器 ready，避免 missing local row 時永久 spinner |
+| `PodcastPlayerView.swift` | ~590 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列。**設定鍵 chrome 依 `horizontalSizeClass` 自判，不再自帶內層 `NavigationStack`**：compact（iPhone push detail，有 ambient push nav bar）設定鍵走 `ToolbarItem(.topBarTrailing)`；regular（iPad/Catalyst inline 右欄，無專屬 nav bar）設定鍵改 `inlineSettingsButton` content overlay（`.overlay(alignment: .topTrailing)` 掛在 `playerCore` 層，覆蓋全狀態 loading/error/missingEpisode/ready，與 compact toolbar 對齊）。tab-bar 顯隱由 `layoutMode.usesInlineDetail` 決定（inline 不隱藏、compact 全屏才隱藏；Catalyst 無 tab bar 略過）。⚠️ 移除了舊 `wrapInNavigation` 參數——inline 曾傳 true 自帶 `NavigationStack` host `.topBarTrailing`，但該內層 stack 嵌在 BookshelfView 外層 `NavigationStack` subtree 內，會持久破壞外層 value-based push（NAVDBG 坐實：顯示過 inline player 後 reader 永久無法 push，內層 stack 銷毀後也不恢復 — Catalyst SwiftUI 缺陷）。啟動期透過 `PodcastPlayerBootstrapPhase` 區分未嘗試載入、已嘗試但 SwiftData 缺 episode/series、播放器 ready，避免 missing local row 時永久 spinner |
 | `PodcastEpisodeListView.swift` | ~430 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View`。Mac/iPad regular 走左右雙欄（左集數列表常駐 + 右欄 inline player，點集數或頂部開始/繼續播放 CTA 即時 swap，選中 row 染 `accentSubtle`，靠 `detailRouter.show` 不 push）；iPhone compact 沿用 value-based `NavigationLink push`（freeze-fix 契約，見檔頭註解）。分支以 `PodcastEpisodeActivation.activation(..., layoutMode:)` 集中切換。⚠️ regular inline 的 pop-to-root 防護依賴 **BookshelfView root 為 path-bound `NavigationStack(path:)`**（見 `bookshelf.md` Navigation 契約）；compact push 路徑無 `navigationLocked`（已移除的死碼，曾與 freeze 無關） |
 | `PodcastSentenceLevelView.swift` | ~390 | 句級字幕 + 長按整句翻譯 + 點詞查詞 + follow-mode pill `struct PodcastSentenceLevelView: View`（iPhone/iPad：拖曳隱式脫離 follow，pill 僅在脫離時顯示；Mac Catalyst：滑鼠滾輪/觸控板 indirect scroll 不觸發 DragGesture，pill 常駐為明確 toggle「停止跟隨 ⇄ 追隨當前」，邏輯在 `shouldShowFollowControl`） |
 
 ### Master-Detail Layer（Mac/iPad 雙欄）
 
-> **regular（iPad/Mac Catalyst）master-detail 掛在 `BookshelfView` NavigationStack root（depth=0）。** 點 series 卡片**不 push**——由 `BookshelfView` 的 `@State selectedSeriesRemoteId` 把 `PodcastEpisodeListView`（master）渲染為 root 級子 view，其 `safeAreaInset(.trailing)` player（detail）隨之掛在 depth=0 的 root content 上。如此 Catalyst 不再因「掛在 push depth=1 子層的 safeAreaInset 擾動外層容器 → NavigationStack 子樹 remount → 集數列表+player 被 pop 回書架」而崩（NAVDBG log 坐實的根因；鏡射 `NotebookListView` selectInline）。series 層 push 只留給 compact（iPhone）。決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`（`PodcastDetailRouter.swift`）：regular→`.selectInline`、compact→`.push(.series)`。regular 返回入口為 `BookshelfView` toolbar `.topBarLeading` chevron-left（depth=0 無 system back）；regular→compact 翻轉時 `selectedSeriesRemoteId` reset nil（鏡射 `PodcastDetailPresentation` dismiss）。
+> **regular（iPad/Mac Catalyst）master-detail 為疊加在 `BookshelfView` 恒定 root content 之上的 overlay pane，非 root-content swap、非 push。** 點 series 卡片**不 push**——由 `BookshelfView` 的 `@State selectedSeriesRemoteId` 把 `PodcastEpisodeListView`（master）+ 其 `safeAreaInset(.trailing)` player（detail）作為**疊加層**渲染在恒定的 bookGrid 之上（pane 畫不透明背景蓋住下方 grid）。顯示/隱藏只 mutate 這個 overlay layer，bookGrid 的 NavigationStack root identity 不受擾動，故 reader push 始終可用。如此既避免 Catalyst 「safeAreaInset 擾動外層容器 → NavigationStack 子樹 remount → 集數列表+player 被 pop」的崩潰，也消除舊 `if/else` 在 bookGrid ↔ PodcastEpisodeListView 之間替換 root content 帶來的 root-swap identity 隱患（NAVDBG log 坐實；對齊 `NotebookListView` root-恒定模式）。series 層 push 只留給 compact（iPhone）。決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`（`PodcastDetailRouter.swift`）：regular→`.selectInline`、compact→`.push(.series)`。regular 返回入口為 `BookshelfView` toolbar `.topBarLeading` chevron-left；regular→compact 翻轉時 `selectedSeriesRemoteId` reset nil（鏡射 `PodcastDetailPresentation` dismiss）。
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `PodcastDetailRouter.swift` | ~70 | `@Observable` 集數 master-detail 狀態（`selectedEpisodeRemoteId` / `show` / `dismiss` / `hasDetail`），鏡射 vocab/notebook detail router；同檔 `PodcastEpisodeActivation`（episode 層 compact push vs regular inline detail）+ `PodcastSeriesActivation`（series 層 compact push vs regular selectInline）兩個純函式決策點。透過 `\.podcastDetailRouter` environment 注入。compact 下右欄不掛，`selectedEpisodeRemoteId` 恆 nil |
-| `PodcastDetailPresentation.swift` | 74 | `struct PodcastDetailPresentation: ViewModifier`（`.podcastDetailPresentation(router:layoutMode:)`），鏡射 `NotebookDetailPresentation`。inline mode（iPad/Mac regular）右側 `safeAreaInset(edge:.trailing)` 掛可拖拉 panel（複用 `DraggableDivider` + `@AppStorage("kg_podcast_panel_width")` + `MacDetailPanelMetrics`），單一 `PodcastPlayerView(wrapInNavigation:true)` 靠 `.task(id:)` swap 集數；compact 不掛右欄。`layoutMode` 退出 inline 時 `router.dismiss()` |
+| `PodcastDetailPresentation.swift` | 74 | `struct PodcastDetailPresentation: ViewModifier`（`.podcastDetailPresentation(router:layoutMode:)`），鏡射 `NotebookDetailPresentation`。inline mode（iPad/Mac regular）右側 `safeAreaInset(edge:.trailing)` 掛可拖拉 panel（複用 `DraggableDivider` + `@AppStorage("kg_podcast_panel_width")` + `MacDetailPanelMetrics`），單一 `PodcastPlayerView(episodeId:)` 靠 `.task(id:)` swap 集數；**player 不再自帶內層 `NavigationStack`**（與 vocab 一致），inline 設定鍵改由 player 自身 content overlay 呈現——早期 `wrapInNavigation:true` 自帶的內層 stack 會持久破壞 BookshelfView 外層 NavigationStack 的 reader push（Catalyst SwiftUI 缺陷，已移除）。compact 不掛右欄。`layoutMode` 退出 inline 時 `router.dismiss()` |
 
 ### ViewModel Layer（播放狀態機）
 
@@ -67,7 +67,7 @@ podcast catalog 同步現有兩條觸發鏈：
 | `PodcastControlsView.swift` | ~150 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target；seek bar 整條 20pt hit area 可點/拖，幾何換算由 `PodcastSeekBarGeometry` 測試鎖住） |
 | `PodcastEpisodeRow.swift` | 130 | 單集 list row（標題、長度、追蹤 chevron），row 節奏 token 對齊 `WordRow` |
 | `PodcastSubtitleView.swift` | 55 | 字幕單行渲染 |
-| `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數。**呈現方式**:`PodcastPlayerView` 從 ToolbarItem 以 `.sheet`(`NavigationStack` + 完成鈕)叫出，**非** `.popover`——toolbar-anchored `.popover` 在 Mac Catalyst present 過場 trap(`ops/catalyst_lint.sh` 守門) |
+| `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數。**呈現方式**:`PodcastPlayerView` 以 `.sheet`(`NavigationStack` + 完成鈕)叫出，**非** `.popover`——toolbar-anchored `.popover` 在 Mac Catalyst present 過場 trap(`ops/catalyst_lint.sh` 守門)。觸發鈕依 layout 自判:compact 走 `ToolbarItem(.topBarTrailing)`,regular inline 走 `inlineSettingsButton` content overlay(player 不再自帶內層 NavigationStack,見 `PodcastPlayerView` 條目) |
 | `PodcastFollowToggle.swift` | 49 | series 追蹤 toggle（已追蹤浮上書庫頂端） |
 | `PodcastBadge.swift` | 18 | 「已追蹤」「新集數」狀態 badge |
 | `SpeakerAccentBar.swift` | 42 | 多角色播客的口音/語者識別條 |
@@ -122,7 +122,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 ## 架構債
 
-- **podcast 無頂層 section、被迫經 `BookshelfView` 進入。** Notebook 是 `ContentView` 頂層 section（自帶 NavigationStack root，master-detail 天生 depth=0、remount 無感）；podcast 沒有頂層 section，regular 下靠 `BookshelfView` 的 `@State selectedSeriesRemoteId` 升為 root 級兩窗格才取得同等免疫。未來可評估平台原生 `NavigationSplitView` 收斂 podcast master-detail（廢手刻 `safeAreaInset` 假兩欄），但需先驗證 Catalyst 巢狀 split（`ContentView` 已用 `NavigationSplitView`）穩定性，本輪不做。
+- **podcast 無頂層 section、被迫經 `BookshelfView` 進入。** Notebook 是 `ContentView` 頂層 section（自帶 NavigationStack root，master-detail 天生 depth=0、remount 無感）；podcast 沒有頂層 section，regular 下靠 `BookshelfView` 的 `@State selectedSeriesRemoteId` 把兩窗格作為疊加在恒定 root content 上的 overlay pane（非 root-content swap）才取得同等免疫。未來可評估平台原生 `NavigationSplitView` 收斂 podcast master-detail（廢手刻 `safeAreaInset` 假兩欄），但需先驗證 Catalyst 巢狀 split（`ContentView` 已用 `NavigationSplitView`）穩定性，本輪不做。
 
 ## 相關 doc
 
