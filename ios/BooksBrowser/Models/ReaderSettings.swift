@@ -166,14 +166,17 @@ final class ReaderSettings {
         guard let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] else { return }
         for key in keys {
             switch key {
+            // Echo guard: only apply when the inbound value differs from current,
+            // else didSet re-writes to cloud and forces an echo flush. Mirrors
+            // AppLanguage.swift / AppAppearanceMode.swift `value != selection`.
             case kFont:
-                if let raw = cloud.string(forKey: key), let value = ReaderFont(rawValue: raw) { font = value }
+                if let raw = cloud.string(forKey: key), let value = ReaderFont(rawValue: raw), value != font { font = value }
             case kFontSize:
-                if let value = cloud.double(forKey: key) { fontSize = value }
+                if let value = cloud.double(forKey: key), value != fontSize { fontSize = value }
             case kLineHeight:
-                if let value = cloud.double(forKey: key) { lineHeight = value }
+                if let value = cloud.double(forKey: key), value != lineHeight { lineHeight = value }
             case kUnderlineOpacity:
-                if let value = cloud.double(forKey: key) { underlineOpacity = value }
+                if let value = cloud.double(forKey: key), value != underlineOpacity { underlineOpacity = value }
             default:
                 break
             }
