@@ -919,3 +919,12 @@
 "podcast.player.missingEpisode.title" = "集数尚未同步";
 "podcast.player.missingEpisode.description" = "这一集的本机数据还没准备好。请稍后重试，或回到书库重新同步。";
 "iCloud 下載失敗，點擊重試" = "iCloud 下载失败，点击重试";
+
+/* track-16 notebook i18n */
+"個單字" = "个单词";
+"%d 到期" = "%d 到期";
+"%d 未學" = "%d 未学";
+"使用中" = "使用中";
+"，" = "，";
+"建立第一本單字本" = "创建第一本单词本";
+"無" = "无";
