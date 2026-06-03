@@ -134,8 +134,11 @@ struct PodcastSentenceLevelView: View {
                 followScroll(to: currentId, proxy: proxy)
             }
             // Initial placement: `onChange` does not fire for the value present at
-            // mount, so center the current sentence once on appear (no animation).
-            .onAppear {
+            // mount. `onAppear`'s `scrollTo` can no-op because the `LazyVStack`
+            // hasn't realized/laid out the target row yet, so defer one runloop
+            // turn via `.task` before centering (no animation on first placement).
+            .task {
+                await Task.yield()
                 if let id = currentId { proxy.scrollTo(id, anchor: .center) }
             }
             // Manual browse: any user drag disengages follow (the native scroll
@@ -157,7 +160,7 @@ struct PodcastSentenceLevelView: View {
     /// rather than a jump; tuned for feel (see Phase 2).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
         guard isFollowing, let id else { return }
-        withAnimation(.easeInOut(duration: 0.6)) {
+        withAnimation(AppMotion.podcastFollowScroll) {
             proxy.scrollTo(id, anchor: .center)
         }
     }

@@ -76,6 +76,11 @@ enum AppMotion {
     /// timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4) — 標準 Material decelerate
     static let emphasizedDecelerate = Animation.timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4)
 
+    /// Continuous follow-scroll glide for the podcast transcript: one animated
+    /// `scrollTo(.center)` per sentence boundary. The duration is what makes the
+    /// move read as a continuous glide rather than a jump (tuned on device).
+    static let podcastFollowScroll = Animation.easeInOut(duration: 0.6)
+
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
     static let indicatorTransition = Animation.easeOut(duration: 0.25)

@@ -219,67 +219,11 @@ struct PodcastUnderlineGeometryTests {
     }
 }
 
-struct PodcastScrollGeometryTests {
-    @Test func sentenceFractionRampsAndClamps() {
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 10, start: 10, end: 20) == 0)
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 15, start: 10, end: 20) == 0.5)
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 20, start: 10, end: 20) == 1)
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 5, start: 10, end: 20) == 0)
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 99, start: 10, end: 20) == 1)
-    }
-
-    @Test func sentenceFractionDegenerateWindow() {
-        // Zero-length sentence: before start → 0, at/after → 1 (no divide-by-zero).
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 10, start: 10, end: 10) == 1)
-        #expect(PodcastScrollGeometry.sentenceFraction(time: 9, start: 10, end: 10) == 0)
-    }
-
-    private func sentence(_ id: Int, _ start: TimeInterval, _ end: TimeInterval) -> PodcastSentence {
-        PodcastSentence(id: id, speaker: "A", text: "x", startTime: start, endTime: end, words: [])
-    }
-
-    @Test func centerOffsetEmptyOrUnmeasuredIsNil() {
-        #expect(PodcastScrollGeometry.centerOffset(time: 0, sentences: [], centers: [:], viewportHeight: 800) == nil)
-        let s = [sentence(0, 0, 2)]
-        #expect(PodcastScrollGeometry.centerOffset(time: 1, sentences: s, centers: [:], viewportHeight: 800) == nil)
-    }
-
-    @Test func centerOffsetCentersCurrentSentence() {
-        // Single sentence centered: offset = viewportH/2 - center.
-        let s = [sentence(0, 0, 2)]
-        #expect(PodcastScrollGeometry.centerOffset(time: 1, sentences: s, centers: [0: 300], viewportHeight: 800) == 100)
-    }
-
-    @Test func centerOffsetInterpolatesTowardNext() {
-        let s = [sentence(0, 0, 2), sentence(1, 2, 4)]
-        let centers: [Int: CGFloat] = [0: 100, 1: 300]
-        // fraction 0 → focal 100 → offset 400-100=300
-        #expect(PodcastScrollGeometry.centerOffset(time: 0, sentences: s, centers: centers, viewportHeight: 800) == 300)
-        // fraction 0.5 → focal 200 → offset 200
-        #expect(PodcastScrollGeometry.centerOffset(time: 1, sentences: s, centers: centers, viewportHeight: 800) == 200)
-    }
-
-    @Test func centerOffsetIsContinuousAcrossBoundary() {
-        // Just before the boundary (still sentence 0, fraction≈1) the focal point
-        // has interpolated to sentence 1's center; at/after the boundary sentence 1
-        // becomes current (startTime 2 ≤ time) with focal = its own center. Both
-        // sides put sentence 1's center at the viewport center → no jump.
-        let s = [sentence(0, 0, 2), sentence(1, 2, 4)]
-        let centers: [Int: CGFloat] = [0: 100, 1: 300]
-        let beforeBoundary = PodcastScrollGeometry.centerOffset(time: 1.9999, sentences: s, centers: centers, viewportHeight: 800)
-        let atBoundary = PodcastScrollGeometry.centerOffset(time: 2, sentences: s, centers: centers, viewportHeight: 800)
-        // 1.9999: idx 0, fraction ≈1 → focal ≈300 → offset ≈100.
-        #expect(abs((beforeBoundary ?? 0) - 100) < 0.1)
-        #expect(atBoundary == 100)        // idx 1, focal 300 (no next) → 400-300
-    }
-}
-
 /// `PodcastTranscriptIdentity` is the O(1) fingerprint the transcript token tree
 /// uses as its `EquatableView` basis: it must change iff the rendered token tree
-/// must change (episode swap, sentence count, span) and stay stable across the
-/// per-frame playhead ticks that only move the offset + underline. It must NOT
-/// deep-compare the whole `[PodcastSentence]` array (that O(n·words) compare per
-/// frame is the very cost this skips).
+/// must change (episode swap, sentence count, span) and stay stable otherwise. It
+/// must NOT deep-compare the whole `[PodcastSentence]` array (that O(n·words)
+/// compare is the very cost the Equatable short-circuit avoids).
 struct PodcastTranscriptIdentityTests {
     private func sentence(_ id: Int, _ start: TimeInterval, _ end: TimeInterval, _ text: String = "x") -> PodcastSentence {
         PodcastSentence(id: id, speaker: "A", text: text, startTime: start, endTime: end, words: [])
