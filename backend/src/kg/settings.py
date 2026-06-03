@@ -88,6 +88,38 @@ def _env_truthy(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        _logger.warning(
+            "Env var %s=%r is not a valid float; falling back to default %s.",
+            name,
+            raw,
+            default,
+        )
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        _logger.warning(
+            "Env var %s=%r is not a valid int; falling back to default %s.",
+            name,
+            raw,
+            default,
+        )
+        return default
+
+
 def load_settings() -> KGSettings:
     default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -109,7 +141,7 @@ def load_settings() -> KGSettings:
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
         jwt_secret=jwt_secret,
         embedding_model=os.getenv("EMBEDDING_MODEL", "gemini-embedding-2-preview"),
-        embedding_dim=int(os.getenv("EMBEDDING_DIM", "3072")),
+        embedding_dim=_env_int("EMBEDDING_DIM", 3072),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
         google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "https://wordnexus.lol/auth/web/google/callback"),
@@ -119,11 +151,16 @@ def load_settings() -> KGSettings:
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,
         admin_token=os.getenv("ADMIN_TOKEN", ""),
         admin_password=os.getenv("ADMIN_PASSWORD", ""),
-        pro_daily_limit_usd=float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30")),
-        free_daily_limit_usd=float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03")),
-        judge_confidence_threshold=float(os.getenv("JUDGE_CONFIDENCE_THRESHOLD", "0.7")),
+        pro_daily_limit_usd=_env_float("PRO_DAILY_LIMIT_USD", 0.30),
+        free_daily_limit_usd=_env_float("FREE_DAILY_LIMIT_USD", 0.03),
+        judge_confidence_threshold=_env_float("JUDGE_CONFIDENCE_THRESHOLD", 0.7),
         cors_origins=tuple(
-            os.getenv("CORS_ORIGINS", "https://wordnexus.lol,http://localhost:8000,http://127.0.0.1:8000").split(",")
+            o.strip()
+            for o in os.getenv(
+                "CORS_ORIGINS",
+                "https://wordnexus.lol,http://localhost:8000,http://127.0.0.1:8000",
+            ).split(",")
+            if o.strip()
         ),
         podcast_bucket=(os.getenv("PODCAST_BUCKET") or None),
         podcast_bucket_region=os.getenv("PODCAST_BUCKET_REGION", "ap-northeast-1"),
