@@ -25,12 +25,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
 import shutil
 import sys
 import time
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
@@ -58,6 +60,22 @@ WORKSPACES_DIR = ROOT / "workspaces"
 STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_STAGING = ROOT / "monitor" / ".uploads"
 UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
+
+
+def _staging_dest(safe_name: str) -> Path:
+    """Build a guaranteed-unique staging path for an uploaded EPUB.
+
+    A second-resolution timestamp is NOT enough: two concurrent uploads of the
+    same filename within the same second produced an identical path, so the
+    loser (which 409s on the content-hash dedup_key) would `unlink` the file the
+    winner's pipeline.py is reading in-place from argv — corrupting the winner.
+    A per-call `uuid4` token makes every staged path physically distinct, so a
+    loser's cleanup only ever deletes its OWN handle. Path uniqueness does NOT
+    touch dedup: the spawn dedup_key is the content sha256, not the path, so the
+    same EPUB still collides and the loser still correctly receives its 409.
+    """
+    token = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    return UPLOAD_STAGING / f"{token}_{safe_name}"
 
 # Workspace name regex — same constraint as backend _SERIES_ID_RE plus a
 # safety guard against `..` / absolute paths sneaking in via FastAPI path params.
@@ -1093,11 +1111,19 @@ async def start_pipeline(
         raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
     # Strip leading dots/hyphens so `....epub` doesn't land as a hidden file.
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
-    # Prefix with a monotonic timestamp so concurrent uploads of the same
-    # filename don't race on the destination (last-writer-wins corruption).
-    dest = UPLOAD_STAGING / f"{int(time.time())}_{safe_name}"
+    # Per-call uuid token (not just a timestamp) so concurrent uploads of the
+    # same filename in the same second stage to PHYSICALLY distinct paths —
+    # otherwise the dedup loser's cleanup unlinks the winner's in-place input.
+    dest = _staging_dest(safe_name)
 
     written = 0
+    # Hash the EPUB bytes as they stream by (free — same pass as the write) so
+    # two concurrent uploads of the SAME file dedup on content, not filename.
+    # pipeline.py derives a deterministic workspace from the book's metadata, so
+    # without this guard both uploads would mkdir(exist_ok=True) the same ws and
+    # race its markers/scripts/mp3 — JobTracker only knows the ws AFTER stage 1,
+    # too late. A content-hash dedup_key collides them at spawn instead.
+    digest = hashlib.sha256()
     try:
         with dest.open("wb") as f:
             # Stream to avoid loading large EPUBs into memory; enforce the
@@ -1110,6 +1136,7 @@ async def start_pipeline(
                         f"epub too large (>{MAX_EPUB_BYTES // (1 << 20)}MB) — "
                         "this is almost certainly the wrong file",
                     )
+                digest.update(chunk)
                 f.write(chunk)
     except HTTPException:
         dest.unlink(missing_ok=True)
@@ -1126,7 +1153,11 @@ async def start_pipeline(
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
             metadata={"epub": safe_name, "parallel": parallel, "bytes": written, "tts_model": tts_model or None},
+            dedup_key=f"epub:{digest.hexdigest()}",
         )
+    except WorkspaceBusyError as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(409, "this book is already being processed") from e
     except JobLimitReached as e:
         dest.unlink(missing_ok=True)
         raise HTTPException(429, str(e)) from e
@@ -1170,17 +1201,24 @@ async def start_saga(
 
     UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
     staged: list[Path] = []
-    # Monotonic ms prefix + per-file index so concurrent same-name uploads
-    # don't collide and reading order survives in the staged filename.
-    ts = int(time.time() * 1000)
+    # Each staged path gets its own uuid token so concurrent same-name saga
+    # uploads never collide on a physical path; reading order is carried by the
+    # `staged` list (and the argv built from it), not by the filename.
+    # Combined, order-sensitive content digest across the whole saga: fold each
+    # book's own sha256 (in reading order) into one outer hash. Same books in the
+    # same order → same key (concurrent dup saga upload collides at spawn); a
+    # different book OR a different reading order → different pipeline, so the key
+    # must differ. Matches start_pipeline's epub-content dedup, generalized to N.
+    saga_digest = hashlib.sha256()
     try:
-        for i, up in enumerate(epubs):
+        for up in epubs:
             # Same sanitize as start_pipeline; strip leading dots/hyphens so a
             # crafted name can't land as a hidden file.
             safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", up.filename).lstrip(".-") or "upload.epub"
-            dest = UPLOAD_STAGING / f"{ts}_{i}_{safe_name}"
+            dest = _staging_dest(safe_name)
             staged.append(dest)
             written = 0
+            book_digest = hashlib.sha256()
             with dest.open("wb") as f:
                 while chunk := await up.read(1 << 20):
                     written += len(chunk)
@@ -1190,7 +1228,9 @@ async def start_saga(
                             f"epub too large (>{MAX_EPUB_BYTES // (1 << 20)}MB) — "
                             "this is almost certainly the wrong file",
                         )
+                    book_digest.update(chunk)
                     f.write(chunk)
+            saga_digest.update(book_digest.digest())
     except HTTPException:
         for p in staged:
             p.unlink(missing_ok=True)
@@ -1213,7 +1253,12 @@ async def start_saga(
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
             metadata={"saga": title, "books": len(staged), "parallel": parallel, "tts_model": tts_model or None},
+            dedup_key=f"epub:{saga_digest.hexdigest()}",
         )
+    except WorkspaceBusyError as e:
+        for p in staged:
+            p.unlink(missing_ok=True)
+        raise HTTPException(409, "this book is already being processed") from e
     except JobLimitReached as e:
         for p in staged:
             p.unlink(missing_ok=True)
