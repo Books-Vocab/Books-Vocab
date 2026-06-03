@@ -51,6 +51,22 @@ struct PodcastEpisodeDetail: Codable {
         case episodeNumber, title, durationSec, audioAvailable, subtitleAvailable, subtitleContent
     }
 
+    init(
+        episodeNumber: Int,
+        title: String,
+        durationSec: Double,
+        audioAvailable: Bool,
+        subtitleAvailable: Bool,
+        subtitleContent: String?
+    ) {
+        self.episodeNumber = episodeNumber
+        self.title = title
+        self.durationSec = durationSec
+        self.audioAvailable = audioAvailable
+        self.subtitleAvailable = subtitleAvailable
+        self.subtitleContent = subtitleContent
+    }
+
     /// Custom decode for resilience against hand-assembled S3 metadata.json
     /// (`ops/podcast_upload.sh` stitches it by hand — no Pydantic guarantee).
     /// One episode dropping a non-identity field used to throw and make the

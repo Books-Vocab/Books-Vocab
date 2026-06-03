@@ -1,6 +1,13 @@
 import SwiftUI
 import Inject
 
+enum CardDocumentCollocationState {
+    static func hasExplanation(for item: String, in explanations: [String: String]) -> Bool {
+        guard let explanation = explanations[item] else { return false }
+        return !explanation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 struct CardDocumentView: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -276,7 +283,7 @@ private struct CardDocumentCollocationsBlock: View {
     }
 
     private func collocationPill(_ item: String) -> some View {
-        let hasExplanation = explanations[item] != nil
+        let hasExplanation = CardDocumentCollocationState.hasExplanation(for: item, in: explanations)
         return Text(item)
             .font(appSkin.typography.monoBody)
             .foregroundStyle(appSkin.palette.secondaryText)
@@ -285,17 +292,16 @@ private struct CardDocumentCollocationsBlock: View {
             .background(
                 Capsule().fill(
                     hasExplanation
-                        ? appSkin.palette.accent.opacity(0.12)
+                        ? appSkin.palette.successBg
                         : appSkin.palette.divider.opacity(0.5)
                 )
             )
-            .overlay(alignment: .leading) {
-                if hasExplanation {
-                    Circle()
-                        .fill(appSkin.palette.accent)
-                        .frame(width: 4, height: 4)
-                        .offset(x: 2)
-                }
+            .overlay {
+                Capsule()
+                    .stroke(
+                        hasExplanation ? appSkin.palette.success.opacity(0.72) : .clear,
+                        lineWidth: AppSpacing.hairline
+                    )
             }
             .contextMenu {
                 if hasExplanation {
