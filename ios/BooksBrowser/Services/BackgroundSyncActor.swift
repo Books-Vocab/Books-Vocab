@@ -171,10 +171,24 @@ actor BackgroundSyncActor {
         return PullResult(orphanCleanupBlocked: orphanCleanupBlocked)
     }
 
-    /// Deletes all vocabulary entries and review records from local SwiftData storage.
-    /// Used during logout or account switch for data isolation.
-    func clearVocabularyData(reason: String) throws {
-        AppLog.sync.info("Clearing all local vocabulary + review + notebook data... reason=\(reason)")
+    /// Deletes ALL per-user local SwiftData state — vocabulary, review records,
+    /// notebooks, and podcast (series / episode / progress). This is the single
+    /// local-cleanup entry point for logout and account switch, so it must cover
+    /// every user-scoped @Model: leaving any model behind leaks account A's data
+    /// into account B's session (e.g. followed podcast series + playback
+    /// progress survived the switch before this covered podcasts).
+    ///
+    /// Podcast deletion notes:
+    /// - `PodcastSeries.episodes` is a `.cascade` relationship, so deleting a
+    ///   series removes its owned episodes. We still fetch+delete ALL
+    ///   `PodcastEpisode` explicitly to also clear series-less orphan episodes
+    ///   (cascade does not reach them). Cascade-owned episodes are already gone
+    ///   by then, so the all-episodes fetch only returns orphans — no double
+    ///   delete.
+    /// - `PodcastProgress` is an independent @Model (no relationship) and must
+    ///   be deleted on its own.
+    func clearUserData(reason: String) throws {
+        AppLog.sync.info("Clearing all local user data (vocab + review + notebook + podcast)... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
@@ -187,8 +201,22 @@ actor BackgroundSyncActor {
         for notebook in notebooks {
             modelContext.delete(notebook)
         }
+        // Delete series first; cascade removes their owned episodes.
+        let series = try modelContext.fetch(FetchDescriptor<PodcastSeries>())
+        for s in series {
+            modelContext.delete(s)
+        }
+        // Remaining episodes are series-less orphans the cascade can't reach.
+        let episodes = try modelContext.fetch(FetchDescriptor<PodcastEpisode>())
+        for episode in episodes {
+            modelContext.delete(episode)
+        }
+        let progress = try modelContext.fetch(FetchDescriptor<PodcastProgress>())
+        for p in progress {
+            modelContext.delete(p)
+        }
         try modelContext.save()
-        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks. reason=\(reason)")
+        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks + \(series.count) podcast series + \(episodes.count) orphan episodes + \(progress.count) podcast progress. reason=\(reason)")
     }
 
     /// Returns the number of synced entries in the local store.
