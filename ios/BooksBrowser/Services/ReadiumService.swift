@@ -104,6 +104,13 @@ final class ReadiumService: ReadiumServing {
     func extractCover(from publication: Publication) async -> Data? {
         do {
             guard let cover = try await publication.cover().get() else { return nil }
+            // Downsample to a bookshelf-thumbnail bound before persisting; the
+            // raw EPUB cover is full-resolution PNG and bloats SwiftData. Fall
+            // back to the original encoding if downsampling/encoding fails so a
+            // cover is never silently dropped. (PDF path: BookshelfImporting.)
+            if let thumbnail = CoverImageDownsampler.downsampledJPEG(from: cover) {
+                return thumbnail
+            }
             return cover.pngData() ?? cover.jpegData(compressionQuality: 0.8)
         } catch {
             AppCrashReporting.record(error, context: "readium.cover.extract")
