@@ -36,6 +36,68 @@ struct AppTabSelectorStyle {
     let outerBorderInset: CGFloat
 }
 
+/// Shared chip label body for `AppTabSelector` (single-select) and
+/// `AppFilterChipBar` (multi-select). Both compute their own `isSelected`
+/// and supply identical visual treatment via this builder — keep it as the
+/// single source of truth for chip label/count/border/a11y geometry.
+@ViewBuilder
+func appChipLabel<ID: Hashable>(
+    option: AppTabOption<ID>,
+    isSelected: Bool,
+    style: AppTabSelectorStyle
+) -> some View {
+    HStack(spacing: 6) {
+        if let systemImage = option.systemImage {
+            Image(systemName: systemImage)
+                .font(style.iconFont)
+                .foregroundStyle(isSelected ? style.iconSelectedColor : style.iconUnselectedColor)
+                .fixedSize()
+        }
+
+        Text(option.title.localized)
+            .font(style.titleFont)
+            .foregroundStyle(isSelected ? style.textSelectedColor : style.textUnselectedColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .layoutPriority(1)
+
+        if let count = option.count {
+            Text("\(count)")
+                .font(style.countFont)
+                .minimumScaleFactor(0.7)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 26)
+                .padding(.horizontal, 6)
+                .padding(.vertical, AppSpacing.microGap)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isSelected ? style.countSelectedFill : style.countUnselectedFill)
+                )
+        }
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.horizontal, AppSpacing.s2)
+    .padding(.vertical, AppSpacing.s2)
+    .background(
+        Capsule(style: .continuous)
+            .fill(isSelected ? style.selectedBackground : style.unselectedBackground)
+    )
+    .overlay(
+        Capsule(style: .continuous)
+            .stroke(isSelected ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
+    )
+    .overlay(
+        Capsule(style: .continuous)
+        .stroke(
+            isSelected ? style.selectedOuterBorder : style.unselectedOuterBorder,
+            lineWidth: 0.8
+        )
+        .padding(-style.outerBorderInset)
+    )
+}
+
 struct AppTabSelector<ID: Hashable>: View {
     let options: [AppTabOption<ID>]
     @Binding var selection: ID
@@ -44,65 +106,17 @@ struct AppTabSelector<ID: Hashable>: View {
     var body: some View {
         HStack(spacing: AppSpacing.s2) {
             ForEach(options) { option in
+                let isSelected = selection == option.id
                 Button {
                     withAnimation(AppMotion.chipSelect) {
                         selection = option.id
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        if let systemImage = option.systemImage {
-                            Image(systemName: systemImage)
-                                .font(style.iconFont)
-                                .foregroundStyle(selection == option.id ? style.iconSelectedColor : style.iconUnselectedColor)
-                                .fixedSize()
-                        }
-
-                        Text(option.title.localized)
-                            .font(style.titleFont)
-                            .foregroundStyle(selection == option.id ? style.textSelectedColor : style.textUnselectedColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .layoutPriority(1)
-
-                        if let count = option.count {
-                            Text("\(count)")
-                                .font(style.countFont)
-                                .minimumScaleFactor(0.7)
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(minWidth: 26)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, AppSpacing.microGap)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(selection == option.id ? style.countSelectedFill : style.countUnselectedFill)
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, AppSpacing.s2)
-                    .padding(.vertical, AppSpacing.s2)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(selection == option.id ? style.selectedBackground : style.unselectedBackground)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(selection == option.id ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                        .stroke(
-                            selection == option.id ? style.selectedOuterBorder : style.unselectedOuterBorder,
-                            lineWidth: 0.8
-                        )
-                        .padding(-style.outerBorderInset)
-                    )
+                    appChipLabel(option: option, isSelected: isSelected, style: style)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.count.map { "\(option.title.localized), \($0) \("個項目".localized)" } ?? option.title.localized)
-                .accessibilityAddTraits(selection == option.id ? .isSelected : [])
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(AppSpacing.tinyGap)
