@@ -8,17 +8,26 @@
 #     "audioop-lts",
 # ]
 # ///
-"""A/B test: current narrative TTS frame vs. proposed ### PERFORMANCE / #### TRANSCRIPT
-structure for Gemini 3.1 Flash TTS.
+"""A/B test: current narrative TTS frame vs. structured ### PERFORMANCE /
+#### TRANSCRIPT prompt frame.
 
-Validates whether the 3.1-recommended prompt structure (research: livekit/dev.to)
-is safe to adopt — specifically that the model does NOT vocalize the section
-headers, does NOT trigger the 655s padding bug, and (subjectively) delivers more
-expressive prosody.
+This tool compares two *prompt frame structures* — narrative voice-direction
+(Frame A) vs. the structured `### PERFORMANCE` + `#### TRANSCRIPT` layout
+(Frame B, sourced from livekit/dev.to research). It does NOT pin a model: the
+TTS model is read from env `TTS_MODEL` / `--tts-model`, defaulting to
+`DEFAULT_TTS_MODEL` (currently gemini-2.5-flash-tts, the SoT in tts_config).
 
-Outputs two wavs to voice_samples/ab_*.wav and re-transcribes each via Gemini
-audio understanding to auto-check criterion 1 (header leakage) + reports duration
-(criterion 2). Criterion 3 (vividness) is for the human ear.
+For each frame it auto-checks whether the model vocalizes the section headers
+(criterion 1, header leakage) and reports duration (criterion 2). Criterion 3
+(vividness) is for the human ear.
+
+Historical note: the structured frame was originally vetted against Gemini 3.1
+Flash TTS, where it had to avoid the 3.1-specific 655s padding bug. That bug is
+3.1-specific — to re-run the A/B against 3.1, explicitly override the model:
+
+    TTS_MODEL=gemini-3.1-flash-tts-preview uv run ab_perf_frame.py
+
+Default run (current SoT model):
 
     uv run ab_perf_frame.py
 """
@@ -52,7 +61,8 @@ OUT = ROOT / "voice_samples"
 OUT.mkdir(exist_ok=True)
 
 # 8-line test dialogue: cold-open (2 substantive lines), emotional range, an
-# energy shift, noun-form tags, comma-joined tagged clauses (3.1 rules).
+# energy shift, noun-form tags, comma-joined tagged clauses (structured-frame
+# audio-tag conventions).
 HOSTA = "Maya"
 HOSTB = "Kai"
 TURNS = [
@@ -87,7 +97,7 @@ def frame_a() -> str:
     ])
 
 
-# ── Frame B: 3.1-recommended ### PERFORMANCE + #### TRANSCRIPT structure ──
+# ── Frame B: structured ### PERFORMANCE + #### TRANSCRIPT layout ──
 def frame_b() -> str:
     return "\n".join([
         "Read the transcript below aloud as a two-host podcast conversation between two "
@@ -110,7 +120,7 @@ def prompt_a() -> str:
 
 
 def prompt_b() -> str:
-    # #### TRANSCRIPT delimiter is the 3.1 official-example structure.
+    # #### TRANSCRIPT delimiter mirrors the structured official-example layout.
     return f"{frame_b()}\n\n#### TRANSCRIPT\n{dialogue()}".strip()
 
 
