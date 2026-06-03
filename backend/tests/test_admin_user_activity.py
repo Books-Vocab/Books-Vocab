@@ -204,6 +204,45 @@ def test_caps_total_events(activity_env):
 
 
 # ---------------------------------------------------------------------------
+# Per-source truncation flag — admin must know when counts are a lower bound.
+# ---------------------------------------------------------------------------
+
+
+def test_truncated_false_when_under_cap(activity_env):
+    """No source hits MAX_PER_SOURCE → every truncated flag is False."""
+    from kg.admin_user_activity import get_user_activity
+
+    now = datetime.now(UTC)
+    _record_translate("u1", word="apple", when=now - timedelta(minutes=1))
+    _record_pipeline("u1", run_id="r1", when=now - timedelta(minutes=2))
+    _record_judge("u1", when=now - timedelta(minutes=3))
+
+    result = get_user_activity("u1", hours=24)
+    assert result["truncated"] == {"translate": False, "pipeline": False, "judge": False}
+
+
+def test_truncated_true_when_source_hits_cap(activity_env):
+    """A source with > MAX_PER_SOURCE rows must flag truncated → counts is a floor.
+
+    counts caps at MAX_PER_SOURCE (the per-source LIMIT). Without the flag,
+    admin can't distinguish "exactly 500" from ">=500 truncated".
+    """
+    from kg.admin_user_activity import MAX_PER_SOURCE, get_user_activity
+
+    now = datetime.now(UTC)
+    for i in range(MAX_PER_SOURCE + 25):
+        _record_translate("u1", word=f"w{i}", when=now - timedelta(seconds=i + 1))
+
+    result = get_user_activity("u1", hours=24)
+    # counts is the truncated (capped) value — a documented lower bound.
+    assert result["counts"]["translate"] == MAX_PER_SOURCE
+    assert result["truncated"]["translate"] is True
+    # Sources under cap remain False.
+    assert result["truncated"]["pipeline"] is False
+    assert result["truncated"]["judge"] is False
+
+
+# ---------------------------------------------------------------------------
 # Task-mandated coverage: empty / mixed-order / pagination-style cap
 # ---------------------------------------------------------------------------
 
@@ -215,7 +254,7 @@ def test_user_activity_empty_user_returns_zero_events(activity_env):
     result = get_user_activity("brand-new-user", hours=24)
 
     # Envelope shape — admin UI relies on every key existing.
-    assert set(result.keys()) == {"user_id", "hours", "since", "events", "counts"}
+    assert set(result.keys()) == {"user_id", "hours", "since", "events", "counts", "truncated"}
     assert result["user_id"] == "brand-new-user"
     assert result["hours"] == 24
     assert isinstance(result["since"], str) and result["since"]  # ISO timestamp
