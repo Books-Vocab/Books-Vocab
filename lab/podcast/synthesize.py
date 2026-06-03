@@ -759,31 +759,43 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     duration_s = len(combined) / 1000
 
-    mastered = False
-    if MASTER_ENABLED:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
-            tmp_wav = Path(tf.name)
-        try:
-            combined.export(str(tmp_wav), format="wav")
-            mastered = _master_with_loudnorm(tmp_wav, output_path)
-            if mastered:
-                print(f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied")
-        finally:
-            tmp_wav.unlink(missing_ok=True)
+    # Write to a same-dir .part temp, then os.replace() atomically into place.
+    # A truncated/0-byte file at output_path makes main()'s resume (out.exists())
+    # treat the episode as complete and ship the broken audio to publish. The
+    # atomic rename guarantees output_path either is absent or is the full file.
+    part_path = output_path.with_name(output_path.name + ".part")
+    try:
+        mastered = False
+        if MASTER_ENABLED:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+                tmp_wav = Path(tf.name)
+            try:
+                combined.export(str(tmp_wav), format="wav")
+                mastered = _master_with_loudnorm(tmp_wav, part_path)
+                if mastered:
+                    print(f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied")
+            finally:
+                tmp_wav.unlink(missing_ok=True)
 
-    if not mastered:
-        if OUTPUT_FORMAT == "mp3":
-            combined.export(str(output_path), format="mp3", bitrate=MP3_BITRATE)
-        elif OUTPUT_FORMAT == "m4a":
-            # pydub passes format="mp4" to ffmpeg for the container; the codec is
-            # selected via parameters. +faststart matches the mastering path.
-            combined.export(
-                str(output_path), format="mp4",
-                parameters=["-codec:a", "aac", "-b:a", AAC_BITRATE,
-                            "-movflags", "+faststart"],
-            )
-        else:
-            combined.export(str(output_path), format="wav")
+        if not mastered:
+            if OUTPUT_FORMAT == "mp3":
+                combined.export(str(part_path), format="mp3", bitrate=MP3_BITRATE)
+            elif OUTPUT_FORMAT == "m4a":
+                # pydub passes format="mp4" to ffmpeg for the container; the codec is
+                # selected via parameters. +faststart matches the mastering path.
+                combined.export(
+                    str(part_path), format="mp4",
+                    parameters=["-codec:a", "aac", "-b:a", AAC_BITRATE,
+                                "-movflags", "+faststart"],
+                )
+            else:
+                combined.export(str(part_path), format="wav")
+
+        os.replace(part_path, output_path)
+    finally:
+        # Best-effort cleanup of the temp on any failure (export raised, master
+        # failed, etc.). output_path stays absent so resume re-runs the episode.
+        Path(part_path).unlink(missing_ok=True)
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"  → {output_path.name} ({duration_s:.0f}s, {size_mb:.1f}MB)")
