@@ -128,6 +128,34 @@ def test_unknown_family_is_passthrough():
     assert out == src and changes == {}
 
 
+def test_leading_punct_after_stripped_tag_removed():
+    # A stripped sentence-initial tag must not leave a leading ", " that the
+    # TTS voices as a spoken comma. [long pause] is 3.1-only → stripped on 2.5.
+    out, _ = sanitize_tags_for_family("[long pause], yes.", "2.5")
+    assert out == "yes."
+
+
+def test_leading_punct_with_space_before_punct_removed():
+    # Same, but the source has a space between the tag and the punctuation:
+    # "[tag] , yes" must also normalize to "yes" with no leading comma.
+    out, _ = sanitize_tags_for_family("[long pause] , yes.", "2.5")
+    assert out == "yes."
+
+
+def test_tag_lookup_is_case_insensitive():
+    # Lock the .lower() normalization: an uppercase palette tag still rewrites.
+    out, _ = sanitize_tags_for_family("This is [EXCITEMENT] real.", "2.5")
+    assert out == "This is [excited] real."
+
+
+def test_tag_lookup_strips_inner_whitespace():
+    # Lock the .strip() normalization: padded brackets still resolve to a form.
+    out, _ = sanitize_tags_for_family("So [ high energy ] go.", "2.5")
+    assert "energy" not in out  # stripped, not voiced
+    out2, _ = sanitize_tags_for_family("So [ excitement ] real.", "2.5")
+    assert out2 == "So [excited] real."
+
+
 def test_render_palette_md_omits_empty_groups_for_25():
     import tts_tags
     md = tts_tags.render_palette_md("2.5")

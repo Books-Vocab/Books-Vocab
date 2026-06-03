@@ -184,6 +184,11 @@ def sanitize_tags_for_family(text: str, family: str) -> tuple[str, dict[str, int
         out = re.sub(r"[ \t]{2,}", " ", out)
         out = re.sub(r" +([,.!?;:])", r"\1", out)
         out = re.sub(r"(?m)^[ \t]+", "", out)
+        # A sentence-initial tag stripped to "" can leave leading punctuation
+        # (e.g. "[long pause], yes" -> ", yes"); drop it so TTS doesn't voice a
+        # stray comma. Runs after the leading-space strip so "[tag] , yes" (a
+        # space before the punct) is handled too.
+        out = re.sub(r"(?m)^[,.;:!?]+[ \t]*", "", out)
         out = re.sub(r"(?m)[ \t]+$", "", out)
     return out, changes
 
