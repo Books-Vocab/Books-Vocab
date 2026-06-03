@@ -63,6 +63,11 @@ struct ReaderView: View {
     @Environment(\.readerSettings) var settings
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// EPUB 翻頁進度落盤器：in-memory 寫入立即、`save()` debounce coalesce，
+    /// `onDisappear` / scenePhase `.background` 兜底 flush。對齊 PDF 路徑的顯式 save。
+    @State var progressSaver = ReaderProgressSaver()
 
     var viewConfiguration: ReaderViewConfiguration {
         settings.viewConfiguration(systemColorScheme: colorScheme)
@@ -128,6 +133,14 @@ struct ReaderView: View {
             // retry 走非結構化 Task，不隨 view 生命週期自動取消 —
             // 在此一併取消其 in-flight extractUniqueWords，避免寫回已棄置的 handler。
             retryLoadTask?.cancel()
+            // dismiss / pop 時若 debounce 窗口未到期，flush 最後一次翻頁進度，
+            // 避免 debounce 反而丟最後位置。
+            progressSaver.flush()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // 退背景時 flush debounced 進度，覆蓋正常退出路徑；僅前景強殺極端
+            // case 會丟失 debounce 窗口內的最後翻頁（對齊 CloudPreferencesSync 兜底）。
+            if newPhase == .background { progressSaver.flush() }
         }
         .onChange(of: liveNotebooks.map(\.remoteId)) { _, _ in
             sanitizeStaleBoundNotebook()
