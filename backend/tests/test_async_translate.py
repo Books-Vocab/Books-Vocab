@@ -98,6 +98,83 @@ async def test_async_translate_quota_check_blocks_exceeded():
 
 
 @pytest.mark.asyncio
+async def test_safe_translate_maps_timeout_to_external_service_error():
+    """asyncio.wait_for timeout (builtin TimeoutError) must map to ExternalServiceError, not raw 500."""
+    from kg.exceptions import ExternalServiceError
+    from kg.translate_handlers import _safe_translate
+
+    req = TranslateRequest(word="evoke", context="context")
+    user = {"id": "u_test", "config": {}, "record": None}
+
+    async def timing_out(_req, _user, **_kw):
+        raise TimeoutError("inflight leader stalled")
+
+    logger = MagicMock()
+    with patch("kg.translate_handlers.create_async_client", return_value=_fake_async_client("{}")):
+        with pytest.raises(ExternalServiceError) as exc_info:
+            await _safe_translate(
+                timing_out, req, user,
+                call_type="translate_quick", label="translate/quick", logger=logger,
+            )
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.to_detail().get("label") == "translate/quick"
+    logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_safe_translate_maps_httpx_error_to_external_service_error():
+    """httpx network errors (non-OpenAIError) must map to ExternalServiceError, not raw 500."""
+    import httpx
+
+    from kg.exceptions import ExternalServiceError
+    from kg.translate_handlers import _safe_translate
+
+    req = TranslateRequest(word="evoke", context="context")
+    user = {"id": "u_test", "config": {}, "record": None}
+
+    async def network_failing(_req, _user, **_kw):
+        raise httpx.ConnectError("connection refused")
+
+    logger = MagicMock()
+    with patch("kg.translate_handlers.create_async_client", return_value=_fake_async_client("{}")):
+        with pytest.raises(ExternalServiceError) as exc_info:
+            await _safe_translate(
+                network_failing, req, user,
+                call_type="translate_quick", label="translate/quick", logger=logger,
+            )
+    assert exc_info.value.status_code == 502
+    logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_phrase_and_explain_pass_logger_on_error():
+    """phrase/explain paths must forward logger so LLM errors are observable."""
+    from openai import OpenAIError
+
+    from kg.exceptions import ExternalServiceError
+    from kg.translate_handlers import (
+        translate_explain_response,
+        translate_phrase_response,
+    )
+
+    req = TranslateRequest(word="evoke", context="context")
+    user = {"id": "u_test", "config": {}, "record": None}
+
+    def raising_factory():
+        mock_create = AsyncMock(side_effect=OpenAIError("boom"))
+        return SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create))
+        )
+
+    for handler in (translate_phrase_response, translate_explain_response):
+        logger = MagicMock()
+        with patch("kg.translate_handlers.create_async_client", return_value=raising_factory()):
+            with pytest.raises(ExternalServiceError):
+                await handler(req, user, logger=logger)
+        logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_translate_handler_does_not_leak_openai_exc_to_client():
     """When upstream raises, ExternalServiceError.to_detail must not embed str(exc)."""
     from openai import OpenAIError
