@@ -21,6 +21,12 @@ final class LocalDataCleanerService: LocalDataClearing {
         // so clear every user's snapshot to prevent a stale session from being
         // restored on re-login (or surviving until the 7-day maxAge expiry).
         TodayReviewSessionSnapshotStore.clear(for: nil)
+        // QuotaStore is a process-wide singleton holding account A's remaining quota.
+        // clearUserData drops SwiftData rows but never touches it, so after an
+        // account-switch account B briefly sees A's quota number until the next
+        // response header overwrites it. Reset on the main actor (where the
+        // @Observable mutation is observed, matching KGService+Health's update hop).
+        await MainActor.run { QuotaStore.shared.reset() }
         // Downloaded podcast .mp3s live on disk under Documents/podcast-downloads/,
         // not in SwiftData — clearUserData drops the rows but leaves the audio.
         // Purge the whole tree so a reused remoteId can't surface account A's
