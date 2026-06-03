@@ -584,4 +584,6 @@ def get_podcast_subtitle(
     srt_file = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}" / "subtitle.srt"
     if not srt_file.exists():
         raise HTTPException(404, detail="Subtitle not found")
-    return PlainTextResponse(srt_file.read_text(encoding="utf-8"))
+    # errors="replace" mirrors the S3 path above: a stray non-UTF-8 byte in a
+    # subtitle file must degrade gracefully, not surface as an uncaught 500.
+    return PlainTextResponse(srt_file.read_text(encoding="utf-8", errors="replace"))
