@@ -87,6 +87,7 @@ struct SettingsInlineInfoButton: View {
                 .foregroundStyle(appSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string("settings.inlineInfo.accessibility"))
         .enableInjection()
     }
 }

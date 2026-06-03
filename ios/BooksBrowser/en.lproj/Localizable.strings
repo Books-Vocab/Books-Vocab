@@ -884,6 +884,15 @@
 "vocab.chromeIcon.translation.dismiss" = "Close translation panel";
 "vocab.chromeIcon.todayReview.help" = "Show keyboard shortcuts";
 "vocab.chromeIcon.todayReview.close" = "Close today's review";
+"vocab.chromeIcon.translation.detail" = "View details";
+"vocab.chromeIcon.translation.expand" = "Expand";
+"vocab.chromeIcon.translation.collapse" = "Collapse";
+"vocab.chromeIcon.translation.delete" = "Delete";
+"vocab.chromeIcon.todayReview.autoplay.on" = "Turn off autoplay";
+"vocab.chromeIcon.todayReview.autoplay.off" = "Turn on autoplay";
+"settings.inlineInfo.accessibility" = "More information";
+"podcast.followToggle.follow" = "Follow";
+"podcast.followToggle.unfollow" = "Unfollow";
 "vocab.chromeIcon.collocation.dismiss" = "Close collocation explanation";
 
 // MARK: - Podcast Sleep Timer (track-11)
