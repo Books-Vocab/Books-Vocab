@@ -273,3 +273,49 @@ struct PodcastScrollGeometryTests {
         #expect(atBoundary == 100)        // idx 1, focal 300 (no next) → 400-300
     }
 }
+
+/// `PodcastTranscriptIdentity` is the O(1) fingerprint the transcript token tree
+/// uses as its `EquatableView` basis: it must change iff the rendered token tree
+/// must change (episode swap, sentence count, span) and stay stable across the
+/// per-frame playhead ticks that only move the offset + underline. It must NOT
+/// deep-compare the whole `[PodcastSentence]` array (that O(n·words) compare per
+/// frame is the very cost this skips).
+struct PodcastTranscriptIdentityTests {
+    private func sentence(_ id: Int, _ start: TimeInterval, _ end: TimeInterval, _ text: String = "x") -> PodcastSentence {
+        PodcastSentence(id: id, speaker: "A", text: text, startTime: start, endTime: end, words: [])
+    }
+
+    @Test func emptyTranscriptHasStableIdentity() {
+        #expect(PodcastTranscriptIdentity(sentences: []) == PodcastTranscriptIdentity(sentences: []))
+    }
+
+    @Test func sameTranscriptIsEqual() {
+        let s = [sentence(0, 0, 2), sentence(1, 2, 5)]
+        #expect(PodcastTranscriptIdentity(sentences: s) == PodcastTranscriptIdentity(sentences: s))
+    }
+
+    @Test func differentCountIsUnequal() {
+        let a = [sentence(0, 0, 2)]
+        let b = [sentence(0, 0, 2), sentence(1, 2, 5)]
+        #expect(PodcastTranscriptIdentity(sentences: a) != PodcastTranscriptIdentity(sentences: b))
+    }
+
+    @Test func episodeSwapWithSameCountButDifferentSpanIsUnequal() {
+        // Sentence ids restart at 0 each episode, so an id-only key could collide.
+        // The span (first.start + last.end) distinguishes a same-length new episode.
+        let ep1 = [sentence(0, 0, 2), sentence(1, 2, 5)]
+        let ep2 = [sentence(0, 10, 12), sentence(1, 12, 15)]
+        #expect(PodcastTranscriptIdentity(sentences: ep1) != PodcastTranscriptIdentity(sentences: ep2))
+    }
+
+    @Test func samePlayheadDifferenceDoesNotAffectIdentity() {
+        // The fingerprint depends only on the transcript, never on a playhead/time,
+        // so two identities built from the same sentences are equal regardless of
+        // how often the playhead moves between builds.
+        let s = [sentence(0, 0, 2), sentence(1, 2, 5), sentence(2, 5, 9)]
+        let first = PodcastTranscriptIdentity(sentences: s)
+        let second = PodcastTranscriptIdentity(sentences: s)
+        #expect(first == second)
+        #expect(first.hashValue == second.hashValue)
+    }
+}
