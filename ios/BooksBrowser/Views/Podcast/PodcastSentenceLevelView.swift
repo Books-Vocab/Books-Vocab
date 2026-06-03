@@ -27,23 +27,29 @@ struct PodcastSentenceSelection: Equatable {
 ///   • layout transitions are explicitly animated (bubble bg, underline,
 ///     label show/hide) to avoid the snap-change jank of dt→0 shifts.
 ///
-/// ## Per-frame cost model (the scroll-freeze fix)
+/// ## Scroll engine (the scroll-freeze fix)
 ///
-/// The follow scroll + word underline are continuous engines that must update
-/// every display frame (60–120 Hz). The transcript itself, however, is a
-/// non-lazy column of hundreds of sentences, each exploding into per-word `Text`
-/// tokens + `CachedFlowLayout` + anchor preferences — thousands of view values.
-/// Re-evaluating that whole struct tree every frame saturated the main thread and
-/// froze scrolling. So the work is split:
-///   • `PodcastTranscriptColumn` (the token tree) is wrapped in `.equatable()`.
-///     Its `==` compares an O(1) `PodcastTranscriptIdentity` + the few
-///     sentence-level inputs that actually change the tokens (current sentence,
-///     selection, size, word-follow toggle). Per-frame playhead ticks compare
-///     equal → SwiftUI skips its `body`, reusing the already-built tree.
-///   • The per-frame follow `.offset` is applied to that Equatable child as a
-///     render transform (not a body change), driven by the outer `TimelineView`.
-///   • The word underline reads the LIVE playhead each frame through a reference
-///     (`liveAnchor`), so the Equatable-skip never starves it of fresh time.
+/// HISTORY: an earlier offset-driven engine drove follow with an outer
+/// `TimelineView(.animation)` that recomputed a manual `.offset` over a NON-lazy
+/// column EVERY display frame. That re-evaluated the whole token tree (hundreds of
+/// sentences × per-word `Text` + `CachedFlowLayout` + per-sentence `GeometryReader`
+/// preferences) per frame and froze the UI on entry — confirmed on-device:
+/// rendering only 30 sentences still froze (so NOT a realization-count cost), and
+/// the device logged `Bound preference … multiple times per frame`. The
+/// `.equatable()` wrapper could not help: it sat below the per-frame parent
+/// invalidation. Root cause was the engine itself, not the token count.
+///
+/// NOW: a native `ScrollView` + `ScrollViewReader` + `LazyVStack` (GPU-composited
+/// scroll, off the SwiftUI per-frame eval path; only on-screen bubbles realized).
+///   • Follow = one animated `scrollTo(currentId, anchor: .center)` per sentence
+///     boundary (`onChange(of: currentId)` → `followScroll`). The animation
+///     duration gives the continuous glide; zero per-frame main-thread work.
+///   • `PodcastTranscriptColumn` keeps `.equatable()` — now only to skip
+///     token-irrelevant parent renders (e.g. follow-flag flips), comparing an
+///     O(1) `PodcastTranscriptIdentity` + the sentence-level inputs.
+///   • The word underline is still a per-frame continuous engine, reading the
+///     LIVE playhead through a reference (`liveAnchor`) inside its own inner
+///     `TimelineView` — bounded to the current sentence, so it never saturates.
 struct PodcastSentenceLevelView: View {
     @ObserveInjection private var inject
 
