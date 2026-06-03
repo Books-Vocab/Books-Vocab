@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: 19469953
+verified_against: 1f0df197
 -->
 # UI State Matrix
 
@@ -326,7 +326,7 @@ Preview matrix 已補齊：
 | 閱讀進度 | `book.progression > 0` | accent capsule + 百分比 mono 文字 | 已覆蓋 |
 | iCloud 待下載 | `book.needsICloudDownload` 或 `state == .notDownloaded` | `icloud.and.arrow.down` 徽章 | 已覆蓋 |
 | iCloud 下載中 | `state == .downloading(progress)` | `ICloudProgressBadge`（圓環 + 數字） | 已覆蓋 |
-| iCloud 下載失敗 | download manager 報錯 | 無專屬 UI，回落到 notDownloaded 徽章 | 缺口（Priority 2） |
+| iCloud 下載失敗 | `state == .failed` | `retryBadge`（`exclamationmark.icloud` warning tint，tap 觸發 `triggerDownload` 重試；`BookCard.swift:134,154`） | 已覆蓋 |
 | 長按 context | context menu | 刪除（destructive） | 已覆蓋 |
 
 ### Podcast Series Card State
@@ -348,8 +348,8 @@ Preview matrix 已補齊：
 
 判斷：
 - Import 流程的 alert + persistent banner 雙層配置是目前 cross-surface 最成熟的 error pattern
-- 缺口集中在「背景同步沒有可見訊號」：podcast sync running / failed、warmFollowedSeriesAudio 失敗皆靜默
-- iCloud 下載失敗目前回落到「再次出現雲端徽章」，使用者無法區分「沒下過」與「下載失敗」
+- 殘留缺口集中在「背景同步沒有可見訊號」：podcast sync running / failed、warmFollowedSeriesAudio 失敗皆靜默
+- iCloud 下載六態齊全（current / downloading / notDownloaded / failed），`.failed` 已有專屬可重試徽章，與「沒下過」明確區分
 
 ---
 
@@ -417,7 +417,7 @@ Preview matrix 已補齊：
 | 查詢中 | `translationHandler.isTranslating == true` | `TranslationPanel` shared state message + spinner | 已覆蓋（共用 Reader pattern） |
 | 翻譯結果 | `translationResult` 有值 | translation body | 已覆蓋 |
 | Explain only | `isExplanationOnly == true` | explanation body | 已覆蓋 |
-| 翻譯 / 解釋失敗 | `translationErrorMessage` / `explanationErrorMessage` | 共用 `TranslationPanel` 渲染 `VocabStateMessageCard` 錯誤卡 | 已覆蓋（缺重試 CTA — Reader 有、podcast surface 未 wire `onRetryTranslation` / `onRetryExplanation`；backlog） |
+| 翻譯 / 解釋失敗 | `translationErrorMessage` / `explanationErrorMessage` | 共用 `TranslationPanel` 渲染 `VocabStateMessageCard` 錯誤卡 + 重試 CTA（`onRetryTranslation` / `onRetryExplanation` → `retryLastLookup`，與 Reader 對齊；`PodcastPlayerView.swift:345-352`） | 已覆蓋 |
 | 自動暫停 | `autoPauseOnLookup` + panel 出現 | VM `pause()` + `autoPausedByTranslation = true`，dismiss 後自動 resume | 已覆蓋 |
 
 ### Controls / Seek Bar State
@@ -450,7 +450,7 @@ Preview matrix 已補齊：
 判斷：
 - Player error / subtitle failure 是目前 podcast 最成熟的 state machine（hero error + inline retry）
 - subtitle `.loading` hint、`.unavailable` 與 `.idle` 區分、sleep timer fire toast、episode list stale banner 皆已補齊
-- 殘留缺口：podcast translation 錯誤卡未 wire 重試 CTA（Reader 已有）；Bookshelf 背景 podcast sync running / failed 仍靜默
+- 殘留缺口：Bookshelf 背景 podcast sync running / failed 仍靜默（podcast translation 錯誤卡重試 CTA 已與 Reader 對齊）
 
 ### Next UX Priorities（Bookshelf + Podcast 補充）
 
@@ -460,9 +460,9 @@ Preview matrix 已補齊：
 - Podcast subtitle `.unavailable` 與 `.idle` 區分（`subtitleUnavailableHint` + `此集無逐句字幕`）
 
 #### Priority 2
-- Podcast translation 錯誤卡 wire 重試 CTA（`onRetryTranslation` / `onRetryExplanation`，Reader 已有、podcast surface 未傳）
+- ~~Podcast translation 錯誤卡 wire 重試 CTA（`onRetryTranslation` / `onRetryExplanation`）~~ — 已完成（`PodcastPlayerView.swift:345-352`，與 Reader 對齊）
 - Bookshelf background podcast sync 失敗 toast / status row
-- iCloud 書籍下載失敗 vs notDownloaded 的徽章區分
+- ~~iCloud 書籍下載失敗 vs notDownloaded 的徽章區分~~ — 已完成（`BookCard.swift:134` `case .failed: retryBadge`）
 
 > Episode list 「load error 但有殘留資料」的 stale banner 已完成（`AppBanner` + `podcast.episodeList.staleBanner`）。
 
