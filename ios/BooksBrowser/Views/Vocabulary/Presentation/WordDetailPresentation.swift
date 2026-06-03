@@ -22,8 +22,7 @@ enum WordDetailPresentation {
                         effectiveLookup[link.cardId] == nil ? nil : link.cardId
                     }
             ),
-            reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil,
-            isExcludedFromReader: entry.isExcludedFromReader
+            reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil
         )
     }
 
