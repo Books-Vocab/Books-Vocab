@@ -43,8 +43,9 @@ from google.genai import types as genai_types
 # string does NOT always say "pcm", so naive ffmpeg decode fails. synthesize.py
 # already handles every return shape correctly.
 import synthesize
+from tts_config import DEFAULT_TTS_MODEL
 
-TTS_MODEL = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()
+TTS_MODEL = os.getenv("TTS_MODEL", DEFAULT_TTS_MODEL).strip()
 STT_MODEL = os.getenv("STT_MODEL", "gemini-2.5-flash").strip()
 V1, V2 = "Puck", "Kore"
 OUT = ROOT / "voice_samples"
