@@ -428,3 +428,156 @@ def test_workspace_summary_saga_malformed_manifest_falls_back(tmp_path):
     assert summary["is_saga"] is True
     # book_count/display degrade gracefully; spoiler_mode absent on disk
     assert summary.get("book_count", 0) == 0
+
+
+# ── orphan staging cleanup (.uploads disk-leak reaper) ──────────────────────
+
+
+def test_start_pipeline_records_staging_path_in_metadata(client, spawn):
+    """The endpoint must stamp the staged EPUB's path into metadata so the
+    sweeper can tell a still-needed input (job running) from an orphan."""
+    resp = client.post("/api/pipeline/start", files={"epub": _epub("book.epub")})
+    assert resp.status_code == 200, resp.text
+    staged = spawn.kwargs["metadata"]["_staging_paths"]
+    assert isinstance(staged, list) and len(staged) == 1
+    p = Path(staged[0])
+    assert p.parent == server.UPLOAD_STAGING
+    assert p.name.endswith("_book.epub")
+
+
+def test_start_saga_records_all_staging_paths_in_metadata(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong"},
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 200, resp.text
+    staged = spawn.kwargs["metadata"]["_staging_paths"]
+    assert [Path(s).name.endswith(suffix) for s, suffix in zip(staged, ("_a.epub", "_b.epub"))] == [True, True]
+    assert all(Path(s).parent == server.UPLOAD_STAGING for s in staged)
+
+
+def _touch_old(p: Path, age_s: float, now: float):
+    """Create a staged-file stand-in and backdate its mtime by age_s seconds."""
+    p.write_bytes(b"PKepub")
+    import os
+    os.utime(p, (now - age_s, now - age_s))
+
+
+def test_sweep_deletes_old_orphan(tmp_path):
+    """An orphan (no active job references it) older than the age threshold is
+    removed."""
+    now = 2_000_000_000.0
+    orphan = tmp_path / "111_old.epub"
+    _touch_old(orphan, age_s=10 * 3600, now=now)
+    removed = server._sweep_staging(
+        tmp_path, active_paths=set(), max_age_s=6 * 3600, now=now
+    )
+    assert orphan in removed
+    assert not orphan.exists()
+
+
+def test_sweep_keeps_fresh_orphan(tmp_path):
+    """A young orphan is kept — a concurrent upload may be mid-flight between
+    staging the file and registering its job, so don't yank a fresh file."""
+    now = 2_000_000_000.0
+    fresh = tmp_path / "222_new.epub"
+    _touch_old(fresh, age_s=60, now=now)
+    removed = server._sweep_staging(
+        tmp_path, active_paths=set(), max_age_s=6 * 3600, now=now
+    )
+    assert fresh not in removed
+    assert fresh.exists()
+
+
+def test_sweep_never_deletes_running_jobs_input_even_when_old(tmp_path):
+    """SAFETY (most important): a staged file referenced by an active job is
+    NEVER deleted, even if its mtime is well past the age threshold — a long
+    pipeline still reads it in-place from argv."""
+    now = 2_000_000_000.0
+    live = tmp_path / "333_running.epub"
+    _touch_old(live, age_s=100 * 3600, now=now)  # very old, but in use
+    removed = server._sweep_staging(
+        tmp_path, active_paths={live}, max_age_s=6 * 3600, now=now
+    )
+    assert live not in removed
+    assert live.exists(), "must never delete a running job's in-place input"
+
+
+def test_sweep_mixed(tmp_path):
+    """One old orphan deleted; one old-but-active kept; one fresh orphan kept."""
+    now = 2_000_000_000.0
+    orphan = tmp_path / "a_old_orphan.epub"
+    live = tmp_path / "b_old_live.epub"
+    fresh = tmp_path / "c_fresh.epub"
+    _touch_old(orphan, 10 * 3600, now)
+    _touch_old(live, 10 * 3600, now)
+    _touch_old(fresh, 60, now)
+    removed = server._sweep_staging(
+        tmp_path, active_paths={live}, max_age_s=6 * 3600, now=now
+    )
+    assert removed == [orphan]
+    assert not orphan.exists()
+    assert live.exists() and fresh.exists()
+
+
+def test_active_staging_paths_collects_running_and_pending(monkeypatch):
+    """_active_staging_paths gathers _staging_paths from running+pending jobs and
+    ignores finished ones (whose inputs are reclaimable)."""
+
+    class _J:
+        def __init__(self, status, paths):
+            self.status = status
+            self.metadata = {"_staging_paths": paths} if paths else {}
+
+    jobs_list = [
+        _J("running", ["/u/r1.epub"]),
+        _J("pending", ["/u/p1.epub", "/u/p2.epub"]),
+        _J("succeeded", ["/u/done.epub"]),  # finished → not protected
+        _J("failed", ["/u/fail.epub"]),
+        _J("running", None),  # no staging paths (e.g. rerun job)
+    ]
+    monkeypatch.setattr(server.jobs, "list", lambda limit=...: jobs_list)
+    active = server._active_staging_paths()
+    assert active == {
+        Path("/u/r1.epub"), Path("/u/p1.epub"), Path("/u/p2.epub")
+    }
+
+
+def test_sweep_missing_dir_is_noop(tmp_path):
+    """Sweeping a non-existent staging dir must not raise."""
+    assert server._sweep_staging(
+        tmp_path / "nope", active_paths=set(), max_age_s=1, now=0.0
+    ) == []
+
+
+def test_startup_lifespan_sweeps_orphan_but_keeps_active(monkeypatch, tmp_path):
+    """End-to-end: entering the app lifespan (server startup) reaps a stale
+    orphan from .uploads while leaving an active job's old in-place input
+    untouched."""
+    import os
+
+    staging = tmp_path / "uploads"
+    staging.mkdir()
+    monkeypatch.setattr(server, "UPLOAD_STAGING", staging)
+    monkeypatch.setattr(server, "STAGING_MAX_AGE_S", 3600)
+
+    old = 9_999.0  # very old mtime relative to wall clock
+    orphan = staging / "1_orphan.epub"
+    live = staging / "2_live.epub"
+    for p in (orphan, live):
+        p.write_bytes(b"PKepub")
+        os.utime(p, (old, old))
+
+    # One active job pins `live`; the lifespan startup sweep must spare it.
+    class _J:
+        status = "running"
+        metadata = {"_staging_paths": [str(live)]}
+
+    monkeypatch.setattr(server.jobs, "list", lambda limit=...: [_J()])
+
+    with TestClient(server.app):  # entering ctx triggers startup lifespan
+        pass
+
+    assert not orphan.exists(), "startup must reap the stale orphan"
+    assert live.exists(), "startup must never reap a running job's input"
