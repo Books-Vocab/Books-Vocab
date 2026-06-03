@@ -3,6 +3,7 @@ from __future__ import annotations
 from logging import Logger
 from typing import Any
 
+import httpx
 from fastapi import HTTPException
 from openai import OpenAIError
 
@@ -40,6 +41,13 @@ async def _safe_translate(
         if logger:
             logger.exception("%s OpenAI error: %s", label, exc)
         raise ExternalServiceError(label, exc=exc) from exc
+    except (TimeoutError, httpx.HTTPError) as exc:
+        # Inflight follower-wait timeout (asyncio.wait_for -> builtin TimeoutError
+        # on 3.11+) or raw network failures from the HTTP client. Map to a stable
+        # external-service surface instead of leaking a generic 500.
+        if logger:
+            logger.exception("%s upstream/network error: %s", label, exc)
+        raise ExternalServiceError(label, exc=exc) from exc
     except (ValueError, KeyError, TypeError, RuntimeError) as exc:
         if logger:
             logger.exception("%s failed: %s", label, exc)
@@ -62,18 +70,22 @@ async def translate_quick_response(
 async def translate_phrase_response(
     req: TranslateRequest,
     user: dict[str, Any],
+    *,
+    logger: Logger | None = None,
 ) -> dict[str, str]:
     return await _safe_translate(
         run_phrase_translate, req, user,
-        call_type="translate_phrase", label="translate/phrase",
+        call_type="translate_phrase", label="translate/phrase", logger=logger,
     )
 
 
 async def translate_explain_response(
     req: TranslateRequest,
     user: dict[str, Any],
+    *,
+    logger: Logger | None = None,
 ) -> ExplainResponse:
     return await _safe_translate(
         run_explain_translate, req, user,
-        call_type="translate_explain", label="translate/explain",
+        call_type="translate_explain", label="translate/explain", logger=logger,
     )
