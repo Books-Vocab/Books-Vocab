@@ -207,10 +207,23 @@ def batch_archive_vocab_words(
             continue
         cards_store.update(card.id, is_archived=archived)
         if graph is not None:
-            if archived:
-                graph.cleanup_for_card(card.id)
-            else:
-                graph.restore_links_for(card.id, cards_store)
+            try:
+                if archived:
+                    graph.cleanup_for_card(card.id)
+                else:
+                    graph.restore_links_for(card.id, cards_store)
+            except Exception:
+                # Roll the card's archive state back to its original value so a
+                # failed graph op never leaves card state and the response out of
+                # sync (mirrors batch_delete_vocab_words).
+                try:
+                    cards_store.update(card.id, is_archived=not archived)
+                except Exception:
+                    logger.exception(
+                        "rollback failed for card %s after graph error", card.id
+                    )
+                not_found.append(word)
+                continue
         updated_words.append(word)
 
     return {"updated": len(updated_words), "updated_words": updated_words, "not_found": not_found}
