@@ -7,9 +7,9 @@ final class LocalDataCleanerService: LocalDataClearing {
         let actor = BackgroundSyncActor(modelContainer: container)
         AppLog.sync.info("clearLocalData requested. reason=\(reason)")
         do {
-            try await actor.clearVocabularyData(reason: reason)
+            try await actor.clearUserData(reason: reason)
         } catch {
-            AppLog.sync.error("clearVocabularyData failed: \(error.localizedDescription)")
+            AppLog.sync.error("clearUserData failed: \(error.localizedDescription)")
         }
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: "kg_last_incremental_sync")
