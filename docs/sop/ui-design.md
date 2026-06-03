@@ -214,7 +214,7 @@ PR #402 引入：
 
 下列 issue 已知，列入後續 polish pass PR：
 
-1. **`AppOfflineBanner` light mode 對比 ≈ 3.21:1**（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**。修法：darken text 或 fall back 到 `primaryText` 配 destructive icon。
+1. ~~**`AppOfflineBanner` light mode 對比 ≈ 3.21:1**~~ — 已解除。banner 前景已是 `primaryText`（灰階高對比）非 destructive 紅字；primaryText 疊於 destructiveBg（destructive 10~14% tint over pageBackground）實測 light ~9.85:1 / dark ~11.6:1 ✓ WCAG AAA。原 3.21:1 為「紅字當前景」的舊設計數據，已不適用。
 2. ~~**`accentHero` dark mode footgun**~~ — 已解除。Phase 1b 起 brandHero 改奶黃，前景採 `AppColors.onBrandHero` deep charcoal `#1C1A17`，light/dark 變體配 onBrandHero 對比 5.11/7.05:1 ✓ AA/AAA。
 3. ~~**`AppCompactActionButtonStyle` primary foreground raw `.white`**~~ — 已解除。改走 `AppColors.onBrandHero` token；奶黃 + 白字 fail AA → onBrandHero 強制 deep charcoal 是 token-level 保證。
 4. **低採用率 tokens**：`AppSkeletonLine` 目前無外部直接 callsite（僅 def + `AppSkeletonCard` 內部 + preview）；`AppSkeletonCard` 已用於 `VocabSceneShell`、`AppElevation` 已是全 app shadow 唯一入口（~24 callsites）。注意 PR #402 曾規劃的 `display1/2` / `appReadableFrame` / `AppLayout` token **從未進入 codebase**，勿引用。
