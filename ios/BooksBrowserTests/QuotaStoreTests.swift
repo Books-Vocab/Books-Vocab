@@ -147,6 +147,29 @@ struct QuotaStoreTests {
         #expect(!store.resetText.contains("h"))
     }
 
+    // MARK: - reset (account-switch / logout isolation)
+
+    @Test func reset_restores_initial_state() {
+        // Account A leaves quota state behind; logout/account-switch must wipe it so
+        // account B never sees A's remaining quota before the next response header lands.
+        let store = QuotaStore()
+        store.update(fraction: 0.3, resetSeconds: 1800)
+        store.reset()
+        #expect(store.fraction == 1.0)
+        #expect(store.resetSeconds == 0)
+        #expect(store.level == .normal)
+        #expect(!store.isExhausted)
+    }
+
+    @Test func reset_from_exhausted_returns_to_normal() {
+        // The lockout case: an exhausted A account must not lock out a fresh B account.
+        let store = QuotaStore()
+        store.update(fraction: 0, resetSeconds: 600)
+        store.reset()
+        #expect(store.level == .normal)
+        #expect(!store.isExhausted)
+    }
+
     // MARK: - Sequential updates
 
     @Test func update_overwrites_prior_state() {
