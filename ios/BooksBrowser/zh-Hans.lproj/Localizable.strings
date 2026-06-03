@@ -852,6 +852,15 @@
 "vocab.chromeIcon.translation.dismiss" = "关闭翻译面板";
 "vocab.chromeIcon.todayReview.help" = "显示快捷键";
 "vocab.chromeIcon.todayReview.close" = "关闭今日复习";
+"vocab.chromeIcon.translation.detail" = "查看详情";
+"vocab.chromeIcon.translation.expand" = "展开";
+"vocab.chromeIcon.translation.collapse" = "收起";
+"vocab.chromeIcon.translation.delete" = "删除";
+"vocab.chromeIcon.todayReview.autoplay.on" = "关闭自动播放";
+"vocab.chromeIcon.todayReview.autoplay.off" = "开启自动播放";
+"settings.inlineInfo.accessibility" = "更多信息";
+"podcast.followToggle.follow" = "关注";
+"podcast.followToggle.unfollow" = "取消关注";
 "vocab.chromeIcon.collocation.dismiss" = "关闭搭配说明";
 
 // MARK: - Podcast Sleep Timer (track-11)
