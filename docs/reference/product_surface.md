@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 3bec5ff6
+verified_against: 80147399
 -->
 # Implemented Product Surface
 
@@ -55,7 +55,7 @@ verified_against: 3bec5ff6
 - **Multi-format import parsing**
 - **Query path perf**: incremental sync / zipf cache / filter-before-sort
 - **Write path perf**: batch ops / N+1 elimination
-- **Static pages**
+- **公開頁(官網)**: privacy / terms / support / guide 已重構成消費 iOS 設計系統的官網 — Cormorant 襯線標題 + 暖色盤 + z1 卡片 + divider、暗色 no-FOUC toggle、響應式、a11y(skip-link / focus-visible / aria-current / 單一 h1+h2、FAQ 原生 `<details>`);吃 `/static/{kg-tokens,kg-components,site}.css` + 自帶 Cormorant Garamond / ElmsSans woff2,由 `app.mount("/static", StaticFiles)` 服務(`backend/static/`,Dockerfile `COPY static/`)
 - **System observability**: `/api/system/info` + VERSION tracking + `deploy.log` + site-wide observability panel + `observability_alerts` wired to `/system/info`
 - **Pipeline telemetry** (`pipeline_log.db`): per-run/step timing + status + items;admin UI summary stats + stacked bar chart
 - **Pipeline lock-queue**: concurrent triggers queue via `async with lock` + catch-all defense for user-deleted-mid-queue KeyError
@@ -87,8 +87,9 @@ verified_against: 3bec5ff6
 - Side panel vocab lookup
 - 閱讀選詞翻譯
 - Auth token 整合
-- woff2 字型
+- woff2 字型(`shared/fonts.css` surface-local @font-face)
 - Side panel error state taxonomy + settings entry + `AbortError` safety
+- 消費生成的設計 token(`shared/tokens.css` 由 `ops/gen_web_tokens.py` 產出,`:host` selector 修掉注入 closed Shadow DOM 卻 token degraded 的 bug)
 
 ## Admin
 
@@ -185,3 +186,4 @@ verified_against: 3bec5ff6
 - `backup_verify.sh`: restore drill + integrity check
 - Chrome extension release bundle script + tests
 - pytest pinned in `pyproject.toml [dependency-groups].dev`(修 backend venv 無 pytest)
+- **Web 設計系統地基**: `design-system/tokens.json`(iOS Swift token 鏡像 SoT)→ `ops/gen_web_tokens.py` 生成 web CSS(`design-system/dist/` + chrome-extension + `backend/static/`)+ `ops/token_drift_check.py` drift guard(`$swift` token 偏移 iOS 不可 merge)。手寫 primitives 源 `design-system/dist/kg-components.css`
