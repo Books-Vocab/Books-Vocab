@@ -58,7 +58,7 @@ final class PodcastAssetPreloader {
             // Evict on failure so the next tap retries instead of hitting a
             // stale dead entry for the rest of the TTL window.
             if !ok || Task.isCancelled {
-                await self?.evict(key: key)
+                self?.evict(key: key)
             }
         }
         pending[key] = Entry(
