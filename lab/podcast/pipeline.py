@@ -4,6 +4,7 @@
 # dependencies = [
 #     "ebooklib",
 #     "beautifulsoup4",
+#     "boto3",
 # ]
 # ///
 """Book-to-Podcast Pipeline — EPUB → analysis → plan → scripts → audio → subtitles.
@@ -402,12 +403,17 @@ class PipelineLog:
         print(f"  started: {datetime.now().strftime('%H:%M:%S')}")
         print(f"{'='*60}")
 
-    def stage_end(self, stage: str, success: bool, elapsed: float, **extra: object) -> None:
+    def stage_end(self, stage: str, success: bool, elapsed: float, only_episode: bool = False, **extra: object) -> None:
         self._write({"event": "stage_end", "stage": stage, "success": success, "elapsed_s": round(elapsed, 1), **extra})
         status = "OK" if success else "FAILED"
         print(f"\n  [{stage}] {status} in {elapsed:.0f}s")
-        # Write completion marker
-        if success:
+        # Write the whole-stage completion marker — but NOT for a single-episode
+        # run. `--only-episode N` processes one episode through the normal stage
+        # loop; if it wrote .stage_<name>_done, a later bare `pipeline.py <ws>`
+        # would see the marker, skip the stage via detect_resume_point, and
+        # silently leave every other episode unprocessed. Single-episode runs
+        # must therefore force the producer to drive subsequent work explicitly.
+        if success and not only_episode:
             marker = self.workspace / _STAGE_MARKER.format(name=stage)
             marker.write_text(datetime.now().isoformat())
 
@@ -1073,6 +1079,13 @@ def stage_enricher(workspace: Path, log: PipelineLog) -> bool:
 def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3, only_episode: int | None = None) -> bool:
     if only_episode:
         _, ok = run_scriptwriter(workspace, only_episode)
+        if ok:
+            # Record the authored TTS family even on the single-episode path, or a
+            # ws built purely via --only-episode never gets the sidecar →
+            # stage_synthesize defaults to "3.1" → spurious cross-family mismatch
+            # notices (backstop still safe; this just kills the noise). Mirrors the
+            # full-run write below.
+            (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text(resolve_tts_family(workspace))
         return ok
 
     ep_files = sorted((workspace / "plan" / "episodes").glob("ep_*.md"))
@@ -1890,7 +1903,7 @@ examples:
 
         if not stage_funcs[stage_name]():
             elapsed = time.time() - t0
-            log.stage_end(stage_name, success=False, elapsed=time.time() - stage_t0)
+            log.stage_end(stage_name, success=False, elapsed=time.time() - stage_t0, only_episode=bool(args.only_episode))
             print(f"\n{'='*60}")
             print(f"  PIPELINE FAILED at: {stage_name} ({elapsed:.0f}s total)")
             print(f"  Workspace: {workspace}")
@@ -1899,7 +1912,7 @@ examples:
             print(f"{'='*60}")
             sys.exit(1)
 
-        log.stage_end(stage_name, success=True, elapsed=time.time() - stage_t0)
+        log.stage_end(stage_name, success=True, elapsed=time.time() - stage_t0, only_episode=bool(args.only_episode))
 
     elapsed = time.time() - t0
 
