@@ -22,6 +22,7 @@
 @font-face { font-family: 'ElmsSans'; src: url('/static/fonts/ElmsSans-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-SemiBold.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Italic.woff2') format('woff2'); font-weight: 400 600; font-style: italic; font-display: swap; }
 
 /* --- Site-local tokens ----------------------------------------------------- */
@@ -74,8 +75,11 @@ body.kg-surface {
   display: flex; align-items: center; gap: var(--sp-5);
   padding: 0 var(--page-h-padding);
   background: color-mix(in srgb, var(--page-bg) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(12px);
-  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  /* iOS light nav bar is a flat transparent bar (no material). Keep a neutral
+     blur for web sticky ergonomics, but no saturate — that warm-shift has no
+     iOS basis (scan #8). */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .site-nav__brand {
   font-family: var(--site-serif); font-size: var(--text-h2);
@@ -85,7 +89,7 @@ body.kg-surface {
 }
 .site-nav__links { display: flex; gap: var(--sp-4); list-style: none; align-items: center; }
 .site-nav__links a {
-  font-size: var(--text-caption); font-weight: 600;
+  font-size: var(--text-caption); font-weight: 700;
   letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
   color: var(--text-tertiary); text-decoration: none;
   transition: color var(--motion-quick);
@@ -111,6 +115,30 @@ body.kg-surface {
   padding: var(--sp-10) var(--page-h-padding) var(--sp-10);
 }
 
+/* Card-less prose pages (guide / terms / privacy) get an iOS-faithful white
+   panel sitting on the --page-bg gutter. The app screen is dominated by white
+   cards over a thin warm-grey page, so bare page-bg reads flatter/greyer than
+   iOS even though the token value is identical (scan #1 light-bg verdict).
+   Card-dominant pages (support) stay on the transparent column and keep their
+   standalone cards instead. */
+.site-page--panel {
+  flex: 0 0 auto;
+  max-width: calc(var(--site-measure) + 2 * var(--sp-8));
+  margin: var(--sp-8) auto;
+  padding: var(--sp-9) var(--sp-8);
+  background: var(--card-bg);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-z1);
+}
+/* Inside the panel, nested white cards flatten to divider-delimited blocks (one
+   card per screen, the iOS Settings model) so they never stack white-on-white. */
+.site-page--panel .checklist,
+.site-page--panel .faq-item,
+.site-page--panel .contact-card {
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+}
+
 .page-eyebrow {
   font-size: var(--text-caption); font-weight: 700;
   letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
@@ -120,7 +148,7 @@ body.kg-surface {
 .site-page h1 {
   font-family: var(--site-serif);
   font-size: var(--text-hero); line-height: var(--leading-display);
-  letter-spacing: var(--tracking-tight); font-weight: 600;
+  font-weight: 700;                       /* match iOS Athelas-Bold heft (scan #5) */
   color: var(--text-primary);
   margin-bottom: var(--sp-3);
 }
@@ -136,7 +164,7 @@ body.kg-surface {
 .section > h2 {
   font-family: var(--site-serif);
   font-size: var(--text-h2); line-height: var(--leading-heading);
-  letter-spacing: var(--tracking-h2-tight); font-weight: 600;
+  letter-spacing: var(--tracking-h2-tight); font-weight: 700;
   color: var(--text-primary);
   margin-bottom: var(--sp-4);
 }
@@ -179,6 +207,7 @@ body.kg-surface {
 .checklist {
   list-style: none;
   background: var(--card-bg); border-radius: var(--radius-card);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--card-border) 70%, transparent);
   box-shadow: var(--elevation-z1); overflow: hidden;
 }
 .checklist li {
@@ -208,6 +237,7 @@ body.kg-surface {
 .faq { display: flex; flex-direction: column; gap: var(--sp-3); }
 .faq-item {
   background: var(--card-bg); border-radius: var(--radius-card);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--card-border) 70%, transparent);
   box-shadow: var(--elevation-z1); overflow: hidden;
 }
 .faq-item > summary {
@@ -228,7 +258,7 @@ body.kg-surface {
   color: var(--text-secondary); line-height: var(--leading-body);
 }
 .response-tag {
-  display: inline-block; font-size: var(--text-caption2); font-weight: 600;
+  display: inline-block; font-size: var(--text-caption2); font-weight: 700;
   color: var(--accent); background: var(--accent-subtle);
   padding: var(--sp-micro) var(--sp-2); border-radius: var(--radius-chip);
   margin-top: var(--sp-2);
@@ -238,10 +268,88 @@ body.kg-surface {
 
 .contact-card {
   background: var(--card-bg); border-radius: var(--radius-card);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--card-border) 70%, transparent);
   padding: var(--card-padding); box-shadow: var(--elevation-z1);
   display: flex; flex-direction: column; gap: var(--sp-2);
 }
-.contact-card .contact-email { font-size: var(--text-subhead); font-weight: 600; }
+.contact-card .contact-email { font-size: var(--text-subhead); font-weight: 700; }
+
+/* --- Landing / home -------------------------------------------------------- */
+/* Marketing surfaces may use a display size larger than the in-app --text-hero;
+   this is a website-only headline scale, fluid via clamp, still in the brand serif. */
+
+.hero {
+  flex: 0 0 auto;
+  max-width: 48rem; margin: 0 auto;
+  padding: var(--sp-10) var(--page-h-padding) var(--sp-8);
+  text-align: center;
+}
+.hero .page-eyebrow { color: var(--accent); }
+.hero__title {
+  font-family: var(--site-serif);
+  font-size: clamp(2.5rem, 6.5vw, 4rem); line-height: 1.04;
+  font-weight: 700;                       /* iOS hero ships untracked + bold (scan #5/#6) */
+  color: var(--text-primary);
+  margin: var(--sp-3) 0 var(--sp-4);
+}
+.hero__tagline {
+  font-size: var(--text-section-title); line-height: var(--leading-body);
+  color: var(--text-secondary);
+  max-width: 36rem; margin: 0 auto;
+}
+.hero__cta {
+  display: flex; flex-wrap: wrap; gap: var(--sp-3);
+  justify-content: center; align-items: center;
+  margin-top: var(--sp-6);
+}
+.hero__cta .kg-btn { font-size: var(--text-body); padding: var(--sp-3) var(--sp-6); }
+.hero__note {
+  margin-top: var(--sp-4);
+  font-size: var(--text-caption); letter-spacing: var(--tracking-uppercase);
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+
+.landing-section {
+  width: 100%; max-width: 60rem; margin: 0 auto;
+  padding: var(--sp-6) var(--page-h-padding) var(--sp-9);
+}
+.feature-grid {
+  display: grid; gap: var(--sp-4);
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.feature-card { display: flex; flex-direction: column; gap: var(--sp-2); }
+.feature-eyebrow {
+  font-size: var(--text-caption); font-weight: 700;
+  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
+  color: var(--accent);
+}
+.feature-card h2 {
+  font-family: var(--site-serif);
+  font-size: var(--text-section-title); line-height: var(--leading-heading);
+  font-weight: 700; color: var(--text-primary);
+}
+.feature-card p { color: var(--text-secondary); line-height: var(--leading-body); }
+
+.closing {
+  flex: 0 0 auto;
+  max-width: 40rem; margin: 0 auto;
+  padding: var(--sp-8) var(--page-h-padding) var(--sp-10);
+  text-align: center;
+}
+.closing__title {
+  font-family: var(--site-serif);
+  font-size: var(--text-h1); line-height: var(--leading-heading);
+  font-weight: 700;                       /* untracked + bold, matches iOS (scan #5/#6) */
+  color: var(--text-primary);
+}
+.closing__lead {
+  font-size: var(--text-subhead); color: var(--text-secondary);
+  margin-top: var(--sp-2);
+}
+@media (max-width: 640px) {
+  .hero { padding-top: var(--sp-8); }
+  .hero__title { font-size: clamp(2.25rem, 9vw, 3rem); }
+}
 
 /* --- Footer ---------------------------------------------------------------- */
 
@@ -269,6 +377,10 @@ body.kg-surface {
   .site-nav__links { gap: var(--sp-3); }
   .site-nav__brand { font-size: var(--text-section-title); }
   .site-page { padding: var(--sp-7) var(--sp-4) var(--sp-8); }
+  .site-page--panel {
+    width: auto; margin: var(--sp-5) var(--sp-4);
+    padding: var(--sp-7) var(--sp-5); border-radius: var(--radius-lg);
+  }
   .site-page h1 { font-size: var(--text-h1); }
   .data-table th:first-child, .data-table td:first-child { padding-left: 0; }
 }
