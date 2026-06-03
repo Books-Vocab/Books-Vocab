@@ -150,7 +150,12 @@ class _LinksMixin:
 
     def get_link(self, link_id: str) -> GraphLink | None:
         """Return a link by ID, or None if not found."""
-        return self._links.get(link_id)
+        # Take _lock to read _links: concurrent writers mutate the dict on the
+        # same cached instance, so this mirrors get_links_for/find_link_between
+        # rather than reading lock-free. All public callers (vocab_graph_ops)
+        # invoke this outside _lock, so acquiring it here cannot deadlock.
+        with self._lock:
+            return self._links.get(link_id)
 
     def update_link(self, link_id: str, **attrs: Any) -> GraphLink:
         """Update attributes of an existing link and persist."""
