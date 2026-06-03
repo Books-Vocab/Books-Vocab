@@ -305,4 +305,93 @@ struct BackgroundSyncActorTests {
 
         #expect(result.orphanCleanupBlocked == false)
     }
+
+    // MARK: - clearUserData (logout / account-switch isolation)
+    //
+    // Regression coverage for the multi-account podcast leak: the local clear
+    // path deleted vocab / review / notebook but left PodcastSeries /
+    // PodcastEpisode / PodcastProgress behind, so account B saw account A's
+    // followed series and playback progress. `clearUserData` must wipe all
+    // seven @Model types in one pass.
+
+    /// Seed N series (each with M cascade-owned episodes), K orphan episodes
+    /// (no series), and P progress rows.
+    private func seedPodcastData(
+        _ container: ModelContainer,
+        series seriesCount: Int,
+        episodesPerSeries: Int,
+        orphanEpisodes: Int,
+        progress progressCount: Int
+    ) throws {
+        let context = ModelContext(container)
+        for s in 0..<seriesCount {
+            let series = PodcastSeries(remoteId: "series-\(s)", title: "Series \(s)", hostNames: ["Host"])
+            series.isFollowed = true
+            context.insert(series)
+            for e in 0..<episodesPerSeries {
+                let ep = PodcastEpisode(remoteId: "s\(s)-e\(e)", episodeNumber: e, title: "Ep \(e)", durationSec: 60)
+                ep.series = series
+                context.insert(ep)
+            }
+        }
+        for o in 0..<orphanEpisodes {
+            let ep = PodcastEpisode(remoteId: "orphan-ep-\(o)", episodeNumber: o, title: "Orphan \(o)", durationSec: 60)
+            context.insert(ep)
+        }
+        for p in 0..<progressCount {
+            let prog = PodcastProgress(episodeRemoteId: "prog-ep-\(p)", lastPlayedTime: 12.5, completed: false)
+            context.insert(prog)
+        }
+        try context.save()
+    }
+
+    @Test func clearUserData_removes_all_podcast_models() async throws {
+        let container = try makeContainer()
+        try seedSyncedEntries(container, count: 3)
+        try seedPodcastData(
+            container,
+            series: 2,
+            episodesPerSeries: 3,   // 6 cascade-owned episodes
+            orphanEpisodes: 2,      // 2 series-less orphans
+            progress: 4
+        )
+
+        // Sanity: data is actually present before the clear.
+        let preContext = ModelContext(container)
+        #expect(try preContext.fetchCount(FetchDescriptor<PodcastSeries>()) == 2)
+        #expect(try preContext.fetchCount(FetchDescriptor<PodcastEpisode>()) == 8) // 6 + 2 orphans
+        #expect(try preContext.fetchCount(FetchDescriptor<PodcastProgress>()) == 4)
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.clearUserData(reason: "account-switch")
+
+        let context = ModelContext(container)
+        #expect(try context.fetchCount(FetchDescriptor<PodcastSeries>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<PodcastEpisode>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<PodcastProgress>()) == 0)
+    }
+
+    @Test func clearUserData_still_removes_vocab_review_notebook() async throws {
+        let container = try makeContainer()
+
+        let context = ModelContext(container)
+        // vocab
+        let entry = VocabularyEntry(word: "alpha", translation: "m", context: "ctx", bookTitle: "Book")
+        entry.notebookId = "default"
+        entry.markSynced()
+        context.insert(entry)
+        // review
+        context.insert(ReviewRecord(word: "alpha", entryID: nil, feedback: 1, reviewedAt: Date()))
+        // notebook
+        context.insert(Notebook(remoteId: "nb1", name: "NB"))
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.clearUserData(reason: "logout")
+
+        let after = ModelContext(container)
+        #expect(try after.fetchCount(FetchDescriptor<VocabularyEntry>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<ReviewRecord>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<Notebook>()) == 0)
+    }
 }
