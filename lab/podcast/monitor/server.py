@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Saga (multi-book continuous-feed) modules live one level up in lab/podcast/.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from cost import aggregate_workspace  # noqa: E402
-from jobs import tracker as jobs, JobLimitReached, WorkspaceBusyError  # noqa: E402
+from jobs import tracker as jobs, JobLimitReached, WorkspaceBusyError, MAX_HISTORY  # noqa: E402
 import remote as remote_ops  # noqa: E402
 import saga  # noqa: E402  — parse series.md for the workspace summary
 import archetypes  # noqa: E402  — validate spoiler_mode for a saga upload
@@ -77,6 +77,83 @@ def _staging_dest(safe_name: str) -> Path:
     token = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
     return UPLOAD_STAGING / f"{token}_{safe_name}"
 
+
+# ─── Orphan staging reaper ──────────────────────────────────────────────────
+# extract_epub (pipeline.py stage 1) splits the staged EPUB into per-chapter
+# provenance under the workspace; the ORIGINAL staged `.uploads/<token>_*.epub`
+# is then redundant but never reclaimed — every successful upload permanently
+# leaks one full EPUB (up to MAX_EPUB_BYTES) onto the same disk as the prod data
+# dir, eventually wedging the 2GB VPS. The endpoints stamp each staged path into
+# the job's metadata; this server-owned sweep deletes staged files that (a) are
+# NOT the in-place input of any active job AND (b) are older than a generous age
+# threshold. jobs.py stays ignorant of staging-file semantics.
+
+# Age threshold: must comfortably exceed the longest possible pipeline so we
+# never reap a file a slow running job still reads. Defaults to 12h (a saga of
+# several books can run for hours); the active-job path check is the precise
+# guard, this threshold only gates files with NO matching active job.
+STAGING_MAX_AGE_S = int(os.getenv("PODCAST_STAGING_MAX_AGE_S", str(12 * 3600)))
+# How often the background loop sweeps (default 30 min).
+STAGING_SWEEP_INTERVAL_S = int(os.getenv("PODCAST_STAGING_SWEEP_INTERVAL_S", "1800"))
+
+
+def _active_staging_paths() -> set[Path]:
+    """Staged EPUB paths claimed by a still-active (running|pending) job — these
+    are in-place pipeline.py inputs and must NEVER be swept while the job runs.
+    Finished jobs (succeeded|failed|killed) no longer need their input, so their
+    paths are omitted and become reclaimable orphans."""
+    active: set[Path] = set()
+    for j in jobs.list(limit=MAX_HISTORY):
+        if getattr(j, "status", None) not in {"running", "pending"}:
+            continue
+        for s in (getattr(j, "metadata", None) or {}).get("_staging_paths", ()):
+            active.add(Path(s))
+    return active
+
+
+def _sweep_staging(
+    staging_dir: Path,
+    active_paths: set[Path],
+    *,
+    max_age_s: float,
+    now: float | None = None,
+) -> list[Path]:
+    """Delete orphaned staged EPUBs. A file is removed iff BOTH hold:
+      1. it is not referenced by any active job (`active_paths`) — the precise,
+         immediate guard so a running pipeline's in-place input always survives;
+      2. its mtime is older than `max_age_s` — the crash/leak backstop covering
+         files whose owning job vanished (server restart) or never registered.
+    Returns the list of paths actually unlinked. Missing dir → no-op."""
+    if not staging_dir.exists():
+        return []
+    now = time.time() if now is None else now
+    removed: list[Path] = []
+    for p in sorted(staging_dir.iterdir()):
+        if not p.is_file():
+            continue
+        if p in active_paths:
+            continue  # in-place input of a live job — never touch
+        try:
+            age = now - p.stat().st_mtime
+        except OSError:
+            continue
+        if age < max_age_s:
+            continue  # too fresh — an upload may be mid-registration
+        try:
+            p.unlink()
+            removed.append(p)
+        except OSError:
+            pass
+    return removed
+
+
+def sweep_orphan_staging() -> list[Path]:
+    """Convenience wrapper: sweep the live UPLOAD_STAGING against current active
+    jobs using the configured age threshold. Used by startup + the periodic loop."""
+    return _sweep_staging(
+        UPLOAD_STAGING, _active_staging_paths(), max_age_s=STAGING_MAX_AGE_S
+    )
+
 # Workspace name regex — same constraint as backend _SERIES_ID_RE plus a
 # safety guard against `..` / absolute paths sneaking in via FastAPI path params.
 _WS_NAME_RE = re.compile(r"\A[a-z0-9_]+\Z")
@@ -107,7 +184,42 @@ def _resolve_ws(ws_name: str) -> Path:
     return ws
 
 
-app = FastAPI(title="Podcast Pipeline Monitor")
+from contextlib import asynccontextmanager  # noqa: E402
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """On startup, sweep crash-leftover orphans once, then run a periodic sweep
+    in the background so .uploads never grows unbounded on a long-lived server.
+    The active-job path check makes both passes safe to run anytime — a live
+    pipeline's in-place input is always protected. The loop is a daemon-ish task
+    cancelled on shutdown."""
+    try:
+        removed = sweep_orphan_staging()
+        if removed:
+            print(f"[staging-reaper] startup swept {len(removed)} orphan(s)")
+    except Exception as exc:  # noqa: BLE001 — never let cleanup wedge startup
+        print(f"[staging-reaper] startup sweep error: {exc}")
+
+    async def _loop():
+        while True:
+            await asyncio.sleep(STAGING_SWEEP_INTERVAL_S)
+            try:
+                # Offload blocking fs work off the event loop.
+                removed = await asyncio.to_thread(sweep_orphan_staging)
+                if removed:
+                    print(f"[staging-reaper] swept {len(removed)} orphan(s)")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[staging-reaper] periodic sweep error: {exc}")
+
+    task = asyncio.create_task(_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(title="Podcast Pipeline Monitor", lifespan=_lifespan)
 
 
 @app.middleware("http")
@@ -1152,7 +1264,16 @@ async def start_pipeline(
             kind="pipeline",
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
-            metadata={"epub": safe_name, "parallel": parallel, "bytes": written, "tts_model": tts_model or None},
+            metadata={
+                "epub": safe_name,
+                "parallel": parallel,
+                "bytes": written,
+                "tts_model": tts_model or None,
+                # Staged input path(s) for the orphan-staging reaper: while this
+                # job is running/pending the file is its in-place argv input and
+                # must not be swept; once finished it becomes a reclaimable orphan.
+                "_staging_paths": [str(dest)],
+            },
             dedup_key=f"epub:{digest.hexdigest()}",
         )
     except WorkspaceBusyError as e:
@@ -1252,7 +1373,15 @@ async def start_saga(
             kind="pipeline",
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
-            metadata={"saga": title, "books": len(staged), "parallel": parallel, "tts_model": tts_model or None},
+            metadata={
+                "saga": title,
+                "books": len(staged),
+                "parallel": parallel,
+                "tts_model": tts_model or None,
+                # Every staged book is an in-place argv input for the running
+                # pipeline; record all so the reaper protects them as a set.
+                "_staging_paths": [str(p) for p in staged],
+            },
             dedup_key=f"epub:{saga_digest.hexdigest()}",
         )
     except WorkspaceBusyError as e:
