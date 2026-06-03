@@ -146,9 +146,14 @@ def admin_audit_response(
     *,
     since: str | None = None,
     limit: int = 100,
+    action: str | None = None,
 ) -> dict[str, Any]:
-    """Return recent admin audit log entries, newest-first."""
+    """Return recent admin audit log entries, newest-first.
+
+    ``action`` optionally restricts rows to an exact action match
+    (e.g. ``grant_pro`` / ``revoke_pro``); blank/omitted returns all actions.
+    """
     from ..admin_audit import list_audit
 
-    rows = list_audit(since=since, limit=limit)
+    rows = list_audit(since=since, limit=limit, action=action)
     return {"audit": rows, "count": len(rows)}

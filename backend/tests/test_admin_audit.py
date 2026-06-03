@@ -147,6 +147,43 @@ def test_list_limit_clamped(audit_db):
     assert 1 <= len(admin_audit.list_audit(limit=0)) <= 5
 
 
+# ── action filter ──────────────────────────────────────────────────────────
+
+
+def test_list_action_filter(audit_db):
+    admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid="u1", payload={})
+    admin_audit.record_audit(admin_uid="a", action="revoke_pro", target_uid="u2", payload={})
+    admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid="u3", payload={})
+
+    # No filter → all rows
+    assert len(admin_audit.list_audit()) == 3
+    # Filter to grant only
+    grants = admin_audit.list_audit(action="grant_pro")
+    assert {r["target_uid"] for r in grants} == {"u1", "u3"}
+    assert all(r["action"] == "grant_pro" for r in grants)
+    # Filter to revoke only
+    revokes = admin_audit.list_audit(action="revoke_pro")
+    assert {r["target_uid"] for r in revokes} == {"u2"}
+    # Unknown action → empty
+    assert admin_audit.list_audit(action="nope") == []
+
+
+def test_list_action_filter_with_since(audit_db):
+    admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid="u1", payload={})
+    cutoff = admin_audit.list_audit()[0]["created_at"]
+    admin_audit.record_audit(admin_uid="a", action="revoke_pro", target_uid="u2", payload={})
+    admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid="u3", payload={})
+    rows = admin_audit.list_audit(since=cutoff, action="grant_pro")
+    assert {r["target_uid"] for r in rows} == {"u1", "u3"}
+
+
+def test_list_action_blank_treated_as_no_filter(audit_db):
+    admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid="u1", payload={})
+    admin_audit.record_audit(admin_uid="a", action="revoke_pro", target_uid="u2", payload={})
+    assert len(admin_audit.list_audit(action="")) == 2
+    assert len(admin_audit.list_audit(action="   ")) == 2
+
+
 # ── Endpoint: GET /api/admin/audit ─────────────────────────────────────────
 
 
@@ -169,6 +206,19 @@ def test_audit_endpoint_with_cookie_returns_rows(admin_app):
     assert body["audit"][0]["action"] == "grant_pro"
     assert body["audit"][0]["target_uid"] == "u-target"
     assert body["audit"][0]["payload"] == {"foo": "bar"}
+
+
+def test_audit_endpoint_action_query_filters(admin_app):
+    admin_audit.record_audit(admin_uid="ops", action="grant_pro", target_uid="u-target", payload={})
+    admin_audit.record_audit(admin_uid="ops", action="revoke_pro", target_uid="u-target", payload={})
+    resp = admin_app.client.get(
+        "/api/admin/audit",
+        params={"token": ADMIN_TOKEN, "action": "revoke_pro"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["audit"]) == 1
+    assert body["audit"][0]["action"] == "revoke_pro"
 
 
 def test_audit_endpoint_with_token_query(admin_app):

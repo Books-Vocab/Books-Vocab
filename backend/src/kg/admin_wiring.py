@@ -297,9 +297,15 @@ def create_admin_handlers(
             "token_deleted": report["token_usage"]["deleted"],
         }
 
-    def admin_audit(since: str | None = None, limit: int = 100):
-        """Return recent admin mutation audit log entries."""
-        return admin_audit_response(since=since, limit=limit)
+    def admin_audit(
+        since: str | None = None, limit: int = 100, action: str | None = None
+    ):
+        """Return recent admin mutation audit log entries.
+
+        Optional ``action`` query param filters to an exact action
+        (e.g. ``grant_pro`` / ``revoke_pro``); omitted returns all.
+        """
+        return admin_audit_response(since=since, limit=limit, action=action)
 
     def admin_user_detail_ui():
         """User detail page UI."""
