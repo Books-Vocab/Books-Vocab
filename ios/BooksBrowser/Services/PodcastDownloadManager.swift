@@ -104,7 +104,10 @@ final class PodcastDownloadManager: NSObject {
         episode.modelContext?.safeSave()
     }
 
-    static func downloadsRoot() -> URL {
+    // nonisolated: pure FileManager path math, no actor state. Lets the
+    // nonisolated `purgeDownloads` default argument and the cross-platform
+    // cleaner evaluate it without a MainActor hop.
+    nonisolated static func downloadsRoot() -> URL {
         FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("podcast-downloads", isDirectory: true)
