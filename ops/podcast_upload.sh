@@ -249,7 +249,7 @@ if [[ $DRY_RUN -eq 1 ]]; then
     size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo "?")
     echo "  $(echo "$f" | sed "s|$STAGING/||")  ($size bytes)"
   done
-  info "Would: aws s3 sync $STAGING/ $S3_PREFIX/$SERIES_ID/ --region $REGION --delete"
+  info "Would: per-file 'aws s3 cp --content-type' each file into $S3_PREFIX/$SERIES_ID/ (metadata.json last), then prune remote orphans"
   rm -rf "$STAGING"
   exit 0
 fi
@@ -268,31 +268,76 @@ content_type_for() {
   esac
 }
 
-info "Syncing to $S3_PREFIX/$SERIES_ID/ ..."
-# Sync everything in one pass (multipart upload for large files is automatic).
-# --delete removes server-side artifacts that no longer exist locally — same
-# semantics as the previous rsync invocation.
-# We then loop again to fix Content-Type per file because `aws s3 sync` only
-# accepts ONE --content-type and we have heterogeneous extensions. Copy-in-
-# place is the documented way to alter metadata.
-run_aws s3 sync \
-  --region "$REGION" \
-  --delete \
-  --no-progress \
-  "$STAGING/" "$S3_PREFIX/$SERIES_ID/"
-
-info "Fixing Content-Type per file ..."
-find "$STAGING" -type f | while read -r f; do
+info "Uploading to $S3_PREFIX/$SERIES_ID/ ..."
+# Single-pass per-file `cp --content-type`: every object lands with its correct
+# Content-Type from the very first byte. The old "sync (octet-stream) then
+# fixup loop" left a window where audio was already PUT as binary/octet-stream
+# — AVPlayer rejects that. If the upload aborted in that window, iOS still saw
+# audioAvailable:true (metadata.json had been written by sync) pointing at
+# broken audio. Per-file cp eliminates the window entirely.
+#
+# Ordering invariant: upload metadata.json LAST. It is the "ready" signal —
+# audioAvailable:true must never be visible before the audio it describes is
+# fully present with a playable Content-Type.
+find "$STAGING" -type f ! -name metadata.json | while read -r f; do
   rel="${f#$STAGING/}"
   ct="$(content_type_for "$f")"
   run_aws s3 cp \
     --region "$REGION" \
     --no-progress \
-    --metadata-directive REPLACE \
     --content-type "$ct" \
-    "$S3_PREFIX/$SERIES_ID/$rel" "$S3_PREFIX/$SERIES_ID/$rel" >/dev/null
+    "$f" "$S3_PREFIX/$SERIES_ID/$rel" >/dev/null
 done
+
+# metadata.json LAST — the ready signal (see ordering invariant above).
+if [[ -f "$STAGING/metadata.json" ]]; then
+  run_aws s3 cp \
+    --region "$REGION" \
+    --no-progress \
+    --content-type "$(content_type_for "$STAGING/metadata.json")" \
+    "$STAGING/metadata.json" "$S3_PREFIX/$SERIES_ID/metadata.json" >/dev/null
+fi
 ok "Upload complete"
+
+# ── Reconcile (replaces `aws s3 sync --delete`) ──────────────────────────────
+# Per-file cp does not prune server-side orphans, so we delete any remote key
+# under this series prefix that no longer exists in staging — preserving the
+# previous --delete semantics. Done AFTER metadata.json upload: pruning a stale
+# orphan never affects the ready signal, and deleting before would not help.
+info "Reconciling remote (pruning orphans) ..."
+"$UV_BIN" run --with boto3 python - \
+  "$BUCKET" "$REGION" "${AWS_ENDPOINT_URL:-}" "$SERIES_ID" "$STAGING" <<'PYEOF'
+import sys, os, boto3
+bucket, region, endpoint, series_id, staging = sys.argv[1:6]
+kwargs = {"region_name": region}
+if endpoint:
+    kwargs["endpoint_url"] = endpoint
+s3 = boto3.client("s3", **kwargs)
+
+# Relative keys present locally (what we just uploaded).
+local = set()
+for root, _dirs, files in os.walk(staging):
+    for fn in files:
+        rel = os.path.relpath(os.path.join(root, fn), staging)
+        local.add(rel.replace(os.sep, "/"))
+
+prefix = f"{series_id}/"
+paginator = s3.get_paginator("list_objects_v2")
+orphans = []
+for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+    for obj in page.get("Contents", []) or []:
+        rel = obj["Key"][len(prefix):]
+        if rel and rel not in local:
+            orphans.append(obj["Key"])
+
+for i in range(0, len(orphans), 1000):
+    batch = orphans[i:i + 1000]
+    s3.delete_objects(
+        Bucket=bucket,
+        Delete={"Objects": [{"Key": k} for k in batch], "Quiet": True},
+    )
+print(f"reconcile: pruned {len(orphans)} orphan object(s)")
+PYEOF
 
 # ── Rebuild index.json locally (no remote flock needed — last writer wins) ───
 # Multiple concurrent uploads racing the index.json swap is still possible,
@@ -317,7 +362,7 @@ series_ids = set()
 for page in paginator.paginate(Bucket=bucket, Delimiter="/"):
     for p in page.get("CommonPrefixes", []) or []:
         sid = p["Prefix"].rstrip("/")
-        if sid and sid != "index.json":
+        if sid:
             series_ids.add(sid)
 
 entries = []
