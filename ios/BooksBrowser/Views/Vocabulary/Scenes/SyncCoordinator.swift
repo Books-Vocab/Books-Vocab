@@ -47,6 +47,39 @@ enum SyncFailureKind {
     case cancelled
 }
 
+/// Pipeline 跑完(或拋錯)後該落入的終態。
+///
+/// 抽成純函式讓「cancel 後不被泛型全失敗覆寫」的關鍵分類邏輯可單元測試,
+/// 不必拖整條真實 async pipeline。三個輸入完全決定終態:
+/// - `wasCancelled`：使用者已按取消(`cancelSync()` 設旗標)。**最高優先級** —
+///   cancel 後無論 pipeline 走 break 正常結束、或某 `try await` 拋 `CancellationError`,
+///   都不可覆寫 `cancelSync()` 已設好的 `.cancelled` 終態。回 `nil` 代表「保持現狀,
+///   呼叫端不要動 phase/failureKind/summary」。
+/// - `thrownError`：catch 收到的 error。非 nil = 走了 catch path。
+/// - `encounteredFailure`：success path 累積的部分失敗旗標。
+enum SyncTerminalOutcome: Equatable {
+    /// 維持 `cancelSync()` 已設的 `.cancelled` 終態,呼叫端不覆寫。
+    case keepCancelled
+    /// `.completed` 全綠。
+    case completed
+    /// `.failed` + `.partial`,部分項目未同步。
+    case partial
+    /// `.failed` + `.full`,整條 pipeline 拋錯。
+    case fullFailure
+}
+
+/// 純函式:由三個訊號決定 sync 終態。見 `SyncTerminalOutcome`。
+/// `wasCancelled` 一律壓過其他訊號(含 catch path 拋的 `CancellationError`)。
+func syncTerminalOutcome(
+    wasCancelled: Bool,
+    thrownError: Bool,
+    encounteredFailure: Bool
+) -> SyncTerminalOutcome {
+    if wasCancelled { return .keepCancelled }
+    if thrownError { return .fullFailure }
+    return encounteredFailure ? .partial : .completed
+}
+
 @Observable @MainActor
 final class SyncCoordinator: SyncCoordinating {
     var steps: [PipelineStep] = []
@@ -55,6 +88,11 @@ final class SyncCoordinator: SyncCoordinating {
     var failureKind: SyncFailureKind?
 
     @ObservationIgnored private var pipelineTask: Task<Void, Never>?
+    /// 使用者已按取消。`cancelSync()` 已搶先把終態設成 `.cancelled`;pipeline
+    /// 收尾(success path 或 catch path)看到此旗標就不覆寫終態。
+    /// `Task.isCancelled` 不夠用——非 cancel 的真實錯誤也可能在 cancel 之外發生,
+    /// 而此旗標只在使用者主動取消時為 true。
+    @ObservationIgnored private var wasCancelledByUser = false
 
     func buildSteps(deleteCount: Int, addCount: Int) {
         var list: [PipelineStep] = []
@@ -82,6 +120,7 @@ final class SyncCoordinator: SyncCoordinating {
         phase = .running
         summaryText = ""
         failureKind = nil
+        wasCancelledByUser = false
         AppAnalytics.track(.syncStarted)
         let syncStartTime = Date()
 
@@ -290,28 +329,56 @@ final class SyncCoordinator: SyncCoordinating {
 
                 self.updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地單字已建立完成"))
                 let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
-                if encounteredFailure {
+                // cancel 可能讓 pipeline 走 break 正常結束(未拋)而落到這裡;
+                // 若不守旗標,success path 會把 cancelSync() 設好的 .cancelled
+                // 覆寫成 .partial/.completed。
+                switch syncTerminalOutcome(
+                    wasCancelled: self.wasCancelledByUser,
+                    thrownError: false,
+                    encounteredFailure: encounteredFailure
+                ) {
+                case .keepCancelled:
+                    break  // cancelSync() 已設 .cancelled,不動
+                case .partial:
                     self.summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
                     self.failureKind = .partial
                     self.phase = .failed
                     AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .partial))
-                } else {
+                case .completed:
                     self.phase = .completed
                     await SyncPendingTip.syncCompleted.donate()
                     SyncPendingTip().invalidate(reason: .actionPerformed)
                     AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .success))
+                case .fullFailure:
+                    break  // success path 不會回 .fullFailure(thrownError=false)
                 }
             } catch {
                 let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
-                self.summaryText = error.localizedDescription
-                self.failureKind = .full
-                self.phase = .failed
-                AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .failed))
+                // cancel 後下一個 try await 拋 CancellationError 會落到這裡。
+                // 不守旗標就會把 .cancelled 覆寫成泛型 .full(CancellationError
+                // 的 localizedDescription ≈「操作無法完成」,誤導使用者以為崩潰)。
+                // 非 cancel 的真實錯誤 wasCancelledByUser==false → 正常進 .full。
+                switch syncTerminalOutcome(
+                    wasCancelled: self.wasCancelledByUser,
+                    thrownError: true,
+                    encounteredFailure: encounteredFailure
+                ) {
+                case .keepCancelled:
+                    break  // cancelSync() 已設 .cancelled,不覆寫
+                case .fullFailure:
+                    self.summaryText = error.localizedDescription
+                    self.failureKind = .full
+                    self.phase = .failed
+                    AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .failed))
+                case .partial, .completed:
+                    break  // catch path 一律回 .keepCancelled 或 .fullFailure
+                }
             }
         }
     }
 
     func cancelSync() {
+        wasCancelledByUser = true
         pipelineTask?.cancel()
         phase = .failed
         failureKind = .cancelled
