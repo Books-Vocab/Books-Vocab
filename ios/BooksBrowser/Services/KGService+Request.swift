@@ -17,8 +17,7 @@ extension KGService {
         retryPolicy: RetryPolicy = .default,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> (Data, HTTPURLResponse) {
-        var token = try await currentAuthToken()
-        var didRefreshToken = false
+        let token = try await currentAuthToken()
 
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent(path),
@@ -73,17 +72,10 @@ extension KGService {
                 )
 
                 if httpResponse.statusCode == 401 {
-                    // 嘗試刷新 token 一次；若已刷新過仍 401 則放棄
-                    if !didRefreshToken {
-                        didRefreshToken = true
-                        AppLog.kg.info("401 received for \(path) request_id=\(responseRequestID), attempting token refresh")
-                        let newToken = try await currentAuthToken()
-                        if newToken != token {
-                            token = newToken
-                            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                            continue
-                        }
-                    }
+                    // No client-side token refresh exists (AuthManager.token is a plain
+                    // stored credential; there is no refresh-token flow). A 401 means the
+                    // session is invalid — surface it so the upper layer can log out.
+                    AppLog.kg.info("401 received for \(path) request_id=\(responseRequestID), surfacing unauthorized")
                     throw KGError.unauthorized
                 }
 
