@@ -458,6 +458,28 @@ class PipelineLog:
 # ─── EPUB Extraction ───
 
 
+def _doc_items_in_spine(book: object) -> list:
+    """Return ITEM_DOCUMENT items in *spine* (reading) order.
+
+    ``get_items_of_type(ITEM_DOCUMENT)`` yields manifest order, which is not
+    guaranteed to match reading order — books whose manifest is shuffled relative
+    to the spine would get mis-numbered ``raw_ch_NN`` and corrupt every
+    downstream stage (saga boundaries, spoiler horizon) silently. The spine is
+    the authoritative reading order, so we walk it and resolve each idref to its
+    document item. Falls back to manifest order (loud-logged) if the spine is
+    missing or yields nothing.
+    """
+    docs: list = []
+    for idref, _ in getattr(book, "spine", None) or []:
+        item = book.get_item_with_id(idref)
+        if item is not None and item.get_type() == ebooklib.ITEM_DOCUMENT:
+            docs.append(item)
+    if docs:
+        return docs
+    print("  WARN: EPUB spine empty/unresolvable — falling back to manifest order")
+    return list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
+
+
 def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
     book = epub.read_epub(epub_path)
     title = book.get_metadata("DC", "title")[0][0]
@@ -465,7 +487,7 @@ def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
     lang = book.get_metadata("DC", "language")[0][0]
 
     chapters = []
-    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+    for item in _doc_items_in_spine(book):
         soup = BeautifulSoup(item.get_content(), "html.parser")
         text = soup.get_text(separator="\n", strip=True)
         if len(text) > 50:
