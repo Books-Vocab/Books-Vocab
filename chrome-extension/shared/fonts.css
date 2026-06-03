@@ -1,0 +1,32 @@
+/* ============================================================
+   KG Extension @font-face — surface-local, NOT part of the shared token CSS.
+   Font *families* are declared as tokens (--font-sans/serif/italic/mono in
+   tokens.css); the woff2 URLs are surface-specific, so each web surface ships
+   its own @font-face. Only the woff2 files that actually exist in fonts/ are
+   declared here (Athelas has no bundled woff2 → serif falls back via the
+   --font-serif cascade to STSongti TC / Noto Serif TC / Georgia).
+   ============================================================ */
+
+@font-face {
+  font-family: 'ElmsSans';
+  src: url('../fonts/ElmsSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ElmsSans';
+  src: url('../fonts/ElmsSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CormorantGaramond';
+  src: url('../fonts/CormorantGaramond-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}

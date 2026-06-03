@@ -2,6 +2,10 @@
 backups/
 plan/
 dist/
+# design-system/dist is canonical, not build output: kg-components.css is
+# hand-authored and kg-tokens.css is the linkable artifact — track them.
+!design-system/dist/
+!design-system/dist/**
 
 # lab/ — track source code only; ignore binaries/credentials/sandboxes
 lab/claude-code-gateway/.venv/
