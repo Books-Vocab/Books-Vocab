@@ -1078,6 +1078,13 @@ def stage_enricher(workspace: Path, log: PipelineLog) -> bool:
 def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3, only_episode: int | None = None) -> bool:
     if only_episode:
         _, ok = run_scriptwriter(workspace, only_episode)
+        if ok:
+            # Record the authored TTS family even on the single-episode path, or a
+            # ws built purely via --only-episode never gets the sidecar →
+            # stage_synthesize defaults to "3.1" → spurious cross-family mismatch
+            # notices (backstop still safe; this just kills the noise). Mirrors the
+            # full-run write below.
+            (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text(resolve_tts_family(workspace))
         return ok
 
     ep_files = sorted((workspace / "plan" / "episodes").glob("ep_*.md"))
