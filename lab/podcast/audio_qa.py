@@ -84,7 +84,24 @@ def analyze(audio_path: Path) -> dict:
 
     import time
     t0 = time.time()
-    seg = AudioSegment.from_file(str(audio_path))
+    try:
+        seg = AudioSegment.from_file(str(audio_path))
+    except Exception as e:
+        # Undecodable file (0-byte / truncated / corrupt) — the very failure
+        # mode audio_qa exists to catch. Report it as FAIL instead of letting
+        # one bad file abort the whole batch (CLI + pipeline stage both benefit).
+        findings.append(("FAIL", f"decode error: {e}"))
+        return {
+            "file": audio_path.name,
+            "duration_s": 0,
+            "word_count": 0,
+            "wpm": 0,
+            "peak_dbfs": 0,
+            "avg_dbfs": 0,
+            "long_silence_count": 0,
+            "findings": findings,
+            "verdict": "FAIL",
+        }
     print(f"    load: {time.time()-t0:.1f}s")
 
     t1 = time.time()
