@@ -37,7 +37,10 @@ sys.stdout.reconfigure(line_buffering=True)
 
 logger = logging.getLogger("podcast.subtitle")
 
-import stable_whisper
+# Audio container suffixes a CLI target may point at. Must stay in sync with the
+# patterns find_audio() probes (m4a is the post-Track-B default; mp3 legacy; wav
+# unmastered). Anything else is treated as a script target.
+AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav"}
 
 from tts_config import (
     DIALOGUE_RE as _DIALOGUE_RE,
@@ -118,6 +121,21 @@ def find_audio(script_path: Path) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def is_audio_target(path: Path) -> bool:
+    """True if a CLI target points at an audio file rather than a script."""
+    return path.suffix.lower() in AUDIO_SUFFIXES
+
+
+def resolve_script_for_audio(audio: Path) -> Path | None:
+    """Resolve an audio target back to its sibling script .md, or None."""
+    stem = audio.stem.removesuffix("_pro").removesuffix("_flash")
+    candidates = [
+        audio.parent / f"{stem}_script.md",
+        audio.parent / f"{stem}.md",
+    ]
+    return next((c for c in candidates if c.exists()), None)
 
 
 def _format_ts(seconds: float) -> str:
@@ -220,7 +238,10 @@ def align_and_save(script_path: Path, audio_path: Path, model_name: str) -> Path
     print(f"  {word_count} words, {len(segments)} segments, speakers: {', '.join(speakers)}")
     print(f"  Audio: {audio_path.name} ({audio_mb:.1f} MB)")
 
-    # Load whisper model
+    # Load whisper model (deferred import keeps module-level helpers importable
+    # without the heavy stable-ts dependency for unit tests).
+    import stable_whisper
+
     print(f"  Loading whisper model '{model_name}'...")
     model = stable_whisper.load_model(model_name)
     load_elapsed = time.time() - t0
@@ -262,16 +283,13 @@ def main():
     target = Path(args.target)
 
     if target.is_file():
-        # Accept either a script .md or an audio file (.mp3/.wav) — resolve to script.
-        if target.suffix.lower() in {".mp3", ".wav"}:
-            stem = target.stem.removesuffix("_pro").removesuffix("_flash")
-            candidates = [
-                target.parent / f"{stem}_script.md",
-                target.parent / f"{stem}.md",
-            ]
-            script = next((c for c in candidates if c.exists()), None)
+        # Accept either a script .md or an audio file (.m4a/.mp3/.wav) — resolve to script.
+        if is_audio_target(target):
+            script = resolve_script_for_audio(target)
             if script is None:
-                print(f"ERROR: no matching script for {target.name} (tried {[c.name for c in candidates]})")
+                tried = [f"{target.stem.removesuffix('_pro').removesuffix('_flash')}_script.md",
+                         f"{target.stem.removesuffix('_pro').removesuffix('_flash')}.md"]
+                print(f"ERROR: no matching script for {target.name} (tried {tried})")
                 sys.exit(1)
             scripts = [script]
         else:
