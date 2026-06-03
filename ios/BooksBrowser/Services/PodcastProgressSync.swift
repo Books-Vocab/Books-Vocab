@@ -119,7 +119,9 @@ extension PodcastSyncService {
         durationSec: Double,
         updatedAt: Date
     ) async throws {
-        let url = URL(string: "\(Self.progressBaseURL)/api/podcasts/\(seriesId)/\(episodeNumber)/progress")!
+        guard let url = URL(string: "\(Self.progressBaseURL)/api/podcasts/\(seriesId)/\(episodeNumber)/progress") else {
+            throw URLError(.badURL)
+        }
         let token = try await kgService.currentAuthToken()
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -131,7 +133,7 @@ extension PodcastSyncService {
             "updated_at": AppDateFormatters.iso8601.string(from: updatedAt),
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await sharedURLSession.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)
         }
