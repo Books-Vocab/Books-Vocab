@@ -81,10 +81,11 @@ struct AuthManagerKeychainTests {
     /// reproduces the logout-vs-login TOCTOU race: an interleaved `login()` lands while
     /// `logout()` is awaiting cleanup. Runs exactly once; `didRun` lets the test detect the
     /// window has been traversed.
-    @MainActor
-    private final class RaceCleaner: LocalDataClearing {
+    /// Nonisolated to satisfy the nonisolated `LocalDataClearing` requirement (mirrors
+    /// `NoopCleaner`); the actual hook + flag mutation hop onto the MainActor explicitly.
+    private final class RaceCleaner: LocalDataClearing, @unchecked Sendable {
         private let onSuspend: @MainActor () -> Void
-        private(set) var didRun = false
+        @MainActor private(set) var didRun = false
 
         init(onSuspend: @escaping @MainActor () -> Void) {
             self.onSuspend = onSuspend
@@ -94,9 +95,11 @@ struct AuthManagerKeychainTests {
             // Real suspension that yields the MainActor — same window production opens when it
             // awaits the background actor.
             await Task.yield()
-            if !didRun {
-                didRun = true
-                onSuspend()  // interleaved login() lands here, mid-logout
+            await MainActor.run {
+                if !didRun {
+                    didRun = true
+                    onSuspend()  // interleaved login() lands here, mid-logout
+                }
             }
         }
     }
