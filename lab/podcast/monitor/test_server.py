@@ -453,7 +453,7 @@ def test_start_saga_records_all_staging_paths_in_metadata(client, spawn):
     )
     assert resp.status_code == 200, resp.text
     staged = spawn.kwargs["metadata"]["_staging_paths"]
-    assert [Path(s).name[-7:] for s in staged] == ["a.epub", "b.epub"]
+    assert [Path(s).name.endswith(suffix) for s, suffix in zip(staged, ("_a.epub", "_b.epub"))] == [True, True]
     assert all(Path(s).parent == server.UPLOAD_STAGING for s in staged)
 
 
@@ -549,3 +549,35 @@ def test_sweep_missing_dir_is_noop(tmp_path):
     assert server._sweep_staging(
         tmp_path / "nope", active_paths=set(), max_age_s=1, now=0.0
     ) == []
+
+
+def test_startup_lifespan_sweeps_orphan_but_keeps_active(monkeypatch, tmp_path):
+    """End-to-end: entering the app lifespan (server startup) reaps a stale
+    orphan from .uploads while leaving an active job's old in-place input
+    untouched."""
+    import os
+
+    staging = tmp_path / "uploads"
+    staging.mkdir()
+    monkeypatch.setattr(server, "UPLOAD_STAGING", staging)
+    monkeypatch.setattr(server, "STAGING_MAX_AGE_S", 3600)
+
+    old = 9_999.0  # very old mtime relative to wall clock
+    orphan = staging / "1_orphan.epub"
+    live = staging / "2_live.epub"
+    for p in (orphan, live):
+        p.write_bytes(b"PKepub")
+        os.utime(p, (old, old))
+
+    # One active job pins `live`; the lifespan startup sweep must spare it.
+    class _J:
+        status = "running"
+        metadata = {"_staging_paths": [str(live)]}
+
+    monkeypatch.setattr(server.jobs, "list", lambda limit=...: [_J()])
+
+    with TestClient(server.app):  # entering ctx triggers startup lifespan
+        pass
+
+    assert not orphan.exists(), "startup must reap the stale orphan"
+    assert live.exists(), "startup must never reap a running job's input"
