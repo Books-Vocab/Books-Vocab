@@ -11,15 +11,25 @@
   <meta property="og:title" content="隱私政策 — Books &amp; Vocab">
   <meta property="og:description" content="我們如何收集、使用與保護您的資訊。無廣告、無行為追蹤、不與第三方共享。">
 
-  <!-- No-FOUC theme: stored choice, else system preference. Runs before paint. -->
+  <meta property="og:image" content="/static/img/og-image.png">
+  <meta name="twitter:card" content="summary">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+
+  <!-- No-FOUC theme + JS flag. Runs before paint: data-theme avoids a flash,
+       .js lets CSS hide scroll-reveal only when JS can reveal it (no-JS safe). -->
   <script>
     (function () {
+      var d = document.documentElement;
+      d.classList.add('js');
       try {
         var t = localStorage.getItem('kg-site-theme');
         if (t !== 'light' && t !== 'dark' && t !== 'sepia') {
           t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        document.documentElement.setAttribute('data-theme', t);
+        d.setAttribute('data-theme', t);
       } catch (e) {}
     })();
   </script>
@@ -131,13 +141,37 @@
   </main>
 
   <footer class="site-footer">
-    <span class="site-footer__copy">© 2026 Books &amp; Vocab</span>
-    <ul class="site-footer__links">
-      <li><a href="/guide.html">Guide</a></li>
-      <li><a href="/support.html">Support</a></li>
-      <li><a href="/privacy.html">Privacy</a></li>
-      <li><a href="/terms.html">Terms</a></li>
-    </ul>
+    <div class="footer-brand">
+      <p class="footer-brand__name">Books &amp; Vocab</p>
+      <p class="footer-brand__desc">把閱讀變成你的詞彙引擎。</p>
+      <p class="footer-brand__platform">Made for iPhone &amp; iPad</p>
+    </div>
+    <nav class="footer-col" aria-label="產品">
+      <h3>Product</h3>
+      <ul>
+        <li><a href="/guide.html">使用指南</a></li>
+        <!-- TODO: 換成真實 App Store URL -->
+        <li><a href="#">App Store</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="支援">
+      <h3>Support</h3>
+      <ul>
+        <li><a href="/support.html">支援中心</a></li>
+        <li><a href="mailto:max970228@gmail.com">聯絡我們</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="法律">
+      <h3>Legal</h3>
+      <ul>
+        <li><a href="/privacy.html">隱私政策</a></li>
+        <li><a href="/terms.html">服務條款</a></li>
+      </ul>
+    </nav>
+    <div class="footer-meta">
+      <span>© 2026 Books &amp; Vocab</span>
+      <span>EPUB · PDF · TXT · Markdown</span>
+    </div>
   </footer>
 
   <script>
@@ -156,5 +190,6 @@
     })();
   </script>
 
+  <script defer src="/static/site-motion.js"></script>
 </body>
 </html>

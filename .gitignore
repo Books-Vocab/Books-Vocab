@@ -39,6 +39,7 @@ certs/
 # Runtime data
 backend/data/users/
 backend/data/*.db
+backend/data/*.lock
 *.npy
 
 # Stray backend artifacts (root-level only; tests/ unaffected)
