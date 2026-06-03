@@ -114,10 +114,14 @@ struct ReaderTranslationHandlerTests {
         await handler.currentTranslationTask?.value
     }
 
-    private func spinUntil(_ predicate: @MainActor () -> Bool) async {
-        while !predicate() {
+    private func waitUntil(_ predicate: @MainActor () -> Bool, maxYields: Int = 1_000) async -> Bool {
+        for _ in 0..<maxYields {
+            if predicate() {
+                return true
+            }
             await Task.yield()
         }
+        return predicate()
     }
 
     // MARK: - normalizeWord
@@ -281,9 +285,9 @@ struct ReaderTranslationHandlerTests {
         let ctx = MockVocabContext()
 
         handler.handleWordSelected(word: "retry", context: "ctx", vocabularyContext: ctx)
-        await spinUntil { releaseRetry != nil }
+        #expect(await waitUntil { releaseRetry != nil })
         releaseRetry?.resume()
-        await spinUntil { handler.statusMessage?.contains("正在重試") == true }
+        #expect(await waitUntil { handler.statusMessage?.contains("正在重試") == true })
 
         #expect(handler.statusMessage?.contains("正在重試") == true)
         releaseResult?.resume()
@@ -305,11 +309,11 @@ struct ReaderTranslationHandlerTests {
         let ctx = MockVocabContext()
 
         handler.handleWordSelected(word: "cancel", context: "ctx", vocabularyContext: ctx)
-        await spinUntil { releaseRetry != nil }
+        #expect(await waitUntil { releaseRetry != nil })
+        let task = handler.currentTranslationTask
         handler.cancelCurrentTranslationTask()
         releaseRetry?.resume()
-        await Task.yield()
-        await drain(handler)
+        await task?.value
 
         #expect(handler.statusMessage == nil)
     }
