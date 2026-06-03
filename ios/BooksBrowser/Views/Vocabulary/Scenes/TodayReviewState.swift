@@ -7,6 +7,10 @@ final class TodayReviewState {
         let feedback: ReviewFeedback
         let answeredAt: Date
         let reviewRecordID: UUID
+        /// Mirrors the snapshot flag: `true` once the background DB flush
+        /// confirmed success. New answers start `false`; restore re-flushes any
+        /// answer left `false`.
+        var flushed: Bool = false
     }
 
     // MARK: - Card Navigation
@@ -346,14 +350,20 @@ final class TodayReviewState {
             totalCards: queue.count
         ))
 
+        let flushedIndex = currentIndex
         ReviewSessionPersistence.flushSubmittedAnswer(
-            at: currentIndex,
+            at: flushedIndex,
             queuePersistenceIDs: queuePersistenceIDs,
             queueBaselines: queueBaselines,
             submittedAnswers: scoring.submittedAnswers,
             container: container,
             reviewSettings: reviewSettings,
-            onSaveFailure: onSaveFailure
+            onSaveFailure: onSaveFailure,
+            onSaveSuccess: { [weak self] in
+                // DB flush confirmed — mark the answer flushed and rewrite the
+                // snapshot so a later restore won't re-flush it.
+                self?.markAnswerFlushed(at: flushedIndex)
+            }
         )
         persistSnapshot()
         revealStage = .front
@@ -381,6 +391,44 @@ final class TodayReviewState {
             completed: true,
             durationMs: durationMs
         ))
+    }
+
+    /// Re-run the DB flush for any restored answer whose previous flush never
+    /// confirmed success (`flushed == false`). Fixes the consistency bug where a
+    /// failed background flush left the card's spaced-repetition schedule stale
+    /// while the snapshot still marked it answered — restore alone never
+    /// re-flushed, so the schedule stayed broken forever.
+    ///
+    /// Idempotent: `flushSubmittedAnswer` skips DB writes when the
+    /// ReviewRecord already exists, and the success callback flips the flag so a
+    /// second call is a no-op. Safe to call on every appear.
+    func reflushUnflushedRestoredAnswers(
+        container: ModelContainer,
+        reviewSettings: ReviewSettings,
+        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
+    ) {
+        for (index, answer) in scoring.submittedAnswers where !answer.flushed {
+            ReviewSessionPersistence.flushSubmittedAnswer(
+                at: index,
+                queuePersistenceIDs: queuePersistenceIDs,
+                queueBaselines: queueBaselines,
+                submittedAnswers: scoring.submittedAnswers,
+                container: container,
+                reviewSettings: reviewSettings,
+                onSaveFailure: onSaveFailure,
+                onSaveSuccess: { [weak self] in
+                    self?.markAnswerFlushed(at: index)
+                }
+            )
+        }
+    }
+
+    /// Flip an answer to flushed and rewrite the snapshot so a later restore
+    /// won't re-flush it. Runs on the main actor (callback hops back from the
+    /// detached flush task).
+    private func markAnswerFlushed(at index: Int) {
+        scoring.markFlushed(at: index)
+        persistSnapshot()
     }
 
     func persistSnapshot() {

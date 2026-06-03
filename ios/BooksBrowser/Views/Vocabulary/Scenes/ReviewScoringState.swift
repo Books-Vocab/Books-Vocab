@@ -37,6 +37,13 @@ final class ReviewScoringState {
         submittedAnswers[index] != nil
     }
 
+    /// Mark an answer as DB-flush-confirmed. Called from the flush success
+    /// callback so the snapshot can record `flushed=true` and restore won't
+    /// re-flush it. No-op if the index has no recorded answer.
+    func markFlushed(at index: Int) {
+        submittedAnswers[index]?.flushed = true
+    }
+
     func restore(
         submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
         rememberedCount: Int,
