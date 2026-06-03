@@ -56,6 +56,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 
 - **LLM & Embedding**: `GEMINI_API_KEY` / `GEMINI_MODEL` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` / `LLM_PROVIDER_*`(per-call-type 路由) / `LLM_PROVIDER_DEFAULT` / `JUDGE_CONFIDENCE_THRESHOLD`(judge link 接受門檻,default `0.7`;換低校準 judge model 時調低)
 - **Auth & SSO**: `JWT_SECRET` / `ADMIN_TOKEN` / `ADMIN_PASSWORD` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` / `APPLE_BUNDLE_ID` / `CHROME_EXTENSION_ID` / `APP_STORE_CONNECT_*`
+- **Secret encryption**: `SECRET_ENC_KEY`(可選)— `secret_store.py` 對 `enc:` stored secret 的對稱加密根金鑰,`sha256(SECRET_ENC_KEY)` 派生 Fernet key。**未設時 fallback `sha256(JWT_SECRET)`**(既有部署零破壞)。設了它後,**輪換 `JWT_SECRET` 不再令 stored secret 無法解密**(兩者脫鉤);解密採多金鑰容錯(當前 key 先試,失敗退回 legacy `sha256(JWT_SECRET)`),過渡期無需 re-encrypt migration。
 - **Quota & Rate Limit**: `FREE_DAILY_LIMIT_USD` / `PRO_DAILY_LIMIT_USD` / `API_RATE_LIMIT` / `TRANSLATE_RATE_LIMIT` / `KG_ALLOW_SANDBOX_PURCHASE`
 - **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS`
 - **Cache**: `TRANSLATE_CACHE_TTL_DAYS`
