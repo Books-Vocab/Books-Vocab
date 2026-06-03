@@ -18,6 +18,30 @@
   /** Cached tokens.css + popup.css text for injection into shadow roots. */
   let cachedStyles = null;
 
+  /**
+   * Cached KG theme (light|dark|sepia) for the shadow popup. tokens.css is
+   * injected into a closed shadow root where `:root` matches nothing; the
+   * popup root carries [data-theme] so themed vars resolve (default light comes
+   * from the sheet's `:host` block). Mirrors shared/theme.js storage contract.
+   */
+  const THEME_KEY = 'kg_theme';
+  const VALID_THEMES = ['light', 'dark', 'sepia'];
+  let cachedTheme = 'light';
+
+  const resolveTheme = (value) => (VALID_THEMES.includes(value) ? value : 'light');
+
+  if (chrome?.storage?.local) {
+    chrome.storage.local
+      .get(THEME_KEY)
+      .then((r) => { cachedTheme = resolveTheme(r[THEME_KEY]); })
+      .catch(() => {});
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes[THEME_KEY]) {
+        cachedTheme = resolveTheme(changes[THEME_KEY].newValue);
+      }
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Style loading
   // -------------------------------------------------------------------------
@@ -25,18 +49,20 @@
   async function loadStyles() {
     if (cachedStyles) return cachedStyles;
     try {
-      const [tokensRes, popupRes] = await Promise.all([
+      const [fontsRes, tokensRes, popupRes] = await Promise.all([
+        fetch(chrome.runtime.getURL('shared/fonts.css')),
         fetch(chrome.runtime.getURL('shared/tokens.css')),
         fetch(chrome.runtime.getURL('content/popup.css')),
       ]);
-      if (!tokensRes.ok || !popupRes.ok) {
+      if (!fontsRes.ok || !tokensRes.ok || !popupRes.ok) {
         throw new Error('stylesheet fetch returned non-OK status');
       }
-      const [tokensText, popupText] = await Promise.all([
+      const [fontsText, tokensText, popupText] = await Promise.all([
+        fontsRes.text(),
         tokensRes.text(),
         popupRes.text(),
       ]);
-      cachedStyles = tokensText + '\n' + popupText;
+      cachedStyles = fontsText + '\n' + tokensText + '\n' + popupText;
       return cachedStyles;
     } catch (err) {
       // Extension context invalidated, or packaged CSS missing. Return '' so
@@ -162,6 +188,7 @@
     // Popup container
     const popup = document.createElement('div');
     popup.className = 'kg-popup kg-popup--loading';
+    popup.setAttribute('data-theme', cachedTheme);
     shadow.appendChild(popup);
 
     document.body.appendChild(host);
