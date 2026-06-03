@@ -311,6 +311,37 @@ class TestArchiveVocabWord:
         result = archive_vocab_word("hello", archived=True, cards_store=cards)
         assert result["archived"] is True
 
+    def test_archive_rolls_back_on_graph_failure(self):
+        """If graph.cleanup_for_card raises, the card's is_archived must roll
+        back to its original value and the error re-raises (mirrors
+        delete_vocab_word's rollback-then-reraise contract)."""
+        card = _FakeCard(id="c1", content="hello", is_archived=False)
+        cards = _FakeCardsStore([card])
+
+        class _FailingGraph(_FakeArchiveGraph):
+            def cleanup_for_card(self, card_id, *, remove_blocked=False):
+                raise RuntimeError("graph write failed")
+
+        with pytest.raises(RuntimeError):
+            archive_vocab_word("hello", archived=True, cards_store=cards, graph=_FailingGraph())
+
+        assert card.is_archived is False, "is_archived not rolled back after graph failure"
+
+    def test_unarchive_rolls_back_on_graph_failure(self):
+        """Unarchive path: restore_links_for failure rolls is_archived back to
+        True (original) and re-raises."""
+        card = _FakeCard(id="c1", content="hello", is_archived=True)
+        cards = _FakeCardsStore([card])
+
+        class _FailingGraph(_FakeArchiveGraph):
+            def restore_links_for(self, card_id, cards_store):
+                raise RuntimeError("graph restore failed")
+
+        with pytest.raises(RuntimeError):
+            archive_vocab_word("hello", archived=False, cards_store=cards, graph=_FailingGraph())
+
+        assert card.is_archived is True, "is_archived not rolled back after graph failure"
+
 
 # ---------------------------------------------------------------------------
 # delete_vocab_word rollback on graph failure
