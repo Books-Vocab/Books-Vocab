@@ -653,6 +653,12 @@
 "展開" = "Expand";
 "工作階段" = "Session";
 "左右滑動切換步驟" = "Swipe to switch steps";
+"捕捉詞彙" = "Capture Words";
+"閱讀中長按生詞，AI 依語境即時翻譯並收進筆記" = "Long-press a new word while reading; AI translates it in context and saves it to your notes.";
+"自動連結" = "Auto-Connect";
+"同義、混淆、衍生自動成圖，把孤點串成知識網絡" = "Synonyms, easily-confused words, and derivations form a graph automatically, weaving isolated words into a knowledge network.";
+"每日複習" = "Daily Review";
+"間隔重複演算法挑選到期卡片，每日 5 分鐘穩定累積" = "Spaced repetition picks the cards due today—just 5 minutes a day for steady progress.";
 "已嘗試過所有自動恢復步驟。請聯絡支援團隊。" = "All automatic recovery steps have been tried. Please contact support.";
 "已選 %@ 本" = "%@ selected";
 "帳號資訊與登入記錄" = "Account info and sign-in history";
