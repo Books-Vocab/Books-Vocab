@@ -107,6 +107,16 @@
 .kg-btn--primary { background: var(--brand-hero); color: var(--on-brand-hero); }
 .kg-btn--primary:hover { opacity: 0.92; }
 
+/* App Store CTA — the primary brand-hero pill carrying an own-authored Apple
+   glyph + a 下載於 / App Store lockup. NOT Apple's licensed badge image (we
+   don't have it and won't fake it); license-clean + honest. Still the ONE CTA. */
+.kg-btn--appstore { background: var(--brand-hero); color: var(--on-brand-hero); gap: var(--sp-2); padding: var(--sp-2) var(--sp-5); min-height: 2.75rem; border-radius: var(--radius-control); }
+.kg-btn--appstore:hover { opacity: 0.92; }
+.kg-btn__lockup { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; }
+.kg-btn__lockup small { font-size: var(--text-caption2); letter-spacing: var(--tracking-uppercase); opacity: 0.85; }
+.kg-btn__lockup b { font-size: var(--text-subhead); font-weight: 700; }
+.appstore-glyph { width: 1.4em; height: 1.4em; fill: currentColor; flex: none; }
+
 /* Accent — passive / link-ish (Morandi grey-blue). Outlined, not filled, so it
    never competes with the CTA. */
 .kg-btn--accent {
