@@ -256,17 +256,71 @@ def _daily_token_spend_7d() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# log DB health (row_count + oldest)
+# ---------------------------------------------------------------------------
+
+
+def _table_health(conn, table: str, ts_col: str) -> dict[str, Any]:
+    """Return ``{row_count, oldest_created_at}`` for one log table.
+
+    ``COUNT(*)`` is acceptable here: every persistent log table is bounded by
+    log_retention pruning (``admin_log_retention_run``) and indexed on its
+    timestamp column, so even the busiest table stays small. ``oldest`` uses
+    ``MIN(ts_col)`` so an operator can see how far back un-pruned rows reach.
+    Table/column names are module-internal literals (never user input).
+    """
+    try:
+        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        oldest = conn.execute(f"SELECT MIN({ts_col}) FROM {table}").fetchone()[0]
+    except Exception:  # noqa: BLE001 — health probe must never break the panel
+        return {"row_count": None, "oldest_created_at": None}
+    return {"row_count": int(count or 0), "oldest_created_at": oldest}
+
+
+def _log_db_health() -> dict[str, Any]:
+    """Per-table row_count + oldest timestamp across all persistent log DBs.
+
+    Lets an admin judge at a glance whether ``admin_log_retention_run`` is due.
+    Note: pipeline_runs keys its timestamp as ``started_at``; the others use
+    ``created_at`` — both surface under ``oldest_created_at`` for a uniform shape.
+    """
+    from . import judge_log as jl
+    from . import pipeline_log as pl
+    from . import token_tracker as tt
+    from . import translate_log as tl
+
+    out: dict[str, Any] = {}
+    with pl._lock:
+        out["pipeline_runs"] = _table_health(pl._get_conn(), "pipeline_runs", "started_at")
+    with jl._lock:
+        out["judge_log"] = _table_health(jl._get_conn(), "judge_log", "created_at")
+    with tl._lock:
+        conn = tl._get_conn()
+        out["translate_log"] = _table_health(conn, "translate_log", "created_at")
+        out["translate_cache_hits"] = _table_health(conn, "translate_cache_hits", "created_at")
+    with tt._lock:
+        out["token_usage"] = _table_health(tt._get_conn(), "token_usage", "created_at")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # public entrypoint
 # ---------------------------------------------------------------------------
 
 
 def collect_observability() -> dict[str, Any]:
-    """Aggregate all observability metrics into a single response payload."""
+    """Aggregate all observability metrics into a single response payload.
+
+    All timestamps and date buckets are UTC; ``tz`` declares this so downstream
+    consumers never reinterpret ``substr(created_at,1,10)`` date cuts as local.
+    """
     return {
         "translate_cache_hit_rate_24h": _translate_cache_hit_rate_24h(),
         "pipeline_step_p95_24h": _pipeline_step_p95_24h(),
         "pipeline_failure_rate_24h": _pipeline_failure_rate_24h(),
         "judge_rejection_rate_24h": _judge_rejection_rate_24h(),
         "daily_token_spend_7d": _daily_token_spend_7d(),
+        "log_db_health": _log_db_health(),
+        "tz": "UTC",
         "generated_at": _utcnow().isoformat(),
     }

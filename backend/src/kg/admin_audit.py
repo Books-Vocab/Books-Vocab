@@ -103,31 +103,39 @@ def record_audit(
         return
 
 
-def list_audit(*, since: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+def list_audit(
+    *, since: str | None = None, limit: int = 100, action: str | None = None
+) -> list[dict[str, Any]]:
     """Return audit rows newest-first.
 
     ``since`` is an ISO-8601 timestamp (inclusive lower bound). ``limit``
-    is clamped to [1, 1000]. ``payload`` is decoded back to a dict when
+    is clamped to [1, 1000]. ``action`` optionally restricts rows to an exact
+    ``action`` match (e.g. ``grant_pro`` / ``revoke_pro``); a blank/whitespace
+    value is treated as no filter. ``payload`` is decoded back to a dict when
     valid JSON, else passed through as a raw string.
     """
     try:
         lim = max(1, min(int(limit or 100), 1000))
     except (TypeError, ValueError):
         lim = 100
+    act = (action or "").strip() or None
+    clauses: list[str] = []
+    params: list[Any] = []
+    if since:
+        clauses.append("created_at >= ?")
+        params.append(since)
+    if act is not None:
+        clauses.append("action = ?")
+        params.append(act)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(lim)
     with _lock:
         conn = _get_conn()
-        if since:
-            rows = conn.execute(
-                "SELECT id, admin_uid, action, target_uid, payload_json, created_at "
-                "FROM admin_audit_log WHERE created_at >= ? ORDER BY id DESC LIMIT ?",
-                (since, lim),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT id, admin_uid, action, target_uid, payload_json, created_at "
-                "FROM admin_audit_log ORDER BY id DESC LIMIT ?",
-                (lim,),
-            ).fetchall()
+        rows = conn.execute(
+            "SELECT id, admin_uid, action, target_uid, payload_json, created_at "
+            f"FROM admin_audit_log{where} ORDER BY id DESC LIMIT ?",
+            tuple(params),
+        ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
         payload_raw = row[4]
