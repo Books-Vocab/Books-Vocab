@@ -284,17 +284,17 @@ struct NotebookListView: View {
                         coverImagePath: notebook.coverImagePath
                     )
                 ) { appearance in
-                    if let imgPath = appearance.coverImagePath, imgPath != notebook.coverImagePath {
-                        notebook.coverImagePath = imgPath
-                    } else if appearance.coverImagePath == nil && notebook.coverImagePath != nil {
-                        notebook.coverImagePath = nil
-                    }
+                    // coverImagePath 的落地 + 舊圖刪除延到 updateNotebook API 成功後，
+                    // 由 coordinator 統一處理（全有或全無），避免 API 失敗時「新封面 +
+                    // server 舊欄位」drift 且舊封面回不去（track-23）。
                     Task { @MainActor in
                         await coordinator.updateNotebook(
                             notebook,
                             name: appearance.name,
                             color: appearance.color,
                             coverPattern: appearance.coverPattern,
+                            stagedCoverImagePath: appearance.coverImagePath,
+                            originalCoverImagePath: appearance.originalCoverImagePath,
                             modelContext: modelContext,
                             kgService: kgService,
                             toastCoordinator: toastCoordinator
