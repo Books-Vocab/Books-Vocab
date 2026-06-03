@@ -37,14 +37,27 @@ MAX_HISTORY = int(os.getenv("PODCAST_JOB_HISTORY", "100"))
 
 
 class WorkspaceBusyError(Exception):
-    """Spawn refused because another job is already running for the same
-    workspace. Caller turns this into HTTP 409.
+    """Spawn refused because another pending/running job already holds the same
+    dedup key. Caller turns this into HTTP 409.
 
-    This is the atomic backstop for the TOCTOU race: server.py's pre-flight
-    `_active_job_for_ws` check and the actual `spawn()` are two steps with no
-    shared lock, so two concurrent POSTs for one workspace could both pass the
-    pre-check and both spawn. The check-and-reserve below runs inside spawn's
-    own `self._lock`, so at most one wins."""
+    This is the atomic backstop for the TOCTOU race. Two flavours share one
+    mechanism:
+      - "known-workspace" endpoints (#752: approve / resume / rerun / upload)
+        pass `workspace=<ws>`; the dedup key is the workspace name. server.py's
+        pre-flight `_active_job_for_ws` check and the actual `spawn()` are two
+        steps with no shared lock, so two concurrent POSTs for one workspace
+        could both pass the pre-check and both spawn.
+      - full-pipeline upload endpoints (this PR: /api/pipeline/start and
+        /start-saga) don't know the workspace at spawn time — pipeline.py derives
+        a deterministic `{slug}_{md5(title_author)}` ws inside stage 1, so two
+        concurrent uploads of the SAME EPUB bytes would each mkdir(exist_ok=True)
+        the same ws and race its markers/scripts/mp3. They pass
+        `dedup_key="epub:<content-hash>"` instead.
+
+    Either way the check-and-reserve runs inside spawn's own `self._lock`, so at
+    most one wins. The attribute is kept named `workspace` for back-compat with
+    server.py's existing `except WorkspaceBusyError` sites; for content-hash
+    dedup it carries the `epub:<hash>` key."""
 
     def __init__(self, workspace: str, job_id: str):
         self.workspace = workspace
@@ -87,6 +100,13 @@ class Job:
         d = asdict(self)
         # Hide internal cwd noise from API response; client doesn't need it.
         d.pop("cwd", None)
+        # Strip the internal dedup key (e.g. "epub:<hash>") — it's a spawn-time
+        # reservation token, not client-facing state. metadata["workspace"]
+        # (the human-readable ws name) is still exposed for the dashboard.
+        meta = d.get("metadata")
+        if isinstance(meta, dict) and "_dedup_key" in meta:
+            meta = {k: v for k, v in meta.items() if k != "_dedup_key"}
+            d["metadata"] = meta
         d["duration_s"] = (
             round((self.ended_ts or time.time()) - self.started_ts, 1)
             if self.started_ts else None
@@ -115,6 +135,7 @@ class JobTracker:
         env: dict | None = None,
         metadata: dict | None = None,
         workspace: str | None = None,
+        dedup_key: str | None = None,
     ) -> Job:
         """Start a subprocess, write its output to a per-job log file,
         return the Job record immediately (non-blocking).
@@ -122,23 +143,39 @@ class JobTracker:
         Raises JobLimitReached if too many jobs are already running.
         Caller (server.py) converts that to HTTP 429.
 
-        If `workspace` is given, the spawn is rejected with WorkspaceBusyError
-        (→ HTTP 409) when another job for the same workspace is still
-        pending/running. The check and the slot reservation happen inside the
-        SAME `self._lock` acquisition, so two concurrent same-workspace spawns
-        can't both pass — closing the TOCTOU window that server.py's separate
-        pre-flight check left open. `workspace=None` (full-pipeline jobs whose
-        workspace is only known after the EPUB hash resolves inside stage 1) is
-        not workspace-guarded here.
+        Dedup: if a `dedup_key` is in effect, the spawn is rejected with
+        WorkspaceBusyError (→ HTTP 409) when another pending/running job already
+        holds the same key. The check and the slot reservation happen inside the
+        SAME `self._lock` acquisition, so two concurrent same-key spawns can't
+        both pass — closing the TOCTOU window that server.py's separate
+        pre-flight check left open.
+
+        Two ways to supply the key, sharing one namespace:
+          - `workspace=<ws>` — known-workspace endpoints (#752). The ws name IS
+            the dedup key; it's also stamped into metadata["workspace"] so the
+            dashboard's _active_job_for_ws lookup keeps working.
+          - `dedup_key=<key>` — full-pipeline uploads whose workspace is only
+            known after the EPUB hash resolves inside stage 1; they pass
+            `"epub:<content-hash>"` so same-bytes concurrent uploads collide.
+        Passing both is a programming error (ValueError) — pick one. Neither =
+        unguarded (legacy behaviour for jobs with no natural dedup identity).
         """
+        if workspace is not None and dedup_key is not None:
+            raise ValueError("pass workspace= OR dedup_key=, not both")
+        # workspace is just a named dedup key; collapse to one field for the scan.
+        effective_key = dedup_key if dedup_key is not None else workspace
         # Atomic capacity check + reservation. Without the lock here, two
         # concurrent POST /upload could both observe active=MAX-1 and both
         # spawn, breaking the cap on the 2GB VPS. Reserve a slot up-front.
         job_id = uuid.uuid4().hex[:12]
         log_path = JOBS_DIR / f"{job_id}.log"
         meta = dict(metadata or {})
-        # Stamp the workspace into metadata so the in-lock scan below and
-        # server's _active_job_for_ws (Route 1) read the same field.
+        # Stamp the dedup key into metadata so the in-lock scan below reads a
+        # single field. For workspace= jobs the key is the ws name, which also
+        # feeds server's _active_job_for_ws (Route 1) — keep stamping
+        # metadata["workspace"] for that lookup; the scan reads "_dedup_key".
+        if effective_key is not None:
+            meta["_dedup_key"] = effective_key
         if workspace is not None:
             meta.setdefault("workspace", workspace)
         job = Job(
@@ -154,17 +191,17 @@ class JobTracker:
         )
 
         with self._lock:
-            # Atomic workspace check-and-reserve. Must scan inside the same lock
-            # that registers the new job, or two concurrent same-workspace
-            # spawns both observe "no busy job" and both reserve (the race this
-            # whole guard exists to kill).
-            if workspace is not None:
+            # Atomic dedup check-and-reserve. Must scan inside the same lock that
+            # registers the new job, or two concurrent same-key spawns both
+            # observe "no busy job" and both reserve (the race this whole guard
+            # exists to kill).
+            if effective_key is not None:
                 for j in self._jobs.values():
                     if (
                         j.status in {"running", "pending"}
-                        and (j.metadata or {}).get("workspace") == workspace
+                        and (j.metadata or {}).get("_dedup_key") == effective_key
                     ):
-                        raise WorkspaceBusyError(workspace, j.id)
+                        raise WorkspaceBusyError(effective_key, j.id)
             active = sum(
                 1 for j in self._jobs.values() if j.status in {"running", "pending"}
             )
