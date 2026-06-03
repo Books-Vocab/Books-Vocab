@@ -127,6 +127,10 @@ final class SyncCoordinator: SyncCoordinating {
         pipelineTask = Task { [weak self] in
             defer { self?.pipelineTask = nil }
             guard let self else { return }
+            // 部分失敗旗標宣告於 do/catch 之外:success path(do 內)與
+            // cancel/error path(catch 內)的 syncTerminalOutcome 都要讀它,
+            // 宣告在 do block 內會讓 catch 的 call site out of scope。
+            var encounteredFailure = false
             do {
                 // Defense-in-depth Layer 2: sanitize outbox before grouping by notebook.
                 // 把指向已刪 notebook 的孤兒 entry 自動 reassign 到 default。
@@ -139,7 +143,6 @@ final class SyncCoordinator: SyncCoordinating {
                 // 否則會把幽靈 entry 餵給 batchAdd / batchDelete。
                 let deletes = pendingEntries.filter { !$0.isDeleted && $0.syncAction == .delete && $0.shouldUploadOnNextSync }
                 let adds = pendingEntries.filter { !$0.isDeleted && $0.syncAction == .add && $0.shouldUploadOnNextSync }
-                var encounteredFailure = false
 
                 if !deletes.isEmpty {
                     self.updateStep("upload_delete", status: .running, total: deletes.count)
