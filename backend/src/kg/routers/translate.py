@@ -29,7 +29,7 @@ async def translate_quick(req: TranslateRequest, user: dict = Depends(get_curren
 @router.post("/api/translate/phrase", response_model=PhraseTranslateResponse)
 async def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     quota = _check_quota(user, "translate_phrase", response)
-    result = await translate_phrase_response(req, user)
+    result = await translate_phrase_response(req, user, logger=logger)
     _apply_quota_headers(response, quota)
     return result
 
@@ -37,6 +37,6 @@ async def translate_phrase(req: TranslateRequest, user: dict = Depends(get_curre
 @router.post("/api/translate/explain", response_model=ExplainResponse)
 async def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     quota = _check_quota(user, "translate_explain", response)
-    result = await translate_explain_response(req, user)
+    result = await translate_explain_response(req, user, logger=logger)
     _apply_quota_headers(response, quota)
     return result
