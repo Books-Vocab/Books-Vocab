@@ -76,6 +76,75 @@ struct AuthManagerKeychainTests {
         func clearLocalData(container: ModelContainer, reason: String) async {}
     }
 
+    /// A cleaner that relinquishes the MainActor mid-clear (mirroring the real service's hop to
+    /// `BackgroundSyncActor`) and runs an injected hook during that suspension window. The hook
+    /// reproduces the logout-vs-login TOCTOU race: an interleaved `login()` lands while
+    /// `logout()` is awaiting cleanup. Runs exactly once; `didRun` lets the test detect the
+    /// window has been traversed.
+    @MainActor
+    private final class RaceCleaner: LocalDataClearing {
+        private let onSuspend: @MainActor () -> Void
+        private(set) var didRun = false
+
+        init(onSuspend: @escaping @MainActor () -> Void) {
+            self.onSuspend = onSuspend
+        }
+
+        func clearLocalData(container: ModelContainer, reason: String) async {
+            // Real suspension that yields the MainActor — same window production opens when it
+            // awaits the background actor.
+            await Task.yield()
+            if !didRun {
+                didRun = true
+                onSuspend()  // interleaved login() lands here, mid-logout
+            }
+        }
+    }
+
+    @MainActor
+    private static func makeContainer() -> ModelContainer {
+        // In-memory container; schema content is irrelevant — the cleaner is mocked and never
+        // touches it. Any @Model satisfies the container requirement.
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        return try! ModelContainer(for: Notebook.self, configurations: config)
+    }
+
+    // MARK: - (d) logout must not clobber a session that lands during its async cleanup
+
+    /// Race (the bug): token expiry fires `logout()`, whose unstructured `Task` awaits
+    /// `clearLocalData`, relinquishing the MainActor. In that window the user re-authenticates
+    /// — `login()` writes a fresh session. When the logout Task resumes, its `defer` must NOT
+    /// wipe the just-written session back to nil + clear the keychain. Pre-fix it did,
+    /// unconditionally → user kicked out immediately after logging back in (red here).
+    @Test func logout_does_not_clobber_session_written_during_cleanup() async {
+        let store = FakeSessionStore([session(userId: "old-user", token: "old.jwt", keychainReadFailed: false)])
+        // `weakRacing` lets the suspension hook re-login on the very manager under test, landing
+        // a fresh session mid-logout.
+        var weakRacing: AuthManager?
+        let raceCleaner = RaceCleaner(onSuspend: {
+            weakRacing?.login(userId: "new-user", token: "new.jwt")
+        })
+        let racing = AuthManager(verifier: NoopVerifier(), localDataCleaner: raceCleaner, sessionStore: store)
+        racing.modelContainer = Self.makeContainer()
+        weakRacing = racing
+        #expect(racing.isLoggedIn == true)
+
+        racing.logout(reason: "token_expired")
+
+        // Pump the cooperative pool until the detached logout Task has fully completed: the
+        // hook (login) flips `didRun` inside the suspension, then a margin of yields lets the
+        // resumed continuation run the logout `defer`.
+        var spins = 0
+        while !raceCleaner.didRun && spins < 1000 { await Task.yield(); spins += 1 }
+        for _ in 0..<100 { await Task.yield() }
+
+        // The fresh session survives: user stays logged in with the NEW credentials and the
+        // keychain is not cleared out from under them.
+        #expect(racing.isLoggedIn == true)
+        #expect(racing.userId == "new-user")
+        #expect(racing.token == "new.jwt")
+    }
+
     // MARK: - (a) transient read failure must NOT log the user out
 
     @Test func transient_read_failure_with_prior_profile_keeps_user_logged_in() {
