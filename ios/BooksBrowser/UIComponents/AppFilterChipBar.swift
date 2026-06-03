@@ -18,56 +18,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        if let systemImage = option.systemImage {
-                            Image(systemName: systemImage)
-                                .font(style.iconFont)
-                                .foregroundStyle(isSelected ? style.iconSelectedColor : style.iconUnselectedColor)
-                                .fixedSize()
-                        }
-
-                        Text(option.title.localized)
-                            .font(style.titleFont)
-                            .foregroundStyle(isSelected ? style.textSelectedColor : style.textUnselectedColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .layoutPriority(1)
-
-                        if let count = option.count {
-                            Text("\(count)")
-                                .font(style.countFont)
-                                .minimumScaleFactor(0.7)
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(minWidth: 26)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, AppSpacing.microGap)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(isSelected ? style.countSelectedFill : style.countUnselectedFill)
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, AppSpacing.s2)
-                    .padding(.vertical, AppSpacing.s2)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(isSelected ? style.selectedBackground : style.unselectedBackground)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(isSelected ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                        .stroke(
-                            isSelected ? style.selectedOuterBorder : style.unselectedOuterBorder,
-                            lineWidth: 0.8
-                        )
-                        .padding(-style.outerBorderInset)
-                    )
+                    appChipLabel(option: option, isSelected: isSelected, style: style)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.count.map { "\(option.title.localized), \($0) \("個項目".localized)" } ?? option.title.localized)
