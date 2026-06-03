@@ -77,9 +77,14 @@ enum AppMotion {
     static let emphasizedDecelerate = Animation.timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4)
 
     /// Continuous follow-scroll glide for the podcast transcript: one animated
-    /// `scrollTo(.center)` per sentence boundary. The duration is what makes the
-    /// move read as a continuous glide rather than a jump (tuned on device).
-    static let podcastFollowScroll = Animation.easeInOut(duration: 0.6)
+    /// `scrollTo(.center)` per sentence boundary. Springs and `.smooth` start from
+    /// rest but front-load their velocity, so the move still feels fast at the
+    /// instant a sentence flips. This timing curve pins BOTH control points hard
+    /// against the rest states (P1 high-x/zero-y = very slow start, P2 low-x/one-y
+    /// = very slow finish) so the scroll eases in and out gently — a soft drag, no
+    /// snap. The long duration lets adjacent sentence moves overlap into one
+    /// continuous glide (tuned on device).
+    static let podcastFollowScroll = Animation.timingCurve(0.65, 0.0, 0.35, 1.0, duration: 0.9)
 
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
