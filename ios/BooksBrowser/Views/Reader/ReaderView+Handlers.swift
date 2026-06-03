@@ -9,9 +9,21 @@ extension ReaderView {
         }
         currentLocator = locator
         totalProgression = locator.locations.totalProgression ?? 0
-        book.lastReadLocatorJSON = (try? locator.jsonString()) ?? "{}"
-        book.dateLastRead = Date()
-        book.progression = totalProgression
+
+        // 序列化失敗時**不覆寫**既有值（避免舊 `"{}"` 污染下次還原），整筆 persist
+        // 一併跳過，保留上次有效的 locator/progression 快照不致 JSON 與進度錯配。
+        guard let json = ReaderProgressSaver.encodedLocatorJSON(locator) else { return }
+        let progression = totalProgression
+
+        // in-memory 寫入立即（panel 即時讀取），落盤經 debounce coalesce —— 對齊 PDF
+        // 路徑的顯式 save，但避開每頁同步 I/O 卡頓。
+        progressSaver.recordChange {
+            book.lastReadLocatorJSON = json
+            book.dateLastRead = Date()
+            book.progression = progression
+        } save: { [modelContext] in
+            modelContext.safeSave()
+        }
     }
 
     func handleWordSelected(_ word: String, _ context: String) {
