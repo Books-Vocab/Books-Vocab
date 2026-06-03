@@ -167,6 +167,27 @@ scp -i ~/.ssh/lightsail_kg_prod ~/kg/backups/data_<timestamp>.tar.gz ubuntu@13.1
 ```
 **注意**：`.env` 變動不能只 `restart`，容器讀不到新值。
 
+### Secret 加密金鑰（`SECRET_ENC_KEY`）與 JWT_SECRET 輪換
+
+`secret_store.py` 對 `enc:` stored secret 做對稱加密。加密根金鑰：
+
+- **`SECRET_ENC_KEY` 已設** → `sha256(SECRET_ENC_KEY)` 派生 Fernet key，加密與 `JWT_SECRET` **完全脫鉤**。
+- **`SECRET_ENC_KEY` 未設** → fallback `sha256(JWT_SECRET)`（legacy，零破壞）。
+
+**為什麼建議設獨立 `SECRET_ENC_KEY`**：未設時，輪換 `JWT_SECRET` 會**同時**令所有已簽發 JWT 失效**且**所有 `enc:` stored secret 無法解密（雙重 outage）。設了獨立 `SECRET_ENC_KEY` 後，輪換 `JWT_SECRET` 只影響 JWT，不再波及 secret 解密。
+
+**首次導入 `SECRET_ENC_KEY`（平滑遷移，無需停機）**：
+```bash
+# 1. 產生強隨機值（任意 ≥32 字元字串即可，sha256 會再派生）
+openssl rand -hex 32
+# 2. 寫入本地 .env：SECRET_ENC_KEY=<上一步輸出>
+#    同步更新 devops.sh 的 REQUIRED_ENV_KEYS（若有強制檢查）
+./devops.sh push-env && ./devops.sh deploy
+```
+解密採多金鑰容錯（當前 `SECRET_ENC_KEY` 先試，失敗退回 legacy `sha256(JWT_SECRET)`），故**舊 `enc:` 值仍可解、新寫入自動改用 `SECRET_ENC_KEY`**，無需一次性 re-encrypt migration。
+
+**警告**：`SECRET_ENC_KEY` 設定後**勿任意變更**——改了它且舊值未 re-encrypt，會落到 legacy fallback；若此時 `JWT_SECRET` 也已輪換，舊值將無金鑰可解。輪換 `SECRET_ENC_KEY` 須另案做 re-encrypt migration。
+
 ### App Store 訂閱驗簽必備 env
 
 production 現在預設只接受 signed App Store payload。下列 key 缺一不可：
