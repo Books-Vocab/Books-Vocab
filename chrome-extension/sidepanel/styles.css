@@ -58,7 +58,7 @@ body {
   background: var(--stage-bg);
   cursor: pointer;
   font-size: var(--text-body);
-  transition: background var(--ease-quick);
+  transition: background var(--motion-quick);
 }
 
 .kg-theme-btn:hover {
@@ -82,7 +82,7 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-subhead);
   outline: none;
-  transition: border-color var(--ease-quick);
+  transition: border-color var(--motion-quick);
 }
 
 .kg-search::placeholder {
@@ -202,7 +202,7 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-subhead);
   cursor: pointer;
-  transition: background var(--ease-quick), color var(--ease-quick);
+  transition: background var(--motion-quick), color var(--motion-quick);
 }
 
 .kg-error__retry:hover {
@@ -226,12 +226,12 @@ body {
   border-radius: var(--radius-card);
   padding: var(--card-padding);
   cursor: pointer;
-  transition: transform var(--ease-quick), box-shadow var(--ease-quick);
+  transition: transform var(--motion-control), box-shadow var(--motion-control);
 }
 
 .kg-list-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transform: scale(1.02);
+  box-shadow: var(--elevation-z2);
 }
 
 .kg-list-card__row {
@@ -371,4 +371,10 @@ body {
 .kg-detail__source-text {
   font-size: var(--text-subhead);
   color: var(--text-secondary);
+}
+
+/* --- Reduced motion (web equivalent of accessibilityReduceMotion) --- */
+
+@media (prefers-reduced-motion: reduce) {
+  .kg-list-card:hover { transform: none; }
 }

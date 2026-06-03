@@ -1,4 +1,6 @@
-/* ── Options Page Layout ── */
+/* ── Options Page Layout ──
+   All values via design tokens (shared/tokens.css). Aligned to the iOS app:
+   primary action = brand-hero cream CTA, passive actions outlined in accent. */
 
 body {
   margin: 0;
@@ -24,13 +26,14 @@ body {
   margin: 0 0 var(--sp-xl) 0;
 }
 
-/* ── Section Card ── */
+/* ── Section Card (北極星 2/3: no border, z1 resting) ── */
 
 .kg-section-card {
   background: var(--card-bg);
   border-radius: var(--radius-card);
   padding: var(--card-padding);
   margin-bottom: var(--section-gap);
+  box-shadow: var(--elevation-z1);
 }
 
 .kg-section-card__title {
@@ -41,41 +44,41 @@ body {
 }
 
 /* ── Buttons ── */
+/* Primary = brand-hero CTA (北極星 4); tap-feedback on :active (北極星 5). */
 
 .kg-btn {
-  background: var(--accent);
-  color: #fff;
+  background: var(--brand-hero);
+  color: var(--on-brand-hero);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   padding: var(--sp-sm) var(--sp-md);
   font-family: var(--font-sans);
   font-size: var(--text-body);
+  font-weight: 600;
   cursor: pointer;
-  transition: var(--ease-quick);
+  transition: opacity var(--motion-quick), background var(--motion-quick), transform var(--motion-control);
 }
 
-.kg-btn:hover {
-  filter: brightness(0.9);
-}
+.kg-btn:hover { opacity: 0.92; }
+.kg-btn:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
 
+/* Passive / secondary — outlined accent, never competes with the CTA. */
 .kg-btn--outline {
   background: transparent;
-  border: 2px solid var(--accent);
+  border: var(--sp-hairline) solid var(--accent);
   color: var(--accent);
 }
 
-.kg-btn--outline:hover {
-  background: var(--accent);
-  color: #fff;
-}
+.kg-btn--outline:hover { background: var(--accent-subtle); opacity: 1; }
 
+/* Destructive — outlined danger, subtle fill on hover. */
 .kg-btn--destructive {
-  background: var(--destructive);
+  background: transparent;
+  border: var(--sp-hairline) solid var(--destructive);
+  color: var(--destructive);
 }
 
-.kg-btn--destructive:hover {
-  filter: brightness(0.85);
-}
+.kg-btn--destructive:hover { background: var(--destructive-bg); opacity: 1; }
 
 /* ── Auth Info ── */
 
@@ -100,24 +103,18 @@ body {
   justify-content: center;
   background: var(--stage-bg);
   border: 2px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   padding: var(--sp-sm) var(--sp-md);
   cursor: pointer;
-  transition: var(--ease-quick);
+  transition: border-color var(--motion-quick), background var(--motion-quick);
   user-select: none;
 }
 
-.kg-theme-option:hover {
-  border-color: var(--tint);
-}
+.kg-theme-option:hover { border-color: var(--border-strong); }
 
-.kg-theme-option--active {
-  border-color: var(--accent);
-}
+.kg-theme-option--active { border-color: var(--accent); }
 
-.kg-theme-option__radio {
-  display: none;
-}
+.kg-theme-option__radio { display: none; }
 
 .kg-theme-option__label {
   font-family: var(--font-sans);
