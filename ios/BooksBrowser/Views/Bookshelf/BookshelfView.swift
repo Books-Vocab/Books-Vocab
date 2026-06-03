@@ -188,6 +188,7 @@ struct BookshelfView: View {
                     Button(action: coordinator.presentSettings) {
                         AppToolbarGlyph(systemImage: "gearshape")
                     }
+                    .accessibilityLabel("設定".localized)
                     .accessibilityIdentifier("bookshelf.settingsButton")
                 }
 
@@ -195,6 +196,7 @@ struct BookshelfView: View {
                     Button(action: coordinator.presentImporter) {
                         AppToolbarGlyph(systemImage: "plus")
                     }
+                    .accessibilityLabel("匯入".localized)
                     .accessibilityIdentifier("bookshelf.importButton")
                 }
             }
@@ -229,7 +231,10 @@ struct BookshelfView: View {
             }
             .task {
                 if authManager.isLoggedIn {
-                    await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+                    let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+                    if outcome == .listFetchFailed {
+                        toastCoordinator.warning("同步失敗".localized)
+                    }
                     await warmFollowedSeriesAudio()
                 }
             }
@@ -374,10 +379,10 @@ struct BookshelfView: View {
         }
     }
 
-    /// Pull-to-refresh entry. Unlike the silent `.task` / background sync, an
-    /// explicit pull that fails its series-list fetch surfaces a warning toast —
-    /// otherwise the user sees the spinner end with no feedback (the bug this
-    /// fixes; mirrors `NotebookListView`'s reconcile-error surface). Partial
+    /// Pull-to-refresh entry. Like the `.task` background sync, a series-list
+    /// fetch failure surfaces a warning toast — otherwise the user sees the
+    /// spinner end with no feedback (the bug this fixes; mirrors
+    /// `NotebookListView`'s reconcile-error surface). Partial
     /// (per-series) and auxiliary (progress/save) failures stay silent: the
     /// catalog still reconciled, so a toast would be noise.
     @MainActor
