@@ -804,6 +804,21 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
 # ─── Orchestrator ───
 
 
+def _model_tag(model: str) -> str:
+    """Short audio-filename tag for a TTS model id.
+
+    `pro`/`flash` collapse all generations (gemini-2.5-pro, gemini-3.1-pro →
+    "pro") for backward compat with podcast_upload.sh / monitor regexes. The
+    full model id is written to the `.meta.json` sidecar separately.
+    Otherwise fall back to the second dash-segment, else the raw model id.
+    """
+    if "pro" in model:
+        return "pro"
+    if "flash" in model:
+        return "flash"
+    return model.split("-")[1] if "-" in model else model
+
+
 def process_file(
     script_path: Path,
     client: genai.Client,
@@ -846,11 +861,7 @@ def process_file(
 
     ext = OUTPUT_FORMAT if OUTPUT_FORMAT in ("mp3", "m4a") else "wav"
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3
-    model_tag = TTS_MODEL.split("-")[1] if "-" in TTS_MODEL else TTS_MODEL  # "2.5" → too long
-    if "pro" in TTS_MODEL:
-        model_tag = "pro"
-    elif "flash" in TTS_MODEL:
-        model_tag = "flash"
+    model_tag = _model_tag(TTS_MODEL)
     output_path = script_path.with_name(
         script_path.stem.replace("_script", "") + f"_{model_tag}.{ext}"
     )
@@ -875,12 +886,7 @@ def process_file(
 
 def _output_path_for(script_path: Path) -> Path:
     """Compute the expected output audio path for a script."""
-    if "pro" in TTS_MODEL:
-        model_tag = "pro"
-    elif "flash" in TTS_MODEL:
-        model_tag = "flash"
-    else:
-        model_tag = TTS_MODEL.split("-")[1] if "-" in TTS_MODEL else TTS_MODEL
+    model_tag = _model_tag(TTS_MODEL)
     ext = OUTPUT_FORMAT if OUTPUT_FORMAT in ("mp3", "m4a") else "wav"
     return script_path.with_name(
         script_path.stem.replace("_script", "") + f"_{model_tag}.{ext}"
