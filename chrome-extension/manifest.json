@@ -5,6 +5,9 @@
   "description": "閱讀時選詞翻譯，建立詞彙知識圖譜",
   "permissions": ["activeTab", "sidePanel", "storage"],
   "host_permissions": ["https://wordnexus.lol/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
