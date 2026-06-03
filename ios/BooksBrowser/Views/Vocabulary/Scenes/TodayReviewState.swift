@@ -23,6 +23,7 @@ final class TodayReviewState {
     var linkedCardStack: [VocabularyEntry] = []
     var tappedLink: KGCardLinkSummary?
     var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
+    static let cacheLookaheadLimit = 3
 
     // MARK: - Delegated concerns
 
@@ -46,9 +47,8 @@ final class TodayReviewState {
     var autoplayTask: Task<Void, Never>?
 
     // MARK: - Cache build
-    // Background full-cache build kicked off in init. Tracked so an early
-    // dismiss (onDisappear) can cancel it instead of letting it run to
-    // completion and mutate preparedCardCache on a torn-down session.
+    // Keep only a small sliding window warm. Building hundreds of rich cards on
+    // the main actor during session start causes visible hitches on large queues.
     private var cacheBuildTask: Task<Void, Never>?
 
     // MARK: - Analytics
@@ -85,22 +85,8 @@ final class TodayReviewState {
                 forgotCount: restored.forgotCount
             )
         }
-        if let first = queue.first {
-            preparedCardCache = Self.buildPreparedCardCache(from: [first])
-        }
+        prewarmCardWindow()
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
-        // Build remaining cards asynchronously to avoid blocking main thread.
-        // [weak self] + handle so an early dismiss can cancel it; without this
-        // the build runs to completion and mutates preparedCardCache on a
-        // torn-down session.
-        if queue.count > 1 {
-            cacheBuildTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                let fullCache = Self.buildPreparedCardCache(from: self.queue)
-                guard !Task.isCancelled else { return }
-                self.preparedCardCache = fullCache
-            }
-        }
     }
 
     // MARK: - Computed (State Projection)
@@ -138,10 +124,18 @@ final class TodayReviewState {
         return cachedOrBuildCard(for: current)
     }
 
+    var currentCardForTesting: TodayReviewPresenterState.CurrentCard? {
+        currentCardState
+    }
+
     private var nextCardState: TodayReviewPresenterState.CurrentCard? {
         let nextIndex = currentIndex + 1
         guard nextIndex < queue.count else { return nil }
         return cachedOrBuildCard(for: queue[nextIndex])
+    }
+
+    var nextCardForTesting: TodayReviewPresenterState.CurrentCard? {
+        nextCardState
     }
 
     /// Fallback: build on-demand if async cache hasn't completed yet.
@@ -227,6 +221,7 @@ final class TodayReviewState {
             revealStage = .front
         }
         syncQueueMetadata()
+        prewarmCardWindow()
         ReviewSessionStore.saveOrder(queue.map(\.id))
         persistSnapshot()
     }
@@ -240,6 +235,7 @@ final class TodayReviewState {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
+        prewarmCardWindow()
         persistSnapshot()
     }
 
@@ -252,6 +248,7 @@ final class TodayReviewState {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
+        prewarmCardWindow()
         persistSnapshot()
     }
 
@@ -320,6 +317,7 @@ final class TodayReviewState {
                         self.revealStage = .front
                         self.currentIndex += 1
                     }
+                    self.prewarmCardWindow()
                 } else {
                     self.stopAutoPlay()
                     return
@@ -368,6 +366,7 @@ final class TodayReviewState {
         persistSnapshot()
         revealStage = .front
         currentIndex += 1
+        prewarmCardWindow()
 
         finishSessionIfComplete()
     }
@@ -450,6 +449,24 @@ final class TodayReviewState {
 
     // MARK: - Cache Builders
 
+    private func prewarmCardWindow() {
+        guard !queue.isEmpty, currentIndex < queue.count else {
+            preparedCardCache.removeAll(keepingCapacity: false)
+            return
+        }
+
+        let start = max(currentIndex - 1, 0)
+        let end = min(currentIndex + Self.cacheLookaheadLimit, queue.count - 1)
+        let visibleEntries = Array(queue[start...end])
+        let visibleIDs = Set(visibleEntries.map(\.id))
+
+        preparedCardCache = preparedCardCache.filter { visibleIDs.contains($0.key) }
+
+        let missingEntries = visibleEntries.filter { preparedCardCache[$0.id] == nil }
+        guard !missingEntries.isEmpty else { return }
+        preparedCardCache.merge(Self.buildPreparedCardCache(from: missingEntries)) { current, _ in current }
+    }
+
     static func buildPreparedCardCache(
         from entries: [VocabularyEntry]
     ) -> [UUID: TodayReviewPresenterState.CurrentCard] {
@@ -501,6 +518,7 @@ final class TodayReviewState {
         // completion state. Previously this guarded `< queue.count - 1`, which
         // pinned the last card forever and the completion teardown never ran.
         currentIndex += 1
+        prewarmCardWindow()
         persistSnapshot()
         finishSessionIfComplete()
     }
