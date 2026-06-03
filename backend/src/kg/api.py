@@ -130,6 +130,29 @@ from .sentry_init import init_sentry  # noqa: E402
 init_sentry()
 
 
+def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
+    """Derive the rate-limit key for an anonymous (no-auth) request.
+
+    `hops` = number of trusted proxy hops in front of the app. The real client
+    IP is taken from the `hops`-th-from-end X-Forwarded-For segment.
+
+    Production contract: single-layer bare Caddy on AWS public net appends the
+    real client IP to the END of XFF, so hops=1 selects the last segment — this
+    is byte-for-byte identical to the legacy `xff.split(",")[-1].strip()`.
+    Raise hops to N+1 only when N trusted proxies (CDN/ALB) front Caddy.
+
+    Safe fallbacks: empty XFF -> client_host (or "unknown"); hops exceeding the
+    available segment count -> the frontmost segment (never raises IndexError).
+    """
+    if xff:
+        segments = [s.strip() for s in xff.split(",")]
+        # hops=1 -> index -1 (last). Clamp so hops beyond segment count (or a
+        # non-positive misconfig) safely lands on the frontmost segment.
+        idx = max(0, len(segments) - max(1, hops))
+        return segments[idx]
+    return client_host if client_host else "unknown"
+
+
 def create_app(settings: KGSettings | None = None) -> FastAPI:
     atexit.register(clear_store_cache)
 
@@ -245,10 +268,10 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             key = auth[-16:]
         else:
             xff = request.headers.get("x-forwarded-for", "")
-            if xff:
-                key = xff.split(",")[-1].strip()
-            else:
-                key = request.client.host if request.client else "unknown"
+            client_host = request.client.host if request.client else None
+            key = _anon_rate_limit_key(
+                xff, client_host, settings.rate_limit_trusted_hops
+            )
         limiter = translate_limiter if "/api/translate" in path else api_limiter
         if not await limiter.is_allowed(key):
             return JSONResponse(
