@@ -3,6 +3,16 @@ import SwiftUI
 import UIKit
 import Inject
 
+/// Selection state for the long-press → phrase-select flow. Shared between the
+/// outer view (which owns it as `@State`) and the Equatable transcript child
+/// (which reads it to swap a bubble into `PodcastSelectableSentenceTextView` and
+/// clears it on phrase/explain commit). Kept top-level + `Equatable` so it can
+/// participate in the transcript column's `EquatableView` short-circuit.
+struct PodcastSentenceSelection: Equatable {
+    let sentenceId: Int
+    let initialRange: NSRange?
+}
+
 /// Chat-style transcript: sentences laid out as left/right bubbles by speaker.
 ///
 /// Design principles:
@@ -16,20 +26,36 @@ import Inject
 ///     the speaker label is shown only when it changes from the previous row.
 ///   • layout transitions are explicitly animated (bubble bg, underline,
 ///     label show/hide) to avoid the snap-change jank of dt→0 shifts.
+///
+/// ## Per-frame cost model (the scroll-freeze fix)
+///
+/// The follow scroll + word underline are continuous engines that must update
+/// every display frame (60–120 Hz). The transcript itself, however, is a
+/// non-lazy column of hundreds of sentences, each exploding into per-word `Text`
+/// tokens + `CachedFlowLayout` + anchor preferences — thousands of view values.
+/// Re-evaluating that whole struct tree every frame saturated the main thread and
+/// froze scrolling. So the work is split:
+///   • `PodcastTranscriptColumn` (the token tree) is wrapped in `.equatable()`.
+///     Its `==` compares an O(1) `PodcastTranscriptIdentity` + the few
+///     sentence-level inputs that actually change the tokens (current sentence,
+///     selection, size, word-follow toggle). Per-frame playhead ticks compare
+///     equal → SwiftUI skips its `body`, reusing the already-built tree.
+///   • The per-frame follow `.offset` is applied to that Equatable child as a
+///     render transform (not a body change), driven by the outer `TimelineView`.
+///   • The word underline reads the LIVE playhead each frame through a reference
+///     (`liveAnchor`), so the Equatable-skip never starves it of fresh time.
 struct PodcastSentenceLevelView: View {
     @ObserveInjection private var inject
-    private struct SentenceSelectionState: Equatable {
-        let sentenceId: Int
-        let initialRange: NSRange?
-    }
 
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
-    /// Continuous-playhead inputs (Phase 2): the active word + its underline are
-    /// derived every frame by extrapolating `playbackAnchor` and running
-    /// `PodcastWordProgress.locate` over the current sentence's cues — replacing
-    /// the discrete `highlightedWordIndex` snap the view used to consume.
-    let playbackAnchor: PlaybackAnchor
+    /// Continuous-playhead source (reference): the active word + its underline are
+    /// derived every frame by extrapolating `liveAnchor.value` and running
+    /// `PodcastWordProgress.locate` over the current sentence's cues. A reference
+    /// (not a `PlaybackAnchor` value) so the Equatable transcript child can be
+    /// skipped per frame while the per-frame underline/offset still read the live
+    /// playhead — see `PodcastLiveAnchor`.
+    let liveAnchor: PodcastLiveAnchor
     let duration: TimeInterval
     let isPlaying: Bool
     let hostNames: [String]
@@ -42,7 +68,7 @@ struct PodcastSentenceLevelView: View {
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
 
     @State private var isFollowing = true
-    @State private var selectionState: SentenceSelectionState?
+    @State private var selectionState: PodcastSentenceSelection?
     /// Measured vertical center of each sentence within the transcript column's
     /// OWN coordinate space (offset-independent), keyed by sentence id. Drives
     /// the continuous follow offset.
@@ -52,10 +78,6 @@ struct PodcastSentenceLevelView: View {
     @State private var manualOffset: CGFloat = 0
     @State private var dragStartOffset: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0
-
-    /// Named coordinate space for measuring sentence centers, independent of the
-    /// outer `.offset` (which is a render transform, not a layout change).
-    private static let transcriptSpace = "podcastTranscript"
 
     private var currentId: Int? { renderState?.sentenceId }
 
@@ -81,7 +103,12 @@ struct PodcastSentenceLevelView: View {
     }
 
     var body: some View {
-        GeometryReader { vp in
+        // Computed ONCE per parent render (not per frame): the follow
+        // `TimelineView` below reconstructs `PodcastTranscriptColumn` every tick to
+        // run its Equatable check, so any O(n) input it needs must be hoisted out
+        // of that closure or it re-runs at the display refresh rate.
+        let slots = speakerSlots
+        return GeometryReader { vp in
             ZStack(alignment: .bottom) {
                 // Offset-driven follow: a single continuous `.offset` positions
                 // the transcript so the spoken sentence glides through the
@@ -89,11 +116,16 @@ struct PodcastSentenceLevelView: View {
                 // align same-fraction points of view+viewport, so it cannot keep
                 // an intra-sentence point centered — a manual offset is required.)
                 // When not following, the same offset is driven by the user's drag.
+                //
+                // CRUCIAL: only the `.offset` value is recomputed per frame here.
+                // `transcriptColumn` is wrapped in `.equatable()` so its body is
+                // NOT re-evaluated every tick — SwiftUI just re-applies the new
+                // offset transform to the already-built token tree.
                 TimelineView(.animation(paused: !isPlaying || !isFollowing)) { ctx in
                     let offset = isFollowing
                         ? followOffset(viewportHeight: vp.size.height, now: ctx.date.timeIntervalSinceReferenceDate)
                         : manualOffset
-                    transcriptColumn
+                    transcriptColumn(speakerSlots: slots)
                         .offset(y: offset)
                         // Until centers are first measured, `offset` falls back to
                         // 0 (column pinned to top). Hide that one pre-measurement
@@ -121,10 +153,14 @@ struct PodcastSentenceLevelView: View {
                 // centers, flashing a misaligned frame before snapping correct.
                 // Reset to empty so the guard re-arms (hides the pre-measurement
                 // frame) until the new episode's preference pass repopulates centers.
-                // Sentence ids restart at 0 each episode, so an id-only key could
-                // collide; full-array equality (PodcastSentence: Equatable) reliably
-                // detects the swap and never fires during same-episode playback.
-                .onChange(of: sentences) { _, _ in sentenceCenters = [:] }
+                // Keyed on the O(1) `PodcastTranscriptIdentity` (count + span) rather
+                // than full-array `==`: sentence ids restart at 0 each episode so an
+                // id-only key could collide, but the time span reliably detects the
+                // swap and never fires during same-episode playback — without the
+                // O(n·words) deep compare the old `onChange(of: sentences)` ran.
+                .onChange(of: PodcastTranscriptIdentity(sentences: sentences)) { _, _ in
+                    sentenceCenters = [:]
+                }
 
                 if shouldShowFollowControl {
                     followPill()
@@ -137,35 +173,48 @@ struct PodcastSentenceLevelView: View {
         .enableInjection()
     }
 
-    /// Non-lazy column of every sentence. Non-lazy (not `LazyVStack`) is required
-    /// because `.offset` does not move a `LazyVStack`'s realization window —
-    /// off-window cells would blank out. Each bubble reports its center in the
-    /// column's own coordinate space for the continuous follow offset.
-    private var transcriptColumn: some View {
-        VStack(spacing: skin.spacing.inlineGap) {
-            ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
-                let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
-                bubbleRow(sentence, showSpeaker: sentence.speaker != prevSpeaker)
-                    .id(sentence.id)
-                    .background(
-                        GeometryReader { g in
-                            Color.clear.preference(
-                                key: SentenceCenterKey.self,
-                                value: [sentence.id: g.frame(in: .named(Self.transcriptSpace)).midY]
-                            )
-                        }
-                    )
-            }
-        }
-        .padding(.vertical, skin.spacing.sectionGap)
-        .padding(.horizontal, skin.spacing.cardPadding)
-        .coordinateSpace(name: Self.transcriptSpace)
+    /// The transcript token tree, wrapped in `.equatable()` so the per-frame
+    /// follow `TimelineView` above does not re-evaluate hundreds of sentences ×
+    /// per-word tokens every display frame. See `PodcastTranscriptColumn`.
+    /// `speakerSlots` is passed in (computed once in `body`) so reconstructing
+    /// this value for the per-frame Equatable check stays O(1) work.
+    private func transcriptColumn(speakerSlots: [String: Int]) -> some View {
+        PodcastTranscriptColumn(
+            sentences: sentences,
+            renderState: renderState,
+            currentId: currentId,
+            selectionState: selectionState,
+            subtitleSize: subtitleSize,
+            wordFollowEnabled: wordFollowEnabled,
+            isPlaying: isPlaying,
+            duration: duration,
+            liveAnchor: liveAnchor,
+            speakerSlots: speakerSlots,
+            skin: skin,
+            onSentenceTap: onSentenceTap,
+            onWordTap: onWordTap,
+            onPhraseTap: { phrase, context in
+                selectionState = nil
+                onPhraseTap(phrase, context)
+            },
+            onExplainTap: { text, context in
+                selectionState = nil
+                onExplainTap(text, context)
+            },
+            onEnterSelection: { sel in
+                seedManualOffsetFromFollow()
+                isFollowing = false
+                selectionState = sel
+            },
+            onClearSelection: { selectionState = nil }
+        )
+        .equatable()
     }
 
     /// Continuous content offset that keeps the spoken sentence at viewport
     /// center. Falls back to the last manual offset until centers are measured.
     private func followOffset(viewportHeight: CGFloat, now: TimeInterval) -> CGFloat {
-        let t = PodcastPlaybackClock.projectedTime(anchor: playbackAnchor, now: now, duration: duration)
+        let t = PodcastPlaybackClock.projectedTime(anchor: liveAnchor.value, now: now, duration: duration)
         return PodcastScrollGeometry.centerOffset(
             time: t, sentences: sentences, centers: sentenceCenters, viewportHeight: viewportHeight
         ) ?? manualOffset
@@ -209,6 +258,157 @@ struct PodcastSentenceLevelView: View {
         let minOffset = viewportHeight / 2 - maxC  // last sentence centered
         guard minOffset <= maxOffset else { return y }
         return min(maxOffset, max(minOffset, y))
+    }
+
+    // MARK: - Follow pill
+
+    // Mac Catalyst 的滑鼠滾輪/觸控板捲動是 indirect scroll,不觸發 SwiftUI DragGesture
+    // (平台限制,Apple 至今無 API),故無法像 iOS 那樣隱式偵測「使用者捲離當前句」。
+    // 因此 Catalyst 上 pill 常駐為明確 toggle(跟隨中 ⇄ 追隨當前);iPhone/iPad 維持
+    // 手指拖曳隱式脫離 follow 的既有體驗(pill 僅在已脫離時出現)。
+    private var shouldShowFollowControl: Bool {
+        guard selectionState == nil else { return false }
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return !isFollowing
+        #endif
+    }
+
+    @ViewBuilder
+    private func followPill() -> some View {
+        if isFollowing {
+            // iPhone/iPad 在 following 時 shouldShowFollowControl 為 false,不會到這;
+            // 僅 Catalyst 顯示此態,作為「停止跟隨、自由瀏覽」開關。
+            pillCapsule {
+                seedManualOffsetFromFollow()
+                isFollowing = false
+            } content: {
+                Image(systemName: "pause.fill")
+                    .font(skin.typography.iconTiny)
+                    .foregroundStyle(skin.palette.secondaryText)
+                Text(L10n.string("停止跟隨"))
+                    .font(skin.typography.caption)
+                    .foregroundStyle(skin.palette.primaryText)
+            }
+        } else {
+            pillCapsule {
+                // Re-engage follow: the offset container snaps back to the live
+                // follow offset (animated by the body's isFollowing animation).
+                withAnimation(AppMotion.standardSpring) {
+                    isFollowing = true
+                }
+            } content: {
+                if let speaker = renderState?.speaker {
+                    let idx = hostNames.firstIndex(of: speaker)
+                    Circle()
+                        .fill(PodcastSpeakerTint.color(for: idx, skin: skin))
+                        .frame(width: 6, height: 6)
+                }
+                Text(L10n.string("追隨當前"))
+                    .font(skin.typography.caption)
+                    .foregroundStyle(skin.palette.primaryText)
+                Image(systemName: "arrow.down")
+                    .font(skin.typography.iconTiny)
+                    .foregroundStyle(skin.palette.secondaryText)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pillCapsule<Content: View>(
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) { content() }
+                .padding(.horizontal, 14)
+                .padding(.vertical, AppSpacing.s2)
+                .background(
+                    Capsule()
+                        .fill(skin.palette.cardBackground.opacity(0.96))
+                        .overlay(Capsule().stroke(skin.palette.cardBorder, lineWidth: 1))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Transcript column (Equatable, per-frame skipped)
+
+/// The non-lazy column of every sentence, wrapped by the parent in `.equatable()`.
+///
+/// Non-lazy (not `LazyVStack`) is required because `.offset` does not move a
+/// `LazyVStack`'s realization window — off-window cells would blank out. Each
+/// bubble reports its center in the column's own coordinate space for the
+/// continuous follow offset.
+///
+/// `Equatable` is the heart of the scroll-freeze fix: the parent's follow
+/// `TimelineView` re-evaluates every display frame, but this struct's `==`
+/// compares only the inputs that actually change the rendered tokens — an O(1)
+/// `PodcastTranscriptIdentity` plus the sentence-level highlight / selection /
+/// size / word-follow flags. The per-frame playhead is read LIVE from `liveAnchor`
+/// (a reference, excluded from `==`), so frame ticks compare equal and SwiftUI
+/// skips this whole `body`, reusing the already-built token tree. The word
+/// underline's inner `TimelineView` still reads `liveAnchor.value` fresh each
+/// frame, so it never freezes despite the parent skip.
+private struct PodcastTranscriptColumn: View, Equatable {
+    let sentences: [PodcastSentence]
+    let renderState: SubtitleRenderState?
+    let currentId: Int?
+    let selectionState: PodcastSentenceSelection?
+    let subtitleSize: PodcastSubtitleSize
+    let wordFollowEnabled: Bool
+    let isPlaying: Bool
+    let duration: TimeInterval
+    let liveAnchor: PodcastLiveAnchor
+    let speakerSlots: [String: Int]
+    let skin: AppSkin
+    let onSentenceTap: (PodcastSentence) -> Void
+    let onWordTap: (String, String) -> Void
+    let onPhraseTap: (String, String) -> Void
+    let onExplainTap: (String, String) -> Void
+    let onEnterSelection: (PodcastSentenceSelection) -> Void
+    let onClearSelection: () -> Void
+
+    /// Named coordinate space for measuring sentence centers, independent of the
+    /// outer `.offset` (which is a render transform, not a layout change).
+    private static let transcriptSpace = "podcastTranscript"
+
+    /// The body-skip contract: equal iff nothing that changes the TOKEN TREE
+    /// changed. Compares O(1) transcript identity + sentence-level highlight /
+    /// selection / size / word-follow + `isPlaying` (gates the underline's
+    /// TimelineView pause). Deliberately excludes `liveAnchor` (read live per
+    /// frame), `duration`, geometry, and the closures (stable per parent render),
+    /// so the per-frame follow ticks short-circuit here.
+    static func == (lhs: PodcastTranscriptColumn, rhs: PodcastTranscriptColumn) -> Bool {
+        PodcastTranscriptIdentity(sentences: lhs.sentences) == PodcastTranscriptIdentity(sentences: rhs.sentences)
+            && lhs.currentId == rhs.currentId
+            && lhs.selectionState == rhs.selectionState
+            && lhs.subtitleSize == rhs.subtitleSize
+            && lhs.wordFollowEnabled == rhs.wordFollowEnabled
+            && lhs.isPlaying == rhs.isPlaying
+    }
+
+    var body: some View {
+        VStack(spacing: skin.spacing.inlineGap) {
+            ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
+                let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
+                bubbleRow(sentence, showSpeaker: sentence.speaker != prevSpeaker)
+                    .id(sentence.id)
+                    .background(
+                        GeometryReader { g in
+                            Color.clear.preference(
+                                key: SentenceCenterKey.self,
+                                value: [sentence.id: g.frame(in: .named(Self.transcriptSpace)).midY]
+                            )
+                        }
+                    )
+            }
+        }
+        .padding(.vertical, skin.spacing.sectionGap)
+        .padding(.horizontal, skin.spacing.cardPadding)
+        .coordinateSpace(name: Self.transcriptSpace)
     }
 
     // MARK: - Bubble row
@@ -270,10 +470,8 @@ struct PodcastSentenceLevelView: View {
                     tintColor: UIColor(bubbleTint),
                     initialSelectionRange: selectionState?.initialRange
                 ) { phrase, context in
-                    selectionState = nil
                     onPhraseTap(phrase, context)
                 } onExplainSelection: { text, context in
-                    selectionState = nil
                     onExplainTap(text, context)
                 }
             } else {
@@ -357,6 +555,13 @@ struct PodcastSentenceLevelView: View {
     /// pass (from anchor preferences); the inner `TimelineView` re-evaluates at
     /// the display refresh rate and only lerps the capsule — it does NOT rebuild
     /// the word tokens, so `CachedFlowLayout` never re-runs per frame.
+    ///
+    /// The playhead is read LIVE from `liveAnchor.value` inside the TimelineView
+    /// closure. This is what defeats the stale-anchor trap: even though the parent
+    /// `PodcastTranscriptColumn.body` is skipped per frame (Equatable), this inner
+    /// TimelineView runs its own per-frame schedule and reads the current anchor
+    /// through the reference — never a value frozen at the last body eval.
+    ///
     /// `words` MUST be the current sentence's cues (sentence-relative indices),
     /// matching `PodcastWordProgress.locate`'s array basis.
     @ViewBuilder
@@ -369,7 +574,7 @@ struct PodcastSentenceLevelView: View {
             let rects = anchors.mapValues { geo[$0] }
             TimelineView(.animation(paused: !isPlaying)) { ctx in
                 let t = PodcastPlaybackClock.projectedTime(
-                    anchor: playbackAnchor,
+                    anchor: liveAnchor.value,
                     now: ctx.date.timeIntervalSinceReferenceDate,
                     duration: duration
                 )
@@ -388,105 +593,26 @@ struct PodcastSentenceLevelView: View {
         }
     }
 
-    // MARK: - Follow pill
-
-    // Mac Catalyst 的滑鼠滾輪/觸控板捲動是 indirect scroll,不觸發 SwiftUI DragGesture
-    // (平台限制,Apple 至今無 API),故無法像 iOS 那樣隱式偵測「使用者捲離當前句」。
-    // 因此 Catalyst 上 pill 常駐為明確 toggle(跟隨中 ⇄ 追隨當前);iPhone/iPad 維持
-    // 手指拖曳隱式脫離 follow 的既有體驗(pill 僅在已脫離時出現)。
-    private var shouldShowFollowControl: Bool {
-        guard selectionState == nil else { return false }
-        #if targetEnvironment(macCatalyst)
-        return true
-        #else
-        return !isFollowing
-        #endif
-    }
-
-    @ViewBuilder
-    private func followPill() -> some View {
-        if isFollowing {
-            // iPhone/iPad 在 following 時 shouldShowFollowControl 為 false,不會到這;
-            // 僅 Catalyst 顯示此態,作為「停止跟隨、自由瀏覽」開關。
-            pillCapsule {
-                seedManualOffsetFromFollow()
-                isFollowing = false
-            } content: {
-                Image(systemName: "pause.fill")
-                    .font(skin.typography.iconTiny)
-                    .foregroundStyle(skin.palette.secondaryText)
-                Text(L10n.string("停止跟隨"))
-                    .font(skin.typography.caption)
-                    .foregroundStyle(skin.palette.primaryText)
-            }
-        } else {
-            pillCapsule {
-                // Re-engage follow: the offset container snaps back to the live
-                // follow offset (animated by the body's isFollowing animation).
-                withAnimation(AppMotion.standardSpring) {
-                    isFollowing = true
-                }
-            } content: {
-                if let speaker = renderState?.speaker {
-                    let idx = hostNames.firstIndex(of: speaker)
-                    Circle()
-                        .fill(tint(for: idx))
-                        .frame(width: 6, height: 6)
-                }
-                Text(L10n.string("追隨當前"))
-                    .font(skin.typography.caption)
-                    .foregroundStyle(skin.palette.primaryText)
-                Image(systemName: "arrow.down")
-                    .font(skin.typography.iconTiny)
-                    .foregroundStyle(skin.palette.secondaryText)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func pillCapsule<Content: View>(
-        action: @escaping () -> Void,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) { content() }
-                .padding(.horizontal, 14)
-                .padding(.vertical, AppSpacing.s2)
-                .background(
-                    Capsule()
-                        .fill(skin.palette.cardBackground.opacity(0.96))
-                        .overlay(Capsule().stroke(skin.palette.cardBorder, lineWidth: 1))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: - Helpers
 
     private func tint(for idx: Int?) -> Color {
-        switch idx {
-        case 0: return skin.palette.accent
-        case 1: return skin.palette.success
-        case 2: return skin.palette.warning
-        case 3: return skin.palette.info
-        default: return skin.palette.tertiaryText
-        }
+        PodcastSpeakerTint.color(for: idx, skin: skin)
     }
 
     private func handleSentenceTap(_ sentence: PodcastSentence, isCurrent: Bool) {
         if selectionState != nil {
-            selectionState = nil
+            onClearSelection()
             return
         }
         if !isCurrent { onSentenceTap(sentence) }
     }
 
     private func enterSelectionMode(for sentence: PodcastSentence, wordIndex: Int) {
-        seedManualOffsetFromFollow()
-        isFollowing = false
-        selectionState = SentenceSelectionState(
-            sentenceId: sentence.id,
-            initialRange: selectionRange(for: sentence, wordIndex: wordIndex)
+        onEnterSelection(
+            PodcastSentenceSelection(
+                sentenceId: sentence.id,
+                initialRange: selectionRange(for: sentence, wordIndex: wordIndex)
+            )
         )
     }
 
@@ -506,6 +632,20 @@ struct PodcastSentenceLevelView: View {
         }
 
         return nil
+    }
+}
+
+/// Speaker → tint mapping. Hoisted out of the view so both the transcript column
+/// and the follow pill share one source of truth.
+enum PodcastSpeakerTint {
+    static func color(for idx: Int?, skin: AppSkin) -> Color {
+        switch idx {
+        case 0: return skin.palette.accent
+        case 1: return skin.palette.success
+        case 2: return skin.palette.warning
+        case 3: return skin.palette.info
+        default: return skin.palette.tertiaryText
+        }
     }
 }
 
@@ -552,7 +692,7 @@ private struct SentenceCenterKey: PreferenceKey {
         PodcastSentenceLevelView(
             sentences: [s1, s2],
             renderState: SubtitleRenderState(from: s2, hostNames: ["Maya", "Kai"]),
-            playbackAnchor: PlaybackAnchor(mediaTime: 4.3, wallClock: 0, rate: 0),
+            liveAnchor: PodcastLiveAnchor(value: PlaybackAnchor(mediaTime: 4.3, wallClock: 0, rate: 0)),
             duration: 5.2,
             isPlaying: false,
             hostNames: ["Maya", "Kai"],
