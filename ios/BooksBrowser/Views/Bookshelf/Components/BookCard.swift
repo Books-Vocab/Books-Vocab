@@ -13,6 +13,7 @@ struct BookCard: View {
     @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @Environment(\.iCloudDownloadManager) private var downloadManager
+    @Environment(\.displayScale) private var displayScale
     let book: Book
     var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
     @State private var decodedCoverImage: PlatformImage?
@@ -52,7 +53,7 @@ struct BookCard: View {
                 }
             }
         }
-        .task(id: book.coverImageData) {
+        .task(id: book.coverImageData?.count) {
             await decodeCoverImage()
         }
         .appHoverLift()
@@ -113,8 +114,16 @@ struct BookCard: View {
             decodedCoverImage = nil
             return
         }
-        let image = await Task.detached {
-            PlatformImage(data: coverData)
+        // 顯示時最長邊即 coverHeight（aspectRatio 2/3 fill 由高度驅動）。
+        // 以點數 × 螢幕 scale 為像素上限，直接降採樣解碼，避免全解析度 backing store。
+        let maxDimension = coverHeight
+        let scale = displayScale
+        let image = await Task.detached(priority: .utility) {
+            CoverImageDownsampler.downsample(
+                data: coverData,
+                maxDimensionPoints: maxDimension,
+                scale: scale
+            ) ?? PlatformImage(data: coverData)
         }.value
         guard !Task.isCancelled else { return }
         withAnimation(AppMotion.contentFade) {
