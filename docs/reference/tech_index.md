@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 3875f3cb
+verified_against: 80147399
 -->
 # Technical Reference Index
 
@@ -31,7 +31,9 @@ verified_against: 3875f3cb
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
 | `admin.py` | `/api/admin/*`, `/admin/*` | dashboard / user detail / logs / test-matrix |
-| `static_pages.py` | `/privacy.html` / `/support.html` / `/terms.html` / `/guide.html` | 靜態頁 |
+| `static_pages.py` | `/privacy.html` / `/support.html` / `/terms.html` / `/guide.html` | 公開頁(已重構成消費設計系統的官網,吃 `/static/*` CSS) |
+
+`api.py` 另以 `app.mount("/static", StaticFiles(directory=backend/static))`(`if is_dir` 守衛)服務公開頁的設計系統資產(`kg-tokens.css` / `kg-components.css` / `site.css` + brand woff2 字體)。`kg-tokens.css`·`kg-components.css` 由 `ops/gen_web_tokens.py` 生成,不手改;rsync-only-backend deploy 與 Dockerfile `COPY static/` 確保隨容器出貨。
 
 ## SQLite Log Stores (`backend/src/kg/`)
 
@@ -110,6 +112,8 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
+| `gen_web_tokens.py` | 從 `design-system/tokens.json`(iOS Swift token 鏡像 SoT)生成 web CSS(`design-system/dist/kg-tokens.css` + chrome-extension `shared/tokens.css` + `backend/static/{kg-tokens,kg-components}.css`);`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
+| `token_drift_check.py` | drift guard — 驗證 `tokens.json` 每個 `$swift` token 仍對齊 iOS Swift literal(`AppColors`/`AppTheme`/`AppMetrics`/`AppFonts`),偏移不可 merge |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
@@ -118,6 +122,19 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `injection_lint.sh` | iOS hot reload 覆蓋率守門(同 `i18n_lint` 四模式)。三規則:View struct 有 `@ObserveInjection`、per-file arity、`import Inject` 共存性。詳見 `docs/sop/ios.md §Hot Reload` |
 
 Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。
+
+## Web 設計系統(`design-system/`)
+
+跨平台 design token 橋接層,iOS Swift token 為 SoT,生成 web 消費的 CSS。
+
+| 項目 | 路徑 / 值 |
+|------|-----------|
+| Token SoT(web 側) | `design-system/tokens.json` — 鏡像 iOS Swift token literal(rgb float + `$swift` provenance) |
+| 生成器 | `ops/gen_web_tokens.py`(SoT → web CSS,見 ops 表) |
+| Drift guard | `ops/token_drift_check.py`(`$swift` token ↔ iOS 對齊,見 ops 表) |
+| 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源) |
+| 消費副本 | chrome-extension `shared/tokens.css`(生成)+ `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |
+| Shadow-DOM 安全 | token CSS selector 用 `:root, :host`,供 extension 注入 closed shadow root 仍生效 |
 
 ## Backup / Disaster Recovery
 
