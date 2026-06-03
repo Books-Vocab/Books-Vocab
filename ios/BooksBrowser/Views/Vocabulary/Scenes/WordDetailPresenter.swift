@@ -25,13 +25,14 @@ struct WordDetailPresenter: View {
         let metadataItems: [MetadataItem]
         let navigableLinkCardIDs: Set<String>
         let reviewProgress: VocabReviewProgress?
-        let isExcludedFromReader: Bool
     }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appSkin) private var appSkin
 
     let state: State
+    /// Live value（非 `state` 快照）— 由 `@Bindable entry` 直讀,確保勾選即時翻轉視覺。
+    let isExcludedFromReader: Bool
     let showsChrome: Bool
     let onClose: (() -> Void)?
     let onEdit: (() -> Void)?
@@ -252,10 +253,10 @@ struct WordDetailPresenter: View {
     private func excludeFromReaderToggle(onToggle: @escaping () -> Void) -> some View {
         Button(action: onToggle) {
             HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
-                Image(systemName: state.isExcludedFromReader ? "checkmark.square.fill" : "square")
+                Image(systemName: isExcludedFromReader ? "checkmark.square.fill" : "square")
                     .font(appSkin.typography.body)
                     .foregroundStyle(
-                        state.isExcludedFromReader
+                        isExcludedFromReader
                             ? appSkin.palette.secondaryText
                             : appSkin.palette.tertiaryText
                     )
@@ -266,8 +267,8 @@ struct WordDetailPresenter: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityValue(state.isExcludedFromReader ? L10n.string("a11y.toggle.on") : L10n.string("a11y.toggle.off"))
+        .accessibilityValue(isExcludedFromReader ? L10n.string("a11y.toggle.on") : L10n.string("a11y.toggle.off"))
         .accessibilityAddTraits(.isToggle)
-        .animateContentFade(state.isExcludedFromReader)
+        .animateContentFade(isExcludedFromReader)
     }
 }

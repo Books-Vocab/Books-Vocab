@@ -41,6 +41,7 @@ struct WordDetailSheet: View {
             if let presenterState {
                 WordDetailPresenter(
                     state: presenterState,
+                    isExcludedFromReader: entry.isExcludedFromReader,
                     showsChrome: showsInlineChrome,
                     onClose: showsInlineChrome ? { handleClose() } : nil,
                     onEdit: { isEditing = true },
