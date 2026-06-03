@@ -1,17 +1,32 @@
-//
-//  CoverImageDownsamplerTests.swift
-//  BooksBrowserTests
-//
-//  Pins CoverImageDownsampler — 封面縮圖降採樣 (track-14 記憶體修法)。
-//  保證輸出像素 ≤ 目標上限，避免可見 cell × 全解析度 backing store 疊加爆記憶體。
-//
-
+#if os(iOS)
 import Foundation
-import Testing
 import UIKit
+import ImageIO
+import Testing
 @testable import BooksBrowser
 
+/// Pins `CoverImageDownsampler` — 兩條路徑各自的契約：
+///
+/// - 顯示路徑（track-14）`downsample(data:maxDimensionPoints:scale:)`：保證輸出
+///   像素 ≤ 目標上限、帶入指定 scale，避免可見 cell × 全解析度 backing store
+///   疊加爆記憶體。
+/// - 存檔路徑（track-15）`downsampledJPEG(from:)`：保持 EPUB 封面 blob 小於
+///   `Book.coverImageData`；`ReadiumService.extractCover` 在持久化前把全解析度
+///   `UIImage` 餵進此 seam，先前直接存原始全尺寸 PNG。
 struct CoverImageDownsamplerTests {
+
+    // MARK: - Fixtures
+
+    /// A solid-colour image of a given pixel size (scale 1 → pixels == points).
+    private func makeImage(width: CGFloat, height: CGFloat) -> UIImage {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
+        return renderer.image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
 
     /// 產生指定像素尺寸的 PNG `Data`（scale 1，便於 pixel 斷言）。
     private func makePNG(widthPx: Int, heightPx: Int) -> Data {
@@ -26,7 +41,15 @@ struct CoverImageDownsamplerTests {
         return image.pngData()!
     }
 
-    // MARK: - 上限封頂
+    private func pixelSize(of data: Data) -> CGSize? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? CGFloat,
+              let h = props[kCGImagePropertyPixelHeight] as? CGFloat else { return nil }
+        return CGSize(width: w, height: h)
+    }
+
+    // MARK: - 顯示路徑（track-14）：downsample(data:maxDimensionPoints:scale:)
 
     @Test("大圖降採樣後最長邊像素 ≤ 目標上限")
     func downsamplesLargeImage() throws {
@@ -56,8 +79,6 @@ struct CoverImageDownsamplerTests {
         #expect(abs((pixelW / pixelH) - (1200.0 / 1800.0)) < 0.02)
     }
 
-    // MARK: - 回傳 scale
-
     @Test("輸出 UIImage 帶入指定 scale")
     func appliesScale() throws {
         let data = makePNG(widthPx: 600, heightPx: 900)
@@ -66,8 +87,6 @@ struct CoverImageDownsamplerTests {
         )
         #expect(result.scale == 3)
     }
-
-    // MARK: - 失敗回 nil
 
     @Test("非圖片資料回 nil")
     func invalidDataReturnsNil() {
@@ -80,8 +99,6 @@ struct CoverImageDownsamplerTests {
         #expect(CoverImageDownsampler.downsample(data: Data(), maxDimensionPoints: 210, scale: 2) == nil)
     }
 
-    // MARK: - 小圖不放大超過上限
-
     @Test("小於上限的圖不被放大超過上限")
     func smallImageNotUpscaledBeyondCap() throws {
         // 100×150 px 原圖，上限 420 px。ImageIO 縮圖不放大，輸出應 ≤ 原圖最長邊。
@@ -92,4 +109,53 @@ struct CoverImageDownsamplerTests {
         let longest = max(result.size.width * result.scale, result.size.height * result.scale)
         #expect(longest <= 420 + 1)
     }
+
+    // MARK: - 存檔路徑（track-15）：downsampledJPEG（UIImage path）
+
+    @Test func largeCoverShrinksWithinBound() throws {
+        // 1200×1800 → longest edge must collapse to the 600 default bound.
+        let big = makeImage(width: 1200, height: 1800)
+        let data = try #require(CoverImageDownsampler.downsampledJPEG(from: big))
+        let size = try #require(pixelSize(of: data))
+        #expect(max(size.width, size.height) <= CoverImageDownsampler.defaultMaxDimension)
+        // Aspect ratio preserved (2:3 → ~400×600).
+        #expect(abs(size.width / size.height - (2.0 / 3.0)) < 0.02)
+    }
+
+    @Test func smallCoverIsNotUpscaled() throws {
+        let small = makeImage(width: 200, height: 300)
+        let data = try #require(CoverImageDownsampler.downsampledJPEG(from: small))
+        let size = try #require(pixelSize(of: data))
+        #expect(max(size.width, size.height) <= 300)
+    }
+
+    @Test func customMaxDimensionHonoured() throws {
+        let big = makeImage(width: 1000, height: 1000)
+        let data = try #require(CoverImageDownsampler.downsampledJPEG(from: big, maxDimension: 300))
+        let size = try #require(pixelSize(of: data))
+        #expect(max(size.width, size.height) <= 300)
+    }
+
+    @Test func jpegIsSmallerThanSourcePNG() throws {
+        let big = makeImage(width: 1500, height: 2000)
+        let png = try #require(big.pngData())
+        let jpeg = try #require(CoverImageDownsampler.downsampledJPEG(from: big))
+        #expect(jpeg.count < png.count)
+    }
+
+    // MARK: - 存檔路徑（track-15）：downsampledJPEG（Data / ImageIO path）
+
+    @Test func dataPathShrinksWithinBound() throws {
+        let big = makeImage(width: 1400, height: 1400)
+        let png = try #require(big.pngData())
+        let data = try #require(CoverImageDownsampler.downsampledJPEG(from: png))
+        let size = try #require(pixelSize(of: data))
+        #expect(max(size.width, size.height) <= CoverImageDownsampler.defaultMaxDimension)
+    }
+
+    @Test func dataPathReturnsNilOnGarbage() {
+        let garbage = Data([0x00, 0x01, 0x02, 0x03])
+        #expect(CoverImageDownsampler.downsampledJPEG(from: garbage) == nil)
+    }
 }
+#endif
