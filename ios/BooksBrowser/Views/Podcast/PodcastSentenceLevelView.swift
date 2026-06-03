@@ -220,7 +220,6 @@ struct PodcastSentenceLevelView: View {
             // iPhone/iPad 在 following 時 shouldShowFollowControl 為 false,不會到這;
             // 僅 Catalyst 顯示此態,作為「停止跟隨、自由瀏覽」開關。
             pillCapsule {
-                seedManualOffsetFromFollow()
                 isFollowing = false
             } content: {
                 Image(systemName: "pause.fill")
@@ -232,8 +231,9 @@ struct PodcastSentenceLevelView: View {
             }
         } else {
             pillCapsule {
-                // Re-engage follow: the offset container snaps back to the live
-                // follow offset (animated by the body's isFollowing animation).
+                // Re-engage follow: flipping the flag triggers `.onChange(of:
+                // isFollowing)` → `followScroll`, which animates the scroll back to
+                // the current sentence. The spring here drives the pill transition.
                 withAnimation(AppMotion.standardSpring) {
                     isFollowing = true
                 }
