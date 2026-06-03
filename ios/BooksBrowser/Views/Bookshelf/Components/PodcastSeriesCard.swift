@@ -48,7 +48,7 @@ struct PodcastSeriesCard: View {
             VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
                 Text(series.title)
                     .font(AppFonts.caption(weight: .medium))
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                     .foregroundStyle(appTheme.palette.primaryText)
 
