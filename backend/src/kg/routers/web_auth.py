@@ -77,7 +77,7 @@ async def login_page(request: Request):
     settings = request.app.state.kg_settings
     nonce = secrets.token_urlsafe(32)
     response = templates.TemplateResponse(request, "login.html", {
-        "apple_service_id": settings.apple_bundle_id,
+        "apple_service_id": settings.apple_service_id,
         "apple_redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
         "apple_state": nonce,
     })
@@ -201,7 +201,7 @@ async def apple_callback(
 
     # Verify Apple id_token (reuse existing infra)
     provider_user_id, token_email, email_verified = verify_apple_token(
-        id_token, settings.apple_bundle_id
+        id_token, settings.apple_service_id
     )
 
     load_users_fn = request.app.state.load_users
