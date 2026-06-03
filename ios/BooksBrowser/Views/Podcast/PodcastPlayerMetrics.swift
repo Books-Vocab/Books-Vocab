@@ -130,73 +130,19 @@ enum PodcastUnderlineGeometry {
     }
 }
 
-/// Geometry for offset-driven continuous follow scrolling: the transcript is
-/// positioned by a single `.offset` so the spoken sentence stays at the viewport
-/// center, gliding continuously across sentence boundaries (no per-sentence jump).
-enum PodcastScrollGeometry {
-    /// Progress (0…1) of `time` through a sentence's `[start, end]` window.
-    /// Degenerate / zero-length sentences (and `time` at/after end) return 1;
-    /// `time` before start returns 0.
-    static func sentenceFraction(time: TimeInterval, start: TimeInterval, end: TimeInterval) -> Double {
-        guard end > start else { return time < start ? 0 : 1 }
-        return min(1, max(0, (time - start) / (end - start)))
-    }
-
-    /// Continuous content offset for an offset-driven (non-`scrollTo`) follow
-    /// mode. `centers[id]` is each sentence's vertical center in the content's
-    /// own coordinate space (offset-independent). The focal point is the current
-    /// sentence's center, interpolated toward the NEXT sentence's center by the
-    /// intra-sentence progress — so the focus glides continuously through the
-    /// viewport center with NO per-sentence jump (at a boundary, fraction→1 lands
-    /// exactly on the next center, which then becomes `current` at fraction 0).
-    /// Returns `viewportHeight/2 - focalY`. nil when the current center is not
-    /// yet measured (caller holds the last good offset).
-    ///
-    /// `sentences` MUST be ordered by `startTime` (as the engine emits them).
-    static func centerOffset(
-        time: TimeInterval,
-        sentences: [PodcastSentence],
-        centers: [Int: CGFloat],
-        viewportHeight: CGFloat
-    ) -> CGFloat? {
-        guard !sentences.isEmpty else { return nil }
-        // Current = last sentence with startTime <= time (clamp to first before start).
-        var idx = 0
-        var lo = 0, hi = sentences.count - 1
-        while lo <= hi {
-            let mid = (lo + hi) / 2
-            if sentences[mid].startTime <= time { idx = mid; lo = mid + 1 } else { hi = mid - 1 }
-        }
-        let cur = sentences[idx]
-        guard let curCenter = centers[cur.id] else { return nil }
-        let focalY: CGFloat
-        if idx + 1 < sentences.count, let nextCenter = centers[sentences[idx + 1].id] {
-            let f = CGFloat(sentenceFraction(time: time, start: cur.startTime, end: cur.endTime))
-            focalY = curCenter + (nextCenter - curCenter) * f
-        } else {
-            focalY = curCenter
-        }
-        return viewportHeight / 2 - focalY
-    }
-}
-
 /// O(1) identity of a transcript's token tree, used as the `EquatableView` basis
-/// for `PodcastSentenceLevelView`'s transcript column. The column explodes every
-/// sentence into per-word `Text` tokens + `CachedFlowLayout` + anchor preferences
-/// (thousands of view values); re-evaluating that whole struct tree on every
-/// display frame is what froze scrolling. The fix wraps the column so SwiftUI can
-/// short-circuit its `body` when nothing token-affecting changed — and that
-/// short-circuit must be cheap, so it compares THIS fingerprint, never the full
-/// `[PodcastSentence]` array (whose O(n·words) `==` per frame is the very cost we
-/// are eliminating).
+/// for `PodcastSentenceLevelView`'s transcript column and to detect episode swaps.
+/// The column explodes every sentence into per-word `Text` tokens +
+/// `CachedFlowLayout` (thousands of view values); the `.equatable()` wrapper lets
+/// SwiftUI short-circuit its `body` when nothing token-affecting changed — and
+/// that short-circuit must be cheap, so it compares THIS fingerprint, never the
+/// full `[PodcastSentence]` array (whose O(n·words) `==` is the very cost we avoid).
 ///
 /// The fingerprint changes iff the rendered token tree must change:
 ///   • `count` — sentences added/removed
 ///   • `firstStart` + `lastEnd` — distinguishes an episode swap that happens to
 ///     keep the same count (sentence ids restart at 0 each episode, so an
 ///     id-only key could collide; the time span cannot).
-/// It deliberately omits the playhead — the per-frame ticks that only move the
-/// follow offset + underline must compare equal so the body is skipped.
 struct PodcastTranscriptIdentity: Equatable, Hashable {
     let count: Int
     let firstStart: TimeInterval
