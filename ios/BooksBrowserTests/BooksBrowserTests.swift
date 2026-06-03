@@ -233,6 +233,72 @@ struct BooksBrowserTests {
         #expect(TodayReviewSessionSnapshotStore.load(for: "user-B") == nil)
     }
 
+    // MARK: - Review flush consistency (Track 24)
+
+    /// A persisted answer carries its DB-flush state. New answers default to
+    /// unflushed; the snapshot round-trip preserves the flag.
+    @Test func submittedAnswerFlushFlagRoundTripsThroughSnapshot() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        defer { TodayReviewSessionSnapshotStore.clear(for: nil) }
+
+        let baseline = TodayReviewSessionSnapshotStore.ReviewBaseline(
+            reviewIntervalHours: 24, nextReviewAt: Date(), lastReviewedAt: nil,
+            reviewCount: 0, lapseCount: 0, reviewStreak: 0, lastReviewFeedbackRaw: 0
+        )
+        let snapshot = TodayReviewSessionSnapshotStore.Snapshot(
+            userId: "user-flush",
+            sessionStartTime: Date(),
+            currentIndex: 2,
+            queue: [.init(persistenceID: "card-x", baseline: baseline)],
+            submissions: [
+                0: .init(feedbackRaw: 0, answeredAt: Date(), reviewRecordID: UUID(), flushed: true),
+                1: .init(feedbackRaw: 1, answeredAt: Date(), reviewRecordID: UUID(), flushed: false)
+            ],
+            updatedAt: Date()
+        )
+        TodayReviewSessionSnapshotStore.save(snapshot)
+
+        let restored = try #require(TodayReviewSessionSnapshotStore.load(for: "user-flush"))
+        #expect(restored.submissions[0]?.flushed == true)
+        #expect(restored.submissions[1]?.flushed == false)
+    }
+
+    /// Backward compat: a legacy snapshot blob written before the `flushed`
+    /// field existed must decode with `flushed == true` (those answers were
+    /// already flushed; never re-flush historical data).
+    @Test func legacySnapshotWithoutFlushFieldDecodesAsFlushed() async throws {
+        // Hand-built JSON mirroring the pre-flushed-field encoding: a
+        // SubmittedAnswer with no `flushed` key.
+        let json = """
+        {
+          "feedbackRaw": 0,
+          "answeredAt": 0,
+          "reviewRecordID": "\(UUID().uuidString)"
+        }
+        """
+        let data = Data(json.utf8)
+        let decoded = try JSONDecoder().decode(
+            TodayReviewSessionSnapshotStore.Snapshot.SubmittedAnswer.self,
+            from: data
+        )
+        #expect(decoded.flushed == true)
+    }
+
+    /// New answers persisted by submit() start unflushed; once the DB flush
+    /// succeeds the snapshot is rewritten with flushed=true so restore won't
+    /// re-flush. Verified at the scoring layer (markFlushed).
+    @Test @MainActor func scoringMarkFlushedFlipsAnswerFlag() async throws {
+        let scoring = ReviewScoringState()
+        scoring.record(.remembered, at: 0)
+        #expect(scoring.submittedAnswers[0]?.flushed == false)
+
+        scoring.markFlushed(at: 0)
+        #expect(scoring.submittedAnswers[0]?.flushed == true)
+
+        // Marking a non-existent index is a no-op (no crash).
+        scoring.markFlushed(at: 99)
+    }
+
     @Test func readerBridgePlannerEmitsSingleWordHighlightCommand() async throws {
         var planner = BridgePlanner()
         let base = makeSnapshot(lookedUpWords: [])
