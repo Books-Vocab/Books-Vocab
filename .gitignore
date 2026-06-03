@@ -14,6 +14,8 @@ lab/podcast/.claude/
 lab/podcast/.monitor.pid
 lab/podcast/monitor.log
 lab/antigravity-proxy/
+# codex-lb 抽離為獨立 fork repo（MaxChen228/codex-lb），本地 lab/codex-gateway 自帶 .git
+lab/codex-gateway/
 .agents/
 
 # Secrets
