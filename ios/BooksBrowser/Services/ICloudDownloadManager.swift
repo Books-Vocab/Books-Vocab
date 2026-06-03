@@ -5,6 +5,50 @@
 
 import Foundation
 
+/// 將 NSMetadataItem 的下載屬性映射成 `ICloudFileState` 的純函式邏輯。
+///
+/// 抽成獨立、不依賴 NSMetadataItem 的純函式以便單元測試。核心修正：下載早期
+/// NSMetadataQuery 常回報 `status == NotDownloaded` 且 `percent` 為 nil/0，但檔案
+/// 其實已觸發下載。若直接降級成 `.notDownloaded`，書架 badge 會在雲朵與進度圈
+/// 之間閃爍。只要檔案已在 triggeredFiles 內，percent 不可用時就沿用上次已知進度
+/// （無前值則 `.downloading(0)`），不降級。
+enum ICloudDownloadStateMapping {
+    /// - Parameters:
+    ///   - status: `NSMetadataUbiquitousItemDownloadingStatusKey` 字串值。
+    ///   - percent: `NSMetadataUbiquitousItemPercentDownloadedKey`（0–100），nil = 未回報。
+    ///   - hasError: `NSMetadataUbiquitousItemDownloadingErrorKey` 是否存在。
+    ///   - isTriggered: 此檔是否已在 `triggeredFiles` 內（已觸發下載）。
+    ///   - previous: 上次已知狀態（用於 percent 不可用時保留進度）。
+    static func resolve(
+        status: String?,
+        percent: Double?,
+        hasError: Bool,
+        isTriggered: Bool,
+        previous: ICloudFileState?
+    ) -> ICloudFileState {
+        if status == NSMetadataUbiquitousItemDownloadingStatusCurrent
+            || status == NSMetadataUbiquitousItemDownloadingStatusDownloaded {
+            return .current
+        }
+        if hasError {
+            // 中途下載錯誤 → terminal failed，允許使用者重試。
+            return .failed
+        }
+        if let p = percent, p > 0, p < 100 {
+            return .downloading(p / 100.0)
+        }
+        // percent 不可用（nil 或 0）。已觸發下載的檔處於下載早期窗口 → 維持
+        // .downloading，沿用上次進度，避免 badge 閃回 .notDownloaded。
+        if isTriggered {
+            if case let .downloading(prev)? = previous {
+                return .downloading(prev)
+            }
+            return .downloading(0)
+        }
+        return .notDownloaded
+    }
+}
+
 /// iCloud 檔案下載狀態
 enum ICloudFileState: Equatable {
     /// 已下載，本機可用
@@ -157,18 +201,15 @@ final class ICloudDownloadManager {
                 AppLog.book.info("  [\(fileName)] status=\(status ?? "nil") dl%=\(percent ?? -1) uploading=\(isUploading) ul%=\(uploadPercent ?? -1) err=\(downloadError?.localizedDescription ?? "nil")")
             }
 
-            let newState: ICloudFileState
-            if status == NSMetadataUbiquitousItemDownloadingStatusCurrent
-                || status == NSMetadataUbiquitousItemDownloadingStatusDownloaded {
-                newState = .current
-            } else if let err = downloadError {
-                // 中途下載錯誤 → terminal failed，允許使用者重試
-                newState = .failed
+            let newState = ICloudDownloadStateMapping.resolve(
+                status: status,
+                percent: percent,
+                hasError: downloadError != nil,
+                isTriggered: triggeredFiles.contains(fileName),
+                previous: fileStates[fileName]
+            )
+            if let err = downloadError {
                 AppLog.book.error("ICloudDownloadManager: download error — \(fileName): \(err.localizedDescription)")
-            } else if let p = percent, p > 0, p < 100 {
-                newState = .downloading(p / 100.0)
-            } else {
-                newState = .notDownloaded
             }
 
             if fileStates[fileName] != newState {
