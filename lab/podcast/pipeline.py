@@ -458,6 +458,26 @@ class PipelineLog:
 # ─── EPUB Extraction ───
 
 
+_DC_SENTINEL = object()
+
+
+def _dc(book: object, field: str, default: object = _DC_SENTINEL) -> str:
+    """Safely read a Dublin Core metadata field.
+
+    ebooklib's ``get_metadata("DC", field)`` returns ``[]`` for absent fields,
+    so the naive ``[0][0]`` raises ``IndexError`` on calibre-made / scanned
+    books that omit DC fields. This returns ``default`` when the field is
+    missing; if no default is given the field is treated as required and a
+    clear ``ValueError`` is raised (callers pass a filename via the message).
+    """
+    meta = book.get_metadata("DC", field)
+    if meta and meta[0] and meta[0][0]:
+        return meta[0][0]
+    if default is _DC_SENTINEL:
+        raise ValueError(f"EPUB missing required DC:{field}")
+    return default
+
+
 def _doc_items_in_spine(book: object) -> list:
     """Return ITEM_DOCUMENT items in *spine* (reading) order.
 
@@ -482,9 +502,12 @@ def _doc_items_in_spine(book: object) -> list:
 
 def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
     book = epub.read_epub(epub_path)
-    title = book.get_metadata("DC", "title")[0][0]
-    author = book.get_metadata("DC", "creator")[0][0]
-    lang = book.get_metadata("DC", "language")[0][0]
+    try:
+        title = _dc(book, "title")
+    except ValueError as e:
+        raise ValueError(f"{e} (file: {epub_path})") from e
+    author = _dc(book, "creator", "Unknown")
+    lang = _dc(book, "language", "en")
 
     chapters = []
     for item in _doc_items_in_spine(book):
@@ -617,8 +640,11 @@ def find_workspace(epub_path: Path) -> Path | None:
     if not WORKSPACES_DIR.exists():
         return None
     book = epub.read_epub(str(epub_path))
-    title = book.get_metadata("DC", "title")[0][0]
-    author = book.get_metadata("DC", "creator")[0][0]
+    try:
+        title = _dc(book, "title")
+    except ValueError as e:
+        raise ValueError(f"{e} (file: {epub_path})") from e
+    author = _dc(book, "creator", "Unknown")
     slug = _sanitize_slug(title)
     book_hash = hashlib.md5(f"{title}_{author}".encode()).hexdigest()[:8]
     ws = WORKSPACES_DIR / f"{slug}_{book_hash}"
@@ -637,7 +663,10 @@ def find_saga_workspace(saga_title: str, epub_paths: list[Path]) -> Path | None:
     book_titles = []
     for p in epub_paths:
         b = epub.read_epub(str(p))
-        book_titles.append(b.get_metadata("DC", "title")[0][0])
+        try:
+            book_titles.append(_dc(b, "title"))
+        except ValueError as e:
+            raise ValueError(f"{e} (file: {p})") from e
     dirname = saga.saga_dirname(saga_title, book_titles)
     ws = WORKSPACES_DIR / dirname
     return ws if ws.exists() else None

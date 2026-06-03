@@ -100,3 +100,59 @@ def test_empty_spine_falls_back_to_manifest(monkeypatch, capsys) -> None:
     _, chapters = pipeline.extract_epub("dummy.epub")
     assert [name for name, _ in chapters] == ["a.xhtml", "b.xhtml"]
     assert "falling back to manifest order" in capsys.readouterr().out
+
+
+# ─── B. safe DC metadata ───
+
+
+def test_missing_creator_and_language_use_defaults(monkeypatch) -> None:
+    items = [_FakeItem("a", "a.xhtml", _body("A"))]
+    book = _FakeBook(items, spine=["a"], dc={"title": "Solo"})
+    monkeypatch.setattr(pipeline.epub, "read_epub", lambda _p: book)
+
+    meta, _ = pipeline.extract_epub("dummy.epub")
+    assert meta["author"] == "Unknown"
+    assert meta["language"] == "en"
+    assert meta["title"] == "Solo"
+
+
+def test_missing_title_raises_with_filename(monkeypatch) -> None:
+    items = [_FakeItem("a", "a.xhtml", _body("A"))]
+    book = _FakeBook(items, spine=["a"], dc={})
+    monkeypatch.setattr(pipeline.epub, "read_epub", lambda _p: book)
+
+    with pytest.raises(ValueError) as exc:
+        pipeline.extract_epub("/books/mystery.epub")
+    msg = str(exc.value)
+    assert "title" in msg
+    assert "/books/mystery.epub" in msg
+
+
+def test_find_workspace_missing_title_raises_with_filename(monkeypatch, tmp_path) -> None:
+    book = _FakeBook([], spine=[], dc={})
+    monkeypatch.setattr(pipeline.epub, "read_epub", lambda _p: book)
+    monkeypatch.setattr(pipeline, "WORKSPACES_DIR", tmp_path)
+
+    with pytest.raises(ValueError) as exc:
+        pipeline.find_workspace(tmp_path / "no_title.epub")
+    assert "no_title.epub" in str(exc.value)
+
+
+def test_find_saga_workspace_missing_title_raises_with_filename(monkeypatch, tmp_path) -> None:
+    book = _FakeBook([], spine=[], dc={})
+    monkeypatch.setattr(pipeline.epub, "read_epub", lambda _p: book)
+    monkeypatch.setattr(pipeline, "WORKSPACES_DIR", tmp_path)
+
+    with pytest.raises(ValueError) as exc:
+        pipeline.find_saga_workspace("Saga", [tmp_path / "no_title.epub"])
+    assert "no_title.epub" in str(exc.value)
+
+
+def test_dc_empty_string_treated_as_missing(monkeypatch) -> None:
+    # Some EPUBs carry an empty <dc:creator/> — should still hit the default.
+    items = [_FakeItem("a", "a.xhtml", _body("A"))]
+    book = _FakeBook(items, spine=["a"], dc={"title": "T", "creator": ""})
+    monkeypatch.setattr(pipeline.epub, "read_epub", lambda _p: book)
+
+    meta, _ = pipeline.extract_epub("dummy.epub")
+    assert meta["author"] == "Unknown"
