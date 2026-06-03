@@ -100,12 +100,17 @@ enum PodcastWordProgress {
     }
 }
 
-/// Geometry of the single continuous underline capsule. As the active word
-/// plays (fraction 0→1) the capsule glides from the active word toward the next
-/// word ON THE SAME ROW, so motion is continuous instead of teleporting per
-/// word. Across a line break (next word on a different row) it returns the
-/// active word's bar unchanged — the view applies a short spring for that
-/// non-continuous hop rather than dragging a bar across the row gap.
+/// Geometry of the continuous reading underline. As the active word plays
+/// (fraction 0→1) the underline glides in reading order from the active word
+/// toward the next. ON THE SAME ROW this is one capsule sliding right. ACROSS A
+/// LINE BREAK it becomes a "portal": the unrolled reading path is sliced at the
+/// row boundary, so the trailing part stays at the end of the current row while
+/// the leading part appears at the start of the next row, apportioned by
+/// `fraction` — exactly how a wrapping text selection looks. This makes the
+/// motion continuous through the wrap instead of teleporting (and never relies on
+/// a spring chasing a moving target, which would visually skip the next row's
+/// first word). A sentence's last word has no next cue → one bar under it; the
+/// next sentence's underline is a separate render (sentence/paragraph break).
 enum PodcastUnderlineGeometry {
     struct Bar: Equatable {
         var minX: CGFloat
@@ -113,20 +118,84 @@ enum PodcastUnderlineGeometry {
         var bottomY: CGFloat  // word baseline bottom; view adds the 3pt offset
     }
 
-    /// Returns nil when there is no active word (`activeIndex < 0`, e.g. before
-    /// the first word) or its rect is not yet measured. The `wordFollowEnabled`
+    /// Up to two capsule segments. Empty when there is no active word
+    /// (`activeIndex < 0`) or its rect is not yet measured. The `wordFollowEnabled`
     /// toggle is gated at the call site (the overlay closure), not here.
-    static func bar(wordRects: [Int: CGRect], activeIndex: Int, fraction: Double) -> Bar? {
-        guard activeIndex >= 0, let a = wordRects[activeIndex] else { return nil }
-        guard let b = wordRects[activeIndex + 1], abs(b.minY - a.minY) < a.height * 0.5 else {
-            return Bar(minX: a.minX, width: a.width, bottomY: a.maxY)
-        }
+    static func segments(wordRects: [Int: CGRect], activeIndex: Int, fraction: Double) -> [Bar] {
+        guard activeIndex >= 0, let a = wordRects[activeIndex] else { return [] }
         let t = CGFloat(min(1, max(0, fraction)))
-        return Bar(
-            minX: a.minX + (b.minX - a.minX) * t,
-            width: a.width + (b.width - a.width) * t,
-            bottomY: a.maxY + (b.maxY - a.maxY) * t
-        )
+        guard let b = wordRects[activeIndex + 1] else {
+            return [Bar(minX: a.minX, width: a.width, bottomY: a.maxY)]
+        }
+        let width = a.width + (b.width - a.width) * t
+        // Same visual row → a single sliding capsule (tolerance absorbs layout
+        // rounding so a sub-pixel minY delta is not read as a line break).
+        if abs(b.minY - a.minY) < a.height * 0.5 {
+            return [Bar(
+                minX: a.minX + (b.minX - a.minX) * t,
+                width: width,
+                bottomY: a.maxY + (b.maxY - a.maxY) * t
+            )]
+        }
+        // Portal across a line break. Unroll the reading path: slide right to the
+        // end of `a`'s row, then continue from the left edge of `b`'s row. Use the
+        // whole row's extent (not just the a/b pair) so the travel matches what the
+        // eye sees wrapping.
+        let row1End = wordRects.values
+            .filter { abs($0.minY - a.minY) < a.height * 0.5 }
+            .map(\.maxX).max() ?? a.maxX
+        let row2Start = wordRects.values
+            .filter { abs($0.minY - b.minY) < b.height * 0.5 }
+            .map(\.minX).min() ?? b.minX
+        let seg1 = max(0, row1End - a.minX)     // distance to exit row1
+        let seg2 = max(0, b.minX - row2Start)   // distance from row2 start to b
+        let total = seg1 + seg2
+        let uL = t * total                      // left edge along the unrolled path
+        let uR = uL + width
+        var bars: [Bar] = []
+        if uL < seg1 {                          // tail still on row1
+            let hi = min(uR, seg1)
+            bars.append(Bar(minX: a.minX + uL, width: hi - uL, bottomY: a.maxY))
+        }
+        if uR > seg1 {                          // head arrived on row2
+            let lo = max(uL, seg1)
+            bars.append(Bar(minX: row2Start + (lo - seg1), width: uR - lo, bottomY: b.maxY))
+        }
+        return bars
+    }
+
+    /// Cross-SENTENCE edge relay (Option B "邊緣接力"). A sentence boundary spans two
+    /// separate bubbles (two coordinate spaces), so the intra-cell `segments` portal
+    /// can't reach across it. Instead each cell renders ITS half of the handoff:
+    /// the leaving cell slides its last-word bar OFF the trailing edge (`tailExit`)
+    /// while the entering cell grows a bar IN from under its first word
+    /// (`headEnter`) — both driven by the SAME fraction. Device-verified that the
+    /// SRT is gap-free (`N.endTime == N+1.startTime`), so the leaving last word's
+    /// play window == the entering window, and the two fractions are identical →
+    /// the two halves stay in lock-step without any cross-cell signal.
+
+    /// Leaving half: the last-word bar translates right toward `rowRightEdge`,
+    /// clipped at the edge, shrinking to nothing at `fraction == 1` (slid fully off).
+    /// `nil` once it has no visible width (so the caller draws nothing post-exit).
+    static func tailExit(lastWord: CGRect, rowRightEdge: CGFloat, fraction: Double) -> Bar? {
+        let f = CGFloat(min(1, max(0, fraction)))
+        let minX = lastWord.minX + (rowRightEdge - lastWord.minX) * f
+        let maxX = min(minX + lastWord.width, rowRightEdge)
+        let width = maxX - minX
+        guard width > 0.5 else { return nil }
+        return Bar(minX: minX, width: width, bottomY: lastWord.maxY)
+    }
+
+    /// Entering half: a bar grows in from `rowLeftEdge` and lands exactly under
+    /// `firstWord` at `fraction == 1`. `nil` at `fraction == 0` (zero width) so the
+    /// head appears only once the handoff has started.
+    static func headEnter(firstWord: CGRect, rowLeftEdge: CGFloat, fraction: Double) -> Bar? {
+        let f = CGFloat(min(1, max(0, fraction)))
+        let maxX = rowLeftEdge + (firstWord.maxX - rowLeftEdge) * f
+        let minX = max(rowLeftEdge, maxX - firstWord.width)
+        let width = maxX - minX
+        guard width > 0.5 else { return nil }
+        return Bar(minX: minX, width: width, bottomY: firstWord.maxY)
     }
 }
 
