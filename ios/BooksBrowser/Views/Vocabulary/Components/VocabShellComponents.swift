@@ -103,6 +103,10 @@ struct VocabChromeIconButton: View {
                     .foregroundStyle(tone ?? appSkin.palette.secondaryText)
                     .frame(width: appSkin.metrics.chromeButtonSize, height: appSkin.metrics.chromeButtonSize)
             }
+            // 視覺維持 32pt（VocabChromeSurface），僅外擴觸控目標到 HIG 44pt 下限。
+            // contentShape 確保整個 44pt 區域可點，但不撐大版面佔位（frame minWidth/minHeight 不放大視覺）。
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label ?? systemImage)
