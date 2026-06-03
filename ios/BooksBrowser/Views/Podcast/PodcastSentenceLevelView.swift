@@ -69,15 +69,6 @@ struct PodcastSentenceLevelView: View {
 
     @State private var isFollowing = true
     @State private var selectionState: PodcastSentenceSelection?
-    /// Measured vertical center of each sentence within the transcript column's
-    /// OWN coordinate space (offset-independent), keyed by sentence id. Drives
-    /// the continuous follow offset.
-    @State private var sentenceCenters: [Int: CGFloat] = [:]
-    /// Content offset while NOT following (manual browse). Seeded from the live
-    /// follow offset the instant follow disengages → seamless hand-off, no jump.
-    @State private var manualOffset: CGFloat = 0
-    @State private var dragStartOffset: CGFloat = 0
-    @State private var viewportHeight: CGFloat = 0
 
     private var currentId: Int? { renderState?.sentenceId }
 
@@ -103,81 +94,79 @@ struct PodcastSentenceLevelView: View {
     }
 
     var body: some View {
-        // Computed ONCE per parent render (not per frame): the follow
-        // `TimelineView` below reconstructs `PodcastTranscriptColumn` every tick to
-        // run its Equatable check, so any O(n) input it needs must be hoisted out
-        // of that closure or it re-runs at the display refresh rate.
+        // Computed ONCE per render (not per frame). The transcript token tree is
+        // built lazily by a native `ScrollView` + `LazyVStack`; follow is a
+        // discrete animated `scrollTo` per sentence, NOT a per-frame offset. This
+        // replaces the offset-driven engine whose outer per-frame `TimelineView`
+        // re-evaluated the whole non-lazy column every display frame (the
+        // scroll-freeze root cause). Native scroll is GPU-composited and off the
+        // SwiftUI per-frame eval path.
         let slots = speakerSlots
-        return GeometryReader { vp in
-            ZStack(alignment: .bottom) {
-                // Offset-driven follow: a single continuous `.offset` positions
-                // the transcript so the spoken sentence glides through the
-                // viewport center with NO per-sentence jump. (`scrollTo` can only
-                // align same-fraction points of view+viewport, so it cannot keep
-                // an intra-sentence point centered — a manual offset is required.)
-                // When not following, the same offset is driven by the user's drag.
-                //
-                // CRUCIAL: only the `.offset` value is recomputed per frame here.
-                // `transcriptColumn` is wrapped in `.equatable()` so its body is
-                // NOT re-evaluated every tick — SwiftUI just re-applies the new
-                // offset transform to the already-built token tree.
-                TimelineView(.animation(paused: !isPlaying || !isFollowing)) { ctx in
-                    let offset = isFollowing
-                        ? followOffset(viewportHeight: vp.size.height, now: ctx.date.timeIntervalSinceReferenceDate)
-                        : manualOffset
-                    transcriptColumn(speakerSlots: slots)
-                        .offset(y: offset)
-                        // Until centers are first measured, `offset` falls back to
-                        // 0 (column pinned to top). Hide that one pre-measurement
-                        // frame so the content appears already-centered instead of
-                        // snapping top→center on load. The column still lays out
-                        // while invisible, so the GeometryReaders populate centers.
-                        .opacity(sentenceCenters.isEmpty ? 0 : 1)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .clipped()
-                .contentShape(Rectangle())
-                // Manual browse: drag hands off seamlessly from the live follow
-                // offset (no jump), then moves 1:1. `simultaneousGesture` so word
-                // tap / long-press still resolve (they have ~0 movement).
-                .simultaneousGesture(browseDrag(viewportHeight: vp.size.height))
-                .onPreferenceChange(SentenceCenterKey.self) { sentenceCenters = $0 }
-                .onAppear { viewportHeight = vp.size.height }
-                .onChange(of: vp.size.height) { _, h in viewportHeight = h }
-                // In-place episode swap: the player reuses this same view instance
-                // (`.task(id:)` / `reloadEpisode()`) and replaces `sentences` without
-                // tearing down/recreating the view, so `sentenceCenters` keeps the
-                // PREVIOUS episode's measurements. That left the no-jump guard
-                // (`.opacity(sentenceCenters.isEmpty ? 0 : 1)`) armed against stale
-                // data → the first frame of the new transcript rendered with old
-                // centers, flashing a misaligned frame before snapping correct.
-                // Reset to empty so the guard re-arms (hides the pre-measurement
-                // frame) until the new episode's preference pass repopulates centers.
-                // Keyed on the O(1) `PodcastTranscriptIdentity` (count + span) rather
-                // than full-array `==`: sentence ids restart at 0 each episode so an
-                // id-only key could collide, but the time span reliably detects the
-                // swap and never fires during same-episode playback — without the
-                // O(n·words) deep compare the old `onChange(of: sentences)` ran.
-                .onChange(of: PodcastTranscriptIdentity(sentences: sentences)) { _, _ in
-                    sentenceCenters = [:]
-                }
-
+        return ScrollViewReader { proxy in
+            ScrollView {
+                transcriptColumn(speakerSlots: slots)
+            }
+            .scrollIndicators(.hidden)
+            .overlay(alignment: .bottom) {
                 if shouldShowFollowControl {
                     followPill()
                         .padding(.bottom, skin.spacing.sectionGap)
                         .transition(.readerPanelReveal)
                 }
             }
+            // Auto-follow: glide the spoken sentence to viewport center as the
+            // playhead advances. One animated scroll per sentence boundary; the
+            // animation duration gives the continuous gliding feel without any
+            // per-frame main-thread work.
+            .onChange(of: currentId) { _, id in
+                followScroll(to: id, proxy: proxy)
+            }
+            // Re-engage follow (pill / Catalyst toggle): snap back to the current
+            // sentence the moment the user opts back in.
+            .onChange(of: isFollowing) { _, following in
+                guard following else { return }
+                followScroll(to: currentId, proxy: proxy)
+            }
+            // In-place episode swap: the player reuses this view instance and
+            // replaces `sentences` without recreating it. Re-center on the new
+            // episode's current sentence.
+            .onChange(of: PodcastTranscriptIdentity(sentences: sentences)) { _, _ in
+                followScroll(to: currentId, proxy: proxy)
+            }
+            // Initial placement: `onChange` does not fire for the value present at
+            // mount, so center the current sentence once on appear (no animation).
+            .onAppear {
+                if let id = currentId { proxy.scrollTo(id, anchor: .center) }
+            }
+            // Manual browse: any user drag disengages follow (the native scroll
+            // itself still handles the movement — this gesture only flips the
+            // flag, it does not consume the drag). Catalyst indirect scroll does
+            // NOT trigger DragGesture, so that platform uses the always-on pill.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8).onChanged { _ in
+                    if isFollowing { isFollowing = false }
+                }
+            )
             .animation(AppMotion.contentFade, value: isFollowing)
         }
         .enableInjection()
     }
 
-    /// The transcript token tree, wrapped in `.equatable()` so the per-frame
-    /// follow `TimelineView` above does not re-evaluate hundreds of sentences ×
-    /// per-word tokens every display frame. See `PodcastTranscriptColumn`.
-    /// `speakerSlots` is passed in (computed once in `body`) so reconstructing
-    /// this value for the per-frame Equatable check stays O(1) work.
+    /// Animated scroll that centers `id`, gated on follow being active. The
+    /// `easeInOut` duration is what makes the move read as a continuous glide
+    /// rather than a jump; tuned for feel (see Phase 2).
+    private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
+        guard isFollowing, let id else { return }
+        withAnimation(.easeInOut(duration: 0.6)) {
+            proxy.scrollTo(id, anchor: .center)
+        }
+    }
+
+    /// The transcript token tree, wrapped in `.equatable()` so token-irrelevant
+    /// parent renders (e.g. follow-state flips) don't re-evaluate hundreds of
+    /// sentences × per-word tokens. See `PodcastTranscriptColumn`. `speakerSlots`
+    /// is passed in (computed once in `body`) so reconstructing this value for the
+    /// Equatable check stays O(1) work.
     private func transcriptColumn(speakerSlots: [String: Int]) -> some View {
         PodcastTranscriptColumn(
             sentences: sentences,
@@ -202,62 +191,12 @@ struct PodcastSentenceLevelView: View {
                 onExplainTap(text, context)
             },
             onEnterSelection: { sel in
-                seedManualOffsetFromFollow()
                 isFollowing = false
                 selectionState = sel
             },
             onClearSelection: { selectionState = nil }
         )
         .equatable()
-    }
-
-    /// Continuous content offset that keeps the spoken sentence at viewport
-    /// center. Falls back to the last manual offset until centers are measured.
-    private func followOffset(viewportHeight: CGFloat, now: TimeInterval) -> CGFloat {
-        let t = PodcastPlaybackClock.projectedTime(anchor: liveAnchor.value, now: now, duration: duration)
-        return PodcastScrollGeometry.centerOffset(
-            time: t, sentences: sentences, centers: sentenceCenters, viewportHeight: viewportHeight
-        ) ?? manualOffset
-    }
-
-    /// Snapshot the live follow offset into the manual offset so disengaging
-    /// follow (drag / long-press select / Catalyst stop pill) never jumps.
-    private func seedManualOffsetFromFollow() {
-        let off = followOffset(viewportHeight: viewportHeight, now: Date().timeIntervalSinceReferenceDate)
-        manualOffset = off
-        dragStartOffset = off
-    }
-
-    private func browseDrag(viewportHeight: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                if isFollowing {
-                    // First drag event: hand off from the live follow position,
-                    // then disengage. Translation (~0 here) applied next event.
-                    let off = followOffset(
-                        viewportHeight: viewportHeight, now: Date().timeIntervalSinceReferenceDate
-                    )
-                    manualOffset = off
-                    dragStartOffset = off
-                    isFollowing = false
-                } else {
-                    manualOffset = clampOffset(
-                        dragStartOffset + value.translation.height, viewportHeight: viewportHeight
-                    )
-                }
-            }
-            .onEnded { _ in dragStartOffset = manualOffset }
-    }
-
-    /// Clamp so the user can't drag the transcript into empty space beyond the
-    /// first/last sentence (each still centerable).
-    private func clampOffset(_ y: CGFloat, viewportHeight: CGFloat) -> CGFloat {
-        guard let minC = sentenceCenters.values.min(),
-              let maxC = sentenceCenters.values.max() else { return y }
-        let maxOffset = viewportHeight / 2 - minC  // first sentence centered
-        let minOffset = viewportHeight / 2 - maxC  // last sentence centered
-        guard minOffset <= maxOffset else { return y }
-        return min(maxOffset, max(minOffset, y))
     }
 
     // MARK: - Follow pill
@@ -334,24 +273,18 @@ struct PodcastSentenceLevelView: View {
     }
 }
 
-// MARK: - Transcript column (Equatable, per-frame skipped)
+// MARK: - Transcript column (Equatable)
 
-/// The non-lazy column of every sentence, wrapped by the parent in `.equatable()`.
+/// The transcript column, hosted in a native `ScrollView` + `LazyVStack` so only
+/// on-screen bubbles are realized. Wrapped by the parent in `.equatable()`.
 ///
-/// Non-lazy (not `LazyVStack`) is required because `.offset` does not move a
-/// `LazyVStack`'s realization window — off-window cells would blank out. Each
-/// bubble reports its center in the column's own coordinate space for the
-/// continuous follow offset.
-///
-/// `Equatable` is the heart of the scroll-freeze fix: the parent's follow
-/// `TimelineView` re-evaluates every display frame, but this struct's `==`
-/// compares only the inputs that actually change the rendered tokens — an O(1)
-/// `PodcastTranscriptIdentity` plus the sentence-level highlight / selection /
-/// size / word-follow flags. The per-frame playhead is read LIVE from `liveAnchor`
-/// (a reference, excluded from `==`), so frame ticks compare equal and SwiftUI
-/// skips this whole `body`, reusing the already-built token tree. The word
-/// underline's inner `TimelineView` still reads `liveAnchor.value` fresh each
-/// frame, so it never freezes despite the parent skip.
+/// `Equatable` keeps the column's `body` from re-evaluating on parent renders
+/// that don't change the token tree (e.g. follow-state flips): the `==` compares
+/// only an O(1) `PodcastTranscriptIdentity` plus the sentence-level highlight /
+/// selection / size / word-follow flags. The live playhead is read from
+/// `liveAnchor` (a reference, excluded from `==`) inside the word underline's own
+/// `TimelineView`, so the underline animates per frame without re-running the
+/// token tree.
 private struct PodcastTranscriptColumn: View, Equatable {
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
@@ -371,16 +304,12 @@ private struct PodcastTranscriptColumn: View, Equatable {
     let onEnterSelection: (PodcastSentenceSelection) -> Void
     let onClearSelection: () -> Void
 
-    /// Named coordinate space for measuring sentence centers, independent of the
-    /// outer `.offset` (which is a render transform, not a layout change).
-    private static let transcriptSpace = "podcastTranscript"
-
     /// The body-skip contract: equal iff nothing that changes the TOKEN TREE
     /// changed. Compares O(1) transcript identity + sentence-level highlight /
     /// selection / size / word-follow + `isPlaying` (gates the underline's
     /// TimelineView pause). Deliberately excludes `liveAnchor` (read live per
-    /// frame), `duration`, geometry, and the closures (stable per parent render),
-    /// so the per-frame follow ticks short-circuit here.
+    /// frame by the underline), `duration`, and the closures (stable per parent
+    /// render), so token-irrelevant parent renders short-circuit here.
     static func == (lhs: PodcastTranscriptColumn, rhs: PodcastTranscriptColumn) -> Bool {
         PodcastTranscriptIdentity(sentences: lhs.sentences) == PodcastTranscriptIdentity(sentences: rhs.sentences)
             && lhs.currentId == rhs.currentId
@@ -391,24 +320,15 @@ private struct PodcastTranscriptColumn: View, Equatable {
     }
 
     var body: some View {
-        VStack(spacing: skin.spacing.inlineGap) {
+        LazyVStack(spacing: skin.spacing.inlineGap) {
             ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
                 let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
                 bubbleRow(sentence, showSpeaker: sentence.speaker != prevSpeaker)
                     .id(sentence.id)
-                    .background(
-                        GeometryReader { g in
-                            Color.clear.preference(
-                                key: SentenceCenterKey.self,
-                                value: [sentence.id: g.frame(in: .named(Self.transcriptSpace)).midY]
-                            )
-                        }
-                    )
             }
         }
         .padding(.vertical, skin.spacing.sectionGap)
         .padding(.horizontal, skin.spacing.cardPadding)
-        .coordinateSpace(name: Self.transcriptSpace)
     }
 
     // MARK: - Bubble row
@@ -655,15 +575,6 @@ enum PodcastSpeakerTint {
 private struct WordFrameKey: PreferenceKey {
     static let defaultValue: [Int: Anchor<CGRect>] = [:]
     static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
-/// Collects each sentence's vertical center (in the transcript column's own
-/// coordinate space) keyed by sentence id, for the offset-driven follow scroll.
-private struct SentenceCenterKey: PreferenceKey {
-    static let defaultValue: [Int: CGFloat] = [:]
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
         value.merge(nextValue()) { _, new in new }
     }
 }
