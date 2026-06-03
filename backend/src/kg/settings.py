@@ -28,6 +28,15 @@ class KGSettings:
     pro_daily_limit_usd: float = 0.30
     free_daily_limit_usd: float = 0.03
 
+    # Rate limiting — anonymous (no-auth) requests are keyed off the client IP
+    # extracted from X-Forwarded-For. This is the number of TRUSTED proxy hops
+    # in front of the app: the key is taken from the Nth-from-end XFF segment.
+    # Default 1 matches the current single-layer bare Caddy deployment, which
+    # appends the real client IP to the END of XFF (so [-1] is the real IP).
+    # Set to N+1 only if N additional trusted proxies (CDN/ALB) are placed in
+    # front of Caddy. See docs/reference/host_topology.md.
+    rate_limit_trusted_hops: int = 1
+
     # LLM
     embedding_model: str = "gemini-embedding-2-preview"
     embedding_dim: int = 3072
@@ -153,6 +162,7 @@ def load_settings() -> KGSettings:
         admin_password=os.getenv("ADMIN_PASSWORD", ""),
         pro_daily_limit_usd=_env_float("PRO_DAILY_LIMIT_USD", 0.30),
         free_daily_limit_usd=_env_float("FREE_DAILY_LIMIT_USD", 0.03),
+        rate_limit_trusted_hops=_env_int("RATE_LIMIT_TRUSTED_HOPS", 1),
         judge_confidence_threshold=_env_float("JUDGE_CONFIDENCE_THRESHOLD", 0.7),
         cors_origins=tuple(
             o.strip()
