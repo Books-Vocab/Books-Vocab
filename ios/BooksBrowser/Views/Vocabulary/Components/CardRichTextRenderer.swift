@@ -213,7 +213,8 @@ enum CardRichTextRenderer {
 
         // 當有 targetWord 時：先 strip 所有現有 ** 標記，再以 targetWord 為中心截斷。
         // 這樣可避免「例句裡有其他詞被標記但 targetWord 沒被標記」時截到錯誤的上下文。
-        if let fallback = targetWordFallback, !fallback.isEmpty {
+        if let fallback = targetWordFallback?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !fallback.isEmpty {
             let nsRaw = raw as NSString
             let stripped = stripMarkPattern.stringByReplacingMatches(
                 in: raw,
@@ -221,17 +222,16 @@ enum CardRichTextRenderer {
                 withTemplate: "$1"
             )
             let nsStripped = stripped as NSString
-            let esc = NSRegularExpression.escapedPattern(for: fallback)
-            let pattern = "(?<![\\w\\p{L}])\(esc)(?![\\w\\p{L}])"
-            if let wordRegex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               let wordMatch = wordRegex.firstMatch(in: stripped, range: NSRange(location: 0, length: nsStripped.length)) {
-                let actualWord = nsStripped.substring(with: wordMatch.range)
-                let marked = nsStripped.substring(to: wordMatch.range.location)
-                    + "**\(actualWord)**"
-                    + nsStripped.substring(from: wordMatch.range.location + wordMatch.range.length)
-                // 以唯一的 **targetWord** 為中心截斷（不傳 targetWordFallback 避免遞迴）
-                return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
+            let fullRange = NSRange(location: 0, length: nsStripped.length)
+
+            if let wordMatch = phraseMatch(in: stripped, phrase: fallback, range: fullRange) {
+                return truncateAroundMarkedWord(marked(stripped, range: wordMatch.range), radiusWords: radiusWords)
             }
+
+            if let tailMatch = tailPhraseMatch(in: stripped, phrase: fallback, range: fullRange) {
+                return truncateAroundMarkedWord(marked(stripped, range: tailMatch), radiusWords: radiusWords)
+            }
+
             // Stem fallback: 取前 4-6 字元做 prefix match（處理屈折變化）
             let firstWord = fallback.components(separatedBy: " ").first ?? fallback
             if firstWord.count >= 4 {
@@ -248,8 +248,14 @@ enum CardRichTextRenderer {
                     return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
                 }
             }
-            // targetWord 不在例句中：顯示前 (2*radius+1) 個詞（stripped 版本，無雜訊標記）
-            return truncateLeadingWords(stripped, count: 2 * radiusWords + 1)
+
+            if markedWordPattern.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length)) != nil {
+                return truncateAroundMarkedWord(raw, radiusWords: radiusWords)
+            }
+
+            // No reliable anchor: return the cleaned full example instead of a
+            // misleading leading slice that can hide the actual phrase later.
+            return stripped
         }
 
         let nsRaw = raw as NSString
@@ -324,6 +330,78 @@ enum CardRichTextRenderer {
         let lastToken = tokens[lastTokenIndex]
         let cutEnd = lastToken.range.location + lastToken.range.length
         return nsText.substring(to: cutEnd) + ellipsis
+    }
+
+    private static func phraseMatch(
+        in text: String,
+        phrase: String,
+        range: NSRange
+    ) -> NSTextCheckingResult? {
+        guard let phrasePattern = flexiblePhrasePattern(for: phrase) else { return nil }
+        let pattern = "(?<![\\w\\p{L}])\(phrasePattern)(?![\\w\\p{L}])"
+        return try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+            .firstMatch(in: text, range: range)
+    }
+
+    private static func tailPhraseMatch(
+        in text: String,
+        phrase: String,
+        range: NSRange
+    ) -> NSRange? {
+        let words = phraseWords(phrase)
+        guard words.count >= 3,
+              let tokenPattern,
+              let tailPattern = flexiblePhrasePattern(for: words.dropFirst().joined(separator: " "))
+        else { return nil }
+
+        let pattern = "(?<![\\w\\p{L}])\(tailPattern)(?![\\w\\p{L}])"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return nil
+        }
+
+        let nsText = text as NSString
+        let matches = regex.matches(in: text, range: range)
+        for match in matches {
+            let before = nsText.substring(to: match.range.location)
+            let beforeTokens = tokenPattern.matches(
+                in: before,
+                range: NSRange(location: 0, length: (before as NSString).length)
+            )
+            guard let preceding = beforeTokens.last(where: { tokenContainsWordCharacters($0, in: before) }) else {
+                continue
+            }
+            let precedingEnd = preceding.range.location + preceding.range.length
+            let gap = (before as NSString).substring(from: precedingEnd)
+            guard gap.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+            return NSRange(
+                location: preceding.range.location,
+                length: match.range.location + match.range.length - preceding.range.location
+            )
+        }
+        return nil
+    }
+
+    private static func marked(_ text: String, range: NSRange) -> String {
+        let nsText = text as NSString
+        return nsText.substring(to: range.location)
+            + "**\(nsText.substring(with: range))**"
+            + nsText.substring(from: range.location + range.length)
+    }
+
+    private static func flexiblePhrasePattern(for phrase: String) -> String? {
+        let words = phraseWords(phrase)
+        guard !words.isEmpty else { return nil }
+        return words
+            .map { NSRegularExpression.escapedPattern(for: $0) }
+            .joined(separator: "\\s+")
+    }
+
+    private static func phraseWords(_ phrase: String) -> [String] {
+        phrase
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
     }
 
     private static func tokenContainsWordCharacters(
