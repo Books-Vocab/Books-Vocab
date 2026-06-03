@@ -27,6 +27,14 @@ final class QuotaStore: QuotaProviding {
         self.resetSeconds = resetSeconds
     }
 
+    /// Restores the pristine pre-fetch state. Called on logout / account-switch so a new
+    /// account never inherits the previous account's remaining quota (account A's number
+    /// flashing under account B until the next response header overwrites it).
+    func reset() {
+        self.fraction = 1.0
+        self.resetSeconds = 0
+    }
+
     func update(from response: HTTPURLResponse) {
         if let fractionStr = response.value(forHTTPHeaderField: "X-Quota-Fraction"),
            let f = Double(fractionStr) {
