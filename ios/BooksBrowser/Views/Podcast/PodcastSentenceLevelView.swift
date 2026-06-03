@@ -35,21 +35,22 @@ struct PodcastSentenceSelection: Equatable {
 /// sentences × per-word `Text` + `CachedFlowLayout` + per-sentence `GeometryReader`
 /// preferences) per frame and froze the UI on entry — confirmed on-device:
 /// rendering only 30 sentences still froze (so NOT a realization-count cost), and
-/// the device logged `Bound preference … multiple times per frame`. The
-/// `.equatable()` wrapper could not help: it sat below the per-frame parent
-/// invalidation. Root cause was the engine itself, not the token count.
+/// the device logged `Bound preference … multiple times per frame`. Root cause was
+/// the engine itself, not the token count.
 ///
 /// NOW: a native `ScrollView` + `ScrollViewReader` + `LazyVStack` (GPU-composited
 /// scroll, off the SwiftUI per-frame eval path; only on-screen bubbles realized).
 ///   • Follow = one animated `scrollTo(currentId, anchor: .center)` per sentence
-///     boundary (`onChange(of: currentId)` → `followScroll`). The animation
-///     duration gives the continuous glide; zero per-frame main-thread work.
-///   • `PodcastTranscriptColumn` keeps `.equatable()` — now only to skip
-///     token-irrelevant parent renders (e.g. follow-flag flips), comparing an
-///     O(1) `PodcastTranscriptIdentity` + the sentence-level inputs.
-///   • The word underline is still a per-frame continuous engine, reading the
-///     LIVE playhead through a reference (`liveAnchor`) inside its own inner
-///     `TimelineView` — bounded to the current sentence, so it never saturates.
+///     boundary (`onChange(of: currentId)` → `followScroll`); zero per-frame work.
+///   • Each row is a `PodcastBubbleCell` wrapped in its OWN `.equatable()`, so a
+///     sentence advance re-bodies only the ~2 cells whose `isCurrent` flipped —
+///     not the whole column (the column itself is no longer `Equatable`). This is
+///     the per-advance-rebuild fix; the playhead never enters any cell's `==`.
+///   • The word underline is a per-frame continuous engine on the CURRENT cell
+///     only, reading the LIVE playhead through a reference (`liveAnchor`) inside
+///     its own `TimelineView`. Across a line break it renders as a portal (two
+///     capsules via `PodcastUnderlineGeometry.segments`) — no animation modifier,
+///     geometry per frame.
 struct PodcastSentenceLevelView: View {
     @ObserveInjection private var inject
 
@@ -124,7 +125,10 @@ struct PodcastSentenceLevelView: View {
             // playhead advances. One animated scroll per sentence boundary; the
             // animation duration gives the continuous gliding feel without any
             // per-frame main-thread work.
-            .onChange(of: currentId) { _, id in
+            .onChange(of: currentId) { old, id in
+                #if DEBUG
+                logBoundary(from: old, to: id)
+                #endif
                 followScroll(to: id, proxy: proxy)
             }
             // Re-engage follow (pill / Catalyst toggle): snap back to the current
@@ -162,20 +166,59 @@ struct PodcastSentenceLevelView: View {
     }
 
     /// Animated scroll that centers `id`, gated on follow being active. The
-    /// `easeInOut` duration is what makes the move read as a continuous glide
-    /// rather than a jump; tuned for feel (see Phase 2).
+    /// duration is what makes the move read as a continuous glide rather than a
+    /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
         guard isFollowing, let id else { return }
-        withAnimation(AppMotion.podcastFollowScroll) {
-            proxy.scrollTo(id, anchor: .center)
+        PerfLog.scroll.measure("scrollTo", "id=\(id)") {
+            withAnimation(AppMotion.podcastFollowScroll) {
+                proxy.scrollTo(id, anchor: .center)
+            }
         }
     }
 
-    /// The transcript token tree, wrapped in `.equatable()` so token-irrelevant
-    /// parent renders (e.g. follow-state flips) don't re-evaluate hundreds of
-    /// sentences × per-word tokens. See `PodcastTranscriptColumn`. `speakerSlots`
-    /// is passed in (computed once in `body`) so reconstructing this value for the
-    /// Equatable check stays O(1) work.
+    #if DEBUG
+    /// Boundary tracer for the cross-sentence underline-handoff design (Option B).
+    /// Emits ONE line per `currentId` flip so we can validate the timing model the
+    /// edge-relay depends on, straight from real-episode SRT data:
+    ///   • `gap = mStart - nEnd` — are sentences contiguous (≈0) or is there real
+    ///     silence between them? (compact SRT *should* stitch end=next.start, but
+    ///     the engine admits rounding/silence gaps — this measures the truth).
+    ///   • `nEnd == lastW.e` and `mStart == firstW.s` — confirms a sentence's span
+    ///     IS its first/last word's span (so the relay can key off word times).
+    ///   • `projT` vs `mStart` — how late the flip fires after the playhead crosses
+    ///     the boundary (one tick ≈ 0.066 s budget).
+    /// One-shot per flip → cheap; `mark` lazily builds the detail only when enabled.
+    private func logBoundary(from oldId: Int?, to newId: Int?) {
+        func f(_ v: TimeInterval) -> String { String(format: "%.3f", v) }
+        let projT = PodcastPlaybackClock.projectedTime(
+            anchor: liveAnchor.value,
+            now: Date().timeIntervalSinceReferenceDate,
+            duration: duration
+        )
+        guard let newId, let to = sentences.first(where: { $0.id == newId }) else {
+            PerfLog.underline.mark("boundary", "clear from=\(oldId.map(String.init) ?? "nil") projT=\(f(projT))")
+            return
+        }
+        guard let oldId, let from = sentences.first(where: { $0.id == oldId }),
+              let lw = from.words.last, let fw = to.words.first else {
+            PerfLog.underline.mark("boundary", "init to=\(newId) mStart=\(f(to.startTime)) projT=\(f(projT))")
+            return
+        }
+        let gap = to.startTime - from.endTime
+        PerfLog.underline.mark(
+            "boundary",
+            "\(oldId)->\(newId) projT=\(f(projT)) nEnd=\(f(from.endTime)) mStart=\(f(to.startTime)) "
+                + "gap=\(f(gap)) lastW=\(f(lw.startTime))..\(f(lw.endTime)) firstW=\(f(fw.startTime))..\(f(fw.endTime))"
+        )
+    }
+    #endif
+
+    /// The transcript column. NOT wrapped in `.equatable()` at the column level:
+    /// each row is a `PodcastBubbleCell` wrapped in its OWN `.equatable()`, so a
+    /// sentence advance re-bodies only the ~2 cells whose `isCurrent` changed
+    /// instead of the whole column. `speakerSlots` is passed in (computed once in
+    /// `body`).
     private func transcriptColumn(speakerSlots: [String: Int]) -> some View {
         PodcastTranscriptColumn(
             sentences: sentences,
@@ -205,7 +248,6 @@ struct PodcastSentenceLevelView: View {
             },
             onClearSelection: { selectionState = nil }
         )
-        .equatable()
     }
 
     // MARK: - Follow pill
@@ -282,19 +324,22 @@ struct PodcastSentenceLevelView: View {
     }
 }
 
-// MARK: - Transcript column (Equatable)
+// MARK: - Transcript column
 
 /// The transcript column, hosted in a native `ScrollView` + `LazyVStack` so only
-/// on-screen bubbles are realized. Wrapped by the parent in `.equatable()`.
+/// on-screen bubbles are realized. The column body is CHEAP — it builds one
+/// `PodcastBubbleCell` value struct per realized row; each is wrapped in
+/// `.equatable()`, so when `currentId` changes SwiftUI re-bodies only the cells
+/// whose Equatable inputs actually changed (the leaving + gaining cell, ~2),
+/// short-circuiting all the others — they never re-measure their `CachedFlowLayout`.
 ///
-/// `Equatable` keeps the column's `body` from re-evaluating on parent renders
-/// that don't change the token tree (e.g. follow-state flips): the `==` compares
-/// only an O(1) `PodcastTranscriptIdentity` plus the sentence-level highlight /
-/// selection / size / word-follow flags. The live playhead is read from
-/// `liveAnchor` (a reference, excluded from `==`) inside the word underline's own
-/// `TimelineView`, so the underline animates per frame without re-running the
-/// token tree.
-private struct PodcastTranscriptColumn: View, Equatable {
+/// The column itself is intentionally NOT `Equatable`: a column-level wrapper
+/// whose `==` included `currentId` returned false on every advance and forced the
+/// whole column body to rebuild all realized rows (the measured per-advance hitch).
+/// Dropping it and gating at per-cell granularity is the fix. The column body re-
+/// runs on parent renders, but that is cheap now (only value structs are built;
+/// the token trees live behind the per-cell Equatable boundary).
+private struct PodcastTranscriptColumn: View {
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
     let currentId: Int?
@@ -313,91 +358,225 @@ private struct PodcastTranscriptColumn: View, Equatable {
     let onEnterSelection: (PodcastSentenceSelection) -> Void
     let onClearSelection: () -> Void
 
-    /// The body-skip contract: equal iff nothing that changes the TOKEN TREE
-    /// changed. Compares O(1) transcript identity + sentence-level highlight /
-    /// selection / size / word-follow + `isPlaying` (gates the underline's
-    /// TimelineView pause). Deliberately excludes `liveAnchor` (read live per
-    /// frame by the underline), `duration`, and the closures (stable per parent
-    /// render), so token-irrelevant parent renders short-circuit here.
-    static func == (lhs: PodcastTranscriptColumn, rhs: PodcastTranscriptColumn) -> Bool {
-        PodcastTranscriptIdentity(sentences: lhs.sentences) == PodcastTranscriptIdentity(sentences: rhs.sentences)
-            && lhs.currentId == rhs.currentId
-            && lhs.selectionState == rhs.selectionState
-            && lhs.subtitleSize == rhs.subtitleSize
-            && lhs.wordFollowEnabled == rhs.wordFollowEnabled
-            && lhs.isPlaying == rhs.isPlaying
-    }
-
     var body: some View {
-        LazyVStack(spacing: skin.spacing.inlineGap) {
+        PerfLog.render.mark("column.body", "id=\(currentId ?? -1) n=\(sentences.count)")
+        let hasActiveSelection = selectionState != nil
+        return LazyVStack(spacing: skin.spacing.inlineGap) {
             ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
+                let slot = speakerSlots[sentence.speaker] ?? 0
+                let isSelectingThis = selectionState?.sentenceId == sentence.id
                 let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
-                bubbleRow(sentence, showSpeaker: sentence.speaker != prevSpeaker)
-                    .id(sentence.id)
+                // Cross-sentence relay wiring: the cell after `currentId` is the
+                // entering bubble; its handoff window opens at its predecessor's
+                // last word (gap-free SRT). `hasNext` lets the leaving cell slide
+                // off rather than hold on the final sentence.
+                let isNext = currentId.map { sentence.id == $0 + 1 } ?? false
+                let hasNext = index < sentences.count - 1
+                let entryFromTime = index > 0 ? sentences[index - 1].words.last?.startTime : nil
+                PodcastBubbleCell(
+                    sentenceId: sentence.id,
+                    contentHash: sentence.startTime.hashValue ^ sentence.endTime.hashValue ^ sentence.words.count,
+                    isCurrent: sentence.id == currentId,
+                    isNext: isNext,
+                    isSelecting: isSelectingThis,
+                    initialSelectionRange: isSelectingThis ? selectionState?.initialRange : nil,
+                    hasActiveSelection: hasActiveSelection,
+                    subtitleSize: subtitleSize,
+                    wordFollowEnabled: wordFollowEnabled,
+                    isPlaying: isPlaying,
+                    alignRight: slot % 2 == 1,
+                    showSpeaker: sentence.speaker != prevSpeaker,
+                    speaker: sentence.speaker,
+                    words: sentence.words,
+                    fullText: sentence.text,
+                    skin: PodcastBubbleSkin(skin: skin, slot: slot),
+                    liveAnchor: liveAnchor,
+                    duration: duration,
+                    hasNext: hasNext,
+                    entryFromTime: entryFromTime,
+                    onSentenceTap: {
+                        if hasActiveSelection {
+                            onClearSelection()
+                        } else if sentence.id != currentId {
+                            onSentenceTap(sentence)
+                        }
+                    },
+                    onWordTap: onWordTap,
+                    onPhraseTap: onPhraseTap,
+                    onExplainTap: onExplainTap,
+                    onEnterSelection: { wordIndex in
+                        onEnterSelection(
+                            PodcastSentenceSelection(
+                                sentenceId: sentence.id,
+                                initialRange: selectionRange(for: sentence, wordIndex: wordIndex)
+                            )
+                        )
+                    },
+                    onClearSelection: onClearSelection
+                )
+                .equatable()
+                .id(sentence.id)
             }
         }
         .padding(.vertical, skin.spacing.sectionGap)
         .padding(.horizontal, skin.spacing.cardPadding)
     }
 
-    // MARK: - Bubble row
+    /// Maps a word index to its `NSRange` within the sentence text, to seed the
+    /// selectable text view's initial selection. Kept on the column (not the cell)
+    /// so the cell stays a pure value — the cell calls back with just the word index.
+    private func selectionRange(for sentence: PodcastSentence, wordIndex: Int) -> NSRange? {
+        let nsText = sentence.text as NSString
+        var searchStart = 0
+        for (index, cue) in sentence.words.enumerated() {
+            let searchRange = NSRange(location: searchStart, length: max(0, nsText.length - searchStart))
+            let foundRange = nsText.range(of: cue.word, options: [], range: searchRange)
+            guard foundRange.location != NSNotFound else { continue }
+            if index == wordIndex { return foundRange }
+            searchStart = foundRange.location + foundRange.length
+        }
+        return nil
+    }
+}
 
-    @ViewBuilder
-    private func bubbleRow(_ sentence: PodcastSentence, showSpeaker: Bool) -> some View {
-        let slot = speakerSlots[sentence.speaker] ?? 0
-        let idx: Int? = slot
-        // Odd slots align right, even align left — for 2-speaker podcasts that
-        // matches host[0]=left / host[1]=right; 3+ speakers fan out cleanly.
-        let alignRight = (slot % 2 == 1)
-        let isCurrent = sentence.id == currentId
-        let isSelecting = selectionState?.sentenceId == sentence.id
-        HStack(alignment: .bottom, spacing: 0) {
+// MARK: - Bubble cell (Equatable)
+
+/// Cheap Equatable skin token for a bubble. Compared ONLY by `paletteBase`
+/// (`AppTheme.Palette`, the single source of truth every color derives from — so a
+/// theme/colorScheme change flips it) + `slot` (the speaker tint depends on it).
+/// The resolved colors/metrics are CARRIED for the body but NOT compared: with the
+/// same `paletteBase` + `slot` they are deterministically identical, so comparing
+/// them (Color `==` is unreliable) would be both wrong and wasteful.
+private struct PodcastBubbleSkin: Equatable {
+    let paletteBase: AppTheme.Palette
+    let slot: Int
+    // Carried, not compared:
+    let tint: Color
+    let primaryText: Color
+    let secondaryText: Color
+    let cornerRadius: CGFloat
+    let wordRowGap: CGFloat
+
+    init(skin: AppSkin, slot: Int) {
+        self.paletteBase = skin.palette.base
+        self.slot = slot
+        self.tint = PodcastSpeakerTint.color(for: slot, skin: skin)
+        self.primaryText = skin.palette.primaryText
+        self.secondaryText = skin.palette.secondaryText
+        self.cornerRadius = skin.radii.card
+        self.wordRowGap = skin.spacing.wordRowVerticalGap
+    }
+
+    static func == (l: PodcastBubbleSkin, r: PodcastBubbleSkin) -> Bool {
+        l.paletteBase == r.paletteBase && l.slot == r.slot
+    }
+}
+
+/// One transcript bubble as an `Equatable` value view. Wrapped in `.equatable()`
+/// inside the column's `ForEach`, so SwiftUI skips its `body` whenever its inputs
+/// are unchanged — a sentence advance flips `isCurrent` on only the leaving +
+/// gaining cells, so only those ~2 re-body (the rest short-circuit and never
+/// re-measure their `CachedFlowLayout`). This is what makes a sentence change
+/// O(2 rows) instead of O(all realized rows).
+///
+/// EXCLUDED from `==`: `liveAnchor` (a reference, read live per frame by the
+/// underline's own `TimelineView`), `duration`, and all closures (stable per
+/// parent render). `words` / `fullText` / `speaker` are excluded too — they are
+/// fully determined by `sentenceId` + `contentHash`, so comparing the scalar keys
+/// is enough and avoids an O(n·words) array compare.
+private struct PodcastBubbleCell: View, Equatable {
+    let sentenceId: Int
+    let contentHash: Int
+    let isCurrent: Bool
+    /// The sentence immediately after `currentId`. Cross-sentence underline relay
+    /// (Option B) needs the entering bubble's underline machinery present BEFORE the
+    /// `currentId` flip (which lags audio ~one tick / ~55 ms, device-measured), so
+    /// the entering head can already be sliding in. Compared in `==` so the cell
+    /// gains/loses its machinery as it enters/leaves the "next" slot.
+    let isNext: Bool
+    let isSelecting: Bool
+    let initialSelectionRange: NSRange?
+    let hasActiveSelection: Bool
+    let subtitleSize: PodcastSubtitleSize
+    let wordFollowEnabled: Bool
+    let isPlaying: Bool
+    let alignRight: Bool
+    let showSpeaker: Bool
+    let speaker: String
+    let words: [PodcastSubtitleCue]
+    let fullText: String
+    let skin: PodcastBubbleSkin
+    // Per-frame channel + stable closures — EXCLUDED from == (determined by
+    // `sentenceId` or read live per frame):
+    let liveAnchor: PodcastLiveAnchor
+    let duration: TimeInterval
+    /// Is there a successor sentence (so the leaving handoff should slide off the
+    /// edge rather than hold). Determined by `sentenceId` → not compared.
+    let hasNext: Bool
+    /// Start time of THIS sentence's predecessor's last word — the instant the
+    /// entering relay window opens. It equals my `startTime` minus that last word's
+    /// duration (gap-free SRT ⇒ predecessor's last-word END == my first-word START),
+    /// which is exactly why the leaving tail's fraction and this head's fraction
+    /// stay in lock-step. nil for the first sentence. Determined by `sentenceId` →
+    /// not compared.
+    let entryFromTime: TimeInterval?
+    let onSentenceTap: () -> Void
+    let onWordTap: (String, String) -> Void
+    let onPhraseTap: (String, String) -> Void
+    let onExplainTap: (String, String) -> Void
+    let onEnterSelection: (Int) -> Void
+    let onClearSelection: () -> Void
+
+    static func == (l: PodcastBubbleCell, r: PodcastBubbleCell) -> Bool {
+        l.sentenceId == r.sentenceId
+            && l.contentHash == r.contentHash
+            && l.isCurrent == r.isCurrent
+            && l.isNext == r.isNext
+            && l.isSelecting == r.isSelecting
+            && l.initialSelectionRange == r.initialSelectionRange
+            && l.hasActiveSelection == r.hasActiveSelection
+            && l.subtitleSize == r.subtitleSize
+            && l.wordFollowEnabled == r.wordFollowEnabled
+            && l.isPlaying == r.isPlaying
+            && l.alignRight == r.alignRight
+            && l.showSpeaker == r.showSpeaker
+            && l.skin == r.skin
+    }
+
+    var body: some View {
+        let _ = PerfLog.render.tick("cell.body", isCurrent ? "cur" : "non")
+        return HStack(alignment: .bottom, spacing: 0) {
             if alignRight { Spacer(minLength: 48) }
             VStack(alignment: alignRight ? .trailing : .leading, spacing: AppSpacing.tinyGap) {
                 if showSpeaker {
-                    Text(sentence.speaker)
+                    Text(speaker)
                         .font(subtitleSize.speakerFont)
-                        .foregroundStyle(tint(for: idx).opacity(isCurrent || isSelecting ? 0.88 : 0.58))
+                        .foregroundStyle(skin.tint.opacity(isCurrent || isSelecting ? 0.88 : 0.58))
                         .transition(.overlayFade)
                 }
-                bubbleContent(sentence: sentence, idx: idx, isCurrent: isCurrent, isSelecting: isSelecting)
+                bubbleContent
             }
             if !alignRight { Spacer(minLength: 48) }
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !isSelecting {
-                handleSentenceTap(sentence, isCurrent: isCurrent)
-            }
+            if !isSelecting { onSentenceTap() }
         }
     }
 
     @ViewBuilder
-    private func bubbleContent(
-        sentence: PodcastSentence,
-        idx: Int?,
-        isCurrent: Bool,
-        isSelecting: Bool
-    ) -> some View {
-        let bubbleTint = tint(for: idx)
-        // Every bubble carries the speaker's tint — non-current uses a very
-        // light wash so the conversation reads as alternating speakers at a
-        // glance (chat-bubble convention), while current pops with a richer
-        // fill. Replaces the prior neutral mutedFill for non-current bubbles
-        // which made every speaker look identical.
-        let bg: Color = isCurrent || isSelecting
-            ? bubbleTint.opacity(0.18)
-            : bubbleTint.opacity(0.08)
-        let fg: Color = isCurrent || isSelecting ? skin.palette.primaryText : skin.palette.secondaryText
-
+    private var bubbleContent: some View {
+        let active = isCurrent || isSelecting
+        let bg: Color = active ? skin.tint.opacity(0.18) : skin.tint.opacity(0.08)
+        let fg: Color = active ? skin.primaryText : skin.secondaryText
         Group {
             if isSelecting {
                 PodcastSelectableSentenceTextView(
-                    text: sentence.text,
+                    text: fullText,
                     font: subtitleSize.uiSubtitleFont,
                     textColor: UIColor(fg),
-                    tintColor: UIColor(bubbleTint),
-                    initialSelectionRange: selectionState?.initialRange
+                    tintColor: UIColor(skin.tint),
+                    initialSelectionRange: initialSelectionRange
                 ) { phrase, context in
                     onPhraseTap(phrase, context)
                 } onExplainSelection: { text, context in
@@ -405,162 +584,168 @@ private struct PodcastTranscriptColumn: View, Equatable {
                 }
             } else {
                 // All bubbles use CachedFlowLayout of per-word tokens — same layout
-                // algorithm whether current or not. This guarantees line breaks don't
-                // shift when a sentence becomes current (the prior design mixed a
-                // single wrapping Text with an overlay FlowLayout whose wrapping
-                // disagreed, producing visible misalignment + jank).
-                wordFlow(for: sentence, isCurrent: isCurrent, textColor: fg, tint: bubbleTint)
+                // algorithm whether current or not, so line breaks don't shift when
+                // a sentence becomes current.
+                wordFlow(textColor: fg)
             }
         }
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, 10)
-        .background(bg, in: RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
-                .stroke(
-                    bubbleTint.opacity(isCurrent || isSelecting ? 0.22 : 0.08),
-                    lineWidth: isCurrent || isSelecting ? 1 : 0.8
-                )
+        // Bubble fill + border live in their OWN shape-only layer so the active↔
+        // inactive skin crossfade animates on `active` WITHOUT animating the
+        // structural `wordFlow` swap (plain Text ↔ anchorPreference +
+        // overlayPreferenceValue + GeometryReader + TimelineView) that lives in the
+        // content layer above. Animating that swap spins up BOTH subtrees in one
+        // transaction → the per-sentence-change hitch — so the swap MUST stay
+        // instant. Scoping `.animation(value: active)` to this token-free shape
+        // layer gives the smooth bg/border glide the user asked for while keeping
+        // the structural swap snap-instant. (Earlier this whole block was left
+        // un-animated to dodge the hitch, which made the bubble color hard-cut.)
+        .background {
+            RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+                .fill(bg)
+                .overlay {
+                    RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+                        .stroke(
+                            skin.tint.opacity(active ? 0.22 : 0.08),
+                            lineWidth: active ? 1 : 0.8
+                        )
+                }
+                .animation(AppMotion.contentFade, value: active)
         }
-        .animation(AppMotion.contentFade, value: isCurrent)
         .animation(AppMotion.contentFade, value: isSelecting)
     }
 
     @ViewBuilder
-    private func wordFlow(
-        for sentence: PodcastSentence,
-        isCurrent: Bool,
-        textColor: Color,
-        tint: Color
-    ) -> some View {
-        // When the sentence is current AND we have renderState for it, use the
-        // per-cue words so the active-word underline and word-tap map 1:1 to
-        // the audio. Otherwise derive stable tokens from sentence.text.
-        if isCurrent, let rs = renderState, rs.sentenceId == sentence.id {
-            CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
-                ForEach(Array(rs.words.enumerated()), id: \.element.id) { index, word in
-                    Text(word.text)
-                        .font(subtitleSize.subtitleFont)
-                        .foregroundStyle(textColor)
-                        // Report each word's frame so the single continuous
-                        // underline can be positioned/sized against real geometry.
-                        .anchorPreference(key: WordFrameKey.self, value: .bounds) { [index: $0] }
-                        .onTapGesture {
-                            onWordTap(word.text, rs.sentenceText)
-                        }
-                        .onLongPressGesture(minimumDuration: 0.35) {
-                            enterSelectionMode(for: sentence, wordIndex: index)
-                        }
-                }
-            }
-            // Single continuous capsule driven by the extrapolated playhead —
-            // replaces the prior per-word overlay + `.animation(value:)` snap,
-            // which strobed off on sub-130ms words. Gated by `wordFollowEnabled`
-            // (false → bar(...) gets no chance to render).
-            .overlayPreferenceValue(WordFrameKey.self) { anchors in
-                continuousUnderline(anchors: anchors, words: sentence.words, tint: tint)
-            }
-        } else {
-            CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
-                // Use sentence.words (same source the current-branch uses) so
-                // token count and line-wrapping stay identical when the sentence
-                // becomes current — avoids any jump in bubble height.
-                ForEach(Array(sentence.words.enumerated()), id: \.offset) { index, cue in
+    private func wordFlow(textColor: Color) -> some View {
+        // Underline machinery (anchorPreference + overlayPreferenceValue +
+        // GeometryReader + TimelineView) lives on the current cell AND the next one
+        // (`isCurrent || isNext`); all other cells are a plain Text flow. The "next"
+        // cell needs it BEFORE the `currentId` flip so the cross-sentence entering
+        // head can already slide in during the boundary window (the flip lags audio
+        // ~one tick). Gating by STRUCTURE (not `paused`) is what bounds the cost to
+        // 2 cells — `TimelineView(paused:)` does NOT stop content re-eval. Token
+        // content is identical either way (same `words`), so wrapping / bubble
+        // height never shift across the (instant, never-animated) swap.
+        if isCurrent || isNext {
+            CachedFlowLayout(spacing: skin.wordRowGap) {
+                ForEach(Array(words.enumerated()), id: \.offset) { index, cue in
                     Text(cue.word)
                         .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
-                        .onTapGesture {
-                            onWordTap(cue.word, sentence.text)
-                        }
-                        .onLongPressGesture(minimumDuration: 0.35) {
-                            enterSelectionMode(for: sentence, wordIndex: index)
-                        }
+                        // Report each word's frame so the underline can be
+                        // positioned/sized against real geometry.
+                        .anchorPreference(key: WordFrameKey.self, value: .bounds) { [index: $0] }
+                        .onTapGesture { onWordTap(cue.word, fullText) }
+                        .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
+                }
+            }
+            .overlayPreferenceValue(WordFrameKey.self) { anchors in
+                continuousUnderline(anchors)
+            }
+        } else {
+            CachedFlowLayout(spacing: skin.wordRowGap) {
+                ForEach(Array(words.enumerated()), id: \.offset) { index, cue in
+                    Text(cue.word)
+                        .font(subtitleSize.subtitleFont)
+                        .foregroundStyle(textColor)
+                        .onTapGesture { onWordTap(cue.word, fullText) }
+                        .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
                 }
             }
         }
     }
 
-    /// The single continuous underline. `rects` are resolved once per layout
-    /// pass (from anchor preferences); the inner `TimelineView` re-evaluates at
-    /// the display refresh rate and only lerps the capsule — it does NOT rebuild
-    /// the word tokens, so `CachedFlowLayout` never re-runs per frame.
-    ///
-    /// The playhead is read LIVE from `liveAnchor.value` inside the TimelineView
-    /// closure. This is what defeats the stale-anchor trap: even though the parent
-    /// `PodcastTranscriptColumn.body` is skipped per frame (Equatable), this inner
-    /// TimelineView runs its own per-frame schedule and reads the current anchor
-    /// through the reference — never a value frozen at the last body eval.
-    ///
-    /// `words` MUST be the current sentence's cues (sentence-relative indices),
-    /// matching `PodcastWordProgress.locate`'s array basis.
-    @ViewBuilder
-    private func continuousUnderline(
-        anchors: [Int: Anchor<CGRect>],
-        words: [PodcastSubtitleCue],
-        tint: Color
-    ) -> some View {
+    /// Continuous word underline for the CURRENT cell only. Resolves word rects
+    /// from the anchor preferences once per layout pass; the inner `TimelineView`
+    /// re-evaluates per display frame and reads the LIVE playhead via
+    /// `liveAnchor.value` (the reference defeats the stale-anchor trap). Across a
+    /// line break it renders a portal (two capsules) — see
+    /// `PodcastUnderlineGeometry.segments`.
+    private func continuousUnderline(_ anchors: [Int: Anchor<CGRect>]) -> some View {
         GeometryReader { geo in
             let rects = anchors.mapValues { geo[$0] }
             TimelineView(.animation(paused: !isPlaying)) { ctx in
-                let t = PodcastPlaybackClock.projectedTime(
-                    anchor: liveAnchor.value,
-                    now: ctx.date.timeIntervalSinceReferenceDate,
-                    duration: duration
-                )
-                let loc = PodcastWordProgress.locate(time: t, words: words)
-                if wordFollowEnabled,
-                   let bar = PodcastUnderlineGeometry.bar(
-                       wordRects: rects, activeIndex: loc.index, fraction: loc.fraction
-                   ) {
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: bar.width, height: 3)
-                        // bottomY (word bottom) + 3pt offset + half the 3pt height.
-                        .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
+                // Current cell logs `ul.frame`; the entering ("next") cell logs
+                // `ul.next` so the second per-frame engine is separable in the trace.
+                let _ = PerfLog.underline.tick(isCurrent ? "ul.frame" : "ul.next")
+                if wordFollowEnabled {
+                    let t = PodcastPlaybackClock.projectedTime(
+                        anchor: liveAnchor.value,
+                        now: ctx.date.timeIntervalSinceReferenceDate,
+                        duration: duration
+                    )
+                    // Geometry recomputed per frame → motion is continuous with NO
+                    // animation modifier (a spring chasing a moving target visually
+                    // skips words). `relayBars` picks the regime: intra-sentence
+                    // portal, leaving tail-exit, or entering head-enter.
+                    let bars = relayBars(t: t, rects: rects)
+                    ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+                        Capsule()
+                            .fill(skin.tint)
+                            .frame(width: bar.width, height: 3)
+                            // bottomY (word bottom) + 3pt offset + half the 3pt height.
+                            .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Helpers
-
-    private func tint(for idx: Int?) -> Color {
-        PodcastSpeakerTint.color(for: idx, skin: skin)
-    }
-
-    private func handleSentenceTap(_ sentence: PodcastSentence, isCurrent: Bool) {
-        if selectionState != nil {
-            onClearSelection()
-            return
-        }
-        if !isCurrent { onSentenceTap(sentence) }
-    }
-
-    private func enterSelectionMode(for sentence: PodcastSentence, wordIndex: Int) {
-        onEnterSelection(
-            PodcastSentenceSelection(
-                sentenceId: sentence.id,
-                initialRange: selectionRange(for: sentence, wordIndex: wordIndex)
+    /// Picks this cell's underline bars for playhead `t`. Three regimes:
+    ///   • CURRENT, mid-sentence → the gliding portal (`segments`, incl. the
+    ///     line-break two-capsule handoff).
+    ///   • CURRENT, on the last word, with a successor → leaving relay: slide the
+    ///     bar off the trailing edge (`tailExit`). Once `fraction` hits 1 (the
+    ///     ~55 ms pre-flip window) it has vanished → nothing.
+    ///   • NEXT (machinery present, not yet current) → entering relay: before my
+    ///     first word, grow the head in from my leading edge (`headEnter`) over the
+    ///     predecessor's last-word window; once my first word actually plays (the
+    ///     pre-flip seam) draw it normally so becoming current is seamless. Outside
+    ///     that window the head is absent (zero/negative fraction → nil).
+    private func relayBars(
+        t: TimeInterval, rects: [Int: CGRect]
+    ) -> [PodcastUnderlineGeometry.Bar] {
+        let loc = PodcastWordProgress.locate(time: t, words: words)
+        if isCurrent {
+            let lastIndex = words.count - 1
+            if hasNext, lastIndex >= 0, loc.index == lastIndex, let lw = rects[lastIndex] {
+                // Exit toward the RIGHT EDGE OF THE LAST WORD'S OWN ROW, not the
+                // bubble's full content width: a short last row ("it.", "cleverness.")
+                // is far narrower than the widest row, so using content width slides
+                // the bar off into the empty space beside the text (a detached
+                // floating underline). With the row edge, when the last word is the
+                // rightmost on its row (the usual case) the bar retracts rightward to
+                // nothing while staying under the text.
+                let rowRight = rects.values
+                    .filter { abs($0.minY - lw.minY) < lw.height * 0.5 }
+                    .map(\.maxX).max() ?? lw.maxX
+                return PodcastUnderlineGeometry.tailExit(
+                    lastWord: lw, rowRightEdge: rowRight, fraction: loc.fraction
+                ).map { [$0] } ?? []
+            }
+            return PodcastUnderlineGeometry.segments(
+                wordRects: rects, activeIndex: loc.index, fraction: loc.fraction
             )
-        )
-    }
-
-    private func selectionRange(for sentence: PodcastSentence, wordIndex: Int) -> NSRange? {
-        let nsText = sentence.text as NSString
-        var searchStart = 0
-
-        for (index, cue) in sentence.words.enumerated() {
-            let searchRange = NSRange(
-                location: searchStart,
-                length: max(0, nsText.length - searchStart)
-            )
-            let foundRange = nsText.range(of: cue.word, options: [], range: searchRange)
-            guard foundRange.location != NSNotFound else { continue }
-            if index == wordIndex { return foundRange }
-            searchStart = foundRange.location + foundRange.length
         }
-
-        return nil
+        // isNext: machinery present ahead of the flip so the entering head can lead.
+        guard let fw = rects[0], let first = words.first else { return [] }
+        if let entry = entryFromTime, t < first.startTime {
+            let f = (t - entry) / max(0.0001, first.startTime - entry)
+            return PodcastUnderlineGeometry.headEnter(
+                firstWord: fw, rowLeftEdge: fw.minX, fraction: f
+            ).map { [$0] } ?? []
+        }
+        // Pre-flip seam: my own words are genuinely playing (not the playhead
+        // seeked far past me). The upper bound stops a non-sequential seek from
+        // flashing a stale bar on this still-"next" cell in the ~1 tick before
+        // `currentId` catches up.
+        if t >= first.startTime, t <= (words.last?.endTime ?? first.startTime) {
+            return PodcastUnderlineGeometry.segments(
+                wordRects: rects, activeIndex: loc.index, fraction: loc.fraction
+            )
+        }
+        return []
     }
 }
 
