@@ -19,6 +19,7 @@ struct PodcastPlayerView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @Query private var allVocabulary: [VocabularyEntry]
 
@@ -332,6 +333,7 @@ struct PodcastPlayerView: View {
             .background(theme.palette.pageBackground)
             .overlay(alignment: .bottom) {
                 if let selection = translationHandler.wordSelection {
+                    let placement = ReaderOverlayPanelPlacement(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
                     TranslationPanel(
                         word: selection.word,
                         result: translationHandler.translationResult,
@@ -366,6 +368,10 @@ struct PodcastPlayerView: View {
                             ? { translationHandler.retryLastLookup(vocabularyContext: vocabularyContext) }
                             : nil
                     )
+                    .frame(maxWidth: placement.maxWidth)
+                    .frame(maxWidth: .infinity, alignment: placement.alignment)
+                    .padding(.horizontal, placement.horizontalInset)
+                    .padding(.bottom, placement.bottomInset)
                     .transition(.readerPanelReveal)
                 }
             }
