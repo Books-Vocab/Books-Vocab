@@ -16,6 +16,7 @@ struct CachedFlowLayout: Layout {
     func sizeThatFits(
         proposal: ProposedViewSize, subviews: Subviews, cache: inout LayoutData
     ) -> CGSize {
+        PerfLog.layout.tick("flow.size", "n=\(subviews.count)")
         cache = computeLayout(proposal: proposal, subviews: subviews)
         return cache.size
     }

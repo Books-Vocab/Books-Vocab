@@ -134,88 +134,190 @@ struct PodcastWordProgressTests {
 }
 
 struct PodcastUnderlineGeometryTests {
-    @Test func hiddenWhenNoActiveWord() {
-        #expect(PodcastUnderlineGeometry.bar(wordRects: [0: CGRect(x: 0, y: 0, width: 10, height: 4)], activeIndex: -1, fraction: 0) == nil)
+    @Test func emptyWhenNoActiveWord() {
+        #expect(PodcastUnderlineGeometry.segments(
+            wordRects: [0: CGRect(x: 0, y: 0, width: 10, height: 4)], activeIndex: -1, fraction: 0
+        ).isEmpty)
     }
 
-    @Test func hiddenWhenRectMissing() {
-        #expect(PodcastUnderlineGeometry.bar(wordRects: [:], activeIndex: 0, fraction: 0.5) == nil)
+    @Test func emptyWhenRectMissing() {
+        #expect(PodcastUnderlineGeometry.segments(wordRects: [:], activeIndex: 0, fraction: 0.5).isEmpty)
     }
 
-    @Test func glidesTowardNextWordOnSameRow() {
+    @Test func singleSegmentAtActiveWordWhenNoNext() {
+        // Last word of a sentence: no next cue → one bar under the active word.
+        let rects = [0: CGRect(x: 5, y: 0, width: 20, height: 18)]
+        let segs = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0.7)
+        #expect(segs.count == 1)
+        #expect(segs[0].minX == 5)
+        #expect(segs[0].width == 20)
+        #expect(segs[0].bottomY == 18)
+    }
+
+    @Test func glidesAsOneSegmentOnSameRow() {
         let rects = [
             0: CGRect(x: 0, y: 0, width: 20, height: 18),
             1: CGRect(x: 30, y: 0, width: 40, height: 18),
         ]
-        let start = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0)!
-        #expect(start.minX == 0)
-        #expect(start.width == 20)
-        let mid = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.5)!
-        #expect(mid.minX == 15)   // lerp 0→30
-        #expect(mid.width == 30)  // lerp 20→40
-        let end = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 1)!
-        #expect(end.minX == 30)
-        #expect(end.width == 40)
+        let start = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0)
+        #expect(start.count == 1)
+        #expect(start[0].minX == 0)
+        #expect(start[0].width == 20)
+        let mid = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0.5)
+        #expect(mid.count == 1)
+        #expect(mid[0].minX == 15)   // lerp 0→30
+        #expect(mid[0].width == 30)  // lerp 20→40
+        let end = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 1)
+        #expect(end.count == 1)
+        #expect(end[0].minX == 30)
+        #expect(end[0].width == 40)
     }
 
-    @Test func subPixelMinYDeltaStillCountsAsSameRow() {
+    @Test func subPixelMinYDeltaStaysSameRow() {
         // Layout rounding can leave two words on the same visual row with a tiny
-        // minY delta; that must not be read as a line break (regression guard for
-        // the float-tolerance fix replacing exact minY equality).
+        // minY delta; that must not be read as a line break.
         let rects = [
             0: CGRect(x: 0, y: 0, width: 20, height: 20),
             1: CGRect(x: 30, y: 0.3, width: 40, height: 20),  // 0.3 ≪ height*0.5
         ]
-        let mid = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.5)!
-        #expect(mid.minX == 15)   // interpolated → treated as same row
-        #expect(mid.width == 30)
+        let mid = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0.5)
+        #expect(mid.count == 1)
+        #expect(mid[0].minX == 15)
+        #expect(mid[0].width == 30)
     }
 
-    @Test func fullLineMinYDeltaDegeneratesToActiveWord() {
-        // A full line-height jump (25 > height*0.5=10) is a real line break →
-        // no horizontal drag, stays on the active word.
+    @Test func portalStartsFullyOnFirstRow() {
+        // t=0 across a line break → single segment under the active word (row1).
         let rects = [
-            0: CGRect(x: 50, y: 0, width: 20, height: 20),
-            1: CGRect(x: 0, y: 25, width: 40, height: 20),
+            0: CGRect(x: 50, y: 0, width: 20, height: 18),   // last of row1
+            1: CGRect(x: 0, y: 30, width: 40, height: 18),   // first of row2
         ]
-        let bar = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.9)!
-        #expect(bar.minX == 50)
-        #expect(bar.width == 20)
+        let segs = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0)
+        #expect(segs.count == 1)
+        #expect(segs[0].minX == 50)
+        #expect(segs[0].width == 20)
+        #expect(segs[0].bottomY == 18)   // row1
     }
 
-    @Test func sameRowFractionEndpointsHitWordEdges() {
-        // fraction 0 → active word start; fraction 1 → next word's geometry.
-        let rects = [
-            0: CGRect(x: 0, y: 0, width: 20, height: 18),
-            1: CGRect(x: 30, y: 0, width: 40, height: 18),
-        ]
-        let start = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0)!
-        #expect(start.minX == 0)
-        #expect(start.width == 20)
-        let end = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 1)!
-        #expect(end.minX == 30)
-        #expect(end.width == 40)
-    }
-
-    @Test func staysOnActiveWordAcrossLineBreak() {
+    @Test func portalSplitsAcrossBothRowsMidTransition() {
+        // a: row1 (maxX=70 → row1End). b: row2 (minX=0 → row2Start).
+        // seg1 = 70-50 = 20, seg2 = 0, total = 20.
+        // t=0.5 → uL = 10, width = lerp(20,40)=30, uR = 40, seam = 20.
+        //   row1 piece u∈[10,20] → minX 50+10=60, width 10, bottomY 18.
+        //   row2 piece u∈[20,40] → minX 0+(20-20)=0, width 20, bottomY 48.
         let rects = [
             0: CGRect(x: 50, y: 0, width: 20, height: 18),
-            1: CGRect(x: 0, y: 30, width: 40, height: 18),  // next row (below)
+            1: CGRect(x: 0, y: 30, width: 40, height: 18),
         ]
-        let bar = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.9)!
-        #expect(bar.minX == 50)
-        #expect(bar.width == 20)
+        let segs = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0.5)
+        #expect(segs.count == 2)
+        #expect(segs[0].bottomY == 18)   // tail on row1
+        #expect(segs[0].minX == 60)
+        #expect(segs[0].width == 10)
+        #expect(segs[1].bottomY == 48)   // head on row2
+        #expect(segs[1].minX == 0)
+        #expect(segs[1].width == 20)
     }
 
-    @Test func staysOnActiveWordWhenNextWordOnAnyOtherRow() {
-        // Different row regardless of direction (next word above) → no horizontal drag.
+    @Test func portalLandsOnNextWordAtEnd() {
+        // t=1 → fully arrived: single segment exactly on the next word (row2).
         let rects = [
-            0: CGRect(x: 50, y: 30, width: 20, height: 18),
-            1: CGRect(x: 0, y: 0, width: 40, height: 18),  // different row (above)
+            0: CGRect(x: 50, y: 0, width: 20, height: 18),
+            1: CGRect(x: 0, y: 30, width: 40, height: 18),
         ]
-        let bar = PodcastUnderlineGeometry.bar(wordRects: rects, activeIndex: 0, fraction: 0.9)!
-        #expect(bar.minX == 50)
-        #expect(bar.width == 20)
+        let segs = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 1)
+        #expect(segs.count == 1)
+        #expect(segs[0].minX == 0)
+        #expect(segs[0].width == 40)
+        #expect(segs[0].bottomY == 48)   // row2
+    }
+
+    @Test func portalUsesRowExtentsNotJustTheTwoWords() {
+        // Extra words extend row1End beyond `a` and pull row2Start left of `b`,
+        // so the unrolled travel distance reflects the whole row, not the pair.
+        let rects = [
+            0: CGRect(x: 50, y: 0, width: 20, height: 18),    // a (active), last-but-one of row1
+            10: CGRect(x: 80, y: 0, width: 15, height: 18),   // trailing word on row1 → row1End=95
+            1: CGRect(x: 30, y: 30, width: 40, height: 18),   // b on row2
+            11: CGRect(x: 0, y: 30, width: 20, height: 18),   // leading word on row2 → row2Start=0
+        ]
+        // seg1 = 95-50 = 45, seg2 = 30-0 = 30, total = 75.
+        // t=0 → uL 0, width 20, uR 20 ≤ seg1 → single row1 bar at a.
+        let begin = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 0)
+        #expect(begin.count == 1)
+        #expect(begin[0].minX == 50)
+        #expect(begin[0].bottomY == 18)
+        // t=1 → lands on b (row2), minX=30 (row2Start 0 + seg2 30).
+        let done = PodcastUnderlineGeometry.segments(wordRects: rects, activeIndex: 0, fraction: 1)
+        #expect(done.count == 1)
+        #expect(done[0].minX == 30)
+        #expect(done[0].width == 40)
+        #expect(done[0].bottomY == 48)
+    }
+
+    // MARK: - Cross-sentence edge relay (Option B)
+
+    @Test func tailExitStartsExactlyUnderLastWord() {
+        // fraction 0 → bar IS the last word (continuous with the normal underline).
+        let bar = PodcastUnderlineGeometry.tailExit(
+            lastWord: CGRect(x: 5, y: 0, width: 20, height: 18), rowRightEdge: 100, fraction: 0
+        )
+        #expect(bar?.minX == 5)
+        #expect(bar?.width == 20)
+        #expect(bar?.bottomY == 18)
+    }
+
+    @Test func tailExitSlidesRightKeepingWidthUntilTheEdge() {
+        // Mid-travel, still clear of the edge → translates right, full width retained.
+        let bar = PodcastUnderlineGeometry.tailExit(
+            lastWord: CGRect(x: 5, y: 0, width: 20, height: 18), rowRightEdge: 100, fraction: 0.5
+        )
+        #expect(bar?.minX == 52.5)   // 5 + (100-5)*0.5
+        #expect(bar?.width == 20)
+    }
+
+    @Test func tailExitClipsAgainstTheEdgeNearTheEnd() {
+        // Close to the edge → leading part has slid off, width shrinks.
+        let bar = PodcastUnderlineGeometry.tailExit(
+            lastWord: CGRect(x: 5, y: 0, width: 20, height: 18), rowRightEdge: 100, fraction: 0.9
+        )
+        #expect(bar?.minX == 90.5)   // 5 + 95*0.9
+        #expect(bar?.width == 9.5)   // clipped at 100
+    }
+
+    @Test func tailExitVanishesAtEnd() {
+        // fraction 1 → fully slid off the trailing edge → nothing to draw.
+        #expect(PodcastUnderlineGeometry.tailExit(
+            lastWord: CGRect(x: 5, y: 0, width: 20, height: 18), rowRightEdge: 100, fraction: 1
+        ) == nil)
+    }
+
+    @Test func headEnterIsAbsentAtStart() {
+        // fraction 0 → zero width → the entering head has not appeared yet.
+        #expect(PodcastUnderlineGeometry.headEnter(
+            firstWord: CGRect(x: 10, y: 30, width: 40, height: 18), rowLeftEdge: 10, fraction: 0
+        ) == nil)
+    }
+
+    @Test func headEnterGrowsInFromTheLeadingEdge() {
+        // Mid-travel → a partial bar anchored at the leading edge, growing right.
+        let bar = PodcastUnderlineGeometry.headEnter(
+            firstWord: CGRect(x: 10, y: 30, width: 40, height: 18), rowLeftEdge: 10, fraction: 0.5
+        )
+        #expect(bar?.minX == 10)
+        #expect(bar?.width == 20)     // 40 * 0.5
+        #expect(bar?.bottomY == 48)
+    }
+
+    @Test func headEnterLandsExactlyOnFirstWordAtEnd() {
+        // fraction 1 → exactly the first word (continuous handoff into the normal
+        // underline once the cell becomes current).
+        let bar = PodcastUnderlineGeometry.headEnter(
+            firstWord: CGRect(x: 10, y: 30, width: 40, height: 18), rowLeftEdge: 10, fraction: 1
+        )
+        #expect(bar?.minX == 10)
+        #expect(bar?.width == 40)
+        #expect(bar?.bottomY == 48)
     }
 }
 
