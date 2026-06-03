@@ -278,6 +278,7 @@ struct TranslationVocabPresenter: View {
             if let onShowDetail {
                 VocabChromeIconButton(
                     systemImage: "rectangle.portrait.on.rectangle.portrait",
+                    label: L10n.string("vocab.chromeIcon.translation.detail"),
                     action: onShowDetail
                 )
             }
@@ -285,6 +286,7 @@ struct TranslationVocabPresenter: View {
             if showChevron {
                 VocabChromeIconButton(
                     systemImage: state.isExpanded ? "chevron.up" : "chevron.down",
+                    label: L10n.string(state.isExpanded ? "vocab.chromeIcon.translation.collapse" : "vocab.chromeIcon.translation.expand"),
                     action: onExpand
                 )
             }
@@ -293,6 +295,7 @@ struct TranslationVocabPresenter: View {
                 VocabChromeIconButton(
                     systemImage: "trash",
                     tone: appSkin.palette.destructive,
+                    label: L10n.string("vocab.chromeIcon.translation.delete"),
                     action: onDelete
                 )
             }

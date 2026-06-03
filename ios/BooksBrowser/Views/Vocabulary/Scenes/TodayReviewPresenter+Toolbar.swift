@@ -48,6 +48,7 @@ extension TodayReviewPresenter {
             VocabChromeIconButton(
                 systemImage: state.isAutoPlaying ? "play.circle.fill" : "play.circle",
                 tone: state.isAutoPlaying ? appSkin.palette.accent : nil,
+                label: L10n.string(state.isAutoPlaying ? "vocab.chromeIcon.todayReview.autoplay.on" : "vocab.chromeIcon.todayReview.autoplay.off"),
                 action: onToggleAutoPlay
             )
 
