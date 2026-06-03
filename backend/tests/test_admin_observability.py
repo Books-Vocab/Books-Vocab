@@ -141,6 +141,64 @@ def test_observability_response_has_required_keys(admin_app):
         assert key in body, f"missing key: {key}"
 
 
+def test_observability_response_declares_utc_tz(admin_app):
+    body = _get(admin_app.client).json()
+    assert body["tz"] == "UTC"
+
+
+# ── log_db_health (row_count + oldest) ────────────────────────────────────
+
+
+def test_observability_log_db_health_keys_present(admin_app):
+    body = _get(admin_app.client).json()
+    health = body["log_db_health"]
+    for table in (
+        "pipeline_runs",
+        "judge_log",
+        "translate_log",
+        "translate_cache_hits",
+        "token_usage",
+    ):
+        assert table in health, f"missing table: {table}"
+        assert "row_count" in health[table]
+        assert "oldest_created_at" in health[table]
+
+
+def test_observability_log_db_health_empty(admin_app):
+    body = _get(admin_app.client).json()
+    health = body["log_db_health"]
+    assert health["judge_log"]["row_count"] == 0
+    assert health["judge_log"]["oldest_created_at"] is None
+    assert health["token_usage"]["row_count"] == 0
+
+
+def test_observability_log_db_health_counts_rows(admin_app):
+    import kg.judge_log as jl
+    import kg.pipeline_log as pl
+    import kg.token_tracker as tt
+
+    pl.start_run("h1", "u1", "nb1", "manual")
+    pl.end_run("h1", "ok")
+    jl.record(
+        user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
+        similarity=0.5, verdict="merge", confidence=0.9, accepted=True,
+    )
+    jl.record(
+        user_id="u1", notebook_id="nb1", from_id="c", to_id="d",
+        similarity=0.5, verdict="merge", confidence=0.9, accepted=False,
+    )
+    tt.record("u1", "translate", 10, 20)
+
+    body = _get(admin_app.client).json()
+    health = body["log_db_health"]
+    assert health["pipeline_runs"]["row_count"] == 1
+    assert health["judge_log"]["row_count"] == 2
+    assert health["token_usage"]["row_count"] == 1
+    # oldest_created_at populated once rows exist
+    assert health["judge_log"]["oldest_created_at"] is not None
+    assert health["token_usage"]["oldest_created_at"] is not None
+
+
 def test_observability_empty_data_returns_zero_or_null_metrics(admin_app):
     body = _get(admin_app.client).json()
     # No data → cache hit rate should be None or 0 (no calls to measure)
