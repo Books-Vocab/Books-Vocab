@@ -34,7 +34,7 @@ struct BookCard: View {
             VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
                 Text(book.title)
                     .font(AppFonts.caption(weight: .medium))
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .truncationMode(.tail)
                     .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.leading)
