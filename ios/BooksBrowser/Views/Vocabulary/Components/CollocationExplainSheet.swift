@@ -74,11 +74,9 @@ struct CollocationExplainSheet: View {
                     onSave(explanation)
                     dismiss()
                 } label: {
-                    Label("儲存".localized, systemImage: "checkmark.circle")
-                        .font(appSkin.typography.caption)
+                    Label("儲存".localized, systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(appSkin.palette.success)
+                .buttonStyle(.appCompactAction(.primary))
             }
 
             Spacer()
