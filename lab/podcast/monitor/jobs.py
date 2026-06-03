@@ -36,6 +36,24 @@ MAX_ACTIVE = int(os.getenv("PODCAST_MAX_ACTIVE_JOBS", "4"))
 MAX_HISTORY = int(os.getenv("PODCAST_JOB_HISTORY", "100"))
 
 
+class WorkspaceBusyError(Exception):
+    """Spawn refused because another job is already running for the same
+    workspace. Caller turns this into HTTP 409.
+
+    This is the atomic backstop for the TOCTOU race: server.py's pre-flight
+    `_active_job_for_ws` check and the actual `spawn()` are two steps with no
+    shared lock, so two concurrent POSTs for one workspace could both pass the
+    pre-check and both spawn. The check-and-reserve below runs inside spawn's
+    own `self._lock`, so at most one wins."""
+
+    def __init__(self, workspace: str, job_id: str):
+        self.workspace = workspace
+        self.job_id = job_id
+        super().__init__(
+            f"a job is already running for {workspace} (job {job_id})"
+        )
+
+
 class JobLimitReached(Exception):
     """Spawn refused because too many jobs are already running. Caller turns
     this into HTTP 429 — different from a malformed request (400) or a server
@@ -96,18 +114,33 @@ class JobTracker:
         cwd: Path | str = ROOT,
         env: dict | None = None,
         metadata: dict | None = None,
+        workspace: str | None = None,
     ) -> Job:
         """Start a subprocess, write its output to a per-job log file,
         return the Job record immediately (non-blocking).
 
         Raises JobLimitReached if too many jobs are already running.
         Caller (server.py) converts that to HTTP 429.
+
+        If `workspace` is given, the spawn is rejected with WorkspaceBusyError
+        (→ HTTP 409) when another job for the same workspace is still
+        pending/running. The check and the slot reservation happen inside the
+        SAME `self._lock` acquisition, so two concurrent same-workspace spawns
+        can't both pass — closing the TOCTOU window that server.py's separate
+        pre-flight check left open. `workspace=None` (full-pipeline jobs whose
+        workspace is only known after the EPUB hash resolves inside stage 1) is
+        not workspace-guarded here.
         """
         # Atomic capacity check + reservation. Without the lock here, two
         # concurrent POST /upload could both observe active=MAX-1 and both
         # spawn, breaking the cap on the 2GB VPS. Reserve a slot up-front.
         job_id = uuid.uuid4().hex[:12]
         log_path = JOBS_DIR / f"{job_id}.log"
+        meta = dict(metadata or {})
+        # Stamp the workspace into metadata so the in-lock scan below and
+        # server's _active_job_for_ws (Route 1) read the same field.
+        if workspace is not None:
+            meta.setdefault("workspace", workspace)
         job = Job(
             id=job_id,
             label=label,
@@ -117,10 +150,21 @@ class JobTracker:
             status="pending",
             started_ts=time.time(),
             log_path=str(log_path),
-            metadata=dict(metadata or {}),
+            metadata=meta,
         )
 
         with self._lock:
+            # Atomic workspace check-and-reserve. Must scan inside the same lock
+            # that registers the new job, or two concurrent same-workspace
+            # spawns both observe "no busy job" and both reserve (the race this
+            # whole guard exists to kill).
+            if workspace is not None:
+                for j in self._jobs.values():
+                    if (
+                        j.status in {"running", "pending"}
+                        and (j.metadata or {}).get("workspace") == workspace
+                    ):
+                        raise WorkspaceBusyError(workspace, j.id)
             active = sum(
                 1 for j in self._jobs.values() if j.status in {"running", "pending"}
             )
