@@ -17,17 +17,22 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        // WKScriptMessage.body / .name are only valid during this synchronous
+        // delegate callback. Capture them now before hopping to the MainActor;
+        // reading them inside the Task would be a use-after-scope.
+        let name = message.name
+        let body = message.body
         Task { @MainActor in
-            switch message.name {
+            switch name {
             case "selectionState":
-                self.handleSelectionStateMessage(message.body)
+                self.handleSelectionStateMessage(body)
             case "markingProgress":
-                self.handleMarkingProgressMessage(message.body)
+                self.handleMarkingProgressMessage(body)
             case "wordDeselect":
                 AppLog.reader.debug("Word deselected (toggle off)")
                 self.parent.onWordDeselected()
             case "wordTap":
-                self.handleWordTapMessage(message.body)
+                self.handleWordTapMessage(body)
             default:
                 return
             }
