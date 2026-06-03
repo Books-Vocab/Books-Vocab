@@ -227,6 +227,115 @@ def test_start_saga_rejects_unknown_tts_model(client, spawn):
     assert list(server.UPLOAD_STAGING.glob("*")) == []
 
 
+# ── upload content-hash dedup (concurrent same-EPUB guard) ──────────────────
+
+
+def test_start_pipeline_passes_content_hash_dedup_key(client, spawn):
+    """start_pipeline hashes the streamed EPUB bytes and passes the digest as
+    spawn(dedup_key="epub:<hash>") so two concurrent uploads of the same file
+    collide in JobTracker's atomic guard."""
+    import hashlib
+
+    data = b"PKfake-epub-bytes-unique-A"
+    resp = client.post(
+        "/api/pipeline/start",
+        files={"epub": ("book.epub", io.BytesIO(data), "application/epub+zip")},
+    )
+    assert resp.status_code == 200, resp.text
+    key = spawn.kwargs["dedup_key"]
+    assert key == f"epub:{hashlib.sha256(data).hexdigest()}"
+    # workspace= must NOT also be passed (ws unknown at spawn time).
+    assert spawn.kwargs.get("workspace") is None
+
+
+def test_start_pipeline_same_bytes_same_key_distinct_bytes_differ(client, spawn):
+    """Hash is content-derived: identical bytes → identical key; one differing
+    byte → different key. Filename is irrelevant to dedup."""
+    client.post("/api/pipeline/start",
+                files={"epub": ("x.epub", io.BytesIO(b"AAAA"), "application/epub+zip")})
+    k1 = spawn.kwargs["dedup_key"]
+    client.post("/api/pipeline/start",
+                files={"epub": ("y.epub", io.BytesIO(b"AAAA"), "application/epub+zip")})
+    k2 = spawn.kwargs["dedup_key"]
+    client.post("/api/pipeline/start",
+                files={"epub": ("z.epub", io.BytesIO(b"AAAB"), "application/epub+zip")})
+    k3 = spawn.kwargs["dedup_key"]
+    assert k1 == k2
+    assert k1 != k3
+
+
+def test_start_pipeline_busy_returns_409_and_cleans_up(client, monkeypatch):
+    """When the atomic guard rejects (same EPUB already processing), the endpoint
+    returns 409 and unlinks the just-staged file — no orphan in staging."""
+    def boom(cmd, **kwargs):
+        raise server.WorkspaceBusyError(kwargs.get("dedup_key", "epub:x"), "job-x")
+    monkeypatch.setattr(server.jobs, "spawn", boom)
+    resp = client.post(
+        "/api/pipeline/start",
+        files={"epub": _epub("dup.epub")},
+    )
+    assert resp.status_code == 409
+    assert "already being processed" in resp.json()["detail"].lower()
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+def test_start_saga_passes_content_hash_dedup_key(client, spawn):
+    """start_saga hashes every staged EPUB (in reading order) into one combined
+    dedup_key, so the same multi-book saga uploaded twice concurrently collides."""
+    import hashlib
+
+    a, b = b"PKsaga-book-a", b"PKsaga-book-b"
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong"},
+        files=[
+            ("epubs", ("a.epub", io.BytesIO(a), "application/epub+zip")),
+            ("epubs", ("b.epub", io.BytesIO(b), "application/epub+zip")),
+        ],
+    )
+    assert resp.status_code == 200, resp.text
+    h = hashlib.sha256()
+    for chunk in (a, b):
+        h.update(hashlib.sha256(chunk).digest())
+    assert spawn.kwargs["dedup_key"] == f"epub:{h.hexdigest()}"
+    assert spawn.kwargs.get("workspace") is None
+
+
+def test_start_saga_book_order_changes_dedup_key(client, spawn):
+    """Saga reading order is semantically meaningful — swapping book order must
+    yield a different dedup key (different pipeline)."""
+    a = ("a.epub", b"PKbook-a", "application/epub+zip")
+    b = ("b.epub", b"PKbook-b", "application/epub+zip")
+
+    def post(first, second):
+        return client.post(
+            "/api/pipeline/start-saga",
+            data={"title": "S", "spoiler_mode": "readalong"},
+            files=[("epubs", (first[0], io.BytesIO(first[1]), first[2])),
+                   ("epubs", (second[0], io.BytesIO(second[1]), second[2]))],
+        )
+
+    post(a, b)
+    k_ab = spawn.kwargs["dedup_key"]
+    post(b, a)
+    k_ba = spawn.kwargs["dedup_key"]
+    assert k_ab != k_ba
+
+
+def test_start_saga_busy_returns_409_and_cleans_up(client, monkeypatch):
+    def boom(cmd, **kwargs):
+        raise server.WorkspaceBusyError(kwargs.get("dedup_key", "epub:x"), "job-x")
+    monkeypatch.setattr(server.jobs, "spawn", boom)
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong"},
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 409
+    assert "already being processed" in resp.json()["detail"].lower()
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
 def test_tts_allowlist_parity_frontend_backend():
     """The TTS allowlist lives in three places (tts_config.py SoT + app.js mirror
     + index.html <option>s). Guard against silent drift: a model added server-side
