@@ -77,10 +77,21 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
         raise NotFoundError("Word", word)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
-        if archived:
-            graph.cleanup_for_card(card.id)
-        else:
-            graph.restore_links_for(card.id, cards_store)
+        try:
+            if archived:
+                graph.cleanup_for_card(card.id)
+            else:
+                graph.restore_links_for(card.id, cards_store)
+        except Exception:
+            # Roll the card's archive state back to its original value so a
+            # failed graph op never leaves card state and the response out of
+            # sync, then re-raise (mirrors delete_vocab_word).
+            logger.error("Graph operation failed for card %s", card.id, exc_info=True)
+            try:
+                cards_store.update(card.id, is_archived=not archived)
+            except Exception:
+                logger.exception("rollback failed for card %s after graph error", card.id)
+            raise
     return {"word": word, "id": card.id, "archived": archived}
 
 
