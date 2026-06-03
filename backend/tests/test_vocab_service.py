@@ -751,3 +751,98 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
     assert results[0].linksByKind["shares_usage"][0].word == "apple"
 
 
+# ---------------------------------------------------------------------------
+# batch_delete_vocab_words graph-failure rollback branch (vocab_crud.py:156-165)
+# ---------------------------------------------------------------------------
+# Uses a real CardStore so soft-delete / restore / notebook_id all behave
+# authentically — the lightweight _FakeCardsStore cannot model restore().
+
+
+class _PartialFailingGraph:
+    """cleanup_for_card raises for one specific card id, succeeds otherwise."""
+
+    def __init__(self, fail_for: str):
+        self._fail_for = fail_for
+        self.cleaned: list[str] = []
+
+    def cleanup_for_card(self, card_id, *, remove_blocked=False):
+        if card_id == self._fail_for:
+            raise RuntimeError("graph cleanup blew up for %s" % card_id)
+        self.cleaned.append(card_id)
+        return {"deprecated": 1, "candidates_removed": 0}
+
+
+class TestBatchDeleteGraphFailureBranch:
+    def test_second_card_graph_failure_rolls_back_only_that_card(self, tmp_path):
+        """When cleanup_for_card raises on the 2nd word, that word lands in
+        not_found, its card is restored (not soft-deleted), and remove_batch
+        receives only the successfully-deleted id."""
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        c1 = cards.add("hello", meaning="m", notebook_id="default")
+        c2 = cards.add("world", meaning="m", notebook_id="default")
+
+        graph = _PartialFailingGraph(fail_for=c2.id)
+        emb = _FakeEmbeddingStore(ids=[c1.id, c2.id])
+
+        result = batch_delete_vocab_words(
+            ["hello", "world"], cards_store=cards, graph=graph, embeddings=emb,
+        )
+
+        # "world" failed graph cleanup → reported as not_found
+        assert result["deleted"] == 1
+        assert result["deleted_words"] == ["hello"]
+        assert result["not_found"] == ["world"]
+
+        # c1 soft-deleted, c2 restored to active
+        assert cards.get(c1.id).is_deleted is True
+        assert cards.get(c2.id).is_deleted is False
+
+        # embeddings evicted only for the committed-deleted card
+        assert emb.removed == [c1.id]
+
+    def test_all_cards_fail_graph_yields_empty_delete(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        c1 = cards.add("hello", meaning="m", notebook_id="default")
+
+        graph = _PartialFailingGraph(fail_for=c1.id)
+        emb = _FakeEmbeddingStore(ids=[c1.id])
+
+        result = batch_delete_vocab_words(
+            ["hello"], cards_store=cards, graph=graph, embeddings=emb,
+        )
+        assert result["deleted"] == 0
+        assert result["not_found"] == ["hello"]
+        assert cards.get(c1.id).is_deleted is False
+        # nothing committed → remove_batch never evicts (guarded by deleted_ids)
+        assert emb.removed == []
+
+
+# ---------------------------------------------------------------------------
+# Cross-notebook CardStore isolation: batch_delete scoped by notebook_id must
+# not touch a same-named card living in another notebook.
+# ---------------------------------------------------------------------------
+
+
+class TestBatchDeleteNotebookIsolation:
+    def test_same_word_in_other_notebook_untouched(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        nb_a = cards.add("hello", meaning="m", notebook_id="nb_a")
+        nb_b = cards.add("hello", meaning="m", notebook_id="nb_b")
+
+        result = batch_delete_vocab_words(
+            ["hello"], cards_store=cards, notebook_id="nb_a",
+        )
+
+        assert result["deleted"] == 1
+        assert result["deleted_words"] == ["hello"]
+        # only nb_a's card is gone; nb_b's identically-named card survives
+        assert cards.get(nb_a.id).is_deleted is True
+        assert cards.get(nb_b.id).is_deleted is False
+
+

@@ -373,3 +373,40 @@ class TestDailyReviewStatsBranches:
         out = push_daily_review_stats([], stats_store=store, logger=logging.getLogger())
         assert out == {"upserted": 0}
         assert store.upserts == []
+
+
+# --------------------------------------------------------------------- #
+# pull_daily_review_stats `since` format validation (vocab_review.py:140-146)
+# day_key filtering is a raw string >= compare, so a non-YYYY-MM-DD value
+# must be rejected up front rather than silently mis-filtering.
+# --------------------------------------------------------------------- #
+import pytest  # noqa: E402
+
+from kg.exceptions import BadRequestError  # noqa: E402
+
+
+class TestPullDailyReviewStatsSinceFormat:
+    @pytest.mark.parametrize(
+        "bad_since",
+        [
+            "2024-01-01T00:00",  # ISO timestamp, not a bare day_key
+            "garbage",           # not a date at all
+            "2024-13-99",        # syntactically date-shaped but invalid month/day
+            "2024/01/01",        # wrong separator
+            "20240101",          # no separators
+        ],
+    )
+    def test_rejects_non_calendar_day(self, bad_since):
+        store = _FakeStatsStore()
+        store._all = [SimpleNamespace(day_key="2026-05-12", total=1, remembered=1, forgot=0)]
+        with pytest.raises(BadRequestError):
+            pull_daily_review_stats(since=bad_since, stats_store=store)
+
+    def test_accepts_valid_day_key(self):
+        store = _FakeStatsStore()
+        store._all = [
+            SimpleNamespace(day_key="2026-05-10", total=1, remembered=1, forgot=0),
+            SimpleNamespace(day_key="2026-05-12", total=3, remembered=2, forgot=1),
+        ]
+        result = pull_daily_review_stats(since="2026-05-11", stats_store=store)
+        assert [r.day_key for r in result] == ["2026-05-12"]
