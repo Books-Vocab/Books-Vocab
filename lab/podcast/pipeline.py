@@ -168,6 +168,28 @@ STAGES = [
 # Stage completion markers — written to workspace after each stage succeeds
 _STAGE_MARKER = ".stage_{name}_done"
 
+# Series-wide stages that ignore --only-episode: series-polish LLM-rewrites ALL
+# episode scripts, publish re-publishes the whole series. A bare full-loop
+# `pipeline.py <ws> --only-episode N` (producer patching one episode) must NOT
+# trigger either — wrong semantics + wasted cost. They still run when the
+# producer EXPLICITLY drives them via --only-stage (a deliberate full-series op).
+_SERIES_WIDE_STAGES = {"series-polish", "publish"}
+
+
+def _should_skip_for_only_episode(stage_name: str, args) -> bool:
+    """True iff `stage_name` is a series-wide stage that must be skipped because
+    the run is filtered to a single episode via a bare full loop.
+
+    Skip only when --only-episode is set AND the stage was not explicitly
+    selected via --only-stage. `--only-stage series-polish/publish` is the
+    producer's deliberate full-series drive → never skipped.
+    """
+    return (
+        bool(args.only_episode)
+        and stage_name in _SERIES_WIDE_STAGES
+        and args.only_stage != stage_name
+    )
+
 # ─── Archetype prompt resolution + mode sidecars ────────────────────────────
 # An archetype selects a prompt SET via filename suffix. `_prompt` returns the
 # variant `<name>_<suffix>.md` when it exists, else the base `<name>.md`. So an
@@ -1868,6 +1890,24 @@ examples:
     }
 
     stages_to_run = STAGES[start_idx:stop_idx + 1]
+
+    # Drop series-wide stages (series-polish / publish) from a bare single-episode
+    # full loop: they re-process the WHOLE series, never honoring --only-episode.
+    # Filtering here (vs loop `continue`) keeps step x/y counts honest and never
+    # writes their completion markers, so a later bare full-series run still runs
+    # them. Explicit --only-stage series-polish/publish is unaffected (the stage
+    # IS the selection → _should_skip returns False).
+    skipped_series_wide = [
+        s for s in stages_to_run if _should_skip_for_only_episode(s, args)
+    ]
+    if skipped_series_wide:
+        stages_to_run = [s for s in stages_to_run if s not in skipped_series_wide]
+        for s in skipped_series_wide:
+            print(
+                f"  ↷ skip {s}: series-wide stage incompatible with --only-episode "
+                f"{args.only_episode}; run without --only-episode to {s} the whole series"
+            )
+
     total_stages = len(stages_to_run)
 
     print(f"\nPlan: {' → '.join(stages_to_run)}")
