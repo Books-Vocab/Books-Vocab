@@ -1,9 +1,13 @@
 """Unified LLM wrapper with automatic token usage tracking + quota reservation."""
 from __future__ import annotations
 
+import logging
+
 from .llm.providers import LLMProvider
 from .quota_service import estimate_call_cost, reserve
 from .token_tracker import record
+
+logger = logging.getLogger(__name__)
 
 
 class TrackedLLM:
@@ -73,9 +77,27 @@ class TrackedLLM:
     def _provider_name(self) -> str | None:
         return self._provider.name if self._provider is not None else None
 
+    def _warn_usage_missing(self, call_type: str, model: str | None) -> None:
+        """A successful LLM call returned no usage → the tokens it burned are
+        never recorded against the user's quota and never priced. Billing /
+        quota would silently under-count with zero trace. Emit a warning so the
+        leak is at least visible (we deliberately do NOT fabricate a token
+        count — estimating would corrupt billing with guesswork)."""
+        logger.warning(
+            "LLM response missing usage; token not recorded "
+            "(provider=%s model=%s user_id=%s call_type=%s)",
+            self._provider_name(),
+            model if model is not None else (
+                self._provider.chat_model if self._provider is not None else None
+            ),
+            self.user_id,
+            call_type,
+        )
+
     def _record_chat(self, call_type: str, resp, model: str | None = None) -> None:
         usage = getattr(resp, "usage", None)
         if not usage:
+            self._warn_usage_missing(call_type, model)
             return
         # Prefer the model actually sent; fall back to the bound provider's
         # default chat model so the row is never NULL when a provider is bound.
@@ -93,6 +115,7 @@ class TrackedLLM:
     def _record_embed(self, call_type: str, resp, model: str | None = None) -> None:
         usage = getattr(resp, "usage", None)
         if not usage:
+            self._warn_usage_missing(call_type, model)
             return
         prompt = getattr(usage, "prompt_tokens", 0) or 0
         record(
