@@ -414,6 +414,36 @@ class TestBatchDeleteVocabWords:
         assert result["deleted"] == 2
         assert set(graph.deprecated_for) == {"c1", "c2"}
 
+    def test_graph_failure_routes_to_failed_not_not_found(self):
+        """When graph cleanup raises, the card is restored (still exists on the
+        server) and the word must go to the `failed` bucket, NOT `not_found`.
+        `not_found` retains its pure meaning: lookup miss only. iOS treats
+        `not_found` as 'server no longer has it -> converge/remove locally', so a
+        graph-failed (still-existing) word must never appear there."""
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+            _FakeCard(id="c3", content="foo"),
+        ])
+
+        class _FailSecondGraph(_FakeArchiveGraph):
+            def cleanup_for_card(self, card_id, *, remove_blocked=False):
+                if card_id == "c2":
+                    raise RuntimeError("graph boom")
+                return super().cleanup_for_card(card_id, remove_blocked=remove_blocked)
+
+        graph = _FailSecondGraph()
+        result = batch_delete_vocab_words(
+            ["hello", "world", "missing", "foo"], cards_store=cards, graph=graph
+        )
+
+        assert result["deleted"] == 2
+        assert set(result["deleted_words"]) == {"hello", "foo"}
+        # graph-failed word -> failed (restored, still exists), not not_found
+        assert result["failed"] == ["world"]
+        # not_found is pure lookup-miss only
+        assert result["not_found"] == ["missing"]
+
 
 # ---------------------------------------------------------------------------
 # batch_archive_vocab_words
@@ -447,8 +477,9 @@ class TestBatchArchiveVocabWords:
 
     def test_archive_rolls_back_on_graph_failure(self):
         """If graph.cleanup_for_card raises for one card, that card's is_archived
-        is rolled back to its original value, the word goes to not_found, the rest
-        succeed, and the function does not raise."""
+        is rolled back to its original value, the word goes to `failed` (the card
+        still exists on the server), the rest succeed, and the function does not
+        raise. `not_found` must stay empty here (no lookup miss)."""
         cards = _FakeCardsStore([
             _FakeCard(id="c1", content="hello"),
             _FakeCard(id="c2", content="world"),
@@ -468,7 +499,8 @@ class TestBatchArchiveVocabWords:
 
         assert result["updated"] == 2
         assert set(result["updated_words"]) == {"hello", "foo"}
-        assert result["not_found"] == ["world"]
+        assert result["failed"] == ["world"]
+        assert result["not_found"] == []
         # c2 rolled back to original (False); the rest archived.
         assert cards.get("c1").is_archived is True
         assert cards.get("c2").is_archived is False
@@ -495,7 +527,8 @@ class TestBatchArchiveVocabWords:
 
         assert result["updated"] == 1
         assert result["updated_words"] == ["hello"]
-        assert result["not_found"] == ["world"]
+        assert result["failed"] == ["world"]
+        assert result["not_found"] == []
         assert cards.get("c1").is_archived is False
         # c2 rolled back to original archived state (True).
         assert cards.get("c2").is_archived is True
@@ -775,8 +808,9 @@ class _PartialFailingGraph:
 class TestBatchDeleteGraphFailureBranch:
     def test_second_card_graph_failure_rolls_back_only_that_card(self, tmp_path):
         """When cleanup_for_card raises on the 2nd word, that word lands in
-        not_found, its card is restored (not soft-deleted), and remove_batch
-        receives only the successfully-deleted id."""
+        `failed` (NOT not_found — the card was restored and still exists), its
+        card is restored (not soft-deleted), and remove_batch receives only the
+        successfully-deleted id. See #720."""
         from kg.cards import CardStore
 
         cards = CardStore(tmp_path / "cards.db")
@@ -790,10 +824,12 @@ class TestBatchDeleteGraphFailureBranch:
             ["hello", "world"], cards_store=cards, graph=graph, embeddings=emb,
         )
 
-        # "world" failed graph cleanup → reported as not_found
+        # "world" failed graph cleanup → reported as failed (still exists),
+        # not not_found
         assert result["deleted"] == 1
         assert result["deleted_words"] == ["hello"]
-        assert result["not_found"] == ["world"]
+        assert result["failed"] == ["world"]
+        assert result["not_found"] == []
 
         # c1 soft-deleted, c2 restored to active
         assert cards.get(c1.id).is_deleted is True
@@ -815,7 +851,8 @@ class TestBatchDeleteGraphFailureBranch:
             ["hello"], cards_store=cards, graph=graph, embeddings=emb,
         )
         assert result["deleted"] == 0
-        assert result["not_found"] == ["hello"]
+        assert result["failed"] == ["hello"]
+        assert result["not_found"] == []
         assert cards.get(c1.id).is_deleted is False
         # nothing committed → remove_batch never evicts (guarded by deleted_ids)
         assert emb.removed == []
