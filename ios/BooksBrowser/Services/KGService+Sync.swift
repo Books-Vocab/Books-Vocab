@@ -123,9 +123,9 @@ extension KGService {
         let actor = BackgroundSyncActor(modelContainer: container)
         AppLog.kg.info("clearLocalData requested. reason=\(reason)")
         do {
-            try await actor.clearVocabularyData(reason: reason)
+            try await actor.clearUserData(reason: reason)
         } catch {
-            AppLog.kg.error("clearVocabularyData failed: \(error.localizedDescription)")
+            AppLog.kg.error("clearUserData failed: \(error.localizedDescription)")
             AppCrashReporting.record(error, context: "kg.local.clear")
         }
 
