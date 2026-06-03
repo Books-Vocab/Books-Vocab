@@ -207,7 +207,6 @@ const ROUTABLE_MESSAGE_TYPES = [
   'addVocab',
   'listVocab',
   'lookupWord',
-  'auth_token',
   'get_auth_status',
   'logout',
 ];
@@ -218,9 +217,13 @@ const ROUTABLE_MESSAGE_TYPES = [
  * pseudo-kind for storage ops) plus the positional arguments extracted from
  * the message — without invoking `KGApi` or touching `chrome.*`.
  *
- * Throws for unknown types and for an `auth_token` message missing a string
- * token, mirroring `handleMessage`'s `throw new Error(...)` branches so the
- * error contract is testable.
+ * Throws for unknown types, mirroring `handleMessage`'s `throw new Error(...)`
+ * branch so the error contract is testable.
+ *
+ * Note: token writes are intentionally *not* routable here. The auth token is
+ * written exclusively via `onMessageExternal` gated by `isTrustedExternalOrigin`
+ * (see `background.js`); there is no internal `auth_token` sender, so exposing
+ * an internal `setToken` route would be unguarded dead surface.
  *
  * @param {{type?: string}} msg
  * @returns {{kind: string, args: Array<*>}}
@@ -240,11 +243,6 @@ function routeMessage(msg) {
       return { kind: 'listVocab', args: [msg.since] };
     case 'lookupWord':
       return { kind: 'lookupWord', args: [msg.word] };
-    case 'auth_token':
-      if (typeof msg.token === 'string') {
-        return { kind: 'setToken', args: [msg.token] };
-      }
-      throw new Error('missing token');
     case 'get_auth_status':
       return { kind: 'getAuthStatus', args: [] };
     case 'logout':
