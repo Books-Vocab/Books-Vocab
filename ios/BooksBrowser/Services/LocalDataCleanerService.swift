@@ -21,5 +21,12 @@ final class LocalDataCleanerService: LocalDataClearing {
         // so clear every user's snapshot to prevent a stale session from being
         // restored on re-login (or surviving until the 7-day maxAge expiry).
         TodayReviewSessionSnapshotStore.clear(for: nil)
+        // Downloaded podcast .mp3s live on disk under Documents/podcast-downloads/,
+        // not in SwiftData — clearUserData drops the rows but leaves the audio.
+        // Purge the whole tree so a reused remoteId can't surface account A's
+        // audio under account B after a switch (#726 follow-up).
+        #if os(iOS)
+        PodcastDownloadManager.purgeDownloads()
+        #endif
     }
 }
