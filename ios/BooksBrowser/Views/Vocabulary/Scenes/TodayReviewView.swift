@@ -139,6 +139,17 @@ struct TodayReviewView: View {
             collocationExplanations: state.currentEntry?.collocationExplanations ?? [:]
         )
         .toastOverlay()
+        .task {
+            // A restored session may hold answers whose background DB flush
+            // failed last run (flushed=false). Re-flush them so the card
+            // schedule catches up; idempotent, so a clean restore is a no-op.
+            let toast = toastCoordinator
+            state.reflushUnflushedRestoredAnswers(
+                container: modelContext.container,
+                reviewSettings: reviewSettingsStore.settings,
+                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
+            )
+        }
         .overlay {
             LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
         }

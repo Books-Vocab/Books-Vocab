@@ -48,7 +48,8 @@ enum ReviewSessionPersistence {
             TodayReviewSessionSnapshotStore.Snapshot.SubmittedAnswer(
                 feedbackRaw: answer.feedback.rawValue,
                 answeredAt: answer.answeredAt,
-                reviewRecordID: answer.reviewRecordID
+                reviewRecordID: answer.reviewRecordID,
+                flushed: answer.flushed
             )
         }
         let queueItems = zip(queuePersistenceIDs, queueBaselines).map { persistenceID, baseline in
@@ -117,7 +118,8 @@ enum ReviewSessionPersistence {
             submittedAnswers[index] = TodayReviewState.SubmittedAnswer(
                 feedback: feedback,
                 answeredAt: answer.answeredAt,
-                reviewRecordID: answer.reviewRecordID
+                reviewRecordID: answer.reviewRecordID,
+                flushed: answer.flushed
             )
             if feedback == .remembered { rememberedCount += 1 } else { forgotCount += 1 }
         }
@@ -143,7 +145,8 @@ enum ReviewSessionPersistence {
         submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
         container: ModelContainer,
         reviewSettings: ReviewSettings,
-        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
+        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil,
+        onSaveSuccess: (@MainActor @Sendable () -> Void)? = nil
     ) {
         guard index < queuePersistenceIDs.count,
               index < queueBaselines.count,
@@ -183,7 +186,13 @@ enum ReviewSessionPersistence {
                 ctx.insert(record)
             }
 
-            if !ctx.safeSave() {
+            if ctx.safeSave() {
+                // DB-confirmed: tell the caller so the snapshot records
+                // flushed=true and restore won't re-flush this answer.
+                if let onSaveSuccess {
+                    await onSaveSuccess()
+                }
+            } else {
                 let word = entry.word
                 AppLog.data.error("flushSubmittedAnswer: failed to save review result for \(word)")
                 if let onSaveFailure {

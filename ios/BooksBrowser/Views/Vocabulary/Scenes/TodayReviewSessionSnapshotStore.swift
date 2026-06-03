@@ -14,6 +14,30 @@ struct TodayReviewSessionSnapshotStore {
             let feedbackRaw: Int
             let answeredAt: Date
             let reviewRecordID: UUID
+            /// Whether the DB flush (reviewCount/nextReviewAt/streak update +
+            /// ReviewRecord insert) confirmed success for this answer. Restore
+            /// re-flushes any answer left `false` so a failed background flush
+            /// (DB error / entry missing) can't strand the card's schedule while
+            /// the UI shows it as reviewed.
+            let flushed: Bool
+
+            init(feedbackRaw: Int, answeredAt: Date, reviewRecordID: UUID, flushed: Bool) {
+                self.feedbackRaw = feedbackRaw
+                self.answeredAt = answeredAt
+                self.reviewRecordID = reviewRecordID
+                self.flushed = flushed
+            }
+
+            // Backward compat: legacy blobs predate `flushed`. Those answers
+            // were already flushed (the bug is a rare flush failure), so a
+            // missing key decodes to `true` — never re-flush historical data.
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                feedbackRaw = try c.decode(Int.self, forKey: .feedbackRaw)
+                answeredAt = try c.decode(Date.self, forKey: .answeredAt)
+                reviewRecordID = try c.decode(UUID.self, forKey: .reviewRecordID)
+                flushed = try c.decodeIfPresent(Bool.self, forKey: .flushed) ?? true
+            }
         }
 
         let userId: String
