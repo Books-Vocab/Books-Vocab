@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: f59c6004
+verified_against: 613a2528
 -->
 # Sync Lifecycle
 
@@ -55,13 +55,21 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 2. 若遠端卡片存在且未刪除，合併內容後呼叫 `markSynced()`
 3. 若遠端回傳 soft delete，本地直接刪除
 
-### 批次刪除：`deleted_words` 與 `not_found`
+### 批次刪除 / 封存回應的三個 bucket：`*_words` / `not_found` / `failed`
 
-batch-delete API（`POST /api/vocab/batch-delete`）回傳 `deleted_words`（這次成功刪）與 `not_found`（server 上本就不存在的字，例：前一次已刪 / race）兩個清單。**兩者皆為成功語意**：對本地而言刪除意圖已達成，必須一律本地移除（`modelContext.delete`）。
+batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/vocab/batch-archive`）回傳**三個互斥清單**（後端 `kg/vocab_crud.py`）：
 
+| bucket | 語意 | server 端狀態 | client 應對 |
+| --- | --- | --- | --- |
+| `deleted_words` / `updated_words` | 這次操作成功 | 卡片已刪 / 封存狀態已改，graph 已同步 | 本地收斂（成功語意） |
+| `not_found` | **lookup 查無此字**（前一次已刪 / race） | server 上本就不存在 | 本地收斂（成功語意，刪除意圖已達成） |
+| `failed` | graph 操作失敗已**回滾** | 卡片**仍存在 server**（原狀態） | **不可收斂**；保持 `failed + delete/edit`，下次 sync 重試 |
+
+- `failed` 鍵是**向後相容的附加欄位**（Pydantic `BatchDeleteResponse` / `BatchArchiveResponse` 預設空 list）。舊 client 忽略未知鍵即可；關鍵改動是 graph-失敗的字**不再**出現在 `not_found`，因此舊 client 也不會再把仍存在 server 的字誤收斂（#720）。
 - **可本地收斂集合 = `deleted_words ∪ not_found`**（`SyncCoordinator.locallyResolvableDeletes(from:)`，`SyncCoordinator` 與 `KGVocabCoordinator.retryPendingDeletes` 共用此純函數）。
-- 只有「既不在 `deleted_words` 也不在 `not_found`」的字才是真正的 server 異常，才 `markSyncFailed()` 進重試。
-- **不變式**：絕不可把 `not_found` 當刪除失敗。否則該字永遠 `failed + delete` → 每次 sync server 都回 `not_found` → 永久卡死的隱形重試迴圈（使用者看不到、但永不消失）。
+- `failed` 內的字（或任何「三個 bucket 都不在」的字）才 `markSyncFailed()` 進重試。
+- **不變式 1**：絕不可把 `not_found` 當刪除失敗 → 否則永久卡死的隱形重試迴圈。
+- **不變式 2**：絕不可把 `failed` 當成功收斂 → 該字 server 仍存在，本地移除會造成 client/server 永久分歧（#720 根因；後端已把 graph-失敗字從 `not_found` 移到 `failed` 修正此半邊）。
 
 ### 同步失敗後重試
 
@@ -69,7 +77,7 @@ batch-delete API（`POST /api/vocab/batch-delete`）回傳 `deleted_words`（這
 2. 同步頁仍會把它算進待處理項目
 3. 下一次同步前，App 會自動把 `failed` 轉回 `pending` 再重試
 4. 若失敗的是刪除，單字仍維持隱藏，避免違反使用者已經做出的刪除決定
-5. **`not_found` 不是失敗**（見上節）— 已不存在於 server 的字本地直接收斂，不進此重試迴圈
+5. **`not_found` 不是失敗**（見上節）— 已不存在於 server 的字本地直接收斂，不進此重試迴圈；反之 batch 回應的 `failed` bucket 才是 server 端 graph 操作失敗（卡片仍在），須進此重試迴圈
 
 ## 同步觸發鏈
 

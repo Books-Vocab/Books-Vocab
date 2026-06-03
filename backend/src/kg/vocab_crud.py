@@ -146,7 +146,19 @@ def batch_delete_vocab_words(
     embeddings: Any = None,
     notebook_id: str | None = None,
 ) -> dict[str, Any]:
-    """Delete multiple words in one call. Skips not-found words instead of raising."""
+    """Delete multiple words in one call. Skips not-found words instead of raising.
+
+    Returns three disjoint buckets so the client can converge correctly:
+
+    - ``deleted_words`` — successfully deleted (card gone, graph cleaned).
+    - ``not_found`` — lookup miss only: no such card on the server. The client
+      may safely converge/remove these locally.
+    - ``failed`` — graph cleanup raised, so the card was restored and **still
+      exists on the server**. The client must NOT converge these; the word
+      should be retried on the next sync. (Routing graph failures here instead
+      of ``not_found`` prevents iOS from permanently dropping a still-present
+      card — see #720.)
+    """
     if not words:
         raise ValidationError("No words provided")
     if len(words) > MAX_BATCH_SIZE:
@@ -155,6 +167,7 @@ def batch_delete_vocab_words(
     deleted_words: list[str] = []
     deleted_ids: list[str] = []
     not_found: list[str] = []
+    failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
 
@@ -172,7 +185,7 @@ def batch_delete_vocab_words(
                     cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
                     logger.exception("restore failed for card %s after graph error", card.id)
-                not_found.append(word)
+                failed.append(word)
                 continue
         deleted_words.append(word)
         deleted_ids.append(card.id)
@@ -189,7 +202,12 @@ def batch_delete_vocab_words(
                 len(deleted_ids), exc_info=True,
             )
 
-    return {"deleted": len(deleted_words), "deleted_words": deleted_words, "not_found": not_found}
+    return {
+        "deleted": len(deleted_words),
+        "deleted_words": deleted_words,
+        "not_found": not_found,
+        "failed": failed,
+    }
 
 
 def batch_archive_vocab_words(
@@ -200,7 +218,19 @@ def batch_archive_vocab_words(
     graph: Any = None,
     notebook_id: str | None = None,
 ) -> dict[str, Any]:
-    """Archive or unarchive multiple words in one call. Skips not-found words."""
+    """Archive or unarchive multiple words in one call. Skips not-found words.
+
+    Returns three disjoint buckets so the client can converge correctly:
+
+    - ``updated_words`` — archive state successfully changed (card + graph).
+    - ``not_found`` — lookup miss only: no such card on the server. The client
+      may safely converge/remove these locally.
+    - ``failed`` — graph cleanup/restore raised, so the archive state was rolled
+      back and the card **still exists on the server** in its original state.
+      The client must NOT converge these; the word should be retried on the next
+      sync. (Routing graph failures here instead of ``not_found`` prevents iOS
+      from permanently dropping/mislabelling a still-present card — see #720.)
+    """
     if not words:
         raise ValidationError("No words provided")
     if len(words) > MAX_BATCH_SIZE:
@@ -208,6 +238,7 @@ def batch_archive_vocab_words(
 
     updated_words: list[str] = []
     not_found: list[str] = []
+    failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
 
@@ -233,10 +264,15 @@ def batch_archive_vocab_words(
                     logger.exception(
                         "rollback failed for card %s after graph error", card.id
                     )
-                not_found.append(word)
+                failed.append(word)
                 continue
         updated_words.append(word)
 
-    return {"updated": len(updated_words), "updated_words": updated_words, "not_found": not_found}
+    return {
+        "updated": len(updated_words),
+        "updated_words": updated_words,
+        "not_found": not_found,
+        "failed": failed,
+    }
 
 
