@@ -36,14 +36,19 @@ class TestTrackedLLMChat:
         mock_record.assert_called_once_with("u1", "judge", 15, 25, provider=None, model="m")
         assert resp.choices[0].message.content == '{"ok": true}'
 
+    @patch("kg.tracked_llm.logger")
     @patch("kg.tracked_llm.record")
-    def test_chat_no_usage_skips_record(self, mock_record):
+    def test_chat_no_usage_skips_record(self, mock_record, mock_logger):
         client = MagicMock()
         resp = SimpleNamespace(choices=[], usage=None)
         client.chat.completions.create.return_value = resp
         llm = TrackedLLM(client, user_id="u1")
         llm.chat("judge", model="m", messages=[])
+        # Billing behavior unchanged: a usage-less response is never billed.
         mock_record.assert_not_called()
+        # New observability: the silent skip must leave a warning trace so the
+        # token leak is visible to billing/quota auditing.
+        mock_logger.warning.assert_called_once()
 
     @patch("kg.tracked_llm.record")
     def test_multiple_calls_each_recorded(self, mock_record):
@@ -52,6 +57,25 @@ class TestTrackedLLMChat:
         llm.chat("judge", model="m", messages=[])
         llm.chat("judge", model="m", messages=[])
         assert mock_record.call_count == 2
+
+
+    @patch("kg.tracked_llm.logger")
+    @patch("kg.tracked_llm.record")
+    def test_chat_no_usage_warning_carries_context(self, mock_record, mock_logger):
+        from kg.llm.providers import REGISTRY
+
+        client = MagicMock()
+        resp = SimpleNamespace(choices=[], usage=None)
+        client.chat.completions.create.return_value = resp
+        llm = TrackedLLM(client, user_id="u1", provider=REGISTRY["deepseek"])
+        llm.chat("judge", model="deepseek-v4-flash", messages=[])
+        mock_record.assert_not_called()
+        mock_logger.warning.assert_called_once()
+        # context dict (extra=) must carry provider/model/user_id/call_type so
+        # the leak is traceable, not just a bare message.
+        ctx = str(mock_logger.warning.call_args)
+        for token in ("deepseek", "deepseek-v4-flash", "u1", "judge"):
+            assert token in ctx
 
 
 class TestTrackedLLMEmbed:
@@ -71,6 +95,18 @@ class TestTrackedLLMEmbed:
         llm = TrackedLLM(client, user_id="u1")
         llm.embed("embed", input=["hi"], model="m")
         mock_record.assert_called_once_with("u1", "embed", 8, 0, provider=None, model="m")
+
+
+    @patch("kg.tracked_llm.logger")
+    @patch("kg.tracked_llm.record")
+    def test_embed_no_usage_skips_record_and_warns(self, mock_record, mock_logger):
+        client = MagicMock()
+        resp = SimpleNamespace(data=[], usage=None)
+        client.embeddings.create.return_value = resp
+        llm = TrackedLLM(client, user_id="u1")
+        llm.embed("embed", input=["hi"], model="m")
+        mock_record.assert_not_called()
+        mock_logger.warning.assert_called_once()
 
 
 class TestTrackedLLMChatAsync:
