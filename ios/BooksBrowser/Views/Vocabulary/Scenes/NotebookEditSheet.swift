@@ -12,7 +12,11 @@ struct NotebookAppearance {
     let name: String
     let color: String?
     let coverPattern: String?
+    /// 使用者在 sheet 內選定的封面路徑（staged，nil = 移除封面）。
     let coverImagePath: String?
+    /// 進入編輯前的原始封面路徑。封面落地 + 舊檔刪除延到 API 成功後，由
+    /// coordinator 用此值算出該刪哪個舊檔（全有或全無，避免 drift）。
+    let originalCoverImagePath: String?
 }
 
 struct NotebookEditSheet: View {
@@ -149,15 +153,15 @@ struct NotebookEditSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isCreating ? "建立".localized : "儲存".localized) {
-                        // 真正保存時才刪原檔（使用者換圖或移除）
-                        if let original = originalCoverImagePath, original != coverImagePath {
-                            try? FileManager.default.removeItem(atPath: original)
-                        }
+                        // 舊原檔的刪除延到 updateNotebook API 成功後才做（見
+                        // NotebookCoverCommit），失敗則原檔保留 + coverImagePath 不變，
+                        // 避免「新封面 + server 舊欄位」drift（track-23）。
                         onSave(NotebookAppearance(
                             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                             color: selectedColor,
                             coverPattern: selectedPattern,
-                            coverImagePath: coverImagePath
+                            coverImagePath: coverImagePath,
+                            originalCoverImagePath: originalCoverImagePath
                         ))
                         dismiss()
                     }
