@@ -279,6 +279,40 @@ def test_start_pipeline_busy_returns_409_and_cleans_up(client, monkeypatch):
     assert list(server.UPLOAD_STAGING.glob("*")) == []
 
 
+def test_staging_dest_unique_for_same_name_same_second(client, monkeypatch):
+    """Regression: two uploads of the SAME safe_name must stage to PHYSICALLY
+    distinct paths even within the same wall-clock second. A second-resolution
+    timestamp collided them, so the dedup loser's `unlink` deleted the file the
+    winner's pipeline.py was reading in-place — corrupting the winner."""
+    # Pin time to a single second to prove the uuid token (not the timestamp)
+    # is what disambiguates concurrent same-name uploads.
+    monkeypatch.setattr(server.time, "time", lambda: 1_700_000_000.0)
+    a = server._staging_dest("same.epub")
+    b = server._staging_dest("same.epub")
+    assert a != b, "same-name uploads in the same second must not collide"
+    assert a.name.endswith("_same.epub") and b.name.endswith("_same.epub")
+
+
+def test_loser_cleanup_does_not_delete_winners_staged_input(client, monkeypatch):
+    """The 409 loser unlinks ONLY its own staged handle. Because the winner and
+    loser staged to distinct paths, the loser's cleanup leaves the winner's
+    in-place pipeline input untouched."""
+    monkeypatch.setattr(server.time, "time", lambda: 1_700_000_000.0)
+    winner = server._staging_dest("dup.epub")
+    winner.write_bytes(b"PKwinner-input")
+    # The loser hits the content-hash guard and 409s; assert the winner's file,
+    # staged at a distinct path, survives the whole request.
+    def boom(cmd, **kwargs):
+        raise server.WorkspaceBusyError(kwargs.get("dedup_key", "epub:x"), "job-x")
+    monkeypatch.setattr(server.jobs, "spawn", boom)
+    resp = client.post("/api/pipeline/start", files={"epub": _epub("dup.epub")})
+    assert resp.status_code == 409
+    assert winner.exists(), "loser's cleanup must not delete the winner's input"
+    assert winner.read_bytes() == b"PKwinner-input"
+    # The loser's OWN staged file is gone — no orphan besides the winner's.
+    assert list(server.UPLOAD_STAGING.glob("*")) == [winner]
+
+
 def test_start_saga_passes_content_hash_dedup_key(client, spawn):
     """start_saga hashes every staged EPUB (in reading order) into one combined
     dedup_key, so the same multi-book saga uploaded twice concurrently collides."""

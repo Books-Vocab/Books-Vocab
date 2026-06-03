@@ -32,6 +32,7 @@ import re
 import shutil
 import sys
 import time
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
@@ -59,6 +60,22 @@ WORKSPACES_DIR = ROOT / "workspaces"
 STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_STAGING = ROOT / "monitor" / ".uploads"
 UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
+
+
+def _staging_dest(safe_name: str) -> Path:
+    """Build a guaranteed-unique staging path for an uploaded EPUB.
+
+    A second-resolution timestamp is NOT enough: two concurrent uploads of the
+    same filename within the same second produced an identical path, so the
+    loser (which 409s on the content-hash dedup_key) would `unlink` the file the
+    winner's pipeline.py is reading in-place from argv — corrupting the winner.
+    A per-call `uuid4` token makes every staged path physically distinct, so a
+    loser's cleanup only ever deletes its OWN handle. Path uniqueness does NOT
+    touch dedup: the spawn dedup_key is the content sha256, not the path, so the
+    same EPUB still collides and the loser still correctly receives its 409.
+    """
+    token = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    return UPLOAD_STAGING / f"{token}_{safe_name}"
 
 # Workspace name regex — same constraint as backend _SERIES_ID_RE plus a
 # safety guard against `..` / absolute paths sneaking in via FastAPI path params.
@@ -1094,9 +1111,10 @@ async def start_pipeline(
         raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
     # Strip leading dots/hyphens so `....epub` doesn't land as a hidden file.
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
-    # Prefix with a monotonic timestamp so concurrent uploads of the same
-    # filename don't race on the destination (last-writer-wins corruption).
-    dest = UPLOAD_STAGING / f"{int(time.time())}_{safe_name}"
+    # Per-call uuid token (not just a timestamp) so concurrent uploads of the
+    # same filename in the same second stage to PHYSICALLY distinct paths —
+    # otherwise the dedup loser's cleanup unlinks the winner's in-place input.
+    dest = _staging_dest(safe_name)
 
     written = 0
     # Hash the EPUB bytes as they stream by (free — same pass as the write) so
@@ -1183,9 +1201,9 @@ async def start_saga(
 
     UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
     staged: list[Path] = []
-    # Monotonic ms prefix + per-file index so concurrent same-name uploads
-    # don't collide and reading order survives in the staged filename.
-    ts = int(time.time() * 1000)
+    # Each staged path gets its own uuid token so concurrent same-name saga
+    # uploads never collide on a physical path; reading order is carried by the
+    # `staged` list (and the argv built from it), not by the filename.
     # Combined, order-sensitive content digest across the whole saga: fold each
     # book's own sha256 (in reading order) into one outer hash. Same books in the
     # same order → same key (concurrent dup saga upload collides at spawn); a
@@ -1193,11 +1211,11 @@ async def start_saga(
     # must differ. Matches start_pipeline's epub-content dedup, generalized to N.
     saga_digest = hashlib.sha256()
     try:
-        for i, up in enumerate(epubs):
+        for up in epubs:
             # Same sanitize as start_pipeline; strip leading dots/hyphens so a
             # crafted name can't land as a hidden file.
             safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", up.filename).lstrip(".-") or "upload.epub"
-            dest = UPLOAD_STAGING / f"{ts}_{i}_{safe_name}"
+            dest = _staging_dest(safe_name)
             staged.append(dest)
             written = 0
             book_digest = hashlib.sha256()
