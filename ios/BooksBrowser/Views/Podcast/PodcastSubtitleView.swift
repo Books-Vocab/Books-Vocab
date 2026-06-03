@@ -16,7 +16,7 @@ struct PodcastSubtitleView: View {
             PodcastSentenceLevelView(
                 sentences: viewModel.visibleSentences,
                 renderState: viewModel.renderState,
-                playbackAnchor: viewModel.playbackAnchor,
+                liveAnchor: viewModel.liveAnchor,
                 duration: viewModel.duration,
                 isPlaying: viewModel.state == .playing,
                 hostNames: viewModel.hostNames,

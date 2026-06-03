@@ -21,6 +21,26 @@ struct PlaybackAnchor: Equatable {
     var rate: Double
 }
 
+/// Reference-typed live channel for the current `PlaybackAnchor`.
+///
+/// Why a reference: `PodcastSentenceLevelView`'s transcript token tree is wrapped
+/// in an `EquatableView` so SwiftUI skips re-evaluating thousands of word tokens
+/// on every display frame (the scroll-freeze fix). But the per-frame underline +
+/// follow offset still need the *live* playhead each frame. If the anchor were
+/// passed by VALUE into the Equatable child, the child would capture whichever
+/// anchor existed at its last `body` eval and freeze (stale-anchor bug). Passing
+/// this reference instead lets the inner per-frame `TimelineView` closures read
+/// `liveAnchor.value` fresh every frame — the reference identity is stable across
+/// frames (so it never disturbs the Equatable short-circuit) while its contents
+/// stay current. The pure `PlaybackAnchor` value type and all clock math are
+/// unchanged; the ViewModel mirrors every `playbackAnchor` mutation here in one
+/// `didSet`, so no call site can forget to update it.
+@MainActor
+final class PodcastLiveAnchor {
+    var value: PlaybackAnchor
+    init(value: PlaybackAnchor) { self.value = value }
+}
+
 /// Pure clock math for the continuous subtitle playhead. No SwiftUI / AVFoundation
 /// dependency so it is unit-testable in isolation (see `PodcastPlaybackGeometryTests`).
 enum PodcastPlaybackClock {
@@ -157,6 +177,35 @@ enum PodcastScrollGeometry {
             focalY = curCenter
         }
         return viewportHeight / 2 - focalY
+    }
+}
+
+/// O(1) identity of a transcript's token tree, used as the `EquatableView` basis
+/// for `PodcastSentenceLevelView`'s transcript column. The column explodes every
+/// sentence into per-word `Text` tokens + `CachedFlowLayout` + anchor preferences
+/// (thousands of view values); re-evaluating that whole struct tree on every
+/// display frame is what froze scrolling. The fix wraps the column so SwiftUI can
+/// short-circuit its `body` when nothing token-affecting changed — and that
+/// short-circuit must be cheap, so it compares THIS fingerprint, never the full
+/// `[PodcastSentence]` array (whose O(n·words) `==` per frame is the very cost we
+/// are eliminating).
+///
+/// The fingerprint changes iff the rendered token tree must change:
+///   • `count` — sentences added/removed
+///   • `firstStart` + `lastEnd` — distinguishes an episode swap that happens to
+///     keep the same count (sentence ids restart at 0 each episode, so an
+///     id-only key could collide; the time span cannot).
+/// It deliberately omits the playhead — the per-frame ticks that only move the
+/// follow offset + underline must compare equal so the body is skipped.
+struct PodcastTranscriptIdentity: Equatable, Hashable {
+    let count: Int
+    let firstStart: TimeInterval
+    let lastEnd: TimeInterval
+
+    init(sentences: [PodcastSentence]) {
+        self.count = sentences.count
+        self.firstStart = sentences.first?.startTime ?? 0
+        self.lastEnd = sentences.last?.endTime ?? 0
     }
 }
 

@@ -68,6 +68,18 @@ final class PodcastPlayerViewModel {
     /// rate change. `wallClock` uses `Date.timeIntervalSinceReferenceDate`.
     private(set) var playbackAnchor = PlaybackAnchor(
         mediaTime: 0, wallClock: Date().timeIntervalSinceReferenceDate, rate: 0
+    ) {
+        didSet { liveAnchor.value = playbackAnchor }
+    }
+    /// Reference-typed mirror of `playbackAnchor` for the subtitle view's
+    /// per-frame underline + follow offset. Kept in sync by the `didSet` above so
+    /// no anchor-mutation site can forget it. See `PodcastLiveAnchor` for why the
+    /// view needs a reference (Equatable-skip + live playhead). `@ObservationIgnored`
+    /// because the View reads it imperatively each frame via its own TimelineView,
+    /// not through `@Observable` change tracking.
+    @ObservationIgnored
+    let liveAnchor = PodcastLiveAnchor(
+        value: PlaybackAnchor(mediaTime: 0, wallClock: Date().timeIntervalSinceReferenceDate, rate: 0)
     )
     private(set) var playbackRate: Float = 1.0
     /// Subtitle load lifecycle — drives the inline retry UI. Independent of
