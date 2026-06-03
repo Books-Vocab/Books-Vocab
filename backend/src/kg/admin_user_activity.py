@@ -123,9 +123,12 @@ def get_user_activity(user_id: str, *, hours: int = 24) -> dict[str, Any]:
     """Return merged recent activity for a user, newest first.
 
     Returns:
-        ``{"user_id", "hours", "since", "events", "counts"}`` where ``counts``
-        maps source name → row count *post-window*. ``events`` is capped at
-        ``MAX_TOTAL_EVENTS``.
+        ``{"user_id", "hours", "since", "events", "counts", "truncated"}``.
+        ``counts`` maps source name → row count *post-window*, itself capped
+        at ``MAX_PER_SOURCE`` (the per-source query LIMIT). ``truncated`` maps
+        source name → bool: ``True`` when that source hit the cap, signalling
+        ``counts`` for it is a **lower bound**, not the exact total. ``events``
+        is capped at ``MAX_TOTAL_EVENTS``.
     """
     hours = _clamp_hours(hours)
     since_dt = datetime.now(UTC) - timedelta(hours=hours)
@@ -140,6 +143,9 @@ def get_user_activity(user_id: str, *, hours: int = 24) -> dict[str, Any]:
         "pipeline": len(pipeline),
         "judge": len(judge),
     }
+    # A source whose row count equals the per-source LIMIT was truncated:
+    # ``counts`` for it is a lower bound, not the true total.
+    truncated = {name: n >= MAX_PER_SOURCE for name, n in counts.items()}
 
     all_events = translate + pipeline + judge
     all_events.sort(key=lambda e: e.get("created_at") or "", reverse=True)
@@ -152,4 +158,5 @@ def get_user_activity(user_id: str, *, hours: int = 24) -> dict[str, Any]:
         "since": since_iso,
         "events": all_events,
         "counts": counts,
+        "truncated": truncated,
     }
