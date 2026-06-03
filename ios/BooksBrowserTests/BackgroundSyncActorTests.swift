@@ -308,11 +308,30 @@ struct BackgroundSyncActorTests {
 
     // MARK: - clearUserData (logout / account-switch isolation)
     //
-    // Regression coverage for the multi-account podcast leak: the local clear
-    // path deleted vocab / review / notebook but left PodcastSeries /
-    // PodcastEpisode / PodcastProgress behind, so account B saw account A's
-    // followed series and playback progress. `clearUserData` must wipe all
-    // seven @Model types in one pass.
+    // Regression coverage for the multi-account leak: the local clear path
+    // deleted vocab / review / notebook but left PodcastSeries /
+    // PodcastEpisode / PodcastProgress — and `Book` — behind, so account B
+    // saw account A's followed series, playback progress, *and imported books
+    // with reading position/progress*. `clearUserData` must wipe all eight
+    // user-scoped @Model types in one pass.
+
+    /// Seed N user-scoped books with reading position + progress set, so the
+    /// test proves the leaked private state (locator / progression) is cleared.
+    private func seedBooks(_ container: ModelContainer, count: Int) throws {
+        let context = ModelContext(container)
+        for i in 0..<count {
+            let book = Book(
+                title: "Book \(i)",
+                author: "Author \(i)",
+                fileName: "\(UUID().uuidString).epub"
+            )
+            book.lastReadLocatorJSON = "{\"loc\":\(i)}"
+            book.progression = 0.42
+            book.preferredNotebookId = "nb-\(i)"
+            context.insert(book)
+        }
+        try context.save()
+    }
 
     /// Seed N series (each with M cascade-owned episodes), K orphan episodes
     /// (no series), and P progress rows.
@@ -393,5 +412,44 @@ struct BackgroundSyncActorTests {
         #expect(try after.fetchCount(FetchDescriptor<VocabularyEntry>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<ReviewRecord>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<Notebook>()) == 0)
+    }
+
+    @Test func clearUserData_removes_all_books() async throws {
+        let container = try makeContainer()
+        try seedBooks(container, count: 3)
+
+        // Sanity: books (with private reading state) are present pre-clear.
+        let preContext = ModelContext(container)
+        #expect(try preContext.fetchCount(FetchDescriptor<Book>()) == 3)
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.clearUserData(reason: "account-switch")
+
+        let after = ModelContext(container)
+        #expect(try after.fetchCount(FetchDescriptor<Book>()) == 0)
+    }
+
+    @Test func clearUserData_wipes_books_alongside_other_models() async throws {
+        let container = try makeContainer()
+        try seedSyncedEntries(container, count: 2)
+        try seedPodcastData(
+            container,
+            series: 1,
+            episodesPerSeries: 2,
+            orphanEpisodes: 1,
+            progress: 1
+        )
+        try seedBooks(container, count: 2)
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.clearUserData(reason: "account-switch")
+
+        // All user-scoped models gone in one pass — no model type stranded.
+        let after = ModelContext(container)
+        #expect(try after.fetchCount(FetchDescriptor<VocabularyEntry>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<PodcastSeries>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<PodcastEpisode>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<PodcastProgress>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<Book>()) == 0)
     }
 }
