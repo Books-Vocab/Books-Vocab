@@ -66,11 +66,6 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
  * is supplied here. Behaviour mirrors the former hand-coded switch exactly.
  */
 const SIDE_EFFECT_HANDLERS = {
-  // `auth_token` — allow internal pages to set the token.
-  setToken: async (token) => {
-    await chrome.storage.local.set({ [TOKEN_KEY]: token });
-    return { ok: true };
-  },
   // `get_auth_status` — report whether a token is stored.
   getAuthStatus: async () => {
     const token = await KGApi.getToken();
@@ -84,8 +79,8 @@ const SIDE_EFFECT_HANDLERS = {
 };
 
 async function handleMessage(msg) {
-  // `routeMessage` throws for unknown types / `auth_token` missing its token,
-  // mirroring the former switch's `throw new Error(...)` branches.
+  // `routeMessage` throws for unknown types. Token writes are NOT routable
+  // internally — they go only through `onMessageExternal` above.
   const { kind, args } = globalThis.KGPure.routeMessage(msg);
 
   const sideEffect = SIDE_EFFECT_HANDLERS[kind];

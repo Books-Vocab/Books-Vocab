@@ -317,17 +317,13 @@ test('routeMessage maps explain / addVocab / listVocab / lookupWord', () => {
   );
 });
 
-test('routeMessage maps auth_token to a token store op', () => {
-  assert.deepEqual(
-    routeMessage({ type: 'auth_token', token: 'abc' }),
-    { kind: 'setToken', args: ['abc'] },
+test('routeMessage does NOT route internal auth_token (token writes are onMessageExternal-only)', () => {
+  // Token writes are gated by isTrustedExternalOrigin in onMessageExternal;
+  // there is no internal auth_token sender, so the internal route is removed.
+  assert.throws(
+    () => routeMessage({ type: 'auth_token', token: 'abc' }),
+    /unknown message type: auth_token/,
   );
-});
-
-test('routeMessage rejects auth_token without a string token', () => {
-  assert.throws(() => routeMessage({ type: 'auth_token' }), /missing token/);
-  assert.throws(() => routeMessage({ type: 'auth_token', token: 42 }), /missing token/);
-  assert.throws(() => routeMessage({ type: 'auth_token', token: null }), /missing token/);
 });
 
 test('routeMessage maps get_auth_status / logout to argument-free ops', () => {
@@ -357,7 +353,6 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     addVocab: { type: 'addVocab', entries: [] },
     listVocab: { type: 'listVocab', since: '' },
     lookupWord: { type: 'lookupWord', word: 'w' },
-    auth_token: { type: 'auth_token', token: 't' },
     get_auth_status: { type: 'get_auth_status' },
     logout: { type: 'logout' },
   };
