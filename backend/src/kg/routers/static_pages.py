@@ -9,6 +9,14 @@ router = APIRouter()
 _STATIC_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
+@router.get("/")
+def get_home():
+    path = _STATIC_ROOT / "index.html"
+    if not path.exists():
+        return HTMLResponse("<h1>Home Not Found</h1>", status_code=404)
+    return FileResponse(path)
+
+
 @router.get("/privacy.html")
 def get_privacy_policy():
     path = _STATIC_ROOT / "privacy.html"

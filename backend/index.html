@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Books &amp; Vocab — 把閱讀變成你的詞彙引擎</title>
+  <meta name="description" content="在任何電子書裡選詞即查，自動建立詞庫與知識圖譜，再用每日複習與 Podcast 把單字記進長期記憶。支援 EPUB / PDF / TXT / Markdown 的 iPhone · iPad 英語詞彙學習 App。">
+  <meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#191919" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Books &amp; Vocab — 把閱讀變成你的詞彙引擎">
+  <meta property="og:description" content="選詞即查、自動建庫、知識圖譜、每日複習與詞彙 Podcast。讀你想讀的書，記住每一個生詞。">
+
+  <!-- No-FOUC theme: stored choice, else system preference. Runs before paint. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('kg-site-theme');
+        if (t !== 'light' && t !== 'dark' && t !== 'sepia') {
+          t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+
+  <link rel="preload" href="/static/fonts/ElmsSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/CormorantGaramond-Bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/kg-tokens.css">
+  <link rel="stylesheet" href="/static/kg-components.css">
+  <link rel="stylesheet" href="/static/site.css">
+</head>
+<body class="kg-surface">
+
+  <a class="skip-link" href="#main">跳至主要內容</a>
+
+  <nav class="site-nav" aria-label="主導覽">
+    <a class="site-nav__brand" href="/">Books &amp; Vocab</a>
+    <ul class="site-nav__links">
+      <li><a href="/guide.html">Guide</a></li>
+      <li><a href="/support.html">Support</a></li>
+      <li><a href="/privacy.html">Privacy</a></li>
+      <li><a href="/terms.html">Terms</a></li>
+    </ul>
+    <button class="theme-toggle" type="button" aria-label="切換深色／淺色主題">☾</button>
+  </nav>
+
+  <main id="main">
+
+    <!-- Hero -->
+    <header class="hero">
+      <p class="page-eyebrow">英語閱讀 × 詞彙學習 · iPhone · iPad</p>
+      <h1 class="hero__title">把閱讀變成你的詞彙引擎</h1>
+      <p class="hero__tagline">在任何電子書裡選詞即查，自動建立你的詞庫與知識圖譜，再用每日複習與 Podcast 把單字記進長期記憶。</p>
+      <div class="hero__cta">
+        <!-- TODO: 換成真實 App Store URL -->
+        <a class="kg-btn kg-btn--primary" href="#">在 App Store 取得</a>
+        <a class="kg-btn kg-btn--accent" href="/guide.html">查看使用指南</a>
+      </div>
+      <p class="hero__note">支援 EPUB · PDF · TXT · Markdown</p>
+    </header>
+
+    <!-- Feature flow -->
+    <section class="landing-section" aria-label="功能">
+      <div class="feature-grid">
+
+        <article class="kg-card feature-card">
+          <p class="feature-eyebrow">閱讀</p>
+          <h2>讀任何格式的書</h2>
+          <p>EPUB、PDF、TXT、Markdown 一鍵匯入，沉浸式閱讀體驗，隨時長按查詞。</p>
+        </article>
+
+        <article class="kg-card feature-card">
+          <p class="feature-eyebrow">查詞</p>
+          <h2>選詞即得 AI 翻譯</h2>
+          <p>長按任意單字，立即看到翻譯與貼合上下文的語境解釋；查過的字自動收進詞庫。</p>
+        </article>
+
+        <article class="kg-card feature-card">
+          <p class="feature-eyebrow">詞庫</p>
+          <h2>詞與詞連成圖譜</h2>
+          <p>你的生詞不是孤立清單——同義、詞根、主題自動連結成一張知識圖譜，看見詞彙之間的脈絡。</p>
+        </article>
+
+        <article class="kg-card feature-card">
+          <p class="feature-eyebrow">複習</p>
+          <h2>每日複習，記得更久</h2>
+          <p>依遺忘曲線安排 today review，把短期印象轉成長期記憶。</p>
+        </article>
+
+        <article class="kg-card feature-card">
+          <p class="feature-eyebrow">Podcast</p>
+          <h2>把詞庫變成可聽的內容</h2>
+          <p>將你的生詞與例句生成雙語 Podcast，通勤、散步時用耳朵複習。</p>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- Closing -->
+    <section class="closing">
+      <h2 class="closing__title">從你手上的下一本書開始。</h2>
+      <p class="closing__lead">不用換工具、不用背單字卡——讀下去，詞彙自然累積。</p>
+      <div class="hero__cta">
+        <!-- TODO: 換成真實 App Store URL -->
+        <a class="kg-btn kg-btn--primary" href="#">在 App Store 取得</a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <span class="site-footer__copy">© 2026 Books &amp; Vocab</span>
+    <ul class="site-footer__links">
+      <li><a href="/guide.html">Guide</a></li>
+      <li><a href="/support.html">Support</a></li>
+      <li><a href="/privacy.html">Privacy</a></li>
+      <li><a href="/terms.html">Terms</a></li>
+    </ul>
+  </footer>
+
+  <script>
+    (function () {
+      var btn = document.querySelector('.theme-toggle');
+      if (!btn) return;
+      var root = document.documentElement;
+      function sync() { btn.textContent = root.getAttribute('data-theme') === 'dark' ? '☀' : '☾'; }
+      sync();
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('kg-site-theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+
+</body>
+</html>
