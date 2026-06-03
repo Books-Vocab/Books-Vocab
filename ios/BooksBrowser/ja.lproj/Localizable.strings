@@ -851,6 +851,15 @@
 "vocab.chromeIcon.translation.dismiss" = "翻訳パネルを閉じる";
 "vocab.chromeIcon.todayReview.help" = "ショートカットを表示";
 "vocab.chromeIcon.todayReview.close" = "今日の復習を閉じる";
+"vocab.chromeIcon.translation.detail" = "詳細を表示";
+"vocab.chromeIcon.translation.expand" = "展開";
+"vocab.chromeIcon.translation.collapse" = "折りたたむ";
+"vocab.chromeIcon.translation.delete" = "削除";
+"vocab.chromeIcon.todayReview.autoplay.on" = "自動再生をオフ";
+"vocab.chromeIcon.todayReview.autoplay.off" = "自動再生をオン";
+"settings.inlineInfo.accessibility" = "詳細情報";
+"podcast.followToggle.follow" = "フォロー";
+"podcast.followToggle.unfollow" = "フォロー解除";
 "vocab.chromeIcon.collocation.dismiss" = "コロケーション説明を閉じる";
 
 // MARK: - Podcast Sleep Timer (track-11)

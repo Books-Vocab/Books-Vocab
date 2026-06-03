@@ -209,7 +209,7 @@ struct PodcastEpisodeListView: View {
             AppToolbarGlyph(systemImage: isFollowed ? "star.fill" : "star")
         }
         .disabled(currentSeries == nil)
-        .accessibilityLabel((isFollowed ? "取消追蹤" : "追蹤").localized)
+        .accessibilityLabel(L10n.string(isFollowed ? "podcast.followToggle.unfollow" : "podcast.followToggle.follow"))
         .accessibilityIdentifier("podcast.followToggle")
     }
 
