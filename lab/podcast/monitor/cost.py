@@ -82,20 +82,31 @@ PRICING_META = {
 }
 
 
+def _resolve_pricing(model: str, table: dict[str, dict] | None = None) -> dict:
+    """Resolve a model name to its pricing row.
+
+    Exact key wins. Otherwise pick the longest (= most specific) key that is a
+    substring of `model`, so e.g. 'gemini-2.5-flash-tts-experimental' resolves
+    to 'gemini-2.5-flash-tts' rather than the shorter 'gemini-2.5-flash'.
+    Crucially this is independent of `table` insertion order — a substring scan
+    in dict order would silently depend on which prefix happens to be listed
+    first. Fully unknown models fall back to pro rates (conservative: slightly
+    overestimates cost for unknown smaller models, safer than under-reporting).
+    """
+    table = VERTEX_PRICING if table is None else table
+    rates = table.get(model)
+    if rates is not None:
+        return rates
+    for key in sorted(table, key=len, reverse=True):
+        if key in model:
+            return table[key]
+    return table["gemini-2.5-pro"]
+
+
 def _vertex_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Compute USD for a Vertex TTS / Gemini call. Falls back to pro rates
     for unknown models so we never silently report $0."""
-    rates = VERTEX_PRICING.get(model)
-    if not rates:
-        # Pick the most reasonable fallback based on substring; if still
-        # unknown, use pro rates (conservative — overestimates cost slightly
-        # for unknown smaller models, which is safer than under-reporting).
-        for key, candidate in VERTEX_PRICING.items():
-            if key in model:
-                rates = candidate
-                break
-        if not rates:
-            rates = VERTEX_PRICING["gemini-2.5-pro"]
+    rates = _resolve_pricing(model)
     long = input_tokens > rates["long_threshold"]
     in_rate = rates["input_long"] if long else rates["input_short"]
     out_rate = rates["output_long"] if long else rates["output_short"]
