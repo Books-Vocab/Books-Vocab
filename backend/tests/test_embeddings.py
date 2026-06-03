@@ -220,6 +220,12 @@ class TestSimilaritySearch:
         store, _, _ = _make_store(tmp_path, preload_ids=["a", "b"])
         assert store.find_similar("c_missing") == []
 
+    def test_single_vector_store_returns_empty_not_self(self, tmp_path: Path):
+        """A store holding exactly one vector must not return that vector as
+        its own neighbour — the self-exclusion filter leaves nothing."""
+        store, _, _ = _make_store(tmp_path, preload_ids=["only"])
+        assert store.find_similar("only", k=10) == []
+
     def test_excludes_self_from_results(self, tmp_path: Path):
         store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
         results = store.find_similar("a", k=3)
