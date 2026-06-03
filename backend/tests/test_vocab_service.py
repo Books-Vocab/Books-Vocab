@@ -72,6 +72,12 @@ class _FakeCardsStore:
     def delete(self, card_id: str):
         self.deleted = card_id
 
+    def get(self, card_id: str):
+        for card in self._cards:
+            if card.id == card_id:
+                return card
+        return None
+
 
 def _card_builder(card, graph, cards_by_id):
     return {"id": card.id, "content": card.content, "graph": graph, "cards_by_id": cards_by_id}
@@ -407,6 +413,61 @@ class TestBatchArchiveVocabWords:
         result = batch_archive_vocab_words(["hello", "missing"], archived=True, cards_store=cards)
         assert result["updated"] == 1
         assert result["not_found"] == ["missing"]
+
+    def test_archive_rolls_back_on_graph_failure(self):
+        """If graph.cleanup_for_card raises for one card, that card's is_archived
+        is rolled back to its original value, the word goes to not_found, the rest
+        succeed, and the function does not raise."""
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+            _FakeCard(id="c3", content="foo"),
+        ])
+
+        class _FailSecondGraph(_FakeArchiveGraph):
+            def cleanup_for_card(self, card_id, *, remove_blocked=False):
+                if card_id == "c2":
+                    raise RuntimeError("graph boom")
+                return super().cleanup_for_card(card_id, remove_blocked=remove_blocked)
+
+        graph = _FailSecondGraph()
+        result = batch_archive_vocab_words(
+            ["hello", "world", "foo"], archived=True, cards_store=cards, graph=graph
+        )
+
+        assert result["updated"] == 2
+        assert set(result["updated_words"]) == {"hello", "foo"}
+        assert result["not_found"] == ["world"]
+        # c2 rolled back to original (False); the rest archived.
+        assert cards.get("c1").is_archived is True
+        assert cards.get("c2").is_archived is False
+        assert cards.get("c3").is_archived is True
+
+    def test_unarchive_rolls_back_on_graph_failure(self):
+        """Unarchive path: restore_links_for failure rolls is_archived back to
+        its original True value."""
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello", is_archived=True),
+            _FakeCard(id="c2", content="world", is_archived=True),
+        ])
+
+        class _FailRestoreGraph(_FakeArchiveGraph):
+            def restore_links_for(self, card_id, cards_store):
+                if card_id == "c2":
+                    raise RuntimeError("restore boom")
+                return super().restore_links_for(card_id, cards_store)
+
+        graph = _FailRestoreGraph()
+        result = batch_archive_vocab_words(
+            ["hello", "world"], archived=False, cards_store=cards, graph=graph
+        )
+
+        assert result["updated"] == 1
+        assert result["updated_words"] == ["hello"]
+        assert result["not_found"] == ["world"]
+        assert cards.get("c1").is_archived is False
+        # c2 rolled back to original archived state (True).
+        assert cards.get("c2").is_archived is True
 
     def test_empty_list_raises(self):
         cards = _FakeCardsStore([])
