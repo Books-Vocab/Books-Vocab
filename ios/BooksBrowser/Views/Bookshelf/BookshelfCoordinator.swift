@@ -42,6 +42,14 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     // remaining file to completion and mutating state on a dead coordinator.
     private var importTask: Task<Void, Never>?
 
+    // Monotonically bumped per batch. The progress callback hops to the
+    // MainActor via an unstructured Task that does NOT inherit importTask's
+    // cancellation, so a late progress Task from batch A could land after
+    // batch B already reset loadingProgress = 0 (the monotonic max guard
+    // can't catch this — max(0, ratioA) still writes ratioA). Each batch
+    // captures its generation; a stale write is dropped on gen mismatch.
+    private var importGeneration = 0
+
     func presentImporter() {
         // 新一輪匯入觸發前清掉殘留的 inline error，避免持續顯示已過期的失敗訊息
         clearError()
@@ -135,6 +143,11 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         // loading state.
         importTask?.cancel()
 
+        // New batch generation — late progress callbacks from the prior batch
+        // captured the old value and will be dropped (see onProgress below).
+        importGeneration += 1
+        let generation = importGeneration
+
         // 新一輪批次開始前清掉前次失敗殘留的 inline error，否則全成功時只發
         // 成功 toast、舊 error banner 仍掛著會誤導使用者以為這次也沒匯成功。
         clearError()
@@ -174,6 +187,9 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 let onProgress: @Sendable (Double) -> Void = { ratio in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
+                        // Drop writes from a superseded batch: a late callback
+                        // would otherwise overwrite the fresh batch's reset-to-0.
+                        guard generation == self.importGeneration else { return }
                         self.loadingProgress = max(self.loadingProgress ?? 0, ratio)
                     }
                 }
