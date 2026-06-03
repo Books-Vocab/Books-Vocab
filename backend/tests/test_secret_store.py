@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from kg.secret_store import decrypt_value, encrypt_value, is_encrypted
 
 _SECRET = "test-jwt-secret-key"
+
+
+@pytest.fixture(autouse=True)
+def _clear_secret_enc_key(monkeypatch):
+    """每個測試預設無 SECRET_ENC_KEY，確保彼此隔離。"""
+    monkeypatch.delenv("SECRET_ENC_KEY", raising=False)
 
 
 class TestEncryptDecryptRoundtrip:
@@ -45,6 +53,49 @@ class TestBackwardCompatibility:
         import pytest
         with pytest.raises(ValueError, match="key mismatch"):
             decrypt_value(encrypted, "wrong-secret-key!!")
+
+
+class TestSecretEncKeyDecoupling:
+    """SECRET_ENC_KEY 解除「加密金鑰 ←→ JWT_SECRET」耦合。"""
+
+    def test_no_enc_key_matches_legacy_behavior(self, monkeypatch):
+        # 未設 SECRET_ENC_KEY → 與改前完全一致（既有 enc: 值可解）
+        monkeypatch.delenv("SECRET_ENC_KEY", raising=False)
+        enc = encrypt_value("legacy-val", _SECRET)
+        assert decrypt_value(enc, _SECRET) == "legacy-val"
+
+    def test_enc_key_used_for_encryption(self, monkeypatch):
+        # 設了 SECRET_ENC_KEY → 用它加解密；jwt_secret 不再是加密根
+        monkeypatch.setenv("SECRET_ENC_KEY", "independent-enc-root-key-32")
+        enc = encrypt_value("v", _SECRET)
+        # 同一 SECRET_ENC_KEY、但完全不同的 jwt_secret 仍可解密
+        assert decrypt_value(enc, "totally-different-jwt-secret!!") == "v"
+
+    def test_legacy_value_still_decryptable_after_jwt_rotation(self, monkeypatch):
+        # 舊值用 legacy sha256(JWT_SECRET) 加密（無 SECRET_ENC_KEY 時期）
+        monkeypatch.delenv("SECRET_ENC_KEY", raising=False)
+        legacy_enc = encrypt_value("old-secret", _SECRET)
+        # 之後導入 SECRET_ENC_KEY；舊值仍須能經 fallback 解出
+        monkeypatch.setenv("SECRET_ENC_KEY", "new-independent-enc-root-key")
+        assert decrypt_value(legacy_enc, _SECRET) == "old-secret"
+
+    def test_new_value_unaffected_by_jwt_rotation(self, monkeypatch):
+        # 設 SECRET_ENC_KEY 後新寫入；輪換 JWT_SECRET 不影響其解密
+        monkeypatch.setenv("SECRET_ENC_KEY", "stable-enc-root-key-value")
+        enc = encrypt_value("new-secret", "jwt-before-rotation")
+        assert decrypt_value(enc, "jwt-AFTER-rotation-changed!!") == "new-secret"
+
+    def test_enc_key_set_can_still_decrypt_legacy_then_reencrypt_uses_enc_key(
+        self, monkeypatch
+    ):
+        # 平滑遷移：設了 SECRET_ENC_KEY，legacy 值解得出，新加密用當前 key
+        monkeypatch.delenv("SECRET_ENC_KEY", raising=False)
+        legacy_enc = encrypt_value("val", _SECRET)
+        monkeypatch.setenv("SECRET_ENC_KEY", "enc-root-key-for-migration")
+        plain = decrypt_value(legacy_enc, _SECRET)
+        re_enc = encrypt_value(plain, _SECRET)
+        # 新密文用 SECRET_ENC_KEY 加密 → 改 jwt_secret 不影響
+        assert decrypt_value(re_enc, "any-other-jwt") == "val"
 
 
 class TestIsEncrypted:
