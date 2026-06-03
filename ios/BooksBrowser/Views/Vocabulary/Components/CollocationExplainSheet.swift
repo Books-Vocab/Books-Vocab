@@ -1,6 +1,14 @@
 import SwiftUI
 import Inject
 
+enum CollocationActionPillChrome {
+    static let horizontalPadding: CGFloat = 12
+    static let verticalPadding: CGFloat = 6
+    static let backgroundOpacity = 0.08
+    static let strokeOpacity = 0.34
+    static let strokeLineWidth: CGFloat = 1
+}
+
 struct CollocationExplainSheet: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -76,6 +84,19 @@ struct CollocationExplainSheet: View {
                 } label: {
                     Label("儲存".localized, systemImage: "checkmark.circle")
                         .font(appSkin.typography.caption)
+                        .padding(.horizontal, CollocationActionPillChrome.horizontalPadding)
+                        .padding(.vertical, CollocationActionPillChrome.verticalPadding)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(appSkin.palette.success.opacity(CollocationActionPillChrome.backgroundOpacity))
+                        }
+                        .overlay {
+                            Capsule(style: .continuous)
+                                .stroke(
+                                    appSkin.palette.success.opacity(CollocationActionPillChrome.strokeOpacity),
+                                    lineWidth: CollocationActionPillChrome.strokeLineWidth
+                                )
+                        }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(appSkin.palette.success)
