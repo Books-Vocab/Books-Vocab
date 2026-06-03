@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 80147399
+verified_against: bab1d5fa
 -->
 # Technical Reference Index
 
@@ -31,9 +31,9 @@ verified_against: 80147399
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
 | `admin.py` | `/api/admin/*`, `/admin/*` | dashboard / user detail / logs / test-matrix |
-| `static_pages.py` | `/privacy.html` / `/support.html` / `/terms.html` / `/guide.html` | 公開頁(已重構成消費設計系統的官網,吃 `/static/*` CSS) |
+| `static_pages.py` | `/`(landing) / `/privacy.html` / `/support.html` / `/terms.html` / `/guide.html` | 根路徑 landing 首頁(App Store CTA + token device mock)+ 4 法律/支援頁;全吃 `/static/*` CSS、共用 site shell |
 
-`api.py` 另以 `app.mount("/static", StaticFiles(directory=backend/static))`(`if is_dir` 守衛)服務公開頁的設計系統資產(`kg-tokens.css` / `kg-components.css` / `site.css` + brand woff2 字體)。`kg-tokens.css`·`kg-components.css` 由 `ops/gen_web_tokens.py` 生成,不手改;rsync-only-backend deploy 與 Dockerfile `COPY static/` 確保隨容器出貨。
+`api.py` 另以 `app.mount("/static", StaticFiles(directory=backend/static))`(`if is_dir` 守衛)服務公開頁的設計系統資產(`kg-tokens.css` / `kg-components.css` / `site.css` + `site-motion.js`〔無框架 progressive-enhancement scroll-reveal〕+ `img/`〔og-image / favicon / apple-touch-icon 等 PWA·SEO 資產〕+ brand woff2 字體)。`kg-tokens.css`·`kg-components.css` 由 `ops/gen_web_tokens.py` 生成,不手改;rsync-only-backend deploy 與 Dockerfile `COPY static/` 確保隨容器出貨。
 
 ## SQLite Log Stores (`backend/src/kg/`)
 
