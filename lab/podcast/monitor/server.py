@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Saga (multi-book continuous-feed) modules live one level up in lab/podcast/.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from cost import aggregate_workspace  # noqa: E402
-from jobs import tracker as jobs, JobLimitReached  # noqa: E402
+from jobs import tracker as jobs, JobLimitReached, WorkspaceBusyError  # noqa: E402
 import remote as remote_ops  # noqa: E402
 import saga  # noqa: E402  — parse series.md for the workspace summary
 import archetypes  # noqa: E402  — validate spoiler_mode for a saga upload
@@ -897,6 +897,9 @@ def upload_workspace(ws_name: str):
     if not upload_sh.exists():
         raise HTTPException(500, f"upload script missing at {upload_sh}")
 
+    # Fast-path 409 (avoids the lock for the common case). The authoritative
+    # guard is the atomic workspace= check inside jobs.spawn — it catches the
+    # concurrent-POST race this pre-check can't.
     busy = _active_job_for_ws(ws_name)
     if busy:
         raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
@@ -908,7 +911,10 @@ def upload_workspace(ws_name: str):
             kind="upload",
             cwd=ROOT.parent.parent,  # repo root (rsync uses relative ops/ path internally)
             metadata={"workspace": ws_name},
+            workspace=ws_name,
         )
+    except WorkspaceBusyError as e:
+        raise HTTPException(409, str(e)) from e
     except JobLimitReached as e:
         raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label}
@@ -972,7 +978,10 @@ def rerun_stage(
             # already opted into events.jsonl by being here.
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
             metadata={"workspace": ws_name, "stage": stage, "episode": episode},
+            workspace=ws_name,
         )
+    except WorkspaceBusyError as e:
+        raise HTTPException(409, str(e)) from e
     except JobLimitReached as e:
         raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label}
@@ -1025,7 +1034,10 @@ def approve_gate(ws_name: str, gate: str = Query(...)):
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
             metadata={"workspace": ws_name, "gate": gate},
+            workspace=ws_name,
         )
+    except WorkspaceBusyError as e:
+        raise HTTPException(409, str(e)) from e
     except JobLimitReached as e:
         raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label, "approved": gate}
@@ -1053,7 +1065,10 @@ def resume_workspace(ws_name: str):
             cwd=ROOT,
             env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
             metadata={"workspace": ws_name},
+            workspace=ws_name,
         )
+    except WorkspaceBusyError as e:
+        raise HTTPException(409, str(e)) from e
     except JobLimitReached as e:
         raise HTTPException(429, str(e)) from e
     return {"job_id": job.id, "status": job.status, "label": job.label}
