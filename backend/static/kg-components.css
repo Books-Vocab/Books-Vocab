@@ -11,8 +11,9 @@
 
    北極星 mapping:
      1 單色頁面、無 chrome 分隔   → .kg-surface (page/toolbar/content share --page-bg)
-     2 border 退場、divider 進場  → cards have NO border; .kg-divider (hairline + air)
-     3 shadow 收 z0/z1           → .kg-card = z1; z2+ reserved for overlay/modal
+     2 border 退場、divider 進場  → divider is the section separator; .kg-card keeps
+                                   only iOS's resting hairline (cardBorder×0.7), --flat drops it
+     3 shadow 收 z0/z1           → .kg-card = hairline + z1; --flat = z0 no border; z2+ overlay
      4 單一強調色策略            → .kg-btn = brand-hero CTA, .kg-btn--accent = passive
      5 互動 motion 收斂          → tap-feedback triplet on buttons; non-buttons only
                                    animate bg/opacity; all gated by reduced-motion
@@ -46,20 +47,22 @@
 .kg-body    { font-size: var(--text-body); line-height: var(--leading-body); }
 .kg-subhead { font-size: var(--text-subhead); line-height: var(--leading-body); color: var(--text-secondary); }
 .kg-caption { font-size: var(--text-caption); line-height: var(--leading-caption); color: var(--text-tertiary); }
-.kg-label   { font-size: var(--text-caption); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-uppercase); font-weight: 600; }
+.kg-label   { font-size: var(--text-caption); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-uppercase); font-weight: 700; }
 
-/* --- Card (北極星 2: no border / 3: z1 resting) ----------------------------- */
+/* --- Card (北極星 2: iOS resting hairline / 3: z1 resting) ------------------ */
+/* Mirrors iOS AppSectionCardStyle.themed: fill + cardBorder×0.7 hairline + z1. */
 
 .kg-card {
   background: var(--card-bg);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--card-border) 70%, transparent);
   border-radius: var(--radius-card);
   padding: var(--card-padding);
   box-shadow: var(--elevation-z1);
   transition: transform var(--motion-control), box-shadow var(--motion-control);
 }
 
-/* z0 flush variant — pure background separation, no shadow at all. */
-.kg-card--flat { box-shadow: var(--elevation-z0); }
+/* z0 flush variant — pure background separation, no border, no shadow (iOS .flat). */
+.kg-card--flat { border-color: transparent; box-shadow: var(--elevation-z0); }
 
 /* Card is a button-like surface → scale lift is allowed (Motion Contract);
    mirrors iOS .appHoverLift (scale 1.02). */
@@ -87,7 +90,7 @@
   gap: var(--sp-1);
   font-family: var(--font-sans);
   font-size: var(--text-subhead);
-  font-weight: 600;
+  font-weight: 700;                /* ElmsSans ships 400/700 only — 600 would faux-bold (scan #7) */
   line-height: 1.4;
   border: none;
   border-radius: var(--radius-control);
@@ -127,7 +130,7 @@
   display: inline-block;
   font-size: var(--text-caption2);
   line-height: 1.3;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent);
   background: var(--accent-subtle);
   padding: var(--sp-micro) var(--sp-2);
