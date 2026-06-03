@@ -10,16 +10,26 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Books &amp; Vocab — 把閱讀變成你的詞彙引擎">
   <meta property="og:description" content="選詞即查、自動建庫、知識圖譜、每日複習與詞彙 Podcast。讀你想讀的書，記住每一個生詞。">
+  <meta property="og:image" content="/static/img/og-image.png">
+  <meta name="twitter:card" content="summary">
 
-  <!-- No-FOUC theme: stored choice, else system preference. Runs before paint. -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+
+  <!-- No-FOUC theme + JS flag. Runs before paint: data-theme avoids a flash,
+       and the .js class lets CSS hide scroll-reveal elements ONLY when JS can
+       reveal them (no-JS → .reveal stays visible, never stuck hidden). -->
   <script>
     (function () {
+      var d = document.documentElement;
+      d.classList.add('js');
       try {
         var t = localStorage.getItem('kg-site-theme');
         if (t !== 'light' && t !== 'dark' && t !== 'sepia') {
           t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        document.documentElement.setAttribute('data-theme', t);
+        d.setAttribute('data-theme', t);
       } catch (e) {}
     })();
   </script>
@@ -47,49 +57,108 @@
 
   <main id="main">
 
-    <!-- Hero -->
-    <header class="hero">
-      <p class="page-eyebrow">英語閱讀 × 詞彙學習 · iPhone · iPad</p>
-      <h1 class="hero__title">把閱讀變成你的詞彙引擎</h1>
-      <p class="hero__tagline">在任何電子書裡選詞即查，自動建立你的詞庫與知識圖譜，再用每日複習與 Podcast 把單字記進長期記憶。</p>
-      <div class="hero__cta">
-        <!-- TODO: 換成真實 App Store URL -->
-        <a class="kg-btn kg-btn--primary" href="#">在 App Store 取得</a>
-        <a class="kg-btn kg-btn--accent" href="/guide.html">查看使用指南</a>
+    <!-- Hero — copy left, token-rendered device mock right.
+         北極星 4: the ONLY brand-hero fill in this viewport is the App Store CTA
+         (and the device's 加入詞庫 save pill, inside the illustrative mock). -->
+    <header class="hero hero--showcase">
+      <div class="hero__copy">
+        <p class="page-eyebrow">英語閱讀 × 詞彙學習 · iPhone · iPad</p>
+        <h1 class="hero__title">把閱讀變成你的詞彙引擎</h1>
+        <p class="hero__tagline">在任何電子書裡選詞即查，自動建立你的詞庫與知識圖譜，再用每日複習與 Podcast 把單字記進長期記憶。</p>
+        <div class="hero__cta">
+          <!-- TODO: 換成真實 App Store URL -->
+          <a class="kg-btn kg-btn--appstore" href="#">
+            <svg class="appstore-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.04.28.04.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.643 0 2.935.06 4.437 2.22-.115.07-2.59 1.51-2.59 4.49 0 3.45 3.043 4.67 3.043 4.7z"/></svg>
+            <span class="kg-btn__lockup"><small>下載於</small><b>App Store</b></span>
+          </a>
+          <a class="kg-btn kg-btn--accent" href="/guide.html">查看使用指南</a>
+        </div>
+        <ul class="hero__trust">
+          <li><span class="kg-chip kg-chip--tint">EPUB · PDF · TXT · MD</span></li>
+          <li><span class="kg-chip kg-chip--tint">iPhone · iPad</span></li>
+        </ul>
       </div>
-      <p class="hero__note">支援 EPUB · PDF · TXT · Markdown</p>
+
+      <figure class="device" role="img" aria-label="Books &amp; Vocab 閱讀畫面示意：長按單字即顯示翻譯與「加入詞庫」。內容為示意圖。">
+        <div class="device__frame">
+          <div class="device__island" aria-hidden="true"></div>
+          <div class="device__screen">
+            <div class="device__statusbar" aria-hidden="true"><span>9:41</span><span>5G ▮▮▮</span></div>
+            <p class="device__readtitle">The Quiet Valley — Ch. 1</p>
+            <p class="device__prose">The valley lay <mark class="device__vocab">serene</mark> beneath the morning haze, its meadows still and unhurried, as though the whole earth had paused to take a single, patient breath.</p>
+            <div class="device__popover" aria-hidden="true">
+              <span class="device__pop-tail"></span>
+              <div class="device__pop-head"><span class="device__pop-word">serene</span><span class="device__pop-pos">adj.</span></div>
+              <p class="device__pop-tr">寧靜的；安詳的</p>
+              <p class="device__pop-ctx">此處形容山谷在晨霧下平靜、無波動的狀態。</p>
+              <span class="device__pop-save">＋ 加入詞庫</span>
+            </div>
+          </div>
+        </div>
+      </figure>
     </header>
 
-    <!-- Feature flow -->
+    <!-- How it works — a 3-step journey on a divider connector (not cards). -->
+    <section class="how-it-works reveal" aria-label="運作方式">
+      <p class="section-eyebrow">How it works</p>
+      <h2 class="section-title">從翻開到記住</h2>
+      <ol class="steps">
+        <li class="step"><span class="step__num">1</span><h3>讀任意電子書</h3><p>EPUB、PDF、TXT、Markdown 一鍵匯入，沉浸式閱讀。</p></li>
+        <li class="step"><span class="step__num">2</span><h3>長按選詞即譯</h3><p>立即看到貼合上下文的 AI 翻譯，查過的字自動進詞庫。</p></li>
+        <li class="step"><span class="step__num">3</span><h3>記進長期記憶</h3><p>知識圖譜串起脈絡，每日複習與雙語 Podcast 鞏固記憶。</p></li>
+      </ol>
+    </section>
+
+    <!-- Signature feature — knowledge graph, a token-rendered illustrative viz. -->
+    <section class="graph-showcase reveal" aria-label="知識圖譜">
+      <div class="graph-showcase__text">
+        <p class="feature-eyebrow">詞庫</p>
+        <h2>你的生詞不是孤立的清單</h2>
+        <p>同義、詞根、主題自動連結成一張知識圖譜——看見詞與詞之間的脈絡，記一個字就帶起一整串。</p>
+      </div>
+      <div class="graph-showcase__viz">
+        <svg viewBox="0 0 480 320" class="kg-graph" role="img" aria-label="知識圖譜示意：以 serene 為中心，連結 tranquil、placid、calm、unruffled 等同義詞。">
+          <g class="kg-graph__edges">
+            <line x1="240" y1="160" x2="110" y2="70"></line>
+            <line x1="240" y1="160" x2="380" y2="80"></line>
+            <line x1="240" y1="160" x2="90" y2="240"></line>
+            <line x1="240" y1="160" x2="370" y2="250"></line>
+          </g>
+          <g class="kg-graph__nodes" font-size="17" font-weight="700" text-anchor="middle">
+            <g class="is-focus"><rect x="186" y="140" width="108" height="40" rx="20"></rect><text x="240" y="165">serene</text></g>
+            <g><rect x="56" y="50" width="108" height="38" rx="19"></rect><text x="110" y="74">tranquil</text></g>
+            <g><rect x="328" y="62" width="104" height="38" rx="19"></rect><text x="380" y="86">placid</text></g>
+            <g><rect x="44" y="222" width="92" height="38" rx="19"></rect><text x="90" y="246">calm</text></g>
+            <g><rect x="306" y="232" width="128" height="38" rx="19"></rect><text x="370" y="256">unruffled</text></g>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Remaining feature flow -->
     <section class="landing-section" aria-label="功能">
       <div class="feature-grid">
 
-        <article class="kg-card feature-card">
-          <p class="feature-eyebrow">閱讀</p>
+        <article class="kg-card feature-card reveal" style="--reveal-i:0">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
           <h2>讀任何格式的書</h2>
           <p>EPUB、PDF、TXT、Markdown 一鍵匯入，沉浸式閱讀體驗，隨時長按查詞。</p>
         </article>
 
-        <article class="kg-card feature-card">
-          <p class="feature-eyebrow">查詞</p>
+        <article class="kg-card feature-card reveal" style="--reveal-i:1">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
           <h2>選詞即得 AI 翻譯</h2>
           <p>長按任意單字，立即看到翻譯與貼合上下文的語境解釋；查過的字自動收進詞庫。</p>
         </article>
 
-        <article class="kg-card feature-card">
-          <p class="feature-eyebrow">詞庫</p>
-          <h2>詞與詞連成圖譜</h2>
-          <p>你的生詞不是孤立清單——同義、詞根、主題自動連結成一張知識圖譜，看見詞彙之間的脈絡。</p>
-        </article>
-
-        <article class="kg-card feature-card">
-          <p class="feature-eyebrow">複習</p>
+        <article class="kg-card feature-card reveal" style="--reveal-i:2">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></span>
           <h2>每日複習，記得更久</h2>
           <p>依遺忘曲線安排 today review，把短期印象轉成長期記憶。</p>
         </article>
 
-        <article class="kg-card feature-card">
-          <p class="feature-eyebrow">Podcast</p>
+        <article class="kg-card feature-card reveal" style="--reveal-i:3">
+          <span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg></span>
           <h2>把詞庫變成可聽的內容</h2>
           <p>將你的生詞與例句生成雙語 Podcast，通勤、散步時用耳朵複習。</p>
         </article>
@@ -97,26 +166,53 @@
       </div>
     </section>
 
-    <!-- Closing -->
-    <section class="closing">
+    <!-- Closing — final ask is singular (one brand-hero CTA, no secondary). -->
+    <section class="closing reveal">
       <h2 class="closing__title">從你手上的下一本書開始。</h2>
       <p class="closing__lead">不用換工具、不用背單字卡——讀下去，詞彙自然累積。</p>
       <div class="hero__cta">
         <!-- TODO: 換成真實 App Store URL -->
-        <a class="kg-btn kg-btn--primary" href="#">在 App Store 取得</a>
+        <a class="kg-btn kg-btn--appstore" href="#">
+          <svg class="appstore-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.04.28.04.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.643 0 2.935.06 4.437 2.22-.115.07-2.59 1.51-2.59 4.49 0 3.45 3.043 4.67 3.043 4.7z"/></svg>
+          <span class="kg-btn__lockup"><small>下載於</small><b>App Store</b></span>
+        </a>
       </div>
     </section>
 
   </main>
 
   <footer class="site-footer">
-    <span class="site-footer__copy">© 2026 Books &amp; Vocab</span>
-    <ul class="site-footer__links">
-      <li><a href="/guide.html">Guide</a></li>
-      <li><a href="/support.html">Support</a></li>
-      <li><a href="/privacy.html">Privacy</a></li>
-      <li><a href="/terms.html">Terms</a></li>
-    </ul>
+    <div class="footer-brand">
+      <p class="footer-brand__name">Books &amp; Vocab</p>
+      <p class="footer-brand__desc">把閱讀變成你的詞彙引擎。</p>
+      <p class="footer-brand__platform">Made for iPhone &amp; iPad</p>
+    </div>
+    <nav class="footer-col" aria-label="產品">
+      <h3>Product</h3>
+      <ul>
+        <li><a href="/guide.html">使用指南</a></li>
+        <!-- TODO: 換成真實 App Store URL -->
+        <li><a href="#">App Store</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="支援">
+      <h3>Support</h3>
+      <ul>
+        <li><a href="/support.html">支援中心</a></li>
+        <li><a href="mailto:max970228@gmail.com">聯絡我們</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="法律">
+      <h3>Legal</h3>
+      <ul>
+        <li><a href="/privacy.html">隱私政策</a></li>
+        <li><a href="/terms.html">服務條款</a></li>
+      </ul>
+    </nav>
+    <div class="footer-meta">
+      <span>© 2026 Books &amp; Vocab</span>
+      <span>EPUB · PDF · TXT · Markdown</span>
+    </div>
   </footer>
 
   <script>
@@ -134,6 +230,7 @@
       });
     })();
   </script>
+  <script defer src="/static/site-motion.js"></script>
 
 </body>
 </html>
