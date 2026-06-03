@@ -28,6 +28,8 @@ import SwiftData
         name: String,
         color: String?,
         coverPattern: String?,
+        stagedCoverImagePath: String?,
+        originalCoverImagePath: String?,
         modelContext: ModelContext,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
@@ -212,6 +214,8 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         name: String,
         color: String?,
         coverPattern: String?,
+        stagedCoverImagePath: String?,
+        originalCoverImagePath: String?,
         modelContext: ModelContext,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
@@ -221,11 +225,18 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             notebook.name = remote.name
             notebook.color = remote.color
             notebook.coverPattern = remote.coverPattern
+            // 封面圖是 device-local（不上 server / 不參與 reconcile）。只有 API 成功後
+            // 才落地新封面 + 刪舊圖 → 與 server 欄位的成敗一致（track-23，全有或全無）。
+            let coverPlan = NotebookCoverCommit.plan(staged: stagedCoverImagePath, original: originalCoverImagePath)
+            notebook.coverImagePath = coverPlan.resolvedPath
             notebook.updatedAt = Date()
             if modelContext.safeSaveWithToast(toastCoordinator) {
+                NotebookCoverCommit.removeStaleFile(coverPlan)
                 toastCoordinator.success("已更新".localized)
             }
         } catch {
+            // API 失敗：不動 coverImagePath、不刪舊圖；staged 新圖由 sheet 取消流程或
+            // 下次編輯處理。server 欄位與本地封面同時維持舊值，無 drift。
             toastCoordinator.error("更新失敗".localized)
             AppLog.kg.error("updateNotebook failed: \(error.localizedDescription)")
         }
