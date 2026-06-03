@@ -1,9 +1,12 @@
 /* ============================================================
    KG Popup — Shadow DOM styles
-   All values via design tokens from tokens.css
+   All values via design tokens (shared/tokens.css). tokens.css is injected
+   into the shadow root and applies via its `:root, :host` selectors; content.js
+   sets [data-theme] on the popup root so dark/sepia resolve correctly.
+   Aligned to the iOS app: brand-hero cream CTA, z3 overlay elevation.
    ============================================================ */
 
-/* --- Base --- */
+/* --- Base (z3: floating overlay tier) --- */
 
 .kg-popup {
   max-width: 360px;
@@ -11,11 +14,11 @@
   background: var(--card-bg);
   border-radius: var(--radius-overlay);
   padding: var(--card-padding);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--elevation-z3);
   font-family: var(--font-sans);
   color: var(--text-primary);
-  line-height: 1.5;
-  animation: kg-popup-enter 0.15s ease-out both;
+  line-height: var(--leading-body);
+  animation: kg-popup-enter var(--dur-quick) var(--ease-quick) both;
 }
 
 @keyframes kg-popup-enter {
@@ -48,21 +51,17 @@
   margin-bottom: var(--sp-sm);
 }
 
-/* --- POS chip --- */
+/* --- POS chip (theme-aware accent-subtle fill) --- */
 
 .kg-popup__chip {
   display: inline-block;
   font-size: var(--text-caption2);
   color: var(--accent);
-  background: hsla(215, 28%, 66%, 0.12);
+  background: var(--accent-subtle);
   padding: var(--sp-micro) var(--sp-sm);
   border-radius: var(--radius-chip);
   margin-bottom: var(--sp-sm);
   font-weight: 600;
-}
-
-[data-theme="dark"] .kg-popup__chip {
-  background: hsla(215, 28%, 70%, 0.15);
 }
 
 /* --- Translation --- */
@@ -81,7 +80,7 @@
   color: var(--text-secondary);
   margin-top: var(--sp-sm);
   padding-top: var(--sp-sm);
-  border-top: 1px solid hsla(0, 0%, 50%, 0.12);
+  border-top: var(--sp-hairline) solid var(--divider);
   white-space: pre-wrap;
   transition: var(--transition-content-swap);
 }
@@ -98,7 +97,7 @@
   margin-top: var(--sp-sm);
 }
 
-/* --- Button --- */
+/* --- Button (primary = brand-hero CTA, tap-feedback on :active) --- */
 
 .kg-popup__btn {
   display: inline-flex;
@@ -108,44 +107,40 @@
   font-family: var(--font-sans);
   font-size: var(--text-subhead);
   font-weight: 600;
-  color: #fff;
-  background: var(--accent);
+  color: var(--on-brand-hero);
+  background: var(--brand-hero);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   padding: var(--sp-xs) var(--sp-compact);
   cursor: pointer;
-  transition: opacity 0.15s ease-out, background 0.15s ease-out;
+  transition: opacity var(--motion-quick), background var(--motion-quick), transform var(--motion-control);
   text-decoration: none;
   line-height: 1.4;
 }
 
-.kg-popup__btn:hover {
-  opacity: 0.85;
-}
-
-.kg-popup__btn:active {
-  opacity: 0.7;
-}
+.kg-popup__btn:hover { opacity: 0.92; }
+.kg-popup__btn:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
 
 .kg-popup__btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.kg-popup__btn:disabled:active { transform: none; }
 
-/* Expand / collapse variant */
+/* Expand / collapse variant — ghost, greyscale tint. */
 .kg-popup__btn--expand {
   background: transparent;
   color: var(--tint);
   padding-left: 0;
 }
 
-.kg-popup__btn--expand:hover {
-  opacity: 0.7;
-}
+.kg-popup__btn--expand:hover { opacity: 0.7; }
 
-/* Success variant */
+/* Success variant — saved-confirmation. White on success green = ~4.8:1 AA
+   (no on-success token exists; this is a deliberate paired foreground). */
 .kg-popup__btn--success {
   background: var(--success);
+  color: #fff;
 }
 
 /* --- Error --- */
@@ -175,12 +170,12 @@
   height: var(--sp-md);
   background: linear-gradient(
     90deg,
-    hsla(0, 0%, 50%, 0.08) 25%,
-    hsla(0, 0%, 50%, 0.15) 50%,
-    hsla(0, 0%, 50%, 0.08) 75%
+    var(--muted-fill) 25%,
+    var(--button-pressed-fill) 50%,
+    var(--muted-fill) 75%
   );
   background-size: 200% 100%;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   margin-top: var(--sp-sm);
   animation: kg-shimmer 1.4s ease-in-out infinite;
 }
@@ -196,4 +191,11 @@
   100% {
     background-position: -200% 0;
   }
+}
+
+/* --- Reduced motion (web equivalent of accessibilityReduceMotion) --- */
+
+@media (prefers-reduced-motion: reduce) {
+  .kg-popup { animation: none; }
+  .kg-popup__btn:active { transform: none; }
 }

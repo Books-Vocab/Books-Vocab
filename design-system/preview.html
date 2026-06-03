@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KG Design System — Preview</title>
+
+  <!-- Brand fonts (woff2 live in the extension bundle; surface-local @font-face). -->
+  <style>
+    @font-face { font-family: 'ElmsSans'; src: url('../chrome-extension/fonts/ElmsSans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+    @font-face { font-family: 'ElmsSans'; src: url('../chrome-extension/fonts/ElmsSans-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+    @font-face { font-family: 'CormorantGaramond'; src: url('../chrome-extension/fonts/CormorantGaramond-Italic.woff2') format('woff2'); font-style: italic; font-display: swap; }
+  </style>
+
+  <link rel="stylesheet" href="dist/kg-tokens.css">
+  <link rel="stylesheet" href="dist/kg-components.css">
+
+  <style>
+    /* preview-only scaffolding (NOT part of the design system) */
+    .wrap { max-width: 880px; margin: 0 auto; padding: var(--sp-7) var(--sp-5) var(--sp-10); }
+    .sticky { position: sticky; top: 0; z-index: 10; background: var(--page-bg); padding: var(--sp-4) var(--sp-5); display: flex; gap: var(--sp-2); align-items: center; }
+    .sticky h1 { font-family: var(--font-serif); font-size: var(--text-h2); margin: 0 auto 0 0; }
+    section { margin-top: var(--sp-8); }
+    section > h2 { font-family: var(--font-serif); font-size: var(--text-h2); letter-spacing: var(--tracking-h2-tight); margin: 0 0 var(--sp-4); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--sp-3); }
+    .swatch { border-radius: var(--radius-card); overflow: hidden; box-shadow: var(--elevation-z1); }
+    .swatch .chip-color { height: 56px; }
+    .swatch .meta { padding: var(--sp-2) var(--sp-3); background: var(--card-bg); font-size: var(--text-caption2); }
+    .swatch .meta b { display: block; font-size: var(--text-caption); color: var(--text-primary); }
+    .swatch .meta span { color: var(--text-tertiary); }
+    .row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+    .stack { display: flex; flex-direction: column; gap: var(--sp-2); }
+    .elev-box { width: 120px; height: 80px; background: var(--card-bg); border-radius: var(--radius-card); display: flex; align-items: center; justify-content: center; font-size: var(--text-caption); color: var(--text-tertiary); }
+    .seg { display: inline-flex; border-radius: var(--radius-control); overflow: hidden; box-shadow: var(--elevation-z1); }
+    .seg button { border: 0; padding: var(--sp-2) var(--sp-3); background: var(--card-bg); color: var(--text-secondary); font-family: var(--font-sans); cursor: pointer; }
+    .seg button[aria-pressed="true"] { background: var(--accent-subtle); color: var(--accent); }
+  </style>
+</head>
+<body class="kg-surface">
+
+  <div class="sticky">
+    <h1>KG Design System</h1>
+    <div class="seg" role="group" aria-label="theme">
+      <button data-set-theme="light" aria-pressed="true">☀︎ Light</button>
+      <button data-set-theme="dark" aria-pressed="false">☾ Dark</button>
+      <button data-set-theme="sepia" aria-pressed="false">❦ Sepia</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+
+    <section>
+      <h2>Typography</h2>
+      <div class="stack">
+        <div class="kg-hero">Hero — 詞彙知識圖譜</div>
+        <div class="kg-h1">H1 — Knowledge Graph</div>
+        <div class="kg-h2">H2 — 區塊標題 Section</div>
+        <div class="kg-body">Body 17px — 閱讀時選詞翻譯，建立詞彙知識圖譜。The quick brown fox.</div>
+        <div class="kg-subhead">Subhead 15px — secondary supporting copy 次要說明文字。</div>
+        <div class="kg-caption">Caption 12px — metadata 提示小字</div>
+        <div class="kg-label">Label · uppercase</div>
+        <div style="font-family: var(--font-italic); font-style: italic; font-size: var(--text-h2); color: var(--text-secondary);">Cormorant italic — example sentence rendering</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Brand &amp; Semantic Color</h2>
+      <div class="grid" id="swatches"></div>
+    </section>
+
+    <section>
+      <h2>Buttons (北極星 4: brand-hero CTA, accent passive)</h2>
+      <div class="row">
+        <button class="kg-btn kg-btn--primary">存入詞庫</button>
+        <button class="kg-btn kg-btn--accent">查看連結</button>
+        <button class="kg-btn kg-btn--ghost">略過</button>
+        <button class="kg-btn kg-btn--destructive">刪除</button>
+        <button class="kg-btn kg-btn--primary" disabled>Disabled</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Chips</h2>
+      <div class="row">
+        <span class="kg-chip">noun</span>
+        <span class="kg-chip kg-chip--tint">B2</span>
+        <span class="kg-chip kg-chip--success">已掌握</span>
+        <span class="kg-chip kg-chip--warning">待複習</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Cards &amp; Divider (北極星 2/3: no border, z0/z1)</h2>
+      <div class="row">
+        <div class="kg-card" style="flex:1; min-width:220px;">
+          <div class="kg-h2" style="font-size: var(--text-row-word); font-family: var(--font-mono);">ephemeral</div>
+          <div class="kg-subhead">短暫的、轉瞬即逝的</div>
+        </div>
+        <div class="kg-card kg-card--interactive" style="flex:1; min-width:220px;">
+          <div class="kg-h2" style="font-size: var(--text-row-word); font-family: var(--font-mono);">resilient</div>
+          <div class="kg-subhead">有韌性的（hover me）</div>
+        </div>
+      </div>
+      <hr class="kg-divider">
+      <div class="kg-card kg-card--flat">z0 flush card（純背景分隔，無陰影）</div>
+    </section>
+
+    <section>
+      <h2>Banners</h2>
+      <div class="stack">
+        <div class="kg-banner kg-banner--info">ℹ︎ 這是一則資訊提示。</div>
+        <div class="kg-banner kg-banner--success">✓ 已成功存入詞庫。</div>
+        <div class="kg-banner kg-banner--warning">⚠︎ 有 3 個詞彙到期待複習。</div>
+        <div class="kg-banner kg-banner--destructive">✕ 同步失敗，請稍後再試。</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Input</h2>
+      <input class="kg-input" placeholder="搜尋詞彙…">
+    </section>
+
+    <section>
+      <h2>Elevation (z0–z4 — the only shadow vocabulary, dark-boosted)</h2>
+      <div class="row">
+        <div class="elev-box kg-z0">z0</div>
+        <div class="elev-box kg-z1">z1</div>
+        <div class="elev-box kg-z2">z2</div>
+        <div class="elev-box kg-z3">z3</div>
+        <div class="elev-box kg-z4">z4</div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    // theme switcher
+    document.querySelectorAll('[data-set-theme]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const t = b.getAttribute('data-set-theme');
+        document.documentElement.setAttribute('data-theme', t);
+        document.querySelectorAll('[data-set-theme]').forEach((x) =>
+          x.setAttribute('aria-pressed', String(x === b)));
+      });
+    });
+
+    // build color swatches from the live computed token values
+    const TOKENS = [
+      ['--brand-hero', 'Brand Hero (CTA)'], ['--on-brand-hero', 'on Brand Hero'],
+      ['--accent', 'Accent (passive)'], ['--accent-subtle', 'Accent Subtle'],
+      ['--page-bg', 'Page'], ['--stage-bg', 'Stage'], ['--card-bg', 'Card'],
+      ['--text-primary', 'Text Primary'], ['--text-secondary', 'Text Secondary'],
+      ['--text-tertiary', 'Text Tertiary'], ['--text-quaternary', 'Text Quaternary'],
+      ['--success', 'Success'], ['--warning', 'Warning'],
+      ['--destructive', 'Destructive'], ['--info', 'Info'], ['--tint', 'Tint (chrome)'],
+    ];
+    const host = document.getElementById('swatches');
+    TOKENS.forEach(([v, label]) => {
+      const el = document.createElement('div');
+      el.className = 'swatch';
+      el.innerHTML =
+        `<div class="chip-color" style="background:var(${v})"></div>` +
+        `<div class="meta"><b>${label}</b><span>${v}</span></div>`;
+      host.appendChild(el);
+    });
+  </script>
+</body>
+</html>

@@ -31,7 +31,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["fonts/*", "shared/tokens.css", "content/popup.css"],
+      "resources": ["fonts/*", "shared/fonts.css", "shared/tokens.css", "content/popup.css"],
       "matches": ["<all_urls>"]
     }
   ],
