@@ -852,6 +852,15 @@
 "vocab.chromeIcon.translation.dismiss" = "번역 패널 닫기";
 "vocab.chromeIcon.todayReview.help" = "단축키 표시";
 "vocab.chromeIcon.todayReview.close" = "오늘의 복습 닫기";
+"vocab.chromeIcon.translation.detail" = "상세 보기";
+"vocab.chromeIcon.translation.expand" = "펼치기";
+"vocab.chromeIcon.translation.collapse" = "접기";
+"vocab.chromeIcon.translation.delete" = "삭제";
+"vocab.chromeIcon.todayReview.autoplay.on" = "자동 재생 끄기";
+"vocab.chromeIcon.todayReview.autoplay.off" = "자동 재생 켜기";
+"settings.inlineInfo.accessibility" = "추가 정보";
+"podcast.followToggle.follow" = "팔로우";
+"podcast.followToggle.unfollow" = "팔로우 취소";
 "vocab.chromeIcon.collocation.dismiss" = "연어 설명 닫기";
 
 // MARK: - Podcast Sleep Timer (track-11)
