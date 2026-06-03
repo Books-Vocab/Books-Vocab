@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -165,11 +166,27 @@ def create_admin_handlers(
         )
 
     def _safe_user_dir(uid: str) -> Path:
-        """Resolve user directory, rejecting path traversal."""
-        users_root = runtime_settings_fn().data_dir / "users"
+        """Resolve user directory, rejecting path traversal.
+
+        Defense in depth (Track-5): the boundary check below uses
+        ``commonpath`` rather than a bare ``startswith`` prefix. A prefix
+        check has no trailing-separator guard, so ``users_root=<data>/users``
+        with ``uid="../users-x"`` resolves to the sibling ``<data>/users-x``,
+        whose string still starts with ``<data>/users`` — leaking a neighbour
+        of the users root. ``commonpath`` compares path *components*, closing
+        that gap, and uids containing a path separator are rejected up front.
+        """
+        from fastapi import HTTPException
+
+        users_root = (runtime_settings_fn().data_dir / "users").resolve()
         user_dir = (users_root / uid).resolve()
-        if not str(user_dir).startswith(str(users_root.resolve())):
-            from fastapi import HTTPException
+        try:
+            within_root = (
+                os.path.commonpath([str(user_dir), str(users_root)]) == str(users_root)
+            )
+        except ValueError:
+            within_root = False  # different drives (Windows) → not under root
+        if "/" in uid or os.sep in uid or user_dir == users_root or not within_root:
             raise HTTPException(status_code=400, detail="Invalid user_id")
         return user_dir
 
