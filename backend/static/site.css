@@ -1,0 +1,282 @@
+/* ============================================================
+   KG public site shell  (HAND-AUTHORED — the official-website surface.)
+
+   Layers on top of kg-tokens.css (design tokens, generated, iOS-mirrored) and
+   kg-components.css (primitives). This file owns the *website* itself: brand
+   @font-face, the nav/footer chrome, the prose column, and the editorial
+   typography — all expressed through tokens so it stays in lock-step with iOS.
+
+   Surface-local @font-face: the woff2 live at /static/fonts/ (served by the
+   FastAPI StaticFiles mount). Headings use Cormorant Garamond — the brand serif
+   already shipped for italics — self-hosted upright so the public face matches
+   the app's serif voice instead of falling back to a system face.
+
+   北極星 mapping (mirrors kg-components.css): single warm surface, no borders
+   (divider instead), shadow capped at z1 for resting cards, one brand colour
+   (奶黃 brand-hero) for the single CTA, motion gated by reduced-motion.
+   ============================================================ */
+
+/* --- Brand fonts (served from /static/fonts/) ------------------------------ */
+
+@font-face { font-family: 'ElmsSans'; src: url('/static/fonts/ElmsSans-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'ElmsSans'; src: url('/static/fonts/ElmsSans-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-SemiBold.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Italic.woff2') format('woff2'); font-weight: 400 600; font-style: italic; font-display: swap; }
+
+/* --- Site-local tokens ----------------------------------------------------- */
+/* Web heading serif: lead with the self-hosted brand serif, then the iOS
+   system serif (unavailable on web), then a CJK serif for 中文 headings. */
+:root {
+  --site-serif: 'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif;
+  --site-measure: 42rem;          /* prose column width */
+  --site-nav-h: 56px;
+}
+
+/* --- Reset / base (北極星 1: one warm surface) ----------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body.kg-surface {
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  display: flex;
+  flex-direction: column;
+}
+
+::selection { background: var(--accent-subtle); color: var(--text-primary); }
+
+/* Skip link (a11y) — visually hidden until focused. */
+.skip-link {
+  position: absolute; left: var(--sp-3); top: -3rem;
+  background: var(--card-bg); color: var(--text-primary);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-control);
+  box-shadow: var(--elevation-z2); z-index: 50;
+  transition: top var(--motion-quick);
+}
+.skip-link:focus { top: var(--sp-3); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-control); }
+
+/* --- Nav (北極星 1: shares the page surface, no chrome divider line) -------- */
+
+.site-nav {
+  position: sticky; top: 0; z-index: 20;
+  height: var(--site-nav-h);
+  display: flex; align-items: center; gap: var(--sp-5);
+  padding: 0 var(--page-h-padding);
+  background: color-mix(in srgb, var(--page-bg) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+}
+.site-nav__brand {
+  font-family: var(--site-serif); font-size: var(--text-h2);
+  font-weight: 600; letter-spacing: var(--tracking-h2-tight);
+  color: var(--text-primary); text-decoration: none;
+  margin-right: auto;
+}
+.site-nav__links { display: flex; gap: var(--sp-4); list-style: none; align-items: center; }
+.site-nav__links a {
+  font-size: var(--text-caption); font-weight: 600;
+  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
+  color: var(--text-tertiary); text-decoration: none;
+  transition: color var(--motion-quick);
+}
+.site-nav__links a:hover { color: var(--text-primary); }
+.site-nav__links a[aria-current="page"] { color: var(--accent); }
+
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--tint); cursor: pointer;
+  font-size: 15px; line-height: 1;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+.theme-toggle:hover { background: var(--muted-fill); color: var(--text-primary); }
+
+/* --- Page column ----------------------------------------------------------- */
+
+.site-page {
+  flex: 1;
+  width: 100%; max-width: var(--site-measure);
+  margin: 0 auto;
+  padding: var(--sp-10) var(--page-h-padding) var(--sp-10);
+}
+
+.page-eyebrow {
+  font-size: var(--text-caption); font-weight: 700;
+  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: var(--sp-3);
+}
+.site-page h1 {
+  font-family: var(--site-serif);
+  font-size: var(--text-hero); line-height: var(--leading-display);
+  letter-spacing: var(--tracking-tight); font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-3);
+}
+.page-lead {
+  font-size: var(--text-subhead); line-height: var(--leading-body);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-9);
+}
+
+/* --- Section --------------------------------------------------------------- */
+
+.section { margin-bottom: var(--sp-9); }
+.section > h2 {
+  font-family: var(--site-serif);
+  font-size: var(--text-h2); line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-h2-tight); font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-4);
+}
+.section p {
+  color: var(--text-secondary); line-height: var(--leading-body);
+  margin-bottom: var(--sp-3);
+}
+.section p:last-child { margin-bottom: 0; }
+.section strong { color: var(--text-primary); font-weight: 700; }
+
+/* Inline links — accent, underline on hover (北極星 4: accent is passive). */
+.section a:not(.kg-btn), .contact-email, footer a {
+  color: var(--accent); text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: border-color var(--motion-quick), color var(--motion-quick);
+}
+.section a:not(.kg-btn):hover, .contact-email:hover, footer a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* --- Data table (北極星 2: divider lines, no boxed borders) ----------------- */
+
+.data-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-1); }
+.data-table th {
+  font-size: var(--text-caption); font-weight: 700;
+  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
+  color: var(--text-tertiary); text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-strong);
+}
+.data-table td {
+  font-size: var(--text-subhead); color: var(--text-secondary);
+  padding: var(--sp-3); border-bottom: 1px solid var(--divider);
+  vertical-align: top; line-height: var(--leading-body);
+}
+.data-table tr:last-child td { border-bottom: 0; }
+
+/* --- Checklist (card with divider rows, accent marks) ---------------------- */
+
+.checklist {
+  list-style: none;
+  background: var(--card-bg); border-radius: var(--radius-card);
+  box-shadow: var(--elevation-z1); overflow: hidden;
+}
+.checklist li {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--text-subhead); color: var(--text-secondary);
+  line-height: var(--leading-body);
+}
+.checklist li:last-child { border-bottom: 0; }
+.check-mark { color: var(--success); flex-shrink: 0; margin-top: 2px; font-weight: 700; }
+
+/* --- Plain list (em-dash bullets) ------------------------------------------ */
+
+.plain-list { list-style: none; }
+.plain-list li {
+  position: relative; padding: var(--sp-1) 0 var(--sp-1) var(--sp-4);
+  color: var(--text-secondary); line-height: var(--leading-body);
+}
+.plain-list li::before {
+  content: '—'; position: absolute; left: 0; top: var(--sp-1);
+  color: var(--accent);
+}
+
+/* --- FAQ (native <details> disclosure, card per item) ---------------------- */
+
+.faq { display: flex; flex-direction: column; gap: var(--sp-3); }
+.faq-item {
+  background: var(--card-bg); border-radius: var(--radius-card);
+  box-shadow: var(--elevation-z1); overflow: hidden;
+}
+.faq-item > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: var(--sp-3) var(--card-padding);
+  font-size: var(--text-subhead); font-weight: 700; color: var(--text-primary);
+  transition: background var(--motion-quick);
+}
+.faq-item > summary::-webkit-details-marker { display: none; }
+.faq-item > summary::after {
+  content: '+'; color: var(--text-tertiary); font-weight: 400; font-size: 1.25em; line-height: 1;
+}
+.faq-item[open] > summary::after { content: '\2212'; }   /* − minus */
+.faq-item > summary:hover { background: var(--muted-fill); }
+.faq-body {
+  padding: 0 var(--card-padding) var(--sp-3);
+  color: var(--text-secondary); line-height: var(--leading-body);
+}
+.response-tag {
+  display: inline-block; font-size: var(--text-caption2); font-weight: 600;
+  color: var(--accent); background: var(--accent-subtle);
+  padding: var(--sp-micro) var(--sp-2); border-radius: var(--radius-chip);
+  margin-top: var(--sp-2);
+}
+
+/* --- Contact card ---------------------------------------------------------- */
+
+.contact-card {
+  background: var(--card-bg); border-radius: var(--radius-card);
+  padding: var(--card-padding); box-shadow: var(--elevation-z1);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.contact-card .contact-email { font-size: var(--text-subhead); font-weight: 600; }
+
+/* --- Footer ---------------------------------------------------------------- */
+
+.site-footer {
+  margin-top: auto;
+  margin-left: var(--page-h-padding); margin-right: var(--page-h-padding);
+  padding: var(--sp-6) 0;
+  border-top: 1px solid var(--divider);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: var(--sp-3);
+}
+.site-footer__copy { font-size: var(--text-caption); color: var(--text-tertiary); }
+.site-footer__links { display: flex; gap: var(--sp-4); list-style: none; }
+.site-footer__links a {
+  font-size: var(--text-caption); color: var(--text-tertiary);
+  text-decoration: none; border: 0;
+  transition: color var(--motion-quick);
+}
+.site-footer__links a:hover { color: var(--text-primary); border: 0; }
+
+/* --- Responsive ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+  .site-nav { gap: var(--sp-3); padding: 0 var(--sp-4); }
+  .site-nav__links { gap: var(--sp-3); }
+  .site-nav__brand { font-size: var(--text-section-title); }
+  .site-page { padding: var(--sp-7) var(--sp-4) var(--sp-8); }
+  .site-page h1 { font-size: var(--text-h1); }
+  .data-table th:first-child, .data-table td:first-child { padding-left: 0; }
+}
+
+/* --- Reduced motion (web equivalent of accessibilityReduceMotion) ---------- */
+/* Durations already collapse via kg-tokens.css; here we also neutralise smooth
+   scroll so navigation is instant rather than animated. */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
