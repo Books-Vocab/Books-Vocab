@@ -172,11 +172,16 @@ actor BackgroundSyncActor {
     }
 
     /// Deletes ALL per-user local SwiftData state — vocabulary, review records,
-    /// notebooks, and podcast (series / episode / progress). This is the single
-    /// local-cleanup entry point for logout and account switch, so it must cover
-    /// every user-scoped @Model: leaving any model behind leaks account A's data
-    /// into account B's session (e.g. followed podcast series + playback
-    /// progress survived the switch before this covered podcasts).
+    /// notebooks, podcast (series / episode / progress), and books. This is the
+    /// single local-cleanup entry point for logout and account switch, so it must
+    /// cover every user-scoped @Model: leaving any model behind leaks account A's
+    /// data into account B's session (e.g. followed podcast series + playback
+    /// progress, and imported books with reading position/progress, survived the
+    /// switch before this covered them).
+    ///
+    /// Scope: SwiftData @Model rows only. On-disk book files (Documents/Books,
+    /// iCloud Documents/Books) are deliberately NOT removed — that storage is
+    /// per-Apple-ID, not per-app-account, and touching it is a separate concern.
     ///
     /// Podcast deletion notes:
     /// - `PodcastSeries.episodes` is a `.cascade` relationship, so deleting a
@@ -188,7 +193,7 @@ actor BackgroundSyncActor {
     /// - `PodcastProgress` is an independent @Model (no relationship) and must
     ///   be deleted on its own.
     func clearUserData(reason: String) throws {
-        AppLog.sync.info("Clearing all local user data (vocab + review + notebook + podcast)... reason=\(reason)")
+        AppLog.sync.info("Clearing all local user data (vocab + review + notebook + podcast + books)... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
@@ -215,8 +220,16 @@ actor BackgroundSyncActor {
         for p in progress {
             modelContext.delete(p)
         }
+        // `Book` is a user-scoped @Model (title/author/cover + reading position
+        // & progression). It has no relationships, so a flat fetch+delete is
+        // correct. Disk book files (Documents/Books, iCloud) are intentionally
+        // left untouched — that is per-Apple-ID storage, out of scope here.
+        let books = try modelContext.fetch(FetchDescriptor<Book>())
+        for book in books {
+            modelContext.delete(book)
+        }
         try modelContext.save()
-        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks + \(series.count) podcast series + \(episodes.count) orphan episodes + \(progress.count) podcast progress. reason=\(reason)")
+        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks + \(series.count) podcast series + \(episodes.count) orphan episodes + \(progress.count) podcast progress + \(books.count) books. reason=\(reason)")
     }
 
     /// Returns the number of synced entries in the local store.
