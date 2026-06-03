@@ -150,18 +150,33 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
         Task {
-            defer {
-                GIDSignIn.sharedInstance.signOut()
-                self.userId = nil
-                self.token = nil
-                self.displayName = nil
-                self.userEmail = nil
-                self.avatarURL = nil
-                self.sessionStore.clearSession()
-                self.isLoggedIn = false
-            }
+            // Clear session state UP FRONT, before awaiting clearLocalData. The cleanup hops to
+            // BackgroundSyncActor — a real suspension that yields the MainActor. Doing the nils
+            // + clearSession() after that await (the old order) opened a TOCTOU window: a
+            // login() in that window was unconditionally wiped back to nil on resume, kicking
+            // the user out right after they signed back in. clearLocalData needs only the
+            // container + reason (no userId/token), so front-loading is safe.
+            GIDSignIn.sharedInstance.signOut()
+            self.userId = nil
+            self.token = nil
+            self.displayName = nil
+            self.userEmail = nil
+            self.avatarURL = nil
+            self.sessionStore.clearSession()
+            self.isLoggedIn = false
+
             if let container {
                 await localDataCleaner.clearLocalData(container: container, reason: reason)
+            }
+
+            // Stale-guard (mirrors SubscriptionManager+Refresh requestUserId check), second line
+            // of defence after the up-front teardown. The teardown left userId == nil; if a
+            // login() interleaved during the await, userId is now non-nil — a fresh session we
+            // must not touch. Should any post-cleanup teardown ever be added below, it stops
+            // here in that race.
+            guard self.userId == nil else {
+                AppLog.auth.info("logout: session re-established during cleanup; skipping post-cleanup teardown")
+                return
             }
         }
     }
