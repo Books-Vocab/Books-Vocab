@@ -1,208 +1,58 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Guide — Books & Vocab</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg:       #f8f7f4;
-      --surface:  #fcfbfa;
-      --border:   #dbd6cd;
-      --border-l: #e8e4db;
-      --ink:      #2a2520;
-      --sub:      #7a756c;
-      --ink-light:#5a5550;
-    }
+  <title>使用指南 — Books &amp; Vocab</title>
+  <meta name="description" content="Books &amp; Vocab 使用指南：快速上手匯入 EPUB 書籍、閱讀查詞、生詞管理與雲端同步。">
+  <meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#191919" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="使用指南 — Books &amp; Vocab">
+  <meta property="og:description" content="快速上手 Books &amp; Vocab：匯入 EPUB 書籍、閱讀查詞、生詞管理與雲端同步。">
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <!-- No-FOUC theme: stored choice, else system preference. Runs before paint. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('kg-site-theme');
+        if (t !== 'light' && t !== 'dark' && t !== 'sepia') {
+          t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
 
-    body {
-      background: var(--bg);
-      color: var(--ink);
-      font-family: 'Noto Sans TC', sans-serif;
-      font-weight: 300;
-      line-height: 1.8;
-      min-height: 100vh;
-    }
-
-    nav {
-      height: 52px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 32px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    .nav-brand {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      font-weight: 500;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: var(--ink);
-      text-decoration: none;
-    }
-
-    .nav-links { display: flex; gap: 28px; list-style: none; }
-
-    .nav-links a {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-      color: var(--sub);
-      text-decoration: none;
-      transition: color .15s;
-    }
-
-    .nav-links a:hover { color: var(--ink); }
-
-    .page {
-      max-width: 680px;
-      margin: 0 auto;
-      padding: 72px 24px 96px;
-    }
-
-    .page-label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: .16em;
-      text-transform: uppercase;
-      color: var(--sub);
-      margin-bottom: 16px;
-    }
-
-    h1 {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 24px;
-      font-weight: 500;
-      letter-spacing: .02em;
-      color: var(--ink);
-      margin-bottom: 12px;
-    }
-
-    .lead {
-      font-size: 14px;
-      color: var(--sub);
-      margin-bottom: 56px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: .02em;
-    }
-
-    .section { margin-bottom: 48px; }
-
-    .section-label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: .16em;
-      text-transform: uppercase;
-      color: var(--sub);
-      margin-bottom: 20px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border-l);
-    }
-
-    p {
-      font-size: 14px;
-      color: var(--ink-light);
-      line-height: 1.9;
-      margin-bottom: 14px;
-    }
-
-    p:last-child { margin-bottom: 0; }
-
-    .plain-list { list-style: none; padding: 0; }
-
-    .plain-list li {
-      font-size: 14px;
-      color: var(--ink-light);
-      line-height: 1.9;
-      padding: 4px 0 4px 16px;
-      position: relative;
-    }
-
-    .plain-list li::before {
-      content: '—';
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      color: var(--sub);
-      position: absolute;
-      left: 0;
-      top: 6px;
-    }
-
-    a {
-      color: var(--ink);
-      text-decoration: none;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 1px;
-      transition: border-color .15s;
-    }
-
-    a:hover { border-color: var(--ink); }
-
-    footer {
-      border-top: 1px solid var(--border-l);
-      padding: 28px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    .footer-copy {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      color: var(--sub);
-      letter-spacing: .04em;
-    }
-
-    .footer-links { display: flex; gap: 20px; list-style: none; }
-
-    .footer-links a {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      color: var(--sub);
-      text-decoration: none;
-      border: none;
-      letter-spacing: .04em;
-      transition: color .15s;
-    }
-
-    .footer-links a:hover { color: var(--ink); }
-  </style>
+  <link rel="preload" href="/static/fonts/ElmsSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/CormorantGaramond-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/kg-tokens.css">
+  <link rel="stylesheet" href="/static/kg-components.css">
+  <link rel="stylesheet" href="/static/site.css">
 </head>
-<body>
+<body class="kg-surface">
 
-  <nav>
-    <a class="nav-brand" href="/">Books &amp; Vocab</a>
-    <ul class="nav-links">
+  <a class="skip-link" href="#main">跳至主要內容</a>
+
+  <nav class="site-nav" aria-label="主導覽">
+    <a class="site-nav__brand" href="/">Books &amp; Vocab</a>
+    <ul class="site-nav__links">
+      <li><a href="/guide.html" aria-current="page">Guide</a></li>
       <li><a href="/support.html">Support</a></li>
       <li><a href="/privacy.html">Privacy</a></li>
       <li><a href="/terms.html">Terms</a></li>
     </ul>
+    <button class="theme-toggle" type="button" aria-label="切換深色／淺色主題">☾</button>
   </nav>
 
-  <main class="page">
+  <main class="site-page" id="main">
 
-    <p class="page-label">Guide</p>
+    <p class="page-eyebrow">Guide</p>
     <h1>使用指南</h1>
-    <p class="lead">快速上手 Books &amp; Vocab</p>
+    <p class="page-lead">快速上手 Books &amp; Vocab</p>
 
     <section class="section">
-      <p class="section-label">匯入書籍</p>
+      <h2>匯入書籍</h2>
       <p>Books &amp; Vocab 支援 EPUB 格式的電子書。你可以透過以下方式將書籍加入書庫：</p>
       <ul class="plain-list">
         <li>在書庫頁面點擊右上角「＋」按鈕，從檔案 App 選取 EPUB 檔案</li>
@@ -211,29 +61,47 @@
     </section>
 
     <section class="section">
-      <p class="section-label">閱讀與查詞</p>
+      <h2>閱讀與查詞</h2>
       <p>開啟書籍後，長按任意單字即可查看翻譯與語境解釋。查詢過的單字會自動加入你的生詞庫。</p>
     </section>
 
     <section class="section">
-      <p class="section-label">生詞管理</p>
+      <h2>生詞管理</h2>
       <p>切換到「生詞庫」分頁，可以瀏覽、搜尋、複習所有收錄的單字。登入後生詞會自動同步至雲端，跨裝置可用。</p>
     </section>
 
     <section class="section">
-      <p class="section-label">需要更多幫助？</p>
+      <h2>需要更多幫助？</h2>
       <p>前往 <a href="/support.html">支援頁面</a> 或寄信至 <a href="mailto:max970228@gmail.com">max970228@gmail.com</a>。</p>
     </section>
 
   </main>
 
-  <footer>
-    <span class="footer-copy">&copy; 2026 Books &amp; Vocab</span>
-    <ul class="footer-links">
+  <footer class="site-footer">
+    <span class="site-footer__copy">© 2026 Books &amp; Vocab</span>
+    <ul class="site-footer__links">
+      <li><a href="/guide.html">Guide</a></li>
       <li><a href="/support.html">Support</a></li>
       <li><a href="/privacy.html">Privacy</a></li>
+      <li><a href="/terms.html">Terms</a></li>
     </ul>
   </footer>
+
+  <script>
+    (function () {
+      var btn = document.querySelector('.theme-toggle');
+      if (!btn) return;
+      var root = document.documentElement;
+      function sync() { btn.textContent = root.getAttribute('data-theme') === 'dark' ? '☀' : '☾'; }
+      sync();
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('kg-site-theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
 
 </body>
 </html>
