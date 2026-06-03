@@ -24,13 +24,15 @@ if cred_path and not Path(cred_path).is_absolute():
 from google import genai
 from google.genai import types as genai_types
 
+from tts_config import DEFAULT_TTS_MODEL
+
 client = genai.Client(
     vertexai=True,
     project=os.getenv("GCP_PROJECT_ID", "").strip(),
     location=os.getenv("GCP_LOCATION", "us-central1").strip(),
 )
 
-model = os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()
+model = os.getenv("TTS_MODEL", DEFAULT_TTS_MODEL).strip()
 
 response = client.models.generate_content(
     model=model,
