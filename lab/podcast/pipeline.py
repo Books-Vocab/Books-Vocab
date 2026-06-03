@@ -4,6 +4,7 @@
 # dependencies = [
 #     "ebooklib",
 #     "beautifulsoup4",
+#     "boto3",
 # ]
 # ///
 """Book-to-Podcast Pipeline — EPUB → analysis → plan → scripts → audio → subtitles.
