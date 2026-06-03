@@ -309,15 +309,148 @@ body.kg-surface {
   text-transform: uppercase; color: var(--text-tertiary);
 }
 
+/* Faint brand-hero wash behind the hero — stays inside the warm palette,
+   landing-only (prose pages use .site-page, not .hero). */
+.hero { position: relative; isolation: isolate; }
+.hero::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(120% 80% at 50% -10%, color-mix(in srgb, var(--brand-hero) 10%, transparent), transparent 60%);
+}
+
+/* --- Hero: showcase variant (copy left, token-rendered device mock right) --- */
+
+.hero--showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: var(--sp-9); align-items: center;
+  max-width: 72rem; text-align: left;
+  padding: var(--sp-10) var(--page-h-padding) var(--sp-9);
+  overflow-x: clip;
+}
+.hero--showcase .hero__copy { display: flex; flex-direction: column; align-items: flex-start; }
+.hero--showcase .hero__tagline { margin-left: 0; max-width: 34rem; }
+.hero--showcase .hero__cta,
+.hero--showcase .hero__trust { justify-content: flex-start; }
+
+/* Honest trust strip (formats + platform only — never a metric). */
+.hero__trust {
+  list-style: none; display: flex; flex-wrap: wrap;
+  gap: var(--sp-2); margin-top: var(--sp-5); padding: 0;
+  justify-content: center;
+}
+
+/* Token-rendered iPhone mock — illustrative, never a claimed screenshot.
+   z3 is the sanctioned carve-out ONLY here (hero centerpiece, not a resting
+   card); the inner translation popover is the z2 overlay tier; all screen
+   content stays z0/z1. Every fill is a token (theme-reactive). */
+.device { position: relative; width: min(320px, 78%); margin-inline: auto; }
+.device::before {
+  content: ''; position: absolute; inset: -12% -8%; z-index: -1;
+  background: radial-gradient(60% 55% at 50% 45%, var(--accent-subtle), transparent 70%);
+}
+.device__frame {
+  position: relative; padding: 10px; border-radius: 44px;
+  background: color-mix(in srgb, #000 82%, var(--text-primary));
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  box-shadow: var(--elevation-z3);
+}
+.device__island {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  width: 84px; height: 24px; border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #000 88%, var(--text-primary)); z-index: 3;
+}
+.device__screen {
+  position: relative; aspect-ratio: 390 / 844;
+  border-radius: 34px; overflow: hidden;
+  background: var(--page-bg); padding: var(--sp-6) var(--sp-4) var(--sp-4);
+}
+.device__statusbar {
+  display: flex; justify-content: space-between;
+  font-size: var(--text-caption2); color: var(--text-tertiary);
+  margin-bottom: var(--sp-4);
+}
+.device__readtitle {
+  font-family: var(--site-serif); font-size: var(--text-subhead);
+  color: var(--text-primary); margin-bottom: var(--sp-3);
+}
+.device__prose {
+  font-family: var(--font-serif); font-size: var(--text-subhead);
+  line-height: var(--leading-reading); color: var(--text-secondary);
+  text-align: justify;
+}
+.device__vocab {
+  background: var(--vocab-highlight); color: var(--text-primary);
+  border-radius: var(--radius-xs); padding: 0 2px;
+}
+.device__popover {
+  position: absolute; left: var(--sp-4); right: var(--sp-4); bottom: var(--sp-6);
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  border-radius: var(--radius-lg); box-shadow: var(--elevation-z2);
+  padding: var(--sp-4);
+}
+.device__pop-tail {
+  position: absolute; top: -6px; left: 30%; width: 12px; height: 12px;
+  background: var(--card-bg);
+  border-left: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  transform: rotate(45deg);
+}
+.device__pop-head { display: flex; align-items: baseline; gap: var(--sp-2); }
+.device__pop-word {
+  font-family: var(--site-serif); font-size: var(--text-section-title);
+  color: var(--text-primary);
+}
+.device__pop-pos {
+  font-size: var(--text-caption2); color: var(--accent);
+  background: var(--accent-subtle);
+  padding: var(--sp-micro) var(--sp-2); border-radius: var(--radius-chip);
+}
+.device__pop-tr { font-size: var(--text-subhead); color: var(--text-primary); margin-top: var(--sp-1); }
+.device__pop-ctx { font-size: var(--text-caption); color: var(--text-secondary); line-height: var(--leading-body); margin-top: var(--sp-1); }
+.device__pop-save {
+  display: inline-flex; align-items: center; gap: var(--sp-1); margin-top: var(--sp-3);
+  background: var(--brand-hero); color: var(--on-brand-hero);
+  font-weight: 700; font-size: var(--text-caption);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-pill);
+}
+
+@media (max-width: 860px) {
+  .hero--showcase { grid-template-columns: 1fr; text-align: center; gap: var(--sp-7); }
+  .hero--showcase .hero__copy { align-items: center; }
+  .hero--showcase .hero__tagline { margin-inline: auto; }
+  .hero--showcase .hero__cta,
+  .hero--showcase .hero__trust { justify-content: center; }
+  .device { width: min(300px, 70vw); }
+}
+@media (max-width: 600px) { .device { width: min(260px, 64vw); } }
+
+/* Ambient hero float — opt-in (excluded for reduced-motion users by the query). */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes hero-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  .device__frame { animation: hero-float 6s ease-in-out infinite; }
+}
+
 .landing-section {
   width: 100%; max-width: 60rem; margin: 0 auto;
   padding: var(--sp-6) var(--page-h-padding) var(--sp-9);
 }
 .feature-grid {
   display: grid; gap: var(--sp-4);
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(2, 1fr);
 }
-.feature-card { display: flex; flex-direction: column; gap: var(--sp-2); }
+.feature-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-6); }
+/* iOS-style icon tile: accent glyph on an accent-subtle rounded square. */
+.feature-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.75rem; height: 2.75rem; margin-bottom: var(--sp-2);
+  border-radius: var(--radius-md);
+  background: var(--accent-subtle); color: var(--accent);
+}
+.feature-icon svg {
+  width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
 .feature-eyebrow {
   font-size: var(--text-caption); font-weight: 700;
   letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
@@ -329,6 +462,75 @@ body.kg-surface {
   font-weight: 700; color: var(--text-primary);
 }
 .feature-card p { color: var(--text-secondary); line-height: var(--leading-body); }
+
+/* --- How it works (3-step journey on a divider connector, not cards) -------- */
+
+.how-it-works {
+  max-width: 60rem; margin: 0 auto;
+  padding: var(--sp-9) var(--page-h-padding) var(--sp-7);
+  text-align: center;
+}
+.section-eyebrow {
+  font-size: var(--text-caption); font-weight: 700;
+  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
+  color: var(--text-tertiary); margin-bottom: var(--sp-2);
+}
+.section-title {
+  font-family: var(--site-serif); font-size: var(--text-h1);
+  line-height: var(--leading-heading); font-weight: 700;
+  color: var(--text-primary); margin-bottom: var(--sp-8);
+}
+.steps {
+  list-style: none; position: relative;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-6);
+}
+.steps::before {
+  content: ''; position: absolute; top: 1.25rem; left: 14%; right: 14%;
+  height: 1px; background: var(--divider);
+}
+.step { display: flex; flex-direction: column; align-items: center; }
+.step__num {
+  position: relative;
+  display: inline-flex; width: 2.5rem; height: 2.5rem;
+  align-items: center; justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent-subtle); color: var(--accent);
+  font-family: var(--site-serif); font-size: var(--text-h2); font-weight: 700;
+}
+.step h3 {
+  font-family: var(--site-serif); font-size: var(--text-section-title);
+  font-weight: 700; color: var(--text-primary); margin-top: var(--sp-3);
+}
+.step p { color: var(--text-secondary); font-size: var(--text-subhead); margin-top: var(--sp-1); max-width: 18rem; }
+@media (max-width: 640px) {
+  .steps { grid-template-columns: 1fr; gap: var(--sp-5); }
+  .steps::before { top: 0; bottom: 0; left: 1.25rem; right: auto; width: 1px; height: auto; }
+}
+
+/* --- Knowledge-graph showcase (signature feature, token-rendered SVG) ------- */
+
+.graph-showcase {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-8);
+  align-items: center; max-width: 60rem; margin: 0 auto;
+  padding: var(--sp-8) var(--page-h-padding);
+}
+.graph-showcase h2 {
+  font-family: var(--site-serif); font-size: var(--text-h2);
+  line-height: var(--leading-heading); font-weight: 700;
+  color: var(--text-primary); margin-block: var(--sp-2);
+}
+.graph-showcase p { color: var(--text-secondary); line-height: var(--leading-body); }
+/* SVG fills via CSS (NOT presentation attributes — var() is unreliable as an
+   attribute value; as CSS it resolves and stays theme-reactive). */
+.kg-graph { width: 100%; height: auto; }
+.kg-graph__edges { stroke: var(--card-border); stroke-width: 1.5; fill: none; }
+.kg-graph__nodes text { font-family: var(--font-sans); fill: var(--accent); }
+.kg-graph__nodes rect { fill: var(--accent-subtle); }
+.kg-graph__nodes .is-focus rect { fill: var(--brand-hero); }
+.kg-graph__nodes .is-focus text { fill: var(--on-brand-hero); }
+@media (max-width: 860px) {
+  .graph-showcase { grid-template-columns: 1fr; gap: var(--sp-5); }
+}
 
 .closing {
   flex: 0 0 auto;
@@ -355,20 +557,82 @@ body.kg-surface {
 
 .site-footer {
   margin-top: auto;
-  margin-left: var(--page-h-padding); margin-right: var(--page-h-padding);
-  padding: var(--sp-6) 0;
+  margin-inline: var(--page-h-padding);
+  padding: var(--sp-9) 0 var(--sp-6);
   border-top: 1px solid var(--divider);
-  display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: var(--sp-3);
+  display: grid; grid-template-columns: 1.4fr repeat(3, 1fr);
+  gap: var(--sp-7); align-items: start;
 }
-.site-footer__copy { font-size: var(--text-caption); color: var(--text-tertiary); }
-.site-footer__links { display: flex; gap: var(--sp-4); list-style: none; }
-.site-footer__links a {
+.footer-brand__name {
+  font-family: var(--site-serif); font-size: var(--text-h2);
+  font-weight: 700; color: var(--text-primary);
+}
+.footer-brand__desc { font-size: var(--text-caption); color: var(--text-tertiary); margin-top: var(--sp-2); }
+.footer-brand__platform { font-size: var(--text-caption2); color: var(--text-quaternary); margin-top: var(--sp-2); }
+.footer-col h3 {
+  font-size: var(--text-caption); text-transform: uppercase;
+  letter-spacing: var(--tracking-uppercase); color: var(--text-tertiary);
+  font-weight: 700; margin-bottom: var(--sp-3);
+}
+.footer-col ul { list-style: none; }
+.footer-col li { margin-bottom: var(--sp-2); }
+/* Scope footer-col links to stay borderless tertiary (the generic `footer a`
+   rule above adds an accent underline; that's for inline prose links). */
+.footer-col a {
   font-size: var(--text-caption); color: var(--text-tertiary);
   text-decoration: none; border: 0;
   transition: color var(--motion-quick);
 }
-.site-footer__links a:hover { color: var(--text-primary); border: 0; }
+.footer-col a:hover { color: var(--text-primary); border: 0; }
+.footer-meta {
+  grid-column: 1 / -1; border-top: 1px solid var(--divider);
+  margin-top: var(--sp-5); padding-top: var(--sp-4);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3);
+  font-size: var(--text-caption2); color: var(--text-quaternary);
+}
+@media (max-width: 640px) {
+  .site-footer { grid-template-columns: 1fr 1fr; gap: var(--sp-6); }
+}
+
+/* --- Motion & depth (progressive enhancement; reduced-motion + no-JS safe) -- */
+/* Reveal is gated on .js (set by the head script) so without JS the content is
+   NEVER hidden; site-motion.js adds .is-in when each element scrolls into view,
+   wiring the otherwise-dead --transition-panel-reveal token. */
+
+.js .reveal {
+  opacity: 0; transform: translateY(16px);
+  transition: var(--transition-panel-reveal);
+  transition-delay: calc(var(--reveal-i, 0) * 60ms);
+}
+.js .reveal.is-in { opacity: 1; transform: none; }
+
+/* Sticky nav gains a hairline + lift once scrolled (class toggled by JS). */
+.site-nav { transition: box-shadow var(--motion-standard), background var(--motion-standard); }
+.site-nav--scrolled {
+  background: color-mix(in srgb, var(--page-bg) 94%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--card-border) 70%, transparent), var(--elevation-z1);
+}
+
+/* Nav link underline grows from the left on hover. */
+.site-nav__links a { position: relative; }
+.site-nav__links a::after {
+  content: ''; position: absolute; left: 0; bottom: -4px;
+  height: 1px; width: 100%; background: currentColor;
+  transform: scaleX(0); transform-origin: left;
+  transition: transform var(--motion-standard);
+}
+.site-nav__links a:hover::after { transform: scaleX(1); }
+
+/* App Store CTA: 1px spring lift on hover (Motion Contract: transform + shadow). */
+.hero__cta .kg-btn--appstore, .closing .kg-btn--appstore {
+  transition: opacity var(--motion-quick), transform var(--motion-standard), box-shadow var(--motion-standard);
+}
+.hero__cta .kg-btn--appstore:hover, .closing .kg-btn--appstore:hover {
+  transform: translateY(-1px); box-shadow: var(--elevation-z1);
+}
+
+/* Centered short divider between landing blocks. */
+.site-divider { width: 40px; height: 1px; border: 0; margin: var(--sp-2) auto; background: var(--divider); }
 
 /* --- Responsive ------------------------------------------------------------ */
 
@@ -383,6 +647,7 @@ body.kg-surface {
   }
   .site-page h1 { font-size: var(--text-h1); }
   .data-table th:first-child, .data-table td:first-child { padding-left: 0; }
+  .feature-grid { grid-template-columns: 1fr; }
 }
 
 /* --- Reduced motion (web equivalent of accessibilityReduceMotion) ---------- */
@@ -391,4 +656,8 @@ body.kg-surface {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  .js .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .site-nav, .site-nav__links a::after,
+  .hero__cta .kg-btn--appstore, .closing .kg-btn--appstore { transition: none; }
+  .device__frame { animation: none !important; }
 }
