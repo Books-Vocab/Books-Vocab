@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: c642ed18
+verified_against: 80147399
 -->
 # Chrome Extension Feature Boundary
 
@@ -23,7 +23,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `content/content.js` | 443 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()` |
+| `content/content.js` | 502 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效 |
 | `content/popup.css` | — | popup 樣式（tokens.css 子集） |
 
 ### Sidepanel Layer（主 UI）
@@ -49,8 +49,9 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | `shared/api.js` | 219 | `wordnexus.lol` HTTP client + auth header |
 | `shared/pure.js` | 348 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist） |
 | `shared/pure.test.js` | 450 | `pure.js` 單元測試 |
-| `shared/theme.js` | 74 | 深淺色主題切換 |
-| `shared/tokens.css` | — | 設計 token（與 iOS Design System 對齊） |
+| `shared/theme.js` | 44 | 深淺色主題切換 |
+| `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
+| `shared/fonts.css` | — | surface-local `@font-face`（woff2 URL；font *family* 為 tokens.css 的 `--font-*` token，URL 各 surface 自帶） |
 
 ## 對外契約
 
@@ -72,3 +73,4 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 新增 / 刪除主要 JS 檔案 | 本檔對應 Layer 表 |
 | 改 `shared/api.js` 呼叫的 backend endpoint | [`tech_index.md`](../tech_index.md) router 章節 |
 | 改認證流程 | [`docs/sop/architecture.md`](../../sop/architecture.md) auth 段 |
+| 改設計 token / 配色 | 改 `design-system/tokens.json` 再跑 `ops/gen_web_tokens.py` 重生 `shared/tokens.css`（禁直接手改生成檔；drift 由 `ops/token_drift_check.py` 守） |
