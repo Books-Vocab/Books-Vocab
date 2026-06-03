@@ -89,6 +89,19 @@ def test_subtitle_endpoint(podcast_api):
     assert resp.text == srt_content
 
 
+def test_subtitle_disk_tolerates_invalid_utf8(podcast_api):
+    # A subtitle file with a stray non-UTF-8 byte must not 500 the endpoint.
+    # The disk read mirrors the S3 path's errors="replace" tolerance.
+    api, podcasts = podcast_api
+    ep_dir = podcasts / "series_a" / "ep_01"
+    ep_dir.mkdir(parents=True)
+    (ep_dir / "subtitle.srt").write_bytes(b"1\nHello \xff world\n")
+    resp = api.client.get("/api/podcasts/series_a/1/subtitle", headers=api.headers)
+    assert resp.status_code == 200
+    assert "Hello" in resp.text
+    assert "world" in resp.text
+
+
 def test_subtitle_not_found(podcast_api):
     api, podcasts = podcast_api
     (podcasts / "series_a").mkdir()

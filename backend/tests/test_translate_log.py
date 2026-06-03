@@ -68,6 +68,19 @@ def test_get_log():
     assert len(logs) == 1
     assert logs[0]["word"] == "evoke"
 
+def test_get_log_includes_model():
+    # `model` is the last column (added via ALTER TABLE after CREATE), so the
+    # SELECT * → zip(cols, row) mapping must list it or it gets silently dropped.
+    record(
+        user_id="u1", operation="translate_quick", word="evoke",
+        context="ctx", context_hash="abc123",
+        source_lang="en", target_lang="zh-Hant",
+        response_raw='{"t":"喚起"}', latency_ms=100, model="gpt-x",
+    )
+    logs = get_log("u1")
+    assert len(logs) == 1
+    assert logs[0]["model"] == "gpt-x"
+
 
 def test_lookup_expired_cache(tmp_path, monkeypatch):
     """Entries older than CACHE_TTL_DAYS should not be returned by lookup."""

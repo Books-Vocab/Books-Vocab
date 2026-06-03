@@ -230,5 +230,8 @@ def get_log(
     with _lock:
         conn = _get_conn()
         rows = conn.execute(sql, tuple(params)).fetchall()
-    cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at"]
+    # Column order must match `SELECT *` on translate_log: the 11 CREATE-TABLE
+    # columns followed by `model` (appended via ALTER TABLE). Omitting `model`
+    # makes zip() truncate the row and silently drop the field.
+    cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at","model"]
     return [dict(zip(cols, row)) for row in rows]
