@@ -28,7 +28,7 @@ COPY --from=builder /install /usr/local
 COPY src/ src/
 COPY tests/ tests/
 COPY pytest.ini ./
-COPY privacy.html support.html terms.html guide.html ./
+COPY index.html privacy.html support.html terms.html guide.html ./
 COPY static/ static/
 COPY ops_cli.py ops_analyze.py ./
 
