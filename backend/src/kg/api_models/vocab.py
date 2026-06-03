@@ -50,6 +50,10 @@ class BatchDeleteResponse(BaseModel):
     deleted: int
     deleted_words: list[str]
     not_found: list[str]
+    # Words whose graph cleanup failed: the card was restored and still exists
+    # on the server. Clients must retry these, NOT converge them locally. See
+    # #720 / docs/reference/sync_lifecycle.md. Defaulted so older payloads parse.
+    failed: list[str] = Field(default_factory=list)
 
 
 class BatchArchiveRequest(BaseModel):
@@ -61,3 +65,7 @@ class BatchArchiveResponse(BaseModel):
     updated: int
     updated_words: list[str]
     not_found: list[str]
+    # Words whose graph cleanup/restore failed: the archive state was rolled
+    # back and the card still exists on the server. Clients must retry these,
+    # NOT converge them. See #720 / docs/reference/sync_lifecycle.md.
+    failed: list[str] = Field(default_factory=list)
