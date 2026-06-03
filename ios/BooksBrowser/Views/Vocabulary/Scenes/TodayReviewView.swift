@@ -66,6 +66,7 @@ struct TodayReviewView: View {
     @State private var isHelpPresented = false
     @State private var showAddLink = false
     @State private var explainSheetItem: CollocationExplainItem? = nil
+    @State private var currentCollocationExplanations: [String: String] = [:]
     #if targetEnvironment(macCatalyst)
     @State private var hasConsumedShortcutHint = false
     @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
@@ -134,12 +135,13 @@ struct TodayReviewView: View {
                 )
             },
             onDeleteCollocationExplanation: { collocation in
-                state.currentEntry?.collocationExplanations.removeValue(forKey: collocation)
+                updateCollocationExplanation(nil, for: collocation)
             },
-            collocationExplanations: state.currentEntry?.collocationExplanations ?? [:]
+            collocationExplanations: currentCollocationExplanations
         )
         .toastOverlay()
         .task {
+            refreshCurrentCollocationExplanations()
             // A restored session may hold answers whose background DB flush
             // failed last run (flushed=false). Re-flush them so the card
             // schedule catches up; idempotent, so a clean restore is a no-op.
@@ -190,13 +192,16 @@ struct TodayReviewView: View {
                 context: item.context,
                 existingExplanation: item.existingExplanation,
                 onSave: { explanation in
-                    state.currentEntry?.collocationExplanations[item.collocation] = explanation
+                    updateCollocationExplanation(explanation, for: item.collocation)
                 },
                 onDelete: {
-                    state.currentEntry?.collocationExplanations.removeValue(forKey: item.collocation)
+                    updateCollocationExplanation(nil, for: item.collocation)
                 }
             )
             .appSheet(.medium)
+        }
+        .onChange(of: state.currentEntry?.id) { _, _ in
+            refreshCurrentCollocationExplanations()
         }
         .onDisappear {
             // Stop autoplay on dismiss — this onDisappear runs on every target
@@ -250,6 +255,22 @@ struct TodayReviewView: View {
         .focusedSceneValue(\.showReviewHelp, ShowReviewHelpAction { isHelpPresented = true })
         #endif
         .enableInjection()
+    }
+
+    private func refreshCurrentCollocationExplanations() {
+        currentCollocationExplanations = state.currentEntry?.collocationExplanations ?? [:]
+    }
+
+    private func updateCollocationExplanation(_ explanation: String?, for collocation: String) {
+        var updated = currentCollocationExplanations
+        if let explanation {
+            updated[collocation] = explanation
+        } else {
+            updated.removeValue(forKey: collocation)
+        }
+        currentCollocationExplanations = updated
+        state.currentEntry?.collocationExplanations = updated
+        modelContext.safeSave()
     }
 
     private var shouldShowFirstRunHint: Bool {

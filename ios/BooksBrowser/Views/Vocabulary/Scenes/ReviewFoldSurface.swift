@@ -84,11 +84,18 @@ struct ReviewFoldChevronPill: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.up")
-                .font(appSkin.typography.iconTiny.weight(.bold))
-                .foregroundStyle(appSkin.palette.secondaryText)
+                .font(appSkin.typography.iconTiny.weight(.semibold))
+                .foregroundStyle(appSkin.palette.tertiaryText.opacity(0.78))
+                .frame(width: 34, height: 18)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(appSkin.palette.cardBackground.opacity(0.94))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(appSkin.palette.divider.opacity(0.58), lineWidth: AppSpacing.hairline)
+                )
                 .frame(width: 48, height: TodayReviewMetrics.chevronButtonSize)
-                .background(Capsule(style: .continuous).fill(appSkin.palette.mutedFill.opacity(0.96)))
-                .overlay(Capsule(style: .continuous).stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .contentShape(Capsule())
