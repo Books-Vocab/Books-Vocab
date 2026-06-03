@@ -109,6 +109,27 @@ final class PodcastDownloadManager: NSObject {
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("podcast-downloads", isDirectory: true)
     }
+
+    /// Wipe the entire on-disk podcast download tree. Called on logout /
+    /// account-switch so a residual `<series>/<episode>.mp3` can't be served
+    /// to a different account when a remoteId is reused (#726 follow-up).
+    ///
+    /// `nonisolated static` so the cross-platform `LocalDataCleanerService`
+    /// (not `@MainActor`) can call it without an actor hop, and so tests can
+    /// inject a temp `root`. Idempotent: a missing directory is a clean no-op,
+    /// not an error.
+    nonisolated static func purgeDownloads(root: URL = PodcastDownloadManager.downloadsRoot()) {
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            AppLog.sync.info("purgeDownloads: no podcast-downloads dir, nothing to remove")
+            return
+        }
+        do {
+            try FileManager.default.removeItem(at: root)
+            AppLog.sync.info("purgeDownloads: removed podcast-downloads tree at \(root.path, privacy: .public)")
+        } catch {
+            AppLog.sync.error("purgeDownloads failed: \(error.localizedDescription)")
+        }
+    }
 }
 
 // MARK: - URLSessionDownloadDelegate
