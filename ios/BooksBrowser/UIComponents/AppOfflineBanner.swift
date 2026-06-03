@@ -11,8 +11,11 @@
 //
 //  視覺設計：
 //    - 細高度（24pt）避免侵佔主內容
-//    - destructive bg 提供錯誤色調；前景用 primaryText 確保 WCAG AA 對比
-//      （destructive 文字在 10% destructiveBg 上僅 ~2.7:1，不合規）
+//    - destructive bg 提供錯誤色調；前景用 primaryText（灰階高對比），
+//      非 destructive 紅字。primaryText 疊在 destructiveBg（destructive
+//      10~14% tint 疊於 pageBackground）上實測 light ~9.85:1 / dark ~11.6:1，
+//      ✓ WCAG AAA。若改用 destructive 紅字當前景則 light 僅 ~4.49:1（勉強 AA）
+//      且語意混淆，故維持 primaryText。
 //    - 進場走 `AnyTransition.bannerReveal`、進出走 `AppMotion.emphasizedDecelerate`
 //
 
