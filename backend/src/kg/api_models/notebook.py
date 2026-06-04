@@ -27,7 +27,7 @@ def _validate_cover_pattern(v: str | None) -> str | None:
 
 
 class NotebookCreateRequest(BaseModel):
-    name: str = Field(max_length=100)
+    name: str = Field(min_length=1, max_length=100)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
     cover_pattern: str | None = Field(default=None, max_length=30)
 
@@ -35,7 +35,7 @@ class NotebookCreateRequest(BaseModel):
 
 
 class NotebookUpdateRequest(BaseModel):
-    name: str | None = Field(default=None, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
     sort_order: int | None = None
     cover_pattern: str | None = Field(default=None, max_length=30)
