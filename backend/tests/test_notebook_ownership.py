@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import jwt as pyjwt
 import pytest
+from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
@@ -21,18 +20,6 @@ import kg.deps as deps_mod
 import kg.routers.vocab as vocab_router_mod
 from kg.api import app
 from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
 def _swap_settings(new_settings):
@@ -109,24 +96,6 @@ def isolated_api(tmp_path):
 
 
 NONEXISTENT_NB = "nb_does_not_exist_xyz"
-
-
-class _DummyEmbeddingStore:
-    def __init__(self) -> None:
-        self._ids: set[str] = set()
-
-    def has(self, card_id: str) -> bool:
-        return card_id in self._ids
-
-    def add(self, card_id: str, text: str) -> None:
-        self._ids.add(card_id)
-
-    def add_batch(self, items: list) -> None:
-        for card_id, text in items:
-            self.add(card_id, text)
-
-    def find_similar(self, card_id: str, k: int = 3):
-        return []
 
 
 class TestNotebookOwnershipValidation:
