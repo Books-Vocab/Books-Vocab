@@ -74,11 +74,18 @@ body {
   border-radius: var(--radius-control);
   padding: var(--sp-sm) var(--sp-md);
   cursor: pointer;
-  transition: border-color var(--motion-quick), background var(--motion-quick);
+  transition: border-color var(--motion-quick), background var(--motion-quick),
+              transform var(--spring-press), opacity var(--spring-press);
   user-select: none;
 }
 
 .kg-theme-option:hover { border-color: var(--border-strong); }
+
+/* Press feedback — selectable option → iOS TapFeedback triplet (scale + opacity). */
+.kg-theme-option:active {
+  transform: scale(var(--press-scale));
+  opacity: var(--press-opacity);
+}
 
 .kg-theme-option--active { border-color: var(--accent); }
 
@@ -155,4 +162,10 @@ body {
   font-size: var(--text-caption);
   color: var(--text-tertiary);
   margin: 0;
+}
+
+/* ── Reduced motion (web equivalent of accessibilityReduceMotion) ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .kg-theme-option:active { transform: none; }
 }
