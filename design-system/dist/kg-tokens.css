@@ -75,6 +75,7 @@
   --dur-control: 0.14s;
   --dur-chip: 0.18s;
   --dur-progress: 0.1s;
+  --dur-pulse: 1.4s;
   --ease-quick: ease-out;
   --ease-control: ease-out;
   --ease-chip: ease-out;
@@ -223,6 +224,7 @@
     --dur-control: 0.01ms;
     --dur-chip: 0.01ms;
     --dur-progress: 0.01ms;
+    --dur-pulse: 0.01ms;
     --spring-standard: 0.01ms;
     --spring-emphasized: 0.01ms;
     --spring-press: 0.01ms;
