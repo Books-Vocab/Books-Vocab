@@ -36,7 +36,8 @@ let retryAction = 'reload';
 /** @type {Array<object>} full vocab list from API */
 let vocabData = [];
 
-const THEME_ICONS = { light: '🌗', dark: '☀️', sepia: '📜' };
+// Theme glyphs come from KGIcons (shared/icons.js) — SVG, not emoji — so the
+// button matches the iOS SF-Symbols look. Icon name = `theme-${theme}`.
 const THEME_CYCLE = ['light', 'dark', 'sepia'];
 
 // ---------------------------------------------------------------------------
@@ -46,6 +47,7 @@ const THEME_CYCLE = ['light', 'dark', 'sepia'];
 document.addEventListener('DOMContentLoaded', async () => {
   const theme = await initTheme(document.documentElement);
   updateThemeBtn(theme);
+  KGIcons.setIcon(settingsBtn, 'settings');
 
   themeBtn.addEventListener('click', cycleTheme);
   settingsBtn.addEventListener('click', openSettings);
@@ -87,7 +89,7 @@ function onRetry() {
 function updateThemeBtn(theme) {
   const icon = document.getElementById('themeIcon');
   if (icon) {
-    icon.textContent = THEME_ICONS[theme] || THEME_ICONS.light;
+    KGIcons.setIcon(icon, THEME_CYCLE.includes(theme) ? `theme-${theme}` : 'theme-light');
   }
 }
 
@@ -266,7 +268,6 @@ function createCard(item) {
   const pos = item.pos;
   const source = item.source;
   const isWeb = source && source.type === 'web';
-  const sourceIcon = isWeb ? '🌐' : '📖';
 
   // Top row: word + pos + source
   const row = document.createElement('div');
@@ -286,7 +287,9 @@ function createCard(item) {
 
   const srcEl = document.createElement('span');
   srcEl.className = 'kg-list-card__source';
-  srcEl.textContent = sourceIcon;
+  srcEl.setAttribute('role', 'img');
+  srcEl.setAttribute('aria-label', isWeb ? '網頁來源' : '書籍來源');
+  KGIcons.setIcon(srcEl, isWeb ? 'source-web' : 'source-local');
   row.appendChild(srcEl);
 
   card.appendChild(row);

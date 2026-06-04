@@ -40,6 +40,7 @@ if [ -f ops/component_fidelity_check.py ]; then
   run "component fidelity (primitive ↔ iOS)" "${PY[@]}" ops/component_fidelity_check.py
 fi
 run "extension shared pure.test.js"          node --test chrome-extension/shared/pure.test.js
+run "extension shared icons.test.js"         node --test chrome-extension/shared/icons.test.js
 
 echo
 if [ "$fail" -ne 0 ]; then
