@@ -844,6 +844,8 @@
 "podcast.episodeRow.listened" = "已听完";
 "podcast.episodeRow.unavailable" = "音频不可用";
 "podcast.episodeRow.downloading" = "下载中";
+"podcast.episodeRow.downloadFailed" = "下载失败，点击重试";
+"重試下載" = "重试下载";
 
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "上一张卡片";

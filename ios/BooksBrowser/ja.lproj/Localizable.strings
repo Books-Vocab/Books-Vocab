@@ -843,6 +843,8 @@
 "podcast.episodeRow.listened" = "再生済み";
 "podcast.episodeRow.unavailable" = "音声を利用できません";
 "podcast.episodeRow.downloading" = "ダウンロード中";
+"podcast.episodeRow.downloadFailed" = "ダウンロード失敗、タップで再試行";
+"重試下載" = "ダウンロードを再試行";
 
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "前のカード";

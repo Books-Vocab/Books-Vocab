@@ -876,6 +876,8 @@
 "podcast.episodeRow.listened" = "Listened";
 "podcast.episodeRow.unavailable" = "Audio unavailable";
 "podcast.episodeRow.downloading" = "Downloading";
+"podcast.episodeRow.downloadFailed" = "Download failed, tap to retry";
+"重試下載" = "Retry download";
 
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "Previous card";
