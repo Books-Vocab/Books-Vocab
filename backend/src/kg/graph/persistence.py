@@ -43,29 +43,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .._fsutil import fsync_dir as _fsync_dir
 from .filelock import path_write_lock
 from .models import CandidatePair, GraphLink
 
 logger = logging.getLogger(__name__)
-
-
-def _fsync_dir(directory: Path) -> None:
-    """Best-effort fsync of a directory so a rename within it is durable.
-
-    Some filesystems disallow directory fsync (raises) — that's tolerated:
-    the tmp-file fsync already covers data durability, this only hardens the
-    rename's directory entry where the platform supports it.
-    """
-    try:
-        fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        pass
-    finally:
-        os.close(fd)
 
 
 class _PersistenceMixin:
