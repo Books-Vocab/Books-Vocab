@@ -64,6 +64,11 @@ final class ReaderTranslationHandler {
         let context: String
     }
 
+    enum StatusChannel {
+        case translation
+        case explanation
+    }
+
     init(
         translationService: any Translating = TranslationService(),
         authManager: any AuthManaging = MainActor.assumeIsolated({ AuthManager.shared })
@@ -80,6 +85,45 @@ final class ReaderTranslationHandler {
     func replaceCurrentTranslationTask(with task: Task<Void, Never>) {
         cancelCurrentTranslationTask()
         currentTranslationTask = task
+    }
+
+    func runLookupTask<Output>(
+        statusChannel: StatusChannel,
+        operation: @escaping @MainActor (_ onRetry: @escaping @Sendable (Int, Int) async -> Void) async throws -> Output,
+        onSuccess: @escaping @MainActor (Output) async -> Void,
+        onFailure: @escaping @MainActor (Error) -> Void
+    ) {
+        let task = Task { @MainActor in
+            guard !Task.isCancelled else { return }
+
+            do {
+                let onRetry: @Sendable (Int, Int) async -> Void = { [weak self] attempt, total in
+                    guard let self else { return }
+                    await MainActor.run {
+                        guard !Task.isCancelled else { return }
+                        let message = L10n.format(
+                            "正在重試 (%@/%@)...",
+                            "\(attempt)",
+                            "\(total)"
+                        )
+                        switch statusChannel {
+                        case .translation:
+                            self.translationStatus = message
+                        case .explanation:
+                            self.explanationStatus = message
+                        }
+                    }
+                }
+
+                let output = try await operation(onRetry)
+                guard !Task.isCancelled else { return }
+                await onSuccess(output)
+            } catch {
+                guard !(error is CancellationError), !Task.isCancelled else { return }
+                onFailure(error)
+            }
+        }
+        replaceCurrentTranslationTask(with: task)
     }
 }
 #endif
