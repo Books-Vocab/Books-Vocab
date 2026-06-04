@@ -94,9 +94,9 @@ async def test_run_phrase_and_explain_translate_return_expected_shapes():
 
 def test_explain_prompt_concise():
     """Verify the explain prompt requests 1-2 sentences, not 3-5."""
-    from kg.translate_service import explain_translate_prompt
+    from kg.translate_service import _context_around_word, explain_translate_prompt
     req = TranslateRequest(word="progenitor", context="their progenitor")
-    prompt = explain_translate_prompt(req, "en", "zh-Hant")
+    prompt = explain_translate_prompt(req, "en", "zh-Hant", _context_around_word(req.context, req.word))
     assert "1-2 sentence" in prompt.lower() or "1–2 sentence" in prompt.lower()
     assert "3-5" not in prompt
     assert "bullet" not in prompt.lower()

@@ -115,6 +115,16 @@ def end_run(run_id: str, status: str) -> None:
         conn.commit()
 
 
+def _duration_s(start: str | None, end: str | None) -> float | None:
+    """Seconds between two ISO timestamps, or None if either is missing or unparseable."""
+    if not (start and end):
+        return None
+    try:
+        return round((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds(), 2)
+    except (ValueError, TypeError):
+        return None
+
+
 def get_runs(user_id: str, *, limit: int = 20) -> list[dict]:
     """Return recent runs for a user, newest first. Parses steps JSON."""
     with _lock:
@@ -128,21 +138,8 @@ def get_runs(user_id: str, *, limit: int = 20) -> list[dict]:
     for run_id, uid, nb, trigger, started, ended, status, steps_json in rows:
         steps = json.loads(steps_json)
         for step in steps:
-            if step.get("started_at") and step.get("ended_at"):
-                try:
-                    s = datetime.fromisoformat(step["started_at"])
-                    e = datetime.fromisoformat(step["ended_at"])
-                    step["duration_s"] = round((e - s).total_seconds(), 2)
-                except (ValueError, TypeError):
-                    step["duration_s"] = None
-            else:
-                step["duration_s"] = None
-        duration_s = None
-        if started and ended:
-            try:
-                duration_s = round((datetime.fromisoformat(ended) - datetime.fromisoformat(started)).total_seconds(), 2)
-            except (ValueError, TypeError):
-                pass
+            step["duration_s"] = _duration_s(step.get("started_at"), step.get("ended_at"))
+        duration_s = _duration_s(started, ended)
         result.append({
             "run_id": run_id, "user_id": uid, "notebook_id": nb,
             "trigger": trigger, "started_at": started, "ended_at": ended,
