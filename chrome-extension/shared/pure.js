@@ -64,6 +64,39 @@ function normalizeVocabList(response) {
 }
 
 /**
+ * Normalise a single raw vocab payload into one canonical shape, collapsing the
+ * snake_case-vs-camelCase / legacy field aliases the panel must otherwise paper
+ * over at every read site. The side panel renders from canonical names only.
+ *
+ * Field aliases (first non-empty wins):
+ *   word    ← content | word
+ *   meaning ← meaning | translation
+ *   context ← context_sentence | context
+ *
+ * Pass-through fields (kept as-is, defaulted so reads never hit `undefined`):
+ *   pos (string), note (string), examples (array), collocations (array),
+ *   source (object|null).
+ *
+ * @param {object} item — raw vocab object from the API / iOS payload
+ * @returns {{word:string, meaning:string, pos:string, note:string,
+ *            context:string, examples:Array, collocations:Array,
+ *            source:object|null}}
+ */
+function normalizeVocabItem(item) {
+  const raw = item && typeof item === 'object' ? item : {};
+  return {
+    word: raw.content || raw.word || '',
+    meaning: raw.meaning || raw.translation || '',
+    pos: raw.pos || '',
+    note: raw.note || '',
+    context: raw.context_sentence || raw.context || '',
+    examples: Array.isArray(raw.examples) ? raw.examples : [],
+    collocations: Array.isArray(raw.collocations) ? raw.collocations : [],
+    source: raw.source || null,
+  };
+}
+
+/**
  * Classify an error response (from the background worker / ApiError.toJSON())
  * into the user-facing presentation used by the side panel error state.
  *
@@ -123,76 +156,6 @@ function classifyError(response) {
     btnLabel: '重試',
     action: 'reload',
   };
-}
-
-/**
- * True when the supplied selection text is a translatable length.
- * Mirrors the content-script bounds (1‥200 chars).
- * @param {*} text
- * @returns {boolean}
- */
-function isSelectable(text) {
-  if (typeof text !== 'string') return false;
-  const len = text.trim().length;
-  return len >= 1 && len <= 200;
-}
-
-/**
- * Decide whether a selection should be translated as a phrase (long) or a
- * single word. Mirrors the content-script threshold.
- * @param {string} text
- * @returns {boolean}
- */
-function isPhrase(text) {
-  return typeof text === 'string' && text.length > 50;
-}
-
-/**
- * Extract the sentence surrounding `offset` within `text`, using terminal
- * punctuation (incl. CJK) and newlines as boundaries. Result is trimmed and
- * capped at 500 chars. Pure mirror of the content-script `extractContext`
- * boundary scan, decoupled from the DOM `Selection`.
- *
- * @param {string} text
- * @param {number} offset — caret position inside `text`
- * @returns {string}
- */
-function extractSentence(text, offset) {
-  if (typeof text !== 'string' || !text) return '';
-  const breaks = /[.!?。！？\n]/;
-  let pos = offset;
-  if (!Number.isFinite(pos) || pos < 0) pos = 0;
-  if (pos > text.length) pos = text.length;
-
-  let start = pos;
-  while (start > 0 && !breaks.test(text[start - 1])) start--;
-  let end = pos;
-  while (end < text.length && !breaks.test(text[end])) end++;
-
-  return text.slice(start, end).trim().substring(0, 500);
-}
-
-/**
- * Build the runtime message a content-script popup sends to the background
- * worker for a given selection. Long selections (`isPhrase`) go to the
- * `/api/translate/phrase` route keyed on `text`; short ones to the quick
- * `translate` route keyed on `word`.
- *
- * Pure mirror of the content-script `createPopup` message-shape decision,
- * decoupled from `chrome.runtime.sendMessage`.
- *
- * @param {string} word — the selected text
- * @param {string} [context] — surrounding sentence
- * @returns {{type:'translate',word:string,context:string}
- *          |{type:'translatePhrase',text:string,context:string}}
- */
-function buildSelectionMessage(word, context) {
-  const ctx = context == null ? '' : String(context);
-  const text = typeof word === 'string' ? word : String(word == null ? '' : word);
-  if (isPhrase(text)) {
-    return { type: 'translatePhrase', text, context: ctx };
-  }
-  return { type: 'translate', word: text, context: ctx };
 }
 
 /**
@@ -348,11 +311,8 @@ const KGPureExports = {
   buildPhraseTranslateBody,
   buildVocabQuery,
   normalizeVocabList,
+  normalizeVocabItem,
   classifyError,
-  isSelectable,
-  isPhrase,
-  extractSentence,
-  buildSelectionMessage,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   isTrustedExternalOrigin,

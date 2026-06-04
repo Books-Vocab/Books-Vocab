@@ -12,8 +12,9 @@
   const MAX_LEN = 200;
   const MIN_LEN = 1;
   // Selection length above which a translation is treated as a phrase (not a
-  // single word). Must track KGPure.isPhrase's threshold in shared/pure.js —
-  // content scripts run in an isolated world and cannot import KGPure.
+  // single word). Must track the 50-char phrase threshold (formerly mirrored by
+  // KGPure.isPhrase, now content-script-local) — content scripts run in an
+  // isolated world and cannot import KGPure.
   const PHRASE_MIN_LEN = 50;
 
   /** Currently active host element (only one popup at a time). */
