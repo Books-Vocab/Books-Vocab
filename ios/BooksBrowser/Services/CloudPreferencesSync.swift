@@ -73,11 +73,6 @@ final class CloudPreferencesSync {
         flushAction()
     }
 
-    /// 兼容舊呼叫點：等同 `forceFlush()`（立即同步）。
-    func synchronize() {
-        forceFlush()
-    }
-
     // MARK: - Debounce
 
     /// 取消前一個 pending flush、排一個新的 `flushDelay` 秒後執行。
