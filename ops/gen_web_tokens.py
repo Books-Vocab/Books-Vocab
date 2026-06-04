@@ -212,7 +212,9 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
     d.append(("--press-scale", f"{tap['scale-down']['value']:g}"))
     d.append(("--press-opacity", f"{tap['opacity-dip']['value']:g}"))
     # web-only THEME-INVARIANT colors (no iOS literal, same value across themes).
-    # Per-theme web-only colors live in web-only.theme-color → _theme_decls instead.
+    # Reserved generic extension point — currently EMPTY (no invariant-color block
+    # in tokens.json), so this loop no-ops. Per-theme web-only colors live in
+    # web-only.theme-color → _theme_decls instead.
     for key, spec in tokens.get("web-only", {}).get("invariant-color", {}).items():
         if key.startswith("$"):
             continue
