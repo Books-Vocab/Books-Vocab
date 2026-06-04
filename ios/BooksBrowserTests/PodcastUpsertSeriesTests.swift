@@ -56,6 +56,30 @@ struct PodcastUpsertSeriesTests {
         #expect(series?.coverImageURL == nil)
     }
 
+    @Test func upsert_nil_cover_clears_stale_cache() throws {
+        let ctx = try makeContext()
+        // Series with a remote cover, simulated as already downloaded to disk.
+        PodcastSyncService.upsertSeries(
+            detail: detail("a", episodes: [1], coverImageURL: "/api/podcasts/a/cover"), context: ctx)
+        let series = try #require(try ctx.fetch(FetchDescriptor<PodcastSeries>()).first)
+        let cacheURL = PodcastSyncService.cachedCoverURL(seriesId: "a")
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        try FileManager.default.createDirectory(
+            at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: cacheURL)
+        series.coverImagePath = cacheURL.path
+        try ctx.save()
+
+        // Server retracts the cover → orphaned cache must be dropped so the card
+        // degrades back to the procedural cover instead of a stale photo.
+        PodcastSyncService.upsertSeries(detail: detail("a", episodes: [1]), context: ctx)
+        try ctx.save()
+
+        #expect(series.coverImagePath == nil, "stale coverImagePath must be cleared")
+        #expect(!FileManager.default.fileExists(atPath: cacheURL.path),
+                "orphaned cache file must be deleted")
+    }
+
     @Test func cachedCoverURL_path_shape() {
         let url = PodcastSyncService.cachedCoverURL(seriesId: "deep_work")
         #expect(url.lastPathComponent == "deep_work.png")
