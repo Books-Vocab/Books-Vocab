@@ -156,15 +156,19 @@ def parse_string_lets(filename: str) -> dict[str, str]:
 
 
 def parse_motion() -> dict[str, dict]:
-    """AppMotion symbol -> {duration?, response?, curve?(4-tuple)}."""
+    """AppMotion symbol -> {duration?, response?, damping?, curve?(4-tuple)}."""
     body = _enum_body(_read("AppMetrics.swift"), r"enum AppMotion\s*\{", "{", "}")
     out: dict[str, dict] = {}
     for m in re.finditer(
             r"static let (\w+)\s*=\s*Animation\.(?:easeOut|easeIn|easeInOut|linear)\(duration:\s*("
             + _FLOAT + r")\)", body):
         out[m.group(1)] = {"duration": float(m.group(2))}
-    for m in re.finditer(r"static let (\w+)\s*=\s*Animation\.spring\(response:\s*(" + _FLOAT + r")", body):
-        out.setdefault(m.group(1), {})["response"] = float(m.group(2))
+    for m in re.finditer(
+            r"static let (\w+)\s*(?::\s*Animation)?\s*=\s*(?:Animation)?\.spring\(response:\s*(" + _FLOAT
+            + r"),\s*dampingFraction:\s*(" + _FLOAT + r")", body):
+        spec = out.setdefault(m.group(1), {})
+        spec["response"] = float(m.group(2))
+        spec["damping"] = float(m.group(3))
     for m in re.finditer(
             r"static let (\w+)\s*=\s*Animation\.timingCurve\(\s*(" + _FLOAT + r"),\s*(" + _FLOAT
             + r"),\s*(" + _FLOAT + r"),\s*(" + _FLOAT + r"),\s*duration:\s*(" + _FLOAT + r")\)", body):
@@ -410,6 +414,18 @@ def check() -> list[str]:
             errors.append(f"motion.tap-feedback.{key}: {spec['$swift']} not found")
         elif not _eq(spec["value"], tap[name]):
             errors.append(f"motion.tap-feedback.{key}: JSON {spec['value']} != Swift {spec['$swift']} {tap[name]}")
+
+    # 12) motion spring physics (AppMotion spring response + dampingFraction)
+    for key, spec in tokens["motion"].get("spring", {}).items():
+        if key.startswith("$") or "$swift" not in spec:
+            continue
+        base = spec["$swift"].split(".")[-1]
+        md = motion.get(base, {})
+        for field in ("response", "damping"):
+            if field not in md:
+                errors.append(f"motion.spring.{key}: {spec['$swift']} ({field}) not parsed from AppMotion")
+            elif not _eq(spec[field], md[field]):
+                errors.append(f"motion.spring.{key}: JSON {field}={spec[field]} != Swift {spec['$swift']} {md[field]}")
 
     return errors
 
