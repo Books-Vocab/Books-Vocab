@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 1f55231f
+verified_against: aea8b314
 -->
 # Sync Lifecycle
 
@@ -93,6 +93,7 @@ batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/
 - **不變式**：graph 變更後 touch 失敗**不可被吞掉**。`backend/src/kg/vocab_graph_ops.py:_touch_both` 保證：兩端皆嘗試 touch（一端失敗不跳過另一端，只要任一端 `updated_at` 前進 client 仍能收斂）、失敗 `logger.error`（可觀測）並 re-raise（不假裝成功）。
 - **可逆 op（hide / unhide、create 的 unhide 分支）**：touch 失敗時回滾 graph 變更，使 graph 與 card 狀態一致。
 - **不可逆 op（hard delete、create 新連結）**：不乾淨回滾，僅靠 barrier 的「可觀測 + re-raise」。
+- **notebook 隔離硬化（manual link）**：card store 為 per-user、graph 為 per-notebook，故 `create_manual_link` 必填 `notebook_id`，兩端卡片的 `notebook_id` 須等於之，否則以 `NotFoundError(404)` 拒絕（語意：該卡不存在於此 notebook），杜絕跨 notebook 連結。後端為權威；iOS `AddLinkSheet` 候選 filter 額外加 `notebookId == sourceEntry.notebookId` 做 defense-in-depth（#776，`backend/src/kg/vocab_graph_ops.py`）。
 
 ## Phase 2 之後的建議
 
