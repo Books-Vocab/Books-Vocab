@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
-from pathlib import Path
 
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
+from .ops_shared import data_dir
+
+DATA_DIR = data_dir()
 DB_PATH = DATA_DIR / "pipeline_runs.db"
 
 _lock = threading.Lock()

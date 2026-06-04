@@ -21,13 +21,12 @@ auto-creates the table; no manual migration needed.
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-_DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+from .ops_shared import data_dir
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -58,7 +57,7 @@ def set_data_dir(path: Path | None) -> None:
 def _resolve_data_dir() -> Path:
     if _override_data_dir is not None:
         return _override_data_dir
-    return Path(os.getenv("KG_DATA_DIR", str(_DEFAULT_DATA_DIR)))
+    return data_dir()
 
 
 def _get_conn() -> sqlite3.Connection:

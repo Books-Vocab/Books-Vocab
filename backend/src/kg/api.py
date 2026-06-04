@@ -37,7 +37,7 @@ _mem_log = install_memory_log_handler(maxlen=1000)
 from .admin_wiring import create_admin_handlers
 
 # Re-export deps symbols so existing tests (import kg.api as api_mod) continue to work.
-from .deps import (  # noqa: F401  # noqa: F401
+from .deps import (  # noqa: F401
     _MAX_USER_LOCKS,
     _USER_LOCKS,
     _USER_LOCKS_MUTEX,
