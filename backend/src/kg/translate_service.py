@@ -80,13 +80,13 @@ def resolve_translation_langs(req: TranslateRequest, user: dict[str, Any]) -> tu
     return source, target
 
 
-def quick_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+def quick_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str, ctx: str) -> str:
     src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
     return f'''Translate from {src_name} to {tgt_name}. Provide translation, POS, and lemma (root form).
 POS options: n. / v. / adj. / adv. / conj. / prep.
 Word: "{req.word}"
-Context: "{_context_around_word(req.context, req.word)}"
+Context: "{ctx}"
 
 Translation (t) rules:
 - Must be {tgt_name} (use 繁體中文 characters, never 简体)
@@ -104,22 +104,22 @@ Lemma (r) rules:
 Output pure JSON (no Markdown): {{ "t": "...", "p": "...", "r": "..." }}'''
 
 
-def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str, ctx: str) -> str:
     src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
     return f'''Translate the following {src_name} phrase/expression into {tgt_name} (use 繁體中文, never 简体).
 Phrase: "{req.word}"
-Context: "{_context_around_word(req.context, req.word)}"
+Context: "{ctx}"
 Output pure JSON (no Markdown): {{ "t": "..." }}'''
 
 
-def explain_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+def explain_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str, ctx: str) -> str:
     src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
     return f'''Explain what "{req.word}" means in the given context, then briefly break down the {src_name} components/structure. 1-2 sentences max, in {tgt_name} (use 繁體中文 characters, never 简体).
 
 Word: "{req.word}"
-Context: "{_context_around_word(req.context, req.word)}"
+Context: "{ctx}"
 Output pure JSON (no Markdown): {{ "e": "..." }}'''
 
 
@@ -198,7 +198,7 @@ async def _run_llm_translate(
         response = await llm.chat_async(
             operation,
             model=model,
-            messages=[{"role": "user", "content": prompt_fn(req, source_lang, target_lang)}],
+            messages=[{"role": "user", "content": prompt_fn(req, source_lang, target_lang, ctx)}],
             temperature=0.3,
             response_format={"type": "json_object"},
         )

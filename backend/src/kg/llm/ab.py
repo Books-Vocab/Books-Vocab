@@ -44,13 +44,13 @@ def run_one(provider: LLMProvider, word: str, context: str) -> dict:
     """
     from ..api_models import TranslateRequest
     from ..service_factories import create_client
-    from ..translate_service import quick_translate_prompt
+    from ..translate_service import _context_around_word, quick_translate_prompt
 
     # Use KG's real translate prompt so the A/B reflects production fidelity.
     # Langs are passed explicitly (production resolves them via
     # resolve_translation_langs) so the prompt does not depend on None fallbacks.
     req = TranslateRequest(word=word, context=context)
-    prompt = quick_translate_prompt(req, "en", "zh-Hant")
+    prompt = quick_translate_prompt(req, "en", "zh-Hant", _context_around_word(req.context, req.word))
 
     client = create_client(provider)
     kwargs: dict = dict(
