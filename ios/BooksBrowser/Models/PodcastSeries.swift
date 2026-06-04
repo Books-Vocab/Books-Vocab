@@ -11,7 +11,14 @@ final class PodcastSeries {
     var title: String = ""
     var color: String?
     var coverPattern: String?
+    /// Local cache path of the downloaded remote cover (set by PodcastSyncService
+    /// after fetching `coverImageURL`). NotebookCoverView renders this over the
+    /// procedural color/pattern when present.
     var coverImagePath: String?
+    /// Remote cover proxy path from the server (`/api/podcasts/<sid>/cover`), or
+    /// nil for legacy/pre-cover series. Drives the one-time download into
+    /// `coverImagePath`; nil → fall back to procedural color/pattern cover.
+    var coverImageURL: String?
     var hostNames: [String] = []
     var episodeCount: Int = 0
     var totalDurationSec: Double = 0

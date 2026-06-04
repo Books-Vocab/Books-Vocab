@@ -33,6 +33,10 @@ final class LocalDataCleanerService: LocalDataClearing {
         // audio under account B after a switch (#726 follow-up).
         #if os(iOS)
         PodcastDownloadManager.purgeDownloads()
+        // Downloaded podcast series covers live under Documents/podcast-covers/
+        // (written by PodcastSyncService.cacheCoverIfNeeded), not in SwiftData.
+        // Purge so a reused remoteId can't surface account A's cover under B.
+        Self.purgePodcastCovers()
         // User-uploaded notebook covers live on disk under Documents/NotebookCovers/
         // (written by NotebookEditSheet), not in SwiftData. clearUserData drops the
         // Notebook rows but leaves the .jpg files as orphans, so they survive an
@@ -69,6 +73,22 @@ final class LocalDataCleanerService: LocalDataClearing {
             AppLog.sync.info("purgeNotebookCovers: removed NotebookCovers tree at \(root.path, privacy: .public)")
         } catch {
             AppLog.sync.error("purgeNotebookCovers failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Wipe the downloaded podcast-cover cache (`Documents/podcast-covers/`).
+    /// Mirrors `purgeNotebookCovers` fault tolerance: missing dir = clean no-op,
+    /// `catch` only logs — never throws into the logout/switch path.
+    static func purgePodcastCovers(root: URL = PodcastSyncService.coversRoot()) {
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            AppLog.sync.info("purgePodcastCovers: no podcast-covers dir, nothing to remove")
+            return
+        }
+        do {
+            try FileManager.default.removeItem(at: root)
+            AppLog.sync.info("purgePodcastCovers: removed podcast-covers tree at \(root.path, privacy: .public)")
+        } catch {
+            AppLog.sync.error("purgePodcastCovers failed: \(error.localizedDescription)")
         }
     }
     #endif
