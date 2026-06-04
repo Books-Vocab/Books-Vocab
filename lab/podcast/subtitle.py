@@ -265,6 +265,27 @@ def align_and_save(script_path: Path, audio_path: Path, model_name: str) -> Path
     return srt_path
 
 
+def run_alignments(
+    todo: list[tuple[Path, Path]], model_name: str
+) -> tuple[list[Path], list[Path]]:
+    """Align each (script, audio) pair, isolating per-episode failures.
+
+    Returns (outputs, failed). One episode's alignment failure (model load,
+    OOM, corrupt audio) is logged to stderr and skipped — it must not abort
+    the rest of the batch; successful SRTs are still written.
+    """
+    outputs: list[Path] = []
+    failed: list[Path] = []
+    for i, (script, audio) in enumerate(todo, 1):
+        print(f"\n[Subtitle] ({i}/{len(todo)}) {script.stem}")
+        try:
+            outputs.append(align_and_save(script, audio, model_name))
+        except Exception as e:  # noqa: BLE001 — batch resilience; surfaced by caller
+            print(f"  ERROR aligning {script.stem}: {e}", file=sys.stderr)
+            failed.append(script)
+    return outputs, failed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Script + audio → word-level SRT")
     parser.add_argument("target", help="Script .md file or directory")
@@ -342,11 +363,7 @@ def main():
         return
 
     t0 = time.time()
-    outputs = []
-    for i, (script, audio) in enumerate(todo, 1):
-        print(f"\n[Subtitle] ({i}/{len(todo)}) {script.stem}")
-        srt = align_and_save(script, audio, args.model)
-        outputs.append(srt)
+    outputs, failed = run_alignments(todo, args.model)
 
     elapsed = time.time() - t0
     total_kb = sum(p.stat().st_size for p in outputs) / 1024
@@ -355,6 +372,13 @@ def main():
     for p in outputs:
         size_kb = p.stat().st_size / 1024
         print(f"  {p.name} ({size_kb:.0f} KB)")
+    if failed:
+        print(f"[Subtitle] {len(failed)} failed:", file=sys.stderr)
+        for f in failed:
+            print(f"  FAILED {f.stem}", file=sys.stderr)
+        # Successful SRTs are already written; nonzero exit lets the pipeline
+        # surface the partial failure instead of treating the run as clean.
+        sys.exit(1)
 
 
 if __name__ == "__main__":

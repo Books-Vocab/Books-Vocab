@@ -108,3 +108,45 @@ def test_compose_contact_partial_last_row():
     cell, gap, cols = 280, 8, 3
     sheet = ct._compose_contact(_cells(4, cell), cell=cell, cols=cols, gap=gap)
     assert sheet.size[1] == 2 * cell + 3 * gap  # 4 cells → 2 rows
+
+
+# ---------- _get:網路/HTTP/JSON 故障收斂為 _die,不吐裸 traceback ----------
+class _FakeResp:
+    def __init__(self, body): self._body = body
+    def read(self): return self._body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+def test_get_network_error_dies_cleanly(monkeypatch):
+    import urllib.error
+    def boom(*a, **k):
+        raise urllib.error.URLError("connection refused")
+    monkeypatch.setattr(ct.urllib.request, "urlopen", boom)
+    with pytest.raises(SystemExit):
+        ct._get("https://api.pexels.com/v1/search?query=x")
+
+
+def test_get_http_error_dies_cleanly(monkeypatch):
+    import urllib.error
+    def boom(*a, **k):
+        raise urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)
+    monkeypatch.setattr(ct.urllib.request, "urlopen", boom)
+    with pytest.raises(SystemExit):
+        ct._get("https://api.pexels.com/v1/search?query=x")
+
+
+def test_get_bad_json_dies_cleanly(monkeypatch):
+    monkeypatch.setattr(ct.urllib.request, "urlopen", lambda *a, **k: _FakeResp(b"<html>nope</html>"))
+    with pytest.raises(SystemExit):
+        ct._get("https://api.pexels.com/v1/search?query=x")
+
+
+def test_get_raw_returns_bytes(monkeypatch):
+    monkeypatch.setattr(ct.urllib.request, "urlopen", lambda *a, **k: _FakeResp(b"\x89PNG"))
+    assert ct._get("https://img", raw=True) == b"\x89PNG"
+
+
+def test_get_json_ok(monkeypatch):
+    monkeypatch.setattr(ct.urllib.request, "urlopen", lambda *a, **k: _FakeResp(b'{"photos": []}'))
+    assert ct._get("https://api") == {"photos": []}
