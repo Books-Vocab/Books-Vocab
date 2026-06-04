@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc_lower
@@ -58,7 +59,18 @@ class CardQueryMixin:
             return {card.id: card for card in session.exec(statement).all()}
 
     def get_batch(self, card_ids: set[str]) -> dict[str, Card]:
-        """Fetch multiple cards by ID in a single query."""
+        """Fetch multiple cards by ID in a single query.
+
+        Intentionally notebook-agnostic — unlike the content/word-based query
+        methods (find_by_content / all / count …), this is a low-level id→Card
+        primitive. Card ids are already unique within a user's store, and id is
+        the caller's chosen scope. Two deliberate callers rely on this: graph
+        neighbour expansion (vocab_crud), whose ids come from the per-notebook
+        graph and are thus already same-notebook; and cross-notebook review-state
+        sync (vocab_review, notebook_id=None by design), which must reach the
+        user's cards across all notebooks. Adding a notebook filter here would
+        break the latter — callers needing a scoped fetch must filter the result.
+        """
         if not card_ids:
             return {}
         with Session(self.engine) as session:
@@ -74,7 +86,6 @@ class CardQueryMixin:
             return list(session.exec(statement).all())
 
     def count(self, notebook_id: str | None = None) -> int:
-        from sqlalchemy import func
         with Session(self.engine) as session:
             statement = select(func.count()).select_from(Card).where(Card.is_deleted.is_(False))
             if notebook_id is not None:
@@ -83,7 +94,6 @@ class CardQueryMixin:
 
     def count_by_notebook(self) -> dict[str, int]:
         """Single GROUP BY query returning {notebook_id: count}."""
-        from sqlalchemy import func
         with Session(self.engine) as session:
             rows = session.exec(
                 select(Card.notebook_id, func.count())

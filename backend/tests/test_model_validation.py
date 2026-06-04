@@ -12,7 +12,35 @@ from kg.api_models import (
     NotebookCreateRequest,
     NotebookUpdateRequest,
     ReviewStateEntry,
+    VocabEntry,
 )
+
+
+# --- VocabEntry / Notebook name: non-empty contract ---
+
+
+class TestNonEmptyStringContract:
+    def test_empty_translation_rejected(self):
+        # Mirrors the word field's min_length=1 — a card must carry a meaning.
+        with pytest.raises(ValidationError):
+            VocabEntry(word="hello", translation="")
+
+    def test_non_empty_translation_accepted(self):
+        e = VocabEntry(word="hello", translation="你好")
+        assert e.translation == "你好"
+
+    def test_empty_notebook_create_name_rejected(self):
+        with pytest.raises(ValidationError):
+            NotebookCreateRequest(name="")
+
+    def test_empty_notebook_update_name_rejected(self):
+        with pytest.raises(ValidationError):
+            NotebookUpdateRequest(name="")
+
+    def test_notebook_update_name_none_still_allowed(self):
+        # None means "don't change" — only provided strings must be non-empty.
+        r = NotebookUpdateRequest(name=None)
+        assert r.name is None
 
 # --- ManualLinkRequest: empty string IDs ---
 

@@ -59,6 +59,14 @@ def _touch_both(cards_store: Any, from_id: str, to_id: str) -> None:
         raise first_error
 
 
+def _get_link_or_404(link_id: str, graph: Any) -> Any:
+    """Fetch a link by id, raising NotFoundError if it doesn't exist."""
+    lk = graph.get_link(link_id)
+    if lk is None:
+        raise NotFoundError("Link", link_id)
+    return lk
+
+
 def create_manual_link(
     *,
     from_id: str,
@@ -131,9 +139,7 @@ def hide_graph_link(
     cards_store: Any,
 ) -> None:
     """Hide a link (user wants to stop seeing it but not permanently delete)."""
-    lk = graph.get_link(link_id)
-    if lk is None:
-        raise NotFoundError("Link", link_id)
+    lk = _get_link_or_404(link_id, graph)
     try:
         graph.hide_link(link_id)
     except KeyError as exc:
@@ -153,13 +159,11 @@ def unhide_graph_link(
     cards_store: Any,
 ) -> None:
     """Unhide a previously hidden link."""
-    lk = graph.get_link(link_id)
-    if lk is None:
-        raise NotFoundError("Link", link_id)
+    lk = _get_link_or_404(link_id, graph)
     try:
         graph.unhide_link(link_id)
-    except KeyError:
-        raise NotFoundError("Link", link_id)
+    except KeyError as exc:
+        raise NotFoundError("Link", link_id) from exc
     # Reversible: re-hide on touch failure to keep graph/card state consistent.
     try:
         _touch_both(cards_store, lk.from_id, lk.to_id)

@@ -110,8 +110,8 @@ class _LinksMixin:
             return True
         candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
         for lid in candidates:
-            lk = self._links[lid]
-            if lk.status not in ("active", "hidden"):
+            lk = self._links.get(lid)
+            if lk is None or lk.status not in ("active", "hidden"):
                 continue
             if (lk.from_id == id_a and lk.to_id == id_b) or (
                 lk.from_id == id_b and lk.to_id == id_a
