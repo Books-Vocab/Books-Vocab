@@ -102,7 +102,9 @@ function normalizeVocabItem(item) {
  *
  * @param {{code?: string, status?: number, message?: string}} response
  * @returns {{icon: string, title: string, subtitle: string, btnLabel: string,
- *            action: 'reload'|'login'|'settings'}}
+ *            action: 'reload'|'login'|'settings'}} `icon` is a KGIcons name
+ *            (error-login/quota/network/server/generic), rendered as SVG by the
+ *            side panel — not an emoji. pure.js stays data-only (no SVG here).
  */
 function classifyError(response) {
   const code = response && response.code;
@@ -110,7 +112,7 @@ function classifyError(response) {
 
   if (code === 'auth_expired' || status === 401) {
     return {
-      icon: '🔒',
+      icon: 'error-login',
       title: '請先登入',
       subtitle: '登入後即可同步詞彙',
       btnLabel: '前往登入',
@@ -120,7 +122,7 @@ function classifyError(response) {
 
   if (code === 'quota_exceeded' || status === 429) {
     return {
-      icon: '⏳',
+      icon: 'error-quota',
       title: '已達使用上限',
       subtitle: '額度將於明日重置，可前往設定查看',
       btnLabel: '查看額度',
@@ -130,7 +132,7 @@ function classifyError(response) {
 
   if (code === 'network_error' || status === 0) {
     return {
-      icon: '📡',
+      icon: 'error-network',
       title: '無法連線',
       subtitle: '請檢查網路後重試',
       btnLabel: '重試',
@@ -141,7 +143,7 @@ function classifyError(response) {
   if (code === 'server_error' || code === 'bad_response' ||
       (typeof status === 'number' && status >= 500)) {
     return {
-      icon: '🛠️',
+      icon: 'error-server',
       title: '伺服器忙碌中',
       subtitle: '稍後再試',
       btnLabel: '重試',
@@ -150,7 +152,7 @@ function classifyError(response) {
   }
 
   return {
-    icon: '⚠️',
+    icon: 'error-generic',
     title: '載入失敗',
     subtitle: (response && response.message) || '',
     btnLabel: '重試',
