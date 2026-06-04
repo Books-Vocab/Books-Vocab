@@ -12,6 +12,21 @@ from .models import Judgement
 logger = logging.getLogger(__name__)
 
 
+def _all_parse_error(
+    candidates: list[tuple[str, str, str]],
+    raw_decisions: list[dict] | None,
+) -> dict[str, None]:
+    """Record a parse_error decision for every candidate and return all-None.
+
+    Shared by the empty-content and JSON-decode-failure branches, which both
+    fail the whole batch identically.
+    """
+    if raw_decisions is not None:
+        for cid, _, _ in candidates:
+            raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
+    return {cid: None for cid, _, _ in candidates}
+
+
 def _parse_batch_response(
     content: str | None,
     candidates: list[tuple[str, str, str]],
@@ -25,19 +40,13 @@ def _parse_batch_response(
     Response items matched by position (array order matches candidate order).
     """
     if not content:
-        if raw_decisions is not None:
-            for cid, _, _ in candidates:
-                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
-        return {cid: None for cid, _, _ in candidates}
+        return _all_parse_error(candidates, raw_decisions)
 
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Failed to parse batch judgement. Raw: %r", content[:200])
-        if raw_decisions is not None:
-            for cid, _, _ in candidates:
-                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
-        return {cid: None for cid, _, _ in candidates}
+        return _all_parse_error(candidates, raw_decisions)
 
     # Unwrap: {"results": [...]} or bare array or single object
     if isinstance(data, dict):
