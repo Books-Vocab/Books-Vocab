@@ -393,15 +393,23 @@ private struct PDFKitRepresentable: UIViewRepresentable {
                 return fallbackContext(selectedText: selection.string ?? "", in: pageText)
             }
 
-            // ~100 chars around the selection
+            return contextWindow(around: selectionRange, in: pageText)
+        }
+
+        /// 以給定字元範圍為中心,取前後 ~100 字元的窗口,並把換行壓成空白後 trim。
+        /// extractContext / fallbackContext 共用,確保兩條路徑的上下文格式一致。
+        private func contextWindow(
+            around range: Range<String.Index>,
+            in pageText: String
+        ) -> String {
             let contextRadius = 100
             let start = pageText.index(
-                selectionRange.lowerBound,
+                range.lowerBound,
                 offsetBy: -contextRadius,
                 limitedBy: pageText.startIndex
             ) ?? pageText.startIndex
             let end = pageText.index(
-                selectionRange.upperBound,
+                range.upperBound,
                 offsetBy: contextRadius,
                 limitedBy: pageText.endIndex
             ) ?? pageText.endIndex
@@ -442,16 +450,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             guard !selectedText.isEmpty, let range = pageText.range(of: selectedText) else {
                 return selectedText
             }
-            let contextRadius = 100
-            let start = pageText.index(
-                range.lowerBound, offsetBy: -contextRadius, limitedBy: pageText.startIndex
-            ) ?? pageText.startIndex
-            let end = pageText.index(
-                range.upperBound, offsetBy: contextRadius, limitedBy: pageText.endIndex
-            ) ?? pageText.endIndex
-            return String(pageText[start..<end])
-                .replacingOccurrences(of: "\n", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return contextWindow(around: range, in: pageText)
         }
     }
 }
