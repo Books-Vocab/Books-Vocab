@@ -199,13 +199,10 @@ def _read_json_from_s3(request: Request, key: str, *, context: str):
     s3 = _s3_client(request)
     try:
         obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-    except s3.exceptions.NoSuchKey:
-        return None
     except Exception as exc:  # noqa: BLE001
         # Lightsail Object Storage occasionally returns ClientError("404") for
         # missing keys instead of NoSuchKey. Treat any 404 the same.
-        code = getattr(getattr(exc, "response", {}), "get", lambda *_: {})("Error", {}).get("Code", "")
-        if code in ("NoSuchKey", "404"):
+        if _is_s3_not_found(exc, s3):
             return None
         logger.error("Podcast %s S3 read failed for s3://%s/%s: %s",
                      context, cfg.podcast_bucket, key, exc)
@@ -451,14 +448,10 @@ def _serve_audio_from_s3(
 
     try:
         obj = s3.get_object(**get_kwargs)
-    except s3.exceptions.NoSuchKey:
-        raise HTTPException(404, detail="Audio not found") from None
     except Exception as exc:  # noqa: BLE001
-        err = getattr(exc, "response", {}).get("Error", {}) if hasattr(exc, "response") else {}
-        code = err.get("Code", "")
         http_status = int(getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode", 0)) \
             if hasattr(exc, "response") else 0
-        if code in ("NoSuchKey", "404") or http_status == 404:
+        if _is_s3_not_found(exc, s3) or http_status == 404:
             raise HTTPException(404, detail="Audio not found") from None
         if http_status == 416:
             # Surface the 416 with the Content-Range S3 returned, mirroring
@@ -570,11 +563,8 @@ def get_podcast_subtitle(
         key = f"{series_id}/ep_{ep_num:02d}/subtitle.srt"
         try:
             obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-        except s3.exceptions.NoSuchKey:
-            raise HTTPException(404, detail="Subtitle not found") from None
         except Exception as exc:  # noqa: BLE001
-            err = getattr(exc, "response", {}).get("Error", {}) if hasattr(exc, "response") else {}
-            if err.get("Code") in ("NoSuchKey", "404"):
+            if _is_s3_not_found(exc, s3):
                 raise HTTPException(404, detail="Subtitle not found") from None
             logger.error("S3 GetObject failed for %s: %s", key, exc)
             raise HTTPException(502, detail="Storage error fetching subtitle") from exc
@@ -615,11 +605,8 @@ def get_podcast_cover(
         key = f"{series_id}/cover.png"
         try:
             obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-        except s3.exceptions.NoSuchKey:
-            raise HTTPException(404, detail="Cover not found") from None
         except Exception as exc:  # noqa: BLE001
-            err = getattr(exc, "response", {}).get("Error", {}) if hasattr(exc, "response") else {}
-            if err.get("Code") in ("NoSuchKey", "404"):
+            if _is_s3_not_found(exc, s3):
                 raise HTTPException(404, detail="Cover not found") from None
             logger.error("S3 GetObject failed for %s: %s", key, exc)
             raise HTTPException(502, detail="Storage error fetching cover") from exc
