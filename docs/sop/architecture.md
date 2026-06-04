@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 7482c5ee
+verified_against: 1f55231f
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -136,8 +136,9 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 - Reader、Review、Sync 是目前優先完成收斂的三條主路徑
 
 目前映射原則：
-- Reader panel / header / loading → `panelState`、`headerState`、`loadingState`
-- Review reveal / navigation / swap → `reviewRevealSpring`、`reviewNavigationSpring`、`reviewCardSwapSpring`
+- Reader panel / header → `panelState`、`headerState`
+- Review reveal / navigation → `reviewRevealSpring`、`reviewNavigationSpring`
+- Modal / sheet 交換 → `modalSwapSpring`
 - Sync phase / step update → `phaseChange`、`feedbackPulse`
 
 這層規範的主文檔在 `docs/sop/ui-design.md` 的 `Motion Contract`。

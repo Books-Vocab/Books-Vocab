@@ -1,13 +1,15 @@
 <!-- doc-meta
-tier: snapshot
+tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 689bac12
+verified_against: frozen
 -->
 
 # Podcast 集數列表：對齊單字列表組件 + 電腦版左右雙欄
+
+> ⚠️ **已撤回（frozen）：** 本規格的「電腦版左右雙欄 master-detail」已於後續重構收斂回**單欄 push**。權威現況見 `ios/BooksBrowser/Views/Podcast/PodcastDetailRouter.swift` 檔頭。此檔僅存歷史。（對齊 `WordRow` 的 `ListSectionCard` 組件部分仍存活。）
 
 ## 問題
 

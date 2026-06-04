@@ -4,12 +4,12 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksBrowser
-verified_against: 7fcbcffc
+verified_against: 1f55231f
 -->
 
 # iOS Frontend Baseline
 
-基線日期: 2026-06-02
+基線日期: 2026-06-04
 
 ---
 
@@ -17,18 +17,18 @@ verified_against: 7fcbcffc
 
 | 行數 | 路徑 |
 |------|------|
-| 674 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
-| 648 | `Views/Podcast/PodcastPlayerView.swift` |
+| 813 | `Views/Podcast/PodcastSentenceLevelView.swift` |
+| 721 | `Views/Podcast/PodcastPlayerView.swift` |
 | 593 | `Services/PodcastAudioEngine.swift` |
+| 555 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
+| 552 | `Views/Bookshelf/BookshelfView.swift` |
+| 525 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
 | 513 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
-| 504 | `Views/Bookshelf/BookshelfView.swift` |
-| 503 | `Views/Vocabulary/Components/CardDocumentView.swift` |
-| 463 | `Views/Settings/SubscriptionPaywallSheet.swift` |
-| 449 | `Views/Settings/SettingsPresenter+Actions.swift` |
-| 449 | `Views/Podcast/PodcastEpisodeListView.swift` |
-| 446 | `Views/Vocabulary/Scenes/TodayReviewView.swift` |
+| 509 | `Views/Vocabulary/Components/CardDocumentView.swift` |
+| 506 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
+| 487 | `Services/PodcastSyncService.swift` |
 
-總 Swift 行數: 48723 / 321 檔案
+總 Swift 行數: 51144 / 323 檔案
 
 ---
 
@@ -36,8 +36,8 @@ verified_against: 7fcbcffc
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 203 |
-| 含 #Preview 的檔案數 | 45 |
+| Views/ + UIComponents/ 檔案總數 | 204 |
+| 含 #Preview 的檔案數 | 63 |
 
 ---
 
@@ -45,5 +45,5 @@ verified_against: 7fcbcffc
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 127 |
+| @MainActor | 137 |
 | async func | 0 |

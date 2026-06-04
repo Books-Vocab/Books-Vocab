@@ -1,10 +1,10 @@
 <!-- doc-meta
-tier: snapshot
+tier: archive
 authority: derived
 update_trigger: manual
 scope:
   - ios/BooksBrowser/
-verified_against: d96d08ca
+verified_against: frozen
 -->
 # Feature Metrics Inventory
 

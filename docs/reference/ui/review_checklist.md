@@ -4,7 +4,7 @@ authority: derived
 update_trigger: manual
 scope:
   - ios/BooksBrowser/
-verified_against: 7fcbcffc
+verified_against: 1f55231f
 -->
 # UI Review Checklist
 
@@ -28,7 +28,7 @@ Scope: `ios/BooksBrowser`
 ### 1. Token 與 Style
 
 - [ ] 有沒有直接寫 raw color / font / spacing？
-  → 優先用 `VocabSkin`、`AppMetrics`、`ReaderPresentationMetrics`
+  → 優先用 `AppSkin`、`AppMetrics`、`ReaderPresentationMetrics`
 - [ ] 有沒有直接寫 `.spring(...)` / `.easeOut(...)` 等 raw motion？
   → 優先用 `AppMotion` 語意 token
 
