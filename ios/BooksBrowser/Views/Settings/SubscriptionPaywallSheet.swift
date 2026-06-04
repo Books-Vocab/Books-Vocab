@@ -357,107 +357,21 @@ struct SubscriptionPaywallSheet: View {
 
     // MARK: - Computed Properties
 
-    private var isCancelledButActive: Bool {
-        subscriptionManager.entitlements.pro.isCancelledButActive
-    }
+    /// 目前 Pro entitlement 快照 + App Store 價格 — 餵給純 `SubscriptionPaywallCopy`。
+    /// 所有文案邏輯收斂到該 enum（可單元測試），此處僅為 view-binding 薄轉發。
+    private var pro: KGSubscriptionStatus { subscriptionManager.entitlements.pro }
+    private var productPrice: String? { subscriptionManager.proProduct?.displayPrice }
 
-    private var activeSummaryText: String {
-        if isAdminGranted {
-            return L10n.string("目前帳號已由管理員授權為 Pro。")
-        }
-        if isCancelledButActive {
-            return L10n.format("你已取消自動續訂。Pro 功能可使用至 %@。", subscriptionManager.entitlements.pro.formattedExpiryDate)
-        }
-        return L10n.string("感謝支持！所有進階功能已解鎖。")
-    }
+    private var isCancelledButActive: Bool { pro.isCancelledButActive }
+    private var isAdminGranted: Bool { SubscriptionPaywallCopy.isAdminGranted(pro) }
 
-    private var paywallSummaryText: String {
-        return L10n.string("解鎖閱讀器 AI、雲端同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。")
-    }
-
-    /// 帳單金額（最突出的定價元素 — 3.1.2(c) 合規）
-    private var billedAmountLine: String {
-        if isAdminGranted {
-            if let expiresAt = subscriptionManager.entitlements.pro.expires_at, !expiresAt.isEmpty {
-                return L10n.format("管理員授權 · 有效至 %@", expiresAt)
-            }
-            return L10n.string("管理員授權")
-        }
-        if let product = subscriptionManager.proProduct {
-            return L10n.format("%@ / month", product.displayPrice)
-        }
-        if let remotePrice = subscriptionManager.entitlements.pro.price_display, !remotePrice.isEmpty {
-            return remotePrice
-        }
-        return L10n.string("載入 App Store 價格中…")
-    }
-
-    /// 後端未回傳 trial_days 時的預設試用天數。
-    private static let defaultTrialDays = 7
-
-    /// 有效試用天數（後端 entitlements 優先，否則回退預設）。
-    private var trialDays: Int {
-        subscriptionManager.entitlements.pro.trial_days ?? Self.defaultTrialDays
-    }
-
-    /// 試用資訊（次要位置，字級小於帳單金額）
-    private var trialInfoLine: String? {
-        guard !isAdminGranted else { return nil }
-        let days = trialDays
-        guard days > 0 else { return nil }
-        return L10n.format("包含 %@ 天免費試用", "\(days)")
-    }
-
-    /// 已啟用狀態使用的完整價格行（維持原格式）
-    private var priceLine: String {
-        if isAdminGranted {
-            return billedAmountLine
-        }
-        if let trialLine = trialInfoLine {
-            return "\(billedAmountLine) · \(trialLine)"
-        }
-        return billedAmountLine
-    }
-
-    /// CTA 按鈕標題（包含價格 — 3.1.2(c) 合規）
-    private var ctaButtonTitle: String {
-        if let product = subscriptionManager.proProduct {
-            let days = trialDays
-            if days > 0 {
-                return L10n.format("免費試用 %@ 天，之後 %@/月", "\(days)", product.displayPrice)
-            }
-            return L10n.format("訂閱 — %@/月", product.displayPrice)
-        }
-        return L10n.string("訂閱")
-    }
-
-    private var entitlementSourceLine: String {
-        switch subscriptionManager.entitlements.pro.source {
-        case "admin":
-            return L10n.string("管理員授權")
-        default:
-            return L10n.string("App Store 訂閱")
-        }
-    }
-
-    private var isAdminGranted: Bool {
-        subscriptionManager.entitlements.pro.is_active && subscriptionManager.entitlements.pro.source == "admin"
-    }
-
-    private var primaryActionTitle: String {
-        if isAdminGranted {
-            return L10n.string("重新整理權限狀態")
-        }
-        return L10n.string("重新同步訂閱狀態")
-    }
-
-    private var footerNote: String {
-        if isAdminGranted {
-            return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。")
-        }
-        if isCancelledButActive {
-            return L10n.string("到期後將回到免費方案。如需繼續使用 Pro，可重新訂閱。")
-        }
-        return L10n.string("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
-    }
+    private var activeSummaryText: String { SubscriptionPaywallCopy.activeSummary(pro) }
+    private var paywallSummaryText: String { SubscriptionPaywallCopy.marketingSummary }
+    private var billedAmountLine: String { SubscriptionPaywallCopy.billedAmount(pro, productDisplayPrice: productPrice) }
+    private var trialInfoLine: String? { SubscriptionPaywallCopy.trialInfo(pro) }
+    private var priceLine: String { SubscriptionPaywallCopy.priceLine(pro, productDisplayPrice: productPrice) }
+    private var ctaButtonTitle: String { SubscriptionPaywallCopy.ctaButtonTitle(pro, productDisplayPrice: productPrice) }
+    private var entitlementSourceLine: String { SubscriptionPaywallCopy.entitlementSource(pro) }
+    private var primaryActionTitle: String { SubscriptionPaywallCopy.primaryActionTitle(pro) }
+    private var footerNote: String { SubscriptionPaywallCopy.footerNote(pro) }
 }
