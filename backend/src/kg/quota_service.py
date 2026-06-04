@@ -266,8 +266,11 @@ def get_all_quota_usage(
 
     for uid in result:
         used = result[uid]["used_usd"]
+        limit = result[uid]["limit_usd"]
         result[uid]["used_usd"] = round(used, 6)
-        result[uid]["fraction_used"] = round(used / result[uid]["limit_usd"], 4)
+        # limit is now tier-dependent (runtime-configurable via configure_limits);
+        # guard the divisor in case an operator sets a limit to 0.
+        result[uid]["fraction_used"] = round(used / limit, 4) if limit > 0 else 0.0
 
     return result
 
