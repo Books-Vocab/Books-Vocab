@@ -41,6 +41,8 @@ verified_against: 1f55231f
 | host / port / container / Caddy 路由 | `docs/reference/host_topology.md` **(SoT)** | reference |
 | 生產禁用指令 / preflight / rollback 規則 | `docs/policy/safety.md` **(SoT)** | policy |
 | user/agent-facing 介面(admin endpoint / CLI flag / 設定 schema) | 另 grep `.claude/skills/`、`docs/sop/`、`docs/runbook/` 凡引用舊清單一併更新 | — |
+| `lab/llm_eval/` 新增 prompt / dataset / judge / provider | `docs/reference/llm_eval.md` | reference |
+| eval CLI 新增 flag / subcommand / output format / scoring rule | `docs/reference/llm_eval.md` + `docs/sop/llm_eval.md` | reference + sop |
 
 ## Tier 契約
 
