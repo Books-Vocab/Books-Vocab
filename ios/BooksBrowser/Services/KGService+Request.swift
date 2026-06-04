@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import os
 
 extension KGService {
     func authenticatedRequest(
