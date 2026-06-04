@@ -23,7 +23,7 @@ body {
 }
 
 .kg-options__title {
-  font-family: 'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif;
+  font-family: var(--font-display);
   font-size: var(--text-hero);
   line-height: var(--leading-display);
   font-weight: 700;
@@ -39,7 +39,7 @@ body {
 }
 
 .kg-section-card__title {
-  font-family: 'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif;
+  font-family: var(--font-display);
   font-size: var(--text-section-title);
   line-height: var(--leading-heading);
   font-weight: 700;

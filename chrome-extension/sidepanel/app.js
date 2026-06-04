@@ -144,7 +144,10 @@ async function loadVocabList() {
     }
 
     // Response is the vocab array (or an { items } / { data } envelope).
-    const items = KGPure.normalizeVocabList(response);
+    // Normalize each raw payload to one canonical shape here, at the single
+    // ingress point, so every downstream read (search / card / detail) uses
+    // canonical field names instead of papering over snake_case/legacy aliases.
+    const items = KGPure.normalizeVocabList(response).map(KGPure.normalizeVocabItem);
 
     vocabData = items;
 
@@ -219,8 +222,8 @@ function onSearch() {
   }
 
   const filtered = vocabData.filter((item) => {
-    const word = (item.content || '').toLowerCase();
-    const meaning = (item.meaning || item.translation || '').toLowerCase();
+    const word = item.word.toLowerCase();
+    const meaning = item.meaning.toLowerCase();
     return word.includes(query) || meaning.includes(query);
   });
 
@@ -257,11 +260,11 @@ function renderList(items) {
 function createCard(item) {
   const card = document.createElement('div');
   card.className = 'kg-card kg-card--interactive kg-list-card';
-  card.dataset.word = item.content || '';
+  card.dataset.word = item.word;
 
-  const meaning = item.meaning || item.translation || '';
-  const pos = item.pos || '';
-  const source = item.source || null;
+  const meaning = item.meaning;
+  const pos = item.pos;
+  const source = item.source;
   const isWeb = source && source.type === 'web';
   const sourceIcon = isWeb ? '🌐' : '📖';
 
@@ -271,7 +274,7 @@ function createCard(item) {
 
   const wordEl = document.createElement('span');
   wordEl.className = 'kg-list-card__word';
-  wordEl.textContent = item.content || '';
+  wordEl.textContent = item.word;
   row.appendChild(wordEl);
 
   if (pos) {
@@ -322,13 +325,13 @@ function toggleDetail(card, item) {
   const detail = document.createElement('div');
   detail.className = 'kg-detail';
 
-  const meaning = item.meaning || item.translation || '';
-  const pos = item.pos || '';
-  const examples = item.examples || [];
-  const collocations = item.collocations || [];
-  const note = item.note || '';
-  const context = item.context_sentence || item.context || '';
-  const source = item.source || null;
+  const meaning = item.meaning;
+  const pos = item.pos;
+  const examples = item.examples;
+  const collocations = item.collocations;
+  const note = item.note;
+  const context = item.context;
+  const source = item.source;
   const sourceUrl = source ? (source.url || '') : '';
   const sourceTitle = source ? (source.title || '') : '';
   const isWeb = source && source.type === 'web';
