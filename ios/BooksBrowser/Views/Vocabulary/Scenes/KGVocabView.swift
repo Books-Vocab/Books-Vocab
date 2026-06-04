@@ -260,32 +260,21 @@ struct KGVocabView: View {
 
 
     private var emptyStateTitle: String {
-        if syncedEntries.isEmpty { return "尚無已收錄單字".localized }
-        if !searchText.isEmpty { return "沒有符合的單字".localized }
-        if !selectedReviewStates.isEmpty { return "目前沒有符合篩選條件的單字".localized }
-        return "尚無已收錄單字".localized
+        KGVocabEmptyState.title(
+            hasNoEntries: syncedEntries.isEmpty, searchText: searchText, filters: selectedReviewStates
+        )
     }
 
     private var emptyStateDescription: String {
-        if syncedEntries.isEmpty {
-            return "在書架閱讀時長按生字加入單字本，或重新整理以拉取雲端已有資料。".localized
-        }
-        if !searchText.isEmpty { return "試試其他關鍵字，或取消部分篩選條件。".localized }
-        if !selectedReviewStates.isEmpty { return "試試取消部分篩選條件，或切換排序方式。".localized }
-        return "同步完成後，這裡會顯示你的雲端單字。".localized
+        KGVocabEmptyState.description(
+            hasNoEntries: syncedEntries.isEmpty, searchText: searchText, filters: selectedReviewStates
+        )
     }
 
     private var emptyStateIcon: String {
-        if syncedEntries.isEmpty { return "books.vertical" }
-        if !searchText.isEmpty { return "magnifyingglass" }
-        if selectedReviewStates.count == 1, let state = selectedReviewStates.first {
-            switch state {
-            case .unlearned: return "sparkles"
-            case .due: return "checkmark.seal"
-            case .reviewed: return "leaf"
-            }
-        }
-        return "line.3.horizontal.decrease.circle"
+        KGVocabEmptyState.systemImage(
+            hasNoEntries: syncedEntries.isEmpty, searchText: searchText, filters: selectedReviewStates
+        )
     }
 
     /// CTA：僅在「整本 notebook 完全沒卡」時提供 — 觸發強制同步以拉雲端資料。

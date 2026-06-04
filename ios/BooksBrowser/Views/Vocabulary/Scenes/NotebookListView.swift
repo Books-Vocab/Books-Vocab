@@ -83,127 +83,18 @@ struct NotebookListView: View {
                     // 容器 1pt cardBorder 微粗淡 hairline 框、灰填底比框線更淡。
                     // 三 pill (CTA / filter / plus) 統一規格走 NotebookHeaderPillLabel,
                     // 差別僅在「長度 + 填色」— user feedback iteration。
-                    let hasReview = totalDueCount > 0 || totalUnlearnedCount > 0
-                    let hasBothTypes = filteredDueEntries.count > 0 && filteredUnlearnedEntries.count > 0
-                    let totalReview = filteredDueEntries.count + filteredUnlearnedEntries.count
-
-                    HStack(spacing: AppSpacing.s2) {
-                        if hasReview {
-                            Text("今日複習".localized)
-                                .font(skin.typography.sectionTitle)
-                                .foregroundStyle(skin.palette.primaryText)
-                        }
-
-                        Spacer(minLength: 8)
-
-                        // CTA pill — 三模式 menu / 單模式 button,inline VocabReviewCTAPill 邏輯
-                        // 以套用統一 NotebookHeaderPillLabel 規格(高度與 tool pill 對齊)。
-                        if hasReview {
-                            if hasBothTypes {
-                                Menu {
-                                    Button {
-                                        startReview(with: filteredDueEntries + filteredUnlearnedEntries)
-                                    } label: {
-                                        Label(L10n.format("全部複習（%@）", "\(totalReview)"), systemImage: "rectangle.stack")
-                                    }
-                                    Divider()
-                                    Button {
-                                        startReview(with: filteredDueEntries)
-                                    } label: {
-                                        Label(L10n.format("到期複習（%@）", "\(filteredDueEntries.count)"), systemImage: "clock.badge")
-                                    }
-                                    Button {
-                                        startReview(with: filteredUnlearnedEntries)
-                                    } label: {
-                                        Label(L10n.format("未學複習（%@）", "\(filteredUnlearnedEntries.count)"), systemImage: "sparkles")
-                                    }
-                                } label: {
-                                    NotebookHeaderPillLabel(
-                                        fillColor: skin.palette.brandHero,
-                                        foregroundColor: AppColors.onBrandHero
-                                    ) {
-                                        HStack(spacing: AppSpacing.microGap) {
-                                            Image(systemName: "play.fill")
-                                            Text("\(totalReview)").monospacedDigit()
-                                        }
-                                    }
-                                }
-                                .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalReview)"))
-                            } else if filteredDueEntries.count > 0 {
-                                Button {
-                                    startReview(with: filteredDueEntries)
-                                } label: {
-                                    NotebookHeaderPillLabel(
-                                        fillColor: skin.palette.brandHero,
-                                        foregroundColor: AppColors.onBrandHero
-                                    ) {
-                                        HStack(spacing: AppSpacing.microGap) {
-                                            Image(systemName: "clock.badge")
-                                            Text("\(filteredDueEntries.count)").monospacedDigit()
-                                        }
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(filteredDueEntries.count)"))
-                            } else if filteredUnlearnedEntries.count > 0 {
-                                Button {
-                                    startReview(with: filteredUnlearnedEntries)
-                                } label: {
-                                    NotebookHeaderPillLabel(
-                                        fillColor: skin.palette.brandHero,
-                                        foregroundColor: AppColors.onBrandHero
-                                    ) {
-                                        HStack(spacing: AppSpacing.microGap) {
-                                            Image(systemName: "sparkles")
-                                            Text("\(filteredUnlearnedEntries.count)").monospacedDigit()
-                                        }
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(filteredUnlearnedEntries.count)"))
-                            }
-                        }
-
-                        if notebooks.count >= 2 {
-                            Button {
-                                showFilterSheet = true
-                            } label: {
-                                NotebookHeaderPillLabel(
-                                    fillColor: skin.palette.buttonIdleFill,
-                                    foregroundColor: reviewFilter.isFiltered ? skin.palette.accent : skin.palette.secondaryText
-                                ) {
-                                    Image(systemName: reviewFilter.isFiltered
-                                        ? "line.3.horizontal.decrease.circle.fill"
-                                        : "line.3.horizontal.decrease.circle")
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("篩選單字本".localized)
-                        }
-
-                        Button {
-                            showCreateSheet = true
-                        } label: {
-                            NotebookHeaderPillLabel(
-                                fillColor: skin.palette.buttonIdleFill,
-                                foregroundColor: skin.palette.secondaryText
-                            ) {
-                                Image(systemName: "plus")
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!authManager.isLoggedIn)
-                        .accessibilityLabel("新增單字本".localized)
-                    }
-                    .padding(.horizontal, AppSpacing.s3)
-                    .padding(.vertical, AppSpacing.s1)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
-                            .fill(skin.palette.mutedFill.opacity(0.5))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
-                            .stroke(skin.palette.divider, lineWidth: 1.5)
+                    NotebookReviewActionBar(
+                        dueCount: filteredDueEntries.count,
+                        unlearnedCount: filteredUnlearnedEntries.count,
+                        hasReviewItems: totalDueCount > 0 || totalUnlearnedCount > 0,
+                        notebookCount: notebooks.count,
+                        isFiltered: reviewFilter.isFiltered,
+                        canCreate: authManager.isLoggedIn,
+                        onReviewAll: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) },
+                        onReviewDue: { startReview(with: filteredDueEntries) },
+                        onReviewUnlearned: { startReview(with: filteredUnlearnedEntries) },
+                        onFilter: { showFilterSheet = true },
+                        onCreate: { showCreateSheet = true }
                     )
                     .padding(.horizontal, editorialHorizontal)
 
