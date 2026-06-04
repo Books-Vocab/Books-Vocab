@@ -5,55 +5,6 @@ enum VocabularyEntryPresentation {
         entries.filter(\.shouldUploadOnNextSync)
     }
 
-    static func filteredPendingEntries(
-        in entries: [VocabularyEntry],
-        searchText: String
-    ) -> [VocabularyEntry] {
-        let sortedPending = pendingEntries(in: entries).sorted(by: comparePendingEntries)
-
-        guard !searchText.isEmpty else { return sortedPending }
-        return sortedPending.filter {
-            $0.word.localizedCaseInsensitiveContains(searchText) ||
-            $0.translation.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    static func filteredKnowledgeEntries(
-        in entries: [VocabularyEntry],
-        reviewState: VocabularyReviewState,
-        searchText: String,
-        sortOption: KGVocabSortOption = .default,
-        now: Date = Date()
-    ) -> [VocabularyEntry] {
-        let baseFiltered = entries
-            .filter { $0.shouldAppearInKnowledgeList && $0.reviewState(at: now) == reviewState }
-
-        let sorted: [VocabularyEntry]
-        switch sortOption {
-        case .default:
-            sorted = baseFiltered.sorted { compareKnowledgeEntries($0, $1, now: now) }
-        case .alphabetical:
-            sorted = baseFiltered.sorted {
-                $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
-            }
-        case .dateAdded:
-            sorted = baseFiltered.sorted { $0.dateAdded > $1.dateAdded }
-        case .difficulty:
-            sorted = baseFiltered.sorted { lhs, rhs in
-                let lhsTier = tierPriority(lhs.difficultyTier)
-                let rhsTier = tierPriority(rhs.difficultyTier)
-                if lhsTier != rhsTier { return lhsTier < rhsTier }
-                return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
-            }
-        }
-
-        guard !searchText.isEmpty else { return sorted }
-        return sorted.filter {
-            $0.word.localizedCaseInsensitiveContains(searchText) ||
-            $0.translation.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
     /// Single-pass partition of knowledge entries into review-state buckets.
     /// Returns counts and the filtered+sorted list for the selected state.
     struct ClassifiedResult {
@@ -179,16 +130,6 @@ enum VocabularyEntryPresentation {
             return lhsTier < rhsTier
         }
         return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
-    }
-
-    static func comparePendingEntries(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry) -> Bool {
-        if lhs.isReviewDue != rhs.isReviewDue {
-            return lhs.isReviewDue && !rhs.isReviewDue
-        }
-        if lhs.nextReviewAt != rhs.nextReviewAt {
-            return lhs.nextReviewAt < rhs.nextReviewAt
-        }
-        return lhs.dateAdded > rhs.dateAdded
     }
 
     private static func reviewPriority(_ state: VocabularyReviewState) -> Int {

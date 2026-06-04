@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: 1f55231f
+verified_against: 36716af4
 -->
 # Vocabulary Feature Boundary
 
@@ -27,7 +27,7 @@ verified_against: 1f55231f
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `VocabularyListCoordinator.swift` | 81 | `@Observable @MainActor final class VocabularyListCoordinator` |
+| `VocabularyListCoordinator.swift` | 59 | `@Observable @MainActor final class VocabularyListCoordinator` |
 | `KnowledgeGraphCoordinator.swift` | 80 | `@Observable @MainActor final class KnowledgeGraphCoordinator` |
 | `Scenes/KGVocabCoordinator.swift` | 198 | `@Observable @MainActor final class KGVocabCoordinator` |
 | `Scenes/SyncCoordinator.swift` | 506 | `@Observable @MainActor final class SyncCoordinator`，含 `PipelineStep` / `SyncPhase` / `SyncFailureKind` |
@@ -83,7 +83,7 @@ verified_against: 1f55231f
 | `Scenes/TodayReviewPreviewData.swift` | 236 | preview 資料 |
 | `Scenes/TodayReviewMetrics.swift` | 103 | TodayReview feature-local 版面 metrics(`static let`,~44 個) |
 | `Scenes/TodayReviewSessionSnapshotStore.swift` | 122 | `TodayReviewState` session snapshot 持久化 |
-| `Scenes/ReviewFoldSurface.swift` | 132 | `struct ReviewFoldSurface` + `ReviewFoldChevronButton/Pill` |
+| `Scenes/ReviewFoldSurface.swift` | 108 | `struct ReviewFoldSurface` + `ReviewFoldChevronPill` |
 | `Scenes/ReviewScoringState.swift` | 56 | 複習評分子狀態 |
 | `Scenes/ReviewSessionPersistence.swift` | 271 | 複習 session 落地/恢復邏輯 |
 | `Scenes/SelectionModeState.swift` | 47 | 列表多選模式狀態 |

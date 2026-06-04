@@ -273,8 +273,8 @@ struct NotebookListView: View {
 
     // MARK: - Notebook card builders
 
-    /// 把 `Notebook` model 收斂成 view-only `NotebookCardData`。
-    /// 抽出後 grid / hero 兩條分支共用，避免重複的 init 區塊漂移。
+    /// 把 `Notebook` model 收斂成 view-only `NotebookCardData`，
+    /// 隔離 model → view 的對應，避免 init 區塊內聯在 list 迴圈裡。
     private func notebookCardData(for notebook: Notebook, stats s: NotebookStats) -> NotebookCardData {
         NotebookCardData(
             name: notebook.name,

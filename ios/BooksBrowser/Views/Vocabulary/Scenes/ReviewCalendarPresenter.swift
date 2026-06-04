@@ -61,7 +61,7 @@ struct ReviewCalendarPresenter: View {
             ScrollView {
                 VStack(spacing: appSkin.spacing.sectionGap) {
                     calendarSection
-                    if let _ = selectedDay {
+                    if selectedDay != nil {
                         dayDetailSection
                     }
                 }
@@ -230,7 +230,7 @@ struct ReviewCalendarPresenter: View {
     private var dayDisplayTitle: String {
         guard let day = selectedDay else { return "" }
         let todayKey = ReviewRecord.makeDayKey(from: Date())
-        if day == todayKey { return "\(day)" + "（今天）".localized }
+        if day == todayKey { return day + "（今天）".localized }
         return day
     }
 
