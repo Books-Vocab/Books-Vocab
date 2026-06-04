@@ -64,32 +64,16 @@ extension ReaderTranslationHandler {
             explanationErrorMessage = nil
         }
 
-        let newTask = Task { @MainActor in
-            guard !Task.isCancelled else { return }
-
-            do {
-                // onRetry 是 @Sendable async closure，service 以 structured `await` 呼叫，
-                // 故 `await MainActor.run { ... }` 仍在父 task 的取消鏈內 — guard 讀到父 task flag。
-                // 不可用內層 `Task { @MainActor in }`：unstructured Task 不繼承取消，其
-                // Task.isCancelled 恆 false，dismiss / 新查詢 cancel 父 task 後仍會寫回 stale status。
-                // 與 handlePhrase / handleExplain / handleExpand 三 site 對稱。
-                let result = try await translationService.translateQuick(
+        runLookupTask(
+            statusChannel: .translation,
+            operation: { [translationService] onRetry in
+                try await translationService.translateQuick(
                     word: word,
                     context: context,
-                    onRetry: { [weak self] (attempt: Int, total: Int) in
-                        guard let self else { return }
-                        await MainActor.run {
-                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                            guard !Task.isCancelled else { return }
-                            self.translationStatus = L10n.format(
-                                "正在重試 (%@/%@)...",
-                                "\(attempt)",
-                                "\(total)"
-                            )
-                        }
-                    }
+                    onRetry: onRetry
                 )
-                guard !Task.isCancelled else { return }
+            },
+            onSuccess: { [self] result in
                 withAnimation(AppMotion.feedbackPulse) {
                     translationResult = result
                     isTranslating = false
@@ -106,16 +90,15 @@ extension ReaderTranslationHandler {
                     await LongPressTip.wordLookedUp.donate()
                     LongPressTip().invalidate(reason: .actionPerformed)
                 }
-            } catch {
-                guard !(error is CancellationError), !Task.isCancelled else { return }
+            },
+            onFailure: { [self] error in
                 AppLog.reader.error("翻譯錯誤: \(error.localizedDescription)")
                 translationResult = nil
                 isTranslating = false
                 translationStatus = nil
                 translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
-        }
-        replaceCurrentTranslationTask(with: newTask)
+        )
     }
 
     func handlePhraseSelected(
@@ -139,37 +122,27 @@ extension ReaderTranslationHandler {
             explanationErrorMessage = nil
         }
 
-        let task = Task { @MainActor in
-            do {
+        runLookupTask(
+            statusChannel: .translation,
+            operation: { [translationService] onRetry in
                 let translation = try await translationService.translatePhrase(
                     phrase: phrase,
                     context: context,
-                    onRetry: { [weak self] (attempt: Int, total: Int) in
-                        guard let self else { return }
-                        await MainActor.run {
-                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                            guard !Task.isCancelled else { return }
-                            self.translationStatus = L10n.format(
-                                "正在重試 (%@/%@)...",
-                                "\(attempt)",
-                                "\(total)"
-                            )
-                        }
-                    }
+                    onRetry: onRetry
                 )
-                let result = TranslationResult(
+                return TranslationResult(
                     translation: translation,
                     partOfSpeech: nil,
                     explanation: nil
                 )
-                guard !Task.isCancelled else { return }
+            },
+            onSuccess: { [self] result in
                 withAnimation(AppMotion.feedbackPulse) {
                     translationResult = result
                     isTranslating = false
                     translationStatus = nil
                     translationErrorMessage = nil
                 }
-                guard !Task.isCancelled else { return }
                 await Task.yield()
                 if let vocabularyContext {
                     autoSaveToVocabulary(
@@ -178,15 +151,14 @@ extension ReaderTranslationHandler {
                         context: vocabularyContext
                     )
                 }
-            } catch {
-                guard !(error is CancellationError), !Task.isCancelled else { return }
+            },
+            onFailure: { [self] error in
                 translationResult = nil
                 isTranslating = false
                 translationStatus = nil
                 translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
-        }
-        replaceCurrentTranslationTask(with: task)
+        )
     }
 
     func handleExplainSelected(text: String, context: String) {
@@ -207,40 +179,30 @@ extension ReaderTranslationHandler {
             explanationErrorMessage = nil
         }
 
-        let task = Task { @MainActor in
-            do {
-                let (explanation, _) = try await translationService.fetchExplanation(
+        runLookupTask(
+            statusChannel: .explanation,
+            operation: { [translationService] onRetry in
+                try await translationService.fetchExplanation(
                     word: text,
                     context: context,
-                    onRetry: { [weak self] (attempt: Int, total: Int) in
-                        guard let self else { return }
-                        await MainActor.run {
-                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                            guard !Task.isCancelled else { return }
-                            self.explanationStatus = L10n.format(
-                                "正在重試 (%@/%@)...",
-                                "\(attempt)",
-                                "\(total)"
-                            )
-                        }
-                    }
+                    onRetry: onRetry
                 )
-                guard !Task.isCancelled else { return }
+            },
+            onSuccess: { [self] explanation, _ in
                 withAnimation(AppMotion.feedbackPulse) {
                     explanationText = explanation
                     isLoadingExplanation = false
                     explanationStatus = nil
                     explanationErrorMessage = nil
                 }
-            } catch {
-                guard !(error is CancellationError), !Task.isCancelled else { return }
+            },
+            onFailure: { [self] error in
                 explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil
                 explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
-        }
-        replaceCurrentTranslationTask(with: task)
+        )
     }
 
     /// 重試最近一次失敗的翻譯／解釋。等同於使用者再點一次原本的單字／片語／explain。
@@ -272,25 +234,16 @@ extension ReaderTranslationHandler {
         explanationStatus = nil
         explanationErrorMessage = nil
 
-        let task = Task { @MainActor in
-            do {
-                let (explanation, latency) = try await translationService.fetchExplanation(
+        runLookupTask(
+            statusChannel: .explanation,
+            operation: { [translationService] onRetry in
+                try await translationService.fetchExplanation(
                     word: selection.word,
                     context: selection.context,
-                    onRetry: { [weak self] (attempt: Int, total: Int) in
-                        guard let self else { return }
-                        await MainActor.run {
-                            // 父 task 取消（dismiss / 新查詢）後不再寫回 status。
-                            guard !Task.isCancelled else { return }
-                            self.explanationStatus = L10n.format(
-                                "正在重試 (%@/%@)...",
-                                "\(attempt)",
-                                "\(total)"
-                            )
-                        }
-                    }
+                    onRetry: onRetry
                 )
-                guard !Task.isCancelled else { return }
+            },
+            onSuccess: { [self] explanation, latency in
                 withAnimation(AppMotion.feedbackPulse) {
                     explanationText = explanation
                     isLoadingExplanation = false
@@ -301,16 +254,15 @@ extension ReaderTranslationHandler {
                         translationResult = updatedResult
                     }
                 }
-            } catch {
-                guard !(error is CancellationError), !Task.isCancelled else { return }
+            },
+            onFailure: { [self] error in
                 AppLog.reader.error("解釋錯誤: \(error.localizedDescription)")
                 explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil
                 explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
-        }
-        replaceCurrentTranslationTask(with: task)
+        )
     }
 }
 #endif
