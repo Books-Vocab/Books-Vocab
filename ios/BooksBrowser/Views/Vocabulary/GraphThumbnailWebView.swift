@@ -44,10 +44,7 @@ final class GraphThumbnailCoordinator: NSObject, WKScriptMessageHandler {
 
     func sendInitGraph(_ json: String, webView: WKWebView) {
         guard graphBridgeReady else { pendingPayload = json; return }
-        let escaped = json
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-        webView.evaluateJavaScript("initGraph('\(escaped)')", completionHandler: nil)
+        webView.evaluateJavaScript("initGraph('\(json.jsSingleQuoteEscaped)')", completionHandler: nil)
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
