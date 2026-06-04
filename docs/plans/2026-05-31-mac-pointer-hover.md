@@ -1,5 +1,5 @@
 <!-- doc-meta
-tier: snapshot
+tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Bookshelf/
   - ios/BooksBrowser/Views/Vocabulary/
   - ios/BooksBrowser/Platform/
-verified_against: d96d08ca
+verified_against: frozen
 -->
 # Mac Catalyst Pointer / Hover Implementation Plan(Workstream B)
 

@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
-verified_against: a5e194dc
+verified_against: 1f55231f
 -->
 # BooksBrowser UI Design System
 

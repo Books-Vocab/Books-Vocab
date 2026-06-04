@@ -6,7 +6,7 @@ scope:
   - ops/
   - backend/
   - docs/runbook/
-verified_against: a17b7c4d
+verified_against: 1f55231f
 -->
 # Safety Policy
 

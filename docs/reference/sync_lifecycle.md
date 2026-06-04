@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 613a2528
+verified_against: 1f55231f
 -->
 # Sync Lifecycle
 

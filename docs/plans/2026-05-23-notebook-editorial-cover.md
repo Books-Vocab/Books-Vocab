@@ -1,10 +1,10 @@
 <!-- doc-meta
-tier: snapshot
+tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: a17b7c4d
+verified_against: frozen
 -->
 # Notebook Editorial Cover & List Implementation Plan
 

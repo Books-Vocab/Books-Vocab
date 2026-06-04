@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: a5e194dc
+verified_against: 1f55231f
 -->
 # UI Component & Pattern Inventory
 
@@ -91,8 +91,8 @@ Scope: `ios/BooksBrowser`
 ### Vocabulary Skin Layer
 
 主要檔案：
-- `ios/BooksBrowser/Views/Vocabulary/Skin/VocabSkin.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Components/VocabSkinComponents.swift`
+- `ios/BooksBrowser/Models/AppSkin.swift`（前身 `Skin/VocabSkin.swift`，已升格為全 app 共用）
+- `ios/BooksBrowser/Views/Vocabulary/Components/VocabComponents.swift`（前身 `VocabSkinComponents.swift`）
 - `ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift`
 
 核心元件：

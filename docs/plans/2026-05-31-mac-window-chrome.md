@@ -1,12 +1,12 @@
 <!-- doc-meta
-tier: snapshot
+tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
   - ios/BooksBrowser/Platform/
   - ios/BooksBrowser/Views/Reader/ReaderView.swift
   - ios/BooksBrowser/ContentView.swift
-verified_against: a6b48156
+verified_against: frozen
 -->
 # Mac Catalyst Window Chrome Implementation Plan(Workstream A)
 
