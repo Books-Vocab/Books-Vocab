@@ -87,7 +87,10 @@ function onRetry() {
 // ---------------------------------------------------------------------------
 
 function updateThemeBtn(theme) {
-  themeBtn.textContent = THEME_ICONS[theme] || THEME_ICONS.light;
+  const icon = document.getElementById('themeIcon');
+  if (icon) {
+    icon.textContent = THEME_ICONS[theme] || THEME_ICONS.light;
+  }
 }
 
 async function cycleTheme() {
@@ -168,13 +171,29 @@ async function loadVocabList() {
 /**
  * Render the error state with messaging keyed off the API error code/status.
  * Updates icon, title, subtitle, retry button label, and the retry action.
+ * For login errors, applies the editorial login treatment (no emoji, brand-hero CTA).
  * @param {{error: true, code?: string, status?: number, message?: string}} response
  */
 function showErrorFromResponse(response) {
   const { icon, title, subtitle, btnLabel, action } =
     KGPure.classifyError(response || {});
 
-  errorIcon.textContent = icon;
+  const container = document.getElementById('errorContainer');
+  const isLogin = action === 'login';
+
+  if (container) {
+    container.classList.toggle('kg-error--login', isLogin);
+  }
+
+  if (isLogin) {
+    // Editorial login state: no emoji icon, clean typography, brand-hero CTA.
+    errorIcon.textContent = '';
+    retryBtn.className = 'kg-btn kg-error__retry';
+  } else {
+    errorIcon.textContent = icon;
+    retryBtn.className = 'kg-btn kg-btn--accent kg-error__retry';
+  }
+
   errorTitle.textContent = title;
   if (subtitle) {
     errorSubtitle.textContent = subtitle;
