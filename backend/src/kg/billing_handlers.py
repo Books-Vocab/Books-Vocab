@@ -5,13 +5,16 @@ from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import httpx
 from fastapi import HTTPException
 from filelock import FileLock
 
 logger = logging.getLogger(__name__)
+
+UsersLoader: TypeAlias = Callable[[], dict[str, dict[str, Any]]]
+UsersSaver: TypeAlias = Callable[[dict[str, dict[str, Any]]], None]
 
 from .api_models import (
     AppStoreNotificationRequest,
@@ -20,6 +23,8 @@ from .api_models import (
     EntitlementsResponse,
 )
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
+
+EntitlementsBuilder: TypeAlias = Callable[[dict[str, Any] | None], EntitlementsResponse]
 
 # Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
 # three ingest paths (sync / notification / reconcile). `source` and
@@ -71,11 +76,11 @@ def sync_app_store_subscription_response(
     *,
     allow_unsigned_sync: bool,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: UsersLoader,
+    save_users: UsersSaver,
     decode_signed_transaction_info: Callable[[str], dict[str, Any]],
     write_subscription_snapshot: Callable[..., dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     with _map_app_store_errors(
         "App Store transaction verification failed: %s",
@@ -123,13 +128,13 @@ def app_store_notifications_response(
     req: AppStoreNotificationRequest,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: UsersLoader,
+    save_users: UsersSaver,
     decode_notification_payload: Callable[[AppStoreNotificationRequest], tuple[dict[str, Any], dict[str, Any] | None]],
     append_app_store_event: Callable[[dict[str, Any]], None],
     resolve_user_id_from_subscription_index: Callable[[dict[str, Any], str | None, str | None], str | None],
     write_subscription_snapshot: Callable[..., dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: EntitlementsBuilder,
 ) -> dict[str, Any]:
     with _map_app_store_errors(
         "App Store notification verification failed: %s",
@@ -195,13 +200,13 @@ async def reconcile_app_store_subscription_response(
     *,
     apple_bundle_id: str,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: UsersLoader,
+    save_users: UsersSaver,
     fetch_transaction_info: Callable[..., Awaitable[dict[str, Any]]],
     decode_signed_transaction_info: Callable[[str], dict[str, Any]],
     resolve_user_id_from_subscription_index: Callable[[dict[str, Any], str | None, str | None], str | None],
     write_subscription_snapshot: Callable[..., dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     try:
         with _map_app_store_errors(

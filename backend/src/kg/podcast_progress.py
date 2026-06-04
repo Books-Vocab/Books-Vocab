@@ -21,12 +21,18 @@ auto-creates the table; no manual migration needed.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 from .ops_shared import data_dir
+
+
+def _close_quietly(conn: sqlite3.Connection) -> None:
+    with contextlib.suppress(sqlite3.Error):
+        conn.close()
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -46,10 +52,7 @@ def set_data_dir(path: Path | None) -> None:
     with _lock:
         _override_data_dir = path
         if _conn is not None:
-            try:
-                _conn.close()
-            except Exception:
-                pass
+            _close_quietly(_conn)
         _conn = None
         _init_data_dir = None
 
@@ -71,10 +74,7 @@ def _get_conn() -> sqlite3.Connection:
     if _conn is not None and _init_data_dir == current_dir:
         return _conn
     if _conn is not None:
-        try:
-            _conn.close()
-        except Exception:
-            pass
+        _close_quietly(_conn)
         _conn = None
     db_path = current_dir / "podcast_progress.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,10 +134,7 @@ def _reset() -> None:
     global _conn, _init_data_dir, _override_data_dir
     with _lock:
         if _conn is not None:
-            try:
-                _conn.close()
-            except Exception:
-                pass
+            _close_quietly(_conn)
             _conn = None
             _init_data_dir = None
         _override_data_dir = None

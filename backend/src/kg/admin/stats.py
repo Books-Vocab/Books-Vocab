@@ -136,7 +136,7 @@ def _collect_disks(psutil: Any) -> list[dict[str, Any]]:
                     "percent": du.percent,
                 }
             )
-        except (OSError, PermissionError):
+        except OSError:
             continue
     return disks
 

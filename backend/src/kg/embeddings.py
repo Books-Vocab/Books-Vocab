@@ -34,6 +34,7 @@ def _fsync_path(path: Path) -> None:
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
 _EMBED_MAX_RETRIES = 3
+_EMBED_BACKOFF_BASE = 2
 _COSINE_EPS = 1e-9
 
 
@@ -394,7 +395,7 @@ class EmbeddingStore:
                 return vecs
             except OpenAIError as e:
                 if attempt < _EMBED_MAX_RETRIES - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(_EMBED_BACKOFF_BASE ** attempt)
                     continue
                 logger.error("Embedding API error: %s", e, exc_info=True)
                 raise e
