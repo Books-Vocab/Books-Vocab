@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: bab1d5fa
+verified_against: 33191db4
 -->
 # Implemented Product Surface
 
@@ -186,4 +186,5 @@ verified_against: bab1d5fa
 - `backup_verify.sh`: restore drill + integrity check
 - Chrome extension release bundle script + tests
 - pytest pinned in `pyproject.toml [dependency-groups].dev`(修 backend venv 無 pytest)
-- **Web 設計系統地基**: `design-system/tokens.json`(iOS Swift token 鏡像 SoT)→ `ops/gen_web_tokens.py` 生成 web CSS(`design-system/dist/` + chrome-extension + `backend/static/`)+ `ops/token_drift_check.py` drift guard(`$swift` token 偏移 iOS 不可 merge)。手寫 primitives 源 `design-system/dist/kg-components.css`
+- **Web 設計系統地基**: `design-system/tokens.json`(iOS Swift token 鏡像 SoT)→ `ops/gen_web_tokens.py` 生成 web CSS(`design-system/dist/` + chrome-extension + `backend/static/`)。手寫 primitives 源 `design-system/dist/kg-components.css`,複製進三 web surface(extension + 官網);chrome-extension 三 surface(sidepanel/popup/options)已消費此 primitives,視覺鏡像 iOS
+- **設計系統三層 guard + CI 強制**: `token_drift_check.py`(**值**:`$swift` token ↔ iOS literal,含 `AppTag` chip padding/fill)+ `component_fidelity_check.py`(**組裝**:contract-based 守每個 primitive 選用哪個 token 對齊 iOS 元件,如 `.kg-btn` radius md/700、`.kg-chip`↔`AppTag`、`.kg-input` body+hairline)+ `gen_web_tokens.py --check`(**生成**:無 stale 副本),聚合入口 `ops/verify_design_system.sh`,由 **repo 首支 GitHub Actions CI**(`.github/workflows/design-system.yml`,路徑觸發)+ `.githooks/pre-commit` 雙重強制

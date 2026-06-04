@@ -6,6 +6,7 @@
   <title>KG 詞彙</title>
   <link rel="stylesheet" href="../shared/fonts.css">
   <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/kg-components.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -20,7 +21,7 @@
 
   <!-- Search -->
   <div class="kg-search-wrap">
-    <input type="text" class="kg-search" id="searchInput" placeholder="搜尋詞彙…" autocomplete="off">
+    <input type="text" class="kg-input kg-search" id="searchInput" placeholder="搜尋詞彙…" autocomplete="off">
     <span class="kg-search__count" id="searchCount"></span>
   </div>
 
@@ -44,7 +45,7 @@
     <span class="kg-error__icon" id="errorIcon">⚠️</span>
     <p class="kg-error__title" id="errorTitle">載入失敗</p>
     <p class="kg-error__subtitle" id="errorSubtitle" hidden></p>
-    <button class="kg-error__retry" id="retryBtn">重試</button>
+    <button class="kg-btn kg-btn--accent kg-error__retry" id="retryBtn">重試</button>
   </div>
 
   <!-- State: Content -->

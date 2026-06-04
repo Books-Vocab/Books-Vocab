@@ -240,7 +240,7 @@ function renderList(items) {
  */
 function createCard(item) {
   const card = document.createElement('div');
-  card.className = 'kg-list-card';
+  card.className = 'kg-card kg-card--interactive kg-list-card';
   card.dataset.word = item.content || '';
 
   const meaning = item.meaning || item.translation || '';
@@ -260,7 +260,7 @@ function createCard(item) {
 
   if (pos) {
     const posEl = document.createElement('span');
-    posEl.className = 'kg-list-card__pos';
+    posEl.className = 'kg-chip kg-list-card__pos';
     posEl.textContent = pos;
     row.appendChild(posEl);
   }
@@ -338,7 +338,7 @@ function toggleDetail(card, item) {
 
   // Collocations
   if (collocations.length > 0) {
-    const chips = collocations.map((c) => `<span class="kg-detail__chip">${esc(typeof c === 'string' ? c : c.word || '')}</span>`).join('');
+    const chips = collocations.map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : c.word || '')}</span>`).join('');
     detail.appendChild(makeSection('搭配', `<div class="kg-detail__chips">${chips}</div>`));
   }
 
@@ -359,7 +359,7 @@ function toggleDetail(card, item) {
     // schemes like `javascript:` — `safeUrl` enforces an http(s) allowlist
     // and collapses anything else to `#`.
     const safeHref = KGPure.safeUrl(sourceUrl);
-    detail.appendChild(makeSection('來源', `<a class="kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
+    detail.appendChild(makeSection('來源', `<a class="kg-link kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
   } else {
     detail.appendChild(makeSection('來源', `<span class="kg-detail__source-text">iOS app</span>`));
   }
