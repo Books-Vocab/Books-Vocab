@@ -168,6 +168,14 @@ _STAGES_ORDERED = (
 _STAGE_NAMES = set(_STAGES_ORDERED)
 
 
+def _stages_done(ws: Path) -> set[str]:
+    """Stage names whose done-marker (`.stage_<name>_done`) exists in *ws*."""
+    return {
+        m.name.replace(".stage_", "").replace("_done", "")
+        for m in ws.glob(".stage_*_done")
+    }
+
+
 def _resolve_ws(ws_name: str) -> Path:
     """Validate + resolve a workspace name. 404 on miss / 400 on bad shape."""
     if not _WS_NAME_RE.match(ws_name):
@@ -304,7 +312,7 @@ def list_workspaces(full: bool = Query(False)):
 
 # Total stage count, surfaced in the summary so the frontend can render
 # progress without hardcoding the number (and stay correct if we add stages).
-_STAGE_COUNT = len(_STAGE_NAMES)
+_STAGE_COUNT = len(_STAGES_ORDERED)
 # Final stage — when its done-marker exists, the whole workspace is "done".
 _FINAL_STAGE = "publish"
 
@@ -584,9 +592,7 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
 
     # ─── Stage progress (from done markers) — kept for status cascade + the
     # legacy n_stages_* fields; progress display now uses _milestones() below.
-    stages_done: set[str] = set()
-    for marker in ws.glob(".stage_*_done"):
-        stages_done.add(marker.name.replace(".stage_", "").replace("_done", ""))
+    stages_done = _stages_done(ws)
     n_done = len(stages_done)
 
     # ─── Episodes (synthesized audio count) — needed before status so the
@@ -801,10 +807,7 @@ def snapshot(ws_name: str):
                 events.append({"kind": kind, "data": obj})
 
     # Stage marker summary
-    stages_done = sorted(
-        f.name.replace(".stage_", "").replace("_done", "")
-        for f in ws.glob(".stage_*_done")
-    )
+    stages_done = sorted(_stages_done(ws))
 
     return {
         "workspace": ws_name,
@@ -1320,7 +1323,6 @@ async def start_saga(
         if not up.filename or not up.filename.lower().endswith(".epub"):
             raise HTTPException(400, "all saga files must be .epub")
 
-    UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
     staged: list[Path] = []
     # Each staged path gets its own uuid token so concurrent same-name saga
     # uploads never collide on a physical path; reading order is carried by the
@@ -1429,12 +1431,17 @@ def kill_job(job_id: str):
 # ─── Remote (Lightsail) management ──────────────────────────────────────────
 
 
+def _remote_502(e: remote_ops.RemoteError) -> HTTPException:
+    """Translate a RemoteError into a bounded 502 (remote.py is an S3 client)."""
+    return HTTPException(502, f"remote storage op failed (code {e.code}): {e.stderr[:200]}")
+
+
 @app.get("/api/remote/series")
 def remote_series():
     try:
         return remote_ops.list_remote_series()
     except remote_ops.RemoteError as e:
-        raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
+        raise _remote_502(e) from e
 
 
 @app.get("/api/remote/disk")
@@ -1442,7 +1449,7 @@ def remote_disk():
     try:
         return remote_ops.remote_disk_usage()
     except remote_ops.RemoteError as e:
-        raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
+        raise _remote_502(e) from e
 
 
 def _workspace_has_audio(ws: Path) -> bool:
@@ -1483,7 +1490,7 @@ def remote_reconcile():
     try:
         series = remote_ops.list_remote_series()
     except remote_ops.RemoteError as e:
-        raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
+        raise _remote_502(e) from e
     # Orphans (in-bucket-but-not-indexed, orphan=True) are intentionally folded
     # in: the audio DID reach the bucket (publish succeeded, only index regen
     # lagged), so this workspace↔S3 net must not false-flag it. The distinct
@@ -1506,7 +1513,7 @@ def remote_delete(series_id: str, confirm: str = Query(...)):
     try:
         return remote_ops.delete_remote_series(series_id)
     except remote_ops.RemoteError as e:
-        raise HTTPException(502, f"remote ssh failed (exit {e.code}): {e.stderr[:200]}") from e
+        raise _remote_502(e) from e
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

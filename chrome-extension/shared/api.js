@@ -203,20 +203,3 @@ export {
   API_BASE,
   TOKEN_KEY,
 };
-
-// Global exports (for non-module contexts: content script, side panel, options)
-if (typeof globalThis !== 'undefined') {
-  globalThis.KGApi = {
-    translate,
-    translatePhrase,
-    explain,
-    addVocab,
-    listVocab,
-    lookupWord,
-    apiFetch,
-    ApiError,
-    getToken,
-    API_BASE,
-    TOKEN_KEY,
-  };
-}
