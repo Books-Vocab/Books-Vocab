@@ -50,7 +50,12 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         let targetWidth = proposal.width ?? uiView.bounds.width
         guard targetWidth > 0 else { return nil }
         let fit = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
-        return CGSize(width: targetWidth, height: fit.height)
+        // Shrink-to-content width to match `CachedFlowLayout` (which returns the
+        // tight `maxX` of laid-out words). Returning the full `targetWidth` made the
+        // bubble background snap wider the instant selection mode swapped wordFlow →
+        // UITextView. `min` keeps us within the proposed width while collapsing to
+        // the intrinsic content width when the sentence is narrower than one line.
+        return CGSize(width: min(fit.width, targetWidth), height: fit.height)
     }
 
     private func update(_ uiView: UITextView, coordinator: Coordinator) {

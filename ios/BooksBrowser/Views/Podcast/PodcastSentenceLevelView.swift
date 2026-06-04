@@ -397,7 +397,9 @@ private struct PodcastTranscriptColumn: View {
                     onSentenceTap: {
                         if hasActiveSelection {
                             onClearSelection()
-                        } else if sentence.id != currentId {
+                        } else {
+                            // Always seek to this sentence's start — tapping the
+                            // already-current bubble re-seeks to its head too.
                             onSentenceTap(sentence)
                         }
                     },
@@ -636,7 +638,9 @@ private struct PodcastBubbleCell: View, Equatable {
                         // Report each word's frame so the underline can be
                         // positioned/sized against real geometry.
                         .anchorPreference(key: WordFrameKey.self, value: .bounds) { [index: $0] }
-                        .onTapGesture { onWordTap(cue.word, fullText) }
+                        // No per-word tap: a tap anywhere on the bubble seeks to the
+                        // sentence start (cell-level `.onTapGesture` → onSentenceTap).
+                        // Long-press still opens phrase selection on this word.
                         .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
                 }
             }
@@ -649,7 +653,7 @@ private struct PodcastBubbleCell: View, Equatable {
                     Text(cue.word)
                         .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
-                        .onTapGesture { onWordTap(cue.word, fullText) }
+                        // No per-word tap: bubble tap seeks; long-press selects.
                         .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
                 }
             }
