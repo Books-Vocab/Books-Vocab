@@ -69,6 +69,19 @@ def _graph_path(user: str) -> Path:
     return notebook_files(DATA / user)["graph"]
 
 
+def _load_links(user: str) -> list:
+    """Graph links for *user*, normalizing the bare-list vs {links:[...]} shapes.
+
+    Returns [] when no graph file exists. Single source for the graph-file shape
+    so a format change touches one place instead of overview/graph/card.
+    """
+    gp = _graph_path(user)
+    if not gp.exists():
+        return []
+    data = json.loads(gp.read_text())
+    return data if isinstance(data, list) else data.get("links", [])
+
+
 def _candidates_path(user: str) -> Path:
     return notebook_files(DATA / user)["candidates"]
 
@@ -119,6 +132,11 @@ def _section(title: str):
     print(f"{'='*60}")
 
 
+def _pct(n: int, total: int) -> int:
+    """Integer percent n/total, 0 when total is 0 (empty/fresh user DB)."""
+    return (100 * n // total) if total else 0
+
+
 # ── commands ─────────────────────────────────────────────────────────────
 
 def cmd_overview(user: str, **_):
@@ -134,9 +152,9 @@ def cmd_overview(user: str, **_):
     has_note = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0 AND note IS NOT NULL").fetchone()[0]
     has_diff = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0 AND difficulty IS NOT NULL").fetchone()[0]
     print(f"\n[Enrichment Coverage]")
-    print(f"  pos:        {has_pos}/{total} ({100*has_pos//total}%)")
-    print(f"  note:       {has_note}/{total} ({100*has_note//total}%)")
-    print(f"  difficulty: {has_diff}/{total} ({100*has_diff//total}%)")
+    print(f"  pos:        {has_pos}/{total} ({_pct(has_pos, total)}%)")
+    print(f"  note:       {has_note}/{total} ({_pct(has_note, total)}%)")
+    print(f"  difficulty: {has_diff}/{total} ({_pct(has_diff, total)}%)")
 
     # difficulty distribution
     print(f"\n[Difficulty Distribution]")
@@ -171,10 +189,8 @@ def cmd_overview(user: str, **_):
         print(f"[Collocations]  {has_coll}/{total} cards have collocations")
 
     # graph summary
-    gp = _graph_path(user)
-    if gp.exists():
-        data = json.loads(gp.read_text())
-        links = data if isinstance(data, list) else data.get("links", [])
+    if _graph_path(user).exists():
+        links = _load_links(user)
         kinds = {}
         for lk in links:
             kinds[lk["kind"]] = kinds.get(lk["kind"], 0) + 1
@@ -243,13 +259,11 @@ def cmd_graph(user: str, **_):
     conn = _conn(user)
     _section("Graph Links")
 
-    gp = _graph_path(user)
-    if not gp.exists():
+    if not _graph_path(user).exists():
         print("  No graph_default.json found.")
         return
 
-    data = json.loads(gp.read_text())
-    links = data if isinstance(data, list) else data.get("links", [])
+    links = _load_links(user)
 
     # stats
     kinds = {}
@@ -350,10 +364,8 @@ def cmd_card(user: str, card_id: str = "", **_):
     _print_card(row, verbose=True)
 
     # show graph links involving this card
-    gp = _graph_path(user)
-    if gp.exists():
-        data = json.loads(gp.read_text())
-        links = data if isinstance(data, list) else data.get("links", [])
+    if _graph_path(user).exists():
+        links = _load_links(user)
         related = [lk for lk in links if lk["from_id"] == card_id or lk["to_id"] == card_id]
         if related:
             print(f"\n  [Graph Links] {len(related)}")
