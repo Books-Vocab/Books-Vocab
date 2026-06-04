@@ -14,6 +14,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
+from conftest import TEST_JWT_SECRET, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
@@ -21,18 +22,6 @@ import kg.deps as deps_mod
 import kg.routers.billing as billing_router_mod
 from kg.api import app
 from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
 def _build_certificate(subject_cn: str, issuer_cert=None, issuer_key=None):

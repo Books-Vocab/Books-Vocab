@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import jwt as pyjwt
 import pytest
+from conftest import TEST_JWT_SECRET, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
@@ -17,18 +16,6 @@ import kg.routers.user as user_router_mod
 from kg.api import _mem_log, app
 from kg.request_context import request_id_var
 from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
 def _swap_settings(new_settings):
