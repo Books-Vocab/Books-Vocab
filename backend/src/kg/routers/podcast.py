@@ -36,7 +36,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi import Path as PathParam
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import podcast_progress as progress_store
@@ -587,3 +587,45 @@ def get_podcast_subtitle(
     # errors="replace" mirrors the S3 path above: a stray non-UTF-8 byte in a
     # subtitle file must degrade gracefully, not surface as an uncaught 500.
     return PlainTextResponse(srt_file.read_text(encoding="utf-8", errors="replace"))
+
+
+@router.get("/api/podcasts/{series_id}/cover")
+def get_podcast_cover(
+    series_id: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Authenticated series cover image (PNG), produced by the pipeline ``cover``
+    stage and uploaded as ``<sid>/cover.png``. Mirrors the subtitle proxy: S3
+    ``get_object`` in production, disk fallback in dev. 404 when the series has
+    no cover (legacy / pre-cover series) — the client then renders a procedural
+    cover from ``color``/``coverPattern``.
+
+    Two path segments (``{series_id}/cover``) — distinct from the 1-segment
+    ``/{series_id}`` detail and 3-segment ``/{series_id}/{ep_num}/*`` routes, so
+    there is no route-matching collision.
+    """
+    if not _SERIES_ID_RE.match(series_id):
+        raise HTTPException(404)
+
+    headers = {"Cache-Control": "private, max-age=86400"}
+    if _using_s3(request):
+        cfg = _settings(request)
+        s3 = _s3_client(request)
+        key = f"{series_id}/cover.png"
+        try:
+            obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
+        except s3.exceptions.NoSuchKey:
+            raise HTTPException(404, detail="Cover not found") from None
+        except Exception as exc:  # noqa: BLE001
+            err = getattr(exc, "response", {}).get("Error", {}) if hasattr(exc, "response") else {}
+            if err.get("Code") in ("NoSuchKey", "404"):
+                raise HTTPException(404, detail="Cover not found") from None
+            logger.error("S3 GetObject failed for %s: %s", key, exc)
+            raise HTTPException(502, detail="Storage error fetching cover") from exc
+        return Response(content=obj["Body"].read(), media_type="image/png", headers=headers)
+
+    cover_file = _podcasts_dir(request) / series_id / "cover.png"
+    if not cover_file.exists():
+        raise HTTPException(404, detail="Cover not found")
+    return Response(content=cover_file.read_bytes(), media_type="image/png", headers=headers)
