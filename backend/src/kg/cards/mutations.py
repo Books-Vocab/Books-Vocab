@@ -93,7 +93,7 @@ class CardMutationMixin:
         cards = list(self.all(include_deleted=False, notebook_id=notebook_id))
         seen: dict[str, Card] = {}
         to_delete: list[Card] = []
-        keepers_to_bump: list[str] = []
+        deleted_keys: set[str] = set()
 
         for card in cards:
             key = normalize_nfc_lower(card.content)
@@ -106,17 +106,14 @@ class CardMutationMixin:
                     seen[key] = card
                 else:
                     to_delete.append(card)
+                deleted_keys.add(key)
             else:
                 seen[key] = card
 
         if to_delete:
-            # Collect keeper IDs that have duplicates removed
-            deleted_keys = set()
-            for card in to_delete:
-                key = normalize_nfc_lower(card.content)
-                deleted_keys.add(key)
-            for key in deleted_keys:
-                keepers_to_bump.append(seen[key].id)
+            # Keeper per affected key is the final survivor in `seen` (the loop
+            # may have swapped which card is kept). Re-derive from deleted_keys.
+            keepers_to_bump = [seen[key].id for key in deleted_keys]
 
             now = datetime.now(UTC)
             with Session(self.engine) as session:
