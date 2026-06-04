@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: 1f0df197
+verified_against: aea8b314
 -->
 # UI State Matrix
 
