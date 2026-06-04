@@ -7,6 +7,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sqlite3
 import sys
@@ -71,7 +72,6 @@ def section(title: str):
 
 
 def main():
-    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--user", default="chen")
     args = parser.parse_args()

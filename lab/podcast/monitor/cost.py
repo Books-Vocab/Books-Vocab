@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -130,7 +131,6 @@ class StageBucket:
 
 def _ep_from_label(label: str) -> int | None:
     """Extract EP number from labels like 'Scriptwriter EP4' / 'Synthesize EP12'."""
-    import re
     m = re.search(r"EP\s*(\d+)", label or "", re.I)
     return int(m.group(1)) if m else None
 

@@ -395,7 +395,6 @@ def main():
 
     group_idx = 0
     cue_in_group = 0
-    last_rendered_group = -1
 
     try:
         while group_idx < len(groups):
@@ -409,13 +408,11 @@ def main():
             elif key == "left":
                 seek(-5.0)
                 group_idx, cue_in_group = locate_group(groups, current_position())
-                last_rendered_group = -1
                 sys.stdout.write("\r\033[K")
                 sys.stdout.flush()
             elif key == "right":
                 seek(5.0)
                 group_idx, cue_in_group = locate_group(groups, current_position())
-                last_rendered_group = -1
                 sys.stdout.write("\r\033[K")
                 sys.stdout.flush()
             elif key == "q":
@@ -452,7 +449,6 @@ def main():
                 sys.stdout.flush()
                 group_idx += 1
                 cue_in_group = 0
-                last_rendered_group = -1
                 continue
 
             cue = group[cue_in_group]
@@ -465,7 +461,6 @@ def main():
             line = render_sentence(group, cue_in_group, host_names, max_width=body_budget)
             sys.stdout.write(f"\r\033[K{prefix}{line}")
             sys.stdout.flush()
-            last_rendered_group = group_idx
 
     except KeyboardInterrupt:
         pass

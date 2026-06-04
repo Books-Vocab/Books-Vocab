@@ -41,8 +41,7 @@ from pathlib import Path
 from tts_config import (
     DIALOGUE_RE as _DIALOGUE_RE,
     SKIP_LINE_RE as _SKIP_LINE_RE,
-    INLINE_BOLD_RE as _INLINE_BOLD_RE,
-    INLINE_ITALIC_RE as _INLINE_ITALIC_RE,
+    strip_inline_emphasis as _strip_inline_emphasis,
     tts_family as _tts_family,
     DEFAULT_TTS_MODEL as _DEFAULT_TTS_MODEL,
 )
@@ -269,8 +268,7 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
 
 def _sanitize_dialogue(text: str) -> str:
     """Strip inline markdown emphasis + make audio tags safe for TTS_FAMILY."""
-    text = _INLINE_BOLD_RE.sub(r"\1", text)
-    text = _INLINE_ITALIC_RE.sub(r"\1", text)
+    text = _strip_inline_emphasis(text)
     text, changes = _sanitize_tags_for_family(text, TTS_FAMILY)
     for k, n in changes.items():
         _TAG_SANITIZE_LOG[k] = _TAG_SANITIZE_LOG.get(k, 0) + n
@@ -384,7 +382,7 @@ def chunk_turns(
     # Final batch: if it ends on a short turn AND has a prior batch, merge
     # backward so the tail doesn't dangle on "Please." or similar.
     if current:
-        if len(current) >= 1 and _word_count(current[-1]["text"]) < MIN_BATCH_END_WORDS and batches:
+        if _word_count(current[-1]["text"]) < MIN_BATCH_END_WORDS and batches:
             # Pull the short tail into the previous batch so both sides safe
             tail = current.pop()
             batches[-1].append(tail)

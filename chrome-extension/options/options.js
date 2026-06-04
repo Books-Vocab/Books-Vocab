@@ -2,7 +2,10 @@
  * Options page — login flow, theme switching, about info.
  */
 
-const AUTH_KEYS = ['auth_token'];
+// Mirrors KGApi.TOKEN_KEY in shared/api.js — options.js is a classic script and
+// cannot import the module, so the literal is defined once here and reused.
+const TOKEN_KEY = 'auth_token';
+const AUTH_KEYS = [TOKEN_KEY];
 const authStatus = document.getElementById('auth-status');
 const themeSelector = document.getElementById('theme-selector');
 
@@ -59,7 +62,7 @@ function renderAuthError(message, onRetry) {
 async function refreshAuthUI() {
   try {
     const data = await chrome.storage.local.get(AUTH_KEYS);
-    if (data.auth_token) {
+    if (data[TOKEN_KEY]) {
       renderLoggedIn();
     } else {
       renderLoggedOut();
@@ -131,7 +134,7 @@ function handleThemeChange(e) {
 
   // Live storage changes (e.g. OAuth completing in another tab)
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.auth_token) {
+    if (area === 'local' && changes[TOKEN_KEY]) {
       refreshAuthUI();
     }
   });
