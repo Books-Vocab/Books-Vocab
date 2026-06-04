@@ -75,15 +75,10 @@ def _verify_state(request: Request, provided: str | None) -> None:
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     settings = request.app.state.kg_settings
-    nonce = secrets.token_urlsafe(32)
-    response = templates.TemplateResponse(request, "login.html", {
+    return templates.TemplateResponse(request, "login.html", {
         "apple_service_id": settings.apple_service_id,
         "apple_redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
-        "apple_state": nonce,
     })
-    # This page serves the Apple form_post flow → cross-site POST callback.
-    _set_state_cookie(response, nonce, samesite="none")
-    return response
 
 
 @router.get("/auth/web/google/login")
@@ -108,15 +103,27 @@ async def google_login(request: Request):
 
 @router.get("/auth/web/apple/login")
 async def apple_login(request: Request):
-    """Mint OAuth state cookie before redirecting/rendering Apple sign-in.
+    """Redirect to Apple's OAuth authorize endpoint with state nonce.
 
-    The actual Apple flow uses Sign-in with Apple JS on `/login`; this endpoint
-    exists so callers (and tests) can establish a state nonce that the POST
-    callback will validate.
+    Builds the Apple authorize URL (GET) so the browser initiates the flow
+    directly, avoiding the 403 from a raw HTML form POST to appleid.apple.com.
+    The state nonce is stored in an HttpOnly Secure cookie for the callback
+    to validate. Apple uses response_mode=form_post → cross-site top-level
+    POST callback, so the state cookie needs SameSite=None.
     """
+    settings = request.app.state.kg_settings
     nonce = secrets.token_urlsafe(32)
-    response = RedirectResponse(url="/login", status_code=307)
-    # Apple form_post callback is cross-site → needs SameSite=None.
+    params = urlencode({
+        "client_id": settings.apple_service_id,
+        "redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
+        "response_type": "code id_token",
+        "scope": "email",
+        "response_mode": "form_post",
+        "state": nonce,
+    })
+    response = RedirectResponse(
+        url=f"https://appleid.apple.com/auth/authorize?{params}", status_code=307
+    )
     _set_state_cookie(response, nonce, samesite="none")
     return response
 
