@@ -162,6 +162,20 @@ Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` 
 | 閉環觸發 | pipeline `publish` stage(`STAGES` 末)合成完成自動上傳 + verify;`GET /api/remote/reconcile`(monitor)報 workspace↔S3 drift |
 | Monitor 客戶端 | `lab/podcast/monitor/remote.py`(boto3) |
 | Backend 客戶端 | `backend/src/kg/routers/podcast.py`(boto3,proxy 模式;`Range` 直接轉給 S3) |
+
+## LLM Eval Workbench (`lab/llm_eval/`)
+
+| 項目 | 值 / 路徑 |
+|------|-----------|
+| 架構 SoT | `docs/reference/llm_eval.md` |
+| 執行 SOP | `docs/sop/llm_eval.md` |
+| Prompt registry | `lab/llm_eval/prompts/manifest.yaml` + `.md` templates |
+| Datasets | `lab/llm_eval/datasets/*.jsonl` |
+| 核心 API | `lab/llm_eval/llm_eval/__init__.py` — `run_eval()`, `compare_prompts()` |
+| Provider 解析 | `lab/llm_eval/llm_eval/providers.py` — cloud registry + Ollama |
+| 評分引擎 | `lab/llm_eval/llm_eval/scoring.py` — rule-based (OpenCC + schema + POS + lemma) |
+| 執行引擎 | `lab/llm_eval/llm_eval/runner.py` — async parallel, bypass TrackedLLM |
+| 測試 | `cd lab/llm_eval && uv run --extra dev pytest -q tests/` |
 | audio 副檔名解析 | S3 模式 `_audio_filename` 讀 series `metadata.json` 的 `audioFormat`(缺則 probe m4a→mp3,per-series 快取);非-404 故障 loud-fail |
 | 設定 env | `PODCAST_BUCKET` / `PODCAST_BUCKET_REGION` / `PODCAST_BUCKET_ENDPOINT_URL` / `PODCAST_BUCKET_QUOTA_BYTES` |
 | 過渡 fallback | `PODCAST_BUCKET` unset → backend 回 disk `data/podcasts/`,且 `audio.m4a` → `audio.mp3` 探測 |
