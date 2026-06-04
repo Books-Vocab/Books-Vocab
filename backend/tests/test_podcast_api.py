@@ -361,3 +361,35 @@ def test_audio_format_cached_per_series_s3(monkeypatch, _clear_audio_fmt_cache):
     _podcast_mod._audio_filename(req, "flow_x", 2)
     _podcast_mod._audio_filename(req, "flow_x", 3)
     assert calls["n"] == 1
+
+
+# ── Cover image endpoint (pipeline cover stage → <sid>/cover.png) ────────────
+
+def test_cover_requires_auth(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/series_a/cover")
+    assert resp.status_code == 401
+
+
+def test_cover_endpoint_disk(podcast_api):
+    api, podcasts = podcast_api
+    (podcasts / "series_a").mkdir()
+    png = b"\x89PNG\r\n\x1a\n_fake_cover_bytes"
+    (podcasts / "series_a" / "cover.png").write_bytes(png)
+    resp = api.client.get("/api/podcasts/series_a/cover", headers=api.headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content == png
+
+
+def test_cover_not_found_when_absent(podcast_api):
+    api, podcasts = podcast_api
+    (podcasts / "series_a").mkdir()  # series exists, no cover.png
+    resp = api.client.get("/api/podcasts/series_a/cover", headers=api.headers)
+    assert resp.status_code == 404
+
+
+def test_cover_rejects_traversal(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/../evil/cover", headers=api.headers)
+    assert resp.status_code == 404
