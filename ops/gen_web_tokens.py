@@ -230,6 +230,12 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
             spec = tokens["color"]["theme"][theme][src]
             d.append((f"--swatch-{theme}", resolve_color(tokens, spec)))
 
+    # web-only theme-invariant SCALARS (non-color; e.g. --blur-material).
+    for key, spec in tokens.get("web-only", {}).get("invariant-value", {}).items():
+        if key.startswith("$"):
+            continue
+        d.append((f"--{key}", spec["css"]))
+
     return d
 
 
