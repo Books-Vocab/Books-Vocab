@@ -21,9 +21,17 @@ struct ReaderTranslationHandlerTests {
         var quickCalls = 0
         var phraseCalls = 0
         var explanationCalls = 0
+        var triggerQuickRetry = false
+        var beforeQuickRetry: (() async -> Void)?
+        var afterQuickRetry: (() async -> Void)?
 
         func translateQuick(word: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> TranslationResult {
             quickCalls += 1
+            if triggerQuickRetry {
+                await beforeQuickRetry?()
+                await onRetry?(1, 3)
+                await afterQuickRetry?()
+            }
             return try quickResult.get()
         }
         func translatePhrase(phrase: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> String {
@@ -104,6 +112,16 @@ struct ReaderTranslationHandlerTests {
     /// asserting. Returns once the task has finished (or immediately if none).
     private func drain(_ handler: ReaderTranslationHandler) async {
         await handler.currentTranslationTask?.value
+    }
+
+    private func waitUntil(_ predicate: @MainActor () -> Bool, maxYields: Int = 1_000) async -> Bool {
+        for _ in 0..<maxYields {
+            if predicate() {
+                return true
+            }
+            await Task.yield()
+        }
+        return predicate()
     }
 
     // MARK: - normalizeWord
@@ -244,6 +262,60 @@ struct ReaderTranslationHandlerTests {
         #expect(ctx.savedTranslations.first == "rendered", "fresh translate path must auto-save through the protocol")
         #expect(handler.isSaved == true, "autoSave must flip isSaved so the panel renders the saved state")
         #expect(handler.lookedUpWords.contains("zeta"), "fresh save must also track looked-up state for reader underlining")
+    }
+
+    @Test func handleWordSelected_retryStatus_surfacesWhileTaskIsActive() async {
+        // UNVERIFIED: needs local xcodebuild test.
+        let service = MockTranslating()
+        service.triggerQuickRetry = true
+        service.quickResult = .success(TranslationResult(translation: "rendered", partOfSpeech: nil, explanation: nil))
+        var releaseRetry: CheckedContinuation<Void, Never>?
+        var releaseResult: CheckedContinuation<Void, Never>?
+        service.beforeQuickRetry = {
+            await withCheckedContinuation { continuation in
+                releaseRetry = continuation
+            }
+        }
+        service.afterQuickRetry = {
+            await withCheckedContinuation { continuation in
+                releaseResult = continuation
+            }
+        }
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+
+        handler.handleWordSelected(word: "retry", context: "ctx", vocabularyContext: ctx)
+        #expect(await waitUntil { releaseRetry != nil })
+        releaseRetry?.resume()
+        #expect(await waitUntil { handler.statusMessage?.contains("正在重試") == true })
+
+        #expect(handler.statusMessage?.contains("正在重試") == true)
+        releaseResult?.resume()
+        await drain(handler)
+    }
+
+    @Test func handleWordSelected_cancelledRetry_doesNotWriteStatus() async {
+        // UNVERIFIED: needs local xcodebuild test.
+        let service = MockTranslating()
+        service.triggerQuickRetry = true
+        service.quickResult = .success(TranslationResult(translation: "rendered", partOfSpeech: nil, explanation: nil))
+        var releaseRetry: CheckedContinuation<Void, Never>?
+        service.beforeQuickRetry = {
+            await withCheckedContinuation { continuation in
+                releaseRetry = continuation
+            }
+        }
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+
+        handler.handleWordSelected(word: "cancel", context: "ctx", vocabularyContext: ctx)
+        #expect(await waitUntil { releaseRetry != nil })
+        let task = handler.currentTranslationTask
+        handler.cancelCurrentTranslationTask()
+        releaseRetry?.resume()
+        await task?.value
+
+        #expect(handler.statusMessage == nil)
     }
 
     // MARK: - handleWordSelected — failure path
