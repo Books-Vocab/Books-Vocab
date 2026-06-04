@@ -135,36 +135,36 @@ def _ep_from_label(label: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# Stage-label → canonical-name resolution table. Iterated in this exact order:
+# the first pair whose any substring matches wins, so MORE-SPECIFIC entries MUST
+# come before their prefixes (e.g. 'enricher-gap' before bare 'enricher'). The
+# ordering is load-bearing — a reordered or newly inserted rule can silently
+# mis-bucket cost. Each entry lists every accepted spelling (hyphen + space
+# variants).
+_STAGE_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("scriptwriter", "scriptwrite"), "scriptwrite"),
+    (("script review", "script-review"), "script-review"),
+    (("synthesize",), "synthesize"),
+    (("series polish", "series-polish"), "series-polish"),
+    (("plan review", "plan-review"), "plan-review"),
+    (("tts-prep", "tts prep"), "tts-prep"),
+    (("enricher-gap", "enricher gap"), "enricher-gap"),
+    (("enricher",), "enricher"),
+    (("architect",), "architect"),
+    (("analyst",), "analyst"),
+    (("cover",), "cover"),
+    (("prep",), "prep"),
+)
+
+
 def _stage_from_label(label: str) -> str:
     """Map agent stage_label to its canonical pipeline stage name."""
     if not label:
         return "unknown"
     low = label.lower()
-    # Order matters — most-specific first.
-    if "scriptwriter" in low or "scriptwrite" in low:
-        return "scriptwrite"
-    if "script review" in low or "script-review" in low:
-        return "script-review"
-    if "synthesize" in low:
-        return "synthesize"
-    if "series polish" in low or "series-polish" in low:
-        return "series-polish"
-    if "plan review" in low or "plan-review" in low:
-        return "plan-review"
-    if "tts-prep" in low or "tts prep" in low:
-        return "tts-prep"
-    if "enricher-gap" in low or "enricher gap" in low:
-        return "enricher-gap"
-    if "enricher" in low:
-        return "enricher"
-    if "architect" in low:
-        return "architect"
-    if "analyst" in low:
-        return "analyst"
-    if "cover" in low:
-        return "cover"
-    if "prep" in low:
-        return "prep"
+    for substrings, canonical in _STAGE_RULES:
+        if any(s in low for s in substrings):
+            return canonical
     return low
 
 
