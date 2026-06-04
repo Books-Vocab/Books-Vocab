@@ -211,7 +211,8 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
     tap = mo["tap-feedback"]
     d.append(("--press-scale", f"{tap['scale-down']['value']:g}"))
     d.append(("--press-opacity", f"{tap['opacity-dip']['value']:g}"))
-    # web-only invariant colors (no iOS literal; e.g. filled-success-button foreground)
+    # web-only THEME-INVARIANT colors (no iOS literal, same value across themes).
+    # Per-theme web-only colors live in web-only.theme-color → _theme_decls instead.
     for key, spec in tokens.get("web-only", {}).get("invariant-color", {}).items():
         if key.startswith("$"):
             continue
@@ -246,6 +247,12 @@ def _theme_decls(tokens: dict, theme: str) -> list[tuple[str, str]]:
     vh = tokens["color"]["vocab-highlight"].get(theme)
     if vh:
         d.append(("--vocab-highlight", vh["css"]))
+    # web-only PER-THEME colors (no iOS literal; value differs per theme, e.g.
+    # filled-success-button foreground must flip to charcoal in dark to keep AA).
+    for key, spec in tokens.get("web-only", {}).get("theme-color", {}).items():
+        if key.startswith("$"):
+            continue
+        d.append((f"--{key}", resolve_color(tokens, spec[theme])))
     d += _elevation_decls(tokens, dark=(theme == "dark"))
     return d
 
