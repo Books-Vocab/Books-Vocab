@@ -75,6 +75,7 @@ final class ReaderSettings {
     private let kLineHeight = "reader_settings_lineHeight"
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
+    private let kScrollMode = "reader_settings_scrollMode"
     private var cloudObserver: NSObjectProtocol?
 
     var font: ReaderFont = .serif {
@@ -95,6 +96,15 @@ final class ReaderSettings {
         didSet {
             defaults.set(lineHeight, forKey: kLineHeight)
             cloud.set(lineHeight, forKey: kLineHeight)
+        }
+    }
+
+    /// 翻頁(false) / 連續捲動(true)。iCloud 以 Double 編碼同步
+    /// （CloudPreferencesSync 僅 String/Double，Bool 走 0.0/1.0）。
+    var scrollMode: Bool = false {
+        didSet {
+            defaults.set(scrollMode, forKey: kScrollMode)
+            cloud.set(scrollMode ? 1.0 : 0.0, forKey: kScrollMode)
         }
     }
 
@@ -136,6 +146,12 @@ final class ReaderSettings {
             if saved > 0 { self.lineHeight = saved }
         }
 
+        if let cloudScroll = cloud.double(forKey: kScrollMode) {
+            self.scrollMode = cloudScroll > 0.5
+        } else {
+            self.scrollMode = defaults.bool(forKey: kScrollMode)
+        }
+
         if let cloudOpacity = cloud.double(forKey: kUnderlineOpacity) {
             self.underlineOpacity = cloudOpacity
         } else {
@@ -175,6 +191,8 @@ final class ReaderSettings {
                 if let value = cloud.double(forKey: key), value != fontSize { fontSize = value }
             case kLineHeight:
                 if let value = cloud.double(forKey: key), value != lineHeight { lineHeight = value }
+            case kScrollMode:
+                if let value = cloud.double(forKey: key) { let v = value > 0.5; if v != scrollMode { scrollMode = v } }
             case kUnderlineOpacity:
                 if let value = cloud.double(forKey: key), value != underlineOpacity { underlineOpacity = value }
             default:
@@ -204,6 +222,7 @@ final class ReaderSettings {
                 fontSize: fontSize,
                 lineHeight: lineHeight,
                 publisherStyles: false,
+                scroll: scrollMode,
                 theme: theme.theme
             ),
             underlineOpacity: underlineOpacity,
