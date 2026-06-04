@@ -69,6 +69,19 @@ def _graph_path(user: str) -> Path:
     return notebook_files(DATA / user)["graph"]
 
 
+def _load_links(user: str) -> list:
+    """Graph links for *user*, normalizing the bare-list vs {links:[...]} shapes.
+
+    Returns [] when no graph file exists. Single source for the graph-file shape
+    so a format change touches one place instead of overview/graph/card.
+    """
+    gp = _graph_path(user)
+    if not gp.exists():
+        return []
+    data = json.loads(gp.read_text())
+    return data if isinstance(data, list) else data.get("links", [])
+
+
 def _candidates_path(user: str) -> Path:
     return notebook_files(DATA / user)["candidates"]
 
@@ -176,10 +189,8 @@ def cmd_overview(user: str, **_):
         print(f"[Collocations]  {has_coll}/{total} cards have collocations")
 
     # graph summary
-    gp = _graph_path(user)
-    if gp.exists():
-        data = json.loads(gp.read_text())
-        links = data if isinstance(data, list) else data.get("links", [])
+    if _graph_path(user).exists():
+        links = _load_links(user)
         kinds = {}
         for lk in links:
             kinds[lk["kind"]] = kinds.get(lk["kind"], 0) + 1
@@ -248,13 +259,11 @@ def cmd_graph(user: str, **_):
     conn = _conn(user)
     _section("Graph Links")
 
-    gp = _graph_path(user)
-    if not gp.exists():
+    if not _graph_path(user).exists():
         print("  No graph_default.json found.")
         return
 
-    data = json.loads(gp.read_text())
-    links = data if isinstance(data, list) else data.get("links", [])
+    links = _load_links(user)
 
     # stats
     kinds = {}
@@ -355,10 +364,8 @@ def cmd_card(user: str, card_id: str = "", **_):
     _print_card(row, verbose=True)
 
     # show graph links involving this card
-    gp = _graph_path(user)
-    if gp.exists():
-        data = json.loads(gp.read_text())
-        links = data if isinstance(data, list) else data.get("links", [])
+    if _graph_path(user).exists():
+        links = _load_links(user)
         related = [lk for lk in links if lk["from_id"] == card_id or lk["to_id"] == card_id]
         if related:
             print(f"\n  [Graph Links] {len(related)}")
