@@ -219,19 +219,20 @@ def get_log(
         where.append("(LOWER(word) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(context,'')) LIKE LOWER(?) ESCAPE '\\')")
         params.extend([like, like])
 
+    # One list drives both the SELECT and the zip below, so a schema drift
+    # surfaces as an explicit SQL error (missing column) rather than zip()
+    # silently truncating the row and dropping a field — which `SELECT *` paired
+    # with a hand-maintained column list would hide. `model` is appended via
+    # ALTER TABLE after the 11 CREATE-TABLE columns.
+    cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at","model"]
     sql = (
-        "SELECT * FROM translate_log WHERE "
+        f"SELECT {', '.join(cols)} FROM translate_log WHERE "
         + " AND ".join(where)
         + " ORDER BY id DESC LIMIT ?"
     )
     params.append(limit)
 
-
     with _lock:
         conn = _get_conn()
         rows = conn.execute(sql, tuple(params)).fetchall()
-    # Column order must match `SELECT *` on translate_log: the 11 CREATE-TABLE
-    # columns followed by `model` (appended via ALTER TABLE). Omitting `model`
-    # makes zip() truncate the row and silently drop the field.
-    cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at","model"]
     return [dict(zip(cols, row)) for row in rows]
