@@ -70,7 +70,6 @@ if command -v rsync >/dev/null 2>&1; then
   rsync -a \
     --exclude='.DS_Store' \
     --exclude='.git' \
-    --exclude='.git/**' \
     --exclude='README*.md' \
     --exclude='*.test.js' \
     "$EXT_DIR/" "$STAGE_EXT/" \
