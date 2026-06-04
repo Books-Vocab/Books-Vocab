@@ -96,7 +96,6 @@
   --transition-panel-reveal: transform 0.3s ease-out, opacity 0.25s ease-out;
   --press-scale: 0.97;
   --press-opacity: 0.92;
-  --on-success: #ffffff;
 }
 
 :root, :host, [data-theme="light"] {
@@ -132,6 +131,7 @@
   --button-idle-fill: rgba(0, 0, 0, 0.06);
   --button-pressed-fill: rgba(0, 0, 0, 0.1);
   --vocab-highlight: linear-gradient(to top, hsla(212, 32%, 47%, 0.20) 35%, transparent 35%);
+  --on-success: #ffffff;
   --elevation-z0: none;
   --elevation-z1: 0 1px 4px rgba(0, 0, 0, 0.03);
   --elevation-z2: 0 4px 10px rgba(0, 0, 0, 0.06);
@@ -172,6 +172,7 @@
   --button-idle-fill: rgba(255, 255, 255, 0.1);
   --button-pressed-fill: rgba(255, 255, 255, 0.16);
   --vocab-highlight: linear-gradient(to top, hsla(210, 32%, 64%, 0.20) 35%, transparent 35%);
+  --on-success: #1C1A17;
   --elevation-z0: none;
   --elevation-z1: 0 1px 4px rgba(0, 0, 0, 0.054);
   --elevation-z2: 0 4px 10px rgba(0, 0, 0, 0.108);
@@ -212,6 +213,7 @@
   --button-idle-fill: rgba(0, 0, 0, 0.07);
   --button-pressed-fill: rgba(0, 0, 0, 0.12);
   --vocab-highlight: linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%);
+  --on-success: #ffffff;
   --elevation-z0: none;
   --elevation-z1: 0 1px 4px rgba(0, 0, 0, 0.03);
   --elevation-z2: 0 4px 10px rgba(0, 0, 0, 0.06);
