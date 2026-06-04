@@ -184,6 +184,12 @@ def _row_cost(call_type: str, provider: str | None, total_in, total_out) -> floa
     return token_cost_usd(call_type, int(total_in or 0), int(total_out or 0), provider=provider)
 
 
+def _window_cutoff_iso() -> str:
+    """ISO (UTC) lower bound of the rolling quota window: now − window seconds."""
+    cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
+    return datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+
+
 def _used_usd(user_id: str) -> float:
     """Recorded USD cost (last 24 h) PLUS outstanding in-flight reservations.
 
@@ -191,8 +197,7 @@ def _used_usd(user_id: str) -> float:
     `check_and_get_quota`, `get_quota_state` — defends the pre-flight gap
     without each having to know about reservations.
     """
-    cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
-    cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+    cutoff_iso = _window_cutoff_iso()
 
     with _lock:
         conn = _get_conn()
@@ -245,8 +250,7 @@ def get_all_quota_usage(
     limit, which 10×-underestimated Free users' ``fraction_used``.
     """
     pro_by_user = is_pro_by_user or {}
-    cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
-    cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+    cutoff_iso = _window_cutoff_iso()
 
     with _lock:
         conn = _get_conn()

@@ -11,6 +11,7 @@ from filelock import FileLock
 
 from ..api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEntitlementResponse
 from ..exceptions import NotFoundError
+from ..user_store import is_real_user
 
 
 def admin_user_entitlement_response(
@@ -45,7 +46,7 @@ def _mutate_admin_grant(
     with FileLock(str(users_lock_file)):
         users = load_users()
         record = users.get(user_id)
-        if not isinstance(record, dict) or user_id.startswith("_"):
+        if not is_real_user(user_id, record):
             raise NotFoundError("User", user_id)
 
         admin_grant = current_admin_grant_record(record)

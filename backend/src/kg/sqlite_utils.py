@@ -20,6 +20,7 @@ issuing DDL, so the journal mode change takes effect on a fresh connection.
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 # 30s is the existing per-module value; keeping it consistent so behaviour
 # does not regress when a module switches from inline PRAGMAs to this helper.
@@ -35,3 +36,34 @@ def init_sqlite_pragmas(conn: sqlite3.Connection, *, busy_timeout_ms: int = DEFA
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)};")
     conn.execute("PRAGMA synchronous=NORMAL;")
+
+
+def open_singleton(
+    db_path: Path | str, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS
+) -> sqlite3.Connection:
+    """Open a log-style singleton connection: mkdir parent, connect cross-thread,
+    apply the shared pragmas. Caller still issues its own DDL and ``commit``.
+
+    Centralises the ``mkdir(parents=True) + connect(check_same_thread=False) +
+    init_sqlite_pragmas`` prologue every singleton's ``_get_conn`` repeats.
+    """
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), check_same_thread=False)
+    init_sqlite_pragmas(conn, busy_timeout_ms=busy_timeout_ms)
+    return conn
+
+
+def ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    """Idempotently ``ALTER TABLE ... ADD COLUMN`` any column in ``columns`` not
+    already present on ``table``. ``columns`` maps name → SQL declaration
+    (e.g. ``{"provider": "TEXT"}``).
+
+    Replaces the hand-rolled ``{r[1] for r in PRAGMA table_info(...)}`` diff each
+    singleton repeats for schema migration. ``table`` / column identifiers are
+    module-internal literals (never user input), as before.
+    """
+    existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    for col, decl in columns.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")

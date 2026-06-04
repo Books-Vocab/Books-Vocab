@@ -24,6 +24,16 @@ def _cutoff_iso(hours: int) -> str:
     return (_utcnow() - timedelta(hours=hours)).isoformat()
 
 
+def _cell(row: Any, idx: int = 0) -> int:
+    """Read column ``idx`` of a ``fetchone()`` result as int, NULL/None → 0."""
+    return (row[idx] or 0) if row else 0
+
+
+def _ratio(numerator: int, total: int) -> float | None:
+    """Round ``numerator/total`` to 4 dp; ``None`` when ``total`` is 0."""
+    return round(numerator / total, 4) if total > 0 else None
+
+
 def _percentile(values: list[float], pct: float) -> float | None:
     """Nearest-rank percentile (no interpolation) for a list of numbers.
 
@@ -66,12 +76,12 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
             "WHERE started_at >= ? AND status IN ('ok','failed')",
             (cutoff,),
         ).fetchone()
-    total = (row[0] or 0) if row else 0
-    failed = (row[1] or 0) if row else 0
+    total = _cell(row, 0)
+    failed = _cell(row, 1)
     return {
         "total": total,
         "failed": failed,
-        "rate": round(failed / total, 4) if total > 0 else None,
+        "rate": _ratio(failed, total),
         "window_hours": 24,
     }
 
@@ -151,12 +161,12 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
             f"  AND {jl.DEGREE_CAP_EXCLUSION_SQL}",
             (cutoff,),
         ).fetchone()
-    total = (row[0] or 0) if row else 0
-    rejected = (row[1] or 0) if row else 0
+    total = _cell(row, 0)
+    rejected = _cell(row, 1)
     return {
         "total": total,
         "rejected": rejected,
-        "rate": round(rejected / total, 4) if total > 0 else None,
+        "rate": _ratio(rejected, total),
         "window_hours": 24,
     }
 
@@ -191,14 +201,14 @@ def _translate_cache_hit_rate_24h() -> dict[str, Any]:
             "SELECT COUNT(*) FROM translate_cache_hits WHERE created_at >= ?",
             (cutoff,),
         ).fetchone()
-    misses = (misses_row[0] or 0) if misses_row else 0
-    hits = (hits_row[0] or 0) if hits_row else 0
+    misses = _cell(misses_row)
+    hits = _cell(hits_row)
     total = hits + misses
     return {
         "hits": hits,
         "misses": misses,
         "total": total,
-        "rate": round(hits / total, 4) if total > 0 else None,
+        "rate": _ratio(hits, total),
         "window_hours": 24,
         "note": "precise counter: hits from translate_cache_hits, misses from translate_log",
     }
