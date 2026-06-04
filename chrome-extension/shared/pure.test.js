@@ -188,7 +188,7 @@ test('normalizeVocabItem tolerates nullish / non-object input', () => {
 test('classifyError maps auth_expired / 401 to the login flow', () => {
   assert.equal(classifyError({ code: 'auth_expired' }).action, 'login');
   assert.equal(classifyError({ status: 401 }).action, 'login');
-  assert.equal(classifyError({ status: 401 }).icon, '🔒');
+  assert.equal(classifyError({ status: 401 }).icon, 'error-login');
 });
 
 test('classifyError maps quota_exceeded / 429 to the settings flow', () => {
@@ -203,8 +203,8 @@ test('classifyError maps quota_exceeded / 429 to the settings flow', () => {
 test('classifyError maps network_error / status 0 to a reloadable state', () => {
   const r = classifyError({ code: 'network_error' });
   assert.equal(r.action, 'reload');
-  assert.equal(r.icon, '📡');
-  assert.equal(classifyError({ status: 0 }).icon, '📡');
+  assert.equal(r.icon, 'error-network');
+  assert.equal(classifyError({ status: 0 }).icon, 'error-network');
 });
 
 test('classifyError treats 5xx and server-side codes as "server busy"', () => {

@@ -19,6 +19,7 @@ const REQUIRED = [
   'theme-light', 'theme-dark', 'theme-sepia',
   'settings',
   'source-web', 'source-local',
+  'error-login', 'error-quota', 'error-network', 'error-server', 'error-generic',
 ];
 
 test('every required icon yields a well-formed currentColor SVG', () => {

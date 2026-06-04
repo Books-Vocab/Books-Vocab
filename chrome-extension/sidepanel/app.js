@@ -189,11 +189,12 @@ function showErrorFromResponse(response) {
   }
 
   if (isLogin) {
-    // Editorial login state: no emoji icon, clean typography, brand-hero CTA.
-    errorIcon.textContent = '';
+    // Editorial login state: no icon, clean typography, brand-hero CTA.
+    KGIcons.setIcon(errorIcon, '');
     retryBtn.className = 'kg-btn kg-error__retry';
   } else {
-    errorIcon.textContent = icon;
+    // icon is a KGIcons name (error-*) from classifyError → render as SVG.
+    KGIcons.setIcon(errorIcon, icon);
     retryBtn.className = 'kg-btn kg-btn--accent kg-error__retry';
   }
 
