@@ -186,12 +186,14 @@ from kg.vocab_shared import build_links_by_kind
 
 
 class FakeCard:
-    def __init__(self, id, content="word", meaning="meaning", is_deleted=False, is_archived=False):
+    def __init__(self, id, content="word", meaning="meaning", is_deleted=False,
+                 is_archived=False, notebook_id="default"):
         self.id = id
         self.content = content
         self.meaning = meaning
         self.is_deleted = is_deleted
         self.is_archived = is_archived
+        self.notebook_id = notebook_id
 
 
 class FakeCardsStore:
@@ -277,7 +279,7 @@ class TestCreateManualLinkHiddenBranch:
             FakeCard("b", content="banana", meaning="香蕉"),
         ])
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
-        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert result.status == "active"
         assert result.id == lk.id  # same link object
         assert result.reason == "original reason"  # LLM was NOT called
@@ -293,7 +295,7 @@ class TestCreateManualLinkHiddenBranch:
             FakeCard("b", content="banana", meaning="香蕉"),
         ])
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
-        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert result is not None
         assert store.is_blocked("a", "b") is False
 
