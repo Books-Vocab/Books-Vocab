@@ -104,8 +104,12 @@ def _get_conn() -> sqlite3.Connection:
     return _conn
 
 
-def _parse_instant(value: str) -> datetime | None:
+def parse_instant(value: str) -> datetime | None:
     """Parse an ISO8601 ``updated_at`` to an aware UTC datetime.
+
+    The shared canonicaliser for podcast ``updated_at`` instants: the LWW
+    store (below) and the HTTP router's ``_canonical_updated_at`` both go
+    through this so the store-layer and HTTP-layer agree bit-for-bit.
 
     Returns ``None`` if the string is unparseable so the caller can fall
     back to a conservative decision. Accepts both integer-second
@@ -181,11 +185,11 @@ def upsert(
     older rows are integer-second; a lexicographic compare misranks those
     mixed widths (ASCII ``'+'`` 0x2B < ``'.'`` 0x2E, so ``"...:00+00:00"``
     always sorts before ``"...:00.250000+00:00"`` regardless of the actual
-    instant). Parsing both sides with :func:`_parse_instant` makes the LWW
+    instant). Parsing both sides with :func:`parse_instant` makes the LWW
     decision correct independently of how each side was serialised and does
     not rely on every caller pre-canonicalising its input.
     """
-    incoming_dt = _parse_instant(updated_at)
+    incoming_dt = parse_instant(updated_at)
     with _lock:
         conn = _get_conn()
         row = conn.execute(
@@ -193,7 +197,7 @@ def upsert(
             "WHERE user_id = ? AND series_id = ? AND ep_num = ?",
             (user_id, series_id, ep_num),
         ).fetchone()
-        stored_dt = _parse_instant(row[2]) if row is not None else None
+        stored_dt = parse_instant(row[2]) if row is not None else None
         # Stale decision. Comparison is on parsed instants; if either side is
         # unparseable, fall back to the raw string compare so a malformed
         # value can never crash the write path.
