@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import os
 
 extension ModelContext {
     /// `save()` with error logging — drop-in replacement for `try? save()`.
@@ -22,7 +21,7 @@ extension ModelContext {
         file: String = #file, line: Int = #line
     ) -> Bool {
         let ok = safeSave(file: file, line: line)
-        if !ok { toastCoordinator.error("儲存失敗".localized) }
+        if !ok { toastCoordinator.error(L10n.string("儲存失敗")) }
         return ok
     }
 }
