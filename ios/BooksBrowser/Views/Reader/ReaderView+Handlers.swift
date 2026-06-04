@@ -91,6 +91,12 @@ extension ReaderView {
         // translation overlay 走 dismiss，自帶清除語意，不需另發清高亮信號；
         // 其餘情況（settings / 無 overlay）統一在分支前設一次 clearHighlightTrigger，
         // dedup 掉 <1% fast-tap race 下重複觸發。
+        //
+        // 跨 tap race 備註：本 teardown 無條件關閉當前 .translation panel。理論上
+        // 「tap-1 的 deselect 晚於 tap-2 的 wordTap 抵達」會誤關 tap-2 的新 panel。
+        // 真正的防護來自主執行緒 WKScriptMessage 的 FIFO 送達（非單次 click 路徑互斥）；
+        // Swift 未契約保證獨立 Task 順序，屬極低機率 latent race，最壞僅 panel 閃爍
+        // 可重 tap 恢復 — 評估後不加 sequence nonce（成本>收益）。
         if chromeState.overlay == .translation {
             withAnimation(AppMotion.panelState) {
                 handler.dismiss()

@@ -178,7 +178,15 @@ extension ReadiumNavigatorJS {
                 } else {
                     var span = document.createElement('span');
                     span.className = 'active-word';
-                    wordData.range.surroundContents(span);
+                    try {
+                        wordData.range.surroundContents(span);
+                    } catch (e) {
+                        // surroundContents 在 range 跨元素邊界時拋（此處 range 限單一
+                        // text node 理論上不會發生，保留 fallback）：改用 extractContents
+                        // 重組，能處理部分選取邊界。
+                        span.appendChild(wordData.range.extractContents());
+                        wordData.range.insertNode(span);
+                    }
                 }
             } catch (err) {}
         }
