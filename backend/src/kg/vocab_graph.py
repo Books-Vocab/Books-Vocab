@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from .api_models import GraphLinkResponse
+from .vocab_shared import _clean_content
 
 SIMILARITY_THRESHOLD = 0.70
 CANDIDATE_K = 12
@@ -26,7 +27,11 @@ def embed_and_link_new_cards(
     batch_items: list[tuple[str, str]] = []
     batch_cards: list[Any] = []
     for entry in entries:
-        word = entry.word.strip()
+        # card_ids is keyed by the CLEANED word (see vocab_intake.add_vocab_entries),
+        # so we must clean here too — a bare strip() would miss any word that
+        # _clean_content rewrites (trailing punctuation / uppercase first char),
+        # leaving that card silently un-embedded and unlinked.
+        word = _clean_content(entry.word)
         card_id = card_ids.get(word)
         card = cards.get(card_id) if card_id else None
         if card and not embeddings.has(card.id):

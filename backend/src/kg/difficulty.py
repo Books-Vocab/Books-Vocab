@@ -31,7 +31,11 @@ def get_zipf(word: str, lang: str = "en") -> float:
     """Get Zipf frequency for a word. Higher = more common."""
     tokens = word.strip().split()
     if len(tokens) > 1:
-        return min(zipf_frequency(t, lang) for t in tokens)
+        # Recurse per token so each single-token lookup hits the lru_cache — a
+        # common token (e.g. "the") shared across many phrases is computed once.
+        # Equivalent to min(zipf_frequency(t) ...): a lone token routes straight
+        # to the zipf_frequency branch below.
+        return min(get_zipf(t, lang) for t in tokens)
     return zipf_frequency(word, lang)
 
 

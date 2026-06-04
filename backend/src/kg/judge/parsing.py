@@ -12,6 +12,21 @@ from .models import Judgement
 logger = logging.getLogger(__name__)
 
 
+def _all_parse_error(
+    candidates: list[tuple[str, str, str]],
+    raw_decisions: list[dict] | None,
+) -> dict[str, None]:
+    """Record a parse_error decision for every candidate and return all-None.
+
+    Shared by the empty-content and JSON-decode-failure branches, which both
+    fail the whole batch identically.
+    """
+    if raw_decisions is not None:
+        for cid, _, _ in candidates:
+            raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
+    return {cid: None for cid, _, _ in candidates}
+
+
 def _parse_batch_response(
     content: str | None,
     candidates: list[tuple[str, str, str]],
@@ -25,19 +40,13 @@ def _parse_batch_response(
     Response items matched by position (array order matches candidate order).
     """
     if not content:
-        if raw_decisions is not None:
-            for cid, _, _ in candidates:
-                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
-        return {cid: None for cid, _, _ in candidates}
+        return _all_parse_error(candidates, raw_decisions)
 
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Failed to parse batch judgement. Raw: %r", content[:200])
-        if raw_decisions is not None:
-            for cid, _, _ in candidates:
-                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
-        return {cid: None for cid, _, _ in candidates}
+        return _all_parse_error(candidates, raw_decisions)
 
     # Unwrap: {"results": [...]} or bare array or single object
     if isinstance(data, dict):
@@ -53,13 +62,27 @@ def _parse_batch_response(
     if not isinstance(data, list):
         data = []
 
-    # Build word→item fallback index for reorder detection
-    _word_index: dict[str, dict] = {}
+    # Build word→items fallback index for reorder detection. Keyed to a LIST
+    # (not last-wins) so duplicate candidate words — the same word on distinct
+    # cards across notebooks in one batch — each resolve to a DISTINCT response
+    # item instead of silently collapsing onto the last one.
+    _word_items: dict[str, list[dict]] = {}
     for item in data:
         if isinstance(item, dict):
             w = item.get("word", "")
             if w:
-                _word_index[w] = item
+                _word_items.setdefault(w, []).append(item)
+
+    # Track response items already assigned (by identity) so neither the
+    # positional path nor the word fallback hands the same item to two
+    # candidates — the core of the duplicate-word disambiguation.
+    _consumed: set[int] = set()
+
+    def _next_unconsumed(w: str) -> dict | None:
+        for it in _word_items.get(w, ()):
+            if id(it) not in _consumed:
+                return it
+        return None
 
     # Match by position first; cross-check word, fallback to word-keyed lookup
     results: dict[str, Judgement | None] = {}
@@ -68,21 +91,25 @@ def _parse_batch_response(
         if i < len(data) and isinstance(data[i], dict):
             pos_item = data[i]
             pos_word = pos_item.get("word", "")
-            if not pos_word or pos_word == word:
-                item = pos_item  # positional match confirmed
+            if (not pos_word or pos_word == word) and id(pos_item) not in _consumed:
+                item = pos_item  # positional match confirmed (and still free)
             else:
-                # Positional mismatch — LLM reordered, use word-keyed fallback
-                item = _word_index.get(word)
+                # Positional mismatch (or already taken) — use word-keyed fallback,
+                # consuming the next unused item for this word (FIFO).
+                item = _next_unconsumed(word)
                 if item:
                     logger.debug("Judge reorder detected: pos %d expected '%s' got '%s', used word fallback", i, word, pos_word)
         else:
-            item = _word_index.get(word)  # beyond response length, try word lookup
+            item = _next_unconsumed(word)  # beyond response length, try word lookup
 
         if not item:
             if raw_decisions is not None:
                 raw_decisions.append({"to_id": cid, "verdict": "no_response", "confidence": 0.0, "accepted": 0, "reject_reason": "no_response", "reason": ""})
             results[cid] = None
             continue
+        # This response item now belongs to this candidate — even if it is later
+        # rejected (low confidence / invalid kind), it must not be reused.
+        _consumed.add(id(item))
 
         try:
             link_val = item.get("link", "not_applicable")

@@ -204,6 +204,17 @@ class TestBatchUpdate:
         count = store.batch_update([(c1.id, {"difficulty": 0.5})])
         assert count == 0
 
+    def test_batch_update_resyncs_content_nfc_lower(self, store):
+        # Mirrors update(): if content changes, the denormalized search index
+        # content_nfc_lower must be recomputed, else find_by_content (which
+        # matches solely on that column) silently breaks.
+        c1 = store.add(content="hello", meaning="m")
+        store.batch_update([(c1.id, {"content": "goodbye"})])
+        assert store.find_by_content("goodbye") is not None
+        assert store.find_by_content("goodbye").id == c1.id
+        # Old content must no longer resolve.
+        assert store.find_by_content("hello") is None
+
 
 class TestEmbedText:
     def test_embed_text_format(self, store):

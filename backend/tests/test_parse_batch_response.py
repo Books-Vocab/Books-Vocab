@@ -141,6 +141,47 @@ class TestLLMReorder:
         assert result["c2"] == Judgement(link="shares_usage", confidence=0.8, reason="r2")
 
 
+class TestDuplicateWordReorder:
+    """Two candidates can share the same word (same word across different
+    notebooks → distinct cards in one judge batch). Under reorder, the word-keyed
+    fallback must NOT collapse them onto a single response item."""
+
+    def test_duplicate_words_keep_distinct_items_under_reorder(self):
+        # c1 and c3 both have word "dup"; c2 is "other". LLM rotates the array so
+        # every position mismatches and all three resolve via word fallback.
+        cands = [
+            ("c1", "dup", "m1"),
+            ("c2", "other", "m2"),
+            ("c3", "dup", "m3"),
+        ]
+        items = [
+            {"word": "other", "link": "contrasts_with", "confidence": 0.81, "reason": "OTHER"},
+            {"word": "dup", "link": "shares_usage", "confidence": 0.91, "reason": "DUP_A"},
+            {"word": "dup", "link": "contrasts_with", "confidence": 0.92, "reason": "DUP_B"},
+        ]
+        result = _parse_batch_response(json.dumps(items), cands)
+        # FIFO per word: first "dup" item → c1, second "dup" item → c3.
+        assert result["c1"] == Judgement(link="shares_usage", confidence=0.91, reason="DUP_A")
+        assert result["c3"] == Judgement(link="contrasts_with", confidence=0.92, reason="DUP_B")
+        assert result["c2"] == Judgement(link="contrasts_with", confidence=0.81, reason="OTHER")
+        # No response item is dropped or reused: the two distinct reasons survive.
+        reasons = {j.reason for j in result.values() if j}
+        assert reasons == {"DUP_A", "DUP_B", "OTHER"}
+
+    def test_duplicate_words_one_response_one_candidate_unmatched(self):
+        # Two "dup" candidates but only ONE "dup" response item: exactly one of
+        # them gets it, the other resolves to None (not a silent double-assign).
+        cands = [("c1", "dup", "m1"), ("c2", "dup", "m2")]
+        items = [
+            {"word": "filler", "link": "contrasts_with", "confidence": 0.8, "reason": "F"},
+            {"word": "dup", "link": "shares_usage", "confidence": 0.9, "reason": "ONLY"},
+        ]
+        result = _parse_batch_response(json.dumps(items), cands)
+        matched = [j for j in result.values() if j is not None]
+        assert len(matched) == 1
+        assert matched[0] == Judgement(link="shares_usage", confidence=0.9, reason="ONLY")
+
+
 # ── 8. not_applicable rejection ──────────────────────────────
 
 class TestNotApplicable:
