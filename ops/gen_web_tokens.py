@@ -220,6 +220,16 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
             continue
         d.append((f"--{key}", spec["css"]))
 
+    # web-only CROSS-THEME preview swatches: --swatch-<theme> = that theme's
+    # resolved page-bg, emitted INVARIANT (all 3 available under any active theme)
+    # so the options theme-picker can show every theme's bg simultaneously.
+    tp = tokens.get("web-only", {}).get("theme-preview")
+    if tp:
+        src = tp["swatch-of"]
+        for theme in tp["themes"]:
+            spec = tokens["color"]["theme"][theme][src]
+            d.append((f"--swatch-{theme}", resolve_color(tokens, spec)))
+
     return d
 
 
