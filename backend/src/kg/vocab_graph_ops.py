@@ -66,15 +66,24 @@ def create_manual_link(
     cards_store: Any,
     graph: Any,
     judge: Any,
+    notebook_id: str,
 ) -> Any:
-    """Create a manual link between two cards. Calls LLM for kind + reason."""
+    """Create a manual link between two cards. Calls LLM for kind + reason.
+
+    ``notebook_id`` is the notebook being operated on. The card store is
+    per-user (not per-notebook) while the graph IS per-notebook, so a card
+    from another notebook would otherwise be linkable across the isolation
+    boundary. Both cards must belong to ``notebook_id``; one that doesn't is
+    treated as absent from this notebook (404), matching the iOS client's
+    notebook-scoped candidate list.
+    """
     from .graph import LinkKind
 
     card_a = cards_store.get(from_id)
     card_b = cards_store.get(to_id)
-    if not card_a or card_a.is_deleted or card_a.is_archived:
+    if not card_a or card_a.is_deleted or card_a.is_archived or card_a.notebook_id != notebook_id:
         raise NotFoundError("Card", from_id)
-    if not card_b or card_b.is_deleted or card_b.is_archived:
+    if not card_b or card_b.is_deleted or card_b.is_archived or card_b.notebook_id != notebook_id:
         raise NotFoundError("Card", to_id)
 
     existing = graph.find_link_between(from_id, to_id)
