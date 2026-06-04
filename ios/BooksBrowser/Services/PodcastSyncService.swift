@@ -19,6 +19,7 @@ struct PodcastSeriesSummary: Codable {
     let hostNames: [String]?
     let color: String?
     let coverPattern: String?
+    let coverImageURL: String?
     let totalDurationSec: Double?
     let episodeCount: Int?
 }
@@ -30,6 +31,7 @@ struct PodcastSeriesDetail: Codable {
     let hostNames: [String]?
     let color: String?
     let coverPattern: String?
+    let coverImageURL: String?
     let totalDurationSec: Double?
     let episodes: [PodcastEpisodeDetail]
     let createdAt: String?
@@ -131,6 +133,65 @@ final class PodcastSyncService {
         return data
     }
 
+    // MARK: - Cover image cache (remote → local file, rendered by NotebookCoverView)
+
+    /// `Documents/podcast-covers/` — downloaded series covers. Documents (not
+    /// Caches) so the file survives backgrounding and matches the audio-download
+    /// convention; `LocalDataCleanerService` purges this tree on logout /
+    /// account-switch so a reused remoteId can't leak account A's cover to B.
+    static func coversRoot() -> URL {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("podcast-covers", isDirectory: true)
+    }
+
+    static func cachedCoverURL(seriesId: String) -> URL {
+        Self.coversRoot().appendingPathComponent("\(seriesId).png")
+    }
+
+    /// Best-effort: download the remote cover into the local cache and point
+    /// `coverImagePath` at it, so `NotebookCoverView` renders the photo over the
+    /// procedural cover. No-op when the series has no remote cover or the file is
+    /// already cached. Failures are logged, never thrown — a missing/blocked
+    /// cover must degrade to the procedural cover, not break the sync pass.
+    @MainActor
+    static func cacheCoverIfNeeded(
+        seriesId: String, context: ModelContext, kgService: any KGServing
+    ) async {
+        let descriptor = FetchDescriptor<PodcastSeries>(
+            predicate: #Predicate { $0.remoteId == seriesId }
+        )
+        guard let series = try? context.fetch(descriptor).first,
+              let remote = series.coverImageURL, !remote.isEmpty else { return }
+
+        let cacheURL = Self.cachedCoverURL(seriesId: seriesId)
+        // Already cached + on disk → reuse (a series cover is stable).
+        if series.coverImagePath == cacheURL.path,
+           FileManager.default.fileExists(atPath: cacheURL.path) {
+            return
+        }
+
+        let urlString = remote.hasPrefix("http") ? remote : "\(baseURL)\(remote)"
+        do {
+            let data = try await authedData(from: urlString, kgService: kgService)
+            // PNG magic — a 404 / HTML / JSON error body must never be written as
+            // a "cover" (silent-garbage guard, not a silent fallback).
+            guard data.count > 8, Array(data.prefix(4)) == [0x89, 0x50, 0x4E, 0x47] else {
+                AppLog.kg.warning("[PodcastSync] cover for \(seriesId) not a PNG; skipped")
+                return
+            }
+            try FileManager.default.createDirectory(
+                at: Self.coversRoot(), withIntermediateDirectories: true
+            )
+            try data.write(to: cacheURL, options: .atomic)
+            series.coverImagePath = cacheURL.path
+        } catch is CancellationError {
+            return
+        } catch {
+            AppLog.kg.warning("[PodcastSync] cover fetch failed for \(seriesId): \(error.localizedDescription)")
+        }
+    }
+
     func fetchSeriesList() async throws -> [PodcastSeriesSummary] {
         let data = try await Self.authedData(from: "\(Self.baseURL)/api/podcasts", kgService: kgService)
         return try JSONDecoder().decode([PodcastSeriesSummary].self, from: data)
@@ -184,6 +245,9 @@ final class PodcastSyncService {
                 let detail = try await fetchSeriesDetail(seriesId: summary.id)
                 details[summary.id] = detail
                 Self.upsertSeries(detail: detail, context: context)
+                // Best-effort remote-cover download into the local cache; failures
+                // degrade to the procedural cover and never abort the sync pass.
+                await Self.cacheCoverIfNeeded(seriesId: summary.id, context: context, kgService: kgService)
             } catch {
                 AppLog.kg.warning("[PodcastSync] detail fetch failed for \(summary.id): \(error.localizedDescription)")
                 if !(error is CancellationError) {
@@ -243,6 +307,7 @@ final class PodcastSyncService {
         series.hostNames = detail.hostNames ?? []
         series.color = detail.color
         series.coverPattern = detail.coverPattern
+        series.coverImageURL = detail.coverImageURL
         series.totalDurationSec = detail.totalDurationSec ?? 0
         series.episodeCount = detail.episodes.count
         series.updatedAt = Date()
