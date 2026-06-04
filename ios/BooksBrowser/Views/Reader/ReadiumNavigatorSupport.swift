@@ -41,7 +41,7 @@ final class NavigatorHostViewController: UIViewController {
         AppLog.reader.debug("AI Search: \(highlight)")
 
         Task { @MainActor in
-            _ = await navigator.evaluateJavaScript(activeSelectionWrapScript)
+            ReaderJSEval.log(await navigator.evaluateJavaScript(activeSelectionWrapScript), "aiSearch")
             navigator.clearSelection()
         }
 
@@ -59,7 +59,7 @@ final class NavigatorHostViewController: UIViewController {
         AppLog.reader.debug("AI Explain: \(highlight)")
 
         Task { @MainActor in
-            _ = await navigator.evaluateJavaScript(activeSelectionWrapScript)
+            ReaderJSEval.log(await navigator.evaluateJavaScript(activeSelectionWrapScript), "aiExplain")
             navigator.clearSelection()
         }
 
