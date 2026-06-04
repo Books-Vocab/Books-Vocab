@@ -103,6 +103,8 @@ def _primitive_rgb(tokens: dict, ref: str) -> list[float]:
 def resolve_color(tokens: dict, spec: dict) -> str:
     """Resolve one theme-palette color spec to a CSS color string."""
     if "css" in spec:
+        if spec["css"] == "":
+            raise ValueError(f"empty css color value in spec: {spec}")
         return spec["css"]
     if "rgb" in spec:
         return _hex(spec["rgb"])
@@ -124,6 +126,11 @@ def resolve_color(tokens: dict, spec: dict) -> str:
 # --------------------------------------------------------------------------
 
 def _emit_block(selector: str, decls: list[tuple[str, str]]) -> str:
+    # Guard against blanked/typo'd tokens.json keys emitting malformed `--x: ;`
+    # declarations that would still pass --check (it only diffs render-vs-disk).
+    for name, value in decls:
+        if value == "":
+            raise ValueError(f"empty CSS value for {name} (blank/missing tokens.json source)")
     body = "".join(f"  {name}: {value};\n" for name, value in decls)
     return f"{selector} {{\n{body}}}\n\n"
 
@@ -132,7 +139,7 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
     d: list[tuple[str, str]] = []
 
     fam = tokens["type"]["family"]
-    for key in ("serif", "sans", "italic", "mono"):
+    for key in ("serif", "sans", "italic", "mono", "display"):
         d.append((f"--font-{key}", fam[key]))
 
     for key, spec in tokens["type"]["scale"].items():
