@@ -17,11 +17,15 @@ struct PodcastVocabularyContext: VocabularyContextProtocol {
         let scope = notebookId
         return vocabulary.first { entry in
             guard entry.notebookId == scope else { return false }
-            let normalized = entry.word.lowercased()
-            if normalized == wordLower { return true }
-            if entry.rootForm?.lowercased() == wordLower { return true }
-            return entry.inflections.contains { $0.lowercased() == wordLower }
+            return matches(entry, wordLower: wordLower)
         }
+    }
+
+    private func matches(_ entry: VocabularyEntry, wordLower: String) -> Bool {
+        let normalized = entry.word.lowercased()
+        if normalized == wordLower { return true }
+        if entry.rootForm?.lowercased() == wordLower { return true }
+        return entry.inflections.contains { $0.lowercased() == wordLower }
     }
 
     func deleteEntry(matching word: String) {
@@ -45,10 +49,7 @@ struct PodcastVocabularyContext: VocabularyContextProtocol {
         guard let candidates = try? modelContext.fetch(descriptor) else { return nil }
         let wordLower = word.lowercased()
         return candidates.first { entry in
-            let normalized = entry.word.lowercased()
-            if normalized == wordLower { return true }
-            if entry.rootForm?.lowercased() == wordLower { return true }
-            return entry.inflections.contains { $0.lowercased() == wordLower }
+            matches(entry, wordLower: wordLower)
         }
     }
 
