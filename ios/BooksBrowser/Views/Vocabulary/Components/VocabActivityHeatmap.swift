@@ -27,12 +27,13 @@ struct VocabActivityHeatmap: View {
 
     private let cellSize: CGFloat = 13
     private let cellSpacing: CGFloat = 3
-    private let weekdayIndices = [0, 2, 4, 6] // Mon, Wed, Fri, Sun (Monday=0)
-    // Locale-aware, Monday-first; subset to alternate rows (Mon/Wed/Fri/Sun)
+    // Alternate rows (Mon/Wed/Fri/Sun, Monday=0) — labeled rows in the every-other-row layout.
+    private static let weekdayIndices = [0, 2, 4, 6]
+    // Locale-aware, Monday-first; subset to `weekdayIndices`
     // to match the heatmap's every-other-row label layout.
     private let weekdayLabels: [String] = {
         let all = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
-        return [0, 2, 4, 6].compactMap { all.indices.contains($0) ? all[$0] : nil }
+        return Self.weekdayIndices.compactMap { all.indices.contains($0) ? all[$0] : nil }
     }()
 
     @State private var grid: [[CellData]] = []
@@ -70,7 +71,7 @@ struct VocabActivityHeatmap: View {
                         // Weekday labels
                         VStack(alignment: .trailing, spacing: 0) {
                             ForEach(0..<7, id: \.self) { row in
-                                if let index = weekdayIndices.firstIndex(of: row) {
+                                if let index = Self.weekdayIndices.firstIndex(of: row) {
                                     Text(weekdayLabels[index])
                                         .font(appSkin.typography.monoLabel)
                                         .foregroundStyle(appSkin.palette.quaternaryText)

@@ -49,30 +49,6 @@ struct ReviewFoldSurface<Content: View>: View {
     }
 }
 
-// MARK: - Fold Chevron Button
-
-struct ReviewFoldChevronButton: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let action: () -> Void
-    let accessibilityLabel: String
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "chevron.up")
-                .font(appSkin.typography.iconTiny.weight(.bold))
-                .foregroundStyle(appSkin.palette.secondaryText)
-                .frame(width: TodayReviewMetrics.chevronButtonSize, height: TodayReviewMetrics.chevronButtonSize)
-                .background(Circle().fill(appSkin.palette.mutedFill.opacity(0.96)))
-                .overlay(Circle().stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .contentShape(Circle())
-        .accessibilityLabel(accessibilityLabel)
-        .enableInjection()
-    }
-}
-
 // MARK: - Fold Chevron Pill (centered collapse handle)
 
 struct ReviewFoldChevronPill: View {
