@@ -118,7 +118,7 @@ body {
     var(--stage-bg) 75%
   );
   background-size: 200% 100%;
-  animation: kg-pulse 1.4s ease-in-out infinite;
+  animation: kg-pulse var(--dur-pulse) ease-in-out infinite;
 }
 
 @keyframes kg-pulse {
