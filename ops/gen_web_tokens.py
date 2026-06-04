@@ -68,6 +68,10 @@ HEADER = (
     "   ============================================================ */\n\n"
 )
 
+# easeOutCubic: no-overshoot safe approximation of an underdamped spring's settle.
+# Shared by every motion.spring token (duration = response). See motion.$comment-spring.
+SPRING_EASE = "cubic-bezier(0.33, 1, 0.68, 1)"
+
 # Legacy spacing aliases so existing feature CSS keeps working while it migrates
 # to the canonical iOS-numeric --sp-N scale. key -> canonical scale key.
 SPACE_ALIASES = {
@@ -179,10 +183,20 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
         if key.startswith("$"):
             continue
         d.append((f"--ease-{key}", spec["css"]))
-    # composed "duration easing" pairs for `transition: <prop> var(--motion-X)`
-    for key in ("quick", "control", "chip", "standard", "emphasized"):
-        ease = mo["easing"].get(key, mo["easing"].get(f"spring-{key}", {})).get("css", "ease-out")
+    # spring physics → `<response>s <easeOutCubic>` no-overshoot safe approximation.
+    # damping is $swift-guarded in tokens.json but NOT expressible in cubic-bezier (overshoot
+    # dropped for safety); see motion.$comment-spring.
+    for key, spec in mo.get("spring", {}).items():
+        if key.startswith("$"):
+            continue
+        d.append((f"--spring-{key}", f"{spec['response']:g}s {SPRING_EASE}"))
+    # composed "duration easing" pairs for `transition: <prop> var(--motion-X)`.
+    # quick/control/chip from timing-curve duration+easing; standard/emphasized from spring.
+    for key in ("quick", "control", "chip"):
+        ease = mo["easing"].get(key, {}).get("css", "ease-out")
         d.append((f"--motion-{key}", f"{mo['duration'][key]['s']:g}s {ease}"))
+    for key in ("standard", "emphasized"):
+        d.append((f"--motion-{key}", f"{mo['spring'][key]['response']:g}s {SPRING_EASE}"))
     for key, css in mo.get("transition", {}).items():
         if key.startswith("$"):
             continue
@@ -233,9 +247,15 @@ def render_tokens_css(tokens: dict) -> str:
     out.append(_emit_block(":root, :host, [data-theme=\"light\"]", _theme_decls(tokens, "light")))
     out.append(_emit_block("[data-theme=\"dark\"]", _theme_decls(tokens, "dark")))
     out.append(_emit_block("[data-theme=\"sepia\"]", _theme_decls(tokens, "sepia")))
-    # reduced-motion: web equivalent of iOS accessibilityReduceMotion
-    rm_keys = [k for k in tokens["motion"]["duration"] if not k.startswith("$")]
-    rm_body = "".join(f"    --dur-{k}: 0.01ms;\n" for k in rm_keys)
+    # reduced-motion: web equivalent of iOS accessibilityReduceMotion.
+    # Collapse every composed timing var (dur/spring/motion) to a near-zero duration
+    # so `transition: x var(--spring-press)` / `var(--motion-standard)` also honor RM.
+    mo = tokens["motion"]
+    rm_vars = [f"--dur-{k}" for k in mo["duration"] if not k.startswith("$")]
+    rm_vars += [f"--spring-{k}" for k in mo["spring"] if not k.startswith("$")]
+    rm_vars += ["--motion-quick", "--motion-control", "--motion-chip",
+                "--motion-standard", "--motion-emphasized"]
+    rm_body = "".join(f"    {v}: 0.01ms;\n" for v in rm_vars)
     out.append(
         "@media (prefers-reduced-motion: reduce) {\n"
         "  :root, :host {\n"
