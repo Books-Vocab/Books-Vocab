@@ -2,17 +2,24 @@
 
 Core API for agents:
 
-    from llm_eval import run_eval, compare_prompts
+    from llm_eval import run_eval, make_render_fn, compare_prompts
     from llm_eval.registry import PromptRegistry
     from llm_eval.datasets import load_dataset
 
     registry = PromptRegistry()
-    prompt = registry.render("translate_quick", word="evoke", context="...")
     dataset = load_dataset("translate_quick")
-    results = run_eval(prompt, dataset, models=["gemma3:4b", "gemini-2.5-flash-lite"])
+    render_fn = make_render_fn(registry, "translate_quick")
+    results = await run_eval(
+        prompt=render_fn(dataset[0]),  # fallback prompt (render_fn overrides per sample)
+        samples=dataset,
+        models=["gemma3:4b", "gemini-2.5-flash-lite"],
+        render_fn=render_fn,
+    )
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from .config import EvalConfig
 from .datasets import load_dataset
@@ -26,9 +33,47 @@ __all__ = [
     "PromptRegistry",
     "RenderedPrompt",
     "load_dataset",
+    "make_render_fn",
     "run_eval",
     "compare_prompts",
 ]
+
+_LANG_NAMES: dict[str, str] = {
+    "en": "English",
+    "zh-Hant": "Traditional Chinese",
+    "zh-Hans": "Simplified Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+}
+
+
+def make_render_fn(
+    registry: PromptRegistry,
+    name: str,
+    version: str | None = None,
+    **extra_vars,
+) -> Callable[[dict], RenderedPrompt]:
+    """Build a per-sample render_fn for use with run_eval(render_fn=...).
+
+    Maps dataset sample fields to prompt template vars. Handles language
+    name expansion (source_lang/target_lang → *_lang_name).
+    """
+    def _render(sample: dict) -> RenderedPrompt:
+        vars: dict = {**sample, **extra_vars}
+        vars.setdefault(
+            "source_lang_name",
+            _LANG_NAMES.get(sample.get("source_lang", "en"), sample.get("source_lang", "English")),
+        )
+        vars.setdefault(
+            "target_lang_name",
+            _LANG_NAMES.get(sample.get("target_lang", "zh-Hant"), sample.get("target_lang", "Traditional Chinese")),
+        )
+        return registry.render(name, version, **vars)
+
+    return _render
 
 
 def compare_prompts(
