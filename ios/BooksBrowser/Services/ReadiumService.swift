@@ -38,6 +38,8 @@ final class ReadiumService: ReadiumServing {
 
     /// 從 EPUB 檔案 URL 開啟 Publication
     func openPublication(at url: URL) async throws -> Publication {
+        let perfSpan = PerfLog.reader.interval("openPublication")
+        defer { perfSpan.end(url.lastPathComponent) }
         let fm = FileManager.default
         AppLog.readium.info("openPublication: \(url.path) | exists=\(fm.fileExists(atPath: url.path)) readable=\(fm.isReadableFile(atPath: url.path))")
         guard let absoluteURL = FileURL(url: url) else {
@@ -124,6 +126,7 @@ final class ReadiumService: ReadiumServing {
     /// 此操作可能耗時，建議在背景 Task 中執行
     func extractUniqueWords(from publication: Publication) async -> Set<String> {
         return await Task.detached(priority: .background) {
+            let perfSpan = PerfLog.reader.interval("extractUniqueWords")
             var uniqueWords = Set<String>()
             let readingOrder = publication.readingOrder
 
@@ -161,6 +164,7 @@ final class ReadiumService: ReadiumServing {
             }
             
             AppLog.readium.info("extractUniqueWords 完成：共提取了 \(uniqueWords.count) 個不重複單字")
+            perfSpan.end("\(uniqueWords.count) words")
             return uniqueWords
         }.value
     }

@@ -52,6 +52,7 @@ extension ReaderView {
             readerState.underlineProgress = progress
         }
         if progress >= 1.0 {
+            PerfLog.reader.mark("firstHighlightComplete")
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
                 withAnimation(AppMotion.contentFade) {
