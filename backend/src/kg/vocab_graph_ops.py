@@ -28,6 +28,7 @@ so they rely on the barrier's observability + re-raise contract alone.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from .exceptions import ConflictError, NotFoundError
@@ -132,6 +133,33 @@ def create_manual_link(
     return link
 
 
+def _reversible_link_toggle(
+    *,
+    link_id: str,
+    graph: Any,
+    cards_store: Any,
+    apply: Callable[[str], Any],
+    revert: Callable[[str], Any],
+) -> None:
+    """Apply a reversible graph link mutation, then run the touch barrier.
+
+    Shared skeleton for hide/unhide (mirror images): fetch-or-404, run the
+    forward mutation (``KeyError`` → 404 for a link that vanished mid-call), then
+    bump both endpoints. If the barrier fails, ``revert`` rolls the mutation back
+    so graph and card state stay consistent before re-raising.
+    """
+    lk = _get_link_or_404(link_id, graph)
+    try:
+        apply(link_id)
+    except KeyError as exc:
+        raise NotFoundError("Link", link_id) from exc
+    try:
+        _touch_both(cards_store, lk.from_id, lk.to_id)
+    except Exception:
+        revert(link_id)
+        raise
+
+
 def hide_graph_link(
     *,
     link_id: str,
@@ -139,17 +167,10 @@ def hide_graph_link(
     cards_store: Any,
 ) -> None:
     """Hide a link (user wants to stop seeing it but not permanently delete)."""
-    lk = _get_link_or_404(link_id, graph)
-    try:
-        graph.hide_link(link_id)
-    except KeyError as exc:
-        raise NotFoundError("Link", link_id) from exc
-    # Reversible: unhide on touch failure to keep graph/card state consistent.
-    try:
-        _touch_both(cards_store, lk.from_id, lk.to_id)
-    except Exception:
-        graph.unhide_link(link_id)
-        raise
+    _reversible_link_toggle(
+        link_id=link_id, graph=graph, cards_store=cards_store,
+        apply=graph.hide_link, revert=graph.unhide_link,
+    )
 
 
 def unhide_graph_link(
@@ -159,17 +180,10 @@ def unhide_graph_link(
     cards_store: Any,
 ) -> None:
     """Unhide a previously hidden link."""
-    lk = _get_link_or_404(link_id, graph)
-    try:
-        graph.unhide_link(link_id)
-    except KeyError as exc:
-        raise NotFoundError("Link", link_id) from exc
-    # Reversible: re-hide on touch failure to keep graph/card state consistent.
-    try:
-        _touch_both(cards_store, lk.from_id, lk.to_id)
-    except Exception:
-        graph.hide_link(link_id)
-        raise
+    _reversible_link_toggle(
+        link_id=link_id, graph=graph, cards_store=cards_store,
+        apply=graph.unhide_link, revert=graph.hide_link,
+    )
 
 
 def delete_graph_link(
