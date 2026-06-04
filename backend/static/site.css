@@ -102,9 +102,12 @@ body.kg-surface {
   width: var(--toggle-size); height: var(--toggle-size); border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--tint); cursor: pointer;
   font-size: var(--toggle-glyph); line-height: 1;
-  transition: background var(--motion-quick), color var(--motion-quick);
+  transition: background var(--motion-quick), color var(--motion-quick),
+              transform var(--spring-press), opacity var(--spring-press);
 }
 .theme-toggle:hover { background: var(--muted-fill); color: var(--text-primary); }
+/* Press feedback — icon button → iOS TapFeedback triplet (scale + opacity). */
+.theme-toggle:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
 
 /* --- Page column ----------------------------------------------------------- */
 
@@ -661,4 +664,5 @@ body.kg-surface {
   .site-nav, .site-nav__links a::after,
   .hero__cta .kg-btn--appstore, .closing .kg-btn--appstore { transition: none; }
   .device__frame { animation: none !important; }
+  .theme-toggle:active { transform: none; }
 }
