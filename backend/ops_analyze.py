@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from kg.ops_shared import connect_ro, data_dir, notebook_files, resolve_uid, table_columns
+from kg.ops_shared import connect_ro, data_dir, notebook_files, provider_column_expr, resolve_uid
 from kg.quota_service import token_cost_usd
 
 
@@ -50,7 +50,7 @@ def level_1(uid: str, udir: Path) -> None:
 
     if token_db.exists():
         conn = connect_ro(token_db)
-        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+        pcol = provider_column_expr(conn)
         rows = conn.execute(
             f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
             f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
@@ -98,7 +98,7 @@ def level_2(uid: str, udir: Path) -> None:
 
     cutoff = (datetime.now(UTC) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     conn = connect_ro(token_db)
-    pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+    pcol = provider_column_expr(conn)
     rows = conn.execute(
         f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
         f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
