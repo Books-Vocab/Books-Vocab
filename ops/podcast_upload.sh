@@ -119,6 +119,14 @@ done
   || err "No ep_*_{pro,flash}.{m4a,mp3} files found in scripts/"
 ok "Staged $EP_COUNT episodes (format: $AUDIO_EXT)"
 
+# ── Stage series cover (cover stage output, optional) ────────────────────────
+# plan/cover.png → <staging>/cover.png; the sync loop uploads it to
+# <sid>/cover.png and the metadata block sets coverImageURL when present.
+if [[ -f "$WORKSPACE/plan/cover.png" ]]; then
+  cp "$WORKSPACE/plan/cover.png" "$STAGING/cover.png"
+  ok "Staged series cover"
+fi
+
 # ── Fetch existing remote metadata (for createdAt preservation) ──────────────
 EXISTING_META=""
 if [[ $DRY_RUN -eq 0 ]]; then
@@ -218,6 +226,15 @@ if existing_meta_raw.strip():
     except json.JSONDecodeError:
         pass
 
+# Cover stage output (staged as <staging>/cover.png → S3 <sid>/cover.png).
+# coverImageURL is the backend proxy path the client fetches; null when the
+# cover stage hasn't produced one (legacy / pre-cover series → procedural cover).
+cover_image_url = (
+    f"/api/podcasts/{series_id}/cover"
+    if os.path.isfile(os.path.join(staging_dir, "cover.png"))
+    else None
+)
+
 metadata = {
     "id": series_id,
     "title": title,
@@ -225,6 +242,7 @@ metadata = {
     "hostNames": host_names,
     "color": "#5B8C5A",
     "coverPattern": "waves",
+    "coverImageURL": cover_image_url,
     "totalDurationSec": total_duration,
     # Record format on the series so the backend can content-type-route
     # without sniffing the bucket every request. m4a → "audio/mp4".
@@ -264,6 +282,7 @@ content_type_for() {
     *.srt)  echo "text/plain; charset=utf-8" ;;
     *.json) echo "application/json; charset=utf-8" ;;
     *.md)   echo "text/markdown; charset=utf-8" ;;
+    *.png)  echo "image/png" ;;
     *)      echo "application/octet-stream" ;;
   esac
 }
