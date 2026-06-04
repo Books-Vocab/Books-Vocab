@@ -15,6 +15,7 @@ KEY 來源:lab/podcast/.env 的 PEXELS_API_KEY(同 synthesize.py 讀 Vertex 金�
 """
 import argparse, colorsys, io, json, os, sys, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
+from typing import NoReturn
 from PIL import Image, ImageOps, ImageDraw, ImageEnhance, ImageFont
 from dotenv import load_dotenv
 
@@ -24,7 +25,7 @@ KEY = os.environ.get("PEXELS_API_KEY", "").strip()
 API = "https://api.pexels.com/v1/search"
 SIZE = 1024
 
-def _die(msg): print(f"ERROR: {msg}", file=sys.stderr); sys.exit(1)
+def _die(msg) -> NoReturn: print(f"ERROR: {msg}", file=sys.stderr); sys.exit(1)
 def _clamp(v): return max(0, min(255, int(v)))
 def _hex2rgb(h): h=h.lstrip("#"); return tuple(int(h[i:i+2],16) for i in (0,2,4))
 def _shade(rgb,f):
