@@ -96,6 +96,28 @@ extension ReaderSettingsPresenter {
                         .foregroundStyle(appSkin.palette.secondaryText)
                         .frame(width: 34, alignment: .trailing)
                 }
+                Divider().overlay(appSkin.palette.divider)
+                HStack(alignment: .center, spacing: AppSpacing.s3) {
+                    vocabLabelChip(title: L10n.string("閱讀模式"), systemImage: "book.pages")
+                    Spacer(minLength: AppSpacing.s3)
+                    HStack(spacing: AppSpacing.s2) {
+                        ForEach([false, true], id: \.self) { isScroll in
+                            let isSelected = bindings.scrollMode.wrappedValue == isScroll
+                            Button {
+                                withAnimation(AppMotion.panelState) { bindings.scrollMode.wrappedValue = isScroll }
+                            } label: {
+                                ReaderSelectionTile(isSelected: isSelected) {
+                                    Text(isScroll ? L10n.string("捲動") : L10n.string("翻頁"))
+                                        .font(appSkin.typography.caption)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(maxWidth: 160)
+                }
             }
         }
     }

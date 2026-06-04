@@ -54,7 +54,8 @@ struct ReaderSettingsPanel: View {
             font: $settings.font,
             theme: themeBinding,
             underlineOpacity: $settings.underlineOpacity,
-            showHitTestingDebug: $settings.showHitTestingDebug
+            showHitTestingDebug: $settings.showHitTestingDebug,
+            scrollMode: $settings.scrollMode
         )
     }
 
@@ -90,6 +91,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
     @State private var theme: ReaderTheme = .sepia
     @State private var underlineOpacity: Double = 0.35
     @State private var showHitTestingDebug = false
+    @State private var scrollMode = false
 
     private var state: ReaderSettingsPresenter.State {
         .init(
@@ -105,7 +107,8 @@ private struct ReaderSettingsPanelPreviewHarness: View {
             font: $font,
             theme: $theme,
             underlineOpacity: $underlineOpacity,
-            showHitTestingDebug: $showHitTestingDebug
+            showHitTestingDebug: $showHitTestingDebug,
+            scrollMode: $scrollMode
         )
     }
 
