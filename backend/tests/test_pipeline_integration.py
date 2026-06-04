@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import jwt as pyjwt
 import pytest
+from conftest import _DummyEmbeddingStore
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("KG_DATA_DIR", "/tmp/kg_test_default")
@@ -106,24 +107,6 @@ def pipeline_api(tmp_path):
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
-
-
-class _DummyEmbeddingStore:
-    def __init__(self):
-        self._ids: set[str] = set()
-
-    def has(self, card_id: str) -> bool:
-        return card_id in self._ids
-
-    def add(self, card_id: str, text: str) -> None:
-        self._ids.add(card_id)
-
-    def add_batch(self, items: list) -> None:
-        for card_id, text in items:
-            self.add(card_id, text)
-
-    def find_similar(self, card_id: str, k: int = 3):
-        return []
 
 
 class TestPipelineIntegration:

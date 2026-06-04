@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt as pyjwt
 import pytest
+from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
@@ -18,18 +19,6 @@ import kg.routers.vocab as vocab_router_mod
 from kg.api import app
 from kg.graph import LinkKind
 from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
 def _swap_settings(new_settings):
@@ -112,25 +101,6 @@ def isolated_api(tmp_path):
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
-
-
-class _DummyEmbeddingStore:
-    def __init__(self) -> None:
-        self._ids: set[str] = set()
-
-    def has(self, card_id: str) -> bool:
-        return card_id in self._ids
-
-    def add(self, card_id: str, text: str) -> None:
-        self._ids.add(card_id)
-
-    def add_batch(self, items: list) -> None:
-        for card_id, text in items:
-            self.add(card_id, text)
-
-    def find_similar(self, card_id: str, k: int = 3):
-        return []
-
 
 
 def test_vocab_lifecycle_and_since_sync(isolated_api):
