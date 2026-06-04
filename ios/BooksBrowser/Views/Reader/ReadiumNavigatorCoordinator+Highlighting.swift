@@ -28,7 +28,8 @@ extension ReadiumNavigatorView.Coordinator {
                     let wordsJSON = escaped.map { "\"\($0)\"" }.joined(separator: ",")
                     let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
 
-                    Task { _ = await navigator.evaluateJavaScript(js) }
+                    Task { ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markVocabWords") }
+                    PerfLog.reader.mark("markVocabWords", "\(words.count)")
                     AppLog.reader.debug("Marked \(words.count) vocab words")
                 }
             }
@@ -40,7 +41,7 @@ extension ReadiumNavigatorView.Coordinator {
         let escaped = word.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let js = "if(window.__markVocabWord) window.__markVocabWord(\"\(escaped)\");"
         Task { @MainActor in
-            _ = await navigator.evaluateJavaScript(js)
+            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markNewVocabWord")
             AppLog.reader.debug("Marked new vocab: \(word)")
         }
     }
@@ -59,7 +60,7 @@ extension ReadiumNavigatorView.Coordinator {
         });
         """
         Task { @MainActor in
-            _ = await navigator.evaluateJavaScript(js)
+            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "clearAllVocabHighlights")
             AppLog.reader.debug("Cleared all vocab highlights")
         }
     }
@@ -69,7 +70,7 @@ extension ReadiumNavigatorView.Coordinator {
         let escaped = word.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let js = "if(window.__removeVocabWord) window.__removeVocabWord(\"\(escaped)\");"
         Task { @MainActor in
-            _ = await navigator.evaluateJavaScript(js)
+            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "removeVocabWord")
             AppLog.reader.debug("Removed vocab underline: \(word)")
         }
     }
@@ -89,7 +90,7 @@ extension ReadiumNavigatorView.Coordinator {
         });
         """
         Task { @MainActor in
-            _ = await navigator.evaluateJavaScript(js)
+            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "clearActiveHighlight")
             navigator.clearSelection()
         }
     }

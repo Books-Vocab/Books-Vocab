@@ -37,7 +37,15 @@ final class ReaderProgressSaver {
     /// 失敗回 `nil`（呼叫端據此**跳過寫入**，保留既有有效值），而非舊行為的 `"{}"`
     /// 字面值 —— `Locator(jsonString:"{}")` 可能 decode 成空 locator 污染下次還原。
     static func encodedLocatorJSON(_ locator: Locator) -> String? {
-        try? locator.jsonString()
+        do {
+            return try locator.jsonString()
+        } catch {
+            // Serialization of a structured Readium Locator effectively never
+            // fails — but if it does, surface it instead of silently returning
+            // nil, so the skipped-persist path (ReaderView+Handlers) is diagnosable.
+            AppLog.reader.warning("Locator JSON serialize failed (href=\(String(describing: locator.href), privacy: .public)): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     /// 記錄一次翻頁：`apply` 立即執行（in-memory model 寫入，供 panel 即時讀取），

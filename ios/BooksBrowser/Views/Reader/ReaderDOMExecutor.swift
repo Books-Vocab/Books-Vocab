@@ -26,17 +26,20 @@ struct ReaderDOMExecutor {
         case .setUnderlineOpacity(let opacity):
             evaluateJavaScript(
                 "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');",
+                "setUnderlineOpacity",
                 navigator: navigator
             )
         case .setContentStyle(let css):
             let cssLiteral = encodedJavaScriptString(css)
             evaluateJavaScript(
                 "if(window.__applyReaderContentStyle) window.__applyReaderContentStyle(\(cssLiteral));",
+                "setContentStyle",
                 navigator: navigator
             )
         case .setDebugMode(let isEnabled):
             evaluateJavaScript(
                 "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));",
+                "setDebugMode",
                 navigator: navigator
             )
         }
@@ -44,10 +47,12 @@ struct ReaderDOMExecutor {
 
     private func evaluateJavaScript(
         _ script: String,
+        _ label: StaticString,
         navigator: EPUBNavigatorViewController?
     ) {
         Task { @MainActor in
-            _ = await navigator?.evaluateJavaScript(script)
+            guard let navigator else { return }
+            ReaderJSEval.log(await navigator.evaluateJavaScript(script), label)
         }
     }
 
