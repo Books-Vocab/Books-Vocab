@@ -65,7 +65,7 @@ def create_manual_link_response(
         id=link.id,
         fromId=link.from_id,
         toId=link.to_id,
-        kind=link.kind.value if hasattr(link.kind, 'value') else link.kind,
+        kind=link.kind.value,
         confidence=link.confidence,
         reason=link.reason,
     )

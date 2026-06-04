@@ -128,3 +128,31 @@ def test_save_without_embeddings_still_fsyncs_ids(tmp_path: Path, monkeypatch):
         f"synced={synced_paths}"
     )
     assert json.loads(ids_path.read_text()) == []
+
+
+def test_write_meta_fsyncs_tmp_before_replace(tmp_path: Path, monkeypatch):
+    """The model/dim sidecar must mirror _save's durability contract: fsync the
+    temp file before replace(), else an OS crash can persist a torn/zero-length
+    meta that misattributes the store's model on next boot. _write_meta runs on
+    a fresh store's first save (no sidecar yet)."""
+    store, client, emb_path, ids_path = _make_store(tmp_path)
+    meta_tmp = str(store._meta_path.with_suffix(".json.tmp"))
+
+    synced_paths: list[str] = []
+    real_fsync = os.fsync
+
+    def spy_fsync(fd: int) -> None:
+        synced_paths.append(_fd_to_path(fd))
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", spy_fsync)
+
+    client.embeddings.create.return_value = _resp(1)
+    # Fresh store → first _save writes the sidecar via _write_meta.
+    store.add_batch([("c1", "alpha")])
+
+    assert meta_tmp in synced_paths, (
+        f"meta tmp {meta_tmp!r} was not fsynced; synced={synced_paths}"
+    )
+    # And the sidecar landed intact.
+    assert json.loads(store._meta_path.read_text())["dim"] == EMBEDDING_DIM

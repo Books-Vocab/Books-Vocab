@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+from openai import OpenAIError
 
 logger = logging.getLogger(__name__)
-from openai import OpenAIError
 
 
 def _fsync_path(path: Path) -> None:
@@ -109,7 +111,6 @@ class EmbeddingStore:
             return None
 
     def _write_meta(self) -> None:
-        from datetime import UTC, datetime
         self._meta_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "model": self.model,
@@ -117,8 +118,15 @@ class EmbeddingStore:
             "created_at": datetime.now(UTC).isoformat(),
         }
         tmp = self._meta_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(payload))
+        # Fsync the temp before replace + the dir after, mirroring _save's
+        # durability contract — otherwise an OS/power crash can persist a torn
+        # or zero-length sidecar that misattributes the store's model/dim.
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(payload))
+            f.flush()
+            os.fsync(f.fileno())
         tmp.replace(self._meta_path)
+        _fsync_dir(self._meta_path.parent)
 
     def _quarantine_stale(self, stale_model: str, stale_dim: int) -> None:
         """Rename .npy + ids.json to `.legacy_{model}_{dim}` so a future
@@ -370,7 +378,6 @@ class EmbeddingStore:
 
         Returns an (N, self.dim) float32 array.
         """
-        import time
         for attempt in range(3):
             try:
                 response = self.llm.embed("embed", input=texts, model=self.model)

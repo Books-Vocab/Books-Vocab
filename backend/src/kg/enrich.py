@@ -28,10 +28,6 @@ SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素�
   · 如原翻譯已正確，回傳 null"""
 
 
-def build_enrich_system_prompt(target_lang: str = "zh-Hant") -> str:
-    return SYSTEM_PROMPT
-
-
 USER_TEMPLATE = """分析以下單字（含現有翻譯和例句上下文）：
 {words_json}
 

@@ -9,7 +9,7 @@ class VocabEntry(BaseModel):
     """A vocabulary entry from BooksBrowser."""
 
     word: str = Field(min_length=1, max_length=200)
-    translation: str = Field(max_length=1000)
+    translation: str = Field(min_length=1, max_length=1000)
     context: str = Field(default="", max_length=5000)
     root_form: str | None = None  # AI-determined lemma from translate/quick
     source: VocabSource | None = None
