@@ -60,6 +60,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 - `episodes[].subtitleContent: String?` 由 `ops/podcast_upload.sh` 嵌入；iOS `PodcastEpisode.inlineSubtitle` 直接消費，跳過 `/api/podcasts/{sid}/{ep}/subtitle` fetch
 - `episodes[].localAudioPath: String?` (SwiftData only, 不在後端 JSON) — 由 DownloadManager 填寫；PlayerView 認到即用 file:// URL 跳過認證
+- `coverImageURL: String?` 由 `ops/podcast_upload.sh` 寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。iOS 有值才拉遠端封面圖快取，否則退 `color`/`coverPattern` 程序化封面
 
 ### Sub-views（UI 元件）
 
@@ -116,7 +117,7 @@ podcast catalog 同步現有兩條觸發鏈：
 ## Storage backend(2026-06 Track B)
 
 - **音頻格式**: AAC/M4A(128k,`+faststart`)。`.mp3` 仍可播,backend `audio.m4a` → `audio.mp3` fallback 涵蓋過渡期 series。
-- **位置**: Lightsail Object Storage `s3://kg-podcasts-prod/{series_id}/ep_NN/{audio.m4a,subtitle.srt,script.md,metadata.json}`(舊 disk-mode 路徑 `data/podcasts/...` 仍由 backend 處理,當 `PODCAST_BUCKET` env 未設時)。
+- **位置**: Lightsail Object Storage `s3://kg-podcasts-prod/{series_id}/{metadata.json, cover.png(選), ep_NN/{audio.m4a,subtitle.srt,script.md}}`(`cover.png` 為 series 層封面,`cover` stage 有產才有;舊 disk-mode 路徑 `data/podcasts/...` 仍由 backend 處理,當 `PODCAST_BUCKET` env 未設時)。
 - **iOS 變更**: 零。`AVURLAssetHTTPHeaderFields` 帶 `Authorization: Bearer`,backend 走 proxy 模式(不 302 redirect 到 presigned URL,避免 AWS sig + Bearer header 衝突 → 403)。
 - **Range 支援**: backend 把 `Range` header 原樣轉給 S3 `get_object(Range=...)`,S3 回 206 + `Content-Range`,backend 透傳。
 - **過渡期回退**: `PODCAST_BUCKET` env unset → backend 改走 disk fallback,舊 series 仍可播。
