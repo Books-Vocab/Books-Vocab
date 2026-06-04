@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import BooksBrowser
 
-/// Series-layer activation decision (mirrors `PodcastEpisodeActivation`):
+/// Series-layer activation decision:
 /// - regular (Mac/iPad, `usesInlineDetail == true`) → `.selectInline` so the
 ///   episode-list + player render as a root-level master pane on the
 ///   BookshelfView NavigationStack root (depth=0), never pushed. This removes

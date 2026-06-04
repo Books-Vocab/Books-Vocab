@@ -524,12 +524,22 @@ def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
     }, chapters
 
 
+def book_workspace_dirname(title: str, author: str) -> str:
+    """Deterministic single-book workspace dirname (mirrors saga.saga_dirname).
+
+    The dirname rule lives here only — both setup_workspace (which creates the
+    dir) and find_workspace (which must locate the same dir) call this, so a
+    change to the slug rule or hash payload can never desync the two.
+    """
+    slug = _sanitize_slug(title)
+    book_hash = hashlib.md5(f"{title}_{author}".encode()).hexdigest()[:8]
+    return f"{slug}_{book_hash}"
+
+
 def setup_workspace(metadata: dict, chapters: list[tuple[str, str]]) -> Path:
-    slug = _sanitize_slug(metadata["title"])
-    book_hash = hashlib.md5(
-        f"{metadata['title']}_{metadata['author']}".encode()
-    ).hexdigest()[:8]
-    workspace = WORKSPACES_DIR / f"{slug}_{book_hash}"
+    workspace = WORKSPACES_DIR / book_workspace_dirname(
+        metadata["title"], metadata["author"]
+    )
 
     for d in ["plan/episodes", "scripts"]:
         (workspace / d).mkdir(parents=True, exist_ok=True)
@@ -646,9 +656,7 @@ def find_workspace(epub_path: Path) -> Path | None:
     except ValueError as e:
         raise ValueError(f"{e} (file: {epub_path})") from e
     author = _dc(book, "creator", "Unknown")
-    slug = _sanitize_slug(title)
-    book_hash = hashlib.md5(f"{title}_{author}".encode()).hexdigest()[:8]
-    ws = WORKSPACES_DIR / f"{slug}_{book_hash}"
+    ws = WORKSPACES_DIR / book_workspace_dirname(title, author)
     return ws if ws.exists() else None
 
 

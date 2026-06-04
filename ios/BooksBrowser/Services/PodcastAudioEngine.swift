@@ -436,7 +436,6 @@ final class PodcastAudioEngine: NSObject {
     func shutdown() {
         stop()
         #if os(iOS)
-        unregisterRemoteCommands()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         try? AVAudioSession.sharedInstance().setActive(
             false,
@@ -585,9 +584,4 @@ final class PodcastAudioEngine: NSObject {
         // Session deactivation moved to stop() to avoid the
         // deactivate→reactivate pulse on every loadAudio retry.
     }
-}
-
-enum PodcastAudioEngineError: LocalizedError {
-    case invalidFile
-    var errorDescription: String? { "Invalid audio file" }
 }
