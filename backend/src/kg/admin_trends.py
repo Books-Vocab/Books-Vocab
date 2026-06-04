@@ -34,6 +34,31 @@ def _cutoff_iso(start_date: date) -> str:
     return datetime.combine(start_date, datetime.min.time(), tzinfo=UTC).isoformat()
 
 
+def _count_by_day(
+    module: Any,
+    cutoff_iso: str,
+    *,
+    table: str,
+    ts_col: str,
+    count_expr: str = "COUNT(*)",
+    extra_where: str = "",
+) -> dict[str, int]:
+    """Group rows of one log table into ``{UTC_date: count}`` since ``cutoff_iso``.
+
+    ``count_expr`` / ``extra_where`` are module-internal SQL literals (never user
+    input). ``extra_where`` is appended verbatim after the timestamp predicate, so
+    callers must prefix it with `` AND ...``. Returns dates with a truthy key only.
+    """
+    with module._lock:
+        conn = module._get_conn()
+        rows = conn.execute(
+            f"SELECT substr({ts_col}, 1, 10) AS d, {count_expr} "
+            f"FROM {table} WHERE {ts_col} >= ?{extra_where} GROUP BY d",
+            (cutoff_iso,),
+        ).fetchall()
+    return {d: int(c or 0) for d, c in rows if d}
+
+
 # ---------------------------------------------------------------------------
 # error series (pipeline failures + judge rejects)
 # ---------------------------------------------------------------------------
@@ -43,16 +68,10 @@ def _pipeline_failures_by_day(cutoff_iso: str) -> dict[str, int]:
     """Count terminal-state runs with status='failed' per UTC date."""
     from . import pipeline_log as pl
 
-    with pl._lock:
-        conn = pl._get_conn()
-        rows = conn.execute(
-            "SELECT substr(started_at, 1, 10) AS d, COUNT(*) "
-            "FROM pipeline_runs "
-            "WHERE started_at >= ? AND status = 'failed' "
-            "GROUP BY d",
-            (cutoff_iso,),
-        ).fetchall()
-    return {d: int(c or 0) for d, c in rows if d}
+    return _count_by_day(
+        pl, cutoff_iso, table="pipeline_runs", ts_col="started_at",
+        extra_where=" AND status = 'failed'",
+    )
 
 
 def _judge_rejects_by_day(cutoff_iso: str) -> dict[str, int]:
@@ -61,17 +80,10 @@ def _judge_rejects_by_day(cutoff_iso: str) -> dict[str, int]:
 
     if not jl.DB_PATH.exists():
         return {}
-    with jl._lock:
-        conn = jl._get_conn()
-        rows = conn.execute(
-            "SELECT substr(created_at, 1, 10) AS d, COUNT(*) "
-            "FROM judge_log "
-            "WHERE created_at >= ? AND source = 'auto' AND accepted = 0 "
-            f"  AND {jl.DEGREE_CAP_EXCLUSION_SQL} "
-            "GROUP BY d",
-            (cutoff_iso,),
-        ).fetchall()
-    return {d: int(c or 0) for d, c in rows if d}
+    return _count_by_day(
+        jl, cutoff_iso, table="judge_log", ts_col="created_at",
+        extra_where=f" AND source = 'auto' AND accepted = 0 AND {jl.DEGREE_CAP_EXCLUSION_SQL}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -106,16 +118,10 @@ def _active_users_by_day(cutoff_iso: str) -> dict[str, int]:
     """Return {date_iso: distinct user count from token_usage}."""
     from . import token_tracker as tt
 
-    with tt._lock:
-        conn = tt._get_conn()
-        rows = conn.execute(
-            "SELECT substr(created_at, 1, 10) AS d, COUNT(DISTINCT user_id) "
-            "FROM token_usage "
-            "WHERE created_at >= ? "
-            "GROUP BY d",
-            (cutoff_iso,),
-        ).fetchall()
-    return {d: int(c or 0) for d, c in rows if d}
+    return _count_by_day(
+        tt, cutoff_iso, table="token_usage", ts_col="created_at",
+        count_expr="COUNT(DISTINCT user_id)",
+    )
 
 
 # ---------------------------------------------------------------------------
