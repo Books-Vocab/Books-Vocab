@@ -34,15 +34,7 @@ extension ReadiumNavigatorView.Coordinator {
         with snapshot: ReadiumNavigatorView.BridgeSnapshot,
         in host: NavigatorHostViewController
     ) {
-        let commands = makeCommands(from: snapshot, in: host)
-        apply(commands, in: host)
-    }
-
-    func makeCommands(
-        from snapshot: ReadiumNavigatorView.BridgeSnapshot,
-        in host: NavigatorHostViewController
-    ) -> [BridgeCommand] {
-        planner.makeCommands(from: snapshot)
+        apply(planner.makeCommands(from: snapshot), in: host)
     }
 
     func apply(_ commands: [BridgeCommand], in host: NavigatorHostViewController) {
