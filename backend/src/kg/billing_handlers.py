@@ -20,6 +20,34 @@ from .api_models import (
 )
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
 
+# Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
+# three ingest paths (sync / notification / reconcile). `source` and
+# `price_display` differ per path and stay explicit at the call site.
+_SNAPSHOT_FIELDS = (
+    "product_id", "status", "is_trial", "expires_at", "will_renew",
+    "environment", "transaction_id", "original_transaction_id",
+)
+
+
+def _write_snapshot(
+    write_subscription_snapshot: Callable[..., dict[str, Any]],
+    users: dict[str, dict[str, Any]],
+    user_id: str,
+    snapshot: dict[str, Any],
+    *,
+    source: str,
+    price_display: str | None = None,
+) -> dict[str, Any]:
+    """Persist a decoded App Store snapshot via the injected writer, splatting
+    the shared snapshot fields so each ingest path needn't restate all eight."""
+    return write_subscription_snapshot(
+        users,
+        user_id,
+        source=source,
+        price_display=price_display,
+        **{k: snapshot[k] for k in _SNAPSHOT_FIELDS},
+    )
+
 
 def sync_app_store_subscription_response(
     req: AppStoreSyncRequest,
@@ -69,19 +97,9 @@ def sync_app_store_subscription_response(
 
     with FileLock(str(users_lock_file)):
         users = load_users()
-        record = write_subscription_snapshot(
-            users,
-            user["id"],
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=snapshot["price_display"],
-            source="app_store",
+        record = _write_snapshot(
+            write_subscription_snapshot, users, user["id"], snapshot,
+            source="app_store", price_display=snapshot["price_display"],
         )
         save_users(users)
 
@@ -147,18 +165,8 @@ def app_store_notifications_response(
         )
         if not user_id:
             return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
-        record = write_subscription_snapshot(
-            users,
-            user_id,
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=None,
+        record = _write_snapshot(
+            write_subscription_snapshot, users, user_id, snapshot,
             source="app_store_notification",
         )
         save_users(users)
@@ -214,18 +222,8 @@ async def reconcile_app_store_subscription_response(
             snapshot["original_transaction_id"],
             snapshot["transaction_id"],
         ) or user["id"]
-        record = write_subscription_snapshot(
-            users,
-            resolved_user_id,
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=None,
+        record = _write_snapshot(
+            write_subscription_snapshot, users, resolved_user_id, snapshot,
             source="app_store_server_api",
         )
         save_users(users)

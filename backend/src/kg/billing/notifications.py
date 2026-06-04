@@ -9,6 +9,7 @@ from typing import Any
 
 from ..api_models import AppStoreNotificationRequest
 from ..exceptions import BadRequestError, ValidationError
+from .payloads import ACTIVE_BEARING_STATUSES
 
 _logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def verified_transaction_snapshot(
         "status": status,
         "is_trial": status == "trial",
         "expires_at": normalize_ms_timestamp(payload.get("expiresDate"), parse_datetime_fn),
-        "will_renew": bool_from_any(auto_renew_status, default=status in {"active", "trial", "grace_period"}),
+        "will_renew": bool_from_any(auto_renew_status, default=status in ACTIVE_BEARING_STATUSES),
         "price_display": price_display,
     }
 

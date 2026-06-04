@@ -140,6 +140,17 @@ def _reset() -> None:
         _override_data_dir = None
 
 
+def _row_dict(series_id: str, ep_num: int, position_sec, duration_sec, updated_at) -> dict:
+    """The on-the-wire progress record shape, shared by every read/write path."""
+    return {
+        "series_id": series_id,
+        "ep_num": ep_num,
+        "position_sec": position_sec,
+        "duration_sec": duration_sec,
+        "updated_at": updated_at,
+    }
+
+
 def upsert(
     *,
     user_id: str,
@@ -202,13 +213,7 @@ def upsert(
         if stale:
             # Existing row wins (strictly newer, or same instant with a
             # position >= the incoming one) — ignore the stale write.
-            return {
-                "series_id": series_id,
-                "ep_num": ep_num,
-                "position_sec": row[0],
-                "duration_sec": row[1],
-                "updated_at": row[2],
-            }
+            return _row_dict(series_id, ep_num, row[0], row[1], row[2])
         conn.execute(
             """
             INSERT INTO podcast_progress
@@ -222,13 +227,7 @@ def upsert(
             (user_id, series_id, ep_num, position_sec, duration_sec, updated_at),
         )
         conn.commit()
-    return {
-        "series_id": series_id,
-        "ep_num": ep_num,
-        "position_sec": position_sec,
-        "duration_sec": duration_sec,
-        "updated_at": updated_at,
-    }
+    return _row_dict(series_id, ep_num, position_sec, duration_sec, updated_at)
 
 
 def get_single(*, user_id: str, series_id: str, ep_num: int) -> dict | None:
@@ -241,13 +240,7 @@ def get_single(*, user_id: str, series_id: str, ep_num: int) -> dict | None:
         ).fetchone()
     if row is None:
         return None
-    return {
-        "series_id": series_id,
-        "ep_num": ep_num,
-        "position_sec": row[0],
-        "duration_sec": row[1],
-        "updated_at": row[2],
-    }
+    return _row_dict(series_id, ep_num, row[0], row[1], row[2])
 
 
 def list_for_user(*, user_id: str) -> list[dict]:
@@ -258,10 +251,4 @@ def list_for_user(*, user_id: str) -> list[dict]:
             "FROM podcast_progress WHERE user_id = ? ORDER BY updated_at DESC",
             (user_id,),
         ).fetchall()
-    return [
-        {
-            "series_id": s, "ep_num": e,
-            "position_sec": p, "duration_sec": d, "updated_at": u,
-        }
-        for s, e, p, d, u in rows
-    ]
+    return [_row_dict(s, e, p, d, u) for s, e, p, d, u in rows]

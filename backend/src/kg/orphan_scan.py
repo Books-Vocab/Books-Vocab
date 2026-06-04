@@ -193,6 +193,36 @@ def _atomic_write_json(path: Path, data: Any) -> None:
 # Scan
 # ---------------------------------------------------------------------------
 
+def _scan_user_orphans(db_path: Path, table: str, user_ids: set[str]) -> list[dict[str, Any]]:
+    """Rows in ``table`` whose ``user_id`` has no live user.
+
+    ``sample_ids`` (≤10) lets an admin spot-check ghost rows in dry-run reports
+    before authorising a destructive ``fix --confirm`` run. A missing DB file or
+    missing table yields an empty list (tolerant by design).
+    """
+    if not db_path.exists():
+        return []
+    orphans: list[dict[str, Any]] = []
+    with sqlite3.connect(str(db_path)) as conn:
+        try:
+            rows = conn.execute(
+                f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = []
+        for uid, count in rows:
+            if uid and uid not in user_ids:
+                sample = [
+                    r[0]
+                    for r in conn.execute(
+                        f"SELECT id FROM {table} WHERE user_id = ? ORDER BY id LIMIT 10",
+                        (uid,),
+                    ).fetchall()
+                ]
+                orphans.append({"user_id": uid, "rows": count, "sample_ids": sample})
+    return orphans
+
+
 def scan(*, data_dir: Path) -> dict[str, Any]:
     """Read-only scan; returns a structured report.
 
@@ -305,56 +335,10 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                 })
 
     # 3. translate_log → user
-    # ``sample_ids`` (≤10) lets an admin spot-check ghost rows in dry-run
-    # reports before authorising a destructive ``fix --confirm`` run.
-    translate_orphan: list[dict[str, Any]] = []
-    translate_db = data_dir / "translate_log.db"
-    if translate_db.exists():
-        with sqlite3.connect(str(translate_db)) as conn:
-            try:
-                rows = conn.execute(
-                    "SELECT user_id, COUNT(*) FROM translate_log GROUP BY user_id"
-                ).fetchall()
-            except sqlite3.OperationalError:
-                rows = []
-            for uid, count in rows:
-                if uid and uid not in user_ids:
-                    sample = [
-                        r[0]
-                        for r in conn.execute(
-                            "SELECT id FROM translate_log WHERE user_id = ? "
-                            "ORDER BY id LIMIT 10",
-                            (uid,),
-                        ).fetchall()
-                    ]
-                    translate_orphan.append(
-                        {"user_id": uid, "rows": count, "sample_ids": sample}
-                    )
+    translate_orphan = _scan_user_orphans(data_dir / "translate_log.db", "translate_log", user_ids)
 
     # 5. token_usage → user
-    token_orphan: list[dict[str, Any]] = []
-    token_db = data_dir / "token_usage.db"
-    if token_db.exists():
-        with sqlite3.connect(str(token_db)) as conn:
-            try:
-                rows = conn.execute(
-                    "SELECT user_id, COUNT(*) FROM token_usage GROUP BY user_id"
-                ).fetchall()
-            except sqlite3.OperationalError:
-                rows = []
-            for uid, count in rows:
-                if uid and uid not in user_ids:
-                    sample = [
-                        r[0]
-                        for r in conn.execute(
-                            "SELECT id FROM token_usage WHERE user_id = ? "
-                            "ORDER BY id LIMIT 10",
-                            (uid,),
-                        ).fetchall()
-                    ]
-                    token_orphan.append(
-                        {"user_id": uid, "rows": count, "sample_ids": sample}
-                    )
+    token_orphan = _scan_user_orphans(data_dir / "token_usage.db", "token_usage", user_ids)
 
     report = {
         "cards_orphan_notebook": {"count": len(cards_orphan), "items": cards_orphan},
@@ -381,6 +365,23 @@ class OrphanFixAborted(RuntimeError):
     write time, another writer raced us and we abort rather than clobber it.
     Recover by running ``scan`` again (or quiescing the API) and retrying.
     """
+
+
+def _delete_rows_by_user(module: Any, table: str, user_ids: list[str]) -> None:
+    """Hard-DELETE all rows in ``table`` belonging to the given ghost users.
+
+    Uses the module singleton connection (``module._lock`` / ``module._get_conn``)
+    so any other live readers see the change. No-op when ``user_ids`` is empty.
+    """
+    if not user_ids:
+        return
+    with module._lock:
+        conn = module._get_conn()
+        conn.executemany(
+            f"DELETE FROM {table} WHERE user_id = ?",
+            [(uid,) for uid in user_ids],
+        )
+        conn.commit()
 
 
 def fix(
@@ -498,23 +499,13 @@ def fix(
         _atomic_write_json(graph_path, kept)
 
     # 3. delete translate_log rows for ghost users
-    ghost_users_t = [
-        it["user_id"] for it in report["translate_log_orphan_user"]["items"]
-    ]
-    if ghost_users_t:
-        translate_db = data_dir / "translate_log.db"
-        if translate_db.exists():
-            # Use the module singleton so any other live readers see the change.
-            from . import translate_log as tl
-            with tl._lock:
-                conn = tl._get_conn()
-                conn.executemany(
-                    "DELETE FROM translate_log WHERE user_id = ?",
-                    [(uid,) for uid in ghost_users_t],
-                )
-                conn.commit()
+    from . import translate_log as tl
+    _delete_rows_by_user(
+        tl, "translate_log",
+        [it["user_id"] for it in report["translate_log_orphan_user"]["items"]],
+    )
 
-    # 4. delete judge_log rows
+    # 4. delete judge_log rows (keyed by row id, not user — kept inline)
     judge_ids = [it["id"] for it in report["judge_log_orphan_card"]["items"]]
     if judge_ids:
         from . import judge_log as jl
@@ -527,18 +518,11 @@ def fix(
             conn.commit()
 
     # 5. delete token_usage rows
-    ghost_users_tok = [
-        it["user_id"] for it in report["token_usage_orphan_user"]["items"]
-    ]
-    if ghost_users_tok:
-        from . import token_tracker as tt
-        with tt._lock:
-            conn = tt._get_conn()
-            conn.executemany(
-                "DELETE FROM token_usage WHERE user_id = ?",
-                [(uid,) for uid in ghost_users_tok],
-            )
-            conn.commit()
+    from . import token_tracker as tt
+    _delete_rows_by_user(
+        tt, "token_usage",
+        [it["user_id"] for it in report["token_usage_orphan_user"]["items"]],
+    )
 
     return summary
 

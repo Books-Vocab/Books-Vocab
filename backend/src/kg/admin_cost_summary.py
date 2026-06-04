@@ -100,34 +100,26 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
 
     since = since_iso(range_)
 
+    where = "WHERE user_id = ?"
+    params: list = [user_id]
+    if since is not None:
+        where += " AND created_at >= ?"
+        params.append(since)
+
     with _lock:
         conn = _get_conn()
-        if since is None:
-            rows = conn.execute(
-                """
-                SELECT call_type, provider, model,
-                       COUNT(*)            AS cnt,
-                       SUM(input_tokens)   AS total_in,
-                       SUM(output_tokens)  AS total_out
-                FROM token_usage
-                WHERE user_id = ?
-                GROUP BY call_type, provider, model
-                """,
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT call_type, provider, model,
-                       COUNT(*)            AS cnt,
-                       SUM(input_tokens)   AS total_in,
-                       SUM(output_tokens)  AS total_out
-                FROM token_usage
-                WHERE user_id = ? AND created_at >= ?
-                GROUP BY call_type, provider, model
-                """,
-                (user_id, since),
-            ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT call_type, provider, model,
+                   COUNT(*)            AS cnt,
+                   SUM(input_tokens)   AS total_in,
+                   SUM(output_tokens)  AS total_out
+            FROM token_usage
+            {where}
+            GROUP BY call_type, provider, model
+            """,
+            params,
+        ).fetchall()
 
     by_call_type: dict[str, dict[str, Any]] = {}
     by_service: dict[str, dict[str, Any]] = {}

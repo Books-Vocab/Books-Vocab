@@ -180,6 +180,26 @@ class TestCheckAndGetQuota:
         assert r1["fraction"] == r2["fraction"]
 
 
+class TestZeroLimitGuard:
+    """An operator may configure a tier limit to 0 (configure_limits free=0).
+    All three quota readers must degrade to fraction 0.0 rather than crash on
+    a zero divisor."""
+
+    def test_zero_limit_does_not_crash(self, mock_db):
+        configure_limits(pro=0.30, free=0.0)
+        try:
+            state = get_quota_state("user1", is_pro=False)
+            chk = check_quota("user1", "translate", is_pro=False)
+            cag = check_and_get_quota("user1", "translate", is_pro=False)
+            assert state["fraction"] == 0.0
+            assert chk["fraction"] == 0.0
+            assert cag["fraction"] == 0.0
+            assert chk["exceeded"] is True
+            assert cag["exceeded"] is True
+        finally:
+            configure_limits(pro=0.30, free=0.03)
+
+
 # ── tier transitions & grant revoke (characterization) ────────────
 #
 # Context: quota_service is a stateless 24h rolling-window view over

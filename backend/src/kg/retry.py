@@ -32,11 +32,14 @@ def sync_retry(
         except retryable_exceptions as exc:
             if attempt == max_attempts - 1:
                 raise
+            default_delay = min(base_delay * (2 ** attempt), max_delay)
             if delay_fn is not None:
                 custom_delay = delay_fn(attempt, exc)
-                delay = custom_delay if custom_delay is not None else min(base_delay * (2 ** attempt), max_delay)
+                # `is not None` (not `or`): a delay_fn returning 0.0 means
+                # "retry now" and must not fall back to the default backoff.
+                delay = custom_delay if custom_delay is not None else default_delay
             else:
-                delay = min(base_delay * (2 ** attempt), max_delay)
+                delay = default_delay
             delay *= 0.5 + random.random()  # jitter: ×0.5–1.5
             logger.warning("[%s] %s attempt %d failed: %s, retrying in %.1fs", uid, step_name, attempt + 1, exc, delay)
             time.sleep(delay)

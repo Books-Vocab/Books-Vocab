@@ -41,6 +41,7 @@ class TestTransactionIdFormat:
         "123; DROP TABLE",
         "../../../etc/passwd",
         "123\n456",
+        "123\n",  # trailing newline: re.match(r'^\d+$') wrongly accepted; fullmatch rejects
     ])
     def test_rejects_non_numeric_transaction_id(self, bad_id):
         from kg.app_store import _validate_transaction_id

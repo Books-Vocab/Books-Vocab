@@ -178,6 +178,12 @@ def clear_reservations() -> None:
         _reservations.clear()
 
 
+def _row_cost(call_type: str, provider: str | None, total_in, total_out) -> float:
+    """USD cost of one ``GROUP BY call_type, provider`` row, normalising NULL
+    token sums (no rows in window) to 0."""
+    return token_cost_usd(call_type, int(total_in or 0), int(total_out or 0), provider=provider)
+
+
 def _used_usd(user_id: str) -> float:
     """Recorded USD cost (last 24 h) PLUS outstanding in-flight reservations.
 
@@ -203,22 +209,28 @@ def _used_usd(user_id: str) -> float:
 
     total = 0.0
     for call_type, provider, total_in, total_out in rows:
-        total += token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
+        total += _row_cost(call_type, provider, total_in, total_out)
     return total + _reserved_usd(user_id)
 
 
-def _reset_seconds() -> int:
-    """Seconds until the oldest record in the window would expire (rough)."""
-    return _ROLLING_WINDOW_SECONDS
+def _quota_view(user_id: str, *, is_pro: bool) -> tuple[float, float, float]:
+    """Shared quota arithmetic for every reader: (limit, used, fraction).
+
+    ``fraction`` = remaining / limit, guarded against a zero limit (an operator
+    may set a tier limit to 0 via ``configure_limits``) so readers degrade to
+    0.0 rather than dividing by zero.
+    """
+    limit = _daily_limit(is_pro)
+    used = _used_usd(user_id)
+    remaining = max(limit - used, 0.0)
+    fraction = round(remaining / limit, 4) if limit > 0 else 0.0
+    return limit, used, fraction
 
 
 def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
     """Return {fraction, reset_seconds} where fraction = remaining / limit."""
-    limit = _daily_limit(is_pro)
-    used = _used_usd(user_id)
-    remaining = max(limit - used, 0.0)
-    fraction = round(remaining / limit, 4)
-    return {"fraction": fraction, "reset_seconds": _reset_seconds()}
+    _limit, _used, fraction = _quota_view(user_id, is_pro=is_pro)
+    return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
 
 
 def get_all_quota_usage(
@@ -258,7 +270,7 @@ def get_all_quota_usage(
         if user_id not in result:
             limit = _daily_limit(pro_by_user.get(user_id, False))
             result[user_id] = {"used_usd": 0.0, "limit_usd": limit, "calls": {}}
-        cost = token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
+        cost = _row_cost(call_type, provider, total_in, total_out)
         result[user_id]["used_usd"] += cost
         bucket = result[user_id]["calls"].setdefault(call_type, {"count": 0, "cost_usd": 0.0})
         bucket["count"] += cnt
@@ -280,34 +292,26 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
 
     If `since_iso` is None, returns all-time usage. Used by admin UI for range filter.
     """
+    where = "WHERE user_id = ?"
+    params: list = [user_id]
+    if since_iso is not None:
+        where += " AND created_at >= ?"
+        params.append(since_iso)
+
     with _lock:
         conn = _get_conn()
-        if since_iso is None:
-            rows = conn.execute(
-                """
-                SELECT call_type, provider,
-                       COUNT(*)          AS cnt,
-                       SUM(input_tokens) AS total_in,
-                       SUM(output_tokens) AS total_out
-                FROM token_usage
-                WHERE user_id = ?
-                GROUP BY call_type, provider
-                """,
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT call_type, provider,
-                       COUNT(*)          AS cnt,
-                       SUM(input_tokens) AS total_in,
-                       SUM(output_tokens) AS total_out
-                FROM token_usage
-                WHERE user_id = ? AND created_at >= ?
-                GROUP BY call_type, provider
-                """,
-                (user_id, since_iso),
-            ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT call_type, provider,
+                   COUNT(*)          AS cnt,
+                   SUM(input_tokens) AS total_in,
+                   SUM(output_tokens) AS total_out
+            FROM token_usage
+            {where}
+            GROUP BY call_type, provider
+            """,
+            params,
+        ).fetchall()
 
     calls: dict[str, dict] = {}
     tokens: dict[str, dict] = {}
@@ -318,7 +322,7 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     for call_type, provider, cnt, total_in, total_out in rows:
         ti = int(total_in or 0)
         to = int(total_out or 0)
-        cost = token_cost_usd(call_type, ti, to, provider=provider)
+        cost = _row_cost(call_type, provider, ti, to)
         cbucket = calls.setdefault(call_type, {"count": 0, "cost_usd": 0.0})
         cbucket["count"] += int(cnt)
         cbucket["cost_usd"] = round(cbucket["cost_usd"] + cost, 6)
@@ -339,25 +343,18 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
 def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     """Pre-flight check before a translate call.
 
-    Returns {exceeded: bool, fraction, reset_seconds}.
+    Returns {exceeded: bool, fraction, reset_seconds}. Thin alias over
+    ``check_and_get_quota`` — kept as a public symbol for callers that read
+    the intent ("just a gate check"); both compute identically.
     """
-    limit = _daily_limit(is_pro)
-    used = _used_usd(user_id)
-    exceeded = used >= limit
-    remaining = max(limit - used, 0.0)
-    fraction = round(remaining / limit, 4)
-    return {"exceeded": exceeded, "fraction": fraction, "reset_seconds": _reset_seconds()}
+    return check_and_get_quota(user_id, call_type, is_pro=is_pro)
 
 
 def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     """Pre-flight check + state in one query."""
-    limit = _daily_limit(is_pro)
-    used = _used_usd(user_id)
-    remaining = max(limit - used, 0.0)
-    fraction = round(remaining / limit, 4)
-    exceeded = used >= limit
+    limit, used, fraction = _quota_view(user_id, is_pro=is_pro)
     return {
-        "exceeded": exceeded,
+        "exceeded": used >= limit,
         "fraction": fraction,
-        "reset_seconds": _reset_seconds(),
+        "reset_seconds": _ROLLING_WINDOW_SECONDS,
     }

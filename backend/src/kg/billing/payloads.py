@@ -9,6 +9,10 @@ from typing import Any
 from ..api_models import EntitlementsResponse, SubscriptionStatusResponse
 from ..user_store import parse_datetime
 
+# Subscription statuses that still confer an entitlement (drive is_active /
+# default will_renew). Single source of truth shared by snapshots/notifications.
+ACTIVE_BEARING_STATUSES = frozenset({"active", "trial", "grace_period"})
+
 
 def _allow_sandbox_purchase() -> bool:
     """Whether non-production App Store transactions may grant a real entitlement.
