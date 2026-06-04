@@ -145,31 +145,6 @@ verified_against: 33191db4
 - `QuotaStore` + `KGError`/`RetryPolicy` + TodayReview `PostExampleMetrics`
 - State matrix error states: notebook / podcast / bookshelf / translation settings / today review
 
-## Claude Code Gateway (`lab/claude-code-gateway/`,vendored,third-party)
-
-- Claude Code CLI → OpenAI-compatible `/v1/chat/completions`
-- 公網 `https://wordnexus.lol/claude/v1` (Caddy `/claude/*` → port 8090)
-- Bearer `CCG_API_TOKEN`,模型別名 `sonnet`/`opus`/`haiku`
-- 現行呼叫點 `lab/podcast/pipeline.py`(PoC `lab/archive/podcast_architect_poc.py`)
-- 詳見 `docs/sop/claude-gateway.md`
-
-## Antigravity Proxy (`lab/antigravity-proxy/`,vendored,third-party)
-
-- Google Antigravity OAuth → OpenAI-compatible `/v1/chat/completions`(直接 HTTP 打 Google sandbox endpoint)
-- **2026-05-23 撤出公網**:純本機 `bun run start` → `http://localhost:3000/v1`,不再走 VPS / Caddy(封號風險考量)
-- 多 Google Pro 帳號 pool + 自動 quota rotation + healthScore;OAuth refresh tokens 存本機 `lab/antigravity-proxy/antigravity-accounts.json`(不在 git)
-- 可用模型:`claude-opus-4-6-thinking`/`gemini-2.5-pro`/`gemini-3.1-pro-low`/`gemini-3.5-flash-low`/`gpt-oss-120b-medium` 等(訂閱戶權限範圍)
-- **與 KG 邏輯獨立**(podcast pipeline 不呼叫此 proxy);個人實驗用
-- 詳見 `docs/sop/antigravity-proxy.md`
-
-## Codex Gateway (`lab/codex-gateway/`,vendored,third-party)
-
-- ChatGPT Plus/Pro 訂閱 → OpenAI-compatible `/v1/chat/completions` + `/v1/responses`(讀 `~/.codex/auth.json` OAuth token 轉發)
-- 純本機 `127.0.0.1:2455`(FastAPI + uv);不上 VPS、不過 Caddy(預防性 air-gap)
-- 模型線(2026-05-23 ChatGPT **Plus** 訂閱實測):**可用** `gpt-5.5` / `gpt-5.3-codex`;**不開放** `gpt-5` / `gpt-5-codex` / `gpt-5.1-codex` / `gpt-5.4-codex` / `gpt-5.5-codex` / `gpt-5.5-thinking`(回 `not supported when using Codex with a ChatGPT account`)。Pro / Business / Enterprise 範圍更大,dashboard 自動 sync
-- **與 KG 邏輯獨立**;個人實驗 / OpenClaw / Cursor 本機接入
-- 詳見 `docs/sop/codex-gateway.md`
-
 ## Ops
 
 - Safe wrapper
