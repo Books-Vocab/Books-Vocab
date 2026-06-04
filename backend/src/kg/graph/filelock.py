@@ -41,7 +41,10 @@ def path_write_lock(target: Path):
 
     lock_path = target.with_name(target.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = open(lock_path, "w")  # noqa: SIM115 -- closed in finally
+    # Append mode: we only need a live fd for flock and never write to the
+    # lock file, so opening with O_TRUNC ("w") would needlessly truncate a
+    # file other holders may have open. "a" creates-if-absent without truncating.
+    fd = open(lock_path, "a")  # noqa: SIM115 -- closed in finally
     try:
         fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
         yield
