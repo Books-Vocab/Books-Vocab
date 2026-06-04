@@ -81,6 +81,12 @@ body {
   opacity: var(--press-opacity);
 }
 
+/* KGIcons SVG glyphs (shared/icons.js) size to the element's font-size, exactly
+   like the emoji they replaced — so existing font-size tokens (--toggle-glyph on
+   the theme button, --text-caption on the card source) still drive icon size. */
+.kg-theme-btn svg,
+.kg-list-card__source svg { width: 1em; height: 1em; display: block; }
+
 /* --- Search --------------------------------------------------------------- */
 
 .kg-search-wrap {
