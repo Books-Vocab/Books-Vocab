@@ -21,10 +21,7 @@ extension ReadiumNavigatorView.Coordinator {
                 await MainActor.run {
                     guard let navigator = self.navigator else { return }
 
-                    let escaped = words.map {
-                        $0.replacingOccurrences(of: "\\", with: "\\\\")
-                            .replacingOccurrences(of: "\"", with: "\\\"")
-                    }
+                    let escaped = words.map { Self.jsEscaped($0) }
                     let wordsJSON = escaped.map { "\"\($0)\"" }.joined(separator: ",")
                     let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
 
@@ -38,7 +35,7 @@ extension ReadiumNavigatorView.Coordinator {
 
     func markNewVocabWord(_ word: String) {
         guard let navigator else { return }
-        let escaped = word.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let escaped = Self.jsEscaped(word)
         let js = "if(window.__markVocabWord) window.__markVocabWord(\"\(escaped)\");"
         Task { @MainActor in
             ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markNewVocabWord")
@@ -67,7 +64,7 @@ extension ReadiumNavigatorView.Coordinator {
 
     func removeVocabWord(_ word: String) {
         guard let navigator else { return }
-        let escaped = word.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let escaped = Self.jsEscaped(word)
         let js = "if(window.__removeVocabWord) window.__removeVocabWord(\"\(escaped)\");"
         Task { @MainActor in
             ReaderJSEval.log(await navigator.evaluateJavaScript(js), "removeVocabWord")
@@ -136,6 +133,13 @@ extension ReadiumNavigatorView.Coordinator {
 
     static func buildFontFaceCSS() -> String {
         _fontFaceCSS
+    }
+
+    /// Escapes a string for safe embedding inside a double-quoted JS string literal:
+    /// backslashes first, then double quotes.
+    private static func jsEscaped(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 #endif
