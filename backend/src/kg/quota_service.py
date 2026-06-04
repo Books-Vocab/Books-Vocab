@@ -221,8 +221,18 @@ def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
     return {"fraction": fraction, "reset_seconds": _reset_seconds()}
 
 
-def get_all_quota_usage() -> dict[str, dict]:
-    """Return 24h quota usage for all users (admin only)."""
+def get_all_quota_usage(
+    *, is_pro_by_user: dict[str, bool] | None = None
+) -> dict[str, dict]:
+    """Return 24h quota usage for all users (admin only).
+
+    ``is_pro_by_user`` maps user_id → Pro entitlement, so each user's
+    ``limit_usd`` / ``fraction_used`` reflect their actual tier. A user
+    absent from the map (or a None map) is priced at the Free limit — the
+    conservative default; previously every user was scored against the Pro
+    limit, which 10×-underestimated Free users' ``fraction_used``.
+    """
+    pro_by_user = is_pro_by_user or {}
     cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
     cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
 
@@ -246,7 +256,8 @@ def get_all_quota_usage() -> dict[str, dict]:
     # slice back into one per-call_type bucket, priced at its own provider.
     for user_id, call_type, provider, cnt, total_in, total_out in rows:
         if user_id not in result:
-            result[user_id] = {"used_usd": 0.0, "limit_usd": PRO_DAILY_LIMIT_USD, "calls": {}}
+            limit = _daily_limit(pro_by_user.get(user_id, False))
+            result[user_id] = {"used_usd": 0.0, "limit_usd": limit, "calls": {}}
         cost = token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
         result[user_id]["used_usd"] += cost
         bucket = result[user_id]["calls"].setdefault(call_type, {"count": 0, "cost_usd": 0.0})
@@ -256,7 +267,7 @@ def get_all_quota_usage() -> dict[str, dict]:
     for uid in result:
         used = result[uid]["used_usd"]
         result[uid]["used_usd"] = round(used, 6)
-        result[uid]["fraction_used"] = round(used / PRO_DAILY_LIMIT_USD, 4)
+        result[uid]["fraction_used"] = round(used / result[uid]["limit_usd"], 4)
 
     return result
 
