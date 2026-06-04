@@ -29,6 +29,7 @@ auth entirely, was removed in 2026-05.)
 import json
 import logging
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -36,7 +37,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi import Path as PathParam
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import podcast_progress as progress_store
@@ -220,6 +221,63 @@ def _read_json_from_s3(request: Request, key: str, *, context: str):
         logger.error("Podcast %s corrupt in s3://%s/%s: %s",
                      context, cfg.podcast_bucket, key, e)
         raise HTTPException(500, detail=f"Malformed {context}") from e
+
+
+def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | None:
+    """Read raw object bytes from the configured podcast bucket.
+
+    Returns ``None`` if the object does not exist (so callers can mirror the
+    disk path's ``Path.exists()`` branch); raises ``HTTPException(502)`` on a
+    real storage fault. The bytes-oriented sibling of ``_read_json_from_s3``,
+    used by the subtitle / cover media proxies.
+    """
+    cfg = _settings(request)
+    s3 = _s3_client(request)
+    try:
+        obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
+    except Exception as exc:  # noqa: BLE001
+        # Lightsail Object Storage occasionally returns ClientError("404") for
+        # missing keys instead of NoSuchKey. Treat any 404 the same.
+        if _is_s3_not_found(exc, s3):
+            return None
+        logger.error("S3 GetObject failed for %s: %s", key, exc)
+        raise HTTPException(502, detail=f"Storage error fetching {context}") from exc
+    return obj["Body"].read()
+
+
+def _serve_static_media(
+    request: Request,
+    series_id: str,
+    rel_key: str,
+    *,
+    media_type: str,
+    context: str,
+    headers: dict[str, str] | None = None,
+    transform: Callable[[bytes], bytes | str] = lambda b: b,
+):
+    """Serve a single static media object (subtitle / cover) over the shared
+    disk-exists / S3-404 dichotomy.
+
+    ``rel_key`` is the path under the series root (``ep_NN/subtitle.srt`` or
+    ``cover.png``); the S3 key is ``{series_id}/{rel_key}`` and the disk path is
+    ``_podcasts_dir/series_id/rel_key``. ``transform`` lets the subtitle path
+    decode bytes → text (round-tripped through ``PlainTextResponse``) while the
+    cover path passes raw bytes through unchanged.
+    """
+    if _using_s3(request):
+        raw = _read_bytes_from_s3(request, f"{series_id}/{rel_key}", context=context)
+        if raw is None:
+            raise HTTPException(404, detail=f"{context.capitalize()} not found")
+        return Response(content=transform(raw), media_type=media_type, headers=headers)
+
+    disk_file = _podcasts_dir(request) / series_id / rel_key
+    if not disk_file.exists():
+        raise HTTPException(404, detail=f"{context.capitalize()} not found")
+    return Response(
+        content=transform(disk_file.read_bytes()),
+        media_type=media_type,
+        headers=headers,
+    )
 
 
 @router.get("/api/podcasts")
@@ -557,27 +615,17 @@ def get_podcast_subtitle(
     user: dict = Depends(get_current_user),
 ):
     _validate_series_id(series_id)
-
-    if _using_s3(request):
-        cfg = _settings(request)
-        s3 = _s3_client(request)
-        key = f"{series_id}/ep_{ep_num:02d}/subtitle.srt"
-        try:
-            obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-        except Exception as exc:  # noqa: BLE001
-            if _is_s3_not_found(exc, s3):
-                raise HTTPException(404, detail="Subtitle not found") from None
-            logger.error("S3 GetObject failed for %s: %s", key, exc)
-            raise HTTPException(502, detail="Storage error fetching subtitle") from exc
-        text = obj["Body"].read().decode("utf-8", errors="replace")
-        return PlainTextResponse(text)
-
-    srt_file = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}" / "subtitle.srt"
-    if not srt_file.exists():
-        raise HTTPException(404, detail="Subtitle not found")
-    # errors="replace" mirrors the S3 path above: a stray non-UTF-8 byte in a
-    # subtitle file must degrade gracefully, not surface as an uncaught 500.
-    return PlainTextResponse(srt_file.read_text(encoding="utf-8", errors="replace"))
+    # errors="replace" on both backends: a stray non-UTF-8 byte in a subtitle
+    # file must degrade gracefully, not surface as an uncaught 500. The decoded
+    # str is re-encoded by Response exactly as PlainTextResponse did before.
+    return _serve_static_media(
+        request,
+        series_id,
+        f"ep_{ep_num:02d}/subtitle.srt",
+        media_type="text/plain",
+        context="subtitle",
+        transform=lambda raw: raw.decode("utf-8", errors="replace"),
+    )
 
 
 @router.get("/api/podcasts/{series_id}/cover")
@@ -597,22 +645,11 @@ def get_podcast_cover(
     there is no route-matching collision.
     """
     _validate_series_id(series_id)
-
-    headers = {"Cache-Control": "private, max-age=86400"}
-    if _using_s3(request):
-        cfg = _settings(request)
-        s3 = _s3_client(request)
-        key = f"{series_id}/cover.png"
-        try:
-            obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-        except Exception as exc:  # noqa: BLE001
-            if _is_s3_not_found(exc, s3):
-                raise HTTPException(404, detail="Cover not found") from None
-            logger.error("S3 GetObject failed for %s: %s", key, exc)
-            raise HTTPException(502, detail="Storage error fetching cover") from exc
-        return Response(content=obj["Body"].read(), media_type="image/png", headers=headers)
-
-    cover_file = _podcasts_dir(request) / series_id / "cover.png"
-    if not cover_file.exists():
-        raise HTTPException(404, detail="Cover not found")
-    return Response(content=cover_file.read_bytes(), media_type="image/png", headers=headers)
+    return _serve_static_media(
+        request,
+        series_id,
+        "cover.png",
+        media_type="image/png",
+        context="cover",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
