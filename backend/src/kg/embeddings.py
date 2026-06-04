@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+from openai import OpenAIError
 
 logger = logging.getLogger(__name__)
-from openai import OpenAIError
 
 
 def _fsync_path(path: Path) -> None:
@@ -109,7 +111,6 @@ class EmbeddingStore:
             return None
 
     def _write_meta(self) -> None:
-        from datetime import UTC, datetime
         self._meta_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "model": self.model,
@@ -370,7 +371,6 @@ class EmbeddingStore:
 
         Returns an (N, self.dim) float32 array.
         """
-        import time
         for attempt in range(3):
             try:
                 response = self.llm.embed("embed", input=texts, model=self.model)
