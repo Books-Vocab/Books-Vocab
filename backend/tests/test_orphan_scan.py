@@ -383,9 +383,9 @@ def test_admin_orphans_endpoint_does_not_block_event_loop(env):
 
 
 def test_scan_judge_log_uses_cached_live_cards(env, monkeypatch):
-    """``_live_cards`` should be invoked at most once per user — the old code
-    re-scanned cards.db a second time to rebuild ``user_live_cards`` for the
-    judge_log pass. Regression: keep it to one call."""
+    """The single-pass scan reads each user's cards.db exactly once via
+    ``_all_cards_with_state``; the judge_log pass must reuse that cached
+    live-card set rather than re-scanning. Regression: keep it to one call."""
     import kg.judge_log as jl
     from kg import orphan_scan
 
@@ -394,25 +394,19 @@ def test_scan_judge_log_uses_cached_live_cards(env, monkeypatch):
               verdict="accept", confidence=0.9, accepted=True)
 
     call_count = {"n": 0}
-    real_live = orphan_scan._live_cards
     real_all = orphan_scan._all_cards_with_state
-
-    def counting_live(db):
-        call_count["n"] += 1
-        return real_live(db)
 
     def counting_all(db):
         call_count["n"] += 1
         return real_all(db)
 
-    monkeypatch.setattr(orphan_scan, "_live_cards", counting_live)
     monkeypatch.setattr(orphan_scan, "_all_cards_with_state", counting_all)
 
     report = orphan_scan.scan(data_dir=env.data_dir)
 
-    # One user → at most one cards.db read (via _all_cards_with_state); the
-    # judge_log pass must reuse the cached set, never call _live_cards again.
-    assert call_count["n"] <= 1, f"cards.db scanned {call_count['n']} times"
+    # One user → exactly one cards.db read; the judge_log pass reuses the
+    # cached set, never re-scanning cards.db.
+    assert call_count["n"] == 1, f"cards.db scanned {call_count['n']} times"
     # Functional regression check — result unaffected by the refactor.
     assert report["judge_log_orphan_card"]["count"] == 1
 

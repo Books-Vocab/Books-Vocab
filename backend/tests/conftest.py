@@ -36,12 +36,12 @@ os.environ["LLM_PROVIDER_DEFAULT"] = "gemini"
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
 
-def make_jwt(user_id: str) -> str:
+def make_jwt(user_id: str, *, expires_in: timedelta = timedelta(hours=1)) -> str:
     payload = {
         "sub": user_id,
         "provider": "test",
         "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
+        "exp": datetime.now(tz=UTC) + expires_in,
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
@@ -142,6 +142,45 @@ def _isolate_observability_cooldown():
     observability_alerts._cooldown_state.clear()
     yield
     observability_alerts._cooldown_state.clear()
+
+
+ADMIN_TOKEN = "test-admin-token-value"
+
+
+def make_admin_client(tmp_path, monkeypatch, *, setup_logs, teardown_logs):
+    """Shared admin TestClient factory for admin-endpoint tests.
+
+    Builds a tmp data_dir + users.json, sets KG_DATA_DIR, swaps in test
+    settings with an admin token, and yields an admin TestClient. Callers
+    supply `setup_logs(data_dir, monkeypatch)` to patch their specific log
+    module's DATA_DIR/DB_PATH (and prime its connection) and `teardown_logs()`
+    to release it.
+    """
+    from kg.api import app
+    from kg.settings import KGSettings
+
+    data_dir = tmp_path
+    (data_dir / "users").mkdir()
+    users_file = data_dir / "users.json"
+    users_file.write_text(json.dumps({"_meta": {}, "u1": {"config": {}}}))
+
+    monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
+    setup_logs(data_dir, monkeypatch)
+
+    original_settings = app.state.kg_settings
+    test_settings = KGSettings(
+        data_dir=data_dir,
+        jwt_secret=TEST_JWT_SECRET,
+        admin_token=ADMIN_TOKEN,
+    )
+    _swap_settings(test_settings)
+
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        yield SimpleNamespace(client=client, data_dir=data_dir)
+    finally:
+        app.state.kg_settings = original_settings
+        teardown_logs()
 
 
 @pytest.fixture()

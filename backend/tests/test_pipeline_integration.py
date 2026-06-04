@@ -13,13 +13,11 @@ import logging
 import os
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import jwt as pyjwt
 import pytest
-from conftest import _DummyEmbeddingStore
+from conftest import _DummyEmbeddingStore, make_jwt
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("KG_DATA_DIR", "/tmp/kg_test_default")
@@ -34,16 +32,6 @@ from kg.api import app  # noqa: E402
 from kg.settings import KGSettings
 
 _JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def _make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, _JWT_SECRET, algorithm="HS256")
 
 
 def _swap_settings(new_settings):
@@ -87,7 +75,7 @@ def pipeline_api(tmp_path):
             }
         )
     )
-    token = _make_jwt(user_id)
+    token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
     original_settings = app.state.kg_settings

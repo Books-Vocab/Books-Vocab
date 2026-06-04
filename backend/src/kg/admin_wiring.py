@@ -32,6 +32,13 @@ from .admin_test_matrix import (
 )
 from .api_models import AdminGrantRequest, AdminTestRunRequest
 
+PIPELINE_RUNS_MAX = 100
+TRANSLATE_HISTORY_MAX = 200
+
+
+def _clamp_limit(limit: int, cap: int) -> int:
+    return max(1, min(limit, cap))
+
 
 def create_admin_handlers(
     *,
@@ -203,10 +210,10 @@ def create_admin_handlers(
     def admin_pipeline_runs(user_id: str, limit: int = 20):
         """Return pipeline run history for a user."""
         from .pipeline_log import get_runs
-        # Clamp to [1, 100]: a negative limit reaches SQLite LIMIT -1 (no
-        # limit) and dumps the whole table past the cap. Mirror the
-        # max(1, min(limit, CAP)) pattern used by admin_audit.list_audit.
-        return {"user_id": user_id, "runs": get_runs(user_id, limit=max(1, min(limit, 100)))}
+        return {
+            "user_id": user_id,
+            "runs": get_runs(user_id, limit=_clamp_limit(limit, PIPELINE_RUNS_MAX)),
+        }
 
     def admin_judge_stats(user_id: str):
         """Return per-user judge acceptance stats."""
@@ -227,11 +234,11 @@ def create_admin_handlers(
             ``translate_phrase`` / ``translate_explain``).
         """
         from .translate_log import get_log
-        # Clamp to [1, 200] for the same SQLite LIMIT -1 reason as
-        # admin_pipeline_runs above.
         return {
             "user_id": user_id,
-            "history": get_log(user_id, limit=max(1, min(limit, 200)), q=q, op=op),
+            "history": get_log(
+                user_id, limit=_clamp_limit(limit, TRANSLATE_HISTORY_MAX), q=q, op=op
+            ),
             "q": q or "",
             "op": op or "",
         }
@@ -330,31 +337,4 @@ def create_admin_handlers(
             scan, data_dir=runtime_settings_fn().data_dir
         )
 
-    return {
-        "admin_ui": admin_ui,
-        "admin_stats": admin_stats,
-        "admin_logs": admin_logs,
-        "admin_user_entitlement": admin_user_entitlement,
-        "admin_grant_pro_access": admin_grant_pro_access,
-        "admin_revoke_pro_access": admin_revoke_pro_access,
-        "admin_run_tests": admin_run_tests,
-        "admin_last_test_run": admin_last_test_run,
-        "admin_test_catalog": admin_test_catalog,
-        "admin_tests_ui": admin_tests_ui,
-        "admin_graph_density": admin_graph_density,
-        "admin_graph_playback": admin_graph_playback,
-        "admin_pipeline_runs": admin_pipeline_runs,
-        "admin_judge_stats": admin_judge_stats,
-        "admin_translate_history": admin_translate_history,
-        "admin_user_activity": admin_user_activity,
-        "admin_user_usage": admin_user_usage,
-        "admin_user_cost_summary": admin_user_cost_summary,
-        "admin_host_metrics": admin_host_metrics,
-        "admin_users_search": admin_users_search,
-        "admin_observability": admin_observability,
-        "admin_stats_trends": admin_stats_trends,
-        "admin_log_retention_run": admin_log_retention_run,
-        "admin_audit": admin_audit,
-        "admin_user_detail_ui": admin_user_detail_ui,
-        "admin_orphans_scan": admin_orphans_scan,
-    }
+    return {name: fn for name, fn in locals().items() if name.startswith("admin_")}

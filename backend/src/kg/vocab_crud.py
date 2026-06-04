@@ -50,12 +50,17 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
 
-def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> Any:
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise NotFoundError("Word", word)
+    return card
+
+
+def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
     cards_by_id: dict[str, Any] = {card.id: card}
@@ -70,11 +75,7 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
 
 
 def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
-    if len(word) > MAX_WORD_LENGTH:
-        raise ValidationError("Word too long")
-    card = cards_store.find_by_content(word, notebook_id=notebook_id)
-    if not card:
-        raise NotFoundError("Word", word)
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
         try:
@@ -115,11 +116,7 @@ def delete_vocab_word(
     embeddings: Any = None,
     notebook_id: str | None = None,
 ) -> dict[str, str]:
-    if len(word) > MAX_WORD_LENGTH:
-        raise ValidationError("Word too long")
-    card = cards_store.find_by_content(word, notebook_id=notebook_id)
-    if not card:
-        raise NotFoundError("Word", word)
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.delete(card.id)
     if graph is not None:
         try:

@@ -15,6 +15,9 @@ import math
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+_WINDOW_24H = 24
+_SPEND_DAYS = 7
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -64,7 +67,7 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
     """
     from . import pipeline_log as pl
 
-    cutoff = _cutoff_iso(24)
+    cutoff = _cutoff_iso(_WINDOW_24H)
     with pl._lock:
         conn = pl._get_conn()
         # Count terminal-state runs in window (exclude running/interrupted)
@@ -82,7 +85,7 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
         "total": total,
         "failed": failed,
         "rate": _ratio(failed, total),
-        "window_hours": 24,
+        "window_hours": _WINDOW_24H,
     }
 
 
@@ -97,7 +100,7 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
     """
     from . import pipeline_log as pl
 
-    cutoff = _cutoff_iso(24)
+    cutoff = _cutoff_iso(_WINDOW_24H)
     with pl._lock:
         conn = pl._get_conn()
         rows = conn.execute(
@@ -138,7 +141,7 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
         })
     # sort descending by p95 so slowest steps surface first
     steps_out.sort(key=lambda d: (d["p95_ms"] or 0), reverse=True)
-    return {"steps": steps_out, "window_hours": 24}
+    return {"steps": steps_out, "window_hours": _WINDOW_24H}
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +153,7 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
     """Auto-judge rejection rate (source='auto') over the last 24h."""
     from . import judge_log as jl
 
-    cutoff = _cutoff_iso(24)
+    cutoff = _cutoff_iso(_WINDOW_24H)
     with jl._lock:
         conn = jl._get_conn()
         row = conn.execute(
@@ -167,7 +170,7 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
         "total": total,
         "rejected": rejected,
         "rate": _ratio(rejected, total),
-        "window_hours": 24,
+        "window_hours": _WINDOW_24H,
     }
 
 
@@ -190,7 +193,7 @@ def _translate_cache_hit_rate_24h() -> dict[str, Any]:
     """
     from . import translate_log as tl
 
-    cutoff = _cutoff_iso(24)
+    cutoff = _cutoff_iso(_WINDOW_24H)
     with tl._lock:
         conn = tl._get_conn()
         misses_row = conn.execute(
@@ -209,7 +212,7 @@ def _translate_cache_hit_rate_24h() -> dict[str, Any]:
         "misses": misses,
         "total": total,
         "rate": _ratio(hits, total),
-        "window_hours": 24,
+        "window_hours": _WINDOW_24H,
         "note": "precise counter: hits from translate_cache_hits, misses from translate_log",
     }
 
@@ -228,7 +231,7 @@ def _daily_token_spend_7d() -> dict[str, Any]:
     from . import token_tracker as tt
 
     today_utc = _utcnow().date()
-    cutoff_date = today_utc - timedelta(days=6)  # 7 buckets inclusive
+    cutoff_date = today_utc - timedelta(days=_SPEND_DAYS - 1)  # 7 buckets inclusive
     cutoff_iso = datetime.combine(cutoff_date, datetime.min.time(), tzinfo=UTC).isoformat()
 
     with tt._lock:
@@ -251,7 +254,7 @@ def _daily_token_spend_7d() -> dict[str, Any]:
         by_day[d] = {"input": int(ti or 0), "output": int(to_ or 0)}
 
     days_out = []
-    for i in range(7):
+    for i in range(_SPEND_DAYS):
         d = cutoff_date + timedelta(days=i)
         key = d.isoformat()
         entry = by_day.get(key, {"input": 0, "output": 0})

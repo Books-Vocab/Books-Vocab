@@ -6,6 +6,7 @@ from pathlib import Path
 
 import jwt as pyjwt
 import pytest
+from conftest import make_jwt
 from fastapi import HTTPException
 
 from kg.auth_service import create_jwt_token
@@ -23,15 +24,6 @@ def _make_settings(tmp_path: Path) -> KGSettings:
         jwt_secret=TEST_JWT_SECRET,
         jwt_algorithm=TEST_ALGORITHM,
     )
-
-
-def _make_jwt(user_id: str, *, expires_in: timedelta = timedelta(hours=1)) -> str:
-    payload = {
-        "sub": user_id,
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + expires_in,
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm=TEST_ALGORITHM)
 
 
 def _load_users_fn(users_file: Path):
@@ -56,7 +48,7 @@ def test_valid_jwt_resolves_user(tmp_path):
     user_id = "user-abc"
     users_file.write_text(json.dumps({user_id: {"config": {}}}))
 
-    token = _make_jwt(user_id)
+    token = make_jwt(user_id)
     settings = _make_settings(tmp_path)
 
     result = resolve_current_user(
@@ -138,7 +130,7 @@ def test_traversal_sub_rejected_and_no_dir_escapes(tmp_path, malicious_sub):
     users_file.write_text(json.dumps({malicious_sub: {"config": {}}}))
     settings = _make_settings(tmp_path)
 
-    token = _make_jwt(malicious_sub)
+    token = make_jwt(malicious_sub)
 
     with pytest.raises(HTTPException) as exc_info:
         resolve_current_user(
@@ -177,7 +169,7 @@ def test_legitimate_provider_subs_still_resolve(tmp_path, legit_sub):
     users_file.write_text(json.dumps({legit_sub: {"config": {}}}))
     settings = _make_settings(tmp_path)
 
-    token = _make_jwt(legit_sub)
+    token = make_jwt(legit_sub)
     result = resolve_current_user(
         token,
         settings=settings,
@@ -193,7 +185,7 @@ def test_expired_jwt_raises_401(tmp_path):
     user_id = "user-expired"
     users_file.write_text(json.dumps({user_id: {"config": {}}}))
 
-    token = _make_jwt(user_id, expires_in=timedelta(seconds=-1))
+    token = make_jwt(user_id, expires_in=timedelta(seconds=-1))
     settings = _make_settings(tmp_path)
 
     with pytest.raises(HTTPException) as exc_info:

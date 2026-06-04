@@ -178,7 +178,7 @@ def clear_reservations() -> None:
         _reservations.clear()
 
 
-def _row_cost(call_type: str, provider: str | None, total_in, total_out) -> float:
+def _row_cost(call_type: str, provider: str | None, total_in: int | None, total_out: int | None) -> float:
     """USD cost of one ``GROUP BY call_type, provider`` row, normalising NULL
     token sums (no rows in window) to 0."""
     return token_cost_usd(call_type, int(total_in or 0), int(total_out or 0), provider=provider)
