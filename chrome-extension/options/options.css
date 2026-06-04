@@ -104,6 +104,51 @@ body {
   pointer-events: none;
 }
 
+/* ── Token Paste (manual fallback) ── */
+
+.kg-token-paste {
+  margin-top: var(--sp-md);
+  padding-top: var(--sp-md);
+  border-top: 1px solid var(--card-border);
+}
+
+.kg-token-paste__hint {
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  margin: 0 0 var(--sp-sm) 0;
+}
+
+.kg-token-paste__row {
+  display: flex;
+  gap: var(--sp-sm);
+  align-items: stretch;
+}
+
+.kg-token-paste__input {
+  flex: 1;
+  padding: var(--sp-sm) var(--sp-md);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  background: var(--stage-bg);
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-family: var(--font-sans);
+  min-width: 0;
+}
+
+.kg-token-paste__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.kg-token-paste__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.kg-token-paste__btn {
+  flex-shrink: 0;
+}
+
 /* ── About ── */
 
 .kg-about {

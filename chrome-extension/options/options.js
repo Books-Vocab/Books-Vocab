@@ -7,6 +7,9 @@
 const TOKEN_KEY = 'auth_token';
 const AUTH_KEYS = [TOKEN_KEY];
 const authStatus = document.getElementById('auth-status');
+const tokenPasteArea = document.getElementById('token-paste-area');
+const tokenInput = document.getElementById('tokenInput');
+const tokenSubmit = document.getElementById('tokenSubmit');
 const themeSelector = document.getElementById('theme-selector');
 
 // ── Auth UI ──
@@ -25,6 +28,8 @@ function renderLoggedIn() {
 
   authStatus.appendChild(info);
   authStatus.appendChild(btn);
+
+  if (tokenPasteArea) tokenPasteArea.hidden = true;
 }
 
 function renderLoggedOut() {
@@ -36,6 +41,8 @@ function renderLoggedOut() {
   btn.addEventListener('click', handleLogin);
 
   authStatus.appendChild(btn);
+
+  if (tokenPasteArea) tokenPasteArea.hidden = false;
 }
 
 /**
@@ -95,6 +102,35 @@ async function handleLogout() {
   }
 }
 
+async function handleTokenSubmit() {
+  const raw = tokenInput.value.trim();
+  if (!raw) return;
+
+  // Minimal JWT shape validation — three dot-separated base64url segments.
+  const jwtPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+  if (!jwtPattern.test(raw)) {
+    renderAuthError('Token 格式不正確，請確認為完整 JWT 字串', () => {
+      renderLoggedOut();
+      tokenInput.value = raw;
+      tokenInput.focus();
+    });
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({ [TOKEN_KEY]: raw });
+    tokenInput.value = '';
+    renderLoggedIn();
+  } catch (err) {
+    console.error('[KG] handleTokenSubmit failed:', err);
+    renderAuthError('儲存 Token 失敗，請重試', () => {
+      renderLoggedOut();
+      tokenInput.value = raw;
+      tokenInput.focus();
+    });
+  }
+}
+
 // ── Theme UI ──
 
 function activateThemeOption(theme) {
@@ -131,6 +167,16 @@ function handleThemeChange(e) {
 
   // Auth
   await refreshAuthUI();
+
+  // Token paste (manual fallback when auto-send fails)
+  if (tokenSubmit) {
+    tokenSubmit.addEventListener('click', handleTokenSubmit);
+  }
+  if (tokenInput) {
+    tokenInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleTokenSubmit();
+    });
+  }
 
   // Live storage changes (e.g. OAuth completing in another tab)
   chrome.storage.onChanged.addListener((changes, area) => {
