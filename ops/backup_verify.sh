@@ -108,7 +108,10 @@ DB_COUNT=0
 while IFS= read -r -d '' db; do
   DB_COUNT=$((DB_COUNT+1))
   rel="${db#$DATA_ROOT/}"
-  result=$(sqlite3 "$db" "PRAGMA integrity_check;" 2>&1)
+  # `|| true`：db 損毀時 sqlite3 回非零(如 26 NOTADB),在 set -e 下命令
+  # 替換賦值會直接 exit,跳過下方 integrity 損毀 的 fatal 標記。吞掉碼讓
+  # 錯誤文字落入 result,由 == "ok" 分支判定。
+  result=$(sqlite3 "$db" "PRAGMA integrity_check;" 2>&1 || true)
   if [[ "$result" == "ok" ]]; then
     ok "integrity ok: $rel"
   else

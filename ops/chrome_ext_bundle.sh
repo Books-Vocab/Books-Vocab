@@ -36,9 +36,11 @@ command -v zip >/dev/null 2>&1 || err "需要 zip 指令，未安裝"
 
 # ── Extract version ────────────────────────────────────────────────────────
 # manifest.json 採鬆綁解析（不依賴 jq）。"version": "X.Y.Z"
+# `|| true`：缺 version 時 grep 回 1，在 set -e + pipefail 下會讓賦值靜默
+# exit 1，跳過下方友善錯誤。吞掉非零碼讓 VERSION 留空，由顯式檢查報錯。
 VERSION="$(grep -E '"version"[[:space:]]*:' "$MANIFEST" \
   | head -n1 \
-  | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+  | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)"
 
 [[ -n "$VERSION" ]] || err "manifest.json 缺 version 欄位"
 
