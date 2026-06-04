@@ -839,10 +839,16 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "字幕あり";
+// MARK: - Podcast transcript VoiceOver
+"podcast.transcript.seekHint" = "ダブルタップでこの文から再生";
+"podcast.transcript.translateAction" = "文を翻訳";
+"podcast.transcript.selectAction" = "テキストを選択";
 "podcast.episodeRow.downloaded" = "ダウンロード済み";
 "podcast.episodeRow.listened" = "再生済み";
 "podcast.episodeRow.unavailable" = "音声を利用できません";
 "podcast.episodeRow.downloading" = "ダウンロード中";
+"podcast.episodeRow.downloadFailed" = "ダウンロード失敗、タップで再試行";
+"重試下載" = "ダウンロードを再試行";
 
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "前のカード";

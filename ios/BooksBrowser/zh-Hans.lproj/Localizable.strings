@@ -840,10 +840,16 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "有字幕";
+// MARK: - Podcast transcript VoiceOver
+"podcast.transcript.seekHint" = "点两下跳至此句播放";
+"podcast.transcript.translateAction" = "翻译整句";
+"podcast.transcript.selectAction" = "选取文字";
 "podcast.episodeRow.downloaded" = "已下载";
 "podcast.episodeRow.listened" = "已听完";
 "podcast.episodeRow.unavailable" = "音频不可用";
 "podcast.episodeRow.downloading" = "下载中";
+"podcast.episodeRow.downloadFailed" = "下载失败，点击重试";
+"重試下載" = "重试下载";
 
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "上一张卡片";
