@@ -28,9 +28,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -38,6 +38,14 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parent.parent
 IOS_SRC = ROOT / "ios" / "BooksBrowser"
 STRIP_PREVIEWS = ROOT / "ops" / "_i18n_strip_previews.py"
+
+# Load the preview-stripper as a module (loaded from its absolute path so this
+# works regardless of the caller's CWD / sys.path) and reuse its pure
+# text->text strip_previews(), instead of spawning one python3 subprocess per
+# Swift file — which is slow at repo scale and depends on bare `python3` on PATH.
+_strip_spec = importlib.util.spec_from_file_location("_i18n_strip_previews", STRIP_PREVIEWS)
+_strip_mod = importlib.util.module_from_spec(_strip_spec)
+_strip_spec.loader.exec_module(_strip_mod)
 
 EXCLUDE_SUBSTRINGS = ("Preview", "Tests", "PreviewData")
 
@@ -72,12 +80,10 @@ def list_swift_files() -> list[Path]:
 def strip_previews(path: Path) -> str:
     # Reuse the existing preview-stripper so blank lines preserve line numbers.
     try:
-        return subprocess.check_output(
-            ["python3", str(STRIP_PREVIEWS), str(path)],
-            text=True,
-        )
-    except subprocess.CalledProcessError:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
         return path.read_text(encoding="utf-8", errors="replace")
+    return _strip_mod.strip_previews(text)
 
 
 def extract_titlekey_literals(text: str) -> list[str]:
