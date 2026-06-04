@@ -104,6 +104,19 @@ Lemma (r) rules:
 Output pure JSON (no Markdown): {{ "t": "...", "p": "...", "r": "..." }}'''
 
 
+def build_quick_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+    """Build the production quick-translate prompt for ``req``, context-trim included.
+
+    Public wrapper combining ``_context_around_word`` + ``quick_translate_prompt``
+    exactly as ``_run_llm_translate`` does, so offline tools (the A/B harness) can
+    reproduce the production prompt without reaching into private internals and
+    can never drift from how production constructs it.
+    """
+    return quick_translate_prompt(
+        req, source_lang, target_lang, _context_around_word(req.context, req.word)
+    )
+
+
 def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str, ctx: str) -> str:
     src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")

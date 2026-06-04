@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ._fsutil import fsync_dir as _fsync_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,28 +133,6 @@ def _prune_old_backups(path: Path) -> None:
             old.unlink()
         except OSError:
             logger.warning("Could not prune old backup %s", old)
-
-
-def _fsync_dir(directory: Path) -> None:
-    """fsync a directory so a rename into it survives a crash.
-
-    A bare ``os.replace`` only updates an in-memory directory entry; without a
-    directory fsync a power loss can lose the rename itself even though the tmp
-    payload was already durably on disk. Best-effort: directory fsync is not
-    supported on every platform (notably Windows raises), so failures are
-    swallowed rather than aborting the write.
-    """
-    try:
-        fd = os.open(str(directory), os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        # Windows / some filesystems reject fsync on a directory fd.
-        pass
-    finally:
-        os.close(fd)
 
 
 def _atomic_write_json(path: Path, data: Any) -> None:
