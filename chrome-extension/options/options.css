@@ -1,6 +1,7 @@
 /* ── Options Page Layout ──
-   All values via design tokens (shared/tokens.css). Aligned to the iOS app:
-   primary action = brand-hero cream CTA, passive actions outlined in accent. */
+   Editorial surface, aligned with website + iOS design system.
+   All values via tokens.css; primitives via kg-components.css.
+*/
 
 body {
   margin: 0;
@@ -8,9 +9,12 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-body);
+  line-height: var(--leading-body);
   display: flex;
   justify-content: center;
-  padding: var(--sp-xl) var(--sp-md);
+  padding: var(--sp-10) var(--sp-md);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .kg-options {
@@ -19,32 +23,29 @@ body {
 }
 
 .kg-options__title {
-  font-family: var(--font-serif);
-  font-size: var(--text-h1);
+  font-family: 'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif;
+  font-size: var(--text-hero);
+  line-height: var(--leading-display);
   font-weight: 700;
   text-align: center;
   margin: 0 0 var(--sp-xl) 0;
+  color: var(--text-primary);
 }
 
-/* ── Section Card — layout only; visual (bg/border/radius/padding/z1) from
-   shared .kg-card primitive (composed in markup). ── */
+/* ── Section Card — layout only; visual from shared .kg-card primitive ── */
 
 .kg-section-card {
   margin-bottom: var(--section-gap);
 }
 
 .kg-section-card__title {
-  font-family: var(--font-serif);
+  font-family: 'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif;
   font-size: var(--text-section-title);
+  line-height: var(--leading-heading);
   font-weight: 700;
   margin: 0 0 var(--sp-sm) 0;
+  color: var(--text-primary);
 }
-
-/* ── Buttons ──
-   All button visuals come from the shared primitives in kg-components.css
-   (.kg-btn / .kg-btn--primary / .kg-btn--accent / .kg-btn--destructive).
-   This surface defines NO button rules — redefining a base class would shadow
-   the primitive (options.css loads after it). ── */
 
 /* ── Auth Info ── */
 
@@ -65,8 +66,9 @@ body {
 .kg-theme-option {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: var(--sp-2);
   background: var(--stage-bg);
   border: 2px solid transparent;
   border-radius: var(--radius-control);
@@ -82,9 +84,23 @@ body {
 
 .kg-theme-option__radio { display: none; }
 
+.kg-theme-option__swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  border: var(--sp-hairline) solid var(--card-border);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
+}
+
+.kg-theme-option__swatch--light { background: #F7F6F3; }
+.kg-theme-option__swatch--dark  { background: #191919; }
+.kg-theme-option__swatch--sepia { background: #F5F1EB; }
+
 .kg-theme-option__label {
   font-family: var(--font-sans);
-  font-size: var(--text-subhead);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
   pointer-events: none;
 }
 

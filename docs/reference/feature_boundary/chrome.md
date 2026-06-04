@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 33191db4
+verified_against: 64a62d3d
 -->
 # Chrome Extension Feature Boundary
 
@@ -30,17 +30,17 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `sidepanel/index.html` | — | sidepanel 入口 |
-| `sidepanel/app.js` | 410 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()` |
-| `sidepanel/styles.css` | — | sidepanel 樣式 |
+| `sidepanel/index.html` | — | sidepanel 入口；serif 標題（CormorantGaramond）、SVG 空狀態插圖、brand-hero CTA |
+| `sidepanel/app.js` | 410 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()`；error 狀態依 `classifyError` action 分為 login（brand-hero CTA）與其他（accent outline） |
+| `sidepanel/styles.css` | — | sidepanel 樣式；editorial surface 對齊官網 + iOS 北極星（single warm surface、serif headings、divider、z0/z1 shadow） |
 
 ### Options Layer
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `options/options.html` | — | 設定頁面 |
+| `options/options.html` | — | 設定頁面；serif hero 標題、色塊主題選擇器（無 emoji） |
 | `options/options.js` | 138 | 設定持久化（`chrome.storage`） |
-| `options/options.css` | — | 設定頁樣式 |
+| `options/options.css` | — | 設定頁樣式；editorial surface 對齊官網 |
 
 ### Shared Layer
 
@@ -52,12 +52,34 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | `shared/theme.js` | 44 | 深淺色主題切換 |
 | `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
 | `shared/kg-components.css` | — | component primitives（`.kg-card` / `.kg-btn` / `.kg-chip`，鏡像 iOS `AppCard`/`AppButton`/`AppTag`）。**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/dist/kg-components.css` 複製（手寫源在 dist，禁手改此 copy；已納入 `--check` gate）。三 surface 共用一套 primitive 詞彙 |
-| `shared/fonts.css` | — | surface-local `@font-face`（woff2 URL；font *family* 為 tokens.css 的 `--font-*` token，URL 各 surface 自帶） |
+| `shared/fonts.css` | — | surface-local `@font-face`（woff2 URL）；包含 ElmsSans 400/700 + CormorantGaramond 500/600/700 upright + 400–600 italic。font *family* 為 tokens.css 的 `--font-*` token，URL 各 surface 自帶 |
+
+### Assets
+
+| 目錄 | 說明 |
+|------|------|
+| `fonts/` | woff2：ElmsSans-Regular/Bold、CormorantGaramond-Medium/SemiBold/Bold/Italic |
+| `icons/` | 16/48/128 PNG |
+
+## 設計系統消費
+
+三 surface（sidepanel / popup / options）消費同一套設計系統：
+
+1. **Token 層** (`tokens.css`)：顏色、字體、間距、圓角、elevation、motion — 由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 生成
+2. **Primitive 層** (`kg-components.css`)：`.kg-btn`、`.kg-card`、`.kg-chip`、`.kg-input`、`.kg-link` — 鏡像 iOS 元件
+3. **Surface 層** (`styles.css` / `popup.css` / `options.css`)：僅定義 BEM layout class，**不重寫 primitive 視覺屬性**
+
+北極星五條落地：
+- 單色頁面：toolbar + content 共用 `page-bg`
+- Border 退場：list cards 無 border，分區走 divider + 留白
+- Shadow 收斂：resting cards z0/z1，overlay z2+
+- 單一強調色：`brand-hero` 奶黃 CTA、`accent` Morandi grey-blue 被動裝飾
+- Motion 收斂：按鈕 tap-feedback triplet，非按鈕只動 bg/opacity
 
 ## 對外契約
 
 - **Backend endpoints**：見 [`docs/reference/tech_index.md`](../tech_index.md) 對應 router 章節。Chrome 不維護自己的 endpoint 表。
-- **Auth**：與 iOS 共享 Google / Apple 登入 backend；token 存 `chrome.storage.local`。
+- **Auth**：與 iOS 共享 Google / Apple 登入 backend；token 存 `chrome.storage.local`。Web OAuth 走 `/auth/web/apple/login`（GET redirect 至 Apple authorize endpoint）與 `/auth/web/google/login`。
 - **Domain 白名單**：`host_permissions` 只放 `wordnexus.lol/*`，新 backend domain 變動需同步 `manifest.json`。
 - **URL scheme allowlist（XSS defense-in-depth）**：sidepanel / content 渲染外部 href 一律走 `shared/pure.js safeUrl()`；僅放行 `http:` / `https:` / `chrome-extension:`，其餘（`javascript:` / `data:` / `vbscript:` / `file:` / `blob:` 等）一律 fallback `#`。
 
