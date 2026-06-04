@@ -57,6 +57,29 @@
     'source-local':
       '<path d="M5 4.5h12.5a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1H6.5' +
       'A1.5 1.5 0 0 1 5 19.5z"/><path d="M5 17.5h13.5"/><path d="M8.5 4.5V17"/>',
+
+    // --- Error-state glyphs (side-panel error UI; rendered via classifyError) ---
+    // lock — auth/login error
+    'error-login':
+      '<rect x="5" y="11" width="14" height="9" rx="2"/>' +
+      '<path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    // hourglass — quota / rate limit
+    'error-quota':
+      '<path d="M7 3h10M7 21h10M8 3c0 4 3 5.5 4 7 1-1.5 4-3 4-7' +
+      'M8 21c0-4 3-5.5 4-7 1 1.5 4 3 4 7"/>',
+    // wifi.slash — no connection (round-cap dot for the base node)
+    'error-network':
+      '<path d="M2 8.8a16 16 0 0 1 20 0M5 12.5a11 11 0 0 1 14 0' +
+      'M8.5 16a6 6 0 0 1 7 0M12 19.5h.01"/><path d="M3 3l18 18"/>',
+    // wrench — server busy / maintenance
+    'error-server':
+      '<path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5' +
+      'a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.5-.7-.7-2.5z"/>',
+    // exclamationmark.triangle — generic error (round-cap dot under the stem)
+    'error-generic':
+      '<path d="M10.3 4 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4' +
+      'a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z"/>' +
+      '<path d="M12 9v4M12 16.5h.01"/>',
   };
 
   /** Return the full <svg> markup for `name`, or '' for an unknown name. */
