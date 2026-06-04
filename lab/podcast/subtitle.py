@@ -19,8 +19,8 @@ Usage:
     # All scripts in a directory
     uv run subtitle.py workspaces/flow_950f1a7d/scripts/
 
-    # Use a specific Whisper model (default: base)
-    uv run subtitle.py ... --model medium
+    # Use a specific Whisper model (default: medium)
+    uv run subtitle.py ... --model large
 """
 
 from __future__ import annotations
