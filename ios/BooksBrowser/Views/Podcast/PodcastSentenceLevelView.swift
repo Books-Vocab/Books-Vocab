@@ -170,8 +170,16 @@ struct PodcastSentenceLevelView: View {
     /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
         guard isFollowing, let id else { return }
+        // Adapt the scroll duration to how long this sentence lingers: a short
+        // sentence gets a short scroll so it settles before the next boundary
+        // fires another `scrollTo` (the old fixed 0.9s got interrupted mid-flight,
+        // making fast passages judder). Look-up is O(n) but runs only at sentence
+        // boundaries (~0.2 Hz), never per frame.
+        let sentenceDuration = sentences.first(where: { $0.id == id })
+            .map { $0.endTime - $0.startTime } ?? PodcastFollowScroll.maxDuration
+        let dur = PodcastFollowScroll.duration(sentenceDuration: sentenceDuration)
         PerfLog.scroll.measure("scrollTo", "id=\(id)") {
-            withAnimation(AppMotion.podcastFollowScroll) {
+            withAnimation(AppMotion.podcastFollowScroll(duration: dur)) {
                 proxy.scrollTo(id, anchor: .center)
             }
         }

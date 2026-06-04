@@ -255,3 +255,30 @@ enum PodcastSeekBarGeometry {
         return CGFloat(ratio) * totalWidth
     }
 }
+
+/// Adaptive duration for the follow-scroll `scrollTo` animation. Pure so it is
+/// unit-testable in isolation (see `PodcastFollowScrollTests`).
+///
+/// The duration tracks how long the just-entered sentence will linger before the
+/// next boundary fires another `scrollTo`. A fixed duration (the old 0.9s) gets
+/// interrupted mid-flight on fast/short sentences — two animated scrolls chase
+/// each other and the follow reads as juddery. Scaling by sentence length keeps a
+/// short sentence's scroll short enough to finish before its successor arrives,
+/// while normal/long sentences cap at `maxDuration` (shorter than the old 0.9s,
+/// which together with the decelerate curve removes the heavy ease-in start the
+/// user felt as 阻尼感). The discrete, per-boundary `scrollTo` model is unchanged —
+/// this only retimes it; it does NOT reintroduce a per-frame offset engine.
+enum PodcastFollowScroll {
+    /// Shortest scroll: anything briefer reads as an abrupt snap.
+    static let minDuration: Double = 0.25
+    /// Longest scroll: long sentences cap here, dropping the old 0.9s heaviness.
+    static let maxDuration: Double = 0.6
+    /// Fraction of the sentence's on-screen lifetime the scroll is allowed to take
+    /// (< 1 leaves margin so it settles before the next boundary).
+    static let coverage: Double = 0.85
+
+    static func duration(sentenceDuration: TimeInterval) -> Double {
+        guard sentenceDuration > 0 else { return minDuration }
+        return min(maxDuration, max(minDuration, sentenceDuration * coverage))
+    }
+}

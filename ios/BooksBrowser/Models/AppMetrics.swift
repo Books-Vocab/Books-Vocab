@@ -84,7 +84,14 @@ enum AppMotion {
     /// = very slow finish) so the scroll eases in and out gently — a soft drag, no
     /// snap. The long duration lets adjacent sentence moves overlap into one
     /// continuous glide (tuned on device).
-    static let podcastFollowScroll = Animation.timingCurve(0.65, 0.0, 0.35, 1.0, duration: 0.9)
+    /// 字幕 follow 捲動曲線：decelerate（快進柔出）。control point 1 (0.1,0.7)
+    /// 讓位移在換句瞬間立即啟動，取代舊 (0.65,0,…) 的 ease-in 慢啟動加速段
+    /// （使用者感受到的「阻尼感」根因）；尾段柔收。duration 由 caller 依該句
+    /// 時長自適應傳入（見 `PodcastFollowScroll.duration`），短句不再被下一次
+    /// scrollTo 半路打斷。
+    static func podcastFollowScroll(duration: Double) -> Animation {
+        Animation.timingCurve(0.1, 0.7, 0.2, 1.0, duration: duration)
+    }
 
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳

@@ -365,3 +365,49 @@ struct PodcastTranscriptIdentityTests {
         #expect(first.hashValue == second.hashValue)
     }
 }
+
+/// `PodcastFollowScroll.duration` adapts the follow-scroll animation length to how
+/// long the current sentence will linger on screen. The old engine used a fixed
+/// 0.9s `scrollTo`, which on fast/short sentences (< 0.9s) gets interrupted
+/// mid-flight by the next sentence boundary's `scrollTo` — the two animations
+/// chase each other and the motion reads as juddery. Short sentences must get a
+/// proportionally shorter duration; normal/long sentences cap at `maxDuration`
+/// (shorter than the old 0.9s, which — together with the decelerate curve —
+/// removes the heavy ease-in start the user felt as "阻尼感").
+struct PodcastFollowScrollTests {
+    @Test func shortSentenceClampsToFloor() {
+        // 0.1s × 0.85 = 0.085 < floor → clamped up to minDuration.
+        #expect(PodcastFollowScroll.duration(sentenceDuration: 0.1) == PodcastFollowScroll.minDuration)
+    }
+
+    @Test func midRangeScalesProportionally() {
+        // 0.5s × 0.85 = 0.425, inside [floor, ceil] → passes through.
+        #expect(abs(PodcastFollowScroll.duration(sentenceDuration: 0.5) - 0.425) < 1e-9)
+    }
+
+    @Test func longSentenceClampsToCeil() {
+        // Long sentence caps at maxDuration (well under the old fixed 0.9s).
+        #expect(PodcastFollowScroll.duration(sentenceDuration: 5) == PodcastFollowScroll.maxDuration)
+    }
+
+    @Test func ceilThresholdIsCoverageScaled() {
+        // The cap kicks in at maxDuration/coverage ≈ 0.706s.
+        #expect(PodcastFollowScroll.duration(sentenceDuration: 0.6) < PodcastFollowScroll.maxDuration) // 0.51
+        #expect(PodcastFollowScroll.duration(sentenceDuration: 0.8) == PodcastFollowScroll.maxDuration) // 0.68 → cap
+    }
+
+    @Test func zeroOrNegativeReturnsFloor() {
+        // Unknown / malformed sentence length → safe floor, never 0 or negative.
+        #expect(PodcastFollowScroll.duration(sentenceDuration: 0) == PodcastFollowScroll.minDuration)
+        #expect(PodcastFollowScroll.duration(sentenceDuration: -3) == PodcastFollowScroll.minDuration)
+    }
+
+    @Test func monotonicNonDecreasing() {
+        // Longer sentence ⇒ never-shorter scroll, up to the cap.
+        let a = PodcastFollowScroll.duration(sentenceDuration: 0.3)
+        let b = PodcastFollowScroll.duration(sentenceDuration: 0.5)
+        let c = PodcastFollowScroll.duration(sentenceDuration: 2.0)
+        #expect(a <= b)
+        #expect(b <= c)
+    }
+}
