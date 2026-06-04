@@ -78,8 +78,8 @@ body.kg-surface {
   /* iOS light nav bar is a flat transparent bar (no material). Keep a neutral
      blur for web sticky ergonomics, but no saturate — that warm-shift has no
      iOS basis (scan #8). */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--blur-material));
+  -webkit-backdrop-filter: blur(var(--blur-material));
 }
 .site-nav__brand {
   font-family: var(--site-serif); font-size: var(--text-h2);
