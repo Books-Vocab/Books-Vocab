@@ -99,9 +99,9 @@ body.kg-surface {
 
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border: 0; border-radius: var(--radius-control);
+  width: var(--toggle-size); height: var(--toggle-size); border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--tint); cursor: pointer;
-  font-size: 15px; line-height: 1;
+  font-size: var(--toggle-glyph); line-height: 1;
   transition: background var(--motion-quick), color var(--motion-quick);
 }
 .theme-toggle:hover { background: var(--muted-fill); color: var(--text-primary); }
