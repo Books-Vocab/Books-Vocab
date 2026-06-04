@@ -127,7 +127,9 @@ def _parse_json_payload(raw: str | None) -> dict[str, Any]:
     try:
         data = json.loads(raw or "{}")
     except json.JSONDecodeError:
-        logging.getLogger("kg").warning("Failed to parse JSON payload: %s", raw[:200] if raw else None)
+        # raw is necessarily truthy here: json.loads(raw or "{}") only raises
+        # for a non-empty malformed string (None/"" parse cleanly to {}).
+        logging.getLogger("kg").warning("Failed to parse JSON payload: %s", raw[:200])
         return {}
     if isinstance(data, list):
         data = data[0] if data else {}
