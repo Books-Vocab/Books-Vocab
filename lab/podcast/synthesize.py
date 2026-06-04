@@ -872,12 +872,8 @@ def process_file(
         cache_dir=cache_dir, episode_label=episode_label,
     )
 
-    ext = OUTPUT_FORMAT if OUTPUT_FORMAT in ("mp3", "m4a") else "wav"
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3
-    model_tag = _model_tag(TTS_MODEL)
-    output_path = script_path.with_name(
-        script_path.stem.replace("_script", "") + f"_{model_tag}.{ext}"
-    )
+    output_path = _output_path_for(script_path)
     combine_and_export(segments, output_path)
 
     # Sidecar metadata: filename keeps the legacy `_pro` / `_flash` short tag
