@@ -57,6 +57,8 @@
   --sheet-padding: 24px;
   --page-h-padding: 20px;
   --divider-air: 16px;
+  --chip-padding-h: 10px;
+  --chip-padding-v: 5px;
   --radius-none: 0px;
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -105,6 +107,7 @@
   --text-tertiary: #8A8983;
   --text-quaternary: #9B9A93;
   --accent: #4D7396;
+  --tag-fill: rgba(77, 115, 150, 0.08);
   --brand-hero: #FCDE9A;
   --on-brand-hero: #1C1A17;
   --accent-subtle: rgba(77, 115, 150, 0.12);
@@ -144,6 +147,7 @@
   --text-tertiary: #8C8C87;
   --text-quaternary: #6E6E69;
   --accent: #85A4C2;
+  --tag-fill: rgba(133, 164, 194, 0.18);
   --brand-hero: #FCDE9A;
   --on-brand-hero: #1C1A17;
   --accent-subtle: rgba(133, 164, 194, 0.18);
@@ -183,6 +187,7 @@
   --text-tertiary: #80786B;
   --text-quaternary: #999185;
   --accent: #4D7396;
+  --tag-fill: rgba(77, 115, 150, 0.08);
   --brand-hero: #FCDE9A;
   --on-brand-hero: #1C1A17;
   --accent-subtle: rgba(77, 115, 150, 0.12);

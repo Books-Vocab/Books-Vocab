@@ -51,17 +51,10 @@
   margin-bottom: var(--sp-sm);
 }
 
-/* --- POS chip (theme-aware accent-subtle fill) --- */
+/* --- POS chip — visual via .kg-chip primitive; layout-only here --- */
 
 .kg-popup__chip {
-  display: inline-block;
-  font-size: var(--text-caption2);
-  color: var(--accent);
-  background: var(--accent-subtle);
-  padding: var(--sp-micro) var(--sp-sm);
-  border-radius: var(--radius-chip);
   margin-bottom: var(--sp-sm);
-  font-weight: 600;
 }
 
 /* --- Translation --- */
@@ -97,47 +90,22 @@
   margin-top: var(--sp-sm);
 }
 
-/* --- Button (primary = brand-hero CTA, tap-feedback on :active) --- */
+/* --- Button — shape + tap-feedback via .kg-btn primitive ---
+   add / login compose plain `.kg-btn .kg-btn--primary`; expand & success
+   compose `.kg-btn …--ghost .kg-popup__btn .kg-popup__btn--expand` /
+   `.kg-btn .kg-popup__btn .kg-popup__btn--success`. .kg-popup__btn has no own
+   rule (the primitive owns the box-model); it stays only where a layout/visual
+   modifier below needs it as the BEM base. */
 
-.kg-popup__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-xs);
-  font-family: var(--font-sans);
-  font-size: var(--text-subhead);
-  font-weight: 600;
-  color: var(--on-brand-hero);
-  background: var(--brand-hero);
-  border: none;
-  border-radius: var(--radius-control);
-  padding: var(--sp-xs) var(--sp-compact);
-  cursor: pointer;
-  transition: opacity var(--motion-quick), background var(--motion-quick), transform var(--motion-control);
-  text-decoration: none;
-  line-height: 1.4;
-}
-
-.kg-popup__btn:hover { opacity: 0.92; }
-.kg-popup__btn:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
-
-.kg-popup__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.kg-popup__btn:disabled:active { transform: none; }
-
-/* Expand / collapse variant — ghost, greyscale tint. */
+/* Expand / collapse variant — layout-only (ghost visual via .kg-btn--ghost).
+   Flush-left within the actions row so 展開 hangs off the left edge. */
 .kg-popup__btn--expand {
-  background: transparent;
-  color: var(--tint);
   padding-left: 0;
 }
 
-.kg-popup__btn--expand:hover { opacity: 0.7; }
-
-/* Success variant — saved-confirmation. White on success green = ~4.8:1 AA
-   (no on-success token exists; this is a deliberate paired foreground). */
+/* Success variant — saved-confirmation override. No primitive equivalent:
+   white on success green = ~4.8:1 AA (no on-success token; deliberate paired
+   foreground). Loads after kg-components.css so it wins over .kg-btn--primary. */
 .kg-popup__btn--success {
   background: var(--success);
   color: #fff;
@@ -196,6 +164,7 @@
 /* --- Reduced motion (web equivalent of accessibilityReduceMotion) --- */
 
 @media (prefers-reduced-motion: reduce) {
+  /* Button :active transform is dropped by .kg-btn's own reduced-motion block
+     in kg-components.css; only the popup-owned enter animation is killed here. */
   .kg-popup { animation: none; }
-  .kg-popup__btn:active { transform: none; }
 }
