@@ -161,6 +161,8 @@ def _stage_from_label(label: str) -> str:
         return "architect"
     if "analyst" in low:
         return "analyst"
+    if "cover" in low:
+        return "cover"
     if "prep" in low:
         return "prep"
     return low
@@ -301,6 +303,14 @@ def aggregate_workspace(ws_dir: Path) -> dict:
                         f"synthesize batch {ev.get('batch_index')} EP{ep}: "
                         "used estimated tokens (Vertex usage_metadata missing)."
                     )
+
+            # ─── Our image_usage events (cover stage) ───
+            elif ev_type == "image_usage":
+                # Pexels stock = free license → cost_usd 0. Tracked for the
+                # provenance count (which photo, how many calls), not spend.
+                bucket = by_stage["cover"]
+                bucket.usd += float(ev.get("cost_usd") or 0.0)
+                bucket.calls += 1
 
     total_usd = sum(b.usd for b in by_stage.values())
 

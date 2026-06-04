@@ -24,7 +24,7 @@ verified_against: 3875f3cb
 
 ---
 
-## 1. 14 階段架構
+## 1. 15 階段架構
 
 主控 `lab/podcast/pipeline.py`，順序執行：
 
@@ -45,10 +45,11 @@ EPUB
  ├11. synthesize      Vertex Gemini TTS + ffmpeg loudnorm
  ├12. audio-qa        pydub wpm/silence/clipping(FAIL 阻斷)
  ├13. subtitle        Whisper forced alignment → 詞級 SRT
- └14. publish         ops/podcast_upload.sh → S3 + verify 現身 catalog index
+ ├14. cover           agent 用 cover_tool 漏斗挑主題相關 Pexels 圖 → duo 後製 → plan/cover.png(series-wide)
+ └15. publish         ops/podcast_upload.sh → S3(含 cover.png) + verify 現身 catalog index
 ```
 
-> `STAGES` list 為 14 個(`pipeline.py` 內,搜 `STAGES = [`)。`publish` 為終端 stage,合成完成即自動上傳 S3(關閉「合成了但沒上傳」的 drift 缺口)——**不設 approval gate**(全自動),失敗 loud-fail（PODCAST_BUCKET/creds 未設或 verify 耗盡即回 False,寫 error log,非 silent）。monitor dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。若見 `pipeline.py` 頂部 docstring 仍寫舊階數即為殘留,以 `STAGES` 為準。
+> `STAGES` list 為 15 個(`pipeline.py` 內,搜 `STAGES = [`)。`cover` 在 `subtitle` 後、`publish` 前(series-wide:一 series 一張封面,`--only-episode` 跳過;冪等:`plan/cover.png` 存在即 skip;無 approval gate)。`publish` 為終端 stage,合成完成即自動上傳 S3(關閉「合成了但沒上傳」的 drift 缺口)——**不設 approval gate**(全自動),失敗 loud-fail（PODCAST_BUCKET/creds 未設或 verify 耗盡即回 False,寫 error log,非 silent）。monitor dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。若見 `pipeline.py` 頂部 docstring 仍寫舊階數即為殘留,以 `STAGES` 為準。
 
 ### 兩道人工核准 gate(`approval_gate_block`)
 
