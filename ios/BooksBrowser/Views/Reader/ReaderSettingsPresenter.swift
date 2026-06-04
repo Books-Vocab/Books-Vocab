@@ -22,6 +22,7 @@ struct ReaderSettingsPresenter: View {
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
         let showHitTestingDebug: Binding<Bool>
+        let scrollMode: Binding<Bool>
     }
 
     let state: State
@@ -70,7 +71,8 @@ struct ReaderSettingsPresenter: View {
                 font: .constant(.serif),
                 theme: .constant(.light),
                 underlineOpacity: .constant(0.35),
-                showHitTestingDebug: .constant(false)
+                showHitTestingDebug: .constant(false),
+                scrollMode: .constant(false)
             ),
             onDecreaseFontSize: {},
             onIncreaseFontSize: {},
@@ -96,7 +98,8 @@ struct ReaderSettingsPresenter: View {
                 font: .constant(.sans),
                 theme: .constant(.dark),
                 underlineOpacity: .constant(0.0),
-                showHitTestingDebug: .constant(true)
+                showHitTestingDebug: .constant(true),
+                scrollMode: .constant(true)
             ),
             onDecreaseFontSize: {},
             onIncreaseFontSize: {},
