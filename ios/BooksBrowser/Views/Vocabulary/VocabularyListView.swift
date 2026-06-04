@@ -80,12 +80,6 @@ struct VocabularyListView: View {
             try? await Task.sleep(for: .milliseconds(300))
             debouncedSearchText = searchText
         }
-        .onChange(of: coordinator.selectedEntry) { _, entry in
-            if let entry, let detailRouter {
-                detailRouter.showWordDetail(entry, allEntries: allEntries)
-                coordinator.selectedEntry = nil
-            }
-        }
         .onChange(of: coordinator.activeReviewSession) { _, session in
             if let session, let detailRouter {
                 detailRouter.showReview(session, allEntries: allEntries)
