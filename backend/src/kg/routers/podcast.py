@@ -30,7 +30,6 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -327,14 +326,16 @@ def _canonical_updated_at(raw: str) -> str:
     ``ctx``, which the project's existing validation_error_handler then
     cannot JSON-serialise (it returns ``exc.errors()`` verbatim). Raising
     ``HTTPException(422)`` from the route body sidesteps that path entirely.
+
+    Parsing/normalisation is delegated to
+    :func:`podcast_progress.parse_instant` — the same canonicaliser the LWW
+    store uses — so the HTTP-layer and store-layer agree bit-for-bit; this
+    helper only maps its ``None`` sentinel to a 422 and serialises to ISO8601.
     """
-    try:
-        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except (TypeError, ValueError, AttributeError) as exc:
-        raise HTTPException(status_code=422, detail="updated_at must be ISO8601") from exc
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC).isoformat()
+    dt = progress_store.parse_instant(raw)
+    if dt is None:
+        raise HTTPException(status_code=422, detail="updated_at must be ISO8601")
+    return dt.isoformat()
 
 
 @router.get("/api/podcasts/progress")
