@@ -234,12 +234,14 @@ staging /tmp/podcast_upload_<sid>/   ← 重組成 ep_NN/ 結構
        │  aws s3 sync --delete  (Lightsail Object Storage, AWS_PROFILE=kg-podcast)
        ▼
 s3://kg-podcasts-prod/<sid>/
-  metadata.json                     ← upload.sh 從 overview.md 解析生成(內嵌逐集字幕)
+  metadata.json                     ← upload.sh 從 overview.md 解析生成(內嵌逐集字幕 + coverImageURL)
+  cover.png                         ← cover stage 產 plan/cover.png,upload.sh 搬上 series 層(無則略)
   ep_NN/{audio.m4a, subtitle.srt, script.md}
        │
        │  uv run --with boto3 python → 重建 s3://kg-podcasts-prod/index.json(put_object)
        ▼
 backend /api/podcasts*               ← podcast.py router(全認證,proxy 走 boto3 GetObject)
+                                       封面:GET /api/podcasts/{sid}/cover(image/png,缺則 404)
        │
        ▼
 iOS PodcastSyncService               ← Bearer JWT 拉 series/episode/progress(無 iOS 改動)
@@ -273,11 +275,12 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 | `title` | overview.md H1 | |
 | `author` | overview.md `**Type**:` | **語意錯置**——實際是書籍類型而非作者(未修;影響低) |
 | `hostNames` | Voice Mapping `**Name (...)**: SpeakerN` | 已修於 aa47c723 |
-| `color` / `coverPattern` | 硬編碼 `#5B8C5A` / `waves` | 永遠固定;未來改差異化封面要 overview.md 新增欄位 |
+| `color` / `coverPattern` | 硬編碼 `#5B8C5A` / `waves` | 程序化封面退路;`coverImageURL` 缺(legacy/pre-cover)時 iOS 用這兩個畫 |
+| `coverImageURL` | `cover` stage 有產 `cover.png` → `/api/podcasts/<sid>/cover`,否則 `null` | backend proxy 路徑;iOS 有值才拉遠端封面圖,否則退程序化 |
 | `episodes[].durationSec` | ffprobe(缺則 0) | |
 | `episodes[].subtitleContent` | inline SRT 全文 | iOS 端直接消費，省一次認證 RTT |
 
-`index.json` = `metadata.json` 去掉 `episodes` + 加 `episodeCount`。
+`index.json` = `metadata.json` 去掉 `episodes` + 加 `episodeCount`(故 `coverImageURL` 也在 index entry,series list 即可顯示封面)。
 
 `localAudioPath` **不在後端 JSON**，是 iOS SwiftData 欄位，由 `PodcastDownloadManager` 寫入 `Documents/podcast-downloads/<sid>/<remoteId>.mp3`(離線下載)。
 
