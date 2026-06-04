@@ -46,13 +46,11 @@ struct VocabularyListView: View {
     }
 
     var body: some View {
-        let classified = VocabularyEntryPresentation.classifyKnowledgeEntries(in: allEntries, now: Date())
-
         VocabularyListPresenter(
             showsSearchField: authManager.isLoggedIn,
             searchText: $searchText
         ) {
-            contentView(classified: classified)
+            contentView()
         }
         .navigationTitle(notebookName)
         .largeNavigationBarTitle()
