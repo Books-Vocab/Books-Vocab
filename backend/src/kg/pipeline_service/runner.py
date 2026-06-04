@@ -21,6 +21,19 @@ from .steps import _step_difficulty, _step_embed_and_judge, _step_enrich
 _STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError, KGError)
 
 
+def _telemetry(logger: logging.Logger, method: str, *args: Any, **kwargs: Any) -> None:
+    """Best-effort pipeline_log telemetry call.
+
+    A telemetry write must never break (or abort) the actual pipeline run, so any
+    failure (import, missing DB, SQLite error) is swallowed with a warning.
+    """
+    try:
+        from .. import pipeline_log
+        getattr(pipeline_log, method)(*args, **kwargs)
+    except Exception:
+        logger.warning("Failed to record pipeline telemetry", exc_info=True)
+
+
 async def _run_step(
     uid: str,
     name: str,
@@ -41,11 +54,7 @@ async def _run_step(
     from ..exceptions import QuotaExceededError
 
     if run_id:
-        try:
-            from .. import pipeline_log
-            pipeline_log.start_step(run_id, name)
-        except Exception:
-            logger.warning("Failed to record pipeline telemetry", exc_info=True)
+        _telemetry(logger, "start_step", run_id, name)
     try:
         if retry:
             result = await async_retry(
@@ -56,32 +65,20 @@ async def _run_step(
         else:
             result = await coro_fn()
         if run_id:
-            try:
-                from .. import pipeline_log
-                items = result if isinstance(result, int) else 0
-                pipeline_log.end_step(run_id, name, status="ok", items=items)
-            except Exception:
-                logger.warning("Failed to record pipeline telemetry", exc_info=True)
+            items = result if isinstance(result, int) else 0
+            _telemetry(logger, "end_step", run_id, name, status="ok", items=items)
         return "ok"
     except QuotaExceededError as exc:
         # Distinct from generic failure: caller short-circuits remaining steps
         # so we don't spam the LLM with calls that will all 429.
         logger.warning("[%s] %s halted on quota exhaustion: %s", uid, name, exc)
         if run_id:
-            try:
-                from .. import pipeline_log
-                pipeline_log.end_step(run_id, name, status="quota_exhausted", error=str(exc))
-            except Exception:
-                logger.warning("Failed to record pipeline telemetry", exc_info=True)
+            _telemetry(logger, "end_step", run_id, name, status="quota_exhausted", error=str(exc))
         return "quota_exhausted"
     except _STEP_ERRORS as exc:
         logger.error("[%s] %s failed: %s", uid, name, exc, exc_info=True)
         if run_id:
-            try:
-                from .. import pipeline_log
-                pipeline_log.end_step(run_id, name, status="failed", error=str(exc))
-            except Exception:
-                logger.warning("Failed to record pipeline telemetry", exc_info=True)
+            _telemetry(logger, "end_step", run_id, name, status="failed", error=str(exc))
         return "failed"
 
 
@@ -118,11 +115,7 @@ async def run_pipeline_background(
         async with lock:
             run_id = uuid.uuid4().hex[:12]
             trigger = "manual" if force_enrich else "background"
-            try:
-                from .. import pipeline_log
-                pipeline_log.start_run(run_id, uid, notebook_id, trigger)
-            except Exception:
-                logger.warning("Failed to record pipeline telemetry", exc_info=True)
+            _telemetry(logger, "start_run", run_id, uid, notebook_id, trigger)
             try:
                 logger.info("[%s] Pipeline started.", uid)
 
@@ -174,11 +167,7 @@ async def run_pipeline_background(
                     logger.warning("[%s] Pipeline halted: quota exhausted.", uid)
                 else:
                     logger.info("[%s] Pipeline completed.", uid)
-                try:
-                    from .. import pipeline_log
-                    pipeline_log.end_run(run_id, pipeline_status)
-                except Exception:
-                    logger.warning("Failed to record pipeline telemetry", exc_info=True)
+                _telemetry(logger, "end_run", run_id, pipeline_status)
 
             except _STEP_ERRORS as exc:
                 # Mirrors `_STEP_ERRORS` so any unexpected leak from a step
@@ -186,11 +175,7 @@ async def run_pipeline_background(
                 # catches via the same tuple) gets logged + telemetry-closed
                 # instead of crashing the background task.
                 logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
-                try:
-                    from .. import pipeline_log
-                    pipeline_log.end_run(run_id, "failed")
-                except Exception:
-                    logger.warning("Failed to record pipeline telemetry", exc_info=True)
+                _telemetry(logger, "end_run", run_id, "failed")
             except Exception as exc:
                 # Defensive catch-all: when a queued run reaches the body
                 # AFTER its owning user/notebook was deleted, store factories
@@ -204,11 +189,7 @@ async def run_pipeline_background(
                     "(user/notebook may have been deleted mid-queue): %s",
                     uid, exc, exc_info=True,
                 )
-                try:
-                    from .. import pipeline_log
-                    pipeline_log.end_run(run_id, "failed")
-                except Exception:
-                    logger.warning("Failed to record pipeline telemetry", exc_info=True)
+                _telemetry(logger, "end_run", run_id, "failed")
     finally:
         # Pair with the increment above. The outer try/finally guards
         # against cancellation while awaiting `lock.__aenter__()` — the

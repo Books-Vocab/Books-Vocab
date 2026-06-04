@@ -152,8 +152,8 @@ def check_pipeline_failures(
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
     placeholders = ",".join("?" for _ in statuses)
     try:
-        conn = pipeline_log._get_conn()
         with pipeline_log._lock:
+            conn = pipeline_log._get_conn()
             # Window by failure-occurrence time, not run start. A long-running
             # pipeline can start before the window yet fail inside it; framing
             # by `started_at` would silently drop it. `ended_at` is set by
@@ -197,8 +197,8 @@ def check_judge_rejection_rate(
     """Emit Sentry warning if rejection rate > threshold and sample >= min_total."""
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
     try:
-        conn = judge_log._get_conn()
         with judge_log._lock:
+            conn = judge_log._get_conn()
             row = conn.execute(
                 "SELECT COUNT(*) AS total, "
                 "       SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected "
@@ -247,8 +247,8 @@ def check_translate_latency_p95(
     """
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
     try:
-        conn = translate_log._get_conn()
         with translate_log._lock:
+            conn = translate_log._get_conn()
             rows = conn.execute(
                 "SELECT latency_ms FROM translate_log "
                 "WHERE created_at >= ? AND latency_ms IS NOT NULL "

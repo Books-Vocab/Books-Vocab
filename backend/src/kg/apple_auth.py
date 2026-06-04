@@ -1,10 +1,9 @@
 """Apple JWT validation module for Sign in with Apple."""
 
+import base64
 import logging
 import time
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 import httpx
 import jwt
@@ -12,6 +11,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 APPLE_PUBLIC_KEY_URL = "https://appleid.apple.com/auth/keys"
 
@@ -40,6 +41,11 @@ def _fetch_apple_public_keys() -> None:
             raise HTTPException(status_code=500, detail="Authentication service unavailable")  # noqa: B904
 
 
+def _b64url_decode(value: str) -> bytes:
+    """Decode unpadded base64url (JWK ``n``/``e`` fields)."""
+    return base64.urlsafe_b64decode(value + ("=" * ((-len(value)) % 4)))
+
+
 def _get_rsa_public_key(kid: str) -> str | bytes:
     """Convert a JWK to a PEM format public key."""
     # Refresh cache if needed or if kid is not in cache
@@ -51,14 +57,8 @@ def _get_rsa_public_key(kid: str) -> str | bytes:
         raise HTTPException(status_code=401, detail="Invalid token kid (Key ID)")
 
     # Decode base64url encoded n and e
-    def _base64url_decode(v: str) -> bytes:
-        v = v + '=' * (4 - len(v) % 4)
-        v = v.replace('-', '+').replace('_', '/')
-        import base64
-        return base64.b64decode(v)
-
-    n_bytes = _base64url_decode(jwk["n"])
-    e_bytes = _base64url_decode(jwk["e"])
+    n_bytes = _b64url_decode(jwk["n"])
+    e_bytes = _b64url_decode(jwk["e"])
 
     n = int.from_bytes(n_bytes, byteorder='big')
     e = int.from_bytes(e_bytes, byteorder='big')

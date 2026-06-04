@@ -4,8 +4,7 @@ import base64
 import json
 import logging
 import os
-
-logger = logging.getLogger(__name__)
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,6 +16,8 @@ from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+
+logger = logging.getLogger(__name__)
 
 
 class AppStoreVerificationError(ValueError):
@@ -203,8 +204,7 @@ def make_app_store_api_token(bundle_id: str) -> str:
 
 def _validate_transaction_id(transaction_id: str) -> None:
     """Ensure transaction_id is numeric (Apple's format)."""
-    import re
-    if not re.match(r'^\d+$', transaction_id):
+    if not re.fullmatch(r'\d+', transaction_id):
         raise ValueError(f"Invalid transaction_id: {transaction_id!r}")
 
 
