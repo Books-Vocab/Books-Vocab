@@ -40,7 +40,7 @@ struct PodcastReconcileTests {
     }
 
     private func summary(_ id: String) -> PodcastSeriesSummary {
-        PodcastSeriesSummary(id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil, totalDurationSec: nil, episodeCount: nil)
+        PodcastSeriesSummary(id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil, coverImageURL: nil, totalDurationSec: nil, episodeCount: nil)
     }
 
     private func detail(_ id: String, episodes: [Int]) -> PodcastSeriesDetail {
@@ -54,7 +54,7 @@ struct PodcastReconcileTests {
                 subtitleContent: nil
             )
         }
-        return PodcastSeriesDetail(id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil, totalDurationSec: nil, episodes: eps, createdAt: nil, updatedAt: nil)
+        return PodcastSeriesDetail(id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil, coverImageURL: nil, totalDurationSec: nil, episodes: eps, createdAt: nil, updatedAt: nil)
     }
 
     // MARK: - Sanitize

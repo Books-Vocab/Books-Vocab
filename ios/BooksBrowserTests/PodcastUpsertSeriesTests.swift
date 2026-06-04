@@ -27,14 +27,39 @@ struct PodcastUpsertSeriesTests {
         return ModelContext(container)
     }
 
-    private func detail(_ id: String, episodes: [Int], title: String? = nil) -> PodcastSeriesDetail {
+    private func detail(_ id: String, episodes: [Int], title: String? = nil,
+                        coverImageURL: String? = nil) -> PodcastSeriesDetail {
         let eps = episodes.map {
             PodcastEpisodeDetail(episodeNumber: $0, title: "Ep\($0)", durationSec: 60,
                                  audioAvailable: true, subtitleAvailable: true, subtitleContent: nil)
         }
         return PodcastSeriesDetail(id: id, title: title ?? id, author: nil, hostNames: nil,
-                                   color: nil, coverPattern: nil, totalDurationSec: nil,
+                                   color: nil, coverPattern: nil, coverImageURL: coverImageURL,
+                                   totalDurationSec: nil,
                                    episodes: eps, createdAt: nil, updatedAt: nil)
+    }
+
+    @Test func upsert_writes_coverImageURL() throws {
+        let ctx = try makeContext()
+        PodcastSyncService.upsertSeries(
+            detail: detail("a", episodes: [1], coverImageURL: "/api/podcasts/a/cover"), context: ctx)
+        try ctx.save()
+        let series = try ctx.fetch(FetchDescriptor<PodcastSeries>()).first
+        #expect(series?.coverImageURL == "/api/podcasts/a/cover")
+    }
+
+    @Test func upsert_nil_coverImageURL_for_legacy_series() throws {
+        let ctx = try makeContext()
+        PodcastSyncService.upsertSeries(detail: detail("a", episodes: [1]), context: ctx)
+        try ctx.save()
+        let series = try ctx.fetch(FetchDescriptor<PodcastSeries>()).first
+        #expect(series?.coverImageURL == nil)
+    }
+
+    @Test func cachedCoverURL_path_shape() {
+        let url = PodcastSyncService.cachedCoverURL(seriesId: "deep_work")
+        #expect(url.lastPathComponent == "deep_work.png")
+        #expect(url.deletingLastPathComponent().lastPathComponent == "podcast-covers")
     }
 
     @Test func upsert_inserts_new_series_and_episodes() throws {
