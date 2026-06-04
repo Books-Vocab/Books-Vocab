@@ -85,12 +85,15 @@ filter_results() {
   rg --invert-match --line-buffered 'i18n-allow|L10n\.|\.localized' || true
 }
 
-scan_raw_chinese() {
-  # 1. Enumerate candidate .swift files (excluding *Preview*.swift / tests).
-  # 2. For each, pipe through ops/_i18n_strip_previews.py to blank out
-  #    #Preview {} blocks and `private struct *Preview` containers
-  #    (line numbers preserved).
-  # 3. Run rg with --with-filename / --line-number on the stripped stream.
+# Scan candidate .swift files for a raw-CJK PCRE2 pattern:
+#   1. Enumerate candidate .swift files (excluding *Preview*.swift / tests).
+#   2. For each, pipe through ops/_i18n_strip_previews.py to blank out
+#      #Preview {} blocks and `private struct *Preview` containers
+#      (line numbers preserved).
+#   3. Run rg with --line-number on the stripped stream, prefix the file path.
+#   4. Drop allowlisted / L10n-routed lines via filter_results.
+_scan_pattern() {
+  local pattern="$1"
   local files file stripped hits
   files=$(rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null || true)
   if [ -z "$files" ]; then
@@ -102,7 +105,7 @@ scan_raw_chinese() {
     stripped=$(python3 "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
     local file_hits
     file_hits=$(printf '%s\n' "$stripped" \
-      | rg --no-heading -n --pcre2 "$RAW_CHINESE_PATTERN" 2>/dev/null \
+      | rg --no-heading -n --pcre2 "$pattern" 2>/dev/null \
       | sed "s|^|$file:|" || true)
     if [ -n "$file_hits" ]; then
       if [ -z "$hits" ]; then
@@ -114,6 +117,10 @@ $file_hits"
     fi
   done <<< "$files"
   printf '%s' "$hits" | filter_results || true
+}
+
+scan_raw_chinese() {
+  _scan_pattern "$RAW_CHINESE_PATTERN"
 }
 
 # Drop any hit whose source file contains a file-wide
@@ -140,31 +147,8 @@ filter_locale_neutral_files() {
 }
 
 scan_raw_return_chinese() {
-  # Mirror of scan_raw_chinese but for `return "中..."` lines.
-  # Same preview-strip + L10n / .localized / i18n-allow filtering applies.
-  local files file stripped hits
-  files=$(rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null || true)
-  if [ -z "$files" ]; then
-    return 0
-  fi
-  hits=""
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    stripped=$(python3 "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
-    local file_hits
-    file_hits=$(printf '%s\n' "$stripped" \
-      | rg --no-heading -n --pcre2 "$RAW_RETURN_CHINESE_PATTERN" 2>/dev/null \
-      | sed "s|^|$file:|" || true)
-    if [ -n "$file_hits" ]; then
-      if [ -z "$hits" ]; then
-        hits="$file_hits"
-      else
-        hits="$hits
-$file_hits"
-      fi
-    fi
-  done <<< "$files"
-  printf '%s' "$hits" | filter_results || true
+  # Mirror of scan_raw_chinese for `return "中..."` lines.
+  _scan_pattern "$RAW_RETURN_CHINESE_PATTERN"
 }
 
 scan_static_formatter() {
@@ -333,15 +317,23 @@ PY
 
 # ---- main -------------------------------------------------------------------
 
+# Count non-empty lines in a hits blob. Empty input short-circuits to 0 so the
+# count stays correct regardless of trailing-newline quirks (and without the
+# blanket `|| true` that would mask a real grep failure).
+count_lines() {
+  [ -z "$1" ] && { echo 0; return; }
+  printf '%s\n' "$1" | grep -c .
+}
+
 raw_hits="$(scan_raw_chinese)"
 ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
 xc_hits="$(scan_xcstrings_needs_review)"
 
-raw_count=$(printf '%s' "$raw_hits" | grep -c . || true)
-ret_count=$(printf '%s' "$ret_hits" | grep -c . || true)
-fmt_count=$(printf '%s' "$fmt_hits" | grep -c . || true)
-xc_count=$(printf '%s' "$xc_hits"  | grep -c . || true)
+raw_count=$(count_lines "$raw_hits")
+ret_count=$(count_lines "$ret_hits")
+fmt_count=$(count_lines "$fmt_hits")
+xc_count=$(count_lines "$xc_hits")
 total=$((raw_count + ret_count + fmt_count + xc_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
@@ -418,9 +410,9 @@ case "$MODE" in
     missing_key_hits="$(scan_key_coverage)"
     en_cjk_hits="$(scan_en_purity)"
     plural_missing_hits="$(scan_plural_coverage)"
-    missing_key_count=$(printf '%s' "$missing_key_hits" | grep -c . || true)
-    en_cjk_count=$(printf '%s' "$en_cjk_hits" | grep -c . || true)
-    plural_missing_count=$(printf '%s' "$plural_missing_hits" | grep -c . || true)
+    missing_key_count=$(count_lines "$missing_key_hits")
+    en_cjk_count=$(count_lines "$en_cjk_hits")
+    plural_missing_count=$(count_lines "$plural_missing_hits")
     strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count))
     print_findings
     if [ "$strict_total" -gt 0 ]; then
