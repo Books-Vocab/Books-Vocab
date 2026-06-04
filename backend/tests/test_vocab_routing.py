@@ -48,7 +48,7 @@ def _recorder(content):
 
 def _card(cid, content):
     return SimpleNamespace(id=cid, content=content, meaning=f"m-{content}",
-                           is_deleted=False, is_archived=False)
+                           is_deleted=False, is_archived=False, notebook_id="default")
 
 
 class _Cards:
