@@ -310,3 +310,27 @@ class TestAddVocabEntries:
 
         assert len(embeddings.added) == 1
         assert graph.pending == [embeddings.added[0][0]]
+
+    def test_word_mutated_by_clean_content_is_still_embedded(self):
+        """Regression: a word that _clean_content rewrites (trailing punctuation
+        / uppercase first char) must still be embedded + queued for judging.
+
+        card_ids is keyed by the CLEANED word, so embed_and_link_new_cards must
+        clean entry.word before looking it up — otherwise "Hello." stored as
+        "hello" is silently never embedded nor linked into the graph.
+        """
+        store = _IntakeCardsStore()
+        embeddings = _IntakeEmbeddings()
+        graph = _IntakeGraph()
+
+        result = add_vocab_entries(
+            [VocabEntry(word="Hello.", translation="你好", context="")],
+            **self._kwargs(cards=store, embeddings=embeddings, graph=graph),
+        )
+
+        assert result.created == 1
+        # The stored card content is the cleaned form …
+        assert store.add_calls[0]["content"] == "hello"
+        # … and it MUST have been embedded + marked pending despite the rewrite.
+        assert len(embeddings.added) == 1
+        assert graph.pending == [embeddings.added[0][0]]
