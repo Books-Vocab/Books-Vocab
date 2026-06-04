@@ -28,7 +28,7 @@ function renderLoggedOut() {
   authStatus.innerHTML = '';
 
   const btn = document.createElement('button');
-  btn.className = 'kg-btn';
+  btn.className = 'kg-btn kg-btn--primary';
   btn.textContent = '登入';
   btn.addEventListener('click', handleLogin);
 
@@ -48,7 +48,7 @@ function renderAuthError(message, onRetry) {
   msg.textContent = message;
 
   const btn = document.createElement('button');
-  btn.className = 'kg-btn';
+  btn.className = 'kg-btn kg-btn--primary';
   btn.textContent = '重試';
   btn.addEventListener('click', onRetry);
 

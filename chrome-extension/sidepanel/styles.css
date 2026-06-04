@@ -72,25 +72,10 @@ body {
   padding: 0 var(--page-h-padding) var(--sp-sm);
 }
 
+/* Visual (bg/border/radius/font/padding/focus/placeholder) → .kg-input.
+   Layout-only: full-width inside .kg-search-wrap. */
 .kg-search {
   width: 100%;
-  padding: var(--sp-sm) var(--sp-compact);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: var(--stage-bg);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-subhead);
-  outline: none;
-  transition: border-color var(--motion-quick);
-}
-
-.kg-search::placeholder {
-  color: var(--text-tertiary);
-}
-
-.kg-search:focus {
-  border-color: var(--accent);
 }
 
 .kg-search__count {
@@ -193,22 +178,8 @@ body {
   max-width: 260px;
 }
 
-.kg-error__retry {
-  padding: var(--sp-sm) var(--sp-lg);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--accent);
-  font-family: var(--font-sans);
-  font-size: var(--text-subhead);
-  cursor: pointer;
-  transition: background var(--motion-quick), color var(--motion-quick);
-}
-
-.kg-error__retry:hover {
-  background: var(--accent);
-  color: var(--card-bg);
-}
+/* Retry button visual (border/bg/color/font/padding/hover) → .kg-btn .kg-btn--accent.
+   Centered by .kg-error flex; no surface-local layout needed. */
 
 /* --- Vocab list --- */
 
@@ -220,19 +191,9 @@ body {
 }
 
 /* --- List card --- */
-
-.kg-list-card {
-  background: var(--card-bg);
-  border-radius: var(--radius-card);
-  padding: var(--card-padding);
-  cursor: pointer;
-  transition: transform var(--motion-control), box-shadow var(--motion-control);
-}
-
-.kg-list-card:hover {
-  transform: scale(1.02);
-  box-shadow: var(--elevation-z2);
-}
+/* Card visual + hover-lift (bg/border/radius/padding/cursor/transition/scale/z2)
+   → .kg-card .kg-card--interactive. Spacing between cards owned by .kg-list gap;
+   no surface-local layout on the card itself. */
 
 .kg-list-card__row {
   display: flex;
@@ -247,15 +208,8 @@ body {
   color: var(--text-primary);
 }
 
-.kg-list-card__pos {
-  display: inline-block;
-  font-size: var(--text-caption2);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  padding: var(--sp-micro) var(--sp-sm);
-  border-radius: var(--radius-chip);
-  line-height: 1.3;
-}
+/* POS tag visual (display/font/color/bg/padding/radius/line-height) → .kg-chip.
+   No surface-local layout. */
 
 .kg-list-card__source {
   margin-left: auto;
@@ -334,14 +288,8 @@ body {
   gap: var(--sp-sm);
 }
 
-.kg-detail__chip {
-  display: inline-block;
-  font-size: var(--text-caption2);
-  color: var(--tint);
-  background: color-mix(in srgb, var(--tint) 12%, transparent);
-  padding: var(--sp-micro) var(--sp-sm);
-  border-radius: var(--radius-chip);
-}
+/* Collocation chip visual (display/font/color/bg/padding/radius) → .kg-chip .kg-chip--tint.
+   Wrap/gap owned by .kg-detail__chips; no surface-local layout on the chip. */
 
 .kg-detail__note {
   font-size: var(--text-subhead);
@@ -358,14 +306,10 @@ body {
   line-height: 1.5;
 }
 
+/* Link color + hover-underline → .kg-link. Surface keeps only the subhead sizing
+   to match sibling detail text (.kg-link does not set font-size). */
 .kg-detail__link {
-  color: var(--accent);
-  text-decoration: none;
   font-size: var(--text-subhead);
-}
-
-.kg-detail__link:hover {
-  text-decoration: underline;
 }
 
 .kg-detail__source-text {
@@ -373,8 +317,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* --- Reduced motion (web equivalent of accessibilityReduceMotion) --- */
-
-@media (prefers-reduced-motion: reduce) {
-  .kg-list-card:hover { transform: none; }
-}
+/* Reduced-motion: card hover-lift is now .kg-card--interactive, whose
+   transform is already neutralised by kg-components.css's reduced-motion block.
+   No surface-local override needed. */

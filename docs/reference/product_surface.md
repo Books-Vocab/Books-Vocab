@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: bab1d5fa
+verified_against: 33191db4
 -->
 # Implemented Product Surface
 
@@ -186,4 +186,4 @@ verified_against: bab1d5fa
 - `backup_verify.sh`: restore drill + integrity check
 - Chrome extension release bundle script + tests
 - pytest pinned in `pyproject.toml [dependency-groups].dev`(修 backend venv 無 pytest)
-- **Web 設計系統地基**: `design-system/tokens.json`(iOS Swift token 鏡像 SoT)→ `ops/gen_web_tokens.py` 生成 web CSS(`design-system/dist/` + chrome-extension + `backend/static/`)+ `ops/token_drift_check.py` drift guard(`$swift` token 偏移 iOS 不可 merge)。手寫 primitives 源 `design-system/dist/kg-components.css`
+- **Web 設計系統地基**: `design-system/tokens.json`(iOS Swift token 鏡像 SoT)→ `ops/gen_web_tokens.py` 生成 web CSS(`design-system/dist/` + chrome-extension + `backend/static/`)+ `ops/token_drift_check.py` drift guard(`$swift` token 偏移 iOS 不可 merge,含 `AppTag` chip padding/fill)。手寫 primitives 源 `design-system/dist/kg-components.css`,複製進三 web surface(extension + 官網);chrome-extension 三 surface(sidepanel/popup/options)已消費此 primitives,視覺鏡像 iOS

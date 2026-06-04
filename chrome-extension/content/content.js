@@ -15,7 +15,7 @@
   /** Currently active host element (only one popup at a time). */
   let activeHost = null;
 
-  /** Cached tokens.css + popup.css text for injection into shadow roots. */
+  /** Cached tokens.css + kg-components.css + popup.css text for shadow roots. */
   let cachedStyles = null;
 
   /**
@@ -49,20 +49,25 @@
   async function loadStyles() {
     if (cachedStyles) return cachedStyles;
     try {
-      const [fontsRes, tokensRes, popupRes] = await Promise.all([
+      const [fontsRes, tokensRes, componentsRes, popupRes] = await Promise.all([
         fetch(chrome.runtime.getURL('shared/fonts.css')),
         fetch(chrome.runtime.getURL('shared/tokens.css')),
+        fetch(chrome.runtime.getURL('shared/kg-components.css')),
         fetch(chrome.runtime.getURL('content/popup.css')),
       ]);
-      if (!fontsRes.ok || !tokensRes.ok || !popupRes.ok) {
+      if (!fontsRes.ok || !tokensRes.ok || !componentsRes.ok || !popupRes.ok) {
         throw new Error('stylesheet fetch returned non-OK status');
       }
-      const [fontsText, tokensText, popupText] = await Promise.all([
+      const [fontsText, tokensText, componentsText, popupText] = await Promise.all([
         fontsRes.text(),
         tokensRes.text(),
+        componentsRes.text(),
         popupRes.text(),
       ]);
-      cachedStyles = fontsText + '\n' + tokensText + '\n' + popupText;
+      // Concat order is load-bearing: tokens (vars) → kg-components (base
+      // .kg-btn/.kg-card/.kg-chip) → popup (BEM layout-only overrides last).
+      cachedStyles =
+        fontsText + '\n' + tokensText + '\n' + componentsText + '\n' + popupText;
       return cachedStyles;
     } catch (err) {
       // Extension context invalidated, or packaged CSS missing. Return '' so
@@ -306,7 +311,7 @@
 
     // POS chip
     if (data.r) {
-      html += `<span class="kg-popup__chip">${escapeHtml(data.r)}</span>`;
+      html += `<span class="kg-chip kg-popup__chip">${escapeHtml(data.r)}</span>`;
     }
 
     // Translation
@@ -314,8 +319,8 @@
 
     // Action row
     html += `<div class="kg-popup__actions">`;
-    html += `<button class="kg-popup__btn kg-popup__btn--expand" data-action="explain" aria-label="展開解釋">展開</button>`;
-    html += `<button class="kg-popup__btn" data-action="add" aria-label="加入詞彙">加入詞彙</button>`;
+    html += `<button class="kg-btn kg-btn--ghost kg-popup__btn kg-popup__btn--expand" data-action="explain" aria-label="展開解釋">展開</button>`;
+    html += `<button class="kg-btn kg-btn--primary" data-action="add" aria-label="加入詞彙">加入詞彙</button>`;
     html += `</div>`;
 
     // Explanation placeholder
@@ -347,7 +352,7 @@
     popup.innerHTML = `
       <div class="kg-popup__login">
         <p>請先登入</p>
-        <a href="${escapeHtml(optionsUrl)}" target="_blank" class="kg-popup__btn">前往登入</a>
+        <a href="${escapeHtml(optionsUrl)}" target="_blank" class="kg-btn kg-btn--primary">前往登入</a>
       </div>
     `;
   }
@@ -444,7 +449,7 @@
       }
 
       popup.className = 'kg-popup kg-popup--saved';
-      btn.className = 'kg-popup__btn kg-popup__btn--success';
+      btn.className = 'kg-btn kg-popup__btn kg-popup__btn--success';
       btn.textContent = '已加入';
       btn.disabled = true;
     });

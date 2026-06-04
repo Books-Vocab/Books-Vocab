@@ -26,14 +26,11 @@ body {
   margin: 0 0 var(--sp-xl) 0;
 }
 
-/* ── Section Card (北極星 2/3: no border, z1 resting) ── */
+/* ── Section Card — layout only; visual (bg/border/radius/padding/z1) from
+   shared .kg-card primitive (composed in markup). ── */
 
 .kg-section-card {
-  background: var(--card-bg);
-  border-radius: var(--radius-card);
-  padding: var(--card-padding);
   margin-bottom: var(--section-gap);
-  box-shadow: var(--elevation-z1);
 }
 
 .kg-section-card__title {
@@ -43,42 +40,11 @@ body {
   margin: 0 0 var(--sp-sm) 0;
 }
 
-/* ── Buttons ── */
-/* Primary = brand-hero CTA (北極星 4); tap-feedback on :active (北極星 5). */
-
-.kg-btn {
-  background: var(--brand-hero);
-  color: var(--on-brand-hero);
-  border: none;
-  border-radius: var(--radius-control);
-  padding: var(--sp-sm) var(--sp-md);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity var(--motion-quick), background var(--motion-quick), transform var(--motion-control);
-}
-
-.kg-btn:hover { opacity: 0.92; }
-.kg-btn:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
-
-/* Passive / secondary — outlined accent, never competes with the CTA. */
-.kg-btn--outline {
-  background: transparent;
-  border: var(--sp-hairline) solid var(--accent);
-  color: var(--accent);
-}
-
-.kg-btn--outline:hover { background: var(--accent-subtle); opacity: 1; }
-
-/* Destructive — outlined danger, subtle fill on hover. */
-.kg-btn--destructive {
-  background: transparent;
-  border: var(--sp-hairline) solid var(--destructive);
-  color: var(--destructive);
-}
-
-.kg-btn--destructive:hover { background: var(--destructive-bg); opacity: 1; }
+/* ── Buttons ──
+   All button visuals come from the shared primitives in kg-components.css
+   (.kg-btn / .kg-btn--primary / .kg-btn--accent / .kg-btn--destructive).
+   This surface defines NO button rules — redefining a base class would shadow
+   the primitive (options.css loads after it). ── */
 
 /* ── Auth Info ── */
 
