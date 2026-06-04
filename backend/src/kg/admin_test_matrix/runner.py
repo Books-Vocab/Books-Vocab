@@ -16,76 +16,41 @@ CASE_LINE_RE = re.compile(
 )
 
 
-def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]:
-    """Run pytest and build matrix data grouped by test module."""
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
-    started = datetime.now(tz=UTC)
-    run_id = started.strftime("%Y%m%d%H%M%S")
-    tests_dir = project_root / "tests"
-    selected_items = selected_items or []
-    nodeids = selected_nodeids(selected_items)
-
-    if not tests_dir.exists():
-        finished = datetime.now(tz=UTC)
-        return {
-            "runId": run_id,
-            "startedAt": started.isoformat(),
-            "finishedAt": finished.isoformat(),
-            "durationSeconds": round((finished - started).total_seconds(), 3),
-            "returnCode": 127,
-            "outcome": "failed",
-            "totals": {"passed": 0, "failed": 0, "errors": 1, "skipped": 0, "total": 1},
-            "matrix": [],
-            "cases": [],
-            "selectedItems": selected_items,
-            "itemResults": item_results([]),
-            "stdoutTail": [],
-            "stderrTail": [f"tests directory not found at {tests_dir}"],
-        }
-
-    cmd = [sys.executable, "-m", "pytest", "-vv", "--maxfail=0", "--disable-warnings"]
-    if nodeids:
-        cmd.extend(nodeids)
-    else:
-        cmd.append("tests")
-
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=600,
-            env={**os.environ, "PY_COLORS": "0"},
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        return_code = proc.returncode
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or ""
-        return_code = 124
-    except OSError as exc:
-        finished = datetime.now(tz=UTC)
-        return {
-            "runId": run_id,
-            "startedAt": started.isoformat(),
-            "finishedAt": finished.isoformat(),
-            "durationSeconds": round((finished - started).total_seconds(), 3),
-            "returnCode": 127,
-            "outcome": "failed",
-            "totals": {"passed": 0, "failed": 0, "errors": 1, "skipped": 0, "total": 1},
-            "matrix": [],
-            "cases": [],
-            "selectedItems": selected_items,
-            "itemResults": item_results([]),
-            "stdoutTail": [],
-            "stderrTail": [f"{type(exc).__name__}: {exc}"],
-        }
-
+def _error_run(
+    run_id: str,
+    started: datetime,
+    selected_items: list[str],
+    *,
+    stderr_tail: list[str],
+) -> dict[str, Any]:
+    """Build a uniform failed-run payload for pre-pytest errors (missing tests
+    dir, spawn failure) — returnCode 127, one synthetic error, empty matrix."""
     finished = datetime.now(tz=UTC)
-    duration = round((finished - started).total_seconds(), 3)
+    return {
+        "runId": run_id,
+        "startedAt": started.isoformat(),
+        "finishedAt": finished.isoformat(),
+        "durationSeconds": round((finished - started).total_seconds(), 3),
+        "returnCode": 127,
+        "outcome": "failed",
+        "totals": {"passed": 0, "failed": 0, "errors": 1, "skipped": 0, "total": 1},
+        "matrix": [],
+        "cases": [],
+        "selectedItems": selected_items,
+        "itemResults": item_results([]),
+        "stdoutTail": [],
+        "stderrTail": stderr_tail,
+    }
 
+
+def _parse_matrix(
+    stdout: str, stderr: str
+) -> tuple[list[dict[str, str]], list[dict[str, Any]], dict[str, int]]:
+    """Parse pytest -vv output into (cases, matrix_rows, totals).
+
+    Scans each line for a ``tests/...::case STATUS`` match, buckets per module,
+    and aggregates totals. Lines that don't match (headers, tracebacks) skip.
+    """
     cases: list[dict[str, str]] = []
     matrix: dict[str, dict[str, Any]] = {}
     for line in (stdout + "\n" + stderr).splitlines():
@@ -122,6 +87,56 @@ def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]
         "skipped": sum(row["skipped"] for row in matrix_rows),
     }
     totals["total"] = totals["passed"] + totals["failed"] + totals["errors"] + totals["skipped"]
+    return cases, matrix_rows, totals
+
+
+def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]:
+    """Run pytest and build matrix data grouped by test module."""
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    started = datetime.now(tz=UTC)
+    run_id = started.strftime("%Y%m%d%H%M%S")
+    tests_dir = project_root / "tests"
+    selected_items = selected_items or []
+    nodeids = selected_nodeids(selected_items)
+
+    if not tests_dir.exists():
+        return _error_run(
+            run_id, started, selected_items,
+            stderr_tail=[f"tests directory not found at {tests_dir}"],
+        )
+
+    cmd = [sys.executable, "-m", "pytest", "-vv", "--maxfail=0", "--disable-warnings"]
+    if nodeids:
+        cmd.extend(nodeids)
+    else:
+        cmd.append("tests")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env={**os.environ, "PY_COLORS": "0"},
+        )
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        return_code = proc.returncode
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        return_code = 124
+    except OSError as exc:
+        return _error_run(
+            run_id, started, selected_items,
+            stderr_tail=[f"{type(exc).__name__}: {exc}"],
+        )
+
+    finished = datetime.now(tz=UTC)
+    duration = round((finished - started).total_seconds(), 3)
+
+    cases, matrix_rows, totals = _parse_matrix(stdout, stderr)
 
     outcome = "passed" if return_code == 0 else "failed"
     return {
