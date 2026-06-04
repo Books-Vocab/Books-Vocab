@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import os
 
 final class LocalDataCleanerService: LocalDataClearing {
     func clearLocalData(container: ModelContainer, reason: String) async {
