@@ -247,12 +247,13 @@ def get_single(*, user_id: str, series_id: str, ep_num: int) -> dict | None:
     return _row_dict(series_id, ep_num, row[0], row[1], row[2])
 
 
-def list_for_user(*, user_id: str) -> list[dict]:
+def list_for_user(*, user_id: str, limit: int = 500) -> list[dict]:
     with _lock:
         conn = _get_conn()
         rows = conn.execute(
             "SELECT series_id, ep_num, position_sec, duration_sec, updated_at "
-            "FROM podcast_progress WHERE user_id = ? ORDER BY updated_at DESC",
-            (user_id,),
+            "FROM podcast_progress WHERE user_id = ? ORDER BY updated_at DESC "
+            "LIMIT ?",
+            (user_id, limit),
         ).fetchall()
     return [_row_dict(s, e, p, d, u) for s, e, p, d, u in rows]

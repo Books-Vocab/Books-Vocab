@@ -77,7 +77,7 @@ def start_step(run_id: str, name: str) -> None:
             return
         steps = json.loads(row[0])
         steps.append({"name": name, "status": "running", "started_at": now, "ended_at": None, "items": 0, "error": None})
-        conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps), run_id))
+        conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id))
         conn.commit()
 
 
@@ -97,7 +97,7 @@ def end_step(run_id: str, name: str, *, status: str = "ok", items: int = 0, erro
                 step["items"] = items
                 step["error"] = error
                 break
-        conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps), run_id))
+        conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id))
         conn.commit()
 
 

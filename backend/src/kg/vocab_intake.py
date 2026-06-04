@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Any
@@ -17,12 +16,14 @@ from .vocab_shared import (
     _normalize_word,
 )
 
+_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
 
 def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
     if not context:
         return ""
     # Strip pre-existing markdown bold markers to avoid double-wrapping
-    context = re.sub(r"\*\*(.+?)\*\*", r"\1", context)
+    context = _BOLD.sub(r"\1", context)
     pattern = re.compile(re.escape(word), re.IGNORECASE)
     if pattern.search(context):
         return pattern.sub(f"**{word}**", context, count=1)
@@ -112,7 +113,7 @@ def add_vocab_entries(
             root_form=root,
             inflections=inflections,
             notebook_id=notebook_id,
-            source=json.dumps(entry.source.model_dump()) if entry.source else None,
+            source=entry.source.model_dump_json() if entry.source else None,
         )
         card_ids[word] = card.id
         existing.add(_normalize_word(word))

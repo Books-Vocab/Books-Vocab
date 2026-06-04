@@ -6,15 +6,19 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel
 
+_WS = re.compile(r"[\u00a0\u2000-\u200b\t\r]+")
+_NL = re.compile(r"\n+")
+_MULTISPACE = re.compile(r" {2,}")
+
 
 def _normalize_context(v: str) -> str:
     """Normalize EPUB-sourced context: collapse whitespace, strip NBSP, etc."""
     if not v:
         return ""
     v = unicodedata.normalize("NFC", v)
-    v = re.sub(r"[\u00a0\u2000-\u200b\t\r]+", " ", v)
-    v = re.sub(r"\n+", " ", v)
-    v = re.sub(r" {2,}", " ", v)
+    v = _WS.sub(" ", v)
+    v = _NL.sub(" ", v)
+    v = _MULTISPACE.sub(" ", v)
     return v.strip()
 
 
