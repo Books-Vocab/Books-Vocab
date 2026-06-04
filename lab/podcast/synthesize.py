@@ -384,7 +384,7 @@ def chunk_turns(
     # Final batch: if it ends on a short turn AND has a prior batch, merge
     # backward so the tail doesn't dangle on "Please." or similar.
     if current:
-        if len(current) >= 1 and _word_count(current[-1]["text"]) < MIN_BATCH_END_WORDS and batches:
+        if _word_count(current[-1]["text"]) < MIN_BATCH_END_WORDS and batches:
             # Pull the short tail into the previous batch so both sides safe
             tail = current.pop()
             batches[-1].append(tail)
