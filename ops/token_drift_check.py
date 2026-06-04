@@ -290,11 +290,18 @@ def check() -> list[str]:
                           f"!= Swift AppTag.fill {tag_fill[thm]}")
 
     # 3) numeric scales
-    def check_scale(label: str, node: dict, swift: dict, key_field: str = "px"):
+    def check_scale(label: str, node: dict, swift: dict, prefix: str, key_field: str = "px"):
         for key, spec in node.items():
             if key.startswith("$") or "$swift" not in spec:
                 continue
             sym = spec["$swift"]
+            # The bare last component is matched against `swift`, but `swift` was
+            # parsed from a specific enum. Assert the $swift namespace points at
+            # that enum so a colliding name in a sibling enum (or a mis-pointed
+            # $swift) can't silently match the wrong symbol's value.
+            if not sym.startswith(prefix):
+                raise AssertionError(
+                    f"{label}.{key}: {sym} does not start with expected prefix {prefix!r}")
             sw_name = sym.split(".")[-1]
             if sw_name not in swift:
                 errors.append(f"{label}.{key}: {sym} not found")
@@ -302,8 +309,8 @@ def check() -> list[str]:
             if not _eq(spec[key_field], swift[sw_name]):
                 errors.append(f"{label}.{key}: JSON {spec[key_field]} != Swift {sym} {swift[sw_name]}")
 
-    check_scale("space.scale", tokens["space"]["scale"], spacing)
-    check_scale("radius.scale", tokens["radius"]["scale"], radius)
+    check_scale("space.scale", tokens["space"]["scale"], spacing, "AppSpacing.")
+    check_scale("radius.scale", tokens["radius"]["scale"], radius, "AppRadius.")
 
     # type.scale spans two provenance namespaces: the formal AppFonts.TypeScale
     # ramp and the bespoke AppSkin.Typography vocab sizes.
@@ -311,7 +318,14 @@ def check() -> list[str]:
         if key.startswith("$") or "$swift" not in spec:
             continue
         sym, field = spec["$swift"], spec["$swift"].split(".")[-1]
-        table = typescale if sym.startswith("AppFonts.TypeScale.") else skin_type
+        if sym.startswith("AppFonts.TypeScale."):
+            table = typescale
+        elif sym.startswith("AppSkin.Typography."):
+            table = skin_type
+        else:
+            raise AssertionError(
+                f"type.scale.{key}: {sym} matches neither AppFonts.TypeScale. "
+                f"nor AppSkin.Typography. namespace")
         if field not in table:
             errors.append(f"type.scale.{key}: {sym} not found")
         elif not _eq(spec["px"], table[field]):
