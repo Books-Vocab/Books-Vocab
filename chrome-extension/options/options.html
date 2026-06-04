@@ -17,6 +17,13 @@
     <section class="kg-card kg-section-card">
       <h2 class="kg-section-card__title">帳號</h2>
       <div id="auth-status"></div>
+      <div id="token-paste-area" class="kg-token-paste" hidden>
+        <p class="kg-token-paste__hint">或使用手動貼上 Token：</p>
+        <div class="kg-token-paste__row">
+          <input type="text" id="tokenInput" class="kg-token-paste__input" placeholder="貼上 JWT token…" autocomplete="off">
+          <button id="tokenSubmit" class="kg-btn kg-btn--primary kg-token-paste__btn">確認</button>
+        </div>
+      </div>
     </section>
 
     <!-- Theme section -->

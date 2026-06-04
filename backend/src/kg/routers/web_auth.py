@@ -185,7 +185,6 @@ async def google_callback(
 
     response = templates.TemplateResponse(request, "login_success.html", {
         "token": jwt_token,
-        "extension_id": settings.chrome_extension_id,
     })
     _clear_state_cookie(response)
     return response
@@ -222,7 +221,6 @@ async def apple_callback(
 
     response = templates.TemplateResponse(request, "login_success.html", {
         "token": jwt_token,
-        "extension_id": settings.chrome_extension_id,
     })
     _clear_state_cookie(response)
     return response

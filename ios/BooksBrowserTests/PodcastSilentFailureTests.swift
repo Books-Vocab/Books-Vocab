@@ -111,6 +111,31 @@ struct PodcastSilentFailureTests {
         #expect(vm.subtitleState == .unavailable)
     }
 
+    @Test func subtitle_state_unavailable_when_content_parses_to_zero_sentences() {
+        // Empty / whitespace-only SRT previously fell through to `.loaded`
+        // unconditionally — the bubble layer then rendered a blank void that was
+        // visually indistinguishable from `.loading` and `.unavailable`. A parse
+        // that yields zero sentences must converge to `.unavailable` so the
+        // explicit hint shows instead of an empty-but-"loaded" window.
+        let vm = PodcastPlayerViewModel(hostNames: ["Maya", "Kai"])
+        vm.setSubtitleLoading()
+        vm.applySubtitle(content: "")
+        #expect(vm.subtitleState == .unavailable)
+        #expect(vm.visibleSentences.isEmpty)
+
+        vm.applySubtitle(content: "   \n\n  \n")
+        #expect(vm.subtitleState == .unavailable)
+    }
+
+    @Test func subtitle_state_unavailable_on_malformed_srt() {
+        // Garbage with no parseable cue blocks → zero sentences → unavailable,
+        // not a false `.loaded`.
+        let vm = PodcastPlayerViewModel(hostNames: ["Maya", "Kai"])
+        vm.applySubtitle(content: "not a valid srt at all")
+        #expect(vm.subtitleState == .unavailable)
+        #expect(vm.visibleSentences.isEmpty)
+    }
+
     // MARK: - #20  Completed-episode position-0 explicit save
 
     // The confirmed bug: `saveProgress` had an unconditional

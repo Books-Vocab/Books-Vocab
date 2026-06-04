@@ -855,10 +855,16 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "有字幕";
+// MARK: - Podcast transcript VoiceOver
+"podcast.transcript.seekHint" = "點兩下跳至此句播放";
+"podcast.transcript.translateAction" = "翻譯整句";
+"podcast.transcript.selectAction" = "選取文字";
 "podcast.episodeRow.downloaded" = "已下載";
 "podcast.episodeRow.listened" = "已聽完";
 "podcast.episodeRow.unavailable" = "音訊不可用";
 "podcast.episodeRow.downloading" = "下載中";
+"podcast.episodeRow.downloadFailed" = "下載失敗，點擊重試";
+"重試下載" = "重試下載";
 
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "上一張卡片";

@@ -216,10 +216,16 @@ final class PodcastPlayerViewModel {
         subtitleState = .loading
     }
 
-    /// Parses fetched SRT content into sentences and marks the load loaded.
+    /// Parses fetched SRT content into sentences. A parse that yields zero
+    /// sentences (empty / whitespace-only / malformed SRT) converges to
+    /// `.unavailable` rather than falsely reporting `.loaded`: an empty bubble
+    /// layer under `.loaded` is indistinguishable from `.loading` and the
+    /// genuine no-subtitle case, leaving the user staring at a blank void with
+    /// no explanation. Routing it to `.unavailable` surfaces the existing
+    /// "此集無逐句字幕" hint.
     func applySubtitle(content: String) {
         subtitleEngine.load(srtContent: content)
-        subtitleState = .loaded
+        subtitleState = subtitleEngine.sentences.isEmpty ? .unavailable : .loaded
     }
 
     /// Marks the subtitle fetch as failed — drives the inline retry UI.
