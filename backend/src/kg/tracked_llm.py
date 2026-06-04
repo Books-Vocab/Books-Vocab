@@ -94,10 +94,20 @@ class TrackedLLM:
             call_type,
         )
 
-    def _record_chat(self, call_type: str, resp, model: str | None = None) -> None:
+    def _usage_or_warn(self, call_type: str, resp, model: str | None):
+        """Return ``resp.usage``, or None (after warning) when it is missing/empty.
+
+        Centralises the leak-observability guard shared by chat/embed recording.
+        """
         usage = getattr(resp, "usage", None)
         if not usage:
             self._warn_usage_missing(call_type, model)
+            return None
+        return usage
+
+    def _record_chat(self, call_type: str, resp, model: str | None = None) -> None:
+        usage = self._usage_or_warn(call_type, resp, model)
+        if usage is None:
             return
         # Prefer the model actually sent; fall back to the bound provider's
         # default chat model so the row is never NULL when a provider is bound.
@@ -113,9 +123,8 @@ class TrackedLLM:
         )
 
     def _record_embed(self, call_type: str, resp, model: str | None = None) -> None:
-        usage = getattr(resp, "usage", None)
-        if not usage:
-            self._warn_usage_missing(call_type, model)
+        usage = self._usage_or_warn(call_type, resp, model)
+        if usage is None:
             return
         prompt = getattr(usage, "prompt_tokens", 0) or 0
         record(

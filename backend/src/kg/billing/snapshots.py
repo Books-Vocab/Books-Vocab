@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .index import upsert_subscription_index
-from .payloads import default_subscription_payload
+from .payloads import ACTIVE_BEARING_STATUSES, default_subscription_payload
 
 
 def append_app_store_event(notifications_file: Path, payload: dict[str, Any]) -> None:
@@ -42,7 +42,7 @@ def write_subscription_snapshot(
     normalized_status = status.strip() or "active"
     subscription.update(
         {
-            "is_active": normalized_status in {"active", "trial", "grace_period"},
+            "is_active": normalized_status in ACTIVE_BEARING_STATUSES,
             "product_id": product_id.strip(),
             "plan_name": "Books & Vocab Pro",
             "price_display": price_display.strip() if isinstance(price_display, str) and price_display.strip() else subscription.get("price_display"),

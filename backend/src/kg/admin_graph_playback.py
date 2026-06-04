@@ -4,10 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import text
-from sqlmodel import create_engine
-
-from .admin_graph_density import _parse_ts, _read_graph_links
+from .admin_graph_density import _parse_ts, _read_active_cards, _read_graph_links
 
 
 def compute_graph_playback(
@@ -27,30 +24,19 @@ def compute_graph_playback(
 
     # ── cards from SQLite ──────────────────────────────────────────────
     cards_db = user_dir / "cards.db"
-    if cards_db.exists():
-        engine = create_engine(f"sqlite:///{cards_db.absolute()}")
+    for card_id, content, meaning, created_at in _read_active_cards(
+        cards_db, notebook_id, "id, content, meaning, created_at"
+    ):
         try:
-            with engine.connect() as conn:
-                rows = conn.execute(
-                    text(
-                        "SELECT id, content, meaning, created_at FROM card "
-                        "WHERE is_deleted = 0 AND notebook_id = :nb"
-                    ),
-                    {"nb": notebook_id},
-                ).fetchall()
-            for card_id, content, meaning, created_at in rows:
-                try:
-                    ts = _parse_ts(created_at)
-                except (ValueError, TypeError):
-                    continue
-                nodes.append({
-                    "id": card_id,
-                    "label": content,
-                    "meaning": meaning,
-                    "created_at": ts.isoformat(),
-                })
-        finally:
-            engine.dispose()
+            ts = _parse_ts(created_at)
+        except (ValueError, TypeError):
+            continue
+        nodes.append({
+            "id": card_id,
+            "label": content,
+            "meaning": meaning,
+            "created_at": ts.isoformat(),
+        })
 
     # ── links from graph JSON ──────────────────────────────────────────
     graph_path = user_dir / f"graph_{notebook_id}.json"

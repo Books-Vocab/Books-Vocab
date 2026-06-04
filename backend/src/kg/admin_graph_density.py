@@ -29,6 +29,25 @@ def _read_graph_links(graph_path: Path) -> list[dict]:
     return []
 
 
+def _read_active_cards(cards_db: Path, notebook_id: str, columns: str) -> list[tuple]:
+    """Fetch active (non-deleted) cards in a notebook from a SQLite cards.db.
+
+    ``columns`` is a trusted, internal comma-separated SELECT list (never user
+    input). Returns [] when the DB file is absent. Handles engine open/dispose.
+    """
+    if not cards_db.exists():
+        return []
+    engine = create_engine(f"sqlite:///{cards_db.absolute()}")
+    try:
+        with engine.connect() as conn:
+            return conn.execute(
+                text(f"SELECT {columns} FROM card WHERE is_deleted = 0 AND notebook_id = :nb"),
+                {"nb": notebook_id},
+            ).fetchall()
+    finally:
+        engine.dispose()
+
+
 def compute_graph_density(
     user_dir: Path,
     notebook_id: str,
@@ -45,25 +64,12 @@ def compute_graph_density(
 
     # ── cards from SQLite ──────────────────────────────────────────────
     cards_db = user_dir / "cards.db"
-    if cards_db.exists():
-        engine = create_engine(f"sqlite:///{cards_db.absolute()}")
+    for _id, created_at in _read_active_cards(cards_db, notebook_id, "id, created_at"):
         try:
-            with engine.connect() as conn:
-                rows = conn.execute(
-                    text(
-                        "SELECT id, created_at FROM card "
-                        "WHERE is_deleted = 0 AND notebook_id = :nb"
-                    ),
-                    {"nb": notebook_id},
-                ).fetchall()
-            for _id, created_at in rows:
-                try:
-                    ts = _parse_ts(created_at)
-                except (ValueError, TypeError):
-                    continue
-                events.append((ts, "card"))
-        finally:
-            engine.dispose()
+            ts = _parse_ts(created_at)
+        except (ValueError, TypeError):
+            continue
+        events.append((ts, "card"))
 
     # ── links from graph JSON ──────────────────────────────────────────
     graph_path = user_dir / f"graph_{notebook_id}.json"

@@ -276,3 +276,33 @@ def test_sync_retry_respects_max_delay_with_jitter(monkeypatch):
     for d in sleeps:
         assert d < 4.0 * 1.5, f"delay {d} exceeds max_delay*1.5 jitter ceiling"
         assert d >= 4.0 * 0.5, f"delay {d} below max_delay*0.5 jitter floor"
+
+
+def test_sync_retry_delay_fn_none_falls_back_to_default(monkeypatch):
+    """delay_fn returning None → default exponential backoff; returning 0.0 →
+    immediate retry (0.0), NOT the default (guards the `is not None` vs `or` trap)."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("kg.retry.time.sleep", lambda d: sleeps.append(d))
+    monkeypatch.setattr("kg.retry.random.random", lambda: 0.5)  # jitter ×1.0 (identity)
+
+    # attempt 0 → delay_fn returns None (fallback); attempt 1 → returns 0.0.
+    returns = [None, 0.0]
+
+    def always_fail():
+        raise OSError("boom")
+
+    with pytest.raises(OSError):
+        sync_retry(
+            always_fail,
+            max_attempts=3,
+            base_delay=1.0,
+            max_delay=10.0,
+            retryable_exceptions=(OSError,),
+            delay_fn=lambda attempt, exc: returns[attempt],
+            step_name="T",
+            uid="u",
+        )
+
+    # attempt 0: None → default min(1.0*2**0, 10)=1.0 ×1.0 jitter = 1.0
+    # attempt 1: 0.0 → immediate (0.0), must not become default 2.0
+    assert sleeps == [1.0, 0.0]
