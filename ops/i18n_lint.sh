@@ -317,15 +317,23 @@ PY
 
 # ---- main -------------------------------------------------------------------
 
+# Count non-empty lines in a hits blob. Empty input short-circuits to 0 so the
+# count stays correct regardless of trailing-newline quirks (and without the
+# blanket `|| true` that would mask a real grep failure).
+count_lines() {
+  [ -z "$1" ] && { echo 0; return; }
+  printf '%s\n' "$1" | grep -c .
+}
+
 raw_hits="$(scan_raw_chinese)"
 ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
 xc_hits="$(scan_xcstrings_needs_review)"
 
-raw_count=$(printf '%s' "$raw_hits" | grep -c . || true)
-ret_count=$(printf '%s' "$ret_hits" | grep -c . || true)
-fmt_count=$(printf '%s' "$fmt_hits" | grep -c . || true)
-xc_count=$(printf '%s' "$xc_hits"  | grep -c . || true)
+raw_count=$(count_lines "$raw_hits")
+ret_count=$(count_lines "$ret_hits")
+fmt_count=$(count_lines "$fmt_hits")
+xc_count=$(count_lines "$xc_hits")
 total=$((raw_count + ret_count + fmt_count + xc_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
@@ -402,9 +410,9 @@ case "$MODE" in
     missing_key_hits="$(scan_key_coverage)"
     en_cjk_hits="$(scan_en_purity)"
     plural_missing_hits="$(scan_plural_coverage)"
-    missing_key_count=$(printf '%s' "$missing_key_hits" | grep -c . || true)
-    en_cjk_count=$(printf '%s' "$en_cjk_hits" | grep -c . || true)
-    plural_missing_count=$(printf '%s' "$plural_missing_hits" | grep -c . || true)
+    missing_key_count=$(count_lines "$missing_key_hits")
+    en_cjk_count=$(count_lines "$en_cjk_hits")
+    plural_missing_count=$(count_lines "$plural_missing_hits")
     strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count))
     print_findings
     if [ "$strict_total" -gt 0 ]; then
