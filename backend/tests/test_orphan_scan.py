@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from kg.api import app
+from conftest import _swap_settings
 from kg.settings import KGSettings
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
@@ -20,24 +21,6 @@ ADMIN_TOKEN = "test-admin-token-orphan"
 # Test fixture — isolates global SQLite logs + users dir under tmp_path.
 # Mirrors test_admin_observability.py's pattern.
 # ---------------------------------------------------------------------------
-
-def _swap_settings(new_settings):
-    from kg.billing import default_subscription_payload
-    from kg.user_store import CachedUserStore, normalize_users_payload
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(new_settings.users_file, _normalize)
-    app.state.user_store = user_store
-    app.state.load_users = lambda: user_store.load()
-    app.state.save_users = lambda users: user_store.save(users)
-
 
 @pytest.fixture()
 def env(tmp_path, monkeypatch):

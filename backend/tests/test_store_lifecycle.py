@@ -17,6 +17,7 @@ def test_card_store_double_close_is_safe(tmp_path: Path):
     store = CardStore(tmp_path / "cards.db")
     store.close()
     store.close()  # should not raise
+    assert store.engine is None
 
 
 def test_notebook_store_close(tmp_path: Path):

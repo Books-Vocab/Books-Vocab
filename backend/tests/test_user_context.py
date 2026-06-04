@@ -6,24 +6,13 @@ from pathlib import Path
 
 import jwt as pyjwt
 import pytest
-from conftest import make_jwt
+from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_jwt, make_settings
 from fastapi import HTTPException
 
 from kg.auth_service import create_jwt_token
 from kg.settings import KGSettings
 from kg.user_context import resolve_current_user
 from kg.user_store import parse_datetime as real_parse_datetime
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-TEST_ALGORITHM = "HS256"
-
-
-def _make_settings(tmp_path: Path) -> KGSettings:
-    return KGSettings(
-        data_dir=tmp_path,
-        jwt_secret=TEST_JWT_SECRET,
-        jwt_algorithm=TEST_ALGORITHM,
-    )
 
 
 def _load_users_fn(users_file: Path):
@@ -49,7 +38,7 @@ def test_valid_jwt_resolves_user(tmp_path):
     users_file.write_text(json.dumps({user_id: {"config": {}}}))
 
     token = make_jwt(user_id)
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     result = resolve_current_user(
         token,
@@ -64,7 +53,7 @@ def test_invalid_token_raises_401(tmp_path):
     users_file = tmp_path / "users.json"
     users_file.write_text(json.dumps({}))
 
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     with pytest.raises(HTTPException) as exc_info:
         resolve_current_user(
@@ -82,7 +71,7 @@ def test_random_string_token_raises_401_not_used_as_user_id(tmp_path):
     arbitrary_id = "some-arbitrary-user-id"
     users_file.write_text(json.dumps({arbitrary_id: {"config": {}}}))
 
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     with pytest.raises(HTTPException) as exc_info:
         resolve_current_user(
@@ -128,7 +117,7 @@ def test_traversal_sub_rejected_and_no_dir_escapes(tmp_path, malicious_sub):
     """
     users_file = tmp_path / "users.json"
     users_file.write_text(json.dumps({malicious_sub: {"config": {}}}))
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     token = make_jwt(malicious_sub)
 
@@ -167,7 +156,7 @@ def test_legitimate_provider_subs_still_resolve(tmp_path, legit_sub):
     """
     users_file = tmp_path / "users.json"
     users_file.write_text(json.dumps({legit_sub: {"config": {}}}))
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     token = make_jwt(legit_sub)
     result = resolve_current_user(
@@ -186,7 +175,7 @@ def test_expired_jwt_raises_401(tmp_path):
     users_file.write_text(json.dumps({user_id: {"config": {}}}))
 
     token = make_jwt(user_id, expires_in=timedelta(seconds=-1))
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     with pytest.raises(HTTPException) as exc_info:
         resolve_current_user(
@@ -209,7 +198,7 @@ def test_jwt_signed_with_wrong_secret_raises_401(tmp_path):
         "wrong-secret-key-totally-different",
         algorithm=TEST_ALGORITHM,
     )
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     with pytest.raises(HTTPException) as exc_info:
         resolve_current_user(
@@ -266,7 +255,7 @@ def test_same_second_delete_then_relogin_token_is_admitted(tmp_path, monkeypatch
     """
     user_id = "user-relogin"
     users_file = tmp_path / "users.json"
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     base = datetime.now(tz=UTC).replace(microsecond=0)
 
@@ -301,7 +290,7 @@ def test_token_issued_before_deletion_same_second_is_rejected(tmp_path, monkeypa
     """
     user_id = "user-stale"
     users_file = tmp_path / "users.json"
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     base = datetime.now(tz=UTC).replace(microsecond=0)
 

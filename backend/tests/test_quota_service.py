@@ -24,25 +24,23 @@ from kg.quota_service import (
 
 
 class TestTokenCostUsd:
-    def test_embed_cost(self):
-        cost = token_cost_usd("embed", 1_000_000, 0)
-        assert cost == pytest.approx(EMBED_PER_M)
-
-    def test_embed_ignores_output_tokens(self):
-        cost = token_cost_usd("embed", 1_000_000, 999_999)
-        assert cost == pytest.approx(EMBED_PER_M)
-
-    def test_llm_cost_input_only(self):
-        cost = token_cost_usd("translate", 1_000_000, 0)
-        assert cost == pytest.approx(INPUT_PER_M)
-
-    def test_llm_cost_output_only(self):
-        cost = token_cost_usd("translate", 0, 1_000_000)
-        assert cost == pytest.approx(OUTPUT_PER_M)
-
-    def test_llm_cost_mixed(self):
-        cost = token_cost_usd("judge", 500_000, 500_000)
-        expected = (500_000 / 1_000_000) * INPUT_PER_M + (500_000 / 1_000_000) * OUTPUT_PER_M
+    @pytest.mark.parametrize(
+        ("call_type", "input_tokens", "output_tokens", "expected"),
+        [
+            ("embed", 1_000_000, 0, EMBED_PER_M),
+            ("embed", 1_000_000, 999_999, EMBED_PER_M),
+            ("translate", 1_000_000, 0, INPUT_PER_M),
+            ("translate", 0, 1_000_000, OUTPUT_PER_M),
+            (
+                "judge",
+                500_000,
+                500_000,
+                (500_000 / 1_000_000) * INPUT_PER_M + (500_000 / 1_000_000) * OUTPUT_PER_M,
+            ),
+        ],
+    )
+    def test_token_cost(self, call_type, input_tokens, output_tokens, expected):
+        cost = token_cost_usd(call_type, input_tokens, output_tokens)
         assert cost == pytest.approx(expected)
 
     def test_zero_tokens(self):

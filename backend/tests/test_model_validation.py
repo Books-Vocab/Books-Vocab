@@ -119,21 +119,18 @@ class TestReviewStateEntryValidation:
         defaults.update(overrides)
         return ReviewStateEntry(**defaults)
 
-    def test_negative_interval_rejected(self):
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("review_interval_hours", -1.0),
+            ("review_count", -1),
+            ("lapse_count", -1),
+            ("review_streak", -1),
+        ],
+    )
+    def test_negative_field_rejected(self, field, value):
         with pytest.raises(ValidationError):
-            self._valid_entry(review_interval_hours=-1.0)
-
-    def test_negative_review_count_rejected(self):
-        with pytest.raises(ValidationError):
-            self._valid_entry(review_count=-1)
-
-    def test_negative_lapse_count_rejected(self):
-        with pytest.raises(ValidationError):
-            self._valid_entry(lapse_count=-1)
-
-    def test_negative_review_streak_rejected(self):
-        with pytest.raises(ValidationError):
-            self._valid_entry(review_streak=-1)
+            self._valid_entry(**{field: value})
 
     def test_valid_entry_accepted(self):
         e = self._valid_entry()
@@ -152,14 +149,9 @@ class TestDailyReviewStatEntryValidation:
         e = DailyReviewStatEntry(day_key="2026-03-10", total=5, remembered=4, forgot=1)
         assert e.day_key == "2026-03-10"
 
-    def test_negative_total_rejected(self):
+    @pytest.mark.parametrize("count_field", ["total", "remembered", "forgot"])
+    def test_negative_count_rejected(self, count_field):
+        counts = dict(total=5, remembered=0, forgot=0)
+        counts[count_field] = -1
         with pytest.raises(ValidationError):
-            DailyReviewStatEntry(day_key="2026-03-10", total=-1, remembered=0, forgot=0)
-
-    def test_negative_remembered_rejected(self):
-        with pytest.raises(ValidationError):
-            DailyReviewStatEntry(day_key="2026-03-10", total=5, remembered=-1, forgot=0)
-
-    def test_negative_forgot_rejected(self):
-        with pytest.raises(ValidationError):
-            DailyReviewStatEntry(day_key="2026-03-10", total=5, remembered=0, forgot=-1)
+            DailyReviewStatEntry(day_key="2026-03-10", **counts)

@@ -45,11 +45,11 @@ def test_require_admin_uses_hmac_compare_digest():
 
 
 def test_require_admin_valid_header_passes():
-    require_admin(None, admin_token="secret", authorization="Bearer secret")
+    assert require_admin(None, admin_token="secret", authorization="Bearer secret") is None
 
 
 def test_require_admin_valid_query_param_passes():
-    require_admin("secret", admin_token="secret", authorization=None)
+    assert require_admin("secret", admin_token="secret", authorization=None) is None
 
 
 def test_require_admin_wrong_token_raises_403():
@@ -86,7 +86,7 @@ def test_resolve_admin_token_no_cookie_param_returns_none():
 
 def test_require_admin_valid_cookie_passes():
     signed = _sign_cookie("secret")
-    require_admin(None, admin_token="secret", authorization=None, cookie_token=signed)
+    assert require_admin(None, admin_token="secret", authorization=None, cookie_token=signed) is None
 
 
 def test_require_admin_wrong_cookie_raises_403():

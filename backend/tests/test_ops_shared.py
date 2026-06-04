@@ -117,7 +117,7 @@ class TestAssertReadonlySql:
         "SELECT 1;",  # trailing ; tolerated
     ])
     def test_allows_readonly(self, sql):
-        assert_readonly_sql(sql)  # no raise
+        assert assert_readonly_sql(sql) is None  # no raise
 
     @pytest.mark.parametrize("sql", [
         "DELETE FROM cards",
