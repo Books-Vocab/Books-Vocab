@@ -50,6 +50,12 @@ _SERIES_ID_RE = re.compile(r"\A[a-z0-9_]+\Z")
 _MAX_EPISODE_NUM = 999
 
 
+def _validate_series_id(series_id: str) -> None:
+    """Reject path-unsafe series ids with a 404 (don't leak existence)."""
+    if not _SERIES_ID_RE.match(series_id):
+        raise HTTPException(404)
+
+
 def _podcasts_dir(request: Request | None = None) -> Path:
     if request is not None:
         return request.app.state.kg_settings.podcasts_dir
@@ -294,8 +300,7 @@ def upsert_user_progress(
     body reflects the current authoritative row so the client can converge
     its local copy without a second GET.
     """
-    if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+    _validate_series_id(series_id)
     return progress_store.upsert(
         user_id=user["id"],
         series_id=series_id,
@@ -312,8 +317,7 @@ def get_user_progress(
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
     user: dict = Depends(get_current_user),
 ):
-    if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+    _validate_series_id(series_id)
     row = progress_store.get_single(
         user_id=user["id"], series_id=series_id, ep_num=ep_num,
     )
@@ -324,8 +328,7 @@ def get_user_progress(
 
 @router.get("/api/podcasts/{series_id}")
 def get_podcast_series(series_id: str, request: Request, user: dict = Depends(get_current_user)):
-    if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+    _validate_series_id(series_id)
     if _using_s3(request):
         data = _read_json_from_s3(
             request, f"{series_id}/metadata.json", context="metadata",
@@ -501,8 +504,7 @@ def get_podcast_audio(
     * **Disk (dev / transition)** — hand-rolled Range handler against the
       filesystem. The legacy public StaticFiles mount was removed in 2026-05.
     """
-    if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+    _validate_series_id(series_id)
 
     if _using_s3(request):
         return _serve_audio_from_s3(request, series_id, ep_num, range_header)
@@ -554,8 +556,7 @@ def get_podcast_subtitle(
     request: Request,
     user: dict = Depends(get_current_user),
 ):
-    if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+    _validate_series_id(series_id)
 
     if _using_s3(request):
         cfg = _settings(request)
@@ -595,8 +596,7 @@ def get_podcast_cover(
     ``/{series_id}`` detail and 3-segment ``/{series_id}/{ep_num}/*`` routes, so
     there is no route-matching collision.
     """
-    if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+    _validate_series_id(series_id)
 
     headers = {"Cache-Control": "private, max-age=86400"}
     if _using_s3(request):
