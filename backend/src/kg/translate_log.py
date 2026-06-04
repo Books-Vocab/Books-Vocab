@@ -44,11 +44,8 @@ def _db_path() -> Path:
 def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
-        db = _db_path()
-        db.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(db), check_same_thread=False)
-        from .sqlite_utils import init_sqlite_pragmas
-        init_sqlite_pragmas(_conn)
+        from .sqlite_utils import ensure_columns, open_singleton
+        _conn = open_singleton(_db_path())
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS translate_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,9 +83,7 @@ def _get_conn() -> sqlite3.Connection:
         # also pass model='' (none in current code paths), so legacy entries
         # expire naturally via TTL without being served to mismatched callers.
         for table in ("translate_log", "translate_cache_hits"):
-            cols = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})").fetchall()}
-            if "model" not in cols:
-                _conn.execute(f"ALTER TABLE {table} ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+            ensure_columns(_conn, table, {"model": "TEXT NOT NULL DEFAULT ''"})
         # Rebuild cache lookup index to include model. Old name retained for
         # any external observers; content now covers the new key shape.
         _conn.execute("DROP INDEX IF EXISTS idx_tl_cache")

@@ -79,6 +79,25 @@ def model_for(call_type: str) -> str:
     return _MODEL_MAP.get(call_type, _DEFAULT_MODEL)
 
 
+def _accumulate(
+    buckets: dict[str, dict[str, Any]],
+    key: str,
+    *,
+    calls: int,
+    input_tokens: int,
+    output_tokens: int,
+    cost: float,
+) -> None:
+    """Fold one priced row slice into ``buckets[key]``, creating it if absent."""
+    bucket = buckets.setdefault(
+        key, {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+    )
+    bucket["calls"] += calls
+    bucket["input_tokens"] += input_tokens
+    bucket["output_tokens"] += output_tokens
+    bucket["cost_usd"] += cost
+
+
 def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, Any]:
     """Return per-user token + cost breakdown for the given range.
 
@@ -143,33 +162,17 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
         total_cost += cost
         total_calls += c
 
-        ctbucket = by_call_type.setdefault(call_type, {
-            "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
-        })
-        ctbucket["calls"] += c
-        ctbucket["input_tokens"] += ti
-        ctbucket["output_tokens"] += to
-        ctbucket["cost_usd"] += cost
-
-        svc = service_for(call_type)
-        bucket = by_service.setdefault(svc, {
-            "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
-        })
-        bucket["calls"] += c
-        bucket["input_tokens"] += ti
-        bucket["output_tokens"] += to
-        bucket["cost_usd"] += cost
-
         # Prefer the row's recorded model; legacy NULL rows fall back to
         # the call_type-inferred name so historical data still renders.
         mdl = model or model_for(call_type)
-        mbucket = by_model.setdefault(mdl, {
-            "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
-        })
-        mbucket["calls"] += c
-        mbucket["input_tokens"] += ti
-        mbucket["output_tokens"] += to
-        mbucket["cost_usd"] += cost
+        for buckets, key in (
+            (by_call_type, call_type),
+            (by_service, service_for(call_type)),
+            (by_model, mdl),
+        ):
+            _accumulate(
+                buckets, key, calls=c, input_tokens=ti, output_tokens=to, cost=cost
+            )
 
     # Round cost_usd at the leaves once aggregation is complete.
     for bucket in (*by_service.values(), *by_model.values(), *by_call_type.values()):
