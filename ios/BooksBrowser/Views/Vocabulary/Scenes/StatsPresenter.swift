@@ -234,7 +234,7 @@ struct StatsPresenter: View {
                         graphEntryBody(nodes: nodes, edges: edges)
                             .aspectRatio(1, contentMode: .fit)
 
-                        if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
+                        if let avgRatio = averageRatio(of: nodes) {
                             healthBar(ratio: avgRatio)
                                 .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                                 .padding(.bottom, AppSpacing.s2)

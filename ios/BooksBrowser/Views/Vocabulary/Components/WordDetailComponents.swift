@@ -125,31 +125,6 @@ private struct ShimmerLine: View {
     }
 }
 
-// MARK: - WordDetailMetadataRow (kept for backward compat, simplified)
-
-struct WordDetailMetadataRow<Content: View>: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let title: String
-    @ViewBuilder let trailing: Content
-
-    init(title: String, @ViewBuilder trailing: () -> Content) {
-        self.title = title
-        self.trailing = trailing()
-    }
-
-    var body: some View {
-        HStack {
-            Text(title.localized)
-                .font(appSkin.typography.caption)
-                .foregroundStyle(appSkin.palette.quaternaryText)
-            Spacer()
-            trailing
-        }
-        .enableInjection()
-    }
-}
-
 // MARK: - VocabularySyncBadge
 
 struct VocabularySyncBadge: View {
