@@ -207,12 +207,23 @@ def _used_usd(user_id: str) -> float:
     return total + _reserved_usd(user_id)
 
 
-def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
-    """Return {fraction, reset_seconds} where fraction = remaining / limit."""
+def _quota_view(user_id: str, *, is_pro: bool) -> tuple[float, float, float]:
+    """Shared quota arithmetic for every reader: (limit, used, fraction).
+
+    ``fraction`` = remaining / limit, guarded against a zero limit (an operator
+    may set a tier limit to 0 via ``configure_limits``) so readers degrade to
+    0.0 rather than dividing by zero.
+    """
     limit = _daily_limit(is_pro)
     used = _used_usd(user_id)
     remaining = max(limit - used, 0.0)
-    fraction = round(remaining / limit, 4)
+    fraction = round(remaining / limit, 4) if limit > 0 else 0.0
+    return limit, used, fraction
+
+
+def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
+    """Return {fraction, reset_seconds} where fraction = remaining / limit."""
+    _limit, _used, fraction = _quota_view(user_id, is_pro=is_pro)
     return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
 
 
@@ -334,25 +345,18 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
 def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     """Pre-flight check before a translate call.
 
-    Returns {exceeded: bool, fraction, reset_seconds}.
+    Returns {exceeded: bool, fraction, reset_seconds}. Thin alias over
+    ``check_and_get_quota`` — kept as a public symbol for callers that read
+    the intent ("just a gate check"); both compute identically.
     """
-    limit = _daily_limit(is_pro)
-    used = _used_usd(user_id)
-    exceeded = used >= limit
-    remaining = max(limit - used, 0.0)
-    fraction = round(remaining / limit, 4)
-    return {"exceeded": exceeded, "fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
+    return check_and_get_quota(user_id, call_type, is_pro=is_pro)
 
 
 def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     """Pre-flight check + state in one query."""
-    limit = _daily_limit(is_pro)
-    used = _used_usd(user_id)
-    remaining = max(limit - used, 0.0)
-    fraction = round(remaining / limit, 4)
-    exceeded = used >= limit
+    limit, used, fraction = _quota_view(user_id, is_pro=is_pro)
     return {
-        "exceeded": exceeded,
+        "exceeded": used >= limit,
         "fraction": fraction,
         "reset_seconds": _ROLLING_WINDOW_SECONDS,
     }
