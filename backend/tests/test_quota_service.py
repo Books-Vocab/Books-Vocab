@@ -15,6 +15,7 @@ from kg.quota_service import (
     check_and_get_quota,
     check_quota,
     configure_limits,
+    get_all_quota_usage,
     get_quota_state,
     token_cost_usd,
 )
@@ -100,6 +101,34 @@ def _insert_usage(conn, user_id, call_type, input_tokens, output_tokens, created
         (user_id, call_type, input_tokens, output_tokens, created_at),
     )
     conn.commit()
+
+
+class TestGetAllQuotaUsage:
+    """fraction_used / limit_usd must reflect each user's actual tier, not a
+    hardcoded PRO limit (would 10x-underestimate Free users)."""
+
+    def test_free_and_pro_use_own_limit(self, mock_db):
+        from datetime import UTC, datetime
+        now = datetime.now(UTC).isoformat()
+        # Same spend ($0.015 = 150k input @ $0.10/M) for a free and a pro user.
+        _insert_usage(mock_db, "free_u", "translate", 150_000, 0, now)
+        _insert_usage(mock_db, "pro_u", "translate", 150_000, 0, now)
+
+        usage = get_all_quota_usage(is_pro_by_user={"pro_u": True, "free_u": False})
+
+        # Free limit $0.03 → fraction_used 0.5; Pro limit $0.30 → 0.05.
+        assert usage["free_u"]["limit_usd"] == pytest.approx(0.03)
+        assert usage["pro_u"]["limit_usd"] == pytest.approx(0.30)
+        assert usage["free_u"]["fraction_used"] == pytest.approx(0.5, abs=1e-3)
+        assert usage["pro_u"]["fraction_used"] == pytest.approx(0.05, abs=1e-3)
+
+    def test_unknown_user_defaults_to_free(self, mock_db):
+        from datetime import UTC, datetime
+        now = datetime.now(UTC).isoformat()
+        _insert_usage(mock_db, "ghost", "translate", 150_000, 0, now)
+        usage = get_all_quota_usage()  # no map → conservative free tier
+        assert usage["ghost"]["limit_usd"] == pytest.approx(0.03)
+        assert usage["ghost"]["fraction_used"] == pytest.approx(0.5, abs=1e-3)
 
 
 class TestGetQuotaState:
