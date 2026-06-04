@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 7fcbcffc
+verified_against: 1f55231f
 -->
 # iOS Smoke Test Checklist
 
@@ -35,9 +35,9 @@ verified_against: 7fcbcffc
 
 ## 4. Vocabulary Review Flow
 
-- [ ] 詞庫頁「待收錄」tab 顯示剛加入的詞
-- [ ] 同步到 KG 後，「知識庫」tab 顯示
-- [ ] 「關聯圖」tab 顯示圖譜
+- [ ] 詞庫頁顯示剛加入的詞（同步前為「待收錄」狀態）
+- [ ] 同步到 KG 後，詞出現在 review-state tab（未學習 / 待複習 / 已複習）
+- [ ] 圖譜入口開啟，關聯圖正常顯示
 - [ ] 複習按鈕觸發 TodayReview
 - [ ] 滑動歸類正常（認識 / 模糊 / 不認識）
 
