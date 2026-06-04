@@ -76,15 +76,6 @@ struct PodcastSentenceLevelView: View {
 
     @State private var isFollowing = true
     @State private var selectionState: PodcastSentenceSelection?
-    /// Last line the line-follow scroll acted on — lets us distinguish an
-    /// intra-sentence line crossing (scroll) from a same-line advance (no scroll)
-    /// and from a sentence change (handled by `followScroll`).
-    @State private var lastFollowedLine: PodcastLineFollowTarget?
-
-    /// Follow anchor: the current line/sentence settles at 40% viewport height
-    /// (upper third), matching mainstream lyric views and leaving room below for a
-    /// long sentence to unfold downward as it is read.
-    private static let followAnchor = UnitPoint(x: 0.5, y: 0.4)
 
     private var currentId: Int? { renderState?.sentenceId }
 
@@ -158,7 +149,7 @@ struct PodcastSentenceLevelView: View {
             // turn via `.task` before centering (no animation on first placement).
             .task {
                 await Task.yield()
-                if let id = currentId { proxy.scrollTo(id, anchor: Self.followAnchor) }
+                if let id = currentId { proxy.scrollTo(id, anchor: .center) }
             }
             // Manual browse: any user drag disengages follow (the native scroll
             // itself still handles the movement — this gesture only flips the
@@ -169,61 +160,20 @@ struct PodcastSentenceLevelView: View {
                     if isFollowing { isFollowing = false }
                 }
             )
-            // Line-level follow: the current cell reports the line the playhead is on;
-            // scroll to it only when it crosses into a NEW line of the same sentence
-            // (the value is unchanged within a line, so this fires per crossing — not
-            // per frame). Sentence changes are left to `followScroll` above.
-            .onPreferenceChange(PodcastLineFollowKey.self) { target in
-                handleLineFollow(target, proxy: proxy)
-            }
             .animation(AppMotion.contentFade, value: isFollowing)
         }
         .enableInjection()
     }
 
     /// Animated scroll that centers `id`, gated on follow being active. The
-    /// duration is adaptive — `PodcastFollowScroll.duration(sentenceDuration:)`
-    /// scales it to this sentence's on-screen lifetime so a short sentence's scroll
-    /// isn't cut off mid-flight by the next boundary — and is fed into the
-    /// decelerate `AppMotion.podcastFollowScroll(duration:)` curve, making the move
-    /// read as a continuous glide rather than a jump.
+    /// duration is what makes the move read as a continuous glide rather than a
+    /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
         guard isFollowing, let id else { return }
-        // Adapt the scroll duration to how long this sentence lingers: a short
-        // sentence gets a short scroll so it settles before the next boundary
-        // fires another `scrollTo` (the old fixed 0.9s got interrupted mid-flight,
-        // making fast passages judder). Look-up is O(n) but runs only at sentence
-        // boundaries (~0.2 Hz), never per frame.
-        let sentenceDuration = sentences.first(where: { $0.id == id })
-            .map { $0.endTime - $0.startTime } ?? PodcastFollowScroll.maxDuration
-        let dur = PodcastFollowScroll.duration(sentenceDuration: sentenceDuration)
         PerfLog.scroll.measure("scrollTo", "id=\(id)") {
-            withAnimation(AppMotion.podcastFollowScroll(duration: dur)) {
-                proxy.scrollTo(id, anchor: Self.followAnchor)
+            withAnimation(AppMotion.podcastFollowScroll) {
+                proxy.scrollTo(id, anchor: .center)
             }
-        }
-    }
-
-    /// Line-level follow scroll. Fires when the playhead crosses INTO a new line of
-    /// the SAME sentence: scroll that line's leftmost word to the follow anchor. A
-    /// sentence change is deliberately NOT handled here (that's `followScroll`'s job
-    /// via `onChange(of: currentId)`), so the two scroll sources never fight; a
-    /// same-line advance never reaches here because the preference value is unchanged
-    /// within a line. Discrete animated `scrollTo` per crossing — no per-frame
-    /// offset, so the freeze guardrail holds.
-    private func handleLineFollow(_ target: PodcastLineFollowTarget?, proxy: ScrollViewProxy) {
-        let previous = lastFollowedLine
-        lastFollowedLine = target
-        guard isFollowing, let target,
-              let previous, previous.sentenceId == target.sentenceId,
-              previous.anchorWordIndex != target.anchorWordIndex else { return }
-        withAnimation(AppMotion.podcastFollowScroll(duration: PodcastFollowScroll.lineDuration)) {
-            proxy.scrollTo(
-                PodcastLineFollow.wordScrollID(
-                    sentenceId: target.sentenceId, wordIndex: target.anchorWordIndex
-                ),
-                anchor: Self.followAnchor
-            )
         }
     }
 
@@ -439,8 +389,6 @@ private struct PodcastTranscriptColumn: View {
                     speaker: sentence.speaker,
                     words: sentence.words,
                     fullText: sentence.text,
-                    sentenceStart: sentence.startTime,
-                    sentenceEnd: sentence.endTime,
                     skin: PodcastBubbleSkin(skin: skin, slot: slot),
                     liveAnchor: liveAnchor,
                     duration: duration,
@@ -557,11 +505,6 @@ private struct PodcastBubbleCell: View, Equatable {
     let speaker: String
     let words: [PodcastSubtitleCue]
     let fullText: String
-    /// This sentence's play span — drives the current bubble's progress-fill
-    /// background (`PodcastBubbleFill.fillFraction`). Determined by `sentenceId`
-    /// (already folded into `contentHash`) → NOT compared in `==`.
-    let sentenceStart: TimeInterval
-    let sentenceEnd: TimeInterval
     let skin: PodcastBubbleSkin
     // Per-frame channel + stable closures — EXCLUDED from == (determined by
     // `sentenceId` or read live per frame):
@@ -624,6 +567,7 @@ private struct PodcastBubbleCell: View, Equatable {
     @ViewBuilder
     private var bubbleContent: some View {
         let active = isCurrent || isSelecting
+        let bg: Color = active ? skin.tint.opacity(0.18) : skin.tint.opacity(0.08)
         let fg: Color = active ? skin.primaryText : skin.secondaryText
         Group {
             if isSelecting {
@@ -647,78 +591,29 @@ private struct PodcastBubbleCell: View, Equatable {
         }
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, 10)
-        // Bubble fill + border live in their OWN shape-only layer (`bubbleBackground`)
-        // so the bg/border animation never animates the structural `wordFlow` swap
-        // (plain Text ↔ anchorPreference + overlayPreferenceValue + GeometryReader +
-        // TimelineView) in the content layer above — animating that swap spins up
-        // BOTH subtrees in one transaction → the per-sentence-change hitch, so the
-        // swap MUST stay instant.
-        .background { bubbleBackground }
-        .animation(AppMotion.contentFade, value: isSelecting)
-    }
-
-    /// Bubble container background. The CURRENT bubble fills its tint left→right in
-    /// lock-step with the sentence's play progress (a continuous progress bar,
-    /// `PodcastBubbleFill.fillFraction`), replacing the old binary active/inactive
-    /// crossfade the user saw as "在跳". ONLY the current cell runs the per-frame
-    /// `TimelineView` (same `liveAnchor` gate as the underline, paused when not
-    /// playing); every other cell is a static low-tint base — so the per-cell
-    /// `Equatable` short-circuit and the scroll-freeze guardrail are untouched. The
-    /// handoff (current ⇄ not-current) crossfades on `active` over a longer,
-    /// scroll-synced curve (`podcastBubbleHandoff`) so the focus glides between
-    /// bubbles instead of snapping.
-    @ViewBuilder
-    private var bubbleBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
-        let active = isCurrent || isSelecting
-        shape
-            .fill(skin.tint.opacity(0.08))
-            .overlay { activeBubbleFill(shape: shape).transition(.opacity) }
-            .overlay {
-                shape.stroke(
-                    skin.tint.opacity(active ? 0.22 : 0.08),
-                    lineWidth: active ? 1 : 0.8
-                )
-            }
-            .animation(AppMotion.podcastBubbleHandoff, value: active)
-    }
-
-    /// The tint fill riding above the base. CURRENT (playing/paused, not selecting):
-    /// a left-anchored mask whose width tracks the per-frame play progress through
-    /// this sentence — the progress bar. The per-frame work (mask width via
-    /// `liveAnchor` extrapolation) is NOT animated by a modifier; like the underline
-    /// it reads continuous from the `TimelineView` clock so it never lags the
-    /// playhead. SELECTING: a full-width static fill (a phrase selection must not
-    /// shift under the user's finger). Otherwise absent — base tint shows through.
-    /// The per-frame cost is bounded to the single current cell, exactly like the
-    /// underline engine; no other cell instantiates the `TimelineView`.
-    ///
-    /// NOTE: intentionally NOT gated on `wordFollowEnabled` (unlike the underline,
-    /// which is). That toggle means "per-WORD follow underline"; this fill is a
-    /// per-SENTENCE progress focus — a different affordance — so it stays on even
-    /// when the user turns the word underline off.
-    @ViewBuilder
-    private func activeBubbleFill(shape: RoundedRectangle) -> some View {
-        if isCurrent && !isSelecting {
-            GeometryReader { geo in
-                TimelineView(.animation(paused: !isPlaying)) { ctx in
-                    let t = PodcastPlaybackClock.projectedTime(
-                        anchor: liveAnchor.value,
-                        now: ctx.date.timeIntervalSinceReferenceDate,
-                        duration: duration
-                    )
-                    let frac = PodcastBubbleFill.fillFraction(
-                        playhead: t, start: sentenceStart, end: sentenceEnd
-                    )
-                    shape.fill(skin.tint.opacity(0.18))
-                        .mask(alignment: .leading) {
-                            Rectangle().frame(width: geo.size.width * frac)
-                        }
+        // Bubble fill + border live in their OWN shape-only layer so the active↔
+        // inactive skin crossfade animates on `active` WITHOUT animating the
+        // structural `wordFlow` swap (plain Text ↔ anchorPreference +
+        // overlayPreferenceValue + GeometryReader + TimelineView) that lives in the
+        // content layer above. Animating that swap spins up BOTH subtrees in one
+        // transaction → the per-sentence-change hitch — so the swap MUST stay
+        // instant. Scoping `.animation(value: active)` to this token-free shape
+        // layer gives the smooth bg/border glide the user asked for while keeping
+        // the structural swap snap-instant. (Earlier this whole block was left
+        // un-animated to dodge the hitch, which made the bubble color hard-cut.)
+        .background {
+            RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+                .fill(bg)
+                .overlay {
+                    RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+                        .stroke(
+                            skin.tint.opacity(active ? 0.22 : 0.08),
+                            lineWidth: active ? 1 : 0.8
+                        )
                 }
-            }
-        } else if isSelecting {
-            shape.fill(skin.tint.opacity(0.18))
+                .animation(AppMotion.contentFade, value: active)
         }
+        .animation(AppMotion.contentFade, value: isSelecting)
     }
 
     @ViewBuilder
@@ -743,9 +638,6 @@ private struct PodcastBubbleCell: View, Equatable {
                         .anchorPreference(key: WordFrameKey.self, value: .bounds) { [index: $0] }
                         .onTapGesture { onWordTap(cue.word, fullText) }
                         .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
-                        // Per-word scroll id (current/next cell only) so line-follow
-                        // can land a specific line at the follow anchor.
-                        .id(PodcastLineFollow.wordScrollID(sentenceId: sentenceId, wordIndex: index))
                 }
             }
             .overlayPreferenceValue(WordFrameKey.self) { anchors in
@@ -777,52 +669,27 @@ private struct PodcastBubbleCell: View, Equatable {
                 // Current cell logs `ul.frame`; the entering ("next") cell logs
                 // `ul.next` so the second per-frame engine is separable in the trace.
                 let _ = PerfLog.underline.tick(isCurrent ? "ul.frame" : "ul.next")
-                let t = PodcastPlaybackClock.projectedTime(
-                    anchor: liveAnchor.value,
-                    now: ctx.date.timeIntervalSinceReferenceDate,
-                    duration: duration
-                )
-                // The underline drawing is gated on `wordFollowEnabled`; the
-                // line-follow preference below is NOT — line scrolling is
-                // independent of the per-word underline toggle. Only the current
-                // cell reports a non-nil target (gated inside `lineFollowTarget`).
-                ZStack {
-                    // The line-follow preference rides a stable `Color.clear` leaf so
-                    // it is emitted every frame regardless of `wordFollowEnabled` —
-                    // never attached to an empty Group/EmptyView (a fragile contract)
-                    // and decoupled from the conditional underline content.
-                    Color.clear
-                        .preference(key: PodcastLineFollowKey.self, value: lineFollowTarget(t: t, rects: rects))
-                    if wordFollowEnabled {
-                        // Geometry recomputed per frame → motion is continuous with NO
-                        // animation modifier (a spring chasing a moving target visually
-                        // skips words). `relayBars` picks the regime: intra-sentence
-                        // portal, leaving tail-exit, or entering head-enter.
-                        let bars = relayBars(t: t, rects: rects)
-                        ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
-                            Capsule()
-                                .fill(skin.tint)
-                                .frame(width: bar.width, height: 3)
-                                // bottomY (word bottom) + 3pt offset + half the 3pt height.
-                                .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
-                        }
+                if wordFollowEnabled {
+                    let t = PodcastPlaybackClock.projectedTime(
+                        anchor: liveAnchor.value,
+                        now: ctx.date.timeIntervalSinceReferenceDate,
+                        duration: duration
+                    )
+                    // Geometry recomputed per frame → motion is continuous with NO
+                    // animation modifier (a spring chasing a moving target visually
+                    // skips words). `relayBars` picks the regime: intra-sentence
+                    // portal, leaving tail-exit, or entering head-enter.
+                    let bars = relayBars(t: t, rects: rects)
+                    ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+                        Capsule()
+                            .fill(skin.tint)
+                            .frame(width: bar.width, height: 3)
+                            // bottomY (word bottom) + 3pt offset + half the 3pt height.
+                            .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
                     }
                 }
             }
         }
-    }
-
-    /// The line-follow scroll target for playhead `t`, reported via preference from
-    /// the CURRENT cell only (nil on every other cell, and before the active word's
-    /// rect is measured). Carries `sentenceId` so the consumer can tell an
-    /// intra-sentence line crossing from a sentence change.
-    private func lineFollowTarget(t: TimeInterval, rects: [Int: CGRect]) -> PodcastLineFollowTarget? {
-        guard isCurrent else { return nil }
-        let activeIndex = PodcastWordProgress.locate(time: t, words: words).index
-        guard let anchorWordIndex = PodcastLineFollow.anchorWordIndex(
-            wordRects: rects, activeIndex: activeIndex
-        ) else { return nil }
-        return PodcastLineFollowTarget(sentenceId: sentenceId, anchorWordIndex: anchorWordIndex)
     }
 
     /// Picks this cell's underline bars for playhead `t`. Three regimes:
@@ -903,24 +770,6 @@ private struct WordFrameKey: PreferenceKey {
     static let defaultValue: [Int: Anchor<CGRect>] = [:]
     static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
         value.merge(nextValue()) { _, new in new }
-    }
-}
-
-/// Line-follow scroll target reported up from the current cell each frame: the
-/// leftmost word of the line the playhead is on (`PodcastLineFollow.anchorWordIndex`).
-/// `Equatable` so `onPreferenceChange` fires ONLY when it actually changes — a real
-/// line crossing or a sentence change — never per frame within a line.
-private struct PodcastLineFollowTarget: Equatable {
-    let sentenceId: Int
-    let anchorWordIndex: Int
-}
-
-private struct PodcastLineFollowKey: PreferenceKey {
-    static let defaultValue: PodcastLineFollowTarget? = nil
-    static func reduce(value: inout PodcastLineFollowTarget?, nextValue: () -> PodcastLineFollowTarget?) {
-        // Only the current cell reports non-nil (every other cell passes nil), so
-        // keep any non-nil contribution.
-        if let next = nextValue() { value = next }
     }
 }
 
