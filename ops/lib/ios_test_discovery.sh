@@ -35,10 +35,14 @@
 _discover_file() {
   local file="$1" pattern="$2"
   awk -v pattern="$pattern" '
-    function emit(fn) {
+    function emit(fn, is_swift) {
       if (container == "") return
       if (pattern != "" && tolower(fn) !~ tolower(pattern)) return
-      print "-only-testing:BooksBrowserTests/" container "/" fn
+      # Swift Testing requires the func signature `name()` in the -only-testing
+      # identifier; XCTest uses the bare method name. Emitting the XCTest form for
+      # a @Test func makes xcodebuild match 0 tests → "TEST SUCCEEDED" with nothing
+      # run (silent FALSE GREEN). Append "()" only for Swift Testing funcs.
+      print "-only-testing:BooksBrowserTests/" container "/" fn (is_swift ? "()" : "")
     }
     {
       line = $0
@@ -90,8 +94,11 @@ _discover_file() {
         fn = line
         sub(/^.*func[ \t]+/, "", fn)
         sub(/[ \t]*\(.*$/, "", fn)
-        is_test = (same_line_test || pending_test || fn ~ /^test/)
-        if (is_test) emit(fn)
+        # Swift Testing iff decorated with @Test (same line or pending arm above);
+        # a bare `func testXxx` with no @Test is XCTest.
+        is_swift = (same_line_test || pending_test)
+        is_test = (is_swift || fn ~ /^test/)
+        if (is_test) emit(fn, is_swift)
         pending_test = 0
         next
       }
