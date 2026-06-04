@@ -6,7 +6,7 @@ import json
 import logging
 import re
 
-from ..retry import sync_retry
+from ..retry import llm_retryable_exceptions, sync_retry
 from ..tracked_llm import TrackedLLM
 from .models import Judgement
 from .prompts import MANUAL_LINK_SYSTEM_PROMPT
@@ -19,18 +19,6 @@ logger = logging.getLogger(__name__)
 # so we keep a neutral shares_usage link rather than dropping the request.
 _DEGRADED_LINK = "shares_usage"
 _DEGRADED_REASON = "使用者認為這兩個詞相關。"
-
-# Transport errors worth retrying before degrading. Lazily imported so the
-# openai dependency stays optional at module import time (mirrors enrich.py).
-_JUDGE_RETRYABLE: tuple[type[Exception], ...] = ()
-
-
-def _get_judge_retryable() -> tuple[type[Exception], ...]:
-    global _JUDGE_RETRYABLE
-    if not _JUDGE_RETRYABLE:
-        from openai import APIError, InternalServerError, RateLimitError
-        _JUDGE_RETRYABLE = (RateLimitError, APIError, InternalServerError)
-    return _JUDGE_RETRYABLE
 
 
 class ManualLinkJudge:
@@ -111,7 +99,7 @@ class ManualLinkJudge:
                 temperature=0.1,
                 max_attempts=3,
                 base_delay=2.0,
-                retryable_exceptions=_get_judge_retryable(),
+                retryable_exceptions=llm_retryable_exceptions(),
                 step_name="Manual judge LLM",
                 uid=self.user_id,
             )

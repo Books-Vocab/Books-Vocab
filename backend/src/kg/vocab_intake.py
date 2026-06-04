@@ -10,7 +10,12 @@ from typing import Any
 from .api_models import VocabAddResponse, VocabEntry
 from .exceptions import ValidationError
 from .vocab_graph import embed_and_link_new_cards
-from .vocab_shared import MAX_BATCH_SIZE, _clean_content, _normalize_word
+from .vocab_shared import (
+    MAX_BATCH_SIZE,
+    _build_content_lookup,
+    _clean_content,
+    _normalize_word,
+)
 
 
 def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
@@ -74,13 +79,10 @@ def add_vocab_entries(
 ) -> VocabAddResponse:
     if len(entries) > MAX_BATCH_SIZE:
         raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
-    all_cards = list(cards.all(notebook_id=notebook_id))
-    # Build content→card dict once; eliminates per-duplicate find_by_content() DB call
-    existing_by_norm: dict[str, Any] = {}
-    for card in all_cards:
-        key = _normalize_word(card.content)
-        if key not in existing_by_norm:
-            existing_by_norm[key] = card
+    # Build content→card dict once; eliminates per-duplicate find_by_content() DB
+    # call. Shares the same normalized lookup as the batch CRUD paths
+    # (cards.all() defaults to include_deleted=False, matching _build_content_lookup).
+    existing_by_norm = _build_content_lookup(cards, notebook_id=notebook_id)
     existing = set(existing_by_norm.keys())
 
     created = 0
