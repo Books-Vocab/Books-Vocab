@@ -299,8 +299,9 @@ def check() -> list[str]:
             # parsed from a specific enum. Assert the $swift namespace points at
             # that enum so a colliding name in a sibling enum (or a mis-pointed
             # $swift) can't silently match the wrong symbol's value.
-            assert sym.startswith(prefix), (
-                f"{label}.{key}: {sym} does not start with expected prefix {prefix!r}")
+            if not sym.startswith(prefix):
+                raise AssertionError(
+                    f"{label}.{key}: {sym} does not start with expected prefix {prefix!r}")
             sw_name = sym.split(".")[-1]
             if sw_name not in swift:
                 errors.append(f"{label}.{key}: {sym} not found")
