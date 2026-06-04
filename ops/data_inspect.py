@@ -119,6 +119,11 @@ def _section(title: str):
     print(f"{'='*60}")
 
 
+def _pct(n: int, total: int) -> int:
+    """Integer percent n/total, 0 when total is 0 (empty/fresh user DB)."""
+    return (100 * n // total) if total else 0
+
+
 # ── commands ─────────────────────────────────────────────────────────────
 
 def cmd_overview(user: str, **_):
@@ -134,9 +139,9 @@ def cmd_overview(user: str, **_):
     has_note = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0 AND note IS NOT NULL").fetchone()[0]
     has_diff = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0 AND difficulty IS NOT NULL").fetchone()[0]
     print(f"\n[Enrichment Coverage]")
-    print(f"  pos:        {has_pos}/{total} ({100*has_pos//total}%)")
-    print(f"  note:       {has_note}/{total} ({100*has_note//total}%)")
-    print(f"  difficulty: {has_diff}/{total} ({100*has_diff//total}%)")
+    print(f"  pos:        {has_pos}/{total} ({_pct(has_pos, total)}%)")
+    print(f"  note:       {has_note}/{total} ({_pct(has_note, total)}%)")
+    print(f"  difficulty: {has_diff}/{total} ({_pct(has_diff, total)}%)")
 
     # difficulty distribution
     print(f"\n[Difficulty Distribution]")
