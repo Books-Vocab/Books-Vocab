@@ -381,17 +381,25 @@ final class PodcastSyncService {
         guard let rows = try? context.fetch(descriptor), !rows.isEmpty else {
             return nil
         }
-        // Tie-break: same updatedAt → keep the row with larger lastPlayedTime
-        // (closer to user's true progress).
-        let newest = rows.first!
-        let tied = rows.filter { $0.updatedAt == newest.updatedAt }
-        let winner: PodcastProgress = tied.count > 1
-            ? (tied.max(by: { $0.lastPlayedTime < $1.lastPlayedTime }) ?? newest)
-            : newest
+        let winner = progressWinner(amongSortedDescending: rows)
         for row in rows where row !== winner {
             context.delete(row)
         }
         return winner
+    }
+
+    /// Pick the surviving `PodcastProgress` among duplicates.
+    /// - Parameter rows: non-empty, pre-sorted by `updatedAt` descending.
+    /// - Returns: newest row; on a tie in `updatedAt`, the one with the larger
+    ///   `lastPlayedTime` (closer to the user's true progress).
+    private static func progressWinner(
+        amongSortedDescending rows: [PodcastProgress]
+    ) -> PodcastProgress {
+        let newest = rows.first!
+        let tied = rows.filter { $0.updatedAt == newest.updatedAt }
+        return tied.count > 1
+            ? (tied.max(by: { $0.lastPlayedTime < $1.lastPlayedTime }) ?? newest)
+            : newest
     }
 
     /// Reconcile local SwiftData state against authoritative server data.
@@ -474,11 +482,7 @@ final class PodcastSyncService {
         }
         for (_, rows) in grouped where rows.count > 1 {
             let sorted = rows.sorted { $0.updatedAt > $1.updatedAt }
-            let newest = sorted.first!
-            let tied = sorted.filter { $0.updatedAt == newest.updatedAt }
-            let winner: PodcastProgress = tied.count > 1
-                ? (tied.max(by: { $0.lastPlayedTime < $1.lastPlayedTime }) ?? newest)
-                : newest
+            let winner = progressWinner(amongSortedDescending: sorted)
             for row in rows where row !== winner {
                 context.delete(row)
             }
