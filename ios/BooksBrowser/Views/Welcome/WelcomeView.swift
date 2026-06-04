@@ -70,11 +70,7 @@ struct WelcomeView: View {
             Spacer(minLength: AppSpacing.s4)
 
             // App icon
-            Image("AppIconImage")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            AppHeroIcon()
                 .padding(.bottom, AppWelcomeMetrics.iconBottomPadding)
 
             // Walkthrough（TabView 隱藏原生 indicator，改用自繪 step indicator）

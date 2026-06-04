@@ -39,11 +39,7 @@ struct LoginSheet: View {
 
             // Hero
             VStack(spacing: AppSpacing.s2) {
-                Image("AppIconImage")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 80, height: 80)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                AppHeroIcon()
 
                 Text("解鎖完整功能".localized)
                     .font(appSkin.typography.displayTitle)

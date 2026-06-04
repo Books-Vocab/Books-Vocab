@@ -37,17 +37,24 @@ final class VocabularyListCoordinator: VocabularyListCoordinating {
     }
 
     func exportCSV(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
-        exportURL = VocabularyExporter.exportAsCSV(entries: entries)
-        if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
+        runExport(VocabularyExporter.exportAsCSV, entries: entries, toastCoordinator: toastCoordinator)
     }
 
     func exportJSON(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
-        exportURL = VocabularyExporter.exportAsJSON(entries: entries)
-        if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
+        runExport(VocabularyExporter.exportAsJSON, entries: entries, toastCoordinator: toastCoordinator)
     }
 
     func exportAnki(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
-        exportURL = VocabularyExporter.exportAsAnki(entries: entries)
+        runExport(VocabularyExporter.exportAsAnki, entries: entries, toastCoordinator: toastCoordinator)
+    }
+
+    /// 共用匯出流程：產生暫存檔 URL，失敗時統一彈出錯誤 toast。
+    private func runExport(
+        _ makeFile: ([VocabularyEntry]) -> URL?,
+        entries: [VocabularyEntry],
+        toastCoordinator: AppToastCoordinator
+    ) {
+        exportURL = makeFile(entries)
         if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
     }
 

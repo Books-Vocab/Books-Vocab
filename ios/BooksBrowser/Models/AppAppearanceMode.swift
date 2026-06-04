@@ -26,7 +26,6 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
     }
 
     var icon: String {
-        if self == .system { return "circle.lefthalf.filled" }
         switch self {
         case .system: return "circle.lefthalf.filled"
         case .light: return "sun.max"

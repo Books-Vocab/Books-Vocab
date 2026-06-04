@@ -99,7 +99,7 @@ extension VocabularyEntry {
 
             return .init(
                 statusLabel: reviewProgressStatusLabel,
-                detailLabel: "\(elapsed.compactReviewProgressLabel) / \(interval.compactReviewProgressLabel)",
+                detailLabel: "\(elapsed.compactReviewLabel) / \(interval.compactReviewLabel)",
                 ratio: ratio
             )
         }
@@ -134,40 +134,4 @@ private extension Optional where Wrapped == String {
     }
 }
 
-private extension TimeInterval {
-    var compactReviewProgressLabel: String {
-        let seconds = max(0, self)
-        let minute: TimeInterval = 60
-        let hour: TimeInterval = 3600
-        let day: TimeInterval = 86_400
-
-        if seconds < hour {
-            let minutes = max(1, Int((seconds / minute).rounded()))
-            return "\(minutes)m"
-        }
-
-        if seconds < day {
-            let hours = seconds / hour
-            return hours < 10 ? hours.singleDecimalString + "h" : "\(Int(hours.rounded()))h"
-        }
-
-        let days = seconds / day
-        return days < 10 ? days.singleDecimalString + "d" : "\(Int(days.rounded()))d"
-    }
-}
-
-private extension Double {
-    var compactHourLabel: String {
-        (self * 3600).compactReviewProgressLabel
-    }
-}
-
-private extension Double {
-    var singleDecimalString: String {
-        let rounded = (self * 10).rounded() / 10
-        if rounded == rounded.rounded() {
-            return String(Int(rounded))
-        }
-        return String(format: "%.1f", rounded)
-    }
-}
+// 緊湊時間標籤格式化見 CompactTimeFormatting.swift（與 WordDetailPresentation 共用）。

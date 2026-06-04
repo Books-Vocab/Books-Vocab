@@ -58,12 +58,7 @@ struct CardPresentation {
         syncStatus = entry.syncStatus
         dateAdded = entry.dateAdded
 
-        var normalizedForms: [String] = []
-        if let root = entry.rootForm {
-            normalizedForms.append(root)
-        }
-        normalizedForms += entry.inflections.filter { $0 != entry.rootForm }
-        forms = normalizedForms
+        forms = (entry.rootForm.map { [$0] } ?? []) + entry.inflections.filter { $0 != entry.rootForm }
 
         let grouped = entry.graphLinksByKind
         linkGroups = linkOrdering.compactMap { kind in
@@ -81,13 +76,9 @@ struct CardPresentation {
             return CardLinkGroupPresentation(id: group.id, label: group.label, items: activeItems)
         }
 
-        let trimmedContext = sourceContext.trimmingCharacters(in: .whitespacesAndNewlines)
-        let computedShowsSourceContext: Bool
-        if trimmedContext.isEmpty {
-            computedShowsSourceContext = false
-        } else {
-            computedShowsSourceContext = examples.first != trimmedContext || bookTitle != "Knowledge Graph"
-        }
+        let computedShowsSourceContext = Self.computeShowsSourceContext(
+            sourceContext: sourceContext, examples: examples, bookTitle: bookTitle
+        )
 
         document = CardDocumentBuilder.build(
             word: word,
@@ -114,9 +105,15 @@ struct CardPresentation {
     }
 
     var showsSourceContext: Bool {
-        let trimmedContext = sourceContext.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContext.isEmpty else { return false }
-        return examples.first != trimmedContext || bookTitle != "Knowledge Graph"
+        Self.computeShowsSourceContext(sourceContext: sourceContext, examples: examples, bookTitle: bookTitle)
+    }
+
+    /// sourceContext 是否需顯示 — 空白則否；否則僅當它與第一個例句不同、或書名非預設圖譜標題時才顯示。
+    /// init 與 showsSourceContext 共用，避免兩處邏輯 drift。
+    private static func computeShowsSourceContext(sourceContext: String, examples: [String], bookTitle: String) -> Bool {
+        let trimmed = sourceContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return examples.first != trimmed || bookTitle != "Knowledge Graph"
     }
 
     static let defaultLinkOrdering = ["contrasts_with", "shares_usage"]
