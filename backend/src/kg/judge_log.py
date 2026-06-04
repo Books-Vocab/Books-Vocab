@@ -14,6 +14,11 @@ DB_PATH = DATA_DIR / "judge_log.db"
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 
+# Business rule (shared by admin_trends + admin_observability auto-reject
+# metrics): a degree_cap rejection is structural (graph topology hit a degree
+# limit), not a judge quality signal, so it is excluded from rejection counts.
+DEGREE_CAP_EXCLUSION_SQL = "(reject_reason IS NULL OR reject_reason != 'degree_cap')"
+
 
 def _get_conn() -> sqlite3.Connection:
     global _conn

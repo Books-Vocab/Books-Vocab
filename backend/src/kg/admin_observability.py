@@ -148,7 +148,7 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
             "       SUM(CASE WHEN accepted=0 THEN 1 ELSE 0 END) AS rejected "
             "FROM judge_log "
             "WHERE source='auto' AND created_at >= ? "
-            "  AND (reject_reason IS NULL OR reject_reason != 'degree_cap')",
+            f"  AND {jl.DEGREE_CAP_EXCLUSION_SQL}",
             (cutoff,),
         ).fetchone()
     total = (row[0] or 0) if row else 0
