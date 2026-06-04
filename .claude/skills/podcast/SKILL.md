@@ -12,12 +12,12 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 使用者提供一本書的路徑（EPUB），要求產生播客。
 
-## 管線總覽（14 階段）
+## 管線總覽（15 階段）
 
 ```
 EPUB → prep → analyst → architect → plan-review → enricher-gap → enricher
        ┃ .plan_approved ┃ → scriptwrite → series-polish → script-review
-       ┃ .script_approved ┃ → tts-prep → synthesize → audio-qa → subtitle → publish
+       ┃ .script_approved ┃ → tts-prep → synthesize → audio-qa → subtitle → cover → publish
 ```
 
 **兩道人工核准 gate**(`approval_gate_block`):全新 run **預設**跑到 `enricher` 就停(`AWAITING_PLAN_APPROVAL`),`script-review` 後再停一次(`AWAITING_SCRIPT_APPROVAL`)—— 避免在爛計畫上燒 scriptwrite token、爛腳本上燒 TTS。放行:`touch workspaces/<n>/.plan_approved`(或 `.script_approved`)後再 `uv run pipeline.py workspaces/<n>/`,或 dashboard 按 ▶ APPROVE。`--ignore-gates` 還原舊全自動。gate 暫停 = **exit 0**(非失敗);工作區狀態由 monitor 從磁碟 artifact 推導(`.*_approved` 存在或下一相已有產物 → 視為已過閘)。
@@ -37,7 +37,8 @@ EPUB → prep → analyst → architect → plan-review → enricher-gap → enr
 | 11 | `synthesize` | Vertex AI Gemini TTS + ffmpeg loudnorm | 腳本 → MP3 音訊（-16 LUFS mastering） |
 | 12 | `audio-qa` | pydub | wpm / silence / clipping 檢查 → `audio_qa.json`；FAIL 阻斷 |
 | 13 | `subtitle` | Whisper forced alignment | 音訊 + 腳本 → 詞級 SRT 字幕 |
-| 14 | `publish` | `ops/podcast_upload.sh` + boto3 verify | 上傳 workspace → S3 + 確認 series 現身 catalog index（retry/backoff、1800s timeout）。**終端 stage、不設 gate**：合成完成即自動上線。憑證/環境從 `lab/podcast/.env` gap-fill(`AWS_PROFILE=kg-podcast` 寫權限、`PODCAST_BUCKET`;monitor 不 load .env 故腳本自補)— 詳見 `docs/sop/podcast_pipeline.md` §upload.sh 憑證模型。手動補傳：dashboard ▶ upload 或 `ops/podcast_upload.sh <ws>` |
+| 14 | `cover` | Claude agent + `cover_tool.py`（Pexels 漏斗） | series 封面：agent 讀主題 → search(文字海選)→ contact(編號拼圖複選)→ render(duo 後製) → `plan/cover.png`。series-wide（`--only-episode` 跳過）、冪等（cover.png 存在即 skip）、無 gate |
+| 15 | `publish` | `ops/podcast_upload.sh` + boto3 verify | 上傳 workspace → S3（含 cover.png）+ 確認 series 現身 catalog index（retry/backoff、1800s timeout）。**終端 stage、不設 gate**：合成完成即自動上線。憑證/環境從 `lab/podcast/.env` gap-fill(`AWS_PROFILE=kg-podcast` 寫權限、`PODCAST_BUCKET`;monitor 不 load .env 故腳本自補)— 詳見 `docs/sop/podcast_pipeline.md` §upload.sh 憑證模型。手動補傳：dashboard ▶ upload 或 `ops/podcast_upload.sh <ws>` |
 
 ## 完整 CLI 參考
 

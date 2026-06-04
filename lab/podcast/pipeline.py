@@ -162,6 +162,7 @@ STAGES = [
     "script-review",
     "tts-prep",
     "synthesize", "audio-qa", "subtitle",
+    "cover",
     "publish",
 ]
 
@@ -173,7 +174,7 @@ _STAGE_MARKER = ".stage_{name}_done"
 # `pipeline.py <ws> --only-episode N` (producer patching one episode) must NOT
 # trigger either — wrong semantics + wasted cost. They still run when the
 # producer EXPLICITLY drives them via --only-stage (a deliberate full-series op).
-_SERIES_WIDE_STAGES = {"series-polish", "publish"}
+_SERIES_WIDE_STAGES = {"series-polish", "cover", "publish"}
 
 
 def _should_skip_for_only_episode(stage_name: str, args) -> bool:
@@ -1003,6 +1004,7 @@ def run_claude(
 ) -> bool:
     prompt = prompt.replace("{saga_context}", build_saga_context(workspace))
     prompt = prompt.replace("{workspace}", str(workspace))
+    prompt = prompt.replace("{podcast_root}", str(ROOT))  # cover stage drives cover_tool.py by abs path
     if inject_tts:
         prompt = inject_tts_palette(prompt, workspace)
     tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
@@ -1412,6 +1414,57 @@ def stage_subtitle(workspace: Path, log: PipelineLog, only_episode: int | None =
         cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
     )
     return proc.returncode == 0
+
+
+def _emit_cover_usage(workspace: Path) -> None:
+    """Append an image_usage provenance event to events.jsonl (same wrapped shape
+    as run_claude's stream tee). Pexels is free → cost_usd 0; the event records
+    which photo backs the cover so the dashboard / cost breakdown can show it."""
+    meta_path = workspace / "plan" / "cover_meta.json"
+    meta: dict = {}
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            meta = {}
+    event = {
+        "type": "image_usage",
+        "source": meta.get("source", "pexels"),
+        "pexels_id": meta.get("pexels_id"),
+        "count": 1,
+        "cost_usd": 0.0,  # Pexels free license — no per-image charge
+    }
+    wrapped = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "stage_label": "Cover",
+        "event": event,
+    }
+    with (workspace / "events.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(wrapped, ensure_ascii=False) + "\n")
+
+
+def stage_cover(workspace: Path, log: PipelineLog) -> bool:
+    """Series cover art. The agent reads the theme from overview.md, then drives
+    the cover_tool.py funnel (search → contact → render) to pick a theme-relevant
+    Pexels photo and render plan/cover.png with the duo treatment. The finished
+    cover.png is picked up + uploaded by publish (ops/podcast_upload.sh).
+
+    Idempotent: skips if plan/cover.png exists. Series-wide (one per series, so
+    --only-episode skips it via _SERIES_WIDE_STAGES). Loud-fails if the agent
+    finishes without producing cover.png (never leaves a half-state silently).
+    """
+    cover_png = workspace / "plan" / "cover.png"
+    if cover_png.exists():
+        log.event("cover: plan/cover.png exists — skip (idempotent)")
+        return True
+    if not run_claude(_prompt("cover", read_mode(workspace)), workspace, "Cover", log):
+        return False
+    if not cover_png.exists():
+        log.error("cover: agent finished but plan/cover.png missing — no cover produced")
+        return False
+    _emit_cover_usage(workspace)
+    log.event("cover: plan/cover.png produced")
+    return True
 
 
 # 375MB+ over a slow uplink can take a while; cap so a hung upload can't block
@@ -1937,6 +1990,7 @@ examples:
         "synthesize": lambda: stage_synthesize(workspace, log, args.only_episode),
         "audio-qa": lambda: stage_audio_qa(workspace, log, args.only_episode),
         "subtitle": lambda: stage_subtitle(workspace, log, args.only_episode),
+        "cover": lambda: stage_cover(workspace, log),
         "publish": lambda: stage_publish(workspace, log),
     }
 
