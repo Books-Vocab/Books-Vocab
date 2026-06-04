@@ -138,6 +138,16 @@ def delete_vocab_word(
     return {"deleted": word, "id": card.id}
 
 
+class _GraphOpFailed(Exception):
+    """Signals that a per-card graph op failed (and was rolled back).
+
+    Routes the word to the ``failed`` bucket without aborting the batch. Only
+    *graph* failures use this — a store-mutation failure (e.g. a commit error)
+    propagates out of ``_batch_apply`` and aborts the batch, matching the
+    pre-refactor contract where the store call sat outside the graph try/except.
+    """
+
+
 def _batch_apply(
     words: list[str],
     *,
@@ -148,9 +158,11 @@ def _batch_apply(
     """Shared skeleton for batch vocab mutations.
 
     Validates the batch size, builds one content lookup, and runs ``apply(card)``
-    for each resolved word. ``apply`` performs the card mutation + graph op and
-    must **raise on failure** (after rolling its own state back); the raised
-    error routes the word to ``failed`` rather than aborting the batch.
+    for each resolved word. ``apply`` performs the card mutation + graph op; on a
+    graph failure it must roll its own state back and raise ``_GraphOpFailed``,
+    which routes the word to ``failed`` rather than aborting the batch. Any other
+    exception propagates and aborts the batch (preserving pre-refactor behaviour
+    for store-level failures).
 
     Returns ``(succeeded, not_found, failed)`` where ``succeeded`` is a list of
     ``(word, card)`` pairs in input order. Callers shape these into the three
@@ -174,7 +186,7 @@ def _batch_apply(
             continue
         try:
             apply(card)
-        except Exception:
+        except _GraphOpFailed:
             failed.append(word)
             continue
         succeeded.append((word, card))
@@ -209,12 +221,12 @@ def batch_delete_vocab_words(
         if graph is not None:
             try:
                 graph.cleanup_for_card(card.id, remove_blocked=True)
-            except Exception:
+            except Exception as exc:
                 try:
                     cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
                     logger.exception("restore failed for card %s after graph error", card.id)
-                raise
+                raise _GraphOpFailed from exc
 
     succeeded, not_found, failed = _batch_apply(
         words, cards_store=cards_store, notebook_id=notebook_id, apply=_delete
@@ -272,7 +284,7 @@ def batch_archive_vocab_words(
                     graph.cleanup_for_card(card.id)
                 else:
                     graph.restore_links_for(card.id, cards_store)
-            except Exception:
+            except Exception as exc:
                 # Roll the card's archive state back to its original value so a
                 # failed graph op never leaves card state and the response out of
                 # sync (mirrors batch_delete_vocab_words).
@@ -282,7 +294,7 @@ def batch_archive_vocab_words(
                     logger.exception(
                         "rollback failed for card %s after graph error", card.id
                     )
-                raise
+                raise _GraphOpFailed from exc
 
     succeeded, not_found, failed = _batch_apply(
         words, cards_store=cards_store, notebook_id=notebook_id, apply=_archive
