@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc_lower
@@ -74,7 +75,6 @@ class CardQueryMixin:
             return list(session.exec(statement).all())
 
     def count(self, notebook_id: str | None = None) -> int:
-        from sqlalchemy import func
         with Session(self.engine) as session:
             statement = select(func.count()).select_from(Card).where(Card.is_deleted.is_(False))
             if notebook_id is not None:
@@ -83,7 +83,6 @@ class CardQueryMixin:
 
     def count_by_notebook(self) -> dict[str, int]:
         """Single GROUP BY query returning {notebook_id: count}."""
-        from sqlalchemy import func
         with Session(self.engine) as session:
             rows = session.exec(
                 select(Card.notebook_id, func.count())
