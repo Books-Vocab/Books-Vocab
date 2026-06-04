@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class LLMProvider:
     """An OpenAI-compatible LLM provider.
 

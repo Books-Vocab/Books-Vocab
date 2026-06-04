@@ -213,7 +213,7 @@ def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, An
         "all": None,
     }
     if range_ not in range_seconds:
-        raise HTTPException(status_code=400, detail=f"invalid range: {range_}")
+        raise HTTPException(status_code=400, detail=f"Invalid range: {range_}")
 
     secs = range_seconds[range_]
     if secs is None:

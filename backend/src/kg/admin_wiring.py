@@ -265,7 +265,10 @@ def create_admin_handlers(
         try:
             return get_user_cost_summary(user_id, range_=range)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid range. Expected one of 24h/7d/30d/month/all",
+            ) from exc
 
     def admin_host_metrics():
         """Return real-time host metrics for admin dashboard."""

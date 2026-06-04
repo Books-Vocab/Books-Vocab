@@ -292,7 +292,7 @@ def list_podcasts(request: Request, user: dict = Depends(get_current_user)):
         data = _read_json_file(index_file, context="index")
     if not isinstance(data, list):
         logger.error("Podcast index malformed (expected list)")
-        raise HTTPException(500, detail="Malformed index")
+        raise HTTPException(500, detail="Malformed podcast index")
     return data
 
 
@@ -381,7 +381,7 @@ def get_user_progress(
         user_id=user["id"], series_id=series_id, ep_num=ep_num,
     )
     if row is None:
-        raise HTTPException(404, detail="No progress")
+        raise HTTPException(404, detail="No playback progress found")
     return row
 
 

@@ -87,15 +87,15 @@ def sync_app_store_subscription_response(
                 raise HTTPException(status_code=400, detail="transaction_id does not match signed_transaction_info")
             if req.original_transaction_id and snapshot["original_transaction_id"] and req.original_transaction_id != snapshot["original_transaction_id"]:
                 raise HTTPException(status_code=400, detail="original_transaction_id does not match signed_transaction_info")
+        elif not allow_unsigned_sync:
+            if req.environment.lower() == "xcode":
+                logger.warning(
+                    "Rejected unsigned xcode sync for user %s — "
+                    "enable APP_STORE_ALLOW_UNSIGNED_SYNC for dev/test",
+                    user.get("id"),
+                )
+            raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
         else:
-            if not allow_unsigned_sync:
-                if req.environment.lower() == "xcode":
-                    logger.warning(
-                        "Rejected unsigned xcode sync for user %s — "
-                        "enable APP_STORE_ALLOW_UNSIGNED_SYNC for dev/test",
-                        user.get("id"),
-                    )
-                raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
             snapshot = {
                 "product_id": req.product_id,
                 "transaction_id": req.transaction_id,
