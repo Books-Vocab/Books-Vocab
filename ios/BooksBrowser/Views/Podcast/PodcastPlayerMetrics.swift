@@ -277,6 +277,13 @@ enum PodcastFollowScroll {
     /// (< 1 leaves margin so it settles before the next boundary).
     static let coverage: Double = 0.85
 
+    /// Duration for a per-LINE follow scroll (intra-sentence line crossing). Shorter
+    /// than `maxDuration`: line crossings can come in quick succession on a long
+    /// wrapped sentence, so a 0.6s scroll would get interrupted mid-flight by the
+    /// next crossing and judder; the displacement is also smaller (one line, not a
+    /// whole sentence), so a snappier move reads better. Tune on device.
+    static let lineDuration: Double = 0.35
+
     static func duration(sentenceDuration: TimeInterval) -> Double {
         guard sentenceDuration > 0 else { return minDuration }
         return min(maxDuration, max(minDuration, sentenceDuration * coverage))
@@ -320,7 +327,9 @@ enum PodcastLineFollow {
         let tolerance = max(1, activeRect.height * 0.5)
         return wordRects
             .filter { abs($0.value.minY - activeRect.minY) < tolerance }
-            .min { $0.value.minX < $1.value.minX }?
+            // Leftmost word; tie-break on index so the result is deterministic when
+            // two words share a minX (dictionary iteration order is unspecified).
+            .min { ($0.value.minX, $0.key) < ($1.value.minX, $1.key) }?
             .key
     }
 

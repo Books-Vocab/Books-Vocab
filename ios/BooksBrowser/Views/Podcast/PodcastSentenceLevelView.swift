@@ -217,7 +217,7 @@ struct PodcastSentenceLevelView: View {
         guard isFollowing, let target,
               let previous, previous.sentenceId == target.sentenceId,
               previous.anchorWordIndex != target.anchorWordIndex else { return }
-        withAnimation(AppMotion.podcastFollowScroll(duration: PodcastFollowScroll.maxDuration)) {
+        withAnimation(AppMotion.podcastFollowScroll(duration: PodcastFollowScroll.lineDuration)) {
             proxy.scrollTo(
                 PodcastLineFollow.wordScrollID(
                     sentenceId: target.sentenceId, wordIndex: target.anchorWordIndex
@@ -786,7 +786,13 @@ private struct PodcastBubbleCell: View, Equatable {
                 // line-follow preference below is NOT — line scrolling is
                 // independent of the per-word underline toggle. Only the current
                 // cell reports a non-nil target (gated inside `lineFollowTarget`).
-                Group {
+                ZStack {
+                    // The line-follow preference rides a stable `Color.clear` leaf so
+                    // it is emitted every frame regardless of `wordFollowEnabled` —
+                    // never attached to an empty Group/EmptyView (a fragile contract)
+                    // and decoupled from the conditional underline content.
+                    Color.clear
+                        .preference(key: PodcastLineFollowKey.self, value: lineFollowTarget(t: t, rects: rects))
                     if wordFollowEnabled {
                         // Geometry recomputed per frame → motion is continuous with NO
                         // animation modifier (a spring chasing a moving target visually
@@ -802,7 +808,6 @@ private struct PodcastBubbleCell: View, Equatable {
                         }
                     }
                 }
-                .preference(key: PodcastLineFollowKey.self, value: lineFollowTarget(t: t, rects: rects))
             }
         }
     }

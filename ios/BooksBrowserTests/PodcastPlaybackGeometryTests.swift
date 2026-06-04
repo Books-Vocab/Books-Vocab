@@ -493,4 +493,25 @@ struct PodcastLineFollowTests {
         ]
         #expect(PodcastLineFollow.anchorWordIndex(wordRects: rounded, activeIndex: 1) == 0)
     }
+
+    @Test func tieOnMinXResolvesToSmallerIndex() {
+        // Two words sharing the same minX on a line → deterministic smaller index,
+        // not dictionary iteration order.
+        let tied: [Int: CGRect] = [
+            2: CGRect(x: 0, y: 0, width: 20, height: 18),
+            5: CGRect(x: 0, y: 0, width: 20, height: 18),
+        ]
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: tied, activeIndex: 5) == 2)
+    }
+
+    @Test func minYDeltaExactlyAtToleranceIsDifferentLine() {
+        // delta == tolerance (height*0.5 = 9) is NOT within the strict `< tolerance`,
+        // so the words are on different lines (boundary semantics locked).
+        let boundary: [Int: CGRect] = [
+            0: CGRect(x: 0, y: 0, width: 20, height: 18),   // tolerance = 9
+            1: CGRect(x: 0, y: 9, width: 20, height: 18),   // delta == 9 → excluded
+        ]
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: boundary, activeIndex: 0) == 0)
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: boundary, activeIndex: 1) == 1)
+    }
 }
