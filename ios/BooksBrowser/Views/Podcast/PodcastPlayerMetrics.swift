@@ -255,3 +255,88 @@ enum PodcastSeekBarGeometry {
         return CGFloat(ratio) * totalWidth
     }
 }
+
+/// Adaptive duration for the follow-scroll `scrollTo` animation. Pure so it is
+/// unit-testable in isolation (see `PodcastFollowScrollTests`).
+///
+/// The duration tracks how long the just-entered sentence will linger before the
+/// next boundary fires another `scrollTo`. A fixed duration (the old 0.9s) gets
+/// interrupted mid-flight on fast/short sentences — two animated scrolls chase
+/// each other and the follow reads as juddery. Scaling by sentence length keeps a
+/// short sentence's scroll short enough to finish before its successor arrives,
+/// while normal/long sentences cap at `maxDuration` (shorter than the old 0.9s,
+/// which together with the decelerate curve removes the heavy ease-in start the
+/// user felt as 阻尼感). The discrete, per-boundary `scrollTo` model is unchanged —
+/// this only retimes it; it does NOT reintroduce a per-frame offset engine.
+enum PodcastFollowScroll {
+    /// Shortest scroll: anything briefer reads as an abrupt snap.
+    static let minDuration: Double = 0.25
+    /// Longest scroll: long sentences cap here, dropping the old 0.9s heaviness.
+    static let maxDuration: Double = 0.6
+    /// Fraction of the sentence's on-screen lifetime the scroll is allowed to take
+    /// (< 1 leaves margin so it settles before the next boundary).
+    static let coverage: Double = 0.85
+
+    /// Duration for a per-LINE follow scroll (intra-sentence line crossing). Shorter
+    /// than `maxDuration`: line crossings can come in quick succession on a long
+    /// wrapped sentence, so a 0.6s scroll would get interrupted mid-flight by the
+    /// next crossing and judder; the displacement is also smaller (one line, not a
+    /// whole sentence), so a snappier move reads better. Tune on device.
+    static let lineDuration: Double = 0.35
+
+    static func duration(sentenceDuration: TimeInterval) -> Double {
+        guard sentenceDuration > 0 else { return minDuration }
+        return min(maxDuration, max(minDuration, sentenceDuration * coverage))
+    }
+}
+
+/// Progress fraction for the CURRENT bubble's continuous fill background. The
+/// active sentence's container tint fills left→right as the playhead advances
+/// through the sentence (0 at its first word, 1 at its last), so the focus reads
+/// as a smooth progress bar handing off bubble-to-bubble instead of the old binary
+/// active/inactive crossfade (which the user saw as "在跳"). Pure + clamped so a
+/// playhead outside [start, end] (gap / seek / malformed cue) stays in range and a
+/// zero-length sentence never divides by zero. Read per frame on the CURRENT cell
+/// ONLY (same liveAnchor / TimelineView gate as the underline) — no other cell pays.
+enum PodcastBubbleFill {
+    static func fillFraction(playhead: TimeInterval, start: TimeInterval, end: TimeInterval) -> Double {
+        guard end > start else { return 0 }
+        return min(1, max(0, (playhead - start) / (end - start)))
+    }
+}
+
+/// Line-level follow scroll: keeps the CURRENT word's line near a fixed viewport
+/// position so a long sentence scrolls line-by-line (not just sentence-by-sentence).
+/// Pure so it is unit-testable without the SwiftUI runtime.
+///
+/// `scrollTo(_:anchor:)` can only target a view that owns an `.id` and aligns its
+/// anchor to the same viewport fraction, so a line can't be a scroll target on its
+/// own — instead we scroll to the line's LEFTMOST word (it owns a stable per-word
+/// `.id`, see `wordScrollID`). The key property: as the playhead advances WITHIN a
+/// line the leftmost-word index is unchanged, so the caller can drive an animated
+/// `scrollTo` only when this value flips (a real line crossing), never per frame.
+/// The discrete per-crossing `scrollTo` model keeps it off the freeze-prone
+/// per-frame offset path.
+enum PodcastLineFollow {
+    /// Index of the leftmost word on the line that currently holds `activeIndex`.
+    /// A "line" = words whose `minY` agree within half a word-height (absorbs
+    /// layout rounding). `nil` when there is no active word or its rect is not yet
+    /// measured.
+    static func anchorWordIndex(wordRects: [Int: CGRect], activeIndex: Int) -> Int? {
+        guard activeIndex >= 0, let activeRect = wordRects[activeIndex] else { return nil }
+        let tolerance = max(1, activeRect.height * 0.5)
+        return wordRects
+            .filter { abs($0.value.minY - activeRect.minY) < tolerance }
+            // Leftmost word; tie-break on index so the result is deterministic when
+            // two words share a minX (dictionary iteration order is unspecified).
+            .min { ($0.value.minX, $0.key) < ($1.value.minX, $1.key) }?
+            .key
+    }
+
+    /// Globally-unique scroll id for a subtitle word (`"<sentenceId>.<wordIndex>"`).
+    /// Only the current/next cell's words carry it (see `wordFlow`), so the
+    /// `ScrollViewReader` can land a line at the follow anchor.
+    static func wordScrollID(sentenceId: Int, wordIndex: Int) -> String {
+        "\(sentenceId).\(wordIndex)"
+    }
+}
