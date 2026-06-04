@@ -81,6 +81,12 @@ extension ReadiumNavigatorJS {
 
         // 批量標記生字（分批 DOM 遍歷，並向 Swift 回報進度）
         window.__markVocabWords = function(words) {
+            // Generation token：每次呼叫遞增。翻頁/換章觸發的新一輪 mark 會使
+            // 仍排在 setTimeout 佇列中的舊批次作廢（見 processBatch 開頭檢查），
+            // 避免舊批次對已 detached 的 DOM 節點做無效遍歷、並回報過期的
+            // markingProgress 造成初次載入時的進度撕裂。
+            var gen = (window.__markGeneration || 0) + 1;
+            window.__markGeneration = gen;
             if (!words || words.length === 0) {
                 window.webkit.messageHandlers.markingProgress.postMessage(JSON.stringify({done:0,total:0}));
                 return;
@@ -106,6 +112,7 @@ extension ReadiumNavigatorJS {
             var processed = 0;
 
             function processBatch() {
+                if (gen !== window.__markGeneration) return; // 被新一輪 mark 取代 → 中止舊批次
                 var end = Math.min(processed + batchSize, total);
                 for (var i = processed; i < end; i++) {
                     var node = textNodes[i];
