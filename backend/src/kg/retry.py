@@ -10,6 +10,23 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+_LLM_RETRYABLE: tuple[type[Exception], ...] = ()
+
+
+def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
+    """Transient OpenAI-SDK transport errors worth retrying before giving up.
+
+    Lazily imported and cached so the ``openai`` dependency stays optional at
+    module import time. Shared by enrich + judge so the retryable set can never
+    drift between call sites.
+    """
+    global _LLM_RETRYABLE
+    if not _LLM_RETRYABLE:
+        from openai import APIError, InternalServerError, RateLimitError
+        _LLM_RETRYABLE = (RateLimitError, APIError, InternalServerError)
+    return _LLM_RETRYABLE
+
+
 def sync_retry(
     fn: Callable[..., T],
     *args: Any,
