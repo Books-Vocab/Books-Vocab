@@ -151,6 +151,33 @@ extension KGService {
         }
     }
 
+    /// 處理單一 backgroundSync phase 的並行結果，統一處理 401 / log / Sentry /
+    /// CancellationError 過濾。回傳該 phase 的 failure label 陣列；若遇到 401
+    /// 則已內部處理 handleUnauthorized + lastBackgroundSyncError 並回傳 nil
+    /// 以通知 caller 直接 return。
+    private func processSyncPhase(
+        results: [Result<Void, Error>],
+        labels: [String],
+        container: ModelContainer
+    ) async -> [String]? {
+        var failures: [String] = []
+        for (result, label) in zip(results, labels) {
+            if case .failure(let error) = result {
+                if error is KGError, case KGError.unauthorized = error {
+                    await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+                    lastBackgroundSyncError = L10n.string("登入已過期")
+                    return nil
+                }
+                AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
+                }
+                failures.append(label)
+            }
+        }
+        return failures
+    }
+
     func backgroundSync(container: ModelContainer) async {
         // 防止併發：快速前景/背景切換可能觸發多個 sync task
         guard claimBackgroundSync() else {
@@ -181,21 +208,12 @@ extension KGService {
         async let pushStatsResult = Self.captureResult { _ = try await self.pushDailyStats(container: container) }
 
         let pushResults = await [pushReviewResult, pushStatsResult]
-        let pushLabels = ["pushReview", "pushDailyStats"]
-
-        for (result, label) in zip(pushResults, pushLabels) {
-            if case .failure(let error) = result {
-                if error is KGError, case KGError.unauthorized = error {
-                    await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-                    lastBackgroundSyncError = L10n.string("登入已過期")
-                    return
-                }
-                AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
-                if !(error is CancellationError) {
-                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
-                }
-                failures.append(label)
-            }
+        if let pushFailures = await processSyncPhase(
+            results: pushResults, labels: ["pushReview", "pushDailyStats"], container: container
+        ) {
+            failures.append(contentsOf: pushFailures)
+        } else {
+            return
         }
 
         // Phase 2: pull cards & daily stats in parallel (after push completes)
@@ -203,21 +221,12 @@ extension KGService {
         async let pullStatsResult = Self.captureResult { try await self.pullDailyStats(container: container) }
 
         let pullResults = await [pullCardsResult, pullStatsResult]
-        let pullLabels = ["pull", "pullDailyStats"]
-
-        for (result, label) in zip(pullResults, pullLabels) {
-            if case .failure(let error) = result {
-                if error is KGError, case KGError.unauthorized = error {
-                    await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-                    lastBackgroundSyncError = L10n.string("登入已過期")
-                    return
-                }
-                AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
-                if !(error is CancellationError) {
-                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
-                }
-                failures.append(label)
-            }
+        if let pullFailures = await processSyncPhase(
+            results: pullResults, labels: ["pull", "pullDailyStats"], container: container
+        ) {
+            failures.append(contentsOf: pullFailures)
+        } else {
+            return
         }
 
         // Phase 3: podcast catalog（序執行於 vocab pull 之後）。
