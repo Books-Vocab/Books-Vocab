@@ -49,6 +49,8 @@ from tts_config import (
     INLINE_ITALIC_RE as _INLINE_ITALIC_RE,
     DIRECTION_RE as _DIRECTION_RE,
     SSML_RE as _SSML_RE,
+    audio_stem as _audio_stem,
+    find_sibling_script as _find_sibling_script,
 )
 
 # ─── Parse script → plain text ───
@@ -130,12 +132,7 @@ def is_audio_target(path: Path) -> bool:
 
 def resolve_script_for_audio(audio: Path) -> Path | None:
     """Resolve an audio target back to its sibling script .md, or None."""
-    stem = audio.stem.removesuffix("_pro").removesuffix("_flash")
-    candidates = [
-        audio.parent / f"{stem}_script.md",
-        audio.parent / f"{stem}.md",
-    ]
-    return next((c for c in candidates if c.exists()), None)
+    return _find_sibling_script(audio)
 
 
 def _format_ts(seconds: float) -> str:
@@ -308,8 +305,7 @@ def main():
         if is_audio_target(target):
             script = resolve_script_for_audio(target)
             if script is None:
-                tried = [f"{target.stem.removesuffix('_pro').removesuffix('_flash')}_script.md",
-                         f"{target.stem.removesuffix('_pro').removesuffix('_flash')}.md"]
+                tried = [f"{_audio_stem(target)}_script.md", f"{_audio_stem(target)}.md"]
                 print(f"ERROR: no matching script for {target.name} (tried {tried})")
                 sys.exit(1)
             scripts = [script]

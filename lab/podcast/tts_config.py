@@ -9,6 +9,38 @@ extraction used by the start endpoints' allowlist and the synthesize gate."""
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+# Generation-family suffixes stamped onto synthesized audio filenames
+# (ep_1_pro.mp3 / ep_1_flash.m4a). Load-bearing for podcast_upload.sh and the
+# monitor episode regexes — keep this tuple as the single source of the convention.
+_AUDIO_FAMILY_SUFFIXES = ("_pro", "_flash")
+
+
+def audio_stem(audio: Path) -> str:
+    """Audio filename stem with the generation-family suffix stripped.
+
+    ``ep_1_pro`` / ``ep_1_flash`` → ``ep_1``. Single source for the ``_pro``/
+    ``_flash`` convention so subtitle.py and audio_qa.py never drift.
+    """
+    stem = audio.stem
+    for suffix in _AUDIO_FAMILY_SUFFIXES:
+        stem = stem.removesuffix(suffix)
+    return stem
+
+
+def find_sibling_script(audio: Path) -> Path | None:
+    """Resolve an audio file back to its sibling script ``.md``, or None.
+
+    Probes ``{stem}_script.md`` then ``{stem}.md`` next to the audio, where
+    *stem* has the generation-family suffix stripped (see :func:`audio_stem`).
+    """
+    stem = audio_stem(audio)
+    candidates = (
+        audio.parent / f"{stem}_script.md",
+        audio.parent / f"{stem}.md",
+    )
+    return next((c for c in candidates if c.exists()), None)
 
 # Selectable TTS models (also the server-side allowlist). synthesize.py does no
 # format validation, so this is the only gate. An empty/absent choice falls

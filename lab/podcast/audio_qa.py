@@ -39,6 +39,7 @@ from tts_config import (
     DIALOGUE_RE as _DIALOGUE_RE,
     DIRECTION_RE as _DIRECTION_RE,
     SSML_RE as _SSML_RE,
+    find_sibling_script as _find_sibling_script,
 )
 
 # Speech rate: ~150 wpm conversational, 130-200 acceptable. Outside = suspect.
@@ -68,14 +69,7 @@ def script_word_count(script_path: Path) -> int:
 
 
 def find_script(audio_path: Path) -> Path | None:
-    stem = audio_path.stem.removesuffix("_pro").removesuffix("_flash")
-    for cand in [
-        audio_path.parent / f"{stem}_script.md",
-        audio_path.parent / f"{stem}.md",
-    ]:
-        if cand.exists():
-            return cand
-    return None
+    return _find_sibling_script(audio_path)
 
 
 def analyze(audio_path: Path) -> dict:
