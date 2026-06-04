@@ -259,8 +259,6 @@ def main() -> int:
         skipped = summary.get("skip_body", [])
         for s in skipped:
             baseline_lines.append(f"{f}: {s}")
-        if result is None and not skipped:
-            continue
         if result is None:
             continue
         modified += 1
