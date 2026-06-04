@@ -112,7 +112,6 @@ def push_daily_review_stats(
     logger: logging.Logger,
 ) -> dict[str, int]:
     """Merge client daily review stats into server. Returns {upserted}."""
-    upserted = 0
     for entry in entries:
         stats_store.upsert(
             day_key=entry.day_key,
@@ -120,7 +119,7 @@ def push_daily_review_stats(
             remembered=entry.remembered,
             forgot=entry.forgot,
         )
-        upserted += 1
+    upserted = len(entries)
     logger.info("push_daily_review_stats: upserted %d entries", upserted)
     return {"upserted": upserted}
 
