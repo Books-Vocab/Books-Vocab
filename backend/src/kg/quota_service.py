@@ -207,18 +207,13 @@ def _used_usd(user_id: str) -> float:
     return total + _reserved_usd(user_id)
 
 
-def _reset_seconds() -> int:
-    """Seconds until the oldest record in the window would expire (rough)."""
-    return _ROLLING_WINDOW_SECONDS
-
-
 def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
     """Return {fraction, reset_seconds} where fraction = remaining / limit."""
     limit = _daily_limit(is_pro)
     used = _used_usd(user_id)
     remaining = max(limit - used, 0.0)
     fraction = round(remaining / limit, 4)
-    return {"fraction": fraction, "reset_seconds": _reset_seconds()}
+    return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
 
 
 def get_all_quota_usage(
@@ -346,7 +341,7 @@ def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     exceeded = used >= limit
     remaining = max(limit - used, 0.0)
     fraction = round(remaining / limit, 4)
-    return {"exceeded": exceeded, "fraction": fraction, "reset_seconds": _reset_seconds()}
+    return {"exceeded": exceeded, "fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
 
 
 def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
@@ -359,5 +354,5 @@ def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -
     return {
         "exceeded": exceeded,
         "fraction": fraction,
-        "reset_seconds": _reset_seconds(),
+        "reset_seconds": _ROLLING_WINDOW_SECONDS,
     }
