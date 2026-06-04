@@ -56,15 +56,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: var(--toggle-size);
+  height: var(--toggle-size);
   padding: 0;
   border: none;
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--tint);
   cursor: pointer;
-  font-size: 15px;
+  font-size: var(--toggle-glyph);
   line-height: 1;
   transition: background var(--motion-quick), color var(--motion-quick),
               transform var(--spring-press), opacity var(--spring-press);
