@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 from openai import OpenAIError
 
+from ._fsutil import fsync_dir as _fsync_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,25 +30,6 @@ def _fsync_path(path: Path) -> None:
     finally:
         os.close(fd)
 
-
-def _fsync_dir(directory: Path) -> None:
-    """Best-effort fsync of a directory so a rename within it is durable.
-
-    Some filesystems disallow directory fsync (raises) — tolerated: the tmp
-    fsync already covers data durability, this only hardens the rename's
-    directory entry where the platform supports it. Same helper shape as
-    ``kg.graph.persistence._fsync_dir``.
-    """
-    try:
-        fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        pass
-    finally:
-        os.close(fd)
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
