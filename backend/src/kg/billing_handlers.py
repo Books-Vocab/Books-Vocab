@@ -38,10 +38,10 @@ def _map_app_store_errors(verification_log: str, verification_detail: str) -> It
     try:
         yield
     except AppStoreConfigurationError as exc:
-        logger.error("App Store configuration error: %s", exc)
+        logger.error("App Store configuration error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="App Store configuration error") from exc
     except AppStoreVerificationError as exc:
-        logger.warning(verification_log, exc)
+        logger.warning(verification_log, exc, exc_info=True)
         raise HTTPException(status_code=400, detail=verification_detail) from exc
 
 
