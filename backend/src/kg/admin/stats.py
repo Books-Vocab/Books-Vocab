@@ -22,11 +22,17 @@ def admin_stats_response(
     data_dir: Any,
     card_store_factory: Callable[[Any], Any],
 ) -> dict[str, Any]:
+    from ..deps_quota import _is_pro
     from ..quota_service import get_all_quota_usage, token_cost_usd
 
     users_data = load_users()
     token_stats = get_all_stats()
-    quota_usage = get_all_quota_usage()
+    is_pro_by_user = {
+        uid: _is_pro({"record": info})
+        for uid, info in users_data.items()
+        if not uid.startswith("_") and isinstance(info, dict)
+    }
+    quota_usage = get_all_quota_usage(is_pro_by_user=is_pro_by_user)
 
     result = []
     for uid, info in users_data.items():
