@@ -96,6 +96,7 @@
   --transition-panel-reveal: transform 0.3s ease-out, opacity 0.25s ease-out;
   --press-scale: 0.97;
   --press-opacity: 0.92;
+  --on-success: #ffffff;
 }
 
 :root, :host, [data-theme="light"] {
