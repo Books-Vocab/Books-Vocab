@@ -1,4 +1,8 @@
-"""LLM provider A/B harness.
+"""LLM provider A/B harness. **DEPRECATED** — use `lab/llm_eval/` instead.
+
+⚠️  This module is deprecated. The LLM eval workbench in `lab/llm_eval/`
+provides superset functionality: prompt comparison, model comparison,
+rule-based scoring, and structured output for agent consumption.
 
 Compares every provider with an API key configured, on KG's real
 English→Traditional-Chinese translate prompt — the surface most sensitive
@@ -12,9 +16,23 @@ Usage::
     python -m kg.llm.ab --dry-run           # show the plan, no API calls
 
 Requires GEMINI_API_KEY and/or DEEPSEEK_API_KEY in the environment.
+
+Redirect::
+
+    cd lab/llm_eval
+    PYTHONPATH=../../backend/src uv run python3 -c "
+    from llm_eval import run_eval
+    from llm_eval.registry import PromptRegistry
+    from llm_eval.datasets import load_dataset
+    r = PromptRegistry()
+    p = r.render('translate_quick')
+    d = load_dataset('translate_quick')
+    print(run_eval(p, d, models=['gemini-2.5-flash-lite', 'deepseek-v4-flash']))
+    "
 """
 from __future__ import annotations
 
+import warnings
 import os
 import sys
 import time
@@ -81,6 +99,15 @@ def run_one(provider: LLMProvider, word: str, context: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    warnings.warn(
+        "kg.llm.ab is deprecated — use lab/llm_eval/ instead. "
+        "See docs/reference/llm_eval.md for migration.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    print("⚠️  kg.llm.ab is deprecated. Use lab/llm_eval/ for model/prompt comparison.")
+    print("   See docs/reference/llm_eval.md")
+    print()
     argv = list(sys.argv[1:] if argv is None else argv)
     dry_run = "--dry-run" in argv
     words = [a for a in argv if not a.startswith("--")]
