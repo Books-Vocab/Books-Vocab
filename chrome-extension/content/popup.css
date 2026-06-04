@@ -104,11 +104,12 @@
 }
 
 /* Success variant — saved-confirmation override. No primitive equivalent:
-   white on success green = ~4.8:1 AA (no on-success token; deliberate paired
-   foreground). Loads after kg-components.css so it wins over .kg-btn--primary. */
+   --on-success (white) on success green ≈ 4.8:1 AA. iOS has no filled success
+   button (success = tint-bg + text), so on-success is a web-only token, not an
+   iOS mirror. Loads after kg-components.css so it wins over .kg-btn--primary. */
 .kg-popup__btn--success {
   background: var(--success);
-  color: #fff;
+  color: var(--on-success);
 }
 
 /* --- Error --- */

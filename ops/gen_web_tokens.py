@@ -211,6 +211,11 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
     tap = mo["tap-feedback"]
     d.append(("--press-scale", f"{tap['scale-down']['value']:g}"))
     d.append(("--press-opacity", f"{tap['opacity-dip']['value']:g}"))
+    # web-only invariant colors (no iOS literal; e.g. filled-success-button foreground)
+    for key, spec in tokens.get("web-only", {}).get("invariant-color", {}).items():
+        if key.startswith("$"):
+            continue
+        d.append((f"--{key}", spec["css"]))
 
     return d
 
