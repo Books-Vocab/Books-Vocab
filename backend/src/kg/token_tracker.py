@@ -18,10 +18,8 @@ _conn: sqlite3.Connection | None = None
 def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-        from .sqlite_utils import init_sqlite_pragmas
-        init_sqlite_pragmas(_conn)
+        from .sqlite_utils import ensure_columns, open_singleton
+        _conn = open_singleton(DB_PATH)
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,11 +35,7 @@ def _get_conn() -> sqlite3.Connection:
         # Migrate pre-existing DBs: provider/model were added so each row
         # carries the truth used to price it. Older rows stay NULL and fall
         # back to the currently-routed provider in token_cost_usd().
-        _existing = {r[1] for r in _conn.execute("PRAGMA table_info(token_usage)")}
-        if "provider" not in _existing:
-            _conn.execute("ALTER TABLE token_usage ADD COLUMN provider TEXT")
-        if "model" not in _existing:
-            _conn.execute("ALTER TABLE token_usage ADD COLUMN model TEXT")
+        ensure_columns(_conn, "token_usage", {"provider": "TEXT", "model": "TEXT"})
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
         # Bare created_at index for the retention pruner's
