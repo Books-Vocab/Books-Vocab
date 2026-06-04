@@ -96,6 +96,9 @@
   --transition-panel-reveal: transform 0.3s ease-out, opacity 0.25s ease-out;
   --press-scale: 0.97;
   --press-opacity: 0.92;
+  --swatch-light: #F7F6F3;
+  --swatch-dark: #191919;
+  --swatch-sepia: #F5F1EB;
 }
 
 :root, :host, [data-theme="light"] {
