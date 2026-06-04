@@ -91,7 +91,9 @@ struct ArchivedVocabSheet: View {
     }
 
     private var archivedEntries: [VocabularyEntry] {
-        let base = archivedAllEntries.filter { $0.syncStatus == 1 && $0.actionType != "delete" }
+        // archivedAllEntries is already Query-filtered to isArchived == true, so
+        // this matches shouldAppearInArchiveList (isSynced && !delete && isArchived).
+        let base = archivedAllEntries.filter(\.shouldAppearInArchiveList)
         guard !searchText.isEmpty else { return base }
         return base.filter {
             $0.word.localizedCaseInsensitiveContains(searchText) ||

@@ -16,7 +16,7 @@ extension VocabularyListView {
     }
 
     var syncedEntries: [VocabularyEntry] {
-        allEntries.filter { $0.syncStatus == 1 && $0.syncAction != .delete && !$0.isArchived }
+        allEntries.filter(\.shouldAppearInKnowledgeList)
     }
 
     // MARK: - Content

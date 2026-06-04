@@ -38,7 +38,9 @@ enum StatsPresentation {
         reviewRecords: [ReviewRecord],
         forecastDays: Int = 14
     ) -> Summary {
-        let synced = entries.filter { $0.isSynced && $0.syncAction != .delete }
+        // shouldAppearInKnowledgeList == isSynced && !delete && !isArchived.
+        // Archived entries must NOT inflate the review forecast / stats.
+        let synced = entries.filter(\.shouldAppearInKnowledgeList)
         let now = Date()
 
         // Forecast

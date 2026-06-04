@@ -48,9 +48,15 @@ struct KGVocabView: View {
         self.onEntrySelected = onEntrySelected
         self.onStartReview = onStartReview
         let nbId = notebookId
+        // Mirrors shouldAppearInKnowledgeList (isSynced && !delete && !isArchived),
+        // scoped to this notebook. The isArchived guard keeps archived words out of
+        // the KG list and out of WordDetailSheet's link-candidate set (allEntries).
+        // (#Predicate needs stored keypaths, so the condition is inlined here rather
+        // than reusing the computed property.)
         let syncedFilter = #Predicate<VocabularyEntry> {
             $0.syncStatus == 1 &&
             $0.actionType != "delete" &&
+            $0.isArchived == false &&
             $0.notebookId == nbId
         }
         self._syncedEntries = Query(filter: syncedFilter)
