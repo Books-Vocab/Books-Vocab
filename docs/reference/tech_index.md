@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 33191db4
+verified_against: daa3335c
 -->
 # Technical Reference Index
 
@@ -109,7 +109,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `gen_web_tokens.py` | 從 `design-system/tokens.json`(iOS Swift token 鏡像 SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
-| `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 `$swift` token 仍對齊 iOS Swift literal(`AppColors`/`AppTheme`/`AppMetrics`/`AppFonts`/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity〔`AppSurface.swift`〕),偏移不可 merge |
+| `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 `$swift` token 仍對齊 iOS Swift literal(`AppColors`/`AppTheme`/`AppMetrics`〔含 `AppMotion` spring 的 `response`+`dampingFraction` 物理層〕/`AppFonts`/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity〔`AppSurface.swift`〕),偏移不可 merge |
 | `component_fidelity_check.py` | drift guard(**組裝層**)— contract-based 驗證 `design-system/dist/kg-components.css` 每個手寫 primitive *選用* 的 token 對齊 iOS 元件契約(`.kg-chip`↔`AppTag`、`.kg-btn`↔`AppActionButtonStyle` radius md/700、`.kg-card`↔`AppSectionCardStyle`、`.kg-input` body(17)+hairline、`.kg-banner` caption(12)+v8、serif heading 700…),刻意的 web 發散(brand-hero CTA / banner 形狀)亦 pin 防回歸。`token_drift` 守值、它守*選用哪個值*;stdlib-only,env override `KG_COMPONENTS_CSS` |
 | `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `component_fidelity_check`(若存在)+ extension `shared/pure.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
