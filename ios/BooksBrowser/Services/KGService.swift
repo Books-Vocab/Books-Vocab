@@ -7,7 +7,6 @@
 
 import Foundation
 import SwiftData
-import os
 
 /// Manages communication with the Knowledge Graph API server
 @Observable
