@@ -71,25 +71,33 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
 }
 .btn-copy:hover { background: var(--accent-hover); }
 .hint { color: var(--text-secondary); font-size: 12px; margin-top: 16px; }
+.manual-steps { color: var(--text-secondary); font-size: 13px; margin-top: 16px; text-align: left; }
+.manual-steps ol { padding-left: 18px; margin: 8px 0 0 0; }
+.manual-steps li { margin-bottom: 4px; }
 </style>
 </head>
 <body>
 <div class="card">
   <h1>WordNexus</h1>
   <div id="ext-status">
-    <p class="status ok">Token sent to extension. You can close this tab.</p>
+    <p class="status ok">Token 已自動傳送至擴充功能，可關閉此分頁。</p>
   </div>
   <div id="fallback" class="fallback">
-    <p class="status">Copy the token below and paste it in the extension:</p>
+    <p class="status">自動傳送失敗，請手動貼上 Token：</p>
     <div class="token-box" id="token-display">{{ token }}</div>
-    <button class="btn-copy" onclick="copyToken()">Copy Token</button>
-    <p class="hint">If the extension is installed, tokens are sent automatically.</p>
+    <button class="btn-copy" onclick="copyToken()">複製 Token</button>
+    <div class="manual-steps">
+      <ol>
+        <li>點擊「複製 Token」</li>
+        <li>開啟擴充功能設定頁（點擊擴充功能圖示 → 設定）</li>
+        <li>將 Token 貼上至輸入框並確認</li>
+      </ol>
+    </div>
   </div>
 </div>
 <script>
 (function() {
   var token = {{ token | tojson }};
-  var extensionId = {{ extension_id | tojson }};
   var sent = false;
 
   function showFallback() {
@@ -98,10 +106,11 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
     }
   }
 
-  if (extensionId && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+  // On externally_connectable pages chrome.runtime is already bound to the
+  // extension that declared this origin — no extensionId required.
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     try {
       chrome.runtime.sendMessage(
-        extensionId,
         {type: 'auth_token', token: token},
         function(response) {
           if (chrome.runtime.lastError || !response || !response.ok) {
@@ -126,8 +135,8 @@ function copyToken() {
   var token = {{ token | tojson }};
   navigator.clipboard.writeText(token).then(function() {
     var btn = document.querySelector('.btn-copy');
-    btn.textContent = 'Copied!';
-    setTimeout(function() { btn.textContent = 'Copy Token'; }, 2000);
+    btn.textContent = '已複製';
+    setTimeout(function() { btn.textContent = '複製 Token'; }, 2000);
   });
 }
 </script>

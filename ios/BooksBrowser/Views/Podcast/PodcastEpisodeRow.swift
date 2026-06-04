@@ -20,9 +20,20 @@ struct PodcastEpisodeRow: View {
     private var isCompleted: Bool { progress?.completed == true }
     #if os(iOS)
     private var downloadProgress: Double? { downloadManager.progress[episode.remoteId] }
+    private var downloadFailed: Bool { downloadManager.failed[episode.remoteId] != nil }
     private var isDownloaded: Bool {
         guard let path = episode.localAudioPath else { return false }
         return FileManager.default.fileExists(atPath: path)
+    }
+
+    /// Kick off (or retry) the offline download. Fetches a fresh auth token so
+    /// the manager keeps zero dependency on KGService. `startDownload` clears any
+    /// prior `failed[remoteId]` entry, so this doubles as the retry path.
+    private func startDownloadTask() {
+        Task {
+            guard let token = try? await kgService.currentAuthToken() else { return }
+            downloadManager.startDownload(episode: episode, authToken: token)
+        }
     }
     #endif
     private var hasProgress: Bool {
@@ -92,12 +103,15 @@ struct PodcastEpisodeRow: View {
             } label: {
                 Label(L10n.string("移除下載"), systemImage: "trash")
             }
+        } else if downloadFailed {
+            Button {
+                startDownloadTask()
+            } label: {
+                Label(L10n.string("重試下載"), systemImage: "arrow.clockwise")
+            }
         } else {
             Button {
-                Task {
-                    guard let token = try? await kgService.currentAuthToken() else { return }
-                    downloadManager.startDownload(episode: episode, authToken: token)
-                }
+                startDownloadTask()
             } label: {
                 Label(L10n.string("下載供離線播放"), systemImage: "arrow.down.circle")
             }
@@ -157,6 +171,20 @@ struct PodcastEpisodeRow: View {
             .animation(.easeOut(duration: 0.2), value: frac)
             .accessibilityLabel(L10n.string("podcast.episodeRow.downloading"))
             .accessibilityValue("\(Int((frac * 100).rounded()))%")
+        } else if downloadFailed {
+            // 下載失敗 → 可點重試徽章。先前 `failed` dict 全無 view 讀取，失敗
+            // 後使用者完全無回饋且無從重試（只能長按 contextMenu）。對齊 BookCard
+            // 的 iCloud retryBadge 模式。tap 走 startDownloadTask（startDownload
+            // 會清掉 failed[remoteId]，故同一路徑即重試）。
+            Button {
+                startDownloadTask()
+            } label: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(skin.typography.iconTiny)
+                    .foregroundStyle(skin.palette.warning)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("podcast.episodeRow.downloadFailed"))
         } else if isDownloaded {
             Image(systemName: "arrow.down.circle.fill")
                 .font(skin.typography.iconTiny)

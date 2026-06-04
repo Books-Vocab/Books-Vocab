@@ -30,15 +30,17 @@ final class PodcastSubtitleEngine {
     }
 
     func currentCue(at time: TimeInterval) -> PodcastSubtitleCue? {
-        // Binary search with gap fallback — compact SRTs stitch end=next.start
-        // but any gap (silence / rounding) would otherwise return nil and cause
-        // the highlight to strobe off/on once per word. Fall back to the last
-        // cue whose startTime <= time.
+        // Half-open `[startTime, endTime)` binary search with gap fallback —
+        // compact SRTs stitch end=next.start, so a closed interval would make a
+        // shared boundary instant ambiguous between adjacent cues (the same
+        // seek off-by-one fixed in `locateSentence`). `endTime <= time` assigns
+        // each boundary solely to the next cue; a real gap still falls back to the
+        // last cue whose startTime <= time. Mirrors `locateSentence`.
         guard !cues.isEmpty else { return nil }
         var lo = 0, hi = cues.count - 1
         while lo <= hi {
             let mid = (lo + hi) / 2
-            if cues[mid].endTime < time {
+            if cues[mid].endTime <= time {
                 lo = mid + 1
             } else if cues[mid].startTime > time {
                 hi = mid - 1
@@ -46,16 +48,35 @@ final class PodcastSubtitleEngine {
                 return cues[mid]
             }
         }
-        // hi is the largest index with startTime <= time (mirrors currentSentence).
         return hi >= 0 ? cues[hi] : nil
     }
 
     func currentSentence(at time: TimeInterval) -> PodcastSentence? {
+        Self.locateSentence(in: sentences, at: time)
+    }
+
+    /// Locate the sentence active at `time` using a **half-open** interval
+    /// `[startTime, endTime)`. Pure + static so it can be unit-tested directly
+    /// without driving the parser.
+    ///
+    /// Why half-open (the seek off-by-one fix): compact SRTs stitch sentences
+    /// gap-free, so `sentence[i-1].endTime == sentence[i].startTime`. With a
+    /// CLOSED interval (`endTime < time` / `startTime > time` ⇒ else), that shared
+    /// boundary instant belongs to BOTH neighbours' closed ranges, and a precise
+    /// zero-tolerance seek to `sentence[i].startTime` lands exactly on it — so the
+    /// binary search could return `sentence[i-1]` (the bubble ABOVE the tapped
+    /// one). Tapping a group's first sentence looked correct only because a
+    /// speaker change leaves a silent gap before it, breaking the boundary tie.
+    /// `endTime <= time` makes each boundary instant belong solely to the next
+    /// sentence, so a seek to a startTime always resolves to that sentence.
+    /// Gap fallback unchanged: a `time` inside a real silence still returns the
+    /// last sentence whose `startTime <= time` (`hi`).
+    static func locateSentence(in sentences: [PodcastSentence], at time: TimeInterval) -> PodcastSentence? {
         guard !sentences.isEmpty else { return nil }
         var lo = 0, hi = sentences.count - 1
         while lo <= hi {
             let mid = (lo + hi) / 2
-            if sentences[mid].endTime < time {
+            if sentences[mid].endTime <= time {
                 lo = mid + 1
             } else if sentences[mid].startTime > time {
                 hi = mid - 1
