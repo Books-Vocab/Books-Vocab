@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 80147399
+verified_against: 33191db4
 -->
 # Chrome Extension Feature Boundary
 
@@ -23,8 +23,8 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `content/content.js` | 502 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效 |
-| `content/popup.css` | — | popup 樣式（tokens.css 子集） |
+| `content/content.js` | 507 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效。經 manifest `web_accessible_resources` `fetch` `tokens.css`→`kg-components.css`→`popup.css`（concat 順序 load-bearing：vars → base primitives → layout）注入 shadow root |
+| `content/popup.css` | — | popup layout 樣式（消費 `kg-components.css` primitives + BEM `.kg-popup__*` layout class，非自繪 card/btn） |
 
 ### Sidepanel Layer（主 UI）
 
@@ -51,6 +51,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | `shared/pure.test.js` | 450 | `pure.js` 單元測試 |
 | `shared/theme.js` | 44 | 深淺色主題切換 |
 | `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
+| `shared/kg-components.css` | — | component primitives（`.kg-card` / `.kg-btn` / `.kg-chip`，鏡像 iOS `AppCard`/`AppButton`/`AppTag`）。**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/dist/kg-components.css` 複製（手寫源在 dist，禁手改此 copy；已納入 `--check` gate）。三 surface 共用一套 primitive 詞彙 |
 | `shared/fonts.css` | — | surface-local `@font-face`（woff2 URL；font *family* 為 tokens.css 的 `--font-*` token，URL 各 surface 自帶） |
 
 ## 對外契約
@@ -73,4 +74,5 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 新增 / 刪除主要 JS 檔案 | 本檔對應 Layer 表 |
 | 改 `shared/api.js` 呼叫的 backend endpoint | [`tech_index.md`](../tech_index.md) router 章節 |
 | 改認證流程 | [`docs/sop/architecture.md`](../../sop/architecture.md) auth 段 |
-| 改設計 token / 配色 | 改 `design-system/tokens.json` 再跑 `ops/gen_web_tokens.py` 重生 `shared/tokens.css`（禁直接手改生成檔；drift 由 `ops/token_drift_check.py` 守） |
+| 改設計 token / 配色 | 改 `design-system/tokens.json` 再跑 `ops/gen_web_tokens.py` 重生 `shared/{tokens,kg-components}.css`（禁直接手改生成檔；drift 由 `ops/token_drift_check.py` 守） |
+| 改 surface 視覺（card / button / chip 外觀） | 三 surface（sidepanel / popup / options）現消費 `shared/kg-components.css` 的 `.kg-card`/`.kg-btn`/`.kg-chip` primitives；改視覺走 `tokens.json` → generator 重生，**勿在 surface CSS 手寫等價樣式**。各 surface 自有 CSS 僅放 BEM layout class（`.kg-list-card` / `.kg-popup__btn` / `.kg-section-card`）與 primitive 組合；重定義 base class 視為 bug |

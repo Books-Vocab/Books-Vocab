@@ -6,21 +6,25 @@ token files; see ops/token_drift_check.py). This script is the ONE place that
 turns those tokens into CSS custom properties for every web surface.
 
 Outputs (GENERATED — never hand-edit):
-  design-system/dist/kg-tokens.css      canonical, link this from any web page
-  chrome-extension/shared/tokens.css    bundled copy for the extension
-  backend/static/kg-tokens.css          bundled copy for the public 官網 (served
-                                        by FastAPI StaticFiles; rsync ships only
-                                        backend/, so the copy must live here)
-  backend/static/kg-components.css      bundled copy of the hand-authored
-                                        primitives (the 官網 is greenfield — no
-                                        class-name collision, so it CAN consume them)
+  design-system/dist/kg-tokens.css         canonical, link this from any web page
+  chrome-extension/shared/tokens.css       bundled copy for the extension
+  chrome-extension/shared/kg-components.css bundled copy of the hand-authored
+                                           primitives for the extension surfaces
+  backend/static/kg-tokens.css             bundled copy for the public 官網 (served
+                                           by FastAPI StaticFiles; rsync ships only
+                                           backend/, so the copy must live here)
+  backend/static/kg-components.css         bundled copy of the same primitives for
+                                           the public 官網
 
 The component primitives (design-system/dist/kg-components.css) are HAND-AUTHORED;
-that dist/ file is their source. They are intentionally NOT copied into the
-extension (their generic .kg-btn / .kg-card class names would collide with the
-extension's existing component CSS) but ARE copied verbatim into backend/static/
-for the public site, which has no such collision. They are the shared vocabulary
-for fresh surfaces (backend pages, future 官網).
+that dist/ file is their source. They are copied verbatim into BOTH the extension
+and backend/static/ so every web surface consumes ONE component vocabulary that
+tracks the iOS app. (Earlier the extension was excluded for fear its .kg-btn /
+.kg-card class names would collide. Invariant that makes bundling safe: the base
+primitive classes — .kg-btn / .kg-card / .kg-chip — are owned SOLELY by this file;
+each surface's own CSS only defines BEM-scoped LAYOUT classes (.kg-list-card /
+.kg-popup__btn / .kg-section-card) that compose with the primitives, and the
+markup opts in explicitly. Any surface redefining a base class is a bug.)
 
 Selector strategy (shadow-DOM safe):
   Invariant tokens  ->  `:root, :host`
@@ -50,6 +54,7 @@ TOKENS_JSON = REPO / "design-system" / "tokens.json"
 DIST_TOKENS = REPO / "design-system" / "dist" / "kg-tokens.css"
 DIST_COMPONENTS = REPO / "design-system" / "dist" / "kg-components.css"
 EXT_TOKENS = REPO / "chrome-extension" / "shared" / "tokens.css"
+EXT_COMPONENTS = REPO / "chrome-extension" / "shared" / "kg-components.css"
 BACKEND_STATIC = REPO / "backend" / "static"
 BACKEND_TOKENS = BACKEND_STATIC / "kg-tokens.css"
 BACKEND_COMPONENTS = BACKEND_STATIC / "kg-components.css"
@@ -265,6 +270,7 @@ def main() -> int:
     targets: list[tuple[Path, str]] = [
         (DIST_TOKENS, tokens_css),
         (EXT_TOKENS, tokens_css),
+        (EXT_COMPONENTS, components_css),
         (BACKEND_TOKENS, tokens_css),
         (BACKEND_COMPONENTS, components_css),
     ]
