@@ -12,6 +12,61 @@ from .user_store import parse_datetime
 from .vocab_shared import _normalize_word
 
 
+def _merge_card_review_state(
+    entry: ReviewStateEntry,
+    card: Any,
+    client_last: datetime,
+    *,
+    logger: logging.Logger,
+) -> dict | None:
+    """Merge one client entry into one matched card; return batch_update kwargs.
+
+    Returns ``None`` when nothing changed (caller counts it as skipped). Policy:
+
+    - server newer-or-equal → only raise ``review_count`` / ``lapse_count`` to
+      the client max (counts are monotonic and conflict-free).
+    - client newer → accept the full client schedule.
+
+    The server-newer branch mutates ``card`` in place so a card matched by
+    multiple entries in the same batch sees its already-bumped counts.
+    """
+    server_last = parse_datetime(card.last_reviewed_at)
+    if server_last and server_last >= client_last:
+        changed = False
+        if entry.review_count > card.review_count:
+            card.review_count = entry.review_count
+            changed = True
+        if entry.lapse_count > card.lapse_count:
+            card.lapse_count = entry.lapse_count
+            changed = True
+        if not changed:
+            return None
+        return dict(review_count=card.review_count, lapse_count=card.lapse_count)
+
+    # Client is newer — accept all fields.
+    client_next = parse_datetime(entry.next_review_at)
+    # Observability: a present-but-unparseable next_review_at silently resets
+    # this card's schedule to None below. Surface it so bad/stale client payloads
+    # are diagnosable. Skip whitespace-only / empty values, which mean "not
+    # meaningfully sent" rather than malformed.
+    if client_next is None and str(entry.next_review_at).strip():
+        logger.warning(
+            "push_review_states: card %s has unparseable next_review_at %r; "
+            "schedule reset to None",
+            card.id,
+            entry.next_review_at,
+        )
+    return dict(
+        review_interval_hours=entry.review_interval_hours,
+        next_review_at=client_next,
+        last_reviewed_at=client_last,
+        review_count=max(entry.review_count, card.review_count),
+        lapse_count=max(entry.lapse_count, card.lapse_count),
+        review_streak=entry.review_streak,
+        last_review_feedback=entry.last_review_feedback,
+    )
+
+
 def push_review_states(
     entries: list[ReviewStateEntry],
     *,
@@ -59,46 +114,12 @@ def push_review_states(
             continue
 
         for card in cards:
-            server_last = parse_datetime(card.last_reviewed_at)
-            if server_last and server_last >= client_last:
-                # Server is newer or equal — only take max counts
-                changed = False
-                if entry.review_count > card.review_count:
-                    card.review_count = entry.review_count
-                    changed = True
-                if entry.lapse_count > card.lapse_count:
-                    card.lapse_count = entry.lapse_count
-                    changed = True
-                if changed:
-                    pending_updates.append((card.id, dict(review_count=card.review_count, lapse_count=card.lapse_count)))
-                    updated += 1
-                else:
-                    skipped += 1
-                continue
-
-            # Client is newer — accept all fields
-            client_next = parse_datetime(entry.next_review_at)
-            # Observability: a present-but-unparseable next_review_at silently
-            # resets this card's schedule to None below. Surface it so bad/stale
-            # client payloads are diagnosable. Skip whitespace-only / empty
-            # values, which mean "not meaningfully sent" rather than malformed.
-            if client_next is None and str(entry.next_review_at).strip():
-                logger.warning(
-                    "push_review_states: card %s has unparseable next_review_at %r; "
-                    "schedule reset to None",
-                    card.id,
-                    entry.next_review_at,
-                )
-            pending_updates.append((card.id, dict(
-                review_interval_hours=entry.review_interval_hours,
-                next_review_at=client_next,
-                last_reviewed_at=client_last,
-                review_count=max(entry.review_count, card.review_count),
-                lapse_count=max(entry.lapse_count, card.lapse_count),
-                review_streak=entry.review_streak,
-                last_review_feedback=entry.last_review_feedback,
-            )))
-            updated += 1
+            update = _merge_card_review_state(entry, card, client_last, logger=logger)
+            if update is None:
+                skipped += 1
+            else:
+                pending_updates.append((card.id, update))
+                updated += 1
 
     if pending_updates:
         cards_store.batch_update(pending_updates)

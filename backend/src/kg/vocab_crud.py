@@ -138,6 +138,62 @@ def delete_vocab_word(
     return {"deleted": word, "id": card.id}
 
 
+class _GraphOpFailed(Exception):
+    """Signals that a per-card graph op failed (and was rolled back).
+
+    Routes the word to the ``failed`` bucket without aborting the batch. Only
+    *graph* failures use this — a store-mutation failure (e.g. a commit error)
+    propagates out of ``_batch_apply`` and aborts the batch, matching the
+    pre-refactor contract where the store call sat outside the graph try/except.
+    """
+
+
+def _batch_apply(
+    words: list[str],
+    *,
+    cards_store: Any,
+    notebook_id: str | None,
+    apply: Callable[[Any], None],
+) -> tuple[list[tuple[str, Any]], list[str], list[str]]:
+    """Shared skeleton for batch vocab mutations.
+
+    Validates the batch size, builds one content lookup, and runs ``apply(card)``
+    for each resolved word. ``apply`` performs the card mutation + graph op; on a
+    graph failure it must roll its own state back and raise ``_GraphOpFailed``,
+    which routes the word to ``failed`` rather than aborting the batch. Any other
+    exception propagates and aborts the batch (preserving pre-refactor behaviour
+    for store-level failures).
+
+    Returns ``(succeeded, not_found, failed)`` where ``succeeded`` is a list of
+    ``(word, card)`` pairs in input order. Callers shape these into the three
+    disjoint buckets the client uses to converge (see #720).
+    """
+    if not words:
+        raise ValidationError("No words provided")
+    if len(words) > MAX_BATCH_SIZE:
+        raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
+
+    succeeded: list[tuple[str, Any]] = []
+    not_found: list[str] = []
+    failed: list[str] = []
+
+    lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
+
+    for word in words:
+        card = lookup.get(_normalize_word(word))
+        if not card:
+            not_found.append(word)
+            continue
+        try:
+            apply(card)
+        except _GraphOpFailed:
+            failed.append(word)
+            continue
+        succeeded.append((word, card))
+
+    return succeeded, not_found, failed
+
+
 def batch_delete_vocab_words(
     words: list[str],
     *,
@@ -159,36 +215,24 @@ def batch_delete_vocab_words(
       of ``not_found`` prevents iOS from permanently dropping a still-present
       card — see #720.)
     """
-    if not words:
-        raise ValidationError("No words provided")
-    if len(words) > MAX_BATCH_SIZE:
-        raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
 
-    deleted_words: list[str] = []
-    deleted_ids: list[str] = []
-    not_found: list[str] = []
-    failed: list[str] = []
-
-    lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
-
-    for word in words:
-        card = lookup.get(_normalize_word(word))
-        if not card:
-            not_found.append(word)
-            continue
+    def _delete(card: Any) -> None:
         cards_store.delete(card.id)
         if graph is not None:
             try:
                 graph.cleanup_for_card(card.id, remove_blocked=True)
-            except Exception:
+            except Exception as exc:
                 try:
                     cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
                     logger.exception("restore failed for card %s after graph error", card.id)
-                failed.append(word)
-                continue
-        deleted_words.append(word)
-        deleted_ids.append(card.id)
+                raise _GraphOpFailed from exc
+
+    succeeded, not_found, failed = _batch_apply(
+        words, cards_store=cards_store, notebook_id=notebook_id, apply=_delete
+    )
+    deleted_words = [word for word, _ in succeeded]
+    deleted_ids = [card.id for _, card in succeeded]
 
     # Evict embeddings for all committed-deleted cards in one batched save.
     # Best-effort: the cards are already gone, so a store failure must not
@@ -231,22 +275,8 @@ def batch_archive_vocab_words(
       sync. (Routing graph failures here instead of ``not_found`` prevents iOS
       from permanently dropping/mislabelling a still-present card — see #720.)
     """
-    if not words:
-        raise ValidationError("No words provided")
-    if len(words) > MAX_BATCH_SIZE:
-        raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
 
-    updated_words: list[str] = []
-    not_found: list[str] = []
-    failed: list[str] = []
-
-    lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
-
-    for word in words:
-        card = lookup.get(_normalize_word(word))
-        if not card:
-            not_found.append(word)
-            continue
+    def _archive(card: Any) -> None:
         cards_store.update(card.id, is_archived=archived)
         if graph is not None:
             try:
@@ -254,7 +284,7 @@ def batch_archive_vocab_words(
                     graph.cleanup_for_card(card.id)
                 else:
                     graph.restore_links_for(card.id, cards_store)
-            except Exception:
+            except Exception as exc:
                 # Roll the card's archive state back to its original value so a
                 # failed graph op never leaves card state and the response out of
                 # sync (mirrors batch_delete_vocab_words).
@@ -264,9 +294,12 @@ def batch_archive_vocab_words(
                     logger.exception(
                         "rollback failed for card %s after graph error", card.id
                     )
-                failed.append(word)
-                continue
-        updated_words.append(word)
+                raise _GraphOpFailed from exc
+
+    succeeded, not_found, failed = _batch_apply(
+        words, cards_store=cards_store, notebook_id=notebook_id, apply=_archive
+    )
+    updated_words = [word for word, _ in succeeded]
 
     return {
         "updated": len(updated_words),

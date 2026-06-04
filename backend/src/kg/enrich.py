@@ -10,7 +10,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 
 from .cards import Card
-from .retry import sync_retry
+from .retry import llm_retryable_exceptions, sync_retry
 
 SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
 - word: 原詞
@@ -79,17 +79,6 @@ def _call_enrich_llm(llm, batch: list[Card], model: str | None = None):
     )
 
 
-_ENRICH_RETRYABLE: tuple[type[Exception], ...] = ()
-
-
-def _get_enrich_retryable() -> tuple[type[Exception], ...]:
-    global _ENRICH_RETRYABLE
-    if not _ENRICH_RETRYABLE:
-        from openai import APIError, InternalServerError, RateLimitError
-        _ENRICH_RETRYABLE = (RateLimitError, APIError, InternalServerError)
-    return _ENRICH_RETRYABLE
-
-
 def _retry_detail(wait_time: float) -> str:
     """Progress message for an enrich retry. Provider-neutral — enrich
     routes via provider_for('enrich'), which is not necessarily Gemini.
@@ -111,7 +100,7 @@ def enrich_cards(llm, cards: list[Card], model: str | None = None) -> list[dict]
         _call_enrich_llm, llm, cards, model,
         max_attempts=4,
         base_delay=2.0,
-        retryable_exceptions=_get_enrich_retryable(),
+        retryable_exceptions=llm_retryable_exceptions(),
         step_name="Enrich LLM",
     )
 
@@ -186,7 +175,7 @@ async def enrich_cards_stream(
                 _call_enrich_llm, llm, batch, model,
                 max_attempts=4,
                 base_delay=2.0,
-                retryable_exceptions=_get_enrich_retryable(),
+                retryable_exceptions=llm_retryable_exceptions(),
                 delay_fn=_delay_fn,
                 step_name="Enrich stream",
             )
