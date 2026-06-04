@@ -75,12 +75,14 @@ from kg.vocab_graph_ops import create_manual_link
 
 
 class FakeCard:
-    def __init__(self, id, content="word", meaning="meaning", is_deleted=False, is_archived=False):
+    def __init__(self, id, content="word", meaning="meaning", is_deleted=False,
+                 is_archived=False, notebook_id="default"):
         self.id = id
         self.content = content
         self.meaning = meaning
         self.is_deleted = is_deleted
         self.is_archived = is_archived
+        self.notebook_id = notebook_id
 
 
 class FakeCardsStore:
@@ -114,7 +116,7 @@ class TestCreateManualLink:
             FakeCard("b", content="banana", meaning="香蕉"),
         ])
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "都是水果"}')
-        result = create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
+        result = create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge, notebook_id="default")
         assert result.kind == LinkKind.SHARES_USAGE
         assert result.confidence == 1.0
         assert result.reason == "都是水果"
@@ -122,7 +124,7 @@ class TestCreateManualLink:
     def test_touches_both_cards(self, store):
         cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
-        create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
+        create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge, notebook_id="default")
         assert "a" in cards.touched and "b" in cards.touched
 
     def test_rejects_missing_card(self, store):
@@ -130,7 +132,7 @@ class TestCreateManualLink:
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         from kg.exceptions import NotFoundError
         with pytest.raises(NotFoundError) as exc:
-            create_manual_link(from_id="a", to_id="missing", cards_store=cards, graph=store, judge=judge)
+            create_manual_link(from_id="a", to_id="missing", cards_store=cards, graph=store, judge=judge, notebook_id="default")
         assert exc.value.status_code == 404
 
     def test_rejects_duplicate_active_link(self, store):
@@ -139,8 +141,34 @@ class TestCreateManualLink:
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         from kg.exceptions import ConflictError
         with pytest.raises(ConflictError) as exc:
-            create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
+            create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge, notebook_id="default")
         assert exc.value.status_code == 409
+
+    def test_rejects_cross_notebook_card(self, store):
+        # The card store is per-user (not per-notebook), so get() can resolve a
+        # card from another notebook. The graph is per-notebook, so an unguarded
+        # link would cross the isolation boundary. Card "b" lives in notebook
+        # "other"; linking it into notebook "default" must be rejected as 404.
+        cards = FakeCardsStore([
+            FakeCard("a", notebook_id="default"),
+            FakeCard("b", notebook_id="other"),
+        ])
+        judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
+        from kg.exceptions import NotFoundError
+        with pytest.raises(NotFoundError) as exc:
+            create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge, notebook_id="default")
+        assert exc.value.status_code == 404
+
+    def test_rejects_cross_notebook_source(self, store):
+        # Symmetric guard: the source card being out-of-notebook is also rejected.
+        cards = FakeCardsStore([
+            FakeCard("a", notebook_id="other"),
+            FakeCard("b", notebook_id="default"),
+        ])
+        judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
+        from kg.exceptions import NotFoundError
+        with pytest.raises(NotFoundError):
+            create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge, notebook_id="default")
 
     def test_unhides_hidden_link(self, store):
         cards = FakeCardsStore([
@@ -150,7 +178,7 @@ class TestCreateManualLink:
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "old reason")
         store.hide_link(lk.id)
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
-        result = create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
+        result = create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge, notebook_id="default")
         assert result.status == "active"
         assert result.kind == LinkKind.CONTRASTS_WITH  # original preserved, LLM skipped
         assert result.reason == "old reason"  # original preserved, LLM skipped

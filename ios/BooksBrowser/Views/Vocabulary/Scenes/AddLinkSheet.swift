@@ -20,6 +20,7 @@ struct AddLinkSheet: View {
     private var filteredEntries: [VocabularyEntry] {
         let candidates = allEntries.filter { entry in
             entry.id != sourceEntry.id
+                && entry.notebookId == sourceEntry.notebookId  // notebook isolation: backend rejects cross-notebook links (404)
                 && entry.kgCardId != nil
                 && !entry.isArchived
                 && !(entry.kgCardId.map { existingLinkedCardIds.contains($0) } ?? false)

@@ -43,12 +43,14 @@ def store(tmp_path):
 
 
 class FakeCard:
-    def __init__(self, id, content="word", meaning="meaning", is_deleted=False, is_archived=False):
+    def __init__(self, id, content="word", meaning="meaning", is_deleted=False,
+                 is_archived=False, notebook_id="default"):
         self.id = id
         self.content = content
         self.meaning = meaning
         self.is_deleted = is_deleted
         self.is_archived = is_archived
+        self.notebook_id = notebook_id
 
 
 class FakeCardsStore:
@@ -178,7 +180,7 @@ class TestCreateManualLinkTouchGuard:
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         with pytest.raises(RuntimeError):
-            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
 
     def test_new_link_touch_failure_attempts_both_endpoints(self, store):
         cards = FakeCardsStore(
@@ -188,7 +190,7 @@ class TestCreateManualLinkTouchGuard:
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         with pytest.raises(RuntimeError):
-            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert "a" in cards.touched and "b" in cards.touched
 
     def test_new_link_touch_failure_logs_error(self, store, caplog):
@@ -201,7 +203,7 @@ class TestCreateManualLinkTouchGuard:
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
         with caplog.at_level(logging.ERROR, logger="kg.vocab_graph_ops"):
             with pytest.raises(RuntimeError):
-                create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+                create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert any(rec.levelno == logging.ERROR for rec in caplog.records)
 
     def test_unhide_branch_touch_failure_reraises_and_rolls_back(self, store):
@@ -216,7 +218,7 @@ class TestCreateManualLinkTouchGuard:
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新"}')
         with pytest.raises(RuntimeError):
-            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+            create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert store.get_link(lk.id).status == "hidden"
 
 
@@ -237,6 +239,6 @@ class TestSuccessPathUnchanged:
              FakeCard("b", content="banana", meaning="香蕉")],
         )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
-        link = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+        link = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
         assert link is not None
         assert "a" in cards.touched and "b" in cards.touched

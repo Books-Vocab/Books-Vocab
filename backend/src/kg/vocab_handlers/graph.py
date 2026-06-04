@@ -59,6 +59,7 @@ def create_manual_link_response(
     link = create_manual_link(
         from_id=req.from_id, to_id=req.to_id,
         cards_store=cards, graph=graph, judge=judge,
+        notebook_id=notebook_id,
     )
     return GraphLinkResponse(
         id=link.id,
