@@ -1,5 +1,5 @@
 <!-- doc-meta
-tier: reference
+tier: archive
 authority: derived
 update_trigger: design-decision
 scope:
@@ -12,7 +12,7 @@ scope:
   - ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
   - docs/sop/ui-design.md
-verified_against: 0c817d34
+verified_against: frozen
 -->
 # KG Mac Catalyst 原生化 — Umbrella Design Spec
 

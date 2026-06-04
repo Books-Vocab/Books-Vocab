@@ -1,14 +1,16 @@
 <!-- doc-meta
-tier: snapshot
+tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
   - ios/BooksBrowser/Views/Podcast/
   - ios/BooksBrowser/UIComponents/ListSectionCard.swift
-verified_against: 689bac12
+verified_against: frozen
 -->
 
 # Podcast 集數列表雙欄 + 對齊單字列表組件 Implementation Plan
+
+> ⚠️ **已撤回（frozen）：** 本計畫的「regular 雙欄 inline player」設計已於後續重構收斂回**單欄 push**（`PodcastDetailRouter` / `PodcastDetailPresentation` 已移除，集數一律 push）。權威現況見 `ios/BooksBrowser/Views/Podcast/PodcastDetailRouter.swift` 檔頭。此檔僅存歷史。
 
 > **執行方式:** 使用 phased-workflow skill，所有 agent 皆 opus、背景執行。逐 task review（鐵律4）PASS 才下一個。
 
