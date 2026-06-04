@@ -12,6 +12,8 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..user_store import is_real_user
+
 logger = logging.getLogger("kg.admin_handlers")
 
 
@@ -32,7 +34,7 @@ def admin_stats_response(
     is_pro_by_user = {
         uid: _is_pro({"record": info})
         for uid, info in users_data.items()
-        if not uid.startswith("_") and isinstance(info, dict)
+        if is_real_user(uid, info)
     }
     quota_usage = get_all_quota_usage(is_pro_by_user=is_pro_by_user)
 

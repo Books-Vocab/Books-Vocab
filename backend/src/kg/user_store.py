@@ -10,6 +10,17 @@ from pathlib import Path
 from typing import Any
 
 
+def is_real_user(user_id: str, record: Any) -> bool:
+    """True when ``(user_id, record)`` is a genuine user entry.
+
+    Filters the two non-user shapes that share the users-payload dict: keys
+    prefixed ``_`` (reserved metadata buckets like ``_schema``) and values that
+    aren't a record dict. Centralises the ``isinstance(record, dict) and not
+    user_id.startswith("_")`` guard duplicated across the admin read surface.
+    """
+    return isinstance(record, dict) and not user_id.startswith("_")
+
+
 class CachedUserStore:
     def __init__(
         self,
@@ -75,7 +86,7 @@ def normalize_users_payload(
     normalized: dict[str, Any] = {}
 
     for user_id, record in users.items():
-        if not isinstance(record, dict) or user_id.startswith("_"):
+        if not is_real_user(user_id, record):
             normalized[user_id] = record
             continue
 
