@@ -132,38 +132,18 @@ main() {
       [[ -n "${1:-}" ]] || { echo "✗ usage: $0 user-info <id>" >&2; exit 1; }
       "$BASE" user-info "$1"
       ;;
-    run)
+    run|container-run|migrate-run)
+      # All three forward an arbitrary command string to $BASE through the same
+      # dangerous-command gate; $sub holds the matched subcommand verbatim.
       preflight
       shift
       local raw="${*:-}"
-      [[ -n "$raw" ]] || { echo "✗ usage: $0 run \"<cmd>\"" >&2; exit 1; }
+      [[ -n "$raw" ]] || { echo "✗ usage: $0 $sub \"<cmd>\"" >&2; exit 1; }
       if is_blocked_run "$raw"; then
         echo "✗ blocked dangerous command" >&2
         exit 1
       fi
-      "$BASE" run "$raw"
-      ;;
-    container-run)
-      preflight
-      shift
-      local raw="${*:-}"
-      [[ -n "$raw" ]] || { echo "✗ usage: $0 container-run \"<cmd>\"" >&2; exit 1; }
-      if is_blocked_run "$raw"; then
-        echo "✗ blocked dangerous command" >&2
-        exit 1
-      fi
-      "$BASE" container-run "$raw"
-      ;;
-    migrate-run)
-      preflight
-      shift
-      local raw="${*:-}"
-      [[ -n "$raw" ]] || { echo "✗ usage: $0 migrate-run \"<cmd>\"" >&2; exit 1; }
-      if is_blocked_run "$raw"; then
-        echo "✗ blocked dangerous command" >&2
-        exit 1
-      fi
-      "$BASE" migrate-run "$raw"
+      "$BASE" "$sub" "$raw"
       ;;
     ops-cli)
       preflight
