@@ -263,6 +263,12 @@ class CardMutationMixin:
                     if hasattr(card, key) and getattr(card, key) != value:
                         setattr(card, key, value)
                         has_changes = True
+                if "content" in kwargs:
+                    # Keep the denormalized search index in sync — mirrors update().
+                    # Without this, find_by_content (which matches solely on
+                    # content_nfc_lower) silently breaks for any future caller
+                    # that mutates content through the batch path.
+                    card.content_nfc_lower = normalize_nfc_lower(card.content)
                 if has_changes:
                     card.updated_at = now
                     session.add(card)
