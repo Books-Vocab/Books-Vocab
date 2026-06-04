@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .user_store import is_real_user
+
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 500
 
@@ -44,7 +46,7 @@ def search_users(
     # Exclude meta + underscore-prefixed keys, normalize records.
     real: list[tuple[str, dict[str, Any]]] = [
         (uid, info) for uid, info in users_data.items()
-        if not uid.startswith("_") and isinstance(info, dict)
+        if is_real_user(uid, info)
     ]
     total = len(real)
 

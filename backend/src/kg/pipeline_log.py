@@ -19,10 +19,8 @@ _conn: sqlite3.Connection | None = None
 def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-        from .sqlite_utils import init_sqlite_pragmas
-        init_sqlite_pragmas(_conn)
+        from .sqlite_utils import open_singleton
+        _conn = open_singleton(DB_PATH)
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS pipeline_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
