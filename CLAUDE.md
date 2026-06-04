@@ -52,6 +52,12 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 8. **禁止 iOS raw 中文字串** — `Text("中文")` / `Button("中文")` / `.navigationTitle("中文")` 由 `ops/i18n_lint.sh` 擋。所有 user-facing 字串走 `L10n.string(_:)` / `L10n.format(_:_:)`。豁免用行內 `// i18n-allow: <reason>`(品牌名、人名、ASCII-only 技術 ID)。詳見 `docs/sop/i18n_lint.md`。
     - **(待 Phase 3.1 後生效)** Static `DateFormatter` / `RelativeDateTimeFormatter` / `NumberFormatter` 走 `LocaleAwareFormatter`。lint 現以 baseline 模式追蹤,strict 模式由 Phase 7.1 Xcode Run Script 啟用。
 
+## Commit / PR 政策
+
+- **Worktree / feature branch 任務**:驗證全綠(測試 / lint / build / drift 等有**當下輸出**)後 **直接 commit + 開 PR,不先問**,事後簡述決策與理由(使用者長期授權,2026-06-04)。
+- **例外(必守)**:`main`(default branch)上**絕不**直接 commit — 先開 branch;`push` 遠端 / 部署生產仍須使用者明確指示。
+- commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
+
 ## Scope 規則(觸發式,非 always-on)
 
 - **改 iOS View / UI** → 動手前讀 `docs/sop/ui-design.md`(規範) + `docs/reference/ui/components.md`(現有元件) + `docs/reference/ui/review_checklist.md`(自查 5 項) + `docs/reference/ui/state_matrix.md`(狀態覆蓋);對應 feature scope 另讀 `docs/reference/feature_boundary/<reader|vocabulary|notebook|bookshelf|podcast|settings>.md`。
