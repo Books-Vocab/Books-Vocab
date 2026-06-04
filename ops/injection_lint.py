@@ -22,28 +22,19 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import re
 import sys
 from pathlib import Path
 
 VIEWS_ROOT = Path("ios/BooksBrowser/Views")
 BASELINE_FILE = Path("ops/injection_baseline.txt")
-SKIP_PATH_FRAGMENTS = ("Debug/", "Readium", "PDFReader")
 
-STRUCT_VIEW_RE = re.compile(
-    r"^(?P<indent>\s*)"
-    r"(?P<access>(public |internal |fileprivate |private )?)"
-    r"struct\s+(?P<name>[A-Z][A-Za-z0-9_]*)"
-    r"(?P<generics><[^>]+>)?"
-    r"\s*:\s*"
-    r"(?P<protocols>[^{]+?)"
-    r"\s*\{"
+# View-injection grammar shared with the codemod (single source of truth).
+from _inject_shared import (  # noqa: E402
+    SKIP_PATH_FRAGMENTS,
+    STRUCT_VIEW_RE,
+    PREVIEW_OPEN_RE,
+    should_skip_path,
 )
-PREVIEW_OPEN_RE = re.compile(r"#Preview\b[^{]*\{")
-
-
-def should_skip_path(path: Path) -> bool:
-    return any(f in str(path) for f in SKIP_PATH_FRAGMENTS)
 
 
 def scan_file(path: Path) -> list[str]:

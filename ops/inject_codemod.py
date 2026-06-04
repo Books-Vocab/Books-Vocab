@@ -26,25 +26,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VIEWS_ROOT = ROOT / "ios/BooksBrowser/Views"
-SKIP_PATH_FRAGMENTS = ("Debug/", "Readium", "PDFReader")
-
-STRUCT_VIEW_RE = re.compile(
-    r"^(?P<indent>\s*)"
-    r"(?P<access>(public |internal |fileprivate |private )?)"
-    r"struct\s+(?P<name>[A-Z][A-Za-z0-9_]*)"
-    r"(?P<generics><[^>]+>)?"
-    r"\s*:\s*"
-    r"(?P<protocols>[^{]+?)"
-    r"\s*\{"
+# View-injection grammar shared with the lint (single source of truth).
+from _inject_shared import (  # noqa: E402
+    SKIP_PATH_FRAGMENTS,
+    STRUCT_VIEW_RE,
+    PREVIEW_OPEN_RE,
+    should_skip_path,
 )
+
+# Codemod-only patterns (not shared with the lint).
 IMPORT_RE = re.compile(r"^import\s+\S+")
-PREVIEW_OPEN_RE = re.compile(r"#Preview\b[^{]*\{")
 BODY_OPEN_RE = re.compile(r"^(?P<indent>\s*)var\s+body\s*:\s*some\s+View\s*\{")
-
-
-def should_skip_path(path: Path) -> bool:
-    s = str(path)
-    return any(f in s for f in SKIP_PATH_FRAGMENTS)
 
 
 def find_close_at_indent(lines: list[str], start: int, indent: str) -> int:
