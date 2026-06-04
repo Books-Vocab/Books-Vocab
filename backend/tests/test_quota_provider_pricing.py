@@ -139,3 +139,25 @@ def test_get_user_usage_range_groups_by_provider(mock_db):
         + REGISTRY["deepseek"].input_price_per_m
     )
     assert out["total_cost_usd"] == pytest.approx(round(expected, 6))
+
+
+def test_get_user_usage_range_filters_by_since(mock_db):
+    """since_iso must exclude rows older than the cutoff (the WHERE-with-since
+    branch); rows at/after the cutoff are kept."""
+    from datetime import timedelta
+
+    from kg.quota_service import get_user_usage_range
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    old = (base - timedelta(days=2)).isoformat()
+    recent = base.isoformat()
+    _insert(mock_db, "u1", "judge", 1_000_000, 0, old, "gemini", "g")
+    _insert(mock_db, "u1", "judge", 1_000_000, 0, recent, "gemini", "g")
+
+    cutoff = (base - timedelta(days=1)).isoformat()
+    out = get_user_usage_range("u1", since_iso=cutoff)
+    assert out["calls"]["judge"]["count"] == 1  # old row filtered out
+    assert out["tokens"]["judge"]["input_tokens"] == 1_000_000
+
+    all_time = get_user_usage_range("u1")  # since_iso=None branch sees both
+    assert all_time["calls"]["judge"]["count"] == 2

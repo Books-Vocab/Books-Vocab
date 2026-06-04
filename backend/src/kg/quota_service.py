@@ -292,34 +292,26 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
 
     If `since_iso` is None, returns all-time usage. Used by admin UI for range filter.
     """
+    where = "WHERE user_id = ?"
+    params: list = [user_id]
+    if since_iso is not None:
+        where += " AND created_at >= ?"
+        params.append(since_iso)
+
     with _lock:
         conn = _get_conn()
-        if since_iso is None:
-            rows = conn.execute(
-                """
-                SELECT call_type, provider,
-                       COUNT(*)          AS cnt,
-                       SUM(input_tokens) AS total_in,
-                       SUM(output_tokens) AS total_out
-                FROM token_usage
-                WHERE user_id = ?
-                GROUP BY call_type, provider
-                """,
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT call_type, provider,
-                       COUNT(*)          AS cnt,
-                       SUM(input_tokens) AS total_in,
-                       SUM(output_tokens) AS total_out
-                FROM token_usage
-                WHERE user_id = ? AND created_at >= ?
-                GROUP BY call_type, provider
-                """,
-                (user_id, since_iso),
-            ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT call_type, provider,
+                   COUNT(*)          AS cnt,
+                   SUM(input_tokens) AS total_in,
+                   SUM(output_tokens) AS total_out
+            FROM token_usage
+            {where}
+            GROUP BY call_type, provider
+            """,
+            params,
+        ).fetchall()
 
     calls: dict[str, dict] = {}
     tokens: dict[str, dict] = {}
