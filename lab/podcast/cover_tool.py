@@ -13,7 +13,7 @@
   - 不餵逐張原圖;視覺判斷集中在 contact sheet 一張
 KEY 來源:lab/podcast/.env 的 PEXELS_API_KEY(同 synthesize.py 讀 Vertex 金鑰模式)。
 """
-import argparse, colorsys, io, json, os, sys, urllib.parse, urllib.request
+import argparse, colorsys, io, json, os, sys, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 from PIL import Image, ImageOps, ImageDraw, ImageEnhance, ImageFont
 from dotenv import load_dotenv
@@ -48,8 +48,21 @@ def _get(url, raw=False):
     # Pexels(Cloudflare)對預設 Python-urllib UA 回 403,須帶常規 UA。
     req = urllib.request.Request(url, headers={
         "Authorization": KEY, "User-Agent": "Mozilla/5.0 (kg-cover-tool)"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return r.read() if raw else json.loads(r.read())
+    # 網路/HTTP 故障在此收斂成可讀錯誤後 _die,而非吐裸 traceback。
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            body = r.read()
+    except urllib.error.HTTPError as e:
+        _die(f"Pexels HTTP {e.code} {e.reason}({url[:80]})")
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        reason = getattr(e, "reason", e)
+        _die(f"網路請求失敗:{reason}({url[:80]})")
+    if raw:
+        return body
+    try:
+        return json.loads(body)
+    except (json.JSONDecodeError, ValueError) as e:
+        _die(f"Pexels 回傳非 JSON:{e}")
 
 def _pexels(query, per_page=15, orientation="square"):
     qs = urllib.parse.urlencode({"query": query, "per_page": per_page,

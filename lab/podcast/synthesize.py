@@ -688,6 +688,22 @@ def synthesize_batches(
     return [results[i] for i in range(1, total + 1)]
 
 
+def _parse_loudnorm_json(stderr: str) -> dict | None:
+    """Extract the flat loudnorm measurement JSON from ffmpeg stderr.
+
+    The loudnorm block is flat (no nested braces); anchoring on the
+    ``input_i`` key means a stray ``{...}`` appearing earlier in stderr
+    can't hijack the match. Returns None if no usable block is found.
+    """
+    m = re.search(r"\{[^{}]*\binput_i\b[^{}]*\}", stderr)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
 def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
     """Two-pass EBU R128 loudness normalization via ffmpeg.
 
@@ -709,12 +725,11 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
              "-af", af_measure, "-f", "null", "-"],
             capture_output=True, text=True, timeout=180,
         )
-        # ffmpeg writes the JSON block to stderr
-        m = re.search(r"\{[\s\S]*?\}", measure.stderr)
-        if not m:
-            print(f"  [master] pass1 produced no JSON — stderr tail: {measure.stderr[-200:]!r}")
+        # ffmpeg writes the loudnorm JSON block to stderr.
+        params = _parse_loudnorm_json(measure.stderr)
+        if params is None:
+            print(f"  [master] pass1 produced no usable JSON — stderr tail: {measure.stderr[-200:]!r}")
             return False
-        params = json.loads(m.group(0))
 
         af_apply = (
             f"loudnorm=I={MASTER_LUFS}:TP={MASTER_TP}:LRA={MASTER_LRA}"
