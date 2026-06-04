@@ -140,6 +140,17 @@ extension KGService {
 
     // MARK: - Background Sync (輕量：push review + pull)
 
+    /// 將一個可拋錯的 async 操作包成 `Result`，供 `async let` 並行收集 —
+    /// 取代各 phase 重複的 do/catch 立即執行閉包，保留 child task 並行語意。
+    private static func captureResult(_ operation: @escaping @Sendable () async throws -> Void) async -> Result<Void, Error> {
+        do {
+            try await operation()
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+
     func backgroundSync(container: ModelContainer) async {
         // 防止併發：快速前景/背景切換可能觸發多個 sync task
         guard claimBackgroundSync() else {
@@ -166,22 +177,8 @@ extension KGService {
         var failures: [String] = []
 
         // Phase 1: push review states & daily stats in parallel
-        async let pushReviewResult: Result<Void, Error> = {
-            do {
-                _ = try await self.pushReviewStates(container: container)
-                return .success(())
-            } catch {
-                return .failure(error)
-            }
-        }()
-        async let pushStatsResult: Result<Void, Error> = {
-            do {
-                _ = try await self.pushDailyStats(container: container)
-                return .success(())
-            } catch {
-                return .failure(error)
-            }
-        }()
+        async let pushReviewResult = Self.captureResult { _ = try await self.pushReviewStates(container: container) }
+        async let pushStatsResult = Self.captureResult { _ = try await self.pushDailyStats(container: container) }
 
         let pushResults = await [pushReviewResult, pushStatsResult]
         let pushLabels = ["pushReview", "pushDailyStats"]
@@ -202,22 +199,8 @@ extension KGService {
         }
 
         // Phase 2: pull cards & daily stats in parallel (after push completes)
-        async let pullCardsResult: Result<Void, Error> = {
-            do {
-                try await self.pullCardsToLocal(container: container, progress: nil)
-                return .success(())
-            } catch {
-                return .failure(error)
-            }
-        }()
-        async let pullStatsResult: Result<Void, Error> = {
-            do {
-                try await self.pullDailyStats(container: container)
-                return .success(())
-            } catch {
-                return .failure(error)
-            }
-        }()
+        async let pullCardsResult = Self.captureResult { try await self.pullCardsToLocal(container: container, progress: nil) }
+        async let pullStatsResult = Self.captureResult { try await self.pullDailyStats(container: container) }
 
         let pullResults = await [pullCardsResult, pullStatsResult]
         let pullLabels = ["pull", "pullDailyStats"]

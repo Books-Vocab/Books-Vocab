@@ -244,10 +244,7 @@ extension GraphWebView {
                 pendingPayload = json
                 return
             }
-            let escaped = json
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
-            webView.evaluateJavaScript("initGraph('\(escaped)')", completionHandler: nil)
+            webView.evaluateJavaScript("initGraph('\(json.jsSingleQuoteEscaped)')", completionHandler: nil)
         }
 
         // MARK: WKScriptMessageHandler
@@ -262,10 +259,7 @@ extension GraphWebView {
                 graphBridgeReady = true
                 if let pending = pendingPayload, let wv = webView {
                     pendingPayload = nil
-                    let escaped = pending
-                        .replacingOccurrences(of: "\\", with: "\\\\")
-                        .replacingOccurrences(of: "'", with: "\\'")
-                    wv.evaluateJavaScript("initGraph('\(escaped)')", completionHandler: nil)
+                    wv.evaluateJavaScript("initGraph('\(pending.jsSingleQuoteEscaped)')", completionHandler: nil)
                 }
             case "nodeClick":
                 if let nodeId = body["nodeId"] as? String {

@@ -22,7 +22,7 @@ extension VocabularyListView {
     // MARK: - Content
 
     @ViewBuilder
-    func contentView(classified: VocabularyEntryPresentation.ClassifiedResult) -> some View {
+    func contentView() -> some View {
         if !authManager.isLoggedIn {
             loggedOutState
         } else {

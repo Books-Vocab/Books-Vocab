@@ -52,7 +52,7 @@ enum WordDetailPresentation {
         case .unlearned:
             return VocabReviewProgress(
                 statusLabel: L10n.string("未學習"),
-                detailLabel: L10n.format("首輪 %@", entry.reviewIntervalHours.detailCompactHourLabel),
+                detailLabel: L10n.format("首輪 %@", entry.reviewIntervalHours.compactHourLabel),
                 ratio: nil
             )
         case .due, .reviewed:
@@ -63,7 +63,7 @@ enum WordDetailPresentation {
 
             return VocabReviewProgress(
                 statusLabel: state == .due ? L10n.string("待複習") : L10n.string("已複習"),
-                detailLabel: "\(elapsed.detailCompactLabel) / \(interval.detailCompactLabel)",
+                detailLabel: "\(elapsed.compactReviewLabel) / \(interval.compactReviewLabel)",
                 ratio: ratio
             )
         }
@@ -85,38 +85,4 @@ enum WordDetailPresentation {
     }
 }
 
-// MARK: - Compact time formatting (mirrors WordRowPresentation helpers)
-
-private extension TimeInterval {
-    var detailCompactLabel: String {
-        let seconds = max(0, self)
-        let minute: TimeInterval = 60
-        let hour: TimeInterval = 3600
-        let day: TimeInterval = 86_400
-
-        if seconds < hour {
-            let minutes = max(1, Int((seconds / minute).rounded()))
-            return "\(minutes)m"
-        }
-        if seconds < day {
-            let hours = seconds / hour
-            return hours < 10 ? hours.detailSingleDecimal + "h" : "\(Int(hours.rounded()))h"
-        }
-        let days = seconds / day
-        return days < 10 ? days.detailSingleDecimal + "d" : "\(Int(days.rounded()))d"
-    }
-}
-
-private extension Double {
-    var detailCompactHourLabel: String {
-        (self * 3600).detailCompactLabel
-    }
-
-    var detailSingleDecimal: String {
-        let rounded = (self * 10).rounded() / 10
-        if rounded == rounded.rounded() {
-            return String(Int(rounded))
-        }
-        return String(format: "%.1f", rounded)
-    }
-}
+// 緊湊時間標籤格式化見 CompactTimeFormatting.swift（與 WordRowPresentation 共用）。
