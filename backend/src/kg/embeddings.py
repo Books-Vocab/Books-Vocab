@@ -118,8 +118,15 @@ class EmbeddingStore:
             "created_at": datetime.now(UTC).isoformat(),
         }
         tmp = self._meta_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(payload))
+        # Fsync the temp before replace + the dir after, mirroring _save's
+        # durability contract — otherwise an OS/power crash can persist a torn
+        # or zero-length sidecar that misattributes the store's model/dim.
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(payload))
+            f.flush()
+            os.fsync(f.fileno())
         tmp.replace(self._meta_path)
+        _fsync_dir(self._meta_path.parent)
 
     def _quarantine_stale(self, stale_model: str, stale_dim: int) -> None:
         """Rename .npy + ids.json to `.legacy_{model}_{dim}` so a future
