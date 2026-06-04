@@ -74,20 +74,22 @@
   --dur-control: 0.14s;
   --dur-chip: 0.18s;
   --dur-progress: 0.1s;
-  --dur-standard: 0.3s;
-  --dur-emphasized: 0.4s;
   --ease-quick: ease-out;
   --ease-control: ease-out;
   --ease-chip: ease-out;
   --ease-linear: linear;
-  --ease-spring-standard: cubic-bezier(0.33, 1, 0.68, 1);
-  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1.0);
   --ease-follow: cubic-bezier(0.65, 0.0, 0.35, 1.0);
+  --spring-standard: 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+  --spring-emphasized: 0.35s cubic-bezier(0.33, 1, 0.68, 1);
+  --spring-press: 0.25s cubic-bezier(0.33, 1, 0.68, 1);
+  --spring-content-reveal: 0.35s cubic-bezier(0.33, 1, 0.68, 1);
+  --spring-modal-swap: 0.45s cubic-bezier(0.33, 1, 0.68, 1);
   --motion-quick: 0.15s ease-out;
   --motion-control: 0.14s ease-out;
   --motion-chip: 0.18s ease-out;
   --motion-standard: 0.3s cubic-bezier(0.33, 1, 0.68, 1);
-  --motion-emphasized: 0.4s cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  --motion-emphasized: 0.35s cubic-bezier(0.33, 1, 0.68, 1);
   --transition-content-swap: opacity 0.2s ease-out, transform 0.2s ease-out;
   --transition-panel-reveal: transform 0.3s ease-out, opacity 0.25s ease-out;
   --press-scale: 0.97;
@@ -220,7 +222,15 @@
     --dur-control: 0.01ms;
     --dur-chip: 0.01ms;
     --dur-progress: 0.01ms;
-    --dur-standard: 0.01ms;
-    --dur-emphasized: 0.01ms;
+    --spring-standard: 0.01ms;
+    --spring-emphasized: 0.01ms;
+    --spring-press: 0.01ms;
+    --spring-content-reveal: 0.01ms;
+    --spring-modal-swap: 0.01ms;
+    --motion-quick: 0.01ms;
+    --motion-control: 0.01ms;
+    --motion-chip: 0.01ms;
+    --motion-standard: 0.01ms;
+    --motion-emphasized: 0.01ms;
   }
 }
