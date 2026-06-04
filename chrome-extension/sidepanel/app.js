@@ -35,8 +35,6 @@ let retryAction = 'reload';
 
 /** @type {Array<object>} full vocab list from API */
 let vocabData = [];
-/** @type {string|null} currently expanded card word */
-let expandedWord = null;
 
 const THEME_ICONS = { light: '🌗', dark: '☀️', sepia: '📜' };
 const THEME_CYCLE = ['light', 'dark', 'sepia'];
@@ -240,7 +238,6 @@ function onSearch() {
  */
 function renderList(items) {
   stateContent.innerHTML = '';
-  expandedWord = null;
 
   items.forEach((item) => {
     const card = createCard(item);
@@ -315,15 +312,12 @@ function toggleDetail(card, item) {
 
   if (existing) {
     existing.remove();
-    expandedWord = null;
     return;
   }
 
   // Collapse any other expanded card
   const prev = stateContent.querySelector('.kg-detail');
   if (prev) prev.remove();
-
-  expandedWord = item.content;
 
   const detail = document.createElement('div');
   detail.className = 'kg-detail';
