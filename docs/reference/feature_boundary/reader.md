@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Reader/
-verified_against: f9c72f59
+verified_against: a3126e36
 -->
 # Reader Feature Boundary
 
@@ -61,6 +61,7 @@ verified_against: f9c72f59
 | `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
+| `ReaderJSEval.swift` | 50 | `enum ReaderJSEval`，fire-and-forget `evaluateJavaScript` 結果可觀測性：`classify` 純分流（`.ok` / `.spreadNotLoaded` benign / `.failed`）+ `log` 落 `AppLog.reader`，預期 race 降 debug、真異常升 error |
 | `ReaderContentStyle.swift` | 278 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` + `ReaderTOCPresentation` + `ReaderNotebookPickerPresentation` |
 
 ### Feature Panels
