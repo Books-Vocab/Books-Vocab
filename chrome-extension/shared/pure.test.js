@@ -21,11 +21,8 @@ const {
   buildPhraseTranslateBody,
   buildVocabQuery,
   normalizeVocabList,
+  normalizeVocabItem,
   classifyError,
-  isSelectable,
-  isPhrase,
-  extractSentence,
-  buildSelectionMessage,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   isTrustedExternalOrigin,
@@ -126,6 +123,65 @@ test('normalizeVocabList collapses unexpected shapes to []', () => {
 });
 
 // ---------------------------------------------------------------------------
+// normalizeVocabItem
+// ---------------------------------------------------------------------------
+
+test('normalizeVocabItem maps word from content, falling back to word', () => {
+  assert.equal(normalizeVocabItem({ content: 'apple' }).word, 'apple');
+  assert.equal(normalizeVocabItem({ word: 'banana' }).word, 'banana');
+  // content wins when both present (legacy primary key)
+  assert.equal(normalizeVocabItem({ content: 'apple', word: 'banana' }).word, 'apple');
+  assert.equal(normalizeVocabItem({}).word, '');
+});
+
+test('normalizeVocabItem maps meaning from meaning, falling back to translation', () => {
+  assert.equal(normalizeVocabItem({ meaning: 'M' }).meaning, 'M');
+  assert.equal(normalizeVocabItem({ translation: 'T' }).meaning, 'T');
+  assert.equal(normalizeVocabItem({ meaning: 'M', translation: 'T' }).meaning, 'M');
+  assert.equal(normalizeVocabItem({}).meaning, '');
+});
+
+test('normalizeVocabItem maps context from context_sentence, falling back to context', () => {
+  assert.equal(normalizeVocabItem({ context_sentence: 'S' }).context, 'S');
+  assert.equal(normalizeVocabItem({ context: 'C' }).context, 'C');
+  assert.equal(normalizeVocabItem({ context_sentence: 'S', context: 'C' }).context, 'S');
+  assert.equal(normalizeVocabItem({}).context, '');
+});
+
+test('normalizeVocabItem defaults pos / note to empty string', () => {
+  assert.equal(normalizeVocabItem({}).pos, '');
+  assert.equal(normalizeVocabItem({}).note, '');
+  assert.equal(normalizeVocabItem({ pos: 'n.', note: 'hi' }).pos, 'n.');
+  assert.equal(normalizeVocabItem({ pos: 'n.', note: 'hi' }).note, 'hi');
+});
+
+test('normalizeVocabItem coerces examples / collocations to arrays', () => {
+  const ex = [{ sentence: 'x' }];
+  const co = ['big'];
+  assert.deepEqual(normalizeVocabItem({ examples: ex, collocations: co }).examples, ex);
+  assert.deepEqual(normalizeVocabItem({ examples: ex, collocations: co }).collocations, co);
+  // non-array / missing → []
+  assert.deepEqual(normalizeVocabItem({}).examples, []);
+  assert.deepEqual(normalizeVocabItem({ examples: 'oops' }).examples, []);
+  assert.deepEqual(normalizeVocabItem({ collocations: null }).collocations, []);
+});
+
+test('normalizeVocabItem passes source through, defaulting to null', () => {
+  const src = { type: 'web', url: 'https://x.com', title: 'X' };
+  assert.equal(normalizeVocabItem({ source: src }).source, src);
+  assert.equal(normalizeVocabItem({}).source, null);
+});
+
+test('normalizeVocabItem tolerates nullish / non-object input', () => {
+  assert.deepEqual(normalizeVocabItem(null), {
+    word: '', meaning: '', pos: '', note: '', context: '',
+    examples: [], collocations: [], source: null,
+  });
+  assert.deepEqual(normalizeVocabItem(undefined).word, '');
+  assert.deepEqual(normalizeVocabItem('oops').word, '');
+});
+
+// ---------------------------------------------------------------------------
 // classifyError
 // ---------------------------------------------------------------------------
 
@@ -169,115 +225,6 @@ test('classifyError tolerates an empty / missing response object', () => {
   const r = classifyError({});
   assert.equal(r.action, 'reload');
   assert.equal(r.subtitle, '');
-});
-
-// ---------------------------------------------------------------------------
-// isSelectable
-// ---------------------------------------------------------------------------
-
-test('isSelectable accepts text within the 1..200 char bounds', () => {
-  assert.equal(isSelectable('a'), true);
-  assert.equal(isSelectable('hello'), true);
-  assert.equal(isSelectable('x'.repeat(200)), true);
-});
-
-test('isSelectable rejects empty, whitespace-only and over-long text', () => {
-  assert.equal(isSelectable(''), false);
-  assert.equal(isSelectable('   '), false);
-  assert.equal(isSelectable('x'.repeat(201)), false);
-});
-
-test('isSelectable rejects non-string input', () => {
-  assert.equal(isSelectable(null), false);
-  assert.equal(isSelectable(undefined), false);
-  assert.equal(isSelectable(123), false);
-});
-
-// ---------------------------------------------------------------------------
-// isPhrase
-// ---------------------------------------------------------------------------
-
-test('isPhrase is true only beyond 50 characters', () => {
-  assert.equal(isPhrase('short word'), false);
-  assert.equal(isPhrase('x'.repeat(50)), false);
-  assert.equal(isPhrase('x'.repeat(51)), true);
-});
-
-test('isPhrase rejects non-string input', () => {
-  assert.equal(isPhrase(null), false);
-  assert.equal(isPhrase(undefined), false);
-});
-
-// ---------------------------------------------------------------------------
-// extractSentence
-// ---------------------------------------------------------------------------
-
-test('extractSentence returns the sentence around the caret', () => {
-  const text = 'Hello world. Second sentence here. Third.';
-  // offset 20 falls inside "Second sentence here."
-  assert.equal(extractSentence(text, 20), 'Second sentence here');
-});
-
-test('extractSentence handles the first sentence (caret near start)', () => {
-  assert.equal(extractSentence('First. Second.', 2), 'First');
-});
-
-test('extractSentence respects CJK terminal punctuation', () => {
-  const text = '第一句。第二句！第三句';
-  assert.equal(extractSentence(text, 4), '第二句');
-});
-
-test('extractSentence treats newlines as boundaries', () => {
-  assert.equal(extractSentence('line one\nline two', 12), 'line two');
-});
-
-test('extractSentence caps the result at 500 characters', () => {
-  const long = 'a'.repeat(900);
-  assert.equal(extractSentence(long, 0).length, 500);
-});
-
-test('extractSentence clamps out-of-range offsets', () => {
-  const text = 'only sentence';
-  assert.equal(extractSentence(text, -5), 'only sentence');
-  assert.equal(extractSentence(text, 9999), 'only sentence');
-  assert.equal(extractSentence(text, NaN), 'only sentence');
-});
-
-test('extractSentence returns empty for empty / non-string input', () => {
-  assert.equal(extractSentence('', 0), '');
-  assert.equal(extractSentence(null, 0), '');
-  assert.equal(extractSentence(undefined, 3), '');
-});
-
-// ---------------------------------------------------------------------------
-// buildSelectionMessage
-// ---------------------------------------------------------------------------
-
-test('buildSelectionMessage routes a short selection to the quick translate', () => {
-  const msg = buildSelectionMessage('serendipity', 'a sentence');
-  assert.deepEqual(msg, {
-    type: 'translate',
-    word: 'serendipity',
-    context: 'a sentence',
-  });
-});
-
-test('buildSelectionMessage routes a long selection (>50 chars) to phrase', () => {
-  const long = 'x'.repeat(51);
-  const msg = buildSelectionMessage(long, 'ctx');
-  assert.deepEqual(msg, { type: 'translatePhrase', text: long, context: 'ctx' });
-});
-
-test('buildSelectionMessage uses the isPhrase 50-char boundary exactly', () => {
-  // 50 chars → still a word; 51 → phrase. Pins the threshold parity.
-  assert.equal(buildSelectionMessage('x'.repeat(50), '').type, 'translate');
-  assert.equal(buildSelectionMessage('x'.repeat(51), '').type, 'translatePhrase');
-});
-
-test('buildSelectionMessage defaults a missing/null context to empty string', () => {
-  assert.equal(buildSelectionMessage('word').context, '');
-  assert.equal(buildSelectionMessage('word', undefined).context, '');
-  assert.equal(buildSelectionMessage('word', null).context, '');
 });
 
 // ---------------------------------------------------------------------------

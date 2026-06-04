@@ -139,7 +139,7 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
     d: list[tuple[str, str]] = []
 
     fam = tokens["type"]["family"]
-    for key in ("serif", "sans", "italic", "mono"):
+    for key in ("serif", "sans", "italic", "mono", "display"):
         d.append((f"--font-{key}", fam[key]))
 
     for key, spec in tokens["type"]["scale"].items():
