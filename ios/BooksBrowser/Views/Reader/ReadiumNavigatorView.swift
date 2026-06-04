@@ -236,6 +236,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             let script = WKUserScript(source: js, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
             userContentController.addUserScript(script)
             AppLog.reader.info("User scripts injected")
+            PerfLog.reader.mark("userScriptsInjected")
 
             // Scripts 注入後重新標記所有生字（修復初始載入的 race condition）
             let words = parent.lookedUpWords
