@@ -85,7 +85,9 @@ body {
    like the emoji they replaced — so existing font-size tokens (--toggle-glyph on
    the theme button, --text-caption on the card source) still drive icon size. */
 .kg-theme-btn svg,
-.kg-list-card__source svg { width: 1em; height: 1em; display: block; }
+.kg-list-card__source svg,
+.kg-error__icon svg { width: 1em; height: 1em; display: block; }
+.kg-error__icon svg { margin: 0 auto; }
 
 /* --- Search --------------------------------------------------------------- */
 
