@@ -30,11 +30,17 @@ def _hex2rgb(h): h=h.lstrip("#"); return tuple(int(h[i:i+2],16) for i in (0,2,4)
 def _shade(rgb,f):
     return tuple(_clamp(c*f) if f<=1 else _clamp(c+(255-c)*(f-1)) for c in rgb)
 
+_NEUTRAL_COLOR = (90, 96, 112)  # 品牌中性 slate:achromatic 圖的退路
+
 def _derive_color(hexc, min_sat=0.5, val=0.5):
     """從圖的 avg_color 取 series 色:保色相,把飽和度拉到 >=min_sat、明度正規化。
-    近灰的 avg_color 若直接拿去 duotone 會糊成灰,故必須提飽和。"""
+    色相洗白(washed-out)的 avg_color 直接拿去 duotone 會糊成灰,故提飽和。
+    但真正 achromatic(純灰/黑/白,色相無定義)不可任意提飽和變紅 ——
+    退回品牌中性色。"""
     r,g,b = [c/255 for c in _hex2rgb(hexc)]
     h,s,_ = colorsys.rgb_to_hsv(r,g,b)
+    if s < 0.04:  # achromatic:hue 無定義,提飽和會任意挑色 → 用中性 slate
+        return _NEUTRAL_COLOR
     r,g,b = colorsys.hsv_to_rgb(h, max(s, min_sat), val)
     return tuple(_clamp(c*255) for c in (r,g,b))
 

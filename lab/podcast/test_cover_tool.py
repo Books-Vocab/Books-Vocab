@@ -20,12 +20,18 @@ def test_hex2rgb_with_and_without_hash():
 
 
 # ---------- _derive_color:從 avg_color 取「不 muddy」的 series 色 ----------
-def test_derive_color_boosts_grey_avg_saturation():
-    """近灰的 avg_color 經取色後飽和度必須拉高,否則 duotone 會糊成灰。"""
-    grey = "#8A8A8C"  # 幾乎無彩度
-    r, g, b = ct._derive_color(grey)
+def test_derive_color_boosts_washed_out_saturation():
+    """色相洗白(有色相但飽和低)的 avg_color 取色後飽和度必須拉高,否則 duotone 糊成灰。"""
+    washed = "#9A8576"  # 暖色相,飽和低
+    r, g, b = ct._derive_color(washed)
     _, s, _ = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
     assert s >= 0.4, f"derived saturation {s:.2f} 太低,duotone 會 muddy"
+
+
+def test_derive_color_achromatic_returns_neutral():
+    """純灰/黑/白(色相無定義)不可被任意提飽和變紅 → 退回品牌中性色。"""
+    for grey in ("#8A8A8A", "#000000", "#FFFFFF"):
+        assert ct._derive_color(grey) == ct._NEUTRAL_COLOR
 
 
 def test_derive_color_preserves_hue():
