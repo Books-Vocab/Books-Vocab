@@ -146,9 +146,9 @@ bash -n "$LIB" && ok "lib syntax" || fail_t "lib syntax"
 # ── 2. multi-struct attribution (the head -1 bug) ─────────────────────────────
 section "Multi-struct attribution"
 FLAGS="$(discover_only_flags "$FIX" "")"
-has_flag "$FLAGS" "AlphaTests/alphaOne" && ok "alphaOne → AlphaTests" || fail_t "alphaOne misattributed"
-has_flag "$FLAGS" "AlphaTests/alphaTwo" && ok "alphaTwo → AlphaTests" || fail_t "alphaTwo misattributed"
-has_flag "$FLAGS" "BravoTests/bravoOne" && ok "bravoOne → BravoTests (not AlphaTests)" || fail_t "bravoOne misattributed"
+has_flag "$FLAGS" "AlphaTests/alphaOne()" && ok "alphaOne → AlphaTests" || fail_t "alphaOne misattributed"
+has_flag "$FLAGS" "AlphaTests/alphaTwo()" && ok "alphaTwo → AlphaTests" || fail_t "alphaTwo misattributed"
+has_flag "$FLAGS" "BravoTests/bravoOne()" && ok "bravoOne → BravoTests (not AlphaTests)" || fail_t "bravoOne misattributed"
 printf '%s\n' "$FLAGS" | grep -qF "AlphaTests/bravoOne" && fail_t "bravoOne WRONGLY under AlphaTests" || ok "bravoOne not under AlphaTests"
 
 # ── 3. nested helper struct is never a container ──────────────────────────────
@@ -157,14 +157,14 @@ printf '%s\n' "$FLAGS" | grep -qF "NestedHelper" && fail_t "NestedHelper leaked 
 
 # ── 4. @Suite same-line ───────────────────────────────────────────────────────
 section "@Suite same-line"
-has_flag "$FLAGS" "CharlieTests/charlieOne" && ok "charlieOne → CharlieTests" || fail_t "@Suite same-line CharlieTests skipped"
-has_flag "$FLAGS" "DeltaTests/deltaOne"     && ok "deltaOne → DeltaTests"     || fail_t "@Suite same-line DeltaTests skipped"
+has_flag "$FLAGS" "CharlieTests/charlieOne()" && ok "charlieOne → CharlieTests" || fail_t "@Suite same-line CharlieTests skipped"
+has_flag "$FLAGS" "DeltaTests/deltaOne()"     && ok "deltaOne → DeltaTests"     || fail_t "@Suite same-line DeltaTests skipped"
 
 # ── 5. @Suite split-line ──────────────────────────────────────────────────────
 section "@Suite split-line"
-has_flag "$FLAGS" "EchoTests/echoOne" && ok "echoOne → EchoTests" || fail_t "@Suite split-line skipped"
-has_flag "$FLAGS" "EchoTests/echoTwo" && ok "echoTwo → EchoTests" || fail_t "@Suite split-line skipped"
-has_flag "$FLAGS" "EchoTests/echoThree" && ok "echoThree (@Test on prev line) → EchoTests" || fail_t "@Test-on-prev-line func skipped"
+has_flag "$FLAGS" "EchoTests/echoOne()" && ok "echoOne → EchoTests" || fail_t "@Suite split-line skipped"
+has_flag "$FLAGS" "EchoTests/echoTwo()" && ok "echoTwo → EchoTests" || fail_t "@Suite split-line skipped"
+has_flag "$FLAGS" "EchoTests/echoThree()" && ok "echoThree (@Test on prev line) → EchoTests" || fail_t "@Test-on-prev-line func skipped"
 printf '%s\n' "$FLAGS" | grep -qF "makeHelper" && fail_t "plain helper makeHelper leaked" || ok "plain helper makeHelper excluded"
 
 # ── 6. XCTest class container ─────────────────────────────────────────────────
@@ -180,7 +180,7 @@ printf '%s\n' "$FLAGS" | grep -qF "Helpers" && fail_t "Helpers enum leaked" || o
 # ── 8. grep pattern filters by func name ──────────────────────────────────────
 section "Grep pattern filter"
 ONLY_ALPHA="$(discover_only_flags "$FIX" "alpha")"
-has_flag "$ONLY_ALPHA" "AlphaTests/alphaOne" && ok "pattern 'alpha' keeps alphaOne" || fail_t "pattern dropped alphaOne"
+has_flag "$ONLY_ALPHA" "AlphaTests/alphaOne()" && ok "pattern 'alpha' keeps alphaOne" || fail_t "pattern dropped alphaOne"
 printf '%s\n' "$ONLY_ALPHA" | grep -qF "bravoOne" && fail_t "pattern 'alpha' leaked bravoOne" || ok "pattern 'alpha' excludes bravoOne"
 printf '%s\n' "$ONLY_ALPHA" | grep -qF "charlieOne" && fail_t "pattern 'alpha' leaked charlieOne" || ok "pattern 'alpha' excludes charlieOne"
 
@@ -191,12 +191,12 @@ has_flag "$ONLY_FOX" "FoxtrotTests/testFoxtrotOne" && ok "uppercase pattern matc
 
 # ── 10. parameterized @Test(arguments:) single + multiline ───────────────────
 section "Parameterized @Test(arguments:) discovery"
-has_flag "$FLAGS" "GolfTests/golfSingleLine" && ok "golfSingleLine (single-line args) → GolfTests" || fail_t "single-line @Test(arguments:) dropped"
-has_flag "$FLAGS" "GolfTests/golfMultiLine" && ok "golfMultiLine (multiline args) → GolfTests" || fail_t "multiline @Test(arguments:) dropped"
-has_flag "$FLAGS" "GolfTests/golfDisplayName" && ok "golfDisplayName (@Test display name) → GolfTests" || fail_t "@Test(display-name) dropped"
-has_flag "$FLAGS" "GolfTests/golfSameLine" && ok "golfSameLine (@Test func after multiline arm) → GolfTests" || fail_t "same-line @Test regressed after multiline arm"
+has_flag "$FLAGS" "GolfTests/golfSingleLine()" && ok "golfSingleLine (single-line args) → GolfTests" || fail_t "single-line @Test(arguments:) dropped"
+has_flag "$FLAGS" "GolfTests/golfMultiLine()" && ok "golfMultiLine (multiline args) → GolfTests" || fail_t "multiline @Test(arguments:) dropped"
+has_flag "$FLAGS" "GolfTests/golfDisplayName()" && ok "golfDisplayName (@Test display name) → GolfTests" || fail_t "@Test(display-name) dropped"
+has_flag "$FLAGS" "GolfTests/golfSameLine()" && ok "golfSameLine (@Test func after multiline arm) → GolfTests" || fail_t "same-line @Test regressed after multiline arm"
 printf '%s\n' "$FLAGS" | grep -qF "makeFixture" && fail_t "plain helper makeFixture leaked" || ok "plain helper makeFixture excluded"
-has_flag "$FLAGS" "HotelTests/hotelMultiLine" && ok "hotelMultiLine → HotelTests (no cross-container bleed)" || fail_t "multiline arm dropped in HotelTests"
+has_flag "$FLAGS" "HotelTests/hotelMultiLine()" && ok "hotelMultiLine → HotelTests (no cross-container bleed)" || fail_t "multiline arm dropped in HotelTests"
 printf '%s\n' "$FLAGS" | grep -qF "GolfTests/hotelMultiLine" && fail_t "hotelMultiLine WRONGLY under GolfTests (arm bled across container)" || ok "no arm bleed across struct boundary"
 
 # ── result ────────────────────────────────────────────────────────────────────
