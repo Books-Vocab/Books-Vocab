@@ -132,8 +132,6 @@ private struct CardDocumentHeroBlock: View {
 
 private struct CardDocumentExampleBlock: View {
     @Environment(\.appSkin) private var appSkin
-    @Environment(\.toastCoordinator) private var toastCoordinator
-    @State private var copyTrigger = false
     let paragraph: CardDocumentParagraph
     var truncateRadius: Int? = nil
     var targetWord: String? = nil
@@ -166,21 +164,12 @@ private struct CardDocumentExampleBlock: View {
                 .lineSpacing(appSkin.metrics.paragraphLineSpacing)
             }
         }
-        .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
-                PlatformClipboard.copy(paragraph.plainText)
-                copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
-            }
-        }
-        .sensoryFeedback(.success, trigger: copyTrigger)
+        .cardCopyContextMenu(paragraph.plainText)
     }
 }
 
 private struct CardDocumentMeaningBlock: View {
     @Environment(\.appSkin) private var appSkin
-    @Environment(\.toastCoordinator) private var toastCoordinator
-    @State private var copyTrigger = false
     let meaning: CardDocumentMeaning
     var compact: Bool = false
 
@@ -212,21 +201,12 @@ private struct CardDocumentMeaningBlock: View {
                 }
             }
         }
-        .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
-                PlatformClipboard.copy(copyText)
-                copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
-            }
-        }
-        .sensoryFeedback(.success, trigger: copyTrigger)
+        .cardCopyContextMenu(copyText)
     }
 }
 
 private struct CardDocumentSourceBlock: View {
     @Environment(\.appSkin) private var appSkin
-    @Environment(\.toastCoordinator) private var toastCoordinator
-    @State private var copyTrigger = false
     let source: CardDocumentSource
 
     private var copyText: String {
@@ -250,14 +230,7 @@ private struct CardDocumentSourceBlock: View {
             .font(appSkin.typography.caption)
             .foregroundStyle(appSkin.palette.secondaryText)
         }
-        .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
-                PlatformClipboard.copy(copyText)
-                copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
-            }
-        }
-        .sensoryFeedback(.success, trigger: copyTrigger)
+        .cardCopyContextMenu(copyText)
     }
 }
 
