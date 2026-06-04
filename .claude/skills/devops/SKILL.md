@@ -54,7 +54,7 @@ ops-cli user-quota <uid>                  # 24h 額度 + 逐時明細
 ops-cli user-stats <uid>                  # 單字庫統計
 ops-cli quota-overview                     # 全用戶 24h 額度總覽
 ops-cli active-users [hours]              # 近 N 小時活躍用戶
-ops-cli db-query <uid> SQL...             # 對用戶 DB 跑 SQL（不需要引號）
+ops-cli db-query <uid> SQL...             # 唯讀查用戶 DB（只放行單一 SELECT/WITH/EXPLAIN；不需引號）
 ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
 ops-cli cost <uid> [--range R] [--json]   # 單用戶 cost-by-call_type 拆解（provider-aware）
 ops-cli cost-overview [--range R] [--json] # 全用戶 cost 排名
