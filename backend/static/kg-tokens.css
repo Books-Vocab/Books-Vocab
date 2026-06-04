@@ -99,6 +99,7 @@
   --swatch-light: #F7F6F3;
   --swatch-dark: #191919;
   --swatch-sepia: #F5F1EB;
+  --blur-material: 12px;
 }
 
 :root, :host, [data-theme="light"] {
