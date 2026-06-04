@@ -59,7 +59,18 @@ class CardQueryMixin:
             return {card.id: card for card in session.exec(statement).all()}
 
     def get_batch(self, card_ids: set[str]) -> dict[str, Card]:
-        """Fetch multiple cards by ID in a single query."""
+        """Fetch multiple cards by ID in a single query.
+
+        Intentionally notebook-agnostic — unlike the content/word-based query
+        methods (find_by_content / all / count …), this is a low-level id→Card
+        primitive. Card ids are already unique within a user's store, and id is
+        the caller's chosen scope. Two deliberate callers rely on this: graph
+        neighbour expansion (vocab_crud), whose ids come from the per-notebook
+        graph and are thus already same-notebook; and cross-notebook review-state
+        sync (vocab_review, notebook_id=None by design), which must reach the
+        user's cards across all notebooks. Adding a notebook filter here would
+        break the latter — callers needing a scoped fetch must filter the result.
+        """
         if not card_ids:
             return {}
         with Session(self.engine) as session:
