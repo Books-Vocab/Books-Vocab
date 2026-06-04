@@ -31,12 +31,9 @@ def _db_path() -> Path:
 def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
-        db = _db_path()
-        db.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(db), check_same_thread=False)
-        from .sqlite_utils import init_sqlite_pragmas
+        from .sqlite_utils import open_singleton
 
-        init_sqlite_pragmas(_conn)
+        _conn = open_singleton(_db_path())
         _conn.execute(
             """
             CREATE TABLE IF NOT EXISTS admin_audit_log (
