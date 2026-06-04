@@ -7,29 +7,16 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-import jwt as pyjwt
 import pytest
+from conftest import TEST_JWT_SECRET, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
 from kg.api import app
 from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
 def _swap_settings(new_settings):

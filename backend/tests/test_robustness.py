@@ -25,6 +25,7 @@ def _future_iso(days: int = 30) -> str:
     return (datetime.now(tz=UTC) + timedelta(days=days)).isoformat()
 
 import pytest
+from conftest import TEST_JWT_SECRET, make_jwt
 from fastapi.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -42,26 +43,6 @@ import kg.embeddings as emb_mod
 import kg.judge as judge_mod
 from kg.api import app  # noqa: E402 — must come after env setup
 from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-# ---------------------------------------------------------------------------
-# JWT helper
-# ---------------------------------------------------------------------------
-
-def make_jwt(user_id: str) -> str:
-    from datetime import datetime, timedelta
-
-    import jwt as pyjwt
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
-
 
 def _swap_settings(new_settings):
     """Replace app.state.kg_settings and rebuild load/save closures."""
