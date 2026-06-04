@@ -147,13 +147,13 @@ def collect() -> list[Finding]:
     if not SRC.exists():
         print(f"ERROR: {SRC} not found", file=sys.stderr)
         sys.exit(2)
-    out: list[Finding] = []
+    files: list[Path] = []
     for f in sorted(SRC.rglob("*.swift")):
         if should_skip(f):
             continue
-        out.append(f)
+        files.append(f)
     findings: list[Finding] = []
-    for f in out:
+    for f in files:
         findings.extend(scan_file(f, str(f.relative_to(SRC))))
     return findings
 
