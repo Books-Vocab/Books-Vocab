@@ -74,6 +74,11 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         modelContext: ModelContext,
         kgService: any KGServing
     ) async {
+        // Clear any prior error up front so a stale banner never survives a new
+        // reconcile attempt regardless of which branch returns below (mirrors
+        // BookshelfCoordinator.clearError at the start of an import batch). The
+        // failure branches below re-set it when this attempt also fails.
+        reconcileError = nil
         guard authManager.isLoggedIn else {
             // 未登入也算「首次載入流程已完成」— 否則 logged-out users 會永久卡 loading placeholder。
             hasLoadedOnce = true

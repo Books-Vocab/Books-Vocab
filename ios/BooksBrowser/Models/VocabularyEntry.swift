@@ -101,6 +101,22 @@ final class VocabularyEntry {
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete && !isArchived }
     var shouldAppearInArchiveList: Bool { isSynced && syncAction != .delete && isArchived }
 
+    /// Shared `#Predicate` for SwiftData `@Query` knowledge-list call sites.
+    /// `#Predicate` can't reference the `shouldAppearInKnowledgeList` computed
+    /// property (it needs stored keypaths), so the condition is expressed once
+    /// here — keeping KGVocabView / NotebookListView from drifting. Pass
+    /// `notebookId` to additionally scope to one notebook.
+    static func knowledgeListPredicate(notebookId: String? = nil) -> Predicate<VocabularyEntry> {
+        if let notebookId {
+            return #Predicate {
+                $0.syncStatus == 1 && $0.actionType != "delete" && $0.isArchived == false && $0.notebookId == notebookId
+            }
+        }
+        return #Predicate {
+            $0.syncStatus == 1 && $0.actionType != "delete" && $0.isArchived == false
+        }
+    }
+
     init(
         word: String,
         translation: String,
