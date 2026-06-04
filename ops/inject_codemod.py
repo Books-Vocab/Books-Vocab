@@ -28,7 +28,6 @@ ROOT = Path(__file__).resolve().parent.parent
 VIEWS_ROOT = ROOT / "ios/BooksBrowser/Views"
 # View-injection grammar shared with the lint (single source of truth).
 from _inject_shared import (  # noqa: E402
-    SKIP_PATH_FRAGMENTS,
     STRUCT_VIEW_RE,
     PREVIEW_OPEN_RE,
     should_skip_path,
@@ -86,7 +85,7 @@ def process_file(path: Path):
     original = path.read_text(encoding="utf-8")
     lines = original.splitlines()
 
-    annotations: list[tuple[int, str, str]] = []  # (struct_line, name, indent)
+    annotations: list[tuple[int, str, str, bool]] = []  # (struct_line, name, indent, already_has_observe)
     last_import_idx = -1
     preview_depth = 0
 

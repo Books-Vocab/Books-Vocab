@@ -26,7 +26,6 @@ the ongoing safety net against this class of silent gap.
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import sys

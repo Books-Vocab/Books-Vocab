@@ -30,7 +30,6 @@ BASELINE_FILE = Path("ops/injection_baseline.txt")
 
 # View-injection grammar shared with the codemod (single source of truth).
 from _inject_shared import (  # noqa: E402
-    SKIP_PATH_FRAGMENTS,
     STRUCT_VIEW_RE,
     PREVIEW_OPEN_RE,
     should_skip_path,
