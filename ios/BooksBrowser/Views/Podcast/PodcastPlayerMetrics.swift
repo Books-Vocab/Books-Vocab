@@ -282,3 +282,18 @@ enum PodcastFollowScroll {
         return min(maxDuration, max(minDuration, sentenceDuration * coverage))
     }
 }
+
+/// Progress fraction for the CURRENT bubble's continuous fill background. The
+/// active sentence's container tint fills left→right as the playhead advances
+/// through the sentence (0 at its first word, 1 at its last), so the focus reads
+/// as a smooth progress bar handing off bubble-to-bubble instead of the old binary
+/// active/inactive crossfade (which the user saw as "在跳"). Pure + clamped so a
+/// playhead outside [start, end] (gap / seek / malformed cue) stays in range and a
+/// zero-length sentence never divides by zero. Read per frame on the CURRENT cell
+/// ONLY (same liveAnchor / TimelineView gate as the underline) — no other cell pays.
+enum PodcastBubbleFill {
+    static func fillFraction(playhead: TimeInterval, start: TimeInterval, end: TimeInterval) -> Double {
+        guard end > start else { return 0 }
+        return min(1, max(0, (playhead - start) / (end - start)))
+    }
+}

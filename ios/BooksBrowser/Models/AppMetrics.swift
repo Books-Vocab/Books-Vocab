@@ -93,6 +93,11 @@ enum AppMotion {
         Animation.timingCurve(0.1, 0.7, 0.2, 1.0, duration: duration)
     }
 
+    /// 字幕氣泡「焦點交棒」crossfade（當前句進度填充 ⇄ 非當前）。與 follow 捲動
+    /// 同款 decelerate 曲線、稍長 0.4s，讓焦點在 bubble 之間滑移收尾，取代舊
+    /// contentFade(0.15s) 的二元硬切（使用者反映「在跳」）。
+    static let podcastBubbleHandoff = Animation.timingCurve(0.1, 0.7, 0.2, 1.0, duration: 0.4)
+
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
     static let indicatorTransition = Animation.easeOut(duration: 0.25)

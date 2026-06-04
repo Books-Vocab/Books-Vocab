@@ -166,8 +166,11 @@ struct PodcastSentenceLevelView: View {
     }
 
     /// Animated scroll that centers `id`, gated on follow being active. The
-    /// duration is what makes the move read as a continuous glide rather than a
-    /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
+    /// duration is adaptive — `PodcastFollowScroll.duration(sentenceDuration:)`
+    /// scales it to this sentence's on-screen lifetime so a short sentence's scroll
+    /// isn't cut off mid-flight by the next boundary — and is fed into the
+    /// decelerate `AppMotion.podcastFollowScroll(duration:)` curve, making the move
+    /// read as a continuous glide rather than a jump.
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
         guard isFollowing, let id else { return }
         // Adapt the scroll duration to how long this sentence lingers: a short
@@ -397,6 +400,8 @@ private struct PodcastTranscriptColumn: View {
                     speaker: sentence.speaker,
                     words: sentence.words,
                     fullText: sentence.text,
+                    sentenceStart: sentence.startTime,
+                    sentenceEnd: sentence.endTime,
                     skin: PodcastBubbleSkin(skin: skin, slot: slot),
                     liveAnchor: liveAnchor,
                     duration: duration,
@@ -513,6 +518,11 @@ private struct PodcastBubbleCell: View, Equatable {
     let speaker: String
     let words: [PodcastSubtitleCue]
     let fullText: String
+    /// This sentence's play span — drives the current bubble's progress-fill
+    /// background (`PodcastBubbleFill.fillFraction`). Determined by `sentenceId`
+    /// (already folded into `contentHash`) → NOT compared in `==`.
+    let sentenceStart: TimeInterval
+    let sentenceEnd: TimeInterval
     let skin: PodcastBubbleSkin
     // Per-frame channel + stable closures — EXCLUDED from == (determined by
     // `sentenceId` or read live per frame):
@@ -575,7 +585,6 @@ private struct PodcastBubbleCell: View, Equatable {
     @ViewBuilder
     private var bubbleContent: some View {
         let active = isCurrent || isSelecting
-        let bg: Color = active ? skin.tint.opacity(0.18) : skin.tint.opacity(0.08)
         let fg: Color = active ? skin.primaryText : skin.secondaryText
         Group {
             if isSelecting {
@@ -599,29 +608,73 @@ private struct PodcastBubbleCell: View, Equatable {
         }
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, 10)
-        // Bubble fill + border live in their OWN shape-only layer so the active↔
-        // inactive skin crossfade animates on `active` WITHOUT animating the
-        // structural `wordFlow` swap (plain Text ↔ anchorPreference +
-        // overlayPreferenceValue + GeometryReader + TimelineView) that lives in the
-        // content layer above. Animating that swap spins up BOTH subtrees in one
-        // transaction → the per-sentence-change hitch — so the swap MUST stay
-        // instant. Scoping `.animation(value: active)` to this token-free shape
-        // layer gives the smooth bg/border glide the user asked for while keeping
-        // the structural swap snap-instant. (Earlier this whole block was left
-        // un-animated to dodge the hitch, which made the bubble color hard-cut.)
-        .background {
-            RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
-                .fill(bg)
-                .overlay {
-                    RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
-                        .stroke(
-                            skin.tint.opacity(active ? 0.22 : 0.08),
-                            lineWidth: active ? 1 : 0.8
-                        )
-                }
-                .animation(AppMotion.contentFade, value: active)
-        }
+        // Bubble fill + border live in their OWN shape-only layer (`bubbleBackground`)
+        // so the bg/border animation never animates the structural `wordFlow` swap
+        // (plain Text ↔ anchorPreference + overlayPreferenceValue + GeometryReader +
+        // TimelineView) in the content layer above — animating that swap spins up
+        // BOTH subtrees in one transaction → the per-sentence-change hitch, so the
+        // swap MUST stay instant.
+        .background { bubbleBackground }
         .animation(AppMotion.contentFade, value: isSelecting)
+    }
+
+    /// Bubble container background. The CURRENT bubble fills its tint left→right in
+    /// lock-step with the sentence's play progress (a continuous progress bar,
+    /// `PodcastBubbleFill.fillFraction`), replacing the old binary active/inactive
+    /// crossfade the user saw as "在跳". ONLY the current cell runs the per-frame
+    /// `TimelineView` (same `liveAnchor` gate as the underline, paused when not
+    /// playing); every other cell is a static low-tint base — so the per-cell
+    /// `Equatable` short-circuit and the scroll-freeze guardrail are untouched. The
+    /// handoff (current ⇄ not-current) crossfades on `active` over a longer,
+    /// scroll-synced curve (`podcastBubbleHandoff`) so the focus glides between
+    /// bubbles instead of snapping.
+    @ViewBuilder
+    private var bubbleBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+        let active = isCurrent || isSelecting
+        shape
+            .fill(skin.tint.opacity(0.08))
+            .overlay { activeBubbleFill(shape: shape).transition(.opacity) }
+            .overlay {
+                shape.stroke(
+                    skin.tint.opacity(active ? 0.22 : 0.08),
+                    lineWidth: active ? 1 : 0.8
+                )
+            }
+            .animation(AppMotion.podcastBubbleHandoff, value: active)
+    }
+
+    /// The tint fill riding above the base. CURRENT (playing/paused, not selecting):
+    /// a left-anchored mask whose width tracks the per-frame play progress through
+    /// this sentence — the progress bar. The per-frame work (mask width via
+    /// `liveAnchor` extrapolation) is NOT animated by a modifier; like the underline
+    /// it reads continuous from the `TimelineView` clock so it never lags the
+    /// playhead. SELECTING: a full-width static fill (a phrase selection must not
+    /// shift under the user's finger). Otherwise absent — base tint shows through.
+    /// The per-frame cost is bounded to the single current cell, exactly like the
+    /// underline engine; no other cell instantiates the `TimelineView`.
+    @ViewBuilder
+    private func activeBubbleFill(shape: RoundedRectangle) -> some View {
+        if isCurrent && !isSelecting {
+            GeometryReader { geo in
+                TimelineView(.animation(paused: !isPlaying)) { ctx in
+                    let t = PodcastPlaybackClock.projectedTime(
+                        anchor: liveAnchor.value,
+                        now: ctx.date.timeIntervalSinceReferenceDate,
+                        duration: duration
+                    )
+                    let frac = PodcastBubbleFill.fillFraction(
+                        playhead: t, start: sentenceStart, end: sentenceEnd
+                    )
+                    shape.fill(skin.tint.opacity(0.18))
+                        .mask(alignment: .leading) {
+                            Rectangle().frame(width: geo.size.width * frac)
+                        }
+                }
+            }
+        } else if isSelecting {
+            shape.fill(skin.tint.opacity(0.18))
+        }
     }
 
     @ViewBuilder

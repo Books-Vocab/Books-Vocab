@@ -411,3 +411,34 @@ struct PodcastFollowScrollTests {
         #expect(b <= c)
     }
 }
+
+/// `PodcastBubbleFill.fillFraction` drives the CURRENT bubble's progress-fill
+/// background: the active sentence's container tint fills left→right in lock-step
+/// with the playhead's progress through that sentence (0 at its first word, 1 at
+/// its last), so the focus reads as one continuous progress bar that hands off to
+/// the next bubble — replacing the old binary active/inactive crossfade the user
+/// saw "在跳". Pure so it is unit-testable without the SwiftUI runtime.
+struct PodcastBubbleFillTests {
+    @Test func beforeStartIsEmpty() {
+        #expect(PodcastBubbleFill.fillFraction(playhead: 5, start: 10, end: 20) == 0)
+    }
+
+    @Test func afterEndIsFull() {
+        #expect(PodcastBubbleFill.fillFraction(playhead: 25, start: 10, end: 20) == 1)
+    }
+
+    @Test func midpointIsHalf() {
+        #expect(PodcastBubbleFill.fillFraction(playhead: 15, start: 10, end: 20) == 0.5)
+    }
+
+    @Test func atStartIsZeroAtEndIsOne() {
+        #expect(PodcastBubbleFill.fillFraction(playhead: 10, start: 10, end: 20) == 0)
+        #expect(PodcastBubbleFill.fillFraction(playhead: 20, start: 10, end: 20) == 1)
+    }
+
+    @Test func degenerateRangeIsEmpty() {
+        // end <= start (malformed / zero-length sentence) → 0, never divide-by-zero.
+        #expect(PodcastBubbleFill.fillFraction(playhead: 15, start: 10, end: 10) == 0)
+        #expect(PodcastBubbleFill.fillFraction(playhead: 15, start: 20, end: 10) == 0)
+    }
+}
