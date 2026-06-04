@@ -36,6 +36,12 @@ struct AppTabSelectorStyle {
     let outerBorderInset: CGFloat
 }
 
+/// a11y label for a chip — title plus optional item count. Shared by `AppTabSelector`
+/// and `AppFilterChipBar` alongside `appChipLabel`, keeping the spoken text identical.
+func appChipAccessibilityLabel<ID: Hashable>(option: AppTabOption<ID>) -> String {
+    option.count.map { "\(option.title.localized), \($0) \("個項目".localized)" } ?? option.title.localized
+}
+
 /// Shared chip label body for `AppTabSelector` (single-select) and
 /// `AppFilterChipBar` (multi-select). Both compute their own `isSelected`
 /// and supply identical visual treatment via this builder — keep it as the
@@ -115,7 +121,7 @@ struct AppTabSelector<ID: Hashable>: View {
                     appChipLabel(option: option, isSelected: isSelected, style: style)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(option.count.map { "\(option.title.localized), \($0) \("個項目".localized)" } ?? option.title.localized)
+                .accessibilityLabel(appChipAccessibilityLabel(option: option))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
