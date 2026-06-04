@@ -156,10 +156,7 @@ def get_acceptance_stats(*, user_id: str | None = None) -> dict:
     """
     if not DB_PATH.exists():
         return {"total": 0, "accepted": 0, "rejected": 0, "rate": None}
-    base_where = (
-        "source = 'auto' "
-        "AND (reject_reason IS NULL OR reject_reason != 'degree_cap')"
-    )
+    base_where = f"source = 'auto' AND {DEGREE_CAP_EXCLUSION_SQL}"
     with _lock:
         conn = _get_conn()
         if user_id is not None:
