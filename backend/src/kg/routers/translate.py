@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 @router.post("/api/translate/quick", response_model=QuickTranslateResponse)
-async def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+async def translate_quick(req: TranslateRequest, response: Response, user: dict = Depends(get_current_user)):
     quota = _check_quota(user, "translate_quick", response)
     result = await translate_quick_response(req, user, logger=logger)
     _apply_quota_headers(response, quota)
@@ -27,7 +27,7 @@ async def translate_quick(req: TranslateRequest, user: dict = Depends(get_curren
 
 
 @router.post("/api/translate/phrase", response_model=PhraseTranslateResponse)
-async def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+async def translate_phrase(req: TranslateRequest, response: Response, user: dict = Depends(get_current_user)):
     quota = _check_quota(user, "translate_phrase", response)
     result = await translate_phrase_response(req, user, logger=logger)
     _apply_quota_headers(response, quota)
@@ -35,7 +35,7 @@ async def translate_phrase(req: TranslateRequest, user: dict = Depends(get_curre
 
 
 @router.post("/api/translate/explain", response_model=ExplainResponse)
-async def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+async def translate_explain(req: TranslateRequest, response: Response, user: dict = Depends(get_current_user)):
     quota = _check_quota(user, "translate_explain", response)
     result = await translate_explain_response(req, user, logger=logger)
     _apply_quota_headers(response, quota)

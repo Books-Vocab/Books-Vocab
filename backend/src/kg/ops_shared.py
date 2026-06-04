@@ -101,6 +101,10 @@ def assert_readonly_sql(sql: str) -> None:
       它們無法通過 SELECT/WITH/EXPLAIN 白名單。
 
     違反則 raise ValueError(訊息為使用者可讀的中文)。
+
+    注意:`;` 偵測為字元級掃描,無法區分語句分隔與字串字面內的 `;`
+    (如 ``WHERE word = ';'`` 會被誤拒)。對 admin ops 工具可接受 ——
+    操作者改寫查詢即可,不值得引入 SQL tokenizer。
     """
     stripped = sql.strip().rstrip(";").strip()
     if ";" in stripped:
