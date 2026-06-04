@@ -840,6 +840,10 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "자막 있음";
+// MARK: - Podcast transcript VoiceOver
+"podcast.transcript.seekHint" = "두 번 탭하여 이 문장부터 재생";
+"podcast.transcript.translateAction" = "문장 번역";
+"podcast.transcript.selectAction" = "텍스트 선택";
 "podcast.episodeRow.downloaded" = "다운로드됨";
 "podcast.episodeRow.listened" = "청취 완료";
 "podcast.episodeRow.unavailable" = "오디오를 사용할 수 없음";

@@ -564,6 +564,30 @@ private struct PodcastBubbleCell: View, Equatable {
         .onTapGesture {
             if !isSelecting { onSentenceTap() }
         }
+        // VoiceOver: collapse the per-word `Text` tokens into ONE sentence element
+        // (otherwise AT reads word-by-word and the tap-seek / long-press-select
+        // gestures are invisible). While selecting, defer to `.contain` so the
+        // UITextView's native selection a11y surfaces instead of being flattened.
+        .accessibilityElement(children: isSelecting ? .contain : .ignore)
+        .accessibilityLabel(isSelecting ? Text(verbatim: "") : Text(a11ySentenceLabel))
+        .accessibilityAddTraits(isSelecting ? [] : .isButton)
+        .accessibilityHint(isSelecting ? Text(verbatim: "") : Text(L10n.string("podcast.transcript.seekHint")))
+        // `.onTapGesture` is invisible to VoiceOver — expose seek as the default
+        // action so a double-tap jumps playback to this sentence.
+        .accessibilityAction(.default) { if !isSelecting { onSentenceTap() } }
+        .accessibilityAction(named: Text(L10n.string("podcast.transcript.translateAction"))) {
+            if !isSelecting { onPhraseTap(fullText, fullText) }
+        }
+        .accessibilityAction(named: Text(L10n.string("podcast.transcript.selectAction"))) {
+            if !isSelecting { onEnterSelection(0) }
+        }
+    }
+
+    /// VoiceOver label: the sentence text, prefixed with the speaker (even when the
+    /// visual label is hidden for repeated speakers) so AT users keep the dialog
+    /// attribution that sighted users get from bubble alignment + tint.
+    private var a11ySentenceLabel: String {
+        speaker.isEmpty ? fullText : "\(speaker): \(fullText)"
     }
 
     @ViewBuilder

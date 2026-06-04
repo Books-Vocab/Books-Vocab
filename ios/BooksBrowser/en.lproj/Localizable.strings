@@ -872,6 +872,10 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "Subtitles available";
+// MARK: - Podcast transcript VoiceOver
+"podcast.transcript.seekHint" = "Double tap to play from this sentence";
+"podcast.transcript.translateAction" = "Translate sentence";
+"podcast.transcript.selectAction" = "Select text";
 "podcast.episodeRow.downloaded" = "Downloaded";
 "podcast.episodeRow.listened" = "Listened";
 "podcast.episodeRow.unavailable" = "Audio unavailable";
