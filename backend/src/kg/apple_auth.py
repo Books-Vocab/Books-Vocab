@@ -38,7 +38,7 @@ def _fetch_apple_public_keys() -> None:
         # If cache exists and request fails, keeping old cache is safer
         if not _apple_public_keys:
             logger.error("Failed to fetch Apple public keys: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Authentication service unavailable")  # noqa: B904
+            raise HTTPException(status_code=503, detail="Authentication service unavailable")  # noqa: B904
 
 
 def _b64url_decode(value: str) -> bytes:

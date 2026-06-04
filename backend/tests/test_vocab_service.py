@@ -745,9 +745,12 @@ def test_incremental_query_does_not_load_all_cards(tmp_path):
 
 def test_incremental_query_resolves_neighbour_links(tmp_path):
     """Incremental query should correctly resolve links to non-modified neighbour cards."""
-    import time
+    from datetime import datetime
+
+    from sqlmodel import Session
 
     from kg.cards import CardStore
+    from kg.cards.model import Card
     from kg.difficulty import get_tier
     from kg.graph import GraphStore, LinkKind
     from kg.vocab_crud import list_vocab_cards
@@ -755,11 +758,12 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
 
     cards = CardStore(tmp_path / "cards.db")
     old_card = cards.add("apple", meaning="蘋果")
-    time.sleep(0.05)
-    from datetime import datetime
-    since_dt = datetime.now(UTC).replace(tzinfo=None)
-    time.sleep(0.05)
     new_card = cards.add("fruit", meaning="水果")
+    since_dt = datetime(2026, 1, 1, 12, 0, 0)
+    with Session(cards.engine) as session:
+        session.get(Card, old_card.id).updated_at = since_dt.replace(hour=11)
+        session.get(Card, new_card.id).updated_at = since_dt.replace(hour=13)
+        session.commit()
 
     graph = GraphStore(
         tmp_path / "graph.json",

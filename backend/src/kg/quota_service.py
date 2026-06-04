@@ -12,8 +12,9 @@ import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-from .llm.providers import REGISTRY, provider_for
+from .llm.providers import REGISTRY, LLMProvider, provider_for
 from .token_tracker import _get_conn, _lock
+from .types import QuotaCheck, QuotaState
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def _daily_limit(is_pro: bool) -> float:
     return PRO_DAILY_LIMIT_USD if is_pro else FREE_DAILY_LIMIT_USD
 
 
-def _pricing_provider(call_type: str, provider: str | None):
+def _pricing_provider(call_type: str, provider: str | None) -> LLMProvider:
     """Resolve the LLMProvider used to price a recorded row.
 
     A non-NULL ``provider`` name pins pricing to that provider — this is
@@ -232,7 +233,7 @@ def _quota_view(user_id: str, *, is_pro: bool) -> tuple[float, float, float]:
     return limit, used, fraction
 
 
-def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
+def get_quota_state(user_id: str, *, is_pro: bool = False) -> QuotaState:
     """Return {fraction, reset_seconds} where fraction = remaining / limit."""
     _limit, _used, fraction = _quota_view(user_id, is_pro=is_pro)
     return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
@@ -344,7 +345,7 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     }
 
 
-def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
+def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> QuotaCheck:
     """Pre-flight check before a translate call.
 
     Returns {exceeded: bool, fraction, reset_seconds}. Thin alias over
@@ -354,7 +355,7 @@ def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     return check_and_get_quota(user_id, call_type, is_pro=is_pro)
 
 
-def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
+def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> QuotaCheck:
     """Pre-flight check + state in one query."""
     limit, used, fraction = _quota_view(user_id, is_pro=is_pro)
     return {

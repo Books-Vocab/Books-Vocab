@@ -224,16 +224,6 @@ async def reset_async_clients() -> None:
             logger.debug("Failed to close async LLM client", exc_info=True)
 
 
-def reset_gemini_client() -> None:
-    """Backward-compatible alias — resets all cached sync clients."""
-    reset_clients()
-
-
-async def reset_async_gemini_client() -> None:
-    """Backward-compatible alias — resets all cached async clients."""
-    await reset_async_clients()
-
-
 def create_embedding_store(
     user_dir: Path,
     *,

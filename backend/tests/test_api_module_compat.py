@@ -33,7 +33,6 @@ def test_api_module_exposes_expected_surface():
         "delete_word",
         "get_graph_links",
         "add_vocab",
-        "_build_links_by_kind",
         "_card_response",
         "_run_pipeline_background",
         "run_pipeline",
@@ -87,7 +86,6 @@ def test_api_module_keeps_expected_callable_shapes():
     assert callable(api_mod.delete_word)
     assert callable(api_mod.get_graph_links)
     assert callable(api_mod.add_vocab)
-    assert callable(api_mod._build_links_by_kind)
     assert callable(api_mod._card_response)
     assert callable(api_mod._run_pipeline_background)
     assert callable(api_mod.run_pipeline)

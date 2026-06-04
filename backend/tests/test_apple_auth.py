@@ -382,14 +382,14 @@ class TestVerifyAppleToken:
 class TestFetchApplePublicKeys:
     """Tests for _fetch_apple_public_keys."""
 
-    def test_network_error_no_cache_raises_500(self):
-        """JWKS fetch failure with empty cache raises 500."""
+    def test_network_error_no_cache_raises_503(self):
+        """JWKS fetch failure with empty cache raises 503 (service unavailable)."""
         with patch("kg.apple_auth.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value = _mock_httpx_error()
 
             with pytest.raises(HTTPException) as exc_info:
                 apple_auth._fetch_apple_public_keys()
-            assert exc_info.value.status_code == 500
+            assert exc_info.value.status_code == 503
 
     def test_network_error_with_cache_uses_stale(self):
         """JWKS fetch failure with existing cache keeps stale cache."""

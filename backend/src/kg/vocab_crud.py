@@ -219,6 +219,7 @@ def batch_delete_vocab_words(
             try:
                 graph.cleanup_for_card(card.id, remove_blocked=True)
             except Exception as exc:
+                logger.error("Graph operation failed for card %s", card.id, exc_info=True)
                 try:
                     cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
@@ -285,6 +286,7 @@ def batch_archive_vocab_words(
                 # Roll the card's archive state back to its original value so a
                 # failed graph op never leaves card state and the response out of
                 # sync (mirrors batch_delete_vocab_words).
+                logger.error("Graph operation failed for card %s", card.id, exc_info=True)
                 try:
                     cards_store.update(card.id, is_archived=not archived)
                 except Exception:

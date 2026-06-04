@@ -124,7 +124,13 @@ def update_to_rejected(
 
 
 def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) -> list[dict]:
-    """Retrieve judge log entries for a user."""
+    """Retrieve judge log entries for a user.
+
+    Intentional test-only / read API: kept public as the row-level read
+    counterpart to ``record`` / ``get_acceptance_stats``. No production caller
+    today (admin history uses ``translate_log.get_log``); exercised by
+    ``test_judge_log``, ``test_judge_edges`` and ``test_judge_log_integration``.
+    """
     with _lock:
         conn = _get_conn()
         if notebook_id is not None:

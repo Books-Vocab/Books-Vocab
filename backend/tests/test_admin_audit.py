@@ -142,9 +142,7 @@ def test_list_limit_clamped(audit_db):
     for i in range(5):
         admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid=f"u{i}", payload={})
     assert len(admin_audit.list_audit(limit=2)) == 2
-    assert len(admin_audit.list_audit(limit=0)) == 5  # 0 clamps to 1+, but we inserted 5 → returns up to 1
-    # Sanity: limit=0 clamps to >=1, so result length is between 1 and 5.
-    assert 1 <= len(admin_audit.list_audit(limit=0)) <= 5
+    assert len(admin_audit.list_audit(limit=0)) == 5
 
 
 # ── action filter ──────────────────────────────────────────────────────────

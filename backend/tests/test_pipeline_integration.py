@@ -130,7 +130,11 @@ class TestPipelineIntegration:
             r = client.post("/api/pipeline", headers=headers)
             assert r.status_code == 200
             assert r.json()["status"] == "queued"
-            time.sleep(0.5)
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                if any("Pipeline completed" in rec.message for rec in caplog.records):
+                    break
+                time.sleep(0.05)
 
         completed = [rec for rec in caplog.records if "Pipeline completed" in rec.message]
         assert completed, (
