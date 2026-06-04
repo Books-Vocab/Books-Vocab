@@ -16,6 +16,13 @@ enum AppBootstrap {
         let failure: AppStartupFailure?
     }
 
+    /// 完整 store schema 的唯一真相 — 新增 @Model 時只改這裡，
+    /// 避免 6 處重複的型別清單彼此 drift。
+    static let fullModelTypes: [any PersistentModel.Type] = [
+        Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+        PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self
+    ]
+
     @MainActor
     static func run() -> Outcome {
         let localConfig = ModelConfiguration(
@@ -30,16 +37,14 @@ enum AppBootstrap {
             cloudKitDatabase: .automatic
         )
 
-        let allModels: [any PersistentModel.Type] = [Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self]
-
         do {
             let container = try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+                for: Schema(fullModelTypes),
                 configurations: localConfig, cloudConfig
             )
             AuthManager.shared.modelContainer = container
             runMigrationIfNeeded(container: container)
-            AppLog.app.info("ModelContainer initialized — models: \(allModels.map { String(describing: $0) }.joined(separator: ", "))")
+            AppLog.app.info("ModelContainer initialized — models: \(fullModelTypes.map { String(describing: $0) }.joined(separator: ", "))")
             return Outcome(container: container, failure: nil)
         } catch {
             AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — attempting store reset")
@@ -115,7 +120,7 @@ enum AppBootstrap {
 
         // First try: dual-store (local + CloudKit)
         if let container = try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+            for: Schema(fullModelTypes),
             configurations: localConfig, cloudConfig
         ) {
             return container
@@ -125,11 +130,11 @@ enum AppBootstrap {
         AppLog.app.warning("Dual-store retry failed — attempting single-store without CloudKit")
         let localOnlyConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self]),
+            schema: Schema(fullModelTypes),
             cloudKitDatabase: .none
         )
         return try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+            for: Schema(fullModelTypes),
             configurations: localOnlyConfig
         )
     }
@@ -137,7 +142,7 @@ enum AppBootstrap {
     private static func makeFallbackModelContainer() -> ModelContainer {
         do {
             return try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+                for: Schema(fullModelTypes),
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
         } catch {

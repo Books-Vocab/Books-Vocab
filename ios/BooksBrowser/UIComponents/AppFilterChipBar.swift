@@ -21,7 +21,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
                     appChipLabel(option: option, isSelected: isSelected, style: style)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(option.count.map { "\(option.title.localized), \($0) \("個項目".localized)" } ?? option.title.localized)
+                .accessibilityLabel(appChipAccessibilityLabel(option: option))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
