@@ -5,10 +5,12 @@ import sqlite3
 import pytest
 
 from kg.ops_shared import (
+    assert_readonly_sql,
     connect_ro,
     data_dir,
     notebook_files,
     print_table,
+    provider_column_expr,
     resolve_uid,
     table_columns,
 )
@@ -83,6 +85,51 @@ class TestTableColumns:
         ro = connect_ro(db)
         assert table_columns(ro, "t") == {"a", "b"}
         ro.close()
+
+
+class TestProviderColumnExpr:
+    def _conn(self, tmp_path, with_provider):
+        db = tmp_path / "t.db"
+        c = sqlite3.connect(str(db))
+        cols = "id INTEGER" + (", provider TEXT" if with_provider else "")
+        c.execute(f"CREATE TABLE token_usage ({cols})")
+        c.commit()
+        c.close()
+        return connect_ro(db)
+
+    def test_present(self, tmp_path):
+        ro = self._conn(tmp_path, with_provider=True)
+        assert provider_column_expr(ro) == "provider"
+        ro.close()
+
+    def test_legacy_missing(self, tmp_path):
+        ro = self._conn(tmp_path, with_provider=False)
+        assert provider_column_expr(ro) == "NULL"
+        ro.close()
+
+
+class TestAssertReadonlySql:
+    @pytest.mark.parametrize("sql", [
+        "SELECT * FROM cards",
+        "  select id from cards where word = 'x'  ",
+        "WITH t AS (SELECT 1) SELECT * FROM t",
+        "EXPLAIN QUERY PLAN SELECT * FROM cards",
+        "SELECT 1;",  # trailing ; tolerated
+    ])
+    def test_allows_readonly(self, sql):
+        assert_readonly_sql(sql)  # no raise
+
+    @pytest.mark.parametrize("sql", [
+        "DELETE FROM cards",
+        "UPDATE cards SET word = 'x'",
+        "ATTACH DATABASE '/etc/passwd' AS p",
+        "PRAGMA table_info(cards)",
+        "SELECT 1; DROP TABLE cards",  # statement stacking
+        "DROP TABLE cards",
+    ])
+    def test_rejects_non_readonly(self, sql):
+        with pytest.raises(ValueError):
+            assert_readonly_sql(sql)
 
 
 class TestNotebookFiles:

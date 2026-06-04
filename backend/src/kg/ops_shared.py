@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -76,6 +77,36 @@ def connect_ro(db_path: str | Path) -> sqlite3.Connection:
 def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     """回傳表的欄位名集合。用於探測 legacy DB 是否缺 provider/model 等欄。"""
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def provider_column_expr(conn: sqlite3.Connection) -> str:
+    """token_usage.provider 的 SQL 欄位表達式,容忍尚無此欄的 legacy DB。
+
+    有欄回 ``"provider"``;無欄回字面 ``"NULL"`` —— 讓下游定價把該列
+    視為未標記 legacy 列,fallback 到當前 route 的 provider。三套 ops 工具
+    (`ops_cli` / `ops_analyze`)原本各自重複此判斷,集中於此杜絕偏移。
+    """
+    return "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+
+
+_READONLY_STMT_RE = re.compile(r"^\s*(?:SELECT|WITH|EXPLAIN)\b", re.IGNORECASE)
+
+
+def assert_readonly_sql(sql: str) -> None:
+    """守衛 ad-hoc SQL:只放行單一唯讀 SELECT / WITH / EXPLAIN 語句。
+
+    `connect_ro` 已從連線層擋寫入,本守衛額外擋:
+    - 語句串接(``;`` 夾帶第二條語句)
+    - ATTACH / PRAGMA 等非 SELECT 起手式(跨 DB 讀取、設定)——
+      它們無法通過 SELECT/WITH/EXPLAIN 白名單。
+
+    違反則 raise ValueError(訊息為使用者可讀的中文)。
+    """
+    stripped = sql.strip().rstrip(";").strip()
+    if ";" in stripped:
+        raise ValueError("只允許單一語句,不可用 ; 串接")
+    if not _READONLY_STMT_RE.match(stripped):
+        raise ValueError("只允許 SELECT / WITH / EXPLAIN 唯讀查詢")
 
 
 def notebook_files(user_dir: str | Path, nb: str = "default") -> dict[str, Path]:
