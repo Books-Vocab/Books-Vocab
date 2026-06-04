@@ -308,6 +308,13 @@ final class PodcastSyncService {
         series.color = detail.color
         series.coverPattern = detail.coverPattern
         series.coverImageURL = detail.coverImageURL
+        // Server retracted the cover → drop the orphaned local cache so the card
+        // degrades back to the procedural cover instead of rendering a stale photo
+        // forever (cacheCoverIfNeeded early-returns on nil remote, never cleans up).
+        if (detail.coverImageURL ?? "").isEmpty, series.coverImagePath != nil {
+            try? FileManager.default.removeItem(at: Self.cachedCoverURL(seriesId: seriesId))
+            series.coverImagePath = nil
+        }
         series.totalDurationSec = detail.totalDurationSec ?? 0
         series.episodeCount = detail.episodes.count
         series.updatedAt = Date()
