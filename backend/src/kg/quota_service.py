@@ -178,6 +178,12 @@ def clear_reservations() -> None:
         _reservations.clear()
 
 
+def _row_cost(call_type: str, provider: str | None, total_in, total_out) -> float:
+    """USD cost of one ``GROUP BY call_type, provider`` row, normalising NULL
+    token sums (no rows in window) to 0."""
+    return token_cost_usd(call_type, int(total_in or 0), int(total_out or 0), provider=provider)
+
+
 def _used_usd(user_id: str) -> float:
     """Recorded USD cost (last 24 h) PLUS outstanding in-flight reservations.
 
@@ -203,7 +209,7 @@ def _used_usd(user_id: str) -> float:
 
     total = 0.0
     for call_type, provider, total_in, total_out in rows:
-        total += token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
+        total += _row_cost(call_type, provider, total_in, total_out)
     return total + _reserved_usd(user_id)
 
 
@@ -264,7 +270,7 @@ def get_all_quota_usage(
         if user_id not in result:
             limit = _daily_limit(pro_by_user.get(user_id, False))
             result[user_id] = {"used_usd": 0.0, "limit_usd": limit, "calls": {}}
-        cost = token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
+        cost = _row_cost(call_type, provider, total_in, total_out)
         result[user_id]["used_usd"] += cost
         bucket = result[user_id]["calls"].setdefault(call_type, {"count": 0, "cost_usd": 0.0})
         bucket["count"] += cnt
@@ -324,7 +330,7 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     for call_type, provider, cnt, total_in, total_out in rows:
         ti = int(total_in or 0)
         to = int(total_out or 0)
-        cost = token_cost_usd(call_type, ti, to, provider=provider)
+        cost = _row_cost(call_type, provider, ti, to)
         cbucket = calls.setdefault(call_type, {"count": 0, "cost_usd": 0.0})
         cbucket["count"] += int(cnt)
         cbucket["cost_usd"] = round(cbucket["cost_usd"] + cost, 6)
