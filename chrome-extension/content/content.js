@@ -11,6 +11,10 @@
   const HOST_ID = 'kg-popup-host';
   const MAX_LEN = 200;
   const MIN_LEN = 1;
+  // Selection length above which a translation is treated as a phrase (not a
+  // single word). Must track KGPure.isPhrase's threshold in shared/pure.js —
+  // content scripts run in an isolated world and cannot import KGPure.
+  const PHRASE_MIN_LEN = 50;
 
   /** Currently active host element (only one popup at a time). */
   let activeHost = null;
@@ -264,12 +268,10 @@
     `;
 
     // Determine message type based on word length
-    const isPhrase = word.length > 50;
+    const isPhrase = word.length > PHRASE_MIN_LEN;
     const msg = isPhrase
       ? { type: 'translatePhrase', text: word, context }
       : { type: 'translate', word, context };
-
-    let translationData = null;
 
     chrome.runtime.sendMessage(msg, (response) => {
       if (!shadow.host || !shadow.host.isConnected) return; // popup dismissed
@@ -290,7 +292,6 @@
         return;
       }
 
-      translationData = response;
       renderTranslation(popup, word, response, isPhrase, context, source);
     });
   }
