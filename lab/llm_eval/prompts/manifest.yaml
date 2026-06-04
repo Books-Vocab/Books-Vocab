@@ -1,0 +1,71 @@
+prompts:
+  - name: translate_quick
+    versions:
+      - id: v1
+        file: translate_quick_v1.md
+        source_of_truth: backend/src/kg/translate_service.py:quick_translate_prompt
+        tags: [translate, production, json_output]
+        schema:
+          required_keys: [t, p, r]
+          response_format: json_object
+          t_rules: [trad_chinese, ends_with_de_for_adj, ends_with_di_for_adv]
+
+  - name: translate_phrase
+    versions:
+      - id: v1
+        file: translate_phrase_v1.md
+        source_of_truth: backend/src/kg/translate_service.py:phrase_translate_prompt
+        tags: [translate, production, json_output]
+        schema:
+          required_keys: [t]
+          response_format: json_object
+
+  - name: translate_explain
+    versions:
+      - id: v1
+        file: translate_explain_v1.md
+        source_of_truth: backend/src/kg/translate_service.py:explain_translate_prompt
+        tags: [translate, production, json_output]
+        schema:
+          required_keys: [e]
+          response_format: json_object
+
+  - name: judge_batch
+    versions:
+      - id: v1
+        file: judge_batch_v1.md
+        source_of_truth: backend/src/kg/judge/prompts.py:BATCH_SYSTEM_PROMPT
+        tags: [judge, production, json_output]
+        schema:
+          required_keys: [word, link, confidence, reason]
+          response_format: json_object
+
+  - name: judge_selective
+    versions:
+      - id: v1
+        file: judge_selective_v1.md
+        source_of_truth: backend/src/kg/judge/prompts.py:SELECTIVE_BATCH_SYSTEM_PROMPT
+        tags: [judge, production, json_output]
+        schema:
+          required_keys: [word, link, confidence, reason]
+          response_format: json_object
+
+  - name: judge_manual
+    versions:
+      - id: v1
+        file: judge_manual_v1.md
+        source_of_truth: backend/src/kg/judge/prompts.py:MANUAL_LINK_SYSTEM_PROMPT
+        tags: [judge, production, json_output]
+        schema:
+          required_keys: [link, confidence, reason]
+          response_format: json_object
+
+  - name: enrich
+    versions:
+      - id: v1
+        file: enrich_v1.md
+        source_of_truth: backend/src/kg/enrich.py:SYSTEM_PROMPT
+        tags: [enrich, production, json_output]
+        schema:
+          required_keys: [word, pos, note, collocations, meaning_fix]
+          response_format: json_object
