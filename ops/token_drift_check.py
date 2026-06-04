@@ -14,6 +14,7 @@ Coverage — EVERY token carrying a `$swift` provenance key is checked:
                durations / timingCurve control points, TapFeedback scalars
   AppFonts     TypeScale ramp, Tracking scale
   AppSkin      baseTypography sizes, baseSpacing / baseMetrics, baseRadii refs
+  UIComponents AppTagMetrics chip padding + AppTag fill opacity (AppSurface.swift)
 
 Web-only values WITHOUT a $swift key (leading ratios, spring bezier
 approximations, composed --transition-* shorthands, CJK fallbacks) are out of
@@ -24,7 +25,7 @@ symbol raises an error rather than being silently skipped.
 Run:  uv run python ops/token_drift_check.py
 Exit: 0 = in sync, 1 = drift found.
 
-Env overrides (tests): KG_TOKENS_JSON, KG_IOS_MODELS_DIR.
+Env overrides (tests): KG_TOKENS_JSON, KG_IOS_MODELS_DIR, KG_IOS_UICOMPONENTS_DIR.
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 TOKENS_JSON = Path(os.environ.get("KG_TOKENS_JSON", REPO / "design-system" / "tokens.json"))
 MODELS = Path(os.environ.get("KG_IOS_MODELS_DIR", REPO / "ios" / "BooksBrowser" / "Models"))
+UICOMPONENTS = Path(os.environ.get(
+    "KG_IOS_UICOMPONENTS_DIR", REPO / "ios" / "BooksBrowser" / "UIComponents"))
 
 EPS = 1e-6
 _FLOAT = r"[-+]?[0-9]*\.?[0-9]+"
@@ -49,6 +52,10 @@ _FLOAT = r"[-+]?[0-9]*\.?[0-9]+"
 
 def _read(name: str) -> str:
     return (MODELS / name).read_text(encoding="utf-8")
+
+
+def _read_uic(name: str) -> str:
+    return (UICOMPONENTS / name).read_text(encoding="utf-8")
 
 
 def parse_app_colors() -> dict[str, tuple[float, float, float]]:
@@ -179,6 +186,23 @@ def parse_elevation() -> dict[str, dict[str, float]]:
     return out
 
 
+def parse_tag_metrics() -> dict[str, float]:
+    """AppTagMetrics enum (lives in UIComponents, not Models): label -> CGFloat."""
+    body = _enum_body(_read_uic("AppTagMetrics.swift"), r"enum AppTagMetrics\s*\{", "{", "}")
+    return {m.group(1): float(m.group(2))
+            for m in re.finditer(r"static let (\w+):\s*CGFloat\s*=\s*(" + _FLOAT + r")", body)}
+
+
+def parse_tag_fill() -> dict[str, float]:
+    """AppTag background opacity -> {'light': a, 'dark': a} from AppSurface.swift's
+       `tone.opacity(colorScheme == .dark ? <dark> : <light>)`."""
+    src = _read_uic("AppSurface.swift")
+    m = re.search(
+        r"\.opacity\(\s*colorScheme == \.dark\s*\?\s*(" + _FLOAT + r")\s*:\s*("
+        + _FLOAT + r")\s*\)", src)
+    return {"dark": float(m.group(1)), "light": float(m.group(2))} if m else {}
+
+
 # --------------------------------------------------------------------------
 # Comparison
 # --------------------------------------------------------------------------
@@ -206,6 +230,8 @@ def check() -> list[str]:
     color_strings = parse_string_lets("AppColors.swift")
     motion = parse_motion()
     tap = parse_scale("AppMetrics.swift", "TapFeedback")
+    tag_metrics = parse_tag_metrics()
+    tag_fill = parse_tag_fill()
 
     # 1) primitive palette
     for name, variants in tokens["color"]["primitive"].items():
@@ -227,6 +253,8 @@ def check() -> list[str]:
             if key.startswith("$") or "$swift" not in spec:
                 continue
             sym = spec["$swift"]  # AppTheme.<theme>.<field>
+            if not sym.startswith("AppTheme."):
+                continue  # AppSurface.* (tag-fill) handled in its own loop below
             parts = sym.split(".")
             if len(parts) != 3:
                 continue
@@ -244,6 +272,18 @@ def check() -> list[str]:
                                   f"!= Swift {sym} {sw['overlay']}@{sw['alpha']}")
             else:
                 errors.append(f"color.theme.{thm}.{key}: kind mismatch vs {sym} (JSON {spec}, Swift {sw})")
+
+    # 2b) AppTag fill opacity (AppSurface.swift): tone @ theme-specific alpha.
+    #     sepia mirrors light and carries no $swift, so it is skipped automatically.
+    for thm, fields in tokens["color"]["theme"].items():
+        spec = fields.get("tag-fill")
+        if not spec or spec.get("$swift") != "AppSurface.AppTag.fill":
+            continue
+        if thm not in tag_fill:
+            errors.append(f"color.theme.{thm}.tag-fill: AppSurface.swift has no {thm} opacity")
+        elif not _eq(spec["alpha"], tag_fill[thm]):
+            errors.append(f"color.theme.{thm}.tag-fill: JSON alpha {spec['alpha']} "
+                          f"!= Swift AppTag.fill {tag_fill[thm]}")
 
     # 3) numeric scales
     def check_scale(label: str, node: dict, swift: dict, key_field: str = "px"):
@@ -290,6 +330,7 @@ def check() -> list[str]:
         "AppSkin.baseSpacing.": base_spacing,
         "AppSkin.baseMetrics.": base_metrics,
         "AppMetrics.": app_metrics,
+        "AppTagMetrics.": tag_metrics,
     }
     for key, spec in tokens["space"]["semantic"].items():
         if key.startswith("$") or "$swift" not in spec:

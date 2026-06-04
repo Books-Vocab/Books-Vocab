@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: bab1d5fa
+verified_against: 33191db4
 -->
 # Technical Reference Index
 
@@ -112,8 +112,10 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
-| `gen_web_tokens.py` | 從 `design-system/tokens.json`(iOS Swift token 鏡像 SoT)生成 web CSS(`design-system/dist/kg-tokens.css` + chrome-extension `shared/tokens.css` + `backend/static/{kg-tokens,kg-components}.css`);`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
-| `token_drift_check.py` | drift guard — 驗證 `tokens.json` 每個 `$swift` token 仍對齊 iOS Swift literal(`AppColors`/`AppTheme`/`AppMetrics`/`AppFonts`),偏移不可 merge |
+| `gen_web_tokens.py` | 從 `design-system/tokens.json`(iOS Swift token 鏡像 SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
+| `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 `$swift` token 仍對齊 iOS Swift literal(`AppColors`/`AppTheme`/`AppMetrics`/`AppFonts`/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity〔`AppSurface.swift`〕),偏移不可 merge |
+| `component_fidelity_check.py` | drift guard(**組裝層**)— contract-based 驗證 `design-system/dist/kg-components.css` 每個手寫 primitive *選用* 的 token 對齊 iOS 元件契約(`.kg-chip`↔`AppTag`、`.kg-btn`↔`AppActionButtonStyle` radius md/700、`.kg-card`↔`AppSectionCardStyle`、`.kg-input` body(17)+hairline、`.kg-banner` caption(12)+v8、serif heading 700…),刻意的 web 發散(brand-hero CTA / banner 形狀)亦 pin 防回歸。`token_drift` 守值、它守*選用哪個值*;stdlib-only,env override `KG_COMPONENTS_CSS` |
+| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `component_fidelity_check`(若存在)+ extension `shared/pure.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
@@ -131,8 +133,9 @@ Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` 
 |------|-----------|
 | Token SoT(web 側) | `design-system/tokens.json` — 鏡像 iOS Swift token literal(rgb float + `$swift` provenance) |
 | 生成器 | `ops/gen_web_tokens.py`(SoT → web CSS,見 ops 表) |
-| Drift guard | `ops/token_drift_check.py`(`$swift` token ↔ iOS 對齊,見 ops 表) |
-| 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源) |
+| Guard(三層)| **值** `ops/token_drift_check.py`(`$swift` token ↔ iOS literal)+ **生成** `gen_web_tokens.py --check`(on-disk CSS ↔ tokens.json 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
+| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + extension `pure.test.js`;由 `.github/workflows/design-system.yml`(repo 首支 GitHub Actions CI,相關路徑變動才跑)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
+| 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源,component_fidelity 守護對象) |
 | 消費副本 | chrome-extension `shared/tokens.css`(生成)+ `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |
 | Shadow-DOM 安全 | token CSS selector 用 `:root, :host`,供 extension 注入 closed shadow root 仍生效 |
 

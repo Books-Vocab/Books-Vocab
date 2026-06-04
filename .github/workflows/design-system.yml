@@ -1,0 +1,36 @@
+name: design-system
+
+# 設計系統跨平台完整性 gate。iOS Swift 為 SoT；此 workflow 確保 tokens.json 鏡像 iOS、
+# 生成 CSS 無 stale、web primitive 組裝對齊 iOS 元件契約、extension shared 邏輯不破。
+# 只在相關路徑變動時跑。本地等價入口：ops/verify_design_system.sh（pre-commit 亦用）。
+
+on:
+  push:
+    paths: &ds_paths
+      - 'design-system/**'
+      - 'ops/gen_web_tokens.py'
+      - 'ops/token_drift_check.py'
+      - 'ops/component_fidelity_check.py'
+      - 'ops/verify_design_system.sh'
+      - 'ios/BooksBrowser/Models/**'
+      - 'ios/BooksBrowser/UIComponents/**'
+      - 'chrome-extension/shared/**'
+      - 'backend/static/kg-tokens.css'
+      - 'backend/static/kg-components.css'
+      - '.github/workflows/design-system.yml'
+  pull_request:
+    paths: *ds_paths
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify design-system integrity
+        run: ops/verify_design_system.sh
