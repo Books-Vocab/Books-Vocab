@@ -13,12 +13,13 @@ from pathlib import Path
 
 from kg.admin_cost_summary import VALID_RANGES, since_iso
 from kg.ops_shared import (
+    assert_readonly_sql,
     connect_ro,
     data_dir,
     emit_json,
     print_table,
+    provider_column_expr,
     resolve_uid,
-    table_columns,
 )
 from kg.quota_service import token_cost_usd
 
@@ -46,7 +47,7 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
         return
 
     conn = connect_ro(db_path)
-    provider_col = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+    provider_col = provider_column_expr(conn)
     rows = conn.execute(
         f"SELECT call_type, input_tokens, output_tokens, created_at, {provider_col} AS provider "
         "FROM token_usage WHERE user_id = ? AND created_at >= ? ORDER BY created_at",
@@ -117,7 +118,7 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
         return
 
     conn = connect_ro(db_path)
-    provider_col = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+    provider_col = provider_column_expr(conn)
     rows = conn.execute(
         f"SELECT user_id, call_type, input_tokens, output_tokens, {provider_col} AS provider "
         "FROM token_usage WHERE created_at >= ?",
@@ -174,6 +175,11 @@ def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
     uid = resolve_uid(args.uid, data_dir())
     sql = " ".join(args.sql)  # REMAINDER captures split words; rejoin
+    try:
+        assert_readonly_sql(sql)
+    except ValueError as e:
+        print(f"拒絕執行:{e}", file=sys.stderr)
+        sys.exit(1)
     db_path = data_dir() / "users" / uid / "cards.db"
     if not db_path.exists():
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
@@ -219,7 +225,7 @@ def cmd_cost(args: argparse.Namespace) -> None:
 
     if db_path.exists():
         conn = connect_ro(db_path)
-        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+        pcol = provider_column_expr(conn)
         sql = (
             f"SELECT call_type, {pcol} AS provider, COUNT(*), "
             "SUM(input_tokens), SUM(output_tokens) "
@@ -284,7 +290,7 @@ def cmd_cost_overview(args: argparse.Namespace) -> None:
 
     if db_path.exists():
         conn = connect_ro(db_path)
-        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+        pcol = provider_column_expr(conn)
         sql = (
             f"SELECT user_id, call_type, {pcol} AS provider, COUNT(*), "
             "SUM(input_tokens), SUM(output_tokens) FROM token_usage"
