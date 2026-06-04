@@ -11,6 +11,7 @@ import logging
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from .llm.providers import REGISTRY, LLMProvider, provider_for
 from .token_tracker import _get_conn, _lock
@@ -219,7 +220,13 @@ def _used_usd(user_id: str) -> float:
     return total + _reserved_usd(user_id)
 
 
-def _quota_view(user_id: str, *, is_pro: bool) -> tuple[float, float, float]:
+class _QuotaView(NamedTuple):
+    limit: float
+    used: float
+    fraction: float
+
+
+def _quota_view(user_id: str, *, is_pro: bool) -> _QuotaView:
     """Shared quota arithmetic for every reader: (limit, used, fraction).
 
     ``fraction`` = remaining / limit, guarded against a zero limit (an operator
@@ -230,7 +237,7 @@ def _quota_view(user_id: str, *, is_pro: bool) -> tuple[float, float, float]:
     used = _used_usd(user_id)
     remaining = max(limit - used, 0.0)
     fraction = round(remaining / limit, 4) if limit > 0 else 0.0
-    return limit, used, fraction
+    return _QuotaView(limit, used, fraction)
 
 
 def get_quota_state(user_id: str, *, is_pro: bool = False) -> QuotaState:

@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from .catalog import selected_nodeids
 from .results import bucket_status, item_results
@@ -43,9 +43,13 @@ def _error_run(
     }
 
 
-def _parse_matrix(
-    stdout: str, stderr: str
-) -> tuple[list[dict[str, str]], list[dict[str, Any]], dict[str, int]]:
+class MatrixReport(NamedTuple):
+    cases: list[dict[str, str]]
+    matrix_rows: list[dict[str, Any]]
+    totals: dict[str, int]
+
+
+def _parse_matrix(stdout: str, stderr: str) -> MatrixReport:
     """Parse pytest -vv output into (cases, matrix_rows, totals).
 
     Scans each line for a ``tests/...::case STATUS`` match, buckets per module,
@@ -87,7 +91,7 @@ def _parse_matrix(
         "skipped": sum(row["skipped"] for row in matrix_rows),
     }
     totals["total"] = totals["passed"] + totals["failed"] + totals["errors"] + totals["skipped"]
-    return cases, matrix_rows, totals
+    return MatrixReport(cases, matrix_rows, totals)
 
 
 def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]:

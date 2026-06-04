@@ -94,7 +94,7 @@ def test_list_lookup_and_delete_vocab_helpers():
     assert looked_up["id"] == "c1"
 
     deleted = delete_vocab_word("lucid", cards_store=cards)
-    assert deleted == {"deleted": "lucid", "id": "c2"}
+    assert (deleted.deleted, deleted.id) == ("lucid", "c2")
     assert cards.deleted == "c2"
 
 
@@ -293,7 +293,7 @@ class TestArchiveVocabWord:
         cards = _FakeCardsStore([card])
         graph = _FakeArchiveGraph()
         result = archive_vocab_word("hello", archived=True, cards_store=cards, graph=graph)
-        assert result["archived"] is True
+        assert result.archived is True
         assert graph.deprecated_for == ["c1"]
         assert graph.removed_candidates_for == ["c1"]
 
@@ -302,14 +302,14 @@ class TestArchiveVocabWord:
         cards = _FakeCardsStore([card])
         graph = _FakeArchiveGraph()
         result = archive_vocab_word("hello", archived=False, cards_store=cards, graph=graph)
-        assert result["archived"] is False
+        assert result.archived is False
         assert graph.restored_for == ["c1"]
 
     def test_archive_without_graph_still_works(self):
         card = _FakeCard(id="c1", content="hello")
         cards = _FakeCardsStore([card])
         result = archive_vocab_word("hello", archived=True, cards_store=cards)
-        assert result["archived"] is True
+        assert result.archived is True
 
     def test_archive_rolls_back_on_graph_failure(self):
         """If graph.cleanup_for_card raises, the card's is_archived must roll
@@ -662,7 +662,7 @@ class TestDeleteEvictsEmbedding:
         """embeddings stays optional — old call sites must not break."""
         cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
         result = delete_vocab_word("evoke", cards_store=cards)
-        assert result == {"deleted": "evoke", "id": "c1"}
+        assert (result.deleted, result.id) == ("evoke", "c1")
 
     def test_delete_rollback_does_not_evict_embedding(self, tmp_path):
         """If graph cleanup fails and the card is restored, the vector must

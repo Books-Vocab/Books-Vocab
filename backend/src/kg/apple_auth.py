@@ -12,6 +12,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from fastapi import HTTPException
 
+from .auth_types import VerifiedIdentity
+
 logger = logging.getLogger(__name__)
 
 APPLE_PUBLIC_KEY_URL = "https://appleid.apple.com/auth/keys"
@@ -73,7 +75,7 @@ def _get_rsa_public_key(kid: str) -> str | bytes:
     return pem
 
 
-def verify_apple_token(token: str, audience: str) -> tuple[str, str | None, bool]:
+def verify_apple_token(token: str, audience: str) -> VerifiedIdentity:
     """Validate Apple Identity Token and return ``(sub, email, email_verified)``.
 
     Apple only includes ``email`` / ``email_verified`` on the **first**
@@ -114,7 +116,7 @@ def verify_apple_token(token: str, audience: str) -> tuple[str, str | None, bool
         # Apple may send "true" (str) or true (bool) — normalize.
         email_verified = str(decoded.get("email_verified", "")).strip().lower() == "true"
 
-        return str(sub), email, email_verified
+        return VerifiedIdentity(str(sub), email, email_verified)
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")  # noqa: B904

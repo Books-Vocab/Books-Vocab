@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import HTTPException
 
 from .api_models import AuthVerifyRequest, AuthVerifyResponse
+from .auth_types import VerifiedIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,8 @@ async def auth_verify_response(
     google_client_id: str,
     apple_bundle_id: str,
     jwt_expiry_minutes: int,
-    verify_google_token: Callable[[str, str], Awaitable[tuple[str, str | None, bool]]],
-    verify_apple_token: Callable[[str, str], tuple[str, str | None, bool]],
+    verify_google_token: Callable[[str, str], Awaitable[VerifiedIdentity]],
+    verify_apple_token: Callable[[str, str], VerifiedIdentity],
     resolve_and_link_user: Callable[[str, str, str | None], str],
     create_jwt_token: Callable[[str, str], str],
 ) -> AuthVerifyResponse:

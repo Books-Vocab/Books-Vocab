@@ -119,13 +119,13 @@ class TestDeleteVocabWordWithGraph:
 
         result = delete_vocab_word("evoke", cards_store=cards, graph=graph_store)
 
-        assert result == {"deleted": "evoke", "id": "c1"}
+        assert (result.deleted, result.id) == ("evoke", "c1")
         assert graph_store.get_links_for("c1") == []
 
     def test_without_graph_still_works(self):
         cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
         result = delete_vocab_word("evoke", cards_store=cards)
-        assert result == {"deleted": "evoke", "id": "c1"}
+        assert (result.deleted, result.id) == ("evoke", "c1")
         assert cards.deleted == "c1"
 
     def test_graph_none_explicit_still_works(self, graph_store):
@@ -133,7 +133,7 @@ class TestDeleteVocabWordWithGraph:
         graph_store.add_link("c1", "c2", LinkKind.SHARES_USAGE, 0.8, "r")
 
         result = delete_vocab_word("lucid", cards_store=cards, graph=None)
-        assert result["deleted"] == "lucid"
+        assert result.deleted == "lucid"
         # link not deprecated because graph=None
         assert len(graph_store.get_links_for("c1")) == 1
 

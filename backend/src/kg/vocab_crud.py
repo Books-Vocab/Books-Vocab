@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from .api_models import CardResponse
+from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
 from .exceptions import BadRequestError, NotFoundError, ValidationError
 from .user_store import parse_datetime
 from .vocab_shared import (
@@ -74,7 +75,7 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
     return card_response_builder(card, graph, cards_by_id)
 
 
-def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
+def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> ArchiveWordResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
@@ -93,7 +94,7 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
             except Exception:
                 logger.exception("rollback failed for card %s after graph error", card.id)
             raise
-    return {"word": word, "id": card.id, "archived": archived}
+    return ArchiveWordResponse(word=word, id=card.id, archived=archived)
 
 
 def _evict_embedding(embeddings: Any, card_id: str) -> None:
@@ -115,7 +116,7 @@ def delete_vocab_word(
     graph: Any = None,
     embeddings: Any = None,
     notebook_id: str | None = None,
-) -> dict[str, str]:
+) -> DeleteWordResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.delete(card.id)
     if graph is not None:
@@ -132,7 +133,7 @@ def delete_vocab_word(
     # stops polluting find_similar. Done after the rollback window so a
     # restored card keeps its vector.
     _evict_embedding(embeddings, card.id)
-    return {"deleted": word, "id": card.id}
+    return DeleteWordResponse(deleted=word, id=card.id)
 
 
 class _GraphOpFailed(Exception):
@@ -145,13 +146,19 @@ class _GraphOpFailed(Exception):
     """
 
 
+class BulkResult(NamedTuple):
+    succeeded: list[tuple[str, Any]]
+    not_found: list[str]
+    failed: list[str]
+
+
 def _batch_apply(
     words: list[str],
     *,
     cards_store: Any,
     notebook_id: str | None,
     apply: Callable[[Any], None],
-) -> tuple[list[tuple[str, Any]], list[str], list[str]]:
+) -> BulkResult:
     """Shared skeleton for batch vocab mutations.
 
     Validates the batch size, builds one content lookup, and runs ``apply(card)``
@@ -188,7 +195,7 @@ def _batch_apply(
             continue
         succeeded.append((word, card))
 
-    return succeeded, not_found, failed
+    return BulkResult(succeeded, not_found, failed)
 
 
 def batch_delete_vocab_words(
