@@ -3,10 +3,12 @@ import Testing
 
 /// 覆蓋 `VocabularyEntry` 的可見性 / 上傳判準 computed properties。
 ///
-/// 這些 predicate 是 KG 列表、Archive 列表、Reader 高亮、sync 上傳閘門的
-/// 單一真相（KGVocabView / NotebookListView 的 @Query 與多處 in-memory
-/// filter 都依賴之）。回歸保護：syncStatus × actionType × isArchived 的
-/// 組合不可漂移 —— 尤其 `!isArchived` 不可在任一路徑漏判。
+/// 這些 computed property 是 in-memory filter（StatsPresentation、
+/// VocabularyListView 等）的真相。@Query 走的是平行的
+/// `knowledgeListPredicate(notebookId:)` 工廠（SwiftData #Predicate 無法
+/// 直接引用 computed property，故同條件雙軌表述）—— 本測試鎖 computed
+/// 軌不漂移。回歸保護：syncStatus × actionType × isArchived 的組合不可
+/// 漂移 —— 尤其 `!isArchived` 不可在任一路徑漏判。
 @Suite("VocabularyEntry state predicates")
 struct VocabularyEntryStateTests {
 
