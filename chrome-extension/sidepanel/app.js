@@ -143,7 +143,7 @@ async function loadVocabList() {
     }
 
     // Response is the vocab array (or an { items } / { data } envelope).
-    const items = window.KGPure.normalizeVocabList(response);
+    const items = KGPure.normalizeVocabList(response);
 
     vocabData = items;
 
@@ -172,7 +172,7 @@ async function loadVocabList() {
  */
 function showErrorFromResponse(response) {
   const { icon, title, subtitle, btnLabel, action } =
-    window.KGPure.classifyError(response || {});
+    KGPure.classifyError(response || {});
 
   errorIcon.textContent = icon;
   errorTitle.textContent = title;
