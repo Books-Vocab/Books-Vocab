@@ -442,3 +442,55 @@ struct PodcastBubbleFillTests {
         #expect(PodcastBubbleFill.fillFraction(playhead: 15, start: 20, end: 10) == 0)
     }
 }
+
+/// `PodcastLineFollow.anchorWordIndex` resolves the leftmost word on the line that
+/// holds the active word — the scroll target for line-by-line follow. The key
+/// property under test: it is STABLE for every word on the same line (so the caller
+/// scrolls once per line crossing, never per word/frame) and only flips when the
+/// active word genuinely moves to another line. Line membership tolerates sub-pixel
+/// `minY` deltas from layout rounding.
+struct PodcastLineFollowTests {
+    private let singleLine: [Int: CGRect] = [
+        0: CGRect(x: 0, y: 0, width: 20, height: 18),
+        1: CGRect(x: 22, y: 0, width: 20, height: 18),
+        2: CGRect(x: 44, y: 0, width: 20, height: 18),
+    ]
+    private let twoLines: [Int: CGRect] = [
+        0: CGRect(x: 0, y: 0, width: 20, height: 18),
+        1: CGRect(x: 22, y: 0, width: 20, height: 18),
+        2: CGRect(x: 44, y: 0, width: 20, height: 18),
+        3: CGRect(x: 0, y: 20, width: 20, height: 18),
+        4: CGRect(x: 22, y: 20, width: 20, height: 18),
+    ]
+
+    @Test func leftmostOnSingleLine() {
+        // Every active word on the one line resolves to the leftmost (index 0).
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: singleLine, activeIndex: 2) == 0)
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: singleLine, activeIndex: 0) == 0)
+    }
+
+    @Test func stablePerLineFlipsOnlyOnCrossing() {
+        // First line (idx 0/1/2) → 0; second line (idx 3/4) → 3. Stable within each.
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: twoLines, activeIndex: 1) == 0)
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: twoLines, activeIndex: 2) == 0)
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: twoLines, activeIndex: 3) == 3)
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: twoLines, activeIndex: 4) == 3)
+    }
+
+    @Test func noActiveWordIsNil() {
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: twoLines, activeIndex: -1) == nil)
+    }
+
+    @Test func missingRectIsNil() {
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: twoLines, activeIndex: 9) == nil)
+    }
+
+    @Test func subPixelMinYDeltaStaysSameLine() {
+        // A 0.3pt minY delta (layout rounding) must not split a visual line.
+        let rounded: [Int: CGRect] = [
+            0: CGRect(x: 0, y: 0, width: 20, height: 18),
+            1: CGRect(x: 22, y: 0.3, width: 20, height: 18),
+        ]
+        #expect(PodcastLineFollow.anchorWordIndex(wordRects: rounded, activeIndex: 1) == 0)
+    }
+}

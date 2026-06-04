@@ -297,3 +297,37 @@ enum PodcastBubbleFill {
         return min(1, max(0, (playhead - start) / (end - start)))
     }
 }
+
+/// Line-level follow scroll: keeps the CURRENT word's line near a fixed viewport
+/// position so a long sentence scrolls line-by-line (not just sentence-by-sentence).
+/// Pure so it is unit-testable without the SwiftUI runtime.
+///
+/// `scrollTo(_:anchor:)` can only target a view that owns an `.id` and aligns its
+/// anchor to the same viewport fraction, so a line can't be a scroll target on its
+/// own — instead we scroll to the line's LEFTMOST word (it owns a stable per-word
+/// `.id`, see `wordScrollID`). The key property: as the playhead advances WITHIN a
+/// line the leftmost-word index is unchanged, so the caller can drive an animated
+/// `scrollTo` only when this value flips (a real line crossing), never per frame.
+/// The discrete per-crossing `scrollTo` model keeps it off the freeze-prone
+/// per-frame offset path.
+enum PodcastLineFollow {
+    /// Index of the leftmost word on the line that currently holds `activeIndex`.
+    /// A "line" = words whose `minY` agree within half a word-height (absorbs
+    /// layout rounding). `nil` when there is no active word or its rect is not yet
+    /// measured.
+    static func anchorWordIndex(wordRects: [Int: CGRect], activeIndex: Int) -> Int? {
+        guard activeIndex >= 0, let activeRect = wordRects[activeIndex] else { return nil }
+        let tolerance = max(1, activeRect.height * 0.5)
+        return wordRects
+            .filter { abs($0.value.minY - activeRect.minY) < tolerance }
+            .min { $0.value.minX < $1.value.minX }?
+            .key
+    }
+
+    /// Globally-unique scroll id for a subtitle word (`"<sentenceId>.<wordIndex>"`).
+    /// Only the current/next cell's words carry it (see `wordFlow`), so the
+    /// `ScrollViewReader` can land a line at the follow anchor.
+    static func wordScrollID(sentenceId: Int, wordIndex: Int) -> String {
+        "\(sentenceId).\(wordIndex)"
+    }
+}
