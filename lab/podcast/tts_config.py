@@ -96,6 +96,18 @@ SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
 # Inline markdown emphasis stripped from spoken text.
 INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
 INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+
+
+def strip_inline_emphasis(text: str) -> str:
+    """Strip inline markdown bold/italic, keeping the inner text.
+
+    Shared by synthesize._sanitize_dialogue (pre-TTS) and subtitle._clean_spoken
+    (forced-alignment ground truth) so both see the identical word sequence —
+    the parity these two paths must preserve mechanically, not by comment.
+    """
+    text = INLINE_BOLD_RE.sub(r"\1", text)
+    text = INLINE_ITALIC_RE.sub(r"\1", text)
+    return text
 # Audio direction tags [excitement] / [laughs] — stripped before alignment/QA.
 DIRECTION_RE = re.compile(r"\[.*?\]")
 # Legacy SSML markup in old workspaces (Gemini 3.1 has no SSML).
