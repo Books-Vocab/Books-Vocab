@@ -785,6 +785,12 @@ function speakWord(word) {
   }
 }
 
+/** Section label with a leading SF-Symbols-style icon (mirrors iOS CardSectionLabel,
+ *  which always renders a Label{Text}icon:{Image(systemName:)}). */
+function detailLabel(iconName, text) {
+  return `<div class="kg-detail__label">${KGIcons.svg(iconName)}<span>${esc(text)}</span></div>`;
+}
+
 /** Render an example with the target word highlighted (each segment escaped). */
 function renderExampleHTML(example, word) {
   const marked = KGPure.markWordInExample(example, word);
@@ -840,13 +846,13 @@ function buildDetailHTML(item) {
     const chips = item.collocations
       .map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : (c && c.word) || '')}</span>`)
       .join('');
-    parts.push(`<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailCollocation'))}</div><div class="kg-detail__chips">${chips}</div></div>`);
+    parts.push(`<div class="kg-detail-block">${detailLabel('detail-collocation', t('detailCollocation'))}<div class="kg-detail__chips">${chips}</div></div>`);
   }
 
   // inflections (變化形)
   if (Array.isArray(item.inflections) && item.inflections.length) {
     const forms = item.inflections.map((f) => `<span class="kg-detail-form">${esc(f)}</span>`).join('');
-    parts.push(`<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailForms'))}</div><div class="kg-detail-forms">${forms}</div></div>`);
+    parts.push(`<div class="kg-detail-block">${detailLabel('detail-forms', t('detailForms'))}<div class="kg-detail-forms">${forms}</div></div>`);
   }
 
   // knowledge links (對比 / 相關)
@@ -904,7 +910,7 @@ function buildLinksHTML(item, corpusIds) {
   });
 
   if (!groups.length) return '';
-  return `<div class="kg-detail-links"><div class="kg-detail__label">${esc(t('detailKnowledgeLinks'))}</div>${groups.join('')}</div>`;
+  return `<div class="kg-detail-links">${detailLabel('link', t('detailKnowledgeLinks'))}${groups.join('')}</div>`;
 }
 
 /** Build the review-progress section (reuses the row progress-bar markup). */
@@ -957,7 +963,7 @@ function buildSourceHTML(item) {
   } else {
     inner = `<span class="kg-detail__source-text">${esc(t('detailSourceApp'))}</span>`;
   }
-  return `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailSource'))}</div>${inner}</div>`;
+  return `<div class="kg-detail-block">${detailLabel('source-local', t('detailSource'))}${inner}</div>`;
 }
 
 // ---------------------------------------------------------------------------

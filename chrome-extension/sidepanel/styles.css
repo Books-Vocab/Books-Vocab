@@ -629,10 +629,14 @@ body {
    tracking, medium weight — uppercase+tracking reads "engineered" and stretches
    the CJK labels 搭配 / 變化形 unnaturally). */
 .kg-detail__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   font-size: var(--text-caption);
   color: var(--text-tertiary);
   font-weight: 600;
 }
+.kg-detail__label svg { width: 13px; height: 13px; flex-shrink: 0; }
 
 /* Collocation chips */
 .kg-detail__chips {

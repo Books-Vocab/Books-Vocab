@@ -94,6 +94,15 @@
       '<rect x="4" y="5.5" width="16" height="15" rx="2"/>' +
       '<path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
 
+    // --- Word-detail section-label leading icons (mirror iOS CardSectionLabel) ---
+    // text.word.spacing — 搭配 (collocation): two adjacent word blocks
+    'detail-collocation':
+      '<rect x="3" y="7.5" width="8" height="9" rx="1.8"/>' +
+      '<rect x="13" y="7.5" width="8" height="9" rx="1.8"/>',
+    // text.badge.plus — 變化形 (inflections): text lines + a plus badge (derived forms)
+    'detail-forms':
+      '<path d="M4 8h10M4 12.5h7M4 17h10"/><path d="M18.5 5.5v5M16 8h5"/>',
+
     // --- Error-state glyphs (side-panel error UI; rendered via classifyError) ---
     // lock — auth/login error
     'error-login':
