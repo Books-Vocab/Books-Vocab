@@ -87,6 +87,8 @@ verified_against: 6a322ef2
 - Side panel vocab lookup
 - 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
 - 閱讀選詞翻譯
+- 選字翻譯全域開關(options 頁「選字翻譯」master switch,storage key `kg_enabled` 預設開;content.js mouseup gate,跨分頁 onChanged live-sync 免重整)
+- 介面多語基礎(`chrome.i18n` + `_locales/zh_TW/messages.json`,現 zh_TW;`shared/i18n.js` DOM helper 套用 `[data-i18n]`,manifest `default_locale`)
 - Auth token 整合
 - woff2 字型(`shared/fonts.css` surface-local @font-face)
 - Side panel error state taxonomy + settings entry + `AbortError` safety
