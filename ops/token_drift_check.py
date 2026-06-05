@@ -96,8 +96,10 @@ def parse_app_theme() -> dict[str, dict[str, dict]]:
     return out
 
 
-def parse_scale(filename: str, enum_name: str) -> dict[str, float]:
-    """`static let key: CGFloat = value` inside `enum <enum_name> {...}`."""
+def parse_scale(filename: str, enum_name: str, dt: dict | None = None) -> dict[str, float]:
+    """`static let key: CGFloat = value` inside `enum <enum_name> {...}`. value is a
+    numeric literal or (when dt is given) a DesignTokens.* reference. Non-numeric
+    RHS (e.g. `s6` aliasing another let) is skipped, as before."""
     src = _read(filename)
     m = re.search(r"enum " + enum_name + r"\s*\{", src)
     if not m:
@@ -108,8 +110,12 @@ def parse_scale(filename: str, enum_name: str) -> dict[str, float]:
         depth += {"{": 1, "}": -1}.get(src[i], 0)
         i += 1
     body = src[m.end():i]
-    return {mm.group(1): float(mm.group(2))
-            for mm in re.finditer(r"static let (\w+):\s*(?:CGFloat|Double)\s*=\s*(" + _FLOAT + r")", body)}
+    out: dict[str, float] = {}
+    for mm in re.finditer(r"static let (\w+):\s*(?:CGFloat|Double)\s*=\s*([-\w.]+)", body):
+        val = _swift_num(mm.group(2), dt)
+        if val is not None:
+            out[mm.group(1)] = val
+    return out
 
 
 def parse_app_skin_typography() -> dict[str, float]:
@@ -177,16 +183,19 @@ def parse_motion() -> dict[str, dict]:
     return out
 
 
-def parse_elevation() -> dict[str, dict[str, float]]:
-    """z0..z4 -> {opacity, radius, y} from AppElevation's switch bodies."""
+def parse_elevation(dt: dict | None = None) -> dict[str, dict[str, float]]:
+    """z0..z4 -> {opacity, radius, y} from AppElevation's switch bodies. Each
+    `return` is a numeric literal or (when dt is given) a DesignTokens.* reference."""
     src = _read("AppMetrics.swift")
     out: dict[str, dict[str, float]] = {f"z{i}": {} for i in range(5)}
     for prop in ("opacity", "radius", "y"):
         block = re.search(r"var " + prop + r":[^{]*\{(.*?)\n    \}", src, re.S)
         if not block:
             continue
-        for m in re.finditer(r"case \.(z\d):\s*return\s*(" + _FLOAT + r")", block.group(1)):
-            out[m.group(1)][prop] = float(m.group(2))
+        for m in re.finditer(r"case \.(z\d):\s*return\s*([-\w.]+)", block.group(1)):
+            val = _swift_num(m.group(2), dt)
+            if val is not None:
+                out[m.group(1)][prop] = val
     return out
 
 
@@ -205,6 +214,70 @@ def parse_tag_fill() -> dict[str, float]:
         r"\.opacity\(\s*colorScheme == \.dark\s*\?\s*(" + _FLOAT + r")\s*:\s*("
         + _FLOAT + r")\s*\)", src)
     return {"dark": float(m.group(1)), "light": float(m.group(2))} if m else {}
+
+
+# --------------------------------------------------------------------------
+# DesignTokens.swift resolution
+# --------------------------------------------------------------------------
+# Post-wiring, an iOS SoT file may reference the SD-generated bridge
+# (`DesignTokens.Radius.Scale.md`) instead of inlining a literal (`8`). The
+# value still ultimately comes from tokens.json (DesignTokens.swift is generated
+# from it, guarded byte-for-byte by `npm run build:check`), so resolving the
+# reference back to its number lets this drift guard keep proving
+# tokens.json == iOS across the SoT inversion — and still catches a mis-wired
+# reference whose value diverges.
+
+def parse_design_tokens() -> dict:
+    """Nested dict of DesignTokens.swift scalar leaves, e.g.
+       {'DesignTokens': {'Radius': {'Scale': {'md': 8.0}}}}. Empty if absent."""
+    try:
+        src = _read("DesignTokens.swift")
+    except FileNotFoundError:
+        return {}
+    root: dict = {}
+    stack = [root]
+    for line in src.splitlines():
+        s = line.strip()
+        m = re.match(r"public enum (\w+)\s*\{", s)
+        if m:
+            child: dict = {}
+            stack[-1][m.group(1)] = child
+            stack.append(child)
+            continue
+        if s == "}":
+            if len(stack) > 1:
+                stack.pop()
+            continue
+        m = re.match(r"public static let (\w+):\s*\w+\s*=\s*(.+)", s)
+        if m:
+            try:
+                stack[-1][m.group(1)] = float(m.group(2))
+            except ValueError:
+                stack[-1][m.group(1)] = m.group(2).strip('"')
+    return root
+
+
+def _resolve_dt(path: str, dt: dict):
+    node: object = dt
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node if not isinstance(node, dict) else None
+
+
+def _swift_num(rhs: str, dt: dict | None) -> float | None:
+    """Numeric literal (incl. negative) OR resolved DesignTokens.* reference."""
+    rhs = rhs.strip().rstrip(",")
+    try:
+        return float(rhs)
+    except ValueError:
+        pass
+    if dt and rhs.startswith("DesignTokens."):
+        v = _resolve_dt(rhs, dt)
+        if isinstance(v, (int, float)):
+            return float(v)
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -256,14 +329,15 @@ def check() -> list[str]:
     tokens = json.loads(TOKENS_JSON.read_text(encoding="utf-8"))
     errors: list[str] = []
 
+    dt = parse_design_tokens()  # bridge values for any iOS file wired to DesignTokens
     colors = parse_app_colors()
     theme = parse_app_theme()
-    spacing = parse_scale("AppMetrics.swift", "AppSpacing")
-    radius = parse_scale("AppMetrics.swift", "AppRadius")
-    typescale = parse_scale("AppFonts.swift", "TypeScale")
+    spacing = parse_scale("AppMetrics.swift", "AppSpacing", dt)
+    radius = parse_scale("AppMetrics.swift", "AppRadius", dt)
+    typescale = parse_scale("AppFonts.swift", "TypeScale", dt)
     skin_type = parse_app_skin_typography()
-    elevation = parse_elevation()
-    tracking = parse_scale("AppFonts.swift", "Tracking")
+    elevation = parse_elevation(dt)
+    tracking = parse_scale("AppFonts.swift", "Tracking", dt)
     base_spacing = parse_struct_init("AppSkin+BaseValues.swift", "baseSpacing")
     base_metrics = parse_struct_init("AppSkin+BaseValues.swift", "baseMetrics")
     base_radii = parse_base_radii()
