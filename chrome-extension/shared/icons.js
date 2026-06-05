@@ -64,6 +64,9 @@
     // xmark.circle — clear the search field (mirrors iOS xmark.circle.fill, outline)
     'clear':
       '<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>',
+    // checkmark — active item in the sort menu (mirrors iOS Menu selection check)
+    'check':
+      '<path d="M5 13l4 4L19 7"/>',
 
     // --- Error-state glyphs (side-panel error UI; rendered via classifyError) ---
     // lock — auth/login error

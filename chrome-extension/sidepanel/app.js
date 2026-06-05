@@ -39,6 +39,27 @@ let retryAction = 'reload';
 /** @type {Array<object>} full vocab list from API */
 let vocabData = [];
 
+/**
+ * Selected review-state filter (iOS multi-select chips). Empty = show all.
+ * Members are 'unlearned' | 'due' | 'reviewed'.
+ * @type {Set<string>}
+ */
+const selectedStates = new Set();
+
+/** Active sort (iOS KGVocabSortOption). @type {string} */
+let sortOption = 'default';
+
+/** Sort labels — mirrors iOS KGVocabSortOption.label. i18n lives here, not pure.js. */
+const SORT_LABELS = {
+  default: '複習優先',
+  alphabetical: '字母序',
+  dateAdded: '最近新增',
+  difficulty: '難度',
+};
+
+/** UI label for a review-state chip (iOS VocabularyReviewState.displayName). */
+const STATE_LABELS = { unlearned: '未學習', due: '待複習', reviewed: '已複習' };
+
 // Theme glyphs come from KGIcons (shared/icons.js) — SVG, not emoji — so the
 // button matches the iOS SF-Symbols look. Icon name = `theme-${theme}`.
 const THEME_CYCLE = ['light', 'dark', 'sepia'];
@@ -171,7 +192,7 @@ async function loadVocabList() {
       setState('empty');
     } else {
       setState('content');
-      renderList(items);
+      applyView(); // state filter → search → sort → render
     }
   } catch (err) {
     // chrome.runtime.sendMessage rejects when there is no receiver, or the
@@ -229,21 +250,22 @@ function showErrorFromResponse(response) {
 // Search
 // ---------------------------------------------------------------------------
 
+/**
+ * Recompute the visible list from the full corpus through the iOS pipeline:
+ * state filter (chips) → search filter → sort, then render. Chrome (chips + sort
+ * pill + CTA) always reflects the full corpus / current control state.
+ */
+function applyView() {
+  const visible = KGPure.sortVocab(
+    KGPure.filterVocab(vocabData, { query: searchInput.value, states: selectedStates }),
+    sortOption
+  );
+  renderList(visible);
+}
+
+// Search input feeds the same pipeline as chips/sort.
 function onSearch() {
-  const query = searchInput.value.trim().toLowerCase();
-
-  if (!query) {
-    renderList(vocabData);
-    return;
-  }
-
-  const filtered = vocabData.filter((item) => {
-    const word = String(item.word || '').toLowerCase();
-    const meaning = String(item.meaning || '').toLowerCase();
-    return word.includes(query) || meaning.includes(query);
-  });
-
-  renderList(filtered);
+  applyView();
 }
 
 /** Show the clear (✕) button only when the search field has text. */
@@ -305,55 +327,141 @@ function enrichWithReviewData(item) {
 }
 
 /**
- * Render filter chips (mirrors iOS VocabFilterChipBar).
- * Three review-state chips (no '全部' — multi-select empty = all). Counts are
- * the real per-state tally from CardResponse review fields, classified by the
- * same predicate iOS uses (KGPure.countReviewStates).
- * @param {Array<object>} items
+ * Render filter chips (mirrors iOS VocabFilterChipBar): multi-select, no '全部'
+ * chip (empty selection = all). Counts are the real per-state tally over the full
+ * corpus; clicking a chip toggles it in `selectedStates` and re-applies the view.
+ * @param {Array<object>} corpus — the full vocab list (counts are corpus-wide)
  */
-function renderFilterBar(items) {
+function renderFilterBar(corpus) {
   if (!filterChips) return;
   filterChips.innerHTML = '';
 
-  const counts = KGPure.countReviewStates(items);
+  const counts = KGPure.countReviewStates(corpus);
 
-  // Mirrors iOS VocabFilterChipBar: multi-select, no '全部' chip — empty
-  // selection already means "all". Idle by default (none selected = all shown).
-  const states = [
-    { label: '未學習', count: counts.unlearned },
-    { label: '待複習', count: counts.due },
-    { label: '已複習', count: counts.reviewed },
-  ];
-  states.forEach((s) => {
-    const chip = document.createElement('span');
-    chip.className = 'kg-filter-bar__chip' + (s.active ? ' kg-filter-bar__chip--active' : '');
-    chip.innerHTML = `${esc(s.label)} <span class="kg-filter-bar__count">${s.count}</span>`;
+  // Order mirrors iOS chip bar: 未學習 / 待複習 / 已複習.
+  ['unlearned', 'due', 'reviewed'].forEach((state) => {
+    const active = selectedStates.has(state);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'kg-filter-bar__chip' + (active ? ' kg-filter-bar__chip--active' : '');
+    chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    chip.innerHTML = `${esc(STATE_LABELS[state])} <span class="kg-filter-bar__count">${counts[state]}</span>`;
+    chip.addEventListener('click', () => {
+      if (selectedStates.has(state)) selectedStates.delete(state);
+      else selectedStates.add(state);
+      applyView();
+    });
     filterChips.appendChild(chip);
   });
 }
 
 /**
- * Render sort pill + review CTA (mirrors iOS VocabSortPill + VocabReviewCTAPill).
+ * Render sort pill + review CTA (mirrors iOS VocabSortPill Menu + ReviewCTAPill).
+ * The pill shows the active sort label + chevron and opens a dropdown of the 4
+ * KGVocabSortOption choices (checkmark on the active one).
+ * @param {Array<object>} corpus — full vocab list (CTA due count is corpus-wide)
  */
-function renderSortPill(items) {
+function renderSortPill(corpus) {
   if (!filterActions) return;
+  closeSortMenu();
   filterActions.innerHTML = '';
 
-  // Sort pill
-  const sortPill = document.createElement('span');
+  // Sort pill — a Menu trigger (iOS VocabSortPill is a SwiftUI Menu).
+  const sortPill = document.createElement('button');
+  sortPill.type = 'button';
   sortPill.className = 'kg-sort-pill';
-  sortPill.textContent = '複習優先';
+  sortPill.setAttribute('aria-haspopup', 'true');
+  sortPill.innerHTML =
+    `<span>${esc(SORT_LABELS[sortOption] || SORT_LABELS.default)}</span>` +
+    '<svg class="kg-sort-pill__chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"' +
+    ' stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"' +
+    ' aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+  sortPill.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSortMenu(sortPill);
+  });
   filterActions.appendChild(sortPill);
 
   // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill). Real count of
   // due cards (reviewCount>0 && nextReviewAt<=now), same predicate as iOS.
-  const dueCount = KGPure.countReviewStates(items).due;
+  const dueCount = KGPure.countReviewStates(corpus).due;
   if (dueCount > 0) {
     const cta = document.createElement('span');
     cta.className = 'kg-review-cta';
     cta.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> <span class="kg-review-cta__count">${dueCount}</span>`;
     filterActions.appendChild(cta);
   }
+}
+
+// --- Sort dropdown menu (mirrors iOS VocabSortPill Menu) ---------------------
+
+/** The live menu element + its outside-click/Escape dismiss handler, if open. */
+let sortMenuEl = null;
+let sortMenuDismiss = null;
+
+function closeSortMenu() {
+  if (sortMenuDismiss) {
+    document.removeEventListener('click', sortMenuDismiss);
+    document.removeEventListener('keydown', sortMenuDismiss);
+    sortMenuDismiss = null;
+  }
+  if (sortMenuEl) {
+    sortMenuEl.remove();
+    sortMenuEl = null;
+  }
+}
+
+function toggleSortMenu(anchor) {
+  if (sortMenuEl) { closeSortMenu(); return; }
+
+  const menu = document.createElement('div');
+  menu.className = 'kg-sort-menu';
+  menu.setAttribute('role', 'menu');
+
+  let activeItem = null;
+  KGPure.VOCAB_SORT_OPTIONS.forEach((opt) => {
+    const active = opt === sortOption;
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'kg-sort-menu__item' + (active ? ' kg-sort-menu__item--active' : '');
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', active ? 'true' : 'false');
+    const check = document.createElement('span');
+    check.className = 'kg-sort-menu__check';
+    check.setAttribute('aria-hidden', 'true');
+    if (active) KGIcons.setIcon(check, 'check'); // SVG, not a glyph (icon convention)
+    const text = document.createElement('span');
+    text.textContent = SORT_LABELS[opt];
+    item.append(check, text);
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sortOption = opt;
+      closeSortMenu();
+      applyView();
+    });
+    menu.appendChild(item);
+    if (active) activeItem = item;
+  });
+
+  // Anchor the menu under the pill, right-aligned within the actions row.
+  filterActions.style.position = 'relative';
+  filterActions.appendChild(menu);
+  sortMenuEl = menu;
+  // Focus the active option so keyboard users land on the current selection.
+  if (activeItem) activeItem.focus();
+
+  // Dismiss on any outside click or Escape (the pill's own click is stopped).
+  sortMenuDismiss = (e) => {
+    if (e.type === 'keydown' && e.key !== 'Escape') return;
+    if (e.type === 'click' && menu.contains(e.target)) return;
+    closeSortMenu();
+  };
+  // Defer so the opening click doesn't immediately dismiss it.
+  setTimeout(() => {
+    if (!sortMenuEl) return;
+    document.addEventListener('click', sortMenuDismiss);
+    document.addEventListener('keydown', sortMenuDismiss);
+  }, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +482,17 @@ function renderList(items) {
   renderFilterBar(corpus);
   renderSortPill(corpus);
 
+  // No match for the active search/filter (corpus is non-empty) — iOS shows a
+  // "沒有符合的單字" empty state; mirror it inline so the chrome stays put.
+  if (items.length === 0) {
+    const hint = document.createElement('p');
+    hint.className = 'kg-list-nomatch';
+    hint.textContent = '沒有符合的單字';
+    stateContent.appendChild(hint);
+    setState('content');
+    return;
+  }
+
   // Single card container (mirrors iOS ListSectionCard / VocabListCard)
   const card = document.createElement('div');
   card.className = 'kg-list-section';
@@ -390,10 +509,7 @@ function renderList(items) {
   });
 
   stateContent.appendChild(card);
-
-  if (items.length > 0) {
-    setState('content');
-  }
+  setState('content');
 }
 
 /**

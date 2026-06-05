@@ -19,7 +19,7 @@ const REQUIRED = [
   'theme-light', 'theme-dark', 'theme-sepia',
   'settings',
   'source-web', 'source-local',
-  'search', 'clear',
+  'search', 'clear', 'check',
   'error-login', 'error-quota', 'error-network', 'error-server', 'error-generic',
 ];
 

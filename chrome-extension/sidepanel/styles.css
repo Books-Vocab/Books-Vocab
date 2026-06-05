@@ -104,6 +104,16 @@ body {
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
+/* Chips + sort pill are <button>s (clickable filter/sort controls) — strip the
+   native button chrome so the generated/authored pill styling shows through. */
+.kg-filter-bar__chip,
+.kg-sort-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  margin: 0;
+}
+
 /* Sort + review CTA: own row beneath the chips, right-aligned
    (mirrors iOS KGVocabPresenter HStack { Spacer(); VocabSortPill; ReviewCTA }). */
 .kg-filter-bar__actions {
@@ -132,6 +142,80 @@ body {
 .kg-sort-pill:hover {
   background: var(--button-idle-fill);
   color: var(--text-primary);
+}
+
+.kg-sort-pill__chevron {
+  opacity: 0.7;
+}
+
+/* Sort dropdown menu (mirrors iOS VocabSortPill Menu) — anchored under the pill,
+   right-aligned within the actions row. */
+.kg-sort-menu {
+  position: absolute;
+  top: calc(100% + var(--sp-tiny));
+  right: 0;
+  z-index: 20;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-tiny);
+  background: var(--card-bg);
+  border: var(--sp-hairline) solid var(--card-border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--elevation-z3);
+}
+
+.kg-sort-menu__item {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-2);
+  background: transparent;
+  border-radius: var(--radius-control);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick);
+}
+
+.kg-sort-menu__item:hover {
+  background: var(--muted-fill);
+}
+
+.kg-sort-menu__item--active {
+  color: var(--brand-hero);
+}
+
+.kg-sort-menu__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--brand-hero);
+}
+
+.kg-sort-menu__check svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* No-match hint when search/filter excludes everything (corpus non-empty). */
+.kg-list-nomatch {
+  padding: var(--sp-6, 32px) var(--page-h-padding);
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  color: var(--text-tertiary);
 }
 
 /* Review CTA pill — brandHero fill (mirrors iOS VocabReviewCTAPill) */
