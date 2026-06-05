@@ -127,7 +127,7 @@ verified_against: 6a322ef2
 - Migration scripts: idempotent + rollback safety
 - `observability_alerts` isolation + boundary
 - Admin `user_activity` (empty / mixed / pagination)
-- Admin cost summary + trends
+- Admin cost summary + trends (errors + llm-fail 雙訊號)
 - Sentry init scrubbing
 - LLM provider registry: routing precedence + 空 env fallthrough + case-insensitive call_type + embed 獨立性 + unknown-provider raise
 - Provider-aware pricing: `token_cost_usd` 分 provider
