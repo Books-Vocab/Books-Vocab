@@ -84,6 +84,14 @@ def test_invalid_token_on_browse_still_401(tier_api):
     assert resp.status_code == 401
 
 
+@pytest.mark.parametrize("authorization", ["Basic abc", "Bearer"])
+def test_malformed_authorization_on_browse_still_401(tier_api, authorization):
+    resp = tier_api.client.get(
+        "/api/podcasts", headers={"Authorization": authorization}
+    )
+    assert resp.status_code == 401
+
+
 # ── audio gate: guest ────────────────────────────────────────────────────────
 
 def test_guest_audio_blocked_auth_required(tier_api):
