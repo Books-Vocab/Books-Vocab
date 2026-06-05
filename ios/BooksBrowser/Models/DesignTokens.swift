@@ -2,45 +2,45 @@
 import Foundation
 
 public enum DesignTokens {
-    public enum elevation {
+    public enum Elevation {
         public static let darkBoost: CGFloat = 1.8
-        public enum steps {
-            public enum z0 {
+        public enum Steps {
+            public enum Z0 {
                 public static let blur: CGFloat = 0
                 public static let opacity: CGFloat = 0
                 public static let y: CGFloat = 0
             }
-            public enum z1 {
+            public enum Z1 {
                 public static let blur: CGFloat = 4
                 public static let opacity: CGFloat = 0.03
                 public static let y: CGFloat = 1
             }
-            public enum z2 {
+            public enum Z2 {
                 public static let blur: CGFloat = 10
                 public static let opacity: CGFloat = 0.06
                 public static let y: CGFloat = 4
             }
-            public enum z3 {
+            public enum Z3 {
                 public static let blur: CGFloat = 18
                 public static let opacity: CGFloat = 0.1
                 public static let y: CGFloat = 8
             }
-            public enum z4 {
+            public enum Z4 {
                 public static let blur: CGFloat = 28
                 public static let opacity: CGFloat = 0.16
                 public static let y: CGFloat = 14
             }
         }
     }
-    public enum motion {
-        public enum duration {
+    public enum Motion {
+        public enum Duration {
             public static let chip: Double = 0.18
             public static let control: Double = 0.14
             public static let progress: Double = 0.1
             public static let pulse: Double = 1.4
             public static let quick: Double = 0.15
         }
-        public enum easing {
+        public enum Easing {
             public static let chip: String = "ease-out"
             public static let control: String = "ease-out"
             public static let emphasizedDecelerate: String = "cubic-bezier(0.05, 0.7, 0.1, 1.0)"
@@ -48,39 +48,39 @@ public enum DesignTokens {
             public static let linear: String = "linear"
             public static let quick: String = "ease-out"
         }
-        public enum spring {
-            public enum contentReveal {
+        public enum Spring {
+            public enum ContentReveal {
                 public static let damping: CGFloat = 0.82
                 public static let response: CGFloat = 0.35
             }
-            public enum emphasized {
+            public enum Emphasized {
                 public static let damping: CGFloat = 0.8
                 public static let response: CGFloat = 0.35
             }
-            public enum modalSwap {
+            public enum ModalSwap {
                 public static let damping: CGFloat = 0.85
                 public static let response: CGFloat = 0.45
             }
-            public enum press {
+            public enum Press {
                 public static let damping: CGFloat = 0.65
                 public static let response: CGFloat = 0.25
             }
-            public enum standard {
+            public enum Standard {
                 public static let damping: CGFloat = 0.75
                 public static let response: CGFloat = 0.3
             }
         }
-        public enum tapFeedback {
+        public enum TapFeedback {
             public static let opacityDip: CGFloat = 0.92
             public static let scaleDown: CGFloat = 0.97
         }
-        public enum transition {
+        public enum Transition {
             public static let contentSwap: String = "opacity 0.2s ease-out, transform 0.2s ease-out"
             public static let panelReveal: String = "transform 0.3s ease-out, opacity 0.25s ease-out"
         }
     }
-    public enum radius {
-        public enum scale {
+    public enum Radius {
+        public enum Scale {
             public static let lg: CGFloat = 12
             public static let md: CGFloat = 8
             public static let none: CGFloat = 0
@@ -89,15 +89,15 @@ public enum DesignTokens {
             public static let xl: CGFloat = 16
             public static let xs: CGFloat = 4
         }
-        public enum semantic {
+        public enum Semantic {
             public static let card: CGFloat = 8
             public static let chip: CGFloat = 6
             public static let control: CGFloat = 6
             public static let overlay: CGFloat = 8
         }
     }
-    public enum space {
-        public enum scale {
+    public enum Space {
+        public enum Scale {
             public static let s1: CGFloat = 4
             public static let s10: CGFloat = 64
             public static let s2: CGFloat = 8
@@ -112,7 +112,7 @@ public enum DesignTokens {
             public static let micro: CGFloat = 2
             public static let tiny: CGFloat = 3
         }
-        public enum semantic {
+        public enum Semantic {
             public static let cardPadding: CGFloat = 18
             public static let chipPaddingH: CGFloat = 10
             public static let chipPaddingV: CGFloat = 5
@@ -123,22 +123,22 @@ public enum DesignTokens {
             public static let sheetPadding: CGFloat = 24
         }
     }
-    public enum type {
-        public enum family {
+    public enum Typography {
+        public enum Family {
             public static let display: String = "'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif"
             public static let italic: String = "'CormorantGaramond', Georgia, serif"
             public static let mono: String = "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace"
             public static let sans: String = "'ElmsSans', 'PingFang TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
             public static let serif: String = "'Athelas', 'STSongti TC', 'Noto Serif TC', Georgia, serif"
         }
-        public enum leading {
+        public enum Leading {
             public static let body: CGFloat = 1.5
             public static let caption: CGFloat = 1.3
             public static let display: CGFloat = 1.05
             public static let heading: CGFloat = 1.2
             public static let reading: CGFloat = 1.6
         }
-        public enum scale {
+        public enum Scale {
             public static let body: CGFloat = 17
             public static let caption: CGFloat = 12
             public static let caption2: CGFloat = 11
@@ -150,7 +150,7 @@ public enum DesignTokens {
             public static let sectionTitle: CGFloat = 18
             public static let subhead: CGFloat = 15
         }
-        public enum tracking {
+        public enum Tracking {
             public static let h2Tight: CGFloat = -0.65
             public static let normal: CGFloat = 0
             public static let tight: CGFloat = -1.2

@@ -2,9 +2,22 @@ import StyleDictionary from 'style-dictionary';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+// Leaf constant names: camelCase. Numeric leaves (space.scale "1".."10") → "s1".."s10".
 function toSwiftId(segment) {
   if (/^\d+$/.test(segment)) return 's' + segment;
   return segment.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+// Swift forbids type members named `Type`/`Protocol` (collide with the `.Type` /
+// `.Protocol` metatype expressions). Remap such segments to safe, idiomatic names.
+const SWIFT_RESERVED_ENUM = { Type: 'Typography', Protocol: 'ProtocolTokens' };
+
+// Enum (namespace) segment names: PascalCase, idiomatic Swift.
+// "steps" → "Steps", "z1" → "Z1", "tap-feedback" → "TapFeedback", "modal-swap" → "ModalSwap".
+function toEnumName(segment) {
+  const camel = segment.replace(/-([a-zA-Z0-9])/g, (_, c) => c.toUpperCase());
+  const pascal = camel.charAt(0).toUpperCase() + camel.slice(1);
+  return SWIFT_RESERVED_ENUM[pascal] ?? pascal;
 }
 
 function swiftType(token) {
@@ -98,7 +111,7 @@ StyleDictionary.registerFormat({
           const value = swiftValue(token);
           lines.push(`${indent}public static let ${name}: ${type} = ${value}`);
         } else {
-          lines.push(`${indent}public enum ${toSwiftId(key)} {`);
+          lines.push(`${indent}public enum ${toEnumName(key)} {`);
           emit(child, depth + 1);
           lines.push(`${indent}}`);
         }
@@ -111,12 +124,25 @@ StyleDictionary.registerFormat({
   },
 });
 
+// ── Name transform: full-path uniqueness ──────────────────────────────────
+// Our format namespaces by token.path (nested enums), so it never reads
+// token.name. But SD's default name = last path segment, which collides
+// across branches (radius.semantic.control vs motion.duration.control) and
+// spams warnings. Map name → full path so each token.name is unique. Purely
+// cosmetic for log hygiene; does not affect emitted Swift.
+StyleDictionary.registerTransform({
+  name: 'kg/name-path',
+  type: 'name',
+  transform: (token) => token.path.map((p) => p.replace(/[^a-zA-Z0-9]/g, '_')).join('_'),
+});
+
 // ── Configuration ─────────────────────────────────────────────────────────
 
 export default {
   source: ['design-system/tokens.json'],
   platforms: {
     swift: {
+      transforms: ['kg/name-path'],
       buildPath: 'ios/BooksBrowser/Models/',
       files: [{
         destination: 'DesignTokens.swift',
