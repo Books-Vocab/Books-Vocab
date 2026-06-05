@@ -5,9 +5,8 @@ import json
 import jwt as pyjwt
 import pytest
 
+from conftest import TEST_JWT_SECRET
 from kg.auth_service import create_jwt_token, resolve_and_link_user
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
 
 def test_create_jwt_token_produces_decodable_payload():

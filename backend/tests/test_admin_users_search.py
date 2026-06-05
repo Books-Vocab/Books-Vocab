@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-ADMIN_TOKEN = "test-admin-token-value"
+from conftest import ADMIN_TOKEN
 
 
 _USERS_SEED = {

@@ -123,6 +123,31 @@ def _emit(*, alert_key: str, level: str, message: str, tags: dict[str, Any]) -> 
 # ---------------------------------------------------------------------------
 
 
+def _query_log(
+    module: Any,
+    sql: str,
+    params: tuple[Any, ...],
+    *,
+    fetch_all: bool = False,
+    error_label: str,
+) -> Any:
+    """Run a read-only query under the log module's lock; None on failure.
+
+    Centralises the lock/conn/execute/except-warn skeleton shared by the
+    threshold checks. Returns the cursor's fetchall() (when `fetch_all`) or
+    fetchone() result, or None if the query raised — letting callers
+    short-circuit exactly as the inline try/except did before.
+    """
+    try:
+        with module._lock:
+            conn = module._get_conn()
+            cur = conn.execute(sql, params)
+            return cur.fetchall() if fetch_all else cur.fetchone()
+    except Exception:
+        _logger.warning("%s check query failed", error_label, exc_info=True)
+        return None
+
+
 # Hard failure statuses. `interrupted` is operational (user-cancelled or
 # graceful shutdown) and is excluded from alerting by default — opt in via
 # `include_interrupted=True` if you want to surface those too.
@@ -151,24 +176,22 @@ def check_pipeline_failures(
     )
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
     placeholders = ",".join("?" for _ in statuses)
-    try:
-        with pipeline_log._lock:
-            conn = pipeline_log._get_conn()
-            # Window by failure-occurrence time, not run start. A long-running
-            # pipeline can start before the window yet fail inside it; framing
-            # by `started_at` would silently drop it. `ended_at` is set by
-            # `end_run` for every failed/error run; `COALESCE` falls back to
-            # `started_at` only for orphaned rows with a NULL `ended_at`. This
-            # mirrors the judge/translate checks, which window by `created_at`
-            # (event-occurrence time).
-            row = conn.execute(
-                f"SELECT COUNT(*) FROM pipeline_runs "
-                f"WHERE status IN ({placeholders}) "
-                f"AND COALESCE(ended_at, started_at) >= ?",
-                (*statuses, cutoff),
-            ).fetchone()
-    except Exception:
-        _logger.warning("pipeline failure check query failed", exc_info=True)
+    # Window by failure-occurrence time, not run start. A long-running
+    # pipeline can start before the window yet fail inside it; framing
+    # by `started_at` would silently drop it. `ended_at` is set by
+    # `end_run` for every failed/error run; `COALESCE` falls back to
+    # `started_at` only for orphaned rows with a NULL `ended_at`. This
+    # mirrors the judge/translate checks, which window by `created_at`
+    # (event-occurrence time).
+    row = _query_log(
+        pipeline_log,
+        f"SELECT COUNT(*) FROM pipeline_runs "
+        f"WHERE status IN ({placeholders}) "
+        f"AND COALESCE(ended_at, started_at) >= ?",
+        (*statuses, cutoff),
+        error_label="pipeline failure",
+    )
+    if row is None:
         return
     count = int(row[0] or 0)
     if count < threshold:
@@ -196,19 +219,17 @@ def check_judge_rejection_rate(
 ) -> None:
     """Emit Sentry warning if rejection rate > threshold and sample >= min_total."""
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
-    try:
-        with judge_log._lock:
-            conn = judge_log._get_conn()
-            row = conn.execute(
-                "SELECT COUNT(*) AS total, "
-                "       SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected "
-                "FROM judge_log "
-                "WHERE source = 'auto' AND created_at >= ? "
-                "  AND (reject_reason IS NULL OR reject_reason != 'degree_cap')",
-                (cutoff,),
-            ).fetchone()
-    except Exception:
-        _logger.warning("judge rejection check query failed", exc_info=True)
+    row = _query_log(
+        judge_log,
+        "SELECT COUNT(*) AS total, "
+        "       SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected "
+        "FROM judge_log "
+        "WHERE source = 'auto' AND created_at >= ? "
+        "  AND (reject_reason IS NULL OR reject_reason != 'degree_cap')",
+        (cutoff,),
+        error_label="judge rejection",
+    )
+    if row is None:
         return
     total = int(row[0] or 0)
     rejected = int(row[1] or 0)
@@ -246,17 +267,16 @@ def check_translate_latency_p95(
     yield unstable p95 numbers and create noise.
     """
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
-    try:
-        with translate_log._lock:
-            conn = translate_log._get_conn()
-            rows = conn.execute(
-                "SELECT latency_ms FROM translate_log "
-                "WHERE created_at >= ? AND latency_ms IS NOT NULL "
-                "ORDER BY latency_ms ASC",
-                (cutoff,),
-            ).fetchall()
-    except Exception:
-        _logger.warning("translate latency check query failed", exc_info=True)
+    rows = _query_log(
+        translate_log,
+        "SELECT latency_ms FROM translate_log "
+        "WHERE created_at >= ? AND latency_ms IS NOT NULL "
+        "ORDER BY latency_ms ASC",
+        (cutoff,),
+        fetch_all=True,
+        error_label="translate latency",
+    )
+    if rows is None:
         return
 
     samples = [int(r[0]) for r in rows if r[0] is not None]

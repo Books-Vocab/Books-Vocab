@@ -1,7 +1,6 @@
 """Phase 5 — manual link creation routes through the LLM provider registry."""
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -10,16 +9,12 @@ import pytest
 from kg.api_models import ManualLinkRequest
 from kg.vocab_handlers.graph import create_manual_link_response
 
-_PREFIX = "LLM_PROVIDER_"
 _JUDGE_JSON = '{"link": "shares_usage", "confidence": 0.9, "reason": "相關"}'
 _USER = {"id": "u_ml", "dir": "/tmp/u_ml"}
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
-    for name in list(os.environ):
-        if name.startswith(_PREFIX) or name in ("GEMINI_MODEL", "DEEPSEEK_MODEL"):
-            monkeypatch.delenv(name, raising=False)
+def _clean_env(clean_routing_env):
     yield
 
 
