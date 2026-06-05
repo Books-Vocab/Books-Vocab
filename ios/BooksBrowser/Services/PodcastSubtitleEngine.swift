@@ -140,7 +140,7 @@ final class PodcastSubtitleEngine {
 
         for i in 1..<cues.count {
             let cue = cues[i]
-            let prev = currentGroup.last!
+            guard let prev = currentGroup.last else { continue }
             // Boundary rule (matches lab/podcast/preview.py):
             //   • speaker change, OR
             //   • previous word ends with sentence-final punctuation (.!?…)
@@ -162,10 +162,18 @@ final class PodcastSubtitleEngine {
     }
 
     private func makeSentence(from cues: [PodcastSubtitleCue], id: Int) -> PodcastSentence {
+        guard let first = cues.first, let last = cues.last else {
+            // Defensive: callers already guard non-empty, but keep the function
+            // self-contained so future refactors can't crash here.
+            return PodcastSentence(
+                id: id, speaker: "", text: "",
+                startTime: 0, endTime: 0, words: cues
+            )
+        }
         let text = cues.map(\.word).joined(separator: " ")
         return PodcastSentence(
-            id: id, speaker: cues[0].speaker, text: text,
-            startTime: cues[0].startTime, endTime: cues.last!.endTime, words: cues
+            id: id, speaker: first.speaker, text: text,
+            startTime: first.startTime, endTime: last.endTime, words: cues
         )
     }
 
