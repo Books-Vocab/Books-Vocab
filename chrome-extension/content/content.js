@@ -23,10 +23,15 @@
   const POPUP_MAX_WIDTH = 360;
   const POPUP_EST_HEIGHT = 220;
 
+  // Short i18n accessor. Content scripts read chrome.i18n directly — their UI
+  // is built in JS (not HTML), so shared/i18n.js does not apply here.
+  const t = (key, subs) => chrome.i18n.getMessage(key, subs);
+
   // Shown when this content script is orphaned by an extension reload/update
-  // (see extensionContextValid). The only recovery is reloading the page so a
-  // fresh content script is injected.
-  const CONTEXT_INVALIDATED_MSG = '擴充功能已更新，請重新整理頁面';
+  // (see extensionContextValid). Resolved ONCE at load time (context still
+  // valid) and cached, so the invalidated-context path never calls getMessage
+  // on a dead runtime — which would itself throw.
+  const CONTEXT_INVALIDATED_MSG = t('popupContextInvalidated');
 
   /** Currently active host element (only one popup at a time). */
   let activeHost = null;
@@ -357,7 +362,7 @@
         // Background service worker unreachable: the callback fires with
         // `response === undefined` and lastError set.
         if (chrome.runtime.lastError || response == null) {
-          renderError(popup, '無法連線，請重試');
+          renderError(popup, t('popupErrorNetwork'));
           return;
         }
 
@@ -365,7 +370,7 @@
           if (response.status === 401 || response.code === 'auth_expired') {
             renderLoginPrompt(popup);
           } else {
-            renderError(popup, response.message || '翻譯失敗');
+            renderError(popup, response.message || t('popupErrorTranslate'));
           }
           return;
         }
@@ -403,8 +408,8 @@
 
     // Action row
     html += `<div class="kg-popup__actions">`;
-    html += `<button class="kg-btn kg-btn--ghost kg-popup__btn kg-popup__btn--expand" data-action="explain" aria-label="展開解釋">展開</button>`;
-    html += `<button class="kg-btn kg-btn--primary" data-action="add" aria-label="加入詞彙">加入詞彙</button>`;
+    html += `<button class="kg-btn kg-btn--ghost kg-popup__btn kg-popup__btn--expand" data-action="explain" aria-label="${escapeHtml(t('popupActionExpandAria'))}">${escapeHtml(t('popupActionExpand'))}</button>`;
+    html += `<button class="kg-btn kg-btn--primary" data-action="add" aria-label="${escapeHtml(t('popupBtnAdd'))}">${escapeHtml(t('popupBtnAdd'))}</button>`;
     html += `</div>`;
 
     // Explanation placeholder
@@ -435,8 +440,8 @@
     const optionsUrl = safeUrl(chrome.runtime.getURL('options/options.html'));
     popup.innerHTML = `
       <div class="kg-popup__login">
-        <p>請先登入</p>
-        <a href="${escapeHtml(optionsUrl)}" target="_blank" class="kg-btn kg-btn--primary">前往登入</a>
+        <p>${escapeHtml(t('popupLoginPrompt'))}</p>
+        <a href="${escapeHtml(optionsUrl)}" target="_blank" class="kg-btn kg-btn--primary">${escapeHtml(t('popupLoginAction'))}</a>
       </div>
     `;
   }
@@ -459,18 +464,18 @@
     // Toggle off if already shown
     if (!explanationEl.hidden) {
       explanationEl.hidden = true;
-      btn.textContent = '展開';
+      btn.textContent = t('popupActionExpand');
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = '載入中...';
+    btn.textContent = t('popupLoading');
 
     const showExplainError = (text) => {
       btn.disabled = false;
       explanationEl.textContent = text;
       explanationEl.hidden = false;
-      btn.textContent = '展開';
+      btn.textContent = t('popupActionExpand');
     };
 
     sendMessageSafe(
@@ -479,18 +484,18 @@
         btn.disabled = false;
 
         if (chrome.runtime.lastError || response == null) {
-          showExplainError('無法連線，請重試');
+          showExplainError(t('popupErrorNetwork'));
           return;
         }
 
         if (response.error) {
-          showExplainError(response.message || '解釋失敗');
+          showExplainError(response.message || t('popupErrorExplain'));
           return;
         }
 
         explanationEl.textContent = response.e || '';
         explanationEl.hidden = false;
-        btn.textContent = '收起';
+        btn.textContent = t('popupActionCollapse');
       },
       () => showExplainError(CONTEXT_INVALIDATED_MSG)
     );
@@ -498,7 +503,7 @@
 
   function handleAddVocab(popup, btn, word, data, context, source) {
     btn.disabled = true;
-    btn.textContent = '加入中...';
+    btn.textContent = t('popupBtnAdding');
 
     const entries = [
       {
@@ -511,7 +516,7 @@
 
     const showAddError = (text) => {
       btn.disabled = false;
-      btn.textContent = '加入詞彙';
+      btn.textContent = t('popupBtnAdd');
       const errEl = popup.querySelector('.kg-popup__error');
       if (errEl) {
         errEl.textContent = text;
@@ -528,7 +533,7 @@
       { type: 'addVocab', entries },
       (response) => {
         if (chrome.runtime.lastError || response == null) {
-          showAddError('無法連線，請重試');
+          showAddError(t('popupErrorNetwork'));
           return;
         }
 
@@ -536,14 +541,14 @@
           if (response.status === 401 || response.code === 'auth_expired') {
             renderLoginPrompt(popup);
           } else {
-            showAddError(response.message || '加入失敗');
+            showAddError(response.message || t('popupErrorAdd'));
           }
           return;
         }
 
         popup.className = 'kg-popup kg-popup--saved';
         btn.className = 'kg-btn kg-popup__btn kg-popup__btn--success';
-        btn.textContent = '已加入';
+        btn.textContent = t('popupBtnAdded');
         btn.disabled = true;
       },
       () => showAddError(CONTEXT_INVALIDATED_MSG)
