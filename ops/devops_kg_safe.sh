@@ -37,14 +37,18 @@ USAGE
 }
 
 preflight() {
-  echo "[Preflight]"
-  echo "project   : kg"
-  echo "root      : $ROOT_DIR"
-  echo "base      : $BASE"
-  echo "server    : ubuntu@13.193.212.134"
-  echo "remote    : ~/knowledge_graph_api"
-  echo "domain    : wordnexus.lol"
-  echo "container : knowledge-graph-api"
+  # 診斷 banner 一律走 stderr — stdout 只留命令 payload，讓 ops-cli --json
+  # 可被 `| jq` / json.loads 直接 parse（dogfooding 發現的契約缺陷）。
+  {
+    echo "[Preflight]"
+    echo "project   : kg"
+    echo "root      : $ROOT_DIR"
+    echo "base      : $BASE"
+    echo "server    : ubuntu@13.193.212.134"
+    echo "remote    : ~/knowledge_graph_api"
+    echo "domain    : wordnexus.lol"
+    echo "container : knowledge-graph-api"
+  } >&2
 }
 
 is_blocked_run() {
