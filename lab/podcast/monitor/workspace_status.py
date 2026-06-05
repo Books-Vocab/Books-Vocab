@@ -53,29 +53,31 @@ def _stages_done(ws: Path) -> set[str]:
     }
 
 
-def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
-    """Return True if any stage's *latest* stage_end was success=false AND that
-    stage lacks a done marker (i.e. the failure was never resolved by a rerun).
+def unresolved_failed_stage(plog: Path, stages_done: set[str]) -> str | None:
+    """The stage whose *latest* stage_end was success=false AND which lacks a
+    done marker (failure never resolved by a rerun), or None if there is none.
 
-    A stage that failed once then succeeded on rerun gets its done marker
-    written, so `stages_done` membership already absolves it — we only flag
-    truly-unresolved failures. Reading the tail (last 64KB) is sufficient:
-    a stage_end is one line, even a verbose run rarely produces >64KB after
-    the latest failure.
+    When several stages are unresolved-failed, the MOST RECENT one in the log
+    wins — that is the failure an operator should look at first. A stage that
+    failed once then succeeded on rerun gets its done marker written, so
+    `stages_done` membership absolves it. Reading the tail (last 64KB) is
+    sufficient: a stage_end is one line, even a verbose run rarely produces
+    >64KB after the latest failure.
     """
     if not plog.exists():
-        return False
+        return None
     try:
         size = plog.stat().st_size
         with plog.open("rb") as f:
             f.seek(max(0, size - 65536))
             tail = f.read().decode("utf-8", errors="replace")
     except OSError:
-        return False
+        return None
 
-    # Track latest stage_end success-flag per stage from the tail window.
+    # Track latest stage_end success-flag + last line index per stage.
     latest: dict[str, bool] = {}
-    for line in tail.splitlines():
+    order: dict[str, int] = {}
+    for i, line in enumerate(tail.splitlines()):
         line = line.strip()
         if not line:
             continue
@@ -87,11 +89,21 @@ def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
             stage = obj.get("stage")
             if stage:
                 latest[stage] = bool(obj.get("success", True))
+                order[stage] = i
 
-    return any(
-        success is False and stage not in stages_done
+    unresolved = [
+        (order[stage], stage)
         for stage, success in latest.items()
-    )
+        if success is False and stage not in stages_done
+    ]
+    return max(unresolved)[1] if unresolved else None
+
+
+def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
+    """True iff an unresolved stage failure exists. Thin bool wrapper over
+    unresolved_failed_stage so the status cascade and the reason share one scan
+    implementation (single source of truth)."""
+    return unresolved_failed_stage(plog, stages_done) is not None
 
 
 def _milestones(ws: Path) -> tuple[list[dict], float]:
@@ -391,7 +403,7 @@ def headless_summary(ws: Path, active_job: dict | None = None) -> dict:
         ws, stages_done=stages_done, has_episodes=bool(episodes),
         gate_state=gate_state, active_job=active_job,
     )
-    return {
+    out = {
         "name": ws.name,
         "status": status,
         "episode_count": len(episodes),
@@ -399,3 +411,9 @@ def headless_summary(ws: Path, active_job: dict | None = None) -> dict:
         "milestones": milestones,
         "gates": gates,
     }
+    # Surface WHICH stage failed so callers don't have to re-scan the log — the
+    # scan already happened inside disk_status; reuse stages_done here.
+    if status == "failed":
+        out["failed_stage"] = unresolved_failed_stage(
+            ws / "pipeline_log.jsonl", stages_done)
+    return out

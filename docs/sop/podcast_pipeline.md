@@ -353,7 +353,7 @@ uv run --no-project --with boto3 python ops/podcast_ops.py series               
 
 - **`status` exit code 給 cron 訊號**:`2`=有 workspace 卡 failed(pipeline_log 有未解決 stage 失敗且無 done marker)、`1`=有 awaiting 人工核准、`0`=全 ok。狀態瀑布與 dashboard sidebar 完全一致(running 僅 dashboard 有 live job tracker 時報,headless 永不臆測)。
 - **`--json` 契約**:stdout 只有 JSON(零前綴,`| jq` 可直接吃),所有 banner/cost warning 走 stderr。
-- **failed ≠ 集數不全**:一個 workspace 可能七集全綠卻 `failed`——多半是 `publish` stage 上傳失敗(synthesized-not-published),此時 `reconcile` 會同時抓到。先看 `pipeline_log.jsonl` 尾段哪個 stage `success:false` 且無對應 `.stage_<n>_done`。
+- **failed ≠ 集數不全**:一個 workspace 可能七集全綠卻 `failed`——多半是 `publish` stage 上傳失敗(synthesized-not-published),此時 `reconcile` 會同時抓到。`status` 已直接吐根因(`failed_stage` 欄 / text 的 `✗ <ws>: <stage> stage failed (unresolved)`,取 log 尾段最近一筆 `success:false` 且無對應 `.stage_<n>_done` 的 stage),不必再手挖 `pipeline_log.jsonl`。
 
 ---
 

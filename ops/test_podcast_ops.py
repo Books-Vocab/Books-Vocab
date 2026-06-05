@@ -118,6 +118,31 @@ def test_status_summary_counts(tree: Path):
     assert out["summary"]["by_status"]["awaiting"] == 1
 
 
+def test_status_failed_surfaces_reason(tree: Path):
+    """v2: a failed workspace must say WHICH stage failed — the dogfood top
+    complaint was 'failed but episodes all green, no clue why'."""
+    by_name = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    failed = by_name["failed_ws"]
+    assert failed.get("failed_stage") == "synthesize"
+    assert "synthesize" in failed.get("reason", "")
+    # Non-failed rows carry no spurious reason.
+    assert "reason" not in by_name["done_ws"]
+
+
+def test_unresolved_failed_stage_ignores_resolved(tmp_path: Path):
+    """A stage that failed then got its done-marker (rerun) is NOT the reason;
+    the later unresolved failure is."""
+    root = tmp_path / "workspaces"; root.mkdir()
+    ws = _mk_ws(root, "mixed")
+    (ws / "pipeline_log.jsonl").write_text(
+        json.dumps({"event": "stage_end", "stage": "series-polish", "success": False}) + "\n"
+        + json.dumps({"event": "stage_end", "stage": "publish", "success": False}) + "\n"
+    )
+    (ws / ".stage_series-polish_done").write_text("")  # resolved
+    by_name = {w["name"]: w for w in po.collect_status(root)["workspaces"]}
+    assert by_name["mixed"]["failed_stage"] == "publish"
+
+
 def test_status_missing_dir_is_empty_not_crash(tmp_path: Path):
     out = po.collect_status(tmp_path / "nonexistent")
     assert out["workspaces"] == []
@@ -198,6 +223,47 @@ def test_cost_zero_without_events(tree: Path):
 def test_cost_single_workspace(tree: Path):
     out = po.collect_cost(tree, workspace="done_ws")
     assert out["scope"] == "done_ws"
+
+
+# ─── covers (v2: present is a list, symmetric with missing) ──────────────────
+
+def _cover(ws: Path) -> None:
+    (ws / "plan").mkdir(parents=True, exist_ok=True)
+    (ws / "plan" / "cover.png").write_bytes(b"\x89PNG")
+
+
+def test_covers_present_and_missing_are_lists(tmp_path: Path):
+    root = tmp_path / "workspaces"; root.mkdir()
+    has = _mk_ws(root, "has_cover"); _ep_audio(has, 1); _cover(has)
+    no = _mk_ws(root, "no_cover"); _ep_audio(no, 1)  # audio, no cover.png
+    _mk_ws(root, "no_audio")  # skipped — not publishable
+    out = po.collect_covers(root)
+    assert out["present"] == ["has_cover"]      # list, not int
+    assert out["missing"] == [{"workspace": "no_cover", "reason": "no_cover_png"}]
+
+
+# ─── --json error contract (v2: failures emit JSON to stdout, not bare stderr)
+
+def test_json_error_is_structured_on_stdout(tree: Path, monkeypatch):
+    monkeypatch.delenv("PODCAST_BUCKET", raising=False)
+    buf_out, buf_err = io.StringIO(), io.StringIO()
+    with redirect_stdout(buf_out), redirect_stderr(buf_err):
+        rc = po.main(["reconcile", "--workspaces-dir", str(tree), "--json"])
+    assert rc == 3
+    payload = json.loads(buf_out.getvalue())  # stdout must be parseable JSON
+    assert payload["ok"] is False
+    assert payload["error"]
+
+
+def test_text_error_still_goes_to_stderr(tree: Path, monkeypatch):
+    """Non-JSON mode keeps the human error on stderr (unchanged)."""
+    monkeypatch.delenv("PODCAST_BUCKET", raising=False)
+    buf_out, buf_err = io.StringIO(), io.StringIO()
+    with redirect_stdout(buf_out), redirect_stderr(buf_err):
+        rc = po.main(["reconcile", "--workspaces-dir", str(tree)])
+    assert rc == 3
+    assert buf_out.getvalue() == ""
+    assert "reconcile" in buf_err.getvalue()
 
 
 # ─── S3 subcommands: graceful degradation when PODCAST_BUCKET unset ──────────

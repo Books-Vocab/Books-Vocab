@@ -81,11 +81,20 @@ def collect_status(workspaces_dir: Path) -> dict:
             total_usd = float(aggregate_workspace(ws).get("total_usd") or 0.0)
         except Exception:  # noqa: BLE001 — cost is best-effort, status still stands
             pass
-        rows.append({
+        row = {
             "name": s["name"], "status": s["status"],
             "episode_count": s["episode_count"], "progress": s["progress"],
             "total_usd": round(total_usd, 4), "gates": gate_state,
-        })
+        }
+        # Surface the failing stage so 'failed' is actionable — the #1 dogfood
+        # complaint was "failed but no clue why". failed_stage may be None if the
+        # log was unreadable; say so rather than imply a clean failure.
+        if s["status"] == "failed":
+            fs = s.get("failed_stage")
+            row["failed_stage"] = fs
+            row["reason"] = (f"{fs} stage failed (unresolved)" if fs
+                             else "unresolved pipeline failure (log unreadable)")
+        rows.append(row)
 
     by_status: dict[str, int] = {}
     for r in rows:
@@ -146,14 +155,15 @@ def collect_cost(workspaces_dir: Path, workspace: str | None = None) -> dict:
 
 def collect_covers(workspaces_dir: Path) -> dict:
     """Workspaces that have synthesized audio (i.e. are publishable) but lack a
-    cover image (plan/cover.png). Pure disk — no S3 needed."""
+    cover image (plan/cover.png). Pure disk — no S3 needed. Both `present` and
+    `missing` are lists (symmetric) so a script can act on either set."""
     missing: list[dict] = []
-    present = 0
+    present: list[str] = []
     for ws in _iter_workspaces(workspaces_dir):
         if not wss._workspace_has_audio(ws):
             continue
         if (ws / "plan" / "cover.png").exists():
-            present += 1
+            present.append(ws.name)
         else:
             missing.append({"workspace": ws.name, "reason": "no_cover_png"})
     return {"missing": missing, "present": present}
@@ -194,18 +204,19 @@ def _print_status(out: dict) -> None:
         print("  (none)")
         return
     print(f"  {'STATUS':<9}{'EPS':>4}  {'PROG':>5}  {'COST':>8}  "
-          f"{'GATES p/s':<14} NAME")
+          f"{'GATES(plan/script)':<20} NAME")
     for r in sorted(rows, key=lambda x: x["name"]):
         g = r.get("gates", {})
         gates = f"{g.get('plan','-')}/{g.get('script','-')}"
         glyph = _STATUS_GLYPH.get(r["status"], "?")
         print(f"  {glyph} {r['status']:<7}{r['episode_count']:>4}  "
               f"{r['progress']*100:>4.0f}%  ${r['total_usd']:>6.2f}  "
-              f"{gates:<14} {r['name']}")
-    failed = [r["name"] for r in rows if r["status"] == "failed"]
+              f"{gates:<20} {r['name']}")
+    # Failed lines name the culprit stage so the operator's next step is obvious.
+    failed = [r for r in rows if r["status"] == "failed"]
     awaiting = [r["name"] for r in rows if r["status"] == "awaiting"]
-    if failed:
-        print(f"  ✗ {len(failed)} failed: {', '.join(failed)}")
+    for r in failed:
+        print(f"  ✗ {r['name']}: {r.get('reason', 'failed')}")
     if awaiting:
         print(f"  ⏳ {len(awaiting)} awaiting approval: {', '.join(awaiting)}")
 
@@ -244,7 +255,7 @@ def _print_cost(out: dict) -> None:
 
 
 def _print_covers(out: dict) -> None:
-    print(f"covers — {out['present']} present, {len(out['missing'])} missing")
+    print(f"covers — {len(out['present'])} present, {len(out['missing'])} missing")
     for m in out["missing"]:
         print(f"  ✗ {m['workspace']}")
 
@@ -274,6 +285,17 @@ def _emit(payload: dict, as_json: bool, printer) -> None:
         print(json.dumps(payload, ensure_ascii=False))
     else:
         printer(payload)
+
+
+def _fail(msg: str, as_json: bool, rc: int = 3) -> int:
+    """Emit an error honouring the --json contract: structured JSON to stdout in
+    JSON mode (so `| jq` never chokes on an empty stdout), human text to stderr
+    otherwise. Returns rc for the caller to propagate."""
+    if as_json:
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False))
+    else:
+        print(f"✗ {msg}", file=sys.stderr)
+    return rc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -318,15 +340,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "episodes":
         ws = wsdir / args.workspace
         if not ws.is_dir():
-            print(f"✗ workspace not found: {args.workspace}", file=sys.stderr)
-            return 3
+            return _fail(f"workspace not found: {args.workspace}", args.json)
         _emit(collect_episodes(ws), args.json, _print_episodes)
         return 0
 
     if args.cmd == "cost":
         if args.workspace and not (wsdir / args.workspace).is_dir():
-            print(f"✗ workspace not found: {args.workspace}", file=sys.stderr)
-            return 3
+            return _fail(f"workspace not found: {args.workspace}", args.json)
         _emit(collect_cost(wsdir, args.workspace), args.json, _print_cost)
         return 0
 
@@ -341,8 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "series":
             _emit(collect_series(), args.json, _print_series)
     except Exception as exc:  # noqa: BLE001 — RemoteError/ImportError → clean exit
-        print(f"✗ {args.cmd} failed (S3/boto3): {exc}", file=sys.stderr)
-        return 3
+        return _fail(f"{args.cmd} failed (S3/boto3): {exc}", args.json)
     return 0
 
 
