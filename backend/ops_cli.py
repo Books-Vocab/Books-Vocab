@@ -6,6 +6,7 @@
 """
 
 import argparse
+import json
 import os
 import sqlite3
 import sys
@@ -649,6 +650,113 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
         print()
 
 
+def cmd_fleet_overview(args: argparse.Namespace) -> None:
+    """跨用戶 fleet 體檢 — 每用戶 cards/links/月 cost + FLEET TOTAL。
+
+    合併三個資料源:per-user cards.db(卡數)、per-user graph_*.json(連結數,
+    跨 notebook 加總)、全域 token_usage.db(月 cost + 最後活動)。一條命令取代
+    逐用戶手動 loop。
+    """
+    dd = data_dir()
+    users_dir = dd / "users"
+
+    # 1. token_usage：月 cost（by user×call_type×provider 各自定價再折回）+
+    #    all-time last_active，一次查完，不逐用戶開檔。
+    since = since_iso("month")
+    month_cost: dict[str, float] = {}
+    month_calls: dict[str, int] = {}
+    last_active: dict[str, str] = {}
+    token_db = dd / "token_usage.db"
+    if token_db.exists():
+        conn = connect_ro(token_db)
+        pcol = provider_column_expr(conn)
+        sql = (
+            f"SELECT user_id, call_type, {pcol} AS provider, COUNT(*), "
+            "SUM(input_tokens), SUM(output_tokens) FROM token_usage"
+        )
+        params: list = []
+        if since is not None:
+            sql += " WHERE created_at >= ?"
+            params.append(since)
+        sql += f" GROUP BY user_id, call_type, {pcol}"
+        for uid, call_type, provider, cnt, t_in, t_out in conn.execute(sql, params):
+            month_cost[uid] = month_cost.get(uid, 0.0) + token_cost_usd(
+                call_type, int(t_in or 0), int(t_out or 0), provider=provider
+            )
+            month_calls[uid] = month_calls.get(uid, 0) + cnt
+        for uid, la in conn.execute(
+            "SELECT user_id, max(created_at) FROM token_usage GROUP BY user_id"
+        ):
+            last_active[uid] = la
+        conn.close()
+
+    # 2. per-user cards 計數 + links 計數（glob 跨 notebook 的 graph_*.json）
+    user_dirs = (
+        sorted((p for p in users_dir.iterdir() if p.is_dir()), key=lambda p: p.name)
+        if users_dir.exists()
+        else []
+    )
+    user_rows: list[dict] = []
+    for ud in user_dirs:
+        uid = ud.name
+        total = active = 0
+        cards_db = ud / "cards.db"
+        if cards_db.exists():
+            c = connect_ro(cards_db)
+            try:
+                total = c.execute("SELECT count(*) FROM card").fetchone()[0]
+                active = c.execute("SELECT count(*) FROM card WHERE is_deleted = 0").fetchone()[0]
+            finally:
+                c.close()
+        links = 0
+        for gp in ud.glob("graph_*.json"):
+            try:
+                links += len(json.loads(gp.read_text()))
+            except (json.JSONDecodeError, OSError):
+                pass
+        user_rows.append({
+            "user_id": uid,
+            "cards_total": total,
+            "cards_active": active,
+            "cards_deleted": total - active,
+            "links": links,
+            "last_active": last_active.get(uid),
+            "month_cost_usd": round(month_cost.get(uid, 0.0), 6),
+            "month_calls": month_calls.get(uid, 0),
+        })
+
+    user_rows.sort(key=lambda u: (u["cards_active"], u["month_cost_usd"]), reverse=True)
+
+    totals = {
+        "users": len(user_rows),
+        "cards_total": sum(u["cards_total"] for u in user_rows),
+        "cards_active": sum(u["cards_active"] for u in user_rows),
+        "cards_deleted": sum(u["cards_deleted"] for u in user_rows),
+        "links": sum(u["links"] for u in user_rows),
+        "month_cost_usd": round(sum(u["month_cost_usd"] for u in user_rows), 6),
+        "month_calls": sum(u["month_calls"] for u in user_rows),
+    }
+
+    if args.json:
+        emit_json({"count": len(user_rows), "users": user_rows, "totals": totals})
+        return
+
+    print(f"Fleet Overview — {totals['users']} users")
+    print(
+        f"Cards: {totals['cards_total']} total / {totals['cards_active']} active / "
+        f"{totals['cards_deleted']} deleted  |  Links: {totals['links']}  |  "
+        f"Month: ${totals['month_cost_usd']:.6f} ({totals['month_calls']} calls)"
+    )
+    print()
+    print_table(
+        ["User", "Cards", "Active", "Deleted", "Links", "Last Active", "Month $", "Calls"],
+        [[u["user_id"], str(u["cards_total"]), str(u["cards_active"]),
+          str(u["cards_deleted"]), str(u["links"]), (u["last_active"] or "-")[:19],
+          f"${u['month_cost_usd']:.6f}", str(u["month_calls"])]
+         for u in user_rows],
+    )
+
+
 # ── CLI 進入點 ──────────────────────────────────────────
 
 
@@ -712,6 +820,11 @@ def main() -> None:
     p.add_argument("--range", choices=list(VALID_RANGES), default="month",
                    help="時間範圍（預設 month）")
     p.set_defaults(func=cmd_cost)
+
+    # fleet-overview
+    p = sub.add_parser("fleet-overview", parents=[jp],
+                       help="跨用戶體檢（每用戶 cards/links/月 cost + FLEET TOTAL）")
+    p.set_defaults(func=cmd_fleet_overview)
 
     # cost-overview
     p = sub.add_parser("cost-overview", parents=[jp], help="全用戶 cost 排名")
