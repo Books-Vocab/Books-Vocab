@@ -16,6 +16,7 @@ const assert = require('node:assert/strict');
 
 const {
   OUTBOX_STATUS,
+  OUTBOX_KEY,
   makeOutboxEntry,
   enqueueAdd,
   reconcileAddResponse,
@@ -121,6 +122,16 @@ test('reconcileAddResponse ignores inherited Object.prototype keys', () => {
   assert.equal(q[0].status, OUTBOX_STATUS.PENDING);
 });
 
+test('reconcileAddResponse leaves failed entries untouched (retry precondition)', () => {
+  // failed→pending folding happens at flush time, before the push; reconcile
+  // must NOT resolve a still-failed entry from a stale/late cardIds map.
+  let q = enqueueAdd([], pending('l1', 'alpha'));
+  q = markFailed(q, ['l1']);
+  q = reconcileAddResponse(q, { alpha: 'card-a' });
+  assert.equal(q[0].status, OUTBOX_STATUS.FAILED, 'failed not resolved by reconcile');
+  assert.equal(q[0].cardId, null);
+});
+
 test('reconcileAddResponse does not touch already-synced or failed entries', () => {
   let q = [pending('l1', 'alpha')];
   q = reconcileAddResponse(q, { alpha: 'card-a' });
@@ -179,6 +190,10 @@ test('pruneSynced removes synced entries, keeps pending/failed', () => {
 // ---------------------------------------------------------------------------
 // summarizeOutbox — sidepanel badge counts
 // ---------------------------------------------------------------------------
+
+test('OUTBOX_KEY is the storage key contract', () => {
+  assert.equal(OUTBOX_KEY, 'vocab_outbox');
+});
 
 test('summarizeOutbox tallies by status', () => {
   let q = [pending('l1', 'a'), pending('l2', 'b'), pending('l3', 'c')];

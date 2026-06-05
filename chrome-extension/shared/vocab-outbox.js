@@ -35,6 +35,9 @@ const OUTBOX_STATUS = Object.freeze({
   FAILED: 'failed',
 });
 
+/** chrome.storage.local key holding the add-outbox queue (array of entries). */
+const OUTBOX_KEY = 'vocab_outbox';
+
 /** An entry is still "owed to the server" (queue it for the next flush). */
 function isUnresolved(entry) {
   return entry.status === OUTBOX_STATUS.PENDING || entry.status === OUTBOX_STATUS.FAILED;
@@ -88,6 +91,11 @@ function reconcileAddResponse(queue, cardIds) {
   const map = cardIds || {};
   let changed = false;
   const next = queue.map((entry) => {
+    // Only PENDING converges. Callers fold failed→pending before pushing (see
+    // entriesToFlush + the IO layer's pend-then-push), so by the time a cardId
+    // echoes back the entry is pending; a FAILED entry is intentionally left for
+    // the next flush cycle — a stale/late response must not silently resolve a
+    // write that is already queued for retry.
     if (entry.status !== OUTBOX_STATUS.PENDING) return entry;
     if (!Object.prototype.hasOwnProperty.call(map, entry.word)) return entry;
     changed = true;
@@ -146,6 +154,7 @@ function summarizeOutbox(queue) {
 
 const KGOutboxExports = {
   OUTBOX_STATUS,
+  OUTBOX_KEY,
   makeOutboxEntry,
   enqueueAdd,
   reconcileAddResponse,
