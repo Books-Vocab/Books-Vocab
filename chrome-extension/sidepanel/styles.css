@@ -1,6 +1,6 @@
 /* ============================================================
    KG Side Panel Styles — editorial surface, aligned with website + iOS system.
-   All values via tokens.css; primitives via kg-components.css.
+   Layout-only: component primitives come from kg-components.css + kg-component-structures.css.
    ============================================================ */
 
 /* --- Base (北極星 1: single warm surface) --------------------------------- */
@@ -39,9 +39,9 @@ body {
 .kg-header__title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: var(--text-h1);
-  line-height: var(--leading-heading);
-  letter-spacing: var(--tracking-h2-tight);
+  font-size: var(--text-hero);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-tight);
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -81,13 +81,139 @@ body {
   opacity: var(--press-opacity);
 }
 
-/* KGIcons SVG glyphs (shared/icons.js) size to the element's font-size, exactly
-   like the emoji they replaced — so existing font-size tokens (--toggle-glyph on
-   the theme button, --text-caption on the card source) still drive icon size. */
+/* KGIcons SVG glyphs size to the element's font-size. */
 .kg-theme-btn svg,
-.kg-list-card__source svg,
 .kg-error__icon svg { width: 1em; height: 1em; display: block; }
 .kg-error__icon svg { margin: 0 auto; }
+
+/* --- Filter + Sort Bar (mirrors iOS KGVocabPresenter) --------------------- */
+
+.kg-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1);
+  padding: 0 var(--page-h-padding) var(--sp-sm);
+}
+
+.kg-filter-bar__chips {
+  display: flex;
+  gap: var(--sp-1);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.kg-filter-bar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+
+.kg-filter-bar__chip:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
+
+.kg-filter-bar__chip--active {
+  background: var(--muted-fill);
+  color: var(--text-primary);
+}
+
+.kg-filter-bar__count {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.kg-filter-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+}
+
+.kg-sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+
+.kg-sort-pill:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
+
+/* Review CTA pill — brandHero fill (mirrors iOS VocabReviewCTAPill) */
+.kg-review-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-micro);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--on-brand-hero);
+  background: var(--brand-hero);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity var(--motion-quick);
+}
+
+.kg-review-cta:hover {
+  opacity: 0.92;
+}
+
+.kg-review-cta svg {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
+.kg-review-cta__count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Search --------------------------------------------------------------- */
+
+.kg-search-wrap {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+
+.kg-sort-pill:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
 
 /* --- Search --------------------------------------------------------------- */
 
@@ -218,7 +344,6 @@ body {
 /* Login-specific error state: brand-hero CTA ------------------------------- */
 
 .kg-error--login .kg-error__icon {
-  /* Remove emoji, use a subtle lock SVG via JS or leave blank for clean look */
   display: none;
 }
 
@@ -233,7 +358,10 @@ body {
   opacity: 0.92;
 }
 
-/* --- Vocab list ----------------------------------------------------------- */
+/* --- Vocab list layout ---------------------------------------------------- */
+/* The card + row styles live in kg-component-structures.css (generated from
+   design-system/components.json). This file only keeps the list container
+   padding + gap that is sidepanel-specific. */
 
 .kg-list {
   display: flex;
@@ -242,43 +370,12 @@ body {
   padding: 0 var(--page-h-padding) var(--sp-lg);
 }
 
-/* --- List card (composes kg-card primitives) ------------------------------ */
-
-.kg-list-card__row {
-  display: flex;
-  align-items: center;
-  gap: var(--inline-gap);
-}
-
-.kg-list-card__word {
-  font-size: var(--text-row-word);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.kg-list-card__source {
-  margin-left: auto;
-  font-size: var(--text-caption);
-  flex-shrink: 0;
-}
-
-.kg-list-card__meaning {
-  margin-top: var(--sp-xs);
-  font-size: var(--text-subhead);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* --- Detail (expanded) ---------------------------------------------------- */
+/* --- Detail (expanded) — mirrors iOS word detail sheet -------------------- */
 
 .kg-detail {
-  margin-top: var(--sp-compact);
-  background: var(--stage-bg);
-  border-radius: var(--radius-sm);
-  padding: var(--card-padding);
+  margin-top: var(--sp-sm);
+  padding-top: var(--sp-sm);
+  border-top: var(--sp-hairline) solid var(--divider);
   animation: kg-detail-enter 0.2s ease-out;
 }
 
@@ -287,14 +384,16 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Section — tighter spacing, editorial hierarchy */
 .kg-detail__section {
-  margin-bottom: var(--sp-compact);
+  margin-bottom: var(--sp-md);
 }
 
 .kg-detail__section:last-child {
   margin-bottom: 0;
 }
 
+/* Label — smaller, uppercase, muted (iOS caption + tertiary) */
 .kg-detail__label {
   font-size: var(--text-caption);
   color: var(--text-tertiary);
@@ -304,36 +403,43 @@ body {
   font-weight: 700;
 }
 
+/* Meaning / definition — body size, primary color */
 .kg-detail__meaning {
   font-size: var(--text-body);
   color: var(--text-primary);
   line-height: var(--leading-body);
 }
 
+/* Examples — serif italic, reading leading (matches iOS detailExampleSerif) */
 .kg-detail__examples {
   font-family: var(--font-italic);
   font-style: italic;
   color: var(--text-secondary);
   font-size: var(--text-subhead);
   line-height: var(--leading-reading);
+  margin: 0;
+  padding-left: var(--sp-4);
 }
 
 .kg-detail__examples li {
   margin-bottom: var(--sp-xs);
 }
 
+/* Collocation chips */
 .kg-detail__chips {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-sm);
 }
 
+/* Note */
 .kg-detail__note {
   font-size: var(--text-subhead);
   color: var(--text-secondary);
   line-height: var(--leading-body);
 }
 
+/* Context quote — accent left border */
 .kg-detail__context {
   font-size: var(--text-subhead);
   color: var(--text-secondary);
@@ -350,6 +456,66 @@ body {
 .kg-detail__source-text {
   font-size: var(--text-subhead);
   color: var(--text-secondary);
+}
+
+/* Related words section (iOS-style) */
+.kg-detail__related {
+  margin-top: var(--sp-md);
+}
+
+.kg-detail__related-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-bottom: var(--sp-hairline) solid var(--divider);
+}
+
+.kg-detail__related-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-row-word);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.kg-detail__related-desc {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+  line-height: var(--leading-body);
+  flex: 1;
+}
+
+/* Footer status bar (mirrors iOS bottom metadata) */
+.kg-detail__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--sp-md);
+  padding-top: var(--sp-sm);
+  border-top: var(--sp-hairline) solid var(--divider);
+}
+
+.kg-detail__footer-status {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.kg-detail__footer-meta {
+  display: flex;
+  gap: var(--sp-2);
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.kg-detail__footer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background: var(--muted-fill);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
 }
 
 /* --- Reduced motion ------------------------------------------------------- */
