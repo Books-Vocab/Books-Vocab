@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: 36716af4
+verified_against: bb54d47a
 -->
 # Vocabulary Feature Boundary
 
@@ -29,7 +29,7 @@ verified_against: 36716af4
 |------|------|------|
 | `VocabularyListCoordinator.swift` | 59 | `@Observable @MainActor final class VocabularyListCoordinator` |
 | `KnowledgeGraphCoordinator.swift` | 80 | `@Observable @MainActor final class KnowledgeGraphCoordinator` |
-| `Scenes/KGVocabCoordinator.swift` | 198 | `@Observable @MainActor final class KGVocabCoordinator` |
+| `Scenes/KGVocabCoordinator.swift` | 204 | `@Observable @MainActor final class KGVocabCoordinator`，batch delete / archive 收斂集中於 coordinator；archive 的本地可收斂集合為 `updated_words ∪ not_found`，`failed` 才保留重試 |
 | `Scenes/SyncCoordinator.swift` | 506 | `@Observable @MainActor final class SyncCoordinator`，含 `PipelineStep` / `SyncPhase` / `SyncFailureKind` |
 
 ### Presenter Layer（純 UI 呈現）
@@ -76,7 +76,7 @@ verified_against: 36716af4
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/KGVocabView.swift` | 359 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空 |
+| `Scenes/KGVocabView.swift` | 360 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI |
 | `Scenes/TodayReviewView.swift` | 481 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
 | `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
@@ -94,7 +94,7 @@ verified_against: 36716af4
 | `Scenes/ArchivedVocabSheet.swift` | 118 | `struct ArchivedVocabSheet: View` |
 | `GraphWebView.swift` | 281 | `struct GraphWebView: UIViewRepresentable` + `GraphForces` |
 | `GraphThumbnailWebView.swift` | 165 | `GraphThumbnailHolder` + `GraphThumbnailCoordinator` + `GraphThumbnailWebView`，跨 tab 切換存活的圖譜縮圖 WKWebView（不可互動、載入同 `graph.html`） |
-| `AutoSyncMonitor.swift` | 88 | `struct AutoSyncMonitor: ViewModifier`，監看 `pendingEntries` 並 debounce 觸發 auto-sync（`minTriggerInterval` 防 hot loop） |
+| `AutoSyncMonitor.swift` | 100 | `struct AutoSyncMonitor: ViewModifier`，監看 `pendingEntries`、auto-sync toggle、網路離線→連線恢復事件並 debounce 觸發 auto-sync（`minTriggerInterval` 防 hot loop） |
 
 ### Components（可復用 UI 元件）
 
@@ -104,7 +104,7 @@ verified_against: 36716af4
 | `Components/VocabShellComponents+Lists.swift` | 234 | shell 級 list cards / status hero / timeline / button styles(`VocabListCard` 等) |
 | `Components/VocabShellComponents+Actions.swift` | 248 | `VocabSortPill` + `VocabReviewCTAPill`(brandHero 填色 capsule，與 sort pill 同列尾端，由 `KGVocabPresenter.State.ReviewCTA` 驅動) |
 | `Components/VocabComponents.swift` | 277 | skin 級元件:`VocabCard` / `VocabToneChip` / `VocabEmptyStateCard` / `VocabReviewProgressBar` 等(前身 `VocabSkinComponents.swift`,隨 AppSkin 正名整併) |
-| `Components/VocabSceneShell.swift` | 156 | `VocabSceneShell<Content>` + `VocabScenePhase`,統一 vocabulary 四態容器(loading / loadingSkeleton / empty / error / content) |
+| `Components/VocabSceneShell.swift` | 157 | `VocabSceneShell<Content>` + `VocabScenePhase`,統一 vocabulary 四態容器(loading / loadingSkeleton / empty / error / content)；error phase 可帶 description，retry action 維持 owner 注入 |
 | `Components/WordRow.swift` | 254 | `struct WordRow: View`（Phase 2 起 lineLimit + truncationMode + fixedSize + monospacedDigit 套到 word/pos/translation/book/trailing/status，邊界 case 由 `Debug/Scenarios/NotebookDetailScenarios.swift` 鎖住） |
 | `Components/VocabReviewBanner.swift` | 159 | `struct VocabReviewBanner<FilterContent>: View`。完整 hero CTA(cardBackground + title + stats + button)，**僅** NotebookListView 使用作為 primary entry point。VocabularyListView 詳情頁不再渲染此 banner — CTA 改走 `VocabReviewCTAPill` 內嵌於 chip+sort 列。 |
 | `Components/CardDocumentView.swift` | 509 | card document 主 View |
