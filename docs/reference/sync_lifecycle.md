@@ -42,6 +42,15 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 2. 呼叫 `restorePendingEntry()`
 3. 顯示在閱讀器與待同步清單
 
+### 本地新增上傳成功（`pending + add` → `synced + add`）
+
+1. `SyncCoordinator` 批次上傳 → `POST /api/vocab` 回 `VocabAddResponse{ cardIds, duplicates, ... }`
+2. **`cardIds` 以 client 送出的『原始』word 為 key**（非後端清洗後的 word），`created` 與 `duplicate`（已存在）兩種情況都回填對應 card id
+3. 對每筆 entry：`response.cardIds[entry.word]` 命中即回填 `kgCardId` 並 `markSynced()` 直接出列
+4. **不變式**：收斂依據是回傳的 cardId（= 卡片確實存在 server，權威確認），**不**靠 pull-merge 用 content 字面比對——後端 `_clean_content` 會 strip 尾標點 / 首字小寫（如 `"chateau,"`→`"chateau"`），content 比對跨此邊界必然 miss，曾導致該類 entry 永久卡在 `pending + add` 重送（修復見 vocab_intake：response key 改回原始 word）
+5. 無 cardId 回傳（異常）的 entry 保持 `pending + add`，下次重試
+6. **不變式（contract）**：`cardIds` 的 key 必須是 client submitted word 的 **byte-exact echo**，後端**不得**對 key 做任何 normalization（NFC/大小寫/trim）——iOS 以 `entry.word` 逐字節查找，任何後端側轉換都會讓配對 silent miss。清洗只作用於**儲存的 content**，不作用於 response key
+
 ### 已同步單字被刪除
 
 1. 既有單字先是 `synced + add`
