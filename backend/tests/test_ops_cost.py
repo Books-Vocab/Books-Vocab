@@ -1,22 +1,15 @@
 """ops_cli.py cost / cost-overview 子命令 — 唯讀 cost-by-call_type 拆解測試。"""
 
 import json
-import os
-import subprocess
-import sys
-from pathlib import Path
 
-from ops_helpers import _create_token_usage_db, _hours_ago_iso, _now_iso
-
-CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
-
-
-def _run_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
-    env = {**os.environ, "KG_DATA_DIR": data_dir}
-    return subprocess.run(
-        [sys.executable, str(CLI_PATH), *args],
-        capture_output=True, text=True, env=env,
-    )
+from ops_helpers import (
+    _create_token_usage_db,
+    _hours_ago_iso,
+    _now_iso,
+)
+from ops_helpers import (
+    run_ops_cli as _run_cli,
+)
 
 
 class TestCost:

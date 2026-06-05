@@ -58,10 +58,12 @@ ops-cli card-find <uid> <substring>       # byte-exact 子字串搜尋 card.cont
 ops-cli card-get <uid> <id|content>       # 單卡 byte-exact 垂直 dump 全欄（寬表 SELECT * 難讀時用）
 ops-cli db-query <uid> SQL...             # 唯讀查用戶 DB（只放行單一 SELECT/WITH/EXPLAIN）
 ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
-ops-cli cost <uid> [--range R] [--json]   # 單用戶 cost-by-call_type 拆解（provider-aware）
-ops-cli cost-overview [--range R] [--json] # 全用戶 cost 排名
-ops-cli sync-trace <uid> [--date YYYY-MM-DD] [--json] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
+ops-cli cost <uid> [--range R]            # 單用戶 cost-by-call_type 拆解（provider-aware）
+ops-cli cost-overview [--range R]         # 全用戶 cost 排名
+ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
 
+# 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
+#   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
 # --range: 24h | 7d | 30d | month | all（預設 month）
 ```
 
