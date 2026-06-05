@@ -12,7 +12,8 @@ const stateEmpty   = $('#stateEmpty');
 const stateError   = $('#stateError');
 const stateContent = $('#stateContent');
 const searchInput  = $('#searchInput');
-const searchCount  = $('#searchCount');
+const searchIcon   = $('#searchIcon');
+const searchClear  = $('#searchClear');
 const themeBtn     = $('#themeBtn');
 const settingsBtn  = $('#settingsBtn');
 const retryBtn     = $('#retryBtn');
@@ -50,11 +51,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   const theme = await initTheme(document.documentElement);
   updateThemeBtn(theme);
   KGIcons.setIcon(settingsBtn, 'settings');
+  KGIcons.setIcon(searchIcon, 'search');
+  KGIcons.setIcon(searchClear, 'clear');
 
   themeBtn.addEventListener('click', cycleTheme);
   settingsBtn.addEventListener('click', openSettings);
   retryBtn.addEventListener('click', onRetry);
   searchInput.addEventListener('input', debounce(onSearch, 300));
+  searchInput.addEventListener('input', syncClearButton);
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    syncClearButton();
+    onSearch();
+    searchInput.focus();
+  });
 
   // Auto-reload when auth token changes (e.g. login completed in another tab).
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -125,7 +135,7 @@ function setState(state) {
 async function loadVocabList() {
   setState('loading');
   searchInput.value = '';
-  searchCount.textContent = '';
+  syncClearButton();
 
   try {
     const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
@@ -223,7 +233,6 @@ function onSearch() {
   const query = searchInput.value.trim().toLowerCase();
 
   if (!query) {
-    searchCount.textContent = '';
     renderList(vocabData);
     return;
   }
@@ -234,8 +243,12 @@ function onSearch() {
     return word.includes(query) || meaning.includes(query);
   });
 
-  searchCount.textContent = `${filtered.length}`;
   renderList(filtered);
+}
+
+/** Show the clear (✕) button only when the search field has text. */
+function syncClearButton() {
+  searchClear.hidden = searchInput.value.length === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,8 +292,9 @@ function enrichWithMockReviewData(item) {
 
 /**
  * Render filter chips (mirrors iOS VocabFilterChipBar).
- * Since the sidepanel API lacks review-state counts, we show a simplified
- * "All" chip with the total count, reserving the structure for future data.
+ * Three review-state chips (no '全部' — multi-select empty = all). The sidepanel
+ * API lacks real per-state counts, so counts are deterministic mocks derived from
+ * the total; replace with real data once the list endpoint returns review state.
  * @param {Array<object>} items
  */
 function renderFilterBar(items) {
@@ -293,8 +307,9 @@ function renderFilterBar(items) {
   const unlearnedCount = Math.floor(total * 0.25);
   const reviewedCount = total - dueCount - unlearnedCount;
 
+  // Mirrors iOS VocabFilterChipBar: multi-select, no '全部' chip — empty
+  // selection already means "all". Idle by default (none selected = all shown).
   const states = [
-    { label: '全部', count: total, active: true },
     { label: '未學習', count: unlearnedCount },
     { label: '待複習', count: dueCount },
     { label: '已複習', count: reviewedCount },

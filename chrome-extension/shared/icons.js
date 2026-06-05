@@ -58,6 +58,13 @@
       '<path d="M5 4.5h12.5a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1H6.5' +
       'A1.5 1.5 0 0 1 5 19.5z"/><path d="M5 17.5h13.5"/><path d="M8.5 4.5V17"/>',
 
+    // magnifyingglass — search field leading icon (mirrors iOS AppSearchField)
+    'search':
+      '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/>',
+    // xmark.circle — clear the search field (mirrors iOS xmark.circle.fill, outline)
+    'clear':
+      '<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>',
+
     // --- Error-state glyphs (side-panel error UI; rendered via classifyError) ---
     // lock — auth/login error
     'error-login':
