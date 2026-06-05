@@ -1,0 +1,35 @@
+[
+  {
+    "id": "kg-light",
+    "name": "Light",
+    "group": "theme",
+    "selectedTokenSets": {
+      "core": "source",
+      "theme-light": "enabled",
+      "theme-dark": "disabled",
+      "theme-sepia": "disabled"
+    }
+  },
+  {
+    "id": "kg-dark",
+    "name": "Dark",
+    "group": "theme",
+    "selectedTokenSets": {
+      "core": "source",
+      "theme-light": "disabled",
+      "theme-dark": "enabled",
+      "theme-sepia": "disabled"
+    }
+  },
+  {
+    "id": "kg-sepia",
+    "name": "Sepia",
+    "group": "theme",
+    "selectedTokenSets": {
+      "core": "source",
+      "theme-light": "disabled",
+      "theme-dark": "disabled",
+      "theme-sepia": "enabled"
+    }
+  }
+]

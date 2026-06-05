@@ -7,6 +7,7 @@
 # 跑：
 #   1. token_drift_check.py        — tokens.json 鏡像 iOS Swift literal（值層）
 #   2. gen_web_tokens.py --check   — 所有生成 CSS 與 tokens.json 一致（無 stale 副本）
+#   2b. gen_figma_sets.py --check  — Tokens Studio sidecar 投影與 tokens.json 一致（無 stale）
 #   3. component_fidelity_check.py — web primitive 組裝對齊 iOS 元件契約（組裝層，若存在）
 #   4. pure.test.js                — extension shared 純邏輯
 #
@@ -36,6 +37,7 @@ run() {
 
 run "token drift (tokens.json ↔ iOS Swift)" "${PY[@]}" ops/token_drift_check.py
 run "web token gen (CSS ↔ tokens.json)"     "${PY[@]}" ops/gen_web_tokens.py --check
+run "Figma sidecar (Tokens Studio ↔ tokens.json)" "${PY[@]}" ops/gen_figma_sets.py --check
 run "Style Dictionary (Swift ↔ tokens.json)" npm run build:check
 if [ -f ops/component_fidelity_check.py ]; then
   run "component fidelity (primitive ↔ iOS)" "${PY[@]}" ops/component_fidelity_check.py
