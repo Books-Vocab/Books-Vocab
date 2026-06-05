@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -79,8 +80,11 @@ async def _call_one(
     prompt: RenderedPrompt,
     sample: dict[str, Any],
     config: EvalConfig,
+    render_fn: Callable[[dict[str, Any]], RenderedPrompt] | None = None,
 ) -> EvalResult:
     """Call one LLM for one sample."""
+    if render_fn is not None:
+        prompt = render_fn(sample)
     provider = resolve_provider(provider_name)
     sample_id = sample.get("id", sample.get("word", "unknown"))
 
@@ -176,8 +180,13 @@ async def run_eval(
     samples: list[dict[str, Any]],
     models: list[str],
     config: EvalConfig | None = None,
+    render_fn: Callable[[dict[str, Any]], RenderedPrompt] | None = None,
 ) -> dict[str, EvalSummary]:
     """Run eval: one prompt against multiple models on a dataset.
+
+    Pass render_fn to re-render the prompt per sample (required when prompt
+    contains per-sample variables like word/context). The static prompt arg
+    is used as fallback when render_fn is None.
 
     Returns dict[model_name, EvalSummary].
     """
@@ -206,7 +215,7 @@ async def run_eval(
     async def _run_with_sem(model: str, sample: dict[str, Any]) -> EvalResult:
         pname = provider_map[model]
         async with semaphores[pname]:
-            return await _call_one(pname, model, prompt, sample, config)
+            return await _call_one(pname, model, prompt, sample, config, render_fn)
 
     tasks = [
         _run_with_sem(m, s)
