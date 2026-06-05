@@ -28,8 +28,9 @@
 //  ── Thread-safety ───────────────────────────────────────────────────────────
 //  os.Logger / OSSignposter are thread-safe. The only mutable shared state is the
 //  rate-counter dictionary, guarded by OSAllocatedUnfairLock (same pattern as
-//  LocaleAwareFormatter), so tick() is correct from ANY thread/actor — layout
-//  (CachedFlowLayout), the underline TimelineView, and main-actor view bodies.
+//  LocaleAwareFormatter), so tick() is correct from ANY thread/actor — Layout
+//  protocol sizeThatFits/placeSubviews, the underline TimelineView, and main-actor
+//  view bodies.
 //  measure()/interval() keep all timing state on the stack → reentrant.
 //
 //  ── Runtime toggle (no recompile) ───────────────────────────────────────────

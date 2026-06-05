@@ -32,7 +32,7 @@ struct PodcastSentenceSelection: Equatable {
 /// HISTORY: an earlier offset-driven engine drove follow with an outer
 /// `TimelineView(.animation)` that recomputed a manual `.offset` over a NON-lazy
 /// column EVERY display frame. That re-evaluated the whole token tree (hundreds of
-/// sentences × per-word `Text` + `CachedFlowLayout` + per-sentence `GeometryReader`
+/// sentences × their per-word flow layout + per-sentence `GeometryReader`
 /// preferences) per frame and froze the UI on entry — confirmed on-device:
 /// rendering only 30 sentences still froze (so NOT a realization-count cost), and
 /// the device logged `Bound preference … multiple times per frame`. Root cause was
@@ -67,6 +67,12 @@ struct PodcastSentenceLevelView: View {
     let isPlaying: Bool
     let hostNames: [String]
     let subtitleSize: PodcastSubtitleSize
+    /// Follow-scroll target id, LEADING the spoken sentence by ~0.5 s (ViewModel's
+    /// `scrollLeadSentenceId`). Drives auto-follow only — highlight/underline stay
+    /// keyed on the precise `currentId`, so the scroll arrives early while the
+    /// highlight stays exact. On a seek the VM pins this to the current sentence
+    /// (★B1), so a tapped bubble centers itself, not its successor.
+    let scrollLeadId: Int?
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
@@ -123,14 +129,22 @@ struct PodcastSentenceLevelView: View {
                         .transition(.readerPanelReveal)
                 }
             }
-            // Auto-follow: glide the spoken sentence to viewport center as the
-            // playhead advances. One animated scroll per sentence boundary; the
-            // animation duration gives the continuous gliding feel without any
-            // per-frame main-thread work.
+            // Debug-only boundary tracer for the cross-sentence underline-handoff
+            // timing model — keyed on the PRECISE spoken boundary (`currentId`), NOT
+            // the lead, so the trace still reflects real handoff instants.
+            #if DEBUG
             .onChange(of: currentId) { old, id in
-                #if DEBUG
                 logBoundary(from: old, to: id)
-                #endif
+            }
+            #endif
+            // Auto-follow: glide the spoken sentence to viewport center as the
+            // playhead advances. Driven by `scrollLeadId` (= `currentId` + ~0.5 s)
+            // so the scroll LEADS the playhead — the next bubble reaches center just
+            // before it's spoken instead of chasing it. One animated scroll per
+            // lead-boundary; zero per-frame main-thread work. On a seek the VM pins
+            // the lead to the current sentence (★B1) so a tap centers the tapped
+            // bubble, not its successor.
+            .onChange(of: scrollLeadId) { _, id in
                 followScroll(to: id, proxy: proxy)
             }
             // Re-engage follow (pill / Catalyst toggle): snap back to the current
@@ -366,7 +380,7 @@ struct PodcastSentenceLevelView: View {
 /// `PodcastBubbleCell` value struct per realized row; each is wrapped in
 /// `.equatable()`, so when `currentId` changes SwiftUI re-bodies only the cells
 /// whose Equatable inputs actually changed (the leaving + gaining cell, ~2),
-/// short-circuiting all the others — they never re-measure their `CachedFlowLayout`.
+/// short-circuiting all the others — they never re-lay-out their `UITextView`.
 ///
 /// The column itself is intentionally NOT `Equatable`: a column-level wrapper
 /// whose `==` included `currentId` returned false on every advance and forced the
@@ -499,7 +513,6 @@ private struct PodcastBubbleSkin: Equatable {
     let primaryText: Color
     let secondaryText: Color
     let cornerRadius: CGFloat
-    let wordRowGap: CGFloat
 
     init(skin: AppSkin, slot: Int) {
         self.paletteBase = skin.palette.base
@@ -508,7 +521,6 @@ private struct PodcastBubbleSkin: Equatable {
         self.primaryText = skin.palette.primaryText
         self.secondaryText = skin.palette.secondaryText
         self.cornerRadius = skin.radii.card
-        self.wordRowGap = skin.spacing.wordRowVerticalGap
     }
 
     static func == (l: PodcastBubbleSkin, r: PodcastBubbleSkin) -> Bool {
@@ -520,7 +532,7 @@ private struct PodcastBubbleSkin: Equatable {
 /// inside the column's `ForEach`, so SwiftUI skips its `body` whenever its inputs
 /// are unchanged — a sentence advance flips `isCurrent` on only the leaving +
 /// gaining cells, so only those ~2 re-body (the rest short-circuit and never
-/// re-measure their `CachedFlowLayout`). This is what makes a sentence change
+/// re-lay-out their `UITextView`). This is what makes a sentence change
 /// O(2 rows) instead of O(all realized rows).
 ///
 /// EXCLUDED from `==`: `liveAnchor` (a reference, read live per frame by the
@@ -570,6 +582,13 @@ private struct PodcastBubbleCell: View, Equatable {
     let onExplainTap: (String, String) -> Void
     let onEnterSelection: (Int) -> Void
     let onClearSelection: () -> Void
+
+    /// Per-word rects published by the unified `UITextView`'s TextKit layout (once
+    /// per layout pass, cache-guarded). The continuous underline reads these instead
+    /// of the old SwiftUI anchor preferences. Internal `@State` — excluded from `==`
+    /// (it's an output of layout, not an identity input); when it updates only THIS
+    /// cell re-bodies, feeding the new rects to the per-frame underline.
+    @State private var wordRects: [Int: CGRect] = [:]
 
     static func == (l: PodcastBubbleCell, r: PodcastBubbleCell) -> Bool {
         l.sentenceId == r.sentenceId
@@ -637,38 +656,40 @@ private struct PodcastBubbleCell: View, Equatable {
         let active = isCurrent || isSelecting
         let bg: Color = active ? skin.tint.opacity(0.18) : skin.tint.opacity(0.08)
         let fg: Color = active ? skin.primaryText : skin.secondaryText
-        Group {
-            if isSelecting {
-                PodcastSelectableSentenceTextView(
-                    text: fullText,
-                    font: subtitleSize.uiSubtitleFont,
-                    textColor: UIColor(fg),
-                    tintColor: UIColor(skin.tint),
-                    initialSelectionRange: initialSelectionRange
-                ) { phrase, context in
-                    onPhraseTap(phrase, context)
-                } onExplainSelection: { text, context in
-                    onExplainTap(text, context)
-                }
-            } else {
-                // All bubbles use CachedFlowLayout of per-word tokens — same layout
-                // algorithm whether current or not, so line breaks don't shift when
-                // a sentence becomes current.
-                wordFlow(textColor: fg)
+        // ONE unified `UITextView` for BOTH display + selection — only `isSelectable`
+        // flips. A single instance (NOT an if/else between two views) keeps the TextKit
+        // layout byte-identical across the long-press swap → zero reflow (the "選取時
+        // 排版跳版" fix). The continuous underline is a SwiftUI `.overlay` ON this view,
+        // so its coordinate space == the resolved rects' (text-view origin), and it is
+        // applied BEFORE the bubble padding (★B2) so the rects need no inset shift. It
+        // shows only in display mode on the current / entering ("next") cell.
+        PodcastSelectableSentenceTextView(
+            text: fullText,
+            font: subtitleSize.uiSubtitleFont,
+            textColor: UIColor(fg),
+            tintColor: UIColor(skin.tint),
+            isSelectable: isSelecting,
+            initialSelectionRange: isSelecting ? initialSelectionRange : nil,
+            words: words.map(\.word),
+            onResolveWordRects: { wordRects = $0 },
+            onLongPressWord: { onEnterSelection($0) },
+            onTranslateSelection: { phrase, context in onPhraseTap(phrase, context) },
+            onExplainSelection: { text, context in onExplainTap(text, context) }
+        )
+        .overlay {
+            if !isSelecting, isCurrent || isNext {
+                continuousUnderline(rects: wordRects)
             }
         }
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, 10)
         // Bubble fill + border live in their OWN shape-only layer so the active↔
-        // inactive skin crossfade animates on `active` WITHOUT animating the
-        // structural `wordFlow` swap (plain Text ↔ anchorPreference +
-        // overlayPreferenceValue + GeometryReader + TimelineView) that lives in the
-        // content layer above. Animating that swap spins up BOTH subtrees in one
-        // transaction → the per-sentence-change hitch — so the swap MUST stay
-        // instant. Scoping `.animation(value: active)` to this token-free shape
-        // layer gives the smooth bg/border glide the user asked for while keeping
-        // the structural swap snap-instant. (Earlier this whole block was left
-        // un-animated to dodge the hitch, which made the bubble color hard-cut.)
+        // inactive skin crossfade animates on `active` WITHOUT dragging the underline
+        // overlay's insert/remove (display↔select) into the same transaction. Scoping
+        // `.animation(value: active)` to this token-free shape layer keeps the bg /
+        // border glide smooth while the unified text view itself never reflows (same
+        // instance → no structural swap to animate). (Earlier the whole block was left
+        // un-animated to dodge a hitch, which made the bubble color hard-cut.)
         .background {
             RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
                 .fill(bg)
@@ -684,79 +705,37 @@ private struct PodcastBubbleCell: View, Equatable {
         .animation(AppMotion.contentFade, value: isSelecting)
     }
 
-    @ViewBuilder
-    private func wordFlow(textColor: Color) -> some View {
-        // Underline machinery (anchorPreference + overlayPreferenceValue +
-        // GeometryReader + TimelineView) lives on the current cell AND the next one
-        // (`isCurrent || isNext`); all other cells are a plain Text flow. The "next"
-        // cell needs it BEFORE the `currentId` flip so the cross-sentence entering
-        // head can already slide in during the boundary window (the flip lags audio
-        // ~one tick). Gating by STRUCTURE (not `paused`) is what bounds the cost to
-        // 2 cells — `TimelineView(paused:)` does NOT stop content re-eval. Token
-        // content is identical either way (same `words`), so wrapping / bubble
-        // height never shift across the (instant, never-animated) swap.
-        if isCurrent || isNext {
-            CachedFlowLayout(spacing: skin.wordRowGap) {
-                ForEach(Array(words.enumerated()), id: \.offset) { index, cue in
-                    Text(cue.word)
-                        .font(subtitleSize.subtitleFont)
-                        .foregroundStyle(textColor)
-                        // Report each word's frame so the underline can be
-                        // positioned/sized against real geometry.
-                        .anchorPreference(key: WordFrameKey.self, value: .bounds) { [index: $0] }
-                        // No per-word tap: a tap anywhere on the bubble seeks to the
-                        // sentence start (cell-level `.onTapGesture` → onSentenceTap).
-                        // Long-press still opens phrase selection on this word.
-                        .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
-                }
-            }
-            .overlayPreferenceValue(WordFrameKey.self) { anchors in
-                continuousUnderline(anchors)
-            }
-        } else {
-            CachedFlowLayout(spacing: skin.wordRowGap) {
-                ForEach(Array(words.enumerated()), id: \.offset) { index, cue in
-                    Text(cue.word)
-                        .font(subtitleSize.subtitleFont)
-                        .foregroundStyle(textColor)
-                        // No per-word tap: bubble tap seeks; long-press selects.
-                        .onLongPressGesture(minimumDuration: 0.35) { onEnterSelection(index) }
-                }
-            }
-        }
-    }
-
-    /// Continuous word underline for the CURRENT cell only. Resolves word rects
-    /// from the anchor preferences once per layout pass; the inner `TimelineView`
-    /// re-evaluates per display frame and reads the LIVE playhead via
-    /// `liveAnchor.value` (the reference defeats the stale-anchor trap). Across a
-    /// line break it renders a portal (two capsules) — see
+    /// Continuous word underline for the current / entering ("next") cell. Word rects
+    /// come from the unified `UITextView`'s TextKit layout
+    /// (`PodcastTextKitWordRects.resolve`, run once per layout pass and cache-guarded),
+    /// passed in as `rects` in the TEXT VIEW's own coordinate space. Because this
+    /// overlay is hung ON that text view (★B2), no `GeometryReader` translation is
+    /// needed. The inner `TimelineView` re-evaluates per display frame and reads the
+    /// LIVE playhead via `liveAnchor.value` (the reference defeats the stale-anchor
+    /// trap). Across a line break it renders a portal (two capsules) — see
     /// `PodcastUnderlineGeometry.segments`.
-    private func continuousUnderline(_ anchors: [Int: Anchor<CGRect>]) -> some View {
-        GeometryReader { geo in
-            let rects = anchors.mapValues { geo[$0] }
-            TimelineView(.animation(paused: !isPlaying)) { ctx in
-                // Current cell logs `ul.frame`; the entering ("next") cell logs
-                // `ul.next` so the second per-frame engine is separable in the trace.
-                let _ = PerfLog.underline.tick(isCurrent ? "ul.frame" : "ul.next")
-                if wordFollowEnabled {
-                    let t = PodcastPlaybackClock.projectedTime(
-                        anchor: liveAnchor.value,
-                        now: ctx.date.timeIntervalSinceReferenceDate,
-                        duration: duration
-                    )
-                    // Geometry recomputed per frame → motion is continuous with NO
-                    // animation modifier (a spring chasing a moving target visually
-                    // skips words). `relayBars` picks the regime: intra-sentence
-                    // portal, leaving tail-exit, or entering head-enter.
-                    let bars = relayBars(t: t, rects: rects)
-                    ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
-                        Capsule()
-                            .fill(skin.tint)
-                            .frame(width: bar.width, height: 3)
-                            // bottomY (word bottom) + 3pt offset + half the 3pt height.
-                            .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
-                    }
+    private func continuousUnderline(rects: [Int: CGRect]) -> some View {
+        TimelineView(.animation(paused: !isPlaying)) { ctx in
+            // Current cell logs `ul.frame`; the entering ("next") cell logs `ul.next`
+            // so the second per-frame engine is separable in the trace.
+            let _ = PerfLog.underline.tick(isCurrent ? "ul.frame" : "ul.next")
+            if wordFollowEnabled {
+                let t = PodcastPlaybackClock.projectedTime(
+                    anchor: liveAnchor.value,
+                    now: ctx.date.timeIntervalSinceReferenceDate,
+                    duration: duration
+                )
+                // Geometry recomputed per frame → motion is continuous with NO
+                // animation modifier (a spring chasing a moving target visually
+                // skips words). `relayBars` picks the regime: intra-sentence portal,
+                // leaving tail-exit, or entering head-enter.
+                let bars = relayBars(t: t, rects: rects)
+                ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+                    Capsule()
+                        .fill(skin.tint)
+                        .frame(width: bar.width, height: 3)
+                        // bottomY (word bottom) + 3pt offset + half the 3pt height.
+                        .position(x: bar.minX + bar.width / 2, y: bar.bottomY + 4.5)
                 }
             }
         }
@@ -833,16 +812,6 @@ enum PodcastSpeakerTint {
     }
 }
 
-/// Collects each word's frame (as a resolvable `Anchor<CGRect>`) keyed by its
-/// index within the current sentence, so the continuous underline overlay can
-/// position itself against real word geometry without re-running the layout.
-private struct WordFrameKey: PreferenceKey {
-    static let defaultValue: [Int: Anchor<CGRect>] = [:]
-    static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
 #Preview("Podcast Subtitle XL") {
     let cues1 = [
         PodcastSubtitleCue(id: 1, startTime: 0, endTime: 0.4, speaker: "Maya", word: "OK"),
@@ -872,6 +841,7 @@ private struct WordFrameKey: PreferenceKey {
             isPlaying: false,
             hostNames: ["Maya", "Kai"],
             subtitleSize: .xLarge,
+            scrollLeadId: 1,
             onSentenceTap: { _ in },
             onWordTap: { _, _ in },
             onPhraseTap: { _, _ in },
