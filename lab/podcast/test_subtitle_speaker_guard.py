@@ -21,9 +21,7 @@
 """
 import sys
 import types
-from pathlib import Path
 
-import pytest
 
 # subtitle.py 在 module top `import stable_whisper`（重量級 dep，測試環境無）。
 # 在 import subtitle 之前注入 stub，避免拉 stable-ts。

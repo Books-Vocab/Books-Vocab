@@ -24,20 +24,20 @@ def migrate_user(user_dir: Path):
     backup_path = user_dir / "cards.json.bak"
 
     if not json_path.exists():
-        logger.info(f"Skipping {user_dir.name} - no cards.json found.")
+        logger.info("Skipping %s - no cards.json found.", user_dir.name)
         return
 
     if db_path.exists():
-        logger.warning(f"Skipping {user_dir.name} - cards.db already exists.")
+        logger.warning("Skipping %s - cards.db already exists.", user_dir.name)
         return
 
-    logger.info(f"Migrating user: {user_dir.name}")
+    logger.info("Migrating user: %s", user_dir.name)
 
     # 1. Load old JSON
     try:
         data = json.loads(json_path.read_text())
     except Exception as e:
-        logger.error(f"Failed to read JSON for {user_dir.name}: {e}")
+        logger.error("Failed to read JSON for %s: %s", user_dir.name, e)
         return
 
     # 2. Init SQLite Store
@@ -53,20 +53,20 @@ def migrate_user(user_dir: Path):
                 session.add(card)
                 migrated_count += 1
             except Exception as e:
-                logger.error(f"Failed to parse card {cdict.get('id', 'unknown')} for {user_dir.name}: {e}")
+                logger.error("Failed to parse card %s for %s: %s", cdict.get('id', 'unknown'), user_dir.name, e)
 
         session.commit()
 
-    logger.info(f"✅ Successfully migrated {migrated_count} cards for user {user_dir.name}.")
+    logger.info("✅ Successfully migrated %s cards for user %s.", migrated_count, user_dir.name)
 
     # 4. Backup old JSON
     shutil.move(json_path, backup_path)
-    logger.info(f"Backed up {json_path.name} to {backup_path.name}")
+    logger.info("Backed up %s to %s", json_path.name, backup_path.name)
 
 def main():
     data_dir = project_root / "data" / "users"
     if not data_dir.exists():
-        logger.error(f"Data directory not found: {data_dir}")
+        logger.error("Data directory not found: %s", data_dir)
         sys.exit(1)
 
     logger.info("Starting cards.json to SQLite migration...")
