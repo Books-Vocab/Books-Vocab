@@ -4,12 +4,13 @@
 # 透過 KG_CHROME_EXT_DIR / KG_DIST_DIR 注入 mock 來源與輸出目錄，覆蓋情境：
 #   1. 健康 manifest → exit 0，產出 chrome-ext-vX.Y.Z.zip
 #   2. zip 內含 manifest.json + 子資料夾檔案
-#   3. zip 排除 .DS_Store / .git / README*.md
+#   3. zip 排除 .DS_Store / .git / README*.md / tools/
 #   4. zip 內路徑前綴為 chrome-extension/
 #   5. 重跑 idempotent → 同名 zip 覆蓋成功
 #   6. manifest 缺 version → exit 1
 #   7. manifest.json 不存在 → exit 1
 #   8. version 格式異常（含路徑字元）→ exit 1
+#   9. Chrome Web Store 不接受的 version 數值 → exit 1
 
 set -o pipefail
 
@@ -30,7 +31,7 @@ require_cmd zip
 require_cmd unzip
 
 # 建一份 mock chrome-extension 目錄
-# 用法：build_ext <out_dir> [version=0.1.0] [opts:no_version|no_manifest|bad_version|with_junk]
+# 用法：build_ext <out_dir> [version=0.1.0] [opts:no_version|no_manifest|bad_version|with_junk|with_tools]
 build_ext() {
   local out_dir="$1"; shift
   local version="${1:-0.1.0}"; shift || true
@@ -66,12 +67,37 @@ JSON
     echo 'dev only' > "$out_dir/README.md"
     echo 'dev only' > "$out_dir/README.dev.md"
   fi
+
+  if printf '%s\n' "${opts[@]}" | grep -qx with_tools; then
+    mkdir -p "$out_dir/tools"
+    echo 'console.log("dev tool");' > "$out_dir/tools/static.mjs"
+    mkdir -p "$out_dir/content/tools"
+    echo 'console.log("runtime helper");' > "$out_dir/content/tools/runtime.js"
+  fi
 }
 
 run_bundle() {
   local ext_dir="$1" dist_dir="$2"
   local logfile="$TMPDIR/log_$RANDOM.txt"
   KG_CHROME_EXT_DIR="$ext_dir" KG_DIST_DIR="$dist_dir" \
+    "$SCRIPT" >"$logfile" 2>&1
+  local rc=$?
+  echo "$rc|$logfile"
+}
+
+run_bundle_without_rsync() {
+  local ext_dir="$1" dist_dir="$2"
+  local logfile="$TMPDIR/log_$RANDOM.txt"
+  local bin_dir="$TMPDIR/no-rsync-bin"
+  local cmd cmd_path
+
+  mkdir -p "$bin_dir"
+  for cmd in bash dirname pwd grep head sed zip cp find rm stat awk mktemp mkdir; do
+    cmd_path="$(command -v "$cmd")" || return 1
+    ln -sf "$cmd_path" "$bin_dir/$cmd"
+  done
+
+  PATH="$bin_dir" KG_CHROME_EXT_DIR="$ext_dir" KG_DIST_DIR="$dist_dir" \
     "$SCRIPT" >"$logfile" 2>&1
   local rc=$?
   echo "$rc|$logfile"
@@ -124,9 +150,9 @@ if [[ -f "$ZIP1" ]]; then
 fi
 
 # ── 3. junk 排除 ────────────────────────────────────────────────────────────
-section "case 3: zip excludes .DS_Store / .git / README*.md"
+section "case 3: zip excludes .DS_Store / .git / README*.md / tools"
 EXT3="$TMPDIR/ext3"; DIST3="$TMPDIR/dist3"
-build_ext "$EXT3" 1.0.0 with_junk
+build_ext "$EXT3" 1.0.0 with_junk with_tools
 out=$(run_bundle "$EXT3" "$DIST3"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "bundle with junk" 0 "$rc" "$log"
 ZIP3="$DIST3/chrome-ext-v1.0.0.zip"
@@ -136,8 +162,24 @@ if [[ -f "$ZIP3" ]]; then
   grep -q "\.DS_Store" "$LIST3" && fail_t "junk: .DS_Store leaked" || ok "junk: no .DS_Store"
   grep -q "^chrome-extension/\.git/" "$LIST3" && fail_t "junk: .git leaked" || ok "junk: no .git"
   grep -q "README.*\.md$" "$LIST3" && fail_t "junk: README*.md leaked" || ok "junk: no README*.md"
+  grep -q "^chrome-extension/tools/" "$LIST3" && fail_t "junk: tools/ leaked" || ok "junk: no tools/"
+  grep -qx "chrome-extension/content/tools/runtime.js" "$LIST3" && ok "nested runtime tools/ kept" || fail_t "nested runtime tools/ missing"
   # 但仍要包含 manifest
   grep -qx "chrome-extension/manifest.json" "$LIST3" && ok "junk case still has manifest" || fail_t "junk case missing manifest"
+fi
+
+# ── 3b. fallback 無 rsync 行為一致 ────────────────────────────────────────
+section "case 3b: fallback without rsync excludes only top-level tools"
+EXT3B="$TMPDIR/ext3b"; DIST3B="$TMPDIR/dist3b"
+build_ext "$EXT3B" 1.0.1 with_junk with_tools
+out=$(run_bundle_without_rsync "$EXT3B" "$DIST3B"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "fallback bundle with junk" 0 "$rc" "$log"
+ZIP3B="$DIST3B/chrome-ext-v1.0.1.zip"
+if [[ -f "$ZIP3B" ]]; then
+  LIST3B="$TMPDIR/list3b.txt"
+  unzip -Z1 "$ZIP3B" > "$LIST3B"
+  grep -q "^chrome-extension/tools/" "$LIST3B" && fail_t "fallback: tools/ leaked" || ok "fallback: no tools/"
+  grep -qx "chrome-extension/content/tools/runtime.js" "$LIST3B" && ok "fallback: nested runtime tools/ kept" || fail_t "fallback: nested runtime tools/ missing"
 fi
 
 # ── 4. 路徑前綴 ─────────────────────────────────────────────────────────────
@@ -179,6 +221,33 @@ EXT8="$TMPDIR/ext8"; DIST8="$TMPDIR/dist8"
 build_ext "$EXT8" 0.0.0 bad_version
 out=$(run_bundle "$EXT8" "$DIST8"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "bad version" 1 "$rc" "$log"
+
+# ── 9. Chrome version 數值規格 → fatal ────────────────────────────────────
+section "case 9: Chrome version numeric constraints → fatal"
+EXT9A="$TMPDIR/ext9a"; DIST9A="$TMPDIR/dist9a"
+build_ext "$EXT9A" 65536.0.0
+out=$(run_bundle "$EXT9A" "$DIST9A"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "version segment > 65535" 1 "$rc" "$log"
+
+EXT9B="$TMPDIR/ext9b"; DIST9B="$TMPDIR/dist9b"
+build_ext "$EXT9B" 01.2.3
+out=$(run_bundle "$EXT9B" "$DIST9B"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "version segment leading zero" 1 "$rc" "$log"
+
+EXT9C="$TMPDIR/ext9c"; DIST9C="$TMPDIR/dist9c"
+build_ext "$EXT9C" 0.0.0
+out=$(run_bundle "$EXT9C" "$DIST9C"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "version all zero" 1 "$rc" "$log"
+
+EXT9D="$TMPDIR/ext9d"; DIST9D="$TMPDIR/dist9d"
+build_ext "$EXT9D" 1.0.0-beta
+out=$(run_bundle "$EXT9D" "$DIST9D"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "version prerelease suffix" 1 "$rc" "$log"
+
+EXT9E="$TMPDIR/ext9e"; DIST9E="$TMPDIR/dist9e"
+build_ext "$EXT9E" 18446744073709551616.0
+out=$(run_bundle "$EXT9E" "$DIST9E"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "version segment overflow guard" 1 "$rc" "$log"
 
 # ── 結果 ───────────────────────────────────────────────────────────────────
 echo ""
