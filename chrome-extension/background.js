@@ -110,6 +110,19 @@ async function writeOutbox(queue) {
   await chrome.storage.local.set({ [OUTBOX_KEY]: queue });
 }
 
+// Serialize every outbox read-modify-write. chrome.storage get/set is async and
+// non-atomic, so two near-simultaneous mutations (separate addVocab messages, or
+// an enqueue racing a flush's reconcile) could each read the same snapshot and
+// the later write would clobber the earlier. A promise-chain mutex makes each
+// mutation observe the previous one's write. Network round-trips MUST stay
+// OUTSIDE the lock — only the storage read→modify→write belongs inside.
+let outboxMutation = Promise.resolve();
+function withOutboxLock(mutate) {
+  const next = outboxMutation.then(mutate, mutate);
+  outboxMutation = next.catch(() => {}); // keep the chain alive past a rejection
+  return next;
+}
+
 // Single-flight guard. A service worker is single-threaded, but multiple flush
 // triggers (add, and later alarm/startup) can overlap across `await`s.
 // `flushInFlight` serializes them; `flushRequested` coalesces a trigger that
@@ -129,21 +142,25 @@ let flushRequested = false;
  */
 async function handleAddVocabOutbox(entries) {
   const list = Array.isArray(entries) ? entries : [];
-  let queue = await readOutbox();
-  for (const e of list) {
-    queue = globalThis.KGOutbox.enqueueAdd(
-      queue,
-      globalThis.KGOutbox.makeOutboxEntry({
-        localId: crypto.randomUUID(),
-        word: e.word,
-        translation: e.translation,
-        context: e.context,
-        source: e.source,
-        createdAt: new Date().toISOString(),
-      }),
-    );
-  }
-  await writeOutbox(queue);
+  // Mint ids/timestamps up front (side-effects), then commit the enqueue under
+  // the lock so a concurrent add/flush can't clobber the write.
+  const made = list.map((e) =>
+    globalThis.KGOutbox.makeOutboxEntry({
+      localId: crypto.randomUUID(),
+      word: e.word,
+      translation: e.translation,
+      context: e.context,
+      source: e.source,
+      createdAt: new Date().toISOString(),
+    }),
+  );
+  await withOutboxLock(async () => {
+    let queue = await readOutbox();
+    for (const entry of made) {
+      queue = globalThis.KGOutbox.enqueueAdd(queue, entry);
+    }
+    await writeOutbox(queue);
+  });
   bumpVocabDirty(); // side panel shows the pending word immediately
   flushOutbox();    // fire-and-forget — do NOT await the network here
   return { ok: true, optimistic: true, queued: list.length };
@@ -176,15 +193,19 @@ async function flushOutbox() {
       }));
 
       try {
-        const resp = await KGApi.addVocab(payload);
+        const resp = await KGApi.addVocab(payload); // network — OUTSIDE the lock
         const cardIds = (resp && resp.cardIds) || {};
-        let queue = globalThis.KGOutbox.reconcileAddResponse(await readOutbox(), cardIds);
-        queue = globalThis.KGOutbox.pruneSynced(queue);
-        await writeOutbox(queue);
+        await withOutboxLock(async () => {
+          let queue = globalThis.KGOutbox.reconcileAddResponse(await readOutbox(), cardIds);
+          queue = globalThis.KGOutbox.pruneSynced(queue);
+          await writeOutbox(queue);
+        });
         bumpVocabDirty(); // server now has these cards → refetch surfaces them
       } catch (err) {
         const ids = toFlush.map((e) => e.localId);
-        await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
+        await withOutboxLock(async () => {
+          await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
+        });
         bumpVocabDirty(); // surface failed state to the side panel
         // Stop draining on failure — the next trigger (a fresh add, or the
         // Phase 5 alarm/startup flush) retries. Looping here would hammer a

@@ -122,23 +122,25 @@ test('reconcileAddResponse ignores inherited Object.prototype keys', () => {
   assert.equal(q[0].status, OUTBOX_STATUS.PENDING);
 });
 
-test('reconcileAddResponse leaves failed entries untouched (retry precondition)', () => {
-  // failed→pending folding happens at flush time, before the push; reconcile
-  // must NOT resolve a still-failed entry from a stale/late cardIds map.
+test('reconcileAddResponse converges a FAILED entry when its cardId echoes', () => {
+  // A server echo is authoritative proof the card exists, so a failed entry
+  // that gets re-sent and succeeds MUST converge — otherwise entriesToFlush
+  // keeps re-sending it every flush (re-creating the card / burning enrich).
   let q = enqueueAdd([], pending('l1', 'alpha'));
   q = markFailed(q, ['l1']);
   q = reconcileAddResponse(q, { alpha: 'card-a' });
-  assert.equal(q[0].status, OUTBOX_STATUS.FAILED, 'failed not resolved by reconcile');
-  assert.equal(q[0].cardId, null);
+  assert.equal(q[0].status, OUTBOX_STATUS.SYNCED, 'failed converges on echo');
+  assert.equal(q[0].cardId, 'card-a');
 });
 
-test('reconcileAddResponse does not touch already-synced or failed entries', () => {
+test('reconcileAddResponse never re-resolves an already-synced entry', () => {
+  // SYNCED is terminal — a later/stale cardIds map must not rewrite the cardId.
   let q = [pending('l1', 'alpha')];
   q = reconcileAddResponse(q, { alpha: 'card-a' });
   const before = q[0];
   q = reconcileAddResponse(q, { alpha: 'card-OTHER' });
   assert.equal(q[0].cardId, 'card-a', 'synced cardId is stable');
-  assert.equal(q[0], before === q[0] ? q[0] : before, 'no needless churn');
+  assert.equal(q[0], before, 'no needless churn (same reference)');
 });
 
 // ---------------------------------------------------------------------------

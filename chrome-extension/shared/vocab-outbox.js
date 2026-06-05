@@ -91,12 +91,13 @@ function reconcileAddResponse(queue, cardIds) {
   const map = cardIds || {};
   let changed = false;
   const next = queue.map((entry) => {
-    // Only PENDING converges. Callers fold failed→pending before pushing (see
-    // entriesToFlush + the IO layer's pend-then-push), so by the time a cardId
-    // echoes back the entry is pending; a FAILED entry is intentionally left for
-    // the next flush cycle — a stale/late response must not silently resolve a
-    // write that is already queued for retry.
-    if (entry.status !== OUTBOX_STATUS.PENDING) return entry;
+    // SYNCED is terminal — never re-resolve (a later/stale cardIds map must not
+    // rewrite a converged cardId).
+    if (entry.status === OUTBOX_STATUS.SYNCED) return entry;
+    // PENDING *or* FAILED converges when the server echoes its cardId. The echo
+    // is authoritative proof the card exists (backend is idempotent — a re-sent
+    // duplicate echoes the same cardId), so a failed-then-resent entry resolves
+    // instead of looping forever in entriesToFlush.
     if (!Object.prototype.hasOwnProperty.call(map, entry.word)) return entry;
     changed = true;
     return { ...entry, status: OUTBOX_STATUS.SYNCED, cardId: map[entry.word] };
