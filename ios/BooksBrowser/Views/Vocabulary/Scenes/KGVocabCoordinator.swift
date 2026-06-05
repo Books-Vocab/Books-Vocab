@@ -161,7 +161,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             let words = nbEntries.map(\.word)
             do {
                 let response = try await kgService.batchArchiveCards(words: words, archived: true, notebookId: nbId)
-                let updatedSet = Set(response.updated_words)
+                let updatedSet = Self.locallyResolvableArchives(from: response)
                 for entry in nbEntries {
                     if updatedSet.contains(entry.word) {
                         entry.isArchived = true
@@ -193,6 +193,12 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 toastCoordinator.success(L10n.format("已封存 %@ 個", String(entries.count)))
             }
         }
+    }
+
+    static func locallyResolvableArchives(
+        from response: KGBatchArchiveResponse
+    ) -> Set<String> {
+        Set(response.updated_words).union(response.not_found)
     }
 
 }

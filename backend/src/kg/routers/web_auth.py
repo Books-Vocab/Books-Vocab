@@ -75,10 +75,14 @@ def _verify_state(request: Request, provided: str | None) -> None:
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     settings = request.app.state.kg_settings
-    return templates.TemplateResponse(request, "login.html", {
+    nonce = secrets.token_urlsafe(32)
+    response = templates.TemplateResponse(request, "login.html", {
         "apple_service_id": settings.apple_service_id,
         "apple_redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
+        "oauth_state": nonce,
     })
+    _set_state_cookie(response, nonce, samesite="none")
+    return response
 
 
 @router.get("/auth/web/google/login")
