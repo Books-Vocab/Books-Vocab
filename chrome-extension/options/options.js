@@ -21,6 +21,28 @@ const enabledToggle = document.getElementById('enabled-toggle');
 // strings built in JS, e.g. auth status / error messages).
 const t = (key, subs) => chrome.i18n.getMessage(key, subs);
 
+// Translation-language + Pro elements.
+const proStatus = document.getElementById('pro-status');
+const sourceLangSelect = document.getElementById('sourceLangSelect');
+const targetLangSelect = document.getElementById('targetLangSelect');
+const langHint = document.getElementById('langHint');
+
+// Translation languages — value = code the backend validates (mirror of
+// kg/languages.py SUPPORTED_SOURCE_LANGS / SUPPORTED_TARGET_LANGS), label =
+// endonym (a language picker shows each name in its own script regardless of
+// UI locale, so these are locale-stable data, not chrome.i18n strings).
+const SOURCE_LANGS = [
+  ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'],
+  ['fr', 'Français'], ['de', 'Deutsch'], ['es', 'Español'],
+];
+const TARGET_LANGS = [
+  ['zh-Hant', '繁體中文'], ['zh-Hans', '简体中文'], ['en', 'English'],
+  ['ja', '日本語'], ['ko', '한국어'],
+];
+const DEFAULT_TRANSLATION = { source_lang: 'en', target_lang: 'zh-Hant' };
+// Last value accepted by the server — the revert target if a PUT fails.
+let currentTranslation = { ...DEFAULT_TRANSLATION };
+
 // ── Auth UI ──
 
 function renderLoggedIn() {
@@ -80,8 +102,14 @@ async function refreshAuthUI() {
     const data = await chrome.storage.local.get(AUTH_KEYS);
     if (data[TOKEN_KEY]) {
       renderLoggedIn();
+      // Per-user surfaces — async, non-blocking. Re-run whenever auth changes
+      // (this fn is the storage.onChanged target for auth_token).
+      loadProStatus();
+      loadTranslationConfig();
     } else {
       renderLoggedOut();
+      if (proStatus) proStatus.hidden = true;
+      renderLangLoggedOut();
     }
   } catch (err) {
     // chrome.storage can reject when the extension context is invalidated.
@@ -184,6 +212,137 @@ async function initEnabledToggle() {
   });
 }
 
+// ── Translation language + Pro status ──
+
+/**
+ * Send a message to the background worker and normalize its reply. Resolves with
+ * the payload, or throws an Error carrying { code, status } for error envelopes
+ * / a missing worker (mirrors the side panel's error shape).
+ */
+async function bgRequest(msg) {
+  const res = await chrome.runtime.sendMessage(msg);
+  if (res == null) throw Object.assign(new Error('no_response'), { code: 'no_response' });
+  if (res.error) {
+    throw Object.assign(new Error(res.message || 'request failed'), { code: res.code, status: res.status });
+  }
+  return res;
+}
+
+/** Fill a <select> from [value, label] pairs, selecting `selected`. */
+function populateSelect(selectEl, pairs, selected) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+  for (const [value, label] of pairs) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    if (value === selected) opt.selected = true;
+    selectEl.appendChild(opt);
+  }
+}
+
+function setLangControlsEnabled(on) {
+  if (sourceLangSelect) sourceLangSelect.disabled = !on;
+  if (targetLangSelect) targetLangSelect.disabled = !on;
+}
+
+function showLangHint(message) {
+  if (!langHint) return;
+  langHint.textContent = message;
+  langHint.hidden = false;
+}
+
+function hideLangHint() {
+  if (langHint) langHint.hidden = true;
+}
+
+/** Logged-out state: show defaults, disabled, with a "log in first" hint. */
+function renderLangLoggedOut() {
+  populateSelect(sourceLangSelect, SOURCE_LANGS, DEFAULT_TRANSLATION.source_lang);
+  populateSelect(targetLangSelect, TARGET_LANGS, DEFAULT_TRANSLATION.target_lang);
+  setLangControlsEnabled(false);
+  showLangHint(t('translateLangLoginHint'));
+}
+
+/** Logged-in: fetch the user's translation config and populate the selects. */
+async function loadTranslationConfig() {
+  if (!sourceLangSelect || !targetLangSelect) return;
+  setLangControlsEnabled(false);
+  try {
+    const cfg = await bgRequest({ type: 'getUserConfig' });
+    const tr = (cfg && cfg.translation) || {};
+    currentTranslation = {
+      source_lang: tr.source_lang || DEFAULT_TRANSLATION.source_lang,
+      target_lang: tr.target_lang || DEFAULT_TRANSLATION.target_lang,
+    };
+    populateSelect(sourceLangSelect, SOURCE_LANGS, currentTranslation.source_lang);
+    populateSelect(targetLangSelect, TARGET_LANGS, currentTranslation.target_lang);
+    hideLangHint();
+    setLangControlsEnabled(true);
+  } catch (err) {
+    console.error('[KG] loadTranslationConfig failed:', err);
+    populateSelect(sourceLangSelect, SOURCE_LANGS, currentTranslation.source_lang);
+    populateSelect(targetLangSelect, TARGET_LANGS, currentTranslation.target_lang);
+    setLangControlsEnabled(false);
+    showLangHint(err.status === 401 ? t('translateLangLoginHint') : t('translateLangLoadError'));
+  }
+}
+
+/** Persist the selected source/target pair; revert the UI on failure. */
+async function onLangChange() {
+  const next = { source_lang: sourceLangSelect.value, target_lang: targetLangSelect.value };
+  setLangControlsEnabled(false);
+  try {
+    const updated = await bgRequest({ type: 'updateUserConfig', translation: next });
+    const tr = (updated && updated.translation) || next;
+    currentTranslation = { source_lang: tr.source_lang, target_lang: tr.target_lang };
+    // Reflect the server's canonical values (in case it normalized them).
+    if (sourceLangSelect.value !== currentTranslation.source_lang) sourceLangSelect.value = currentTranslation.source_lang;
+    if (targetLangSelect.value !== currentTranslation.target_lang) targetLangSelect.value = currentTranslation.target_lang;
+    hideLangHint();
+  } catch (err) {
+    console.error('[KG] updateUserConfig failed:', err);
+    sourceLangSelect.value = currentTranslation.source_lang;
+    targetLangSelect.value = currentTranslation.target_lang;
+    showLangHint(err.status === 401 ? t('translateLangLoginHint') : t('translateLangSaveError'));
+  } finally {
+    setLangControlsEnabled(true);
+  }
+}
+
+/** Logged-in: fetch entitlements and render the Pro badge / free-plan label. */
+async function loadProStatus() {
+  if (!proStatus) return;
+  try {
+    const ent = await bgRequest({ type: 'getEntitlements' });
+    renderProStatus((ent && ent.pro) || {});
+  } catch (err) {
+    // Can't determine entitlement (offline / 401) — show nothing rather than guess.
+    console.error('[KG] loadProStatus failed:', err);
+    proStatus.hidden = true;
+  }
+}
+
+function renderProStatus(pro) {
+  proStatus.innerHTML = '';
+  if (pro.is_active) {
+    const badge = document.createElement('span');
+    badge.className = 'kg-pro-badge';
+    badge.textContent = 'PRO'; // brand tier label — locale-stable, not translated
+    const label = document.createElement('span');
+    label.className = 'kg-pro-status__label';
+    label.textContent = pro.plan_name ? `${t('proActive')}・${pro.plan_name}` : t('proActive');
+    proStatus.appendChild(badge);
+    proStatus.appendChild(label);
+  } else {
+    const label = document.createElement('span');
+    label.className = 'kg-pro-status__label kg-pro-status__label--free';
+    label.textContent = t('proFree');
+    proStatus.appendChild(label);
+  }
+  proStatus.hidden = false;
+}
+
 // ── Init ──
 
 (async function init() {
@@ -200,7 +359,12 @@ async function initEnabledToggle() {
   // Master switch
   await initEnabledToggle();
 
-  // Auth
+  // Translation language — persist on change. Selects are disabled while logged
+  // out (gated by refreshAuthUI), so a change event only fires for an authed user.
+  if (sourceLangSelect) sourceLangSelect.addEventListener('change', onLangChange);
+  if (targetLangSelect) targetLangSelect.addEventListener('change', onLangChange);
+
+  // Auth (also kicks off Pro + translation-config loading when logged in)
   await refreshAuthUI();
 
   // Token paste (manual fallback when auto-send fails)

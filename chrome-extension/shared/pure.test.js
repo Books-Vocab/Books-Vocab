@@ -32,6 +32,8 @@ const {
   classifyError,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
+  isVocabMutatingKind,
+  VOCAB_DIRTY_KEY,
   isTrustedExternalOrigin,
   safeUrl,
   escapeHtml,
@@ -498,6 +500,22 @@ test('routeMessage does NOT route internal auth_token (token writes are onMessag
   );
 });
 
+test('routeMessage maps user config / entitlements kinds', () => {
+  assert.deepEqual(routeMessage({ type: 'getUserConfig' }), {
+    kind: 'getUserConfig',
+    args: [],
+  });
+  assert.deepEqual(routeMessage({ type: 'getEntitlements' }), {
+    kind: 'getEntitlements',
+    args: [],
+  });
+  const translation = { source_lang: 'en', target_lang: 'zh-Hant' };
+  assert.deepEqual(routeMessage({ type: 'updateUserConfig', translation }), {
+    kind: 'updateUserConfig',
+    args: [translation],
+  });
+});
+
 test('routeMessage maps get_auth_status / logout to argument-free ops', () => {
   assert.deepEqual(routeMessage({ type: 'get_auth_status' }), {
     kind: 'getAuthStatus',
@@ -525,6 +543,9 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     addVocab: { type: 'addVocab', entries: [] },
     listVocab: { type: 'listVocab', since: '' },
     lookupWord: { type: 'lookupWord', word: 'w' },
+    getUserConfig: { type: 'getUserConfig' },
+    updateUserConfig: { type: 'updateUserConfig', translation: {} },
+    getEntitlements: { type: 'getEntitlements' },
     get_auth_status: { type: 'get_auth_status' },
     logout: { type: 'logout' },
   };
@@ -532,6 +553,32 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     assert.ok(sample[t], `missing sample message for routable type "${t}"`);
     assert.doesNotThrow(() => routeMessage(sample[t]), `type "${t}" should route`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// isVocabMutatingKind / VOCAB_DIRTY_KEY — cross-context refresh contract
+// ---------------------------------------------------------------------------
+
+test('VOCAB_DIRTY_KEY is the stable storage key the side panel watches', () => {
+  assert.equal(VOCAB_DIRTY_KEY, 'vocab_dirty');
+});
+
+test('isVocabMutatingKind is true only for kinds that change the vocab list', () => {
+  // `addVocab` mutates the list → background bumps VOCAB_DIRTY_KEY so an open
+  // side panel refreshes. Read-only / non-vocab kinds must NOT trigger a refresh.
+  assert.equal(isVocabMutatingKind('addVocab'), true);
+  assert.equal(isVocabMutatingKind('listVocab'), false);
+  assert.equal(isVocabMutatingKind('lookupWord'), false);
+  assert.equal(isVocabMutatingKind('translate'), false);
+  assert.equal(isVocabMutatingKind('getAuthStatus'), false);
+  assert.equal(isVocabMutatingKind('logout'), false);
+});
+
+test('isVocabMutatingKind tolerates non-string / unknown input', () => {
+  assert.equal(isVocabMutatingKind(undefined), false);
+  assert.equal(isVocabMutatingKind(null), false);
+  assert.equal(isVocabMutatingKind(''), false);
+  assert.equal(isVocabMutatingKind('frobnicate'), false);
 });
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 25cedfb8
+verified_against: f9e89316
 -->
 # Implemented Product Surface
 
@@ -86,8 +86,13 @@ verified_against: 25cedfb8
 
 - Side panel vocab lookup
 - 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
+- 單字本 row 點開全幅 word-detail push 面板（覆蓋於 list 上保留 scroll/search/filter）：hero(詞+詞性+難度+TTS) → 例句(目標詞 highlight，`markWordInExample`+`parseInlineMarks` 對標 iOS) → 釋義/定義 → 搭配 → 變化形 → 知識連結(對比/相關 group，本地語料命中可導航 push/back) → 複習進度 → metadata footer → 來源；TTS 走裝置端 Web Speech API；唯讀無 mutation
+- 跨 context 詞庫刷新：頁面 popup 加入單字後 background bump storage `vocab_dirty`，side panel `storage.onChanged` → 非破壞性靜默刷新（保留 search/filter/sort/scroll/開啟中的 detail）
 - 閱讀選詞翻譯
+- 閱讀 popup 加 Web Speech API 朗讀 + 明確 × 關閉鈕（sticky head，loading/translated/saved 各態皆在）；長文 popup `max-height` + 內部捲動
 - 選字翻譯全域開關(options 頁「選字翻譯」master switch,storage key `kg_enabled` 預設開;content.js mouseup gate,跨分頁 onChanged live-sync 免重整)
+- options 設定頁「翻譯語言」（source→target，經 background → `GET/PUT /api/user/config`；source∈{en,ja,ko,fr,de,es}、target∈{zh-Hant,zh-Hans,en,ja,ko}，登出禁用 + 存檔失敗 revert）
+- options 帳號區「Pro 訂閱態」徽章（`GET /api/user/entitlements` 的 `pro.is_active`/`plan_name`；登入後載入，無法判定時隱藏）
 - 介面多語基礎(`chrome.i18n` + `_locales/zh_TW/messages.json`,現 zh_TW;`shared/i18n.js` DOM helper 套用 `[data-i18n]`,manifest `default_locale`)
 - Auth token 整合
 - woff2 字型(`shared/fonts.css` surface-local @font-face)
