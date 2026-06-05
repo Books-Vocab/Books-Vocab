@@ -11,6 +11,12 @@
 "app.section.bookshelf" = "Library";
 "app.section.notebooks" = "Notebooks";
 "app.section.overview" = "Overview";
+"app.section.podcasts" = "Podcasts";
+"尚無播客" = "No podcasts yet";
+"追蹤喜歡的節目，從這裡開始收聽" = "Follow shows you love to start listening here";
+"下拉重新整理以同步節目" = "Pull to refresh to sync shows";
+"繼續收聽" = "Continue Listening";
+"所有節目" = "All Shows";
 "API 錯誤：%@" = "API error: %@";
 "KG 伺服器未連線" = "KG server unavailable";
 "KG 伺服器錯誤：%@" = "KG server error: %@";
@@ -881,6 +887,7 @@
 "podcast.guest.cta.signInToListen" = "Sign in to listen";
 "podcast.preview.cta.listenFree" = "Free 3-min preview";
 "podcast.preview.banner.message" = "Free preview · Upgrade to hear the full episode";
+"podcast.continue.remaining" = "%@ left";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "Double tap to play from this sentence";
 "podcast.transcript.translateAction" = "Translate sentence";

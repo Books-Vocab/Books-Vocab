@@ -47,6 +47,15 @@ let retryAction = 'reload';
 let vocabData = [];
 
 /**
+ * Optimistic rows for words enqueued in the add-outbox but not yet on the server
+ * list (pending / failed sync). Rendered ABOVE the server corpus so a freshly
+ * added word is visible immediately and a sync failure is surfaced. Kept OUT of
+ * `vocabData` (filter-chip counts / sort mirror the server corpus only).
+ * @type {Array<object>}
+ */
+let pendingSyncItems = [];
+
+/**
  * Selected review-state filter (iOS multi-select chips). Empty = show all.
  * Members are 'unlearned' | 'due' | 'reviewed'.
  * @type {Set<string>}
@@ -212,12 +221,13 @@ async function loadVocabList() {
       .map(enrichWithReviewData);
 
     vocabData = items;
+    await loadPendingSyncItems(items);
 
-    if (items.length === 0) {
+    if (items.length === 0 && pendingSyncItems.length === 0) {
       setState('empty');
     } else {
       setState('content');
-      applyView(); // state filter → search → sort → render
+      applyView(); // pending rows + state filter → search → sort → render
     }
   } catch (err) {
     // chrome.runtime.sendMessage rejects when there is no receiver, or the
@@ -255,8 +265,9 @@ async function refreshVocabSilently() {
       .map(KGPure.normalizeVocabItem)
       .map(enrichWithReviewData);
     vocabData = items;
+    await loadPendingSyncItems(items);
 
-    if (items.length === 0) {
+    if (items.length === 0 && pendingSyncItems.length === 0) {
       closeDetail();
       setState('empty');
       return;
@@ -328,7 +339,8 @@ function applyView() {
     KGPure.filterVocab(vocabData, { query: searchInput.value, states: selectedStates }),
     sortOption
   );
-  renderList(visible);
+  // Optimistic pending/failed rows always sit on top of the server corpus.
+  renderList([...pendingSyncItems, ...visible]);
 }
 
 // Search input feeds the same pipeline as chips/sort.
@@ -391,6 +403,40 @@ function enrichWithReviewData(item) {
     reviewRatio: isUnlearned ? null : p.ratio,
     dueLabel,
     dueInfo,
+  };
+}
+
+/**
+ * Read the add-outbox and project its unresolved entries (pending/failed) not
+ * yet on the server list into optimistic rows (`pendingSyncItems`) for applyView
+ * to prepend. Best-effort: a storage read failure just yields no optimistic rows.
+ * @param {Array<object>} serverItems — the normalized server list (for dedup)
+ */
+async function loadPendingSyncItems(serverItems) {
+  try {
+    const stored = await chrome.storage.local.get(KGOutbox.OUTBOX_KEY);
+    const queue = Array.isArray(stored[KGOutbox.OUTBOX_KEY]) ? stored[KGOutbox.OUTBOX_KEY] : [];
+    const serverWords = new Set(serverItems.map((i) => i.word));
+    pendingSyncItems = KGOutbox.pendingOutboxItems(queue, serverWords).map(decoratePendingItem);
+  } catch (err) {
+    console.error('[KG] loadPendingSyncItems failed:', err);
+    pendingSyncItems = [];
+  }
+}
+
+/**
+ * Shape an outbox projection into a renderable row: a full normalized item (so
+ * createRow never hits undefined fields) plus `syncState` and an i18n trailing
+ * label. Deliberately does NOT run enrichWithReviewData — a pending word has no
+ * CardResponse review fields and reviewProgress would misclassify it.
+ * @param {{word: string, meaning: string, source: object|null, syncState: string}} it
+ */
+function decoratePendingItem(it) {
+  const base = KGPure.normalizeVocabItem({ word: it.word, meaning: it.meaning, source: it.source });
+  return {
+    ...base,
+    syncState: it.syncState,
+    dueInfo: it.syncState === 'failed' ? t('syncFailed') : t('syncPending'),
   };
 }
 
@@ -615,6 +661,18 @@ function createRow(item) {
   // row top line — it lives only in the detail panel. The right-side progress bar
   // + dueLabel still convey timing, matching the iOS list exactly. (item.dueInfo
   // stays computed for any future showsReviewState:true context.)
+  //
+  // Optimistic outbox rows are the one exception: their trailing pill is *sync*
+  // status (pending / failed), not review status, so it stays. Gate on syncState
+  // (truthy only for outbox rows) so plain rows render no trailing label.
+  if (item.syncState && item.dueInfo) {
+    const trailingEl = document.createElement('span');
+    trailingEl.className = 'kg-vocab-row__trailing';
+    if (item.syncState === 'failed') trailingEl.classList.add('kg-vocab-row__trailing--sync-failed');
+    else if (item.syncState === 'pending') trailingEl.classList.add('kg-vocab-row__trailing--syncing');
+    trailingEl.textContent = item.dueInfo;
+    topRow.appendChild(trailingEl);
+  }
 
   content.appendChild(topRow);
 
@@ -674,8 +732,14 @@ function createRow(item) {
     row.appendChild(progress);
   }
 
-  // Click handler — open the full-cover detail panel (iOS push navigation).
-  row.addEventListener('click', () => openDetail(item));
+  // Optimistic pending-sync rows aren't real cards yet — no detail to open;
+  // mark them (CSS dims) and skip the click handler.
+  if (item.syncState) {
+    row.classList.add('kg-vocab-row--pending-sync');
+  } else {
+    // Click handler — open the full-cover detail panel (iOS push navigation).
+    row.addEventListener('click', () => openDetail(item));
+  }
 
   return row;
 }

@@ -78,6 +78,8 @@
     "placeholders": { "time": { "content": "$1" } }
   },
   "rowStatusUnreviewed": { "message": "未複習" },
+  "syncPending": { "message": "同步中…" },
+  "syncFailed": { "message": "待重試" },
   "rowStatusNext": {
     "message": "下次 $time$",
     "placeholders": { "time": { "content": "$1" } }
