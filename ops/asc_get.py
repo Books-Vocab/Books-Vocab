@@ -39,13 +39,15 @@ def get(path, token):
     )
     try:
         return json.load(urllib.request.urlopen(req))
-    except urllib.error.HTTPError as e:
+    except urllib.error.HTTPError as e:  # 4xx/5xx：含 Apple 的 errors[] 細節
         body = e.read().decode("utf-8", "replace")
         try:
             detail = json.loads(body)
         except Exception:
             detail = {"raw": body[:500]}
         return {"_httpError": e.code, "_detail": detail}
+    except urllib.error.URLError as e:  # 斷網 / DNS / TLS / 連線被拒：HTTPError 之外的 URLError
+        return {"_httpError": "network", "_detail": {"reason": str(e.reason)}}
 
 
 def main():

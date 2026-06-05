@@ -98,6 +98,9 @@ grep -qiE 'jwt\.encode|ES256' "$GET" \
 # helper HTTP 錯誤須優雅處理（不可裸 crash 隱藏 4xx/5xx）
 grep -q 'HTTPError' "$GET" \
   && ok "asc_get.py handles HTTPError"    || fail_t "asc_get.py lacks graceful HTTP error handling"
+# 非 HTTP 的 URLError（斷網/DNS/TLS）也須接住（review BLOCK 回歸）
+grep -q 'URLError' "$GET" \
+  && ok "asc_get.py handles URLError (offline)" || fail_t "asc_get.py crashes on network-down (URLError uncaught)"
 # helper 由 env 參數化 key（與 asc.sh config 單一真相對齊，不雙寫死）
 grep -qE 'environ|getenv' "$GET" \
   && ok "asc_get.py key params from env"  || fail_t "asc_get.py hardcodes key (should read env)"
