@@ -92,6 +92,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | backend 測試 / uv / provider registry / 任務派遣 | `docs/sop/backend.md` |
 | iOS 編譯 SOP / 模組速查 / Sentry iOS | `docs/sop/ios.md` |
 | 上架 App Store / 改文案 metadata / 查審查狀態 / 被拒處理 | `docs/sop/ios.md §發版` + `ops/asc.sh`(查詢/改文案)、`ops/ios_release.sh`(出 build) |
+| 版號發版 / bump / tag / changelog(api、ios) | `ops/release.sh`(`status`/`changelog`/`bump`/`publish`,單一入口);`/release` command 為薄路由 |
 | UI 規範 / Motion 契約 / Token 禁令 | `docs/sop/ui-design.md` |
 | iOS↔backend sync / 多帳戶隔離 / 架構脈絡 | `docs/sop/architecture.md` |
 | Claude Code Gateway | `docs/sop/claude-gateway.md` |
