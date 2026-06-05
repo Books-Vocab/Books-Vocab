@@ -162,7 +162,9 @@ async function handleAddVocabOutbox(entries) {
     await writeOutbox(queue);
   });
   bumpVocabDirty(); // side panel shows the pending word immediately
-  flushOutbox();    // fire-and-forget — do NOT await the network here
+  // fire-and-forget — do NOT await the network here; .catch so a storage/context
+  // failure before the inner try can't escape as an unhandled rejection.
+  flushOutbox().catch((err) => console.error('[KG] flush failed', err));
   return { ok: true, optimistic: true, queued: list.length };
 }
 
@@ -204,7 +206,9 @@ async function flushOutbox() {
         if (Object.keys(cardIds).length > 0) {
           // Cards landed (bare) — kick enrich + poll so they grow pos/note/examples.
           // chrome adds always go to the default notebook. Fire-and-forget.
-          triggerEnrichPolling('default');
+          triggerEnrichPolling('default').catch((err) =>
+            console.error('[KG] enrich trigger failed', err),
+          );
         }
       } catch (err) {
         const ids = toFlush.map((e) => e.localId);
@@ -354,4 +358,4 @@ async function handleMessage(msg) {
 // was killed mid-network. single-flight makes a concurrent message-driven flush
 // safe; an empty outbox is a cheap no-op (one storage read, no network).
 // ---------------------------------------------------------------------------
-flushOutbox();
+flushOutbox().catch((err) => console.error('[KG] startup flush failed', err));
