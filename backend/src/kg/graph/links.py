@@ -51,6 +51,10 @@ class _LinksMixin:
         _lock closes the TOCTOU gap: an already-linked (active/hidden) pair
         returns the existing link instead of inserting a duplicate.
         """
+        if from_id == to_id:
+            raise ValueError("cannot link a card to itself")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError("confidence must be between 0.0 and 1.0")
         link = GraphLink(
             from_id=from_id,
             to_id=to_id,
@@ -76,6 +80,10 @@ class _LinksMixin:
         created: list[GraphLink] = []
         with self._lock:
             for from_id, to_id, kind, confidence, reason in links:
+                if from_id == to_id:
+                    raise ValueError("cannot link a card to itself")
+                if not 0.0 <= confidence <= 1.0:
+                    raise ValueError("confidence must be between 0.0 and 1.0")
                 link = GraphLink(
                     from_id=from_id,
                     to_id=to_id,

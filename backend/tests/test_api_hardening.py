@@ -9,30 +9,13 @@ import json
 import uuid
 
 import pytest
-from conftest import TEST_JWT_SECRET, make_jwt
+from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
 from kg.api import app
 from kg.settings import KGSettings
-
-
-def _swap_settings(new_settings):
-    from kg.billing import default_subscription_payload
-    from kg.user_store import load_users_from, normalize_users_payload, save_users_to
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
-    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
-    app.state.normalize_users_payload = _normalize
 
 
 @pytest.fixture()

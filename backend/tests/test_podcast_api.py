@@ -115,21 +115,17 @@ def test_subtitle_rejects_traversal(podcast_api):
     assert resp.status_code in (404, 422)
 
 
-def test_subtitle_ep_num_rejects_zero(podcast_api):
+@pytest.mark.parametrize(
+    "ep_num",
+    [
+        "0",       # below ge=1
+        "-1",      # negative
+        "10000",   # above le=999
+    ],
+)
+def test_subtitle_ep_num_rejects_out_of_range(podcast_api, ep_num):
     api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/series_a/0/subtitle", headers=api.headers)
-    assert resp.status_code == 422
-
-
-def test_subtitle_ep_num_rejects_negative(podcast_api):
-    api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/series_a/-1/subtitle", headers=api.headers)
-    assert resp.status_code == 422
-
-
-def test_subtitle_ep_num_rejects_overflow(podcast_api):
-    api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/series_a/10000/subtitle", headers=api.headers)
+    resp = api.client.get(f"/api/podcasts/series_a/{ep_num}/subtitle", headers=api.headers)
     assert resp.status_code == 422
 
 

@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 import jwt
@@ -171,7 +171,13 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
     return VerifiedAppStoreJWS(header=header, payload=payload, certificates=certificates)
 
 
-def _load_private_key() -> tuple[str, str, str]:
+class AppStoreCredentials(NamedTuple):
+    issuer_id: str
+    key_id: str
+    private_key_pem: str
+
+
+def _load_private_key() -> AppStoreCredentials:
     issuer_id = os.getenv("APP_STORE_CONNECT_ISSUER_ID", "").strip()
     key_id = os.getenv("APP_STORE_CONNECT_KEY_ID", "").strip()
     private_key_pem = os.getenv("APP_STORE_CONNECT_PRIVATE_KEY", "").strip()
@@ -185,7 +191,7 @@ def _load_private_key() -> tuple[str, str, str]:
             "APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_ID, and APP_STORE_CONNECT_PRIVATE_KEY(_PATH) are required."
         )
 
-    return issuer_id, key_id, private_key_pem
+    return AppStoreCredentials(issuer_id, key_id, private_key_pem)
 
 
 def make_app_store_api_token(bundle_id: str) -> str:

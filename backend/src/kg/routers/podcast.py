@@ -189,7 +189,7 @@ def _read_json_file(path: Path, *, context: str):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        logger.error("Podcast %s corrupt at %s: %s", context, path, e)
+        logger.error("Podcast %s corrupt at %s: %s", context, path, e, exc_info=True)
         raise HTTPException(500, detail=f"Malformed {context}") from e
 
 
@@ -211,14 +211,14 @@ def _read_json_from_s3(request: Request, key: str, *, context: str):
         if _is_s3_not_found(exc, s3):
             return None
         logger.error("Podcast %s S3 read failed for s3://%s/%s: %s",
-                     context, cfg.podcast_bucket, key, exc)
+                     context, cfg.podcast_bucket, key, exc, exc_info=True)
         raise HTTPException(502, detail=f"Storage error reading {context}") from exc
     body = obj["Body"].read()
     try:
         return json.loads(body)
     except json.JSONDecodeError as e:
         logger.error("Podcast %s corrupt in s3://%s/%s: %s",
-                     context, cfg.podcast_bucket, key, e)
+                     context, cfg.podcast_bucket, key, e, exc_info=True)
         raise HTTPException(500, detail=f"Malformed {context}") from e
 
 
@@ -239,7 +239,7 @@ def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | 
         # missing keys instead of NoSuchKey. Treat any 404 the same.
         if _is_s3_not_found(exc, s3):
             return None
-        logger.error("S3 GetObject failed for %s: %s", key, exc)
+        logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
         raise HTTPException(502, detail=f"Storage error fetching {context}") from exc
     return obj["Body"].read()
 
@@ -292,7 +292,7 @@ def list_podcasts(request: Request, user: dict = Depends(get_current_user)):
         data = _read_json_file(index_file, context="index")
     if not isinstance(data, list):
         logger.error("Podcast index malformed (expected list)")
-        raise HTTPException(500, detail="Malformed index")
+        raise HTTPException(500, detail="Malformed podcast index")
     return data
 
 
@@ -381,7 +381,7 @@ def get_user_progress(
         user_id=user["id"], series_id=series_id, ep_num=ep_num,
     )
     if row is None:
-        raise HTTPException(404, detail="No progress")
+        raise HTTPException(404, detail="No playback progress found")
     return row
 
 
@@ -519,7 +519,7 @@ def _serve_audio_from_s3(
             # Surface the 416 with the Content-Range S3 returned, mirroring
             # what _parse_range_header would have done.
             raise HTTPException(416, detail="Range not satisfiable") from None
-        logger.error("S3 GetObject failed for %s: %s", key, exc)
+        logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
         raise HTTPException(502, detail="Storage error fetching audio") from exc
 
     body = obj["Body"]

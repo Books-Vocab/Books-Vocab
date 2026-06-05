@@ -29,7 +29,7 @@ import os
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from ._fsutil import fsync_dir as _fsync_dir
 
@@ -67,19 +67,6 @@ def _iter_user_dirs(data_dir: Path, known_users: set[str]) -> list[tuple[str, Pa
         if entry.name in known_users:
             out.append((entry.name, entry))
     return out
-
-
-def _live_cards(cards_db: Path) -> dict[str, str]:
-    """Return ``{card_id: notebook_id}`` for non-deleted cards.  Missing db
-    returns empty dict.  Used both for orphan detection and for the
-    valid-card set on graph/judge orphan checks."""
-    if not cards_db.exists():
-        return {}
-    with sqlite3.connect(str(cards_db)) as conn:
-        rows = conn.execute(
-            "SELECT id, notebook_id FROM card WHERE is_deleted = 0"
-        ).fetchall()
-    return {row[0]: row[1] for row in rows}
 
 
 def _all_cards_with_state(cards_db: Path) -> list[tuple[str, str, int]]:
@@ -347,7 +334,17 @@ class OrphanFixAborted(RuntimeError):
     """
 
 
-def _delete_rows_by_user(module: Any, table: str, user_ids: list[str]) -> None:
+class _LogModule(Protocol):
+    """Sibling log module contract: ``token_tracker`` / ``judge_log`` /
+    ``translate_log`` / ``pipeline_log`` all expose a process-wide lock and a
+    singleton-connection accessor."""
+
+    _lock: Any
+
+    def _get_conn(self) -> sqlite3.Connection: ...
+
+
+def _delete_rows_by_user(module: _LogModule, table: str, user_ids: list[str]) -> None:
     """Hard-DELETE all rows in ``table`` belonging to the given ghost users.
 
     Uses the module singleton connection (``module._lock`` / ``module._get_conn``)

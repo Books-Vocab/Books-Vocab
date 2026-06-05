@@ -7,6 +7,8 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from .ops_shared import data_dir
+
 CACHE_TTL_DAYS_DEFAULT = 30
 
 _lock = threading.Lock()
@@ -38,8 +40,7 @@ def _cache_ttl_days() -> int:
     return val if val >= 0 else CACHE_TTL_DAYS_DEFAULT
 
 def _db_path() -> Path:
-    data_dir = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
-    return data_dir / "translate_log.db"
+    return data_dir() / "translate_log.db"
 
 def _get_conn() -> sqlite3.Connection:
     global _conn

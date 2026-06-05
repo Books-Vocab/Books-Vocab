@@ -2,7 +2,6 @@
 from kg.exceptions import (
     ExternalServiceError,
     KGError,
-    LLMParseError,
     NotFoundError,
     QuotaExceededError,
 )
@@ -11,7 +10,6 @@ from kg.exceptions import (
 def test_hierarchy():
     assert issubclass(QuotaExceededError, KGError)
     assert issubclass(ExternalServiceError, KGError)
-    assert issubclass(LLMParseError, ExternalServiceError)
     assert issubclass(NotFoundError, KGError)
 
 

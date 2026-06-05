@@ -34,14 +34,25 @@ os.environ["LLM_PROVIDER_DEFAULT"] = "gemini"
 
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
+TEST_ALGORITHM = "HS256"
 
 
-def make_jwt(user_id: str) -> str:
+def make_settings(tmp_path: Path):
+    from kg.settings import KGSettings
+
+    return KGSettings(
+        data_dir=tmp_path,
+        jwt_secret=TEST_JWT_SECRET,
+        jwt_algorithm=TEST_ALGORITHM,
+    )
+
+
+def make_jwt(user_id: str, *, expires_in: timedelta = timedelta(hours=1)) -> str:
     payload = {
         "sub": user_id,
         "provider": "test",
         "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
+        "exp": datetime.now(tz=UTC) + expires_in,
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
@@ -69,6 +80,147 @@ def _swap_settings(new_settings):
     app.state.normalize_users_payload = _normalize
 
 
+@pytest.fixture()
+def admin_app_factory(tmp_path, monkeypatch):
+    """Build an admin TestClient harness for the 7 admin-endpoint test modules.
+
+    Each module previously hand-rolled a near-identical ``admin_app`` fixture:
+    setenv KG_DATA_DIR → mkdir users/ → seed users.json → snapshot
+    app.state.kg_settings → build KGSettings(admin_token/admin_password) →
+    _swap_settings → yield SimpleNamespace(client, data_dir) → restore in finally.
+
+    This factory folds in the few real axes of variation as keyword args:
+
+    - ``users_seed``: dict written to users.json (default ``{"_meta": {}}``).
+    - ``admin_token`` / ``admin_password``: KGSettings auth knobs.
+    - ``inject_cookie``: when True, seed the TestClient with a signed
+      ``admin_session`` cookie for ``admin_token`` (users-search pattern).
+    - ``reset_audit``: when True, call ``admin_audit._reset()`` before/after
+      and setenv KG_DATA_DIR (audit-endpoint pattern).
+    - ``setup_log_dbs``: when True, redirect pipeline/judge/token/translate log
+      SQLite singletons to tmp_path and reset them (observability/trends pattern).
+
+    Returns a builder callable so a test module can build multiple settings
+    shapes (e.g. login's password-enabled vs password-disabled).
+    """
+    from kg.api import app
+    from kg.settings import KGSettings
+
+    cleanups: list = []
+
+    def _build(
+        *,
+        users_seed: dict | None = None,
+        admin_token: str | None = None,
+        admin_password: str = "",
+        inject_cookie: bool = False,
+        reset_audit: bool = False,
+        setup_log_dbs: bool = False,
+    ):
+        data_dir = tmp_path
+        (data_dir / "users").mkdir(exist_ok=True)
+        users_file = data_dir / "users.json"
+        users_file.write_text(json.dumps(users_seed if users_seed is not None else {"_meta": {}}))
+
+        monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
+
+        if reset_audit:
+            from kg import admin_audit
+            admin_audit._reset()
+            cleanups.append(admin_audit._reset)
+
+        if setup_log_dbs:
+            import kg.judge_log as jl
+            import kg.pipeline_log as pl
+            import kg.token_tracker as tt
+            import kg.translate_log as tl
+            pl.DATA_DIR = data_dir
+            pl.DB_PATH = data_dir / "pipeline_runs.db"
+            jl.DATA_DIR = data_dir
+            jl.DB_PATH = data_dir / "judge_log.db"
+            tt.DATA_DIR = data_dir
+            tt.DB_PATH = data_dir / "token_usage.db"
+
+            def _reset_log_dbs():
+                pl._reset()
+                jl._reset()
+                tl._reset()
+                if tt._conn is not None:
+                    tt._conn.close()
+                    tt._conn = None
+
+            _reset_log_dbs()
+            cleanups.append(_reset_log_dbs)
+
+        original_settings = app.state.kg_settings
+        original_load = app.state.load_users
+        original_save = app.state.save_users
+
+        def _restore_settings():
+            app.state.kg_settings = original_settings
+            app.state.load_users = original_load
+            app.state.save_users = original_save
+
+        cleanups.append(_restore_settings)
+
+        test_settings = KGSettings(
+            data_dir=data_dir,
+            jwt_secret=TEST_JWT_SECRET,
+            admin_token=admin_token,
+            admin_password=admin_password,
+        )
+        _swap_settings(test_settings)
+
+        if inject_cookie:
+            from kg.admin_handlers import _sign_cookie
+            cookie = _sign_cookie(admin_token)
+            client = TestClient(app, raise_server_exceptions=False, cookies={"admin_session": cookie})
+        else:
+            client = TestClient(app, raise_server_exceptions=False)
+
+        return SimpleNamespace(client=client, data_dir=data_dir)
+
+    try:
+        yield _build
+    finally:
+        for fn in reversed(cleanups):
+            fn()
+
+
+@pytest.fixture()
+def translate_data_dir(tmp_path, monkeypatch):
+    """Point translate_log's SQLite DB at a per-test tmp dir.
+
+    The autouse ``_isolate_translate_log`` already clears rows + resets the
+    singleton, but it runs (and opens a conn) under the default KG_DATA_DIR.
+    translate-cache modules that need their DB physically isolated under
+    tmp_path opt into this: it setenvs KG_DATA_DIR then resets so the next
+    ``_get_conn`` re-opens under tmp_path. (The post-yield reset is provided
+    by the autouse fixture's teardown.)
+    """
+    import kg.translate_log as tl
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    tl._reset()
+    yield
+
+
+@pytest.fixture()
+def isolate_pipeline_db(tmp_path, monkeypatch):
+    """Point pipeline_log at a fresh temp DB and reset its singleton.
+
+    Shared by the pipeline_log test modules (start/step/run lifecycle +
+    telemetry recording). The DB filename inside tmp_path is irrelevant —
+    each test gets a unique tmp_path, so a single name suffices.
+    """
+    from kg import pipeline_log
+
+    monkeypatch.setattr(pipeline_log, "DB_PATH", tmp_path / "pipeline_runs.db")
+    pipeline_log._reset()
+    yield
+    pipeline_log._reset()
+
+
 class _DummyEmbeddingStore:
     def __init__(self) -> None:
         self._ids: set[str] = set()
@@ -85,6 +237,20 @@ class _DummyEmbeddingStore:
 
     def find_similar(self, card_id: str, k: int = 3):
         return []
+
+
+# Provider-routing determinism: ambient env that biases per-call-type routing.
+ROUTING_PREFIX = "LLM_PROVIDER_"
+ROUTING_MODEL_ENV = ("GEMINI_MODEL", "DEEPSEEK_MODEL")
+
+
+@pytest.fixture()
+def clean_routing_env(monkeypatch):
+    """Strip ambient provider-routing env so each test is deterministic."""
+    for name in list(os.environ):
+        if name.startswith(ROUTING_PREFIX) or name in ROUTING_MODEL_ENV:
+            monkeypatch.delenv(name, raising=False)
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -142,6 +308,45 @@ def _isolate_observability_cooldown():
     observability_alerts._cooldown_state.clear()
     yield
     observability_alerts._cooldown_state.clear()
+
+
+ADMIN_TOKEN = "test-admin-token-value"
+
+
+def make_admin_client(tmp_path, monkeypatch, *, setup_logs, teardown_logs):
+    """Shared admin TestClient factory for admin-endpoint tests.
+
+    Builds a tmp data_dir + users.json, sets KG_DATA_DIR, swaps in test
+    settings with an admin token, and yields an admin TestClient. Callers
+    supply `setup_logs(data_dir, monkeypatch)` to patch their specific log
+    module's DATA_DIR/DB_PATH (and prime its connection) and `teardown_logs()`
+    to release it.
+    """
+    from kg.api import app
+    from kg.settings import KGSettings
+
+    data_dir = tmp_path
+    (data_dir / "users").mkdir()
+    users_file = data_dir / "users.json"
+    users_file.write_text(json.dumps({"_meta": {}, "u1": {"config": {}}}))
+
+    monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
+    setup_logs(data_dir, monkeypatch)
+
+    original_settings = app.state.kg_settings
+    test_settings = KGSettings(
+        data_dir=data_dir,
+        jwt_secret=TEST_JWT_SECRET,
+        admin_token=ADMIN_TOKEN,
+    )
+    _swap_settings(test_settings)
+
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        yield SimpleNamespace(client=client, data_dir=data_dir)
+    finally:
+        app.state.kg_settings = original_settings
+        teardown_logs()
 
 
 @pytest.fixture()

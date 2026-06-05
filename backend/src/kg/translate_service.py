@@ -157,10 +157,10 @@ async def _run_llm_translate(
     user: dict[str, Any],
     llm: Any,
     model: str,
-    prompt_fn: Callable,
+    prompt_fn: Callable[[TranslateRequest, str, str, str], str],
     operation: str,
     logger: logging.Logger | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Common LLM translate flow: resolve langs -> cache check -> call -> parse -> record."""
     source_lang, target_lang = resolve_translation_langs(req, user)
     ctx = _context_around_word(req.context, req.word)

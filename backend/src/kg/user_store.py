@@ -73,7 +73,7 @@ def save_users_to(
 ) -> None:
     normalized, _ = normalize_users_payload(users)
     tmp_path = users_file.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(normalized, indent=2))
+    tmp_path.write_text(json.dumps(normalized, indent=2, ensure_ascii=False))
     tmp_path.replace(users_file)
 
 

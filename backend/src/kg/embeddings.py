@@ -33,6 +33,9 @@ def _fsync_path(path: Path) -> None:
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
+_EMBED_MAX_RETRIES = 3
+_EMBED_BACKOFF_BASE = 2
+_COSINE_EPS = 1e-9
 
 
 class EmbeddingStore:
@@ -361,7 +364,7 @@ class EmbeddingStore:
 
         Returns an (N, self.dim) float32 array.
         """
-        for attempt in range(3):
+        for attempt in range(_EMBED_MAX_RETRIES):
             try:
                 response = self.llm.embed("embed", input=texts, model=self.model)
                 # response.data may not be sorted by index; sort to match input order.
@@ -391,11 +394,12 @@ class EmbeddingStore:
                     )
                 return vecs
             except OpenAIError as e:
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
+                if attempt < _EMBED_MAX_RETRIES - 1:
+                    time.sleep(_EMBED_BACKOFF_BASE ** attempt)
                     continue
                 logger.error("Embedding API error: %s", e, exc_info=True)
                 raise e
+        raise RuntimeError("unreachable: _embed exhausted retries")
 
     def add(self, card_id: str, text: str) -> None:
         """Add embedding for a single card (delegates to add_batch)."""
@@ -501,7 +505,7 @@ class EmbeddingStore:
         # Cosine similarity with cached norms
         norms = self._get_norms()
         query_norm = norms[idx]
-        similarities = (self._embeddings @ query_vec) / (norms * query_norm + 1e-9)
+        similarities = (self._embeddings @ query_vec) / (norms * query_norm + _COSINE_EPS)
 
         # Get top k+1 (including self), then filter
         top_indices = np.argsort(similarities)[::-1][: k + 1]

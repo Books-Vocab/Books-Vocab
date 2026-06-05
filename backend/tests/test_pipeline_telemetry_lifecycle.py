@@ -8,14 +8,7 @@ import pytest
 
 from kg import pipeline_log
 
-
-@pytest.fixture(autouse=True)
-def _isolate_db(tmp_path, monkeypatch):
-    """Point pipeline_log at a temp DB and reset between tests."""
-    monkeypatch.setattr(pipeline_log, "DB_PATH", tmp_path / "pipeline_runs.db")
-    pipeline_log._reset()
-    yield
-    pipeline_log._reset()
+pytestmark = pytest.mark.usefixtures("isolate_pipeline_db")
 
 
 def test_pipeline_log_run_without_end_marked_running_until_timeout(tmp_path):

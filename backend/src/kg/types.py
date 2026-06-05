@@ -13,3 +13,18 @@ class UserRecord(TypedDict, total=False):
     dir: Path
     record: dict[str, Any]
     config: dict[str, Any]
+
+
+class QuotaState(TypedDict):
+    """Quota snapshot crossing the iOS API boundary: remaining fraction + reset window."""
+
+    fraction: float
+    reset_seconds: float
+
+
+class QuotaCheck(TypedDict):
+    """Pre-flight quota gate result crossing the iOS API boundary."""
+
+    exceeded: bool
+    fraction: float
+    reset_seconds: float

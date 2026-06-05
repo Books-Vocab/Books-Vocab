@@ -1,22 +1,13 @@
 """Tests for the pluggable LLM provider registry + per-call-type routing."""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from kg.llm.providers import REGISTRY, LLMProvider, provider_for
 
-_ROUTING_PREFIX = "LLM_PROVIDER_"
-_MODEL_ENV = ("GEMINI_MODEL", "DEEPSEEK_MODEL")
-
 
 @pytest.fixture(autouse=True)
-def _clean_routing_env(monkeypatch):
-    """Strip ambient provider-routing env so each test is deterministic."""
-    for name in list(os.environ):
-        if name.startswith(_ROUTING_PREFIX) or name in _MODEL_ENV:
-            monkeypatch.delenv(name, raising=False)
+def _clean_routing_env(clean_routing_env):
     yield
 
 

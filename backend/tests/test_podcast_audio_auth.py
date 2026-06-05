@@ -151,27 +151,21 @@ def test_audio_series_id_rejects_bad_inputs(audio_api, bad_id):
     assert resp.status_code in (404, 422)
 
 
-def test_audio_ep_num_rejects_zero(audio_api):
+@pytest.mark.parametrize(
+    "bad_ep_num",
+    [
+        "0",  # zero — ep_num is 1-indexed
+        "-1",  # negative
+        "10000",  # overflow — beyond allowed bound
+        "abc",  # non-integer
+    ],
+)
+def test_audio_ep_num_rejects_bad_inputs(audio_api, bad_ep_num):
+    """Out-of-range / non-integer ep_num must be rejected with 422."""
     api, _ = audio_api
-    resp = api.client.get("/api/podcasts/series_a/0/audio", headers=api.headers)
-    assert resp.status_code == 422
-
-
-def test_audio_ep_num_rejects_negative(audio_api):
-    api, _ = audio_api
-    resp = api.client.get("/api/podcasts/series_a/-1/audio", headers=api.headers)
-    assert resp.status_code == 422
-
-
-def test_audio_ep_num_rejects_overflow(audio_api):
-    api, _ = audio_api
-    resp = api.client.get("/api/podcasts/series_a/10000/audio", headers=api.headers)
-    assert resp.status_code == 422
-
-
-def test_audio_ep_num_rejects_non_integer(audio_api):
-    api, _ = audio_api
-    resp = api.client.get("/api/podcasts/series_a/abc/audio", headers=api.headers)
+    resp = api.client.get(
+        f"/api/podcasts/series_a/{bad_ep_num}/audio", headers=api.headers
+    )
     assert resp.status_code == 422
 
 

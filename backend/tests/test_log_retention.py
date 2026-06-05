@@ -8,10 +8,8 @@ import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
 
 from kg import judge_log, log_retention, pipeline_log, token_tracker, translate_log
 
@@ -399,71 +397,12 @@ def test_cli_selective_flag(isolated_logs):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 ADMIN_TOKEN = "test-admin-token-log-retention"
 
 
-def _swap_settings(new_settings):
-    from kg.api import app
-    from kg.billing import default_subscription_payload
-    from kg.user_store import CachedUserStore, normalize_users_payload
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(new_settings.users_file, _normalize)
-    app.state.user_store = user_store
-    app.state.load_users = lambda: user_store.load()
-    app.state.save_users = lambda users: user_store.save(users)
-
-
 @pytest.fixture()
-def admin_app(tmp_path, monkeypatch):
-    from kg.api import app
-    from kg.settings import KGSettings
-
-    (tmp_path / "users").mkdir()
-    users_file = tmp_path / "users.json"
-    users_file.write_text(json.dumps({"_meta": {}}))
-
-    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-    pipeline_log.DATA_DIR = tmp_path
-    pipeline_log.DB_PATH = tmp_path / "pipeline_runs.db"
-    judge_log.DATA_DIR = tmp_path
-    judge_log.DB_PATH = tmp_path / "judge_log.db"
-    token_tracker.DATA_DIR = tmp_path
-    token_tracker.DB_PATH = tmp_path / "token_usage.db"
-    pipeline_log._reset()
-    judge_log._reset()
-    translate_log._reset()
-    if token_tracker._conn is not None:
-        token_tracker._conn.close()
-        token_tracker._conn = None
-
-    original_settings = app.state.kg_settings
-    test_settings = KGSettings(
-        data_dir=tmp_path,
-        jwt_secret=TEST_JWT_SECRET,
-        admin_token=ADMIN_TOKEN,
-    )
-    _swap_settings(test_settings)
-
-    try:
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(client=client, data_dir=tmp_path)
-    finally:
-        app.state.kg_settings = original_settings
-        pipeline_log._reset()
-        judge_log._reset()
-        translate_log._reset()
-        if token_tracker._conn is not None:
-            token_tracker._conn.close()
-            token_tracker._conn = None
+def admin_app(admin_app_factory):
+    return admin_app_factory(admin_token=ADMIN_TOKEN, setup_log_dbs=True)
 
 
 def test_admin_endpoint_requires_auth(admin_app):

@@ -17,18 +17,9 @@ def _is_pro(user: dict) -> bool:
 def _with_quota_check(
     user: dict, call_type: str, response: Response | None, handler: Callable[[], Any],
 ) -> Any:
-    from .quota_service import check_and_get_quota
-    pro = _is_pro(user)
-    quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
-    if quota["exceeded"]:
-        raise QuotaExceededError(
-            quota["reset_seconds"],
-            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
-        )
+    quota = _check_quota(user, call_type, response)
     result = handler()
-    if response is not None:
-        response.headers["X-Quota-Fraction"] = str(quota["fraction"])
-        response.headers["X-Quota-Reset"] = str(quota["reset_seconds"])
+    _apply_quota_headers(response, quota)
     return result
 
 

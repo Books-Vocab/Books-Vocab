@@ -18,7 +18,7 @@ from openai import OpenAIError
 
 from kg import translate_handlers as th
 from kg.api_models import TranslateRequest
-from kg.exceptions import ExternalServiceError
+from kg.exceptions import ExternalServiceError, KGError
 
 pytestmark = pytest.mark.asyncio
 
@@ -82,15 +82,19 @@ async def test_timeout_and_network_errors_map_to_external_service_error(exc):
     [ValueError("secret-detail"), KeyError("k"), TypeError("t"), RuntimeError("r")],
 )
 async def test_value_errors_map_to_opaque_500(exc):
-    with pytest.raises(HTTPException) as ei:
+    # Service layer raises a domain KGError (status_code 500); the api.py
+    # exception handler renders it to an opaque HTTP 500.
+    with pytest.raises(KGError) as ei:
         await _run(exc)
     assert ei.value.status_code == 500
-    assert ei.value.detail == "translate/quick failed"
+    assert str(ei.value) == "translate/quick failed"
+    assert ei.value.to_detail() == {"code": "KGError", "detail": "translate/quick failed"}
 
 
 async def test_inner_exception_text_not_leaked_to_client():
-    """Security: the 500 detail must not embed the inner exception message."""
-    with pytest.raises(HTTPException) as ei:
+    """Security: the opaque 500 must not embed the inner exception message."""
+    with pytest.raises(KGError) as ei:
         await _run(ValueError("DB_PASSWORD=hunter2 leaked"))
-    assert "hunter2" not in ei.value.detail
-    assert ei.value.detail == "translate/quick failed"
+    detail = ei.value.to_detail()
+    assert "hunter2" not in str(detail)
+    assert str(ei.value) == "translate/quick failed"
