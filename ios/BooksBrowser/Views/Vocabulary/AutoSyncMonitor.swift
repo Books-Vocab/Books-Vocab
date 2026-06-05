@@ -11,6 +11,7 @@ struct AutoSyncMonitor: ViewModifier {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.autoSyncSettingsStore) private var autoSyncStore
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.networkMonitor) private var networkMonitor
 
     @State private var debounceTask: Task<Void, Never>?
     @State private var lastTriggerAt: Date?
@@ -30,6 +31,13 @@ struct AutoSyncMonitor: ViewModifier {
                     debounceTask?.cancel()
                     return
                 }
+                scheduleEvaluation(debounceSeconds: 0.5)
+            }
+            .onChange(of: networkMonitor.isConnected) { wasConnected, isConnected in
+                guard Self.shouldScheduleOnConnectivityChange(
+                    wasConnected: wasConnected,
+                    isConnected: isConnected
+                ) else { return }
                 scheduleEvaluation(debounceSeconds: 0.5)
             }
     }
@@ -84,5 +92,9 @@ struct AutoSyncMonitor: ViewModifier {
             && isLoggedIn
             && !isDemoMode
             && isConnected
+    }
+
+    static func shouldScheduleOnConnectivityChange(wasConnected: Bool, isConnected: Bool) -> Bool {
+        !wasConnected && isConnected
     }
 }

@@ -16,6 +16,25 @@ import SwiftUI
 import SwiftData
 import Inject
 
+enum PodcastHomePhase: Equatable {
+    case loading
+    case error
+    case empty
+    case content
+
+    static func resolve(
+        isLoggedIn: Bool,
+        isSyncing: Bool,
+        syncFailed: Bool,
+        seriesCount: Int
+    ) -> PodcastHomePhase {
+        if seriesCount > 0 { return .content }
+        if isSyncing { return .loading }
+        if syncFailed { return .error }
+        return .empty
+    }
+}
+
 /// 播客頂層 section 入口。自有 `NavigationStack(path:)`；series 卡片走 value-based
 /// `NavigationLink(value: PodcastNavRoute.series(...))`，由本 stack root 的
 /// `navigationDestination(for: PodcastNavRoute.self)` 接住（freeze 契約，
@@ -42,6 +61,17 @@ struct PodcastHomeView: View {
     private var allProgress: [PodcastProgress]
 
     @State private var navigationPath = NavigationPath()
+    @State private var isSyncingCatalog = false
+    @State private var syncFailed = false
+
+    private var phase: PodcastHomePhase {
+        PodcastHomePhase.resolve(
+            isLoggedIn: authManager.isLoggedIn,
+            isSyncing: isSyncingCatalog,
+            syncFailed: syncFailed,
+            seriesCount: sortedPodcastSeries.count
+        )
+    }
 
     /// 已追蹤的浮上來；同組內維持 server `sortOrder`。`@Query` macro 不支援多重
     /// SortDescriptor，這裡 in-memory 穩定排序（O(n log n)，series 數 << 100）。
@@ -81,9 +111,14 @@ struct PodcastHomeView: View {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
 
-                if sortedPodcastSeries.isEmpty {
+                switch phase {
+                case .loading:
+                    loadingState
+                case .error:
+                    syncErrorState
+                case .empty:
                     emptyState
-                } else {
+                case .content:
                     content
                 }
             }
@@ -102,13 +137,7 @@ struct PodcastHomeView: View {
             // `.task(id:)` 對齊 NotebookListView：login 狀態翻轉才重跑，避免
             // Catalyst sidebar 切回 podcast section（remount）以外的無謂重同步。
             .task(id: authManager.isLoggedIn) {
-                if authManager.isLoggedIn {
-                    let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-                    if outcome == .listFetchFailed {
-                        toastCoordinator.warning("同步失敗".localized)
-                    }
-                    await warmFollowedSeriesAudio()
-                }
+                await syncPodcastCatalog(showToastOnFailure: true, warmAudioAfterSync: true)
             }
         }
         .enableInjection()
@@ -205,17 +234,75 @@ struct PodcastHomeView: View {
         }
     }
 
+    private var loadingState: some View {
+        VStack {
+            Spacer()
+            AppStateMessageCard(
+                title: "正在同步播客".localized,
+                systemImage: "arrow.triangle.2.circlepath",
+                description: "正在向伺服器拉取最新節目清單".localized
+            ) {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            .frame(maxWidth: 420)
+            Spacer()
+        }
+        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+    }
+
+    private var syncErrorState: some View {
+        ScrollView {
+            VStack(spacing: AppSpacing.s4) {
+                Spacer(minLength: 120)
+
+                AppEmptyStateContent(
+                    title: "同步失敗".localized,
+                    systemImage: "exclamationmark.triangle",
+                    description: "目前無法取得播客節目清單".localized,
+                    guidanceText: "請確認網路連線後重試",
+                    action: AppEmptyStateAction(
+                        title: "重試".localized,
+                        systemImage: "arrow.clockwise",
+                        handler: {
+                            Task { await refreshPodcastCatalog() }
+                        }
+                    ),
+                    style: .bookshelf(appTheme)
+                )
+
+                Spacer(minLength: 120)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+        }
+        .refreshable {
+            await refreshPodcastCatalog()
+        }
+    }
+
     // MARK: - 同步 / 預熱 / 追蹤（自 BookshelfView re-home，行為逐字保留）
+
+    @MainActor
+    private func syncPodcastCatalog(showToastOnFailure: Bool, warmAudioAfterSync: Bool) async {
+        isSyncingCatalog = true
+        defer { isSyncingCatalog = false }
+
+        let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+        syncFailed = outcome == .listFetchFailed
+        if syncFailed && showToastOnFailure {
+            toastCoordinator.warning("同步失敗".localized)
+        }
+        if warmAudioAfterSync && authManager.isLoggedIn {
+            await warmFollowedSeriesAudio()
+        }
+    }
 
     /// Pull-to-refresh entry. A series-list fetch failure surfaces a warning
     /// toast；partial / auxiliary failures stay silent。
     @MainActor
     private func refreshPodcastCatalog() async {
-        guard authManager.isLoggedIn else { return }
-        let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-        if outcome == .listFetchFailed {
-            toastCoordinator.warning("同步失敗".localized)
-        }
+        await syncPodcastCatalog(showToastOnFailure: true, warmAudioAfterSync: false)
     }
 
     /// Predictive prefetch：暖機已追蹤 series 首集的 AVFoundation 連線，使從

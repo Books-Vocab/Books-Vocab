@@ -15,6 +15,10 @@
 "尚無播客" = "No podcasts yet";
 "追蹤喜歡的節目，從這裡開始收聽" = "Follow shows you love to start listening here";
 "下拉重新整理以同步節目" = "Pull to refresh to sync shows";
+"正在同步播客" = "Syncing podcasts";
+"正在向伺服器拉取最新節目清單" = "Fetching the latest show list from the server";
+"目前無法取得播客節目清單" = "Podcast shows are unavailable right now";
+"請確認網路連線後重試" = "Check your connection and try again";
 "繼續收聽" = "Continue Listening";
 "所有節目" = "All Shows";
 "API 錯誤：%@" = "API error: %@";
@@ -192,6 +196,7 @@
 "關聯圖" = "Graph";
 "離線" = "Offline";
 "離線模式，同步失敗：%@" = "Offline mode. Sync failed: %@";
+"離線模式，同步失敗。請確認網路連線後重試" = "Offline mode. Sync failed. Check your connection and try again.";
 "需登入帳號" = "Sign In Required";
 "顯示" = "Display";
 "顯示點擊熱區" = "Show Tap Targets";
