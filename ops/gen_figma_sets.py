@@ -32,6 +32,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TOKENS = ROOT / "design-system" / "tokens.json"
 OUT = ROOT / "design-system" / ".tokens-studio" / "tokens"
+# single merged file: first-level keys = set names + $themes/$metadata. This is
+# the import entry for browser-based Figma (Tokens Studio's "Choose folder" needs
+# the desktop app; "Choose file" takes this one file). See README.md.
+BUNDLE = ROOT / "design-system" / ".tokens-studio" / "bundle.json"
 
 # mode-invariant scalar branches shared by every theme (live in the core set)
 CORE_BRANCHES = ["space", "radius", "type", "elevation", "motion"]
@@ -86,6 +90,12 @@ def render() -> dict[str, object]:
     return files
 
 
+def build_bundle(files: dict[str, object]) -> dict:
+    """Merge the per-set files into one object (first-level keys = set names),
+    the single-file import shape for browser-based Figma."""
+    return {fn[:-5]: content for fn, content in files.items()}
+
+
 def _serialize(content: object) -> str:
     return json.dumps(content, ensure_ascii=False, indent=2) + "\n"
 
@@ -93,11 +103,14 @@ def _serialize(content: object) -> str:
 def main() -> None:
     check = "--check" in sys.argv
     files = render()
+    bundle = build_bundle(files)
     if check:
         stale = [
             fn for fn, content in files.items()
             if not (OUT / fn).exists() or (OUT / fn).read_text() != _serialize(content)
         ]
+        if not BUNDLE.exists() or BUNDLE.read_text() != _serialize(bundle):
+            stale.append("../bundle.json")
         if stale:
             print(f"✗ Tokens Studio sidecar stale: {stale}. Run: python ops/gen_figma_sets.py")
             sys.exit(1)
@@ -106,7 +119,8 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for fn, content in files.items():
         (OUT / fn).write_text(_serialize(content))
-    print(f"✓ wrote {len(files)} Tokens Studio sidecar files → {OUT.relative_to(ROOT)}")
+    BUNDLE.write_text(_serialize(bundle))
+    print(f"✓ wrote {len(files)} sidecar files + bundle.json → {OUT.parent.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
