@@ -11,7 +11,10 @@ verified_against: ecbcbcfa
 
 把 `design-system/tokens.json`（W3C DTCG 格式）接進 Figma 的 **Tokens Studio for Figma** plugin，讓設計師能在 Figma 裡視覺化、調整 design token，再回流到 repo。本檔給**完全沒用過 Figma** 的單人開發者，照步驟做即可。
 
-> **先理解權威方向（不可顛倒）**：tokens.json 的 `$description` 寫得很清楚 — **AUTHORITY = iOS Swift token 檔**（`AppColors` / `AppMetrics` / `AppFonts` / `AppTheme` / `AppSkin`），tokens.json 只是**鏡像**其 literal 值。Figma 是**下游消費 + 提案介面**，不是 SoT。在 Figma 改了值 → 推回 repo → 仍須 iOS Swift 端對齊，否則 `ops/token_drift_check.py` 會擋。Figma 不會、也不該自動改 Swift。
+> **先理解權威方向（接線後分兩種，不可混淆）**：
+> - **已接線 scalar 群組**（`AppRadius` / `AppSpacing` scale / `AppFonts.TypeScale` / `AppFonts.Tracking` / `AppElevation`）：這些 Swift 值已改為**引用 `DesignTokens.*`**（由 tokens.json 生成）。方向是 **tokens.json（Figma）→ `npm run build` 重生 `DesignTokens.swift` → iOS 消費**。在 Figma 改這些值、跑 build、**重編 app 即生效**，不必手改 Swift。
+> - **未接線群組**（**全部顏色** `AppColors`/`AppTheme`、`AppMotion`、`LineSpacing`、`AppSkin` 組合層）：仍是**手寫 Swift literal 為 SoT**，tokens.json 鏡像之。Figma 改這些**不會自動生效**，須手動改對應 Swift 再讓 drift check 對齊。
+> 兩種 regime 都由 `ops/token_drift_check.py` 守：已接線者驗「iOS 的 `DesignTokens.*` 引用解析值 == tokens.json」，未接線者驗「iOS literal == tokens.json」。顏色刻意未接（精確 float + `WCAGContrastTests` 釘死對比值，須逐值證明無損才接）。
 
 ---
 
@@ -151,15 +154,17 @@ ops/verify_design_system.sh   # 一支跑齊所有 guard
 ```
 
 `verify_design_system.sh` 內含的 gate（任一紅就擋）：
-1. **`token_drift_check.py`** — tokens.json 的 literal **必須等於 iOS Swift token 檔**的值。**這是最容易被 Figma 改動踩中的 gate**：在 Figma 把 `color.theme.light.page-bg` 從 `#f7f6f3` 改掉、push 回來，但沒同步改 `AppTheme.light.pageBackground` → **drift check 紅**。**正確順序**：先在 iOS Swift 端拍板值，再讓 tokens.json 鏡像（或反過來，但兩端最終必須一致），CI 才會綠。
+1. **`token_drift_check.py`** — tokens.json 必須與 iOS 對齊。**未接線群組（最易踩中）**：在 Figma 把 `color.theme.light.page-bg` 從 `#f7f6f3` 改掉、push 回來，但沒同步改 `AppTheme.light.pageBackground` → **drift check 紅**；正確順序是先在 iOS Swift 端拍板值再讓 tokens.json 鏡像。**已接線 scalar 群組**（radius/spacing/type-scale/tracking/elevation）相反：改 tokens.json → `npm run build` 重生 `DesignTokens.swift`，iOS 自動引用、drift check 自動對齊，**不需手改 Swift**（見 §5b）。
 2. **`gen_web_tokens.py --check`** — 確認生成的 CSS 與 tokens.json 一致、無 stale 副本（漏跑生成就會紅）。
 3. **`npm run build:check`**（Style Dictionary）— 確認 `DesignTokens.swift` 與 tokens.json 一致。
 4. extension 純邏輯 test（`pure.test.js` / `icons.test.js`）。
 
-### 5b. 為什麼不能只信 Figma
-- `DesignTokens.swift` 是 **scalar bridge 產物（CGFloat/Double/String 常數），目前尚未接進 iOS runtime** — 手寫的 `AppColors`/`AppMetrics`/`AppFonts`/`AppTheme`/`AppSkin` 才是 iOS 實際渲染來源、也是整個系統的 SoT。
-- 因此 Figma 改色**不會自動改變 app 外觀**；要真的改 app，必須**手動改對應 Swift 檔**，再讓 drift check 確認 tokens.json 對齊。
-- 本檔流程的價值在於：**視覺化探索 + 提案值 + 把值版本化回 repo**，而非「Figma 即生產」。
+### 5b. 哪些 Figma 改動會自動生效、哪些要手動
+`DesignTokens.swift` 由 Style Dictionary 從 tokens.json 生成（`CGFloat`/`Double`/`String` 常數）。iOS runtime 對它的採用是**漸進**的：
+
+- **已接線（Figma 真注入）**：`AppRadius` / `AppSpacing` scale（`s1`–`s10`/`hairline`/`micro`/`tiny`）/ `AppFonts.TypeScale` / `AppFonts.Tracking` / `AppElevation`（z0–z4 opacity·blur·y）已改為引用 `DesignTokens.*`。在 Figma 改這些 → Push → `npm run build` 重生 `DesignTokens.swift` → **重編 app 即生效**，無需手改 Swift。
+- **未接線（仍須手動）**：**全部顏色**（`AppColors` 原色 + `AppTheme` 三主題語意色，精確 float + `WCAGContrastTests` 釘死對比，刻意不自動接）、`AppMotion`（彈簧/時長/緩動）、`AppFonts.LineSpacing`（與 web `type.leading` 語意不同）、`AppSkin` 組合層。改這些須**手動改對應 Swift**，再讓 drift check 確認 tokens.json 對齊。
+- 因此本檔流程價值：對已接線 scalar 是**真正的 Figma→iOS 注入**；對未接線群組是**視覺化探索 + 提案值 + 版本化回 repo**。無論哪種，PR 內 `ops/verify_design_system.sh` 必須綠。
 
 > **鐵律對映**：動 iOS UI 值前讀 `docs/sop/ui-design.md`（Token 禁令 / Motion 契約）；改設計系統值請走本流程，PR 內**同時**改 iOS Swift + tokens.json，並貼 `ops/verify_design_system.sh` 綠輸出（驗證先於宣稱）。
 
