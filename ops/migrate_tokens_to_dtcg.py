@@ -191,9 +191,12 @@ def _convert_leaf(node: dict, path: str, full_data: dict) -> dict:
             **({"$description": desc} if desc else {}),
         })
 
-    # ── Elevation step composite ────────────────────────────────
+    # ── Elevation step composite (object-level $swift preserved) ──
+    # Multi-scalar objects decompose into sub-leaves; the parent $swift must
+    # ride along at the object level so the drift guard's provenance anchor
+    # survives (token_drift_check elevation/spring sections key off it).
     if "opacity" in node and "blur" in node and "y" in node:
-        return {
+        return _with_swift({
             "opacity": {
                 "$type": "number",
                 "$value": node["opacity"],
@@ -206,11 +209,11 @@ def _convert_leaf(node: dict, path: str, full_data: dict) -> dict:
                 "$type": "dimension",
                 "$value": f"{node['y']}px",
             },
-        }
+        })
 
-    # ── Spring composite ────────────────────────────────────────
+    # ── Spring composite (object-level $swift preserved) ─────────
     if "response" in node and "damping" in node:
-        return {
+        return _with_swift({
             "response": {
                 "$type": "number",
                 "$value": node["response"],
@@ -219,7 +222,7 @@ def _convert_leaf(node: dict, path: str, full_data: dict) -> dict:
                 "$type": "number",
                 "$value": node["damping"],
             },
-        }
+        })
 
     raise ValueError(f"Unrecognised leaf node at {path}: {node}")
 

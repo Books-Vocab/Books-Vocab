@@ -467,9 +467,18 @@ def check() -> list[str]:
             errors.append(f"motion.tap-feedback.{key}: JSON {spec['$value']} != Swift {spec['$swift']} {tap[name]}")
 
     # 12) motion spring physics (AppMotion spring response + dampingFraction)
+    # Springs are iOS-native physics (web has no spring token — it uses the
+    # cubic-bezier approximations under motion.easing), so EVERY motion.spring
+    # entry is an iOS mirror and MUST carry $swift. Fail loud on a missing one
+    # rather than silently skipping: a dropped provenance key would otherwise
+    # disable this guard unnoticed (regression caught 2026-06 DTCG migration).
     for key, spec in tokens["motion"].get("spring", {}).items():
-        if key.startswith("$") or "$swift" not in spec:
+        if key.startswith("$"):
             continue
+        if "$swift" not in spec:
+            raise AssertionError(
+                f"motion.spring.{key}: missing $swift provenance — every spring is an "
+                f"iOS mirror; re-attach $swift or the drift guard silently skips it.")
         base = spec["$swift"].split(".")[-1]
         md = motion.get(base, {})
         for field in ("response", "damping"):
