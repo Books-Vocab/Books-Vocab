@@ -551,6 +551,103 @@ class TestFleetOverview:
         assert d["count"] == 0 and d["totals"]["users"] == 0
 
 
+class TestTimeseries:
+    """timeseries — cost/calls/active_users 按 day/week/month 分桶趨勢。"""
+
+    def _seed(self, tmp_path):
+        # 跨兩日:06-01 有 u1+u2 各一筆,06-02 只有 u1。deepseek 計價可驗 provider-aware。
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1_000_000, 1_000_000, "2026-06-01T10:00:00+00:00", "deepseek"),
+            ("u2", "translate", 1_000_000, 1_000_000, "2026-06-01T11:00:00+00:00", "deepseek"),
+            ("u1", "translate", 1_000_000, 1_000_000, "2026-06-02T10:00:00+00:00", "deepseek"),
+        ], with_provider=True)
+
+    def test_calls_by_day_json(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day", "--range", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["metric"] == "calls" and d["bucket"] == "day"
+        assert d["count"] == 2
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        assert series["2026-06-01"] == 2 and series["2026-06-02"] == 1
+
+    def test_active_users_distinct(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "active_users", "--range", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        # 06-01 distinct = {u1,u2}=2;06-02 = {u1}=1
+        assert series["2026-06-01"] == 2 and series["2026-06-02"] == 1
+
+    def test_cost_provider_aware(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "cost", "--range", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        # deepseek 1M+1M = 0.14+0.28 = 0.42/call;06-01 兩筆=0.84,06-02 一筆=0.42
+        assert abs(series["2026-06-01"] - 0.84) < 1e-6
+        assert abs(series["2026-06-02"] - 0.42) < 1e-6
+
+    def test_bucket_month(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month", "--range", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 1
+        assert d["series"][0]["bucket"] == "2026-06" and d["series"][0]["value"] == 3
+
+    def test_bucket_week(self, tmp_path):
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+            ("u1", "translate", 1, 1, "2026-06-10T10:00:00+00:00"),  # 隔週
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "week", "--range", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 2  # 兩個不同 ISO week
+        assert all(s["bucket"].startswith("2026-W") for s in d["series"])
+
+    def test_uid_filter(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--uid", "u1", "--range", "all", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["uid"] == "u1"
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        assert series["2026-06-01"] == 1 and series["2026-06-02"] == 1  # u2 不算
+
+    def test_sorted_ascending(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all", "--json")
+        d = json.loads(r.stdout)
+        buckets = [s["bucket"] for s in d["series"]]
+        assert buckets == sorted(buckets)
+
+    def test_text_output_has_trend_bar(self, tmp_path):
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all")
+        assert r.returncode == 0, r.stderr
+        assert "2026-06-01" in r.stdout
+        assert "█" in r.stdout  # 趨勢 bar
+
+    def test_empty(self, tmp_path):
+        import json
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 0 and d["series"] == []
+
+
 class TestHelp:
     """--help 應正常輸出。"""
 
