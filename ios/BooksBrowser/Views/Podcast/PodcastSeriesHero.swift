@@ -161,7 +161,7 @@ struct PodcastContinueCard: View {
               let p = progress,
               episode.durationSec > 0 else { return nil }
         let remaining = max(0, episode.durationSec - p.lastPlayedTime)
-        return L10n.format("podcast.continue.remaining", formatClock(remaining))
+        return L10n.format("podcast.continue.remaining", PodcastClock.format(remaining))
     }
 
     private var progressFraction: Double {
@@ -229,18 +229,6 @@ struct PodcastContinueCard: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .enableInjection()
-    }
-
-    private func formatClock(_ sec: Double) -> String {
-        guard sec.isFinite, sec >= 0 else { return "0:00" } // i18n-allow: clock format
-        let total = Int(sec)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s) // i18n-allow: clock format
-        }
-        return String(format: "%d:%02d", m, s) // i18n-allow: clock format
     }
 }
 
