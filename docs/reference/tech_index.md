@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: b9c0b2cb
+verified_against: d4c80730
 -->
 # Technical Reference Index
 
@@ -100,7 +100,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `ios_build.sh` | iOS Release build,共享 `shlock` |
 | `ios_test.sh` | iOS unit tests;`-g pattern` 過濾 |
 | `ios_release.sh` | iOS App Store/TestFlight 發版:archive→export→`--upload`(對外 gate,預設不上傳);manual signing(Apple Distribution cert + `KG App Store` profile,一次性建置與憑證見 `~/.secrets/apple/README.md`);共用 `/tmp/kg-ios-build.lock`;`--upload` 前擋重複 build number;`--key <id>` 選 ASC API key。設定檔 `ios/ExportOptions.plist` |
-| `asc.sh` | App Store Connect 查詢/改文案(主體 codemagic CLI,同 `ios_release.sh` 的 `asc()` wrapper):`versions`/`builds`/`metadata`/`info`/`review-status` 唯讀,`review-detail`/`screenshots` 走 raw 旁路 `ops/asc_get.py`(唯讀 GET helper,uv shebang 自帶 pyjwt+cryptography,env 參數化 key;JWT 只在 helper、主檔零 JWT),`set <field> <value>` 改 version-localization 文案、`set-review <field> <value>` 改 appStoreReviewDetail(notes/demo/contact,codemagic 未暴露 → 寫入旁路 `ops/asc_patch.py`(PATCH helper,JWT 同樣只在 helper、主檔零 JWT))(皆預設 dry-run,`--yes` 才真寫;空值被擋);**不做 submit-for-review**;被拒原因 Resolution Center 文字 API 不可讀(須 GUI);`.p8` 路徑 `${ASC_KEY_DIR:-~/.secrets/apple}` 可覆寫。測試 `ops/test_asc.sh` |
+| `asc.sh` | App Store Connect **全表面控制台**(主體 codemagic CLI,同 `ios_release.sh` 的 `asc()` wrapper)。唯讀:`versions`/`builds`/`metadata`/`info`/`review-status`/`review-detail`/`submissions`/`screenshots`/`categories`/`reviews`/`accessibility`/`subscriptions`/`iap`/`pricing`/`sub-offers`/`release-plan`(codemagic 未暴露者走 raw 旁路 `ops/asc_get.py`,唯讀 GET helper,uv shebang 自帶 pyjwt+cryptography,env 參數化 key;JWT 只在 helper、主檔零 JWT)。寫入(皆預設 dry-run,`--yes` 才真送,經單一 `emit_write` gate):`set`(版本文案 appStoreVersionLocalization)/`set-review`(appStoreReviewDetail)/`set-appinfo`(appInfoLocalization name/subtitle/privacy-url)/`set-eula`/`set-content-rights`/`set-category`/`set-rating`/`reply-review`(customerReviewResponses)/`set-sub-name|desc|review-note`/`set-sub-price`(⚠動計費,preserveCurrentPrice 保護既有訂戶)/`set-release-type`(releaseType)/`phased`(appStoreVersionPhasedReleases start/pause/resume/complete/cancel)——codemagic 未暴露者走 raw 旁路 `ops/asc_write.py`(一般化 PATCH/POST/DELETE helper,body 由 stdin,JWT 只在 helper、主檔零 JWT,4xx/5xx→`{_httpError}`、204→`{_ok}`)。**刻意不做**:submit-for-review/撤回送審、IAP 寫面(KG 無一次性 IAP)、訂閱優惠建立(逐地區高風險走 GUI)、App 隱私權營養標(無 public API)、截圖上傳(無 codemagic 命令);被拒原因 Resolution Center 文字 API 不可讀(須 GUI);`.p8` 路徑 `${ASC_KEY_DIR:-~/.secrets/apple}` 可覆寫。測試 `ops/test_asc.sh`(164 斷言) |
 | `release.sh` | **版號發布統一入口**(對標 `ops_cli.py` 單入口風格):`status`(各 component 自上個 `api/*`,`ios/*` tag 以來的待發版 commit + 建議 semver bump,唯讀)、`changelog <api\|ios>`(委派 `release_changelog.sh`,唯讀)、`bump <api\|ios> <x.y.z>`(委派 `release_bump.sh`,改本地版號檔)、`publish <api\|ios> <x.y.z>`(commit 版號檔 + tag + push,**dry-run 預設、`--yes` 才真送**;preflight 擋 tag 重複/版號未 bump)。**無 tag-triggered CI**,tag 為版本標記、GitHub Release 須手動建。`/release` command 為薄路由。測試 `ops/test_release.sh` |
 | `test_ops.sh` | 非 ASC ops regression 聚合入口:`release` / `backup-verify` / `devops` / `deploy-smoke` / `infra-health` / `python-entrypoints` / `ui-token` / `ios-test-discovery` / `chrome-bundle` / `podcast-ops`;預設跑全部,也可指定 group,`--list` 列清單 |
 | `release_bump.sh` | 版號改寫 primitive(api: `backend/pyproject.toml`+`src/kg/api.py` / ios: `project.pbxproj` 的 `MARKETING_VERSION`+`CURRENT_PROJECT_VERSION`+1);一般經 `release.sh bump` 呼叫。前身 `scripts/bump-version.sh` |
