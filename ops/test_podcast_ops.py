@@ -56,12 +56,16 @@ def _done_marker(ws: Path, stage: str) -> None:
     (ws / f".stage_{stage}_done").write_text("")
 
 
-def _failed_log(ws: Path, stage: str) -> None:
+def _failed_log(ws: Path, stage: str, *, error: str = "upload rc=1 after 3 retries",
+                at: str = "2026-06-01T12:00:00") -> None:
     """A pipeline_log.jsonl whose latest stage_end for `stage` is success=false
-    and no done-marker exists → status should resolve to 'failed'."""
+    and no done-marker exists → status should resolve to 'failed'. Mirrors the
+    real shape: an `error` event (the WHY) precedes the failing stage_end, and
+    every line carries a `ts` (PipelineLog._write stamps isoformat seconds)."""
     (ws / "pipeline_log.jsonl").write_text(
-        json.dumps({"event": "stage_start", "stage": stage}) + "\n"
-        + json.dumps({"event": "stage_end", "stage": stage, "success": False}) + "\n"
+        json.dumps({"event": "stage_start", "stage": stage, "ts": at}) + "\n"
+        + json.dumps({"event": "error", "msg": error, "ts": at}) + "\n"
+        + json.dumps({"event": "stage_end", "stage": stage, "success": False, "ts": at}) + "\n"
     )
 
 
@@ -144,9 +148,87 @@ def test_unresolved_failed_stage_ignores_resolved(tmp_path: Path):
 
 
 def test_status_missing_dir_is_empty_not_crash(tmp_path: Path):
+    # collect_status is a library fn — stays total (empty), never raises. The
+    # CLI layer is where a missing dir becomes a hard error (see exit-3 test).
     out = po.collect_status(tmp_path / "nonexistent")
     assert out["workspaces"] == []
     assert out["summary"]["total"] == 0
+
+
+# ─── v3: transparency (error/timestamp/last_activity) + actionability ─────────
+
+def test_status_nonexistent_dir_exits_3(tmp_path: Path):
+    """P0 dogfood bug: a non-existent workspaces-dir silently exited 0 ('0 total'),
+    masking a wrong path in cron. The CLI must hard-fail rc=3, not fake health."""
+    rc = po.main(["status", "--workspaces-dir", str(tmp_path / "nope"), "--json"])
+    assert rc == 3
+
+
+def test_status_failed_carries_error_and_timestamp(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    f = by["failed_ws"]
+    assert f["failed_stage"] == "synthesize"
+    assert "upload rc=1" in f.get("error", "")   # the WHY (error-event msg)
+    assert f.get("failed_at") == "2026-06-01T12:00:00"  # WHEN
+
+
+def test_status_failed_next_step_is_resume_command(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    ns = by["failed_ws"].get("next_step", "")
+    assert "--skip-to synthesize" in ns and "failed_ws" in ns
+
+
+def test_status_awaiting_gate_reason_and_next_step(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    a = by["awaiting_ws"]  # plan complete, no scripts, unapproved → plan gate
+    assert a["awaiting_gate"] == "plan"
+    assert a.get("reason")
+    assert ".plan_approved" in a.get("next_step", "")
+
+
+def test_status_row_has_last_activity(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    assert by["failed_ws"].get("last_activity") == "2026-06-01T12:00:00"
+    assert "last_activity" in by["fresh_ws"]  # key present (None) even with no log
+
+
+def test_status_idle_next_step_resume(tmp_path: Path):
+    root = tmp_path / "workspaces"; root.mkdir()
+    ws = _mk_ws(root, "idle_ws")
+    _overview(ws); _ep_plan(ws, 1); _ep_script(ws, 1); _ep_audio(ws, 1)
+    for st in ("prep", "analyst", "architect", "plan-review", "enricher-gap",
+               "enricher", "scriptwrite", "series-polish", "script-review",
+               "tts-prep", "synthesize"):
+        _done_marker(ws, st)  # contiguous markers, not yet published → idle
+    by = {w["name"]: w for w in po.collect_status(root)["workspaces"]}
+    idle = by["idle_ws"]
+    assert idle["status"] == "idle"
+    # resume_stage exposes the marker truth (audio-qa = first incomplete)…
+    assert idle["resume_stage"] == "audio-qa"
+    # …but the advertised command is the BARE auto-resume (drift-proof), with no
+    # potentially-misleading --skip-to baked in.
+    assert "pipeline.py workspaces/idle_ws" in idle.get("next_step", "")
+    assert "--skip-to" not in idle.get("next_step", "")
+
+
+# ─── v3: logs subcommand (read pipeline_log events headlessly) ────────────────
+
+def test_logs_lists_events(tree: Path):
+    out = po.collect_logs(tree / "failed_ws", last=10)
+    assert out["workspace"] == "failed_ws"
+    assert {e["event"] for e in out["events"]} & {"error", "stage_end"}
+
+
+def test_logs_errors_only(tree: Path):
+    out = po.collect_logs(tree / "failed_ws", last=10, errors_only=True)
+    assert out["events"] and all(e["event"] == "error" for e in out["events"])
+    assert any("upload" in e.get("msg", "") for e in out["events"])
+
+
+def test_logs_missing_log_is_empty(tmp_path: Path):
+    root = tmp_path / "workspaces"; root.mkdir()
+    out = po.collect_logs(_mk_ws(root, "nolog"))
+    assert out["events"] == []
 
 
 def test_status_dedupes_audio_variants(tmp_path: Path):

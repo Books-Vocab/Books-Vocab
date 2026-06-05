@@ -53,57 +53,114 @@ def _stages_done(ws: Path) -> set[str]:
     }
 
 
-def unresolved_failed_stage(plog: Path, stages_done: set[str]) -> str | None:
-    """The stage whose *latest* stage_end was success=false AND which lacks a
-    done marker (failure never resolved by a rerun), or None if there is none.
-
-    When several stages are unresolved-failed, the MOST RECENT one in the log
-    wins — that is the failure an operator should look at first. A stage that
-    failed once then succeeded on rerun gets its done marker written, so
-    `stages_done` membership absolves it. Reading the tail (last 64KB) is
-    sufficient: a stage_end is one line, even a verbose run rarely produces
-    >64KB after the latest failure.
-    """
+def _read_tail(plog: Path, nbytes: int = 65536) -> str | None:
+    """Last *nbytes* of the log decoded as utf-8, or None if absent/unreadable.
+    A stage_end/error is one line; even a verbose run rarely emits >64KB after
+    the latest failure, so the tail is sufficient for failure/last-activity reads."""
     if not plog.exists():
         return None
     try:
         size = plog.stat().st_size
         with plog.open("rb") as f:
-            f.seek(max(0, size - 65536))
-            tail = f.read().decode("utf-8", errors="replace")
+            f.seek(max(0, size - nbytes))
+            return f.read().decode("utf-8", errors="replace")
     except OSError:
         return None
 
-    # Track latest stage_end success-flag + last line index per stage.
-    latest: dict[str, bool] = {}
-    order: dict[str, int] = {}
+
+def _iter_log(tail: str):
+    """Yield (line_index, parsed_obj) for each well-formed JSON line in *tail*."""
     for i, line in enumerate(tail.splitlines()):
         line = line.strip()
         if not line:
             continue
         try:
-            obj = json.loads(line)
+            yield i, json.loads(line)
         except json.JSONDecodeError:
             continue
-        if obj.get("event") == "stage_end":
+
+
+def failure_detail(plog: Path, stages_done: set[str]) -> dict | None:
+    """Rich detail for the most-recent UNRESOLVED stage failure, or None.
+
+    Returns ``{"stage", "at", "error"}`` where *stage* is the failing stage,
+    *at* is that failing stage_end's ``ts`` (or None), and *error* is the nearest
+    preceding ``error`` event's msg (the WHY — pipeline logs the error then
+    returns False then the loop writes stage_end(success=False), so the error
+    line sits just before the failing stage_end). One tail scan feeds both the
+    status cascade and the human-facing reason, so there is no second scan.
+
+    "Unresolved" = the stage's latest stage_end was success=false AND it has no
+    done-marker (a rerun that succeeded would have written one). When several
+    stages are unresolved, the MOST RECENT in the log wins — the one an operator
+    should look at first.
+    """
+    tail = _read_tail(plog)
+    if tail is None:
+        return None
+
+    latest: dict[str, bool] = {}      # stage -> latest stage_end success flag
+    order: dict[str, int] = {}        # stage -> latest stage_end line index
+    at: dict[str, str | None] = {}    # stage -> latest stage_end ts
+    errors: list[tuple[int, str]] = []  # (line index, msg) for every error event
+    for i, obj in _iter_log(tail):
+        ev = obj.get("event")
+        if ev == "stage_end":
             stage = obj.get("stage")
             if stage:
                 latest[stage] = bool(obj.get("success", True))
                 order[stage] = i
+                at[stage] = obj.get("ts")
+        elif ev == "error":
+            errors.append((i, str(obj.get("msg", ""))))
 
     unresolved = [
         (order[stage], stage)
         for stage, success in latest.items()
         if success is False and stage not in stages_done
     ]
-    return max(unresolved)[1] if unresolved else None
+    if not unresolved:
+        return None
+    idx, stage = max(unresolved)
+    # Nearest error event AT or BEFORE the failing stage_end (greatest index ≤ idx).
+    prior = [(i, msg) for i, msg in errors if i <= idx]
+    error = max(prior)[1] if prior else None
+    return {"stage": stage, "at": at.get(stage), "error": error}
+
+
+def unresolved_failed_stage(plog: Path, stages_done: set[str]) -> str | None:
+    """The stage of the most-recent unresolved failure, or None. Thin accessor
+    over failure_detail so the cascade, the reason and the detail share one scan."""
+    d = failure_detail(plog, stages_done)
+    return d["stage"] if d else None
 
 
 def _scan_pipeline_log_status(plog: Path, stages_done: set[str]) -> bool:
-    """True iff an unresolved stage failure exists. Thin bool wrapper over
-    unresolved_failed_stage so the status cascade and the reason share one scan
-    implementation (single source of truth)."""
-    return unresolved_failed_stage(plog, stages_done) is not None
+    """True iff an unresolved stage failure exists (single source of truth)."""
+    return failure_detail(plog, stages_done) is not None
+
+
+def next_incomplete_stage(stages_done: set[str]) -> str | None:
+    """First pipeline stage (in order) without a done-marker — the resume point,
+    mirroring pipeline.py detect_resume_point but keyed by name. None if every
+    stage is marked done."""
+    for stage in _STAGES_ORDERED:
+        if stage not in stages_done:
+            return stage
+    return None
+
+
+def last_activity(ws: Path) -> str | None:
+    """ts of the most recent pipeline_log line (any event), or None if no log.
+    The disk-derived 'how long since anything happened here' signal."""
+    tail = _read_tail(ws / "pipeline_log.jsonl")
+    if tail is None:
+        return None
+    ts = None
+    for _i, obj in _iter_log(tail):
+        if obj.get("ts"):
+            ts = obj["ts"]
+    return ts
 
 
 def _milestones(ws: Path) -> tuple[list[dict], float]:
@@ -410,10 +467,22 @@ def headless_summary(ws: Path, active_job: dict | None = None) -> dict:
         "progress": round(progress, 4),
         "milestones": milestones,
         "gates": gates,
+        # Disk-derived recency so callers can age a stuck workspace (None = the
+        # pipeline never logged anything here).
+        "last_activity": last_activity(ws),
+        # The resume point — first stage without a done-marker. Lets idle/failed
+        # rows render a copy-pasteable `pipeline.py --skip-to <stage>` next step.
+        "resume_stage": next_incomplete_stage(stages_done),
     }
-    # Surface WHICH stage failed so callers don't have to re-scan the log — the
+    # Surface WHY/WHEN a failure happened so callers don't re-scan the log — the
     # scan already happened inside disk_status; reuse stages_done here.
     if status == "failed":
-        out["failed_stage"] = unresolved_failed_stage(
-            ws / "pipeline_log.jsonl", stages_done)
+        d = failure_detail(ws / "pipeline_log.jsonl", stages_done) or {}
+        out["failed_stage"] = d.get("stage")
+        out["failed_at"] = d.get("at")
+        out["error"] = d.get("error")
+    # Name the gate the producer must approve (which of plan/script is awaiting).
+    if status == "awaiting":
+        out["awaiting_gate"] = (
+            "plan" if gate_state.get("plan") == "awaiting" else "script")
     return out
