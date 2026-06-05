@@ -43,6 +43,10 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
 
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
+        if args.json:
+            emit_json({"user_id": uid, "used_usd": 0.0, "pro_limit_usd": pro_limit,
+                       "free_limit_usd": free_limit, "hourly": []})
+            return
         print(f"token_usage.db not found at {db_path}")
         print(f"User: {uid}  |  Used: $0.000000  |  Pro limit: ${pro_limit:.2f}  |  Free limit: ${free_limit:.2f}")
         return
@@ -58,6 +62,22 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
 
     total = sum(token_cost_usd(r[0], r[1], r[2], provider=r[4]) for r in rows)
 
+    # 逐時彙整
+    hourly: dict[str, float] = {}
+    for call_type, inp, out, ts, provider in rows:
+        hour = ts[:13]  # YYYY-MM-DDTHH
+        hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
+
+    if args.json:
+        emit_json({
+            "user_id": uid,
+            "used_usd": round(total, 6),
+            "pro_limit_usd": pro_limit,
+            "free_limit_usd": free_limit,
+            "hourly": [{"hour": h, "cost_usd": round(v, 6)} for h, v in sorted(hourly.items())],
+        })
+        return
+
     print(f"User: {uid}")
     print(f"24h used: ${total:.6f}  |  Pro limit: ${pro_limit:.2f}  |  Free limit: ${free_limit:.2f}")
     print()
@@ -65,12 +85,6 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
     if not rows:
         print("(no usage in last 24h)")
         return
-
-    # 逐時彙整
-    hourly: dict[str, float] = {}
-    for call_type, inp, out, ts, provider in rows:
-        hour = ts[:13]  # YYYY-MM-DDTHH
-        hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
 
     print_table(
         ["Hour", "Cost (USD)"],
@@ -95,6 +109,16 @@ def cmd_user_stats(args: argparse.Namespace) -> None:
     ).fetchall()
     conn.close()
 
+    if args.json:
+        emit_json({
+            "user_id": uid,
+            "total": total,
+            "active": active,
+            "deleted": deleted,
+            "recent": [{"id": r[0], "content": r[1], "updated_at": r[2]} for r in recent],
+        })
+        return
+
     print(f"User: {uid}")
     print_table(
         ["Metric", "Value"],
@@ -115,6 +139,9 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
     cutoff = _cutoff_iso(24)
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
+        if args.json:
+            emit_json({"users": []})
+            return
         print("(no token_usage.db found)")
         return
 
@@ -133,16 +160,25 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
         user_costs[uid] = user_costs.get(uid, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
         user_calls[uid] = user_calls.get(uid, 0) + 1
 
+    ranked = sorted(
+        ({"user_id": uid, "cost_usd": round(cost, 6), "calls": user_calls[uid]}
+         for uid, cost in user_costs.items()),
+        key=lambda u: u["cost_usd"],
+        reverse=True,
+    )
+
+    if args.json:
+        emit_json({"users": ranked})
+        return
+
     if not user_costs:
         print("(no usage in last 24h)")
         return
 
-    table_rows = sorted(
-        [[uid, f"${cost:.6f}", str(user_calls[uid])] for uid, cost in user_costs.items()],
-        key=lambda r: float(r[1].replace("$", "")),
-        reverse=True,
+    print_table(
+        ["User", "Cost (USD)", "Calls"],
+        [[u["user_id"], f"${u['cost_usd']:.6f}", str(u["calls"])] for u in ranked],
     )
-    print_table(["User", "Cost (USD)", "Calls"], table_rows)
 
 
 def cmd_active_users(args: argparse.Namespace) -> None:
@@ -151,6 +187,9 @@ def cmd_active_users(args: argparse.Namespace) -> None:
     cutoff = _cutoff_iso(hours)
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
+        if args.json:
+            emit_json({"hours": hours, "users": []})
+            return
         print("(no token_usage.db found)")
         return
 
@@ -161,6 +200,13 @@ def cmd_active_users(args: argparse.Namespace) -> None:
         (cutoff,),
     ).fetchall()
     conn.close()
+
+    if args.json:
+        emit_json({
+            "hours": hours,
+            "users": [{"user_id": r[0], "calls": r[1], "last_active": r[2]} for r in rows],
+        })
+        return
 
     if not rows:
         print(f"(no active users in last {hours}h)")
@@ -198,6 +244,14 @@ def cmd_card_find(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
+    if args.json:
+        emit_json({
+            "user_id": uid,
+            "substring": args.substring,
+            "matches": [{"id": r[0], "content": r[1], "is_deleted": r[2]} for r in rows],
+        })
+        return
+
     print_table(
         ["id", "content (repr)", "is_deleted"],
         [[r[0], repr(r[1]), r[2]] for r in rows],
@@ -227,6 +281,14 @@ def cmd_card_get(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
+    if args.json:
+        emit_json({
+            "user_id": uid,
+            "key": args.key,
+            "cards": [dict(zip(cols, row, strict=True)) for row in rows],
+        })
+        return
+
     if not rows:
         print(f"(no card matching {args.key!r})")
         return
@@ -235,14 +297,18 @@ def cmd_card_get(args: argparse.Namespace) -> None:
     for i, row in enumerate(rows):
         if i:
             print("\n" + "─" * 40)
-        for col, val in zip(cols, row):
+        for col, val in zip(cols, row, strict=True):
             print(f"{col:<{width}}  {val!r}")
 
 
 def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
     uid = resolve_uid(args.uid, data_dir())
-    sql = " ".join(args.sql)  # REMAINDER captures split words; rejoin
+    # REMAINDER 會把 --json 連同 SQL 一起吃進來；剝離後既支援末尾 --json 也支援
+    # 置於 uid 前（parents 解析）的 --json。
+    tokens = [t for t in args.sql if t != "--json"]
+    json_mode = args.json or len(tokens) != len(args.sql)
+    sql = " ".join(tokens)  # REMAINDER captures split words; rejoin
     try:
         assert_readonly_sql(sql)
     except ValueError as e:
@@ -256,13 +322,18 @@ def cmd_db_query(args: argparse.Namespace) -> None:
     conn = connect_ro(db_path)
     try:
         cursor = conn.execute(sql)
-        if cursor.description:
-            headers = [d[0] for d in cursor.description]
-            rows = cursor.fetchall()
+        headers = [d[0] for d in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+        if json_mode:
+            emit_json({"sql": sql, "columns": headers, "rows": [list(r) for r in rows]})
+        elif cursor.description:
             print_table(headers, [list(r) for r in rows])
         else:
             print(f"OK (rows affected: {cursor.rowcount})")
     except Exception as e:
+        if json_mode:
+            emit_json({"sql": sql, "error": str(e)})
+            sys.exit(1)
         print(f"SQL error: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
@@ -565,69 +636,70 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # 統一輸出契約：所有 data-query 命令共用 --json 旗標（agent-first 機讀）。
+    jp = argparse.ArgumentParser(add_help=False)
+    jp.add_argument("--json", action="store_true", help="以 JSON 輸出")
+
     # user-quota
-    p = sub.add_parser("user-quota", help="24h 額度 + 逐時明細")
+    p = sub.add_parser("user-quota", parents=[jp], help="24h 額度 + 逐時明細")
     p.add_argument("uid", help="User ID")
     p.set_defaults(func=cmd_user_quota)
 
     # user-stats
-    p = sub.add_parser("user-stats", help="單字庫統計")
+    p = sub.add_parser("user-stats", parents=[jp], help="單字庫統計")
     p.add_argument("uid", help="User ID")
     p.set_defaults(func=cmd_user_stats)
 
     # quota-overview
-    p = sub.add_parser("quota-overview", help="全用戶 24h 額度總覽")
+    p = sub.add_parser("quota-overview", parents=[jp], help="全用戶 24h 額度總覽")
     p.set_defaults(func=cmd_quota_overview)
 
     # active-users
-    p = sub.add_parser("active-users", help="近 N 小時活躍用戶")
+    p = sub.add_parser("active-users", parents=[jp], help="近 N 小時活躍用戶")
     p.add_argument("hours", nargs="?", type=int, default=24, help="小時數（預設 24）")
     p.set_defaults(func=cmd_active_users)
 
     # card-find
-    p = sub.add_parser("card-find", help="byte-exact 子字串搜尋 card.content（免寫 SQL）")
+    p = sub.add_parser("card-find", parents=[jp], help="byte-exact 子字串搜尋 card.content（免寫 SQL）")
     p.add_argument("uid", help="User ID")
     p.add_argument("substring", help="搜尋子字串（ASCII case-insensitive，%% _ 當字面字元）")
     p.set_defaults(func=cmd_card_find)
 
     # card-get
-    p = sub.add_parser("card-get", help="單卡 byte-exact 垂直 dump（key=id 或精確 content）")
+    p = sub.add_parser("card-get", parents=[jp], help="單卡 byte-exact 垂直 dump（key=id 或精確 content）")
     p.add_argument("uid", help="User ID")
     p.add_argument("key", help="card id 或精確 content（ASCII case-insensitive）")
     p.set_defaults(func=cmd_card_get)
 
-    # db-query
-    p = sub.add_parser("db-query", help="對用戶 cards.db 跑任意 SQL")
+    # db-query（sql 為 REMAINDER，故 --json 也可能被吃進 sql；cmd 內會再剝離）
+    p = sub.add_parser("db-query", parents=[jp], help="對用戶 cards.db 跑任意 SQL")
     p.add_argument("uid", help="User ID")
     p.add_argument("sql", nargs=argparse.REMAINDER, help="SQL 查詢語句（不需要引號包覆）")
     p.set_defaults(func=cmd_db_query)
 
-    # analyze
+    # analyze（深度報告，非結構化查詢，不納入 --json 契約）
     p = sub.add_parser("analyze", help="深度分析（圖譜拓撲/連結品質/嵌入/異常）")
     p.add_argument("uid", help="User ID")
     p.add_argument("level", nargs="?", default="all", help="1-6 或 all（預設 all）")
     p.set_defaults(func=cmd_analyze)
 
     # cost
-    p = sub.add_parser("cost", help="單用戶 cost-by-call_type 拆解")
+    p = sub.add_parser("cost", parents=[jp], help="單用戶 cost-by-call_type 拆解")
     p.add_argument("uid", help="User ID")
     p.add_argument("--range", choices=list(VALID_RANGES), default="month",
                    help="時間範圍（預設 month）")
-    p.add_argument("--json", action="store_true", help="以 JSON 輸出")
     p.set_defaults(func=cmd_cost)
 
     # cost-overview
-    p = sub.add_parser("cost-overview", help="全用戶 cost 排名")
+    p = sub.add_parser("cost-overview", parents=[jp], help="全用戶 cost 排名")
     p.add_argument("--range", choices=list(VALID_RANGES), default="month",
                    help="時間範圍（預設 month）")
-    p.add_argument("--json", action="store_true", help="以 JSON 輸出")
     p.set_defaults(func=cmd_cost_overview)
 
     # sync-trace
-    p = sub.add_parser("sync-trace", help="用戶 sync 完整時間線（cards + API + judge + translate）")
+    p = sub.add_parser("sync-trace", parents=[jp], help="用戶 sync 完整時間線（cards + API + judge + translate）")
     p.add_argument("uid", help="User ID")
     p.add_argument("--date", help="日期 (YYYY-MM-DD, 預設今天)")
-    p.add_argument("--json", action="store_true", help="以 JSON 輸出")
     p.set_defaults(func=cmd_sync_trace)
 
     args = parser.parse_args()

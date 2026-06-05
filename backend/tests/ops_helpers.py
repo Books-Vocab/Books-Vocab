@@ -1,8 +1,28 @@
-"""ops 測試共用 helper — 時間字串 + token_usage.db seeder。"""
+"""ops 測試共用 helper — 時間字串 + DB seeder + ops_cli 子程序執行器。"""
 
+import os
 import sqlite3
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
+
+
+def run_ops_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
+    """執行 ops_cli.py，設定 KG_DATA_DIR + PYTHONPATH。
+
+    PYTHONPATH 指向 backend/src：子程序可能跑在裸 python（非專案 venv），
+    缺它則 `import kg.*` 失敗。單一執行器集中於此，杜絕各測試檔 env 設定漂移。
+    """
+    env = {**os.environ, "KG_DATA_DIR": data_dir, "PYTHONPATH": str(CLI_PATH.parent / "src")}
+    return subprocess.run(
+        [sys.executable, str(CLI_PATH), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
 
 
 def _now_iso() -> str:
