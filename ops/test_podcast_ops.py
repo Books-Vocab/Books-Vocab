@@ -56,12 +56,16 @@ def _done_marker(ws: Path, stage: str) -> None:
     (ws / f".stage_{stage}_done").write_text("")
 
 
-def _failed_log(ws: Path, stage: str) -> None:
+def _failed_log(ws: Path, stage: str, *, error: str = "upload rc=1 after 3 retries",
+                at: str = "2026-06-01T12:00:00") -> None:
     """A pipeline_log.jsonl whose latest stage_end for `stage` is success=false
-    and no done-marker exists → status should resolve to 'failed'."""
+    and no done-marker exists → status should resolve to 'failed'. Mirrors the
+    real shape: an `error` event (the WHY) precedes the failing stage_end, and
+    every line carries a `ts` (PipelineLog._write stamps isoformat seconds)."""
     (ws / "pipeline_log.jsonl").write_text(
-        json.dumps({"event": "stage_start", "stage": stage}) + "\n"
-        + json.dumps({"event": "stage_end", "stage": stage, "success": False}) + "\n"
+        json.dumps({"event": "stage_start", "stage": stage, "ts": at}) + "\n"
+        + json.dumps({"event": "error", "msg": error, "ts": at}) + "\n"
+        + json.dumps({"event": "stage_end", "stage": stage, "success": False, "ts": at}) + "\n"
     )
 
 
@@ -118,10 +122,128 @@ def test_status_summary_counts(tree: Path):
     assert out["summary"]["by_status"]["awaiting"] == 1
 
 
+def test_status_failed_surfaces_reason(tree: Path):
+    """v2: a failed workspace must say WHICH stage failed — the dogfood top
+    complaint was 'failed but episodes all green, no clue why'."""
+    by_name = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    failed = by_name["failed_ws"]
+    assert failed.get("failed_stage") == "synthesize"
+    assert "synthesize" in failed.get("reason", "")
+    # Non-failed rows carry no spurious reason.
+    assert "reason" not in by_name["done_ws"]
+
+
+def test_unresolved_failed_stage_ignores_resolved(tmp_path: Path):
+    """A stage that failed then got its done-marker (rerun) is NOT the reason;
+    the later unresolved failure is."""
+    root = tmp_path / "workspaces"; root.mkdir()
+    ws = _mk_ws(root, "mixed")
+    (ws / "pipeline_log.jsonl").write_text(
+        json.dumps({"event": "stage_end", "stage": "series-polish", "success": False}) + "\n"
+        + json.dumps({"event": "stage_end", "stage": "publish", "success": False}) + "\n"
+    )
+    (ws / ".stage_series-polish_done").write_text("")  # resolved
+    by_name = {w["name"]: w for w in po.collect_status(root)["workspaces"]}
+    assert by_name["mixed"]["failed_stage"] == "publish"
+
+
 def test_status_missing_dir_is_empty_not_crash(tmp_path: Path):
+    # collect_status is a library fn — stays total (empty), never raises. The
+    # CLI layer is where a missing dir becomes a hard error (see exit-3 test).
     out = po.collect_status(tmp_path / "nonexistent")
     assert out["workspaces"] == []
     assert out["summary"]["total"] == 0
+
+
+# ─── v3: transparency (error/timestamp/last_activity) + actionability ─────────
+
+def test_status_nonexistent_dir_exits_3(tmp_path: Path):
+    """P0 dogfood bug: a non-existent workspaces-dir silently exited 0 ('0 total'),
+    masking a wrong path in cron. The CLI must hard-fail rc=3, not fake health."""
+    rc = po.main(["status", "--workspaces-dir", str(tmp_path / "nope"), "--json"])
+    assert rc == 3
+
+
+def test_status_failed_carries_error_and_timestamp(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    f = by["failed_ws"]
+    assert f["failed_stage"] == "synthesize"
+    assert "upload rc=1" in f.get("error", "")   # the WHY (error-event msg)
+    assert f.get("failed_at") == "2026-06-01T12:00:00"  # WHEN
+
+
+def test_status_failed_next_step_is_resume_command(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    ns = by["failed_ws"].get("next_step", "")
+    assert "--skip-to synthesize" in ns and "failed_ws" in ns
+
+
+def test_status_awaiting_gate_reason_and_next_step(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    a = by["awaiting_ws"]  # plan complete, no scripts, unapproved → plan gate
+    assert a["awaiting_gate"] == "plan"
+    assert a.get("reason")
+    assert ".plan_approved" in a.get("next_step", "")
+
+
+def test_status_row_has_last_activity(tree: Path):
+    by = {w["name"]: w for w in po.collect_status(tree)["workspaces"]}
+    assert by["failed_ws"].get("last_activity") == "2026-06-01T12:00:00"
+    assert "last_activity" in by["fresh_ws"]  # key present (None) even with no log
+
+
+def test_status_idle_next_step_resume(tmp_path: Path):
+    root = tmp_path / "workspaces"; root.mkdir()
+    ws = _mk_ws(root, "idle_ws")
+    _overview(ws); _ep_plan(ws, 1); _ep_script(ws, 1); _ep_audio(ws, 1)
+    for st in ("prep", "analyst", "architect", "plan-review", "enricher-gap",
+               "enricher", "scriptwrite", "series-polish", "script-review",
+               "tts-prep", "synthesize"):
+        _done_marker(ws, st)  # contiguous markers, not yet published → idle
+    by = {w["name"]: w for w in po.collect_status(root)["workspaces"]}
+    idle = by["idle_ws"]
+    assert idle["status"] == "idle"
+    # resume_stage exposes the marker truth (audio-qa = first incomplete)…
+    assert idle["resume_stage"] == "audio-qa"
+    # …but the advertised command is the BARE auto-resume (drift-proof), with no
+    # potentially-misleading --skip-to baked in.
+    assert "pipeline.py workspaces/idle_ws" in idle.get("next_step", "")
+    assert "--skip-to" not in idle.get("next_step", "")
+
+
+def test_resume_stage_includes_cover(tmp_path: Path):
+    """_STAGES_ORDERED must mirror pipeline STAGES including 'cover' (between
+    subtitle and publish) — else resume_stage misreports 'publish' for a ws
+    whose true next stage is cover. Review finding (Medium-low)."""
+    root = tmp_path / "workspaces"; root.mkdir()
+    ws = _mk_ws(root, "pre_cover")
+    _overview(ws); _ep_plan(ws, 1); _ep_script(ws, 1); _ep_audio(ws, 1); _ep_srt(ws, 1)
+    for st in ("prep", "analyst", "architect", "plan-review", "enricher-gap",
+               "enricher", "scriptwrite", "series-polish", "script-review",
+               "tts-prep", "synthesize", "audio-qa", "subtitle"):
+        _done_marker(ws, st)  # everything through subtitle; cover + publish pending
+    by = {w["name"]: w for w in po.collect_status(root)["workspaces"]}
+    assert by["pre_cover"]["resume_stage"] == "cover"
+
+
+# ─── v3: logs subcommand (read pipeline_log events headlessly) ────────────────
+
+def test_logs_lists_events(tree: Path):
+    out = po.collect_logs(tree / "failed_ws", last=10)
+    assert out["workspace"] == "failed_ws"
+    assert {e["event"] for e in out["events"]} & {"error", "stage_end"}
+
+
+def test_logs_errors_only(tree: Path):
+    out = po.collect_logs(tree / "failed_ws", last=10, errors_only=True)
+    assert out["events"] and all(e["event"] == "error" for e in out["events"])
+    assert any("upload" in e.get("msg", "") for e in out["events"])
+
+
+def test_logs_missing_log_is_empty(tmp_path: Path):
+    root = tmp_path / "workspaces"; root.mkdir()
+    out = po.collect_logs(_mk_ws(root, "nolog"))
+    assert out["events"] == []
 
 
 def test_status_dedupes_audio_variants(tmp_path: Path):
@@ -198,6 +320,47 @@ def test_cost_zero_without_events(tree: Path):
 def test_cost_single_workspace(tree: Path):
     out = po.collect_cost(tree, workspace="done_ws")
     assert out["scope"] == "done_ws"
+
+
+# ─── covers (v2: present is a list, symmetric with missing) ──────────────────
+
+def _cover(ws: Path) -> None:
+    (ws / "plan").mkdir(parents=True, exist_ok=True)
+    (ws / "plan" / "cover.png").write_bytes(b"\x89PNG")
+
+
+def test_covers_present_and_missing_are_lists(tmp_path: Path):
+    root = tmp_path / "workspaces"; root.mkdir()
+    has = _mk_ws(root, "has_cover"); _ep_audio(has, 1); _cover(has)
+    no = _mk_ws(root, "no_cover"); _ep_audio(no, 1)  # audio, no cover.png
+    _mk_ws(root, "no_audio")  # skipped — not publishable
+    out = po.collect_covers(root)
+    assert out["present"] == ["has_cover"]      # list, not int
+    assert out["missing"] == [{"workspace": "no_cover", "reason": "no_cover_png"}]
+
+
+# ─── --json error contract (v2: failures emit JSON to stdout, not bare stderr)
+
+def test_json_error_is_structured_on_stdout(tree: Path, monkeypatch):
+    monkeypatch.delenv("PODCAST_BUCKET", raising=False)
+    buf_out, buf_err = io.StringIO(), io.StringIO()
+    with redirect_stdout(buf_out), redirect_stderr(buf_err):
+        rc = po.main(["reconcile", "--workspaces-dir", str(tree), "--json"])
+    assert rc == 3
+    payload = json.loads(buf_out.getvalue())  # stdout must be parseable JSON
+    assert payload["ok"] is False
+    assert payload["error"]
+
+
+def test_text_error_still_goes_to_stderr(tree: Path, monkeypatch):
+    """Non-JSON mode keeps the human error on stderr (unchanged)."""
+    monkeypatch.delenv("PODCAST_BUCKET", raising=False)
+    buf_out, buf_err = io.StringIO(), io.StringIO()
+    with redirect_stdout(buf_out), redirect_stderr(buf_err):
+        rc = po.main(["reconcile", "--workspaces-dir", str(tree)])
+    assert rc == 3
+    assert buf_out.getvalue() == ""
+    assert "reconcile" in buf_err.getvalue()
 
 
 # ─── S3 subcommands: graceful degradation when PODCAST_BUCKET unset ──────────
