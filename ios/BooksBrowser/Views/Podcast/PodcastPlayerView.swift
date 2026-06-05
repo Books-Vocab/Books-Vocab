@@ -366,7 +366,9 @@ struct PodcastPlayerView: View {
                         onRetryExplanation: (translationHandler.explanationErrorMessage != nil
                             && translationHandler.lastLookup != nil)
                             ? { translationHandler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                            : nil
+                            : nil,
+                        isPanelLarge: translationHandler.isPanelLarge,
+                        onToggleHeight: { translationHandler.togglePanelHeight() }
                     )
                     .frame(maxWidth: placement.maxWidth)
                     .frame(maxWidth: .infinity, alignment: placement.alignment)

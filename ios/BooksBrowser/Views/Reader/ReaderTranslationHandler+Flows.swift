@@ -8,6 +8,7 @@ extension ReaderTranslationHandler {
         translationResult = nil
         isSaved = false
         isExpanded = false
+        isPanelLarge = false
         explanationText = nil
         explanationStatus = nil
         translationErrorMessage = nil
@@ -46,6 +47,7 @@ extension ReaderTranslationHandler {
                 isSaved = true
                 isTranslating = false
                 isExpanded = false
+                isPanelLarge = false
                 explanationText = nil
                 explanationStatus = nil
                 translationErrorMessage = nil
@@ -167,6 +169,7 @@ extension ReaderTranslationHandler {
             translationResult = nil
             isSaved = false
             isExpanded = true
+            isPanelLarge = true
             isLoadingExplanation = true
             explanationText = nil
             translationStatus = nil
@@ -216,9 +219,12 @@ extension ReaderTranslationHandler {
         }
     }
 
+    /// 單字模式：展開／收合語境解釋。展開＝放大成大卡並抓取語境解釋，收合＝縮回小卡。
+    /// panel 高度與 `isExpanded` 連動（語意統一為「看更多＝變大」）。
     func handleExpand() {
         withAnimation(AppMotion.panelState) {
             isExpanded.toggle()
+            isPanelLarge = isExpanded
         }
 
         guard authManager.isLoggedIn, isExpanded, !isLoadingExplanation,
@@ -259,6 +265,14 @@ extension ReaderTranslationHandler {
                 explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
         )
+    }
+
+    /// 句子（explanationOnly）模式：純粹切換面板高度（大卡 ⇄ 小卡），
+    /// 不觸碰 `isExpanded`，以免 `isExplanationOnly` 判定塌陷成空狀態。
+    func togglePanelHeight() {
+        withAnimation(AppMotion.panelState) {
+            isPanelLarge.toggle()
+        }
     }
 }
 #endif
