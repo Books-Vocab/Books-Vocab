@@ -8,8 +8,8 @@ import UIKit
 ///
 /// ## Why one engine
 ///
-/// The bubble used to render two layout engines: SwiftUI per-word `Text` +
-/// `CachedFlowLayout` (display) and TextKit `UITextView` (selecting). Their kerning
+/// The bubble used to render two layout engines: a SwiftUI per-word `Text` flow
+/// layout (display) and a TextKit `UITextView` (selecting). Their kerning
 /// and line-break points differ, so the long-press swap reflowed the text — the
 /// "選取時排版跳版" bug. Driving both states from ONE `UITextView` with a
 /// byte-identical `NSAttributedString` means the TextKit layout is identical before
@@ -121,7 +121,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         guard targetWidth > 0 else { return nil }
         let fit = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
         // Shrink-to-content width so the bubble background hugs the text (matches the
-        // old `CachedFlowLayout`, which returned the tight `maxX`). `min` keeps us
+        // old cached flow layout, which returned the tight `maxX`). `min` keeps us
         // within the proposed width while collapsing to intrinsic width for a short
         // sentence.
         return CGSize(width: min(fit.width, targetWidth), height: fit.height)

@@ -9,7 +9,7 @@ import CoreGraphics
 /// ## Why this exists
 ///
 /// The bubble previously rendered TWO layout engines: a SwiftUI per-word `Text` +
-/// `CachedFlowLayout` in the normal state and a TextKit `UITextView` in the
+/// a cached flow layout in the normal state and a TextKit `UITextView` in the
 /// selecting state. Their kerning + line-break points differ, so swapping engines
 /// on long-press reflowed the text (the "選取時排版跳版" bug). 3-A unifies on ONE
 /// `UITextView`; the underline then needs word rects from TextKit instead of from
