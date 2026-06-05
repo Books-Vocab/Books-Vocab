@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 068e6105
+verified_against: 4ea1e884
 -->
 # Technical Reference Index
 
@@ -106,6 +106,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `kg_backup.sh` | server 端 streaming tar → S3 backup;cron 觸發,日誌 `/var/log/kg_backup.log` |
 | `cron/kg-backup.cron` | `/etc/cron.d/kg-backup`(daily UTC 03:00) |
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
+| `chrome_verify.sh` | Chrome extension **啟動煙霧測試**(agent-facing,零安裝;改 chrome-extension 後跑此)。三層 fail-fast:(1) `tools/static.mjs` — manifest 引用完整性 / JS syntax(ESM 偵測) / HTML 資產引用 / i18n key 覆蓋;(2) `node --test shared/*.test.js`(純邏輯 + CSS 不變式 + inline-mirror drift 守門);(3) `tools/smoke.mjs` — 用系統既有 Chrome `--headless=new` 透過 CDP `--remote-debugging-pipe` + `Extensions.loadUnpacked` 載入 unpacked extension(Chrome≥126 headless 禁 `--load-extension`,該 CDP 命令只在 pipe 模式開放),開 sidepanel/options 斷言每個 `[hidden]` computed `display:none` + KG token 已套用(anti-false-green)+ 無未捕捉例外;獨立 user-data-dir 不碰使用者 profile。`--static-only` 跳 Layer 3(無瀏覽器 CI host);`CHROME_BIN` override 二進位 |
 | `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `podcast_preview_backfill.py` | free-tier **試聽片**回填,與 audio/cover 完全解耦:對 bucket 內既有 series,下載 `ep_01/audio.<fmt>` → `ffmpeg -t 180 -c copy` → PUT `ep_01/preview.<fmt>` → RMW `metadata.json` ep1 `previewAvailable`/`previewDurationSec`(不 bump updatedAt → 冪等;不重建 index,preview 欄在 episodes 內被 index strip)。`--all`/`--series`、dry-run 預設、`--execute` 才寫、`--check` drift(in_sync/missing/flag_without_preview/preview_without_flag);per-series 失敗記錄不中斷批次。新 series 由 `ops/podcast_upload.sh` 在 publish 時對 ep_01 自動生成 preview(同 stream-copy) |
