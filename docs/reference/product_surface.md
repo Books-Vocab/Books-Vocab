@@ -68,6 +68,7 @@ verified_against: f9e89316
 - **Log retention env vars**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS` + pruners + CLI + admin trigger endpoint + flat aliases
 - **Podcast API**: `/api/podcasts*` 認證端點（手刻 Range/206 音訊串流 + `ep_num` Path 驗證；S3 模式 audio 副檔名由 metadata `audioFormat` 決定，相容 legacy mp3）+ series 封面 proxy `GET /api/podcasts/{sid}/cover`（image/png，pipeline `cover` stage 產出 + metadata `coverImageURL`，缺則 404 → client 退程序化封面）+ per-user podcast progress LWW SQLite store（legacy 無認證 `/api/podcast-media/` StaticFiles 掛載已於 2026-05 移除，零生產流量後關閉公開讀取繞道）。生成 pipeline 工程文檔:`docs/sop/podcast_pipeline.md`
 - **Podcast 上傳閉環 + drift 安全網**: pipeline 終端 `publish` stage 合成完成即自動上傳 S3 + verify（無手動步驟）;`ops/podcast_backfill_disk.py` served-disk→S3 回填 + `--check` reconcile;monitor `GET /api/remote/reconcile` 報 workspace↔S3「合成了但沒上傳」drift
+- **Podcast headless 觀測 CLI**（`ops/podcast_ops.py`）: 把過去鎖在 FastAPI dashboard 後的 podcast 觀測能力搬上終端/SSH/cron。`status`（狀態瀑布 + 集數 + 進度 + 花費,exit code 給 cron 訊號:2=failed/1=awaiting/0=ok）、`episodes`（逐集四關卡矩陣）、`cost`（TTS+LLM 花費聚合 + by-model）、`covers`（缺封面）純磁碟免 boto3;`reconcile`/`series` 走 S3。`--json` 可直接 `| jq`。共用 dashboard 的 `monitor/workspace_status.py` 推導邏輯（單一實作,不漂移）
 - **EmbeddingStore env wiring**: `EMBEDDING_MODEL` / `EMBEDDING_DIM` 透過 factory 傳入 + dim mismatch guard + cache key 含 model+dim + `_load` shape verification 防 silent corruption
 - **`cards.batch_touch(notebook_id=...)`** scope filter
 - **`orphan_scan`** cross-DB consistency scanner + admin endpoint
