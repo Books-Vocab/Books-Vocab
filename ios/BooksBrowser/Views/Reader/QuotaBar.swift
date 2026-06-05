@@ -15,16 +15,16 @@ struct QuotaBar: View {
             if isLoggedIn {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(barColor.opacity(0.15))
+                        RoundedRectangle(cornerRadius: ReaderMetrics.quotaBarCornerRadius, style: .continuous)
+                            .fill(barColor.opacity(ReaderMetrics.quotaBarTrackOpacity))
 
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        RoundedRectangle(cornerRadius: ReaderMetrics.quotaBarCornerRadius, style: .continuous)
                             .fill(barColor.opacity(barOpacity))
                             .frame(width: geo.size.width * store.fraction)
                             .animateSpring(store.fraction)
                     }
                 }
-                .frame(height: 2)
+                .frame(height: ReaderMetrics.quotaBarHeight)
             }
         }
         .enableInjection()

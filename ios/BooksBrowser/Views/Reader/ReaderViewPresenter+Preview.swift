@@ -67,7 +67,7 @@ private struct ReaderChromePreviewScene: View {
                 ForEach(0..<8, id: \.self) { index in
                     RoundedRectangle(cornerRadius: ReaderPresentationMetrics.Preview.blockCornerRadius, style: .continuous)
                         .fill(Color.primary.opacity(index == 2 ? ReaderPresentationMetrics.Preview.textBlockEmphasisOpacity : ReaderPresentationMetrics.Preview.textBlockBaseOpacity))
-                        .frame(height: index.isMultiple(of: 3) ? 12 : 10)
+                        .frame(height: index.isMultiple(of: 3) ? ReaderPresentationMetrics.Preview.blockHeightTall : ReaderPresentationMetrics.Preview.blockHeightShort)
                         .padding(.trailing, CGFloat(index % 3) * ReaderPresentationMetrics.Preview.trailingStep)
                 }
                 Spacer()

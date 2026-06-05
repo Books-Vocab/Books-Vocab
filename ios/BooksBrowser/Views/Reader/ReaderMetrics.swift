@@ -50,4 +50,46 @@ enum ReaderMetrics {
 
     /// 設定面板分隔線透明度
     static let settingsDividerOpacity: Double = 0.6
+
+    // MARK: - Vocab settings
+
+    static let vocabValueReadoutWidth: CGFloat = 34
+    static let vocabModeToggleMaxWidth: CGFloat = 160
+    static let vocabOptionVerticalPadding: CGFloat = 10
+    static let vocabThemeSwatchHeight: CGFloat = 8
+
+    // MARK: - Quota bar
+
+    /// 額度進度條圓角(極小，無對應 AppRadius scale 值)
+    static let quotaBarCornerRadius: CGFloat = 1
+    /// 額度進度條高度
+    static let quotaBarHeight: CGFloat = 2
+    /// 額度進度條軌道(底層)透明度
+    static let quotaBarTrackOpacity: Double = 0.15
+
+    // MARK: - Timing
+
+    /// 套用閱讀偏好後等待 navigator 重排的緩衝
+    static let applyPreferencesSettleDelay: TimeInterval = 0.8
+    /// 生字標記去抖動視窗
+    static let markVocabDebounceDuration: TimeInterval = 0.8
+    /// 首次標記完成後底線消退前的停留
+    static let firstHighlightFadeOutDelay: TimeInterval = 0.4
+    /// 閱讀進度節流寫入延遲
+    static let progressFlushDelay: TimeInterval = 1.2
+    /// iCloud 檔案就緒等待逾時
+    static let iCloudWaitTimeout: TimeInterval = 120
+    static let iCloudCurrentPollInterval: TimeInterval = 0.2
+    static let iCloudWaitPollInterval: TimeInterval = 0.5
+
+    // MARK: - Translation explanation
+
+    /// 翻譯解釋文字行距
+    static let translationExplanationLineSpacing: CGFloat = 3
+
+    /// 翻譯面板背後 scrim 透明度
+    static let translationPanelScrimOpacity: Double = 0.12
+
+    /// 一次移除超過此字數則改走全量重標而非增量
+    static let bulkRemovalRemarkThreshold: Int = 10
 }

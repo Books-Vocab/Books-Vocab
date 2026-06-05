@@ -58,7 +58,7 @@ struct ReaderPublicationLoader {
             updatePhase(L10n.string("等待 iCloud 同步…"))
         }
 
-        let deadline = Date().addingTimeInterval(120)
+        let deadline = Date().addingTimeInterval(ReaderMetrics.iCloudWaitTimeout)
         var retried = false
         while Date() < deadline {
             if fm.isReadableFile(atPath: url.path) {
@@ -69,7 +69,7 @@ struct ReaderPublicationLoader {
             if let state = downloadManager.state(for: fileName) {
                 switch state {
                 case .current:
-                    try await Task.sleep(nanoseconds: 200_000_000)
+                    try await Task.sleep(for: .seconds(ReaderMetrics.iCloudCurrentPollInterval))
                     continue
                 case .downloading(let progress):
                     updatePhase(L10n.format("正在從 iCloud 下載… %@%%", String(Int(progress * 100))))
@@ -77,12 +77,9 @@ struct ReaderPublicationLoader {
                     break
                 case .failed:
                     AppLog.readium.error("iCloud download failed for: \(fileName)")
-                    throw NSError(
-                        domain: "Book",
+                    throw iCloudLoadError(
                         code: 4,
-                        userInfo: [NSLocalizedDescriptionKey: L10n.string(
-                            "iCloud 下載失敗。請確認網路連線後，在書架上點按書本重試下載。"
-                        )]
+                        message: L10n.string("iCloud 下載失敗。請確認網路連線後，在書架上點按書本重試下載。")
                     )
                 }
             }
@@ -91,24 +88,29 @@ struct ReaderPublicationLoader {
                 let placeholder = url.deletingLastPathComponent()
                     .appendingPathComponent(".\(fileName).icloud")
                 if fm.fileExists(atPath: placeholder.path) {
-                    try? fm.startDownloadingUbiquitousItem(at: url)
+                    do {
+                        try fm.startDownloadingUbiquitousItem(at: url)
+                    } catch {
+                        AppLog.readium.warning("startDownloadingUbiquitousItem failed for \(fileName): \(error.localizedDescription)")
+                    }
                     retried = true
                     updatePhase(L10n.string("正在從 iCloud 下載…"))
                     AppLog.readium.info("Placeholder appeared, download triggered: \(fileName)")
                 }
             }
 
-            try await Task.sleep(nanoseconds: 500_000_000)
+            try await Task.sleep(for: .seconds(ReaderMetrics.iCloudWaitPollInterval))
         }
 
         AppLog.readium.error("iCloud file wait timed out: \(fileName)")
-        throw NSError(
-            domain: "Book",
+        throw iCloudLoadError(
             code: 3,
-            userInfo: [NSLocalizedDescriptionKey: L10n.string(
-                "iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。"
-            )]
+            message: L10n.string("iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。")
         )
+    }
+
+    private func iCloudLoadError(code: Int, message: String) -> NSError {
+        NSError(domain: "Book", code: code, userInfo: [NSLocalizedDescriptionKey: message])
     }
 }
 #endif

@@ -71,7 +71,7 @@ extension ReadiumNavigatorView.Coordinator {
             isApplyingPreferences = true
             Task { @MainActor in
                 host.epubNavigator?.submitPreferences(preferences)
-                try? await Task.sleep(for: .milliseconds(800))
+                try? await Task.sleep(for: .seconds(ReaderMetrics.applyPreferencesSettleDelay))
                 self.isApplyingPreferences = false
             }
         }

@@ -30,7 +30,7 @@ struct ReaderDOMExecutor {
                 navigator: navigator
             )
         case .setContentStyle(let css):
-            let cssLiteral = encodedJavaScriptString(css)
+            let cssLiteral = ReaderJSEval.quotedLiteral(css)
             evaluateJavaScript(
                 "if(window.__applyReaderContentStyle) window.__applyReaderContentStyle(\(cssLiteral));",
                 "setContentStyle",
@@ -54,11 +54,6 @@ struct ReaderDOMExecutor {
             guard let navigator else { return }
             ReaderJSEval.log(await navigator.evaluateJavaScript(script), label)
         }
-    }
-
-    private func encodedJavaScriptString(_ value: String) -> String {
-        let data = try? JSONEncoder().encode(value)
-        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
     }
 }
 #endif

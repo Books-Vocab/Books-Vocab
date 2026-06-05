@@ -248,7 +248,7 @@ struct TranslationVocabPresenter: View {
                 .font(appSkin.typography.body)
                 .foregroundStyle(appSkin.palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(3)
+                .lineSpacing(ReaderMetrics.translationExplanationLineSpacing)
         case .empty:
             emptyExplainStateCard
                 .padding(.vertical, appSkin.spacing.tinyGap)
