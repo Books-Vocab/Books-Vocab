@@ -116,3 +116,68 @@ async def test_run_eval_with_limit(mock_prompt):
         results = await run_eval(mock_prompt, samples, ["gemini-2.5-flash-lite"], config)
 
     assert results["gemini-2.5-flash-lite"].sample_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_eval_render_fn_per_sample():
+    """render_fn must be called once per sample, not reuse the static prompt."""
+    rendered_words: list[str] = []
+
+    def _render_fn(sample: dict) -> RenderedPrompt:
+        rendered_words.append(sample["word"])
+        return RenderedPrompt(
+            name="test",
+            version="v1",
+            system=None,
+            user=f"Translate: {sample['word']}",
+            schema={},
+        )
+
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(message=MagicMock(content='{"t":"譯"}'))]
+    mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
+        mock_client_factory.return_value = mock_client
+
+        samples = [
+            {"id": "a", "word": "evoke"},
+            {"id": "b", "word": "meticulous"},
+            {"id": "c", "word": "resilient"},
+        ]
+        static_prompt = RenderedPrompt(name="test", version="v1", system=None, user="STATIC", schema={})
+        await run_eval(static_prompt, samples, ["gemini-2.5-flash-lite"], render_fn=_render_fn)
+
+    assert rendered_words == ["evoke", "meticulous", "resilient"]
+
+
+@pytest.mark.asyncio
+async def test_call_one_render_fn_overrides_prompt(sample):
+    """_call_one must use render_fn output, not the static prompt arg."""
+    override_prompt = RenderedPrompt(name="override", version="v1", system=None, user="override user", schema={})
+
+    def _render_fn(_sample: dict) -> RenderedPrompt:
+        return override_prompt
+
+    captured_messages: list = []
+
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(message=MagicMock(content='{}'))]
+    mock_resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+
+    async def _capture(**kwargs):
+        captured_messages.extend(kwargs["messages"])
+        return mock_resp
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = _capture
+        mock_client_factory.return_value = mock_client
+
+        static_prompt = RenderedPrompt(name="static", version="v1", system=None, user="STATIC", schema={})
+        await _call_one("gemini", "gemini-2.5-flash-lite", static_prompt, sample, EvalConfig(prompt_name="test"), render_fn=_render_fn)
+
+    assert any(m["content"] == "override user" for m in captured_messages)
+    assert not any(m["content"] == "STATIC" for m in captured_messages)

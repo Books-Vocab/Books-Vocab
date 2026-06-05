@@ -60,19 +60,13 @@ def create_eval_client(provider: LLMProvider):
     """Create an OpenAI-compatible client for eval. Bypasses TrackedLLM."""
     from openai import OpenAI
 
-    if provider.name == "ollama":
-        return OpenAI(api_key="ollama", base_url=provider.base_url)
-    from kg.service_factories import create_client
-
-    return create_client(provider)
+    api_key = "ollama" if provider.name == "ollama" else (os.getenv(provider.api_key_env) or "no-key")
+    return OpenAI(api_key=api_key, base_url=provider.base_url or None)
 
 
 def create_eval_async_client(provider: LLMProvider):
-    """Create an async OpenAI-compatible client for eval."""
+    """Create an async OpenAI-compatible client for eval. Bypasses TrackedLLM."""
     from openai import AsyncOpenAI
 
-    if provider.name == "ollama":
-        return AsyncOpenAI(api_key="ollama", base_url=provider.base_url)
-    from kg.service_factories import create_async_client
-
-    return create_async_client(provider)
+    api_key = "ollama" if provider.name == "ollama" else (os.getenv(provider.api_key_env) or "no-key")
+    return AsyncOpenAI(api_key=api_key, base_url=provider.base_url or None)
