@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -102,14 +103,13 @@ def create_daily_stats_store(user_dir: Path) -> DailyReviewStatsStore:
 def _migrate_legacy_file(legacy: Path, target: Path) -> None:
     """Rename a legacy file to its notebook-scoped path. Race-safe."""
     if not target.exists() and legacy.exists():
-        try:
+        # already migrated by concurrent request
+        with contextlib.suppress(FileNotFoundError):
             logger.info("Migrating %s -> %s", legacy, target)
             legacy.rename(target)
             bak = legacy.with_suffix(legacy.suffix + ".bak")
             if bak.exists():
                 bak.rename(target.with_suffix(target.suffix + ".bak"))
-        except FileNotFoundError:
-            pass  # already migrated by concurrent request
 
 
 def _resolve_notebook_paths(
@@ -222,16 +222,6 @@ async def reset_async_clients() -> None:
             await client.close()
         except Exception:
             logger.debug("Failed to close async LLM client", exc_info=True)
-
-
-def reset_gemini_client() -> None:
-    """Backward-compatible alias — resets all cached sync clients."""
-    reset_clients()
-
-
-async def reset_async_gemini_client() -> None:
-    """Backward-compatible alias — resets all cached async clients."""
-    await reset_async_clients()
 
 
 def create_embedding_store(

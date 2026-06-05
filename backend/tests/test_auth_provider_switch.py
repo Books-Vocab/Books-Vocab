@@ -22,18 +22,15 @@ from pathlib import Path
 
 import jwt as pyjwt
 import pytest
+from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_settings
 from fastapi import HTTPException
 
 from kg.api_models import AuthVerifyRequest
 from kg.auth_handlers import auth_verify_response
 from kg.auth_service import resolve_and_link_user
-from kg.settings import KGSettings
 from kg.user_context import resolve_current_user
 from kg.user_handlers import delete_user_account_response
 from kg.user_store import parse_datetime as _parse_datetime
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-TEST_ALGORITHM = "HS256"
 
 
 # --------------------------------------------------------------------------- #
@@ -53,14 +50,6 @@ def _make_user_store(tmp_path: Path):
         users_file.write_text(json.dumps(users))
 
     return users_file, str(lock_file), load, save
-
-
-def _make_settings(tmp_path: Path) -> KGSettings:
-    return KGSettings(
-        data_dir=tmp_path,
-        jwt_secret=TEST_JWT_SECRET,
-        jwt_algorithm=TEST_ALGORITHM,
-    )
 
 
 def _store_views(users_file: Path, lock: str):
@@ -208,7 +197,7 @@ async def test_apple_then_google_same_email_merges_without_data_loss(tmp_path):
     # resolve_current_user. The Google-issued token's sub IS canonical, while
     # an Apple-era token (issued back when canonical_id == apple-sub) is also
     # canonical. So both succeed naturally.
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
     for token in (
         _issue_jwt("apple-sub", "apple"),
         google_resp.access_token,
@@ -282,7 +271,7 @@ async def test_account_deletion_invalidates_old_session_token(tmp_path):
     fresh JWT *before* the cleanup occurs and check that resolve raises 401.
     """
     users_file, lock, load, save = _make_user_store(tmp_path)
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     # Initial login (Apple).
     apple_kwargs = _build_handler_kwargs(
@@ -346,7 +335,7 @@ async def test_revoked_linked_account_rejects_old_token_via_linked_to(tmp_path):
     must also be rejected via the `_linked_to` indirection in user_context.
     """
     users_file, lock, load, save = _make_user_store(tmp_path)
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     # Manually seed: canonical=apple-X, linked=google-Y, with revoke watermark
     # on canonical predating the token's iat.
@@ -388,7 +377,7 @@ async def test_concurrent_device_login_same_user_both_valid(tmp_path):
     single-device coupling in the current design — verify it stays that way.
     """
     users_file, lock, load, save = _make_user_store(tmp_path)
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     apple_kwargs = _build_handler_kwargs(
         users_file, lock,
@@ -435,7 +424,7 @@ async def test_dual_device_cross_provider_both_resolve_to_canonical(tmp_path):
     merge during the Google login does not invalidate the Apple device.
     """
     users_file, lock, load, save = _make_user_store(tmp_path)
-    settings = _make_settings(tmp_path)
+    settings = make_settings(tmp_path)
 
     # iPhone — Apple
     apple_kwargs = _build_handler_kwargs(

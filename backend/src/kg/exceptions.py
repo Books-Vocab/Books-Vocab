@@ -59,14 +59,6 @@ class ExternalServiceError(KGError):
         return {"code": "EXTERNAL_SERVICE_ERROR", "label": self.label}
 
 
-class LLMParseError(ExternalServiceError):
-    """LLM returned unparseable output."""
-    status_code = 502
-
-    def to_detail(self) -> dict:
-        return {"code": "LLM_PARSE_ERROR", "label": self.label}
-
-
 class BadRequestError(KGError):
     """Malformed or unparseable input."""
     status_code = 400

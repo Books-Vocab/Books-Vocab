@@ -7,7 +7,7 @@ from ..deps import _card_store, _notebook_store, get_current_user
 from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_shared import _dt_to_iso
 
-router = APIRouter()
+router = APIRouter(tags=["notebook"])
 
 
 def _notebook_response(nb, card_count: int = 0) -> NotebookResponse:

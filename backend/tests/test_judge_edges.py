@@ -403,7 +403,7 @@ def test_one_shot_judge_token_savings_vs_individual():
 
     We use prompt-character count as a tokenization-agnostic proxy for
     token usage (the 86% saving claim was measured in tokens on a live
-    Gemini run, see test_batch_judge_30pairs.py). For a deterministic
+    Gemini run, see scripts/bench_batch_judge_30pairs.py). For a deterministic
     unit test we lock in the **lower bound** of the saving on the actual
     prompts the codebase will send.
     """

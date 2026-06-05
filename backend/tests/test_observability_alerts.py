@@ -491,23 +491,60 @@ class TestRunAll:
         assert called == ["pipeline", "judge", "translate"]
 
     def test_run_all_swallows_exceptions(self, monkeypatch):
-        def _boom(**kw):
-            raise RuntimeError("db unavailable")
-        monkeypatch.setattr(observability_alerts, "check_pipeline_failures", _boom)
-        monkeypatch.setattr(observability_alerts, "check_judge_rejection_rate", _boom)
-        monkeypatch.setattr(observability_alerts, "check_translate_latency_p95", _boom)
+        # Spy that every check is *attempted* even though each raises — proving
+        # the swallow path is exercised per-check, not short-circuited.
+        attempted: list[str] = []
+
+        def _boom(name):
+            def _fn(**kw):
+                attempted.append(name)
+                raise RuntimeError("db unavailable")
+            return _fn
+
+        monkeypatch.setattr(
+            observability_alerts, "check_pipeline_failures", _boom("pipeline"))
+        monkeypatch.setattr(
+            observability_alerts, "check_judge_rejection_rate", _boom("judge"))
+        monkeypatch.setattr(
+            observability_alerts, "check_translate_latency_p95", _boom("translate"))
         # Must not raise — alerts are best-effort.
-        observability_alerts.run_all_checks()
+        result = observability_alerts.run_all_checks()
+        assert result is None
+        # All three branches ran and each exception was swallowed individually.
+        assert attempted == ["pipeline", "judge", "translate"]
 
 
 class TestSentryGuard:
     def test_emit_no_op_when_sentry_unavailable(self, monkeypatch):
-        # Even if check decides to alert, missing sentry_sdk should not crash.
+        # Even if the check decides to alert, a missing sentry_sdk must short
+        # the emit at the availability guard (no _capture, no crash). We spy
+        # _emit to prove the alert decision *was* made (threshold exceeded), and
+        # spy _capture to prove the Sentry edge was never reached.
         monkeypatch.setattr(observability_alerts, "_sentry_sdk", None)
+
+        emit_calls: list = []
+        real_emit = observability_alerts._emit
+
+        def _emit_spy(**kw):
+            emit_calls.append(kw["alert_key"])
+            return real_emit(**kw)
+
+        capture_calls: list = []
+        monkeypatch.setattr(
+            observability_alerts, "_emit", _emit_spy)
+        monkeypatch.setattr(
+            observability_alerts, "_capture",
+            lambda *a, **kw: capture_calls.append((a, kw)))
+
         for i in range(6):
             _insert_pipeline_run(f"r{i}", "failed", started_minutes_ago=10)
-        # Should be a no-op (no exception, no Sentry call).
+        # Should be a no-op at the Sentry edge (no exception, no capture).
         observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+
+        # The alert path *was* taken (threshold exceeded) ...
+        assert emit_calls == ["pipeline_failures"]
+        # ... but with _sentry_sdk None the Sentry capture never fired.
+        assert capture_calls == []
 
     def test_capture_uses_new_scope_for_tags(self, monkeypatch):
         """Regression: tags must flow through an explicit scope, not kwargs.

@@ -85,6 +85,7 @@ def admin_stats_response(
         from ..judge_log import get_acceptance_stats
         judge_stats = get_acceptance_stats()
     except Exception:
+        logger.warning("Failed to load judge acceptance stats", exc_info=True)
         judge_stats = {"total": 0, "accepted": 0, "rejected": 0, "rate": None}
 
     return {"users": result, "judge": judge_stats}
@@ -135,7 +136,7 @@ def _collect_disks(psutil: Any) -> list[dict[str, Any]]:
                     "percent": du.percent,
                 }
             )
-        except (OSError, PermissionError):
+        except OSError:
             continue
     return disks
 
@@ -212,7 +213,7 @@ def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, An
         "all": None,
     }
     if range_ not in range_seconds:
-        raise HTTPException(status_code=400, detail=f"invalid range: {range_}")
+        raise HTTPException(status_code=400, detail=f"Invalid range: {range_}")
 
     secs = range_seconds[range_]
     if secs is None:

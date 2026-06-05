@@ -1,86 +1,23 @@
 """Tests for admin password login flow (/admin/login)."""
 from __future__ import annotations
 
-import json
-from types import SimpleNamespace
-
 import pytest
-from fastapi.testclient import TestClient
 
 from kg.admin_handlers import _sign_cookie
-from kg.api import app
-from kg.settings import KGSettings
 
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 ADMIN_TOKEN = "test-admin-token-value"
 ADMIN_PASSWORD = "my-secret-admin-password"
 
 
-def _swap_settings(new_settings):
-    from kg.billing import default_subscription_payload
-    from kg.user_store import CachedUserStore, normalize_users_payload
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(new_settings.users_file, _normalize)
-    app.state.user_store = user_store
-    app.state.load_users = lambda: user_store.load()
-    app.state.save_users = lambda users: user_store.save(users)
+@pytest.fixture()
+def admin_app(admin_app_factory):
+    return admin_app_factory(admin_token=ADMIN_TOKEN, admin_password=ADMIN_PASSWORD)
 
 
 @pytest.fixture()
-def admin_app(tmp_path):
-    data_dir = tmp_path
-    (data_dir / "users").mkdir()
-    users_file = data_dir / "users.json"
-    users_file.write_text(json.dumps({"_meta": {}}))
-
-    original_settings = app.state.kg_settings
-
-    test_settings = KGSettings(
-        data_dir=data_dir,
-        jwt_secret=TEST_JWT_SECRET,
-        admin_token=ADMIN_TOKEN,
-        admin_password=ADMIN_PASSWORD,
-    )
-    _swap_settings(test_settings)
-
-    try:
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(client=client, data_dir=data_dir)
-    finally:
-        app.state.kg_settings = original_settings
-
-
-@pytest.fixture()
-def admin_app_no_password(tmp_path):
+def admin_app_no_password(admin_app_factory):
     """App with admin_password empty (password login disabled)."""
-    data_dir = tmp_path
-    (data_dir / "users").mkdir()
-    users_file = data_dir / "users.json"
-    users_file.write_text(json.dumps({"_meta": {}}))
-
-    original_settings = app.state.kg_settings
-
-    test_settings = KGSettings(
-        data_dir=data_dir,
-        jwt_secret=TEST_JWT_SECRET,
-        admin_token=ADMIN_TOKEN,
-        admin_password="",
-    )
-    _swap_settings(test_settings)
-
-    try:
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(client=client, data_dir=data_dir)
-    finally:
-        app.state.kg_settings = original_settings
+    return admin_app_factory(admin_token=ADMIN_TOKEN, admin_password="")
 
 
 # ── 1. GET /admin/login returns 200 + HTML ─────────────────────────────────

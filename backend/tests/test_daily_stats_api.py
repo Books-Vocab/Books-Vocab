@@ -167,7 +167,7 @@ def test_push_review_updates_existing_card(isolated_api):
                 "review_count": 3,
                 "lapse_count": 1,
                 "review_streak": 2,
-                "last_review_feedback": 4,
+                "last_review_feedback": 1,
             }
         ]
     }
@@ -199,7 +199,7 @@ def test_push_review_skips_unknown_word(isolated_api):
                     "review_count": 1,
                     "lapse_count": 0,
                     "review_streak": 1,
-                    "last_review_feedback": 3,
+                    "last_review_feedback": 1,
                 }
             ]
         },

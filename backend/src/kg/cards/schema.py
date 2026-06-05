@@ -75,7 +75,7 @@ def _migrate_review_columns(engine: Engine) -> None:
                     if "duplicate column" in str(exc).lower():
                         pass  # column already added by concurrent process
                     else:
-                        logger.error("Migration failed for column %s: %s", col_name, exc)
+                        logger.error("Migration failed for column %s: %s", col_name, exc, exc_info=True)
                         raise
         conn.commit()
 
@@ -91,7 +91,7 @@ def _migrate_content_nfc_lower(engine: Engine) -> None:
                 )
             except OperationalError as exc:
                 if "duplicate column" not in str(exc).lower():
-                    logger.error("Migration failed for content_nfc_lower: %s", exc)
+                    logger.error("Migration failed for content_nfc_lower: %s", exc, exc_info=True)
                     raise
         # Backfill any rows where the column is empty/null but content isn't.
         rows = conn.exec_driver_sql(

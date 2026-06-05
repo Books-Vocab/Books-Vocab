@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
-from pathlib import Path
 
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
+from .ops_shared import data_dir
+
+DATA_DIR = data_dir()
 DB_PATH = DATA_DIR / "judge_log.db"
 
 _lock = threading.Lock()
@@ -18,6 +18,10 @@ _conn: sqlite3.Connection | None = None
 # metrics): a degree_cap rejection is structural (graph topology hit a degree
 # limit), not a judge quality signal, so it is excluded from rejection counts.
 DEGREE_CAP_EXCLUSION_SQL = "(reject_reason IS NULL OR reject_reason != 'degree_cap')"
+
+_LOG_COLS = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
+             "verdict", "confidence", "accepted", "reject_reason", "reason", "source", "created_at"]
+_COLS_SQL = ", ".join(_LOG_COLS)
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -124,24 +128,28 @@ def update_to_rejected(
 
 
 def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) -> list[dict]:
-    """Retrieve judge log entries for a user."""
+    """Retrieve judge log entries for a user.
+
+    Intentional test-only / read API: kept public as the row-level read
+    counterpart to ``record`` / ``get_acceptance_stats``. No production caller
+    today (admin history uses ``translate_log.get_log``); exercised by
+    ``test_judge_log``, ``test_judge_edges`` and ``test_judge_log_integration``.
+    """
     with _lock:
         conn = _get_conn()
         if notebook_id is not None:
             rows = conn.execute(
-                "SELECT * FROM judge_log WHERE user_id = ? AND notebook_id = ? ORDER BY id DESC LIMIT ?",
+                f"SELECT {_COLS_SQL} FROM judge_log WHERE user_id = ? AND notebook_id = ? ORDER BY id DESC LIMIT ?",
                 (user_id, notebook_id, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM judge_log WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                f"SELECT {_COLS_SQL} FROM judge_log WHERE user_id = ? ORDER BY id DESC LIMIT ?",
                 (user_id, limit),
             ).fetchall()
-    cols = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
-            "verdict", "confidence", "accepted", "reject_reason", "reason", "source", "created_at"]
     result = []
     for row in rows:
-        d = dict(zip(cols, row))
+        d = dict(zip(_LOG_COLS, row))
         d["accepted"] = bool(d["accepted"])
         result.append(d)
     return result

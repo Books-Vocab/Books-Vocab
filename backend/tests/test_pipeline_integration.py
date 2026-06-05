@@ -13,13 +13,11 @@ import logging
 import os
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import jwt as pyjwt
 import pytest
-from conftest import _DummyEmbeddingStore
+from conftest import _DummyEmbeddingStore, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("KG_DATA_DIR", "/tmp/kg_test_default")
@@ -34,33 +32,6 @@ from kg.api import app  # noqa: E402
 from kg.settings import KGSettings
 
 _JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-
-
-def _make_jwt(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "provider": "test",
-        "iat": datetime.now(tz=UTC),
-        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
-    }
-    return pyjwt.encode(payload, _JWT_SECRET, algorithm="HS256")
-
-
-def _swap_settings(new_settings):
-    from kg.billing import default_subscription_payload
-    from kg.user_store import load_users_from, normalize_users_payload, save_users_to
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
-    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
-    app.state.normalize_users_payload = _normalize
 
 
 @pytest.fixture()
@@ -87,7 +58,7 @@ def pipeline_api(tmp_path):
             }
         )
     )
-    token = _make_jwt(user_id)
+    token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
     original_settings = app.state.kg_settings
@@ -142,7 +113,11 @@ class TestPipelineIntegration:
             r = client.post("/api/pipeline", headers=headers)
             assert r.status_code == 200
             assert r.json()["status"] == "queued"
-            time.sleep(0.5)
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                if any("Pipeline completed" in rec.message for rec in caplog.records):
+                    break
+                time.sleep(0.05)
 
         completed = [rec for rec in caplog.records if "Pipeline completed" in rec.message]
         assert completed, (

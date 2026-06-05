@@ -1,39 +1,13 @@
 """Tests for admin audit log (insert / retrieve / auth boundary)."""
 from __future__ import annotations
 
-import json
-from types import SimpleNamespace
-
 import pytest
-from fastapi.testclient import TestClient
 
 from kg import admin_audit
 from kg.admin_handlers import _sign_cookie, admin_actor_fingerprint
-from kg.api import app
-from kg.settings import KGSettings
 
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 ADMIN_TOKEN = "test-admin-token-audit"
 ADMIN_PASSWORD = "audit-pw"
-
-
-def _swap_settings(new_settings):
-    from kg.billing import default_subscription_payload
-    from kg.user_store import CachedUserStore, normalize_users_payload
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(new_settings.users_file, _normalize)
-    app.state.user_store = user_store
-    app.state.load_users = lambda: user_store.load()
-    app.state.save_users = lambda users: user_store.save(users)
 
 
 @pytest.fixture()
@@ -48,28 +22,13 @@ def audit_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def admin_app(tmp_path, monkeypatch):
-    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-    admin_audit._reset()
-    data_dir = tmp_path
-    (data_dir / "users").mkdir()
-    users_file = data_dir / "users.json"
-    users_file.write_text(json.dumps({"_meta": {}, "u-target": {"id": "u-target", "email": "t@example.com"}}))
-
-    original_settings = app.state.kg_settings
-    test_settings = KGSettings(
-        data_dir=data_dir,
-        jwt_secret=TEST_JWT_SECRET,
+def admin_app(admin_app_factory):
+    return admin_app_factory(
+        users_seed={"_meta": {}, "u-target": {"id": "u-target", "email": "t@example.com"}},
         admin_token=ADMIN_TOKEN,
         admin_password=ADMIN_PASSWORD,
+        reset_audit=True,
     )
-    _swap_settings(test_settings)
-    try:
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(client=client, data_dir=data_dir)
-    finally:
-        app.state.kg_settings = original_settings
-        admin_audit._reset()
 
 
 # ── Unit: insert + retrieve ────────────────────────────────────────────────
@@ -142,9 +101,7 @@ def test_list_limit_clamped(audit_db):
     for i in range(5):
         admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid=f"u{i}", payload={})
     assert len(admin_audit.list_audit(limit=2)) == 2
-    assert len(admin_audit.list_audit(limit=0)) == 5  # 0 clamps to 1+, but we inserted 5 → returns up to 1
-    # Sanity: limit=0 clamps to >=1, so result length is between 1 and 5.
-    assert 1 <= len(admin_audit.list_audit(limit=0)) <= 5
+    assert len(admin_audit.list_audit(limit=0)) == 5
 
 
 # ── action filter ──────────────────────────────────────────────────────────

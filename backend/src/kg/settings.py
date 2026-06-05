@@ -7,6 +7,12 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
+_DEFAULT_CORS: tuple[str, ...] = (
+    "https://wordnexus.lol",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+)
+
 
 @dataclass(frozen=True)
 class KGSettings:
@@ -57,11 +63,7 @@ class KGSettings:
     max_word_length: int = 200
 
     # CORS
-    cors_origins: tuple[str, ...] = (
-        "https://wordnexus.lol",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    )
+    cors_origins: tuple[str, ...] = _DEFAULT_CORS
 
     # Podcast storage backend.
     # When `podcast_bucket` is set, audio + subtitle reads go to S3-compatible
@@ -170,7 +172,7 @@ def load_settings() -> KGSettings:
             o.strip()
             for o in os.getenv(
                 "CORS_ORIGINS",
-                "https://wordnexus.lol,http://localhost:8000,http://127.0.0.1:8000",
+                ",".join(_DEFAULT_CORS),
             ).split(",")
             if o.strip()
         ),

@@ -3,55 +3,12 @@
 import sqlite3
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from ops_helpers import _create_token_usage_db, _hours_ago_iso, _now_iso
 
 # ops_cli.py 位於 backend/ 根目錄，需要直接 import
 CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
-
-
-def _create_token_usage_db(path: Path, rows: list[tuple]) -> None:
-    """建立 token_usage.db 並灌入測試資料。"""
-    conn = sqlite3.connect(str(path / "token_usage.db"))
-    conn.execute("""
-        CREATE TABLE token_usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            call_type TEXT NOT NULL,
-            input_tokens INTEGER NOT NULL DEFAULT 0,
-            output_tokens INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
-        )
-    """)
-    conn.executemany(
-        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?)",
-        rows,
-    )
-    conn.commit()
-    conn.close()
-
-
-def _create_token_usage_db_with_provider(path: Path, rows: list[tuple]) -> None:
-    """建立含 provider 欄的 token_usage.db。rows: (uid, call_type, in, out, created_at, provider)。"""
-    conn = sqlite3.connect(str(path / "token_usage.db"))
-    conn.execute("""
-        CREATE TABLE token_usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            call_type TEXT NOT NULL,
-            input_tokens INTEGER NOT NULL DEFAULT 0,
-            output_tokens INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            provider TEXT
-        )
-    """)
-    conn.executemany(
-        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at, provider) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        rows,
-    )
-    conn.commit()
-    conn.close()
 
 
 def _create_cards_db(path: Path, rows: list[tuple]) -> None:
@@ -86,15 +43,6 @@ def _run_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
         text=True,
         env=env,
     )
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-
-
-def _hours_ago_iso(hours: int) -> str:
-    t = datetime.now(UTC) - timedelta(hours=hours)
-    return t.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
 class TestUserQuota:
@@ -218,9 +166,9 @@ class TestProviderAwarePricing:
     def test_deepseek_priced_provider_aware(self, tmp_path):
         """provider='deepseek' 的 row 用 deepseek 費率 (0.14/0.28),非 gemini 0.10/0.40。"""
         now = _now_iso()
-        _create_token_usage_db_with_provider(tmp_path, [
+        _create_token_usage_db(tmp_path, [
             ("user1", "translate", 1_000_000, 1_000_000, now, "deepseek"),
-        ])
+        ], with_provider=True)
         result = _run_cli(str(tmp_path), "user-quota", "user1")
         assert result.returncode == 0
         # deepseek: 0.14 + 0.28 = 0.42（非 gemini 的 0.50）
@@ -241,9 +189,9 @@ class TestProviderAwarePricing:
     def test_quota_overview_provider_aware(self, tmp_path):
         """quota-overview 同樣 provider-aware。"""
         now = _now_iso()
-        _create_token_usage_db_with_provider(tmp_path, [
+        _create_token_usage_db(tmp_path, [
             ("user1", "translate", 1_000_000, 1_000_000, now, "deepseek"),
-        ])
+        ], with_provider=True)
         result = _run_cli(str(tmp_path), "quota-overview")
         assert result.returncode == 0
         assert "0.42" in result.stdout

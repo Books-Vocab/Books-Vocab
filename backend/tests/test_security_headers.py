@@ -18,21 +18,18 @@ def client():
 
 class TestSecurityHeaders:
 
-    def test_x_content_type_options(self, client):
+    @pytest.mark.parametrize(
+        ("header_name", "expected_value"),
+        [
+            ("X-Content-Type-Options", "nosniff"),
+            ("X-Frame-Options", "DENY"),
+            ("Referrer-Policy", "strict-origin-when-cross-origin"),
+            ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
+        ],
+    )
+    def test_single_security_header(self, client, header_name, expected_value):
         r = client.get("/privacy")
-        assert r.headers.get("X-Content-Type-Options") == "nosniff"
-
-    def test_x_frame_options(self, client):
-        r = client.get("/privacy")
-        assert r.headers.get("X-Frame-Options") == "DENY"
-
-    def test_referrer_policy(self, client):
-        r = client.get("/privacy")
-        assert r.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
-
-    def test_permissions_policy(self, client):
-        r = client.get("/privacy")
-        assert r.headers.get("Permissions-Policy") == "camera=(), microphone=(), geolocation=()"
+        assert r.headers.get(header_name) == expected_value
 
     def test_error_response_has_security_headers(self, client):
         r = client.get("/nonexistent-path-404")

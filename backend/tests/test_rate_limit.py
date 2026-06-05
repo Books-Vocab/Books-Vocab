@@ -26,6 +26,16 @@ class TestRateLimiterAllows:
         results = asyncio.run(run())
         assert all(results), "All requests within limit should be allowed"
 
+    def test_exactly_at_limit_boundary(self):
+        # max_requests=3 → first 3 allowed, 4th rejected. Pins the exact
+        # boundary index, catching a >= vs > off-by-one in the transition.
+        async def run():
+            limiter = RateLimiter(max_requests=3, window_seconds=60)
+            return [await limiter.is_allowed("user1") for _ in range(4)]
+
+        results = asyncio.run(run())
+        assert results == [True, True, True, False]
+
     def test_request_exceeding_limit_is_rejected(self):
         async def run():
             limiter = RateLimiter(max_requests=3, window_seconds=60)

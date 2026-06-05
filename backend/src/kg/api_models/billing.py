@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -48,7 +48,7 @@ class AdminUserEntitlementResponse(BaseModel):
 
 
 class AppStoreSyncRequest(BaseModel):
-    product_id: str
+    product_id: str = Field(min_length=1)
     transaction_id: str | None = None
     original_transaction_id: str | None = None
     environment: str = "sandbox"
@@ -76,7 +76,7 @@ class AppStoreNotificationRequest(BaseModel):
 
 
 class AppStoreReconcileRequest(BaseModel):
-    transaction_id: str
+    transaction_id: str = Field(min_length=1)
     environment: str = "production"
 
 
@@ -89,5 +89,5 @@ class AppStoreNotificationResponse(BaseModel):
 
 
 class QuotaResponse(BaseModel):
-    fraction: float
-    reset_seconds: int
+    fraction: float = Field(ge=0, le=1)
+    reset_seconds: int = Field(ge=0)

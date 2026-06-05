@@ -2,13 +2,8 @@ import pytest
 
 from kg.translate_log import _reset, get_log, lookup, record
 
+pytestmark = pytest.mark.usefixtures("translate_data_dir")
 
-@pytest.fixture(autouse=True)
-def _isolate(tmp_path, monkeypatch):
-    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-    _reset()
-    yield
-    _reset()
 
 def test_record_and_lookup():
     record(

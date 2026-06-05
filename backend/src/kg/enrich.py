@@ -87,26 +87,6 @@ def _retry_detail(wait_time: float) -> str:
     return f"LLM API error, retrying in {wait_time}s..."
 
 
-def enrich_cards(llm, cards: list[Card], model: str | None = None) -> list[dict]:
-    """Enrich a batch of cards via a single LLM call.
-
-    Returns a list of dicts with keys: word, pos, note.
-    Token usage is recorded automatically by TrackedLLM.
-    """
-    if not cards:
-        return []
-
-    response = sync_retry(
-        _call_enrich_llm, llm, cards, model,
-        max_attempts=4,
-        base_delay=2.0,
-        retryable_exceptions=llm_retryable_exceptions(),
-        step_name="Enrich LLM",
-    )
-
-    return _parse_enrich_response(response.choices[0].message.content)
-
-
 async def enrich_cards_stream(
     llm,
     cards: list[Card],

@@ -39,7 +39,7 @@ class SentryPingResponse(BaseModel):
     event_id: str | None = None
 
 
-router = APIRouter()
+router = APIRouter(tags=["system"])
 
 
 @router.get("/api/system/info", response_model=SystemInfoResponse)

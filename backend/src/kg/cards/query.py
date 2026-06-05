@@ -29,6 +29,8 @@ class CardQueryMixin:
         A single query against `ix_card_content_nfc_lower`; subsumes both
         case-insensitive and decomposed-Unicode (e.g. café) matching.
         """
+        if not content:
+            return None
         key = normalize_nfc_lower(content)
         with Session(self.engine) as session:
             stmt = select(Card).where(
