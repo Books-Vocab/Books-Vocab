@@ -116,6 +116,81 @@ body {
   outline-offset: 2px;
 }
 
+/* ── Pro status (account section) ── */
+
+.kg-pro-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  margin-bottom: var(--sp-sm);
+}
+
+.kg-pro-badge {
+  flex-shrink: 0;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px var(--sp-sm);
+  border-radius: var(--radius-pill);
+  background: var(--brand-hero);
+  color: var(--on-brand-hero);
+}
+
+.kg-pro-status__label {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+
+.kg-pro-status__label--free {
+  color: var(--text-tertiary);
+}
+
+/* ── Translation language (source → target) ── */
+
+.kg-lang-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+
+.kg-lang-row__arrow {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-body);
+}
+
+/* Select — visual parity with .kg-token-paste__input (border + stage bg). The
+   native dropdown caret is kept (no appearance:none) for a cross-platform,
+   accessible affordance. */
+.kg-select {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-sm) var(--sp-md);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  background: var(--stage-bg);
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.kg-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.kg-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kg-lang-row__hint {
+  margin: var(--sp-sm) 0 0 0;
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
 /* ── Theme Selector ── */
 
 .kg-theme-selector {
