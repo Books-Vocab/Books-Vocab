@@ -145,3 +145,30 @@ def _create_translate_log_db(path: Path, rows: list[tuple]) -> None:
     )
     conn.commit()
     conn.close()
+
+
+def _create_llm_errors_db(path: Path, rows: list[tuple]) -> None:
+    """建立 llm_errors.db 並灌入測試資料。
+    rows: (user_id, call_type, provider, model, error_class, status_code, message, created_at)
+    """
+    conn = sqlite3.connect(str(path / "llm_errors.db"))
+    conn.execute("""
+        CREATE TABLE llm_errors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            call_type TEXT NOT NULL,
+            provider TEXT,
+            model TEXT,
+            error_class TEXT NOT NULL,
+            status_code INTEGER,
+            message TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO llm_errors (user_id, call_type, provider, model, error_class, status_code, message, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
