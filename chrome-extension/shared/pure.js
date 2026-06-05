@@ -479,6 +479,9 @@ const ROUTABLE_MESSAGE_TYPES = [
   'addVocab',
   'listVocab',
   'lookupWord',
+  'getUserConfig',
+  'updateUserConfig',
+  'getEntitlements',
   'get_auth_status',
   'logout',
 ];
@@ -515,6 +518,12 @@ function routeMessage(msg) {
       return { kind: 'listVocab', args: [msg.since] };
     case 'lookupWord':
       return { kind: 'lookupWord', args: [msg.word] };
+    case 'getUserConfig':
+      return { kind: 'getUserConfig', args: [] };
+    case 'updateUserConfig':
+      return { kind: 'updateUserConfig', args: [msg.translation] };
+    case 'getEntitlements':
+      return { kind: 'getEntitlements', args: [] };
     case 'get_auth_status':
       return { kind: 'getAuthStatus', args: [] };
     case 'logout':

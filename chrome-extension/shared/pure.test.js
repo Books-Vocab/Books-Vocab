@@ -500,6 +500,22 @@ test('routeMessage does NOT route internal auth_token (token writes are onMessag
   );
 });
 
+test('routeMessage maps user config / entitlements kinds', () => {
+  assert.deepEqual(routeMessage({ type: 'getUserConfig' }), {
+    kind: 'getUserConfig',
+    args: [],
+  });
+  assert.deepEqual(routeMessage({ type: 'getEntitlements' }), {
+    kind: 'getEntitlements',
+    args: [],
+  });
+  const translation = { source_lang: 'en', target_lang: 'zh-Hant' };
+  assert.deepEqual(routeMessage({ type: 'updateUserConfig', translation }), {
+    kind: 'updateUserConfig',
+    args: [translation],
+  });
+});
+
 test('routeMessage maps get_auth_status / logout to argument-free ops', () => {
   assert.deepEqual(routeMessage({ type: 'get_auth_status' }), {
     kind: 'getAuthStatus',
@@ -527,6 +543,9 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     addVocab: { type: 'addVocab', entries: [] },
     listVocab: { type: 'listVocab', since: '' },
     lookupWord: { type: 'lookupWord', word: 'w' },
+    getUserConfig: { type: 'getUserConfig' },
+    updateUserConfig: { type: 'updateUserConfig', translation: {} },
+    getEntitlements: { type: 'getEntitlements' },
     get_auth_status: { type: 'get_auth_status' },
     logout: { type: 'logout' },
   };
