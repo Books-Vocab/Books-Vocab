@@ -60,6 +60,7 @@ ops-cli db-query <uid> SQL...             # 唯讀查用戶 DB（只放行單一
 ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
 ops-cli cost <uid> [--range R] [--json]   # 單用戶 cost-by-call_type 拆解（provider-aware）
 ops-cli cost-overview [--range R] [--json] # 全用戶 cost 排名
+ops-cli sync-trace <uid> [--date YYYY-MM-DD] [--json] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
 
 # --range: 24h | 7d | 30d | month | all（預設 month）
 ```
@@ -110,6 +111,9 @@ python3 ops/data_inspect.py [command]
 
 # 全用戶 24h cost 排名
 ./ops/devops_kg_safe.sh ops-cli cost-overview --range 24h
+
+# 用戶單日 sync 時間線（debug 同步問題：何時建卡/呼叫 API/judge/translate，按時序合併）
+./ops/devops_kg_safe.sh ops-cli sync-trace <uid> --date 2026-06-05
 
 # 臨時分析腳本
 ./ops/devops_kg_safe.sh container-script /tmp/my_script.py
