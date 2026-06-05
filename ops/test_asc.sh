@@ -135,29 +135,31 @@ help_out="$(bash "$ASC" --help 2>&1)"
 echo "$help_out" | grep -qE 'set -euo pipefail|^KEY_ID=|^ISSUER_ID=' \
   && fail_t "help leaks shell code" || ok "help is comment-only (no shell code leak)"
 
-# ── 10. set-review 寫入路徑（appStoreReviewDetail，codemagic 未暴露 → raw PATCH）──
-section "set-review write path (raw PATCH, gated)"
-PATCH="$WORKSPACE/ops/asc_patch.py"
-[[ -f "$PATCH" ]] && ok "asc_patch.py companion exists" || fail_t "asc_patch.py missing"
-# 寫入 helper 必須是 PATCH（而非 GET），且 JWT 在 py、不在 asc.sh（本檔零 JWT 不變量延伸）
-grep -qE "method[[:space:]]*=[[:space:]]*[\"']PATCH" "$PATCH" \
-  && ok "asc_patch.py uses PATCH method"   || fail_t "asc_patch.py not a PATCH writer"
-grep -q 'jwt.encode' "$PATCH" \
-  && ok "asc_patch.py is where write-JWT lives" || fail_t "asc_patch.py missing JWT mint"
-grep -q 'HTTPError' "$PATCH" && grep -q 'URLError' "$PATCH" \
-  && ok "asc_patch.py handles HTTP+network errors" || fail_t "asc_patch.py lacks graceful error handling"
-grep -q 'asc_patch.py' "$ASC" \
-  && ok "asc.sh delegates writes to asc_patch.py" || fail_t "asc.sh not delegating raw PATCH"
-# cmd_set_review 的寫入（patch_raw）必須 gated 在 --yes 內 —— 負控：dry-run/else 分支不得有 patch_raw
+# ── 10. raw 寫入 helper（一般化 PATCH/POST/DELETE）+ set-review 經集中 gate ──
+section "Raw write helper + set-review (gated)"
+WRITE="$WORKSPACE/ops/asc_write.py"
+[[ -f "$WRITE" ]] && ok "asc_write.py companion exists" || fail_t "asc_write.py missing"
+# 一般化：支援 PATCH/POST/DELETE（method 由 argv 傳入並原樣帶進 request）
+grep -q 'ALLOWED' "$WRITE" && grep -q '"PATCH"' "$WRITE" && grep -q '"POST"' "$WRITE" && grep -q '"DELETE"' "$WRITE" \
+  && ok "asc_write.py supports PATCH/POST/DELETE" || fail_t "asc_write.py missing method support"
+grep -qE 'method[[:space:]]*=[[:space:]]*method' "$WRITE" \
+  && ok "asc_write.py honors method arg"   || fail_t "asc_write.py not passing method through"
+grep -q 'jwt.encode' "$WRITE" \
+  && ok "asc_write.py is where write-JWT lives" || fail_t "asc_write.py missing JWT mint"
+grep -q 'HTTPError' "$WRITE" && grep -q 'URLError' "$WRITE" \
+  && ok "asc_write.py handles HTTP+network errors" || fail_t "asc_write.py lacks graceful error handling"
+grep -q 'asc_write.py' "$ASC" \
+  && ok "asc.sh delegates writes to asc_write.py" || fail_t "asc.sh not delegating raw writes"
+# asc.sh 主檔仍零 JWT（test 3 不變量延伸到寫入路徑）
+! grep -qiE 'jwt\.encode|ES256' "$ASC" \
+  && ok "asc.sh stays zero-JWT (writes via helper)" || fail_t "asc.sh hand-rolls JWT in write path"
+# set-review 經 emit_write 收尾（不自行 write_raw 繞過集中 gate），並驗 demo-required boolean
 sr_body="$(awk '/^cmd_set_review\(\)/,/^}/' "$ASC")"
-echo "$sr_body" | grep -q 'patch_raw' \
-  && ok "set-review has real patch_raw write" || fail_t "set-review missing patch_raw"
-echo "$sr_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]' \
-  && ok "set-review guards write behind --yes" || fail_t "set-review missing --yes guard"
-echo "$sr_body" | awk '/else/,/fi/' | grep -q 'patch_raw' \
-  && fail_t "patch_raw leaked into dry-run branch (would write without --yes)" \
-  || ok "dry-run branch contains no patch_raw"
-# demo-required 必須驗 boolean（避免寫入非法值）
+echo "$sr_body" | grep -q 'emit_write' \
+  && ok "set-review routes through emit_write" || fail_t "set-review not using emit_write"
+echo "$sr_body" | grep -q 'write_raw' \
+  && fail_t "set-review calls write_raw directly (bypasses central gate)" \
+  || ok "set-review delegates write (no direct write_raw)"
 echo "$sr_body" | grep -q 'true.*false\|false.*true' \
   && ok "demo-required validates true/false" || fail_t "demo-required boolean not validated"
 # 行為：跨物件欄位互相指路（set notes → set-review；set-review description → set）
@@ -185,23 +187,23 @@ for fn in resolve_appinfo resolve_appinfo_loc; do
     && ok "$fn guards _httpError before iterating .data" \
     || fail_t "$fn iterates .data without _httpError guard (aborts script on auth/network fail)"
 done
-# 11c. 共用 emit_patch：gate 不變量集中一處 —— patch_raw 只在 --yes 分支，dry-run(else) 分支零 patch_raw
-ep_body="$(awk '/^emit_patch\(\)/,/^}/' "$ASC")"
-echo "$ep_body" | grep -q 'patch_raw' \
-  && ok "emit_patch performs real patch_raw write" || fail_t "emit_patch missing patch_raw"
+# 11c. 共用 emit_write：gate 不變量集中一處 —— write_raw（真寫）只在 --yes 分支，dry-run(else) 分支零 write_raw
+ep_body="$(awk '/^emit_write\(\)/,/^}/' "$ASC")"
+echo "$ep_body" | grep -q 'write_raw' \
+  && ok "emit_write performs real write_raw" || fail_t "emit_write missing write_raw"
 echo "$ep_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]' \
-  && ok "emit_patch guards write behind --yes"      || fail_t "emit_patch missing --yes guard"
-echo "$ep_body" | awk '/else/,/fi/' | grep -q 'patch_raw' \
-  && fail_t "patch_raw leaked into emit_patch dry-run branch (would write without --yes)" \
-  || ok "emit_patch dry-run branch contains no patch_raw"
-# 11d. 每個寫指令都「透過 emit_patch」收尾，且不自行 patch_raw（否則繞過集中 gate）
+  && ok "emit_write guards write behind --yes"      || fail_t "emit_write missing --yes guard"
+echo "$ep_body" | awk '/else/,/fi/' | grep -q 'write_raw' \
+  && fail_t "write_raw leaked into emit_write dry-run branch (would write without --yes)" \
+  || ok "emit_write dry-run branch contains no write_raw"
+# 11d. 每個寫指令都「透過 emit_write」收尾，且不自行 write_raw（否則繞過集中 gate）
 for fn in cmd_set_appinfo cmd_set_eula cmd_set_content_rights cmd_set_category cmd_set_rating; do
   body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
-  echo "$body" | grep -q 'emit_patch' \
-    && ok "$fn routes through emit_patch"        || fail_t "$fn doesn't use emit_patch"
-  echo "$body" | grep -q 'patch_raw' \
-    && fail_t "$fn calls patch_raw directly (bypasses central gate)" \
-    || ok "$fn delegates write (no direct patch_raw)"
+  echo "$body" | grep -q 'emit_write' \
+    && ok "$fn routes through emit_write"        || fail_t "$fn doesn't use emit_write"
+  echo "$body" | grep -q 'write_raw' \
+    && fail_t "$fn calls write_raw directly (bypasses central gate)" \
+    || ok "$fn delegates write (no direct write_raw)"
 done
 # 11e. body 形狀正確：set-appinfo 用 appInfoLocalizations attributes；set-category 用 relationships（非 attributes）
 echo "$(awk '/^cmd_set_appinfo\(\)/,/^}/' "$ASC")" | grep -q 'type:"appInfoLocalizations"' \
@@ -223,6 +225,43 @@ echo "$(bash "$ASC" set-appinfo description x 2>&1)" | grep -qE 'asc.sh set ' \
 # 11h. EULA 寫入解析 endUserLicenseAgreement
 echo "$(awk '/^cmd_set_eula\(\)/,/^}/' "$ASC")" | grep -q 'endUserLicenseAgreement' \
   && ok "set-eula resolves endUserLicenseAgreement" || fail_t "set-eula missing EULA resolution"
+
+# ── 12. 評論讀/回覆 + 無障礙讀（P2：customerReviews / customerReviewResponses / accessibility）──
+section "Reviews + accessibility surface (P2)"
+# 12a. dispatch
+for sub in reviews accessibility reply-review; do
+  grep -qE "^[[:space:]]*$sub\)" "$ASC" \
+    && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+done
+# 12b. asc_write.py method 驗證：未知 method 即報（在讀 stdin / 鑄 JWT 前就退，不打 API）
+bogus_out="$(printf '{}' | "$WRITE" /v1/x BOGUS 2>&1 || true)"
+echo "$bogus_out" | grep -q '不支援的 method' \
+  && ok "asc_write.py rejects unknown method" || fail_t "asc_write.py doesn't validate method (got: $(echo "$bogus_out" | head -1))"
+# 12c. reply-review 經 emit_write（集中 gate），不自行 write_raw
+rr_body="$(awk '/^cmd_reply_review\(\)/,/^}/' "$ASC")"
+echo "$rr_body" | grep -q 'emit_write' \
+  && ok "reply-review routes through emit_write" || fail_t "reply-review not using emit_write"
+echo "$rr_body" | grep -q 'write_raw' \
+  && fail_t "reply-review calls write_raw directly (bypasses gate)" \
+  || ok "reply-review delegates write (no direct write_raw)"
+# 12d. reply-review upsert：無回覆→POST 建（帶 review 關係）、有→PATCH 改
+echo "$rr_body" | grep -q 'method=POST' && echo "$rr_body" | grep -q 'method=PATCH' \
+  && ok "reply-review upserts (POST new / PATCH existing)" || fail_t "reply-review missing POST/PATCH upsert"
+echo "$rr_body" | grep -q 'customerReviewResponses' \
+  && ok "reply-review targets customerReviewResponses" || fail_t "reply-review wrong target type"
+echo "$rr_body" | grep -q 'relationships:{review' \
+  && ok "reply-review POST carries review relationship" || fail_t "reply-review POST missing review relationship"
+# 12e. reviews：N 須數字（防注入）
+rev_out="$(bash "$ASC" reviews abc 2>&1 || true)"
+echo "$rev_out" | grep -q '需為數字' \
+  && ok "reviews validates numeric N" || fail_t "reviews doesn't validate N (got: $rev_out)"
+# 12f. accessibility 唯讀（讀 accessibilityDeclarations，無寫入；有 GUI 提示）
+acc_body="$(awk '/^cmd_accessibility\(\)/,/^}/' "$ASC")"
+echo "$acc_body" | grep -q 'accessibilityDeclarations' \
+  && ok "accessibility reads accessibilityDeclarations" || fail_t "accessibility wrong endpoint"
+echo "$acc_body" | grep -q 'write_raw' \
+  && fail_t "accessibility has write path (should be read-only)" \
+  || ok "accessibility is read-only (no write_raw)"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

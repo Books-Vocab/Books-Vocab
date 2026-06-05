@@ -14,6 +14,9 @@
 #   ./ops/asc.sh review-detail                 # 審查聯絡 / demo 帳號 / 送審備註（raw API；查備註是否過期）
 #   ./ops/asc.sh screenshots [--locale zh-Hant]# 截圖集逐張 state（raw API；重送前查 Mochi 殘留 / 缺圖）
 #   ./ops/asc.sh categories                    # 列 iOS 可用主分類 ID（set-category 用）
+#   ./ops/asc.sh reviews [N]                    # 列最新 N 則用戶評論 + 是否已回覆（預設 20）
+#   ./ops/asc.sh accessibility                  # 列無障礙宣告（唯讀；建立/發布走 GUI）
+#   ./ops/asc.sh reply-review <reviewId> <text> # 回覆/更新某則評論（dry-run，--yes 才送）
 #   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改版本文案（預設 dry-run，--yes 才真寫）
 #   ./ops/asc.sh set-review <field> <value>               # 改審查資訊：備註/demo帳號/聯絡人（dry-run，--yes 才寫）
 #   ./ops/asc.sh set-appinfo <field> <value> [--locale L] # 改 App 層本地化：名稱/副標/隱私URL（dry-run，--yes 才寫）
@@ -83,24 +86,24 @@ raw() {  # codemagic 暴露不到的唯讀 raw GET；JWT + 依賴宣告都在 as
     "$(dirname "$0")/asc_get.py" "$1"
 }
 
-patch_raw() {  # codemagic 暴露不到的 raw PATCH 寫入；body 由 stdin。JWT 同樣只在 asc_patch.py（本檔仍零 JWT）
+write_raw() {  # codemagic 暴露不到的 raw 寫入；$1=METHOD(PATCH/POST/DELETE) $2=path，body 由 stdin。
   ASC_KEY_ID="$KEY_ID" ASC_ISSUER_ID="$ISSUER_ID" ASC_KEY_DIR="$ASC_KEY_DIR" \
-    "$(dirname "$0")/asc_patch.py" "$1"
+    "$(dirname "$0")/asc_write.py" "$2" "$1"  # JWT 只在 asc_write.py（本檔仍零 JWT）
 }
 
-# 共用 raw-PATCH 收尾：印 old/new → dry-run gate → --yes 才送 → 錯誤判讀。所有 raw 寫指令共用，
-# 確保「dry-run 預設 + patch_raw 只活在 --yes 分支」這個不變量只實作一次（負控 test 鎖此函式）。
-# $1 標頭  $2 舊值  $3 新值  $4 PATCH path  $5 body(JSON)  $6 dry-run 重現指令
-emit_patch() {
-  local header="$1" old="$2" new="$3" path="$4" body="$5" hint="$6" resp
+# 共用 raw 寫入收尾：印 old/new → dry-run gate → --yes 才送 → 錯誤判讀。所有 raw 寫指令共用，
+# 確保「dry-run 預設 + write_raw（真寫）只活在 --yes 分支」這個不變量只實作一次（負控 test 鎖此函式）。
+# $1 method(PATCH/POST/DELETE)  $2 標頭  $3 舊值  $4 新值  $5 path  $6 body(JSON)  $7 dry-run 重現指令
+emit_write() {
+  local method="$1" header="$2" old="$3" new="$4" path="$5" body="$6" hint="$7" resp
   echo "$header"
   echo "  舊值：$old"
   echo "  新值：$new"
   if [[ $YES -eq 1 ]]; then
-    resp="$(printf '%s' "$body" | patch_raw "$path")"
+    resp="$(printf '%s' "$body" | write_raw "$method" "$path")"
     printf '%s' "$resp" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
       && err "寫入失敗：HTTP $(printf '%s' "$resp" | jq -c '._httpError')  $(printf '%s' "$resp" | jq -c '._detail.errors // ._detail')"
-    echo "✓ 已寫入（$path）。"
+    echo "✓ 已寫入（$method $path）。"
   else
     echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste）："
     echo "  $hint"
@@ -282,7 +285,7 @@ cmd_set_review() {
   esac
   require_key   # 金鑰只在「確定要打 API」前才需要
 
-  local ver vlabel rd rid old body resp
+  local ver vlabel rd rid old body
   ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
   # 顯示目標版本字串+state，避免誤寫到非預期版本（如已上架 / 被拒版本）
   vlabel="$(raw "/v1/appStoreVersions/$ver" | jq -r '(.data.attributes.versionString // "?") + " (" + (.data.attributes.appStoreState // "?") + ")"')"
@@ -306,18 +309,9 @@ cmd_set_review() {
       '{data:{type:"appStoreReviewDetails",id:$id,attributes:{($k):$v}}}')"
   fi
 
-  echo "version=$vlabel  reviewDetail=$rid  field=$field"
-  echo "  舊值：$old"
-  echo "  新值：$value"
-  if [[ $YES -eq 1 ]]; then
-    resp="$(printf '%s' "$body" | patch_raw "/v1/appStoreReviewDetails/$rid")"
-    printf '%s' "$resp" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
-      && err "寫入失敗：HTTP $(printf '%s' "$resp" | jq -c '._httpError')  $(printf '%s' "$resp" | jq -c '._detail.errors // ._detail')"
-    echo "✓ 已寫入審查資訊（appStoreReviewDetail；版本 $vlabel）。"
-  else
-    echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste）："
-    printf '  ./ops/asc.sh set-review %s %q --yes\n' "$field" "$value"
-  fi
+  emit_write PATCH "version=$vlabel  reviewDetail=$rid  field=$field" "$old" "$value" \
+    "/v1/appStoreReviewDetails/$rid" "$body" \
+    "$(printf './ops/asc.sh set-review %s %q --yes' "$field" "$value")"
 }
 
 # ---- App 資訊讀：分類清單（set-category 用） ----
@@ -351,7 +345,7 @@ cmd_set_appinfo() {
   old="$(printf '%s' "$data" | jq -r --arg k "$jkey" '.data.attributes[$k] // "（空）"')"
   body="$(jq -nc --arg id "$loc" --arg k "$jkey" --arg v "$value" \
     '{data:{type:"appInfoLocalizations",id:$id,attributes:{($k):$v}}}')"
-  emit_patch "appInfoLocalization=$loc  locale=$LOCALE  field=$field" "$old" "$value" \
+  emit_write PATCH "appInfoLocalization=$loc  locale=$LOCALE  field=$field" "$old" "$value" \
     "/v1/appInfoLocalizations/$loc" "$body" \
     "$(printf './ops/asc.sh set-appinfo %s %q --locale %s --yes' "$field" "$value" "$LOCALE")"
 }
@@ -368,7 +362,7 @@ cmd_set_eula() {
   old="$(printf '%s' "$eu" | jq -r '(.data.attributes.agreementText // "") | "（\(length) 字）前 60：" + .[0:60]')"
   body="$(jq -nc --arg id "$eid" --arg v "$value" \
     '{data:{type:"endUserLicenseAgreements",id:$id,attributes:{agreementText:$v}}}')"
-  emit_patch "EULA=$eid" "$old" "（新文字 ${#value} 字，前 60：${value:0:60}）" \
+  emit_write PATCH "EULA=$eid" "$old" "（新文字 ${#value} 字，前 60：${value:0:60}）" \
     "/v1/endUserLicenseAgreements/$eid" "$body" \
     "$(printf './ops/asc.sh set-eula %q --yes' "$value")"
 }
@@ -386,7 +380,7 @@ cmd_set_content_rights() {
   old="$(raw "/v1/apps/$APP_ID" | jq -r '.data.attributes.contentRightsDeclaration // "（未設）"')"
   body="$(jq -nc --arg id "$APP_ID" --arg v "$value" \
     '{data:{type:"apps",id:$id,attributes:{contentRightsDeclaration:$v}}}')"
-  emit_patch "app=$APP_ID  contentRightsDeclaration" "$old" "$value" \
+  emit_write PATCH "app=$APP_ID  contentRightsDeclaration" "$old" "$value" \
     "/v1/apps/$APP_ID" "$body" \
     "./ops/asc.sh set-content-rights $value --yes"
 }
@@ -404,7 +398,7 @@ cmd_set_category() {
   # 分類走 relationship（非 attributes）：body 形狀與其他寫指令不同
   body="$(jq -nc --arg id "$aid" --arg rel "$rel" --arg cat "$cat" \
     '{data:{type:"appInfos",id:$id,relationships:{($rel):{data:{type:"appCategories",id:$cat}}}}}')"
-  emit_patch "appInfo=$aid  $rel" "$old" "$cat" \
+  emit_write PATCH "appInfo=$aid  $rel" "$old" "$cat" \
     "/v1/appInfos/$aid" "$body" \
     "./ops/asc.sh set-category $slot $cat --yes"
 }
@@ -428,9 +422,61 @@ cmd_set_rating() {
     body="$(jq -nc --arg id "$rid" --arg k "$field" --arg v "$value" \
       '{data:{type:"ageRatingDeclarations",id:$id,attributes:{($k):$v}}}')"
   fi
-  emit_patch "ageRatingDeclaration=$rid  attr=$field" "$old" "$value" \
+  emit_write PATCH "ageRatingDeclaration=$rid  attr=$field" "$old" "$value" \
     "/v1/ageRatingDeclarations/$rid" "$body" \
     "$(printf './ops/asc.sh set-rating %s %q --yes' "$field" "$value")"
+}
+
+# ---- 評論讀：最新用戶評論 + 回覆狀態（customerReviews，raw API） ----
+cmd_reviews() {
+  require_key
+  local lim="${1:-20}"
+  [[ "$lim" =~ ^[0-9]+$ ]] || err "reviews 的 N 需為數字（給的是：$lim）"
+  echo "# 最新用戶評論（territory · rating · 暱稱 · 日期 · id）；app 未上架時通常為空："
+  raw "/v1/apps/$APP_ID/customerReviews?sort=-createdDate&limit=$lim&include=response" \
+    | jq -r 'if has("_httpError") then "（讀取失敗：HTTP \(._httpError)）"
+             else (.included // []) as $resp
+               | (.data // [])[]
+               | . as $r
+               | ($resp[] | select(.id == ($r.relationships.response.data.id // "x")) | .attributes.responseBody) as $reply
+               | "[\($r.attributes.territory)] \("★" * $r.attributes.rating)  \($r.attributes.reviewerNickname)  \($r.attributes.createdDate[0:10])  id=\($r.id)",
+                 "  「\($r.attributes.title)」 \($r.attributes.body | gsub("[\\n\\r]";" ") | .[0:120])",
+                 (if $reply then "  ↳ 已回覆：\($reply | .[0:80])" else "  ↳ （未回覆 → reply-review \($r.id) <text>）" end)
+             end'
+  echo "註：評論為消費者唯讀資料；回覆用 reply-review（每則評論只能有一則回覆，再送=更新）。"
+}
+
+# ---- 無障礙宣告讀（accessibilityDeclarations，raw API；建立/發布走 GUI 狀態機） ----
+cmd_accessibility() {
+  require_key
+  echo "# 無障礙宣告（accessibilityDeclarations）："
+  raw "/v1/apps/$APP_ID/accessibilityDeclarations" \
+    | jq -r 'if has("_httpError") then "（讀取失敗：HTTP \(._httpError)）"
+             elif ((.data // []) | length) == 0 then "  （尚未建立任何無障礙宣告）"
+             else (.data // [])[] | "  deviceFamily=\(.attributes.deviceFamily // "?")  state=\(.attributes.state // "?")  id=\(.id)" end'
+  echo "註：無障礙宣告建立/發布有狀態機（DRAFT→PUBLISHED）且綁裝置家族，建議走 GUI；本工具唯讀。"
+}
+
+# ---- 評論回覆寫（customerReviewResponses；無回覆→POST 建，有→PATCH 改；dry-run 預設） ----
+cmd_reply_review() {
+  local rid="${1:-}" text="${2:-}"
+  [[ -n "$rid" && -n "$text" ]] || err "用法：asc.sh reply-review <reviewId> <text> [--yes]（reviewId 見 asc.sh reviews）"
+  require_key
+  local existing eid method path old body
+  existing="$(raw "/v1/customerReviews/$rid/response")"
+  eid="$(printf '%s' "$existing" | jq -r '.data.id // empty')"
+  if [[ -n "$eid" ]]; then   # 已有回覆 → 更新
+    method=PATCH; path="/v1/customerReviewResponses/$eid"
+    old="$(printf '%s' "$existing" | jq -r '.data.attributes.responseBody // "（空）"')"
+    body="$(jq -nc --arg id "$eid" --arg v "$text" \
+      '{data:{type:"customerReviewResponses",id:$id,attributes:{responseBody:$v}}}')"
+  else                       # 尚無回覆 → 新建（須帶 review 關係）
+    method=POST; path="/v1/customerReviewResponses"; old="（尚無回覆）"
+    body="$(jq -nc --arg rid "$rid" --arg v "$text" \
+      '{data:{type:"customerReviewResponses",attributes:{responseBody:$v},relationships:{review:{data:{type:"customerReviews",id:$rid}}}}}')"
+  fi
+  emit_write "$method" "review=$rid  回覆（$method）" "$old" "$text" "$path" "$body" \
+    "$(printf './ops/asc.sh reply-review %s %q --yes' "$rid" "$text")"
 }
 
 # ---- dispatch ----
@@ -443,6 +489,9 @@ case "${SUB:-}" in
   review-detail) cmd_review_detail ;;
   screenshots)   cmd_screenshots ;;
   categories)    cmd_categories ;;
+  reviews)       cmd_reviews "${ARGS[@]:-}" ;;
+  accessibility) cmd_accessibility ;;
+  reply-review)  cmd_reply_review "${ARGS[@]:-}" ;;
   set)           cmd_set "${ARGS[@]:-}" ;;
   set-review)    cmd_set_review "${ARGS[@]:-}" ;;
   set-appinfo)   cmd_set_appinfo "${ARGS[@]:-}" ;;
