@@ -673,6 +673,7 @@ private struct PodcastBubbleCell: View, Equatable {
             words: words.map(\.word),
             onResolveWordRects: { wordRects = $0 },
             onLongPressWord: { onEnterSelection($0) },
+            onWordSelection: { word, context in onWordTap(word, context) },
             onTranslateSelection: { phrase, context in onPhraseTap(phrase, context) },
             onExplainSelection: { text, context in onExplainTap(text, context) }
         )
