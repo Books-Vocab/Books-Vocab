@@ -272,6 +272,16 @@ def test_create_notebook_with_cover_pattern(isolated_api):
     assert r.json()["coverPattern"] == "dots"
 
 
+def test_create_notebook_invalid_cover_pattern_returns_422(isolated_api):
+    r = isolated_api.client.post(
+        "/api/notebooks",
+        json={"name": "BadPattern", "cover_pattern": "zigzag"},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 422, r.text
+    assert "detail" in r.json()
+
+
 def test_update_notebook_cover_pattern(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers

@@ -107,13 +107,14 @@ def get_current_user(
 def get_current_user_optional(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security_optional),
+    authorization: str | None = Header(default=None),
 ) -> UserRecord | None:
     """Auth dependency for *browse* endpoints that admit anonymous callers.
 
     Contract:
 
-    * **No** ``Authorization: Bearer`` header → ``None`` (guest). The endpoint
-      decides what a guest may see.
+    * **No** ``Authorization`` header → ``None`` (guest). The endpoint decides
+      what a guest may see.
     * Header **present** → validated strictly via :func:`resolve_current_user`,
       which raises ``401`` on an expired/forged token. A present-but-invalid
       token means the client *believes* it is signed in; downgrading it to a
@@ -121,6 +122,12 @@ def get_current_user_optional(
       :func:`get_current_user`.
     """
     if credentials is None:
+        if authorization is not None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         return None
     settings = request.app.state.kg_settings
     load_users_fn = request.app.state.load_users

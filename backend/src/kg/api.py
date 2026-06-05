@@ -19,6 +19,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -303,7 +304,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             "Validation error [%s %s] body=%s errors=%s",
             request.method, request.url.path, body, exc.errors(),
         )
-        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
     from .exceptions import KGError
 

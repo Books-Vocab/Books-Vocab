@@ -34,6 +34,13 @@ from kg.api_models.notebook import (
     NotebookResponse,
     NotebookUpdateRequest,
 )
+from kg.api_models.podcast import (
+    PodcastProgressListResponse,
+    PodcastProgressRequest,
+    PodcastProgressResponse,
+    PodcastSeriesDetail,
+    PodcastSeriesSummary,
+)
 from kg.api_models.review import (
     DailyReviewStatEntry,
     DailyReviewStatsPushRequest,
@@ -103,6 +110,11 @@ __all__ = [
     "NotebookUpdateRequest",
     "PhraseTranslateResponse",
     "PipelineQueueResponse",
+    "PodcastProgressListResponse",
+    "PodcastProgressRequest",
+    "PodcastProgressResponse",
+    "PodcastSeriesDetail",
+    "PodcastSeriesSummary",
     "QuickTranslateResponse",
     "QuotaResponse",
     "ReviewStateEntry",
