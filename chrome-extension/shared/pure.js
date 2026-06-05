@@ -104,7 +104,121 @@ function normalizeVocabItem(item) {
     // sort proxy (CardResponse omits a true creation timestamp).
     difficultyTier: raw.difficultyTier || raw.difficulty_tier || null,
     updatedAt: raw.updatedAt || raw.updated_at || null,
+    // Knowledge-graph links + word forms — the data is ALREADY in the list
+    // payload (list_vocab_response attaches linksByKind with reason/label/cardId,
+    // plus inflections); previously discarded here, now preserved so the detail
+    // panel can render KG's knowledge links (對比/相關) and inflected forms.
+    // `cardId` (= this card's id) lets link navigation match a link's target
+    // cardId against the loaded corpus. Guards: linksByKind must be a plain
+    // object (not array/string), inflections must be an array.
+    linksByKind:
+      raw.linksByKind && typeof raw.linksByKind === 'object' && !Array.isArray(raw.linksByKind)
+        ? raw.linksByKind
+        : {},
+    inflections: Array.isArray(raw.inflections) ? raw.inflections : [],
+    cardId: raw.id || raw.cardId || '',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Example highlighting — port of iOS so the detail panel marks the target word
+// in its example sentence identically to the app.
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrap the first occurrence of `word` in `example` with `**…**` markers,
+ * mirroring iOS `VocabularyEntry.markWordInContext` (which mimics the server's
+ * `_build_example`). Case-insensitive; the matched substring keeps its original
+ * casing. If the word is not found verbatim, falls back to a stem match (the
+ * first space-delimited token, 4–6 leading chars, anchored at word edges). When
+ * neither matches — or inputs are empty — returns `example` unchanged.
+ *
+ * Output is PLAIN TEXT carrying inline `**…**` marks — pass it through
+ * `parseInlineMarks` to get safely-escapable segments. No HTML is produced here,
+ * so this stays injection-free; `word` is treated as a literal (regex-escaped),
+ * not a pattern.
+ *
+ * @param {string} example
+ * @param {string} word
+ * @returns {string}
+ */
+function markWordInExample(example, word) {
+  const text = typeof example === 'string' ? example : '';
+  const w = typeof word === 'string' ? word.trim() : '';
+  if (!text || !w) return text;
+
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // 1. Verbatim, case-insensitive, first occurrence (original case preserved).
+  const direct = text.match(new RegExp(escapeRe(w), 'i'));
+  if (direct) {
+    const i = direct.index;
+    return text.slice(0, i) + '**' + direct[0] + '**' + text.slice(i + direct[0].length);
+  }
+
+  // 2. Stem fallback — first token, 4–6 leading chars, word-boundary-anchored
+  //    (mirrors iOS `(?<![\w\p{L}])stem\w*(?![\w\p{L}])`). Lookbehind / \p{L}
+  //    are modern-V8 features (chrome target); guard in case the engine lacks them.
+  const firstWord = w.split(' ')[0] || w;
+  if (firstWord.length >= 4) {
+    const stem = firstWord.slice(0, Math.min(firstWord.length, 6));
+    let stemRe = null;
+    try {
+      stemRe = new RegExp('(?<![\\w\\p{L}])' + escapeRe(stem) + '\\w*(?![\\w\\p{L}])', 'iu');
+    } catch (_err) {
+      stemRe = null;
+    }
+    const m = stemRe && text.match(stemRe);
+    if (m) {
+      const i = m.index;
+      return text.slice(0, i) + '**' + m[0] + '**' + text.slice(i + m[0].length);
+    }
+  }
+  return text;
+}
+
+/**
+ * Split text containing inline `**…**` / `==…==` marks into typed segments,
+ * porting the two highlight cases of iOS `CardMarkdownInlineParser`. Text outside
+ * a mark is a `'text'` segment; a non-empty `**x**` or `==x==` span is a `'mark'`
+ * segment. Empty spans (`****`) are dropped (matching iOS `if !value.isEmpty`).
+ * Unclosed markers are kept as literal text. Other markdown (`` ` ``, `_`) is
+ * left literal — examples only ever carry the two highlight syntaxes.
+ *
+ * Render by escaping each segment's `value`; only `'mark'` segments get a
+ * `<mark>` wrapper. No HTML is produced here, so rendering stays injection-safe.
+ *
+ * @param {string} text
+ * @returns {Array<{type:'text'|'mark', value:string}>}
+ */
+function parseInlineMarks(text) {
+  const raw = typeof text === 'string' ? text : '';
+  const out = [];
+  let buf = '';
+  let i = 0;
+  const flush = () => {
+    if (buf) {
+      out.push({ type: 'text', value: buf });
+      buf = '';
+    }
+  };
+  while (i < raw.length) {
+    const marker = raw.slice(i, i + 2);
+    if (marker === '**' || marker === '==') {
+      const end = raw.indexOf(marker, i + 2);
+      if (end !== -1) {
+        flush();
+        const value = raw.slice(i + 2, end);
+        if (value) out.push({ type: 'mark', value });
+        i = end + 2;
+        continue;
+      }
+    }
+    buf += raw[i];
+    i += 1;
+  }
+  flush();
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +634,8 @@ const KGPureExports = {
   isTrustedExternalOrigin,
   safeUrl,
   escapeHtml,
+  markWordInExample,
+  parseInlineMarks,
 };
 
 // This file is loaded as a *classic* script by the side panel / options page
