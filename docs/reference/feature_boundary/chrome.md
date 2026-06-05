@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 64a62d3d
+verified_against: f43ed600
 -->
 # Chrome Extension Feature Boundary
 
@@ -32,7 +32,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 |------|------|------|
 | `sidepanel/index.html` | — | sidepanel 入口；serif 標題（CormorantGaramond）、SVG 空狀態插圖、brand-hero CTA |
 | `sidepanel/app.js` | 410 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()`；error 狀態依 `classifyError` action 分為 login（brand-hero CTA）與其他（accent outline） |
-| `sidepanel/styles.css` | — | sidepanel 樣式；editorial surface 對齊官網 + iOS 北極星（single warm surface、serif headings、divider、z0/z1 shadow） |
+| `sidepanel/styles.css` | — | sidepanel 樣式；editorial surface 對齊官網 + iOS 北極星（single warm surface、serif headings、divider、z0/z1 shadow）。單字本列表 filter chip bar 對齊 iOS `AppFilterChipBar`（兩列：chips 一列、sort+CTA 靠右一列；空選即全部，無「全部」chip；消費 `kg-component-structures.css`，僅留 active-count 脈絡填色覆寫）；搜尋框對齊 iOS `AppSearchField`（`.kg-search-field` 複合：leading 放大鏡 + bare input + 有文字才現的 clear icon，surface 值對齊 `.kg-input` 契約） |
 
 ### Options Layer
 
@@ -52,6 +52,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | `shared/theme.js` | 44 | 深淺色主題切換 |
 | `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
 | `shared/kg-components.css` | — | component primitives（`.kg-card` / `.kg-btn` / `.kg-chip`，鏡像 iOS `AppCard`/`AppButton`/`AppTag`）。**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/dist/kg-components.css` 複製（手寫源在 dist，禁手改此 copy；已納入 `--check` gate）。三 surface 共用一套 primitive 詞彙 |
+| `shared/kg-component-structures.css` | — | 跨平台**複合元件結構**（primitive 之上的 BEM 結構契約，如 `VocabFilterChipBar` chips 容器 + `.class--active` modifier）。**生成檔**，由 `ops/gen_web_components.py` 從 `design-system/components.json`（結構 SoT）產出；token 以 `var(--*)` 引用，禁手改。sidepanel filter chip bar 消費此檔，僅在 surface CSS 留 active-count 脈絡填色覆寫 |
 | `shared/fonts.css` | — | surface-local `@font-face`（woff2 URL）；包含 ElmsSans 400/700 + CormorantGaramond 500/600/700 upright + 400–600 italic。font *family* 為 tokens.css 的 `--font-*` token，URL 各 surface 自帶 |
 
 ### Assets
@@ -97,4 +98,5 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 改 `shared/api.js` 呼叫的 backend endpoint | [`tech_index.md`](../tech_index.md) router 章節 |
 | 改認證流程 | [`docs/sop/architecture.md`](../../sop/architecture.md) auth 段 |
 | 改設計 token / 配色 | 改 `design-system/tokens.json` 再跑 `ops/gen_web_tokens.py` 重生 `shared/{tokens,kg-components}.css`（禁直接手改生成檔；drift 由 `ops/token_drift_check.py` 守） |
+| 改複合元件結構（filter chip bar / 跨平台共用結構） | 改 `design-system/components.json`（結構 SoT）再跑 `ops/gen_web_components.py` 重生 `shared/kg-component-structures.css`（禁手改生成檔）；surface CSS 僅留生成器涵蓋不到的脈絡覆寫 |
 | 改 surface 視覺（card / button / chip 外觀） | 三 surface（sidepanel / popup / options）現消費 `shared/kg-components.css` 的 `.kg-card`/`.kg-btn`/`.kg-chip` primitives；改視覺走 `tokens.json` → generator 重生，**勿在 surface CSS 手寫等價樣式**。各 surface 自有 CSS 僅放 BEM layout class（`.kg-list-card` / `.kg-popup__btn` / `.kg-section-card`）與 primitive 組合；重定義 base class 視為 bug |

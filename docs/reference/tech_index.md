@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: c64b3450
+verified_against: f43ed600
 -->
 # Technical Reference Index
 
@@ -109,6 +109,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `gen_web_tokens.py` | 從 `design-system/tokens.json`(W3C DTCG 格式,跨平台 token SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
+| `gen_web_components.py` | 從 `design-system/components.json`(複合元件**結構** SoT)生成 web CSS+JS:`kg-component-structures.css`(dist + chrome-extension `shared/` + `backend/static/` 三副本)+ `review-gradient.js`。token 以 `var(--*)` 引用(非硬編碼,token 改值自動傳播);支援 `_emit_modifiers`(`.class--active` 等 markup-toggled BEM modifier,states pseudo 之外)。生成檔禁手改;`uv run python ops/gen_web_components.py` 重生 |
 | `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 token 仍對齊 iOS Swift。**SoT-inversion-aware**:已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation)iOS 端引用 `DesignTokens.*`,`parse_design_tokens`/`_swift_num` 把引用解析回值再比對(證明 tokens.json==iOS 跨 SoT 反轉仍成立,且抓得到誤接線的值偏移);未接線群組(`AppColors`/`AppTheme`/`AppMotion` spring 物理層/`AppFonts` LineSpacing/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity)仍直接比對 literal。偏移不可 merge |
 | `component_fidelity_check.py` | drift guard(**組裝層**)— contract-based 驗證 `design-system/dist/kg-components.css` 每個手寫 primitive *選用* 的 token 對齊 iOS 元件契約(`.kg-chip`↔`AppTag`、`.kg-btn`↔`AppActionButtonStyle` radius md/700、`.kg-card`↔`AppSectionCardStyle`、`.kg-input` body(17)+hairline、`.kg-banner` caption(12)+v8、serif heading 700…),刻意的 web 發散(brand-hero CTA / banner 形狀)亦 pin 防回歸。`token_drift` 守值、它守*選用哪個值*;stdlib-only,env override `KG_COMPONENTS_CSS` |
 | `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json byte-for-byte)+ `component_fidelity_check`(若存在)+ extension `shared/{pure,icons}.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。Python guard 刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
@@ -136,6 +137,8 @@ Container 內 ops-cli(`card-find`、`db-query`、`ops_analyze.py` levels 1-6 等
 | 一次性遷移工具 | `ops/migrate_tokens_to_dtcg.py`(自研格式 → DTCG,已執行完成,留檔) |
 | 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源,component_fidelity 守護對象) |
 | 消費副本 | chrome-extension `shared/tokens.css`(生成)+ `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |
+| **複合元件結構 SoT** | `design-system/components.json` — 手寫**結構**契約(primitive 之上的 BEM 容器/modifier,如 `VocabFilterChipBar`:chips 容器 + chip + count + `--active` modifier,SoT = iOS `AppFilterChipBar`/`AppTabSelector` vocab style)。token 僅 by-reference。與 `dist/kg-components.css`(primitive)分層共存 |
+| 結構生成鏈 | `ops/gen_web_components.py`(components.json → `dist/kg-component-structures.css` + `review-gradient.js`,各複製進 chrome-extension `shared/` + `backend/static/`;見 ops 表)。生成檔禁手改 |
 | Shadow-DOM 安全 | token CSS selector 用 `:root, :host`,供 extension 注入 closed shadow root 仍生效 |
 
 ## Backup / Disaster Recovery
