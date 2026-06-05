@@ -17,6 +17,7 @@
     <section class="kg-card kg-section-card">
       <h2 class="kg-section-card__title" data-i18n="accountSection">帳號</h2>
       <div id="auth-status"></div>
+      <div id="pro-status" class="kg-pro-status" hidden></div>
       <div id="token-paste-area" class="kg-token-paste" hidden>
         <p class="kg-token-paste__hint" data-i18n="tokenPasteHint">或使用手動貼上 Token：</p>
         <div class="kg-token-paste__row">
@@ -34,6 +35,17 @@
         <input type="checkbox" id="enabled-toggle" class="kg-toggle__input">
         <span class="kg-toggle__track" aria-hidden="true"><span class="kg-toggle__thumb"></span></span>
       </label>
+    </section>
+
+    <!-- Translation language (source → target) -->
+    <section class="kg-card kg-section-card">
+      <h2 class="kg-section-card__title" data-i18n="translateLangSection">翻譯語言</h2>
+      <div class="kg-lang-row">
+        <select id="sourceLangSelect" class="kg-select" data-i18n-attr="aria-label:translateSourceAria" aria-label="原文語言"></select>
+        <span class="kg-lang-row__arrow" aria-hidden="true">→</span>
+        <select id="targetLangSelect" class="kg-select" data-i18n-attr="aria-label:translateTargetAria" aria-label="譯文語言"></select>
+      </div>
+      <p class="kg-lang-row__hint" id="langHint" hidden></p>
     </section>
 
     <!-- Theme section -->

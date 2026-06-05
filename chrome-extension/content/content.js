@@ -33,6 +33,63 @@
   // on a dead runtime — which would itself throw.
   const CONTEXT_INVALIDATED_MSG = t('popupContextInvalidated');
 
+  // Inline SVG glyphs. Content scripts run in an isolated world and cannot reach
+  // shared/icons.js (KGIcons), so the markup is inlined here. Wrapper attributes
+  // mirror KGIcons.svg (24×24 grid, fill:none, stroke:currentColor, 1.7 weight,
+  // round caps) so popup icons match the rest of the UI; the paths are the same
+  // as the 'speaker' / 'xmark' glyphs registered in shared/icons.js — keep both
+  // copies in sync. Sized explicitly (18px) since shadow-DOM CSS can't be relied
+  // on for an svg with no intrinsic size.
+  const iconSvg = (paths) =>
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+    'stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">' +
+    paths + '</svg>';
+  const SPEAKER_SVG = iconSvg(
+    '<path d="M4 9.5v5h3.5L13 19V5L7.5 9.5H4z"/><path d="M16.5 9a4 4 0 0 1 0 6"/><path d="M19 6.5a7.5 7.5 0 0 1 0 11"/>'
+  );
+  const XMARK_SVG = iconSvg('<path d="M6 6l12 12M18 6L6 18"/>');
+
+  /**
+   * Popup head row: the word plus the always-available tool buttons (speak /
+   * close). Shared by the loading and translated states so the speaker and the
+   * explicit close affordance survive the loading→translated→saved transitions.
+   * The buttons carry `data-action` and are handled by the delegated listener in
+   * `showPopup` (not the per-render explain/add handler), so they work in every
+   * state. Mirrors the iOS reading panel (word + speaker + close).
+   * @param {string} word
+   */
+  function headHTML(word) {
+    return (
+      '<div class="kg-popup__head">' +
+        `<div class="kg-popup__word">${escapeHtml(word)}</div>` +
+        '<div class="kg-popup__tools">' +
+          `<button class="kg-popup__icon-btn" type="button" data-action="speak" aria-label="${escapeHtml(t('popupSpeakAria'))}">${SPEAKER_SVG}</button>` +
+          `<button class="kg-popup__icon-btn" type="button" data-action="close" aria-label="${escapeHtml(t('popupCloseAria'))}">${XMARK_SVG}</button>` +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  /**
+   * Speak a word/phrase via the Web Speech API. Available to content scripts
+   * (they share the page's `window`, where `speechSynthesis` lives). Best-effort:
+   * silently no-ops if the API is unavailable. Cancels any in-flight utterance
+   * first so rapid taps don't queue. Mirrors the side panel's `speakWord`.
+   * @param {string} word
+   */
+  function speakWord(word) {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(String(word || ''));
+      u.lang = 'en-US';
+      synth.speak(u);
+    } catch (_err) {
+      // TTS unavailable in this context — no-op.
+    }
+  }
+
   /** Currently active host element (only one popup at a time). */
   let activeHost = null;
 
@@ -246,6 +303,10 @@
     if (activeHost) {
       activeHost.remove();
       activeHost = null;
+      // Stop any in-flight TTS so audio doesn't outlive the dismissed popup.
+      try {
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+      } catch (_err) { /* speechSynthesis unavailable — nothing to cancel */ }
     }
   }
 
@@ -280,6 +341,17 @@
 
     document.body.appendChild(host);
     activeHost = host;
+
+    // Always-on tool actions (speak / close). Attached once on the popup box so
+    // they work in every render state (loading + translated + saved); the
+    // per-render handler in `renderTranslation` owns explain / add. A click on
+    // explain/add reaches this listener too but matches neither branch — no-op.
+    popup.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      if (btn.dataset.action === 'close') removePopup();
+      else if (btn.dataset.action === 'speak') speakWord(word);
+    });
 
     // Delegate to popup logic
     createPopup(shadow, popup, { word, context, source });
@@ -343,7 +415,7 @@
   function createPopup(shadow, popup, { word, context, source }) {
     // --- Loading state ---
     popup.innerHTML = `
-      <div class="kg-popup__word">${escapeHtml(word)}</div>
+      ${headHTML(word)}
       <div class="kg-popup__skeleton"></div>
       <div class="kg-popup__skeleton kg-popup__skeleton--short"></div>
     `;
@@ -391,7 +463,7 @@
   function renderTranslation(popup, word, data, isPhrase, context, source) {
     popup.className = 'kg-popup kg-popup--translated';
 
-    let html = `<div class="kg-popup__word">${escapeHtml(word)}</div>`;
+    let html = headHTML(word);
 
     // Pronunciation
     if (data.p) {

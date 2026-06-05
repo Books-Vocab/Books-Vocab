@@ -19,6 +19,75 @@
   color: var(--text-primary);
   line-height: var(--leading-body);
   animation: kg-popup-enter var(--dur-quick) var(--ease-quick) both;
+  /* Bound tall content (long explanation / phrase) to the viewport and scroll
+     inside instead of overflowing off-screen. `overscroll-behavior: contain`
+     keeps a trackpad scroll from bubbling to and scrolling the underlying page. */
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* --- Head row: word + tools (speaker / close) --- */
+
+.kg-popup__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  /* Sticky so the speaker / close stay reachable when long content scrolls (the
+     popup itself is the scroll container). Negative margins cancel the popup's
+     padding so the head spans edge-to-edge and its background fully masks content
+     scrolling underneath; the matching padding restores the visual inset. The
+     top offset = −card-padding pins the head flush with the popup's top edge.
+     The popup's overflow + border-radius clip the head's square corners. */
+  position: sticky;
+  top: calc(-1 * var(--card-padding));
+  z-index: 1;
+  margin: calc(-1 * var(--card-padding)) calc(-1 * var(--card-padding)) var(--sp-xs);
+  padding: var(--card-padding) var(--card-padding) var(--sp-xs);
+  background: var(--card-bg);
+}
+
+/* Word spacing is owned by the head row when wrapped here (overrides the
+   standalone .kg-popup__word margin below). */
+.kg-popup__head .kg-popup__word {
+  margin-bottom: 0;
+}
+
+.kg-popup__tools {
+  display: flex;
+  gap: var(--sp-xs);
+  flex-shrink: 0;
+}
+
+/* Ghost icon button — 28px tap box, 18px glyph. Visual parity with the side
+   panel header buttons (transparent → pressed-fill on hover/active). */
+.kg-popup__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-quick),
+    color var(--dur-quick) var(--ease-quick);
+}
+
+.kg-popup__icon-btn svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.kg-popup__icon-btn:hover,
+.kg-popup__icon-btn:active {
+  background: var(--button-pressed-fill);
+  color: var(--text-primary);
 }
 
 @keyframes kg-popup-enter {
@@ -170,4 +239,5 @@
   /* Button :active transform is dropped by .kg-btn's own reduced-motion block
      in kg-components.css; only the popup-owned enter animation is killed here. */
   .kg-popup { animation: none; }
+  .kg-popup__icon-btn { transition: none; }
 }
