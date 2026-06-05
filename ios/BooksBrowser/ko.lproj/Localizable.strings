@@ -840,6 +840,15 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "자막 있음";
+"podcast.locked.episode.a11y" = "Pro 에피소드(잠김)";
+"podcast.locked.title" = "Pro 전용 에피소드";
+"podcast.locked.body" = "Pro를 구독하면 모든 에피소드가 열립니다.";
+"podcast.locked.cta.upgrade" = "Pro로 업그레이드";
+"podcast.guest.locked.title" = "로그인하고 듣기";
+"podcast.guest.locked.body" = "로그인하면 에피소드를 재생하고 전체 콘텐츠가 열립니다.";
+"podcast.guest.cta.signInToListen" = "로그인하고 듣기";
+"podcast.preview.cta.listenFree" = "무료 3분 미리듣기";
+"podcast.preview.banner.message" = "무료 미리듣기 · 업그레이드하면 전체 에피소드";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "두 번 탭하여 이 문장부터 재생";
 "podcast.transcript.translateAction" = "문장 번역";

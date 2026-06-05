@@ -45,6 +45,24 @@ err()   { echo "✗ $*" >&2; exit 1; }
 # Avoids the bash 3.x set -u + empty-array expansion bug on macOS.
 run_aws() { [[ -n "${AWS_ENDPOINT_URL:-}" ]] && aws --endpoint-url "$AWS_ENDPOINT_URL" "$@" || aws "$@"; }
 
+# ── Free-tier preview clip ───────────────────────────────────────────────────
+# The free tier streams a *separate* preview asset (see backend podcast_access.py
+# FREE_PREVIEW_EP_NUM / PREVIEW_AUDIO_STEM). It must be a self-contained file
+# whose own moov advertises ~PREVIEW_SECONDS — a byte-truncated copy of the full
+# progressive MP4 would make AVPlayer error instead of stopping cleanly. We cut
+# it with `-c copy` (stream copy: no re-encode, near-instant, lossless) so the
+# container/codec match the full audio and the backend's audioFormat resolution
+# applies unchanged. Only episode 1 is previewable, so only ep_01 gets one.
+PREVIEW_SECONDS=180
+
+make_preview() {
+  local src="$1" dst="$2" ext="$3"
+  local movflags=()
+  [[ "$ext" == "m4a" ]] && movflags=(-movflags +faststart)  # faststart is mp4-only
+  ffmpeg -nostdin -v error -y -i "$src" -t "$PREVIEW_SECONDS" -c copy "${movflags[@]}" "$dst" \
+    || err "ffmpeg failed to generate free-tier preview from $src (full audio publishes but free tier would 404)"
+}
+
 DRY_RUN=0
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -105,6 +123,12 @@ for src in \
 
   mkdir -p "$STAGING/$ep_dir"
   cp "$src" "$STAGING/$ep_dir/audio.$ext"
+
+  # Free-tier preview: only episode 1 is free-previewable (10# forces base-10
+  # so a leading-zero ep_num like "01" isn't parsed as octal).
+  if (( 10#$ep_num == 1 )); then
+    make_preview "$STAGING/$ep_dir/audio.$ext" "$STAGING/$ep_dir/preview.$ext" "$ext"
+  fi
 
   srt="$WORKSPACE/scripts/ep_${ep_num}_${suffix}.srt"
   [[ -f "$srt" ]] && cp "$srt" "$STAGING/$ep_dir/subtitle.srt"
@@ -204,6 +228,24 @@ for m in re.finditer(
         except (OSError, UnicodeDecodeError) as exc:
             print(f"⚠ ep_{ep_num}: subtitle read failed ({exc}); inline skipped")
 
+    # Free-tier preview (ep_01 only — see make_preview / backend podcast_access).
+    # previewDurationSec lets the client show "N-min preview" + an upgrade CTA
+    # at clip end without probing the asset itself.
+    preview_path = os.path.join(ep_dir, f"preview.{audio_ext}")
+    preview_available = os.path.isfile(preview_path)
+    preview_duration_sec = 0
+    if preview_available:
+        try:
+            pr = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries",
+                 "format=duration", "-of", "csv=p=0", preview_path],
+                capture_output=True, text=True, timeout=10
+            )
+            if pr.returncode == 0 and pr.stdout.strip():
+                preview_duration_sec = int(float(pr.stdout.strip()))
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
     episodes.append({
         "episodeNumber": ep_num,
         "title": ep_title,
@@ -211,6 +253,8 @@ for m in re.finditer(
         "audioAvailable": os.path.isfile(audio_path),
         "subtitleAvailable": subtitle_content is not None,
         "subtitleContent": subtitle_content,
+        "previewAvailable": preview_available,
+        "previewDurationSec": preview_duration_sec,
     })
 
 from datetime import datetime, timezone

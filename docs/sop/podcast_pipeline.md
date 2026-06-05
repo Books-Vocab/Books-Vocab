@@ -237,10 +237,11 @@ s3://kg-podcasts-prod/<sid>/
   metadata.json                     ← upload.sh 從 overview.md 解析生成(內嵌逐集字幕 + coverImageURL)
   cover.png                         ← cover stage 產 plan/cover.png,upload.sh 搬上 series 層(無則略)
   ep_NN/{audio.m4a, subtitle.srt, script.md}
+  ep_01/preview.m4a                  ← upload.sh 對 ep_01 stream-copy(ffmpeg -t 180 -c copy)出 free-tier 試聽;既有 series 由 ops/podcast_preview_backfill.py 回填
        │
        │  uv run --with boto3 python → 重建 s3://kg-podcasts-prod/index.json(put_object)
        ▼
-backend /api/podcasts*               ← podcast.py router(全認證,proxy 走 boto3 GetObject)
+backend /api/podcasts*               ← podcast.py router(分層授權 guest/free/pro;free 的 audio 端點服務 ep_01/preview.*,proxy 走 boto3 GetObject)
                                        封面:GET /api/podcasts/{sid}/cover(image/png,缺則 404)
        │
        ▼
