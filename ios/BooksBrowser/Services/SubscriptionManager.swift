@@ -22,6 +22,7 @@ enum PaywallSource: String {
     case graph
     case reader
     case knowledge
+    case podcast
 }
 
 @MainActor

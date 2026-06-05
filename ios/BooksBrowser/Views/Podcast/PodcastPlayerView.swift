@@ -20,6 +20,8 @@ struct PodcastPlayerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.authManager) private var authManager
 
     @Query private var allVocabulary: [VocabularyEntry]
 
@@ -31,6 +33,26 @@ struct PodcastPlayerView: View {
     @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
     @State private var lastSavedTime: TimeInterval = 0
     @State private var pushState = PodcastProgressPushState()
+    @State private var showLoginSheet = false
+    @State private var showPaywall = false
+
+    /// Tiered-access UX mirror (server is the security boundary). Drives the
+    /// defense-in-depth gate + the preview banner.
+    private var tier: PodcastTier {
+        PodcastAccess.tier(hasProAccess: subscriptionManager.hasProAccess, hasToken: authManager.token != nil)
+    }
+    /// May the caller play this episode? `true` while the row isn't hydrated yet
+    /// (bootstrap owns that state); a hydrated, non-playable episode shows the
+    /// gate instead of loading audio — covers deep-link / continue-playing entry
+    /// that bypasses the list/hero gating.
+    private var playableForTier: Bool {
+        guard let ep = loadedEpisode else { return true }
+        return PodcastAccess.canPlay(tier: tier, episodeNumber: ep.episodeNumber)
+    }
+    private var isPreviewPlayback: Bool {
+        guard let ep = loadedEpisode else { return false }
+        return PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: ep.episodeNumber)
+    }
 
     private var subtitleSize: PodcastSubtitleSize {
         PodcastSubtitleSize(rawValue: subtitleSizeRaw) ?? .large
@@ -113,12 +135,97 @@ struct PodcastPlayerView: View {
 
     var body: some View {
         fullBody
+        .sheet(isPresented: $showLoginSheet) {
+            LoginSheet()
+        }
+        .toastSheet(isPresented: $showPaywall) {
+            SubscriptionPaywallSheet()
+        }
         .enableInjection()
     }
 
     @ViewBuilder
     private var fullBody: some View {
-        playerCore
+        if loadedEpisode != nil && !playableForTier {
+            lockedGateView
+        } else {
+            playerCore
+        }
+    }
+
+    /// Defense-in-depth gate shown when a non-playable episode is reached
+    /// directly (deep link / continue-playing). Guest → sign-in CTA; free on a
+    /// Pro-only episode → upgrade CTA. Audio is never loaded for this episode.
+    private var lockedGateView: some View {
+        let isGuest = tier == .guest
+        return VStack(spacing: skin.spacing.sectionGap) {
+            Image(systemName: "lock.fill")
+                .font(skin.typography.symbolHero)
+                .foregroundStyle(skin.palette.accent)
+            Text(isGuest
+                 ? L10n.string("podcast.guest.locked.title")
+                 : L10n.string("podcast.locked.title"))
+                .font(skin.typography.sectionTitle)
+                .foregroundStyle(skin.palette.primaryText)
+            Text(isGuest
+                 ? L10n.string("podcast.guest.locked.body")
+                 : L10n.string("podcast.locked.body"))
+                .font(skin.typography.caption)
+                .foregroundStyle(skin.palette.secondaryText)
+                .multilineTextAlignment(.center)
+            Button {
+                presentUpgradeOrLogin()
+            } label: {
+                Label(isGuest
+                      ? L10n.string("podcast.guest.cta.signInToListen")
+                      : L10n.string("podcast.locked.cta.upgrade"),
+                      systemImage: isGuest ? "person.crop.circle" : "sparkles")
+            }
+            .buttonStyle(.appAction(.primary))
+            .frame(maxWidth: 280)
+        }
+        .padding(AppShellMetrics.pageHorizontalPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.palette.pageBackground.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Brand banner shown throughout a free-tier preview: signals "this is the
+    /// free 3-min preview" + an inline upgrade CTA. The preview asset itself is
+    /// physically ~3 min, so playback ends naturally — no media-time cap needed.
+    private var previewUpgradeBanner: some View {
+        HStack(spacing: skin.spacing.inlineGap) {
+            Image(systemName: "lock.circle.fill")
+                .font(skin.typography.iconSmall)
+                .foregroundStyle(AppColors.onBrandHero)
+            Text(L10n.string("podcast.preview.banner.message"))
+                .font(skin.typography.caption)
+                .foregroundStyle(AppColors.onBrandHero)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                presentUpgradeOrLogin()
+            } label: {
+                Text(L10n.string("podcast.locked.cta.upgrade"))
+                    .font(skin.typography.caption.weight(.semibold))
+            }
+            .buttonStyle(.appCompactAction(.primary))
+        }
+        .padding(.horizontal, skin.spacing.cardPadding)
+        .padding(.vertical, skin.spacing.inlineGap)
+        .background(skin.palette.brandHero, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("podcast.preview.banner")
+    }
+
+    /// Route the upgrade/login CTA: guest → login sheet; free → Pro paywall.
+    @MainActor
+    private func presentUpgradeOrLogin() {
+        if tier == .guest {
+            showLoginSheet = true
+        } else {
+            subscriptionManager.activePaywallSource = .podcast
+            showPaywall = true
+        }
     }
 
     /// 字幕設定鍵，恆掛 push detail 的 `.topBarTrailing` toolbar。
@@ -326,6 +433,12 @@ struct PodcastPlayerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
+                if isPreviewPlayback {
+                    previewUpgradeBanner
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        .padding(.bottom, skin.spacing.inlineGap)
+                }
+
                 PodcastControlsView(viewModel: vm)
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                     .padding(.bottom, PodcastPlayerMetrics.controlsBottomPadding)
@@ -466,6 +579,9 @@ struct PodcastPlayerView: View {
         // function only owns the audio/subtitle async load + viewModel lifecycle.
         guard let episode = loadedEpisode,
               let series = loadedSeries else { return }
+        // Tier gate (defense in depth): never load audio for an episode the
+        // caller can't play — the body shows `lockedGateView` instead.
+        guard PodcastAccess.canPlay(tier: tier, episodeNumber: episode.episodeNumber) else { return }
 
         loadTask?.cancel()
         loadTask = nil

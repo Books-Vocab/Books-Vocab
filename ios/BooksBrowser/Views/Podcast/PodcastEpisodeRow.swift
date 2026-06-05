@@ -6,15 +6,20 @@ struct PodcastEpisodeRow: View {
     @ObserveInjection private var inject
     let episode: PodcastEpisode
     let progress: PodcastProgress?
+    /// Pro-locked for the current tier (guest, or free on a non-preview episode).
+    /// Renders a lock accessory instead of the play affordance; the caller wires
+    /// the tap to the login sheet / paywall rather than navigation.
+    let locked: Bool
     @Environment(\.appSkin) private var skin
     @Environment(\.kgService) private var kgService
     #if os(iOS)
     @State private var downloadManager = PodcastDownloadManager.shared
     #endif
 
-    init(episode: PodcastEpisode, progress: PodcastProgress? = nil) {
+    init(episode: PodcastEpisode, progress: PodcastProgress? = nil, locked: Bool = false) {
         self.episode = episode
         self.progress = progress
+        self.locked = locked
     }
 
     private var isCompleted: Bool { progress?.completed == true }
@@ -196,7 +201,12 @@ struct PodcastEpisodeRow: View {
 
     @ViewBuilder
     private var trailingAccessory: some View {
-        if isCompleted {
+        if locked {
+            Image(systemName: "lock.fill")
+                .font(skin.typography.iconSmall)
+                .foregroundStyle(skin.palette.tertiaryText)
+                .accessibilityLabel(L10n.string("podcast.locked.episode.a11y"))
+        } else if isCompleted {
             Image(systemName: "checkmark.circle.fill")
                 .font(skin.typography.iconSmall)
                 .foregroundStyle(skin.palette.success)

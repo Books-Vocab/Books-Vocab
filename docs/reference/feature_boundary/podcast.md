@@ -39,6 +39,7 @@ verified_against: 25cedfb8
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `PodcastVocabularyContext.swift` | 89 | `struct PodcastVocabularyContext: VocabularyContextProtocol`，連通 reader-parity 翻譯 + 加入詞庫 |
+| `PodcastAccess.swift` | ~75 | **分層授權 UX policy（純函式，鏡射後端 `podcast_access.py`）**：`PodcastTier{guest,free,pro}` + `tier(hasProAccess:hasToken:)`（pro 優先；有 token=free；無=guest，對齊後端 token 判別）、`isFreePreviewable`（`freePreviewEpisodeNumber=1`）、`canPlay`、`isPreviewPlayback`、`showsProLock`。**伺服器仍是安全邊界**，此為 UX 層先攔（鎖定 badge/登入/paywall/試聽標示），不靠樂觀請求解析 403。單測 `BooksBrowserTests/PodcastAccessTests.swift` |
 | `PodcastSelectableSentenceTextView.swift` | ~340 | **統一兩態字幕渲染器（③ 3-A,2026-06）**：平常態與選取態共用**同一個** `UITextView`（只 `isSelectable` 切換 → 零 reflow,消除選取跳版）。display 態逐詞 rect 由 `PodcastSentenceUITextView.layoutSubviews`（`LayoutKey` cache 守門）publish 給底線 overlay；長按 `UILongPressGestureRecognizer`(0.35s) `characterIndex(for:)` 反查 word index 進選取；selecting 態原生選取 + edit menu 翻譯/解釋（`L10n`）。M1 fallback flag `displayTextIsInteractive`（翻 false → display 態 inert,gesture 退 cell 層） |
 
 ### Streaming / Offline Services（ios/BooksBrowser/Services/）
@@ -94,6 +95,7 @@ podcast catalog 同步現有兩條觸發鏈：
 - **改 series 層 overlay pane 行為** → `PodcastSeriesActivation`（決策，`PodcastDetailRouter.swift`）+ `BookshelfView` `selectedSeriesRemoteId`；compact 不適用（沿用 push）。**episode → player 已是單欄 push（#672），新增 episode 開啟行為走 `NavigationLink(value: PodcastNavRoute.episode)` + BookshelfView root `navigationDestination`，不要再造 episode 層 inline detail**
 - **新增 user-tunable 播放參數(字幕 / 跟隨 / 計時器 等)** → `PodcastSettingsPopover`(集中所有 user-tunable 播放參數;非字幕專屬)
 - **新增詞彙互動** → `PodcastVocabularyContext`(reader-parity:任何 reader 詞彙流程都要在此鏡像)
+- **動分層授權（誰能播哪集 / 鎖定呈現）** → policy 一律走 `PodcastAccess`(勿在各 view 散寫 tier 條件)；改 free 可播範圍同步後端 `podcast_access.FREE_PREVIEW_EP_NUM` + `PodcastAccess.freePreviewEpisodeNumber` + `PodcastAccessTests`。鎖定 row 用 `Button{paywall/login}`（**不可**用 closure-based `NavigationLink`，會重現 LazyVStack freeze）；可播 row 維持 value-based `NavigationLink(value:)`。player 須保留防禦式 gate（`canPlay` false → `lockedGateView` 且 `loadEpisode` early-return，涵蓋 deep-link 直達）
 - **新增 metric token** → 跨 feature 用升 `AppMetrics`;單 feature 用留 `PodcastPlayerMetrics`
 - **訂閱進度持久化等高頻(15Hz)`@Observable` 狀態** → **絕不**把 `.onChange(of: vm.currentTime)`／類似高頻讀取掛在 `PodcastPlayerView.body`／`playerCore`／`playerContent` 等父層,必須隔離進只渲染 `Color.clear` 的葉子(`PodcastProgressTicker` 模式)。否則 `@Observable` 的 per-view-body 失效會讓父 body 每 tick 重求值、連鎖重建字幕子樹,字幕的 `EquatableView` 優化(`PodcastTranscriptColumn.equatable()`)會被父層 invalidation 架空 → 捲動卡頓 + follow 捲動失效
 
