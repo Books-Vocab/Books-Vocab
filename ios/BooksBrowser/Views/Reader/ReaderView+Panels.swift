@@ -124,7 +124,12 @@ extension ReaderView {
             // 快取一次詞庫查找，避免 body 重算時 existingEntry() 在 nil 檢查與
             // closure 內各掃一次（1000+ 詞庫下為 O(n)×2 線性掃 + lowercased）。
             let existingDetailEntry = vocabularyContext.existingEntry(matching: selection.word)
-            TranslationPanel(
+            makeTranslationPanel(selection: selection, existingDetailEntry: existingDetailEntry)
+        }
+    }
+
+    private func makeTranslationPanel(selection: WordSelection, existingDetailEntry: VocabularyEntry?) -> some View {
+        TranslationPanel(
                 word: selection.word,
                 result: handler.translationResult,
                 isLoading: handler.isTranslating,
@@ -158,8 +163,7 @@ extension ReaderView {
                 onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
                     ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
                     : nil
-            )
-        }
+        )
     }
 }
 

@@ -33,12 +33,7 @@ extension ReaderTranslationHandler {
         result: TranslationResult,
         context: any VocabularyContextProtocol
     ) {
-        if let existing = context.existingEntry(matching: selection.word),
-           existing.syncAction != .delete {
-            appendLookedUpWordIfNeeded(selection.word)
-            withAnimation(AppMotion.feedbackPulse) { isSaved = true }
-            return
-        }
+        if handleExistingEntry(selection.word, in: context) { return }
 
         let inserted = context.saveEntry(
             selection: selection,
@@ -48,20 +43,14 @@ extension ReaderTranslationHandler {
         if inserted {
             AppLog.reader.info("Auto-saved: \(selection.word)")
         }
-        appendLookedUpWordIfNeeded(selection.word)
-        withAnimation(AppMotion.feedbackPulse) { isSaved = true }
+        markAlreadySaved(selection.word)
     }
 
     func guestSaveToVocabulary(
         selection: WordSelection,
         context: any VocabularyContextProtocol
     ) {
-        if let existing = context.existingEntry(matching: selection.word),
-           existing.syncAction != .delete {
-            appendLookedUpWordIfNeeded(selection.word)
-            withAnimation(AppMotion.feedbackPulse) { isSaved = true }
-            return
-        }
+        if handleExistingEntry(selection.word, in: context) { return }
 
         let inserted = context.saveEntry(
             selection: selection,
@@ -70,13 +59,26 @@ extension ReaderTranslationHandler {
         if inserted {
             AppLog.reader.info("Guest saved: \(selection.word)")
         }
-        appendLookedUpWordIfNeeded(selection.word)
-        withAnimation(AppMotion.feedbackPulse) { isSaved = true }
+        markAlreadySaved(selection.word)
     }
 
     func normalizeWord(_ word: String) -> String {
         word.precomposedStringWithCompatibilityMapping
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func markAlreadySaved(_ word: String) {
+        appendLookedUpWordIfNeeded(word)
+        withAnimation(AppMotion.feedbackPulse) { isSaved = true }
+    }
+
+    private func handleExistingEntry(_ word: String, in context: any VocabularyContextProtocol) -> Bool {
+        if let existing = context.existingEntry(matching: word),
+           existing.syncAction != .delete {
+            markAlreadySaved(word)
+            return true
+        }
+        return false
     }
 
     private func appendLookedUpWordIfNeeded(_ word: String) {

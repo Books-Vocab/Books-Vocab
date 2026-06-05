@@ -52,25 +52,27 @@ struct TOCView: View {
                     Button("完成".localized) { dismiss() }
                 }
             }
-            .task {
-                do {
-                    let toc = try await publication.tableOfContents().get()
-                    tocLinks = toc
-                    loadState = toc.isEmpty ? .empty : .loaded
-                    AppLog.reader.info("TOC loaded: \(toc.count) items")
-                    for (i, link) in toc.enumerated() {
-                        AppLog.reader.debug("  [\(i)] \(link.title ?? "nil") → \(String(describing: link.url()))")
-                    }
-                    if toc.isEmpty {
-                        AppLog.reader.warning("TOC is empty — this book may not have a table of contents")
-                    }
-                } catch {
-                    AppLog.reader.error("TOC load failed: \(error.localizedDescription)")
-                    loadState = .failed(error.localizedDescription)
-                }
-            }
+            .task { await loadTableOfContents() }
         }
         .enableInjection()
+    }
+
+    private func loadTableOfContents() async {
+        do {
+            let toc = try await publication.tableOfContents().get()
+            tocLinks = toc
+            loadState = toc.isEmpty ? .empty : .loaded
+            AppLog.reader.info("TOC loaded: \(toc.count) items")
+            for (i, link) in toc.enumerated() {
+                AppLog.reader.debug("  [\(i)] \(link.title ?? "nil") → \(String(describing: link.url()))")
+            }
+            if toc.isEmpty {
+                AppLog.reader.warning("TOC is empty — this book may not have a table of contents")
+            }
+        } catch {
+            AppLog.reader.error("TOC load failed: \(error.localizedDescription)")
+            loadState = .failed(error.localizedDescription)
+        }
     }
 
     @ViewBuilder

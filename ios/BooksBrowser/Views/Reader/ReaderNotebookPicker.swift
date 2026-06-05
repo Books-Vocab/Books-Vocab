@@ -77,19 +77,19 @@ struct ReaderNotebookPicker: View {
                     Text("跟隨全域設定".localized)
                         .font(AppFonts.body())
                         .foregroundStyle(theme.palette.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Text("使用目前選定的單字本".localized)
                         .font(AppFonts.caption())
                         .foregroundStyle(theme.palette.tertiaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
                 Spacer()
 
-                if book.preferredNotebookId == nil {
-                    Image(systemName: "checkmark")
-                        .font(AppFonts.subhead(weight: .semibold))
-                        .foregroundStyle(theme.palette.accent)
-                }
+                selectionCheckmark(isSelected: book.preferredNotebookId == nil)
             }
             .contentShape(Rectangle())
         }
@@ -121,13 +121,18 @@ struct ReaderNotebookPicker: View {
 
                 Spacer()
 
-                if book.preferredNotebookId == notebook.remoteId {
-                    Image(systemName: "checkmark")
-                        .font(AppFonts.subhead(weight: .semibold))
-                        .foregroundStyle(theme.palette.accent)
-                }
+                selectionCheckmark(isSelected: book.preferredNotebookId == notebook.remoteId)
             }
             .contentShape(Rectangle())
+        }
+    }
+
+    @ViewBuilder
+    private func selectionCheckmark(isSelected: Bool) -> some View {
+        if isSelected {
+            Image(systemName: "checkmark")
+                .font(AppFonts.subhead(weight: .semibold))
+                .foregroundStyle(theme.palette.accent)
         }
     }
 

@@ -94,31 +94,35 @@ extension ReaderSettingsPresenter {
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
                         .font(appSkin.typography.monoBodyStrong)
                         .foregroundStyle(appSkin.palette.secondaryText)
-                        .frame(width: 34, alignment: .trailing)
+                        .frame(width: ReaderMetrics.vocabValueReadoutWidth, alignment: .trailing)
                 }
                 Divider().overlay(appSkin.palette.divider)
-                HStack(alignment: .center, spacing: AppSpacing.s3) {
-                    vocabLabelChip(title: L10n.string("閱讀模式"), systemImage: "book.pages")
-                    Spacer(minLength: AppSpacing.s3)
-                    HStack(spacing: AppSpacing.s2) {
-                        ForEach([false, true], id: \.self) { isScroll in
-                            let isSelected = bindings.scrollMode.wrappedValue == isScroll
-                            Button {
-                                withAnimation(AppMotion.panelState) { bindings.scrollMode.wrappedValue = isScroll }
-                            } label: {
-                                ReaderSelectionTile(isSelected: isSelected) {
-                                    Text(isScroll ? L10n.string("捲動") : L10n.string("翻頁"))
-                                        .font(appSkin.typography.caption)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, AppSpacing.s2)
-                                }
-                            }
-                            .buttonStyle(.plain)
+                vocabReadingModeRow
+            }
+        }
+    }
+
+    private var vocabReadingModeRow: some View {
+        HStack(alignment: .center, spacing: AppSpacing.s3) {
+            vocabLabelChip(title: L10n.string("閱讀模式"), systemImage: "book.pages")
+            Spacer(minLength: AppSpacing.s3)
+            HStack(spacing: AppSpacing.s2) {
+                ForEach([false, true], id: \.self) { isScroll in
+                    let isSelected = bindings.scrollMode.wrappedValue == isScroll
+                    Button {
+                        withAnimation(AppMotion.panelState) { bindings.scrollMode.wrappedValue = isScroll }
+                    } label: {
+                        ReaderSelectionTile(isSelected: isSelected) {
+                            Text(isScroll ? L10n.string("捲動") : L10n.string("翻頁"))
+                                .font(appSkin.typography.caption)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, AppSpacing.s2)
                         }
                     }
-                    .frame(maxWidth: 160)
+                    .buttonStyle(.plain)
                 }
             }
+            .frame(maxWidth: ReaderMetrics.vocabModeToggleMaxWidth)
         }
     }
 
@@ -127,34 +131,7 @@ extension ReaderSettingsPresenter {
     var vocabAppearanceSection: some View {
         vocabSettingsSection(title: "外觀".localized) {
             VStack(alignment: .leading, spacing: AppSpacing.s4) {
-                Menu {
-                    ForEach(ReaderFont.allCases) { font in
-                        Button(font.rawValue) { bindings.font.wrappedValue = font }
-                    }
-                } label: {
-                    vocabControlSurface {
-                        HStack(spacing: AppSpacing.s3) {
-                            VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
-                                Text("字體".localized)
-                                    .font(appSkin.typography.caption)
-                                    .foregroundStyle(appSkin.palette.tertiaryText)
-                                Text(bindings.font.wrappedValue.rawValue)
-                                    .font(appSkin.typography.translationTitle)
-                                    .foregroundStyle(appSkin.palette.primaryText)
-                            }
-                            Spacer()
-                            HStack(spacing: 6) {
-                                Text(fontToneLabel)
-                                    .font(appSkin.typography.monoLabel)
-                                    .foregroundStyle(appSkin.palette.quaternaryText)
-                                Image(systemName: "chevron.down")
-                                    .font(appSkin.typography.iconTiny.weight(.bold))
-                                    .foregroundStyle(appSkin.palette.tertiaryText)
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
+                vocabFontMenu()
                 HStack(spacing: 10) {
                     ForEach(ReaderTheme.allCases) { theme in vocabThemeTile(theme) }
                 }
@@ -174,7 +151,7 @@ extension ReaderSettingsPresenter {
                             Text(option.label.localized)
                                 .font(appSkin.typography.caption)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
                         }
                     }
                     .buttonStyle(.plain)
@@ -214,6 +191,37 @@ extension ReaderSettingsPresenter {
         AppSectionBlock(title: title, flat: true) { content() }
     }
 
+    func vocabFontMenu() -> some View {
+        Menu {
+            ForEach(ReaderFont.allCases) { font in
+                Button(font.rawValue) { bindings.font.wrappedValue = font }
+            }
+        } label: {
+            vocabControlSurface {
+                HStack(spacing: AppSpacing.s3) {
+                    VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
+                        Text("字體".localized)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                        Text(bindings.font.wrappedValue.rawValue)
+                            .font(appSkin.typography.translationTitle)
+                            .foregroundStyle(appSkin.palette.primaryText)
+                    }
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Text(fontToneLabel)
+                            .font(appSkin.typography.monoLabel)
+                            .foregroundStyle(appSkin.palette.quaternaryText)
+                        Image(systemName: "chevron.down")
+                            .font(appSkin.typography.iconTiny.weight(.bold))
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     func vocabLabelChip(title: String, systemImage: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage).font(appSkin.typography.iconTiny)
@@ -248,7 +256,7 @@ extension ReaderSettingsPresenter {
                         .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))
                     Rectangle()
                         .fill(appSkin.readerThemeSwatchColor(theme))
-                        .frame(height: 8)
+                        .frame(height: ReaderMetrics.vocabThemeSwatchHeight)
                         .clipShape(Capsule(style: .continuous))
                 }
                 .frame(maxWidth: .infinity)

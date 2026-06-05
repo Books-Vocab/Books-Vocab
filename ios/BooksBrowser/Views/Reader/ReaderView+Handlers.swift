@@ -33,7 +33,7 @@ extension ReaderView {
             context: context,
             vocabularyContext: vocabularyContext
         )
-        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
+        presentTranslationOverlay()
     }
 
     func handlePhraseSelected(_ phrase: String, _ context: String) {
@@ -43,6 +43,10 @@ extension ReaderView {
             context: context,
             vocabularyContext: vocabularyContext
         )
+        presentTranslationOverlay()
+    }
+
+    private func presentTranslationOverlay() {
         withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
     }
 
@@ -54,7 +58,7 @@ extension ReaderView {
         if progress >= 1.0 {
             PerfLog.reader.mark("firstHighlightComplete")
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
+                try? await Task.sleep(for: .seconds(ReaderMetrics.firstHighlightFadeOutDelay))
                 withAnimation(AppMotion.contentFade) {
                     readerState.underlineProgress = nil
                 }

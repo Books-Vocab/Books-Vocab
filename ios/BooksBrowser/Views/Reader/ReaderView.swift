@@ -56,9 +56,7 @@ struct ReaderView: View {
     /// 否則 retry 載入中途 dismiss 仍會 fire-and-forget 寫回已棄置的 handler。
     @State private var retryLoadTask: Task<Void, Never>?
 
-    @Environment(\.kgService) private var kgService
     @Environment(\.authManager) var authManager
-    @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.readerSettings) var settings
 
@@ -102,23 +100,7 @@ struct ReaderView: View {
         .toolbar(.hidden, for: .navigationBar)
         .macReaderImmersion()
         .toastSheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
-            if let publication {
-                TOCView(
-                    publication: publication,
-                    onSelect: { link in
-                        readerState.showTableOfContents = false
-                        AppLog.reader.debug("TOC selected: \(link.title ?? "Untitled")")
-                        Task { @MainActor in
-                            if let locator = await publication.locate(link) {
-                                AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
-                                navigateToLocator = (locator: locator, id: UUID())
-                            } else {
-                                AppLog.reader.error("TOC navigation failed: could not locate link \(String(describing: link))")
-                            }
-                        }
-                    }
-                )
-            }
+            tableOfContentsSheet
         }
         .task {
             sanitizeStaleBoundNotebook()
@@ -170,6 +152,28 @@ struct ReaderView: View {
             LoginSheet()
         }
         .enableInjection()
+    }
+
+    @ViewBuilder private var tableOfContentsSheet: some View {
+        if let publication {
+            TOCView(
+                publication: publication,
+                onSelect: { link in handleTOCSelection(link, in: publication) }
+            )
+        }
+    }
+
+    private func handleTOCSelection(_ link: ReadiumShared.Link, in publication: Publication) {
+        readerState.showTableOfContents = false
+        AppLog.reader.debug("TOC selected: \(link.title ?? "Untitled")")
+        Task { @MainActor in
+            if let locator = await publication.locate(link) {
+                AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
+                navigateToLocator = (locator: locator, id: UUID())
+            } else {
+                AppLog.reader.error("TOC navigation failed: could not locate link \(String(describing: link))")
+            }
+        }
     }
 
     /// 若 book.preferredNotebookId 指向已刪除或不存在的 notebook，清除綁定以避免新單字存入孤兒 notebook。
@@ -232,6 +236,7 @@ struct ReaderView: View {
             guard !Task.isCancelled else { return }
             handler.bookUniqueWords = uniqueWords
         } catch {
+            AppLog.reader.error("Publication load failed (book=\(book.title)): \(error.localizedDescription, privacy: .public)")
             await MainActor.run {
                 readerState.errorMessage = error.localizedDescription
                 readerState.isLoading = false

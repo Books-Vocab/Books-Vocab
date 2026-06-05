@@ -71,6 +71,20 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         ])
     }
 
+    private static func installInteractionBlocker(on host: NavigatorHostViewController, coordinator: Coordinator) {
+        // 透明觸控攔截層：當翻譯面板開啟時覆蓋整個 WebView，阻止 click 穿透
+        let blocker = UIView(frame: host.view.bounds)
+        blocker.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        blocker.backgroundColor = .clear
+        blocker.isUserInteractionEnabled = false // 預設關閉
+        blocker.tag = 9001
+
+        let tap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleBlockerTap(_:)))
+        blocker.addGestureRecognizer(tap)
+
+        host.view.addSubview(blocker)
+    }
+
     func makeUIViewController(context: Context) -> NavigatorHostViewController {
         let host = NavigatorHostViewController()
         host.onWordSelected = onWordSelected
@@ -121,17 +135,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         host.view.backgroundColor = paperUIColor
         navigator.view.backgroundColor = paperUIColor
 
-        // 透明觸控攔截層：當翻譯面板開啟時覆蓋整個 WebView，阻止 click 穿透
-        let blocker = UIView(frame: host.view.bounds)
-        blocker.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        blocker.backgroundColor = .clear
-        blocker.isUserInteractionEnabled = false // 預設關閉
-        blocker.tag = 9001
-
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleBlockerTap(_:)))
-        blocker.addGestureRecognizer(tap)
-
-        host.view.addSubview(blocker)
+        Self.installInteractionBlocker(on: host, coordinator: context.coordinator)
 
         return host
     }
