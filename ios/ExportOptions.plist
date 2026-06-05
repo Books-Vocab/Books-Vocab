@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Store / TestFlight 發版用，配合 ops/ios_release.sh。
+	     manual signing：用本機已安裝的 Apple Distribution 憑證 + "KG App Store" profile
+	     （一次性建置見 ~/.secrets/apple/README.md）。
+	     method 用舊式 "app-store"（Xcode 26 會印 deprecated 警告但可用）：新式 "app-store-connect"
+	     即使 manual signing 仍強制要求 Xcode 內登入 ASC account，純 CLI 環境無 account 會失敗。 -->
+	<key>method</key>
+	<string>app-store</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>teamID</key>
+	<string>XNSH5U9FNV</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.Max0228.BooksBrowser</key>
+		<string>KG App Store</string>
+	</dict>
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- 由 pbxproj 掌控版號，禁止 Xcode 自動遞增 build number -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>
