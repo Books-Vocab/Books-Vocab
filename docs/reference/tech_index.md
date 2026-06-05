@@ -44,6 +44,7 @@ verified_against: c64b3450
 | `translate_log.py` | `translate_log` + cache hits | 翻譯呼叫紀錄、cross-user cache、admin search |
 | `pipeline_log.py` | `pipeline_runs` | 圖譜管道 per-run/step timing |
 | `token_tracker.py` | `token_usage` | LLM token / cost,provider-aware |
+| `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄 |
 | `podcast_progress.py` | `podcast_progress` | per-user 播客 LWW 進度 |
 | `admin_audit.py` | `admin_audit_log` | grant/revoke 等管理員操作 |
 | `app_store.py` | app store receipts | 訂閱收據 |
@@ -60,7 +61,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 - **Auth & SSO**: `JWT_SECRET` / `ADMIN_TOKEN` / `ADMIN_PASSWORD` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` / `APPLE_BUNDLE_ID` / `CHROME_EXTENSION_ID` / `APP_STORE_CONNECT_*`
 - **Secret encryption**: `SECRET_ENC_KEY`(可選)— `secret_store.py` 對 `enc:` stored secret 的對稱加密根金鑰,`sha256(SECRET_ENC_KEY)` 派生 Fernet key。**未設時 fallback `sha256(JWT_SECRET)`**(既有部署零破壞)。設了它後,**輪換 `JWT_SECRET` 不再令 stored secret 無法解密**(兩者脫鉤);解密採多金鑰容錯(當前 key 先試,失敗退回 legacy `sha256(JWT_SECRET)`),過渡期無需 re-encrypt migration。
 - **Quota & Rate Limit**: `FREE_DAILY_LIMIT_USD` / `PRO_DAILY_LIMIT_USD` / `API_RATE_LIMIT` / `TRANSLATE_RATE_LIMIT` / `KG_ALLOW_SANDBOX_PURCHASE` / `RATE_LIMIT_TRUSTED_HOPS`(匿名請求取 XFF 倒數第 N 段作 rate-limit key,default `1` = 現行單層 Caddy 行為;前置 N 層可信代理時設 `N+1`,見 `host_topology.md`)
-- **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS`
+- **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS` / `LLM_ERROR_LOG_RETENTION_DAYS`
 - **Cache**: `TRANSLATE_CACHE_TTL_DAYS`
 - **Service / Ops**: `KG_DATA_DIR` / `CORS_ORIGINS` / `KG_LOG_TZ`(ops-side only — 僅 root `devops.sh` 顯示 log 時間用,不影響 backend runtime) / `SENTRY_DSN` / `SENTRY_ENVIRONMENT`
 ## iOS 模組地圖 (`ios/BooksBrowser/`)
@@ -119,7 +120,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `inject_codemod.py` | iOS InjectionNext 三件套自動注入(`import Inject` / `@ObserveInjection` / `.enableInjection()`)。`--dry-run` / `--apply` / `--scope <subdir>` |
 | `injection_lint.sh` | iOS hot reload 覆蓋率守門(同 `i18n_lint` 四模式)。三規則:View struct 有 `@ObserveInjection`、per-file arity、`import Inject` 共存性。詳見 `docs/sop/ios.md §Hot Reload` |
 
-Container 內 ops-cli(`card-find`、`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。傳輸層以 `printf %q` 序列化 argv,任意特殊字元 SQL 可安全穿越單次遠端 bash 解析。
+Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。傳輸層以 `printf %q` 序列化 argv,任意特殊字元 SQL 可安全穿越單次遠端 bash 解析。
 
 ## Web 設計系統(`design-system/`)
 
