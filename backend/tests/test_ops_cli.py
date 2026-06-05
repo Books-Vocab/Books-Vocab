@@ -3,9 +3,16 @@
 import sqlite3
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
-from ops_helpers import _create_token_usage_db, _hours_ago_iso, _now_iso
+from ops_helpers import (
+    _create_judge_log_db,
+    _create_token_usage_db,
+    _create_translate_log_db,
+    _hours_ago_iso,
+    _now_iso,
+)
 
 # ops_cli.py 位於 backend/ 根目錄，需要直接 import
 CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
@@ -33,10 +40,11 @@ def _create_cards_db(path: Path, rows: list[tuple]) -> None:
 
 
 def _run_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
-    """執行 ops_cli.py，設定 KG_DATA_DIR 環境變數。"""
+    """執行 ops_cli.py，設定 KG_DATA_DIR + PYTHONPATH 環境變數。"""
     import os
 
-    env = {**os.environ, "KG_DATA_DIR": data_dir}
+    src_dir = str(CLI_PATH.parent / "src")
+    env = {**os.environ, "KG_DATA_DIR": data_dir, "PYTHONPATH": src_dir}
     return subprocess.run(
         [sys.executable, str(CLI_PATH), *args],
         capture_output=True,
@@ -291,6 +299,75 @@ class TestProviderAwarePricing:
         result = _run_cli(str(tmp_path), "quota-overview")
         assert result.returncode == 0
         assert "0.42" in result.stdout
+
+
+class TestSyncTrace:
+    """sync-trace 子指令 — 合併 cards + token_usage + judge_log + translate_log 時間線。"""
+
+    def test_combined_timeline(self, tmp_path):
+        uid = "u1"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        now = _now_iso()
+
+        # cards.db
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(user_dir / "cards.db", [
+            ("c1", "hello", "你好", 0, now, now),
+            ("c2", "world", "世界", 1, now, now),
+        ])
+
+        # token_usage.db
+        _create_token_usage_db(tmp_path, [
+            (uid, "translate", 1000, 500, now),
+        ])
+
+        # judge_log.db
+        _create_judge_log_db(tmp_path, [
+            (uid, "default", "c1", "c2", "related", 0.9, 1, now, None),
+        ])
+
+        # translate_log.db
+        _create_translate_log_db(tmp_path, [
+            (uid, "quick", "hello", None, "h1", "en", "zh", "你好", 120, now),
+        ])
+
+        result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", today)
+        assert result.returncode == 0
+        assert "Sync Trace" in result.stdout
+        assert "hello" in result.stdout
+        assert "translate" in result.stdout
+        assert "judge_accept" in result.stdout or "judge" in result.stdout
+        assert "translate_quick" in result.stdout or "quick" in result.stdout
+
+    def test_json_output(self, tmp_path):
+        uid = "u1"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        now = _now_iso()
+
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(user_dir / "cards.db", [
+            ("c1", "hello", "你好", 0, now, now),
+        ])
+        _create_token_usage_db(tmp_path, [
+            (uid, "translate", 1000, 500, now),
+        ])
+
+        result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", today, "--json")
+        assert result.returncode == 0
+        import json
+        data = json.loads(result.stdout)
+        assert data["user_id"] == uid
+        assert data["date"] == today
+        assert len(data["events"]) == 2
+
+    def test_empty_day(self, tmp_path):
+        uid = "u1"
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", today)
+        assert result.returncode == 0
+        assert "Total events: 0" in result.stdout
 
 
 class TestHelp:
