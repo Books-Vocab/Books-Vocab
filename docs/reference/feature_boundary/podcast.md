@@ -39,6 +39,7 @@ verified_against: 25cedfb8
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `PodcastVocabularyContext.swift` | 89 | `struct PodcastVocabularyContext: VocabularyContextProtocol`，連通 reader-parity 翻譯 + 加入詞庫 |
+| `PodcastAccess.swift` | ~75 | **分層授權 UX policy（純函式，鏡射後端 `podcast_access.py`）**：`PodcastTier{guest,free,pro}` + `tier(hasProAccess:hasToken:)`（pro 優先；有 token=free；無=guest，對齊後端 token 判別）、`isFreePreviewable`（`freePreviewEpisodeNumber=1`，純 ep-num policy 鏡射後端）、`canPlay(…previewAvailable:)`、`isPreviewPlayback(…previewAvailable:)`、`showsProLock(…previewAvailable:)`。後三者**額外**要求 `previewAvailable`：free 用戶僅在 ep1 真有 `preview.*` 資產時才視為可試聽，legacy/未回填 series 的 ep1（`previewAvailable=false`）顯 Pro 鎖而非導向後端 404 死路（client 比後端嚴一階以避免死巷；後端仍純依 ep_num 選 key）。**伺服器仍是安全邊界**，此為 UX 層先攔（鎖定 badge/登入/paywall/試聽標示），不靠樂觀請求解析 403。單測 `BooksBrowserTests/PodcastAccessTests.swift` |
 | `PodcastSelectableSentenceTextView.swift` | ~340 | **統一兩態字幕渲染器（③ 3-A,2026-06）**：平常態與選取態共用**同一個** `UITextView`（只 `isSelectable` 切換 → 零 reflow,消除選取跳版）。display 態逐詞 rect 由 `PodcastSentenceUITextView.layoutSubviews`（`LayoutKey` cache 守門）publish 給底線 overlay；長按 `UILongPressGestureRecognizer`(0.35s) `characterIndex(for:)` 反查 word index 進選取；selecting 態原生選取 + edit menu 翻譯/解釋（`L10n`）。M1 fallback flag `displayTextIsInteractive`（翻 false → display 態 inert,gesture 退 cell 層） |
 
 ### Streaming / Offline Services（ios/BooksBrowser/Services/）
@@ -61,6 +62,7 @@ podcast catalog 同步現有兩條觸發鏈：
 - `episodes[].subtitleContent: String?` 由 `ops/podcast_upload.sh` 嵌入；iOS `PodcastEpisode.inlineSubtitle` 直接消費，跳過 `/api/podcasts/{sid}/{ep}/subtitle` fetch
 - `episodes[].localAudioPath: String?` (SwiftData only, 不在後端 JSON) — 由 DownloadManager 填寫；PlayerView 認到即用 file:// URL 跳過認證
 - `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。iOS 有值才拉遠端封面圖快取，否則退 `color`/`coverPattern` 程序化封面
+- `episodes[ep1].previewAvailable: Bool` + `previewDurationSec: Int`（free-tier 試聽，**僅 ep_01**）：`ops/podcast_upload.sh` 對 ep_01 以 `ffmpeg -t 180 -c copy` stream-copy 出 `ep_01/preview.<fmt>`（同 container/codec、無損）並寫此二欄；既有 series 由 `ops/podcast_preview_backfill.py`（bucket-driven、audio-decoupled、dry-run 預設 / `--execute` / `--check` drift）回填。backend `audio` 端點對 free tier 服務此 `preview.<fmt>` 物件（見 `tech_index.md` podcast_access），**不**對完整檔做 byte 截斷（progressive MP4 單 moov 宣告全長，截 byte 會讓 AVPlayer 報錯而非乾淨停止）。preview 欄位在 `episodes` 內，`index.json` 會 strip，故不影響 series-list view
 
 ### Sub-views（UI 元件）
 
@@ -93,6 +95,7 @@ podcast catalog 同步現有兩條觸發鏈：
 - **改 series 層 overlay pane 行為** → `PodcastSeriesActivation`（決策，`PodcastDetailRouter.swift`）+ `BookshelfView` `selectedSeriesRemoteId`；compact 不適用（沿用 push）。**episode → player 已是單欄 push（#672），新增 episode 開啟行為走 `NavigationLink(value: PodcastNavRoute.episode)` + BookshelfView root `navigationDestination`，不要再造 episode 層 inline detail**
 - **新增 user-tunable 播放參數(字幕 / 跟隨 / 計時器 等)** → `PodcastSettingsPopover`(集中所有 user-tunable 播放參數;非字幕專屬)
 - **新增詞彙互動** → `PodcastVocabularyContext`(reader-parity:任何 reader 詞彙流程都要在此鏡像)
+- **動分層授權（誰能播哪集 / 鎖定呈現）** → policy 一律走 `PodcastAccess`(勿在各 view 散寫 tier 條件)；改 free 可播範圍同步後端 `podcast_access.FREE_PREVIEW_EP_NUM` + `PodcastAccess.freePreviewEpisodeNumber` + `PodcastAccessTests`。鎖定 row 用 `Button{paywall/login}`（**不可**用 closure-based `NavigationLink`，會重現 LazyVStack freeze）；可播 row 維持 value-based `NavigationLink(value:)`。player 須保留防禦式 gate（`canPlay` false → `lockedGateView` 且 `loadEpisode` early-return，涵蓋 deep-link 直達）
 - **新增 metric token** → 跨 feature 用升 `AppMetrics`;單 feature 用留 `PodcastPlayerMetrics`
 - **訂閱進度持久化等高頻(15Hz)`@Observable` 狀態** → **絕不**把 `.onChange(of: vm.currentTime)`／類似高頻讀取掛在 `PodcastPlayerView.body`／`playerCore`／`playerContent` 等父層,必須隔離進只渲染 `Color.clear` 的葉子(`PodcastProgressTicker` 模式)。否則 `@Observable` 的 per-view-body 失效會讓父 body 每 tick 重求值、連鎖重建字幕子樹,字幕的 `EquatableView` 優化(`PodcastTranscriptColumn.equatable()`)會被父層 invalidation 架空 → 捲動卡頓 + follow 捲動失效
 

@@ -41,6 +41,17 @@ struct PodcastEpisodeListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.kgService) private var kgService
+    @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.authManager) private var authManager
+
+    /// Tiered-access UX mirror of the backend policy. A guest browses but taps
+    /// route to the login sheet; a free user can open ep1 (preview) but ep2+
+    /// rows are locked → paywall. Server stays the security boundary.
+    private var tier: PodcastTier {
+        PodcastAccess.tier(hasProAccess: subscriptionManager.hasProAccess, hasToken: authManager.token != nil)
+    }
+    @State private var showLoginSheet = false
+    @State private var showPaywall = false
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
     // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
@@ -167,7 +178,28 @@ struct PodcastEpisodeListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .podcastCatalogDidSync)) { _ in
             Task { await reloadFromStore() }
         }
+        .sheet(isPresented: $showLoginSheet) {
+            LoginSheet()
+        }
+        .toastSheet(isPresented: $showPaywall) {
+            SubscriptionPaywallSheet()
+        }
         .enableInjection()
+    }
+
+    /// Tap on a locked episode (or hero CTA when locked). Guest → login sheet;
+    /// free → Pro paywall (sourced as `.podcast`). Never navigates.
+    @MainActor
+    private func handleLockedTap() {
+        switch tier {
+        case .guest:
+            showLoginSheet = true
+        case .free:
+            subscriptionManager.activePaywallSource = .podcast
+            showPaywall = true
+        case .pro:
+            break  // pro is never locked
+        }
     }
 
     @MainActor
@@ -284,24 +316,40 @@ struct PodcastEpisodeListView: View {
         if let target = continueEpisode {
             let progress = progressMap[target.remoteId]
             let unavailable = !target.audioAvailable
-            let label: String = {
-                if unavailable { return L10n.string("音訊暫不可用") }
-                if allCompleted { return L10n.string("重新播放") }
-                if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return L10n.string("繼續播放") }
-                return L10n.string("開始播放")
-            }()
-            let icon = unavailable ? "icloud.slash" : "play.fill"
-            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
-                Label(label, systemImage: icon)
-            }
-            .buttonStyle(.appAction(.primary))
-            .disabled(unavailable)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    warmConnection(for: target)
+            let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: target.episodeNumber, previewAvailable: target.previewAvailable)
+            let isPreview = PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: target.episodeNumber, previewAvailable: target.previewAvailable)
+
+            if locked {
+                // guest → login CTA; free on a Pro-only episode → upgrade CTA.
+                let label = tier == .guest
+                    ? L10n.string("podcast.guest.cta.signInToListen")
+                    : L10n.string("podcast.locked.cta.upgrade")
+                Button { handleLockedTap() } label: {
+                    Label(label, systemImage: tier == .guest ? "person.crop.circle" : "lock.fill")
                 }
-            )
-            .frame(maxWidth: 280)
+                .buttonStyle(.appAction(.primary))
+                .frame(maxWidth: 280)
+            } else {
+                let label: String = {
+                    if unavailable { return L10n.string("音訊暫不可用") }
+                    if isPreview { return L10n.string("podcast.preview.cta.listenFree") }
+                    if allCompleted { return L10n.string("重新播放") }
+                    if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return L10n.string("繼續播放") }
+                    return L10n.string("開始播放")
+                }()
+                let icon = unavailable ? "icloud.slash" : "play.fill"
+                NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
+                    Label(label, systemImage: icon)
+                }
+                .buttonStyle(.appAction(.primary))
+                .disabled(unavailable)
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        warmConnection(for: target)
+                    }
+                )
+                .frame(maxWidth: 280)
+            }
         }
     }
 
@@ -359,23 +407,34 @@ struct PodcastEpisodeListView: View {
     /// 檔頭）。push 目標 `PodcastPlayerView` 由 BookshelfView root 的
     /// `navigationDestination(for: PodcastNavRoute.self)` 接住。value-based +
     /// root 統一註冊是 freeze-fix 契約（PR #366/#368/#370/#373，見檔頭註解）。
+    @ViewBuilder
     private func episodeRow(_ episode: PodcastEpisode) -> some View {
+        let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: episode.episodeNumber, previewAvailable: episode.previewAvailable)
         let row = PodcastEpisodeRow(
             episode: episode,
-            progress: progressMap[episode.remoteId]
+            progress: progressMap[episode.remoteId],
+            locked: locked
         )
         .contentShape(Rectangle())
 
-        return NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
-            row
-        }
-        .buttonStyle(.plain)
-        .disabled(!episode.audioAvailable)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                warmConnection(for: episode)
+        if locked {
+            // Plain Button (not a closure NavigationLink) so we don't reintroduce
+            // the LazyVStack eager-destination freeze (PR #366/#368/#370/#373) and
+            // never navigate into the player for a gated episode.
+            Button { handleLockedTap() } label: { row }
+                .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
+                row
             }
-        )
+            .buttonStyle(.plain)
+            .disabled(!episode.audioAvailable)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    warmConnection(for: episode)
+                }
+            )
+        }
     }
 
     private var sortMenu: some View {

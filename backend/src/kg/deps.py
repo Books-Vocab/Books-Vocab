@@ -54,6 +54,7 @@ def _get_settings(request: Request) -> KGSettings:
 
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 _USER_LOCKS: collections.OrderedDict[str, asyncio.Lock] = collections.OrderedDict()
 _MAX_USER_LOCKS = 500
@@ -99,6 +100,36 @@ def get_current_user(
     )
     # Tag Sentry scope with uid so error groups + traces cluster per-user.
     # No-op when Sentry isn't initialized; id-only so no PII leaks.
+    bind_user(user.get("id"))
+    return user
+
+
+def get_current_user_optional(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_optional),
+) -> UserRecord | None:
+    """Auth dependency for *browse* endpoints that admit anonymous callers.
+
+    Contract:
+
+    * **No** ``Authorization: Bearer`` header → ``None`` (guest). The endpoint
+      decides what a guest may see.
+    * Header **present** → validated strictly via :func:`resolve_current_user`,
+      which raises ``401`` on an expired/forged token. A present-but-invalid
+      token means the client *believes* it is signed in; downgrading it to a
+      silent guest would mask a real auth bug, so we fail loud — identical to
+      :func:`get_current_user`.
+    """
+    if credentials is None:
+        return None
+    settings = request.app.state.kg_settings
+    load_users_fn = request.app.state.load_users
+    user = resolve_current_user(
+        credentials.credentials,
+        settings=settings,
+        load_users=load_users_fn,
+        parse_datetime=_parse_datetime,
+    )
     bind_user(user.get("id"))
     return user
 
