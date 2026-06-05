@@ -9,6 +9,7 @@ logging fault.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 from datetime import UTC, datetime
@@ -20,6 +21,26 @@ DB_PATH = DATA_DIR / "llm_errors.db"
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
+
+_BEARER_RE = re.compile(
+    r"([\"']?Authorization[\"']?\s*[:=]\s*[\"']?Bearer\s+)([^\s,;\"'}]+)",
+    re.IGNORECASE,
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?P<keyquote>[\"']?)"
+    r"(?P<key>"
+    r"[A-Z0-9_-]*(?:api[_-]?key|password|secret|credentials?)[A-Z0-9_-]*"
+    r"|(?:access|refresh|id|auth|bearer)[_-]?token"
+    r"|token"
+    r")"
+    r"(?P=keyquote)"
+    r"(?P<sep>\s*[:=]\s*)"
+    r"(?P<valuequote>[\"']?)"
+    r"(?P<value>[^\s,;\"'}]+)"
+    r"(?P=valuequote)",
+    re.IGNORECASE,
+)
+_OPENAI_STYLE_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9._-]+")
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -64,6 +85,22 @@ def _reset() -> None:
             _conn = None
 
 
+def redact_message(message: str | None) -> str:
+    """Remove secret-like values from provider/SDK error text before logging."""
+    if not message:
+        return ""
+    redacted = _BEARER_RE.sub(r"\1[REDACTED]", message)
+    redacted = _SECRET_ASSIGNMENT_RE.sub(
+        lambda match: (
+            f"{match.group('keyquote')}{match.group('key')}{match.group('keyquote')}"
+            f"{match.group('sep')}{match.group('valuequote')}[REDACTED]"
+            f"{match.group('valuequote')}"
+        ),
+        redacted,
+    )
+    return _OPENAI_STYLE_KEY_RE.sub("[REDACTED]", redacted)
+
+
 def record(
     *,
     user_id: str,
@@ -91,6 +128,6 @@ def record(
             "(user_id, call_type, provider, model, error_class, status_code, message, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (user_id, call_type, provider, model, error_class, status_code,
-             (message or "")[:500], now),
+             redact_message(message)[:500], now),
         )
         conn.commit()
