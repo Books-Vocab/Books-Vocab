@@ -23,6 +23,7 @@ import Inject
 struct PodcastHomeView: View {
     @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.appSkin) private var skin
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -33,6 +34,12 @@ struct PodcastHomeView: View {
 
     @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
     private var podcastSeries: [PodcastSeries]
+
+    /// 跨 series 的播放進度（CloudStore）。home 是輕量列表頁、無高頻 tick，故可
+    /// 直接 `@Query` 觀察（不同於 `PodcastPlayerView`/`PodcastEpisodeListView` 因
+    /// 15Hz tick 而改用一次性 fetch）。最近更新者排前 → 繼續收聽 shelf 順序。
+    @Query(sort: \PodcastProgress.updatedAt, order: .reverse)
+    private var allProgress: [PodcastProgress]
 
     @State private var navigationPath = NavigationPath()
 
@@ -53,6 +60,21 @@ struct PodcastHomeView: View {
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
     private var coverHeight: CGFloat { layoutMode.bookshelfCoverHeight }
 
+    /// 「繼續收聽」資料：把每筆有效進度（曾播放、未完成）對應回其 episode/series。
+    /// 以 `podcastSeries.episodes` 在記憶體建 remoteId→(episode,series) map，避免
+    /// 跨 store fetch。tap 進 player 後仍由 player 防禦式 gate 把關 entitlement。
+    private var continueItems: [PodcastContinueItem] {
+        var epMap: [String: (PodcastEpisode, PodcastSeries)] = [:]
+        for s in podcastSeries {
+            for e in s.episodes { epMap[e.remoteId] = (e, s) }
+        }
+        return allProgress.compactMap { p in
+            guard p.lastPlayedTime > 0, !p.completed,
+                  let (episode, series) = epMap[p.episodeRemoteId] else { return nil }
+            return PodcastContinueItem(episode: episode, series: series, progress: p)
+        }
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ZStack {
@@ -62,7 +84,7 @@ struct PodcastHomeView: View {
                 if sortedPodcastSeries.isEmpty {
                     emptyState
                 } else {
-                    seriesGrid
+                    content
                 }
             }
             .navigationTitle(L10n.string("app.section.podcasts"))
@@ -77,7 +99,9 @@ struct PodcastHomeView: View {
                     PodcastPlayerView(episodeId: episodeRemoteId)
                 }
             }
-            .task {
+            // `.task(id:)` 對齊 NotebookListView：login 狀態翻轉才重跑，避免
+            // Catalyst sidebar 切回 podcast section（remount）以外的無謂重同步。
+            .task(id: authManager.isLoggedIn) {
                 if authManager.isLoggedIn {
                     let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
                     if outcome == .listFetchFailed {
@@ -90,37 +114,70 @@ struct PodcastHomeView: View {
         .enableInjection()
     }
 
-    // MARK: - Series 網格
+    // MARK: - 內容（continue shelf 堆疊 + 所有節目 grid）
 
-    private var seriesGrid: some View {
+    private var content: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
-                ForEach(sortedPodcastSeries) { series in
-                    NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
-                        PodcastSeriesCard(series: series, coverHeight: coverHeight)
-                    }
-                    .buttonStyle(.bookshelfCard)
-                    .accessibilityLabel("\(series.title), podcast")
-                    .transition(.bookshelfCard)
-                    .contextMenu {
-                        Button {
-                            toggleFollow(series)
-                        } label: {
-                            Label(
-                                (series.isFollowed ? "取消追蹤" : "追蹤").localized,
-                                systemImage: series.isFollowed ? "star.slash" : "star"
-                            )
-                        }
-                    }
+            VStack(alignment: .leading, spacing: AppSpacing.s5) {
+                if !continueItems.isEmpty {
+                    continueShelf
+                        .padding(.top, AppSpacing.s2)
                 }
+                seriesGridSection
             }
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppSpacing.s2)
             .animateContentFade(podcastSeries.count)
         }
         .refreshable {
             await refreshPodcastCatalog()
         }
+    }
+
+    /// 繼續收聽 — 跨 series 最近播放未完成；空則整段不顯示。LazyHStack 內走
+    /// value-based `NavigationLink`（freeze 契約，等同 LazyVStack）。
+    private var continueShelf: some View {
+        PodcastShelf(title: L10n.string("繼續收聽")) {
+            ForEach(continueItems) { item in
+                NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: item.episode.remoteId)) {
+                    PodcastContinueRailCard(episode: item.episode, series: item.series, progress: item.progress)
+                }
+                .buttonStyle(.bookshelfCard)
+            }
+        }
+    }
+
+    /// 所有節目 — followed 排前 + star badge。有 continue shelf 時冠標題與上段區隔。
+    @ViewBuilder
+    private var seriesGridSection: some View {
+        if !continueItems.isEmpty {
+            Text(L10n.string("所有節目"))
+                .font(skin.typography.sectionTitle)
+                .foregroundStyle(skin.palette.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+        }
+        LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
+            ForEach(sortedPodcastSeries) { series in
+                NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
+                    PodcastSeriesCard(series: series, coverHeight: coverHeight)
+                }
+                .buttonStyle(.bookshelfCard)
+                .accessibilityLabel("\(series.title), podcast")
+                .transition(.bookshelfCard)
+                .contextMenu {
+                    Button {
+                        toggleFollow(series)
+                    } label: {
+                        Label(
+                            (series.isFollowed ? "取消追蹤" : "追蹤").localized,
+                            systemImage: series.isFollowed ? "star.slash" : "star"
+                        )
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+        .padding(.top, continueItems.isEmpty ? AppSpacing.s2 : 0)
     }
 
     // MARK: - 空狀態
@@ -198,4 +255,13 @@ struct PodcastHomeView: View {
             toastCoordinator.error("追蹤狀態儲存失敗".localized)
         }
     }
+}
+
+/// 繼續收聽 shelf 的一筆：episode + 其 series + 進度。`Identifiable`（id=episode
+/// remoteId）供 `ForEach`，episode 在 catalog 內唯一。
+private struct PodcastContinueItem: Identifiable {
+    let episode: PodcastEpisode
+    let series: PodcastSeries
+    let progress: PodcastProgress
+    var id: String { episode.remoteId }
 }

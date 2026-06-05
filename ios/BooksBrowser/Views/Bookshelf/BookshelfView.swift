@@ -194,38 +194,35 @@ struct BookshelfView: View {
 
     // MARK: - 書籍網格
 
+    // bookGrid 僅在 body 的 `else`（!books.isEmpty）分支渲染，故無須內層 guard
+    // （podcast section 移出後攤平；攤平前的 `if !books.isEmpty` 為恒真死碼）。
     private var bookGrid: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                // 書籍 section
-                if !books.isEmpty {
-                    LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
-                        ForEach(books) { book in
-                            NavigationLink(value: book) {
-                                BookCard(book: book, coverHeight: coverHeight)
-                            }
-                            .buttonStyle(.bookshelfCard)
-                            .accessibilityLabel("\(book.title), \(book.author)")
-                            .accessibilityHint("點兩下開始閱讀".localized)
-                            .transition(.bookshelfCard)
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    coordinator.deleteBook(
-                                        book,
-                                        modelContext: modelContext,
-                                        fileManager: bookFileManager,
-                                        toastCoordinator: toastCoordinator
-                                    )
-                                } label: {
-                                    Label("刪除".localized, systemImage: "trash")
-                                }
-                            }
+            LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
+                ForEach(books) { book in
+                    NavigationLink(value: book) {
+                        BookCard(book: book, coverHeight: coverHeight)
+                    }
+                    .buttonStyle(.bookshelfCard)
+                    .accessibilityLabel("\(book.title), \(book.author)")
+                    .accessibilityHint("點兩下開始閱讀".localized)
+                    .transition(.bookshelfCard)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            coordinator.deleteBook(
+                                book,
+                                modelContext: modelContext,
+                                fileManager: bookFileManager,
+                                toastCoordinator: toastCoordinator
+                            )
+                        } label: {
+                            Label("刪除".localized, systemImage: "trash")
                         }
                     }
-                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                    .padding(.top, AppSpacing.s2)
                 }
             }
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.top, AppSpacing.s2)
             .animateContentFade(books.count)
 
             epubGuideHint
