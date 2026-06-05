@@ -185,6 +185,36 @@ async function lookupWord(word) {
   return apiFetch(`/api/vocab/${encodeURIComponent(word)}`);
 }
 
+/**
+ * Read the current user's config (translation source/target language).
+ * GET /api/user/config → { translation: { source_lang, target_lang } }.
+ */
+async function getUserConfig() {
+  return apiFetch('/api/user/config');
+}
+
+/**
+ * Update the user's translation-language config.
+ * PUT /api/user/config with { translation } → the updated UserConfigResponse.
+ * Server validates source_lang ∈ {en,ja,ko,fr,de,es} and target_lang ∈
+ * {zh-Hant,zh-Hans,en,ja,ko} (kg/languages.py) — a bad pair 422s.
+ * @param {{source_lang: string, target_lang: string}} translation
+ */
+async function updateUserConfig(translation) {
+  return apiFetch('/api/user/config', {
+    method: 'PUT',
+    body: JSON.stringify({ translation }),
+  });
+}
+
+/**
+ * Read the user's entitlements (Pro subscription status).
+ * GET /api/user/entitlements → { pro: { is_active, plan_name, status, … } }.
+ */
+async function getEntitlements() {
+  return apiFetch('/api/user/entitlements');
+}
+
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
@@ -197,6 +227,9 @@ export {
   addVocab,
   listVocab,
   lookupWord,
+  getUserConfig,
+  updateUserConfig,
+  getEntitlements,
   apiFetch,
   ApiError,
   getToken,

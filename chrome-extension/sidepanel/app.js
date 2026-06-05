@@ -102,10 +102,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape' && !stateDetail.hidden) popDetail();
   });
 
-  // Auto-reload when auth token changes (e.g. login completed in another tab).
+  // React to cross-context storage changes.
+  //  - auth_token   → a full (re)load (login/logout in another tab).
+  //  - VOCAB_DIRTY_KEY → a silent refresh: a word was added from the in-page
+  //    popup, so refetch WITHOUT clobbering the user's search / filter / open
+  //    detail. (auth wins — a logout makes the list moot.)
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.auth_token) {
+    if (area !== 'local') return;
+    if (changes.auth_token) {
       loadVocabList();
+      return;
+    }
+    if (changes[KGPure.VOCAB_DIRTY_KEY]) {
+      refreshVocabSilently();
     }
   });
 
@@ -219,6 +228,49 @@ async function loadVocabList() {
       code: 'network_error',
       message: t('errorBackgroundUnreachable'),
     });
+  }
+}
+
+/**
+ * Silently re-fetch the vocab list after a cross-context mutation — a word
+ * added from the in-page popup bumps VOCAB_DIRTY_KEY (see background.js).
+ *
+ * Unlike loadVocabList this is non-destructive: it keeps the current search
+ * term, filter chips, sort, scroll position and any open detail panel intact,
+ * so the freshly-added row just appears under the live view instead of yanking
+ * the user back to a cleared, scrolled-to-top list. A fetch failure is swallowed
+ * — the user didn't explicitly act, so a momentarily stale list beats an error
+ * banner clobbering what they're reading.
+ */
+async function refreshVocabSilently() {
+  // An explicit flow already owns the screen: a logout/login reload is in
+  // flight (loading), or the user is reading an error we shouldn't yank away.
+  if (!stateLoading.hidden || !stateError.hidden) return;
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
+    if (response == null || response.error) return; // keep the current view
+
+    const items = KGPure.normalizeVocabList(response)
+      .map(KGPure.normalizeVocabItem)
+      .map(enrichWithReviewData);
+    vocabData = items;
+
+    if (items.length === 0) {
+      closeDetail();
+      setState('empty');
+      return;
+    }
+
+    // Preserve scroll across the full re-render (renderList resets innerHTML).
+    // The side panel scrolls on the page (body), so capture the page scroller.
+    const scroller = document.scrollingElement || document.documentElement;
+    const savedTop = scroller ? scroller.scrollTop : 0;
+    setState('content');
+    applyView(); // re-applies filter → search → sort, then renders
+    if (scroller) scroller.scrollTop = savedTop;
+  } catch (err) {
+    console.error('[KG] refreshVocabSilently failed:', err);
   }
 }
 
