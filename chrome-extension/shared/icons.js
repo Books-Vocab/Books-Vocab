@@ -68,6 +68,32 @@
     'check':
       '<path d="M5 13l4 4L19 7"/>',
 
+    // --- Word-detail / navigation / popup glyphs ---
+    // speaker.wave.2 — pronounce (TTS via Web Speech); mirrors iOS detail speaker
+    'speaker':
+      '<path d="M4 9.5v5h3.5L13 19V5L7.5 9.5H4z"/>' +
+      '<path d="M16.5 9a4 4 0 0 1 0 6"/><path d="M19 6.5a7.5 7.5 0 0 1 0 11"/>',
+    // chevron.left — back navigation (detail panel → list)
+    'chevron-left':
+      '<path d="M15 5l-7 7 7 7"/>',
+    // arrow.up.right — navigable knowledge-link accessory (mirrors iOS detail link row)
+    'arrow-up-right':
+      '<path d="M7 17L17 7"/><path d="M8 7h9v9"/>',
+    // xmark — explicit popup close
+    'xmark':
+      '<path d="M6 6l12 12M18 6L6 18"/>',
+    // arrow.clockwise — manual refresh of the vocab list
+    'refresh':
+      '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
+    // link — knowledge-link section header + metadata "N links" chip
+    'link':
+      '<path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.7L11 6.3"/>' +
+      '<path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.7L13 17.7"/>',
+    // calendar — metadata footer date chip
+    'calendar':
+      '<rect x="4" y="5.5" width="16" height="15" rx="2"/>' +
+      '<path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+
     // --- Error-state glyphs (side-panel error UI; rendered via classifyError) ---
     // lock — auth/login error
     'error-login':

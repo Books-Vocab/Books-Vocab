@@ -21,6 +21,9 @@ const REQUIRED = [
   'source-web', 'source-local',
   'search', 'clear', 'check',
   'error-login', 'error-quota', 'error-network', 'error-server', 'error-generic',
+  // word-detail + navigation + popup glyphs (Phase 0 — unblocks the detail panel,
+  // back navigation, speaker TTS, link accessory, refresh, calendar/link footer).
+  'speaker', 'chevron-left', 'arrow-up-right', 'xmark', 'refresh', 'link', 'calendar',
 ];
 
 test('every required icon yields a well-formed currentColor SVG', () => {

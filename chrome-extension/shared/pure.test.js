@@ -35,6 +35,8 @@ const {
   isTrustedExternalOrigin,
   safeUrl,
   escapeHtml,
+  markWordInExample,
+  parseInlineMarks,
   VALID_THEMES,
   DEFAULT_THEME,
 } = require('./pure.js');
@@ -398,6 +400,7 @@ test('normalizeVocabItem tolerates nullish / non-object input', () => {
     examples: [], collocations: [], source: null,
     reviewCount: 0, reviewIntervalHours: 0, nextReviewAt: null, lastReviewedAt: null,
     difficultyTier: null, updatedAt: null,
+    linksByKind: {}, inflections: [], cardId: '',
   });
   assert.deepEqual(normalizeVocabItem(undefined).word, '');
   assert.deepEqual(normalizeVocabItem('oops').word, '');
@@ -666,4 +669,107 @@ test('escapeHtml coerces null/undefined/numbers to a safe string', () => {
   assert.equal(escapeHtml(undefined), '');
   assert.equal(escapeHtml(42), '42');
   assert.equal(escapeHtml(0), '0');
+});
+
+// ---------------------------------------------------------------------------
+// normalizeVocabItem — knowledge-graph fields (Phase 1)
+// ---------------------------------------------------------------------------
+
+test('normalizeVocabItem preserves linksByKind / inflections / cardId', () => {
+  const raw = {
+    id: 'card-123',
+    content: 'lascivious',
+    meaning: '色情的',
+    inflections: ['lasciviously', 'lasciviousness'],
+    linksByKind: {
+      contrasts_with: [{ id: 'l1', cardId: 'card-9', word: 'chaste', kind: 'contrasts_with', label: '對比', reason: '相反' }],
+      shares_usage: [{ id: 'l2', cardId: 'card-8', word: 'lusciously', kind: 'shares_usage', label: '相關', reason: '近似' }],
+    },
+  };
+  const n = normalizeVocabItem(raw);
+  assert.equal(n.cardId, 'card-123');
+  assert.deepEqual(n.inflections, ['lasciviously', 'lasciviousness']);
+  assert.equal(n.linksByKind.contrasts_with[0].word, 'chaste');
+  assert.equal(n.linksByKind.shares_usage[0].reason, '近似');
+});
+
+test('normalizeVocabItem guards malformed link/inflection payloads', () => {
+  // Array / string linksByKind, non-array inflections → safe defaults, never throws.
+  assert.deepEqual(normalizeVocabItem({ linksByKind: [] }).linksByKind, {});
+  assert.deepEqual(normalizeVocabItem({ linksByKind: 'x' }).linksByKind, {});
+  assert.deepEqual(normalizeVocabItem({ inflections: 'x' }).inflections, []);
+  assert.deepEqual(normalizeVocabItem({}).linksByKind, {});
+  assert.deepEqual(normalizeVocabItem({}).inflections, []);
+  assert.equal(normalizeVocabItem({}).cardId, '');
+  assert.equal(normalizeVocabItem({ cardId: 'c' }).cardId, 'c'); // cardId alias when no id
+});
+
+// ---------------------------------------------------------------------------
+// markWordInExample — port of iOS VocabularyEntry.markWordInContext
+// ---------------------------------------------------------------------------
+
+test('markWordInExample wraps the first verbatim occurrence (case-insensitive, original case kept)', () => {
+  assert.equal(
+    markWordInExample('She was Lascivious and proud.', 'lascivious'),
+    'She was **Lascivious** and proud.',
+  );
+  assert.equal(
+    markWordInExample('a lascivious lascivious cat', 'lascivious'),
+    'a **lascivious** lascivious cat', // first occurrence only
+  );
+});
+
+test('markWordInExample falls back to a stem match when the word is inflected', () => {
+  // The stored form ("lasciviously") is NOT a verbatim substring of the example
+  // (which has the shorter "lascivious"), so step 1 misses and the 6-char stem
+  // "lasciv" matches via the boundary-anchored fallback. Mirrors iOS behaviour
+  // where a longer lemma falls back to its stem.
+  assert.equal(
+    markWordInExample('She acted lascivious today.', 'lasciviously'),
+    'She acted **lascivious** today.',
+  );
+});
+
+test('markWordInExample step 1 matches a verbatim substring (no word boundary, mirrors iOS)', () => {
+  // iOS step 1 has no word boundary: a lemma that is a substring of the inflected
+  // form is wrapped in place (e.g. "forestall" inside "forestalling").
+  assert.equal(
+    markWordInExample('He was forestalling the move.', 'forestall'),
+    'He was **forestall**ing the move.',
+  );
+});
+
+test('markWordInExample returns the text unchanged when nothing matches / inputs empty', () => {
+  assert.equal(markWordInExample('totally unrelated', 'lascivious'), 'totally unrelated');
+  assert.equal(markWordInExample('', 'x'), '');
+  assert.equal(markWordInExample('text', ''), 'text');
+  assert.equal(markWordInExample('text', '   '), 'text');
+});
+
+test('markWordInExample treats the word as a literal, not a regex pattern', () => {
+  assert.equal(markWordInExample('the a.b token', 'a.b'), 'the **a.b** token');
+  assert.equal(markWordInExample('the axb token', 'a.b'), 'the axb token'); // '.' is literal, not wildcard
+});
+
+// ---------------------------------------------------------------------------
+// parseInlineMarks — port of iOS CardMarkdownInlineParser (mark cases)
+// ---------------------------------------------------------------------------
+
+test('parseInlineMarks splits ** and == spans into typed segments', () => {
+  assert.deepEqual(parseInlineMarks('a **b** c'), [
+    { type: 'text', value: 'a ' },
+    { type: 'mark', value: 'b' },
+    { type: 'text', value: ' c' },
+  ]);
+  assert.deepEqual(parseInlineMarks('==hi=='), [{ type: 'mark', value: 'hi' }]);
+});
+
+test('parseInlineMarks treats unclosed markers as literal text', () => {
+  assert.deepEqual(parseInlineMarks('a **b c'), [{ type: 'text', value: 'a **b c' }]);
+});
+
+test('parseInlineMarks drops empty spans and handles plain/empty text', () => {
+  assert.deepEqual(parseInlineMarks('****'), []);
+  assert.deepEqual(parseInlineMarks('plain'), [{ type: 'text', value: 'plain' }]);
+  assert.deepEqual(parseInlineMarks(''), []);
 });

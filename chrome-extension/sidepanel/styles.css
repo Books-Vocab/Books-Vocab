@@ -451,28 +451,178 @@ body {
   padding: 0 var(--page-h-padding) var(--sp-lg);
 }
 
-/* --- Detail (expanded) — mirrors iOS word detail sheet -------------------- */
+/* --- Word detail panel — full-cover push view (mirrors iOS WordDetailSheet) --
+   The list stays mounted underneath (this panel is fixed/inset over it), so a
+   round-trip preserves scroll / search / filter. Document flow mirrors iOS
+   CardDocumentView: hero → example → meaning → 搭配 → 變化形 → 知識連結 → 複習 → footer.
+   Layout-only; visuals come from tokens + kg-components primitives. ---------- */
 
-.kg-detail {
-  margin-top: var(--sp-sm);
-  padding-top: var(--sp-sm);
-  border-top: var(--sp-hairline) solid var(--divider);
-  animation: kg-detail-enter 0.2s ease-out;
+.kg-detail-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--page-bg);
+  animation: kg-detail-slide var(--dur-quick) var(--ease-quick) both;
 }
 
-@keyframes kg-detail-enter {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes kg-detail-slide {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-/* Section — tighter spacing, editorial hierarchy */
-.kg-detail__section {
-  margin-bottom: var(--sp-md);
+.kg-detail-panel__bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-compact) var(--page-h-padding);
+  background: color-mix(in srgb, var(--page-bg) 94%, transparent);
+  backdrop-filter: blur(var(--blur-material));
+  -webkit-backdrop-filter: blur(var(--blur-material));
+  border-bottom: var(--sp-hairline) solid var(--divider);
 }
 
-.kg-detail__section:last-child {
-  margin-bottom: 0;
+.kg-detail-panel__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--toggle-size);
+  height: var(--toggle-size);
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--tint);
+  cursor: pointer;
+  transition: background var(--motion-quick), color var(--motion-quick),
+              transform var(--spring-press), opacity var(--spring-press);
 }
+.kg-detail-panel__back:hover { background: var(--muted-fill); color: var(--text-primary); }
+.kg-detail-panel__back:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
+.kg-detail-panel__back svg { width: 1.25em; height: 1.25em; display: block; }
+
+.kg-detail-panel__bar-word {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kg-detail-panel__scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kg-detail-doc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-md);
+  padding: var(--sp-lg) var(--page-h-padding) calc(var(--sp-lg) * 2);
+}
+
+/* Hairline section separator between document blocks. */
+.kg-detail-rule {
+  height: var(--sp-hairline);
+  background: var(--divider);
+}
+
+/* hero — word + pos + tier (left), speaker (right) */
+.kg-detail-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.kg-detail-hero__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.kg-detail-hero__word {
+  font-family: var(--font-mono);
+  font-size: var(--text-detail-word);
+  font-weight: 700;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.kg-detail-hero__pos {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+.kg-detail-hero__tier {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-uppercase);
+}
+.kg-detail-hero__speak {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--toggle-size);
+  height: var(--toggle-size);
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--motion-quick),
+              transform var(--spring-press), opacity var(--spring-press);
+}
+.kg-detail-hero__speak:hover { color: var(--text-primary); }
+.kg-detail-hero__speak:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
+.kg-detail-hero__speak svg { width: 1.1em; height: 1.1em; display: block; }
+
+/* example — serif italic, target word highlighted (mirrors iOS detailExampleSerif) */
+.kg-detail__example {
+  margin: 0;
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: var(--text-body);
+  line-height: var(--leading-reading);
+  color: var(--text-secondary);
+}
+.kg-mark {
+  background: var(--vocab-highlight);
+  color: var(--text-primary);
+  border-radius: 2px;
+  padding: 0 0.12em;
+}
+
+/* meaning title (翻譯) + definition body (note) */
+.kg-detail-meaning__title {
+  margin: 0 0 var(--sp-xs);
+  font-family: var(--font-display);
+  font-size: var(--text-row-word);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+.kg-detail-meaning__body { color: var(--text-secondary); }
+.kg-detail-meaning__body p {
+  margin: 0 0 var(--sp-xs);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+}
+.kg-detail-meaning__body p:last-child { margin-bottom: 0; }
+
+/* generic labelled block (搭配 / 變化形 / 來源) */
+.kg-detail-block { display: flex; flex-direction: column; gap: var(--sp-xs); }
 
 /* Label — smaller, uppercase, muted (iOS caption + tertiary) */
 .kg-detail__label {
@@ -480,30 +630,7 @@ body {
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: var(--tracking-uppercase);
-  margin-bottom: var(--sp-xs);
   font-weight: 700;
-}
-
-/* Meaning / definition — body size, primary color */
-.kg-detail__meaning {
-  font-size: var(--text-body);
-  color: var(--text-primary);
-  line-height: var(--leading-body);
-}
-
-/* Examples — serif italic, reading leading (matches iOS detailExampleSerif) */
-.kg-detail__examples {
-  font-family: var(--font-italic);
-  font-style: italic;
-  color: var(--text-secondary);
-  font-size: var(--text-subhead);
-  line-height: var(--leading-reading);
-  margin: 0;
-  padding-left: var(--sp-4);
-}
-
-.kg-detail__examples li {
-  margin-bottom: var(--sp-xs);
 }
 
 /* Collocation chips */
@@ -513,37 +640,25 @@ body {
   gap: var(--sp-sm);
 }
 
-/* Note */
-.kg-detail__note {
-  font-size: var(--text-subhead);
-  color: var(--text-secondary);
-  line-height: var(--leading-body);
-}
-
-/* Context quote — accent left border */
-.kg-detail__context {
-  font-size: var(--text-subhead);
-  color: var(--text-secondary);
-  border-left: 3px solid var(--accent);
-  padding-left: var(--sp-compact);
-  font-style: italic;
-  line-height: var(--leading-body);
-}
-
-.kg-detail__link {
-  font-size: var(--text-subhead);
-}
-
-.kg-detail__source-text {
+/* inflected forms — mono, horizontal flow */
+.kg-detail-forms { display: flex; flex-wrap: wrap; gap: var(--sp-sm); }
+.kg-detail-form {
+  font-family: var(--font-mono);
   font-size: var(--text-subhead);
   color: var(--text-secondary);
 }
 
-/* Related words section (iOS-style) */
-.kg-detail__related {
-  margin-top: var(--sp-md);
+/* knowledge links — grouped by kind (對比 / 相關) */
+.kg-detail-links { display: flex; flex-direction: column; gap: var(--sp-sm); }
+.kg-detail-links__group { display: flex; flex-direction: column; }
+.kg-detail-links__group-label {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+  font-weight: 700;
+  margin-bottom: var(--sp-xs);
 }
 
+/* link row — word + reason; navigable variant is a full-width button */
 .kg-detail__related-item {
   display: flex;
   align-items: baseline;
@@ -551,7 +666,18 @@ body {
   padding: var(--sp-2) 0;
   border-bottom: var(--sp-hairline) solid var(--divider);
 }
-
+.kg-detail__related-item--nav {
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  border-bottom: var(--sp-hairline) solid var(--divider);
+  background: transparent;
+  cursor: pointer;
+  transition: opacity var(--spring-press), transform var(--spring-press);
+}
+.kg-detail__related-item--nav:active { opacity: var(--press-opacity); transform: scale(var(--press-scale)); }
 .kg-detail__related-word {
   font-family: var(--font-mono);
   font-size: var(--text-row-word);
@@ -559,50 +685,73 @@ body {
   color: var(--text-primary);
   flex-shrink: 0;
 }
-
 .kg-detail__related-desc {
   font-size: var(--text-caption);
   color: var(--text-tertiary);
   line-height: var(--leading-body);
   flex: 1;
 }
+.kg-detail__related-arrow {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.kg-detail__related-arrow svg { width: 14px; height: 14px; }
 
-/* Footer status bar (mirrors iOS bottom metadata) */
-.kg-detail__footer {
+/* review progress — status label + reused row progress bar */
+.kg-detail-review {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: var(--sp-md);
-  padding-top: var(--sp-sm);
-  border-top: var(--sp-hairline) solid var(--divider);
+  gap: var(--sp-sm);
 }
-
-.kg-detail__footer-status {
+.kg-detail-review__status {
   font-size: var(--text-caption);
   font-weight: 700;
   color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.kg-detail-review__progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-tiny);
+  min-width: 0;
 }
 
+/* source link / text */
+.kg-detail__link { font-size: var(--text-subhead); }
+.kg-detail__source-text {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+
+/* metadata footer — calendar date + link-count chips */
+.kg-detail__footer { display: flex; }
 .kg-detail__footer-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-2);
-  font-size: var(--text-caption);
-  color: var(--text-tertiary);
 }
-
 .kg-detail__footer-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
   background: var(--muted-fill);
   padding: var(--sp-tiny) var(--sp-2);
   border-radius: var(--radius-pill);
 }
+.kg-detail__footer-chip svg { width: 13px; height: 13px; }
 
 /* --- Reduced motion ------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   .kg-skeleton__card { animation: none; }
-  .kg-detail { animation: none; }
+  .kg-detail-panel { animation: none; }
+  .kg-detail-panel__back:active,
+  .kg-detail-hero__speak:active,
+  .kg-detail__related-item--nav:active,
   .kg-theme-btn:active { transform: none; }
 }
