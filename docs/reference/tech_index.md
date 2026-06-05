@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: daa3335c
+verified_against: c64b3450
 -->
 # Technical Reference Index
 
@@ -69,7 +69,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 |------|------|
 | `Views/` | 場景視圖(書架、筆記、播客、複習、reader、settings) |
 | `Services/` | 後端通訊(`KGService`)、認證、雲同步、analytics、sentry |
-| `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`) |
+| `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`)。`DesignTokens.swift` 為 **Style Dictionary 生成**(禁手改)的 scalar bridge — `tokens.json`→`npm run build`→ PascalCase 巢狀 scalar enum(`Radius.Scale`/`Space.Scale`/`Typography.Scale`/`Typography.Tracking`/`Elevation.Steps.Z*`…);已接線 scalar 群組(`AppRadius`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,共 47 值)改為引用 `DesignTokens.*`,顏色/`AppMotion`/`LineSpacing`/`AppSkin` 仍手寫 literal(見「Web 設計系統」) |
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
 | `Platform/` | iOS / Mac Catalyst 橋接(`PlatformRepresentable` 型別 alias、`PlatformCompatibility` modifier wrapper、`LayoutMode`、`MacWindowChrome` Catalyst 視窗尺寸+沉浸 title bar、`MacMenuCommands` Catalyst 頂部選單列+⌘ 快捷鍵、`AppCommandCoordinator` app-global menu intent、`FocusedCommandValues` focusedSceneValue 動作通道) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
@@ -108,10 +108,10 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
-| `gen_web_tokens.py` | 從 `design-system/tokens.json`(iOS Swift token 鏡像 SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
-| `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 `$swift` token 仍對齊 iOS Swift literal(`AppColors`/`AppTheme`/`AppMetrics`〔含 `AppMotion` spring 的 `response`+`dampingFraction` 物理層〕/`AppFonts`/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity〔`AppSurface.swift`〕),偏移不可 merge |
+| `gen_web_tokens.py` | 從 `design-system/tokens.json`(W3C DTCG 格式,跨平台 token SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
+| `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 token 仍對齊 iOS Swift。**SoT-inversion-aware**:已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation)iOS 端引用 `DesignTokens.*`,`parse_design_tokens`/`_swift_num` 把引用解析回值再比對(證明 tokens.json==iOS 跨 SoT 反轉仍成立,且抓得到誤接線的值偏移);未接線群組(`AppColors`/`AppTheme`/`AppMotion` spring 物理層/`AppFonts` LineSpacing/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity)仍直接比對 literal。偏移不可 merge |
 | `component_fidelity_check.py` | drift guard(**組裝層**)— contract-based 驗證 `design-system/dist/kg-components.css` 每個手寫 primitive *選用* 的 token 對齊 iOS 元件契約(`.kg-chip`↔`AppTag`、`.kg-btn`↔`AppActionButtonStyle` radius md/700、`.kg-card`↔`AppSectionCardStyle`、`.kg-input` body(17)+hairline、`.kg-banner` caption(12)+v8、serif heading 700…),刻意的 web 發散(brand-hero CTA / banner 形狀)亦 pin 防回歸。`token_drift` 守值、它守*選用哪個值*;stdlib-only,env override `KG_COMPONENTS_CSS` |
-| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `component_fidelity_check`(若存在)+ extension `shared/pure.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
+| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json byte-for-byte)+ `component_fidelity_check`(若存在)+ extension `shared/{pure,icons}.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。Python guard 刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
@@ -123,14 +123,17 @@ Container 內 ops-cli(`card-find`、`db-query`、`ops_analyze.py` levels 1-6 等
 
 ## Web 設計系統(`design-system/`)
 
-跨平台 design token 橋接層,iOS Swift token 為 SoT,生成 web 消費的 CSS。
+跨平台 design token 橋接層。Token SoT = `tokens.json`(W3C DTCG),經兩條生成鏈出貨:**Style Dictionary → iOS `DesignTokens.swift`**(scalar bridge)與 **`gen_web_tokens.py` → web CSS**。
 
 | 項目 | 路徑 / 值 |
 |------|-----------|
-| Token SoT(web 側) | `design-system/tokens.json` — 鏡像 iOS Swift token literal(rgb float + `$swift` provenance) |
-| 生成器 | `ops/gen_web_tokens.py`(SoT → web CSS,見 ops 表) |
-| Guard(三層)| **值** `ops/token_drift_check.py`(`$swift` token ↔ iOS literal)+ **生成** `gen_web_tokens.py --check`(on-disk CSS ↔ tokens.json 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
-| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + extension `pure.test.js`;由 `.github/workflows/design-system.yml`(repo 首支 GitHub Actions CI,相關路徑變動才跑)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
+| Token SoT | `design-system/tokens.json` — **W3C DTCG 格式**(`$type`/`$value`/`$description`/`$swift` provenance);scalar 群組已成 Figma→iOS 真注入,顏色等仍由 iOS Swift literal 主導、tokens.json 鏡像(見下 SoT 方向) |
+| iOS 生成鏈 | `npm run build`(`package.json` script)→ Style Dictionary(`design-system/sd.config.mjs` 自訂 `kg/swift-tokens` format,排除 color/web-only,PascalCase 巢狀 scalar enum)→ `ios/BooksBrowser/Models/DesignTokens.swift`(禁手改);`npm run build:check`(`design-system/sd-check.mjs`)為 byte-for-byte stale gate |
+| web 生成鏈 | `ops/gen_web_tokens.py`(DTCG → web CSS,見 ops 表) |
+| **SoT 方向**(接線後二分) | **已接線 scalar**(`AppRadius`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,47 值):tokens.json→`npm run build`→`DesignTokens.swift`→iOS 引用,Figma 改值重編即生效。**未接線**(全部顏色+`WCAGContrastTests`、`AppMotion`、`LineSpacing`、`AppSkin`):iOS Swift literal 為 SoT、tokens.json 鏡像。設計師接 tokens.json 的 SOP 見 `docs/sop/figma-token-workflow.md` |
+| Guard(三層)| **值** `ops/token_drift_check.py`(SoT-inversion-aware:已接線解析 `DesignTokens.*` 引用回值、未接線比 literal)+ **生成** `gen_web_tokens.py --check`(on-disk CSS ↔ tokens.json 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
+| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + `npm run build:check` + extension `{pure,icons}.test.js`;由 `.github/workflows/design-system.yml`(repo 首支 GitHub Actions CI,相關路徑變動才跑;含 `npm ci`)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
+| 一次性遷移工具 | `ops/migrate_tokens_to_dtcg.py`(自研格式 → DTCG,已執行完成,留檔) |
 | 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源,component_fidelity 守護對象) |
 | 消費副本 | chrome-extension `shared/tokens.css`(生成)+ `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |
 | Shadow-DOM 安全 | token CSS selector 用 `:root, :host`,供 extension 注入 closed shadow root 仍生效 |
