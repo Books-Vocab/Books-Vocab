@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 56b623c3
+verified_against: 6a322ef2
 -->
 # Chrome Extension Feature Boundary
 
@@ -31,8 +31,8 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `sidepanel/index.html` | — | sidepanel 入口；serif 標題（CormorantGaramond）、SVG 空狀態插圖、brand-hero CTA |
-| `sidepanel/app.js` | 622 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()`；error 狀態依 `classifyError` action 分為 login（brand-hero CTA）與其他（accent outline）。**單字本複習狀態用 `GET /api/vocab` 的 `CardResponse` 真實欄位**（`reviewCount`/`nextReviewAt`/`lastReviewedAt`/`reviewIntervalHours`，經 `enrichWithReviewData`）— 非 mock：filter chip 計數、review CTA `dueCount`、每列複習進度條/標籤皆由 `pure.js` 純函數對標 iOS `VocabularyReview`/`WordRowPresentation` 計算；未學習列對齊 iOS「首輪 Xh」純標籤無進度條；trailing 走 iOS `rowStatus` 語意（未複習/待複習/下次 X，後者 `Intl.RelativeTimeFormat` zh-Hant）；chip/CTA 計數用全 corpus（搜尋時不隨 keystroke 縮水，對齊 iOS） |
-| `sidepanel/styles.css` | — | sidepanel 樣式；editorial surface 對齊官網 + iOS 北極星（single warm surface、serif headings、divider、z0/z1 shadow）。單字本列表 filter chip bar 對齊 iOS `AppFilterChipBar`（兩列：chips 一列、sort+CTA 靠右一列；空選即全部，無「全部」chip；消費 `kg-component-structures.css`，僅留 active-count 脈絡填色覆寫）；搜尋框對齊 iOS `AppSearchField`（`.kg-search-field` 複合：leading 放大鏡 + bare input + 有文字才現的 clear icon，surface 值對齊 `.kg-input` 契約） |
+| `sidepanel/app.js` | 622 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()`；error 狀態依 `classifyError` action 分為 login（brand-hero CTA）與其他（accent outline）。**單字本複習狀態用 `GET /api/vocab` 的 `CardResponse` 真實欄位**（`reviewCount`/`nextReviewAt`/`lastReviewedAt`/`reviewIntervalHours`，經 `enrichWithReviewData`）— 非 mock：filter chip 計數、review CTA `dueCount`、每列複習進度條/標籤皆由 `pure.js` 純函數對標 iOS `VocabularyReview`/`WordRowPresentation` 計算；未學習列對齊 iOS「首輪 Xh」純標籤無進度條；trailing 走 iOS `rowStatus` 語意（未複習/待複習/下次 X，後者 `Intl.RelativeTimeFormat` zh-Hant）；chip/CTA 計數用全 corpus（搜尋時不隨 keystroke 縮水，對齊 iOS）。**filter chip / sort pill 可互動**（非 idle 展示）：chips `<button>` 多選切換複習狀態（`aria-pressed`，空選=全部）、sort pill `<button>` 開 dropdown menu 切 4 排序，選態經 `applyView()`（統一 filter→sort→render）走 `pure.js filterVocab`/`sortVocab`；無匹配顯示「沒有符合的單字」空狀態（對標 iOS empty filter state）；dropdown outside-click/Escape 關閉、active 項打勾用 `KGIcon` check |
+| `sidepanel/styles.css` | — | sidepanel 樣式；editorial surface 對齊官網 + iOS 北極星（single warm surface、serif headings、divider、z0/z1 shadow）。單字本列表 filter chip bar 對齊 iOS `AppFilterChipBar`（兩列：chips 一列、sort+CTA 靠右一列；空選即全部，無「全部」chip；消費 `kg-component-structures.css`，僅留 active-count 脈絡填色覆寫）；sort pill dropdown 用 `.kg-sort-menu`（`--elevation-z3` 浮層 + chevron + active-item check + button reset），無匹配 nomatch hint；搜尋框對齊 iOS `AppSearchField`（`.kg-search-field` 複合：leading 放大鏡 + bare input + 有文字才現的 clear icon，surface 值對齊 `.kg-input` 契約） |
 
 ### Options Layer
 
@@ -47,7 +47,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `shared/api.js` | 219 | `wordnexus.lol` HTTP client + auth header |
-| `shared/pure.js` | 446 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist）；複習狀態純函數對標 iOS SoT：`classifyReviewState`（`VocabularyReview.reviewState(at:)`：`reviewCount==0`→未學習，否則 `nextReviewAt<=now` 待複習/已複習）、`countReviewStates`（chip/CTA tally）、`compactReviewLabel`（iOS `CompactTimeFormatting` 閾值 byte-faithful port）、`reviewProgress`（`WordRowPresentation` ratio，start 由 `lastReviewedAt`??`nextReviewAt−intervalHours` schedule 推導）；`normalizeVocabItem` 保留 `CardResponse` 複習欄位 |
+| `shared/pure.js` | 446 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist）；複習狀態純函數對標 iOS SoT：`classifyReviewState`（`VocabularyReview.reviewState(at:)`：`reviewCount==0`→未學習，否則 `nextReviewAt<=now` 待複習/已複習）、`countReviewStates`（chip/CTA tally）、`compactReviewLabel`（iOS `CompactTimeFormatting` 閾值 byte-faithful port）、`reviewProgress`（`WordRowPresentation` ratio，start 由 `lastReviewedAt`??`nextReviewAt−intervalHours` schedule 推導）；單字本 view 管線純函數對標 iOS `VocabularyEntryPresentation`：`filterVocab`（mergedBucket 多選態 + search 謂詞合成 word/meaning contains）、`sortVocab`（4 排序：複習優先 due\<unlearned\<reviewed→`nextReviewAt` asc→tierPriority→word / 字母序 / 最近新增 / 難度；stable、不變更輸入）；`normalizeVocabItem` 保留 `CardResponse` 複習欄位 + `difficultyTier`（難度排序）+ `updatedAt`（「最近新增」proxy，`CardResponse` 無 `dateAdded`） |
 | `shared/pure.test.js` | 583 | `pure.js` 單元測試 |
 | `shared/theme.js` | 44 | 深淺色主題切換 |
 | `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
