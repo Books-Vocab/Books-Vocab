@@ -344,7 +344,7 @@ function renderList(items) {
 
   // Update filter bar + sort pill (mirrors iOS KGVocabPresenter chrome)
   renderFilterBar(items);
-  renderSortPill();
+  renderSortPill(items);
 
   // Single card container (mirrors iOS ListSectionCard / VocabListCard)
   const card = document.createElement('div');
