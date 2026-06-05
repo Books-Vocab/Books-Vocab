@@ -71,6 +71,17 @@
   <!-- State: Content -->
   <div class="kg-list" id="stateContent" hidden></div>
 
+  <!-- Word detail — full-cover push panel (mirrors iOS WordDetailSheet; the list
+       stays mounted underneath so scroll / search / filter survive a round-trip). -->
+  <section class="kg-detail-panel" id="stateDetail" hidden>
+    <header class="kg-detail-panel__bar">
+      <button class="kg-detail-panel__back" id="detailBack" type="button"
+              data-i18n-attr="aria-label:detailBackAria" aria-label="返回單字列表"></button>
+      <span class="kg-detail-panel__bar-word" id="detailBarWord"></span>
+    </header>
+    <div class="kg-detail-panel__scroll" id="detailBody"></div>
+  </section>
+
   <script src="../shared/i18n.js"></script>
   <script src="../shared/pure.js"></script>
   <script src="../shared/icons.js"></script>

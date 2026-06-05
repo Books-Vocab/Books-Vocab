@@ -25,6 +25,10 @@ const errorTitle   = $('#errorTitle');
 const errorSubtitle = $('#errorSubtitle');
 const filterChips  = $('#filterChips');
 const filterActions = $('#filterActions');
+const stateDetail  = $('#stateDetail');
+const detailBack   = $('#detailBack');
+const detailBarWord = $('#detailBarWord');
+const detailBody   = $('#detailBody');
 
 /**
  * Current retry action — varies by error kind.
@@ -88,6 +92,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncClearButton();
     onSearch();
     searchInput.focus();
+  });
+
+  // Word detail panel — back navigation + delegated speaker / link-nav actions.
+  KGIcons.setIcon(detailBack, 'chevron-left');
+  detailBack.addEventListener('click', popDetail);
+  detailBody.addEventListener('click', onDetailAction);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !stateDetail.hidden) popDetail();
   });
 
   // Auto-reload when auth token changes (e.g. login completed in another tab).
@@ -158,6 +170,7 @@ function setState(state) {
 
 async function loadVocabList() {
   setState('loading');
+  closeDetail(); // a reload invalidates the open detail stack (stale items)
   searchInput.value = '';
   syncClearButton();
 
@@ -611,104 +624,281 @@ function createRow(item) {
     row.appendChild(progress);
   }
 
-  // Click handler
-  row.addEventListener('click', () => toggleDetail(row, item));
+  // Click handler — open the full-cover detail panel (iOS push navigation).
+  row.addEventListener('click', () => openDetail(item));
 
   return row;
 }
 
-/**
- * Toggle detail view for a row.
- * @param {HTMLElement} row
- * @param {object} item
- */
-function toggleDetail(row, item) {
-  const existing = row.querySelector('.kg-detail');
+// ---------------------------------------------------------------------------
+// Word detail panel (full-cover push view; mirrors iOS WordDetailSheet)
+// ---------------------------------------------------------------------------
 
-  if (existing) {
-    existing.remove();
-    return;
+/** Knowledge-link kind order + i18n fallback labels (payload `label` wins). */
+const LINK_KIND_ORDER = ['contrasts_with', 'shares_usage'];
+const LINK_KIND_LABEL = { contrasts_with: 'linkLabelContrast', shares_usage: 'linkLabelRelated' };
+
+/** Navigation stack of vocab items (knowledge-link drill-down); top = visible. */
+const detailStack = [];
+
+/** Lazy zh-Hant short-date formatter for the metadata footer. */
+let _detailDateFmt = null;
+function formatDetailDate(value) {
+  const ms = Date.parse(String(value || ''));
+  if (Number.isNaN(ms)) return '';
+  if (!_detailDateFmt && typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+    _detailDateFmt = new Intl.DateTimeFormat('zh-Hant', { year: 'numeric', month: 'short', day: 'numeric' });
   }
+  return _detailDateFmt ? _detailDateFmt.format(new Date(ms)) : '';
+}
 
-  // Collapse any other expanded row
-  const prev = stateContent.querySelector('.kg-detail');
-  if (prev) prev.remove();
+/** Open the detail panel for `item`, resetting the navigation stack. */
+function openDetail(item) {
+  if (!item) return;
+  detailStack.length = 0;
+  detailStack.push(item);
+  renderDetailTop();
+  stateDetail.hidden = false;
+}
 
-  const detail = document.createElement('div');
-  detail.className = 'kg-detail';
+/** Push a linked card onto the stack (knowledge-link navigation). */
+function pushDetail(item) {
+  if (!item) return;
+  detailStack.push(item);
+  renderDetailTop();
+}
 
-  const meaning = item.meaning;
-  const pos = item.pos;
-  const examples = item.examples;
-  const collocations = item.collocations;
-  const note = item.note;
-  const context = item.context;
-  const source = item.source;
-  const sourceUrl = source ? (source.url || '') : '';
-  const sourceTitle = source ? (source.title || '') : '';
-  const isWeb = source && source.type === 'web';
-
-  // Full meaning
-  if (meaning) {
-    detail.appendChild(makeSection(t('detailMeaning'), `<div class="kg-detail__meaning">${esc(meaning)}</div>`));
-  }
-
-  // POS
-  if (pos) {
-    detail.appendChild(makeSection(t('detailPos'), `<div class="kg-detail__meaning">${esc(pos)}</div>`));
-  }
-
-  // Examples
-  if (examples.length > 0) {
-    const lis = examples.map((ex) => `<li>${esc(typeof ex === 'string' ? ex : ex.sentence || ex.text || '')}</li>`).join('');
-    detail.appendChild(makeSection(t('detailExamples'), `<ul class="kg-detail__examples">${lis}</ul>`));
-  }
-
-  // Collocations
-  if (collocations.length > 0) {
-    const chips = collocations.map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : c.word || '')}</span>`).join('');
-    detail.appendChild(makeSection(t('detailCollocation'), `<div class="kg-detail__chips">${chips}</div>`));
-  }
-
-  // Note
-  if (note) {
-    detail.appendChild(makeSection(t('detailNote'), `<div class="kg-detail__note">${esc(note)}</div>`));
-  }
-
-  // Context
-  if (context) {
-    detail.appendChild(makeSection(t('detailContext'), `<div class="kg-detail__context">${esc(context)}</div>`));
-  }
-
-  // Source
-  if (isWeb && sourceUrl) {
-    const safeHref = KGPure.safeUrl(sourceUrl);
-    detail.appendChild(makeSection(t('detailSource'), `<a class="kg-link kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
+/** Back: pop one level, closing the panel when the stack empties. */
+function popDetail() {
+  detailStack.pop();
+  if (detailStack.length === 0) {
+    closeDetail();
   } else {
-    detail.appendChild(makeSection(t('detailSource'), `<span class="kg-detail__source-text">iOS app</span>`));
-  }
-
-  // Append detail to the content column so it sits below word/meaning,
-  // not beside the progress bar (row is flex, content is flex-column).
-  const content = row.querySelector('.kg-vocab-row__content');
-  if (content) {
-    content.appendChild(detail);
-  } else {
-    row.appendChild(detail);
+    renderDetailTop();
   }
 }
 
+/** Hide the panel + clear the stack (also called on reload / auth change). */
+function closeDetail() {
+  detailStack.length = 0;
+  stateDetail.hidden = true;
+  if (typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+}
+
+/** Render the top-of-stack item into the panel. */
+function renderDetailTop() {
+  const item = detailStack[detailStack.length - 1];
+  if (!item) return;
+  detailBarWord.textContent = item.word;
+  detailBody.innerHTML = buildDetailHTML(item);
+  detailBody.scrollTop = 0;
+}
+
+/** Delegated click handler for the detail body (speaker + link navigation). */
+function onDetailAction(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action === 'speak') {
+    const top = detailStack[detailStack.length - 1];
+    if (top) speakWord(top.word);
+  } else if (action === 'navlink') {
+    const target = vocabData.find((v) => v.cardId && v.cardId === btn.dataset.cardId);
+    if (target) pushDetail(target);
+  }
+}
+
+/** Pronounce `word` via the device Web Speech API (no backend; silent on failure). */
+function speakWord(word) {
+  if (!word || typeof window.speechSynthesis === 'undefined') return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = 'en-US';
+    window.speechSynthesis.speak(u);
+  } catch (_err) {
+    /* TTS unavailable — no-op */
+  }
+}
+
+/** Hairline separator between document blocks. */
+function detailRule() {
+  return '<div class="kg-detail-rule"></div>';
+}
+
+/** Render an example with the target word highlighted (each segment escaped). */
+function renderExampleHTML(example, word) {
+  const marked = KGPure.markWordInExample(example, word);
+  return KGPure.parseInlineMarks(marked)
+    .map((seg) => (seg.type === 'mark' ? `<mark class="kg-mark">${esc(seg.value)}</mark>` : esc(seg.value)))
+    .join('');
+}
+
 /**
- * Create a detail section.
- * @param {string} label
- * @param {string} contentHTML
- * @returns {HTMLElement}
+ * Build the detail document HTML for `item`, mirroring iOS CardDocumentView flow:
+ * hero → example → meaning → 搭配 → 變化形 → 知識連結 → 複習進度 → footer → 來源.
+ * Every interpolation is escaped; `KGIcons.svg` returns module-internal markup.
+ * @param {object} item — an enriched vocab item
+ * @returns {string}
  */
-function makeSection(label, contentHTML) {
-  const section = document.createElement('div');
-  section.className = 'kg-detail__section';
-  section.innerHTML = `<div class="kg-detail__label">${esc(label)}</div>${contentHTML}`;
-  return section;
+function buildDetailHTML(item) {
+  const corpusIds = new Set(vocabData.map((v) => v.cardId).filter(Boolean));
+  const parts = [];
+
+  // hero — word + pos + tier (left), speaker (right)
+  let hero = '<div class="kg-detail-hero"><div class="kg-detail-hero__head">';
+  hero += `<span class="kg-detail-hero__word">${esc(item.word)}</span>`;
+  if (item.pos) hero += `<span class="kg-detail-hero__pos">${esc(item.pos)}</span>`;
+  if (item.difficultyTier) {
+    hero += `<span class="kg-detail-hero__tier" data-tier="${esc(item.difficultyTier)}">${esc(item.difficultyTier)}</span>`;
+  }
+  hero += '</div>';
+  hero += `<button class="kg-detail-hero__speak" type="button" data-action="speak" aria-label="${esc(t('detailSpeak'))}">${KGIcons.svg('speaker')}</button>`;
+  hero += '</div>';
+  parts.push(hero);
+
+  // example (first, highlighted)
+  const ex0 = Array.isArray(item.examples) && item.examples.length ? item.examples[0] : null;
+  const example = typeof ex0 === 'string' ? ex0 : (ex0 && (ex0.sentence || ex0.text)) || '';
+  if (example) {
+    parts.push(`<p class="kg-detail__example">${renderExampleHTML(example, item.word)}</p>`);
+  }
+
+  // meaning (翻譯 title) + definition body (note)
+  if (item.meaning || item.note) {
+    let m = '<div class="kg-detail-meaning">';
+    if (item.meaning) m += `<h3 class="kg-detail-meaning__title">${esc(item.meaning)}</h3>`;
+    if (item.note) {
+      const paras = String(item.note).split(/\n+/).map((s) => s.trim()).filter(Boolean);
+      m += `<div class="kg-detail-meaning__body">${paras.map((p) => `<p>${esc(p)}</p>`).join('')}</div>`;
+    }
+    m += '</div>';
+    parts.push(detailRule() + m);
+  }
+
+  // collocations (搭配)
+  if (Array.isArray(item.collocations) && item.collocations.length) {
+    const chips = item.collocations
+      .map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : (c && c.word) || '')}</span>`)
+      .join('');
+    parts.push(detailRule() + `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailCollocation'))}</div><div class="kg-detail__chips">${chips}</div></div>`);
+  }
+
+  // inflections (變化形)
+  if (Array.isArray(item.inflections) && item.inflections.length) {
+    const forms = item.inflections.map((f) => `<span class="kg-detail-form">${esc(f)}</span>`).join('');
+    parts.push(detailRule() + `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailForms'))}</div><div class="kg-detail-forms">${forms}</div></div>`);
+  }
+
+  // knowledge links (對比 / 相關)
+  const linksHTML = buildLinksHTML(item, corpusIds);
+  if (linksHTML) parts.push(detailRule() + linksHTML);
+
+  // review progress
+  const reviewHTML = buildReviewHTML(item);
+  if (reviewHTML) parts.push(detailRule() + reviewHTML);
+
+  // metadata footer
+  const footerHTML = buildFooterHTML(item);
+  if (footerHTML) parts.push(detailRule() + footerHTML);
+
+  // source
+  const sourceHTML = buildSourceHTML(item);
+  if (sourceHTML) parts.push(detailRule() + sourceHTML);
+
+  return `<div class="kg-detail-doc">${parts.join('')}</div>`;
+}
+
+/**
+ * Build the knowledge-links section (grouped 對比/相關; hidden links omitted).
+ * A link is navigable when its target cardId exists in the loaded corpus.
+ */
+function buildLinksHTML(item, corpusIds) {
+  const lbk = item.linksByKind && typeof item.linksByKind === 'object' ? item.linksByKind : {};
+  const orderedKinds = LINK_KIND_ORDER.filter((k) => Array.isArray(lbk[k]) && lbk[k].length);
+  const extraKinds = Object.keys(lbk).filter(
+    (k) => !LINK_KIND_ORDER.includes(k) && Array.isArray(lbk[k]) && lbk[k].length,
+  );
+  const groups = [];
+
+  [...orderedKinds, ...extraKinds].forEach((kind) => {
+    const links = lbk[kind].filter((l) => l && !l.hidden);
+    if (!links.length) return;
+    const label = (links[0] && links[0].label) || t(LINK_KIND_LABEL[kind] || '') || kind;
+    const rows = links
+      .map((l) => {
+        const navigable = Boolean(l.cardId && corpusIds.has(l.cardId));
+        const tag = navigable ? 'button' : 'div';
+        const navAttr = navigable ? ` type="button" data-action="navlink" data-card-id="${esc(l.cardId)}"` : '';
+        const cls = 'kg-detail__related-item' + (navigable ? ' kg-detail__related-item--nav' : '');
+        const arrow = navigable
+          ? `<span class="kg-detail__related-arrow" aria-hidden="true">${KGIcons.svg('arrow-up-right')}</span>`
+          : '';
+        return `<${tag} class="${cls}"${navAttr}>` +
+          `<span class="kg-detail__related-word">${esc(l.word || '')}</span>` +
+          `<span class="kg-detail__related-desc">${esc(l.reason || '')}</span>` +
+          arrow +
+          `</${tag}>`;
+      })
+      .join('');
+    groups.push(`<div class="kg-detail-links__group"><div class="kg-detail-links__group-label">${esc(label)}</div>${rows}</div>`);
+  });
+
+  if (!groups.length) return '';
+  return `<div class="kg-detail-links"><div class="kg-detail__label">${esc(t('detailKnowledgeLinks'))}</div>${groups.join('')}</div>`;
+}
+
+/** Build the review-progress section (reuses the row progress-bar markup). */
+function buildReviewHTML(item) {
+  if (!item.reviewState) return '';
+  const status = STATE_LABELS[item.reviewState] || '';
+  let bar = '';
+  if (item.dueLabel) bar += `<span class="kg-vocab-row__progress-label">${esc(item.dueLabel)}</span>`;
+  if (item.reviewRatio != null && item.reviewRatio >= 0) {
+    const ratio = Math.min(item.reviewRatio, 1.0);
+    const grad = (typeof KGReviewGradient !== 'undefined')
+      ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
+      : '#4D7396';
+    bar += `<div class="kg-vocab-row__progress-track"><div class="kg-vocab-row__progress-fill" style="width:${ratio * 100}%;background-color:${esc(grad)}"></div></div>`;
+  }
+  return `<div class="kg-detail-review"><span class="kg-detail-review__status">${esc(status)}</span><div class="kg-detail-review__progress">${bar}</div></div>`;
+}
+
+/** Build the metadata footer (calendar date + link-count chips). */
+function buildFooterHTML(item) {
+  const chips = [];
+  const dateStr = formatDetailDate(item.updatedAt);
+  if (dateStr) {
+    chips.push(`<span class="kg-detail__footer-chip">${KGIcons.svg('calendar')}<span>${esc(dateStr)}</span></span>`);
+  }
+  const lbk = item.linksByKind && typeof item.linksByKind === 'object' ? item.linksByKind : {};
+  const linkCount = Object.values(lbk).reduce(
+    (n, arr) => n + (Array.isArray(arr) ? arr.filter((l) => l && !l.hidden).length : 0),
+    0,
+  );
+  if (linkCount > 0) {
+    chips.push(`<span class="kg-detail__footer-chip">${KGIcons.svg('link')}<span>${esc(t('detailLinkCount', [String(linkCount)]))}</span></span>`);
+  }
+  if (!chips.length) return '';
+  return `<div class="kg-detail__footer"><div class="kg-detail__footer-meta">${chips.join('')}</div></div>`;
+}
+
+/** Build the source block (web → safe link; otherwise app / book text). */
+function buildSourceHTML(item) {
+  const source = item.source;
+  if (!source) return '';
+  const url = source.url || '';
+  const title = source.title || source.book || '';
+  let inner;
+  if (source.type === 'web' && url) {
+    const safe = KGPure.safeUrl(url);
+    inner = `<a class="kg-link kg-detail__link" href="${esc(safe)}" target="_blank" rel="noopener">${esc(title || url)}</a>`;
+  } else if (title) {
+    inner = `<span class="kg-detail__source-text">${esc(title)}</span>`;
+  } else {
+    inner = `<span class="kg-detail__source-text">${esc(t('detailSourceApp'))}</span>`;
+  }
+  return `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailSource'))}</div>${inner}</div>`;
 }
 
 // ---------------------------------------------------------------------------
