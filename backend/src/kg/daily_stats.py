@@ -56,17 +56,17 @@ class DailyReviewStatsStore:
                 session.commit()
                 session.refresh(existing)
                 return existing
-            else:
-                stat = DailyReviewStat(
-                    day_key=day_key,
-                    total=total,
-                    remembered=remembered,
-                    forgot=forgot,
-                )
-                session.add(stat)
-                session.commit()
-                session.refresh(stat)
-                return stat
+
+            stat = DailyReviewStat(
+                day_key=day_key,
+                total=total,
+                remembered=remembered,
+                forgot=forgot,
+            )
+            session.add(stat)
+            session.commit()
+            session.refresh(stat)
+            return stat
 
     def all(self) -> list[DailyReviewStat]:
         """Return all daily stats, ordered by day_key."""

@@ -130,7 +130,6 @@ def process_file(path: Path):
     # ---- Plan modifications -----------------------------------------------
     # Collect insertions and replacements; apply at end (in reverse).
     inserts: dict[int, list[str]] = {}  # line_idx -> lines to insert AFTER
-    modifier_replacements: dict[int, str] = {}  # line_idx -> new content
     obs_added: list[str] = []
     mod_added: list[str] = []
     skip_body: list[str] = []

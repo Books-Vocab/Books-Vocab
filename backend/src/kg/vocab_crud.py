@@ -92,7 +92,7 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
             try:
                 cards_store.update(card.id, is_archived=not archived)
             except Exception:
-                logger.exception("rollback failed for card %s after graph error", card.id)
+                logger.exception("Rollback failed for card %s after graph error", card.id)
             raise
     return ArchiveWordResponse(word=word, id=card.id, archived=archived)
 
@@ -127,7 +127,7 @@ def delete_vocab_word(
             try:
                 cards_store.restore(card.id, notebook_id=card.notebook_id)
             except Exception:
-                logger.exception("restore failed for card %s after graph error", card.id)
+                logger.exception("Restore failed for card %s after graph error", card.id)
             raise
     # Card is committed-deleted past this point — drop its embedding so it
     # stops polluting find_similar. Done after the rollback window so a
@@ -230,7 +230,7 @@ def batch_delete_vocab_words(
                 try:
                     cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
-                    logger.exception("restore failed for card %s after graph error", card.id)
+                    logger.exception("Restore failed for card %s after graph error", card.id)
                 raise _GraphOpFailed from exc
 
     succeeded, not_found, failed = _batch_apply(
@@ -298,7 +298,7 @@ def batch_archive_vocab_words(
                     cards_store.update(card.id, is_archived=not archived)
                 except Exception:
                     logger.exception(
-                        "rollback failed for card %s after graph error", card.id
+                        "Rollback failed for card %s after graph error", card.id
                     )
                 raise _GraphOpFailed from exc
 

@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt as pyjwt
 
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
+from conftest import TEST_JWT_SECRET
 
 
 def _stub_explain_llm(content: str = '{"e":"To bring a feeling or memory to mind."}') -> MagicMock:

@@ -13,6 +13,7 @@ processes* on the same machine. Stdlib only -- no new dependency.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -26,7 +27,7 @@ except ImportError:  # pragma: no cover -- Windows fallback
 
 
 @contextmanager
-def path_write_lock(target: Path):
+def path_write_lock(target: Path) -> Iterator[None]:
     """Exclusive advisory lock scoped to ``target``'s sibling ``.lock`` file.
 
     The lock file is separate from the data file so the lock survives the

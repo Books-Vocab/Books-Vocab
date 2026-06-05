@@ -7,12 +7,18 @@
 
 import Foundation
 
+// MARK: - Constants
+
+private let requestTimeoutSeconds: TimeInterval = 8
+private let resourceTimeoutSeconds: TimeInterval = 60
+private let retryBackoffBaseSeconds = 0.5
+
 // MARK: - Shared URLSession
 
 let sharedURLSession: URLSession = {
     let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 8
-    config.timeoutIntervalForResource = 60
+    config.timeoutIntervalForRequest = requestTimeoutSeconds
+    config.timeoutIntervalForResource = resourceTimeoutSeconds
     return URLSession(configuration: config)
 }()
 
@@ -31,7 +37,7 @@ func withRetry<T>(
         do {
             if attempt > 0 {
                 onRetry?(attempt, maxRetries)
-                let delay = Double(attempt) * 0.5
+                let delay = Double(attempt) * retryBackoffBaseSeconds
                 try await Task.sleep(for: .seconds(delay))
             }
             let result = try await operation()
