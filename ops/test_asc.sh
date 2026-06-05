@@ -406,6 +406,34 @@ for fn in cmd_set_release_type cmd_phased; do
     || ok "$fn delegates write (no direct write_raw)"
 done
 
+# ── §16 P6 送審佇列 + 訂閱優惠 讀面補完 ──────────────────────────────────────
+# 16a. dispatch 齊全
+for sc in submissions sub-offers; do
+  hasm "$disp" "$sc)" && ok "dispatch has $sc" || fail_t "dispatch missing $sc"
+done
+# 16b. submissions 唯讀 + 深入 items
+sm_body="$(awk '/^cmd_submissions\(\)/,/^}/' "$ASC")"
+hasm "$sm_body" 'reviewSubmissions' \
+  && ok "submissions reads reviewSubmissions" || fail_t "submissions missing reviewSubmissions"
+hasm "$sm_body" '/items' \
+  && ok "submissions drills into items" || fail_t "submissions missing items drill"
+hasm "$sm_body" 'write_raw' \
+  && fail_t "submissions must be read-only (no write_raw)" || ok "submissions is read-only(write_raw)"
+hasm "$sm_body" 'emit_write' \
+  && fail_t "submissions must be read-only (no emit_write)" || ok "submissions is read-only(emit_write)"
+# 16c. sub-offers 唯讀 + 三類優惠
+so_body="$(awk '/^cmd_sub_offers\(\)/,/^}/' "$ASC")"
+for ep in introductoryOffers promotionalOffers offerCodes; do
+  hasm "$so_body" "$ep" && ok "sub-offers reads $ep" || fail_t "sub-offers missing $ep"
+done
+hasm "$so_body" 'write_raw' \
+  && fail_t "sub-offers must be read-only (no write_raw)" || ok "sub-offers is read-only(write_raw)"
+hasm "$so_body" 'emit_write' \
+  && fail_t "sub-offers must be read-only (no emit_write)" || ok "sub-offers is read-only(emit_write)"
+# 16d. sub-offers 需 subId 引數守衛
+hasm "$so_body" 'subId' \
+  && ok "sub-offers requires subId arg" || fail_t "sub-offers missing subId guard"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

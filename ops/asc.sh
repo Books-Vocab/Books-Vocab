@@ -12,6 +12,7 @@
 #   ./ops/asc.sh info                          # app 層級唯讀資訊（name/bundle/sku/語言）
 #   ./ops/asc.sh review-status                 # 審查提交 state（被拒原因須 GUI 解決中心看）
 #   ./ops/asc.sh review-detail                 # 審查聯絡 / demo 帳號 / 送審備註（raw API；查備註是否過期）
+#   ./ops/asc.sh submissions [N]               # 送審佇列 reviewSubmissions + 每筆打包項目數/state（唯讀）
 #   ./ops/asc.sh screenshots [--locale zh-Hant]# 截圖集逐張 state（raw API；重送前查 Mochi 殘留 / 缺圖）
 #   ./ops/asc.sh categories                    # 列 iOS 可用主分類 ID（set-category 用）
 #   ./ops/asc.sh reviews [N]                    # 列最新 N 則用戶評論 + 是否已回覆（預設 20）
@@ -19,6 +20,7 @@
 #   ./ops/asc.sh reply-review <reviewId> <text> # 回覆/更新某則評論（dry-run，--yes 才送）
 #   ./ops/asc.sh subscriptions                 # 列訂閱群組→方案（productId/state/週期/代表價/在地化）
 #   ./ops/asc.sh iap                            # 列一次性 App 內購買（inAppPurchasesV2）
+#   ./ops/asc.sh sub-offers <subId>             # 訂閱優惠：介紹性/促銷/兌換碼（唯讀；建立走 GUI）
 #   ./ops/asc.sh pricing                        # App 基礎定價（各地區 customerPrice）+ 供應地區
 #   ./ops/asc.sh release-plan                   # 發布方式（releaseType）+ 分階段發布狀態（唯讀）
 #   ./ops/asc.sh set-sub-name <subId> <value>   # 改訂閱顯示名（subscriptionLocalization；dry-run）
@@ -717,6 +719,49 @@ cmd_phased() {  # 分階段發布：start=POST / pause|resume|complete=PATCH sta
   esac
 }
 
+# ---- P6 送審佇列 + 訂閱優惠（讀面補完）----
+cmd_submissions() {  # 唯讀：送審佇列 reviewSubmissions + 每筆打包項目數/state
+  require_key
+  local n="${1:-5}" subs
+  echo "# 送審佇列（新→舊，最多 $n 筆）："
+  subs="$(raw "/v1/apps/$APP_ID/reviewSubmissions?limit=$n")"
+  printf '%s' "$subs" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
+    && err "讀取送審佇列失敗：HTTP $(printf '%s' "$subs" | jq -r '._httpError')"
+  local sid sstate splat sdate items icount
+  while IFS=$'\t' read -r sid sstate splat sdate; do
+    [[ -n "$sid" ]] || continue
+    items="$(raw "/v1/reviewSubmissions/$sid/items")"
+    icount="$(printf '%s' "$items" | jq -r 'if has("_httpError") then "?" else ((.data // []) | length) end')"
+    echo "  • $sstate  $splat  送出=$sdate  打包項目=$icount  [$sid]"
+  done < <(printf '%s' "$subs" | jq -r '(.data // [])[] | "\(.id)\t\(.attributes.state)\t\(.attributes.platform)\t\(.attributes.submittedDate // "（未送出）")"')
+  echo "註：送審（submit）/ 撤回刻意不做（避免誤送 / 誤撤）——走 ASC GUI；被拒原因見解決中心。"
+}
+
+cmd_sub_offers() {  # 唯讀：訂閱優惠（介紹性 / 促銷 / 兌換碼）
+  local subId="${1:-}"
+  [[ -n "$subId" ]] || err "用法：asc.sh sub-offers <subId>（subId 見 asc.sh subscriptions）"
+  require_key
+  echo "# 介紹性優惠 introductoryOffers（首購試用 / 折扣，逐地區）："
+  raw "/v1/subscriptions/$subId/introductoryOffers?limit=200" \
+    | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
+             else (.data // []) as $d
+               | if ($d | length) == 0 then "  （無）"
+                 else ($d | group_by("\(.attributes.offerMode)|\(.attributes.duration // "")|\(.attributes.numberOfPeriods // 1)"))
+                   | map("  \(.[0].attributes.offerMode)  \(.[0].attributes.duration // "?") ×\(.[0].attributes.numberOfPeriods // 1)  —— \(length) 個地區")[]
+               end end'
+  echo "# 促銷優惠 promotionalOffers（給既有 / 流失用戶的回饋價）："
+  raw "/v1/subscriptions/$subId/promotionalOffers?limit=200" \
+    | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
+             elif ((.data // []) | length) == 0 then "  （無）"
+             else (.data // [])[] | "  \(.attributes.name // "?")  [\(.id)]" end'
+  echo "# 兌換碼 offerCodes（行銷兌換）："
+  raw "/v1/subscriptions/$subId/offerCodes?limit=200" \
+    | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
+             elif ((.data // []) | length) == 0 then "  （無）"
+             else (.data // [])[] | "  \(.attributes.name // "?")  active=\(.attributes.active // false)  [\(.id)]" end'
+  echo "註：優惠的建立 / 刪除（逐地區 price point）罕見且高風險，走 ASC GUI 較安全；本工具只讀。"
+}
+
 # ---- dispatch ----
 case "${SUB:-}" in
   versions)      cmd_versions ;;
@@ -744,6 +789,8 @@ case "${SUB:-}" in
   set-content-rights) cmd_set_content_rights "${ARGS[@]:-}" ;;
   set-category)  cmd_set_category "${ARGS[@]:-}" ;;
   set-rating)    cmd_set_rating "${ARGS[@]:-}" ;;
+  submissions)   cmd_submissions "${ARGS[@]:-}" ;;
+  sub-offers)    cmd_sub_offers "${ARGS[@]:-}" ;;
   release-plan)  cmd_release_plan ;;
   set-release-type) cmd_set_release_type "${ARGS[@]:-}" ;;
   phased)        cmd_phased "${ARGS[@]:-}" ;;
