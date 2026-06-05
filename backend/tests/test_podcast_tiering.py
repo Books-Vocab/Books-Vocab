@@ -44,7 +44,9 @@ def tier_api(isolated_api):
     (series / "ep_02").mkdir(parents=True)
     (series / "ep_01" / "audio.mp3").write_bytes(FULL_EP1)
     (series / "ep_01" / "preview.mp3").write_bytes(PREVIEW_EP1)
+    (series / "ep_01" / "subtitle.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nep1\n")
     (series / "ep_02" / "audio.mp3").write_bytes(FULL_EP2)
+    (series / "ep_02" / "subtitle.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nep2-secret\n")
     (podcasts / "index.json").write_text(json.dumps([{"id": "series_a", "title": "A"}]))
     (series / "metadata.json").write_text(
         json.dumps({"id": "series_a", "title": "A", "episodes": [{"epNum": 1}, {"epNum": 2}]})
@@ -138,6 +140,41 @@ def test_pro_ep2_serves_full_audio(tier_api):
     )
     assert resp.status_code == 200
     assert resp.content == FULL_EP2
+
+
+# ── subtitle gate (same wall as audio — no transcript leak of Pro episodes) ──
+
+def test_guest_subtitle_blocked_auth_required(tier_api):
+    resp = tier_api.client.get("/api/podcasts/series_a/1/subtitle")
+    assert resp.status_code == 401
+    assert _error_code(resp.json()) == "auth_required"
+
+
+def test_free_ep1_subtitle_allowed(tier_api):
+    """ep1 is the free sample episode → its transcript is readable."""
+    resp = tier_api.client.get(
+        "/api/podcasts/series_a/1/subtitle", headers=tier_api.free_headers
+    )
+    assert resp.status_code == 200
+    assert "ep1" in resp.text
+
+
+def test_free_ep2_subtitle_blocked_upgrade_required(tier_api):
+    """The full transcript of a Pro-only episode must NOT leak to free tier."""
+    resp = tier_api.client.get(
+        "/api/podcasts/series_a/2/subtitle", headers=tier_api.free_headers
+    )
+    assert resp.status_code == 403
+    assert _error_code(resp.json()) == "upgrade_required"
+    assert "secret" not in resp.text
+
+
+def test_pro_ep2_subtitle_allowed(tier_api):
+    resp = tier_api.client.get(
+        "/api/podcasts/series_a/2/subtitle", headers=tier_api.pro_headers
+    )
+    assert resp.status_code == 200
+    assert "ep2-secret" in resp.text
 
 
 # ── helper ───────────────────────────────────────────────────────────────────

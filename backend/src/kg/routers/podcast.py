@@ -569,13 +569,14 @@ def _serve_audio_from_s3(
     )
 
 
-def _gate_audio_access(user: UserRecord | None, ep_num: int) -> str:
-    """Enforce the tier policy and return the asset stem to serve.
+def _require_episode_access(user: UserRecord | None, ep_num: int) -> str:
+    """Shared tier gate for *episode media* (audio + transcript): both must obey
+    the same wall, else a free user could read the full transcript of a Pro-only
+    episode whose audio is 403'd. Returns the caller's tier; raises:
 
-    * guest → ``401 auth_required`` (must sign in to play anything).
+    * guest → ``401 auth_required`` (must sign in to access any episode media).
     * free + non-previewable episode → ``403 upgrade_required``.
-    * free + previewable episode → serve the ``preview`` stem.
-    * pro → serve the full ``audio`` stem.
+    * free + previewable episode / pro → returns the tier.
 
     Errors carry a machine code in ``detail`` so the client routes to the login
     sheet vs the paywall without parsing a human string.
@@ -587,14 +588,19 @@ def _gate_audio_access(user: UserRecord | None, ep_num: int) -> str:
             detail={"code": ERR_AUTH_REQUIRED, "message": "Sign in to play podcasts"},
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if tier == "free":
-        if not is_free_previewable_episode(ep_num):
-            raise HTTPException(
-                status_code=403,
-                detail={"code": ERR_UPGRADE_REQUIRED, "message": "Upgrade to Pro to play this episode"},
-            )
-        return PREVIEW_AUDIO_STEM
-    return FULL_AUDIO_STEM
+    if tier == "free" and not is_free_previewable_episode(ep_num):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": ERR_UPGRADE_REQUIRED, "message": "Upgrade to Pro to play this episode"},
+        )
+    return tier
+
+
+def _gate_audio_access(user: UserRecord | None, ep_num: int) -> str:
+    """Resolve the audio asset stem after the tier gate: free → ``preview``
+    (ep 1 only), pro → full ``audio``."""
+    tier = _require_episode_access(user, ep_num)
+    return PREVIEW_AUDIO_STEM if tier == "free" else FULL_AUDIO_STEM
 
 
 @router.get("/api/podcasts/{series_id}/{ep_num}/audio")
@@ -676,9 +682,12 @@ def get_podcast_subtitle(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserRecord | None = Depends(get_current_user_optional),
 ):
     _validate_series_id(series_id)
+    # Same wall as audio: a free caller must not read the full transcript of a
+    # Pro-only episode. guest → 401, free → ep1 only, pro → all.
+    _require_episode_access(user, ep_num)
     # errors="replace" on both backends: a stray non-UTF-8 byte in a subtitle
     # file must degrade gracefully, not surface as an uncaught 500. The decoded
     # str is re-encoded by Response exactly as PlainTextResponse did before.
