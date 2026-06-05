@@ -16,12 +16,17 @@ extension ReaderView {
 
     var initialLocator: Locator? {
         guard let json = book.lastReadLocatorJSON else { return nil }
-        return try? Locator(jsonString: json)
+        do {
+            return try Locator(jsonString: json)
+        } catch {
+            AppLog.reader.error("Failed to restore saved locator: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     @ViewBuilder
     var readerMainContent: some View {
-        if let publication = publication {
+        if let publication {
             ReadiumNavigatorView(
                 publication: publication,
                 initialLocator: initialLocator,

@@ -102,7 +102,7 @@ struct ReaderView: View {
         .toolbar(.hidden, for: .navigationBar)
         .macReaderImmersion()
         .toastSheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
-            if let publication = publication {
+            if let publication {
                 TOCView(
                     publication: publication,
                     onSelect: { link in

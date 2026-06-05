@@ -58,7 +58,11 @@ struct ReaderDOMExecutor {
 
     private func encodedJavaScriptString(_ value: String) -> String {
         let data = try? JSONEncoder().encode(value)
-        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
+        guard let encoded = data.flatMap({ String(data: $0, encoding: .utf8) }) else {
+            AppLog.reader.error("Failed to JSON-encode JS string argument")
+            return "\"\""
+        }
+        return encoded
     }
 }
 #endif

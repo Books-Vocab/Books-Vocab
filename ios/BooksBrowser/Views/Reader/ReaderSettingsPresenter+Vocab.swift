@@ -110,7 +110,7 @@ extension ReaderSettingsPresenter {
                                     Text(isScroll ? L10n.string("捲動") : L10n.string("翻頁"))
                                         .font(appSkin.typography.caption)
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 8)
+                                        .padding(.vertical, AppSpacing.s2)
                                 }
                             }
                             .buttonStyle(.plain)

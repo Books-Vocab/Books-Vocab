@@ -47,7 +47,13 @@ struct ReaderVocabularyContext: VocabularyContextProtocol {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.notebookId == nbId }
         )
-        guard let candidates = try? modelContext.fetch(descriptor) else { return nil }
+        let candidates: [VocabularyEntry]
+        do {
+            candidates = try modelContext.fetch(descriptor)
+        } catch {
+            AppLog.reader.error("Vocab fetch failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
         let wordLower = word.lowercased()
         return candidates.first { entry in
             let normalized = entry.word.lowercased()

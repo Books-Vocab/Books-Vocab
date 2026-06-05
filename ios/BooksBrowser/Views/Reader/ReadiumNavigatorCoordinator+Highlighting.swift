@@ -33,14 +33,18 @@ extension ReadiumNavigatorView.Coordinator {
         }
     }
 
-    func markNewVocabWord(_ word: String) {
+    private func invokeSingleWordBridge(_ word: String, jsFunction: String, label: StaticString, logMessage: String) {
         guard let navigator else { return }
         let escaped = Self.jsEscaped(word)
-        let js = "if(window.__markVocabWord) window.__markVocabWord(\"\(escaped)\");"
+        let js = "if(window.\(jsFunction)) window.\(jsFunction)(\"\(escaped)\");"
         Task { @MainActor in
-            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markNewVocabWord")
-            AppLog.reader.debug("Marked new vocab: \(word)")
+            ReaderJSEval.log(await navigator.evaluateJavaScript(js), label)
+            AppLog.reader.debug("\(logMessage)")
         }
+    }
+
+    func markNewVocabWord(_ word: String) {
+        invokeSingleWordBridge(word, jsFunction: "__markVocabWord", label: "markNewVocabWord", logMessage: "Marked new vocab: \(word)")
     }
 
     func clearAllVocabHighlights() {
@@ -63,13 +67,7 @@ extension ReadiumNavigatorView.Coordinator {
     }
 
     func removeVocabWord(_ word: String) {
-        guard let navigator else { return }
-        let escaped = Self.jsEscaped(word)
-        let js = "if(window.__removeVocabWord) window.__removeVocabWord(\"\(escaped)\");"
-        Task { @MainActor in
-            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "removeVocabWord")
-            AppLog.reader.debug("Removed vocab underline: \(word)")
-        }
+        invokeSingleWordBridge(word, jsFunction: "__removeVocabWord", label: "removeVocabWord", logMessage: "Removed vocab underline: \(word)")
     }
 
     func clearActiveHighlight() {

@@ -59,6 +59,18 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         Coordinator(parent: self)
     }
 
+    private static func installLoadErrorLabel(on host: NavigatorHostViewController) {
+        let errorLabel = UILabel()
+        errorLabel.text = "無法開啟此書籍".localized
+        errorLabel.textAlignment = .center
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        host.view.addSubview(errorLabel)
+        NSLayoutConstraint.activate([
+            errorLabel.centerXAnchor.constraint(equalTo: host.view.centerXAnchor),
+            errorLabel.centerYAnchor.constraint(equalTo: host.view.centerYAnchor),
+        ])
+    }
+
     func makeUIViewController(context: Context) -> NavigatorHostViewController {
         let host = NavigatorHostViewController()
         host.onWordSelected = onWordSelected
@@ -89,15 +101,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             )
         } catch {
             AppLog.reader.error("Failed to create EPUBNavigatorViewController: \(error)")
-            let errorLabel = UILabel()
-            errorLabel.text = "無法開啟此書籍".localized
-            errorLabel.textAlignment = .center
-            errorLabel.translatesAutoresizingMaskIntoConstraints = false
-            host.view.addSubview(errorLabel)
-            NSLayoutConstraint.activate([
-                errorLabel.centerXAnchor.constraint(equalTo: host.view.centerXAnchor),
-                errorLabel.centerYAnchor.constraint(equalTo: host.view.centerYAnchor),
-            ])
+            Self.installLoadErrorLabel(on: host)
             return host
         }
 

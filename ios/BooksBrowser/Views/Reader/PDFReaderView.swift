@@ -75,50 +75,7 @@ struct PDFReaderView: View {
                 }
             }
 
-            if showTranslation, let selection = handler.wordSelection {
-                TranslationPanel(
-                    word: selection.word,
-                    result: handler.translationResult,
-                    isLoading: handler.isTranslating,
-                    isSaved: handler.isSaved,
-                    isLoggedIn: authManager.isLoggedIn,
-                    isExpanded: handler.isExpanded,
-                    explanation: handler.explanationText,
-                    isLoadingExplanation: handler.isLoadingExplanation,
-                    statusMessage: handler.statusMessage,
-                    isExplanationOnly: handler.isExplanationOnly,
-                    translationErrorMessage: handler.translationErrorMessage,
-                    explanationErrorMessage: handler.explanationErrorMessage,
-                    onExpand: { handler.handleExpand() },
-                    onDelete: {
-                        handler.deleteFromVocabulary(
-                            selection.word, context: vocabularyContext
-                        )
-                        withAnimation(AppMotion.panelState) {
-                            showTranslation = false
-                        }
-                    },
-                    // PDF reader 沒有「查看詳情」導航目的地,一律傳 nil 讓 TranslationPanel
-                    // 隱藏該按鈕(VocabChromeIconButton 由 `if let onShowDetail` 控制),
-                    // 避免顯示點了沒反應的死按鈕。
-                    onShowDetail: nil,
-                    onDismiss: {
-                        handler.dismiss()
-                        withAnimation(AppMotion.panelState) {
-                            showTranslation = false
-                        }
-                    },
-                    onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
-                    onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
-                        ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                        : nil,
-                    onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
-                        ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                        : nil
-                )
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .transition(.readerPanelReveal)
-            }
+            translationPanelOverlay
         }
         .task { loadDocument() }
         .onDisappear {
@@ -169,6 +126,53 @@ struct PDFReaderView: View {
     }
 
     // MARK: - State Views
+
+    @ViewBuilder private var translationPanelOverlay: some View {
+        if showTranslation, let selection = handler.wordSelection {
+            TranslationPanel(
+                word: selection.word,
+                result: handler.translationResult,
+                isLoading: handler.isTranslating,
+                isSaved: handler.isSaved,
+                isLoggedIn: authManager.isLoggedIn,
+                isExpanded: handler.isExpanded,
+                explanation: handler.explanationText,
+                isLoadingExplanation: handler.isLoadingExplanation,
+                statusMessage: handler.statusMessage,
+                isExplanationOnly: handler.isExplanationOnly,
+                translationErrorMessage: handler.translationErrorMessage,
+                explanationErrorMessage: handler.explanationErrorMessage,
+                onExpand: { handler.handleExpand() },
+                onDelete: {
+                    handler.deleteFromVocabulary(
+                        selection.word, context: vocabularyContext
+                    )
+                    withAnimation(AppMotion.panelState) {
+                        showTranslation = false
+                    }
+                },
+                // PDF reader 沒有「查看詳情」導航目的地,一律傳 nil 讓 TranslationPanel
+                // 隱藏該按鈕(VocabChromeIconButton 由 `if let onShowDetail` 控制),
+                // 避免顯示點了沒反應的死按鈕。
+                onShowDetail: nil,
+                onDismiss: {
+                    handler.dismiss()
+                    withAnimation(AppMotion.panelState) {
+                        showTranslation = false
+                    }
+                },
+                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
+                onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
+                    ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                    : nil,
+                onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
+                    ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                    : nil
+            )
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .transition(.readerPanelReveal)
+        }
+    }
 
     private var loadingView: some View {
         VStack {
@@ -318,7 +322,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         // MARK: - Selection → Vocabulary
 
         @objc func selectionDidChange(_ notification: Notification) {
-            guard let pdfView = pdfView,
+            guard let pdfView,
                   let selection = pdfView.currentSelection,
                   let text = selection.string,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -326,7 +330,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
 
             // Show edit menu near selection
             if let page = selection.pages.first,
-               let menuInteraction = menuInteraction {
+               let menuInteraction {
                 let selectionBounds = selection.bounds(for: page)
                 let viewRect = pdfView.convert(selectionBounds, from: page)
                 let config = UIEditMenuConfiguration(
@@ -359,7 +363,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         }
 
         private func triggerWordSelection() {
-            guard let pdfView = pdfView,
+            guard let pdfView,
                   let selection = pdfView.currentSelection,
                   let word = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !word.isEmpty

@@ -50,4 +50,13 @@ enum ReaderMetrics {
 
     /// 設定面板分隔線透明度
     static let settingsDividerOpacity: Double = 0.6
+
+    // MARK: - Quota bar
+
+    /// 額度進度條圓角(極小，無對應 AppRadius scale 值)
+    static let quotaBarCornerRadius: CGFloat = 1
+    /// 額度進度條高度
+    static let quotaBarHeight: CGFloat = 2
+    /// 額度進度條軌道(底層)透明度
+    static let quotaBarTrackOpacity: Double = 0.15
 }

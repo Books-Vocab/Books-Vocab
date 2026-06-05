@@ -91,7 +91,11 @@ struct ReaderPublicationLoader {
                 let placeholder = url.deletingLastPathComponent()
                     .appendingPathComponent(".\(fileName).icloud")
                 if fm.fileExists(atPath: placeholder.path) {
-                    try? fm.startDownloadingUbiquitousItem(at: url)
+                    do {
+                        try fm.startDownloadingUbiquitousItem(at: url)
+                    } catch {
+                        AppLog.readium.warning("startDownloadingUbiquitousItem failed for \(fileName): \(error.localizedDescription)")
+                    }
                     retried = true
                     updatePhase(L10n.string("正在從 iCloud 下載…"))
                     AppLog.readium.info("Placeholder appeared, download triggered: \(fileName)")
