@@ -16,5 +16,15 @@
 
 ## 設計師怎麼用
 
-在 Tokens Studio plugin 匯入 `tokens/` **整個資料夾**（含 `$themes.json` / `$metadata.json`）
-即得三主題可切換 —— **不需 Tokens Studio Pro**（themes 預先寫在 sidecar，非在付費 plugin UI 建立）。
+**桌面版 Figma**：Tokens Studio → Tools → Load from file/folder → **Choose folder** → 選 `tokens/`。
+
+**瀏覽器版 Figma**（Choose folder 會灰掉）：→ **Choose file** → 選 **`bundle.json`**
+（與 `tokens/` 同內容的單檔合併版，第一層 key = set 名，由 generator 一併產出）。
+
+兩種都得 light / dark / sepia 三主題可切換 —— **不需 Tokens Studio Pro**（themes 預先寫在
+sidecar，非在付費 plugin UI 建立）。Settings → Local document 確認為 **W3C DTCG format**
+（本 repo token 用 `$value`/`$type`，預設即相容）。
+
+> 實測坑：整包 bundle 經 Load from file 偶爾只建空 set 殼、內容不進。fallback = 逐個點選
+> set 名 → 切 `{ }` JSON 視圖（此視圖 = **單一選中 set** 的編輯器）→ 貼對應 `tokens/<set>.json`
+> → Save JSON（貼前先確認框內是空 `{}`，非空代表選錯 set）。
