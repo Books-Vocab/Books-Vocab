@@ -30,72 +30,13 @@ struct ReaderNotebookPicker: View {
             List {
                 // 跟隨全域設定
                 Section {
-                    Button {
-                        book.preferredNotebookId = nil
-                        dismiss()
-                    } label: {
-                        HStack(spacing: AppSpacing.s2) {
-                            Image(systemName: "globe")
-                                .font(AppFonts.subhead())
-                                .foregroundStyle(theme.palette.secondaryText)
-                                .frame(width: AppSpacing.s6)
-
-                            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                                Text("跟隨全域設定".localized)
-                                    .font(AppFonts.body())
-                                    .foregroundStyle(theme.palette.primaryText)
-
-                                Text("使用目前選定的單字本".localized)
-                                    .font(AppFonts.caption())
-                                    .foregroundStyle(theme.palette.tertiaryText)
-                            }
-
-                            Spacer()
-
-                            if book.preferredNotebookId == nil {
-                                Image(systemName: "checkmark")
-                                    .font(AppFonts.subhead(weight: .semibold))
-                                    .foregroundStyle(theme.palette.accent)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
+                    followGlobalRow
                 }
 
                 // Notebook 列表
                 Section {
                     ForEach(notebooks) { notebook in
-                        Button {
-                            book.preferredNotebookId = notebook.remoteId
-                            dismiss()
-                        } label: {
-                            HStack(spacing: AppSpacing.s2) {
-                                RoundedRectangle(cornerRadius: AppRadius.xs)
-                                    .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent)
-                                    .frame(width: 4, height: AppSpacing.s7)
-
-                                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                                    Text(notebook.name)
-                                        .font(AppFonts.body())
-                                        .foregroundStyle(theme.palette.primaryText)
-
-                                    if notebook.isDefault {
-                                        Text("預設".localized)
-                                            .font(AppFonts.caption())
-                                            .foregroundStyle(theme.palette.tertiaryText)
-                                    }
-                                }
-
-                                Spacer()
-
-                                if book.preferredNotebookId == notebook.remoteId {
-                                    Image(systemName: "checkmark")
-                                        .font(AppFonts.subhead(weight: .semibold))
-                                        .foregroundStyle(theme.palette.accent)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
+                        notebookRow(notebook)
                     }
                 } header: {
                     Text("單字本".localized)
@@ -119,6 +60,80 @@ struct ReaderNotebookPicker: View {
             }
         }
         .enableInjection()
+    }
+
+    private var followGlobalRow: some View {
+        Button {
+            book.preferredNotebookId = nil
+            dismiss()
+        } label: {
+            HStack(spacing: AppSpacing.s2) {
+                Image(systemName: "globe")
+                    .font(AppFonts.subhead())
+                    .foregroundStyle(theme.palette.secondaryText)
+                    .frame(width: AppSpacing.s6)
+
+                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                    Text("跟隨全域設定".localized)
+                        .font(AppFonts.body())
+                        .foregroundStyle(theme.palette.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Text("使用目前選定的單字本".localized)
+                        .font(AppFonts.caption())
+                        .foregroundStyle(theme.palette.tertiaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                Spacer()
+
+                selectionCheckmark(isSelected: book.preferredNotebookId == nil)
+            }
+            .contentShape(Rectangle())
+        }
+    }
+
+    private func notebookRow(_ notebook: Notebook) -> some View {
+        Button {
+            book.preferredNotebookId = notebook.remoteId
+            dismiss()
+        } label: {
+            HStack(spacing: AppSpacing.s2) {
+                RoundedRectangle(cornerRadius: AppRadius.xs)
+                    .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent)
+                    .frame(width: 4, height: AppSpacing.s7)
+
+                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                    Text(notebook.name)
+                        .font(AppFonts.body())
+                        .foregroundStyle(theme.palette.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    if notebook.isDefault {
+                        Text("預設".localized)
+                            .font(AppFonts.caption())
+                            .foregroundStyle(theme.palette.tertiaryText)
+                    }
+                }
+
+                Spacer()
+
+                selectionCheckmark(isSelected: book.preferredNotebookId == notebook.remoteId)
+            }
+            .contentShape(Rectangle())
+        }
+    }
+
+    @ViewBuilder
+    private func selectionCheckmark(isSelected: Bool) -> some View {
+        if isSelected {
+            Image(systemName: "checkmark")
+                .font(AppFonts.subhead(weight: .semibold))
+                .foregroundStyle(theme.palette.accent)
+        }
     }
 
     /// 已刪除 notebook 防護：若綁定的 notebook 不在可用列表中，自動清除綁定

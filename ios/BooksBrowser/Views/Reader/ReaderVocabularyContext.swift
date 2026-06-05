@@ -13,15 +13,19 @@ struct ReaderVocabularyContext: VocabularyContextProtocol {
     let notebookId: String
     let toastCoordinator: AppToastCoordinator
 
+    private static func entryMatches(_ entry: VocabularyEntry, wordLower: String) -> Bool {
+        let normalized = entry.word.lowercased()
+        if normalized == wordLower { return true }
+        if entry.rootForm?.lowercased() == wordLower { return true }
+        return entry.inflections.contains { $0.lowercased() == wordLower }
+    }
+
     func existingEntry(matching word: String) -> VocabularyEntry? {
         let wordLower = word.lowercased()
         let scope = notebookId
         return vocabulary.first { entry in
             guard entry.notebookId == scope else { return false }
-            let normalizedWord = entry.word.lowercased()
-            if normalizedWord == wordLower { return true }
-            if entry.rootForm?.lowercased() == wordLower { return true }
-            return entry.inflections.contains { $0.lowercased() == wordLower }
+            return Self.entryMatches(entry, wordLower: wordLower)
         }
     }
 
@@ -47,14 +51,15 @@ struct ReaderVocabularyContext: VocabularyContextProtocol {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.notebookId == nbId }
         )
-        guard let candidates = try? modelContext.fetch(descriptor) else { return nil }
-        let wordLower = word.lowercased()
-        return candidates.first { entry in
-            let normalized = entry.word.lowercased()
-            if normalized == wordLower { return true }
-            if entry.rootForm?.lowercased() == wordLower { return true }
-            return entry.inflections.contains { $0.lowercased() == wordLower }
+        let candidates: [VocabularyEntry]
+        do {
+            candidates = try modelContext.fetch(descriptor)
+        } catch {
+            AppLog.reader.error("Vocab fetch failed: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
+        let wordLower = word.lowercased()
+        return candidates.first { Self.entryMatches($0, wordLower: wordLower) }
     }
 
     func saveEntry(

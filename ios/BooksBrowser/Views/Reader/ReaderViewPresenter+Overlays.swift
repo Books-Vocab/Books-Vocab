@@ -44,22 +44,24 @@ extension ReaderViewPresenter {
             Spacer()
 
             if state.chrome.overlay == .translation {
-                translationPanel
-                    .frame(maxWidth: placement.maxWidth)
-                    .frame(maxWidth: .infinity, alignment: placement.alignment)
-                    .padding(.horizontal, placement.horizontalInset)
-                    .padding(.bottom, placement.bottomInset)
-                    .transition(.readerPanelReveal)
+                overlayPanelChrome(translationPanel, placement: placement)
             } else if state.chrome.overlay == .settings {
-                settingsPanel
-                    .frame(maxWidth: placement.maxWidth)
-                    .frame(maxWidth: .infinity, alignment: placement.alignment)
-                    .padding(.horizontal, placement.horizontalInset)
-                    .padding(.bottom, placement.bottomInset)
-                    .transition(.readerPanelReveal)
+                overlayPanelChrome(settingsPanel, placement: placement)
             }
         }
         .animation(AppMotion.panelState, value: state.chrome.overlay)
+    }
+
+    private func overlayPanelChrome<Content: View>(
+        _ panel: Content,
+        placement: ReaderOverlayPanelPlacement
+    ) -> some View {
+        panel
+            .frame(maxWidth: placement.maxWidth)
+            .frame(maxWidth: .infinity, alignment: placement.alignment)
+            .padding(.horizontal, placement.horizontalInset)
+            .padding(.bottom, placement.bottomInset)
+            .transition(.readerPanelReveal)
     }
 
     private func loadingOverlayContent(
