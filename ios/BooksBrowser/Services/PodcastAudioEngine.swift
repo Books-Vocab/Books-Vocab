@@ -286,6 +286,7 @@ final class PodcastAudioEngine: NSObject {
 
     func seek(to time: TimeInterval, autoResume: Bool) {
         guard let p = player else { return }
+        p.cancelPendingSeeks()
         let clamped = max(0, duration > 0 ? min(time, duration) : time)
         AppCrashReporting.addBreadcrumb(
             category: "audio",
@@ -297,7 +298,10 @@ final class PodcastAudioEngine: NSObject {
             ]
         )
         let cm = CMTime(seconds: clamped, preferredTimescale: 600)
-        p.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+        // Tolerance > 0 avoids a full frame-index scan on VBR MP3s,
+        // making scrub feel snappy without audible accuracy loss for speech.
+        let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
+        p.seek(to: cm, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
             guard let self else { return }
             self.onTimeUpdate?(clamped)
             if autoResume {
@@ -317,6 +321,9 @@ final class PodcastAudioEngine: NSObject {
         if player?.timeControlStatus == .playing {
             player?.rate = playbackRate
         }
+        #if os(iOS)
+        updateNowPlayingInfo()
+        #endif
     }
 
     var currentTime: TimeInterval {
