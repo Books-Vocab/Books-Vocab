@@ -29,7 +29,6 @@ B. worker 子程序傳 log=None → 子程序內 `if log:` 全跳過 → 失敗�
 
 import json
 
-import pytest
 
 import pipeline
 

@@ -73,11 +73,11 @@ def require_admin(
     cookie_token: str | None = None,
 ) -> None:
     if not admin_token:
-        raise HTTPException(403, "ADMIN_TOKEN not configured")
+        raise HTTPException(status_code=403, detail="ADMIN_TOKEN not configured")
     resolved = _resolve_admin_token(token, authorization)
     if resolved is not None:
         if not hmac.compare_digest(resolved, admin_token):
-            raise HTTPException(403, "Forbidden")
+            raise HTTPException(status_code=403, detail="Forbidden")
         return
     if cookie_token and _verify_cookie(cookie_token, admin_token):
         return

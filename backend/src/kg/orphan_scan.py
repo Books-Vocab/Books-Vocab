@@ -28,6 +28,7 @@ import logging
 import os
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -339,7 +340,7 @@ class _LogModule(Protocol):
     ``translate_log`` / ``pipeline_log`` all expose a process-wide lock and a
     singleton-connection accessor."""
 
-    _lock: Any
+    _lock: threading.Lock
 
     def _get_conn(self) -> sqlite3.Connection: ...
 

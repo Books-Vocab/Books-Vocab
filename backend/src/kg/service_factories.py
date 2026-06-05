@@ -195,11 +195,6 @@ def create_gemini_client():
     return create_client(REGISTRY["gemini"])
 
 
-def create_async_gemini_client():
-    """Backward-compatible alias — async client for the gemini provider."""
-    return create_async_client(REGISTRY["gemini"])
-
-
 def reset_clients() -> None:
     """Drop + close all cached sync clients (e.g. after API key rotation)."""
     with _clients_lock:

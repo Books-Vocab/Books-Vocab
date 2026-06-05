@@ -67,38 +67,37 @@ class TestAuthVerifyRequestValidation:
         with pytest.raises(ValidationError):
             AuthVerifyRequest(provider="facebook", token="tok")
 
-    def test_apple_accepted(self):
-        r = AuthVerifyRequest(provider="apple", token="tok")
-        assert r.provider == "apple"
-
-    def test_google_accepted(self):
-        r = AuthVerifyRequest(provider="google", token="tok")
-        assert r.provider == "google"
+    @pytest.mark.parametrize("provider", ["apple", "google"])
+    def test_known_provider_accepted(self, provider):
+        r = AuthVerifyRequest(provider=provider, token="tok")
+        assert r.provider == provider
 
 
 # --- NotebookCreateRequest / NotebookUpdateRequest: color ---
 
 
 class TestNotebookColorValidation:
-    def test_create_invalid_color_rejected(self):
-        with pytest.raises(ValidationError):
-            NotebookCreateRequest(name="nb", color="red")
-
-    def test_create_valid_hex_color(self):
-        r = NotebookCreateRequest(name="nb", color="#5B8C5A")
-        assert r.color == "#5B8C5A"
+    @pytest.mark.parametrize("model", [NotebookCreateRequest, NotebookUpdateRequest])
+    @pytest.mark.parametrize(
+        "color, should_raise",
+        [
+            ("red", True),
+            ("not-a-color", True),
+            ("#5B8C5A", False),
+            ("#AABBCC", False),
+        ],
+    )
+    def test_hex_color_validation(self, model, color, should_raise):
+        if should_raise:
+            with pytest.raises(ValidationError):
+                model(name="nb", color=color)
+        else:
+            r = model(name="nb", color=color)
+            assert r.color == color
 
     def test_create_none_color_accepted(self):
         r = NotebookCreateRequest(name="nb", color=None)
         assert r.color is None
-
-    def test_update_invalid_color_rejected(self):
-        with pytest.raises(ValidationError):
-            NotebookUpdateRequest(color="not-a-color")
-
-    def test_update_valid_hex_color(self):
-        r = NotebookUpdateRequest(color="#AABBCC")
-        assert r.color == "#AABBCC"
 
 
 # --- ReviewStateEntry: non-negative numerics ---

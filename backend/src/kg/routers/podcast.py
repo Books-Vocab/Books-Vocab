@@ -53,7 +53,7 @@ _MAX_EPISODE_NUM = 999
 def _validate_series_id(series_id: str) -> None:
     """Reject path-unsafe series ids with a 404 (don't leak existence)."""
     if not _SERIES_ID_RE.match(series_id):
-        raise HTTPException(404)
+        raise HTTPException(status_code=404)
 
 
 def _podcasts_dir(request: Request | None = None) -> Path:
@@ -155,7 +155,7 @@ def _s3_audio_format(request: Request, series_id: str) -> str:
                 # the error as a downstream 404. Mirror _read_json_from_s3.
                 logger.error("Podcast audio-format probe failed for %s/ep_01/audio.%s: %s",
                              series_id, cand, exc)
-                raise HTTPException(502, detail="Storage error resolving audio format") from exc
+                raise HTTPException(status_code=502, detail="Storage error resolving audio format") from exc
 
     fmt = fmt or "m4a"
     _S3_AUDIO_FMT_CACHE[cache_key] = fmt
@@ -190,7 +190,7 @@ def _read_json_file(path: Path, *, context: str):
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         logger.error("Podcast %s corrupt at %s: %s", context, path, e, exc_info=True)
-        raise HTTPException(500, detail=f"Malformed {context}") from e
+        raise HTTPException(status_code=500, detail=f"Malformed {context}") from e
 
 
 def _read_json_from_s3(request: Request, key: str, *, context: str):
@@ -212,14 +212,14 @@ def _read_json_from_s3(request: Request, key: str, *, context: str):
             return None
         logger.error("Podcast %s S3 read failed for s3://%s/%s: %s",
                      context, cfg.podcast_bucket, key, exc, exc_info=True)
-        raise HTTPException(502, detail=f"Storage error reading {context}") from exc
+        raise HTTPException(status_code=502, detail=f"Storage error reading {context}") from exc
     body = obj["Body"].read()
     try:
         return json.loads(body)
     except json.JSONDecodeError as e:
         logger.error("Podcast %s corrupt in s3://%s/%s: %s",
                      context, cfg.podcast_bucket, key, e, exc_info=True)
-        raise HTTPException(500, detail=f"Malformed {context}") from e
+        raise HTTPException(status_code=500, detail=f"Malformed {context}") from e
 
 
 def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | None:
@@ -240,7 +240,7 @@ def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | 
         if _is_s3_not_found(exc, s3):
             return None
         logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
-        raise HTTPException(502, detail=f"Storage error fetching {context}") from exc
+        raise HTTPException(status_code=502, detail=f"Storage error fetching {context}") from exc
     return obj["Body"].read()
 
 
@@ -266,12 +266,12 @@ def _serve_static_media(
     if _using_s3(request):
         raw = _read_bytes_from_s3(request, f"{series_id}/{rel_key}", context=context)
         if raw is None:
-            raise HTTPException(404, detail=f"{context.capitalize()} not found")
+            raise HTTPException(status_code=404, detail=f"{context.capitalize()} not found")
         return Response(content=transform(raw), media_type=media_type, headers=headers)
 
     disk_file = _podcasts_dir(request) / series_id / rel_key
     if not disk_file.exists():
-        raise HTTPException(404, detail=f"{context.capitalize()} not found")
+        raise HTTPException(status_code=404, detail=f"{context.capitalize()} not found")
     return Response(
         content=transform(disk_file.read_bytes()),
         media_type=media_type,
@@ -292,7 +292,7 @@ def list_podcasts(request: Request, user: dict = Depends(get_current_user)):
         data = _read_json_file(index_file, context="index")
     if not isinstance(data, list):
         logger.error("Podcast index malformed (expected list)")
-        raise HTTPException(500, detail="Malformed podcast index")
+        raise HTTPException(status_code=500, detail="Malformed podcast index")
     return data
 
 
@@ -381,7 +381,7 @@ def get_user_progress(
         user_id=user["id"], series_id=series_id, ep_num=ep_num,
     )
     if row is None:
-        raise HTTPException(404, detail="No playback progress found")
+        raise HTTPException(status_code=404, detail="No playback progress found")
     return row
 
 
@@ -393,11 +393,11 @@ def get_podcast_series(series_id: str, request: Request, user: dict = Depends(ge
             request, f"{series_id}/metadata.json", context="metadata",
         )
         if data is None:
-            raise HTTPException(404, detail="Series not found")
+            raise HTTPException(status_code=404, detail="Series not found")
         return data
     meta_file = _podcasts_dir(request) / series_id / "metadata.json"
     if not meta_file.exists():
-        raise HTTPException(404, detail="Series not found")
+        raise HTTPException(status_code=404, detail="Series not found")
     return _read_json_file(meta_file, context="metadata")
 
 
@@ -449,8 +449,8 @@ def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | 
     if start >= file_size:
         raise HTTPException(
             status_code=416,
-            headers={"Content-Range": f"bytes */{file_size}"},
             detail="Range not satisfiable",
+            headers={"Content-Range": f"bytes */{file_size}"},
         )
     if end < start:
         return None
@@ -514,13 +514,13 @@ def _serve_audio_from_s3(
         http_status = int(getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode", 0)) \
             if hasattr(exc, "response") else 0
         if _is_s3_not_found(exc, s3) or http_status == 404:
-            raise HTTPException(404, detail="Audio not found") from None
+            raise HTTPException(status_code=404, detail="Audio not found") from None
         if http_status == 416:
             # Surface the 416 with the Content-Range S3 returned, mirroring
             # what _parse_range_header would have done.
-            raise HTTPException(416, detail="Range not satisfiable") from None
+            raise HTTPException(status_code=416, detail="Range not satisfiable") from None
         logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
-        raise HTTPException(502, detail="Storage error fetching audio") from exc
+        raise HTTPException(status_code=502, detail="Storage error fetching audio") from exc
 
     body = obj["Body"]
     status_code = obj.get("ResponseMetadata", {}).get("HTTPStatusCode", 200)
@@ -572,7 +572,7 @@ def get_podcast_audio(
     filename = _audio_filename(request, series_id, ep_num)
     audio_file = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}" / filename
     if not audio_file.exists():
-        raise HTTPException(404, detail="Audio not found")
+        raise HTTPException(status_code=404, detail="Audio not found")
 
     media_type = _media_type_for(filename)
     file_size = audio_file.stat().st_size

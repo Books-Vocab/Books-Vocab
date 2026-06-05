@@ -56,16 +56,6 @@ enum ReviewActivityLog {
         )
     }
 
-    // Convenience — kept for backward compatibility.
-    static func currentStreak(records: [ReviewRecord]) -> Int {
-        computeCurrentStreak(grouped: groupByDay(records))
-    }
-
-    // Convenience — kept for backward compatibility.
-    static func longestStreak(records: [ReviewRecord]) -> Int {
-        computeLongestStreak(grouped: groupByDay(records))
-    }
-
     // MARK: - Streak internals
 
     private static func computeCurrentStreak(grouped: [String: Int]) -> Int {

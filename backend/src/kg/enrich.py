@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 
 from .cards import Card
@@ -93,7 +94,7 @@ async def enrich_cards_stream(
     batch_size: int = 20,
     max_workers: int = 5,
     model: str | None = None,
-):
+) -> AsyncIterator[dict]:
     """Enrich cards concurrently and yield real-time progress updates.
 
     Yields dictionaries like:

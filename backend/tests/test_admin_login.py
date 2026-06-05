@@ -5,7 +5,8 @@ import pytest
 
 from kg.admin_handlers import _sign_cookie
 
-ADMIN_TOKEN = "test-admin-token-value"
+from conftest import ADMIN_TOKEN
+
 ADMIN_PASSWORD = "my-secret-admin-password"
 
 

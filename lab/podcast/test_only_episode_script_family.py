@@ -17,9 +17,7 @@ stage_synthesize 預設 "3.1" → 跨-family mismatch 噪音(backstop 仍保安�
 契約:單集成功 return 前也寫 resolve_tts_family(workspace),與全量路徑一致;
 單集失敗則不寫(無稿不該宣稱 family)。
 """
-from pathlib import Path
 
-import pytest
 
 import pipeline
 from pipeline import _SCRIPT_TTS_FAMILY_SIDECAR
