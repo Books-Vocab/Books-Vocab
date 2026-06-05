@@ -66,7 +66,7 @@ cmd_status() {
     else suggest=patch; fi
     curver="$(current_version "$c")"
     basever="${lt#"$tp"}"; [[ -n "$basever" ]] || basever="$curver"
-    if valid_semver "$basever"; then sv="$(bump_semver "$basever" "$suggest")"; else sv="（首發，參考檔內 $curver）"; fi
+    if valid_semver "$basever"; then sv="$(bump_semver "$basever" "$suggest")"; else sv="（首發，參考檔內 ${curver}）"; fi
 
     echo "■ $c  上個 tag：${lt:-（尚未發版）}  檔內版本：$curver"
     # 漂移警示：上個 tag 的版號與版號檔不一致（如 tag api/1.6.0 但 pyproject 0.1.0）→ 發版前先對齊。
@@ -74,14 +74,14 @@ cmd_status() {
     local cmpcur="$curver"
     [[ "$cmpcur" =~ ^[0-9]+\.[0-9]+$ ]] && cmpcur="$cmpcur.0"
     if [[ -n "$lt" && "$basever" != "$cmpcur" ]]; then
-      echo "   ⚠ 版號漂移：上個 tag=$basever 但檔內=$curver（發版前先 bump 對齊）"
+      echo "   ⚠ 版號漂移：上個 tag=${basever} 但檔內=${curver}（發版前先 bump 對齊）"
     fi
     if [[ "$n" -eq 0 ]]; then
       echo "   自上個 tag 無 $cp commit（無待發版）"
     else
       echo "   待發版 $n 筆 $cp commit；建議 $suggest → $sv"
       printf '%s\n' "$commits" | head -15 | sed 's/^/     /'
-      [[ "$n" -gt 15 ]] && echo "     … 還有 $((n-15)) 筆（完整清單見 ./ops/release.sh changelog $c）"
+      [[ "$n" -gt 15 ]] && echo "     … 還有 $((n-15)) 筆（完整清單見 ./ops/release.sh changelog ${c}）"
     fi
     echo
   done
@@ -99,7 +99,7 @@ cmd_bump() {
   local c="${1:?用法: release.sh bump <api|ios> <x.y.z>}" v="${2:-}"
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
-  valid_semver "$v" || err "版本號格式錯誤：$v（需 x.y.z）"
+  valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
   "$ROOT/ops/release_bump.sh" "$c" "$v"
 }
 
@@ -108,7 +108,7 @@ cmd_publish() {
   local c="${1:?用法: release.sh publish <api|ios> <x.y.z> [--yes]}" v="${2:-}"
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
-  valid_semver "$v" || err "版本號格式錯誤：$v（需 x.y.z）"
+  valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
 
   local tp tag files curver branch
   tp="$(tag_prefix "$c")"; tag="${tp}${v}"
@@ -123,7 +123,7 @@ cmd_publish() {
   git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
     && err "tag $tag 已存在（重複發版？換版號或先刪 tag）"
   curver="$(current_version "$c")"
-  [[ "$curver" == "$v" ]] || err "版號檔目前是 $curver，非 $v —— 先跑 ./ops/release.sh bump $c $v"
+  [[ "$curver" == "$v" ]] || err "版號檔目前是 ${curver}，非 ${v} —— 先跑 ./ops/release.sh bump ${c} ${v}"
 
   echo "component=$c  version=$v  tag=$tag  branch=$branch"
   echo "  將 commit 的檔：${files[*]}"
@@ -134,7 +134,7 @@ cmd_publish() {
     git -C "$ROOT" commit -m "ops: release $c $v"
     git -C "$ROOT" tag "$tag"
     git -C "$ROOT" push origin "$branch" "$tag"
-    echo "✓ 已 commit + tag $tag + 推送到 origin/$branch（tag 為版本標記；無 tag-triggered CI，GitHub Release 須手動建）。"
+    echo "✓ 已 commit + tag ${tag} + 推送到 origin/${branch}（tag 為版本標記；無 tag-triggered CI，GitHub Release 須手動建）。"
   else
     echo "[dry-run] 未送出。確認無誤後加 --yes 才會 commit + 打 tag + 推送 origin："
     echo "  ./ops/release.sh publish $c $v --yes"
@@ -160,5 +160,5 @@ case "${SUB:-}" in
   bump)      cmd_bump ${ARGS[@]+"${ARGS[@]}"} ;;
   publish)   cmd_publish ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
-  *)         err "unknown subcommand: $SUB（release.sh help 看用法）" ;;
+  *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
 esac

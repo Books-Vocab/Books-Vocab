@@ -10,7 +10,7 @@ KG_ROOT="${KG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"   # 可由 env 覆寫（
 
 # 驗證版本號格式
 if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-  echo "✗ 版本號格式錯誤：$VERSION（需要 x.y.z）" >&2
+  echo "✗ 版本號格式錯誤：${VERSION}（需要 x.y.z）" >&2
   exit 1
 fi
 
@@ -51,14 +51,14 @@ bump_ios() {
   local count
   count=$(grep -c "MARKETING_VERSION = $VERSION;" "$pbxproj")
   [[ "$count" -ge 1 ]] || { echo "✗ MARKETING_VERSION 更新失敗（錨值 $cur_mv 未命中）" >&2; exit 1; }
-  echo "✓ MARKETING_VERSION → $VERSION（app target $count 處；測試 bundle 不動）"
+  echo "✓ MARKETING_VERSION → ${VERSION}（app target ${count} 處；測試 bundle 不動）"
   echo "✓ CURRENT_PROJECT_VERSION → $new_build"
 }
 
 case "$COMPONENT" in
   api)  bump_api ;;
   ios)  bump_ios ;;
-  *)    echo "✗ 未知 component: $COMPONENT（需要 api 或 ios）" >&2; exit 1 ;;
+  *)    echo "✗ 未知 component: ${COMPONENT}（需要 api 或 ios）" >&2; exit 1 ;;
 esac
 
 echo "✓ 版本更新完成：$COMPONENT $VERSION"
