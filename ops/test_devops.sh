@@ -207,6 +207,25 @@ for bad in '..' '../etc' 'a..b' '.hidden' 'a/b' 'a b' 'a;rm' '' "$LONG65"; do
     || fail_t "did NOT block bad uid: '$bad'"
 done
 
+# ── 10. 診斷噪音須走 stderr，讓 --json 的 stdout 可被機器 parse ─────────────
+# 根因:dogfooding 發現 preflight banner + info "▶ 執行 argv" 印到 stdout,
+# 害每個 ops-cli --json 都 json.loads 失敗。診斷訊息一律 stderr,stdout 只留 payload。
+section "Diagnostics to stderr (clean --json stdout)"
+# 10a. wrapper preflight banner 不可出現在 stdout
+_pf_stdout=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" preflight 2>/dev/null)
+[[ -z "$_pf_stdout" ]] \
+  && ok "preflight banner not on stdout" \
+  || fail_t "preflight banner leaked to stdout: $_pf_stdout"
+# 10b. wrapper preflight banner 必須出現在 stderr
+_pf_stderr=$(bash "$WORKSPACE/ops/devops_kg_safe.sh" preflight 2>&1 >/dev/null)
+echo "$_pf_stderr" | grep -q '\[Preflight\]' \
+  && ok "preflight banner on stderr" \
+  || fail_t "preflight banner missing from stderr"
+# 10c. devops.sh info() 須導向 stderr（progress 非 payload）
+grep -qE '^info\(\)[[:space:]]*\{[[:space:]]*echo "▶ \$\*" >&2;' "$KG" \
+  && ok "info() routed to stderr" \
+  || fail_t "info() not routed to stderr (would pollute --json stdout)"
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

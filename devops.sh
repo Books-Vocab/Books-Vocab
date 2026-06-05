@@ -48,7 +48,8 @@ HOST_SPECIFIC_ENV_KEYS=(
 )
 
 # ── 工具函式 ──────────────────────────────────────────────────────────────────
-info()    { echo "▶ $*"; }
+# info/progress 走 stderr，stdout 只留命令 payload（讓 ops-cli --json 可機讀 parse）。
+info()    { echo "▶ $*" >&2; }
 ok()      { echo "✓ $*"; }
 err()     { echo "✗ $*" >&2; exit 1; }
 section() { echo ""; echo "── $* ──"; }

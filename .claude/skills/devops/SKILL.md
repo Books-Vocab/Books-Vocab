@@ -64,6 +64,8 @@ ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（car
 
 # 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
 #   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
+#   診斷 banner（[Preflight]/▶progress）一律走 stderr，stdout 只有純 JSON，
+#   可直接 `... --json 2>/dev/null | jq`（或 json.loads）。
 # --range: 24h | 7d | 30d | month | all（預設 month）
 ```
 
