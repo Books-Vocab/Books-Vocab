@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 1f55231f
+verified_against: 575bcb1a
 -->
 # BooksBrowser iOS 開發技能
 
@@ -63,6 +63,24 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ### Step 3：對症下藥並驗證
 
 修復後立刻重跑 Step 1。反覆「編譯 → 讀上下文 → 修改」直到 Exit Code 歸零。
+
+## 發版 / TestFlight（`ops/ios_release.sh`）
+
+App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基建，**無需手動匯入 Apple Distribution 憑證**（cert/profile 已一次性建置，含重建步驟見 `~/.secrets/apple/README.md`）。
+
+```bash
+./ops/ios_release.sh                  # archive + export 出 .ipa（無對外副作用，預設）
+./ops/ios_release.sh --upload         # 額外上傳 → TestFlight（對外副作用，需明示）
+./ops/ios_release.sh --key 6Y7DC88RUY # 換 ASC API key（預設 TCXVHFRXMS / App Manager）
+./ops/ios_release.sh --timeout 900    # 自訂 build lock 等待秒數
+```
+
+- **產物**：`ios/build/export/BooksBrowser.ipa`（git-ignored）。
+- **簽章**：manual signing — Apple Distribution cert（keychain）+ `KG App Store` profile（`ios/ExportOptions.plist`）。`method=app-store`（Xcode 26 印 deprecated 警告但可用；新式 `app-store-connect` 即使 manual 仍強制 Xcode 內登入 ASC account，純 CLI 不適用）。
+- **build-number guard**：`--upload` 前比對本機 `CURRENT_PROJECT_VERSION`（`-target BooksBrowser`）與 TestFlight 最新 build，重複即中止 — 須先 bump 版號。archive/export 不受此限。
+- **keychain 免互動**：codesign 存取私鑰需 partition list 授權（一次性 `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k <登入密碼> ~/Library/Keychains/login.keychain-db`）；未設則互動 terminal 彈授權框、背景/CI 會 hang。
+- **key 選擇**：`TCXVHFRXMS`(App Manager) 可送審;`6Y7DC88RUY`(Developer) 僅 TestFlight。後端訂閱驗簽用 `6Y7DC88RUY`，**勿 revoke**。
+- 共用 `ios_build.sh` 的 `/tmp/kg-ios-build.lock`，多 worktree 安全。
 
 ## App 架構速查
 
