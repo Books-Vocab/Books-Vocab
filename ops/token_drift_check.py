@@ -161,20 +161,32 @@ def parse_string_lets(filename: str) -> dict[str, str]:
             for m in re.finditer(r'static let (\w+)\s*=\s*"((?:[^"\\]|\\.)*)"', src)}
 
 
-def parse_motion() -> dict[str, dict]:
-    """AppMotion symbol -> {duration?, response?, damping?, curve?(4-tuple)}."""
+def parse_motion(dt: dict | None = None) -> dict[str, dict]:
+    """AppMotion symbol -> {duration?, response?, damping?, curve?(4-tuple)}.
+
+    duration/spring args may be a literal (0.15) OR a DesignTokens.* reference
+    (the Figma->iOS SoT inversion); _swift_num resolves both. timingCurve
+    control points stay literal — easing is NOT wired (tokens.json easing is a
+    cubic-bezier *string*, iOS timingCurve takes 4 Doubles + an unmapped 0.4
+    duration, so the types don't bridge)."""
     body = _enum_body(_read("AppMetrics.swift"), r"enum AppMotion\s*\{", "{", "}")
     out: dict[str, dict] = {}
     for m in re.finditer(
-            r"static let (\w+)\s*=\s*Animation\.(?:easeOut|easeIn|easeInOut|linear)\(duration:\s*("
-            + _FLOAT + r")\)", body):
-        out[m.group(1)] = {"duration": float(m.group(2))}
+            r"static let (\w+)\s*=\s*Animation\.(?:easeOut|easeIn|easeInOut|linear)\(duration:\s*"
+            r"([-\w.]+)\)", body):
+        val = _swift_num(m.group(2), dt)
+        if val is not None:
+            out[m.group(1)] = {"duration": val}
     for m in re.finditer(
-            r"static let (\w+)\s*(?::\s*Animation)?\s*=\s*(?:Animation)?\.spring\(response:\s*(" + _FLOAT
-            + r"),\s*dampingFraction:\s*(" + _FLOAT + r")", body):
+            r"static let (\w+)\s*(?::\s*Animation)?\s*=\s*(?:Animation)?\.spring\(response:\s*"
+            r"([-\w.]+),\s*dampingFraction:\s*([-\w.]+)", body):
+        resp = _swift_num(m.group(2), dt)
+        damp = _swift_num(m.group(3), dt)
+        if resp is None or damp is None:
+            continue
         spec = out.setdefault(m.group(1), {})
-        spec["response"] = float(m.group(2))
-        spec["damping"] = float(m.group(3))
+        spec["response"] = resp
+        spec["damping"] = damp
     for m in re.finditer(
             r"static let (\w+)\s*=\s*Animation\.timingCurve\(\s*(" + _FLOAT + r"),\s*(" + _FLOAT
             + r"),\s*(" + _FLOAT + r"),\s*(" + _FLOAT + r"),\s*duration:\s*(" + _FLOAT + r")\)", body):
@@ -343,8 +355,8 @@ def check() -> list[str]:
     base_radii = parse_base_radii()
     app_metrics = parse_scale("AppMetrics.swift", "AppMetrics")
     color_strings = parse_string_lets("AppColors.swift")
-    motion = parse_motion()
-    tap = parse_scale("AppMetrics.swift", "TapFeedback")
+    motion = parse_motion(dt)
+    tap = parse_scale("AppMetrics.swift", "TapFeedback", dt)
     tag_metrics = parse_tag_metrics()
     tag_fill = parse_tag_fill()
 

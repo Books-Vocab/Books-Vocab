@@ -29,14 +29,14 @@ enum AppMetrics {
 }
 
 enum AppMotion {
-    static let quickEaseOut = Animation.easeOut(duration: 0.15)
-    static let controlEaseOut = Animation.easeOut(duration: 0.14)
-    static let progressLinear = Animation.linear(duration: 0.1)
-    static let standardSpring = Animation.spring(response: 0.3, dampingFraction: 0.75)
-    static let emphasizedSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
+    static let quickEaseOut = Animation.easeOut(duration: DesignTokens.Motion.Duration.quick)
+    static let controlEaseOut = Animation.easeOut(duration: DesignTokens.Motion.Duration.control)
+    static let progressLinear = Animation.linear(duration: DesignTokens.Motion.Duration.progress)
+    static let standardSpring = Animation.spring(response: DesignTokens.Motion.Spring.Standard.response, dampingFraction: DesignTokens.Motion.Spring.Standard.damping)
+    static let emphasizedSpring = Animation.spring(response: DesignTokens.Motion.Spring.Emphasized.response, dampingFraction: DesignTokens.Motion.Spring.Emphasized.damping)
     static let relaxedSpring = Animation.spring(response: 0.4, dampingFraction: 0.8)
     static let systemSpring = Animation.spring()
-    static let modalSwapSpring = Animation.spring(response: 0.45, dampingFraction: 0.85)
+    static let modalSwapSpring = Animation.spring(response: DesignTokens.Motion.Spring.ModalSwap.response, dampingFraction: DesignTokens.Motion.Spring.ModalSwap.damping)
     static let buttonSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0)
     static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)
     static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
@@ -54,8 +54,8 @@ enum AppMotion {
     static let swipeTrackingSpring = Animation.interactiveSpring(response: 0.14, dampingFraction: 0.86)
 
     // --- Visual polish tokens ---
-    static let pressFeedback: Animation = .spring(response: 0.25, dampingFraction: 0.65)
-    static let contentReveal: Animation = .spring(response: 0.35, dampingFraction: 0.82)
+    static let pressFeedback: Animation = .spring(response: DesignTokens.Motion.Spring.Press.response, dampingFraction: DesignTokens.Motion.Spring.Press.damping)
+    static let contentReveal: Animation = .spring(response: DesignTokens.Motion.Spring.ContentReveal.response, dampingFraction: DesignTokens.Motion.Spring.ContentReveal.damping)
     static let celebrationBounce: Animation = .spring(response: 0.4, dampingFraction: 0.55)
     static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
 
@@ -66,7 +66,7 @@ enum AppMotion {
     static let phaseChange = emphasizedSpring
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
-    static let chipSelect = Animation.easeOut(duration: 0.18)
+    static let chipSelect = Animation.easeOut(duration: DesignTokens.Motion.Duration.chip)
 
     // MARK: - Asymmetric Emphasized Easing
     // Material Design 3 / Apple HIG 非對稱曲線：進場慢出（觀眾還在看）、退場快進（觀眾已轉移注意）。
@@ -100,9 +100,9 @@ enum AppMotion {
 
     enum TapFeedback {
         /// 按下時的縮放比例
-        static let scaleDown: CGFloat = 0.97
+        static let scaleDown: CGFloat = DesignTokens.Motion.TapFeedback.scaleDown
         /// 按下時的透明度（opacity dip）
-        static let opacityDip: Double = 0.92
+        static let opacityDip: Double = DesignTokens.Motion.TapFeedback.opacityDip
         /// 對應的動畫曲線
         static let animation = Animation.interactiveSpring(response: 0.18, dampingFraction: 0.7)
     }
