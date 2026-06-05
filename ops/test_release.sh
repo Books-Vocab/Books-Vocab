@@ -67,6 +67,21 @@ section "Version format guard"
 grep -qE '\[0-9\]\+\\?\.\[0-9\]|[0-9]+\.[0-9]+\.[0-9]+' "$REL" \
   && ok "validates semver x.y.z"            || fail_t "no semver format guard"
 
+# ── 6b. Bash set -u + non-ASCII boundary regression guard ───────────────────
+section "Bash variable braces before non-ASCII"
+bad_boundary="$(
+  rg -n '\$[A-Za-z_][A-Za-z0-9_]*[^[:ascii:]]' "$WORKSPACE/ops" "$WORKSPACE/devops.sh" \
+    -g '*.sh' \
+    -g '!asc.sh' \
+    -g '!test_asc.sh' \
+    -g '!ios_release.sh' \
+    -g '!test_ios_release.sh' \
+    || true
+)"
+[[ -z "$bad_boundary" ]] \
+  && ok "no unbraced shell vars before non-ASCII in non-ASC ops" \
+  || fail_t "unbraced shell vars before non-ASCII:\n$bad_boundary"
+
 # ── 7. status / changelog 唯讀（不得碰遠端 / 不寫檔） ────────────────────────
 section "Read-only commands stay read-only"
 status_body="$(awk '/^cmd_status\(\)/,/^}/' "$REL")"

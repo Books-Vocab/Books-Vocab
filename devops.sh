@@ -470,7 +470,7 @@ cmd_deploy() {
   if [[ "$reported_version" == "$deploy_sha" ]]; then
     ok "Sentry release = $deploy_sha (api/system/info 對齊)"
   else
-    echo "⚠ /api/system/info 回報 version=$reported_version 但本次 deploy_sha=$deploy_sha；Sentry release 可能會用 $reported_version"
+    echo "⚠ /api/system/info 回報 version=${reported_version} 但本次 deploy_sha=${deploy_sha}；Sentry release 可能會用 ${reported_version}"
   fi
 
   # ── 記錄部署日誌 ──
