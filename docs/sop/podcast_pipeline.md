@@ -335,6 +335,26 @@ uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --wor
 
 > **已知限制**:`coverImageURL` 無版本。iOS 按 *series id* 快取封面(`PodcastSyncService.cacheCoverIfNeeded`),故 `null→有值`(首次補封面)會被抓到,但**替換**既有封面的新圖在 client 端不會自動刷新(需清快取或未來加 cover versioning)。
 
+### Headless 觀測 CLI(`ops/podcast_ops.py` — 不必起 dashboard)
+
+過去要看 pipeline 狀態/花費/drift 都得 `./start.sh` 起 uvicorn + 開瀏覽器。這支 CLI 把同一套 disk-derived 邏輯(`monitor/workspace_status.py`、`monitor/cost.py`,**同一份實作,不漂移**)搬上終端,可 SSH / cron / `| jq`:
+
+```bash
+# 純磁碟(免 boto3):
+uv run --no-project python ops/podcast_ops.py status   --workspaces-dir lab/podcast/workspaces           # 狀態瀑布 + 集數 + 進度 + 花費
+uv run --no-project python ops/podcast_ops.py episodes  <ws> --workspaces-dir lab/podcast/workspaces      # 逐集 plan/script/audio/subtitle 矩陣
+uv run --no-project python ops/podcast_ops.py cost      --workspaces-dir lab/podcast/workspaces           # 聚合花費 + by-model(--workspace <ws> 看單一明細)
+uv run --no-project python ops/podcast_ops.py covers    --workspaces-dir lab/podcast/workspaces           # 有音頻卻缺 plan/cover.png
+# 需 S3(boto3 + PODCAST_BUCKET,缺則 clean exit 3):
+set -a; source lab/podcast/.env; set +a
+uv run --no-project --with boto3 python ops/podcast_ops.py reconcile --workspaces-dir lab/podcast/workspaces  # workspace↔S3「合成了但沒上 S3」drift
+uv run --no-project --with boto3 python ops/podcast_ops.py series                                            # S3 catalog + 容量
+```
+
+- **`status` exit code 給 cron 訊號**:`2`=有 workspace 卡 failed(pipeline_log 有未解決 stage 失敗且無 done marker)、`1`=有 awaiting 人工核准、`0`=全 ok。狀態瀑布與 dashboard sidebar 完全一致(running 僅 dashboard 有 live job tracker 時報,headless 永不臆測)。
+- **`--json` 契約**:stdout 只有 JSON(零前綴,`| jq` 可直接吃),所有 banner/cost warning 走 stderr。
+- **failed ≠ 集數不全**:一個 workspace 可能七集全綠卻 `failed`——多半是 `publish` stage 上傳失敗(synthesized-not-published),此時 `reconcile` 會同時抓到。先看 `pipeline_log.jsonl` 尾段哪個 stage `success:false` 且無對應 `.stage_<n>_done`。
+
 ---
 
 ## 6. 排障 runbook
