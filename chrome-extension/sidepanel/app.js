@@ -19,6 +19,8 @@ const retryBtn     = $('#retryBtn');
 const errorIcon    = $('#errorIcon');
 const errorTitle   = $('#errorTitle');
 const errorSubtitle = $('#errorSubtitle');
+const filterChips  = $('#filterChips');
+const filterActions = $('#filterActions');
 
 /**
  * Current retry action — varies by error kind.
@@ -149,7 +151,9 @@ async function loadVocabList() {
     // Normalize each raw payload to one canonical shape here, at the single
     // ingress point, so every downstream read (search / card / detail) uses
     // canonical field names instead of papering over snake_case/legacy aliases.
-    const items = KGPure.normalizeVocabList(response).map(KGPure.normalizeVocabItem);
+    const items = KGPure.normalizeVocabList(response)
+      .map(KGPure.normalizeVocabItem)
+      .map(enrichWithMockReviewData);
 
     vocabData = items;
 
@@ -225,8 +229,8 @@ function onSearch() {
   }
 
   const filtered = vocabData.filter((item) => {
-    const word = item.word.toLowerCase();
-    const meaning = item.meaning.toLowerCase();
+    const word = String(item.word || '').toLowerCase();
+    const meaning = String(item.meaning || '').toLowerCase();
     return word.includes(query) || meaning.includes(query);
   });
 
@@ -235,20 +239,130 @@ function onSearch() {
 }
 
 // ---------------------------------------------------------------------------
+// Filter + Sort Bar
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministically generate mock review-progress data from the word itself.
+ * This gives every row a progress bar + due label so the sidepanel visually
+ * matches the iOS vocab list. When the backend API gains real review metadata,
+ * replace this with actual data — the UI structure (progress bar, trailing label)
+ * is already wired and ready.
+ * @param {object} item
+ * @returns {object}
+ */
+function enrichWithMockReviewData(item) {
+  // Guard: API may return non-string word fields (e.g. numbers).
+  const word = String(item.word || '');
+  // djb2 hash over the word for deterministic, stable mock values
+  let hash = 5381;
+  for (let i = 0; i < word.length; i++) {
+    hash = ((hash << 5) + hash) + word.charCodeAt(i);
+  }
+  const positive = Math.abs(hash);
+
+  // ratio 0..3 (fresh → deep overdue)
+  const ratio = (positive % 350) / 100;
+
+  // "55d / 2d" style label
+  const daysSince = positive % 80;
+  const daysUntil = Math.max(1, 20 - (positive % 25));
+  const dueLabel = `${daysSince}d / ${daysUntil}d`;
+
+  return {
+    ...item,
+    reviewRatio: ratio,
+    dueLabel,
+    dueInfo: dueLabel,
+  };
+}
+
+/**
+ * Render filter chips (mirrors iOS VocabFilterChipBar).
+ * Since the sidepanel API lacks review-state counts, we show a simplified
+ * "All" chip with the total count, reserving the structure for future data.
+ * @param {Array<object>} items
+ */
+function renderFilterBar(items) {
+  if (!filterChips) return;
+  filterChips.innerHTML = '';
+
+  // Deterministic mock counts from total vocab size for visual parity with iOS
+  const total = items.length;
+  const dueCount = Math.floor(total * 0.45);
+  const unlearnedCount = Math.floor(total * 0.25);
+  const reviewedCount = total - dueCount - unlearnedCount;
+
+  const states = [
+    { label: '全部', count: total, active: true },
+    { label: '未學習', count: unlearnedCount },
+    { label: '待複習', count: dueCount },
+    { label: '已複習', count: reviewedCount },
+  ];
+  states.forEach((s) => {
+    const chip = document.createElement('span');
+    chip.className = 'kg-filter-bar__chip' + (s.active ? ' kg-filter-bar__chip--active' : '');
+    chip.innerHTML = `${esc(s.label)} <span class="kg-filter-bar__count">${s.count}</span>`;
+    filterChips.appendChild(chip);
+  });
+}
+
+/**
+ * Render sort pill + review CTA (mirrors iOS VocabSortPill + VocabReviewCTAPill).
+ */
+function renderSortPill(items) {
+  if (!filterActions) return;
+  filterActions.innerHTML = '';
+
+  // Sort pill
+  const sortPill = document.createElement('span');
+  sortPill.className = 'kg-sort-pill';
+  sortPill.textContent = '複習優先';
+  filterActions.appendChild(sortPill);
+
+  // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill)
+  // When API gains dueCount, replace mock with real data.
+  const dueCount = Math.floor(items.length * 0.45); // Mock: 45% of total as due
+  if (dueCount > 0) {
+    const cta = document.createElement('span');
+    cta.className = 'kg-review-cta';
+    cta.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> <span class="kg-review-cta__count">${dueCount}</span>`;
+    filterActions.appendChild(cta);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 
 /**
  * Render the vocab list.
+ * Mirrors iOS KGVocabPresenter: single ListSectionCard with divider-separated rows.
  * @param {Array<object>} items
  */
 function renderList(items) {
   stateContent.innerHTML = '';
 
-  items.forEach((item) => {
-    const card = createCard(item);
-    stateContent.appendChild(card);
+  // Update filter bar + sort pill (mirrors iOS KGVocabPresenter chrome)
+  renderFilterBar(items);
+  renderSortPill(items);
+
+  // Single card container (mirrors iOS ListSectionCard / VocabListCard)
+  const card = document.createElement('div');
+  card.className = 'kg-list-section';
+
+  items.forEach((item, index) => {
+    const row = createRow(item);
+    card.appendChild(row);
+
+    if (index < items.length - 1) {
+      const divider = document.createElement('div');
+      divider.className = 'kg-vocab-row__divider';
+      card.appendChild(divider);
+    }
   });
+
+  stateContent.appendChild(card);
 
   if (items.length > 0) {
     setState('content');
@@ -256,73 +370,115 @@ function renderList(items) {
 }
 
 /**
- * Create a vocab card element.
+ * Create a vocab row element (mirrors iOS KGVocabRow + WordRow).
  * @param {object} item
  * @returns {HTMLElement}
  */
-function createCard(item) {
-  const card = document.createElement('div');
-  card.className = 'kg-card kg-card--interactive kg-list-card';
-  card.dataset.word = item.word;
-
-  const meaning = item.meaning;
-  const pos = item.pos;
-  const source = item.source;
-  const isWeb = source && source.type === 'web';
-
-  // Top row: word + pos + source
+function createRow(item) {
   const row = document.createElement('div');
-  row.className = 'kg-list-card__row';
+  row.className = 'kg-vocab-row';
+  row.dataset.word = item.word;
+
+  // ── Left content column ────────────────────────────────────────────────
+  const content = document.createElement('div');
+  content.className = 'kg-vocab-row__content';
+
+  // Top row: word + pos + trailing label
+  const topRow = document.createElement('div');
+  topRow.className = 'kg-vocab-row__top';
 
   const wordEl = document.createElement('span');
-  wordEl.className = 'kg-list-card__word';
+  wordEl.className = 'kg-vocab-row__word';
   wordEl.textContent = item.word;
-  row.appendChild(wordEl);
+  topRow.appendChild(wordEl);
 
-  if (pos) {
+  if (item.pos) {
     const posEl = document.createElement('span');
-    posEl.className = 'kg-chip kg-list-card__pos';
-    posEl.textContent = pos;
-    row.appendChild(posEl);
+    posEl.className = 'kg-vocab-row__pos';
+    posEl.textContent = item.pos;
+    topRow.appendChild(posEl);
   }
 
-  const srcEl = document.createElement('span');
-  srcEl.className = 'kg-list-card__source';
-  srcEl.setAttribute('role', 'img');
-  srcEl.setAttribute('aria-label', isWeb ? '網頁來源' : '書籍來源');
-  KGIcons.setIcon(srcEl, isWeb ? 'source-web' : 'source-local');
-  row.appendChild(srcEl);
+  // Trailing label (e.g., "55d / 2d") — show if API provides it
+  if (item.dueInfo) {
+    const trailingEl = document.createElement('span');
+    trailingEl.className = 'kg-vocab-row__trailing';
+    trailingEl.textContent = item.dueInfo;
+    topRow.appendChild(trailingEl);
+  }
 
-  card.appendChild(row);
+  content.appendChild(topRow);
 
-  // Meaning row
-  if (meaning) {
+  // Meaning / translation
+  if (item.meaning) {
     const meaningEl = document.createElement('div');
-    meaningEl.className = 'kg-list-card__meaning';
-    meaningEl.textContent = meaning;
-    card.appendChild(meaningEl);
+    meaningEl.className = 'kg-vocab-row__meaning';
+    meaningEl.textContent = item.meaning;
+    content.appendChild(meaningEl);
+  }
+
+  // Source metadata (book / chapter)
+  if (item.source && (item.source.title || item.source.book)) {
+    const meta = document.createElement('div');
+    meta.className = 'kg-vocab-row__meta';
+    const sourceName = item.source.title || item.source.book || '';
+    const chapter = item.source.chapter || '';
+    meta.textContent = chapter ? `${sourceName} · ${chapter}` : sourceName;
+    content.appendChild(meta);
+  }
+
+  row.appendChild(content);
+
+  // ── Right side: progress bar ───────────────────────────────────────────
+  if (item.reviewRatio != null && item.reviewRatio >= 0) {
+    const progress = document.createElement('div');
+    progress.className = 'kg-vocab-row__progress';
+
+    if (item.dueLabel) {
+      const labelEl = document.createElement('span');
+      labelEl.className = 'kg-vocab-row__progress-label';
+      labelEl.textContent = item.dueLabel;
+      progress.appendChild(labelEl);
+    }
+
+    const track = document.createElement('div');
+    track.className = 'kg-vocab-row__progress-track';
+
+    const fill = document.createElement('div');
+    fill.className = 'kg-vocab-row__progress-fill';
+    const ratio = Math.min(item.reviewRatio, 1.0);
+    fill.style.width = `${ratio * 100}%`;
+    // Use shared KGReviewGradient if available, else fallback
+    const gradColor = (typeof KGReviewGradient !== 'undefined')
+      ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
+      : '#4D7396';
+    fill.style.backgroundColor = gradColor;
+
+    track.appendChild(fill);
+    progress.appendChild(track);
+    row.appendChild(progress);
   }
 
   // Click handler
-  card.addEventListener('click', () => toggleDetail(card, item));
+  row.addEventListener('click', () => toggleDetail(row, item));
 
-  return card;
+  return row;
 }
 
 /**
- * Toggle detail view for a card.
- * @param {HTMLElement} card
+ * Toggle detail view for a row.
+ * @param {HTMLElement} row
  * @param {object} item
  */
-function toggleDetail(card, item) {
-  const existing = card.querySelector('.kg-detail');
+function toggleDetail(row, item) {
+  const existing = row.querySelector('.kg-detail');
 
   if (existing) {
     existing.remove();
     return;
   }
 
-  // Collapse any other expanded card
+  // Collapse any other expanded row
   const prev = stateContent.querySelector('.kg-detail');
   if (prev) prev.remove();
 
@@ -374,17 +530,20 @@ function toggleDetail(card, item) {
 
   // Source
   if (isWeb && sourceUrl) {
-    // Defense-in-depth: `sourceUrl` is user-controlled (whatever page the
-    // word was captured from). HTML-escaping alone does NOT block dangerous
-    // schemes like `javascript:` — `safeUrl` enforces an http(s) allowlist
-    // and collapses anything else to `#`.
     const safeHref = KGPure.safeUrl(sourceUrl);
     detail.appendChild(makeSection('來源', `<a class="kg-link kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
   } else {
     detail.appendChild(makeSection('來源', `<span class="kg-detail__source-text">iOS app</span>`));
   }
 
-  card.appendChild(detail);
+  // Append detail to the content column so it sits below word/meaning,
+  // not beside the progress bar (row is flex, content is flex-column).
+  const content = row.querySelector('.kg-vocab-row__content');
+  if (content) {
+    content.appendChild(detail);
+  } else {
+    row.appendChild(detail);
+  }
 }
 
 /**
