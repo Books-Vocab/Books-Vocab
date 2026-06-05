@@ -52,24 +52,33 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
         AppLog.reader.debug("Selection state: \(isActive)")
     }
 
-    private func handleMarkingProgressMessage(_ body: Any) {
+    private func decodeJSONDictionary<Value>(from body: Any, valueType: Value.Type) -> [String: Value]? {
         guard let body = body as? String,
               let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Int],
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Value] else { return nil }
+        return json
+    }
+
+    private func handleMarkingProgressMessage(_ body: Any) {
+        guard let json = decodeJSONDictionary(from: body, valueType: Int.self),
               let done = json["done"],
               let total = json["total"],
-              total > 0 else { return }
+              total > 0 else {
+            AppLog.reader.debug("Ignored malformed markingProgress message from JS")
+            return
+        }
 
         let progress = Double(done) / Double(total)
         parent.onMarkingProgress?(progress)
     }
 
     private func handleWordTapMessage(_ body: Any) {
-        guard let body = body as? String,
-              let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+        guard let json = decodeJSONDictionary(from: body, valueType: String.self),
               let word = json["word"],
-              let context = json["context"] else { return }
+              let context = json["context"] else {
+            AppLog.reader.debug("Ignored malformed wordTap message from JS")
+            return
+        }
 
         AppLog.reader.debug("Word from JS: \(word)")
         parent.onWordSelected(word, context)

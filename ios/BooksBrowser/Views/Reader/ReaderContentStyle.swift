@@ -81,7 +81,7 @@ struct ReaderContentStyle: Equatable {
 
 enum ReaderContentStyleFactory {
     static func make() -> ReaderContentStyle {
-        return .vocab
+        .vocab
     }
 }
 
@@ -114,27 +114,20 @@ enum ReaderPresentationMetrics {
 
     enum Header {
         static let compactSpacing: CGFloat = 8
-        static let contentHorizontalInset: CGFloat = 12
         static let contentHorizontalInsetExpanded: CGFloat = 14
         static let contentVerticalInset: CGFloat = 10
         static let outerHorizontalInset: CGFloat = 20
         static let outerTopInset: CGFloat = 8
-        static let buttonSize: CGFloat = 34
-        static let compactButtonSize: CGFloat = 44
         static let titleMaxWidth: CGFloat = 160
         static let titleMaxWidthRegular: CGFloat = 300
-        static let trailingInset: CGFloat = 4
-        static let progressSpacing: CGFloat = 6
         static let compactProgressInsetHorizontal: CGFloat = 10
         static let compactProgressInsetVertical: CGFloat = 8
-        static let shadowOpacity: Double = 0.08
-        static let expandedShadowRadius: CGFloat = 16
-        static let compactShadowRadius: CGFloat = 10
-        static let shadowY: CGFloat = 4
     }
 
     enum Preview {
         static let blockSpacing: CGFloat = 18
+        static let blockHeightTall: CGFloat = 12
+        static let blockHeightShort: CGFloat = 10
         static let blockCornerRadius: CGFloat = 4
         static let topInset: CGFloat = 120
         static let horizontalInset: CGFloat = 28

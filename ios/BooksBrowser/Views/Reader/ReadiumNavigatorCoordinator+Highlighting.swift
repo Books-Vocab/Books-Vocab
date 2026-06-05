@@ -16,31 +16,38 @@ extension ReadiumNavigatorView.Coordinator {
         guard !words.isEmpty else { return }
 
         Task {
-            await GlobalDebouncer.shared.debounce(key: "markVocabWords", duration: 0.8) { [weak self] in
+            await GlobalDebouncer.shared.debounce(key: "markVocabWords", duration: ReaderMetrics.markVocabDebounceDuration) { [weak self] in
                 guard let self else { return }
-                await MainActor.run {
-                    guard let navigator = self.navigator else { return }
-
-                    let escaped = words.map { Self.jsEscaped($0) }
-                    let wordsJSON = escaped.map { "\"\($0)\"" }.joined(separator: ",")
-                    let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
-
-                    Task { ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markVocabWords") }
-                    PerfLog.reader.mark("markVocabWords", "\(words.count)")
-                    AppLog.reader.debug("Marked \(words.count) vocab words")
-                }
+                await MainActor.run { self.emitMarkVocabWordsJS(words) }
             }
         }
     }
 
-    func markNewVocabWord(_ word: String) {
+    @MainActor
+    private func emitMarkVocabWordsJS(_ words: [String]) {
+        guard let navigator = self.navigator else { return }
+
+        let escaped = words.map { Self.jsEscaped($0) }
+        let wordsJSON = escaped.map { "\"\($0)\"" }.joined(separator: ",")
+        let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
+
+        Task { ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markVocabWords") }
+        PerfLog.reader.mark("markVocabWords", "\(words.count)")
+        AppLog.reader.debug("Marked \(words.count) vocab words")
+    }
+
+    private func invokeSingleWordBridge(_ word: String, jsFunction: String, label: StaticString, logMessage: String) {
         guard let navigator else { return }
         let escaped = Self.jsEscaped(word)
-        let js = "if(window.__markVocabWord) window.__markVocabWord(\"\(escaped)\");"
+        let js = "if(window.\(jsFunction)) window.\(jsFunction)(\"\(escaped)\");"
         Task { @MainActor in
-            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "markNewVocabWord")
-            AppLog.reader.debug("Marked new vocab: \(word)")
+            ReaderJSEval.log(await navigator.evaluateJavaScript(js), label)
+            AppLog.reader.debug("\(logMessage)")
         }
+    }
+
+    func markNewVocabWord(_ word: String) {
+        invokeSingleWordBridge(word, jsFunction: "__markVocabWord", label: "markNewVocabWord", logMessage: "Marked new vocab: \(word)")
     }
 
     func clearAllVocabHighlights() {
@@ -63,13 +70,7 @@ extension ReadiumNavigatorView.Coordinator {
     }
 
     func removeVocabWord(_ word: String) {
-        guard let navigator else { return }
-        let escaped = Self.jsEscaped(word)
-        let js = "if(window.__removeVocabWord) window.__removeVocabWord(\"\(escaped)\");"
-        Task { @MainActor in
-            ReaderJSEval.log(await navigator.evaluateJavaScript(js), "removeVocabWord")
-            AppLog.reader.debug("Removed vocab underline: \(word)")
-        }
+        invokeSingleWordBridge(word, jsFunction: "__removeVocabWord", label: "removeVocabWord", logMessage: "Removed vocab underline: \(word)")
     }
 
     func clearActiveHighlight() {

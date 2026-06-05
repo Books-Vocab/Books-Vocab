@@ -75,50 +75,7 @@ struct PDFReaderView: View {
                 }
             }
 
-            if showTranslation, let selection = handler.wordSelection {
-                TranslationPanel(
-                    word: selection.word,
-                    result: handler.translationResult,
-                    isLoading: handler.isTranslating,
-                    isSaved: handler.isSaved,
-                    isLoggedIn: authManager.isLoggedIn,
-                    isExpanded: handler.isExpanded,
-                    explanation: handler.explanationText,
-                    isLoadingExplanation: handler.isLoadingExplanation,
-                    statusMessage: handler.statusMessage,
-                    isExplanationOnly: handler.isExplanationOnly,
-                    translationErrorMessage: handler.translationErrorMessage,
-                    explanationErrorMessage: handler.explanationErrorMessage,
-                    onExpand: { handler.handleExpand() },
-                    onDelete: {
-                        handler.deleteFromVocabulary(
-                            selection.word, context: vocabularyContext
-                        )
-                        withAnimation(AppMotion.panelState) {
-                            showTranslation = false
-                        }
-                    },
-                    // PDF reader 沒有「查看詳情」導航目的地,一律傳 nil 讓 TranslationPanel
-                    // 隱藏該按鈕(VocabChromeIconButton 由 `if let onShowDetail` 控制),
-                    // 避免顯示點了沒反應的死按鈕。
-                    onShowDetail: nil,
-                    onDismiss: {
-                        handler.dismiss()
-                        withAnimation(AppMotion.panelState) {
-                            showTranslation = false
-                        }
-                    },
-                    onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
-                    onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
-                        ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                        : nil,
-                    onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
-                        ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                        : nil
-                )
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .transition(.readerPanelReveal)
-            }
+            translationPanelOverlay
         }
         .task { loadDocument() }
         .onDisappear {
@@ -169,6 +126,58 @@ struct PDFReaderView: View {
     }
 
     // MARK: - State Views
+
+    @ViewBuilder private var translationPanelOverlay: some View {
+        if showTranslation, let selection = handler.wordSelection {
+            makeTranslationPanel(selection: selection)
+        }
+    }
+
+    @ViewBuilder
+    private func makeTranslationPanel(selection: WordSelection) -> some View {
+        TranslationPanel(
+                word: selection.word,
+                result: handler.translationResult,
+                isLoading: handler.isTranslating,
+                isSaved: handler.isSaved,
+                isLoggedIn: authManager.isLoggedIn,
+                isExpanded: handler.isExpanded,
+                explanation: handler.explanationText,
+                isLoadingExplanation: handler.isLoadingExplanation,
+                statusMessage: handler.statusMessage,
+                isExplanationOnly: handler.isExplanationOnly,
+                translationErrorMessage: handler.translationErrorMessage,
+                explanationErrorMessage: handler.explanationErrorMessage,
+                onExpand: { handler.handleExpand() },
+                onDelete: {
+                    handler.deleteFromVocabulary(
+                        selection.word, context: vocabularyContext
+                    )
+                    withAnimation(AppMotion.panelState) {
+                        showTranslation = false
+                    }
+                },
+                // PDF reader 沒有「查看詳情」導航目的地,一律傳 nil 讓 TranslationPanel
+                // 隱藏該按鈕(VocabChromeIconButton 由 `if let onShowDetail` 控制),
+                // 避免顯示點了沒反應的死按鈕。
+                onShowDetail: nil,
+                onDismiss: {
+                    handler.dismiss()
+                    withAnimation(AppMotion.panelState) {
+                        showTranslation = false
+                    }
+                },
+                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
+                onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
+                    ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                    : nil,
+                onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
+                    ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                    : nil
+            )
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .transition(.readerPanelReveal)
+    }
 
     private var loadingView: some View {
         VStack {
@@ -222,29 +231,37 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         // Restore last read position
         restorePosition(in: pdfView)
 
+        registerObservers(for: pdfView, coordinator: context.coordinator)
+        let menuInteraction = installEditMenu(on: pdfView, coordinator: context.coordinator)
+        context.coordinator.pdfView = pdfView
+        context.coordinator.menuInteraction = menuInteraction
+
+        return pdfView
+    }
+
+    private func registerObservers(for pdfView: PDFView, coordinator: Coordinator) {
         // Page change notification for progress saving
         NotificationCenter.default.addObserver(
-            context.coordinator,
+            coordinator,
             selector: #selector(Coordinator.pageDidChange(_:)),
             name: .PDFViewPageChanged,
             object: pdfView
         )
 
-        // Add edit menu interaction for vocabulary capture
-        let menuInteraction = UIEditMenuInteraction(delegate: context.coordinator)
-        pdfView.addInteraction(menuInteraction)
-        context.coordinator.pdfView = pdfView
-        context.coordinator.menuInteraction = menuInteraction
-
         // Listen for selection changes to show menu
         NotificationCenter.default.addObserver(
-            context.coordinator,
+            coordinator,
             selector: #selector(Coordinator.selectionDidChange(_:)),
             name: .PDFViewSelectionChanged,
             object: pdfView
         )
+    }
 
-        return pdfView
+    private func installEditMenu(on pdfView: PDFView, coordinator: Coordinator) -> UIEditMenuInteraction {
+        // Add edit menu interaction for vocabulary capture
+        let menuInteraction = UIEditMenuInteraction(delegate: coordinator)
+        pdfView.addInteraction(menuInteraction)
+        return menuInteraction
     }
 
     func updateUIView(_ pdfView: PDFView, context: Context) {
@@ -264,7 +281,10 @@ private struct PDFKitRepresentable: UIViewRepresentable {
               let data = json.data(using: .utf8),
               let position = try? JSONDecoder().decode(PDFPosition.self, from: data),
               let page = document.page(at: position.pageIndex)
-        else { return }
+        else {
+            AppLog.reader.debug("PDF position restore skipped (no/invalid saved position)")
+            return
+        }
         pdfView.go(to: page)
     }
 
@@ -304,6 +324,8 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             if let data = try? JSONEncoder().encode(position),
                let json = String(data: data, encoding: .utf8) {
                 book.lastReadLocatorJSON = json
+            } else {
+                AppLog.reader.warning("PDF position encode failed (pageIndex=\(pageIndex))")
             }
 
             // Progression: 0.0 ~ 1.0
@@ -318,7 +340,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         // MARK: - Selection → Vocabulary
 
         @objc func selectionDidChange(_ notification: Notification) {
-            guard let pdfView = pdfView,
+            guard let pdfView,
                   let selection = pdfView.currentSelection,
                   let text = selection.string,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -326,7 +348,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
 
             // Show edit menu near selection
             if let page = selection.pages.first,
-               let menuInteraction = menuInteraction {
+               let menuInteraction {
                 let selectionBounds = selection.bounds(for: page)
                 let viewRect = pdfView.convert(selectionBounds, from: page)
                 let config = UIEditMenuConfiguration(
@@ -359,7 +381,7 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         }
 
         private func triggerWordSelection() {
-            guard let pdfView = pdfView,
+            guard let pdfView,
                   let selection = pdfView.currentSelection,
                   let word = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !word.isEmpty

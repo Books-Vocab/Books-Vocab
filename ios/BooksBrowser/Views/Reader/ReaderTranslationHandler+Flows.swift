@@ -4,6 +4,26 @@ import TipKit
 import os
 
 extension ReaderTranslationHandler {
+    private func resetTranslationFields() {
+        translationResult = nil
+        isSaved = false
+        isExpanded = false
+        explanationText = nil
+        explanationStatus = nil
+        translationErrorMessage = nil
+        explanationErrorMessage = nil
+    }
+
+    private func handleTranslationFailure(_ error: Error, log: Bool) {
+        if log {
+            AppLog.reader.error("翻譯錯誤: \(error.localizedDescription)")
+        }
+        translationResult = nil
+        isTranslating = false
+        translationStatus = nil
+        translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
+    }
+
     func handleWordSelected(
         word: String,
         context: String,
@@ -38,13 +58,7 @@ extension ReaderTranslationHandler {
         if !authManager.isLoggedIn {
             withAnimation(AppMotion.panelState) {
                 isTranslating = false
-                translationResult = nil
-                isSaved = false
-                isExpanded = false
-                explanationText = nil
-                explanationStatus = nil
-                translationErrorMessage = nil
-                explanationErrorMessage = nil
+                resetTranslationFields()
             }
             guestSaveToVocabulary(
                 selection: selection,
@@ -55,13 +69,7 @@ extension ReaderTranslationHandler {
 
         withAnimation(AppMotion.panelState) {
             isTranslating = true
-            translationResult = nil
-            isSaved = false
-            isExpanded = false
-            explanationText = nil
-            explanationStatus = nil
-            translationErrorMessage = nil
-            explanationErrorMessage = nil
+            resetTranslationFields()
         }
 
         runLookupTask(
@@ -92,11 +100,7 @@ extension ReaderTranslationHandler {
                 }
             },
             onFailure: { [self] error in
-                AppLog.reader.error("翻譯錯誤: \(error.localizedDescription)")
-                translationResult = nil
-                isTranslating = false
-                translationStatus = nil
-                translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
+                handleTranslationFailure(error, log: true)
             }
         )
     }
@@ -113,13 +117,7 @@ extension ReaderTranslationHandler {
 
         withAnimation(AppMotion.panelState) {
             isTranslating = true
-            translationResult = nil
-            isSaved = false
-            isExpanded = false
-            explanationText = nil
-            explanationStatus = nil
-            translationErrorMessage = nil
-            explanationErrorMessage = nil
+            resetTranslationFields()
         }
 
         runLookupTask(
@@ -153,10 +151,7 @@ extension ReaderTranslationHandler {
                 }
             },
             onFailure: { [self] error in
-                translationResult = nil
-                isTranslating = false
-                translationStatus = nil
-                translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
+                handleTranslationFailure(error, log: true)
             }
         )
     }
@@ -197,6 +192,7 @@ extension ReaderTranslationHandler {
                 }
             },
             onFailure: { [self] error in
+                AppLog.reader.error("解釋錯誤: \(error.localizedDescription)")
                 explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil

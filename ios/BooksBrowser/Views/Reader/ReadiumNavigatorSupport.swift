@@ -31,24 +31,18 @@ final class NavigatorHostViewController: UIViewController {
     weak var epubNavigator: EPUBNavigatorViewController?
 
     @objc func aiSearch() {
-        guard let navigator = epubNavigator else { return }
-        guard let selection = navigator.currentSelection else { return }
-
-        let highlight = selection.locator.text.highlight ?? ""
-        guard !highlight.isEmpty else { return }
-
-        let context = buildMarkedContext(selection.locator.text)
-        AppLog.reader.debug("AI Search: \(highlight)")
-
-        Task { @MainActor in
-            ReaderJSEval.log(await navigator.evaluateJavaScript(activeSelectionWrapScript), "aiSearch")
-            navigator.clearSelection()
-        }
-
-        onPhraseSelected?(highlight, context)
+        performActiveSelectionAction(label: "aiSearch", logPrefix: "AI Search", callback: onPhraseSelected)
     }
 
     @objc func aiExplain() {
+        performActiveSelectionAction(label: "aiExplain", logPrefix: "AI Explain", callback: onExplainSelected)
+    }
+
+    private func performActiveSelectionAction(
+        label: StaticString,
+        logPrefix: String,
+        callback: ((String, String) -> Void)?
+    ) {
         guard let navigator = epubNavigator else { return }
         guard let selection = navigator.currentSelection else { return }
 
@@ -56,22 +50,22 @@ final class NavigatorHostViewController: UIViewController {
         guard !highlight.isEmpty else { return }
 
         let context = buildMarkedContext(selection.locator.text)
-        AppLog.reader.debug("AI Explain: \(highlight)")
+        AppLog.reader.debug("\(logPrefix): \(highlight)")
 
         Task { @MainActor in
-            ReaderJSEval.log(await navigator.evaluateJavaScript(activeSelectionWrapScript), "aiExplain")
+            ReaderJSEval.log(await navigator.evaluateJavaScript(activeSelectionWrapScript), label)
             navigator.clearSelection()
         }
 
-        onExplainSelected?(highlight, context)
+        callback?(highlight, context)
     }
 }
 
-func buildMarkedContext(_ text: Locator.Text) -> String {
+private func buildMarkedContext(_ text: Locator.Text) -> String {
     let before = text.before ?? ""
     let highlight = text.highlight ?? ""
     let after = text.after ?? ""
-    return before + "**\(highlight)**" + after
+    return "\(before)**\(highlight)**\(after)"
 }
 
 func filterValidWords(_ words: some Collection<String>, bookWords: Set<String>?) -> [String] {
