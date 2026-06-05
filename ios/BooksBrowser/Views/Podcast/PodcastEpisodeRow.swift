@@ -121,11 +121,11 @@ struct PodcastEpisodeRow: View {
 
     private var metadataLine: some View {
         HStack(spacing: skin.spacing.metadataGap) {
-            Text("Ep \(episode.episodeNumber)")
+            Text("Ep \(episode.episodeNumber)") // i18n-allow: technical prefix
                 .font(skin.typography.monoLabel)
                 .foregroundStyle(skin.palette.secondaryText)
 
-            Text("·")
+            Text("·") // i18n-allow: visual separator
                 .font(skin.typography.monoLabel)
                 .foregroundStyle(skin.palette.quaternaryText)
 
@@ -133,7 +133,7 @@ struct PodcastEpisodeRow: View {
                 .font(skin.typography.monoLabel)
                 .foregroundStyle(skin.palette.tertiaryText)
 
-            Text("·")
+            Text("·") // i18n-allow: visual separator
                 .font(skin.typography.monoLabel)
                 .foregroundStyle(skin.palette.quaternaryText)
 
