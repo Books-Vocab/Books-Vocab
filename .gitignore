@@ -45,6 +45,9 @@ backend/test_option_b.py
 # Python venv
 .venv/
 
+# Node.js
+node_modules/
+
 # Python cache in root if any
 __pycache__/
 .pytest_cache/
