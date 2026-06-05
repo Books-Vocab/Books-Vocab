@@ -839,6 +839,15 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "字幕あり";
+"podcast.locked.episode.a11y" = "Pro エピソード（ロック中）";
+"podcast.locked.title" = "Pro 限定エピソード";
+"podcast.locked.body" = "Pro に登録すると全エピソードが解放されます。";
+"podcast.locked.cta.upgrade" = "Pro にアップグレード";
+"podcast.guest.locked.title" = "サインインして再生";
+"podcast.guest.locked.body" = "サインインするとエピソードを再生し、全コンテンツが解放されます。";
+"podcast.guest.cta.signInToListen" = "サインインして再生";
+"podcast.preview.cta.listenFree" = "無料3分プレビュー";
+"podcast.preview.banner.message" = "無料プレビュー · アップグレードで全編を再生";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "ダブルタップでこの文から再生";
 "podcast.transcript.translateAction" = "文を翻訳";

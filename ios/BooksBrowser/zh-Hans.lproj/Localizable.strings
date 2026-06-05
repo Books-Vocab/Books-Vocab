@@ -840,6 +840,15 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "有字幕";
+"podcast.locked.episode.a11y" = "Pro 单集，已锁定";
+"podcast.locked.title" = "Pro 专属单集";
+"podcast.locked.body" = "订阅 Pro 解锁全部单集。";
+"podcast.locked.cta.upgrade" = "升级 Pro";
+"podcast.guest.locked.title" = "登录后收听";
+"podcast.guest.locked.body" = "登录即可播放单集并解锁完整内容。";
+"podcast.guest.cta.signInToListen" = "登录后收听";
+"podcast.preview.cta.listenFree" = "免费试听 3 分钟";
+"podcast.preview.banner.message" = "免费试听 · 升级听完整单集";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "点两下跳至此句播放";
 "podcast.transcript.translateAction" = "翻译整句";

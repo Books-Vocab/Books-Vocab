@@ -48,9 +48,14 @@ struct PodcastEpisodeDetail: Codable {
     /// player skips the per-episode subtitle fetch entirely. Optional —
     /// older series uploaded before the embed change won't carry it.
     let subtitleContent: String?
+    /// Free-tier preview fields (ep 1 only). Written by `ops/podcast_upload.sh`
+    /// / `ops/podcast_preview_backfill.py`; absent on pre-preview series → false/0.
+    let previewAvailable: Bool
+    let previewDurationSec: Double
 
     private enum CodingKeys: String, CodingKey {
         case episodeNumber, title, durationSec, audioAvailable, subtitleAvailable, subtitleContent
+        case previewAvailable, previewDurationSec
     }
 
     init(
@@ -59,7 +64,9 @@ struct PodcastEpisodeDetail: Codable {
         durationSec: Double,
         audioAvailable: Bool,
         subtitleAvailable: Bool,
-        subtitleContent: String?
+        subtitleContent: String?,
+        previewAvailable: Bool = false,
+        previewDurationSec: Double = 0
     ) {
         self.episodeNumber = episodeNumber
         self.title = title
@@ -67,6 +74,8 @@ struct PodcastEpisodeDetail: Codable {
         self.audioAvailable = audioAvailable
         self.subtitleAvailable = subtitleAvailable
         self.subtitleContent = subtitleContent
+        self.previewAvailable = previewAvailable
+        self.previewDurationSec = previewDurationSec
     }
 
     /// Custom decode for resilience against hand-assembled S3 metadata.json
@@ -90,6 +99,8 @@ struct PodcastEpisodeDetail: Codable {
         audioAvailable = try c.decodeIfPresent(Bool.self, forKey: .audioAvailable) ?? false
         subtitleAvailable = try c.decodeIfPresent(Bool.self, forKey: .subtitleAvailable) ?? false
         subtitleContent = try c.decodeIfPresent(String.self, forKey: .subtitleContent)
+        previewAvailable = try c.decodeIfPresent(Bool.self, forKey: .previewAvailable) ?? false
+        previewDurationSec = try c.decodeIfPresent(Double.self, forKey: .previewDurationSec) ?? 0
     }
 }
 
@@ -129,6 +140,26 @@ final class PodcastSyncService {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await sharedURLSession.data(for: request)
+        return data
+    }
+
+    /// Browse fetch that tolerates an anonymous (guest) caller. The backend
+    /// podcast *browse* endpoints (`/api/podcasts`, `/{sid}`, `/{sid}/cover`)
+    /// admit guests, so we attach the Bearer token only when one is present —
+    /// a logged-out user can still load the catalog/showcase. Playback
+    /// endpoints stay on `authedData` (they require a real user). `try?` on the
+    /// token: a true guest has none (no side effect); an expired one still
+    /// triggers the normal session-invalidation path inside currentAuthToken.
+    static func optionallyAuthedData(from urlString: String, kgService: any KGServing) async throws -> Data {
+        guard let url = URL(string: urlString) else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let token = try? await kgService.currentAuthToken() {
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         let (data, _) = try await sharedURLSession.data(for: request)
         return data
     }
@@ -193,12 +224,13 @@ final class PodcastSyncService {
     }
 
     func fetchSeriesList() async throws -> [PodcastSeriesSummary] {
-        let data = try await Self.authedData(from: "\(Self.baseURL)/api/podcasts", kgService: kgService)
+        // Browse is open to guests — attach a token only if signed in.
+        let data = try await Self.optionallyAuthedData(from: "\(Self.baseURL)/api/podcasts", kgService: kgService)
         return try JSONDecoder().decode([PodcastSeriesSummary].self, from: data)
     }
 
     func fetchSeriesDetail(seriesId: String) async throws -> PodcastSeriesDetail {
-        let data = try await Self.authedData(from: "\(Self.baseURL)/api/podcasts/\(seriesId)", kgService: kgService)
+        let data = try await Self.optionallyAuthedData(from: "\(Self.baseURL)/api/podcasts/\(seriesId)", kgService: kgService)
         return try JSONDecoder().decode(PodcastSeriesDetail.self, from: data)
     }
 
@@ -354,6 +386,8 @@ final class PodcastSyncService {
             episode.audioAvailable = ep.audioAvailable
             episode.subtitleAvailable = ep.subtitleAvailable
             episode.inlineSubtitle = ep.subtitleContent
+            episode.previewAvailable = ep.previewAvailable
+            episode.previewDurationSec = ep.previewDurationSec
             episode.audioURL = Self.audioURL(seriesId: detail.id, episodeNumber: ep.episodeNumber)
             episode.subtitleURL = Self.subtitleURL(seriesId: detail.id, episodeNumber: ep.episodeNumber)
             episode.series = series
