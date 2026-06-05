@@ -934,6 +934,89 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     print(f"\n(trend bar 滿格 = {_fmt(baseline)})")
 
 
+def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str,
+                     *, where: str = "", count: str = "COUNT(*)") -> dict[str, int]:
+    """唯讀 GROUP BY 日期計數。db 不存在回 {};where 為內部 SQL 字面(非用戶輸入)。"""
+    if not db_path.exists():
+        return {}
+    conn = connect_ro(db_path)
+    try:
+        rows = conn.execute(
+            f"SELECT substr({ts_col},1,10) AS d, {count} FROM {table} "
+            f"WHERE {ts_col} >= ?{where} GROUP BY d",
+            (cutoff,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {d: int(c or 0) for d, c in rows if d}
+
+
+def cmd_trends(args: argparse.Namespace) -> None:
+    """全域監控趨勢 — errors / active_users / tokens 逐日。
+
+    **錯誤可見性**:errors = 失敗 pipeline_runs(status='failed')+ auto-judge rejects
+    (degree-cap 除外)。這是 token_usage 看不到的「有沒有東西在壞」訊號。
+    語意對齊 kg.admin_trends(SoT),但此處以 connect_ro 唯讀**重實作** —— 不可 import
+    該模組,因其 log 單例 _get_conn 會跑 migration + 把 running→interrupted 的 UPDATE
+    (寫入,且會破壞進行中 pipeline 狀態),違反 ops-cli 的唯讀保證。
+    """
+    window = max(1, min(args.window, 90))
+    dd = data_dir()
+    today = datetime.now(UTC).date()
+    days = [(today - timedelta(days=window - 1 - i)).isoformat() for i in range(window)]
+    cutoff = days[0]  # date-only;ISO created_at >= 'YYYY-MM-DD' 字串比較涵蓋當日全時刻
+
+    pipe_fail = _count_by_day_ro(dd / "pipeline_runs.db", "pipeline_runs", "started_at",
+                                 cutoff, where=" AND status = 'failed'")
+    judge_rej = _count_by_day_ro(dd / "judge_log.db", "judge_log", "created_at", cutoff,
+                                 where=" AND source = 'auto' AND accepted = 0 "
+                                       "AND (reject_reason IS NULL OR reject_reason != 'degree_cap')")
+    actives = _count_by_day_ro(dd / "token_usage.db", "token_usage", "created_at", cutoff,
+                               count="COUNT(DISTINCT user_id)")
+
+    tokens_map: dict[str, int] = {}
+    tdb = dd / "token_usage.db"
+    if tdb.exists():
+        conn = connect_ro(tdb)
+        try:
+            for d, ti, to in conn.execute(
+                "SELECT substr(created_at,1,10) AS d, SUM(input_tokens), SUM(output_tokens) "
+                "FROM token_usage WHERE created_at >= ? GROUP BY d", (cutoff,)
+            ):
+                if d:
+                    tokens_map[d] = int(ti or 0) + int(to or 0)
+        finally:
+            conn.close()
+
+    errors_per_day = [pipe_fail.get(d, 0) + judge_rej.get(d, 0) for d in days]
+    active_users_per_day = [actives.get(d, 0) for d in days]
+    tokens_per_day = [tokens_map.get(d, 0) for d in days]
+    total_errors = sum(errors_per_day)
+
+    result = {
+        "window_days": window,
+        "days": days,
+        "errors_per_day": errors_per_day,
+        "active_users_per_day": active_users_per_day,
+        "tokens_per_day": tokens_per_day,
+        "total_errors": total_errors,
+    }
+
+    if args.json:
+        emit_json(result)
+        return
+
+    print(f"Trends — last {window}d global monitoring (UTC)")
+    print(f"Total errors: {total_errors}  (failed pipeline runs + auto-judge rejects)")
+    print()
+    max_err = max(errors_per_day) if errors_per_day else 0
+    rows_out = []
+    for d, e, a, tk in zip(days, errors_per_day, active_users_per_day, tokens_per_day, strict=True):
+        bar = "█" * round((e / max_err) * 20) if max_err else ""
+        rows_out.append([d, str(e), bar, str(a), str(tk)])
+    print_table(["Date", "Errors", "Err Trend", "Active", "Tokens"], rows_out)
+
+
 # ── CLI 進入點 ──────────────────────────────────────────
 
 
@@ -1029,6 +1112,12 @@ def main() -> None:
                    help="補齊區間內零值桶（時間軸連續、斷層顯式化）；長範圍建議配 "
                         "--bucket week/month，否則 day 桶會產生大片零牆")
     p.set_defaults(func=cmd_timeseries)
+
+    # trends（全域監控:errors/active/tokens 逐日;errors 含失敗呼叫可見性）
+    p = sub.add_parser("trends", parents=[jp],
+                       help="全域監控趨勢（errors/active/tokens 逐日；errors=失敗 pipeline+judge reject）")
+    p.add_argument("--window", type=int, default=14, help="天數（預設 14，上限 90）")
+    p.set_defaults(func=cmd_trends)
 
     args = parser.parse_args()
     args.func(args)
