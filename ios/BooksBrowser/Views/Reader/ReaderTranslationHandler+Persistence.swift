@@ -19,6 +19,7 @@ extension ReaderTranslationHandler {
             translationResult = nil
             isSaved = false
             isExpanded = false
+            isPanelLarge = false
             explanationText = nil
             translationStatus = nil
             explanationStatus = nil

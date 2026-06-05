@@ -25,6 +25,7 @@ struct TranslationVocabPresenter: View {
     var onLogin: (() -> Void)? = nil
     var onRetryTranslation: (() -> Void)? = nil
     var onRetryExplanation: (() -> Void)? = nil
+    var onToggleHeight: () -> Void = {}
 
     var body: some View {
         let chrome = ReaderPanelChromeStyle(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
@@ -54,6 +55,7 @@ struct TranslationVocabPresenter: View {
         // Mochi 北極星 #3：shadow 收兩階 — z3 → z2,翻譯 panel 降低 floating 感,
         // 但仍保留 panel handle 視覺辨識(VocabCard 內 Capsule)。
         .appElevation(.z2, direction: .up)
+        .modifier(LargePanelModifier(apply: state.isPanelLarge && chrome == .bottomSheet))
         .enableInjection()
     }
 
@@ -152,6 +154,10 @@ struct TranslationVocabPresenter: View {
                 explanationSection
             }
 
+            if state.isPanelLarge {
+                Spacer()
+            }
+
             footerToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
         }
     }
@@ -203,9 +209,11 @@ struct TranslationVocabPresenter: View {
             Label("語境解釋".localized, systemImage: "text.bubble")
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.quaternaryText)
+                .padding(.bottom, ReaderMetrics.translationExplanationHeaderGap)
 
             explanationContent
         }
+        .frame(maxHeight: state.isPanelLarge ? .infinity : nil, alignment: .top)
     }
 
     @ViewBuilder
@@ -244,11 +252,23 @@ struct TranslationVocabPresenter: View {
             }
             .padding(.vertical, appSkin.spacing.tinyGap)
         case .content(let explanation):
-            Text(explanation)
-                .font(appSkin.typography.body)
-                .foregroundStyle(appSkin.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(ReaderMetrics.translationExplanationLineSpacing)
+            if state.isPanelLarge {
+                ScrollView {
+                    Text(explanation)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .lineSpacing(ReaderMetrics.translationExplanationLineSpacing)
+                        .padding(.top, ReaderMetrics.translationExplanationContentTopInset)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                Text(explanation)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(ReaderMetrics.translationExplanationLineSpacing)
+                    .padding(.top, ReaderMetrics.translationExplanationContentTopInset)
+            }
         case .empty:
             emptyExplainStateCard
                 .padding(.vertical, appSkin.spacing.tinyGap)
@@ -283,6 +303,14 @@ struct TranslationVocabPresenter: View {
                 )
             }
 
+            if state.showsHeightToggle {
+                VocabChromeIconButton(
+                    systemImage: state.isPanelLarge ? "chevron.down" : "chevron.up",
+                    label: L10n.string(state.isPanelLarge ? "vocab.chromeIcon.translation.shrink" : "vocab.chromeIcon.translation.enlarge"),
+                    action: onToggleHeight
+                )
+            }
+
             if showChevron {
                 VocabChromeIconButton(
                     systemImage: state.isExpanded ? "chevron.up" : "chevron.down",
@@ -307,6 +335,18 @@ struct TranslationVocabPresenter: View {
             )
         }
         .padding(.top, appSkin.spacing.tinyGap)
+    }
+}
+
+private struct LargePanelModifier: ViewModifier {
+    let apply: Bool
+    func body(content: Content) -> some View {
+        if apply {
+            content
+                .containerRelativeFrame(.vertical, alignment: .bottom) { h, _ in h * 0.84 }
+        } else {
+            content
+        }
     }
 }
 

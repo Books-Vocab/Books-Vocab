@@ -84,8 +84,14 @@ enum ReaderMetrics {
 
     // MARK: - Translation explanation
 
-    /// 翻譯解釋文字行距
-    static let translationExplanationLineSpacing: CGFloat = 3
+    /// 翻譯解釋文字行距（放鬆呼吸感，對齊 Apple Books 段落質感）
+    static let translationExplanationLineSpacing: CGFloat = 7
+
+    /// 「語境解釋」section header 與正文之間的縱向間距
+    static let translationExplanationHeaderGap: CGFloat = 8
+
+    /// 語境解釋正文段落上方額外內距（與翻譯 / divider 拉開呼吸感）
+    static let translationExplanationContentTopInset: CGFloat = 4
 
     /// 翻譯面板背後 scrim 透明度
     static let translationPanelScrimOpacity: Double = 0.12
