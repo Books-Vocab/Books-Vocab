@@ -104,6 +104,7 @@ cmd_publish() {
   local tp tag files curver branch
   tp="$(tag_prefix "$c")"; tag="${tp}${v}"
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" != HEAD ]] || err "detached HEAD —— 先 checkout 一個分支再發版（避免 push origin HEAD）"
   case "$c" in
     api) files=(backend/pyproject.toml backend/src/kg/api.py) ;;
     ios) files=(ios/BooksBrowser.xcodeproj/project.pbxproj) ;;
@@ -143,10 +144,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${SUB:-}" in
+  # ${ARGS[@]+"${ARGS[@]}"}：空陣列→零參數（讓 cmd 的 ${1:?usage} 正常觸發），非空→保留各元素引號；
+  # 不用 "${ARGS[@]:-}"（空時會誤傳一個空字串參數）。
   status)    cmd_status ;;
-  changelog) cmd_changelog "${ARGS[@]:-}" ;;
-  bump)      cmd_bump "${ARGS[@]:-}" ;;
-  publish)   cmd_publish "${ARGS[@]:-}" ;;
+  changelog) cmd_changelog ${ARGS[@]+"${ARGS[@]}"} ;;
+  bump)      cmd_bump ${ARGS[@]+"${ARGS[@]}"} ;;
+  publish)   cmd_publish ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: $SUB（release.sh help 看用法）" ;;
 esac
