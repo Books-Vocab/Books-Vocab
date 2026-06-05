@@ -78,8 +78,9 @@ const MOCK_VOCAB = [
     reviewCount: 5, reviewIntervalHours: 72, nextReviewAt: iso(48), updatedAt: iso(-90),
     difficulty_tier: 'C1' },
 ];
-const MOCK_CONFIG = { translationLang: 'zh-TW', user: { email: 'reader@wordnexus.lol', name: 'Reader' } };
-const MOCK_ENT = { pro: true, plan: 'pro', active: true };
+// (options account/Pro state is driven by calling renderLoggedIn() /
+// renderProStatus({...}) directly in the case expr, so no mock config payload
+// is needed here.)
 
 // -------------------------------------------------------------------------
 // Case list. Each drives a page into one state via an injected expression that
