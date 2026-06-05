@@ -67,6 +67,12 @@ struct PodcastSentenceLevelView: View {
     let isPlaying: Bool
     let hostNames: [String]
     let subtitleSize: PodcastSubtitleSize
+    /// Follow-scroll target id, LEADING the spoken sentence by ~0.5 s (ViewModel's
+    /// `scrollLeadSentenceId`). Drives auto-follow only — highlight/underline stay
+    /// keyed on the precise `currentId`, so the scroll arrives early while the
+    /// highlight stays exact. On a seek the VM pins this to the current sentence
+    /// (★B1), so a tapped bubble centers itself, not its successor.
+    let scrollLeadId: Int?
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
@@ -123,14 +129,22 @@ struct PodcastSentenceLevelView: View {
                         .transition(.readerPanelReveal)
                 }
             }
-            // Auto-follow: glide the spoken sentence to viewport center as the
-            // playhead advances. One animated scroll per sentence boundary; the
-            // animation duration gives the continuous gliding feel without any
-            // per-frame main-thread work.
+            // Debug-only boundary tracer for the cross-sentence underline-handoff
+            // timing model — keyed on the PRECISE spoken boundary (`currentId`), NOT
+            // the lead, so the trace still reflects real handoff instants.
+            #if DEBUG
             .onChange(of: currentId) { old, id in
-                #if DEBUG
                 logBoundary(from: old, to: id)
-                #endif
+            }
+            #endif
+            // Auto-follow: glide the spoken sentence to viewport center as the
+            // playhead advances. Driven by `scrollLeadId` (= `currentId` + ~0.5 s)
+            // so the scroll LEADS the playhead — the next bubble reaches center just
+            // before it's spoken instead of chasing it. One animated scroll per
+            // lead-boundary; zero per-frame main-thread work. On a seek the VM pins
+            // the lead to the current sentence (★B1) so a tap centers the tapped
+            // bubble, not its successor.
+            .onChange(of: scrollLeadId) { _, id in
                 followScroll(to: id, proxy: proxy)
             }
             // Re-engage follow (pill / Catalyst toggle): snap back to the current
@@ -872,6 +886,7 @@ private struct WordFrameKey: PreferenceKey {
             isPlaying: false,
             hostNames: ["Maya", "Kai"],
             subtitleSize: .xLarge,
+            scrollLeadId: 1,
             onSentenceTap: { _ in },
             onWordTap: { _, _ in },
             onPhraseTap: { _, _ in },
