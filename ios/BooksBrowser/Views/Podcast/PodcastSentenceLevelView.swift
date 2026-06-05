@@ -113,6 +113,7 @@ struct PodcastSentenceLevelView: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 transcriptColumn(speakerSlots: slots)
+                    .background(selectionDismissCatcher)
             }
             .scrollIndicators(.hidden)
             .overlay(alignment: .bottom) {
@@ -164,6 +165,24 @@ struct PodcastSentenceLevelView: View {
             .animation(AppMotion.contentFade, value: isFollowing)
         }
         .enableInjection()
+    }
+
+    /// Tappable scrim sitting BEHIND the transcript that dismisses an active phrase
+    /// selection from ANY blank area — the inter-bubble gaps (`LazyVStack` spacing)
+    /// and column padding that the per-cell tap targets don't cover, which is why
+    /// "not every empty spot dismisses". Only present while selecting, so it never
+    /// intercepts normal browsing taps; in the content `.background` (behind the
+    /// bubbles) a bubble's own tap still wins, only spillover blank-space taps reach
+    /// it. Spans the transcript content (incl. its padding); covers the area the
+    /// user actually taps to dismiss.
+    @ViewBuilder
+    private var selectionDismissCatcher: some View {
+        if selectionState != nil {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { selectionState = nil }
+                .accessibilityHidden(true)
+        }
     }
 
     /// Animated scroll that centers `id`, gated on follow being active. The
@@ -238,7 +257,17 @@ struct PodcastSentenceLevelView: View {
             liveAnchor: liveAnchor,
             speakerSlots: speakerSlots,
             skin: skin,
-            onSentenceTap: onSentenceTap,
+            onSentenceTap: { sentence in
+                // Tapping a bubble while browsing (follow disengaged via manual
+                // scroll) re-engages follow: seek to its head AND snap follow back
+                // on, so playback + auto-scroll resume from the tapped sentence.
+                // `.onChange(of: isFollowing)` then recenters it. No-op when already
+                // following (re-seeking the current bubble keeps follow on).
+                if !isFollowing {
+                    withAnimation(AppMotion.standardSpring) { isFollowing = true }
+                }
+                onSentenceTap(sentence)
+            },
             onWordTap: onWordTap,
             onPhraseTap: { phrase, context in
                 selectionState = nil
