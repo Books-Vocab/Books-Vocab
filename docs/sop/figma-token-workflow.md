@@ -44,7 +44,7 @@ verified_against: 7142fe2c
 
 **關鍵分組（決定下面 Token Set 怎麼切）**：
 - **mode-invariant**（不分主題）：`color.primitive`、`space.*`、`radius.*`、`type.*`、`elevation.*`、`motion.*` — 所有主題共用同一份。
-- **mode-specific**（三主題各一份）：`color.theme.light` / `color.theme.dark` / `color.theme.sepia`，以及 `color.vocab-highlight.{light,dark,sepia}`。Token Studio 的 **Themes** 就是用來在這三者間切換。
+- **mode-specific**（三主題各一份）：`color.theme.light` / `color.theme.dark` / `color.theme.sepia`，以及 `color.vocab-highlight.{light,dark,sepia}`。由 repo sidecar 預投影成可切換的三 theme（見 §3，免 Pro）。
 - **web-only**：`web-only.*` 不影響 iOS，調它只動 web CSS。
 
 ---
@@ -56,7 +56,7 @@ verified_against: 7142fe2c
 3. 裝 plugin：頂部選單 **Menu（漢堡圖示）→ Plugins → Manage plugins…**，搜尋 **「Tokens Studio for Figma」**（作者 Jan Six / tokens.studio），按 **Install**。免費版（free tier）即足夠本流程。
 4. 開啟：**Menu → Plugins → Tokens Studio for Figma**，跑起來會看到右側面板，分頁有 **Tokens / Themes / Inspect / Settings / Tools**。
 
-> 免費版限制（誠實揭露，見 §4）：GitHub sync 只支援**單檔（single file）**、**手動 push/pull**，無團隊多人協作的進階 branch UI。對 solo + 單一 `tokens.json` 來說剛好夠用。
+> 免費版限制（誠實揭露，見 §4）：GitHub sync 只支援**單檔（single file）**、**手動 push/pull**，無團隊多人協作的進階 branch UI。對 solo + 單一 `tokens.json` 來說剛好夠用。**另注意：plugin 內「建立 / 切換 Themes」是 Pro-only** — 但本流程用 repo 端預投影 sidecar（`design-system/.tokens-studio/`，見 §3）繞過，Free 即可拿到三主題結構。
 
 ---
 
@@ -64,48 +64,33 @@ verified_against: 7142fe2c
 
 plugin 第一次開是空的，要把 repo 的 `design-system/tokens.json` 餵進去。
 
-1. Token Studio 面板右上 **三點選單（⋯）/ Tools → Load from file/folder or preset**，或 **Settings → Token Storage** 選 **Local document**（先用本機，GitHub sync 留到 §4）。
-2. 選 **Import**（有些版本在 **Tools → Import → JSON**）。把 `design-system/tokens.json` 整檔貼上或選檔。
-3. plugin 會把 JSON 解析成 token 樹。本檔是**單一 multi-set JSON**：頂層每個 branch（`color` / `space` / `radius` / `type` / `elevation` / `motion` / `web-only`）會被讀成 token，巢狀 group 保留。確認左側出現上面 §0 表列的所有 branch。
-4. **匯入後立即驗證沒走樣**：隨手點 `color.theme.light.page-bg`，值應為 `#f7f6f3`；`space.scale.4` 應為 `16`（Token Studio 把 `16px` 正規化為純數，正常）。對得上即匯入成功。
+1. Token Studio 面板 **Settings → Token Storage** 選 **Local document**（先用本機；GitHub sync 留到 §4）。
+2. **匯入 sidecar 投影資料夾（推薦）**：**Tools → Load from file/folder**，選 `design-system/.tokens-studio/tokens/` **整個資料夾**。它含預投影的 `core`/`theme-light`/`theme-dark`/`theme-sepia` 四 set + `$themes.json`/`$metadata.json` → 直接得三主題結構（見 §3），免 Pro。
+   - *退而求其次*：import 單檔 `design-system/tokens.json`（整檔進單一 set，**只能看值、無 theme 切換**）。
+3. plugin 解析成 token 樹，左側出現 §0 表列的 branch（巢狀 group 保留）。
+4. **匯入後立即驗證沒走樣**：點 `color.theme.page-bg`，Light 應為 `#f7f6f3`、切 Dark 應為 `#191919`；`space.scale.4` 應為 `16`（plugin 把 `16px` 正規化為純數，正常）。對得上即成功。
 
 > 本 repo 的 `$swift` / `$description` 是非標準 key，Token Studio 不認得會略過 — **不會報錯、不會丟值**，但 plugin 內編輯時也看不到它們。它們是 repo 端 drift check 的錨點，請勿在 Figma 刪除（見 §5 round-trip 注意）。
 
 ---
 
-## 3. 組織 Token Sets + Themes（對齊真實 DTCG 結構）
+## 3. 三主題結構：已由 repo sidecar 預先投影（免 Pro）
 
-Token Studio 兩個核心概念：**Token Set**（一組 token，可開關）、**Theme**（一組 set 的啟用組合 + enabled/source 狀態）。把它們對到 §0 的分組：
+> **重要更正（舊版本檔寫錯）**：Tokens Studio 在 plugin 內**建立 / 編輯 Themes 是 Pro-only**（官方原文："You'll need a Pro licence for the Tokens Studio Plugin to use the Themes feature"）。本 repo **繞過它** — 不在付費 UI 手動建 theme，而是由 `ops/gen_figma_sets.py` 從 `tokens.json` **單向投影**出預先寫好的 Tokens Studio sidecar（`design-system/.tokens-studio/tokens/`），內含 `core` / `theme-light` / `theme-dark` / `theme-sepia` 四個 set + 合法的 `$themes.json` / `$metadata.json`。§2 import 那個資料夾就直接拿到三主題結構，**無需手動切 set、無需 Pro 建 theme**。
 
-### 3a. 切 Token Sets
-在 **Tokens** 分頁左側 set 列表，建議切成：
+sidecar set 佈局（**生成物，勿手改**；SoT 永遠是 `design-system/tokens.json`）：
 
-| Token Set 名 | 收哪些 branch | 性質 |
-|--------------|--------------|------|
-| `core` | `color.primitive`、`space`、`radius`、`type`、`elevation`、`motion` | mode-invariant，全主題共用 |
-| `theme-light` | `color.theme.light` + `color.vocab-highlight.light` | light 專屬 |
-| `theme-dark` | `color.theme.dark` + `color.vocab-highlight.dark` | dark 專屬 |
-| `theme-sepia` | `color.theme.sepia` + `color.vocab-highlight.sepia` | sepia 專屬 |
-| `web-only` | `web-only.*` | 僅影響 web CSS |
+| set | 收哪些 | `$themes.json` 狀態 |
+|-----|--------|------|
+| `core` | `color.primitive` + `space`/`radius`/`type`/`elevation`/`motion` | 三主題皆 **source**（可被引用、不直接套用） |
+| `theme-light` | `color.theme.light` + `vocab-highlight.light`（路徑收斂為 `color.theme.*` / `color.vocab-highlight` 讓三 set 同名可切換） | Light 主題 enabled，其餘 disabled |
+| `theme-dark` | 同上 dark | Dark enabled |
+| `theme-sepia` | 同上 sepia | Sepia enabled |
 
-> 若匯入時整檔進了單一 set，可在 set 列表用 **拖曳 / Duplicate / 刪 token** 重組，或更簡單：先在 `tokens.json` 端不動，**只靠 Themes 控制啟用**（見 3b），set 切分屬 optional 整理。
+三主題一一對映 iOS `AppTheme.light/dark/sepia`，**結構對齊，不要多造主題**。sepia 是真實第三主題（reader 用），非 dark 變體，三者地位平等。`web-only.*` 不投影進 sidecar（只影響 web CSS，Figma 無需管理）。
 
-### 3b. 建 Themes（light / dark / sepia）
-切到 **Themes** 分頁 → **+ New theme**，建三個：`Light`、`Dark`、`Sepia`。每個 theme 對每個 set 設三態之一：
-
-- **Enabled（source）** — 灰色：值可被引用但不直接套用（給 `core` 這種共用 set）。
-- **Enabled** — 綠色：啟用且套用（給該主題對應的 `theme-*` set）。
-- **Disabled** — 不參與。
-
-| Theme | `core` | `theme-light` | `theme-dark` | `theme-sepia` | `web-only` |
-|-------|--------|---------------|--------------|---------------|------------|
-| Light | source | enabled | disabled | disabled | source |
-| Dark | source | disabled | enabled | disabled | source |
-| Sepia | source | disabled | disabled | enabled | source |
-
-切換頂部 theme 下拉即可預覽三主題。這對應 iOS 端 `AppTheme.light/dark/sepia` 三套語意色，**結構一一對映**，不要多造主題。
-
-> 注意：sepia 在 iOS 是真實第三主題（reader 用），不是 dark 的變體 — 三者地位平等，各自有完整的 `color.theme.*` 與 `vocab-highlight`。
+> **Free plan 能否「一鍵切換」預載 themes 待你實測**：§2 import 後切頂部 theme 下拉，看 `color.theme.page-bg` 是否隨主題在 light `#f7f6f3` ↔ dark `#191919` 變動。最壞情況 — Free 只列出三 theme 名、不能即時切換預覽；但 **web CSS 端三主題本就由 `tokens.json` 生成（已是注入）、版本化也已達成**，升 Pro 後切換即生效，**無任何倒退**。
+> `tokens.json` 改了就重跑 `python ops/gen_figma_sets.py` 更新 sidecar（`--check` 已進 `ops/verify_design_system.sh` 防 stale）。sidecar 是**唯讀視圖**，回流走 `tokens.json`（見 §5 顏色 gate）。
 
 ---
 
@@ -149,7 +134,8 @@ Figma 改值
 
 ```bash
 npm run build                 # 重生 ios/BooksBrowser/Models/DesignTokens.swift（scalar bridge 產物）
-uv run --no-project --python 3.13 python ops/gen_web_tokens.py   # 重生所有 web CSS
+uv run --no-project --python 3.13 python ops/gen_web_tokens.py    # 重生所有 web CSS
+uv run --no-project --python 3.13 python ops/gen_figma_sets.py    # 重生 Tokens Studio sidecar（.tokens-studio/）
 ops/verify_design_system.sh   # 一支跑齊所有 guard
 ```
 
@@ -168,16 +154,29 @@ ops/verify_design_system.sh   # 一支跑齊所有 guard
 
 > **鐵律對映**：動 iOS UI 值前讀 `docs/sop/ui-design.md`（Token 禁令 / Motion 契約）；改設計系統值請走本流程，PR 內**同時**改 iOS Swift + tokens.json，並貼 `ops/verify_design_system.sh` 綠輸出（驗證先於宣稱）。
 
+### 5c. 顏色回流 gate（比 scalar 多兩道，務必走完）
+顏色是**未接線群組**（iOS literal 為 SoT，精確 float + `WCAGContrastTests` 釘死對比 + 多建構子 + opacity 疊加色 hex 存不了 → 刻意不自動接）。在 Figma 改色是**提案**不是直接生效，比 scalar 多兩道 gate：
+
+1. Figma（Tokens Studio）改 `color.theme.*` 值，三主題切換確認視覺。
+2. **Push 只動 `tokens.json`**（單檔 sync），**絕不碰 `ios/` Swift**。
+3. 本地 checkout branch → **手動把新色值填進對應 iOS Swift**：`AppColors.swift`（原色）或 `AppTheme.swift`（三主題語意色）。顏色未接線，**iOS literal 才是 SoT**，tokens.json 鏡像它。
+4. `ops/token_drift_check.py` — 顏色 literal 必須 == tokens.json（沒對齊就紅）。
+5. **`./ops/ios_test.sh` 搜 `WCAGContrast`** — iOS 對比測試 gate；改色可能讓對比掉出無障礙門檻而**紅**，紅就退回（這正是顏色不自動接的根因）。
+6. `ops/gen_web_tokens.py` 重生 web CSS（顏色那端是真注入，受惠）→ `verify_design_system.sh` 全綠 → 開 PR。
+
+> 心智模型一句話：**在 Figma 改色 = 提案一個新色；要生效得過 drift check + iOS WCAG 對比測試兩道 gate，沒過就退回。** `vocab-highlight` 是 CSS gradient 字串，color picker 不能視覺編輯，維持唯讀展示。
+
 ---
 
 ## 速查
 
 | 我要做 | 怎麼做 |
 |--------|--------|
-| 第一次接 | §1 裝 plugin → §2 Local 匯入 tokens.json |
-| 切三主題預覽 | §3b Themes：Light/Dark/Sepia |
+| 第一次接 | §1 裝 plugin → §2 import `.tokens-studio/tokens/` 資料夾（得三主題） |
+| 切三主題預覽 | §3 sidecar 三 theme（import `.tokens-studio` 資料夾即得；Free 一鍵切換待實測） |
+| 改顏色 | §5c 顏色 gate：提案 → 手填 iOS literal → drift + WCAG 測試 → PR |
 | 把改動存回 repo | §4 GitHub Push（附 commit message）到 `design-tokens-figma` branch |
-| 改完本地驗證 | §5a：`npm run build` → `gen_web_tokens.py` → `verify_design_system.sh` 全綠 |
-| 真的要改 app 外觀 | 手動改 iOS Swift token 檔，tokens.json 對齊，drift check 綠（§5b） |
+| 改完本地驗證 | §5a：`npm run build` → `gen_web_tokens.py` → `gen_figma_sets.py` → `verify_design_system.sh` 全綠 |
+| 真的要改 app 外觀 | 手動改 iOS Swift token 檔，tokens.json 對齊，drift check 綠（§5b/5c） |
 
 **相關文檔**：`docs/sop/ui-design.md`（UI 規範 / Token 禁令）、`design-system/sd.config.mjs`（Swift 產生規則）、`ops/gen_web_tokens.py`（web CSS 生成）、`ops/token_drift_check.py`（值層 gate）。

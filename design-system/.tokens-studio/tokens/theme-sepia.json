@@ -1,0 +1,152 @@
+{
+  "color": {
+    "theme": {
+      "page-bg": {
+        "$type": "color",
+        "$value": "#f5f1eb",
+        "$description": "AppTheme.sepia.pageBackground",
+        "$swift": "AppTheme.sepia.pageBackground"
+      },
+      "stage-bg": {
+        "$type": "color",
+        "$value": "#f7f4ee",
+        "$description": "AppTheme.sepia.stageBackground",
+        "$swift": "AppTheme.sepia.stageBackground"
+      },
+      "card-bg": {
+        "$type": "color",
+        "$value": "#fbf9f4",
+        "$description": "AppTheme.sepia.cardBackground",
+        "$swift": "AppTheme.sepia.cardBackground"
+      },
+      "elevated-card-bg": {
+        "$type": "color",
+        "$value": "#fcfaf5",
+        "$description": "AppTheme.sepia.elevatedCardBackground",
+        "$swift": "AppTheme.sepia.elevatedCardBackground"
+      },
+      "card-border": {
+        "$type": "color",
+        "$value": "rgba(107,97,82,0.12)"
+      },
+      "border-strong": {
+        "$type": "color",
+        "$value": "rgba(107,97,82,0.24)"
+      },
+      "divider": {
+        "$type": "color",
+        "$value": "rgba(107,97,82,0.08)"
+      },
+      "text-primary": {
+        "$type": "color",
+        "$value": "#38332b",
+        "$description": "AppTheme.sepia.primaryText",
+        "$swift": "AppTheme.sepia.primaryText"
+      },
+      "text-secondary": {
+        "$type": "color",
+        "$value": "#756e61",
+        "$description": "AppTheme.sepia.secondaryText",
+        "$swift": "AppTheme.sepia.secondaryText"
+      },
+      "text-tertiary": {
+        "$type": "color",
+        "$value": "#80786b",
+        "$description": "AppTheme.sepia.tertiaryText",
+        "$swift": "AppTheme.sepia.tertiaryText"
+      },
+      "text-quaternary": {
+        "$type": "color",
+        "$value": "#999185",
+        "$description": "AppTheme.sepia.quaternaryText",
+        "$swift": "AppTheme.sepia.quaternaryText"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "{color.primitive.accent.light}"
+      },
+      "tag-fill": {
+        "$type": "color",
+        "$value": "rgba(77,115,150,0.08)"
+      },
+      "brand-hero": {
+        "$type": "color",
+        "$value": "{color.primitive.brand-hero.light}"
+      },
+      "on-brand-hero": {
+        "$type": "color",
+        "$value": "{color.primitive.on-brand-hero.any}"
+      },
+      "accent-subtle": {
+        "$type": "color",
+        "$value": "rgba(77,115,150,0.12)"
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{color.primitive.success.light}"
+      },
+      "success-bg": {
+        "$type": "color",
+        "$value": "rgba(59,122,59,0.1)"
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{color.primitive.warning.light}"
+      },
+      "warning-bg": {
+        "$type": "color",
+        "$value": "rgba(140,96,20,0.1)"
+      },
+      "destructive": {
+        "$type": "color",
+        "$value": "{color.primitive.destructive.light}"
+      },
+      "destructive-bg": {
+        "$type": "color",
+        "$value": "rgba(181,64,58,0.1)"
+      },
+      "info": {
+        "$type": "color",
+        "$value": "{color.primitive.info.light}"
+      },
+      "info-bg": {
+        "$type": "color",
+        "$value": "rgba(77,115,150,0.1)"
+      },
+      "muted-fill": {
+        "$type": "color",
+        "$value": "rgba(107,97,82,0.06)"
+      },
+      "scrim": {
+        "$type": "color",
+        "$value": "rgba(76,66,51,0.2)"
+      },
+      "tint": {
+        "$type": "color",
+        "$value": "{color.primitive.tint.light}"
+      },
+      "overlay-fill": {
+        "$type": "color",
+        "$value": "rgba(255,255,255,0.12)"
+      },
+      "progress-track": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.07)"
+      },
+      "button-idle-fill": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.07)"
+      },
+      "button-pressed-fill": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.12)"
+      }
+    },
+    "vocab-highlight": {
+      "$type": "string",
+      "$value": "linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%)",
+      "$description": "AppColors.vocabHighlightSepiaCSS",
+      "$swift": "AppColors.vocabHighlightSepiaCSS"
+    }
+  }
+}

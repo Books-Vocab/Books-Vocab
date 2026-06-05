@@ -1,0 +1,160 @@
+{
+  "color": {
+    "theme": {
+      "page-bg": {
+        "$type": "color",
+        "$value": "#f7f6f3",
+        "$description": "AppTheme.light.pageBackground",
+        "$swift": "AppTheme.light.pageBackground"
+      },
+      "stage-bg": {
+        "$type": "color",
+        "$value": "#fbfaf8",
+        "$description": "AppTheme.light.stageBackground",
+        "$swift": "AppTheme.light.stageBackground"
+      },
+      "card-bg": {
+        "$type": "color",
+        "$value": "#ffffff",
+        "$description": "AppTheme.light.cardBackground",
+        "$swift": "AppTheme.light.cardBackground"
+      },
+      "elevated-card-bg": {
+        "$type": "color",
+        "$value": "#ffffff",
+        "$description": "AppTheme.light.elevatedCardBackground",
+        "$swift": "AppTheme.light.elevatedCardBackground"
+      },
+      "card-border": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.09)",
+        "$description": "AppTheme.light.cardBorder",
+        "$swift": "AppTheme.light.cardBorder"
+      },
+      "border-strong": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.16)",
+        "$description": "AppTheme.light.borderStrong",
+        "$swift": "AppTheme.light.borderStrong"
+      },
+      "divider": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.06)",
+        "$description": "AppTheme.light.divider",
+        "$swift": "AppTheme.light.divider"
+      },
+      "text-primary": {
+        "$type": "color",
+        "$value": "#37352f",
+        "$description": "AppTheme.light.primaryText",
+        "$swift": "AppTheme.light.primaryText"
+      },
+      "text-secondary": {
+        "$type": "color",
+        "$value": "#6b6a65",
+        "$description": "AppTheme.light.secondaryText",
+        "$swift": "AppTheme.light.secondaryText"
+      },
+      "text-tertiary": {
+        "$type": "color",
+        "$value": "#8a8983",
+        "$description": "AppTheme.light.tertiaryText",
+        "$swift": "AppTheme.light.tertiaryText"
+      },
+      "text-quaternary": {
+        "$type": "color",
+        "$value": "#9b9a93",
+        "$description": "AppTheme.light.quaternaryText",
+        "$swift": "AppTheme.light.quaternaryText"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "{color.primitive.accent.light}"
+      },
+      "tag-fill": {
+        "$type": "color",
+        "$value": "rgba(77,115,150,0.08)",
+        "$description": "AppSurface.AppTag.fill",
+        "$swift": "AppSurface.AppTag.fill"
+      },
+      "brand-hero": {
+        "$type": "color",
+        "$value": "{color.primitive.brand-hero.light}"
+      },
+      "on-brand-hero": {
+        "$type": "color",
+        "$value": "{color.primitive.on-brand-hero.any}"
+      },
+      "accent-subtle": {
+        "$type": "color",
+        "$value": "rgba(77,115,150,0.12)"
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{color.primitive.success.light}"
+      },
+      "success-bg": {
+        "$type": "color",
+        "$value": "rgba(59,122,59,0.1)"
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{color.primitive.warning.light}"
+      },
+      "warning-bg": {
+        "$type": "color",
+        "$value": "rgba(140,96,20,0.1)"
+      },
+      "destructive": {
+        "$type": "color",
+        "$value": "{color.primitive.destructive.light}"
+      },
+      "destructive-bg": {
+        "$type": "color",
+        "$value": "rgba(181,64,58,0.1)"
+      },
+      "info": {
+        "$type": "color",
+        "$value": "{color.primitive.info.light}"
+      },
+      "info-bg": {
+        "$type": "color",
+        "$value": "rgba(77,115,150,0.1)"
+      },
+      "muted-fill": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.04)"
+      },
+      "scrim": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.2)"
+      },
+      "tint": {
+        "$type": "color",
+        "$value": "{color.primitive.tint.light}"
+      },
+      "overlay-fill": {
+        "$type": "color",
+        "$value": "rgba(255,255,255,0.12)"
+      },
+      "progress-track": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.07)"
+      },
+      "button-idle-fill": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.06)"
+      },
+      "button-pressed-fill": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.1)"
+      }
+    },
+    "vocab-highlight": {
+      "$type": "string",
+      "$value": "linear-gradient(to top, hsla(212, 32%, 47%, 0.20) 35%, transparent 35%)",
+      "$description": "AppColors.vocabHighlightLightCSS",
+      "$swift": "AppColors.vocabHighlightLightCSS"
+    }
+  }
+}
