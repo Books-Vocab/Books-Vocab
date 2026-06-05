@@ -77,6 +77,31 @@ grep -q 'ISSUER_ID="d7f86188' "$ASC" \
 grep -q 'KEY_ID="TCXVHFRXMS"' "$ASC" \
   && ok "KEY_ID default TCXVHFRXMS"      || fail_t "KEY_ID default wrong"
 
+# ── 8. raw-API 讀指令（codemagic 未暴露的 review-detail / screenshots） ───────
+section "Raw-API reads (codemagic gap fillers)"
+GET="$WORKSPACE/ops/asc_get.py"
+[[ -f "$GET" ]] && ok "asc_get.py companion exists" || fail_t "asc_get.py missing"
+# 新增的兩個 raw-read 子命令必須在 dispatch
+for sub in review-detail screenshots; do
+  grep -qE "^[[:space:]]*$sub\)" "$ASC" \
+    && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+done
+# asc.sh 透過 helper 取 raw，而非在主檔鑄 JWT（維持 test 3 不變量）
+grep -q 'asc_get.py' "$ASC" \
+  && ok "raw reads shell out to asc_get.py" || fail_t "asc.sh not delegating raw reads"
+# helper 仍不可出現在 asc.sh 主檔的 JWT（test 3 已守，這裡確認 helper 才是 JWT 所在）
+grep -qiE 'jwt\.encode|ES256' "$GET" \
+  && ok "asc_get.py is where JWT lives"   || fail_t "asc_get.py missing JWT mint"
+# helper 唯讀：只能 GET（urlopen），不得有 POST/PATCH/DELETE/method=
+! grep -qiE 'method[[:space:]]*=[[:space:]]*["'\'']?(POST|PATCH|DELETE|PUT)|data=' "$GET" \
+  && ok "asc_get.py is GET-only (read-only)" || fail_t "asc_get.py has write method (must stay read-only)"
+# helper HTTP 錯誤須優雅處理（不可裸 crash 隱藏 4xx/5xx）
+grep -q 'HTTPError' "$GET" \
+  && ok "asc_get.py handles HTTPError"    || fail_t "asc_get.py lacks graceful HTTP error handling"
+# helper 由 env 參數化 key（與 asc.sh config 單一真相對齊，不雙寫死）
+grep -qE 'environ|getenv' "$GET" \
+  && ok "asc_get.py key params from env"  || fail_t "asc_get.py hardcodes key (should read env)"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

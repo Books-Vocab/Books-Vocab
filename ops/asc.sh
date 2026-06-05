@@ -11,6 +11,8 @@
 #   ./ops/asc.sh metadata [--locale zh-Hant]   # 讀某版本某語系的文案欄位
 #   ./ops/asc.sh info                          # app 層級唯讀資訊（name/bundle/sku/語言）
 #   ./ops/asc.sh review-status                 # 審查提交 state（被拒原因須 GUI 解決中心看）
+#   ./ops/asc.sh review-detail                 # 審查聯絡 / demo 帳號 / 送審備註（raw API；查備註是否過期）
+#   ./ops/asc.sh screenshots [--locale zh-Hant]# 截圖集逐張 state（raw API；重送前查 Mochi 殘留 / 缺圖）
 #   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改文案（預設 dry-run，--yes 才真寫）
 #
 # set 可寫 field：description / keywords / whats-new / marketing-url / support-url / promotional-text
@@ -32,7 +34,7 @@ YES=0
 err() { echo "✗ $*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ---- 全域 flag 解析（subcommand 前後皆可）----
@@ -57,6 +59,11 @@ asc() {  # codemagic CLI wrapper（auth flag 放在 subcommand 之後）
 }
 
 require_key() { [[ -f "$KEY_PATH" ]] || err "API key not found: $KEY_PATH（見 ~/.secrets/apple/README.md）"; }
+
+raw() {  # codemagic 暴露不到的唯讀 raw GET；JWT + 依賴宣告都在 asc_get.py（uv shebang），不污染本檔
+  ASC_KEY_ID="$KEY_ID" ASC_ISSUER_ID="$ISSUER_ID" ASC_KEY_DIR="$ASC_KEY_DIR" \
+    "$(dirname "$0")/asc_get.py" "$1"
+}
 
 # ---- ID 解析鏈（純 codemagic）----
 resolve_version() {  # 印出 version id（--version-id 優先，否則取最新一筆）
@@ -109,6 +116,37 @@ cmd_review_status() {
   echo "註：被拒的 Resolution Center 文字 public API 不提供，須在 ASC GUI（解決中心）看。"
 }
 
+cmd_review_detail() {  # raw：審查聯絡 / demo 帳號 / 送審備註（codemagic 未暴露）
+  require_key
+  local ver; ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
+  raw "/v1/appStoreVersions/$ver/appStoreReviewDetail" \
+    | jq -r 'if ._httpError then "（無 review detail：HTTP \(._httpError)）"
+             else .data.attributes as $a
+               | "contact:    \($a.contactFirstName) \($a.contactLastName) <\($a.contactEmail)> \($a.contactPhone)",
+                 "demo:       \($a.demoAccountName // "（無）")  required=\($a.demoAccountRequired)",
+                 "notes:",
+                 ($a.notes // "（空）") end'
+  echo "註：送審備註是 app 給審查員的脈絡。重送前確認它對應「本輪」被拒原因，別沿用上一輪的舊文。"
+}
+
+cmd_screenshots() {  # raw：截圖集逐張 state（重送前查 Mochi 殘留 / 缺圖）
+  require_key
+  local ver loc
+  ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
+  loc="$(resolve_loc "$ver")"; [[ -n "$loc" ]] || err "版本 $ver 無 $LOCALE localization"
+  echo "# version=$ver  locale=$LOCALE  loc=$loc"
+  raw "/v1/appStoreVersionLocalizations/$loc/appScreenshotSets?include=appScreenshots" \
+    | jq -r 'if ._httpError then "（讀取失敗：HTTP \(._httpError)）"
+             else (.included // []) as $imgs
+               | .data[] as $set
+               | "[\($set.attributes.screenshotDisplayType)]",
+                 ( $set.relationships.appScreenshots.data[]?
+                   | .id as $id
+                   | ($imgs[] | select(.id==$id) | .attributes) as $s
+                   | "  - \($s.fileName // "?")  \($s.assetDeliveryState.state // "?")" ) end'
+  echo "註：state=COMPLETE 才算上架可用；圖檔內容（是否含已移除功能）須 fetch 縮圖目視，API 不判讀。"
+}
+
 # ---- 寫指令（metadata，預設 dry-run；--yes 才真送 modify）----
 cmd_set() {
   require_key
@@ -149,6 +187,8 @@ case "${SUB:-}" in
   metadata)      cmd_metadata ;;
   info)          cmd_info ;;
   review-status) cmd_review_status ;;
+  review-detail) cmd_review_detail ;;
+  screenshots)   cmd_screenshots ;;
   set)           cmd_set "${ARGS[@]:-}" ;;
   ""|help)       usage ;;
   *)             err "unknown subcommand: $SUB（asc.sh help 看用法）" ;;
