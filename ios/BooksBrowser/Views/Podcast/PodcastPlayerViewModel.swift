@@ -420,7 +420,11 @@ final class PodcastPlayerViewModel {
 
     /// Seconds the follow-scroll target leads the spoken playhead so the next bubble
     /// reaches viewport center just before it starts. Adjustable in one place.
-    static let scrollLeadSec: TimeInterval = 0.5
+    /// 0.8s: a touch ahead so the upcoming subtitle visibly precedes the audio,
+    /// without overshooting (too large slides the next bubble in while the current
+    /// one is still being spoken). Highlight/underline stay keyed on the precise
+    /// `currentSentence` — only the scroll leads.
+    static let scrollLeadSec: TimeInterval = 0.8
 
     private func handleTimeUpdate(_ time: TimeInterval, isSeek: Bool = false) {
         currentTime = time

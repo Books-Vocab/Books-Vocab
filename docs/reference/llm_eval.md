@@ -38,7 +38,7 @@ results = run_eval(prompt, dataset, models=["gemma3:4b", "gemini-2.5-flash-lite"
 可用 prompts：
 - `translate_quick` — 單字翻譯（t/p/r JSON）
 - `translate_phrase` — 片語翻譯（t JSON）
-- `translate_explain` — 單字解釋（e JSON）
+- `translate_explain` — 詞彙解釋（單字 + 片語通吃，e JSON）
 - `judge_batch` — 批次詞彙關係判斷
 - `judge_selective` — 選擇性批次判斷（max_links）
 - `judge_manual` — 手動連結判斷
