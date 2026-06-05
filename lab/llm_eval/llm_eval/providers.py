@@ -22,6 +22,17 @@ OLLAMA_PROVIDER = LLMProvider(
 )
 
 
+class MissingProviderApiKeyError(RuntimeError):
+    """Raised when an eval cloud provider has no configured API key."""
+
+    def __init__(self, provider_name: str, api_key_env: str) -> None:
+        self.provider_name = provider_name
+        self.api_key_env = api_key_env
+        super().__init__(
+            f"{api_key_env} is required to run eval provider {provider_name!r}"
+        )
+
+
 def _ollama_base_url() -> str:
     return os.getenv("OLLAMA_HOST", "http://localhost:11434/v1")
 
@@ -56,17 +67,24 @@ def list_available_providers() -> list[LLMProvider]:
     return result
 
 
+def _eval_api_key(provider: LLMProvider) -> str:
+    if provider.name == "ollama":
+        return "ollama"
+    api_key = os.getenv(provider.api_key_env)
+    if not api_key:
+        raise MissingProviderApiKeyError(provider.name, provider.api_key_env)
+    return api_key
+
+
 def create_eval_client(provider: LLMProvider):
     """Create an OpenAI-compatible client for eval. Bypasses TrackedLLM and service_factories."""
     from openai import OpenAI
 
-    api_key = "ollama" if provider.name == "ollama" else (os.getenv(provider.api_key_env) or "no-key")
-    return OpenAI(api_key=api_key, base_url=provider.base_url or None)
+    return OpenAI(api_key=_eval_api_key(provider), base_url=provider.base_url or None)
 
 
 def create_eval_async_client(provider: LLMProvider):
     """Create an async OpenAI-compatible client for eval. Bypasses TrackedLLM."""
     from openai import AsyncOpenAI
 
-    api_key = "ollama" if provider.name == "ollama" else (os.getenv(provider.api_key_env) or "no-key")
-    return AsyncOpenAI(api_key=api_key, base_url=provider.base_url or None)
+    return AsyncOpenAI(api_key=_eval_api_key(provider), base_url=provider.base_url or None)

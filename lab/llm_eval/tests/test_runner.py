@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from llm_eval.config import EvalConfig
+from llm_eval.providers import MissingProviderApiKeyError
 from llm_eval.registry import RenderedPrompt
 from llm_eval.runner import _call_one, run_eval
 
@@ -61,6 +62,20 @@ async def test_call_one_timeout(mock_prompt, sample):
 
     assert result.error == "timeout"
     assert result.parsed_output is None
+
+
+@pytest.mark.asyncio
+async def test_call_one_missing_provider_key_raises_before_remote(mock_prompt, sample, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    with pytest.raises(MissingProviderApiKeyError, match="GEMINI_API_KEY"):
+        await _call_one(
+            "gemini",
+            "gemini-2.5-flash-lite",
+            mock_prompt,
+            sample,
+            EvalConfig(prompt_name="test"),
+        )
 
 
 @pytest.mark.asyncio
