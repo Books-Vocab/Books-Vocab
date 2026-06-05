@@ -106,7 +106,7 @@ struct PodcastEpisodeListView: View {
         }
         if loadError != nil, rawEpisodes.isEmpty {
             return .error(
-                title: "無法載入集數".localized,
+                title: L10n.string("無法載入集數"),
                 systemImage: "exclamationmark.triangle",
                 retryAction: {
                     Task { await reloadFromStore() }
@@ -115,9 +115,9 @@ struct PodcastEpisodeListView: View {
         }
         if rawEpisodes.isEmpty && hasLoadedOnce {
             return .empty(
-                title: "尚無集數".localized,
+                title: L10n.string("尚無集數"),
                 systemImage: "waveform.slash",
-                description: "此系列目前沒有可播放的集數".localized,
+                description: L10n.string("此系列目前沒有可播放的集數"),
                 action: nil
             )
         }
@@ -226,7 +226,7 @@ struct PodcastEpisodeListView: View {
             }
         }
         if outcome == .rolledBack {
-            toastCoordinator.error("追蹤狀態儲存失敗".localized)
+            toastCoordinator.error(L10n.string("追蹤狀態儲存失敗"))
         }
     }
 
