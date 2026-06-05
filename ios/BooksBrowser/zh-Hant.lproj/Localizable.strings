@@ -864,6 +864,7 @@
 "podcast.guest.cta.signInToListen" = "登入後收聽";
 "podcast.preview.cta.listenFree" = "免費試聽 3 分鐘";
 "podcast.preview.banner.message" = "免費試聽 · 升級聽完整單集";
+"podcast.continue.remaining" = "還剩 %@";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "點兩下跳至此句播放";
 "podcast.transcript.translateAction" = "翻譯整句";

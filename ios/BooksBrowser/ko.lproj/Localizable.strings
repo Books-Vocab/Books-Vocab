@@ -849,6 +849,7 @@
 "podcast.guest.cta.signInToListen" = "로그인하고 듣기";
 "podcast.preview.cta.listenFree" = "무료 3분 미리듣기";
 "podcast.preview.banner.message" = "무료 미리듣기 · 업그레이드하면 전체 에피소드";
+"podcast.continue.remaining" = "%@ 남음";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "두 번 탭하여 이 문장부터 재생";
 "podcast.transcript.translateAction" = "문장 번역";

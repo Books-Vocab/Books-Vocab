@@ -881,6 +881,7 @@
 "podcast.guest.cta.signInToListen" = "Sign in to listen";
 "podcast.preview.cta.listenFree" = "Free 3-min preview";
 "podcast.preview.banner.message" = "Free preview · Upgrade to hear the full episode";
+"podcast.continue.remaining" = "%@ left";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "Double tap to play from this sentence";
 "podcast.transcript.translateAction" = "Translate sentence";

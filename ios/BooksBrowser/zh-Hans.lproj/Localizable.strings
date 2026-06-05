@@ -849,6 +849,7 @@
 "podcast.guest.cta.signInToListen" = "登录后收听";
 "podcast.preview.cta.listenFree" = "免费试听 3 分钟";
 "podcast.preview.banner.message" = "免费试听 · 升级听完整单集";
+"podcast.continue.remaining" = "还剩 %@";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "点两下跳至此句播放";
 "podcast.transcript.translateAction" = "翻译整句";

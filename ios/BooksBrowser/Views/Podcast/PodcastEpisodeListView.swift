@@ -266,89 +266,48 @@ struct PodcastEpisodeListView: View {
 
     private var heroHeader: some View {
         VStack(spacing: skin.spacing.statusHeroGap) {
-            NotebookCoverView(
-                color: NotebookPalette.color(for: series?.color),
-                pattern: NotebookCoverPattern(rawValue: series?.coverPattern ?? "") ?? .waves,
-                coverImagePath: series?.coverImagePath,
-                name: series?.title ?? ""
-            )
-            .frame(width: 168, height: 168)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
-            .appElevation(.z3)
-            .padding(.top, skin.spacing.sectionGap)
-
-            Text(series?.title ?? "")
-                .font(skin.typography.displayTitle)
-                .foregroundStyle(skin.palette.primaryText)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-
-            if let meta = heroMetaText {
-                Text(meta)
-                    .font(skin.typography.caption)
-                    .foregroundStyle(skin.palette.tertiaryText)
-                    .multilineTextAlignment(.center)
+            if let series {
+                PodcastSeriesHero(series: series)
             }
-
-            heroActions
+            heroContinue
                 .padding(.top, skin.spacing.inlineGap)
         }
         .padding(.bottom, skin.spacing.sectionGap)
     }
 
-    private var heroMetaText: String? {
-        guard let series else { return nil }
-        var parts: [String] = []
-        if !series.hostNames.isEmpty {
-            parts.append(series.hostNames.joined(separator: ", "))
-        }
-        if series.episodeCount > 0 {
-            parts.append(L10n.format("%@ 集", String(series.episodeCount)))
-        }
-        if series.totalDurationSec > 0 {
-            parts.append(formatTotalDuration(series.totalDurationSec))
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
+    /// The "繼續收聽" centerpiece. Resolves the tier-aware hero action for the
+    /// continue target, then wraps `PodcastContinueCard` exactly like
+    /// `episodeRow`: a value-based `NavigationLink` when the action plays, a
+    /// plain `Button` (→ login/paywall) when it gates — preserving the
+    /// LazyVStack freeze contract (PR #366/#368/#370/#373).
     @ViewBuilder
-    private var heroActions: some View {
+    private var heroContinue: some View {
         if let target = continueEpisode {
             let progress = progressMap[target.remoteId]
-            let unavailable = !target.audioAvailable
-            let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: target.episodeNumber, previewAvailable: target.previewAvailable)
-            let isPreview = PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: target.episodeNumber, previewAvailable: target.previewAvailable)
+            let hasProgress = (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true
+            let action = PodcastAccess.heroAction(
+                tier: tier,
+                episodeNumber: target.episodeNumber,
+                previewAvailable: target.previewAvailable,
+                audioAvailable: target.audioAvailable,
+                hasProgress: hasProgress,
+                allCompleted: allCompleted
+            )
+            let card = PodcastContinueCard(episode: target, progress: progress, action: action)
 
-            if locked {
-                // guest → login CTA; free on a Pro-only episode → upgrade CTA.
-                let label = tier == .guest
-                    ? L10n.string("podcast.guest.cta.signInToListen")
-                    : L10n.string("podcast.locked.cta.upgrade")
-                Button { handleLockedTap() } label: {
-                    Label(label, systemImage: tier == .guest ? "person.crop.circle" : "lock.fill")
-                }
-                .buttonStyle(.appAction(.primary))
-                .frame(maxWidth: 280)
-            } else {
-                let label: String = {
-                    if unavailable { return L10n.string("音訊暫不可用") }
-                    if isPreview { return L10n.string("podcast.preview.cta.listenFree") }
-                    if allCompleted { return L10n.string("重新播放") }
-                    if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return L10n.string("繼續播放") }
-                    return L10n.string("開始播放")
-                }()
-                let icon = unavailable ? "icloud.slash" : "play.fill"
+            if action.navigatesToPlayer {
                 NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
-                    Label(label, systemImage: icon)
+                    card
                 }
-                .buttonStyle(.appAction(.primary))
-                .disabled(unavailable)
+                .buttonStyle(.plain)
                 .simultaneousGesture(
                     TapGesture().onEnded {
                         warmConnection(for: target)
                     }
                 )
-                .frame(maxWidth: 280)
+            } else {
+                Button { handleLockedTap() } label: { card }
+                    .buttonStyle(.plain)
             }
         }
     }
@@ -454,17 +413,6 @@ struct PodcastEpisodeListView: View {
             .font(skin.typography.caption)
             .foregroundStyle(skin.palette.accent)
         }
-    }
-
-    private func formatTotalDuration(_ sec: Double) -> String {
-        guard sec.isFinite, sec > 0 else { return "" }
-        let total = Int(sec)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        if h > 0 {
-            return L10n.format("共 %@ 小時 %@ 分", String(h), String(m))
-        }
-        return L10n.format("共 %@ 分鐘", String(m))
     }
 
     /// Fires AVFoundation's DNS/TLS/first-Range while the navigation transition

@@ -848,6 +848,7 @@
 "podcast.guest.cta.signInToListen" = "サインインして再生";
 "podcast.preview.cta.listenFree" = "無料3分プレビュー";
 "podcast.preview.banner.message" = "無料プレビュー · アップグレードで全編を再生";
+"podcast.continue.remaining" = "残り %@";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "ダブルタップでこの文から再生";
 "podcast.transcript.translateAction" = "文を翻訳";
