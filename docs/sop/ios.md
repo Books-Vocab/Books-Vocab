@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 8f5b52ce
+verified_against: 3fe5726f
 -->
 # BooksBrowser iOS 開發技能
 
@@ -84,38 +84,53 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 - **key 選擇**：`TCXVHFRXMS`(App Manager) 可送審;`6Y7DC88RUY`(Developer) 僅 TestFlight。後端訂閱驗簽用 `6Y7DC88RUY`，**勿 revoke**。
 - 共用 `ios_build.sh` 的 `/tmp/kg-ios-build.lock`，多 worktree 安全。
 
-### App Store Connect 查詢 / 改文案（`ops/asc.sh`）
+### App Store Connect 控制台（`ops/asc.sh`）
 
-`ios_release.sh` 出 build；`asc.sh` 補「版本/審查狀態查詢 + 文案 metadata 讀寫」。主體是 codemagic CLI 包裝（同 `ios_release.sh` 的 `asc()` wrapper），無手刻 JWT；codemagic 暴露不到的欄位由旁路 helper 補、JWT 只活在 helper、不污染主檔：唯讀走 `ops/asc_get.py`（GET，審查備註/截圖 state），**寫入**走 `ops/asc_patch.py`（PATCH，appStoreReviewDetail＝送審備註/demo/聯絡人；`set-review` 子命令用）。
+`ios_release.sh` 出 build；`asc.sh` 補「ASC 全表面查詢 + metadata/結構讀寫」——近乎完整的 ASC 控制台（App 資訊 / 版本文案 / 審查資訊 / 評論回覆 / 無障礙 / 營利 / 發布控制 / 送審佇列）。主體是 codemagic CLI 包裝（同 `ios_release.sh` 的 `asc()` wrapper），無手刻 JWT；codemagic 暴露不到的物件由旁路 helper 補、JWT 只活在 helper、不污染主檔：唯讀走 `ops/asc_get.py`（GET），**寫入**走 `ops/asc_write.py`（一般化 PATCH/POST/DELETE，body 由 stdin 餵 JSON；4xx/5xx 回 `{_httpError,_detail}`、204 回 `{_ok}`，不裸 crash）。所有寫入經單一 `emit_write` gate：**預設 dry-run**（印舊→新 + copy-paste 指令），`--yes` 才真送。
 
 ```bash
-./ops/asc.sh versions                    # 列 App Store 版本 + 審查 state（id）
-./ops/asc.sh builds                      # TestFlight 最新 build number
-./ops/asc.sh metadata --locale zh-Hant   # 讀某版本某語系文案（description/keywords/urls/…）
-./ops/asc.sh info                        # app 層級唯讀（name/bundle/sku/primaryLocale）
-./ops/asc.sh review-status               # 審查提交 state（最新=被拒會見 UNRESOLVED_ISSUES）
-./ops/asc.sh review-detail               # 審查聯絡/demo 帳號/送審備註（raw；查備註是否沿用上輪舊文）
-./ops/asc.sh screenshots                 # 截圖集逐張 state（raw；重送前查缺圖 / 已移除功能殘留）
-./ops/asc.sh set keywords "a,b,c"        # 改版本文案：預設 dry-run（印舊→新，不送出）
-./ops/asc.sh set keywords "a,b,c" --yes  # 確認後真寫正式版本（對外副作用，須 --yes）
-./ops/asc.sh set-review notes "..."      # 改審查資訊（送審備註/demo/聯絡人）：dry-run；--yes 才真寫
-./ops/asc.sh set-review demo-required true --yes   # boolean 欄位走 true/false（會驗）
+# ── 唯讀查詢 ──
+./ops/asc.sh versions / builds / info             # 版本+審查 state / TestFlight build / app 層級
+./ops/asc.sh metadata --locale zh-Hant            # 某版本某語系文案
+./ops/asc.sh review-status / review-detail        # 審查提交 state / 審查聯絡+demo+送審備註
+./ops/asc.sh submissions [N]                      # 送審佇列 reviewSubmissions + 每筆打包項目數
+./ops/asc.sh screenshots / categories             # 截圖逐張 state / 可用分類 ID
+./ops/asc.sh reviews [N] / accessibility          # 用戶評論+是否已回覆 / 無障礙宣告
+./ops/asc.sh subscriptions / iap / pricing        # 訂閱群組→方案 / 一次性購買 / 基礎定價+供應
+./ops/asc.sh sub-offers <subId>                   # 訂閱優惠：介紹性/促銷/兌換碼
+./ops/asc.sh release-plan                         # 發布方式 releaseType + 分階段發布狀態
+# ── 寫入（皆 dry-run 預設，--yes 才送）──
+./ops/asc.sh set <field> <value>                  # 版本文案 appStoreVersionLocalization
+./ops/asc.sh set-review <field> <value>           # 審查資訊 appStoreReviewDetail
+./ops/asc.sh set-appinfo <field> <value>          # App 層本地化：name/subtitle/privacy-url
+./ops/asc.sh set-eula <text> / set-content-rights <uses|none>
+./ops/asc.sh set-category <primary|secondary> <ID> / set-rating <attr> <value>
+./ops/asc.sh reply-review <reviewId> <text>       # 回覆用戶評論（POST/PATCH upsert）
+./ops/asc.sh set-sub-name|set-sub-desc|set-sub-review-note <subId> <value>
+./ops/asc.sh set-sub-price <subId> <territory> <customerPrice>   # ⚠ 動真實計費
+./ops/asc.sh set-release-type <manual|auto|scheduled> [ISO8601]  # auto=審核過自動上架
+./ops/asc.sh phased <start|pause|resume|complete|cancel>         # 分階段發布7天ramp
 ```
 
-`set`（版本文案）與 `set-review`（審查資訊）是兩個不同 ASC 物件，用錯子命令會被互相指路。`set-review` 可寫：`notes` / `demo-name` / `demo-password` / `demo-required(true|false)` / `contact-first|last|phone|email`；dry-run header 會印目標版本字串+state（如 `1.6 (REJECTED)`）避免誤寫到非預期版本。
+**物件邊界**（用錯子命令會互相指路）：`set`→`appStoreVersionLocalization`（逐語系版本文案）；`set-review`→`appStoreReviewDetail`（整版一份審查資訊）；`set-appinfo`→`appInfoLocalization`（App 層逐語系 name/subtitle/privacy-url）；另有 App 層結構寫入（EULA/內容版權/分類/年齡分級）、營利寫入（`set-sub-*` → subscriptionLocalization/Price，`set-sub-price` 用 `preserveCurrentPrice:true` 保護既有訂戶 + 印三重 ⚠，後端以 key `6Y7DC88RUY` 驗訂閱權益）、發布控制（`set-release-type` PATCH appStoreVersions、`phased` POST/PATCH/DELETE appStoreVersionPhasedReleases，complete/cancel 不可逆會警告）。dry-run header 印目標版本字串+state（如 `1.6 (REJECTED)`）避免誤寫。
 
-- **set 可寫 field**：`description / keywords / whats-new / marketing-url / support-url / promotional-text`。空值被擋（避免清空正式文案）。
-- **dry-run gate**：`set` 預設只印 payload，`--yes` 才送 `app-store-version-localizations modify`（對齊 `--upload` 的明示原則）。
-- **key**：預設 `TCXVHFRXMS`（App Manager，可寫 metadata）；`.p8` 路徑 `${ASC_KEY_DIR:-~/.secrets/apple}/AuthKey_<KEY_ID>.p8`（CI/部署機可覆寫 `ASC_KEY_DIR`）。
+- **set 可寫 field**：`description / keywords / whats-new / marketing-url / support-url / promotional-text`，空值被擋。
+- **刻意不做**：submit-for-review / 撤回送審（避免誤送誤撤，走 GUI）；IAP 寫面（KG `inAppPurchasesV2=0` 無對象）；訂閱優惠建立/刪除（逐地區 price point 繁瑣高風險且罕見，走 GUI）。
+- **key**：預設 `TCXVHFRXMS`（App Manager，可寫）；`.p8` 路徑 `${ASC_KEY_DIR:-~/.secrets/apple}/AuthKey_<KEY_ID>.p8`（CI/部署機可覆寫 `ASC_KEY_DIR`）。
 
-#### GUI 可讀 vs API 可讀
+#### GUI 可讀 vs API 可讀/可寫
 
-| GUI 區塊 | API/`asc.sh` 可讀? |
+| GUI 區塊 | `asc.sh` 能力 |
 |---|---|
-| 版本 / 審查 state / build / 文案 metadata / IAP / 分析數字 | ✅ codemagic |
-| 審查聯絡/demo/送審備註、截圖逐張 state、app 副標、分類、年齡分級、build 加密宣告 | ✅ raw（`asc_get.py`；review-detail/screenshots 已工具化，其餘直打 endpoint）。**審查聯絡/demo/送審備註另可寫**（`asc.sh set-review` → `asc_patch.py`） |
+| 版本 / 審查 state / build / 文案 metadata / IAP / 分析數字 | ✅ codemagic 讀；文案 `set` 可寫 |
+| App 副標/名稱/隱私URL、分類、年齡分級、EULA、內容版權 | ✅ raw 讀寫（set-appinfo/set-category/set-rating/set-eula/set-content-rights） |
+| 審查聯絡/demo/送審備註、截圖逐張 state | ✅ raw 讀（review-detail/screenshots）；審查資訊另可寫（set-review） |
+| 用戶評論、無障礙宣告 | ✅ 讀（reviews/accessibility）；評論可回覆（reply-review）；無障礙建立走 GUI |
+| 訂閱方案/價格/優惠、基礎定價、發布方式、分階段發布、送審佇列 | ✅ raw 讀（subscriptions/pricing/sub-offers/release-plan/submissions）；訂閱名/描述/備註/價格、發布方式、分階段發布可寫 |
+| **App 隱私權營養標**（資料蒐集/追蹤宣告） | ❌ public API 不提供，**只能 GUI** |
+| **截圖/preview 上傳**、**供應地區設定** | ❌ 無 API/codemagic 命令，**GUI 或 Transporter** |
 | **被拒原因（Resolution Center 對話文字）** | ❌ public API 不提供，**只能 GUI 看** |
-| 截圖/preview 圖檔「內容」是否含已移除功能 | ⚠ API 只給 fileName/state，須 fetch 縮圖目視判讀 |
+| 截圖圖檔「內容」是否含已移除功能 | ⚠ API 只給 fileName/state，須 fetch 縮圖目視 |
 
 #### 被拒處理 SOP（resubmit-readiness 演練，每次重送跑一遍）
 
@@ -128,7 +143,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 #### 已知缺口（待辦，本輪未工具化）
 
-screenshots / app preview **上傳**（list 已做；上傳 codemagic 無命令，須 GUI 或 Transporter + raw multipart）、IAP/訂閱 metadata（KG 有訂閱，審查常卡此）、**多語 localizations**（現僅 `zh-Hant`，缺 `en-US` 易被拒）、`appStoreVersions create`（重送下一版前須先建版本 row）、submit-for-review 自動化（刻意不做）。
+screenshots / app preview **上傳**（list 已做；上傳 codemagic 無命令，須 GUI 或 Transporter + raw multipart）、**多語 localizations**（現僅 `zh-Hant`，缺 `en-US` 易被拒）、`appStoreVersions create`（重送下一版前須先建版本 row）、App 隱私權營養標（無 public API，GUI-only）。submit-for-review / 撤回送審、IAP 寫面、訂閱優惠建立為**刻意不做**（非缺口，理由見上「刻意不做」）。
 
 ## App 架構速查
 

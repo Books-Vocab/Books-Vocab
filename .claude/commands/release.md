@@ -37,7 +37,7 @@ description: 分析變更並執行版號發布（backend / iOS）—— 薄路�
 實際出 build 與改 App Store 內容走獨立 ops 腳本：
 
 - 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
-- 查版本/審查狀態、改文案、查截圖/審查備註 → `./ops/asc.sh`（`versions`/`review-status`/`review-detail`/`screenshots`/`metadata`/`set …`/`set-review …`；`set`＝版本文案、`set-review`＝審查資訊備註/demo/聯絡人，皆 dry-run 預設、`--yes` 才真寫）
+- App Store Connect 全表面（查版本/審查/送審佇列/評論/訂閱/定價/發布方式，改文案/審查資訊/App 資訊/分類/年齡分級/EULA/訂閱/發布控制）→ `./ops/asc.sh`。唯讀：`versions`/`builds`/`info`/`metadata`/`review-status`/`review-detail`/`submissions`/`screenshots`/`categories`/`reviews`/`accessibility`/`subscriptions`/`iap`/`pricing`/`sub-offers`/`release-plan`。寫入（皆 dry-run 預設、`--yes` 才真送）：`set`/`set-review`/`set-appinfo`/`set-eula`/`set-content-rights`/`set-category`/`set-rating`/`reply-review`/`set-sub-name|desc|review-note|price`/`set-release-type`/`phased`。**刻意不做** submit-for-review。`asc.sh help` 看完整用法、`docs/sop/ios.md §發版` 看物件邊界
 - 被拒處理、GUI vs API 可讀範圍、加密合規、重送演練 → `docs/sop/ios.md §發版`
 
 ## 鐵則
