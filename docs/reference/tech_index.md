@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 74bf32da
+verified_against: bb54d47a
 -->
 # Technical Reference Index
 
@@ -21,13 +21,13 @@ verified_against: 74bf32da
 | 檔案 | Endpoint prefix | 用途 |
 |------|-----------------|------|
 | `auth.py` | `/auth/*` | JWT 驗證、Apple/Google token 交換 |
-| `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | Web OAuth + admin cookie session |
+| `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | Web OAuth + admin cookie session。`/login` 會 mint `oauth_state` HttpOnly Secure cookie；Google 走 redirect state，Apple 以 SameSite=None state cookie + `response_mode=form_post` 直送 Apple authorize，callback 以 cookie/state compare 防 CSRF |
 | `user.py` | `/api/user/*` | 設定、entitlements、quota |
 | `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發（iOS sync 收斂後 + chrome-extension 加詞 outbox flush 收斂後皆 `POST /api/pipeline?notebook_id` 觸發 server enrich） |
-| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**訪客**;`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）;`progress` 仍 `get_current_user` |
+| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**無 Authorization header 的訪客**；若 header 存在但 malformed / token invalid 則 401，不降級 guest；`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）；`progress` 仍 `get_current_user`，OpenAPI 以 `api_models/podcast.py` response models 固定 schema |
 | `podcast_access.py` | — | 播客分層 policy(純函式,免 FastAPI):`resolve_podcast_tier(user|None)→guest/free/pro`(由 auth + `_is_pro` 推導,**無 per-series 旗標**,牆統一)、`is_free_previewable_episode`(`FREE_PREVIEW_EP_NUM=1`)、stem 常數、error code。free preview 走**獨立 `preview.*` 物件**而非 byte 截斷(progressive MP4 單 moov 無法乾淨截) |
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
@@ -45,7 +45,7 @@ verified_against: 74bf32da
 | `translate_log.py` | `translate_log` + cache hits | 翻譯呼叫紀錄、cross-user cache、admin search |
 | `pipeline_log.py` | `pipeline_runs` | 圖譜管道 per-run/step timing |
 | `token_tracker.py` | `token_usage` | LLM token / cost,provider-aware |
-| `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄 |
+| `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄；落 DB 前遮罩 bearer/API key/token/password/secret-like 值 |
 | `podcast_progress.py` | `podcast_progress` | per-user 播客 LWW 進度 |
 | `admin_audit.py` | `admin_audit_log` | grant/revoke 等管理員操作 |
 | `app_store.py` | app store receipts | 訂閱收據 |

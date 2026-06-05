@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/
-verified_against: 1f55231f
+verified_against: bb54d47a
 -->
 # KG Backend Dev Guide
 
@@ -110,6 +110,12 @@ backend/.venv/bin/python -m pytest -q
 - Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。
 - 路由 `provider_for(call_type)` 依 env 解析（清單見 `docs/sop/deploy.md` 的「LLM Provider env vars」）。預設全 `gemini`，`embed` 永遠獨立留 Gemini。
 - A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`。
+
+### 改 API 契約 / auth / 錯誤處理
+
+- FastAPI validation handler 回 422 時必須讓 `RequestValidationError.errors()` 先過 `jsonable_encoder`；Pydantic v2 的 error `ctx` 可能含不可 JSON 序列化物件。
+- 可匿名瀏覽但支援登入加權的 endpoint（目前 podcast browse）走 `get_current_user_optional`：無 `Authorization` header 才是 guest；header 存在但 malformed / 非 Bearer / token invalid 必須 401，不可 silent downgrade 成 guest。
+- `llm_error_log.record()` / `TrackedLLM._record_failure()` 寫入 provider/SDK failure message 前必須遮罩 bearer/API key/token/password/secret-like 值；不要把 `str(exc)` 直接落 DB。
 
 ## 維護規則
 

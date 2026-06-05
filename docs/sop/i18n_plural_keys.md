@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 1f55231f
+verified_against: bb54d47a
 -->
 # i18n Plural Keys
 

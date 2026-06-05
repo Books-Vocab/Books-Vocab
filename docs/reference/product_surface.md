@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 74bf32da
+verified_against: bb54d47a
 -->
 # Implemented Product Surface
 
@@ -35,7 +35,7 @@ verified_against: 74bf32da
 - **Notebook robustness**: `resolveNotebookId` chokepoint + `sanitizeOutbox` orphan migration + `triggerPipelinesIsolated` per-notebook isolation + stale `activeNotebookId` cleanup + tombstone defense
 - **Notebook bookshelf**: LazyVStack book-row list + `NotebookCard` HStack layout (cover 40% left + metadata right, fixed-height 72pt rows) + serif italic name (`AppFonts.serif(17, bold).italic`) + active small dot (5pt, darken 0.5) + 1pt darken rule overlay + cover system (12-color Morandi palette + 6 SwiftUI Canvas patterns + unified noise pattern 0.04 + PhotosPicker custom image) + `N 詞` monoLabel + ProgressCapsule (cover-tinted fill, 4pt) + 條件 due dot (warning) + 空 notebook placeholder + page section header `今日複習` + inline pill cluster (`VocabReviewCTAPill` + filter + 新增, replaces VocabReviewBanner + toolbar buttons) + pending sync via TipView → SyncView integration + export dual-entry + sort menu + empty-state CTA + `NotebookCardActions` reusable context menu + dark mode cover auto-darken via `NotebookPalette.darken`
 - **Podcast player**: audio + sentence-level SRT highlight + reader-parity 翻譯 via `VocabularyContextProtocol` + phrase 長按整句 + auto-pause-on-lookup + subtitle size S/M/L/XL/XXL + series 追蹤 toggle + 已追蹤浮上書庫頂端 + per-user progress sync to backend + YouTube-style buffered seek-bar overlay + tap-to-warm AVFoundation connection (DNS/TLS/Range pre-fired during navigation push) + bookshelf-appear predictive prefetch of followed-series first episode + inline subtitle in metadata.json (zero subtitle RTT) + background episode download (URLSession.background, file:// local-first playback, context-menu Download/Cancel/Remove, compact progress ring in row) + 睡眠定時 (5/15/30/60min + end-of-episode, wall-clock DispatchSourceTimer) + 字幕 follow-mode（iPhone/iPad 拖曳隱式脫離；Mac Catalyst 常駐明確 toggle「停止跟隨 ⇄ 追隨當前」，因 indirect scroll 不觸發 DragGesture；捲動提前約 0.5s lead，下一句被講到前先滑到中央，seek 時 pin 回當前句）+ **獨立頂層「播客」section**（`PodcastHomeView`，iOS TabView 第 2 / Catalyst sidebar；軸 B Phase 3，podcast 不再經書架進入）：串流首頁 = 繼續收聽橫排 shelf（跨 series 最近未完成，`PodcastShelf`+`PodcastContinueRailCard`）+ 所有節目 grid（followed 排前+star）；series→episode→player 全 value-based push 在自有 `NavigationStack` + **連續播放 auto-advance**（本集播畢自動續播同 series 下一可播集，`PodcastQueue` entitlement gate：free 播完 ep1 不跨集、guest 不續）+ **分層授權 UX（guest/free/pro）**：客戶端 tier policy `PodcastAccess`（鏡射後端 `podcast_access.py`，由 `subscriptionManager.hasProAccess` + token 存在推導）；訪客可瀏覽 catalog（`optionallyAuthedData` 無 token 亦放行），但 episode row／hero CTA 鎖定（`lock.fill` badge）、tap 彈 `LoginSheet`；free 只開 ep1（hero「免費試聽 3 分鐘」→ player 播放獨立 `preview.*` 並顯示 brand 試聽條 + 升級 CTA），ep2+ 鎖定 tap 彈 `SubscriptionPaywallSheet`（`PaywallSource.podcast`）；player 自帶防禦式 gate（deep-link/continue-playing 直達非可播集 → `lockedGateView`，不載入音訊）。pro 全開。`PodcastEpisode` 新增 `previewAvailable`/`previewDurationSec`
-- **Auto-sync**: 60s cooldown + toggle onChange 觸發
+- **Auto-sync**: 60s cooldown + toggle onChange + 離線→連線恢復時重新評估 pending queue
 - **Notebook cover photo 編輯**: `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原
 - **Graph empty state**: 區分「無單字」vs「有單字無連結」
 - **Vocab list 效能** + 空態 CTA
@@ -72,7 +72,7 @@ verified_against: 74bf32da
 - **EmbeddingStore env wiring**: `EMBEDDING_MODEL` / `EMBEDDING_DIM` 透過 factory 傳入 + dim mismatch guard + cache key 含 model+dim + `_load` shape verification 防 silent corruption
 - **`cards.batch_touch(notebook_id=...)`** scope filter
 - **`orphan_scan`** cross-DB consistency scanner + admin endpoint
-- **Backend hardening**: podcast ACL / rate-limit / embedding / sqlite WAL
+- **Backend hardening**: podcast ACL / optional-auth malformed header 401 / validation 422 JSON-safe encoding / LLM failure secret redaction / rate-limit / embedding / sqlite WAL
 - **依賴升級**: cryptography 48 + starlette 1.0 + fastapi 0.136
 - **Sentry SDK 整合**: `sentry_init.py` opt-in via `SENTRY_DSN` env + auth header/cookie scrubbing + `request_id` tag in scope + release tag + per-path traces sampler + uid scope + `/api/system/info` 暴露狀態 + admin smoke ping endpoint `POST /api/admin/sentry/ping`
 - **Pluggable LLM provider registry** (`kg/llm/providers.py`):

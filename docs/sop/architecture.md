@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 1f55231f
+verified_against: bb54d47a
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -27,7 +27,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 - **token**: JWT 認證令牌，用於 KG API 呼叫的 `Authorization: Bearer` 標頭
 - **Apple Sign-In**：原生 `ASAuthorization` 流程
 - **Google Sign-In**：整合 GoogleSignIn SDK，支援多設備無縫切換
-- **Web Auth**：後端提供 `/login` → Google/Apple OAuth callback → cookie-based admin session
+- **Web Auth**：後端提供 `/login` → Google/Apple OAuth callback → cookie-based admin session；`/login` 會為 Apple form-post flow 預先 mint `oauth_state` HttpOnly Secure cookie，callback 必須通過 state compare
 - **Guest Mode**：未登入時仍允許查詞與本地儲存，帳號切換時自動清除舊帳號資料
 
 ### 生詞條目狀態管理
@@ -102,6 +102,10 @@ Pipeline 的 Link 階段現由 one-shot judge 取代舊的 candidate queue：
 - 每次 LLM 呼叫記錄 prompt、response、token 消耗、latency
 - **Cross-user cache**：相同 word+context 命中快取時跳過 LLM 呼叫
 - Admin user detail page 可瀏覽 translate_log 記錄
+
+### LLM Failure Log
+
+LLM provider/SDK 的 terminal failure（429/5xx/timeout 等）另寫入 `llm_errors.db`，供 admin cost/error 趨勢補齊「有燒請求但無 usage」的觀測缺口；error message 入庫前必須遮罩 bearer/API key/token/password/secret-like 值。
 
 ### Chrome Extension Sync
 
