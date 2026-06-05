@@ -307,16 +307,27 @@ function renderFilterBar(items) {
 }
 
 /**
- * Render sort pill (mirrors iOS VocabSortPill).
+ * Render sort pill + review CTA (mirrors iOS VocabSortPill + VocabReviewCTAPill).
  */
-function renderSortPill() {
+function renderSortPill(items) {
   if (!filterActions) return;
   filterActions.innerHTML = '';
 
-  const pill = document.createElement('span');
-  pill.className = 'kg-sort-pill';
-  pill.textContent = '複習優先';
-  filterActions.appendChild(pill);
+  // Sort pill
+  const sortPill = document.createElement('span');
+  sortPill.className = 'kg-sort-pill';
+  sortPill.textContent = '複習優先';
+  filterActions.appendChild(sortPill);
+
+  // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill)
+  // When API gains dueCount, replace mock with real data.
+  const dueCount = items.length; // Mock: total vocab count as proxy
+  if (dueCount > 0) {
+    const cta = document.createElement('span');
+    cta.className = 'kg-review-cta';
+    cta.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> <span class="kg-review-cta__count">${dueCount}</span>`;
+    filterActions.appendChild(cta);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -524,7 +535,14 @@ function toggleDetail(row, item) {
     detail.appendChild(makeSection('來源', `<span class="kg-detail__source-text">iOS app</span>`));
   }
 
-  row.appendChild(detail);
+  // Append detail to the content column so it sits below word/meaning,
+  // not beside the progress bar (row is flex, content is flex-column).
+  const content = row.querySelector('.kg-vocab-row__content');
+  if (content) {
+    content.appendChild(detail);
+  } else {
+    row.appendChild(detail);
+  }
 }
 
 /**
