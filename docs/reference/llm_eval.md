@@ -4,7 +4,7 @@ authority: SoT
 update_trigger: code-change
 scope:
   - lab/llm_eval/
-verified_against: d1a5a383
+verified_against: 74bf32da
 -->
 # LLM Eval Workbench
 
@@ -76,7 +76,9 @@ Production prompt（`backend/src/kg/` inline f-string）與 eval registry 為**�
 Ollama **不進** `backend/src/kg/llm/providers.py`（production 不能誤路由到 local）。
 `lab/llm_eval/llm_eval/providers.py` 統一解析 cloud registry + ollama。
 
-複用 `kg.service_factories.create_client()` / `create_async_client()`。
+Cloud provider 建 client 前必須有對應 API key env；缺 key 直接拋
+`MissingProviderApiKeyError`，不帶假 key 打遠端。Ollama 維持 local dummy
+key 行為，不需要 `OLLAMA_DUMMY_KEY`。
 
 ## 執行引擎
 
