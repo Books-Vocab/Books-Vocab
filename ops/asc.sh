@@ -747,7 +747,7 @@ cmd_sub_offers() {  # 唯讀：訂閱優惠（介紹性 / 促銷 / 兌換碼）
              else (.data // []) as $d
                | if ($d | length) == 0 then "  （無）"
                  else ($d | group_by("\(.attributes.offerMode)|\(.attributes.duration // "")|\(.attributes.numberOfPeriods // 1)"))
-                   | map("  \(.[0].attributes.offerMode)  \(.[0].attributes.duration // "?") ×\(.[0].attributes.numberOfPeriods // 1)  —— \(length) 個地區")[]
+                   | map("  \(.[0].attributes.offerMode // "?")  \(.[0].attributes.duration // "?") ×\(.[0].attributes.numberOfPeriods // 1)  —— \(length) 個地區")[]
                end end'
   echo "# 促銷優惠 promotionalOffers（給既有 / 流失用戶的回饋價）："
   raw "/v1/subscriptions/$subId/promotionalOffers?limit=200" \
