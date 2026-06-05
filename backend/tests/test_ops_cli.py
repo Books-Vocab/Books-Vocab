@@ -160,6 +160,102 @@ class TestDbQuery:
         assert "2" in result.stdout
 
 
+class TestCardFind:
+    """card-find 子指令 — byte-exact 子字串搜尋（免寫 SQL、免處理引號）。"""
+
+    def _setup(self, tmp_path, rows):
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        _create_cards_db(user_dir / "cards.db", [
+            (cid, content, "m", 0, now, now) for cid, content in rows
+        ])
+        return uid
+
+    def test_finds_substring_case_insensitive(self, tmp_path):
+        uid = self._setup(tmp_path, [
+            ("c1", "chateau,"),          # 有 trailing comma
+            ("c2", "Chateau Margaux"),   # 大寫
+            ("c3", "hello"),
+        ])
+        result = _run_cli(str(tmp_path), "card-find", uid, "chateau")
+        assert result.returncode == 0
+        # 兩筆 chateau 都命中（case-insensitive），hello 不命中
+        assert "c1" in result.stdout
+        assert "c2" in result.stdout
+        assert "hello" not in result.stdout
+
+    def test_repr_exposes_trailing_comma(self, tmp_path):
+        """關鍵：trailing comma / whitespace 在對齊表格中隱形，repr 讓其可見。"""
+        uid = self._setup(tmp_path, [("c1", "chateau,")])
+        result = _run_cli(str(tmp_path), "card-find", uid, "chateau")
+        assert result.returncode == 0
+        assert "'chateau,'" in result.stdout  # repr 暴露逗點
+
+    def test_no_match_prints_no_data(self, tmp_path):
+        uid = self._setup(tmp_path, [("c1", "hello")])
+        result = _run_cli(str(tmp_path), "card-find", uid, "zzz")
+        assert result.returncode == 0
+        assert "no data" in result.stdout.lower()
+
+    def test_substring_with_sql_wildcards_literal(self, tmp_path):
+        """搜尋字串含 % / _ 須當字面字元，不可當 LIKE 萬用字元。"""
+        uid = self._setup(tmp_path, [
+            ("c1", "100%"),
+            ("c2", "abc"),
+        ])
+        result = _run_cli(str(tmp_path), "card-find", uid, "%")
+        assert result.returncode == 0
+        assert "c1" in result.stdout
+        assert "c2" not in result.stdout
+
+    def test_missing_user(self, tmp_path):
+        result = _run_cli(str(tmp_path), "card-find", "ghost", "x")
+        assert result.returncode != 0
+
+
+class TestCardGet:
+    """card-get 子指令 — 單卡 byte-exact 垂直 dump（key 可為 id 或 content）。"""
+
+    def _setup(self, tmp_path):
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        _create_cards_db(user_dir / "cards.db", [
+            ("7a365c", "chateau,", "莊園", 0, now, now),
+            ("other1", "hello", "你好", 0, now, now),
+        ])
+        return uid
+
+    def test_get_by_id(self, tmp_path):
+        uid = self._setup(tmp_path)
+        result = _run_cli(str(tmp_path), "card-get", uid, "7a365c")
+        assert result.returncode == 0
+        # 垂直 dump:每欄一行，byte-exact repr 暴露 trailing comma
+        assert "'chateau,'" in result.stdout
+        assert "meaning" in result.stdout
+        assert "'莊園'" in result.stdout
+
+    def test_get_by_content_ascii_case_insensitive(self, tmp_path):
+        uid = self._setup(tmp_path)
+        result = _run_cli(str(tmp_path), "card-get", uid, "HELLO")
+        assert result.returncode == 0
+        assert "'hello'" in result.stdout
+        assert "other1" in result.stdout
+
+    def test_no_match(self, tmp_path):
+        uid = self._setup(tmp_path)
+        result = _run_cli(str(tmp_path), "card-get", uid, "zzz")
+        assert result.returncode == 0
+        assert "no card" in result.stdout.lower()
+
+    def test_missing_user(self, tmp_path):
+        result = _run_cli(str(tmp_path), "card-get", "ghost", "x")
+        assert result.returncode != 0
+
+
 class TestProviderAwarePricing:
     """計價走 kg.quota_service.token_cost_usd — provider-aware。"""
 

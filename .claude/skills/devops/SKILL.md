@@ -54,7 +54,9 @@ ops-cli user-quota <uid>                  # 24h 額度 + 逐時明細
 ops-cli user-stats <uid>                  # 單字庫統計
 ops-cli quota-overview                     # 全用戶 24h 額度總覽
 ops-cli active-users [hours]              # 近 N 小時活躍用戶
-ops-cli db-query <uid> SQL...             # 唯讀查用戶 DB（只放行單一 SELECT/WITH/EXPLAIN；不需引號）
+ops-cli card-find <uid> <substring>       # byte-exact 子字串搜尋 card.content（免寫 SQL；ASCII case-insensitive；repr 顯示，trailing comma/空白可見）
+ops-cli card-get <uid> <id|content>       # 單卡 byte-exact 垂直 dump 全欄（寬表 SELECT * 難讀時用）
+ops-cli db-query <uid> SQL...             # 唯讀查用戶 DB（只放行單一 SELECT/WITH/EXPLAIN）
 ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
 ops-cli cost <uid> [--range R] [--json]   # 單用戶 cost-by-call_type 拆解（provider-aware）
 ops-cli cost-overview [--range R] [--json] # 全用戶 cost 排名
@@ -96,8 +98,12 @@ python3 ops/data_inspect.py [command]
 # 近 24h 活躍用戶
 ./ops/devops_kg_safe.sh ops-cli active-users 24
 
-# 對用戶 DB 跑 SQL（不需要引號包覆）
-./ops/devops_kg_safe.sh ops-cli db-query <uid> SELECT content, notebook_id FROM card LIMIT 5
+# 找含某字串的卡片，byte-exact（首選；免寫 SQL、免處理引號）
+./ops/devops_kg_safe.sh ops-cli card-find <uid> chateau
+
+# 對用戶 DB 跑任意 SQL —— transport 已 %q 安全序列化，引號/括號/% 一律可用，
+# SQL 字串字面建議用單引號包覆（如 LIKE '%x%'、WHERE word = 'foo'）
+./ops/devops_kg_safe.sh ops-cli db-query <uid> "SELECT content, notebook_id FROM card LIMIT 5"
 
 # 單用戶當月 cost by call_type（judge/enrich/translate 拆解，provider-aware）
 ./ops/devops_kg_safe.sh ops-cli cost <uid> --range month --json

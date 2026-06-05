@@ -171,6 +171,73 @@ def cmd_active_users(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_card_find(args: argparse.Namespace) -> None:
+    """byte-exact 子字串搜尋 card.content（免寫 SQL、case-insensitive）。
+
+    content 以 repr() 渲染——對齊表格會吃掉 trailing comma / 空白，repr 讓其無所遁形
+    （例:`chateau,` vs `chateau` 一眼可辨）。substring 以參數綁定傳入並轉義 LIKE 萬用字元
+    （`%` `_` `\\`），故搜尋字串中的這些字元一律當字面處理。比對為 ASCII case-insensitive
+    （COLLATE NOCASE 不折疊重音字母,如 café≠CAFÉ）。
+    """
+    uid = resolve_uid(args.uid, data_dir())
+    db_path = data_dir() / "users" / uid / "cards.db"
+    if not db_path.exists():
+        print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
+        sys.exit(1)
+
+    # 轉義 LIKE 特殊字元,使 substring 純當字面比對
+    escaped = args.substring.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    conn = connect_ro(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT id, content, is_deleted FROM card "
+            "WHERE content LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY rowid",
+            (f"%{escaped}%",),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    print_table(
+        ["id", "content (repr)", "is_deleted"],
+        [[r[0], repr(r[1]), r[2]] for r in rows],
+    )
+
+
+def cmd_card_get(args: argparse.Namespace) -> None:
+    """單張卡片 byte-exact 完整 dump（垂直 key→value，repr 渲染）。
+
+    key 可為 card id 或精確 content（ASCII case-insensitive）。寬表 SELECT * 橫向難讀,
+    本工具改垂直排版,每欄一行,值一律 repr——trailing comma / 空白 / 換行皆可見。
+    """
+    uid = resolve_uid(args.uid, data_dir())
+    db_path = data_dir() / "users" / uid / "cards.db"
+    if not db_path.exists():
+        print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
+        sys.exit(1)
+
+    conn = connect_ro(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT * FROM card WHERE id = ? OR content = ? COLLATE NOCASE ORDER BY rowid",
+            (args.key, args.key),
+        )
+        cols = [d[0] for d in cur.description]
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        print(f"(no card matching {args.key!r})")
+        return
+
+    width = max(len(c) for c in cols)
+    for i, row in enumerate(rows):
+        if i:
+            print("\n" + "─" * 40)
+        for col, val in zip(cols, row):
+            print(f"{col:<{width}}  {val!r}")
+
+
 def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
     uid = resolve_uid(args.uid, data_dir())
@@ -370,6 +437,18 @@ def main() -> None:
     p = sub.add_parser("active-users", help="近 N 小時活躍用戶")
     p.add_argument("hours", nargs="?", type=int, default=24, help="小時數（預設 24）")
     p.set_defaults(func=cmd_active_users)
+
+    # card-find
+    p = sub.add_parser("card-find", help="byte-exact 子字串搜尋 card.content（免寫 SQL）")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("substring", help="搜尋子字串（ASCII case-insensitive，% _ 當字面字元）")
+    p.set_defaults(func=cmd_card_find)
+
+    # card-get
+    p = sub.add_parser("card-get", help="單卡 byte-exact 垂直 dump（key=id 或精確 content）")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("key", help="card id 或精確 content（ASCII case-insensitive）")
+    p.set_defaults(func=cmd_card_get)
 
     # db-query
     p = sub.add_parser("db-query", help="對用戶 cards.db 跑任意 SQL")

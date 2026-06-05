@@ -119,7 +119,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `inject_codemod.py` | iOS InjectionNext 三件套自動注入(`import Inject` / `@ObserveInjection` / `.enableInjection()`)。`--dry-run` / `--apply` / `--scope <subdir>` |
 | `injection_lint.sh` | iOS hot reload 覆蓋率守門(同 `i18n_lint` 四模式)。三規則:View struct 有 `@ObserveInjection`、per-file arity、`import Inject` 共存性。詳見 `docs/sop/ios.md §Hot Reload` |
 
-Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。
+Container 內 ops-cli(`card-find`、`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。傳輸層以 `printf %q` 序列化 argv,任意特殊字元 SQL 可安全穿越單次遠端 bash 解析。
 
 ## Web 設計系統(`design-system/`)
 
