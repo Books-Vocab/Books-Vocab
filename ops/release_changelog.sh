@@ -1,10 +1,10 @@
 #!/bin/bash
-# generate-changelog.sh — 從 git log 生成 CHANGELOG
-# 用法: scripts/generate-changelog.sh <api|ios>
+# release_changelog.sh — 從 git log 生成 CHANGELOG（release.sh changelog 的 primitive）
+# 用法: ops/release_changelog.sh <api|ios>（一般經 ops/release.sh changelog 呼叫）
 # 輸出 markdown 到 stdout
 set -euo pipefail
 
-COMPONENT="${1:?用法: generate-changelog.sh <api|ios>}"
+COMPONENT="${1:?用法: ops/release_changelog.sh <api|ios>}"
 
 KG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$KG_ROOT"

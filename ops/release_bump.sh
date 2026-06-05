@@ -1,9 +1,9 @@
 #!/bin/bash
-# bump-version.sh — 更新 backend 或 iOS 版本號
-# 用法: scripts/bump-version.sh <api|ios> <new-version>
+# release_bump.sh — 更新 backend 或 iOS 版本號（release.sh bump 的 primitive）
+# 用法: ops/release_bump.sh <api|ios> <new-version>（一般經 ops/release.sh bump 呼叫）
 set -euo pipefail
 
-COMPONENT="${1:?用法: bump-version.sh <api|ios> <version>}"
+COMPONENT="${1:?用法: ops/release_bump.sh <api|ios> <version>}"
 VERSION="${2:?請提供版本號，例如 1.3.0}"
 
 KG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

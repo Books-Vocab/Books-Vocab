@@ -1,108 +1,46 @@
 ---
-description: 分析變更並執行版本發布（backend / iOS / both）
+description: 分析變更並執行版號發布（backend / iOS）—— 薄路由到 ops/release.sh
 ---
 
-# Release 流程
+# Release
 
-你是 KG 專案的發布管理員。請按以下步驟執行：
+你是 KG 發布管理員。**編排邏輯的單一真相是 `ops/release.sh`，本檔只負責路由 + 守住「使用者確認」這道關。** 不要把流程重抄成 prose。
 
-## 1. 分析現況
+## 流程
 
-執行以下指令收集資訊：
+1. **看待發版**：跑 `./ops/release.sh status`。它列出各 component 自上個 `api/*`、`ios/*` tag 以來的 `api:`/`ios:` commit、筆數、與建議 semver bump。把結果如實轉述給使用者，問「要發哪個 component、用什麼版號？」
 
-```bash
-# 找最近的 tag
-git tag -l "api/*" --sort=-v:refname | head -1
-git tag -l "ios/*" --sort=-v:refname | head -1
+2. **等使用者定版號**。**絕不自行決定版號或自動 publish**。使用者說了才動：
+   - 「好 / 按建議」→ 用 status 的建議版號
+   - 「只發 backend」/「版本改 2.0.0」→ 照使用者指定
 
-# 分析 backend 變更
-git log $(git tag -l "api/*" --sort=-v:refname | head -1)..HEAD --oneline --no-merges | grep -i "^[a-f0-9]* api:" || echo "（無 backend 變更）"
+3. **bump + 預覽 changelog**（本地，無對外副作用）：
+   ```bash
+   ./ops/release.sh bump <api|ios> <x.y.z>        # 改版號檔
+   ./ops/release.sh changelog <api|ios>            # 印 changelog 給使用者看
+   ```
+   把 changelog 貼給使用者確認。
 
-# 分析 iOS 變更
-git log $(git tag -l "ios/*" --sort=-v:refname | head -1)..HEAD --oneline --no-merges | grep -i "^[a-f0-9]* ios:" || echo "（無 iOS 變更）"
+4. **publish**（dry-run 預設）：先**不帶 --yes** 跑一次給使用者看計畫：
+   ```bash
+   ./ops/release.sh publish <api|ios> <x.y.z>      # 只印 commit/tag/push 計畫，零副作用
+   ```
+   使用者明確同意後，才加 `--yes` 真送（commit 版號檔 + 打 tag + push origin）：
+   ```bash
+   ./ops/release.sh publish <api|ios> <x.y.z> --yes
+   ```
 
-# 分析 ops/docs 變更
-git log $(git tag -l "api/*" --sort=-v:refname | head -1)..HEAD --oneline --no-merges | grep -iE "^[a-f0-9]* (ops|docs):" || true
-```
+5. **回報**：publish --yes 後 tag 已推到 origin。**注意：目前沒有 tag-triggered CI workflow**，tag 只是版本標記，GitHub Release 須到 GitHub 手動建（別宣稱「CI 正在發版」）。
 
-如果沒有任何 tag 存在，用 `git log --oneline --no-merges` 取所有 commits。
+## iOS App Store / TestFlight（正交，與版號 tag 無關）
 
-## 2. 向使用者報告
+實際出 build 與改 App Store 內容走獨立 ops 腳本：
 
-用以下格式報告：
+- 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
+- 查版本/審查狀態、改文案、查截圖/審查備註 → `./ops/asc.sh`（`versions`/`review-status`/`review-detail`/`screenshots`/`metadata`/`set …`；`set` 預設 dry-run，`--yes` 才真寫）
+- 被拒處理、GUI vs API 可讀範圍、加密合規、重送演練 → `docs/sop/ios.md §發版`
 
-```
-上次 Backend 版本：api/x.y.z（或「尚未發版」）
-  → 之後有 N 個 commit：[簡要列出]
-  → 建議版本：x.y.z（原因）
+## 鐵則
 
-上次 iOS 版本：ios/x.y.z（或「尚未發版」）
-  → 之後有 N 個 commit：[簡要列出]
-  → 建議版本：x.y.z（原因）
-
-要發布哪些？
-```
-
-版本號建議邏輯：
-- 有 breaking change / 大功能 → **minor** bump
-- 僅修復、微調 → **patch** bump
-- 架構重寫 → **major** bump
-- 如果是首次發版，根據現有 pyproject.toml / xcodeproj 版本提議
-
-## 3. 等待使用者確認
-
-**不要自行決定**，等使用者說：
-- 「好」→ 按建議執行
-- 「只發 backend」→ 只處理 backend
-- 「版本改 2.0.0」→ 用使用者指定的版本號
-- 其他調整 → 照辦
-
-## 4. 執行發布
-
-確認後依序執行：
-
-### 對每個要發布的 component：
-
-```bash
-# 更新版本號
-scripts/bump-version.sh <api|ios> <version>
-
-# 生成 changelog 預覽
-scripts/generate-changelog.sh <api|ios>
-```
-
-展示 changelog 給使用者看，確認無誤後：
-
-```bash
-# Commit
-git add -A
-git commit -m "ops: release <component> <version>"
-
-# Tag
-git tag <api|ios>/<version>
-
-# Push（含 tag）
-git push origin main --tags
-```
-
-如果同時發布 backend 和 iOS：
-1. 先 bump 兩邊版本
-2. 一次 commit：`ops: release api <ver> + ios <ver>`
-3. 打兩個 tag
-4. 一次 push
-
-## 5. 報告結果
-
-```
-✓ 已推送 tag，GitHub Actions 正在執行：
-  - Backend: [連結到 Actions]
-  - iOS: [連結到 Actions]
-
-下一步：等 CI 完成，會自動建立 GitHub Release。
-```
-
-## 注意事項
-
-- push 前確認 working tree 乾淨
-- 如果有未 commit 的變更，先詢問使用者是否要一起包進去
-- **絕不跳過使用者確認步驟**
+- **絕不跳過使用者確認**（版號、changelog、publish --yes 三關都要）。
+- publish 前 working tree 若有非版號檔的雜變更，先問使用者。
