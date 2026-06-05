@@ -1074,8 +1074,7 @@ def cmd_llm_errors(args: argparse.Namespace) -> None:
                 if d:
                     by_day[d] = int(c or 0)
 
-            # aggregates (whole window, not uid-filtered for by_class/provider/status)
-            # re-use same params
+            # aggregates (same window + uid filter as by_day) — re-use same params
             for ec, c in conn.execute(
                 f"SELECT error_class, COUNT(*) FROM llm_errors "
                 f"WHERE created_at >= ?{uid_where} GROUP BY error_class",
