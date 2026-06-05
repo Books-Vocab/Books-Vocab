@@ -43,15 +43,8 @@ def _parse_day(created_at: str | None) -> date | None:
         return None
 
 
-def _bucket_key(created_at: str | None, bucket: str) -> str | None:
-    """把 ISO created_at 折成桶 key:day→YYYY-MM-DD,month→YYYY-MM,week→YYYY-Www(ISO週)。
-
-    三粒度共用 _parse_day 單一解析路徑 —— 規避 tz/微秒變異,且畸形時間戳在
-    day/month/week 一致回 None(此前 day/month 盲切 [:10]/[:7] 會回垃圾桶,僅 week 被 drop)。
-    """
-    d = _parse_day(created_at)
-    if d is None:
-        return None
+def _bucket_key_from_date(d: date, bucket: str) -> str | None:
+    """date → 桶 key:day→YYYY-MM-DD,month→YYYY-MM,week→YYYY-Www(ISO週)。"""
     if bucket == "day":
         return d.isoformat()
     if bucket == "month":
@@ -60,6 +53,14 @@ def _bucket_key(created_at: str | None, bucket: str) -> str | None:
         iso = d.isocalendar()
         return f"{iso[0]}-W{iso[1]:02d}"
     return None
+
+
+def _bucket_key(created_at: str | None, bucket: str) -> str | None:
+    """把 ISO created_at 折成桶 key。三粒度共用 _parse_day 單一解析路徑 —— 規避 tz/微秒
+    變異,且畸形時間戳在 day/month/week 一致回 None(此前 day/month 盲切 [:10]/[:7] 會回
+    垃圾桶,僅 week 被 drop)。"""
+    d = _parse_day(created_at)
+    return _bucket_key_from_date(d, bucket) if d is not None else None
 
 
 def _enumerate_buckets(start: date, end: date, bucket: str) -> list[str]:
@@ -71,7 +72,7 @@ def _enumerate_buckets(start: date, end: date, bucket: str) -> list[str]:
     seen: set[str] = set()
     d = start
     while d <= end:
-        k = _bucket_key(d.isoformat(), bucket)
+        k = _bucket_key_from_date(d, bucket)
         if k and k not in seen:
             seen.add(k)
             keys.append(k)
@@ -757,12 +758,20 @@ def cmd_fleet_overview(args: argparse.Namespace) -> None:
         links = 0
         corrupt = 0
         for gp in ud.glob("graph_*.json"):
+            # 形狀語意對齊 kg.admin_graph_density._read_graph_links (SoT):list=連結陣列、
+            # dict=以 id 為鍵的連結映射(len 同 values 數)、其餘(scalar)視為壞形狀。
+            # 直接 len(json.loads(...)) 對 scalar 會 TypeError 崩潰整個 fleet-overview。
             try:
-                links += len(json.loads(gp.read_text()))
-            except (json.JSONDecodeError, OSError):
-                corrupt += 1  # 損壞/不可讀的圖譜檔不計入 links,但下方計數浮出避免靜默漏算
+                raw = json.loads(gp.read_text())
+            except (json.JSONDecodeError, ValueError, OSError):
+                corrupt += 1
+                continue
+            if isinstance(raw, (list, dict)):
+                links += len(raw)
+            else:
+                corrupt += 1  # 合法 JSON 但非 list/dict(scalar)
         if corrupt:
-            print(f"⚠ {uid}: skipped {corrupt} unreadable graph file(s)", file=sys.stderr)
+            print(f"⚠ {uid}: skipped {corrupt} unreadable/bad-shape graph file(s)", file=sys.stderr)
         user_rows.append({
             "user_id": uid,
             "cards_total": total,
@@ -859,7 +868,7 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
             d = _parse_day(created_at)
             if d is None:
                 continue
-            key = _bucket_key(created_at, bucket)  # d 有效 → key 必有效
+            key = _bucket_key_from_date(d, bucket)  # d 已解析,避免重複 parse
             if min_dt is None or d < min_dt:
                 min_dt = d
             if max_dt is None or d > max_dt:
@@ -914,14 +923,15 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     def _fmt(v: float | int) -> str:
         return f"${v:.6f}" if metric == "cost" else str(v)
 
-    max_val = max(float(s["value"]) for s in series)
+    baseline = max((s["value"] for s in series), default=0)  # 保留原型別(calls=int)
+    max_val = float(baseline)  # bar 比例用 float
     rows_out = []
     for s in series:
         bar = "█" * round((float(s["value"]) / max_val) * 24) if max_val else ""
         rows_out.append([s["bucket"], _fmt(s["value"]), bar])
     print_table(["Bucket", metric.capitalize(), "Trend"], rows_out)
     # 印滿格基準值 —— bar 為組內相對歸一化,常數序列會全滿,基準值供讀者校準絕對量級。
-    print(f"\n(trend bar 滿格 = {_fmt(max_val)})")
+    print(f"\n(trend bar 滿格 = {_fmt(baseline)})")
 
 
 # ── CLI 進入點 ──────────────────────────────────────────
@@ -1016,7 +1026,8 @@ def main() -> None:
                    help="時間範圍（預設 30d）")
     p.add_argument("--uid", default="all", help="限定單一用戶（預設 all）")
     p.add_argument("--fill-zero", dest="fill_zero", action="store_true",
-                   help="補齊區間內零值桶（時間軸連續、斷層顯式化）")
+                   help="補齊區間內零值桶（時間軸連續、斷層顯式化）；長範圍建議配 "
+                        "--bucket week/month，否則 day 桶會產生大片零牆")
     p.set_defaults(func=cmd_timeseries)
 
     args = parser.parse_args()
