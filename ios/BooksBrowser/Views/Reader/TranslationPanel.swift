@@ -36,6 +36,8 @@ struct TranslationPanel: View {
     var onRetryTranslation: (() -> Void)? = nil
     /// 語境解釋失敗時的「重試」CTA；nil 則隱藏
     var onRetryExplanation: (() -> Void)? = nil
+    let isPanelLarge: Bool
+    var onToggleHeight: () -> Void
 
     @Environment(\.speechService) private var speechService
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -62,7 +64,8 @@ struct TranslationPanel: View {
             translationErrorMessage: translationErrorMessage,
             explanationErrorMessage: explanationErrorMessage,
             timerText: timerText,
-            isSpeaking: isSpeaking
+            isSpeaking: isSpeaking,
+            isPanelLarge: isPanelLarge
         )
     }
 
@@ -140,7 +143,8 @@ struct TranslationPanel: View {
             onDismiss: onDismiss,
             onLogin: onLogin,
             onRetryTranslation: onRetryTranslation,
-            onRetryExplanation: onRetryExplanation
+            onRetryExplanation: onRetryExplanation,
+            onToggleHeight: onToggleHeight
         )
     }
 }
@@ -149,6 +153,7 @@ private struct TranslationPanelPreviewScene: View {
     @Environment(\.appTheme) private var appTheme
     var isExpanded: Bool
     var isExplanationOnly: Bool
+    var isPanelLarge: Bool = false
     var translation: String? = "華麗的；令人驚豔的"
     var explanation: String? = nil
     var isLoading: Bool = false
@@ -188,7 +193,9 @@ private struct TranslationPanelPreviewScene: View {
                     onExpand: {},
                     onDelete: {},
                     onShowDetail: nil,
-                    onDismiss: {}
+                    onDismiss: {},
+                    isPanelLarge: isPanelLarge,
+                    onToggleHeight: {}
                 )
                 .padding(.horizontal)
             }

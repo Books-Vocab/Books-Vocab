@@ -900,6 +900,8 @@
 "vocab.chromeIcon.translation.expand" = "Expand";
 "vocab.chromeIcon.translation.collapse" = "Collapse";
 "vocab.chromeIcon.translation.delete" = "Delete";
+"vocab.chromeIcon.translation.enlarge" = "Enlarge panel";
+"vocab.chromeIcon.translation.shrink" = "Shrink panel";
 "vocab.chromeIcon.todayReview.autoplay.on" = "Turn off autoplay";
 "vocab.chromeIcon.todayReview.autoplay.off" = "Turn on autoplay";
 "settings.inlineInfo.accessibility" = "More information";

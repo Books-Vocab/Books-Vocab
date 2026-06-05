@@ -19,6 +19,10 @@ final class ReaderTranslationHandler {
     var isTranslating = false
     var isSaved = false
     var isExpanded = false
+    /// 面板高度態：true = 大卡（撐高到接近全螢幕，頂部留書本可見），false = 小卡。
+    /// 與 `isExpanded` 正交：句子 explain 模式預設大卡且不動 isExpanded（避免破壞
+    /// explanationOnly 模式判定）；單字模式則由 `handleExpand` 連動（展開語境解釋＝放大）。
+    var isPanelLarge = false
     var explanationText: String?
     var isLoadingExplanation = false
     var translationStatus: String?

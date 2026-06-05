@@ -868,6 +868,8 @@
 "vocab.chromeIcon.translation.expand" = "展开";
 "vocab.chromeIcon.translation.collapse" = "收起";
 "vocab.chromeIcon.translation.delete" = "删除";
+"vocab.chromeIcon.translation.enlarge" = "放大面板";
+"vocab.chromeIcon.translation.shrink" = "缩小面板";
 "vocab.chromeIcon.todayReview.autoplay.on" = "关闭自动播放";
 "vocab.chromeIcon.todayReview.autoplay.off" = "开启自动播放";
 "settings.inlineInfo.accessibility" = "更多信息";
