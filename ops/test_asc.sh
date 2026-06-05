@@ -358,6 +358,54 @@ hasm "$(awk '/^_set_sub_loc\(\)/,/^}/' "$ASC")" 'type:"subscriptionLocalizations
 hasm "$(awk '/^cmd_set_sub_review_note\(\)/,/^}/' "$ASC")" 'reviewNote' \
   && ok "set-sub-review-note patches reviewNote" || fail_t "review-note wrong field"
 
+# ── §15 P5 版本發布控制（releaseType + 分階段發布）──────────────────────────
+# 15a. dispatch 齊全
+disp="$(awk '/# ---- dispatch ----/,/esac/' "$ASC")"
+for sc in release-plan set-release-type phased; do
+  hasm "$disp" "$sc)" && ok "dispatch has $sc" || fail_t "dispatch missing $sc"
+done
+# 15b. release-plan 唯讀（不得寫）
+rp_body="$(awk '/^cmd_release_plan\(\)/,/^}/' "$ASC")"
+hasm "$rp_body" 'appStoreVersionPhasedRelease' \
+  && ok "release-plan reads phasedRelease" || fail_t "release-plan missing phasedRelease read"
+hasm "$rp_body" 'write_raw' \
+  && fail_t "release-plan must be read-only (no write_raw)" || ok "release-plan is read-only"
+hasm "$rp_body" 'emit_write' \
+  && fail_t "release-plan must be read-only (no emit_write)" || ok "release-plan no emit_write"
+# 15c. set-release-type：PATCH appStoreVersions + 三態映射 + scheduled 帶日期
+srt_body="$(awk '/^cmd_set_release_type\(\)/,/^}/' "$ASC")"
+hasm "$srt_body" 'emit_write PATCH' \
+  && ok "set-release-type uses PATCH via gate" || fail_t "set-release-type not PATCH/gate"
+hasm "$srt_body" 'type:"appStoreVersions"' \
+  && ok "set-release-type targets appStoreVersions" || fail_t "set-release-type wrong type"
+for rt in MANUAL AFTER_APPROVAL SCHEDULED; do
+  hasm "$srt_body" "$rt" && ok "set-release-type maps $rt" || fail_t "set-release-type missing $rt"
+done
+hasm "$srt_body" 'earliestReleaseDate' \
+  && ok "set-release-type handles earliestReleaseDate (SCHEDULED)" || fail_t "set-release-type missing earliestReleaseDate"
+# 15d. phased：start=POST / pause|resume|complete=PATCH state / cancel=DELETE
+ph_body="$(awk '/^cmd_phased\(\)/,/^}/' "$ASC")"
+hasm "$ph_body" 'emit_write POST' \
+  && ok "phased start uses POST" || fail_t "phased missing POST(start)"
+hasm "$ph_body" 'type:"appStoreVersionPhasedReleases"' \
+  && ok "phased POST targets appStoreVersionPhasedReleases" || fail_t "phased wrong type"
+hasm "$ph_body" 'emit_write PATCH' \
+  && ok "phased pause/resume/complete uses PATCH" || fail_t "phased missing PATCH"
+hasm "$ph_body" 'phasedReleaseState' \
+  && ok "phased PATCH sets phasedReleaseState" || fail_t "phased missing phasedReleaseState"
+for st in ACTIVE PAUSED COMPLETE; do
+  hasm "$ph_body" "$st" && ok "phased maps $st" || fail_t "phased missing $st"
+done
+hasm "$ph_body" 'emit_write DELETE' \
+  && ok "phased cancel uses DELETE" || fail_t "phased missing DELETE(cancel)"
+# 15e. 負控：兩個寫命令都走 emit_write，不直接 write_raw
+for fn in cmd_set_release_type cmd_phased; do
+  body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
+  hasm "$body" 'write_raw' \
+    && fail_t "$fn calls write_raw directly (bypasses gate)" \
+    || ok "$fn delegates write (no direct write_raw)"
+done
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

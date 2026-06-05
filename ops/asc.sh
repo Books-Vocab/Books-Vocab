@@ -20,6 +20,7 @@
 #   ./ops/asc.sh subscriptions                 # 列訂閱群組→方案（productId/state/週期/代表價/在地化）
 #   ./ops/asc.sh iap                            # 列一次性 App 內購買（inAppPurchasesV2）
 #   ./ops/asc.sh pricing                        # App 基礎定價（各地區 customerPrice）+ 供應地區
+#   ./ops/asc.sh release-plan                   # 發布方式（releaseType）+ 分階段發布狀態（唯讀）
 #   ./ops/asc.sh set-sub-name <subId> <value>   # 改訂閱顯示名（subscriptionLocalization；dry-run）
 #   ./ops/asc.sh set-sub-desc <subId> <value>   # 改訂閱描述（subscriptionLocalization；dry-run）
 #   ./ops/asc.sh set-sub-review-note <subId> <text>     # 改訂閱送審備註（dry-run）
@@ -31,6 +32,8 @@
 #   ./ops/asc.sh set-content-rights <uses|none>           # 改第三方內容版權宣告（dry-run，--yes 才寫）
 #   ./ops/asc.sh set-category <primary|secondary> <ID>    # 改分類（ID 見 categories；dry-run，--yes 才寫）
 #   ./ops/asc.sh set-rating <attr> <value>                # 改年齡分級宣告屬性（dry-run，--yes 才寫）
+#   ./ops/asc.sh set-release-type <manual|auto|scheduled> [ISO8601]  # 改發布方式（auto=審核過自動上架；dry-run）
+#   ./ops/asc.sh phased <start|pause|resume|complete|cancel>  # 分階段發布7天ramp控制（dry-run，--yes 才送）
 #
 # 三組「物件邊界」（用錯子命令會互相指路）：
 #   set         → appStoreVersionLocalization（逐語系版本文案，codemagic modify）：
@@ -623,6 +626,97 @@ cmd_set_sub_price() {
     "$(printf './ops/asc.sh set-sub-price %s %s %s --yes' "$subid" "$terr" "$price")"
 }
 
+# ---- P5 版本發布控制（releaseType + 分階段發布）----
+_resolve_phased() {  # $1=version_id → 印 phasedRelease id（無則空；_httpError 守衛防 set -e 中止）
+  raw "/v1/appStoreVersions/$1/appStoreVersionPhasedRelease" \
+    | jq -r 'if has("_httpError") then empty else (.data.id // empty) end'
+}
+
+cmd_release_plan() {  # 唯讀：發布方式 + 分階段發布狀態
+  require_key
+  local ver; ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
+  echo "# 發布方式（version=$ver）："
+  raw "/v1/appStoreVersions/$ver" \
+    | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
+             else .data.attributes as $a
+               | "  releaseType: \($a.releaseType // "?")"
+                 + (if $a.earliestReleaseDate then "  排程: \($a.earliestReleaseDate)" else "" end)
+                 + "  | appStoreState: \($a.appStoreState // "?")" end'
+  echo "# 分階段發布（7 天 ramp）："
+  raw "/v1/appStoreVersions/$ver/appStoreVersionPhasedRelease" \
+    | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
+             elif (.data == null) then "  未啟用（未建立分階段發布）"
+             else .data.attributes as $a
+               | "  state: \($a.phasedReleaseState // "?")  天數: \($a.currentDayNumber // 0)/7  開始: \($a.startDate // "?")" end'
+  echo "註：releaseType=審核通過後何時上架（MANUAL 手動 / AFTER_APPROVAL 自動 / SCHEDULED 排程）；"
+  echo "    分階段發布讓「更新」逐日 ramp 給既有用戶（新安裝一律立即全量），可隨時 pause/complete/cancel。"
+}
+
+cmd_set_release_type() {  # PATCH appStoreVersions.releaseType（+ SCHEDULED 帶 earliestReleaseDate）
+  local mode="${1:-}" date="${2:-}" rt
+  case "$mode" in
+    manual|MANUAL)        rt="MANUAL" ;;
+    auto|AFTER_APPROVAL)  rt="AFTER_APPROVAL" ;;
+    scheduled|SCHEDULED)  rt="SCHEDULED"
+      [[ -n "$date" ]] || err "scheduled 需 ISO8601 日期：asc.sh set-release-type scheduled 2026-07-01T00:00:00-07:00" ;;
+    *) err "用法：asc.sh set-release-type <manual|auto|scheduled> [ISO8601]（auto=AFTER_APPROVAL 審核過自動上架）" ;;
+  esac
+  require_key
+  local ver old body
+  ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
+  old="$(raw "/v1/appStoreVersions/$ver" | jq -r 'if has("_httpError") then "?" else .data.attributes | "\(.releaseType // "?")\(if .earliestReleaseDate then " @"+.earliestReleaseDate else "" end)" end')"
+  if [[ "$rt" == "SCHEDULED" ]]; then
+    body="$(jq -nc --arg id "$ver" --arg d "$date" \
+      '{data:{type:"appStoreVersions",id:$id,attributes:{releaseType:"SCHEDULED",earliestReleaseDate:$d}}}')"
+  else
+    # 切回 MANUAL/AFTER_APPROVAL 一併清掉 earliestReleaseDate，避免殘留排程
+    body="$(jq -nc --arg id "$ver" --arg rt "$rt" \
+      '{data:{type:"appStoreVersions",id:$id,attributes:{releaseType:$rt,earliestReleaseDate:null}}}')"
+  fi
+  emit_write PATCH "version=$ver  releaseType" "$old" "$rt${date:+ @$date}" \
+    "/v1/appStoreVersions/$ver" "$body" \
+    "$(printf './ops/asc.sh set-release-type %s%s --yes' "$mode" "${date:+ $date}")"
+}
+
+cmd_phased() {  # 分階段發布：start=POST / pause|resume|complete=PATCH state / cancel=DELETE
+  local action="${1:-}"
+  require_key
+  local ver; ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
+  local pid state old body
+  case "$action" in
+    start)
+      pid="$(_resolve_phased "$ver")"
+      [[ -z "$pid" ]] || err "分階段發布已存在（id=$pid）；改用 pause/resume/complete/cancel"
+      body="$(jq -nc --arg v "$ver" \
+        '{data:{type:"appStoreVersionPhasedReleases",attributes:{phasedReleaseState:"ACTIVE"},relationships:{appStoreVersion:{data:{type:"appStoreVersions",id:$v}}}}}')"
+      emit_write POST "version=$ver  啟動分階段發布" "（未啟用）" "ACTIVE" \
+        "/v1/appStoreVersionPhasedReleases" "$body" \
+        './ops/asc.sh phased start --yes'
+      ;;
+    pause|resume|complete)
+      case "$action" in pause) state="PAUSED" ;; resume) state="ACTIVE" ;; complete) state="COMPLETE" ;; esac
+      pid="$(_resolve_phased "$ver")"
+      [[ -n "$pid" ]] || err "尚未啟用分階段發布（先 asc.sh phased start）"
+      old="$(raw "/v1/appStoreVersionPhasedReleases/$pid" | jq -r 'if has("_httpError") then "?" else .data.attributes.phasedReleaseState // "?" end')"
+      [[ "$action" == complete ]] && echo "⚠ complete：立即對所有既有用戶全量釋出（跳過剩餘 ramp 天數），不可逆。"
+      body="$(jq -nc --arg id "$pid" --arg s "$state" \
+        '{data:{type:"appStoreVersionPhasedReleases",id:$id,attributes:{phasedReleaseState:$s}}}')"
+      emit_write PATCH "phasedRelease=$pid  state" "$old" "$state" \
+        "/v1/appStoreVersionPhasedReleases/$pid" "$body" \
+        "$(printf './ops/asc.sh phased %s --yes' "$action")"
+      ;;
+    cancel)
+      pid="$(_resolve_phased "$ver")"
+      [[ -n "$pid" ]] || err "尚未啟用分階段發布，無可取消"
+      echo "⚠ cancel：刪除分階段發布計畫（回到一般全量發布），不可逆。"
+      emit_write DELETE "phasedRelease=$pid  取消分階段發布" "（現有計畫）" "（刪除）" \
+        "/v1/appStoreVersionPhasedReleases/$pid" "" \
+        './ops/asc.sh phased cancel --yes'
+      ;;
+    *) err "用法：asc.sh phased <start|pause|resume|complete|cancel>（start=啟動7天ramp；complete=立即全量；cancel=刪除計畫）" ;;
+  esac
+}
+
 # ---- dispatch ----
 case "${SUB:-}" in
   versions)      cmd_versions ;;
@@ -650,6 +744,9 @@ case "${SUB:-}" in
   set-content-rights) cmd_set_content_rights "${ARGS[@]:-}" ;;
   set-category)  cmd_set_category "${ARGS[@]:-}" ;;
   set-rating)    cmd_set_rating "${ARGS[@]:-}" ;;
+  release-plan)  cmd_release_plan ;;
+  set-release-type) cmd_set_release_type "${ARGS[@]:-}" ;;
+  phased)        cmd_phased "${ARGS[@]:-}" ;;
   ""|help)       usage ;;
   *)             err "unknown subcommand: $SUB（asc.sh help 看用法）" ;;
 esac
