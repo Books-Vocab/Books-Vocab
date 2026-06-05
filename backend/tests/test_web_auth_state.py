@@ -179,13 +179,17 @@ def test_apple_login_sets_oauth_state_cookie(web_auth_env):
     assert "oauth_state=" in set_cookie
 
 
-def test_login_page_links_to_state_minting_apple_login(web_auth_env):
-    """`/login` is the natural entry, but it must route Apple users through
-    /auth/web/apple/login so that endpoint can mint the callback state cookie.
+def test_login_page_mints_state_for_apple_form_post(web_auth_env):
+    """`/login` is the natural entry. It mints the callback state itself: sets
+    the `oauth_state` cookie and renders an Apple form-post carrying the same
+    nonce, so the POST callback's `_verify_state` (cookie vs form state) holds.
     """
     resp = web_auth_env.client.get("/login", follow_redirects=False)
     assert resp.status_code == 200
-    assert 'href="/auth/web/apple/login"' in resp.text
+    assert "oauth_state=" in resp.headers.get("set-cookie", "")
+    # Routes Apple users straight to authorize with a state nonce in the form.
+    assert "appleid.apple.com/auth/authorize" in resp.text
+    assert 'name="state"' in resp.text
 
 
 def test_apple_callback_missing_state_rejected(web_auth_env):
