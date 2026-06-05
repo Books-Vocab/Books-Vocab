@@ -12,7 +12,8 @@ const stateEmpty   = $('#stateEmpty');
 const stateError   = $('#stateError');
 const stateContent = $('#stateContent');
 const searchInput  = $('#searchInput');
-const searchCount  = $('#searchCount');
+const searchIcon   = $('#searchIcon');
+const searchClear  = $('#searchClear');
 const themeBtn     = $('#themeBtn');
 const settingsBtn  = $('#settingsBtn');
 const retryBtn     = $('#retryBtn');
@@ -38,6 +39,27 @@ let retryAction = 'reload';
 /** @type {Array<object>} full vocab list from API */
 let vocabData = [];
 
+/**
+ * Selected review-state filter (iOS multi-select chips). Empty = show all.
+ * Members are 'unlearned' | 'due' | 'reviewed'.
+ * @type {Set<string>}
+ */
+const selectedStates = new Set();
+
+/** Active sort (iOS KGVocabSortOption). @type {string} */
+let sortOption = 'default';
+
+/** Sort labels — mirrors iOS KGVocabSortOption.label. i18n lives here, not pure.js. */
+const SORT_LABELS = {
+  default: '複習優先',
+  alphabetical: '字母序',
+  dateAdded: '最近新增',
+  difficulty: '難度',
+};
+
+/** UI label for a review-state chip (iOS VocabularyReviewState.displayName). */
+const STATE_LABELS = { unlearned: '未學習', due: '待複習', reviewed: '已複習' };
+
 // Theme glyphs come from KGIcons (shared/icons.js) — SVG, not emoji — so the
 // button matches the iOS SF-Symbols look. Icon name = `theme-${theme}`.
 const THEME_CYCLE = ['light', 'dark', 'sepia'];
@@ -50,11 +72,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   const theme = await initTheme(document.documentElement);
   updateThemeBtn(theme);
   KGIcons.setIcon(settingsBtn, 'settings');
+  KGIcons.setIcon(searchIcon, 'search');
+  KGIcons.setIcon(searchClear, 'clear');
 
   themeBtn.addEventListener('click', cycleTheme);
   settingsBtn.addEventListener('click', openSettings);
   retryBtn.addEventListener('click', onRetry);
   searchInput.addEventListener('input', debounce(onSearch, 300));
+  searchInput.addEventListener('input', syncClearButton);
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    syncClearButton();
+    onSearch();
+    searchInput.focus();
+  });
 
   // Auto-reload when auth token changes (e.g. login completed in another tab).
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -125,7 +156,7 @@ function setState(state) {
 async function loadVocabList() {
   setState('loading');
   searchInput.value = '';
-  searchCount.textContent = '';
+  syncClearButton();
 
   try {
     const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
@@ -153,7 +184,7 @@ async function loadVocabList() {
     // canonical field names instead of papering over snake_case/legacy aliases.
     const items = KGPure.normalizeVocabList(response)
       .map(KGPure.normalizeVocabItem)
-      .map(enrichWithMockReviewData);
+      .map(enrichWithReviewData);
 
     vocabData = items;
 
@@ -161,7 +192,7 @@ async function loadVocabList() {
       setState('empty');
     } else {
       setState('content');
-      renderList(items);
+      applyView(); // state filter → search → sort → render
     }
   } catch (err) {
     // chrome.runtime.sendMessage rejects when there is no receiver, or the
@@ -219,116 +250,218 @@ function showErrorFromResponse(response) {
 // Search
 // ---------------------------------------------------------------------------
 
+/**
+ * Recompute the visible list from the full corpus through the iOS pipeline:
+ * state filter (chips) → search filter → sort, then render. Chrome (chips + sort
+ * pill + CTA) always reflects the full corpus / current control state.
+ */
+function applyView() {
+  const visible = KGPure.sortVocab(
+    KGPure.filterVocab(vocabData, { query: searchInput.value, states: selectedStates }),
+    sortOption
+  );
+  renderList(visible);
+}
+
+// Search input feeds the same pipeline as chips/sort.
 function onSearch() {
-  const query = searchInput.value.trim().toLowerCase();
+  applyView();
+}
 
-  if (!query) {
-    searchCount.textContent = '';
-    renderList(vocabData);
-    return;
-  }
-
-  const filtered = vocabData.filter((item) => {
-    const word = String(item.word || '').toLowerCase();
-    const meaning = String(item.meaning || '').toLowerCase();
-    return word.includes(query) || meaning.includes(query);
-  });
-
-  searchCount.textContent = `${filtered.length}`;
-  renderList(filtered);
+/** Show the clear (✕) button only when the search field has text. */
+function syncClearButton() {
+  searchClear.hidden = searchInput.value.length === 0;
 }
 
 // ---------------------------------------------------------------------------
 // Filter + Sort Bar
 // ---------------------------------------------------------------------------
 
+// Relative formatter for the "下次 X" trailing label — web-native equivalent of
+// iOS LocaleAwareFormatter.relativeString(style:.full). Lazily built once.
+let _relFmt = null;
+function relativeReviewLabel(nextReviewAt, nowMs = Date.now()) {
+  const t = Date.parse(String(nextReviewAt || ''));
+  if (Number.isNaN(t)) return '';
+  if (!_relFmt && typeof Intl !== 'undefined' && Intl.RelativeTimeFormat) {
+    _relFmt = new Intl.RelativeTimeFormat('zh-Hant', { numeric: 'auto', style: 'long' });
+  }
+  if (!_relFmt) return '';
+  const diffSec = (t - nowMs) / 1000;
+  const abs = Math.abs(diffSec);
+  if (abs >= 86400) return _relFmt.format(Math.round(diffSec / 86400), 'day');
+  if (abs >= 3600) return _relFmt.format(Math.round(diffSec / 3600), 'hour');
+  return _relFmt.format(Math.round(diffSec / 60), 'minute');
+}
+
 /**
- * Deterministically generate mock review-progress data from the word itself.
- * This gives every row a progress bar + due label so the sidepanel visually
- * matches the iOS vocab list. When the backend API gains real review metadata,
- * replace this with actual data — the UI structure (progress bar, trailing label)
- * is already wired and ready.
+ * Attach real review-progress fields to a vocab item, mirroring iOS
+ * WordRowPresentation (no mocks — driven by CardResponse review state preserved
+ * through normalizeVocabItem):
+ *   - reviewRatio: 0=fresh→3=deep overdue (null for unlearned → label-only, no bar)
+ *   - dueLabel:    progress detailLabel ("首輪 Xh" | "elapsed / interval")
+ *   - dueInfo:     trailing status (iOS rowStatus: 未複習 | 待複習 | 下次 X)
  * @param {object} item
  * @returns {object}
  */
-function enrichWithMockReviewData(item) {
-  // Guard: API may return non-string word fields (e.g. numbers).
-  const word = String(item.word || '');
-  // djb2 hash over the word for deterministic, stable mock values
-  let hash = 5381;
-  for (let i = 0; i < word.length; i++) {
-    hash = ((hash << 5) + hash) + word.charCodeAt(i);
-  }
-  const positive = Math.abs(hash);
+function enrichWithReviewData(item) {
+  const p = KGPure.reviewProgress(item);
+  const isUnlearned = p.state === 'unlearned';
 
-  // ratio 0..3 (fresh → deep overdue)
-  const ratio = (positive % 350) / 100;
+  const dueLabel = isUnlearned
+    ? `首輪 ${KGPure.compactReviewLabel(item.reviewIntervalHours * 3600)}`
+    : `${KGPure.compactReviewLabel(p.elapsedSec)} / ${KGPure.compactReviewLabel(p.intervalSec)}`;
 
-  // "55d / 2d" style label
-  const daysSince = positive % 80;
-  const daysUntil = Math.max(1, 20 - (positive % 25));
-  const dueLabel = `${daysSince}d / ${daysUntil}d`;
+  let dueInfo;
+  if (p.state === 'due') dueInfo = '待複習';
+  else if (isUnlearned) dueInfo = '未複習';
+  else dueInfo = `下次 ${relativeReviewLabel(item.nextReviewAt)}`.trim();
 
   return {
     ...item,
-    reviewRatio: ratio,
+    reviewState: p.state,
+    reviewRatio: isUnlearned ? null : p.ratio,
     dueLabel,
-    dueInfo: dueLabel,
+    dueInfo,
   };
 }
 
 /**
- * Render filter chips (mirrors iOS VocabFilterChipBar).
- * Since the sidepanel API lacks review-state counts, we show a simplified
- * "All" chip with the total count, reserving the structure for future data.
- * @param {Array<object>} items
+ * Render filter chips (mirrors iOS VocabFilterChipBar): multi-select, no '全部'
+ * chip (empty selection = all). Counts are the real per-state tally over the full
+ * corpus; clicking a chip toggles it in `selectedStates` and re-applies the view.
+ * @param {Array<object>} corpus — the full vocab list (counts are corpus-wide)
  */
-function renderFilterBar(items) {
+function renderFilterBar(corpus) {
   if (!filterChips) return;
   filterChips.innerHTML = '';
 
-  // Deterministic mock counts from total vocab size for visual parity with iOS
-  const total = items.length;
-  const dueCount = Math.floor(total * 0.45);
-  const unlearnedCount = Math.floor(total * 0.25);
-  const reviewedCount = total - dueCount - unlearnedCount;
+  const counts = KGPure.countReviewStates(corpus);
 
-  const states = [
-    { label: '全部', count: total, active: true },
-    { label: '未學習', count: unlearnedCount },
-    { label: '待複習', count: dueCount },
-    { label: '已複習', count: reviewedCount },
-  ];
-  states.forEach((s) => {
-    const chip = document.createElement('span');
-    chip.className = 'kg-filter-bar__chip' + (s.active ? ' kg-filter-bar__chip--active' : '');
-    chip.innerHTML = `${esc(s.label)} <span class="kg-filter-bar__count">${s.count}</span>`;
+  // Order mirrors iOS chip bar: 未學習 / 待複習 / 已複習.
+  ['unlearned', 'due', 'reviewed'].forEach((state) => {
+    const active = selectedStates.has(state);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'kg-filter-bar__chip' + (active ? ' kg-filter-bar__chip--active' : '');
+    chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    chip.innerHTML = `${esc(STATE_LABELS[state])} <span class="kg-filter-bar__count">${counts[state]}</span>`;
+    chip.addEventListener('click', () => {
+      if (selectedStates.has(state)) selectedStates.delete(state);
+      else selectedStates.add(state);
+      applyView();
+    });
     filterChips.appendChild(chip);
   });
 }
 
 /**
- * Render sort pill + review CTA (mirrors iOS VocabSortPill + VocabReviewCTAPill).
+ * Render sort pill + review CTA (mirrors iOS VocabSortPill Menu + ReviewCTAPill).
+ * The pill shows the active sort label + chevron and opens a dropdown of the 4
+ * KGVocabSortOption choices (checkmark on the active one).
+ * @param {Array<object>} corpus — full vocab list (CTA due count is corpus-wide)
  */
-function renderSortPill(items) {
+function renderSortPill(corpus) {
   if (!filterActions) return;
+  closeSortMenu();
   filterActions.innerHTML = '';
 
-  // Sort pill
-  const sortPill = document.createElement('span');
+  // Sort pill — a Menu trigger (iOS VocabSortPill is a SwiftUI Menu).
+  const sortPill = document.createElement('button');
+  sortPill.type = 'button';
   sortPill.className = 'kg-sort-pill';
-  sortPill.textContent = '複習優先';
+  sortPill.setAttribute('aria-haspopup', 'true');
+  sortPill.innerHTML =
+    `<span>${esc(SORT_LABELS[sortOption] || SORT_LABELS.default)}</span>` +
+    '<svg class="kg-sort-pill__chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"' +
+    ' stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"' +
+    ' aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+  sortPill.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSortMenu(sortPill);
+  });
   filterActions.appendChild(sortPill);
 
-  // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill)
-  // When API gains dueCount, replace mock with real data.
-  const dueCount = Math.floor(items.length * 0.45); // Mock: 45% of total as due
+  // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill). Real count of
+  // due cards (reviewCount>0 && nextReviewAt<=now), same predicate as iOS.
+  const dueCount = KGPure.countReviewStates(corpus).due;
   if (dueCount > 0) {
     const cta = document.createElement('span');
     cta.className = 'kg-review-cta';
     cta.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> <span class="kg-review-cta__count">${dueCount}</span>`;
     filterActions.appendChild(cta);
   }
+}
+
+// --- Sort dropdown menu (mirrors iOS VocabSortPill Menu) ---------------------
+
+/** The live menu element + its outside-click/Escape dismiss handler, if open. */
+let sortMenuEl = null;
+let sortMenuDismiss = null;
+
+function closeSortMenu() {
+  if (sortMenuDismiss) {
+    document.removeEventListener('click', sortMenuDismiss);
+    document.removeEventListener('keydown', sortMenuDismiss);
+    sortMenuDismiss = null;
+  }
+  if (sortMenuEl) {
+    sortMenuEl.remove();
+    sortMenuEl = null;
+  }
+}
+
+function toggleSortMenu(anchor) {
+  if (sortMenuEl) { closeSortMenu(); return; }
+
+  const menu = document.createElement('div');
+  menu.className = 'kg-sort-menu';
+  menu.setAttribute('role', 'menu');
+
+  let activeItem = null;
+  KGPure.VOCAB_SORT_OPTIONS.forEach((opt) => {
+    const active = opt === sortOption;
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'kg-sort-menu__item' + (active ? ' kg-sort-menu__item--active' : '');
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', active ? 'true' : 'false');
+    const check = document.createElement('span');
+    check.className = 'kg-sort-menu__check';
+    check.setAttribute('aria-hidden', 'true');
+    if (active) KGIcons.setIcon(check, 'check'); // SVG, not a glyph (icon convention)
+    const text = document.createElement('span');
+    text.textContent = SORT_LABELS[opt];
+    item.append(check, text);
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sortOption = opt;
+      closeSortMenu();
+      applyView();
+    });
+    menu.appendChild(item);
+    if (active) activeItem = item;
+  });
+
+  // Anchor the menu under the pill, right-aligned within the actions row.
+  filterActions.style.position = 'relative';
+  filterActions.appendChild(menu);
+  sortMenuEl = menu;
+  // Focus the active option so keyboard users land on the current selection.
+  if (activeItem) activeItem.focus();
+
+  // Dismiss on any outside click or Escape (the pill's own click is stopped).
+  sortMenuDismiss = (e) => {
+    if (e.type === 'keydown' && e.key !== 'Escape') return;
+    if (e.type === 'click' && menu.contains(e.target)) return;
+    closeSortMenu();
+  };
+  // Defer so the opening click doesn't immediately dismiss it.
+  setTimeout(() => {
+    if (!sortMenuEl) return;
+    document.addEventListener('click', sortMenuDismiss);
+    document.addEventListener('keydown', sortMenuDismiss);
+  }, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,9 +476,22 @@ function renderSortPill(items) {
 function renderList(items) {
   stateContent.innerHTML = '';
 
-  // Update filter bar + sort pill (mirrors iOS KGVocabPresenter chrome)
-  renderFilterBar(items);
-  renderSortPill(items);
+  // Filter chips + CTA reflect the FULL corpus (iOS chip counts are full-list
+  // and stable while searching), not the search-filtered `items` shown as rows.
+  const corpus = Array.isArray(vocabData) && vocabData.length ? vocabData : items;
+  renderFilterBar(corpus);
+  renderSortPill(corpus);
+
+  // No match for the active search/filter (corpus is non-empty) — iOS shows a
+  // "沒有符合的單字" empty state; mirror it inline so the chrome stays put.
+  if (items.length === 0) {
+    const hint = document.createElement('p');
+    hint.className = 'kg-list-nomatch';
+    hint.textContent = '沒有符合的單字';
+    stateContent.appendChild(hint);
+    setState('content');
+    return;
+  }
 
   // Single card container (mirrors iOS ListSectionCard / VocabListCard)
   const card = document.createElement('div');
@@ -363,10 +509,7 @@ function renderList(items) {
   });
 
   stateContent.appendChild(card);
-
-  if (items.length > 0) {
-    setState('content');
-  }
+  setState('content');
 }
 
 /**
@@ -429,8 +572,11 @@ function createRow(item) {
 
   row.appendChild(content);
 
-  // ── Right side: progress bar ───────────────────────────────────────────
-  if (item.reviewRatio != null && item.reviewRatio >= 0) {
+  // ── Right side: progress (mirrors iOS VocabReviewProgressBar) ──────────────
+  // ratio present (due/reviewed) → label + gradient bar; ratio null (unlearned)
+  // → label only ("首輪 Xh"), no bar — exactly as iOS renders it.
+  const hasBar = item.reviewRatio != null && item.reviewRatio >= 0;
+  if (hasBar || item.dueLabel) {
     const progress = document.createElement('div');
     progress.className = 'kg-vocab-row__progress';
 
@@ -441,21 +587,24 @@ function createRow(item) {
       progress.appendChild(labelEl);
     }
 
-    const track = document.createElement('div');
-    track.className = 'kg-vocab-row__progress-track';
+    if (hasBar) {
+      const track = document.createElement('div');
+      track.className = 'kg-vocab-row__progress-track';
 
-    const fill = document.createElement('div');
-    fill.className = 'kg-vocab-row__progress-fill';
-    const ratio = Math.min(item.reviewRatio, 1.0);
-    fill.style.width = `${ratio * 100}%`;
-    // Use shared KGReviewGradient if available, else fallback
-    const gradColor = (typeof KGReviewGradient !== 'undefined')
-      ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
-      : '#4D7396';
-    fill.style.backgroundColor = gradColor;
+      const fill = document.createElement('div');
+      fill.className = 'kg-vocab-row__progress-fill';
+      const ratio = Math.min(item.reviewRatio, 1.0);
+      fill.style.width = `${ratio * 100}%`;
+      // Use shared KGReviewGradient if available, else fallback
+      const gradColor = (typeof KGReviewGradient !== 'undefined')
+        ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
+        : '#4D7396';
+      fill.style.backgroundColor = gradColor;
 
-    track.appendChild(fill);
-    progress.appendChild(track);
+      track.appendChild(fill);
+      progress.appendChild(track);
+    }
+
     row.appendChild(progress);
   }
 

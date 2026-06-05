@@ -87,6 +87,15 @@ def _emit_states(base_selector: str, states: dict) -> list[str]:
     return blocks
 
 
+def _emit_modifiers(base_selector: str, modifiers: dict) -> list[str]:
+    """Emit CSS modifier-class rules (.class--active) — BEM modifiers for variants
+    that are toggled by markup (e.g. a selected chip), not by pseudo-state."""
+    blocks = []
+    for mod_name, props in modifiers.items():
+        blocks.append(_emit_css_rule(f"{base_selector}--{mod_name}", props))
+    return blocks
+
+
 def _walk_component(name: str, spec: dict, out: list[str]) -> None:
     """Recursively walk a component spec and emit CSS rules."""
     css_spec = spec.get("css")
@@ -101,6 +110,11 @@ def _walk_component(name: str, spec: dict, out: list[str]) -> None:
     states = css_spec.get("states", {})
     if states:
         out.extend(_emit_states(f".{class_name}", states))
+
+    # Modifier classes (markup-toggled variants, e.g. --active)
+    modifiers = css_spec.get("modifiers", {})
+    if modifiers:
+        out.extend(_emit_modifiers(f".{class_name}", modifiers))
 
     # Children
     children = spec.get("children", {})

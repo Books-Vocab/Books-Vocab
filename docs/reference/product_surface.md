@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: c64b3450
+verified_against: 6a322ef2
 -->
 # Implemented Product Surface
 
@@ -85,6 +85,7 @@ verified_against: c64b3450
 ## Chrome Extension (`chrome-extension/`)
 
 - Side panel vocab lookup
+- 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
 - 閱讀選詞翻譯
 - Auth token 整合
 - woff2 字型(`shared/fonts.css` surface-local @font-face)

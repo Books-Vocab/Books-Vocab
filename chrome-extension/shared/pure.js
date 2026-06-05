@@ -93,7 +93,200 @@ function normalizeVocabItem(item) {
     examples: Array.isArray(raw.examples) ? raw.examples : [],
     collocations: Array.isArray(raw.collocations) ? raw.collocations : [],
     source: raw.source || null,
+    // Review state (CardResponse) — preserved at the single ingress point so the
+    // filter chips / row progress / sort can mirror iOS's real classification
+    // instead of a mock. These feed classifyReviewState / reviewProgress / sortVocab.
+    reviewCount: Number(raw.reviewCount) || 0,
+    reviewIntervalHours: Number(raw.reviewIntervalHours) || 0,
+    nextReviewAt: raw.nextReviewAt || raw.next_review_at || null,
+    lastReviewedAt: raw.lastReviewedAt || raw.last_reviewed_at || null,
+    // difficultyTier feeds the 'difficulty' sort; updatedAt is the 'dateAdded'
+    // sort proxy (CardResponse omits a true creation timestamp).
+    difficultyTier: raw.difficultyTier || raw.difficulty_tier || null,
+    updatedAt: raw.updatedAt || raw.updated_at || null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Review state — faithful port of iOS VocabularyReview + WordRowPresentation so
+// the sidepanel classifies/visualizes review progress identically to the app.
+// ---------------------------------------------------------------------------
+
+/** Parse an ISO-ish date string to epoch ms; null/blank/invalid → null. */
+function _reviewMs(v) {
+  if (v == null || v === '') return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Classify a vocab card into iOS's three review states. Mirrors
+ * VocabularyEntry.reviewState(at:):
+ *   reviewCount == 0     → 'unlearned'
+ *   nextReviewAt <= now  → 'due'
+ *   else                 → 'reviewed'
+ * A reviewed card with no schedule (missing nextReviewAt) is treated as not-due.
+ * @param {object} item — a normalizeVocabItem result (or raw CardResponse)
+ * @param {number} [nowMs]
+ * @returns {'unlearned'|'due'|'reviewed'}
+ */
+function classifyReviewState(item, nowMs = Date.now()) {
+  const raw = item && typeof item === 'object' ? item : {};
+  if ((Number(raw.reviewCount) || 0) <= 0) return 'unlearned';
+  const next = _reviewMs(raw.nextReviewAt);
+  if (next == null) return 'reviewed';
+  return next <= nowMs ? 'due' : 'reviewed';
+}
+
+/**
+ * Tally a list into per-state counts for the filter chips (mirrors iOS chip
+ * counts derived from the same predicate).
+ * @returns {{unlearned:number, due:number, reviewed:number}}
+ */
+function countReviewStates(items, nowMs = Date.now()) {
+  const counts = { unlearned: 0, due: 0, reviewed: 0 };
+  (Array.isArray(items) ? items : []).forEach((it) => {
+    counts[classifyReviewState(it, nowMs)] += 1;
+  });
+  return counts;
+}
+
+/** iOS Double.singleDecimalString: one decimal, integers drop the point. */
+function _singleDecimal(n) {
+  const r = Math.round(n * 10) / 10;
+  return r === Math.round(r) ? String(Math.round(r)) : r.toFixed(1);
+}
+
+/**
+ * iOS TimeInterval.compactReviewLabel: <1h → "Nm" (≥1); <1d → "N.Nh"/"Nh";
+ * else "N.Nd"/"Nd". Negative clamps to 0.
+ * @param {number} seconds
+ * @returns {string}
+ */
+function compactReviewLabel(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  const HOUR = 3600;
+  const DAY = 86400;
+  if (s < HOUR) return `${Math.max(1, Math.round(s / 60))}m`;
+  if (s < DAY) {
+    const h = s / HOUR;
+    return h < 10 ? `${_singleDecimal(h)}h` : `${Math.round(h)}h`;
+  }
+  const d = s / DAY;
+  return d < 10 ? `${_singleDecimal(d)}d` : `${Math.round(d)}d`;
+}
+
+/**
+ * Per-row review progress, mirroring WordRowPresentation.reviewProgressData:
+ *   unlearned → ratio null (label-only, no bar)
+ *   due/reviewed → ratio = max(elapsed / interval, 0), where
+ *     start    = lastReviewedAt ?? (nextReviewAt − reviewIntervalHours)   [iOS uses dateAdded;
+ *                CardResponse omits it, so derive from the schedule instead]
+ *     interval = max(nextReviewAt − start, 60s)
+ *     elapsed  = max(0, now − start)
+ * @returns {{state:string, ratio:(number|null), elapsedSec:number,
+ *            intervalSec:number, intervalHours:number}}
+ */
+function reviewProgress(item, nowMs = Date.now()) {
+  const raw = item && typeof item === 'object' ? item : {};
+  const state = classifyReviewState(raw, nowMs);
+  const intervalHours = Number(raw.reviewIntervalHours) || 0;
+  if (state === 'unlearned') {
+    return { state, ratio: null, elapsedSec: 0, intervalSec: 0, intervalHours };
+  }
+  const next = _reviewMs(raw.nextReviewAt);
+  let start = _reviewMs(raw.lastReviewedAt);
+  if (start == null) {
+    start = next != null ? next - intervalHours * 3600 * 1000 : nowMs;
+  }
+  const nextMs = next != null ? next : start + Math.max(intervalHours * 3600 * 1000, 60000);
+  const intervalSec = Math.max((nextMs - start) / 1000, 60);
+  const elapsedSec = Math.max(0, (nowMs - start) / 1000);
+  return { state, ratio: Math.max(elapsedSec / intervalSec, 0), elapsedSec, intervalSec, intervalHours };
+}
+
+// ---------------------------------------------------------------------------
+// Filter + sort — faithful port of iOS VocabularyEntryPresentation so the
+// sidepanel's chip multi-select and sort pill behave like KGVocabView.
+// ---------------------------------------------------------------------------
+
+/** The 4 sort options in iOS KGVocabSortOption declaration order. */
+const VOCAB_SORT_OPTIONS = ['default', 'alphabetical', 'dateAdded', 'difficulty'];
+
+// iOS VocabularyEntryPresentation.tierPriority / reviewPriority.
+const _TIER_PRIORITY = { core: 0, intermediate: 1, advanced: 2, rare: 3 };
+const _REVIEW_PRIORITY = { due: 0, unlearned: 1, reviewed: 2 };
+function _tierPriority(tier) {
+  return tier != null && tier in _TIER_PRIORITY ? _TIER_PRIORITY[tier] : 4;
+}
+function _wordCompare(a, b) {
+  return String((a && a.word) || '').localeCompare(
+    String((b && b.word) || ''), undefined, { sensitivity: 'accent' });
+}
+
+/**
+ * Filter a vocab list by search query + selected review states. Mirrors iOS
+ * mergedBucket(for:) (empty selection = all states) combined with sortAndFilter's
+ * search predicate (case-insensitive substring over word OR meaning/translation).
+ * @param {Array<object>} items
+ * @param {{query?: string, states?: (Set<string>|Array<string>|null)}} opts
+ * @param {number} [nowMs]
+ * @returns {Array<object>}
+ */
+function filterVocab(items, { query = '', states = null } = {}, nowMs = Date.now()) {
+  const list = Array.isArray(items) ? items : [];
+  const q = String(query || '').trim().toLowerCase();
+  const stateSet = states && typeof states.has === 'function'
+    ? states
+    : new Set(Array.isArray(states) ? states : []);
+  const filterByState = stateSet.size > 0;
+  return list.filter((item) => {
+    if (filterByState && !stateSet.has(classifyReviewState(item, nowMs))) return false;
+    if (!q) return true;
+    const word = String((item && item.word) || '').toLowerCase();
+    const meaning = String((item && item.meaning) || '').toLowerCase();
+    return word.includes(q) || meaning.includes(q);
+  });
+}
+
+/**
+ * Sort a vocab list by KGVocabSortOption, mirroring VocabularyEntryPresentation:
+ *   default      → reviewPriority(due<unlearned<reviewed) → nextReviewAt asc → tier → word
+ *   alphabetical → word A→Z (case-insensitive)
+ *   dateAdded    → updatedAt desc (CardResponse lacks dateAdded; updatedAt is the proxy)
+ *   difficulty   → tierPriority asc → word
+ * Returns a NEW array (input untouched); unknown option falls back to default.
+ * Array.sort is stable (Node/V8), so ties preserve input order like iOS.
+ */
+function sortVocab(items, sortOption = 'default', nowMs = Date.now()) {
+  const list = Array.isArray(items) ? items.slice() : [];
+  switch (sortOption) {
+    case 'alphabetical':
+      return list.sort(_wordCompare);
+    case 'dateAdded':
+      return list.sort((a, b) => (_reviewMs(b.updatedAt) || 0) - (_reviewMs(a.updatedAt) || 0));
+    case 'difficulty':
+      return list.sort((a, b) => {
+        const d = _tierPriority(a.difficultyTier) - _tierPriority(b.difficultyTier);
+        return d !== 0 ? d : _wordCompare(a, b);
+      });
+    case 'default':
+    default:
+      return list.sort((a, b) => {
+        const pa = _REVIEW_PRIORITY[classifyReviewState(a, nowMs)];
+        const pb = _REVIEW_PRIORITY[classifyReviewState(b, nowMs)];
+        if (pa !== pb) return pa - pb;
+        const na = _reviewMs(a.nextReviewAt);
+        const nb = _reviewMs(b.nextReviewAt);
+        const naSort = na == null ? Infinity : na;
+        const nbSort = nb == null ? Infinity : nb;
+        if (naSort !== nbSort) return naSort - nbSort;
+        const ta = _tierPriority(a.difficultyTier);
+        const tb = _tierPriority(b.difficultyTier);
+        if (ta !== tb) return ta - tb;
+        return _wordCompare(a, b);
+      });
+  }
 }
 
 /**
@@ -314,6 +507,13 @@ const KGPureExports = {
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  classifyReviewState,
+  countReviewStates,
+  compactReviewLabel,
+  reviewProgress,
+  VOCAB_SORT_OPTIONS,
+  filterVocab,
+  sortVocab,
   classifyError,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
