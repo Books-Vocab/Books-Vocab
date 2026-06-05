@@ -127,6 +127,11 @@ def update_to_rejected(
         return cur.rowcount > 0
 
 
+_LOG_COLS = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
+             "verdict", "confidence", "accepted", "reject_reason", "reason", "source", "created_at"]
+_COLS_SQL = ", ".join(_LOG_COLS)
+
+
 def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) -> list[dict]:
     """Retrieve judge log entries for a user.
 
