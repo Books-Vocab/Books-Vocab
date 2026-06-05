@@ -23,6 +23,11 @@
   const POPUP_MAX_WIDTH = 360;
   const POPUP_EST_HEIGHT = 220;
 
+  // Shown when this content script is orphaned by an extension reload/update
+  // (see extensionContextValid). The only recovery is reloading the page so a
+  // fresh content script is injected.
+  const CONTEXT_INVALIDATED_MSG = '擴充功能已更新，請重新整理頁面';
+
   /** Currently active host element (only one popup at a time). */
   let activeHost = null;
 
@@ -54,11 +59,54 @@
   }
 
   // -------------------------------------------------------------------------
+  // Extension context guards
+  // -------------------------------------------------------------------------
+
+  /**
+   * True while this content script's extension context is still alive.
+   *
+   * When the extension is reloaded or updated, content scripts already
+   * injected into open tabs become orphaned: they keep running, but their
+   * `chrome.runtime` loses its `id` and every `chrome.runtime.*` call throws
+   * "Extension context invalidated". Guard `chrome.runtime` access with this so
+   * an orphaned script degrades to a reload prompt instead of an uncaught
+   * TypeError (e.g. `Cannot read properties of undefined (reading 'getURL')`).
+   */
+  function extensionContextValid() {
+    return Boolean(chrome.runtime && chrome.runtime.id);
+  }
+
+  /**
+   * `chrome.runtime.sendMessage` that tolerates an invalidated context.
+   *
+   * Invokes `onResponse` on success; if the context is gone (orphaned script
+   * after a reload), skips the call and runs `onUnavailable` so the UI can
+   * prompt a page reload. Never throws — replaces the bare `sendMessage` calls
+   * whose synchronous throw surfaced as `Uncaught (in promise) ... reading
+   * 'sendMessage'`.
+   */
+  function sendMessageSafe(msg, onResponse, onUnavailable) {
+    if (!extensionContextValid()) {
+      onUnavailable();
+      return;
+    }
+    try {
+      chrome.runtime.sendMessage(msg, onResponse);
+    } catch (_err) {
+      // Context invalidated in the gap between the guard and the call.
+      onUnavailable();
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Style loading
   // -------------------------------------------------------------------------
 
   async function loadStyles() {
     if (cachedStyles) return cachedStyles;
+    // Orphaned content script: `getURL` would throw. Skip silently — callers
+    // already tolerate an empty stylesheet (popup renders unstyled).
+    if (!extensionContextValid()) return '';
     try {
       const [fontsRes, tokensRes, componentsRes, popupRes] = await Promise.all([
         fetch(chrome.runtime.getURL('shared/fonts.css')),
@@ -280,27 +328,34 @@
       ? { type: 'translatePhrase', text: word, context }
       : { type: 'translate', word, context };
 
-    chrome.runtime.sendMessage(msg, (response) => {
-      if (!shadow.host || !shadow.host.isConnected) return; // popup dismissed
+    sendMessageSafe(
+      msg,
+      (response) => {
+        if (!shadow.host || !shadow.host.isConnected) return; // popup dismissed
 
-      // Background service worker unreachable / extension context invalidated:
-      // the callback fires with `response === undefined` and lastError set.
-      if (chrome.runtime.lastError || response == null) {
-        renderError(popup, '無法連線，請重試');
-        return;
-      }
-
-      if (response.error) {
-        if (response.status === 401 || response.code === 'auth_expired') {
-          renderLoginPrompt(popup);
-        } else {
-          renderError(popup, response.message || '翻譯失敗');
+        // Background service worker unreachable: the callback fires with
+        // `response === undefined` and lastError set.
+        if (chrome.runtime.lastError || response == null) {
+          renderError(popup, '無法連線，請重試');
+          return;
         }
-        return;
-      }
 
-      renderTranslation(popup, word, response, isPhrase, context, source);
-    });
+        if (response.error) {
+          if (response.status === 401 || response.code === 'auth_expired') {
+            renderLoginPrompt(popup);
+          } else {
+            renderError(popup, response.message || '翻譯失敗');
+          }
+          return;
+        }
+
+        renderTranslation(popup, word, response, isPhrase, context, source);
+      },
+      () => {
+        if (!shadow.host || !shadow.host.isConnected) return;
+        renderError(popup, CONTEXT_INVALIDATED_MSG);
+      }
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -390,27 +445,34 @@
     btn.disabled = true;
     btn.textContent = '載入中...';
 
-    chrome.runtime.sendMessage({ type: 'explain', word, context }, (response) => {
+    const showExplainError = (text) => {
       btn.disabled = false;
-
-      if (chrome.runtime.lastError || response == null) {
-        explanationEl.textContent = '無法連線，請重試';
-        explanationEl.hidden = false;
-        btn.textContent = '展開';
-        return;
-      }
-
-      if (response.error) {
-        explanationEl.textContent = response.message || '解釋失敗';
-        explanationEl.hidden = false;
-        btn.textContent = '展開';
-        return;
-      }
-
-      explanationEl.textContent = response.e || '';
+      explanationEl.textContent = text;
       explanationEl.hidden = false;
-      btn.textContent = '收起';
-    });
+      btn.textContent = '展開';
+    };
+
+    sendMessageSafe(
+      { type: 'explain', word, context },
+      (response) => {
+        btn.disabled = false;
+
+        if (chrome.runtime.lastError || response == null) {
+          showExplainError('無法連線，請重試');
+          return;
+        }
+
+        if (response.error) {
+          showExplainError(response.message || '解釋失敗');
+          return;
+        }
+
+        explanationEl.textContent = response.e || '';
+        explanationEl.hidden = false;
+        btn.textContent = '收起';
+      },
+      () => showExplainError(CONTEXT_INVALIDATED_MSG)
+    );
   }
 
   function handleAddVocab(popup, btn, word, data, context, source) {
@@ -426,41 +488,45 @@
       },
     ];
 
-    chrome.runtime.sendMessage({ type: 'addVocab', entries }, (response) => {
-      const showAddError = (text) => {
-        btn.disabled = false;
-        btn.textContent = '加入詞彙';
-        const errEl = popup.querySelector('.kg-popup__error');
-        if (errEl) {
-          errEl.textContent = text;
-          errEl.hidden = false;
-        } else {
-          const el = document.createElement('div');
-          el.className = 'kg-popup__error';
-          el.textContent = text;
-          popup.appendChild(el);
-        }
-      };
-
-      if (chrome.runtime.lastError || response == null) {
-        showAddError('無法連線，請重試');
-        return;
+    const showAddError = (text) => {
+      btn.disabled = false;
+      btn.textContent = '加入詞彙';
+      const errEl = popup.querySelector('.kg-popup__error');
+      if (errEl) {
+        errEl.textContent = text;
+        errEl.hidden = false;
+      } else {
+        const el = document.createElement('div');
+        el.className = 'kg-popup__error';
+        el.textContent = text;
+        popup.appendChild(el);
       }
+    };
 
-      if (response.error) {
-        if (response.status === 401 || response.code === 'auth_expired') {
-          renderLoginPrompt(popup);
-        } else {
-          showAddError(response.message || '加入失敗');
+    sendMessageSafe(
+      { type: 'addVocab', entries },
+      (response) => {
+        if (chrome.runtime.lastError || response == null) {
+          showAddError('無法連線，請重試');
+          return;
         }
-        return;
-      }
 
-      popup.className = 'kg-popup kg-popup--saved';
-      btn.className = 'kg-btn kg-popup__btn kg-popup__btn--success';
-      btn.textContent = '已加入';
-      btn.disabled = true;
-    });
+        if (response.error) {
+          if (response.status === 401 || response.code === 'auth_expired') {
+            renderLoginPrompt(popup);
+          } else {
+            showAddError(response.message || '加入失敗');
+          }
+          return;
+        }
+
+        popup.className = 'kg-popup kg-popup--saved';
+        btn.className = 'kg-btn kg-popup__btn kg-popup__btn--success';
+        btn.textContent = '已加入';
+        btn.disabled = true;
+      },
+      () => showAddError(CONTEXT_INVALIDATED_MSG)
+    );
   }
 
   // -------------------------------------------------------------------------
