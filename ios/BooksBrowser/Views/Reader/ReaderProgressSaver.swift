@@ -28,7 +28,7 @@ final class ReaderProgressSaver {
     private var latestSave: (() -> Void)?
 
     /// 預設生產窗口 1.2s — 翻頁停止後才落盤。
-    init(flushDelay: TimeInterval = 1.2) {
+    init(flushDelay: TimeInterval = ReaderMetrics.progressFlushDelay) {
         self.flushDelay = flushDelay
     }
 

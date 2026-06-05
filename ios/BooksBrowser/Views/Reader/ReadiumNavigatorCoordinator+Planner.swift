@@ -76,7 +76,7 @@ struct BridgePlanner {
         remainingWords: Set<String>,
         bookUniqueWords: Set<String>?
     ) -> [BridgeCommand] {
-        if newCount == 0 || removedWords.count > 10 {
+        if newCount == 0 || removedWords.count > ReaderMetrics.bulkRemovalRemarkThreshold {
             var commands: [BridgeCommand] = [.dom(.clearAllVocabHighlights)]
             if newCount > 0 {
                 let validWords = filterValidWords(remainingWords, bookWords: bookUniqueWords)

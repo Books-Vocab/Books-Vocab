@@ -32,58 +32,13 @@ struct TOCView: View {
                 Group {
                     switch loadState {
                     case .loading:
-                        VStack {
-                            Spacer()
-                            AppStateMessageCard(
-                                title: "載入目錄中".localized,
-                                systemImage: "text.book.closed",
-                                description: "正在整理這本書的章節結構。".localized
-                            ) {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-                            .frame(maxWidth: presentation.stateCardMaxWidth)
-                            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                            Spacer()
-                        }
+                        tocLoadingState(presentation)
                     case .loaded:
-                        List {
-                            ForEach(tocLinks.indices, id: \.self) { index in
-                                let link = tocLinks[index]
-                                Button {
-                                    onSelect(link)
-                                    dismiss()
-                                } label: {
-                                    Text(link.title ?? "Untitled")
-                                        .font(AppFonts.body())
-                                }
-                            }
-                        }
-                        .listStyle(.plain)
+                        tocLoadedList()
                     case .empty:
-                        VStack {
-                            Spacer()
-                            AppEmptyStateCard(
-                                title: "這本書沒有目錄".localized,
-                                systemImage: "list.bullet.rectangle",
-                                description: "出版內容沒有提供可導覽的章節列表。".localized
-                            )
-                            .frame(maxWidth: presentation.stateCardMaxWidth)
-                            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                            Spacer()
-                        }
+                        tocEmptyState(presentation)
                     case .failed(let message):
-                        VStack {
-                            Spacer()
-                            AppStateMessageCard(
-                                title: "目錄載入失敗".localized,
-                                systemImage: "exclamationmark.triangle.fill",
-                                description: message
-                            )
-                            .frame(maxWidth: presentation.stateCardMaxWidth)
-                            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                            Spacer()
-                        }
+                        tocFailedState(message, presentation)
                     }
                 }
                 .frame(maxWidth: presentation.contentMaxWidth)
@@ -97,25 +52,94 @@ struct TOCView: View {
                     Button("完成".localized) { dismiss() }
                 }
             }
-            .task {
-                do {
-                    let toc = try await publication.tableOfContents().get()
-                    tocLinks = toc
-                    loadState = toc.isEmpty ? .empty : .loaded
-                    AppLog.reader.info("TOC loaded: \(toc.count) items")
-                    for (i, link) in toc.enumerated() {
-                        AppLog.reader.debug("  [\(i)] \(link.title ?? "nil") → \(String(describing: link.url()))")
-                    }
-                    if toc.isEmpty {
-                        AppLog.reader.warning("TOC is empty — this book may not have a table of contents")
-                    }
-                } catch {
-                    AppLog.reader.error("TOC load failed: \(error.localizedDescription)")
-                    loadState = .failed(error.localizedDescription)
+            .task { await loadTableOfContents() }
+        }
+        .enableInjection()
+    }
+
+    private func loadTableOfContents() async {
+        do {
+            let toc = try await publication.tableOfContents().get()
+            tocLinks = toc
+            loadState = toc.isEmpty ? .empty : .loaded
+            AppLog.reader.info("TOC loaded: \(toc.count) items")
+            for (i, link) in toc.enumerated() {
+                AppLog.reader.debug("  [\(i)] \(link.title ?? "nil") → \(String(describing: link.url()))")
+            }
+            if toc.isEmpty {
+                AppLog.reader.warning("TOC is empty — this book may not have a table of contents")
+            }
+        } catch {
+            AppLog.reader.error("TOC load failed: \(error.localizedDescription)")
+            loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    @ViewBuilder
+    private func tocLoadingState(_ presentation: ReaderTOCPresentation) -> some View {
+        VStack {
+            Spacer()
+            AppStateMessageCard(
+                title: "載入目錄中".localized,
+                systemImage: "text.book.closed",
+                description: "正在整理這本書的章節結構。".localized
+            ) {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            .frame(maxWidth: presentation.stateCardMaxWidth)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func tocLoadedList() -> some View {
+        List {
+            ForEach(tocLinks.indices, id: \.self) { index in
+                let link = tocLinks[index]
+                Button {
+                    onSelect(link)
+                    dismiss()
+                } label: {
+                    Text(link.title ?? "Untitled")
+                        .font(AppFonts.body())
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
         }
-        .enableInjection()
+        .listStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func tocEmptyState(_ presentation: ReaderTOCPresentation) -> some View {
+        VStack {
+            Spacer()
+            AppEmptyStateCard(
+                title: "這本書沒有目錄".localized,
+                systemImage: "list.bullet.rectangle",
+                description: "出版內容沒有提供可導覽的章節列表。".localized
+            )
+            .frame(maxWidth: presentation.stateCardMaxWidth)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func tocFailedState(_ message: String, _ presentation: ReaderTOCPresentation) -> some View {
+        VStack {
+            Spacer()
+            AppStateMessageCard(
+                title: "目錄載入失敗".localized,
+                systemImage: "exclamationmark.triangle.fill",
+                description: message
+            )
+            .frame(maxWidth: presentation.stateCardMaxWidth)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            Spacer()
+        }
     }
 }
 

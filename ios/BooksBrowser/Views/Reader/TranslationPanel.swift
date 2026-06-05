@@ -159,7 +159,7 @@ private struct TranslationPanelPreviewScene: View {
 
     var body: some View {
         ZStack {
-            appTheme.palette.scrim.opacity(0.12).ignoresSafeArea()
+            appTheme.palette.scrim.opacity(ReaderMetrics.translationPanelScrimOpacity).ignoresSafeArea()
 
             VStack {
                 Spacer()
@@ -248,6 +248,30 @@ private struct TranslationPanelPreviewScene: View {
             isExplanationOnly: false,
             explanation: nil,
             explanationErrorMessage: "語境分析暫時不可用。"
+        )
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+#Preview("Translation / Loading") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(
+            isExpanded: false,
+            isExplanationOnly: false,
+            translation: nil,
+            isLoading: true
+        )
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+#Preview("Explanation / Loading") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(
+            isExpanded: true,
+            isExplanationOnly: false,
+            explanation: nil,
+            isLoadingExplanation: true
         )
     }
     .environmentObject(AppAppearanceStore.preview)

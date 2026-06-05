@@ -26,10 +26,9 @@ enum ReaderJSEval {
         switch result {
         case .success:
             return .ok
+        case .failure(EPUBNavigatorViewController.EPUBError.spreadNotLoaded):
+            return .spreadNotLoaded
         case .failure(let error):
-            if case EPUBNavigatorViewController.EPUBError.spreadNotLoaded = error {
-                return .spreadNotLoaded
-            }
             return .failed(error.localizedDescription)
         }
     }
@@ -45,6 +44,12 @@ enum ReaderJSEval {
         case .failed(let message):
             AppLog.reader.error("JS eval failed (\(label)): \(message, privacy: .public)")
         }
+    }
+
+    /// JSON-encode `value` into a JS string literal (incl. surrounding quotes),
+    /// safe to splice into an `evaluateJavaScript` script. Falls back to `""`.
+    static func quotedLiteral(_ value: String) -> String {
+        (try? JSONEncoder().encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
     }
 }
 #endif
