@@ -57,6 +57,7 @@ ops-cli active-users [hours]              # 近 N 小時活躍用戶
 ops-cli card-find <uid> <substring>       # byte-exact 子字串搜尋 card.content（免寫 SQL；ASCII case-insensitive；repr 顯示，trailing comma/空白可見）
 ops-cli card-get <uid> <id|content>       # 單卡 byte-exact 垂直 dump 全欄（寬表 SELECT * 難讀時用）
 ops-cli db-query <uid> SQL...             # 唯讀查用戶 DB（只放行單一 SELECT/WITH/EXPLAIN）
+ops-cli db-query <uid> --schema           # 免寫 SQL 列出各表 DDL（先看 schema 再查，省盲猜欄位）
 ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
 ops-cli cost <uid> [--range R]            # 單用戶 cost-by-call_type 拆解（provider-aware）
 ops-cli cost-overview [--range R]         # 全用戶 cost 排名
@@ -66,6 +67,8 @@ ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（car
 #   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
 #   診斷 banner（[Preflight]/▶progress）一律走 stderr，stdout 只有純 JSON，
 #   可直接 `... --json 2>/dev/null | jq`（或 json.loads）。
+#   list 類命令（card-find/active-users/quota-overview/cost-overview/sync-trace/db-query）
+#   的 JSON 皆含頂層 count，免自己 len()。
 # --range: 24h | 7d | 30d | month | all（預設 month）
 ```
 

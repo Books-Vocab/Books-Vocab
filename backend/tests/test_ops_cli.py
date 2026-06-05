@@ -434,6 +434,69 @@ class TestJsonContract:
         assert d["rows"] == [["c1"], ["c2"]]
 
 
+class TestJsonCountAndSchema:
+    """list 命令的頂層 count + db-query --schema（dogfooding 缺口）。"""
+
+    def _seed_cards(self, tmp_path, uid="u1"):
+        now = _now_iso()
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(user_dir / "cards.db", [
+            ("c1", "hello", "你好", 0, now, now),
+            ("c2", "help", "幫助", 0, now, now),
+        ])
+        return uid
+
+    def test_card_find_count(self, tmp_path):
+        import json
+        uid = self._seed_cards(tmp_path)
+        r = _run_cli(str(tmp_path), "card-find", uid, "hel", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == len(d["matches"]) == 2
+
+    def test_active_users_count(self, tmp_path):
+        import json
+        now = _now_iso()
+        _create_token_usage_db(tmp_path, [("u1", "translate", 1, 1, now)])
+        r = _run_cli(str(tmp_path), "active-users", "24", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == len(d["users"]) == 1
+
+    def test_db_query_count(self, tmp_path):
+        import json
+        uid = self._seed_cards(tmp_path)
+        r = _run_cli(str(tmp_path), "db-query", uid, "--json", "SELECT id FROM card")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == len(d["rows"]) == 2
+
+    def test_db_query_schema_text(self, tmp_path):
+        uid = self._seed_cards(tmp_path)
+        r = _run_cli(str(tmp_path), "db-query", uid, "--schema")
+        assert r.returncode == 0, r.stderr
+        assert "CREATE TABLE" in r.stdout and "card" in r.stdout
+
+    def test_db_query_schema_json(self, tmp_path):
+        import json
+        uid = self._seed_cards(tmp_path)
+        r = _run_cli(str(tmp_path), "db-query", uid, "--schema", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        names = [t["name"] for t in d["tables"]]
+        assert "card" in names
+
+    def test_db_query_error_json(self, tmp_path):
+        """SQL 錯誤在 --json 模式應回 error JSON + 非零 exit（驗證 sqlite3.Error 路徑）。"""
+        import json
+        uid = self._seed_cards(tmp_path)
+        r = _run_cli(str(tmp_path), "db-query", uid, "--json", "SELECT nope FROM card")
+        assert r.returncode != 0
+        d = json.loads(r.stdout)
+        assert "error" in d and "nope" in d["error"]
+
+
 class TestHelp:
     """--help 應正常輸出。"""
 

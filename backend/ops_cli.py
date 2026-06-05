@@ -7,6 +7,7 @@
 
 import argparse
 import os
+import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -140,7 +141,7 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
         if args.json:
-            emit_json({"users": []})
+            emit_json({"count": 0, "users": []})
             return
         print("(no token_usage.db found)")
         return
@@ -168,7 +169,7 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
     )
 
     if args.json:
-        emit_json({"users": ranked})
+        emit_json({"count": len(ranked), "users": ranked})
         return
 
     if not user_costs:
@@ -188,7 +189,7 @@ def cmd_active_users(args: argparse.Namespace) -> None:
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
         if args.json:
-            emit_json({"hours": hours, "users": []})
+            emit_json({"hours": hours, "count": 0, "users": []})
             return
         print("(no token_usage.db found)")
         return
@@ -204,6 +205,7 @@ def cmd_active_users(args: argparse.Namespace) -> None:
     if args.json:
         emit_json({
             "hours": hours,
+            "count": len(rows),
             "users": [{"user_id": r[0], "calls": r[1], "last_active": r[2]} for r in rows],
         })
         return
@@ -248,6 +250,7 @@ def cmd_card_find(args: argparse.Namespace) -> None:
         emit_json({
             "user_id": uid,
             "substring": args.substring,
+            "count": len(rows),
             "matches": [{"id": r[0], "content": r[1], "is_deleted": r[2]} for r in rows],
         })
         return
@@ -285,6 +288,7 @@ def cmd_card_get(args: argparse.Namespace) -> None:
         emit_json({
             "user_id": uid,
             "key": args.key,
+            "count": len(rows),
             "cards": [dict(zip(cols, row, strict=True)) for row in rows],
         })
         return
@@ -304,16 +308,14 @@ def cmd_card_get(args: argparse.Namespace) -> None:
 def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
     uid = resolve_uid(args.uid, data_dir())
-    # REMAINDER 會把 --json 連同 SQL 一起吃進來；剝離後既支援末尾 --json 也支援
-    # 置於 uid 前（parents 解析）的 --json。
-    tokens = [t for t in args.sql if t != "--json"]
-    json_mode = args.json or len(tokens) != len(args.sql)
+    # REMAINDER 會把 --json / --schema 連同 SQL 一起吃進來；先剝離旗標
+    # （故兩者置於 SQL 前後皆可）。
+    raw = list(args.sql)
+    json_mode = args.json or "--json" in raw
+    schema_mode = "--schema" in raw
+    tokens = [t for t in raw if t not in ("--json", "--schema")]
     sql = " ".join(tokens)  # REMAINDER captures split words; rejoin
-    try:
-        assert_readonly_sql(sql)
-    except ValueError as e:
-        print(f"拒絕執行:{e}", file=sys.stderr)
-        sys.exit(1)
+
     db_path = data_dir() / "users" / uid / "cards.db"
     if not db_path.exists():
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
@@ -321,16 +323,36 @@ def cmd_db_query(args: argparse.Namespace) -> None:
 
     conn = connect_ro(db_path)
     try:
+        # --schema：免寫 SQL 列出各表 DDL（dogfooding：省去盲猜欄位名）。
+        if schema_mode:
+            tables = conn.execute(
+                "SELECT name, sql FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            ).fetchall()
+            if json_mode:
+                emit_json({"tables": [{"name": t[0], "sql": t[1]} for t in tables]})
+            else:
+                for name, ddl in tables:
+                    print(f"-- {name}\n{ddl}\n")
+            return
+
+        try:
+            assert_readonly_sql(sql)
+        except ValueError as e:
+            print(f"拒絕執行:{e}", file=sys.stderr)
+            sys.exit(1)
+
         cursor = conn.execute(sql)
         headers = [d[0] for d in cursor.description] if cursor.description else []
         rows = cursor.fetchall() if cursor.description else []
         if json_mode:
-            emit_json({"sql": sql, "columns": headers, "rows": [list(r) for r in rows]})
+            emit_json({"sql": sql, "columns": headers,
+                       "count": len(rows), "rows": [list(r) for r in rows]})
         elif cursor.description:
             print_table(headers, [list(r) for r in rows])
         else:
             print(f"OK (rows affected: {cursor.rowcount})")
-    except Exception as e:
+    except sqlite3.Error as e:
         if json_mode:
             emit_json({"sql": sql, "error": str(e)})
             sys.exit(1)
@@ -460,6 +482,7 @@ def cmd_cost_overview(args: argparse.Namespace) -> None:
         )
 
     if args.json:
+        result["count"] = len(result["users"])
         emit_json(result)
         return
 
@@ -611,7 +634,7 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
     events.sort(key=lambda e: e["ts"])
 
     if args.json:
-        emit_json({"user_id": uid, "date": date, "events": events})
+        emit_json({"user_id": uid, "date": date, "count": len(events), "events": events})
         return
 
     print(f"Sync Trace for {uid} on {date}")
