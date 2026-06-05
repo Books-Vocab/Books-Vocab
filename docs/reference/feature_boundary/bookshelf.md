@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Bookshelf/
-verified_against: d2169593
+verified_against: 932eec98
 -->
 # Bookshelf Feature Boundary
 
@@ -14,7 +14,7 @@ verified_against: d2169593
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `BookshelfView.swift` | ~440 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；row 子 view 已抽出至 `Components/`。**Navigation 契約**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`。**root content 恒定**：bookGrid / emptyState 由 `if books.isEmpty && podcastSeries.isEmpty` 直接決定，**不再**被 `if/else` 在 bookGrid ↔ PodcastEpisodeListView 之間替換——舊 root-content swap 在顯示過 podcast pane 後會**永久破壞**該 NavigationStack 的 value-based push（NAVDBG 坐實：碰過 podcast 後 `NavigationLink(value: book)` 不再驅動 navigationPath，reader 於 path=0 短暫 onAppear 後立即 onDisappear）。**podcast series 在 regular（iPad/Mac Catalyst）不再 push**——點 series 卡片走 `@State selectedSeriesRemoteId`，把 `PodcastEpisodeListView`（含右欄 `safeAreaInset` player）作為**疊加 overlay pane** 渲染在恒定 bookGrid 之上（pane 畫不透明背景蓋住下方 grid），顯示/隱藏只 mutate overlay layer，root identity 不受擾、reader push 始終可用。如此消除 Catalyst「safeAreaInset 擾外層容器 → NavigationStack 子樹 remount → pop」與 root-swap identity 兩類隱患（鏡射 `NotebookListView` root-恒定 selectInline）。決策點 `PodcastSeriesActivation.activation(seriesRemoteId:layoutMode:)`：regular→`.selectInline`、compact→`.push(.series)`。**compact（iPhone）series/episode 沿用 value-based push**，path-bound `NavigationStack` 契約仍守（path 是 @State、body 重評保留，不 pop）。regular 返回入口為 toolbar `.topBarLeading` chevron-left（depth=0 無 system back）；regular→compact 翻轉 `.onChange` reset selection nil。`navigationDestination(for: PodcastNavRoute.self)` 的 `.series`/`.episode` case 保留供 compact push（regular 永不觸發但不可移除）。鏡射 `NotebookListView.swift` |
+| `BookshelfView.swift` | ~300 | 主容器 `struct BookshelfView: View`，**純書籍書架** + 匯入流程；row 子 view 已抽出至 `Components/`。**podcast 已抽離為獨立頂層 section**（見 `podcast.md` `PodcastHomeView`）——本 view 不再持有 podcast query / overlay master pane / `selectedSeriesRemoteId` / `PodcastNavRoute` 路由 / podcast 同步觸發。**Navigation 契約（仍守）**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`；**root content 恒定**：bookGrid / emptyState 由 `if books.isEmpty` 直接決定，**不可**用 `if/else` 替換 root content（root-content swap 在顯示過替換內容後會**永久破壞** value-based push，NAVDBG 坐實）。`navigationDestination(for: Book.self)` 接住書籍 → reader 的 value-based push（freeze-fix 契約 PR #366/#368/#370/#373）。書本為本地 `@Query`、無遠端 catalog，故無 `.refreshable`。鏡射 `NotebookListView.swift` root-恒定模式 |
 | `BookshelfPreviews.swift` | 133 | `#Preview` 集中地（mock data scaffolds、各 row 型態樣本） |
 
 ### Coordinator Layer（導航協調）
@@ -28,7 +28,6 @@ verified_against: d2169593
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Components/BookCard.swift` | 207 | `struct BookCard: View` — 書架單列 row（cover / 標題 / 進度 / context menu）。進度條永遠保留占位（0% 也不壓縮卡片高度），進度值 clamp 到 [0,1]，0% 時 a11y 隱藏 |
-| `Components/PodcastSeriesCard.swift` | ~85 | `struct PodcastSeriesCard: View` — 播客 series row（封面 + waveform/追蹤 badge + 標題 + `主持人 · N 集` 串流 meta 行，`metaLine` 無主持人退回純集數，單行 tail 截斷保卡高一致） |
 
 ### Token Layer（local metric）
 
@@ -40,7 +39,7 @@ verified_against: d2169593
 
 ## 改動規則
 
-- **新增書籍/播客 row UI** → `Components/` 子目錄擴充（`BookCard` / `PodcastSeriesCard` 或新增同層 row 元件）
+- **新增書籍 row UI** → `Components/` 子目錄擴充（`BookCard` 或新增同層 row 元件）。播客 row 元件已隨 podcast section 遷出至 `Views/Podcast/`（見 `podcast.md`）
 - **新增匯入流程** → `BookshelfView` body（建議走 `.sheet` + 既有 `appSheet` modifier）+ `BookshelfCoordinator` 加 navigation state
 - **新增資料來源（書籍/播客以外的內容類型）** → 評估是否獨立成新 feature scope，避免 `BookshelfView` 繼續長
 - **新增可復用 UI 元件** → 評估是否屬於 app shell 級（`AppShellComponents.swift`）；feature 專屬留在 `BookshelfView` 內
@@ -49,7 +48,7 @@ verified_against: d2169593
 ## State 邊界
 
 - `BookshelfCoordinator`：書架導航與 sheet 狀態（匯入 / 詳情 / 批次刪除確認），由 `BookshelfView` 持有，不外洩
-- 書籍與播客 series 資料來源於 SwiftData `@Query` + `@Environment(\.modelContext)`，不放 coordinator
+- 書籍資料來源於 SwiftData `@Query` + `@Environment(\.modelContext)`，不放 coordinator（播客 series 已遷至 `PodcastHomeView`）
 - 匯入進度狀態走 `ImportProgressCallback`（app shell 層），不放 feature
 
 ## 共用依賴
@@ -67,3 +66,4 @@ verified_against: d2169593
 - `docs/snapshot/feature_metrics.md` — `BookshelfMetrics` token 升降紀錄
 - `docs/reference/feature_boundary/notebook.md` — bookshelf 透過 notebook 入口進入詞庫流程
 - `docs/reference/feature_boundary/reader.md` — bookshelf 點書打開的 reader 主場景
+- `docs/reference/feature_boundary/podcast.md` — podcast 已抽離為獨立頂層 section（`PodcastHomeView`），不再經書架進入
