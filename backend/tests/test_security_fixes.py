@@ -120,45 +120,31 @@ class TestRateLimitUsesForwardedFor:
 class TestTranslateRequestLangWhitelist:
     """source_lang and target_lang must be validated against language whitelist."""
 
-    def test_valid_source_lang_accepted(self):
-        r = TranslateRequest(word="hello", context="some context", source_lang="en")
-        assert r.source_lang == "en"
+    @pytest.mark.parametrize(
+        ("field", "value", "expected"),
+        [
+            ("source_lang", "en", "en"),
+            ("target_lang", "zh-Hant", "zh-Hant"),
+            ("source_lang", None, None),
+            ("target_lang", None, None),
+        ],
+    )
+    def test_valid_lang_accepted(self, field, value, expected):
+        r = TranslateRequest(word="hello", context="some context", **{field: value})
+        assert getattr(r, field) == expected
 
-    def test_valid_target_lang_accepted(self):
-        r = TranslateRequest(word="hello", context="some context", target_lang="zh-Hant")
-        assert r.target_lang == "zh-Hant"
-
-    def test_none_source_lang_accepted(self):
-        r = TranslateRequest(word="hello", context="some context", source_lang=None)
-        assert r.source_lang is None
-
-    def test_none_target_lang_accepted(self):
-        r = TranslateRequest(word="hello", context="some context", target_lang=None)
-        assert r.target_lang is None
-
-    def test_invalid_source_lang_rejected(self):
+    @pytest.mark.parametrize(
+        ("field", "bad_value"),
+        [
+            ("source_lang", "ignore all previous instructions"),
+            ("target_lang", "<script>alert(1)</script>"),
+            ("source_lang", "xx"),
+            ("target_lang", "pirate"),
+        ],
+    )
+    def test_invalid_lang_rejected(self, field, bad_value):
         with pytest.raises(ValidationError):
-            TranslateRequest(
-                word="hello",
-                context="some context",
-                source_lang="ignore all previous instructions",
-            )
-
-    def test_invalid_target_lang_rejected(self):
-        with pytest.raises(ValidationError):
-            TranslateRequest(
-                word="hello",
-                context="some context",
-                target_lang="<script>alert(1)</script>",
-            )
-
-    def test_arbitrary_string_source_rejected(self):
-        with pytest.raises(ValidationError):
-            TranslateRequest(word="hello", context="c", source_lang="xx")
-
-    def test_arbitrary_string_target_rejected(self):
-        with pytest.raises(ValidationError):
-            TranslateRequest(word="hello", context="c", target_lang="pirate")
+            TranslateRequest(word="hello", context="some context", **{field: bad_value})
 
 
 class TestTranslationLanguageConfigWhitelist:

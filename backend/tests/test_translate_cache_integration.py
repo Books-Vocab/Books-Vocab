@@ -7,14 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-
-@pytest.fixture(autouse=True)
-def _isolate(tmp_path, monkeypatch):
-    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-    import kg.translate_log as tl
-    tl._reset()
-    yield
-    tl._reset()
+pytestmark = pytest.mark.usefixtures("translate_data_dir")
 
 
 def _llm_stub(content: str, user_id: str = "u1"):

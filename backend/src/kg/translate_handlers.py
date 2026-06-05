@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from openai import OpenAIError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
-from .exceptions import ExternalServiceError
+from .exceptions import ExternalServiceError, KGError
 from .llm.providers import provider_for
 from .service_factories import create_async_client
 from .tracked_llm import TrackedLLM
@@ -52,7 +52,7 @@ async def _safe_translate(
         if logger:
             logger.exception("%s failed: %s", label, exc)
         # Do not embed inner exception text in client-visible detail.
-        raise HTTPException(500, f"{label} failed") from exc
+        raise KGError(f"{label} failed") from exc
 
 
 async def translate_quick_response(

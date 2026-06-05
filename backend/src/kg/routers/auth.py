@@ -8,7 +8,7 @@ from ..auth_handlers import auth_verify_response
 from ..deps import _create_jwt_token, _resolve_and_link_user
 from ..google_auth import verify_google_token
 
-router = APIRouter()
+router = APIRouter(tags=["auth"])
 
 
 @router.post("/auth/verify", response_model=AuthVerifyResponse)

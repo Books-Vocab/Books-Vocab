@@ -31,7 +31,7 @@ from ..deps import (
 )
 from ..settings import KGSettings
 
-router = APIRouter()
+router = APIRouter(tags=["billing"])
 
 
 def _decode_signed_txn(signed_transaction_info: str, settings: KGSettings) -> dict[str, Any]:

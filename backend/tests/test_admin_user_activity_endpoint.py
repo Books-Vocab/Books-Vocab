@@ -1,74 +1,36 @@
 """HTTP-level smoke tests for admin user-activity + translate-history endpoints."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
 
-from kg.api import app
-from kg.settings import KGSettings
-
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
-ADMIN_TOKEN = "test-admin-token-value"
-
-
-def _swap_settings(new_settings):
-    from kg.billing import default_subscription_payload
-    from kg.user_store import CachedUserStore, normalize_users_payload
-
-    app.state.kg_settings = new_settings
-
-    def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(new_settings.users_file, _normalize)
-    app.state.user_store = user_store
-    app.state.load_users = lambda: user_store.load()
-    app.state.save_users = lambda users: user_store.save(users)
+from conftest import ADMIN_TOKEN, make_admin_client
 
 
 @pytest.fixture()
 def admin_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    data_dir = tmp_path
-    (data_dir / "users").mkdir()
-    users_file = data_dir / "users.json"
-    users_file.write_text(json.dumps({"_meta": {}, "u1": {"config": {}}}))
-
-    monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
     import kg.judge_log as jl
     import kg.pipeline_log as pl
     import kg.translate_log as tl
 
-    monkeypatch.setattr(pl, "DATA_DIR", data_dir, raising=True)
-    monkeypatch.setattr(pl, "DB_PATH", data_dir / "pipeline_runs.db", raising=True)
-    monkeypatch.setattr(jl, "DATA_DIR", data_dir, raising=True)
-    monkeypatch.setattr(jl, "DB_PATH", data_dir / "judge_log.db", raising=True)
-    tl._reset()
-    pl._reset()
-    jl._reset()
-
-    original_settings = app.state.kg_settings
-    test_settings = KGSettings(
-        data_dir=data_dir,
-        jwt_secret=TEST_JWT_SECRET,
-        admin_token=ADMIN_TOKEN,
-    )
-    _swap_settings(test_settings)
-
-    try:
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(client=client, data_dir=data_dir)
-    finally:
-        app.state.kg_settings = original_settings
+    def setup_logs(data_dir, mp):
+        mp.setattr(pl, "DATA_DIR", data_dir, raising=True)
+        mp.setattr(pl, "DB_PATH", data_dir / "pipeline_runs.db", raising=True)
+        mp.setattr(jl, "DATA_DIR", data_dir, raising=True)
+        mp.setattr(jl, "DB_PATH", data_dir / "judge_log.db", raising=True)
         tl._reset()
         pl._reset()
         jl._reset()
+
+    def teardown_logs():
+        tl._reset()
+        pl._reset()
+        jl._reset()
+
+    yield from make_admin_client(
+        tmp_path, monkeypatch, setup_logs=setup_logs, teardown_logs=teardown_logs
+    )
 
 
 def _auth_headers() -> dict[str, str]:

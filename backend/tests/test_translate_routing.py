@@ -1,7 +1,6 @@
 """Phase 3 — translate call sites route through the LLM provider registry."""
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -10,18 +9,12 @@ import pytest
 from kg.api_models import TranslateRequest
 from kg.translate_handlers import translate_quick_response
 
-_ROUTING_PREFIX = "LLM_PROVIDER_"
-_MODEL_ENV = ("GEMINI_MODEL", "DEEPSEEK_MODEL")
-
 _USER = {"id": "u_route_test", "config": {}, "record": None}
 _LOGGER = SimpleNamespace(error=lambda *a, **k: None, exception=lambda *a, **k: None)
 
 
 @pytest.fixture(autouse=True)
-def _clean_routing_env(monkeypatch):
-    for name in list(os.environ):
-        if name.startswith(_ROUTING_PREFIX) or name in _MODEL_ENV:
-            monkeypatch.delenv(name, raising=False)
+def _clean_routing_env(clean_routing_env):
     yield
 
 

@@ -9,7 +9,7 @@ from kg.api_models.translate import TranslationLanguageConfig
 
 class AuthVerifyRequest(BaseModel):
     provider: Literal["apple", "google"]
-    token: str = Field(max_length=10000)
+    token: str = Field(min_length=1, max_length=10000)
     # NOTE: client-supplied `email` field is intentionally accepted-and-ignored
     # (Pydantic drops unknown fields by default). Server trusts ONLY the
     # provider-token-derived email for account linkage; see C1 takeover

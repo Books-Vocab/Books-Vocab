@@ -9,6 +9,8 @@ from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
+from .auth_types import VerifiedIdentity
+
 logger = logging.getLogger(__name__)
 
 # Bounded timeout (seconds) for Google certificate-endpoint requests.
@@ -54,7 +56,7 @@ def _verify_oauth2_token_sync(token: str, client_id: str) -> dict:
     return id_token.verify_oauth2_token(token, request_adapter, client_id)
 
 
-async def verify_google_token(token: str, client_id: str) -> tuple[str, str | None, bool]:
+async def verify_google_token(token: str, client_id: str) -> VerifiedIdentity:
     """Validate Google ID Token and return ``(sub, email, email_verified)``.
 
     Returns the token-derived email and verification flag so callers can
@@ -86,7 +88,7 @@ async def verify_google_token(token: str, client_id: str) -> tuple[str, str | No
         else:
             email_verified = bool(raw_verified)
 
-        return str(sub), email, email_verified
+        return VerifiedIdentity(str(sub), email, email_verified)
 
     except ValueError as e:
         # Invalid token signature or claims

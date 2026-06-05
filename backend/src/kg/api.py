@@ -37,13 +37,12 @@ _mem_log = install_memory_log_handler(maxlen=1000)
 from .admin_wiring import create_admin_handlers
 
 # Re-export deps symbols so existing tests (import kg.api as api_mod) continue to work.
-from .deps import (  # noqa: F401  # noqa: F401
+from .deps import (  # noqa: F401
     _MAX_USER_LOCKS,
     _USER_LOCKS,
     _USER_LOCKS_MUTEX,
     _apply_quota_headers,
     _build_entitlements_response,
-    _build_links_by_kind,
     _card_response,
     _card_store,
     _check_quota,
@@ -54,8 +53,6 @@ from .deps import (  # noqa: F401  # noqa: F401
     _daily_stats_store,
     _default_subscription_payload,
     _embedding_store,
-    _gemini_async_client,
-    _gemini_client,
     _get_settings,
     _graph_store,
     _is_pro,
@@ -175,9 +172,9 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         logger.info("KG API shutting down")
         from .worker_guard import release_worker_lock
         release_worker_lock()
-        from .service_factories import reset_async_gemini_client, reset_gemini_client
-        reset_gemini_client()
-        await reset_async_gemini_client()
+        from .service_factories import reset_async_clients, reset_clients
+        reset_clients()
+        await reset_async_clients()
 
     app = FastAPI(title="Knowledge Graph API", version="0.1.0", lifespan=lifespan)
     app.state.kg_settings = settings

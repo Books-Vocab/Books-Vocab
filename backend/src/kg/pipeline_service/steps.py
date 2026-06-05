@@ -340,7 +340,7 @@ async def _step_embed_and_judge(
                 graph.batch_add_links(all_links)
                 _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
             except Exception:
-                logger.warning("[%s] Failed to persist partial links/touch", uid)
+                logger.warning("[%s] Failed to persist partial links/touch", uid, exc_info=True)
         # Drain in-flight futures: their exceptions are unobserved otherwise,
         # and asyncio logs "Future exception was never retrieved" at ERROR
         # level on GC. We're already aborting; cancel pending and silently

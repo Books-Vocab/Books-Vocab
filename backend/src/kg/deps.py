@@ -17,7 +17,7 @@ from typing import Any
 from fastapi import Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .api_models import CardLinkSummaryResponse, EntitlementsResponse
+from .api_models import EntitlementsResponse
 from .billing import (
     build_entitlements_response,
     current_admin_grant_record,
@@ -31,11 +31,9 @@ from .difficulty import get_tier
 from .graph import LINK_LABELS, GraphStore, LinkKind
 from .sentry_init import bind_user
 from .service_factories import (
-    create_async_gemini_client,
     create_card_store,
     create_daily_stats_store,
     create_embedding_store,
-    create_gemini_client,
     create_graph_store,
     create_notebook_store,
 )
@@ -43,7 +41,7 @@ from .settings import KGSettings
 from .types import UserRecord
 from .user_context import resolve_current_user
 from .user_store import collect_account_ids_for_deletion, parse_datetime
-from .vocab_shared import build_links_by_kind, card_response
+from .vocab_shared import card_response
 
 logger = logging.getLogger("kg.api")
 
@@ -125,25 +123,8 @@ def _notebook_store(user_dir: Path):
     return create_notebook_store(user_dir)
 
 
-def _gemini_client():
-    return create_gemini_client()
-
-
-def _gemini_async_client():
-    return create_async_gemini_client()
-
-
 def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):
     return create_embedding_store(user_dir, llm=llm, notebook_id=notebook_id)
-
-
-def _build_links_by_kind(
-    card_id: str, graph: GraphStore, cards_by_id: dict[str, Any],
-) -> dict[str, list[CardLinkSummaryResponse]]:
-    return build_links_by_kind(
-        card_id, graph=graph, cards_by_id=cards_by_id,
-        link_kinds=list(LinkKind), link_labels=LINK_LABELS,
-    )
 
 
 def _card_response(card, graph: GraphStore, cards_by_id: dict[str, Any]):
@@ -198,10 +179,6 @@ def _write_subscription_snapshot(
 def _notification_status(notification_type: str | None, subtype: str | None) -> str | None:
     return notification_status(notification_type, subtype)
 
-
-# ---------------------------------------------------------------------------
-# Quota helpers (extracted to deps_quota.py)
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Auth helpers (used by auth router)
