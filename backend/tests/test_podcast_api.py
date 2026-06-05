@@ -13,18 +13,20 @@ def podcast_api(isolated_api):
     return isolated_api, podcasts
 
 
-def test_list_requires_auth(podcast_api):
+def test_list_allows_guest_browse(podcast_api):
+    """Catalog browsing is open to guests (tiered model — see test_podcast_tiering)."""
     api, _ = podcast_api
     resp = api.client.get("/api/podcasts")
-    assert resp.status_code == 401
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
-def test_series_detail_requires_auth(podcast_api):
+def test_series_detail_allows_guest_browse(podcast_api):
     api, podcasts = podcast_api
     (podcasts / "series_a").mkdir()
     (podcasts / "series_a" / "metadata.json").write_text("{}")
     resp = api.client.get("/api/podcasts/series_a")
-    assert resp.status_code == 401
+    assert resp.status_code == 200
 
 
 def test_subtitle_requires_auth(podcast_api):
@@ -361,10 +363,12 @@ def test_audio_format_cached_per_series_s3(monkeypatch, _clear_audio_fmt_cache):
 
 # ── Cover image endpoint (pipeline cover stage → <sid>/cover.png) ────────────
 
-def test_cover_requires_auth(podcast_api):
+def test_cover_allows_guest_browse(podcast_api):
+    """Covers are part of the public showcase — guests reach the handler
+    (404 here only because no cover file exists), never a 401 auth wall."""
     api, _ = podcast_api
     resp = api.client.get("/api/podcasts/series_a/cover")
-    assert resp.status_code == 401
+    assert resp.status_code == 404
 
 
 def test_cover_endpoint_disk(podcast_api):

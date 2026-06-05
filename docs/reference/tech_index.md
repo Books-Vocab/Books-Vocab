@@ -27,7 +27,8 @@ verified_against: 068e6105
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發 |
-| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404) |
+| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**訪客**;`audio` gate — guest→`401 {code:auth_required}`、free→只給 ep1 的 `preview.*`(其餘 `403 {code:upgrade_required}`)、pro→full `audio.*`;`subtitle`/`progress` 仍 `get_current_user` |
+| `podcast_access.py` | — | 播客分層 policy(純函式,免 FastAPI):`resolve_podcast_tier(user|None)→guest/free/pro`(由 auth + `_is_pro` 推導,**無 per-series 旗標**,牆統一)、`is_free_previewable_episode`(`FREE_PREVIEW_EP_NUM=1`)、stem 常數、error code。free preview 走**獨立 `preview.*` 物件**而非 byte 截斷(progressive MP4 單 moov 無法乾淨截) |
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
 | `admin.py` | `/api/admin/*`, `/admin/*` | dashboard / user detail / logs / test-matrix |

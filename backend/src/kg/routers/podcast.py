@@ -1,10 +1,22 @@
 r"""Podcast read API.
 
-Authorization model: **public-read for any authenticated user**. Podcasts are
-shared editorial content (curated audio + transcripts shipped by ops via
-``ops/podcast_upload.sh``); they are not per-user content and have no owner.
-Every endpoint here therefore only checks ``Depends(get_current_user)`` —
-authentication, not authorization — and serves the same payload to all callers.
+Authorization model: **tiered access** (guest / free / pro), enforced here and
+defined in :mod:`kg.podcast_access`. Podcasts are shared editorial content
+(curated audio + transcripts shipped by ops via ``ops/podcast_upload.sh``) with
+no per-user owner, but access is *not* uniform:
+
+* **Browse** (``GET /api/podcasts``, ``/{series_id}``, ``/{series_id}/cover``)
+  uses :func:`get_current_user_optional` — **guests included**. Anyone may see
+  the catalog, series detail, and covers (the streaming-platform showcase).
+* **Playback** (``GET /{series_id}/{ep_num}/audio``) is gated by tier:
+  guest → ``401 auth_required``; free → only the *preview* clip of episode 1
+  (``403 upgrade_required`` otherwise); pro → full audio. The free caller is
+  served a physically separate ``preview.*`` object, so the full audio is never
+  partially exposed — a progressive MP4 cannot be byte-truncated cleanly (its
+  single ``moov`` advertises the full duration), which is exactly why the
+  preview is a pre-generated asset rather than a Range cap.
+* **Per-user** routes (``progress``, ``subtitle``) keep ``get_current_user`` —
+  they require a real user id / only matter during (authenticated) playback.
 
 Hardening already in place:
 
@@ -40,8 +52,17 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import podcast_progress as progress_store
-from ..deps import get_current_user
+from ..deps import get_current_user, get_current_user_optional
+from ..podcast_access import (
+    ERR_AUTH_REQUIRED,
+    ERR_UPGRADE_REQUIRED,
+    FULL_AUDIO_STEM,
+    PREVIEW_AUDIO_STEM,
+    is_free_previewable_episode,
+    resolve_podcast_tier,
+)
 from ..settings import KGSettings
+from ..types import UserRecord
 
 logger = logging.getLogger(__name__)
 
@@ -162,8 +183,13 @@ def _s3_audio_format(request: Request, series_id: str) -> str:
     return fmt
 
 
-def _audio_filename(request: Request, series_id: str, ep_num: int) -> str:
+def _audio_filename(request: Request, series_id: str, ep_num: int, *, stem: str = FULL_AUDIO_STEM) -> str:
     """Resolve the audio filename for an episode, honouring m4a-first / mp3-fallback.
+
+    ``stem`` selects the asset: ``"audio"`` (full episode) or ``"preview"`` (the
+    free-tier clip). The preview is produced by stream-copy from the full audio
+    so it shares the series' container/format — hence the same ``audioFormat``
+    resolution applies to both.
 
     For S3-backed deployments we trust ``metadata.json``'s ``audioFormat``
     field (written by ``ops/podcast_upload.sh``). For disk deployments we
@@ -171,12 +197,12 @@ def _audio_filename(request: Request, series_id: str, ep_num: int) -> str:
     Track B keep playing without manual migration.
     """
     if _using_s3(request):
-        return f"audio.{_s3_audio_format(request, series_id)}"
+        return f"{stem}.{_s3_audio_format(request, series_id)}"
     base = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}"
-    for name in ("audio.m4a", "audio.mp3"):
+    for name in (f"{stem}.m4a", f"{stem}.mp3"):
         if (base / name).exists():
             return name
-    return "audio.m4a"
+    return f"{stem}.m4a"
 
 
 def _media_type_for(filename: str) -> str:
@@ -280,7 +306,7 @@ def _serve_static_media(
 
 
 @router.get("/api/podcasts")
-def list_podcasts(request: Request, user: dict = Depends(get_current_user)):
+def list_podcasts(request: Request, user: UserRecord | None = Depends(get_current_user_optional)):
     if _using_s3(request):
         data = _read_json_from_s3(request, "index.json", context="index")
         if data is None:
@@ -386,7 +412,7 @@ def get_user_progress(
 
 
 @router.get("/api/podcasts/{series_id}")
-def get_podcast_series(series_id: str, request: Request, user: dict = Depends(get_current_user)):
+def get_podcast_series(series_id: str, request: Request, user: UserRecord | None = Depends(get_current_user_optional)):
     _validate_series_id(series_id)
     if _using_s3(request):
         data = _read_json_from_s3(
@@ -495,10 +521,12 @@ def _serve_audio_from_s3(
     series_id: str,
     ep_num: int,
     range_header: str | None,
+    *,
+    stem: str = FULL_AUDIO_STEM,
 ):
     cfg = _settings(request)
     s3 = _s3_client(request)
-    filename = _audio_filename(request, series_id, ep_num)
+    filename = _audio_filename(request, series_id, ep_num, stem=stem)
     key = f"{series_id}/ep_{ep_num:02d}/{filename}"
     media_type = _media_type_for(filename)
 
@@ -541,15 +569,49 @@ def _serve_audio_from_s3(
     )
 
 
+def _gate_audio_access(user: UserRecord | None, ep_num: int) -> str:
+    """Enforce the tier policy and return the asset stem to serve.
+
+    * guest → ``401 auth_required`` (must sign in to play anything).
+    * free + non-previewable episode → ``403 upgrade_required``.
+    * free + previewable episode → serve the ``preview`` stem.
+    * pro → serve the full ``audio`` stem.
+
+    Errors carry a machine code in ``detail`` so the client routes to the login
+    sheet vs the paywall without parsing a human string.
+    """
+    tier = resolve_podcast_tier(user)
+    if tier == "guest":
+        raise HTTPException(
+            status_code=401,
+            detail={"code": ERR_AUTH_REQUIRED, "message": "Sign in to play podcasts"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if tier == "free":
+        if not is_free_previewable_episode(ep_num):
+            raise HTTPException(
+                status_code=403,
+                detail={"code": ERR_UPGRADE_REQUIRED, "message": "Upgrade to Pro to play this episode"},
+            )
+        return PREVIEW_AUDIO_STEM
+    return FULL_AUDIO_STEM
+
+
 @router.get("/api/podcasts/{series_id}/{ep_num}/audio")
 def get_podcast_audio(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserRecord | None = Depends(get_current_user_optional),
     range_header: Annotated[str | None, Header(alias="Range")] = None,
 ):
-    """Authenticated audio stream with HTTP Range / 206 Partial Content support.
+    """Tiered audio stream with HTTP Range / 206 Partial Content support.
+
+    Access is gated by :func:`_gate_audio_access` (guest → 401, free → preview
+    of ep 1 only, pro → full). The resolved *stem* (``audio`` / ``preview``)
+    then drives the same S3-proxy / disk-Range machinery — a free caller is
+    served a *physically separate* ``preview.*`` object, so the full audio is
+    never partially exposed.
 
     Two backends:
 
@@ -564,12 +626,13 @@ def get_podcast_audio(
       filesystem. The legacy public StaticFiles mount was removed in 2026-05.
     """
     _validate_series_id(series_id)
+    stem = _gate_audio_access(user, ep_num)
 
     if _using_s3(request):
-        return _serve_audio_from_s3(request, series_id, ep_num, range_header)
+        return _serve_audio_from_s3(request, series_id, ep_num, range_header, stem=stem)
 
     # ── disk-mode fallback (m4a → mp3 probe) ──
-    filename = _audio_filename(request, series_id, ep_num)
+    filename = _audio_filename(request, series_id, ep_num, stem=stem)
     audio_file = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}" / filename
     if not audio_file.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
@@ -633,7 +696,7 @@ def get_podcast_subtitle(
 def get_podcast_cover(
     series_id: str,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserRecord | None = Depends(get_current_user_optional),
 ):
     """Authenticated series cover image (PNG), produced by the pipeline ``cover``
     stage and uploaded as ``<sid>/cover.png``. Mirrors the subtitle proxy: S3
