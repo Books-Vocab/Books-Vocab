@@ -20,6 +20,7 @@ from kg.ops_shared import (
     print_table,
     provider_column_expr,
     resolve_uid,
+    table_columns,
 )
 from kg.quota_service import token_cost_usd
 
@@ -409,6 +410,151 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     sys.exit(subprocess.call(cmd))
 
 
+def cmd_sync_trace(args: argparse.Namespace) -> None:
+    """用戶 sync 完整時間線 — 合併 cards + token_usage + judge_log + translate_log。"""
+    uid = resolve_uid(args.uid, data_dir())
+    date = args.date or datetime.now(UTC).strftime("%Y-%m-%d")
+    events: list[dict] = []
+    dd = data_dir()
+
+    # 1. Cards 變更
+    cards_db = dd / "users" / uid / "cards.db"
+    if cards_db.exists():
+        conn = connect_ro(cards_db)
+        try:
+            # 容忍 legacy cards.db 缺欄（mode 不在 schema.py 的 migration 清單；
+            # 舊 DB 可能也缺 notebook_id/review_count/next_review_at）— 缺則取 NULL。
+            ccols = table_columns(conn, "card")
+            def _card_col(name: str) -> str:
+                return name if name in ccols else "NULL"
+            rows = conn.execute(
+                "SELECT id, content, is_deleted, "
+                f"{_card_col('notebook_id')}, created_at, updated_at, "
+                f"{_card_col('mode')}, {_card_col('review_count')}, {_card_col('next_review_at')} "
+                "FROM card WHERE date(created_at) = ? OR date(updated_at) = ? "
+                "ORDER BY updated_at",
+                (date, date),
+            ).fetchall()
+            for r in rows:
+                created_today = bool(r[4] and r[4][:10] == date)
+                event_type = "card_created" if created_today else "card_updated"
+                if r[2]:  # is_deleted
+                    event_type = "card_deleted"
+                events.append({
+                    "ts": r[5] or r[4] or "",
+                    "type": event_type,
+                    "source": "cards",
+                    "detail": {
+                        "id": r[0],
+                        "content": r[1],
+                        "notebook_id": r[3],
+                        "mode": r[6],
+                        "review_count": r[7],
+                    },
+                })
+        finally:
+            conn.close()
+
+    # 2. Token usage (API calls)
+    token_db = dd / "token_usage.db"
+    if token_db.exists():
+        conn = connect_ro(token_db)
+        try:
+            # legacy token_usage.db 可能尚未跑 provider/model migration（見 token_tracker）。
+            tcols = table_columns(conn, "token_usage")
+            prov = "provider" if "provider" in tcols else "NULL"
+            model = "model" if "model" in tcols else "NULL"
+            rows = conn.execute(
+                f"SELECT call_type, input_tokens, output_tokens, created_at, {prov}, {model} "
+                "FROM token_usage WHERE user_id = ? AND date(created_at) = ? "
+                "ORDER BY created_at",
+                (uid, date),
+            ).fetchall()
+            for r in rows:
+                events.append({
+                    "ts": r[3] or "",
+                    "type": f"api_{r[0]}",
+                    "source": "token_usage",
+                    "detail": {
+                        "input_tokens": r[1],
+                        "output_tokens": r[2],
+                        "provider": r[4],
+                        "model": r[5],
+                    },
+                })
+        finally:
+            conn.close()
+
+    # 3. Judge log
+    judge_db = dd / "judge_log.db"
+    if judge_db.exists():
+        conn = connect_ro(judge_db)
+        try:
+            rows = conn.execute(
+                "SELECT from_id, to_id, verdict, accepted, reject_reason, created_at "
+                "FROM judge_log WHERE user_id = ? AND date(created_at) = ? "
+                "ORDER BY created_at",
+                (uid, date),
+            ).fetchall()
+            for r in rows:
+                events.append({
+                    "ts": r[5] or "",
+                    "type": "judge_accept" if r[3] else "judge_reject",
+                    "source": "judge_log",
+                    "detail": {
+                        "from_id": r[0],
+                        "to_id": r[1],
+                        "verdict": r[2],
+                        "reason": r[4],
+                    },
+                })
+        finally:
+            conn.close()
+
+    # 4. Translate log
+    translate_db = dd / "translate_log.db"
+    if translate_db.exists():
+        conn = connect_ro(translate_db)
+        try:
+            rows = conn.execute(
+                "SELECT operation, word, context, latency_ms, created_at "
+                "FROM translate_log WHERE user_id = ? AND date(created_at) = ? "
+                "ORDER BY created_at",
+                (uid, date),
+            ).fetchall()
+            for r in rows:
+                events.append({
+                    "ts": r[4] or "",
+                    "type": f"translate_{r[0]}",
+                    "source": "translate_log",
+                    "detail": {
+                        "word": r[1],
+                        "context": (r[2] or "")[:50] if r[2] else None,
+                        "latency_ms": r[3],
+                    },
+                })
+        finally:
+            conn.close()
+
+    # 排序
+    events.sort(key=lambda e: e["ts"])
+
+    if args.json:
+        emit_json({"user_id": uid, "date": date, "events": events})
+        return
+
+    print(f"Sync Trace for {uid} on {date}")
+    print(f"Total events: {len(events)}")
+    print()
+    for e in events:
+        ts = e["ts"][:19] if e["ts"] else "?"
+        print(f"{ts}  [{e['source']:12}] {e['type']}")
+        for k, v in e["detail"].items():
+            if v is not None:
+                print(f"  {k}: {v}")
+        print()
+
+
 # ── CLI 進入點 ──────────────────────────────────────────
 
 
@@ -441,7 +587,7 @@ def main() -> None:
     # card-find
     p = sub.add_parser("card-find", help="byte-exact 子字串搜尋 card.content（免寫 SQL）")
     p.add_argument("uid", help="User ID")
-    p.add_argument("substring", help="搜尋子字串（ASCII case-insensitive，% _ 當字面字元）")
+    p.add_argument("substring", help="搜尋子字串（ASCII case-insensitive，%% _ 當字面字元）")
     p.set_defaults(func=cmd_card_find)
 
     # card-get
@@ -476,6 +622,13 @@ def main() -> None:
                    help="時間範圍（預設 month）")
     p.add_argument("--json", action="store_true", help="以 JSON 輸出")
     p.set_defaults(func=cmd_cost_overview)
+
+    # sync-trace
+    p = sub.add_parser("sync-trace", help="用戶 sync 完整時間線（cards + API + judge + translate）")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("--date", help="日期 (YYYY-MM-DD, 預設今天)")
+    p.add_argument("--json", action="store_true", help="以 JSON 輸出")
+    p.set_defaults(func=cmd_sync_trace)
 
     args = parser.parse_args()
     args.func(args)
