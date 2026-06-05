@@ -99,6 +99,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 |------|------|
 | `ios_build.sh` | iOS Release build,共享 `shlock` |
 | `ios_test.sh` | iOS unit tests;`-g pattern` 過濾 |
+| `ios_release.sh` | iOS App Store/TestFlight 發版:archive→export→`--upload`(對外 gate,預設不上傳);manual signing(Apple Distribution cert + `KG App Store` profile,一次性建置與憑證見 `~/.secrets/apple/README.md`);共用 `/tmp/kg-ios-build.lock`;`--upload` 前擋重複 build number;`--key <id>` 選 ASC API key。設定檔 `ios/ExportOptions.plist` |
 | `gen_ios_baseline.sh` | 再生 `ios_frontend_baseline.md` 快照 |
 | `devops_kg_safe.sh` | 部署 / 維護 safe wrapper |
 | `status_all.sh` | 一覽 backend / caddy / 容器狀態 |
