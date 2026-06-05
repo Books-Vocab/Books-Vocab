@@ -223,6 +223,7 @@ struct KGVocabView: View {
             return .error(
                 title: "無法載入單字".localized,
                 systemImage: "exclamationmark.triangle",
+                description: "請確認網路連線後重試".localized,
                 retryAction: {
                     Task {
                         await coordinator.loadInitialData(
@@ -248,9 +249,9 @@ struct KGVocabView: View {
                 canRetry: true
             )
         }
-        if let errorMessage = coordinator.errorMessage {
+        if coordinator.errorMessage != nil {
             return .init(
-                message: L10n.format("離線模式，同步失敗：%@", errorMessage),
+                message: L10n.string("離線模式，同步失敗。請確認網路連線後重試"),
                 canDismiss: true,
                 canRetry: false
             )

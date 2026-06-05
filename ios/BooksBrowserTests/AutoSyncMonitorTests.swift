@@ -86,4 +86,11 @@ struct AutoSyncMonitorTests {
         )
         #expect(result == false)
     }
+
+    @Test func shouldScheduleEvaluationOnlyWhenConnectivityRestores() {
+        #expect(AutoSyncMonitor.shouldScheduleOnConnectivityChange(wasConnected: false, isConnected: true))
+        #expect(!AutoSyncMonitor.shouldScheduleOnConnectivityChange(wasConnected: true, isConnected: true))
+        #expect(!AutoSyncMonitor.shouldScheduleOnConnectivityChange(wasConnected: true, isConnected: false))
+        #expect(!AutoSyncMonitor.shouldScheduleOnConnectivityChange(wasConnected: false, isConnected: false))
+    }
 }

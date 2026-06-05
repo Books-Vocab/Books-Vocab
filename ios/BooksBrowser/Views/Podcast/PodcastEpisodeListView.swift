@@ -119,6 +119,7 @@ struct PodcastEpisodeListView: View {
             return .error(
                 title: L10n.string("無法載入集數"),
                 systemImage: "exclamationmark.triangle",
+                description: L10n.string("請確認網路連線後重試"),
                 retryAction: {
                     Task { await reloadFromStore() }
                 }

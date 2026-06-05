@@ -8,7 +8,7 @@ enum VocabScenePhase {
     /// list 場景首次載入 — 以 AppSkeletonCard 骨架佔位，比裸 spinner 更貼近最終版面
     case loadingSkeleton(rowCount: Int = 6)
     case empty(title: String, systemImage: String, description: String, action: AppEmptyStateAction? = nil)
-    case error(title: String, systemImage: String, retryAction: () -> Void)
+    case error(title: String, systemImage: String, description: String? = nil, retryAction: () -> Void)
     case content
 }
 
@@ -67,11 +67,12 @@ struct VocabSceneShell<Content: View>: View {
                     )
                 }
 
-            case .error(let title, let systemImage, let retryAction):
+            case .error(let title, let systemImage, let description, let retryAction):
                 centeredWrapper {
                     VocabStateMessageCard(
                         title: title,
-                        systemImage: systemImage
+                        systemImage: systemImage,
+                        description: description
                     ) {
                         Button("重試".localized, action: retryAction)
                             .buttonStyle(.vocabAction())
