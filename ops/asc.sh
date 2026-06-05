@@ -17,6 +17,9 @@
 #   ./ops/asc.sh reviews [N]                    # 列最新 N 則用戶評論 + 是否已回覆（預設 20）
 #   ./ops/asc.sh accessibility                  # 列無障礙宣告（唯讀；建立/發布走 GUI）
 #   ./ops/asc.sh reply-review <reviewId> <text> # 回覆/更新某則評論（dry-run，--yes 才送）
+#   ./ops/asc.sh subscriptions                 # 列訂閱群組→方案（productId/state/週期/代表價/在地化）
+#   ./ops/asc.sh iap                            # 列一次性 App 內購買（inAppPurchasesV2）
+#   ./ops/asc.sh pricing                        # App 基礎定價（各地區 customerPrice）+ 供應地區
 #   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改版本文案（預設 dry-run，--yes 才真寫）
 #   ./ops/asc.sh set-review <field> <value>               # 改審查資訊：備註/demo帳號/聯絡人（dry-run，--yes 才寫）
 #   ./ops/asc.sh set-appinfo <field> <value> [--locale L] # 改 App 層本地化：名稱/副標/隱私URL（dry-run，--yes 才寫）
@@ -438,9 +441,11 @@ cmd_reviews() {
              else (.included // []) as $resp
                | (.data // [])[]
                | . as $r
-               | ($resp[] | select(.id == ($r.relationships.response.data.id // "x")) | .attributes.responseBody) as $reply
-               | "[\($r.attributes.territory)] \("★" * $r.attributes.rating)  \($r.attributes.reviewerNickname)  \($r.attributes.createdDate[0:10])  id=\($r.id)",
-                 "  「\($r.attributes.title)」 \($r.attributes.body | gsub("[\\n\\r]";" ") | .[0:120])",
+               # 用 first(...) // null：無回覆時 select 為空 stream，直接綁會讓整筆 review 產零輸出被吞掉
+               | (first($resp[] | select(.id == ($r.relationships.response.data.id // "x")) | .attributes.responseBody) // null) as $reply
+               # null 防護：rating-only 評論的 body/title/rating 可為 null，"★"*null / gsub(null) / null[0:10] 都會 jq exit 5 中止
+               | "[\($r.attributes.territory // "?")] \("★" * ($r.attributes.rating // 0))  \($r.attributes.reviewerNickname // "?")  \(($r.attributes.createdDate // "")[0:10])  id=\($r.id)",
+                 "  「\($r.attributes.title // "")」 \(($r.attributes.body // "") | gsub("[\\n\\r]";" ") | .[0:120])",
                  (if $reply then "  ↳ 已回覆：\($reply | .[0:80])" else "  ↳ （未回覆 → reply-review \($r.id) <text>）" end)
              end'
   echo "註：評論為消費者唯讀資料；回覆用 reply-review（每則評論只能有一則回覆，再送=更新）。"
@@ -479,6 +484,69 @@ cmd_reply_review() {
     "$(printf './ops/asc.sh reply-review %s %q --yes' "$rid" "$text")"
 }
 
+# ---- 營利讀（P3，全唯讀；改價/方案走 P4 gated）----
+cmd_subscriptions() {
+  require_key
+  local groups
+  groups="$(raw "/v1/apps/$APP_ID/subscriptionGroups?limit=50")"
+  printf '%s' "$groups" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
+    && err "讀取訂閱群組失敗：HTTP $(printf '%s' "$groups" | jq -r '._httpError')"
+  echo "# 訂閱群組 $(printf '%s' "$groups" | jq -r '(.data // []) | length') 個（方案 · productId · state · 週期 · 代表價 · 在地化）："
+  local gid gname
+  while IFS=$'\t' read -r gid gname; do
+    [[ -z "$gid" ]] && continue
+    echo "▸ 群組「$gname」（$gid）"
+    local subs sid pid sname sstate speriod prices price locs
+    subs="$(raw "/v1/subscriptionGroups/$gid/subscriptions?limit=50")"
+    while IFS=$'\t' read -r sid pid sname sstate speriod; do
+      [[ -z "$sid" ]] && continue
+      prices="$(raw "/v1/subscriptions/$sid/prices?include=subscriptionPricePoint,territory&limit=200")"
+      # 代表價：取第一筆 price 的 territory + customerPrice（完整各地區見 GUI）
+      price="$(printf '%s' "$prices" | jq -r '
+        (.included // []) as $inc | (.data // [])[0]
+        | (.relationships.subscriptionPricePoint.data.id) as $ppid
+        | (.relationships.territory.data.id) as $terr
+        | ($inc[] | select(.type=="subscriptionPricePoints" and .id==$ppid) | .attributes.customerPrice) as $cp
+        | "\($terr) \($cp)"' 2>/dev/null)"
+      locs="$(raw "/v1/subscriptions/$sid/subscriptionLocalizations?limit=20" | jq -r '[(.data // [])[].attributes.locale] | join(",")')"
+      echo "  • $sname  [$pid]  state=$sstate  $speriod  代表價=${price:-?}  在地化=${locs:-?}"
+    done < <(printf '%s' "$subs" | jq -r '(.data // [])[] | "\(.id)\t\(.attributes.productId)\t\(.attributes.name)\t\(.attributes.state)\t\(.attributes.subscriptionPeriod)"')
+  done < <(printf '%s' "$groups" | jq -r '(.data // [])[] | "\(.id)\t\(.attributes.referenceName)"')
+  echo "註：訂閱唯讀（P3）；改價/方案/在地化見 P4（gated；動到計費，後端 IAP 驗簽相依）。"
+}
+
+cmd_iap() {
+  require_key
+  echo "# 一次性 App 內購買（inAppPurchasesV2）："
+  raw "/v1/apps/$APP_ID/inAppPurchasesV2?limit=200" \
+    | jq -r 'if has("_httpError") then "（讀取失敗：HTTP \(._httpError)）"
+             elif ((.data // []) | length)==0 then "  （無一次性 IAP；KG 走訂閱，見 asc.sh subscriptions）"
+             else (.data // [])[] | "  • \(.attributes.name)  [\(.attributes.productId)]  type=\(.attributes.inAppPurchaseType)  state=\(.attributes.state)" end'
+}
+
+cmd_pricing() {
+  require_key
+  echo "# App 基礎定價（appPriceSchedule · territory → customerPrice；0 = 免費）："
+  raw "/v1/appPriceSchedules/$APP_ID/manualPrices?include=appPricePoint,territory&limit=200" \
+    | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
+             else (.included // []) as $inc
+               | (.data // [])[]
+               | .relationships.appPricePoint.data.id as $ppid
+               | .relationships.territory.data.id as $terr
+               | ($inc[] | select(.type=="appPricePoints" and .id==$ppid) | .attributes.customerPrice) as $cp
+               | "  \($terr): \($cp)" end' | head -20
+  echo "# 供應地區："
+  local av avid
+  av="$(raw "/v1/apps/$APP_ID/appAvailabilityV2")"
+  if printf '%s' "$av" | jq -e 'has("_httpError")' >/dev/null 2>&1; then
+    echo "  （appAvailability v2 API 在本 app 狀態下不開放：HTTP $(printf '%s' "$av" | jq -r '._httpError')；供應地區請見 GUI）"
+  else
+    avid="$(printf '%s' "$av" | jq -r '.data.id // empty')"
+    raw "/v1/appAvailabilities/$avid/territoryAvailabilities?filter%5Bavailable%5D=true&limit=200" \
+      | jq -r 'if has("_httpError") then "  （供應地區讀取失敗：HTTP \(._httpError)）" else "  可購地區數：\((.data // []) | length)" end'
+  fi
+}
+
 # ---- dispatch ----
 case "${SUB:-}" in
   versions)      cmd_versions ;;
@@ -492,6 +560,9 @@ case "${SUB:-}" in
   reviews)       cmd_reviews "${ARGS[@]:-}" ;;
   accessibility) cmd_accessibility ;;
   reply-review)  cmd_reply_review "${ARGS[@]:-}" ;;
+  subscriptions) cmd_subscriptions ;;
+  iap)           cmd_iap ;;
+  pricing)       cmd_pricing ;;
   set)           cmd_set "${ARGS[@]:-}" ;;
   set-review)    cmd_set_review "${ARGS[@]:-}" ;;
   set-appinfo)   cmd_set_appinfo "${ARGS[@]:-}" ;;

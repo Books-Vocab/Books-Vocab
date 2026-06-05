@@ -10,6 +10,13 @@ ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section(){ echo ""; echo "── $* ──"; }
 
+# pipefail-safe 子字串檢查：用 here-string 餵入，杜絕 `echo "$x" | grep -q` 的早退 SIGPIPE 競態
+# —— grep -q 命中即關 pipe，上游 echo 收 SIGPIPE，在 set -o pipefail 下整條 pipeline 回非零，
+# 被誤判成「不匹配」（body 越大、命中越早越容易中，致 flaky）。here-string 無 pipe → 無此問題。
+hasm()  { grep -q  -- "$2" <<<"$1"; }   # 固定 / BRE pattern
+hasme() { grep -qE -- "$2" <<<"$1"; }   # ERE pattern
+hasmi() { grep -qi -- "$2" <<<"$1"; }   # 大小寫不敏感
+
 # ── 1. Syntax ───────────────────────────────────────────────────────────────
 section "Syntax"
 [[ -f "$ASC" ]]   && ok "asc.sh exists"   || fail_t "asc.sh missing"
@@ -45,17 +52,17 @@ grep -q 'app-store-version-localizations modify' "$ASC" \
 # 真正的 modify 呼叫必須位於 YES gate 之內：擷取 cmd_set() body，
 # 確認 modify 行只在 confirm 分支出現（dry-run 分支只印 payload，不呼叫）。
 set_body="$(awk '/^cmd_set\(\)/,/^}/' "$ASC")"
-echo "$set_body" | grep -q 'app-store-version-localizations modify' \
+hasm "$set_body" 'app-store-version-localizations modify' \
   && ok "modify lives inside cmd_set"    || fail_t "modify not in cmd_set"
 # dry-run 預設：YES 變數預設為 0/空
 grep -qE 'YES=(0|"")|YES=$' "$ASC" \
   && ok "YES defaults to off (dry-run)"  || fail_t "YES not defaulting to dry-run"
 # 負控（鎖不變量）：modify 不可洩進 dry-run（else…fi）分支 —— 否則無 --yes 也會寫
-echo "$set_body" | awk '/else/,/fi/' | grep -q 'localizations modify' \
+hasm "$(awk '/else/,/fi/' <<<"$set_body")" 'localizations modify' \
   && fail_t "modify leaked into dry-run branch (would write without --yes)" \
   || ok "dry-run branch contains no modify call"
 # value 空值守衛（C1 回歸）：cmd_set 必須同時檢 field 與 value 非空
-echo "$set_body" | grep -qE '\-n "\$field" && -n "\$value"' \
+hasme "$set_body" '\-n "\$field" && -n "\$value"' \
   && ok "set guards against empty value"  || fail_t "set missing empty-value guard (can wipe metadata)"
 
 # ── 6. 不含 submit-for-review 寫入（scope：使用者明確排除） ──────────────────
@@ -111,10 +118,10 @@ section "ID resolvers don't silently abort"
 # 否則非零 exit 在 set -e+pipefail 下會讓賦值中止，呼叫端友善 err 永遠跑不到。
 # grep 前先剔除註解行（grep -v '^[[:space:]]*#'），避免誤匹配解釋 || true 的中文註解（軟造假）。
 rv_body="$(awk '/^resolve_version\(\)/,/^}/' "$ASC" | grep -v '^[[:space:]]*#')"
-echo "$rv_body" | grep -q '|| true' \
+hasm "$rv_body" '|| true' \
   && ok "resolve_version pipeline guarded (|| true)" || fail_t "resolve_version may abort silently (no || true)"
 rl_body="$(awk '/^resolve_loc\(\)/,/^}/' "$ASC" | grep -v '^[[:space:]]*#')"
-echo "$rl_body" | grep -q '|| true' \
+hasm "$rl_body" '|| true' \
   && ok "resolve_loc pipeline guarded (|| true)"     || fail_t "resolve_loc may abort silently (no || true)"
 
 # ── 8. 取值型選項守衛（dogfood C：--key/--version-id 後無值不該噴 unbound variable） ──
@@ -123,16 +130,16 @@ grep -q 'need_val' "$ASC" \
   && ok "has need_val guard"               || fail_t "missing need_val guard for value options"
 # 行為驗證：--key 後無值 → 友善訊息 + exit 1，而非 set -u 的 unbound variable
 kv_out="$(bash "$ASC" --key 2>&1 || true)"
-echo "$kv_out" | grep -q '需要一個值' \
+hasm "$kv_out" '需要一個值' \
   && ok "--key with no value → friendly error" || fail_t "--key no-value not friendly (got: $kv_out)"
-echo "$kv_out" | grep -qi 'unbound variable' \
+hasmi "$kv_out" 'unbound variable' \
   && fail_t "--key no-value still hits set -u unbound variable" \
   || ok "no set -u unbound crash on missing value"
 
 # ── 9. --help 不洩漏 shell 程式碼（與 release.sh 同步的 usage awk 修正） ──────
 section "Help output stays comment-only"
 help_out="$(bash "$ASC" --help 2>&1)"
-echo "$help_out" | grep -qE 'set -euo pipefail|^KEY_ID=|^ISSUER_ID=' \
+hasme "$help_out" 'set -euo pipefail|^KEY_ID=|^ISSUER_ID=' \
   && fail_t "help leaks shell code" || ok "help is comment-only (no shell code leak)"
 
 # ── 10. raw 寫入 helper（一般化 PATCH/POST/DELETE）+ set-review 經集中 gate ──
@@ -155,17 +162,17 @@ grep -q 'asc_write.py' "$ASC" \
   && ok "asc.sh stays zero-JWT (writes via helper)" || fail_t "asc.sh hand-rolls JWT in write path"
 # set-review 經 emit_write 收尾（不自行 write_raw 繞過集中 gate），並驗 demo-required boolean
 sr_body="$(awk '/^cmd_set_review\(\)/,/^}/' "$ASC")"
-echo "$sr_body" | grep -q 'emit_write' \
+hasm "$sr_body" 'emit_write' \
   && ok "set-review routes through emit_write" || fail_t "set-review not using emit_write"
-echo "$sr_body" | grep -q 'write_raw' \
+hasm "$sr_body" 'write_raw' \
   && fail_t "set-review calls write_raw directly (bypasses central gate)" \
   || ok "set-review delegates write (no direct write_raw)"
-echo "$sr_body" | grep -q 'true.*false\|false.*true' \
+hasm "$sr_body" 'true.*false\|false.*true' \
   && ok "demo-required validates true/false" || fail_t "demo-required boolean not validated"
 # 行為：跨物件欄位互相指路（set notes → set-review；set-review description → set）
-echo "$(bash "$ASC" set notes x 2>&1)" | grep -q 'set-review' \
+hasm "$(bash "$ASC" set notes x 2>&1)" 'set-review' \
   && ok "set <review-field> routes to set-review" || fail_t "set doesn't route review fields"
-echo "$(bash "$ASC" set-review description x 2>&1)" | grep -qE 'asc.sh set ' \
+hasme "$(bash "$ASC" set-review description x 2>&1)" 'asc.sh set ' \
   && ok "set-review <text-field> routes to set" || fail_t "set-review doesn't route text fields"
 
 # ── 11. App 資訊讀寫面（P1：appInfoLocalization / EULA / 分類 / 年齡分級 / 內容版權）──
@@ -183,47 +190,47 @@ grep -q 'resolve_appinfo_loc()' "$ASC" && ok "resolve_appinfo_loc present" || fa
 #       set -e+pipefail 下賦值中止整個 script，呼叫端 || err 跑不到。
 for fn in resolve_appinfo resolve_appinfo_loc; do
   body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
-  echo "$body" | grep -q 'has("_httpError")' \
+  hasm "$body" 'has("_httpError")' \
     && ok "$fn guards _httpError before iterating .data" \
     || fail_t "$fn iterates .data without _httpError guard (aborts script on auth/network fail)"
 done
 # 11c. 共用 emit_write：gate 不變量集中一處 —— write_raw（真寫）只在 --yes 分支，dry-run(else) 分支零 write_raw
 ep_body="$(awk '/^emit_write\(\)/,/^}/' "$ASC")"
-echo "$ep_body" | grep -q 'write_raw' \
+hasm "$ep_body" 'write_raw' \
   && ok "emit_write performs real write_raw" || fail_t "emit_write missing write_raw"
-echo "$ep_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]' \
+hasme "$ep_body" 'if \[\[ \$YES -eq 1 \]\]' \
   && ok "emit_write guards write behind --yes"      || fail_t "emit_write missing --yes guard"
-echo "$ep_body" | awk '/else/,/fi/' | grep -q 'write_raw' \
+hasm "$(awk '/else/,/fi/' <<<"$ep_body")" 'write_raw' \
   && fail_t "write_raw leaked into emit_write dry-run branch (would write without --yes)" \
   || ok "emit_write dry-run branch contains no write_raw"
 # 11d. 每個寫指令都「透過 emit_write」收尾，且不自行 write_raw（否則繞過集中 gate）
 for fn in cmd_set_appinfo cmd_set_eula cmd_set_content_rights cmd_set_category cmd_set_rating; do
   body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
-  echo "$body" | grep -q 'emit_write' \
+  hasm "$body" 'emit_write' \
     && ok "$fn routes through emit_write"        || fail_t "$fn doesn't use emit_write"
-  echo "$body" | grep -q 'write_raw' \
+  hasm "$body" 'write_raw' \
     && fail_t "$fn calls write_raw directly (bypasses central gate)" \
     || ok "$fn delegates write (no direct write_raw)"
 done
 # 11e. body 形狀正確：set-appinfo 用 appInfoLocalizations attributes；set-category 用 relationships（非 attributes）
-echo "$(awk '/^cmd_set_appinfo\(\)/,/^}/' "$ASC")" | grep -q 'type:"appInfoLocalizations"' \
+hasm "$(awk '/^cmd_set_appinfo\(\)/,/^}/' "$ASC")" 'type:"appInfoLocalizations"' \
   && ok "set-appinfo body targets appInfoLocalizations" || fail_t "set-appinfo body wrong type"
 cat_body="$(awk '/^cmd_set_category\(\)/,/^}/' "$ASC")"
-echo "$cat_body" | grep -q 'relationships' \
+hasm "$cat_body" 'relationships' \
   && ok "set-category uses relationship body"   || fail_t "set-category not using relationships"
-echo "$cat_body" | grep -q 'type:"appCategories"' \
+hasm "$cat_body" 'type:"appCategories"' \
   && ok "set-category references appCategories"  || fail_t "set-category missing appCategories ref"
 # 11f. set-content-rights 只收 uses|none（防亂值）
 cr_out="$(bash "$ASC" set-content-rights bogus 2>&1 || true)"
-echo "$cr_out" | grep -q 'uses|none' \
+hasm "$cr_out" 'uses|none' \
   && ok "set-content-rights validates uses|none" || fail_t "set-content-rights accepts invalid value"
 # 11g. 跨物件指路：set name → set-appinfo；set-appinfo description → set
-echo "$(bash "$ASC" set name x 2>&1)" | grep -q 'set-appinfo' \
+hasm "$(bash "$ASC" set name x 2>&1)" 'set-appinfo' \
   && ok "set <appinfo-field> routes to set-appinfo" || fail_t "set doesn't route appinfo fields"
-echo "$(bash "$ASC" set-appinfo description x 2>&1)" | grep -qE 'asc.sh set ' \
+hasme "$(bash "$ASC" set-appinfo description x 2>&1)" 'asc.sh set ' \
   && ok "set-appinfo <version-field> routes to set" || fail_t "set-appinfo doesn't route version fields"
 # 11h. EULA 寫入解析 endUserLicenseAgreement
-echo "$(awk '/^cmd_set_eula\(\)/,/^}/' "$ASC")" | grep -q 'endUserLicenseAgreement' \
+hasm "$(awk '/^cmd_set_eula\(\)/,/^}/' "$ASC")" 'endUserLicenseAgreement' \
   && ok "set-eula resolves endUserLicenseAgreement" || fail_t "set-eula missing EULA resolution"
 
 # ── 12. 評論讀/回覆 + 無障礙讀（P2：customerReviews / customerReviewResponses / accessibility）──
@@ -235,33 +242,76 @@ for sub in reviews accessibility reply-review; do
 done
 # 12b. asc_write.py method 驗證：未知 method 即報（在讀 stdin / 鑄 JWT 前就退，不打 API）
 bogus_out="$(printf '{}' | "$WRITE" /v1/x BOGUS 2>&1 || true)"
-echo "$bogus_out" | grep -q '不支援的 method' \
+hasm "$bogus_out" '不支援的 method' \
   && ok "asc_write.py rejects unknown method" || fail_t "asc_write.py doesn't validate method (got: $(echo "$bogus_out" | head -1))"
 # 12c. reply-review 經 emit_write（集中 gate），不自行 write_raw
 rr_body="$(awk '/^cmd_reply_review\(\)/,/^}/' "$ASC")"
-echo "$rr_body" | grep -q 'emit_write' \
+hasm "$rr_body" 'emit_write' \
   && ok "reply-review routes through emit_write" || fail_t "reply-review not using emit_write"
-echo "$rr_body" | grep -q 'write_raw' \
+hasm "$rr_body" 'write_raw' \
   && fail_t "reply-review calls write_raw directly (bypasses gate)" \
   || ok "reply-review delegates write (no direct write_raw)"
 # 12d. reply-review upsert：無回覆→POST 建（帶 review 關係）、有→PATCH 改
-echo "$rr_body" | grep -q 'method=POST' && echo "$rr_body" | grep -q 'method=PATCH' \
+hasm "$rr_body" 'method=POST' && hasm "$rr_body" 'method=PATCH' \
   && ok "reply-review upserts (POST new / PATCH existing)" || fail_t "reply-review missing POST/PATCH upsert"
-echo "$rr_body" | grep -q 'customerReviewResponses' \
+hasm "$rr_body" 'customerReviewResponses' \
   && ok "reply-review targets customerReviewResponses" || fail_t "reply-review wrong target type"
-echo "$rr_body" | grep -q 'relationships:{review' \
+hasm "$rr_body" 'relationships:{review' \
   && ok "reply-review POST carries review relationship" || fail_t "reply-review POST missing review relationship"
 # 12e. reviews：N 須數字（防注入）
 rev_out="$(bash "$ASC" reviews abc 2>&1 || true)"
-echo "$rev_out" | grep -q '需為數字' \
+hasm "$rev_out" '需為數字' \
   && ok "reviews validates numeric N" || fail_t "reviews doesn't validate N (got: $rev_out)"
 # 12f. accessibility 唯讀（讀 accessibilityDeclarations，無寫入；有 GUI 提示）
 acc_body="$(awk '/^cmd_accessibility\(\)/,/^}/' "$ASC")"
-echo "$acc_body" | grep -q 'accessibilityDeclarations' \
+hasm "$acc_body" 'accessibilityDeclarations' \
   && ok "accessibility reads accessibilityDeclarations" || fail_t "accessibility wrong endpoint"
-echo "$acc_body" | grep -q 'write_raw' \
+hasm "$acc_body" 'write_raw' \
   && fail_t "accessibility has write path (should be read-only)" \
   || ok "accessibility is read-only (no write_raw)"
+# 12g. cmd_reviews null/空-stream 防護（P2 review 2 blocks 回歸）
+rv2_body="$(awk '/^cmd_reviews\(\)/,/^}/' "$ASC")"
+hasm "$rv2_body" 'first($resp' \
+  && ok "reviews uses first() (無回覆評論不被空 stream 吞掉)" || fail_t "reviews binds raw stream → drops review with no response"
+hasme "$rv2_body" 'rating // 0' \
+  && ok "reviews null-guards rating" || fail_t "reviews rating not null-guarded (★*null aborts jq)"
+hasme "$rv2_body" 'body // ""' \
+  && ok "reviews null-guards body" || fail_t "reviews body not null-guarded (gsub null aborts jq)"
+
+# ── 13. 營利讀面（P3：subscriptions / iap / pricing，全唯讀）──
+section "Monetization reads (P3, read-only)"
+for sub in subscriptions iap pricing; do
+  grep -qE "^[[:space:]]*$sub\)" "$ASC" \
+    && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+done
+# 13a. 三者皆唯讀：函式 body 不得含 write_raw / emit_write（營利寫入是 P4，gated）
+for fn in cmd_subscriptions cmd_iap cmd_pricing; do
+  body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
+  if hasme "$body" 'write_raw|emit_write'; then
+    fail_t "$fn has a write path (P3 must stay read-only; writes belong to P4)"
+  else
+    ok "$fn is read-only"
+  fi
+done
+# 13b. 端點正確
+hasm "$(awk '/^cmd_subscriptions\(\)/,/^}/' "$ASC")" 'subscriptionGroups' \
+  && ok "subscriptions reads subscriptionGroups" || fail_t "subscriptions wrong endpoint"
+hasm "$(awk '/^cmd_iap\(\)/,/^}/' "$ASC")" 'inAppPurchasesV2' \
+  && ok "iap reads inAppPurchasesV2" || fail_t "iap wrong endpoint"
+hasm "$(awk '/^cmd_pricing\(\)/,/^}/' "$ASC")" 'appPriceSchedules' \
+  && ok "pricing reads appPriceSchedules" || fail_t "pricing wrong endpoint"
+# 13c. 迭代 .data 前一律 (.data // []) 或 has("_httpError") 守衛（靜默中止回歸，同 P1 block 類）
+for fn in cmd_subscriptions cmd_iap cmd_pricing; do
+  body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
+  if hasme "$body" '\.data\[\]' && ! hasm "$body" '(.data // \[\])'; then
+    fail_t "$fn iterates .data[] without // [] guard (may abort on _httpError)"
+  else
+    ok "$fn guards .data iteration"
+  fi
+done
+# 13d. pricing 供應地區優雅降級（v2 端點失敗時不中止、給 GUI 提示）
+hasm "$(awk '/^cmd_pricing\(\)/,/^}/' "$ASC")" 'appAvailabilityV2' \
+  && ok "pricing attempts availability (graceful)" || fail_t "pricing missing availability read"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
