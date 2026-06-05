@@ -67,9 +67,13 @@ ops-cli timeseries <metric> [--bucket day|week|month] [--range R] [--uid all|<ui
                                            # 時間序列趨勢；metric=cost|calls|active_users（預設 bucket=day, range=30d, uid=all）
                                            # --fill-zero：補齊區間內零值桶，時間軸連續、斷層顯式化（找「哪幾天/週沒人用」必加）
                                            # ⚠ active_users = 該桶內「觸發 LLM 呼叫」的去重用戶數，非全活躍；只讀/聽 podcast 不呼叫 LLM 者不計入
-ops-cli trends [--window N]                # 全域監控:errors/active/tokens 逐日（預設 14d，上限 90）
-                                           # errors = 失敗 pipeline_runs + auto-judge rejects（degree-cap 除外）= 「有沒有東西在壞」訊號
+ops-cli trends [--window N]                # 全域監控:errors/llm-fail/active/tokens 逐日（預設 14d，上限 90）
+                                           # errors = 業務拒絕(失敗 pipeline + auto-judge rejects, degree-cap 除外)
+                                           # llm-fail = 真火(429/5xx/timeout)——獨立欄位,真當機時不會被業務噪音淹沒
                                            # 唯讀重實作，語意對齊 kg.admin_trends（不 import 它—其 _get_conn 會寫入/中斷進行中 run）
+ops-cli llm-errors [--window N] [--uid all|<uid>]  # 真火監控——真實 LLM 基礎設施失敗(429/5xx/timeout)逐日+分類
+                                           # by_class/by_provider/by_status 排名 + recent 最近 10 筆
+                                           # 預設 window=14d;uid=all 看全體,uid=<id> 看單用戶
 
 # 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
 #   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
@@ -139,9 +143,13 @@ python3 ops/data_inspect.py [command]
 ./ops/devops_kg_safe.sh ops-cli timeseries calls --bucket day --range 30d --fill-zero
 ./ops/devops_kg_safe.sh ops-cli timeseries active_users --bucket week --range 30d --json 2>/dev/null | jq
 
-# 監控：有沒有東西在壞（errors=失敗 pipeline + judge reject 逐日；token_usage 看不到失敗）
+# 監控：業務層有沒有東西在壞（errors=失敗 pipeline + judge reject）
 ./ops/devops_kg_safe.sh ops-cli trends --window 14
 ./ops/devops_kg_safe.sh ops-cli trends --window 30 --json 2>/dev/null | jq '.total_errors'
+
+# 真火監控：AI 供應商是不是真的壞了（429/5xx/timeout）
+./ops/devops_kg_safe.sh ops-cli llm-errors --window 14
+./ops/devops_kg_safe.sh ops-cli llm-errors --window 7 --json 2>/dev/null | jq '.total'
 
 # 臨時分析腳本
 ./ops/devops_kg_safe.sh container-script /tmp/my_script.py
