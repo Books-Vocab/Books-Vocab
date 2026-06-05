@@ -497,6 +497,60 @@ class TestJsonCountAndSchema:
         assert "error" in d and "nope" in d["error"]
 
 
+class TestFleetOverview:
+    """fleet-overview — 跨用戶 cards/links/月 cost 聚合 + FLEET TOTAL。"""
+
+    def _seed_fleet(self, tmp_path):
+        import json
+        now = _now_iso()
+        # user A: 2 active + 1 deleted, 1 link
+        ua = tmp_path / "users" / "uA"
+        ua.mkdir(parents=True)
+        _create_cards_db(ua / "cards.db", [
+            ("a1", "x", "X", 0, now, now),
+            ("a2", "y", "Y", 0, now, now),
+            ("a3", "z", "Z", 1, now, now),
+        ])
+        (ua / "graph_default.json").write_text(
+            json.dumps([{"from_id": "a1", "to_id": "a2"}])
+        )
+        # user B: 1 active, no graph
+        ub = tmp_path / "users" / "uB"
+        ub.mkdir(parents=True)
+        _create_cards_db(ub / "cards.db", [("b1", "p", "P", 0, now, now)])
+        # token_usage: 只有 uA 本月有花費
+        _create_token_usage_db(tmp_path, [("uA", "translate", 1000, 500, now)])
+
+    def test_fleet_json(self, tmp_path):
+        import json
+        self._seed_fleet(tmp_path)
+        r = _run_cli(str(tmp_path), "fleet-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 2
+        ua = next(u for u in d["users"] if u["user_id"] == "uA")
+        assert ua["cards_total"] == 3 and ua["cards_active"] == 2 and ua["cards_deleted"] == 1
+        assert ua["links"] == 1
+        assert ua["month_calls"] == 1 and ua["month_cost_usd"] > 0
+        assert d["totals"]["cards_active"] == 3  # 2 + 1
+        assert d["totals"]["links"] == 1
+        assert d["totals"]["users"] == 2
+
+    def test_fleet_text(self, tmp_path):
+        self._seed_fleet(tmp_path)
+        r = _run_cli(str(tmp_path), "fleet-overview")
+        assert r.returncode == 0, r.stderr
+        assert "Fleet Overview" in r.stdout
+        assert "uA" in r.stdout and "uB" in r.stdout
+
+    def test_fleet_empty(self, tmp_path):
+        import json
+        r = _run_cli(str(tmp_path), "fleet-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 0 and d["totals"]["users"] == 0
+
+
 class TestHelp:
     """--help 應正常輸出。"""
 
