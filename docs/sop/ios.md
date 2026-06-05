@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 575bcb1a
+verified_against: 8f5b52ce
 -->
 # BooksBrowser iOS 開發技能
 
@@ -68,6 +68,8 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基建，**無需手動匯入 Apple Distribution 憑證**（cert/profile 已一次性建置，含重建步驟見 `~/.secrets/apple/README.md`）。
 
+> 版號 bump / `ios/x.y.z` tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`changelog`/`publish`，單一入口；`publish` dry-run 預設、`--yes` 才 commit+tag+push）。本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施——版號 tag 與出 build 互不依賴。注意目前無 tag-triggered CI，tag 僅為版本標記。
+
 ```bash
 ./ops/ios_release.sh                  # archive + export 出 .ipa（無對外副作用，預設）
 ./ops/ios_release.sh --upload         # 額外上傳 → TestFlight（對外副作用，需明示）
@@ -81,6 +83,48 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 - **keychain 免互動**：codesign 存取私鑰需 partition list 授權（一次性 `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k <登入密碼> ~/Library/Keychains/login.keychain-db`）；未設則互動 terminal 彈授權框、背景/CI 會 hang。
 - **key 選擇**：`TCXVHFRXMS`(App Manager) 可送審;`6Y7DC88RUY`(Developer) 僅 TestFlight。後端訂閱驗簽用 `6Y7DC88RUY`，**勿 revoke**。
 - 共用 `ios_build.sh` 的 `/tmp/kg-ios-build.lock`，多 worktree 安全。
+
+### App Store Connect 查詢 / 改文案（`ops/asc.sh`）
+
+`ios_release.sh` 出 build；`asc.sh` 補「版本/審查狀態查詢 + 文案 metadata 讀寫」。主體是 codemagic CLI 包裝（同 `ios_release.sh` 的 `asc()` wrapper），無手刻 JWT；codemagic 暴露不到的唯讀欄位（審查備註 / 截圖 state）由旁路 `ops/asc_get.py`（uv shebang 自帶 pyjwt+cryptography，唯讀 GET）補，JWT 只活在該 helper、不污染主檔。
+
+```bash
+./ops/asc.sh versions                    # 列 App Store 版本 + 審查 state（id）
+./ops/asc.sh builds                      # TestFlight 最新 build number
+./ops/asc.sh metadata --locale zh-Hant   # 讀某版本某語系文案（description/keywords/urls/…）
+./ops/asc.sh info                        # app 層級唯讀（name/bundle/sku/primaryLocale）
+./ops/asc.sh review-status               # 審查提交 state（最新=被拒會見 UNRESOLVED_ISSUES）
+./ops/asc.sh review-detail               # 審查聯絡/demo 帳號/送審備註（raw；查備註是否沿用上輪舊文）
+./ops/asc.sh screenshots                 # 截圖集逐張 state（raw；重送前查缺圖 / 已移除功能殘留）
+./ops/asc.sh set keywords "a,b,c"        # 改文案：預設 dry-run（印舊→新，不送出）
+./ops/asc.sh set keywords "a,b,c" --yes  # 確認後真寫正式版本（對外副作用，須 --yes）
+```
+
+- **set 可寫 field**：`description / keywords / whats-new / marketing-url / support-url / promotional-text`。空值被擋（避免清空正式文案）。
+- **dry-run gate**：`set` 預設只印 payload，`--yes` 才送 `app-store-version-localizations modify`（對齊 `--upload` 的明示原則）。
+- **key**：預設 `TCXVHFRXMS`（App Manager，可寫 metadata）；`.p8` 路徑 `${ASC_KEY_DIR:-~/.secrets/apple}/AuthKey_<KEY_ID>.p8`（CI/部署機可覆寫 `ASC_KEY_DIR`）。
+
+#### GUI 可讀 vs API 可讀
+
+| GUI 區塊 | API/`asc.sh` 可讀? |
+|---|---|
+| 版本 / 審查 state / build / 文案 metadata / IAP / 分析數字 | ✅ codemagic |
+| 審查聯絡/demo/送審備註、截圖逐張 state、app 副標、分類、年齡分級、build 加密宣告 | ✅ raw（`asc_get.py`；review-detail/screenshots 已工具化，其餘直打 endpoint） |
+| **被拒原因（Resolution Center 對話文字）** | ❌ public API 不提供，**只能 GUI 看** |
+| 截圖/preview 圖檔「內容」是否含已移除功能 | ⚠ API 只給 fileName/state，須 fetch 縮圖目視判讀 |
+
+#### 被拒處理 SOP（resubmit-readiness 演練，每次重送跑一遍）
+
+1. `./ops/asc.sh review-status` 確認最新提交為 `UNRESOLVED_ISSUES`。
+2. 到 ASC GUI「App 審查 → 解決中心」讀 Apple 的拒絕理由（API 讀不到）。
+3. **掃殘留**：被拒功能名若已移除，`asc.sh metadata` + `review-detail` + app 副標全 grep 一遍確認 0 命中；`asc.sh screenshots` 列出截圖、fetch 縮圖目視無殘影。
+4. **查備註是否過期**：`asc.sh review-detail` 的 notes 常沿用上一輪舊文（KG 實例曾停在 3.1.2(c) EULA 而非當輪原因）；重送時若需向審查員說明，於 GUI 解決中心回覆或更新 notes，對應「本輪」原因。
+5. 改 code/文案（`asc.sh set …` 或改 app 碼）→ bump `CURRENT_PROJECT_VERSION`（同 `MARKETING_VERSION` 重送只 bump build；`asc.sh builds` 確認新 build > TestFlight 現值即無衝突）→ `ios_release.sh --upload` → GUI 把新 build 綁上該版本 → 重送。
+6. 加密合規順手：本專案 `GENERATE_INFOPLIST_FILE = YES`（無 source Info.plist），故設 build setting `INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO`（多數 app 免出口加密，省每次上傳被問）。
+
+#### 已知缺口（待辦，本輪未工具化）
+
+screenshots / app preview **上傳**（list 已做；上傳 codemagic 無命令，須 GUI 或 Transporter + raw multipart）、IAP/訂閱 metadata（KG 有訂閱，審查常卡此）、**多語 localizations**（現僅 `zh-Hant`，缺 `en-US` 易被拒）、`appStoreVersions create`（重送下一版前須先建版本 row）、submit-for-review 自動化（刻意不做）。
 
 ## App 架構速查
 
