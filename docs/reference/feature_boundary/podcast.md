@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 362fd05c
+verified_against: 7d86b984
 -->
 # Podcast Feature Boundary
 
@@ -26,7 +26,7 @@ verified_against: 362fd05c
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastDetailRouter.swift` | 52 | **檔名沿用，但 `PodcastDetailRouter` class 已於 #672 移除**——現僅含兩個純函式 activation 決策點：`PodcastEpisodeActivation`（#672 後**恆回 `.push`**，保留 enum + 工廠作 episode 路由契約測試錨點）+ `PodcastSeriesActivation`（series 層 compact push vs regular `.selectInline`，**維持原狀**）。episode selection state / `\.podcastDetailRouter` environment 已隨 inline 雙欄一併刪除 |
+| `PodcastDetailRouter.swift` | 52 | **檔名沿用，但 `PodcastDetailRouter` class 已於 #672 移除**——現僅含 `PodcastSeriesActivation`（series 層 compact push vs regular `.selectInline`，**維持原狀**）。`PodcastEpisodeActivation` 已隨 inline 雙欄一併刪除；episode → player 恆走單欄 push（見 `PodcastEpisodeListView` 條目）。episode selection state / `\.podcastDetailRouter` environment 已隨 inline 雙欄一併刪除 |
 
 ### ViewModel Layer（播放狀態機）
 

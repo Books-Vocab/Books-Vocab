@@ -40,6 +40,8 @@ final class PodcastDownloadManager: NSObject {
     private var taskToRemoteId: [Int: String] = [:]
     @ObservationIgnored
     private var remoteIdToTask: [String: URLSessionDownloadTask] = [:]
+    @ObservationIgnored
+    private var lastProgressUpdate: [String: Date] = [:]
 
     @ObservationIgnored
     private lazy var session: URLSession = {
@@ -108,9 +110,21 @@ final class PodcastDownloadManager: NSObject {
     // nonisolated `purgeDownloads` default argument and the cross-platform
     // cleaner evaluate it without a MainActor hop.
     nonisolated static func downloadsRoot() -> URL {
-        FileManager.default
+        let dir = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("podcast-downloads", isDirectory: true)
+        // Ensure directory exists and is excluded from iCloud Backup
+        // (re-downloadable cache, not user data). Do this here so every
+        // caller gets the guarantee without separate bookkeeping.
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(
+                at: dir, withIntermediateDirectories: true
+            )
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? dir.setResourceValues(resourceValues)
+        }
+        return dir
     }
 
     /// Wipe the entire on-disk podcast download tree. Called on logout /
@@ -154,7 +168,16 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
             // High-frequency nonisolated callbacks hop to MainActor out of order:
             // a stale lower fraction can land after a newer higher one and visibly
             // rewind the progress bar. Monotonic guard — never move backward.
-            self.progress[remoteId] = max(self.progress[remoteId] ?? 0, fraction)
+            let clamped = max(self.progress[remoteId] ?? 0, fraction)
+            guard clamped != self.progress[remoteId] else { return }
+            // Throttle: skip updates within 100ms of the last one to avoid
+            // excessive actor hops and view rebuilds during fast downloads.
+            let now = Date()
+            if let last = self.lastProgressUpdate[remoteId], now.timeIntervalSince(last) < 0.1 {
+                return
+            }
+            self.lastProgressUpdate[remoteId] = now
+            self.progress[remoteId] = clamped
         }
     }
 
