@@ -1,0 +1,691 @@
+{
+  "color": {
+    "primitive": {
+      "accent": {
+        "light": {
+          "$type": "color",
+          "$value": "#4d7396",
+          "$description": "AppColors.accentLight",
+          "$swift": "AppColors.accentLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#85a4c2",
+          "$description": "AppColors.accentDark",
+          "$swift": "AppColors.accentDark"
+        }
+      },
+      "brand-hero": {
+        "light": {
+          "$type": "color",
+          "$value": "#fcde9a",
+          "$description": "AppColors.brandHeroLight",
+          "$swift": "AppColors.brandHeroLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#fcde9a",
+          "$description": "AppColors.brandHeroDark",
+          "$swift": "AppColors.brandHeroDark"
+        }
+      },
+      "on-brand-hero": {
+        "any": {
+          "$type": "color",
+          "$value": "#1c1a17",
+          "$description": "AppColors.onBrandHero",
+          "$swift": "AppColors.onBrandHero"
+        }
+      },
+      "info": {
+        "light": {
+          "$type": "color",
+          "$value": "#4d7396",
+          "$description": "AppColors.infoLight",
+          "$swift": "AppColors.infoLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#85a4c2",
+          "$description": "AppColors.infoDark",
+          "$swift": "AppColors.infoDark"
+        }
+      },
+      "success": {
+        "light": {
+          "$type": "color",
+          "$value": "#3b7a3b",
+          "$description": "AppColors.savedLight",
+          "$swift": "AppColors.savedLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#6fb36f",
+          "$description": "AppColors.savedDark",
+          "$swift": "AppColors.savedDark"
+        }
+      },
+      "destructive": {
+        "light": {
+          "$type": "color",
+          "$value": "#b5403a",
+          "$description": "AppColors.destructiveLight",
+          "$swift": "AppColors.destructiveLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#e0726b",
+          "$description": "AppColors.destructiveDark",
+          "$swift": "AppColors.destructiveDark"
+        }
+      },
+      "warning": {
+        "light": {
+          "$type": "color",
+          "$value": "#8c6014",
+          "$description": "AppColors.warningLight",
+          "$swift": "AppColors.warningLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#d9a441",
+          "$description": "AppColors.warningDark",
+          "$swift": "AppColors.warningDark"
+        }
+      },
+      "tint": {
+        "light": {
+          "$type": "color",
+          "$value": "#37352f",
+          "$description": "AppColors.tintLight",
+          "$swift": "AppColors.tintLight"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "#e6e6e3",
+          "$description": "AppColors.tintDark",
+          "$swift": "AppColors.tintDark"
+        }
+      },
+      "chart-highlight": {
+        "any": {
+          "$type": "color",
+          "$value": "#f0ca89",
+          "$description": "AppColors.chartHighlight",
+          "$swift": "AppColors.chartHighlight"
+        }
+      }
+    }
+  },
+  "space": {
+    "scale": {
+      "hairline": {
+        "$type": "dimension",
+        "$value": "1px",
+        "$description": "AppSpacing.hairline",
+        "$swift": "AppSpacing.hairline"
+      },
+      "micro": {
+        "$type": "dimension",
+        "$value": "2px",
+        "$description": "AppSpacing.microGap",
+        "$swift": "AppSpacing.microGap"
+      },
+      "tiny": {
+        "$type": "dimension",
+        "$value": "3px",
+        "$description": "AppSpacing.tinyGap",
+        "$swift": "AppSpacing.tinyGap"
+      },
+      "1": {
+        "$type": "dimension",
+        "$value": "4px",
+        "$description": "AppSpacing.s1",
+        "$swift": "AppSpacing.s1"
+      },
+      "2": {
+        "$type": "dimension",
+        "$value": "8px",
+        "$description": "AppSpacing.s2",
+        "$swift": "AppSpacing.s2"
+      },
+      "3": {
+        "$type": "dimension",
+        "$value": "12px",
+        "$description": "AppSpacing.s3",
+        "$swift": "AppSpacing.s3"
+      },
+      "4": {
+        "$type": "dimension",
+        "$value": "16px",
+        "$description": "AppSpacing.s4",
+        "$swift": "AppSpacing.s4"
+      },
+      "5": {
+        "$type": "dimension",
+        "$value": "20px",
+        "$description": "AppSpacing.s5",
+        "$swift": "AppSpacing.s5"
+      },
+      "6": {
+        "$type": "dimension",
+        "$value": "24px",
+        "$description": "AppSpacing.s6",
+        "$swift": "AppSpacing.s6"
+      },
+      "7": {
+        "$type": "dimension",
+        "$value": "32px",
+        "$description": "AppSpacing.s7",
+        "$swift": "AppSpacing.s7"
+      },
+      "8": {
+        "$type": "dimension",
+        "$value": "40px",
+        "$description": "AppSpacing.s8",
+        "$swift": "AppSpacing.s8"
+      },
+      "9": {
+        "$type": "dimension",
+        "$value": "48px",
+        "$description": "AppSpacing.s9",
+        "$swift": "AppSpacing.s9"
+      },
+      "10": {
+        "$type": "dimension",
+        "$value": "64px",
+        "$description": "AppSpacing.s10",
+        "$swift": "AppSpacing.s10"
+      }
+    },
+    "semantic": {
+      "card-padding": {
+        "$type": "dimension",
+        "$value": "18px",
+        "$description": "AppSkin.baseSpacing.cardPadding",
+        "$swift": "AppSkin.baseSpacing.cardPadding"
+      },
+      "section-gap": {
+        "$type": "dimension",
+        "$value": "14px",
+        "$description": "AppSkin.baseSpacing.sectionGap",
+        "$swift": "AppSkin.baseSpacing.sectionGap"
+      },
+      "inline-gap": {
+        "$type": "dimension",
+        "$value": "8px",
+        "$description": "AppSkin.baseSpacing.inlineGap",
+        "$swift": "AppSkin.baseSpacing.inlineGap"
+      },
+      "sheet-padding": {
+        "$type": "dimension",
+        "$value": "24px",
+        "$description": "AppSkin.baseSpacing.sheetPadding",
+        "$swift": "AppSkin.baseSpacing.sheetPadding"
+      },
+      "page-h-padding": {
+        "$type": "dimension",
+        "$value": "20px",
+        "$description": "AppSkin.baseMetrics.overlayHorizontalInset",
+        "$swift": "AppSkin.baseMetrics.overlayHorizontalInset"
+      },
+      "divider-air": {
+        "$type": "dimension",
+        "$value": "16px",
+        "$description": "AppMetrics.dividerAirMargin",
+        "$swift": "AppMetrics.dividerAirMargin"
+      },
+      "chip-padding-h": {
+        "$type": "dimension",
+        "$value": "10px",
+        "$description": "AppTagMetrics.horizontalPadding",
+        "$swift": "AppTagMetrics.horizontalPadding"
+      },
+      "chip-padding-v": {
+        "$type": "dimension",
+        "$value": "5px",
+        "$description": "AppTagMetrics.verticalPadding",
+        "$swift": "AppTagMetrics.verticalPadding"
+      }
+    }
+  },
+  "radius": {
+    "scale": {
+      "none": {
+        "$type": "dimension",
+        "$value": "0px",
+        "$description": "AppRadius.none",
+        "$swift": "AppRadius.none"
+      },
+      "xs": {
+        "$type": "dimension",
+        "$value": "4px",
+        "$description": "AppRadius.xs",
+        "$swift": "AppRadius.xs"
+      },
+      "sm": {
+        "$type": "dimension",
+        "$value": "6px",
+        "$description": "AppRadius.sm",
+        "$swift": "AppRadius.sm"
+      },
+      "md": {
+        "$type": "dimension",
+        "$value": "8px",
+        "$description": "AppRadius.md",
+        "$swift": "AppRadius.md"
+      },
+      "lg": {
+        "$type": "dimension",
+        "$value": "12px",
+        "$description": "AppRadius.lg",
+        "$swift": "AppRadius.lg"
+      },
+      "xl": {
+        "$type": "dimension",
+        "$value": "16px",
+        "$description": "AppRadius.xl",
+        "$swift": "AppRadius.xl"
+      },
+      "pill": {
+        "$type": "dimension",
+        "$value": "999px",
+        "$description": "AppRadius.pill",
+        "$swift": "AppRadius.pill"
+      }
+    },
+    "semantic": {
+      "card": {
+        "$type": "dimension",
+        "$value": "{radius.scale.md}",
+        "$description": "AppSkin.baseRadii.card",
+        "$swift": "AppSkin.baseRadii.card"
+      },
+      "overlay": {
+        "$type": "dimension",
+        "$value": "{radius.scale.md}",
+        "$description": "AppSkin.baseRadii.overlay",
+        "$swift": "AppSkin.baseRadii.overlay"
+      },
+      "control": {
+        "$type": "dimension",
+        "$value": "{radius.scale.sm}",
+        "$description": "AppSkin.baseRadii.control",
+        "$swift": "AppSkin.baseRadii.control"
+      },
+      "chip": {
+        "$type": "dimension",
+        "$value": "{radius.scale.sm}",
+        "$description": "AppSkin.baseRadii.chip",
+        "$swift": "AppSkin.baseRadii.chip"
+      }
+    }
+  },
+  "type": {
+    "family": {
+      "serif": {
+        "$type": "fontFamily",
+        "$value": "'Athelas', 'STSongti TC', 'Noto Serif TC', Georgia, serif"
+      },
+      "sans": {
+        "$type": "fontFamily",
+        "$value": "'ElmsSans', 'PingFang TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      },
+      "italic": {
+        "$type": "fontFamily",
+        "$value": "'CormorantGaramond', Georgia, serif"
+      },
+      "mono": {
+        "$type": "fontFamily",
+        "$value": "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace"
+      },
+      "display": {
+        "$type": "fontFamily",
+        "$value": "'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif"
+      }
+    },
+    "scale": {
+      "hero": {
+        "$type": "dimension",
+        "$value": "40px",
+        "$description": "AppFonts.TypeScale.hero",
+        "$swift": "AppFonts.TypeScale.hero"
+      },
+      "h1": {
+        "$type": "dimension",
+        "$value": "28px",
+        "$description": "AppFonts.TypeScale.h1",
+        "$swift": "AppFonts.TypeScale.h1"
+      },
+      "h2": {
+        "$type": "dimension",
+        "$value": "22px",
+        "$description": "AppFonts.TypeScale.h2",
+        "$swift": "AppFonts.TypeScale.h2"
+      },
+      "body": {
+        "$type": "dimension",
+        "$value": "17px",
+        "$description": "AppFonts.TypeScale.body",
+        "$swift": "AppFonts.TypeScale.body"
+      },
+      "subhead": {
+        "$type": "dimension",
+        "$value": "15px",
+        "$description": "AppFonts.TypeScale.subhead",
+        "$swift": "AppFonts.TypeScale.subhead"
+      },
+      "caption": {
+        "$type": "dimension",
+        "$value": "12px",
+        "$description": "AppFonts.TypeScale.caption",
+        "$swift": "AppFonts.TypeScale.caption"
+      },
+      "caption2": {
+        "$type": "dimension",
+        "$value": "11px",
+        "$description": "AppFonts.TypeScale.caption2",
+        "$swift": "AppFonts.TypeScale.caption2"
+      },
+      "section-title": {
+        "$type": "dimension",
+        "$value": "18px",
+        "$description": "AppSkin.Typography.sectionTitle",
+        "$swift": "AppSkin.Typography.sectionTitle"
+      },
+      "detail-word": {
+        "$type": "dimension",
+        "$value": "27px",
+        "$description": "AppSkin.Typography.detailWord",
+        "$swift": "AppSkin.Typography.detailWord"
+      },
+      "row-word": {
+        "$type": "dimension",
+        "$value": "18px",
+        "$description": "AppSkin.Typography.rowWord",
+        "$swift": "AppSkin.Typography.rowWord"
+      }
+    },
+    "tracking": {
+      "tight": {
+        "$type": "dimension",
+        "$value": "-1.2px",
+        "$description": "AppFonts.Tracking.tight",
+        "$swift": "AppFonts.Tracking.tight"
+      },
+      "h2-tight": {
+        "$type": "dimension",
+        "$value": "-0.65px",
+        "$description": "AppFonts.Tracking.h2Tight",
+        "$swift": "AppFonts.Tracking.h2Tight"
+      },
+      "normal": {
+        "$type": "dimension",
+        "$value": "0px",
+        "$description": "AppFonts.Tracking.normal",
+        "$swift": "AppFonts.Tracking.normal"
+      },
+      "wide": {
+        "$type": "dimension",
+        "$value": "0.3px",
+        "$description": "AppFonts.Tracking.wide",
+        "$swift": "AppFonts.Tracking.wide"
+      },
+      "uppercase": {
+        "$type": "dimension",
+        "$value": "0.8px",
+        "$description": "AppFonts.Tracking.uppercase",
+        "$swift": "AppFonts.Tracking.uppercase"
+      }
+    },
+    "leading": {
+      "display": {
+        "$type": "number",
+        "$value": 1.05
+      },
+      "heading": {
+        "$type": "number",
+        "$value": 1.2
+      },
+      "body": {
+        "$type": "number",
+        "$value": 1.5
+      },
+      "reading": {
+        "$type": "number",
+        "$value": 1.6
+      },
+      "caption": {
+        "$type": "number",
+        "$value": 1.3
+      }
+    }
+  },
+  "elevation": {
+    "dark-boost": {
+      "$type": "number",
+      "$value": 1.8
+    },
+    "steps": {
+      "z0": {
+        "$swift": "AppElevation.z0",
+        "opacity": {
+          "$type": "number",
+          "$value": 0
+        },
+        "blur": {
+          "$type": "dimension",
+          "$value": "0px"
+        },
+        "y": {
+          "$type": "dimension",
+          "$value": "0px"
+        }
+      },
+      "z1": {
+        "$swift": "AppElevation.z1",
+        "opacity": {
+          "$type": "number",
+          "$value": 0.03
+        },
+        "blur": {
+          "$type": "dimension",
+          "$value": "4px"
+        },
+        "y": {
+          "$type": "dimension",
+          "$value": "1px"
+        }
+      },
+      "z2": {
+        "$swift": "AppElevation.z2",
+        "opacity": {
+          "$type": "number",
+          "$value": 0.06
+        },
+        "blur": {
+          "$type": "dimension",
+          "$value": "10px"
+        },
+        "y": {
+          "$type": "dimension",
+          "$value": "4px"
+        }
+      },
+      "z3": {
+        "$swift": "AppElevation.z3",
+        "opacity": {
+          "$type": "number",
+          "$value": 0.1
+        },
+        "blur": {
+          "$type": "dimension",
+          "$value": "18px"
+        },
+        "y": {
+          "$type": "dimension",
+          "$value": "8px"
+        }
+      },
+      "z4": {
+        "$swift": "AppElevation.z4",
+        "opacity": {
+          "$type": "number",
+          "$value": 0.16
+        },
+        "blur": {
+          "$type": "dimension",
+          "$value": "28px"
+        },
+        "y": {
+          "$type": "dimension",
+          "$value": "14px"
+        }
+      }
+    }
+  },
+  "motion": {
+    "duration": {
+      "quick": {
+        "$type": "time",
+        "$value": "0.15s",
+        "$description": "AppMotion.quickEaseOut",
+        "$swift": "AppMotion.quickEaseOut"
+      },
+      "control": {
+        "$type": "time",
+        "$value": "0.14s",
+        "$description": "AppMotion.controlEaseOut",
+        "$swift": "AppMotion.controlEaseOut"
+      },
+      "chip": {
+        "$type": "time",
+        "$value": "0.18s",
+        "$description": "AppMotion.chipSelect",
+        "$swift": "AppMotion.chipSelect"
+      },
+      "progress": {
+        "$type": "time",
+        "$value": "0.1s",
+        "$description": "AppMotion.progressLinear",
+        "$swift": "AppMotion.progressLinear"
+      },
+      "pulse": {
+        "$type": "time",
+        "$value": "1.4s",
+        "$description": "web/chrome-only loading-skeleton pulse (kg-pulse / kg-shimmer). No iOS literal — AppMotion.subtleBreath is 2.8s with autoreverse breath semantics, deliberately not reused. No $swift, so token_drift_check skips it."
+      }
+    },
+    "easing": {
+      "quick": {
+        "$type": "string",
+        "$value": "ease-out"
+      },
+      "control": {
+        "$type": "string",
+        "$value": "ease-out"
+      },
+      "chip": {
+        "$type": "string",
+        "$value": "ease-out"
+      },
+      "linear": {
+        "$type": "string",
+        "$value": "linear"
+      },
+      "emphasized-decelerate": {
+        "$type": "string",
+        "$value": "cubic-bezier(0.05, 0.7, 0.1, 1.0)",
+        "$description": "AppMotion.emphasizedDecelerate",
+        "$swift": "AppMotion.emphasizedDecelerate"
+      },
+      "follow": {
+        "$type": "string",
+        "$value": "cubic-bezier(0.65, 0.0, 0.35, 1.0)",
+        "$description": "AppMotion.podcastFollowScroll",
+        "$swift": "AppMotion.podcastFollowScroll"
+      }
+    },
+    "spring": {
+      "standard": {
+        "$swift": "AppMotion.standardSpring",
+        "response": {
+          "$type": "number",
+          "$value": 0.3
+        },
+        "damping": {
+          "$type": "number",
+          "$value": 0.75
+        }
+      },
+      "emphasized": {
+        "$swift": "AppMotion.emphasizedSpring",
+        "response": {
+          "$type": "number",
+          "$value": 0.35
+        },
+        "damping": {
+          "$type": "number",
+          "$value": 0.8
+        }
+      },
+      "press": {
+        "$swift": "AppMotion.pressFeedback",
+        "response": {
+          "$type": "number",
+          "$value": 0.25
+        },
+        "damping": {
+          "$type": "number",
+          "$value": 0.65
+        }
+      },
+      "content-reveal": {
+        "$swift": "AppMotion.contentReveal",
+        "response": {
+          "$type": "number",
+          "$value": 0.35
+        },
+        "damping": {
+          "$type": "number",
+          "$value": 0.82
+        }
+      },
+      "modal-swap": {
+        "$swift": "AppMotion.modalSwapSpring",
+        "response": {
+          "$type": "number",
+          "$value": 0.45
+        },
+        "damping": {
+          "$type": "number",
+          "$value": 0.85
+        }
+      }
+    },
+    "transition": {
+      "content-swap": {
+        "$type": "string",
+        "$value": "opacity 0.2s ease-out, transform 0.2s ease-out"
+      },
+      "panel-reveal": {
+        "$type": "string",
+        "$value": "transform 0.3s ease-out, opacity 0.25s ease-out"
+      }
+    },
+    "tap-feedback": {
+      "scale-down": {
+        "$type": "number",
+        "$value": 0.97,
+        "$description": "AppMotion.TapFeedback.scaleDown",
+        "$swift": "AppMotion.TapFeedback.scaleDown"
+      },
+      "opacity-dip": {
+        "$type": "number",
+        "$value": 0.92,
+        "$description": "AppMotion.TapFeedback.opacityDip",
+        "$swift": "AppMotion.TapFeedback.opacityDip"
+      }
+    }
+  }
+}
