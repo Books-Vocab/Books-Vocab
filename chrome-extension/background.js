@@ -65,6 +65,15 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
  * routing *decision* is pure (and tested in `pure.test.js`), the *effect*
  * is supplied here. Behaviour mirrors the former hand-coded switch exactly.
  */
+// Monotonic tick for VOCAB_DIRTY_KEY bumps. `chrome.storage.onChanged` only
+// fires when the stored value actually *changes*, so two bumps in the same
+// millisecond must not collide. `Date.now()` alone could; pairing it with an
+// in-worker counter guarantees a distinct value on every bump within a service
+// worker lifetime, and the timestamp guarantees distinctness across worker
+// restarts (wall-clock only advances). Collision would need two adds straddling
+// a worker teardown inside one millisecond — physically negligible.
+let vocabDirtyTick = 0;
+
 const SIDE_EFFECT_HANDLERS = {
   // `get_auth_status` — report whether a token is stored.
   getAuthStatus: async () => {
@@ -96,14 +105,14 @@ async function handleMessage(msg) {
   const result = await apiMethod(...args);
 
   // A vocab-mutating call (e.g. an in-page popup `addVocab`) just changed the
-  // user's list, so any open side panel is stale. Bump a fresh timestamp into
-  // storage; the side panel watches VOCAB_DIRTY_KEY via `storage.onChanged` and
-  // silently refetches. Fire-and-forget — a bump failure must never fail or
-  // delay the caller's add. The value only needs to *differ* to fire the event;
-  // same-ms collisions are benign (one refetch already reflects both writes).
+  // user's list, so any open side panel is stale. Bump a fresh, strictly-unique
+  // value into storage; the side panel watches VOCAB_DIRTY_KEY via
+  // `storage.onChanged` and silently refetches. Fire-and-forget — a bump failure
+  // must never fail or delay the caller's add. The `${now}.${tick}` form makes
+  // every bump differ (see vocabDirtyTick) so back-to-back adds each fire.
   if (globalThis.KGPure.isVocabMutatingKind(kind)) {
     chrome.storage.local
-      .set({ [globalThis.KGPure.VOCAB_DIRTY_KEY]: Date.now() })
+      .set({ [globalThis.KGPure.VOCAB_DIRTY_KEY]: `${Date.now()}.${++vocabDirtyTick}` })
       .catch((err) => console.error('[KG] vocab_dirty bump failed', err));
   }
 
