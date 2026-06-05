@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 71c5e8e0
+verified_against: 1accb78c
 -->
 # Technical Reference Index
 
@@ -26,7 +26,7 @@ verified_against: 71c5e8e0
 | `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
-| `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發 |
+| `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發（iOS sync 收斂後 + chrome-extension 加詞 outbox flush 收斂後皆 `POST /api/pipeline?notebook_id` 觸發 server enrich） |
 | `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**訪客**;`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）;`progress` 仍 `get_current_user` |
 | `podcast_access.py` | — | 播客分層 policy(純函式,免 FastAPI):`resolve_podcast_tier(user|None)→guest/free/pro`(由 auth + `_is_pro` 推導,**無 per-series 旗標**,牆統一)、`is_free_previewable_episode`(`FREE_PREVIEW_EP_NUM=1`)、stem 常數、error code。free preview 走**獨立 `preview.*` 物件**而非 byte 截斷(progressive MP4 單 moov 無法乾淨截) |
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
@@ -107,6 +107,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `cron/kg-backup.cron` | `/etc/cron.d/kg-backup`(daily UTC 03:00) |
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
 | `chrome_verify.sh` | Chrome extension **啟動煙霧測試**(agent-facing,零安裝;改 chrome-extension 後跑此)。三層 fail-fast:(1) `tools/static.mjs` — manifest 引用完整性 / JS syntax(ESM 偵測) / HTML 資產引用 / i18n key 覆蓋;(2) `node --test shared/*.test.js`(純邏輯 + CSS 不變式 + inline-mirror drift 守門);(3) `tools/smoke.mjs` — 用系統既有 Chrome `--headless=new` 透過 CDP `--remote-debugging-pipe` + `Extensions.loadUnpacked` 載入 unpacked extension(Chrome≥126 headless 禁 `--load-extension`,該 CDP 命令只在 pipe 模式開放),開 sidepanel/options 斷言每個 `[hidden]` computed `display:none` + KG token 已套用(anti-false-green)+ 無未捕捉例外;獨立 user-data-dir 不碰使用者 profile。`--static-only` 跳 Layer 3(無瀏覽器 CI host);`CHROME_BIN` override 二進位 |
+| `chrome_parity.sh` | Chrome ⟷ iOS **視覺對標 contact sheet**(開發輔助,非 gate)。沿用 chrome_verify 的 CDP-pipe + `Extensions.loadUnpacked` 基建:`tools/shots.mjs` 逐 UI case 注入 in-page mock 走 app.js 真實 render path(呼叫 `setState`/`applyView`/`openDetail`/`renderLoggedIn`/`renderProStatus` 等 global),393×852@3x 截 1179×2556(同 iOS 參考圖解析度,回讀 `--page-bg` token 防 false-green);`tools/compare.mjs` 按 parity manifest 與 iOS 圖(`~/Desktop/IOS截圖參考/`,`IOS_REF_DIR` override)並排 montage 成單張 sheet(省 token review,取代逐張截圖往返)。涵蓋 content(light/dark/sepia)/detail/options/empty/error 7 case;產物 git-ignored(`tools/{shots,compare}/`) |
 | `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `podcast_preview_backfill.py` | free-tier **試聽片**回填,與 audio/cover 完全解耦:對 bucket 內既有 series,下載 `ep_01/audio.<fmt>` → `ffmpeg -t 180 -c copy` → PUT `ep_01/preview.<fmt>` → RMW `metadata.json` ep1 `previewAvailable`/`previewDurationSec`(不 bump updatedAt → 冪等;不重建 index,preview 欄在 episodes 內被 index strip)。`--all`/`--series`、dry-run 預設、`--execute` 才寫、`--check` drift(in_sync/missing/flag_without_preview/preview_without_flag);per-series 失敗記錄不中斷批次。新 series 由 `ops/podcast_upload.sh` 在 publish 時對 ep_01 自動生成 preview(同 stream-copy) |
