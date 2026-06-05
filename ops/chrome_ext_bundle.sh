@@ -7,7 +7,7 @@
 # 行為：
 #   1. 從 chrome-extension/manifest.json 讀 version（regex 抽取，不引入 jq）
 #   2. zip 整個 chrome-extension/ 到 dist/chrome-ext-vX.Y.Z.zip
-#   3. 排除 .DS_Store / .git / README*.md
+#   3. 排除 .DS_Store / .git / README*.md / tools/
 #   4. 印 zip 路徑與 size
 #
 # 環境變數（測試注入）：
@@ -20,6 +20,37 @@ set -euo pipefail
 info() { echo "▶ $*"; }
 ok()   { echo "✓ $*"; }
 err()  { echo "✗ $*" >&2; exit 1; }
+
+is_valid_chrome_version() {
+  local version="$1"
+  local old_ifs segment all_zero
+
+  [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,3}$ ]] || return 1
+
+  all_zero=1
+  old_ifs="$IFS"
+  IFS=.
+  set -- $version
+  IFS="$old_ifs"
+
+  for segment in "$@"; do
+    [[ "$segment" =~ ^[0-9]+$ ]] || return 1
+    if [[ "$segment" == 0* && "$segment" != "0" ]]; then
+      return 1
+    fi
+    if [[ "${#segment}" -gt 5 ]]; then
+      return 1
+    fi
+    if (( 10#$segment > 65535 )); then
+      return 1
+    fi
+    if [[ "$segment" != "0" ]]; then
+      all_zero=0
+    fi
+  done
+
+  [[ "$all_zero" -eq 0 ]]
+}
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,8 +75,8 @@ VERSION="$(grep -E '"version"[[:space:]]*:' "$MANIFEST" \
 
 [[ -n "$VERSION" ]] || err "manifest.json 缺 version 欄位"
 
-# 防止 path traversal / 怪字元 — semver 寬鬆形（含 pre-release）
-if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,3}([.-][A-Za-z0-9]+)*$ ]]; then
+# 防止 path traversal / 怪字元 — Chrome extension version 僅允許 1-4 段 0..65535 整數。
+if ! is_valid_chrome_version "$VERSION"; then
   err "manifest.json version 字串異常: $VERSION"
 fi
 
@@ -65,13 +96,14 @@ STAGE_EXT="$STAGE/chrome-extension"
 mkdir -p "$STAGE_EXT"
 
 # rsync 才能精確排除；fallback 用 find+cp
-# 排除 *.test.js — node:test 測試檔不隨發行版打包。
+# 排除 *.test.js / tools/ — node:test 與 CDP/static 開發工具不隨發行版打包。
 if command -v rsync >/dev/null 2>&1; then
   rsync -a \
     --exclude='.DS_Store' \
     --exclude='.git' \
     --exclude='README*.md' \
     --exclude='*.test.js' \
+    --exclude='/tools/' \
     "$EXT_DIR/" "$STAGE_EXT/" \
     || err "stage 複製失敗"
 else
@@ -81,6 +113,7 @@ else
   find "$STAGE_EXT" -type d -name '.git' -prune -exec rm -rf {} + 2>/dev/null
   find "$STAGE_EXT" -maxdepth 2 -type f -name 'README*.md' -delete 2>/dev/null
   find "$STAGE_EXT" -type f -name '*.test.js' -delete 2>/dev/null
+  find "$STAGE_EXT" -maxdepth 1 -type d -name 'tools' -prune -exec rm -rf {} + 2>/dev/null
 fi
 
 info "打包 chrome-extension v${VERSION}"

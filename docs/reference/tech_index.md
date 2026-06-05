@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 1accb78c
+verified_against: 74bf32da
 -->
 # Technical Reference Index
 
@@ -100,13 +100,13 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `ios_build.sh` | iOS Release build,共享 `shlock` |
 | `ios_test.sh` | iOS unit tests;`-g pattern` 過濾 |
 | `ios_release.sh` | iOS App Store/TestFlight 發版:archive→export→`--upload`(對外 gate,預設不上傳);manual signing(Apple Distribution cert + `KG App Store` profile,一次性建置與憑證見 `~/.secrets/apple/README.md`);共用 `/tmp/kg-ios-build.lock`;`--upload` 前擋重複 build number;`--key <id>` 選 ASC API key。設定檔 `ios/ExportOptions.plist` |
-| `gen_ios_baseline.sh` | 再生 `ios_frontend_baseline.md` 快照 |
+| `gen_ios_baseline.sh` | 再生 `docs/snapshot/ios_baseline.md` 快照 |
 | `devops_kg_safe.sh` | 部署 / 維護 safe wrapper |
 | `status_all.sh` | 一覽 backend / caddy / 容器狀態 |
 | `backup_verify.sh` | tarball 還原演練 + SQLite integrity |
 | `kg_backup.sh` | server 端 streaming tar → S3 backup;cron 觸發,日誌 `/var/log/kg_backup.log` |
 | `cron/kg-backup.cron` | `/etc/cron.d/kg-backup`(daily UTC 03:00) |
-| `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
+| `chrome_ext_bundle.sh` | Chrome extension 打包發行;驗證 manifest `version` 符合 Chrome 規格(1-4 段、0..65535、無 leading zero / prerelease / all-zero),發行 zip 排除測試檔與頂層 `tools/` 開發工具 |
 | `chrome_verify.sh` | Chrome extension **啟動煙霧測試**(agent-facing,零安裝;改 chrome-extension 後跑此)。三層 fail-fast:(1) `tools/static.mjs` — manifest 引用完整性 / JS syntax(ESM 偵測) / HTML 資產引用 / i18n key 覆蓋;(2) `node --test shared/*.test.js`(純邏輯 + CSS 不變式 + inline-mirror drift 守門);(3) `tools/smoke.mjs` — 用系統既有 Chrome `--headless=new` 透過 CDP `--remote-debugging-pipe` + `Extensions.loadUnpacked` 載入 unpacked extension(Chrome≥126 headless 禁 `--load-extension`,該 CDP 命令只在 pipe 模式開放),開 sidepanel/options 斷言每個 `[hidden]` computed `display:none` + KG token 已套用(anti-false-green)+ 無未捕捉例外;獨立 user-data-dir 不碰使用者 profile。`--static-only` 跳 Layer 3(無瀏覽器 CI host);`CHROME_BIN` override 二進位 |
 | `chrome_parity.sh` | Chrome ⟷ iOS **視覺對標 contact sheet**(開發輔助,非 gate)。沿用 chrome_verify 的 CDP-pipe + `Extensions.loadUnpacked` 基建:`tools/shots.mjs` 逐 UI case 注入 in-page mock 走 app.js 真實 render path(呼叫 `setState`/`applyView`/`openDetail`/`renderLoggedIn`/`renderProStatus` 等 global),393×852@3x 截 1179×2556(同 iOS 參考圖解析度,回讀 `--page-bg` token 防 false-green);`tools/compare.mjs` 按 parity manifest 與 iOS 圖(`~/Desktop/IOS截圖參考/`,`IOS_REF_DIR` override)並排 montage 成單張 sheet(省 token review,取代逐張截圖往返)。涵蓋 content(light/dark/sepia)/detail/options/empty/error 7 case;產物 git-ignored(`tools/{shots,compare}/`) |
 | `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
@@ -118,10 +118,10 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `gen_web_tokens.py` | 從 `design-system/tokens.json`(W3C DTCG 格式,跨平台 token SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
-| `gen_web_components.py` | 從 `design-system/components.json`(複合元件**結構** SoT)生成 web CSS+JS:`kg-component-structures.css`(dist + chrome-extension `shared/` + `backend/static/` 三副本)+ `review-gradient.js`。token 以 `var(--*)` 引用(非硬編碼,token 改值自動傳播);支援 `_emit_modifiers`(`.class--active` 等 markup-toggled BEM modifier,states pseudo 之外)。生成檔禁手改;`uv run python ops/gen_web_components.py` 重生 |
+| `gen_web_components.py` | 從 `design-system/components.json`(複合元件**結構** SoT)生成 web CSS+JS:`kg-component-structures.css`(dist + chrome-extension `shared/` + `backend/static/` 三副本)+ `review-gradient.js`。token 以 `var(--*)` 引用(非硬編碼,token 改值自動傳播);支援 `_emit_modifiers`(`.class--active` 等 markup-toggled BEM modifier,states pseudo 之外)。生成檔禁手改;`uv run python ops/gen_web_components.py` 重生,`--check` 為 CI/pre-commit stale gate |
 | `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 token 仍對齊 iOS Swift。**SoT-inversion-aware**:已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation)iOS 端引用 `DesignTokens.*`,`parse_design_tokens`/`_swift_num` 把引用解析回值再比對(證明 tokens.json==iOS 跨 SoT 反轉仍成立,且抓得到誤接線的值偏移);未接線群組(`AppColors`/`AppTheme`/`AppMotion` spring 物理層/`AppFonts` LineSpacing/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity)仍直接比對 literal。偏移不可 merge |
 | `component_fidelity_check.py` | drift guard(**組裝層**)— contract-based 驗證 `design-system/dist/kg-components.css` 每個手寫 primitive *選用* 的 token 對齊 iOS 元件契約(`.kg-chip`↔`AppTag`、`.kg-btn`↔`AppActionButtonStyle` radius md/700、`.kg-card`↔`AppSectionCardStyle`、`.kg-input` body(17)+hairline、`.kg-banner` caption(12)+v8、serif heading 700…),刻意的 web 發散(brand-hero CTA / banner 形狀)亦 pin 防回歸。`token_drift` 守值、它守*選用哪個值*;stdlib-only,env override `KG_COMPONENTS_CSS` |
-| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json byte-for-byte)+ `component_fidelity_check`(若存在)+ extension `shared/{pure,icons}.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。Python guard 刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
+| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `gen_figma_sets --check` + `gen_web_components --check` + `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json byte-for-byte)+ `component_fidelity_check`(若存在)+ extension `shared/*.test.js`;pre-commit hook 與 CI 共用入口,任一失敗 exit 1。Python guard 刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
@@ -141,8 +141,8 @@ Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`ops_analyze.py`
 | iOS 生成鏈 | `npm run build`(`package.json` script)→ Style Dictionary(`design-system/sd.config.mjs` 自訂 `kg/swift-tokens` format,排除 color/web-only,PascalCase 巢狀 scalar enum)→ `ios/BooksBrowser/Models/DesignTokens.swift`(禁手改);`npm run build:check`(`design-system/sd-check.mjs`)為 byte-for-byte stale gate |
 | web 生成鏈 | `ops/gen_web_tokens.py`(DTCG → web CSS,見 ops 表) |
 | **SoT 方向**(接線後二分) | **已接線 scalar**(`AppRadius`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,47 值):tokens.json→`npm run build`→`DesignTokens.swift`→iOS 引用,Figma 改值重編即生效。**未接線**(全部顏色+`WCAGContrastTests`、`AppMotion`、`LineSpacing`、`AppSkin`):iOS Swift literal 為 SoT、tokens.json 鏡像。設計師接 tokens.json 的 SOP 見 `docs/sop/figma-token-workflow.md` |
-| Guard(三層)| **值** `ops/token_drift_check.py`(SoT-inversion-aware:已接線解析 `DesignTokens.*` 引用回值、未接線比 literal)+ **生成** `gen_web_tokens.py --check`(on-disk CSS ↔ tokens.json 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
-| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + `npm run build:check` + extension `{pure,icons}.test.js`;由 `.github/workflows/design-system.yml`(repo 首支 GitHub Actions CI,相關路徑變動才跑;含 `npm ci`)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
+| Guard(三層)| **值** `ops/token_drift_check.py`(SoT-inversion-aware:已接線解析 `DesignTokens.*` 引用回值、未接線比 literal)+ **生成** `gen_web_tokens.py --check` + `gen_figma_sets.py --check` + `gen_web_components.py --check`(on-disk CSS/JS/sidecar ↔ tokens/components 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
+| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + `npm run build:check` + extension `shared/*.test.js`;由 `.github/workflows/design-system.yml`(repo 首支 GitHub Actions CI,相關路徑變動才跑;含 `npm ci`)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
 | 一次性遷移工具 | `ops/migrate_tokens_to_dtcg.py`(自研格式 → DTCG,已執行完成,留檔) |
 | 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源,component_fidelity 守護對象) |
 | 消費副本 | chrome-extension `shared/tokens.css`(生成)+ `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |
