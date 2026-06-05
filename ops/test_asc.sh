@@ -313,6 +313,51 @@ done
 hasm "$(awk '/^cmd_pricing\(\)/,/^}/' "$ASC")" 'appAvailabilityV2' \
   && ok "pricing attempts availability (graceful)" || fail_t "pricing missing availability read"
 
+# ── 14. 營利寫面（P4：訂閱在地化 / 送審備註 / 改價，高風險 gated）──
+section "Monetization writes (P4, gated)"
+for sub in set-sub-name set-sub-desc set-sub-review-note set-sub-price; do
+  grep -qE "^[[:space:]]*$sub\)" "$ASC" \
+    && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+done
+# 14a. resolve_sub_loc 有 _httpError 守衛（靜默中止回歸）
+rsl_body="$(awk '/^resolve_sub_loc\(\)/,/^}/' "$ASC")"
+hasm "$rsl_body" 'has("_httpError")' \
+  && ok "resolve_sub_loc guards _httpError" || fail_t "resolve_sub_loc may abort on auth/network fail"
+# 14b. 四個寫指令全經 emit_write，無人自行 write_raw（集中 gate）
+for fn in _set_sub_loc cmd_set_sub_review_note cmd_set_sub_price; do
+  body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
+  hasm "$body" 'emit_write' \
+    && ok "$fn routes through emit_write" || fail_t "$fn not using emit_write"
+  hasm "$body" 'write_raw' \
+    && fail_t "$fn calls write_raw directly (bypasses gate)" \
+    || ok "$fn delegates write (no direct write_raw)"
+done
+# 14c. set-sub-price 用 POST + 正確 body（subscriptionPrices + 三個關係 + preserveCurrentPrice）
+sp_body="$(awk '/^cmd_set_sub_price\(\)/,/^}/' "$ASC")"
+hasm "$sp_body" 'emit_write POST' \
+  && ok "set-sub-price uses POST" || fail_t "set-sub-price not POST"
+hasm "$sp_body" 'type:"subscriptionPrices"' \
+  && ok "set-sub-price body targets subscriptionPrices" || fail_t "set-sub-price wrong type"
+hasme "$sp_body" 'subscription.*subscriptionPricePoint.*territory' \
+  && ok "set-sub-price body carries 3 relationships" || fail_t "set-sub-price missing relationships"
+hasm "$sp_body" 'preserveCurrentPrice' \
+  && ok "set-sub-price sets preserveCurrentPrice (protect existing subs)" || fail_t "set-sub-price missing preserveCurrentPrice"
+# 14d. set-sub-price 有 live-billing 警告（高風險明示）+ 後端相依提醒
+hasm "$sp_body" '動到真實計費' \
+  && ok "set-sub-price warns about live billing" || fail_t "set-sub-price missing billing warning"
+hasm "$sp_body" '6Y7DC88RUY' \
+  && ok "set-sub-price warns backend entitlement dependency" || fail_t "set-sub-price missing backend warning"
+# 14e. set-sub-price 解析 price point by customerPrice（非接受任意值）
+hasm "$sp_body" 'pricePoints' \
+  && ok "set-sub-price resolves pricePoints" || fail_t "set-sub-price doesn't resolve price points"
+hasm "$sp_body" 'select(.attributes.customerPrice==$p)' \
+  && ok "set-sub-price matches exact customerPrice tier" || fail_t "set-sub-price doesn't validate price tier"
+# 14f. 在地化寫指向 subscriptionLocalizations；備註指向 subscriptions
+hasm "$(awk '/^_set_sub_loc\(\)/,/^}/' "$ASC")" 'type:"subscriptionLocalizations"' \
+  && ok "set-sub-name/desc target subscriptionLocalizations" || fail_t "sub-loc wrong type"
+hasm "$(awk '/^cmd_set_sub_review_note\(\)/,/^}/' "$ASC")" 'reviewNote' \
+  && ok "set-sub-review-note patches reviewNote" || fail_t "review-note wrong field"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

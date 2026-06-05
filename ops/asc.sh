@@ -20,6 +20,10 @@
 #   ./ops/asc.sh subscriptions                 # 列訂閱群組→方案（productId/state/週期/代表價/在地化）
 #   ./ops/asc.sh iap                            # 列一次性 App 內購買（inAppPurchasesV2）
 #   ./ops/asc.sh pricing                        # App 基礎定價（各地區 customerPrice）+ 供應地區
+#   ./ops/asc.sh set-sub-name <subId> <value>   # 改訂閱顯示名（subscriptionLocalization；dry-run）
+#   ./ops/asc.sh set-sub-desc <subId> <value>   # 改訂閱描述（subscriptionLocalization；dry-run）
+#   ./ops/asc.sh set-sub-review-note <subId> <text>     # 改訂閱送審備註（dry-run）
+#   ./ops/asc.sh set-sub-price <subId> <territory> <customerPrice>  # ⚠ 改訂閱正式價（動計費；dry-run，--yes 才送）
 #   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改版本文案（預設 dry-run，--yes 才真寫）
 #   ./ops/asc.sh set-review <field> <value>               # 改審查資訊：備註/demo帳號/聯絡人（dry-run，--yes 才寫）
 #   ./ops/asc.sh set-appinfo <field> <value> [--locale L] # 改 App 層本地化：名稱/副標/隱私URL（dry-run，--yes 才寫）
@@ -547,6 +551,76 @@ cmd_pricing() {
   fi
 }
 
+# ---- 營利寫（P4，高風險；全 dry-run 預設 + --yes gate）----
+resolve_sub_loc() {  # $1=subscription id → 印該 locale 的 subscriptionLocalization id
+  raw "/v1/subscriptions/$1/subscriptionLocalizations?limit=50" \
+    | jq -r --arg L "$LOCALE" 'if has("_httpError") then empty else (first(.data[] | select(.attributes.locale==$L) | .id) // empty) end'
+}
+
+# 改訂閱在地化（name/description；subscriptionLocalization PATCH，逐語系）
+_set_sub_loc() {  # $1=cmd 顯示名  $2=jkey(name/description)  $3=subId  $4=value
+  local cmd="$1" jkey="$2" subid="${3:-}" value="${4:-}"
+  [[ -n "$subid" && -n "$value" ]] || err "用法：asc.sh $cmd <subId> <value> [--locale L] [--yes]（subId 見 asc.sh subscriptions）"
+  require_key
+  local loc data old body
+  loc="$(resolve_sub_loc "$subid")"; [[ -n "$loc" ]] || err "訂閱 $subid 無 $LOCALE 在地化"
+  data="$(raw "/v1/subscriptionLocalizations/$loc")"
+  old="$(printf '%s' "$data" | jq -r --arg k "$jkey" '.data.attributes[$k] // "（空）"')"
+  body="$(jq -nc --arg id "$loc" --arg k "$jkey" --arg v "$value" \
+    '{data:{type:"subscriptionLocalizations",id:$id,attributes:{($k):$v}}}')"
+  emit_write PATCH "subscriptionLocalization=$loc  locale=$LOCALE  field=$jkey" "$old" "$value" \
+    "/v1/subscriptionLocalizations/$loc" "$body" \
+    "$(printf './ops/asc.sh %s %s %q --locale %s --yes' "$cmd" "$subid" "$value" "$LOCALE")"
+}
+cmd_set_sub_name() { _set_sub_loc set-sub-name name "$@"; }
+cmd_set_sub_desc() { _set_sub_loc set-sub-desc description "$@"; }
+
+# 改訂閱送審備註（subscription PATCH）
+cmd_set_sub_review_note() {
+  local subid="${1:-}" value="${2:-}"
+  [[ -n "$subid" && -n "$value" ]] || err "用法：asc.sh set-sub-review-note <subId> <text> [--yes]"
+  require_key
+  local old body
+  old="$(raw "/v1/subscriptions/$subid" | jq -r '.data.attributes.reviewNote // "（空）"')"
+  body="$(jq -nc --arg id "$subid" --arg v "$value" \
+    '{data:{type:"subscriptions",id:$id,attributes:{reviewNote:$v}}}')"
+  emit_write PATCH "subscription=$subid  reviewNote" "$old" "$value" \
+    "/v1/subscriptions/$subid" "$body" \
+    "$(printf './ops/asc.sh set-sub-review-note %s %q --yes' "$subid" "$value")"
+}
+
+# ⚠ 改訂閱正式價格（subscriptionPrices POST；動真實計費，最硬警告）
+cmd_set_sub_price() {
+  local subid="${1:-}" terr="${2:-}" price="${3:-}"
+  [[ -n "$subid" && -n "$terr" && -n "$price" ]] \
+    || err "用法：asc.sh set-sub-price <subId> <territory> <customerPrice> [--yes]（territory 如 USA/TWN；customerPrice 須對應可選價位）"
+  require_key
+  local pts ppid old body
+  pts="$(raw "/v1/subscriptions/$subid/pricePoints?filter%5Bterritory%5D=$terr&limit=200")"
+  printf '%s' "$pts" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
+    && err "讀取 $terr 價位失敗：HTTP $(printf '%s' "$pts" | jq -r '._httpError')（territory 代碼錯誤？）"
+  ppid="$(printf '%s' "$pts" | jq -r --arg p "$price" 'first(.data[] | select(.attributes.customerPrice==$p) | .id) // empty')"
+  if [[ -z "$ppid" ]]; then
+    echo "✗ $terr 無 customerPrice=$price 的價位。可選值："
+    printf '%s' "$pts" | jq -r '[(.data // [])[].attributes.customerPrice] | map(tonumber) | sort | map(tostring) | join(", ")' 2>/dev/null
+    err "請從上列選一個精確值"
+  fi
+  old="$(raw "/v1/subscriptions/$subid/prices?include=subscriptionPricePoint,territory&limit=200" \
+    | jq -r --arg t "$terr" '(.included // []) as $inc
+        | first((.data // [])[] | select(.relationships.territory.data.id==$t)
+          | .relationships.subscriptionPricePoint.data.id as $pp
+          | ($inc[] | select(.type=="subscriptionPricePoints" and .id==$pp) | .attributes.customerPrice)) // "（未知）"')"
+  # preserveCurrentPrice=true：既有訂戶維持原價（較安全預設），僅新訂戶適用新價
+  body="$(jq -nc --arg sub "$subid" --arg pp "$ppid" --arg t "$terr" \
+    '{data:{type:"subscriptionPrices",attributes:{preserveCurrentPrice:true},relationships:{subscription:{data:{type:"subscriptions",id:$sub}},subscriptionPricePoint:{data:{type:"subscriptionPricePoints",id:$pp}},territory:{data:{type:"territories",id:$t}}}}}')"
+  echo "⚠ 這會改變正式 App Store 訂閱價格（$terr）—— 動到真實計費。"
+  echo "⚠ preserveCurrentPrice=true：既有訂戶維持原價，僅新訂戶適用新價。"
+  echo "⚠ KG 後端以 key 6Y7DC88RUY 驗訂閱權益；改價/方案前確認與後端邏輯一致。"
+  emit_write POST "subscription=$subid  territory=$terr  pricePoint=$ppid" "$old" "$price" \
+    "/v1/subscriptionPrices" "$body" \
+    "$(printf './ops/asc.sh set-sub-price %s %s %s --yes' "$subid" "$terr" "$price")"
+}
+
 # ---- dispatch ----
 case "${SUB:-}" in
   versions)      cmd_versions ;;
@@ -563,6 +637,10 @@ case "${SUB:-}" in
   subscriptions) cmd_subscriptions ;;
   iap)           cmd_iap ;;
   pricing)       cmd_pricing ;;
+  set-sub-name)        cmd_set_sub_name "${ARGS[@]:-}" ;;
+  set-sub-desc)        cmd_set_sub_desc "${ARGS[@]:-}" ;;
+  set-sub-review-note) cmd_set_sub_review_note "${ARGS[@]:-}" ;;
+  set-sub-price)       cmd_set_sub_price "${ARGS[@]:-}" ;;
   set)           cmd_set "${ARGS[@]:-}" ;;
   set-review)    cmd_set_review "${ARGS[@]:-}" ;;
   set-appinfo)   cmd_set_appinfo "${ARGS[@]:-}" ;;
