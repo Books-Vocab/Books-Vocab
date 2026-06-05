@@ -151,7 +151,9 @@ async function loadVocabList() {
     // Normalize each raw payload to one canonical shape here, at the single
     // ingress point, so every downstream read (search / card / detail) uses
     // canonical field names instead of papering over snake_case/legacy aliases.
-    const items = KGPure.normalizeVocabList(response).map(KGPure.normalizeVocabItem);
+    const items = KGPure.normalizeVocabList(response)
+      .map(KGPure.normalizeVocabItem)
+      .map(enrichWithMockReviewData);
 
     vocabData = items;
 
@@ -239,6 +241,39 @@ function onSearch() {
 // ---------------------------------------------------------------------------
 // Filter + Sort Bar
 // ---------------------------------------------------------------------------
+
+/**
+ * Deterministically generate mock review-progress data from the word itself.
+ * This gives every row a progress bar + due label so the sidepanel visually
+ * matches the iOS vocab list. When the backend API gains real review metadata,
+ * replace this with actual data — the UI structure (progress bar, trailing label)
+ * is already wired and ready.
+ * @param {object} item
+ * @returns {object}
+ */
+function enrichWithMockReviewData(item) {
+  // djb2 hash over the word for deterministic, stable mock values
+  let hash = 5381;
+  for (let i = 0; i < item.word.length; i++) {
+    hash = ((hash << 5) + hash) + item.word.charCodeAt(i);
+  }
+  const positive = Math.abs(hash);
+
+  // ratio 0..3 (fresh → deep overdue)
+  const ratio = (positive % 350) / 100;
+
+  // "55d / 2d" style label
+  const daysSince = positive % 80;
+  const daysUntil = Math.max(1, 20 - (positive % 25));
+  const dueLabel = `${daysSince}d / ${daysUntil}d`;
+
+  return {
+    ...item,
+    reviewRatio: ratio,
+    dueLabel,
+    dueInfo: dueLabel,
+  };
+}
 
 /**
  * Render filter chips (mirrors iOS VocabFilterChipBar).
