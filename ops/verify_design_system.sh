@@ -36,6 +36,7 @@ run() {
 
 run "token drift (tokens.json ↔ iOS Swift)" "${PY[@]}" ops/token_drift_check.py
 run "web token gen (CSS ↔ tokens.json)"     "${PY[@]}" ops/gen_web_tokens.py --check
+run "Style Dictionary (Swift ↔ tokens.json)" npm run build:check
 if [ -f ops/component_fidelity_check.py ]; then
   run "component fidelity (primitive ↔ iOS)" "${PY[@]}" ops/component_fidelity_check.py
 fi

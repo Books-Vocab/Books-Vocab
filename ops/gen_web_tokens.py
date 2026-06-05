@@ -1,39 +1,15 @@
 #!/usr/bin/env python3
 """gen_web_tokens — render the cross-platform design tokens into web CSS.
 
-SoT = design-system/tokens.json (itself a verified mirror of the iOS Swift
-token files; see ops/token_drift_check.py). This script is the ONE place that
-turns those tokens into CSS custom properties for every web surface.
+SoT = design-system/tokens.json (W3C DTCG format). This script is the ONE place
+that turns those tokens into CSS custom properties for every web surface.
 
 Outputs (GENERATED — never hand-edit):
-  design-system/dist/kg-tokens.css         canonical, link this from any web page
+  design-system/dist/kg-tokens.css         canonical
   chrome-extension/shared/tokens.css       bundled copy for the extension
-  chrome-extension/shared/kg-components.css bundled copy of the hand-authored
-                                           primitives for the extension surfaces
-  backend/static/kg-tokens.css             bundled copy for the public 官網 (served
-                                           by FastAPI StaticFiles; rsync ships only
-                                           backend/, so the copy must live here)
-  backend/static/kg-components.css         bundled copy of the same primitives for
-                                           the public 官網
-
-The component primitives (design-system/dist/kg-components.css) are HAND-AUTHORED;
-that dist/ file is their source. They are copied verbatim into BOTH the extension
-and backend/static/ so every web surface consumes ONE component vocabulary that
-tracks the iOS app. (Earlier the extension was excluded for fear its .kg-btn /
-.kg-card class names would collide. Invariant that makes bundling safe: the base
-primitive classes — .kg-btn / .kg-card / .kg-chip — are owned SOLELY by this file;
-each surface's own CSS only defines BEM-scoped LAYOUT classes (.kg-list-card /
-.kg-popup__btn / .kg-section-card) that compose with the primitives, and the
-markup opts in explicitly. Any surface redefining a base class is a bug.)
-
-Selector strategy (shadow-DOM safe):
-  Invariant tokens  ->  `:root, :host`
-  Light / default   ->  `:root, :host, [data-theme="light"]`
-  Dark              ->  `[data-theme="dark"]`
-  Sepia             ->  `[data-theme="sepia"]`
-`:host` lets the extension content script inject tokens.css into a closed shadow
-root and have the variables actually apply inside the popup (a `:root`-only
-sheet silently fails in shadow scope).
+  chrome-extension/shared/kg-components.css bundled copy of hand-authored primitives
+  backend/static/kg-tokens.css             bundled copy for the public 官網
+  backend/static/kg-components.css         bundled copy of the same primitives
 
 Modes:
   (default)  write all outputs
@@ -46,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -68,69 +45,56 @@ HEADER = (
     "   ============================================================ */\n\n"
 )
 
-# easeOutCubic: no-overshoot safe approximation of an underdamped spring's settle.
-# Shared by every motion.spring token (duration = response). See motion.$comment-spring.
 SPRING_EASE = "cubic-bezier(0.33, 1, 0.68, 1)"
 
-# Legacy spacing aliases so existing feature CSS keeps working while it migrates
-# to the canonical iOS-numeric --sp-N scale. key -> canonical scale key.
 SPACE_ALIASES = {
     "xs": "1", "sm": "2", "compact": "3", "md": "4",
     "lg": "6", "xl": "7", "xxl": "9",
 }
 
-
-# --------------------------------------------------------------------------
-# Color resolution
-# --------------------------------------------------------------------------
-
-def _hex(rgb: list[float]) -> str:
-    return "#" + "".join(f"{round(c * 255):02X}" for c in rgb)
+_REF_RE = re.compile(r"^\{([\w\-\.]+)\}$")
 
 
-def _rgba(rgb: list[float], alpha: float) -> str:
-    r, g, b = (round(c * 255) for c in rgb)
-    a = f"{alpha:g}"
-    return f"rgba({r}, {g}, {b}, {a})"
+def _resolve(spec: dict, tokens: dict) -> str | float | int:
+    """Resolve a DTCG token value, expanding {path} references recursively."""
+    raw = spec["$value"]
+    if not isinstance(raw, str):
+        return raw
+    m = _REF_RE.match(raw)
+    if not m:
+        return raw
+    path = m.group(1).split(".")
+    node = tokens
+    for part in path:
+        node = node[part]
+    return _resolve(node, tokens)
 
 
-def _primitive_rgb(tokens: dict, ref: str) -> list[float]:
-    """Resolve 'accent.light' / 'on-brand-hero.any' to its rgb floats."""
-    name, variant = ref.rsplit(".", 1)
-    return tokens["color"]["primitive"][name][variant]["rgb"]
+def _num(spec: dict, tokens: dict) -> float:
+    """Resolve a token to a numeric value."""
+    v = _resolve(spec, tokens)
+    if isinstance(v, (int, float)):
+        return float(v)
+    # Strip common CSS units
+    s = str(v)
+    for suffix in ("px", "s", "ms"):
+        if s.endswith(suffix):
+            return float(s[:-len(suffix)])
+    return float(s)
 
 
-def resolve_color(tokens: dict, spec: dict) -> str:
-    """Resolve one theme-palette color spec to a CSS color string."""
-    if "css" in spec:
-        if spec["css"] == "":
-            raise ValueError(f"empty css color value in spec: {spec}")
-        return spec["css"]
-    if "rgb" in spec:
-        return _hex(spec["rgb"])
-    if "ref" in spec:
-        rgb = _primitive_rgb(tokens, spec["ref"])
-        if "alpha" in spec:
-            return _rgba(rgb, spec["alpha"])
-        return _hex(rgb)
-    if "overlay" in spec:
-        base = [0.0, 0.0, 0.0] if spec["overlay"] == "black" else [1.0, 1.0, 1.0]
-        return _rgba(base, spec["alpha"])
-    if "overlay-rgb" in spec:
-        return _rgba(spec["overlay-rgb"], spec["alpha"])
-    raise ValueError(f"un-resolvable color spec: {spec}")
+def _skip_meta(items):
+    """Yield (key, value) pairs skipping metadata keys."""
+    for k, v in items:
+        if k.startswith("$"):
+            continue
+        yield k, v
 
-
-# --------------------------------------------------------------------------
-# Rendering
-# --------------------------------------------------------------------------
 
 def _emit_block(selector: str, decls: list[tuple[str, str]]) -> str:
-    # Guard against blanked/typo'd tokens.json keys emitting malformed `--x: ;`
-    # declarations that would still pass --check (it only diffs render-vs-disk).
     for name, value in decls:
         if value == "":
-            raise ValueError(f"empty CSS value for {name} (blank/missing tokens.json source)")
+            raise ValueError(f"empty CSS value for {name}")
     body = "".join(f"  {name}: {value};\n" for name, value in decls)
     return f"{selector} {{\n{body}}}\n\n"
 
@@ -139,138 +103,93 @@ def _invariant_decls(tokens: dict) -> list[tuple[str, str]]:
     d: list[tuple[str, str]] = []
 
     fam = tokens["type"]["family"]
-    for key in ("serif", "sans", "italic", "mono", "display"):
-        d.append((f"--font-{key}", fam[key]))
+    for key, spec in _skip_meta(fam.items()):
+        d.append((f"--font-{key}", str(_resolve(spec, tokens))))
 
-    for key, spec in tokens["type"]["scale"].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--text-{key}", f"{spec['px']:g}px"))
+    for key, spec in _skip_meta(tokens["type"]["scale"].items()):
+        d.append((f"--text-{key}", str(_resolve(spec, tokens))))
 
-    for key, spec in tokens["type"]["tracking"].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--tracking-{key}", f"{spec['px']:g}px"))
+    for key, spec in _skip_meta(tokens["type"]["tracking"].items()):
+        d.append((f"--tracking-{key}", str(_resolve(spec, tokens))))
 
-    for key, spec in tokens["type"]["leading"].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--leading-{key}", f"{spec['ratio']:g}"))
+    for key, spec in _skip_meta(tokens["type"]["leading"].items()):
+        d.append((f"--leading-{key}", str(_resolve(spec, tokens))))
 
     scale = tokens["space"]["scale"]
-    for key, spec in scale.items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--sp-{key}", f"{spec['px']:g}px"))
-    # back-compat semantic aliases
+    for key, spec in _skip_meta(scale.items()):
+        d.append((f"--sp-{key}", str(_resolve(spec, tokens))))
     for alias, target in SPACE_ALIASES.items():
         d.append((f"--sp-{alias}", f"var(--sp-{target})"))
-    for key, spec in tokens["space"]["semantic"].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--{key}", f"{spec['px']:g}px"))
+    for key, spec in _skip_meta(tokens["space"]["semantic"].items()):
+        d.append((f"--{key}", str(_resolve(spec, tokens))))
 
     rscale = tokens["radius"]["scale"]
-    for key, spec in rscale.items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--radius-{key}", f"{spec['px']:g}px"))
-    for key, spec in tokens["radius"]["semantic"].items():
-        if key.startswith("$"):
-            continue
-        px = rscale[spec["ref"]]["px"]
-        d.append((f"--radius-{key}", f"{px:g}px"))
+    for key, spec in _skip_meta(rscale.items()):
+        d.append((f"--radius-{key}", str(_resolve(spec, tokens))))
+    for key, spec in _skip_meta(tokens["radius"]["semantic"].items()):
+        d.append((f"--radius-{key}", str(_resolve(spec, tokens))))
 
     mo = tokens["motion"]
-    for key, spec in mo["duration"].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--dur-{key}", f"{spec['s']:g}s"))
-    for key, spec in mo["easing"].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--ease-{key}", spec["css"]))
-    # spring physics → `<response>s <easeOutCubic>` no-overshoot safe approximation.
-    # damping is $swift-guarded in tokens.json but NOT expressible in cubic-bezier (overshoot
-    # dropped for safety); see motion.$comment-spring.
-    for key, spec in mo.get("spring", {}).items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--spring-{key}", f"{spec['response']:g}s {SPRING_EASE}"))
-    # composed "duration easing" pairs for `transition: <prop> var(--motion-X)`.
-    # quick/control/chip from timing-curve duration+easing; standard/emphasized from spring.
+    for key, spec in _skip_meta(mo["duration"].items()):
+        d.append((f"--dur-{key}", str(_resolve(spec, tokens))))
+    for key, spec in _skip_meta(mo["easing"].items()):
+        d.append((f"--ease-{key}", str(_resolve(spec, tokens))))
+    for key, spec in _skip_meta(mo.get("spring", {}).items()):
+        resp = _num(spec["response"], tokens)
+        d.append((f"--spring-{key}", f"{resp:g}s {SPRING_EASE}"))
     for key in ("quick", "control", "chip"):
-        ease = mo["easing"].get(key, {}).get("css", "ease-out")
-        d.append((f"--motion-{key}", f"{mo['duration'][key]['s']:g}s {ease}"))
+        dur = str(_resolve(mo["duration"][key], tokens))
+        ease = str(_resolve(mo["easing"][key], tokens))
+        d.append((f"--motion-{key}", f"{dur} {ease}"))
     for key in ("standard", "emphasized"):
-        d.append((f"--motion-{key}", f"{mo['spring'][key]['response']:g}s {SPRING_EASE}"))
-    for key, css in mo.get("transition", {}).items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--transition-{key}", css))
+        resp = _num(mo["spring"][key]["response"], tokens)
+        d.append((f"--motion-{key}", f"{resp:g}s {SPRING_EASE}"))
+    for key, spec in _skip_meta(mo.get("transition", {}).items()):
+        d.append((f"--transition-{key}", str(_resolve(spec, tokens))))
     tap = mo["tap-feedback"]
-    d.append(("--press-scale", f"{tap['scale-down']['value']:g}"))
-    d.append(("--press-opacity", f"{tap['opacity-dip']['value']:g}"))
-    # web-only THEME-INVARIANT colors (no iOS literal, same value across themes).
-    # Reserved generic extension point — currently EMPTY (no invariant-color block
-    # in tokens.json), so this loop no-ops. Per-theme web-only colors live in
-    # web-only.theme-color → _theme_decls instead.
-    for key, spec in tokens.get("web-only", {}).get("invariant-color", {}).items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--{key}", spec["css"]))
+    d.append(("--press-scale", str(_resolve(tap["scale-down"], tokens))))
+    d.append(("--press-opacity", str(_resolve(tap["opacity-dip"], tokens))))
 
-    # web-only CROSS-THEME preview swatches: --swatch-<theme> = that theme's
-    # resolved page-bg, emitted INVARIANT (all 3 available under any active theme)
-    # so the options theme-picker can show every theme's bg simultaneously.
+    for key, spec in _skip_meta(tokens.get("web-only", {}).get("invariant-color", {}).items()):
+        d.append((f"--{key}", str(_resolve(spec, tokens))))
+
     tp = tokens.get("web-only", {}).get("theme-preview")
     if tp:
-        src = tp["swatch-of"]
+        src = str(_resolve(tp["swatch-of"], tokens))
         for theme in tp["themes"]:
             spec = tokens["color"]["theme"][theme][src]
-            d.append((f"--swatch-{theme}", resolve_color(tokens, spec)))
+            d.append((f"--swatch-{theme}", str(_resolve(spec, tokens))))
 
-    # web-only theme-invariant SCALARS (non-color; e.g. --blur-material).
-    for key, spec in tokens.get("web-only", {}).get("invariant-value", {}).items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--{key}", spec["css"]))
+    for key, spec in _skip_meta(tokens.get("web-only", {}).get("invariant-value", {}).items()):
+        d.append((f"--{key}", str(_resolve(spec, tokens))))
 
     return d
 
 
 def _elevation_decls(tokens: dict, dark: bool) -> list[tuple[str, str]]:
     d: list[tuple[str, str]] = []
-    boost = tokens["elevation"]["dark-boost"] if dark else 1.0
-    for key, step in tokens["elevation"]["steps"].items():
-        if key.startswith("$"):
-            continue
-        if step["opacity"] == 0:
+    boost = _num(tokens["elevation"]["dark-boost"], tokens) if dark else 1.0
+    for key, step in _skip_meta(tokens["elevation"]["steps"].items()):
+        op = _num(step["opacity"], tokens)
+        if op == 0:
             d.append((f"--elevation-{key}", "none"))
         else:
-            op = round(step["opacity"] * boost, 4)
-            d.append((
-                f"--elevation-{key}",
-                f"0 {step['y']:g}px {step['blur']:g}px rgba(0, 0, 0, {op:g})",
-            ))
+            op = round(op * boost, 4)
+            blur = _num(step["blur"], tokens)
+            y = _num(step["y"], tokens)
+            d.append((f"--elevation-{key}", f"0 {y:g}px {blur:g}px rgba(0, 0, 0, {op:g})"))
     return d
 
 
 def _theme_decls(tokens: dict, theme: str) -> list[tuple[str, str]]:
     d: list[tuple[str, str]] = []
-    for key, spec in tokens["color"]["theme"][theme].items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--{key}", resolve_color(tokens, spec)))
+    for key, spec in _skip_meta(tokens["color"]["theme"][theme].items()):
+        d.append((f"--{key}", str(_resolve(spec, tokens))))
     vh = tokens["color"]["vocab-highlight"].get(theme)
     if vh:
-        d.append(("--vocab-highlight", vh["css"]))
-    # web-only PER-THEME colors (no iOS literal; value differs per theme, e.g.
-    # filled-success-button foreground must flip to charcoal in dark to keep AA).
-    for key, spec in tokens.get("web-only", {}).get("theme-color", {}).items():
-        if key.startswith("$"):
-            continue
-        d.append((f"--{key}", resolve_color(tokens, spec[theme])))
+        d.append(("--vocab-highlight", str(_resolve(vh, tokens))))
+    for key, spec in _skip_meta(tokens.get("web-only", {}).get("theme-color", {}).items()):
+        d.append((f"--{key}", str(_resolve(spec[theme], tokens))))
     d += _elevation_decls(tokens, dark=(theme == "dark"))
     return d
 
@@ -284,12 +203,9 @@ def render_tokens_css(tokens: dict) -> str:
     out.append(_emit_block(":root, :host, [data-theme=\"light\"]", _theme_decls(tokens, "light")))
     out.append(_emit_block("[data-theme=\"dark\"]", _theme_decls(tokens, "dark")))
     out.append(_emit_block("[data-theme=\"sepia\"]", _theme_decls(tokens, "sepia")))
-    # reduced-motion: web equivalent of iOS accessibilityReduceMotion.
-    # Collapse every composed timing var (dur/spring/motion) to a near-zero duration
-    # so `transition: x var(--spring-press)` / `var(--motion-standard)` also honor RM.
     mo = tokens["motion"]
-    rm_vars = [f"--dur-{k}" for k in mo["duration"] if not k.startswith("$")]
-    rm_vars += [f"--spring-{k}" for k in mo["spring"] if not k.startswith("$")]
+    rm_vars = [f"--dur-{k}" for k, _ in _skip_meta(mo["duration"].items())]
+    rm_vars += [f"--spring-{k}" for k, _ in _skip_meta(mo.get("spring", {}).items())]
     rm_vars += ["--motion-quick", "--motion-control", "--motion-chip",
                 "--motion-standard", "--motion-emphasized"]
     rm_body = "".join(f"    {v}: 0.01ms;\n" for v in rm_vars)
@@ -301,10 +217,6 @@ def render_tokens_css(tokens: dict) -> str:
     )
     return "".join(out)
 
-
-# --------------------------------------------------------------------------
-# Main
-# --------------------------------------------------------------------------
 
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -319,9 +231,6 @@ def main() -> int:
 
     tokens = json.loads(TOKENS_JSON.read_text(encoding="utf-8"))
     tokens_css = render_tokens_css(tokens)
-    # The component primitives are hand-authored; dist/ is their source. We copy
-    # that source verbatim into the backend bundle so the deployed 官網 is
-    # self-contained (rsync ships only backend/). --check then guards the copy.
     components_css = DIST_COMPONENTS.read_text(encoding="utf-8")
 
     targets: list[tuple[Path, str]] = [
