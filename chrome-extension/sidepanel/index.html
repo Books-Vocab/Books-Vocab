@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../shared/fonts.css">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/kg-components.css">
+  <link rel="stylesheet" href="../shared/kg-component-structures.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -20,6 +21,12 @@
       <button class="kg-theme-btn" id="settingsBtn" title="設定" aria-label="開啟設定"></button>
     </div>
   </header>
+
+  <!-- Filter + Sort Bar (mirrors iOS KGVocabPresenter chip+sort row) -->
+  <div class="kg-filter-bar" id="filterBar">
+    <div class="kg-filter-bar__chips" id="filterChips"></div>
+    <div class="kg-filter-bar__actions" id="filterActions"></div>
+  </div>
 
   <!-- Search -->
   <div class="kg-search-wrap">
@@ -64,6 +71,7 @@
   <script src="../shared/pure.js"></script>
   <script src="../shared/icons.js"></script>
   <script src="../shared/theme.js"></script>
+  <script src="../shared/review-gradient.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -19,6 +19,8 @@ const retryBtn     = $('#retryBtn');
 const errorIcon    = $('#errorIcon');
 const errorTitle   = $('#errorTitle');
 const errorSubtitle = $('#errorSubtitle');
+const filterChips  = $('#filterChips');
+const filterActions = $('#filterActions');
 
 /**
  * Current retry action — varies by error kind.
@@ -235,20 +237,85 @@ function onSearch() {
 }
 
 // ---------------------------------------------------------------------------
+// Filter + Sort Bar
+// ---------------------------------------------------------------------------
+
+/**
+ * Render filter chips (mirrors iOS VocabFilterChipBar).
+ * Since the sidepanel API lacks review-state counts, we show a simplified
+ * "All" chip with the total count, reserving the structure for future data.
+ * @param {Array<object>} items
+ */
+function renderFilterBar(items) {
+  if (!filterChips) return;
+  filterChips.innerHTML = '';
+
+  // "All" chip — always shown with total count
+  const allChip = document.createElement('span');
+  allChip.className = 'kg-filter-bar__chip kg-filter-bar__chip--active';
+  allChip.innerHTML = `全部 <span class="kg-filter-bar__count">${items.length}</span>`;
+  filterChips.appendChild(allChip);
+
+  // Placeholder chips for review states (structural parity with iOS)
+  // When the API gains review-state metadata, swap these for real counts.
+  const states = [
+    { label: '未學習', count: 0 },
+    { label: '待複習', count: 0 },
+    { label: '已複習', count: 0 },
+  ];
+  states.forEach((s) => {
+    const chip = document.createElement('span');
+    chip.className = 'kg-filter-bar__chip';
+    chip.innerHTML = `${esc(s.label)} <span class="kg-filter-bar__count">${s.count}</span>`;
+    filterChips.appendChild(chip);
+  });
+}
+
+/**
+ * Render sort pill (mirrors iOS VocabSortPill).
+ */
+function renderSortPill() {
+  if (!filterActions) return;
+  filterActions.innerHTML = '';
+
+  const pill = document.createElement('span');
+  pill.className = 'kg-sort-pill';
+  pill.textContent = '複習優先';
+  filterActions.appendChild(pill);
+}
+
+// ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 
 /**
  * Render the vocab list.
+ * Mirrors iOS KGVocabPresenter: single ListSectionCard with divider-separated rows.
  * @param {Array<object>} items
  */
 function renderList(items) {
   stateContent.innerHTML = '';
 
-  items.forEach((item) => {
-    const card = createCard(item);
-    stateContent.appendChild(card);
+  // Update filter bar + sort pill (mirrors iOS KGVocabPresenter chrome)
+  renderFilterBar(items);
+  renderSortPill();
+
+  // Single card container (mirrors iOS ListSectionCard / VocabListCard)
+  const card = document.createElement('div');
+  card.className = 'kg-list-section';
+
+  items.forEach((item, index) => {
+    const row = createRow(item);
+    card.appendChild(row);
+
+    if (index < items.length - 1) {
+      const divider = document.createElement('div');
+      divider.className = 'kg-vocab-row__divider';
+      card.appendChild(divider);
+    }
   });
+
+  stateContent.appendChild(card);
 
   if (items.length > 0) {
     setState('content');
@@ -256,73 +323,115 @@ function renderList(items) {
 }
 
 /**
- * Create a vocab card element.
+ * Create a vocab row element (mirrors iOS KGVocabRow + WordRow).
  * @param {object} item
  * @returns {HTMLElement}
  */
-function createCard(item) {
-  const card = document.createElement('div');
-  card.className = 'kg-card kg-card--interactive kg-list-card';
-  card.dataset.word = item.word;
-
-  const meaning = item.meaning;
-  const pos = item.pos;
-  const source = item.source;
-  const isWeb = source && source.type === 'web';
-
-  // Top row: word + pos + source
+function createRow(item) {
   const row = document.createElement('div');
-  row.className = 'kg-list-card__row';
+  row.className = 'kg-vocab-row';
+  row.dataset.word = item.word;
+
+  // ── Left content column ────────────────────────────────────────────────
+  const content = document.createElement('div');
+  content.className = 'kg-vocab-row__content';
+
+  // Top row: word + pos + trailing label
+  const topRow = document.createElement('div');
+  topRow.className = 'kg-vocab-row__top';
 
   const wordEl = document.createElement('span');
-  wordEl.className = 'kg-list-card__word';
+  wordEl.className = 'kg-vocab-row__word';
   wordEl.textContent = item.word;
-  row.appendChild(wordEl);
+  topRow.appendChild(wordEl);
 
-  if (pos) {
+  if (item.pos) {
     const posEl = document.createElement('span');
-    posEl.className = 'kg-chip kg-list-card__pos';
-    posEl.textContent = pos;
-    row.appendChild(posEl);
+    posEl.className = 'kg-vocab-row__pos';
+    posEl.textContent = item.pos;
+    topRow.appendChild(posEl);
   }
 
-  const srcEl = document.createElement('span');
-  srcEl.className = 'kg-list-card__source';
-  srcEl.setAttribute('role', 'img');
-  srcEl.setAttribute('aria-label', isWeb ? '網頁來源' : '書籍來源');
-  KGIcons.setIcon(srcEl, isWeb ? 'source-web' : 'source-local');
-  row.appendChild(srcEl);
+  // Trailing label (e.g., "55d / 2d") — show if API provides it
+  if (item.dueInfo) {
+    const trailingEl = document.createElement('span');
+    trailingEl.className = 'kg-vocab-row__trailing';
+    trailingEl.textContent = item.dueInfo;
+    topRow.appendChild(trailingEl);
+  }
 
-  card.appendChild(row);
+  content.appendChild(topRow);
 
-  // Meaning row
-  if (meaning) {
+  // Meaning / translation
+  if (item.meaning) {
     const meaningEl = document.createElement('div');
-    meaningEl.className = 'kg-list-card__meaning';
-    meaningEl.textContent = meaning;
-    card.appendChild(meaningEl);
+    meaningEl.className = 'kg-vocab-row__meaning';
+    meaningEl.textContent = item.meaning;
+    content.appendChild(meaningEl);
+  }
+
+  // Source metadata (book / chapter)
+  if (item.source && (item.source.title || item.source.book)) {
+    const meta = document.createElement('div');
+    meta.className = 'kg-vocab-row__meta';
+    const sourceName = item.source.title || item.source.book || '';
+    const chapter = item.source.chapter || '';
+    meta.textContent = chapter ? `${sourceName} · ${chapter}` : sourceName;
+    content.appendChild(meta);
+  }
+
+  row.appendChild(content);
+
+  // ── Right side: progress bar ───────────────────────────────────────────
+  if (item.reviewRatio != null && item.reviewRatio >= 0) {
+    const progress = document.createElement('div');
+    progress.className = 'kg-vocab-row__progress';
+
+    if (item.dueLabel) {
+      const labelEl = document.createElement('span');
+      labelEl.className = 'kg-vocab-row__progress-label';
+      labelEl.textContent = item.dueLabel;
+      progress.appendChild(labelEl);
+    }
+
+    const track = document.createElement('div');
+    track.className = 'kg-vocab-row__progress-track';
+
+    const fill = document.createElement('div');
+    fill.className = 'kg-vocab-row__progress-fill';
+    const ratio = Math.min(item.reviewRatio, 1.0);
+    fill.style.width = `${ratio * 100}%`;
+    // Use shared KGReviewGradient if available, else fallback
+    const gradColor = (typeof KGReviewGradient !== 'undefined')
+      ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
+      : '#4D7396';
+    fill.style.backgroundColor = gradColor;
+
+    track.appendChild(fill);
+    progress.appendChild(track);
+    row.appendChild(progress);
   }
 
   // Click handler
-  card.addEventListener('click', () => toggleDetail(card, item));
+  row.addEventListener('click', () => toggleDetail(row, item));
 
-  return card;
+  return row;
 }
 
 /**
- * Toggle detail view for a card.
- * @param {HTMLElement} card
+ * Toggle detail view for a row.
+ * @param {HTMLElement} row
  * @param {object} item
  */
-function toggleDetail(card, item) {
-  const existing = card.querySelector('.kg-detail');
+function toggleDetail(row, item) {
+  const existing = row.querySelector('.kg-detail');
 
   if (existing) {
     existing.remove();
     return;
   }
 
-  // Collapse any other expanded card
+  // Collapse any other expanded row
   const prev = stateContent.querySelector('.kg-detail');
   if (prev) prev.remove();
 
@@ -374,17 +483,13 @@ function toggleDetail(card, item) {
 
   // Source
   if (isWeb && sourceUrl) {
-    // Defense-in-depth: `sourceUrl` is user-controlled (whatever page the
-    // word was captured from). HTML-escaping alone does NOT block dangerous
-    // schemes like `javascript:` — `safeUrl` enforces an http(s) allowlist
-    // and collapses anything else to `#`.
     const safeHref = KGPure.safeUrl(sourceUrl);
     detail.appendChild(makeSection('來源', `<a class="kg-link kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
   } else {
     detail.appendChild(makeSection('來源', `<span class="kg-detail__source-text">iOS app</span>`));
   }
 
-  card.appendChild(detail);
+  row.appendChild(detail);
 }
 
 /**

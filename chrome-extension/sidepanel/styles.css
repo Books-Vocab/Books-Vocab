@@ -1,6 +1,6 @@
 /* ============================================================
    KG Side Panel Styles — editorial surface, aligned with website + iOS system.
-   All values via tokens.css; primitives via kg-components.css.
+   Layout-only: component primitives come from kg-components.css + kg-component-structures.css.
    ============================================================ */
 
 /* --- Base (北極星 1: single warm surface) --------------------------------- */
@@ -81,13 +81,86 @@ body {
   opacity: var(--press-opacity);
 }
 
-/* KGIcons SVG glyphs (shared/icons.js) size to the element's font-size, exactly
-   like the emoji they replaced — so existing font-size tokens (--toggle-glyph on
-   the theme button, --text-caption on the card source) still drive icon size. */
+/* KGIcons SVG glyphs size to the element's font-size. */
 .kg-theme-btn svg,
-.kg-list-card__source svg,
 .kg-error__icon svg { width: 1em; height: 1em; display: block; }
 .kg-error__icon svg { margin: 0 auto; }
+
+/* --- Filter + Sort Bar (mirrors iOS KGVocabPresenter) --------------------- */
+
+.kg-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-micro);
+  padding: 0 var(--page-h-padding) var(--sp-sm);
+}
+
+.kg-filter-bar__chips {
+  display: flex;
+  gap: var(--sp-1);
+  flex-wrap: wrap;
+}
+
+.kg-filter-bar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+
+.kg-filter-bar__chip:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
+
+.kg-filter-bar__chip--active {
+  background: var(--primary-text);
+  color: var(--card-bg);
+}
+
+.kg-filter-bar__count {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.kg-filter-bar__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+}
+
+.kg-sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  padding: var(--sp-tiny) var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+
+.kg-sort-pill:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
 
 /* --- Search --------------------------------------------------------------- */
 
@@ -218,7 +291,6 @@ body {
 /* Login-specific error state: brand-hero CTA ------------------------------- */
 
 .kg-error--login .kg-error__icon {
-  /* Remove emoji, use a subtle lock SVG via JS or leave blank for clean look */
   display: none;
 }
 
@@ -233,43 +305,16 @@ body {
   opacity: 0.92;
 }
 
-/* --- Vocab list ----------------------------------------------------------- */
+/* --- Vocab list layout ---------------------------------------------------- */
+/* The card + row styles live in kg-component-structures.css (generated from
+   design-system/components.json). This file only keeps the list container
+   padding + gap that is sidepanel-specific. */
 
 .kg-list {
   display: flex;
   flex-direction: column;
   gap: var(--section-gap);
   padding: 0 var(--page-h-padding) var(--sp-lg);
-}
-
-/* --- List card (composes kg-card primitives) ------------------------------ */
-
-.kg-list-card__row {
-  display: flex;
-  align-items: center;
-  gap: var(--inline-gap);
-}
-
-.kg-list-card__word {
-  font-size: var(--text-row-word);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.kg-list-card__source {
-  margin-left: auto;
-  font-size: var(--text-caption);
-  flex-shrink: 0;
-}
-
-.kg-list-card__meaning {
-  margin-top: var(--sp-xs);
-  font-size: var(--text-subhead);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* --- Detail (expanded) ---------------------------------------------------- */
