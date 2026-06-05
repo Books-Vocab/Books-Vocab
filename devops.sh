@@ -181,14 +181,21 @@ verify_post_deploy() {
 }
 
 # ── 安全函式 ──────────────────────────────────────────────────────────────────
-# uid 必須是 [A-Za-z0-9_-]，1-64 字元；任何 shell metachar / path traversal 一律拒絕
+# uid 必須是英數字、底線、連字號、點號，1-64 字元；
+# shell metachar / path traversal（.. / / / 前導 .）一律拒絕，對齊後端 _safe_user_dir。
 validate_uid() {
   local uid="$1"
   if [[ -z "$uid" ]]; then
     err "user_id 不可為空"
   fi
-  if ! [[ "$uid" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
-    err "非法 user_id：'$uid'（僅允許英數字、底線、連字號，長度 1-64）"
+  if [[ -n "${uid//[A-Za-z0-9_.-]/}" ]] ||\
+     [[ "$uid" =~ ^\. ]] ||\
+     [[ "$uid" =~ \.\. ]] ||\
+     [[ "$uid" =~ / ]]; then
+    err "非法 user_id：'$uid'（僅允許英數字、底線、連字號、點號，長度 1-64；禁止 '..'、'/'、前導 '.')"
+  fi
+  if [[ "${#uid}" -gt 64 ]]; then
+    err "非法 user_id：'$uid'（長度超過 64）"
   fi
 }
 
