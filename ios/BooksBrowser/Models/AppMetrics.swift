@@ -150,21 +150,21 @@ extension AnyTransition {
 enum AppSpacing {
     static let zero: CGFloat = 0
     /// hairline — 僅用於 divider / progress / 微縫隙
-    static let hairline: CGFloat = 1
+    static let hairline: CGFloat = DesignTokens.Space.Scale.hairline
     /// 2pt 微縫隙 — 8pt grid 例外，僅限極小貼合間距
-    static let microGap: CGFloat = 2
+    static let microGap: CGFloat = DesignTokens.Space.Scale.micro
     /// 3pt 微縫隙 — 8pt grid 例外
-    static let tinyGap: CGFloat = 3
-    static let s1: CGFloat = 4
-    static let s2: CGFloat = 8
-    static let s3: CGFloat = 12
-    static let s4: CGFloat = 16
-    static let s5: CGFloat = 20
-    static let s6: CGFloat = 24
-    static let s7: CGFloat = 32
-    static let s8: CGFloat = 40
-    static let s9: CGFloat = 48
-    static let s10: CGFloat = 64
+    static let tinyGap: CGFloat = DesignTokens.Space.Scale.tiny
+    static let s1: CGFloat = DesignTokens.Space.Scale.s1
+    static let s2: CGFloat = DesignTokens.Space.Scale.s2
+    static let s3: CGFloat = DesignTokens.Space.Scale.s3
+    static let s4: CGFloat = DesignTokens.Space.Scale.s4
+    static let s5: CGFloat = DesignTokens.Space.Scale.s5
+    static let s6: CGFloat = DesignTokens.Space.Scale.s6
+    static let s7: CGFloat = DesignTokens.Space.Scale.s7
+    static let s8: CGFloat = DesignTokens.Space.Scale.s8
+    static let s9: CGFloat = DesignTokens.Space.Scale.s9
+    static let s10: CGFloat = DesignTokens.Space.Scale.s10
 
     /// Card 雙層 padding — 外緣比內項大，形成呼吸層次（Linear / Notion pattern）
     static let cardOuterPadding: CGFloat = s6  // 24
@@ -175,14 +175,14 @@ enum AppSpacing {
 /// Radius scale — 收斂到 4 主階 + hairline + pill。新元件不使用 7/9/13/14/18 等鄰近半階值。
 // Notion-inspired：俐落小角半徑 — 控制元件 ~4-6、卡片 ~8、modal ~16。
 enum AppRadius {
-    static let none: CGFloat = 0
-    static let xs: CGFloat = 4
-    static let sm: CGFloat = 6
-    static let md: CGFloat = 8
-    static let lg: CGFloat = 12
-    static let xl: CGFloat = 16
+    static let none: CGFloat = DesignTokens.Radius.Scale.none
+    static let xs: CGFloat = DesignTokens.Radius.Scale.xs
+    static let sm: CGFloat = DesignTokens.Radius.Scale.sm
+    static let md: CGFloat = DesignTokens.Radius.Scale.md
+    static let lg: CGFloat = DesignTokens.Radius.Scale.lg
+    static let xl: CGFloat = DesignTokens.Radius.Scale.xl
     /// Capsule / pill — 直接用 `Capsule()` shape 即可，此值為 RoundedRectangle 場合的 fallback
-    static let pill: CGFloat = 999
+    static let pill: CGFloat = DesignTokens.Radius.Scale.pill
 }
 
 /// Elevation language — z0 flush ← → z4 modal，跨元件統一深度層級。
@@ -198,31 +198,31 @@ enum AppElevation {
     // resting card（z1）幾乎無陰影；明顯陰影保留給 overlay / modal。
     var opacity: Double {
         switch self {
-        case .z0: return 0
-        case .z1: return 0.03
-        case .z2: return 0.06
-        case .z3: return 0.10
-        case .z4: return 0.16
+        case .z0: return DesignTokens.Elevation.Steps.Z0.opacity
+        case .z1: return DesignTokens.Elevation.Steps.Z1.opacity
+        case .z2: return DesignTokens.Elevation.Steps.Z2.opacity
+        case .z3: return DesignTokens.Elevation.Steps.Z3.opacity
+        case .z4: return DesignTokens.Elevation.Steps.Z4.opacity
         }
     }
 
     var radius: CGFloat {
         switch self {
-        case .z0: return 0
-        case .z1: return 4
-        case .z2: return 10
-        case .z3: return 18
-        case .z4: return 28
+        case .z0: return DesignTokens.Elevation.Steps.Z0.blur
+        case .z1: return DesignTokens.Elevation.Steps.Z1.blur
+        case .z2: return DesignTokens.Elevation.Steps.Z2.blur
+        case .z3: return DesignTokens.Elevation.Steps.Z3.blur
+        case .z4: return DesignTokens.Elevation.Steps.Z4.blur
         }
     }
 
     var y: CGFloat {
         switch self {
-        case .z0: return 0
-        case .z1: return 1
-        case .z2: return 4
-        case .z3: return 8
-        case .z4: return 14
+        case .z0: return DesignTokens.Elevation.Steps.Z0.y
+        case .z1: return DesignTokens.Elevation.Steps.Z1.y
+        case .z2: return DesignTokens.Elevation.Steps.Z2.y
+        case .z3: return DesignTokens.Elevation.Steps.Z3.y
+        case .z4: return DesignTokens.Elevation.Steps.Z4.y
         }
     }
 }

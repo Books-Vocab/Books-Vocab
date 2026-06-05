@@ -151,13 +151,13 @@ enum AppFonts {
     // 為此 ramp 形式化之前的既有 token，grandfather 保留、本次不 migrate。
 
     enum TypeScale {
-        static let caption2: CGFloat = 11
-        static let caption: CGFloat = 12
-        static let subhead: CGFloat = 15
-        static let body: CGFloat = 17
-        static let h2: CGFloat = 22
-        static let h1: CGFloat = 28
-        static let hero: CGFloat = 40
+        static let caption2: CGFloat = DesignTokens.Typography.Scale.caption2
+        static let caption: CGFloat = DesignTokens.Typography.Scale.caption
+        static let subhead: CGFloat = DesignTokens.Typography.Scale.subhead
+        static let body: CGFloat = DesignTokens.Typography.Scale.body
+        static let h2: CGFloat = DesignTokens.Typography.Scale.h2
+        static let h1: CGFloat = DesignTokens.Typography.Scale.h1
+        static let hero: CGFloat = DesignTokens.Typography.Scale.hero
     }
 
     // MARK: - 標題層級 (Headers) — serif
@@ -223,17 +223,17 @@ enum AppFonts {
     enum Tracking {
         /// Display / hero 緊縮 — 配大字級降低視覺鬆散
         /// 在 56pt 級距上約 -0.021em，符合慣例
-        static let tight: CGFloat = -1.2
+        static let tight: CGFloat = DesignTokens.Typography.Tracking.tight
         /// H2 緊縮 — Mochi editorial heading（-0.024em 換算 pt）
         /// 在 27pt 級距上約 -0.65pt（27 × 0.024），符合 Mochi typography 規範
         /// 套 detailWord / 22pt h2 級標題；勿套 body 級字（會壓死可讀性）
-        static let h2Tight: CGFloat = -0.65
+        static let h2Tight: CGFloat = DesignTokens.Typography.Tracking.h2Tight
         /// 標準字距
-        static let normal: CGFloat = 0
+        static let normal: CGFloat = DesignTokens.Typography.Tracking.normal
         /// Body / metadata 微放寬
-        static let wide: CGFloat = 0.3
+        static let wide: CGFloat = DesignTokens.Typography.Tracking.wide
         /// uppercase metadata 標籤（如「NEW」「BETA」），約 +0.07em on 12pt
-        static let uppercase: CGFloat = 0.8
+        static let uppercase: CGFloat = DesignTokens.Typography.Tracking.uppercase
     }
 
     // MARK: - Line Spacing Tokens
