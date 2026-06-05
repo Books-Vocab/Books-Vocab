@@ -34,7 +34,18 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--sp-sm);
-  margin-bottom: var(--sp-xs);
+  /* Sticky so the speaker / close stay reachable when long content scrolls (the
+     popup itself is the scroll container). Negative margins cancel the popup's
+     padding so the head spans edge-to-edge and its background fully masks content
+     scrolling underneath; the matching padding restores the visual inset. The
+     top offset = −card-padding pins the head flush with the popup's top edge.
+     The popup's overflow + border-radius clip the head's square corners. */
+  position: sticky;
+  top: calc(-1 * var(--card-padding));
+  z-index: 1;
+  margin: calc(-1 * var(--card-padding)) calc(-1 * var(--card-padding)) var(--sp-xs);
+  padding: var(--card-padding) var(--card-padding) var(--sp-xs);
+  background: var(--card-bg);
 }
 
 /* Word spacing is owned by the head row when wrapped here (overrides the

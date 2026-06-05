@@ -46,3 +46,29 @@ test('unknown icon name returns empty string (never throws)', () => {
   assert.equal(KGIcons.svg(''), '');
   assert.equal(KGIcons.svg(undefined), '');
 });
+
+test('inline popup glyphs in content.js stay in sync with the registry', () => {
+  // content/content.js runs in an isolated world and inlines SPEAKER_SVG /
+  // XMARK_SVG rather than importing KGIcons. This pins those copies to the
+  // registry so a future edit to icons.js cannot silently drift the popup
+  // glyphs (the keep-in-sync comment alone is unenforced).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../content/content.js'), 'utf8');
+
+  // Inner path markup of a registry glyph (strip the <svg …> wrapper).
+  const registryPaths = (name) =>
+    KGIcons.svg(name).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+
+  // The single-quoted argument passed to iconSvg(...) for a given const.
+  const inlinePaths = (constName) => {
+    const m = src.match(new RegExp(constName + "\\s*=\\s*iconSvg\\(\\s*'([^']*)'"));
+    assert.ok(m, `${constName} = iconSvg('…') not found in content.js`);
+    return m[1];
+  };
+
+  assert.equal(inlinePaths('SPEAKER_SVG'), registryPaths('speaker'),
+    'content.js SPEAKER_SVG drifted from icons.js speaker glyph');
+  assert.equal(inlinePaths('XMARK_SVG'), registryPaths('xmark'),
+    'content.js XMARK_SVG drifted from icons.js xmark glyph');
+});
