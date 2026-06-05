@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: aea8b314
+verified_against: bb54d47a
 -->
 # Sync Lifecycle
 
@@ -76,7 +76,9 @@ batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/
 
 - `failed` 鍵是**向後相容的附加欄位**（Pydantic `BatchDeleteResponse` / `BatchArchiveResponse` 預設空 list）。舊 client 忽略未知鍵即可；關鍵改動是 graph-失敗的字**不再**出現在 `not_found`，因此舊 client 也不會再把仍存在 server 的字誤收斂（#720）。
 - **可本地收斂集合 = `deleted_words ∪ not_found`**（`SyncCoordinator.locallyResolvableDeletes(from:)`，`SyncCoordinator` 與 `KGVocabCoordinator.retryPendingDeletes` 共用此純函數）。
+- **封存同理可本地收斂集合 = `updated_words ∪ not_found`**（`KGVocabCoordinator.locallyResolvableArchives(from:)`）。`not_found` 代表 server 已無此字，封存意圖對本地而言已可收斂；`failed` 才保持未收斂並重試。
 - `failed` 內的字（或任何「三個 bucket 都不在」的字）才 `markSyncFailed()` 進重試。
+- 後端 batch lookup key 為 `_normalize_word(_clean_content(word))`：尾標點 / 首字大小寫等儲存層清洗後等價的輸入會命中同一張卡。完全相同的 submitted word 只執行一次；同一清洗 key 的不同 submitted word 會沿用首次 outcome，但 response bucket 仍 echo 各自的原始 word，讓 iOS 以本地 `entry.word` 收斂。
 - **不變式 1**：絕不可把 `not_found` 當刪除失敗 → 否則永久卡死的隱形重試迴圈。
 - **不變式 2**：絕不可把 `failed` 當成功收斂 → 該字 server 仍存在，本地移除會造成 client/server 永久分歧（#720 根因；後端已把 graph-失敗字從 `not_found` 移到 `failed` 修正此半邊）。
 
