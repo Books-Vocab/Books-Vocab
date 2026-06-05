@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
-router = APIRouter()
+router = APIRouter(tags=["static-pages"])
 _STATIC_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 @router.get("/")
-def get_home():
+def get_home() -> Response:
     path = _STATIC_ROOT / "index.html"
     if not path.exists():
         return HTMLResponse("<h1>Home Not Found</h1>", status_code=404)
@@ -18,7 +18,7 @@ def get_home():
 
 
 @router.get("/privacy.html")
-def get_privacy_policy():
+def get_privacy_policy() -> Response:
     path = _STATIC_ROOT / "privacy.html"
     if not path.exists():
         return HTMLResponse("<h1>Privacy Policy Not Found</h1>", status_code=404)
@@ -26,7 +26,7 @@ def get_privacy_policy():
 
 
 @router.get("/support.html")
-def get_support():
+def get_support() -> Response:
     path = _STATIC_ROOT / "support.html"
     if not path.exists():
         return HTMLResponse("<h1>Support Page Not Found</h1>", status_code=404)
@@ -34,7 +34,7 @@ def get_support():
 
 
 @router.get("/terms.html")
-def get_terms():
+def get_terms() -> Response:
     path = _STATIC_ROOT / "terms.html"
     if not path.exists():
         return HTMLResponse("<h1>Terms of Service Not Found</h1>", status_code=404)
@@ -42,7 +42,7 @@ def get_terms():
 
 
 @router.get("/guide.html")
-def get_guide():
+def get_guide() -> Response:
     path = _STATIC_ROOT / "guide.html"
     if not path.exists():
         return HTMLResponse("<h1>Guide Not Found</h1>", status_code=404)

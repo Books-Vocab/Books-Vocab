@@ -91,7 +91,7 @@ def test_content_type_for(name, expected):
 def test_upload_keys_and_audioformat_injected(tmp_path):
     podcasts = _make_served_disk(tmp_path, fmt="mp3", eps=2)
     s3 = _stub_s3()
-    report = backfill.backfill(
+    backfill.backfill(
         s3, bucket="b", data_dir=podcasts, dry_run=False, skip_existing=False,
     )
     puts = {c.kwargs["Key"]: c.kwargs for c in s3.put_object.call_args_list}

@@ -21,9 +21,7 @@ verify the series is live in the catalog index — no manual dashboard step.
   5. verify 先失敗後成功 → 重試後回 True。
   6. PODCAST_BUCKET 未設 → loud-fail 回 False(非 crash)。
 """
-from pathlib import Path
 
-import pytest
 
 import pipeline
 

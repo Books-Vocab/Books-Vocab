@@ -16,6 +16,12 @@
   // KGPure.isPhrase, now content-script-local) — content scripts run in an
   // isolated world and cannot import KGPure.
   const PHRASE_MIN_LEN = 50;
+  // Cap on extracted surrounding-sentence context sent to the backend.
+  const MAX_CONTEXT_LEN = 500;
+
+  // Popup geometry — pairs with the popup.css layout contract.
+  const POPUP_MAX_WIDTH = 360;
+  const POPUP_EST_HEIGHT = 220;
 
   /** Currently active host element (only one popup at a time). */
   let activeHost = null;
@@ -123,7 +129,7 @@
     let end = offset;
     while (end < text.length && !sentenceBreaks.test(text[end])) end++;
 
-    return text.slice(start, end).trim().substring(0, 500);
+    return text.slice(start, end).trim().substring(0, MAX_CONTEXT_LEN);
   }
 
   /** Build source metadata. */
@@ -142,13 +148,13 @@
     const vpW = window.innerWidth;
     const vpH = window.innerHeight;
 
-    const popupMaxW = 360;
-    const popupEstH = 220;
+    const popupMaxW = POPUP_MAX_WIDTH;
+    const popupEstH = POPUP_EST_HEIGHT;
     const gap = 8;
 
     // Horizontal: center on selection, clamp to viewport
     let left = rect.left + scrollX + rect.width / 2 - popupMaxW / 2;
-    left = Math.max(scrollX + 8, Math.min(left, scrollX + vpW - popupMaxW - 8));
+    left = Math.max(scrollX + gap, Math.min(left, scrollX + vpW - popupMaxW - gap));
 
     // Vertical: prefer below selection, flip above if not enough space
     let top;

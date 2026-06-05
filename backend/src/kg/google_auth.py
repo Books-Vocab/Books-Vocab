@@ -83,10 +83,11 @@ async def verify_google_token(token: str, client_id: str) -> VerifiedIdentity:
         # rather than a bool. bool("false") is truthy in Python, so we
         # cannot rely on plain bool() coercion — normalize explicitly.
         raw_verified = idinfo.get("email_verified", False)
-        if isinstance(raw_verified, str):
-            email_verified = raw_verified.strip().lower() == "true"
-        else:
-            email_verified = bool(raw_verified)
+        email_verified = (
+            raw_verified.strip().lower() == "true"
+            if isinstance(raw_verified, str)
+            else bool(raw_verified)
+        )
 
         return VerifiedIdentity(str(sub), email, email_verified)
 

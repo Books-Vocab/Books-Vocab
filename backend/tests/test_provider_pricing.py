@@ -2,20 +2,13 @@
 currently-routed provider."""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from kg.quota_service import token_cost_usd
 
-_PREFIX = "LLM_PROVIDER_"
-
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
-    for name in list(os.environ):
-        if name.startswith(_PREFIX) or name in ("GEMINI_MODEL", "DEEPSEEK_MODEL"):
-            monkeypatch.delenv(name, raising=False)
+def _clean_env(clean_routing_env):
     yield
 
 

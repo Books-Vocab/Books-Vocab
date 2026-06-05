@@ -10,10 +10,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from kg.api import app
-from conftest import _swap_settings
+from conftest import TEST_JWT_SECRET, _swap_settings
 from kg.settings import KGSettings
 
-TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 ADMIN_TOKEN = "test-admin-token-orphan"
 
 

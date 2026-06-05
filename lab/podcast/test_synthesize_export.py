@@ -19,8 +19,6 @@ publish。修法:全部寫到同目錄 .part temp,最後 os.replace 原子搬入
 (B):_model_tag helper — process_file 與 _output_path_for 原本逐字複製推導。
 (C):_generate_with_retry backoff 分類 + usage 事件 emit 兩路覆蓋。
 """
-import os
-
 import pytest
 
 import synthesize
@@ -42,8 +40,6 @@ def test_export_interrupt_leaves_no_truncated_final(monkeypatch, tmp_path):
     # 走 fallback (非 master) 路徑,確定性最高
     monkeypatch.setattr(synthesize, "MASTER_ENABLED", False)
     monkeypatch.setattr(synthesize, "OUTPUT_FORMAT", "wav")
-
-    real_export = AudioSegment.export
 
     def boom(self, out, *a, **kw):
         # 模擬:檔已被部分寫出後,程序被打斷
