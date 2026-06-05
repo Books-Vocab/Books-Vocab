@@ -6,6 +6,9 @@
 // DOM references
 // ---------------------------------------------------------------------------
 
+// Short i18n accessor — sidepanel reads chrome.i18n directly.
+const t = (key, subs) => chrome.i18n.getMessage(key, subs);
+
 const $ = (sel) => document.querySelector(sel);
 const stateLoading = $('#stateLoading');
 const stateEmpty   = $('#stateEmpty');
@@ -51,14 +54,14 @@ let sortOption = 'default';
 
 /** Sort labels — mirrors iOS KGVocabSortOption.label. i18n lives here, not pure.js. */
 const SORT_LABELS = {
-  default: '複習優先',
-  alphabetical: '字母序',
-  dateAdded: '最近新增',
-  difficulty: '難度',
+  default: t('sortDefault'),
+  alphabetical: t('sortAlphabetical'),
+  dateAdded: t('sortDateAdded'),
+  difficulty: t('sortDifficulty'),
 };
 
 /** UI label for a review-state chip (iOS VocabularyReviewState.displayName). */
-const STATE_LABELS = { unlearned: '未學習', due: '待複習', reviewed: '已複習' };
+const STATE_LABELS = { unlearned: t('stateUnlearned'), due: t('stateDue'), reviewed: t('stateReviewed') };
 
 // Theme glyphs come from KGIcons (shared/icons.js) — SVG, not emoji — so the
 // button matches the iOS SF-Symbols look. Icon name = `theme-${theme}`.
@@ -168,7 +171,7 @@ async function loadVocabList() {
       showErrorFromResponse({
         error: true,
         code: 'network_error',
-        message: '擴充功能背景服務未回應，請重新整理',
+        message: t('errorBackgroundNoResponse'),
       });
       return;
     }
@@ -201,7 +204,7 @@ async function loadVocabList() {
     showErrorFromResponse({
       error: true,
       code: 'network_error',
-      message: '無法連線至背景服務，請重試',
+      message: t('errorBackgroundUnreachable'),
     });
   }
 }
@@ -281,13 +284,13 @@ function syncClearButton() {
 // iOS LocaleAwareFormatter.relativeString(style:.full). Lazily built once.
 let _relFmt = null;
 function relativeReviewLabel(nextReviewAt, nowMs = Date.now()) {
-  const t = Date.parse(String(nextReviewAt || ''));
-  if (Number.isNaN(t)) return '';
+  const ts = Date.parse(String(nextReviewAt || ''));
+  if (Number.isNaN(ts)) return '';
   if (!_relFmt && typeof Intl !== 'undefined' && Intl.RelativeTimeFormat) {
     _relFmt = new Intl.RelativeTimeFormat('zh-Hant', { numeric: 'auto', style: 'long' });
   }
   if (!_relFmt) return '';
-  const diffSec = (t - nowMs) / 1000;
+  const diffSec = (ts - nowMs) / 1000;
   const abs = Math.abs(diffSec);
   if (abs >= 86400) return _relFmt.format(Math.round(diffSec / 86400), 'day');
   if (abs >= 3600) return _relFmt.format(Math.round(diffSec / 3600), 'hour');
@@ -309,13 +312,13 @@ function enrichWithReviewData(item) {
   const isUnlearned = p.state === 'unlearned';
 
   const dueLabel = isUnlearned
-    ? `首輪 ${KGPure.compactReviewLabel(item.reviewIntervalHours * 3600)}`
+    ? t('reviewFirstRound', [KGPure.compactReviewLabel(item.reviewIntervalHours * 3600)])
     : `${KGPure.compactReviewLabel(p.elapsedSec)} / ${KGPure.compactReviewLabel(p.intervalSec)}`;
 
   let dueInfo;
-  if (p.state === 'due') dueInfo = '待複習';
-  else if (isUnlearned) dueInfo = '未複習';
-  else dueInfo = `下次 ${relativeReviewLabel(item.nextReviewAt)}`.trim();
+  if (p.state === 'due') dueInfo = t('stateDue');
+  else if (isUnlearned) dueInfo = t('rowStatusUnreviewed');
+  else dueInfo = t('rowStatusNext', [relativeReviewLabel(item.nextReviewAt)]).trim();
 
   return {
     ...item,
@@ -487,7 +490,7 @@ function renderList(items) {
   if (items.length === 0) {
     const hint = document.createElement('p');
     hint.className = 'kg-list-nomatch';
-    hint.textContent = '沒有符合的單字';
+    hint.textContent = t('noMatch');
     stateContent.appendChild(hint);
     setState('content');
     return;
@@ -647,42 +650,42 @@ function toggleDetail(row, item) {
 
   // Full meaning
   if (meaning) {
-    detail.appendChild(makeSection('意思', `<div class="kg-detail__meaning">${esc(meaning)}</div>`));
+    detail.appendChild(makeSection(t('detailMeaning'), `<div class="kg-detail__meaning">${esc(meaning)}</div>`));
   }
 
   // POS
   if (pos) {
-    detail.appendChild(makeSection('詞性', `<div class="kg-detail__meaning">${esc(pos)}</div>`));
+    detail.appendChild(makeSection(t('detailPos'), `<div class="kg-detail__meaning">${esc(pos)}</div>`));
   }
 
   // Examples
   if (examples.length > 0) {
     const lis = examples.map((ex) => `<li>${esc(typeof ex === 'string' ? ex : ex.sentence || ex.text || '')}</li>`).join('');
-    detail.appendChild(makeSection('例句', `<ul class="kg-detail__examples">${lis}</ul>`));
+    detail.appendChild(makeSection(t('detailExamples'), `<ul class="kg-detail__examples">${lis}</ul>`));
   }
 
   // Collocations
   if (collocations.length > 0) {
     const chips = collocations.map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : c.word || '')}</span>`).join('');
-    detail.appendChild(makeSection('搭配', `<div class="kg-detail__chips">${chips}</div>`));
+    detail.appendChild(makeSection(t('detailCollocation'), `<div class="kg-detail__chips">${chips}</div>`));
   }
 
   // Note
   if (note) {
-    detail.appendChild(makeSection('筆記', `<div class="kg-detail__note">${esc(note)}</div>`));
+    detail.appendChild(makeSection(t('detailNote'), `<div class="kg-detail__note">${esc(note)}</div>`));
   }
 
   // Context
   if (context) {
-    detail.appendChild(makeSection('上下文', `<div class="kg-detail__context">${esc(context)}</div>`));
+    detail.appendChild(makeSection(t('detailContext'), `<div class="kg-detail__context">${esc(context)}</div>`));
   }
 
   // Source
   if (isWeb && sourceUrl) {
     const safeHref = KGPure.safeUrl(sourceUrl);
-    detail.appendChild(makeSection('來源', `<a class="kg-link kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
+    detail.appendChild(makeSection(t('detailSource'), `<a class="kg-link kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
   } else {
-    detail.appendChild(makeSection('來源', `<span class="kg-detail__source-text">iOS app</span>`));
+    detail.appendChild(makeSection(t('detailSource'), `<span class="kg-detail__source-text">iOS app</span>`));
   }
 
   // Append detail to the content column so it sits below word/meaning,

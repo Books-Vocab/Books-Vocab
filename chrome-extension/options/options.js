@@ -12,6 +12,15 @@ const tokenInput = document.getElementById('tokenInput');
 const tokenSubmit = document.getElementById('tokenSubmit');
 const themeSelector = document.getElementById('theme-selector');
 
+// Master on/off switch. Mirrors ENABLED_KEY in content/content.js — default ON,
+// only an explicit stored `false` disables the selection-to-translate popup.
+const ENABLED_KEY = 'kg_enabled';
+const enabledToggle = document.getElementById('enabled-toggle');
+
+// Short i18n accessor (static HTML is localized by shared/i18n.js; this covers
+// strings built in JS, e.g. auth status / error messages).
+const t = (key, subs) => chrome.i18n.getMessage(key, subs);
+
 // ── Auth UI ──
 
 function renderLoggedIn() {
@@ -19,11 +28,11 @@ function renderLoggedIn() {
 
   const info = document.createElement('div');
   info.className = 'kg-auth-info';
-  info.textContent = '已登入';
+  info.textContent = t('authLoggedIn');
 
   const btn = document.createElement('button');
   btn.className = 'kg-btn kg-btn--destructive';
-  btn.textContent = '登出';
+  btn.textContent = t('authLogout');
   btn.addEventListener('click', handleLogout);
 
   authStatus.appendChild(info);
@@ -37,7 +46,7 @@ function renderLoggedOut() {
 
   const btn = document.createElement('button');
   btn.className = 'kg-btn kg-btn--primary';
-  btn.textContent = '登入';
+  btn.textContent = t('authLogin');
   btn.addEventListener('click', handleLogin);
 
   authStatus.appendChild(btn);
@@ -59,7 +68,7 @@ function renderAuthError(message, onRetry) {
 
   const btn = document.createElement('button');
   btn.className = 'kg-btn kg-btn--primary';
-  btn.textContent = '重試';
+  btn.textContent = t('commonRetry');
   btn.addEventListener('click', onRetry);
 
   authStatus.appendChild(msg);
@@ -77,7 +86,7 @@ async function refreshAuthUI() {
   } catch (err) {
     // chrome.storage can reject when the extension context is invalidated.
     console.error('[KG] refreshAuthUI failed:', err);
-    renderAuthError('無法讀取登入狀態', refreshAuthUI);
+    renderAuthError(t('authErrorRead'), refreshAuthUI);
   }
 }
 
@@ -88,7 +97,7 @@ function handleLogin() {
     chrome.tabs.create({ url: 'https://wordnexus.lol/login' }).catch((err) => console.error('[KG] handleLogin tabs.create failed', err));
   } catch (err) {
     console.error('[KG] handleLogin failed:', err);
-    renderAuthError('無法開啟登入頁面', handleLogin);
+    renderAuthError(t('authErrorOpen'), handleLogin);
   }
 }
 
@@ -98,7 +107,7 @@ async function handleLogout() {
     renderLoggedOut();
   } catch (err) {
     console.error('[KG] handleLogout failed:', err);
-    renderAuthError('登出失敗，請重試', handleLogout);
+    renderAuthError(t('authErrorLogout'), handleLogout);
   }
 }
 
@@ -109,7 +118,7 @@ async function handleTokenSubmit() {
   // Minimal JWT shape validation — three dot-separated base64url segments.
   const jwtPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
   if (!jwtPattern.test(raw)) {
-    renderAuthError('Token 格式不正確，請確認為完整 JWT 字串', () => {
+    renderAuthError(t('authErrorTokenFormat'), () => {
       renderLoggedOut();
       tokenInput.value = raw;
       tokenInput.focus();
@@ -123,7 +132,7 @@ async function handleTokenSubmit() {
     renderLoggedIn();
   } catch (err) {
     console.error('[KG] handleTokenSubmit failed:', err);
-    renderAuthError('儲存 Token 失敗，請重試', () => {
+    renderAuthError(t('authErrorTokenSave'), () => {
       renderLoggedOut();
       tokenInput.value = raw;
       tokenInput.focus();
@@ -152,6 +161,29 @@ function handleThemeChange(e) {
   setTheme(value);
 }
 
+// ── Master switch ──
+
+async function initEnabledToggle() {
+  if (!enabledToggle) return;
+  // Default ON: missing key or read failure leaves the popup enabled.
+  try {
+    const data = await chrome.storage.local.get(ENABLED_KEY);
+    enabledToggle.checked = data[ENABLED_KEY] !== false;
+  } catch (err) {
+    console.error('[KG] enabled toggle init failed:', err);
+    enabledToggle.checked = true;
+  }
+  enabledToggle.addEventListener('change', async () => {
+    const next = enabledToggle.checked;
+    try {
+      await chrome.storage.local.set({ [ENABLED_KEY]: next });
+    } catch (err) {
+      console.error('[KG] enabled toggle save failed:', err);
+      enabledToggle.checked = !next; // revert UI to the persisted state
+    }
+  });
+}
+
 // ── Init ──
 
 (async function init() {
@@ -164,6 +196,9 @@ function handleThemeChange(e) {
     activateThemeOption('light');
   }
   themeSelector.addEventListener('click', handleThemeChange);
+
+  // Master switch
+  await initEnabledToggle();
 
   // Auth
   await refreshAuthUI();
@@ -180,8 +215,12 @@ function handleThemeChange(e) {
 
   // Live storage changes (e.g. OAuth completing in another tab)
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[TOKEN_KEY]) {
+    if (area !== 'local') return;
+    if (changes[TOKEN_KEY]) {
       refreshAuthUI();
+    }
+    if (changes[ENABLED_KEY] && enabledToggle) {
+      enabledToggle.checked = changes[ENABLED_KEY].newValue !== false;
     }
   });
 })();
