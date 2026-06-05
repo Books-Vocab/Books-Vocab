@@ -40,6 +40,8 @@ EPUB → prep → analyst → architect → plan-review → enricher-gap → enr
 | 14 | `cover` | Claude agent + `cover_tool.py`（Pexels 漏斗） | series 封面：agent 讀主題 → search(文字海選)→ contact(編號拼圖複選)→ render(duo 後製) → `plan/cover.png`。series-wide（`--only-episode` 跳過）、冪等（cover.png 存在即 skip）、無 gate |
 | 15 | `publish` | `ops/podcast_upload.sh` + boto3 verify | 上傳 workspace → S3（含 cover.png）+ 確認 series 現身 catalog index（retry/backoff、1800s timeout）。**終端 stage、不設 gate**：合成完成即自動上線。憑證/環境從 `lab/podcast/.env` gap-fill(`AWS_PROFILE=kg-podcast` 寫權限、`PODCAST_BUCKET`;monitor 不 load .env 故腳本自補)— 詳見 `docs/sop/podcast_pipeline.md` §upload.sh 憑證模型。手動補傳：dashboard ▶ upload 或 `ops/podcast_upload.sh <ws>` |
 
+> **只換/補既有 published series 的封面**(不重跑 pipeline、不動 audio):用 `ops/podcast_cover_publish.py`(audio-decoupled 原子重發:`--all --workspaces-dir` / `--check`,dry-run 預設)。**`upload.sh` 不可用於只換封面** —— 它重組 audio + reconcile,對 local↔S3 不同步的 series 會誤動資料。見 `docs/sop/podcast_pipeline.md` §封面重發布。
+
 ## 完整 CLI 參考
 
 ### 基本用法

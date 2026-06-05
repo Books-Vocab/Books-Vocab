@@ -60,7 +60,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 - `episodes[].subtitleContent: String?` 由 `ops/podcast_upload.sh` 嵌入；iOS `PodcastEpisode.inlineSubtitle` 直接消費，跳過 `/api/podcasts/{sid}/{ep}/subtitle` fetch
 - `episodes[].localAudioPath: String?` (SwiftData only, 不在後端 JSON) — 由 DownloadManager 填寫；PlayerView 認到即用 file:// URL 跳過認證
-- `coverImageURL: String?` 由 `ops/podcast_upload.sh` 寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。iOS 有值才拉遠端封面圖快取，否則退 `color`/`coverPattern` 程序化封面
+- `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。iOS 有值才拉遠端封面圖快取，否則退 `color`/`coverPattern` 程序化封面
 
 ### Sub-views（UI 元件）
 
