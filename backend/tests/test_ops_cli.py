@@ -574,6 +574,38 @@ class TestFleetOverview:
         assert ua_row["links"] == 0  # 損壞檔不計但不爆
         assert "skip" in r.stderr.lower() or "unreadable" in r.stderr.lower()
 
+    def test_scalar_graph_no_crash(self, tmp_path):
+        """工程審計 HIGH:graph json 為合法 JSON scalar(非 list/dict)→ len() 此前拋
+        TypeError 崩潰整個 fleet-overview。修復後視為壞形狀,不計、不爆。"""
+        import json
+        now = _now_iso()
+        ua = tmp_path / "users" / "uA"
+        ua.mkdir(parents=True)
+        _create_cards_db(ua / "cards.db", [("a1", "x", "X", 0, now, now)])
+        (ua / "graph_scalar.json").write_text("42")  # 合法 JSON scalar
+        r = _run_cli(str(tmp_path), "fleet-overview", "--json")
+        assert r.returncode == 0, r.stderr  # 此前 TypeError exit 1
+        d = json.loads(r.stdout)  # stdout 仍是乾淨 JSON,非破碎
+        ua_row = next(u for u in d["users"] if u["user_id"] == "uA")
+        assert ua_row["links"] == 0
+
+    def test_dict_shaped_graph_counted(self, tmp_path):
+        """dict-of-links(以 id 為鍵)形狀應正確計數,語意對齊 canonical reader。"""
+        import json
+        now = _now_iso()
+        ua = tmp_path / "users" / "uA"
+        ua.mkdir(parents=True)
+        _create_cards_db(ua / "cards.db", [("a1", "x", "X", 0, now, now)])
+        (ua / "graph_default.json").write_text(json.dumps({
+            "l1": {"from_id": "a", "to_id": "b"},
+            "l2": {"from_id": "b", "to_id": "c"},
+        }))
+        r = _run_cli(str(tmp_path), "fleet-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        ua_row = next(u for u in d["users"] if u["user_id"] == "uA")
+        assert ua_row["links"] == 2
+
 
 class TestTimeseries:
     """timeseries — cost/calls/active_users 按 day/week/month 分桶趨勢。"""
@@ -671,6 +703,13 @@ class TestTimeseries:
         assert r.returncode == 0, r.stderr
         assert "滿格 =" in r.stdout
 
+    def test_trend_legend_integer_metric(self, tmp_path):
+        """工程審計 LOW:calls 滿格基準應印整數(2 非 2.0),與表格欄位一致。"""
+        self._seed(tmp_path)  # calls 桶 max = 2
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all")
+        assert r.returncode == 0, r.stderr
+        assert "滿格 = 2" in r.stdout and "滿格 = 2.0" not in r.stdout
+
     def test_empty(self, tmp_path):
         import json
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--json")
@@ -751,6 +790,60 @@ class TestTimeseriesFillZero:
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         assert d["count"] == 0 and d["series"] == []
+
+    def test_fill_week_bucket(self, tmp_path):
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),  # ISO W23
+            ("u1", "translate", 1, 1, "2026-06-22T10:00:00+00:00"),  # ISO W26
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "week",
+                     "--range", "all", "--fill-zero", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        assert series["2026-W23"] == 1 and series["2026-W26"] == 1
+        assert series.get("2026-W24") == 0 and series.get("2026-W25") == 0  # 中間空週補零
+
+    def test_fill_month_bucket(self, tmp_path):
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2026-01-15T10:00:00+00:00"),
+            ("u1", "translate", 1, 1, "2026-04-15T10:00:00+00:00"),
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month",
+                     "--range", "all", "--fill-zero", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        assert series["2026-01"] == 1 and series["2026-04"] == 1
+        assert series.get("2026-02") == 0 and series.get("2026-03") == 0  # 中間空月補零
+
+    def test_fill_bounded_all_filtered_zero(self, tmp_path):
+        """bounded range + 資料全被 since 過濾掉 → 補出全零軸(since 起點分支,非 min_dt)。"""
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2020-01-01T00:00:00+00:00"),  # 遠在 30d 外
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day",
+                     "--range", "30d", "--fill-zero", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] >= 28  # ~31 個零桶
+        assert all(s["value"] == 0 for s in d["series"])
+
+    def test_fill_zero_active_users_int_type(self, tmp_path):
+        """工程審計:active_users 零桶須為 int 0(與非零桶型別一致),非 float。"""
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+            ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "active_users", "--bucket", "day",
+                     "--range", "all", "--fill-zero", "--json")
+        d = json.loads(r.stdout)
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        assert series["2026-06-02"] == 0 and isinstance(series["2026-06-02"], int)
 
 
 class TestTimeseriesSinceFilter:
