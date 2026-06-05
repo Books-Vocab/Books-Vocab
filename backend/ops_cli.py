@@ -10,7 +10,7 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from kg.admin_cost_summary import VALID_RANGES, since_iso
@@ -33,25 +33,50 @@ def _cutoff_iso(hours: int = 24) -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
+def _parse_day(created_at: str | None) -> date | None:
+    """嚴格解析 created_at 前 10 字元為 date;空/畸形/非 ISO 日期一律回 None。"""
+    if not created_at or len(created_at) < 10:
+        return None
+    try:
+        return datetime.strptime(created_at[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def _bucket_key(created_at: str | None, bucket: str) -> str | None:
     """把 ISO created_at 折成桶 key:day→YYYY-MM-DD,month→YYYY-MM,week→YYYY-Www(ISO週)。
 
-    只取日期前綴解析,規避 created_at 的 tz/微秒變異。無法解析則回 None(該列略過)。
+    三粒度共用 _parse_day 單一解析路徑 —— 規避 tz/微秒變異,且畸形時間戳在
+    day/month/week 一致回 None(此前 day/month 盲切 [:10]/[:7] 會回垃圾桶,僅 week 被 drop)。
     """
-    if not created_at or len(created_at) < 10:
+    d = _parse_day(created_at)
+    if d is None:
         return None
     if bucket == "day":
-        return created_at[:10]
+        return d.isoformat()
     if bucket == "month":
-        return created_at[:7]
+        return d.strftime("%Y-%m")
     if bucket == "week":
-        try:
-            d = datetime.strptime(created_at[:10], "%Y-%m-%d")
-        except ValueError:
-            return None
         iso = d.isocalendar()
         return f"{iso[0]}-W{iso[1]:02d}"
     return None
+
+
+def _enumerate_buckets(start: date, end: date, bucket: str) -> list[str]:
+    """列出 [start, end] 內每日所屬桶 key(去重、時序升冪)。供 --fill-zero 補空桶用。
+
+    逐日掃描再對映桶 key,單一邏輯同時涵蓋 day/week/month(範圍至多一年量級,成本可忽略)。
+    """
+    keys: list[str] = []
+    seen: set[str] = set()
+    d = start
+    while d <= end:
+        k = _bucket_key(d.isoformat(), bucket)
+        if k and k not in seen:
+            seen.add(k)
+            keys.append(k)
+        d += timedelta(days=1)
+    return keys
 
 
 # ── 子指令實作 ──────────────────────────────────────────
@@ -730,11 +755,14 @@ def cmd_fleet_overview(args: argparse.Namespace) -> None:
             finally:
                 c.close()
         links = 0
+        corrupt = 0
         for gp in ud.glob("graph_*.json"):
             try:
                 links += len(json.loads(gp.read_text()))
             except (json.JSONDecodeError, OSError):
-                pass
+                corrupt += 1  # 損壞/不可讀的圖譜檔不計入 links,但下方計數浮出避免靜默漏算
+        if corrupt:
+            print(f"⚠ {uid}: skipped {corrupt} unreadable graph file(s)", file=sys.stderr)
         user_rows.append({
             "user_id": uid,
             "cards_total": total,
@@ -784,8 +812,11 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     三種 metric 同一查詢路徑(只讀 token_usage.db):
       cost         — provider-aware 逐列定價後加總(week 桶用 ISO 週,SQL 難算,故 Python 分桶)
       calls        — 列數
-      active_users — 桶內 distinct user_id
-    `--uid all`(預設)算全體;指定 uid 則模糊解析後過濾。只吐有資料的桶(不補零),桶 key 升冪。
+      active_users — 桶內 distinct user_id。**注意語意**:這是「當桶內有觸發 LLM 呼叫的去重
+                     用戶數」,只讀/聽 podcast 而不呼叫 LLM 的活躍不在此資料源(token_usage),
+                     故對 retention 而言會低估;當作「付費活躍」而非「全活躍」解讀。
+    `--uid all`(預設)算全體;指定 uid 則模糊解析後過濾。預設只吐有資料的桶;`--fill-zero`
+    補齊區間內所有零值桶(時間軸連續、斷層顯式化),桶 key 升冪。
     """
     metric = args.metric
     bucket = args.bucket
@@ -799,6 +830,8 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     }
 
     acc: dict[str, object] = {}  # bucket_key → float | int | set[str]
+    min_dt: date | None = None
+    max_dt: date | None = None
     db_path = data_dir() / "token_usage.db"
     if db_path.exists():
         conn = connect_ro(db_path)
@@ -823,9 +856,14 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         conn.close()
 
         for user_id, call_type, provider, t_in, t_out, created_at in rows:
-            key = _bucket_key(created_at, bucket)
-            if key is None:
+            d = _parse_day(created_at)
+            if d is None:
                 continue
+            key = _bucket_key(created_at, bucket)  # d 有效 → key 必有效
+            if min_dt is None or d < min_dt:
+                min_dt = d
+            if max_dt is None or d > max_dt:
+                max_dt = d
             if metric == "cost":
                 acc[key] = float(acc.get(key, 0.0)) + token_cost_usd(
                     call_type, int(t_in or 0), int(t_out or 0), provider=provider
@@ -835,14 +873,31 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
             else:  # active_users
                 acc.setdefault(key, set()).add(user_id)  # type: ignore[union-attr]
 
-    series = []
-    for key in sorted(acc):
-        val = acc[key]
+    # 收斂成 bucket→value（active_users 取 len,cost round 6 位）
+    observed: dict[str, float | int] = {}
+    for key, val in acc.items():
         if metric == "active_users":
-            val = len(val)  # type: ignore[arg-type]
+            observed[key] = len(val)  # type: ignore[arg-type]
         elif metric == "cost":
-            val = round(float(val), 6)
-        series.append({"bucket": key, "value": val})
+            observed[key] = round(float(val), 6)
+        else:
+            observed[key] = val  # type: ignore[assignment]
+
+    zero: float | int = 0.0 if metric == "cost" else 0
+    if args.fill_zero:
+        # 補零起點:bounded range 用 since 日;range=all 用首筆資料日。終點取 max(今天, 末筆)。
+        start_d = (_parse_day(since) if since is not None else min_dt)
+        if start_d is not None:
+            end_d = datetime.now(UTC).date()
+            if max_dt is not None and max_dt > end_d:
+                end_d = max_dt
+            series = [{"bucket": k, "value": observed.get(k, zero)}
+                      for k in _enumerate_buckets(start_d, end_d, bucket)]
+        else:
+            series = []  # range=all 且全無資料 → 無起點可補
+    else:
+        series = [{"bucket": k, "value": observed[k]} for k in sorted(observed)]
+
     result["series"] = series
     result["count"] = len(series)
 
@@ -856,7 +911,7 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         print("(no data)")
         return
 
-    def _fmt(v: object) -> str:
+    def _fmt(v: float | int) -> str:
         return f"${v:.6f}" if metric == "cost" else str(v)
 
     max_val = max(float(s["value"]) for s in series)
@@ -865,6 +920,8 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         bar = "█" * round((float(s["value"]) / max_val) * 24) if max_val else ""
         rows_out.append([s["bucket"], _fmt(s["value"]), bar])
     print_table(["Bucket", metric.capitalize(), "Trend"], rows_out)
+    # 印滿格基準值 —— bar 為組內相對歸一化,常數序列會全滿,基準值供讀者校準絕對量級。
+    print(f"\n(trend bar 滿格 = {_fmt(max_val)})")
 
 
 # ── CLI 進入點 ──────────────────────────────────────────
@@ -951,12 +1008,15 @@ def main() -> None:
     # timeseries
     p = sub.add_parser("timeseries", parents=[jp],
                        help="時間序列趨勢（cost/calls/active_users 按 day/week/month 分桶）")
-    p.add_argument("metric", choices=["cost", "calls", "active_users"], help="指標")
+    p.add_argument("metric", choices=["cost", "calls", "active_users"],
+                   help="指標（active_users = 觸發 LLM 呼叫的去重用戶，非全活躍）")
     p.add_argument("--bucket", choices=["day", "week", "month"], default="day",
                    help="分桶粒度（預設 day）")
     p.add_argument("--range", choices=list(VALID_RANGES), default="30d",
                    help="時間範圍（預設 30d）")
     p.add_argument("--uid", default="all", help="限定單一用戶（預設 all）")
+    p.add_argument("--fill-zero", dest="fill_zero", action="store_true",
+                   help="補齊區間內零值桶（時間軸連續、斷層顯式化）")
     p.set_defaults(func=cmd_timeseries)
 
     args = parser.parse_args()
