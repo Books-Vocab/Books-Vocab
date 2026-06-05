@@ -81,10 +81,16 @@ set -e
 
 ELAPSED=$(( $(date +%s) - START ))
 
+# Machine-readable verdict file — survives even when stdout/stderr is piped
+# (e.g. `ios_build.sh | tail`, where the pipeline's exit code is tail's 0, not
+# the build's). Read this instead of trusting a piped `$?`.
+VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_build_verdict"
 if [[ $EXIT_CODE -eq 0 ]]; then
-  echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER"
+  echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
+  echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)"
 else
-  echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER" >&2
+  echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
+  echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
 fi
 
 exit $EXIT_CODE
