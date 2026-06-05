@@ -20,6 +20,13 @@ final class PodcastEpisode {
     /// Nil for legacy series uploaded before the embed change — caller
     /// must fall back to fetching from subtitleURL in that case.
     var inlineSubtitle: String?
+    /// Free-tier preview availability (ep 1 only — see backend podcast_access).
+    /// When true the backend `audio` endpoint serves a pre-generated ~3-min
+    /// `preview.*` clip to free-tier callers. Defaults false for legacy series
+    /// (and every ep > 1) whose metadata predates the preview pipeline.
+    var previewAvailable: Bool = false
+    /// Duration of the preview clip in seconds (0 when unknown / no preview).
+    var previewDurationSec: Double = 0
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 

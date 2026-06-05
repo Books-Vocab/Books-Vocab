@@ -27,7 +27,8 @@ verified_against: 068e6105
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發 |
-| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404) |
+| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**訪客**;`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）;`progress` 仍 `get_current_user` |
+| `podcast_access.py` | — | 播客分層 policy(純函式,免 FastAPI):`resolve_podcast_tier(user|None)→guest/free/pro`(由 auth + `_is_pro` 推導,**無 per-series 旗標**,牆統一)、`is_free_previewable_episode`(`FREE_PREVIEW_EP_NUM=1`)、stem 常數、error code。free preview 走**獨立 `preview.*` 物件**而非 byte 截斷(progressive MP4 單 moov 無法乾淨截) |
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
 | `admin.py` | `/api/admin/*`, `/admin/*` | dashboard / user detail / logs / test-matrix |
@@ -107,6 +108,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
 | `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
+| `podcast_preview_backfill.py` | free-tier **試聽片**回填,與 audio/cover 完全解耦:對 bucket 內既有 series,下載 `ep_01/audio.<fmt>` → `ffmpeg -t 180 -c copy` → PUT `ep_01/preview.<fmt>` → RMW `metadata.json` ep1 `previewAvailable`/`previewDurationSec`(不 bump updatedAt → 冪等;不重建 index,preview 欄在 episodes 內被 index strip)。`--all`/`--series`、dry-run 預設、`--execute` 才寫、`--check` drift(in_sync/missing/flag_without_preview/preview_without_flag);per-series 失敗記錄不中斷批次。新 series 由 `ops/podcast_upload.sh` 在 publish 時對 ep_01 自動生成 preview(同 stream-copy) |
 | `podcast_cover_publish.py` | 播客**封面**(re)發布,與 audio 完全解耦:只 PUT `<sid>/cover.png` + RMW `metadata.coverImageURL` + 重建 index(**不**重組 audio、**不** reconcile/prune,故對 local↔S3 不同步的 series 安全 —— `upload.sh` 不可用於只換封面)。原子靠排序(cover→metadata→index)+ 冪等(不 bump updatedAt)+ 可重入;`--check` cover⟷metadata drift;dry-run 預設、`--execute` 才寫。`--all --workspaces-dir` / `--workspace` / `--series` |
 | `podcast_ops.py` | 播客 pipeline **headless 觀測 CLI**(讀-only):把 dashboard(`lab/podcast/monitor/server.py`)的 disk-derived 邏輯搬上終端/SSH/cron。subcommand `status`(各 workspace 狀態瀑布 + 集數 + 進度 + 花費,exit 2=有 failed/1=有 awaiting/0=ok)、`episodes <ws>`(逐集 plan/script/audio/subtitle 關卡矩陣)、`cost [--workspace]`(TTS+LLM 花費,單一或聚合 + by-model)、`covers`(有音頻卻缺 `plan/cover.png`)皆**純磁碟**(免 boto3);`reconcile`(合成了但沒上 S3 的 drift)、`series`(S3 catalog)需 boto3+`PODCAST_BUCKET`,缺則 clean exit 3。`--json` 契約:stdout 只有 JSON,banner/warning 走 stderr。邏輯 import 自 `monitor/{cost,workspace_status}.py`(無第二份實作) |
 | `monitor/workspace_status.py` | podcast dashboard 的 disk-derived 狀態原語(FastAPI-free)。從 `server.py` 抽出(`_stages_done`/`_scan_pipeline_log_status`/`_milestones`/`_episode_status`/`_gate_states`/`_workspace_has_audio`/`reconcile_workspaces`/`audio_episode_numbers`/`disk_status`/`headless_summary`),`server.py` 與 `ops/podcast_ops.py` 共 import 同一份(SoT) |

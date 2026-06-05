@@ -872,6 +872,15 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "Subtitles available";
+"podcast.locked.episode.a11y" = "Pro episode, locked";
+"podcast.locked.title" = "Pro episode";
+"podcast.locked.body" = "Subscribe to Pro to unlock every episode.";
+"podcast.locked.cta.upgrade" = "Upgrade to Pro";
+"podcast.guest.locked.title" = "Sign in to listen";
+"podcast.guest.locked.body" = "Sign in to play episodes and unlock the full library.";
+"podcast.guest.cta.signInToListen" = "Sign in to listen";
+"podcast.preview.cta.listenFree" = "Free 3-min preview";
+"podcast.preview.banner.message" = "Free preview · Upgrade to hear the full episode";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "Double tap to play from this sentence";
 "podcast.transcript.translateAction" = "Translate sentence";

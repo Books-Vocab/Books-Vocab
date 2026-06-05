@@ -855,6 +855,15 @@
 
 // MARK: - Podcast episode row a11y (track-9)
 "podcast.episodeRow.subtitleAvailable" = "有字幕";
+"podcast.locked.episode.a11y" = "Pro 單集，已鎖定";
+"podcast.locked.title" = "Pro 專屬單集";
+"podcast.locked.body" = "訂閱 Pro 解鎖全部單集。";
+"podcast.locked.cta.upgrade" = "升級 Pro";
+"podcast.guest.locked.title" = "登入後收聽";
+"podcast.guest.locked.body" = "登入即可播放單集並解鎖完整內容。";
+"podcast.guest.cta.signInToListen" = "登入後收聽";
+"podcast.preview.cta.listenFree" = "免費試聽 3 分鐘";
+"podcast.preview.banner.message" = "免費試聽 · 升級聽完整單集";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "點兩下跳至此句播放";
 "podcast.transcript.translateAction" = "翻譯整句";
