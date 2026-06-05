@@ -211,6 +211,21 @@ def test_status_idle_next_step_resume(tmp_path: Path):
     assert "--skip-to" not in idle.get("next_step", "")
 
 
+def test_resume_stage_includes_cover(tmp_path: Path):
+    """_STAGES_ORDERED must mirror pipeline STAGES including 'cover' (between
+    subtitle and publish) — else resume_stage misreports 'publish' for a ws
+    whose true next stage is cover. Review finding (Medium-low)."""
+    root = tmp_path / "workspaces"; root.mkdir()
+    ws = _mk_ws(root, "pre_cover")
+    _overview(ws); _ep_plan(ws, 1); _ep_script(ws, 1); _ep_audio(ws, 1); _ep_srt(ws, 1)
+    for st in ("prep", "analyst", "architect", "plan-review", "enricher-gap",
+               "enricher", "scriptwrite", "series-polish", "script-review",
+               "tts-prep", "synthesize", "audio-qa", "subtitle"):
+        _done_marker(ws, st)  # everything through subtitle; cover + publish pending
+    by = {w["name"]: w for w in po.collect_status(root)["workspaces"]}
+    assert by["pre_cover"]["resume_stage"] == "cover"
+
+
 # ─── v3: logs subcommand (read pipeline_log events headlessly) ────────────────
 
 def test_logs_lists_events(tree: Path):

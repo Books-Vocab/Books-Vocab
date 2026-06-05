@@ -111,9 +111,11 @@ def collect_status(workspaces_dir: Path) -> dict:
             row["reason"] = (
                 "plan complete — pending plan-gate approval" if gate == "plan"
                 else "scripts complete — pending script-gate approval")
+            # Same cwd (lab/podcast) as the failed/idle hints so the line is
+            # copy-paste-safe regardless of where the operator stands.
             row["next_step"] = (
-                f"touch lab/podcast/workspaces/{s['name']}/.{gate}_approved  "
-                f"# then: cd lab/podcast && uv run pipeline.py workspaces/{s['name']}")
+                f"cd lab/podcast && touch workspaces/{s['name']}/.{gate}_approved "
+                f"&& uv run pipeline.py workspaces/{s['name']}")
         elif s["status"] == "idle":
             # resume_stage is the marker-derived first-incomplete stage, but
             # markers DRIFT (a 81%-done ws can show 'prep' if early markers are

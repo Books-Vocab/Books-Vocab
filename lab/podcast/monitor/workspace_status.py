@@ -28,7 +28,7 @@ _STAGES_ORDERED = (
     "prep", "analyst", "architect", "plan-review",
     "enricher-gap", "enricher", "scriptwrite",
     "series-polish", "script-review",
-    "tts-prep", "synthesize", "audio-qa", "subtitle", "publish",
+    "tts-prep", "synthesize", "audio-qa", "subtitle", "cover", "publish",
 )
 _STAGE_NAMES = set(_STAGES_ORDERED)
 _STAGE_COUNT = len(_STAGES_ORDERED)
@@ -474,8 +474,10 @@ def headless_summary(ws: Path, active_job: dict | None = None) -> dict:
         # rows render a copy-pasteable `pipeline.py --skip-to <stage>` next step.
         "resume_stage": next_incomplete_stage(stages_done),
     }
-    # Surface WHY/WHEN a failure happened so callers don't re-scan the log — the
-    # scan already happened inside disk_status; reuse stages_done here.
+    # Surface WHY/WHEN a failure happened. This re-reads the tail (a second small
+    # ≤64KB scan after disk_status's cascade scan) — cheap, and only on the
+    # failed path; we reuse the already-computed stages_done so the verdict can't
+    # disagree with the cascade.
     if status == "failed":
         d = failure_detail(ws / "pipeline_log.jsonl", stages_done) or {}
         out["failed_stage"] = d.get("stage")
