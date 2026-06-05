@@ -353,7 +353,7 @@ def check() -> list[str]:
     base_spacing = parse_struct_init("AppSkin+BaseValues.swift", "baseSpacing")
     base_metrics = parse_struct_init("AppSkin+BaseValues.swift", "baseMetrics")
     base_radii = parse_base_radii()
-    app_metrics = parse_scale("AppMetrics.swift", "AppMetrics")
+    app_metrics = parse_scale("AppMetrics.swift", "AppMetrics", dt)
     color_strings = parse_string_lets("AppColors.swift")
     motion = parse_motion(dt)
     tap = parse_scale("AppMetrics.swift", "TapFeedback", dt)
