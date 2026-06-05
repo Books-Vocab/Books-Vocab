@@ -170,6 +170,43 @@ eval "argv=( $remote_cmd )"
   || fail_t "ops-cli lost 'count(*)': [${argv[*]:7}]"
 rm -f "$STUB"
 
+# ── 9. validate_uid（Apple uid 含點；traversal 仍須擋）─────────────────────
+# 根因:Apple Sign-in user_id 含 '.'（如 000287.<hex>.0228），舊白名單
+# [A-Za-z0-9_-] 把真實生產 uid 全擋，導致 user-info/ops-cli 查不了任何 Apple
+# 帳號。修法:放行 '.'，但以「禁 '..' / 禁前導 '.'」對齊後端 _safe_user_dir
+# (admin_wiring.py) 的 resolve()+commonpath path-traversal 防護語意。
+section "validate_uid (Apple uid with dots; traversal still blocked)"
+# devops.sh 底部的 dispatch 會在 source 時直接執行（跑 help 後結束），
+# 導致 source 後的 validate_uid 永遠不會執行。改為提取函式到 tmp 腳本獨立跑。
+vuid() {
+  local tmpf=$(mktemp)
+  {
+    sed -n '/^err()/,/^}$/p' "$KG"
+    sed -n '/^validate_uid()/,/^}$/p' "$KG"
+    echo 'validate_uid "$1"'
+  } > "$tmpf"
+  bash "$tmpf" "$1"
+  local rc=$?
+  rm -f "$tmpf"
+  return $rc
+}
+
+vuid '000287.04e254024c2f4341849278a933743257.0228' >/dev/null 2>&1 \
+  && ok "accepts Apple uid with dots" \
+  || fail_t "rejected legit Apple uid with dots"
+vuid 'abc_123-XYZ' >/dev/null 2>&1 \
+  && ok "accepts plain alnum/_/-" \
+  || fail_t "rejected plain alnum uid"
+
+# 負控:traversal / metachar / 邊界 必須續擋
+LONG65=$(printf 'x%.0s' $(seq 1 65))
+for bad in '..' '../etc' 'a..b' '.hidden' 'a/b' 'a b' 'a;rm' '' "$LONG65"; do
+  _out=$(vuid "$bad" 2>&1) || true
+  echo "$_out" | grep -q '非法\|不可' \
+    && ok "blocks bad uid: '${bad:0:24}'" \
+    || fail_t "did NOT block bad uid: '$bad'"
+done
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
