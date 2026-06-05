@@ -12,6 +12,11 @@ const tokenInput = document.getElementById('tokenInput');
 const tokenSubmit = document.getElementById('tokenSubmit');
 const themeSelector = document.getElementById('theme-selector');
 
+// Master on/off switch. Mirrors ENABLED_KEY in content/content.js — default ON,
+// only an explicit stored `false` disables the selection-to-translate popup.
+const ENABLED_KEY = 'kg_enabled';
+const enabledToggle = document.getElementById('enabled-toggle');
+
 // ── Auth UI ──
 
 function renderLoggedIn() {
@@ -152,6 +157,29 @@ function handleThemeChange(e) {
   setTheme(value);
 }
 
+// ── Master switch ──
+
+async function initEnabledToggle() {
+  if (!enabledToggle) return;
+  // Default ON: missing key or read failure leaves the popup enabled.
+  try {
+    const data = await chrome.storage.local.get(ENABLED_KEY);
+    enabledToggle.checked = data[ENABLED_KEY] !== false;
+  } catch (err) {
+    console.error('[KG] enabled toggle init failed:', err);
+    enabledToggle.checked = true;
+  }
+  enabledToggle.addEventListener('change', async () => {
+    const next = enabledToggle.checked;
+    try {
+      await chrome.storage.local.set({ [ENABLED_KEY]: next });
+    } catch (err) {
+      console.error('[KG] enabled toggle save failed:', err);
+      enabledToggle.checked = !next; // revert UI to the persisted state
+    }
+  });
+}
+
 // ── Init ──
 
 (async function init() {
@@ -164,6 +192,9 @@ function handleThemeChange(e) {
     activateThemeOption('light');
   }
   themeSelector.addEventListener('click', handleThemeChange);
+
+  // Master switch
+  await initEnabledToggle();
 
   // Auth
   await refreshAuthUI();
@@ -180,8 +211,12 @@ function handleThemeChange(e) {
 
   // Live storage changes (e.g. OAuth completing in another tab)
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[TOKEN_KEY]) {
+    if (area !== 'local') return;
+    if (changes[TOKEN_KEY]) {
       refreshAuthUI();
+    }
+    if (changes[ENABLED_KEY] && enabledToggle) {
+      enabledToggle.checked = changes[ENABLED_KEY].newValue !== false;
     }
   });
 })();

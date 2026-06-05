@@ -46,14 +46,32 @@
 
   const resolveTheme = (value) => (VALID_THEMES.includes(value) ? value : 'light');
 
+  /**
+   * Master on/off switch (options page). Default ON: a missing key (fresh
+   * install, or storage read failure) leaves selection-to-translate enabled,
+   * so the extension keeps working if storage is unavailable. Only an explicit
+   * stored `false` disables the popup. Mirrors the THEME_KEY storage contract.
+   */
+  const ENABLED_KEY = 'kg_enabled';
+  let cachedEnabled = true;
+
+  const resolveEnabled = (value) => value !== false;
+
   if (chrome?.storage?.local) {
     chrome.storage.local
-      .get(THEME_KEY)
-      .then((r) => { cachedTheme = resolveTheme(r[THEME_KEY]); })
+      .get([THEME_KEY, ENABLED_KEY])
+      .then((r) => {
+        cachedTheme = resolveTheme(r[THEME_KEY]);
+        cachedEnabled = resolveEnabled(r[ENABLED_KEY]);
+      })
       .catch(() => {});
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes[THEME_KEY]) {
+      if (area !== 'local') return;
+      if (changes[THEME_KEY]) {
         cachedTheme = resolveTheme(changes[THEME_KEY].newValue);
+      }
+      if (changes[ENABLED_KEY]) {
+        cachedEnabled = resolveEnabled(changes[ENABLED_KEY].newValue);
       }
     });
   }
@@ -267,6 +285,9 @@
   // -------------------------------------------------------------------------
 
   document.addEventListener('mouseup', (e) => {
+    // Master switch (toggled in the options page) is off: never surface the popup.
+    if (!cachedEnabled) return;
+
     // Ignore clicks inside our own popup host
     if (activeHost && activeHost.contains(e.target)) return;
 
