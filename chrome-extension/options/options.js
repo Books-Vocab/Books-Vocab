@@ -7,6 +7,7 @@
 const TOKEN_KEY = 'auth_token';
 const AUTH_KEYS = [TOKEN_KEY];
 const authStatus = document.getElementById('auth-status');
+const logoutArea = document.getElementById('logout-area');
 const tokenPasteArea = document.getElementById('token-paste-area');
 const tokenInput = document.getElementById('tokenInput');
 const tokenSubmit = document.getElementById('tokenSubmit');
@@ -58,13 +59,17 @@ function renderLoggedIn() {
   btn.addEventListener('click', handleLogout);
 
   authStatus.appendChild(info);
-  authStatus.appendChild(btn);
+  // Logout sits at the foot of the account group (below Pro) — iOS grouped-list
+  // convention puts the destructive row last. It lives in #logout-area (rendered
+  // after #pro-status), not inline after 已登入.
+  if (logoutArea) { logoutArea.innerHTML = ''; logoutArea.appendChild(btn); }
 
   if (tokenPasteArea) tokenPasteArea.hidden = true;
 }
 
 function renderLoggedOut() {
   authStatus.innerHTML = '';
+  if (logoutArea) logoutArea.innerHTML = '';
 
   const btn = document.createElement('button');
   btn.className = 'kg-btn kg-btn--primary';
@@ -83,6 +88,7 @@ function renderLoggedOut() {
  */
 function renderAuthError(message, onRetry) {
   authStatus.innerHTML = '';
+  if (logoutArea) logoutArea.innerHTML = '';
 
   const msg = document.createElement('div');
   msg.className = 'kg-auth-info';
@@ -346,6 +352,9 @@ function renderProStatus(pro) {
 // ── Init ──
 
 (async function init() {
+  // Grouped-list section-header leading icons (mirror iOS Settings).
+  document.querySelectorAll('[data-hdr-icon]').forEach((el) => KGIcons.setIcon(el, el.dataset.hdrIcon));
+
   // Theme — fall back to the default if storage is unavailable.
   try {
     const currentTheme = await initTheme(document.documentElement);

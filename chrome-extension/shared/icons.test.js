@@ -26,6 +26,8 @@ const REQUIRED = [
   'speaker', 'chevron-left', 'arrow-up-right', 'xmark', 'refresh', 'link', 'calendar',
   // word-detail section-label leading icons (mirror iOS CardSectionLabel)
   'detail-collocation', 'detail-forms',
+  // settings grouped-list section-header leading icons
+  'account', 'preferences', 'about',
 ];
 
 test('every required icon yields a well-formed currentColor SVG', () => {
