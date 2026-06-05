@@ -115,6 +115,10 @@ final class PodcastPlayerViewModel {
     @ObservationIgnored
     private var sleepTimerSource: DispatchSourceTimer?
 
+    deinit {
+        sleepTimerSource?.cancel()
+    }
+
     init(hostNames: [String]) {
         self.hostNames = hostNames
         audioEngine.onTimeUpdate = { [weak self] time in
