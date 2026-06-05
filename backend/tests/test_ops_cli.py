@@ -8,6 +8,7 @@ from pathlib import Path
 from ops_helpers import (
     CLI_PATH,
     _create_judge_log_db,
+    _create_pipeline_runs_db,
     _create_token_usage_db,
     _create_translate_log_db,
     _hours_ago_iso,
@@ -863,6 +864,95 @@ class TestTimeseriesSinceFilter:
         buckets = [s["bucket"] for s in d["series"]]
         assert "2020-01" not in buckets  # 被 since cutoff 過濾
         assert d["count"] == 1
+
+
+class TestTrends:
+    """trends — 全域監控趨勢(errors/active/tokens 逐日,唯讀重實作對齊 admin_trends)。"""
+
+    def test_errors_from_judge_rejects(self, tmp_path):
+        import json
+        now = _now_iso()
+        # 2 auto-reject(accepted=0, reject_reason=None)=error;1 accept 不算;
+        # 1 degree_cap reject 須排除(對齊 admin_trends DEGREE_CAP 排除)。
+        _create_judge_log_db(tmp_path, [
+            ("u1", "default", "a", "b", "unrelated", 0.1, 0, now, None),
+            ("u1", "default", "a", "c", "unrelated", 0.1, 0, now, None),
+            ("u1", "default", "a", "d", "related", 0.9, 1, now, None),
+            ("u1", "default", "a", "e", "capped", 0.1, 0, now, "degree_cap"),
+        ])
+        r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["errors_per_day"][-1] == 2  # 今天 2 個真 reject(degree_cap 排除)
+        assert d["total_errors"] == 2
+
+    def test_errors_from_pipeline_failures(self, tmp_path):
+        import json
+        now = _now_iso()
+        _create_pipeline_runs_db(tmp_path, [
+            ("r1", "u1", "default", "manual", now, now, "failed", "[]"),
+            ("r2", "u1", "default", "manual", now, now, "ok", "[]"),  # 不算
+        ])
+        r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["errors_per_day"][-1] == 1  # 只有 failed 計入
+
+    def test_active_users_distinct(self, tmp_path):
+        import json
+        now = _now_iso()
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, now),
+            ("u2", "translate", 1, 1, now),
+            ("u1", "judge", 1, 1, now),  # 同 u1 不重複計
+        ])
+        r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["active_users_per_day"][-1] == 2  # distinct u1,u2
+
+    def test_window_and_alignment(self, tmp_path):
+        import json
+        r = _run_cli(str(tmp_path), "trends", "--window", "10", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["window_days"] == 10
+        assert len(d["days"]) == len(d["errors_per_day"]) == \
+            len(d["active_users_per_day"]) == len(d["tokens_per_day"]) == 10
+
+    def test_text_render(self, tmp_path):
+        now = _now_iso()
+        _create_pipeline_runs_db(tmp_path, [
+            ("r1", "u1", "default", "manual", now, now, "failed", "[]"),
+        ])
+        r = _run_cli(str(tmp_path), "trends", "--window", "7")
+        assert r.returncode == 0, r.stderr
+        assert "Errors" in r.stdout and "Total errors" in r.stdout
+
+    def test_empty_no_crash(self, tmp_path):
+        import json
+        r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["total_errors"] == 0
+        assert all(e == 0 for e in d["errors_per_day"])
+
+    def test_readonly_does_not_mutate_pipeline(self, tmp_path):
+        """關鍵:ops-cli trends 必須唯讀。此前若 import collect_trends,其 _get_conn 會把
+        status='running' 的 row UPDATE 成 'interrupted'(破壞進行中 pipeline)。驗證不被竄改。"""
+        import sqlite3 as _sq
+        now = _now_iso()
+        _create_pipeline_runs_db(tmp_path, [
+            ("r_running", "u1", "default", "manual", now, None, "running", "[]"),
+        ])
+        r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        conn = _sq.connect(str(tmp_path / "pipeline_runs.db"))
+        status = conn.execute(
+            "SELECT status FROM pipeline_runs WHERE run_id = 'r_running'"
+        ).fetchone()[0]
+        conn.close()
+        assert status == "running"  # 未被竄改 → 唯讀保證成立
 
 
 class TestHelp:
