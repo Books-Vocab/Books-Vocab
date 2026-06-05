@@ -22,6 +22,13 @@ const {
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  classifyReviewState,
+  countReviewStates,
+  compactReviewLabel,
+  reviewProgress,
+  VOCAB_SORT_OPTIONS,
+  filterVocab,
+  sortVocab,
   classifyError,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
@@ -123,6 +130,219 @@ test('normalizeVocabList collapses unexpected shapes to []', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Review state — classify / count / compactReviewLabel / reviewProgress
+// (mirrors iOS VocabularyReview + WordRowPresentation)
+// ---------------------------------------------------------------------------
+
+const NOW = Date.parse('2024-06-01T12:00:00Z');
+const HOUR_MS = 3600 * 1000;
+const DAY_MS = 86400 * 1000;
+
+test('classifyReviewState: reviewCount 0 → unlearned (even if nextReviewAt past)', () => {
+  assert.equal(
+    classifyReviewState({ reviewCount: 0, nextReviewAt: '2000-01-01T00:00:00Z' }, NOW),
+    'unlearned'
+  );
+});
+
+test('classifyReviewState: reviewed once, nextReviewAt in past → due', () => {
+  const item = { reviewCount: 2, nextReviewAt: new Date(NOW - HOUR_MS).toISOString() };
+  assert.equal(classifyReviewState(item, NOW), 'due');
+});
+
+test('classifyReviewState: nextReviewAt exactly now → due (<=)', () => {
+  const item = { reviewCount: 1, nextReviewAt: new Date(NOW).toISOString() };
+  assert.equal(classifyReviewState(item, NOW), 'due');
+});
+
+test('classifyReviewState: reviewed, nextReviewAt in future → reviewed', () => {
+  const item = { reviewCount: 1, nextReviewAt: new Date(NOW + DAY_MS).toISOString() };
+  assert.equal(classifyReviewState(item, NOW), 'reviewed');
+});
+
+test('classifyReviewState: reviewed but missing schedule → reviewed (not due)', () => {
+  assert.equal(classifyReviewState({ reviewCount: 3, nextReviewAt: null }, NOW), 'reviewed');
+});
+
+test('countReviewStates tallies the three buckets; non-array → all zero', () => {
+  const items = [
+    { reviewCount: 0 },
+    { reviewCount: 1, nextReviewAt: new Date(NOW - HOUR_MS).toISOString() },
+    { reviewCount: 1, nextReviewAt: new Date(NOW - HOUR_MS).toISOString() },
+    { reviewCount: 5, nextReviewAt: new Date(NOW + DAY_MS).toISOString() },
+  ];
+  assert.deepEqual(countReviewStates(items, NOW), { unlearned: 1, due: 2, reviewed: 1 });
+  assert.deepEqual(countReviewStates(null, NOW), { unlearned: 0, due: 0, reviewed: 0 });
+});
+
+test('compactReviewLabel matches iOS thresholds', () => {
+  assert.equal(compactReviewLabel(0), '1m');          // floor at 1m
+  assert.equal(compactReviewLabel(90), '2m');         // 1.5m → round 2
+  assert.equal(compactReviewLabel(3600), '1h');       // exactly 1h → "1h"
+  assert.equal(compactReviewLabel(5400), '1.5h');     // 1.5h
+  assert.equal(compactReviewLabel(36 * 3600), '1.5d'); // 1.5d
+  assert.equal(compactReviewLabel(15 * 86400), '15d'); // ≥10d → integer
+  assert.equal(compactReviewLabel(86400), '1d');      // exactly 1d → "1d"
+  assert.equal(compactReviewLabel(-5), '1m');         // negative clamps
+});
+
+test('reviewProgress: unlearned → ratio null, no interval', () => {
+  const p = reviewProgress({ reviewCount: 0, reviewIntervalHours: 12 }, NOW);
+  assert.equal(p.state, 'unlearned');
+  assert.equal(p.ratio, null);
+  assert.equal(p.intervalHours, 12);
+});
+
+test('reviewProgress: due card halfway through its interval → ratio ~0.5', () => {
+  const start = NOW - DAY_MS;               // lastReviewed 1d ago
+  const next = NOW + DAY_MS;                // due in 1d → 2d interval, 1d elapsed
+  const p = reviewProgress({
+    reviewCount: 2,
+    lastReviewedAt: new Date(start).toISOString(),
+    nextReviewAt: new Date(next).toISOString(),
+  }, NOW);
+  assert.equal(p.state, 'reviewed'); // next in future
+  assert.ok(Math.abs(p.ratio - 0.5) < 1e-9, `ratio ${p.ratio}`);
+  assert.equal(p.intervalSec, 2 * 86400);
+  assert.equal(p.elapsedSec, 86400);
+});
+
+test('reviewProgress: missing lastReviewedAt derives start from nextReviewAt − interval', () => {
+  const next = NOW + 6 * HOUR_MS;
+  const p = reviewProgress({
+    reviewCount: 1,
+    reviewIntervalHours: 12,
+    nextReviewAt: new Date(next).toISOString(),
+  }, NOW);
+  // start = next − 12h; interval = 12h; elapsed = 12h − 6h = 6h → ratio 0.5
+  assert.equal(p.intervalSec, 12 * 3600);
+  assert.ok(Math.abs(p.ratio - 0.5) < 1e-9, `ratio ${p.ratio}`);
+});
+
+test('reviewProgress: reviewed but missing nextReviewAt derives interval from intervalHours', () => {
+  // classifyReviewState → reviewed (no schedule); start derived = now (no last/next),
+  // nextMs = start + max(interval,60s). elapsed 0 → ratio 0, intervalSec = 8h.
+  const p = reviewProgress({ reviewCount: 2, reviewIntervalHours: 8, nextReviewAt: null }, NOW);
+  assert.equal(p.state, 'reviewed');
+  assert.equal(p.intervalSec, 8 * 3600);
+  assert.equal(p.ratio, 0);
+});
+
+test('reviewProgress: overdue card yields ratio > 1 (bar caller clamps)', () => {
+  const start = NOW - 3 * DAY_MS;
+  const next = NOW - DAY_MS;                 // overdue: elapsed 3d, interval 2d
+  const p = reviewProgress({
+    reviewCount: 4,
+    lastReviewedAt: new Date(start).toISOString(),
+    nextReviewAt: new Date(next).toISOString(),
+  }, NOW);
+  assert.equal(p.state, 'due');
+  assert.ok(p.ratio > 1, `ratio ${p.ratio}`);
+});
+
+test('normalizeVocabItem preserves review-state fields for classification', () => {
+  const out = normalizeVocabItem({
+    content: 'apple', meaning: '蘋果',
+    reviewCount: 3, reviewIntervalHours: 24,
+    nextReviewAt: '2024-06-02T00:00:00Z', lastReviewedAt: '2024-06-01T00:00:00Z',
+  });
+  assert.equal(out.reviewCount, 3);
+  assert.equal(out.reviewIntervalHours, 24);
+  assert.equal(out.nextReviewAt, '2024-06-02T00:00:00Z');
+  assert.equal(out.lastReviewedAt, '2024-06-01T00:00:00Z');
+});
+
+test('normalizeVocabItem review-state fields default safely when absent', () => {
+  const out = normalizeVocabItem({ content: 'x' });
+  assert.equal(out.reviewCount, 0);
+  assert.equal(out.reviewIntervalHours, 0);
+  assert.equal(out.nextReviewAt, null);
+  assert.equal(out.lastReviewedAt, null);
+});
+
+// ---------------------------------------------------------------------------
+// filterVocab / sortVocab (mirrors iOS VocabularyEntryPresentation)
+// ---------------------------------------------------------------------------
+
+const due1 = { word: 'banana', meaning: '香蕉', reviewCount: 1, nextReviewAt: new Date(NOW - HOUR_MS).toISOString(), difficultyTier: 'advanced', updatedAt: '2024-05-01T00:00:00Z' };
+const due2 = { word: 'apple', meaning: '蘋果', reviewCount: 2, nextReviewAt: new Date(NOW - 2 * HOUR_MS).toISOString(), difficultyTier: 'core', updatedAt: '2024-05-10T00:00:00Z' };
+const unl = { word: 'cherry', meaning: '櫻桃', reviewCount: 0, difficultyTier: 'intermediate', updatedAt: '2024-05-20T00:00:00Z' };
+const rev = { word: 'date', meaning: '椰棗', reviewCount: 3, nextReviewAt: new Date(NOW + DAY_MS).toISOString(), difficultyTier: 'rare', updatedAt: '2024-05-05T00:00:00Z' };
+const CORPUS = [due1, due2, unl, rev];
+
+test('VOCAB_SORT_OPTIONS matches iOS KGVocabSortOption order', () => {
+  assert.deepEqual([...VOCAB_SORT_OPTIONS], ['default', 'alphabetical', 'dateAdded', 'difficulty']);
+});
+
+test('filterVocab: empty states = all; query filters word OR meaning', () => {
+  assert.equal(filterVocab(CORPUS, {}, NOW).length, 4);
+  assert.deepEqual(filterVocab(CORPUS, { query: 'app' }, NOW).map((i) => i.word), ['apple']);
+  // meaning match (Chinese)
+  assert.deepEqual(filterVocab(CORPUS, { query: '櫻桃' }, NOW).map((i) => i.word), ['cherry']);
+});
+
+test('filterVocab: state set keeps only selected states (empty = all)', () => {
+  const due = filterVocab(CORPUS, { states: new Set(['due']) }, NOW).map((i) => i.word).sort();
+  assert.deepEqual(due, ['apple', 'banana']);
+  assert.deepEqual(filterVocab(CORPUS, { states: ['unlearned'] }, NOW).map((i) => i.word), ['cherry']);
+  assert.equal(filterVocab(CORPUS, { states: new Set() }, NOW).length, 4);
+});
+
+test('filterVocab: query + state compose (AND)', () => {
+  const r = filterVocab(CORPUS, { query: 'a', states: new Set(['due']) }, NOW).map((i) => i.word).sort();
+  assert.deepEqual(r, ['apple', 'banana']); // both due, both contain 'a'
+});
+
+test('sortVocab default: due before unlearned before reviewed, then nextReviewAt asc', () => {
+  const order = sortVocab(CORPUS, 'default', NOW).map((i) => i.word);
+  // due2 (next −2h) < due1 (next −1h) → apple, banana; then unlearned cherry; then reviewed date
+  assert.deepEqual(order, ['apple', 'banana', 'cherry', 'date']);
+});
+
+test('sortVocab alphabetical: case-insensitive A→Z by word', () => {
+  assert.deepEqual(sortVocab(CORPUS, 'alphabetical', NOW).map((i) => i.word),
+    ['apple', 'banana', 'cherry', 'date']);
+});
+
+test('sortVocab dateAdded: updatedAt descending (proxy for creation)', () => {
+  // updatedAt: cherry 05-20, apple 05-10, date 05-05, banana 05-01 → desc
+  assert.deepEqual(sortVocab(CORPUS, 'dateAdded', NOW).map((i) => i.word),
+    ['cherry', 'apple', 'date', 'banana']);
+});
+
+test('sortVocab difficulty: tier core<intermediate<advanced<rare, then word', () => {
+  assert.deepEqual(sortVocab(CORPUS, 'difficulty', NOW).map((i) => i.word),
+    ['apple', 'cherry', 'banana', 'date']); // core, intermediate, advanced, rare
+});
+
+test('sortVocab default: null nextReviewAt within same state group falls through to tier→word', () => {
+  // Two unlearned cards (reviewCount 0 → nextReviewAt irrelevant/null): tie-break
+  // is tier (core<advanced) then word.
+  const a = { word: 'zebra', reviewCount: 0, difficultyTier: 'core' };
+  const b = { word: 'ant', reviewCount: 0, difficultyTier: 'advanced' };
+  assert.deepEqual(sortVocab([b, a], 'default', NOW).map((i) => i.word), ['zebra', 'ant']);
+});
+
+test('sortVocab dateAdded: missing updatedAt sinks to the end (|| 0 fallback)', () => {
+  const withDate = { word: 'a', updatedAt: '2024-05-10T00:00:00Z' };
+  const noDate = { word: 'b', updatedAt: null };
+  assert.deepEqual(sortVocab([noDate, withDate], 'dateAdded', NOW).map((i) => i.word), ['a', 'b']);
+});
+
+test('filterVocab returns a new array and preserves input order', () => {
+  const out = filterVocab(CORPUS, {}, NOW);
+  assert.notEqual(out, CORPUS);
+  assert.deepEqual(out.map((i) => i.word), CORPUS.map((i) => i.word));
+});
+
+test('sortVocab does not mutate input; unknown option → default', () => {
+  const copy = CORPUS.slice();
+  const out = sortVocab(CORPUS, 'nonsense', NOW);
+  assert.deepEqual(CORPUS, copy);            // untouched
+  assert.deepEqual(out.map((i) => i.word), ['apple', 'banana', 'cherry', 'date']);
+});
+
+// ---------------------------------------------------------------------------
 // normalizeVocabItem
 // ---------------------------------------------------------------------------
 
@@ -176,6 +396,8 @@ test('normalizeVocabItem tolerates nullish / non-object input', () => {
   assert.deepEqual(normalizeVocabItem(null), {
     word: '', meaning: '', pos: '', note: '', context: '',
     examples: [], collocations: [], source: null,
+    reviewCount: 0, reviewIntervalHours: 0, nextReviewAt: null, lastReviewedAt: null,
+    difficultyTier: null, updatedAt: null,
   });
   assert.deepEqual(normalizeVocabItem(undefined).word, '');
   assert.deepEqual(normalizeVocabItem('oops').word, '');
