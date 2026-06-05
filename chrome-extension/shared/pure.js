@@ -93,7 +93,112 @@ function normalizeVocabItem(item) {
     examples: Array.isArray(raw.examples) ? raw.examples : [],
     collocations: Array.isArray(raw.collocations) ? raw.collocations : [],
     source: raw.source || null,
+    // Review state (CardResponse) — preserved at the single ingress point so the
+    // filter chips / row progress can mirror iOS's real classification instead of
+    // a mock. djb2 mocks are gone; these feed classifyReviewState / reviewProgress.
+    reviewCount: Number(raw.reviewCount) || 0,
+    reviewIntervalHours: Number(raw.reviewIntervalHours) || 0,
+    nextReviewAt: raw.nextReviewAt || raw.next_review_at || null,
+    lastReviewedAt: raw.lastReviewedAt || raw.last_reviewed_at || null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Review state — faithful port of iOS VocabularyReview + WordRowPresentation so
+// the sidepanel classifies/visualizes review progress identically to the app.
+// ---------------------------------------------------------------------------
+
+/** Parse an ISO-ish date string to epoch ms; null/blank/invalid → null. */
+function _reviewMs(v) {
+  if (v == null || v === '') return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Classify a vocab card into iOS's three review states. Mirrors
+ * VocabularyEntry.reviewState(at:):
+ *   reviewCount == 0     → 'unlearned'
+ *   nextReviewAt <= now  → 'due'
+ *   else                 → 'reviewed'
+ * A reviewed card with no schedule (missing nextReviewAt) is treated as not-due.
+ * @param {object} item — a normalizeVocabItem result (or raw CardResponse)
+ * @param {number} [nowMs]
+ * @returns {'unlearned'|'due'|'reviewed'}
+ */
+function classifyReviewState(item, nowMs = Date.now()) {
+  const raw = item && typeof item === 'object' ? item : {};
+  if ((Number(raw.reviewCount) || 0) <= 0) return 'unlearned';
+  const next = _reviewMs(raw.nextReviewAt);
+  if (next == null) return 'reviewed';
+  return next <= nowMs ? 'due' : 'reviewed';
+}
+
+/**
+ * Tally a list into per-state counts for the filter chips (mirrors iOS chip
+ * counts derived from the same predicate).
+ * @returns {{unlearned:number, due:number, reviewed:number}}
+ */
+function countReviewStates(items, nowMs = Date.now()) {
+  const counts = { unlearned: 0, due: 0, reviewed: 0 };
+  (Array.isArray(items) ? items : []).forEach((it) => {
+    counts[classifyReviewState(it, nowMs)] += 1;
+  });
+  return counts;
+}
+
+/** iOS Double.singleDecimalString: one decimal, integers drop the point. */
+function _singleDecimal(n) {
+  const r = Math.round(n * 10) / 10;
+  return r === Math.round(r) ? String(Math.round(r)) : r.toFixed(1);
+}
+
+/**
+ * iOS TimeInterval.compactReviewLabel: <1h → "Nm" (≥1); <1d → "N.Nh"/"Nh";
+ * else "N.Nd"/"Nd". Negative clamps to 0.
+ * @param {number} seconds
+ * @returns {string}
+ */
+function compactReviewLabel(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  const HOUR = 3600;
+  const DAY = 86400;
+  if (s < HOUR) return `${Math.max(1, Math.round(s / 60))}m`;
+  if (s < DAY) {
+    const h = s / HOUR;
+    return h < 10 ? `${_singleDecimal(h)}h` : `${Math.round(h)}h`;
+  }
+  const d = s / DAY;
+  return d < 10 ? `${_singleDecimal(d)}d` : `${Math.round(d)}d`;
+}
+
+/**
+ * Per-row review progress, mirroring WordRowPresentation.reviewProgressData:
+ *   unlearned → ratio null (label-only, no bar)
+ *   due/reviewed → ratio = max(elapsed / interval, 0), where
+ *     start    = lastReviewedAt ?? (nextReviewAt − reviewIntervalHours)   [iOS uses dateAdded;
+ *                CardResponse omits it, so derive from the schedule instead]
+ *     interval = max(nextReviewAt − start, 60s)
+ *     elapsed  = max(0, now − start)
+ * @returns {{state:string, ratio:(number|null), elapsedSec:number,
+ *            intervalSec:number, intervalHours:number}}
+ */
+function reviewProgress(item, nowMs = Date.now()) {
+  const raw = item && typeof item === 'object' ? item : {};
+  const state = classifyReviewState(raw, nowMs);
+  const intervalHours = Number(raw.reviewIntervalHours) || 0;
+  if (state === 'unlearned') {
+    return { state, ratio: null, elapsedSec: 0, intervalSec: 0, intervalHours };
+  }
+  const next = _reviewMs(raw.nextReviewAt);
+  let start = _reviewMs(raw.lastReviewedAt);
+  if (start == null) {
+    start = next != null ? next - intervalHours * 3600 * 1000 : nowMs;
+  }
+  const nextMs = next != null ? next : start + Math.max(intervalHours * 3600 * 1000, 60000);
+  const intervalSec = Math.max((nextMs - start) / 1000, 60);
+  const elapsedSec = Math.max(0, (nowMs - start) / 1000);
+  return { state, ratio: Math.max(elapsedSec / intervalSec, 0), elapsedSec, intervalSec, intervalHours };
 }
 
 /**
@@ -314,6 +419,10 @@ const KGPureExports = {
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  classifyReviewState,
+  countReviewStates,
+  compactReviewLabel,
+  reviewProgress,
   classifyError,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,

@@ -22,6 +22,10 @@ const {
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  classifyReviewState,
+  countReviewStates,
+  compactReviewLabel,
+  reviewProgress,
   classifyError,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
@@ -123,6 +127,137 @@ test('normalizeVocabList collapses unexpected shapes to []', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Review state — classify / count / compactReviewLabel / reviewProgress
+// (mirrors iOS VocabularyReview + WordRowPresentation)
+// ---------------------------------------------------------------------------
+
+const NOW = Date.parse('2024-06-01T12:00:00Z');
+const HOUR_MS = 3600 * 1000;
+const DAY_MS = 86400 * 1000;
+
+test('classifyReviewState: reviewCount 0 → unlearned (even if nextReviewAt past)', () => {
+  assert.equal(
+    classifyReviewState({ reviewCount: 0, nextReviewAt: '2000-01-01T00:00:00Z' }, NOW),
+    'unlearned'
+  );
+});
+
+test('classifyReviewState: reviewed once, nextReviewAt in past → due', () => {
+  const item = { reviewCount: 2, nextReviewAt: new Date(NOW - HOUR_MS).toISOString() };
+  assert.equal(classifyReviewState(item, NOW), 'due');
+});
+
+test('classifyReviewState: nextReviewAt exactly now → due (<=)', () => {
+  const item = { reviewCount: 1, nextReviewAt: new Date(NOW).toISOString() };
+  assert.equal(classifyReviewState(item, NOW), 'due');
+});
+
+test('classifyReviewState: reviewed, nextReviewAt in future → reviewed', () => {
+  const item = { reviewCount: 1, nextReviewAt: new Date(NOW + DAY_MS).toISOString() };
+  assert.equal(classifyReviewState(item, NOW), 'reviewed');
+});
+
+test('classifyReviewState: reviewed but missing schedule → reviewed (not due)', () => {
+  assert.equal(classifyReviewState({ reviewCount: 3, nextReviewAt: null }, NOW), 'reviewed');
+});
+
+test('countReviewStates tallies the three buckets; non-array → all zero', () => {
+  const items = [
+    { reviewCount: 0 },
+    { reviewCount: 1, nextReviewAt: new Date(NOW - HOUR_MS).toISOString() },
+    { reviewCount: 1, nextReviewAt: new Date(NOW - HOUR_MS).toISOString() },
+    { reviewCount: 5, nextReviewAt: new Date(NOW + DAY_MS).toISOString() },
+  ];
+  assert.deepEqual(countReviewStates(items, NOW), { unlearned: 1, due: 2, reviewed: 1 });
+  assert.deepEqual(countReviewStates(null, NOW), { unlearned: 0, due: 0, reviewed: 0 });
+});
+
+test('compactReviewLabel matches iOS thresholds', () => {
+  assert.equal(compactReviewLabel(0), '1m');          // floor at 1m
+  assert.equal(compactReviewLabel(90), '2m');         // 1.5m → round 2
+  assert.equal(compactReviewLabel(3600), '1h');       // exactly 1h → "1h"
+  assert.equal(compactReviewLabel(5400), '1.5h');     // 1.5h
+  assert.equal(compactReviewLabel(36 * 3600), '1.5d'); // 1.5d
+  assert.equal(compactReviewLabel(15 * 86400), '15d'); // ≥10d → integer
+  assert.equal(compactReviewLabel(86400), '1d');      // exactly 1d → "1d"
+  assert.equal(compactReviewLabel(-5), '1m');         // negative clamps
+});
+
+test('reviewProgress: unlearned → ratio null, no interval', () => {
+  const p = reviewProgress({ reviewCount: 0, reviewIntervalHours: 12 }, NOW);
+  assert.equal(p.state, 'unlearned');
+  assert.equal(p.ratio, null);
+  assert.equal(p.intervalHours, 12);
+});
+
+test('reviewProgress: due card halfway through its interval → ratio ~0.5', () => {
+  const start = NOW - DAY_MS;               // lastReviewed 1d ago
+  const next = NOW + DAY_MS;                // due in 1d → 2d interval, 1d elapsed
+  const p = reviewProgress({
+    reviewCount: 2,
+    lastReviewedAt: new Date(start).toISOString(),
+    nextReviewAt: new Date(next).toISOString(),
+  }, NOW);
+  assert.equal(p.state, 'reviewed'); // next in future
+  assert.ok(Math.abs(p.ratio - 0.5) < 1e-9, `ratio ${p.ratio}`);
+  assert.equal(p.intervalSec, 2 * 86400);
+  assert.equal(p.elapsedSec, 86400);
+});
+
+test('reviewProgress: missing lastReviewedAt derives start from nextReviewAt − interval', () => {
+  const next = NOW + 6 * HOUR_MS;
+  const p = reviewProgress({
+    reviewCount: 1,
+    reviewIntervalHours: 12,
+    nextReviewAt: new Date(next).toISOString(),
+  }, NOW);
+  // start = next − 12h; interval = 12h; elapsed = 12h − 6h = 6h → ratio 0.5
+  assert.equal(p.intervalSec, 12 * 3600);
+  assert.ok(Math.abs(p.ratio - 0.5) < 1e-9, `ratio ${p.ratio}`);
+});
+
+test('reviewProgress: reviewed but missing nextReviewAt derives interval from intervalHours', () => {
+  // classifyReviewState → reviewed (no schedule); start derived = now (no last/next),
+  // nextMs = start + max(interval,60s). elapsed 0 → ratio 0, intervalSec = 8h.
+  const p = reviewProgress({ reviewCount: 2, reviewIntervalHours: 8, nextReviewAt: null }, NOW);
+  assert.equal(p.state, 'reviewed');
+  assert.equal(p.intervalSec, 8 * 3600);
+  assert.equal(p.ratio, 0);
+});
+
+test('reviewProgress: overdue card yields ratio > 1 (bar caller clamps)', () => {
+  const start = NOW - 3 * DAY_MS;
+  const next = NOW - DAY_MS;                 // overdue: elapsed 3d, interval 2d
+  const p = reviewProgress({
+    reviewCount: 4,
+    lastReviewedAt: new Date(start).toISOString(),
+    nextReviewAt: new Date(next).toISOString(),
+  }, NOW);
+  assert.equal(p.state, 'due');
+  assert.ok(p.ratio > 1, `ratio ${p.ratio}`);
+});
+
+test('normalizeVocabItem preserves review-state fields for classification', () => {
+  const out = normalizeVocabItem({
+    content: 'apple', meaning: '蘋果',
+    reviewCount: 3, reviewIntervalHours: 24,
+    nextReviewAt: '2024-06-02T00:00:00Z', lastReviewedAt: '2024-06-01T00:00:00Z',
+  });
+  assert.equal(out.reviewCount, 3);
+  assert.equal(out.reviewIntervalHours, 24);
+  assert.equal(out.nextReviewAt, '2024-06-02T00:00:00Z');
+  assert.equal(out.lastReviewedAt, '2024-06-01T00:00:00Z');
+});
+
+test('normalizeVocabItem review-state fields default safely when absent', () => {
+  const out = normalizeVocabItem({ content: 'x' });
+  assert.equal(out.reviewCount, 0);
+  assert.equal(out.reviewIntervalHours, 0);
+  assert.equal(out.nextReviewAt, null);
+  assert.equal(out.lastReviewedAt, null);
+});
+
+// ---------------------------------------------------------------------------
 // normalizeVocabItem
 // ---------------------------------------------------------------------------
 
@@ -176,6 +311,7 @@ test('normalizeVocabItem tolerates nullish / non-object input', () => {
   assert.deepEqual(normalizeVocabItem(null), {
     word: '', meaning: '', pos: '', note: '', context: '',
     examples: [], collocations: [], source: null,
+    reviewCount: 0, reviewIntervalHours: 0, nextReviewAt: null, lastReviewedAt: null,
   });
   assert.deepEqual(normalizeVocabItem(undefined).word, '');
   assert.deepEqual(normalizeVocabItem('oops').word, '');

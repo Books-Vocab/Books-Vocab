@@ -163,7 +163,7 @@ async function loadVocabList() {
     // canonical field names instead of papering over snake_case/legacy aliases.
     const items = KGPure.normalizeVocabList(response)
       .map(KGPure.normalizeVocabItem)
-      .map(enrichWithMockReviewData);
+      .map(enrichWithReviewData);
 
     vocabData = items;
 
@@ -255,64 +255,74 @@ function syncClearButton() {
 // Filter + Sort Bar
 // ---------------------------------------------------------------------------
 
+// Relative formatter for the "下次 X" trailing label — web-native equivalent of
+// iOS LocaleAwareFormatter.relativeString(style:.full). Lazily built once.
+let _relFmt = null;
+function relativeReviewLabel(nextReviewAt, nowMs = Date.now()) {
+  const t = Date.parse(String(nextReviewAt || ''));
+  if (Number.isNaN(t)) return '';
+  if (!_relFmt && typeof Intl !== 'undefined' && Intl.RelativeTimeFormat) {
+    _relFmt = new Intl.RelativeTimeFormat('zh-Hant', { numeric: 'auto', style: 'long' });
+  }
+  if (!_relFmt) return '';
+  const diffSec = (t - nowMs) / 1000;
+  const abs = Math.abs(diffSec);
+  if (abs >= 86400) return _relFmt.format(Math.round(diffSec / 86400), 'day');
+  if (abs >= 3600) return _relFmt.format(Math.round(diffSec / 3600), 'hour');
+  return _relFmt.format(Math.round(diffSec / 60), 'minute');
+}
+
 /**
- * Deterministically generate mock review-progress data from the word itself.
- * This gives every row a progress bar + due label so the sidepanel visually
- * matches the iOS vocab list. When the backend API gains real review metadata,
- * replace this with actual data — the UI structure (progress bar, trailing label)
- * is already wired and ready.
+ * Attach real review-progress fields to a vocab item, mirroring iOS
+ * WordRowPresentation (no mocks — driven by CardResponse review state preserved
+ * through normalizeVocabItem):
+ *   - reviewRatio: 0=fresh→3=deep overdue (null for unlearned → label-only, no bar)
+ *   - dueLabel:    progress detailLabel ("首輪 Xh" | "elapsed / interval")
+ *   - dueInfo:     trailing status (iOS rowStatus: 未複習 | 待複習 | 下次 X)
  * @param {object} item
  * @returns {object}
  */
-function enrichWithMockReviewData(item) {
-  // Guard: API may return non-string word fields (e.g. numbers).
-  const word = String(item.word || '');
-  // djb2 hash over the word for deterministic, stable mock values
-  let hash = 5381;
-  for (let i = 0; i < word.length; i++) {
-    hash = ((hash << 5) + hash) + word.charCodeAt(i);
-  }
-  const positive = Math.abs(hash);
+function enrichWithReviewData(item) {
+  const p = KGPure.reviewProgress(item);
+  const isUnlearned = p.state === 'unlearned';
 
-  // ratio 0..3 (fresh → deep overdue)
-  const ratio = (positive % 350) / 100;
+  const dueLabel = isUnlearned
+    ? `首輪 ${KGPure.compactReviewLabel(item.reviewIntervalHours * 3600)}`
+    : `${KGPure.compactReviewLabel(p.elapsedSec)} / ${KGPure.compactReviewLabel(p.intervalSec)}`;
 
-  // "55d / 2d" style label
-  const daysSince = positive % 80;
-  const daysUntil = Math.max(1, 20 - (positive % 25));
-  const dueLabel = `${daysSince}d / ${daysUntil}d`;
+  let dueInfo;
+  if (p.state === 'due') dueInfo = '待複習';
+  else if (isUnlearned) dueInfo = '未複習';
+  else dueInfo = `下次 ${relativeReviewLabel(item.nextReviewAt)}`.trim();
 
   return {
     ...item,
-    reviewRatio: ratio,
+    reviewState: p.state,
+    reviewRatio: isUnlearned ? null : p.ratio,
     dueLabel,
-    dueInfo: dueLabel,
+    dueInfo,
   };
 }
 
 /**
  * Render filter chips (mirrors iOS VocabFilterChipBar).
- * Three review-state chips (no '全部' — multi-select empty = all). The sidepanel
- * API lacks real per-state counts, so counts are deterministic mocks derived from
- * the total; replace with real data once the list endpoint returns review state.
+ * Three review-state chips (no '全部' — multi-select empty = all). Counts are
+ * the real per-state tally from CardResponse review fields, classified by the
+ * same predicate iOS uses (KGPure.countReviewStates).
  * @param {Array<object>} items
  */
 function renderFilterBar(items) {
   if (!filterChips) return;
   filterChips.innerHTML = '';
 
-  // Deterministic mock counts from total vocab size for visual parity with iOS
-  const total = items.length;
-  const dueCount = Math.floor(total * 0.45);
-  const unlearnedCount = Math.floor(total * 0.25);
-  const reviewedCount = total - dueCount - unlearnedCount;
+  const counts = KGPure.countReviewStates(items);
 
   // Mirrors iOS VocabFilterChipBar: multi-select, no '全部' chip — empty
   // selection already means "all". Idle by default (none selected = all shown).
   const states = [
-    { label: '未學習', count: unlearnedCount },
-    { label: '待複習', count: dueCount },
-    { label: '已複習', count: reviewedCount },
+    { label: '未學習', count: counts.unlearned },
+    { label: '待複習', count: counts.due },
+    { label: '已複習', count: counts.reviewed },
   ];
   states.forEach((s) => {
     const chip = document.createElement('span');
@@ -335,9 +345,9 @@ function renderSortPill(items) {
   sortPill.textContent = '複習優先';
   filterActions.appendChild(sortPill);
 
-  // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill)
-  // When API gains dueCount, replace mock with real data.
-  const dueCount = Math.floor(items.length * 0.45); // Mock: 45% of total as due
+  // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill). Real count of
+  // due cards (reviewCount>0 && nextReviewAt<=now), same predicate as iOS.
+  const dueCount = KGPure.countReviewStates(items).due;
   if (dueCount > 0) {
     const cta = document.createElement('span');
     cta.className = 'kg-review-cta';
@@ -358,9 +368,11 @@ function renderSortPill(items) {
 function renderList(items) {
   stateContent.innerHTML = '';
 
-  // Update filter bar + sort pill (mirrors iOS KGVocabPresenter chrome)
-  renderFilterBar(items);
-  renderSortPill(items);
+  // Filter chips + CTA reflect the FULL corpus (iOS chip counts are full-list
+  // and stable while searching), not the search-filtered `items` shown as rows.
+  const corpus = Array.isArray(vocabData) && vocabData.length ? vocabData : items;
+  renderFilterBar(corpus);
+  renderSortPill(corpus);
 
   // Single card container (mirrors iOS ListSectionCard / VocabListCard)
   const card = document.createElement('div');
@@ -444,8 +456,11 @@ function createRow(item) {
 
   row.appendChild(content);
 
-  // ── Right side: progress bar ───────────────────────────────────────────
-  if (item.reviewRatio != null && item.reviewRatio >= 0) {
+  // ── Right side: progress (mirrors iOS VocabReviewProgressBar) ──────────────
+  // ratio present (due/reviewed) → label + gradient bar; ratio null (unlearned)
+  // → label only ("首輪 Xh"), no bar — exactly as iOS renders it.
+  const hasBar = item.reviewRatio != null && item.reviewRatio >= 0;
+  if (hasBar || item.dueLabel) {
     const progress = document.createElement('div');
     progress.className = 'kg-vocab-row__progress';
 
@@ -456,21 +471,24 @@ function createRow(item) {
       progress.appendChild(labelEl);
     }
 
-    const track = document.createElement('div');
-    track.className = 'kg-vocab-row__progress-track';
+    if (hasBar) {
+      const track = document.createElement('div');
+      track.className = 'kg-vocab-row__progress-track';
 
-    const fill = document.createElement('div');
-    fill.className = 'kg-vocab-row__progress-fill';
-    const ratio = Math.min(item.reviewRatio, 1.0);
-    fill.style.width = `${ratio * 100}%`;
-    // Use shared KGReviewGradient if available, else fallback
-    const gradColor = (typeof KGReviewGradient !== 'undefined')
-      ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
-      : '#4D7396';
-    fill.style.backgroundColor = gradColor;
+      const fill = document.createElement('div');
+      fill.className = 'kg-vocab-row__progress-fill';
+      const ratio = Math.min(item.reviewRatio, 1.0);
+      fill.style.width = `${ratio * 100}%`;
+      // Use shared KGReviewGradient if available, else fallback
+      const gradColor = (typeof KGReviewGradient !== 'undefined')
+        ? KGReviewGradient.reviewGradientColor(item.reviewRatio)
+        : '#4D7396';
+      fill.style.backgroundColor = gradColor;
 
-    track.appendChild(fill);
-    progress.appendChild(track);
+      track.appendChild(fill);
+      progress.appendChild(track);
+    }
+
     row.appendChild(progress);
   }
 
