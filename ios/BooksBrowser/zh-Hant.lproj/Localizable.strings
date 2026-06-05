@@ -11,6 +11,12 @@
 "app.section.bookshelf" = "書庫";
 "app.section.notebooks" = "單字本";
 "app.section.overview" = "總覽";
+"app.section.podcasts" = "播客";
+"尚無播客" = "尚無播客";
+"追蹤喜歡的節目，從這裡開始收聽" = "追蹤喜歡的節目，從這裡開始收聽";
+"下拉重新整理以同步節目" = "下拉重新整理以同步節目";
+"繼續收聽" = "繼續收聽";
+"所有節目" = "所有節目";
 "API 錯誤：%@" = "API 錯誤：%@";
 "KG 伺服器未連線" = "KG 伺服器未連線";
 "KG 伺服器錯誤：%@" = "KG 伺服器錯誤：%@";
@@ -864,6 +870,7 @@
 "podcast.guest.cta.signInToListen" = "登入後收聽";
 "podcast.preview.cta.listenFree" = "免費試聽 3 分鐘";
 "podcast.preview.banner.message" = "免費試聽 · 升級聽完整單集";
+"podcast.continue.remaining" = "還剩 %@";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "點兩下跳至此句播放";
 "podcast.transcript.translateAction" = "翻譯整句";
