@@ -162,7 +162,9 @@ extension ReaderView {
                     : nil,
                 onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
                     ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                    : nil
+                    : nil,
+                isPanelLarge: handler.isPanelLarge,
+                onToggleHeight: { handler.togglePanelHeight() }
         )
     }
 }

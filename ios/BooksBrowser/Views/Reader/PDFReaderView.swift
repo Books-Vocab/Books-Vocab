@@ -173,7 +173,9 @@ struct PDFReaderView: View {
                     : nil,
                 onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
                     ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
-                    : nil
+                    : nil,
+                isPanelLarge: handler.isPanelLarge,
+                onToggleHeight: { handler.togglePanelHeight() }
             )
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             .transition(.readerPanelReveal)

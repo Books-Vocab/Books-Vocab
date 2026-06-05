@@ -44,7 +44,9 @@ private struct ReaderChromePreviewScene: View {
                 onExpand: {},
                 onDelete: {},
                 onShowDetail: nil,
-                onDismiss: {}
+                onDismiss: {},
+                isPanelLarge: false,
+                onToggleHeight: {}
             )
         } settingsPanel: {
             EmptyView()
