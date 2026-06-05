@@ -90,8 +90,9 @@ body {
 
 .kg-filter-bar {
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-micro);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1);
   padding: 0 var(--page-h-padding) var(--sp-sm);
 }
 
@@ -99,6 +100,7 @@ body {
   display: flex;
   gap: var(--sp-1);
   flex-wrap: wrap;
+  flex: 1;
 }
 
 .kg-filter-bar__chip {
@@ -137,8 +139,8 @@ body {
 .kg-filter-bar__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--sp-1);
+  flex-shrink: 0;
 }
 
 .kg-sort-pill {
