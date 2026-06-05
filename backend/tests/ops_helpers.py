@@ -59,6 +59,34 @@ def _create_token_usage_db(path: Path, rows: list[tuple], *, with_provider: bool
     conn.close()
 
 
+def _create_pipeline_runs_db(path: Path, rows: list[tuple]) -> None:
+    """建立 pipeline_runs.db 並灌入測試資料。
+    rows: (run_id, user_id, notebook_id, trigger, started_at, ended_at, status, steps)
+    """
+    conn = sqlite3.connect(str(path / "pipeline_runs.db"))
+    conn.execute("""
+        CREATE TABLE pipeline_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT UNIQUE NOT NULL,
+            user_id TEXT NOT NULL,
+            notebook_id TEXT NOT NULL,
+            trigger TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            steps TEXT NOT NULL DEFAULT '[]'
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO pipeline_runs "
+        "(run_id, user_id, notebook_id, trigger, started_at, ended_at, status, steps) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
 def _create_judge_log_db(path: Path, rows: list[tuple]) -> None:
     """建立 judge_log.db 並灌入測試資料。
     rows: (user_id, from_id, to_id, verdict, accepted, created_at[, reject_reason])
