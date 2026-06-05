@@ -33,6 +33,27 @@ def _cutoff_iso(hours: int = 24) -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
+def _bucket_key(created_at: str | None, bucket: str) -> str | None:
+    """把 ISO created_at 折成桶 key:day→YYYY-MM-DD,month→YYYY-MM,week→YYYY-Www(ISO週)。
+
+    只取日期前綴解析,規避 created_at 的 tz/微秒變異。無法解析則回 None(該列略過)。
+    """
+    if not created_at or len(created_at) < 10:
+        return None
+    if bucket == "day":
+        return created_at[:10]
+    if bucket == "month":
+        return created_at[:7]
+    if bucket == "week":
+        try:
+            d = datetime.strptime(created_at[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+        iso = d.isocalendar()
+        return f"{iso[0]}-W{iso[1]:02d}"
+    return None
+
+
 # ── 子指令實作 ──────────────────────────────────────────
 
 
@@ -757,6 +778,95 @@ def cmd_fleet_overview(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_timeseries(args: argparse.Namespace) -> None:
+    """時間序列趨勢 — token_usage 按 day/week/month 分桶的 cost / calls / active_users。
+
+    三種 metric 同一查詢路徑(只讀 token_usage.db):
+      cost         — provider-aware 逐列定價後加總(week 桶用 ISO 週,SQL 難算,故 Python 分桶)
+      calls        — 列數
+      active_users — 桶內 distinct user_id
+    `--uid all`(預設)算全體;指定 uid 則模糊解析後過濾。只吐有資料的桶(不補零),桶 key 升冪。
+    """
+    metric = args.metric
+    bucket = args.bucket
+    range_ = args.range
+    since = since_iso(range_)
+    uid_filter = args.uid
+
+    result: dict = {
+        "metric": metric, "bucket": bucket, "range": range_,
+        "since": since, "uid": uid_filter, "count": 0, "series": [],
+    }
+
+    acc: dict[str, object] = {}  # bucket_key → float | int | set[str]
+    db_path = data_dir() / "token_usage.db"
+    if db_path.exists():
+        conn = connect_ro(db_path)
+        pcol = provider_column_expr(conn)
+        sql = (
+            f"SELECT user_id, call_type, {pcol} AS provider, "
+            "input_tokens, output_tokens, created_at FROM token_usage"
+        )
+        clauses: list[str] = []
+        params: list = []
+        if since is not None:
+            clauses.append("created_at >= ?")
+            params.append(since)
+        if uid_filter != "all":
+            uid = resolve_uid(uid_filter, data_dir())
+            result["uid"] = uid
+            clauses.append("user_id = ?")
+            params.append(uid)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+
+        for user_id, call_type, provider, t_in, t_out, created_at in rows:
+            key = _bucket_key(created_at, bucket)
+            if key is None:
+                continue
+            if metric == "cost":
+                acc[key] = float(acc.get(key, 0.0)) + token_cost_usd(
+                    call_type, int(t_in or 0), int(t_out or 0), provider=provider
+                )
+            elif metric == "calls":
+                acc[key] = int(acc.get(key, 0)) + 1
+            else:  # active_users
+                acc.setdefault(key, set()).add(user_id)  # type: ignore[union-attr]
+
+    series = []
+    for key in sorted(acc):
+        val = acc[key]
+        if metric == "active_users":
+            val = len(val)  # type: ignore[arg-type]
+        elif metric == "cost":
+            val = round(float(val), 6)
+        series.append({"bucket": key, "value": val})
+    result["series"] = series
+    result["count"] = len(series)
+
+    if args.json:
+        emit_json(result)
+        return
+
+    uid_label = "all users" if uid_filter == "all" else result["uid"]
+    print(f"Timeseries — {metric} by {bucket}  |  {uid_label}  |  range={range_}")
+    if not series:
+        print("(no data)")
+        return
+
+    def _fmt(v: object) -> str:
+        return f"${v:.6f}" if metric == "cost" else str(v)
+
+    max_val = max(float(s["value"]) for s in series)
+    rows_out = []
+    for s in series:
+        bar = "█" * round((float(s["value"]) / max_val) * 24) if max_val else ""
+        rows_out.append([s["bucket"], _fmt(s["value"]), bar])
+    print_table(["Bucket", metric.capitalize(), "Trend"], rows_out)
+
+
 # ── CLI 進入點 ──────────────────────────────────────────
 
 
@@ -837,6 +947,17 @@ def main() -> None:
     p.add_argument("uid", help="User ID")
     p.add_argument("--date", help="日期 (YYYY-MM-DD, 預設今天)")
     p.set_defaults(func=cmd_sync_trace)
+
+    # timeseries
+    p = sub.add_parser("timeseries", parents=[jp],
+                       help="時間序列趨勢（cost/calls/active_users 按 day/week/month 分桶）")
+    p.add_argument("metric", choices=["cost", "calls", "active_users"], help="指標")
+    p.add_argument("--bucket", choices=["day", "week", "month"], default="day",
+                   help="分桶粒度（預設 day）")
+    p.add_argument("--range", choices=list(VALID_RANGES), default="30d",
+                   help="時間範圍（預設 30d）")
+    p.add_argument("--uid", default="all", help="限定單一用戶（預設 all）")
+    p.set_defaults(func=cmd_timeseries)
 
     args = parser.parse_args()
     args.func(args)
