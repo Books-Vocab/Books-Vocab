@@ -255,3 +255,20 @@ enum PodcastSeekBarGeometry {
         return CGFloat(ratio) * totalWidth
     }
 }
+
+/// 時鐘格式化（`m:ss` / `h:mm:ss`）。純數字格式、locale 無關，故不走 L10n。
+/// 集中此處供 `PodcastContinueCard` / `PodcastContinueRailCard` 共用（消除
+/// 先前兩處 byte-identical 的 `formatClock` 重複）。
+enum PodcastClock {
+    static func format(_ sec: Double) -> String {
+        guard sec.isFinite, sec >= 0 else { return "0:00" } // i18n-allow: clock format
+        let total = Int(sec)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s) // i18n-allow: clock format
+        }
+        return String(format: "%d:%02d", m, s) // i18n-allow: clock format
+    }
+}

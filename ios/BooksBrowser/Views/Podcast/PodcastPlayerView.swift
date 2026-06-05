@@ -67,13 +67,19 @@ struct PodcastPlayerView: View {
     @State private var loadTask: Task<Void, Never>?
     @State private var loadedEpisodeId: String?
     @State private var progressRestored = false
+    /// 連續播放換集 override（auto-advance）：nil → 用 push 進來的 `episodeId`；
+    /// 設成下一集 remoteId 後，`.task(id: activeEpisodeId)` 偵測變化即 teardown 舊集
+    /// + load 新集（複用既有換集路徑，nav stack 不堆疊——對齊串流連續播放）。
+    @State private var overrideEpisodeId: String?
 
-    /// Same-frame SwiftData fetch for the episode keyed by `episodeId`. Returns
-    /// nil only when the row isn't hydrated yet (cold start mid-sync). Cheap —
-    /// `fetch` with an indexed predicate is O(log n) and stays on the main
-    /// context.
+    /// 目前實際播放的 episode remoteId：override（auto-advance 後）優先於 push 進來者。
+    private var activeEpisodeId: String { overrideEpisodeId ?? episodeId }
+
+    /// Same-frame SwiftData fetch for the episode keyed by `activeEpisodeId`.
+    /// Returns nil only when the row isn't hydrated yet (cold start mid-sync).
+    /// Cheap — `fetch` with an indexed predicate is O(log n) on the main context.
     private var loadedEpisode: PodcastEpisode? {
-        Self.fetchEpisode(remoteId: episodeId, in: modelContext)
+        Self.fetchEpisode(remoteId: activeEpisodeId, in: modelContext)
     }
 
     private var loadedSeries: PodcastSeries? {
@@ -83,7 +89,7 @@ struct PodcastPlayerView: View {
     private var bootstrapPhase: PodcastPlayerBootstrapPhase {
         PodcastPlayerBootstrapPhase.phase(
             hasViewModel: viewModel != nil,
-            loadAttempted: loadedEpisodeId == episodeId,
+            loadAttempted: loadedEpisodeId == activeEpisodeId,
             hasEpisode: loadedEpisode != nil,
             hasSeries: loadedSeries != nil
         )
@@ -93,7 +99,7 @@ struct PodcastPlayerView: View {
 
     private var vocabularyContext: PodcastVocabularyContext? {
         Self.resolveVocabularyContext(
-            episodeId: episodeId,
+            episodeId: activeEpisodeId,
             modelContext: modelContext,
             rawNotebookId: UserDefaults.standard.string(forKey: Self.activeNotebookIdKey) ?? "default",
             toastCoordinator: toastCoordinator,
@@ -266,7 +272,7 @@ struct PodcastPlayerView: View {
                     .onChange(of: vm.state) { _, newState in
                         if newState == .ready, !progressRestored {
                             progressRestored = true
-                            restoreProgress(vm: vm, episodeRemoteId: episodeId)
+                            restoreProgress(vm: vm, episodeRemoteId: activeEpisodeId)
                             return
                         }
                         if newState == .paused || newState == .ready {
@@ -277,6 +283,11 @@ struct PodcastPlayerView: View {
                     .onChange(of: vm.sleepTimerFiredTick) { oldTick, newTick in
                         guard newTick != oldTick else { return }
                         toastCoordinator.info(L10n.string("podcast.sleepTimer.fired.toast"))
+                    }
+                    // 連續播放：本集自然播畢 → 自動續播下一可播集（gate 在 PodcastQueue）。
+                    .onChange(of: vm.episodeFinishedTick) { oldTick, newTick in
+                        guard newTick != oldTick else { return }
+                        advanceToNextEpisode()
                     }
             } else {
                 switch bootstrapPhase {
@@ -332,8 +343,11 @@ struct PodcastPlayerView: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
-        .task(id: episodeId) {
-            guard loadedEpisodeId != episodeId else { return }
+        // id = activeEpisodeId：push 進入跑一次；auto-advance 改 overrideEpisodeId 時
+        // id 變 → 同一套 teardown（save 舊集進度 → stop vm → reset）+ loadEpisode 新集，
+        // nav stack 不堆疊（對齊串流連續播放）。
+        .task(id: activeEpisodeId) {
+            guard loadedEpisodeId != activeEpisodeId else { return }
             if let oldVm = viewModel, let oldId = loadedEpisodeId {
                 saveProgress(vm: oldVm, episodeRemoteId: oldId, reason: .episodeSwitch)
             }
@@ -341,7 +355,7 @@ struct PodcastPlayerView: View {
             loadTask = nil
             viewModel?.stop()
             viewModel = nil
-            loadedEpisodeId = episodeId
+            loadedEpisodeId = activeEpisodeId
             progressRestored = false
             lastSavedTime = 0
             pushState = PodcastProgressPushState()
@@ -571,6 +585,19 @@ struct PodcastPlayerView: View {
         loadEpisode()
     }
 
+    /// 連續播放：本集自然播畢（`episodeFinishedTick`）時，取同 series 下一個可播集
+    /// （`PodcastQueue` 含 entitlement gate）設為 `overrideEpisodeId` → `.task(id:)`
+    /// 接手 teardown + load。無下一集或被 gate 擋（free 播完 ep1、guest）則維持本集尾
+    /// `.ready`、不前進。換集走 override 而非 nav push，故 nav stack 不堆疊。
+    @MainActor
+    private func advanceToNextEpisode() {
+        guard let current = loadedEpisode, let series = loadedSeries else { return }
+        guard let next = PodcastQueue.nextPlayable(
+            in: series.episodes, after: current, tier: tier
+        ) else { return }
+        overrideEpisodeId = next.remoteId
+    }
+
     private func loadEpisode() {
         // `loadedEpisode` / `loadedSeries` / `vocabularyContext` are now
         // synchronous computed properties (via `resolveVocabularyContext`)
@@ -727,9 +754,9 @@ struct PodcastPlayerView: View {
 
     private func saveProgress(reason: PodcastProgressPushState.Reason = .pause) {
         guard let vm = viewModel else { return }
-        guard loadedEpisodeId == episodeId else { return }
+        guard loadedEpisodeId == activeEpisodeId else { return }
         if !progressRestored && vm.currentTime == 0 { return }
-        saveProgress(vm: vm, episodeRemoteId: episodeId, reason: reason)
+        saveProgress(vm: vm, episodeRemoteId: activeEpisodeId, reason: reason)
     }
 
     /// Decides whether a `position == 0` write is meaningful.

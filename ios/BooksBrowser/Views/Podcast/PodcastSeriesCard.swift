@@ -19,6 +19,15 @@ struct PodcastSeriesCard: View {
         NotebookPalette.color(for: series.color)
     }
 
+    /// 串流卡副標：`主持人 · N 集`，無主持人時退回純集數。host 可能很長，
+    /// caller 已 `lineLimit(1)` + tail 截斷。
+    private var metaLine: String {
+        let count = L10n.format("%@ 集", "\(series.episodeCount)")
+        let hosts = series.hostNames.joined(separator: ", ")
+        guard !hosts.isEmpty else { return count }
+        return "\(hosts) · \(count)" // i18n-allow: visual separator between localized parts
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.s2) {
             // 封面 — Mochi 北極星二/三：border 退場、resting 走 z0
@@ -52,9 +61,12 @@ struct PodcastSeriesCard: View {
                     .multilineTextAlignment(.leading)
                     .foregroundStyle(appTheme.palette.primaryText)
 
-                Text(L10n.format("%@ 集", "\(series.episodeCount)"))
+                // 串流卡 meta：主持人 · 集數（單行截斷，卡高不變）。無主持人退回純集數。
+                Text(metaLine)
                     .font(AppFonts.caption2())
                     .foregroundStyle(appTheme.palette.tertiaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .appHoverLift()
