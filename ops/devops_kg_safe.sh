@@ -17,6 +17,7 @@ usage:
   $0 deploy
   $0 restart
   $0 status
+  $0 health [--json]
   $0 logs [n]
   $0 backup
   $0 backup-s3-test
@@ -129,6 +130,13 @@ main() {
       preflight
       shift
       "$BASE" logs "${1:-80}"
+      ;;
+    health)
+      # host 層唯讀健康聚合（系統資源 + 容器 + Caddy + TLS 憑證 + 近期錯誤）。
+      # 全唯讀，補 ops-cli（讀業務 DB）看不到的機器層盲區。--json 走 stdout。
+      preflight
+      shift
+      "$ROOT_DIR/ops/infra_health.sh" "$@"
       ;;
     user-info)
       preflight
