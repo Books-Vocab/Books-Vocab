@@ -110,7 +110,7 @@ final class PodcastDownloadManager: NSObject {
     // nonisolated `purgeDownloads` default argument and the cross-platform
     // cleaner evaluate it without a MainActor hop.
     nonisolated static func downloadsRoot() -> URL {
-        let dir = FileManager.default
+        var dir = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("podcast-downloads", isDirectory: true)
         // Ensure directory exists and is excluded from iCloud Backup

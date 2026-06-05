@@ -286,7 +286,6 @@ final class PodcastAudioEngine: NSObject {
 
     func seek(to time: TimeInterval, autoResume: Bool) {
         guard let p = player else { return }
-        p.cancelPendingSeeks()
         let clamped = max(0, duration > 0 ? min(time, duration) : time)
         AppCrashReporting.addBreadcrumb(
             category: "audio",
