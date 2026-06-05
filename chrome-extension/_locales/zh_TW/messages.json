@@ -14,6 +14,8 @@
   "popupBtnAdd": { "message": "加入詞彙" },
   "popupBtnAdding": { "message": "加入中…" },
   "popupBtnAdded": { "message": "已加入" },
+  "popupSpeakAria": { "message": "朗讀" },
+  "popupCloseAria": { "message": "關閉" },
   "popupLoginPrompt": { "message": "請先登入" },
   "popupLoginAction": { "message": "前往登入" },
 
