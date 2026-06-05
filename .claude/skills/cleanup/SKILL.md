@@ -1,225 +1,174 @@
 ---
 name: cleanup
-description: "全流程收尾：merge open PRs → update docs → git cleanup → test → deploy。一次 /cleanup 搞定所有。"
+description: "快速收斂分支狀態：scope 圈定 PR → 火速 merge（衝突當場解）→ 收斂後才平行 review+測試 → 殘留問題 forward-fix 補合。收斂優先於驗證。"
 user-invocable: true
-version: 2.0.0
+version: 3.0.0
 ---
 
-# Cleanup: 全流程收尾
+# Cleanup：最快讓分支狀態收斂
 
-合併 merge-prs、update-docs、git-cleanup 三個流程。每個 phase 結束後報告，使用者確認再進下一步。
+**唯一目標 = 用最短時間把 open PR 收斂進 main。** 不是「全流程完美收尾」，是「收斂」。
+
+> 一句話契約：cleanup = scope 圈定 PR → 火速 merge（衝突當場解）→ 收斂完才平行 review+測試 → 殘留問題 forward-fix 補合。**收斂優先於驗證，驗證優先於完美。**
+
+核心反直覺點（v2 → v3 的關鍵調換）：**先 merge，後驗證**。舊流程「先 review 每個 PR 再 merge」慢且擋路；agent 產出的 PR 多半個別已綠，真正阻擋收斂的只有**衝突**。所以把 review/測試/doc-sync 全部後置、async 化，殘留問題用 follow-up commit 補（不 revert、不卡 merge）。
 
 ---
 
-## Phase 1 — 狀態收集（平行執行）
+## Phase 0 — Scope 解析（永遠先做）
+
+使用者會帶 scope，因為他常**並行派了多個 agent，回來時部分還在做**。先把 scope 翻成 PR 白/黑名單，列表確認再動手。
+
+| 輸入 | 語意 |
+|---|---|
+| `/cleanup` | 所有 open PR |
+| `/cleanup A,B`（branch name 或 PR#） | **白名單**：只收這些 |
+| `/cleanup except C,D` | **黑名單**：全部扣掉 C,D（給還在做的 agent 留活路） |
 
 ```bash
-git status
-git stash list
-git branch -a
-git log --oneline origin/main..HEAD  # 未 push commits
-git worktree list
-gh pr list --state open
+gh pr list --state open --json number,title,headRefName,mergeable,mergeStateStatus
 ```
 
-報告分類：未提交修改 / 未 push commit / stash / 非 main 分支 / 額外 worktree / open PR。
-
-如果有未提交修改，先 `git stash` 再繼續。
+解析後輸出對應表（branch name → PR#），標明哪些**納入**、哪些**排除（活 agent）**。排除的分支 = 神聖不可侵犯（見 Phase 並發安全）。
 
 ---
 
-## Phase 2 — Merge PRs
-
-跳過條件：無 open PR。
-
-### 2a. 平行取得每個 PR 的 metadata + diff
+## Phase 1 — 狀態收集（一個 Bash 抓完）
 
 ```bash
-gh pr view <N> --json title,body,additions,deletions,files,mergeable,mergeStateStatus
-gh pr diff <N>
+git status; git stash list; git branch -vv; git worktree list
+git log --oneline origin/main..HEAD   # 主 repo 未 push commit
 ```
 
-### 2b. 審查並報告
+辨識：**主 repo working copy 是否被活 agent 佔用**（detached HEAD、未提交改動、checkout 在某 feature branch）。若是 → 主 repo **完全不碰**，所有後續 git/gh 操作走隔離 worktree（見下）。
 
-對每個 PR 報告：
+---
 
+## Phase 2 — 火速 Merge（收斂的本體，唯一不能延後的階段）
+
+**不 pre-review。直接合。** 但門檻不是零：
+
+### 2a. 並行抓 mergeability + 檔案重疊
+```bash
+gh pr view <N> --json mergeable,mergeStateStatus,headRefName,files
 ```
-### PR #N — 標題 (+A/-D, F files) [MERGEABLE|CONFLICTING]
-- 邏輯/設計是否正確
-- design token 違規（raw color/font/spacing/animation）
-- L10n 雙語完整性
-- 問題或風險
-```
+- 用 `files` 預判**同檔衝突**排序：無重疊的先合、共享檔的後合。
+- ⚠️ **路徑不相交 ≠ 無衝突**：可能有語義衝突（A 改 source、B 測該 source 的舊行為）。git 層不衝突但組合態測試會紅。這類**不在 merge 時擋**，留給 Phase 3 的組合態測試抓 + forward-fix（範例：#825×#826 → #827）。
 
-審查重點：
-- 讀 diff 找隱藏 bug（如 HTTP/2 case-sensitive header）
-- 確認 Localizable.strings 的 en + zh-Hant 都有新增
-- 確認 @Observable / @Environment / @Bindable 用法正確
-
-### 2c. 排序 merge 順序
-
-- CLEAN 先，CONFLICTING 後
-- 同檔案衝突預判（尤其 Localizable.strings）
-- backend-only PR 優先（不影響 iOS 編譯）
-
-### 2d. 逐一 merge（使用者確認後）
-
+### 2b. 逐一合
 ```bash
 gh pr merge <N> --squash --delete-branch
 ```
+- 門檻：只合 `MERGEABLE`，或衝突可機械/語義解的。**跳過的是 pre-merge review，不是 mergeability 檢查**——盲合壞 PR 會污染 main，但那風險由 Phase 3 後置測試 + forward-fix 接住。
+- 下一個轉 `CONFLICTING` → **一次 `git merge origin/main` 解衝突**（別 10-commit `git rebase`；最終 squash 不需保留分支歷史，merge 通常只剩 1-2 個真衝突）：
+  ```bash
+  git checkout <branch>; git merge origin/main
+  # 解衝突 → git add → git commit
+  git push --force-with-lease origin <branch>
+  gh pr merge <N> --squash --delete-branch
+  ```
+- **語義衝突解析是唯一不能延後的正確性工作**：兩 PR 改同塊邏輯時，當場合併兩特性（非二選一），讀 conflict 區塊 + 查欄位語義 + 確認既有慣例 round-trip。其餘（單檔 bug、風格）才後置。
 
-每 merge 一個後，如果下一個 PR 變 CONFLICTING：
-
-```bash
-git fetch origin
-git checkout <branch>
-git rebase origin/main
-# 解衝突（Localizable.strings：保留雙方新增 key）
-git add <files> && git rebase --continue
-git push --force-with-lease origin <branch>
-gh pr merge <N> --squash --delete-branch
-```
-
-### 2e. 同步本地 main
-
-```bash
-git fetch origin
-git rebase origin/main
-```
-
-注意：squash merge 後本地 commit 會 diverge，**必須用 rebase 不能 pull**。
+### 坑（記死）
+- **`gh pr merge` 前確保自己不在被合的那條 branch 上**：在 PR 分支上跑會讓 gh 合完跳 checkout `main`，撞使用者並行的 local main + 製造「工作被還原」假警報。在 detached HEAD 或別的 worktree（on `main`）執行最安全。
+- **絕不 ff/reset 使用者的 local main**：他常並行在 local main 工作。
 
 ---
 
-## Phase 3 — Update Docs
+## Phase 並發安全（正交但永遠生效）
 
-跳過條件：Phase 2 無任何 merge 且無 code 變更（`change_list` 為空）。
+與「快」不衝突，是前提：
 
-### 3a. Snapshot
-
-```bash
-# 上次文檔更新 commit
-git log --oneline --all --grep="docs:" -1
-
-# 從那之後的 non-merge commits
-git log --oneline <last_docs_sha>..HEAD --no-merges
-
-# 帶 doc-meta 的文檔及其 verified_against
-grep -r "verified_against" docs/
-
-# 當前 HEAD
-git rev-parse --short HEAD
-```
-
-產出：`change_list`、`stale_map`（verified_against != HEAD 的文檔）、`head_sha`。
-
-同時將 `CLAUDE.md` 的 "Implemented Product Surface" 段落納入審計。
-
-### 3b. Parallel Audit（opus agents，背景執行）
-
-為每份 stale 文檔 dispatch 1 個 agent（`model: "opus"`，`run_in_background: true`）。
-
-每個 agent 收到：文檔完整內容 + `change_list` + doc-auditor-prompt.md 的指令。
-
-### 3c. Execute
-
-收齊 audit 報告後：
-1. 列出所有建議的摘要表，供使用者確認
-2. 逐一 Edit（精確到 old_string → new_string）
-3. 更新修改過文檔的 `verified_against` → `head_sha`
-
-### 3d. Self-check
-
-```bash
-grep -r "verified_against" docs/
-git diff --stat
-```
-
-### 規則
-- Phase 3b agent 只分析不 Edit — 所有修改由主 agent 統一執行
-- CLAUDE.md Product Surface 必須納入審計
-- 不創建新文檔，只更新現有文檔
-- verified_against 只在有內容修改時才更新
+1. **Scope 黑名單分支 + 其 working copy/worktree 完全不碰**。
+2. **主 repo 被活 agent 佔用時，所有 git/gh 操作走隔離 worktree**：
+   ```bash
+   git worktree add /Users/chenliangyu/kg-worktrees/cleanup-<tag> main   # on main 分支，便於 gh
+   # 所有 merge / 解衝突 / 測試 / doc-sync 都在這跑，做完 git worktree remove
+   ```
+   （`main` 通常沒被任何 worktree 佔用，可在 cleanup worktree 認領。）
+3. **不派非隔離的 doc-sync agent**——它動主 checkout 的 HEAD/index 會跟 cleanup 撞。doc-sync 一律在 worktree 自己做，或派 **`isolation: worktree`** 的單一 agent。
 
 ---
 
-## Phase 4 — Git Cleanup
+## Phase 3 — 收斂後驗證（後置、平行、async）
 
-### 4a. 清理項目（使用者確認後執行）
+合完才跑。問題用 forward-fix，不回退。
 
-- 刪殘留分支：`git branch -D <branch>` + `git push origin --delete <branch>`
-- 清 stash：`git stash drop` / `git stash clear`
-- Prune stale refs：`git remote prune origin`
+### 3a. 組合態測試（在 cleanup worktree，已 ff 到 origin/main）
+專案命令（cwd 不靠持久，一律 subshell 或絕對路徑）：
+- backend：`(cd backend && uv run pytest -q <被動到的 test 檔...>)`（**必用 `uv run`**，裸 python3 會用錯版本致假失敗）
+- chrome：`(cd chrome-extension && node --test shared/*.test.js)`
+- ops shell：`(cd <wt> && ./ops/tests/test_<x>.sh)`
+- iOS：**只 compile**（此沙盒無 PTY 跑不了 sim 測試）`./ops/ios_build.sh`；動 navigation/發版時加 `--catalyst` 雙跑。**不主動跑 `ios_test.sh`**。
+- **優先跑「跨 PR 共享面」的測試**（web_auth / api 契約 / sync_lifecycle / i18n lint），這是語義衝突最會炸的地方。
 
-### 4b. 狀態確認
+### 3b. 平行 review（逐項，鐵律 4）
+合進的每個 PR 派 1 個 background opus agent（`model: opus`, `run_in_background: true`, `general-purpose`）審 diff：隱藏 bug、生產熱路徑（tracked_llm/api/deps/vocab_crud/web_auth）契約相容、i18n 對齊（鐵律 8）、Pydantic v2/@Observable 慣例。**只分析不改**。
 
-```bash
-git status
-git stash list
-git branch -a
-git worktree list
-```
-
----
-
-## Phase 5 — 測試驗證（平行執行）
-
-跳過條件：Phase 2 無任何 merge。
-
-```bash
-# iOS 編譯（自動排隊鎖）
-./ops/ios_build.sh
-
-# Backend 測試
-python -m pytest backend/tests/ -x -q
-```
-
-兩者獨立，用背景任務平行跑。
+### 3c. Forward-fix（殘留問題的標準解）
+測試紅 / review BLOCK → 在 cleanup worktree 開 fix branch → 最小修正 → 驗證綠 → 開 PR → squash-merge。**不 revert 已合的 PR、不卡整批收斂**。commit prefix 照 Identity 表（`api:`/`ios:`/`ops:`/`docs:`）。
 
 ---
 
-## Phase 6 — 部署（如有 backend 變更）
+## Phase 4 — Doc-sync（後置，可派隔離 agent）
 
-跳過條件：merge 的 PR 中無 backend 檔案變更。
+跳過條件：純樣板 / doc-only。否則合進的 code 變更照 `docs/sop/doc_sync.md` 路由同步。
 
-```bash
-./ops/devops_kg_safe.sh backup
-./ops/devops_kg_safe.sh deploy
-```
+- 多數 PR 應已 doc-as-code 自帶 doc 改動。剩餘走 `(cd <wt> && ./ops/docs_lint.sh)`：
+  - 內容因本批真過時 → 改內容 + bump `verified_against` 到新 HEAD。
+  - 純 threshold lag（>30 commit）但內容仍對 → 只 bump `verified_against`。
+- 重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
+- 派 doc-auditor 時用 `doc-auditor-prompt.md`；**agent 只分析、主 agent 統一 Edit**；要派會 commit 的就 `isolation: worktree`。
+- 完成 `docs:` commit（commit 無妨；push 見下）。
 
 ---
 
-## Phase 7 — 最終報告
+## Phase 5 — 部署（預設跳過，需明確指示）
 
+**push 遠端 / 部署生產一律須使用者明確指示**，不自動跑。有 backend 變更且使用者授權才：
+```bash
+./ops/devops_kg_safe.sh backup && ./ops/devops_kg_safe.sh deploy
 ```
-## Cleanup 完成
+**生產禁令（鐵律 7，永禁）**：`docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`。運維只走 `devops_kg_safe.sh`，不繞 wrapper。
 
-### PRs
-- PR #N ✅ merged — 標題
-- PR #M ✅ merged — 標題
+---
 
-### Docs
-| 文檔 | 變更摘要 | verified_against |
-|------|----------|-----------------|
-| ... | ... | ✅ <sha> |
+## Phase 6 — 收尾 + 報告
 
-### Git
-- 分支清理：N 個已刪
-- Stash：已清 / 無
-- Worktree：已清 / 無
+收尾固定順序（先移 worktree 才刪得掉 branch）：
+```bash
+git worktree remove <cleanup-wt>
+git worktree remove <殘留>; git branch -D <merged-branch>
+git push origin --delete <殘留 remote 分支>   # --delete-branch 常因 worktree 占用失敗，手動補
+git fetch --prune
+```
+- codex 自己的 `~/.codex/worktrees/*` 由 codex session 清，不確定別動。
+- 主 repo local main 由使用者/活 agent 自行 rebase 對齊（**不 ff/reset**）。
 
+報告：
+```
+## Cleanup 完成（scope: <白/黑名單>）
+### Merged
+- #N ✅ 標題 ｜ #M ✅（衝突已解）｜ #K ✅ forward-fix
+### 排除（活 agent，未動）
+- <branch> (#J)
 ### 驗證
-- iOS 編譯 ✅ / ❌
-- 後端測試 ✅ N passed / ❌
-- 部署 ✅ HTTP 200 / 跳過
+- backend ✅ N passed ｜ chrome ✅ ｜ iOS compile ✅/跳過
+- forward-fix: #X（修 <跨 PR 組合態問題>）
+### Doc / Git
+- doc-sync：✅ / 派 isolation agent / 跳過
+- worktree/branch 收尾：✅
+- 部署：跳過（待明確指示）
 ```
 
 ---
 
-## 踩坑備忘
+## 踩坑備忘（KG 實戰固化）
 
-1. **Localizable.strings 永遠會衝突**：每個 PR 都在末尾加 key，解法是保留雙方所有新增行
-2. **切 branch 前一定 stash**：忘了 stash 會被 git 擋住
-3. **`--force-with-lease` 不是 `--force`**：rebase 後推 branch 用前者
-4. **squash merge 後本地會 diverge**：必須 `git rebase origin/main`，不能 `git pull`
-5. **docs 審計只改過時內容**：不做「順便改善」
+1. **收斂優先**：別在 merge 前卡 review/測試，那是後置工作。
+2. **路徑不相交 ≠ 無衝突**：語義衝突（source vs 測該 source 的測試）靠組合態測試 + forward-fix 抓，不靠 merge 時人眼。
+3. **主 repo 被活 agent 佔用就走 worktree**，別跟它搶 HEAD（最大時間殺手）。
+4. **`gh pr merge` 不要在被合分支上跑**（gh 會跳 checkout main 撞 local main）。
+5. **squash 後 local diverge**：worktree `git merge --ff-only origin/main`（或 reset 到 origin/main），**絕不碰使用者 local main**。
+6. **backend 測試必 `uv run pytest`**；cwd 不靠持久，一律 subshell。
+7. **push/deploy 須明確指示**；生產禁令永不繞過。
