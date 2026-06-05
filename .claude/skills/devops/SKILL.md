@@ -61,6 +61,7 @@ ops-cli db-query <uid> --schema           # 免寫 SQL 列出各表 DDL（先看
 ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
 ops-cli cost <uid> [--range R]            # 單用戶 cost-by-call_type 拆解（provider-aware）
 ops-cli cost-overview [--range R]         # 全用戶 cost 排名
+ops-cli fleet-overview                     # 跨用戶體檢：每用戶 cards/links/月cost + FLEET TOTAL（免逐用戶 loop）
 ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
 
 # 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
@@ -118,6 +119,9 @@ python3 ops/data_inspect.py [command]
 
 # 全用戶 24h cost 排名
 ./ops/devops_kg_safe.sh ops-cli cost-overview --range 24h
+
+# 跨用戶一眼體檢（卡數/連結/月花費，含 FLEET TOTAL；--json 2>/dev/null | jq 可機讀）
+./ops/devops_kg_safe.sh ops-cli fleet-overview
 
 # 用戶單日 sync 時間線（debug 同步問題：何時建卡/呼叫 API/judge/translate，按時序合併）
 ./ops/devops_kg_safe.sh ops-cli sync-trace <uid> --date 2026-06-05
