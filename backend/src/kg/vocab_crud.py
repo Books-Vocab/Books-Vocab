@@ -14,6 +14,7 @@ from .vocab_shared import (
     MAX_BATCH_SIZE,
     MAX_WORD_LENGTH,
     _build_content_lookup,
+    _clean_content,
     _normalize_word,
 )
 
@@ -182,18 +183,38 @@ def _batch_apply(
     failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
+    seen_words_by_key: dict[str, set[str]] = {}
+    outcome_by_key: dict[str, tuple[str, Any | None]] = {}
 
     for word in words:
-        card = lookup.get(_normalize_word(word))
+        key = _normalize_word(_clean_content(word))
+        seen_words = seen_words_by_key.setdefault(key, set())
+        if word in seen_words:
+            continue
+        seen_words.add(word)
+        previous = outcome_by_key.get(key)
+        if previous is not None:
+            status, card = previous
+            if status == "succeeded" and card is not None:
+                succeeded.append((word, card))
+            elif status == "not_found":
+                not_found.append(word)
+            elif status == "failed":
+                failed.append(word)
+            continue
+        card = lookup.get(key)
         if not card:
             not_found.append(word)
+            outcome_by_key[key] = ("not_found", None)
             continue
         try:
             apply(card)
         except _GraphOpFailed:
             failed.append(word)
+            outcome_by_key[key] = ("failed", None)
             continue
         succeeded.append((word, card))
+        outcome_by_key[key] = ("succeeded", card)
 
     return BulkResult(succeeded, not_found, failed)
 
@@ -313,5 +334,3 @@ def batch_archive_vocab_words(
         "not_found": not_found,
         "failed": failed,
     }
-
-

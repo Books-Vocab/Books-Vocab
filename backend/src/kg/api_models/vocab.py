@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from kg.api_models.common import VocabSource, _normalize_context
 
+MAX_BATCH_WORD_LENGTH = 200
+
 
 class VocabEntry(BaseModel):
     """A vocabulary entry from BooksBrowser."""
@@ -45,6 +47,12 @@ class ArchiveWordResponse(BaseModel):
 class BatchDeleteRequest(BaseModel):
     words: list[str] = Field(min_length=1, max_length=500)
 
+    @field_validator("words")
+    @classmethod
+    def validate_words(cls, words: list[str]) -> list[str]:
+        _validate_batch_words(words)
+        return words
+
 
 class BatchDeleteResponse(BaseModel):
     deleted: int
@@ -60,6 +68,12 @@ class BatchArchiveRequest(BaseModel):
     words: list[str] = Field(min_length=1, max_length=500)
     archived: bool = True
 
+    @field_validator("words")
+    @classmethod
+    def validate_words(cls, words: list[str]) -> list[str]:
+        _validate_batch_words(words)
+        return words
+
 
 class BatchArchiveResponse(BaseModel):
     updated: int
@@ -69,3 +83,11 @@ class BatchArchiveResponse(BaseModel):
     # back and the card still exists on the server. Clients must retry these,
     # NOT converge them. See #720 / docs/reference/sync_lifecycle.md.
     failed: list[str] = Field(default_factory=list)
+
+
+def _validate_batch_words(words: list[str]) -> None:
+    for word in words:
+        if not word.strip():
+            raise ValueError("word must be non-empty")
+        if len(word) > MAX_BATCH_WORD_LENGTH:
+            raise ValueError(f"word too long (max {MAX_BATCH_WORD_LENGTH})")
