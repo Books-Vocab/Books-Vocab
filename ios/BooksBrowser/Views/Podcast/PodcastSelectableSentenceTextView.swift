@@ -43,6 +43,10 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
     var onResolveWordRects: ([Int: CGRect]) -> Void = { _ in }
     /// Display-mode long-press on a word index → enter selection there.
     var onLongPressWord: (Int) -> Void = { _ in }
+    /// Single-word translate → word path (`translateQuick` + root-form stem + vocab
+    /// dedupe). Phrase translate → `onTranslateSelection` (phrase path). The edit menu
+    /// routes by `PodcastSelectionRouting`, mirroring reader's word/phrase split.
+    let onWordSelection: (String, String) -> Void
     let onTranslateSelection: (String, String) -> Void
     let onExplainSelection: (String, String) -> Void
 
@@ -62,6 +66,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
+            onWordSelection: onWordSelection,
             onTranslateSelection: onTranslateSelection,
             onExplainSelection: onExplainSelection
         )
@@ -172,6 +177,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
+        let onWordSelection: (String, String) -> Void
         let onTranslateSelection: (String, String) -> Void
         let onExplainSelection: (String, String) -> Void
         var onResolveWordRects: ([Int: CGRect]) -> Void = { _ in }
@@ -183,9 +189,11 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         weak var longPress: UILongPressGestureRecognizer?
 
         init(
+            onWordSelection: @escaping (String, String) -> Void,
             onTranslateSelection: @escaping (String, String) -> Void,
             onExplainSelection: @escaping (String, String) -> Void
         ) {
+            self.onWordSelection = onWordSelection
             self.onTranslateSelection = onTranslateSelection
             self.onExplainSelection = onExplainSelection
         }
@@ -237,31 +245,31 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         ) -> UIMenu? {
             guard let selection = selectionPayload(for: range) else { return nil }
 
-            var actions: [UIMenuElement] = [
-                UIAction(
-                    title: L10n.string("翻譯"),
-                    image: UIImage(systemName: "character.book.closed")
-                ) { [weak self, weak textView] _ in
-                    guard let self, let textView else { return }
-                    self.onTranslateSelection(selection.text, selection.context)
-                    textView.resignFirstResponder()
+            // Translate routes single-word → word path, multi-word → phrase path
+            // (mirrors reader). Explain is offered for BOTH word and phrase, matching
+            // reader's gate-free edit menu.
+            let translateAction = UIAction(
+                title: L10n.string("翻譯"),
+                image: UIImage(systemName: "character.book.closed")
+            ) { [weak self, weak textView] _ in
+                guard let self, let textView else { return }
+                switch PodcastSelectionRouting.route(for: selection.text) {
+                case .word: self.onWordSelection(selection.text, selection.context)
+                case .phrase: self.onTranslateSelection(selection.text, selection.context)
                 }
-            ]
-
-            if shouldOfferExplain(for: selection.text) {
-                actions.append(
-                    UIAction(
-                        title: L10n.string("解釋"),
-                        image: UIImage(systemName: "text.magnifyingglass")
-                    ) { [weak self, weak textView] _ in
-                        guard let self, let textView else { return }
-                        self.onExplainSelection(selection.text, selection.context)
-                        textView.resignFirstResponder()
-                    }
-                )
+                textView.resignFirstResponder()
             }
 
-            return UIMenu(children: actions)
+            let explainAction = UIAction(
+                title: L10n.string("解釋"),
+                image: UIImage(systemName: "text.magnifyingglass")
+            ) { [weak self, weak textView] _ in
+                guard let self, let textView else { return }
+                self.onExplainSelection(selection.text, selection.context)
+                textView.resignFirstResponder()
+            }
+
+            return UIMenu(children: [translateAction, explainAction])
         }
 
         private func selectionPayload(for range: NSRange) -> (text: String, context: String)? {
@@ -273,10 +281,6 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 
             let context = buildMarkedContext(text: currentText, selectedRange: range)
             return (selected, context)
-        }
-
-        private func shouldOfferExplain(for selectionText: String) -> Bool {
-            selectionText.split(whereSeparator: \.isWhitespace).count == 1
         }
 
         private func buildMarkedContext(text: String, selectedRange: NSRange) -> String {
