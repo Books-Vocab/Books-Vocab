@@ -58,6 +58,10 @@ echo "$pub_body" | awk '/else/,/fi/' | grep -q 'push origin' \
   && fail_t "push origin leaked into dry-run branch (would push without --yes)" \
   || ok "dry-run branch contains no push origin"
 
+# ── 5b. detached HEAD 守衛（避免 push origin HEAD；review footgun 回歸） ──────
+echo "$pub_body" | grep -q 'detached HEAD' \
+  && ok "publish guards detached HEAD"      || fail_t "publish missing detached-HEAD guard (would push origin HEAD)"
+
 # ── 6. 版號格式守衛（x.y.z） ────────────────────────────────────────────────
 section "Version format guard"
 grep -qE '\[0-9\]\+\\?\.\[0-9\]|[0-9]+\.[0-9]+\.[0-9]+' "$REL" \
