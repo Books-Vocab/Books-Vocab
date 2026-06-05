@@ -523,17 +523,18 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Document body floats as one card on the panel's page-bg, mirroring the iOS
+   WordDetailSheet (a #fff card inset over the dimmer stage). Blocks are separated
+   by generous whitespace (gap), not hairlines — iOS uses no inter-block rules. */
 .kg-detail-doc {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-md);
-  padding: var(--sp-lg) var(--page-h-padding) calc(var(--sp-lg) * 2);
-}
-
-/* Hairline section separator between document blocks. */
-.kg-detail-rule {
-  height: var(--sp-hairline);
-  background: var(--divider);
+  gap: var(--sp-lg);
+  margin: var(--sp-md) var(--page-h-padding) var(--sp-lg);
+  padding: var(--sp-5);
+  background: var(--card-bg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-z1);
 }
 
 /* hero — word + pos + tier (left), speaker (right) */
@@ -624,14 +625,18 @@ body {
 /* generic labelled block (搭配 / 變化形 / 來源) */
 .kg-detail-block { display: flex; flex-direction: column; gap: var(--sp-xs); }
 
-/* Label — smaller, uppercase, muted (iOS caption + tertiary) */
+/* Label — soft muted small heading (iOS section label: regular-case, no extra
+   tracking, medium weight — uppercase+tracking reads "engineered" and stretches
+   the CJK labels 搭配 / 變化形 unnaturally). */
 .kg-detail__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   font-size: var(--text-caption);
   color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-uppercase);
-  font-weight: 700;
+  font-weight: 600;
 }
+.kg-detail__label svg { width: 13px; height: 13px; flex-shrink: 0; }
 
 /* Collocation chips */
 .kg-detail__chips {
@@ -654,7 +659,7 @@ body {
 .kg-detail-links__group-label {
   font-size: var(--text-caption);
   color: var(--text-tertiary);
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: var(--sp-xs);
 }
 

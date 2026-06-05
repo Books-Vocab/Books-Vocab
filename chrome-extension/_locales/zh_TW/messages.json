@@ -22,6 +22,7 @@
   "settings": { "message": "設定" },
   "optionsDocTitle": { "message": "KG 詞彙助手 — 設定" },
   "accountSection": { "message": "帳號" },
+  "prefSection": { "message": "偏好" },
   "authLoggedIn": { "message": "已登入" },
   "authLogout": { "message": "登出" },
   "authLogin": { "message": "登入" },
