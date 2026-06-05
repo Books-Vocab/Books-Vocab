@@ -345,15 +345,20 @@ uv run --no-project python ops/podcast_ops.py status   --workspaces-dir lab/podc
 uv run --no-project python ops/podcast_ops.py episodes  <ws> --workspaces-dir lab/podcast/workspaces      # 逐集 plan/script/audio/subtitle 矩陣
 uv run --no-project python ops/podcast_ops.py cost      --workspaces-dir lab/podcast/workspaces           # 聚合花費 + by-model(--workspace <ws> 看單一明細)
 uv run --no-project python ops/podcast_ops.py covers    --workspaces-dir lab/podcast/workspaces           # 有音頻卻缺 plan/cover.png
+uv run --no-project python ops/podcast_ops.py logs      <ws> --last 10 --workspaces-dir lab/podcast/workspaces  # 尾段 pipeline_log 事件(--errors-only 只看 error；失敗的 WHY)
 # 需 S3(boto3 + PODCAST_BUCKET,缺則 clean exit 3):
 set -a; source lab/podcast/.env; set +a
 uv run --no-project --with boto3 python ops/podcast_ops.py reconcile --workspaces-dir lab/podcast/workspaces  # workspace↔S3「合成了但沒上 S3」drift
 uv run --no-project --with boto3 python ops/podcast_ops.py series                                            # S3 catalog + 容量
 ```
 
-- **`status` exit code 給 cron 訊號**:`2`=有 workspace 卡 failed(pipeline_log 有未解決 stage 失敗且無 done marker)、`1`=有 awaiting 人工核准、`0`=全 ok。狀態瀑布與 dashboard sidebar 完全一致(running 僅 dashboard 有 live job tracker 時報,headless 永不臆測)。
-- **`--json` 契約**:stdout 只有 JSON(零前綴,`| jq` 可直接吃),所有 banner/cost warning 走 stderr。
-- **failed ≠ 集數不全**:一個 workspace 可能七集全綠卻 `failed`——多半是 `publish` stage 上傳失敗(synthesized-not-published),此時 `reconcile` 會同時抓到。先看 `pipeline_log.jsonl` 尾段哪個 stage `success:false` 且無對應 `.stage_<n>_done`。
+- **`status` exit code 給 cron 訊號**:`2`=有 workspace 卡 failed(pipeline_log 有未解決 stage 失敗且無 done marker)、`1`=有 awaiting 人工核准、`0`=全 ok;**不存在的 `--workspaces-dir` 一律 exit 3 硬失敗**(不再靜默 `0 total` 假裝健康)。狀態瀑布與 dashboard sidebar 完全一致(running 僅 dashboard 有 live job tracker 時報,headless 永不臆測)。
+- **`--json` 契約**:stdout 只有 JSON(零前綴,`| jq` 可直接吃),所有 banner/cost warning 走 stderr;失敗也走 `{"ok":false,"error":...}` 結構化吐 stdout。
+- **每個非終態都「知道為何 + 知道下一步」**:`status` 在表格(`AUD` 音檔集數 / `AGE` 距上次 pipeline_log 活動 / `GATES`)下,為每個 failed/awaiting/idle 印 reason + **可複製的 next_step 指令**:
+  - `failed` → 帶 `error`(尾段最近一筆 error event 的 msg)+ `failed_at`(ts)+ `--skip-to <stage>` resume 指令;細節用 `logs <ws>` 看完整 retry 敘事,不必手挖 `pipeline_log.jsonl`。
+  - `awaiting` → `awaiting_gate`(plan/script)+ `touch .../.{gate}_approved` 核准指令。
+  - `idle` → **裸 auto-resume 指令**(不焊 `--skip-to`:marker drift 會讓 81%-done ws 誤報 `prep`;裸跑由 pipeline 自身 `detect_resume_point` 定點)。`resume_stage` 欄保留 marker 原始真相供參。
+- **failed ≠ 集數不全**:一個 workspace 可能七集全綠卻 `failed`——多半是 `publish` stage 上傳失敗(synthesized-not-published),此時 `reconcile` 會同時抓到。
 
 ---
 

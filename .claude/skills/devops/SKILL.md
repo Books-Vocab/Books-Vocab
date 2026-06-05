@@ -236,6 +236,13 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 ./ops/devops_kg_safe.sh status
 ```
 
+## Scope 邊界(不屬本 skill)
+
+本 skill 只管 **KG backend 生產環境**(`knowledge-graph-api` 容器 / 業務 DB / 用戶 / 額度 / host)。**podcast pipeline 是獨立的 production surface**(本地 `lab/podcast/` workspaces + podcast S3 catalog),不走 `devops_kg_safe.sh`:
+
+- podcast 運維/觀測(workspace 狀態瀑布、failed 根因、逐集 gate、cost、`logs`、workspace↔S3 reconcile)→ **headless `ops/podcast_ops.py`**(免起 dashboard;`status` exit 0/1/2、不存在 dir exit 3),用法見 `docs/sop/podcast_pipeline.md` §5「Headless 觀測 CLI」。
+- podcast 生成管線(EPUB→TTS→字幕 15 階段)→ 觸發 `podcast` skill。
+
 ## Deep Reference
 
 - 完整部署指南：`docs/sop/deploy.md`
