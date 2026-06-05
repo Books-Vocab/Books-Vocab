@@ -56,7 +56,6 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 ## Commit / PR 政策
 
 - **Worktree / feature branch 任務**:驗證全綠(測試 / lint / build / drift 等有**當下輸出**)後 **直接 commit + 開 PR,不先問**,事後簡述決策與理由(使用者長期授權,2026-06-04)。
-- `push` 遠端 / 部署生產須使用者明確指示。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)
