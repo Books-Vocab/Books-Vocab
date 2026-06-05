@@ -90,57 +90,37 @@ body {
 
 .kg-filter-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-1);
+  flex-direction: column;
+  gap: var(--sp-micro);
   padding: 0 var(--page-h-padding) var(--sp-sm);
 }
 
-.kg-filter-bar__chips {
-  display: flex;
-  gap: var(--sp-1);
-  flex-wrap: wrap;
-  flex: 1;
+/* .kg-filter-bar__chips / __chip / __count are GENERATED into
+   kg-component-structures.css from components.json (VocabFilterChipBar). The only
+   contextual rule the generator's flat-selector model can't express — the selected
+   chip's count fill (iOS countSelectedFill = primaryText.opacity(0.08)) — is authored
+   here. */
+.kg-filter-bar__chip--active .kg-filter-bar__count {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-.kg-filter-bar__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-family: var(--font-sans);
-  font-size: var(--text-caption);
-  font-weight: 700;
-  color: var(--text-secondary);
-  background: var(--muted-fill);
-  padding: var(--sp-tiny) var(--sp-2);
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--motion-quick), color var(--motion-quick);
+/* Chips + sort pill are <button>s (clickable filter/sort controls) — strip the
+   native button chrome so the generated/authored pill styling shows through. */
+.kg-filter-bar__chip,
+.kg-sort-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  margin: 0;
 }
 
-.kg-filter-bar__chip:hover {
-  background: var(--button-idle-fill);
-  color: var(--text-primary);
-}
-
-.kg-filter-bar__chip--active {
-  background: var(--muted-fill);
-  color: var(--text-primary);
-}
-
-.kg-filter-bar__count {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.7;
-}
-
+/* Sort + review CTA: own row beneath the chips, right-aligned
+   (mirrors iOS KGVocabPresenter HStack { Spacer(); VocabSortPill; ReviewCTA }). */
 .kg-filter-bar__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--sp-1);
-  flex-shrink: 0;
 }
 
 .kg-sort-pill {
@@ -162,6 +142,80 @@ body {
 .kg-sort-pill:hover {
   background: var(--button-idle-fill);
   color: var(--text-primary);
+}
+
+.kg-sort-pill__chevron {
+  opacity: 0.7;
+}
+
+/* Sort dropdown menu (mirrors iOS VocabSortPill Menu) — anchored under the pill,
+   right-aligned within the actions row. */
+.kg-sort-menu {
+  position: absolute;
+  top: calc(100% + var(--sp-tiny));
+  right: 0;
+  z-index: 20;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-tiny);
+  background: var(--card-bg);
+  border: var(--sp-hairline) solid var(--card-border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--elevation-z3);
+}
+
+.kg-sort-menu__item {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-2);
+  background: transparent;
+  border-radius: var(--radius-control);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick);
+}
+
+.kg-sort-menu__item:hover {
+  background: var(--muted-fill);
+}
+
+.kg-sort-menu__item--active {
+  color: var(--brand-hero);
+}
+
+.kg-sort-menu__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--brand-hero);
+}
+
+.kg-sort-menu__check svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* No-match hint when search/filter excludes everything (corpus non-empty). */
+.kg-list-nomatch {
+  padding: var(--sp-6, 32px) var(--page-h-padding);
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  color: var(--text-tertiary);
 }
 
 /* Review CTA pill — brandHero fill (mirrors iOS VocabReviewCTAPill) */
@@ -198,42 +252,69 @@ body {
 /* --- Search --------------------------------------------------------------- */
 
 .kg-search-wrap {
-  font-family: var(--font-sans);
-  font-size: var(--text-caption);
-  font-weight: 700;
-  color: var(--text-secondary);
-  background: var(--muted-fill);
-  padding: var(--sp-tiny) var(--sp-2);
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--motion-quick), color var(--motion-quick);
-}
-
-.kg-sort-pill:hover {
-  background: var(--button-idle-fill);
-  color: var(--text-primary);
-}
-
-/* --- Search --------------------------------------------------------------- */
-
-.kg-search-wrap {
-  position: relative;
   padding: 0 var(--page-h-padding) var(--sp-sm);
 }
 
-.kg-search {
-  width: 100%;
+/* Composite field mirroring iOS AppSearchField: leading magnifier + bare input +
+   trailing clear, all inside one recessed surface. Surface values match the
+   fidelity-pinned .kg-input contract (stage-bg / card-border / radius-control /
+   body text); the bordered primitive is not reused directly because the icons
+   live INSIDE the field. iOS geometry: HStack spacing s2, padding h=s3 v=9. */
+.kg-search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 9px var(--sp-3);
+  background: var(--stage-bg);
+  border: var(--sp-hairline) solid var(--card-border);
+  border-radius: var(--radius-control);
 }
 
-.kg-search__count {
-  position: absolute;
-  right: calc(var(--page-h-padding) + var(--sp-compact));
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: var(--text-caption);
+.kg-search-field__icon {
+  display: inline-flex;
+  flex-shrink: 0;
   color: var(--text-tertiary);
-  pointer-events: none;
+}
+
+.kg-search-field__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.kg-search-field__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  color: var(--text-primary);
+}
+
+.kg-search-field__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.kg-search-field__clear {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: color var(--motion-quick);
+}
+
+.kg-search-field__clear:hover {
+  color: var(--text-secondary);
+}
+
+.kg-search-field__clear svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* --- State containers ----------------------------------------------------- */

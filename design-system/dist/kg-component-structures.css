@@ -15,6 +15,46 @@
   overflow: hidden;
 }
 
+.kg-filter-bar__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--stage-bg);
+  border-radius: calc(var(--radius-control) + 4px);
+  padding: var(--sp-tiny);
+}
+.kg-filter-bar__chip {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: transparent;
+  padding: var(--sp-2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+.kg-filter-bar__chip--active {
+  background: var(--muted-fill);
+  color: var(--text-primary);
+}
+.kg-filter-bar__count {
+  min-width: 26px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: var(--sp-micro) 6px;
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
+}
+
 .kg-vocab-row {
   display: flex;
   align-items: center;
