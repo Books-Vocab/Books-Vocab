@@ -122,14 +122,16 @@ resolve_loc() {  # $1=version_id → 印出該 locale 的 localization id
 }
 
 # App 層解析鏈（raw API；App 資訊 / EULA / 分類 / 年齡分級 寫入用）。
-# raw()=asc_get.py 恆 exit 0（HTTP 錯誤回 JSON），jq 取不到 → 空字串 → 呼叫端 || err，不靜默中止。
+# raw()=asc_get.py 恆 exit 0，但 HTTP 失敗時回 {_httpError,…}（無 .data 陣列）。
+# jq 必須先 `if has("_httpError") then empty`，否則 `first(.data[]…)` 對 null 迭代會 exit 5，
+# 在 set -euo pipefail 下讓 `id="$(...)"` 賦值中止整個 script，呼叫端 || err 永遠跑不到（P1 review block）。
 resolve_appinfo() {  # 印可編輯的 appInfo id（非 READY_FOR_SALE 優先，否則第一筆）
   raw "/v1/apps/$APP_ID/appInfos" \
-    | jq -r 'first(.data[] | select(.attributes.state != "READY_FOR_SALE") | .id) // (.data[0].id // empty)'
+    | jq -r 'if has("_httpError") then empty else (first(.data[] | select(.attributes.state != "READY_FOR_SALE") | .id) // (.data[0].id // empty)) end'
 }
 resolve_appinfo_loc() {  # $1=appInfo id → 印該 locale 的 appInfoLocalization id
   raw "/v1/appInfos/$1/appInfoLocalizations" \
-    | jq -r --arg L "$LOCALE" 'first(.data[] | select(.attributes.locale==$L) | .id) // empty'
+    | jq -r --arg L "$LOCALE" 'if has("_httpError") then empty else (first(.data[] | select(.attributes.locale==$L) | .id) // empty) end'
 }
 
 # ---- 讀指令 ----
@@ -161,10 +163,12 @@ cmd_info() {  # App 層完整讀面（codemagic 基本欄位 + raw 補 App 資�
   require_key
   asc apps get "$APP_ID" --json 2>/dev/null \
     | jq -r '.attributes | "name: \(.name)\nbundleId: \(.bundleId)\nsku: \(.sku)\nprimaryLocale: \(.primaryLocale)\ncontentRights: \(.contentRightsDeclaration // "（未設）")"'
-  local aid loc
+  local aid loc aistate
   aid="$(resolve_appinfo)"
   if [[ -n "$aid" ]]; then
-    echo "# appInfo=$aid（可編輯態）"
+    # 顯示實際 state（非一律標「可編輯態」）：READY_FOR_SALE 表示無可編輯草稿，寫入會被 API 擋
+    aistate="$(raw "/v1/appInfos/$aid" | jq -r '.data.attributes.state // "?"')"
+    echo "# appInfo=$aid  state=$aistate$( [[ "$aistate" == "READY_FOR_SALE" ]] && echo "（無可編輯草稿，寫入須先在 GUI 建新版本）" )"
     loc="$(resolve_appinfo_loc "$aid")"
     if [[ -n "$loc" ]]; then
       echo "## App 層本地化（$LOCALE）："

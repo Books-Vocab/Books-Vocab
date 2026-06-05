@@ -176,6 +176,15 @@ done
 # 11b. App 層 ID 解析鏈存在（raw API）
 grep -q 'resolve_appinfo()' "$ASC"     && ok "resolve_appinfo present"     || fail_t "resolve_appinfo missing"
 grep -q 'resolve_appinfo_loc()' "$ASC" && ok "resolve_appinfo_loc present" || fail_t "resolve_appinfo_loc missing"
+# 11b'. 解析鏈對 _httpError 防護（P1 review block 回歸）：raw 失敗回 {_httpError} 時，
+#       jq 必須先 `if has("_httpError") then empty`，否則 first(.data[]…) 迭代 null → exit 5 →
+#       set -e+pipefail 下賦值中止整個 script，呼叫端 || err 跑不到。
+for fn in resolve_appinfo resolve_appinfo_loc; do
+  body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
+  echo "$body" | grep -q 'has("_httpError")' \
+    && ok "$fn guards _httpError before iterating .data" \
+    || fail_t "$fn iterates .data without _httpError guard (aborts script on auth/network fail)"
+done
 # 11c. 共用 emit_patch：gate 不變量集中一處 —— patch_raw 只在 --yes 分支，dry-run(else) 分支零 patch_raw
 ep_body="$(awk '/^emit_patch\(\)/,/^}/' "$ASC")"
 echo "$ep_body" | grep -q 'patch_raw' \
