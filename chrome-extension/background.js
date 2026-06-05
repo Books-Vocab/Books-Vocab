@@ -346,3 +346,12 @@ async function handleMessage(msg) {
 
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Startup drain — on every service-worker spin-up (install, or wake from idle
+// via a message/alarm), retry any outbox entries a previous worker lifetime left
+// unresolved: failed retries, or an add whose flush was cut short when the worker
+// was killed mid-network. single-flight makes a concurrent message-driven flush
+// safe; an empty outbox is a cheap no-op (one storage read, no network).
+// ---------------------------------------------------------------------------
+flushOutbox();
