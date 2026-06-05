@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 71c5e8e0
+verified_against: 1accb78c
 -->
 # Chrome Extension Feature Boundary
 
@@ -114,4 +114,5 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 改複合元件結構（filter chip bar / 跨平台共用結構） | 改 `design-system/components.json`（結構 SoT）再跑 `ops/gen_web_components.py` 重生 `shared/kg-component-structures.css`（禁手改生成檔）；surface CSS 僅留生成器涵蓋不到的脈絡覆寫 |
 | 改 surface 視覺（card / button / chip 外觀） | 三 surface（sidepanel / popup / options）現消費 `shared/kg-components.css` 的 `.kg-card`/`.kg-btn`/`.kg-chip` primitives；改視覺走 `tokens.json` → generator 重生，**勿在 surface CSS 手寫等價樣式**。各 surface 自有 CSS 僅放 BEM layout class（`.kg-list-card` / `.kg-popup__btn` / `.kg-section-card`）與 primitive 組合；重定義 base class 視為 bug |
 | **改任何 chrome-extension 檔案後** | 跑 `ops/chrome_verify.sh`（三層：static / `node --test` / 真渲染 CDP smoke，零安裝）。它真載入並渲染 extension，能揪出 manifest/asset/syntax 破壞與 CSS cascade 致 `[hidden]` 元素仍可見這類 commit 前無法自動暴露的 bug；非互動 flow / 音訊 QA 仍須人工。無瀏覽器 host 用 `--static-only` |
+| **對標 iOS 視覺** | 跑 `ops/chrome_parity.sh` 產生 Chrome ⟷ iOS 並排 contact sheet：`tools/shots.mjs` headless 截 7 個 UI case（content light/dark/sepia · detail · options · empty · error），逐 case 注入 in-page mock 走 app.js 真實 render path（呼叫 `setState`/`openDetail`/`renderLoggedIn`/`renderProStatus` 等 global）；`tools/compare.mjs` 按 parity manifest 與 `~/Desktop/IOS截圖參考/`（`IOS_REF_DIR` override）並排 montage 成單張 sheet，一張掃完全部對齊度（省 token，取代逐張截圖往返）。對標 IMG_8954（單字本列表）/8955（單字詳情）/8957（設定）；empty/error/dark/sepia 為 Chrome 特有無 iOS 對標。產物 git-ignored |
 | 改 `kg-components.css` base/reset | **`[hidden]{display:none !important}` 全域 reset 為不變式**（author-important 壓過任何 author-normal 如 `.kg-detail-panel{display:flex}`，使帶 hidden 屬性的 opaque panel 真正隱藏）。手寫源在 `design-system/dist/kg-components.css`，經 `ops/gen_web_tokens.py` 傳播到 shared + backend/static 兩份副本；`shared/css.test.js` 鎖死三份皆含此 reset，移除即紅 |
