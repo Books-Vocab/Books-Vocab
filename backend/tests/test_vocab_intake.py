@@ -222,6 +222,37 @@ class TestAddVocabEntries:
         # back to the existing card.
         assert result.cardIds == {"hello": "dup1"}
 
+    def test_response_card_ids_keyed_by_original_submitted_word(self):
+        """Response cardIds/duplicates 用 client 送出的『原始』word 當 key,而非清洗後的。
+
+        sync 配對 bug 根因:client 上傳 "chateau,"(未清洗),後端清成 "chateau" 存庫;
+        若 response 用 "chateau" 當 key,iOS 拿 entry.word="chateau," 永遠 cardIds 查無 →
+        卡在佇列。key 改回原始 word 後,client 用自己送出的字串配對必中,無須鏡像清洗邏輯。
+        """
+        store = _IntakeCardsStore()
+        entries = [VocabEntry(word="chateau,", translation="莊園", context="this chateau, ...")]
+
+        result = add_vocab_entries(entries, **self._kwargs(cards=store))
+
+        assert result.created == 1
+        # 存庫仍是清洗後的內容
+        assert store.add_calls[0]["content"] == "chateau"
+        # 但 response 用原始 submitted word 當 key（client 用 entry.word 配對必中）
+        assert result.cardIds == {"chateau,": "id_1"}
+
+    def test_duplicate_response_keyed_by_original_word(self):
+        """重複情況也用原始 word —— 否則 duplicate 永遠無法在 client 端出列。"""
+        existing = _IntakeCard(id="dup1", content="chateau")  # 已是清洗後存庫形
+        store = _IntakeCardsStore(preload=[existing])
+        entries = [VocabEntry(word="chateau,", translation="莊園", context="")]
+
+        result = add_vocab_entries(entries, **self._kwargs(cards=store))
+
+        assert result.created == 0
+        assert result.skipped == 1
+        assert result.duplicates == ["chateau,"]
+        assert result.cardIds == {"chateau,": "dup1"}
+
     def test_notebook_scope_threads_through(self):
         # Same word lives in another notebook — must NOT be treated as duplicate
         # because cards.all() is called with notebook_id filter.

@@ -227,8 +227,15 @@ final class SyncCoordinator: SyncCoordinating {
                             let response = try await kgService.batchAdd(entries: entries, notebookId: nbId)
 
                             for entry in entries {
+                                // 後端以『原始』submitted word 為 cardIds key（created 與
+                                // duplicate 皆回填 id），故 entry.word 字面配對必中。回傳
+                                // cardId = 卡片確實存在 server（權威確認）→ 直接 markSynced
+                                // 出列，不再依賴 pull-merge 用 content 比對（會被後端清洗
+                                // strip 尾標點/首字小寫破壞，例 "chateau," 永遠對不上
+                                // "chateau" → 卡在佇列重送）。無 cardId（異常）才保持 pending。
                                 if let cardId = response.cardIds[entry.word] {
                                     entry.kgCardId = cardId
+                                    entry.markSynced()
                                 }
                             }
                             totalCreated += response.created
