@@ -105,6 +105,12 @@ final class PodcastPlayerViewModel {
     private(set) var sleepTimerFiredTick: Int = 0
     let hostNames: [String]
 
+    /// 播放自然結束（`AVPlayerItemDidPlayToEndTime`）的 monotonic 計數。view 以
+    /// `.onChange` 觀察來驅動連續播放換集——用 counter 而非 closure，避免「VM→closure
+    /// →view struct→viewModel @State box→VM」retain cycle（鏡射 `sleepTimerFiredTick`）。
+    /// `.endOfEpisode` 睡眠定時觸發那次**不**遞增（用戶要求播完本集即停）。
+    private(set) var episodeFinishedTick: Int = 0
+
     // Translation — set by the player view
     var activeWordSelection: (word: String, context: String)?
     var activePhraseSelection: (phrase: String, context: String)?
@@ -144,7 +150,10 @@ final class PodcastPlayerViewModel {
                 if self.sleepTimerMode == .endOfEpisode {
                     self.sleepTimerMode = .off
                     self.sleepTimerFiredTick &+= 1
+                    return  // 睡眠定時設「播完本集」→ 停在本集尾，不自動續播。
                 }
+                // 連續播放：bump tick，view 的 .onChange 評估下一集（gate 在 PodcastQueue）。
+                self.episodeFinishedTick &+= 1
             }
         }
         audioEngine.onDurationLoaded = { [weak self] d in

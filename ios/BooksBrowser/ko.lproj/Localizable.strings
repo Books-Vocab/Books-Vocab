@@ -11,6 +11,12 @@
 "app.section.bookshelf" = "라이브러리";
 "app.section.notebooks" = "단어장";
 "app.section.overview" = "개요";
+"app.section.podcasts" = "팟캐스트";
+"尚無播客" = "팟캐스트 없음";
+"追蹤喜歡的節目，從這裡開始收聽" = "좋아하는 프로그램을 팔로우하고 여기서 청취를 시작하세요";
+"下拉重新整理以同步節目" = "아래로 당겨 새로고침하여 프로그램 동기화";
+"繼續收聽" = "이어서 듣기";
+"所有節目" = "전체 프로그램";
 "API 錯誤：%@" = "API 오류: %@";
 "KG 伺服器未連線" = "KG 서버 미연결";
 "KG 伺服器錯誤：%@" = "KG 서버 오류: %@";
@@ -849,6 +855,7 @@
 "podcast.guest.cta.signInToListen" = "로그인하고 듣기";
 "podcast.preview.cta.listenFree" = "무료 3분 미리듣기";
 "podcast.preview.banner.message" = "무료 미리듣기 · 업그레이드하면 전체 에피소드";
+"podcast.continue.remaining" = "%@ 남음";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "두 번 탭하여 이 문장부터 재생";
 "podcast.transcript.translateAction" = "문장 번역";
