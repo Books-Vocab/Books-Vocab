@@ -764,10 +764,24 @@ function onDetailAction(e) {
 function speakWord(word) {
   if (!word || typeof window.speechSynthesis === 'undefined') return;
   try {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(word);
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(String(word));
     u.lang = 'en-US';
-    window.speechSynthesis.speak(u);
+    // Pick the most natural voice instead of letting the OS hand back a robotic
+    // compact default. getVoices() populates asynchronously, so on the very
+    // first call it can be empty — wait once for `voiceschanged`, then speak.
+    const speak = () => {
+      const picker = globalThis.KGPure && globalThis.KGPure.pickPreferredVoice;
+      const v = picker ? picker(synth.getVoices(), 'en-US') : null;
+      if (v) {
+        u.voice = v;
+        u.lang = v.lang;
+      }
+      synth.speak(u);
+    };
+    if (synth.getVoices().length) speak();
+    else synth.addEventListener('voiceschanged', speak, { once: true });
   } catch (_err) {
     /* TTS unavailable — no-op */
   }

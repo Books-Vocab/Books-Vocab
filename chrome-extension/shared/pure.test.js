@@ -30,6 +30,7 @@ const {
   filterVocab,
   sortVocab,
   classifyError,
+  pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   isVocabMutatingKind,
@@ -819,4 +820,59 @@ test('parseInlineMarks drops empty spans and handles plain/empty text', () => {
   assert.deepEqual(parseInlineMarks('****'), []);
   assert.deepEqual(parseInlineMarks('plain'), [{ type: 'text', value: 'plain' }]);
   assert.deepEqual(parseInlineMarks(''), []);
+});
+
+// ---------------------------------------------------------------------------
+// pickPreferredVoice — choose the most natural TTS voice for a target lang.
+// Web Speech defaults to whatever the OS hands back for `lang`, which on
+// desktop is often a robotic compact system voice. This picks the best
+// available so the speaker button sounds like a person, mirroring the iOS
+// AVSpeechSynthesisVoice quality. Shared by app.js + content.js (inlined).
+// ---------------------------------------------------------------------------
+
+// Minimal SpeechSynthesisVoice stand-ins (only the fields the picker reads).
+const voice = (name, lang, opts = {}) => ({
+  name, lang, localService: opts.localService ?? true, default: opts.default ?? false,
+});
+
+test('pickPreferredVoice returns null for empty / non-array input', () => {
+  assert.equal(pickPreferredVoice([]), null);
+  assert.equal(pickPreferredVoice(null), null);
+  assert.equal(pickPreferredVoice(undefined), null);
+});
+
+test('pickPreferredVoice prefers a Google natural voice over the default system one', () => {
+  const voices = [
+    voice('Fred', 'en-US', { default: true }),         // robotic system default
+    voice('Samantha', 'en-US'),
+    voice('Google US English', 'en-US', { localService: false }),
+  ];
+  assert.equal(pickPreferredVoice(voices, 'en-US').name, 'Google US English');
+});
+
+test('pickPreferredVoice favours an exact lang match over a same-base regional one', () => {
+  const voices = [
+    voice('Daniel', 'en-GB'),
+    voice('Samantha', 'en-US'),
+  ];
+  assert.equal(pickPreferredVoice(voices, 'en-US').name, 'Samantha');
+});
+
+test('pickPreferredVoice falls back to a same-base voice when no exact match exists', () => {
+  const voices = [voice('Daniel', 'en-GB'), voice('Karen', 'en-AU')];
+  // en-* are all acceptable for English; first same-base wins on a score tie.
+  assert.equal(pickPreferredVoice(voices, 'en-US').name, 'Daniel');
+});
+
+test('pickPreferredVoice returns null rather than read English in a foreign voice', () => {
+  const voices = [voice('Mei-Jia', 'zh-TW'), voice('Kyoko', 'ja-JP')];
+  assert.equal(pickPreferredVoice(voices, 'en-US'), null);
+});
+
+test('pickPreferredVoice ranks explicit natural/neural names above plain system voices', () => {
+  const voices = [
+    voice('Samantha', 'en-US'),
+    voice('Ava (Enhanced)', 'en-US', { localService: false }),
+  ];
+  assert.equal(pickPreferredVoice(voices, 'en-US').name, 'Ava (Enhanced)');
 });
