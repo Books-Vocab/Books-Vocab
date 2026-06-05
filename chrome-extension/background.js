@@ -201,6 +201,11 @@ async function flushOutbox() {
           await writeOutbox(queue);
         });
         bumpVocabDirty(); // server now has these cards → refetch surfaces them
+        if (Object.keys(cardIds).length > 0) {
+          // Cards landed (bare) — kick enrich + poll so they grow pos/note/examples.
+          // chrome adds always go to the default notebook. Fire-and-forget.
+          triggerEnrichPolling('default');
+        }
       } catch (err) {
         const ids = toFlush.map((e) => e.localId);
         await withOutboxLock(async () => {
@@ -217,6 +222,80 @@ async function flushOutbox() {
     flushInFlight = false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Enrich polling — after cards land on the server (bare), kick the pipeline and
+// re-pull a few times so the side panel surfaces the enriched fields (pos /
+// note / examples). Mirrors iOS: trigger POST /api/pipeline, then re-pull
+// GET /api/vocab while X-Pipeline-Pending is true, capped at a few attempts.
+//
+// MV3 note: iOS polls every 10s, but chrome.alarms granularity floors at ~30s,
+// and a service worker can be killed between attempts — so we poll via alarms
+// (which wake a dead worker) at 30s, capped at 3, with the attempt counter in
+// storage (survives worker restarts). Worst case the user re-opens the panel
+// and the dirty-driven refetch shows the final enriched state anyway.
+// ---------------------------------------------------------------------------
+
+const ENRICH_POLL_ALARM = 'kg-enrich-poll';
+const ENRICH_POLL_STATE_KEY = 'enrich_poll_state';
+const ENRICH_POLL_MAX = 3;
+const ENRICH_POLL_DELAY_MIN = 0.5; // 30s — chrome.alarms floor
+
+function scheduleEnrichPoll() {
+  chrome.alarms.create(ENRICH_POLL_ALARM, { delayInMinutes: ENRICH_POLL_DELAY_MIN });
+}
+
+/**
+ * Best-effort: trigger server enrich for the notebook, then start polling.
+ * A failure (quota/transient) is swallowed — the bare cards already exist and a
+ * later add/pull can re-trigger; enrich must never fail the user's add/flush.
+ */
+async function triggerEnrichPolling(notebookId) {
+  try {
+    await KGApi.triggerPipeline(notebookId);
+  } catch (err) {
+    console.warn('[KG] triggerPipeline failed (enrich is best-effort)', err);
+    return;
+  }
+  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts: 0, notebookId } });
+  scheduleEnrichPoll();
+}
+
+async function handleEnrichPoll() {
+  const stored = await chrome.storage.local.get(ENRICH_POLL_STATE_KEY);
+  const state = stored[ENRICH_POLL_STATE_KEY];
+  if (!state) return; // nothing in flight (e.g. cleared, or stale alarm)
+
+  // Re-pull to (a) read X-Pipeline-Pending and (b) bump the side panel so it
+  // re-renders the now-enriched cards. Treat a hiccup as "still pending" so we
+  // retry up to the cap rather than stop early.
+  let pending = false;
+  try {
+    await KGApi.listVocab(undefined, (res) => {
+      pending = res.headers.get('X-Pipeline-Pending') === 'true';
+    });
+  } catch (err) {
+    pending = true;
+  }
+  bumpVocabDirty();
+
+  const attempts = (state.attempts || 0) + 1;
+  if (pending && attempts < ENRICH_POLL_MAX) {
+    await chrome.storage.local.set({
+      [ENRICH_POLL_STATE_KEY]: { attempts, notebookId: state.notebookId },
+    });
+    scheduleEnrichPoll();
+  } else {
+    await chrome.storage.local.remove(ENRICH_POLL_STATE_KEY);
+    chrome.alarms.clear(ENRICH_POLL_ALARM).catch(() => {});
+  }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ENRICH_POLL_ALARM) {
+    handleEnrichPoll().catch((err) => console.error('[KG] enrich poll failed', err));
+  }
+});
 
 const SIDE_EFFECT_HANDLERS = {
   // `get_auth_status` — report whether a token is stored.

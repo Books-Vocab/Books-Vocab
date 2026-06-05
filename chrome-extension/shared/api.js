@@ -30,10 +30,13 @@ async function getToken() {
  * @returns {Promise<any>} parsed JSON body
  */
 async function apiFetch(path, opts = {}) {
+  // `onResponse` is a non-fetch advisory hook (peek at response headers, e.g.
+  // X-Pipeline-Pending); strip it so it never leaks into the fetch init.
+  const { onResponse, headers: optHeaders, ...fetchOpts } = opts;
   const token = await getToken();
   const headers = {
     'Content-Type': 'application/json',
-    ...(opts.headers || {}),
+    ...(optHeaders || {}),
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -42,7 +45,7 @@ async function apiFetch(path, opts = {}) {
   let res;
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      ...opts,
+      ...fetchOpts,
       headers,
     });
   } catch (err) {
@@ -73,6 +76,16 @@ async function apiFetch(path, opts = {}) {
     // 5xx — surface as a distinct code so UI can offer "try later" instead of plain retry.
     const code = res.status >= 500 ? 'server_error' : 'api_error';
     throw new ApiError(code, body || res.statusText || `HTTP ${res.status}`, res.status);
+  }
+
+  // Advisory header peek on a successful response (e.g. X-Pipeline-Pending).
+  // Must never break the call — a throwing hook is swallowed.
+  if (onResponse) {
+    try {
+      onResponse(res);
+    } catch (_err) {
+      /* advisory only */
+    }
   }
 
   // Some endpoints may return 204 with no body
@@ -171,10 +184,25 @@ async function addVocab(entries) {
 /**
  * List vocabulary, optionally only items updated since a timestamp.
  * @param {string} [since] — ISO 8601 timestamp
+ * @param {(res: Response) => void} [onResponse] — advisory header peek (e.g. to
+ *   read X-Pipeline-Pending during enrich polling)
  */
-async function listVocab(since) {
+async function listVocab(since, onResponse) {
   const params = globalThis.KGPure.buildVocabQuery(since);
-  return apiFetch(`/api/vocab${params}`);
+  return apiFetch(`/api/vocab${params}`, onResponse ? { onResponse } : {});
+}
+
+/**
+ * Trigger the server-side enrichment pipeline for a notebook (POST /api/pipeline).
+ * No request body — notebook_id is a query param. The backend enriches "bare"
+ * cards (no pos/note) in the background and returns a queue ack immediately;
+ * results are observed by re-pulling GET /api/vocab. Mirrors iOS
+ * `KGService.triggerPipeline`.
+ * @param {string} [notebookId]
+ */
+async function triggerPipeline(notebookId = 'default') {
+  const nb = encodeURIComponent(notebookId);
+  return apiFetch(`/api/pipeline?notebook_id=${nb}`, { method: 'POST' });
 }
 
 /**
@@ -226,6 +254,7 @@ export {
   explain,
   addVocab,
   listVocab,
+  triggerPipeline,
   lookupWord,
   getUserConfig,
   updateUserConfig,

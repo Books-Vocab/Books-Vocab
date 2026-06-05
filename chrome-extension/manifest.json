@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "__MSG_appDescription__",
   "default_locale": "zh_TW",
-  "permissions": ["activeTab", "sidePanel", "storage"],
+  "permissions": ["activeTab", "sidePanel", "storage", "alarms"],
   "host_permissions": ["https://wordnexus.lol/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
