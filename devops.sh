@@ -19,7 +19,13 @@ LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
 
 SSH_OPTS=( -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
-SSH_CMD=( ssh "${SSH_OPTS[@]}" "$SERVER" )
+# KG_SSH_CMD is a test seam: point it at a stub (e.g. one that echoes the remote
+# command string) to assert transport-layer quoting without a real SSH hop.
+if [[ -n "${KG_SSH_CMD:-}" ]]; then
+  read -r -a SSH_CMD <<< "$KG_SSH_CMD"
+else
+  SSH_CMD=( ssh "${SSH_OPTS[@]}" "$SERVER" )
+fi
 SCP_CMD=( scp -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
 
 # 必要環境變數清單（deploy 前自動檢查）
@@ -730,10 +736,23 @@ cmd_migrate_run() {
   cmd_restart
 }
 
+# ── 在容器內執行 argv（非 shell 字串）──────────────────────────────────────
+# 與 cmd_container_run 的差別:後者契約是「遠端 shell 指令字串」(pipe/redirect 生效);
+# 本函式契約是「一組 argv」——每個 arg 用 printf %q 轉義,讓遠端 bash 重新解析後
+# 還原出完全相同的 argv。SQL 中的引號 / 括號 / % 因此原封不動抵達 ops_cli.py,
+# 不再被 shell 二次解析破壞（這正是 container-script 早已採用的安全序列化手法）。
+container_exec_argv() {
+  run_remote "docker inspect -f '{{.State.Running}}' $CONTAINER 2>/dev/null" \
+    | grep -q true || err "容器 $CONTAINER 未在運行"
+  info "在容器 $CONTAINER 內執行 argv"
+  local quoted; quoted=$(printf ' %q' "$@")
+  run_remote "docker exec $CONTAINER$quoted"
+}
+
 # ── 指令：ops-cli <subcommand> [args] ───────────────────────────────────
 cmd_ops_cli() {
   [[ -z "${1:-}" ]] && err "用法: $0 ops-cli <subcommand> [args...]"
-  cmd_container_run "python3 /app/ops_cli.py $*"
+  container_exec_argv python3 /app/ops_cli.py "$@"
 }
 
 # ── 指令：container-script <local-script> [args] ────────────────────────
