@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: aa71ae66
+verified_against: f6b9ff90
 -->
 # Chrome Extension Feature Boundary
 
@@ -38,7 +38,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `options/options.html` | — | 設定頁面；serif hero 標題、色塊主題選擇器（無 emoji）；「選字翻譯」全域開關 `.kg-toggle` switch；**「翻譯語言」** section（`#sourceLangSelect`→arrow→`#targetLangSelect` `.kg-select` + `#langHint`）；帳號區 **`#pro-status`** Pro 徽章佔位；`[data-i18n]`/`[data-i18n-attr]` 標註 + `shared/i18n.js` include |
+| `options/options.html` | — | 設定頁面，**iOS grouped-list 風格**：小灰 section header + leading icon（`account`/`preferences`/`about` glyph）+ 圓角卡群組。「帳號」卡（`#auth-status` 已登入 / `#pro-status` 藍 PRO 徽章 / `#logout-area` 登出置底）；「偏好」卡合併三列（選字翻譯 `.kg-toggle` switch｜**「翻譯語言」** `#sourceLangSelect`→`#targetLangSelect` `.kg-select`+`#langHint`｜主題色塊選擇器），列間 `.kg-pref-divider` inset 分隔。載入 `shared/icons.js`（header icon 注入）；`[data-i18n]`/`[data-i18n-attr]` 標註 + `shared/i18n.js` include |
 | `options/options.js` | 390 | 設定持久化（`chrome.storage`）；`kg_enabled` master toggle（fail-open read、revert-on-save-failure、跨分頁 `onChanged` sync、focus-visible + aria-hidden painted track）。**翻譯語言**：`SOURCE_LANGS`/`TARGET_LANGS`（value=backend 驗證碼，鏡像 `kg/languages.py`；label=各語 endonym，locale-stable 非 i18n 字串）填 select，登入後 `loadTranslationConfig`（經 background `getUserConfig`）載入、`onLangChange` 經 `updateUserConfig` PUT 持久化（server-canonical 回填、失敗 revert 至 `currentTranslation`）；登出禁用 + login hint。**Pro 狀態**：`loadProStatus`（經 background `getEntitlements`）依 `pro.is_active` 渲染 `PRO` 徽章+`plan_name` 或免費標籤，無法判定（offline/401）時隱藏。`bgRequest` 統一 background 訊息錯誤封套（`{code,status}`）。UI 字串走 `t()=chrome.i18n.getMessage` |
 | `options/options.css` | — | 設定頁樣式；editorial surface 對齊官網 |
 
@@ -112,7 +112,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 改認證流程 | [`docs/sop/architecture.md`](../../sop/architecture.md) auth 段 |
 | 改設計 token / 配色 | 改 `design-system/tokens.json` 再跑 `ops/gen_web_tokens.py` 重生 `shared/{tokens,kg-components}.css`（禁直接手改生成檔；drift 由 `ops/token_drift_check.py` 守） |
 | 改複合元件結構（filter chip bar / 跨平台共用結構） | 改 `design-system/components.json`（結構 SoT）再跑 `ops/gen_web_components.py` 重生 `shared/kg-component-structures.css`（禁手改生成檔）；surface CSS 僅留生成器涵蓋不到的脈絡覆寫 |
-| 改 surface 視覺（card / button / chip 外觀） | 三 surface（sidepanel / popup / options）現消費 `shared/kg-components.css` 的 `.kg-card`/`.kg-btn`/`.kg-chip` primitives；改視覺走 `tokens.json` → generator 重生，**勿在 surface CSS 手寫等價樣式**。各 surface 自有 CSS 僅放 BEM layout class（`.kg-list-card` / `.kg-popup__btn` / `.kg-section-card`）與 primitive 組合；重定義 base class 視為 bug |
+| 改 surface 視覺（card / button / chip 外觀） | 三 surface（sidepanel / popup / options）現消費 `shared/kg-components.css` 的 `.kg-card`/`.kg-btn`/`.kg-chip` primitives；改視覺走 `tokens.json` → generator 重生，**勿在 surface CSS 手寫等價樣式**。各 surface 自有 CSS 僅放 BEM layout class（`.kg-list-card` / `.kg-popup__btn` / `.kg-group-card`）與 primitive 組合；重定義 base class 視為 bug |
 | **改任何 chrome-extension 檔案後** | 跑 `ops/chrome_verify.sh`（三層：static / `node --test` / 真渲染 CDP smoke，零安裝）。它真載入並渲染 extension，能揪出 manifest/asset/syntax 破壞與 CSS cascade 致 `[hidden]` 元素仍可見這類 commit 前無法自動暴露的 bug；非互動 flow / 音訊 QA 仍須人工。無瀏覽器 host 用 `--static-only` |
 | **對標 iOS 視覺** | 跑 `ops/chrome_parity.sh` 產生 Chrome ⟷ iOS 並排 contact sheet：`tools/shots.mjs` headless 截 7 個 UI case（content light/dark/sepia · detail · options · empty · error），逐 case 注入 in-page mock 走 app.js 真實 render path（呼叫 `setState`/`openDetail`/`renderLoggedIn`/`renderProStatus` 等 global）；`tools/compare.mjs` 按 parity manifest 與 `~/Desktop/IOS截圖參考/`（`IOS_REF_DIR` override）並排 montage 成單張 sheet，一張掃完全部對齊度（省 token，取代逐張截圖往返）。對標 IMG_8954（單字本列表）/8955（單字詳情）/8957（設定）；empty/error/dark/sepia 為 Chrome 特有無 iOS 對標。產物 git-ignored |
 | 改 `kg-components.css` base/reset | **`[hidden]{display:none !important}` 全域 reset 為不變式**（author-important 壓過任何 author-normal 如 `.kg-detail-panel{display:flex}`，使帶 hidden 屬性的 opaque panel 真正隱藏）。手寫源在 `design-system/dist/kg-components.css`，經 `ops/gen_web_tokens.py` 傳播到 shared + backend/static 兩份副本；`shared/css.test.js` 鎖死三份皆含此 reset，移除即紅 |
