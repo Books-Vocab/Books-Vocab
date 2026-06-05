@@ -375,6 +375,14 @@ struct PodcastPlayerView: View {
                     .transition(.readerPanelReveal)
                 }
             }
+            // Drive the panel's `.readerPanelReveal` transition on BOTH insert and
+            // remove. Reader gets its entry animation from an `.animation(panelState,
+            // value: chrome.overlay)` on the overlay container (ReaderViewPresenter+
+            // Overlays.swift:52); without an equivalent here, only `handler.dismiss()`'s
+            // own `withAnimation` animated the panel — so it slid out but popped in.
+            // `WordSelection` is Equatable (==, ignoring position), so nil↔non-nil
+            // drives the up-slide/fade. Same spring as dismiss →退場 stays single-feel.
+            .animation(AppMotion.panelState, value: translationHandler.wordSelection)
             .onChange(of: vm.wordTapTick) { _, _ in
                 performWordTap()
             }
