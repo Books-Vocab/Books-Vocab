@@ -253,6 +253,27 @@ class TestAddVocabEntries:
         assert result.duplicates == ["chateau,"]
         assert result.cardIds == {"chateau,": "dup1"}
 
+    def test_same_batch_duplicate_gets_card_id_for_original_word(self):
+        """A duplicate created earlier in the same request must still return a card id.
+
+        iOS removes pending + add entries by looking up cardIds[entry.word].
+        If the second same-batch duplicate lacks a card id, it remains stuck in
+        the pending queue even though the server already created the card.
+        """
+        store = _IntakeCardsStore()
+        entries = [
+            VocabEntry(word="Hello.", translation="你好", context=""),
+            VocabEntry(word="hello", translation="你好", context=""),
+        ]
+
+        result = add_vocab_entries(entries, **self._kwargs(cards=store))
+
+        assert result.created == 1
+        assert result.skipped == 1
+        assert result.duplicates == ["hello"]
+        assert result.cardIds == {"Hello.": "id_1", "hello": "id_1"}
+        assert len(store.add_calls) == 1
+
     def test_notebook_scope_threads_through(self):
         # Same word lives in another notebook — must NOT be treated as duplicate
         # because cards.all() is called with notebook_id filter.

@@ -414,6 +414,38 @@ class TestBatchDeleteVocabWords:
         assert result["deleted"] == 2
         assert set(graph.deprecated_for) == {"c1", "c2"}
 
+    def test_duplicate_request_word_only_deletes_once(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        card = cards.add("hello", meaning="m", notebook_id="default")
+        graph = _FakeArchiveGraph()
+
+        result = batch_delete_vocab_words(
+            ["hello", "hello"], cards_store=cards, graph=graph,
+        )
+
+        assert result["deleted"] == 1
+        assert result["deleted_words"] == ["hello"]
+        assert result["not_found"] == []
+        assert graph.deprecated_for == [card.id]
+
+    def test_canonical_duplicate_variants_all_converge_but_delete_once(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        card = cards.add("hello", meaning="m", notebook_id="default")
+        graph = _FakeArchiveGraph()
+
+        result = batch_delete_vocab_words(
+            ["Hello.", "hello"], cards_store=cards, graph=graph,
+        )
+
+        assert result["deleted"] == 2
+        assert result["deleted_words"] == ["Hello.", "hello"]
+        assert result["not_found"] == []
+        assert graph.deprecated_for == [card.id]
+
     def test_graph_failure_routes_to_failed_not_not_found(self):
         """When graph cleanup raises, the card is restored (still exists on the
         server) and the word must go to the `failed` bucket, NOT `not_found`.
@@ -468,6 +500,40 @@ class TestBatchArchiveVocabWords:
         result = batch_archive_vocab_words(["hello", "world"], archived=False, cards_store=cards, graph=graph)
         assert result["updated"] == 2
         assert set(graph.restored_for) == {"c1", "c2"}
+
+    def test_duplicate_request_word_only_archives_once(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        card = cards.add("hello", meaning="m", notebook_id="default")
+        graph = _FakeArchiveGraph()
+
+        result = batch_archive_vocab_words(
+            ["hello", "hello"], archived=True, cards_store=cards, graph=graph,
+        )
+
+        assert result["updated"] == 1
+        assert result["updated_words"] == ["hello"]
+        assert result["not_found"] == []
+        assert graph.deprecated_for == [card.id]
+        assert cards.get(card.id).is_archived is True
+
+    def test_canonical_duplicate_variants_all_converge_but_archive_once(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        card = cards.add("hello", meaning="m", notebook_id="default")
+        graph = _FakeArchiveGraph()
+
+        result = batch_archive_vocab_words(
+            ["Hello.", "hello"], archived=True, cards_store=cards, graph=graph,
+        )
+
+        assert result["updated"] == 2
+        assert result["updated_words"] == ["Hello.", "hello"]
+        assert result["not_found"] == []
+        assert graph.deprecated_for == [card.id]
+        assert cards.get(card.id).is_archived is True
 
     def test_partial_not_found(self):
         cards = _FakeCardsStore([_FakeCard(id="c1", content="hello")])
@@ -566,6 +632,19 @@ class TestBatchDeleteCaseInsensitive:
         result = batch_delete_vocab_words([nfc], cards_store=cards)
         assert result["deleted"] == 1
 
+    def test_matches_cleaned_storage_content(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        card = cards.add("chateau", meaning="莊園", notebook_id="default")
+
+        result = batch_delete_vocab_words(["chateau,"], cards_store=cards)
+
+        assert result["deleted"] == 1
+        assert result["deleted_words"] == ["chateau,"]
+        assert result["not_found"] == []
+        assert cards.get(card.id).is_deleted is True
+
     def test_no_find_by_content_calls(self):
         """After N+1 fix, batch_delete should use all() not find_by_content."""
         cards = _FakeCardsStore([
@@ -602,6 +681,19 @@ class TestBatchArchiveCaseInsensitive:
         cards = _FakeCardsStore([_FakeCard(id="c1", content=nfd)])
         result = batch_archive_vocab_words([nfc], archived=True, cards_store=cards)
         assert result["updated"] == 1
+
+    def test_matches_cleaned_storage_content(self, tmp_path):
+        from kg.cards import CardStore
+
+        cards = CardStore(tmp_path / "cards.db")
+        card = cards.add("chateau", meaning="莊園", notebook_id="default")
+
+        result = batch_archive_vocab_words(["chateau,"], archived=True, cards_store=cards)
+
+        assert result["updated"] == 1
+        assert result["updated_words"] == ["chateau,"]
+        assert result["not_found"] == []
+        assert cards.get(card.id).is_archived is True
 
     def test_no_find_by_content_calls(self):
         """After N+1 fix, batch_archive should use all() not find_by_content."""
@@ -885,5 +977,3 @@ class TestBatchDeleteNotebookIsolation:
         # only nb_a's card is gone; nb_b's identically-named card survives
         assert cards.get(nb_a.id).is_deleted is True
         assert cards.get(nb_b.id).is_deleted is False
-
-

@@ -124,7 +124,8 @@ def add_vocab_entries(
         )
         card_ids[word] = card.id
         response_card_ids[entry.word] = card.id
-        existing.add(_normalize_word(word))
+        existing.add(norm)
+        existing_by_norm[norm] = card
         created += 1
 
     if created > 0:
