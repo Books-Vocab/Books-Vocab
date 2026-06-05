@@ -61,6 +61,7 @@ podcast catalog 同步現有兩條觸發鏈：
 - `episodes[].subtitleContent: String?` 由 `ops/podcast_upload.sh` 嵌入；iOS `PodcastEpisode.inlineSubtitle` 直接消費，跳過 `/api/podcasts/{sid}/{ep}/subtitle` fetch
 - `episodes[].localAudioPath: String?` (SwiftData only, 不在後端 JSON) — 由 DownloadManager 填寫；PlayerView 認到即用 file:// URL 跳過認證
 - `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。iOS 有值才拉遠端封面圖快取，否則退 `color`/`coverPattern` 程序化封面
+- `episodes[ep1].previewAvailable: Bool` + `previewDurationSec: Int`（free-tier 試聽，**僅 ep_01**）：`ops/podcast_upload.sh` 對 ep_01 以 `ffmpeg -t 180 -c copy` stream-copy 出 `ep_01/preview.<fmt>`（同 container/codec、無損）並寫此二欄；既有 series 由 `ops/podcast_preview_backfill.py`（bucket-driven、audio-decoupled、dry-run 預設 / `--execute` / `--check` drift）回填。backend `audio` 端點對 free tier 服務此 `preview.<fmt>` 物件（見 `tech_index.md` podcast_access），**不**對完整檔做 byte 截斷（progressive MP4 單 moov 宣告全長，截 byte 會讓 AVPlayer 報錯而非乾淨停止）。preview 欄位在 `episodes` 內，`index.json` 會 strip，故不影響 series-list view
 
 ### Sub-views（UI 元件）
 
