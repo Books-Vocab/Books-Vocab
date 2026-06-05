@@ -23,7 +23,7 @@ from ..types import UserRecord
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
-router = APIRouter()
+router = APIRouter(tags=["pipeline"])
 
 
 async def _run_pipeline_background(user: UserRecord, *, force_enrich: bool = False, notebook_id: str = "default"):

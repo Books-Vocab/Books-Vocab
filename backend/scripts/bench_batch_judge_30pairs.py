@@ -3,7 +3,7 @@
 
 用法：
     cd backend && set -a && source .env && set +a
-    PYTHONPATH=src python tests/test_batch_judge_30pairs.py
+    PYTHONPATH=src python scripts/bench_batch_judge_30pairs.py
 """
 from __future__ import annotations
 

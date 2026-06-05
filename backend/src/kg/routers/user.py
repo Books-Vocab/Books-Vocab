@@ -27,7 +27,7 @@ from ..user_handlers import (
     update_user_config_response,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["user"])
 
 
 @router.get("/api/user/config", response_model=UserConfigResponse)

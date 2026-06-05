@@ -32,7 +32,7 @@ class TestTransactionIdFormat:
         # We can't actually call the async function, but we test the validation
         # by importing the validator directly
         from kg.app_store import _validate_transaction_id
-        _validate_transaction_id("123456789")
+        assert _validate_transaction_id("123456789") is None
 
     @pytest.mark.parametrize("bad_id", [
         "abc",

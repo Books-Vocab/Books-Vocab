@@ -68,7 +68,7 @@ def since_iso(range_: str) -> str | None:
         return start.isoformat()
     if range_ == "all":
         return None
-    raise ValueError(f"invalid range: {range_}")
+    raise ValueError(f"Invalid range: {range_}")
 
 
 def service_for(call_type: str) -> str:
@@ -110,7 +110,7 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
     table, never inserts a default user.
     """
     if range_ not in VALID_RANGES:
-        raise ValueError(f"invalid range: {range_}")
+        raise ValueError(f"Invalid range: {range_}")
 
     # Import lazily so unit tests can monkeypatch DATA_DIR before module
     # initialises its SQLite connection.

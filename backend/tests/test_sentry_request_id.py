@@ -21,10 +21,24 @@ def test_tag_request_id_no_op_when_sentry_inactive(monkeypatch):
     monkeypatch.delenv("SENTRY_DSN", raising=False)
     import kg.sentry_init as si
 
-    # Must not raise even though sentry isn't initialized.
-    si.tag_request_id("req-abc")
-    si.tag_request_id(None)
-    si.tag_request_id("")
+    # Force the inactive guard regardless of ambient init state, and expose a
+    # sentry surface that would record any errant call.
+    set_tag_calls: list = []
+
+    class _Recorder:
+        @staticmethod
+        def set_tag(key, value):
+            set_tag_calls.append((key, value))
+
+    monkeypatch.setattr(si, "_initialized", False, raising=False)
+    monkeypatch.setattr(si, "_sentry_module", _Recorder, raising=False)
+
+    # Must not raise even though sentry isn't initialized, and must return None.
+    assert si.tag_request_id("req-abc") is None
+    assert si.tag_request_id(None) is None
+    assert si.tag_request_id("") is None
+    # The inactive guard short-circuited before touching the sentry surface.
+    assert set_tag_calls == []
 
 
 def test_tag_request_id_sets_tag_when_active(monkeypatch):
@@ -64,17 +78,22 @@ def test_tag_request_id_skips_falsy(monkeypatch):
 def test_tag_request_id_suppresses_sentry_errors(monkeypatch):
     """A sentry-side exception must never propagate into the request flow."""
 
+    invoked: list = []
+
     class BoomSentry:
         @staticmethod
         def set_tag(key, value):
+            invoked.append((key, value))
             raise RuntimeError("sentry transport down")
 
     import kg.sentry_init as si
     monkeypatch.setattr(si, "_initialized", True, raising=False)
     monkeypatch.setattr(si, "_sentry_module", BoomSentry, raising=False)
 
-    # Must swallow.
-    si.tag_request_id("req-boom")
+    # Must swallow and return None.
+    assert si.tag_request_id("req-boom") is None
+    # Proof the except branch ran: the raising sentry mock WAS invoked.
+    assert invoked == [("request_id", "req-boom")]
 
 
 # ---------------------------------------------------------------------------

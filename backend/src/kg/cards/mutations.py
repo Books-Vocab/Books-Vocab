@@ -41,6 +41,8 @@ class CardMutationMixin:
         true safety net — if a duplicate slips through, IntegrityError
         catches it and we return the existing card.
         """
+        if not content or not content.strip():
+            raise ValueError("content must be non-empty")
         norm = normalize_nfc(content)
         with Session(self.engine) as session:
             row = session.connection().exec_driver_sql(
@@ -137,6 +139,8 @@ class CardMutationMixin:
 
     def soft_delete_by_notebook(self, notebook_id: str) -> int:
         """Soft-delete all non-deleted cards in a notebook. Returns count."""
+        if not notebook_id:
+            raise ValueError("notebook_id required")
         now = datetime.now(UTC)
         with Session(self.engine) as session:
             cards = session.exec(
@@ -223,22 +227,22 @@ class CardMutationMixin:
         """Update specific fields of a card. Automatically sets updated_at."""
         with Session(self.engine) as session:
             card = session.get(Card, card_id)
-            if card and not card.is_deleted:
-                has_changes = False
-                for key, value in kwargs.items():
-                    if hasattr(card, key) and getattr(card, key) != value:
-                        setattr(card, key, value)
-                        has_changes = True
-                if "content" in kwargs:
-                    card.content_nfc_lower = normalize_nfc_lower(card.content)
+            if not card or card.is_deleted:
+                return None
+            has_changes = False
+            for key, value in kwargs.items():
+                if hasattr(card, key) and getattr(card, key) != value:
+                    setattr(card, key, value)
+                    has_changes = True
+            if "content" in kwargs:
+                card.content_nfc_lower = normalize_nfc_lower(card.content)
 
-                if has_changes:
-                    card.updated_at = datetime.now(UTC)
-                    session.add(card)
-                    session.commit()
-                    session.refresh(card)
-                return card
-        return None
+            if has_changes:
+                card.updated_at = datetime.now(UTC)
+                session.add(card)
+                session.commit()
+                session.refresh(card)
+            return card
 
     def batch_update(self, updates: list[tuple[str, dict]]) -> int:
         """Update multiple cards in a single transaction. Returns count of actually changed cards."""

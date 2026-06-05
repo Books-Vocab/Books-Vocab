@@ -21,13 +21,18 @@ auto-creates the table; no manual migration needed.
 
 from __future__ import annotations
 
-import os
+import contextlib
 import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-_DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+from .ops_shared import data_dir
+
+
+def _close_quietly(conn: sqlite3.Connection) -> None:
+    with contextlib.suppress(sqlite3.Error):
+        conn.close()
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -47,10 +52,7 @@ def set_data_dir(path: Path | None) -> None:
     with _lock:
         _override_data_dir = path
         if _conn is not None:
-            try:
-                _conn.close()
-            except Exception:
-                pass
+            _close_quietly(_conn)
         _conn = None
         _init_data_dir = None
 
@@ -58,7 +60,7 @@ def set_data_dir(path: Path | None) -> None:
 def _resolve_data_dir() -> Path:
     if _override_data_dir is not None:
         return _override_data_dir
-    return Path(os.getenv("KG_DATA_DIR", str(_DEFAULT_DATA_DIR)))
+    return data_dir()
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -72,10 +74,7 @@ def _get_conn() -> sqlite3.Connection:
     if _conn is not None and _init_data_dir == current_dir:
         return _conn
     if _conn is not None:
-        try:
-            _conn.close()
-        except Exception:
-            pass
+        _close_quietly(_conn)
         _conn = None
     db_path = current_dir / "podcast_progress.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,10 +134,7 @@ def _reset() -> None:
     global _conn, _init_data_dir, _override_data_dir
     with _lock:
         if _conn is not None:
-            try:
-                _conn.close()
-            except Exception:
-                pass
+            _close_quietly(_conn)
             _conn = None
             _init_data_dir = None
         _override_data_dir = None
@@ -247,12 +243,13 @@ def get_single(*, user_id: str, series_id: str, ep_num: int) -> dict | None:
     return _row_dict(series_id, ep_num, row[0], row[1], row[2])
 
 
-def list_for_user(*, user_id: str) -> list[dict]:
+def list_for_user(*, user_id: str, limit: int = 500) -> list[dict]:
     with _lock:
         conn = _get_conn()
         rows = conn.execute(
             "SELECT series_id, ep_num, position_sec, duration_sec, updated_at "
-            "FROM podcast_progress WHERE user_id = ? ORDER BY updated_at DESC",
-            (user_id,),
+            "FROM podcast_progress WHERE user_id = ? ORDER BY updated_at DESC "
+            "LIMIT ?",
+            (user_id, limit),
         ).fetchall()
     return [_row_dict(s, e, p, d, u) for s, e, p, d, u in rows]

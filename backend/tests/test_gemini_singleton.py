@@ -6,7 +6,7 @@ import kg.service_factories as sf
 
 
 def setup_function():
-    sf.reset_gemini_client()
+    sf.reset_clients()
 
 
 def test_same_instance_returned(monkeypatch):
@@ -19,7 +19,7 @@ def test_same_instance_returned(monkeypatch):
 def test_reset_creates_new_instance(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
     c1 = sf.create_gemini_client()
-    sf.reset_gemini_client()
+    sf.reset_clients()
     c2 = sf.create_gemini_client()
     assert c1 is not c2
 

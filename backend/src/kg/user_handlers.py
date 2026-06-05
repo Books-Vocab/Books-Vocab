@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
 import sqlite3
 from collections.abc import Callable
@@ -180,10 +181,8 @@ def health_response(
     data_dir_exists = user_dir.exists()
 
     disk_free_mb: int | None = None
-    try:
+    with contextlib.suppress(OSError):
         disk_free_mb = shutil.disk_usage(user_dir).free // (1024 * 1024)
-    except OSError:
-        pass
 
     return HealthResponse(
         status="ok",

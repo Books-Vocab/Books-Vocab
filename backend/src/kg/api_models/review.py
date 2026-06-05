@@ -12,7 +12,7 @@ class ReviewStateEntry(BaseModel):
     review_count: int = Field(ge=0)
     lapse_count: int = Field(ge=0)
     review_streak: int = Field(ge=0)
-    last_review_feedback: int
+    last_review_feedback: int = Field(ge=-1, le=1)
 
 
 class ReviewStatePushRequest(BaseModel):

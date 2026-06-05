@@ -4,39 +4,11 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
+from ops_helpers import _create_token_usage_db, _now_iso
+
 SCRIPT = Path(__file__).resolve().parent.parent / "ops_analyze.py"
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-
-
-def _create_token_usage_db(path: Path, rows: list[tuple], *, with_provider: bool) -> None:
-    """rows: (uid, call_type, in, out, created_at[, provider])。"""
-    cols = "user_id, call_type, input_tokens, output_tokens, created_at"
-    schema_extra = ", provider TEXT" if with_provider else ""
-    conn = sqlite3.connect(str(path / "token_usage.db"))
-    conn.execute(
-        f"""
-        CREATE TABLE token_usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            call_type TEXT NOT NULL,
-            input_tokens INTEGER NOT NULL DEFAULT 0,
-            output_tokens INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL{schema_extra}
-        )
-        """
-    )
-    if with_provider:
-        cols += ", provider"
-    ph = ", ".join("?" * (6 if with_provider else 5))
-    conn.executemany(f"INSERT INTO token_usage ({cols}) VALUES ({ph})", rows)
-    conn.commit()
-    conn.close()
 
 
 def _setup_user(tmp_path: Path, uid: str) -> Path:

@@ -6,7 +6,7 @@
 2. Token 消耗差異
 
 用法：
-    cd backend && PYTHONPATH=src python tests/test_batch_judge_live.py
+    cd backend && PYTHONPATH=src python scripts/bench_batch_judge_live.py
 """
 from __future__ import annotations
 

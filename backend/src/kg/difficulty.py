@@ -8,7 +8,7 @@ from functools import lru_cache
 from wordfreq import zipf_frequency
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DifficultyTier:
     tag: str
     css_class: str

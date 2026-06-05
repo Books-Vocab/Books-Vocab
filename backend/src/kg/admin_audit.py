@@ -7,25 +7,20 @@ on user accounts are auditable after the fact. Read back via the
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .ops_shared import data_dir
+
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 
 
 def _db_path() -> Path:
-    data_dir = Path(
-        os.getenv(
-            "KG_DATA_DIR",
-            str(Path(__file__).resolve().parent.parent.parent / "data"),
-        )
-    )
-    return data_dir / "admin_audit.db"
+    return data_dir() / "admin_audit.db"
 
 
 def _get_conn() -> sqlite3.Connection:

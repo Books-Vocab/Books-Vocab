@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from .api_models import CardResponse
+from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
 from .exceptions import BadRequestError, NotFoundError, ValidationError
 from .user_store import parse_datetime
 from .vocab_shared import (
@@ -50,12 +51,17 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
 
-def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> Any:
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise NotFoundError("Word", word)
+    return card
+
+
+def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
     cards_by_id: dict[str, Any] = {card.id: card}
@@ -69,12 +75,8 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
     return card_response_builder(card, graph, cards_by_id)
 
 
-def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
-    if len(word) > MAX_WORD_LENGTH:
-        raise ValidationError("Word too long")
-    card = cards_store.find_by_content(word, notebook_id=notebook_id)
-    if not card:
-        raise NotFoundError("Word", word)
+def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> ArchiveWordResponse:
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
         try:
@@ -92,7 +94,7 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
             except Exception:
                 logger.exception("rollback failed for card %s after graph error", card.id)
             raise
-    return {"word": word, "id": card.id, "archived": archived}
+    return ArchiveWordResponse(word=word, id=card.id, archived=archived)
 
 
 def _evict_embedding(embeddings: Any, card_id: str) -> None:
@@ -114,12 +116,8 @@ def delete_vocab_word(
     graph: Any = None,
     embeddings: Any = None,
     notebook_id: str | None = None,
-) -> dict[str, str]:
-    if len(word) > MAX_WORD_LENGTH:
-        raise ValidationError("Word too long")
-    card = cards_store.find_by_content(word, notebook_id=notebook_id)
-    if not card:
-        raise NotFoundError("Word", word)
+) -> DeleteWordResponse:
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.delete(card.id)
     if graph is not None:
         try:
@@ -135,7 +133,7 @@ def delete_vocab_word(
     # stops polluting find_similar. Done after the rollback window so a
     # restored card keeps its vector.
     _evict_embedding(embeddings, card.id)
-    return {"deleted": word, "id": card.id}
+    return DeleteWordResponse(deleted=word, id=card.id)
 
 
 class _GraphOpFailed(Exception):
@@ -148,13 +146,19 @@ class _GraphOpFailed(Exception):
     """
 
 
+class BulkResult(NamedTuple):
+    succeeded: list[tuple[str, Any]]
+    not_found: list[str]
+    failed: list[str]
+
+
 def _batch_apply(
     words: list[str],
     *,
     cards_store: Any,
     notebook_id: str | None,
     apply: Callable[[Any], None],
-) -> tuple[list[tuple[str, Any]], list[str], list[str]]:
+) -> BulkResult:
     """Shared skeleton for batch vocab mutations.
 
     Validates the batch size, builds one content lookup, and runs ``apply(card)``
@@ -191,7 +195,7 @@ def _batch_apply(
             continue
         succeeded.append((word, card))
 
-    return succeeded, not_found, failed
+    return BulkResult(succeeded, not_found, failed)
 
 
 def batch_delete_vocab_words(
@@ -222,6 +226,7 @@ def batch_delete_vocab_words(
             try:
                 graph.cleanup_for_card(card.id, remove_blocked=True)
             except Exception as exc:
+                logger.error("Graph operation failed for card %s", card.id, exc_info=True)
                 try:
                     cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
@@ -288,6 +293,7 @@ def batch_archive_vocab_words(
                 # Roll the card's archive state back to its original value so a
                 # failed graph op never leaves card state and the response out of
                 # sync (mirrors batch_delete_vocab_words).
+                logger.error("Graph operation failed for card %s", card.id, exc_info=True)
                 try:
                     cards_store.update(card.id, is_archived=not archived)
                 except Exception:

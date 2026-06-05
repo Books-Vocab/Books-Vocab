@@ -15,7 +15,7 @@ from ..translate_handlers import (
     translate_quick_response,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["translate"])
 
 
 @router.post("/api/translate/quick", response_model=QuickTranslateResponse)

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import httpx
 from fastapi import HTTPException
 from filelock import FileLock
 
 logger = logging.getLogger(__name__)
+
+UsersLoader: TypeAlias = Callable[[], dict[str, dict[str, Any]]]
+UsersSaver: TypeAlias = Callable[[dict[str, dict[str, Any]]], None]
 
 from .api_models import (
     AppStoreNotificationRequest,
@@ -20,6 +24,8 @@ from .api_models import (
 )
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
 
+EntitlementsBuilder: TypeAlias = Callable[[dict[str, Any] | None], EntitlementsResponse]
+
 # Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
 # three ingest paths (sync / notification / reconcile). `source` and
 # `price_display` differ per path and stay explicit at the call site.
@@ -27,6 +33,21 @@ _SNAPSHOT_FIELDS = (
     "product_id", "status", "is_trial", "expires_at", "will_renew",
     "environment", "transaction_id", "original_transaction_id",
 )
+
+
+@contextmanager
+def _map_app_store_errors(verification_log: str, verification_detail: str) -> Iterator[None]:
+    """Map the two App Store decode errors onto the uniform billing HTTP
+    contract: configuration -> 500, verification -> 400. The verification log
+    line and HTTP detail vary per ingest path and stay explicit."""
+    try:
+        yield
+    except AppStoreConfigurationError as exc:
+        logger.error("App Store configuration error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
+    except AppStoreVerificationError as exc:
+        logger.warning(verification_log, exc, exc_info=True)
+        raise HTTPException(status_code=400, detail=verification_detail) from exc
 
 
 def _write_snapshot(
@@ -55,28 +76,31 @@ def sync_app_store_subscription_response(
     *,
     allow_unsigned_sync: bool,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: UsersLoader,
+    save_users: UsersSaver,
     decode_signed_transaction_info: Callable[[str], dict[str, Any]],
     write_subscription_snapshot: Callable[..., dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
-    try:
+    with _map_app_store_errors(
+        "App Store transaction verification failed: %s",
+        "Transaction verification failed",
+    ):
         if req.signed_transaction_info:
             snapshot = decode_signed_transaction_info(req.signed_transaction_info)
             if req.transaction_id and snapshot["transaction_id"] and req.transaction_id != snapshot["transaction_id"]:
                 raise HTTPException(status_code=400, detail="transaction_id does not match signed_transaction_info")
             if req.original_transaction_id and snapshot["original_transaction_id"] and req.original_transaction_id != snapshot["original_transaction_id"]:
                 raise HTTPException(status_code=400, detail="original_transaction_id does not match signed_transaction_info")
+        elif not allow_unsigned_sync:
+            if req.environment.lower() == "xcode":
+                logger.warning(
+                    "Rejected unsigned xcode sync for user %s — "
+                    "enable APP_STORE_ALLOW_UNSIGNED_SYNC for dev/test",
+                    user.get("id"),
+                )
+            raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
         else:
-            if not allow_unsigned_sync:
-                if req.environment.lower() == "xcode":
-                    logger.warning(
-                        "Rejected unsigned xcode sync for user %s — "
-                        "enable APP_STORE_ALLOW_UNSIGNED_SYNC for dev/test",
-                        user.get("id"),
-                    )
-                raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
             snapshot = {
                 "product_id": req.product_id,
                 "transaction_id": req.transaction_id,
@@ -88,12 +112,6 @@ def sync_app_store_subscription_response(
                 "will_renew": req.will_renew,
                 "price_display": req.price_display,
             }
-    except AppStoreConfigurationError as exc:
-        logger.error("App Store configuration error: %s", exc)
-        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
-    except AppStoreVerificationError as exc:
-        logger.warning("App Store transaction verification failed: %s", exc)
-        raise HTTPException(status_code=400, detail="Transaction verification failed") from exc
 
     with FileLock(str(users_lock_file)):
         users = load_users()
@@ -110,22 +128,19 @@ def app_store_notifications_response(
     req: AppStoreNotificationRequest,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: UsersLoader,
+    save_users: UsersSaver,
     decode_notification_payload: Callable[[AppStoreNotificationRequest], tuple[dict[str, Any], dict[str, Any] | None]],
     append_app_store_event: Callable[[dict[str, Any]], None],
     resolve_user_id_from_subscription_index: Callable[[dict[str, Any], str | None, str | None], str | None],
     write_subscription_snapshot: Callable[..., dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: EntitlementsBuilder,
 ) -> dict[str, Any]:
-    try:
+    with _map_app_store_errors(
+        "App Store notification verification failed: %s",
+        "Transaction verification failed",
+    ):
         snapshot, decoded_payload = decode_notification_payload(req)
-    except AppStoreConfigurationError as exc:
-        logger.error("App Store configuration error: %s", exc)
-        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
-    except AppStoreVerificationError as exc:
-        logger.warning("App Store notification verification failed: %s", exc)
-        raise HTTPException(status_code=400, detail="Transaction verification failed") from exc
 
     event = {
         "received_at": datetime.now(tz=UTC).isoformat(),
@@ -185,30 +200,28 @@ async def reconcile_app_store_subscription_response(
     *,
     apple_bundle_id: str,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: UsersLoader,
+    save_users: UsersSaver,
     fetch_transaction_info: Callable[..., Awaitable[dict[str, Any]]],
     decode_signed_transaction_info: Callable[[str], dict[str, Any]],
     resolve_user_id_from_subscription_index: Callable[[dict[str, Any], str | None, str | None], str | None],
     write_subscription_snapshot: Callable[..., dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     try:
-        server_response = await fetch_transaction_info(
-            req.transaction_id,
-            bundle_id=apple_bundle_id,
-            environment=req.environment,
-        )
-        signed_transaction_info = server_response.get("signedTransactionInfo")
-        if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
-            raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
-        snapshot = decode_signed_transaction_info(signed_transaction_info)
-    except AppStoreConfigurationError as exc:
-        logger.error("App Store configuration error: %s", exc)
-        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
-    except AppStoreVerificationError as exc:
-        logger.warning("App Store transaction decode failed: %s", exc)
-        raise HTTPException(status_code=400, detail="Invalid transaction response") from exc
+        with _map_app_store_errors(
+            "App Store transaction decode failed: %s",
+            "Invalid transaction response",
+        ):
+            server_response = await fetch_transaction_info(
+                req.transaction_id,
+                bundle_id=apple_bundle_id,
+                environment=req.environment,
+            )
+            signed_transaction_info = server_response.get("signedTransactionInfo")
+            if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
+                raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
+            snapshot = decode_signed_transaction_info(signed_transaction_info)
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}") from exc
     except httpx.HTTPError as exc:
