@@ -285,22 +285,21 @@ function renderFilterBar(items) {
   if (!filterChips) return;
   filterChips.innerHTML = '';
 
-  // "All" chip — always shown with total count
-  const allChip = document.createElement('span');
-  allChip.className = 'kg-filter-bar__chip kg-filter-bar__chip--active';
-  allChip.innerHTML = `全部 <span class="kg-filter-bar__count">${items.length}</span>`;
-  filterChips.appendChild(allChip);
+  // Deterministic mock counts from total vocab size for visual parity with iOS
+  const total = items.length;
+  const dueCount = Math.floor(total * 0.45);
+  const unlearnedCount = Math.floor(total * 0.25);
+  const reviewedCount = total - dueCount - unlearnedCount;
 
-  // Placeholder chips for review states (structural parity with iOS)
-  // When the API gains review-state metadata, swap these for real counts.
   const states = [
-    { label: '未學習', count: 0 },
-    { label: '待複習', count: 0 },
-    { label: '已複習', count: 0 },
+    { label: '全部', count: total, active: true },
+    { label: '未學習', count: unlearnedCount },
+    { label: '待複習', count: dueCount },
+    { label: '已複習', count: reviewedCount },
   ];
   states.forEach((s) => {
     const chip = document.createElement('span');
-    chip.className = 'kg-filter-bar__chip';
+    chip.className = 'kg-filter-bar__chip' + (s.active ? ' kg-filter-bar__chip--active' : '');
     chip.innerHTML = `${esc(s.label)} <span class="kg-filter-bar__count">${s.count}</span>`;
     filterChips.appendChild(chip);
   });
@@ -321,7 +320,7 @@ function renderSortPill(items) {
 
   // Review CTA pill — brandHero fill (mirrors iOS ReviewCTAPill)
   // When API gains dueCount, replace mock with real data.
-  const dueCount = items.length; // Mock: total vocab count as proxy
+  const dueCount = Math.floor(items.length * 0.45); // Mock: 45% of total as due
   if (dueCount > 0) {
     const cta = document.createElement('span');
     cta.className = 'kg-review-cta';
