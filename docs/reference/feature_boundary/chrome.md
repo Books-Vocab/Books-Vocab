@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 1accb78c
+verified_against: ef46b269
 -->
 # Chrome Extension Feature Boundary
 
@@ -16,8 +16,8 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `manifest.json` | — | MV3 manifest：`activeTab` / `sidePanel` / `storage` 權限，`host_permissions` 限 `wordnexus.lol/*` |
-| `background.js` | 120 | Service worker：sidepanel 開關、訊息路由、token 注入。**vocab_dirty bump**：訊息路由完成後若 `KGPure.isVocabMutatingKind(kind)`（現僅 `addVocab`）為真，fire-and-forget 寫 storage `VOCAB_DIRTY_KEY` 為 `${Date.now()}.${++tick}`（單調遞增，杜絕同毫秒漏觸發 `storage.onChanged`）；bump 失敗不阻擋 caller 的 add |
+| `manifest.json` | — | MV3 manifest：`activeTab` / `sidePanel` / `storage` / `alarms` 權限（`alarms` 供 enrich 輪詢喚醒被殺的 worker），`host_permissions` 限 `wordnexus.lol/*` |
+| `background.js` | ~300 | Service worker：sidepanel 開關、訊息路由（經 `KGPure.routeMessage`）、token 注入。**addVocab outbox（對齊 iOS 本地暫存→sync）**：加詞不再 inline POST，改 optimistic enqueue 進 `chrome.storage.local` 的 `vocab_outbox`（經 `KGOutbox` 純狀態機）+ 立即回 ack；背景 `flushOutbox` single-flight（`flushInFlight`/`flushRequested`，每 `await` 後 re-read 防 lost-update，`withOutboxLock` promise-chain mutex 串行化所有 read-modify-write）批次 `POST /api/vocab` 收斂 `cardIds`，失敗 `markFailed` 待重試。**enrich 回填（step 3+4）**：flush 收斂後 fire `triggerEnrichPolling`（`POST /api/pipeline` + `chrome.alarms` 30s×上限3 輪詢讀 `X-Pipeline-Pending`，poll state 存 `enrich_poll_state` 耐 worker 重啟）→ bump dirty 讓 sidepanel 重抓顯示 enriched 卡。**startup drain**：worker spin-up 時 top-level `flushOutbox()` 重試殘留。**vocab_dirty bump**：mutating 成功後 fire-and-forget 寫 `VOCAB_DIRTY_KEY=${Date.now()}.${++tick}`（單調遞增防同毫秒漏觸發），sidepanel `storage.onChanged` 靜默重抓 |
 
 ### Content Script Layer（網頁注入）
 
@@ -46,7 +46,9 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `shared/api.js` | 238 | `wordnexus.lol` HTTP client + auth header；含 `getUserConfig`（`GET /api/user/config`）/ `updateUserConfig`（`PUT /api/user/config`，body `{translation:{source_lang,target_lang}}`，bad pair 422）/ `getEntitlements`（`GET /api/user/entitlements`，回 `{pro:{is_active,plan_name,…}}`） |
+| `shared/api.js` | ~270 | `wordnexus.lol` HTTP client + auth header；含 `getUserConfig`（`GET /api/user/config`）/ `updateUserConfig`（`PUT /api/user/config`，body `{translation:{source_lang,target_lang}}`，bad pair 422）/ `getEntitlements`（`GET /api/user/entitlements`，回 `{pro:{is_active,plan_name,…}}`）/ `triggerPipeline`（`POST /api/pipeline?notebook_id`，加詞收斂後觸發 server enrich）。`apiFetch` 支援 `onResponse` advisory hook（解構出避免漏進 fetch init，res.ok 後呼叫）讓 caller 偷讀 response header（如 enrich 輪詢的 `X-Pipeline-Pending`，經 MV3 worker `host_permissions` 特權跨域讀取，免 CORS `expose_headers`）；`listVocab(since, onResponse)` 用之 |
+| `shared/vocab-outbox.js` | ~210 | **加詞 outbox 純狀態機**（`globalThis.KGOutbox`，triple-export 同 `pure.js`）：`pending/synced/failed` 三態（鏡像 iOS `syncStatus`），`enqueueAdd`（dedup unresolved 同 word）/ `reconcileAddResponse`（server echo cardId byte-exact 收斂、SYNCED 終態、PENDING\|FAILED 皆解，**禁** content 比對，對齊 `sync_lifecycle.md:47-52` 不變式）/ `markFailed`（重試計數）/ `entriesToFlush`（pending∪failed）/ `pruneSynced` / `summarizeOutbox` / `OUTBOX_KEY`。純函數，IO + flush 副作用在 `background.js` |
+| `shared/vocab-outbox.test.js` | — | `vocab-outbox.js` 單元測試（`node --test`，17 case：byte-exact 收斂契約 / proto-key 防護 / 不可變 / dedup / failed 重送收斂 / cap） |
 | `shared/pure.js` | 688 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist、`pickPreferredVoice(voices,lang)` TTS voice 評分挑選）；`normalizeVocabItem` 另保留 `linksByKind`/`inflections`/`cardId`（detail 面板知識連結與變化形所需，guard：linksByKind 須 plain object、inflections 須 array）；**example 高亮純函數對標 iOS**：`markWordInExample`（port `VocabularyEntry.markWordInContext`：verbatim case-insensitive 首匹配 + stem fallback，輸出帶 `**…**` 標記的純文字、`word` regex-escaped 非 pattern）、`parseInlineMarks`（port `CardMarkdownInlineParser` 的 `**`/`==` mark → typed segments，空 span 丟棄、未閉合留字面）；**跨 context 刷新契約**：`VOCAB_DIRTY_KEY`（`'vocab_dirty'`，producer background.js / consumer app.js 共用避免 drift）+ `isVocabMutatingKind`（`VOCAB_MUTATING_KINDS` 現僅 `addVocab`；唯讀 kind 回 false）；`routeMessage`/`ROUTABLE_MESSAGE_TYPES` 加 `getUserConfig`/`updateUserConfig`/`getEntitlements` 三 kind。複習狀態純函數對標 iOS SoT：`classifyReviewState`（`VocabularyReview.reviewState(at:)`：`reviewCount==0`→未學習，否則 `nextReviewAt<=now` 待複習/已複習）、`countReviewStates`（chip/CTA tally）、`compactReviewLabel`（iOS `CompactTimeFormatting` 閾值 byte-faithful port）、`reviewProgress`（`WordRowPresentation` ratio，start 由 `lastReviewedAt`??`nextReviewAt−intervalHours` schedule 推導）；單字本 view 管線純函數對標 iOS `VocabularyEntryPresentation`：`filterVocab`（mergedBucket 多選態 + search 謂詞合成 word/meaning contains）、`sortVocab`（4 排序：複習優先 due\<unlearned\<reviewed→`nextReviewAt` asc→tierPriority→word / 字母序 / 最近新增 / 難度；stable、不變更輸入）；`normalizeVocabItem` 保留 `CardResponse` 複習欄位 + `difficultyTier`（難度排序）+ `updatedAt`（「最近新增」proxy，`CardResponse` 無 `dateAdded`） |
 | `shared/pure.test.js` | — | `pure.js` 單元測試（含 `pickPreferredVoice` 6 個 TDD case） |
 | `shared/css.test.js` | 55 | **CSS 不變式守門**：鎖死三份 `kg-components.css`（dist / shared / backend static）皆含全域 `[hidden]{display:none !important}` base reset，防 author 規則（如 `.kg-detail-panel{display:flex}`）壓過 UA `[hidden]` 致帶 hidden 屬性的 opaque panel 永久顯示、凍結 sidepanel |
