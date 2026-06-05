@@ -1,8 +1,6 @@
 """ops_cli.py 單元測試 — 用 tmp_path 建立假 DB 驗證核心函數。"""
 
 import sqlite3
-import subprocess
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,9 +11,9 @@ from ops_helpers import (
     _hours_ago_iso,
     _now_iso,
 )
-
-# ops_cli.py 位於 backend/ 根目錄，需要直接 import
-CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
+from ops_helpers import (
+    run_ops_cli as _run_cli,
+)
 
 
 def _create_cards_db(path: Path, rows: list[tuple]) -> None:
@@ -37,20 +35,6 @@ def _create_cards_db(path: Path, rows: list[tuple]) -> None:
     )
     conn.commit()
     conn.close()
-
-
-def _run_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
-    """執行 ops_cli.py，設定 KG_DATA_DIR + PYTHONPATH 環境變數。"""
-    import os
-
-    src_dir = str(CLI_PATH.parent / "src")
-    env = {**os.environ, "KG_DATA_DIR": data_dir, "PYTHONPATH": src_dir}
-    return subprocess.run(
-        [sys.executable, str(CLI_PATH), *args],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
 
 
 class TestUserQuota:
@@ -368,6 +352,86 @@ class TestSyncTrace:
         result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", today)
         assert result.returncode == 0
         assert "Total events: 0" in result.stdout
+
+
+class TestJsonContract:
+    """統一輸出契約 — 每個 data-query 命令都應支援 --json 並回傳合法 JSON。"""
+
+    def _seed(self, tmp_path):
+        uid = "u1"
+        now = _now_iso()
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(user_dir / "cards.db", [
+            ("c1", "hello", "你好", 0, now, now),
+            ("c2", "world", "世界", 1, now, now),
+        ])
+        _create_token_usage_db(tmp_path, [
+            (uid, "translate", 1000, 500, now),
+            (uid, "judge", 200, 100, now),
+        ])
+        return uid
+
+    def test_user_quota_json(self, tmp_path):
+        import json
+        uid = self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "user-quota", uid, "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["user_id"] == uid
+        assert "used_usd" in d and "hourly" in d
+
+    def test_user_stats_json(self, tmp_path):
+        import json
+        uid = self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "user-stats", uid, "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["user_id"] == uid
+        assert d["total"] == 2 and d["active"] == 1 and d["deleted"] == 1
+
+    def test_quota_overview_json(self, tmp_path):
+        import json
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "quota-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert isinstance(d["users"], list) and len(d["users"]) == 1
+
+    def test_active_users_json(self, tmp_path):
+        import json
+        uid = self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "active-users", "48", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["hours"] == 48
+        assert d["users"][0]["user_id"] == uid and d["users"][0]["calls"] == 2
+
+    def test_card_find_json(self, tmp_path):
+        import json
+        uid = self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "card-find", uid, "hello", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["matches"][0]["id"] == "c1" and d["matches"][0]["content"] == "hello"
+
+    def test_card_get_json(self, tmp_path):
+        import json
+        uid = self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "card-get", uid, "c1", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert len(d["cards"]) == 1 and d["cards"][0]["id"] == "c1"
+
+    def test_db_query_json(self, tmp_path):
+        import json
+        uid = self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "db-query", uid, "--json",
+                     "SELECT", "id", "FROM", "card", "ORDER", "BY", "id")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["columns"] == ["id"]
+        assert d["rows"] == [["c1"], ["c2"]]
 
 
 class TestHelp:
