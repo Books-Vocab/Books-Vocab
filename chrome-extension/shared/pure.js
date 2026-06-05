@@ -558,6 +558,61 @@ function isVocabMutatingKind(kind) {
 }
 
 /**
+ * Pick the most natural-sounding TTS voice for `lang` from a `getVoices()` list.
+ *
+ * Web Speech, given only `utterance.lang`, lets the OS hand back whatever voice
+ * it likes — on desktop that is frequently a robotic compact system voice
+ * ("Fred"), which is what made the speaker button sound non-human. This ranks
+ * the available voices so the speaker matches the iOS AVSpeechSynthesisVoice
+ * quality bar.
+ *
+ * Ranking (high → low): Google cloud voices → names tagged natural/neural/
+ * premium/enhanced → exact lang match over a same-base regional one → cloud
+ * (`localService === false`) over local → the browser default. Only voices in
+ * the SAME base language are eligible — never read English aloud in a Mandarin
+ * voice; if none match, returns null so the caller leaves the OS default alone.
+ *
+ * Pure: no `window` / `speechSynthesis` access — callers pass `getVoices()` in.
+ * INLINE-MIRRORED in content/content.js (isolated world, no KGPure) — keep both
+ * copies behaviourally in sync (guarded by shared/pure.test.js + a content-script
+ * drift check).
+ *
+ * @param {Array<{name?: string, lang?: string, localService?: boolean, default?: boolean}>} voices
+ * @param {string} [lang='en-US']
+ * @returns {object|null} the chosen voice, or null when no same-language voice exists
+ */
+function pickPreferredVoice(voices, lang = 'en-US') {
+  if (!Array.isArray(voices) || voices.length === 0) return null;
+  const norm = (s) => String(s == null ? '' : s).toLowerCase().replace(/_/g, '-');
+  const target = norm(lang);
+  const base = target.split('-')[0];
+  if (!base) return null;
+  const eligible = voices.filter((v) => norm(v && v.lang).split('-')[0] === base);
+  if (eligible.length === 0) return null;
+  const score = (v) => {
+    const name = String((v && v.name) || '');
+    let s = 0;
+    if (/\bgoogle\b/i.test(name)) s += 100;
+    if (/natural|neural|premium|enhanced/i.test(name)) s += 80;
+    s += norm(v && v.lang) === target ? 40 : 20;
+    if (v && v.localService === false) s += 10;
+    if (v && v.default) s += 1;
+    return s;
+  };
+  // Linear max keeps a score tie on the first-listed voice (stable, predictable).
+  let best = eligible[0];
+  let bestScore = score(best);
+  for (let i = 1; i < eligible.length; i++) {
+    const s = score(eligible[i]);
+    if (s > bestScore) {
+      best = eligible[i];
+      bestScore = s;
+    }
+  }
+  return best;
+}
+
+/**
  * Whether an external sender URL is the trusted KG web origin. Used to gate
  * `onMessageExternal` auth-token injection.
  *
@@ -662,6 +717,7 @@ const KGPureExports = {
   filterVocab,
   sortVocab,
   classifyError,
+  pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   VOCAB_DIRTY_KEY,

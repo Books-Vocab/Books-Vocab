@@ -31,6 +31,13 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must stay authoritative. A class that sets `display`
+   (e.g. .kg-list, .kg-detail-panel) is an author rule that otherwise beats the
+   UA `[hidden] { display: none }`, leaving the element visible while marked
+   hidden — an opaque `position:fixed` panel then covers the whole surface.
+   !important lets the attribute win regardless of class specificity / order. */
+[hidden] { display: none !important; }
+
 .kg-surface {
   margin: 0;
   background: var(--page-bg);

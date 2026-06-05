@@ -71,10 +71,50 @@
   }
 
   /**
+   * Choose the most natural TTS voice for `lang` from a `getVoices()` list.
+   * INLINE MIRROR of shared/pure.js#pickPreferredVoice — content scripts run in
+   * an isolated world and cannot reach KGPure. Keep this byte-for-byte in sync
+   * with the pure version (enforced by shared/icons.test.js drift check).
+   */
+  function pickPreferredVoice(voices, lang = 'en-US') {
+    if (!Array.isArray(voices) || voices.length === 0) return null;
+    const norm = (s) => String(s == null ? '' : s).toLowerCase().replace(/_/g, '-');
+    const target = norm(lang);
+    const base = target.split('-')[0];
+    if (!base) return null;
+    const eligible = voices.filter((v) => norm(v && v.lang).split('-')[0] === base);
+    if (eligible.length === 0) return null;
+    const score = (v) => {
+      const name = String((v && v.name) || '');
+      let s = 0;
+      if (/\bgoogle\b/i.test(name)) s += 100;
+      if (/natural|neural|premium|enhanced/i.test(name)) s += 80;
+      s += norm(v && v.lang) === target ? 40 : 20;
+      if (v && v.localService === false) s += 10;
+      if (v && v.default) s += 1;
+      return s;
+    };
+    // Linear max keeps a score tie on the first-listed voice (stable, predictable).
+    let best = eligible[0];
+    let bestScore = score(best);
+    for (let i = 1; i < eligible.length; i++) {
+      const s = score(eligible[i]);
+      if (s > bestScore) {
+        best = eligible[i];
+        bestScore = s;
+      }
+    }
+    return best;
+  }
+
+  /**
    * Speak a word/phrase via the Web Speech API. Available to content scripts
    * (they share the page's `window`, where `speechSynthesis` lives). Best-effort:
    * silently no-ops if the API is unavailable. Cancels any in-flight utterance
-   * first so rapid taps don't queue. Mirrors the side panel's `speakWord`.
+   * first so rapid taps don't queue. Picks a natural voice (via
+   * `pickPreferredVoice`) instead of the OS's robotic compact default; voices
+   * load asynchronously, so on the first call we wait once for `voiceschanged`.
+   * Mirrors the side panel's `speakWord`.
    * @param {string} word
    */
   function speakWord(word) {
@@ -84,7 +124,16 @@
       synth.cancel();
       const u = new SpeechSynthesisUtterance(String(word || ''));
       u.lang = 'en-US';
-      synth.speak(u);
+      const speak = () => {
+        const v = pickPreferredVoice(synth.getVoices(), 'en-US');
+        if (v) {
+          u.voice = v;
+          u.lang = v.lang;
+        }
+        synth.speak(u);
+      };
+      if (synth.getVoices().length) speak();
+      else synth.addEventListener('voiceschanged', speak, { once: true });
     } catch (_err) {
       // TTS unavailable in this context — no-op.
     }
