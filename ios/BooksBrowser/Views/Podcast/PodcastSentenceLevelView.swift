@@ -32,7 +32,7 @@ struct PodcastSentenceSelection: Equatable {
 /// HISTORY: an earlier offset-driven engine drove follow with an outer
 /// `TimelineView(.animation)` that recomputed a manual `.offset` over a NON-lazy
 /// column EVERY display frame. That re-evaluated the whole token tree (hundreds of
-/// sentences × per-word `Text` + `CachedFlowLayout` + per-sentence `GeometryReader`
+/// sentences × their per-word flow layout + per-sentence `GeometryReader`
 /// preferences) per frame and froze the UI on entry — confirmed on-device:
 /// rendering only 30 sentences still froze (so NOT a realization-count cost), and
 /// the device logged `Bound preference … multiple times per frame`. Root cause was
@@ -380,7 +380,7 @@ struct PodcastSentenceLevelView: View {
 /// `PodcastBubbleCell` value struct per realized row; each is wrapped in
 /// `.equatable()`, so when `currentId` changes SwiftUI re-bodies only the cells
 /// whose Equatable inputs actually changed (the leaving + gaining cell, ~2),
-/// short-circuiting all the others — they never re-measure their `CachedFlowLayout`.
+/// short-circuiting all the others — they never re-lay-out their `UITextView`.
 ///
 /// The column itself is intentionally NOT `Equatable`: a column-level wrapper
 /// whose `==` included `currentId` returned false on every advance and forced the
@@ -513,7 +513,6 @@ private struct PodcastBubbleSkin: Equatable {
     let primaryText: Color
     let secondaryText: Color
     let cornerRadius: CGFloat
-    let wordRowGap: CGFloat
 
     init(skin: AppSkin, slot: Int) {
         self.paletteBase = skin.palette.base
@@ -522,7 +521,6 @@ private struct PodcastBubbleSkin: Equatable {
         self.primaryText = skin.palette.primaryText
         self.secondaryText = skin.palette.secondaryText
         self.cornerRadius = skin.radii.card
-        self.wordRowGap = skin.spacing.wordRowVerticalGap
     }
 
     static func == (l: PodcastBubbleSkin, r: PodcastBubbleSkin) -> Bool {
@@ -534,7 +532,7 @@ private struct PodcastBubbleSkin: Equatable {
 /// inside the column's `ForEach`, so SwiftUI skips its `body` whenever its inputs
 /// are unchanged — a sentence advance flips `isCurrent` on only the leaving +
 /// gaining cells, so only those ~2 re-body (the rest short-circuit and never
-/// re-measure their `CachedFlowLayout`). This is what makes a sentence change
+/// re-lay-out their `UITextView`). This is what makes a sentence change
 /// O(2 rows) instead of O(all realized rows).
 ///
 /// EXCLUDED from `==`: `liveAnchor` (a reference, read live per frame by the

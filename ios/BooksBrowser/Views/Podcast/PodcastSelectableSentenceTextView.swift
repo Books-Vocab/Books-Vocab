@@ -46,6 +46,20 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
     let onTranslateSelection: (String, String) -> Void
     let onExplainSelection: (String, String) -> Void
 
+    /// M1 fallback escape hatch (issue ③, plan-mandated). The primary path keeps the
+    /// display-mode text view INTERACTIVE so its own long-press recognizer can
+    /// pre-select the pressed word (tap-seek still falls through to the cell). If
+    /// on-device testing shows the display-mode `UITextView` swallowing taps or
+    /// contending with the cell gestures, flip this to `false`: the display-mode view
+    /// becomes inert (`isUserInteractionEnabled = false`, custom long-press disabled)
+    /// and gestures fall entirely to the SwiftUI cell layer. Tap-seek already lives on
+    /// the cell (`PodcastBubbleCell`'s `.onTapGesture`); to keep long-press → select,
+    /// ALSO add to that cell, gated on `!displayTextIsInteractive`:
+    ///   `.onLongPressGesture(minimumDuration: 0.35) { if !isSelecting { onEnterSelection(0) } }`
+    /// (word-0 start — the cell has no per-word geometry in the inert path). Selecting
+    /// mode stays interactive regardless of this flag.
+    static let displayTextIsInteractive = true
+
     func makeCoordinator() -> Coordinator {
         Coordinator(
             onTranslateSelection: onTranslateSelection,
@@ -127,6 +141,9 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         if uiView.isSelectable != isSelectable {
             uiView.isSelectable = isSelectable
         }
+        // Selecting mode is always interactive (native selection); display mode is
+        // interactive only on the primary path (M1 fallback flips it inert).
+        uiView.isUserInteractionEnabled = isSelectable || Self.displayTextIsInteractive
         // Word ranges + latest closures live on the coordinator / text view so the
         // persistent UITextView always resolves against the current text.
         let ranges = PodcastTextKitWordRects.wordRanges(for: words)
@@ -136,8 +153,9 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         coordinator.onResolveWordRects = onResolveWordRects
         coordinator.onLongPressWord = onLongPressWord
         coordinator.pendingSelectionRange = initialSelectionRange
-        // Custom long-press only in display mode; native selection owns it while selecting.
-        coordinator.longPress?.isEnabled = !isSelectable
+        // Custom long-press only in the interactive display path; native selection
+        // owns the long-press while selecting, and the inert fallback drops it.
+        coordinator.longPress?.isEnabled = !isSelectable && Self.displayTextIsInteractive
 
         if coordinator.appliedSelectionKey != selectionKey {
             DispatchQueue.main.async {
