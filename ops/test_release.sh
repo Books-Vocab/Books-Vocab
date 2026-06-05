@@ -79,6 +79,47 @@ section "No false CI claim"
 ! grep -qE 'GitHub Actions 正在執行|CI 正在發版|自動建立 GitHub Release' "$REL" \
   && ok "no aspirational CI-runs claim"     || fail_t "claims CI auto-releases (no such workflow exists)"
 
+# ── 9. --help 不洩漏 shell 程式碼（dogfood A-F6/C：usage sed 範圍越界回歸） ──
+section "Help output stays comment-only"
+help_out="$(bash "$REL" --help 2>&1)"
+echo "$help_out" | grep -qE 'set -euo pipefail|^ROOT=|^YES=' \
+  && fail_t "help leaks shell code (set/ROOT/YES bled into usage)" \
+  || ok "help is comment-only (no shell code leak)"
+
+# ── 10. status 漂移警示（dogfood A-F2/C：tag↔檔內版號不一致須警告） ──────────
+section "Status drift warning"
+echo "$status_body" | grep -q '版號漂移' \
+  && ok "status warns on tag↔file version drift" || fail_t "status missing drift warning"
+
+# ── 11. status 長清單截斷（dogfood A-F3：234 筆 commit 不該吐成 688 行牆） ────
+section "Status truncates long commit list"
+echo "$status_body" | grep -q 'head -15' \
+  && ok "status caps commit list (head -15)" || fail_t "status dumps full commit wall (no truncation)"
+
+# ── 12. release_bump.sh ios 只改主 app target（dogfood A-F1：全域 sed 波及測試 bundle） ──
+section "bump ios scopes to app target only"
+BUMP="$WORKSPACE/ops/release_bump.sh"
+# 結構：不得殘留無錨點的全域 sed（[^;]* 不綁當前值＝會掃中所有 target）
+grep -q 'MARKETING_VERSION = \[\^;\]\*/MARKETING_VERSION' "$BUMP" \
+  && fail_t "release_bump still has unanchored global MARKETING_VERSION sed" \
+  || ok "no unanchored global MARKETING_VERSION sed"
+# 行為：fixture pbxproj（app=9.9 在前、測試 bundle=1.2.0 在後），bump 後只有 app 變、測試 bundle 不動
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/ios/BooksBrowser.xcodeproj"
+cat > "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" <<'PBX'
+/* app Debug */    MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
+/* app Release */  MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
+/* tests Debug */  MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
+/* tests Release */MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
+PBX
+KG_ROOT="$TMP" bash "$BUMP" ios 9.9.1 >/dev/null 2>&1 || fail_t "bump ios fixture run failed"
+got_app="$(grep -c 'MARKETING_VERSION = 9.9.1;' "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" || true)"
+got_test="$(grep -c 'MARKETING_VERSION = 1.2.0;' "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" || true)"
+got_build="$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" || true)"
+[[ "$got_app" -eq 2 ]]  && ok "app MARKETING_VERSION → 9.9.1 (2 處)"      || fail_t "app bump wrong count: $got_app"
+[[ "$got_test" -eq 2 ]] && ok "test bundle MARKETING_VERSION 不動 (still 1.2.0 ×2)" || fail_t "test bundle was clobbered: 1.2.0 count=$got_test"
+[[ "$got_build" -eq 2 ]] && ok "app CURRENT_PROJECT_VERSION → 8 (2 處)"   || fail_t "app build bump wrong count: $got_build"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

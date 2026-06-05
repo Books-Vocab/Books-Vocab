@@ -37,7 +37,7 @@ description: 分析變更並執行版號發布（backend / iOS）—— 薄路�
 實際出 build 與改 App Store 內容走獨立 ops 腳本：
 
 - 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
-- 查版本/審查狀態、改文案、查截圖/審查備註 → `./ops/asc.sh`（`versions`/`review-status`/`review-detail`/`screenshots`/`metadata`/`set …`；`set` 預設 dry-run，`--yes` 才真寫）
+- 查版本/審查狀態、改文案、查截圖/審查備註 → `./ops/asc.sh`（`versions`/`review-status`/`review-detail`/`screenshots`/`metadata`/`set …`/`set-review …`；`set`＝版本文案、`set-review`＝審查資訊備註/demo/聯絡人，皆 dry-run 預設、`--yes` 才真寫）
 - 被拒處理、GUI vs API 可讀範圍、加密合規、重送演練 → `docs/sop/ios.md §發版`
 
 ## 鐵則
