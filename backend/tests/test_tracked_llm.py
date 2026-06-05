@@ -221,6 +221,21 @@ class TestTrackedLLMFailureRecording:
 
     @patch("kg.llm_error_log.record")
     @patch("kg.tracked_llm.record")
+    def test_failure_message_redacted_before_record(self, mock_record, mock_err):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = RuntimeError(
+            "Authorization: Bearer sk-prod-secret api_key=AIzaSySecret"
+        )
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(RuntimeError):
+            llm.chat("judge", model="m", messages=[])
+        message = mock_err.call_args.kwargs["message"]
+        assert "sk-prod-secret" not in message
+        assert "AIzaSySecret" not in message
+        assert message.count("[REDACTED]") >= 2
+
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
     def test_failure_no_status_code_records_none(self, mock_record, mock_err):
         """Timeout/connection errors have no status_code → recorded as None."""
         client = MagicMock()

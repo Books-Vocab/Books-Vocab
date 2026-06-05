@@ -82,6 +82,57 @@ class TestRecord:
         assert len(msg) == 500
         assert msg == "x" * 500
 
+    def test_message_redacts_secret_like_values(self):
+        llm_error_log.record(
+            user_id="u1",
+            call_type="judge",
+            error_class="AuthenticationError",
+            message=(
+                "Authorization: Bearer sk-prod-secret "
+                "api_key=AIzaSySecret token=plain-token password=hunter2"
+            ),
+        )
+        msg = llm_error_log._get_conn().execute(
+            "SELECT message FROM llm_errors"
+        ).fetchone()[0]
+        for secret in ("sk-prod-secret", "AIzaSySecret", "plain-token", "hunter2"):
+            assert secret not in msg
+        assert msg.count("[REDACTED]") >= 4
+
+    def test_message_redacts_quoted_dict_secret_values(self):
+        llm_error_log.record(
+            user_id="u1",
+            call_type="judge",
+            error_class="AuthenticationError",
+            message=(
+                '{"api_key": "AIzaSySecret", '
+                "'Authorization': 'Bearer eyJ.secret', "
+                '"access_token": "access-secret"}'
+            ),
+        )
+        msg = llm_error_log._get_conn().execute(
+            "SELECT message FROM llm_errors"
+        ).fetchone()[0]
+        for secret in ("AIzaSySecret", "eyJ.secret", "access-secret"):
+            assert secret not in msg
+        assert msg.count("[REDACTED]") >= 3
+
+    def test_message_keeps_non_secret_token_counters(self):
+        llm_error_log.record(
+            user_id="u1",
+            call_type="judge",
+            error_class="BadRequestError",
+            message="max_tokens=8192 prompt_tokens=123 completion_tokens=456 total_tokens=579",
+        )
+        msg = llm_error_log._get_conn().execute(
+            "SELECT message FROM llm_errors"
+        ).fetchone()[0]
+        assert "max_tokens=8192" in msg
+        assert "prompt_tokens=123" in msg
+        assert "completion_tokens=456" in msg
+        assert "total_tokens=579" in msg
+        assert "[REDACTED]" not in msg
+
     def test_created_at_iso8601(self):
         before = datetime.now(UTC).isoformat()
         llm_error_log.record(
