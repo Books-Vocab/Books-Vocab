@@ -143,6 +143,11 @@ count_executed_tests() {
   echo "$n"
 }
 
+# Machine-readable verdict file — survives even when stdout/stderr is piped
+# (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
+# script's). Read this instead of trusting a piped `$?`.
+VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_test_verdict"
+
 # Extract summary from xcresult if available
 if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   EXECUTED=$(count_executed_tests)
@@ -150,22 +155,26 @@ if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     echo ""
     echo "[ios_test] ✗ FALSE GREEN: xcodebuild reported TEST SUCCEEDED but 0 tests executed" >&2
     echo "[ios_test]   (likely a stale/bogus -only-testing test ID matched nothing) — $CALLER" >&2
+    echo "RESULT=fail reason=false-green-0-executed caller=$CALLER" > "$VERDICT_FILE"
     rm -f "$TMPOUT"
     exit 1
   fi
   echo ""
-  echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER"
+  echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
+  echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)"
 elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   # Show failing test details
   grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20
   echo ""
-  echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER" >&2
+  echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
+  echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
 else
   echo ""
   # Show last 10 lines for unexpected output
   tail -10 "$TMPOUT"
-  echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER" >&2
+  echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
+  echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
 fi
 
 rm -f "$TMPOUT"

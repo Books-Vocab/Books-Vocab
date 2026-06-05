@@ -1,4 +1,4 @@
-"""Log-retention pruner for the 4 SQLite log singletons.
+"""Log-retention pruner for the 5 SQLite log singletons.
 
 Each ``prune_*`` function deletes rows older than ``days`` from a single
 log database and returns ``(deleted_count, remaining_count)``. The pruners
@@ -20,13 +20,14 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 
-from . import judge_log, pipeline_log, token_tracker, translate_log
+from . import judge_log, llm_error_log, pipeline_log, token_tracker, translate_log
 
 # Default retention windows (days). These match the brief.
 DEFAULT_DAYS_PIPELINE = 30
 DEFAULT_DAYS_JUDGE = 60
 DEFAULT_DAYS_TRANSLATE = 14
 DEFAULT_DAYS_TOKEN = 90
+DEFAULT_DAYS_LLM_ERRORS = 30
 
 
 def _env_days(var: str, fallback: int) -> int:
@@ -53,6 +54,7 @@ _RETENTION: dict[str, tuple[str, int]] = {
     "judge": ("JUDGE_LOG_RETENTION_DAYS", DEFAULT_DAYS_JUDGE),
     "translate": ("TRANSLATE_LOG_RETENTION_DAYS", DEFAULT_DAYS_TRANSLATE),
     "token": ("TOKEN_USAGE_RETENTION_DAYS", DEFAULT_DAYS_TOKEN),
+    "llm_error": ("LLM_ERROR_LOG_RETENTION_DAYS", DEFAULT_DAYS_LLM_ERRORS),
 }
 
 
@@ -167,6 +169,20 @@ def prune_token_usage(days: int | None = None) -> tuple[int, int]:
         return _delete_and_count(conn, "token_usage", "created_at", cutoff)
 
 
+def prune_llm_errors(days: int | None = None) -> tuple[int, int]:
+    """Delete llm_errors rows whose ``created_at`` is older than ``days``.
+
+    When ``days`` is ``None``, falls back to ``LLM_ERROR_LOG_RETENTION_DAYS``
+    env var, then ``DEFAULT_DAYS_LLM_ERRORS``.
+    """
+    if days is None:
+        days = _env_days("LLM_ERROR_LOG_RETENTION_DAYS", DEFAULT_DAYS_LLM_ERRORS)
+    cutoff = _cutoff(days)
+    with llm_error_log._lock:
+        conn = llm_error_log._get_conn()
+        return _delete_and_count(conn, "llm_errors", "created_at", cutoff)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Aggregate
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +194,7 @@ def run_all(
     judge_days: int | None = None,
     translate_days: int | None = None,
     token_days: int | None = None,
+    llm_error_days: int | None = None,
 ) -> dict[str, dict[str, int]]:
     """Run every pruner and return a structured report.
 
@@ -210,6 +227,10 @@ def run_all(
     report["token_usage"] = {"deleted": deleted, "remaining": remaining,
                              "days": _effective_days("token", token_days)}
 
+    deleted, remaining = prune_llm_errors(llm_error_days)
+    report["llm_errors"] = {"deleted": deleted, "remaining": remaining,
+                            "days": _effective_days("llm_error", llm_error_days)}
+
     return report
 
 
@@ -229,6 +250,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--judge", action="store_true", help="Prune judge_log.db.")
     parser.add_argument("--translate", action="store_true", help="Prune translate_log.db.")
     parser.add_argument("--token", action="store_true", help="Prune token_usage.db.")
+    parser.add_argument("--llm-error", action="store_true", help="Prune llm_errors.db.")
     parser.add_argument(
         "--days",
         type=int,
@@ -252,6 +274,7 @@ def _run_from_args(args: argparse.Namespace) -> dict[str, dict[str, int]]:
             judge_days=args.days,
             translate_days=args.days,
             token_days=args.days,
+            llm_error_days=args.days,
         )
 
     if args.pipeline:
@@ -274,6 +297,10 @@ def _run_from_args(args: argparse.Namespace) -> dict[str, dict[str, int]]:
         d, r = prune_token_usage(args.days)
         report["token_usage"] = {"deleted": d, "remaining": r,
                                  "days": _effective_days("token", args.days)}
+    if getattr(args, "llm_error", False):
+        d, r = prune_llm_errors(args.days)
+        report["llm_errors"] = {"deleted": d, "remaining": r,
+                                "days": _effective_days("llm_error", args.days)}
 
     return report
 
@@ -282,7 +309,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if not (args.all or args.pipeline or args.judge or args.translate or args.token):
+    targets = (args.all, args.pipeline, args.judge, args.translate, args.token, getattr(args, "llm_error", False))
+    if not any(targets):
         parser.print_help(sys.stderr)
         return 2
 

@@ -59,7 +59,9 @@ struct CachedFlowLayout: Layout {
         }
         return LayoutData(
             size: CGSize(width: maxX, height: y + rowHeight),
-            offsets: offsets
+            offsets: offsets,
+            proposalWidth: nil,
+            subviewCount: 0
         )
     }
 }

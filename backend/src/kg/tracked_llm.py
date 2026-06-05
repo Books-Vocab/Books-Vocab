@@ -57,25 +57,70 @@ class TrackedLLM:
     def chat(self, call_type: str, **kwargs):
         kwargs = self._chat_kwargs(kwargs)
         with reserve(self.user_id, estimate_call_cost(call_type)):
-            resp = self._client.chat.completions.create(**kwargs)
+            try:
+                resp = self._client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                self._record_failure(call_type, exc, kwargs.get("model"))
+                raise
             self._record_chat(call_type, resp, kwargs.get("model"))
         return resp
 
     async def chat_async(self, call_type: str, **kwargs):
         kwargs = self._chat_kwargs(kwargs)
         with reserve(self.user_id, estimate_call_cost(call_type)):
-            resp = await self._client.chat.completions.create(**kwargs)
+            try:
+                resp = await self._client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                self._record_failure(call_type, exc, kwargs.get("model"))
+                raise
             self._record_chat(call_type, resp, kwargs.get("model"))
         return resp
 
     def embed(self, call_type: str = "embed", **kwargs):
         with reserve(self.user_id, estimate_call_cost(call_type)):
-            resp = self._client.embeddings.create(**kwargs)
+            try:
+                resp = self._client.embeddings.create(**kwargs)
+            except Exception as exc:
+                self._record_failure(call_type, exc, kwargs.get("model"))
+                raise
             self._record_embed(call_type, resp, kwargs.get("model"))
         return resp
 
     def _provider_name(self) -> str | None:
         return self._provider.name if self._provider is not None else None
+
+    @staticmethod
+    def _extract_status_code(exc: Exception) -> int | None:
+        """Return the HTTP status code from an OpenAI SDK error, or None."""
+        code = getattr(exc, "status_code", None)
+        return code if isinstance(code, int) else None
+
+    def _record_failure(self, call_type: str, exc: Exception, model: str | None = None) -> None:
+        """Best-effort record of a terminal LLM failure. Never raises."""
+        try:
+            from .llm_error_log import record as record_error
+            if model is None and self._provider is not None:
+                model = self._provider.chat_model
+            record_error(
+                user_id=self.user_id,
+                call_type=call_type,
+                provider=self._provider_name(),
+                model=model,
+                error_class=type(exc).__name__,
+                status_code=self._extract_status_code(exc),
+                message=str(exc)[:500],
+            )
+        except Exception:  # noqa: BLE001 — logging must never mask the real failure.
+            logger.warning(
+                "Failed to record LLM error (provider=%s model=%s user_id=%s call_type=%s)",
+                self._provider_name(),
+                model if model is not None else (
+                    self._provider.chat_model if self._provider is not None else None
+                ),
+                self.user_id,
+                call_type,
+                exc_info=True,
+            )
 
     def _warn_usage_missing(self, call_type: str, model: str | None) -> None:
         """A successful LLM call returned no usage → the tokens it burned are
