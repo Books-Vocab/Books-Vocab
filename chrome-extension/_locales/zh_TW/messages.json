@@ -1,0 +1,83 @@
+{
+  "appName": { "message": "KG 詞彙助手" },
+  "appDescription": { "message": "閱讀時選詞翻譯，建立詞彙知識圖譜" },
+
+  "popupErrorNetwork": { "message": "無法連線，請重試" },
+  "popupErrorTranslate": { "message": "翻譯失敗" },
+  "popupErrorExplain": { "message": "解釋失敗" },
+  "popupErrorAdd": { "message": "加入失敗" },
+  "popupContextInvalidated": { "message": "擴充功能已更新，請重新整理頁面" },
+  "popupActionExpand": { "message": "展開" },
+  "popupActionExpandAria": { "message": "展開解釋" },
+  "popupActionCollapse": { "message": "收起" },
+  "popupLoading": { "message": "載入中…" },
+  "popupBtnAdd": { "message": "加入詞彙" },
+  "popupBtnAdding": { "message": "加入中…" },
+  "popupBtnAdded": { "message": "已加入" },
+  "popupLoginPrompt": { "message": "請先登入" },
+  "popupLoginAction": { "message": "前往登入" },
+
+  "settings": { "message": "設定" },
+  "optionsDocTitle": { "message": "KG 詞彙助手 — 設定" },
+  "accountSection": { "message": "帳號" },
+  "authLoggedIn": { "message": "已登入" },
+  "authLogout": { "message": "登出" },
+  "authLogin": { "message": "登入" },
+  "commonRetry": { "message": "重試" },
+  "authErrorRead": { "message": "無法讀取登入狀態" },
+  "authErrorOpen": { "message": "無法開啟登入頁面" },
+  "authErrorLogout": { "message": "登出失敗，請重試" },
+  "authErrorTokenFormat": { "message": "Token 格式不正確，請確認為完整 JWT 字串" },
+  "authErrorTokenSave": { "message": "儲存 Token 失敗，請重試" },
+  "tokenPasteHint": { "message": "或使用手動貼上 Token：" },
+  "tokenPastePlaceholder": { "message": "貼上 JWT token…" },
+  "tokenSubmit": { "message": "確認" },
+  "translateSection": { "message": "選字翻譯" },
+  "translateToggleLabel": { "message": "在網頁上選字時顯示翻譯彈窗" },
+  "themeSection": { "message": "主題" },
+  "themeLight": { "message": "淺色" },
+  "themeDark": { "message": "深色" },
+  "themeSepia": { "message": "懷舊" },
+  "aboutSection": { "message": "關於" },
+  "aboutVersion": { "message": "版本 0.1.0" },
+
+  "sidepanelDocTitle": { "message": "KG 詞彙" },
+  "vocabTitle": { "message": "我的單字本" },
+  "searchPlaceholder": { "message": "搜尋單字…" },
+  "searchClearAria": { "message": "清除搜尋" },
+  "themeToggleTitle": { "message": "切換主題" },
+  "settingsOpenAria": { "message": "開啟設定" },
+  "emptyTitle": { "message": "還沒有詞彙" },
+  "emptySubtitle": { "message": "在網頁上選取文字來翻譯和收藏" },
+
+  "sortDefault": { "message": "複習優先" },
+  "sortAlphabetical": { "message": "字母序" },
+  "sortDateAdded": { "message": "最近新增" },
+  "sortDifficulty": { "message": "難度" },
+
+  "stateUnlearned": { "message": "未學習" },
+  "stateDue": { "message": "待複習" },
+  "stateReviewed": { "message": "已複習" },
+
+  "errorBackgroundNoResponse": { "message": "擴充功能背景服務未回應，請重新整理" },
+  "errorBackgroundUnreachable": { "message": "無法連線至背景服務，請重試" },
+
+  "reviewFirstRound": {
+    "message": "首輪 $time$",
+    "placeholders": { "time": { "content": "$1" } }
+  },
+  "rowStatusUnreviewed": { "message": "未複習" },
+  "rowStatusNext": {
+    "message": "下次 $time$",
+    "placeholders": { "time": { "content": "$1" } }
+  },
+  "noMatch": { "message": "沒有符合的單字" },
+
+  "detailMeaning": { "message": "意思" },
+  "detailPos": { "message": "詞性" },
+  "detailExamples": { "message": "例句" },
+  "detailCollocation": { "message": "搭配" },
+  "detailNote": { "message": "筆記" },
+  "detailContext": { "message": "上下文" },
+  "detailSource": { "message": "來源" }
+}

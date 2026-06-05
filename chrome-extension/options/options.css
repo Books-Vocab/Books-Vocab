@@ -55,6 +55,67 @@ body {
   margin-bottom: var(--sp-sm);
 }
 
+/* ── Master Switch (toggle) ── */
+
+.kg-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-md);
+  cursor: pointer;
+  user-select: none;
+}
+
+.kg-toggle__label {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+
+/* Visually-hidden native checkbox — drives the :checked / :focus-visible
+   states of the painted track/thumb that follow it in source order. */
+.kg-toggle__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kg-toggle__track {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transition: background var(--motion-quick);
+}
+
+.kg-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--page-bg);
+  box-shadow: var(--elevation-z1);
+  transition: transform var(--motion-quick);
+}
+
+.kg-toggle__input:checked + .kg-toggle__track {
+  background: var(--accent);
+}
+
+.kg-toggle__input:checked + .kg-toggle__track .kg-toggle__thumb {
+  transform: translateX(18px);
+}
+
+.kg-toggle__input:focus-visible + .kg-toggle__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ── Theme Selector ── */
 
 .kg-theme-selector {
@@ -170,4 +231,5 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .kg-theme-option:active { transform: none; }
+  .kg-toggle__thumb { transition: none; }
 }
