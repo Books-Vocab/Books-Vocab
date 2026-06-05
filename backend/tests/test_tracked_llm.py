@@ -150,3 +150,97 @@ class TestTrackedLLMProviderBinding:
         llm.chat("judge", messages=[])  # no model kwarg
         mock_record.assert_called_once_with(
             "u1", "judge", 10, 20, provider="gemini", model="gemini-2.5-flash-lite")
+
+
+class TestTrackedLLMFailureRecording:
+    """Real LLM failures (429/5xx/timeout) must be captured before the exception
+    propagates, but the exception itself must be re-raised unchanged."""
+
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
+    def test_chat_failure_recorded_and_reraised(self, mock_record, mock_err):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = RuntimeError("boom")
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(RuntimeError, match="boom"):
+            llm.chat("judge", model="m", messages=[])
+        # token record is skipped because the call never succeeded.
+        mock_record.assert_not_called()
+        # failure record lands.
+        mock_err.assert_called_once()
+        _, kwargs = mock_err.call_args
+        assert kwargs["user_id"] == "u1"
+        assert kwargs["call_type"] == "judge"
+        assert kwargs["error_class"] == "RuntimeError"
+        assert kwargs["model"] == "m"
+
+    @pytest.mark.asyncio
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
+    async def test_chat_async_failure_recorded_and_reraised(self, mock_record, mock_err):
+        client = MagicMock()
+
+        async def boom(**kwargs):
+            raise RuntimeError("async boom")
+        client.chat.completions.create = boom
+
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(RuntimeError, match="async boom"):
+            await llm.chat_async("translate_quick", model="m", messages=[])
+        mock_record.assert_not_called()
+        mock_err.assert_called_once()
+        assert mock_err.call_args.kwargs["error_class"] == "RuntimeError"
+
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
+    def test_embed_failure_recorded_and_reraised(self, mock_record, mock_err):
+        client = MagicMock()
+        client.embeddings.create.side_effect = RuntimeError("embed boom")
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(RuntimeError, match="embed boom"):
+            llm.embed("embed", input=["hello"], model="m")
+        mock_record.assert_not_called()
+        mock_err.assert_called_once()
+        assert mock_err.call_args.kwargs["error_class"] == "RuntimeError"
+
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
+    def test_failure_status_code_extracted(self, mock_record, mock_err):
+        """Exceptions with a ``status_code`` attribute (OpenAI SDK errors)
+        must have that code recorded; timeouts/connection errors record None."""
+        client = MagicMock()
+
+        class Fake429(Exception):
+            status_code = 429
+        client.chat.completions.create.side_effect = Fake429("rate limited")
+
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(Fake429):
+            llm.chat("judge", model="m", messages=[])
+        assert mock_err.call_args.kwargs["status_code"] == 429
+
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
+    def test_failure_no_status_code_records_none(self, mock_record, mock_err):
+        """Timeout/connection errors have no status_code → recorded as None."""
+        client = MagicMock()
+        client.chat.completions.create.side_effect = TimeoutError("timed out")
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(TimeoutError):
+            llm.chat("judge", model="m", messages=[])
+        assert mock_err.call_args.kwargs["status_code"] is None
+
+    @patch("kg.tracked_llm.logger")
+    @patch("kg.llm_error_log.record")
+    @patch("kg.tracked_llm.record")
+    def test_failure_record_itself_fails_original_still_reraised(self, mock_record, mock_err, mock_logger):
+        """Best-effort: if the error logger itself crashes, the original LLM
+        exception must still propagate — we must never mask a production failure."""
+        mock_err.side_effect = RuntimeError("logger broken")
+        client = MagicMock()
+        client.chat.completions.create.side_effect = ValueError("real failure")
+        llm = TrackedLLM(client, user_id="u1")
+        with pytest.raises(ValueError, match="real failure"):
+            llm.chat("judge", model="m", messages=[])
+        # recording failure should emit a warning, not raise.
+        mock_logger.warning.assert_called_once()
