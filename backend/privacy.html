@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>隱私政策 — Books &amp; Vocab</title>
-  <meta name="description" content="Books &amp; Vocab 隱私政策：我們如何收集、使用與保護您的資訊。無廣告、無行為追蹤、不與第三方共享。">
+  <meta name="description" content="Books &amp; Vocab 隱私政策：我們如何收集、使用與保護您的資訊。無廣告、無行為追蹤、不為廣告共享資料。">
   <meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#191919" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="隱私政策 — Books &amp; Vocab">
-  <meta property="og:description" content="我們如何收集、使用與保護您的資訊。無廣告、無行為追蹤、不與第三方共享。">
+  <meta property="og:description" content="我們如何收集、使用與保護您的資訊。無廣告、無行為追蹤、不為廣告共享資料。">
 
   <meta property="og:image" content="/static/img/og-image.png">
   <meta name="twitter:card" content="summary">
@@ -59,7 +59,7 @@
 
     <p class="page-eyebrow">Privacy Policy</p>
     <h1>隱私政策</h1>
-    <p class="page-lead">最後更新：2026 年 2 月</p>
+    <p class="page-lead">最後更新：2026 年 6 月</p>
 
     <section class="section">
       <p>Books &amp; Vocab 尊重並保護使用者的隱私。本政策說明我們如何收集、使用與保護您的資訊。</p>
@@ -87,9 +87,14 @@
             <td>儲存於裝置；可選同步至伺服器</td>
           </tr>
           <tr>
+            <td>選取文本</td>
+            <td>您在書中選取的單字與其上下文句子／段落（每次最多約 1000 字元）</td>
+            <td>即時傳送至 AI 服務商（Google Gemini、DeepSeek）進行翻譯與詞彙增強；資料之留存與使用依各服務商隱私政策（見下方連結）</td>
+          </tr>
+          <tr>
             <td>使用紀錄</td>
-            <td>API 請求計數、錯誤日誌</td>
-            <td>改善服務品質，不追蹤個人行為</td>
+            <td>API 請求計數、錯誤日誌、當機診斷（Sentry）</td>
+            <td>改善服務品質與穩定性，不追蹤個人行為、不用於廣告</td>
           </tr>
         </tbody>
       </table>
@@ -101,7 +106,8 @@
         <li><span class="check-mark">✓</span> 所有伺服器通信使用 HTTPS（TLS 加密）</li>
         <li><span class="check-mark">✓</span> API 驗證使用 JWT Token</li>
         <li><span class="check-mark">✓</span> 本地資料由 iOS 系統保護</li>
-        <li><span class="check-mark">✓</span> 無廣告、無行為追蹤、不與第三方共享資料</li>
+        <li><span class="check-mark">✓</span> 無廣告、無行為追蹤、不為廣告或行銷目的共享資料</li>
+        <li><span class="check-mark">✓</span> 僅為提供 AI 翻譯／詞彙功能，將您選取的文本傳送至下列 AI 服務商處理</li>
       </ul>
     </section>
 
@@ -119,7 +125,9 @@
       <ul class="plain-list">
         <li><a href="https://policies.google.com/privacy">Google 登入</a> — 由 Google 管理其隱私</li>
         <li><a href="https://www.apple.com/privacy/">Apple Sign-In</a> — 由 Apple 管理其隱私</li>
-        <li>Gemini API — 用於詞彙 AI 增強功能（不存取完整詞彙庫）</li>
+        <li><a href="https://ai.google.dev/gemini-api/terms">Google Gemini API</a> — 翻譯與詞彙增強。您選取的文本（單字及其上下文句子／段落）會傳送以產生結果；不存取完整詞彙庫</li>
+        <li><a href="https://platform.deepseek.com/downloads/DeepSeek%20Privacy%20Policy.html">DeepSeek API</a> — 翻譯與詞彙增強的另一 AI 供應商，傳送內容同上</li>
+        <li><a href="https://sentry.io/privacy/">Sentry</a> — 當機與錯誤診斷，協助我們修復問題；不含您的詞彙內容</li>
       </ul>
     </section>
 
