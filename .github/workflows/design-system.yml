@@ -17,6 +17,8 @@ on:
       - 'chrome-extension/shared/**'
       - 'backend/static/kg-tokens.css'
       - 'backend/static/kg-components.css'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/design-system.yml'
   pull_request:
     paths: *ds_paths
@@ -32,5 +34,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install npm dependencies
+        run: npm ci
       - name: Verify design-system integrity
         run: ops/verify_design_system.sh

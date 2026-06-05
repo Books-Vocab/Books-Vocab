@@ -42,7 +42,7 @@ MODELS = Path(os.environ.get("KG_IOS_MODELS_DIR", REPO / "ios" / "BooksBrowser" 
 UICOMPONENTS = Path(os.environ.get(
     "KG_IOS_UICOMPONENTS_DIR", REPO / "ios" / "BooksBrowser" / "UIComponents"))
 
-EPS = 1e-6
+EPS = 5e-3  # Tolerance for hex↔rgb float quantisation (max error = 1/255 ≈ 0.0039)
 _FLOAT = r"[-+]?[0-9]*\.?[0-9]+"
 
 
@@ -215,6 +215,43 @@ def _eq(a: float, b: float) -> bool:
     return abs(a - b) < EPS
 
 
+def _dtcg_px(spec: dict) -> float:
+    return float(spec["$value"].rstrip("px"))
+
+
+def _dtcg_s(spec: dict) -> float:
+    return float(spec["$value"].rstrip("s"))
+
+
+def _dtcg_rgb(spec: dict) -> tuple[float, float, float]:
+    val = spec["$value"]
+    if val.startswith("#"):
+        return (
+            int(val[1:3], 16) / 255,
+            int(val[3:5], 16) / 255,
+            int(val[5:7], 16) / 255,
+        )
+    if val.startswith("rgba("):
+        parts = [float(x.strip()) for x in val[5:-1].split(",")]
+        return tuple(p / 255 for p in parts[:3])
+    raise ValueError(f"Unsupported color format: {val}")
+
+
+def _dtcg_rgba(spec: dict) -> tuple[float, float, float, float]:
+    val = spec["$value"]
+    if val.startswith("rgba("):
+        parts = [float(x.strip()) for x in val[5:-1].split(",")]
+        return tuple(p / 255 for p in parts[:3]) + (parts[3],)
+    raise ValueError(f"Unsupported rgba format: {val}")
+
+
+def _dtcg_ref(spec: dict) -> str:
+    val = spec["$value"]
+    if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+        return val[1:-1].split(".")[-1]
+    return val
+
+
 def check() -> list[str]:
     tokens = json.loads(TOKENS_JSON.read_text(encoding="utf-8"))
     errors: list[str] = []
@@ -247,7 +284,7 @@ def check() -> list[str]:
             if swift_name not in colors:
                 errors.append(f"color.primitive.{name}.{variant}: {sym} not found in AppColors.swift")
                 continue
-            want, got = spec["rgb"], colors[swift_name]
+            want, got = _dtcg_rgb(spec), colors[swift_name]
             if not all(_eq(x, y) for x, y in zip(want, got)):
                 errors.append(f"color.primitive.{name}.{variant}: JSON {want} != Swift {sym} {list(got)}")
 
@@ -267,12 +304,14 @@ def check() -> list[str]:
             if sw is None:
                 errors.append(f"color.theme.{thm}.{key}: {sym} not found in AppTheme.swift")
                 continue
-            if "rgb" in spec and "rgb" in sw:
-                if not all(_eq(x, y) for x, y in zip(spec["rgb"], sw["rgb"])):
-                    errors.append(f"color.theme.{thm}.{key}: JSON {spec['rgb']} != Swift {sym} {list(sw['rgb'])}")
-            elif "overlay" in spec and "overlay" in sw:
-                if spec["overlay"] != sw["overlay"] or not _eq(spec["alpha"], sw["alpha"]):
-                    errors.append(f"color.theme.{thm}.{key}: JSON {spec['overlay']}@{spec['alpha']} "
+            if spec["$value"].startswith("#") and "rgb" in sw:
+                if not all(_eq(x, y) for x, y in zip(_dtcg_rgb(spec), sw["rgb"])):
+                    errors.append(f"color.theme.{thm}.{key}: JSON {_dtcg_rgb(spec)} != Swift {sym} {list(sw['rgb'])}")
+            elif spec["$value"].startswith("rgba(") and "overlay" in sw:
+                r, g, b, a = _dtcg_rgba(spec)
+                overlay = "black" if r == 0 and g == 0 and b == 0 else "white"
+                if overlay != sw["overlay"] or not _eq(a, sw["alpha"]):
+                    errors.append(f"color.theme.{thm}.{key}: JSON {overlay}@{a} "
                                   f"!= Swift {sym} {sw['overlay']}@{sw['alpha']}")
             else:
                 errors.append(f"color.theme.{thm}.{key}: kind mismatch vs {sym} (JSON {spec}, Swift {sw})")
@@ -285,8 +324,8 @@ def check() -> list[str]:
             continue
         if thm not in tag_fill:
             errors.append(f"color.theme.{thm}.tag-fill: AppSurface.swift has no {thm} opacity")
-        elif not _eq(spec["alpha"], tag_fill[thm]):
-            errors.append(f"color.theme.{thm}.tag-fill: JSON alpha {spec['alpha']} "
+        elif not _eq(_dtcg_rgba(spec)[3], tag_fill[thm]):
+            errors.append(f"color.theme.{thm}.tag-fill: JSON alpha {_dtcg_rgba(spec)[3]} "
                           f"!= Swift AppTag.fill {tag_fill[thm]}")
 
     # 3) numeric scales
@@ -295,10 +334,6 @@ def check() -> list[str]:
             if key.startswith("$") or "$swift" not in spec:
                 continue
             sym = spec["$swift"]
-            # The bare last component is matched against `swift`, but `swift` was
-            # parsed from a specific enum. Assert the $swift namespace points at
-            # that enum so a colliding name in a sibling enum (or a mis-pointed
-            # $swift) can't silently match the wrong symbol's value.
             if not sym.startswith(prefix):
                 raise AssertionError(
                     f"{label}.{key}: {sym} does not start with expected prefix {prefix!r}")
@@ -306,8 +341,9 @@ def check() -> list[str]:
             if sw_name not in swift:
                 errors.append(f"{label}.{key}: {sym} not found")
                 continue
-            if not _eq(spec[key_field], swift[sw_name]):
-                errors.append(f"{label}.{key}: JSON {spec[key_field]} != Swift {sym} {swift[sw_name]}")
+            json_val = _dtcg_px(spec) if key_field == "px" else _dtcg_s(spec)
+            if not _eq(json_val, swift[sw_name]):
+                errors.append(f"{label}.{key}: JSON {json_val} != Swift {sym} {swift[sw_name]}")
 
     check_scale("space.scale", tokens["space"]["scale"], spacing, "AppSpacing.")
     check_scale("radius.scale", tokens["radius"]["scale"], radius, "AppRadius.")
@@ -328,8 +364,8 @@ def check() -> list[str]:
                 f"nor AppSkin.Typography. namespace")
         if field not in table:
             errors.append(f"type.scale.{key}: {sym} not found")
-        elif not _eq(spec["px"], table[field]):
-            errors.append(f"type.scale.{key}: JSON {spec['px']} != Swift {sym} {table[field]}")
+        elif not _eq(_dtcg_px(spec), table[field]):
+            errors.append(f"type.scale.{key}: JSON {_dtcg_px(spec)} != Swift {sym} {table[field]}")
 
     # 4) elevation z0..z4 (blur <-> radius)
     for key, step in tokens["elevation"]["steps"].items():
@@ -340,8 +376,9 @@ def check() -> list[str]:
             if sfield not in sw:
                 errors.append(f"elevation.{key}.{jfield}: AppElevation.{key}.{sfield} not found")
                 continue
-            if not _eq(step[jfield], sw[sfield]):
-                errors.append(f"elevation.{key}.{jfield}: JSON {step[jfield]} != Swift AppElevation.{key}.{sfield} {sw[sfield]}")
+            json_val = step[jfield]["$value"] if jfield == "opacity" else float(step[jfield]["$value"].rstrip("px"))
+            if not _eq(json_val, sw[sfield]):
+                errors.append(f"elevation.{key}.{jfield}: JSON {json_val} != Swift AppElevation.{key}.{sfield} {sw[sfield]}")
 
     # 5) semantic spacing (AppSkin baseSpacing / baseMetrics / AppMetrics statics)
     _SPACE_TABLES = {
@@ -358,8 +395,8 @@ def check() -> list[str]:
         name = sym.split(".")[-1]
         if table is None or name not in table:
             errors.append(f"space.semantic.{key}: {sym} not found")
-        elif not _eq(spec["px"], table[name]):
-            errors.append(f"space.semantic.{key}: JSON {spec['px']} != Swift {sym} {table[name]}")
+        elif not _eq(_dtcg_px(spec), table[name]):
+            errors.append(f"space.semantic.{key}: JSON {_dtcg_px(spec)} != Swift {sym} {table[name]}")
 
     # 6) tracking (AppFonts.Tracking)
     for key, spec in tokens["type"]["tracking"].items():
@@ -368,8 +405,8 @@ def check() -> list[str]:
         name = spec["$swift"].split(".")[-1]
         if name not in tracking:
             errors.append(f"type.tracking.{key}: {spec['$swift']} not found")
-        elif not _eq(spec["px"], tracking[name]):
-            errors.append(f"type.tracking.{key}: JSON {spec['px']} != Swift {spec['$swift']} {tracking[name]}")
+        elif not _eq(_dtcg_px(spec), tracking[name]):
+            errors.append(f"type.tracking.{key}: JSON {_dtcg_px(spec)} != Swift {spec['$swift']} {tracking[name]}")
 
     # 7) semantic radius refs (AppSkin baseRadii -> AppRadius.X)
     for key, spec in tokens["radius"]["semantic"].items():
@@ -378,8 +415,8 @@ def check() -> list[str]:
         name = spec["$swift"].split(".")[-1]
         if name not in base_radii:
             errors.append(f"radius.semantic.{key}: {spec['$swift']} not found")
-        elif base_radii[name] != spec["ref"]:
-            errors.append(f"radius.semantic.{key}: JSON ref '{spec['ref']}' != Swift {spec['$swift']} AppRadius.{base_radii[name]}")
+        elif base_radii[name] != _dtcg_ref(spec):
+            errors.append(f"radius.semantic.{key}: JSON ref '{_dtcg_ref(spec)}' != Swift {spec['$swift']} AppRadius.{base_radii[name]}")
 
     # 8) vocab-highlight verbatim CSS strings (AppColors.*CSS)
     for thm, spec in tokens["color"]["vocab-highlight"].items():
@@ -388,7 +425,7 @@ def check() -> list[str]:
         name = spec["$swift"].split(".")[-1]
         if name not in color_strings:
             errors.append(f"vocab-highlight.{thm}: {spec['$swift']} not found")
-        elif color_strings[name] != spec["css"]:
+        elif color_strings[name] != spec["$value"]:
             errors.append(f"vocab-highlight.{thm}: JSON string != Swift {spec['$swift']}")
 
     # 9) motion durations (AppMotion easeOut/linear/spring/timingCurve)
@@ -402,8 +439,8 @@ def check() -> list[str]:
         md = motion.get(base, {})
         if field not in md:
             errors.append(f"motion.duration.{key}: {sym} ({field}) not parsed from AppMotion")
-        elif not _eq(spec["s"], md[field]):
-            errors.append(f"motion.duration.{key}: JSON {spec['s']} != Swift {sym} {md[field]}")
+        elif not _eq(_dtcg_s(spec), md[field]):
+            errors.append(f"motion.duration.{key}: JSON {_dtcg_s(spec)} != Swift {sym} {md[field]}")
 
     # 10) motion easing control points (AppMotion timingCurve -> cubic-bezier)
     for key, spec in tokens["motion"]["easing"].items():
@@ -414,7 +451,7 @@ def check() -> list[str]:
         if "curve" not in md:
             errors.append(f"motion.easing.{key}: {spec['$swift']} has no timingCurve")
             continue
-        nums = re.findall(_FLOAT, spec["css"].split("cubic-bezier", 1)[-1]) if "cubic-bezier" in spec["css"] else []
+        nums = re.findall(_FLOAT, spec["$value"].split("cubic-bezier", 1)[-1]) if "cubic-bezier" in spec["$value"] else []
         got = tuple(float(x) for x in nums[:4])
         if len(got) != 4 or not all(_eq(a, b) for a, b in zip(got, md["curve"])):
             errors.append(f"motion.easing.{key}: JSON {got} != Swift {spec['$swift']} {md['curve']}")
@@ -426,8 +463,8 @@ def check() -> list[str]:
         name = spec["$swift"].split(".")[-1]
         if name not in tap:
             errors.append(f"motion.tap-feedback.{key}: {spec['$swift']} not found")
-        elif not _eq(spec["value"], tap[name]):
-            errors.append(f"motion.tap-feedback.{key}: JSON {spec['value']} != Swift {spec['$swift']} {tap[name]}")
+        elif not _eq(spec["$value"], tap[name]):
+            errors.append(f"motion.tap-feedback.{key}: JSON {spec['$value']} != Swift {spec['$swift']} {tap[name]}")
 
     # 12) motion spring physics (AppMotion spring response + dampingFraction)
     for key, spec in tokens["motion"].get("spring", {}).items():
@@ -438,8 +475,8 @@ def check() -> list[str]:
         for field in ("response", "damping"):
             if field not in md:
                 errors.append(f"motion.spring.{key}: {spec['$swift']} ({field}) not parsed from AppMotion")
-            elif not _eq(spec[field], md[field]):
-                errors.append(f"motion.spring.{key}: JSON {field}={spec[field]} != Swift {spec['$swift']} {md[field]}")
+            elif not _eq(spec[field]["$value"], md[field]):
+                errors.append(f"motion.spring.{key}: JSON {field}={spec[field]['$value']} != Swift {spec['$swift']} {md[field]}")
 
     return errors
 
