@@ -952,10 +952,11 @@ def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str,
 
 
 def cmd_trends(args: argparse.Namespace) -> None:
-    """全域監控趨勢 — errors / active_users / tokens 逐日。
+    """全域監控趨勢 — errors / llm_errors(真火) / active_users / tokens 逐日。
 
-    **錯誤可見性**:errors = 失敗 pipeline_runs(status='failed')+ auto-judge rejects
+    **業務錯誤**:errors = 失敗 pipeline_runs(status='failed')+ auto-judge rejects
     (degree-cap 除外)。這是 token_usage 看不到的「有沒有東西在壞」訊號。
+    **真火錯誤**:llm_errors = 真實 LLM 基礎設施失敗(429/5xx/timeout),獨立於業務拒絕。
     語意對齊 kg.admin_trends(SoT),但此處以 connect_ro 唯讀**重實作** —— 不可 import
     該模組,因其 log 單例 _get_conn 會跑 migration + 把 running→interrupted 的 UPDATE
     (寫入,且會破壞進行中 pipeline 狀態),違反 ops-cli 的唯讀保證。
@@ -993,13 +994,32 @@ def cmd_trends(args: argparse.Namespace) -> None:
     tokens_per_day = [tokens_map.get(d, 0) for d in days]
     total_errors = sum(errors_per_day)
 
+    # 真火 — 真實 LLM 基礎設施失敗(429/5xx/timeout),獨立於業務拒絕訊號
+    llm_err_map: dict[str, int] = {}
+    llm_db = dd / "llm_errors.db"
+    if llm_db.exists():
+        conn = connect_ro(llm_db)
+        try:
+            for d, c in conn.execute(
+                "SELECT substr(created_at,1,10) AS d, COUNT(*) FROM llm_errors "
+                "WHERE created_at >= ? GROUP BY d", (cutoff,)
+            ):
+                if d:
+                    llm_err_map[d] = int(c or 0)
+        finally:
+            conn.close()
+    llm_errors_per_day = [llm_err_map.get(d, 0) for d in days]
+    total_llm_errors = sum(llm_errors_per_day)
+
     result = {
         "window_days": window,
         "days": days,
         "errors_per_day": errors_per_day,
+        "llm_errors_per_day": llm_errors_per_day,
         "active_users_per_day": active_users_per_day,
         "tokens_per_day": tokens_per_day,
         "total_errors": total_errors,
+        "total_llm_errors": total_llm_errors,
     }
 
     if args.json:
@@ -1007,14 +1027,155 @@ def cmd_trends(args: argparse.Namespace) -> None:
         return
 
     print(f"Trends — last {window}d global monitoring (UTC)")
-    print(f"Total errors: {total_errors}  (failed pipeline runs + auto-judge rejects)")
+    print(f"Total errors (業務): {total_errors}  (failed pipeline + auto-judge rejects)")
+    print(f"Total LLM failures (真火): {total_llm_errors}  (429/5xx/timeout)")
     print()
     max_err = max(errors_per_day) if errors_per_day else 0
     rows_out = []
-    for d, e, a, tk in zip(days, errors_per_day, active_users_per_day, tokens_per_day, strict=True):
+    for d, e, le, a, tk in zip(days, errors_per_day, llm_errors_per_day, active_users_per_day, tokens_per_day, strict=True):
         bar = "█" * round((e / max_err) * 20) if max_err else ""
-        rows_out.append([d, str(e), bar, str(a), str(tk)])
-    print_table(["Date", "Errors", "Err Trend", "Active", "Tokens"], rows_out)
+        rows_out.append([d, str(e), bar, str(le), str(a), str(tk)])
+    print_table(["Date", "Errors", "Err Trend", "LLM-Fail", "Active", "Tokens"], rows_out)
+
+
+def cmd_llm_errors(args: argparse.Namespace) -> None:
+    """真火監控 — 真實 LLM 基礎設施失敗(429/5xx/timeout)逐日與分類。
+
+    讀 llm_errors.db(connect_ro 唯讀,**不 import** llm_error_log 單例)。
+    """
+    window = max(1, min(args.window, 90))
+    dd = data_dir()
+    today = datetime.now(UTC).date()
+    days = [(today - timedelta(days=window - 1 - i)).isoformat() for i in range(window)]
+    cutoff = days[0]
+
+    db_path = dd / "llm_errors.db"
+    by_day: dict[str, int] = {}
+    by_class: dict[str, int] = {}
+    by_provider: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    recent: list[dict] = []
+    total = 0
+
+    if db_path.exists():
+        conn = connect_ro(db_path)
+        try:
+            # by_day
+            uid_where = ""
+            params: list = [cutoff]
+            if args.uid != "all":
+                uid_where = " AND user_id = ?"
+                params.append(args.uid)
+            for d, c in conn.execute(
+                f"SELECT substr(created_at,1,10) AS d, COUNT(*) FROM llm_errors "
+                f"WHERE created_at >= ?{uid_where} GROUP BY d",
+                tuple(params),
+            ):
+                if d:
+                    by_day[d] = int(c or 0)
+
+            # aggregates (whole window, not uid-filtered for by_class/provider/status)
+            # re-use same params
+            for ec, c in conn.execute(
+                f"SELECT error_class, COUNT(*) FROM llm_errors "
+                f"WHERE created_at >= ?{uid_where} GROUP BY error_class",
+                tuple(params),
+            ):
+                by_class[ec] = int(c or 0)
+
+            for prov, c in conn.execute(
+                f"SELECT COALESCE(provider,'unknown'), COUNT(*) FROM llm_errors "
+                f"WHERE created_at >= ?{uid_where} GROUP BY provider",
+                tuple(params),
+            ):
+                by_provider[prov] = int(c or 0)
+
+            for sc, c in conn.execute(
+                f"SELECT COALESCE(CAST(status_code AS TEXT),'none'), COUNT(*) FROM llm_errors "
+                f"WHERE created_at >= ?{uid_where} GROUP BY status_code",
+                tuple(params),
+            ):
+                by_status[sc] = int(c or 0)
+
+            # recent ~10
+            limit = 10
+            for row in conn.execute(
+                f"SELECT user_id, call_type, provider, model, error_class, status_code, "
+                f"message, substr(created_at,1,19) AS ts FROM llm_errors "
+                f"WHERE created_at >= ?{uid_where} ORDER BY created_at DESC LIMIT ?",
+                tuple(params + [limit]),
+            ):
+                recent.append({
+                    "user_id": row[0],
+                    "call_type": row[1],
+                    "provider": row[2],
+                    "model": row[3],
+                    "error_class": row[4],
+                    "status_code": row[5],
+                    "message": row[6],
+                    "created_at": row[7],
+                })
+
+            total = sum(by_day.values())
+        finally:
+            conn.close()
+
+    per_day = [by_day.get(d, 0) for d in days]
+
+    result = {
+        "window_days": window,
+        "total": total,
+        "by_day": {d: by_day.get(d, 0) for d in days},
+        "by_class": by_class,
+        "by_provider": by_provider,
+        "by_status": by_status,
+        "recent": recent,
+    }
+
+    if args.json:
+        emit_json(result)
+        return
+
+    print(f"LLM Errors (真火) — last {window}d")
+    print(f"Total: {total}")
+    print()
+
+    # trend bar
+    max_val = max(per_day) if per_day else 0
+    rows_out = []
+    for d, v in zip(days, per_day, strict=True):
+        bar = "█" * round((v / max_val) * 20) if max_val else ""
+        rows_out.append([d, str(v), bar])
+    print_table(["Date", "Count", "Trend"], rows_out)
+    print()
+
+    # by_class ranking
+    if by_class:
+        print("By error class:")
+        sorted_cls = sorted(by_class.items(), key=lambda x: -x[1])
+        print_table(["Class", "Count"], [[k, str(v)] for k, v in sorted_cls[:5]])
+        print()
+
+    # by_provider ranking
+    if by_provider:
+        print("By provider:")
+        sorted_prov = sorted(by_provider.items(), key=lambda x: -x[1])
+        print_table(["Provider", "Count"], [[k, str(v)] for k, v in sorted_prov[:5]])
+        print()
+
+    # by_status
+    if by_status:
+        print("By status code:")
+        sorted_status = sorted(by_status.items(), key=lambda x: -x[1])
+        print_table(["Status", "Count"], [[k, str(v)] for k, v in sorted_status[:5]])
+        print()
+
+    if recent:
+        print(f"Recent {len(recent)} errors:")
+        for r in recent:
+            sc = f" [{r['status_code']}]" if r['status_code'] is not None else ""
+            print(f"  {r['created_at']} {r['error_class']}{sc} — {r['call_type']} "
+                  f"(uid={r['user_id']}, provider={r['provider'] or 'unknown'})")
 
 
 # ── CLI 進入點 ──────────────────────────────────────────
@@ -1113,11 +1274,18 @@ def main() -> None:
                         "--bucket week/month，否則 day 桶會產生大片零牆")
     p.set_defaults(func=cmd_timeseries)
 
-    # trends（全域監控:errors/active/tokens 逐日;errors 含失敗呼叫可見性）
+    # trends（全域監控:errors/active/tokens 逐日;errors 含業務拒絕+真火獨立欄位）
     p = sub.add_parser("trends", parents=[jp],
-                       help="全域監控趨勢（errors/active/tokens 逐日；errors=失敗 pipeline+judge reject）")
+                       help="全域監控趨勢（errors/active/tokens 逐日；errors=業務拒絕, llm-fail=真火）")
     p.add_argument("--window", type=int, default=14, help="天數（預設 14，上限 90）")
     p.set_defaults(func=cmd_trends)
+
+    # llm-errors（真火監控 — 429/5xx/timeout）
+    p = sub.add_parser("llm-errors", parents=[jp],
+                       help="真實 LLM 基礎設施失敗監控（429/5xx/timeout 逐日+分類）")
+    p.add_argument("--window", type=int, default=14, help="天數（預設 14，上限 90）")
+    p.add_argument("--uid", default="all", help="限定單一用戶（預設 all）")
+    p.set_defaults(func=cmd_llm_errors)
 
     args = parser.parse_args()
     args.func(args)

@@ -8,6 +8,7 @@ from pathlib import Path
 from ops_helpers import (
     CLI_PATH,
     _create_judge_log_db,
+    _create_llm_errors_db,
     _create_pipeline_runs_db,
     _create_token_usage_db,
     _create_translate_log_db,
@@ -953,6 +954,112 @@ class TestTrends:
         ).fetchone()[0]
         conn.close()
         assert status == "running"  # 未被竄改 → 唯讀保證成立
+
+
+    def test_llm_errors_in_trends(self, tmp_path):
+        """trends 應獨立回報 llm_errors_per_day(真火),不與業務 errors 混。"""
+        import json
+        now = _now_iso()
+        _create_llm_errors_db(tmp_path, [
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
+            ("u1", "translate", "deepseek", "m", "InternalServerError", 500, "boom", now),
+        ])
+        r = _run_cli(str(tmp_path), "trends", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["llm_errors_per_day"][-1] == 2
+        assert d["total_llm_errors"] == 2
+        # 業務 errors 應為 0(無 pipeline/judge 資料)
+        assert d["errors_per_day"][-1] == 0
+        assert d["total_errors"] == 0
+
+
+class TestLlmErrors:
+    """llm-errors — 真火監控(真實 LLM 失敗 429/5xx/timeout)。"""
+
+    def test_empty_no_crash(self, tmp_path):
+        import json
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["total"] == 0
+        assert all(v == 0 for v in d["by_day"].values())
+        assert d["recent"] == []
+
+    def test_window_filtering(self, tmp_path):
+        import json
+        now = _now_iso()
+        yesterday = (datetime.now(UTC) - __import__("datetime").timedelta(days=1)).isoformat()
+        old = "2020-01-01T00:00:00+00:00"
+        _create_llm_errors_db(tmp_path, [
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", yesterday),
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", old),
+        ])
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["total"] == 2  # old 被 window 過濾
+
+    def test_by_class_provider_status(self, tmp_path):
+        import json
+        now = _now_iso()
+        _create_llm_errors_db(tmp_path, [
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl2", now),
+            ("u1", "translate", "deepseek", "m", "InternalServerError", 500, "boom", now),
+            ("u1", "embed", "gemini", "m", "APITimeoutError", None, "timeout", now),
+        ])
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["by_class"]["RateLimitError"] == 2
+        assert d["by_class"]["InternalServerError"] == 1
+        assert d["by_class"]["APITimeoutError"] == 1
+        assert d["by_provider"]["gemini"] == 3
+        assert d["by_provider"]["deepseek"] == 1
+        assert d["by_status"]["429"] == 2
+        assert d["by_status"]["500"] == 1
+        assert d["by_status"]["none"] == 1  # timeout has no status_code
+
+    def test_uid_filter(self, tmp_path):
+        import json
+        now = _now_iso()
+        _create_llm_errors_db(tmp_path, [
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+            ("u2", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+        ])
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--uid", "u1", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["total"] == 1
+
+    def test_text_render(self, tmp_path):
+        now = _now_iso()
+        _create_llm_errors_db(tmp_path, [
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rate limited", now),
+        ])
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7")
+        assert r.returncode == 0, r.stderr
+        assert "LLM Errors" in r.stdout
+        assert "RateLimitError" in r.stdout
+
+    def test_readonly_does_not_write(self, tmp_path):
+        """ops-cli llm-errors 必須唯讀 — 跑完後 DB 內容與 mtime 不變。"""
+        import os
+        now = _now_iso()
+        _create_llm_errors_db(tmp_path, [
+            ("u1", "judge", "gemini", "m", "RateLimitError", 429, "rl", now),
+        ])
+        db_path = tmp_path / "llm_errors.db"
+        mtime_before = os.stat(db_path).st_mtime
+        size_before = os.stat(db_path).st_size
+        r = _run_cli(str(tmp_path), "llm-errors", "--window", "7", "--json")
+        assert r.returncode == 0, r.stderr
+        mtime_after = os.stat(db_path).st_mtime
+        size_after = os.stat(db_path).st_size
+        assert mtime_before == mtime_after
+        assert size_before == size_after
 
 
 class TestHelp:
