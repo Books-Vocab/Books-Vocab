@@ -23,43 +23,15 @@ struct BookshelfView: View {
     @Environment(\.bookshelfImportService) private var bookshelfImportService
     @Environment(\.bookFileManager) private var bookFileManager
     @Environment(\.toastCoordinator) private var toastCoordinator
-    @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
-    @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
-    private var podcastSeries: [PodcastSeries]
-
-    /// 已追蹤的浮上來；同組內維持 server `sortOrder`。`@Query` macro 不支援多重
-    /// SortDescriptor，這裡 in-memory 穩定排序（O(n log n)，series 數 << 100）。
-    private var sortedPodcastSeries: [PodcastSeries] {
-        podcastSeries.enumerated()
-            .sorted { lhs, rhs in
-                if lhs.element.isFollowed != rhs.element.isFollowed {
-                    return lhs.element.isFollowed && !rhs.element.isFollowed
-                }
-                return lhs.offset < rhs.offset
-            }
-            .map(\.element)
-    }
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
     @State private var navigationPath = NavigationPath()
 
-    /// regular (Mac/iPad) only: the podcast series whose episode-list + player
-    /// render as a root-level master pane on this NavigationStack root (depth=0)
-    /// instead of being pushed. compact keeps this `nil` and pushes via
-    /// `PodcastNavRoute.series` instead (see `PodcastSeriesActivation`). Driving
-    /// selection from a root-level `@State` is what makes the trailing
-    /// `safeAreaInset` player immune to the depth=1 remount/pop (runtime-confirmed
-    /// root cause).
-    @State private var selectedSeriesRemoteId: String?
-
-    /// remoteIds of the currently-live (non-soft-deleted) podcast series.
-    /// Used as the `onChange` key that auto-dismisses a stranded overlay: a
-    /// plain `[String]` is `Equatable`, so the observer fires only when the set
-    /// actually changes (a series appears / disappears) rather than on every
-    /// body pass — same discipline as the `onChange(of: layoutMode)` below.
-    private var liveSeriesRemoteIds: [String] { podcastSeries.map(\.remoteId) }
+    // podcast 已抽離為獨立頂層 section（見 `PodcastHomeView`），本 view 回歸純書架：
+    // 不再持有 podcastSeries query / overlay-pane selection / PodcastNavRoute 路由。
+    // root content 恒定 + `navigationDestination(for: Book.self)` 的 reader push 契約保留。
 
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
 
@@ -72,33 +44,13 @@ struct BookshelfView: View {
                     .ignoresSafeArea()
 
                 // root content 恒定：books grid / empty。這是 NavigationStack
-                // 的直接 root subtree，其 structural identity **必須穩定**。
-                // 過去用 `if/else` 在 bookGrid ↔ PodcastEpisodeListView 之間
-                // 替換 root content，會在顯示過 podcast pane 後**永久破壞**該
-                // NavigationStack 的 value-based push（NAVDBG 坐實：碰過 podcast
-                // 後 `NavigationLink(value: book)` 不再驅動 navigationPath，
-                // reader 於 path=0 短暫 onAppear 後立即 onDisappear，無法進入
-                // 閱讀頁）。對齊 NotebookListView 的 root-恒定模式。
-                if books.isEmpty && podcastSeries.isEmpty {
+                // 的直接 root subtree，其 structural identity **必須穩定**——
+                // root-content swap 會永久破壞 value-based push（NAVDBG 坐實）。
+                // 對齊 NotebookListView 的 root-恒定模式。
+                if books.isEmpty {
                     emptyState
                 } else {
                     bookGrid
-                }
-
-                // regular (Mac/iPad): a selected podcast series renders its
-                // episode-list + inline player as an **overlay pane** stacked
-                // on top of the (always-present) book grid — NOT a push, and
-                // NOT a root-content swap. Showing / hiding only mutates this
-                // overlay layer, so the book grid's root identity is untouched
-                // and reader push stays intact. The pane paints an opaque
-                // background to fully cover the grid beneath. compact never
-                // sets `selectedSeriesRemoteId` (it pushes instead), so this is
-                // regular-only.
-                if layoutMode.usesInlineDetail, let seriesId = selectedSeriesRemoteId {
-                    PodcastEpisodeListView(seriesId: seriesId)
-                        .id(seriesId)
-                        .background(appTheme.palette.pageBackground.ignoresSafeArea())
-                        .transition(.contentSwap)
                 }
 
                 if coordinator.isLoading {
@@ -120,9 +72,9 @@ struct BookshelfView: View {
             .largeNavigationBarTitle()
             .animatePhaseChange(books.isEmpty)
             .animateContentFade(coordinator.isLoading)
-            // navigationDestination 統一掛在 NavigationStack root —
-            // 避免 nested-modifier 競爭。Podcast 改 value-based push 後
-            // 由此處接住路由（PR 追查 podcast tap freeze 的根因之一）。
+            // navigationDestination 統一掛在 NavigationStack root，接住書籍 →
+            // reader 的 value-based push（freeze-fix 契約；podcast 路由已隨
+            // 獨立 section 遷出至 `PodcastHomeView`）。
             .navigationDestination(for: Book.self) { book in
                 switch book.format {
                 case .epub, .txt, .md:
@@ -131,60 +83,8 @@ struct BookshelfView: View {
                     PDFReaderView(book: book)
                 }
             }
-            // Both `.series` and `.episode` cases are kept for the compact
-            // (iPhone) push path. In regular (Mac/iPad) `.series` is never
-            // pushed (it renders as a root-level master via
-            // `selectedSeriesRemoteId`) and `.episode` is never pushed either
-            // (the inline player handles it), but the destination must stay
-            // registered — removing it would break the compact route.
-            .navigationDestination(for: PodcastNavRoute.self) { route in
-                switch route {
-                case .series(let seriesRemoteId):
-                    PodcastEpisodeListView(seriesId: seriesRemoteId)
-                case .episode(let episodeRemoteId):
-                    PodcastPlayerView(episodeId: episodeRemoteId)
-                }
-            }
-            // regular → compact flip (iPad multitasking shrink / Catalyst window
-            // resize): drop the root-level master selection so we don't strand a
-            // two-pane layout or an orphaned player in compact.
-            .onChange(of: layoutMode) { _, newMode in
-                if !newMode.usesInlineDetail {
-                    selectedSeriesRemoteId = nil
-                }
-            }
-            // regular: the open overlay's series was soft-deleted by a reconcile
-            // mid-view (isDeleted=true → gone from the `!isDeleted` @Query). The
-            // overlay would otherwise stay mounted on a now-nonexistent series,
-            // whose `PodcastEpisodeListView` fetch (also `!isDeleted`) yields an
-            // empty "尚無集數" state requiring a manual back-tap. Drop the
-            // selection to auto-collapse back to the grid. Keyed on the live
-            // remoteId set, so it fires only on add/remove — never on normal
-            // open (the tapped series is present) or switch (target is present).
-            .onChange(of: liveSeriesRemoteIds) { _, ids in
-                if let selected = selectedSeriesRemoteId, !ids.contains(selected) {
-                    withAnimation(AppMotion.phaseChange) {
-                        selectedSeriesRemoteId = nil
-                    }
-                }
-            }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
-                    // regular: a root-level podcast master pane is showing →
-                    // prepend an explicit back (no system back exists at depth=0).
-                    // Settings stays reachable alongside it (its only entry point
-                    // on Catalyst/iPad is this gear — must not be replaced).
-                    if layoutMode.usesInlineDetail, selectedSeriesRemoteId != nil {
-                        Button {
-                            withAnimation(AppMotion.phaseChange) {
-                                selectedSeriesRemoteId = nil
-                            }
-                        } label: {
-                            AppToolbarGlyph(systemImage: "chevron.left")
-                        }
-                        .accessibilityLabel("返回".localized)
-                        .accessibilityIdentifier("bookshelf.podcastBackButton")
-                    }
                     Button(action: coordinator.presentSettings) {
                         AppToolbarGlyph(systemImage: "gearshape")
                     }
@@ -228,15 +128,6 @@ struct BookshelfView: View {
             .settingsSheet(isPresented: $coordinator.showSettings)
             .sheet(isPresented: $showLoginSheet) {
                 LoginSheet()
-            }
-            .task {
-                if authManager.isLoggedIn {
-                    let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-                    if outcome == .listFetchFailed {
-                        toastCoordinator.warning("同步失敗".localized)
-                    }
-                    await warmFollowedSeriesAudio()
-                }
             }
         }
         // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
@@ -299,9 +190,6 @@ struct BookshelfView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
-        .refreshable {
-            await refreshPodcastCatalog()
-        }
     }
 
     // MARK: - 書籍網格
@@ -337,94 +225,12 @@ struct BookshelfView: View {
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                     .padding(.top, AppSpacing.s2)
                 }
-
-                // Mochi 北極星二：書籍 ↔ 播客之間用 AppAirDivider 切群組（hairline + 32pt margin）
-                if !books.isEmpty && !sortedPodcastSeries.isEmpty {
-                    AppAirDivider()
-                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                }
-
-                // 播客 section
-                if !sortedPodcastSeries.isEmpty {
-                    LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
-                        ForEach(sortedPodcastSeries) { series in
-                            seriesCard(series)
-                                .buttonStyle(.bookshelfCard)
-                                .accessibilityLabel("\(series.title), podcast")
-                                .transition(.bookshelfCard)
-                                .contextMenu {
-                                    Button {
-                                        toggleFollow(series)
-                                    } label: {
-                                        Label(
-                                            (series.isFollowed ? "取消追蹤" : "追蹤").localized,
-                                            systemImage: series.isFollowed ? "star.slash" : "star"
-                                        )
-                                    }
-                                }
-                        }
-                    }
-                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                    .padding(.top, books.isEmpty ? AppSpacing.s2 : 0)
-                }
             }
-            .animateContentFade(books.count + podcastSeries.count)
+            .animateContentFade(books.count)
 
             epubGuideHint
                 .padding(.top, AppSpacing.s6)
                 .padding(.bottom, AppSpacing.s7)
-        }
-        .refreshable {
-            await refreshPodcastCatalog()
-        }
-    }
-
-    /// Pull-to-refresh entry. Like the `.task` background sync, a series-list
-    /// fetch failure surfaces a warning toast — otherwise the user sees the
-    /// spinner end with no feedback (the bug this fixes; mirrors
-    /// `NotebookListView`'s reconcile-error surface). Partial
-    /// (per-series) and auxiliary (progress/save) failures stay silent: the
-    /// catalog still reconciled, so a toast would be noise.
-    @MainActor
-    private func refreshPodcastCatalog() async {
-        guard authManager.isLoggedIn else { return }
-        let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-        if outcome == .listFetchFailed {
-            toastCoordinator.warning("同步失敗".localized)
-        }
-    }
-
-    /// Series row activation branch:
-    /// - regular (Mac/iPad): tap drives `@State selectedSeriesRemoteId` so the
-    ///   episode-list renders as a root-level master pane (no push) — the
-    ///   structural Catalyst remount fix. Selected card gets an accent stroke
-    ///   overlay (mirrors `NotebookActivationSurface` selectInline).
-    /// - compact (iPhone): bit-for-bit unchanged value-based push via
-    ///   `navigationDestination(for: PodcastNavRoute.self)`.
-    @ViewBuilder
-    private func seriesCard(_ series: PodcastSeries) -> some View {
-        switch PodcastSeriesActivation.activation(
-            seriesRemoteId: series.remoteId,
-            layoutMode: layoutMode
-        ) {
-        case .selectInline(let seriesRemoteId):
-            Button {
-                withAnimation(AppMotion.phaseChange) {
-                    selectedSeriesRemoteId = seriesRemoteId
-                }
-            } label: {
-                PodcastSeriesCard(series: series, coverHeight: coverHeight)
-                    .overlay {
-                        if selectedSeriesRemoteId == seriesRemoteId {
-                            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                                .stroke(appTheme.palette.accent, lineWidth: 1.5)
-                        }
-                    }
-            }
-        case .push(let route):
-            NavigationLink(value: route) {
-                PodcastSeriesCard(series: series, coverHeight: coverHeight)
-            }
         }
     }
 
@@ -490,53 +296,14 @@ struct BookshelfView: View {
         }
     }
 
-    /// Predictive prefetch: warm AVFoundation's connection for the first
-    /// episode of each followed series so tapping it from the shelf reaches
-    /// `.ready` almost instantly. Mirrors Spotify/Audible behaviour where the
-    /// app speculates on the most-likely next play. Bounded by the preloader's
-    /// own LRU cap (5) — extra series silently skip rather than thrash.
-    @MainActor
-    private func warmFollowedSeriesAudio() async {
-        let token: String
-        do {
-            token = try await kgService.currentAuthToken()
-        } catch {
-            return  // No auth → preload would 401; skip silently.
-        }
-        let headers = ["Authorization": "Bearer \(token)"]
-        for series in podcastSeries where series.isFollowed {
-            guard
-                let first = series.episodes
-                    .filter({ $0.audioAvailable })
-                    .min(by: { $0.episodeNumber < $1.episodeNumber }),
-                let urlStr = first.audioURL,
-                let url = URL(string: urlStr)
-            else { continue }
-            PodcastAssetPreloader.shared.preload(url: url, headers: headers)
-        }
-    }
-
-    /// Series 右鍵/長按選單的追蹤切換。樂觀翻轉 + 失敗回滾,與
-    /// `PodcastEpisodeListView.toggleFollow` 共用 `PodcastFollowToggle` 契約。
-    @MainActor
-    private func toggleFollow(_ series: PodcastSeries) {
-        var outcome: PodcastFollowToggle.Outcome = .saved
-        withAnimation(AppMotion.phaseChange) {
-            outcome = PodcastFollowToggle.perform(series: series) {
-                modelContext.safeSave()
-            }
-        }
-        if outcome == .rolledBack {
-            toastCoordinator.error("追蹤狀態儲存失敗".localized)
-        }
-    }
 }
 
 // MARK: - 書架卡 Button Style（Mochi 北極星五：TapFeedback triplet，無 elevation 升降）
 
-/// 書架封面卡 press feedback：scale + opacity + haptic，resting/press 都不換 elevation 階。
+/// 封面卡 press feedback：scale + opacity + haptic，resting/press 都不換 elevation 階。
 /// 取代既有 `.liftable`（liftable 會 z1↔z2 切換，違反 list 卡 resting z0 的鐵律）。
-private struct BookshelfCardButtonStyle: ButtonStyle {
+/// `internal`（非 fileprivate）— `PodcastHomeView` 的 series 卡共用同一 tap feedback。
+struct BookshelfCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? AppMotion.TapFeedback.scaleDown : 1)
@@ -547,6 +314,6 @@ private struct BookshelfCardButtonStyle: ButtonStyle {
 }
 
 extension ButtonStyle where Self == BookshelfCardButtonStyle {
-    fileprivate static var bookshelfCard: BookshelfCardButtonStyle { BookshelfCardButtonStyle() }
+    static var bookshelfCard: BookshelfCardButtonStyle { BookshelfCardButtonStyle() }
 }
 #endif

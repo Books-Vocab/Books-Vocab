@@ -11,6 +11,10 @@
 "app.section.bookshelf" = "书库";
 "app.section.notebooks" = "单字本";
 "app.section.overview" = "总览";
+"app.section.podcasts" = "播客";
+"尚無播客" = "暂无播客";
+"追蹤喜歡的節目，從這裡開始收聽" = "关注喜欢的节目，从这里开始收听";
+"下拉重新整理以同步節目" = "下拉刷新以同步节目";
 "API 錯誤：%@" = "API 错误：%@";
 "KG 伺服器未連線" = "KG 服务器未连线";
 "KG 伺服器錯誤：%@" = "KG 服务器错误：%@";

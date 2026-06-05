@@ -11,6 +11,7 @@ import Inject
 
 enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
     case bookshelf
+    case podcasts
     case notebooks
     case overview
 
@@ -19,6 +20,7 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
     var titleKey: String {
         switch self {
         case .bookshelf: return "app.section.bookshelf"
+        case .podcasts: return "app.section.podcasts"
         case .notebooks: return "app.section.notebooks"
         case .overview: return "app.section.overview"
         }
@@ -27,6 +29,7 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
     var systemImage: String {
         switch self {
         case .bookshelf: return "books.vertical"
+        case .podcasts: return "waveform"
         case .notebooks: return "character.book.closed"
         case .overview: return "chart.bar"
         }
@@ -88,6 +91,8 @@ struct ContentView: View {
             BookshelfView()
                 .tabItem { Label(L10n.string(AppPrimarySection.bookshelf.titleKey), systemImage: AppPrimarySection.bookshelf.systemImage) }
             #endif
+            PodcastHomeView()
+                .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage) }
             NotebookListView()
                 .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage) }
             OverviewTab()
@@ -103,6 +108,8 @@ struct ContentView: View {
             // sectionContent is only invoked from the macCatalyst NavigationSplitView
             // branch, where os(iOS) is always true — the #else was dead code.
             BookshelfView()
+        case .podcasts:
+            PodcastHomeView()
         case .notebooks:
             NotebookListView()
         case .overview:
