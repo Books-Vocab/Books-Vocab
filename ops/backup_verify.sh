@@ -87,7 +87,7 @@ section "解壓 backup"
 info "解壓到 $TMPDIR_BV"
 tar_err="$TMPDIR_BV/.tar_err"
 if ! tar -xzf "$BACKUP_FILE" -C "$TMPDIR_BV" 2>"$tar_err"; then
-  echo "✗ 解壓失敗：$BACKUP_FILE（tar -xzf 失敗）" >&2
+  echo "✗ 解壓失敗：${BACKUP_FILE}（tar -xzf 失敗）" >&2
   [[ -s "$tar_err" ]] && sed 's/^/    /' "$tar_err" >&2
   exit 1
 fi
@@ -200,7 +200,7 @@ else
     fi
   done
   if [[ "$cards_table_ok" -gt 0 ]]; then
-    ok "table card: $cards_table_ok/${#CARD_DBS[@]} 份 cards.db OK（total rows=$total_cards）"
+    ok "table card: ${cards_table_ok}/${#CARD_DBS[@]} 份 cards.db OK（total rows=${total_cards}）"
     if [[ "$total_cards" -eq 0 ]]; then
       mark_warning "所有 cards.db 都是空的（rows=0）"
     fi

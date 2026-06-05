@@ -33,6 +33,21 @@ section "Primitives consolidated into ops/"
 [[ ! -e "$WORKSPACE/scripts/generate-changelog.sh" ]] \
   && ok "old scripts/generate-changelog.sh gone" || fail_t "scripts/generate-changelog.sh still present"
 
+# ── 3b. non-ASC ops test runner exists and keeps help comment-only ───────────
+section "Non-ASC ops test runner"
+OPS_TEST="$WORKSPACE/ops/test_ops.sh"
+[[ -x "$OPS_TEST" ]] \
+  && ok "ops/test_ops.sh executable" || fail_t "ops/test_ops.sh missing or not executable"
+ops_help="$(bash "$OPS_TEST" --help 2>&1)"
+echo "$ops_help" | grep -qE 'set -euo pipefail|^ROOT=|^UV_BIN=' \
+  && fail_t "test_ops help leaks shell code" \
+  || ok "test_ops help is comment-only"
+ops_list="$(bash "$OPS_TEST" --list 2>&1)"
+echo "$ops_list" | grep -q '^release$' \
+  && ok "test_ops lists release group" || fail_t "test_ops --list missing release"
+echo "$ops_list" | grep -q '^podcast-ops$' \
+  && ok "test_ops lists podcast-ops group" || fail_t "test_ops --list missing podcast-ops"
+
 # ── 4. release.sh 委派 primitives（不重造 bump/changelog 邏輯） ───────────────
 section "Delegates to primitives"
 grep -q 'release_bump.sh' "$REL" \
@@ -66,6 +81,21 @@ echo "$pub_body" | grep -q 'detached HEAD' \
 section "Version format guard"
 grep -qE '\[0-9\]\+\\?\.\[0-9\]|[0-9]+\.[0-9]+\.[0-9]+' "$REL" \
   && ok "validates semver x.y.z"            || fail_t "no semver format guard"
+
+# ── 6b. Bash set -u + non-ASCII boundary regression guard ───────────────────
+section "Bash variable braces before non-ASCII"
+bad_boundary="$(
+  rg -n '\$[A-Za-z_][A-Za-z0-9_]*[^[:ascii:]]' "$WORKSPACE/ops" "$WORKSPACE/devops.sh" \
+    -g '*.sh' \
+    -g '!asc.sh' \
+    -g '!test_asc.sh' \
+    -g '!ios_release.sh' \
+    -g '!test_ios_release.sh' \
+    || true
+)"
+[[ -z "$bad_boundary" ]] \
+  && ok "no unbraced shell vars before non-ASCII in non-ASC ops" \
+  || fail_t "unbraced shell vars before non-ASCII:\n$bad_boundary"
 
 # ── 7. status / changelog 唯讀（不得碰遠端 / 不寫檔） ────────────────────────
 section "Read-only commands stay read-only"

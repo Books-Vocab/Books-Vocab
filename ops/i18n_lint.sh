@@ -55,6 +55,17 @@ if ! command -v rg >/dev/null 2>&1; then
   exit 2
 fi
 
+UV_BIN="${UV_BIN:-}"
+if [[ -z "$UV_BIN" ]]; then
+  if [[ -x "$HOME/.local/bin/uv" ]]; then
+    UV_BIN="$HOME/.local/bin/uv"
+  else
+    UV_BIN="uv"
+  fi
+fi
+PY_BIN="$("$UV_BIN" python find 3.13)"
+PY_CMD=("$PY_BIN")
+
 # ---- pattern definitions ----------------------------------------------------
 
 # Raw Chinese in SwiftUI text-bearing positions.
@@ -102,7 +113,7 @@ _scan_pattern() {
   hits=""
   while IFS= read -r file; do
     [ -z "$file" ] && continue
-    stripped=$(python3 "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
+    stripped=$("${PY_CMD[@]}" "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
     local file_hits
     file_hits=$(printf '%s\n' "$stripped" \
       | rg --no-heading -n --pcre2 "$pattern" 2>/dev/null \
@@ -164,7 +175,7 @@ scan_xcstrings_needs_review() {
   if [ ! -f "$XCSTRINGS" ]; then
     return 0
   fi
-  python3 - <<PY 2>/dev/null || true
+  "${PY_CMD[@]}" - <<PY 2>/dev/null || true
 import json, sys
 path = "$XCSTRINGS"
 try:
@@ -197,11 +208,11 @@ PY
 scan_key_coverage() {
   [ -f "$KEY_EXTRACTOR" ] || return 0
   [ -f "$EN_STRINGS" ] || return 0
-  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
+  "${PY_CMD[@]}" - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
 import json, plistlib, re, subprocess, sys
 extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    payload = json.loads(subprocess.check_output(["python3", extractor], text=True))
+    payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
     sys.exit(0)
@@ -235,7 +246,7 @@ PY
 # in English mode after L10n fallback). Scans both .strings (values only) and
 # .stringsdict (every leaf string).
 scan_en_purity() {
-  python3 - "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
+  "${PY_CMD[@]}" - "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
 import plistlib, re, sys
 en_strings, en_stringsdict = sys.argv[1], sys.argv[2]
 cjk = re.compile(r"[一-鿿]")
@@ -280,11 +291,11 @@ PY
 scan_plural_coverage() {
   [ -f "$KEY_EXTRACTOR" ] || return 0
   [ -f "$EN_STRINGS" ] || return 0
-  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
+  "${PY_CMD[@]}" - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
 import json, plistlib, re, subprocess, sys
 extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    payload = json.loads(subprocess.check_output(["python3", extractor], text=True))
+    payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
     sys.exit(0)
@@ -406,7 +417,7 @@ case "$MODE" in
     ;;
   --strict)
     # Compute coverage / purity / plural checks (strict-only — they require
-    # python3 with stdlib plistlib and the extractor script).
+    # Python stdlib plistlib and the extractor script).
     missing_key_hits="$(scan_key_coverage)"
     en_cjk_hits="$(scan_en_purity)"
     plural_missing_hits="$(scan_plural_coverage)"
