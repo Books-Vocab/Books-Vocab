@@ -57,7 +57,7 @@ def list_available_providers() -> list[LLMProvider]:
 
 
 def create_eval_client(provider: LLMProvider):
-    """Create an OpenAI-compatible client for eval. Bypasses TrackedLLM."""
+    """Create an OpenAI-compatible client for eval. Bypasses TrackedLLM and service_factories."""
     from openai import OpenAI
 
     api_key = "ollama" if provider.name == "ollama" else (os.getenv(provider.api_key_env) or "no-key")
