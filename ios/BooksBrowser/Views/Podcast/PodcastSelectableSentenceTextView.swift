@@ -85,6 +85,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         "\(text)::\(initialSelectionRange?.location ?? -1)::\(initialSelectionRange?.length ?? 0)"
     }
 
+    @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
         let onTranslateSelection: (String, String) -> Void
         let onExplainSelection: (String, String) -> Void
