@@ -185,16 +185,14 @@ def test_backfill_is_idempotent():
 
 
 def test_backfill_dry_run_writes_nothing():
-    s3 = FakeS3({
-        "s_a/metadata.json": json.dumps(_meta("s_a")).encode(),
-        "s_a/ep_01/audio.m4a": b"\x00" * 100,  # body unused in dry-run (no ffmpeg call path? it is called)
-    })
-    # dry-run still generates the preview bytes (to report size) but must not PUT.
-    # Guard with ffmpeg availability: skip the assertion path when absent.
     if not _HAS_FFMPEG:
         pytest.skip("ffmpeg not on PATH")
-    # supply a real clip so make_preview_bytes succeeds
-    s3.objects["s_a/ep_01/audio.m4a"] = _make_m4a(10)
+    # dry-run still generates the preview bytes (ffmpeg runs, to report size) but
+    # must not PUT anything. A real clip is needed so make_preview_bytes succeeds.
+    s3 = FakeS3({
+        "s_a/metadata.json": json.dumps(_meta("s_a")).encode(),
+        "s_a/ep_01/audio.m4a": _make_m4a(10),
+    })
     bf.backfill_series(s3, bucket="b", series_id="s_a", dry_run=True)
     assert "s_a/ep_01/preview.m4a" not in s3.objects  # nothing written
     meta = json.loads(s3.objects["s_a/metadata.json"])
@@ -212,6 +210,17 @@ def test_backfill_invalid_series_id_raises():
     s3 = FakeS3()
     with pytest.raises(ValueError, match="invalid series_id"):
         bf.backfill_series(s3, bucket="b", series_id="Bad-Id", dry_run=True)
+
+
+# ── cross-file constant drift guard ──────────────────────────────────────────
+
+def test_preview_ep_num_matches_backend_policy():
+    """The previewable-episode number is hand-synced between the backend gate
+    (podcast_access.FREE_PREVIEW_EP_NUM) and this ops tool. Assert they agree so
+    a future edit to one can't silently break the other."""
+    from kg.podcast_access import FREE_PREVIEW_EP_NUM
+
+    assert bf.PREVIEW_EP_NUM == FREE_PREVIEW_EP_NUM
 
 
 # ── drift report ─────────────────────────────────────────────────────────────
