@@ -101,6 +101,14 @@ git push origin main --tags
 下一步：等 CI 完成，會自動建立 GitHub Release。
 ```
 
+## iOS App Store / TestFlight
+
+版本 tag/CI（上方）之外，實際出 build 與改 App Store 內容走 ops 腳本：
+
+- 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
+- 查版本/審查狀態、改文案 metadata → `./ops/asc.sh`（`versions`/`review-status`/`metadata`/`set …`；`set` 預設 dry-run，`--yes` 才真寫）
+- 被拒處理、GUI vs API 可讀範圍、加密合規 → 細節見 `docs/sop/ios.md §發版`
+
 ## 注意事項
 
 - push 前確認 working tree 乾淨
