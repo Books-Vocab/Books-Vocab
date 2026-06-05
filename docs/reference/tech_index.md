@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: f43ed600
+verified_against: 068e6105
 -->
 # Technical Reference Index
 
@@ -107,6 +107,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
 | `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
+| `podcast_cover_publish.py` | 播客**封面**(re)發布,與 audio 完全解耦:只 PUT `<sid>/cover.png` + RMW `metadata.coverImageURL` + 重建 index(**不**重組 audio、**不** reconcile/prune,故對 local↔S3 不同步的 series 安全 —— `upload.sh` 不可用於只換封面)。原子靠排序(cover→metadata→index)+ 冪等(不 bump updatedAt)+ 可重入;`--check` cover⟷metadata drift;dry-run 預設、`--execute` 才寫。`--all --workspaces-dir` / `--workspace` / `--series` |
 | `test_devops.sh` | devops 工具測試 |
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `gen_web_tokens.py` | 從 `design-system/tokens.json`(W3C DTCG 格式,跨平台 token SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
