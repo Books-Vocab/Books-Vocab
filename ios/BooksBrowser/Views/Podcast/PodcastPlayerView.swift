@@ -47,11 +47,11 @@ struct PodcastPlayerView: View {
     /// that bypasses the list/hero gating.
     private var playableForTier: Bool {
         guard let ep = loadedEpisode else { return true }
-        return PodcastAccess.canPlay(tier: tier, episodeNumber: ep.episodeNumber)
+        return PodcastAccess.canPlay(tier: tier, episodeNumber: ep.episodeNumber, previewAvailable: ep.previewAvailable)
     }
     private var isPreviewPlayback: Bool {
         guard let ep = loadedEpisode else { return false }
-        return PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: ep.episodeNumber)
+        return PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: ep.episodeNumber, previewAvailable: ep.previewAvailable)
     }
 
     private var subtitleSize: PodcastSubtitleSize {
@@ -581,7 +581,7 @@ struct PodcastPlayerView: View {
               let series = loadedSeries else { return }
         // Tier gate (defense in depth): never load audio for an episode the
         // caller can't play — the body shows `lockedGateView` instead.
-        guard PodcastAccess.canPlay(tier: tier, episodeNumber: episode.episodeNumber) else { return }
+        guard PodcastAccess.canPlay(tier: tier, episodeNumber: episode.episodeNumber, previewAvailable: episode.previewAvailable) else { return }
 
         loadTask?.cancel()
         loadTask = nil

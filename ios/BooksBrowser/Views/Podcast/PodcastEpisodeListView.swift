@@ -316,8 +316,8 @@ struct PodcastEpisodeListView: View {
         if let target = continueEpisode {
             let progress = progressMap[target.remoteId]
             let unavailable = !target.audioAvailable
-            let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: target.episodeNumber)
-            let isPreview = PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: target.episodeNumber)
+            let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: target.episodeNumber, previewAvailable: target.previewAvailable)
+            let isPreview = PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: target.episodeNumber, previewAvailable: target.previewAvailable)
 
             if locked {
                 // guest → login CTA; free on a Pro-only episode → upgrade CTA.
@@ -409,7 +409,7 @@ struct PodcastEpisodeListView: View {
     /// root 統一註冊是 freeze-fix 契約（PR #366/#368/#370/#373，見檔頭註解）。
     @ViewBuilder
     private func episodeRow(_ episode: PodcastEpisode) -> some View {
-        let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: episode.episodeNumber)
+        let locked = PodcastAccess.showsProLock(tier: tier, episodeNumber: episode.episodeNumber, previewAvailable: episode.previewAvailable)
         let row = PodcastEpisodeRow(
             episode: episode,
             progress: progressMap[episode.remoteId],
