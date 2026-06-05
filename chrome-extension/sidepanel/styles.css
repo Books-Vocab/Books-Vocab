@@ -125,8 +125,8 @@ body {
 }
 
 .kg-filter-bar__chip--active {
-  background: var(--primary-text);
-  color: var(--card-bg);
+  background: var(--muted-fill);
+  color: var(--text-primary);
 }
 
 .kg-filter-bar__count {
