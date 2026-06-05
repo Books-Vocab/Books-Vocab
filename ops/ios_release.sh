@@ -28,12 +28,18 @@ TIMEOUT=600
 POLL_INTERVAL=3
 LOCK_FILE="/tmp/kg-ios-build.lock"  # 與 ios_build.sh 共用
 
+# 只印開頭連續註解區（停在第一個非 # 行）作為 help。
+usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
+# 取值型選項守衛：$2 缺失/為空/是另一個 flag 時給友善訊息，而非 set -u 的 unbound variable。
+need_val() { [[ -n "${2:-}" && "${2:-}" != -* ]] || { echo "✗ $1 需要一個值（不可為空或接另一個選項）" >&2; exit 1; }; }
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --upload)  DO_UPLOAD=1; shift ;;
-    --key)     KEY_ID="$2"; shift 2 ;;
-    --timeout) TIMEOUT="$2"; shift 2 ;;
-    *) echo "Unknown option: $1" >&2; exit 1 ;;
+    --upload)   DO_UPLOAD=1; shift ;;
+    --key)      need_val --key "${2:-}";     KEY_ID="$2"; shift 2 ;;
+    --timeout)  need_val --timeout "${2:-}"; TIMEOUT="$2"; shift 2 ;;
+    -h|--help)  usage; exit 0 ;;
+    *) echo "✗ 未知選項: $1（-h 看用法）" >&2; exit 1 ;;
   esac
 done
 

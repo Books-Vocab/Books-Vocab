@@ -20,7 +20,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 YES=0
 
 err()  { echo "✗ $*" >&2; exit 1; }
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+# 只印開頭連續註解區（停在第一個非 # 行），避免把 set -euo pipefail / ROOT= / YES= 洩進 help。
+usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
 
 # ---- component → tag/commit prefix + 版號檔（單一真相，與 release_bump.sh 對映） ----
 tag_prefix()    { case "$1" in api) echo "api/";; ios) echo "ios/";; *) err "未知 component: $1（api|ios）";; esac; }
@@ -68,11 +69,19 @@ cmd_status() {
     if valid_semver "$basever"; then sv="$(bump_semver "$basever" "$suggest")"; else sv="（首發，參考檔內 $curver）"; fi
 
     echo "■ $c  上個 tag：${lt:-（尚未發版）}  檔內版本：$curver"
+    # 漂移警示：上個 tag 的版號與版號檔不一致（如 tag api/1.6.0 但 pyproject 0.1.0）→ 發版前先對齊。
+    # 比較前把兩段版號（ios pbxproj 慣用 1.6）補成三段再比，避免「1.6 vs 1.6.0」恆觸發警報疲勞。
+    local cmpcur="$curver"
+    [[ "$cmpcur" =~ ^[0-9]+\.[0-9]+$ ]] && cmpcur="$cmpcur.0"
+    if [[ -n "$lt" && "$basever" != "$cmpcur" ]]; then
+      echo "   ⚠ 版號漂移：上個 tag=$basever 但檔內=$curver（發版前先 bump 對齊）"
+    fi
     if [[ "$n" -eq 0 ]]; then
       echo "   自上個 tag 無 $cp commit（無待發版）"
     else
       echo "   待發版 $n 筆 $cp commit；建議 $suggest → $sv"
-      printf '%s\n' "$commits" | sed 's/^/     /'
+      printf '%s\n' "$commits" | head -15 | sed 's/^/     /'
+      [[ "$n" -gt 15 ]] && echo "     … 還有 $((n-15)) 筆（完整清單見 ./ops/release.sh changelog $c）"
     fi
     echo
   done

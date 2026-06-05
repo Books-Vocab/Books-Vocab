@@ -17,7 +17,7 @@ bash -n "$ASC"    && ok "asc.sh syntax"   || fail_t "asc.sh syntax error"
 
 # ── 2. 子命令 dispatch 分支齊全 ─────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in versions builds metadata info review-status set; do
+for sub in versions builds metadata info review-status set set-review; do
   grep -qE "^[[:space:]]*$sub\)" "$ASC" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
@@ -104,6 +104,67 @@ grep -q 'URLError' "$GET" \
 # helper 由 env 參數化 key（與 asc.sh config 單一真相對齊，不雙寫死）
 grep -qE 'environ|getenv' "$GET" \
   && ok "asc_get.py key params from env"  || fail_t "asc_get.py hardcodes key (should read env)"
+
+# ── 7. 解析鏈不靜默失敗（dogfood B-F1：--version-id 無效時須走 || err，非 set -e 中止） ──
+section "ID resolvers don't silently abort"
+# resolve_version / resolve_loc 的 codemagic pipeline 必須以 `|| true` 收尾，
+# 否則非零 exit 在 set -e+pipefail 下會讓賦值中止，呼叫端友善 err 永遠跑不到。
+# grep 前先剔除註解行（grep -v '^[[:space:]]*#'），避免誤匹配解釋 || true 的中文註解（軟造假）。
+rv_body="$(awk '/^resolve_version\(\)/,/^}/' "$ASC" | grep -v '^[[:space:]]*#')"
+echo "$rv_body" | grep -q '|| true' \
+  && ok "resolve_version pipeline guarded (|| true)" || fail_t "resolve_version may abort silently (no || true)"
+rl_body="$(awk '/^resolve_loc\(\)/,/^}/' "$ASC" | grep -v '^[[:space:]]*#')"
+echo "$rl_body" | grep -q '|| true' \
+  && ok "resolve_loc pipeline guarded (|| true)"     || fail_t "resolve_loc may abort silently (no || true)"
+
+# ── 8. 取值型選項守衛（dogfood C：--key/--version-id 後無值不該噴 unbound variable） ──
+section "Value-taking options guarded"
+grep -q 'need_val' "$ASC" \
+  && ok "has need_val guard"               || fail_t "missing need_val guard for value options"
+# 行為驗證：--key 後無值 → 友善訊息 + exit 1，而非 set -u 的 unbound variable
+kv_out="$(bash "$ASC" --key 2>&1 || true)"
+echo "$kv_out" | grep -q '需要一個值' \
+  && ok "--key with no value → friendly error" || fail_t "--key no-value not friendly (got: $kv_out)"
+echo "$kv_out" | grep -qi 'unbound variable' \
+  && fail_t "--key no-value still hits set -u unbound variable" \
+  || ok "no set -u unbound crash on missing value"
+
+# ── 9. --help 不洩漏 shell 程式碼（與 release.sh 同步的 usage awk 修正） ──────
+section "Help output stays comment-only"
+help_out="$(bash "$ASC" --help 2>&1)"
+echo "$help_out" | grep -qE 'set -euo pipefail|^KEY_ID=|^ISSUER_ID=' \
+  && fail_t "help leaks shell code" || ok "help is comment-only (no shell code leak)"
+
+# ── 10. set-review 寫入路徑（appStoreReviewDetail，codemagic 未暴露 → raw PATCH）──
+section "set-review write path (raw PATCH, gated)"
+PATCH="$WORKSPACE/ops/asc_patch.py"
+[[ -f "$PATCH" ]] && ok "asc_patch.py companion exists" || fail_t "asc_patch.py missing"
+# 寫入 helper 必須是 PATCH（而非 GET），且 JWT 在 py、不在 asc.sh（本檔零 JWT 不變量延伸）
+grep -qE "method[[:space:]]*=[[:space:]]*[\"']PATCH" "$PATCH" \
+  && ok "asc_patch.py uses PATCH method"   || fail_t "asc_patch.py not a PATCH writer"
+grep -q 'jwt.encode' "$PATCH" \
+  && ok "asc_patch.py is where write-JWT lives" || fail_t "asc_patch.py missing JWT mint"
+grep -q 'HTTPError' "$PATCH" && grep -q 'URLError' "$PATCH" \
+  && ok "asc_patch.py handles HTTP+network errors" || fail_t "asc_patch.py lacks graceful error handling"
+grep -q 'asc_patch.py' "$ASC" \
+  && ok "asc.sh delegates writes to asc_patch.py" || fail_t "asc.sh not delegating raw PATCH"
+# cmd_set_review 的寫入（patch_raw）必須 gated 在 --yes 內 —— 負控：dry-run/else 分支不得有 patch_raw
+sr_body="$(awk '/^cmd_set_review\(\)/,/^}/' "$ASC")"
+echo "$sr_body" | grep -q 'patch_raw' \
+  && ok "set-review has real patch_raw write" || fail_t "set-review missing patch_raw"
+echo "$sr_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]' \
+  && ok "set-review guards write behind --yes" || fail_t "set-review missing --yes guard"
+echo "$sr_body" | awk '/else/,/fi/' | grep -q 'patch_raw' \
+  && fail_t "patch_raw leaked into dry-run branch (would write without --yes)" \
+  || ok "dry-run branch contains no patch_raw"
+# demo-required 必須驗 boolean（避免寫入非法值）
+echo "$sr_body" | grep -q 'true.*false\|false.*true' \
+  && ok "demo-required validates true/false" || fail_t "demo-required boolean not validated"
+# 行為：跨物件欄位互相指路（set notes → set-review；set-review description → set）
+echo "$(bash "$ASC" set notes x 2>&1)" | grep -q 'set-review' \
+  && ok "set <review-field> routes to set-review" || fail_t "set doesn't route review fields"
+echo "$(bash "$ASC" set-review description x 2>&1)" | grep -qE 'asc.sh set ' \
+  && ok "set-review <text-field> routes to set" || fail_t "set-review doesn't route text fields"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

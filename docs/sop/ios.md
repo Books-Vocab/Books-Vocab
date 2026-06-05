@@ -86,7 +86,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 ### App Store Connect 查詢 / 改文案（`ops/asc.sh`）
 
-`ios_release.sh` 出 build；`asc.sh` 補「版本/審查狀態查詢 + 文案 metadata 讀寫」。主體是 codemagic CLI 包裝（同 `ios_release.sh` 的 `asc()` wrapper），無手刻 JWT；codemagic 暴露不到的唯讀欄位（審查備註 / 截圖 state）由旁路 `ops/asc_get.py`（uv shebang 自帶 pyjwt+cryptography，唯讀 GET）補，JWT 只活在該 helper、不污染主檔。
+`ios_release.sh` 出 build；`asc.sh` 補「版本/審查狀態查詢 + 文案 metadata 讀寫」。主體是 codemagic CLI 包裝（同 `ios_release.sh` 的 `asc()` wrapper），無手刻 JWT；codemagic 暴露不到的欄位由旁路 helper 補、JWT 只活在 helper、不污染主檔：唯讀走 `ops/asc_get.py`（GET，審查備註/截圖 state），**寫入**走 `ops/asc_patch.py`（PATCH，appStoreReviewDetail＝送審備註/demo/聯絡人；`set-review` 子命令用）。
 
 ```bash
 ./ops/asc.sh versions                    # 列 App Store 版本 + 審查 state（id）
@@ -96,9 +96,13 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 ./ops/asc.sh review-status               # 審查提交 state（最新=被拒會見 UNRESOLVED_ISSUES）
 ./ops/asc.sh review-detail               # 審查聯絡/demo 帳號/送審備註（raw；查備註是否沿用上輪舊文）
 ./ops/asc.sh screenshots                 # 截圖集逐張 state（raw；重送前查缺圖 / 已移除功能殘留）
-./ops/asc.sh set keywords "a,b,c"        # 改文案：預設 dry-run（印舊→新，不送出）
+./ops/asc.sh set keywords "a,b,c"        # 改版本文案：預設 dry-run（印舊→新，不送出）
 ./ops/asc.sh set keywords "a,b,c" --yes  # 確認後真寫正式版本（對外副作用，須 --yes）
+./ops/asc.sh set-review notes "..."      # 改審查資訊（送審備註/demo/聯絡人）：dry-run；--yes 才真寫
+./ops/asc.sh set-review demo-required true --yes   # boolean 欄位走 true/false（會驗）
 ```
+
+`set`（版本文案）與 `set-review`（審查資訊）是兩個不同 ASC 物件，用錯子命令會被互相指路。`set-review` 可寫：`notes` / `demo-name` / `demo-password` / `demo-required(true|false)` / `contact-first|last|phone|email`；dry-run header 會印目標版本字串+state（如 `1.6 (REJECTED)`）避免誤寫到非預期版本。
 
 - **set 可寫 field**：`description / keywords / whats-new / marketing-url / support-url / promotional-text`。空值被擋（避免清空正式文案）。
 - **dry-run gate**：`set` 預設只印 payload，`--yes` 才送 `app-store-version-localizations modify`（對齊 `--upload` 的明示原則）。
@@ -109,7 +113,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 | GUI 區塊 | API/`asc.sh` 可讀? |
 |---|---|
 | 版本 / 審查 state / build / 文案 metadata / IAP / 分析數字 | ✅ codemagic |
-| 審查聯絡/demo/送審備註、截圖逐張 state、app 副標、分類、年齡分級、build 加密宣告 | ✅ raw（`asc_get.py`；review-detail/screenshots 已工具化，其餘直打 endpoint） |
+| 審查聯絡/demo/送審備註、截圖逐張 state、app 副標、分類、年齡分級、build 加密宣告 | ✅ raw（`asc_get.py`；review-detail/screenshots 已工具化，其餘直打 endpoint）。**審查聯絡/demo/送審備註另可寫**（`asc.sh set-review` → `asc_patch.py`） |
 | **被拒原因（Resolution Center 對話文字）** | ❌ public API 不提供，**只能 GUI 看** |
 | 截圖/preview 圖檔「內容」是否含已移除功能 | ⚠ API 只給 fileName/state，須 fetch 縮圖目視判讀 |
 
@@ -118,7 +122,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 1. `./ops/asc.sh review-status` 確認最新提交為 `UNRESOLVED_ISSUES`。
 2. 到 ASC GUI「App 審查 → 解決中心」讀 Apple 的拒絕理由（API 讀不到）。
 3. **掃殘留**：被拒功能名若已移除，`asc.sh metadata` + `review-detail` + app 副標全 grep 一遍確認 0 命中；`asc.sh screenshots` 列出截圖、fetch 縮圖目視無殘影。
-4. **查備註是否過期**：`asc.sh review-detail` 的 notes 常沿用上一輪舊文（KG 實例曾停在 3.1.2(c) EULA 而非當輪原因）；重送時若需向審查員說明，於 GUI 解決中心回覆或更新 notes，對應「本輪」原因。
+4. **查備註是否過期**：`asc.sh review-detail` 的 notes 常沿用上一輪舊文（KG 實例曾停在 3.1.2(c) EULA 而非當輪原因）；重送時若需更新送審備註，直接 `asc.sh set-review notes "..."`（dry-run 看舊→新，`--yes` 才寫）對應「本輪」原因；向審查員對話回覆仍須 GUI 解決中心。
 5. 改 code/文案（`asc.sh set …` 或改 app 碼）→ bump `CURRENT_PROJECT_VERSION`（同 `MARKETING_VERSION` 重送只 bump build；`asc.sh builds` 確認新 build > TestFlight 現值即無衝突）→ `ios_release.sh --upload` → GUI 把新 build 綁上該版本 → 重送。
 6. 加密合規順手：本專案 `GENERATE_INFOPLIST_FILE = YES`（無 source Info.plist），故設 build setting `INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO`（多數 app 免出口加密，省每次上傳被問）。
 
