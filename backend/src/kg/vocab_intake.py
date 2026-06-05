@@ -88,18 +88,25 @@ def add_vocab_entries(
 
     created = 0
     skipped = 0
+    # Response 對外的 duplicates/cardIds 用 client 送出的『原始』word 當 key,讓 iOS sync
+    # 能以 entry.word 字面配對回 pending queue 並出列 —— 後端清洗(_clean_content)會改寫
+    # word(strip 尾標點 / 首字小寫),若回傳清洗後的 key,client 拿原始 "chateau," 永遠查
+    # 不到 "chateau" → 卡在佇列重送。內部 card_ids 仍以清洗後 word 為 key,供
+    # embed_and_link_new_cards 查找(它會自行 _clean_content,見 vocab_graph.py)。
     duplicates: list[str] = []
-    card_ids: dict[str, str] = {}
+    card_ids: dict[str, str] = {}           # cleaned word -> id（內部 embed/link 用）
+    response_card_ids: dict[str, str] = {}   # 原始 entry.word -> id（對外 response 用）
 
     for entry in entries:
         word = _clean_content(entry.word)
         norm = _normalize_word(word)
         if norm in existing:
             skipped += 1
-            duplicates.append(word)
+            duplicates.append(entry.word)
             existing_card = existing_by_norm.get(norm)
             if existing_card:
                 card_ids[word] = existing_card.id
+                response_card_ids[entry.word] = existing_card.id
             continue
 
         root, inflections = _derive_inflections(word, entry.root_form, logger=logger)
@@ -116,6 +123,7 @@ def add_vocab_entries(
             source=entry.source.model_dump_json() if entry.source else None,
         )
         card_ids[word] = card.id
+        response_card_ids[entry.word] = card.id
         existing.add(_normalize_word(word))
         created += 1
 
@@ -129,5 +137,5 @@ def add_vocab_entries(
         created=created,
         skipped=skipped,
         duplicates=duplicates,
-        cardIds=card_ids,
+        cardIds=response_card_ids,
     )

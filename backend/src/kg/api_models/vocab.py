@@ -23,8 +23,8 @@ class VocabEntry(BaseModel):
 class VocabAddResponse(BaseModel):
     created: int
     skipped: int
-    duplicates: list[str]
-    cardIds: dict[str, str]  # word -> card_id
+    duplicates: list[str]  # client 送出的『原始』word（未清洗），供 iOS 配對出列
+    cardIds: dict[str, str]  # 原始 submitted word -> card_id（非清洗後 word；見 vocab_intake）
 
 
 class ArchiveWordRequest(BaseModel):
