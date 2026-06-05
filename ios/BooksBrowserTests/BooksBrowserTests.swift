@@ -1025,6 +1025,48 @@ struct BooksBrowserTests {
     }
 
     @Test @MainActor
+    func locallyResolvableArchives_unionsUpdatedAndNotFound() {
+        let response = KGBatchArchiveResponse(
+            updated: 2,
+            updated_words: ["alpha", "beta"],
+            not_found: ["gamma", "delta"]
+        )
+
+        let resolvable = KGVocabCoordinator.locallyResolvableArchives(from: response)
+
+        #expect(resolvable == ["alpha", "beta", "gamma", "delta"])
+    }
+
+    @Test @MainActor
+    func batchArchiveClassification_notFoundConvergesLocally_notCountedFailed() {
+        let updatedWord = VocabularyEntry(word: "alpha", translation: "t", context: "ctx", bookTitle: "B")
+        let notFoundWord = VocabularyEntry(word: "gamma", translation: "t", context: "ctx", bookTitle: "B")
+        let stuckWord = VocabularyEntry(word: "omega", translation: "t", context: "ctx", bookTitle: "B")
+        let entries = [updatedWord, notFoundWord, stuckWord]
+
+        let response = KGBatchArchiveResponse(
+            updated: 1,
+            updated_words: ["alpha"],
+            not_found: ["gamma"]
+        )
+
+        let resolvableSet = KGVocabCoordinator.locallyResolvableArchives(from: response)
+        var failCount = 0
+        for entry in entries {
+            if resolvableSet.contains(entry.word) {
+                entry.isArchived = true
+            } else {
+                failCount += 1
+            }
+        }
+
+        #expect(updatedWord.isArchived)
+        #expect(notFoundWord.isArchived)
+        #expect(!stuckWord.isArchived)
+        #expect(failCount == 1)
+    }
+
+    @Test @MainActor
     func batchDeleteClassification_notFoundConvergesLocally_notMarkedFailed() throws {
         // Full-fidelity regression guard: replays the EXACT classification loop
         // from startSync's batch-delete happy path over real VocabularyEntry +
