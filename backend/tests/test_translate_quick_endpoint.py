@@ -96,6 +96,16 @@ def test_translate_quick_invalid_request_returns_422(isolated_api):
     assert r_missing.status_code == 422, r_missing.text
     assert "detail" in r_missing.json()
 
+    # ValueError-based Pydantic validators include ctx.error in Pydantic v2;
+    # the API handler must still serialize this as a normal 422.
+    r_bad_lang = client.post(
+        "/api/translate/quick",
+        json={"word": "evoke", "source_lang": "xx"},
+        headers=headers,
+    )
+    assert r_bad_lang.status_code == 422, r_bad_lang.text
+    assert "detail" in r_bad_lang.json()
+
 
 def test_translate_quick_unauthenticated_returns_401(isolated_api):
     """Expired and invalid bearer tokens must yield 401 + WWW-Authenticate.
