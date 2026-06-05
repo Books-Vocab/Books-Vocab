@@ -72,3 +72,39 @@ test('inline popup glyphs in content.js stay in sync with the registry', () => {
   assert.equal(inlinePaths('XMARK_SVG'), registryPaths('xmark'),
     'content.js XMARK_SVG drifted from icons.js xmark glyph');
 });
+
+test('inline pickPreferredVoice in content.js stays in sync with pure.js', () => {
+  // content/content.js inlines pickPreferredVoice (isolated world — no KGPure).
+  // Pin it to the pure source so the popup speaker can never drift to a worse
+  // voice-selection heuristic than the side panel's. Compares the function
+  // bodies with comments + whitespace stripped (indentation differs: top-level
+  // in pure.js vs nested in the content IIFE).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const KGPure = require('./pure.js');
+
+  const norm = (s) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/\s+/g, '');
+
+  // Brace-match a named function definition out of source text.
+  const extractFn = (src, name) => {
+    const start = src.indexOf('function ' + name);
+    if (start < 0) return null;
+    let depth = 0;
+    let seen = false;
+    for (let i = start; i < src.length; i++) {
+      if (src[i] === '{') { depth++; seen = true; }
+      else if (src[i] === '}') { depth--; if (seen && depth === 0) return src.slice(start, i + 1); }
+    }
+    return null;
+  };
+
+  const content = fs.readFileSync(path.join(__dirname, '../content/content.js'), 'utf8');
+  const inline = extractFn(content, 'pickPreferredVoice');
+  assert.ok(inline, 'pickPreferredVoice not found in content.js');
+  assert.equal(
+    norm(inline),
+    norm(KGPure.pickPreferredVoice.toString()),
+    'content.js pickPreferredVoice drifted from shared/pure.js#pickPreferredVoice'
+  );
+});
