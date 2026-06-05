@@ -511,7 +511,7 @@ cmd_subscriptions() {
         | (.relationships.subscriptionPricePoint.data.id) as $ppid
         | (.relationships.territory.data.id) as $terr
         | ($inc[] | select(.type=="subscriptionPricePoints" and .id==$ppid) | .attributes.customerPrice) as $cp
-        | "\($terr) \($cp)"' 2>/dev/null)"
+        | "\($terr) \($cp)"')"
       locs="$(raw "/v1/subscriptions/$sid/subscriptionLocalizations?limit=20" | jq -r '[(.data // [])[].attributes.locale] | join(",")')"
       echo "  • $sname  [$pid]  state=$sstate  $speriod  代表價=${price:-?}  在地化=${locs:-?}"
     done < <(printf '%s' "$subs" | jq -r '(.data // [])[] | "\(.id)\t\(.attributes.productId)\t\(.attributes.name)\t\(.attributes.state)\t\(.attributes.subscriptionPeriod)"')
@@ -534,11 +534,11 @@ cmd_pricing() {
   raw "/v1/appPriceSchedules/$APP_ID/manualPrices?include=appPricePoint,territory&limit=200" \
     | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
              else (.included // []) as $inc
-               | (.data // [])[]
+               | (.data // [])[0:20][]
                | .relationships.appPricePoint.data.id as $ppid
                | .relationships.territory.data.id as $terr
                | ($inc[] | select(.type=="appPricePoints" and .id==$ppid) | .attributes.customerPrice) as $cp
-               | "  \($terr): \($cp)" end' | head -20
+               | "  \($terr): \($cp)" end'
   echo "# 供應地區："
   local av avid
   av="$(raw "/v1/apps/$APP_ID/appAvailabilityV2")"
@@ -601,9 +601,11 @@ cmd_set_sub_price() {
     && err "讀取 $terr 價位失敗：HTTP $(printf '%s' "$pts" | jq -r '._httpError')（territory 代碼錯誤？）"
   ppid="$(printf '%s' "$pts" | jq -r --arg p "$price" 'first(.data[] | select(.attributes.customerPrice==$p) | .id) // empty')"
   if [[ -z "$ppid" ]]; then
-    echo "✗ $terr 無 customerPrice=$price 的價位。可選值："
-    printf '%s' "$pts" | jq -r '[(.data // [])[].attributes.customerPrice] | map(tonumber) | sort | map(tostring) | join(", ")' 2>/dev/null
-    err "請從上列選一個精確值"
+    echo "✗ $terr 無 customerPrice=$price 的價位。可選值（須逐字相符）："
+    # 顯示 raw customerPrice 字串（依數值排序但不改寫格式）——line 602 是 raw 字串 == 比對，
+    # 若這裡 tonumber|tostring 正規化（"2.00"→"2"）會顯示出比對不到的值，誤導使用者
+    printf '%s' "$pts" | jq -r '[(.data // [])[].attributes.customerPrice] | sort_by(tonumber? // 0) | join(", ")'
+    err "請從上列複製一個精確值"
   fi
   old="$(raw "/v1/subscriptions/$subid/prices?include=subscriptionPricePoint,territory&limit=200" \
     | jq -r --arg t "$terr" '(.included // []) as $inc
