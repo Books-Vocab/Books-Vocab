@@ -34,6 +34,7 @@ allowed-tools: Bash, Read, Grep
 ./ops/devops_kg_safe.sh deploy
 ./ops/devops_kg_safe.sh restart
 ./ops/devops_kg_safe.sh status
+./ops/devops_kg_safe.sh health [--json]
 ./ops/devops_kg_safe.sh logs [n]
 ./ops/devops_kg_safe.sh env-check
 ./ops/devops_kg_safe.sh env-drift
@@ -165,9 +166,24 @@ KG_LOG_TZ=Asia/Taipei ./ops/devops_kg_safe.sh logs 50
 ./ops/ios_test.sh                    # 跑全部 test
 ```
 
+## 機器層健康巡檢（infra-health）
+
+`status` 只給單一 HTTP code；要一眼看「機器本身」健不健康（系統資源 + 容器 + Caddy + TLS 憑證 + HTTPS 端點 + 近期錯誤）用 `health`。全唯讀，補 ops-cli（讀業務 DB）看不到的 host 層盲區。
+
+```bash
+./ops/devops_kg_safe.sh health          # 人讀：14 指標 + ✓/⚠/✗ + 整體判斷
+./ops/devops_kg_safe.sh health --json   # 機讀：純 JSON（診斷走 stderr）
+```
+
+- 涵蓋：磁碟/inode/記憶體/Swap、容器健康+重啟+運行時長、CPU/記憶體佔比、Caddy、**HTTPS 端點 200 探針**（一次驗 DNS+TLS+Caddy+FastAPI）、近1h log 錯誤、**TLS 憑證剩餘天數**、資料目錄大小。
+- 每筆 metric 含 `key/label/value(人讀)/raw(數值，供二次判斷)/status`；頂層 `overall=ok|warn|crit`。
+- **exit code 反映嚴重度**：0=ok 1=warn 2=crit → cron 告警直接 `if ! health --json >/tmp/h.json 2>/dev/null; then alert; fi`。
+- 閾值可由 env 覆寫（免改腳本）：`KG_HEALTH_DISK_WARN/CRIT`、`..._CERT_WARN/CRIT`、`..._SWAP_WARN/CRIT` 等。
+
 ## 快速診斷流程
 
 ```bash
+./ops/devops_kg_safe.sh health   # 機器層一眼總覽（先跑這個）
 ./ops/devops_kg_safe.sh status   # HTTP code 決定根因
 ./ops/devops_kg_safe.sh logs 50
 ```
