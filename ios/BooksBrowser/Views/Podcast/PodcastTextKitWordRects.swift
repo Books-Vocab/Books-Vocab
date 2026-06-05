@@ -59,8 +59,9 @@ enum PodcastTextKitWordRects {
         var rects: [Int: CGRect] = [:]
         let storageLength = layoutManager.textStorage?.length ?? 0
         for (index, charRange) in wordRanges {
-            // Defensive: a stale range past the current storage (mid text swap)
-            // would assert in glyphRange(forCharacterRange:).
+            // Defensive: clamp out a stale range past the current storage (mid text
+            // swap). `boundingRect(forGlyphRange:)` asserts on an out-of-range GLYPH
+            // range, so guard the char range before it maps to glyphs.
             guard NSMaxRange(charRange) <= storageLength, charRange.length > 0 else { continue }
             let glyphRange = layoutManager.glyphRange(
                 forCharacterRange: charRange, actualCharacterRange: nil
