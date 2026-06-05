@@ -63,6 +63,8 @@ ops-cli cost <uid> [--range R]            # 單用戶 cost-by-call_type 拆解�
 ops-cli cost-overview [--range R]         # 全用戶 cost 排名
 ops-cli fleet-overview                     # 跨用戶體檢：每用戶 cards/links/月cost + FLEET TOTAL（免逐用戶 loop）
 ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
+ops-cli timeseries <metric> [--bucket day|week|month] [--range R] [--uid all|<uid>]
+                                           # 時間序列趨勢；metric=cost|calls|active_users（預設 bucket=day, range=30d, uid=all）
 
 # 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
 #   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
@@ -125,6 +127,10 @@ python3 ops/data_inspect.py [command]
 
 # 用戶單日 sync 時間線（debug 同步問題：何時建卡/呼叫 API/judge/translate，按時序合併）
 ./ops/devops_kg_safe.sh ops-cli sync-trace <uid> --date 2026-06-05
+
+# 趨勢：本月成本逐日走勢（文字輸出附 █ trend bar；換 calls / active_users 看量能與活躍）
+./ops/devops_kg_safe.sh ops-cli timeseries cost --bucket day --range month
+./ops/devops_kg_safe.sh ops-cli timeseries active_users --bucket week --range 30d --json 2>/dev/null | jq
 
 # 臨時分析腳本
 ./ops/devops_kg_safe.sh container-script /tmp/my_script.py
