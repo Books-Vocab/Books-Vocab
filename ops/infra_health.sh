@@ -98,12 +98,26 @@ fi
 # ── 4. 套閾值 → status ─────────────────────────────────────────────────────
 # 每筆 = key|label|value(人讀)|status|raw(數值或空)
 ROWS=(); overall="ok"
-bump() { case "$1" in crit) overall="crit";; warn) [[ "$overall" != "crit" ]] && overall="warn";; esac; }
+# 嚴重度只升不降：ok < unknown(→warn) < warn < crit。
+# 「量不到」絕不等於「健康」——unknown 至少降到 warn，避免 SSH/探針失敗時假綠。
+bump() { case "$1" in
+  crit) overall="crit";;
+  warn|unknown) [[ "$overall" == "ok" ]] && overall="warn";;
+esac; return 0; }  # 必回 0：否則 && 短路時非零會在 set -e 下中斷呼叫端
 add() { ROWS+=("$1|$2|$3|$4|${5:-}"); bump "$4"; }
 th_high() { local v="$1" w="$2" c="$3"; [[ -z "$v" ]] && { echo unknown; return; }
   (( v >= c )) && { echo crit; return; }; (( v >= w )) && { echo warn; return; }; echo ok; }
 th_low()  { local v="$1" w="$2" c="$3"; [[ -z "$v" ]] && { echo unknown; return; }
   (( v <= c )) && { echo crit; return; }; (( v <= w )) && { echo warn; return; }; echo ok; }
+
+# Host 指標收集成功與否（降級守門）：container_status 一定會被遠端印出（含 "missing"），
+# disk_pct 來自 df。兩者皆空 = SSH 整段沒回應（逾時/斷線）→ 所有 host 指標其實是「未知」，
+# 此時直接判 crit，不讓底下一堆 "?" 靜默成 ok。本地探針（cert/http）仍照常評估。
+if [[ -z "$(getm container_status)" && -z "$(getm disk_pct)" ]]; then
+  add host_collect "Host 指標收集" "失敗（SSH 無回應）" crit ""
+else
+  add host_collect "Host 指標收集" "成功" ok ""
+fi
 
 disk="$(getm disk_pct)"
 add disk_pct "磁碟使用率" "${disk:-?}%" "$(th_high "${disk:-}" $DISK_WARN $DISK_CRIT)" "$disk"

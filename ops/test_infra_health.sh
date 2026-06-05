@@ -20,6 +20,7 @@ py() { python3 -c "$@"; }  # 純測試斷言用（非 backend env）
 STUB="$(mktemp)"
 cat >"$STUB" <<'EOF'
 #!/usr/bin/env bash
+[ -n "${KG_TEST_EMPTY:-}" ] && exit 0   # 模擬 SSH 逾時：完全無輸出
 printf 'disk_pct\t%s\n' "${KG_TEST_DISK:-27}"
 printf 'disk_used_gb\t16\n'; printf 'disk_total_gb\t58\n'; printf 'inode_pct\t3\n'
 printf 'mem_total_mb\t1896\n'; printf 'mem_avail_mb\t%s\n' "${KG_TEST_MEM_AVAIL:-900}"
@@ -106,6 +107,16 @@ echo "$(KG_TEST_DISK=70 KG_HEALTH_DISK_WARN=65 run_health --json 2>/dev/null)" |
 section "閾值：容器重啟 3 次 → warn"
 echo "$(KG_TEST_RESTARTS=3 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);r=[m for m in d["metrics"] if m["key"]=="container_restarts"][0];assert r["status"]=="warn" and d["overall"]=="warn",r' \
   && ok "重啟 3 次 warn" || fail_t "重啟 3 次 未 warn"
+
+section "降級：SSH 收集失敗（空 RAW）→ host_collect crit + overall crit"
+js="$(KG_TEST_EMPTY=1 run_health --json 2>/dev/null || true)"
+echo "$js" | py 'import sys,json;d=json.load(sys.stdin);h=[m for m in d["metrics"] if m["key"]=="host_collect"][0];assert h["status"]=="crit",h;assert d["overall"]=="crit",d["overall"]' \
+  && ok "空 RAW → crit（不假綠）" || fail_t "空 RAW 未判 crit"
+
+section "降級：憑證量不到（openssl 失敗）→ unknown → overall warn"
+js="$(KG_HEALTH_CERT_ENDDATE="garbage-not-a-date" run_health --json 2>/dev/null || true)"
+echo "$js" | py 'import sys,json;d=json.load(sys.stdin);c=[m for m in d["metrics"] if m["key"]=="cert_days_left"][0];assert c["status"]=="unknown",c;assert d["overall"]=="warn",d["overall"]' \
+  && ok "cert 量不到 → unknown→warn" || fail_t "cert 量不到 未 warn"
 
 echo ""
 echo "═══ infra_health v2: $pass passed, $fail failed ═══"
