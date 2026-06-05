@@ -21,6 +21,7 @@ struct PodcastSubtitleView: View {
                 isPlaying: viewModel.state == .playing,
                 hostNames: viewModel.hostNames,
                 subtitleSize: subtitleSize,
+                scrollLeadId: viewModel.scrollLeadSentenceId,
                 onSentenceTap: { viewModel.seek(to: $0.startTime) },
                 onWordTap: viewModel.handleWordTap,
                 onPhraseTap: viewModel.handlePhraseTap,

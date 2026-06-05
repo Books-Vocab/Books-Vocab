@@ -201,8 +201,8 @@ enum PodcastUnderlineGeometry {
 
 /// O(1) identity of a transcript's token tree, used as the `EquatableView` basis
 /// for `PodcastSentenceLevelView`'s transcript column and to detect episode swaps.
-/// The column explodes every sentence into per-word `Text` tokens +
-/// `CachedFlowLayout` (thousands of view values); the `.equatable()` wrapper lets
+/// Each sentence renders a `UITextView` whose TextKit layout + per-frame underline
+/// is non-trivial; the `.equatable()` wrapper lets
 /// SwiftUI short-circuit its `body` when nothing token-affecting changed — and
 /// that short-circuit must be cheap, so it compares THIS fingerprint, never the
 /// full `[PodcastSentence]` array (whose O(n·words) `==` is the very cost we avoid).
