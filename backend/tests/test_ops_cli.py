@@ -1,10 +1,12 @@
 """ops_cli.py 單元測試 — 用 tmp_path 建立假 DB 驗證核心函數。"""
 
 import sqlite3
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 from ops_helpers import (
+    CLI_PATH,
     _create_judge_log_db,
     _create_token_usage_db,
     _create_translate_log_db,
@@ -14,6 +16,13 @@ from ops_helpers import (
 from ops_helpers import (
     run_ops_cli as _run_cli,
 )
+
+# backend/ 不在 pytest 預設 path(conftest 只加 src/);補進來才能直接單元測試
+# ops_cli 的純函數(_bucket_key)而非只能跑 subprocess。
+if str(CLI_PATH.parent) not in sys.path:
+    sys.path.insert(0, str(CLI_PATH.parent))
+
+from ops_cli import _bucket_key  # noqa: E402
 
 
 def _create_cards_db(path: Path, rows: list[tuple]) -> None:
@@ -550,6 +559,21 @@ class TestFleetOverview:
         d = json.loads(r.stdout)
         assert d["count"] == 0 and d["totals"]["users"] == 0
 
+    def test_corrupt_graph_logged_not_silent(self, tmp_path):
+        """工程審計:損壞 graph json 此前被靜默吞掉 → 應計數並 stderr 提示(stdout 仍乾淨)。"""
+        import json
+        now = _now_iso()
+        ua = tmp_path / "users" / "uA"
+        ua.mkdir(parents=True)
+        _create_cards_db(ua / "cards.db", [("a1", "x", "X", 0, now, now)])
+        (ua / "graph_bad.json").write_text("{not valid json")
+        r = _run_cli(str(tmp_path), "fleet-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)  # stdout 仍是乾淨 JSON
+        ua_row = next(u for u in d["users"] if u["user_id"] == "uA")
+        assert ua_row["links"] == 0  # 損壞檔不計但不爆
+        assert "skip" in r.stderr.lower() or "unreadable" in r.stderr.lower()
+
 
 class TestTimeseries:
     """timeseries — cost/calls/active_users 按 day/week/month 分桶趨勢。"""
@@ -640,12 +664,112 @@ class TestTimeseries:
         assert "2026-06-01" in r.stdout
         assert "█" in r.stdout  # 趨勢 bar
 
+    def test_trend_legend_shows_baseline(self, tmp_path):
+        """產品審計:常數序列 bar 全滿易誤判;印滿格基準值供校準。"""
+        self._seed(tmp_path)
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all")
+        assert r.returncode == 0, r.stderr
+        assert "滿格 =" in r.stdout
+
     def test_empty(self, tmp_path):
         import json
         r = _run_cli(str(tmp_path), "timeseries", "calls", "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         assert d["count"] == 0 and d["series"] == []
+
+
+class TestBucketKey:
+    """_bucket_key 純函數單元測試 — 畸形時間戳 + 跨年 ISO 週(工程審計缺口)。"""
+
+    def test_valid_buckets(self):
+        ca = "2026-06-05T10:00:00+00:00"
+        assert _bucket_key(ca, "day") == "2026-06-05"
+        assert _bucket_key(ca, "month") == "2026-06"
+        assert _bucket_key(ca, "week") == "2026-W23"
+
+    def test_malformed_dropped_all_granularities(self):
+        # 修復前:day/month 盲切([:10]/[:7])回垃圾桶,week 才 drop → 三粒度不一致。
+        # 修復後:統一走 _parse_day,三粒度一致回 None。
+        for b in ("day", "week", "month"):
+            assert _bucket_key("not-a-date", b) is None
+            assert _bucket_key("2026/06/05", b) is None
+            assert _bucket_key("2026-13-99T00:00:00", b) is None
+            assert _bucket_key("", b) is None
+            assert _bucket_key(None, b) is None
+
+    def test_cross_year_iso_week(self):
+        # 2025-12-31(三)與 2026-01-01(四)同屬 ISO 2026-W01
+        assert _bucket_key("2025-12-31T00:00:00", "week") == "2026-W01"
+        assert _bucket_key("2026-01-01T00:00:00", "week") == "2026-W01"
+        # 2021-01-01(五)屬 ISO 2020-W53
+        assert _bucket_key("2021-01-01T00:00:00", "week") == "2020-W53"
+
+    def test_week_string_sort_is_chronological(self):
+        assert sorted(["2026-W01", "2020-W53", "2025-W52"]) == \
+            ["2020-W53", "2025-W52", "2026-W01"]
+
+
+class TestTimeseriesFillZero:
+    """--fill-zero 補齊零值桶 → 顯式化斷層(dogfood + 產品審計頭號缺口)。"""
+
+    def test_fill_gap_day(self, tmp_path):
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+            ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),  # 跳過 06-02/03
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day",
+                     "--range", "all", "--fill-zero", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        series = {s["bucket"]: s["value"] for s in d["series"]}
+        assert series["2026-06-01"] == 1
+        assert series["2026-06-02"] == 0  # 補零
+        assert series["2026-06-03"] == 0  # 補零
+        assert series["2026-06-04"] == 1
+        buckets = [s["bucket"] for s in d["series"]]
+        assert buckets == sorted(buckets)  # 連續升冪
+
+    def test_default_no_fill_is_compact(self, tmp_path):
+        import json
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, "2026-06-01T10:00:00+00:00"),
+            ("u1", "translate", 1, 1, "2026-06-04T10:00:00+00:00"),
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "day",
+                     "--range", "all", "--json")  # 無 --fill-zero
+        d = json.loads(r.stdout)
+        assert d["count"] == 2  # 只有有資料的桶
+        assert "2026-06-02" not in [s["bucket"] for s in d["series"]]
+
+    def test_fill_all_range_no_data_empty(self, tmp_path):
+        import json
+        # range=all 且完全無資料 → 無起點可補 → 空 series 不報錯
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--range", "all",
+                     "--fill-zero", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 0 and d["series"] == []
+
+
+class TestTimeseriesSinceFilter:
+    """--range since 過濾 — 工程審計指出此前零測試覆蓋。"""
+
+    def test_30d_excludes_old(self, tmp_path):
+        import json
+        now = _now_iso()
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1, 1, now),
+            ("u1", "translate", 1, 1, "2020-01-01T00:00:00+00:00"),  # 遠在 30d 外
+        ])
+        r = _run_cli(str(tmp_path), "timeseries", "calls", "--bucket", "month",
+                     "--range", "30d", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        buckets = [s["bucket"] for s in d["series"]]
+        assert "2020-01" not in buckets  # 被 since cutoff 過濾
+        assert d["count"] == 1
 
 
 class TestHelp:
