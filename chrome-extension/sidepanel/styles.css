@@ -755,3 +755,10 @@ body {
   .kg-detail__related-item--nav:active,
   .kg-theme-btn:active { transform: none; }
 }
+
+/* Optimistic add-outbox rows (pending → sync; failed → retry). Surface-level
+   status overrides on the shared row primitive: dim the not-yet-real card and
+   tint its trailing pill (muted while syncing, accent when awaiting retry). */
+.kg-vocab-row--pending-sync { opacity: 0.82; cursor: default; }
+.kg-vocab-row__trailing--syncing { color: var(--text-secondary); }
+.kg-vocab-row__trailing--sync-failed { color: var(--accent); }

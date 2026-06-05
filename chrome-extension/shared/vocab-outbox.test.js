@@ -24,6 +24,7 @@ const {
   entriesToFlush,
   pruneSynced,
   summarizeOutbox,
+  pendingOutboxItems,
 } = require('./vocab-outbox.js');
 
 // Convenience: a fully-formed pending entry.
@@ -202,4 +203,40 @@ test('summarizeOutbox tallies by status', () => {
   q = reconcileAddResponse(q, { a: 'card-a' });
   q = markFailed(q, ['l2']);
   assert.deepEqual(summarizeOutbox(q), { pending: 1, synced: 1, failed: 1, total: 3 });
+});
+
+// ---------------------------------------------------------------------------
+// pendingOutboxItems — optimistic rows for the side panel (unresolved entries
+// not yet on the server list)
+// ---------------------------------------------------------------------------
+
+test('pendingOutboxItems returns unresolved entries absent from the server list', () => {
+  let q = enqueueAdd([], pending('l1', 'alpha'));
+  q = enqueueAdd(q, pending('l2', 'beta'));
+  q = enqueueAdd(q, pending('l3', 'gamma'));
+  q = reconcileAddResponse(q, { alpha: 'card-a' }); // alpha synced → excluded
+  q = markFailed(q, ['l2']); // beta failed → included
+  // gamma already on the server (its flush echoed but list shows it) → excluded
+  const items = pendingOutboxItems(q, new Set(['gamma']));
+  assert.equal(items.length, 1);
+  assert.equal(items[0].word, 'beta');
+  assert.equal(items[0].syncState, OUTBOX_STATUS.FAILED);
+  assert.equal(items[0].meaning, 'beta-t', 'translation surfaces as meaning');
+});
+
+test('pendingOutboxItems accepts an array for serverWords and carries source', () => {
+  const q = enqueueAdd([], pending('l1', 'alpha'));
+  const items = pendingOutboxItems(q, []); // array form
+  assert.equal(items.length, 1);
+  assert.equal(items[0].word, 'alpha');
+  assert.equal(items[0].syncState, OUTBOX_STATUS.PENDING);
+  assert.deepEqual(items[0].source, { type: 'web', title: 'T', url: 'https://x' });
+  assert.equal(pendingOutboxItems(q, ['alpha']).length, 0, 'array exclusion works');
+});
+
+test('pendingOutboxItems byte-exact server match (no normalization)', () => {
+  const q = enqueueAdd([], pending('l1', 'Chateau,'));
+  // a cleaned server word must NOT suppress the raw-word pending row
+  assert.equal(pendingOutboxItems(q, ['chateau']).length, 1);
+  assert.equal(pendingOutboxItems(q, ['Chateau,']).length, 0);
 });

@@ -136,6 +136,30 @@ function pruneSynced(queue) {
   return queue.filter((entry) => entry.status !== OUTBOX_STATUS.SYNCED);
 }
 
+/**
+ * Project unresolved (pending|failed) entries that are NOT yet on the server
+ * list into minimal row shapes for optimistic side-panel display. An entry whose
+ * word already appears in `serverWords` is dropped — the authoritative pulled
+ * card supersedes the optimistic row. Server-word match is byte-exact on the raw
+ * word (same contract as reconcile): a cleaned server word must not suppress a
+ * raw-word pending row. i18n-free — the caller labels `syncState`.
+ *
+ * @param {Array<object>} queue
+ * @param {Set<string>|Array<string>} serverWords — words already in the pulled list
+ * @returns {Array<{word: string, meaning: string, source: object|null, syncState: string}>}
+ */
+function pendingOutboxItems(queue, serverWords) {
+  const server = serverWords instanceof Set ? serverWords : new Set(serverWords || []);
+  return queue
+    .filter((entry) => isUnresolved(entry) && !server.has(entry.word))
+    .map((entry) => ({
+      word: entry.word,
+      meaning: entry.translation,
+      source: entry.source,
+      syncState: entry.status,
+    }));
+}
+
 /** Tally by status for the side panel's sync badge. */
 function summarizeOutbox(queue) {
   const out = { pending: 0, synced: 0, failed: 0, total: queue.length };
@@ -163,6 +187,7 @@ const KGOutboxExports = {
   entriesToFlush,
   pruneSynced,
   summarizeOutbox,
+  pendingOutboxItems,
 };
 
 if (typeof globalThis !== 'undefined') {
