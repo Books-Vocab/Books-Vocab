@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 3875f3cb
+verified_against: 068e6105
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -317,6 +317,23 @@ Track-B 切 S3-only 時,既有在 backend 實例磁碟 `/app/data/podcasts/`(ser
 **drift 安全網兩面**(來源不同,勿混):
 - **served-disk↔S3**(上述 `--check`):覆蓋 legacy 實例磁碟 series。回填後恆 in-sync,ad-hoc 驗證用。
 - **workspace↔S3**(monitor `GET /api/remote/reconcile`):覆蓋「pipeline 合成 audio 但 publish 上傳靜默失敗」。新世界 series 直接 pipeline→S3、不落實例磁碟,故 drift 來源是 lab workspaces。回 `{drifted:[{workspace, reason:"synthesized_not_published"}], publishedCount}`。
+
+### 封面重發布(`ops/podcast_cover_publish.py` — audio-decoupled)
+
+**只換/補既有 series 封面時用這個,不要用 `upload.sh`。** `upload.sh` 從 local workspace 重組 audio 並 reconcile(prune S3 orphans);若 local 與 S3 不同步(e.g. workspace audio 後來被清、或 metadata 有 `audioAvailable:false` 佔位 episode),它會重生 metadata、可能丟佔位 episode、重置 `createdAt`、甚至誤刪 audio。封面變更必須與 audio 解耦。
+
+```bash
+set -a; source lab/podcast/.env; set +a   # PODCAST_BUCKET + AWS_PROFILE 寫權限
+# 生成層(若還沒 cover.png):跑 pipeline cover stage 或派 agent 照 prompts/cover.md 漏斗,產出 <ws>/plan/cover.png
+# 發布層(原子上線):
+uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --workspaces-dir lab/podcast/workspaces            # dry-run 預覽
+uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --workspaces-dir lab/podcast/workspaces --execute  # 實際寫
+uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --workspaces-dir lab/podcast/workspaces --check    # cover⟷metadata drift
+```
+
+**原子靠排序**(S3 無跨-object 事務):① PUT `<sid>/cover.png`(新 key,metadata 未指 → client 看舊狀態) → ② RMW `<sid>/metadata.json` set `coverImageURL`(單-object 原子替換,可見性翻轉,先①後②保證 metadata 指向時 cover 必已在) → ③ 從 bucket 全量重建 `index.json`(不丟其他 series)。任何中斷點皆安全 → **可重入 + 冪等**(不 bump `updatedAt`,body byte-stable;重跑收斂)。`--check` 分類 `in_sync` / `url_without_cover_png`(metadata 指但圖缺 → 404) / `cover_png_without_url`(圖在但 metadata 沒指,②沒跑完) / `unpublished` / `pending_publish`(local 有圖待發)。dry-run 預設、PNG magic + series_id `\A[a-z0-9_]+\Z`(對齊 backend) + published gate(拒對無 metadata.json 的 series 發封面)、404 vs 真實 fault 區分(鐵律 1)。
+
+> **已知限制**:`coverImageURL` 無版本。iOS 按 *series id* 快取封面(`PodcastSyncService.cacheCoverIfNeeded`),故 `null→有值`(首次補封面)會被抓到,但**替換**既有封面的新圖在 client 端不會自動刷新(需清快取或未來加 cover versioning)。
 
 ---
 

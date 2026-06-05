@@ -79,5 +79,19 @@
   "detailCollocation": { "message": "搭配" },
   "detailNote": { "message": "筆記" },
   "detailContext": { "message": "上下文" },
-  "detailSource": { "message": "來源" }
+  "detailSource": { "message": "來源" },
+
+  "detailKnowledgeLinks": { "message": "知識連結" },
+  "detailForms": { "message": "變化形" },
+  "detailReviewProgress": { "message": "複習進度" },
+  "linkLabelContrast": { "message": "對比" },
+  "linkLabelRelated": { "message": "相關" },
+  "detailLinkCount": {
+    "message": "$count$ 個連結",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "detailBack": { "message": "返回" },
+  "detailBackAria": { "message": "返回單字列表" },
+  "detailSpeak": { "message": "朗讀" },
+  "detailSourceApp": { "message": "iOS app" }
 }
