@@ -40,6 +40,8 @@ final class PodcastDownloadManager: NSObject {
     private var taskToRemoteId: [Int: String] = [:]
     @ObservationIgnored
     private var remoteIdToTask: [String: URLSessionDownloadTask] = [:]
+    @ObservationIgnored
+    private var lastProgressUpdate: Date?
 
     @ObservationIgnored
     private lazy var session: URLSession = {
@@ -151,6 +153,13 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
         let taskId = downloadTask.taskIdentifier
         Task { @MainActor in
             guard let remoteId = self.taskToRemoteId[taskId] else { return }
+            // Throttle: skip updates within 100ms of the last one to avoid
+            // excessive actor hops and view rebuilds during fast downloads.
+            let now = Date()
+            if let last = self.lastProgressUpdate, now.timeIntervalSince(last) < 0.1 {
+                return
+            }
+            self.lastProgressUpdate = now
             // High-frequency nonisolated callbacks hop to MainActor out of order:
             // a stale lower fraction can land after a newer higher one and visibly
             // rewind the progress bar. Monotonic guard — never move backward.
@@ -232,6 +241,10 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
         let seriesKey = episode.series?.remoteId ?? "unknown"
         let dir = Self.downloadsRoot().appendingPathComponent(seriesKey, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Exclude from iCloud Backup — these are re-downloadable caches, not user data.
+        var resourceValues = URLResourceValues()
+        resourceValues.isExcludedFromBackup = true
+        try? dir.setResourceValues(resourceValues)
         let finalURL = dir.appendingPathComponent("\(remoteId).mp3")
         try? FileManager.default.removeItem(at: finalURL)
         do {

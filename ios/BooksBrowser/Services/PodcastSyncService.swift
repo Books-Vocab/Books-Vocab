@@ -461,6 +461,10 @@ final class PodcastSyncService {
             )
             let localEps = (try? context.fetch(epDescriptor)) ?? []
             for ep in localEps where !serverEpRemoteIds.contains(ep.remoteId) {
+                // Prevent orphan MP3s from accumulating disk space.
+                if let path = ep.localAudioPath {
+                    try? FileManager.default.removeItem(atPath: path)
+                }
                 context.delete(ep)
             }
         }
