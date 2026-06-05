@@ -24,11 +24,11 @@ body {
 
 .kg-options__title {
   font-family: var(--font-display);
-  font-size: var(--text-hero);
-  line-height: var(--leading-display);
+  font-size: var(--text-h2);
+  line-height: var(--leading-heading);
   font-weight: 700;
   text-align: center;
-  margin: 0 0 var(--sp-xl) 0;
+  margin: 0 0 var(--sp-md) 0;
   color: var(--text-primary);
 }
 
@@ -54,6 +54,28 @@ body {
   color: var(--text-secondary);
   margin-bottom: var(--sp-sm);
 }
+
+/* Logout — iOS renders this as a full-width, centred, frameless destructive row
+   at the foot of the account group (not a small outlined button). */
+.kg-auth-logout {
+  display: block;
+  width: 100%;
+  margin-top: var(--sp-sm);
+  padding: var(--sp-sm) var(--sp-md);
+  border: none;
+  background: none;
+  border-radius: var(--radius-control);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--destructive);
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--motion-quick), opacity var(--spring-press);
+}
+
+.kg-auth-logout:hover { background: var(--destructive-bg); }
+.kg-auth-logout:active { opacity: var(--press-opacity); }
 
 /* ── Master Switch (toggle) ── */
 
@@ -125,6 +147,8 @@ body {
   margin-bottom: var(--sp-sm);
 }
 
+/* Pro tier badge — iOS uses an accent-blue capsule (not the brand-hero yellow,
+   which iOS reserves for the review CTA). */
 .kg-pro-badge {
   flex-shrink: 0;
   font-size: var(--text-caption);
@@ -132,8 +156,8 @@ body {
   letter-spacing: 0.04em;
   padding: 2px var(--sp-sm);
   border-radius: var(--radius-pill);
-  background: var(--brand-hero);
-  color: var(--on-brand-hero);
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 .kg-pro-status__label {

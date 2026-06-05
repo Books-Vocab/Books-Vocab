@@ -610,13 +610,11 @@ function createRow(item) {
     topRow.appendChild(posEl);
   }
 
-  // Trailing label (e.g., "55d / 2d") — show if API provides it
-  if (item.dueInfo) {
-    const trailingEl = document.createElement('span');
-    trailingEl.className = 'kg-vocab-row__trailing';
-    trailingEl.textContent = item.dueInfo;
-    topRow.appendChild(trailingEl);
-  }
+  // iOS KGVocabPresenter renders the list with showsReviewState:false, so the
+  // review-status word (待複習 / 下次 X / 未學習) is deliberately suppressed in the
+  // row top line — it lives only in the detail panel. The right-side progress bar
+  // + dueLabel still convey timing, matching the iOS list exactly. (item.dueInfo
+  // stays computed for any future showsReviewState:true context.)
 
   content.appendChild(topRow);
 
@@ -787,11 +785,6 @@ function speakWord(word) {
   }
 }
 
-/** Hairline separator between document blocks. */
-function detailRule() {
-  return '<div class="kg-detail-rule"></div>';
-}
-
 /** Render an example with the target word highlighted (each segment escaped). */
 function renderExampleHTML(example, word) {
   const marked = KGPure.markWordInExample(example, word);
@@ -839,7 +832,7 @@ function buildDetailHTML(item) {
       m += `<div class="kg-detail-meaning__body">${paras.map((p) => `<p>${esc(p)}</p>`).join('')}</div>`;
     }
     m += '</div>';
-    parts.push(detailRule() + m);
+    parts.push(m);
   }
 
   // collocations (搭配)
@@ -847,30 +840,30 @@ function buildDetailHTML(item) {
     const chips = item.collocations
       .map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : (c && c.word) || '')}</span>`)
       .join('');
-    parts.push(detailRule() + `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailCollocation'))}</div><div class="kg-detail__chips">${chips}</div></div>`);
+    parts.push(`<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailCollocation'))}</div><div class="kg-detail__chips">${chips}</div></div>`);
   }
 
   // inflections (變化形)
   if (Array.isArray(item.inflections) && item.inflections.length) {
     const forms = item.inflections.map((f) => `<span class="kg-detail-form">${esc(f)}</span>`).join('');
-    parts.push(detailRule() + `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailForms'))}</div><div class="kg-detail-forms">${forms}</div></div>`);
+    parts.push(`<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailForms'))}</div><div class="kg-detail-forms">${forms}</div></div>`);
   }
 
   // knowledge links (對比 / 相關)
   const linksHTML = buildLinksHTML(item, corpusIds);
-  if (linksHTML) parts.push(detailRule() + linksHTML);
+  if (linksHTML) parts.push(linksHTML);
 
   // review progress
   const reviewHTML = buildReviewHTML(item);
-  if (reviewHTML) parts.push(detailRule() + reviewHTML);
+  if (reviewHTML) parts.push(reviewHTML);
 
   // metadata footer
   const footerHTML = buildFooterHTML(item);
-  if (footerHTML) parts.push(detailRule() + footerHTML);
+  if (footerHTML) parts.push(footerHTML);
 
   // source
   const sourceHTML = buildSourceHTML(item);
-  if (sourceHTML) parts.push(detailRule() + sourceHTML);
+  if (sourceHTML) parts.push(sourceHTML);
 
   return `<div class="kg-detail-doc">${parts.join('')}</div>`;
 }

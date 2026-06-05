@@ -53,7 +53,7 @@ function renderLoggedIn() {
   info.textContent = t('authLoggedIn');
 
   const btn = document.createElement('button');
-  btn.className = 'kg-btn kg-btn--destructive';
+  btn.className = 'kg-auth-logout';
   btn.textContent = t('authLogout');
   btn.addEventListener('click', handleLogout);
 
