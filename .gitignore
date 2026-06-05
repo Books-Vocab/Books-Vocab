@@ -48,6 +48,10 @@ backend/test_option_b.py
 # Node.js
 node_modules/
 
+# Chrome visual-parity tool output (regenerable: node tools/shots.mjs + compare.mjs)
+chrome-extension/tools/shots/
+chrome-extension/tools/compare/
+
 # Python cache in root if any
 __pycache__/
 .pytest_cache/
