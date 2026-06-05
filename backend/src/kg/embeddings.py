@@ -69,6 +69,7 @@ class EmbeddingStore:
         self._embeddings: np.ndarray | None = None
         self._ids: list[str] = []
         self._id_set: set[str] = set()
+        self._id_pos: dict[str, int] = {}  # card_id -> row index (O(1) lookup)
         self._norms: np.ndarray | None = None  # cached L2 norms
         self._dirty: bool = False
         self._load()
@@ -238,6 +239,7 @@ class EmbeddingStore:
         self._embeddings = vectors
         self._ids = ids
         self._id_set = set(self._ids)
+        self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
         self._invalidate_norms()
         return True
 
@@ -262,6 +264,7 @@ class EmbeddingStore:
         self._embeddings = None
         self._ids = []
         self._id_set = set()
+        self._id_pos = {}
         self._invalidate_norms()
         return False
 
@@ -426,8 +429,10 @@ class EmbeddingStore:
         else:
             self._embeddings = np.vstack([self._embeddings, vecs])
 
+        base = len(self._ids)
         self._ids.extend(new_ids)
         self._id_set.update(new_ids)
+        self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
         self._invalidate_norms()
         self._save()
 
@@ -461,6 +466,7 @@ class EmbeddingStore:
         self._embeddings = self._embeddings[keep_mask]
         self._ids = [cid for cid in self._ids if cid not in to_drop]
         self._id_set = set(self._ids)
+        self._id_pos = {cid: i for i, cid in enumerate(self._ids)}
         self._invalidate_norms()
         self._save()
         return len(to_drop)
@@ -475,7 +481,7 @@ class EmbeddingStore:
             self.add(card_id, text)
             return
 
-        idx = self._ids.index(card_id)
+        idx = self._id_pos[card_id]
         vecs = self._embed([text])
         self._embeddings[idx] = vecs[0]
         self._invalidate_norms()
@@ -499,7 +505,7 @@ class EmbeddingStore:
         if self._embeddings is None or card_id not in self._id_set:
             return []
 
-        idx = self._ids.index(card_id)
+        idx = self._id_pos[card_id]
         query_vec = self._embeddings[idx]
 
         # Cosine similarity with cached norms
