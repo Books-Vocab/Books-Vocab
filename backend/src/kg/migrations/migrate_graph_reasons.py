@@ -119,7 +119,7 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
                             old_reason[:40], new_reason[:40])
 
             except Exception as exc:
-                logger.error("    Link %s failed: %s", link.id, exc)
+                logger.error("    Link %s failed: %s", link.id, exc, exc_info=True)
                 continue
 
         # Touch all cards involved in active links so incremental sync picks them up

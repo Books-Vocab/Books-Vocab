@@ -6,7 +6,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import Cookie, Header, Query
+from fastapi import Cookie, Header, HTTPException, Query
 
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
@@ -183,8 +183,6 @@ def create_admin_handlers(
         of the users root. ``commonpath`` compares path *components*, closing
         that gap, and uids containing a path separator are rejected up front.
         """
-        from fastapi import HTTPException
-
         users_root = (runtime_settings_fn().data_dir / "users").resolve()
         user_dir = (users_root / uid).resolve()
         try:
@@ -259,8 +257,6 @@ def create_admin_handlers(
         ``range`` accepts ``24h`` / ``7d`` / ``30d`` / ``month`` (default,
         current calendar month UTC) / ``all``.
         """
-        from fastapi import HTTPException
-
         from .admin_cost_summary import get_user_cost_summary
         try:
             return get_user_cost_summary(user_id, range_=range)

@@ -25,8 +25,6 @@ artifact —— running 或 idle 都要。本測試鎖定 `server._episode_statu
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent))
 import server  # noqa: E402
 

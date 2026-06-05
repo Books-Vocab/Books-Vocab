@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -66,10 +67,10 @@ class _PersistenceMixin:
     _known_blocked_pairs: set[tuple[str, str]]
     _known_pending_judge: set[str]
     _known_candidate_pairs: set[tuple[str, str]]
-    _links_write_lock: Any
-    _candidates_write_lock: Any
-    _blocked_write_lock: Any
-    _pending_judge_write_lock: Any
+    _links_write_lock: threading.Lock
+    _candidates_write_lock: threading.Lock
+    _blocked_write_lock: threading.Lock
+    _pending_judge_write_lock: threading.Lock
 
     # Helper supplied by GraphStore.
     @staticmethod

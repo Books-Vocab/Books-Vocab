@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from llm_eval.providers import OLLAMA_PROVIDER, list_available_providers, resolve_provider
+from llm_eval.providers import list_available_providers, resolve_provider
 
 
 def test_resolve_cloud_provider():

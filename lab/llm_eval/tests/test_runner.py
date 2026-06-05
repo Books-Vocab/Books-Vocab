@@ -9,7 +9,7 @@ import pytest
 
 from llm_eval.config import EvalConfig
 from llm_eval.registry import RenderedPrompt
-from llm_eval.runner import EvalResult, _call_one, run_eval
+from llm_eval.runner import _call_one, run_eval
 
 
 @pytest.fixture
