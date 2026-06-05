@@ -49,8 +49,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
 
+from ..api_models.podcast import (
+    PodcastProgressListResponse,
+    PodcastProgressRequest,
+    PodcastProgressResponse,
+    PodcastSeriesDetail,
+    PodcastSeriesSummary,
+)
 from .. import podcast_progress as progress_store
 from ..deps import get_current_user, get_current_user_optional
 from ..podcast_access import (
@@ -305,7 +311,11 @@ def _serve_static_media(
     )
 
 
-@router.get("/api/podcasts")
+@router.get(
+    "/api/podcasts",
+    response_model=list[PodcastSeriesSummary],
+    response_model_exclude_unset=True,
+)
 def list_podcasts(request: Request, user: UserRecord | None = Depends(get_current_user_optional)):
     if _using_s3(request):
         data = _read_json_from_s3(request, "index.json", context="index")
@@ -338,12 +348,6 @@ def list_podcasts(request: Request, user: UserRecord | None = Depends(get_curren
 # series-detail route. (FastAPI matches by registration order.)
 
 
-class _ProgressPayload(BaseModel):
-    position_sec: float = Field(ge=0.0)
-    duration_sec: float = Field(ge=0.0)
-    updated_at: str
-
-
 def _canonical_updated_at(raw: str) -> str:
     """Validate + canonicalise ``updated_at`` to UTC ISO8601.
 
@@ -364,18 +368,18 @@ def _canonical_updated_at(raw: str) -> str:
     return dt.isoformat()
 
 
-@router.get("/api/podcasts/progress")
+@router.get("/api/podcasts/progress", response_model=PodcastProgressListResponse)
 def list_user_progress(user: dict = Depends(get_current_user)):
     """Return every progress row for the calling user."""
     items = progress_store.list_for_user(user_id=user["id"])
     return {"items": items}
 
 
-@router.post("/api/podcasts/{series_id}/{ep_num}/progress")
+@router.post("/api/podcasts/{series_id}/{ep_num}/progress", response_model=PodcastProgressResponse)
 def upsert_user_progress(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
-    payload: _ProgressPayload,
+    payload: PodcastProgressRequest,
     user: dict = Depends(get_current_user),
 ):
     """Last-write-wins upsert keyed by ``(user, series, ep)``.
@@ -396,7 +400,7 @@ def upsert_user_progress(
     )
 
 
-@router.get("/api/podcasts/{series_id}/{ep_num}/progress")
+@router.get("/api/podcasts/{series_id}/{ep_num}/progress", response_model=PodcastProgressResponse)
 def get_user_progress(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
@@ -411,7 +415,11 @@ def get_user_progress(
     return row
 
 
-@router.get("/api/podcasts/{series_id}")
+@router.get(
+    "/api/podcasts/{series_id}",
+    response_model=PodcastSeriesDetail,
+    response_model_exclude_unset=True,
+)
 def get_podcast_series(series_id: str, request: Request, user: UserRecord | None = Depends(get_current_user_optional)):
     _validate_series_id(series_id)
     if _using_s3(request):
