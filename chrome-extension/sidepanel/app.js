@@ -229,8 +229,8 @@ function onSearch() {
   }
 
   const filtered = vocabData.filter((item) => {
-    const word = item.word.toLowerCase();
-    const meaning = item.meaning.toLowerCase();
+    const word = String(item.word || '').toLowerCase();
+    const meaning = String(item.meaning || '').toLowerCase();
     return word.includes(query) || meaning.includes(query);
   });
 
@@ -252,10 +252,12 @@ function onSearch() {
  * @returns {object}
  */
 function enrichWithMockReviewData(item) {
+  // Guard: API may return non-string word fields (e.g. numbers).
+  const word = String(item.word || '');
   // djb2 hash over the word for deterministic, stable mock values
   let hash = 5381;
-  for (let i = 0; i < item.word.length; i++) {
-    hash = ((hash << 5) + hash) + item.word.charCodeAt(i);
+  for (let i = 0; i < word.length; i++) {
+    hash = ((hash << 5) + hash) + word.charCodeAt(i);
   }
   const positive = Math.abs(hash);
 
