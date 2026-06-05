@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: cff3e679
+verified_against: f9e89316
 -->
 # Chrome Extension Feature Boundary
 
@@ -17,13 +17,13 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `manifest.json` | — | MV3 manifest：`activeTab` / `sidePanel` / `storage` 權限，`host_permissions` 限 `wordnexus.lol/*` |
-| `background.js` | 101 | Service worker：sidepanel 開關、訊息路由、token 注入 |
+| `background.js` | 120 | Service worker：sidepanel 開關、訊息路由、token 注入。**vocab_dirty bump**：訊息路由完成後若 `KGPure.isVocabMutatingKind(kind)`（現僅 `addVocab`）為真，fire-and-forget 寫 storage `VOCAB_DIRTY_KEY` 為 `${Date.now()}.${++tick}`（單調遞增，杜絕同毫秒漏觸發 `storage.onChanged`）；bump 失敗不阻擋 caller 的 add |
 
 ### Content Script Layer（網頁注入）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `content/content.js` | 607 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效。經 manifest `web_accessible_resources` `fetch` `tokens.css`→`kg-components.css`→`popup.css`（concat 順序 load-bearing：vars → base primitives → layout）注入 shadow root。**全域開關**：mouseup handler 依 storage key `kg_enabled`（預設開，僅顯式 stored `false` 關閉）early-return，`chrome.storage.onChanged` live-sync 免重整。**invalidated-context 防禦**：orphan content script（extension reload 後遺留分頁）失去 `chrome.runtime.id`，`extensionContextValid()` + `sendMessageSafe()` 守門 — loadStyles short-circuit 空字串、三 sendMessage site（translate/explain/addVocab）降級顯示「請重新整理頁面」而非 uncaught throw（`CONTEXT_INVALIDATED_MSG` 於 load 時 valid context 解析並快取，dead runtime 不再呼 getMessage）。UI 字串走 `t()=chrome.i18n.getMessage` |
+| `content/content.js` | 679 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效。經 manifest `web_accessible_resources` `fetch` `tokens.css`→`kg-components.css`→`popup.css`（concat 順序 load-bearing：vars → base primitives → layout）注入 shadow root。**全域開關**：mouseup handler 依 storage key `kg_enabled`（預設開，僅顯式 stored `false` 關閉）early-return，`chrome.storage.onChanged` live-sync 免重整。**popup head（sticky）**：`headHTML(word)` 渲染 word + 工具鈕（speak/close），loading 與 translated 兩態共用以跨 render state 持存；`data-action` 鈕由 `showPopup` 一次性 delegated listener 處理（非 per-render add/explain handler）。**TTS**：`speakWord()` 走頁面 `window.speechSynthesis`（Web Speech API，零後端），best-effort no-op、開講前 cancel in-flight；`removePopup` 關閉時亦 cancel 防音訊殘留。inline SVG glyph（speaker/xmark，鏡像 `shared/icons.js`，content script 在 isolated world 無法 reach KGIcons 故 inline）。長文 popup `max-height: min(70vh,520px)` + `overflow-y:auto` + `overscroll-behavior:contain`。**invalidated-context 防禦**：orphan content script（extension reload 後遺留分頁）失去 `chrome.runtime.id`，`extensionContextValid()` + `sendMessageSafe()` 守門 — loadStyles short-circuit 空字串、三 sendMessage site（translate/explain/addVocab）降級顯示「請重新整理頁面」而非 uncaught throw（`CONTEXT_INVALIDATED_MSG` 於 load 時 valid context 解析並快取，dead runtime 不再呼 getMessage）。UI 字串走 `t()=chrome.i18n.getMessage` |
 | `content/popup.css` | — | popup layout 樣式（消費 `kg-components.css` primitives + BEM `.kg-popup__*` layout class，非自繪 card/btn） |
 
 ### Sidepanel Layer（主 UI）
@@ -31,24 +31,24 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `sidepanel/index.html` | — | sidepanel 入口；serif 標題（CormorantGaramond）、SVG 空狀態插圖、brand-hero CTA |
-| `sidepanel/app.js` | 622 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()`；error 狀態依 `classifyError` action 分為 login（brand-hero CTA）與其他（accent outline）。**單字本複習狀態用 `GET /api/vocab` 的 `CardResponse` 真實欄位**（`reviewCount`/`nextReviewAt`/`lastReviewedAt`/`reviewIntervalHours`，經 `enrichWithReviewData`）— 非 mock：filter chip 計數、review CTA `dueCount`、每列複習進度條/標籤皆由 `pure.js` 純函數對標 iOS `VocabularyReview`/`WordRowPresentation` 計算；未學習列對齊 iOS「首輪 Xh」純標籤無進度條；trailing 走 iOS `rowStatus` 語意（未複習/待複習/下次 X，後者 `Intl.RelativeTimeFormat` zh-Hant）；chip/CTA 計數用全 corpus（搜尋時不隨 keystroke 縮水，對齊 iOS）。**filter chip / sort pill 可互動**（非 idle 展示）：chips `<button>` 多選切換複習狀態（`aria-pressed`，空選=全部）、sort pill `<button>` 開 dropdown menu 切 4 排序，選態經 `applyView()`（統一 filter→sort→render）走 `pure.js filterVocab`/`sortVocab`；無匹配顯示「沒有符合的單字」空狀態（對標 iOS empty filter state）；dropdown outside-click/Escape 關閉、active 項打勾用 `KGIcon` check |
+| `sidepanel/app.js` | 983 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()`；error 狀態依 `classifyError` action 分為 login（brand-hero CTA）與其他（accent outline）。**word-detail push 面板**（`#stateDetail` fixed 覆蓋，list 保留於下以存 scroll/search/filter）：row click → `pushDetail`，文件流對標 iOS `CardDocumentView`（hero word+pos+tier+speaker → 例句 serif italic 目標詞 highlight（`markWordInExample`+`parseInlineMarks`）→ meaning/定義 → 搭配 → 變化形 → 知識連結（對比/相關 group，target cardId 命中 loaded corpus 可 `pushDetail` 導航、`popDetail`/Escape 返回）→ 複習進度 → metadata footer → 來源）；navigation stack `detailStack`，TTS `speakWord` 走 Web Speech API，detail 純唯讀。**跨 context 靜默刷新**：`chrome.storage.onChanged` 監看 `KGPure.VOCAB_DIRTY_KEY` → `refreshVocabSilently()` 重抓 `/api/vocab` 並 `applyView()` 重繪，保留 search/filter/sort/scroll 與開啟中的 detail（auth 變動優先：logout 使 list 失效）。**單字本複習狀態用 `GET /api/vocab` 的 `CardResponse` 真實欄位**（`reviewCount`/`nextReviewAt`/`lastReviewedAt`/`reviewIntervalHours`，經 `enrichWithReviewData`）— 非 mock：filter chip 計數、review CTA `dueCount`、每列複習進度條/標籤皆由 `pure.js` 純函數對標 iOS `VocabularyReview`/`WordRowPresentation` 計算；未學習列對齊 iOS「首輪 Xh」純標籤無進度條；trailing 走 iOS `rowStatus` 語意（未複習/待複習/下次 X，後者 `Intl.RelativeTimeFormat` zh-Hant）；chip/CTA 計數用全 corpus（搜尋時不隨 keystroke 縮水，對齊 iOS）。**filter chip / sort pill 可互動**（非 idle 展示）：chips `<button>` 多選切換複習狀態（`aria-pressed`，空選=全部）、sort pill `<button>` 開 dropdown menu 切 4 排序，選態經 `applyView()`（統一 filter→sort→render）走 `pure.js filterVocab`/`sortVocab`；無匹配顯示「沒有符合的單字」空狀態（對標 iOS empty filter state）；dropdown outside-click/Escape 關閉、active 項打勾用 `KGIcon` check |
 | `sidepanel/styles.css` | — | sidepanel 樣式；editorial surface 對齊官網 + iOS 北極星（single warm surface、serif headings、divider、z0/z1 shadow）。單字本列表 filter chip bar 對齊 iOS `AppFilterChipBar`（兩列：chips 一列、sort+CTA 靠右一列；空選即全部，無「全部」chip；消費 `kg-component-structures.css`，僅留 active-count 脈絡填色覆寫）；sort pill dropdown 用 `.kg-sort-menu`（`--elevation-z3` 浮層 + chevron + active-item check + button reset），無匹配 nomatch hint；搜尋框對齊 iOS `AppSearchField`（`.kg-search-field` 複合：leading 放大鏡 + bare input + 有文字才現的 clear icon，surface 值對齊 `.kg-input` 契約） |
 
 ### Options Layer
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `options/options.html` | — | 設定頁面；serif hero 標題、色塊主題選擇器（無 emoji）；「選字翻譯」全域開關 `.kg-toggle` switch；`[data-i18n]` 標註 + `shared/i18n.js` include |
-| `options/options.js` | 226 | 設定持久化（`chrome.storage`）；`kg_enabled` master toggle（fail-open read、revert-on-save-failure、跨分頁 `onChanged` sync、focus-visible + aria-hidden painted track）；UI 字串走 `t()=chrome.i18n.getMessage` |
+| `options/options.html` | — | 設定頁面；serif hero 標題、色塊主題選擇器（無 emoji）；「選字翻譯」全域開關 `.kg-toggle` switch；**「翻譯語言」** section（`#sourceLangSelect`→arrow→`#targetLangSelect` `.kg-select` + `#langHint`）；帳號區 **`#pro-status`** Pro 徽章佔位；`[data-i18n]`/`[data-i18n-attr]` 標註 + `shared/i18n.js` include |
+| `options/options.js` | 390 | 設定持久化（`chrome.storage`）；`kg_enabled` master toggle（fail-open read、revert-on-save-failure、跨分頁 `onChanged` sync、focus-visible + aria-hidden painted track）。**翻譯語言**：`SOURCE_LANGS`/`TARGET_LANGS`（value=backend 驗證碼，鏡像 `kg/languages.py`；label=各語 endonym，locale-stable 非 i18n 字串）填 select，登入後 `loadTranslationConfig`（經 background `getUserConfig`）載入、`onLangChange` 經 `updateUserConfig` PUT 持久化（server-canonical 回填、失敗 revert 至 `currentTranslation`）；登出禁用 + login hint。**Pro 狀態**：`loadProStatus`（經 background `getEntitlements`）依 `pro.is_active` 渲染 `PRO` 徽章+`plan_name` 或免費標籤，無法判定（offline/401）時隱藏。`bgRequest` 統一 background 訊息錯誤封套（`{code,status}`）。UI 字串走 `t()=chrome.i18n.getMessage` |
 | `options/options.css` | — | 設定頁樣式；editorial surface 對齊官網 |
 
 ### Shared Layer
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `shared/api.js` | 219 | `wordnexus.lol` HTTP client + auth header |
-| `shared/pure.js` | 446 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist）；複習狀態純函數對標 iOS SoT：`classifyReviewState`（`VocabularyReview.reviewState(at:)`：`reviewCount==0`→未學習，否則 `nextReviewAt<=now` 待複習/已複習）、`countReviewStates`（chip/CTA tally）、`compactReviewLabel`（iOS `CompactTimeFormatting` 閾值 byte-faithful port）、`reviewProgress`（`WordRowPresentation` ratio，start 由 `lastReviewedAt`??`nextReviewAt−intervalHours` schedule 推導）；單字本 view 管線純函數對標 iOS `VocabularyEntryPresentation`：`filterVocab`（mergedBucket 多選態 + search 謂詞合成 word/meaning contains）、`sortVocab`（4 排序：複習優先 due\<unlearned\<reviewed→`nextReviewAt` asc→tierPriority→word / 字母序 / 最近新增 / 難度；stable、不變更輸入）；`normalizeVocabItem` 保留 `CardResponse` 複習欄位 + `difficultyTier`（難度排序）+ `updatedAt`（「最近新增」proxy，`CardResponse` 無 `dateAdded`） |
-| `shared/pure.test.js` | 583 | `pure.js` 單元測試 |
+| `shared/api.js` | 238 | `wordnexus.lol` HTTP client + auth header；含 `getUserConfig`（`GET /api/user/config`）/ `updateUserConfig`（`PUT /api/user/config`，body `{translation:{source_lang,target_lang}}`，bad pair 422）/ `getEntitlements`（`GET /api/user/entitlements`，回 `{pro:{is_active,plan_name,…}}`） |
+| `shared/pure.js` | 688 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist）；`normalizeVocabItem` 另保留 `linksByKind`/`inflections`/`cardId`（detail 面板知識連結與變化形所需，guard：linksByKind 須 plain object、inflections 須 array）；**example 高亮純函數對標 iOS**：`markWordInExample`（port `VocabularyEntry.markWordInContext`：verbatim case-insensitive 首匹配 + stem fallback，輸出帶 `**…**` 標記的純文字、`word` regex-escaped 非 pattern）、`parseInlineMarks`（port `CardMarkdownInlineParser` 的 `**`/`==` mark → typed segments，空 span 丟棄、未閉合留字面）；**跨 context 刷新契約**：`VOCAB_DIRTY_KEY`（`'vocab_dirty'`，producer background.js / consumer app.js 共用避免 drift）+ `isVocabMutatingKind`（`VOCAB_MUTATING_KINDS` 現僅 `addVocab`；唯讀 kind 回 false）；`routeMessage`/`ROUTABLE_MESSAGE_TYPES` 加 `getUserConfig`/`updateUserConfig`/`getEntitlements` 三 kind。複習狀態純函數對標 iOS SoT：`classifyReviewState`（`VocabularyReview.reviewState(at:)`：`reviewCount==0`→未學習，否則 `nextReviewAt<=now` 待複習/已複習）、`countReviewStates`（chip/CTA tally）、`compactReviewLabel`（iOS `CompactTimeFormatting` 閾值 byte-faithful port）、`reviewProgress`（`WordRowPresentation` ratio，start 由 `lastReviewedAt`??`nextReviewAt−intervalHours` schedule 推導）；單字本 view 管線純函數對標 iOS `VocabularyEntryPresentation`：`filterVocab`（mergedBucket 多選態 + search 謂詞合成 word/meaning contains）、`sortVocab`（4 排序：複習優先 due\<unlearned\<reviewed→`nextReviewAt` asc→tierPriority→word / 字母序 / 最近新增 / 難度；stable、不變更輸入）；`normalizeVocabItem` 保留 `CardResponse` 複習欄位 + `difficultyTier`（難度排序）+ `updatedAt`（「最近新增」proxy，`CardResponse` 無 `dateAdded`） |
+| `shared/pure.test.js` | 822 | `pure.js` 單元測試 |
 | `shared/theme.js` | 44 | 深淺色主題切換 |
 | `shared/i18n.js` | 45 | static-DOM localizer（sidepanel/options）：依 `[data-i18n]` 換 `textContent`、`[data-i18n-attr="attr:key;…"]` 換屬性,值經 `chrome.i18n.getMessage`；key 缺失時保留原中文 fallback |
 | `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
@@ -62,7 +62,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 |------|------|
 | `fonts/` | woff2：ElmsSans-Regular/Bold、CormorantGaramond-Medium/SemiBold/Bold/Italic |
 | `icons/` | 16/48/128 PNG |
-| `_locales/zh_TW/messages.json` | chrome.i18n 訊息 SoT（67 keys，含 `首輪 $time$` / `下次 $time$` placeholder 替換）；manifest `name`/`description` 走 `__MSG_*__`，`default_locale: "zh_TW"` |
+| `_locales/zh_TW/messages.json` | chrome.i18n 訊息 SoT（87 keys，含 `首輪 $time$` / `下次 $time$` / `$count$ 個連結` placeholder 替換）；manifest `name`/`description` 走 `__MSG_*__`，`default_locale: "zh_TW"` |
 
 ## 設計系統消費
 
@@ -81,14 +81,14 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 ## 對外契約
 
-- **Backend endpoints**：見 [`docs/reference/tech_index.md`](../tech_index.md) 對應 router 章節。Chrome 不維護自己的 endpoint 表。
+- **Backend endpoints**：見 [`docs/reference/tech_index.md`](../tech_index.md) 對應 router 章節（含 `user.py` 的 `/api/user/config` 翻譯語言 GET/PUT、`/api/user/entitlements` Pro 訂閱態，由 options 頁消費）。Chrome 不維護自己的 endpoint 表。
 - **Auth**：與 iOS 共享 Google / Apple 登入 backend；token 存 `chrome.storage.local`。Web OAuth 走 `/auth/web/apple/login`（GET redirect 至 Apple authorize endpoint）與 `/auth/web/google/login`。
 - **Domain 白名單**：`host_permissions` 只放 `wordnexus.lol/*`，新 backend domain 變動需同步 `manifest.json`。
 - **URL scheme allowlist（XSS defense-in-depth）**：sidepanel / content 渲染外部 href 一律走 `shared/pure.js safeUrl()`；僅放行 `http:` / `https:` / `chrome-extension:`，其餘（`javascript:` / `data:` / `vbscript:` / `file:` / `blob:` 等）一律 fallback `#`。
 
 ## 在地化（i18n）
 
-- **機制**：`chrome.i18n` + `_locales/<locale>/messages.json`（訊息 SoT，現 zh_TW 67 keys）。manifest `default_locale: "zh_TW"`，`name`/`description` 用 `__MSG_*__`。
+- **機制**：`chrome.i18n` + `_locales/<locale>/messages.json`（訊息 SoT，現 zh_TW 87 keys）。manifest `default_locale: "zh_TW"`，`name`/`description` 用 `__MSG_*__`。
 - **靜態 HTML**：`index.html` / `options.html` 元素加 `[data-i18n]`（換 textContent）/ `[data-i18n-attr]`（換屬性），include `shared/i18n.js` 於 DOM ready 套用；缺 key 保留原中文 fallback。
 - **JS 動態字串**：content.js / app.js / options.js 用 `t()=chrome.i18n.getMessage`。例外：content.js 的 `CONTEXT_INVALIDATED_MSG` 於 load 時（context 仍 valid）解析並快取，避免 dead runtime 呼 getMessage。
 - **新增語言**：只需加 `_locales/<locale>/messages.json`，無需改 code。
