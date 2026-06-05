@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "KG 詞彙助手",
+  "name": "__MSG_appName__",
   "version": "0.1.0",
-  "description": "閱讀時選詞翻譯，建立詞彙知識圖譜",
+  "description": "__MSG_appDescription__",
+  "default_locale": "zh_TW",
   "permissions": ["activeTab", "sidePanel", "storage"],
   "host_permissions": ["https://wordnexus.lol/*"],
   "content_security_policy": {

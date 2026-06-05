@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: 6a322ef2
+verified_against: cff3e679
 -->
 # Chrome Extension Feature Boundary
 
@@ -23,7 +23,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `content/content.js` | 507 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效。經 manifest `web_accessible_resources` `fetch` `tokens.css`→`kg-components.css`→`popup.css`（concat 順序 load-bearing：vars → base primitives → layout）注入 shadow root |
+| `content/content.js` | 607 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()`；popup 注入 closed Shadow DOM 並設 `data-theme` 令 token 生效。經 manifest `web_accessible_resources` `fetch` `tokens.css`→`kg-components.css`→`popup.css`（concat 順序 load-bearing：vars → base primitives → layout）注入 shadow root。**全域開關**：mouseup handler 依 storage key `kg_enabled`（預設開，僅顯式 stored `false` 關閉）early-return，`chrome.storage.onChanged` live-sync 免重整。**invalidated-context 防禦**：orphan content script（extension reload 後遺留分頁）失去 `chrome.runtime.id`，`extensionContextValid()` + `sendMessageSafe()` 守門 — loadStyles short-circuit 空字串、三 sendMessage site（translate/explain/addVocab）降級顯示「請重新整理頁面」而非 uncaught throw（`CONTEXT_INVALIDATED_MSG` 於 load 時 valid context 解析並快取，dead runtime 不再呼 getMessage）。UI 字串走 `t()=chrome.i18n.getMessage` |
 | `content/popup.css` | — | popup layout 樣式（消費 `kg-components.css` primitives + BEM `.kg-popup__*` layout class，非自繪 card/btn） |
 
 ### Sidepanel Layer（主 UI）
@@ -38,8 +38,8 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `options/options.html` | — | 設定頁面；serif hero 標題、色塊主題選擇器（無 emoji） |
-| `options/options.js` | 138 | 設定持久化（`chrome.storage`） |
+| `options/options.html` | — | 設定頁面；serif hero 標題、色塊主題選擇器（無 emoji）；「選字翻譯」全域開關 `.kg-toggle` switch；`[data-i18n]` 標註 + `shared/i18n.js` include |
+| `options/options.js` | 226 | 設定持久化（`chrome.storage`）；`kg_enabled` master toggle（fail-open read、revert-on-save-failure、跨分頁 `onChanged` sync、focus-visible + aria-hidden painted track）；UI 字串走 `t()=chrome.i18n.getMessage` |
 | `options/options.css` | — | 設定頁樣式；editorial surface 對齊官網 |
 
 ### Shared Layer
@@ -50,6 +50,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | `shared/pure.js` | 446 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist）；複習狀態純函數對標 iOS SoT：`classifyReviewState`（`VocabularyReview.reviewState(at:)`：`reviewCount==0`→未學習，否則 `nextReviewAt<=now` 待複習/已複習）、`countReviewStates`（chip/CTA tally）、`compactReviewLabel`（iOS `CompactTimeFormatting` 閾值 byte-faithful port）、`reviewProgress`（`WordRowPresentation` ratio，start 由 `lastReviewedAt`??`nextReviewAt−intervalHours` schedule 推導）；單字本 view 管線純函數對標 iOS `VocabularyEntryPresentation`：`filterVocab`（mergedBucket 多選態 + search 謂詞合成 word/meaning contains）、`sortVocab`（4 排序：複習優先 due\<unlearned\<reviewed→`nextReviewAt` asc→tierPriority→word / 字母序 / 最近新增 / 難度；stable、不變更輸入）；`normalizeVocabItem` 保留 `CardResponse` 複習欄位 + `difficultyTier`（難度排序）+ `updatedAt`（「最近新增」proxy，`CardResponse` 無 `dateAdded`） |
 | `shared/pure.test.js` | 583 | `pure.js` 單元測試 |
 | `shared/theme.js` | 44 | 深淺色主題切換 |
+| `shared/i18n.js` | 45 | static-DOM localizer（sidepanel/options）：依 `[data-i18n]` 換 `textContent`、`[data-i18n-attr="attr:key;…"]` 換屬性,值經 `chrome.i18n.getMessage`；key 缺失時保留原中文 fallback |
 | `shared/tokens.css` | — | 設計 token（**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/tokens.json` 產出，禁手改；`:root, :host` selector 供 closed Shadow DOM 生效） |
 | `shared/kg-components.css` | — | component primitives（`.kg-card` / `.kg-btn` / `.kg-chip`，鏡像 iOS `AppCard`/`AppButton`/`AppTag`）。**生成檔**，由 `ops/gen_web_tokens.py` 從 `design-system/dist/kg-components.css` 複製（手寫源在 dist，禁手改此 copy；已納入 `--check` gate）。三 surface 共用一套 primitive 詞彙 |
 | `shared/kg-component-structures.css` | — | 跨平台**複合元件結構**（primitive 之上的 BEM 結構契約，如 `VocabFilterChipBar` chips 容器 + `.class--active` modifier）。**生成檔**，由 `ops/gen_web_components.py` 從 `design-system/components.json`（結構 SoT）產出；token 以 `var(--*)` 引用，禁手改。sidepanel filter chip bar 消費此檔，僅在 surface CSS 留 active-count 脈絡填色覆寫 |
@@ -61,6 +62,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 |------|------|
 | `fonts/` | woff2：ElmsSans-Regular/Bold、CormorantGaramond-Medium/SemiBold/Bold/Italic |
 | `icons/` | 16/48/128 PNG |
+| `_locales/zh_TW/messages.json` | chrome.i18n 訊息 SoT（67 keys，含 `首輪 $time$` / `下次 $time$` placeholder 替換）；manifest `name`/`description` 走 `__MSG_*__`，`default_locale: "zh_TW"` |
 
 ## 設計系統消費
 
@@ -84,6 +86,13 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 - **Domain 白名單**：`host_permissions` 只放 `wordnexus.lol/*`，新 backend domain 變動需同步 `manifest.json`。
 - **URL scheme allowlist（XSS defense-in-depth）**：sidepanel / content 渲染外部 href 一律走 `shared/pure.js safeUrl()`；僅放行 `http:` / `https:` / `chrome-extension:`，其餘（`javascript:` / `data:` / `vbscript:` / `file:` / `blob:` 等）一律 fallback `#`。
 
+## 在地化（i18n）
+
+- **機制**：`chrome.i18n` + `_locales/<locale>/messages.json`（訊息 SoT，現 zh_TW 67 keys）。manifest `default_locale: "zh_TW"`，`name`/`description` 用 `__MSG_*__`。
+- **靜態 HTML**：`index.html` / `options.html` 元素加 `[data-i18n]`（換 textContent）/ `[data-i18n-attr]`（換屬性），include `shared/i18n.js` 於 DOM ready 套用；缺 key 保留原中文 fallback。
+- **JS 動態字串**：content.js / app.js / options.js 用 `t()=chrome.i18n.getMessage`。例外：content.js 的 `CONTEXT_INVALIDATED_MSG` 於 load 時（context 仍 valid）解析並快取，避免 dead runtime 呼 getMessage。
+- **新增語言**：只需加 `_locales/<locale>/messages.json`，無需改 code。
+
 ## 不在 scope 內
 
 - iOS 端 SwiftData、SwiftUI、podcast、reader 模組 → 走 [`vocabulary.md`](vocabulary.md) / [`reader.md`](reader.md) / 等。
@@ -95,6 +104,8 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 |------|-----------|
 | 改 manifest 權限或 host 白名單 | 本檔「Entry Layer」段 + [`docs/reference/product_surface.md`](../product_surface.md) 對應 bullet |
 | 新增 / 刪除主要 JS 檔案 | 本檔對應 Layer 表 |
+| 新增 user-facing 字串 / 改 UI 文案 | `_locales/zh_TW/messages.json`（i18n SoT），JS 走 `chrome.i18n.getMessage`、靜態 HTML 走 `[data-i18n]` |
+| 新增 chrome.storage 設定 key | 本檔對應 Layer 段 + [`docs/reference/product_surface.md`](../product_surface.md) bullet |
 | 改 `shared/api.js` 呼叫的 backend endpoint | [`tech_index.md`](../tech_index.md) router 章節 |
 | 改認證流程 | [`docs/sop/architecture.md`](../../sop/architecture.md) auth 段 |
 | 改設計 token / 配色 | 改 `design-system/tokens.json` 再跑 `ops/gen_web_tokens.py` 重生 `shared/{tokens,kg-components}.css`（禁直接手改生成檔；drift 由 `ops/token_drift_check.py` 守） |
