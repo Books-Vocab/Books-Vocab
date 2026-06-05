@@ -1,4 +1,4 @@
-"""Tests for log_retention module — prune old rows from the 4 log SQLite singletons."""
+"""Tests for log_retention module — prune old rows from the 5 log SQLite singletons."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from kg import judge_log, log_retention, pipeline_log, token_tracker, translate_log
+from kg import judge_log, llm_error_log, log_retention, pipeline_log, token_tracker, translate_log
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures — redirect every log DB into tmp_path and reset singletons.
@@ -28,11 +28,14 @@ def isolated_logs(tmp_path, monkeypatch):
     judge_log.DB_PATH = tmp_path / "judge_log.db"
     token_tracker.DATA_DIR = tmp_path
     token_tracker.DB_PATH = tmp_path / "token_usage.db"
+    llm_error_log.DATA_DIR = tmp_path
+    llm_error_log.DB_PATH = tmp_path / "llm_errors.db"
     # translate_log resolves path via _db_path() each connect — env var alone is enough.
 
     pipeline_log._reset()
     judge_log._reset()
     translate_log._reset()
+    llm_error_log._reset()
     if token_tracker._conn is not None:
         token_tracker._conn.close()
         token_tracker._conn = None
@@ -42,6 +45,7 @@ def isolated_logs(tmp_path, monkeypatch):
     pipeline_log._reset()
     judge_log._reset()
     translate_log._reset()
+    llm_error_log._reset()
     if token_tracker._conn is not None:
         token_tracker._conn.close()
         token_tracker._conn = None
@@ -298,6 +302,43 @@ def test_token_usage_has_bare_created_at_index(isolated_logs):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# llm_errors
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _insert_llm_error_row(created_at: str) -> None:
+    conn = llm_error_log._get_conn()
+    conn.execute(
+        "INSERT INTO llm_errors (user_id, call_type, provider, model, error_class, status_code, message, created_at) "
+        "VALUES ('u1', 'judge', 'gemini', 'm', 'RateLimitError', 429, 'rate limited', ?)",
+        (created_at,),
+    )
+    conn.commit()
+
+
+def test_prune_llm_errors_drops_only_old_rows(isolated_logs):
+    _insert_llm_error_row(_iso(40))   # old
+    _insert_llm_error_row(_iso(31))   # old
+    _insert_llm_error_row(_iso(29))   # recent
+    _insert_llm_error_row(_iso(1))    # recent
+
+    deleted, remaining = log_retention.prune_llm_errors(days=30)
+
+    assert deleted == 2
+    assert remaining == 2
+
+
+def test_prune_llm_errors_preserves_index(isolated_logs):
+    _insert_llm_error_row(_iso(40))
+    log_retention.prune_llm_errors(days=30)
+    rows = llm_error_log._get_conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='llm_errors'"
+    ).fetchall()
+    names = {r[0] for r in rows}
+    assert "idx_le_created" in names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # run_all
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -308,6 +349,7 @@ def test_run_all_invokes_every_pruner(isolated_logs):
     _insert_translate_row(_iso(20))
     _insert_token_row(_iso(120))
     _insert_cache_hit_row(_iso(20))
+    _insert_llm_error_row(_iso(40))
 
     report = log_retention.run_all()
 
@@ -316,6 +358,7 @@ def test_run_all_invokes_every_pruner(isolated_logs):
     assert report["translate_log"]["deleted"] == 1
     assert report["token_usage"]["deleted"] == 1
     assert report["translate_cache_hits"]["deleted"] == 1
+    assert report["llm_errors"]["deleted"] == 1
     # Defaults must match brief.
     assert report["pipeline_log"]["days"] == 30
     assert report["judge_log"]["days"] == 60
@@ -323,6 +366,7 @@ def test_run_all_invokes_every_pruner(isolated_logs):
     assert report["token_usage"]["days"] == 90
     # Fix B reuses the translate_log retention window.
     assert report["translate_cache_hits"]["days"] == 14
+    assert report["llm_errors"]["days"] == 30
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -349,10 +393,12 @@ def test_cli_all_flag_runs_every_pruner(isolated_logs):
     _insert_judge_row(_iso(80))
     _insert_translate_row(_iso(20))
     _insert_token_row(_iso(120))
+    _insert_llm_error_row(_iso(40))
 
     pipeline_log._reset()
     judge_log._reset()
     translate_log._reset()
+    llm_error_log._reset()
     if token_tracker._conn is not None:
         token_tracker._conn.close()
         token_tracker._conn = None
@@ -369,6 +415,7 @@ def test_cli_all_flag_runs_every_pruner(isolated_logs):
     assert out["judge_log"]["deleted"] == 1
     assert out["translate_log"]["deleted"] == 1
     assert out["token_usage"]["deleted"] == 1
+    assert out["llm_errors"]["deleted"] == 1
 
 
 def test_cli_selective_flag(isolated_logs):
@@ -415,6 +462,7 @@ def test_admin_endpoint_runs_all_pruners(admin_app):
     _insert_judge_row(_iso(80))
     _insert_translate_row(_iso(20))
     _insert_token_row(_iso(120))
+    _insert_llm_error_row(_iso(40))
 
     resp = admin_app.client.post(
         "/api/admin/log-retention/run",
@@ -426,6 +474,7 @@ def test_admin_endpoint_runs_all_pruners(admin_app):
     assert body["judge_log"]["deleted"] == 1
     assert body["translate_log"]["deleted"] == 1
     assert body["token_usage"]["deleted"] == 1
+    assert body["llm_errors"]["deleted"] == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
