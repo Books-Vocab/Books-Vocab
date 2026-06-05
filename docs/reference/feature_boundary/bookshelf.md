@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Bookshelf/
-verified_against: 4c1f0ee4
+verified_against: fdb743bf
 -->
 # Bookshelf Feature Boundary
 
@@ -28,7 +28,7 @@ verified_against: 4c1f0ee4
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Components/BookCard.swift` | 207 | `struct BookCard: View` — 書架單列 row（cover / 標題 / 進度 / context menu）。進度條永遠保留占位（0% 也不壓縮卡片高度），進度值 clamp 到 [0,1]，0% 時 a11y 隱藏 |
-| `Components/PodcastSeriesCard.swift` | 75 | `struct PodcastSeriesCard: View` — 播客 series row（封面 / 集數摘要 / 進度） |
+| `Components/PodcastSeriesCard.swift` | ~85 | `struct PodcastSeriesCard: View` — 播客 series row（封面 + waveform/追蹤 badge + 標題 + `主持人 · N 集` 串流 meta 行，`metaLine` 無主持人退回純集數，單行 tail 截斷保卡高一致） |
 
 ### Token Layer（local metric）
 
