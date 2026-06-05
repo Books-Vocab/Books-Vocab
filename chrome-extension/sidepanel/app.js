@@ -656,8 +656,16 @@ function createRow(item) {
     topRow.appendChild(posEl);
   }
 
-  // Trailing label ("55d / 2d", or a sync-status pill for optimistic rows)
-  if (item.dueInfo) {
+  // iOS KGVocabPresenter renders the list with showsReviewState:false, so the
+  // review-status word (待複習 / 下次 X / 未學習) is deliberately suppressed in the
+  // row top line — it lives only in the detail panel. The right-side progress bar
+  // + dueLabel still convey timing, matching the iOS list exactly. (item.dueInfo
+  // stays computed for any future showsReviewState:true context.)
+  //
+  // Optimistic outbox rows are the one exception: their trailing pill is *sync*
+  // status (pending / failed), not review status, so it stays. Gate on syncState
+  // (truthy only for outbox rows) so plain rows render no trailing label.
+  if (item.syncState && item.dueInfo) {
     const trailingEl = document.createElement('span');
     trailingEl.className = 'kg-vocab-row__trailing';
     if (item.syncState === 'failed') trailingEl.classList.add('kg-vocab-row__trailing--sync-failed');
@@ -841,9 +849,10 @@ function speakWord(word) {
   }
 }
 
-/** Hairline separator between document blocks. */
-function detailRule() {
-  return '<div class="kg-detail-rule"></div>';
+/** Section label with a leading SF-Symbols-style icon (mirrors iOS CardSectionLabel,
+ *  which always renders a Label{Text}icon:{Image(systemName:)}). */
+function detailLabel(iconName, text) {
+  return `<div class="kg-detail__label">${KGIcons.svg(iconName)}<span>${esc(text)}</span></div>`;
 }
 
 /** Render an example with the target word highlighted (each segment escaped). */
@@ -893,7 +902,7 @@ function buildDetailHTML(item) {
       m += `<div class="kg-detail-meaning__body">${paras.map((p) => `<p>${esc(p)}</p>`).join('')}</div>`;
     }
     m += '</div>';
-    parts.push(detailRule() + m);
+    parts.push(m);
   }
 
   // collocations (搭配)
@@ -901,30 +910,30 @@ function buildDetailHTML(item) {
     const chips = item.collocations
       .map((c) => `<span class="kg-chip kg-chip--tint">${esc(typeof c === 'string' ? c : (c && c.word) || '')}</span>`)
       .join('');
-    parts.push(detailRule() + `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailCollocation'))}</div><div class="kg-detail__chips">${chips}</div></div>`);
+    parts.push(`<div class="kg-detail-block">${detailLabel('detail-collocation', t('detailCollocation'))}<div class="kg-detail__chips">${chips}</div></div>`);
   }
 
   // inflections (變化形)
   if (Array.isArray(item.inflections) && item.inflections.length) {
     const forms = item.inflections.map((f) => `<span class="kg-detail-form">${esc(f)}</span>`).join('');
-    parts.push(detailRule() + `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailForms'))}</div><div class="kg-detail-forms">${forms}</div></div>`);
+    parts.push(`<div class="kg-detail-block">${detailLabel('detail-forms', t('detailForms'))}<div class="kg-detail-forms">${forms}</div></div>`);
   }
 
   // knowledge links (對比 / 相關)
   const linksHTML = buildLinksHTML(item, corpusIds);
-  if (linksHTML) parts.push(detailRule() + linksHTML);
+  if (linksHTML) parts.push(linksHTML);
 
   // review progress
   const reviewHTML = buildReviewHTML(item);
-  if (reviewHTML) parts.push(detailRule() + reviewHTML);
+  if (reviewHTML) parts.push(reviewHTML);
 
   // metadata footer
   const footerHTML = buildFooterHTML(item);
-  if (footerHTML) parts.push(detailRule() + footerHTML);
+  if (footerHTML) parts.push(footerHTML);
 
   // source
   const sourceHTML = buildSourceHTML(item);
-  if (sourceHTML) parts.push(detailRule() + sourceHTML);
+  if (sourceHTML) parts.push(sourceHTML);
 
   return `<div class="kg-detail-doc">${parts.join('')}</div>`;
 }
@@ -965,7 +974,7 @@ function buildLinksHTML(item, corpusIds) {
   });
 
   if (!groups.length) return '';
-  return `<div class="kg-detail-links"><div class="kg-detail__label">${esc(t('detailKnowledgeLinks'))}</div>${groups.join('')}</div>`;
+  return `<div class="kg-detail-links">${detailLabel('link', t('detailKnowledgeLinks'))}${groups.join('')}</div>`;
 }
 
 /** Build the review-progress section (reuses the row progress-bar markup). */
@@ -1018,7 +1027,7 @@ function buildSourceHTML(item) {
   } else {
     inner = `<span class="kg-detail__source-text">${esc(t('detailSourceApp'))}</span>`;
   }
-  return `<div class="kg-detail-block"><div class="kg-detail__label">${esc(t('detailSource'))}</div>${inner}</div>`;
+  return `<div class="kg-detail-block">${detailLabel('source-local', t('detailSource'))}${inner}</div>`;
 }
 
 // ---------------------------------------------------------------------------

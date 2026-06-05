@@ -94,6 +94,27 @@
       '<rect x="4" y="5.5" width="16" height="15" rx="2"/>' +
       '<path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
 
+    // --- Word-detail section-label leading icons (mirror iOS CardSectionLabel) ---
+    // text.word.spacing — 搭配 (collocation): two adjacent word blocks
+    'detail-collocation':
+      '<rect x="3" y="7.5" width="8" height="9" rx="1.8"/>' +
+      '<rect x="13" y="7.5" width="8" height="9" rx="1.8"/>',
+    // text.badge.plus — 變化形 (inflections): text lines + a plus badge (derived forms)
+    'detail-forms':
+      '<path d="M4 8h10M4 12.5h7M4 17h10"/><path d="M18.5 5.5v5M16 8h5"/>',
+
+    // --- Settings grouped-list section-header leading icons (mirror iOS) ---
+    // person.crop.circle — 帳號 (account)
+    'account':
+      '<circle cx="12" cy="8" r="3.5"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0"/>',
+    // slider.horizontal.3 — 偏好 (preferences)
+    'preferences':
+      '<path d="M4 8.5h16M4 15.5h16"/>' +
+      '<circle cx="9" cy="8.5" r="2.2"/><circle cx="15" cy="15.5" r="2.2"/>',
+    // info.circle — 關於 (about)
+    'about':
+      '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
+
     // --- Error-state glyphs (side-panel error UI; rendered via classifyError) ---
     // lock — auth/login error
     'error-login':
