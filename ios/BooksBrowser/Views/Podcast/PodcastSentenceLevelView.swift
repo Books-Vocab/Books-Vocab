@@ -76,6 +76,7 @@ struct PodcastSentenceLevelView: View {
 
     @State private var isFollowing = true
     @State private var selectionState: PodcastSentenceSelection?
+    @State private var scrollAnimationTask: Task<Void, Never>?
 
     private var currentId: Int? { renderState?.sentenceId }
 
@@ -170,9 +171,14 @@ struct PodcastSentenceLevelView: View {
     /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
         guard isFollowing, let id else { return }
-        PerfLog.scroll.measure("scrollTo", "id=\(id)") {
-            withAnimation(AppMotion.podcastFollowScroll) {
-                proxy.scrollTo(id, anchor: .center)
+        scrollAnimationTask?.cancel()
+        scrollAnimationTask = Task {
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            PerfLog.scroll.measure("scrollTo", "id=\(id)") {
+                withAnimation(AppMotion.podcastFollowScroll) {
+                    proxy.scrollTo(id, anchor: .center)
+                }
             }
         }
     }
@@ -375,7 +381,14 @@ private struct PodcastTranscriptColumn: View {
                 let entryFromTime = index > 0 ? sentences[index - 1].words.last?.startTime : nil
                 PodcastBubbleCell(
                     sentenceId: sentence.id,
-                    contentHash: sentence.startTime.hashValue ^ sentence.endTime.hashValue ^ sentence.words.count,
+                    contentHash: {
+                        var hasher = Hasher()
+                        hasher.combine(sentence.startTime)
+                        hasher.combine(sentence.endTime)
+                        hasher.combine(sentence.words.count)
+                        hasher.combine(sentence.speaker)
+                        return hasher.finalize()
+                    }(),
                     isCurrent: sentence.id == currentId,
                     isNext: isNext,
                     isSelecting: isSelectingThis,

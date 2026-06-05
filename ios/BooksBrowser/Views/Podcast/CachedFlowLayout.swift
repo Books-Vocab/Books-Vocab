@@ -7,17 +7,24 @@ struct CachedFlowLayout: Layout {
     struct LayoutData {
         var size: CGSize
         var offsets: [CGPoint]
+        var proposalWidth: CGFloat?
+        var subviewCount: Int
     }
 
     func makeCache(subviews: Subviews) -> LayoutData {
-        LayoutData(size: .zero, offsets: [])
+        LayoutData(size: .zero, offsets: [], proposalWidth: nil, subviewCount: 0)
     }
 
     func sizeThatFits(
         proposal: ProposedViewSize, subviews: Subviews, cache: inout LayoutData
     ) -> CGSize {
         PerfLog.layout.tick("flow.size", "n=\(subviews.count)")
-        cache = computeLayout(proposal: proposal, subviews: subviews)
+        let width = proposal.width ?? .infinity
+        if cache.proposalWidth != width || cache.subviewCount != subviews.count {
+            cache = computeLayout(proposal: proposal, subviews: subviews)
+            cache.proposalWidth = width
+            cache.subviewCount = subviews.count
+        }
         return cache.size
     }
 
