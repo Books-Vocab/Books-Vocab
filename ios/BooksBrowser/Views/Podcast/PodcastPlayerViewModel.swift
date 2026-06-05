@@ -62,6 +62,13 @@ final class PodcastPlayerViewModel {
     /// "已載入" overlay on the seek bar. 0 until the first range arrives.
     private(set) var bufferedEnd: TimeInterval = 0
     private(set) var currentSentence: PodcastSentence?
+    /// Sentence id the auto-follow scroll targets — leads `currentSentence` by
+    /// `scrollLeadSec` on natural ticks so the next bubble reaches viewport center
+    /// just before it's spoken; pinned to the current sentence on a seek (★B1). The
+    /// View drives `followScroll` off THIS, not `currentSentence`, while highlight /
+    /// underline stay keyed on the precise `currentSentence` — so the scroll leads
+    /// but the highlight never does.
+    private(set) var scrollLeadSentenceId: Int?
     private(set) var renderState: SubtitleRenderState?
     /// Anchor for extrapolating a continuous playhead between 15 Hz ticks (see
     /// `PodcastPlaybackClock`). Refreshed on every tick / seek / play / pause /
@@ -295,7 +302,9 @@ final class PodcastPlayerViewModel {
     func seek(to time: TimeInterval) {
         let shouldResume = state == .playing
         audioEngine.seek(to: time, autoResume: shouldResume)
-        handleTimeUpdate(time)
+        // isSeek: pin the follow-scroll lead to the CURRENT sentence so a transcript
+        // tap lands on the tapped bubble, not its 0.5 s-ahead successor (★B1).
+        handleTimeUpdate(time, isSeek: true)
         // Hold the playhead still during the seek gap (rate 0): AVPlayer hasn't
         // actually reached `time` yet, so extrapolating forward would front-run.
         // The engine's seek-completion tick re-anchors with the real rate via
@@ -400,7 +409,11 @@ final class PodcastPlayerViewModel {
 
     // MARK: - Private
 
-    private func handleTimeUpdate(_ time: TimeInterval) {
+    /// Seconds the follow-scroll target leads the spoken playhead so the next bubble
+    /// reaches viewport center just before it starts. Adjustable in one place.
+    static let scrollLeadSec: TimeInterval = 0.5
+
+    private func handleTimeUpdate(_ time: TimeInterval, isSeek: Bool = false) {
         currentTime = time
 
         // Low-frequency path: only rebuild renderState when sentence changes
@@ -412,6 +425,20 @@ final class PodcastPlayerViewModel {
             } else {
                 renderState = nil
             }
+        }
+
+        // Lead the follow-scroll target ~`scrollLeadSec` ahead so the next bubble is
+        // centered before it's spoken. Computed EVERY tick (~15 Hz, O(log n) binary
+        // search) — deliberately PARALLEL to the sentence-boundary block above, NOT
+        // nested in it, so the lead can cross a boundary a tick before `currentSentence`
+        // does. On a seek, `isSeek` pins it to the current sentence (no lead) — see
+        // `scrollLeadSentenceId(...)` for the ★B1 rationale. Deduped so an unchanged
+        // lead doesn't churn the published value every tick.
+        let leadId = PodcastSubtitleEngine.scrollLeadSentenceId(
+            in: subtitleEngine.sentences, at: time, isSeek: isSeek, leadSec: Self.scrollLeadSec
+        )
+        if leadId != scrollLeadSentenceId {
+            scrollLeadSentenceId = leadId
         }
 
         // Re-anchor the continuous playhead on every real tick (~66 ms) so the

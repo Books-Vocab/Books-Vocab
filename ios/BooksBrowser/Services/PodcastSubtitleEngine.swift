@@ -55,6 +55,27 @@ final class PodcastSubtitleEngine {
         Self.locateSentence(in: sentences, at: time)
     }
 
+    /// Sentence id the auto-follow scroll should target. Pure + static so the lead
+    /// semantics are unit-testable without driving the player.
+    ///
+    /// Natural playback ticks LEAD the playhead by `leadSec` so the next bubble
+    /// glides to viewport center ~0.5 s before it is actually spoken — the scroll
+    /// arrives early rather than chasing. A seek instead pins to the CURRENT
+    /// sentence (no lead): `seek(to:)` drives `handleTimeUpdate` synchronously, so
+    /// leading there would resolve to the NEXT sentence and a transcript tap would
+    /// scroll past the tapped bubble to its successor (★B1 race). The next natural
+    /// tick restores the lead. Returns nil only for empty/pre-roll input — gap and
+    /// end-of-track cases fall back gracefully via `locateSentence`.
+    static func scrollLeadSentenceId(
+        in sentences: [PodcastSentence],
+        at time: TimeInterval,
+        isSeek: Bool,
+        leadSec: TimeInterval
+    ) -> Int? {
+        let leadTime = isSeek ? time : time + leadSec
+        return locateSentence(in: sentences, at: leadTime)?.id
+    }
+
     /// Locate the sentence active at `time` using a **half-open** interval
     /// `[startTime, endTime)`. Pure + static so it can be unit-tested directly
     /// without driving the parser.
