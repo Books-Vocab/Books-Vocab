@@ -93,5 +93,19 @@ async function handleMessage(msg) {
   if (typeof apiMethod !== 'function') {
     throw new Error(`unroutable message kind: ${kind}`);
   }
-  return apiMethod(...args);
+  const result = await apiMethod(...args);
+
+  // A vocab-mutating call (e.g. an in-page popup `addVocab`) just changed the
+  // user's list, so any open side panel is stale. Bump a fresh timestamp into
+  // storage; the side panel watches VOCAB_DIRTY_KEY via `storage.onChanged` and
+  // silently refetches. Fire-and-forget — a bump failure must never fail or
+  // delay the caller's add. The value only needs to *differ* to fire the event;
+  // same-ms collisions are benign (one refetch already reflects both writes).
+  if (globalThis.KGPure.isVocabMutatingKind(kind)) {
+    chrome.storage.local
+      .set({ [globalThis.KGPure.VOCAB_DIRTY_KEY]: Date.now() })
+      .catch((err) => console.error('[KG] vocab_dirty bump failed', err));
+  }
+
+  return result;
 }

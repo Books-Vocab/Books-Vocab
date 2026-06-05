@@ -525,6 +525,30 @@ function routeMessage(msg) {
 }
 
 /**
+ * Storage key the background worker bumps (to a fresh timestamp) after a
+ * vocab-mutating API call succeeds; the side panel watches it via
+ * `chrome.storage.onChanged` and silently refreshes its list. Centralised here
+ * so the producer (background.js) and consumer (sidepanel/app.js) cannot drift,
+ * and the contract is pinned by pure.test.js.
+ */
+const VOCAB_DIRTY_KEY = 'vocab_dirty';
+
+/**
+ * Routed `kind`s whose success means the user's vocab list changed, so any open
+ * side panel is now stale. The background worker consults this to decide whether
+ * to bump `VOCAB_DIRTY_KEY`. Read-only kinds (listVocab / lookupWord / translate
+ * / auth ops) return false — they never invalidate the list. Add future mutating
+ * kinds (deleteVocab / updateVocab) to the set as they land.
+ *
+ * @param {*} kind — a routed kind from `routeMessage().kind`
+ * @returns {boolean}
+ */
+const VOCAB_MUTATING_KINDS = new Set(['addVocab']);
+function isVocabMutatingKind(kind) {
+  return typeof kind === 'string' && VOCAB_MUTATING_KINDS.has(kind);
+}
+
+/**
  * Whether an external sender URL is the trusted KG web origin. Used to gate
  * `onMessageExternal` auth-token injection.
  *
@@ -631,6 +655,8 @@ const KGPureExports = {
   classifyError,
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
+  VOCAB_DIRTY_KEY,
+  isVocabMutatingKind,
   isTrustedExternalOrigin,
   safeUrl,
   escapeHtml,
