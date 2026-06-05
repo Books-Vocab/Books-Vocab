@@ -257,7 +257,12 @@ async function triggerEnrichPolling(notebookId) {
     console.warn('[KG] triggerPipeline failed (enrich is best-effort)', err);
     return;
   }
-  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts: 0, notebookId } });
+  // Preserve an in-flight poll's attempt count so rapid successive adds can't
+  // reset the cap and poll forever; only start fresh when no poll is active.
+  const stored = await chrome.storage.local.get(ENRICH_POLL_STATE_KEY);
+  const prior = stored[ENRICH_POLL_STATE_KEY];
+  const attempts = prior ? prior.attempts || 0 : 0;
+  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts } });
   scheduleEnrichPoll();
 }
 
@@ -281,9 +286,7 @@ async function handleEnrichPoll() {
 
   const attempts = (state.attempts || 0) + 1;
   if (pending && attempts < ENRICH_POLL_MAX) {
-    await chrome.storage.local.set({
-      [ENRICH_POLL_STATE_KEY]: { attempts, notebookId: state.notebookId },
-    });
+    await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts } });
     scheduleEnrichPoll();
   } else {
     await chrome.storage.local.remove(ENRICH_POLL_STATE_KEY);
