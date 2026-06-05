@@ -11,6 +11,12 @@
 "app.section.bookshelf" = "ライブラリ";
 "app.section.notebooks" = "単語帳";
 "app.section.overview" = "概要";
+"app.section.podcasts" = "ポッドキャスト";
+"尚無播客" = "ポッドキャストがありません";
+"追蹤喜歡的節目，從這裡開始收聽" = "お気に入りの番組をフォローして、ここから再生を始めましょう";
+"下拉重新整理以同步節目" = "引っ張って更新し、番組を同期します";
+"繼續收聽" = "再生を続ける";
+"所有節目" = "すべての番組";
 "API 錯誤：%@" = "APIエラー：%@";
 "KG 伺服器未連線" = "KGサーバー未接続";
 "KG 伺服器錯誤：%@" = "KGサーバーエラー：%@";
@@ -848,6 +854,7 @@
 "podcast.guest.cta.signInToListen" = "サインインして再生";
 "podcast.preview.cta.listenFree" = "無料3分プレビュー";
 "podcast.preview.banner.message" = "無料プレビュー · アップグレードで全編を再生";
+"podcast.continue.remaining" = "残り %@";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "ダブルタップでこの文から再生";
 "podcast.transcript.translateAction" = "文を翻訳";

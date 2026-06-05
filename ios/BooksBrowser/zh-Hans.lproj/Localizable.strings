@@ -11,6 +11,12 @@
 "app.section.bookshelf" = "书库";
 "app.section.notebooks" = "单字本";
 "app.section.overview" = "总览";
+"app.section.podcasts" = "播客";
+"尚無播客" = "暂无播客";
+"追蹤喜歡的節目，從這裡開始收聽" = "关注喜欢的节目，从这里开始收听";
+"下拉重新整理以同步節目" = "下拉刷新以同步节目";
+"繼續收聽" = "继续收听";
+"所有節目" = "所有节目";
 "API 錯誤：%@" = "API 错误：%@";
 "KG 伺服器未連線" = "KG 服务器未连线";
 "KG 伺服器錯誤：%@" = "KG 服务器错误：%@";
@@ -849,6 +855,7 @@
 "podcast.guest.cta.signInToListen" = "登录后收听";
 "podcast.preview.cta.listenFree" = "免费试听 3 分钟";
 "podcast.preview.banner.message" = "免费试听 · 升级听完整单集";
+"podcast.continue.remaining" = "还剩 %@";
 // MARK: - Podcast transcript VoiceOver
 "podcast.transcript.seekHint" = "点两下跳至此句播放";
 "podcast.transcript.translateAction" = "翻译整句";
