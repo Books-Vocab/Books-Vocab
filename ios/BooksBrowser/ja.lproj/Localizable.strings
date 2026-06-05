@@ -867,6 +867,8 @@
 "vocab.chromeIcon.translation.expand" = "展開";
 "vocab.chromeIcon.translation.collapse" = "折りたたむ";
 "vocab.chromeIcon.translation.delete" = "削除";
+"vocab.chromeIcon.translation.enlarge" = "パネルを拡大";
+"vocab.chromeIcon.translation.shrink" = "パネルを縮小";
 "vocab.chromeIcon.todayReview.autoplay.on" = "自動再生をオフ";
 "vocab.chromeIcon.todayReview.autoplay.off" = "自動再生をオン";
 "settings.inlineInfo.accessibility" = "詳細情報";

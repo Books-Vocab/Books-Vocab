@@ -883,6 +883,8 @@
 "vocab.chromeIcon.translation.expand" = "展開";
 "vocab.chromeIcon.translation.collapse" = "收起";
 "vocab.chromeIcon.translation.delete" = "刪除";
+"vocab.chromeIcon.translation.enlarge" = "放大面板";
+"vocab.chromeIcon.translation.shrink" = "縮小面板";
 "vocab.chromeIcon.todayReview.autoplay.on" = "關閉自動播放";
 "vocab.chromeIcon.todayReview.autoplay.off" = "開啟自動播放";
 "settings.inlineInfo.accessibility" = "更多資訊";

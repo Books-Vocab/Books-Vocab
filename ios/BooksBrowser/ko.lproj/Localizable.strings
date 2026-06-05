@@ -868,6 +868,8 @@
 "vocab.chromeIcon.translation.expand" = "펼치기";
 "vocab.chromeIcon.translation.collapse" = "접기";
 "vocab.chromeIcon.translation.delete" = "삭제";
+"vocab.chromeIcon.translation.enlarge" = "패널 확대";
+"vocab.chromeIcon.translation.shrink" = "패널 축소";
 "vocab.chromeIcon.todayReview.autoplay.on" = "자동 재생 끄기";
 "vocab.chromeIcon.todayReview.autoplay.off" = "자동 재생 켜기";
 "settings.inlineInfo.accessibility" = "추가 정보";
