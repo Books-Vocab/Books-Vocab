@@ -13,9 +13,13 @@
 #   ./ops/asc.sh review-status                 # 審查提交 state（被拒原因須 GUI 解決中心看）
 #   ./ops/asc.sh review-detail                 # 審查聯絡 / demo 帳號 / 送審備註（raw API；查備註是否過期）
 #   ./ops/asc.sh screenshots [--locale zh-Hant]# 截圖集逐張 state（raw API；重送前查 Mochi 殘留 / 缺圖）
-#   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改文案（預設 dry-run，--yes 才真寫）
+#   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改版本文案（預設 dry-run，--yes 才真寫）
+#   ./ops/asc.sh set-review <field> <value>               # 改審查資訊：備註/demo帳號/聯絡人（dry-run，--yes 才寫）
 #
-# set 可寫 field：description / keywords / whats-new / marketing-url / support-url / promotional-text
+# set 可寫 field（appStoreVersionLocalization，逐語系）：
+#   description / keywords / whats-new / marketing-url / support-url / promotional-text
+# set-review 可寫 field（appStoreReviewDetail，整個版本一份，codemagic 未暴露 → 走 raw PATCH）：
+#   notes / demo-name / demo-password / demo-required(true|false) / contact-first / contact-last / contact-phone / contact-email
 # 全域 flag：--key <KEY_ID>（預設 TCXVHFRXMS）  --locale <L>  --version-id <id>  --yes
 # 前置：$ASC_KEY_DIR/AuthKey_<KEY_ID>.p8 存在（預設 ~/.secrets/apple，CI/部署機可覆寫 ASC_KEY_DIR）。
 
@@ -32,18 +36,21 @@ VERSION_ID=""
 YES=0
 
 err() { echo "✗ $*" >&2; exit 1; }
+# 取值型選項的守衛：$2 缺失/為空/是另一個 flag 時，給友善訊息而非 set -u 的 unbound variable。
+need_val() { [[ -n "${2:-}" && "${2:-}" != -* ]] || err "$1 需要一個值（不可為空或接另一個選項）"; }
 
 usage() {
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  # 只印開頭連續註解區（停在第一個非 # 行），避免把 set -euo pipefail 等程式碼洩進 help。
+  awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"
 }
 
 # ---- 全域 flag 解析（subcommand 前後皆可）----
 SUB=""; ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --key)        KEY_ID="$2"; shift 2 ;;
-    --locale)     LOCALE="$2"; shift 2 ;;
-    --version-id) VERSION_ID="$2"; shift 2 ;;
+    --key)        need_val --key "${2:-}";        KEY_ID="$2"; shift 2 ;;
+    --locale)     need_val --locale "${2:-}";     LOCALE="$2"; shift 2 ;;
+    --version-id) need_val --version-id "${2:-}"; VERSION_ID="$2"; shift 2 ;;
     --yes)        YES=1; shift ;;
     -h|--help)    usage; exit 0 ;;
     -*)           err "unknown option: $1" ;;
@@ -65,14 +72,23 @@ raw() {  # codemagic 暴露不到的唯讀 raw GET；JWT + 依賴宣告都在 as
     "$(dirname "$0")/asc_get.py" "$1"
 }
 
+patch_raw() {  # codemagic 暴露不到的 raw PATCH 寫入；body 由 stdin。JWT 同樣只在 asc_patch.py（本檔仍零 JWT）
+  ASC_KEY_ID="$KEY_ID" ASC_ISSUER_ID="$ISSUER_ID" ASC_KEY_DIR="$ASC_KEY_DIR" \
+    "$(dirname "$0")/asc_patch.py" "$1"
+}
+
 # ---- ID 解析鏈（純 codemagic）----
 resolve_version() {  # 印出 version id（--version-id 優先，否則取最新一筆）
   [[ -n "$VERSION_ID" ]] && { echo "$VERSION_ID"; return; }
-  asc apps app-store-versions "$APP_ID" --json 2>/dev/null | jq -r '.[0].id // empty'
+  # 結尾 || true：codemagic 非零 exit（網路/權限）在 set -e+pipefail 下不得中止賦值，
+  # 讓空輸出流到呼叫端的 `|| err "找不到版本"` 友善訊息，而非靜默 exit。
+  asc apps app-store-versions "$APP_ID" --json 2>/dev/null | jq -r '.[0].id // empty' || true
 }
 resolve_loc() {  # $1=version_id → 印出該 locale 的 localization id
+  # 結尾 || true：--version-id 給了無效值時 codemagic 會非零退出，這裡吞掉 → 空輸出 →
+  # 呼叫端 `[[ -n "$loc" ]] || err "版本 X 無 localization"` 才有機會跑（否則靜默 exit 1）。
   asc app-store-versions localizations "$1" --json 2>/dev/null \
-    | jq -r --arg L "$LOCALE" '.[] | select(.attributes.locale==$L) | .id' | head -1
+    | jq -r --arg L "$LOCALE" '.[] | select(.attributes.locale==$L) | .id' | head -1 || true
 }
 
 # ---- 讀指令 ----
@@ -149,7 +165,6 @@ cmd_screenshots() {  # raw：截圖集逐張 state（重送前查 Mochi 殘留 /
 
 # ---- 寫指令（metadata，預設 dry-run；--yes 才真送 modify）----
 cmd_set() {
-  require_key
   local field="${1:-}" value="${2:-}"
   # value 必須非空：避免 `set <field> "" --yes` 把正式文案清空。
   [[ -n "$field" && -n "$value" ]] || err "用法：asc.sh set <field> <value> [--locale L] [--yes]（value 不可為空）"
@@ -161,8 +176,11 @@ cmd_set() {
     marketing-url)     flag="--marketing-url";     jkey="marketingUrl" ;;
     support-url)       flag="--support-url";       jkey="supportUrl" ;;
     promotional-text)  flag="--promotional-text";  jkey="promotionalText" ;;
+    notes|demo-name|demo-password|demo-required|contact-first|contact-last|contact-phone|contact-email)
+      err "「$field」屬審查資訊（appStoreReviewDetail），請用：asc.sh set-review $field <value>" ;;
     *) err "不支援的 field：$field（可用 description/keywords/whats-new/marketing-url/support-url/promotional-text）" ;;
   esac
+  require_key   # 金鑰只在「確定要打 API」前才需要（用錯子命令/欄位先報，不必先要金鑰）
   local ver loc old
   ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
   loc="$(resolve_loc "$ver")"; [[ -n "$loc" ]] || err "版本 $ver 無 $LOCALE localization"
@@ -175,8 +193,67 @@ cmd_set() {
     asc app-store-version-localizations modify "$loc" "$flag" "$value"
     echo "✓ 已寫入正式 App Store 版本（$LOCALE）。"
   else
-    echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫："
-    echo "  ./ops/asc.sh set $field <value> --locale $LOCALE --yes"
+    echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste，含空白/換行已 shell-quote）："
+    printf '  ./ops/asc.sh set %s %q --locale %s --yes\n' "$field" "$value" "$LOCALE"
+  fi
+}
+
+# ---- 寫指令（審查資訊 appStoreReviewDetail，codemagic 未暴露 → raw PATCH；dry-run 預設，--yes 才送）----
+cmd_set_review() {
+  local field="${1:-}" value="${2:-}"
+  # value 必須非空：避免把備註/聯絡人清空。demo-required 例外（true/false 都合法）下面另檢。
+  [[ -n "$field" && -n "$value" ]] || err "用法：asc.sh set-review <field> <value> [--yes]（value 不可為空）"
+  local jkey
+  case "$field" in
+    notes)          jkey="notes" ;;
+    demo-name)      jkey="demoAccountName" ;;
+    demo-password)  jkey="demoAccountPassword" ;;
+    demo-required)  jkey="demoAccountRequired" ;;
+    contact-first)  jkey="contactFirstName" ;;
+    contact-last)   jkey="contactLastName" ;;
+    contact-phone)  jkey="contactPhone" ;;
+    contact-email)  jkey="contactEmail" ;;
+    description|keywords|whats-new|whatsnew|marketing-url|support-url|promotional-text)
+      err "「$field」屬版本文案（appStoreVersionLocalization），請用：asc.sh set $field <value>" ;;
+    *) err "不支援的 review field：$field（notes/demo-name/demo-password/demo-required/contact-first/contact-last/contact-phone/contact-email）" ;;
+  esac
+  require_key   # 金鑰只在「確定要打 API」前才需要
+
+  local ver vlabel rd rid old body resp
+  ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
+  # 顯示目標版本字串+state，避免誤寫到非預期版本（如已上架 / 被拒版本）
+  vlabel="$(raw "/v1/appStoreVersions/$ver" | jq -r '(.data.attributes.versionString // "?") + " (" + (.data.attributes.appStoreState // "?") + ")"')"
+  # reviewDetail 是整個版本一份；解析其 id（PATCH 標的）
+  rd="$(raw "/v1/appStoreVersions/$ver/appStoreReviewDetail")"
+  rid="$(printf '%s' "$rd" | jq -r '.data.id // empty')"
+  if [[ -z "$rid" ]]; then
+    # 把 raw GET 的 _httpError 帶進訊息：401/權限 與「真的沒有 reviewDetail」才分得開（不再同訊息）
+    local httperr; httperr="$(printf '%s' "$rd" | jq -r 'if has("_httpError") then "（API HTTP \(._httpError)：\(._detail.errors[0].detail // ._detail.reason // "?")）" else "" end')"
+    err "版本 $vlabel 無 appStoreReviewDetail$httperr（版本狀態可能不可編輯，或尚未建立審查資訊）"
+  fi
+  old="$(printf '%s' "$rd" | jq -r --arg k "$jkey" '.data.attributes[$k] // "（空）"')"
+
+  # 組 PATCH body（jq 負責跳脫；demo-required 走 boolean，其餘 string）
+  if [[ "$jkey" == "demoAccountRequired" ]]; then
+    [[ "$value" == "true" || "$value" == "false" ]] || err "demo-required 只能 true 或 false（給的是：$value）"
+    body="$(jq -nc --arg id "$rid" --argjson v "$value" \
+      '{data:{type:"appStoreReviewDetails",id:$id,attributes:{demoAccountRequired:$v}}}')"
+  else
+    body="$(jq -nc --arg id "$rid" --arg k "$jkey" --arg v "$value" \
+      '{data:{type:"appStoreReviewDetails",id:$id,attributes:{($k):$v}}}')"
+  fi
+
+  echo "version=$vlabel  reviewDetail=$rid  field=$field"
+  echo "  舊值：$old"
+  echo "  新值：$value"
+  if [[ $YES -eq 1 ]]; then
+    resp="$(printf '%s' "$body" | patch_raw "/v1/appStoreReviewDetails/$rid")"
+    printf '%s' "$resp" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
+      && err "寫入失敗：HTTP $(printf '%s' "$resp" | jq -c '._httpError')  $(printf '%s' "$resp" | jq -c '._detail.errors // ._detail')"
+    echo "✓ 已寫入審查資訊（appStoreReviewDetail；版本 $vlabel）。"
+  else
+    echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste）："
+    printf '  ./ops/asc.sh set-review %s %q --yes\n' "$field" "$value"
   fi
 }
 
@@ -190,6 +267,7 @@ case "${SUB:-}" in
   review-detail) cmd_review_detail ;;
   screenshots)   cmd_screenshots ;;
   set)           cmd_set "${ARGS[@]:-}" ;;
+  set-review)    cmd_set_review "${ARGS[@]:-}" ;;
   ""|help)       usage ;;
   *)             err "unknown subcommand: $SUB（asc.sh help 看用法）" ;;
 esac

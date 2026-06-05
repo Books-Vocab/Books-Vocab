@@ -6,7 +6,7 @@ set -euo pipefail
 COMPONENT="${1:?用法: ops/release_bump.sh <api|ios> <version>}"
 VERSION="${2:?請提供版本號，例如 1.3.0}"
 
-KG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KG_ROOT="${KG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"   # 可由 env 覆寫（測試指向 fixture）
 
 # 驗證版本號格式
 if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
@@ -34,23 +34,25 @@ bump_api() {
 bump_ios() {
   local pbxproj="$KG_ROOT/ios/BooksBrowser.xcodeproj/project.pbxproj"
 
-  # 讀取當前最大 build number 並 +1
-  local current_build
-  current_build=$(grep -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$pbxproj" | head -1 | grep -o '[0-9]*')
-  local new_build=$((current_build + 1))
+  # 只改「主 app target」，以其『當前版號值』為錨：避免全域 sed 波及測試 bundle
+  # （BooksBrowserTests/UITests 各有獨立 MARKETING_VERSION/CURRENT_PROJECT_VERSION，不上架，不該被拖著走）。
+  # 主 app 的當前值＝檔內第一個（與 release.sh current_version 的 grep -m1 同口徑）。
+  local cur_mv cur_build new_build
+  cur_mv=$(grep -o 'MARKETING_VERSION = [^;]*' "$pbxproj" | head -1 | sed 's/MARKETING_VERSION = //')
+  cur_build=$(grep -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$pbxproj" | head -1 | grep -o '[0-9]*')
+  new_build=$((cur_build + 1))
+  [[ -n "$cur_mv" && -n "$cur_build" ]] || { echo "✗ 讀不到 app target 當前版號（pbxproj 結構異常）" >&2; exit 1; }
 
-  # 統一更新 MARKETING_VERSION（不管原本是兩段或三段）
-  sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = $VERSION/" "$pbxproj"
-  echo "✓ MARKETING_VERSION → $VERSION"
+  # 以「= 當前值;」精準錨定，只命中與主 app 同值的 config（Debug+Release 兩處），不碰異值的測試 bundle。
+  sed -i '' "s/MARKETING_VERSION = ${cur_mv};/MARKETING_VERSION = $VERSION;/g" "$pbxproj"
+  sed -i '' "s/CURRENT_PROJECT_VERSION = ${cur_build};/CURRENT_PROJECT_VERSION = $new_build;/g" "$pbxproj"
 
-  # 更新 CURRENT_PROJECT_VERSION
-  sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $new_build/" "$pbxproj"
-  echo "✓ CURRENT_PROJECT_VERSION → $new_build"
-
-  # 驗證
+  # 驗證 + 回報實際命中數（不再謊稱「6 處」）
   local count
   count=$(grep -c "MARKETING_VERSION = $VERSION;" "$pbxproj")
-  echo "  （已更新 $count 處 MARKETING_VERSION）"
+  [[ "$count" -ge 1 ]] || { echo "✗ MARKETING_VERSION 更新失敗（錨值 $cur_mv 未命中）" >&2; exit 1; }
+  echo "✓ MARKETING_VERSION → $VERSION（app target $count 處；測試 bundle 不動）"
+  echo "✓ CURRENT_PROJECT_VERSION → $new_build"
 }
 
 case "$COMPONENT" in
