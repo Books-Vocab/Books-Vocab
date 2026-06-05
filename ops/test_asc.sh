@@ -166,6 +166,55 @@ echo "$(bash "$ASC" set notes x 2>&1)" | grep -q 'set-review' \
 echo "$(bash "$ASC" set-review description x 2>&1)" | grep -qE 'asc.sh set ' \
   && ok "set-review <text-field> routes to set" || fail_t "set-review doesn't route text fields"
 
+# ── 11. App 資訊讀寫面（P1：appInfoLocalization / EULA / 分類 / 年齡分級 / 內容版權）──
+section "App-info read/write surface (P1)"
+# 11a. 新子命令全在 dispatch
+for sub in categories set-appinfo set-eula set-content-rights set-category set-rating; do
+  grep -qE "^[[:space:]]*$sub\)" "$ASC" \
+    && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+done
+# 11b. App 層 ID 解析鏈存在（raw API）
+grep -q 'resolve_appinfo()' "$ASC"     && ok "resolve_appinfo present"     || fail_t "resolve_appinfo missing"
+grep -q 'resolve_appinfo_loc()' "$ASC" && ok "resolve_appinfo_loc present" || fail_t "resolve_appinfo_loc missing"
+# 11c. 共用 emit_patch：gate 不變量集中一處 —— patch_raw 只在 --yes 分支，dry-run(else) 分支零 patch_raw
+ep_body="$(awk '/^emit_patch\(\)/,/^}/' "$ASC")"
+echo "$ep_body" | grep -q 'patch_raw' \
+  && ok "emit_patch performs real patch_raw write" || fail_t "emit_patch missing patch_raw"
+echo "$ep_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]' \
+  && ok "emit_patch guards write behind --yes"      || fail_t "emit_patch missing --yes guard"
+echo "$ep_body" | awk '/else/,/fi/' | grep -q 'patch_raw' \
+  && fail_t "patch_raw leaked into emit_patch dry-run branch (would write without --yes)" \
+  || ok "emit_patch dry-run branch contains no patch_raw"
+# 11d. 每個寫指令都「透過 emit_patch」收尾，且不自行 patch_raw（否則繞過集中 gate）
+for fn in cmd_set_appinfo cmd_set_eula cmd_set_content_rights cmd_set_category cmd_set_rating; do
+  body="$(awk "/^$fn\\(\\)/,/^}/" "$ASC")"
+  echo "$body" | grep -q 'emit_patch' \
+    && ok "$fn routes through emit_patch"        || fail_t "$fn doesn't use emit_patch"
+  echo "$body" | grep -q 'patch_raw' \
+    && fail_t "$fn calls patch_raw directly (bypasses central gate)" \
+    || ok "$fn delegates write (no direct patch_raw)"
+done
+# 11e. body 形狀正確：set-appinfo 用 appInfoLocalizations attributes；set-category 用 relationships（非 attributes）
+echo "$(awk '/^cmd_set_appinfo\(\)/,/^}/' "$ASC")" | grep -q 'type:"appInfoLocalizations"' \
+  && ok "set-appinfo body targets appInfoLocalizations" || fail_t "set-appinfo body wrong type"
+cat_body="$(awk '/^cmd_set_category\(\)/,/^}/' "$ASC")"
+echo "$cat_body" | grep -q 'relationships' \
+  && ok "set-category uses relationship body"   || fail_t "set-category not using relationships"
+echo "$cat_body" | grep -q 'type:"appCategories"' \
+  && ok "set-category references appCategories"  || fail_t "set-category missing appCategories ref"
+# 11f. set-content-rights 只收 uses|none（防亂值）
+cr_out="$(bash "$ASC" set-content-rights bogus 2>&1 || true)"
+echo "$cr_out" | grep -q 'uses|none' \
+  && ok "set-content-rights validates uses|none" || fail_t "set-content-rights accepts invalid value"
+# 11g. 跨物件指路：set name → set-appinfo；set-appinfo description → set
+echo "$(bash "$ASC" set name x 2>&1)" | grep -q 'set-appinfo' \
+  && ok "set <appinfo-field> routes to set-appinfo" || fail_t "set doesn't route appinfo fields"
+echo "$(bash "$ASC" set-appinfo description x 2>&1)" | grep -qE 'asc.sh set ' \
+  && ok "set-appinfo <version-field> routes to set" || fail_t "set-appinfo doesn't route version fields"
+# 11h. EULA 寫入解析 endUserLicenseAgreement
+echo "$(awk '/^cmd_set_eula\(\)/,/^}/' "$ASC")" | grep -q 'endUserLicenseAgreement' \
+  && ok "set-eula resolves endUserLicenseAgreement" || fail_t "set-eula missing EULA resolution"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

@@ -13,13 +13,24 @@
 #   ./ops/asc.sh review-status                 # 審查提交 state（被拒原因須 GUI 解決中心看）
 #   ./ops/asc.sh review-detail                 # 審查聯絡 / demo 帳號 / 送審備註（raw API；查備註是否過期）
 #   ./ops/asc.sh screenshots [--locale zh-Hant]# 截圖集逐張 state（raw API；重送前查 Mochi 殘留 / 缺圖）
+#   ./ops/asc.sh categories                    # 列 iOS 可用主分類 ID（set-category 用）
 #   ./ops/asc.sh set <field> <value> [--locale zh-Hant]   # 改版本文案（預設 dry-run，--yes 才真寫）
 #   ./ops/asc.sh set-review <field> <value>               # 改審查資訊：備註/demo帳號/聯絡人（dry-run，--yes 才寫）
+#   ./ops/asc.sh set-appinfo <field> <value> [--locale L] # 改 App 層本地化：名稱/副標/隱私URL（dry-run，--yes 才寫）
+#   ./ops/asc.sh set-eula <text>                          # 改自訂 EULA 全文（dry-run，--yes 才寫）
+#   ./ops/asc.sh set-content-rights <uses|none>           # 改第三方內容版權宣告（dry-run，--yes 才寫）
+#   ./ops/asc.sh set-category <primary|secondary> <ID>    # 改分類（ID 見 categories；dry-run，--yes 才寫）
+#   ./ops/asc.sh set-rating <attr> <value>                # 改年齡分級宣告屬性（dry-run，--yes 才寫）
 #
-# set 可寫 field（appStoreVersionLocalization，逐語系）：
-#   description / keywords / whats-new / marketing-url / support-url / promotional-text
-# set-review 可寫 field（appStoreReviewDetail，整個版本一份，codemagic 未暴露 → 走 raw PATCH）：
-#   notes / demo-name / demo-password / demo-required(true|false) / contact-first / contact-last / contact-phone / contact-email
+# 三組「物件邊界」（用錯子命令會互相指路）：
+#   set         → appStoreVersionLocalization（逐語系版本文案，codemagic modify）：
+#                 description / keywords / whats-new / marketing-url / support-url / promotional-text
+#   set-review  → appStoreReviewDetail（整版一份，codemagic 未暴露 → raw PATCH）：
+#                 notes / demo-name / demo-password / demo-required(true|false) / contact-first / contact-last / contact-phone / contact-email
+#   set-appinfo → appInfoLocalization（App 層逐語系，raw PATCH）：
+#                 name / subtitle / privacy-url / privacy-choices-url / privacy-policy-text
+# 另有 App 層結構寫入（raw PATCH）：set-eula(EULA 全文) / set-content-rights(內容版權) / set-category(分類) / set-rating(年齡分級)。
+# 註：App 隱私權（nutrition labels）Apple 無公開 API，只能 GUI 編輯（本工具不涵蓋）。
 # 全域 flag：--key <KEY_ID>（預設 TCXVHFRXMS）  --locale <L>  --version-id <id>  --yes
 # 前置：$ASC_KEY_DIR/AuthKey_<KEY_ID>.p8 存在（預設 ~/.secrets/apple，CI/部署機可覆寫 ASC_KEY_DIR）。
 
@@ -77,6 +88,25 @@ patch_raw() {  # codemagic 暴露不到的 raw PATCH 寫入；body 由 stdin。J
     "$(dirname "$0")/asc_patch.py" "$1"
 }
 
+# 共用 raw-PATCH 收尾：印 old/new → dry-run gate → --yes 才送 → 錯誤判讀。所有 raw 寫指令共用，
+# 確保「dry-run 預設 + patch_raw 只活在 --yes 分支」這個不變量只實作一次（負控 test 鎖此函式）。
+# $1 標頭  $2 舊值  $3 新值  $4 PATCH path  $5 body(JSON)  $6 dry-run 重現指令
+emit_patch() {
+  local header="$1" old="$2" new="$3" path="$4" body="$5" hint="$6" resp
+  echo "$header"
+  echo "  舊值：$old"
+  echo "  新值：$new"
+  if [[ $YES -eq 1 ]]; then
+    resp="$(printf '%s' "$body" | patch_raw "$path")"
+    printf '%s' "$resp" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
+      && err "寫入失敗：HTTP $(printf '%s' "$resp" | jq -c '._httpError')  $(printf '%s' "$resp" | jq -c '._detail.errors // ._detail')"
+    echo "✓ 已寫入（$path）。"
+  else
+    echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste）："
+    echo "  $hint"
+  fi
+}
+
 # ---- ID 解析鏈（純 codemagic）----
 resolve_version() {  # 印出 version id（--version-id 優先，否則取最新一筆）
   [[ -n "$VERSION_ID" ]] && { echo "$VERSION_ID"; return; }
@@ -89,6 +119,17 @@ resolve_loc() {  # $1=version_id → 印出該 locale 的 localization id
   # 呼叫端 `[[ -n "$loc" ]] || err "版本 X 無 localization"` 才有機會跑（否則靜默 exit 1）。
   asc app-store-versions localizations "$1" --json 2>/dev/null \
     | jq -r --arg L "$LOCALE" '.[] | select(.attributes.locale==$L) | .id' | head -1 || true
+}
+
+# App 層解析鏈（raw API；App 資訊 / EULA / 分類 / 年齡分級 寫入用）。
+# raw()=asc_get.py 恆 exit 0（HTTP 錯誤回 JSON），jq 取不到 → 空字串 → 呼叫端 || err，不靜默中止。
+resolve_appinfo() {  # 印可編輯的 appInfo id（非 READY_FOR_SALE 優先，否則第一筆）
+  raw "/v1/apps/$APP_ID/appInfos" \
+    | jq -r 'first(.data[] | select(.attributes.state != "READY_FOR_SALE") | .id) // (.data[0].id // empty)'
+}
+resolve_appinfo_loc() {  # $1=appInfo id → 印該 locale 的 appInfoLocalization id
+  raw "/v1/appInfos/$1/appInfoLocalizations" \
+    | jq -r --arg L "$LOCALE" 'first(.data[] | select(.attributes.locale==$L) | .id) // empty'
 }
 
 # ---- 讀指令 ----
@@ -116,11 +157,27 @@ cmd_metadata() {
     | jq -r '.attributes | to_entries[] | "\(.key): \(.value // "（空）")"'
 }
 
-cmd_info() {
+cmd_info() {  # App 層完整讀面（codemagic 基本欄位 + raw 補 App 資訊全貌）
   require_key
   asc apps get "$APP_ID" --json 2>/dev/null \
-    | jq -r '.attributes | "name: \(.name)\nbundleId: \(.bundleId)\nsku: \(.sku)\nprimaryLocale: \(.primaryLocale)"'
-  echo "註：category / 內容版權 / 年齡分級 codemagic 未暴露，須 GUI 或 raw API（本工具未實作）。"
+    | jq -r '.attributes | "name: \(.name)\nbundleId: \(.bundleId)\nsku: \(.sku)\nprimaryLocale: \(.primaryLocale)\ncontentRights: \(.contentRightsDeclaration // "（未設）")"'
+  local aid loc
+  aid="$(resolve_appinfo)"
+  if [[ -n "$aid" ]]; then
+    echo "# appInfo=$aid（可編輯態）"
+    loc="$(resolve_appinfo_loc "$aid")"
+    if [[ -n "$loc" ]]; then
+      echo "## App 層本地化（$LOCALE）："
+      raw "/v1/appInfoLocalizations/$loc" \
+        | jq -r '.data.attributes | "  name: \(.name // "（空）")\n  subtitle: \(.subtitle // "（空）")\n  privacyPolicyUrl: \(.privacyPolicyUrl // "（空）")\n  privacyChoicesUrl: \(.privacyChoicesUrl // "（空）")"'
+    fi
+    echo "## 分類："
+    echo "  primary:   $(raw "/v1/appInfos/$aid/primaryCategory"   | jq -r '.data.id // "（未設）"')"
+    echo "  secondary: $(raw "/v1/appInfos/$aid/secondaryCategory" | jq -r '.data.id // "（未設）"')"
+    echo "## 年齡分級宣告 id：$(raw "/v1/appInfos/$aid/ageRatingDeclaration" | jq -r '.data.id // "（無）"')（屬性用 set-rating <attr> <value> 改）"
+  fi
+  echo "## EULA：$(raw "/v1/apps/$APP_ID/endUserLicenseAgreement" | jq -r 'if .data then "自訂（\(.data.attributes.agreementText | length) 字）" else "（無，套用 Apple 標準 EULA）" end' 2>/dev/null || echo "（讀取失敗）")"
+  echo "註：App 隱私權（nutrition labels）Apple 無公開 API，只能 GUI 編輯（本工具不涵蓋）。"
 }
 
 cmd_review_status() {
@@ -178,6 +235,8 @@ cmd_set() {
     promotional-text)  flag="--promotional-text";  jkey="promotionalText" ;;
     notes|demo-name|demo-password|demo-required|contact-first|contact-last|contact-phone|contact-email)
       err "「$field」屬審查資訊（appStoreReviewDetail），請用：asc.sh set-review $field <value>" ;;
+    name|subtitle|privacy-url|privacy-choices-url|privacy-policy-text)
+      err "「$field」屬 App 層本地化（appInfoLocalization），請用：asc.sh set-appinfo $field <value>" ;;
     *) err "不支援的 field：$field（可用 description/keywords/whats-new/marketing-url/support-url/promotional-text）" ;;
   esac
   require_key   # 金鑰只在「確定要打 API」前才需要（用錯子命令/欄位先報，不必先要金鑰）
@@ -257,6 +316,119 @@ cmd_set_review() {
   fi
 }
 
+# ---- App 資訊讀：分類清單（set-category 用） ----
+cmd_categories() {
+  require_key
+  echo "# iOS 主分類 ID（set-category <primary|secondary> <ID>）："
+  raw "/v1/appCategories?filter%5Bplatforms%5D=IOS&exists%5Bparent%5D=false&limit=200" \
+    | jq -r 'if ._httpError then "（讀取失敗：HTTP \(._httpError)）" else (.data[].id) end' | sort
+}
+
+# ---- App 資訊寫：App 層本地化（name/subtitle/privacy URL；appInfoLocalization，raw PATCH） ----
+cmd_set_appinfo() {
+  local field="${1:-}" value="${2:-}"
+  [[ -n "$field" && -n "$value" ]] || err "用法：asc.sh set-appinfo <field> <value> [--locale L] [--yes]（value 不可為空）"
+  local jkey
+  case "$field" in
+    name)                jkey="name" ;;
+    subtitle)            jkey="subtitle" ;;
+    privacy-url)         jkey="privacyPolicyUrl" ;;
+    privacy-choices-url) jkey="privacyChoicesUrl" ;;
+    privacy-policy-text) jkey="privacyPolicyText" ;;
+    description|keywords|whats-new|whatsnew|marketing-url|support-url|promotional-text)
+      err "「$field」屬版本文案（appStoreVersionLocalization），請用：asc.sh set $field <value>" ;;
+    *) err "不支援的 app-info field：$field（name/subtitle/privacy-url/privacy-choices-url/privacy-policy-text）" ;;
+  esac
+  require_key
+  local aid loc data old body
+  aid="$(resolve_appinfo)"; [[ -n "$aid" ]] || err "找不到可編輯的 appInfo"
+  loc="$(resolve_appinfo_loc "$aid")"; [[ -n "$loc" ]] || err "appInfo $aid 無 $LOCALE 本地化"
+  data="$(raw "/v1/appInfoLocalizations/$loc")"
+  old="$(printf '%s' "$data" | jq -r --arg k "$jkey" '.data.attributes[$k] // "（空）"')"
+  body="$(jq -nc --arg id "$loc" --arg k "$jkey" --arg v "$value" \
+    '{data:{type:"appInfoLocalizations",id:$id,attributes:{($k):$v}}}')"
+  emit_patch "appInfoLocalization=$loc  locale=$LOCALE  field=$field" "$old" "$value" \
+    "/v1/appInfoLocalizations/$loc" "$body" \
+    "$(printf './ops/asc.sh set-appinfo %s %q --locale %s --yes' "$field" "$value" "$LOCALE")"
+}
+
+# ---- App 資訊寫：自訂 EULA 全文（endUserLicenseAgreement，raw PATCH） ----
+cmd_set_eula() {
+  local value="${1:-}"
+  [[ -n "$value" ]] || err "用法：asc.sh set-eula <text> [--yes]（不可為空；長文用 \"\$(cat eula.txt)\"）"
+  require_key
+  local eu eid old body
+  eu="$(raw "/v1/apps/$APP_ID/endUserLicenseAgreement")"
+  eid="$(printf '%s' "$eu" | jq -r '.data.id // empty')"
+  [[ -n "$eid" ]] || err "此 app 尚無自訂 EULA（須先在 GUI 建立一次，本工具只更新既有）"
+  old="$(printf '%s' "$eu" | jq -r '(.data.attributes.agreementText // "") | "（\(length) 字）前 60：" + .[0:60]')"
+  body="$(jq -nc --arg id "$eid" --arg v "$value" \
+    '{data:{type:"endUserLicenseAgreements",id:$id,attributes:{agreementText:$v}}}')"
+  emit_patch "EULA=$eid" "$old" "（新文字 ${#value} 字，前 60：${value:0:60}）" \
+    "/v1/endUserLicenseAgreements/$eid" "$body" \
+    "$(printf './ops/asc.sh set-eula %q --yes' "$value")"
+}
+
+# ---- App 資訊寫：第三方內容版權宣告（apps attribute，raw PATCH） ----
+cmd_set_content_rights() {
+  local value="${1:-}"
+  case "$value" in
+    uses|USES_THIRD_PARTY_CONTENT)         value="USES_THIRD_PARTY_CONTENT" ;;
+    none|DOES_NOT_USE_THIRD_PARTY_CONTENT) value="DOES_NOT_USE_THIRD_PARTY_CONTENT" ;;
+    *) err "用法：asc.sh set-content-rights <uses|none> [--yes]" ;;
+  esac
+  require_key
+  local old body
+  old="$(raw "/v1/apps/$APP_ID" | jq -r '.data.attributes.contentRightsDeclaration // "（未設）"')"
+  body="$(jq -nc --arg id "$APP_ID" --arg v "$value" \
+    '{data:{type:"apps",id:$id,attributes:{contentRightsDeclaration:$v}}}')"
+  emit_patch "app=$APP_ID  contentRightsDeclaration" "$old" "$value" \
+    "/v1/apps/$APP_ID" "$body" \
+    "./ops/asc.sh set-content-rights $value --yes"
+}
+
+# ---- App 資訊寫：主/次分類（appInfo relationship，raw PATCH） ----
+cmd_set_category() {
+  local slot="${1:-}" cat="${2:-}"
+  case "$slot" in primary|secondary) ;; *) err "用法：asc.sh set-category <primary|secondary> <CATEGORY_ID> [--yes]（ID 見 asc.sh categories）" ;; esac
+  [[ -n "$cat" ]] || err "缺 CATEGORY_ID（見 asc.sh categories 列可用值）"
+  require_key
+  local aid rel old body
+  aid="$(resolve_appinfo)"; [[ -n "$aid" ]] || err "找不到可編輯的 appInfo"
+  rel="${slot}Category"   # primaryCategory / secondaryCategory
+  old="$(raw "/v1/appInfos/$aid/$rel" | jq -r '.data.id // "（未設）"')"
+  # 分類走 relationship（非 attributes）：body 形狀與其他寫指令不同
+  body="$(jq -nc --arg id "$aid" --arg rel "$rel" --arg cat "$cat" \
+    '{data:{type:"appInfos",id:$id,relationships:{($rel):{data:{type:"appCategories",id:$cat}}}}}')"
+  emit_patch "appInfo=$aid  $rel" "$old" "$cat" \
+    "/v1/appInfos/$aid" "$body" \
+    "./ops/asc.sh set-category $slot $cat --yes"
+}
+
+# ---- App 資訊寫：年齡分級宣告屬性（ageRatingDeclaration，raw PATCH；generic passthrough） ----
+cmd_set_rating() {
+  local field="${1:-}" value="${2:-}"
+  [[ -n "$field" && -n "$value" ]] || err "用法：asc.sh set-rating <attr> <value> [--yes]（attr 為 camelCase 屬性，如 gambling=false、violenceCartoonOrFantasy=NONE；現值見 asc.sh info / GUI 問卷較安全）"
+  require_key
+  local aid data rid old body
+  aid="$(resolve_appinfo)"; [[ -n "$aid" ]] || err "找不到可編輯的 appInfo"
+  data="$(raw "/v1/appInfos/$aid/ageRatingDeclaration")"
+  rid="$(printf '%s' "$data" | jq -r '.data.id // empty')"
+  [[ -n "$rid" ]] || err "找不到 ageRatingDeclaration"
+  old="$(printf '%s' "$data" | jq -r --arg k "$field" 'if .data.attributes | has($k) then (.data.attributes[$k] | tostring) else "（無此屬性）" end')"
+  # bool 字面走 boolean，其餘走 string（enum 如 NONE / INFREQUENT_OR_MILD）；非法值交給 API 退回（emit_patch 會報）
+  if [[ "$value" == "true" || "$value" == "false" ]]; then
+    body="$(jq -nc --arg id "$rid" --arg k "$field" --argjson v "$value" \
+      '{data:{type:"ageRatingDeclarations",id:$id,attributes:{($k):$v}}}')"
+  else
+    body="$(jq -nc --arg id "$rid" --arg k "$field" --arg v "$value" \
+      '{data:{type:"ageRatingDeclarations",id:$id,attributes:{($k):$v}}}')"
+  fi
+  emit_patch "ageRatingDeclaration=$rid  attr=$field" "$old" "$value" \
+    "/v1/ageRatingDeclarations/$rid" "$body" \
+    "$(printf './ops/asc.sh set-rating %s %q --yes' "$field" "$value")"
+}
+
 # ---- dispatch ----
 case "${SUB:-}" in
   versions)      cmd_versions ;;
@@ -266,8 +438,14 @@ case "${SUB:-}" in
   review-status) cmd_review_status ;;
   review-detail) cmd_review_detail ;;
   screenshots)   cmd_screenshots ;;
+  categories)    cmd_categories ;;
   set)           cmd_set "${ARGS[@]:-}" ;;
   set-review)    cmd_set_review "${ARGS[@]:-}" ;;
+  set-appinfo)   cmd_set_appinfo "${ARGS[@]:-}" ;;
+  set-eula)      cmd_set_eula "${ARGS[@]:-}" ;;
+  set-content-rights) cmd_set_content_rights "${ARGS[@]:-}" ;;
+  set-category)  cmd_set_category "${ARGS[@]:-}" ;;
+  set-rating)    cmd_set_rating "${ARGS[@]:-}" ;;
   ""|help)       usage ;;
   *)             err "unknown subcommand: $SUB（asc.sh help 看用法）" ;;
 esac
