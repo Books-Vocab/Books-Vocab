@@ -81,7 +81,7 @@ def record_audit(
             try:
                 payload_str = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
             except (TypeError, ValueError):
-                payload_str = json.dumps({"_unserializable": repr(payload)[:500]})
+                payload_str = json.dumps({"_unserializable": repr(payload)[:500]}, ensure_ascii=False)
         now = datetime.now(UTC).isoformat()
         with _lock:
             conn = _get_conn()

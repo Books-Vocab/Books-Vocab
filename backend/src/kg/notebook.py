@@ -151,4 +151,4 @@ def validate_notebook_access(notebook_store: NotebookStore, notebook_id: str) ->
         notebook_store.ensure_default()
         return
     if not notebook_store.exists(notebook_id):
-        raise HTTPException(403, "Notebook access denied")
+        raise HTTPException(status_code=403, detail="Notebook access denied")
