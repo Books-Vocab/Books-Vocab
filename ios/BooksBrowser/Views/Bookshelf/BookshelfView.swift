@@ -94,11 +94,13 @@ struct BookshelfView: View {
 
                     #if targetEnvironment(macCatalyst)
                     Button(action: {
-                        coordinator.sync(
-                            container: modelContext.container,
-                            kgService: kgService,
-                            toastCoordinator: toastCoordinator
-                        )
+                        Task {
+                            await coordinator.sync(
+                                container: modelContext.container,
+                                kgService: kgService,
+                                toastCoordinator: toastCoordinator
+                            )
+                        }
                     }) {
                         AppToolbarGlyph(systemImage: "arrow.clockwise")
                     }
@@ -149,6 +151,15 @@ struct BookshelfView: View {
         // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
         .focusedSceneValue(\.importBook, ImportBookAction { coordinator.presentImporter() })
         .enableInjection()
+    }
+
+    /// Shared sync action for pull-to-refresh (iOS/iPadOS) and toolbar button (Mac Catalyst).
+    private func performSync() async {
+        await coordinator.sync(
+            container: modelContext.container,
+            kgService: kgService,
+            toastCoordinator: toastCoordinator
+        )
     }
 
     // MARK: - 空狀態
@@ -206,6 +217,11 @@ struct BookshelfView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
+#if !targetEnvironment(macCatalyst)
+        .refreshable {
+            await performSync()
+        }
+#endif
     }
 
     // MARK: - 書籍網格
@@ -245,6 +261,11 @@ struct BookshelfView: View {
                 .padding(.top, AppSpacing.s6)
                 .padding(.bottom, AppSpacing.s7)
         }
+#if !targetEnvironment(macCatalyst)
+        .refreshable {
+            await performSync()
+        }
+#endif
     }
 
     // MARK: - EPUB 取得提示
