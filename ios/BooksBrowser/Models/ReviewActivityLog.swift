@@ -12,11 +12,6 @@ enum ReviewActivityLog {
     private static let calendar = Calendar.current
 
     private static let dayFormatter = AppDateFormatters.dayKey
-    private static let syntheticRecordWords: Set<String> = [
-        "\u{FF08}\u{8DE8}\u{88DD}\u{7F6E}\u{540C}\u{6B65}\u{FF09}",
-        "\u{FF08}\u{9077}\u{79FB}\u{8CC7}\u{6599}\u{FF09}"
-    ]
-
     // MARK: - Record
 
     @MainActor
@@ -110,21 +105,6 @@ enum ReviewActivityLog {
             .sorted { $0.reviewedAt > $1.reviewedAt }
     }
 
-    @MainActor
-    @discardableResult
-    static func removeSyntheticPlaceholderRecords(context: ModelContext) throws -> Int {
-        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
-        var removed = 0
-        for record in records where isSyntheticPlaceholderRecord(record) {
-            context.delete(record)
-            removed += 1
-        }
-        if removed > 0 {
-            try context.save()
-        }
-        return removed
-    }
-
     // MARK: - Helpers
 
     private static func groupByDay(_ records: [ReviewRecord]) -> [String: Int] {
@@ -133,15 +113,5 @@ enum ReviewActivityLog {
             result[record.dayKey, default: 0] += 1
         }
         return result
-    }
-
-    private static func isSyntheticPlaceholderRecord(_ record: ReviewRecord) -> Bool {
-        guard syntheticRecordWords.contains(record.word),
-              record.entryID == nil,
-              record.notebookId == "default",
-              let dayStart = dayFormatter.date(from: record.dayKey) else {
-            return false
-        }
-        return abs(record.reviewedAt.timeIntervalSince(dayStart)) < 0.001
     }
 }
