@@ -90,7 +90,8 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `LocaleAwareFormatter` | `Models/LocaleAwareFormatter.swift` | 跟 AppLanguage 的 thread-safe DateFormatter/Number/Relative cache,format-in-lock,語言變更時 invalidate |
 | `Localizable.stringsdict` | `<lang>.lproj/` | NSStringPluralRuleType plural variations;新增 key 流程見 `docs/sop/i18n_plural_keys.md` |
 | `TranslationLanguage` | `Models/TranslationLanguage.swift` | 翻譯來源/目標語言;UserDefaults + iCloud KV + updatedAt LWW;預設值讀 `Locale.preferredLanguages`(script-aware) |
-| `KGFeatureFlags` | `Models/KGFeatureFlags.swift` | iOS-side feature gates(目前控 `serverTranslationLwwEnabled` / `vocabularyLangPayloadEnabled`) |
+| `ReviewSettings` / `ReviewSettingsStore` | `Models/ReviewSettings.swift` | 複習設定(mode/custom SRS/autoplay)+ **pause review clock**;pause 三層 UserDefaults + iCloud KV + updatedAt LWW(`ReviewClockLWW` 整組原子),登入經 `/api/user/config` 的 `review_clock` push/fetch + rollback、server cold-start wins |
+| `KGFeatureFlags` | `Models/KGFeatureFlags.swift` | iOS-side feature gates(目前控 `serverTranslationLwwEnabled` / `serverReviewClockLwwEnabled` / `vocabularyLangPayloadEnabled`) |
 | `AppFonts.cjk{Sans,Serif}FallbackName` | `Models/AppFonts.swift` | 依 effectiveLanguage 切 CJK fallback(PingFangTC/SC、Hiragino、AppleSDGothic) |
 | `SpeechService.voiceCode(for:)` | `Services/SpeechService.swift` | TranslationLanguage → BCP-47 region 對 AVSpeechSynthesisVoice 的 mapping(zh-Hant → zh-TW) |
 
