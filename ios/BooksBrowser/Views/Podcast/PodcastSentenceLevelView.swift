@@ -439,7 +439,10 @@ private struct PodcastTranscriptColumn: View {
         PerfLog.render.mark("column.body", "id=\(currentId ?? -1) n=\(sentences.count)")
         let hasActiveSelection = selectionState != nil
         // 每次 render 算一次:把詞庫詞集正規化（撇號折疊 + 小寫 + 去標點），供各 cell 的
-        // highlightedIndices 比對共用,避免 per-cell 重建整個詞庫集合。
+        // highlightedIndices 比對共用,避免 per-cell 重建整個詞庫集合。刻意不 @State 快取:
+        // column render 為 parent 級（currentId 句界 / 選取 / size 變動,非每幀——每幀的是
+        // cell 內 underline TimelineView),數百短字串 normalize 成本微秒級,不值 @State + task
+        // 的時序複雜度與一拍延遲。
         let normalizedLookedUp = Set(lookedUpWords.map(PodcastVocabHighlightResolver.normalize))
         return LazyVStack(spacing: skin.spacing.inlineGap) {
             ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
@@ -783,13 +786,19 @@ private struct PodcastBubbleCell: View, Equatable {
     /// 高半透明底色。與逐詞底線共用同一組 TextKit rect（text-view 座標系，★B2 免 inset），
     /// 但與 playback 無關、所有句子常駐（不受 `isCurrent || isNext` gate）。選取模式隱藏避免
     /// 干擾原生選取反白;`allowsHitTesting(false)` 不擋 tap / 長按手勢。
+    /// 螢光筆底色不透明度。`highlightMark` token 本身不透明（暖黃）；整字高 fill 必須半透明
+    /// 才能像實體螢光筆「蓋過但仍透出文字」，否則會擋住字。暖黃 × 此值，light/dark 皆可讀。
+    private static let vocabHighlightOpacity: Double = 0.4
+
     @ViewBuilder
     private func vocabHighlightOverlay(rects: [Int: CGRect]) -> some View {
         if !isSelecting, !vocabHighlightIndices.isEmpty {
             ForEach(vocabHighlightIndices.sorted(), id: \.self) { index in
                 if let rect = rects[index] {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(skin.highlightMark)
+                    RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
+                        .fill(skin.highlightMark.opacity(Self.vocabHighlightOpacity))
+                        // +4:螢光筆刻意比字寬 4pt（左右各 2）包住字邊，更像實體螢光筆；逐詞
+                        // 底線無此 padding 故不共用同一 rect 尺寸。
                         .frame(width: rect.width + 4, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                         .allowsHitTesting(false)
