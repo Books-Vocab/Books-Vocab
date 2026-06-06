@@ -91,12 +91,11 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             remoteNotebooks = try await kgService.fetchNotebooks()
         } catch {
             AppLog.kg.error("fetchNotebooks failed: \(error.localizedDescription)")
-            if currentNotebooks.isEmpty {
-                let nb = Notebook(remoteId: "local-\(UUID().uuidString)", name: "我的單字本", isDefault: true)
-                nb.syncStatus = 0
-                modelContext.insert(nb)
-                modelContext.safeSave()
-            }
+            // 離線占位：用 canonical "default" sentinel（非隨機 local-UUID），真本同步進來
+            // 時 reconcile upsert 就地合併，不再分裂出永遠回收不掉的幽靈「我的單字本」。
+            let allLocal = (try? modelContext.fetch(FetchDescriptor<Notebook>())) ?? []
+            NotebookReconciler.ensureOfflineDefault(local: allLocal, modelContext: modelContext)
+            modelContext.safeSave()
             // 本地已有 notebook 時 fetch 失敗仍要 inline error 提示，讓使用者
             // 知道清單可能不是最新且可手動重試。空清單情境上面已 fallback 本地預設。
             if !currentNotebooks.isEmpty {
@@ -115,80 +114,24 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             return
         }
 
-        let localByRemoteId = Dictionary(
-            allLocal.map { ($0.remoteId, $0) },
-            uniquingKeysWith: { first, _ in first }
+        let removed = NotebookReconciler.reconcile(
+            remote: remoteNotebooks,
+            local: allLocal,
+            allEntries: allEntries,
+            modelContext: modelContext
         )
-        let remoteIds = Set(remoteNotebooks.map(\.id))
-        var newlyDeleted: Set<String> = []
 
-        // Upsert remote → local
-        for remote in remoteNotebooks {
-            if let local = localByRemoteId[remote.id] {
-                let wasAlive = !local.isDeleted
-                local.name = remote.name
-                local.color = remote.color
-                local.coverPattern = remote.coverPattern
-                local.isDefault = remote.isDefault
-                local.sortOrder = remote.sortOrder
-                local.isDeleted = remote.isDeleted
-                local.syncStatus = 1
-                if wasAlive && remote.isDeleted {
-                    newlyDeleted.insert(local.remoteId)
-                }
-            } else if !remote.isDeleted {
-                let nb = Notebook(
-                    remoteId: remote.id,
-                    name: remote.name,
-                    color: remote.color,
-                    isDefault: remote.isDefault
-                )
-                nb.coverPattern = remote.coverPattern
-                nb.sortOrder = remote.sortOrder
-                nb.syncStatus = 1
-                modelContext.insert(nb)
-            }
-        }
-
-        for local in allLocal where local.syncStatus == 1 && !remoteIds.contains(local.remoteId) && !local.isDeleted {
-            local.isDeleted = true
-            local.updatedAt = Date()
-            newlyDeleted.insert(local.remoteId)
-        }
-
-        // Cascade：剛被標為 isDeleted 的 notebook 下的 entries 也要跟著 queueDelete
-        if !newlyDeleted.isEmpty {
-            Self.cascadeDeleteEntries(
-                matching: newlyDeleted,
-                allEntries: allEntries,
-                modelContext: modelContext
-            )
-            // 若全域 active notebook 指向剛被刪掉的 notebook（典型場景：跨裝置刪除），
-            // 必須清掉 UserDefaults，否則 `Book.resolvedNotebookId` 還會 fall through
-            // 到死 id，造成新建 entry 變孤兒。
-            let activeKey = "activeNotebookId"
-            if let active = UserDefaults.standard.string(forKey: activeKey),
-               newlyDeleted.contains(active) {
-                UserDefaults.standard.removeObject(forKey: activeKey)
-                AppLog.kg.warning("cleared stale activeNotebookId after remote delete: \(active)")
-            }
+        // 若全域 active notebook 指向剛轉不可見的本子（跨裝置刪除 / 孤兒回收），清掉
+        // UserDefaults，否則 `Book.resolvedNotebookId` 還會 fall through 到死 id，
+        // 造成新建 entry 變孤兒。
+        if let active = UserDefaults.standard.string(forKey: "activeNotebookId"),
+           removed.contains(active) {
+            UserDefaults.standard.removeObject(forKey: "activeNotebookId")
+            AppLog.kg.warning("cleared stale activeNotebookId after reconcile remove: \(active)")
         }
 
         modelContext.safeSave()
         reconcileError = nil
-    }
-
-    /// 將指定 notebook 集合下尚未刪除的 entries 排入刪除 queue。
-    /// 一律走 `queueDelete()`，由 sync 層處理 lifecycle，避免 hard delete 與
-    /// in-flight upload task 競爭。
-    static func cascadeDeleteEntries(
-        matching notebookIds: Set<String>,
-        allEntries: [VocabularyEntry],
-        modelContext: ModelContext
-    ) {
-        for entry in allEntries where notebookIds.contains(entry.notebookId) && entry.syncAction != .delete {
-            entry.queueDelete()
-        }
     }
 
     func createNotebook(
@@ -259,9 +202,15 @@ final class NotebookListCoordinator: NotebookListCoordinating {
     ) async {
         let deletedId = notebook.remoteId
         do {
-            try await kgService.deleteNotebook(id: deletedId)
+            // local-only / 未同步本子在 server 上沒有對應紀錄，呼叫 server delete 會 404
+            // 並讓整個刪除 throw → 本地永遠刪不掉（孤兒 local-* 預設本即此類）。
+            // 直接跳過 server、只做本地刪除。
+            let isLocalOnly = deletedId.hasPrefix("local-") || notebook.syncStatus == 0
+            if !isLocalOnly {
+                try await kgService.deleteNotebook(id: deletedId)
+            }
 
-            Self.cascadeDeleteEntries(
+            NotebookReconciler.cascadeDeleteEntries(
                 matching: [deletedId],
                 allEntries: allEntries,
                 modelContext: modelContext
