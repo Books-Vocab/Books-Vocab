@@ -79,6 +79,7 @@ final class LocalDataCleanerService: LocalDataClearing {
     /// Mirrors `purgeNotebookCovers` fault tolerance: missing dir = clean no-op,
     /// `catch` only logs — never throws into the logout/switch path.
     static func purgePodcastCovers(root: URL = PodcastSyncService.coversRoot()) {
+        NotebookCoverImageCache.removeAll()
         guard FileManager.default.fileExists(atPath: root.path) else {
             AppLog.sync.info("purgePodcastCovers: no podcast-covers dir, nothing to remove")
             return

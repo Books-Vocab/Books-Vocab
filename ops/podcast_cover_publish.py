@@ -15,7 +15,7 @@ What it does, for a series already published to S3:
                                          it yet, so clients still see the old
                                          (procedural-cover) state. No side effect.
   2. read-modify-write ``<sid>/metadata.json`` setting
-     ``coverImageURL = /api/podcasts/<sid>/cover`` — a single-object atomic PUT.
+     ``coverImageURL = /api/podcasts/<sid>/cover?v=<sha16>`` — a single-object atomic PUT.
                                          THIS is the step that makes the cover
                                          visible. Ordering 1→2 guarantees: when
                                          metadata points at the cover, the cover
@@ -37,11 +37,10 @@ Re-running always drives a series toward the "cover published" terminal state �
 **re-entrant + idempotent** (re-running with the same cover.png yields the same
 bytes; PUTs are last-writer-wins).
 
-Known limitation: ``coverImageURL`` carries no version. iOS caches the cover by
-*series id* (PodcastSyncService.cacheCoverIfNeeded), so a null→value transition
-(first cover) is picked up, but replacing an *existing* cover with new art is
-NOT auto-refreshed client-side without a cache bust. First-cover backfill (the
-common case) is unaffected; cover versioning is future work.
+``coverImageURL`` includes a deterministic SHA-256 prefix query token. The
+backend ignores the query string (same route/object), while iOS uses the URL
+token in its local filename so replacing existing cover art refreshes
+automatically on the next catalog sync.
 
 Usage:
     # one series from its workspace (series_id = basename)
@@ -58,6 +57,7 @@ source ``lab/podcast/.env`` before running outside the monitor.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -73,9 +73,25 @@ _COVER_CT = "image/png"
 _JSON_CT = "application/json; charset=utf-8"
 
 
-def cover_url_for(series_id: str) -> str:
-    """The backend proxy path iOS fetches (GET /api/podcasts/<sid>/cover)."""
-    return f"/api/podcasts/{series_id}/cover"
+def cover_version(cover_body: bytes) -> str:
+    return hashlib.sha256(cover_body).hexdigest()[:16]
+
+
+def cover_url_for(series_id: str, cover_body: bytes | None = None) -> str:
+    """The backend proxy path iOS fetches (GET /api/podcasts/<sid>/cover).
+
+    When cover bytes are available, append a deterministic query token for
+    client cache busting. The backend route still serves the same cover object.
+    """
+    base = f"/api/podcasts/{series_id}/cover"
+    if cover_body is None:
+        return base
+    return f"{base}?v={cover_version(cover_body)}"
+
+
+def cover_url_points_at(series_id: str, url: str | None) -> bool:
+    base = cover_url_for(series_id)
+    return url == base or (isinstance(url, str) and url.startswith(f"{base}?v="))
 
 
 def is_png(body: bytes) -> bool:
@@ -85,13 +101,13 @@ def is_png(body: bytes) -> bool:
     return body[:8] == _PNG_MAGIC
 
 
-def patch_cover_url(meta: dict, series_id: str) -> dict:
+def patch_cover_url(meta: dict, series_id: str, cover_body: bytes | None = None) -> dict:
     """Return a copy of metadata with coverImageURL set. All other fields —
     notably createdAt and the episode list — are preserved verbatim. updatedAt
     is deliberately NOT bumped: a stable body keeps re-runs byte-identical
     (idempotent)."""
     out = dict(meta)
-    out["coverImageURL"] = cover_url_for(series_id)
+    out["coverImageURL"] = cover_url_for(series_id, cover_body)
     return out
 
 
@@ -162,7 +178,7 @@ def publish_cover_object(s3, *, bucket: str, series_id: str, cover_body: bytes,
     # 1. cover.png first — new key, metadata not pointing at it yet → no-op for clients.
     _put(s3, bucket, f"{series_id}/cover.png", cover_body, _COVER_CT, dry_run=dry_run)
     # 2. metadata.json — the visibility flip. Atomic single-object replace.
-    patched = patch_cover_url(meta, series_id)
+    patched = patch_cover_url(meta, series_id, cover_body)
     body = json.dumps(patched, ensure_ascii=False, indent=2).encode("utf-8")
     _put(s3, bucket, f"{series_id}/metadata.json", body, _JSON_CT, dry_run=dry_run)
     return patched
@@ -226,20 +242,24 @@ def check(s3, *, bucket: str, series_ids: list[str],
     """Read-only drift report for cover ⟷ coverImageURL consistency. For each
     series classifies one of:
       - in_sync:               cover.png present AND metadata points at it
+                               (and, when local cover bytes are available,
+                               metadata carries the matching version token)
       - url_without_cover_png: metadata points at a cover that isn't in S3 (→ 404)
       - cover_png_without_url: cover.png in S3 but metadata doesn't point at it
                                (client can't see it — step 2 never completed)
       - unpublished:           neither (legacy / pre-cover series)
-    If ``local_covers`` is given, a series that is ``unpublished`` but has a
-    local cover is flagged ``pending_publish``."""
+    If ``local_covers`` is given, a series whose local cover is not reflected
+    by metadata is flagged ``pending_publish``."""
     local_covers = local_covers or {}
     rows = {}
     for sid in series_ids:
         meta = _get_json(s3, bucket, f"{sid}/metadata.json")
         meta_url = meta.get("coverImageURL") if isinstance(meta, dict) else None
-        points = meta_url == cover_url_for(sid)
+        points = cover_url_points_at(sid, meta_url)
         has_png = _key_exists(s3, bucket, f"{sid}/cover.png")
-        if points and has_png:
+        if sid in local_covers and has_png and meta_url != cover_url_for(sid, local_covers[sid]):
+            state = "pending_publish"
+        elif points and has_png:
             state = "in_sync"
         elif points and not has_png:
             state = "url_without_cover_png"
@@ -252,7 +272,8 @@ def check(s3, *, bucket: str, series_ids: list[str],
         rows[sid] = state
     drift = {s: st for s, st in rows.items()
              if st in ("url_without_cover_png", "cover_png_without_url")}
-    return {"states": rows, "drift": drift, "in_sync": not drift}
+    pending = {s: st for s, st in rows.items() if st == "pending_publish"}
+    return {"states": rows, "drift": drift, "pending": pending, "in_sync": not drift and not pending}
 
 
 # --- cover source resolution ----------------------------------------------
@@ -353,7 +374,10 @@ def main(argv: list[str] | None = None) -> int:
         report = check(s3, bucket=args.bucket, series_ids=series_ids, local_covers=local)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         if not report["in_sync"]:
-            print(f"✗ drift: {len(report['drift'])} series", file=sys.stderr)
+            if report["pending"]:
+                print(f"✗ pending publish: {len(report['pending'])} series", file=sys.stderr)
+            else:
+                print(f"✗ drift: {len(report['drift'])} series", file=sys.stderr)
             return 1
         print("✓ covers ↔ metadata in sync")
         return 0

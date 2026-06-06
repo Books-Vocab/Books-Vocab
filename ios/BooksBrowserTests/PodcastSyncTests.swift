@@ -73,4 +73,59 @@ struct PodcastSyncTests {
         let url = PodcastSyncService.subtitleURL(seriesId: "flow_950f1a7d", episodeNumber: 1)
         #expect(url == "https://wordnexus.lol/api/podcasts/flow_950f1a7d/1/subtitle")
     }
+
+    @Test func cover_response_validation_requires_http_success_png_type_and_magic() {
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01])
+        let ok = httpResponse(status: 200, contentType: "image/png")
+        #expect(PodcastSyncService.isValidCoverResponse(data: png, response: ok))
+
+        let notFound = httpResponse(status: 404, contentType: "image/png")
+        #expect(!PodcastSyncService.isValidCoverResponse(data: png, response: notFound))
+
+        let html = httpResponse(status: 200, contentType: "text/html")
+        #expect(!PodcastSyncService.isValidCoverResponse(data: png, response: html))
+
+        let garbage = Data("not a png".utf8)
+        #expect(!PodcastSyncService.isValidCoverResponse(data: garbage, response: ok))
+    }
+
+    @Test func cover_cache_scheduler_bounds_concurrency() async {
+        let probe = CoverCacheConcurrencyProbe()
+        await PodcastSyncService.cacheCovers(
+            seriesIds: ["a", "b", "c", "d", "e"],
+            maxConcurrent: 2
+        ) { id in
+            await probe.run(id)
+        }
+
+        #expect(await probe.maxActiveCount() == 2)
+        #expect(await probe.completedCount() == 5)
+    }
+
+    private func httpResponse(status: Int, contentType: String) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: URL(string: "https://wordnexus.lol/api/podcasts/a/cover")!,
+            statusCode: status,
+            httpVersion: nil,
+            headerFields: ["Content-Type": contentType]
+        )!
+    }
+}
+
+private actor CoverCacheConcurrencyProbe {
+    private var active = 0
+    private var maxActive = 0
+    private var completed = 0
+
+    func run(_ id: String) async {
+        _ = id
+        active += 1
+        maxActive = max(maxActive, active)
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        active -= 1
+        completed += 1
+    }
+
+    func maxActiveCount() -> Int { maxActive }
+    func completedCount() -> Int { completed }
 }
