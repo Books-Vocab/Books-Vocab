@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 """Build private candidate corpora from a local historical user dump."""
 
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend" / "src"))
+
 from llm_eval.corpus_cli import main
 
 
