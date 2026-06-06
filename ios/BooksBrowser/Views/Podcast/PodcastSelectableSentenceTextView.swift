@@ -97,6 +97,9 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         textView.onResolveRects = { [weak coordinator = context.coordinator] rects in
             coordinator?.onResolveWordRects(rects)
         }
+        let menuInteraction = UIEditMenuInteraction(delegate: context.coordinator)
+        textView.addInteraction(menuInteraction)
+        textView.menuInteraction = menuInteraction
         // Display-mode long-press → pressed word index. Kept on the text view so the
         // hit-test can use TextKit's `characterIndex(for:)`. Disabled in selecting
         // mode so the native selection gesture owns the long-press. The cell-level
@@ -176,7 +179,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIEditMenuInteractionDelegate {
         let onWordSelection: (String, String) -> Void
         let onTranslateSelection: (String, String) -> Void
         let onExplainSelection: (String, String) -> Void
@@ -236,12 +239,53 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 
             textView.becomeFirstResponder()
             textView.selectedRange = range
+            // 進入選取後主動呈現 edit menu。`editMenuForTextIn` delegate 是被動的，
+            // UIKit 只在自己決定要顯示選單時才求值，所以只設 selectedRange 不會跳出
+            // 選單 → 使用者得「再點一下選取框」才出現。設好 range 後排到下一個 run
+            // loop（待 selection rect 完成 layout）主動 present。
+            DispatchQueue.main.async { [weak textView] in
+                guard let textView, textView.window != nil else { return }
+                Self.presentEditMenu(in: textView)
+            }
+        }
+
+        /// Present UITextView 內建的 edit menu，錨定在選取範圍的矩形中心。
+        private static func presentEditMenu(in textView: UITextView) {
+            guard let textView = textView as? PodcastSentenceUITextView,
+                  let interaction = textView.menuInteraction,
+                  let selectedTextRange = textView.selectedTextRange
+            else { return }
+            let rect = textView.firstRect(for: selectedTextRange)
+            let sourcePoint = CGPoint(x: rect.midX, y: rect.minY)
+            let config = UIEditMenuConfiguration(identifier: nil, sourcePoint: sourcePoint)
+            interaction.presentEditMenu(with: config)
         }
 
         func textView(
             _ textView: UITextView,
             editMenuForTextIn range: NSRange,
             suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            menu(for: range, suggestedActions: suggestedActions, textView: textView)
+        }
+
+        func editMenuInteraction(
+            _ interaction: UIEditMenuInteraction,
+            menuFor configuration: UIEditMenuConfiguration,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            guard let textView = interaction.view as? UITextView else { return nil }
+            return menu(
+                for: textView.selectedRange,
+                suggestedActions: suggestedActions,
+                textView: textView
+            )
+        }
+
+        private func menu(
+            for range: NSRange,
+            suggestedActions: [UIMenuElement],
+            textView: UITextView
         ) -> UIMenu? {
             guard let selection = selectionPayload(for: range) else { return nil }
 
@@ -277,7 +321,9 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
                 textView.resignFirstResponder()
             }
 
-            return UIMenu(children: [translateAction, explainAction])
+            // 自訂「翻譯/解釋」置前，再併回系統建議項（複製/查詢/分享…）。先前直接
+            // 丟棄 suggestedActions 導致原生選項全部消失。
+            return UIMenu(children: [translateAction, explainAction] + suggestedActions)
         }
 
         private func selectionPayload(for range: NSRange) -> (text: String, context: String)? {
@@ -310,6 +356,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 final class PodcastSentenceUITextView: UITextView {
     var onResolveRects: (@MainActor ([Int: CGRect]) -> Void)?
     var wordRanges: [Int: NSRange] = [:]
+    weak var menuInteraction: UIEditMenuInteraction?
     private var lastKey: PodcastTextKitWordRects.LayoutKey?
 
     override func layoutSubviews() {
