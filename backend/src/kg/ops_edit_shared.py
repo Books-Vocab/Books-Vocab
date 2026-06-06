@@ -1,0 +1,299 @@
+"""ops_edit_shared.py — 寫入專用 ops infra（``ops_shared.py`` 唯讀面的可寫對應）。
+
+`ops_shared` 一律唯讀（`connect_ro` / `assert_readonly_sql`）。本 module 是它的
+**可寫對應面**:dry-run 框架、寫前自動備份、audit log、uid 安全 guard、統一
+JSON/human 輸出契約。供 `backend/ops_edit.py`(container 內 `/app/ops_edit.py`)使用。
+
+設計原則
+--------
+1. **複用 app 的 per-user store 作為寫入 SoT** —— 不重刻 NFC 正規化 /
+   unique partial index / graph filelock merge / WAL。`CardStore` /
+   `GraphStore` / `NotebookStore` 就是真相;edit 工具只是它們的 CLI 殼。
+   只 import **per-user** store,**不**碰會「開檔即寫」的全域 log 單例
+   (`pipeline_log` / `token_tracker` / `judge_log` …)。
+2. **dry-run 預設,`--commit` 才落地** —— 對齊 `release.sh` / `asc.sh` 慣例。
+   未 commit 時零磁碟寫入,只印 plan。
+3. **每次 commit 前自動 tar 整個 user_dir** —— 寫壞可一鍵 `restore`。
+4. **uid path-safe guard** —— 與 `user_context._USER_ID_ALLOWED` 同源,
+   crafted uid 不可逃出 per-user sandbox。
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+import tarfile
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+# uid 會被 join 進檔案系統路徑(`data_dir/users/<uid>`),必須限制在 path-safe
+# 白名單,否則 crafted uid 可用 `/` 或 `..` 逃出 sandbox。鏡像
+# `user_context._USER_ID_ALLOWED`(Apple sub 帶點故允許 `.`;`.`/`..` 另外擋)。
+_USER_ID_ALLOWED = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+_BACKUP_DIRNAME = "_ops_backups"
+_AUDIT_FILENAME = "_ops_edit_audit.jsonl"
+# 檔名上限保守值(macOS/Linux 單段 255 bytes;留 buffer 給備份檔的 timestamp 後綴)。
+_MAX_UID_LEN = 200
+
+
+class EditError(Exception):
+    """使用者可讀的編輯失敗(訊息直接呈現,不附 traceback)。"""
+
+
+def assert_safe_uid(uid: str) -> None:
+    """擋掉非 path-safe 的 uid。違反 raise :class:`EditError`。
+
+    白名單字元外,**明確**擋掉 `.` 與 `..`:單獨的 `.` 會讓
+    ``user_dir_for(dd, '.')`` 坍縮成 ``data_dir/users/`` 根目錄(破壞 per-user
+    隔離,且備份會把全體用戶打包),而字元白名單 `^[a-zA-Z0-9_.-]+$` 本身放行
+    孤立的 `.`。亦擋以 `.` 開頭的 uid(`.hidden`):它會建出隱藏 user_dir 與隱藏
+    備份檔(`ls` 不加 `-a` 看不見),讓 operator 誤判帳號/備份不存在;真實 OAuth
+    sub(Google 純數字、Apple `NNN.hex`)永不以 `.` 起首,擋掉無誤傷。過長 uid 在
+    `Path.exists()` 會丟 OSError,先擋成結構化錯誤。
+    """
+    if (
+        not uid
+        or uid in {".", ".."}
+        or ".." in uid
+        or uid.startswith(".")
+        or not _USER_ID_ALLOWED.match(uid)
+    ):
+        raise EditError(
+            f"unsafe user id: {uid!r}(僅允許 [a-zA-Z0-9_.-]、不可為 '.' / '..' 或 '.' 起首)"
+        )
+    if len(uid) > _MAX_UID_LEN:
+        raise EditError(f"user id 過長(>{_MAX_UID_LEN} chars):{len(uid)}")
+
+
+def users_file(data_dir: Path) -> Path:
+    """``data_dir/users.json`` —— 帳號註冊表(settings.users_file 同源)。"""
+    return Path(data_dir) / "users.json"
+
+
+def users_lock_file(data_dir: Path) -> Path:
+    """``data_dir/users.json.lock`` —— 與 app 共用的 users.json 寫鎖。"""
+    return Path(data_dir) / "users.json.lock"
+
+
+def user_dir_for(data_dir: Path, uid: str) -> Path:
+    """``data_dir/users/<uid>`` —— 單一用戶的 data sandbox。"""
+    return Path(data_dir) / "users" / uid
+
+
+def _now_iso() -> str:
+    return datetime.now(tz=UTC).isoformat()
+
+
+def _now_stamp() -> str:
+    return datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def backup_user_dir(data_dir: Path, uid: str) -> Path | None:
+    """寫前快照:把整個 ``users/<uid>/`` tar.gz 到 ``data_dir/_ops_backups/``。
+
+    user_dir 不存在(例如 user-create 尚未建)回 ``None``。回傳備份檔路徑。
+    備份目錄 `_` 前綴(與 `is_real_user` 一致),不被當成 user。
+    """
+    src = user_dir_for(data_dir, uid)
+    if not src.exists():
+        return None
+    backup_root = Path(data_dir) / _BACKUP_DIRNAME
+    backup_root.mkdir(parents=True, exist_ok=True)
+    dest = backup_root / f"{uid}__{_now_stamp()}.tar.gz"
+    # 同秒多次 commit 不覆蓋:碰撞則加序號。
+    n = 1
+    while dest.exists():
+        dest = backup_root / f"{uid}__{_now_stamp()}__{n}.tar.gz"
+        n += 1
+    with tarfile.open(dest, "w:gz") as tar:
+        tar.add(src, arcname=uid)
+    return dest
+
+
+def list_user_backups(data_dir: Path, uid: str) -> list[dict[str, Any]]:
+    """列出某 uid 的所有備份(最新在前)。供 list-backups / restore 選備份用。
+
+    uid 已由呼叫端 `assert_safe_uid` 過,glob pattern 安全。
+    """
+    root = Path(data_dir) / _BACKUP_DIRNAME
+    if not root.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for p in sorted(root.glob(f"{uid}__*.tar.gz"), reverse=True):
+        st = p.stat()
+        out.append({
+            "path": str(p),
+            "size": st.st_size,
+            "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(),
+        })
+    return out
+
+
+def append_audit(data_dir: Path, entry: dict[str, Any]) -> None:
+    """把一筆已落地的編輯 append 到 ``data_dir/_ops_edit_audit.jsonl``。
+
+    自管 audit(不 import `admin_audit` 單例,避免耦合會自寫的 DB + sandbox 友善)。
+    """
+    path = Path(data_dir) / _AUDIT_FILENAME
+    line = json.dumps({"ts": _now_iso(), **entry}, ensure_ascii=False, default=str)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def emit(obj: Any, *, json_mode: bool) -> None:
+    """統一輸出:`--json` 走純 JSON(stdout),否則人讀摘要。
+
+    與 `ops_shared.emit_json` 對齊(Path/datetime 以 str 序列化)。診斷請走 stderr,
+    stdout 只留結構化 payload,讓 dogfooding agent 可直接 `json.loads`。
+    """
+    if json_mode:
+        print(json.dumps(obj, ensure_ascii=False, indent=2, default=str))
+        return
+    _print_human(obj)
+
+
+def _print_human(obj: Any) -> None:
+    """簡明人讀輸出 —— dogfooding 主走 --json,此處只求可掃讀。"""
+    if not isinstance(obj, dict):
+        print(obj)
+        return
+    mode = obj.get("mode", "")
+    action = obj.get("action", "")
+    icon = {"dry-run": "○", "commit": "●", "error": "✗"}.get(mode, "·")
+    print(f"{icon} [{mode}] {action}")
+    plan = obj.get("plan")
+    if isinstance(plan, dict):
+        for k, v in plan.items():
+            print(f"    {k}: {v}")
+    if obj.get("error"):
+        print(f"    error: {obj['error']}")
+    if obj.get("backup"):
+        print(f"    backup: {obj['backup']}")
+    verified = obj.get("verified")
+    if verified is not None:
+        ok = verified.get("ok") if isinstance(verified, dict) else verified
+        print(f"    verified: {'✓' if ok else '✗'}")
+    if obj.get("hint"):
+        print(f"    → {obj['hint']}")
+
+
+class EditContext:
+    """單一寫操作的編排器:dry-run gate → backup → apply → verify → audit → emit。
+
+    每個子指令把「要做什麼」拆成三件事交給 :meth:`run`:
+      * ``plan``  —— 可序列化的變更摘要(dry-run 時就只印它)
+      * ``apply_fn`` —— 真正落地的 callable,回傳可序列化 result
+      * ``verify_fn`` —— (選用)落地後讀回確認,回傳 ``{"ok": bool, ...}``
+
+    未 ``--commit`` 時 ``apply_fn`` / ``verify_fn`` **完全不被呼叫**,保證零副作用。
+    """
+
+    def __init__(
+        self,
+        *,
+        data_dir: Path,
+        uid: str,
+        commit: bool,
+        json_mode: bool,
+        require_user: bool = True,
+    ) -> None:
+        assert_safe_uid(uid)
+        self.data_dir = Path(data_dir)
+        self.uid = uid
+        self.commit = commit
+        self.json_mode = json_mode
+        self.user_dir = user_dir_for(self.data_dir, uid)
+        if require_user and not self.user_dir.exists():
+            raise EditError(
+                f"user not found: {uid}(在 {self.data_dir}/users/ 下無此目錄)"
+            )
+
+    def run(
+        self,
+        *,
+        action: str,
+        plan: dict[str, Any],
+        apply_fn: Callable[[], Any],
+        verify_fn: Callable[[], dict[str, Any]] | None = None,
+    ) -> int:
+        """執行一個寫操作。回傳 process exit code(0 成功 / 1 verify 失敗)。"""
+        if not self.commit:
+            emit(
+                {
+                    "mode": "dry-run",
+                    "action": action,
+                    "uid": self.uid,
+                    "plan": plan,
+                    "committed": False,
+                    "hint": "加 --commit 才會真正寫入(預設 dry-run)",
+                },
+                json_mode=self.json_mode,
+            )
+            return 0
+
+        # backup 也包進 try:備份本身可能失敗(目錄不可寫 / 磁碟滿),失敗時必須
+        # 走結構化 error 而非拋 traceback 污染 --json。備份在 apply 之前,備份失敗
+        # 即中止、不落地 —— 保住「任何寫入前都有可還原快照」的不變式。
+        backup = None
+        try:
+            backup = backup_user_dir(self.data_dir, self.uid)
+            result = apply_fn()
+        except Exception as exc:  # noqa: BLE001 — 落地失敗要結構化呈現,非 crash
+            # 失敗的 commit 也留 audit 痕跡(status=error):備份已建但寫入失敗的
+            # 操作此前無任何紀錄,事後審查無跡可查。記下 error + backup,讓 operator
+            # 能定位「哪次操作炸了、可從哪個快照回退」。
+            append_audit(
+                self.data_dir,
+                {
+                    "action": action,
+                    "uid": self.uid,
+                    "plan": plan,
+                    "status": "error",
+                    "error": str(exc),
+                    "backup": str(backup) if backup else None,
+                },
+            )
+            emit(
+                {
+                    "mode": "error",
+                    "action": action,
+                    "uid": self.uid,
+                    "plan": plan,
+                    "committed": False,
+                    "error": str(exc),
+                    "backup": str(backup) if backup else None,
+                },
+                json_mode=self.json_mode,
+            )
+            return 1
+
+        verified = verify_fn() if verify_fn else None
+        append_audit(
+            self.data_dir,
+            {
+                "action": action,
+                "uid": self.uid,
+                "plan": plan,
+                "result": result,
+                "verified": verified,
+                "backup": str(backup) if backup else None,
+            },
+        )
+        emit(
+            {
+                "mode": "commit",
+                "action": action,
+                "uid": self.uid,
+                "plan": plan,
+                "result": result,
+                "verified": verified,
+                "backup": str(backup) if backup else None,
+                "committed": True,
+            },
+            json_mode=self.json_mode,
+        )
+        return 0 if (verified is None or verified.get("ok", True)) else 1
