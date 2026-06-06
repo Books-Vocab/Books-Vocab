@@ -521,6 +521,64 @@ function vocabPlainTextExport(item) {
   return lines.join('\n\n');
 }
 
+const DEFAULT_TRANSLATION_CONFIG = { source_lang: 'en', target_lang: 'zh-Hant' };
+
+function _translationValue(raw, fallback) {
+  const fb = fallback && typeof fallback === 'object' ? fallback : DEFAULT_TRANSLATION_CONFIG;
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    source_lang: src.source_lang || fb.source_lang || DEFAULT_TRANSLATION_CONFIG.source_lang,
+    target_lang: src.target_lang || fb.target_lang || DEFAULT_TRANSLATION_CONFIG.target_lang,
+  };
+}
+
+/**
+ * Shape options-page translation language state before DOM rendering, mirroring
+ * iOS SettingsPresenter: API/storage state in, stable UI state out.
+ *
+ * @param {{isLoggedIn?:boolean, translation?:object, fallbackTranslation?:object, errorStatus?:number}} input
+ * @returns {{translation:{source_lang:string,target_lang:string}, disabled:boolean, hintKey:string|null}}
+ */
+function optionsTranslationPresentation(input = {}) {
+  const fallback = _translationValue(input.fallbackTranslation, DEFAULT_TRANSLATION_CONFIG);
+  if (!input.isLoggedIn) {
+    return { translation: fallback, disabled: true, hintKey: 'translateLangLoginHint' };
+  }
+  if (input.errorStatus) {
+    return {
+      translation: fallback,
+      disabled: true,
+      hintKey: input.errorStatus === 401 ? 'translateLangLoginHint' : 'translateLangLoadError',
+    };
+  }
+  return {
+    translation: _translationValue(input.translation, fallback),
+    disabled: false,
+    hintKey: null,
+  };
+}
+
+/**
+ * Shape the Pro entitlement row for the options account section.
+ * @param {object|null|undefined} pro
+ * @returns {{hidden:boolean,badge:string|null,labelKey:string|null,planName:string,isFree:boolean}}
+ */
+function optionsProPresentation(pro) {
+  if (!pro || typeof pro !== 'object') {
+    return { hidden: true, badge: null, labelKey: null, planName: '', isFree: false };
+  }
+  if (pro.is_active) {
+    return {
+      hidden: false,
+      badge: 'PRO',
+      labelKey: 'proActive',
+      planName: _trimmed(pro.plan_name),
+      isFree: false,
+    };
+  }
+  return { hidden: false, badge: null, labelKey: 'proFree', planName: '', isFree: true };
+}
+
 /**
  * Classify an error response (from the background worker / ApiError.toJSON())
  * into the user-facing presentation used by the side panel error state.
@@ -836,6 +894,9 @@ const KGPureExports = {
   sortVocab,
   vocabEmptyState,
   vocabPlainTextExport,
+  DEFAULT_TRANSLATION_CONFIG,
+  optionsTranslationPresentation,
+  optionsProPresentation,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,

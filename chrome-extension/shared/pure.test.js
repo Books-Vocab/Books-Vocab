@@ -31,6 +31,8 @@ const {
   sortVocab,
   vocabEmptyState,
   vocabPlainTextExport,
+  optionsTranslationPresentation,
+  optionsProPresentation,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,
@@ -439,6 +441,79 @@ test('vocabPlainTextExport keeps single newlines inside iOS meaning paragraphs',
     meaning: '節奏',
     note: '第一行解釋\n第二行仍是同一段\n\n第三行才是新段落',
   }), 'cadence\n\n節奏\n\n第一行解釋\n第二行仍是同一段\n\n第三行才是新段落');
+});
+
+// ---------------------------------------------------------------------------
+// Options presentation (mirrors iOS SettingsPresenter state shaping)
+// ---------------------------------------------------------------------------
+
+test('optionsTranslationPresentation disables language controls while logged out', () => {
+  assert.deepEqual(
+    optionsTranslationPresentation({ isLoggedIn: false }),
+    {
+      translation: { source_lang: 'en', target_lang: 'zh-Hant' },
+      disabled: true,
+      hintKey: 'translateLangLoginHint',
+    },
+  );
+});
+
+test('optionsTranslationPresentation returns server translation when logged in', () => {
+  assert.deepEqual(
+    optionsTranslationPresentation({
+      isLoggedIn: true,
+      translation: { source_lang: 'ja', target_lang: 'en' },
+      fallbackTranslation: { source_lang: 'en', target_lang: 'zh-Hant' },
+    }),
+    {
+      translation: { source_lang: 'ja', target_lang: 'en' },
+      disabled: false,
+      hintKey: null,
+    },
+  );
+});
+
+test('optionsTranslationPresentation keeps fallback and maps load errors to hints', () => {
+  assert.deepEqual(
+    optionsTranslationPresentation({
+      isLoggedIn: true,
+      fallbackTranslation: { source_lang: 'ko', target_lang: 'ja' },
+      errorStatus: 500,
+    }),
+    {
+      translation: { source_lang: 'ko', target_lang: 'ja' },
+      disabled: true,
+      hintKey: 'translateLangLoadError',
+    },
+  );
+  assert.equal(
+    optionsTranslationPresentation({ isLoggedIn: true, errorStatus: 401 }).hintKey,
+    'translateLangLoginHint',
+  );
+});
+
+test('optionsProPresentation shapes active/free/unknown entitlement rows', () => {
+  assert.deepEqual(optionsProPresentation({ is_active: true, plan_name: 'Monthly' }), {
+    hidden: false,
+    badge: 'PRO',
+    labelKey: 'proActive',
+    planName: 'Monthly',
+    isFree: false,
+  });
+  assert.deepEqual(optionsProPresentation({ is_active: false }), {
+    hidden: false,
+    badge: null,
+    labelKey: 'proFree',
+    planName: '',
+    isFree: true,
+  });
+  assert.deepEqual(optionsProPresentation(null), {
+    hidden: true,
+    badge: null,
+    labelKey: null,
+    planName: '',
+    isFree: false,
+  });
 });
 
 // ---------------------------------------------------------------------------
