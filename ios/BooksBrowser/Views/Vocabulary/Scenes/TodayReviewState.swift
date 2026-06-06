@@ -45,6 +45,7 @@ final class TodayReviewState {
     var isAutoPlaying = false
     var isAutoPlayPaused = false
     var autoplayTask: Task<Void, Never>?
+    var autoplaySpeed: AutoplaySpeed = ReviewSettingsStore.shared.settings.autoplaySpeed
 
     // MARK: - Cache build
     // Keep only a small sliding window warm. Building hundreds of rich cards on
@@ -115,7 +116,9 @@ final class TodayReviewState {
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
             forgotFeedbackTrigger: forgotFeedbackTrigger,
             isAutoPlaying: isAutoPlaying,
-            isAutoPlayPaused: isAutoPlayPaused
+            isAutoPlayPaused: isAutoPlayPaused,
+            autoplayProgress: queue.isEmpty ? 0 : Double(currentIndex) / Double(queue.count),
+            autoplaySpeed: autoplaySpeed
         )
     }
 
@@ -282,6 +285,16 @@ final class TodayReviewState {
         isAutoPlayPaused = false
     }
 
+    func changeAutoplaySpeed(to speed: AutoplaySpeed) {
+        autoplaySpeed = speed
+        var settings = ReviewSettingsStore.shared.settings
+        settings.autoplaySpeed = speed
+        ReviewSettingsStore.shared.update(settings)
+        if isAutoPlaying && !isAutoPlayPaused {
+            startAutoPlayLoop()
+        }
+    }
+
     /// Cancel any background work tied to the session lifecycle. Called from the
     /// view's `onDisappear` so an early dismiss tears down the in-flight cache
     /// build instead of letting it run to completion and mutate state. Idempotent.
@@ -304,12 +317,12 @@ final class TodayReviewState {
                 }
 
                 if self.revealStage == .front {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: self.autoplaySpeed.revealDelay)
                     guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
                     self.advanceReveal()
                 }
 
-                try? await Task.sleep(for: .seconds(4))
+                try? await Task.sleep(for: self.autoplaySpeed.stayDelay)
                 guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
 
                 if self.currentIndex < self.queue.count - 1 {

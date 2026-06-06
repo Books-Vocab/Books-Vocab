@@ -87,9 +87,10 @@ enum TodayReviewPresenterPreviewData {
             rememberedCount: 2,
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
-
             isAutoPlaying: false,
-            isAutoPlayPaused: false
+            isAutoPlayPaused: false,
+            autoplayProgress: 0.25,
+            autoplaySpeed: .normal
         )
     }
 
@@ -107,7 +108,9 @@ enum TodayReviewPresenterPreviewData {
         rememberedFeedbackTrigger: 0,
         forgotFeedbackTrigger: 0,
         isAutoPlaying: false,
-        isAutoPlayPaused: false
+        isAutoPlayPaused: false,
+        autoplayProgress: 1.0,
+        autoplaySpeed: .normal
     )
 
     static func autoplayState(paused: Bool = false) -> TodayReviewPresenterState {
@@ -124,9 +127,10 @@ enum TodayReviewPresenterPreviewData {
             rememberedCount: 0,
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
-
             isAutoPlaying: true,
-            isAutoPlayPaused: paused
+            isAutoPlayPaused: paused,
+            autoplayProgress: 0.25,
+            autoplaySpeed: .normal
         )
     }
 
@@ -143,12 +147,13 @@ enum TodayReviewPresenterPreviewData {
         onAddLink: () -> Void,
         onToggleAutoPlay: () -> Void,
         onToggleAutoPlayPause: () -> Void,
+        onChangeAutoPlaySpeed: () -> Void,
         onDetailTap: () -> Void,
         onToggleHelp: () -> Void,
         onExplainCollocation: (String) -> Void,
         onViewCollocationExplanation: (String) -> Void,
         onDeleteCollocationExplanation: (String) -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {}, { _ in }, { _ in }, { _ in })
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {}, {}, { _ in }, { _ in }, { _ in })
 }
 
 #Preview("Today Review / Front") {
@@ -163,6 +168,7 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
             onExplainCollocation: cb.onExplainCollocation,
             onViewCollocationExplanation: cb.onViewCollocationExplanation,
@@ -184,6 +190,7 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
             onExplainCollocation: cb.onExplainCollocation,
             onViewCollocationExplanation: cb.onViewCollocationExplanation,
@@ -205,6 +212,7 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
             onExplainCollocation: cb.onExplainCollocation,
             onViewCollocationExplanation: cb.onViewCollocationExplanation,
@@ -226,6 +234,7 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
             onExplainCollocation: cb.onExplainCollocation,
             onViewCollocationExplanation: cb.onViewCollocationExplanation,
