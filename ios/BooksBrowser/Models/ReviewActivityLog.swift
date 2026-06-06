@@ -10,8 +10,6 @@ import Foundation
 import SwiftData
 
 enum ReviewActivityLog {
-    private static let legacyStorageKey = "review_activity_log"
-    private static let migrationDoneKey = "review_activity_migrated_to_swiftdata"
     private static let calendar = Calendar.current
 
     private static let dayFormatter = AppDateFormatters.dayKey
@@ -107,36 +105,6 @@ enum ReviewActivityLog {
     static func recordsForDay(_ dayKey: String, from records: [ReviewRecord]) -> [ReviewRecord] {
         records.filter { $0.dayKey == dayKey }
             .sorted { $0.reviewedAt > $1.reviewedAt }
-    }
-
-    // MARK: - Migration
-
-    @MainActor
-    static func migrateFromUserDefaultsIfNeeded(context: ModelContext) {
-        guard !UserDefaults.standard.bool(forKey: migrationDoneKey) else { return }
-        guard let legacy = UserDefaults.standard.dictionary(forKey: legacyStorageKey) as? [String: Int],
-              !legacy.isEmpty else {
-            UserDefaults.standard.set(true, forKey: migrationDoneKey)
-            return
-        }
-
-        for (dayKey, count) in legacy {
-            guard let date = dayFormatter.date(from: dayKey) else { continue }
-            // 建立 placeholder records（無法還原具體單字）
-            for _ in 0..<count {
-                let record = ReviewRecord(
-                    word: "（遷移資料）",
-                    entryID: nil,
-                    feedback: 1,
-                    reviewedAt: date
-                )
-                context.insert(record)
-            }
-        }
-
-        context.safeSave()
-        UserDefaults.standard.removeObject(forKey: legacyStorageKey)
-        UserDefaults.standard.set(true, forKey: migrationDoneKey)
     }
 
     // MARK: - Helpers
