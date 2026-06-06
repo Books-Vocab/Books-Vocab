@@ -891,6 +891,8 @@
 "todayReview.autoplay.next" = "下一張卡片";
 "todayReview.autoplay.playpause.play" = "繼續自動播放";
 "todayReview.autoplay.playpause.pause" = "暫停自動播放";
+"todayReview.autoplay.sound.on" = "開啟自動播放朗讀";
+"todayReview.autoplay.sound.off" = "關閉自動播放朗讀";
 "todayReview.nav.previous" = "上一張卡片";
 "todayReview.nav.next" = "下一張卡片";
 

@@ -876,6 +876,8 @@
 "todayReview.autoplay.next" = "下一张卡片";
 "todayReview.autoplay.playpause.play" = "继续自动播放";
 "todayReview.autoplay.playpause.pause" = "暂停自动播放";
+"todayReview.autoplay.sound.on" = "开启自动播放朗读";
+"todayReview.autoplay.sound.off" = "关闭自动播放朗读";
 "todayReview.nav.previous" = "上一张卡片";
 "todayReview.nav.next" = "下一张卡片";
 

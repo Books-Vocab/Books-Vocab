@@ -74,6 +74,7 @@ struct ReviewSettings {
     var isProgressPaused: Bool = false
     var progressPausedAt: Date? = nil
     var autoplaySpeed: AutoplaySpeed = .normal
+    var autoplaySoundEnabled: Bool = true
 
     static let `default` = ReviewSettings(
         mode: .relaxed,
@@ -82,7 +83,8 @@ struct ReviewSettings {
         customForgotMultiplier: 0.45,
         customMinimumIntervalHours: 6,
         customMaximumIntervalHours: 1440,
-        autoplaySpeed: .normal
+        autoplaySpeed: .normal,
+        autoplaySoundEnabled: true
     )
 
     var effectiveInitialIntervalHours: Double {
@@ -151,12 +153,18 @@ final class ReviewSettingsStore {
         static let isProgressPaused = "review_settings_progress_paused"
         static let progressPausedAt = "review_settings_progress_paused_at"
         static let autoplaySpeed = "review_settings_autoplay_speed"
+        static let autoplaySoundEnabled = "review_settings_autoplay_sound_enabled"
     }
 
+    private let defaults: UserDefaults
     private(set) var settings: ReviewSettings
 
-    private init() {
-        let defaults = UserDefaults.standard
+    convenience init() {
+        self.init(defaults: .standard)
+    }
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
         let modeRaw = defaults.string(forKey: Keys.mode)
         let mode = modeRaw.flatMap(ReviewSettingsMode.init(rawValue:)) ?? .relaxed
 
@@ -170,6 +178,7 @@ final class ReviewSettingsStore {
         let progressPausedAt = progressPausedAtRaw.map(Date.init(timeIntervalSince1970:))
         let autoplaySpeedRaw = defaults.string(forKey: Keys.autoplaySpeed)
         let autoplaySpeed = autoplaySpeedRaw.flatMap(AutoplaySpeed.init(rawValue:)) ?? .normal
+        let autoplaySoundEnabled = defaults.object(forKey: Keys.autoplaySoundEnabled) as? Bool ?? true
 
         if let data = defaults.data(forKey: Keys.customParams),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double] {
@@ -189,13 +198,13 @@ final class ReviewSettingsStore {
             customMaximumIntervalHours: customMax,
             isProgressPaused: isProgressPaused,
             progressPausedAt: progressPausedAt,
-            autoplaySpeed: autoplaySpeed
+            autoplaySpeed: autoplaySpeed,
+            autoplaySoundEnabled: autoplaySoundEnabled
         )
     }
 
     func update(_ settings: ReviewSettings) {
         self.settings = settings
-        let defaults = UserDefaults.standard
         defaults.set(settings.mode.rawValue, forKey: Keys.mode)
         let dict: [String: Double] = [
             "initialIntervalHours": settings.customInitialIntervalHours,
@@ -214,9 +223,11 @@ final class ReviewSettingsStore {
             defaults.removeObject(forKey: Keys.progressPausedAt)
         }
         defaults.set(settings.autoplaySpeed.rawValue, forKey: Keys.autoplaySpeed)
+        defaults.set(settings.autoplaySoundEnabled, forKey: Keys.autoplaySoundEnabled)
     }
 
     init(previewSettings: ReviewSettings) {
+        self.defaults = .standard
         self.settings = previewSettings
     }
 }

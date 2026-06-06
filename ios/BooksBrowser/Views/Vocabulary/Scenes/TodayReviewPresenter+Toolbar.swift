@@ -279,6 +279,21 @@ extension TodayReviewPresenter {
                 .disabled(!state.canGoNext)
                 .accessibilityLabel(L10n.string("todayReview.autoplay.next"))
 
+                Button(action: onToggleAutoPlaySound) {
+                    Image(systemName: state.autoplaySoundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(appSkin.typography.iconSmall)
+                        .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
+                        .background(
+                            Circle()
+                                .fill(appSkin.palette.mutedFill)
+                        )
+                }
+                .accessibilityLabel(L10n.string(
+                    state.autoplaySoundEnabled
+                    ? "todayReview.autoplay.sound.off"
+                    : "todayReview.autoplay.sound.on"
+                ))
+
                 // Speed pill
                 Button(action: onChangeAutoPlaySpeed) {
                     Text(state.autoplaySpeed.displayName)
