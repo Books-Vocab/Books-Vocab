@@ -62,9 +62,9 @@ final class NotebookListCoordinator: NotebookListCoordinating {
 
     /// 從 server 拉 notebook 清單並與本地 reconcile：
     /// - remote 新增 → 本地 insert
-    /// - remote 同名 remoteId → 更新欄位（含 isDeleted，對應遠端刪除）
-    /// - 本地存在但 remote 不回報 → 本地標記 isDeleted（對應被其他裝置刪除）
-    /// - 任何轉為 isDeleted 的 notebook 都 cascade 其 entries
+    /// - remote 同名 remoteId → 更新欄位（含 isSoftDeleted，對應遠端刪除）
+    /// - 本地存在但 remote 不回報 → 本地標記 isSoftDeleted（對應被其他裝置刪除）
+    /// - 任何轉為 isSoftDeleted 的 notebook 都 cascade 其 entries
     ///
     /// 與舊版 `ensureDefaultNotebook` 不同：**每次呼叫都 reconcile**，不再只在 `currentNotebooks.isEmpty` 時跑。
     func reconcileNotebooks(
@@ -104,7 +104,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             return
         }
 
-        // 查全量（含 isDeleted）避免已刪除 notebook 無法被 reconcile 修正
+        // 查全量（含 isSoftDeleted）避免已刪除 notebook 無法被 reconcile 修正
         let allLocal: [Notebook]
         do {
             allLocal = try modelContext.fetch(FetchDescriptor<Notebook>())
@@ -222,7 +222,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             ) {
                 setActiveNotebook(fallback)
             }
-            notebook.isDeleted = true
+            notebook.isSoftDeleted = true
             notebook.updatedAt = Date()
 
             // Hard guarantee mirror of the reconcile-path UserDefaults cleanup:
@@ -248,7 +248,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         excluding deletedId: String,
         from notebooks: [Notebook]
     ) -> String? {
-        let candidates = notebooks.filter { !$0.isDeleted && $0.remoteId != deletedId }
+        let candidates = notebooks.filter { !$0.isSoftDeleted && $0.remoteId != deletedId }
         if let def = candidates.first(where: { $0.isDefault }) {
             return def.remoteId
         }

@@ -21,7 +21,12 @@ import PlaybookSnapshot
     ///
     /// 本 test 不對結果做 assertion;它的職責是「生圖」,給 Claude / CLI 後續比對。
     /// 失敗條件只剩 PlaybookSnapshot 內部 timeout 或寫檔錯誤,會以 throw 冒出。
-    @Test func generateAllScenarioPNGs() throws {
+    @Test @MainActor func generateAllScenarioPNGs() throws {
+        guard ProcessInfo.processInfo.environment["KG_RUN_CATALOG_SNAPSHOTS"] == "1" else {
+            print("KG catalog snapshot export skipped; set KG_RUN_CATALOG_SNAPSHOTS=1 to render PNGs.")
+            return
+        }
+
         let outputDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-catalog-snapshots", isDirectory: true)
 

@@ -3,15 +3,31 @@ import Testing
 @testable import BooksBrowser
 
 struct SubtitleRenderStateTests {
-    @Test func word_render_items_from_sentence() {
-        let sentence = PodcastSentence(
-            id: 1, speaker: "Maya",
-            text: "OK so here's the thing.",
-            startTime: 0, endTime: 5,
-            words: []
+    private func sentence() -> PodcastSentence {
+        let words = ["OK", "so", "here's", "the", "thing."].enumerated().map { idx, word in
+            PodcastSubtitleCue(
+                id: idx,
+                startTime: Double(idx),
+                endTime: Double(idx + 1),
+                speaker: "Maya",
+                word: word
+            )
+        }
+        return PodcastSentence(
+            id: 1,
+            speaker: "Maya",
+            text: words.map(\.word).joined(separator: " "),
+            startTime: 0,
+            endTime: 5,
+            words: words
         )
+    }
+
+    @Test func word_render_items_from_sentence() {
+        let sentence = sentence()
         let state = SubtitleRenderState(from: sentence, hostNames: ["Maya", "Kai"])
         #expect(state.words.count == 5)
+        guard state.words.count == 5 else { return }
         #expect(state.words[0].text == "OK")
         #expect(state.words[0].normalizedText == "ok")
         #expect(state.words[4].text == "thing.")
@@ -20,11 +36,7 @@ struct SubtitleRenderStateTests {
     }
 
     @Test func highlight_index_matches_normalized() {
-        let sentence = PodcastSentence(
-            id: 1, speaker: "Maya",
-            text: "OK so here's the thing.",
-            startTime: 0, endTime: 5, words: []
-        )
+        let sentence = sentence()
         let state = SubtitleRenderState(from: sentence, hostNames: ["Maya", "Kai"])
         #expect(state.highlightIndex(for: "thing") == 4)
         #expect(state.highlightIndex(for: "ok") == 0)

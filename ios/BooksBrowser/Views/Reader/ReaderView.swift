@@ -29,7 +29,7 @@ struct ReaderView: View {
     var allVocabulary: [VocabularyEntry]  // 全域生詞（跨書）
 
     // 用於驗證 book.preferredNotebookId 是否指向仍存在的 notebook
-    @Query(filter: #Predicate<Notebook> { !$0.isDeleted })
+    @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted })
     private var liveNotebooks: [Notebook]
 
     @State var publication: Publication?

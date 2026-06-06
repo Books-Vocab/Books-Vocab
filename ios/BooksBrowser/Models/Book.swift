@@ -161,7 +161,7 @@ final class Book {
     ///
     /// 注意：不在此處驗證 notebook 是否已刪除，因為 @Model computed property
     /// 無法存取 ModelContext。已刪除 notebook 的防護由 ReaderNotebookPicker
-    /// 在 UI 層處理（選擇時過濾 isDeleted，若綁定的本被刪則自動清除綁定）。
+    /// 在 UI 層處理（選擇時過濾 isSoftDeleted，若綁定的本被刪則自動清除綁定）。
     var resolvedNotebookId: String {
         if let bound = preferredNotebookId { return bound }
         return UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"

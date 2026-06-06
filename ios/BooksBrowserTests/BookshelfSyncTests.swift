@@ -19,7 +19,7 @@ struct BookshelfSyncTests {
 
     /// Minimal in-memory container; `backgroundSync` is stubbed and never touches schema.
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: Book.self, configurations: config)
     }
 

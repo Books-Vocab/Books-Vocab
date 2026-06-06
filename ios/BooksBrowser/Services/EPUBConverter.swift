@@ -12,7 +12,7 @@ enum EPUBConverterError: Error, LocalizedError {
         case .fileTooLarge(let bytes):
             return "File too large: \(bytes) bytes (max 20 MB)"
         case .encodingFailed:
-            return "Failed to decode file as UTF-8 or Latin-1"
+            return "Failed to decode file text"
         case .archiveFailed:
             return "Failed to create EPUB archive"
         }
@@ -34,7 +34,7 @@ struct EPUBConverter {
     /// Convert a plain-text file to EPUB3.
     func convertTXT(at url: URL, title: String, progress: (@Sendable (Double) -> Void)? = nil) throws -> URL {
         let data = try loadAndValidate(url, progress: progress)
-        let text = try decodeText(data)
+        let text = try decodeTextAllowingLatin1Fallback(data)
         let chapters = splitTXTIntoChapters(text, charsPerChapter: 5000)
         let htmlChapters = chapters.enumerated().map { idx, body in
             wrapXHTML(title: "\(title) — Chapter \(idx + 1)", body: body)
@@ -45,7 +45,7 @@ struct EPUBConverter {
     /// Convert a Markdown file to EPUB3.
     func convertMD(at url: URL, title: String, progress: (@Sendable (Double) -> Void)? = nil) throws -> URL {
         let data = try loadAndValidate(url, progress: progress)
-        let text = try decodeText(data)
+        let text = try decodeStrictUTF8(data)
         let htmlBody = SimpleMarkdownToHTML().convert(text)
         let chapter = wrapXHTML(title: title, body: htmlBody)
         return try buildEPUB(title: title, chapters: [chapter])
@@ -92,7 +92,14 @@ struct EPUBConverter {
         return buffer
     }
 
-    private func decodeText(_ data: Data) throws -> String {
+    private func decodeStrictUTF8(_ data: Data) throws -> String {
+        guard let utf8 = String(data: data, encoding: .utf8) else {
+            throw EPUBConverterError.encodingFailed
+        }
+        return utf8
+    }
+
+    private func decodeTextAllowingLatin1Fallback(_ data: Data) throws -> String {
         if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
         if let latin1 = String(data: data, encoding: .isoLatin1) { return latin1 }
         throw EPUBConverterError.encodingFailed

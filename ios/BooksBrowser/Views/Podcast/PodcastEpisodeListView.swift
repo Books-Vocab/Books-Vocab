@@ -214,7 +214,7 @@ struct PodcastEpisodeListView: View {
 
         do {
             let seriesDescriptor = FetchDescriptor<PodcastSeries>(
-                predicate: #Predicate { $0.remoteId == sid && !$0.isDeleted }
+                predicate: #Predicate { $0.remoteId == sid && !$0.isSoftDeleted }
             )
             currentSeries = try modelContext.fetch(seriesDescriptor).first
 

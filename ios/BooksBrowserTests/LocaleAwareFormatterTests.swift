@@ -9,6 +9,7 @@ import Testing
 
 // .serialized: tests mutate AppLanguageStore.shared singleton.
 @Suite(.serialized)
+@MainActor
 struct LocaleAwareFormatterTests {
 
     @Test func test_string_from_template_follows_AppLanguage() async throws {

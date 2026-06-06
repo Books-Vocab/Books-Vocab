@@ -18,7 +18,7 @@ struct PodcastReconcileTests {
             Notebook.self,
             Book.self
         ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }
@@ -118,8 +118,8 @@ struct PodcastReconcileTests {
         let all = try ctx.fetch(FetchDescriptor<PodcastSeries>())
         let aliveA = all.first { $0.remoteId == "a" }
         let tombB = all.first { $0.remoteId == "b" }
-        #expect(aliveA?.isDeleted == false)
-        #expect(tombB?.isDeleted == true)
+        #expect(aliveA?.isSoftDeleted == false)
+        #expect(tombB?.isSoftDeleted == true)
     }
 
     @Test func reconcile_empty_server_list_does_not_tombstone() throws {
@@ -140,13 +140,13 @@ struct PodcastReconcileTests {
         try ctx.save()
 
         let all = try ctx.fetch(FetchDescriptor<PodcastSeries>())
-        #expect(all.allSatisfy { $0.isDeleted == false }, "空 server list 不可 tombstone 任何 series")
+        #expect(all.allSatisfy { $0.isSoftDeleted == false }, "空 server list 不可 tombstone 任何 series")
     }
 
     @Test func reconcile_resurrects_returned_series() throws {
         let ctx = try makeContext()
         let s = makeSeries("a")
-        s.isDeleted = true
+        s.isSoftDeleted = true
         ctx.insert(s)
         try ctx.save()
 
@@ -158,7 +158,7 @@ struct PodcastReconcileTests {
         try ctx.save()
 
         let fetched = try ctx.fetch(FetchDescriptor<PodcastSeries>()).first
-        #expect(fetched?.isDeleted == false)
+        #expect(fetched?.isSoftDeleted == false)
     }
 
     @Test func reconcile_deletes_orphan_progress() throws {
@@ -206,7 +206,7 @@ struct PodcastReconcileTests {
         #expect(eps.count == 1, "ep_02 should be deleted, ep_01 kept")
         #expect(eps.first?.remoteId == "a_ep_01")
         let series = try ctx.fetch(FetchDescriptor<PodcastSeries>())
-        #expect(series.first?.isDeleted == false, "series must remain alive")
+        #expect(series.first?.isSoftDeleted == false, "series must remain alive")
     }
 
     @Test func reconcile_skips_episodes_when_detail_fetch_failed() throws {

@@ -74,7 +74,10 @@ struct PodcastTextKitWordRectsResolveTests {
 
     /// Builds a laid-out TextKit1 stack for `text` at `width`, matching the Phase 3
     /// UITextView config (zero padding/inset).
-    private func makeStack(text: String, width: CGFloat) -> (NSLayoutManager, NSTextContainer) {
+    private func makeStack(
+        text: String,
+        width: CGFloat
+    ) -> (storage: NSTextStorage, layoutManager: NSLayoutManager, container: NSTextContainer) {
         let storage = NSTextStorage(string: text, attributes: [.font: font])
         let layoutManager = NSLayoutManager()
         storage.addLayoutManager(layoutManager)
@@ -83,14 +86,14 @@ struct PodcastTextKitWordRectsResolveTests {
         container.maximumNumberOfLines = 0
         layoutManager.addTextContainer(container)
         layoutManager.ensureLayout(for: container)
-        return (layoutManager, container)
+        return (storage, layoutManager, container)
     }
 
     @Test func resolvesOneRectPerWord() {
         let words = ["OK", "so", "here's", "a", "question."]
-        let (lm, container) = makeStack(text: words.joined(separator: " "), width: 1000)
+        let stack = makeStack(text: words.joined(separator: " "), width: 1000)
         let rects = PodcastTextKitWordRects.resolve(
-            layoutManager: lm, textContainer: container,
+            layoutManager: stack.layoutManager, textContainer: stack.container,
             wordRanges: PodcastTextKitWordRects.wordRanges(for: words)
         )
         #expect(rects.count == words.count)
@@ -99,9 +102,9 @@ struct PodcastTextKitWordRectsResolveTests {
     @Test func singleLineMinXStrictlyIncreasing() {
         let words = ["alpha", "beta", "gamma", "delta"]
         // Wide enough that all words sit on one line.
-        let (lm, container) = makeStack(text: words.joined(separator: " "), width: 1000)
+        let stack = makeStack(text: words.joined(separator: " "), width: 1000)
         let rects = PodcastTextKitWordRects.resolve(
-            layoutManager: lm, textContainer: container,
+            layoutManager: stack.layoutManager, textContainer: stack.container,
             wordRanges: PodcastTextKitWordRects.wordRanges(for: words)
         )
         for i in 1..<words.count {
@@ -117,9 +120,9 @@ struct PodcastTextKitWordRectsResolveTests {
     @Test func wrapStepsToNextRow() {
         let words = ["wrapping", "across", "multiple", "narrow", "rows", "here"]
         // Narrow container forces a wrap; at least one word lands on a lower row.
-        let (lm, container) = makeStack(text: words.joined(separator: " "), width: 80)
+        let stack = makeStack(text: words.joined(separator: " "), width: 80)
         let rects = PodcastTextKitWordRects.resolve(
-            layoutManager: lm, textContainer: container,
+            layoutManager: stack.layoutManager, textContainer: stack.container,
             wordRanges: PodcastTextKitWordRects.wordRanges(for: words)
         )
         let minYs = rects.values.map(\.minY)

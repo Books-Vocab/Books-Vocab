@@ -51,7 +51,7 @@ struct PodcastHomeView: View {
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
-    @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
+    @Query(filter: #Predicate<PodcastSeries> { !$0.isSoftDeleted }, sort: \.sortOrder)
     private var podcastSeries: [PodcastSeries]
 
     /// 跨 series 的播放進度（CloudStore）。home 是輕量列表頁、無高頻 tick，故可
