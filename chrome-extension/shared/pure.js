@@ -404,6 +404,182 @@ function sortVocab(items, sortOption = 'default', nowMs = Date.now()) {
 }
 
 /**
+ * Resolve the vocabulary empty state using the same branch priority as iOS
+ * KGVocabEmptyState: whole notebook empty > search > filters > default.
+ *
+ * @param {{hasNoEntries?: boolean, searchText?: string,
+ *          filters?: Set<string>|Array<string>|null}} opts
+ * @returns {{kind:string,titleKey:string,descriptionKey:string,systemImage:string}}
+ */
+function vocabEmptyState({ hasNoEntries = false, searchText = '', filters = null } = {}) {
+  const q = String(searchText || '');
+  const stateSet = filters && typeof filters.has === 'function'
+    ? filters
+    : new Set(Array.isArray(filters) ? filters : []);
+
+  if (hasNoEntries) {
+    return {
+      kind: 'empty',
+      titleKey: 'emptyCollectedTitle',
+      descriptionKey: 'emptyCollectedSubtitle',
+      systemImage: 'books.vertical',
+    };
+  }
+
+  if (q.length > 0) {
+    return {
+      kind: 'search',
+      titleKey: 'emptySearchTitle',
+      descriptionKey: 'emptySearchSubtitle',
+      systemImage: 'magnifyingglass',
+    };
+  }
+
+  if (stateSet.size > 0) {
+    let systemImage = 'line.3.horizontal.decrease.circle';
+    if (stateSet.size === 1) {
+      const state = stateSet.values().next().value;
+      if (state === 'unlearned') systemImage = 'sparkles';
+      else if (state === 'due') systemImage = 'checkmark.seal';
+      else if (state === 'reviewed') systemImage = 'leaf';
+    }
+    return {
+      kind: 'filter',
+      titleKey: 'emptyFilterTitle',
+      descriptionKey: 'emptyFilterSubtitle',
+      systemImage,
+    };
+  }
+
+  return {
+    kind: 'default',
+    titleKey: 'emptyCollectedTitle',
+    descriptionKey: 'emptySyncedSubtitle',
+    systemImage: 'line.3.horizontal.decrease.circle',
+  };
+}
+
+function _trimmed(str) {
+  return String(str == null ? '' : str).trim();
+}
+
+function _inlinePlainText(str) {
+  return parseInlineMarks(String(str == null ? '' : str))
+    .map((seg) => seg.value)
+    .join('')
+    .trim();
+}
+
+/**
+ * Build the word-detail share/copy payload, mirroring iOS
+ * CardDocument.plainTextExport(): hero, first example, meaning title +
+ * paragraphs, collocations, and source, separated by blank lines.
+ *
+ * @param {object} item — normalized/enriched vocab item
+ * @returns {string}
+ */
+function vocabPlainTextExport(item) {
+  const raw = item && typeof item === 'object' ? item : {};
+  const lines = [];
+
+  const word = _trimmed(raw.word);
+  if (word) {
+    const pos = _trimmed(raw.pos);
+    lines.push(pos ? `${word} (${pos})` : word);
+  }
+
+  const ex0 = Array.isArray(raw.examples) && raw.examples.length ? raw.examples[0] : null;
+  const example = typeof ex0 === 'string' ? ex0 : (ex0 && (ex0.sentence || ex0.text)) || '';
+  const exampleText = _inlinePlainText(example);
+  if (exampleText) lines.push(exampleText);
+
+  const meaning = _trimmed(raw.meaning);
+  if (meaning) lines.push(meaning);
+
+  const note = String(raw.note == null ? '' : raw.note)
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map(_inlinePlainText)
+    .filter(Boolean);
+  lines.push(...note);
+
+  const collocations = Array.isArray(raw.collocations)
+    ? raw.collocations
+        .map((c) => _trimmed(typeof c === 'string' ? c : (c && c.word) || ''))
+        .filter(Boolean)
+    : [];
+  if (collocations.length) lines.push(collocations.join(', '));
+
+  const source = raw.source && typeof raw.source === 'object' ? raw.source : null;
+  if (source) {
+    const title = _trimmed(source.title || source.book || source.bookTitle || source.url);
+    const chapter = _trimmed(source.chapter || source.chapterTitle);
+    const sourceParts = [title, chapter].filter(Boolean);
+    if (sourceParts.length) lines.push(`— ${sourceParts.join(' · ')}`);
+  }
+
+  return lines.join('\n\n');
+}
+
+const DEFAULT_TRANSLATION_CONFIG = { source_lang: 'en', target_lang: 'zh-Hant' };
+
+function _translationValue(raw, fallback) {
+  const fb = fallback && typeof fallback === 'object' ? fallback : DEFAULT_TRANSLATION_CONFIG;
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    source_lang: src.source_lang || fb.source_lang || DEFAULT_TRANSLATION_CONFIG.source_lang,
+    target_lang: src.target_lang || fb.target_lang || DEFAULT_TRANSLATION_CONFIG.target_lang,
+  };
+}
+
+/**
+ * Shape options-page translation language state before DOM rendering, mirroring
+ * iOS SettingsPresenter: API/storage state in, stable UI state out.
+ *
+ * @param {{isLoggedIn?:boolean, translation?:object, fallbackTranslation?:object, errorStatus?:number}} input
+ * @returns {{translation:{source_lang:string,target_lang:string}, disabled:boolean, hintKey:string|null}}
+ */
+function optionsTranslationPresentation(input = {}) {
+  const fallback = _translationValue(input.fallbackTranslation, DEFAULT_TRANSLATION_CONFIG);
+  if (!input.isLoggedIn) {
+    return { translation: fallback, disabled: true, hintKey: 'translateLangLoginHint' };
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'errorStatus')) {
+    return {
+      translation: fallback,
+      disabled: true,
+      hintKey: input.errorStatus === 401 ? 'translateLangLoginHint' : 'translateLangLoadError',
+    };
+  }
+  return {
+    translation: _translationValue(input.translation, fallback),
+    disabled: false,
+    hintKey: null,
+  };
+}
+
+/**
+ * Shape the Pro entitlement row for the options account section.
+ * @param {object|null|undefined} pro
+ * @returns {{hidden:boolean,badge:string|null,labelKey:string|null,planName:string,isFree:boolean}}
+ */
+function optionsProPresentation(pro) {
+  if (!pro || typeof pro !== 'object') {
+    return { hidden: true, badge: null, labelKey: null, planName: '', isFree: false };
+  }
+  if (pro.is_active) {
+    return {
+      hidden: false,
+      badge: 'PRO',
+      labelKey: 'proActive',
+      planName: _trimmed(pro.plan_name),
+      isFree: false,
+    };
+  }
+  return { hidden: false, badge: null, labelKey: 'proFree', planName: '', isFree: true };
+}
+
+/**
  * Classify an error response (from the background worker / ApiError.toJSON())
  * into the user-facing presentation used by the side panel error state.
  *
@@ -716,6 +892,11 @@ const KGPureExports = {
   VOCAB_SORT_OPTIONS,
   filterVocab,
   sortVocab,
+  vocabEmptyState,
+  vocabPlainTextExport,
+  DEFAULT_TRANSLATION_CONFIG,
+  optionsTranslationPresentation,
+  optionsProPresentation,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,

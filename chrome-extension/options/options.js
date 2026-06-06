@@ -40,7 +40,7 @@ const TARGET_LANGS = [
   ['zh-Hant', '繁體中文'], ['zh-Hans', '简体中文'], ['en', 'English'],
   ['ja', '日本語'], ['ko', '한국어'],
 ];
-const DEFAULT_TRANSLATION = { source_lang: 'en', target_lang: 'zh-Hant' };
+const DEFAULT_TRANSLATION = KGPure.DEFAULT_TRANSLATION_CONFIG;
 // Last value accepted by the server — the revert target if a PUT fails.
 let currentTranslation = { ...DEFAULT_TRANSLATION };
 
@@ -262,12 +262,24 @@ function hideLangHint() {
   if (langHint) langHint.hidden = true;
 }
 
+function renderTranslationPresentation(presentation) {
+  currentTranslation = { ...presentation.translation };
+  populateSelect(sourceLangSelect, SOURCE_LANGS, currentTranslation.source_lang);
+  populateSelect(targetLangSelect, TARGET_LANGS, currentTranslation.target_lang);
+  setLangControlsEnabled(!presentation.disabled);
+  if (presentation.hintKey) {
+    showLangHint(t(presentation.hintKey));
+  } else {
+    hideLangHint();
+  }
+}
+
 /** Logged-out state: show defaults, disabled, with a "log in first" hint. */
 function renderLangLoggedOut() {
-  populateSelect(sourceLangSelect, SOURCE_LANGS, DEFAULT_TRANSLATION.source_lang);
-  populateSelect(targetLangSelect, TARGET_LANGS, DEFAULT_TRANSLATION.target_lang);
-  setLangControlsEnabled(false);
-  showLangHint(t('translateLangLoginHint'));
+  renderTranslationPresentation(KGPure.optionsTranslationPresentation({
+    isLoggedIn: false,
+    fallbackTranslation: DEFAULT_TRANSLATION,
+  }));
 }
 
 /** Logged-in: fetch the user's translation config and populate the selects. */
@@ -277,20 +289,18 @@ async function loadTranslationConfig() {
   try {
     const cfg = await bgRequest({ type: 'getUserConfig' });
     const tr = (cfg && cfg.translation) || {};
-    currentTranslation = {
-      source_lang: tr.source_lang || DEFAULT_TRANSLATION.source_lang,
-      target_lang: tr.target_lang || DEFAULT_TRANSLATION.target_lang,
-    };
-    populateSelect(sourceLangSelect, SOURCE_LANGS, currentTranslation.source_lang);
-    populateSelect(targetLangSelect, TARGET_LANGS, currentTranslation.target_lang);
-    hideLangHint();
-    setLangControlsEnabled(true);
+    renderTranslationPresentation(KGPure.optionsTranslationPresentation({
+      isLoggedIn: true,
+      translation: tr,
+      fallbackTranslation: currentTranslation,
+    }));
   } catch (err) {
     console.error('[KG] loadTranslationConfig failed:', err);
-    populateSelect(sourceLangSelect, SOURCE_LANGS, currentTranslation.source_lang);
-    populateSelect(targetLangSelect, TARGET_LANGS, currentTranslation.target_lang);
-    setLangControlsEnabled(false);
-    showLangHint(err.status === 401 ? t('translateLangLoginHint') : t('translateLangLoadError'));
+    renderTranslationPresentation(KGPure.optionsTranslationPresentation({
+      isLoggedIn: true,
+      fallbackTranslation: currentTranslation,
+      errorStatus: err.status || 0,
+    }));
   }
 }
 
@@ -330,20 +340,27 @@ async function loadProStatus() {
 }
 
 function renderProStatus(pro) {
+  const presentation = KGPure.optionsProPresentation(pro);
   proStatus.innerHTML = '';
-  if (pro.is_active) {
+  if (presentation.hidden) {
+    proStatus.hidden = true;
+    return;
+  }
+  if (presentation.badge) {
     const badge = document.createElement('span');
     badge.className = 'kg-pro-badge';
-    badge.textContent = 'PRO'; // brand tier label — locale-stable, not translated
+    badge.textContent = presentation.badge; // brand tier label — locale-stable, not translated
     const label = document.createElement('span');
     label.className = 'kg-pro-status__label';
-    label.textContent = pro.plan_name ? `${t('proActive')}・${pro.plan_name}` : t('proActive');
+    label.textContent = presentation.planName
+      ? `${t(presentation.labelKey)}・${presentation.planName}`
+      : t(presentation.labelKey);
     proStatus.appendChild(badge);
     proStatus.appendChild(label);
   } else {
     const label = document.createElement('span');
-    label.className = 'kg-pro-status__label kg-pro-status__label--free';
-    label.textContent = t('proFree');
+    label.className = `kg-pro-status__label${presentation.isFree ? ' kg-pro-status__label--free' : ''}`;
+    label.textContent = t(presentation.labelKey);
     proStatus.appendChild(label);
   }
   proStatus.hidden = false;

@@ -20,10 +20,13 @@ const REQUIRED = [
   'settings',
   'source-web', 'source-local',
   'search', 'clear', 'check',
+  'books.vertical', 'magnifyingglass', 'sparkles', 'checkmark.seal', 'leaf',
+  'line.3.horizontal.decrease.circle',
   'error-login', 'error-quota', 'error-network', 'error-server', 'error-generic',
   // word-detail + navigation + popup glyphs (Phase 0 — unblocks the detail panel,
   // back navigation, speaker TTS, link accessory, refresh, calendar/link footer).
-  'speaker', 'chevron-left', 'arrow-up-right', 'xmark', 'refresh', 'link', 'calendar',
+  'speaker', 'chevron-left', 'arrow-up-right', 'square.and.arrow.up', 'doc.on.doc',
+  'xmark', 'refresh', 'link', 'calendar',
   // word-detail section-label leading icons (mirror iOS CardSectionLabel)
   'detail-collocation', 'detail-forms',
   // settings grouped-list section-header leading icons

@@ -61,6 +61,9 @@
     // magnifyingglass — search field leading icon (mirrors iOS AppSearchField)
     'search':
       '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/>',
+    // iOS KGVocabEmptyState.systemImage: magnifyingglass
+    'magnifyingglass':
+      '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/>',
     // xmark.circle — clear the search field (mirrors iOS xmark.circle.fill, outline)
     'clear':
       '<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>',
@@ -79,6 +82,14 @@
     // arrow.up.right — navigable knowledge-link accessory (mirrors iOS detail link row)
     'arrow-up-right':
       '<path d="M7 17L17 7"/><path d="M8 7h9v9"/>',
+    // square.and.arrow.up — word-detail share action (mirrors iOS ShareLink)
+    'square.and.arrow.up':
+      '<path d="M12 15V4"/><path d="M8 8l4-4 4 4"/>' +
+      '<path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/>',
+    // doc.on.doc — clipboard fallback / copied state
+    'doc.on.doc':
+      '<rect x="8" y="7" width="10" height="13" rx="2"/>' +
+      '<path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>',
     // xmark — explicit popup close
     'xmark':
       '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -89,6 +100,28 @@
     'link':
       '<path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.7L11 6.3"/>' +
       '<path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.7L13 17.7"/>',
+    // iOS KGVocabEmptyState.systemImage: books.vertical
+    'books.vertical':
+      '<path d="M5 4.5h5.5v15H5a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 5 4.5z"/>' +
+      '<path d="M13.5 4.5H19A1.5 1.5 0 0 1 20.5 6v12a1.5 1.5 0 0 1-1.5 1.5h-5.5z"/>' +
+      '<path d="M10.5 4.5v15M13.5 4.5v15M6.5 8h2M15.5 8h2"/>',
+    // iOS KGVocabEmptyState.systemImage: sparkles
+    'sparkles':
+      '<path d="M12 3l1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8z"/>' +
+      '<path d="M5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8z"/>' +
+      '<path d="M19 13l.7 1.8 1.8.7-1.8.7L19 18l-.7-1.8-1.8-.7 1.8-.7z"/>',
+    // iOS KGVocabEmptyState.systemImage: checkmark.seal
+    'checkmark.seal':
+      '<path d="M12 3.5l2.2 1.3 2.5-.2 1.1 2.2 2.2 1.1-.2 2.5L21 12l-1.3 2.2.2 2.5-2.2 1.1-1.1 2.2-2.5-.2L12 21l-2.2-1.3-2.5.2-1.1-2.2-2.2-1.1.2-2.5L3 12l1.3-2.2-.2-2.5 2.2-1.1 1.1-2.2 2.5.2z"/>' +
+      '<path d="M8.5 12.3l2.3 2.3 4.7-5.2"/>',
+    // iOS KGVocabEmptyState.systemImage: leaf
+    'leaf':
+      '<path d="M20 4c-7.5.4-12.5 3.4-14.7 8.1-1.6 3.4.1 6.6 3.5 7.4 4.9 1.1 9.5-3.3 11.2-15.5z"/>' +
+      '<path d="M5 20c3.5-5.8 7-8.8 12-11"/>',
+    // iOS KGVocabEmptyState.systemImage: line.3.horizontal.decrease.circle
+    'line.3.horizontal.decrease.circle':
+      '<circle cx="12" cy="12" r="9"/>' +
+      '<path d="M7 8h10M9 12h6M11 16h2"/>',
     // calendar — metadata footer date chip
     'calendar':
       '<rect x="4" y="5.5" width="16" height="15" rx="2"/>' +
