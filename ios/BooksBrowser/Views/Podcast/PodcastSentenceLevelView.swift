@@ -699,12 +699,15 @@ private struct PodcastBubbleCell: View, Equatable {
                         .transition(.overlayFade)
                 }
                 bubbleContent
+                    // tap-to-seek 命中區限定在氣泡本身：contentShape + onTapGesture 綁在
+                    // bubbleContent，**不**綁含 Spacer(minLength:48) 的外層 HStack，否則整列
+                    // （含氣泡旁空白）都會觸發 seek。a11y 仍在 row 層（下方 modifiers）。
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if !isSelecting { onSentenceTap() }
+                    }
             }
             if !alignRight { Spacer(minLength: 48) }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !isSelecting { onSentenceTap() }
         }
         // VoiceOver: collapse the per-word `Text` tokens into ONE sentence element
         // (otherwise AT reads word-by-word and the tap-seek / long-press-select
@@ -795,27 +798,35 @@ private struct PodcastBubbleCell: View, Equatable {
     }
 
     /// 螢光筆底色不透明度。實際色是 `skin.palette.highlightMark`（muted khaki，依 light/dark
-    /// theme-resolved，非 `AppColors` 的 bright HSB token）。它不透明,整字高 fill 必須半透明,
-    /// 否則 opaque 色塊會擋住字。overlay 是字「下層」background fill、文字疊在其上,故文字清晰
-    /// 度不受此值影響,此值只決定螢光筆本身可見度——0.4 暖卡其疊在 tint 氣泡上 light/dark 皆可見,
-    /// 且與藍灰 speaker tint 區隔。device 可微調。
+    /// theme-resolved，非 `AppColors` 的 bright HSB token）。色帶疊在字上（`.overlay`），半透明
+    /// 讓字仍可讀；此值只決定螢光筆可見度——0.4 暖卡其疊在 tint 氣泡上 light/dark 皆可見，且與
+    /// 藍灰 speaker tint 區隔。device 可微調。
     private static let vocabHighlightOpacity: Double = 0.4
 
-    /// 常駐詞庫螢光筆:把命中詞庫的詞（`vocabHighlightIndices`）用其 word rect 畫一層整字
-    /// 高半透明底色。與逐詞底線共用同一組 TextKit rect（text-view 座標系，★B2 免 inset），
-    /// 但與 playback 無關、所有句子常駐（不受 `isCurrent || isNext` gate）。選取模式隱藏避免
-    /// 干擾原生選取反白;`allowsHitTesting(false)` 不擋 tap / 長按手勢。
+    /// 螢光筆色帶高度占字高比例。對齊 Reader 的 `.vocab-word`（`linear-gradient(to top,
+    /// color 32%, transparent 32%)`，見 `ReaderContentStyle.swift`）——只塗字底約 1/3，呈底
+    /// 線式螢光筆，而非整字高色塊。
+    private static let vocabHighlightBandFraction: CGFloat = 0.32
+
+    /// 常駐詞庫螢光筆:把命中詞庫的詞（`vocabHighlightIndices`）用其 word rect 畫一條字底
+    /// 色帶（高度 = `rect.height * vocabHighlightBandFraction`，貼齊字底），對齊 Reader 的
+    /// 底線式螢光筆而非整字高色塊。與逐詞底線共用同一組 TextKit rect（text-view 座標系，★B2
+    /// 免 inset），但與 playback 無關、所有句子常駐（不受 `isCurrent || isNext` gate）。選取
+    /// 模式**仍顯示**（與 Reader 一致：匡選文字時同 block 既有螢光筆不消失）——色帶為字底
+    /// 半透明且 `allowsHitTesting(false)`，與系統原生選取反白可共存、不擋 tap / 長按手勢。
     @ViewBuilder
     private func vocabHighlightOverlay(rects: [Int: CGRect]) -> some View {
-        if !isSelecting, !vocabHighlightIndices.isEmpty {
+        if !vocabHighlightIndices.isEmpty {
             ForEach(vocabHighlightIndices.sorted(), id: \.self) { index in
                 if let rect = rects[index] {
+                    let bandHeight = rect.height * Self.vocabHighlightBandFraction
                     RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
                         .fill(skin.highlightMark.opacity(Self.vocabHighlightOpacity))
                         // +4:螢光筆刻意比字寬 4pt（左右各 2）包住字邊，更像實體螢光筆；逐詞
-                        // 底線無此 padding 故不共用同一 rect 尺寸。
-                        .frame(width: rect.width + 4, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
+                        // 底線無此 padding 故不共用同一 rect 尺寸。高度只取字底 32% 色帶
+                        // （position y 貼齊 `rect.maxY`），呈底線式螢光筆。
+                        .frame(width: rect.width + 4, height: bandHeight)
+                        .position(x: rect.midX, y: rect.maxY - bandHeight / 2)
                         .allowsHitTesting(false)
                 }
             }
