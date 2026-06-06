@@ -25,6 +25,14 @@ enum KGFeatureFlags {
     /// authoritative cross-device path — mirrors `serverTranslationLwwEnabled`.
     static var serverReviewClockLwwEnabled: Bool { false }
 
+    /// Whether to send `updated_at` and trust server-returned `updated_at` for
+    /// LWW on the review mode + custom SRS params. Backend dependency:
+    /// `review_mode.updated_at` persisted + returned by `GET /api/user/config`.
+    /// Until on, server is single-direction (server-wins on cold-start) and
+    /// iCloud KV is the authoritative cross-device path — mirrors
+    /// `serverReviewClockLwwEnabled`.
+    static var serverReviewModeLwwEnabled: Bool { false }
+
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the
     /// fields would be silently dropped; flip this when backend accepts them.

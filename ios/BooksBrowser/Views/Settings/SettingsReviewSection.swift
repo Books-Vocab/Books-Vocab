@@ -9,6 +9,8 @@ struct SettingsReviewSection: View {
     /// 樂觀寫本地+iCloud + push 後端 + 失敗 rollback 全由 coordinator 一條龍處理。
     /// preview / 無 network 場景用 no-op default。
     var onPauseChanged: (Bool) async -> Void = { _ in }
+    /// mode / 自訂 SRS 參數變更:同樣交 coordinator 一條龍(樂觀+push+rollback)。
+    var onModeChanged: (ReviewSettings) async -> Void = { _ in }
 
     var body: some View {
         ScrollView {
@@ -102,7 +104,7 @@ struct SettingsReviewSection: View {
         return Button {
             var updated = reviewSettingsStore.settings
             updated.mode = mode
-            reviewSettingsStore.update(updated)
+            Task { await onModeChanged(updated) }
         } label: {
             SettingsSelectionTile(isSelected: isSelected) {
                 VStack(alignment: .leading, spacing: AppSpacing.s2) {
@@ -249,7 +251,7 @@ struct SettingsReviewSection: View {
         var updated = reviewSettingsStore.settings
         let newValue = (updated[keyPath: keyPath] + delta).rounded(toDecimalPlaces: 10)
         updated[keyPath: keyPath] = Swift.min(max, Swift.max(min, newValue))
-        reviewSettingsStore.update(updated)
+        Task { await onModeChanged(updated) }
     }
 }
 
