@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: d0e9a0cb
+verified_against: 7a55ef84
 -->
 # Technical Reference Index
 
@@ -122,7 +122,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `podcast_ops.py` | 播客 pipeline **headless 觀測 CLI**(讀-only):把 dashboard(`lab/podcast/monitor/server.py`)的 disk-derived 邏輯搬上終端/SSH/cron。subcommand `status`(各 workspace 狀態瀑布 + 集數 + 進度 + 花費,exit 2=有 failed/1=有 awaiting/0=ok)、`episodes <ws>`(逐集 plan/script/audio/subtitle 關卡矩陣)、`cost [--workspace]`(TTS+LLM 花費,單一或聚合 + by-model)、`covers`(有音頻卻缺 `plan/cover.png`)皆**純磁碟**(免 boto3);`reconcile`(合成了但沒上 S3 的 drift)、`series`(S3 catalog)需 boto3+`PODCAST_BUCKET`,缺則 clean exit 3。`--json` 契約:stdout 只有 JSON,banner/warning 走 stderr。邏輯 import 自 `monitor/{cost,workspace_status}.py`(無第二份實作) |
 | `monitor/workspace_status.py` | podcast dashboard 的 disk-derived 狀態原語(FastAPI-free)。從 `server.py` 抽出(`_stages_done`/`_scan_pipeline_log_status`/`_milestones`/`_episode_status`/`_gate_states`/`_workspace_has_audio`/`reconcile_workspaces`/`audio_episode_numbers`/`disk_status`/`headless_summary`),`server.py` 與 `ops/podcast_ops.py` 共 import 同一份(SoT) |
 | `test_devops.sh` | devops 工具測試 |
-| `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
+| `docs_lint.sh` | docs/ frontmatter + staleness 檢查；預設全掃描，`--changed` / `--since <rev>` / `--files <docs...>` 可做本次改動 gate，`--strict` 將 WARN 升為 fail，`STALE_THRESHOLD` env 調閾值 |
 | `gen_web_tokens.py` | 從 `design-system/tokens.json`(W3C DTCG 格式,跨平台 token SoT)生成 web CSS(`design-system/dist/{kg-tokens,kg-components}.css` + chrome-extension `shared/{tokens,kg-components}.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進三 surface;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
 | `gen_web_components.py` | 從 `design-system/components.json`(複合元件**結構** SoT)生成 web CSS+JS:`kg-component-structures.css`(dist + chrome-extension `shared/` + `backend/static/` 三副本)+ `review-gradient.js`。token 以 `var(--*)` 引用(非硬編碼,token 改值自動傳播);支援 `_emit_modifiers`(`.class--active` 等 markup-toggled BEM modifier,states pseudo 之外)。生成檔禁手改;`uv run python ops/gen_web_components.py` 重生,`--check` 為 CI/pre-commit stale gate |
 | `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 token 仍對齊 iOS Swift。**SoT-inversion-aware**:已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation)iOS 端引用 `DesignTokens.*`,`parse_design_tokens`/`_swift_num` 把引用解析回值再比對(證明 tokens.json==iOS 跨 SoT 反轉仍成立,且抓得到誤接線的值偏移);未接線群組(`AppColors`/`AppTheme`/`AppMotion` spring 物理層/`AppFonts` LineSpacing/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity)仍直接比對 literal。偏移不可 merge |
