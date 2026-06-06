@@ -130,6 +130,12 @@ function withOutboxLock(mutate) {
 // stampede the endpoint.
 let flushInFlight = false;
 let flushRequested = false;
+const OUTBOX_RETRY_ALARM = 'kg-outbox-retry';
+const OUTBOX_RETRY_DELAY_MIN = 1;
+
+function scheduleOutboxRetry() {
+  chrome.alarms.create(OUTBOX_RETRY_ALARM, { delayInMinutes: OUTBOX_RETRY_DELAY_MIN });
+}
 
 /**
  * Enqueue user adds optimistically and kick a background flush. Returns
@@ -219,8 +225,9 @@ async function flushOutbox() {
             await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
           });
           bumpVocabDirty(); // surface failed state to the side panel
+          scheduleOutboxRetry();
           // Stop draining on failure — the next trigger (a fresh add, or the
-          // Phase 5 alarm/startup flush) retries. Looping here would hammer a
+          // retry alarm/startup flush) retries. Looping here would hammer a
           // down endpoint.
           stopDraining = true;
           break;
@@ -267,11 +274,14 @@ async function triggerEnrichPolling(notebookId) {
     return;
   }
   // Preserve an in-flight poll's attempt count so rapid successive adds can't
-  // reset the cap and poll forever; only start fresh when no poll is active.
+  // reset the cap and poll forever; accumulate notebook ids so each poll re-pulls
+  // the notebook whose pipeline was actually triggered.
   const stored = await chrome.storage.local.get(ENRICH_POLL_STATE_KEY);
   const prior = stored[ENRICH_POLL_STATE_KEY];
   const attempts = prior ? prior.attempts || 0 : 0;
-  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts } });
+  const notebookIds = new Set(Array.isArray(prior && prior.notebookIds) ? prior.notebookIds : []);
+  notebookIds.add(notebookId || 'default');
+  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts, notebookIds: [...notebookIds] } });
   scheduleEnrichPoll();
 }
 
@@ -280,22 +290,27 @@ async function handleEnrichPoll() {
   const state = stored[ENRICH_POLL_STATE_KEY];
   if (!state) return; // nothing in flight (e.g. cleared, or stale alarm)
 
-  // Re-pull to (a) read X-Pipeline-Pending and (b) bump the side panel so it
-  // re-renders the now-enriched cards. Treat a hiccup as "still pending" so we
-  // retry up to the cap rather than stop early.
+  // Re-pull each triggered notebook to (a) read X-Pipeline-Pending and (b) bump
+  // the side panel so it re-renders the now-enriched cards. Treat a hiccup as
+  // "still pending" so we retry up to the cap rather than stop early.
   let pending = false;
-  try {
-    await KGApi.listVocab(undefined, (res) => {
-      pending = res.headers.get('X-Pipeline-Pending') === 'true';
-    });
-  } catch (err) {
-    pending = true;
+  const notebookIds = Array.isArray(state.notebookIds) && state.notebookIds.length
+    ? state.notebookIds
+    : ['default'];
+  for (const notebookId of notebookIds) {
+    try {
+      await KGApi.listVocab(undefined, (res) => {
+        if (res.headers.get('X-Pipeline-Pending') === 'true') pending = true;
+      }, notebookId);
+    } catch (err) {
+      pending = true;
+    }
   }
   bumpVocabDirty();
 
   const attempts = (state.attempts || 0) + 1;
   if (pending && attempts < ENRICH_POLL_MAX) {
-    await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts } });
+    await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts, notebookIds } });
     scheduleEnrichPoll();
   } else {
     await chrome.storage.local.remove(ENRICH_POLL_STATE_KEY);
@@ -306,6 +321,8 @@ async function handleEnrichPoll() {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ENRICH_POLL_ALARM) {
     handleEnrichPoll().catch((err) => console.error('[KG] enrich poll failed', err));
+  } else if (alarm.name === OUTBOX_RETRY_ALARM) {
+    flushOutbox().catch((err) => console.error('[KG] outbox retry failed', err));
   }
 });
 
