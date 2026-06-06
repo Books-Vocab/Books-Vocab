@@ -53,9 +53,9 @@ struct NotebookCard: View {
     private var coverColor: Color {
         let raw = NotebookPalette.color(for: data.color)
         // Dark mode 自動加深 cover — 確保 primaryText dark(#E6E6E3)對 cover ≥ AA 4.5:1。
-        // 走 `NotebookPalette.darken(_, by: 0.2)` 而非 `.brightness(-0.2)` —
+        // 走 `NotebookPalette.darken(_, by: 0.55)` 而非 `.brightness(-0.55)` —
         // HSB scale 跟 contrast test 的計算完全對齊(避免 sRGB additive vs HSB scale 分歧)。
-        return colorScheme == .dark ? NotebookPalette.darken(raw, by: 0.2) : raw
+        return colorScheme == .dark ? NotebookPalette.darken(raw, by: 0.55) : raw
     }
 
     private var pattern: NotebookCoverPattern? {
@@ -421,4 +421,3 @@ private struct EditorialCoverComposition: View {
         }
     }
 }
-
