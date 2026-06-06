@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from kg.api_models import ReviewEventEntry
 from kg.exceptions import BadRequestError
-from kg.review_events import ReviewEventStore, pull_review_events, push_review_events
+from kg.review_events import ReviewEvent, ReviewEventStore, pull_review_events, push_review_events
 
 
 def _event(
@@ -40,12 +41,12 @@ def test_push_and_pull_review_events_round_trip(tmp_path):
     second = _event("evt-2", reviewed_at=datetime(2026, 6, 2, 10, 0, tzinfo=UTC), word="ephemeral")
 
     result = push_review_events([second, first], event_store=store)
-    pulled = pull_review_events(since=None, event_store=store)
+    pulled, cursor = pull_review_events(since=None, event_store=store)
 
     assert result == {"inserted": 2, "skipped": 0}
-    assert [event.event_id for event in pulled] == ["evt-1", "evt-2"]
-    assert pulled[0].word_snapshot == "serendipity"
-    assert pulled[1].word_snapshot == "ephemeral"
+    # ingestion order: both arrive in the same insert_many call; ordering is by ingested_at
+    assert {event.event_id for event in pulled} == {"evt-1", "evt-2"}
+    assert cursor is not None
 
 
 def test_duplicate_event_id_is_skipped(tmp_path):
@@ -56,23 +57,47 @@ def test_duplicate_event_id_is_skipped(tmp_path):
     assert push_review_events([first], event_store=store) == {"inserted": 1, "skipped": 0}
     assert push_review_events([duplicate], event_store=store) == {"inserted": 0, "skipped": 1}
 
-    pulled = pull_review_events(since=None, event_store=store)
+    pulled, _cursor = pull_review_events(since=None, event_store=store)
     assert len(pulled) == 1
     assert pulled[0].word_snapshot == "first"
 
 
-def test_since_filters_by_reviewed_at(tmp_path):
+def test_cursor_advances_by_ingestion_order(tmp_path):
     store = ReviewEventStore(tmp_path / "review_events.db")
-    old = _event("old", reviewed_at=datetime(2026, 6, 1, 10, 0, tzinfo=UTC))
-    new = _event("new", reviewed_at=datetime(2026, 6, 2, 10, 0, tzinfo=UTC))
-    push_review_events([old, new], event_store=store)
+    push_review_events([_event("a")], event_store=store)
+    _first, cursor1 = pull_review_events(since=None, event_store=store)
 
-    pulled = pull_review_events(
-        since="2026-06-02T00:00:00+00:00",
-        event_store=store,
-    )
+    push_review_events([_event("b", word="bravo")], event_store=store)
+    pulled, cursor2 = pull_review_events(since=cursor1, event_store=store)
 
-    assert [event.event_id for event in pulled] == ["new"]
+    assert [event.event_id for event in pulled] == ["b"]
+    assert cursor2 != cursor1
+
+
+def test_late_arriving_past_event_is_not_skipped_by_cursor(tmp_path):
+    """An event whose reviewed_at is in the past but ingested later must still be
+    pulled by a cursor advanced past an earlier ingestion."""
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    recent = _event("recent", reviewed_at=datetime(2026, 6, 10, 10, 0, tzinfo=UTC))
+    push_review_events([recent], event_store=store)
+    _first, cursor1 = pull_review_events(since=None, event_store=store)
+
+    # Device pushes a much older review only now (offline backfill).
+    late = _event("late", reviewed_at=datetime(2026, 6, 1, 9, 0, tzinfo=UTC), word="tardy")
+    push_review_events([late], event_store=store)
+
+    pulled, _cursor2 = pull_review_events(since=cursor1, event_store=store)
+    assert [event.event_id for event in pulled] == ["late"]
+
+
+def test_empty_pull_keeps_cursor(tmp_path):
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events([_event("a")], event_store=store)
+    _first, cursor1 = pull_review_events(since=None, event_store=store)
+
+    pulled, cursor2 = pull_review_events(since=cursor1, event_store=store)
+    assert pulled == []
+    assert cursor2 == cursor1
 
 
 @pytest.mark.parametrize("bad_since", ["garbage", "2026-13-99", "2026-06-01", "1717668000", "2026-06-01T10:00:00"])
@@ -101,5 +126,31 @@ def test_unknown_card_id_is_preserved(tmp_path):
 
     push_review_events([event], event_store=store)
 
-    pulled = pull_review_events(since=None, event_store=store)
+    pulled, _cursor = pull_review_events(since=None, event_store=store)
     assert pulled[0].card_id == "deleted-card"
+
+
+def test_legacy_store_without_ingested_at_is_migrated(tmp_path):
+    """A pre-existing DB created before the ingested_at column must self-upgrade
+    and backfill ingested_at from reviewed_at on open."""
+    db_path = tmp_path / "review_events.db"
+    table = ReviewEvent.__tablename__
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        f"CREATE TABLE {table} ("
+        "event_id TEXT PRIMARY KEY, card_id TEXT, word_snapshot TEXT, "
+        "notebook_id TEXT, feedback INTEGER, reviewed_at TEXT, created_at TEXT)"
+    )
+    conn.execute(
+        f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("legacy-1", "card-x", "legacyword", "default", 1,
+         "2026-05-01 09:00:00.000000", "2026-05-01 09:00:05.000000"),
+    )
+    conn.commit()
+    conn.close()
+
+    store = ReviewEventStore(db_path)
+    pulled, cursor = pull_review_events(since=None, event_store=store)
+
+    assert [event.event_id for event in pulled] == ["legacy-1"]
+    assert cursor is not None
