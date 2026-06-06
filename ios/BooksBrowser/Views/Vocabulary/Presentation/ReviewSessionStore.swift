@@ -74,6 +74,9 @@ struct ReviewSessionStore {
 
     static func clear(userID: String?, defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: storageKey(for: userID))
+        if userID == nil {
+            defaults.removeObject(forKey: legacyKey)
+        }
     }
 
     static func persistenceID(for entry: VocabularyEntry) -> String {

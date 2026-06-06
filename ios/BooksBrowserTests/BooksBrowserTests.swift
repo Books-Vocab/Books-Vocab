@@ -160,6 +160,26 @@ struct BooksBrowserTests {
         #expect(restored == nil)
     }
 
+    @Test func reviewSessionStoreClearsLegacyOrderForGuest() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-clear-legacy"))
+        defaults.removePersistentDomain(forName: "review-session-order-clear-legacy")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-clear-legacy") }
+
+        let first = Self.makeReviewEntry("alpha")
+        let second = Self.makeReviewEntry("beta")
+        defaults.set([second.id.uuidString, first.id.uuidString], forKey: "kg.review.shuffledOrder")
+
+        ReviewSessionStore.clear(userID: nil, defaults: defaults)
+
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [first, second],
+            userID: nil,
+            defaults: defaults
+        )
+
+        #expect(restored == nil)
+    }
+
     @Test func reviewSessionStoreRejectsDifferentQueueFingerprint() async throws {
         let defaults = try #require(UserDefaults(suiteName: "review-session-order-fingerprint"))
         defaults.removePersistentDomain(forName: "review-session-order-fingerprint")

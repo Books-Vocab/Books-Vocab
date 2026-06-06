@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: c06dadb1
+verified_against: 8aaece8d
 -->
 # Implemented Product Surface
 
@@ -25,7 +25,7 @@ verified_against: c06dadb1
 - **Graph links**: hide/unhide + bilateral optimistic sync
 - **Toast notification system**: capsule toast + sheet overlay
 - **Graph thumbnail** + health blob
-- **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習)
+- **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習) + autoplay 聲音開關（首次預設開啟、記住上次選擇、答案揭露後才朗讀單字）+ 洗牌順序持久化（per-user + queue fingerprint，KG card id 優先、local UUID fallback，新卡附加尾端）
 - **Stats overview**: `StatsPresenter` full state matrix
 - **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
@@ -35,7 +35,7 @@ verified_against: c06dadb1
 - **Notebook robustness**: `resolveNotebookId` chokepoint + `sanitizeOutbox` orphan migration + `triggerPipelinesIsolated` per-notebook isolation + stale `activeNotebookId` cleanup + tombstone defense
 - **Notebook bookshelf**: LazyVStack book-row list + `NotebookCard` HStack layout (cover 40% left + metadata right, fixed-height 72pt rows) + serif italic name (`AppFonts.serif(17, bold).italic`) + active small dot (5pt, darken 0.5) + 1pt darken rule overlay + cover system (12-color Morandi palette + 6 SwiftUI Canvas patterns + unified noise pattern 0.04 + PhotosPicker custom image) + `N 詞` monoLabel + ProgressCapsule (cover-tinted fill, 4pt) + 條件 due dot (warning) + 空 notebook placeholder + page section header `今日複習` + inline pill cluster (`VocabReviewCTAPill` + filter + 新增, replaces VocabReviewBanner + toolbar buttons) + pending sync via TipView → SyncView integration + export dual-entry + sort menu + empty-state CTA + `NotebookCardActions` reusable context menu + dark mode cover auto-darken via `NotebookPalette.darken`
 - **Podcast player**: audio + sentence-level SRT highlight + reader-parity 翻譯 via `VocabularyContextProtocol`（字幕選取 edit menu：「翻譯」依字數分流——單字→word path（加入詞庫 + 去重）、片語→phrase path；「解釋」對單字 + 片語皆出現，對齊 reader gate-free edit menu）+ **詞庫螢光筆**（已加入詞庫的詞在字幕自動上暖黃半透明底色、詞庫驅動鏡射 reader 生字高亮；含 inflections + 彎/直撇號折疊；`PodcastVocabHighlightResolver` 純函式 + cell 常駐 overlay 複用逐詞 TextKit rect，所有句子常駐、選取時隱藏）+ phrase 長按整句 + auto-pause-on-lookup + subtitle size S/M/L/XL/XXL + series 追蹤 toggle + 已追蹤浮上書庫頂端 + per-user progress sync to backend + YouTube-style buffered seek-bar overlay + tap-to-warm AVFoundation connection (DNS/TLS/Range pre-fired during navigation push) + bookshelf-appear predictive prefetch of followed-series first episode + inline subtitle in metadata.json (zero subtitle RTT) + background episode download (URLSession.background, file:// local-first playback, context-menu Download/Cancel/Remove, compact progress ring in row) + 睡眠定時 (5/15/30/60min + end-of-episode, wall-clock DispatchSourceTimer) + 字幕 follow-mode（iPhone/iPad 拖曳隱式脫離；Mac Catalyst 常駐明確 toggle「停止跟隨 ⇄ 追隨當前」，因 indirect scroll 不觸發 DragGesture；捲動提前約 0.8s lead，下一句被講到前先滑到中央，seek 時 pin 回當前句）+ **獨立頂層「播客」section**（`PodcastHomeView`，iOS TabView 第 2 / Catalyst sidebar；軸 B Phase 3，podcast 不再經書架進入）：串流首頁 = 繼續收聽橫排 shelf（跨 series 最近未完成，`PodcastShelf`+`PodcastContinueRailCard`）+ 所有節目 grid（followed 排前+star）；series→episode→player 全 value-based push 在自有 `NavigationStack` + **連續播放 auto-advance**（本集播畢自動續播同 series 下一可播集，`PodcastQueue` entitlement gate：free 播完 ep1 不跨集、guest 不續）+ **分層授權 UX（guest/free/pro）**：客戶端 tier policy `PodcastAccess`（鏡射後端 `podcast_access.py`，由 `subscriptionManager.hasProAccess` + token 存在推導）；訪客可瀏覽 catalog（`optionallyAuthedData` 無 token 亦放行），但 episode row／hero CTA 鎖定（`lock.fill` badge）、tap 彈 `LoginSheet`；free 只開 ep1（hero「免費試聽 3 分鐘」→ player 播放獨立 `preview.*` 並顯示 brand 試聽條 + 升級 CTA），ep2+ 鎖定 tap 彈 `SubscriptionPaywallSheet`（`PaywallSource.podcast`）；player 自帶防禦式 gate（deep-link/continue-playing 直達非可播集 → `lockedGateView`，不載入音訊）。pro 全開。`PodcastEpisode` 新增 `previewAvailable`/`previewDurationSec`
-- **Auto-sync**: 60s cooldown + toggle onChange + 離線→連線恢復時重新評估 pending queue
+- **Auto-sync**: 60s cooldown + toggle onChange + 離線→連線恢復時重新評估 pending queue + 背景同步失敗 toast 使用分類文案（離線/逾時/登入/伺服器/格式/本機儲存/未知），log/Sentry 保留內部 phase label
 - **Notebook cover photo 編輯**: `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原
 - **Graph empty state**: 區分「無單字」vs「有單字無連結」
 - **Vocab list 效能** + 空態 CTA
