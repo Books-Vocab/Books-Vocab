@@ -140,6 +140,108 @@ struct BookLibraryReconcilerTests {
         #expect(book.progression == 0.4)
     }
 
+    @Test func reconcilerRemovesDuplicateRowsEvenWhenRowsShareDomainId() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "F9634750-1CEE-4E8E-A7A7-13594801B886.epub"
+        try Data("epub".utf8).write(to: root.appendingPathComponent(fileName))
+
+        let sharedId = UUID()
+        let metadataRich = Book(
+            title: "Metadata Rich",
+            author: "Author",
+            coverImageData: Data([1, 2, 3]),
+            fileName: fileName,
+            format: .epub
+        )
+        metadataRich.id = sharedId
+        metadataRich.progression = 0.75
+        let staleDuplicate = Book(
+            title: "F9634750-1CEE-4E8E-A7A7-13594801B886",
+            author: "",
+            fileName: fileName,
+            format: .epub
+        )
+        staleDuplicate.id = sharedId
+        context.insert(metadataRich)
+        context.insert(staleDuplicate)
+        try context.save()
+
+        let result = try BookLibraryReconciler(rootDirectory: root).reconcile(context: context)
+
+        let books = try context.fetch(FetchDescriptor<Book>())
+        let book = try #require(books.first)
+        #expect(result.duplicateRowsRemoved == 1)
+        #expect(books.count == 1)
+        #expect(book.title == "Metadata Rich")
+        #expect(book.progression == 0.75)
+    }
+
+    @Test func reconcilerCollapsesMixedDuplicateRowsAndMergesReadingMetadata() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "mixed-duplicate.epub"
+        try Data("epub".utf8).write(to: root.appendingPathComponent(fileName))
+        let sharedId = UUID()
+
+        let keeperCandidate = Book(
+            title: "Real Title",
+            author: "Author",
+            coverImageData: Data([7]),
+            fileName: fileName,
+            format: .epub
+        )
+        keeperCandidate.id = sharedId
+        keeperCandidate.dateAdded = Date(timeIntervalSince1970: 20)
+        keeperCandidate.progression = 0.2
+        keeperCandidate.dateLastRead = Date(timeIntervalSince1970: 30)
+
+        let sameIdDuplicateWithNewerPosition = Book(
+            title: "mixed-duplicate",
+            author: "",
+            fileName: fileName,
+            format: .epub
+        )
+        sameIdDuplicateWithNewerPosition.id = sharedId
+        sameIdDuplicateWithNewerPosition.dateAdded = Date(timeIntervalSince1970: 10)
+        sameIdDuplicateWithNewerPosition.progression = 0.9
+        sameIdDuplicateWithNewerPosition.dateLastRead = Date(timeIntervalSince1970: 40)
+        sameIdDuplicateWithNewerPosition.lastReadLocatorJSON = #"{"href":"late"}"#
+        sameIdDuplicateWithNewerPosition.preferredNotebookId = "nb"
+
+        let differentIdDuplicate = Book(
+            title: "mixed-duplicate",
+            author: "",
+            fileName: fileName,
+            format: .epub
+        )
+        context.insert(keeperCandidate)
+        context.insert(sameIdDuplicateWithNewerPosition)
+        context.insert(differentIdDuplicate)
+        try context.save()
+
+        let result = try BookLibraryReconciler(rootDirectory: root).reconcile(context: context)
+
+        let books = try context.fetch(FetchDescriptor<Book>())
+        let book = try #require(books.first)
+        #expect(result.duplicateRowsRemoved == 2)
+        #expect(books.count == 1)
+        #expect(book.title == "Real Title")
+        #expect(book.author == "Author")
+        #expect(book.coverImageData == Data([7]))
+        #expect(book.dateAdded == Date(timeIntervalSince1970: 10))
+        #expect(book.progression == 0.9)
+        #expect(book.dateLastRead == Date(timeIntervalSince1970: 40))
+        #expect(book.lastReadLocatorJSON == #"{"href":"late"}"#)
+        #expect(book.preferredNotebookId == "nb")
+    }
+
     @Test func reconcilerToleratesDuplicateManifestsForSameFileName() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
