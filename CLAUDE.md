@@ -22,7 +22,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 3. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 opus general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
 
-## Skill 系統(KG 專屬 7 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 6 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
@@ -32,8 +32,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
 | `cleanup` | `/cleanup` 或「收尾」 | merge PRs → update docs → git cleanup → test → deploy |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
-| `steward` | 「steward N」「audit N個」「codebase 健康度」「修到 N 個」「steward backend/ N」 | **Codebase 管家模式** — 使用者設目標改善數，自動多輪並行掃描 + behavior-preserving 優化直到達標，輸出單一 PR。取代 swarm 做健康度任務。 |
-| `swarm` | 「瘋狂做」「不要問」「壓榨我」「≥10 agents 並行」等情緒語境,或使用者明示「autonomous 多 agent 執行 + don't-ask」 | 切「專案維護者」模式 — 自主補上下文、決策、組織 ≥10 並行 agent 直到任務閉環 |
+| `steward` | 「steward N」「audit N個」「codebase 健康度」「修到 N 個」「steward backend/ N」 | **Codebase 管家模式** — 使用者設目標改善數，自動多輪並行掃描 + behavior-preserving 優化直到達標，輸出單一 PR。 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
 
