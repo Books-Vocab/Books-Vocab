@@ -58,6 +58,10 @@ enum CardRichTextRenderer {
         truncateAroundMarkedWordRadius: Int? = nil,
         targetWord: String? = nil
     ) -> AttributedString {
+        let measured = PerfLog.render.measure(
+            "cardRichText.attributedString",
+            "chars=\(raw.count) truncate=\(truncateAroundMarkedWordRadius != nil) mode=\(mode)"
+        ) {
         let prepared = preparedRaw(
             from: raw,
             mode: mode,
@@ -106,6 +110,8 @@ enum CardRichTextRenderer {
         }
 
         return result
+        }
+        return measured.value
     }
 
     // MARK: - Truncation Cache

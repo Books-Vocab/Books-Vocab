@@ -13,7 +13,8 @@ extension TodayReviewPresenter {
     // MARK: Front Surface
 
     func frontFoldSurface(_ card: CardPresentation) -> some View {
-        ReviewFoldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
+        let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
+        return ReviewFoldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -98,6 +99,10 @@ extension TodayReviewPresenter {
 
     func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
+        let _ = PerfLog.render.tick(
+            "todayReview.answer.surface",
+            "mode=\(card.reviewMode.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
+        )
         let hasLinks = !currentCard.linkGroups.isEmpty
         let exampleRadius = answerExampleRadius(
             containerHeight: availableHeight,
@@ -229,6 +234,10 @@ extension TodayReviewPresenter {
         containerHeight: CGFloat,
         currentCard: TodayReviewPresenterState.CurrentCard
     ) -> Int {
+        let measured = PerfLog.layout.measure(
+            "todayReview.answerExampleRadius",
+            "blocks=\(currentCard.backDocument.blocks.count)"
+        ) {
         // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
         let answerBudget = containerHeight
             - TodayReviewMetrics.cardTopInset
@@ -261,6 +270,8 @@ extension TodayReviewPresenter {
 
         // 半徑 = 總預算的一半（前後各 radius 個詞），最小 3 保證可讀性
         return max(totalWords / 2, 3)
+        }
+        return measured.value
     }
 
     // MARK: Fonts

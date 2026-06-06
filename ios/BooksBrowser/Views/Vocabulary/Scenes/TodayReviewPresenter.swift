@@ -200,7 +200,11 @@ struct TodayReviewPresenter: View {
 
     func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
-        let cardIdentity = card.word + "-" + String(card.dateAdded.timeIntervalSinceReferenceDate)
+        let cardIdentity = "review-card-\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
+        let _ = PerfLog.render.tick(
+            "todayReview.card.body",
+            "word=\(card.word) reveal=\(state.revealStage.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
+        )
 
         return ZStack(alignment: .top) {
             // 牌堆 — 不隨 .id() 銷毀重建
@@ -240,6 +244,8 @@ struct TodayReviewPresenter: View {
             .geometryGroup()
             .animation(dismissPhase == .idle ? AppMotion.reviewRevealSpring : nil,
                        value: state.revealStage.showsAnswer)
+            // Identity must describe the queue card only. Reveal state stays out
+            // so flip/collapse never tears down the heavy card subtree.
             .id(cardIdentity)
             .transition(suppressTransition ? .identity : .reviewCardPromote)
             .offset(x: swipeOffset)
