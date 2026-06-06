@@ -130,6 +130,12 @@ function withOutboxLock(mutate) {
 // stampede the endpoint.
 let flushInFlight = false;
 let flushRequested = false;
+const OUTBOX_RETRY_ALARM = 'kg-outbox-retry';
+const OUTBOX_RETRY_DELAY_MIN = 1;
+
+function scheduleOutboxRetry() {
+  chrome.alarms.create(OUTBOX_RETRY_ALARM, { delayInMinutes: OUTBOX_RETRY_DELAY_MIN });
+}
 
 /**
  * Enqueue user adds optimistically and kick a background flush. Returns
@@ -140,13 +146,15 @@ let flushRequested = false;
  * @param {Array<{word: string, translation: string, context?: string,
  *   source?: object}>} entries
  */
-async function handleAddVocabOutbox(entries) {
+async function handleAddVocabOutbox(entries, notebookId = 'default') {
   const list = Array.isArray(entries) ? entries : [];
+  const targetNotebookId = notebookId || 'default';
   // Mint ids/timestamps up front (side-effects), then commit the enqueue under
   // the lock so a concurrent add/flush can't clobber the write.
   const made = list.map((e) =>
     globalThis.KGOutbox.makeOutboxEntry({
       localId: crypto.randomUUID(),
+      notebookId: targetNotebookId,
       word: e.word,
       translation: e.translation,
       context: e.context,
@@ -182,46 +190,50 @@ async function flushOutbox() {
   }
   flushInFlight = true;
   try {
+    let stopDraining = false;
     do {
       flushRequested = false;
       const toFlush = globalThis.KGOutbox.entriesToFlush(await readOutbox());
       if (toFlush.length === 0) break;
 
-      const payload = toFlush.map((e) => ({
-        word: e.word,
-        translation: e.translation,
-        context: e.context,
-        source: e.source,
-      }));
+      for (const group of globalThis.KGOutbox.groupEntriesByNotebook(toFlush)) {
+        const payload = group.entries.map((e) => ({
+          word: e.word,
+          translation: e.translation,
+          context: e.context,
+          source: e.source,
+        }));
 
-      try {
-        const resp = await KGApi.addVocab(payload); // network — OUTSIDE the lock
-        const cardIds = (resp && resp.cardIds) || {};
-        await withOutboxLock(async () => {
-          let queue = globalThis.KGOutbox.reconcileAddResponse(await readOutbox(), cardIds);
-          queue = globalThis.KGOutbox.pruneSynced(queue);
-          await writeOutbox(queue);
-        });
-        bumpVocabDirty(); // server now has these cards → refetch surfaces them
-        if (Object.keys(cardIds).length > 0) {
-          // Cards landed (bare) — kick enrich + poll so they grow pos/note/examples.
-          // chrome adds always go to the default notebook. Fire-and-forget.
-          triggerEnrichPolling('default').catch((err) =>
-            console.error('[KG] enrich trigger failed', err),
-          );
+        try {
+          const resp = await KGApi.addVocab(payload, group.notebookId); // network — OUTSIDE the lock
+          const cardIds = (resp && resp.cardIds) || {};
+          await withOutboxLock(async () => {
+            let queue = globalThis.KGOutbox.reconcileAddResponse(await readOutbox(), cardIds, group.notebookId);
+            queue = globalThis.KGOutbox.pruneSynced(queue);
+            await writeOutbox(queue);
+          });
+          bumpVocabDirty(); // server now has these cards → refetch surfaces them
+          if (Object.keys(cardIds).length > 0) {
+            // Cards landed (bare) — kick enrich + poll so they grow pos/note/examples.
+            triggerEnrichPolling(group.notebookId).catch((err) =>
+              console.error('[KG] enrich trigger failed', err),
+            );
+          }
+        } catch (err) {
+          const ids = group.entries.map((e) => e.localId);
+          await withOutboxLock(async () => {
+            await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
+          });
+          bumpVocabDirty(); // surface failed state to the side panel
+          scheduleOutboxRetry();
+          // Stop draining on failure — the next trigger (a fresh add, or the
+          // retry alarm/startup flush) retries. Looping here would hammer a
+          // down endpoint.
+          stopDraining = true;
+          break;
         }
-      } catch (err) {
-        const ids = toFlush.map((e) => e.localId);
-        await withOutboxLock(async () => {
-          await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
-        });
-        bumpVocabDirty(); // surface failed state to the side panel
-        // Stop draining on failure — the next trigger (a fresh add, or the
-        // Phase 5 alarm/startup flush) retries. Looping here would hammer a
-        // down endpoint.
-        break;
       }
-    } while (flushRequested);
+    } while (flushRequested && !stopDraining);
   } finally {
     flushInFlight = false;
   }
@@ -262,11 +274,14 @@ async function triggerEnrichPolling(notebookId) {
     return;
   }
   // Preserve an in-flight poll's attempt count so rapid successive adds can't
-  // reset the cap and poll forever; only start fresh when no poll is active.
+  // reset the cap and poll forever; accumulate notebook ids so each poll re-pulls
+  // the notebook whose pipeline was actually triggered.
   const stored = await chrome.storage.local.get(ENRICH_POLL_STATE_KEY);
   const prior = stored[ENRICH_POLL_STATE_KEY];
   const attempts = prior ? prior.attempts || 0 : 0;
-  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts } });
+  const notebookIds = new Set(Array.isArray(prior && prior.notebookIds) ? prior.notebookIds : []);
+  notebookIds.add(notebookId || 'default');
+  await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts, notebookIds: [...notebookIds] } });
   scheduleEnrichPoll();
 }
 
@@ -275,22 +290,27 @@ async function handleEnrichPoll() {
   const state = stored[ENRICH_POLL_STATE_KEY];
   if (!state) return; // nothing in flight (e.g. cleared, or stale alarm)
 
-  // Re-pull to (a) read X-Pipeline-Pending and (b) bump the side panel so it
-  // re-renders the now-enriched cards. Treat a hiccup as "still pending" so we
-  // retry up to the cap rather than stop early.
+  // Re-pull each triggered notebook to (a) read X-Pipeline-Pending and (b) bump
+  // the side panel so it re-renders the now-enriched cards. Treat a hiccup as
+  // "still pending" so we retry up to the cap rather than stop early.
   let pending = false;
-  try {
-    await KGApi.listVocab(undefined, (res) => {
-      pending = res.headers.get('X-Pipeline-Pending') === 'true';
-    });
-  } catch (err) {
-    pending = true;
+  const notebookIds = Array.isArray(state.notebookIds) && state.notebookIds.length
+    ? state.notebookIds
+    : ['default'];
+  for (const notebookId of notebookIds) {
+    try {
+      await KGApi.listVocab(undefined, (res) => {
+        if (res.headers.get('X-Pipeline-Pending') === 'true') pending = true;
+      }, notebookId);
+    } catch (err) {
+      pending = true;
+    }
   }
   bumpVocabDirty();
 
   const attempts = (state.attempts || 0) + 1;
   if (pending && attempts < ENRICH_POLL_MAX) {
-    await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts } });
+    await chrome.storage.local.set({ [ENRICH_POLL_STATE_KEY]: { attempts, notebookIds } });
     scheduleEnrichPoll();
   } else {
     await chrome.storage.local.remove(ENRICH_POLL_STATE_KEY);
@@ -301,6 +321,8 @@ async function handleEnrichPoll() {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ENRICH_POLL_ALARM) {
     handleEnrichPoll().catch((err) => console.error('[KG] enrich poll failed', err));
+  } else if (alarm.name === OUTBOX_RETRY_ALARM) {
+    flushOutbox().catch((err) => console.error('[KG] outbox retry failed', err));
   }
 });
 
@@ -315,6 +337,11 @@ const SIDE_EFFECT_HANDLERS = {
     await chrome.storage.local.remove(TOKEN_KEY);
     return { ok: true };
   },
+  // `retryOutbox` — user-triggered flush for failed optimistic rows.
+  retryOutbox: async () => {
+    await flushOutbox();
+    return { ok: true };
+  },
 };
 
 async function handleMessage(msg) {
@@ -326,7 +353,7 @@ async function handleMessage(msg) {
   // ack + background flush, instead of an inline POST. Every other kind keeps
   // the direct path below.
   if (kind === 'addVocab') {
-    return handleAddVocabOutbox(args[0]);
+    return handleAddVocabOutbox(args[0], args[1]);
   }
 
   const sideEffect = SIDE_EFFECT_HANDLERS[kind];
@@ -359,3 +386,10 @@ async function handleMessage(msg) {
 // safe; an empty outbox is a cheap no-op (one storage read, no network).
 // ---------------------------------------------------------------------------
 flushOutbox().catch((err) => console.error('[KG] startup flush failed', err));
+
+export const __test__ = {
+  flushOutbox,
+  handleMessage,
+  handleEnrichPoll,
+  triggerEnrichPolling,
+};

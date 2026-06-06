@@ -19,7 +19,7 @@ const REQUIRED = [
   'theme-light', 'theme-dark', 'theme-sepia',
   'settings',
   'source-web', 'source-local',
-  'search', 'clear', 'check',
+  'search', 'clear', 'check', 'plus', 'pencil', 'trash',
   'books.vertical', 'magnifyingglass', 'sparkles', 'checkmark.seal', 'leaf',
   'line.3.horizontal.decrease.circle',
   'error-login', 'error-quota', 'error-network', 'error-server', 'error-generic',
