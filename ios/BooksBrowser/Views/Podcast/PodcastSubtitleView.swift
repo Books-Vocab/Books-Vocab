@@ -7,6 +7,8 @@ struct PodcastSubtitleView: View {
     let viewModel: PodcastPlayerViewModel
     let subtitleSize: PodcastSubtitleSize
     let initialScrollPositionResolved: Bool
+    /// 詞庫已查詞集，驅動字幕詞庫螢光筆（A 方案）。由 PodcastPlayerView 注入。
+    let lookedUpWords: Set<String>
     /// Re-runs only the subtitle fetch — wired to the inline failure retry.
     var onRetrySubtitle: () -> Void = {}
 
@@ -24,6 +26,7 @@ struct PodcastSubtitleView: View {
                 subtitleSize: subtitleSize,
                 initialScrollPositionResolved: initialScrollPositionResolved,
                 scrollLeadId: viewModel.scrollLeadSentenceId,
+                lookedUpWords: lookedUpWords,
                 onSentenceTap: { viewModel.seek(to: $0.startTime) },
                 onWordTap: viewModel.handleWordTap,
                 onPhraseTap: viewModel.handlePhraseTap,
