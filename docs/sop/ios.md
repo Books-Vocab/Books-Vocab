@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 9de624ce
+verified_against: df2a59d5
 -->
 # BooksBrowser iOS 開發技能
 
@@ -63,6 +63,26 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ### Step 3：對症下藥並驗證
 
 修復後立刻重跑 Step 1。反覆「編譯 → 讀上下文 → 修改」直到 Exit Code 歸零。
+
+## iOS 測試入口（`ops/ios_test.sh`）
+
+`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
+
+```bash
+./ops/ios_test.sh --timeout 1200                       # 預設只跑 BooksBrowserTests unit target
+./ops/ios_test.sh --file NotebookCoverContrastTests.swift
+./ops/ios_test.sh -g "sanitizeOutbox"
+./ops/ios_test.sh --ui --file BooksBrowserUITests.swift # 只跑 UI test 檔案
+./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs       # 只跑 UI test method
+./ops/ios_test.sh --all-targets --timeout 1200          # scheme 全量：unit + UI
+./ops/ios_test.sh --file FooTests.swift --list          # 只列 resolved -only-testing selectors
+```
+
+- 預設 scope 是 `unit`，會自動加 `-only-testing:BooksBrowserTests`；UI tests 不會被誤混進 unit full。
+- `--ui` 會把 discovery target 切到 `BooksBrowserUITests`，支援 `--file` / method selector。
+- `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
+- 失敗或 inconclusive 時保留完整 xcodebuild log，stdout 會印出 log path；成功時清掉臨時 log。
+- 若 Xcode 回 `build.db database is locked` / `unable to attach DB`，runner 會在同一把 repo lock 內短暫等待並重試，避免把 infrastructure lock 誤判成測試失敗。
 
 ## 發版 / TestFlight（`ops/ios_release.sh`）
 

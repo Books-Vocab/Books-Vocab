@@ -138,7 +138,11 @@ fi
 # --- Lock acquire (shared with ios_build.sh) ---
 TMPOUT=""
 PRESERVE_TMPOUT=0
+CURRENT_XCODE_PID=""
 cleanup() {
+  if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
+    kill "$CURRENT_XCODE_PID" 2>/dev/null || true
+  fi
   rm -f "$LOCK_FILE"
   if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
     rm -f "${TMPOUT:-}"
@@ -175,6 +179,66 @@ is_build_db_lock_failure() {
   grep -qE 'build\.db.*database is locked|unable to attach DB' "$TMPOUT" 2>/dev/null
 }
 
+emit_new_test_output() {
+  local from_line="$1" to_line="$2"
+  [[ "$to_line" -ge "$from_line" ]] || return 0
+  sed -n "${from_line},${to_line}p" "$TMPOUT" \
+    | grep -E "^(\*\* TEST|Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|Test session results|[[:space:]]*[✔✘✓✗] Test .+ (passed|failed)|[✔✘✓✗] Test run with|error:|.* failed)" \
+    || true
+}
+
+last_test_event() {
+  grep -E "^(Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|[[:space:]]*[✔✘✓✗] Test .+ (passed|failed)|[✔✘✓✗] Test run with)" "$TMPOUT" \
+    | tail -1 \
+    | sed 's/^[[:space:]]*//'
+}
+
+run_xcodebuild_once() {
+  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event
+  xcodebuild test \
+    -project "$XCODEPROJ" \
+    -scheme BooksBrowser \
+    -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+    -parallel-testing-enabled NO \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 60 \
+    -maximum-test-execution-time-allowance 120 \
+    ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
+    >"$TMPOUT" 2>&1 &
+  xcode_pid=$!
+  CURRENT_XCODE_PID="$xcode_pid"
+  echo "[ios_test] xcodebuild pid=$xcode_pid log=$TMPOUT"
+
+  last_line=0
+  heartbeat_at=$(date +%s)
+  while kill -0 "$xcode_pid" 2>/dev/null; do
+    current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
+    if [[ "$current_line" -gt "$last_line" ]]; then
+      emit_new_test_output "$((last_line + 1))" "$current_line"
+      last_line="$current_line"
+    fi
+
+    now=$(date +%s)
+    if [[ $((now - heartbeat_at)) -ge 30 ]]; then
+      elapsed=$((now - START))
+      recent_event="$(last_test_event)"
+      [[ -n "$recent_event" ]] || recent_event="xcodebuild still running"
+      echo "[ios_test] … still running (${elapsed}s, pid=$xcode_pid, log=$TMPOUT) — last: $recent_event"
+      heartbeat_at="$now"
+    fi
+    sleep 2
+  done
+
+  wait "$xcode_pid"
+  local status=$?
+  CURRENT_XCODE_PID=""
+  current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
+  if [[ "$current_line" -gt "$last_line" ]]; then
+    emit_new_test_output "$((last_line + 1))" "$current_line"
+  fi
+  return "$status"
+}
+
 # Run xcodebuild test, capture output to parse results. Xcode can keep the
 # shared DerivedData build database locked briefly after the previous simulator
 # test process exits, so retry that infrastructure failure before surfacing it.
@@ -185,17 +249,8 @@ while :; do
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
   TMPOUT=$(mktemp)
   set +e
-  xcodebuild test \
-    -project "$XCODEPROJ" \
-    -scheme BooksBrowser \
-    -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-    -parallel-testing-enabled NO \
-    -test-timeouts-enabled YES \
-    -default-test-execution-time-allowance 60 \
-    -maximum-test-execution-time-allowance 120 \
-    ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
-    2>&1 | tee "$TMPOUT" | grep -E '^(Test |[[:space:]]*[✔✘✓✗] Test |◇|Passing|Failing|Executed|\*\* TEST)' || true
-  EXIT_CODE=${PIPESTATUS[0]}
+  run_xcodebuild_once
+  EXIT_CODE=$?
   set -e
 
   if is_build_db_lock_failure && [[ "$ATTEMPT" -le "$MAX_BUILD_DB_LOCK_RETRIES" ]]; then
