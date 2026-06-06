@@ -146,17 +146,18 @@ def impact_documents(documents: list[Document], changed_paths: list[str]) -> lis
                     matched_sources.append(source)
                     matched_paths.append(changed_path)
         if matched_paths:
-            impacts.append(
-                {
-                    "id": doc.id,
-                    "path": doc.path,
-                    "kind": doc.kind,
-                    "authority": doc.authority,
-                    "triggers": doc.triggers,
-                    "matched_sources": sorted(set(matched_sources)),
-                    "matched_paths": sorted(set(matched_paths)),
-                }
-            )
+            impact = {
+                "id": doc.id,
+                "path": doc.path,
+                "kind": doc.kind,
+                "authority": doc.authority,
+                "triggers": doc.triggers,
+                "matched_sources": sorted(set(matched_sources)),
+                "matched_paths": sorted(set(matched_paths)),
+            }
+            if doc.generator:
+                impact["generator"] = doc.generator
+            impacts.append(impact)
     return impacts
 
 
@@ -171,10 +172,11 @@ def print_human(base: str | None, changed_paths: list[str], impacts: list[dict[s
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
         sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
         paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
+        generator = f" generator={impact['generator']}" if "generator" in impact else ""
         print(
             "IMPACT "
             f"{impact['id']} {impact['path']} "
-            f"via={sources} changed={paths} triggers={triggers}"
+            f"via={sources} changed={paths} triggers={triggers}{generator}"
         )
 
 

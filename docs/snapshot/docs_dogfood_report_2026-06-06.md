@@ -34,6 +34,7 @@ verified_against: 9de624ce
 | P2 | Safe wrapper command surface 不好查 | ops dogfood: `devops_kg_safe.sh` row 只有「部署 / 維護 safe wrapper」 | tech_index 補 safe wrapper command surface 與 blocklist 摘要 |
 | P2 | `--registry` summary 不直覺 | docs-tooling/maintenance dogfood: `REGISTRY OK` 但 summary `OK: 0` | registry validate 成功時計入 `OK: 1` |
 | P2 | Hypothetical sample vs default gate 易混 | backend/ops dogfood: default gate 反映目前 dirty branch,非假設檔案 | dogfood SOP 明確區分 `docs_impact --files` 與 default gate |
+| P2 | Generated snapshot hint 缺少處置入口 | iOS dogfood: `generated.ios_baseline` 出現時需另查 doc_sync 才知道 generator | `docs_impact.py` 對 generated docs 輸出 `generator` |
 
 ## Follow-up Changes
 
@@ -41,6 +42,7 @@ verified_against: 9de624ce
 - `ops/docs_lint.sh`:registry 驗證成功時計入 summary OK。
 - `ops/tests/test_docs_impact.sh`:新增 dogfood regression 覆蓋 backend/router、devops wrapper、Book model、docs tooling tests。
 - `ops/tests/test_docs_lint.sh`:audit/all 目前為健康 gate,要求 WARN/ERROR 皆為 0；registry summary 要 `OK: 1`。
+- `ops/docs_impact.py`:generated impact 會輸出 `generator`。
 - `docs/reference/tech_index.md`:補 `devops_kg_safe.sh` command surface。
 - `docs/sop/docs_dogfood.md`:補 default gate 與 hypothetical impact 樣本的判讀差異。
 
@@ -54,5 +56,5 @@ verified_against: 9de624ce
   - `./ops/docs_impact.py --files backend/src/kg/routers/vocab.py` → sync/card/product/tech only; no safety/deploy/backend SOP noise
   - `./ops/docs_impact.py --files ops/devops_kg_safe.sh` → safety/tech/deploy/debug
   - `./ops/docs_impact.py --files ops/docs_lint.sh` → tech/doc_sync/dogfood
-  - `./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift` → product/bookshelf boundary/ios baseline
+  - `./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift` → product/bookshelf boundary/ios baseline,其中 generated baseline 顯示 `generator=ops/gen_ios_baseline.sh`
   - `./ops/docs_impact.py --files ops/tests/test_docs_lint.sh` → no registry impacts

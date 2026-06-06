@@ -79,6 +79,8 @@ fi
 
 ./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift --json >"$tmpdir/book_model.json"
 grep -q '"id": "reference.feature_boundary.bookshelf"' "$tmpdir/book_model.json"
+grep -q '"id": "generated.ios_baseline"' "$tmpdir/book_model.json"
+grep -q '"generator": "ops/gen_ios_baseline.sh"' "$tmpdir/book_model.json"
 if grep -q '"id": "contract.sync_lifecycle"' "$tmpdir/book_model.json"; then
   echo "book model changes should not imply vocabulary sync lifecycle impact by default" >&2
   exit 1
