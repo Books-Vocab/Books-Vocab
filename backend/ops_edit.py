@@ -23,6 +23,7 @@ import argparse
 import csv
 import json
 import shutil
+import sqlite3
 import sys
 import tarfile
 from datetime import UTC, datetime, timedelta
@@ -34,8 +35,10 @@ from filelock import FileLock
 from kg.api_models.common import VocabSource
 from kg.cards import CardStore
 from kg.cards.model import Card
+from kg.demo_review_synth import CardReviewState, synthesize_many
 from kg.graph.models import LinkKind
 from kg.notebook import NotebookStore
+from kg.review_events import ReviewEventStore
 from kg.ops_edit_shared import (
     EditContext,
     EditError,
@@ -1208,6 +1211,253 @@ def cmd_link_update(args: argparse.Namespace) -> int:
     return ctx.run(action="link-update", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
 
+# ── clone-demo ─────────────────────────────────────────────
+#
+# 從一個高品質真帳號 byte-clone 整個 vocab 層(cards/notebooks/graph/embeddings/
+# candidates)到目標 demo 帳號,再由 cards.db 的複習聚合合成 review_events.db。
+# 走 store 級重放會丟 embeddings 並重算 graph;檔案級 clone 才是高保真。identity
+# (users.json,在 data_dir 根、非 user_dir)結構上不被碰,故 demo 帳號保留自己的
+# Google provider/email/subscription。
+
+# vocab 層 SQLite(以 online backup API 複製,WAL-safe;不抓 -wal/-shm/.bak)。
+# daily_review_stats.db 目前無 producer/consumer(heatmap 走合成的 review_events),
+# 但生產 user_dir 實存此檔;為高保真一併複製(.exists() guard,缺則跳過,零風險)。
+_CLONE_SQLITE = ("cards.db", "notebooks.db", "daily_review_stats.db")
+# vocab 層衍生檔(精確 glob,排除 .bak/.lock/.tmp)。
+_CLONE_GLOBS = (
+    "graph_*.json", "embeddings_*.npy", "embeddings_meta_*.json",
+    "candidates_*.json", "card_ids_*.json", "blocked_*.json",
+)
+# 目標端「屬於 vocab 層」的判定:clone 前清空,避免殘留舊 notebook 的孤兒
+# graph/embeddings 與 -wal/-shm/.lock。review_events.db 一併清(由本次合成重建)。
+_VOCAB_DB_STEMS = ("cards.db", "notebooks.db", "daily_review_stats.db", "review_events.db")
+_VOCAB_PREFIXES = ("graph_", "embeddings_", "candidates_", "card_ids_", "blocked_")
+_CLONE_TMP_SUFFIX = ".clone-tmp"
+
+
+def _is_vocab_file(name: str) -> bool:
+    """目標端某檔是否屬 clone 會接管的 vocab 層(含其 -wal/-shm/.lock/.bak 旁檔)。"""
+    if name.endswith(_CLONE_TMP_SUFFIX):
+        return False
+    for stem in _VOCAB_DB_STEMS:
+        if name == stem or name.startswith(stem + "-") or name.startswith(stem + "."):
+            return True
+    return any(name.startswith(p) for p in _VOCAB_PREFIXES)
+
+
+def _sqlite_online_backup(src: Path, dst: Path) -> None:
+    """以 SQLite online backup API 複製(WAL-safe,產出乾淨單檔,毋須 -wal/-shm)。
+
+    backup 持有來源讀交易快照:即使來源正被 app 寫入也得一致快照,**不** checkpoint、
+    **不**改 main db / -wal。唯一可能的副作用:來源 -shm 不存在且 -wal 有資料時,
+    開 mode=ro 會重建一個 -shm sidecar(可再生、無害),故「source 唯讀」指邏輯資料不變。
+    """
+    src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    try:
+        dst_conn = sqlite3.connect(str(dst))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+
+
+def _clone_source_files(src_dir: Path) -> tuple[list[Path], list[Path]]:
+    """回傳 (要 backup 的 SQLite 檔, 要直接複製的衍生檔)。"""
+    sqlite_files = [src_dir / n for n in _CLONE_SQLITE if (src_dir / n).exists()]
+    others: list[Path] = []
+    for pat in _CLONE_GLOBS:
+        others.extend(p for p in sorted(src_dir.glob(pat)) if p.is_file())
+    return sqlite_files, others
+
+
+def _parse_db_dt(raw: Any) -> datetime | None:
+    """解析 cards.db 的 timestamp(naive 'YYYY-MM-DD HH:MM:SS.ffffff' 視為 UTC)。"""
+    if not raw:
+        return None
+    s = str(raw).strip().replace(" ", "T")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def _read_card_review_states(cards_db: Path) -> list[CardReviewState]:
+    """讀有複習紀錄的卡(含已刪 —— 過去複習仍是真實 heatmap 歷史)。"""
+    if not cards_db.exists():
+        return []
+    conn = sqlite3.connect(f"file:{cards_db}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, content, notebook_id, review_count, lapse_count, review_streak, "
+            "last_review_feedback, last_reviewed_at, created_at, review_interval_hours "
+            "FROM card WHERE review_count > 0 AND last_reviewed_at IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+    states: list[CardReviewState] = []
+    for r in rows:
+        last = _parse_db_dt(r["last_reviewed_at"])
+        if last is None:
+            continue
+        created = _parse_db_dt(r["created_at"]) or last
+        fb = r["last_review_feedback"]
+        states.append(CardReviewState(
+            card_id=r["id"],
+            content=r["content"],
+            notebook_id=r["notebook_id"] or "default",
+            review_count=int(r["review_count"] or 0),
+            lapse_count=int(r["lapse_count"] or 0),
+            review_streak=int(r["review_streak"] or 0),
+            last_review_feedback=int(fb) if fb is not None else -1,
+            last_reviewed_at=last,
+            created_at=created,
+            review_interval_hours=float(r["review_interval_hours"] or 12.0),
+        ))
+    return states
+
+
+def _count_active_cards(cards_db: Path) -> int:
+    if not cards_db.exists():
+        return 0
+    conn = sqlite3.connect(f"file:{cards_db}?mode=ro", uri=True)
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted = 0").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def _count_graph_links(user_dir: Path) -> int:
+    """所有 graph_*.json 的 active link 總數。"""
+    total = 0
+    for p in sorted(user_dir.glob("graph_*.json")):
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(data, list):
+            total += sum(1 for lk in data if isinstance(lk, dict)
+                         and lk.get("status", "active") == "active")
+    return total
+
+
+def _count_review_events(events_db: Path) -> int:
+    if not events_db.exists():
+        return 0
+    store = ReviewEventStore(events_db)
+    try:
+        return len(store.all())
+    finally:
+        store.close()
+
+
+def cmd_clone_demo(args: argparse.Namespace) -> int:
+    """高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history。"""
+    dd = data_dir()
+    src_uid = args.source_uid
+    assert_safe_uid(src_uid)                       # '../evil' 類在此 fail-loud
+    src_dir = user_dir_for(dd, src_uid)
+    if not src_dir.exists():
+        raise EditError(f"source user not found: {src_uid}(在 {dd}/users/ 下無此目錄)")
+    if not (src_dir / "cards.db").exists():
+        raise EditError(f"source {src_uid} 無 cards.db,無詞庫可複製")
+
+    # EditContext uid=target:寫前自動備份 target user_dir、要求 target 已存在、audit。
+    ctx = EditContext(data_dir=dd, uid=args.target_uid, commit=args.commit, json_mode=args.json)
+    if src_dir.resolve() == ctx.user_dir.resolve():
+        raise EditError("source 與 target 不可為同一帳號")
+
+    states = _read_card_review_states(src_dir / "cards.db")
+    sqlite_files, other_files = _clone_source_files(src_dir)
+    source_links = _count_graph_links(src_dir)
+    plan = {
+        "source_uid": src_uid,
+        "target_uid": args.target_uid,
+        "source_active_cards": _count_active_cards(src_dir / "cards.db"),
+        "source_links": source_links,
+        "synthesized_events": sum(s.review_count for s in states),
+        "files_to_copy": [p.name for p in sqlite_files] + [p.name for p in other_files],
+        "target_active_cards_before": _count_active_cards(ctx.user_dir / "cards.db"),
+        "note": "identity(users.json)不變更;目標既有 vocab 層將被覆蓋",
+    }
+
+    def apply_fn() -> dict[str, Any]:
+        tgt = ctx.user_dir
+        # 1. 先把來源檔複製到 .clone-tmp(全成功才換入,降半寫風險;EditContext 另有 tar 兜底)。
+        staged: list[tuple[Path, Path]] = []
+        for sp in sqlite_files:
+            tp = tgt / (sp.name + _CLONE_TMP_SUFFIX)
+            _sqlite_online_backup(sp, tp)
+            staged.append((tgt / sp.name, tp))
+        for sp in other_files:
+            tp = tgt / (sp.name + _CLONE_TMP_SUFFIX)
+            shutil.copy2(sp, tp)
+            staged.append((tgt / sp.name, tp))
+        # 2. 清掉目標端舊 vocab 層(孤兒 graph/embeddings、-wal/-shm、舊 review_events)。
+        removed = sorted(
+            p.name for p in tgt.iterdir() if p.is_file() and _is_vocab_file(p.name)
+        )
+        for p in tgt.iterdir():
+            if p.is_file() and _is_vocab_file(p.name):
+                p.unlink()
+        # 3. 暫存換入(換入前清 final 的 -wal/-shm,確保 SQLite 一致)。
+        for final_path, tmp_path in staged:
+            for suffix in ("-wal", "-shm"):
+                (final_path.parent / (final_path.name + suffix)).unlink(missing_ok=True)
+            tmp_path.replace(final_path)
+        # 4. 由複製後的 cards.db 合成 review events 寫入目標 review_events.db。
+        events = synthesize_many(_read_card_review_states(tgt / "cards.db"))
+        events_written = 0
+        if events:
+            store = ReviewEventStore(tgt / "review_events.db")
+            try:
+                events_written = store.insert_many(events)["inserted"]
+            finally:
+                store.close()
+        return {
+            "cloned_sqlite": [p.name for p in sqlite_files],
+            "cloned_files": [p.name for p in other_files],
+            "removed_target_files": removed,
+            "review_events_written": events_written,
+        }
+
+    def verify_fn() -> dict[str, Any]:
+        tgt = ctx.user_dir
+        active = _count_active_cards(tgt / "cards.db")
+        events = _count_review_events(tgt / "review_events.db")
+        links = _count_graph_links(tgt)
+        # 檔案完整性:衍生檔(copy2 精確複製)逐一比對來源大小,抓 truncated;SQLite 經
+        # backup API 重排頁面大小會變,只驗存在且非空。補上 count-only verify 的盲點:
+        # 一個 present-but-truncated 的 .npy 不會被卡數/連結數揪出。
+        files_ok = all(
+            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size == sp.stat().st_size
+            for sp in other_files
+        ) and all(
+            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size > 0
+            for sp in sqlite_files
+        )
+        ok = (
+            active == plan["source_active_cards"]
+            and events == plan["synthesized_events"]
+            and links == plan["source_links"]
+            and files_ok
+        )
+        return {
+            "ok": ok,
+            "target_active_cards": active,
+            "review_events": events,
+            "links": links,
+            "files_ok": files_ok,
+        }
+
+    return ctx.run(action="clone-demo", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
+
 # ── argparse ───────────────────────────────────────────────
 
 
@@ -1296,6 +1546,12 @@ def main() -> None:
     p.add_argument("uid")
     p.add_argument("spec", help="seed spec JSON 檔路徑")
     p.set_defaults(func=cmd_seed)
+
+    p = sub.add_parser("clone-demo", parents=[jp, cp],
+                       help="高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history")
+    p.add_argument("source_uid", help="來源帳號 uid(讀取,不變更)")
+    p.add_argument("target_uid", help="目標 demo 帳號 uid(覆蓋 vocab 層;identity 不動)")
+    p.set_defaults(func=cmd_clone_demo)
 
     p = sub.add_parser("list-backups", parents=[jp], help="列出某 uid 的自動備份(最新在前)")
     p.add_argument("uid")
