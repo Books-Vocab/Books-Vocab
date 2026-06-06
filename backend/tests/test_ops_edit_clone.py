@@ -203,6 +203,7 @@ def test_clone_synthesizes_review_events(tmp_path):
     assert _event_count(tmp_path, TGT) == _EXPECTED_EVENTS
     out = json.loads(r.stdout)
     assert out["verified"]["ok"] is True
+    assert out["verified"]["files_ok"] is True   # 衍生檔大小逐一比對通過
 
 
 def test_clone_preserves_target_identity(tmp_path):

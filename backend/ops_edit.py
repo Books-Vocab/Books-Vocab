@@ -1220,6 +1220,8 @@ def cmd_link_update(args: argparse.Namespace) -> int:
 # Google provider/email/subscription。
 
 # vocab 層 SQLite(以 online backup API 複製,WAL-safe;不抓 -wal/-shm/.bak)。
+# daily_review_stats.db 目前無 producer/consumer(heatmap 走合成的 review_events),
+# 但生產 user_dir 實存此檔;為高保真一併複製(.exists() guard,缺則跳過,零風險)。
 _CLONE_SQLITE = ("cards.db", "notebooks.db", "daily_review_stats.db")
 # vocab 層衍生檔(精確 glob,排除 .bak/.lock/.tmp)。
 _CLONE_GLOBS = (
@@ -1244,7 +1246,12 @@ def _is_vocab_file(name: str) -> bool:
 
 
 def _sqlite_online_backup(src: Path, dst: Path) -> None:
-    """以 SQLite online backup API 複製(WAL-safe,產出乾淨單檔,毋須 -wal/-shm)。"""
+    """以 SQLite online backup API 複製(WAL-safe,產出乾淨單檔,毋須 -wal/-shm)。
+
+    backup 持有來源讀交易快照:即使來源正被 app 寫入也得一致快照,**不** checkpoint、
+    **不**改 main db / -wal。唯一可能的副作用:來源 -shm 不存在且 -wal 有資料時,
+    開 mode=ro 會重建一個 -shm sidecar(可再生、無害),故「source 唯讀」指邏輯資料不變。
+    """
     src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
     try:
         dst_conn = sqlite3.connect(str(dst))
@@ -1424,16 +1431,28 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
         active = _count_active_cards(tgt / "cards.db")
         events = _count_review_events(tgt / "review_events.db")
         links = _count_graph_links(tgt)
+        # 檔案完整性:衍生檔(copy2 精確複製)逐一比對來源大小,抓 truncated;SQLite 經
+        # backup API 重排頁面大小會變,只驗存在且非空。補上 count-only verify 的盲點:
+        # 一個 present-but-truncated 的 .npy 不會被卡數/連結數揪出。
+        files_ok = all(
+            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size == sp.stat().st_size
+            for sp in other_files
+        ) and all(
+            (tgt / sp.name).exists() and (tgt / sp.name).stat().st_size > 0
+            for sp in sqlite_files
+        )
         ok = (
             active == plan["source_active_cards"]
             and events == plan["synthesized_events"]
             and links == plan["source_links"]
+            and files_ok
         )
         return {
             "ok": ok,
             "target_active_cards": active,
             "review_events": events,
             "links": links,
+            "files_ok": files_ok,
         }
 
     return ctx.run(action="clone-demo", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
