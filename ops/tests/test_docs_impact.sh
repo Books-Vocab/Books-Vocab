@@ -87,6 +87,78 @@ if grep -q "sop.deploy" "$tmpdir/cost.out"; then
   exit 1
 fi
 
+./ops/docs_impact.py --files ios/BooksBrowser/Services/AuthManager.swift backend/src/kg/auth_service.py >"$tmpdir/architecture.out"
+grep -q "sop.architecture" "$tmpdir/architecture.out"
+
+./ops/docs_impact.py --files ops/kg_backup.sh ops/cron/kg-backup.cron ops/backup_verify.sh >"$tmpdir/backup.out"
+grep -q "sop.backup" "$tmpdir/backup.out"
+grep -q "sop.backup_restore" "$tmpdir/backup.out"
+
+./ops/docs_impact.py --files ops/i18n_lint.sh ios/BooksBrowser/Localization/L10n.swift ios/BooksBrowser/en.lproj/Localizable.stringsdict >"$tmpdir/i18n.out"
+grep -q "sop.i18n_lint" "$tmpdir/i18n.out"
+grep -q "sop.i18n_plural_keys" "$tmpdir/i18n.out"
+
+./ops/docs_impact.py --files ops/i18n_lint.sh >"$tmpdir/i18n_tool.out"
+grep -q "sop.i18n_lint" "$tmpdir/i18n_tool.out"
+if grep -q "contract.host_topology" "$tmpdir/i18n_tool.out"; then
+  echo "i18n lint changes should not imply host topology impact" >&2
+  exit 1
+fi
+if grep -q "policy.safety" "$tmpdir/i18n_tool.out"; then
+  echo "i18n lint changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q "reference.product_surface" "$tmpdir/i18n_tool.out"; then
+  echo "i18n lint changes should not imply product surface impact" >&2
+  exit 1
+fi
+if grep -q "sop.backend" "$tmpdir/i18n_tool.out"; then
+  echo "i18n lint changes should not imply backend workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.deploy" "$tmpdir/i18n_tool.out"; then
+  echo "i18n lint changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.debug" "$tmpdir/i18n_tool.out"; then
+  echo "i18n lint changes should not imply debug workflow impact" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files lab/podcast/pipeline.py ops/podcast_upload.sh .claude/skills/podcast/SKILL.md >"$tmpdir/podcast_pipeline.out"
+grep -q "sop.podcast_pipeline" "$tmpdir/podcast_pipeline.out"
+
+./ops/docs_impact.py --files ops/podcast_upload.sh >"$tmpdir/podcast_upload.out"
+grep -q "sop.podcast_pipeline" "$tmpdir/podcast_upload.out"
+if grep -q "contract.host_topology" "$tmpdir/podcast_upload.out"; then
+  echo "podcast upload changes should not imply host topology impact" >&2
+  exit 1
+fi
+if grep -q "policy.safety" "$tmpdir/podcast_upload.out"; then
+  echo "podcast upload changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q "reference.product_surface" "$tmpdir/podcast_upload.out"; then
+  echo "podcast upload changes should not imply product surface impact" >&2
+  exit 1
+fi
+if grep -q "sop.backend" "$tmpdir/podcast_upload.out"; then
+  echo "podcast upload changes should not imply backend workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.deploy" "$tmpdir/podcast_upload.out"; then
+  echo "podcast upload changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.debug" "$tmpdir/podcast_upload.out"; then
+  echo "podcast upload changes should not imply debug workflow impact" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files lab/llm_eval/prompts/manifest.yaml lab/llm_eval/llm_eval/scoring.py >"$tmpdir/llm_eval.out"
+grep -q "reference.llm_eval" "$tmpdir/llm_eval.out"
+grep -q "sop.llm_eval" "$tmpdir/llm_eval.out"
+
 ./ops/docs_impact.py --files ops/ios_release.sh >"$tmpdir/ios_release.out"
 grep -q "sop.ios" "$tmpdir/ios_release.out"
 grep -q "reference.testing_smoke_checklist" "$tmpdir/ios_release.out"

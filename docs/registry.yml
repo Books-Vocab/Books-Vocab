@@ -60,6 +60,10 @@ documents:
       - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
       - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -81,6 +85,10 @@ documents:
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
       - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -115,6 +123,10 @@ documents:
       - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
       - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -455,6 +467,136 @@ documents:
       - .claude/skills/app-debug/
       - docs/sop/review_discipline.md
 
+  - id: sop.architecture
+    path: docs/sop/architecture.md
+    kind: sop
+    authority: derived
+    triggers:
+      - data_authority_boundary_changed
+      - account_isolation_changed
+      - offline_first_architecture_changed
+      - cross_platform_sync_architecture_changed
+    sources:
+      - ios/BooksBrowser/AppBootstrap.swift
+      - ios/BooksBrowser/Services/AuthManager*.swift
+      - ios/BooksBrowser/Services/CloudPreferencesSync.swift
+      - ios/BooksBrowser/Services/KGService*.swift
+      - ios/BooksBrowser/Models/VocabularyEntry.swift
+      - ios/BooksBrowser/Models/Notebook.swift
+      - ios/BooksBrowser/Models/Podcast*.swift
+      - backend/src/kg/auth_service.py
+      - backend/src/kg/user_store.py
+      - backend/src/kg/routers/user.py
+      - backend/src/kg/routers/notebook.py
+      - backend/src/kg/routers/podcast.py
+
+  - id: sop.backup
+    path: docs/sop/backup.md
+    kind: sop
+    authority: derived
+    triggers:
+      - backup_strategy_changed
+      - backup_retention_changed
+      - backup_monitoring_changed
+    sources:
+      - ops/kg_backup.sh
+      - ops/cron/kg-backup.cron
+      - ops/backup_verify.sh
+      - ops/tests/test_backup_verify.sh
+      - docs/sop/backup_restore.md
+      - docs/reference/cost_baseline.md
+
+  - id: sop.backup_restore
+    path: docs/sop/backup_restore.md
+    kind: sop
+    authority: derived
+    triggers:
+      - restore_workflow_changed
+      - backup_artifact_contract_changed
+      - backup_safety_boundary_changed
+    sources:
+      - ops/kg_backup.sh
+      - ops/cron/kg-backup.cron
+      - ops/backup_verify.sh
+      - ops/tests/test_backup_verify.sh
+      - docs/sop/backup.md
+      - docs/runbook/system.md
+
+  - id: sop.i18n_lint
+    path: docs/sop/i18n_lint.md
+    kind: sop
+    authority: derived
+    triggers:
+      - i18n_lint_rule_changed
+      - localization_workflow_changed
+      - localization_key_extraction_changed
+    sources:
+      - ops/i18n_lint.sh
+      - ops/_i18n_extract_keys.py
+      - ops/_i18n_strip_previews.py
+      - ops/i18n_baseline.txt
+      - ios/BooksBrowser/Localization/L10n.swift
+      - ios/BooksBrowser/*.lproj/Localizable.strings
+      - ios/BooksBrowser/*.lproj/Localizable.xcstrings
+
+  - id: sop.i18n_plural_keys
+    path: docs/sop/i18n_plural_keys.md
+    kind: sop
+    authority: derived
+    triggers:
+      - plural_key_contract_changed
+      - stringdict_changed
+      - localization_format_changed
+    sources:
+      - ops/i18n_lint.sh
+      - ops/_i18n_extract_keys.py
+      - ios/BooksBrowser/Localization/L10n.swift
+      - ios/BooksBrowser/*.lproj/Localizable.stringsdict
+
+  - id: sop.podcast_pipeline
+    path: docs/sop/podcast_pipeline.md
+    kind: sop
+    authority: derived
+    triggers:
+      - podcast_pipeline_stage_changed
+      - podcast_upload_workflow_changed
+      - podcast_monitor_workflow_changed
+      - podcast_tts_or_subtitle_changed
+    sources:
+      - lab/podcast/
+      - ops/podcast_upload.sh
+      - ops/podcast_ops.py
+      - ops/podcast_cover_publish.py
+      - ops/podcast_preview_backfill.py
+      - .claude/skills/podcast/
+
+  - id: reference.llm_eval
+    path: docs/reference/llm_eval.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - llm_eval_api_changed
+      - prompt_registry_changed
+      - eval_dataset_changed
+      - eval_scoring_changed
+    sources:
+      - lab/llm_eval/
+      - ops/prompt_sync_lint.sh
+
+  - id: sop.llm_eval
+    path: docs/sop/llm_eval.md
+    kind: sop
+    authority: derived
+    triggers:
+      - llm_eval_workflow_changed
+      - prompt_change_workflow_changed
+      - eval_run_policy_changed
+    sources:
+      - lab/llm_eval/
+      - docs/reference/llm_eval.md
+      - ops/prompt_sync_lint.sh
+      - backend/src/kg/llm/providers.py
+
   - id: sop.backend
     path: docs/sop/backend.md
     kind: sop
@@ -475,6 +617,10 @@ documents:
       - "!backend/src/kg/routers/*.py"
       - "!ops/devops_kg_safe.sh"
       - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -512,6 +658,10 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -538,6 +688,10 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"

@@ -28,6 +28,11 @@ if grep -Eq "docs/(runbook/system|reference/testing/(backend_strategy|smoke_chec
   cat "$tmpdir/coverage.out" >&2
   exit 1
 fi
+if grep -Eq "docs/(sop/(architecture|backup|backup_restore|i18n_lint|i18n_plural_keys|podcast_pipeline|llm_eval)|reference/llm_eval)\\.md" "$tmpdir/coverage.out"; then
+  echo "agent-routed architecture/i18n/podcast/eval docs should all be registered" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
 
 ./ops/docs_registry_coverage.py --json >"$tmpdir/coverage.json"
 grep -q '"registered_count"' "$tmpdir/coverage.json"
@@ -44,6 +49,11 @@ if grep -Eq '"docs/(sop/ui-design|reference/ui/)' "$tmpdir/coverage.json"; then
 fi
 if grep -Eq '"docs/(runbook/system|reference/testing/(backend_strategy|smoke_checklist)|reference/cost_baseline|sop/(cost_review|review_discipline))\\.md' "$tmpdir/coverage.json"; then
   echo "agent-routed operational docs should all be registered in JSON output" >&2
+  cat "$tmpdir/coverage.json" >&2
+  exit 1
+fi
+if grep -Eq '"docs/(sop/(architecture|backup|backup_restore|i18n_lint|i18n_plural_keys|podcast_pipeline|llm_eval)|reference/llm_eval)\\.md' "$tmpdir/coverage.json"; then
+  echo "agent-routed architecture/i18n/podcast/eval docs should all be registered in JSON output" >&2
   cat "$tmpdir/coverage.json" >&2
   exit 1
 fi
