@@ -203,7 +203,7 @@ struct TodayReviewPresenter: View {
         let cardIdentity = "review-card-\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
         let _ = PerfLog.render.tick(
             "todayReview.card.body",
-            "word=\(card.word) reveal=\(state.revealStage.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
+            "chars=\(card.word.count) reveal=\(state.revealStage.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
         )
 
         return ZStack(alignment: .top) {
