@@ -6,6 +6,10 @@ struct SettingsReviewSection: View {
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
+    /// 樂觀寫本地+iCloud + push 後端 + 失敗 rollback 全由 coordinator 一條龍處理。
+    /// preview / 無 network 場景用 no-op default。
+    var onPauseChanged: (Bool) async -> Void = { _ in }
+
     var body: some View {
         ScrollView {
             VStack(spacing: AppShellMetrics.sectionSpacing) {
@@ -58,13 +62,8 @@ struct SettingsReviewSection: View {
         Binding(
             get: { reviewSettingsStore.settings.isProgressPaused },
             set: { isPaused in
-                var updated = reviewSettingsStore.settings
-                if isPaused {
-                    updated.pauseProgress()
-                } else {
-                    updated.resumeProgress()
-                }
-                reviewSettingsStore.update(updated)
+                // 樂觀更新 + push 後端 + 失敗 rollback 全交給 coordinator.updateReviewClock。
+                Task { await onPauseChanged(isPaused) }
             }
         )
     }
