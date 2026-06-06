@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from kg.api_models import (
     AuthVerifyRequest,
-    DailyReviewStatEntry,
     ManualLinkRequest,
     NotebookCreateRequest,
     NotebookUpdateRequest,
@@ -135,22 +134,3 @@ class TestReviewStateEntryValidation:
         e = self._valid_entry()
         assert e.review_count == 0
 
-
-# --- DailyReviewStatEntry: day_key pattern + non-negative counts ---
-
-
-class TestDailyReviewStatEntryValidation:
-    def test_invalid_day_key_rejected(self):
-        with pytest.raises(ValidationError):
-            DailyReviewStatEntry(day_key="March 10", total=5, remembered=4, forgot=1)
-
-    def test_valid_day_key_accepted(self):
-        e = DailyReviewStatEntry(day_key="2026-03-10", total=5, remembered=4, forgot=1)
-        assert e.day_key == "2026-03-10"
-
-    @pytest.mark.parametrize("count_field", ["total", "remembered", "forgot"])
-    def test_negative_count_rejected(self, count_field):
-        counts = dict(total=5, remembered=0, forgot=0)
-        counts[count_field] = -1
-        with pytest.raises(ValidationError):
-            DailyReviewStatEntry(day_key="2026-03-10", **counts)

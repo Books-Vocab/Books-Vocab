@@ -51,7 +51,6 @@ from .deps import (  # noqa: F401
     _create_jwt_token,
     _current_admin_grant_record,
     _current_subscription_record,
-    _daily_stats_store,
     _default_subscription_payload,
     _embedding_store,
     _get_settings,
@@ -109,9 +108,7 @@ from .routers.vocab import (  # noqa: F401
     get_graph_links,
     list_vocab,
     lookup_word,
-    pull_daily_stats,
     pull_review_events,
-    push_daily_stats,
     push_review_events,
     push_review,
 )
