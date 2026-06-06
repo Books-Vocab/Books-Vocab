@@ -122,6 +122,17 @@ extension KGService {
         return config
     }
 
+    func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
+        let config = try await userConfigClient.updateReviewModeConfig(
+            baseURL: baseURL,
+            token: token,
+            reviewMode: reviewMode
+        )
+        AppLog.kg.info("Updated review mode config successfully")
+        return config
+    }
+
     func deleteAccount() async throws {
         try await authenticatedVoid(path: "api/user/account", method: "DELETE")
     }

@@ -67,3 +67,30 @@ class ReviewClockConfig(BaseModel):
         if not self.is_paused and self.paused_at is not None:
             self.paused_at = None
         return self
+
+
+class ReviewModeConfig(BaseModel):
+    """Per-user 複習模式 + 自訂 SRS 參數(對標 ReviewClockConfig 走 user config)。
+
+    `mode` + 5 個 `custom_*` 參數為**複合原子狀態**:custom 參數只在 mode="custom"
+    時生效,但即使 mode 為 relaxed/intensive 仍保存使用者調過的值。單一 `updated_at`
+    (epoch 秒)驅動跨裝置 LWW — 整組共用一個時戳,確保收斂(不會 mode 取一邊、custom
+    參數取另一邊形成半套狀態)。對 client 寬鬆:非法 mode 由 validator 正規化為
+    "relaxed",custom 參數不 reject(client UI 已 bound,為 SoT;後端寬鬆存原值)。
+
+    default 對標 iOS `ReviewSettings.default`(relaxed / 12 / 1.9 / 0.45 / 6 / 1440)。
+    """
+
+    mode: str = "relaxed"  # relaxed / intensive / custom
+    custom_initial_interval_hours: float = 12
+    custom_remembered_multiplier: float = 1.9
+    custom_forgot_multiplier: float = 0.45
+    custom_minimum_interval_hours: float = 6
+    custom_maximum_interval_hours: float = 1440
+    updated_at: float | None = None  # LWW timestamp, epoch 秒
+
+    @model_validator(mode="after")
+    def _normalize_mode(self) -> ReviewModeConfig:
+        if self.mode not in ("relaxed", "intensive", "custom"):
+            self.mode = "relaxed"
+        return self
