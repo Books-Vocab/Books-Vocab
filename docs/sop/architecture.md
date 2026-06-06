@@ -142,6 +142,33 @@ Migration 順序：
 - 改 sync 狀態流轉時，同步 `docs/reference/sync_lifecycle.md`。
 - 只寫目標規劃而未實作 endpoint/schema 時，不更新 reference SoT，以免把 roadmap 誤標成產品現況。
 
+### Verification and rollback gates
+
+每個資料權威遷移 PR 必須能獨立回滾。後端新增欄位與 endpoint 先上線、舊 client 可忽略；iOS 再逐步讀寫；最後才移除 Apple-only authority。
+
+必備驗證：
+
+- **Backend contract tests**：partial PATCH 不覆蓋缺欄位、`updated_at` LWW、stale write 被拒或回傳現有值、tombstone 不復活。
+- **iOS unit tests**：fetch 失敗 fallback、本機 optimistic update rollback、logout/account-switch 清 projection、migration 重跑冪等。
+- **Cross-device scenario**：A 離線改、本機 outbox；B 線上改；A 回線後依 contract 收斂，不可雙方互相覆寫成舊值。
+- **Backward compatibility**：舊 iOS 對新增 response domain 忽略不 crash；新 iOS 對舊 backend 缺 domain 使用本機 fallback。
+- **Docs gate**：實作 PR 必須更新 reference SoT；規劃 PR 只能更新 SOP，避免產品現況污染。
+
+Rollback 規則：
+
+- 後端 schema 加欄位 / table 時先 additive，不在同 PR 刪舊資料。
+- iOS feature flag 預設可關閉 server-authoritative domain，關閉後回到本機 cache / legacy sync。
+- Migration 必須冪等：同一 `client_id` / `event_id` / `client_book_id` 重送不產生 duplicate。
+- 刪除 / tombstone rollout 前不得 hard-delete remote asset；先保留 recovery window。
+- CloudKit / iCloud KVS 退場只能在至少一個發版週期觀測無嚴重 drift 後進行。
+
+Operational observability：
+
+- Backend 對 migration write path 記錄 accepted / stale / rejected / duplicate counters。
+- Admin 或 log 查詢需能按 user id 檢查 config、podcast progress、library metadata 的 remote 狀態。
+- iOS sync log 需能區分 fetch failed、merge skipped、rollback、migration already done。
+- 若 drift 偵測發現 server 缺少本機已存在的 migrated entity，client 應補推而非靜默刪本機。
+
 ---
 
 ## 核心資料模型: `VocabularyEntry` & `AuthManager`
