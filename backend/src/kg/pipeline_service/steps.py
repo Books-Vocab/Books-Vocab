@@ -49,11 +49,18 @@ async def _step_enrich(
         return 0
 
     from ..enrich import enrich_cards_stream
+    from ..deps_quota import _is_pro
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
 
     provider = provider_for("enrich")
-    llm = TrackedLLM(client_factory(provider), uid, provider=provider)
+    llm = TrackedLLM(
+        client_factory(provider),
+        uid,
+        provider=provider,
+        enforce_quota=True,
+        is_pro=_is_pro(user),
+    )
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
 
@@ -103,14 +110,22 @@ async def _step_embed_and_judge(
 ) -> int:
     """Combined embed + judge step. Replaces _step_embed + _step_link."""
     from ..judge import Judge
+    from ..deps_quota import _is_pro
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
+    is_pro = _is_pro(user)
 
     cards = card_store_factory(user["dir"])
     # `embed` resolves independently of the chat default — DeepSeek has no
     # embeddings endpoint, so flipping LLM_PROVIDER_DEFAULT must not drag it.
     embed_provider = provider_for("embed")
-    embed_llm = TrackedLLM(client_factory(embed_provider), uid, provider=embed_provider)
+    embed_llm = TrackedLLM(
+        client_factory(embed_provider),
+        uid,
+        provider=embed_provider,
+        enforce_quota=True,
+        is_pro=is_pro,
+    )
     embeddings = embedding_store_factory(user["dir"], llm=embed_llm, notebook_id=notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
 
@@ -143,7 +158,13 @@ async def _step_embed_and_judge(
 
     logger.info("[%s] Judging %d pending cards", uid, len(pending))
     judge_provider = provider_for("judge")
-    judge_llm = TrackedLLM(client_factory(judge_provider), uid, provider=judge_provider)
+    judge_llm = TrackedLLM(
+        client_factory(judge_provider),
+        uid,
+        provider=judge_provider,
+        enforce_quota=True,
+        is_pro=is_pro,
+    )
     from ..settings import load_settings
     judge = Judge(
         judge_llm, model=judge_provider.chat_model,

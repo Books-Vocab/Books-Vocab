@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 
 import pytest
@@ -120,6 +121,91 @@ class TestUserLocksLRU:
 
 
 class TestInputValidation:
+    def test_validation_error_log_redacts_secret_body_fields(self, client_env, caplog):
+        client, _user_id, _headers, _ = client_env
+
+        caplog.set_level(logging.WARNING, logger="kg.api")
+        r = client.post(
+            "/auth/verify",
+            json={"provider": "invalid-provider", "token": "secret-provider-token"},
+        )
+
+        assert r.status_code == 422, r.text
+        assert "secret-provider-token" not in caplog.text
+        assert "secret-provider-token" not in r.text
+        assert "[REDACTED]" in caplog.text
+
+    def test_validation_error_log_redacts_secret_error_input(self, client_env, caplog):
+        client, _user_id, _headers, _ = client_env
+        oversized_token = "secret-provider-token-" + ("x" * 10000)
+
+        caplog.set_level(logging.WARNING, logger="kg.api")
+        r = client.post(
+            "/auth/verify",
+            json={"provider": "apple", "token": oversized_token},
+        )
+
+        assert r.status_code == 422, r.text
+        assert "secret-provider-token" not in caplog.text
+        assert "secret-provider-token" not in r.text
+        assert "[REDACTED]" in caplog.text
+        assert r.json()["detail"][0]["input"] == "[REDACTED]"
+
+    def test_validation_error_log_redacts_camel_case_secret_body_fields(self, client_env, caplog):
+        client, _user_id, headers, _ = client_env
+
+        caplog.set_level(logging.WARNING, logger="kg.api")
+        r = client.post(
+            "/api/vocab",
+            json=[{"word": "x" * 201, "translation": "test", "accessToken": "secret-access-token"}],
+            headers=headers,
+        )
+
+        assert r.status_code == 422, r.text
+        assert "secret-access-token" not in caplog.text
+        assert "[REDACTED]" in caplog.text
+
+    def test_validation_error_redacts_camel_case_secret_error_input(self):
+        redacted = api_mod._redact_validation_payload(
+            [{"loc": ["body", "accessToken"], "input": "secret-access-token"}]
+        )
+
+        assert redacted == [{"loc": ["body", "accessToken"], "input": "[REDACTED]"}]
+
+    def test_validation_redaction_covers_common_secret_key_styles(self):
+        redacted = api_mod._redact_validation_payload(
+            {
+                "api_key": "secret-api-key",
+                "apiKey": "secret-api-key-camel",
+                "client-secret": "secret-client",
+                "secret": "secret-generic",
+                "safe": "visible",
+            }
+        )
+
+        assert redacted == {
+            "api_key": "[REDACTED]",
+            "apiKey": "[REDACTED]",
+            "client-secret": "[REDACTED]",
+            "secret": "[REDACTED]",
+            "safe": "visible",
+        }
+
+    def test_validation_body_regex_redacts_non_json_secret_keys(self):
+        redacted = api_mod._redact_validation_body(
+            "apiKey=secret-api-key&client-secret=secret-client&safe=visible"
+        )
+
+        assert redacted == "[non-json body omitted: secret-like field present]"
+        assert "secret-api-key" not in redacted
+        assert "secret-client" not in redacted
+
+    def test_validation_body_truncates_non_json_without_secret_keys(self):
+        redacted = api_mod._redact_validation_body("safe=" + ("x" * 1000))
+
+        assert redacted is not None
+        assert len(redacted) == 500
+        assert redacted.startswith("safe=")
 
     def test_translate_word_too_long_returns_422(self, client_env):
         client, user_id, headers, _ = client_env

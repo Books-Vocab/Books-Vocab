@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import NamedTuple
 
+from .exceptions import QuotaExceededError
 from .llm.providers import REGISTRY, LLMProvider, provider_for
 from .token_tracker import _get_conn, _lock
 from .types import QuotaCheck, QuotaState
@@ -139,16 +140,42 @@ def estimate_call_cost(call_type: str) -> float:
 _reservations: dict[int, tuple[str, float]] = {}
 _reservation_ids = itertools.count(1)
 _reservation_lock = threading.Lock()
+_reservation_version = 0
 
 
 def _reserved_usd(user_id: str) -> float:
     """Sum of outstanding in-flight reservations for a user."""
     with _reservation_lock:
-        return sum(cost for uid, cost in _reservations.values() if uid == user_id)
+        return _reserved_usd_unlocked(user_id)
+
+
+def _reserved_usd_unlocked(user_id: str) -> float:
+    return sum(cost for uid, cost in _reservations.values() if uid == user_id)
+
+
+def _admission_usage_snapshot(user_id: str) -> tuple[float, float]:
+    """Return a conservative recorded/reserved snapshot for admission.
+
+    SQLite reads must happen outside `_reservation_lock` to avoid lock-order
+    inversion with token recording. If any reservation changes while the DB
+    read is in progress, an in-flight call may have moved from "reserved" to
+    "recorded"; retry so the recorded side catches up instead of under-counting
+    both sides. A version check catches equal-sum swaps (A releases, B adds)
+    that a plain reserved total comparison would miss.
+    """
+    while True:
+        with _reservation_lock:
+            version_before = _reservation_version
+        recorded = _recorded_usd(user_id)
+        with _reservation_lock:
+            version_after = _reservation_version
+            reserved_after = _reserved_usd_unlocked(user_id)
+        if version_after == version_before:
+            return recorded, reserved_after
 
 
 @contextmanager
-def reserve(user_id: str, estimated_usd: float):
+def reserve(user_id: str, estimated_usd: float, *, enforce: bool = False, is_pro: bool = False):
     """Hold an in-flight quota reservation for the duration of a call.
 
     Usage::
@@ -165,19 +192,39 @@ def reserve(user_id: str, estimated_usd: float):
         yield
         return
     rid = next(_reservation_ids)
+    # Do SQLite reads outside `_reservation_lock`; `_admission_usage_snapshot`
+    # retries if a concurrent reservation is released during the read.
+    recorded, reserved_snapshot = _admission_usage_snapshot(user_id) if enforce else (0.0, 0.0)
     with _reservation_lock:
+        global _reservation_version
+        if enforce:
+            reserved = max(reserved_snapshot, _reserved_usd_unlocked(user_id))
+            limit = _daily_limit(is_pro)
+            if recorded + reserved + float(estimated_usd) > limit:
+                raise QuotaExceededError(
+                    _ROLLING_WINDOW_SECONDS,
+                    headers={
+                        "X-Quota-Fraction": "0.0",
+                        "X-Quota-Reset": str(_ROLLING_WINDOW_SECONDS),
+                    },
+                )
         _reservations[rid] = (user_id, float(estimated_usd))
+        _reservation_version += 1
     try:
         yield
     finally:
         with _reservation_lock:
-            _reservations.pop(rid, None)
+            if _reservations.pop(rid, None) is not None:
+                _reservation_version += 1
 
 
 def clear_reservations() -> None:
     """Drop all outstanding reservations (test isolation / shutdown)."""
     with _reservation_lock:
-        _reservations.clear()
+        global _reservation_version
+        if _reservations:
+            _reservations.clear()
+            _reservation_version += 1
 
 
 def _row_cost(call_type: str, provider: str | None, total_in: int | None, total_out: int | None) -> float:
@@ -192,13 +239,8 @@ def _window_cutoff_iso() -> str:
     return datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
 
 
-def _used_usd(user_id: str) -> float:
-    """Recorded USD cost (last 24 h) PLUS outstanding in-flight reservations.
-
-    Folding reservations in here means every quota reader — `check_quota`,
-    `check_and_get_quota`, `get_quota_state` — defends the pre-flight gap
-    without each having to know about reservations.
-    """
+def _recorded_usd(user_id: str) -> float:
+    """Recorded USD cost (last 24 h), excluding in-flight reservations."""
     cutoff_iso = _window_cutoff_iso()
 
     with _lock:
@@ -217,7 +259,18 @@ def _used_usd(user_id: str) -> float:
     total = 0.0
     for call_type, provider, total_in, total_out in rows:
         total += _row_cost(call_type, provider, total_in, total_out)
-    return total + _reserved_usd(user_id)
+    return total
+
+
+def _used_usd(user_id: str) -> float:
+    """Recorded USD cost (last 24 h) PLUS outstanding in-flight reservations.
+
+    Folding reservations in here means every quota reader — `check_quota`,
+    `check_and_get_quota`, `get_quota_state` — defends the pre-flight gap
+    without each having to know about reservations.
+    """
+    recorded, reserved = _admission_usage_snapshot(user_id)
+    return recorded + reserved
 
 
 class _QuotaView(NamedTuple):
