@@ -25,6 +25,10 @@ const {
   normalizeVocabItem,
   normalizeNotebookList,
   normalizeNotebookItem,
+  validateNotebookName,
+  buildNotebookCreatePayload,
+  buildNotebookUpdatePayload,
+  canDeleteNotebook,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,
@@ -189,6 +193,27 @@ test('normalizeNotebookItem canonicalizes notebook API fields', () => {
   );
   assert.equal(normalizeNotebookItem({}).id, 'default');
   assert.equal(normalizeNotebookItem({}).name, '我的單字本');
+});
+
+test('validateNotebookName mirrors backend bounds and trims input', () => {
+  assert.deepEqual(validateNotebookName(' 閱讀 '), { ok: true, value: '閱讀', error: null });
+  assert.equal(validateNotebookName('   ').ok, false);
+  assert.equal(validateNotebookName('x'.repeat(101)).ok, false);
+  assert.equal(validateNotebookName(null).ok, false);
+});
+
+test('buildNotebookCreatePayload / update payload use backend field names', () => {
+  assert.deepEqual(buildNotebookCreatePayload(' 閱讀 '), { name: '閱讀' });
+  assert.deepEqual(buildNotebookUpdatePayload(' 新名字 '), { name: '新名字' });
+  assert.equal(buildNotebookCreatePayload('  '), null);
+  assert.equal(buildNotebookUpdatePayload('x'.repeat(101)), null);
+});
+
+test('canDeleteNotebook blocks default/deleted/missing notebooks', () => {
+  assert.equal(canDeleteNotebook({ id: 'default', isDefault: true, isDeleted: false }), false);
+  assert.equal(canDeleteNotebook({ id: 'nb1', isDefault: false, isDeleted: false }), true);
+  assert.equal(canDeleteNotebook({ id: 'nb1', isDefault: false, isDeleted: true }), false);
+  assert.equal(canDeleteNotebook(null), false);
 });
 
 // ---------------------------------------------------------------------------

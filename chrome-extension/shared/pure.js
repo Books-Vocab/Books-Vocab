@@ -100,6 +100,28 @@ function normalizeNotebookItem(item) {
   };
 }
 
+function validateNotebookName(value) {
+  const name = String(value == null ? '' : value).trim();
+  if (!name) return { ok: false, value: '', error: 'empty' };
+  if (name.length > 100) return { ok: false, value: name, error: 'too_long' };
+  return { ok: true, value: name, error: null };
+}
+
+function buildNotebookCreatePayload(name) {
+  const valid = validateNotebookName(name);
+  return valid.ok ? { name: valid.value } : null;
+}
+
+function buildNotebookUpdatePayload(name) {
+  const valid = validateNotebookName(name);
+  return valid.ok ? { name: valid.value } : null;
+}
+
+function canDeleteNotebook(notebook) {
+  const nb = notebook && typeof notebook === 'object' ? notebook : null;
+  return !!(nb && nb.id && nb.id !== 'default' && !nb.isDefault && !nb.isDeleted);
+}
+
 /**
  * Normalise a single raw vocab payload into one canonical shape, collapsing the
  * snake_case-vs-camelCase / legacy field aliases the panel must otherwise paper
@@ -938,6 +960,10 @@ const KGPureExports = {
   normalizeVocabItem,
   normalizeNotebookList,
   normalizeNotebookItem,
+  validateNotebookName,
+  buildNotebookCreatePayload,
+  buildNotebookUpdatePayload,
+  canDeleteNotebook,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,

@@ -86,7 +86,7 @@ verified_against: c06dadb1
 ## Chrome Extension (`chrome-extension/`)
 
 - Side panel vocab lookup
-- Chrome notebook scope：side panel 先讀 `/api/notebooks`，以 `active_notebook_id` 持久化目前單字本，`GET /api/vocab?notebook_id=...` 只顯示該本；若儲存的 notebook 已不存在則回落 canonical `default`。content popup 加詞讀同一 storage key，使網頁選詞寫入目前單字本而非永遠 default。
+- Chrome notebook scope + 管理：side panel 先讀 `/api/notebooks`，以 `active_notebook_id` 持久化目前單字本，`GET /api/vocab?notebook_id=...` 只顯示該本；若儲存的 notebook 已不存在則回落 canonical `default`。content popup 加詞讀同一 storage key，使網頁選詞寫入目前單字本而非永遠 default。scope row 提供 icon-only 新增 / 重新命名 / 刪除（default notebook 不可刪），name-only sheet 走 backend notebook CRUD，名稱驗證 1..100 字元。
 - 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
 - 單字本 row 點開全幅 word-detail push 面板（覆蓋於 list 上保留 scroll/search/filter）：hero(詞+詞性+難度+TTS) → 例句(目標詞 highlight，`markWordInExample`+`parseInlineMarks` 對標 iOS) → 釋義/定義 → 搭配 → 變化形 → 知識連結(對比/相關 group，本地語料命中可導航 push/back) → 複習進度 → metadata footer → 來源；TTS 走裝置端 Web Speech API；top bar share action 先走 Web Share、fallback clipboard，純文字格式由 `vocabPlainTextExport` 對齊 iOS `CardDocument.plainTextExport`；唯讀無 mutation
 - 跨 context 詞庫刷新：頁面 popup 加入單字後 background bump storage `vocab_dirty`，side panel `storage.onChanged` → 非破壞性靜默刷新（保留 search/filter/sort/scroll/開啟中的 detail）

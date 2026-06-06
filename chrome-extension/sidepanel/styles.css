@@ -116,6 +116,148 @@ body {
   font-weight: 700;
 }
 
+.kg-notebook-switcher__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--tint);
+  cursor: pointer;
+  transition: background var(--motion-quick), color var(--motion-quick),
+              transform var(--spring-press), opacity var(--spring-press);
+}
+
+.kg-notebook-switcher__icon:hover:not(:disabled) {
+  background: var(--muted-fill);
+  color: var(--text-primary);
+}
+
+.kg-notebook-switcher__icon:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+  opacity: var(--press-opacity);
+}
+
+.kg-notebook-switcher__icon:disabled {
+  cursor: default;
+  opacity: 0.32;
+}
+
+.kg-notebook-switcher__icon--danger:hover:not(:disabled) {
+  color: var(--destructive);
+}
+
+.kg-notebook-switcher__icon svg { width: 16px; height: 16px; display: block; }
+
+/* --- Notebook sheet ------------------------------------------------------- */
+
+.kg-notebook-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.kg-notebook-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+
+.kg-notebook-sheet__panel {
+  position: relative;
+  z-index: 1;
+  width: min(100% - (var(--page-h-padding) * 2), 360px);
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-shadow: var(--elevation-z3);
+}
+
+.kg-notebook-sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.kg-notebook-sheet__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-h2);
+  line-height: var(--leading-display);
+  color: var(--text-primary);
+}
+
+.kg-notebook-sheet__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--tint);
+  cursor: pointer;
+}
+
+.kg-notebook-sheet__close:hover {
+  background: var(--muted-fill);
+  color: var(--text-primary);
+}
+
+.kg-notebook-sheet__close svg { width: 16px; height: 16px; display: block; }
+
+.kg-notebook-sheet__label {
+  display: block;
+  margin-bottom: var(--sp-1);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.kg-notebook-sheet__input {
+  width: 100%;
+  height: 38px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+}
+
+.kg-notebook-sheet__error {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--text-caption);
+  color: var(--destructive);
+}
+
+.kg-notebook-sheet__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.kg-notebook-sheet__delete {
+  margin-right: auto;
+  color: var(--destructive);
+  background: var(--destructive-bg);
+}
+
 /* --- Filter + Sort Bar (mirrors iOS KGVocabPresenter) --------------------- */
 
 .kg-filter-bar {

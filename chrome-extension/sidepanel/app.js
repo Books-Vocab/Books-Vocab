@@ -30,6 +30,18 @@ const filterChips  = $('#filterChips');
 const filterActions = $('#filterActions');
 const notebookSwitcher = $('#notebookSwitcher');
 const notebookSelect = $('#notebookSelect');
+const notebookAddBtn = $('#notebookAddBtn');
+const notebookEditBtn = $('#notebookEditBtn');
+const notebookDeleteBtn = $('#notebookDeleteBtn');
+const notebookSheet = $('#notebookSheet');
+const notebookSheetScrim = $('#notebookSheetScrim');
+const notebookForm = $('#notebookForm');
+const notebookSheetTitle = $('#notebookSheetTitle');
+const notebookSheetClose = $('#notebookSheetClose');
+const notebookNameInput = $('#notebookNameInput');
+const notebookSheetError = $('#notebookSheetError');
+const notebookSheetDelete = $('#notebookSheetDelete');
+const notebookSheetSubmit = $('#notebookSheetSubmit');
 const stateDetail  = $('#stateDetail');
 const detailBack   = $('#detailBack');
 const detailShare  = $('#detailShare');
@@ -66,6 +78,9 @@ let notebooks = [];
 
 /** Active notebook scope for list/add parity with iOS. */
 let activeNotebookId = 'default';
+
+/** @type {'create'|'rename'|null} */
+let notebookSheetMode = null;
 
 /**
  * Selected review-state filter (iOS multi-select chips). Empty = show all.
@@ -117,6 +132,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (notebookSelect) {
     notebookSelect.addEventListener('change', onNotebookChanged);
   }
+  if (notebookAddBtn) {
+    KGIcons.setIcon(notebookAddBtn, 'plus');
+    notebookAddBtn.addEventListener('click', () => openNotebookSheet('create'));
+  }
+  if (notebookEditBtn) {
+    KGIcons.setIcon(notebookEditBtn, 'pencil');
+    notebookEditBtn.addEventListener('click', () => openNotebookSheet('rename'));
+  }
+  if (notebookDeleteBtn) {
+    KGIcons.setIcon(notebookDeleteBtn, 'trash');
+    notebookDeleteBtn.addEventListener('click', () => openNotebookSheet('rename', { focusDelete: true }));
+  }
+  if (notebookSheetClose) {
+    KGIcons.setIcon(notebookSheetClose, 'xmark');
+    notebookSheetClose.addEventListener('click', closeNotebookSheet);
+  }
+  if (notebookSheetScrim) notebookSheetScrim.addEventListener('click', closeNotebookSheet);
+  if (notebookForm) notebookForm.addEventListener('submit', submitNotebookForm);
+  if (notebookSheetDelete) notebookSheetDelete.addEventListener('click', deleteActiveNotebook);
 
   // Word detail panel — back navigation + delegated speaker / link-nav actions.
   KGIcons.setIcon(detailBack, 'chevron-left');
@@ -126,6 +160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   detailBody.addEventListener('click', onDetailAction);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !stateDetail.hidden) popDetail();
+    else if (e.key === 'Escape' && notebookSheet && !notebookSheet.hidden) closeNotebookSheet();
   });
 
   // React to cross-context storage changes.
@@ -380,7 +415,19 @@ function renderNotebookSwitcher(items) {
     opt.selected = nb.id === activeNotebookId;
     notebookSelect.appendChild(opt);
   }
+  syncNotebookActionButtons();
   notebookSwitcher.hidden = false;
+}
+
+function syncNotebookActionButtons() {
+  const nb = currentNotebook();
+  const canDelete = KGPure.canDeleteNotebook(nb);
+  if (notebookEditBtn) notebookEditBtn.disabled = !nb;
+  if (notebookDeleteBtn) notebookDeleteBtn.disabled = !canDelete;
+}
+
+function currentNotebook() {
+  return notebooks.find((nb) => nb.id === activeNotebookId) || null;
 }
 
 async function onNotebookChanged() {
@@ -389,6 +436,104 @@ async function onNotebookChanged() {
   activeNotebookId = next;
   await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
   loadVocabList();
+}
+
+function openNotebookSheet(mode, options = {}) {
+  const nb = currentNotebook();
+  notebookSheetMode = mode;
+  if (!notebookSheet || !notebookNameInput || !notebookSheetTitle || !notebookSheetSubmit) return;
+  clearNotebookSheetError();
+  notebookSheetTitle.textContent = mode === 'create'
+    ? t('notebookAdd')
+    : (options.focusDelete ? t('notebookManage') : t('notebookRename'));
+  notebookNameInput.value = mode === 'create' ? '' : ((nb && nb.name) || '');
+  notebookNameInput.placeholder = t('notebookNamePlaceholder');
+  notebookSheetSubmit.textContent = mode === 'create' ? t('notebookCreateSubmit') : t('notebookRenameSubmit');
+  const canDelete = mode === 'rename' && KGPure.canDeleteNotebook(nb);
+  if (notebookSheetDelete) {
+    notebookSheetDelete.hidden = !canDelete;
+    notebookSheetDelete.textContent = t('notebookDelete');
+  }
+  notebookSheet.hidden = false;
+  setTimeout(() => {
+    if (options.focusDelete && canDelete && notebookSheetDelete) notebookSheetDelete.focus();
+    else notebookNameInput.focus();
+  }, 0);
+}
+
+function closeNotebookSheet() {
+  if (notebookSheet) notebookSheet.hidden = true;
+  notebookSheetMode = null;
+  clearNotebookSheetError();
+}
+
+function clearNotebookSheetError() {
+  if (!notebookSheetError) return;
+  notebookSheetError.textContent = '';
+  notebookSheetError.hidden = true;
+}
+
+function showNotebookSheetError(message) {
+  if (!notebookSheetError) return;
+  notebookSheetError.textContent = message;
+  notebookSheetError.hidden = false;
+}
+
+async function submitNotebookForm(event) {
+  event.preventDefault();
+  if (!notebookSheetMode || !notebookNameInput || !notebookSheetSubmit) return;
+  clearNotebookSheetError();
+  const payload = notebookSheetMode === 'create'
+    ? KGPure.buildNotebookCreatePayload(notebookNameInput.value)
+    : KGPure.buildNotebookUpdatePayload(notebookNameInput.value);
+  if (!payload) {
+    showNotebookSheetError(t('notebookNameInvalid'));
+    return;
+  }
+  notebookSheetSubmit.disabled = true;
+  try {
+    const msg = notebookSheetMode === 'create'
+      ? { type: 'createNotebook', notebook: payload }
+      : { type: 'updateNotebook', notebookId: activeNotebookId, patch: payload };
+    const response = await chrome.runtime.sendMessage(msg);
+    if (response == null || response.error) {
+      showNotebookSheetError((response && response.message) || t('notebookSaveError'));
+      return;
+    }
+    const nb = KGPure.normalizeNotebookItem(response);
+    activeNotebookId = nb.id || activeNotebookId;
+    await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    closeNotebookSheet();
+    await loadVocabList();
+  } catch (err) {
+    console.error('[KG] submitNotebookForm failed:', err);
+    showNotebookSheetError(t('notebookSaveError'));
+  } finally {
+    notebookSheetSubmit.disabled = false;
+  }
+}
+
+async function deleteActiveNotebook() {
+  const nb = currentNotebook();
+  if (!KGPure.canDeleteNotebook(nb) || !notebookSheetDelete) return;
+  clearNotebookSheetError();
+  notebookSheetDelete.disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'deleteNotebook', notebookId: nb.id });
+    if (response == null || response.error) {
+      showNotebookSheetError((response && response.message) || t('notebookDeleteError'));
+      return;
+    }
+    activeNotebookId = 'default';
+    await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    closeNotebookSheet();
+    await loadVocabList();
+  } catch (err) {
+    console.error('[KG] deleteActiveNotebook failed:', err);
+    showNotebookSheetError(t('notebookDeleteError'));
+  } finally {
+    notebookSheetDelete.disabled = false;
+  }
 }
 
 /**
