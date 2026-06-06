@@ -23,6 +23,11 @@ if grep -Eq "docs/(sop/ui-design|reference/ui/)" "$tmpdir/coverage.out"; then
   cat "$tmpdir/coverage.out" >&2
   exit 1
 fi
+if grep -Eq "docs/(runbook/system|reference/testing/(backend_strategy|smoke_checklist)|reference/cost_baseline|sop/(cost_review|review_discipline))\\.md" "$tmpdir/coverage.out"; then
+  echo "agent-routed operational docs should all be registered" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
 
 ./ops/docs_registry_coverage.py --json >"$tmpdir/coverage.json"
 grep -q '"registered_count"' "$tmpdir/coverage.json"
@@ -34,6 +39,11 @@ if grep -q '"docs/reference/feature_boundary/' "$tmpdir/coverage.json"; then
 fi
 if grep -Eq '"docs/(sop/ui-design|reference/ui/)' "$tmpdir/coverage.json"; then
   echo "UI design docs should all be registered in JSON output" >&2
+  cat "$tmpdir/coverage.json" >&2
+  exit 1
+fi
+if grep -Eq '"docs/(runbook/system|reference/testing/(backend_strategy|smoke_checklist)|reference/cost_baseline|sop/(cost_review|review_discipline))\\.md' "$tmpdir/coverage.json"; then
+  echo "agent-routed operational docs should all be registered in JSON output" >&2
   cat "$tmpdir/coverage.json" >&2
   exit 1
 fi

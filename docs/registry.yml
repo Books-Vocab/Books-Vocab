@@ -41,6 +41,7 @@ documents:
       - csv_format_changed
     sources:
       - backend/src/kg/
+      - "!backend/src/kg/llm/providers.py"
 
   - id: contract.host_topology
     path: docs/reference/host_topology.md
@@ -58,6 +59,7 @@ documents:
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
+      - "!ops/ios_release.sh"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -78,12 +80,15 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/ios_release.sh"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
       - backend/
+      - "!backend/tests/"
+      - "!backend/src/kg/llm/providers.py"
       - "!backend/src/kg/routers/*.py"
       - docs/runbook/
 
@@ -99,6 +104,8 @@ documents:
     sources:
       - ios/
       - backend/
+      - "!backend/tests/"
+      - "!backend/src/kg/llm/providers.py"
       - chrome-extension/
       - ops/
       - "!ops/docs_lint.sh"
@@ -107,6 +114,7 @@ documents:
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
+      - "!ops/ios_release.sh"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -124,6 +132,7 @@ documents:
       - ops_command_changed
     sources:
       - backend/
+      - "!backend/tests/"
       - ops/
       - "!ops/tests/test_docs_*.sh"
 
@@ -342,6 +351,110 @@ documents:
       - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
       - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
 
+  - id: reference.testing_backend_strategy
+    path: docs/reference/testing/backend_strategy.md
+    kind: reference
+    authority: derived
+    triggers:
+      - backend_test_strategy_changed
+      - backend_test_matrix_changed
+      - backend_pytest_workflow_changed
+    sources:
+      - backend/tests/
+      - backend/pytest.ini
+      - backend/pyproject.toml
+      - backend/src/kg/testing/
+
+  - id: reference.testing_smoke_checklist
+    path: docs/reference/testing/smoke_checklist.md
+    kind: reference
+    authority: derived
+    triggers:
+      - release_smoke_flow_changed
+      - core_user_journey_changed
+      - pre_release_checklist_changed
+    sources:
+      - ops/ios_release.sh
+      - ops/ios_build.sh
+      - ops/release.sh
+      - backend/src/kg/routers/
+      - ios/BooksBrowser/ContentView.swift
+      - ios/BooksBrowser/Views/Bookshelf/
+      - ios/BooksBrowser/Views/Reader/
+      - ios/BooksBrowser/Views/Vocabulary/
+      - ios/BooksBrowser/Views/Settings/
+      - ios/BooksBrowser/Views/Podcast/
+
+  - id: reference.cost_baseline
+    path: docs/reference/cost_baseline.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - provider_pricing_changed
+      - fixed_cost_baseline_changed
+      - budget_threshold_changed
+      - billing_source_changed
+    sources:
+      - backend/src/kg/llm/providers.py
+      - backend/src/kg/admin_cost_summary.py
+      - backend/src/kg/routers/admin.py
+      - backend/src/kg/ops_cli.py
+      - backend/tests/test_provider_pricing.py
+      - backend/tests/test_admin_cost_summary.py
+      - backend/tests/test_ops_cost.py
+      - .claude/skills/billing/
+      - docs/sop/cost_review.md
+
+  - id: sop.cost_review
+    path: docs/sop/cost_review.md
+    kind: sop
+    authority: derived
+    triggers:
+      - cost_review_workflow_changed
+      - billing_reconciliation_changed
+      - cost_alarm_workflow_changed
+    sources:
+      - .claude/skills/billing/
+      - docs/reference/cost_baseline.md
+      - backend/src/kg/llm/providers.py
+      - backend/src/kg/admin_cost_summary.py
+      - backend/src/kg/ops_cli.py
+      - ops/devops_kg_safe.sh
+
+  - id: runbook.system
+    path: docs/runbook/system.md
+    kind: runbook
+    authority: derived
+    triggers:
+      - ops_change_flow_changed
+      - hard_stop_condition_changed
+      - production_entrypoint_changed
+    sources:
+      - ops/devops_kg_safe.sh
+      - ops/status_all.sh
+      - ops/test_devops.sh
+      - docs/policy/safety.md
+      - docs/sop/deploy.md
+      - docs/sop/debug.md
+      - CLAUDE.md
+      - .claude/skills/devops/
+      - .claude/skills/cleanup/
+
+  - id: sop.review_discipline
+    path: docs/sop/review_discipline.md
+    kind: sop
+    authority: derived
+    triggers:
+      - review_workflow_changed
+      - agent_review_policy_changed
+      - phased_review_gate_changed
+    sources:
+      - CLAUDE.md
+      - .claude/skills/phased/
+      - .claude/skills/steward/
+      - .claude/skills/app-debug/
+      - docs/sop/review_discipline.md
+
   - id: sop.backend
     path: docs/sop/backend.md
     kind: sop
@@ -352,6 +465,7 @@ documents:
       - provider_registry_workflow_changed
     sources:
       - backend/
+      - "!backend/tests/"
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
@@ -360,6 +474,7 @@ documents:
       - "!ops/test_ops.sh"
       - "!backend/src/kg/routers/*.py"
       - "!ops/devops_kg_safe.sh"
+      - "!ops/ios_release.sh"
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
@@ -391,6 +506,7 @@ documents:
       - env_surface_changed
     sources:
       - ops/
+      - "!ops/ios_release.sh"
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
       - "!ops/docs_registry_coverage.py"
@@ -402,6 +518,8 @@ documents:
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
       - backend/
+      - "!backend/tests/"
+      - "!backend/src/kg/llm/providers.py"
       - "!backend/src/kg/routers/*.py"
 
   - id: sop.debug
@@ -414,6 +532,7 @@ documents:
       - production_observability_changed
     sources:
       - ops/
+      - "!ops/ios_release.sh"
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
       - "!ops/docs_registry_coverage.py"

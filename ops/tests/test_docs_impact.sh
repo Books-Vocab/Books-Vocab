@@ -39,6 +39,77 @@ grep -q "sop.doc_sync" "$tmpdir/registry.out"
 ./ops/docs_impact.py --files CLAUDE.md >"$tmpdir/agent_guide.out"
 grep -q "sop.doc_sync" "$tmpdir/agent_guide.out"
 grep -q "sop.docs_dogfood" "$tmpdir/agent_guide.out"
+grep -q "sop.review_discipline" "$tmpdir/agent_guide.out"
+
+./ops/docs_impact.py --files backend/tests/test_api.py >"$tmpdir/backend_tests.out"
+grep -q "reference.testing_backend_strategy" "$tmpdir/backend_tests.out"
+if grep -q "policy.safety" "$tmpdir/backend_tests.out"; then
+  echo "backend test changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q "reference.product_surface" "$tmpdir/backend_tests.out"; then
+  echo "backend test changes should not imply product surface impact" >&2
+  exit 1
+fi
+if grep -q "reference.tech_index" "$tmpdir/backend_tests.out"; then
+  echo "backend test changes should not imply tech index impact" >&2
+  exit 1
+fi
+if grep -q "sop.backend" "$tmpdir/backend_tests.out"; then
+  echo "backend test changes should not imply backend workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.deploy" "$tmpdir/backend_tests.out"; then
+  echo "backend test changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files ops/ios_release.sh backend/src/kg/routers/vocab.py >"$tmpdir/smoke.out"
+grep -q "reference.testing_smoke_checklist" "$tmpdir/smoke.out"
+
+./ops/docs_impact.py --files backend/src/kg/llm/providers.py .claude/skills/billing/SKILL.md >"$tmpdir/cost.out"
+grep -q "reference.cost_baseline" "$tmpdir/cost.out"
+grep -q "sop.cost_review" "$tmpdir/cost.out"
+if grep -q "contract.card_format" "$tmpdir/cost.out"; then
+  echo "provider pricing changes should not imply card format impact" >&2
+  exit 1
+fi
+if grep -q "policy.safety" "$tmpdir/cost.out"; then
+  echo "provider pricing changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q "reference.product_surface" "$tmpdir/cost.out"; then
+  echo "provider pricing changes should not imply product surface impact" >&2
+  exit 1
+fi
+if grep -q "sop.deploy" "$tmpdir/cost.out"; then
+  echo "provider pricing changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files ops/ios_release.sh >"$tmpdir/ios_release.out"
+grep -q "sop.ios" "$tmpdir/ios_release.out"
+grep -q "reference.testing_smoke_checklist" "$tmpdir/ios_release.out"
+if grep -q "contract.host_topology" "$tmpdir/ios_release.out"; then
+  echo "iOS release script changes should not imply host topology impact" >&2
+  exit 1
+fi
+if grep -q "policy.safety" "$tmpdir/ios_release.out"; then
+  echo "iOS release script changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q "sop.backend" "$tmpdir/ios_release.out"; then
+  echo "iOS release script changes should not imply backend workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.deploy" "$tmpdir/ios_release.out"; then
+  echo "iOS release script changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.debug" "$tmpdir/ios_release.out"; then
+  echo "iOS release script changes should not imply debug workflow impact" >&2
+  exit 1
+fi
 
 ./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift >"$tmpdir/ios.out"
 if grep -q "contract.sync_lifecycle" "$tmpdir/ios.out"; then
@@ -115,6 +186,7 @@ fi
 
 ./ops/docs_impact.py --files ops/devops_kg_safe.sh --json >"$tmpdir/devops_safe.json"
 grep -q '"id": "policy.safety"' "$tmpdir/devops_safe.json"
+grep -q '"id": "runbook.system"' "$tmpdir/devops_safe.json"
 grep -q '"id": "reference.tech_index"' "$tmpdir/devops_safe.json"
 grep -q '"id": "sop.deploy"' "$tmpdir/devops_safe.json"
 grep -q '"id": "sop.debug"' "$tmpdir/devops_safe.json"
