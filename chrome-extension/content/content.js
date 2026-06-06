@@ -530,6 +530,16 @@
     // Translation
     html += `<div class="kg-popup__translation">${escapeHtml(data.t)}</div>`;
 
+    // Target notebook picker. Mirrors the iOS Reader notebook picker at the
+    // add-word chokepoint: the user can choose where this selection will land
+    // without first opening the side panel. Populated asynchronously below.
+    html += `
+      <label class="kg-popup__notebook" hidden>
+        <span class="kg-popup__notebook-label">${escapeHtml(t('popupNotebookTarget'))}</span>
+        <select class="kg-popup__notebook-select" data-role="notebook-select" aria-label="${escapeHtml(t('popupNotebookTargetAria'))}"></select>
+      </label>
+    `;
+
     // Action row
     html += `<div class="kg-popup__actions">`;
     html += `<button class="kg-btn kg-btn--ghost kg-popup__btn kg-popup__btn--expand" data-action="explain" aria-label="${escapeHtml(t('popupActionExpandAria'))}">${escapeHtml(t('popupActionExpand'))}</button>`;
@@ -540,6 +550,7 @@
     html += `<div class="kg-popup__explanation" hidden></div>`;
 
     popup.innerHTML = html;
+    hydrateNotebookPicker(popup);
 
     // --- Event delegation ---
     popup.addEventListener('click', (e) => {
@@ -553,6 +564,60 @@
       } else if (action === 'add') {
         handleAddVocab(popup, btn, word, data, context, source);
       }
+    });
+  }
+
+  function normalizePopupNotebook(item) {
+    if (!item || typeof item !== 'object') return null;
+    if (item.isDeleted || item.is_deleted) return null;
+    const id = String(item.id || item.remoteId || item.remote_id || '').trim() || 'default';
+    const name = String(item.name || '').trim() || t('notebookDefaultName');
+    return { id, name };
+  }
+
+  function readActiveNotebook(callback) {
+    chrome.storage.local.get(ACTIVE_NOTEBOOK_KEY, (stored) => {
+      callback((stored && stored[ACTIVE_NOTEBOOK_KEY]) || 'default');
+    });
+  }
+
+  function setActiveNotebook(notebookId) {
+    chrome.storage.local.set({ [ACTIVE_NOTEBOOK_KEY]: notebookId || 'default' });
+  }
+
+  function hydrateNotebookPicker(popup) {
+    const wrap = popup.querySelector('.kg-popup__notebook');
+    const select = popup.querySelector('[data-role="notebook-select"]');
+    if (!wrap || !select) return;
+
+    const renderOptions = (items, activeId) => {
+      const notebooks = Array.isArray(items)
+        ? items.map(normalizePopupNotebook).filter(Boolean)
+        : [];
+      if (notebooks.length === 0) return;
+      const hasActive = notebooks.some((n) => n.id === activeId);
+      const selectedId = hasActive ? activeId : (notebooks.find((n) => n.id === 'default')?.id || notebooks[0].id);
+      select.innerHTML = notebooks
+        .map((n) => `<option value="${escapeHtml(n.id)}">${escapeHtml(n.name)}</option>`)
+        .join('');
+      select.value = selectedId;
+      if (selectedId !== activeId) setActiveNotebook(selectedId);
+      wrap.hidden = false;
+    };
+
+    readActiveNotebook((activeId) => {
+      sendMessageSafe(
+        { type: 'listNotebooks' },
+        (response) => {
+          if (chrome.runtime.lastError || response == null || response.error) return;
+          renderOptions(response.items || response.data || response, activeId);
+        },
+        () => {}
+      );
+    });
+
+    select.addEventListener('change', () => {
+      setActiveNotebook(select.value || 'default');
     });
   }
 
@@ -653,8 +718,7 @@
       }
     };
 
-    chrome.storage.local.get(ACTIVE_NOTEBOOK_KEY, (stored) => {
-      const notebookId = (stored && stored[ACTIVE_NOTEBOOK_KEY]) || 'default';
+    readActiveNotebook((notebookId) => {
       sendMessageSafe(
         { type: 'addVocab', entries, notebookId },
         (response) => {

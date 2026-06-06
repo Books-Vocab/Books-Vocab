@@ -73,7 +73,7 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 
 Chrome extension 的 `vocab_outbox` 是 iOS add-path 的 web 端鏡像，但每筆 entry 額外保留 `notebookId`：
 
-1. content popup 加詞前讀 `active_notebook_id`（缺值為 canonical `"default"`），enqueue 到 `chrome.storage.local.vocab_outbox`
+1. content popup 翻譯完成後可讀 `listNotebooks` 顯示目標 notebook selector；選擇變更寫回 `active_notebook_id`（缺值為 canonical `"default"`），加詞時以該值 enqueue 到 `chrome.storage.local.vocab_outbox`
 2. `enqueueAdd` 只 dedup **同 notebook + 同 raw word** 的 unresolved entry；同一 raw word 在不同 notebook 是兩張合法卡，不可互相 dedup
 3. `flushOutbox` 先 `entriesToFlush`，再 `groupEntriesByNotebook`，每組分別 `POST /api/vocab?notebook_id=<id>`
 4. `reconcileAddResponse(queue, cardIds, notebookId)` 只收斂該 notebook 的 entry；`cardIds[word]` 即使命中，也不得收斂其他 notebook 的同名 pending entry
