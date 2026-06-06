@@ -14,6 +14,12 @@ from pathlib import Path
 
 
 STRICT_TIERS = {"reference", "sop", "policy", "runbook"}
+BACKLOG_PREFIXES = (
+    "docs/archive/",
+    "docs/plans/",
+    "docs/snapshot/",
+    "docs/specs/",
+)
 
 
 def run_git(args: list[str]) -> str:
@@ -71,12 +77,20 @@ def doc_tier(path: Path) -> str:
     return "missing"
 
 
+def is_backlog_doc(rel_path: str) -> bool:
+    return rel_path.startswith(BACKLOG_PREFIXES)
+
+
 def build_report(root: Path, registry: Path) -> dict[str, object]:
     registered = registry_paths(registry)
     docs = linted_docs(root)
     unregistered: list[dict[str, str]] = []
+    active_unregistered: list[dict[str, str]] = []
+    backlog_unregistered: list[dict[str, str]] = []
     registered_count = 0
     by_tier: dict[str, list[str]] = defaultdict(list)
+    active_by_tier: dict[str, list[str]] = defaultdict(list)
+    backlog_by_tier: dict[str, list[str]] = defaultdict(list)
 
     for path in docs:
         rel = path.relative_to(root).as_posix()
@@ -84,8 +98,15 @@ def build_report(root: Path, registry: Path) -> dict[str, object]:
         if rel in registered:
             registered_count += 1
         else:
-            unregistered.append({"path": rel, "tier": tier})
+            item = {"path": rel, "tier": tier}
+            unregistered.append(item)
             by_tier[tier].append(rel)
+            if is_backlog_doc(rel):
+                backlog_unregistered.append(item)
+                backlog_by_tier[tier].append(rel)
+            elif tier in STRICT_TIERS or tier == "missing":
+                active_unregistered.append(item)
+                active_by_tier[tier].append(rel)
 
     return {
         "total_docs": len(docs),
@@ -93,9 +114,13 @@ def build_report(root: Path, registry: Path) -> dict[str, object]:
         "unregistered_count": len(unregistered),
         "unregistered": unregistered,
         "unregistered_by_tier": {tier: paths for tier, paths in sorted(by_tier.items())},
-        "strict_unregistered": [
-            item for item in unregistered if item["tier"] in STRICT_TIERS or item["tier"] == "missing"
-        ],
+        "active_unregistered_count": len(active_unregistered),
+        "active_unregistered": active_unregistered,
+        "active_unregistered_by_tier": {tier: paths for tier, paths in sorted(active_by_tier.items())},
+        "backlog_unregistered_count": len(backlog_unregistered),
+        "backlog_unregistered": backlog_unregistered,
+        "backlog_unregistered_by_tier": {tier: paths for tier, paths in sorted(backlog_by_tier.items())},
+        "strict_unregistered": active_unregistered,
     }
 
 
@@ -104,8 +129,24 @@ def print_human(report: dict[str, object]) -> None:
         "docs_registry_coverage: "
         f"total={report['total_docs']} "
         f"registered={report['registered_count']} "
-        f"unregistered={report['unregistered_count']}"
+        f"unregistered={report['unregistered_count']} "
+        f"active_unregistered={report['active_unregistered_count']} "
+        f"backlog_unregistered={report['backlog_unregistered_count']}"
     )
+    active_by_tier = report["active_unregistered_by_tier"]
+    assert isinstance(active_by_tier, dict)
+    for tier, paths in active_by_tier.items():
+        print(f"ACTIVE_UNREGISTERED tier={tier} count={len(paths)}")
+        for path in paths:
+            print(f"  {path}")
+
+    backlog_by_tier = report["backlog_unregistered_by_tier"]
+    assert isinstance(backlog_by_tier, dict)
+    for tier, paths in backlog_by_tier.items():
+        print(f"BACKLOG_UNREGISTERED tier={tier} count={len(paths)}")
+        for path in paths:
+            print(f"  {path}")
+
     by_tier = report["unregistered_by_tier"]
     assert isinstance(by_tier, dict)
     for tier, paths in by_tier.items():
@@ -116,12 +157,13 @@ def print_human(report: dict[str, object]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", help="Repository root override, mainly for fixtures.")
     parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     parser.add_argument("--strict", action="store_true", help="Exit nonzero when active docs are unregistered.")
     args = parser.parse_args()
 
-    root = repo_root()
+    root = Path(args.root).resolve() if args.root else repo_root()
     registry = root / args.registry
     if not registry.is_file():
         raise SystemExit(f"ERROR registry 不存在: {args.registry}")
