@@ -144,6 +144,101 @@ documents:
       - ios/BooksBrowser/AppOrphanBookRecovery.swift
       - ios/BooksBrowser/AppStartupRecovery.swift
 
+  - id: reference.feature_boundary.chrome
+    path: docs/reference/feature_boundary/chrome.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - chrome_surface_changed
+      - chrome_sync_changed
+      - chrome_extension_manifest_changed
+    sources:
+      - chrome-extension/
+
+  - id: reference.feature_boundary.notebook
+    path: docs/reference/feature_boundary/notebook.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - notebook_surface_changed
+      - notebook_reconcile_changed
+      - notebook_cover_changed
+    sources:
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
+      - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
+      - ios/BooksBrowser/Models/Notebook*.swift
+      - ios/BooksBrowser/Services/KGService+Notebook.swift
+
+  - id: reference.feature_boundary.podcast
+    path: docs/reference/feature_boundary/podcast.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - podcast_surface_changed
+      - podcast_playback_changed
+      - podcast_sync_changed
+    sources:
+      - ios/BooksBrowser/Views/Podcast/
+      - ios/BooksBrowser/Models/Podcast*.swift
+      - ios/BooksBrowser/Services/Podcast*.swift
+
+  - id: reference.feature_boundary.reader
+    path: docs/reference/feature_boundary/reader.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - reader_surface_changed
+      - reader_translation_changed
+      - readium_bridge_changed
+    sources:
+      - ios/BooksBrowser/Views/Reader/
+      - ios/BooksBrowser/Models/ReaderSettings.swift
+      - ios/BooksBrowser/Services/ReaderPublicationLoader.swift
+      - ios/BooksBrowser/Services/Readium*.swift
+
+  - id: reference.feature_boundary.settings
+    path: docs/reference/feature_boundary/settings.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - settings_surface_changed
+      - account_settings_changed
+      - subscription_settings_changed
+    sources:
+      - ios/BooksBrowser/Views/Settings/
+      - ios/BooksBrowser/Models/AppLanguage.swift
+      - ios/BooksBrowser/Models/AppAppearanceMode.swift
+      - ios/BooksBrowser/Models/ReviewSettings.swift
+      - ios/BooksBrowser/Models/TranslationLanguage.swift
+      - ios/BooksBrowser/Services/KGUserConfigClient.swift
+      - ios/BooksBrowser/Services/SubscriptionManager*.swift
+
+  - id: reference.feature_boundary.vocabulary
+    path: docs/reference/feature_boundary/vocabulary.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - vocabulary_surface_changed
+      - review_flow_changed
+      - graph_surface_changed
+      - vocab_sync_changed
+    sources:
+      - ios/BooksBrowser/Views/Vocabulary/
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift"
+      - ios/BooksBrowser/Models/Vocabulary*.swift
+      - ios/BooksBrowser/Models/Review*.swift
+      - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
+      - ios/BooksBrowser/Services/KGService+Sync.swift
+      - ios/BooksBrowser/Services/KGService+Graph.swift
+      - ios/BooksBrowser/Services/VocabularyExporter.swift
+
   - id: sop.backend
     path: docs/sop/backend.md
     kind: sop

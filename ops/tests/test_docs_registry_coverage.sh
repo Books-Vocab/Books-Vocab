@@ -13,12 +13,20 @@ trap 'rm -rf "$tmpdir"' EXIT
 grep -q "docs_registry_coverage:" "$tmpdir/coverage.out"
 grep -q "registered=" "$tmpdir/coverage.out"
 grep -q "unregistered=" "$tmpdir/coverage.out"
-grep -q "docs/reference/feature_boundary/reader.md" "$tmpdir/coverage.out"
+if grep -q "docs/reference/feature_boundary/" "$tmpdir/coverage.out"; then
+  echo "feature boundary docs should all be registered" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
 
 ./ops/docs_registry_coverage.py --json >"$tmpdir/coverage.json"
 grep -q '"registered_count"' "$tmpdir/coverage.json"
 grep -q '"unregistered_by_tier"' "$tmpdir/coverage.json"
-grep -q '"docs/reference/feature_boundary/reader.md"' "$tmpdir/coverage.json"
+if grep -q '"docs/reference/feature_boundary/' "$tmpdir/coverage.json"; then
+  echo "feature boundary docs should all be registered in JSON output" >&2
+  cat "$tmpdir/coverage.json" >&2
+  exit 1
+fi
 
 if ./ops/docs_registry_coverage.py --strict >"$tmpdir/strict.out" 2>&1; then
   echo "docs_registry_coverage --strict unexpectedly passed despite unregistered active docs" >&2
