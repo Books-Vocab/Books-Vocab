@@ -490,6 +490,18 @@ test('optionsTranslationPresentation keeps fallback and maps load errors to hint
     optionsTranslationPresentation({ isLoggedIn: true, errorStatus: 401 }).hintKey,
     'translateLangLoginHint',
   );
+  assert.deepEqual(
+    optionsTranslationPresentation({
+      isLoggedIn: true,
+      fallbackTranslation: { source_lang: 'fr', target_lang: 'zh-Hant' },
+      errorStatus: 0,
+    }),
+    {
+      translation: { source_lang: 'fr', target_lang: 'zh-Hant' },
+      disabled: true,
+      hintKey: 'translateLangLoadError',
+    },
+  );
 });
 
 test('optionsProPresentation shapes active/free/unknown entitlement rows', () => {

@@ -544,7 +544,7 @@ function optionsTranslationPresentation(input = {}) {
   if (!input.isLoggedIn) {
     return { translation: fallback, disabled: true, hintKey: 'translateLangLoginHint' };
   }
-  if (input.errorStatus) {
+  if (Object.prototype.hasOwnProperty.call(input, 'errorStatus')) {
     return {
       translation: fallback,
       disabled: true,
