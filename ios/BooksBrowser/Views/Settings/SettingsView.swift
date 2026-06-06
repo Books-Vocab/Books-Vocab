@@ -58,6 +58,15 @@ struct SettingsView: View {
                     toastCoordinator: toastCoordinator
                 )
             },
+            onReviewModeChanged: { newSettings in
+                await coordinator.updateReviewMode(
+                    newSettings,
+                    reviewSettingsStore: reviewSettingsStore,
+                    authManager: authManager,
+                    kgService: kgService,
+                    toastCoordinator: toastCoordinator
+                )
+            },
             manualLoginUserId: manualLoginBinding,
             debugLocalServerURL: debugLocalServerURLBinding,
             actions: presenterActions

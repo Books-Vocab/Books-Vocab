@@ -4,6 +4,7 @@ protocol KGUserConfigRemoteHandling {
     func fetchUserConfig(baseURL: URL, token: String) async throws -> KGUserConfig
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig
     func updateReviewClockConfig(baseURL: URL, token: String, reviewClock: KGReviewClockConfig) async throws -> KGUserConfig
+    func updateReviewModeConfig(baseURL: URL, token: String, reviewMode: KGReviewModeConfig) async throws -> KGUserConfig
 }
 
 /// PUT /api/user/config 的 partial patch。後端各欄位獨立 optional(不送=不更新),
@@ -11,16 +12,19 @@ protocol KGUserConfigRemoteHandling {
 private struct KGUserConfigPatch: Encodable {
     let translation: KGTranslationConfig?
     let review_clock: KGReviewClockConfig?
+    let review_mode: KGReviewModeConfig?
 
     enum CodingKeys: String, CodingKey {
         case translation
         case review_clock
+        case review_mode
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(translation, forKey: .translation)
         try c.encodeIfPresent(review_clock, forKey: .review_clock)
+        try c.encodeIfPresent(review_mode, forKey: .review_mode)
     }
 }
 
@@ -32,12 +36,17 @@ final class KGUserConfigClient: KGUserConfigRemoteHandling {
     }
 
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(translation: translation, review_clock: nil)
+        let patch = KGUserConfigPatch(translation: translation, review_clock: nil, review_mode: nil)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 
     func updateReviewClockConfig(baseURL: URL, token: String, reviewClock: KGReviewClockConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(translation: nil, review_clock: reviewClock)
+        let patch = KGUserConfigPatch(translation: nil, review_clock: reviewClock, review_mode: nil)
+        return try await update(baseURL: baseURL, token: token, patch: patch)
+    }
+
+    func updateReviewModeConfig(baseURL: URL, token: String, reviewMode: KGReviewModeConfig) async throws -> KGUserConfig {
+        let patch = KGUserConfigPatch(translation: nil, review_clock: nil, review_mode: reviewMode)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 
