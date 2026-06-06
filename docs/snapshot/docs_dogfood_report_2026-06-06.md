@@ -35,6 +35,7 @@ verified_against: 9de624ce
 | P2 | `--registry` summary 不直覺 | docs-tooling/maintenance dogfood: `REGISTRY OK` 但 summary `OK: 0` | registry validate 成功時計入 `OK: 1` |
 | P2 | Hypothetical sample vs default gate 易混 | backend/ops dogfood: default gate 反映目前 dirty branch,非假設檔案 | dogfood SOP 明確區分 `docs_impact --files` 與 default gate |
 | P2 | Generated snapshot hint 缺少處置入口 | iOS dogfood: `generated.ios_baseline` 出現時需另查 doc_sync 才知道 generator | `docs_impact.py` 對 generated docs 輸出 `generator` |
+| P2 | Registry 覆蓋率不可見 | 手動盤點發現 55 份 linted docs 只有 14 份在 registry | 新增 `ops/docs_registry_coverage.py` 與 regression test；先 report,`--strict` 追 active-doc coverage debt |
 
 ## Follow-up Changes
 
@@ -43,6 +44,8 @@ verified_against: 9de624ce
 - `ops/tests/test_docs_impact.sh`:新增 dogfood regression 覆蓋 backend/router、devops wrapper、Book model、docs tooling tests。
 - `ops/tests/test_docs_lint.sh`:audit/all 目前為健康 gate,要求 WARN/ERROR 皆為 0；registry summary 要 `OK: 1`。
 - `ops/docs_impact.py`:generated impact 會輸出 `generator`。
+- `ops/docs_registry_coverage.py`:新增 registry coverage report / strict mode。
+- `ops/test_ops.sh`:docs-lint group 納入 coverage regression。
 - `docs/reference/tech_index.md`:補 `devops_kg_safe.sh` command surface。
 - `docs/sop/docs_dogfood.md`:補 default gate 與 hypothetical impact 樣本的判讀差異。
 
@@ -52,6 +55,7 @@ verified_against: 9de624ce
 - `./ops/docs_lint.sh` → `ERROR: 0`
 - `./ops/docs_lint.sh --registry` → `REGISTRY OK: 14 documents`, `OK: 1`, `ERROR: 0`
 - `./ops/docs_lint.sh --audit` → `OK: 56`, `WARN: 0`, `ERROR: 0`
+- `./ops/docs_registry_coverage.py` → `total=55`, `registered=14`, `unregistered=41`
 - dogfood samples:
   - `./ops/docs_impact.py --files backend/src/kg/routers/vocab.py` → sync/card/product/tech only; no safety/deploy/backend SOP noise
   - `./ops/docs_impact.py --files ops/devops_kg_safe.sh` → safety/tech/deploy/debug

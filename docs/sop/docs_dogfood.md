@@ -32,6 +32,7 @@ verified_against: 9de624ce
 ./ops/docs_lint.sh
 ./ops/docs_lint.sh --registry
 ./ops/docs_lint.sh --audit
+./ops/docs_registry_coverage.py
 ```
 
 `docs_impact.py --files ...` 是假設單一檔案改動時的精準樣本；`./ops/docs_lint.sh` 反映目前 checkout 內所有 range / staged / unstaged / untracked 變更,會包含 dogfood branch 自身正在改的檔案。回報時要分開判讀,不要把 default gate 的 ambient hints 當成該角色假設檔案的唯一結果。

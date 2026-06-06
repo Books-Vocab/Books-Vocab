@@ -39,7 +39,9 @@ documents:
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
 
   - id: policy.safety
@@ -53,7 +55,9 @@ documents:
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
       - backend/
       - "!backend/src/kg/routers/*.py"
       - docs/runbook/
@@ -74,7 +78,9 @@ documents:
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
 
   - id: reference.tech_index
@@ -104,6 +110,7 @@ documents:
       - docs/registry.yml
       - ops/docs_lint.sh
       - ops/docs_impact.py
+      - ops/docs_registry_coverage.py
 
   - id: sop.docs_dogfood
     path: docs/sop/docs_dogfood.md
@@ -119,6 +126,7 @@ documents:
       - docs/sop/doc_sync.md
       - ops/docs_lint.sh
       - ops/docs_impact.py
+      - ops/docs_registry_coverage.py
 
   - id: reference.feature_boundary.bookshelf
     path: docs/reference/feature_boundary/bookshelf.md
@@ -149,7 +157,9 @@ documents:
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
       - "!backend/src/kg/routers/*.py"
       - "!ops/devops_kg_safe.sh"
 
@@ -180,7 +190,9 @@ documents:
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
       - backend/
       - "!backend/src/kg/routers/*.py"
 
@@ -196,7 +208,9 @@ documents:
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
       - docs/runbook/
 
   - id: generated.ios_baseline
