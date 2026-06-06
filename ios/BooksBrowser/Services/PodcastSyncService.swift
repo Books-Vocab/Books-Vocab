@@ -133,6 +133,13 @@ final class PodcastSyncService {
 
     /// Shared helper so `PodcastPlayerView` 的 subtitle / audio metadata fetch 也能重用。
     static func authedData(from urlString: String, kgService: any KGServing) async throws -> Data {
+        let (data, _) = try await authedResponseData(from: urlString, kgService: kgService)
+        return data
+    }
+
+    static func authedResponseData(
+        from urlString: String, kgService: any KGServing
+    ) async throws -> (Data, URLResponse) {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
@@ -140,8 +147,7 @@ final class PodcastSyncService {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await sharedURLSession.data(for: request)
-        return data
+        return try await sharedURLSession.data(for: request)
     }
 
     /// Browse fetch that tolerates an anonymous (guest) caller. The backend
@@ -180,6 +186,36 @@ final class PodcastSyncService {
         Self.coversRoot().appendingPathComponent("\(seriesId).png")
     }
 
+    static func isValidCoverResponse(data: Data, response: URLResponse) -> Bool {
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              (http.mimeType ?? "").lowercased() == "image/png",
+              data.count >= 8 else { return false }
+        return Array(data.prefix(8)) == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    }
+
+    static func cacheCovers(
+        seriesIds: [String],
+        maxConcurrent: Int = 3,
+        operation: @escaping (String) async -> Void
+    ) async {
+        guard !seriesIds.isEmpty else { return }
+        let limit = max(1, min(maxConcurrent, seriesIds.count))
+        await withTaskGroup(of: Void.self) { group in
+            var iterator = seriesIds.makeIterator()
+            for _ in 0..<limit {
+                if let seriesId = iterator.next() {
+                    group.addTask { await operation(seriesId) }
+                }
+            }
+            while await group.next() != nil {
+                if let seriesId = iterator.next() {
+                    group.addTask { await operation(seriesId) }
+                }
+            }
+        }
+    }
+
     /// Best-effort: download the remote cover into the local cache and point
     /// `coverImagePath` at it, so `NotebookCoverView` renders the photo over the
     /// procedural cover. No-op when the series has no remote cover or the file is
@@ -204,10 +240,8 @@ final class PodcastSyncService {
 
         let urlString = remote.hasPrefix("http") ? remote : "\(baseURL)\(remote)"
         do {
-            let data = try await authedData(from: urlString, kgService: kgService)
-            // PNG magic — a 404 / HTML / JSON error body must never be written as
-            // a "cover" (silent-garbage guard, not a silent fallback).
-            guard data.count > 8, Array(data.prefix(4)) == [0x89, 0x50, 0x4E, 0x47] else {
+            let (data, response) = try await authedResponseData(from: urlString, kgService: kgService)
+            guard isValidCoverResponse(data: data, response: response) else {
                 AppLog.kg.warning("[PodcastSync] cover for \(seriesId) not a PNG; skipped")
                 return
             }
@@ -272,20 +306,27 @@ final class PodcastSyncService {
             return .listFetchFailed
         }
         var details: [String: PodcastSeriesDetail] = [:]
+        var coverSeriesIds: [String] = []
         for summary in summaries {
             do {
                 let detail = try await fetchSeriesDetail(seriesId: summary.id)
                 details[summary.id] = detail
                 Self.upsertSeries(detail: detail, context: context)
-                // Best-effort remote-cover download into the local cache; failures
-                // degrade to the procedural cover and never abort the sync pass.
-                await Self.cacheCoverIfNeeded(seriesId: summary.id, context: context, kgService: kgService)
+                if !(detail.coverImageURL ?? "").isEmpty {
+                    coverSeriesIds.append(summary.id)
+                }
             } catch {
                 AppLog.kg.warning("[PodcastSync] detail fetch failed for \(summary.id): \(error.localizedDescription)")
                 if !(error is CancellationError) {
                     AppCrashReporting.record(error, context: "podcast.sync.detail")
                 }
             }
+        }
+        // Best-effort remote-cover downloads into the local cache. Bounded
+        // concurrency avoids first-sync waterfall latency without stampeding
+        // the backend when the catalog grows.
+        await Self.cacheCovers(seriesIds: coverSeriesIds) { seriesId in
+            await Self.cacheCoverIfNeeded(seriesId: seriesId, context: context, kgService: self.kgService)
         }
         Self.reconcileLocalState(
             serverSummaries: summaries,
