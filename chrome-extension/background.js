@@ -381,3 +381,10 @@ async function handleMessage(msg) {
 // safe; an empty outbox is a cheap no-op (one storage read, no network).
 // ---------------------------------------------------------------------------
 flushOutbox().catch((err) => console.error('[KG] startup flush failed', err));
+
+export const __test__ = {
+  flushOutbox,
+  handleMessage,
+  handleEnrichPoll,
+  triggerEnrichPolling,
+};
