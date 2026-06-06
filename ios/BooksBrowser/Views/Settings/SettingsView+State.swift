@@ -144,7 +144,7 @@ extension SettingsView {
             },
             resync: {
                 Task {
-                    await coordinator.resync(kgService: kgService, modelContext: modelContext)
+                    await coordinator.resync(authManager: authManager, kgService: kgService, modelContext: modelContext)
                 }
             },
             toggleAutoSync: { autoSyncSettingsStore.setEnabled($0) },

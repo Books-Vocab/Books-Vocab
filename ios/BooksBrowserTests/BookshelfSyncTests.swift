@@ -3,10 +3,13 @@ import SwiftData
 import Testing
 @testable import BooksBrowser
 
-/// Pins the explicit-sync feedback policy shared by 書架 pull-to-refresh / Mac toolbar 鈕 /
-/// ⌘R menu (`ExplicitSync.run`) plus the `BookshelfCoordinator.sync` reentrancy guard.
+/// Pins the explicit-sync feedback + eligibility policy shared by 書架 pull-to-refresh /
+/// Mac toolbar 鈕 / ⌘R menu (`ExplicitSync.run`) plus the `BookshelfCoordinator.sync`
+/// reentrancy guard.
 ///
 /// Covered seams:
+///  - eligibility gate: not-logged-in / demo mode → no-op (no sync, no toast), mirroring
+///    the `BooksBrowserApp` scenePhase/post-login `guard isLoggedIn, !isDemoMode`
 ///  - success → `.success` toast「同步完成」, `lastBackgroundSyncError` stays nil
 ///  - failure → `.warning` toast carrying the message, **read-then-clear** wipes the
 ///    shared field to nil (so a later consumer can't re-fire a stale failure toast)
@@ -42,13 +45,49 @@ struct BookshelfSyncTests {
         }
     }
 
-    // MARK: - ExplicitSync feedback policy
+    // MARK: - Eligibility gate
+
+    @Test func explicitSync_notLoggedIn_isNoOp() async throws {
+        let stub = StubBackgroundSync(resultError: nil)
+        let toast = AppToastCoordinator()
+        await ExplicitSync.run(
+            kgService: stub,
+            isLoggedIn: false,
+            isDemoMode: false,
+            container: try makeContainer(),
+            toastCoordinator: toast
+        )
+
+        // Never hits the network, never toasts — pull-to-refresh on the (logged-out) empty
+        // shelf must not trip the unauthorized path into a spurious「登入已過期」.
+        #expect(stub.callCount == 0)
+        #expect(toast.current == nil)
+    }
+
+    @Test func explicitSync_demoMode_isNoOp() async throws {
+        let stub = StubBackgroundSync(resultError: nil)
+        let toast = AppToastCoordinator()
+        await ExplicitSync.run(
+            kgService: stub,
+            isLoggedIn: true,
+            isDemoMode: true,
+            container: try makeContainer(),
+            toastCoordinator: toast
+        )
+
+        #expect(stub.callCount == 0)
+        #expect(toast.current == nil)
+    }
+
+    // MARK: - ExplicitSync feedback policy (eligible account)
 
     @Test func explicitSync_success_showsCompletedToast_andLeavesErrorNil() async throws {
         let stub = StubBackgroundSync(resultError: nil)
         let toast = AppToastCoordinator()
         await ExplicitSync.run(
             kgService: stub,
+            isLoggedIn: true,
+            isDemoMode: false,
             container: try makeContainer(),
             toastCoordinator: toast
         )
@@ -65,6 +104,8 @@ struct BookshelfSyncTests {
         let toast = AppToastCoordinator()
         await ExplicitSync.run(
             kgService: stub,
+            isLoggedIn: true,
+            isDemoMode: false,
             container: try makeContainer(),
             toastCoordinator: toast
         )
@@ -90,6 +131,8 @@ struct BookshelfSyncTests {
             await coordinator.sync(
                 container: container,
                 kgService: stub,
+                isLoggedIn: true,
+                isDemoMode: false,
                 toastCoordinator: toast
             )
         }
@@ -97,6 +140,8 @@ struct BookshelfSyncTests {
         await coordinator.sync(
             container: container,
             kgService: stub,
+            isLoggedIn: true,
+            isDemoMode: false,
             toastCoordinator: toast
         )
 

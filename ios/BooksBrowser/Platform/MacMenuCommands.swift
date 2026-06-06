@@ -15,6 +15,7 @@ struct MacMenuCommands: Commands {
     var kgService: KGService
     var modelContainer: ModelContainer
     var toastCoordinator: AppToastCoordinator
+    var authManager: any AuthManaging
 
     // 畫面相關動作 — view 經 .focusedSceneValue publish,無 publish 時 nil → menu 自動 disable。
     @FocusedValue(\.importBook) private var importBook
@@ -33,14 +34,16 @@ struct MacMenuCommands: Commands {
         }
 
         // 立即同步 ⌘R — 置於 App menu(設定下方),語意為全域資料動作,任一畫面可觸發。
-        // 經 `ExplicitSync` 與書架 toolbar 鈕 / pull-to-refresh 共用同一回饋政策(成功彈
-        // 確認 toast、失敗 warning + read-then-clear);底層 claimBackgroundSync() 仍與
-        // scenePhase/post-login 併發互斥,不重入。
+        // 經 `ExplicitSync` 與書架 toolbar 鈕 / pull-to-refresh 共用同一資格 gate(登出 /
+        // demo → no-op)+ 回饋政策(成功彈確認 toast、失敗 warning + read-then-clear);
+        // 底層 claimBackgroundSync() 仍與 scenePhase/post-login 併發互斥,不重入。
         CommandGroup(after: .appSettings) {
             Button(L10n.string("同步")) {
                 Task {
                     await ExplicitSync.run(
                         kgService: kgService,
+                        isLoggedIn: authManager.isLoggedIn,
+                        isDemoMode: authManager.isDemoMode,
                         container: modelContainer,
                         toastCoordinator: toastCoordinator
                     )
