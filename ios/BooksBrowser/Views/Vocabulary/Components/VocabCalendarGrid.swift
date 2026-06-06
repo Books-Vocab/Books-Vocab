@@ -75,6 +75,7 @@ struct VocabCalendarGrid: View {
                     if cell.dayNumber == 0 {
                         Color.clear
                             .aspectRatio(1, contentMode: .fit)
+                            .frame(maxWidth: .infinity)
                     } else {
                         dayView(cell)
                     }
