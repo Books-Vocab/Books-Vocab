@@ -121,6 +121,17 @@ class TestBatchAddLinks:
         assert store.has_link("a", "b")
         assert store.has_link("c", "d")
 
+    def test_dedupes_bidirectional_pairs_within_batch(self, store):
+        created = store.batch_add_links([
+            ("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r1"),
+            ("b", "a", LinkKind.SHARES_USAGE, 0.8, "r2"),
+        ])
+
+        assert len(created) == 1
+        assert store.link_count() == 1
+        assert store.has_link("a", "b")
+        assert len(store.get_links_for("a")) == 1
+
     def test_empty_batch_no_save(self, store):
         created = store.batch_add_links([])
         assert created == []

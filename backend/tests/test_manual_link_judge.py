@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
+from kg.exceptions import QuotaExceededError
 from kg.judge import ManualLinkJudge
 from kg.tracked_llm import TrackedLLM
 
@@ -73,3 +76,11 @@ class TestManualLinkJudge:
         assert result.link == "shares_usage"
         assert result.confidence == 1.0
         assert result.reason  # degraded reason 非空
+
+    def test_quota_exceeded_is_not_degraded(self):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = QuotaExceededError(reset_seconds=3600)
+        judge = ManualLinkJudge(TrackedLLM(client, "test_user"))
+
+        with pytest.raises(QuotaExceededError):
+            judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")

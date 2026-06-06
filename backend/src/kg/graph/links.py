@@ -84,6 +84,8 @@ class _LinksMixin:
                     raise ValueError("cannot link a card to itself")
                 if not 0.0 <= confidence <= 1.0:
                     raise ValueError("confidence must be between 0.0 and 1.0")
+                if self._has_link_unlocked(from_id, to_id):
+                    continue
                 link = GraphLink(
                     from_id=from_id,
                     to_id=to_id,

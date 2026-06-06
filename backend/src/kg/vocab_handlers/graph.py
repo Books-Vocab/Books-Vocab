@@ -47,11 +47,18 @@ def create_manual_link_response(
     )
 
     from ..judge import ManualLinkJudge
+    from ..deps_quota import _is_pro
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
     provider = provider_for("judge_manual")
     judge = ManualLinkJudge(
-        TrackedLLM(client_factory(provider), user["id"], provider=provider),
+        TrackedLLM(
+            client_factory(provider),
+            user["id"],
+            provider=provider,
+            enforce_quota=True,
+            is_pro=_is_pro(user),
+        ),
         model=provider.chat_model,
         user_id=user["id"], notebook_id=notebook_id,
     )

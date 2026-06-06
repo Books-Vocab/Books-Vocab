@@ -9,6 +9,7 @@ from openai import OpenAIError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .exceptions import ExternalServiceError, KGError
+from .deps_quota import _is_pro
 from .llm.providers import provider_for
 from .service_factories import create_async_client
 from .tracked_llm import TrackedLLM
@@ -29,7 +30,13 @@ async def _safe_translate(
     logger: Logger | None = None,
 ):
     provider = provider_for(call_type)
-    llm = TrackedLLM(create_async_client(provider), user["id"], provider=provider)
+    llm = TrackedLLM(
+        create_async_client(provider),
+        user["id"],
+        provider=provider,
+        enforce_quota=True,
+        is_pro=_is_pro(user),
+    )
     try:
         kw: dict[str, Any] = {"llm": llm, "model": provider.chat_model}
         if logger:

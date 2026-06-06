@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kg.cards import Card
+from kg.exceptions import QuotaExceededError
 from kg.enrich import _build_prompt, _parse_enrich_response
 from kg.tracked_llm import TrackedLLM
 
@@ -237,6 +238,21 @@ class TestEnrichCardsStream:
         assert len(errors) == 1, f"expected one error terminal, got: {results}"
         assert "boom" in errors[0]["detail"]
         assert results[-1]["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_stream_propagates_quota_exceeded(self):
+        from kg.enrich import enrich_cards_stream
+
+        llm = TrackedLLM(MagicMock(), "u_quota")
+
+        headers = {"X-Quota-Fraction": "0.0", "X-Quota-Reset": "3600"}
+        with patch("kg.enrich.sync_retry", side_effect=QuotaExceededError(reset_seconds=3600, headers=headers)):
+            with pytest.raises(QuotaExceededError) as exc_info:
+                async for _ in enrich_cards_stream(llm, [_make_card("hello", "你好")], batch_size=1):
+                    pass
+
+        assert exc_info.value.reset_seconds == 3600
+        assert exc_info.value.headers == headers
 
     @pytest.mark.asyncio
     async def test_stream_token_tracking_via_tracked_llm(self):

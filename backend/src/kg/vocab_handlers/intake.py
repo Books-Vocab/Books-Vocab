@@ -22,21 +22,25 @@ def add_vocab_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> VocabAddResponse:
+    from ..deps_quota import _is_pro
     from ..llm.providers import provider_for
+    from ..quota_service import estimate_call_cost, reserve
     from ..tracked_llm import TrackedLLM
+
     cards, _ = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
     provider = provider_for("embed")
-    llm = TrackedLLM(client_factory(provider), user["id"], provider=provider)
-    return add_vocab_entries(
-        entries,
-        user=user,
-        cards=cards,
-        embeddings=embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id),
-        graph=graph_store_factory(user["dir"], notebook_id=notebook_id),
-        logger=logger,
-        notebook_id=notebook_id,
-    )
+    llm = TrackedLLM(client_factory(provider), user["id"], provider=provider, reserve_quota=False)
+    with reserve(user["id"], estimate_call_cost("embed"), enforce=True, is_pro=_is_pro(user)):
+        return add_vocab_entries(
+            entries,
+            user=user,
+            cards=cards,
+            embeddings=embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id),
+            graph=graph_store_factory(user["dir"], notebook_id=notebook_id),
+            logger=logger,
+            notebook_id=notebook_id,
+        )
