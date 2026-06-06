@@ -670,15 +670,17 @@
       return;
     }
     // Best-effort push to the backend vocab_ui group so iOS / web / side panel
-    // converge. No await / no rollback — storage.local already holds local truth.
-    try {
-      chrome.runtime.sendMessage({
+    // converge. Routes through sendMessageSafe (like every other content-script
+    // sender) so a torn-down worker no-ops instead of leaking an unhandled promise
+    // rejection. No rollback — storage.local already holds the local source of truth.
+    sendMessageSafe(
+      {
         type: 'updateUserConfig',
         config: { vocab_ui: { active_notebook_id: id, updated_at: updatedAt } },
-      });
-    } catch (_err) {
-      // Orphaned content script / unauthenticated — the local write still stands.
-    }
+      },
+      () => {},
+      () => {},
+    );
   }
 
   function hydrateNotebookPicker(popup) {
