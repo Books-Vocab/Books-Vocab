@@ -28,6 +28,7 @@ ALL_TESTS=(
   infra-health
   python-entrypoints
   ui-token
+  docs-lint
   ios-test-discovery
   chrome-bundle
   podcast-ops
@@ -50,6 +51,7 @@ run_one() {
     infra-health)       ./ops/test_infra_health.sh ;;
     python-entrypoints) ./ops/tests/test_python_entrypoints.sh ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
+    docs-lint)          ./ops/tests/test_docs_lint.sh ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;
     podcast-ops)
