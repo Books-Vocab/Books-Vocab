@@ -28,6 +28,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     var showDeleteAccountConfirm = false
     var isDeletingAccount = false
     var isResyncing = false
+    var isManualLoggingIn = false
     var deleteAccountError: String?
     var manualLoginUserId = ""
     var debugLocalServerURL = ""
@@ -195,8 +196,15 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     func handleManualLogin(authManager: any AuthManaging) {
         let id = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty else { return }
-        Task { await authManager.login(customToken: id) }
+        // in-flight guard：login(customToken:) 現為 async，會 await clearLocalData；
+        // 無 guard 時連點兩下會 spawn 兩個 Task，兩者都在第一個的 await 解開前讀到舊 userId
+        // → 重複清理（第二次為 no-op 但多一次 BackgroundSyncActor purge）。對齊 isResyncing。
+        guard !id.isEmpty, !isManualLoggingIn else { return }
+        isManualLoggingIn = true
+        Task {
+            await authManager.login(customToken: id)
+            isManualLoggingIn = false
+        }
     }
 
     func resync(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async {
