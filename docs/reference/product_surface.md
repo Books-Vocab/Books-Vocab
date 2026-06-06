@@ -19,7 +19,7 @@ verified_against: d0e9a0cb
 ## iOS (`ios/BooksBrowser`)
 
 - **Auth flows**: Apple/Google SSO
-- **Bookshelf + reader**: EPUB/TXT/MD/PDF multi-format import + batch select + classified error diagnosis + import progress callback
+- **Bookshelf + reader**: EPUB/TXT/MD/PDF multi-format import + batch select + classified error diagnosis + import progress callback + 書庫下拉刷新（iOS/iPadOS pull-to-refresh）／Mac toolbar 同步鈕觸發帳號背景同步（詞庫/複習/KG，非書本清單；成功彈確認 toast、失敗 warning，經 `ExplicitSync` 與 ⌘R 共用同一回饋政策）
 - **Translation/explanation**: context sentence extraction
 - **Vocabulary**: capture / list / detail / sync / graph views
 - **Graph links**: hide/unhide + bilateral optimistic sync

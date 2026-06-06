@@ -100,7 +100,8 @@ struct BooksBrowserApp: App {
             MacMenuCommands(
                 coordinator: appCommandCoordinator,
                 kgService: kgService,
-                modelContainer: modelContainer
+                modelContainer: modelContainer,
+                toastCoordinator: toastCoordinator
             )
         }
         #endif

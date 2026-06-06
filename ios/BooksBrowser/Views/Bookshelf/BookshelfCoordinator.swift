@@ -22,6 +22,7 @@ import os
     func clearError()
     func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting, toastCoordinator: AppToastCoordinator)
     func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
+    func sync(container: ModelContainer, kgService: any BackgroundSyncing, toastCoordinator: AppToastCoordinator) async
 }
 
 @Observable @MainActor
@@ -131,6 +132,32 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         if modelContext.safeSaveWithToast(toastCoordinator) {
             toastCoordinator.success("已刪除".localized)
         }
+    }
+
+    // 顯式同步重入守衛 — 只保護**經本 coordinator 的路徑**：Mac toolbar 鈕連點 +
+    // iOS pull-to-refresh（後者 `.refreshable` 本就序列化，故實質主要防 toolbar 連點）。
+    // ⌘R menu 路徑直呼 `ExplicitSync.run`、不經本 coordinator，故**不**受此守衛保護，
+    // 僅靠底層 `claimBackgroundSync()` 網路層互斥；其殘留為極端連點時可能多彈一次成功
+    // toast，無資料風險（要統一須把守衛上移為共享狀態，但會與並行測試衝突，不划算）。
+    // 為何需要本層守衛：claim 失敗時 `backgroundSync` 早退（見 `KGService+Sync`）而
+    // `lastBackgroundSyncError` 已在 claim 後被重置為 nil → 第二個 Task 的
+    // `ExplicitSync.run` 會讀到 nil 誤彈「同步完成」(該輪根本沒跑)。守衛在抵達
+    // `claimBackgroundSync()` 前就擋掉重入。對齊 `SettingsCoordinator.resync` 的 `isResyncing`。
+    private var isSyncing = false
+
+    func sync(
+        container: ModelContainer,
+        kgService: any BackgroundSyncing,
+        toastCoordinator: AppToastCoordinator
+    ) async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        await ExplicitSync.run(
+            kgService: kgService,
+            container: container,
+            toastCoordinator: toastCoordinator
+        )
     }
 
     private func performBatchImport(
