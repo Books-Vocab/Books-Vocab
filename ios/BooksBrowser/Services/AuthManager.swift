@@ -123,8 +123,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         if let existing = self.userId, existing != userIdStr {
             AppLog.auth.info("Account switch detected, clearing sync + notebook state")
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: "kg_last_incremental_sync")
-            defaults.removeObject(forKey: "kg_review_payload_version")
+            // 用 KGService.SyncKeys 常數，與 LocalDataCleanerService / sync 路徑單一真相對齊。
+            defaults.removeObject(forKey: KGService.SyncKeys.incrementalBoundary)
+            defaults.removeObject(forKey: KGService.SyncKeys.payloadVersion)
+            // 與 clearLocalData 對齊：漏清 review-event cursor 會讓經 login(customToken:)
+            // 的手動帳號切換（SettingsCoordinator）讓 B 沿用 A 的 review pull cursor。
+            defaults.removeObject(forKey: KGService.SyncKeys.reviewEventPullBoundary)
             defaults.removeObject(forKey: "activeNotebookId")
             defaults.removeObject(forKey: NotebookFilter.storageKey)
             AppAnalytics.track(.accountSwitchDetected)
@@ -142,7 +146,23 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         self.isLoggedIn = true
     }
 
-    func login(customToken: String) {
+    /// Manual/debug login via a raw custom token (userId == token), surfaced only in
+    /// the DEBUG Settings account section. Mirrors `applyAuthenticatedUser`'s
+    /// account-switch contract: when switching away from a prior user it clears that
+    /// user's SwiftData (vocab/notebooks/review-records/books) *before* establishing
+    /// the new session, so the manual-login path doesn't leave account A's rows
+    /// visible under account B. `login(userId:token:)` then handles the UserDefaults
+    /// sync-boundary + notebook-state reset. The empty-token guard mirrors
+    /// `login(userId:token:)` so a blank token neither switches nor wipes.
+    func login(customToken: String) async {
+        let userIdStr = customToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !userIdStr.isEmpty,
+           let existing = self.userId,
+           existing != userIdStr,
+           let container = self.modelContainer {
+            AppLog.auth.info("Manual login account switch — clearing previous user's local data")
+            await localDataCleaner.clearLocalData(container: container, reason: "manual_login_account_switch")
+        }
         login(userId: customToken, token: customToken)
     }
 

@@ -119,6 +119,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     ) {
         // Manual cascade: clear bookId on related vocabulary entries
         let bookId = book.id
+        let fileName = book.epubFileName  // 先捕捉：row 刪除 + save 後再讀 property 可能已 fault
         var descriptor = FetchDescriptor<VocabularyEntry>()
         descriptor.predicate = #Predicate<VocabularyEntry> { $0.bookId == bookId }
         if let entries = try? modelContext.fetch(descriptor) {
@@ -127,12 +128,13 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             }
         }
 
-        fileManager.deleteBookFile(named: book.epubFileName)
-        BookManifestStore().delete(bookId: book.id)
+        // DB-first：先刪 row + save（可回滾），成功才做破壞性磁碟刪除。save 失敗則
+        // 不碰磁碟——避免「檔案/manifest 已刪但 row 還在」的孤兒列 + metadata 永久遺失。
         modelContext.delete(book)
-        if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success("已刪除".localized)
-        }
+        guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
+        fileManager.deleteBookFile(named: fileName)
+        BookManifestStore().delete(bookId: bookId)
+        toastCoordinator.success("已刪除".localized)
     }
 
     // 顯式同步重入守衛 — 只保護**經本 coordinator 的路徑**：Mac toolbar 鈕連點 +

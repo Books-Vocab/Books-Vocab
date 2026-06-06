@@ -57,6 +57,9 @@ enum AppBootstrap {
 
             AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
             let fallback = makeFallbackModelContainer()
+            // 仍把 fallback 交給 AuthManager，使降級後的記憶體 store 在帳號切換時
+            // 一樣可被 clearLocalData 清除（與上方兩條成功路徑對齊，避免 nil 時靜默跳過清理）。
+            AuthManager.shared.modelContainer = fallback
             return Outcome(
                 container: fallback,
                 failure: AppStartupFailure.storageInitialization(error: error)
