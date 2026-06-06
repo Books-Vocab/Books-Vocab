@@ -158,6 +158,13 @@ final class PodcastSyncService {
     /// token: a true guest has none (no side effect); an expired one still
     /// triggers the normal session-invalidation path inside currentAuthToken.
     static func optionallyAuthedData(from urlString: String, kgService: any KGServing) async throws -> Data {
+        let (data, _) = try await optionallyAuthedResponseData(from: urlString, kgService: kgService)
+        return data
+    }
+
+    static func optionallyAuthedResponseData(
+        from urlString: String, kgService: any KGServing
+    ) async throws -> (Data, URLResponse) {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
@@ -166,8 +173,7 @@ final class PodcastSyncService {
         if let token = try? await kgService.currentAuthToken() {
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, _) = try await sharedURLSession.data(for: request)
-        return data
+        return try await sharedURLSession.data(for: request)
     }
 
     // MARK: - Cover image cache (remote → local file, rendered by NotebookCoverView)
@@ -279,7 +285,7 @@ final class PodcastSyncService {
 
         let urlString = remote.hasPrefix("http") ? remote : "\(baseURL)\(remote)"
         do {
-            let (data, response) = try await authedResponseData(from: urlString, kgService: kgService)
+            let (data, response) = try await optionallyAuthedResponseData(from: urlString, kgService: kgService)
             guard isValidCoverResponse(data: data, response: response) else {
                 AppLog.kg.warning("[PodcastSync] cover for \(seriesId) not a PNG; skipped")
                 return
