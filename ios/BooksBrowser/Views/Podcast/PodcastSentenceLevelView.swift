@@ -782,14 +782,17 @@ private struct PodcastBubbleCell: View, Equatable {
         .animation(AppMotion.contentFade, value: isSelecting)
     }
 
+    /// 螢光筆底色不透明度。實際色是 `skin.palette.highlightMark`（muted khaki，依 light/dark
+    /// theme-resolved，非 `AppColors` 的 bright HSB token）。它不透明,整字高 fill 必須半透明,
+    /// 否則 opaque 色塊會擋住字。overlay 是字「下層」background fill、文字疊在其上,故文字清晰
+    /// 度不受此值影響,此值只決定螢光筆本身可見度——0.4 暖卡其疊在 tint 氣泡上 light/dark 皆可見,
+    /// 且與藍灰 speaker tint 區隔。device 可微調。
+    private static let vocabHighlightOpacity: Double = 0.4
+
     /// 常駐詞庫螢光筆:把命中詞庫的詞（`vocabHighlightIndices`）用其 word rect 畫一層整字
     /// 高半透明底色。與逐詞底線共用同一組 TextKit rect（text-view 座標系，★B2 免 inset），
     /// 但與 playback 無關、所有句子常駐（不受 `isCurrent || isNext` gate）。選取模式隱藏避免
     /// 干擾原生選取反白;`allowsHitTesting(false)` 不擋 tap / 長按手勢。
-    /// 螢光筆底色不透明度。`highlightMark` token 本身不透明（暖黃）；整字高 fill 必須半透明
-    /// 才能像實體螢光筆「蓋過但仍透出文字」，否則會擋住字。暖黃 × 此值，light/dark 皆可讀。
-    private static let vocabHighlightOpacity: Double = 0.4
-
     @ViewBuilder
     private func vocabHighlightOverlay(rects: [Int: CGRect]) -> some View {
         if !isSelecting, !vocabHighlightIndices.isEmpty {
