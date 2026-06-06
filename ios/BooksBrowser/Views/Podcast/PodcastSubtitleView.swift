@@ -6,6 +6,7 @@ struct PodcastSubtitleView: View {
     @ObserveInjection private var inject
     let viewModel: PodcastPlayerViewModel
     let subtitleSize: PodcastSubtitleSize
+    let initialScrollPositionResolved: Bool
     /// Re-runs only the subtitle fetch — wired to the inline failure retry.
     var onRetrySubtitle: () -> Void = {}
 
@@ -21,6 +22,7 @@ struct PodcastSubtitleView: View {
                 isPlaying: viewModel.state == .playing,
                 hostNames: viewModel.hostNames,
                 subtitleSize: subtitleSize,
+                initialScrollPositionResolved: initialScrollPositionResolved,
                 scrollLeadId: viewModel.scrollLeadSentenceId,
                 onSentenceTap: { viewModel.seek(to: $0.startTime) },
                 onWordTap: viewModel.handleWordTap,

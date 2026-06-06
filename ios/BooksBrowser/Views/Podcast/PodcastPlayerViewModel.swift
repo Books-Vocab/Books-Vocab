@@ -62,6 +62,9 @@ final class PodcastPlayerViewModel {
     /// "已載入" overlay on the seek bar. 0 until the first range arrives.
     private(set) var bufferedEnd: TimeInterval = 0
     private(set) var currentSentence: PodcastSentence?
+    /// 首次進場用的播放位置是否已 bootstrap。只管「初始化是否已經決定」，
+    /// 不代表正在播放或已持久化；用途是避免 view 在未知位置先顯示頂部狀態。
+    private(set) var initialPositionResolved: Bool = false
     /// Sentence id the auto-follow scroll targets — leads `currentSentence` by
     /// `scrollLeadSec` on natural ticks so the next bubble reaches viewport center
     /// just before it's spoken; pinned to the current sentence on a seek (★B1). The
@@ -204,9 +207,15 @@ final class PodcastPlayerViewModel {
         subtitleContent: String?,
         title: String = "",
         audioHTTPHeaders: [String: String] = [:],
-        prefetchedDurationSec: TimeInterval = 0
+        prefetchedDurationSec: TimeInterval = 0,
+        initialProgressTime: TimeInterval? = nil
     ) {
         state = .loading
+        currentTime = 0
+        currentSentence = nil
+        scrollLeadSentenceId = nil
+        renderState = nil
+        initialPositionResolved = false
         duration = 0
         bufferedEnd = 0
         // Register NowPlaying metadata BEFORE loadAudio: the synchronous
@@ -225,6 +234,7 @@ final class PodcastPlayerViewModel {
         if let srt = subtitleContent {
             applySubtitle(content: srt)
         }
+        bootstrapInitialPlaybackPosition(initialProgressTime)
         // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
     }
 
@@ -246,6 +256,9 @@ final class PodcastPlayerViewModel {
     func applySubtitle(content: String) {
         subtitleEngine.load(srtContent: content)
         subtitleState = subtitleEngine.sentences.isEmpty ? .unavailable : .loaded
+        if currentTime > 0 {
+            syncPlaybackPosition(currentTime, pinLead: true)
+        }
     }
 
     /// Marks the subtitle fetch as failed — drives the inline retry UI.
@@ -258,6 +271,19 @@ final class PodcastPlayerViewModel {
     /// indistinguishable from `.loading` (state matrix L410).
     func markSubtitleUnavailable() {
         subtitleState = .unavailable
+    }
+
+    /// 初始化進場位置：若有中段 progress，先把 VM 的字幕 render state 與
+    /// scroll target 對齊，並同步讓底層 AVPlayer seek 到同一時間。這在
+    /// `.ready` 之前做，讓播放器第一次可見時就已站在正確句子附近。
+    func bootstrapInitialPlaybackPosition(_ time: TimeInterval?) {
+        defer { initialPositionResolved = true }
+        guard let time, time > 0 else { return }
+        syncPlaybackPosition(time, pinLead: true)
+        playbackAnchor = PodcastPlaybackClock.makeAnchor(
+            mediaTime: time, now: nowRef(), rate: 0
+        )
+        audioEngine.seek(to: time, autoResume: false)
     }
 
     func setLoading() {
@@ -427,32 +453,7 @@ final class PodcastPlayerViewModel {
     static let scrollLeadSec: TimeInterval = 0.8
 
     private func handleTimeUpdate(_ time: TimeInterval, isSeek: Bool = false) {
-        currentTime = time
-
-        // Low-frequency path: only rebuild renderState when sentence changes
-        let sentence = subtitleEngine.currentSentence(at: time)
-        if sentence?.id != currentSentence?.id {
-            currentSentence = sentence
-            if let sentence {
-                renderState = SubtitleRenderState(from: sentence, hostNames: hostNames)
-            } else {
-                renderState = nil
-            }
-        }
-
-        // Lead the follow-scroll target ~`scrollLeadSec` ahead so the next bubble is
-        // centered before it's spoken. Computed EVERY tick (~15 Hz, O(log n) binary
-        // search) — deliberately PARALLEL to the sentence-boundary block above, NOT
-        // nested in it, so the lead can cross a boundary a tick before `currentSentence`
-        // does. On a seek, `isSeek` pins it to the current sentence (no lead) — see
-        // `scrollLeadSentenceId(...)` for the ★B1 rationale. Deduped so an unchanged
-        // lead doesn't churn the published value every tick.
-        let leadId = PodcastSubtitleEngine.scrollLeadSentenceId(
-            in: subtitleEngine.sentences, at: time, isSeek: isSeek, leadSec: Self.scrollLeadSec
-        )
-        if leadId != scrollLeadSentenceId {
-            scrollLeadSentenceId = leadId
-        }
+        syncPlaybackPosition(time, pinLead: isSeek)
 
         // Re-anchor the continuous playhead on every real tick (~66 ms) so the
         // View-side extrapolation never drifts beyond one tick. Rate is 0 unless
@@ -465,4 +466,25 @@ final class PodcastPlayerViewModel {
     /// Reference-clock now, shared basis with the consuming `TimelineView`'s
     /// `context.date.timeIntervalSinceReferenceDate`.
     private func nowRef() -> TimeInterval { Date().timeIntervalSinceReferenceDate }
+
+    private func syncPlaybackPosition(_ time: TimeInterval, pinLead: Bool) {
+        currentTime = time
+
+        let sentence = subtitleEngine.currentSentence(at: time)
+        if sentence?.id != currentSentence?.id {
+            currentSentence = sentence
+            if let sentence {
+                renderState = SubtitleRenderState(from: sentence, hostNames: hostNames)
+            } else {
+                renderState = nil
+            }
+        }
+
+        let leadId = PodcastSubtitleEngine.scrollLeadSentenceId(
+            in: subtitleEngine.sentences, at: time, isSeek: pinLead, leadSec: Self.scrollLeadSec
+        )
+        if leadId != scrollLeadSentenceId {
+            scrollLeadSentenceId = leadId
+        }
+    }
 }

@@ -168,5 +168,63 @@ struct PodcastSilentFailureTests {
     @Test func nonzero_pause_persists() {
         #expect(PodcastPlayerView.shouldPersist(currentTime: 42, reason: .pause))
     }
+
+    // MARK: - Podcast 初始定位 bootstrap
+
+    @Test func bootstrap_initial_progress_primes_mid_episode_position() {
+        let vm = PodcastPlayerViewModel(hostNames: ["Maya", "Kai"])
+        vm.applySubtitle(content: """
+        1
+        00:00:00,000 --> 00:00:01,000
+        [Maya] Hello.
+
+        2
+        00:00:01,000 --> 00:00:02,000
+        [Kai] Midway.
+
+        3
+        00:00:02,000 --> 00:00:03,000
+        [Maya] Finish.
+        """)
+
+        vm.bootstrapInitialPlaybackPosition(1.5)
+
+        #expect(vm.initialPositionResolved)
+        #expect(vm.currentTime == 1.5)
+        #expect(vm.renderState?.sentenceId == 1)
+        #expect(vm.scrollLeadSentenceId == 1, "bootstrap must pin to current sentence, not lead into the next one")
+    }
+
+    @Test func bootstrap_without_saved_progress_keeps_opening_state() {
+        let vm = PodcastPlayerViewModel(hostNames: ["Maya", "Kai"])
+        vm.applySubtitle(content: """
+        1
+        00:00:00,000 --> 00:00:01,000
+        [Maya] Hello.
+        """)
+
+        vm.bootstrapInitialPlaybackPosition(nil)
+
+        #expect(vm.initialPositionResolved)
+        #expect(vm.currentTime == 0)
+        #expect(vm.renderState == nil)
+        #expect(vm.scrollLeadSentenceId == nil)
+    }
+
+    @Test func bootstrap_zero_progress_keeps_opening_state() {
+        let vm = PodcastPlayerViewModel(hostNames: ["Maya", "Kai"])
+        vm.applySubtitle(content: """
+        1
+        00:00:00,000 --> 00:00:01,000
+        [Maya] Hello.
+        """)
+
+        vm.bootstrapInitialPlaybackPosition(0)
+
+        #expect(vm.initialPositionResolved)
+        #expect(vm.currentTime == 0)
+        #expect(vm.renderState == nil)
+        #expect(vm.scrollLeadSentenceId == nil)
+    }
 }
 #endif
