@@ -46,11 +46,13 @@ struct BookCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                if let dateLastRead = book.dateLastRead {
-                    Text(dateLastRead.relativeShort)
-                        .font(AppFonts.caption2())
-                        .foregroundStyle(appTheme.palette.quaternaryText)
-                }
+                // 永遠保留此行占位：無「上次閱讀時間」時放單空格撐出等高，避免同
+                // row 兩欄卡片因高度差在預設置中對齊下上下緣錯位（對齊 podcast 卡的
+                // 全固定高原則）。
+                Text(book.dateLastRead.map(\.relativeShort) ?? " ")
+                    .font(AppFonts.caption2())
+                    .foregroundStyle(appTheme.palette.quaternaryText)
+                    .lineLimit(1)
             }
         }
         .task(id: book.coverImageData?.count) {
