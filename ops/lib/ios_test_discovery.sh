@@ -117,3 +117,10 @@ discover_only_flags() {
     _discover_file "$f" "$pattern"
   done
 }
+
+# Print all -only-testing flags from one test file. $1=file, $2=pattern.
+discover_file_only_flags() {
+  local file="$1" pattern="${2:-}"
+  [[ -f "$file" ]] || return 1
+  _discover_file "$file" "$pattern"
+}

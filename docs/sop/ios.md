@@ -303,7 +303,7 @@ xcrun simctl io booted screenshot /tmp/kg-catalog-page.png
 
 ```bash
 # 由使用者明確要求才跑：
-xcodebuild test \
+KG_RUN_CATALOG_SNAPSHOTS=1 xcodebuild test \
   -project ios/BooksBrowser.xcodeproj \
   -scheme BooksBrowser \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \

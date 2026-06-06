@@ -135,14 +135,24 @@ final class SyncCoordinator: SyncCoordinating {
                 // Defense-in-depth Layer 2: sanitize outbox before grouping by notebook.
                 // 把指向已刪 notebook 的孤兒 entry 自動 reassign 到 default。
                 // 同時是歷史 orphan 的 in-place migration — idempotent，重複跑無副作用。
-                Self.sanitizeOutbox(pendingEntries: pendingEntries, modelContext: modelContext)
+                let sanitizedDeletedEntryIds = Self.sanitizeOutbox(
+                    pendingEntries: pendingEntries,
+                    modelContext: modelContext
+                )
 
                 // Tombstone defense: sanitize 對 orphan-delete 走 modelContext.delete()，
-                // 該 entry 此時 PersistentModel.isDeleted == true 但仍存在於 caller 的
-                // [VocabularyEntry] snapshot 中。downstream filters 必須跳過 tombstone，
-                // 否則會把幽靈 entry 餵給 batchAdd / batchDelete。
-                let deletes = pendingEntries.filter { !$0.isDeleted && $0.syncAction == .delete && $0.shouldUploadOnNextSync }
-                let adds = pendingEntries.filter { !$0.isDeleted && $0.syncAction == .add && $0.shouldUploadOnNextSync }
+                // 但舊物件引用上的 PersistentModel.isDeleted 不可作為 save 後契約。
+                // downstream filters 用 sanitize 本輪回傳的 stable entry ids 排除幽靈 entry。
+                let deletes = pendingEntries.filter {
+                    !sanitizedDeletedEntryIds.contains($0.id)
+                        && $0.syncAction == .delete
+                        && $0.shouldUploadOnNextSync
+                }
+                let adds = pendingEntries.filter {
+                    !sanitizedDeletedEntryIds.contains($0.id)
+                        && $0.syncAction == .add
+                        && $0.shouldUploadOnNextSync
+                }
 
                 if !deletes.isEmpty {
                     self.updateStep("upload_delete", status: .running, total: deletes.count)
@@ -413,17 +423,20 @@ final class SyncCoordinator: SyncCoordinating {
     /// - 同時是歷史 orphan 的 in-place migration，無需獨立 launch-time script
     /// - Idempotent — 重複跑無副作用，已是 default 或已 valid 的 entry 完全不變
     /// - 在 sync 入口呼叫一次，把 race condition 的後果在落 server 之前修好
+    @discardableResult
     static func sanitizeOutbox(
         pendingEntries: [VocabularyEntry],
         modelContext: ModelContext
-    ) {
+    ) -> Set<UUID> {
         var sanitized = 0
+        var deletedEntryIds: Set<UUID> = []
         for entry in pendingEntries where entry.shouldUploadOnNextSync {
             let resolved = VocabularyEntry.resolveNotebookId(entry.notebookId, in: modelContext)
             guard resolved != entry.notebookId else { continue }
             if entry.syncAction == .delete {
                 // 孤兒 delete：server 已 cascade 過，rewrite 到 default 風險大於收益
                 AppLog.kg.warning("drop orphan delete: \(entry.word) from \(entry.notebookId)")
+                deletedEntryIds.insert(entry.id)
                 modelContext.delete(entry)
             } else {
                 AppLog.kg.warning("sanitize orphan add: \(entry.word) \(entry.notebookId) → \(resolved)")
@@ -434,6 +447,7 @@ final class SyncCoordinator: SyncCoordinating {
         if sanitized > 0 {
             modelContext.safeSave()
         }
+        return deletedEntryIds
     }
 
     /// Batch-delete 回應中「可在本地安全收斂(刪除)」的字集合。

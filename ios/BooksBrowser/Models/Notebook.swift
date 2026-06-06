@@ -19,7 +19,8 @@ final class Notebook {
     var isDefault: Bool = false
     var createdAt: Date
     var updatedAt: Date
-    var isDeleted: Bool = false
+    @Attribute(originalName: "isDeleted")
+    var isSoftDeleted: Bool = false
     var syncStatus: Int = 0  // 0=pending, 1=synced
 
     var isSynced: Bool { syncStatus == 1 }

@@ -59,6 +59,9 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
             let script = canonical.language.script?.identifier
 
             if lang == "zh" {
+                if code == "zh" {
+                    return allowed.first(where: { $0 == .zhHant })
+                }
                 if script == "Hans", let hit = allowed.first(where: { $0 == .zhHans }) {
                     return hit
                 }

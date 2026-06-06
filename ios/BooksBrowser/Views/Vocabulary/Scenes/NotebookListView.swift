@@ -11,7 +11,7 @@ import Inject
 
 struct NotebookListView: View {
     @ObserveInjection private var inject
-    @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
+    @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
     @Query private var allEntries: [VocabularyEntry]
     @Query private var pendingEntries: [VocabularyEntry]
@@ -216,7 +216,7 @@ struct NotebookListView: View {
             .toastSheet(isPresented: $showFilterSheet) {
                 NotebookFilterPickerSheet(
                     filter: $reviewFilter,
-                    notebooks: notebooks.filter { !$0.isDeleted }
+                    notebooks: notebooks.filter { !$0.isSoftDeleted }
                 )
             }
             .toastSheet(item: $coordinator.exportURL) { url in

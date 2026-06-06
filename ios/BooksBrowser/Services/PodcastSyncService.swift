@@ -432,7 +432,7 @@ final class PodcastSyncService {
         series.episodeCount = detail.episodes.count
         series.updatedAt = Date()
         // Resurrect: if server brings a previously-tombstoned series back, clear flag.
-        if series.isDeleted { series.isDeleted = false }
+        if series.isSoftDeleted { series.isSoftDeleted = false }
 
         // Single fetch + in-memory index instead of one fetch per episode.
         // Mirrors reconcileLocalState's approach — the old per-episode fetch was
@@ -523,7 +523,7 @@ final class PodcastSyncService {
     ///   missing here are NOT touched at episode level (防 detail 短暫 404 誤刪).
     ///
     /// Behavior:
-    /// 1. Series tombstone: local series not in `serverSummaries` → soft-delete (`isDeleted = true`).
+    /// 1. Series tombstone: local series not in `serverSummaries` → soft-delete (`isSoftDeleted = true`).
     /// 2. Series resurrection: tombstoned local series back in `serverSummaries` → clear flag.
     /// 3. Episode hard-delete: per fetched detail, drop local episodes missing from server.
     /// 4. Orphan progress sweep: drop `PodcastProgress` rows whose episode no longer exists.
@@ -548,11 +548,11 @@ final class PodcastSyncService {
             let allSeries = (try? context.fetch(allSeriesDescriptor)) ?? []
             for series in allSeries {
                 let onServer = serverSeriesIds.contains(series.remoteId)
-                if onServer && series.isDeleted {
-                    series.isDeleted = false
+                if onServer && series.isSoftDeleted {
+                    series.isSoftDeleted = false
                     series.updatedAt = Date()
-                } else if !onServer && !series.isDeleted {
-                    series.isDeleted = true
+                } else if !onServer && !series.isSoftDeleted {
+                    series.isSoftDeleted = true
                     series.updatedAt = Date()
                 }
             }

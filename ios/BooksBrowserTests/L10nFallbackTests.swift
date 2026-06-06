@@ -11,13 +11,14 @@ import Testing
 
 // .serialized: tests mutate AppLanguageStore.shared singleton.
 @Suite(.serialized)
+@MainActor
 struct L10nFallbackTests {
 
     // Test 1: 當 ja bundle 缺鍵時應回 en 翻譯,而非中文 key 原文。
-    // 選用 "翻譯語言":en bundle = "Translation Language",ja/ko bundle 缺鍵。
+    // 選用 "初始間隔":en bundle = "Initial Interval",ja/ko bundle 缺鍵。
     // (driver: `comm -23 en-keys ja-keys` 確認 ja 不含此 key)
     @Test func test_missing_key_falls_back_to_english_not_chinese_key() async throws {
-        let key = "翻譯語言"
+        let key = "初始間隔"
         let store = AppLanguageStore.shared
         store.setLanguage(.japanese)
         defer { store.setLanguage(.system) }
@@ -27,7 +28,7 @@ struct L10nFallbackTests {
         #expect(result != key, "fallback to chinese key means UI leak in non-CJK locale; got \(result)")
         let hasChinese = result.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
         #expect(hasChinese == false, "expected English fallback, got: \(result)")
-        #expect(result == "Translation Language")
+        #expect(result == "Initial Interval")
     }
 
     // Test 2: 所有 locale 都缺鍵時,回 key 本身。
