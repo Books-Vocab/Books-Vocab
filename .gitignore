@@ -51,6 +51,7 @@ node_modules/
 # Chrome visual-parity tool output (regenerable: node tools/shots.mjs + compare.mjs)
 chrome-extension/tools/shots/
 chrome-extension/tools/compare/
+chrome-extension/tools/audit/
 
 # Python cache in root if any
 __pycache__/
