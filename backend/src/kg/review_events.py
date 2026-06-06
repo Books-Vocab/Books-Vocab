@@ -6,12 +6,44 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import event, func
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from .api_models import ReviewEventEntry
 from .exceptions import BadRequestError
+
+
+def _install_serializable_sqlite(engine: Any) -> None:
+    """Apply per-connection PRAGMAs to *every* pooled connection and make every
+    transaction take SQLite's write lock up front (``BEGIN IMMEDIATE``).
+
+    This serializes the read-max-then-insert in ``insert_many`` across concurrent
+    same-user writers (two devices pushing at once), so ``ingested_at`` stays
+    strictly monotonic and unique — not just within a single call. ``busy_timeout``
+    lets the waiting writer block instead of failing with "database is locked".
+    Standard SQLAlchemy/pysqlite serialized-transaction recipe.
+    """
+
+    @event.listens_for(engine, "connect")
+    def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
+        # Disable pysqlite's implicit BEGIN so the begin-listener drives it explicitly.
+        dbapi_conn.isolation_level = None
+
+    @event.listens_for(engine, "begin")
+    def _begin_immediate(conn):  # noqa: ANN001
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
+
+
+def _now() -> datetime:
+    """Indirection over the wall clock so tests can freeze it to exercise the
+    monotonic ingestion guard (same-instant / backward-clock scenarios)."""
+    return datetime.now(UTC)
 
 
 class ReviewEvent(SQLModel, table=True):
@@ -38,10 +70,7 @@ class ReviewEventStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         sqlite_url = f"sqlite:///{self.path.absolute()}"
         self.engine = create_engine(sqlite_url)
-        with self.engine.connect() as conn:
-            conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
-            conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
-            conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
+        _install_serializable_sqlite(self.engine)
         ReviewEvent.metadata.create_all(self.engine, tables=[ReviewEvent.__table__], checkfirst=True)
         self._migrate_ingested_at()
 
@@ -78,7 +107,7 @@ class ReviewEventStore:
                     continue
                 reviewed_at = _parse_required_timestamp(entry.reviewed_at, "reviewed_at")
                 created_at = _parse_required_timestamp(entry.created_at, "created_at")
-                now = datetime.now(UTC)
+                now = _now()
                 if last_ingested is None or now > last_ingested:
                     ingested_at = now
                 else:
