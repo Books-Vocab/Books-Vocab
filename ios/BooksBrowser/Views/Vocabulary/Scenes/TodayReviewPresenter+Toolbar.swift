@@ -291,7 +291,7 @@ extension TodayReviewPresenter {
                                 .fill(appSkin.palette.mutedFill)
                         )
                 }
-                .accessibilityLabel(L10n.string("todayReview.autoplay.speed") + " " + state.autoplaySpeed.displayName)
+                .accessibilityLabel(state.autoplaySpeed.displayName)
             }
             .foregroundStyle(appSkin.palette.primaryText)
             .frame(maxWidth: .infinity)
