@@ -311,7 +311,7 @@ struct KGServiceTests {
     /// KGUserConfig round-trips through encode → decode (used when writing config).
     @Test func user_config_round_trips_through_codable() throws {
         let original = KGUserConfig(
-            translation: KGTranslationConfig(source_lang: "en", target_lang: "fr"),
+            translation: KGTranslationConfig(source_lang: "en", target_lang: "fr", updated_at: 7),
             review_clock: nil,
             review_mode: nil,
             vocab_ui: KGVocabUIConfig(active_notebook_id: "nb-7", updated_at: 42)
@@ -320,6 +320,7 @@ struct KGServiceTests {
         let decoded = try JSONDecoder().decode(KGUserConfig.self, from: encoded)
         #expect(decoded.translation?.source_lang == "en")
         #expect(decoded.translation?.target_lang == "fr")
+        #expect(decoded.translation?.updated_at == 7)
         #expect(decoded.review_clock == nil)
         #expect(decoded.review_mode == nil)
         #expect(decoded.vocab_ui?.active_notebook_id == "nb-7")

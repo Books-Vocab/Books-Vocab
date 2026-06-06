@@ -44,6 +44,9 @@ struct KGAddResponse: Codable {
 struct KGTranslationConfig: Codable {
     let source_lang: String?
     let target_lang: String?
+    /// 單一 group LWW 時戳（epoch 秒）。source/target 共用（設計 A），對齊
+    /// KGVocabUIConfig / KGReviewModeConfig。nil = 從未寫過（向後相容舊回應）。
+    let updated_at: Double?
 }
 
 /// Per-user 全局複習時鐘暫停態(對應後端 ReviewClockConfig)。is_paused + paused_at
