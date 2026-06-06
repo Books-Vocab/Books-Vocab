@@ -165,6 +165,31 @@ struct CoverImageDownsamplerTests {
         #expect(loads == 2)
     }
 
+    @Test("Notebook cover cache keys include file metadata")
+    func notebookCoverCacheInvalidatesWhenFileChanges() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notebook-cover-cache-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try makePNG(widthPx: 90, heightPx: 120).write(to: url)
+
+        let first = try #require(NotebookCoverImageCache.image(
+            path: url.path,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2
+        ))
+        try makePNG(widthPx: 180, heightPx: 240).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(2)], ofItemAtPath: url.path)
+        let second = try #require(NotebookCoverImageCache.image(
+            path: url.path,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2
+        ))
+
+        #expect(first !== second)
+    }
+
     // MARK: - 存檔路徑（track-15）：downsampledJPEG（UIImage path）
 
     @Test func largeCoverShrinksWithinBound() throws {

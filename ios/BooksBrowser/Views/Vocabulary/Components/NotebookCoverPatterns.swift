@@ -20,7 +20,7 @@ enum NotebookCoverImageCache {
             return nil
         }
         let pixelBound = max(1, Int((maxDimensionPoints * scale).rounded(.up)))
-        let key = "\(path)#\(pixelBound)" as NSString
+        let key = "\(path)#\(pixelBound)#\(fileSignature(path: path))" as NSString
         if let cached = cache.object(forKey: key) {
             return cached
         }
@@ -39,6 +39,15 @@ enum NotebookCoverImageCache {
 
     static func removeAll() {
         cache.removeAllObjects()
+    }
+
+    private static func fileSignature(path: String) -> String {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else {
+            return "missing"
+        }
+        let size = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size):\(mtime)"
     }
 }
 
