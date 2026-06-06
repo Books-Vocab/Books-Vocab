@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 SUPPORTED_PROMPTS = {"translate_quick", "translate_explain"}
+ALLOWED_REVIEW_PII_RISKS = {"low", "medium"}
 
 
 def build_gold_review_queue(
@@ -31,7 +32,7 @@ def build_gold_review_queue(
         for row in _read_jsonl(candidates_path)
         if row.get("gold_status") == "unverified"
         and row.get("gold_queue_eligible") is True
-        and row.get("pii_risk") != "high"
+        and row.get("pii_risk") in ALLOWED_REVIEW_PII_RISKS
     ]
     sampled = _sample(candidates, limit=limit, seed=seed)
     rows = [_to_review_row(row, prompt_name=prompt_name) for row in sampled]
@@ -60,7 +61,7 @@ def _to_review_row(candidate: dict[str, Any], *, prompt_name: str) -> dict[str, 
         "source": candidate.get("source", "historical_user_data"),
         "gold_status": "unverified",
         "review_status": "pending",
-        "pii_risk": candidate.get("pii_risk", "low"),
+        "pii_risk": candidate["pii_risk"],
         "weak_reference": candidate.get("weak_reference", {}),
         "source_trace": candidate.get("source_trace", {}),
     }

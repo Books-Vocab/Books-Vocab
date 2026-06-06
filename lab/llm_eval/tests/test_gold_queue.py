@@ -99,6 +99,49 @@ def test_build_translate_explain_gold_review_queue_uses_keyword_template(tmp_pat
     assert "gold_translation" not in rows[0]
 
 
+def test_gold_review_queue_requires_explicit_allowed_pii_risk(tmp_path):
+    candidates = tmp_path / "translate_quick_candidates.jsonl"
+    _write_jsonl(
+        candidates,
+        [
+            {
+                "id": "missing_pii",
+                "word": "opaque",
+                "context": "An opaque row.",
+                "gold_status": "unverified",
+                "gold_queue_eligible": True,
+            },
+            {
+                "id": "unknown_pii",
+                "word": "opaque",
+                "context": "An opaque row.",
+                "gold_status": "unverified",
+                "gold_queue_eligible": True,
+                "pii_risk": "unknown",
+            },
+            {
+                "id": "medium_pii",
+                "word": "opaque",
+                "context": "An opaque row.",
+                "gold_status": "unverified",
+                "gold_queue_eligible": True,
+                "pii_risk": "medium",
+            },
+        ],
+    )
+    output = tmp_path / "translate_quick_gold.review.jsonl"
+
+    rows = build_gold_review_queue(
+        candidates,
+        output,
+        prompt_name="translate_quick",
+        limit=10,
+    )
+
+    assert [row["id"] for row in rows] == ["medium_pii"]
+    assert rows[0]["pii_risk"] == "medium"
+
+
 def test_sample_gold_queue_cli_prints_summary(tmp_path, capsys):
     candidates = tmp_path / "translate_quick_candidates.jsonl"
     _write_jsonl(
