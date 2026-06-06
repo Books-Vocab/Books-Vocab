@@ -157,12 +157,13 @@ def print_human(report: dict[str, object]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", help="Repository root override, mainly for fixtures.")
     parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     parser.add_argument("--strict", action="store_true", help="Exit nonzero when active docs are unregistered.")
     args = parser.parse_args()
 
-    root = repo_root()
+    root = Path(args.root).resolve() if args.root else repo_root()
     registry = root / args.registry
     if not registry.is_file():
         raise SystemExit(f"ERROR registry 不存在: {args.registry}")
