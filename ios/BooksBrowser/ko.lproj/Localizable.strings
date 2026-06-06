@@ -1006,3 +1006,9 @@
 "慢" = "느린";
 "正常" = "보통";
 "快" = "빠른";
+"vocab.highlight.color.label" = "색상";
+"vocab.highlight.opacity.label" = "강도";
+"vocab.highlight.color.paper" = "종이색";
+"vocab.highlight.color.blue" = "파랑";
+"vocab.highlight.color.sage" = "세이지";
+"vocab.highlight.color.rose" = "로즈";

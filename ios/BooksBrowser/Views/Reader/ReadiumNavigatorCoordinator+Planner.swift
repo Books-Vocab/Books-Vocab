@@ -12,6 +12,7 @@ struct BridgePlanner {
     var lastBookUniqueWordsCount: Int?
     var lastPreferences: EPUBPreferences?
     var lastUnderlineOpacity: Double?
+    var lastContentStyleCSS: String?
     var lastHitTestingDebug: Bool?
 
     mutating func makeCommands(
@@ -28,6 +29,7 @@ struct BridgePlanner {
         commands.append(contentsOf: commandsForRemovedWord(trigger: snapshot.removeWordTrigger))
         commands.append(contentsOf: commandsForNavigation(trigger: snapshot.navigateToLocator))
         commands.append(contentsOf: commandsForPreferences(snapshot.viewConfiguration.epubPreferences))
+        commands.append(contentsOf: commandsForContentStyle(snapshot.viewConfiguration.contentStyleCSS))
         commands.append(contentsOf: commandsForUnderlineOpacity(snapshot.viewConfiguration.underlineOpacity))
         commands.append(contentsOf: commandsForDebugMode(snapshot.viewConfiguration.showHitTestingDebug))
         return commands
@@ -138,6 +140,16 @@ struct BridgePlanner {
             return [.dom(.setUnderlineOpacity(opacity))]
         } else if lastUnderlineOpacity == nil {
             lastUnderlineOpacity = opacity
+        }
+        return []
+    }
+
+    private mutating func commandsForContentStyle(_ css: String) -> [BridgeCommand] {
+        if let lastContentStyleCSS, css != lastContentStyleCSS {
+            self.lastContentStyleCSS = css
+            return [.dom(.setContentStyle(css))]
+        } else if lastContentStyleCSS == nil {
+            lastContentStyleCSS = css
         }
         return []
     }

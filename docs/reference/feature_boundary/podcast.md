@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 546b52c6
+verified_against: e264e4ce
 -->
 # Podcast Feature Boundary
 
@@ -36,7 +36,7 @@ verified_against: 546b52c6
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `PodcastVocabularyContext.swift` | 89 | `struct PodcastVocabularyContext: VocabularyContextProtocol`，連通 reader-parity 翻譯 + 加入詞庫 |
-| `PodcastVocabHighlightResolver.swift` | ~30 | **字幕詞庫螢光筆比對（純函式，2026-06）**：`highlightedIndices(words:normalizedLookedUp:)` 算出字幕句中命中詞庫（含 inflections，由 `ReaderVocabularyContext.lookedUpWords` 展開）的 word index；`normalize` = 折疊彎撇號（U+2019→U+0027 直撇號）+ 小寫 + 去頭尾標點，**兩側對稱**比對（修字幕彎撇 vs 詞庫直撇的 don't/can't/I'm silent 不命中）。cell 端 `PodcastSentenceLevelView` 以命中 index + 逐詞 TextKit rect（`wordRects`）畫**常駐 overlay**（暖黃 `palette.highlightMark` × 0.4，**字底 32% 色帶**＝`rect.height * vocabHighlightBandFraction`、貼齊字底，對齊 Reader 的底線式螢光筆 `.vocab-word` 而非整字高色塊；不受 `isCurrent‖isNext` gate 所有句子常駐、**選取時仍顯示**（與 Reader 一致，匡選不消失）、`allowsHitTesting(false)` 不擋手勢）；column 每 render 折疊一次 `normalizedLookedUp` 供各 cell 共用，cell `==` 納入命中集合即加/刪詞庫重繪。即時更新依賴 `PodcastPlayerView.body` 頂層 `let _ = translationHandler.lookedUpWords.count` 註冊 `@Observable` 依賴（否則讀取埋在 `playerContent(_:)` 內失效不及於 body，需重進該集才現）。單測 `BooksBrowserTests/PodcastVocabHighlightResolverTests.swift`（11 cases） |
+| `PodcastVocabHighlightResolver.swift` | ~30 | **字幕詞庫螢光筆比對（純函式，2026-06）**：`highlightedIndices(words:normalizedLookedUp:)` 算出字幕句中命中詞庫（含 inflections，由 `ReaderVocabularyContext.lookedUpWords` 展開）的 word index；`normalize` = 折疊彎撇號（U+2019→U+0027 直撇號）+ 小寫 + 去頭尾標點，**兩側對稱**比對（修字幕彎撇 vs 詞庫直撇的 don't/can't/I'm silent 不命中）。cell 端 `PodcastSentenceLevelView` 以命中 index + 逐詞 TextKit rect（`wordRects`）畫**常駐 background layer**（顏色/濃度/字底 32% 色帶取 `ReaderSettings.vocabHighlightPreferences`，對齊 Reader 的底線式 `.vocab-word` 而非整字高色塊；不受 `isCurrent‖isNext` gate 所有句子常駐、**選取時仍顯示**、`allowsHitTesting(false)` 不擋手勢）。播放逐字底線是另一個 overlay top layer（`PodcastTranscriptMarkLayer.playbackUnderline`），不可與詞庫 highlight 共用 overlay，避免 highlight 蓋掉跟隨底線；column 每 render 折疊一次 `normalizedLookedUp` 供各 cell 共用，cell `==` 納入命中集合、highlightPreferences、colorScheme 即加/刪詞庫或偏好變更會重繪。即時更新依賴 `PodcastPlayerView.body` 頂層 `let _ = translationHandler.lookedUpWords.count` 註冊 `@Observable` 依賴（否則讀取埋在 `playerContent(_:)` 內失效不及於 body，需重進該集才現）。單測 `BooksBrowserTests/PodcastVocabHighlightResolverTests.swift`（11 cases） |
 | `PodcastAccess.swift` | ~75 | **分層授權 UX policy（純函式，鏡射後端 `podcast_access.py`）**：`PodcastTier{guest,free,pro}` + `tier(hasProAccess:hasToken:)`（pro 優先；有 token=free；無=guest，對齊後端 token 判別）、`isFreePreviewable`（`freePreviewEpisodeNumber=1`，純 ep-num policy 鏡射後端）、`canPlay(…previewAvailable:)`、`isPreviewPlayback(…previewAvailable:)`、`showsProLock(…previewAvailable:)`、`heroAction(tier:episodeNumber:previewAvailable:audioAvailable:hasProgress:allCompleted:) → PodcastHeroAction`（series hero 主 CTA 的純投影：評估序 lock→unavailable→preview→replay→resume→play；`PodcastHeroAction` enum 的 `navigatesToPlayer` 區分播放 vs gate，單測 `PodcastHeroActionTests.swift`）。後三者**額外**要求 `previewAvailable`：free 用戶僅在 ep1 真有 `preview.*` 資產時才視為可試聽，legacy/未回填 series 的 ep1（`previewAvailable=false`）顯 Pro 鎖而非導向後端 404 死路（client 比後端嚴一階以避免死巷；後端仍純依 ep_num 選 key）。**伺服器仍是安全邊界**，此為 UX 層先攔（鎖定 badge/登入/paywall/試聽標示），不靠樂觀請求解析 403。單測 `BooksBrowserTests/PodcastAccessTests.swift` |
 | `PodcastQueue.swift` | ~30 | **連續播放佇列決策（純函式，軸 B Phase 3）**：`nextPlayable(in:after:tier:)` → 同 series `episodeNumber` 次大且 `audioAvailable` 者，過 `PodcastAccess.canPlay` gate；遇第一個有音訊但不可播的集即停（回 `nil`，**不**跳過鎖定集找更後面）→ free 播完 ep1 preview 不自動跨 Pro-only ep2、guest 不續播。`PodcastPlayerView.advanceToNextEpisode` 由 VM `episodeFinishedTick` 的 `.onChange` 驅動，命中即設 `overrideEpisodeId` → `.task(id: activeEpisodeId)` 接手換集。單測 `BooksBrowserTests/PodcastQueueTests.swift`（7 cases） |
 | `PodcastSelectionRouting.swift` | 21 | **字幕選取單字 vs 片語分流（純函式）**：`isSingleWord(_:)`（`split(whereSeparator:\.isWhitespace).count == 1`,前後/全空白自然落空 → 非單字）+ `route(for:) → .word/.phrase`。`PodcastSelectableSentenceTextView` edit menu「翻譯」依此把單一詞導向 word path、多詞片語導向 phrase path（reader 靠手勢本質分流,podcast 所有選取同出一個 `UITextView` edit menu 故改以 token 數判定）。單測 `BooksBrowserTests/PodcastSelectionRoutingTests.swift`（5 cases） |
@@ -79,7 +79,7 @@ podcast catalog 同步現有兩條觸發鏈：
 | `PodcastControlsView.swift` | ~150 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target；seek bar 整條 20pt hit area 可點/拖，幾何換算由 `PodcastSeekBarGeometry` 測試鎖住） |
 | `PodcastEpisodeRow.swift` | 130 | 單集 list row（標題、長度、追蹤 chevron），row 節奏 token 對齊 `WordRow` |
 | `PodcastSubtitleView.swift` | 55 | 字幕單行渲染 |
-| `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數。**呈現方式**:`PodcastPlayerView` 以 `.sheet`(`NavigationStack` + 完成鈕)叫出，**非** `.popover`——toolbar-anchored `.popover` 在 Mac Catalyst present 過場 trap(`ops/catalyst_lint.sh` 守門)。觸發鈕依 layout 自判:compact 走 `ToolbarItem(.topBarTrailing)`,regular inline 走 `inlineSettingsButton` content overlay(player 不再自帶內層 NavigationStack,見 `PodcastPlayerView` 條目) |
+| `PodcastSettingsPopover.swift` | ~145 | 字幕大小 S/M/L/XL/XXL + highlight 顏色 swatch（寫回 shared `ReaderSettings.vocabHighlightColorPreset`）+ auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數。**呈現方式**:`PodcastPlayerView` 以 `.sheet`(`NavigationStack` + 完成鈕)叫出，**非** `.popover`——toolbar-anchored `.popover` 在 Mac Catalyst present 過場 trap(`ops/catalyst_lint.sh` 守門)。觸發鈕依 layout 自判:compact 走 `ToolbarItem(.topBarTrailing)`,regular inline 走 `inlineSettingsButton` content overlay(player 不再自帶內層 NavigationStack,見 `PodcastPlayerView` 條目) |
 | `PodcastFollowToggle.swift` | 49 | series 追蹤 toggle（已追蹤浮上書庫頂端） |
 | `PodcastBadge.swift` | 18 | 「已追蹤」「新集數」狀態 badge |
 | `SpeakerAccentBar.swift` | 42 | 多角色播客的口音/語者識別條 |
@@ -125,6 +125,7 @@ podcast catalog 同步現有兩條觸發鏈：
 | `AppTransition` | 過渡動畫 |
 | `PodcastPlayerMetrics` | Podcast 專屬尺寸常數 |
 | `VocabularyContextProtocol` | reader-parity 翻譯/查詞橋接 |
+| `VocabHighlightPreferences` | Reader-shared 詞庫 highlight 偏好；PodcastSubtitleView 由 `ReaderSettings` 注入至句級字幕 |
 
 ## Storage backend(2026-06 Track B)
 
