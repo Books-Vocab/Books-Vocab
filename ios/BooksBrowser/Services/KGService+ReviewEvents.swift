@@ -81,3 +81,28 @@ extension KGService {
         AppLog.kg.info("pullReviewEvents: merged \(decoded.entries.count) remote events")
     }
 }
+
+// MARK: - Watermark self-heal migration
+
+extension KGService {
+    /// review-event pull watermark 是否為「乾淨、可安全回送」的格式。
+    ///
+    /// 乾淨 cursor 一律來自後端 `_format_timestamp`（tz-aware ISO8601，帶 offset、
+    /// 可選小數秒），故以嚴格 `ISO8601DateFormatter` 能否解析為準。舊版 app 曾把
+    /// 非嚴格字串（naive / 空格分隔 / 純日期）寫入此 key，後端 review-event pull
+    /// 對其回 400 → watermark 永不前進 → 每輪背景同步 partial fail → 每次回前台彈
+    /// toast（死鎖）。
+    static func isCleanReviewEventBoundary(_ raw: String) -> Bool {
+        AppDateFormatters.parseISO8601(raw) != nil
+    }
+
+    /// 一次性自癒 migration：清除無法回送的舊 watermark，下次 pull 走全量
+    /// （冪等、無損：review events 以 `event_id` 去重 merge）。打破「壞 watermark →
+    /// 後端 400 → 永不前進」死鎖。在 app 啟動早期（任何背景同步之前）呼叫。
+    static func migrateReviewEventBoundaryIfNeeded(defaults: UserDefaults = .standard) {
+        guard let raw = defaults.string(forKey: SyncKeys.reviewEventPullBoundary) else { return }
+        guard !isCleanReviewEventBoundary(raw) else { return }
+        defaults.removeObject(forKey: SyncKeys.reviewEventPullBoundary)
+        AppLog.kg.info("Cleared stale review-event boundary (not tz-aware ISO8601): \(raw)")
+    }
+}
