@@ -24,6 +24,7 @@ struct BookshelfView: View {
     @Environment(\.bookFileManager) private var bookFileManager
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.authManager) private var authManager
+    @Environment(\.kgService) private var kgService
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
@@ -90,6 +91,17 @@ struct BookshelfView: View {
                     }
                     .accessibilityLabel("設定".localized)
                     .accessibilityIdentifier("bookshelf.settingsButton")
+
+                    #if targetEnvironment(macCatalyst)
+                    // 可見的同步 affordance（Mac 無 pull-to-refresh）。⌘R 由
+                    // `MacMenuCommands` 全域擁有（任一畫面可觸發），此處**不**再綁一次
+                    // ⌘R 以免雙重綁定；兩者均經 `ExplicitSync` 給一致的 toast 回饋。
+                    Button(action: { Task { await performSync() } }) {
+                        AppToolbarGlyph(systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("同步".localized)
+                    .accessibilityIdentifier("bookshelf.refreshButton")
+                    #endif
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -133,6 +145,15 @@ struct BookshelfView: View {
         // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
         .focusedSceneValue(\.importBook, ImportBookAction { coordinator.presentImporter() })
         .enableInjection()
+    }
+
+    /// Shared sync action for pull-to-refresh (iOS/iPadOS) and toolbar button (Mac Catalyst).
+    private func performSync() async {
+        await coordinator.sync(
+            container: modelContext.container,
+            kgService: kgService,
+            toastCoordinator: toastCoordinator
+        )
     }
 
     // MARK: - 空狀態
@@ -190,6 +211,11 @@ struct BookshelfView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
+#if !targetEnvironment(macCatalyst)
+        .refreshable {
+            await performSync()
+        }
+#endif
     }
 
     // MARK: - 書籍網格
@@ -229,6 +255,11 @@ struct BookshelfView: View {
                 .padding(.top, AppSpacing.s6)
                 .padding(.bottom, AppSpacing.s7)
         }
+#if !targetEnvironment(macCatalyst)
+        .refreshable {
+            await performSync()
+        }
+#endif
     }
 
     // MARK: - EPUB 取得提示
