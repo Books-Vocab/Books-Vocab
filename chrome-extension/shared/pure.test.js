@@ -29,6 +29,10 @@ const {
   VOCAB_SORT_OPTIONS,
   filterVocab,
   sortVocab,
+  vocabEmptyState,
+  vocabPlainTextExport,
+  optionsTranslationPresentation,
+  optionsProPresentation,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,
@@ -345,6 +349,183 @@ test('sortVocab does not mutate input; unknown option → default', () => {
   const out = sortVocab(CORPUS, 'nonsense', NOW);
   assert.deepEqual(CORPUS, copy);            // untouched
   assert.deepEqual(out.map((i) => i.word), ['apple', 'banana', 'cherry', 'date']);
+});
+
+// ---------------------------------------------------------------------------
+// vocabEmptyState (mirrors iOS KGVocabEmptyState)
+// ---------------------------------------------------------------------------
+
+test('vocabEmptyState prioritizes whole-empty over search and filters', () => {
+  assert.deepEqual(
+    vocabEmptyState({ hasNoEntries: true, searchText: 'cat', filters: ['due'] }),
+    {
+      kind: 'empty',
+      titleKey: 'emptyCollectedTitle',
+      descriptionKey: 'emptyCollectedSubtitle',
+      systemImage: 'books.vertical',
+    },
+  );
+});
+
+test('vocabEmptyState returns search copy before filter copy', () => {
+  assert.deepEqual(
+    vocabEmptyState({ hasNoEntries: false, searchText: 'cat', filters: ['due'] }),
+    {
+      kind: 'search',
+      titleKey: 'emptySearchTitle',
+      descriptionKey: 'emptySearchSubtitle',
+      systemImage: 'magnifyingglass',
+    },
+  );
+});
+
+test('vocabEmptyState uses single-filter iOS system-image branches', () => {
+  assert.equal(vocabEmptyState({ filters: ['unlearned'] }).systemImage, 'sparkles');
+  assert.equal(vocabEmptyState({ filters: ['due'] }).systemImage, 'checkmark.seal');
+  assert.equal(vocabEmptyState({ filters: ['reviewed'] }).systemImage, 'leaf');
+  assert.equal(
+    vocabEmptyState({ filters: ['due', 'reviewed'] }).systemImage,
+    'line.3.horizontal.decrease.circle',
+  );
+  assert.deepEqual(
+    vocabEmptyState({ filters: [] }),
+    {
+      kind: 'default',
+      titleKey: 'emptyCollectedTitle',
+      descriptionKey: 'emptySyncedSubtitle',
+      systemImage: 'line.3.horizontal.decrease.circle',
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// vocabPlainTextExport (mirrors iOS CardDocument.plainTextExport)
+// ---------------------------------------------------------------------------
+
+test('vocabPlainTextExport orders word, example, meaning, collocations, source like iOS', () => {
+  const text = vocabPlainTextExport({
+    word: 'lascivious',
+    pos: 'adj.',
+    examples: [{ sentence: 'He cast a lascivious glance.' }],
+    meaning: '好色的；淫蕩的',
+    note: '帶有明顯性意味的。\n\n多用於描述眼神。',
+    collocations: [{ word: 'lascivious glance' }, { word: 'lascivious smile' }],
+    source: { type: 'book', title: 'Moby Dick', chapter: 'Chapter 1' },
+  });
+  assert.equal(text, [
+    'lascivious (adj.)',
+    'He cast a lascivious glance.',
+    '好色的；淫蕩的',
+    '帶有明顯性意味的。',
+    '多用於描述眼神。',
+    'lascivious glance, lascivious smile',
+    '— Moby Dick · Chapter 1',
+  ].join('\n\n'));
+});
+
+test('vocabPlainTextExport trims blanks and omits absent sections', () => {
+  assert.equal(vocabPlainTextExport({
+    word: '  daft  ',
+    pos: '',
+    meaning: '愚蠢的',
+    note: '   ',
+    examples: [],
+    collocations: [],
+    source: null,
+  }), 'daft\n\n愚蠢的');
+});
+
+test('vocabPlainTextExport keeps single newlines inside iOS meaning paragraphs', () => {
+  assert.equal(vocabPlainTextExport({
+    word: 'cadence',
+    meaning: '節奏',
+    note: '第一行解釋\n第二行仍是同一段\n\n第三行才是新段落',
+  }), 'cadence\n\n節奏\n\n第一行解釋\n第二行仍是同一段\n\n第三行才是新段落');
+});
+
+// ---------------------------------------------------------------------------
+// Options presentation (mirrors iOS SettingsPresenter state shaping)
+// ---------------------------------------------------------------------------
+
+test('optionsTranslationPresentation disables language controls while logged out', () => {
+  assert.deepEqual(
+    optionsTranslationPresentation({ isLoggedIn: false }),
+    {
+      translation: { source_lang: 'en', target_lang: 'zh-Hant' },
+      disabled: true,
+      hintKey: 'translateLangLoginHint',
+    },
+  );
+});
+
+test('optionsTranslationPresentation returns server translation when logged in', () => {
+  assert.deepEqual(
+    optionsTranslationPresentation({
+      isLoggedIn: true,
+      translation: { source_lang: 'ja', target_lang: 'en' },
+      fallbackTranslation: { source_lang: 'en', target_lang: 'zh-Hant' },
+    }),
+    {
+      translation: { source_lang: 'ja', target_lang: 'en' },
+      disabled: false,
+      hintKey: null,
+    },
+  );
+});
+
+test('optionsTranslationPresentation keeps fallback and maps load errors to hints', () => {
+  assert.deepEqual(
+    optionsTranslationPresentation({
+      isLoggedIn: true,
+      fallbackTranslation: { source_lang: 'ko', target_lang: 'ja' },
+      errorStatus: 500,
+    }),
+    {
+      translation: { source_lang: 'ko', target_lang: 'ja' },
+      disabled: true,
+      hintKey: 'translateLangLoadError',
+    },
+  );
+  assert.equal(
+    optionsTranslationPresentation({ isLoggedIn: true, errorStatus: 401 }).hintKey,
+    'translateLangLoginHint',
+  );
+  assert.deepEqual(
+    optionsTranslationPresentation({
+      isLoggedIn: true,
+      fallbackTranslation: { source_lang: 'fr', target_lang: 'zh-Hant' },
+      errorStatus: 0,
+    }),
+    {
+      translation: { source_lang: 'fr', target_lang: 'zh-Hant' },
+      disabled: true,
+      hintKey: 'translateLangLoadError',
+    },
+  );
+});
+
+test('optionsProPresentation shapes active/free/unknown entitlement rows', () => {
+  assert.deepEqual(optionsProPresentation({ is_active: true, plan_name: 'Monthly' }), {
+    hidden: false,
+    badge: 'PRO',
+    labelKey: 'proActive',
+    planName: 'Monthly',
+    isFree: false,
+  });
+  assert.deepEqual(optionsProPresentation({ is_active: false }), {
+    hidden: false,
+    badge: null,
+    labelKey: 'proFree',
+    planName: '',
+    isFree: true,
+  });
+  assert.deepEqual(optionsProPresentation(null), {
+    hidden: true,
+    badge: null,
+    labelKey: null,
+    planName: '',
+    isFree: false,
+  });
 });
 
 // ---------------------------------------------------------------------------

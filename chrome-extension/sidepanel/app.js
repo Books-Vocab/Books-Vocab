@@ -17,6 +17,9 @@ const stateContent = $('#stateContent');
 const searchInput  = $('#searchInput');
 const searchIcon   = $('#searchIcon');
 const searchClear  = $('#searchClear');
+const emptyIcon    = $('#emptyIcon');
+const emptyTitle   = $('#emptyTitle');
+const emptySubtitle = $('#emptySubtitle');
 const themeBtn     = $('#themeBtn');
 const settingsBtn  = $('#settingsBtn');
 const retryBtn     = $('#retryBtn');
@@ -27,6 +30,7 @@ const filterChips  = $('#filterChips');
 const filterActions = $('#filterActions');
 const stateDetail  = $('#stateDetail');
 const detailBack   = $('#detailBack');
+const detailShare  = $('#detailShare');
 const detailBarWord = $('#detailBarWord');
 const detailBody   = $('#detailBody');
 
@@ -106,6 +110,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Word detail panel — back navigation + delegated speaker / link-nav actions.
   KGIcons.setIcon(detailBack, 'chevron-left');
   detailBack.addEventListener('click', popDetail);
+  KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  detailShare.addEventListener('click', shareDetailTop);
   detailBody.addEventListener('click', onDetailAction);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !stateDetail.hidden) popDetail();
@@ -176,10 +182,48 @@ async function cycleTheme() {
  * @param {'loading'|'empty'|'error'|'content'} state
  */
 function setState(state) {
+  if (state === 'empty') renderStandaloneEmptyState();
   stateLoading.hidden = state !== 'loading';
   stateEmpty.hidden   = state !== 'empty';
   stateError.hidden   = state !== 'error';
   stateContent.hidden = state !== 'content';
+}
+
+function currentEmptyState(hasNoEntries) {
+  return KGPure.vocabEmptyState({
+    hasNoEntries,
+    searchText: searchInput.value,
+    filters: selectedStates,
+  });
+}
+
+function createEmptyStateElement(model, compact = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'kg-empty' + (compact ? ' kg-empty--inline' : '');
+  wrap.dataset.emptyKind = model.kind;
+
+  const icon = document.createElement('span');
+  icon.className = 'kg-empty__icon';
+  icon.setAttribute('aria-hidden', 'true');
+  KGIcons.setIcon(icon, model.systemImage);
+
+  const title = document.createElement('p');
+  title.className = 'kg-empty__title';
+  title.textContent = t(model.titleKey);
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'kg-empty__subtitle';
+  subtitle.textContent = t(model.descriptionKey);
+
+  wrap.append(icon, title, subtitle);
+  return wrap;
+}
+
+function renderStandaloneEmptyState() {
+  const model = currentEmptyState(true);
+  if (emptyIcon) KGIcons.setIcon(emptyIcon, model.systemImage);
+  if (emptyTitle) emptyTitle.textContent = t(model.titleKey);
+  if (emptySubtitle) emptySubtitle.textContent = t(model.descriptionKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -596,13 +640,10 @@ function renderList(items) {
   renderFilterBar(corpus);
   renderSortPill(corpus);
 
-  // No match for the active search/filter (corpus is non-empty) — iOS shows a
-  // "沒有符合的單字" empty state; mirror it inline so the chrome stays put.
+  // No match for the active search/filter (corpus is non-empty) — mirror iOS
+  // KGVocabEmptyState while keeping list chrome mounted.
   if (items.length === 0) {
-    const hint = document.createElement('p');
-    hint.className = 'kg-list-nomatch';
-    hint.textContent = t('noMatch');
-    stateContent.appendChild(hint);
+    stateContent.appendChild(createEmptyStateElement(currentEmptyState(false), true));
     setState('content');
     return;
   }
@@ -804,8 +845,69 @@ function renderDetailTop() {
   const item = detailStack[detailStack.length - 1];
   if (!item) return;
   detailBarWord.textContent = item.word;
+  if (detailShare) {
+    detailShare.dataset.state = 'idle';
+    detailShare.setAttribute('aria-label', t('detailShareAria'));
+    detailShare.setAttribute('title', t('detailShareAria'));
+    KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  }
   detailBody.innerHTML = buildDetailHTML(item);
   detailBody.scrollTop = 0;
+}
+
+async function shareDetailTop() {
+  const top = detailStack[detailStack.length - 1];
+  if (!top) return;
+  const text = KGPure.vocabPlainTextExport(top);
+  if (!text) return;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: top.word, text });
+      markDetailShareCopied();
+      return;
+    }
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    markDetailShareCopied();
+  } catch (err) {
+    console.error('[KG] detail copy failed:', err);
+    markDetailShareFailed();
+  }
+}
+
+function markDetailShareCopied() {
+  if (!detailShare) return;
+  detailShare.dataset.state = 'copied';
+  detailShare.setAttribute('aria-label', t('detailCopied'));
+  detailShare.setAttribute('title', t('detailCopied'));
+  KGIcons.setIcon(detailShare, 'doc.on.doc');
+  setTimeout(() => {
+    if (!detailShare || detailShare.dataset.state !== 'copied') return;
+    detailShare.dataset.state = 'idle';
+    detailShare.setAttribute('aria-label', t('detailShareAria'));
+    detailShare.setAttribute('title', t('detailShareAria'));
+    KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  }, 1600);
+}
+
+function markDetailShareFailed() {
+  if (!detailShare) return;
+  detailShare.dataset.state = 'failed';
+  detailShare.setAttribute('aria-label', t('detailCopyFailed'));
+  detailShare.setAttribute('title', t('detailCopyFailed'));
+  KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  setTimeout(() => {
+    if (!detailShare || detailShare.dataset.state !== 'failed') return;
+    detailShare.dataset.state = 'idle';
+    detailShare.setAttribute('aria-label', t('detailShareAria'));
+    detailShare.setAttribute('title', t('detailShareAria'));
+    KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  }, 1600);
 }
 
 /** Delegated click handler for the detail body (speaker + link navigation). */
