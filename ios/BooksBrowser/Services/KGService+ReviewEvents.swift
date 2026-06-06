@@ -73,6 +73,10 @@ extension KGService {
         // pull cannot skip an event whose reviewed_at lies before this boundary.
         if let cursor = decoded.cursor {
             defaults.set(cursor, forKey: SyncKeys.reviewEventPullBoundary)
+        } else {
+            // Contract violation: a non-empty batch must carry a cursor. Surface it
+            // instead of silently re-merging the same batch every sync.
+            AppLog.kg.error("pullReviewEvents: non-empty batch returned nil cursor; watermark not advanced")
         }
         AppLog.kg.info("pullReviewEvents: merged \(decoded.entries.count) remote events")
     }
