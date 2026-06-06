@@ -21,6 +21,7 @@ verified_against: bb54d47a
 3. 每份目標 doc:`grep` 舊命令/欄位/旗標/模組名清單,凡引用到被改掉的舊狀態 → 更新成新狀態。**不臆造**:找不到對應 doc 或拿不準就如實回報,別硬寫。
 4. **reference tier** 的 doc:更新內容後把 frontmatter `verified_against` 改成**本次最新 code commit hash**(短 hash)。
 5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**(既有 WARN 是技術債,不歸你處理;只要你 touch 的 doc 沒新增 ERROR/staleness WARN)。
+   注意:`docs_lint.sh` 的 staleness / `verified_against` 判定以 **已提交的 git 基準** 為準,**不吃未提交工作樹**的 frontmatter 變更。若你剛在 working tree bump `verified_against` 但尚未 commit,lint 仍可能報舊 hash 的 STALE;這不是本次修改失敗。判斷原則:看你實際 touch 的 doc diff,確認沒有新增 schema/frontmatter 錯誤;需要讓 stale 判定消失,必須在 commit 後再跑一次。
 6. `git commit`,prefix `docs:`,訊息一句話講同步了什麼。結尾加:
    ```
    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

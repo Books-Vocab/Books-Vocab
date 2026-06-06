@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: bb54d47a
+verified_against: 3f14c595
 -->
 # Vocabulary Feature Boundary
 
@@ -21,7 +21,7 @@ verified_against: bb54d47a
 | `VocabularyListView+Toolbar.swift` | 59 | toolbar extension |
 | `VocabularyListView+Sheets.swift` | 28 | sheet 槽 extension |
 | `SyncView.swift` | 149 | `struct SyncView: View`，同步畫面容器 |
-| `KnowledgeGraphView.swift` | 106 | `struct KnowledgeGraphView: View`，知識圖譜容器 |
+| `KnowledgeGraphView.swift` | 109 | `struct KnowledgeGraphView: View`，知識圖譜容器；graph ratio 使用 review pause reference date |
 
 ### Coordinator Layer（導航協調）
 
@@ -38,14 +38,14 @@ verified_against: bb54d47a
 |------|------|------|
 | `Scenes/VocabularyListPresenter.swift` | 66 | `struct VocabularyListPresenter<Content>: View` + `VocabularyListPresenterState` |
 | `Scenes/PendingVocabPresenter.swift` | 106 | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
-| `Scenes/KGVocabPresenter.swift` | 342 | KG 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆 |
+| `Scenes/KGVocabPresenter.swift` | 345 | KG 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
 | `Scenes/KnowledgeGraphPresenter.swift` | 357 | 知識圖譜佈局 |
 | `Scenes/WordDetailPresenter.swift` | 274 | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆 |
 | `Scenes/SyncPresenter.swift` | 228 | 同步主佈局 |
 | `Scenes/SyncPresenter+Header.swift` | 95 | 同步 header |
 | `Scenes/SyncPresenter+ActionArea.swift` | 86 | 同步 action 區域 |
 | `Scenes/SyncPresenter+Preview.swift` | 290 | 同步 preview 資料 |
-| `Scenes/StatsPresenter.swift` | 513 | 統計畫面佈局 |
+| `Scenes/StatsPresenter.swift` | 520 | 統計畫面佈局；forecast 與 graph thumbnail 使用 review pause reference date |
 | `Scenes/ReviewCalendarPresenter.swift` | 255 | 複習日曆佈局 |
 | `Scenes/TodayReviewPresenter.swift` | 306 | 今日複習主佈局 |
 | `Scenes/TodayReviewPresenter+CardContent.swift` | 282 | 卡片內容 extension |
@@ -63,11 +63,11 @@ verified_against: bb54d47a
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Presentation/VocabularyEntryPresentation.swift` | 211 | `enum VocabularyEntryPresentation`，詞條 UI 模型 |
-| `Presentation/WordRowPresentation.swift` | 173 | 詞列行 UI 模型 |
+| `Presentation/WordRowPresentation.swift` | 138 | 詞列行 UI 模型；review state/relative label/progress 支援注入 `now` |
 | `Presentation/WordDetailPresentation.swift` | 122 | `enum WordDetailPresentation`，詞條詳情 UI 模型 |
 | `Presentation/CardPresentation.swift` | 148 | `struct CardPresentation` + `CardLinkGroupPresentation` |
 | `Presentation/KnowledgeGraphPresentation.swift` | 183 | `KnowledgeGraphNode` / `KnowledgeGraphEdge` / `KnowledgeGraphTheme` / `enum KnowledgeGraphPresentation` |
-| `Presentation/StatsPresentation.swift` | 97 | `enum StatsPresentation` |
+| `Presentation/StatsPresentation.swift` | 99 | `enum StatsPresentation`；`buildSummary(..., now:)` 支援 frozen review clock |
 | `Presentation/KGVocabSortOption.swift` | 28 | `enum KGVocabSortOption` |
 
 ### Scenes（獨立場景 View）
@@ -76,7 +76,7 @@ verified_against: bb54d47a
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/KGVocabView.swift` | 360 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI |
+| `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
 | `Scenes/TodayReviewView.swift` | 481 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
 | `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |

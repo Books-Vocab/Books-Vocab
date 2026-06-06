@@ -276,6 +276,24 @@ import Testing
         #expect(s.effectiveMaximumIntervalHours == 999)
     }
 
+    @Test func activeReviewReferenceDateUsesNow() {
+        let now = Date(timeIntervalSince1970: 1_780_704_000)
+        let pausedAt = now.addingTimeInterval(-86_400)
+        var s = settings(.relaxed)
+        s.isProgressPaused = false
+        s.progressPausedAt = pausedAt
+        #expect(s.reviewReferenceDate(now: now) == now)
+    }
+
+    @Test func pausedReviewReferenceDateFreezesAtPausedAt() {
+        let now = Date(timeIntervalSince1970: 1_780_704_000)
+        let pausedAt = now.addingTimeInterval(-86_400)
+        var s = settings(.relaxed)
+        s.isProgressPaused = true
+        s.progressPausedAt = pausedAt
+        #expect(s.reviewReferenceDate(now: now) == pausedAt)
+    }
+
     // Table-driven: preset 模式應【忽略】custom 欄位,custom 模式應【採用】之。
     @Test(arguments: [
         (ReviewSettingsMode.relaxed,   24.0, 2.5, 0.5,  6.0,  1440.0),
