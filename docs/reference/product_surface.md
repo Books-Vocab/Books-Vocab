@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 8aaece8d
+verified_against: 02a46726
 -->
 # Implemented Product Surface
 
@@ -27,7 +27,7 @@ verified_against: 8aaece8d
 - **Graph thumbnail** + health blob
 - **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習) + autoplay 聲音開關（首次預設開啟、記住上次選擇、答案揭露後才朗讀單字）+ 洗牌順序持久化（per-user + queue fingerprint，KG card id 優先、local UUID fallback，新卡附加尾端）
 - **Stats overview**: `StatsPresenter` full state matrix
-- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle
+- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle；設定首頁「複習節奏」列在 progress paused 時顯示 `已凍結 · <模式>`，detail 仍由既有「暫停進度」toggle 控制
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
 - **AppStartupRecoveryView** 三層 recovery
 - **App-intent / background sync** + preview matrix
