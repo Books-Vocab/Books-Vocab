@@ -25,6 +25,10 @@ struct CardDocumentView: View {
     private var blockSpacing: CGFloat { compact ? TodayReviewMetrics.foldSectionSpacing : 0 }
 
     var body: some View {
+        let _ = PerfLog.render.tick(
+            "cardDocument.body",
+            "blocks=\(document.blocks.count) compact=\(compact)"
+        )
         VStack(alignment: .leading, spacing: blockSpacing) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
