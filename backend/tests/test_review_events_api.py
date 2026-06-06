@@ -20,7 +20,7 @@ def test_review_events_get_empty(isolated_api):
     r = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
 
     assert r.status_code == 200, r.text
-    assert r.json() == {"entries": []}
+    assert r.json() == {"entries": [], "cursor": None}
 
 
 def test_review_events_push_and_pull(isolated_api):
@@ -41,7 +41,9 @@ def test_review_events_push_and_pull(isolated_api):
 
     r_get = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
     assert r_get.status_code == 200, r_get.text
-    assert [event["event_id"] for event in r_get.json()["entries"]] == ["evt-api-1", "evt-api-2"]
+    body = r_get.json()
+    assert {event["event_id"] for event in body["entries"]} == {"evt-api-1", "evt-api-2"}
+    assert body["cursor"] is not None
 
 
 def test_review_events_duplicate_patch_skips(isolated_api):
@@ -57,17 +59,26 @@ def test_review_events_duplicate_patch_skips(isolated_api):
 
 
 def test_review_events_since_filter(isolated_api):
-    payload = {
-        "entries": [
-            _payload("evt-old", reviewed_at=datetime(2026, 6, 1, 10, 0, tzinfo=UTC)),
-            _payload("evt-new", reviewed_at=datetime(2026, 6, 2, 10, 0, tzinfo=UTC)),
-        ]
-    }
-    isolated_api.client.patch("/api/vocab/review-events", json=payload, headers=isolated_api.headers)
+    # First ingestion, capture the returned cursor.
+    isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [_payload("evt-old", reviewed_at=datetime(2026, 6, 1, 10, 0, tzinfo=UTC))]},
+        headers=isolated_api.headers,
+    )
+    cursor = isolated_api.client.get(
+        "/api/vocab/review-events", headers=isolated_api.headers
+    ).json()["cursor"]
+
+    # Second ingestion after the cursor.
+    isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [_payload("evt-new", reviewed_at=datetime(2026, 6, 2, 10, 0, tzinfo=UTC))]},
+        headers=isolated_api.headers,
+    )
 
     r = isolated_api.client.get(
         "/api/vocab/review-events",
-        params={"since": "2026-06-02T00:00:00+00:00"},
+        params={"since": cursor},
         headers=isolated_api.headers,
     )
 

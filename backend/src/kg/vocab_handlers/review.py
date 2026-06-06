@@ -12,8 +12,8 @@ from ..api_models import (
     ReviewStatePushRequest,
     ReviewStatePushResponse,
 )
-from ..vocab_review import push_review_states
 from ..review_events import pull_review_events, push_review_events
+from ..vocab_review import push_review_states
 
 
 def push_review_response(
@@ -47,5 +47,5 @@ def pull_review_events_response(
     review_event_store_factory: Callable[[Path], Any],
 ) -> ReviewEventsResponse:
     store = review_event_store_factory(user["dir"])
-    entries = pull_review_events(since=since, event_store=store)
-    return ReviewEventsResponse(entries=entries)
+    entries, cursor = pull_review_events(since=since, event_store=store)
+    return ReviewEventsResponse(entries=entries, cursor=cursor)
