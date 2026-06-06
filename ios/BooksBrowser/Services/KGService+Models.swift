@@ -67,9 +67,18 @@ struct KGReviewModeConfig: Codable {
     let updated_at: Double?
 }
 
+/// Per-user vocab UI 跨裝置偏好(對應後端 VocabUIConfig 的 vocab_ui group)。目前僅
+/// active_notebook_id(全域 active notebook 游標)+ updated_at LWW;欄位名為後端 snake_case
+/// wire format,iOS store 用同名 key,故無需 mapper(不像 review_mode 的 camelCase customParams)。
+struct KGVocabUIConfig: Codable {
+    let active_notebook_id: String
+    let updated_at: Double?
+}
+
 /// User config request/response
 struct KGUserConfig: Codable {
     let translation: KGTranslationConfig?
     let review_clock: KGReviewClockConfig?
     let review_mode: KGReviewModeConfig?
+    let vocab_ui: KGVocabUIConfig?
 }

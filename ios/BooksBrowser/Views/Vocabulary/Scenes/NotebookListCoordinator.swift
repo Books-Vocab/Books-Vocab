@@ -124,14 +124,46 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         // 若全域 active notebook 指向剛轉不可見的本子（跨裝置刪除 / 孤兒回收），清掉
         // UserDefaults，否則 `Book.resolvedNotebookId` 還會 fall through 到死 id，
         // 造成新建 entry 變孤兒。
-        let active = ActiveNotebookStore.shared.activeNotebookId
-        if removed.contains(active) {
+        if let active = ActiveNotebookStore.shared.activeNotebookIdIfSet,
+           removed.contains(active) {
             ActiveNotebookStore.shared.clearStale()
             AppLog.kg.warning("cleared stale activeNotebookId after reconcile remove: \(active)")
         }
 
         modelContext.safeSave()
         reconcileError = nil
+    }
+
+    /// active notebook backend cold-start：server 值僅在本機從未寫過
+    /// （`snapshot.updatedAt == nil`）時套用，避免覆蓋本機已有的跨裝置權威值。
+    /// iOS↔iOS 靠 iCloud KVS（store init resolve），此處主要收斂 chrome / web → iOS 方向。
+    func coldStartActiveNotebook(authManager: any AuthManaging, kgService: any KGServing) async {
+        guard authManager.isLoggedIn else { return }
+        guard ActiveNotebookStore.shared.snapshot.updatedAt == nil else { return }
+        _ = KGFeatureFlags.serverVocabUiLwwEnabled  // keep wired for future LWW flip
+        do {
+            let config = try await kgService.fetchUserConfig()
+            guard let vu = config.vocab_ui else { return }
+            ActiveNotebookStore.shared.applyServerState(
+                ActiveNotebookState(activeNotebookId: vu.active_notebook_id, updatedAt: vu.updated_at)
+            )
+        } catch {
+            AppLog.kg.warning("coldStartActiveNotebook failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// best-effort push active notebook 到後端（讓 chrome / web 能讀）。失敗不 rollback：
+    /// iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑，下次切換 / cold-start 收斂。
+    func pushActiveNotebook(_ id: String, authManager: any AuthManaging, kgService: any KGServing) async {
+        guard authManager.isLoggedIn else { return }
+        let updatedAt = ActiveNotebookStore.shared.snapshot.updatedAt
+        do {
+            _ = try await kgService.updateVocabUIConfig(
+                KGVocabUIConfig(active_notebook_id: id, updated_at: updatedAt)
+            )
+        } catch {
+            AppLog.kg.warning("pushActiveNotebook failed: \(error.localizedDescription)")
+        }
     }
 
     func createNotebook(

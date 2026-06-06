@@ -33,6 +33,15 @@ enum KGFeatureFlags {
     /// `serverReviewClockLwwEnabled`.
     static var serverReviewModeLwwEnabled: Bool { false }
 
+    /// Whether to send `updated_at` and trust server-returned `updated_at` for
+    /// LWW on the active notebook (`vocab_ui`) cursor. Backend dependency:
+    /// `vocab_ui.updated_at` persisted + returned by `GET /api/user/config`.
+    /// Until on, server is single-direction (server-wins on cold-start) and
+    /// iCloud KV is the authoritative cross-device path for Apple devices —
+    /// mirrors `serverReviewModeLwwEnabled`. (chrome / web read active notebook
+    /// via the backend group.)
+    static var serverVocabUiLwwEnabled: Bool { false }
+
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the
     /// fields would be silently dropped; flip this when backend accepts them.

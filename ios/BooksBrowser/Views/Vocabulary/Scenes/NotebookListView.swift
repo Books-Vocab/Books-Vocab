@@ -230,6 +230,10 @@ struct NotebookListView: View {
                     modelContext: modelContext,
                     kgService: kgService
                 )
+                await coordinator.coldStartActiveNotebook(
+                    authManager: authManager,
+                    kgService: kgService
+                )
             }
             .confirmationDialog(
                 "確定要刪除此單字本？".localized,
@@ -452,8 +456,12 @@ struct NotebookListView: View {
     }
 
     private func setActiveNotebook(_ id: String) {
-        // 寫入收斂到 ActiveNotebookStore（為 B2b 三層 LWW 鋪路）；@AppStorage 仍綁同一
-        // UserDefaults key，透過 KVO 同步顯示，故讀取（isActive 比較）不需改。
+        // 寫入收斂到 ActiveNotebookStore（本地 + iCloud KVS LWW）；@AppStorage 仍綁同一
+        // UserDefaults key，透過 KVO 同步顯示。best-effort push 後端讓 chrome / web 能讀
+        // （失敗不 rollback：iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑）。
         ActiveNotebookStore.shared.setActive(id)
+        Task {
+            await coordinator.pushActiveNotebook(id, authManager: authManager, kgService: kgService)
+        }
     }
 }
