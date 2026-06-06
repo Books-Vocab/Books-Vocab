@@ -31,7 +31,7 @@ struct AppOrphanBookRecoveryTests {
         try Data("epub".utf8).write(to: fileURL)
         defer { try? fm.removeItem(at: fileURL) }
 
-        AppOrphanBookRecovery.run(container: container)
+        AppOrphanBookRecovery.run(container: container, allowBareFileRecovery: true)
 
         let context = ModelContext(container)
         let recovered = try context.fetch(FetchDescriptor<Book>())
@@ -52,7 +52,7 @@ struct AppOrphanBookRecoveryTests {
         try Data("placeholder".utf8).write(to: placeholderURL)
         defer { try? fm.removeItem(at: placeholderURL) }
 
-        AppOrphanBookRecovery.run(container: container)
+        AppOrphanBookRecovery.run(container: container, allowBareFileRecovery: true)
 
         let context = ModelContext(container)
         let recovered = try context.fetch(FetchDescriptor<Book>())
