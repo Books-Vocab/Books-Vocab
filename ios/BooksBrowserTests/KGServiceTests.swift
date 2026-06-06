@@ -23,12 +23,12 @@ struct KGServiceTests {
 
     /// `authenticatedRequest` only retries a status code if it is in
     /// `retryPolicy.retryableStatusCodes`. Pin the exact membership for `.default`.
-    @Test func default_policy_retries_only_429_500_502_503() {
+    @Test func default_policy_retries_only_transient_sync_statuses() {
         let retryable = RetryPolicy.default.retryableStatusCodes
-        for code in [429, 500, 502, 503] {
+        for code in [429, 500, 502, 503, 504] {
             #expect(retryable.contains(code), "default policy must retry \(code)")
         }
-        for code in [200, 204, 301, 400, 401, 403, 404, 408, 501, 504, 599] {
+        for code in [200, 204, 301, 400, 401, 403, 404, 408, 501, 599] {
             #expect(!retryable.contains(code), "default policy must NOT retry \(code)")
         }
     }
@@ -60,12 +60,10 @@ struct KGServiceTests {
         }
     }
 
-    /// 504 Gateway Timeout is deliberately excluded from the default retry set; this is the
-    /// inverse of the documented gap in `KGServiceErrorTests` and is pinned here for the
-    /// aggressive policy too.
-    @Test func neither_policy_retries_504() {
-        #expect(!RetryPolicy.default.retryableStatusCodes.contains(504))
-        #expect(!RetryPolicy.aggressive.retryableStatusCodes.contains(504))
+    /// 504 Gateway Timeout is a transient sync failure and should retry.
+    @Test func both_policies_retry_504() {
+        #expect(RetryPolicy.default.retryableStatusCodes.contains(504))
+        #expect(RetryPolicy.aggressive.retryableStatusCodes.contains(504))
     }
 
     // MARK: - Exponential backoff delay arithmetic (authenticatedRequest retry loop)

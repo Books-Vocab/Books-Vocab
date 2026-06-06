@@ -48,3 +48,73 @@ enum KGError: LocalizedError {
         }
     }
 }
+
+enum SyncFailurePresentation {
+    static func message(label: String, error: Error) -> String {
+        L10n.format("%@失敗：%@", operationTitle(for: label), reasonTitle(for: error))
+    }
+
+    private static func operationTitle(for label: String) -> String {
+        switch label {
+        case "pushReview":
+            return L10n.string("sync.failure.operation.pushReview")
+        case "pushReviewEvents":
+            return L10n.string("sync.failure.operation.pushReviewEvents")
+        case "pull":
+            return L10n.string("sync.failure.operation.pull")
+        case "pullReviewEvents":
+            return L10n.string("sync.failure.operation.pullReviewEvents")
+        default:
+            return L10n.string("sync.failure.operation.generic")
+        }
+    }
+
+    private static func reasonTitle(for error: Error) -> String {
+        if let kgError = error as? KGError {
+            return reasonTitle(for: kgError)
+        }
+        if let urlError = error as? URLError {
+            return reasonTitle(for: urlError)
+        }
+        return L10n.string("sync.failure.reason.unknown")
+    }
+
+    private static func reasonTitle(for error: KGError) -> String {
+        switch error {
+        case .notAuthenticated, .unauthorized:
+            return L10n.string("sync.failure.reason.authExpired")
+        case .offline:
+            return L10n.string("sync.failure.reason.offline")
+        case .networkError(let underlying):
+            if let urlError = underlying as? URLError {
+                return reasonTitle(for: urlError)
+            }
+            return L10n.string("sync.failure.reason.network")
+        case .httpError(let statusCode, _):
+            if statusCode == 429 {
+                return L10n.string("sync.failure.reason.rateLimited")
+            }
+            if (500...599).contains(statusCode) {
+                return L10n.string("sync.failure.reason.serverUnavailable")
+            }
+            return L10n.string("sync.failure.reason.serverRejected")
+        case .decodingError:
+            return L10n.string("sync.failure.reason.decoding")
+        case .serverError:
+            return L10n.string("sync.failure.reason.server")
+        }
+    }
+
+    private static func reasonTitle(for error: URLError) -> String {
+        switch error.code {
+        case .notConnectedToInternet:
+            return L10n.string("sync.failure.reason.offline")
+        case .timedOut:
+            return L10n.string("sync.failure.reason.timeout")
+        case .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+            return L10n.string("sync.failure.reason.network")
+        default:
+            return L10n.string("sync.failure.reason.network")
+        }
+    }
+}
