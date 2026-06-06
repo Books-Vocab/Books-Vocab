@@ -109,6 +109,7 @@ ops-edit link-update <uid> <link_id> [--confidence] [--reason] [--kind] [--noteb
 ops-edit link-list <uid> [--notebook]                            # 列連結(id+兩端 content),供 link-update/delete 查 id
 ops-edit link-delete <uid> <link_id> [--notebook]
 ops-edit seed <uid> <spec.json>                                  # 一次灌整套 demo(notebooks+cards+links);冪等可重跑
+ops-edit clone-demo <source_uid> <target_uid>                    # 高保真複製來源帳號 vocab 層(cards/notebooks/graph/embeddings/candidates)+ 由複習聚合合成 review_events.db;identity 不動;冪等可重跑
 ops-edit list-backups <uid>                                      # 列自動備份(最新在前)
 ops-edit restore <uid> [--backup <path>]                         # 從備份還原(預設取最新;commit 前先備份當前狀態)
 
