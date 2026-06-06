@@ -30,6 +30,7 @@ const filterChips  = $('#filterChips');
 const filterActions = $('#filterActions');
 const stateDetail  = $('#stateDetail');
 const detailBack   = $('#detailBack');
+const detailShare  = $('#detailShare');
 const detailBarWord = $('#detailBarWord');
 const detailBody   = $('#detailBody');
 
@@ -109,6 +110,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Word detail panel — back navigation + delegated speaker / link-nav actions.
   KGIcons.setIcon(detailBack, 'chevron-left');
   detailBack.addEventListener('click', popDetail);
+  KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  detailShare.addEventListener('click', shareDetailTop);
   detailBody.addEventListener('click', onDetailAction);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !stateDetail.hidden) popDetail();
@@ -265,7 +268,6 @@ async function loadVocabList() {
     await loadPendingSyncItems(items);
 
     if (items.length === 0 && pendingSyncItems.length === 0) {
-      renderStandaloneEmptyState();
       setState('empty');
     } else {
       setState('content');
@@ -311,7 +313,6 @@ async function refreshVocabSilently() {
 
     if (items.length === 0 && pendingSyncItems.length === 0) {
       closeDetail();
-      renderStandaloneEmptyState();
       setState('empty');
       return;
     }
@@ -844,8 +845,67 @@ function renderDetailTop() {
   const item = detailStack[detailStack.length - 1];
   if (!item) return;
   detailBarWord.textContent = item.word;
+  if (detailShare) {
+    detailShare.dataset.state = 'idle';
+    detailShare.setAttribute('aria-label', t('detailShareAria'));
+    detailShare.setAttribute('title', t('detailShareAria'));
+    KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  }
   detailBody.innerHTML = buildDetailHTML(item);
   detailBody.scrollTop = 0;
+}
+
+async function shareDetailTop() {
+  const top = detailStack[detailStack.length - 1];
+  if (!top) return;
+  const text = KGPure.vocabPlainTextExport(top);
+  if (!text) return;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: top.word, text });
+      markDetailShareCopied();
+      return;
+    }
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    markDetailShareCopied();
+  } catch (err) {
+    console.error('[KG] detail copy failed:', err);
+    markDetailShareFailed();
+  }
+}
+
+function markDetailShareCopied() {
+  if (!detailShare) return;
+  detailShare.dataset.state = 'copied';
+  detailShare.setAttribute('aria-label', t('detailCopied'));
+  detailShare.setAttribute('title', t('detailCopied'));
+  KGIcons.setIcon(detailShare, 'doc.on.doc');
+  setTimeout(() => {
+    if (!detailShare || detailShare.dataset.state !== 'copied') return;
+    detailShare.dataset.state = 'idle';
+    detailShare.setAttribute('aria-label', t('detailShareAria'));
+    detailShare.setAttribute('title', t('detailShareAria'));
+    KGIcons.setIcon(detailShare, 'square.and.arrow.up');
+  }, 1600);
+}
+
+function markDetailShareFailed() {
+  if (!detailShare) return;
+  detailShare.dataset.state = 'failed';
+  detailShare.setAttribute('aria-label', t('detailCopyFailed'));
+  detailShare.setAttribute('title', t('detailCopyFailed'));
+  setTimeout(() => {
+    if (!detailShare || detailShare.dataset.state !== 'failed') return;
+    detailShare.dataset.state = 'idle';
+    detailShare.setAttribute('aria-label', t('detailShareAria'));
+    detailShare.setAttribute('title', t('detailShareAria'));
+  }, 1600);
 }
 
 /** Delegated click handler for the detail body (speaker + link navigation). */

@@ -30,6 +30,7 @@ const {
   filterVocab,
   sortVocab,
   vocabEmptyState,
+  vocabPlainTextExport,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,
@@ -380,8 +381,56 @@ test('vocabEmptyState uses single-filter iOS system-image branches', () => {
   assert.equal(vocabEmptyState({ filters: ['unlearned'] }).systemImage, 'sparkles');
   assert.equal(vocabEmptyState({ filters: ['due'] }).systemImage, 'checkmark.seal');
   assert.equal(vocabEmptyState({ filters: ['reviewed'] }).systemImage, 'leaf');
-  assert.equal(vocabEmptyState({ filters: ['due', 'reviewed'] }).systemImage, 'line.3.horizontal.decrease.circle');
-  assert.equal(vocabEmptyState({ filters: [] }).systemImage, 'line.3.horizontal.decrease.circle');
+  assert.equal(
+    vocabEmptyState({ filters: ['due', 'reviewed'] }).systemImage,
+    'line.3.horizontal.decrease.circle',
+  );
+  assert.deepEqual(
+    vocabEmptyState({ filters: [] }),
+    {
+      kind: 'default',
+      titleKey: 'emptyCollectedTitle',
+      descriptionKey: 'emptySyncedSubtitle',
+      systemImage: 'line.3.horizontal.decrease.circle',
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// vocabPlainTextExport (mirrors iOS CardDocument.plainTextExport)
+// ---------------------------------------------------------------------------
+
+test('vocabPlainTextExport orders word, example, meaning, collocations, source like iOS', () => {
+  const text = vocabPlainTextExport({
+    word: 'lascivious',
+    pos: 'adj.',
+    examples: [{ sentence: 'He cast a lascivious glance.' }],
+    meaning: '好色的；淫蕩的',
+    note: '帶有明顯性意味的。\n\n多用於描述眼神。',
+    collocations: [{ word: 'lascivious glance' }, { word: 'lascivious smile' }],
+    source: { type: 'book', title: 'Moby Dick', chapter: 'Chapter 1' },
+  });
+  assert.equal(text, [
+    'lascivious (adj.)',
+    'He cast a lascivious glance.',
+    '好色的；淫蕩的',
+    '帶有明顯性意味的。',
+    '多用於描述眼神。',
+    'lascivious glance, lascivious smile',
+    '— Moby Dick · Chapter 1',
+  ].join('\n\n'));
+});
+
+test('vocabPlainTextExport trims blanks and omits absent sections', () => {
+  assert.equal(vocabPlainTextExport({
+    word: '  daft  ',
+    pos: '',
+    meaning: '愚蠢的',
+    note: '   ',
+    examples: [],
+    collocations: [],
+    source: null,
+  }), 'daft\n\n愚蠢的');
 });
 
 // ---------------------------------------------------------------------------

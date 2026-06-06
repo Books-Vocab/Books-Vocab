@@ -82,6 +82,14 @@
     // arrow.up.right — navigable knowledge-link accessory (mirrors iOS detail link row)
     'arrow-up-right':
       '<path d="M7 17L17 7"/><path d="M8 7h9v9"/>',
+    // square.and.arrow.up — word-detail share action (mirrors iOS ShareLink)
+    'square.and.arrow.up':
+      '<path d="M12 15V4"/><path d="M8 8l4-4 4 4"/>' +
+      '<path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/>',
+    // doc.on.doc — clipboard fallback / copied state
+    'doc.on.doc':
+      '<rect x="8" y="7" width="10" height="13" rx="2"/>' +
+      '<path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>',
     // xmark — explicit popup close
     'xmark':
       '<path d="M6 6l12 12M18 6L6 18"/>',

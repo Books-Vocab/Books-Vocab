@@ -113,5 +113,8 @@
   "detailBack": { "message": "返回" },
   "detailBackAria": { "message": "返回單字列表" },
   "detailSpeak": { "message": "朗讀" },
+  "detailShareAria": { "message": "分享單字" },
+  "detailCopied": { "message": "已複製" },
+  "detailCopyFailed": { "message": "無法複製" },
   "detailSourceApp": { "message": "iOS app" }
 }

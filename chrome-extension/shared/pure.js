@@ -459,6 +459,68 @@ function vocabEmptyState({ hasNoEntries = false, searchText = '', filters = null
   };
 }
 
+function _trimmed(str) {
+  return String(str == null ? '' : str).trim();
+}
+
+function _inlinePlainText(str) {
+  return parseInlineMarks(String(str == null ? '' : str))
+    .map((seg) => seg.value)
+    .join('')
+    .trim();
+}
+
+/**
+ * Build the word-detail share/copy payload, mirroring iOS
+ * CardDocument.plainTextExport(): hero, first example, meaning title +
+ * paragraphs, collocations, and source, separated by blank lines.
+ *
+ * @param {object} item — normalized/enriched vocab item
+ * @returns {string}
+ */
+function vocabPlainTextExport(item) {
+  const raw = item && typeof item === 'object' ? item : {};
+  const lines = [];
+
+  const word = _trimmed(raw.word);
+  if (word) {
+    const pos = _trimmed(raw.pos);
+    lines.push(pos ? `${word} (${pos})` : word);
+  }
+
+  const ex0 = Array.isArray(raw.examples) && raw.examples.length ? raw.examples[0] : null;
+  const example = typeof ex0 === 'string' ? ex0 : (ex0 && (ex0.sentence || ex0.text)) || '';
+  const exampleText = _inlinePlainText(example);
+  if (exampleText) lines.push(exampleText);
+
+  const meaning = _trimmed(raw.meaning);
+  if (meaning) lines.push(meaning);
+
+  const note = String(raw.note == null ? '' : raw.note)
+    .replace(/\r\n/g, '\n')
+    .split(/\n+/)
+    .map(_inlinePlainText)
+    .filter(Boolean);
+  lines.push(...note);
+
+  const collocations = Array.isArray(raw.collocations)
+    ? raw.collocations
+        .map((c) => _trimmed(typeof c === 'string' ? c : (c && c.word) || ''))
+        .filter(Boolean)
+    : [];
+  if (collocations.length) lines.push(collocations.join(', '));
+
+  const source = raw.source && typeof raw.source === 'object' ? raw.source : null;
+  if (source) {
+    const title = _trimmed(source.title || source.book || source.bookTitle || source.url);
+    const chapter = _trimmed(source.chapter || source.chapterTitle);
+    const sourceParts = [title, chapter].filter(Boolean);
+    if (sourceParts.length) lines.push(`— ${sourceParts.join(' · ')}`);
+  }
+
+  return lines.join('\n\n');
+}
+
 /**
  * Classify an error response (from the background worker / ApiError.toJSON())
  * into the user-facing presentation used by the side panel error state.
@@ -773,6 +835,7 @@ const KGPureExports = {
   filterVocab,
   sortVocab,
   vocabEmptyState,
+  vocabPlainTextExport,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,

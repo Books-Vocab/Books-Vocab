@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: d0e9a0cb
+verified_against: f536e721
 -->
 # Implemented Product Surface
 
@@ -87,7 +87,7 @@ verified_against: d0e9a0cb
 
 - Side panel vocab lookup
 - 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
-- 單字本 row 點開全幅 word-detail push 面板（覆蓋於 list 上保留 scroll/search/filter）：hero(詞+詞性+難度+TTS) → 例句(目標詞 highlight，`markWordInExample`+`parseInlineMarks` 對標 iOS) → 釋義/定義 → 搭配 → 變化形 → 知識連結(對比/相關 group，本地語料命中可導航 push/back) → 複習進度 → metadata footer → 來源；TTS 走裝置端 Web Speech API；唯讀無 mutation
+- 單字本 row 點開全幅 word-detail push 面板（覆蓋於 list 上保留 scroll/search/filter）：hero(詞+詞性+難度+TTS) → 例句(目標詞 highlight，`markWordInExample`+`parseInlineMarks` 對標 iOS) → 釋義/定義 → 搭配 → 變化形 → 知識連結(對比/相關 group，本地語料命中可導航 push/back) → 複習進度 → metadata footer → 來源；TTS 走裝置端 Web Speech API；top bar share action 先走 Web Share、fallback clipboard，純文字格式由 `vocabPlainTextExport` 對齊 iOS `CardDocument.plainTextExport`；唯讀無 mutation
 - 跨 context 詞庫刷新：頁面 popup 加入單字後 background bump storage `vocab_dirty`，side panel `storage.onChanged` → 非破壞性靜默刷新（保留 search/filter/sort/scroll/開啟中的 detail）
 - **加詞本地暫存 → sync outbox（對齊 iOS）**：選詞加入不再即時裸 POST，改 optimistic enqueue 進 `chrome.storage` 的 `vocab_outbox`（`pending/synced/failed` 狀態機鏡像 iOS `syncStatus`）+ 立即回 ack，背景 single-flight flush 批次 `POST /api/vocab` 收斂、失敗自動重試（網路抖動不丟詞）；service worker spin-up 時 drain 殘留。flush 收斂後自動觸發 server enrich（`POST /api/pipeline`）並以 `chrome.alarms` 輪詢 `X-Pipeline-Pending` re-pull 回填，使 chrome 加的卡也長出詞性／例句／發音（不再永久裸卡）；sidepanel 即時顯示 pending／失敗詞（置頂 + 狀態標記「同步中／待重試」，對齊 iOS 待同步可見性）
 - 閱讀選詞翻譯

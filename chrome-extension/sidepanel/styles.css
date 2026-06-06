@@ -513,6 +513,7 @@ body {
 .kg-detail-panel__back svg { width: 1.25em; height: 1.25em; display: block; }
 
 .kg-detail-panel__bar-word {
+  flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--text-body);
@@ -522,6 +523,35 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.kg-detail-panel__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+}
+
+.kg-detail-panel__share {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--toggle-size);
+  height: var(--toggle-size);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 var(--sp-hairline) var(--card-border);
+  transition: background var(--motion-quick), color var(--motion-quick),
+              transform var(--spring-press), opacity var(--spring-press);
+}
+.kg-detail-panel__share:hover { background: var(--muted-fill); color: var(--text-primary); }
+.kg-detail-panel__share:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
+.kg-detail-panel__share[data-state="copied"] { color: var(--success); }
+.kg-detail-panel__share[data-state="failed"] { color: var(--destructive); }
+.kg-detail-panel__share svg { width: 1.15em; height: 1.15em; display: block; }
 
 .kg-detail-panel__scroll {
   flex: 1;
