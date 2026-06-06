@@ -8,6 +8,7 @@ from kg.api_models import (
     ReviewModeConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
+    VocabUIConfig,
 )
 
 # ===========================================================================
@@ -266,6 +267,85 @@ class TestUpdateUserConfigReviewModeRoundTrip:
         assert resp.review_mode.mode == "intensive"
         assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
         assert store["u1"]["config"]["review_mode"]["mode"] == "intensive"
+
+
+class TestMergeUserConfigVocabUI:
+    """vocab_ui 後端化:全域 active notebook 游標(active_notebook_id + updated_at 驅動
+    跨裝置 LWW),決定新選詞的預設歸屬。對 client 寬鬆:stale id(指向已刪 notebook)由各
+    client 自行 reconcile,後端此階段 passthrough 不驗存在性(與其他 group 一致)。"""
+
+    def test_merge(self):
+        config = {}
+        req = UserConfigRequest(
+            vocab_ui=VocabUIConfig(active_notebook_id="nb-42", updated_at=1717668000.0)
+        )
+        _merge_user_config(config, req)
+        assert config["vocab_ui"] == {
+            "active_notebook_id": "nb-42",
+            "updated_at": 1717668000.0,
+        }
+
+    def test_none_preserves_existing(self):
+        existing = {"active_notebook_id": "nb-7", "updated_at": 1.0}
+        config = {"vocab_ui": dict(existing)}
+        _merge_user_config(config, UserConfigRequest(vocab_ui=None))
+        assert config["vocab_ui"] == existing
+
+    def test_independent_of_other_config(self):
+        config = {}
+        req = UserConfigRequest(
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ja"),
+            review_mode=ReviewModeConfig(mode="intensive", updated_at=3.0),
+            vocab_ui=VocabUIConfig(active_notebook_id="nb-9", updated_at=4.0),
+        )
+        _merge_user_config(config, req)
+        assert config["translation"]["target_lang"] == "ja"
+        assert config["review_mode"]["mode"] == "intensive"
+        assert config["vocab_ui"]["active_notebook_id"] == "nb-9"
+
+
+class TestBuildUserConfigVocabUI:
+
+    def test_build_includes_vocab_ui(self):
+        config = {"vocab_ui": {"active_notebook_id": "nb-42", "updated_at": 3.0}}
+        resp = _build_user_config_response(config)
+        assert resp.vocab_ui is not None
+        assert resp.vocab_ui.active_notebook_id == "nb-42"
+        assert resp.vocab_ui.updated_at == 3.0
+
+    def test_build_defaults_when_absent(self):
+        resp = _build_user_config_response({})
+        assert resp.vocab_ui is not None
+        assert resp.vocab_ui.active_notebook_id == "default"
+        assert resp.vocab_ui.updated_at is None
+
+
+class TestUpdateUserConfigVocabUIRoundTrip:
+
+    def test_persists_vocab_ui_alongside_translation(self, tmp_path):
+        import copy
+
+        store = {"u1": {"config": {"translation": {"source_lang": "en", "target_lang": "ja"}}}}
+
+        def load_users():
+            return copy.deepcopy(store)
+
+        def save_users(updated):
+            store.clear()
+            store.update(copy.deepcopy(updated))
+
+        req = UserConfigRequest(
+            vocab_ui=VocabUIConfig(active_notebook_id="nb-99", updated_at=5.0)
+        )
+        resp = update_user_config_response(
+            req, {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+        assert resp.vocab_ui.active_notebook_id == "nb-99"
+        assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
+        assert store["u1"]["config"]["vocab_ui"]["active_notebook_id"] == "nb-99"
 
 
 # ===========================================================================
