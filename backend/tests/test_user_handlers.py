@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 from kg.api_models import (
+    ReviewClockConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
 )
@@ -11,7 +12,13 @@ from kg.api_models import (
 # ===========================================================================
 # _merge_user_config  (tested indirectly via module import)
 # ===========================================================================
-from kg.user_handlers import _merge_user_config, delete_user_account_response, health_response
+from kg.user_handlers import (
+    _build_user_config_response,
+    _merge_user_config,
+    delete_user_account_response,
+    health_response,
+    update_user_config_response,
+)
 from kg.user_store import collect_account_ids_for_deletion
 
 
@@ -38,6 +45,107 @@ class TestMergeUserConfig:
         )
         _merge_user_config(config, req)
         assert config["translation"] == {"source_lang": "en", "target_lang": "ko"}
+
+
+class TestMergeUserConfigReviewClock:
+    """review_clock 後端化:per-user 全局複習時鐘暫停態(is_paused + paused_at 複合,
+    單一 updated_at 驅動 LWW)。merge 正規化保證原子一致:resume 時 paused_at 清空。"""
+
+    def test_merge_paused(self):
+        config = {}
+        req = UserConfigRequest(
+            review_clock=ReviewClockConfig(
+                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=1717668000.0
+            )
+        )
+        _merge_user_config(config, req)
+        assert config["review_clock"] == {
+            "is_paused": True,
+            "paused_at": "2026-06-06T10:00:00Z",
+            "updated_at": 1717668000.0,
+        }
+
+    def test_resume_normalizes_paused_at_to_none(self):
+        # is_paused=False 時 paused_at 必須被正規化清空,否則儲存層自相矛盾。
+        config = {}
+        req = UserConfigRequest(
+            review_clock=ReviewClockConfig(
+                is_paused=False, paused_at="2026-06-06T10:00:00Z", updated_at=1717668100.0
+            )
+        )
+        _merge_user_config(config, req)
+        assert config["review_clock"]["is_paused"] is False
+        assert config["review_clock"]["paused_at"] is None
+        assert config["review_clock"]["updated_at"] == 1717668100.0
+
+    def test_none_preserves_existing(self):
+        existing = {"is_paused": True, "paused_at": "2026-06-06T10:00:00Z", "updated_at": 1.0}
+        config = {"review_clock": dict(existing)}
+        _merge_user_config(config, UserConfigRequest(review_clock=None))
+        assert config["review_clock"] == existing
+
+    def test_independent_of_translation(self):
+        config = {}
+        req = UserConfigRequest(
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ja"),
+            review_clock=ReviewClockConfig(
+                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=2.0
+            ),
+        )
+        _merge_user_config(config, req)
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ja"}
+        assert config["review_clock"]["is_paused"] is True
+
+
+class TestBuildUserConfigReviewClock:
+
+    def test_build_includes_review_clock(self):
+        config = {"review_clock": {
+            "is_paused": True, "paused_at": "2026-06-06T10:00:00Z", "updated_at": 3.0,
+        }}
+        resp = _build_user_config_response(config)
+        assert resp.review_clock is not None
+        assert resp.review_clock.is_paused is True
+        assert resp.review_clock.paused_at == "2026-06-06T10:00:00Z"
+        assert resp.review_clock.updated_at == 3.0
+
+    def test_build_defaults_when_absent(self):
+        resp = _build_user_config_response({})
+        assert resp.review_clock is not None
+        assert resp.review_clock.is_paused is False
+        assert resp.review_clock.paused_at is None
+
+
+class TestUpdateUserConfigReviewClockRoundTrip:
+
+    def test_persists_review_clock_alongside_translation(self, tmp_path):
+        import copy
+
+        # store 模擬持久層:load 回獨立副本、save 寫回,避免 handler 直接 mutate
+        # 持久 dict(真實 load_users 從 users.json 反序列化,本就是新物件)。
+        store = {"u1": {"config": {"translation": {"source_lang": "en", "target_lang": "ja"}}}}
+
+        def load_users():
+            return copy.deepcopy(store)
+
+        def save_users(updated):
+            store.clear()
+            store.update(copy.deepcopy(updated))
+
+        req = UserConfigRequest(
+            review_clock=ReviewClockConfig(
+                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=5.0
+            )
+        )
+        resp = update_user_config_response(
+            req, {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+        assert resp.review_clock.is_paused is True
+        assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
+        assert store["u1"]["config"]["review_clock"]["is_paused"] is True
 
 
 # ===========================================================================

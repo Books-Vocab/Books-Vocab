@@ -42,6 +42,7 @@ from kg.api_models.podcast import (
     PodcastSeriesSummary,
 )
 from kg.api_models.review import (
+    ReviewClockConfig,
     ReviewEventEntry,
     ReviewEventsPushRequest,
     ReviewEventsPushResponse,
@@ -113,6 +114,7 @@ __all__ = [
     "PodcastSeriesSummary",
     "QuickTranslateResponse",
     "QuotaResponse",
+    "ReviewClockConfig",
     "ReviewEventEntry",
     "ReviewEventsPushRequest",
     "ReviewEventsPushResponse",

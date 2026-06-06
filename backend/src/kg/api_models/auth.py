@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from kg.api_models.review import ReviewClockConfig
 from kg.api_models.translate import TranslationLanguageConfig
 
 
@@ -26,10 +27,12 @@ class AuthVerifyResponse(BaseModel):
 
 class UserConfigRequest(BaseModel):
     translation: TranslationLanguageConfig | None = None
+    review_clock: ReviewClockConfig | None = None
 
 
 class UserConfigResponse(BaseModel):
     translation: TranslationLanguageConfig | None = None
+    review_clock: ReviewClockConfig | None = None
 
 
 class DeleteAccountResponse(BaseModel):
