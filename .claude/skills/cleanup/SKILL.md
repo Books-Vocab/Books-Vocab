@@ -162,7 +162,7 @@ git branch -D <branch>
 - 多數 PR 應已 doc-as-code 自帶 doc 改動。重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
 
 - 多數 PR 應已 doc-as-code 自帶 doc 改動。剩餘走 `(cd <wt> && ./ops/docs_lint.sh)` 日常 gate：
-  - 依 `docs/registry.yml` trigger 判斷本批 code 是否真的影響活文檔 → 改內容 + bump `verified_against` 到 main 可達 code commit。
+  - 先看 `WARN impact` 候選 doc id(來自 registry `sources` path-hint),再依 `docs/registry.yml` trigger 判斷本批 code 是否真的影響活文檔 → 改內容 + bump `verified_against` 到 main 可達 code commit。
   - 全 repo debt 盤點才跑 `./ops/docs_lint.sh --audit`;既有 invalid anchor / stale WARN 不阻塞本批 cleanup,除非是本批引入或本批觸發的文檔。
 - 派 doc-auditor 時用 `doc-auditor-prompt.md`；**agent 只分析、主 agent 統一 Edit**；要派會 commit 的就 `isolation: worktree`。
 - 完成 `docs:` commit（commit 無妨；push 見下）。

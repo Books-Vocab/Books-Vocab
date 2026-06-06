@@ -86,6 +86,7 @@ documents:
     sources:
       - docs/registry.yml
       - ops/docs_lint.sh
+      - ops/docs_impact.py
 
   - id: sop.backend
     path: docs/sop/backend.md

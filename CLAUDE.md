@@ -123,4 +123,4 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 - sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
 - `backend/src/kg/llm/providers.py:REGISTRY` 費率變動 / Lightsail bundle 變更 / 新供應商接入 → 同 PR 更新 `docs/reference/cost_baseline.md`(對應段 §2 pricing / §1 月費表 / §5 變更歷史)
 - iOS 大規模重構 PR 合併後執行 `ops/gen_ios_baseline.sh` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改)
-- PR 開出前跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR;全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 PR gate
+- PR 開出前跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR；gate 會另輸出 registry impact hints(`WARN impact`,提示本次 code path 可能牽動的 doc id,目前不作為 fail 條件),需納入 doc-sync 判斷。全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 PR gate

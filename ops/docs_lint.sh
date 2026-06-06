@@ -5,8 +5,9 @@
 #   1. 預設 gate 模式只掃本分支/工作樹變更的 docs,避免既有 doc debt 阻塞日常 PR
 #   2. audit/all 模式才對 docs/**/*.md(除了 assets/legal)做全 repo freshness 盤點
 #   3. registry 模式驗證 docs/registry.yml 控制平面(path/kind/generator 基本有效性)
-#   4. 對選中的 doc 解析 doc-meta frontmatter,檢查 tier / authority / update_trigger / scope / verified_against
-#   5. audit 模式對非 archive doc 計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
+#   4. gate 模式透過 docs_impact.py 輸出 registry impact hints(提示用,不作為 fail 條件)
+#   5. 對選中的 doc 解析 doc-meta frontmatter,檢查 tier / authority / update_trigger / scope / verified_against
+#   6. audit 模式對非 archive doc 計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
 #      - 超過 STALE_THRESHOLD(預設 30)→ WARN
 #      - verified_against 不是有效 sha(且不是 frozen)→ ERROR
 #
@@ -37,6 +38,7 @@ STRICT=0
 MODE="gate"
 SINCE_REV=""
 FILE_ARGS=()
+GATE_BASE=""
 
 usage() {
   sed -n '1,22p' "$0" | sed 's/^# \{0,1\}//'
@@ -211,7 +213,7 @@ default_changed_base() {
 }
 
 changed_docs() {
-  base="${SINCE_REV:-$(default_changed_base)}"
+  base="${GATE_BASE:-${SINCE_REV:-$(default_changed_base)}}"
   if ! git rev-parse --verify "$base^{commit}" >/dev/null 2>&1; then
     echo "ERROR --since/changed base 不是有效 commit: $base" >&2
     exit 2
@@ -222,6 +224,27 @@ changed_docs() {
     git diff --name-only --diff-filter=ACMR -- docs
     git ls-files --others --exclude-standard docs
   } | filter_docs
+}
+
+emit_impact_hints() {
+  [ "$MODE" = "gate" ] || return
+  [ -n "$GATE_BASE" ] || return
+
+  if [ ! -x "ops/docs_impact.py" ]; then
+    echo "WARN docs_lint: ops/docs_impact.py 不存在或不可執行,略過 registry impact hints"
+    return
+  fi
+
+  impact_out="$(./ops/docs_impact.py --since "$GATE_BASE" 2>&1)" || {
+    echo "WARN docs_lint: docs_impact.py 執行失敗,略過 registry impact hints"
+    echo "$impact_out"
+    return
+  }
+
+  if echo "$impact_out" | grep -q '^IMPACT '; then
+    echo "docs_lint: registry impact hints (warn only)"
+    echo "$impact_out" | sed -n 's/^IMPACT /WARN impact — /p'
+  fi
 }
 
 files_docs() {
@@ -263,6 +286,15 @@ if [ "$MODE" = "registry" ]; then
   echo "─────────────────────────────────────"
   [ "$errors" -gt 0 ] && exit 1
   exit 0
+fi
+
+if [ "$MODE" = "gate" ]; then
+  GATE_BASE="${SINCE_REV:-$(default_changed_base)}"
+  if ! git rev-parse --verify "$GATE_BASE^{commit}" >/dev/null 2>&1; then
+    echo "ERROR --since/changed base 不是有效 commit: $GATE_BASE" >&2
+    exit 2
+  fi
+  emit_impact_hints
 fi
 
 case "$MODE" in
