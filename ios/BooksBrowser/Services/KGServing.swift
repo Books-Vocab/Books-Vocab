@@ -1,14 +1,24 @@
 import Foundation
 import SwiftData
 
+/// 背景同步能力（窄協定）— 供顯式同步 UI（書架 pull-to-refresh / Mac toolbar /
+/// ⌘R menu）依賴與 mock。比照 `LocalDataClearing` 的能力切分：consumer 只需這兩個
+/// 成員，無謂背 `KGServing` 全表。`KGServing` 細化此協定，故 `any KGServing` 可直接
+/// 傳入需要 `any BackgroundSyncing` 之處（existential upcast）。
+protocol BackgroundSyncing: AnyObject {
+    /// 最近一次背景同步失敗訊息（nil = 成功）。為跨 trigger 共享全域欄位，顯式同步
+    /// consumer 須 read-then-clear（見 `ExplicitSync` / `BooksBrowserApp` scenePhase）。
+    var lastBackgroundSyncError: String? { get set }
+    func backgroundSync(container: ModelContainer) async
+}
+
 /// KGService 的行為契約
-protocol KGServing: AnyObject {
+protocol KGServing: BackgroundSyncing {
     var serverURL: String { get set }
     var isConnected: Bool { get }
     var lastSyncDate: Date? { get }
     var serverCardCount: Int { get }
     var sessionExpiredReason: String? { get set }
-    var lastBackgroundSyncError: String? { get set }
 
     func currentAuthToken() async throws -> String
     func healthCheck() async
@@ -37,7 +47,6 @@ protocol KGServing: AnyObject {
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
     func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int)
     func pullReviewEvents(container: ModelContainer) async throws
-    func backgroundSync(container: ModelContainer) async
     func pushReviewQuietly(container: ModelContainer) async
     func clearLocalData(container: ModelContainer, reason: String) async
     func fetchQuota() async
