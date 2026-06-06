@@ -146,7 +146,23 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         self.isLoggedIn = true
     }
 
-    func login(customToken: String) {
+    /// Manual/debug login via a raw custom token (userId == token), surfaced only in
+    /// the DEBUG Settings account section. Mirrors `applyAuthenticatedUser`'s
+    /// account-switch contract: when switching away from a prior user it clears that
+    /// user's SwiftData (vocab/notebooks/review-records/books) *before* establishing
+    /// the new session, so the manual-login path doesn't leave account A's rows
+    /// visible under account B. `login(userId:token:)` then handles the UserDefaults
+    /// sync-boundary + notebook-state reset. The empty-token guard mirrors
+    /// `login(userId:token:)` so a blank token neither switches nor wipes.
+    func login(customToken: String) async {
+        let userIdStr = customToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !userIdStr.isEmpty,
+           let existing = self.userId,
+           existing != userIdStr,
+           let container = self.modelContainer {
+            AppLog.auth.info("Manual login account switch — clearing previous user's local data")
+            await localDataCleaner.clearLocalData(container: container, reason: "manual_login_account_switch")
+        }
         login(userId: customToken, token: customToken)
     }
 

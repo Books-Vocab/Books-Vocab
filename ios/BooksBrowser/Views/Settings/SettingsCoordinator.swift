@@ -196,7 +196,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     func handleManualLogin(authManager: any AuthManaging) {
         let id = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { return }
-        authManager.login(customToken: id)
+        Task { await authManager.login(customToken: id) }
     }
 
     func resync(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async {
