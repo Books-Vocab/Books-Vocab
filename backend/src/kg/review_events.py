@@ -184,14 +184,25 @@ def _entry_from_event(event: ReviewEvent) -> ReviewEventEntry:
 
 
 def _parse_iso8601_timestamp(raw: str) -> datetime:
-    if "T" not in raw:
-        raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
+    """Parse the pull watermark ``since``. Deliberately lenient: ``since`` is a value
+    the client echoes back, and historical app versions persisted non-strict formats
+    (naive, space-separated, basic offset). Rejecting them would deadlock the client
+    (bad watermark → 400 → watermark never advances → 400 forever). We accept anything
+    that maps to a single instant and normalize to tz-aware UTC; naive values are
+    assumed UTC. Stricter than ingestion timestamps on purpose — see
+    ``_parse_required_timestamp``, which still demands tz-aware input."""
+    candidate = raw.strip().replace("Z", "+00:00")
+    # Space-separated date/time → ISO 'T' (e.g. "2026-06-01 10:00:00").
+    if "T" not in candidate and " " in candidate:
+        candidate = candidate.replace(" ", "T", 1)
+    # Swift Date.description style leaves a space before the offset ("...00 +0000").
+    candidate = candidate.replace(" +", "+").replace(" -", "-")
     try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(candidate)
     except ValueError:
         raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.") from None
     if parsed.tzinfo is None:
-        raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
 
 

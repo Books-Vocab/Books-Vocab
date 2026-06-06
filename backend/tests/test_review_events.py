@@ -7,7 +7,13 @@ import pytest
 
 from kg.api_models import ReviewEventEntry
 from kg.exceptions import BadRequestError
-from kg.review_events import ReviewEvent, ReviewEventStore, pull_review_events, push_review_events
+from kg.review_events import (
+    ReviewEvent,
+    ReviewEventStore,
+    _parse_iso8601_timestamp,
+    pull_review_events,
+    push_review_events,
+)
 
 
 def _event(
@@ -100,12 +106,46 @@ def test_empty_pull_keeps_cursor(tmp_path):
     assert cursor2 == cursor1
 
 
-@pytest.mark.parametrize("bad_since", ["garbage", "2026-13-99", "2026-06-01", "1717668000", "2026-06-01T10:00:00"])
+@pytest.mark.parametrize("bad_since", ["garbage", "2026-13-99", "1717668000", "not-a-date"])
 def test_since_must_be_iso8601(tmp_path, bad_since):
     store = ReviewEventStore(tmp_path / "review_events.db")
 
     with pytest.raises(BadRequestError):
         pull_review_events(since=bad_since, event_store=store)
+
+
+# `since` 是 client 回送的 watermark，歷史版本可能寫入過非嚴格 ISO8601 的字串
+# （naive、空格分隔、basic offset）。為打破「壞 watermark → 400 → 不前進 → 永遠 400」
+# 的死鎖，pull 端的 since parser 刻意容錯：能還原成同一時間點的都接受並正規化為
+# tz-aware UTC。注意這與 ingestion 的 _parse_required_timestamp（reviewed_at/created_at
+# 仍嚴格要求 tz-aware，見 test_event_timestamps_must_be_timezone_aware_iso8601）分歧。
+@pytest.mark.parametrize(
+    "lenient_since",
+    [
+        "2026-06-01T10:00:00+00:00",  # 標準（含冒號 offset）
+        "2026-06-01T10:00:00Z",  # Z 後綴
+        "2026-06-01T10:00:00",  # naive → 視為 UTC
+        "2026-06-01 10:00:00+00:00",  # 空格分隔（非 T）
+        "2026-06-01 10:00:00 +0000",  # Swift Date.description 風格（basic offset + 前空格）
+        "2026-06-01",  # 純日期 → 當天 00:00 UTC
+    ],
+)
+def test_since_accepts_lenient_client_formats(lenient_since):
+    parsed = _parse_iso8601_timestamp(lenient_since)
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == timedelta(0)
+
+
+def test_since_lenient_formats_are_equivalent():
+    """同一時間點的不同寫法 parse 成完全相同的 instant。"""
+    canonical = _parse_iso8601_timestamp("2026-06-01T10:00:00+00:00")
+    for variant in (
+        "2026-06-01T10:00:00Z",
+        "2026-06-01T10:00:00",
+        "2026-06-01 10:00:00+00:00",
+        "2026-06-01 10:00:00 +0000",
+    ):
+        assert _parse_iso8601_timestamp(variant) == canonical
 
 
 @pytest.mark.parametrize("field_name", ["reviewed_at", "created_at"])
