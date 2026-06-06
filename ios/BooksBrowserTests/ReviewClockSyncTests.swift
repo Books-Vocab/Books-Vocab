@@ -50,11 +50,8 @@ struct ReviewClockLWWTests {
 /// dict-backed fake，注入 ReviewSettingsStore 取代真 NSUbiquitousKeyValueStore。
 @MainActor
 final class FakeCloudKVStore: CloudKeyValueStore {
-    private var strings: [String: String] = [:]
     private var doubles: [String: Double] = [:]
-    func string(forKey key: String) -> String? { strings[key] }
     func double(forKey key: String) -> Double? { doubles[key] }
-    func set(_ value: String, forKey key: String) { strings[key] = value }
     func set(_ value: Double, forKey key: String) { doubles[key] = value }
 }
 
@@ -118,5 +115,31 @@ struct ReviewSettingsStorePauseSyncTests {
         let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
         #expect(store.settings.isProgressPaused == true)
         #expect(store.settings.progressPausedAt == Date(timeIntervalSince1970: 3000))
+    }
+
+    @Test func restorePauseStateRevertsAllLayers() {
+        let defaults = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        var s = store.settings
+        s.pauseProgress(at: Date(timeIntervalSince1970: 1000)); store.update(s)
+        // rollback 到「resume + 舊時戳 50」
+        store.restorePauseState(PauseClockState(isPaused: false, pausedAt: nil, updatedAt: 50))
+        #expect(store.settings.isProgressPaused == false)
+        #expect(cloud.double(forKey: "review_settings_progress_paused") == 0.0)
+        #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 50)
+        #expect(defaults.object(forKey: "review_settings_progress_updated_at") as? Double == 50)
+    }
+
+    @Test func applyServerPauseStateColdStartNoCloudWriteback() {
+        let defaults = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        store.applyServerPauseState(isPaused: true, pausedAt: Date(timeIntervalSince1970: 2000), updatedAt: 300)
+        #expect(store.settings.isProgressPaused == true)
+        #expect(store.settings.progressPausedAt == Date(timeIntervalSince1970: 2000))
+        #expect(defaults.object(forKey: "review_settings_progress_updated_at") as? Double == 300)
+        // cold-start 不回寫 iCloud
+        #expect(cloud.double(forKey: "review_settings_progress_updated_at") == nil)
     }
 }

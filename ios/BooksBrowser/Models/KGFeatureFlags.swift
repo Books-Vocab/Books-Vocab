@@ -18,6 +18,13 @@ enum KGFeatureFlags {
     /// authoritative cross-device path.
     static var serverTranslationLwwEnabled: Bool { false }
 
+    /// Whether to send `updated_at` and trust server-returned `updated_at` for
+    /// LWW on the pause review clock. Backend dependency: `review_clock.updated_at`
+    /// persisted + returned by `GET /api/user/config`. Until on, server is
+    /// single-direction (server-wins on cold-start) and iCloud KV is the
+    /// authoritative cross-device path — mirrors `serverTranslationLwwEnabled`.
+    static var serverReviewClockLwwEnabled: Bool { false }
+
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the
     /// fields would be silently dropped; flip this when backend accepts them.
