@@ -191,4 +191,74 @@ struct BookManifestTests {
         )
         #expect(BookManifestStore.merged(incoming: incoming, existing: nil) == incoming)
     }
+
+    // MARK: - 跨版本 / 損壞容錯
+
+    @Test func writeDoesNotOverwriteNewerSchemaVersionManifest() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BookManifestTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = BookManifestStore(rootDirectory: root)
+        let bookId = UUID()
+        let fileName = "future.epub"
+        // 既有 manifest 來自「未來版本」的 app
+        try store.write(BookManifest(
+            schemaVersion: BookManifest.currentSchemaVersion + 1,
+            bookId: bookId,
+            fileName: fileName,
+            originalFileName: "Future.epub",
+            title: "Future Title",
+            author: "Future Author",
+            format: .epub,
+            coverImageData: Data([1]),
+            dateAdded: Date(timeIntervalSince1970: 1),
+            dateLastRead: nil,
+            progression: nil,
+            lastReadLocatorJSON: nil,
+            preferredNotebookId: nil
+        ))
+
+        let book = Book(title: "Older App Title", author: "X", fileName: fileName, format: .epub)
+        book.id = bookId
+
+        // 直接 write(book:) 應拋（拒絕用舊 schema 覆蓋更新的檔）
+        #expect(throws: BookManifestStoreError.self) {
+            try store.write(book: book)
+        }
+        // writeBestEffort 吞錯但不覆蓋
+        store.writeBestEffort(book: book)
+
+        let onDisk = try store.read(bookId: bookId)
+        #expect(onDisk.schemaVersion == BookManifest.currentSchemaVersion + 1)
+        #expect(onDisk.title == "Future Title")
+    }
+
+    @Test func readAllSkipsCorruptManifestFiles() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BookManifestTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = BookManifestStore(rootDirectory: root)
+        try store.write(BookManifest(
+            bookId: UUID(),
+            fileName: "good.epub",
+            originalFileName: nil,
+            title: "Good",
+            author: "",
+            format: .epub,
+            coverImageData: nil,
+            dateAdded: Date(timeIntervalSince1970: 1),
+            dateLastRead: nil,
+            progression: nil,
+            lastReadLocatorJSON: nil,
+            preferredNotebookId: nil
+        ))
+        // 寫一個損壞的 .json
+        try Data("{ not valid json".utf8).write(to: store.metadataDirectory.appendingPathComponent("\(UUID().uuidString).json"))
+
+        let all = store.readAll()
+        #expect(all.count == 1)
+        #expect(all.first?.title == "Good")
+    }
 }

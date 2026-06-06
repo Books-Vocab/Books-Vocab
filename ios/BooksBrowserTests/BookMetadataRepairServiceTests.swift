@@ -5,7 +5,17 @@ import Testing
 @testable import BooksBrowser
 
 @MainActor
-struct BookMetadataRepairServiceTests {
+final class BookMetadataRepairServiceTests {
+    // 記錄 makeService 建立的 UserDefaults suite，deinit 時清掉，避免測試 plist 殘留
+    // 在 test host 的 Library/Preferences 累積（Swift Testing 每測試一實例、釋放觸發 deinit）。
+    private var createdSuiteNames: [String] = []
+
+    deinit {
+        for suite in createdSuiteNames {
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
+    }
+
     // MARK: - Fixtures
 
     @MainActor
@@ -54,9 +64,14 @@ struct BookMetadataRepairServiceTests {
     }
 
     private func makeService(extractor: any BookMetadataExtracting, root: URL) -> BookMetadataRepairService {
-        BookMetadataRepairService(
+        // 每個 service 一份隔離的 UserDefaults suite，避免 skip 標記跨測試外洩；
+        // suite 名記錄起來於 deinit 清理。
+        let suiteName = "BookMetadataRepairTests-\(UUID().uuidString)"
+        createdSuiteNames.append(suiteName)
+        return BookMetadataRepairService(
             extractor: extractor,
             manifestStore: BookManifestStore(rootDirectory: root),
+            userDefaults: UserDefaults(suiteName: suiteName)!,
             fileURLProvider: { root.appendingPathComponent($0.epubFileName) }
         )
     }
@@ -284,6 +299,90 @@ struct BookMetadataRepairServiceTests {
 
         // 下次重試仍會呼叫 extractor（候選資格不變）
         #expect(service.needsRepair(saved))
+    }
+
+    // MARK: - skip 標記（避免每次啟動重 parse 無 metadata 的 EPUB）
+
+    @Test func unfixableBookIsSkipMarkedAndNotReparsedOnSecondRun() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "BBBBBBBB-1111-2222-3333-444444444444.epub"
+        try writeReadableFile(fileName, in: root)
+        let book = Book(title: "BBBBBBBB-1111-2222-3333-444444444444", author: "", fileName: fileName, format: .epub)
+        context.insert(book)
+        try context.save()
+
+        // EPUB 內也沒有可用 metadata（Readium 佔位值）
+        let extractor = FakeExtractor(.success(ExtractedBookMetadata(title: "Untitled", author: "Unknown", coverImageData: nil)))
+        let service = makeService(extractor: extractor, root: root)
+
+        // 第一次：嘗試、開檔、補不齊 → 不修改、標記跳過
+        let first = await service.repairIfNeeded(context: context)
+        #expect(first == 0)
+        #expect(extractor.callCount == 1)
+        let saved = try #require(try context.fetch(FetchDescriptor<Book>()).first)
+        #expect(saved.title == "BBBBBBBB-1111-2222-3333-444444444444")
+        #expect(!service.needsRepair(saved))  // 已被 skip 標記
+
+        // 第二次：不再開檔（extractor 不被呼叫）
+        let second = await service.repairIfNeeded(context: context)
+        #expect(second == 0)
+        #expect(extractor.callCount == 1)
+    }
+
+    @Test func extractorThrowIsNotSkipMarkedSoItRetries() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "CCCCCCCC-1111-2222-3333-444444444444.epub"
+        try writeReadableFile(fileName, in: root)
+        let book = Book(title: "CCCCCCCC-1111-2222-3333-444444444444", author: "", fileName: fileName, format: .epub)
+        context.insert(book)
+        try context.save()
+
+        let extractor = FakeExtractor(.failure(ExtractFailure()))
+        let service = makeService(extractor: extractor, root: root)
+
+        _ = await service.repairIfNeeded(context: context)
+        #expect(extractor.callCount == 1)
+
+        // throw 不標記跳過 → 第二次仍重試（暫時性錯誤可恢復）
+        _ = await service.repairIfNeeded(context: context)
+        #expect(extractor.callCount == 2)
+    }
+
+    @Test func partialFixThenSkipMarksWhenTitleStaysFallback() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "DDDDDDDD-1111-2222-3333-444444444444.epub"
+        try writeReadableFile(fileName, in: root)
+        let book = Book(title: "DDDDDDDD-1111-2222-3333-444444444444", author: "", fileName: fileName, format: .epub)
+        context.insert(book)
+        try context.save()
+
+        // EPUB 補得到 cover，但 title/author 仍是佔位 → cover 補上、仍 fallback → 標記跳過
+        let extractor = FakeExtractor(.success(ExtractedBookMetadata(title: "Untitled", author: "Unknown", coverImageData: Data([7, 8]))))
+        let service = makeService(extractor: extractor, root: root)
+
+        let first = await service.repairIfNeeded(context: context)
+        #expect(first == 1)  // cover 改了
+        #expect(extractor.callCount == 1)
+        let saved = try #require(try context.fetch(FetchDescriptor<Book>()).first)
+        #expect(saved.coverImageData == Data([7, 8]))
+        #expect(saved.title == "DDDDDDDD-1111-2222-3333-444444444444")  // title 沒被佔位值覆蓋
+        #expect(!service.needsRepair(saved))  // 已 skip：不會為了補不到的 title 每次重 parse
+
+        let second = await service.repairIfNeeded(context: context)
+        #expect(second == 0)
+        #expect(extractor.callCount == 1)
     }
 }
 #endif
