@@ -19,7 +19,7 @@ struct SettingsReviewSection: View {
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
-        .navigationTitle("複習節奏".localized)
+        .navigationTitle(L10n.string("複習節奏"))
         .inlineNavigationBarTitle()
         .enableInjection()
     }
@@ -28,11 +28,11 @@ struct SettingsReviewSection: View {
 
     private var pauseSection: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "暫停進度", icon: "pause.circle")
+            SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
 
             HStack(spacing: appSkin.spacing.inlineGap) {
                 VStack(alignment: .leading, spacing: AppSpacing.s1) {
-                    Text("凍結複習時鐘".localized)
+                    Text(L10n.string("凍結複習時鐘"))
                         .font(appSkin.typography.body.weight(.semibold))
                         .foregroundStyle(appSkin.palette.primaryText)
 
@@ -86,7 +86,7 @@ struct SettingsReviewSection: View {
 
     private var modeSection: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "複習模式", icon: "timer")
+            SettingsSectionHeader(title: L10n.string("複習模式"), icon: "timer")
 
             HStack(spacing: AppSettingsMetrics.reviewModeTileGap) {
                 ForEach(ReviewSettingsMode.allCases, id: \.rawValue) { mode in
@@ -94,7 +94,7 @@ struct SettingsReviewSection: View {
                 }
             }
 
-            SettingsSectionFooter("選擇符合學習節奏的模式，設定立即生效。")
+            SettingsSectionFooter(L10n.string("選擇符合學習節奏的模式，設定立即生效。"))
         }
     }
 
@@ -124,7 +124,7 @@ struct SettingsReviewSection: View {
     private var customParamsSection: some View {
         if reviewSettingsStore.settings.mode == .custom {
             VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-                SettingsSectionHeader(title: "自訂參數", icon: "slider.horizontal.3")
+                SettingsSectionHeader(title: L10n.string("自訂參數"), icon: "slider.horizontal.3")
 
                 VStack(spacing: 0) {
                     ParamRow(
