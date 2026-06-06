@@ -51,6 +51,13 @@ struct VocabHighlightPreferencesTests {
         #expect(css.contains("hsla(210, 32%, 64%, clamp(0, calc(var(--vocab-opacity) * 1.45), 1)) 32%, transparent 32%)"))
     }
 
+    @Test func colorPresetTitleKeysAreStable() {
+        #expect(VocabHighlightColorPreset.paper.titleKey == "vocab.highlight.color.paper")
+        #expect(VocabHighlightColorPreset.blue.titleKey == "vocab.highlight.color.blue")
+        #expect(VocabHighlightColorPreset.sage.titleKey == "vocab.highlight.color.sage")
+        #expect(VocabHighlightColorPreset.rose.titleKey == "vocab.highlight.color.rose")
+    }
+
     @Test func bridgePlannerEmitsContentStyleOnlyWhenCssChanges() {
         var planner = BridgePlanner()
         let paper = VocabHighlightPreferences(colorPreset: .paper, opacity: 0.35)

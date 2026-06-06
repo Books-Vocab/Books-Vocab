@@ -1038,3 +1038,9 @@
 "慢" = "Slow";
 "正常" = "Normal";
 "快" = "Fast";
+"vocab.highlight.color.label" = "Color";
+"vocab.highlight.opacity.label" = "Intensity";
+"vocab.highlight.color.paper" = "Paper";
+"vocab.highlight.color.blue" = "Blue";
+"vocab.highlight.color.sage" = "Sage";
+"vocab.highlight.color.rose" = "Rose";

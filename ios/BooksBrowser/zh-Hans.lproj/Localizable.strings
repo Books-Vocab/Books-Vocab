@@ -1006,3 +1006,9 @@
 "慢" = "慢";
 "正常" = "正常";
 "快" = "快";
+"vocab.highlight.color.label" = "颜色";
+"vocab.highlight.opacity.label" = "浓度";
+"vocab.highlight.color.paper" = "纸色";
+"vocab.highlight.color.blue" = "蓝色";
+"vocab.highlight.color.sage" = "鼠尾草";
+"vocab.highlight.color.rose" = "玫瑰";

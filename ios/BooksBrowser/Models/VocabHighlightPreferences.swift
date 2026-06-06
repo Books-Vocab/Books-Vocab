@@ -9,6 +9,10 @@ enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var titleKey: String {
+        "vocab.highlight.color.\(rawValue)"
+    }
+
     func cssColor(for theme: ReaderTheme) -> String {
         switch (self, theme) {
         case (.paper, .light): return "43, 34%, 62%"
