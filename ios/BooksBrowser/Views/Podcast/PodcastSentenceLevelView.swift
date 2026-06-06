@@ -281,6 +281,7 @@ struct PodcastSentenceLevelView: View {
             sentences: sentences,
             renderState: renderState,
             currentId: currentId,
+            scrollLeadId: scrollLeadId,
             selectionState: selectionState,
             subtitleSize: subtitleSize,
             wordFollowEnabled: wordFollowEnabled,
@@ -410,6 +411,10 @@ private struct PodcastTranscriptColumn: View {
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
     let currentId: Int?
+    /// Lead-target sentence id (VM `scrollLeadSentenceId`, seek-pinned). Drives the
+    /// EARLY pre-active highlight only — not `currentId`/underline. Mirrors the prop
+    /// on the host view so the column can light the upcoming bubble ahead of audio.
+    let scrollLeadId: Int?
     let selectionState: PodcastSentenceSelection?
     let subtitleSize: PodcastSubtitleSize
     let wordFollowEnabled: Bool
@@ -438,6 +443,21 @@ private struct PodcastTranscriptColumn: View {
                 // last word (gap-free SRT). `hasNext` lets the leaving cell slide
                 // off rather than hold on the final sentence.
                 let isNext = currentId.map { sentence.id == $0 + 1 } ?? false
+                // Pre-active lights the bubble EARLY (highlight leads audio) — the
+                // sentence the scroll lead already targets, ~scrollLeadSec before
+                // it's spoken. Gated on `isNext` (== `currentId + 1`) so it ONLY
+                // fires for the immediate successor: that cell already has its
+                // underline machinery mounted + `headEnter` priming, so the lit
+                // bubble shows its underline growing from the head, never a dead-lit
+                // gap. (Bare `scrollLeadId == id` could, for a sub-scrollLeadSec
+                // sentence, resolve to `currentId + 2` — a cell with no underline
+                // overlay → lit-but-underline-less; the `isNext` gate rules that
+                // out.) While a sentence plays `scrollLeadId == currentId`, so this
+                // is false until ~scrollLeadSec before the boundary. Already seek-
+                // pinned (VM `pinLead`), so a transcript tap never pre-lights the
+                // wrong bubble (★B1 race, reused). Drives `active` only — never
+                // `currentId` / `renderState` / underline.
+                let isPreActive = isNext && scrollLeadId == sentence.id
                 let hasNext = index < sentences.count - 1
                 let entryFromTime = index > 0 ? sentences[index - 1].words.last?.startTime : nil
                 PodcastBubbleCell(
@@ -452,6 +472,7 @@ private struct PodcastTranscriptColumn: View {
                     }(),
                     isCurrent: sentence.id == currentId,
                     isNext: isNext,
+                    isPreActive: isPreActive,
                     isSelecting: isSelectingThis,
                     initialSelectionRange: isSelectingThis ? selectionState?.initialRange : nil,
                     hasActiveSelection: hasActiveSelection,
@@ -568,6 +589,11 @@ private struct PodcastBubbleCell: View, Equatable {
     /// the entering head can already be sliding in. Compared in `==` so the cell
     /// gains/loses its machinery as it enters/leaves the "next" slot.
     let isNext: Bool
+    /// The upcoming sentence the scroll lead already targets (`scrollLeadId`),
+    /// ~scrollLeadSec before it's spoken. Drives EARLY highlight (`active`) only —
+    /// NOT `currentId`, NOT the underline. Compared in `==` so the bubble lights /
+    /// dims as it enters / leaves the pre-active slot.
+    let isPreActive: Bool
     let isSelecting: Bool
     let initialSelectionRange: NSRange?
     let hasActiveSelection: Bool
@@ -613,6 +639,7 @@ private struct PodcastBubbleCell: View, Equatable {
             && l.contentHash == r.contentHash
             && l.isCurrent == r.isCurrent
             && l.isNext == r.isNext
+            && l.isPreActive == r.isPreActive
             && l.isSelecting == r.isSelecting
             && l.initialSelectionRange == r.initialSelectionRange
             && l.hasActiveSelection == r.hasActiveSelection
@@ -632,7 +659,7 @@ private struct PodcastBubbleCell: View, Equatable {
                 if showSpeaker {
                     Text(speaker)
                         .font(subtitleSize.speakerFont)
-                        .foregroundStyle(skin.tint.opacity(isCurrent || isSelecting ? 0.88 : 0.58))
+                        .foregroundStyle(skin.tint.opacity(isCurrent || isPreActive || isSelecting ? 0.88 : 0.58))
                         .transition(.overlayFade)
                 }
                 bubbleContent
@@ -671,7 +698,11 @@ private struct PodcastBubbleCell: View, Equatable {
 
     @ViewBuilder
     private var bubbleContent: some View {
-        let active = isCurrent || isSelecting
+        // Pre-active lights the bubble EARLY (highlight leads audio) — the
+        // underline overlay below stays gated on `isCurrent || isNext` + precise
+        // `liveAnchor`, so the lit-but-not-yet-spoken sentence shows its underline
+        // already growing from the head (entering relay), never a dead-lit gap.
+        let active = isCurrent || isPreActive || isSelecting
         let bg: Color = active ? skin.tint.opacity(0.18) : skin.tint.opacity(0.08)
         let fg: Color = active ? skin.primaryText : skin.secondaryText
         // ONE unified `UITextView` for BOTH display + selection — only `isSelectable`
