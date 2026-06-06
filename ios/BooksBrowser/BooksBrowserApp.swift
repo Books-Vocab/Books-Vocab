@@ -173,9 +173,6 @@ struct BooksBrowserApp: App {
                             AppLog.app.error("clearSyncedData failed: \(error.localizedDescription)")
                         }
                     }
-                    let migrationContext = ModelContext(modelContainer)
-                    ReviewActivityLog.migrateFromUserDefaultsIfNeeded(context: migrationContext)
-
                     subscriptionManager.listenForTransactionUpdates(using: kgService, authManager: authManager)
                     await subscriptionManager.loadProducts()
                     await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
