@@ -36,16 +36,21 @@
     popupSpeakAria: '朗讀',
     popupCloseAria: '關閉',
   };
-  const t = (key, subs) => {
+
+  function i18nMessage(key, subs) {
     try {
-      if (chrome?.runtime?.id && chrome?.i18n?.getMessage) {
-        const value = chrome.i18n.getMessage(key, subs);
-        if (value) return value;
+      if (!globalThis.chrome?.runtime?.id || !globalThis.chrome?.i18n?.getMessage) {
+        return '';
       }
+      return chrome.i18n.getMessage(key, subs) || '';
     } catch (_err) {
-      // Invalidated extension context — fall through to static fallback text.
+      return '';
     }
-    return I18N_FALLBACKS[key] || '';
+  }
+
+  const t = (key, subs) => {
+    // Invalidated extension context — fall through to static fallback text.
+    return i18nMessage(key, subs) || I18N_FALLBACKS[key] || '';
   };
 
   // Shown when this content script is orphaned by an extension reload/update
@@ -189,25 +194,6 @@
 
   const resolveEnabled = (value) => value !== false;
 
-  if (chrome?.storage?.local) {
-    chrome.storage.local
-      .get([THEME_KEY, ENABLED_KEY])
-      .then((r) => {
-        cachedTheme = resolveTheme(r[THEME_KEY]);
-        cachedEnabled = resolveEnabled(r[ENABLED_KEY]);
-      })
-      .catch(() => {});
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local') return;
-      if (changes[THEME_KEY]) {
-        cachedTheme = resolveTheme(changes[THEME_KEY].newValue);
-      }
-      if (changes[ENABLED_KEY]) {
-        cachedEnabled = resolveEnabled(changes[ENABLED_KEY].newValue);
-      }
-    });
-  }
-
   // -------------------------------------------------------------------------
   // Extension context guards
   // -------------------------------------------------------------------------
@@ -223,7 +209,36 @@
    * TypeError (e.g. `Cannot read properties of undefined (reading 'getURL')`).
    */
   function extensionContextValid() {
-    return Boolean(chrome.runtime && chrome.runtime.id);
+    try {
+      return Boolean(globalThis.chrome?.runtime?.id);
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function runtimeLastError() {
+    try {
+      return globalThis.chrome?.runtime?.lastError || null;
+    } catch (_err) {
+      return { message: 'Extension context invalidated.' };
+    }
+  }
+
+  function extensionUrl(path) {
+    if (!extensionContextValid()) return '';
+    try {
+      return chrome.runtime.getURL(path);
+    } catch (_err) {
+      return '';
+    }
+  }
+
+  function storageLocalAvailable() {
+    try {
+      return Boolean(globalThis.chrome?.storage?.local);
+    } catch (_err) {
+      return false;
+    }
   }
 
   /**
@@ -248,6 +263,29 @@
     }
   }
 
+  if (storageLocalAvailable()) {
+    try {
+      chrome.storage.local
+        .get([THEME_KEY, ENABLED_KEY])
+        .then((r) => {
+          cachedTheme = resolveTheme(r[THEME_KEY]);
+          cachedEnabled = resolveEnabled(r[ENABLED_KEY]);
+        })
+        .catch(() => {});
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') return;
+        if (changes[THEME_KEY]) {
+          cachedTheme = resolveTheme(changes[THEME_KEY].newValue);
+        }
+        if (changes[ENABLED_KEY]) {
+          cachedEnabled = resolveEnabled(changes[ENABLED_KEY].newValue);
+        }
+      });
+    } catch (_err) {
+      // Orphaned content script after extension reload — keep defaults.
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Style loading
   // -------------------------------------------------------------------------
@@ -258,11 +296,18 @@
     // already tolerate an empty stylesheet (popup renders unstyled).
     if (!extensionContextValid()) return '';
     try {
+      const urls = [
+        extensionUrl('shared/fonts.css'),
+        extensionUrl('shared/tokens.css'),
+        extensionUrl('shared/kg-components.css'),
+        extensionUrl('content/popup.css'),
+      ];
+      if (urls.some((url) => !url)) return '';
       const [fontsRes, tokensRes, componentsRes, popupRes] = await Promise.all([
-        fetch(chrome.runtime.getURL('shared/fonts.css')),
-        fetch(chrome.runtime.getURL('shared/tokens.css')),
-        fetch(chrome.runtime.getURL('shared/kg-components.css')),
-        fetch(chrome.runtime.getURL('content/popup.css')),
+        fetch(urls[0]),
+        fetch(urls[1]),
+        fetch(urls[2]),
+        fetch(urls[3]),
       ]);
       if (!fontsRes.ok || !tokensRes.ok || !componentsRes.ok || !popupRes.ok) {
         throw new Error('stylesheet fetch returned non-OK status');
@@ -503,7 +548,7 @@
 
         // Background service worker unreachable: the callback fires with
         // `response === undefined` and lastError set.
-        if (chrome.runtime.lastError || response == null) {
+        if (runtimeLastError() || response == null) {
           renderError(popup, t('popupErrorNetwork'));
           return;
         }
@@ -594,13 +639,26 @@
   }
 
   function readActiveNotebook(callback) {
-    chrome.storage.local.get(ACTIVE_NOTEBOOK_KEY, (stored) => {
-      callback((stored && stored[ACTIVE_NOTEBOOK_KEY]) || 'default');
-    });
+    if (!storageLocalAvailable()) {
+      callback('default');
+      return;
+    }
+    try {
+      chrome.storage.local.get(ACTIVE_NOTEBOOK_KEY, (stored) => {
+        callback((stored && stored[ACTIVE_NOTEBOOK_KEY]) || 'default');
+      });
+    } catch (_err) {
+      callback('default');
+    }
   }
 
   function setActiveNotebook(notebookId) {
-    chrome.storage.local.set({ [ACTIVE_NOTEBOOK_KEY]: notebookId || 'default' });
+    if (!storageLocalAvailable()) return;
+    try {
+      chrome.storage.local.set({ [ACTIVE_NOTEBOOK_KEY]: notebookId || 'default' });
+    } catch (_err) {
+      // Orphaned content script after extension reload — ignore the write.
+    }
   }
 
   function hydrateNotebookPicker(popup) {
@@ -627,7 +685,7 @@
       sendMessageSafe(
         { type: 'listNotebooks' },
         (response) => {
-          if (chrome.runtime.lastError || response == null || response.error) return;
+          if (runtimeLastError() || response == null || response.error) return;
           renderOptions(response.items || response.data || response, activeId);
         },
         () => {}
@@ -644,7 +702,12 @@
     // `chrome.runtime.getURL` always returns a `chrome-extension://` URL,
     // so `safeUrl` is a no-op pass-through here — kept for defense-in-depth
     // consistency with the sidepanel renderer.
-    const optionsUrl = safeUrl(chrome.runtime.getURL('options/options.html'));
+    const rawOptionsUrl = extensionUrl('options/options.html');
+    if (!rawOptionsUrl) {
+      renderError(popup, CONTEXT_INVALIDATED_MSG);
+      return;
+    }
+    const optionsUrl = safeUrl(rawOptionsUrl);
     popup.innerHTML = `
       <div class="kg-popup__login">
         <p>${escapeHtml(t('popupLoginPrompt'))}</p>
@@ -690,7 +753,7 @@
       (response) => {
         btn.disabled = false;
 
-        if (chrome.runtime.lastError || response == null) {
+        if (runtimeLastError() || response == null) {
           showExplainError(t('popupErrorNetwork'));
           return;
         }
@@ -740,7 +803,7 @@
       sendMessageSafe(
         { type: 'addVocab', entries, notebookId },
         (response) => {
-          if (chrome.runtime.lastError || response == null) {
+          if (runtimeLastError() || response == null) {
             showAddError(t('popupErrorNetwork'));
             return;
           }
