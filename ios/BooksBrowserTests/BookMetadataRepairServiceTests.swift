@@ -5,7 +5,17 @@ import Testing
 @testable import BooksBrowser
 
 @MainActor
-struct BookMetadataRepairServiceTests {
+final class BookMetadataRepairServiceTests {
+    // 記錄 makeService 建立的 UserDefaults suite，deinit 時清掉，避免測試 plist 殘留
+    // 在 test host 的 Library/Preferences 累積（Swift Testing 每測試一實例、釋放觸發 deinit）。
+    private var createdSuiteNames: [String] = []
+
+    deinit {
+        for suite in createdSuiteNames {
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
+    }
+
     // MARK: - Fixtures
 
     @MainActor
@@ -54,11 +64,14 @@ struct BookMetadataRepairServiceTests {
     }
 
     private func makeService(extractor: any BookMetadataExtracting, root: URL) -> BookMetadataRepairService {
-        // 每個 service 一份隔離的 UserDefaults，避免 skip 標記跨測試外洩。
-        BookMetadataRepairService(
+        // 每個 service 一份隔離的 UserDefaults suite，避免 skip 標記跨測試外洩；
+        // suite 名記錄起來於 deinit 清理。
+        let suiteName = "BookMetadataRepairTests-\(UUID().uuidString)"
+        createdSuiteNames.append(suiteName)
+        return BookMetadataRepairService(
             extractor: extractor,
             manifestStore: BookManifestStore(rootDirectory: root),
-            userDefaults: UserDefaults(suiteName: "BookMetadataRepairTests-\(UUID().uuidString)")!,
+            userDefaults: UserDefaults(suiteName: suiteName)!,
             fileURLProvider: { root.appendingPathComponent($0.epubFileName) }
         )
     }
