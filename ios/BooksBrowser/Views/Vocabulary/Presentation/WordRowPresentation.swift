@@ -10,7 +10,7 @@ extension VocabularyEntry {
         now: Date = Date()
     ) -> WordRow.ViewData {
         let isDelete = syncAction == .delete
-        let status = rowStatus(showsReviewState: showsReviewState, isDelete: isDelete)
+        let status = rowStatus(showsReviewState: showsReviewState, isDelete: isDelete, now: now)
 
         let wordTone: WordRow.ViewData.Tone
         let leadingImage: String?
@@ -64,17 +64,18 @@ extension VocabularyEntry {
 
     private func rowStatus(
         showsReviewState: Bool,
-        isDelete: Bool
+        isDelete: Bool,
+        now: Date
     ) -> (text: String, tone: WordRow.ViewData.Tone)? {
         guard showsReviewState, !isDelete else { return nil }
 
-        switch reviewState {
+        switch reviewState(at: now) {
         case .unlearned:
             return (L10n.string("未複習"), .tertiary)
         case .due:
             return (L10n.string("待複習"), .reviewDue)
         case .reviewed:
-            return (L10n.format("下次 %@", nextReviewAt.reviewRelativeDescription()), .secondary)
+            return (L10n.format("下次 %@", nextReviewAt.reviewRelativeDescription(now: now)), .secondary)
         }
     }
 
@@ -85,10 +86,10 @@ extension VocabularyEntry {
     ) -> VocabReviewProgress? {
         guard showsReviewProgress, !isDelete else { return nil }
 
-        switch reviewState {
+        switch reviewState(at: now) {
         case .unlearned:
             return .init(
-                statusLabel: reviewProgressStatusLabel,
+                statusLabel: reviewProgressStatusLabel(now: now),
                 detailLabel: L10n.format("首輪 %@", reviewIntervalHours.compactHourLabel),
                 ratio: nil
             )
@@ -98,15 +99,15 @@ extension VocabularyEntry {
             let ratio = max(elapsed / interval, 0)
 
             return .init(
-                statusLabel: reviewProgressStatusLabel,
+                statusLabel: reviewProgressStatusLabel(now: now),
                 detailLabel: "\(elapsed.compactReviewLabel) / \(interval.compactReviewLabel)",
                 ratio: ratio
             )
         }
     }
 
-    private var reviewProgressStatusLabel: String {
-        switch reviewState {
+    private func reviewProgressStatusLabel(now: Date) -> String {
+        switch reviewState(at: now) {
         case .unlearned:
             return L10n.string("未學習")
         case .due:

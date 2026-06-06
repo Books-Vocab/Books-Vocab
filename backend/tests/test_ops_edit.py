@@ -28,7 +28,8 @@ def _card_rows(tmp_path: Path, uid: str) -> list[dict]:
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT id, content, meaning, notebook_id, next_review_at, "
-        "review_count, last_review_feedback FROM card WHERE is_deleted = 0"
+        "last_reviewed_at, review_interval_hours, review_count, "
+        "last_review_feedback, source FROM card WHERE is_deleted = 0"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -569,6 +570,59 @@ class TestSeedFourthRound:
         self._seed(tmp_path, uid,
             {"cards": [{"content": "w", "meaning": "m", "examples": []}]}, "--commit")
         assert _card_field(tmp_path, uid, "w", "examples") == []
+
+    def test_review_anchor_makes_review_timestamps_deterministic(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        spec = {
+            "review_anchor": "2026-06-06T00:00:00Z",
+            "cards": [
+                {"content": "due", "meaning": "m",
+                 "review": {"state": "due", "interval": 24}},
+                {"content": "reviewed", "meaning": "m",
+                 "review": {"state": "reviewed", "interval": 48}},
+            ],
+        }
+        r1 = self._seed(tmp_path, uid, spec, "--commit", "--json")
+        assert r1.returncode == 0, r1.stderr
+        due = _card_by_content(tmp_path, uid, "due")
+        reviewed = _card_by_content(tmp_path, uid, "reviewed")
+        assert due["last_reviewed_at"].startswith("2026-06-04 23:00:00")
+        assert due["next_review_at"].startswith("2026-06-05 23:00:00")
+        assert reviewed["last_reviewed_at"].startswith("2026-06-06 00:00:00")
+        assert reviewed["next_review_at"].startswith("2026-06-08 00:00:00")
+
+        r2 = self._seed(tmp_path, uid, spec, "--commit", "--json")
+        assert r2.returncode == 0, r2.stderr
+        assert _card_by_content(tmp_path, uid, "due")["next_review_at"] == due["next_review_at"]
+        assert _card_by_content(tmp_path, uid, "reviewed")["next_review_at"] == reviewed["next_review_at"]
+
+    def test_review_anchor_can_be_overridden_per_card(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        r = self._seed(tmp_path, uid, {
+            "review_anchor": "2026-06-06T00:00:00Z",
+            "cards": [
+                {"content": "local", "meaning": "m",
+                 "review": {"state": "reviewed", "interval": 24,
+                            "anchor": "2026-06-10T12:00:00Z"}},
+            ],
+        }, "--commit", "--json")
+        assert r.returncode == 0, r.stderr
+        row = _card_by_content(tmp_path, uid, "local")
+        assert row["last_reviewed_at"].startswith("2026-06-10 12:00:00")
+        assert row["next_review_at"].startswith("2026-06-11 12:00:00")
+
+    def test_seed_can_write_source_context(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        r = self._seed(tmp_path, uid, {
+            "cards": [{
+                "content": "w",
+                "meaning": "m",
+                "source": {"type": "book", "title": "Demo Book", "chapter": "Chapter 1"},
+            }],
+        }, "--commit", "--json")
+        assert r.returncode == 0, r.stderr
+        source = json.loads(_card_by_content(tmp_path, uid, "w")["source"])
+        assert source == {"type": "book", "title": "Demo Book", "chapter": "Chapter 1"}
 
 
 class TestIntervalValidation:

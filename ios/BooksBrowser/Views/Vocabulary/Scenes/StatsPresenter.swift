@@ -15,6 +15,7 @@ struct StatsPresenter: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     let filter: NotebookFilter
 
@@ -79,10 +80,12 @@ struct StatsPresenter: View {
             let entries = filteredEntries
             let records = filteredReviewRecords
             let days = forecastDays
+            let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
             summary = StatsPresentation.buildSummary(
                 from: entries,
                 reviewRecords: records,
-                forecastDays: days
+                forecastDays: days,
+                now: reviewNow
             )
         }
         .task(id: graphKey) {
@@ -181,6 +184,8 @@ struct StatsPresenter: View {
         hasher.combine(reviewRecords.count)
         hasher.combine(filter.selectedIds)
         hasher.combine(forecastDays)
+        hasher.combine(reviewSettingsStore.settings.isProgressPaused)
+        hasher.combine(reviewSettingsStore.settings.progressPausedAt)
         return hasher.finalize()
     }
 
@@ -333,10 +338,12 @@ struct StatsPresenter: View {
 
     private var graphThumbnailNodes: [KnowledgeGraphNode] {
         guard let graphLinks else { return [] }
+        let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
         return KnowledgeGraphPresentation.nodes(
             from: filteredEntries,
             links: graphLinks,
-            showIsolatedNodes: false
+            showIsolatedNodes: false,
+            now: reviewNow
         )
     }
 

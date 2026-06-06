@@ -20,6 +20,7 @@ struct NotebookListView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.appSkin) private var skin
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @State private var coordinator = NotebookListCoordinator()
     @State private var showLoginSheet = false
 
@@ -45,14 +46,23 @@ struct NotebookListView: View {
     }
 
     var body: some View {
-        let stats = NotebookStatsCalculator.compute(allEntries, pendingEntries: pendingEntries)
+        let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
+        let stats = NotebookStatsCalculator.compute(
+            allEntries,
+            pendingEntries: pendingEntries,
+            now: reviewNow
+        )
         // The filter pill (to change/clear reviewFilter) only renders with ≥2
         // notebooks. If a user filtered then deleted notebooks down to <2, the
         // persisted filter must NOT keep silently hiding entries with no UI to
         // clear it — apply an unfiltered view while keeping reviewFilter intact
         // (it re-applies once they have ≥2 notebooks again).
         let effectiveFilter = notebooks.count >= 2 ? reviewFilter : NotebookFilter()
-        let (filteredDueEntries, filteredUnlearnedEntries) = NotebookStatsCalculator.filtered(allEntries, filter: effectiveFilter)
+        let (filteredDueEntries, filteredUnlearnedEntries) = NotebookStatsCalculator.filtered(
+            allEntries,
+            filter: effectiveFilter,
+            now: reviewNow
+        )
         let totalDueCount = stats.values.reduce(0) { $0 + $1.dueCount }
         let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
         let sortedNotebooks = sortOption.sort(notebooks, stats: stats)

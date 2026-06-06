@@ -8,6 +8,7 @@ struct KnowledgeGraphView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.detailRouter) private var detailRouter
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     let allEntries: [VocabularyEntry]
     @State private var coordinator = KnowledgeGraphCoordinator()
 
@@ -45,10 +46,12 @@ struct KnowledgeGraphView: View {
     }
 
     private var presenterState: KnowledgeGraphPresenter.State {
+        let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
         let nodes = KnowledgeGraphPresentation.nodes(
             from: allEntries,
             links: coordinator.links,
-            showIsolatedNodes: coordinator.showsIsolatedNodes
+            showIsolatedNodes: coordinator.showsIsolatedNodes,
+            now: reviewNow
         )
         let edges = KnowledgeGraphPresentation.edges(
             from: coordinator.links,

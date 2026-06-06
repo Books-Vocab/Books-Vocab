@@ -198,6 +198,7 @@ struct KGVocabPresenter: View {
 ///    動畫由父層容器（`LazyVStack`）統一驅動。
 private struct KGVocabRow: View {
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     let entry: VocabularyEntry
     let isSelecting: Bool
@@ -208,6 +209,7 @@ private struct KGVocabRow: View {
     let onLongPress: () -> Void
 
     var body: some View {
+        let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
         HStack(spacing: appSkin.spacing.inlineGap) {
             if isSelecting {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -225,7 +227,8 @@ private struct KGVocabRow: View {
                 showsReviewState: false,
                 showsSourceContext: false,
                 showsDifficultyTier: false,
-                showsReviewProgress: true
+                showsReviewProgress: true,
+                now: reviewNow
             ))
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onTap)

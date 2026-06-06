@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Settings/
-verified_against: c642ed18
+verified_against: 3f14c595
 -->
 # Settings Feature Boundary
 
@@ -46,7 +46,7 @@ verified_against: c642ed18
 |------|------|------|
 | `SettingsAccountSection.swift` | 376 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號區塊 |
 | `SettingsSubscriptionSection.swift` | 126 | `struct SettingsSubscriptionSection: View`，訂閱區塊 |
-| `SettingsReviewSection.swift` | 272 | `struct SettingsReviewSection: View`，複習設定區塊 |
+| `SettingsReviewSection.swift` | 332 | `struct SettingsReviewSection: View`，複習設定區塊；含 review progress pause/freeze toggle |
 | `SettingsPreferencesSection.swift` | 92 | `struct SettingsPreferencesSection: View`，偏好設定區塊 |
 
 ### Sheet / Detail Views
