@@ -314,25 +314,30 @@ struct StatsPresenter: View {
 
     @ViewBuilder
     private func graphEntryBody(nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge]) -> some View {
-        if graphLinks != nil {
-            if nodes.isEmpty {
-                VocabStateMessageCard(
-                    title: "探索單字建立連結".localized,
-                    systemImage: "point.3.connected.trianglepath.dotted"
-                )
-            } else {
-                GraphThumbnailWebView(
-                    holder: graphHolder,
-                    nodes: nodes,
-                    edges: edges,
-                    theme: KnowledgeGraphPresentation.theme(for: appSkin),
-                    colorScheme: colorScheme
-                )
-            }
-        } else {
+        switch StatsPresentation.graphThumbnailBodyKind(
+            linksLoaded: graphLinks != nil,
+            nodeCount: nodes.count
+        ) {
+        case .loading:
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .empty:
+            AppStateMessageContent(
+                title: "探索單字建立連結".localized,
+                systemImage: "point.3.connected.trianglepath.dotted",
+                style: .vocab(appSkin)
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(appSkin.metrics.cardBlockPadding)
+        case .graph:
+            GraphThumbnailWebView(
+                holder: graphHolder,
+                nodes: nodes,
+                edges: edges,
+                theme: KnowledgeGraphPresentation.theme(for: appSkin),
+                colorScheme: colorScheme
+            )
         }
     }
 
