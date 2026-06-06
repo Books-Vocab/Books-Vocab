@@ -10,6 +10,7 @@ from kg.exceptions import BadRequestError
 from kg.review_events import (
     ReviewEvent,
     ReviewEventStore,
+    _format_timestamp,
     _parse_iso8601_timestamp,
     pull_review_events,
     push_review_events,
@@ -146,6 +147,27 @@ def test_since_lenient_formats_are_equivalent():
         "2026-06-01 10:00:00 +0000",
     ):
         assert _parse_iso8601_timestamp(variant) == canonical
+
+
+# 契約守門（C/G2）：後端在 pull 回送的 cursor 由 _format_timestamp 產生，client 會原封
+# 不動把它存成下一輪的 `since` 再送回。若 _format_timestamp 產出的任何寫法不被
+# _parse_iso8601_timestamp 接受，就是「後端自產自拒」→ watermark 永不前進的死鎖
+# （正是本次事件的根因類型）。此守門確保兩者永遠對稱，任一端日後漂移立即紅。
+@pytest.mark.parametrize(
+    "moment",
+    [
+        datetime(2026, 6, 1, 10, 0, tzinfo=UTC),  # 整秒
+        datetime(2026, 6, 1, 10, 0, 0, 123456, tzinfo=UTC),  # 含微秒
+        datetime(2026, 1, 1, 0, 0, tzinfo=UTC),  # 年初邊界
+        datetime(2026, 12, 31, 23, 59, 59, 999999, tzinfo=UTC),  # 年末邊界 + 微秒
+        datetime(2026, 6, 1, 10, 0),  # naive → _format_timestamp 視為 UTC
+    ],
+)
+def test_server_cursor_always_accepted_by_since_parser(moment):
+    cursor = _format_timestamp(moment)
+    parsed = _parse_iso8601_timestamp(cursor)
+    expected = moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    assert parsed == expected
 
 
 @pytest.mark.parametrize("field_name", ["reviewed_at", "created_at"])

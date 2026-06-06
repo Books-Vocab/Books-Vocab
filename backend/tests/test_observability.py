@@ -77,6 +77,31 @@ class TestRequestIdMiddleware:
         assert r1.headers["x-request-id"] != r2.headers["x-request-id"]
 
 
+class TestKGErrorObservability:
+    """Domain errors (KGError 4xx/5xx) must leave a server-side log line.
+
+    Regression guard for the silent-400 blind spot: the review-event watermark
+    deadlock returned HTTP 400 on every background sync yet produced no log,
+    no Sentry event, and no metric — invisible server-side until a user sent a
+    screenshot. ``kg_error_handler`` now logs every domain error.
+    """
+
+    def test_client_error_is_logged_with_status_and_path(self, isolated_api):
+        r = isolated_api.client.get(
+            "/api/vocab/review-events?since=garbage", headers=isolated_api.headers
+        )
+        assert r.status_code == 400, r.text
+        warnings = _mem_log.get(n=200, level="WARNING")
+        matching = [
+            e
+            for e in warnings
+            if "BadRequestError" in e["msg"]
+            and "/api/vocab/review-events" in e["msg"]
+            and "400" in e["msg"]
+        ]
+        assert matching, f"expected a warning log for the silent 400; got {warnings[-5:]}"
+
+
 class TestMemoryLogHandlerRequestId:
 
     def test_log_entry_contains_request_id_field(self):
