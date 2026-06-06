@@ -183,6 +183,7 @@ validate_registry() {
     return
   fi
   echo "REGISTRY OK: $entry_count documents"
+  ok=$((ok+1))
 }
 
 filter_docs() {

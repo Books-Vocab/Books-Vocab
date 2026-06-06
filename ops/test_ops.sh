@@ -53,6 +53,7 @@ run_one() {
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh
+      ./ops/tests/test_docs_registry_coverage.sh
       ./ops/tests/test_docs_lint.sh
       ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
