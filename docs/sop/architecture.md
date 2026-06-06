@@ -57,7 +57,7 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化
 | Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation` | **部分後端化** | backend response 缺 `updated_at`，所以 server LWW 尚未真正啟用 |
 | Review settings / pause clock + mode/SRS | `ReviewSettingsStore` UserDefaults + iCloud KVS；backend `/api/user/config.review_clock` + `.review_mode` | **pause clock 與 mode/自訂 SRS 參數皆三層後端化**（各自 updatedAt LWW 整組原子 + server cold-start wins；autoplay 純本地） | 對標 translation：backend 真 LWW 待 `serverReviewClockLwwEnabled` / `serverReviewModeLwwEnabled`，現以 iCloud KVS 為跨裝置權威 |
 | App language / appearance | UserDefaults + iCloud KVS | **未後端化** | web/Android 不會共享；`.system` selection 需 server contract |
-| Active notebook / notebook filter / sort | `activeNotebookId`、`NotebookFilter`、`NotebookSortOption` UserDefaults / `@AppStorage` | **未後端化或 local-only 未定義** | `activeNotebookId` 影響新增詞歸屬，若要跨平台需 `vocab_ui.updated_at` |
+| Active notebook / notebook filter / sort | `activeNotebookId` 三層（`ActiveNotebookStore` UserDefaults + iCloud KVS + backend `/api/user/config.vocab_ui`）；`NotebookFilter` / `NotebookSortOption` 仍 `@AppStorage` local-only | **activeNotebookId 已三層後端化**（Feature B；updatedAt LWW 整組原子 + server cold-start wins；chrome 為 storage+backend 兩層橋樑；filter/sort 純觀感 local-only） | 對標 review settings：backend 真 LWW 待 `serverVocabUiLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威、backend 為 chrome/web 橋樑 + cold-start |
 | Review session snapshots | UserDefaults | **local-only** | 可保留本機；不應納入後端權威，除非要跨裝置續答 |
 | Podcast downloads / covers | `Documents/podcast-downloads`、`Documents/podcast-covers` | **device cache** | 登出清理已存在；不應後端化為 DB state |
 | Notebook cover photo files | `Documents/notebook-covers` path | **未後端化 asset** | 需要 cover asset contract，否則多裝置看不到自訂圖 |
