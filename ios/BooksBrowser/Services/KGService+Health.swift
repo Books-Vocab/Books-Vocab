@@ -26,12 +26,12 @@ extension KGService {
             }
 
             let health = try JSONDecoder().decode(KGHealthResponse.self, from: data)
-            isConnected = health.status == "ok"
-            serverCardCount = health.cards
-
-            if let lastModStr = health.lastModified {
-                lastSyncDate = AppDateFormatters.iso8601.date(from: lastModStr)
-            }
+            let snapshot = health.snapshot
+            isConnected = snapshot.isConnected
+            serverCardCount = snapshot.serverCardCount
+            // 刻意不更新 lastSyncDate：health 是探活，拿到的 lastModified 是「後端資料
+            // 最後寫入時間」，與「裝置最後同步時間」語意不同。lastSyncDate 只由
+            // backgroundSync 成功時設定（見 KGService+Sync.swift），避免純 pull 後時間倒退。
         } catch KGError.unauthorized {
             AppLog.kg.error("Health check failed: 401 Unauthorized")
             AppCrashReporting.record(KGError.unauthorized, context: "kg.health.unauthorized")
