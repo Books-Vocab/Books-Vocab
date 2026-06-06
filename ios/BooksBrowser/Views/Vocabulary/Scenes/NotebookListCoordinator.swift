@@ -124,9 +124,9 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         // 若全域 active notebook 指向剛轉不可見的本子（跨裝置刪除 / 孤兒回收），清掉
         // UserDefaults，否則 `Book.resolvedNotebookId` 還會 fall through 到死 id，
         // 造成新建 entry 變孤兒。
-        if let active = UserDefaults.standard.string(forKey: "activeNotebookId"),
-           removed.contains(active) {
-            UserDefaults.standard.removeObject(forKey: "activeNotebookId")
+        let active = ActiveNotebookStore.shared.activeNotebookId
+        if removed.contains(active) {
+            ActiveNotebookStore.shared.clearStale()
             AppLog.kg.warning("cleared stale activeNotebookId after reconcile remove: \(active)")
         }
 
@@ -230,8 +230,8 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             // 或 `resolveFallbackNotebookId` 回傳 nil（only-notebook edge case），
             // 直接清掉指向 deletedId 的 stale activeNotebookId，避免 Book.resolvedNotebookId
             // 之後 fall through 到死 id。
-            if UserDefaults.standard.string(forKey: "activeNotebookId") == deletedId {
-                UserDefaults.standard.removeObject(forKey: "activeNotebookId")
+            if ActiveNotebookStore.shared.activeNotebookId == deletedId {
+                ActiveNotebookStore.shared.clearStale()
             }
 
             if modelContext.safeSaveWithToast(toastCoordinator) {

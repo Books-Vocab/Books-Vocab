@@ -452,6 +452,8 @@ struct NotebookListView: View {
     }
 
     private func setActiveNotebook(_ id: String) {
-        activeNotebookId = id
+        // 寫入收斂到 ActiveNotebookStore（為 B2b 三層 LWW 鋪路）；@AppStorage 仍綁同一
+        // UserDefaults key，透過 KVO 同步顯示，故讀取（isActive 比較）不需改。
+        ActiveNotebookStore.shared.setActive(id)
     }
 }
