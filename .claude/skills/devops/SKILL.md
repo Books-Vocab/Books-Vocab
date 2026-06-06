@@ -45,6 +45,7 @@ allowed-tools: Bash, Read, Grep
 ./ops/devops_kg_safe.sh container-run "<cmd>"
 ./ops/devops_kg_safe.sh migrate-run "<cmd>"
 ./ops/devops_kg_safe.sh ops-cli <subcommand> [args]
+./ops/devops_kg_safe.sh ops-edit <subcommand> [args]
 ./ops/devops_kg_safe.sh container-script <script> [args]
 ```
 
@@ -83,6 +84,42 @@ ops-cli llm-errors [--window N] [--uid all|<uid>]  # 真火監控——真實 LL
 #   list 類命令（card-find/active-users/quota-overview/cost-overview/sync-trace/db-query）
 #   的 JSON 皆含頂層 count，免自己 len()。
 # --range: 24h | 7d | 30d | month | all（預設 month）
+```
+
+### ops-edit 子指令（**寫入**;dry-run 預設,`--commit` 才落地）
+
+`ops-cli` 唯讀查詢的可寫對應面。每個寫操作:**dry-run 預設**(只印 plan)→ `--commit`
+寫前自動 tar 備份 user_dir → 寫後讀回 verify → append `_ops_edit_audit.jsonl`。
+寫入複用 app 的 `CardStore`/`GraphStore`/`NotebookStore`(SoT)。皆支援 `--json`。
+
+```bash
+ops-edit user-create <uid> [--email E] [--provider google|apple|demo] [--allow-existing]
+ops-edit card-add <uid> <content> --meaning M [--pos] [--example ...] [--collocation ...]
+                                   [--note] [--difficulty] [--mode] [--notebook] [--review new|due|reviewed] [--interval H]
+ops-edit card-update <uid> <id|content> --set field=value ...   # 白名單欄位;value 走 JSON 解析;改 content 驗本內衝突
+ops-edit card-set-review <uid> <id|content> --state new|due|reviewed [--interval H]
+ops-edit card-delete <uid> <id|content>                          # 軟刪
+ops-edit card-move <uid> <id|content> --to-notebook|--notebook <id|name>   # 跨本搬卡(驗目標本無同 content;硬刪原本跨本 link)
+ops-edit card-import <uid> <csv> [--notebook]                    # card_format.md 格式;CSV 可帶 review_state 欄
+ops-edit notebook-create <uid> <name> [--color] [--cover]
+ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover]
+ops-edit notebook-delete <uid> <id|name> [--cascade]             # 軟刪(default 不可刪;非空須 --cascade 一併軟刪卡,否則拒絕)
+ops-edit link-add <uid> <from> <to> --kind contrasts_with|shares_usage --confidence C --reason R [--notebook]
+ops-edit link-update <uid> <link_id> [--confidence] [--reason] [--kind] [--notebook]   # 改既有 link(link-add 撞既有回 idempotent 不改值)
+ops-edit link-list <uid> [--notebook]                            # 列連結(id+兩端 content),供 link-update/delete 查 id
+ops-edit link-delete <uid> <link_id> [--notebook]
+ops-edit seed <uid> <spec.json>                                  # 一次灌整套 demo(notebooks+cards+links);冪等可重跑
+ops-edit list-backups <uid>                                      # 列自動備份(最新在前)
+ops-edit restore <uid> [--backup <path>]                         # 從備份還原(預設取最新;commit 前先備份當前狀態)
+
+# 所有 --notebook / --to-notebook 接受 notebook id 或 name(自動 name→id 解析,杜絕孤兒卡)。
+# link 嚴格 per-notebook:兩端 card 必須與 link 同本(seed/link-add 跨本連結會被擋並提示)。
+
+# seed spec JSON:
+#   {"notebooks":[{"name","color"?,"cover_pattern"?}],
+#    "cards":[{"content","meaning","pos"?,"examples"?,"collocations"?,"note"?,"difficulty"?,
+#              "mode"?,"notebook"?,"review"?:{"state","interval"?}}],
+#    "links":[{"from","to","kind","confidence","reason","notebook"?}]}      # from/to 用 card content 參照
 ```
 
 ### data_inspect（本地用）

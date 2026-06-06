@@ -136,6 +136,8 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 
 Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。傳輸層以 `printf %q` 序列化 argv,任意特殊字元 SQL 可安全穿越單次遠端 bash 解析。
 
+**寫入面**:`backend/ops_edit.py`(`devops.sh ops-edit` / `devops_kg_safe.sh ops-edit`)為 `ops_cli.py` 唯讀查詢的可寫對應面 —— 建用戶 / 增改刪卡 / 設複習態 / 搬卡(`card-move`)/ 筆記本 CRUD(`notebook-create`/`update`/`delete`)/ 連結圖譜(`link-add`/`update`/`delete`/`list`)/ `seed` 整套 demo 帳號(冪等可重跑)/ `restore` 還原。`--notebook`/`--to-notebook` 接受 id 或 name(自動解析,杜絕孤兒卡);link 嚴格 per-notebook(兩端 card 須與 link 同本,`card-move` 搬卡會硬刪原本跨本 link、`notebook-delete` 非空須 `--cascade`)。安全模型(`backend/src/kg/ops_edit_shared.py:EditContext`):**dry-run 預設**(`--commit` 才寫)、寫前自動 tar 備份 user_dir 到 `data_dir/_ops_backups/`、uid path-safe guard(擋 `..`/`.` 起首)、寫後讀回 verify(link 讀盤繞快取、複習態驗時間不變量)、append `_ops_edit_audit.jsonl`(含失敗操作);`restore` 驗備份 arcname==uid 才解壓。寫入複用 app 的 `CardStore`/`GraphStore`/`NotebookStore`(SoT,不重刻 NFC/dedup/graph merge);只 import per-user store,不碰會自寫的全域 log 單例。同 `%q` argv transport、同 `--json` 契約。
+
 ## Web 設計系統(`design-system/`)
 
 跨平台 design token 橋接層。Token SoT = `tokens.json`(W3C DTCG),經兩條生成鏈出貨:**Style Dictionary → iOS `DesignTokens.swift`**(scalar bridge)與 **`gen_web_tokens.py` → web CSS**。

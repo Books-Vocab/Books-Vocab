@@ -30,6 +30,7 @@ usage:
   $0 container-run "<cmd>"
   $0 migrate-run "<cmd>"
   $0 ops-cli <subcommand> [args...]
+  $0 ops-edit <subcommand> [args...]
   $0 container-script <script> [args...]
 
 blocked by default:
@@ -162,6 +163,15 @@ main() {
       shift
       [[ -n "${1:-}" ]] || { echo "✗ usage: $0 ops-cli <subcommand> [args...]" >&2; exit 1; }
       "$BASE" ops-cli "$@"
+      ;;
+    ops-edit)
+      # 寫入工具(ops_cli 的可寫對應面)。安全模型在工具內:dry-run 預設、寫前自動
+      # 備份、寫後 verify、audit、restore 可回退。argv pass-through(不走 shell,
+      # is_blocked_run 不適用);破壞性由 --commit gate 守護。
+      preflight
+      shift
+      [[ -n "${1:-}" ]] || { echo "✗ usage: $0 ops-edit <subcommand> [args...]" >&2; exit 1; }
+      "$BASE" ops-edit "$@"
       ;;
     container-script)
       preflight

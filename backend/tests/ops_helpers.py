@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
+EDIT_PATH = Path(__file__).resolve().parent.parent / "ops_edit.py"
 
 
 def run_ops_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
@@ -19,6 +20,20 @@ def run_ops_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
     env = {**os.environ, "KG_DATA_DIR": data_dir, "PYTHONPATH": str(CLI_PATH.parent / "src")}
     return subprocess.run(
         [sys.executable, str(CLI_PATH), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def run_ops_edit(data_dir: str, *args: str) -> subprocess.CompletedProcess:
+    """執行 ops_edit.py（寫入工具），設定 KG_DATA_DIR + PYTHONPATH。
+
+    與 run_ops_cli 同源 env 契約。預設 dry-run；測試需寫盤時自行帶 ``--commit``。
+    """
+    env = {**os.environ, "KG_DATA_DIR": data_dir, "PYTHONPATH": str(EDIT_PATH.parent / "src")}
+    return subprocess.run(
+        [sys.executable, str(EDIT_PATH), *args],
         capture_output=True,
         text=True,
         env=env,
