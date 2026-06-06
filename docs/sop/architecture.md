@@ -5,11 +5,17 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: d0e9a0cb
+verified_against: e286e0fd
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
-BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝置端的 `SwiftData` 為唯一資訊來源 (Single Source of Truth)，並透過背景同步與遠端 Knowledge Graph (KG) 伺服器保持資料一致。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化的跨裝置 domain state 以 Knowledge Graph (KG) 伺服器為權威來源；尚未後端化的共享 state 依本文資料權威邊界分階段遷移。iOS 的 `SwiftData` 應收斂為本機投影、離線 cache 與 outbox 執行基礎，不再作為跨裝置 Single Source of Truth 的長期架構。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+
+本機仍必須保存資料，因為核心場景包含離線閱讀、離線查詞、離線複習與低延遲 UI。但本機保存的語意分三類：
+
+- **Authoritative remote state**：後端 DB / object storage 是權威，client 只持有鏡像與 pending intent。
+- **Device cache**：可刪可重建的媒體、封面、subtitle、下載音訊、書籍檔案副本。
+- **Local-only ephemeral state**：單次 session、debug、尚未決定是否同步的 UI 暫態。
 
 **平台**：iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，`SUPPORTS_MACCATALYST`，非原生 macOS — 核心依賴 Readium 僅 iOS）
 
@@ -17,7 +23,182 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ---
 
-## 💾 核心資料模型: `VocabularyEntry` & `AuthManager`
+## 資料權威邊界
+
+| 資料類型 | 權威來源 | iOS 保存語意 | 備註 |
+|---|---|---|---|
+| 帳號 / session | Backend auth + Keychain token | Keychain session cache | 登出 / token invalidation 必須清本機 user-scoped projection |
+| Vocabulary card / graph links / notebook assignment | Backend card / graph / notebook stores | `VocabularyEntry` projection + outbox | 本地新增、刪除、hide/unhide 先 optimistic，再同步收斂 |
+| Review state | Backend card review fields | `VocabularyEntry` review fields projection | LWW 以 `last_reviewed_at` 判定 |
+| Review event log | Backend `review_events` append-only log | `ReviewRecord` projection | client UUID 冪等；日曆與每日明細讀事件鏡像 |
+| Notebook metadata | Backend `/api/notebooks/*` | `Notebook` projection + pending mutation | cover photo 本機 path 只是 device cache；遠端 cover 需另設 asset 權威 |
+| Podcast catalog | Backend podcast catalog / object storage | `PodcastSeries` / `PodcastEpisode` cache | 空 server list 不視為權威刪除，避免短暫 index 故障 mass tombstone |
+| Podcast progress | Backend `podcast_progress` LWW store | `PodcastProgress` projection | CloudKit 只能視為 legacy/過渡，不應再當跨裝置權威 |
+| Podcast follow | 目標為 backend user preference | 目前 `PodcastSeries.isFollowed` local preference | 多平台前需後端化，否則 web/Android 看不到 |
+| Book metadata / reading progress | 目標為 backend library store | 目前 `Book` 由 SwiftData CloudKit 保存 | 後端化時保存 metadata、locator、progress、preferred notebook；原始檔走 asset/object storage |
+| Book / podcast media files | Object storage 或本機匯入來源 | FileManager cache / download | 不塞 SQLite；可刪後重抓或要求重新下載 |
+| Reader / review / translation / appearance settings | 目標為 backend user config | 目前混用 UserDefaults + iCloud KVS | 多平台前需 typed server config；UserDefaults 只作啟動快取 |
+| UI filter / sort / session snapshot / debug URL | Local-only unless explicitly promoted | UserDefaults / memory | 不影響跨裝置資料完整性，可維持本機 |
+
+### Current storage audit（2026-06）
+
+本表是目前 codebase 的實際持久化盤點，不是目標狀態。掃描來源：`AppBootstrap.fullModelTypes` / `ModelConfiguration`、iOS `UserDefaults` / `CloudPreferencesSync` / `FileManager` 使用點、後端 routers / API models / stores。
+
+| Surface | 目前存放 | 後端整合狀態 | 缺口 |
+|---|---|---|---|
+| `VocabularyEntry` 詞卡、review state、graph links | iOS `LocalStore` projection；backend `cards.db` / per-notebook graph stores | **已後端權威化**，仍保留 iOS outbox/cache | `edit` 狀態仍需完整 contract；iOS 本機 projection 不可誤當 SoT |
+| `ReviewRecord` 複習事件 | iOS `LocalStore` projection；backend `review_events` append-only log | **已後端權威化** | 需持續保證 client UUID 冪等與刪卡後事件保留 |
+| `Notebook` metadata | iOS `LocalStore` projection；backend `/api/notebooks/*` + `notebooks.db` | **大致後端權威化** | 自訂 cover photo 仍是本機 file path；遠端 cover asset 尚未成為權威 |
+| `PodcastSeries` / `PodcastEpisode` catalog | iOS `LocalStore` cache；backend `/api/podcasts*` + object storage metadata | **catalog 已後端權威化** | `PodcastSeries.isFollowed` 仍是本機欄位 |
+| `PodcastProgress` | iOS `CloudStore` CloudKit；backend `podcast_progress.db` LWW | **後端已有權威面，但 iOS 仍未退 CloudKit** | 需要補推/觀測/再 local-only 退場，不能一步刪 CloudKit |
+| `Book` metadata / reading progress | iOS `CloudStore` CloudKit `Book` | **未後端化** | 無 backend library API、無 `remoteBookId`、無 position outbox |
+| Book 原始檔 / converted EPUB / originals | iCloud container `Documents/Books` 或 local `Documents/Books` / `Originals` | **未後端化** | 無 object storage asset manifest、upload/download/quota/privacy policy |
+| Reader settings | `ReaderSettings` UserDefaults + iCloud KVS | **未後端化** | font/size/line-height/scroll/underline 尚無 server config domain |
+| Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation` | **部分後端化** | backend response 缺 `updated_at`，所以 server LWW 尚未真正啟用 |
+| Review settings / pause review clock | `ReviewSettingsStore` UserDefaults | **未後端化** | pause/resume 跨裝置會漂移 |
+| App language / appearance | UserDefaults + iCloud KVS | **未後端化** | web/Android 不會共享；`.system` selection 需 server contract |
+| Active notebook / notebook filter / sort | `activeNotebookId`、`NotebookFilter`、`NotebookSortOption` UserDefaults / `@AppStorage` | **未後端化或 local-only 未定義** | `activeNotebookId` 影響新增詞歸屬，若要跨平台需 `vocab_ui.updated_at` |
+| Review session snapshots | UserDefaults | **local-only** | 可保留本機；不應納入後端權威，除非要跨裝置續答 |
+| Podcast downloads / covers | `Documents/podcast-downloads`、`Documents/podcast-covers` | **device cache** | 登出清理已存在；不應後端化為 DB state |
+| Notebook cover photo files | `Documents/notebook-covers` path | **未後端化 asset** | 需要 cover asset contract，否則多裝置看不到自訂圖 |
+| Auth session | Keychain token + UserDefaults profile；backend auth/user store | **正確分層** | token 不應進一般 user config；Keychain 為 device credential cache |
+| Debug server URL / welcome seen / auto-sync threshold | UserDefaults | **local-only** | 可維持本機，不需要後端化 |
+
+結論：目前不是「全面整合到後端」。已整合的核心是詞卡 / graph / notebook / review events / podcast catalog / podcast progress backend 面；尚未整合的是書庫、書檔 asset、多數偏好設定、podcast follow、部分 UI state 與 cover assets。後續 rollout 應優先處理會影響跨裝置語意的資料；純 device cache / debug / session snapshot 不需要後端化。
+
+### 遷移原則
+
+- 後端化不是移除本機資料，而是把本機資料降級成 projection / cache / outbox。
+- 新增跨裝置 user-facing state 時，預設先設計後端權威 contract；只有明確 local-only 的 UI 暫態才可只放 `UserDefaults`。
+- CloudKit / iCloud KVS 不再作為新功能的跨裝置權威。既有使用處可分階段退場，退場前必須有後端 contract、資料 migration 與 rollback gate。
+- 書籍與音訊等大型資產走 object storage 或本機 cache；SQLite / SwiftData 只保存 metadata、進度與檔案索引。
+- 衝突解決必須寫成 contract：append-only event 用 client UUID 冪等，偏好設定與 progress 用 timestamp LWW，刪除/封存用 tombstone 或明確 bucket 收斂。
+
+### User config contract（目標狀態）
+
+目前後端 `/api/user/config` 只持久化 translation language；iOS 仍把多個跨裝置偏好放在 `UserDefaults` / iCloud KVS。多平台化前，user config 應收斂成 typed server contract，並讓本機 store 只作啟動快取與離線 pending patch。
+
+| Config domain | 目標欄位 | 目前 iOS 來源 | 衝突規則 |
+|---|---|---|---|
+| `translation` | `source_lang`、`target_lang`、`updated_at` | `TranslationLanguage` + iCloud KVS；後端已保存語言但缺 timestamp LWW | `updated_at` LWW；遠端失敗 rollback 本機 |
+| `reader` | `font`、`font_size`、`line_height`、`scroll_mode`、`underline_opacity`、`updated_at` | `ReaderSettings` UserDefaults + iCloud KVS | 整個 reader object LWW；debug hit-testing 不同步 |
+| `review` | `mode`、custom intervals、`progress_paused`、`progress_paused_at`、`updated_at` | `ReviewSettingsStore` UserDefaults | LWW；pause/resume 必須跨裝置一致，避免 due/reviewed 計算漂移 |
+| `appearance` | `mode`、`updated_at` | `AppAppearanceStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 mode，不保存 resolved value |
+| `language` | `app_language`、`updated_at` | `AppLanguageStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 selection，不保存系統解析結果 |
+| `podcast` | `followed_series_ids`、`updated_at` | `PodcastSeries.isFollowed` local SwiftData | LWW 或 per-series timestamp；server list 用於排序與 cross-platform follow |
+| `vocab_ui` | `active_notebook_id`、`updated_at` | `activeNotebookId` UserDefaults | LWW；server 必須拒絕已刪 notebook，client 保留本機 fallback |
+
+分階段實作時，先擴充後端 response 以向後相容方式回傳 optional domains，再讓 iOS 依 domain-level `updated_at` merge。每個 domain 的 PATCH 必須是 partial update，不能用缺欄位覆蓋既有 server config；client 也不能在 fetch 失敗時把本機舊值重新 PUT 成權威。
+
+### Podcast state migration（目標狀態）
+
+Podcast catalog 與 media 已由後端 / object storage 提供，iOS 的 series / episode rows 是 cache。剩餘要收斂的是 per-user state：progress 已有後端 LWW store，follow 仍是本機偏好。
+
+| State | 現況 | 目標 | 退場條件 |
+|---|---|---|---|
+| Catalog | `/api/podcasts*` + object storage 權威；iOS `PodcastSeries` / `PodcastEpisode` cache | 維持現況 | 不使用空 catalog 進行 mass tombstone；短暫 S3 index 故障只降級 |
+| Progress | 後端 `podcast_progress.db` LWW；iOS `PodcastProgress` 仍在 SwiftData CloudKit store | 後端為唯一跨裝置權威；iOS row 只作 cache + pending push | iOS 啟動 / catalog sync 先 pull remote，播放中節流 push；確認 migration 後把 `PodcastProgress` 移出 CloudKit config |
+| Follow | `PodcastSeries.isFollowed` local SwiftData | 後端 user config 或 dedicated follow endpoint 權威；iOS optimistic toggle + rollback | API 回傳 followed set + `updated_at`；iOS 首次 migration 上傳本機 followed series；server 拒絕不存在 / deleted series |
+| Downloaded audio | `PodcastDownloadManager` 本機檔案 | 純 device cache | 登出 / account switch 清本機下載；不可當作跨裝置權威 |
+| Cover cache | `podcast-covers/` 本機檔案 | 純 device cache | server cover retracted 時刪 cache；登出清 cache |
+
+Progress CloudKit 退場不可直接刪 schema。安全順序：
+
+1. 後端 progress endpoint 與 iOS pull/push 已雙向上線，且 tie-break 規則一致（同 instant 取較大 position）。
+2. 新版本 iOS 啟動時先把現有 CloudKit/local `PodcastProgress` 補推到後端，再 pull remote merge。
+3. 觀測一個發版週期後，`PodcastProgress` 改到 local-only store；CloudKit 舊資料只讀一次 migration，不再作權威。
+4. 最後移除 CloudKit dependency 前，確認 `Book` 也已有後端 library contract；否則 `CloudStore` 還會因 `Book` 存在而保留。
+
+Follow 後端化應優先走 user config domain（`podcast.followed_series_ids`），除非需要 per-series audit / notification 才拆 dedicated table。client 的 toggle contract 必須是 optimistic local update，server 失敗 rollback；若 server 回傳某 series 已不存在，client 應清除該 follow 並顯示一般同步收斂，不視為 fatal error。
+
+### Reading library migration（目標狀態）
+
+`Book` 目前由 SwiftData CloudKit 保存 metadata、cover blob、`lastReadLocatorJSON`、`progression`、`preferredNotebookId` 與檔名；實體檔案在 iCloud container / Documents。這讓 iOS 裝置間可同步，但 web / Android / backend 無法讀取，且 CloudKit schema 仍綁住 app 資料架構。後端化後應拆成兩層：
+
+| Layer | 後端權威 | iOS cache | 備註 |
+|---|---|---|---|
+| Library metadata | `book_id`、title、author、format、source hash、cover asset id、created/updated/deleted timestamps | `Book` projection | `book_id` 應為 server id；本機 UUID 可作 migration client id |
+| Reading position | `last_locator_json`、`progression`、`date_last_read`、`updated_at` | `Book.lastReadLocatorJSON` / `progression` cache | LWW；EPUB/PDF 都走同一 contract，避免 PDF 顯式 save、EPUB debounce save 行為漂移 |
+| Notebook binding | `preferred_notebook_id` | `Book.preferredNotebookId` cache | server 拒絕 deleted / nonexistent notebook；client 失敗 fallback 到 active/default |
+| Asset manifest | object key、size、sha256、format、upload status | `epubFileName` / local path cache | 原始 EPUB/PDF/TXT/MD 不進 SQLite；TXT/MD 轉 EPUB 後可同時保留 original asset |
+| Cover | cover asset key 或 derived thumbnail | local cover cache / optional SwiftData blob during migration | 大圖不長期塞 SwiftData blob；可由 backend 產生或 client upload |
+
+建議 API contract（後續實作，非現況）：
+
+- `GET /api/library/books?since=`：增量列出 metadata + tombstone。
+- `POST /api/library/books`：建立 book metadata，帶 `client_book_id` 冪等鍵與 optional asset manifest。
+- `PATCH /api/library/books/{book_id}`：partial update metadata / notebook binding。
+- `PUT /api/library/books/{book_id}/position`：LWW 更新 locator / progression。
+- `POST /api/library/books/{book_id}/asset-upload`：取得 object storage upload target 或宣告本機-only asset。
+- `GET /api/library/books/{book_id}/asset`：下載 / redirect 至可授權的 object storage URL。
+
+Migration 順序：
+
+1. 先只同步 metadata + reading position，不要求原始檔上傳；跨裝置可看到書目與進度，但沒有 asset 時顯示「需下載 / 重新匯入」狀態。
+2. 加入 asset upload entitlement / quota policy：免費層可只同步 metadata；Pro 或明確容量限制才同步原始檔。
+3. iOS 首次啟動 migration 掃描現有 `Book`，以 `client_book_id` 冪等 upsert 到後端；成功後保存 `remoteBookId`（後續實作需新增欄位）。
+4. Reader 每次 debounce save 後排 position outbox，不讓翻頁直接阻塞網路；進背景 / 關閉 reader 時 flush 本機與 best-effort remote。
+5. 後端 metadata / position 穩定後，`Book` 可移出 CloudKit store；但移除 CloudKit entitlement 前要確認沒有其他 model 仍依賴 CloudKit。
+
+刪除語意必須是 tombstone，而不是只刪本機 row。使用者刪書時：
+
+- metadata tombstone 同步到後端，其他裝置隱藏該書。
+- 本機檔案可立即刪除；object storage asset 是否刪除由 retention / recovery policy 決定。
+- 詞卡的 `bookId` 關聯不應硬刪詞卡；只解除來源書關聯或保留書名 snapshot。
+
+### Rollout PR sequence（目標順序）
+
+後端權威化應拆成多個可回滾 PR，不做單次大爆破。每個 PR 都要保持舊版 iOS 可用，且後端 response 新欄位必須 optional / backward-compatible。
+
+| PR | Scope | 主要產出 | Gate |
+|---|---|---|---|
+| 1 | User config timestamps | 後端 `TranslationLanguageConfig.updated_at` + domain-level partial merge；iOS 開啟 translation server LWW | backend tests + iOS settings tests；遠端失敗 rollback |
+| 2 | User config domains | reader / review / appearance / language / vocab_ui optional domains；iOS 啟動 fetch + local cache fallback | 每個 domain partial PATCH 測試；fetch 失敗不可 PUT 舊值 |
+| 3 | Podcast follow backend | `podcast.followed_series_ids` 或 dedicated follow endpoint；iOS optimistic toggle + migration | 不存在 series 收斂；登出 / account switch 清 projection |
+| 4 | Podcast progress backend hardening | 啟動一次性補推 CloudKit/local rows 到後端，維持 CloudKit 讀取作過渡；加 migration/drift counters | LWW tie-break 一致；重複 migration 冪等；至少一個發版週期觀測 |
+| 5 | Podcast progress CloudKit退場 | `PodcastProgress` 改 local-only projection，不再把 CloudKit 當權威 | PR4 觀測完成；feature flag 可回 legacy；無嚴重 drift |
+| 6 | Library metadata + position backend | `/api/library/books*` metadata / tombstone / position；iOS `Book.remoteBookId` + position outbox | 不上傳 asset 也可用；EPUB/PDF position contract 一致 |
+| 7 | Library asset sync | object storage upload/download、quota、privacy copy、download state UI | 大檔不上 DB；quota / entitlement / retry / cancellation tests |
+| 8 | CloudKit / iCloud KVS cleanup | 移除不再需要的 cross-device Apple-only authority；保留 UserDefaults 啟動快取 | 發版週期觀測完成；舊資料 migration 完成；rollback path 明確 |
+
+每個實作 PR 的 docs gate：
+
+- 改 backend endpoint / DB / env / schema 時，同步 `docs/reference/tech_index.md`。
+- 新增已上線 user-facing 功能時，同步 `docs/reference/product_surface.md`。
+- 改 iOS feature 分層或檔名時，同步對應 `docs/reference/feature_boundary/*.md`。
+- 改 sync 狀態流轉時，同步 `docs/reference/sync_lifecycle.md`。
+- 只寫目標規劃而未實作 endpoint/schema 時，不更新 reference SoT，以免把 roadmap 誤標成產品現況。
+
+### Verification and rollback gates
+
+每個資料權威遷移 PR 必須能獨立回滾。後端新增欄位與 endpoint 先上線、舊 client 可忽略；iOS 再逐步讀寫；最後才移除 Apple-only authority。
+
+必備驗證：
+
+- **Backend contract tests**：partial PATCH 不覆蓋缺欄位、`updated_at` LWW、stale write 被拒或回傳現有值、tombstone 不復活。
+- **iOS unit tests**：fetch 失敗 fallback、本機 optimistic update rollback、logout/account-switch 清 projection、migration 重跑冪等。
+- **Cross-device scenario**：A 離線改、本機 outbox；B 線上改；A 回線後依 contract 收斂，不可雙方互相覆寫成舊值。
+- **Backward compatibility**：舊 iOS 對新增 response domain 忽略不 crash；新 iOS 對舊 backend 缺 domain 使用本機 fallback。
+- **Docs gate**：實作 PR 必須更新 reference SoT；規劃 PR 只能更新 SOP，避免產品現況污染。
+
+Rollback 規則：
+
+- 後端 schema 加欄位 / table 時先 additive，不在同 PR 刪舊資料。
+- iOS feature flag 預設可關閉 server-authoritative domain，關閉後回到本機 cache / legacy sync。
+- Migration 必須冪等：同一 `client_id` / `event_id` / `client_book_id` 重送不產生 duplicate。
+- 刪除 / tombstone rollout 前不得 hard-delete remote asset；先保留 recovery window。
+- CloudKit / iCloud KVS 退場只能在至少一個發版週期觀測無嚴重 drift 後進行。
+
+Operational observability：
+
+- Backend 對 migration write path 記錄 accepted / stale / rejected / duplicate counters。
+- Admin 或 log 查詢需能按 user id 檢查 config、podcast progress、library metadata 的 remote 狀態。
+- iOS sync log 需能區分 fetch failed、merge skipped、rollback、migration already done。
+- 若 drift 偵測發現 server 缺少本機已存在的 migrated entity，client 應補推而非靜默刪本機。
+
+---
+
+## 核心資料模型: `VocabularyEntry` & `AuthManager`
 
 ### 多帳戶認證架構
 
@@ -32,7 +213,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ### 生詞條目狀態管理
 
-閱讀器中所有的生詞、以及知識庫中所有的卡片，在手機端都統一對應到同一個 SwiftData Model: `VocabularyEntry`。
+閱讀器中所有的生詞、以及知識庫中所有的卡片，在手機端都統一對應到同一個 SwiftData Model: `VocabularyEntry`。`VocabularyEntry` 是後端 card state 的本機 projection，同時承載離線新增 / 刪除 outbox，不是跨裝置權威。
 我們透過 `syncStatus` 與 `actionType` 這兩個欄位來控制單字的狀態與流向。
 
 - `syncStatus` 已由 `VocabularySyncState` 封裝：`pending` / `synced` / `failed`
@@ -67,7 +248,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ## 雙向同步機制 (BackgroundSyncActor & KGService)
 
-App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動：
+App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動。同步的目標是讓本機 projection 收斂到後端權威狀態，並把離線期間產生的 pending intent 送上後端：
 
 1. **Push Review State** — 推送本地複習狀態（`review_count`、`next_review_date` 等），LWW 策略以 `last_reviewed_at` 判定
 2. **Push Review Events** — 推送完整複習事件（`event_id`、`card_id`、`word_snapshot`、`notebook_id`、`feedback`、`reviewed_at`、`created_at`），以 client UUID 冪等去重
