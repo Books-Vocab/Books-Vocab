@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/
-verified_against: bb54d47a
+verified_against: 746dafaa
 -->
 # System Runbook
 

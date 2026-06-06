@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Reader/
-verified_against: a3126e36
+verified_against: 746dafaa
 -->
 # Reader Feature Boundary
 

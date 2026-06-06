@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/tests/
-verified_against: 1f55231f
+verified_against: 746dafaa
 -->
 # KG Backend Testing Strategy
 
