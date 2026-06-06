@@ -121,16 +121,17 @@ struct ActiveNotebookStoreTests {
         #expect(cloud.string(forKey: "activeNotebookId") == "nb-9")  // iCloud 不被清
     }
 
-    @Test("applyServerState 寫本地 + iCloud")
-    func applyServerStateWritesBothLayers() {
+    @Test("applyServerState 只寫本地層，不回寫 iCloud（對齊 applyServerModeState）")
+    func applyServerStateWritesLocalOnly() {
         let d = makeDefaults()
         let cloud = FakeCloudKVStore()
         let store = ActiveNotebookStore(defaults: d, cloud: cloud)
         store.applyServerState(ActiveNotebookState(activeNotebookId: "srv-nb", updatedAt: 500))
         #expect(store.activeNotebookId == "srv-nb")
         #expect(d.object(forKey: "active_notebook_updated_at") as? Double == 500)
-        #expect(cloud.string(forKey: "activeNotebookId") == "srv-nb")
-        #expect(cloud.double(forKey: "active_notebook_updated_at") == 500)
+        // cold-start 不回寫 iCloud KVS：避免新裝置與他裝置未傳播的 genuine local write 競爭。
+        #expect(cloud.string(forKey: "activeNotebookId") == nil)
+        #expect(cloud.double(forKey: "active_notebook_updated_at") == nil)
     }
 
     @Test("snapshot 讀本地層")

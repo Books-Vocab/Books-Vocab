@@ -147,10 +147,12 @@ final class ActiveNotebookStore {
         Self.readLocalState(defaults)
     }
 
-    /// cold-start：server 值套進本地 + iCloud。僅在本機從未寫過（`snapshot.updatedAt == nil`）
-    /// 時由 caller 呼叫，避免覆蓋本機已有的跨裝置權威值。
+    /// cold-start：server 值僅套進本地層（記 server updatedAt 作後續 LWW 基準）。
+    /// 對齊 `ReviewSettingsStore.applyServerModeState` / `applyServerPauseState`：
+    /// **不回寫 iCloud KVS**，避免在新 Apple 裝置上與他裝置尚未傳播的 genuine local
+    /// write 競爭。caller 已 guard `snapshot.updatedAt == nil`（僅本機從未寫過時才套）；
+    /// 本機後續真正 setActive 才寫 iCloud。
     func applyServerState(_ state: ActiveNotebookState) {
         Self.writeLocalState(state, into: defaults)
-        writeCloudState(state)
     }
 }

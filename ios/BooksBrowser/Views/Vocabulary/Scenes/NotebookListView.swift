@@ -460,8 +460,11 @@ struct NotebookListView: View {
         // UserDefaults key，透過 KVO 同步顯示。best-effort push 後端讓 chrome / web 能讀
         // （失敗不 rollback：iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑）。
         ActiveNotebookStore.shared.setActive(id)
+        // 同步捕捉 setActive 剛寫入的時戳，與 id 一起傳給 best-effort push（避免快速連續
+        // 切換時 detached task 讀到後一次切換的時戳，push 出 id/時戳不一致對）。
+        let updatedAt = ActiveNotebookStore.shared.snapshot.updatedAt
         Task {
-            await coordinator.pushActiveNotebook(id, authManager: authManager, kgService: kgService)
+            await coordinator.pushActiveNotebook(id, updatedAt: updatedAt, authManager: authManager, kgService: kgService)
         }
     }
 }

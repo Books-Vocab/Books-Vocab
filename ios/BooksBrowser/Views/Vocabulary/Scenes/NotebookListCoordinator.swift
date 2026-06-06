@@ -143,9 +143,12 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         _ = KGFeatureFlags.serverVocabUiLwwEnabled  // keep wired for future LWW flip
         do {
             let config = try await kgService.fetchUserConfig()
-            guard let vu = config.vocab_ui else { return }
+            // 僅在 server 帶真實時戳時套用：updated_at == nil 表示後端從未被任何端
+            // push（B1 default fallback），套了也不算數 — 且會讓本地 snapshot.updatedAt
+            // 維持 nil，下次 .task 又 re-fire fetchUserConfig（idempotent 但浪費）。
+            guard let vu = config.vocab_ui, let ts = vu.updated_at else { return }
             ActiveNotebookStore.shared.applyServerState(
-                ActiveNotebookState(activeNotebookId: vu.active_notebook_id, updatedAt: vu.updated_at)
+                ActiveNotebookState(activeNotebookId: vu.active_notebook_id, updatedAt: ts)
             )
         } catch {
             AppLog.kg.warning("coldStartActiveNotebook failed: \(error.localizedDescription)")
@@ -154,9 +157,10 @@ final class NotebookListCoordinator: NotebookListCoordinating {
 
     /// best-effort push active notebook 到後端（讓 chrome / web 能讀）。失敗不 rollback：
     /// iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑，下次切換 / cold-start 收斂。
-    func pushActiveNotebook(_ id: String, authManager: any AuthManaging, kgService: any KGServing) async {
+    /// `id` 與 `updatedAt` 由 caller 在 setActive 後**同步**一起捕捉傳入（非在此讀
+    /// snapshot），避免快速連續切換 A→B 時 task-A 讀到 B 的時戳、push 出 (idA, tsB) 不一致對。
+    func pushActiveNotebook(_ id: String, updatedAt: Double?, authManager: any AuthManaging, kgService: any KGServing) async {
         guard authManager.isLoggedIn else { return }
-        let updatedAt = ActiveNotebookStore.shared.snapshot.updatedAt
         do {
             _ = try await kgService.updateVocabUIConfig(
                 KGVocabUIConfig(active_notebook_id: id, updated_at: updatedAt)
@@ -262,7 +266,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             // 或 `resolveFallbackNotebookId` 回傳 nil（only-notebook edge case），
             // 直接清掉指向 deletedId 的 stale activeNotebookId，避免 Book.resolvedNotebookId
             // 之後 fall through 到死 id。
-            if ActiveNotebookStore.shared.activeNotebookId == deletedId {
+            if ActiveNotebookStore.shared.activeNotebookIdIfSet == deletedId {
                 ActiveNotebookStore.shared.clearStale()
             }
 
