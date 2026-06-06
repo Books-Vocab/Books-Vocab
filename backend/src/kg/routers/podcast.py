@@ -42,6 +42,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
+from email.utils import format_datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -254,18 +255,11 @@ def _read_json_from_s3(request: Request, key: str, *, context: str):
         raise HTTPException(status_code=500, detail=f"Malformed {context}") from e
 
 
-def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | None:
-    """Read raw object bytes from the configured podcast bucket.
-
-    Returns ``None`` if the object does not exist (so callers can mirror the
-    disk path's ``Path.exists()`` branch); raises ``HTTPException(502)`` on a
-    real storage fault. The bytes-oriented sibling of ``_read_json_from_s3``,
-    used by the subtitle / cover media proxies.
-    """
+def _get_object_from_s3(request: Request, key: str, *, context: str):
     cfg = _settings(request)
     s3 = _s3_client(request)
     try:
-        obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
+        return s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
     except Exception as exc:  # noqa: BLE001
         # Lightsail Object Storage occasionally returns ClientError("404") for
         # missing keys instead of NoSuchKey. Treat any 404 the same.
@@ -273,7 +267,35 @@ def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | 
             return None
         logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Storage error fetching {context}") from exc
+
+
+def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | None:
+    """Read raw object bytes from the configured podcast bucket.
+
+    Returns ``None`` if the object does not exist (so callers can mirror the
+    disk path's ``Path.exists()`` branch); raises ``HTTPException(502)`` on a
+    real storage fault. The bytes-oriented sibling of ``_read_json_from_s3``,
+    used by subtitle media proxies that need an in-memory text transform.
+    """
+    obj = _get_object_from_s3(request, key, context=context)
+    if obj is None:
+        return None
     return obj["Body"].read()
+
+
+def _s3_static_headers(obj: dict, base_headers: dict[str, str] | None = None) -> dict[str, str]:
+    headers = dict(base_headers or {})
+    content_length = obj.get("ContentLength")
+    if content_length is not None:
+        headers["Content-Length"] = str(content_length)
+    if etag := obj.get("ETag"):
+        headers["ETag"] = str(etag)
+    if last_modified := obj.get("LastModified"):
+        if hasattr(last_modified, "utcoffset") and last_modified.utcoffset() is not None:
+            headers["Last-Modified"] = format_datetime(last_modified, usegmt=True)
+        else:
+            headers["Last-Modified"] = str(last_modified)
+    return headers
 
 
 def _serve_static_media(
@@ -285,6 +307,7 @@ def _serve_static_media(
     context: str,
     headers: dict[str, str] | None = None,
     transform: Callable[[bytes], bytes | str] = lambda b: b,
+    stream_s3: bool = False,
 ):
     """Serve a single static media object (subtitle / cover) over the shared
     disk-exists / S3-404 dichotomy.
@@ -295,6 +318,16 @@ def _serve_static_media(
     decode bytes → text (round-tripped through ``PlainTextResponse``) while the
     cover path passes raw bytes through unchanged.
     """
+    if _using_s3(request) and stream_s3:
+        obj = _get_object_from_s3(request, f"{series_id}/{rel_key}", context=context)
+        if obj is None:
+            raise HTTPException(status_code=404, detail=f"{context.capitalize()} not found")
+        return StreamingResponse(
+            _iter_s3_body(obj["Body"]),
+            media_type=media_type,
+            headers=_s3_static_headers(obj, headers),
+        )
+
     if _using_s3(request):
         raw = _read_bytes_from_s3(request, f"{series_id}/{rel_key}", context=context)
         if raw is None:
@@ -733,4 +766,5 @@ def get_podcast_cover(
         media_type="image/png",
         context="cover",
         headers={"Cache-Control": "private, max-age=86400"},
+        stream_s3=True,
     )

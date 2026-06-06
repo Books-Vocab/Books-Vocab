@@ -379,7 +379,59 @@ def test_cover_endpoint_disk(podcast_api):
     resp = api.client.get("/api/podcasts/series_a/cover", headers=api.headers)
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/png"
+    assert resp.headers["cache-control"] == "private, max-age=86400"
+    assert resp.headers["content-length"] == str(len(png))
     assert resp.content == png
+
+
+def test_cover_s3_streams_without_eager_body_read(monkeypatch):
+    req = _s3_request()
+    payload = b"\x89PNG\r\n\x1a\n_s3_cover_bytes"
+
+    class _FakeBody:
+        def __init__(self):
+            self.read_calls = 0
+            self.closed = False
+
+        def read(self, size=-1):
+            self.read_calls += 1
+            if self.read_calls == 1:
+                return payload
+            return b""
+
+        def close(self):
+            self.closed = True
+
+    body = _FakeBody()
+
+    class _FakeS3:
+        def get_object(self, Bucket, Key):  # noqa: N803
+            assert Bucket == "kg-podcasts-prod"
+            assert Key == "series_a/cover.png"
+            return {
+                "Body": body,
+                "ContentLength": len(payload),
+                "ETag": '"cover-etag"',
+                "LastModified": "Sat, 06 Jun 2026 00:00:00 GMT",
+            }
+
+    monkeypatch.setattr(_podcast_mod, "_s3_client", lambda request: _FakeS3())
+
+    resp = _podcast_mod._serve_static_media(
+        req,
+        "series_a",
+        "cover.png",
+        media_type="image/png",
+        context="cover",
+        headers={"Cache-Control": "private, max-age=86400"},
+        stream_s3=True,
+    )
+
+    assert isinstance(resp, _podcast_mod.StreamingResponse)
+    assert body.read_calls == 0, "cover response construction must not read the full S3 body"
+    assert resp.headers["content-length"] == str(len(payload))
+    assert resp.headers["etag"] == '"cover-etag"'
+    assert resp.headers["last-modified"] == "Sat, 06 Jun 2026 00:00:00 GMT"
 
 
 def test_cover_not_found_when_absent(podcast_api):
