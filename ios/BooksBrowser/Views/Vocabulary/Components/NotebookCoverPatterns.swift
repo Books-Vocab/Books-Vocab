@@ -1,6 +1,56 @@
 import SwiftUI
 import Inject
 
+enum NotebookCoverImageCache {
+    private static let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 96
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
+
+    static func image(
+        path: String,
+        displaySize: CGSize,
+        scale: CGFloat,
+        loadData: (String) -> Data? = { path in try? Data(contentsOf: URL(fileURLWithPath: path)) }
+    ) -> UIImage? {
+        let maxDimensionPoints = max(displaySize.width, displaySize.height)
+        guard maxDimensionPoints.isFinite, maxDimensionPoints > 0, scale.isFinite, scale > 0 else {
+            return nil
+        }
+        let pixelBound = max(1, Int((maxDimensionPoints * scale).rounded(.up)))
+        let key = "\(path)#\(pixelBound)#\(fileSignature(path: path))" as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        guard let data = loadData(path),
+              let image = CoverImageDownsampler.downsample(
+                data: data,
+                maxDimensionPoints: maxDimensionPoints,
+                scale: scale
+              ) ?? UIImage(data: data) else {
+            return nil
+        }
+        let pixels = Int((image.size.width * image.scale * image.size.height * image.scale).rounded(.up))
+        cache.setObject(image, forKey: key, cost: max(1, pixels * 4))
+        return image
+    }
+
+    static func removeAll() {
+        cache.removeAllObjects()
+    }
+
+    private static func fileSignature(path: String) -> String {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else {
+            return "missing"
+        }
+        let size = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size):\(mtime)"
+    }
+}
+
 enum NotebookCoverPattern: String, CaseIterable, Identifiable {
     case dots
     case lines
@@ -136,6 +186,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
 
 struct NotebookCoverView: View {
     @ObserveInjection private var inject
+    @Environment(\.displayScale) private var displayScale
     let color: Color
     let pattern: NotebookCoverPattern?
     let coverImagePath: String?
@@ -150,7 +201,8 @@ struct NotebookCoverView: View {
             ZStack {
                 color
 
-                if let imagePath = coverImagePath, let coverImage = loadImage(from: imagePath) {
+                if let imagePath = coverImagePath,
+                   let coverImage = loadImage(from: imagePath, displaySize: geo.size) {
                     platformImage(coverImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -177,8 +229,8 @@ struct NotebookCoverView: View {
         .enableInjection()
     }
 
-    private func loadImage(from path: String) -> UIImage? {
-        UIImage(contentsOfFile: path)
+    private func loadImage(from path: String, displaySize: CGSize) -> UIImage? {
+        NotebookCoverImageCache.image(path: path, displaySize: displaySize, scale: displayScale)
     }
     private func platformImage(_ image: UIImage) -> Image {
         Image(uiImage: image)

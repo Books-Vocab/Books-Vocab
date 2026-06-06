@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import UIKit
 import Testing
 @testable import BooksBrowser
 
@@ -16,6 +17,14 @@ struct NotebookCoverCleanupTests {
         let jpg = root.appendingPathComponent("notebook_cover_\(UUID().uuidString).jpg")
         try Data([0xFF, 0xD8, 0xFF]).write(to: jpg) // fake JPEG SOI marker
         return root
+    }
+
+    private func makePNG() -> Data {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
+        return renderer.image { ctx in
+            UIColor.systemBlue.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+        }.pngData()!
     }
 
     @Test func purgeRemovesEntireCoversTree() throws {
@@ -36,6 +45,38 @@ struct NotebookCoverCleanupTests {
         LocalDataCleanerService.purgeNotebookCovers(root: root)
 
         #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @Test func purgePodcastCoversClearsMemoryCache() throws {
+        NotebookCoverImageCache.removeAll()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("podcast-covers-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let png = root.appendingPathComponent("series_a.png")
+        try makePNG().write(to: png)
+        var loads = 0
+        _ = try #require(NotebookCoverImageCache.image(
+            path: png.path,
+            displaySize: CGSize(width: 16, height: 16),
+            scale: 2
+        ) { path in
+            loads += 1
+            return try? Data(contentsOf: URL(fileURLWithPath: path))
+        })
+
+        LocalDataCleanerService.purgePodcastCovers(root: root)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try makePNG().write(to: png)
+        _ = try #require(NotebookCoverImageCache.image(
+            path: png.path,
+            displaySize: CGSize(width: 16, height: 16),
+            scale: 2
+        ) { path in
+            loads += 1
+            return try? Data(contentsOf: URL(fileURLWithPath: path))
+        })
+
+        #expect(loads == 2)
     }
 }
 #endif

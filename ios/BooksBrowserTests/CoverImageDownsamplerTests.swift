@@ -110,6 +110,86 @@ struct CoverImageDownsamplerTests {
         #expect(longest <= 420 + 1)
     }
 
+    @Test("Notebook cover cache reuses same path and display bound")
+    func notebookCoverCacheReusesSamePathAndSize() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+        let png = makePNG(widthPx: 900, heightPx: 1200)
+        var loads = 0
+
+        let first = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 120, height: 180),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+        let second = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 120, height: 180),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+
+        #expect(loads == 1)
+        #expect(first === second)
+    }
+
+    @Test("Notebook cover cache keys include display bound")
+    func notebookCoverCacheSeparatesDisplaySizes() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+        let png = makePNG(widthPx: 900, heightPx: 1200)
+        var loads = 0
+
+        _ = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 80, height: 120),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+        _ = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 180, height: 270),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+
+        #expect(loads == 2)
+    }
+
+    @Test("Notebook cover cache keys include file metadata")
+    func notebookCoverCacheInvalidatesWhenFileChanges() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notebook-cover-cache-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try makePNG(widthPx: 90, heightPx: 120).write(to: url)
+
+        let first = try #require(NotebookCoverImageCache.image(
+            path: url.path,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2
+        ))
+        try makePNG(widthPx: 180, heightPx: 240).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(2)], ofItemAtPath: url.path)
+        let second = try #require(NotebookCoverImageCache.image(
+            path: url.path,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2
+        ))
+
+        #expect(first !== second)
+    }
+
     // MARK: - 存檔路徑（track-15）：downsampledJPEG（UIImage path）
 
     @Test func largeCoverShrinksWithinBound() throws {

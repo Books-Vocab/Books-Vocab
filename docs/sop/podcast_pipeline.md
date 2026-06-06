@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 068e6105
+verified_against: 546b52c6
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -277,7 +277,7 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 | `author` | overview.md `**Type**:` | **語意錯置**——實際是書籍類型而非作者(未修;影響低) |
 | `hostNames` | Voice Mapping `**Name (...)**: SpeakerN` | 已修於 aa47c723 |
 | `color` / `coverPattern` | 硬編碼 `#5B8C5A` / `waves` | 程序化封面退路;`coverImageURL` 缺(legacy/pre-cover)時 iOS 用這兩個畫 |
-| `coverImageURL` | `cover` stage 有產 `cover.png` → `/api/podcasts/<sid>/cover`,否則 `null` | backend proxy 路徑;iOS 有值才拉遠端封面圖,否則退程序化 |
+| `coverImageURL` | `cover` stage 有產 `cover.png` → `/api/podcasts/<sid>/cover?v=<sha16>`,否則 `null` | backend proxy 路徑(query 僅 cache-bust;iOS 有值才拉遠端封面圖,否則退程序化) |
 | `episodes[].durationSec` | ffprobe(缺則 0) | |
 | `episodes[].subtitleContent` | inline SRT 全文 | iOS 端直接消費，省一次認證 RTT |
 
@@ -332,9 +332,7 @@ uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --wor
 uv run --no-project --with boto3 python ops/podcast_cover_publish.py --all --workspaces-dir lab/podcast/workspaces --check    # cover⟷metadata drift
 ```
 
-**原子靠排序**(S3 無跨-object 事務):① PUT `<sid>/cover.png`(新 key,metadata 未指 → client 看舊狀態) → ② RMW `<sid>/metadata.json` set `coverImageURL`(單-object 原子替換,可見性翻轉,先①後②保證 metadata 指向時 cover 必已在) → ③ 從 bucket 全量重建 `index.json`(不丟其他 series)。任何中斷點皆安全 → **可重入 + 冪等**(不 bump `updatedAt`,body byte-stable;重跑收斂)。`--check` 分類 `in_sync` / `url_without_cover_png`(metadata 指但圖缺 → 404) / `cover_png_without_url`(圖在但 metadata 沒指,②沒跑完) / `unpublished` / `pending_publish`(local 有圖待發)。dry-run 預設、PNG magic + series_id `\A[a-z0-9_]+\Z`(對齊 backend) + published gate(拒對無 metadata.json 的 series 發封面)、404 vs 真實 fault 區分(鐵律 1)。
-
-> **已知限制**:`coverImageURL` 無版本。iOS 按 *series id* 快取封面(`PodcastSyncService.cacheCoverIfNeeded`),故 `null→有值`(首次補封面)會被抓到,但**替換**既有封面的新圖在 client 端不會自動刷新(需清快取或未來加 cover versioning)。
+**原子靠排序**(S3 無跨-object 事務):① PUT `<sid>/cover.png`(新 key,metadata 未指 → client 看舊狀態) → ② RMW `<sid>/metadata.json` set `coverImageURL=/api/podcasts/<sid>/cover?v=<sha16>`(單-object 原子替換,可見性翻轉,先①後②保證 metadata 指向時 cover 必已在;`v` 為 cover bytes SHA-256 前 16 碼,backend 忽略 query,iOS 用它做本地 cache-bust) → ③ 從 bucket 全量重建 `index.json`(不丟其他 series)。任何中斷點皆安全 → **可重入 + 冪等**(同圖同 URL;不 bump `updatedAt`,body byte-stable;重跑收斂)。`--check` 分類 `in_sync` / `url_without_cover_png`(metadata 指但圖缺 → 404) / `cover_png_without_url`(圖在但 metadata 沒指,②沒跑完) / `unpublished` / `pending_publish`(local 有圖待發,或 local cover bytes 的 sha16 與 metadata `v` 不符)。dry-run 預設、PNG magic + series_id `\A[a-z0-9_]+\Z`(對齊 backend) + published gate(拒對無 metadata.json 的 series 發封面)、404 vs 真實 fault 區分(鐵律 1)。legacy 無 `?v=` 的 cover URL 在無 local bytes 比對時仍視為指向 cover,`--check` 不會誤報；一旦提供 local cover,legacy URL 會被標為待發布以補上 version token。
 
 ### Headless 觀測 CLI(`ops/podcast_ops.py` — 不必起 dashboard)
 
