@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 02ff0191
+verified_against: 546b52c6
 -->
 # Podcast Feature Boundary
 
@@ -55,7 +55,7 @@ verified_against: 02ff0191
 |------|------|
 | `PodcastAssetPreloader.swift` | @MainActor singleton；warm AVFoundation HTTP/2 連線（tap-on-row + bookshelf-appear）；LRU-5, 60s TTL；失敗即 evict |
 | `PodcastDownloadManager.swift` | @MainActor @Observable singleton；URLSession.background 跑離線下載；落地 `episode.localAudioPath`（Documents/podcast-downloads/<seriesId>/<remoteId>.mp3）；progress / failed 由 `@Query` 觀察 |
-| `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空 server list（`/api/podcasts` 回 `[]`，S3 index.json 短暫讀不到時）視為非權威 → reconcile 跳過 series tombstone（不 soft-delete），對稱 episode 層 empty-episodes 守衛、不 throw。**封面快取**：upsert 後 `cacheCoverIfNeeded` 把 `coverImageURL`（有值才）認證下載成 `Documents/podcast-covers/<sid>.png` → 寫 `PodcastSeries.coverImagePath`（PNG-magic 守門、best-effort、失敗退程序化封面、不 abort sync）；**server 撤回封面**（`coverImageURL` 轉 nil/空）時 `upsertSeries` 清掉 `coverImagePath` + best-effort 刪 `<sid>.png`，避免 stale 快取永久渲染；`LocalDataCleanerService.purgePodcastCovers` 於 logout/account-switch 清除。**觸發來源**：`PodcastHomeView` `.task`/`.refreshable` + `KGService.backgroundSync`（Phase 3，序執行於 vocab pull 後，見 §同步觸發） |
+| `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空 server list（`/api/podcasts` 回 `[]`，S3 index.json 短暫讀不到時）視為非權威 → reconcile 跳過 series tombstone（不 soft-delete），對稱 episode 層 empty-episodes 守衛、不 throw。**封面快取**：upsert 後以 bounded concurrency 跑 `cacheCoverIfNeeded`，把 `coverImageURL`（有值才）認證下載成 `Documents/podcast-covers/<sid>_<v>.png`（legacy 無 `?v=` 時退 `<sid>.png`）→ 寫 `PodcastSeries.coverImagePath`（HTTP 2xx + `image/png` + PNG magic 守門、best-effort、失敗退程序化封面、不 abort sync）；**server 撤回封面**（`coverImageURL` 轉 nil/空）時 `upsertSeries` 清掉 `coverImagePath` + best-effort 刪當前 path/legacy `<sid>.png`，避免 stale 快取永久渲染且不以 prefix 誤刪其他 `_` series；`LocalDataCleanerService.purgePodcastCovers` 於 logout/account-switch 清除 disk + memory cover cache。**觸發來源**：`PodcastHomeView` `.task`/`.refreshable` + `KGService.backgroundSync`（Phase 3，序執行於 vocab pull 後，見 §同步觸發） |
 
 ### 同步觸發
 
@@ -68,7 +68,7 @@ podcast catalog 同步現有兩條觸發鏈：
 
 - `episodes[].subtitleContent: String?` 由 `ops/podcast_upload.sh` 嵌入；iOS `PodcastEpisode.inlineSubtitle` 直接消費，跳過 `/api/podcasts/{sid}/{ep}/subtitle` fetch
 - `episodes[].localAudioPath: String?` (SwiftData only, 不在後端 JSON) — 由 DownloadManager 填寫；PlayerView 認到即用 file:// URL 跳過認證
-- `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。iOS 有值才拉遠端封面圖快取，否則退 `color`/`coverPattern` 程序化封面
+- `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover?v=<sha16>`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。backend 忽略 query 仍 proxy 同一張 `<sid>/cover.png`；iOS 用 `v` token 命名本地快取，替換既有封面可於下次 catalog sync 自動刷新，否則退 `color`/`coverPattern` 程序化封面
 - `episodes[ep1].previewAvailable: Bool` + `previewDurationSec: Int`（free-tier 試聽，**僅 ep_01**）：`ops/podcast_upload.sh` 對 ep_01 以 `ffmpeg -t 180 -c copy` stream-copy 出 `ep_01/preview.<fmt>`（同 container/codec、無損）並寫此二欄；既有 series 由 `ops/podcast_preview_backfill.py`（bucket-driven、audio-decoupled、dry-run 預設 / `--execute` / `--check` drift）回填。backend `audio` 端點對 free tier 服務此 `preview.<fmt>` 物件（見 `tech_index.md` podcast_access），**不**對完整檔做 byte 截斷（progressive MP4 單 moov 宣告全長，截 byte 會讓 AVPlayer 報錯而非乾淨停止）。preview 欄位在 `episodes` 內，`index.json` 會 strip，故不影響 series-list view
 
 ### Sub-views（UI 元件）
