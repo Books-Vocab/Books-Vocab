@@ -13,6 +13,7 @@ import SwiftData
 final class KGService: KGServing, LocalDataClearing {
     enum SyncKeys {
         static let incrementalBoundary = "kg_last_incremental_sync"
+        static let reviewEventPullBoundary = "kg_review_events_since"
         static let payloadVersion = "kg_review_payload_version"
         static let currentPayloadVersion = 1
     }
@@ -111,4 +112,3 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
 }
-

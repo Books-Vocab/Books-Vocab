@@ -502,6 +502,13 @@ extension BackgroundSyncActor {
         let descriptor = FetchDescriptor<ReviewRecord>()
         let existing = try modelContext.fetch(descriptor)
         var existingIDs = Set(existing.map(\.id))
+        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+        let entryIDsByCardID = Dictionary(
+            uniqueKeysWithValues: entries.compactMap { entry -> (String, UUID)? in
+                guard let cardID = entry.kgCardId, !cardID.isEmpty else { return nil }
+                return (cardID, entry.id)
+            }
+        )
         var inserted = 0
 
         for event in remoteEvents {
@@ -513,7 +520,7 @@ extension BackgroundSyncActor {
 
             let record = ReviewRecord(
                 word: event.word_snapshot,
-                entryID: nil,
+                entryID: event.card_id.flatMap { entryIDsByCardID[$0] },
                 feedback: event.feedback,
                 reviewedAt: reviewedAt
             )

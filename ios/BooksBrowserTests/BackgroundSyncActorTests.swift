@@ -451,6 +451,13 @@ struct BackgroundSyncActorTests {
 
     @Test func mergeReviewEvents_insertsMissingAndSkipsDuplicates() async throws {
         let container = try makeContainer()
+        let seedContext = ModelContext(container)
+        let linkedEntry = VocabularyEntry(word: "beta", translation: "m", context: "ctx", bookTitle: "Book")
+        linkedEntry.kgCardId = "card-beta"
+        linkedEntry.markSynced()
+        seedContext.insert(linkedEntry)
+        try seedContext.save()
+
         let actor = BackgroundSyncActor(modelContainer: container)
         let eventID = "22222222-2222-2222-2222-222222222222"
         let remote = [KGReviewEventPayload(
@@ -471,6 +478,7 @@ struct BackgroundSyncActorTests {
         let record = try #require(records.first)
         #expect(records.count == 1)
         #expect(record.id.uuidString == eventID.uppercased())
+        #expect(record.entryID == linkedEntry.id)
         #expect(record.word == "beta")
         #expect(record.notebookId == "nb2")
         #expect(record.feedback == 0)
