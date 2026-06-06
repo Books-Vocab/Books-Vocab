@@ -25,9 +25,20 @@ enum StatsPresentation {
         let heatmapThresholds: [Int]
     }
 
+    enum GraphThumbnailBodyKind: Equatable {
+        case loading
+        case empty
+        case graph
+    }
+
     private static let calendar = Calendar.current
 
     private static let dayFormatter = AppDateFormatters.dayKey
+
+    static func graphThumbnailBodyKind(linksLoaded: Bool, nodeCount: Int) -> GraphThumbnailBodyKind {
+        guard linksLoaded else { return .loading }
+        return nodeCount == 0 ? .empty : .graph
+    }
 
     private static func compactDayLabel(for date: Date) -> String {
         LocaleAwareFormatter.shared.string(from: date, template: "Md")
