@@ -14,8 +14,8 @@ enum NotebookReconciler {
 
     /// 將 server 權威 notebook 清單與本地 SwiftData reconcile。
     ///
-    /// - upsert：remote 新增 → insert；remoteId 命中 → 更新欄位（含 `isDeleted`，對應遠端刪除）
-    /// - tombstone：本地 `syncStatus == 1` 但 remote 不回報 → 標記 `isDeleted`（其他裝置刪除）
+    /// - upsert：remote 新增 → insert；remoteId 命中 → 更新欄位（含 `isSoftDeleted`，對應遠端刪除）
+    /// - tombstone：本地 `syncStatus == 1` 但 remote 不回報 → 標記 `isSoftDeleted`（其他裝置刪除）
     /// - **reap 孤兒**：本地 `remoteId` 前綴 `local-` 且 `syncStatus == 0` 的離線占位本，
     ///   在「已有可用真本」時硬刪。修舊版 offline fallback 用隨機 `local-<UUID>` 製造、
     ///   且永遠不被上面 `syncStatus == 1` tombstone pass 回收的重複「我的單字本」幽靈本。
@@ -43,13 +43,13 @@ enum NotebookReconciler {
         // Upsert remote → local
         for r in remote {
             if let l = localByRemoteId[r.id] {
-                let wasAlive = !l.isDeleted
+                let wasAlive = !l.isSoftDeleted
                 l.name = r.name
                 l.color = r.color
                 l.coverPattern = r.coverPattern
                 l.isDefault = r.isDefault
                 l.sortOrder = r.sortOrder
-                l.isDeleted = r.isDeleted
+                l.isSoftDeleted = r.isDeleted
                 l.syncStatus = 1
                 if wasAlive && r.isDeleted { tombstoned.insert(l.remoteId) }
             } else if !r.isDeleted {
@@ -67,19 +67,19 @@ enum NotebookReconciler {
         }
 
         // 曾同步但 server 不再回報 → tombstone（跨裝置刪除）
-        for l in local where l.syncStatus == 1 && !remoteIds.contains(l.remoteId) && !l.isDeleted {
-            l.isDeleted = true
+        for l in local where l.syncStatus == 1 && !remoteIds.contains(l.remoteId) && !l.isSoftDeleted {
+            l.isSoftDeleted = true
             l.updatedAt = Date()
             tombstoned.insert(l.remoteId)
         }
 
         // Reap 遺留 local-* 孤兒（僅在已有可用真本時，否則離線只有孤兒當預設會被清光）
         var reaped: Set<String> = []
-        let hasUsableReal = local.contains { !$0.remoteId.hasPrefix("local-") && !$0.isDeleted }
+        let hasUsableReal = local.contains { !$0.remoteId.hasPrefix("local-") && !$0.isSoftDeleted }
             || remote.contains { !$0.isDeleted }
         if hasUsableReal {
             for orphan in local
-            where orphan.remoteId.hasPrefix("local-") && orphan.syncStatus == 0 && !orphan.isDeleted {
+            where orphan.remoteId.hasPrefix("local-") && orphan.syncStatus == 0 && !orphan.isSoftDeleted {
                 for entry in allEntries where entry.notebookId == orphan.remoteId {
                     entry.notebookId = "default"
                 }
@@ -104,13 +104,13 @@ enum NotebookReconciler {
     /// `resolveNotebookId` 對 `"default"` 永遠有效的契約）。
     static func ensureOfflineDefault(local: [Notebook], modelContext: ModelContext) {
         if let existing = local.first(where: { $0.remoteId == "default" }) {
-            if existing.isDeleted {
-                existing.isDeleted = false
+            if existing.isSoftDeleted {
+                existing.isSoftDeleted = false
                 existing.updatedAt = Date()
             }
             return
         }
-        guard !local.contains(where: { !$0.isDeleted }) else { return }
+        guard !local.contains(where: { !$0.isSoftDeleted }) else { return }
         let nb = Notebook(remoteId: "default", name: "我的單字本", isDefault: true)
         nb.syncStatus = 0
         modelContext.insert(nb)

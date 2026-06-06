@@ -22,7 +22,7 @@ struct PodcastVocabContextTests {
             Notebook.self,
             Book.self
         ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }

@@ -265,7 +265,6 @@ struct ReaderTranslationHandlerTests {
     }
 
     @Test func handleWordSelected_retryStatus_surfacesWhileTaskIsActive() async {
-        // UNVERIFIED: needs local xcodebuild test.
         let service = MockTranslating()
         service.triggerQuickRetry = true
         service.quickResult = .success(TranslationResult(translation: "rendered", partOfSpeech: nil, explanation: nil))
@@ -290,12 +289,12 @@ struct ReaderTranslationHandlerTests {
         #expect(await waitUntil { handler.statusMessage?.contains("正在重試") == true })
 
         #expect(handler.statusMessage?.contains("正在重試") == true)
+        #expect(await waitUntil { releaseResult != nil })
         releaseResult?.resume()
         await drain(handler)
     }
 
     @Test func handleWordSelected_cancelledRetry_doesNotWriteStatus() async {
-        // UNVERIFIED: needs local xcodebuild test.
         let service = MockTranslating()
         service.triggerQuickRetry = true
         service.quickResult = .success(TranslationResult(translation: "rendered", partOfSpeech: nil, explanation: nil))

@@ -5,6 +5,7 @@
 #   ./ops/ios_test.sh                             # run ALL tests in BooksBrowserTests
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
 #   ./ops/ios_test.sh -g "notebook"               # grep: run tests matching pattern
+#   ./ops/ios_test.sh --file BooksBrowserTests.swift
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -19,12 +20,14 @@ LOCK_FILE="/tmp/kg-ios-build.lock"
 TIMEOUT=600
 POLL_INTERVAL=3
 GREP_PATTERN=""
+TEST_FILE=""
 SPECIFIC_TESTS=()
 LIST_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -g|--grep) GREP_PATTERN="$2"; shift 2 ;;
+    --file) TEST_FILE="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --list) LIST_ONLY=1; shift ;;   # dry-run: print resolved -only-testing flags, no xcodebuild
     *) SPECIFIC_TESTS+=("$1"); shift ;;
@@ -45,7 +48,30 @@ CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev
 # --- Build -only-testing flags ---
 ONLY_FLAGS=()
 
-if [[ -n "$GREP_PATTERN" ]]; then
+if [[ -n "$GREP_PATTERN" && -n "$TEST_FILE" ]]; then
+  echo "[ios_test] error: --file and --grep cannot be combined" >&2
+  exit 1
+fi
+
+if [[ -n "$TEST_FILE" ]]; then
+  TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+  if [[ "$TEST_FILE" = /* ]]; then
+    FILE_PATH="$TEST_FILE"
+  elif [[ "$TEST_FILE" == */* ]]; then
+    FILE_PATH="$PROJECT_ROOT/$TEST_FILE"
+  else
+    FILE_PATH="$TEST_DIR/$TEST_FILE"
+  fi
+  [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE" >&2; exit 1; }
+  while IFS= read -r flag; do
+    [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
+  done < <(discover_file_only_flags "$FILE_PATH" "")
+  if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
+    echo "[ios_test] no tests discovered in file '$TEST_FILE'" >&2
+    exit 1
+  fi
+  echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests in file '$TEST_FILE'"
+elif [[ -n "$GREP_PATTERN" ]]; then
   # Auto-discover test funcs matching the pattern, attributing each func to its
   # OWN enclosing top-level container (struct / @Suite struct / class). See
   # lib/ios_test_discovery.sh for the discovery contract.
@@ -111,8 +137,12 @@ xcodebuild test \
   -project "$XCODEPROJ" \
   -scheme BooksBrowser \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -parallel-testing-enabled NO \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 60 \
+  -maximum-test-execution-time-allowance 120 \
   ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
-  2>&1 | tee "$TMPOUT" | grep -E '^(Test |✓|✗|◇|Passing|Failing|Executed|\*\* TEST)' || true
+  2>&1 | tee "$TMPOUT" | grep -E '^(Test |[[:space:]]*[✔✘✓✗] Test |◇|Passing|Failing|Executed|\*\* TEST)' || true
 EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
@@ -123,9 +153,10 @@ ELAPSED=$(( $(date +%s) - START ))
 # a false green instead of being reported as a pass. Sums both reporters:
 #   XCTest:        "Executed N tests, ..."   (one line per suite)
 #   Swift Testing: "✔ Test ... passed" / "✘ Test ... failed" per-test ticks,
+#                  Xcode 26 "Test case 'Suite/test()' passed" lines,
 #                  and "Test run with N test(s)" summary.
 count_executed_tests() {
-  local n xc st
+  local n xc st xc26
   # XCTest: sum the per-suite "Executed N tests" counts.
   xc=$(grep -oE 'Executed [0-9]+ test' "$TMPOUT" 2>/dev/null \
        | grep -oE '[0-9]+' | awk '{s+=$1} END{print s+0}')
@@ -133,7 +164,10 @@ count_executed_tests() {
   # Swift Testing: count per-test pass/fail ticks (grep -c always prints one int).
   st=$(grep -cE '^[[:space:]]*[✔✘✓✗] Test .+ (passed|failed)' "$TMPOUT" 2>/dev/null)
   st=${st:-0}
-  n=$(( xc + st ))
+  # Xcode 26 Swift Testing console output uses XCTest-style per-case rows.
+  xc26=$(grep -cE "^Test case '.+' (passed|failed)" "$TMPOUT" 2>/dev/null)
+  xc26=${xc26:-0}
+  n=$(( xc + st + xc26 ))
   # Fallback: Swift Testing summary line "Test run with N test(s)".
   if [[ "$n" -eq 0 ]]; then
     n=$(grep -oE 'Test run with [0-9]+ test' "$TMPOUT" 2>/dev/null \
@@ -169,6 +203,7 @@ elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
   echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
+  EXIT_CODE=1
 else
   echo ""
   # Show last 10 lines for unexpected output

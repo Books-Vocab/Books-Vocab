@@ -28,7 +28,8 @@ final class PodcastSeries {
     var isFollowed: Bool = false
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
-    var isDeleted: Bool = false
+    @Attribute(originalName: "isDeleted")
+    var isSoftDeleted: Bool = false
 
     @Relationship(deleteRule: .cascade, inverse: \PodcastEpisode.series)
     var episodes: [PodcastEpisode] = []

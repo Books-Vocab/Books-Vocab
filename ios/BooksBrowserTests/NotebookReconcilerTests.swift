@@ -21,7 +21,7 @@ struct NotebookReconcilerTests {
             Notebook.self,
             Book.self
         ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }
@@ -47,13 +47,13 @@ struct NotebookReconcilerTests {
         syncStatus: Int
     ) -> Notebook {
         let nb = Notebook(remoteId: remoteId, name: name, isDefault: isDefault)
-        nb.isDeleted = isDeleted
+        nb.isSoftDeleted = isDeleted
         nb.syncStatus = syncStatus
         return nb
     }
 
     private func aliveNotebooks(_ ctx: ModelContext) throws -> [Notebook] {
-        try ctx.fetch(FetchDescriptor<Notebook>()).filter { !$0.isDeleted }
+        try ctx.fetch(FetchDescriptor<Notebook>()).filter { !$0.isSoftDeleted }
     }
 
     // MARK: - Fix B：回收 local-* 孤兒
@@ -171,7 +171,7 @@ struct NotebookReconcilerTests {
         NotebookReconciler.ensureOfflineDefault(local: [deadDefault], modelContext: ctx)
         try ctx.save()
 
-        #expect(deadDefault.isDeleted == false, "被刪的 default sentinel 應 resurrect 而非另建")
+        #expect(deadDefault.isSoftDeleted == false, "被刪的 default sentinel 應 resurrect 而非另建")
         #expect(try ctx.fetch(FetchDescriptor<Notebook>()).count == 1)
     }
 
@@ -212,7 +212,7 @@ struct NotebookReconcilerTests {
         try ctx.save()
 
         let aAfter = try ctx.fetch(FetchDescriptor<Notebook>()).first { $0.remoteId == "nb-a" }
-        #expect(aAfter?.isDeleted == true, "曾同步但 server 不回報 → tombstone")
+        #expect(aAfter?.isSoftDeleted == true, "曾同步但 server 不回報 → tombstone")
         #expect(removed.contains("nb-a"))
     }
 

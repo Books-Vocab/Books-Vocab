@@ -65,7 +65,7 @@ struct BooksBrowserTests {
         TodayReviewSessionSnapshotStore.clear(for: nil)
         let container = try ModelContainer(
             for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = ModelContext(container)
 
@@ -110,7 +110,7 @@ struct BooksBrowserTests {
         TodayReviewSessionSnapshotStore.clear(for: nil)
         let container = try ModelContainer(
             for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = ModelContext(container)
 
@@ -224,7 +224,7 @@ struct BooksBrowserTests {
         // Logout / account-switch both route through LocalDataCleanerService.clearLocalData.
         let container = try ModelContainer(
             for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         await LocalDataCleanerService().clearLocalData(container: container, reason: "user_logout")
 
@@ -644,7 +644,7 @@ struct BooksBrowserTests {
     private func makeNotebookSandbox() throws -> ModelContext {
         let container = try ModelContainer(
             for: VocabularyEntry.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         return ModelContext(container)
     }
@@ -698,7 +698,7 @@ struct BooksBrowserTests {
         // Pair a live notebook to confirm the predicate's positive arm works
         // (without this paired assertion, the test would also pass if the
         // table simply contained no `ghost` row at all, hiding a regression
-        // where the `!$0.isDeleted` clause is removed).
+        // where the `!$0.isSoftDeleted` clause is removed).
         let live = Notebook(remoteId: "live", name: "Live", color: nil)
         ctx.insert(live)
         try ctx.save()
@@ -706,7 +706,7 @@ struct BooksBrowserTests {
 
         let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
         ctx.insert(ghost)
-        ghost.isDeleted = true   // mutate after insert so it goes through persistent path
+        ghost.isSoftDeleted = true   // mutate after insert so it goes through persistent path
         try ctx.save()
 
         #expect(VocabularyEntry.resolveNotebookId("ghost", in: ctx) == "default")
@@ -740,7 +740,7 @@ struct BooksBrowserTests {
         let ctx = try makeNotebookSandbox()
         let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
         ctx.insert(ghost)
-        ghost.isDeleted = true
+        ghost.isSoftDeleted = true
         try ctx.save()
 
         let entry = VocabularyEntry(
@@ -774,7 +774,7 @@ struct BooksBrowserTests {
         let ctx = try makeNotebookSandbox()
         let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
         ctx.insert(ghost)
-        ghost.isDeleted = true
+        ghost.isSoftDeleted = true
         try ctx.save()
 
         let entry = VocabularyEntry(
@@ -830,7 +830,7 @@ struct BooksBrowserTests {
         let ctx = try makeNotebookSandbox()
         let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
         ctx.insert(ghost)
-        ghost.isDeleted = true
+        ghost.isSoftDeleted = true
         try ctx.save()
 
         let entry = VocabularyEntry(
@@ -957,13 +957,14 @@ struct BooksBrowserTests {
     func sanitizeOutbox_tombstonedOrphanDelete_isExcludedFromDownstreamFilters() throws {
         // Regression guard for the tombstone-defense fix in startSync's
         // deletes/adds filters. After sanitize hard-deletes an orphan-delete
-        // entry, that entry's PersistentModel.isDeleted becomes true. The
-        // caller's [VocabularyEntry] snapshot still references it. Filters
-        // that build the upload batches MUST exclude tombstones.
+        // entry, the caller's [VocabularyEntry] snapshot still references it.
+        // Filters that build the upload batches MUST exclude entries returned
+        // by sanitize's stable deleted-id set; PersistentModel.isDeleted is not
+        // a reliable save-after lifecycle contract.
         let ctx = try makeNotebookSandbox()
         let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
         ctx.insert(ghost)
-        ghost.isDeleted = true
+        ghost.isSoftDeleted = true
         let live = Notebook(remoteId: "live", name: "Live", color: nil)
         ctx.insert(live)
         try ctx.save()
@@ -986,12 +987,19 @@ struct BooksBrowserTests {
         try ctx.save()
 
         let snapshot = [orphanDelete, validAdd]
-        SyncCoordinator.sanitizeOutbox(pendingEntries: snapshot, modelContext: ctx)
+        let sanitizedDeletedIds = SyncCoordinator.sanitizeOutbox(
+            pendingEntries: snapshot,
+            modelContext: ctx
+        )
 
         // Mirror the production filters from startSync. The orphanDelete is
         // tombstoned and MUST be excluded; validAdd survives.
-        let deletes = snapshot.filter { !$0.isDeleted && $0.syncAction == .delete && $0.shouldUploadOnNextSync }
-        let adds = snapshot.filter { !$0.isDeleted && $0.syncAction == .add && $0.shouldUploadOnNextSync }
+        let deletes = snapshot.filter {
+            !sanitizedDeletedIds.contains($0.id) && $0.syncAction == .delete && $0.shouldUploadOnNextSync
+        }
+        let adds = snapshot.filter {
+            !sanitizedDeletedIds.contains($0.id) && $0.syncAction == .add && $0.shouldUploadOnNextSync
+        }
 
         #expect(deletes.isEmpty)  // tombstone defense
         #expect(adds.count == 1)
@@ -1075,7 +1083,7 @@ struct BooksBrowserTests {
         // (in neither list = real server anomaly) is markSyncFailed for retry.
         let container = try ModelContainer(
             for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let ctx = ModelContext(container)
 
@@ -1110,13 +1118,15 @@ struct BooksBrowserTests {
         try ctx.save()
         // --- end mirror ---
 
-        // not_found + deleted_words → locally hard-deleted (tombstoned).
-        #expect(deletedWord.isDeleted)
-        #expect(notFoundWord.isDeleted)
+        let remainingWords = try ctx.fetch(FetchDescriptor<VocabularyEntry>()).map(\.word)
+
+        // not_found + deleted_words → locally hard-deleted.
+        #expect(!remainingWords.contains(deletedWord.word))
+        #expect(!remainingWords.contains(notFoundWord.word))
         #expect(!notFoundWord.isFailed)  // crucial: NOT stuck in failed+delete retry
 
         // Only the genuinely-unresolved word stays as a retryable failure.
-        #expect(!stuckWord.isDeleted)
+        #expect(remainingWords.contains(stuckWord.word))
         #expect(stuckWord.isFailedDelete)
     }
 

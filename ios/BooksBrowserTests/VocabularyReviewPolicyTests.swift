@@ -24,6 +24,13 @@ import Testing
 //   return min(maximumIntervalHours, max(minimumIntervalHours, base * multiplier))  // max=1440, floor=6
 
 @Suite struct VocabularyReviewPolicyNextIntervalTests {
+    private func expectApprox(
+        _ actual: Double,
+        _ expected: Double,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        #expect(abs(actual - expected) < 0.000_000_001, sourceLocation: sourceLocation)
+    }
 
     @Test func remembered_happy_path_multipliesByRememberedMultiplier() {
         // base = max(12, 6) = 12; 12 * 1.9 = 22.8; clamp(6, 1440) → 22.8
@@ -31,7 +38,7 @@ import Testing
             currentIntervalHours: 12,
             feedback: .remembered
         )
-        #expect(result == 22.8)
+        expectApprox(result, 22.8)
     }
 
     @Test func remembered_clampsBaseUpToMinimum_whenCurrentBelowMin() {
@@ -40,7 +47,7 @@ import Testing
             currentIntervalHours: 3,
             feedback: .remembered
         )
-        #expect(result == 11.4)
+        expectApprox(result, 11.4)
     }
 
     @Test func remembered_clampsResultToMaximum_whenProductExceedsMax() {
@@ -67,7 +74,7 @@ import Testing
             currentIntervalHours: 0,
             feedback: .remembered
         )
-        #expect(result == 11.4)
+        expectApprox(result, 11.4)
     }
 
     @Test func forgot_resultFloorWins_whenProductBelowMinimum() {
@@ -85,7 +92,7 @@ import Testing
             currentIntervalHours: -50,
             feedback: .remembered
         )
-        #expect(result == 11.4)
+        expectApprox(result, 11.4)
     }
 
     // settings 多載(VocabularyReview.swift:85-95)使用 settings.effective* 邊界與乘數。

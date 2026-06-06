@@ -14,6 +14,7 @@ import Testing
 // .serialized: tests mutate AppLanguageStore.shared singleton; parallel
 // execution would race on `selection`/UserDefaults.
 @Suite(.serialized)
+@MainActor
 struct AppTipsLocalizationTests {
 
     @Test func test_tip_keys_resolve_in_english() async throws {

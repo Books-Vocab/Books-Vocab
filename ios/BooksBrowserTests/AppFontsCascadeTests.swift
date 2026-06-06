@@ -8,6 +8,7 @@ import Testing
 @testable import BooksBrowser
 
 @Suite(.serialized)
+@MainActor
 struct AppFontsCascadeTests {
 
     @Test func test_sans_fallback_for_english_uses_PingFangTC() async throws {

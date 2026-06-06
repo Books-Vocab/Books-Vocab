@@ -108,7 +108,7 @@ struct AuthManagerKeychainTests {
     private static func makeContainer() -> ModelContainer {
         // In-memory container; schema content is irrelevant — the cleaner is mocked and never
         // touches it. Any @Model satisfies the container requirement.
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try! ModelContainer(for: Notebook.self, configurations: config)
     }
 

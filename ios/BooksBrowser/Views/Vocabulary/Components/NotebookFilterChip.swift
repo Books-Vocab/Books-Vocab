@@ -37,7 +37,7 @@ struct NotebookFilterChip: View {
         .toastSheet(isPresented: $showPicker) {
             NotebookFilterPickerSheet(
                 filter: $filter,
-                notebooks: notebooks.filter { !$0.isDeleted }
+                notebooks: notebooks.filter { !$0.isSoftDeleted }
             )
         }
         .enableInjection()

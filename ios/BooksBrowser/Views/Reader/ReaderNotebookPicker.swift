@@ -14,7 +14,7 @@ struct ReaderNotebookPicker: View {
     @Bindable var book: Book
 
     @Query(
-        filter: #Predicate<Notebook> { !$0.isDeleted },
+        filter: #Predicate<Notebook> { !$0.isSoftDeleted },
         sort: \Notebook.sortOrder
     )
     private var notebooks: [Notebook]
