@@ -29,7 +29,16 @@ struct KGTranslationConfig: Codable {
     let target_lang: String?
 }
 
+/// Per-user 全局複習時鐘暫停態(對應後端 ReviewClockConfig)。is_paused + paused_at
+/// 複合,共用 updated_at 驅動跨裝置 LWW。
+struct KGReviewClockConfig: Codable {
+    let is_paused: Bool
+    let paused_at: String?
+    let updated_at: Double?
+}
+
 /// User config request/response
 struct KGUserConfig: Codable {
     let translation: KGTranslationConfig?
+    let review_clock: KGReviewClockConfig?
 }

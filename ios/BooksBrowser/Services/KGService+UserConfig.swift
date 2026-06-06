@@ -111,6 +111,17 @@ extension KGService {
         return config
     }
 
+    func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
+        let config = try await userConfigClient.updateReviewClockConfig(
+            baseURL: baseURL,
+            token: token,
+            reviewClock: reviewClock
+        )
+        AppLog.kg.info("Updated review clock config successfully")
+        return config
+    }
+
     func deleteAccount() async throws {
         try await authenticatedVoid(path: "api/user/account", method: "DELETE")
     }

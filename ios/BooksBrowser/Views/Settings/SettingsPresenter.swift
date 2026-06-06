@@ -19,6 +19,10 @@ struct SettingsPresenter: View {
     let translationSourceLang: Binding<TranslationLanguage>
     let translationTargetLang: Binding<TranslationLanguage>
     let onTranslationLanguageChanged: (TranslationLanguage, TranslationLanguage) async -> Bool
+    /// pause review clock 切換(穿透給 SettingsReviewSection)。default no-op 讓
+    /// preview / scenario 既有建構零改動,只 SettingsView 注入真實 push closure。
+    // var(非 let):let-with-default 不會進 Swift memberwise init,SettingsView 無從注入。
+    var onPauseReviewClockChanged: (Bool) async -> Void = { _ in }
     let manualLoginUserId: Binding<String>?
     let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions
@@ -72,7 +76,7 @@ struct SettingsPresenter: View {
                 }
             }
             .navigationDestination(isPresented: $showReviewSection) {
-                SettingsReviewSection()
+                SettingsReviewSection(onPauseChanged: onPauseReviewClockChanged)
             }
             .navigationDestination(isPresented: $showAccountDetail) {
                 SettingsAccountDetailView(

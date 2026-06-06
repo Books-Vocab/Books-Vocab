@@ -145,12 +145,10 @@ struct ReviewSettings {
 
 // MARK: - Pause clock cross-device sync (Phase 2)
 
-/// iCloud KVS 抽象 seam,讓 `ReviewSettingsStore` 可注入 fake 測 LWW。
-/// `CloudPreferencesSync` 已提供 string/double get + set,空 extension 即 conform。
+/// iCloud KVS 抽象 seam(僅 pause clock 需要的 Double get/set),讓
+/// `ReviewSettingsStore` 可注入 fake 測 LWW。`CloudPreferencesSync` 已提供,空 extension conform。
 protocol CloudKeyValueStore {
-    func string(forKey key: String) -> String?
     func double(forKey key: String) -> Double?
-    func set(_ value: String, forKey key: String)
     func set(_ value: Double, forKey key: String)
 }
 
@@ -259,12 +257,7 @@ final class ReviewSettingsStore {
             defaults.set(data, forKey: Keys.customParams)
         }
         // pause clock 本地層:總是寫(冪等,與既有行為一致)。
-        defaults.set(settings.isProgressPaused, forKey: Keys.isProgressPaused)
-        if let pausedAt = settings.progressPausedAt {
-            defaults.set(pausedAt.timeIntervalSince1970, forKey: Keys.progressPausedAt)
-        } else {
-            defaults.removeObject(forKey: Keys.progressPausedAt)
-        }
+        writeLocalPause(settings.isProgressPaused, settings.progressPausedAt)
         // pause clock 雲端層 + LWW 時戳:只在 pause 真的變動時推進 updatedAt 並寫
         // iCloud(改 mode/autoplay 不該動 pause 時鐘的 LWW clock,否則跨裝置誤判較新)。
         if pauseChanged {
@@ -298,6 +291,59 @@ final class ReviewSettingsStore {
             pausedAt: pausedAtRaw.flatMap { $0 == 0 ? nil : Date(timeIntervalSince1970: $0) },
             updatedAt: cloud.double(forKey: Keys.progressUpdatedAt)
         )
+    }
+
+    // MARK: - Pause clock push/rollback support (Phase 3)
+
+    /// 當前 pause 三層的 LWW 快照(rollback 前取;updatedAt 取本地層)。
+    var pauseClockSnapshot: PauseClockState {
+        PauseClockState(
+            isPaused: settings.isProgressPaused,
+            pausedAt: settings.progressPausedAt,
+            updatedAt: Self.readLocalPauseState(defaults).updatedAt
+        )
+    }
+
+    /// 遠端 push 失敗時還原 pause 三層到快照(含原 updatedAt),使回滾值不會被 iCloud
+    /// LWW 當成比其他裝置並發寫更新。對標 TranslationLanguage.restore。
+    func restorePauseState(_ snapshot: PauseClockState) {
+        var s = settings
+        s.isProgressPaused = snapshot.isPaused
+        s.progressPausedAt = snapshot.pausedAt
+        settings = s
+        writeLocalPause(snapshot.isPaused, snapshot.pausedAt)
+        if let ts = snapshot.updatedAt {
+            defaults.set(ts, forKey: Keys.progressUpdatedAt)
+            cloud.set(snapshot.isPaused ? 1.0 : 0.0, forKey: Keys.isProgressPaused)
+            cloud.set(snapshot.pausedAt?.timeIntervalSince1970 ?? 0, forKey: Keys.progressPausedAt)
+            cloud.set(ts, forKey: Keys.progressUpdatedAt)
+        } else {
+            // 先前從未寫過:清本地時戳;KVS 無 removeObject,寫 0 讓他裝置真寫(ts>0)勝出。
+            defaults.removeObject(forKey: Keys.progressUpdatedAt)
+            cloud.set(0.0, forKey: Keys.progressUpdatedAt)
+        }
+    }
+
+    /// Server cold-start 套用:本機從未寫過 pause 時,以 server 值初始化本地三層
+    /// (記 server updatedAt 作後續 LWW 基準;不回寫 iCloud,避免與他裝置 KV 競爭)。
+    func applyServerPauseState(isPaused: Bool, pausedAt: Date?, updatedAt: Double?) {
+        var s = settings
+        s.isProgressPaused = isPaused
+        s.progressPausedAt = pausedAt
+        settings = s
+        writeLocalPause(isPaused, pausedAt)
+        if let ts = updatedAt {
+            defaults.set(ts, forKey: Keys.progressUpdatedAt)
+        }
+    }
+
+    private func writeLocalPause(_ isPaused: Bool, _ pausedAt: Date?) {
+        defaults.set(isPaused, forKey: Keys.isProgressPaused)
+        if let at = pausedAt {
+            defaults.set(at.timeIntervalSince1970, forKey: Keys.progressPausedAt)
+        } else {
+            defaults.removeObject(forKey: Keys.progressPausedAt)
+        }
     }
 
     init(previewSettings: ReviewSettings) {
