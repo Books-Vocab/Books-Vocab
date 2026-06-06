@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 81fa1e8f
+verified_against: 9a3c6249
 -->
 # Technical Reference Index
 
@@ -72,7 +72,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 |------|------|
 | `Views/` | 場景視圖(書架、筆記、播客、複習、reader、settings) |
 | `Services/` | 後端通訊(`KGService`)、認證、雲同步、analytics、sentry;`KGServing` 拆窄協定 `BackgroundSyncing`(`backgroundSync`+`lastBackgroundSyncError`),`ExplicitSync` 為顯式同步(pull-to-refresh/toolbar/⌘R)政策單一真相(資格 gate `isLoggedIn && !isDemoMode`〔登出/demo no-op〕+ 成功 toast、失敗 warning + read-then-clear) |
-| `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`)。`DesignTokens.swift` 為 **Style Dictionary 生成**(禁手改)的 scalar bridge — `tokens.json`→`npm run build`→ PascalCase 巢狀 scalar enum(`Radius.Scale`/`Space.Scale`/`Typography.Scale`/`Typography.Tracking`/`Elevation.Steps.Z*`…);已接線 scalar 群組(`AppRadius`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,共 47 值)改為引用 `DesignTokens.*`,顏色/`AppMotion`/`LineSpacing`/`AppSkin` 仍手寫 literal(見「Web 設計系統」) |
+| `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + 書籍 sidecar metadata (`BookManifest` / `BookLibraryReconciler`: `Documents/Books/.metadata/*.json`，啟動時補齊 missing row/manifest，並覆蓋 legacy `Documents/EPUBs` / `.icloud` placeholder) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`)。`DesignTokens.swift` 為 **Style Dictionary 生成**(禁手改)的 scalar bridge — `tokens.json`→`npm run build`→ PascalCase 巢狀 scalar enum(`Radius.Scale`/`Space.Scale`/`Typography.Scale`/`Typography.Tracking`/`Elevation.Steps.Z*`…);已接線 scalar 群組(`AppRadius`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,共 47 值)改為引用 `DesignTokens.*`,顏色/`AppMotion`/`LineSpacing`/`AppSkin` 仍手寫 literal(見「Web 設計系統」) |
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
 | `Platform/` | iOS / Mac Catalyst 橋接(`PlatformRepresentable` 型別 alias、`PlatformCompatibility` modifier wrapper、`LayoutMode`、`MacWindowChrome` Catalyst 視窗尺寸+沉浸 title bar、`MacMenuCommands` Catalyst 頂部選單列+⌘ 快捷鍵、`AppCommandCoordinator` app-global menu intent、`FocusedCommandValues` focusedSceneValue 動作通道) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
