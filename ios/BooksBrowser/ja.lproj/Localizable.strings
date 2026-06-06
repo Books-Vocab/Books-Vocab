@@ -875,6 +875,8 @@
 "todayReview.autoplay.next" = "次のカード";
 "todayReview.autoplay.playpause.play" = "自動再生を再開";
 "todayReview.autoplay.playpause.pause" = "自動再生を一時停止";
+"todayReview.autoplay.sound.on" = "自動再生の読み上げをオン";
+"todayReview.autoplay.sound.off" = "自動再生の読み上げをオフ";
 "todayReview.nav.previous" = "前のカード";
 "todayReview.nav.next" = "次のカード";
 

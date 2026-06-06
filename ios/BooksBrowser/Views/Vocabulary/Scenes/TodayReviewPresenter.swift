@@ -78,6 +78,7 @@ struct TodayReviewPresenterState {
     let isAutoPlayPaused: Bool
     let autoplayProgress: Double
     let autoplaySpeed: AutoplaySpeed
+    let autoplaySoundEnabled: Bool
 }
 
 // MARK: - Presenter
@@ -98,6 +99,7 @@ struct TodayReviewPresenter: View {
     @State var suppressTransition = false
     @State var flingHapticTrigger = 0
     @State private var celebrationTriggered = false
+    @State private var lastAutoplaySpokenCardKey: String?
     @State var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
@@ -124,6 +126,7 @@ struct TodayReviewPresenter: View {
     let onToggleAutoPlay: () -> Void
     let onToggleAutoPlayPause: () -> Void
     let onChangeAutoPlaySpeed: () -> Void
+    let onToggleAutoPlaySound: () -> Void
     let onDetailTap: () -> Void
     let onToggleHelp: () -> Void
     let onExplainCollocation: (String) -> Void
@@ -190,10 +193,28 @@ struct TodayReviewPresenter: View {
                 guard dismissPhase == .idle, !state.revealStage.showsAnswer else { return }
                 containerWidth = newWidth
             }
+            .onChange(of: state.revealStage) { _, stage in
+                guard stage.showsAnswer else { return }
+                speakCurrentAutoplayCardIfNeeded()
+            }
+            .onChange(of: state.progressText) { _, _ in
+                lastAutoplaySpokenCardKey = nil
+            }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
             .animation(AppMotion.panelState, value: isHelpPresented)
         }
         .enableInjection()
+    }
+
+    private func speakCurrentAutoplayCardIfNeeded() {
+        guard state.isAutoPlaying,
+              state.autoplaySoundEnabled,
+              let card = state.currentCard?.card
+        else { return }
+        let key = "\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
+        guard key != lastAutoplaySpokenCardKey else { return }
+        lastAutoplaySpokenCardKey = key
+        speechService.speak(card.word)
     }
 
     // MARK: - Card
