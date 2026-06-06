@@ -58,13 +58,33 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
 struct ReaderViewConfiguration: Equatable {
     let paperColor: SwiftUI.Color
     let epubPreferences: EPUBPreferences
-    let underlineOpacity: Double
-    var highlightPreferences: VocabHighlightPreferences = .default
+    let highlightPreferences: VocabHighlightPreferences
     let showHitTestingDebug: Bool
     let swiftUIColorScheme: ColorScheme
 
+    var underlineOpacity: Double { highlightPreferences.opacity }
+
     var contentStyleCSS: String {
         ReaderContentStyleFactory.make(highlightPreferences: highlightPreferences).css()
+    }
+
+    init(
+        paperColor: SwiftUI.Color,
+        epubPreferences: EPUBPreferences,
+        underlineOpacity: Double? = nil,
+        highlightPreferences: VocabHighlightPreferences = .default,
+        showHitTestingDebug: Bool,
+        swiftUIColorScheme: ColorScheme
+    ) {
+        self.paperColor = paperColor
+        self.epubPreferences = epubPreferences
+        var resolvedHighlight = highlightPreferences
+        if let underlineOpacity {
+            resolvedHighlight.opacity = underlineOpacity
+        }
+        self.highlightPreferences = resolvedHighlight
+        self.showHitTestingDebug = showHitTestingDebug
+        self.swiftUIColorScheme = swiftUIColorScheme
     }
 }
 
@@ -221,6 +241,7 @@ final class ReaderSettings {
 
     private func handleCloudChange(_ notification: Notification) {
         guard let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] else { return }
+        let hasNewHighlightOpacity = keys.contains(kVocabHighlightOpacity)
         for key in keys {
             switch key {
             // Echo guard: only apply when the inbound value differs from current,
@@ -234,7 +255,7 @@ final class ReaderSettings {
                 if let value = cloud.double(forKey: key), value != lineHeight { lineHeight = value }
             case kScrollMode:
                 if let value = cloud.double(forKey: key) { let v = value > 0.5; if v != scrollMode { scrollMode = v } }
-            case kUnderlineOpacity:
+            case kUnderlineOpacity where !hasNewHighlightOpacity:
                 if let value = cloud.double(forKey: key), value != underlineOpacity { underlineOpacity = value }
             case kVocabHighlightOpacity:
                 if let value = cloud.double(forKey: key), value != underlineOpacity { underlineOpacity = value }
