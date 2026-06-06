@@ -3,8 +3,10 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
+  - ios/BooksBrowser/Models/ReaderSettings.swift
+  - ios/BooksBrowser/Models/VocabHighlightPreferences.swift
   - ios/BooksBrowser/Views/Reader/
-verified_against: 746dafaa
+verified_against: e264e4ce
 -->
 # Reader Feature Boundary
 
@@ -63,6 +65,7 @@ verified_against: 746dafaa
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
 | `ReaderJSEval.swift` | 50 | `enum ReaderJSEval`，fire-and-forget `evaluateJavaScript` 結果可觀測性：`classify` 純分流（`.ok` / `.spreadNotLoaded` benign / `.failed`）+ `log` 落 `AppLog.reader`，預期 race 降 debug、真異常升 error |
 | `ReaderContentStyle.swift` | 278 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` + `ReaderTOCPresentation` + `ReaderNotebookPickerPresentation` |
+| `VocabHighlightPreferences.swift` | ~70 | `VocabHighlightColorPreset` + `VocabHighlightPreferences`；Reader / Podcast 共用詞庫 highlight 顏色 preset、opacity、band fraction。`ReaderSettings` 持久化 `vocab_highlight_colorPreset` / `vocab_highlight_opacity`，並保留舊 `reader_settings_underlineOpacity` fallback。 |
 
 ### Feature Panels
 
@@ -73,7 +76,8 @@ verified_against: 746dafaa
 | `TranslationVocabPresenter.swift` | 337 | 翻譯詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
 | `ReaderSettingsPanel.swift` | 184 | `struct ReaderSettingsPanel: View`，閱讀設定面板 |
 | `ReaderSettingsPresenter.swift` | 111 | 設定面板 presenter facade，持有設定狀態與 layout environment |
-| `ReaderSettingsPresenter+Vocab.swift` | 240 | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
+| `ReaderSettingsPresenter+Vocab.swift` | ~260 | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距；「生字標記」區控制 highlight 顏色與濃度 |
+| `VocabHighlightColorPresetPicker.swift` | ~55 | Reader / Podcast 共用 highlight 顏色 swatch picker；寫回 `ReaderSettings.vocabHighlightColorPreset` |
 | `TOCView.swift` | 222 | `struct TOCView: View`，目錄；regular / Catalyst 收斂內容寬度，compact 維持 full-width sheet |
 | `ReaderNotebookPicker.swift` | 133 | Reader 內選擇目標單字本；regular / Catalyst 收斂短選單寬度，compact 維持 full-width sheet |
 
@@ -104,3 +108,4 @@ verified_against: 746dafaa
 | `AppTransition` | 過渡動畫 |
 | `ReaderPresentationMetrics` | Reader 專屬尺寸常數（定義於 `ReaderContentStyle.swift`）|
 | `ReaderMetrics` | Reader feature-local 版面參數（panel handle / settings sheet inset / option padding，25 個 static let，定義於 `ReaderMetrics.swift`）。從 `AppSkin.Metrics` 遷出（boundary rectify 2026-05）。跨 feature 借用者：`UIComponents/AppShellComponents.swift`、`Views/Vocabulary/Components/CollocationExplainSheet.swift` |
+| `VocabHighlightPreferences` | Reader / Podcast 共用詞庫 highlight 偏好；Reader 透過 Readium content style CSS var 更新，Podcast 透過 SwiftUI background layer 渲染 |

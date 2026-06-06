@@ -65,6 +65,7 @@ struct PodcastSettingsPopover: View {
     let sleepDeadline: Date?
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
     @Environment(\.appSkin) private var skin
+    @Environment(\.readerSettings) private var readerSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.spacing.sectionGap) {
@@ -79,6 +80,11 @@ struct PodcastSettingsPopover: View {
                 }
                 .pickerStyle(.segmented)
             }
+
+            VocabHighlightColorPresetPicker(
+                selection: highlightColorPresetBinding,
+                title: L10n.string("vocab.highlight.color.label")
+            )
 
             Toggle(isOn: $wordFollowEnabled) {
                 VStack(alignment: .leading, spacing: skin.spacing.microGap) {
@@ -128,6 +134,13 @@ struct PodcastSettingsPopover: View {
 
     private static func formatMMSS(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private var highlightColorPresetBinding: Binding<VocabHighlightColorPreset> {
+        Binding(
+            get: { readerSettings.vocabHighlightColorPreset },
+            set: { readerSettings.vocabHighlightColorPreset = $0 }
+        )
     }
 }
 #endif

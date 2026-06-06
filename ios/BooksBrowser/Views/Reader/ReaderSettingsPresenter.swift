@@ -21,6 +21,7 @@ struct ReaderSettingsPresenter: View {
         let font: Binding<ReaderFont>
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
+        let vocabHighlightColorPreset: Binding<VocabHighlightColorPreset>
         let showHitTestingDebug: Binding<Bool>
         let scrollMode: Binding<Bool>
     }
@@ -71,6 +72,7 @@ struct ReaderSettingsPresenter: View {
                 font: .constant(.serif),
                 theme: .constant(.light),
                 underlineOpacity: .constant(0.35),
+                vocabHighlightColorPreset: .constant(.paper),
                 showHitTestingDebug: .constant(false),
                 scrollMode: .constant(false)
             ),
@@ -98,6 +100,7 @@ struct ReaderSettingsPresenter: View {
                 font: .constant(.sans),
                 theme: .constant(.dark),
                 underlineOpacity: .constant(0.0),
+                vocabHighlightColorPreset: .constant(.rose),
                 showHitTestingDebug: .constant(true),
                 scrollMode: .constant(true)
             ),

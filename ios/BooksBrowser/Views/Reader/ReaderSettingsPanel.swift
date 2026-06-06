@@ -54,6 +54,7 @@ struct ReaderSettingsPanel: View {
             font: $settings.font,
             theme: themeBinding,
             underlineOpacity: $settings.underlineOpacity,
+            vocabHighlightColorPreset: $settings.vocabHighlightColorPreset,
             showHitTestingDebug: $settings.showHitTestingDebug,
             scrollMode: $settings.scrollMode
         )
@@ -90,6 +91,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
     @State private var font: ReaderFont = .serif
     @State private var theme: ReaderTheme = .sepia
     @State private var underlineOpacity: Double = 0.35
+    @State private var vocabHighlightColorPreset: VocabHighlightColorPreset = .paper
     @State private var showHitTestingDebug = false
     @State private var scrollMode = false
 
@@ -107,6 +109,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
             font: $font,
             theme: $theme,
             underlineOpacity: $underlineOpacity,
+            vocabHighlightColorPreset: $vocabHighlightColorPreset,
             showHitTestingDebug: $showHitTestingDebug,
             scrollMode: $scrollMode
         )

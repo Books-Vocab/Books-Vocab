@@ -13,6 +13,7 @@ struct PodcastSubtitleView: View {
     var onRetrySubtitle: () -> Void = {}
 
     @Environment(\.appSkin) private var skin
+    @Environment(\.readerSettings) private var readerSettings
 
     var body: some View {
         ZStack {
@@ -27,6 +28,7 @@ struct PodcastSubtitleView: View {
                 initialScrollPositionResolved: initialScrollPositionResolved,
                 scrollLeadId: viewModel.scrollLeadSentenceId,
                 lookedUpWords: lookedUpWords,
+                highlightPreferences: readerSettings.vocabHighlightPreferences,
                 onSentenceTap: { viewModel.seek(to: $0.startTime) },
                 onWordTap: viewModel.handleWordTap,
                 onPhraseTap: viewModel.handlePhraseTap,
