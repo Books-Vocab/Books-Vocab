@@ -60,9 +60,10 @@ struct PodcastUpsertSeriesTests {
         let ctx = try makeContext()
         // Series with a remote cover, simulated as already downloaded to disk.
         PodcastSyncService.upsertSeries(
-            detail: detail("a", episodes: [1], coverImageURL: "/api/podcasts/a/cover"), context: ctx)
+            detail: detail("a", episodes: [1], coverImageURL: "/api/podcasts/a/cover?v=abc123"), context: ctx)
         let series = try #require(try ctx.fetch(FetchDescriptor<PodcastSeries>()).first)
-        let cacheURL = PodcastSyncService.cachedCoverURL(seriesId: "a")
+        let cacheURL = PodcastSyncService.cachedCoverURL(
+            seriesId: "a", coverImageURL: "/api/podcasts/a/cover?v=abc123")
         defer { try? FileManager.default.removeItem(at: cacheURL) }
         try FileManager.default.createDirectory(
             at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -83,6 +84,14 @@ struct PodcastUpsertSeriesTests {
     @Test func cachedCoverURL_path_shape() {
         let url = PodcastSyncService.cachedCoverURL(seriesId: "deep_work")
         #expect(url.lastPathComponent == "deep_work.png")
+        #expect(url.deletingLastPathComponent().lastPathComponent == "podcast-covers")
+    }
+
+    @Test func cachedCoverURL_uses_cover_version_when_present() {
+        let url = PodcastSyncService.cachedCoverURL(
+            seriesId: "deep_work",
+            coverImageURL: "/api/podcasts/deep_work/cover?v=abc123_-")
+        #expect(url.lastPathComponent == "deep_work_abc123_-.png")
         #expect(url.deletingLastPathComponent().lastPathComponent == "podcast-covers")
     }
 

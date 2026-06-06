@@ -186,6 +186,44 @@ final class PodcastSyncService {
         Self.coversRoot().appendingPathComponent("\(seriesId).png")
     }
 
+    static func cachedCoverURL(seriesId: String, coverImageURL: String?) -> URL {
+        guard let token = coverCacheToken(from: coverImageURL) else {
+            return cachedCoverURL(seriesId: seriesId)
+        }
+        return Self.coversRoot().appendingPathComponent("\(seriesId)_\(token).png")
+    }
+
+    static func coverCacheToken(from coverImageURL: String?) -> String? {
+        guard let coverImageURL, !coverImageURL.isEmpty else { return nil }
+        let value: String?
+        if let components = URLComponents(string: coverImageURL),
+           let queryValue = components.queryItems?.first(where: { $0.name == "v" })?.value {
+            value = queryValue
+        } else {
+            value = nil
+        }
+        guard let value else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let sanitized = String(value.unicodeScalars.filter { allowed.contains($0) })
+        return sanitized.isEmpty ? nil : sanitized
+    }
+
+    static func removeCachedCover(seriesId: String, path: String? = nil) {
+        let fm = FileManager.default
+        if let path {
+            try? fm.removeItem(atPath: path)
+        }
+        try? fm.removeItem(at: cachedCoverURL(seriesId: seriesId))
+        let root = coversRoot()
+        guard let files = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
+            return
+        }
+        let prefix = "\(seriesId)_"
+        for url in files where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "png" {
+            try? fm.removeItem(at: url)
+        }
+    }
+
     static func isValidCoverResponse(data: Data, response: URLResponse) -> Bool {
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
@@ -231,12 +269,13 @@ final class PodcastSyncService {
         guard let series = try? context.fetch(descriptor).first,
               let remote = series.coverImageURL, !remote.isEmpty else { return }
 
-        let cacheURL = Self.cachedCoverURL(seriesId: seriesId)
+        let cacheURL = Self.cachedCoverURL(seriesId: seriesId, coverImageURL: remote)
         // Already cached + on disk → reuse (a series cover is stable).
         if series.coverImagePath == cacheURL.path,
            FileManager.default.fileExists(atPath: cacheURL.path) {
             return
         }
+        let oldPath = series.coverImagePath
 
         let urlString = remote.hasPrefix("http") ? remote : "\(baseURL)\(remote)"
         do {
@@ -249,6 +288,9 @@ final class PodcastSyncService {
                 at: Self.coversRoot(), withIntermediateDirectories: true
             )
             try data.write(to: cacheURL, options: .atomic)
+            if let oldPath, oldPath != cacheURL.path {
+                try? FileManager.default.removeItem(atPath: oldPath)
+            }
             series.coverImagePath = cacheURL.path
         } catch is CancellationError {
             return
@@ -385,7 +427,7 @@ final class PodcastSyncService {
         // degrades back to the procedural cover instead of rendering a stale photo
         // forever (cacheCoverIfNeeded early-returns on nil remote, never cleans up).
         if (detail.coverImageURL ?? "").isEmpty, series.coverImagePath != nil {
-            try? FileManager.default.removeItem(at: Self.cachedCoverURL(seriesId: seriesId))
+            Self.removeCachedCover(seriesId: seriesId, path: series.coverImagePath)
             series.coverImagePath = nil
         }
         series.totalDurationSec = detail.totalDurationSec ?? 0

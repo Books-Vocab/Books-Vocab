@@ -169,7 +169,7 @@ EXISTING_META_TMP="$(mktemp)"
 printf '%s' "$EXISTING_META" > "$EXISTING_META_TMP"
 
 "$UV_BIN" run python - "$OVERVIEW" "$STAGING" "$SERIES_ID" "$AUDIO_EXT" "$EXISTING_META_TMP" <<'PYEOF'
-import sys, json, os, re, subprocess
+import sys, json, os, re, subprocess, hashlib
 
 overview_path, staging_dir, series_id, audio_ext = sys.argv[1:5]
 existing_meta_path = sys.argv[5] if len(sys.argv) > 5 else ""
@@ -273,11 +273,12 @@ if existing_meta_raw.strip():
 # Cover stage output (staged as <staging>/cover.png → S3 <sid>/cover.png).
 # coverImageURL is the backend proxy path the client fetches; null when the
 # cover stage hasn't produced one (legacy / pre-cover series → procedural cover).
-cover_image_url = (
-    f"/api/podcasts/{series_id}/cover"
-    if os.path.isfile(os.path.join(staging_dir, "cover.png"))
-    else None
-)
+cover_path = os.path.join(staging_dir, "cover.png")
+cover_image_url = None
+if os.path.isfile(cover_path):
+    with open(cover_path, "rb") as cover_f:
+        cover_version = hashlib.sha256(cover_f.read()).hexdigest()[:16]
+    cover_image_url = f"/api/podcasts/{series_id}/cover?v={cover_version}"
 
 metadata = {
     "id": series_id,

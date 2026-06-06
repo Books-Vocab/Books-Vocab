@@ -135,13 +135,15 @@ def test_is_png(body, expected):
 
 def test_cover_url_for():
     assert cp.cover_url_for("flow_x") == "/api/podcasts/flow_x/cover"
+    assert cp.cover_url_for("flow_x", _PNG) == f"/api/podcasts/flow_x/cover?v={cp.cover_version(_PNG)}"
+    assert cp.cover_url_for("flow_x", _PNG) != cp.cover_url_for("flow_x", _PNG + b"new")
 
 
 def test_patch_cover_url_sets_url_preserves_everything_else():
     meta = {"id": "s", "title": "T", "createdAt": "2026-01-01T00:00:00+00:00",
             "coverImageURL": None, "episodes": [{"episodeNumber": 1}], "color": "#5B8C5A"}
-    out = cp.patch_cover_url(meta, "s")
-    assert out["coverImageURL"] == "/api/podcasts/s/cover"
+    out = cp.patch_cover_url(meta, "s", _PNG)
+    assert out["coverImageURL"] == f"/api/podcasts/s/cover?v={cp.cover_version(_PNG)}"
     # everything else verbatim — createdAt NOT reset, episodes intact, no updatedAt bump
     assert out["createdAt"] == "2026-01-01T00:00:00+00:00"
     assert out["episodes"] == [{"episodeNumber": 1}]
@@ -167,7 +169,7 @@ def test_publish_sets_content_types_and_url():
     cp.publish_cover_object(s3, bucket="b", series_id="flow_x", cover_body=_PNG, dry_run=False)
     assert s3.store["flow_x/cover.png"][1] == "image/png"
     assert s3.store["flow_x/metadata.json"][1] == "application/json; charset=utf-8"
-    assert s3.meta("flow_x")["coverImageURL"] == "/api/podcasts/flow_x/cover"
+    assert s3.meta("flow_x")["coverImageURL"] == f"/api/podcasts/flow_x/cover?v={cp.cover_version(_PNG)}"
     assert s3.meta("flow_x")["createdAt"] == "2026-01-01T00:00:00+00:00"  # preserved
 
 
@@ -223,8 +225,8 @@ def test_publish_rebuilds_index_without_dropping_other_series():
     index = json.loads(s3.store["index.json"][0])
     by_id = {e["id"]: e for e in index}
     assert set(by_id) == {"a_x", "b_x", "c_x"}              # C not dropped
-    assert by_id["a_x"]["coverImageURL"] == "/api/podcasts/a_x/cover"
-    assert by_id["b_x"]["coverImageURL"] == "/api/podcasts/b_x/cover"
+    assert by_id["a_x"]["coverImageURL"] == f"/api/podcasts/a_x/cover?v={cp.cover_version(_PNG)}"
+    assert by_id["b_x"]["coverImageURL"] == f"/api/podcasts/b_x/cover?v={cp.cover_version(_PNG)}"
     assert by_id["c_x"]["coverImageURL"] == "/api/podcasts/c_x/cover"  # preserved
     assert by_id["b_x"]["episodeCount"] == 3               # episodes stripped → count
     assert "episodes" not in by_id["b_x"]
@@ -248,9 +250,9 @@ def test_dry_run_index_preview_reflects_target_state():
     s3 = FakeS3()
     s3.seed_series("flow_x")
     body = cp.rebuild_index_body(
-        s3, bucket="b", overrides={"flow_x": cp.patch_cover_url(s3.meta("flow_x"), "flow_x")})
+        s3, bucket="b", overrides={"flow_x": cp.patch_cover_url(s3.meta("flow_x"), "flow_x", _PNG)})
     entry = json.loads(body)[0]
-    assert entry["coverImageURL"] == "/api/podcasts/flow_x/cover"
+    assert entry["coverImageURL"] == f"/api/podcasts/flow_x/cover?v={cp.cover_version(_PNG)}"
 
 
 # --- re-entry / interruption recovery --------------------------------------
@@ -401,5 +403,5 @@ def test_main_execute_publishes(tmp_path, monkeypatch):
     monkeypatch.setattr(cp, "_make_client", lambda region, endpoint: s3)
     rc = cp.main(["--bucket", "b", "--workspace", str(ws), "--execute"])
     assert rc == 0
-    assert s3.meta("flow_x")["coverImageURL"] == "/api/podcasts/flow_x/cover"
+    assert s3.meta("flow_x")["coverImageURL"] == f"/api/podcasts/flow_x/cover?v={cp.cover_version(_PNG)}"
     assert "flow_x/cover.png" in s3.store
