@@ -53,6 +53,7 @@ struct KGServiceErrorTests {
         #expect(KGError.httpError(statusCode: 500, detail: "").isRetryable)
         #expect(KGError.httpError(statusCode: 502, detail: "").isRetryable)
         #expect(KGError.httpError(statusCode: 503, detail: "").isRetryable)
+        #expect(KGError.httpError(statusCode: 504, detail: "").isRetryable)
         #expect(KGError.httpError(statusCode: 599, detail: "").isRetryable)
     }
 
@@ -121,20 +122,20 @@ struct KGServiceErrorTests {
         let p = RetryPolicy.default
         #expect(p.maxAttempts == 3)
         #expect(p.baseDelay == 1.0)
-        #expect(p.retryableStatusCodes == [429, 500, 502, 503])
+        #expect(p.retryableStatusCodes == [429, 500, 502, 503, 504])
     }
 
     @Test func retry_policy_aggressive_five_attempts_half_second_base() {
         let p = RetryPolicy.aggressive
         #expect(p.maxAttempts == 5)
         #expect(p.baseDelay == 0.5)
-        #expect(p.retryableStatusCodes == [429, 500, 502, 503])
+        #expect(p.retryableStatusCodes == [429, 500, 502, 503, 504])
     }
 
-    @Test func retry_policy_default_does_not_retry_504() {
-        // Documenting a known gap: 504 Gateway Timeout is NOT in the default retry set.
-        // If product decides to add it later, this test must be flipped intentionally.
-        #expect(!RetryPolicy.default.retryableStatusCodes.contains(504))
+    @Test func retry_policy_default_retries_504() {
+        // Gateway timeouts are common transient sync failures and should retry.
+        #expect(RetryPolicy.default.retryableStatusCodes.contains(504))
+        #expect(RetryPolicy.aggressive.retryableStatusCodes.contains(504))
     }
 
     @Test func retry_policy_default_does_not_retry_401() {
@@ -150,5 +151,49 @@ struct KGServiceErrorTests {
         #expect(KGService.SyncKeys.currentPayloadVersion == 1)
         #expect(KGService.SyncKeys.incrementalBoundary == "kg_last_incremental_sync")
         #expect(KGService.SyncKeys.payloadVersion == "kg_review_payload_version")
+    }
+
+    @Test func sync_failure_classifier_formats_network_timeout_for_review_events_pull() {
+        let message = SyncFailurePresentation.message(
+            label: "pullReviewEvents",
+            error: KGError.networkError(underlying: URLError(.timedOut))
+        )
+
+        #expect(message == "複習紀錄下載失敗：網路逾時")
+    }
+
+    @Test func sync_failure_classifier_formats_auth_expiry() {
+        let message = SyncFailurePresentation.message(
+            label: "pull",
+            error: KGError.unauthorized
+        )
+
+        #expect(message == "單字下載失敗：登入已過期")
+    }
+
+    @Test func sync_failure_classifier_formats_server_unavailable() {
+        let message = SyncFailurePresentation.message(
+            label: "pushReview",
+            error: KGError.httpError(statusCode: 504, detail: "gateway")
+        )
+
+        #expect(message == "複習進度上傳失敗：伺服器暫時不可用")
+    }
+
+    @Test func sync_failure_classifier_formats_decoding_mismatch() {
+        struct E: Error {}
+        let message = SyncFailurePresentation.message(
+            label: "pullReviewEvents",
+            error: KGError.decodingError(underlying: E())
+        )
+
+        #expect(message == "複習紀錄下載失敗：資料格式不相容")
+    }
+
+    @Test func sync_failure_classifier_formats_unknown_label_and_error() {
+        struct E: Error {}
+        let message = SyncFailurePresentation.message(label: "newPhase", error: E())
+
+        #expect(message == "同步失敗：未知錯誤")
     }
 }
