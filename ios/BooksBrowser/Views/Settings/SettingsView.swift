@@ -49,6 +49,15 @@ struct SettingsView: View {
                     toastCoordinator: toastCoordinator
                 )
             },
+            onPauseReviewClockChanged: { isPaused in
+                await coordinator.updateReviewClock(
+                    isPaused: isPaused,
+                    reviewSettingsStore: reviewSettingsStore,
+                    authManager: authManager,
+                    kgService: kgService,
+                    toastCoordinator: toastCoordinator
+                )
+            },
             manualLoginUserId: manualLoginBinding,
             debugLocalServerURL: debugLocalServerURLBinding,
             actions: presenterActions

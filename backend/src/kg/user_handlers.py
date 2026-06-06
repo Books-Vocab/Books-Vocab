@@ -16,6 +16,7 @@ from .api_models import (
     DeleteAccountResponse,
     EntitlementsResponse,
     HealthResponse,
+    ReviewClockConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
@@ -32,8 +33,19 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     else:
         translation = TranslationLanguageConfig()
 
+    clock_data = config.get("review_clock")
+    if isinstance(clock_data, dict):
+        review_clock = ReviewClockConfig(
+            is_paused=bool(clock_data.get("is_paused", False)),
+            paused_at=clock_data.get("paused_at"),
+            updated_at=clock_data.get("updated_at"),
+        )
+    else:
+        review_clock = ReviewClockConfig()
+
     return UserConfigResponse(
         translation=translation,
+        review_clock=review_clock,
     )
 
 
@@ -43,6 +55,15 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         config["translation"] = {
             "source_lang": req.translation.source_lang,
             "target_lang": req.translation.target_lang,
+        }
+    # Review clock (pause state). 複合原子;resume 時 paused_at 已由 ReviewClockConfig
+    # validator 正規化為 None。只在 client 有送 review_clock 時更新(None = 不動既有)。
+    if req.review_clock is not None:
+        rc = req.review_clock
+        config["review_clock"] = {
+            "is_paused": rc.is_paused,
+            "paused_at": rc.paused_at,
+            "updated_at": rc.updated_at,
         }
 
 

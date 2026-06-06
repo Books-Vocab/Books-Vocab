@@ -59,6 +59,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             do {
                 let config = try await kgService.fetchUserConfig()
                 applyServerTranslationConfig(config.translation)
+                applyServerReviewClock(config.review_clock)
             } catch {
                 // Non-fatal: local + iCloud KV remain the fallback authority for
                 // translation config, so we log rather than report to Sentry.
@@ -102,6 +103,60 @@ final class SettingsCoordinator: SettingsCoordinating {
            let lang = TranslationLanguage(rawValue: tgt) {
             translationTargetLang = lang
             TranslationLanguage.currentTarget = lang
+        }
+    }
+
+    /// Reconcile server pause-clock with local + iCloud KV (mirrors translation).
+    /// Cold-start only: server wins ONLY when this device has never written the
+    /// pause clock locally (`snapshot.updatedAt == nil`). After any local write,
+    /// iCloud KV is the cross-device authority. Real LWW awaits the backend flag.
+    private func applyServerReviewClock(_ clock: KGReviewClockConfig?) {
+        guard let clock else { return }
+        let store = ReviewSettingsStore.shared
+        guard store.pauseClockSnapshot.updatedAt == nil else { return }
+        _ = KGFeatureFlags.serverReviewClockLwwEnabled  // keep wired for future LWW flip
+        let pausedAt = clock.paused_at.flatMap { AppDateFormatters.iso8601.date(from: $0) }
+        store.applyServerPauseState(
+            isPaused: clock.is_paused,
+            pausedAt: clock.is_paused ? pausedAt : nil,
+            updatedAt: clock.updated_at
+        )
+    }
+
+    /// 切換複習時鐘暫停:樂觀寫本地+iCloud,登入則 push 後端;push 失敗 rollback 三層
+    /// (對標 updateTranslationLanguage)。回 true=已存(或免存的 guest),false=遠端失敗。
+    @discardableResult
+    func updateReviewClock(
+        isPaused: Bool,
+        reviewSettingsStore: ReviewSettingsStore,
+        authManager: any AuthManaging,
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
+    ) async -> Bool {
+        let snapshot = reviewSettingsStore.pauseClockSnapshot   // 寫之前快照,rollback 用
+
+        var s = reviewSettingsStore.settings
+        if isPaused { s.pauseProgress() } else { s.resumeProgress() }
+        reviewSettingsStore.update(s)
+
+        guard authManager.isLoggedIn else { return true }
+
+        let newSnapshot = reviewSettingsStore.pauseClockSnapshot
+        let pausedAtISO = newSnapshot.pausedAt.map { AppDateFormatters.iso8601.string(from: $0) }
+        do {
+            _ = try await kgService.updateReviewClockConfig(
+                KGReviewClockConfig(
+                    is_paused: isPaused,
+                    paused_at: pausedAtISO,
+                    updated_at: newSnapshot.updatedAt
+                )
+            )
+            return true
+        } catch {
+            reviewSettingsStore.restorePauseState(snapshot)
+            toastCoordinator.error("設定儲存失敗".localized)
+            AppLog.kg.error("updateReviewClockConfig failed: \(error.localizedDescription)")
+            return false
         }
     }
 
