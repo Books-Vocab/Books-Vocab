@@ -15,13 +15,24 @@ version: 3.0.0
 
 ---
 
-## Phase 0 — Scope 解析（永遠先做）
+## Phase 0 — Mode + Scope 解析（永遠先做）
 
-使用者會帶 scope，因為他常**並行派了多個 agent，回來時部分還在做**。先把 scope 翻成 PR 白/黑名單，列表確認再動手。
+先判 **mode**（決定收斂的範圍是「只 PR」還是「整個 repo」），再解析 scope。
+
+| 輸入 | Mode | 收斂目標 |
+|---|---|---|
+| `/cleanup` | **PR mode**（預設） | 只把 open PR 收進 main；殘留 branch/worktree 留活路 |
+| `/cleanup A,B` / `/cleanup except C,D` | **PR mode** + 白/黑名單 | 同上，限縮 PR 範圍 |
+| `/cleanup all` | **Full convergence** | repo 完全收斂：零 outstanding PR **+ branch + worktree + local change** |
+
+**Full convergence（`all`）= PR mode 全跑完，再追加分支/worktree 收斂（見 Phase 2.5）。** 核心差異：`all` 把「branch/worktree 的存在本身」也當待收斂項，目標終態是 `git branch` 只剩 main、`git worktree list` 只剩主 repo、working tree clean。
+
+> 效率原則：**能 squash 就不開 PR**。`all` 模式對 unpushed 含工作的分支走**本地 squash 進 main**（`git merge --squash` → commit → push），不繞 GitHub PR round-trip。PR 流程只在「已有 open PR」或「要 review 痕跡/CI gate」時用。
+
+scope 翻成 PR 白/黑名單（使用者常**並行派多個 agent，回來時部分還在做**），列表確認再動手：
 
 | 輸入 | 語意 |
 |---|---|
-| `/cleanup` | 所有 open PR |
 | `/cleanup A,B`（branch name 或 PR#） | **白名單**：只收這些 |
 | `/cleanup except C,D` | **黑名單**：全部扣掉 C,D（給還在做的 agent 留活路） |
 
@@ -72,6 +83,32 @@ gh pr merge <N> --squash --delete-branch
 ### 坑（記死）
 - **`gh pr merge` 前確保自己不在被合的那條 branch 上**：在 PR 分支上跑會讓 gh 合完跳 checkout `main`，撞使用者並行的 local main + 製造「工作被還原」假警報。在 detached HEAD 或別的 worktree（on `main`）執行最安全。
 - **絕不 ff/reset 使用者的 local main**：他常並行在 local main 工作。
+
+---
+
+## Phase 2.5 — 分支/worktree 收斂（**僅 `all` mode**）
+
+PR 全收完後跑。逐一處置**每條 local branch + 每個 worktree**，直到只剩 main + 主 repo。決策樹（走 B：不丟未整合工作）：
+
+| 分支狀態 | 處置 |
+|---|---|
+| 已 merge 進 main（`git branch --merged main` 列出） | 直接 `git branch -d`，其 worktree `git worktree remove` |
+| unpushed 含工作、**驗證綠** | **本地 squash 進 main**（不開 PR），再刪分支 + 移 worktree |
+| unpushed 含工作、**驗證紅/不確定** | **報告並停手，不擅自刪**（B 的底線：不丟未整合工作）。列出要使用者裁決 |
+| scope 黑名單 / 活 agent 佔用 | 神聖不碰 |
+
+本地 squash 合分支（驗證綠後，在主 repo on main 或 cleanup worktree 跑）：
+```bash
+# 先在該分支 worktree 跑專案測試 → 綠才合（鐵律 2，不盲合）
+git checkout main && git pull --ff-only        # 對齊 origin/main，絕不 ff/reset 使用者 local main
+git merge --squash <branch>
+git commit                                       # squash 需手動 commit，prefix 照 Identity 表
+git push origin main
+git worktree remove <branch 的 worktree>
+git branch -D <branch>
+```
+- **驗證先於合**：unpushed 分支的舊測試結果不算數，HEAD 已前移，當下重跑才作數。
+- `git branch --merged main` 安全刪 `-d`；未 merge 的用 `-D` 但**只在已 squash 進 main 或使用者裁決後**。
 
 ---
 
