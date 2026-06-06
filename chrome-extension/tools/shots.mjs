@@ -272,6 +272,11 @@ async function driveContentPopupCase(cdp, sessionId, extId) {
   const bootstrap = await cdp.send('Runtime.evaluate', {
     expression: `(() => new Promise((resolve, reject) => {
       const store = { kg_theme: 'light', kg_enabled: true, active_notebook_id: 'nb-reading' };
+      const realAttachShadow = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function(init) {
+        const opts = init && typeof init === 'object' ? { ...init, mode: 'open' } : init;
+        return realAttachShadow.call(this, opts);
+      };
       chrome.storage.local.get = (key, cb) => {
         let result = {};
         if (Array.isArray(key)) result = Object.fromEntries(key.map((k) => [k, store[k]]));
@@ -289,6 +294,7 @@ async function driveContentPopupCase(cdp, sessionId, extId) {
       chrome.storage.onChanged = { addListener() {} };
       chrome.runtime.sendMessage = (msg, cb) => {
         const type = msg && msg.type;
+        if (type === 'addVocab') window.__kgShotLastAddNotebookId = msg.notebookId;
         const response =
           type === 'translate'
             ? { t: '明暗對照；明暗法', p: '/kiˌɑːrəˈskjʊroʊ/', r: 'n.' }
@@ -349,6 +355,72 @@ async function driveContentPopupCase(cdp, sessionId, extId) {
     returnByValue: true,
   }, sessionId);
   if (!opened.result.value) throw new Error('content popup did not open');
+  const asserted = await cdp.send('Runtime.evaluate', {
+    expression: `(() => new Promise((resolve) => {
+      const deadline = Date.now() + 4000;
+      const tick = () => {
+        const host = document.getElementById('kg-popup-host');
+        const root = host && host.shadowRoot;
+        const select = root && root.querySelector('[data-role="notebook-select"]');
+        const add = root && root.querySelector('[data-action="add"]');
+        if (select && add && select.options.length >= 3) {
+          const initial = select.value;
+          select.value = 'nb-exam';
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          add.click();
+          setTimeout(() => resolve({
+            ok: initial === 'nb-reading' && window.__kgShotLastAddNotebookId === 'nb-exam',
+            initial,
+            sent: window.__kgShotLastAddNotebookId || null,
+            optionCount: select.options.length,
+          }), 80);
+          return;
+        }
+        if (Date.now() > deadline) return resolve({ ok: false, initial: null, sent: null, optionCount: select ? select.options.length : 0 });
+        setTimeout(tick, 40);
+      };
+      tick();
+    }))()`,
+    awaitPromise: true,
+    returnByValue: true,
+  }, sessionId);
+  const assertion = asserted.result && asserted.result.value;
+  if (!assertion || assertion.ok !== true) {
+    throw new Error(`content popup notebook assertion failed ${JSON.stringify(assertion || {})}`);
+  }
+  const reopened = await cdp.send('Runtime.evaluate', {
+    expression: `(() => new Promise((resolve) => {
+      const oldHost = document.getElementById('kg-popup-host');
+      if (oldHost) oldHost.remove();
+      window.__kgShotPopupOpened = false;
+      chrome.storage.local.set({ active_notebook_id: 'nb-reading' });
+      const target = document.getElementById('selectionTarget').firstChild;
+      const text = target.textContent;
+      const start = text.indexOf('chiaroscuro');
+      const range = document.createRange();
+      range.setStart(target, start);
+      range.setEnd(target, start + 'chiaroscuro'.length);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.getElementById('selectionTarget').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 156, clientY: 146 }));
+      const deadline = Date.now() + 4000;
+      const tick = () => {
+        const host = document.getElementById('kg-popup-host');
+        const select = host && host.shadowRoot && host.shadowRoot.querySelector('[data-role="notebook-select"]');
+        if (select && select.value === 'nb-reading') {
+          window.__kgShotPopupOpened = true;
+          return resolve(true);
+        }
+        if (Date.now() > deadline) return resolve(false);
+        setTimeout(tick, 40);
+      };
+      tick();
+    }))()`,
+    awaitPromise: true,
+    returnByValue: true,
+  }, sessionId);
+  if (!reopened.result.value) throw new Error('content popup did not reopen after assertion');
   await sleep(700);
 }
 
