@@ -48,6 +48,7 @@ enum TodayReviewScenarios {
                 onAddLink: cb.onAddLink,
                 onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
                 onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
+                onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
                 onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
                 onExplainCollocation: cb.onExplainCollocation,
                 onViewCollocationExplanation: cb.onViewCollocationExplanation,

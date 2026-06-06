@@ -908,6 +908,8 @@
 "todayReview.autoplay.next" = "Next card";
 "todayReview.autoplay.playpause.play" = "Resume autoplay";
 "todayReview.autoplay.playpause.pause" = "Pause autoplay";
+"todayReview.autoplay.sound.on" = "Turn on autoplay speech";
+"todayReview.autoplay.sound.off" = "Turn off autoplay speech";
 "todayReview.nav.previous" = "Previous card";
 "todayReview.nav.next" = "Next card";
 

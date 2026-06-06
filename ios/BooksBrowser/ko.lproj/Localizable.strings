@@ -876,6 +876,8 @@
 "todayReview.autoplay.next" = "다음 카드";
 "todayReview.autoplay.playpause.play" = "자동 재생 다시 시작";
 "todayReview.autoplay.playpause.pause" = "자동 재생 일시정지";
+"todayReview.autoplay.sound.on" = "자동 재생 낭독 켜기";
+"todayReview.autoplay.sound.off" = "자동 재생 낭독 끄기";
 "todayReview.nav.previous" = "이전 카드";
 "todayReview.nav.next" = "다음 카드";
 

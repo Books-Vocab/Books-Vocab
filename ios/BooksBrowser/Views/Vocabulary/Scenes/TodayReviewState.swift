@@ -46,6 +46,7 @@ final class TodayReviewState {
     var isAutoPlayPaused = false
     var autoplayTask: Task<Void, Never>?
     var autoplaySpeed: AutoplaySpeed = ReviewSettingsStore.shared.settings.autoplaySpeed
+    var autoplaySoundEnabled: Bool = ReviewSettingsStore.shared.settings.autoplaySoundEnabled
 
     // MARK: - Cache build
     // Keep only a small sliding window warm. Building hundreds of rich cards on
@@ -118,7 +119,8 @@ final class TodayReviewState {
             isAutoPlaying: isAutoPlaying,
             isAutoPlayPaused: isAutoPlayPaused,
             autoplayProgress: queue.isEmpty ? 0 : Double(currentIndex) / Double(queue.count),
-            autoplaySpeed: autoplaySpeed
+            autoplaySpeed: autoplaySpeed,
+            autoplaySoundEnabled: autoplaySoundEnabled
         )
     }
 
@@ -293,6 +295,13 @@ final class TodayReviewState {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
+    }
+
+    func toggleAutoplaySound() {
+        autoplaySoundEnabled.toggle()
+        var settings = ReviewSettingsStore.shared.settings
+        settings.autoplaySoundEnabled = autoplaySoundEnabled
+        ReviewSettingsStore.shared.update(settings)
     }
 
     /// Cancel any background work tied to the session lifecycle. Called from the

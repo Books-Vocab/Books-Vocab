@@ -61,6 +61,31 @@ struct BooksBrowserTests {
         #expect(second.reviewCardsTotal == 0)
     }
 
+    @Test func reviewSettingsStoreDefaultsAutoplaySoundOn() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-settings-autoplay-sound-default"))
+        defaults.removePersistentDomain(forName: "review-settings-autoplay-sound-default")
+        defer { defaults.removePersistentDomain(forName: "review-settings-autoplay-sound-default") }
+
+        let store = ReviewSettingsStore(defaults: defaults)
+
+        #expect(store.settings.autoplaySoundEnabled)
+    }
+
+    @Test func reviewSettingsStorePersistsAutoplaySoundPreference() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-settings-autoplay-sound-persist"))
+        defaults.removePersistentDomain(forName: "review-settings-autoplay-sound-persist")
+        defer { defaults.removePersistentDomain(forName: "review-settings-autoplay-sound-persist") }
+
+        let store = ReviewSettingsStore(defaults: defaults)
+        var settings = store.settings
+        settings.autoplaySoundEnabled = false
+        store.update(settings)
+
+        let restored = ReviewSettingsStore(defaults: defaults)
+
+        #expect(restored.settings.autoplaySoundEnabled == false)
+    }
+
     @Test @MainActor func todayReviewStateRestoresProgressAcrossSessionReload() async throws {
         TodayReviewSessionSnapshotStore.clear(for: nil)
         let container = try ModelContainer(
