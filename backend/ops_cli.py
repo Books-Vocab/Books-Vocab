@@ -12,8 +12,10 @@ import sqlite3
 import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from kg.admin_cost_summary import VALID_RANGES, since_iso
+from kg.ops_edit_shared import users_file
 from kg.ops_shared import (
     assert_readonly_sql,
     connect_ro,
@@ -25,6 +27,7 @@ from kg.ops_shared import (
     table_columns,
 )
 from kg.quota_service import token_cost_usd
+from kg.user_store import load_users_from
 
 
 def _cutoff_iso(hours: int = 24) -> str:
@@ -181,6 +184,97 @@ def cmd_user_stats(args: argparse.Namespace) -> None:
     if recent:
         print("Recent activity:")
         print_table(["ID", "Content", "Updated"], [[r[0], r[1] or "", r[2] or ""] for r in recent])
+
+
+def _ops_passthrough_normalize(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """users.json identity normalize（鏡像 ops_edit._passthrough_normalize）：原樣讀，
+    不碰 subscription/secret 加密 wiring（那是 app 啟動期的事）。ops_cli 唯讀，永遠只
+    load 不 save，故不需 app 的 normalize_users_payload。"""
+    return users, False
+
+
+def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
+    """攤平 users.json 的 config blob 成機讀 dict，對齊後端
+    `user_handlers._build_user_config_response` 的 group/default 形狀（唯讀重實作，
+    不 import FastAPI/Pydantic —— 與 ops_cli connect_ro 唯讀紀律一致）。髒資料
+    （某 group 非 dict）退回該 group 預設，不爆。"""
+    translation = config.get("translation")
+    if not isinstance(translation, dict):
+        translation = {}
+    clock = config.get("review_clock")
+    if not isinstance(clock, dict):
+        clock = {}
+    mode = config.get("review_mode")
+    if not isinstance(mode, dict):
+        mode = {}
+    vocab_ui = config.get("vocab_ui")
+    if not isinstance(vocab_ui, dict):
+        vocab_ui = {}
+    return {
+        "translation": {
+            "source_lang": translation.get("source_lang", "en"),
+            "target_lang": translation.get("target_lang", "zh-Hant"),
+        },
+        "review_clock": {
+            "is_paused": bool(clock.get("is_paused", False)),
+            "paused_at": clock.get("paused_at"),
+            "updated_at": clock.get("updated_at"),
+        },
+        "review_mode": {
+            "mode": mode.get("mode", "relaxed"),
+            "custom_initial_interval_hours": mode.get("custom_initial_interval_hours", 12),
+            "custom_remembered_multiplier": mode.get("custom_remembered_multiplier", 1.9),
+            "custom_forgot_multiplier": mode.get("custom_forgot_multiplier", 0.45),
+            "custom_minimum_interval_hours": mode.get("custom_minimum_interval_hours", 6),
+            "custom_maximum_interval_hours": mode.get("custom_maximum_interval_hours", 1440),
+            "updated_at": mode.get("updated_at"),
+        },
+        "vocab_ui": {
+            "active_notebook_id": vocab_ui.get("active_notebook_id", "default"),
+            "updated_at": vocab_ui.get("updated_at"),
+        },
+    }
+
+
+def cmd_user_config(args: argparse.Namespace) -> None:
+    """單用戶 user config 唯讀檢視（translation / review_clock / review_mode / vocab_ui）。
+
+    config 真相在 users.json 的 `users[uid]["config"]`（非 SQLite，故不走 connect_ro）。
+    純 stdlib + user_store 唯讀載入（只 load 不 save），對齊後端 group/default 形狀但不
+    耦合 FastAPI/Pydantic。vocab_ui = 全域 active notebook 游標（跨 iOS/chrome/web LWW）。
+    """
+    dd = data_dir()
+    uid = resolve_uid(args.uid, dd)
+    users = load_users_from(users_file(dd), _ops_passthrough_normalize)
+    record = users.get(uid)
+    if record is None:
+        print(f"Error: user {uid} not found in users.json", file=sys.stderr)
+        sys.exit(1)
+    config = record.get("config")
+    if not isinstance(config, dict):
+        config = {}
+    flat = _flatten_user_config(config)
+
+    if args.json:
+        emit_json({"user_id": uid, "config": flat})
+        return
+
+    tr, rc, rm, vu = flat["translation"], flat["review_clock"], flat["review_mode"], flat["vocab_ui"]
+    print(f"User: {uid}")
+    print_table(
+        ["Group", "Field", "Value"],
+        [
+            ["translation", "source_lang", str(tr["source_lang"])],
+            ["translation", "target_lang", str(tr["target_lang"])],
+            ["review_clock", "is_paused", str(rc["is_paused"])],
+            ["review_clock", "paused_at", str(rc["paused_at"])],
+            ["review_clock", "updated_at", str(rc["updated_at"])],
+            ["review_mode", "mode", str(rm["mode"])],
+            ["review_mode", "updated_at", str(rm["updated_at"])],
+            ["vocab_ui", "active_notebook_id", str(vu["active_notebook_id"])],
+            ["vocab_ui", "updated_at", str(vu["updated_at"])],
+        ],
+    )
 
 
 def cmd_quota_overview(args: argparse.Namespace) -> None:
@@ -1200,6 +1294,12 @@ def main() -> None:
     p = sub.add_parser("user-stats", parents=[jp], help="單字庫統計")
     p.add_argument("uid", help="User ID")
     p.set_defaults(func=cmd_user_stats)
+
+    # user-config（唯讀 user config：translation / review_clock / review_mode / vocab_ui）
+    p = sub.add_parser("user-config", parents=[jp],
+                       help="單用戶 user config（含 vocab_ui active notebook）唯讀檢視")
+    p.add_argument("uid", help="User ID")
+    p.set_defaults(func=cmd_user_config)
 
     # quota-overview
     p = sub.add_parser("quota-overview", parents=[jp], help="全用戶 24h 額度總覽")
