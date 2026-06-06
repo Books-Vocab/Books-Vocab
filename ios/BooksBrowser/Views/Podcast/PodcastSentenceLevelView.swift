@@ -13,6 +13,23 @@ struct PodcastSentenceSelection: Equatable {
     let initialRange: NSRange?
 }
 
+/// 解析「任一時刻唯一高亮的句子 id」。捲動領先音訊 `scrollLeadSec` 點亮即將播的句子，
+/// 但高亮永遠只有一格（接力，非重疊）：
+///   • `scrollLeadId` 落後或等於 `currentId`（一般播放中、或 seek 後 VM pin lead）
+///     → 高亮精確的 `currentId`。
+///   • `scrollLeadId` 領先 `currentId`（切換前的 scrollLeadSec 窗口）→ 高亮 `currentId + 1`。
+///     clamp 到 +1 是刻意：短句可能讓 `scrollLeadId` 跳到 `currentId + 2`，那一格沒有
+///     underline overlay（只有 current / next 掛載），點亮會出現 lit-but-underline-less；
+///     夾到 +1（== view 的 `isNext`）保證被點亮的格子永遠有 underline machinery。
+///   • `currentId` 為 nil（字幕未定位）→ 無高亮，避免初始/缺 renderState 時假亮 lead。
+enum PodcastHighlightResolver {
+    static func highlightId(currentId: Int?, scrollLeadId: Int?) -> Int? {
+        guard let current = currentId else { return nil }
+        guard let lead = scrollLeadId, lead > current else { return current }
+        return current + 1
+    }
+}
+
 /// Chat-style transcript: sentences laid out as left/right bubbles by speaker.
 ///
 /// Design principles:
@@ -444,6 +461,12 @@ private struct PodcastTranscriptColumn: View {
         // cell 內 underline TimelineView),數百短字串 normalize 成本微秒級,不值 @State + task
         // 的時序複雜度與一拍延遲。
         let normalizedLookedUp = Set(lookedUpWords.map(PodcastVocabHighlightResolver.normalize))
+        // 單一高亮真相：捲動領先 scrollLeadSec 點亮「即將播」的句子，但任一時刻只有
+        // 一格亮（接力，非重疊）。先前 active = isCurrent || isPreActive 會在切換前的
+        // scrollLeadSec 窗口同時點亮 current 與 next 兩格 → 兩個都亮。
+        let highlightId = PodcastHighlightResolver.highlightId(
+            currentId: currentId, scrollLeadId: scrollLeadId
+        )
         return LazyVStack(spacing: skin.spacing.inlineGap) {
             ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
                 let slot = speakerSlots[sentence.speaker] ?? 0
@@ -454,21 +477,11 @@ private struct PodcastTranscriptColumn: View {
                 // last word (gap-free SRT). `hasNext` lets the leaving cell slide
                 // off rather than hold on the final sentence.
                 let isNext = currentId.map { sentence.id == $0 + 1 } ?? false
-                // Pre-active lights the bubble EARLY (highlight leads audio) — the
-                // sentence the scroll lead already targets, ~scrollLeadSec before
-                // it's spoken. Gated on `isNext` (== `currentId + 1`) so it ONLY
-                // fires for the immediate successor: that cell already has its
-                // underline machinery mounted + `headEnter` priming, so the lit
-                // bubble shows its underline growing from the head, never a dead-lit
-                // gap. (Bare `scrollLeadId == id` could, for a sub-scrollLeadSec
-                // sentence, resolve to `currentId + 2` — a cell with no underline
-                // overlay → lit-but-underline-less; the `isNext` gate rules that
-                // out.) While a sentence plays `scrollLeadId == currentId`, so this
-                // is false until ~scrollLeadSec before the boundary. Already seek-
-                // pinned (VM `pinLead`), so a transcript tap never pre-lights the
-                // wrong bubble (★B1 race, reused). Drives `active` only — never
-                // `currentId` / `renderState` / underline.
-                let isPreActive = isNext && scrollLeadId == sentence.id
+                // 高亮領先音訊 scrollLeadSec，但只有 `highlightId` 這一格亮（接力）。
+                // `highlightId` 已 clamp 到 current+1，所以即使短句讓 scrollLeadId 跳到
+                // current+2，點亮的仍是 current+1（== `isNext`，已掛載 underline
+                // machinery + `headEnter` priming），不會點亮無 underline overlay 的遠格。
+                let isHighlighted = sentence.id == highlightId
                 let hasNext = index < sentences.count - 1
                 let entryFromTime = index > 0 ? sentences[index - 1].words.last?.startTime : nil
                 let vocabHits = PodcastVocabHighlightResolver.highlightedIndices(
@@ -486,7 +499,7 @@ private struct PodcastTranscriptColumn: View {
                     }(),
                     isCurrent: sentence.id == currentId,
                     isNext: isNext,
-                    isPreActive: isPreActive,
+                    isHighlighted: isHighlighted,
                     vocabHighlightIndices: vocabHits,
                     isSelecting: isSelectingThis,
                     initialSelectionRange: isSelectingThis ? selectionState?.initialRange : nil,
@@ -608,11 +621,10 @@ private struct PodcastBubbleCell: View, Equatable {
     /// the entering head can already be sliding in. Compared in `==` so the cell
     /// gains/loses its machinery as it enters/leaves the "next" slot.
     let isNext: Bool
-    /// The upcoming sentence the scroll lead already targets (`scrollLeadId`),
-    /// ~scrollLeadSec before it's spoken. Drives EARLY highlight (`active`) only —
-    /// NOT `currentId`, NOT the underline. Compared in `==` so the bubble lights /
-    /// dims as it enters / leaves the pre-active slot.
-    let isPreActive: Bool
+    /// 此格是否為唯一高亮目標（`highlightId`，捲動領先 scrollLeadSec、clamp 到
+    /// current+1）。驅動 `active` 高亮 only — NOT `currentId`、NOT underline。任一時刻
+    /// 只有一格為 true（接力，非重疊）。Compared in `==` 以隨高亮接力 light / dim。
+    let isHighlighted: Bool
     /// 此句中命中詞庫（含變形）的 word index 集合，驅動常駐詞庫螢光筆底色。由 column
     /// 經 `PodcastVocabHighlightResolver` 算出。與 playback 無關、所有句子常駐。
     /// Compared in `==` 以隨加 / 刪詞庫（`lookedUpWords` 變動）重繪。
@@ -662,7 +674,7 @@ private struct PodcastBubbleCell: View, Equatable {
             && l.contentHash == r.contentHash
             && l.isCurrent == r.isCurrent
             && l.isNext == r.isNext
-            && l.isPreActive == r.isPreActive
+            && l.isHighlighted == r.isHighlighted
             && l.vocabHighlightIndices == r.vocabHighlightIndices
             && l.isSelecting == r.isSelecting
             && l.initialSelectionRange == r.initialSelectionRange
@@ -683,7 +695,7 @@ private struct PodcastBubbleCell: View, Equatable {
                 if showSpeaker {
                     Text(speaker)
                         .font(subtitleSize.speakerFont)
-                        .foregroundStyle(skin.tint.opacity(isCurrent || isPreActive || isSelecting ? 0.88 : 0.58))
+                        .foregroundStyle(skin.tint.opacity(isHighlighted || isSelecting ? 0.88 : 0.58))
                         .transition(.overlayFade)
                 }
                 bubbleContent
@@ -722,11 +734,11 @@ private struct PodcastBubbleCell: View, Equatable {
 
     @ViewBuilder
     private var bubbleContent: some View {
-        // Pre-active lights the bubble EARLY (highlight leads audio) — the
-        // underline overlay below stays gated on `isCurrent || isNext` + precise
-        // `liveAnchor`, so the lit-but-not-yet-spoken sentence shows its underline
-        // already growing from the head (entering relay), never a dead-lit gap.
-        let active = isCurrent || isPreActive || isSelecting
+        // 高亮領先音訊 scrollLeadSec 點亮即將播的句子，但只有 `isHighlighted` 這一格亮
+        // （接力，非重疊）。underline overlay 仍鍵在 `isCurrent || isNext` + 精確
+        // `liveAnchor`，所以被提前點亮的下一句（== isNext）其 underline 已從 head 滑入
+        // priming，不會出現 dead-lit gap。
+        let active = isHighlighted || isSelecting
         let bg: Color = active ? skin.tint.opacity(0.18) : skin.tint.opacity(0.08)
         let fg: Color = active ? skin.primaryText : skin.secondaryText
         // ONE unified `UITextView` for BOTH display + selection — only `isSelectable`

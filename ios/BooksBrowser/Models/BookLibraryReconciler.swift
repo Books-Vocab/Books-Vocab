@@ -99,12 +99,15 @@ struct BookLibraryReconciler {
         books: inout [Book],
         manifestsById: [UUID: BookManifest]
     ) -> Int {
-        let grouped = Dictionary(grouping: books, by: \.epubFileName)
+        // 排除空檔名 row 再分組：epubFileName 預設 ""，CloudKit 部分同步可能讓多本書
+        // 暫時都是 ""，若一起分組會被互判為「同檔重複」而誤刪不同的書。空檔名是同步
+        // 中間態，留待欄位到齊後的下一次 reconcile 處理。
+        let grouped = Dictionary(grouping: books.filter { !$0.epubFileName.isEmpty }, by: \.epubFileName)
         var keepersByFileName: [String: Book] = [:]
         var removed = 0
 
         for (fileName, group) in grouped where group.count > 1 {
-            let keeper = Self.bestBook(in: group, manifestsById: manifestsById)
+            guard let keeper = Self.bestBook(in: group, manifestsById: manifestsById) else { continue }
             keepersByFileName[fileName] = keeper
             for book in group where book !== keeper {
                 Self.mergeRecoverableMetadata(into: keeper, from: book)
@@ -130,16 +133,19 @@ struct BookLibraryReconciler {
         }
     }
 
+    /// 取 group 中「恢復價值最高」者。group 必為非空（caller 皆在 count > 1 /
+    /// compactMapValues 下呼叫）；回傳 Optional（`max` 對空集合自然回 nil）取代
+    /// force-unwrap，避免未來 caller 改了不變式時於 startup 路徑 trap。
     private static func bestBook(
         in group: [Book],
         manifestsById: [UUID: BookManifest]
-    ) -> Book {
+    ) -> Book? {
         group.max {
             let lhsScore = recoveryScore($0, manifest: manifestsById[$0.id])
             let rhsScore = recoveryScore($1, manifest: manifestsById[$1.id])
             if lhsScore != rhsScore { return lhsScore < rhsScore }
             return $0.dateAdded < $1.dateAdded
-        }!
+        }
     }
 
     private static func recoveryScore(_ book: Book, manifest: BookManifest?) -> Int {

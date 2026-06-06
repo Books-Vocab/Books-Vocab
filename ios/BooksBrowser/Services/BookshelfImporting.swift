@@ -153,6 +153,11 @@ final class BookshelfImportService: BookshelfImporting {
     }
 
     /// 以 ~512 KB 區塊複製檔案，每塊回報一次進度。背景執行緒執行避免阻塞 MainActor。
+    ///
+    /// 原子性：先寫到同目錄的隱藏 temp 檔，全部寫完才 `moveItem` 到最終位置（同卷 rename
+    /// 近似原子）。crash / 被殺 / 寫入失敗時最終路徑**不會**出現截斷的半檔（半檔只會是
+    /// 被 reconciler 忽略的隱藏 `.tmp`，且失敗時即清除），避免下次以半檔開書或 bare
+    /// recovery 具現壞書。對齊 TXT/MD 既有的 tmp→move 模式。
     nonisolated static func copyFileChunked(
         from src: URL,
         to dst: URL,
@@ -160,28 +165,44 @@ final class BookshelfImportService: BookshelfImporting {
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         try await Task.detached(priority: .userInitiated) {
-            let attrs = try FileManager.default.attributesOfItem(atPath: src.path)
-            let totalBytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
             let fm = FileManager.default
-            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
-            fm.createFile(atPath: dst.path, contents: nil)
+            let attrs = try fm.attributesOfItem(atPath: src.path)
+            let totalBytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
 
-            let reader = try FileHandle(forReadingFrom: src)
-            defer { try? reader.close() }
-            let writer = try FileHandle(forWritingTo: dst)
-            defer { try? writer.close() }
+            let tmp = dst.deletingLastPathComponent()
+                .appendingPathComponent(".\(UUID().uuidString).tmp")
+            fm.createFile(atPath: tmp.path, contents: nil)
 
-            var written: Int64 = 0
-            progress?(0.0)
-            while true {
-                let chunk = try reader.read(upToCount: chunkBytes) ?? Data()
-                if chunk.isEmpty { break }
-                try writer.write(contentsOf: chunk)
-                written += Int64(chunk.count)
-                if totalBytes > 0 {
-                    let ratio = min(1.0, Double(written) / Double(totalBytes))
-                    progress?(ratio)
+            // 寫入區塊：reader/writer 以 defer 無條件 close（含 throw 解開路徑，避免 fd 洩漏），
+            // 且 defer 在本 do 結束時即觸發 → 早於下方 move。
+            do {
+                let reader = try FileHandle(forReadingFrom: src)
+                defer { try? reader.close() }
+                let writer = try FileHandle(forWritingTo: tmp)
+                defer { try? writer.close() }
+                var written: Int64 = 0
+                progress?(0.0)
+                while true {
+                    let chunk = try reader.read(upToCount: chunkBytes) ?? Data()
+                    if chunk.isEmpty { break }
+                    try writer.write(contentsOf: chunk)
+                    written += Int64(chunk.count)
+                    if totalBytes > 0 {
+                        progress?(min(1.0, Double(written) / Double(totalBytes)))
+                    }
                 }
+            } catch {
+                try? fm.removeItem(at: tmp)  // 清半檔，最終路徑保持乾淨
+                throw error
+            }
+
+            // 全部寫完、handle 已關才原子替換最終位置
+            do {
+                if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+                try fm.moveItem(at: tmp, to: dst)
+            } catch {
+                try? fm.removeItem(at: tmp)
+                throw error
             }
             progress?(1.0)
         }.value

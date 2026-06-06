@@ -65,6 +65,11 @@ struct BookManifest: Codable, Equatable {
     }
 }
 
+enum BookManifestStoreError: Error {
+    /// 既有 manifest 的 schemaVersion 比本 app 版本新——讀得懂結構但不該以舊語意覆蓋。
+    case unsupportedSchemaVersion(Int)
+}
+
 struct BookManifestStore {
     let rootDirectory: URL
 
@@ -100,9 +105,18 @@ struct BookManifestStore {
     /// （正常新書 / 需重建）；其他 I/O 錯誤（如 iCloud eviction、暫時讀失敗）往上拋，
     /// 讓 `writeBestEffort` 這次跳過——寧可漏寫一次（下次 progress / reconcile 會補），
     /// 也不要在讀失敗時用 fallback row 蓋掉還在磁碟上的乾淨 manifest。
+    ///
+    /// 額外守衛：既有 manifest 的 `schemaVersion` 比本版本新（舊 app 讀到新 app 寫的檔）
+    /// 時，往上拋讓本次寫入跳過——不可用舊 schema 的理解去覆蓋讀不懂但更新的檔。
+    /// （未來新增 manifest 欄位請一律 optional + 提供 default，讓舊 app 仍能 decode，
+    /// 才不會落入「decode 失敗→視為無既有→覆蓋」的盲區。）
     private func existingManifestForMerge(bookId: UUID) throws -> BookManifest? {
         do {
-            return try read(bookId: bookId)
+            let manifest = try read(bookId: bookId)
+            if manifest.schemaVersion > BookManifest.currentSchemaVersion {
+                throw BookManifestStoreError.unsupportedSchemaVersion(manifest.schemaVersion)
+            }
+            return manifest
         } catch let error as NSError
             where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
             return nil
@@ -153,7 +167,17 @@ struct BookManifestStore {
 
         return files
             .filter { $0.pathExtension == "json" }
-            .compactMap { try? Self.decoder.decode(BookManifest.self, from: Data(contentsOf: $0)) }
+            .compactMap { url in
+                do {
+                    return try Self.decoder.decode(BookManifest.self, from: Data(contentsOf: url))
+                } catch {
+                    // 容錯跳過損壞 / 半寫 / 未來版本的 manifest，但**不靜默**：reconcile 完全
+                    // 依賴 readAll 作為恢復權威，少一筆 = 該書 metadata 救援能力消失，必須可診斷
+                    // （例如除錯「重啟後書名變了」）。
+                    AppLog.book.warning("Book manifest skipped (unreadable \(url.lastPathComponent, privacy: .public)): \(error.localizedDescription)")
+                    return nil
+                }
+            }
     }
 
     func delete(bookId: UUID) {
