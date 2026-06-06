@@ -28,6 +28,7 @@ struct BooksBrowserApp: App {
     #if os(iOS)
     let readiumService: any ReadiumServing = ReadiumService.shared
     let bookshelfImportService: any BookshelfImporting
+    let bookMetadataRepairService: BookMetadataRepairService
     #endif
     let bookFileManager: any BookFileManaging
     let iCloudDownloadManager = ICloudDownloadManager()
@@ -48,6 +49,9 @@ struct BooksBrowserApp: App {
         NSUbiquitousKeyValueStore.default.synchronize()
         #if os(iOS)
         bookshelfImportService = BookshelfImportService(readiumService: readiumService)
+        bookMetadataRepairService = BookMetadataRepairService(
+            extractor: ReadiumBookMetadataExtractor(readiumService: readiumService)
+        )
         #endif
         bookFileManager = LocalBookFileManager()
 
@@ -158,6 +162,15 @@ struct BooksBrowserApp: App {
                 .task {
                     iCloudDownloadManager.startMonitoring()
                 }
+                #if os(iOS)
+                .task {
+                    // UI 掛載後從本機可讀 EPUB 重抽 metadata，修復被 UUID fallback
+                    // 污染的書（title=UUID、cover=0）。不放進 init / 同步啟動路徑，
+                    // 避免 Readium parsing 拖慢冷啟動。service 內建 in-flight guard +
+                    // 候選門檻，語言切換重建 view tree 時對乾淨書庫近乎零成本。
+                    await bookMetadataRepairService.repairIfNeeded(context: modelContainer.mainContext)
+                }
+                #endif
                 .task {
                     try? Tips.configure()
                 }
