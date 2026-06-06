@@ -11,8 +11,26 @@ documents:
       - sync_payload_changed
       - conflict_resolution_changed
     sources:
-      - ios/BooksBrowser/
-      - backend/src/kg/
+      - ios/BooksBrowser/Models/VocabularyEntry.swift
+      - ios/BooksBrowser/Views/Vocabulary/SyncView.swift
+      - ios/BooksBrowser/Views/Vocabulary/AutoSyncMonitor.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
+      - ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift
+      - ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift
+      - ios/BooksBrowser/Services/BackgroundSyncActor.swift
+      - ios/BooksBrowser/Services/KGService+Sync.swift
+      - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
+      - ios/BooksBrowser/Services/KGService+Models.swift
+      - backend/src/kg/api_models/vocab.py
+      - backend/src/kg/routers/vocab.py
+      - backend/src/kg/vocab_intake.py
+      - backend/src/kg/vocab_crud.py
+      - backend/src/kg/vocab_handlers/intake.py
+      - backend/src/kg/vocab_handlers/crud.py
+      - chrome-extension/background.js
+      - chrome-extension/shared/vocab-outbox.js
 
   - id: contract.card_format
     path: docs/reference/card_format.md
@@ -23,6 +41,7 @@ documents:
       - csv_format_changed
     sources:
       - backend/src/kg/
+      - "!backend/src/kg/llm/providers.py"
 
   - id: contract.host_topology
     path: docs/reference/host_topology.md
@@ -34,6 +53,22 @@ documents:
       - caddy_route_changed
     sources:
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
+      - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
+      - "!ops/devops_kg_safe.sh"
+      - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -44,7 +79,25 @@ documents:
       - destructive_command_guard_changed
     sources:
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
+      - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
+      - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
       - backend/
+      - "!backend/tests/"
+      - "!backend/src/kg/llm/providers.py"
+      - "!backend/src/kg/routers/*.py"
       - docs/runbook/
 
   - id: reference.product_surface
@@ -59,8 +112,26 @@ documents:
     sources:
       - ios/
       - backend/
+      - "!backend/tests/"
+      - "!backend/src/kg/llm/providers.py"
       - chrome-extension/
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
+      - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
+      - "!ops/devops_kg_safe.sh"
+      - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
@@ -73,7 +144,9 @@ documents:
       - ops_command_changed
     sources:
       - backend/
+      - "!backend/tests/"
       - ops/
+      - "!ops/tests/test_docs_*.sh"
 
   - id: sop.doc_sync
     path: docs/sop/doc_sync.md
@@ -85,9 +158,444 @@ documents:
       - docs_gate_changed
       - docs_impact_changed
     sources:
+      - CLAUDE.md
+      - .github/PULL_REQUEST_TEMPLATE.md
       - docs/registry.yml
       - ops/docs_lint.sh
       - ops/docs_impact.py
+      - ops/docs_registry_coverage.py
+
+  - id: sop.docs_dogfood
+    path: docs/sop/docs_dogfood.md
+    kind: sop
+    authority: derived
+    triggers:
+      - docs_workflow_changed
+      - docs_gate_changed
+      - docs_impact_changed
+      - dogfood_protocol_changed
+    sources:
+      - CLAUDE.md
+      - docs/registry.yml
+      - docs/sop/doc_sync.md
+      - ops/docs_lint.sh
+      - ops/docs_impact.py
+      - ops/docs_registry_coverage.py
+
+  - id: reference.feature_boundary.bookshelf
+    path: docs/reference/feature_boundary/bookshelf.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - bookshelf_surface_changed
+      - book_manifest_changed
+      - book_recovery_changed
+    sources:
+      - ios/BooksBrowser/Views/Bookshelf/
+      - ios/BooksBrowser/Models/Book.swift
+      - ios/BooksBrowser/Models/BookManifest.swift
+      - ios/BooksBrowser/Models/BookLibraryReconciler.swift
+      - ios/BooksBrowser/AppOrphanBookRecovery.swift
+      - ios/BooksBrowser/AppStartupRecovery.swift
+
+  - id: reference.feature_boundary.chrome
+    path: docs/reference/feature_boundary/chrome.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - chrome_surface_changed
+      - chrome_sync_changed
+      - chrome_extension_manifest_changed
+    sources:
+      - chrome-extension/
+
+  - id: reference.feature_boundary.notebook
+    path: docs/reference/feature_boundary/notebook.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - notebook_surface_changed
+      - notebook_reconcile_changed
+      - notebook_cover_changed
+    sources:
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
+      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
+      - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
+      - ios/BooksBrowser/Models/Notebook*.swift
+      - ios/BooksBrowser/Services/KGService+Notebook.swift
+
+  - id: reference.feature_boundary.podcast
+    path: docs/reference/feature_boundary/podcast.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - podcast_surface_changed
+      - podcast_playback_changed
+      - podcast_sync_changed
+    sources:
+      - ios/BooksBrowser/Views/Podcast/
+      - ios/BooksBrowser/Models/Podcast*.swift
+      - ios/BooksBrowser/Services/Podcast*.swift
+
+  - id: reference.feature_boundary.reader
+    path: docs/reference/feature_boundary/reader.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - reader_surface_changed
+      - reader_translation_changed
+      - readium_bridge_changed
+    sources:
+      - ios/BooksBrowser/Views/Reader/
+      - ios/BooksBrowser/Models/ReaderSettings.swift
+      - ios/BooksBrowser/Services/ReaderPublicationLoader.swift
+      - ios/BooksBrowser/Services/Readium*.swift
+
+  - id: reference.feature_boundary.settings
+    path: docs/reference/feature_boundary/settings.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - settings_surface_changed
+      - account_settings_changed
+      - subscription_settings_changed
+    sources:
+      - ios/BooksBrowser/Views/Settings/
+      - ios/BooksBrowser/Models/AppLanguage.swift
+      - ios/BooksBrowser/Models/AppAppearanceMode.swift
+      - ios/BooksBrowser/Models/ReviewSettings.swift
+      - ios/BooksBrowser/Models/TranslationLanguage.swift
+      - ios/BooksBrowser/Services/KGUserConfigClient.swift
+      - ios/BooksBrowser/Services/SubscriptionManager*.swift
+
+  - id: reference.feature_boundary.vocabulary
+    path: docs/reference/feature_boundary/vocabulary.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - vocabulary_surface_changed
+      - review_flow_changed
+      - graph_surface_changed
+      - vocab_sync_changed
+    sources:
+      - ios/BooksBrowser/Views/Vocabulary/
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift"
+      - "!ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift"
+      - ios/BooksBrowser/Models/Vocabulary*.swift
+      - ios/BooksBrowser/Models/Review*.swift
+      - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
+      - ios/BooksBrowser/Services/KGService+Sync.swift
+      - ios/BooksBrowser/Services/KGService+Graph.swift
+      - ios/BooksBrowser/Services/VocabularyExporter.swift
+
+  - id: sop.ui_design
+    path: docs/sop/ui-design.md
+    kind: sop
+    authority: derived
+    triggers:
+      - ui_design_system_changed
+      - motion_contract_changed
+      - catalyst_ui_policy_changed
+      - design_token_policy_changed
+    sources:
+      - ios/BooksBrowser/Models/AppColors.swift
+      - ios/BooksBrowser/Models/AppFonts.swift
+      - ios/BooksBrowser/Models/AppMetrics.swift
+      - ios/BooksBrowser/Models/AppSkin*.swift
+      - ios/BooksBrowser/Models/AppTheme.swift
+      - ios/BooksBrowser/Models/DesignTokens.swift
+      - ios/BooksBrowser/Platform/
+      - ios/BooksBrowser/Views/Reader/ReaderContentStyle.swift
+      - design-system/
+      - ops/ui_token_lint.sh
+      - ops/ui_token_lint.py
+      - ops/test_ui_token_lint.sh
+      - ops/gen_web_tokens.py
+      - ops/gen_web_components.py
+
+  - id: reference.ui_components
+    path: docs/reference/ui/components.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui_component_added
+      - ui_pattern_changed
+      - shared_modifier_changed
+    sources:
+      - ios/BooksBrowser/UIComponents/
+      - ios/BooksBrowser/Views/
+      - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
+      - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
+
+  - id: reference.ui_review_checklist
+    path: docs/reference/ui/review_checklist.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui_review_policy_changed
+      - ui_quality_gate_changed
+      - ui_design_system_changed
+    sources:
+      - docs/sop/ui-design.md
+      - docs/reference/ui/
+      - CLAUDE.md
+      - ios/BooksBrowser/Models/AppMetrics.swift
+      - ios/BooksBrowser/Models/AppTheme.swift
+      - ops/ui_token_lint.sh
+      - ops/ui_token_lint.py
+
+  - id: reference.ui_state_matrix
+    path: docs/reference/ui/state_matrix.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui_state_changed
+      - loading_empty_error_state_changed
+      - view_flow_changed
+    sources:
+      - ios/BooksBrowser/UIComponents/
+      - ios/BooksBrowser/Views/
+      - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
+      - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
+
+  - id: reference.testing_backend_strategy
+    path: docs/reference/testing/backend_strategy.md
+    kind: reference
+    authority: derived
+    triggers:
+      - backend_test_strategy_changed
+      - backend_test_matrix_changed
+      - backend_pytest_workflow_changed
+    sources:
+      - backend/tests/
+      - backend/pytest.ini
+      - backend/pyproject.toml
+      - backend/src/kg/testing/
+
+  - id: reference.testing_smoke_checklist
+    path: docs/reference/testing/smoke_checklist.md
+    kind: reference
+    authority: derived
+    triggers:
+      - release_smoke_flow_changed
+      - core_user_journey_changed
+      - pre_release_checklist_changed
+    sources:
+      - ops/ios_release.sh
+      - ops/ios_build.sh
+      - ops/release.sh
+      - backend/src/kg/routers/
+      - ios/BooksBrowser/ContentView.swift
+      - ios/BooksBrowser/Views/Bookshelf/
+      - ios/BooksBrowser/Views/Reader/
+      - ios/BooksBrowser/Views/Vocabulary/
+      - ios/BooksBrowser/Views/Settings/
+      - ios/BooksBrowser/Views/Podcast/
+
+  - id: reference.cost_baseline
+    path: docs/reference/cost_baseline.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - provider_pricing_changed
+      - fixed_cost_baseline_changed
+      - budget_threshold_changed
+      - billing_source_changed
+    sources:
+      - backend/src/kg/llm/providers.py
+      - backend/src/kg/admin_cost_summary.py
+      - backend/src/kg/routers/admin.py
+      - backend/src/kg/ops_cli.py
+      - backend/tests/test_provider_pricing.py
+      - backend/tests/test_admin_cost_summary.py
+      - backend/tests/test_ops_cost.py
+      - .claude/skills/billing/
+      - docs/sop/cost_review.md
+
+  - id: sop.cost_review
+    path: docs/sop/cost_review.md
+    kind: sop
+    authority: derived
+    triggers:
+      - cost_review_workflow_changed
+      - billing_reconciliation_changed
+      - cost_alarm_workflow_changed
+    sources:
+      - .claude/skills/billing/
+      - docs/reference/cost_baseline.md
+      - backend/src/kg/llm/providers.py
+      - backend/src/kg/admin_cost_summary.py
+      - backend/src/kg/ops_cli.py
+      - ops/devops_kg_safe.sh
+
+  - id: runbook.system
+    path: docs/runbook/system.md
+    kind: runbook
+    authority: derived
+    triggers:
+      - ops_change_flow_changed
+      - hard_stop_condition_changed
+      - production_entrypoint_changed
+    sources:
+      - ops/devops_kg_safe.sh
+      - ops/status_all.sh
+      - ops/test_devops.sh
+      - docs/policy/safety.md
+      - docs/sop/deploy.md
+      - docs/sop/debug.md
+      - CLAUDE.md
+      - .claude/skills/devops/
+      - .claude/skills/cleanup/
+
+  - id: sop.review_discipline
+    path: docs/sop/review_discipline.md
+    kind: sop
+    authority: derived
+    triggers:
+      - review_workflow_changed
+      - agent_review_policy_changed
+      - phased_review_gate_changed
+    sources:
+      - CLAUDE.md
+      - .claude/skills/phased/
+      - .claude/skills/steward/
+      - .claude/skills/app-debug/
+      - docs/sop/review_discipline.md
+
+  - id: sop.architecture
+    path: docs/sop/architecture.md
+    kind: sop
+    authority: derived
+    triggers:
+      - data_authority_boundary_changed
+      - account_isolation_changed
+      - offline_first_architecture_changed
+      - cross_platform_sync_architecture_changed
+    sources:
+      - ios/BooksBrowser/AppBootstrap.swift
+      - ios/BooksBrowser/Services/AuthManager*.swift
+      - ios/BooksBrowser/Services/CloudPreferencesSync.swift
+      - ios/BooksBrowser/Services/KGService*.swift
+      - ios/BooksBrowser/Models/VocabularyEntry.swift
+      - ios/BooksBrowser/Models/Notebook.swift
+      - ios/BooksBrowser/Models/Podcast*.swift
+      - backend/src/kg/auth_service.py
+      - backend/src/kg/user_store.py
+      - backend/src/kg/routers/user.py
+      - backend/src/kg/routers/notebook.py
+      - backend/src/kg/routers/podcast.py
+
+  - id: sop.backup
+    path: docs/sop/backup.md
+    kind: sop
+    authority: derived
+    triggers:
+      - backup_strategy_changed
+      - backup_retention_changed
+      - backup_monitoring_changed
+    sources:
+      - ops/kg_backup.sh
+      - ops/cron/kg-backup.cron
+      - ops/backup_verify.sh
+      - ops/tests/test_backup_verify.sh
+      - docs/sop/backup_restore.md
+      - docs/reference/cost_baseline.md
+
+  - id: sop.backup_restore
+    path: docs/sop/backup_restore.md
+    kind: sop
+    authority: derived
+    triggers:
+      - restore_workflow_changed
+      - backup_artifact_contract_changed
+      - backup_safety_boundary_changed
+    sources:
+      - ops/kg_backup.sh
+      - ops/cron/kg-backup.cron
+      - ops/backup_verify.sh
+      - ops/tests/test_backup_verify.sh
+      - docs/sop/backup.md
+      - docs/runbook/system.md
+
+  - id: sop.i18n_lint
+    path: docs/sop/i18n_lint.md
+    kind: sop
+    authority: derived
+    triggers:
+      - i18n_lint_rule_changed
+      - localization_workflow_changed
+      - localization_key_extraction_changed
+    sources:
+      - ops/i18n_lint.sh
+      - ops/_i18n_extract_keys.py
+      - ops/_i18n_strip_previews.py
+      - ops/i18n_baseline.txt
+      - ios/BooksBrowser/Localization/L10n.swift
+      - ios/BooksBrowser/*.lproj/Localizable.strings
+      - ios/BooksBrowser/*.lproj/Localizable.xcstrings
+
+  - id: sop.i18n_plural_keys
+    path: docs/sop/i18n_plural_keys.md
+    kind: sop
+    authority: derived
+    triggers:
+      - plural_key_contract_changed
+      - stringdict_changed
+      - localization_format_changed
+    sources:
+      - ops/i18n_lint.sh
+      - ops/_i18n_extract_keys.py
+      - ios/BooksBrowser/Localization/L10n.swift
+      - ios/BooksBrowser/*.lproj/Localizable.stringsdict
+
+  - id: sop.podcast_pipeline
+    path: docs/sop/podcast_pipeline.md
+    kind: sop
+    authority: derived
+    triggers:
+      - podcast_pipeline_stage_changed
+      - podcast_upload_workflow_changed
+      - podcast_monitor_workflow_changed
+      - podcast_tts_or_subtitle_changed
+    sources:
+      - lab/podcast/
+      - ops/podcast_upload.sh
+      - ops/podcast_ops.py
+      - ops/podcast_cover_publish.py
+      - ops/podcast_preview_backfill.py
+      - .claude/skills/podcast/
+
+  - id: reference.llm_eval
+    path: docs/reference/llm_eval.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - llm_eval_api_changed
+      - prompt_registry_changed
+      - eval_dataset_changed
+      - eval_scoring_changed
+    sources:
+      - lab/llm_eval/
+      - ops/prompt_sync_lint.sh
+
+  - id: sop.llm_eval
+    path: docs/sop/llm_eval.md
+    kind: sop
+    authority: derived
+    triggers:
+      - llm_eval_workflow_changed
+      - prompt_change_workflow_changed
+      - eval_run_policy_changed
+    sources:
+      - lab/llm_eval/
+      - docs/reference/llm_eval.md
+      - ops/prompt_sync_lint.sh
+      - backend/src/kg/llm/providers.py
 
   - id: sop.backend
     path: docs/sop/backend.md
@@ -99,7 +607,25 @@ documents:
       - provider_registry_workflow_changed
     sources:
       - backend/
+      - "!backend/tests/"
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
+      - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
+      - "!backend/src/kg/routers/*.py"
+      - "!ops/devops_kg_safe.sh"
+      - "!ops/ios_release.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -110,9 +636,11 @@ documents:
       - ios_release_workflow_changed
       - app_store_workflow_changed
     sources:
-      - ios/
       - ops/ios_build.sh
       - ops/ios_release.sh
+      - ios/BooksBrowser.xcodeproj/
+      - ios/ExportOptions.plist
+      - ios/BooksBrowser/Products.storekit
 
   - id: sop.deploy
     path: docs/sop/deploy.md
@@ -124,7 +652,25 @@ documents:
       - env_surface_changed
     sources:
       - ops/
+      - "!ops/ios_release.sh"
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
+      - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
       - backend/
+      - "!backend/tests/"
+      - "!backend/src/kg/llm/providers.py"
+      - "!backend/src/kg/routers/*.py"
 
   - id: sop.debug
     path: docs/sop/debug.md
@@ -136,6 +682,21 @@ documents:
       - production_observability_changed
     sources:
       - ops/
+      - "!ops/ios_release.sh"
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/docs_registry_coverage.py"
+      - "!ops/tests/test_docs_*.sh"
+      - "!ops/test_ops.sh"
+      - "!ops/i18n_lint.sh"
+      - "!ops/_i18n_*.py"
+      - "!ops/podcast_*.sh"
+      - "!ops/podcast_*.py"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
       - docs/runbook/
 
   - id: generated.ios_baseline

@@ -20,7 +20,19 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 
 1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合。
 2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
-3. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 opus general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
+3. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
+4. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 opus general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
+
+## Docs Control Plane 快速用法
+
+目標:讓 agent 一進 repo 就知道文檔怎麼查、怎麼同步、怎麼驗證。
+
+- **先看 registry**:`docs/registry.yml` 是機器可讀控制平面。每個 entry 的 `id/path/kind/authority/triggers/sources/generator` 定義 owner、觸發條件、path hint 與生成器。`sources` 的 `!path` / `!glob` 是排除 broad source 下的已知誤報。
+- **做改動前查 impact**:`./ops/docs_impact.py --since <base>` 或 `./ops/docs_impact.py --files <path...>`。輸出是候選文檔,不是自動更新命令;用 `triggers` + 實際 diff 判斷是否需同步。
+- **日常 PR gate**:`./ops/docs_lint.sh`。預設只驗 registry + changed docs,並印 registry impact hints(warn-only)。只驗控制面用 `./ops/docs_lint.sh --registry`。
+- **全 repo 健康盤點**:`./ops/docs_lint.sh --audit` 或 `--all`;這是 health audit,不是日常 PR gate。
+- **coverage debt**:`./ops/docs_registry_coverage.py` 看哪些 linted docs 尚未進 registry;`--strict` 用來追 active-doc 覆蓋 debt,不等同日常 gate。
+- **同步流程權威**:背景 doc-sync agent 讀 `docs/sop/doc_sync.md`;人工維護/狗食流程讀 `docs/sop/docs_dogfood.md`。
 
 ## Skill 系統(KG 專屬 6 個 + plugin 全域可用)
 
@@ -101,7 +113,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 
 ## Doc Tier 契約
 
-每份 doc 的 frontmatter 都有 `tier`;活文檔的長期 ownership / trigger / source hint 另以 `docs/registry.yml` 為機器可讀 SoT。改實作前先確認 registry 與 tier:
+每份 doc 的 frontmatter 都有 `tier`;活文檔的長期 ownership / trigger / source hint 另以 `docs/registry.yml` 為機器可讀 SoT(`sources` 內 `!path` / `!glob` 表示排除 broad source 下的已知誤報)。改實作前先確認 registry 與 tier:
 
 - **contract / reference / policy** — 活契約或索引。改相關語意 surface 必**同 PR** 更新對應 doc(routers / DB / env / iOS feature scope / CSV schema / host topology / safety),並把 `verified_against` 指到 main 可達 code commit。標 **(SoT)** 者衝突時權威。
 - **sop**(`docs/sop/*`) — SOP 流程變了才更新;不是 code-as-doc。

@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 3fe5726f
+verified_against: 9de624ce
 -->
 # BooksBrowser iOS 開發技能
 
