@@ -28,7 +28,7 @@ def _isolate_provider(monkeypatch):
     """Stub provider/client construction so only error mapping is under test."""
     monkeypatch.setattr(th, "provider_for", lambda call_type: SimpleNamespace(chat_model="m"))
     monkeypatch.setattr(th, "create_async_client", lambda provider: object())
-    monkeypatch.setattr(th, "TrackedLLM", lambda client, uid, provider=None: object())
+    monkeypatch.setattr(th, "TrackedLLM", lambda client, uid, provider=None, **_kwargs: object())
 
 
 def _run(exc):

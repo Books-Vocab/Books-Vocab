@@ -218,6 +218,126 @@ def test_tracked_llm_releases_reservation_on_call_failure(mock_db):
     assert qs._reserved_usd("u1") == 0.0
 
 
+def test_tracked_llm_enforced_quota_blocks_before_call(mock_db):
+    from kg.exceptions import QuotaExceededError
+    from kg.tracked_llm import TrackedLLM
+
+    qs.configure_limits(pro=0.30, free=0.001)
+
+    class _Client:
+        called = False
+
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                def create(**_kwargs):
+                    _Client.called = True
+                    return _FakeResp(100, 50)
+
+    llm = TrackedLLM(_Client(), "u1", enforce_quota=True, is_pro=False)
+
+    with pytest.raises(QuotaExceededError):
+        llm.chat("translate")
+    assert _Client.called is False
+    assert qs._reserved_usd("u1") == 0.0
+
+
+def test_enforced_reservation_reads_recorded_usage_outside_reservation_lock(mock_db, monkeypatch):
+    """Admission must not hold reservation_lock while reading SQLite usage.
+
+    token_tracker.record() takes the DB lock first and then releases the
+    reservation on context exit. Holding reservation_lock while waiting on the
+    DB lock creates the reverse order and can deadlock under load.
+    """
+    calls = []
+
+    def recorded(user_id: str) -> float:
+        calls.append(user_id)
+        assert qs._reservation_lock.locked() is False
+        return 0.0
+
+    monkeypatch.setattr(qs, "_recorded_usd", recorded)
+
+    with qs.reserve("u1", 0.001, enforce=True, is_pro=False):
+        assert qs._reserved_usd("u1") == pytest.approx(0.001)
+
+    assert calls == ["u1"]
+
+
+def test_enforced_reservation_retries_if_inflight_finishes_during_recorded_read(mock_db, monkeypatch):
+    """If a reservation is released while recorded usage is being read, retry
+    the DB read so admission does not miss both the old reservation and the
+    newly recorded usage."""
+    from kg.exceptions import QuotaExceededError
+
+    qs.configure_limits(pro=0.30, free=0.021)
+    with qs._reservation_lock:
+        qs._reservations[999_001] = ("u1", 0.02)
+        qs._reservation_version += 1
+
+    calls = 0
+
+    def recorded(user_id: str) -> float:
+        nonlocal calls
+        assert user_id == "u1"
+        calls += 1
+        if calls == 1:
+            with qs._reservation_lock:
+                qs._reservations.pop(999_001, None)
+                qs._reservation_version += 1
+            return 0.0
+        return 0.02
+
+    monkeypatch.setattr(qs, "_recorded_usd", recorded)
+
+    with pytest.raises(QuotaExceededError):
+        with qs.reserve("u1", 0.005, enforce=True, is_pro=False):
+            pass
+
+    assert calls == 2
+    assert qs._reserved_usd("u1") == 0.0
+
+
+def test_enforced_reservation_retries_on_equal_sum_reservation_swap(mock_db, monkeypatch):
+    """Reservation total can stay unchanged while composition changes.
+
+    Example: A finishes and moves from reservation to recorded usage while B
+    adds an equal reservation. Admission must notice the version change and
+    re-read recorded usage, not trust the unchanged reserved total.
+    """
+    from kg.exceptions import QuotaExceededError
+
+    qs.configure_limits(pro=0.30, free=0.04)
+    with qs._reservation_lock:
+        qs._reservations[999_101] = ("u1", 0.02)
+        qs._reservation_version += 1
+
+    calls = 0
+
+    def recorded(user_id: str) -> float:
+        nonlocal calls
+        assert user_id == "u1"
+        calls += 1
+        if calls == 1:
+            with qs._reservation_lock:
+                qs._reservations.pop(999_101, None)
+                qs._reservations[999_102] = ("u1", 0.02)
+                qs._reservation_version += 2
+            return 0.0
+        return 0.02
+
+    monkeypatch.setattr(qs, "_recorded_usd", recorded)
+
+    with pytest.raises(QuotaExceededError):
+        with qs.reserve("u1", 0.015, enforce=True, is_pro=False):
+            pass
+
+    assert calls == 2
+    with qs._reservation_lock:
+        qs._reservations.pop(999_102, None)
+        qs._reservation_version += 1
+
+
 def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
     """Simulated pipeline enrich fan-out: 5 concurrent TrackedLLM calls for
     a Free user. The reservation makes the gate observe in-flight spend, so
