@@ -36,6 +36,10 @@ fi
 ./ops/docs_impact.py --files docs/registry.yml >"$tmpdir/registry.out"
 grep -q "sop.doc_sync" "$tmpdir/registry.out"
 
+./ops/docs_impact.py --files CLAUDE.md >"$tmpdir/agent_guide.out"
+grep -q "sop.doc_sync" "$tmpdir/agent_guide.out"
+grep -q "sop.docs_dogfood" "$tmpdir/agent_guide.out"
+
 ./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift >"$tmpdir/ios.out"
 if grep -q "contract.sync_lifecycle" "$tmpdir/ios.out"; then
   echo "ordinary reader view changes should not imply sync lifecycle contract impact" >&2

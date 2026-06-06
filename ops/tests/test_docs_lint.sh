@@ -6,6 +6,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
+grep -q "docs/registry.yml" CLAUDE.md
+grep -q "ops/docs_impact.py" CLAUDE.md
+grep -q "ops/docs_lint.sh" CLAUDE.md
+grep -q "ops/docs_registry_coverage.py" CLAUDE.md
+
 ./ops/docs_lint.sh --files docs/reference/tech_index.md docs/sop/architecture.md >/tmp/kg_docs_lint_files.out
 grep -q "ERROR: 0" /tmp/kg_docs_lint_files.out
 

@@ -38,15 +38,18 @@ verified_against: 9de624ce
 | P2 | Generated snapshot hint 缺少處置入口 | iOS dogfood: `generated.ios_baseline` 出現時需另查 doc_sync 才知道 generator | `docs_impact.py` 對 generated docs 輸出 `generator` |
 | P2 | Registry 覆蓋率不可見 | 手動盤點發現 55 份 linted docs 只有 14 份在 registry；feature boundary / UI docs 原先多數未登記 | 新增 `ops/docs_registry_coverage.py` 與 regression test；先 report,`--strict` 追 active-doc coverage debt；feature boundary 與 UI docs 已全數登記 |
 | P2 | UI tooling impact 噪音 | `ops/ui_token_lint.sh` 曾因 broad `ops/` source 誤觸 host/safety/deploy/backend/debug/product docs | 將 UI token tooling 從 broad ops workflow docs 排除,只保留 tech index + UI design/checklist hints |
+| P2 | Agent 入口沒有控制面用法 | 新 agent 只讀 `CLAUDE.md` 時能看到傳統路由表,但不一定知道 registry / impact / gate / coverage 的實際操作順序 | `CLAUDE.md` 新增 Docs Control Plane 快速用法；registry 將 `CLAUDE.md` 納入 doc_sync / dogfood source |
 
 ## Follow-up Changes
 
 - `docs/registry.yml`:新增 `reference.feature_boundary.bookshelf` / `chrome` / `notebook` / `podcast` / `reader` / `settings` / `vocabulary`,並加上 backend/router、devops wrapper、docs tooling test、UI token tooling 的精準排除；`contract.sync_lifecycle` 從 iOS/backend 全目錄收斂為 sync-specific source set。
 - `docs/registry.yml`:新增 `sop.ui_design`、`reference.ui_components`、`reference.ui_review_checklist`、`reference.ui_state_matrix`,讓 UI design docs 進控制平面。
+- `CLAUDE.md`:新增 Docs Control Plane 快速用法,一載入即知道 registry、impact detector、日常 gate、audit、coverage 與 doc-sync SOP 怎麼用。
+- `docs/registry.yml`:將 `CLAUDE.md` / PR template 納入 `sop.doc_sync` source,並將 `CLAUDE.md` 納入 `sop.docs_dogfood` source。
 - `docs/reference/sync_lifecycle.md`:frontmatter scope 對齊 registry,避免文檔宣稱與控制面不同步。
 - `ops/docs_lint.sh`:registry 驗證成功時計入 summary OK。
 - `ops/tests/test_docs_impact.sh`:新增 dogfood regression 覆蓋 backend/router、devops wrapper、Book model、docs tooling tests、UI token tooling；Reader/Settings 一般 view change 不再提示 sync lifecycle,而 `KGService+Sync` / `SyncCoordinator` 仍提示 sync contract。
-- `ops/tests/test_docs_lint.sh`:audit/all 目前為健康 gate,要求 WARN/ERROR 皆為 0；registry summary 要 `OK: 1`。
+- `ops/tests/test_docs_lint.sh`:audit/all 目前為健康 gate,要求 WARN/ERROR 皆為 0；registry summary 要 `OK: 1`；`CLAUDE.md` 必須明列 registry / impact / lint / coverage 入口命令。
 - `ops/docs_impact.py`:generated impact 會輸出 `generator`。
 - `ops/docs_registry_coverage.py`:新增 registry coverage report / strict mode；coverage regression 要求所有 feature boundary 與 UI design docs 必須登記。
 - `ops/test_ops.sh`:docs-lint group 納入 coverage regression。
@@ -68,4 +71,5 @@ verified_against: 9de624ce
   - `./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift chrome-extension/background.js ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift` → chrome/notebook/reader/vocabulary feature boundary docs 分別命中
   - `./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift ios/BooksBrowser/Views/Settings/SettingsView.swift ios/BooksBrowser/Services/KGService+Sync.swift ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift chrome-extension/shared/vocab-outbox.js backend/src/kg/vocab_intake.py` → sync contract 只由 sync/outbox/backend vocab paths 命中,Reader/Settings view 只走 feature boundary docs
   - `./ops/docs_impact.py --files ios/BooksBrowser/UIComponents/AppShellComponents.swift ios/BooksBrowser/Models/AppMetrics.swift ops/ui_token_lint.sh` → UI component/state/design/checklist docs 命中,且 UI token tooling 不再誤觸 host/safety/deploy/backend/debug/product docs
+  - `./ops/docs_impact.py --files CLAUDE.md` → doc_sync / dogfood / UI checklist,確保 agent 入口變更不會繞過控制面
   - `./ops/docs_impact.py --files ops/tests/test_docs_lint.sh` → no registry impacts

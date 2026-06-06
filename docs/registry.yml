@@ -137,6 +137,8 @@ documents:
       - docs_gate_changed
       - docs_impact_changed
     sources:
+      - CLAUDE.md
+      - .github/PULL_REQUEST_TEMPLATE.md
       - docs/registry.yml
       - ops/docs_lint.sh
       - ops/docs_impact.py
@@ -152,6 +154,7 @@ documents:
       - docs_impact_changed
       - dogfood_protocol_changed
     sources:
+      - CLAUDE.md
       - docs/registry.yml
       - docs/sop/doc_sync.md
       - ops/docs_lint.sh
