@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 3fe5726f
+verified_against: 3f14c595
 -->
 # Implemented Product Surface
 
@@ -25,9 +25,9 @@ verified_against: 3fe5726f
 - **Graph links**: hide/unhide + bilateral optimistic sync
 - **Toast notification system**: capsule toast + sheet overlay
 - **Graph thumbnail** + health blob
-- **Today review**: 4-state phase matrix + `PostExampleMetrics`
+- **Today review**: 4-state phase matrix + `PostExampleMetrics` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習)
 - **Stats overview**: `StatsPresenter` full state matrix
-- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter`
+- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
 - **AppStartupRecoveryView** 三層 recovery
 - **App-intent / background sync** + preview matrix

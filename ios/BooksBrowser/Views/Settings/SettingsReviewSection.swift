@@ -9,6 +9,7 @@ struct SettingsReviewSection: View {
     var body: some View {
         ScrollView {
             VStack(spacing: AppShellMetrics.sectionSpacing) {
+                pauseSection
                 modeSection
                 customParamsSection
                 footerSection
@@ -21,6 +22,64 @@ struct SettingsReviewSection: View {
         .navigationTitle("複習節奏".localized)
         .inlineNavigationBarTitle()
         .enableInjection()
+    }
+
+    // MARK: - Pause Section
+
+    private var pauseSection: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "暫停進度", icon: "pause.circle")
+
+            HStack(spacing: appSkin.spacing.inlineGap) {
+                VStack(alignment: .leading, spacing: AppSpacing.s1) {
+                    Text("凍結複習時鐘".localized)
+                        .font(appSkin.typography.body.weight(.semibold))
+                        .foregroundStyle(appSkin.palette.primaryText)
+
+                    Text(pauseDescription.localized)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: AppSpacing.s2)
+
+                Toggle("", isOn: pauseBinding)
+                    .labelsHidden()
+                    .toggleStyle(SwitchToggleStyle(tint: appSkin.palette.accent))
+            }
+            .padding(.horizontal, appSkin.spacing.cardPadding)
+            .padding(.vertical, appSkin.spacing.controlVerticalPadding)
+            .settingsCard()
+        }
+    }
+
+    private var pauseBinding: Binding<Bool> {
+        Binding(
+            get: { reviewSettingsStore.settings.isProgressPaused },
+            set: { isPaused in
+                var updated = reviewSettingsStore.settings
+                if isPaused {
+                    updated.pauseProgress()
+                } else {
+                    updated.resumeProgress()
+                }
+                reviewSettingsStore.update(updated)
+            }
+        )
+    }
+
+    private var pauseDescription: String {
+        guard reviewSettingsStore.settings.isProgressPaused else {
+            return L10n.string("暫停後，到期計算會停在現在；已到期卡仍可手動複習。")
+        }
+        guard let pausedAt = reviewSettingsStore.settings.progressPausedAt else {
+            return L10n.string("複習到期計算已暫停。")
+        }
+        return L10n.format(
+            "目前停在 %@",
+            LocaleAwareFormatter.shared.string(from: pausedAt, template: "yMMMd")
+        )
     }
 
     // MARK: - Mode Section
