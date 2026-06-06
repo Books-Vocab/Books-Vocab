@@ -28,7 +28,7 @@ struct BackgroundSyncActorTests {
             PodcastEpisode.self,
             PodcastProgress.self
         ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -412,6 +412,91 @@ struct BackgroundSyncActorTests {
         #expect(try after.fetchCount(FetchDescriptor<VocabularyEntry>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<ReviewRecord>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<Notebook>()) == 0)
+    }
+
+    @Test func buildReviewEventsPushPayload_encodesLocalRecords() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let reviewedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let entryID = UUID()
+        let entry = VocabularyEntry(word: "alpha", translation: "m", context: "ctx", bookTitle: "Book")
+        entry.id = entryID
+        entry.kgCardId = "card-alpha"
+        entry.markSynced()
+        context.insert(entry)
+        let record = ReviewRecord(
+            word: "alpha",
+            entryID: entryID,
+            feedback: 1,
+            reviewedAt: reviewedAt
+        )
+        record.id = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        record.notebookId = "nb1"
+        context.insert(record)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let payload = try await actor.buildReviewEventsPushPayload()
+
+        #expect(payload.count == 1)
+        let item = try #require(payload.first)
+        #expect(item.event_id == "11111111-1111-1111-1111-111111111111")
+        #expect(item.card_id == "card-alpha")
+        #expect(item.word_snapshot == "alpha")
+        #expect(item.notebook_id == "nb1")
+        #expect(item.feedback == 1)
+        #expect(item.reviewed_at.contains("2027"))
+        #expect(item.created_at.contains("2027"))
+    }
+
+    @Test func mergeReviewEvents_insertsMissingAndSkipsDuplicates() async throws {
+        let container = try makeContainer()
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let eventID = "22222222-2222-2222-2222-222222222222"
+        let remote = [KGReviewEventPayload(
+            event_id: eventID,
+            card_id: "card-beta",
+            word_snapshot: "beta",
+            notebook_id: "nb2",
+            feedback: 0,
+            reviewed_at: "2026-06-02T10:00:00+00:00",
+            created_at: "2026-06-02T10:00:03+00:00"
+        )]
+
+        try await actor.mergeReviewEvents(remote)
+        try await actor.mergeReviewEvents(remote)
+
+        let context = ModelContext(container)
+        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
+        let record = try #require(records.first)
+        #expect(records.count == 1)
+        #expect(record.id.uuidString == eventID.uppercased())
+        #expect(record.word == "beta")
+        #expect(record.notebookId == "nb2")
+        #expect(record.feedback == 0)
+    }
+
+    @Test func mergeReviewEvents_restoresAfterLocalClear() async throws {
+        let container = try makeContainer()
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let remote = [KGReviewEventPayload(
+            event_id: "33333333-3333-3333-3333-333333333333",
+            card_id: nil,
+            word_snapshot: "gamma",
+            notebook_id: "default",
+            feedback: 1,
+            reviewed_at: "2026-06-03T10:00:00+00:00",
+            created_at: "2026-06-03T10:00:03+00:00"
+        )]
+
+        try await actor.mergeReviewEvents(remote)
+        try await actor.clearUserData(reason: "test-clear")
+        try await actor.mergeReviewEvents(remote)
+
+        let context = ModelContext(container)
+        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
+        #expect(records.count == 1)
+        #expect(records.first?.word == "gamma")
     }
 
     @Test func clearUserData_removes_all_books() async throws {
