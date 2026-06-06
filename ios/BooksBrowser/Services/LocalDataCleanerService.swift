@@ -11,8 +11,12 @@ final class LocalDataCleanerService: LocalDataClearing {
             AppLog.sync.error("clearUserData failed: \(error.localizedDescription)")
         }
         let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "kg_last_incremental_sync")
-        defaults.removeObject(forKey: "kg_review_payload_version")
+        // 用 KGService.SyncKeys 常數，與 sync 路徑單一真相對齊（勿用 magic string）。
+        defaults.removeObject(forKey: KGService.SyncKeys.incrementalBoundary)
+        defaults.removeObject(forKey: KGService.SyncKeys.payloadVersion)
+        // 漏清會讓 account-switch 後 B 沿用 A 的 review-event pull cursor，
+        // incremental pull 可能漏抓 B 在該 cursor 之前的 review events。
+        defaults.removeObject(forKey: KGService.SyncKeys.reviewEventPullBoundary)
         defaults.removeObject(forKey: "activeNotebookId")
         defaults.removeObject(forKey: NotebookFilter.storageKey)
         // Today-review session snapshots are keyed per-user in a single
