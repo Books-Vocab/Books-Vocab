@@ -22,7 +22,7 @@
 ## 驗證
 
 - [ ] 跑過對應測試(backend `pytest` / iOS `ios_build.sh` / Chrome ext 等),貼上 Exit 0 證據
-- [ ] 跑過 `ops/docs_lint.sh` 日常 gate,registry + 本次 changed docs 無 ERROR
+- [ ] 跑過 `ops/docs_lint.sh` 日常 gate,registry + 本次 changed docs 無 ERROR,且已檢視 registry impact hints
 
 ## Notes
 

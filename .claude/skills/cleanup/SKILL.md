@@ -159,16 +159,15 @@ git branch -D <branch>
 
 ### 4a. 本批 doc-sync
 跳過條件：純樣板 / doc-only。否則合進的 code 變更照 `docs/sop/doc_sync.md` 路由同步。
-- 多數 PR 應已 doc-as-code 自帶 doc 改動。重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
-
 - 多數 PR 應已 doc-as-code 自帶 doc 改動。剩餘走 `(cd <wt> && ./ops/docs_lint.sh)` 日常 gate：
-  - 依 `docs/registry.yml` trigger 判斷本批 code 是否真的影響活文檔 → 改內容 + bump `verified_against` 到 main 可達 code commit。
+  - 檢視 registry impact hints,再依 `docs/registry.yml` trigger 判斷本批 code 是否真的影響活文檔 → 改內容 + bump `verified_against` 到 main 可達 code commit。
+  - 重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
   - 全 repo debt 盤點才跑 `./ops/docs_lint.sh --audit`;既有 invalid anchor / stale WARN 不阻塞本批 cleanup,除非是本批引入或本批觸發的文檔。
 - 派 doc-auditor 時用 `doc-auditor-prompt.md`；**agent 只分析、主 agent 統一 Edit**；要派會 commit 的就 `isolation: worktree`。
 - 完成 `docs:` commit（commit 無妨；push 見下）。
 
 ### 4b. Doc-debt 全清（`all` mode 必跑；其它 mode 至少跑並把無法當場清的列入報告）
-跑 `(cd <wt> && ./ops/docs_lint.sh)`，把**每一條** STALE / ERROR 清到 0（或縮到有記錄的 legitimate 豁免）。**這是 `all` 收斂終態的一部分，不是 best-effort。** 量大時派多個 doc-auditor agent（`model: opus`, `run_in_background: true`）平行審，但 **agent 只分析、主 agent 統一 Edit + 單一 `docs:` commit**（要派會自行 commit 的就 `isolation: worktree`）。逐條按 lint 訊號處置：
+跑 `(cd <wt> && ./ops/docs_lint.sh --audit)`，把**每一條** STALE / ERROR 清到 0（或縮到有記錄的 legitimate 豁免）。**這是 `all` 收斂終態的一部分，不是 best-effort。** 量大時派多個 doc-auditor agent（`model: opus`, `run_in_background: true`）平行審，但 **agent 只分析、主 agent 統一 Edit + 單一 `docs:` commit**（要派會自行 commit 的就 `isolation: worktree`）。逐條按 lint 訊號處置：
 
 | docs_lint 訊號 | 根因 | 處置 |
 |---|---|---|

@@ -19,10 +19,10 @@ verified_against: 81fa1e8f
 ## 步驟
 
 1. `git show <hash>` / `git diff <range>` 看實際改了什麼。
-2. 先讀 `docs/registry.yml`,把 diff 對應到 registry 的語意 trigger,再用下方**路由表**輔助判斷影響哪些 doc(可能 0 份 → 回報「無需同步」即收工)。
+2. 先讀 `docs/registry.yml`,必要時跑 `./ops/docs_impact.py --since <base>` 取得 path-hint 候選;再把 diff 對應到 registry 的語意 trigger,用下方**路由表**輔助判斷影響哪些 doc(可能 0 份 → 回報「無需同步」即收工)。impact hint 是提示,不是自動同步命令。
 3. 每份目標 doc:`grep` 舊命令/欄位/旗標/模組名清單,凡引用到被改掉的舊狀態 → 更新成新狀態。**不臆造**:找不到對應 doc 或拿不準就如實回報,別硬寫。
 4. **reference / contract / policy** 類活文檔:更新內容後把 frontmatter `verified_against` 改成被同步的**main 可達 code commit**(短 hash)。禁止寫只存在於 PR branch 的 ephemeral hash；若 PR 會 squash merge,merge 後用 squash commit hash 補同步,或在 PR 內保持舊 anchor 並明示 post-merge bump。
-5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,不會因既有全 repo doc debt 失敗。
+5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,並用 `docs_impact.py` 印出 registry impact hints 供 reviewer 檢查；impact hints 第一版 warn-only,不會因既有全 repo doc debt 失敗。
    需要全 repo 健康盤點時才跑 `./ops/docs_lint.sh --audit` 或 `--all`；audit 會暴露歷史 invalid anchor / stale debt,不得把既有 audit debt 當成本次 doc-sync 失敗。
 6. `git commit`,prefix `docs:`,訊息一句話講同步了什麼。結尾加:
    ```
@@ -46,7 +46,7 @@ verified_against: 81fa1e8f
 | user/agent-facing 介面(admin endpoint / CLI flag / 設定 schema) | 另 grep `.claude/skills/`、`docs/sop/`、`docs/runbook/` 凡引用舊清單一併更新 | — |
 | `lab/llm_eval/` 新增 prompt / dataset / judge / provider | `docs/reference/llm_eval.md` | reference |
 | eval CLI 新增 flag / subcommand / output format / scoring rule | `docs/reference/llm_eval.md` + `docs/sop/llm_eval.md` | reference + sop |
-| 文檔 workflow / registry / docs gate / audit 語意改變 | `docs/registry.yml` + `docs/sop/doc_sync.md` + `docs/reference/tech_index.md` + agent/PR template 引用點 | registry + sop + reference |
+| 文檔 workflow / registry / docs gate / impact detector / audit 語意改變 | `docs/registry.yml` + `docs/sop/doc_sync.md` + `docs/reference/tech_index.md` + agent/PR template 引用點 | registry + sop + reference |
 
 ## Tier 契約
 
