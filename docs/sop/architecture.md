@@ -5,11 +5,17 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: d0e9a0cb
+verified_against: e286e0fd
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
-BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝置端的 `SwiftData` 為唯一資訊來源 (Single Source of Truth)，並透過背景同步與遠端 Knowledge Graph (KG) 伺服器保持資料一致。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+BooksBrowser 採用**後端權威、離線優先**的資料架構。使用者可跨裝置、跨平台共享的 domain state 以後端 Knowledge Graph (KG) 伺服器為權威來源；iOS 的 `SwiftData` 是本機投影、離線 cache 與 outbox 執行基礎，不再是跨裝置的 Single Source of Truth。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+
+本機仍必須保存資料，因為核心場景包含離線閱讀、離線查詞、離線複習與低延遲 UI。但本機保存的語意分三類：
+
+- **Authoritative remote state**：後端 DB / object storage 是權威，client 只持有鏡像與 pending intent。
+- **Device cache**：可刪可重建的媒體、封面、subtitle、下載音訊、書籍檔案副本。
+- **Local-only ephemeral state**：單次 session、debug、尚未決定是否同步的 UI 暫態。
 
 **平台**：iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，`SUPPORTS_MACCATALYST`，非原生 macOS — 核心依賴 Readium 僅 iOS）
 
@@ -17,7 +23,34 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ---
 
-## 💾 核心資料模型: `VocabularyEntry` & `AuthManager`
+## 資料權威邊界
+
+| 資料類型 | 權威來源 | iOS 保存語意 | 備註 |
+|---|---|---|---|
+| 帳號 / session | Backend auth + Keychain token | Keychain session cache | 登出 / token invalidation 必須清本機 user-scoped projection |
+| Vocabulary card / graph links / notebook assignment | Backend card / graph / notebook stores | `VocabularyEntry` projection + outbox | 本地新增、刪除、hide/unhide 先 optimistic，再同步收斂 |
+| Review state | Backend card review fields | `VocabularyEntry` review fields projection | LWW 以 `last_reviewed_at` 判定 |
+| Review event log | Backend `review_events` append-only log | `ReviewRecord` projection | client UUID 冪等；日曆與每日明細讀事件鏡像 |
+| Notebook metadata | Backend `/api/notebooks/*` | `Notebook` projection + pending mutation | cover photo 本機 path 只是 device cache；遠端 cover 需另設 asset 權威 |
+| Podcast catalog | Backend podcast catalog / object storage | `PodcastSeries` / `PodcastEpisode` cache | 空 server list 不視為權威刪除，避免短暫 index 故障 mass tombstone |
+| Podcast progress | Backend `podcast_progress` LWW store | `PodcastProgress` projection | CloudKit 只能視為 legacy/過渡，不應再當跨裝置權威 |
+| Podcast follow | 目標為 backend user preference | 目前 `PodcastSeries.isFollowed` local preference | 多平台前需後端化，否則 web/Android 看不到 |
+| Book metadata / reading progress | 目標為 backend library store | 目前 `Book` 由 SwiftData CloudKit 保存 | 後端化時保存 metadata、locator、progress、preferred notebook；原始檔走 asset/object storage |
+| Book / podcast media files | Object storage 或本機匯入來源 | FileManager cache / download | 不塞 SQLite；可刪後重抓或要求重新下載 |
+| Reader / review / translation / appearance settings | 目標為 backend user config | 目前混用 UserDefaults + iCloud KVS | 多平台前需 typed server config；UserDefaults 只作啟動快取 |
+| UI filter / sort / session snapshot / debug URL | Local-only unless explicitly promoted | UserDefaults / memory | 不影響跨裝置資料完整性，可維持本機 |
+
+### 遷移原則
+
+- 後端化不是移除本機資料，而是把本機資料降級成 projection / cache / outbox。
+- 新增跨裝置 user-facing state 時，預設先設計後端權威 contract；只有明確 local-only 的 UI 暫態才可只放 `UserDefaults`。
+- CloudKit / iCloud KVS 不再作為新功能的跨裝置權威。既有使用處可分階段退場，退場前必須有後端 contract、資料 migration 與 rollback gate。
+- 書籍與音訊等大型資產走 object storage 或本機 cache；SQLite / SwiftData 只保存 metadata、進度與檔案索引。
+- 衝突解決必須寫成 contract：append-only event 用 client UUID 冪等，偏好設定與 progress 用 timestamp LWW，刪除/封存用 tombstone 或明確 bucket 收斂。
+
+---
+
+## 核心資料模型: `VocabularyEntry` & `AuthManager`
 
 ### 多帳戶認證架構
 
@@ -32,7 +65,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ### 生詞條目狀態管理
 
-閱讀器中所有的生詞、以及知識庫中所有的卡片，在手機端都統一對應到同一個 SwiftData Model: `VocabularyEntry`。
+閱讀器中所有的生詞、以及知識庫中所有的卡片，在手機端都統一對應到同一個 SwiftData Model: `VocabularyEntry`。`VocabularyEntry` 是後端 card state 的本機 projection，同時承載離線新增 / 刪除 outbox，不是跨裝置權威。
 我們透過 `syncStatus` 與 `actionType` 這兩個欄位來控制單字的狀態與流向。
 
 - `syncStatus` 已由 `VocabularySyncState` 封裝：`pending` / `synced` / `failed`
@@ -67,7 +100,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ## 雙向同步機制 (BackgroundSyncActor & KGService)
 
-App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動：
+App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動。同步的目標是讓本機 projection 收斂到後端權威狀態，並把離線期間產生的 pending intent 送上後端：
 
 1. **Push Review State** — 推送本地複習狀態（`review_count`、`next_review_date` 等），LWW 策略以 `last_reviewed_at` 判定
 2. **Push Review Events** — 推送完整複習事件（`event_id`、`card_id`、`word_snapshot`、`notebook_id`、`feedback`、`reviewed_at`、`created_at`），以 client UUID 冪等去重
