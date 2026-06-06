@@ -97,6 +97,9 @@ final class BookMetadataRepairService {
         }
 
         var changed = false
+        // 每個欄位獨立重檢 fallback：候選資格（needsRepair）是 title OR author 的或邏輯，
+        // 一本可能只因 author 不合格而入選、title 其實乾淨——此處重檢確保只覆蓋真正
+        // fallback 的欄位。刻意不與 needsRepair 的 OR 合併，勿在 refactor 時摺疊。
         if BookMetadataHeuristics.looksLikeFallbackTitle(book.title, fileName: book.epubFileName),
            BookMetadataHeuristics.isUsableExtractedTitle(extracted.title, fileName: book.epubFileName) {
             book.title = extracted.title.trimmingCharacters(in: .whitespacesAndNewlines)
