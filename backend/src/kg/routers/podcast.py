@@ -42,7 +42,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from email.utils import format_datetime
+from email.utils import formatdate
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -291,8 +291,8 @@ def _s3_static_headers(obj: dict, base_headers: dict[str, str] | None = None) ->
     if etag := obj.get("ETag"):
         headers["ETag"] = str(etag)
     if last_modified := obj.get("LastModified"):
-        if hasattr(last_modified, "utcoffset") and last_modified.utcoffset() is not None:
-            headers["Last-Modified"] = format_datetime(last_modified, usegmt=True)
+        if hasattr(last_modified, "timestamp"):
+            headers["Last-Modified"] = formatdate(last_modified.timestamp(), usegmt=True)
         else:
             headers["Last-Modified"] = str(last_modified)
     return headers

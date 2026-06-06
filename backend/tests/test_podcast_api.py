@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, tzinfo
 
 import pytest
 
@@ -363,6 +364,20 @@ def test_audio_format_cached_per_series_s3(monkeypatch, _clear_audio_fmt_cache):
 
 # ── Cover image endpoint (pipeline cover stage → <sid>/cover.png) ────────────
 
+
+class _BotocoreLikeUTC(tzinfo):
+    """Non-`datetime.timezone.utc` UTC tzinfo, mirroring botocore/dateutil."""
+
+    def utcoffset(self, dt):  # noqa: D401
+        return timedelta(0)
+
+    def dst(self, dt):  # noqa: D401
+        return timedelta(0)
+
+    def tzname(self, dt):  # noqa: D401
+        return "UTC"
+
+
 def test_cover_allows_guest_browse(podcast_api):
     """Covers are part of the public showcase — guests reach the handler
     (404 here only because no cover file exists), never a 401 auth wall."""
@@ -412,7 +427,7 @@ def test_cover_s3_streams_without_eager_body_read(monkeypatch):
                 "Body": body,
                 "ContentLength": len(payload),
                 "ETag": '"cover-etag"',
-                "LastModified": "Sat, 06 Jun 2026 00:00:00 GMT",
+                "LastModified": datetime(2026, 6, 6, 0, 0, 0, tzinfo=_BotocoreLikeUTC()),
             }
 
     monkeypatch.setattr(_podcast_mod, "_s3_client", lambda request: _FakeS3())
