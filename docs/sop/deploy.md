@@ -254,7 +254,7 @@ LLM 走可插拔 provider registry（`backend/src/kg/llm/providers.py`）。所�
 - `LLM_PROVIDER_JUDGE` 同時涵蓋 auto pipeline judge（call_type `judge`）與手動連結判定（call_type `judge_manual`）—— 兩者同屬 `JUDGE` group，一個旋鈕同步切換。
 - 遷移 DeepSeek：設 `DEEPSEEK_API_KEY` + `LLM_PROVIDER_DEFAULT=deepseek`（embedding 自動留 Gemini）。分階段可只設 `LLM_PROVIDER_TRANSLATE=deepseek` 先驗證。
 - 未知 provider 名、或把 `embed` 路由到無 embedding 能力的 provider → 啟動即 `ValueError`，不 silent fallback。
-- A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`（需對應 key）。
+- A/B / prompt / provider 品質比較：使用 `lab/llm_eval/` workbench（需對應 key）；`kg.llm.ab` 僅保留 deprecated shim。
 
 #### iOS env / Info.plist
 

@@ -85,6 +85,18 @@ class TestJudgeBatchScorer:
         assert result["confidence_range"] == 1.0
         assert result["reason_trad"] == 1.0
 
+    def test_list_with_non_dict_item_fails_schema(self):
+        scores = score_result(
+            "judge_batch",
+            [
+                {"word": "sloppy", "link": "contrasts_with", "confidence": 0.9, "reason": "相反"},
+                "junk",
+            ],
+            {},
+        )
+        assert scores["json_valid"] == 1.0
+        assert scores["schema_conform"] == 0.0
+
     def test_invalid_link(self):
         scorer = JudgeBatchScorer()
         parsed = [{"word": "x", "link": "invalid", "confidence": 0.5, "reason": "test"}]

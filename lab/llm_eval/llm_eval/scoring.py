@@ -35,19 +35,42 @@ _VALID_LINK_KINDS: set[str] = {"contrasts_with", "shares_usage", "not_applicable
 class Scorer(Protocol):
     """A scorer evaluates one parsed output and returns a dict of scores."""
 
-    def score(self, parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
         ...
 
 
 class JsonSchemaScorer:
     """Check JSON parseability and required keys."""
 
-    def __init__(self, required_keys: list[str]) -> None:
+    def __init__(self, required_keys: list[str], *, allow_list: bool = False) -> None:
         self.required_keys = required_keys
+        self.allow_list = allow_list
 
-    def score(self, parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
         result: dict[str, float] = {"json_valid": 1.0 if parsed else 0.0}
         if not parsed:
+            result["schema_conform"] = 0.0
+            return result
+        if isinstance(parsed, list):
+            if not self.allow_list:
+                result["schema_conform"] = 0.0
+                return result
+            if any(not isinstance(item, dict) for item in parsed):
+                result["schema_conform"] = 0.0
+                return result
+            items = [item for item in parsed if isinstance(item, dict)]
+            if not items:
+                result["schema_conform"] = 0.0
+                return result
+            missing = [
+                key
+                for item in items
+                for key in self.required_keys
+                if key not in item
+            ]
+            result["schema_conform"] = 1.0 if not missing else 0.0
+            return result
+        if not isinstance(parsed, dict):
             result["schema_conform"] = 0.0
             return result
         missing = [k for k in self.required_keys if k not in parsed]
@@ -58,9 +81,9 @@ class JsonSchemaScorer:
 class TranslateQualityScorer:
     """KG-specific translate_quick quality checks."""
 
-    def score(self, parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
         result: dict[str, float] = {}
-        if not parsed:
+        if not parsed or not isinstance(parsed, dict):
             result["trad_chinese"] = 0.0
             result["pos_correct"] = 0.0
             result["lemma_ok"] = 0.0
@@ -83,14 +106,31 @@ class TranslateQualityScorer:
         # Lemma sanity check (not a full dictionary validation — just heuristics)
         r_val = str(parsed.get("r", "")).strip()
         result["lemma_ok"] = _check_lemma(r_val, sample.get("word", ""))
+        result.update(_translate_gold_scores(parsed, sample))
 
         return result
+
+
+class ExplainQualityScorer:
+    """Deterministic human-gold checks for explanation outputs."""
+
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
+        if not parsed or not isinstance(parsed, dict):
+            return {}
+        if sample.get("gold_status") != "human_gold":
+            return {}
+        keywords = sample.get("gold_keywords") or []
+        if not keywords:
+            return {}
+        explanation = str(parsed.get("e", ""))
+        hits = sum(1 for kw in keywords if str(kw) in explanation)
+        return {"quality_keyword_coverage": hits / len(keywords)}
 
 
 class JudgeBatchScorer:
     """Judge batch output quality checks."""
 
-    def score(self, parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
         result: dict[str, float] = {}
         if not parsed or not isinstance(parsed, list):
             result["link_valid"] = 0.0
@@ -128,7 +168,7 @@ class JudgeBatchScorer:
 class EnrichScorer:
     """Enrichment output quality checks."""
 
-    def score(self, parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
+    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
         result: dict[str, float] = {}
         if not parsed or not isinstance(parsed, list):
             result["pos_valid"] = 0.0
@@ -178,20 +218,21 @@ _PROMPT_SCORERS: dict[str, list[Scorer]] = {
     ],
     "translate_explain": [
         JsonSchemaScorer(["e"]),
+        ExplainQualityScorer(),
     ],
     "judge_batch": [
-        JsonSchemaScorer(["word", "link", "confidence", "reason"]),
+        JsonSchemaScorer(["word", "link", "confidence", "reason"], allow_list=True),
         JudgeBatchScorer(),
     ],
     "judge_selective": [
-        JsonSchemaScorer(["word", "link", "confidence", "reason"]),
+        JsonSchemaScorer(["word", "link", "confidence", "reason"], allow_list=True),
         JudgeBatchScorer(),
     ],
     "judge_manual": [
         JsonSchemaScorer(["link", "confidence", "reason"]),
     ],
     "enrich": [
-        JsonSchemaScorer(["word", "pos", "note", "collocations", "meaning_fix"]),
+        JsonSchemaScorer(["word", "pos", "note", "collocations", "meaning_fix"], allow_list=True),
         EnrichScorer(),
     ],
 }
@@ -199,7 +240,7 @@ _PROMPT_SCORERS: dict[str, list[Scorer]] = {
 
 def score_result(
     prompt_name: str,
-    parsed: dict[str, Any] | None,
+    parsed: Any,
     sample: dict[str, Any],
 ) -> dict[str, float]:
     """Score a single result. Returns dict of check_name → 0.0/1.0 scores."""
@@ -211,6 +252,32 @@ def score_result(
     for scorer in scorers:
         scores.update(scorer.score(parsed or {}, sample))
     return scores
+
+
+def _translate_gold_scores(parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
+    if sample.get("gold_status") != "human_gold":
+        return {}
+    scores: dict[str, float] = {}
+    gold_translation = sample.get("gold_translation")
+    if gold_translation is not None:
+        scores["quality_translation_match"] = (
+            1.0 if _norm_text(parsed.get("t")) == _norm_text(gold_translation) else 0.0
+        )
+    gold_pos = sample.get("gold_pos")
+    if gold_pos is not None:
+        scores["quality_pos_match"] = (
+            1.0 if _norm_text(parsed.get("p")) == _norm_text(gold_pos) else 0.0
+        )
+    gold_root = sample.get("gold_root")
+    if gold_root is not None:
+        scores["quality_root_match"] = (
+            1.0 if _norm_text(parsed.get("r")) == _norm_text(gold_root) else 0.0
+        )
+    return scores
+
+
+def _norm_text(value: Any) -> str:
+    return str(value or "").strip().lower()
 
 
 def _contains_simplified(text: str) -> bool:
