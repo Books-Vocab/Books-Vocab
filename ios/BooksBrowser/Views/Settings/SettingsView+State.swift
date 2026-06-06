@@ -61,7 +61,9 @@ extension SettingsView {
                 selectedAppearance: appearanceStore.selection.titleKey,
                 translationSource: coordinator.translationSourceLang.nativeName,
                 translationTarget: coordinator.translationTargetLang.nativeName,
-                selectedReviewMode: reviewSettingsStore.settings.mode.displayName,
+                selectedReviewMode: SettingsPresenterState.PreferencesSection.reviewModeDisplayName(
+                    for: reviewSettingsStore.settings
+                ),
                 autoSyncEnabled: autoSyncSettingsStore.isEnabled,
                 showAutoSync: authManager.isLoggedIn
             ),
