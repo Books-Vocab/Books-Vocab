@@ -40,6 +40,32 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化
 | Reader / review / translation / appearance settings | 目標為 backend user config | 目前混用 UserDefaults + iCloud KVS | 多平台前需 typed server config；UserDefaults 只作啟動快取 |
 | UI filter / sort / session snapshot / debug URL | Local-only unless explicitly promoted | UserDefaults / memory | 不影響跨裝置資料完整性，可維持本機 |
 
+### Current storage audit（2026-06）
+
+本表是目前 codebase 的實際持久化盤點，不是目標狀態。掃描來源：`AppBootstrap.fullModelTypes` / `ModelConfiguration`、iOS `UserDefaults` / `CloudPreferencesSync` / `FileManager` 使用點、後端 routers / API models / stores。
+
+| Surface | 目前存放 | 後端整合狀態 | 缺口 |
+|---|---|---|---|
+| `VocabularyEntry` 詞卡、review state、graph links | iOS `LocalStore` projection；backend `cards.db` / per-notebook graph stores | **已後端權威化**，仍保留 iOS outbox/cache | `edit` 狀態仍需完整 contract；iOS 本機 projection 不可誤當 SoT |
+| `ReviewRecord` 複習事件 | iOS `LocalStore` projection；backend `review_events` append-only log | **已後端權威化** | 需持續保證 client UUID 冪等與刪卡後事件保留 |
+| `Notebook` metadata | iOS `LocalStore` projection；backend `/api/notebooks/*` + `notebooks.db` | **大致後端權威化** | 自訂 cover photo 仍是本機 file path；遠端 cover asset 尚未成為權威 |
+| `PodcastSeries` / `PodcastEpisode` catalog | iOS `LocalStore` cache；backend `/api/podcasts*` + object storage metadata | **catalog 已後端權威化** | `PodcastSeries.isFollowed` 仍是本機欄位 |
+| `PodcastProgress` | iOS `CloudStore` CloudKit；backend `podcast_progress.db` LWW | **後端已有權威面，但 iOS 仍未退 CloudKit** | 需要補推/觀測/再 local-only 退場，不能一步刪 CloudKit |
+| `Book` metadata / reading progress | iOS `CloudStore` CloudKit `Book` | **未後端化** | 無 backend library API、無 `remoteBookId`、無 position outbox |
+| Book 原始檔 / converted EPUB / originals | iCloud container `Documents/Books` 或 local `Documents/Books` / `Originals` | **未後端化** | 無 object storage asset manifest、upload/download/quota/privacy policy |
+| Reader settings | `ReaderSettings` UserDefaults + iCloud KVS | **未後端化** | font/size/line-height/scroll/underline 尚無 server config domain |
+| Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation` | **部分後端化** | backend response 缺 `updated_at`，所以 server LWW 尚未真正啟用 |
+| Review settings / pause review clock | `ReviewSettingsStore` UserDefaults | **未後端化** | pause/resume 跨裝置會漂移 |
+| App language / appearance | UserDefaults + iCloud KVS | **未後端化** | web/Android 不會共享；`.system` selection 需 server contract |
+| Active notebook / notebook filter / sort | `activeNotebookId`、`NotebookFilter`、`NotebookSortOption` UserDefaults / `@AppStorage` | **未後端化或 local-only 未定義** | `activeNotebookId` 影響新增詞歸屬，若要跨平台需 `vocab_ui.updated_at` |
+| Review session snapshots | UserDefaults | **local-only** | 可保留本機；不應納入後端權威，除非要跨裝置續答 |
+| Podcast downloads / covers | `Documents/podcast-downloads`、`Documents/podcast-covers` | **device cache** | 登出清理已存在；不應後端化為 DB state |
+| Notebook cover photo files | `Documents/notebook-covers` path | **未後端化 asset** | 需要 cover asset contract，否則多裝置看不到自訂圖 |
+| Auth session | Keychain token + UserDefaults profile；backend auth/user store | **正確分層** | token 不應進一般 user config；Keychain 為 device credential cache |
+| Debug server URL / welcome seen / auto-sync threshold | UserDefaults | **local-only** | 可維持本機，不需要後端化 |
+
+結論：目前不是「全面整合到後端」。已整合的核心是詞卡 / graph / notebook / review events / podcast catalog / podcast progress backend 面；尚未整合的是書庫、書檔 asset、多數偏好設定、podcast follow、部分 UI state 與 cover assets。後續 rollout 應優先處理會影響跨裝置語意的資料；純 device cache / debug / session snapshot 不需要後端化。
+
 ### 遷移原則
 
 - 後端化不是移除本機資料，而是把本機資料降級成 projection / cache / outbox。
