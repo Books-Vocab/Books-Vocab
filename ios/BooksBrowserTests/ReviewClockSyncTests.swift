@@ -142,4 +142,18 @@ struct ReviewSettingsStorePauseSyncTests {
         // cold-start 不回寫 iCloud
         #expect(cloud.double(forKey: "review_settings_progress_updated_at") == nil)
     }
+
+    @Test func restorePauseStateNilSnapshotClearsTimestampWithSentinel() {
+        let defaults = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        var s = store.settings
+        s.pauseProgress(at: Date(timeIntervalSince1970: 1000)); store.update(s)
+        // rollback 到「從未寫過」(updatedAt=nil):清本地時戳 + cloud 寫 0 sentinel,
+        // 讓他裝置的真寫(ts>0)經 LWW 勝出。
+        store.restorePauseState(PauseClockState(isPaused: false, pausedAt: nil, updatedAt: nil))
+        #expect(store.settings.isProgressPaused == false)
+        #expect(defaults.object(forKey: "review_settings_progress_updated_at") == nil)
+        #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 0.0)
+    }
 }

@@ -55,7 +55,7 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化
 | Book 原始檔 / converted EPUB / originals | iCloud container `Documents/Books` 或 local `Documents/Books` / `Originals` | **未後端化** | 無 object storage asset manifest、upload/download/quota/privacy policy |
 | Reader settings | `ReaderSettings` UserDefaults + iCloud KVS | **未後端化** | font/size/line-height/scroll/underline 尚無 server config domain |
 | Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation` | **部分後端化** | backend response 缺 `updated_at`，所以 server LWW 尚未真正啟用 |
-| Review settings / pause review clock | `ReviewSettingsStore` UserDefaults | **未後端化** | pause/resume 跨裝置會漂移 |
+| Review settings / pause review clock | `ReviewSettingsStore` UserDefaults + iCloud KVS；backend `/api/user/config.review_clock` | **pause clock 部分後端化**（三層 + updatedAt LWW + server cold-start wins；mode/SRS params 仍未後端化） | 對標 translation：backend 真 LWW 待 `serverReviewClockLwwEnabled`，現以 iCloud KVS 為跨裝置權威 |
 | App language / appearance | UserDefaults + iCloud KVS | **未後端化** | web/Android 不會共享；`.system` selection 需 server contract |
 | Active notebook / notebook filter / sort | `activeNotebookId`、`NotebookFilter`、`NotebookSortOption` UserDefaults / `@AppStorage` | **未後端化或 local-only 未定義** | `activeNotebookId` 影響新增詞歸屬，若要跨平台需 `vocab_ui.updated_at` |
 | Review session snapshots | UserDefaults | **local-only** | 可保留本機；不應納入後端權威，除非要跨裝置續答 |
@@ -82,7 +82,7 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化
 |---|---|---|---|
 | `translation` | `source_lang`、`target_lang`、`updated_at` | `TranslationLanguage` + iCloud KVS；後端已保存語言但缺 timestamp LWW | `updated_at` LWW；遠端失敗 rollback 本機 |
 | `reader` | `font`、`font_size`、`line_height`、`scroll_mode`、`underline_opacity`、`updated_at` | `ReaderSettings` UserDefaults + iCloud KVS | 整個 reader object LWW；debug hit-testing 不同步 |
-| `review` | `mode`、custom intervals、`progress_paused`、`progress_paused_at`、`updated_at` | `ReviewSettingsStore` UserDefaults | LWW；pause/resume 必須跨裝置一致，避免 due/reviewed 計算漂移 |
+| `review` | `mode`、custom intervals、`progress_paused`、`progress_paused_at`、`updated_at` | `ReviewSettingsStore` UserDefaults；**pause(`review_clock`)已上 iCloud KVS + backend `/api/user/config`**，mode/intervals 仍 UserDefaults | LWW；pause/resume 必須跨裝置一致，避免 due/reviewed 計算漂移（pause 已落地） |
 | `appearance` | `mode`、`updated_at` | `AppAppearanceStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 mode，不保存 resolved value |
 | `language` | `app_language`、`updated_at` | `AppLanguageStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 selection，不保存系統解析結果 |
 | `podcast` | `followed_series_ids`、`updated_at` | `PodcastSeries.isFollowed` local SwiftData | LWW 或 per-series timestamp；server list 用於排序與 cross-platform follow |
