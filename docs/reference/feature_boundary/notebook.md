@@ -8,7 +8,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: f576134d
+verified_against: e98de859
 -->
 # Notebook Feature Boundary
 
@@ -31,7 +31,7 @@ verified_against: f576134d
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Components/NotebookCard.swift` | 437 | `struct NotebookCard: View` — **HStack book-row,固定 72pt 高**(取代舊 VStack `EditorialCoverComposition` overlay 設計)。**Mochi Phase 3:整卡外框 stroke 已移除**(北極星二 border 退場),靠 `cardBackground` vs `pageBackground` 色差 + 卡片間留白分區。Cover 40% 寬左欄:`coverColor` 底 + 統一 noise pattern (opacity 0.04) + 可選 `NotebookCoverPattern` 疊層 + serif italic name `AppFonts.serif(size: 17, bold: true).italic()` 左上 + active 5pt 圓點(`NotebookPalette.darken(cover, by: 0.5)`,取代舊 3pt spine / 「使用中」pill)+ 1pt editorial rule(寬 cover×0.3,同 darken 0.5)。0.5pt 垂直 `cardBorder` rule 切隔(書背隱喻內部結構,保留)。Metadata 右欄:`N 詞` monoLabel + (dueCount > 0) 5pt warning 圓點 + count + `ProgressCapsule`(4pt, fillColor=coverColor);`cardCount == 0` 顯示「尚未加入單字」placeholder。**Dark mode**: `coverColor` 自動套 `NotebookPalette.darken(_, by: 0.55)`(contrast test 鎖)。內含 `struct NotebookCardActions`(line 8,context menu callbacks)與 `struct NotebookCardData`(line 29,view data)為同檔 inline struct,非獨立檔。 |
+| `Components/NotebookCard.swift` | 437 | `struct NotebookCard: View` — **HStack book-row,固定 72pt 高**(取代舊 VStack `EditorialCoverComposition` overlay 設計)。**Mochi Phase 3:整卡外框 stroke 已移除**(北極星二 border 退場),靠 `cardBackground` vs `pageBackground` 色差 + 卡片間留白分區。Cover 40% 寬左欄:`coverColor` 底 + 統一 noise pattern (opacity 0.04) + 可選 `NotebookCoverPattern` 疊層 + serif italic name `AppFonts.serif(size: 17, bold: true).italic()` 左上 + active 5pt 圓點(`NotebookPalette.darken(cover, by: 0.5)`,取代舊 3pt spine / 「使用中」pill)+ 1pt editorial rule(寬 cover×0.3,同 darken 0.5)。0.5pt 垂直 `cardBorder` rule 切隔(書背隱喻內部結構,保留)。Metadata 右欄:`N 詞` monoLabel + (`actionableCount = dueCount + unlearnedCount` > 0) 5pt warning 圓點 + count(與「今日複習」入口徽章同口徑:到期複習 + 未學新卡,#863) + `ProgressCapsule`(4pt, fillColor=coverColor);`cardCount == 0` 顯示「尚未加入單字」placeholder。**Dark mode**: `coverColor` 自動套 `NotebookPalette.darken(_, by: 0.55)`(contrast test 鎖)。內含 `struct NotebookCardActions`(line 8,context menu callbacks)與 `struct NotebookCardData`(line 29,view data)為同檔 inline struct,非獨立檔。 |
 | `Components/NotebookStackedCoverView.swift` | ~155 | Editorial 立體堆卡。**新增 `showsName: Bool = true` 透傳至內層 `NotebookCoverView`** — NotebookCard 套 editorial overlay 時傳 false 避免雙層 name。其餘維持:彩色封面 + cream 紙頁三階 ghost,deterministic rotation + dx jitter,`NotebookDeckButtonStyle` press env。 |
 | `Components/NotebookStackMetrics.swift` | ~105 | 立體堆卡 token 集中地。**新增 `patternOpacity: Double = 0.12`** — `NotebookCoverPatterns` 6 種 pattern 統一引此 token(noise 例外,保動態公式)。其餘維持 `layerCount` / offsets / rotations / `stableSeed` / `ghostPaperColor`。 |
 | `Components/NotebookCoverPatterns.swift` | ~200 | 6 種 SwiftUI Canvas pattern 渲染(dots / lines / grid / waves / circles / noise)+ `NotebookCoverView`(頂層封面實體 view)。**新增 `showsName: Bool = true`** — gate 中央白字 name 渲染。5 處非 NotebookCard callsite(Bookshelf / Podcast / EditSheet / StackedCoverView / #Preview)default true zero-touch。pattern stroke/fill opacity 統一引 `NotebookStackMetrics.patternOpacity`。 |
