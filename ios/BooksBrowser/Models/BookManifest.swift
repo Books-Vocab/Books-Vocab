@@ -91,6 +91,17 @@ struct BookManifestStore {
         return try Self.decoder.decode(BookManifest.self, from: data)
     }
 
+    func readAll() -> [BookManifest] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: metadataDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+
+        return files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { try? Self.decoder.decode(BookManifest.self, from: Data(contentsOf: $0)) }
+    }
+
     func delete(bookId: UUID) {
         try? FileManager.default.removeItem(at: url(for: bookId))
     }
