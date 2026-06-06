@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 3362d3d4
+verified_against: bb6cc801
 -->
 # Technical Reference Index
 
@@ -47,7 +47,7 @@ verified_against: 3362d3d4
 | `token_tracker.py` | `token_usage` | LLM token / cost,provider-aware |
 | `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄；落 DB 前遮罩 bearer/API key/token/password/secret-like 值 |
 | `podcast_progress.py` | `podcast_progress` | per-user 播客 LWW 進度 |
-| `review_events.py` | `review_events` | per-user 複習事件 append-only log；`event_id` 為 client UUID 冪等主鍵，供 iOS 月曆與每日明細跨裝置同步 |
+| `review_events.py` | `review_events` | per-user 複習事件 append-only log；`event_id` 為 client UUID 冪等主鍵，供 iOS 月曆與每日明細跨裝置同步。pull 以 server 端單調遞增 `ingested_at` 為 cursor watermark（回應含 `cursor` 欄位），用 ingestion 序而非 `reviewed_at`，避免遲到事件漏拉 |
 | `admin_audit.py` | `admin_audit_log` | grant/revoke 等管理員操作 |
 | `app_store.py` | app store receipts | 訂閱收據 |
 | `secret_store.py` | secrets | 加密憑證 |
