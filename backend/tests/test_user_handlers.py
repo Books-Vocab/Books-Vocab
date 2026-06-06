@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from kg.api_models import (
     ReviewClockConfig,
+    ReviewModeConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
 )
@@ -146,6 +147,125 @@ class TestUpdateUserConfigReviewClockRoundTrip:
         assert resp.review_clock.is_paused is True
         assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
         assert store["u1"]["config"]["review_clock"]["is_paused"] is True
+
+
+class TestMergeUserConfigReviewMode:
+    """review_mode 後端化:複習模式 + 自訂 SRS 參數(mode + 5 custom_* 複合,單一
+    updated_at 驅動 LWW)。custom 值即使非 custom 模式仍保存;非法 mode 正規化為 relaxed。"""
+
+    def test_merge_custom(self):
+        config = {}
+        req = UserConfigRequest(
+            review_mode=ReviewModeConfig(
+                mode="custom",
+                custom_initial_interval_hours=10.0,
+                custom_remembered_multiplier=2.2,
+                custom_forgot_multiplier=0.4,
+                custom_minimum_interval_hours=5.0,
+                custom_maximum_interval_hours=2000.0,
+                updated_at=1717668000.0,
+            )
+        )
+        _merge_user_config(config, req)
+        assert config["review_mode"] == {
+            "mode": "custom",
+            "custom_initial_interval_hours": 10.0,
+            "custom_remembered_multiplier": 2.2,
+            "custom_forgot_multiplier": 0.4,
+            "custom_minimum_interval_hours": 5.0,
+            "custom_maximum_interval_hours": 2000.0,
+            "updated_at": 1717668000.0,
+        }
+
+    def test_invalid_mode_normalized_to_relaxed(self):
+        # 非法 mode 由 validator 正規化,避免儲存層留下 client 不認得的值。
+        config = {}
+        req = UserConfigRequest(review_mode=ReviewModeConfig(mode="garbage", updated_at=1.0))
+        _merge_user_config(config, req)
+        assert config["review_mode"]["mode"] == "relaxed"
+
+    def test_none_preserves_existing(self):
+        existing = {
+            "mode": "intensive",
+            "custom_initial_interval_hours": 8.0,
+            "custom_remembered_multiplier": 1.5,
+            "custom_forgot_multiplier": 0.4,
+            "custom_minimum_interval_hours": 4.0,
+            "custom_maximum_interval_hours": 1440.0,
+            "updated_at": 1.0,
+        }
+        config = {"review_mode": dict(existing)}
+        _merge_user_config(config, UserConfigRequest(review_mode=None))
+        assert config["review_mode"] == existing
+
+    def test_independent_of_other_config(self):
+        config = {}
+        req = UserConfigRequest(
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ja"),
+            review_clock=ReviewClockConfig(
+                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=2.0
+            ),
+            review_mode=ReviewModeConfig(mode="intensive", updated_at=3.0),
+        )
+        _merge_user_config(config, req)
+        assert config["translation"]["target_lang"] == "ja"
+        assert config["review_clock"]["is_paused"] is True
+        assert config["review_mode"]["mode"] == "intensive"
+
+
+class TestBuildUserConfigReviewMode:
+
+    def test_build_includes_review_mode(self):
+        config = {"review_mode": {
+            "mode": "custom",
+            "custom_initial_interval_hours": 10.0,
+            "custom_remembered_multiplier": 2.2,
+            "custom_forgot_multiplier": 0.4,
+            "custom_minimum_interval_hours": 5.0,
+            "custom_maximum_interval_hours": 2000.0,
+            "updated_at": 3.0,
+        }}
+        resp = _build_user_config_response(config)
+        assert resp.review_mode is not None
+        assert resp.review_mode.mode == "custom"
+        assert resp.review_mode.custom_initial_interval_hours == 10.0
+        assert resp.review_mode.custom_maximum_interval_hours == 2000.0
+        assert resp.review_mode.updated_at == 3.0
+
+    def test_build_defaults_when_absent(self):
+        resp = _build_user_config_response({})
+        assert resp.review_mode is not None
+        assert resp.review_mode.mode == "relaxed"
+        assert resp.review_mode.custom_initial_interval_hours == 12
+        assert resp.review_mode.updated_at is None
+
+
+class TestUpdateUserConfigReviewModeRoundTrip:
+
+    def test_persists_review_mode_alongside_translation(self, tmp_path):
+        import copy
+
+        store = {"u1": {"config": {"translation": {"source_lang": "en", "target_lang": "ja"}}}}
+
+        def load_users():
+            return copy.deepcopy(store)
+
+        def save_users(updated):
+            store.clear()
+            store.update(copy.deepcopy(updated))
+
+        req = UserConfigRequest(
+            review_mode=ReviewModeConfig(mode="intensive", updated_at=5.0)
+        )
+        resp = update_user_config_response(
+            req, {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+        assert resp.review_mode.mode == "intensive"
+        assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
+        assert store["u1"]["config"]["review_mode"]["mode"] == "intensive"
 
 
 # ===========================================================================

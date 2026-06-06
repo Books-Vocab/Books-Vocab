@@ -17,6 +17,7 @@ from .api_models import (
     EntitlementsResponse,
     HealthResponse,
     ReviewClockConfig,
+    ReviewModeConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
@@ -43,9 +44,24 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     else:
         review_clock = ReviewClockConfig()
 
+    mode_data = config.get("review_mode")
+    if isinstance(mode_data, dict):
+        review_mode = ReviewModeConfig(
+            mode=mode_data.get("mode", "relaxed"),
+            custom_initial_interval_hours=mode_data.get("custom_initial_interval_hours", 12),
+            custom_remembered_multiplier=mode_data.get("custom_remembered_multiplier", 1.9),
+            custom_forgot_multiplier=mode_data.get("custom_forgot_multiplier", 0.45),
+            custom_minimum_interval_hours=mode_data.get("custom_minimum_interval_hours", 6),
+            custom_maximum_interval_hours=mode_data.get("custom_maximum_interval_hours", 1440),
+            updated_at=mode_data.get("updated_at"),
+        )
+    else:
+        review_mode = ReviewModeConfig()
+
     return UserConfigResponse(
         translation=translation,
         review_clock=review_clock,
+        review_mode=review_mode,
     )
 
 
@@ -64,6 +80,19 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
             "is_paused": rc.is_paused,
             "paused_at": rc.paused_at,
             "updated_at": rc.updated_at,
+        }
+    # Review mode + 自訂 SRS 參數。複合原子(mode + 5 custom_* 共用單一 updated_at);
+    # 非法 mode 已由 ReviewModeConfig validator 正規化。只在 client 有送時更新(None = 不動既有)。
+    if req.review_mode is not None:
+        rm = req.review_mode
+        config["review_mode"] = {
+            "mode": rm.mode,
+            "custom_initial_interval_hours": rm.custom_initial_interval_hours,
+            "custom_remembered_multiplier": rm.custom_remembered_multiplier,
+            "custom_forgot_multiplier": rm.custom_forgot_multiplier,
+            "custom_minimum_interval_hours": rm.custom_minimum_interval_hours,
+            "custom_maximum_interval_hours": rm.custom_maximum_interval_hours,
+            "updated_at": rm.updated_at,
         }
 
 
