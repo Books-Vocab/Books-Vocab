@@ -50,6 +50,7 @@
 "sync.failure.operation.pull" = "単語のダウンロード";
 "sync.failure.operation.pullReviewEvents" = "復習履歴のダウンロード";
 "sync.failure.operation.generic" = "同期";
+"sync.failure.message" = "%@に失敗しました：%@";
 "sync.failure.reason.authExpired" = "ログインの有効期限が切れました";
 "sync.failure.reason.offline" = "インターネット接続がありません";
 "sync.failure.reason.timeout" = "ネットワークがタイムアウトしました";

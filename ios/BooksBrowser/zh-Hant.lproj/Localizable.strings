@@ -50,6 +50,7 @@
 "sync.failure.operation.pull" = "單字下載";
 "sync.failure.operation.pullReviewEvents" = "複習紀錄下載";
 "sync.failure.operation.generic" = "同步";
+"sync.failure.message" = "%@失敗：%@";
 "sync.failure.reason.authExpired" = "登入已過期";
 "sync.failure.reason.offline" = "目前沒有網路連線";
 "sync.failure.reason.timeout" = "網路逾時";
