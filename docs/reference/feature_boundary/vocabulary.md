@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: 3f14c595
+verified_against: 8aaece8d
 -->
 # Vocabulary Feature Boundary
 
@@ -47,16 +47,16 @@ verified_against: 3f14c595
 | `Scenes/SyncPresenter+Preview.swift` | 290 | 同步 preview 資料 |
 | `Scenes/StatsPresenter.swift` | 520 | 統計畫面佈局；forecast 與 graph thumbnail 使用 review pause reference date |
 | `Scenes/ReviewCalendarPresenter.swift` | 255 | 複習日曆佈局 |
-| `Scenes/TodayReviewPresenter.swift` | 306 | 今日複習主佈局 |
-| `Scenes/TodayReviewPresenter+CardContent.swift` | 282 | 卡片內容 extension |
-| `Scenes/TodayReviewPresenter+Toolbar.swift` | 415 | toolbar extension |
+| `Scenes/TodayReviewPresenter.swift` | 336 | 今日複習主佈局；翻卡路徑含 `PerfLog` render/layout tick，autoplay 答案揭露後朗讀 |
+| `Scenes/TodayReviewPresenter+CardContent.swift` | 293 | 卡片內容 extension；翻卡 front/back surface 與 radius 計算含 `PerfLog` instrumentation |
+| `Scenes/TodayReviewPresenter+Toolbar.swift` | 457 | toolbar extension；autoplay controls 含聲音開關 |
 
 ### State Layer（狀態定義）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/TodayReviewState.swift` | 525 | `@Observable @MainActor final class TodayReviewState`，複習狀態機 |
-| `Presentation/ReviewSessionStore.swift` | 35 | `struct ReviewSessionStore`，複習 session 快照 |
+| `Scenes/TodayReviewState.swift` | 551 | `@Observable @MainActor final class TodayReviewState`，複習狀態機；恢復 per-user shuffle order、洗牌後同步 session snapshot |
+| `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
 
 ### Presentation Models（UI 資料轉換）
 
@@ -77,10 +77,10 @@ verified_against: 3f14c595
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
-| `Scenes/TodayReviewView.swift` | 481 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
+| `Scenes/TodayReviewView.swift` | 493 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
 | `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
-| `Scenes/TodayReviewPreviewData.swift` | 236 | preview 資料 |
+| `Scenes/TodayReviewPreviewData.swift` | 253 | preview 資料 |
 | `Scenes/TodayReviewMetrics.swift` | 103 | TodayReview feature-local 版面 metrics(`static let`,~44 個) |
 | `Scenes/TodayReviewSessionSnapshotStore.swift` | 122 | `TodayReviewState` session snapshot 持久化 |
 | `Scenes/ReviewFoldSurface.swift` | 108 | `struct ReviewFoldSurface` + `ReviewFoldChevronPill` |
@@ -107,8 +107,8 @@ verified_against: 3f14c595
 | `Components/VocabSceneShell.swift` | 157 | `VocabSceneShell<Content>` + `VocabScenePhase`,統一 vocabulary 四態容器(loading / loadingSkeleton / empty / error / content)；error phase 可帶 description，retry action 維持 owner 注入 |
 | `Components/WordRow.swift` | 254 | `struct WordRow: View`（Phase 2 起 lineLimit + truncationMode + fixedSize + monospacedDigit 套到 word/pos/translation/book/trailing/status，邊界 case 由 `Debug/Scenarios/NotebookDetailScenarios.swift` 鎖住） |
 | `Components/VocabReviewBanner.swift` | 159 | `struct VocabReviewBanner<FilterContent>: View`。完整 hero CTA(cardBackground + title + stats + button)，**僅** NotebookListView 使用作為 primary entry point。VocabularyListView 詳情頁不再渲染此 banner — CTA 改走 `VocabReviewCTAPill` 內嵌於 chip+sort 列。 |
-| `Components/CardDocumentView.swift` | 509 | card document 主 View |
-| `Components/CardRichTextRenderer.swift` | 414 | rich text renderer |
+| `Components/CardDocumentView.swift` | 486 | card document 主 View；重型 card document render path 含 `PerfLog` tick |
+| `Components/CardRichTextRenderer.swift` | 418 | rich text renderer；render path 含 `PerfLog` tick |
 | `Components/CardSections.swift` | 298 | card 各 section 元件 |
 | `Components/CardDocumentBuilder.swift` | 92 | `CardDocument` builder |
 | `Components/CardDocumentModels.swift` | 178 | `CardDocument` / `CardDocumentBlock` 等 data model |

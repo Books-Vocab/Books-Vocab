@@ -69,6 +69,8 @@ final class TodayReviewState {
         let ordered = ReviewSessionStore.loadOrder(
             availableEntries: entries,
             userID: currentUserID,
+            // Today Review restores an unfinished queue even if sync added or removed cards
+            // since the shuffle was saved; new cards are appended and missing cards filtered.
             allowPartialQueue: true
         ) ?? entries
         let restored = ReviewSessionPersistence.restoreSnapshotIfPossible(
