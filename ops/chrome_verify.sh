@@ -38,7 +38,7 @@ echo "▸ Layer 1: static integrity"
 node tools/static.mjs
 
 echo "▸ Layer 2: unit tests"
-node --test --test-reporter=dot shared/*.test.js background.test.mjs
+node --test --test-reporter=dot shared/*.test.js content/*.test.js background.test.mjs
 
 if [ "$STATIC_ONLY" -eq 1 ]; then
   echo "▸ Layer 3: skipped (--static-only)"
