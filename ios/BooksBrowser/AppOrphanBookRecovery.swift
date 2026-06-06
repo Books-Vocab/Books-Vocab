@@ -18,7 +18,7 @@ enum AppOrphanBookRecovery {
                 context: ModelContext(container),
                 allowBareFileRecovery: allowBareFileRecovery
             )
-            AppLog.app.info("recoverOrphanBooks: recovered=\(result.recoveredRows), manifests=\(result.writtenManifests), duplicatesRemoved=\(result.duplicateRowsRemoved)")
+            AppLog.app.info("recoverOrphanBooks: recovered=\(result.recoveredRows), manifests=\(result.writtenManifests), duplicatesRemoved=\(result.duplicateRowsRemoved), updated=\(result.updatedRows)")
         } catch {
             AppLog.app.error("recoverOrphanBooks: reconcile failed: \(error.localizedDescription)")
         }
