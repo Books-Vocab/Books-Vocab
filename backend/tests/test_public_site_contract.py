@@ -13,6 +13,12 @@ PUBLIC_PAGES = [
     ROOT / "terms.html",
 ]
 APP_STORE_URL = "https://apps.apple.com/app/id6759816274"
+SCREENSHOT_FILES = [
+    "iphone-reader.png",
+    "iphone-vocab-list.png",
+    "iphone-review-card.png",
+    "iphone-knowledge-graph.png",
+]
 
 
 def _read(path: Path) -> str:
@@ -38,6 +44,21 @@ def test_landing_first_viewport_names_the_product_and_real_surfaces() -> None:
     assert "單字本" in html
     assert "Podcast" in html
     assert "Chrome" in html
+
+
+def test_landing_uses_real_iphone_product_screenshots() -> None:
+    html = _read(ROOT / "index.html")
+    first_viewport = html.split('class="how-it-works', 1)[0]
+    assert 'class="hero__visual"' in first_viewport
+    assert "內容為示意圖" not in first_viewport
+    assert "device__frame" not in first_viewport
+    for filename in SCREENSHOT_FILES[:3]:
+        assert f"/static/img/screenshots/{filename}" in first_viewport
+
+    assert 'class="product-screens' in html
+    for filename in SCREENSHOT_FILES:
+        assert f"/static/img/screenshots/{filename}" in html
+        assert (ROOT / "static" / "img" / "screenshots" / filename).is_file()
 
 
 def test_guide_matches_current_ios_surface() -> None:
