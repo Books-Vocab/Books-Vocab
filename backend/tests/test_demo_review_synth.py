@@ -168,3 +168,96 @@ def test_re_synth_and_repush_is_idempotent(tmp_path):
     assert first["inserted"] == 6
     assert second["inserted"] == 0      # 重跑全被 event_id 去重
     assert second["skipped"] == 6
+
+
+# ── review 補強:naive 輸入 / 壓縮相異性 / 退化 / streak 語意 / sentinel ──
+
+
+def test_naive_timestamps_are_normalized_and_accepted_by_store(tmp_path):
+    """來源 cards.db 存 naive timestamp;合成必須產出 tz-aware ISO 並能寫進 store。"""
+    naive_last = datetime(2026, 6, 2, 16, 0)            # 無 tzinfo(模擬 sqlite 讀出)
+    naive_created = datetime(2026, 3, 1, 8, 0)
+    events = synthesize_review_events(
+        _state(review_count=5, last_reviewed_at=naive_last, created_at=naive_created)
+    )
+    for e in events:
+        ts = datetime.fromisoformat(e.reviewed_at)
+        assert ts.tzinfo is not None
+        assert datetime.fromisoformat(e.created_at).tzinfo is not None
+    # 真正寫進 store(會跑 _parse_required_timestamp 的 tz-aware 驗證)
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    res = push_review_events(events, event_store=store)
+    assert res["inserted"] == 5
+
+
+def test_mixed_naive_aware_does_not_raise():
+    # naive created + aware last:不可 TypeError(相減前已正規化)。
+    events = synthesize_review_events(
+        _state(review_count=4,
+               last_reviewed_at=datetime(2026, 6, 2, 16, 0, tzinfo=UTC),
+               created_at=datetime(2026, 3, 1, 8, 0))
+    )
+    assert len(events) == 4
+
+
+def test_heavy_compression_keeps_all_events_distinct_and_monotonic():
+    # 大 N + 極窄視窗 + 大 interval:仍須 N 筆相異、嚴格遞增、末筆錨定。
+    last = datetime(2026, 6, 2, 16, 0, tzinfo=UTC)
+    created = last - timedelta(minutes=33)
+    events = synthesize_review_events(
+        _state(review_count=50, last_reviewed_at=last, created_at=created,
+               review_interval_hours=1_000_000.0, card_id="dense")
+    )
+    times = [datetime.fromisoformat(e.reviewed_at) for e in events]
+    assert len(times) == 50
+    assert len(set(times)) == 50            # 無撞點(否則 heatmap 分佈失真)
+    assert times == sorted(times)
+    assert times[-1] == last
+
+
+def test_degenerate_created_after_last_still_anchored_distinct_increasing():
+    # created ≥ last(異常資料):末筆仍精確錨定、N 筆相異且嚴格遞增。
+    last = datetime(2026, 6, 2, 16, 0, tzinfo=UTC)
+    created = last + timedelta(hours=1)      # 建卡晚於末次複習(異常)
+    events = synthesize_review_events(
+        _state(review_count=6, last_reviewed_at=last, created_at=created)
+    )
+    times = [datetime.fromisoformat(e.reviewed_at) for e in events]
+    assert len(set(times)) == 6
+    assert times == sorted(times)
+    assert times[-1] == last
+
+
+def test_streak_breaker_is_a_lapse_so_event_streak_matches_stored():
+    # streak>0 + 有 lapse:緊鄰 good 尾的那筆必為 lapse,事件回推 streak == 儲存值。
+    events = synthesize_review_events(
+        _state(review_count=6, lapse_count=1, review_streak=3, last_review_feedback=1)
+    )
+    fb = [e.feedback for e in events]
+    assert fb[-3:] == [1, 1, 1]              # good 尾長度 == streak
+    assert fb[-4] == 0                        # 打斷 streak 的那筆是 lapse
+    assert fb.count(0) == 1
+
+
+def test_streak_zero_last_feedback_mirrored_even_without_lapses():
+    # 矛盾聚合 (streak=0, lapse=0, F=0):末筆仍鏡射 F=0(顯著維度優先)。
+    events = synthesize_review_events(
+        _state(review_count=3, lapse_count=0, review_streak=0, last_review_feedback=0)
+    )
+    assert [e.feedback for e in events][-1] == 0
+
+
+def test_stale_streak_greater_than_count_is_clamped():
+    # review_streak > review_count(髒資料):clamp 後全 good,不崩。
+    events = synthesize_review_events(
+        _state(review_count=3, lapse_count=1, review_streak=9, last_review_feedback=1)
+    )
+    assert [e.feedback for e in events] == [1, 1, 1]
+
+
+def test_never_feedback_sentinel_only_emits_zero_or_one():
+    # last_review_feedback=-1(從未評分):輸出只能是 0/1,符合 store 的 ge=0,le=1。
+    events = synthesize_review_events(
+        _state(review_count=4, lapse_count=1, review_streak=0, last_review_feedback=-1)
+    )
+    assert all(e.feedback in (0, 1) for e in events)
