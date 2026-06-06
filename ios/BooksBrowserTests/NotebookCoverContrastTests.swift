@@ -4,7 +4,7 @@
 //
 //  D1 editorial cover composition AA contrast 鎖回歸:
 //  - light mode: primaryText `#37352F` 對 Morandi 12 色 cover ≥ 4.5:1
-//  - dark mode:  primaryText `#E6E6E3` 對 cover.brightness(-0.2) ≥ 4.5:1
+//  - dark mode:  primaryText `#E6E6E3` 對 NotebookPalette.darken(cover, by: 0.55) ≥ 4.5:1
 //
 
 import Foundation
@@ -64,9 +64,8 @@ struct NotebookCoverContrastTests {
         }
     }
 
-    /// Dark mode — primaryText #E6E6E3 on darkened cover (Morandi × 0.8 brightness)。
-    /// Spec D1 fallback: cover 在 dark mode 套 `.brightness(-0.2)` 自動加深,
-    /// 對應 `NotebookPalette.darken(_, by: 0.2)` 視同 brightness ×0.8 等效近似。
+    /// Dark mode — primaryText #E6E6E3 on `NotebookPalette.darken(_, by: 0.55)` cover。
+    /// Spec D1 fallback: cover 在 dark mode 套 HSB scale 自動加深, 與 view 的 contrast path 對齊。
     @Test func morandiCoversPassAADarkAfterShift() async throws {
         let text = Color(hex: "#E6E6E3")!
         for (name, hex) in NotebookPalette.colors {
@@ -74,7 +73,7 @@ struct NotebookCoverContrastTests {
                 Issue.record("\(name) (\(hex)) hex parse failed")
                 continue
             }
-            let darkened = NotebookPalette.darken(raw, by: 0.2)
+            let darkened = NotebookPalette.darken(raw, by: 0.55)
             let r = WCAGContrast.ratio(text, darkened)
             #expect(r >= 4.5,
                     "\(name) (\(hex)) darkened fails AA against #E6E6E3: ratio \(r)")

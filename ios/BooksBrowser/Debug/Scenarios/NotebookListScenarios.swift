@@ -104,7 +104,7 @@ enum NotebookListScenarios {
             Scenario("D1 · empty notebook (0 詞 hides count)", layout: .fill) {
                 singleSheet(card: Self.fresh)
             }
-            // Dark mode AA — primaryText #E6E6E3 對 darken(Morandi, 0.2) 應 ≥ AA 4.5
+            // Dark mode AA — primaryText #E6E6E3 對 darken(Morandi, 0.55) 應 ≥ AA 4.5
             Scenario("D1 · dark mode contrast", layout: .fill) {
                 gridSheet(cards: [Self.mediumActive, Self.medium, Self.thin], minimum: 140)
                     .preferredColorScheme(.dark)
