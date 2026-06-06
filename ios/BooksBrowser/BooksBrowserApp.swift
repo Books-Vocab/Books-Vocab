@@ -101,7 +101,8 @@ struct BooksBrowserApp: App {
                 coordinator: appCommandCoordinator,
                 kgService: kgService,
                 modelContainer: modelContainer,
-                toastCoordinator: toastCoordinator
+                toastCoordinator: toastCoordinator,
+                authManager: authManager
             )
         }
         #endif
