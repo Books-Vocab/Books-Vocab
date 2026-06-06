@@ -173,7 +173,7 @@ extension KGService {
                 if !(error is CancellationError) {
                     AppCrashReporting.record(error, context: "kg.sync.\(label)")
                 }
-                failures.append(label)
+                failures.append(SyncFailurePresentation.message(label: label, error: error))
             }
         }
         return failures
