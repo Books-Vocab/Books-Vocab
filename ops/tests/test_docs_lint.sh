@@ -36,6 +36,15 @@ if ! grep -q "docs_lint: no docs selected" /tmp/kg_docs_lint_since_head.out; the
   grep -q "ERROR: 0" /tmp/kg_docs_lint_since_head.out
 fi
 
+impact_probe="ops/.docs_lint_impact_probe"
+trap 'rm -f "$impact_probe"' EXIT
+printf 'probe\n' >"$impact_probe"
+./ops/docs_lint.sh --since HEAD >/tmp/kg_docs_lint_impact.out
+grep -q "docs_lint: registry impact hints" /tmp/kg_docs_lint_impact.out
+grep -q "reference.tech_index" /tmp/kg_docs_lint_impact.out
+rm -f "$impact_probe"
+trap - EXIT
+
 if ./ops/docs_lint.sh --definitely-not-a-real-flag >/tmp/kg_docs_lint_bad.out 2>&1; then
   echo "docs_lint accepted an unknown flag" >&2
   exit 1
