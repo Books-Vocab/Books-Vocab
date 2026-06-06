@@ -11,7 +11,6 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from .api_models import ReviewEventEntry
 from .exceptions import BadRequestError
-from .user_store import parse_datetime
 
 
 class ReviewEvent(SQLModel, table=True):
@@ -114,21 +113,28 @@ def _entry_from_event(event: ReviewEvent) -> ReviewEventEntry:
 def _parse_iso8601_timestamp(raw: str) -> datetime:
     if "T" not in raw:
         raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
-    parsed = parse_datetime(raw)
-    if parsed is None:
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
         raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
-    return parsed
+    if parsed.tzinfo is None:
+        raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
+    return parsed.astimezone(UTC)
 
 
 def _parse_required_timestamp(raw: str, field_name: str) -> datetime:
-    parsed = parse_datetime(raw)
-    if parsed is None:
+    if "T" not in raw:
         raise BadRequestError(f"Invalid {field_name} timestamp format. Expected ISO 8601.")
-    return parsed
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise BadRequestError(f"Invalid {field_name} timestamp format. Expected ISO 8601.")
+    if parsed.tzinfo is None:
+        raise BadRequestError(f"Invalid {field_name} timestamp format. Expected ISO 8601.")
+    return parsed.astimezone(UTC)
 
 
 def _format_timestamp(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat()
-
