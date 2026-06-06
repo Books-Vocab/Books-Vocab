@@ -21,8 +21,10 @@ extension ReaderView {
             book.lastReadLocatorJSON = json
             book.dateLastRead = Date()
             book.progression = progression
-        } save: { [modelContext] in
-            modelContext.safeSave()
+        } save: { [book, modelContext] in
+            if modelContext.safeSave() {
+                BookManifestStore().writeBestEffort(book: book)
+            }
         }
     }
 
