@@ -838,6 +838,10 @@ test('routeMessage maps notebook CRUD kinds', () => {
     kind: 'deleteNotebook',
     args: ['nb1'],
   });
+  assert.deepEqual(routeMessage({ type: 'retryOutbox' }), {
+    kind: 'retryOutbox',
+    args: [],
+  });
 });
 
 test('routeMessage maps get_auth_status / logout to argument-free ops', () => {
@@ -870,6 +874,7 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     createNotebook: { type: 'createNotebook', notebook: { name: 'n' } },
     updateNotebook: { type: 'updateNotebook', notebookId: 'n', patch: { name: 'm' } },
     deleteNotebook: { type: 'deleteNotebook', notebookId: 'n' },
+    retryOutbox: { type: 'retryOutbox' },
     lookupWord: { type: 'lookupWord', word: 'w' },
     getUserConfig: { type: 'getUserConfig' },
     updateUserConfig: { type: 'updateUserConfig', translation: {} },

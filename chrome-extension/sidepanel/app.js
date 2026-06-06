@@ -978,6 +978,15 @@ function createRow(item) {
     else if (item.syncState === 'pending') trailingEl.classList.add('kg-vocab-row__trailing--syncing');
     trailingEl.textContent = item.dueInfo;
     topRow.appendChild(trailingEl);
+
+    if (item.syncState === 'failed') {
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'kg-vocab-row__sync-retry';
+      retryBtn.textContent = t('syncRetry');
+      retryBtn.addEventListener('click', retryOutboxNow);
+      topRow.appendChild(retryBtn);
+    }
   }
 
   content.appendChild(topRow);
@@ -1048,6 +1057,23 @@ function createRow(item) {
   }
 
   return row;
+}
+
+async function retryOutboxNow(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const btn = event.currentTarget;
+  if (btn) btn.disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'retryOutbox' });
+    if (!response || response.error) {
+      throw new Error((response && response.message) || 'retryOutbox failed');
+    }
+    await loadVocabList();
+  } catch (err) {
+    console.error('[KG] retryOutboxNow failed:', err);
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------------------

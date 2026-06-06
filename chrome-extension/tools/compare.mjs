@@ -31,6 +31,7 @@ const IOS_REF = process.env.IOS_REF_DIR || join(homedir(), 'Desktop', 'IOS截圖
 // counterpart: loading / empty / error are sidepanel-specific surfaces).
 const PARITY = [
   { case: 'sidepanel-content-light', ref: 'IMG_8954.PNG', note: '單字本列表 (light)' },
+  { case: 'sidepanel-outbox-failed-light', ref: null, note: '失敗暫存列 + 手動重試 (Chrome outbox state)' },
   { case: 'sidepanel-notebook-sheet-light', ref: null, note: '單字本編輯 sheet (Chrome-only until iOS ref exists)' },
   { case: 'sidepanel-content-dark', ref: 'IMG_8954.PNG', note: '單字本列表 (dark)' },
   { case: 'sidepanel-content-sepia', ref: 'IMG_8954.PNG', note: '單字本列表 (sepia)' },

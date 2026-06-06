@@ -337,6 +337,11 @@ const SIDE_EFFECT_HANDLERS = {
     await chrome.storage.local.remove(TOKEN_KEY);
     return { ok: true };
   },
+  // `retryOutbox` — user-triggered flush for failed optimistic rows.
+  retryOutbox: async () => {
+    await flushOutbox();
+    return { ok: true };
+  },
 };
 
 async function handleMessage(msg) {

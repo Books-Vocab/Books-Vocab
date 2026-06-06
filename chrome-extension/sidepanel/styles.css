@@ -1125,3 +1125,20 @@ body {
 .kg-vocab-row--pending-sync { opacity: 0.82; cursor: default; }
 .kg-vocab-row__trailing--syncing { color: var(--text-secondary); }
 .kg-vocab-row__trailing--sync-failed { color: var(--accent); }
+.kg-vocab-row__sync-retry {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+.kg-vocab-row__sync-retry:disabled {
+  cursor: default;
+  opacity: 0.48;
+}

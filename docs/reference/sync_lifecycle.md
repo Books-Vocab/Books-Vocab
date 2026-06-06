@@ -78,7 +78,7 @@ Chrome extension 的 `vocab_outbox` 是 iOS add-path 的 web 端鏡像，但每�
 3. `flushOutbox` 先 `entriesToFlush`，再 `groupEntriesByNotebook`，每組分別 `POST /api/vocab?notebook_id=<id>`
 4. `reconcileAddResponse(queue, cardIds, notebookId)` 只收斂該 notebook 的 entry；`cardIds[word]` 即使命中，也不得收斂其他 notebook 的同名 pending entry
 5. 收斂後觸發同 notebook `POST /api/pipeline?notebook_id=<id>`，避免新卡 enrichment 跑到 default 或錯本
-6. flush 失敗時 entry `markFailed`，sidepanel 顯示「待重試」，並排 `kg-outbox-retry` alarm（1 分鐘）喚醒 MV3 worker 重送；startup drain 仍會在 worker spin-up 時補跑殘留
+6. flush 失敗時 entry `markFailed`，sidepanel 顯示「待重試」與列內「重試」按鈕；點擊送 background `retryOutbox` 立即 flush，同時仍排 `kg-outbox-retry` alarm（1 分鐘）喚醒 MV3 worker 重送；startup drain 仍會在 worker spin-up 時補跑殘留
 7. enrich polling state 記錄 `notebookIds`，每輪只重拉曾觸發 pipeline 的 notebook（`GET /api/vocab?notebook_id=<id>`），避免用 default/global pull 誤判其他 notebook 的 pipeline pending
 8. sidepanel 的 optimistic pending rows 只顯示目前 active notebook 的 unresolved entry
 

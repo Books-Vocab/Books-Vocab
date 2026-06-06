@@ -92,9 +92,19 @@ const SP = 'sidepanel/index.html';
 const seedList = (theme) =>
   `applyTheme(document.documentElement, '${theme}');` +
   `vocabData = ${JSON.stringify(MOCK_VOCAB)}.map(o => enrichWithReviewData(KGPure.normalizeVocabItem(o)));`;
+const failedOutboxExpr =
+  `pendingSyncItems=[decoratePendingItem(KGPure.normalizeVocabItem({` +
+  `id:'local-failed-1',content:'chiaroscuro',pos:'n.',meaning:'明暗對照；明暗法',` +
+  `context_sentence:'The painting used chiaroscuro to give the scene depth.'` +
+  `}),{syncState:'failed'})];`;
 
 const CASES = [
   { name: 'sidepanel-content-light', page: SP, expr: seedList('light') + `setState('content'); applyView();` },
+  {
+    name: 'sidepanel-outbox-failed-light',
+    page: SP,
+    expr: seedList('light') + failedOutboxExpr + `setState('content'); applyView();`,
+  },
   {
     name: 'sidepanel-notebook-sheet-light',
     page: SP,

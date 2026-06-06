@@ -76,14 +76,22 @@ async function waitFor(predicate, label) {
   assert.fail(`timed out waiting for ${label}`);
 }
 
-test('failed notebook add flush marks failed and schedules retry alarm', async () => {
+test('failed notebook add flush marks failed, schedules alarm, then manual retry flushes', async () => {
   const chrome = makeChromeMock();
   const calls = [];
+  let mode = 'fail';
   const api = await importBackground({
     chrome,
     fetchImpl: async (url, opts) => {
       calls.push({ url: String(url), opts });
-      return new Response('server down', { status: 503 });
+      if (String(url).includes('/api/pipeline')) {
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (mode === 'fail') return new Response('server down', { status: 503 });
+      return new Response(JSON.stringify({ cardIds: { lascivious: 'card-1' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     },
   });
 
@@ -104,6 +112,12 @@ test('failed notebook add flush marks failed and schedules retry alarm', async (
   assert.equal(chrome._store.vocab_outbox[0].status, 'failed');
   assert.equal(chrome._store.vocab_outbox[0].notebookId, 'nb-reading');
   assert.equal(chrome._createdAlarms.some((a) => a.name === 'kg-outbox-retry'), true);
+
+  mode = 'success';
+  const retry = await api.handleMessage({ type: 'retryOutbox' });
+  assert.deepEqual(retry, { ok: true });
+  assert.equal(chrome._store.vocab_outbox.length, 0);
+  assert.equal(calls.some((c) => c.url.includes('/api/pipeline?notebook_id=nb-reading')), true);
 });
 
 test('enrich poll re-pulls every triggered notebook with notebook_id', async () => {

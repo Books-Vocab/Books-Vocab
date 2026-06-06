@@ -772,6 +772,7 @@ const ROUTABLE_MESSAGE_TYPES = [
   'createNotebook',
   'updateNotebook',
   'deleteNotebook',
+  'retryOutbox',
   'lookupWord',
   'getUserConfig',
   'updateUserConfig',
@@ -818,6 +819,8 @@ function routeMessage(msg) {
       return { kind: 'updateNotebook', args: [msg.notebookId, msg.patch] };
     case 'deleteNotebook':
       return { kind: 'deleteNotebook', args: [msg.notebookId] };
+    case 'retryOutbox':
+      return { kind: 'retryOutbox', args: [] };
     case 'lookupWord':
       return { kind: 'lookupWord', args: [msg.word] };
     case 'getUserConfig':
