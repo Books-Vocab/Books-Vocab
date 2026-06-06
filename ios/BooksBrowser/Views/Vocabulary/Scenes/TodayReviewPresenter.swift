@@ -76,6 +76,8 @@ struct TodayReviewPresenterState {
     let forgotFeedbackTrigger: Int
     let isAutoPlaying: Bool
     let isAutoPlayPaused: Bool
+    let autoplayProgress: Double
+    let autoplaySpeed: AutoplaySpeed
 }
 
 // MARK: - Presenter
