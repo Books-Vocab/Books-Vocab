@@ -13,8 +13,10 @@ from typing import Any
 from .config import EvalConfig
 from .providers import create_eval_async_client, resolve_provider
 from .registry import RenderedPrompt
+from .scoring import score_result
 
 logger = logging.getLogger("llm_eval")
+_FORMAT_SCORE_KEYS = {"json_valid", "schema_conform"}
 
 
 @dataclass(frozen=True)
@@ -28,7 +30,8 @@ class EvalResult:
     input_tokens: int
     output_tokens: int
     raw_output: str
-    parsed_output: dict[str, Any] | None
+    parsed_output: Any
+    scores: dict[str, float] = field(default_factory=dict)
     error: str | None = None
 
 
@@ -45,6 +48,10 @@ class EvalSummary:
     total_input_tokens: int
     total_output_tokens: int
     total_cost_usd: float
+    format_score_avg: float | None = None
+    quality_score_avg: float | None = None
+    score_breakdown: dict[str, float] = field(default_factory=dict)
+    failure_examples: list[dict[str, Any]] = field(default_factory=list)
     samples: list[EvalResult] = field(default_factory=list)
 
 
@@ -74,6 +81,65 @@ def _model_to_provider_name(model: str) -> str:
     raise ValueError(f"Cannot resolve provider for model {model!r}")
 
 
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _format_score(result: EvalResult) -> float | None:
+    if result.error is not None:
+        return None
+    values = [
+        value for key, value in result.scores.items()
+        if key in _FORMAT_SCORE_KEYS
+    ]
+    return _mean(values)
+
+
+def _result_quality_score(result: EvalResult, sample: dict[str, Any]) -> float | None:
+    if sample.get("gold_status") != "human_gold":
+        return None
+    if result.error is not None:
+        return 0.0
+    fmt = _format_score(result)
+    if fmt is not None and fmt < 1.0:
+        return 0.0
+    values = [
+        value for key, value in result.scores.items()
+        if key.startswith("quality_")
+    ]
+    return _mean(values)
+
+
+def _score_breakdown(results: list[EvalResult]) -> dict[str, float]:
+    buckets: dict[str, list[float]] = {}
+    for result in results:
+        if result.error is not None:
+            continue
+        for key, value in result.scores.items():
+            buckets.setdefault(key, []).append(value)
+    return {
+        key: sum(vals) / len(vals)
+        for key, vals in sorted(buckets.items())
+        if vals
+    }
+
+
+def _failure_examples(results: list[EvalResult], *, limit: int = 5) -> list[dict[str, Any]]:
+    examples: list[dict[str, Any]] = []
+    for result in results:
+        if result.error is None and not any(v < 1.0 for v in result.scores.values()):
+            continue
+        examples.append({
+            "sample_id": result.sample_id,
+            "error": result.error,
+            "scores": result.scores,
+            "raw_output": result.raw_output[:500],
+        })
+        if len(examples) >= limit:
+            break
+    return examples
+
+
 async def _call_one(
     provider_name: str,
     model: str,
@@ -86,7 +152,7 @@ async def _call_one(
     if render_fn is not None:
         prompt = render_fn(sample)
     provider = resolve_provider(provider_name)
-    sample_id = sample.get("id", sample.get("word", "unknown"))
+    sample_id = str(sample.get("id", sample.get("word", "unknown")))
 
     # Check Ollama reachability
     if provider.name == "ollama":
@@ -137,16 +203,15 @@ async def _call_one(
         usage = getattr(resp, "usage", None)
 
         # Try parse JSON
-        parsed: dict[str, Any] | None = None
+        parsed: Any = None
         if content:
             try:
                 data = json.loads(content)
-                if isinstance(data, list) and data:
-                    data = data[0]
-                if isinstance(data, dict):
+                if isinstance(data, (dict, list)):
                     parsed = data
             except json.JSONDecodeError:
                 pass
+        scores = score_result(config.prompt_name or prompt.name, parsed, sample)
 
         return EvalResult(
             sample_id=sample_id,
@@ -157,6 +222,7 @@ async def _call_one(
             output_tokens=getattr(usage, "completion_tokens", 0) or 0 if usage else 0,
             raw_output=content or "",
             parsed_output=parsed,
+            scores=scores,
             error=None,
         )
     except asyncio.TimeoutError:
@@ -225,6 +291,10 @@ async def run_eval(
     results = await asyncio.gather(*tasks)
 
     # Aggregate by model
+    sample_by_id = {
+        str(s.get("id", s.get("word", "unknown"))): s
+        for s in samples
+    }
     summaries: dict[str, EvalSummary] = {}
     for m in models:
         if m not in provider_map:
@@ -244,6 +314,14 @@ async def run_eval(
             in_toks * provider.input_price_per_m / 1_000_000
             + out_toks * provider.output_price_per_m / 1_000_000
         )
+        format_score_avg = _mean([
+            score for r in model_results
+            if (score := _format_score(r)) is not None
+        ])
+        quality_score_avg = _mean([
+            score for r in model_results
+            if (score := _result_quality_score(r, sample_by_id.get(r.sample_id, {}))) is not None
+        ])
 
         summaries[m] = EvalSummary(
             model=m,
@@ -255,6 +333,10 @@ async def run_eval(
             total_input_tokens=in_toks,
             total_output_tokens=out_toks,
             total_cost_usd=cost,
+            format_score_avg=format_score_avg,
+            quality_score_avg=quality_score_avg,
+            score_breakdown=_score_breakdown(model_results),
+            failure_examples=_failure_examples(model_results),
             samples=model_results,
         )
 
