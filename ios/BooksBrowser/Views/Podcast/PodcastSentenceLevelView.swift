@@ -74,6 +74,9 @@ struct PodcastSentenceLevelView: View {
     /// highlight stays exact. On a seek the VM pins this to the current sentence
     /// (★B1), so a tapped bubble centers itself, not its successor.
     let scrollLeadId: Int?
+    /// 詞庫已查詞集（`translationHandler.lookedUpWords`），驅動字幕詞庫螢光筆。原始未正規化
+    /// 字串;column 每次 render 折疊一次供比對。
+    let lookedUpWords: Set<String>
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
@@ -282,6 +285,7 @@ struct PodcastSentenceLevelView: View {
             renderState: renderState,
             currentId: currentId,
             scrollLeadId: scrollLeadId,
+            lookedUpWords: lookedUpWords,
             selectionState: selectionState,
             subtitleSize: subtitleSize,
             wordFollowEnabled: wordFollowEnabled,
@@ -415,6 +419,7 @@ private struct PodcastTranscriptColumn: View {
     /// EARLY pre-active highlight only — not `currentId`/underline. Mirrors the prop
     /// on the host view so the column can light the upcoming bubble ahead of audio.
     let scrollLeadId: Int?
+    let lookedUpWords: Set<String>
     let selectionState: PodcastSentenceSelection?
     let subtitleSize: PodcastSubtitleSize
     let wordFollowEnabled: Bool
@@ -433,6 +438,9 @@ private struct PodcastTranscriptColumn: View {
     var body: some View {
         PerfLog.render.mark("column.body", "id=\(currentId ?? -1) n=\(sentences.count)")
         let hasActiveSelection = selectionState != nil
+        // 每次 render 算一次:把詞庫詞集正規化（撇號折疊 + 小寫 + 去標點），供各 cell 的
+        // highlightedIndices 比對共用,避免 per-cell 重建整個詞庫集合。
+        let normalizedLookedUp = Set(lookedUpWords.map(PodcastVocabHighlightResolver.normalize))
         return LazyVStack(spacing: skin.spacing.inlineGap) {
             ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
                 let slot = speakerSlots[sentence.speaker] ?? 0
@@ -460,6 +468,9 @@ private struct PodcastTranscriptColumn: View {
                 let isPreActive = isNext && scrollLeadId == sentence.id
                 let hasNext = index < sentences.count - 1
                 let entryFromTime = index > 0 ? sentences[index - 1].words.last?.startTime : nil
+                let vocabHits = PodcastVocabHighlightResolver.highlightedIndices(
+                    words: sentence.words.map(\.word), normalizedLookedUp: normalizedLookedUp
+                )
                 PodcastBubbleCell(
                     sentenceId: sentence.id,
                     contentHash: {
@@ -473,6 +484,7 @@ private struct PodcastTranscriptColumn: View {
                     isCurrent: sentence.id == currentId,
                     isNext: isNext,
                     isPreActive: isPreActive,
+                    vocabHighlightIndices: vocabHits,
                     isSelecting: isSelectingThis,
                     initialSelectionRange: isSelectingThis ? selectionState?.initialRange : nil,
                     hasActiveSelection: hasActiveSelection,
@@ -552,6 +564,9 @@ private struct PodcastBubbleSkin: Equatable {
     let primaryText: Color
     let secondaryText: Color
     let cornerRadius: CGFloat
+    /// 詞庫螢光筆標記色（`palette.highlightMark`，全主題的單一 highlight token）。
+    /// Carried, not compared — 由 `paletteBase` 決定，已在 `==` 涵蓋。
+    let highlightMark: Color
 
     init(skin: AppSkin, slot: Int) {
         self.paletteBase = skin.palette.base
@@ -560,6 +575,7 @@ private struct PodcastBubbleSkin: Equatable {
         self.primaryText = skin.palette.primaryText
         self.secondaryText = skin.palette.secondaryText
         self.cornerRadius = skin.radii.card
+        self.highlightMark = skin.palette.highlightMark
     }
 
     static func == (l: PodcastBubbleSkin, r: PodcastBubbleSkin) -> Bool {
@@ -594,6 +610,10 @@ private struct PodcastBubbleCell: View, Equatable {
     /// NOT `currentId`, NOT the underline. Compared in `==` so the bubble lights /
     /// dims as it enters / leaves the pre-active slot.
     let isPreActive: Bool
+    /// 此句中命中詞庫（含變形）的 word index 集合，驅動常駐詞庫螢光筆底色。由 column
+    /// 經 `PodcastVocabHighlightResolver` 算出。與 playback 無關、所有句子常駐。
+    /// Compared in `==` 以隨加 / 刪詞庫（`lookedUpWords` 變動）重繪。
+    let vocabHighlightIndices: Set<Int>
     let isSelecting: Bool
     let initialSelectionRange: NSRange?
     let hasActiveSelection: Bool
@@ -640,6 +660,7 @@ private struct PodcastBubbleCell: View, Equatable {
             && l.isCurrent == r.isCurrent
             && l.isNext == r.isNext
             && l.isPreActive == r.isPreActive
+            && l.vocabHighlightIndices == r.vocabHighlightIndices
             && l.isSelecting == r.isSelecting
             && l.initialSelectionRange == r.initialSelectionRange
             && l.hasActiveSelection == r.hasActiveSelection
@@ -727,6 +748,9 @@ private struct PodcastBubbleCell: View, Equatable {
             onExplainSelection: { text, context in onExplainTap(text, context) }
         )
         .overlay {
+            vocabHighlightOverlay(rects: wordRects)
+        }
+        .overlay {
             if !isSelecting, isCurrent || isNext {
                 continuousUnderline(rects: wordRects)
             }
@@ -753,6 +777,25 @@ private struct PodcastBubbleCell: View, Equatable {
                 .animation(AppMotion.contentFade, value: active)
         }
         .animation(AppMotion.contentFade, value: isSelecting)
+    }
+
+    /// 常駐詞庫螢光筆:把命中詞庫的詞（`vocabHighlightIndices`）用其 word rect 畫一層整字
+    /// 高半透明底色。與逐詞底線共用同一組 TextKit rect（text-view 座標系，★B2 免 inset），
+    /// 但與 playback 無關、所有句子常駐（不受 `isCurrent || isNext` gate）。選取模式隱藏避免
+    /// 干擾原生選取反白;`allowsHitTesting(false)` 不擋 tap / 長按手勢。
+    @ViewBuilder
+    private func vocabHighlightOverlay(rects: [Int: CGRect]) -> some View {
+        if !isSelecting, !vocabHighlightIndices.isEmpty {
+            ForEach(vocabHighlightIndices.sorted(), id: \.self) { index in
+                if let rect = rects[index] {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(skin.highlightMark)
+                        .frame(width: rect.width + 4, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
     }
 
     /// Continuous word underline for the current / entering ("next") cell. Word rects
@@ -893,6 +936,7 @@ enum PodcastSpeakerTint {
             subtitleSize: .xLarge,
             initialScrollPositionResolved: true,
             scrollLeadId: 1,
+            lookedUpWords: [],
             onSentenceTap: { _ in },
             onWordTap: { _, _ in },
             onPhraseTap: { _, _ in },

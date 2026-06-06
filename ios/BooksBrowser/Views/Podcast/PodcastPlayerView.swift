@@ -442,6 +442,7 @@ struct PodcastPlayerView: View {
                     viewModel: vm,
                     subtitleSize: subtitleSize,
                     initialScrollPositionResolved: vm.initialPositionResolved,
+                    lookedUpWords: Set(translationHandler.lookedUpWords),
                     onRetrySubtitle: { retrySubtitle() }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
