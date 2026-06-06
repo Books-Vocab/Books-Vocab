@@ -86,8 +86,35 @@ struct BookManifestStore {
         try data.write(to: url(for: manifest.bookId), options: [.atomic])
     }
 
+    /// 從 Book 寫 manifest，但與既有 manifest 合併以防固化髒 metadata。
+    ///
+    /// reader progress / notebook 綁定的落盤都走這條路；若當下 row 仍是 fallback
+    /// （UUID title、空 author、nil cover），既有 manifest 的乾淨值不會被覆蓋。
+    /// 閱讀位置 / 日期 / notebook 等則一律採 row 的當前值（那正是這次寫入的目的）。
     func write(book: Book, originalFileName: String? = nil) throws {
-        try write(BookManifest(book: book, originalFileName: originalFileName))
+        let incoming = BookManifest(book: book, originalFileName: originalFileName)
+        try write(Self.merged(incoming: incoming, existing: try? read(bookId: book.id)))
+    }
+
+    /// 合併策略：incoming 為主，但 fallback/空/nil 的識別性欄位讓位給既有乾淨值。
+    static func merged(incoming: BookManifest, existing: BookManifest?) -> BookManifest {
+        guard let existing else { return incoming }
+        var result = incoming
+        if BookMetadataHeuristics.looksLikeFallbackTitle(incoming.title, fileName: incoming.fileName),
+           !BookMetadataHeuristics.looksLikeFallbackTitle(existing.title, fileName: existing.fileName) {
+            result.title = existing.title
+        }
+        if BookMetadataHeuristics.looksLikeFallbackAuthor(incoming.author),
+           !BookMetadataHeuristics.looksLikeFallbackAuthor(existing.author) {
+            result.author = existing.author
+        }
+        if incoming.coverImageData == nil, let cover = existing.coverImageData {
+            result.coverImageData = cover
+        }
+        if incoming.originalFileName == nil, let original = existing.originalFileName {
+            result.originalFileName = original
+        }
+        return result
     }
 
     func writeBestEffort(book: Book, originalFileName: String? = nil) {

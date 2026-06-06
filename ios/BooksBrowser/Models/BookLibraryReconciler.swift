@@ -147,7 +147,7 @@ struct BookLibraryReconciler {
         if manifest != nil { score += 100 }
         if book.coverImageData != nil { score += 20 }
         if !looksLikeFallbackTitle(book.title, fileName: book.epubFileName) { score += 15 }
-        if !book.author.isEmpty, book.author != "Unknown" { score += 10 }
+        if !looksLikeFallbackAuthor(book.author) { score += 10 }
         if book.progression != nil { score += 5 }
         if book.dateLastRead != nil { score += 5 }
         if book.lastReadLocatorJSON != nil { score += 5 }
@@ -162,10 +162,8 @@ struct BookLibraryReconciler {
             && !looksLikeFallbackTitle(duplicate.title, fileName: duplicate.epubFileName) {
             keeper.title = duplicate.title
         }
-        if keeper.author.isEmpty || keeper.author == "Unknown" {
-            if !duplicate.author.isEmpty, duplicate.author != "Unknown" {
-                keeper.author = duplicate.author
-            }
+        if looksLikeFallbackAuthor(keeper.author), !looksLikeFallbackAuthor(duplicate.author) {
+            keeper.author = duplicate.author
         }
         if duplicate.dateAdded < keeper.dateAdded {
             keeper.dateAdded = duplicate.dateAdded
@@ -191,9 +189,7 @@ struct BookLibraryReconciler {
             book.title = manifest.title
             changed = true
         }
-        if (book.author.isEmpty || book.author == "Unknown"),
-           !manifest.author.isEmpty,
-           manifest.author != "Unknown" {
+        if looksLikeFallbackAuthor(book.author), !looksLikeFallbackAuthor(manifest.author) {
             book.author = manifest.author
             changed = true
         }
@@ -246,8 +242,11 @@ struct BookLibraryReconciler {
     }
 
     private static func looksLikeFallbackTitle(_ title: String, fileName: String) -> Bool {
-        let baseName = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
-        return title == baseName || UUID(uuidString: title) != nil
+        BookMetadataHeuristics.looksLikeFallbackTitle(title, fileName: fileName)
+    }
+
+    private static func looksLikeFallbackAuthor(_ author: String) -> Bool {
+        BookMetadataHeuristics.looksLikeFallbackAuthor(author)
     }
 
     private static func manifestsByFileName(_ manifests: [BookManifest]) -> [String: BookManifest] {
@@ -266,7 +265,7 @@ struct BookLibraryReconciler {
         var score = 0
         if manifest.coverImageData != nil { score += 20 }
         if !looksLikeFallbackTitle(manifest.title, fileName: manifest.fileName) { score += 15 }
-        if !manifest.author.isEmpty, manifest.author != "Unknown" { score += 10 }
+        if !looksLikeFallbackAuthor(manifest.author) { score += 10 }
         if manifest.progression != nil { score += 5 }
         if manifest.dateLastRead != nil { score += 5 }
         if manifest.lastReadLocatorJSON != nil { score += 5 }
