@@ -52,6 +52,7 @@ extension KGService {
     func pullReviewEvents(container: ModelContainer) async throws {
         struct EventsResponse: Decodable {
             let entries: [KGReviewEventPayload]
+            let cursor: String?
         }
 
         let defaults = UserDefaults.standard
@@ -67,8 +68,15 @@ extension KGService {
 
         let actor = BackgroundSyncActor(modelContainer: container)
         try await actor.mergeReviewEvents(decoded.entries)
-        if let latest = decoded.entries.map(\.reviewed_at).max() {
-            defaults.set(latest, forKey: SyncKeys.reviewEventPullBoundary)
+        // Advance the watermark by the server-assigned ingestion cursor, not by
+        // max(reviewed_at): the cursor is monotonic in ingestion order, so a later
+        // pull cannot skip an event whose reviewed_at lies before this boundary.
+        if let cursor = decoded.cursor {
+            defaults.set(cursor, forKey: SyncKeys.reviewEventPullBoundary)
+        } else {
+            // Contract violation: a non-empty batch must carry a cursor. Surface it
+            // instead of silently re-merging the same batch every sync.
+            AppLog.kg.error("pullReviewEvents: non-empty batch returned nil cursor; watermark not advanced")
         }
         AppLog.kg.info("pullReviewEvents: merged \(decoded.entries.count) remote events")
     }
