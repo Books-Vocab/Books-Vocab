@@ -23,8 +23,8 @@ from .graph import (
 )
 from .intake import add_vocab_response
 from .review import (
-    pull_daily_stats_response,
-    push_daily_stats_response,
+    pull_review_events_response,
+    push_review_events_response,
     push_review_response,
 )
 
@@ -41,8 +41,8 @@ __all__ = [
     "hide_graph_link_response",
     "list_vocab_response",
     "lookup_word_response",
-    "pull_daily_stats_response",
-    "push_daily_stats_response",
+    "pull_review_events_response",
+    "push_review_events_response",
     "push_review_response",
     "unhide_graph_link_response",
 ]

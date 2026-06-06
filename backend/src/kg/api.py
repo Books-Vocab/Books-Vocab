@@ -51,7 +51,6 @@ from .deps import (  # noqa: F401
     _create_jwt_token,
     _current_admin_grant_record,
     _current_subscription_record,
-    _daily_stats_store,
     _default_subscription_payload,
     _embedding_store,
     _get_settings,
@@ -59,6 +58,7 @@ from .deps import (  # noqa: F401
     _is_pro,
     _notification_status,
     _parse_datetime,
+    _review_event_store,
     _resolve_and_link_user,
     _resolve_user_id_from_subscription_index,
     _with_quota_check,
@@ -108,8 +108,8 @@ from .routers.vocab import (  # noqa: F401
     get_graph_links,
     list_vocab,
     lookup_word,
-    pull_daily_stats,
-    push_daily_stats,
+    pull_review_events,
+    push_review_events,
     push_review,
 )
 from .service_factories import clear_store_cache

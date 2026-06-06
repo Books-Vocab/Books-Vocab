@@ -1,4 +1,4 @@
-"""Review state sync operations: push/pull review states and daily stats."""
+"""Review state sync operations for per-card spaced-repetition fields."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from .api_models import DailyReviewStatEntry, ReviewStateEntry
-from .exceptions import BadRequestError
+from .api_models import ReviewStateEntry
 from .user_store import parse_datetime
 from .vocab_shared import _normalize_word
 
@@ -124,55 +123,3 @@ def push_review_states(
     if pending_updates:
         cards_store.batch_update(pending_updates)
     return {"updated": updated, "skipped": skipped}
-
-
-def push_daily_review_stats(
-    entries: list[DailyReviewStatEntry],
-    *,
-    stats_store: Any,
-    logger: logging.Logger,
-) -> dict[str, int]:
-    """Merge client daily review stats into server. Returns {upserted}."""
-    for entry in entries:
-        stats_store.upsert(
-            day_key=entry.day_key,
-            total=entry.total,
-            remembered=entry.remembered,
-            forgot=entry.forgot,
-        )
-    upserted = len(entries)
-    logger.info("push_daily_review_stats: upserted %d entries", upserted)
-    return {"upserted": upserted}
-
-
-def pull_daily_review_stats(
-    *,
-    since: str | None,
-    stats_store: Any,
-) -> list[DailyReviewStatEntry]:
-    """Return all daily review stats, optionally filtered by since day_key.
-
-    ``since`` must be a strict ``YYYY-MM-DD`` calendar day to match the stored
-    ``day_key`` format: filtering is a raw string ``>=`` comparison, so a
-    full ISO timestamp or malformed input would silently mis-filter instead
-    of erroring. Reject anything that is not exactly ``YYYY-MM-DD``.
-    """
-    if since:
-        try:
-            datetime.strptime(since, "%Y-%m-%d")
-        except ValueError:
-            raise BadRequestError(
-                "Invalid since format. Expected YYYY-MM-DD."
-            ) from None
-        stats = stats_store.get_since(since)
-    else:
-        stats = stats_store.all()
-    return [
-        DailyReviewStatEntry(
-            day_key=s.day_key,
-            total=s.total,
-            remembered=s.remembered,
-            forgot=s.forgot,
-        )
-        for s in stats
-    ]

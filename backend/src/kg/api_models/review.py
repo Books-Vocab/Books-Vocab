@@ -24,20 +24,24 @@ class ReviewStatePushResponse(BaseModel):
     skipped: int
 
 
-class DailyReviewStatEntry(BaseModel):
-    day_key: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # "yyyy-MM-dd"
-    total: int = Field(ge=0)
-    remembered: int = Field(ge=0)
-    forgot: int = Field(ge=0)
+class ReviewEventEntry(BaseModel):
+    event_id: str
+    card_id: str | None = None
+    word_snapshot: str
+    notebook_id: str = "default"
+    feedback: int = Field(ge=0, le=1)
+    reviewed_at: str
+    created_at: str
 
 
-class DailyReviewStatsPushRequest(BaseModel):
-    entries: list[DailyReviewStatEntry] = Field(max_length=5000)
+class ReviewEventsPushRequest(BaseModel):
+    entries: list[ReviewEventEntry] = Field(max_length=10000)
 
 
-class DailyReviewStatsPushResponse(BaseModel):
-    upserted: int
+class ReviewEventsPushResponse(BaseModel):
+    inserted: int
+    skipped: int
 
 
-class DailyReviewStatsResponse(BaseModel):
-    entries: list[DailyReviewStatEntry]
+class ReviewEventsResponse(BaseModel):
+    entries: list[ReviewEventEntry]

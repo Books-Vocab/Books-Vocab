@@ -131,6 +131,7 @@ extension KGService {
 
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
+        defaults.removeObject(forKey: SyncKeys.reviewEventPullBoundary)
         defaults.removeObject(forKey: SyncKeys.payloadVersion)
         defaults.removeObject(forKey: "activeNotebookId")
         defaults.removeObject(forKey: NotebookFilter.storageKey)
@@ -203,26 +204,26 @@ extension KGService {
         AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.start")
         var failures: [String] = []
 
-        // Phase 1: push review states & daily stats in parallel
+        // Phase 1: push review states & review events in parallel
         async let pushReviewResult = Self.captureResult { _ = try await self.pushReviewStates(container: container) }
-        async let pushStatsResult = Self.captureResult { _ = try await self.pushDailyStats(container: container) }
+        async let pushEventsResult = Self.captureResult { _ = try await self.pushReviewEvents(container: container) }
 
-        let pushResults = await [pushReviewResult, pushStatsResult]
+        let pushResults = await [pushReviewResult, pushEventsResult]
         if let pushFailures = await processSyncPhase(
-            results: pushResults, labels: ["pushReview", "pushDailyStats"], container: container
+            results: pushResults, labels: ["pushReview", "pushReviewEvents"], container: container
         ) {
             failures.append(contentsOf: pushFailures)
         } else {
             return
         }
 
-        // Phase 2: pull cards & daily stats in parallel (after push completes)
+        // Phase 2: pull cards & review events in parallel (after push completes)
         async let pullCardsResult = Self.captureResult { try await self.pullCardsToLocal(container: container, progress: nil) }
-        async let pullStatsResult = Self.captureResult { try await self.pullDailyStats(container: container) }
+        async let pullEventsResult = Self.captureResult { try await self.pullReviewEvents(container: container) }
 
-        let pullResults = await [pullCardsResult, pullStatsResult]
+        let pullResults = await [pullCardsResult, pullEventsResult]
         if let pullFailures = await processSyncPhase(
-            results: pullResults, labels: ["pull", "pullDailyStats"], container: container
+            results: pullResults, labels: ["pull", "pullReviewEvents"], container: container
         ) {
             failures.append(contentsOf: pullFailures)
         } else {
@@ -274,9 +275,9 @@ extension KGService {
             AppLog.kg.warning("pushReviewQuietly failed: \(error.localizedDescription)")
         }
         do {
-            _ = try await pushDailyStats(container: container)
+            _ = try await pushReviewEvents(container: container)
         } catch {
-            AppLog.kg.warning("pushReviewQuietly pushDailyStats failed: \(error.localizedDescription)")
+            AppLog.kg.warning("pushReviewQuietly pushReviewEvents failed: \(error.localizedDescription)")
         }
     }
 }

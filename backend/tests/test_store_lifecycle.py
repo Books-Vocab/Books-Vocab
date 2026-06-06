@@ -2,8 +2,8 @@
 from pathlib import Path
 
 from kg.cards import CardStore
-from kg.daily_stats import DailyReviewStatsStore
 from kg.notebook import NotebookStore
+from kg.review_events import ReviewEventStore
 
 
 def test_card_store_close_disposes_engine(tmp_path: Path):
@@ -26,7 +26,7 @@ def test_notebook_store_close(tmp_path: Path):
     assert store.engine is None
 
 
-def test_daily_stats_store_close(tmp_path: Path):
-    store = DailyReviewStatsStore(tmp_path / "stats.db")
+def test_review_event_store_close(tmp_path: Path):
+    store = ReviewEventStore(tmp_path / "review_events.db")
     store.close()
     assert store.engine is None

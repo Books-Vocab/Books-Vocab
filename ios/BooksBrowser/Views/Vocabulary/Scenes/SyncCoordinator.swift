@@ -295,11 +295,11 @@ final class SyncCoordinator: SyncCoordinating {
                     )
                 }
 
-                // Push review state + daily stats before pull
+                // Push review state + review events before pull
                 self.updateStep("push_review", status: .running)
                 do {
                     let result = try await kgService.pushReviewStates(container: modelContext.container)
-                    _ = try? await kgService.pushDailyStats(container: modelContext.container)
+                    _ = try await kgService.pushReviewEvents(container: modelContext.container)
                     self.updateStep("push_review", status: .done, detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)"))
                 } catch {
                     encounteredFailure = true
@@ -334,8 +334,8 @@ final class SyncCoordinator: SyncCoordinating {
                     pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
                 }
 
-                // Also pull daily stats from server
-                try? await kgService.pullDailyStats(container: modelContext.container)
+                // Also pull review events from server
+                try await kgService.pullReviewEvents(container: modelContext.container)
 
                 self.updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地單字已建立完成"))
                 let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)

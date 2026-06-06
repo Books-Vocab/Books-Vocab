@@ -32,7 +32,7 @@ from .graph import LINK_LABELS, GraphStore, LinkKind
 from .sentry_init import bind_user
 from .service_factories import (
     create_card_store,
-    create_daily_stats_store,
+    create_review_event_store,
     create_embedding_store,
     create_graph_store,
     create_notebook_store,
@@ -149,8 +149,8 @@ def _card_store(user_dir: Path):
     return create_card_store(user_dir)
 
 
-def _daily_stats_store(user_dir: Path):
-    return create_daily_stats_store(user_dir)
+def _review_event_store(user_dir: Path):
+    return create_review_event_store(user_dir)
 
 
 def _graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:

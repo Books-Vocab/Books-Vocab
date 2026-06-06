@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 3f14c595
+verified_against: d0e9a0cb
 -->
 # Implemented Product Surface
 
@@ -25,7 +25,7 @@ verified_against: 3f14c595
 - **Graph links**: hide/unhide + bilateral optimistic sync
 - **Toast notification system**: capsule toast + sheet overlay
 - **Graph thumbnail** + health blob
-- **Today review**: 4-state phase matrix + `PostExampleMetrics` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習)
+- **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習)
 - **Stats overview**: `StatsPresenter` full state matrix
 - **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
@@ -49,7 +49,7 @@ verified_against: 3f14c595
 
 - **Auth/user identity**: Apple/Google + web auth + cookie admin session + provider switch / session invalidation matrix + `google_auth` case-insensitive bool normalize
 - **User config / account lifecycle**
-- **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs
+- **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs + `/api/vocab/review-events` 完整複習事件同步（client UUID 冪等、刪卡後事件仍保留）
 - **Translate / explain / pipeline**
 - **Card / graph / embedding / difficulty / enrichment**
 - **Multi-format import parsing**

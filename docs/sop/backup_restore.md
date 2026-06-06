@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/kg_backup.sh
   - ops/cron/kg-backup.cron
-verified_against: 61b0d14f
+verified_against: d0e9a0cb
 -->
 # Backup / Restore SOP
 
@@ -20,7 +20,7 @@ verified_against: 61b0d14f
 | 子目錄 | 內容 |
 |---|---|
 | `users/<user_id>/cards.db` | 詞庫 / KG / 學習紀錄 |
-| `users/<user_id>/daily_review_stats.db` | TodayReview 統計 |
+| `users/<user_id>/review_events.db` | TodayReview 複習事件 |
 | `users/users.json` | user index |
 | `podcasts/<series_id>/...` | podcast 音頻 + metadata(Track B 遷移完成後改由 S3 直接保留,本 backup 仍含過渡期 disk-mode 資產) |
 | `judge_log.db` | 評審 log |

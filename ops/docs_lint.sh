@@ -10,6 +10,9 @@
 #
 # 用法:
 #   ops/docs_lint.sh                 # 全掃描
+#   ops/docs_lint.sh --changed       # 只掃本分支/工作樹變更的 docs
+#   ops/docs_lint.sh --since <rev>   # 只掃 <rev>..HEAD + 工作樹變更的 docs
+#   ops/docs_lint.sh --files <docs...>
 #   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
 #   STALE_THRESHOLD=10 ops/docs_lint.sh
 #
@@ -32,11 +35,51 @@ fi
 
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
 STRICT=0
-# Positional argv parsing(支援任意順序的 flag,未來加 --verbose 等不會 break)
-for arg in "$@"; do
-  case "$arg" in
-    --strict) STRICT=1 ;;
-    *) echo "Unknown arg: $arg" >&2; exit 2 ;;
+MODE="all"
+SINCE_REV=""
+FILE_ARGS=()
+
+usage() {
+  sed -n '1,22p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --strict)
+      STRICT=1
+      shift
+      ;;
+    --changed)
+      MODE="changed"
+      shift
+      ;;
+    --since)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for --since" >&2
+        exit 2
+      fi
+      MODE="changed"
+      SINCE_REV="$2"
+      shift 2
+      ;;
+    --files)
+      MODE="files"
+      shift
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --*) break ;;
+          *) FILE_ARGS+=("$1"); shift ;;
+        esac
+      done
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown arg: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -47,10 +90,85 @@ errors=0
 warnings=0
 ok=0
 
-# Find docs (exclude assets/ marketing artifacts and legal/ externally-published artifacts)
-DOCS=$(find docs -type f -name "*.md" \
-  ! -path "docs/assets/*" \
-  ! -path "docs/legal/*" | sort)
+filter_docs() {
+  awk '
+    /\.md$/ &&
+    $0 !~ /^docs\/assets\// &&
+    $0 !~ /^docs\/legal\// &&
+    $0 ~ /^docs\// { print }
+  ' | sort -u
+}
+
+all_docs() {
+  find docs -type f -name "*.md" \
+    ! -path "docs/assets/*" \
+    ! -path "docs/legal/*" | sort
+}
+
+default_changed_base() {
+  if [ -n "${DOCS_LINT_BASE:-}" ]; then
+    printf '%s\n' "$DOCS_LINT_BASE"
+    return
+  fi
+  if git rev-parse --verify origin/HEAD >/dev/null 2>&1; then
+    git merge-base origin/HEAD HEAD
+    return
+  fi
+  git rev-parse HEAD
+}
+
+changed_docs() {
+  base="${SINCE_REV:-$(default_changed_base)}"
+  if ! git rev-parse --verify "$base^{commit}" >/dev/null 2>&1; then
+    echo "ERROR --since/changed base 不是有效 commit: $base" >&2
+    exit 2
+  fi
+  {
+    git diff --name-only --diff-filter=ACMR "$base..HEAD" -- docs
+    git diff --name-only --diff-filter=ACMR --cached -- docs
+    git diff --name-only --diff-filter=ACMR -- docs
+    git ls-files --others --exclude-standard docs
+  } | filter_docs
+}
+
+files_docs() {
+  if [ "${#FILE_ARGS[@]}" -eq 0 ]; then
+    echo "ERROR --files 需要至少一個 docs/*.md 路徑" >&2
+    exit 2
+  fi
+  for f in "${FILE_ARGS[@]}"; do
+    case "$f" in
+      docs/*.md) ;;
+      *)
+        echo "ERROR --files 只接受 docs/*.md 路徑: $f" >&2
+        exit 2
+        ;;
+    esac
+    case "$f" in
+      docs/assets/*|docs/legal/*)
+        echo "ERROR --files 不掃描 assets/legal doc: $f" >&2
+        exit 2
+        ;;
+    esac
+    if [ ! -f "$f" ]; then
+      echo "ERROR --files 路徑不存在: $f" >&2
+      exit 2
+    fi
+  done
+  printf '%s\n' "${FILE_ARGS[@]}" | sort -u
+}
+
+case "$MODE" in
+  all) DOCS=$(all_docs) ;;
+  changed) DOCS=$(changed_docs) ;;
+  files) DOCS=$(files_docs) ;;
+  *) echo "internal error: unknown MODE=$MODE" >&2; exit 2 ;;
+esac
+
+if [ -z "$DOCS" ]; then
+  echo "docs_lint: no docs selected (mode=$MODE)"
+  exit 0
+fi
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue

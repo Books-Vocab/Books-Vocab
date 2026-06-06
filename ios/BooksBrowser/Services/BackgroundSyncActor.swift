@@ -282,100 +282,6 @@ actor BackgroundSyncActor {
         return payload
     }
 
-    // MARK: - Daily Review Stats Sync
-
-    /// Build daily aggregated review stats from local ReviewRecords for pushing to backend.
-    func buildDailyStatsPushPayload() throws -> [[String: Any]] {
-        let descriptor = FetchDescriptor<ReviewRecord>()
-        let records = try modelContext.fetch(descriptor)
-        guard !records.isEmpty else { return [] }
-
-        // Group by dayKey
-        var grouped: [String: (total: Int, remembered: Int, forgot: Int)] = [:]
-        for record in records {
-            var stat = grouped[record.dayKey] ?? (0, 0, 0)
-            stat.total += 1
-            if record.feedback == 1 {
-                stat.remembered += 1
-            } else {
-                stat.forgot += 1
-            }
-            grouped[record.dayKey] = stat
-        }
-
-        return grouped.map { dayKey, stat in
-            [
-                "day_key": dayKey,
-                "total": stat.total,
-                "remembered": stat.remembered,
-                "forgot": stat.forgot,
-            ] as [String: Any]
-        }
-    }
-
-    /// Merge remote daily stats into local ReviewRecords.
-    /// For days where remote has data but local doesn't, create placeholder records.
-    /// For days where local already has data, remote is ignored (local is authoritative for detail).
-    func mergeDailyStats(_ remoteStats: [[String: Any]]) throws {
-        let descriptor = FetchDescriptor<ReviewRecord>()
-        let allRecords = try modelContext.fetch(descriptor)
-
-        // Pre-build grouped counts per day (O(N) single pass)
-        var localDayCounts: [String: Int] = [:]
-        var localRememberedCounts: [String: Int] = [:]
-        var localForgotCounts: [String: Int] = [:]
-        for record in allRecords {
-            localDayCounts[record.dayKey, default: 0] += 1
-            if record.feedback == 1 {
-                localRememberedCounts[record.dayKey, default: 0] += 1
-            } else {
-                localForgotCounts[record.dayKey, default: 0] += 1
-            }
-        }
-
-        var inserted = 0
-        for stat in remoteStats {
-            guard let dayKey = stat["day_key"] as? String,
-                  let total = stat["total"] as? Int,
-                  let remembered = stat["remembered"] as? Int else { continue }
-            let forgot = (stat["forgot"] as? Int) ?? (total - remembered)
-
-            let localCount = localDayCounts[dayKey] ?? 0
-            if localCount >= total {
-                // Local already has equal or more records for this day — skip
-                continue
-            }
-
-            // Need to create (total - localCount) placeholder records
-            let deficit = total - localCount
-            // Distribute: fill remembered first, then forgot
-            let localRemembered = localRememberedCounts[dayKey] ?? 0
-            let localForgot = localForgotCounts[dayKey] ?? 0
-            let needRemembered = max(0, remembered - localRemembered)
-            let needForgot = max(0, forgot - localForgot)
-            let toCreate = min(deficit, needRemembered + needForgot)
-
-            guard toCreate > 0, let date = Self.dayFormatter.date(from: dayKey) else { continue }
-
-            for i in 0..<toCreate {
-                let feedback = i < needRemembered ? 1 : 0
-                let record = ReviewRecord(
-                    word: "（跨裝置同步）",
-                    entryID: nil,
-                    feedback: feedback,
-                    reviewedAt: date
-                )
-                modelContext.insert(record)
-                inserted += 1
-            }
-        }
-
-        if inserted > 0 {
-            try modelContext.save()
-            AppLog.sync.info("mergeDailyStats: inserted \(inserted) placeholder records from remote")
-        }
-    }
-
     func distinctNotebookIds() throws -> [String] {
         let descriptor = FetchDescriptor<VocabularyEntry>()
         let entries = try modelContext.fetch(descriptor)
@@ -461,6 +367,79 @@ actor BackgroundSyncActor {
             entry.lastReviewFeedbackRaw = card.lastReviewFeedback ?? entry.lastReviewFeedbackRaw
         } else if localLast > serverLast {
             AppLog.sync.info("Review merge: local wins for '\(entry.word)' (local=\(AppDateFormatters.iso8601.string(from: localLast)), server=\(serverLastStr)), local review preserved")
+        }
+    }
+}
+
+extension BackgroundSyncActor {
+    /// Build append-only review event payloads from local ReviewRecord rows.
+    func buildReviewEventsPushPayload() throws -> [KGReviewEventPayload] {
+        let descriptor = FetchDescriptor<ReviewRecord>()
+        let records = try modelContext.fetch(descriptor)
+        guard !records.isEmpty else { return [] }
+        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+        let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+
+        return records.map { record in
+            let cardId: String?
+            if let entryID = record.entryID,
+               let resolvedCardId = entriesByID[entryID]?.kgCardId,
+               !resolvedCardId.isEmpty {
+                cardId = resolvedCardId
+            } else {
+                cardId = nil
+            }
+            return KGReviewEventPayload(
+                event_id: record.id.uuidString,
+                card_id: cardId,
+                word_snapshot: record.word,
+                notebook_id: record.notebookId,
+                feedback: record.feedback,
+                reviewed_at: AppDateFormatters.iso8601.string(from: record.reviewedAt),
+                created_at: AppDateFormatters.iso8601.string(from: record.reviewedAt)
+            )
+        }
+    }
+
+    /// Merge remote append-only review events into local ReviewRecord rows.
+    func mergeReviewEvents(_ remoteEvents: [KGReviewEventPayload]) throws {
+        guard !remoteEvents.isEmpty else { return }
+
+        let descriptor = FetchDescriptor<ReviewRecord>()
+        let existing = try modelContext.fetch(descriptor)
+        var existingIDs = Set(existing.map(\.id))
+        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+        let entryIDsByCardID = Dictionary(
+            uniqueKeysWithValues: entries.compactMap { entry -> (String, UUID)? in
+                guard let cardID = entry.kgCardId, !cardID.isEmpty else { return nil }
+                return (cardID, entry.id)
+            }
+        )
+        var inserted = 0
+
+        for event in remoteEvents {
+            guard
+                let eventID = UUID(uuidString: event.event_id),
+                !existingIDs.contains(eventID),
+                let reviewedAt = Self.parseISO8601(event.reviewed_at)
+            else { continue }
+
+            let record = ReviewRecord(
+                word: event.word_snapshot,
+                entryID: event.card_id.flatMap { entryIDsByCardID[$0] },
+                feedback: event.feedback,
+                reviewedAt: reviewedAt
+            )
+            record.id = eventID
+            record.notebookId = event.notebook_id
+            modelContext.insert(record)
+            existingIDs.insert(eventID)
+            inserted += 1
+        }
+
+        if inserted > 0 {
+            try modelContext.save()
+            AppLog.sync.info("mergeReviewEvents: inserted \(inserted) remote review events")
         }
     }
 }
