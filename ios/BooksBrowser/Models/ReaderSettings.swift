@@ -59,8 +59,13 @@ struct ReaderViewConfiguration: Equatable {
     let paperColor: SwiftUI.Color
     let epubPreferences: EPUBPreferences
     let underlineOpacity: Double
+    var highlightPreferences: VocabHighlightPreferences = .default
     let showHitTestingDebug: Bool
     let swiftUIColorScheme: ColorScheme
+
+    var contentStyleCSS: String {
+        ReaderContentStyleFactory.make(highlightPreferences: highlightPreferences).css()
+    }
 }
 
 /// 閱讀器偏好設定模型 — 全域單例，直接讀寫 UserDefaults 並同步至 iCloud KVS
@@ -74,6 +79,8 @@ final class ReaderSettings {
     private let kFontSize = "reader_settings_fontSize"
     private let kLineHeight = "reader_settings_lineHeight"
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
+    private let kVocabHighlightColorPreset = "vocab_highlight_colorPreset"
+    private let kVocabHighlightOpacity = "vocab_highlight_opacity"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
     private let kScrollMode = "reader_settings_scrollMode"
     private var cloudObserver: NSObjectProtocol?
@@ -117,8 +124,24 @@ final class ReaderSettings {
     var underlineOpacity: Double = 0.22 {
         didSet {
             defaults.set(underlineOpacity, forKey: kUnderlineOpacity)
+            defaults.set(underlineOpacity, forKey: kVocabHighlightOpacity)
             cloud.set(underlineOpacity, forKey: kUnderlineOpacity)
+            cloud.set(underlineOpacity, forKey: kVocabHighlightOpacity)
         }
+    }
+
+    var vocabHighlightColorPreset: VocabHighlightColorPreset = .paper {
+        didSet {
+            defaults.set(vocabHighlightColorPreset.rawValue, forKey: kVocabHighlightColorPreset)
+            cloud.set(vocabHighlightColorPreset.rawValue, forKey: kVocabHighlightColorPreset)
+        }
+    }
+
+    var vocabHighlightPreferences: VocabHighlightPreferences {
+        VocabHighlightPreferences(
+            colorPreset: vocabHighlightColorPreset,
+            opacity: underlineOpacity
+        )
     }
 
     var showHitTestingDebug: Bool = false {
@@ -152,13 +175,31 @@ final class ReaderSettings {
             self.scrollMode = defaults.bool(forKey: kScrollMode)
         }
 
-        if let cloudOpacity = cloud.double(forKey: kUnderlineOpacity) {
-            self.underlineOpacity = cloudOpacity
-        } else {
-            let saved = defaults.double(forKey: kUnderlineOpacity)
-            if saved > 0 || defaults.object(forKey: kUnderlineOpacity) != nil {
-                self.underlineOpacity = saved
-            }
+        let cloudPreset = cloud.string(forKey: kVocabHighlightColorPreset)
+        let savedPreset = defaults.string(forKey: kVocabHighlightColorPreset)
+        let cloudOpacity = cloud.double(forKey: kVocabHighlightOpacity)
+        let savedOpacity = defaults.object(forKey: kVocabHighlightOpacity) != nil
+            ? defaults.double(forKey: kVocabHighlightOpacity)
+            : nil
+        let legacyCloudOpacity = cloud.double(forKey: kUnderlineOpacity)
+        let legacySavedOpacity = defaults.object(forKey: kUnderlineOpacity) != nil
+            ? defaults.double(forKey: kUnderlineOpacity)
+            : nil
+        let resolvedHighlight = VocabHighlightPreferences.resolve(
+            storedPresetRaw: cloudPreset ?? savedPreset,
+            storedOpacity: cloudOpacity ?? savedOpacity,
+            legacyOpacity: legacyCloudOpacity ?? legacySavedOpacity
+        )
+        self.vocabHighlightColorPreset = resolvedHighlight.colorPreset
+        self.underlineOpacity = resolvedHighlight.opacity
+
+        if cloudOpacity == nil && savedOpacity == nil {
+            defaults.set(resolvedHighlight.opacity, forKey: kVocabHighlightOpacity)
+            cloud.set(resolvedHighlight.opacity, forKey: kVocabHighlightOpacity)
+        }
+        if cloudPreset == nil && savedPreset == nil {
+            defaults.set(resolvedHighlight.colorPreset.rawValue, forKey: kVocabHighlightColorPreset)
+            cloud.set(resolvedHighlight.colorPreset.rawValue, forKey: kVocabHighlightColorPreset)
         }
 
         self.showHitTestingDebug = defaults.bool(forKey: kShowHitTestingDebug)
@@ -195,6 +236,14 @@ final class ReaderSettings {
                 if let value = cloud.double(forKey: key) { let v = value > 0.5; if v != scrollMode { scrollMode = v } }
             case kUnderlineOpacity:
                 if let value = cloud.double(forKey: key), value != underlineOpacity { underlineOpacity = value }
+            case kVocabHighlightOpacity:
+                if let value = cloud.double(forKey: key), value != underlineOpacity { underlineOpacity = value }
+            case kVocabHighlightColorPreset:
+                if let raw = cloud.string(forKey: key),
+                   let value = VocabHighlightColorPreset(rawValue: raw),
+                   value != vocabHighlightColorPreset {
+                    vocabHighlightColorPreset = value
+                }
             default:
                 break
             }
@@ -226,6 +275,7 @@ final class ReaderSettings {
                 theme: theme.theme
             ),
             underlineOpacity: underlineOpacity,
+            highlightPreferences: vocabHighlightPreferences,
             showHitTestingDebug: showHitTestingDebug,
             swiftUIColorScheme: theme == .dark ? .dark : .light
         )

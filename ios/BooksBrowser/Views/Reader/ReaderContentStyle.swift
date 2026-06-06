@@ -12,6 +12,7 @@ struct ReaderContentStyle: Equatable {
     let pageGutterBottom: Int
     let vocabBorderRadius: Int
     let activeBorderRadius: Int
+    let highlightPreferences: VocabHighlightPreferences
     let light: ThemeSelectionStyle
     let sepia: ThemeSelectionStyle
     let dark: ThemeSelectionStyle
@@ -21,6 +22,7 @@ struct ReaderContentStyle: Equatable {
         :root {
             --RS__pageGutterTop: \(pageGutterTop)px !important;
             --RS__pageGutterBottom: \(pageGutterBottom)px !important;
+            --vocab-opacity: \(highlightPreferences.opacity);
         }
 
         .active-word {
@@ -80,8 +82,8 @@ struct ReaderContentStyle: Equatable {
 }
 
 enum ReaderContentStyleFactory {
-    static func make() -> ReaderContentStyle {
-        .vocab
+    static func make(highlightPreferences: VocabHighlightPreferences = .default) -> ReaderContentStyle {
+        .vocab(highlightPreferences: highlightPreferences)
     }
 }
 
@@ -256,26 +258,54 @@ enum ReaderNotebookPickerPresentation: Equatable {
 }
 
 private extension ReaderContentStyle {
-    static let vocab = ReaderContentStyle(
-        pageGutterTop: 76,
-        pageGutterBottom: 52,
-        vocabBorderRadius: 3,
-        activeBorderRadius: 4,
-        light: .init(
-            activeOutline: "1px solid rgba(121, 111, 90, 0.34)",
-            activeBackground: "rgba(186, 171, 137, 0.09)",
-            vocabBackground: "linear-gradient(to top, hsla(43, 34%, 62%, clamp(0, calc(var(--vocab-opacity) * 1.05), 1)) 32%, transparent 32%)"
-        ),
-        sepia: .init(
-            activeOutline: "1px solid rgba(126, 96, 66, 0.34)",
-            activeBackground: "rgba(168, 134, 92, 0.10)",
-            vocabBackground: "linear-gradient(to top, hsla(30, 32%, 54%, clamp(0, calc(var(--vocab-opacity) * 1.08), 1)) 32%, transparent 32%)"
-        ),
-        dark: .init(
-            activeOutline: "1px solid rgba(208, 196, 166, 0.30)",
-            activeBackground: "rgba(204, 186, 138, 0.10)",
-            vocabBackground: "linear-gradient(to top, hsla(41, 30%, 66%, clamp(0, calc(var(--vocab-opacity) * 1.45), 1)) 32%, transparent 32%)"
+    static func vocab(highlightPreferences: VocabHighlightPreferences) -> ReaderContentStyle {
+        ReaderContentStyle(
+            pageGutterTop: 76,
+            pageGutterBottom: 52,
+            vocabBorderRadius: 3,
+            activeBorderRadius: 4,
+            highlightPreferences: highlightPreferences,
+            light: .init(
+                activeOutline: "1px solid rgba(121, 111, 90, 0.34)",
+                activeBackground: "rgba(186, 171, 137, 0.09)",
+                vocabBackground: vocabBackground(
+                    preset: highlightPreferences.colorPreset,
+                    theme: .light,
+                    opacityMultiplier: 1.05,
+                    bandFraction: highlightPreferences.bandFraction
+                )
+            ),
+            sepia: .init(
+                activeOutline: "1px solid rgba(126, 96, 66, 0.34)",
+                activeBackground: "rgba(168, 134, 92, 0.10)",
+                vocabBackground: vocabBackground(
+                    preset: highlightPreferences.colorPreset,
+                    theme: .sepia,
+                    opacityMultiplier: 1.08,
+                    bandFraction: highlightPreferences.bandFraction
+                )
+            ),
+            dark: .init(
+                activeOutline: "1px solid rgba(208, 196, 166, 0.30)",
+                activeBackground: "rgba(204, 186, 138, 0.10)",
+                vocabBackground: vocabBackground(
+                    preset: highlightPreferences.colorPreset,
+                    theme: .dark,
+                    opacityMultiplier: 1.45,
+                    bandFraction: highlightPreferences.bandFraction
+                )
+            )
         )
-    )
+    }
+
+    static func vocabBackground(
+        preset: VocabHighlightColorPreset,
+        theme: ReaderTheme,
+        opacityMultiplier: Double,
+        bandFraction: Double
+    ) -> String {
+        let band = Int((bandFraction * 100).rounded())
+        return "linear-gradient(to top, hsla(\(preset.cssColor(for: theme)), clamp(0, calc(var(--vocab-opacity) * \(opacityMultiplier)), 1)) \(band)%, transparent \(band)%)"
+    }
 }
 #endif
