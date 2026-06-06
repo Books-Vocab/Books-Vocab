@@ -88,6 +88,14 @@ struct SettingsPresenterState {
     let danger: DangerSection?
 }
 
+extension SettingsPresenterState.PreferencesSection {
+    static func reviewModeDisplayName(for settings: ReviewSettings) -> String {
+        let modeDisplayName = settings.mode.displayName
+        guard settings.isProgressPaused else { return modeDisplayName }
+        return L10n.format("已凍結 · %@", modeDisplayName)
+    }
+}
+
 enum SubscriptionBadgeTone {
     case neutral
     case accent

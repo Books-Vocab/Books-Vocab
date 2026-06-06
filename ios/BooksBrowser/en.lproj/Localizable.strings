@@ -499,6 +499,12 @@
 "密集" = "Intensive";
 "自訂" = "Custom";
 "複習節奏" = "Review Pace";
+"暫停進度" = "Pause Progress";
+"凍結複習時鐘" = "Freeze Review Clock";
+"暫停後，到期計算會停在現在；已到期卡仍可手動複習。" = "When paused, due calculations stop at now; cards already due can still be reviewed manually.";
+"複習到期計算已暫停。" = "Review due calculations are paused.";
+"目前停在 %@" = "Currently frozen at %@";
+"已凍結 · %@" = "Frozen · %@";
 "複習模式" = "Review Mode";
 "自訂參數" = "Custom Parameters";
 "初始間隔" = "Initial Interval";

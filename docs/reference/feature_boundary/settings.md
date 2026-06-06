@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Settings/
-verified_against: 3f14c595
+verified_against: 2fb279ae
 -->
 # Settings Feature Boundary
 
@@ -15,7 +15,7 @@ verified_against: 3f14c595
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `SettingsView.swift` | 96 | 主容器 `struct SettingsView: View`，保留 body 組裝、task、sheet、alert wiring |
-| `SettingsView+State.swift` | 162 | `presenterState` / `presenterActions` / 派生狀態組裝 |
+| `SettingsView+State.swift` | 177 | `presenterState` / `presenterActions` / 派生狀態組裝；偏好區複習節奏摘要含 progress freeze 狀態 |
 | `SettingsView+Bindings.swift` | 51 | Binding 與 debug/local server wiring |
 
 ### Coordinator Layer（導航協調）
@@ -37,7 +37,7 @@ verified_against: 3f14c595
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresentation.swift` | 110 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions` |
+| `SettingsPresentation.swift` | 124 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示 |
 | `SubscriptionPresentation.swift` | 142 | `enum SubscriptionPresentation`，訂閱狀態 UI 模型 |
 
 ### Section Views（各設定區塊）
@@ -72,6 +72,7 @@ verified_against: 3f14c595
 
 - `SettingsCoordinator`：Settings 的導航與 side-effect state（optional integration sheet、subscription paywall、delete confirm、translation config、debug backend）；由 `SettingsView` 持有，不外洩
 - `SettingsPresenterState`：Presenter 接收的 UI 狀態快照，純值類型，可跨 layer 傳遞
+- `SettingsPresenterState.PreferencesSection.reviewModeDisplayName(for:)`：偏好首頁「複習節奏」摘要的單一組裝入口；未凍結顯示模式名，凍結時顯示 `已凍結 · <模式>`
 - `SettingsPresenterActions`：callback closure 集合，由 Container 注入，不持有 mutable state
 - 帳號刪除確認與 paywall 開關目前由 `SettingsCoordinator` / `SettingsView` 一起驅動；不直接散落到 section view
 
