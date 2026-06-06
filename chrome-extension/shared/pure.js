@@ -42,11 +42,28 @@ function resolveTheme(raw) {
  * @param {*} since — ISO 8601 timestamp or falsy
  * @returns {string} e.g. '' or '?since=2024-01-01T00%3A00%3A00Z'
  */
-function buildVocabQuery(since) {
+function buildSinceQuery(since) {
   if (since === undefined || since === null) return '';
   const s = String(since).trim();
   if (!s) return '';
   return `?since=${encodeURIComponent(s)}`;
+}
+
+/**
+ * Build the query string for `/api/vocab`, optionally filtering by `since` and
+ * notebook. `notebook_id` mirrors backend/iOS naming; absence means all notebooks.
+ * @param {*} since — ISO 8601 timestamp or falsy
+ * @param {*} notebookId — notebook id or falsy
+ * @returns {string}
+ */
+function buildVocabQuery(since, notebookId) {
+  const params = [];
+  const s = since === undefined || since === null ? '' : String(since).trim();
+  if (s) params.push(['since', s]);
+  const nb = notebookId === undefined || notebookId === null ? '' : String(notebookId).trim();
+  if (nb) params.push(['notebook_id', nb]);
+  if (params.length === 0) return '';
+  return `?${params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}`;
 }
 
 /**
@@ -61,6 +78,26 @@ function normalizeVocabList(response) {
   if (response && Array.isArray(response.items)) return response.items;
   if (response && Array.isArray(response.data)) return response.data;
   return [];
+}
+
+function normalizeNotebookList(response) {
+  const raw = normalizeVocabList(response);
+  return raw.map(normalizeNotebookItem);
+}
+
+function normalizeNotebookItem(item) {
+  const raw = item && typeof item === 'object' ? item : {};
+  return {
+    id: raw.id || 'default',
+    name: raw.name || '我的單字本',
+    color: raw.color || null,
+    coverPattern: raw.coverPattern || raw.cover_pattern || null,
+    sortOrder: Number(raw.sortOrder ?? raw.sort_order) || 0,
+    isDefault: !!(raw.isDefault ?? raw.is_default),
+    isDeleted: !!(raw.isDeleted ?? raw.is_deleted),
+    cardCount: Number(raw.cardCount ?? raw.card_count) || 0,
+    updatedAt: raw.updatedAt || raw.updated_at || null,
+  };
 }
 
 /**
@@ -654,6 +691,10 @@ const ROUTABLE_MESSAGE_TYPES = [
   'explain',
   'addVocab',
   'listVocab',
+  'listNotebooks',
+  'createNotebook',
+  'updateNotebook',
+  'deleteNotebook',
   'lookupWord',
   'getUserConfig',
   'updateUserConfig',
@@ -689,9 +730,17 @@ function routeMessage(msg) {
     case 'explain':
       return { kind: 'explain', args: [msg.word, msg.context] };
     case 'addVocab':
-      return { kind: 'addVocab', args: [msg.entries] };
+      return { kind: 'addVocab', args: [msg.entries, msg.notebookId] };
     case 'listVocab':
-      return { kind: 'listVocab', args: [msg.since] };
+      return { kind: 'listVocab', args: [msg.since, undefined, msg.notebookId] };
+    case 'listNotebooks':
+      return { kind: 'listNotebooks', args: [msg.since] };
+    case 'createNotebook':
+      return { kind: 'createNotebook', args: [msg.notebook] };
+    case 'updateNotebook':
+      return { kind: 'updateNotebook', args: [msg.notebookId, msg.patch] };
+    case 'deleteNotebook':
+      return { kind: 'deleteNotebook', args: [msg.notebookId] };
     case 'lookupWord':
       return { kind: 'lookupWord', args: [msg.word] };
     case 'getUserConfig':
@@ -717,6 +766,7 @@ function routeMessage(msg) {
  * and the contract is pinned by pure.test.js.
  */
 const VOCAB_DIRTY_KEY = 'vocab_dirty';
+const ACTIVE_NOTEBOOK_KEY = 'active_notebook_id';
 
 /**
  * Routed `kind`s whose success means the user's vocab list changed, so any open
@@ -882,9 +932,12 @@ const KGPureExports = {
   DEFAULT_THEME,
   resolveTheme,
   buildPhraseTranslateBody,
+  buildSinceQuery,
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  normalizeNotebookList,
+  normalizeNotebookItem,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,
@@ -902,6 +955,7 @@ const KGPureExports = {
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   VOCAB_DIRTY_KEY,
+  ACTIVE_NOTEBOOK_KEY,
   isVocabMutatingKind,
   isTrustedExternalOrigin,
   safeUrl,

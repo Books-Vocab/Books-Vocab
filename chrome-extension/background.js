@@ -140,13 +140,15 @@ let flushRequested = false;
  * @param {Array<{word: string, translation: string, context?: string,
  *   source?: object}>} entries
  */
-async function handleAddVocabOutbox(entries) {
+async function handleAddVocabOutbox(entries, notebookId = 'default') {
   const list = Array.isArray(entries) ? entries : [];
+  const targetNotebookId = notebookId || 'default';
   // Mint ids/timestamps up front (side-effects), then commit the enqueue under
   // the lock so a concurrent add/flush can't clobber the write.
   const made = list.map((e) =>
     globalThis.KGOutbox.makeOutboxEntry({
       localId: crypto.randomUUID(),
+      notebookId: targetNotebookId,
       word: e.word,
       translation: e.translation,
       context: e.context,
@@ -182,46 +184,49 @@ async function flushOutbox() {
   }
   flushInFlight = true;
   try {
+    let stopDraining = false;
     do {
       flushRequested = false;
       const toFlush = globalThis.KGOutbox.entriesToFlush(await readOutbox());
       if (toFlush.length === 0) break;
 
-      const payload = toFlush.map((e) => ({
-        word: e.word,
-        translation: e.translation,
-        context: e.context,
-        source: e.source,
-      }));
+      for (const group of globalThis.KGOutbox.groupEntriesByNotebook(toFlush)) {
+        const payload = group.entries.map((e) => ({
+          word: e.word,
+          translation: e.translation,
+          context: e.context,
+          source: e.source,
+        }));
 
-      try {
-        const resp = await KGApi.addVocab(payload); // network — OUTSIDE the lock
-        const cardIds = (resp && resp.cardIds) || {};
-        await withOutboxLock(async () => {
-          let queue = globalThis.KGOutbox.reconcileAddResponse(await readOutbox(), cardIds);
-          queue = globalThis.KGOutbox.pruneSynced(queue);
-          await writeOutbox(queue);
-        });
-        bumpVocabDirty(); // server now has these cards → refetch surfaces them
-        if (Object.keys(cardIds).length > 0) {
-          // Cards landed (bare) — kick enrich + poll so they grow pos/note/examples.
-          // chrome adds always go to the default notebook. Fire-and-forget.
-          triggerEnrichPolling('default').catch((err) =>
-            console.error('[KG] enrich trigger failed', err),
-          );
+        try {
+          const resp = await KGApi.addVocab(payload, group.notebookId); // network — OUTSIDE the lock
+          const cardIds = (resp && resp.cardIds) || {};
+          await withOutboxLock(async () => {
+            let queue = globalThis.KGOutbox.reconcileAddResponse(await readOutbox(), cardIds, group.notebookId);
+            queue = globalThis.KGOutbox.pruneSynced(queue);
+            await writeOutbox(queue);
+          });
+          bumpVocabDirty(); // server now has these cards → refetch surfaces them
+          if (Object.keys(cardIds).length > 0) {
+            // Cards landed (bare) — kick enrich + poll so they grow pos/note/examples.
+            triggerEnrichPolling(group.notebookId).catch((err) =>
+              console.error('[KG] enrich trigger failed', err),
+            );
+          }
+        } catch (err) {
+          const ids = group.entries.map((e) => e.localId);
+          await withOutboxLock(async () => {
+            await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
+          });
+          bumpVocabDirty(); // surface failed state to the side panel
+          // Stop draining on failure — the next trigger (a fresh add, or the
+          // Phase 5 alarm/startup flush) retries. Looping here would hammer a
+          // down endpoint.
+          stopDraining = true;
+          break;
         }
-      } catch (err) {
-        const ids = toFlush.map((e) => e.localId);
-        await withOutboxLock(async () => {
-          await writeOutbox(globalThis.KGOutbox.markFailed(await readOutbox(), ids));
-        });
-        bumpVocabDirty(); // surface failed state to the side panel
-        // Stop draining on failure — the next trigger (a fresh add, or the
-        // Phase 5 alarm/startup flush) retries. Looping here would hammer a
-        // down endpoint.
-        break;
       }
-    } while (flushRequested);
+    } while (flushRequested && !stopDraining);
   } finally {
     flushInFlight = false;
   }
@@ -326,7 +331,7 @@ async function handleMessage(msg) {
   // ack + background flush, instead of an inline POST. Every other kind keeps
   // the direct path below.
   if (kind === 'addVocab') {
-    return handleAddVocabOutbox(args[0]);
+    return handleAddVocabOutbox(args[0], args[1]);
   }
 
   const sideEffect = SIDE_EFFECT_HANDLERS[kind];

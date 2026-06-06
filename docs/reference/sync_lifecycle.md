@@ -69,6 +69,17 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 5. 無 cardId 回傳（異常）的 entry 保持 `pending + add`，下次重試
 6. **不變式（contract）**：`cardIds` 的 key 必須是 client submitted word 的 **byte-exact echo**，後端**不得**對 key 做任何 normalization（NFC/大小寫/trim）——iOS 以 `entry.word` 逐字節查找，任何後端側轉換都會讓配對 silent miss。清洗只作用於**儲存的 content**，不作用於 response key
 
+### Chrome extension notebook-scoped add outbox
+
+Chrome extension 的 `vocab_outbox` 是 iOS add-path 的 web 端鏡像，但每筆 entry 額外保留 `notebookId`：
+
+1. content popup 加詞前讀 `active_notebook_id`（缺值為 canonical `"default"`），enqueue 到 `chrome.storage.local.vocab_outbox`
+2. `enqueueAdd` 只 dedup **同 notebook + 同 raw word** 的 unresolved entry；同一 raw word 在不同 notebook 是兩張合法卡，不可互相 dedup
+3. `flushOutbox` 先 `entriesToFlush`，再 `groupEntriesByNotebook`，每組分別 `POST /api/vocab?notebook_id=<id>`
+4. `reconcileAddResponse(queue, cardIds, notebookId)` 只收斂該 notebook 的 entry；`cardIds[word]` 即使命中，也不得收斂其他 notebook 的同名 pending entry
+5. 收斂後觸發同 notebook `POST /api/pipeline?notebook_id=<id>`，避免新卡 enrichment 跑到 default 或錯本
+6. sidepanel 的 optimistic pending rows 只顯示目前 active notebook 的 unresolved entry
+
 ### 已同步單字被刪除
 
 1. 既有單字先是 `synced + add`

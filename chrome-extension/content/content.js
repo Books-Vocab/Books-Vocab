@@ -16,6 +16,9 @@
   // KGPure.isPhrase, now content-script-local) — content scripts run in an
   // isolated world and cannot import KGPure.
   const PHRASE_MIN_LEN = 50;
+  // Mirrors shared/pure.js ACTIVE_NOTEBOOK_KEY. Content scripts run in an
+  // isolated world, so they cannot reach the shared classic-script global.
+  const ACTIVE_NOTEBOOK_KEY = 'active_notebook_id';
   // Cap on extracted surrounding-sentence context sent to the backend.
   const MAX_CONTEXT_LEN = 500;
 
@@ -650,30 +653,33 @@
       }
     };
 
-    sendMessageSafe(
-      { type: 'addVocab', entries },
-      (response) => {
-        if (chrome.runtime.lastError || response == null) {
-          showAddError(t('popupErrorNetwork'));
-          return;
-        }
-
-        if (response.error) {
-          if (response.status === 401 || response.code === 'auth_expired') {
-            renderLoginPrompt(popup);
-          } else {
-            showAddError(response.message || t('popupErrorAdd'));
+    chrome.storage.local.get(ACTIVE_NOTEBOOK_KEY, (stored) => {
+      const notebookId = (stored && stored[ACTIVE_NOTEBOOK_KEY]) || 'default';
+      sendMessageSafe(
+        { type: 'addVocab', entries, notebookId },
+        (response) => {
+          if (chrome.runtime.lastError || response == null) {
+            showAddError(t('popupErrorNetwork'));
+            return;
           }
-          return;
-        }
 
-        popup.className = 'kg-popup kg-popup--saved';
-        btn.className = 'kg-btn kg-popup__btn kg-popup__btn--success';
-        btn.textContent = t('popupBtnAdded');
-        btn.disabled = true;
-      },
-      () => showAddError(CONTEXT_INVALIDATED_MSG)
-    );
+          if (response.error) {
+            if (response.status === 401 || response.code === 'auth_expired') {
+              renderLoginPrompt(popup);
+            } else {
+              showAddError(response.message || t('popupErrorAdd'));
+            }
+            return;
+          }
+
+          popup.className = 'kg-popup kg-popup--saved';
+          btn.className = 'kg-btn kg-popup__btn kg-popup__btn--success';
+          btn.textContent = t('popupBtnAdded');
+          btn.disabled = true;
+        },
+        () => showAddError(CONTEXT_INVALIDATED_MSG)
+      );
+    });
   }
 
   // -------------------------------------------------------------------------

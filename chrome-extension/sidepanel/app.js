@@ -28,6 +28,8 @@ const errorTitle   = $('#errorTitle');
 const errorSubtitle = $('#errorSubtitle');
 const filterChips  = $('#filterChips');
 const filterActions = $('#filterActions');
+const notebookSwitcher = $('#notebookSwitcher');
+const notebookSelect = $('#notebookSelect');
 const stateDetail  = $('#stateDetail');
 const detailBack   = $('#detailBack');
 const detailShare  = $('#detailShare');
@@ -58,6 +60,12 @@ let vocabData = [];
  * @type {Array<object>}
  */
 let pendingSyncItems = [];
+
+/** @type {Array<object>} notebook list from API */
+let notebooks = [];
+
+/** Active notebook scope for list/add parity with iOS. */
+let activeNotebookId = 'default';
 
 /**
  * Selected review-state filter (iOS multi-select chips). Empty = show all.
@@ -106,6 +114,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     onSearch();
     searchInput.focus();
   });
+  if (notebookSelect) {
+    notebookSelect.addEventListener('change', onNotebookChanged);
+  }
 
   // Word detail panel — back navigation + delegated speaker / link-nav actions.
   KGIcons.setIcon(detailBack, 'chevron-left');
@@ -237,7 +248,8 @@ async function loadVocabList() {
   syncClearButton();
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
+    await loadNotebookScope();
+    const response = await chrome.runtime.sendMessage({ type: 'listVocab', notebookId: activeNotebookId });
 
     // A missing/torn-down service worker resolves sendMessage with `undefined`
     // (no error thrown). Treat that as a connection failure rather than an
@@ -302,7 +314,8 @@ async function refreshVocabSilently() {
   if (!stateLoading.hidden || !stateError.hidden) return;
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
+    await loadNotebookScope({ silent: true });
+    const response = await chrome.runtime.sendMessage({ type: 'listVocab', notebookId: activeNotebookId });
     if (response == null || response.error) return; // keep the current view
 
     const items = KGPure.normalizeVocabList(response)
@@ -327,6 +340,55 @@ async function refreshVocabSilently() {
   } catch (err) {
     console.error('[KG] refreshVocabSilently failed:', err);
   }
+}
+
+async function loadNotebookScope(options = {}) {
+  const silent = !!options.silent;
+  try {
+    const stored = await chrome.storage.local.get(KGPure.ACTIVE_NOTEBOOK_KEY);
+    const storedId = stored[KGPure.ACTIVE_NOTEBOOK_KEY] || 'default';
+    const response = await chrome.runtime.sendMessage({ type: 'listNotebooks' });
+    if (response == null || response.error) {
+      if (!silent) renderNotebookSwitcher([]);
+      activeNotebookId = storedId || 'default';
+      return;
+    }
+    notebooks = KGPure.normalizeNotebookList(response).filter((nb) => !nb.isDeleted);
+    const hasStored = notebooks.some((nb) => nb.id === storedId);
+    activeNotebookId = hasStored ? storedId : 'default';
+    if (storedId !== activeNotebookId) {
+      await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    }
+    renderNotebookSwitcher(notebooks);
+  } catch (err) {
+    console.error('[KG] loadNotebookScope failed:', err);
+    activeNotebookId = 'default';
+    if (!silent) renderNotebookSwitcher([]);
+  }
+}
+
+function renderNotebookSwitcher(items) {
+  if (!notebookSwitcher || !notebookSelect) return;
+  notebookSelect.innerHTML = '';
+  const list = Array.isArray(items) && items.length
+    ? items
+    : [{ id: 'default', name: t('notebookDefaultName'), color: null, isDefault: true }];
+  for (const nb of list) {
+    const opt = document.createElement('option');
+    opt.value = nb.id;
+    opt.textContent = nb.name || nb.id;
+    opt.selected = nb.id === activeNotebookId;
+    notebookSelect.appendChild(opt);
+  }
+  notebookSwitcher.hidden = false;
+}
+
+async function onNotebookChanged() {
+  const next = notebookSelect && notebookSelect.value ? notebookSelect.value : 'default';
+  if (next === activeNotebookId) return;
+  activeNotebookId = next;
+  await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+  loadVocabList();
 }
 
 /**
@@ -461,7 +523,9 @@ async function loadPendingSyncItems(serverItems) {
     const stored = await chrome.storage.local.get(KGOutbox.OUTBOX_KEY);
     const queue = Array.isArray(stored[KGOutbox.OUTBOX_KEY]) ? stored[KGOutbox.OUTBOX_KEY] : [];
     const serverWords = new Set(serverItems.map((i) => i.word));
-    pendingSyncItems = KGOutbox.pendingOutboxItems(queue, serverWords).map(decoratePendingItem);
+    pendingSyncItems = KGOutbox.pendingOutboxItems(queue, serverWords)
+      .filter((it) => (it.notebookId || 'default') === activeNotebookId)
+      .map(decoratePendingItem);
   } catch (err) {
     console.error('[KG] loadPendingSyncItems failed:', err);
     pendingSyncItems = [];

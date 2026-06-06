@@ -19,9 +19,12 @@ const assert = require('node:assert/strict');
 const {
   resolveTheme,
   buildPhraseTranslateBody,
+  buildSinceQuery,
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  normalizeNotebookList,
+  normalizeNotebookItem,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,
@@ -110,6 +113,19 @@ test('buildVocabQuery encodes characters that would break the query', () => {
   assert.equal(buildVocabQuery('a&b=c'), '?since=a%26b%3Dc');
 });
 
+test('buildSinceQuery builds a since-only query for non-vocab endpoints', () => {
+  assert.equal(buildSinceQuery(undefined), '');
+  assert.equal(buildSinceQuery(' 2024-01-01T00:00:00Z '), '?since=2024-01-01T00%3A00%3A00Z');
+});
+
+test('buildVocabQuery can scope to a notebook_id', () => {
+  assert.equal(buildVocabQuery(undefined, 'nb-reading'), '?notebook_id=nb-reading');
+  assert.equal(
+    buildVocabQuery('2024-01-01T00:00:00Z', 'nb reading'),
+    '?since=2024-01-01T00%3A00%3A00Z&notebook_id=nb%20reading',
+  );
+});
+
 // ---------------------------------------------------------------------------
 // normalizeVocabList
 // ---------------------------------------------------------------------------
@@ -136,6 +152,43 @@ test('normalizeVocabList collapses unexpected shapes to []', () => {
   assert.deepEqual(normalizeVocabList(42), []);
   assert.deepEqual(normalizeVocabList({ items: 'not-array' }), []);
   assert.deepEqual(normalizeVocabList({}), []);
+});
+
+test('normalizeNotebookList unwraps arrays/envelopes and collapses invalid shapes', () => {
+  const items = [{ id: 'default', name: '我的單字本' }];
+  assert.deepEqual(normalizeNotebookList(items), items.map(normalizeNotebookItem));
+  assert.deepEqual(normalizeNotebookList({ items }), items.map(normalizeNotebookItem));
+  assert.deepEqual(normalizeNotebookList({ data: items }), items.map(normalizeNotebookItem));
+  assert.deepEqual(normalizeNotebookList(null), []);
+});
+
+test('normalizeNotebookItem canonicalizes notebook API fields', () => {
+  assert.deepEqual(
+    normalizeNotebookItem({
+      id: 'nb1',
+      name: '閱讀',
+      color: '#AABBCC',
+      coverPattern: 'grid',
+      sortOrder: 2,
+      isDefault: false,
+      isDeleted: true,
+      cardCount: 7,
+      updatedAt: '2026-06-06T00:00:00Z',
+    }),
+    {
+      id: 'nb1',
+      name: '閱讀',
+      color: '#AABBCC',
+      coverPattern: 'grid',
+      sortOrder: 2,
+      isDefault: false,
+      isDeleted: true,
+      cardCount: 7,
+      updatedAt: '2026-06-06T00:00:00Z',
+    },
+  );
+  assert.equal(normalizeNotebookItem({}).id, 'default');
+  assert.equal(normalizeNotebookItem({}).name, '我的單字本');
 });
 
 // ---------------------------------------------------------------------------
@@ -660,12 +713,12 @@ test('routeMessage maps explain / addVocab / listVocab / lookupWord', () => {
     { kind: 'explain', args: ['w', 'c'] },
   );
   assert.deepEqual(
-    routeMessage({ type: 'addVocab', entries: [{ word: 'w' }] }),
-    { kind: 'addVocab', args: [[{ word: 'w' }]] },
+    routeMessage({ type: 'addVocab', entries: [{ word: 'w' }], notebookId: 'nb-reading' }),
+    { kind: 'addVocab', args: [[{ word: 'w' }], 'nb-reading'] },
   );
   assert.deepEqual(
-    routeMessage({ type: 'listVocab', since: '2024-01-01' }),
-    { kind: 'listVocab', args: ['2024-01-01'] },
+    routeMessage({ type: 'listVocab', since: '2024-01-01', notebookId: 'nb-reading' }),
+    { kind: 'listVocab', args: ['2024-01-01', undefined, 'nb-reading'] },
   );
   assert.deepEqual(
     routeMessage({ type: 'lookupWord', word: 'w' }),
@@ -698,6 +751,25 @@ test('routeMessage maps user config / entitlements kinds', () => {
   });
 });
 
+test('routeMessage maps notebook CRUD kinds', () => {
+  assert.deepEqual(routeMessage({ type: 'listNotebooks', since: '2024-01-01' }), {
+    kind: 'listNotebooks',
+    args: ['2024-01-01'],
+  });
+  assert.deepEqual(routeMessage({ type: 'createNotebook', notebook: { name: '閱讀' } }), {
+    kind: 'createNotebook',
+    args: [{ name: '閱讀' }],
+  });
+  assert.deepEqual(routeMessage({ type: 'updateNotebook', notebookId: 'nb1', patch: { name: '新名' } }), {
+    kind: 'updateNotebook',
+    args: ['nb1', { name: '新名' }],
+  });
+  assert.deepEqual(routeMessage({ type: 'deleteNotebook', notebookId: 'nb1' }), {
+    kind: 'deleteNotebook',
+    args: ['nb1'],
+  });
+});
+
 test('routeMessage maps get_auth_status / logout to argument-free ops', () => {
   assert.deepEqual(routeMessage({ type: 'get_auth_status' }), {
     kind: 'getAuthStatus',
@@ -724,6 +796,10 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     explain: { type: 'explain', word: 'w', context: 'c' },
     addVocab: { type: 'addVocab', entries: [] },
     listVocab: { type: 'listVocab', since: '' },
+    listNotebooks: { type: 'listNotebooks', since: '' },
+    createNotebook: { type: 'createNotebook', notebook: { name: 'n' } },
+    updateNotebook: { type: 'updateNotebook', notebookId: 'n', patch: { name: 'm' } },
+    deleteNotebook: { type: 'deleteNotebook', notebookId: 'n' },
     lookupWord: { type: 'lookupWord', word: 'w' },
     getUserConfig: { type: 'getUserConfig' },
     updateUserConfig: { type: 'updateUserConfig', translation: {} },

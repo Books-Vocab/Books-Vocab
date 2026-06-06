@@ -22,6 +22,12 @@
     </div>
   </header>
 
+  <!-- Notebook scope (mirrors iOS current notebook selection). -->
+  <div class="kg-notebook-switcher" id="notebookSwitcher" hidden>
+    <label class="kg-notebook-switcher__label" for="notebookSelect" data-i18n="notebookScope">單字本</label>
+    <select class="kg-notebook-switcher__select" id="notebookSelect" data-i18n-attr="aria-label:notebookScopeAria" aria-label="選擇單字本"></select>
+  </div>
+
   <!-- Filter + Sort Bar (mirrors iOS KGVocabPresenter chip+sort row) -->
   <div class="kg-filter-bar" id="filterBar">
     <div class="kg-filter-bar__chips" id="filterChips"></div>

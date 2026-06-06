@@ -54,6 +54,9 @@
 
   "sidepanelDocTitle": { "message": "KG 詞彙" },
   "vocabTitle": { "message": "我的單字本" },
+  "notebookScope": { "message": "單字本" },
+  "notebookScopeAria": { "message": "選擇單字本" },
+  "notebookDefaultName": { "message": "我的單字本" },
   "searchPlaceholder": { "message": "搜尋單字…" },
   "searchClearAria": { "message": "清除搜尋" },
   "themeToggleTitle": { "message": "切換主題" },
