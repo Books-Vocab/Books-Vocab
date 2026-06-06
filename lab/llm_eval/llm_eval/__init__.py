@@ -24,6 +24,7 @@ from collections.abc import Callable
 from .config import EvalConfig
 from .corpus import build_private_corpus, sanitize_context
 from .datasets import load_dataset
+from .gold_queue import build_gold_review_queue
 from .reporting import compare_to_baseline, write_report
 from .registry import PromptRegistry, RenderedPrompt
 from .runner import EvalResult, EvalSummary, run_eval
@@ -34,6 +35,7 @@ __all__ = [
     "EvalSummary",
     "PromptRegistry",
     "RenderedPrompt",
+    "build_gold_review_queue",
     "build_private_corpus",
     "compare_to_baseline",
     "load_dataset",
