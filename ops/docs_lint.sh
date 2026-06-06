@@ -136,7 +136,26 @@ files_docs() {
     echo "ERROR --files 需要至少一個 docs/*.md 路徑" >&2
     exit 2
   fi
-  printf '%s\n' "${FILE_ARGS[@]}" | filter_docs
+  for f in "${FILE_ARGS[@]}"; do
+    case "$f" in
+      docs/*.md) ;;
+      *)
+        echo "ERROR --files 只接受 docs/*.md 路徑: $f" >&2
+        exit 2
+        ;;
+    esac
+    case "$f" in
+      docs/assets/*|docs/legal/*)
+        echo "ERROR --files 不掃描 assets/legal doc: $f" >&2
+        exit 2
+        ;;
+    esac
+    if [ ! -f "$f" ]; then
+      echo "ERROR --files 路徑不存在: $f" >&2
+      exit 2
+    fi
+  done
+  printf '%s\n' "${FILE_ARGS[@]}" | sort -u
 }
 
 case "$MODE" in
