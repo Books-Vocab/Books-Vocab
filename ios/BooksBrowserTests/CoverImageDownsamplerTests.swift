@@ -110,6 +110,61 @@ struct CoverImageDownsamplerTests {
         #expect(longest <= 420 + 1)
     }
 
+    @Test("Notebook cover cache reuses same path and display bound")
+    func notebookCoverCacheReusesSamePathAndSize() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+        let png = makePNG(widthPx: 900, heightPx: 1200)
+        var loads = 0
+
+        let first = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 120, height: 180),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+        let second = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 120, height: 180),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+
+        #expect(loads == 1)
+        #expect(first === second)
+    }
+
+    @Test("Notebook cover cache keys include display bound")
+    func notebookCoverCacheSeparatesDisplaySizes() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+        let png = makePNG(widthPx: 900, heightPx: 1200)
+        var loads = 0
+
+        _ = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 80, height: 120),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+        _ = try #require(NotebookCoverImageCache.image(
+            path: "/tmp/cover.png",
+            displaySize: CGSize(width: 180, height: 270),
+            scale: 2
+        ) { _ in
+            loads += 1
+            return png
+        })
+
+        #expect(loads == 2)
+    }
+
     // MARK: - 存檔路徑（track-15）：downsampledJPEG（UIImage path）
 
     @Test func largeCoverShrinksWithinBound() throws {
