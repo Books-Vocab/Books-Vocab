@@ -123,8 +123,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         if let existing = self.userId, existing != userIdStr {
             AppLog.auth.info("Account switch detected, clearing sync + notebook state")
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: "kg_last_incremental_sync")
-            defaults.removeObject(forKey: "kg_review_payload_version")
+            // 用 KGService.SyncKeys 常數，與 LocalDataCleanerService / sync 路徑單一真相對齊。
+            defaults.removeObject(forKey: KGService.SyncKeys.incrementalBoundary)
+            defaults.removeObject(forKey: KGService.SyncKeys.payloadVersion)
+            // 與 clearLocalData 對齊：漏清 review-event cursor 會讓經 login(customToken:)
+            // 的手動帳號切換（SettingsCoordinator）讓 B 沿用 A 的 review pull cursor。
+            defaults.removeObject(forKey: KGService.SyncKeys.reviewEventPullBoundary)
             defaults.removeObject(forKey: "activeNotebookId")
             defaults.removeObject(forKey: NotebookFilter.storageKey)
             AppAnalytics.track(.accountSwitchDetected)

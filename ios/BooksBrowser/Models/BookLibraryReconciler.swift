@@ -134,8 +134,8 @@ struct BookLibraryReconciler {
     }
 
     /// 取 group 中「恢復價值最高」者。group 必為非空（caller 皆在 count > 1 /
-    /// compactMapValues 下呼叫）；以 first 作防線取代 force-unwrap，避免未來 caller
-    /// 改了不變式時於 startup 路徑 trap。
+    /// compactMapValues 下呼叫）；回傳 Optional（`max` 對空集合自然回 nil）取代
+    /// force-unwrap，避免未來 caller 改了不變式時於 startup 路徑 trap。
     private static func bestBook(
         in group: [Book],
         manifestsById: [UUID: BookManifest]
