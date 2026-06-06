@@ -12,6 +12,9 @@ documents:
       - conflict_resolution_changed
     sources:
       - ios/BooksBrowser/
+      - "!ios/BooksBrowser/Models/Book.swift"
+      - "!ios/BooksBrowser/Models/BookManifest.swift"
+      - "!ios/BooksBrowser/Models/BookLibraryReconciler.swift"
       - backend/src/kg/
 
   - id: contract.card_format
@@ -37,6 +40,7 @@ documents:
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/devops_kg_safe.sh"
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -51,6 +55,7 @@ documents:
       - "!ops/docs_impact.py"
       - "!ops/tests/test_docs_*.sh"
       - backend/
+      - "!backend/src/kg/routers/*.py"
       - docs/runbook/
 
   - id: reference.product_surface
@@ -70,6 +75,7 @@ documents:
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!ops/devops_kg_safe.sh"
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
@@ -83,6 +89,7 @@ documents:
     sources:
       - backend/
       - ops/
+      - "!ops/tests/test_docs_*.sh"
 
   - id: sop.doc_sync
     path: docs/sop/doc_sync.md
@@ -98,6 +105,37 @@ documents:
       - ops/docs_lint.sh
       - ops/docs_impact.py
 
+  - id: sop.docs_dogfood
+    path: docs/sop/docs_dogfood.md
+    kind: sop
+    authority: derived
+    triggers:
+      - docs_workflow_changed
+      - docs_gate_changed
+      - docs_impact_changed
+      - dogfood_protocol_changed
+    sources:
+      - docs/registry.yml
+      - docs/sop/doc_sync.md
+      - ops/docs_lint.sh
+      - ops/docs_impact.py
+
+  - id: reference.feature_boundary.bookshelf
+    path: docs/reference/feature_boundary/bookshelf.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - bookshelf_surface_changed
+      - book_manifest_changed
+      - book_recovery_changed
+    sources:
+      - ios/BooksBrowser/Views/Bookshelf/
+      - ios/BooksBrowser/Models/Book.swift
+      - ios/BooksBrowser/Models/BookManifest.swift
+      - ios/BooksBrowser/Models/BookLibraryReconciler.swift
+      - ios/BooksBrowser/AppOrphanBookRecovery.swift
+      - ios/BooksBrowser/AppStartupRecovery.swift
+
   - id: sop.backend
     path: docs/sop/backend.md
     kind: sop
@@ -112,6 +150,8 @@ documents:
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
       - "!ops/tests/test_docs_*.sh"
+      - "!backend/src/kg/routers/*.py"
+      - "!ops/devops_kg_safe.sh"
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -122,9 +162,11 @@ documents:
       - ios_release_workflow_changed
       - app_store_workflow_changed
     sources:
-      - ios/
       - ops/ios_build.sh
       - ops/ios_release.sh
+      - ios/BooksBrowser.xcodeproj/
+      - ios/ExportOptions.plist
+      - ios/BooksBrowser/Products.storekit
 
   - id: sop.deploy
     path: docs/sop/deploy.md
@@ -140,6 +182,7 @@ documents:
       - "!ops/docs_impact.py"
       - "!ops/tests/test_docs_*.sh"
       - backend/
+      - "!backend/src/kg/routers/*.py"
 
   - id: sop.debug
     path: docs/sop/debug.md

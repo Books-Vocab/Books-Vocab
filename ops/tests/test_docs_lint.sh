@@ -28,6 +28,7 @@ grep -q "ERROR: 0" /tmp/kg_docs_lint_all.out
 
 ./ops/docs_lint.sh --registry >/tmp/kg_docs_lint_registry.out
 grep -q "REGISTRY OK" /tmp/kg_docs_lint_registry.out
+grep -q "OK:    1" /tmp/kg_docs_lint_registry.out
 
 ./ops/docs_lint.sh --since HEAD >/tmp/kg_docs_lint_since_head.out
 if ! grep -q "docs_lint: no docs selected" /tmp/kg_docs_lint_since_head.out; then

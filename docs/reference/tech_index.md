@@ -107,7 +107,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `release_bump.sh` | 版號改寫 primitive(api: `backend/pyproject.toml`+`src/kg/api.py` / ios: `project.pbxproj` 的 `MARKETING_VERSION`+`CURRENT_PROJECT_VERSION`+1);一般經 `release.sh bump` 呼叫。前身 `scripts/bump-version.sh` |
 | `release_changelog.sh` | changelog 生成 primitive(依 `api:`/`ios:` prefix 從 git log 自上個同類 tag 分類成 新功能/修復/其他/維運);一般經 `release.sh changelog` 呼叫。前身 `scripts/generate-changelog.sh` |
 | `gen_ios_baseline.sh` | 再生 `docs/snapshot/ios_baseline.md` 快照 |
-| `devops_kg_safe.sh` | 部署 / 維護 safe wrapper |
+| `devops_kg_safe.sh` | 部署 / 維護 safe wrapper。命令面:`preflight` / `deploy` / `restart` / `status` / `health [--json]` / `logs [n]` / `backup` / `backup-s3-test` / `env-check` / `env-drift` / `migrate` / `users` / `user-info <id>` / `run` / `container-run` / `migrate-run` / `ops-cli` / `ops-edit` / `container-script`。預設擋 `setup` / `push-env` / `delete-user` / `ssh` / destructive run command；任意遠端命令先經 `is_blocked_run` |
 | `status_all.sh` | 一覽 backend / caddy / 容器狀態 |
 | `backup_verify.sh` | tarball 還原演練 + SQLite integrity |
 | `kg_backup.sh` | server 端 streaming tar → S3 backup;cron 觸發,日誌 `/var/log/kg_backup.log` |

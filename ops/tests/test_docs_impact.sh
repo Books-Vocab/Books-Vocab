@@ -46,3 +46,50 @@ grep -q "docs_impact: no registry impacts" "$tmpdir/none.out"
 ./ops/docs_impact.py --files backend/src/kg/routers/vocab.py --json >"$tmpdir/backend.json"
 grep -q '"id": "reference.tech_index"' "$tmpdir/backend.json"
 grep -q '"id": "contract.sync_lifecycle"' "$tmpdir/backend.json"
+if grep -q '"id": "policy.safety"' "$tmpdir/backend.json"; then
+  echo "ordinary backend router changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q '"id": "sop.deploy"' "$tmpdir/backend.json"; then
+  echo "ordinary backend router changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+if grep -q '"id": "sop.backend"' "$tmpdir/backend.json"; then
+  echo "ordinary backend router changes should not imply backend workflow impact" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files ops/devops_kg_safe.sh --json >"$tmpdir/devops_safe.json"
+grep -q '"id": "policy.safety"' "$tmpdir/devops_safe.json"
+grep -q '"id": "reference.tech_index"' "$tmpdir/devops_safe.json"
+grep -q '"id": "sop.deploy"' "$tmpdir/devops_safe.json"
+grep -q '"id": "sop.debug"' "$tmpdir/devops_safe.json"
+if grep -q '"id": "contract.host_topology"' "$tmpdir/devops_safe.json"; then
+  echo "safe wrapper changes should not imply host topology impact by default" >&2
+  exit 1
+fi
+if grep -q '"id": "reference.product_surface"' "$tmpdir/devops_safe.json"; then
+  echo "safe wrapper changes should not imply product surface impact by default" >&2
+  exit 1
+fi
+if grep -q '"id": "sop.backend"' "$tmpdir/devops_safe.json"; then
+  echo "safe wrapper changes should not imply backend workflow impact by default" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift --json >"$tmpdir/book_model.json"
+grep -q '"id": "reference.feature_boundary.bookshelf"' "$tmpdir/book_model.json"
+if grep -q '"id": "contract.sync_lifecycle"' "$tmpdir/book_model.json"; then
+  echo "book model changes should not imply vocabulary sync lifecycle impact by default" >&2
+  exit 1
+fi
+if grep -q '"id": "sop.ios"' "$tmpdir/book_model.json"; then
+  echo "ordinary iOS model changes should not imply iOS workflow SOP impact" >&2
+  exit 1
+fi
+
+./ops/docs_impact.py --files ops/tests/test_docs_lint.sh >"$tmpdir/docs_test.out"
+if grep -q "reference.tech_index" "$tmpdir/docs_test.out"; then
+  echo "docs tooling test changes should not imply tech index impact" >&2
+  exit 1
+fi
