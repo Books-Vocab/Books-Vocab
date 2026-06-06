@@ -464,3 +464,69 @@ actor BackgroundSyncActor {
         }
     }
 }
+
+extension BackgroundSyncActor {
+    /// Build append-only review event payloads from local ReviewRecord rows.
+    func buildReviewEventsPushPayload() throws -> [KGReviewEventPayload] {
+        let descriptor = FetchDescriptor<ReviewRecord>()
+        let records = try modelContext.fetch(descriptor)
+        guard !records.isEmpty else { return [] }
+        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+        let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+
+        return records.map { record in
+            let cardId: String?
+            if let entryID = record.entryID,
+               let resolvedCardId = entriesByID[entryID]?.kgCardId,
+               !resolvedCardId.isEmpty {
+                cardId = resolvedCardId
+            } else {
+                cardId = nil
+            }
+            return KGReviewEventPayload(
+                event_id: record.id.uuidString,
+                card_id: cardId,
+                word_snapshot: record.word,
+                notebook_id: record.notebookId,
+                feedback: record.feedback,
+                reviewed_at: AppDateFormatters.iso8601.string(from: record.reviewedAt),
+                created_at: AppDateFormatters.iso8601.string(from: record.reviewedAt)
+            )
+        }
+    }
+
+    /// Merge remote append-only review events into local ReviewRecord rows.
+    func mergeReviewEvents(_ remoteEvents: [KGReviewEventPayload]) throws {
+        guard !remoteEvents.isEmpty else { return }
+
+        let descriptor = FetchDescriptor<ReviewRecord>()
+        let existing = try modelContext.fetch(descriptor)
+        var existingIDs = Set(existing.map(\.id))
+        var inserted = 0
+
+        for event in remoteEvents {
+            guard
+                let eventID = UUID(uuidString: event.event_id),
+                !existingIDs.contains(eventID),
+                let reviewedAt = Self.parseISO8601(event.reviewed_at)
+            else { continue }
+
+            let record = ReviewRecord(
+                word: event.word_snapshot,
+                entryID: nil,
+                feedback: event.feedback,
+                reviewedAt: reviewedAt
+            )
+            record.id = eventID
+            record.notebookId = event.notebook_id
+            modelContext.insert(record)
+            existingIDs.insert(eventID)
+            inserted += 1
+        }
+
+        if inserted > 0 {
+            try modelContext.save()
+            AppLog.sync.info("mergeReviewEvents: inserted \(inserted) remote review events")
+        }
+    }
+}
