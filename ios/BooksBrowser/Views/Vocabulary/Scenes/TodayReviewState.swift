@@ -66,7 +66,11 @@ final class TodayReviewState {
 
     init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], currentUserID: String?) {
         self.currentUserID = currentUserID
-        let ordered = ReviewSessionStore.loadOrder(availableEntries: entries) ?? entries
+        let ordered = ReviewSessionStore.loadOrder(
+            availableEntries: entries,
+            userID: currentUserID,
+            allowPartialQueue: true
+        ) ?? entries
         let restored = ReviewSessionPersistence.restoreSnapshotIfPossible(
             orderedEntries: ordered,
             userId: currentUserID
@@ -227,7 +231,7 @@ final class TodayReviewState {
         }
         syncQueueMetadata()
         prewarmCardWindow()
-        ReviewSessionStore.saveOrder(queue.map(\.id))
+        ReviewSessionStore.saveOrder(queue, userID: currentUserID)
         persistSnapshot()
     }
 
@@ -403,7 +407,7 @@ final class TodayReviewState {
     /// funnel through here so the completion contract stays single-sourced.
     private func finishSessionIfComplete() {
         guard currentIndex >= queue.count else { return }
-        ReviewSessionStore.clear()
+        ReviewSessionStore.clear(userID: currentUserID)
         clearSnapshot()
         let durationMs = Int(Date().timeIntervalSince(sessionStartTime) * 1000)
         AppAnalytics.track(.reviewSessionEnded(
