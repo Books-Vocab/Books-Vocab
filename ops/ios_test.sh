@@ -183,12 +183,12 @@ emit_new_test_output() {
   local from_line="$1" to_line="$2"
   [[ "$to_line" -ge "$from_line" ]] || return 0
   sed -n "${from_line},${to_line}p" "$TMPOUT" \
-    | grep -E "^(\*\* TEST|Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|Test session results|[[:space:]]*[✔✘✓✗] Test .+ (passed|failed)|[✔✘✓✗] Test run with|error:|.* failed)" \
+    | grep -E "^(\*\* TEST|Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|Test session results|[[:space:]]*[✘✗] Test .+ failed|[✔✘✓✗] Test run with|error:)" \
     || true
 }
 
 last_test_event() {
-  grep -E "^(Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|[[:space:]]*[✔✘✓✗] Test .+ (passed|failed)|[✔✘✓✗] Test run with)" "$TMPOUT" \
+  grep -E "^(Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|[[:space:]]*[✘✗] Test .+ failed|[✔✘✓✗] Test run with)" "$TMPOUT" \
     | tail -1 \
     | sed 's/^[[:space:]]*//'
 }
