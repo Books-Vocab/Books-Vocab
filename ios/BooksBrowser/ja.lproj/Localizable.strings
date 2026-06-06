@@ -58,6 +58,7 @@
 "sync.failure.reason.rateLimited" = "サーバーが混み合っています。後でもう一度お試しください";
 "sync.failure.reason.serverUnavailable" = "サーバーを一時的に利用できません";
 "sync.failure.reason.serverRejected" = "サーバーがリクエストを拒否しました";
+"sync.failure.reason.serverRejectedCode" = "サーバーがリクエストを拒否しました（HTTP %@）";
 "sync.failure.reason.decoding" = "データ形式に互換性がありません";
 "sync.failure.reason.server" = "サーバーエラー";
 "sync.failure.reason.unknown" = "不明なエラー";
