@@ -97,7 +97,9 @@ enum SyncFailurePresentation {
             if (500...599).contains(statusCode) {
                 return L10n.string("sync.failure.reason.serverUnavailable")
             }
-            return L10n.string("sync.failure.reason.serverRejected")
+            // 4xx（非 429）帶上 status code，提供可觀測性 — 多數是契約/請求問題，
+            // code 是定位的關鍵線索（見 review-event pull 死鎖案）。
+            return L10n.format("sync.failure.reason.serverRejectedCode", String(statusCode))
         case .decodingError:
             return L10n.string("sync.failure.reason.decoding")
         case .serverError:

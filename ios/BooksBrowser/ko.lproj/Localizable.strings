@@ -58,6 +58,7 @@
 "sync.failure.reason.rateLimited" = "서버가 바쁩니다. 잠시 후 다시 시도하세요";
 "sync.failure.reason.serverUnavailable" = "서버를 일시적으로 사용할 수 없습니다";
 "sync.failure.reason.serverRejected" = "서버가 요청을 거부했습니다";
+"sync.failure.reason.serverRejectedCode" = "서버가 요청을 거부했습니다 (HTTP %@)";
 "sync.failure.reason.decoding" = "데이터 형식이 호환되지 않습니다";
 "sync.failure.reason.server" = "서버 오류";
 "sync.failure.reason.unknown" = "알 수 없는 오류";

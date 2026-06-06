@@ -196,4 +196,35 @@ struct KGServiceErrorTests {
 
         #expect(message == "同步失敗：未知錯誤")
     }
+
+    // 可觀測性：4xx（非 429）拒絕須在 toast 帶上 HTTP status code，讓使用者/debug
+    // 一眼看出「哪支請求被伺服器以什麼狀態碼拒絕」（review-event pull 死鎖案教訓：
+    // 當初 toast 只說「伺服器拒絕請求」，無 code 得繞遠路才定位到 400）。
+    @Test func sync_failure_4xx_includes_status_code() {
+        let m400 = SyncFailurePresentation.message(
+            label: "pullReviewEvents",
+            error: KGError.httpError(statusCode: 400, detail: "Invalid since timestamp")
+        )
+        #expect(m400.contains("400"))
+        #expect(m400.contains("複習紀錄下載失敗"))
+
+        let m403 = SyncFailurePresentation.message(
+            label: "pull",
+            error: KGError.httpError(statusCode: 403, detail: "forbidden")
+        )
+        #expect(m403.contains("403"))
+    }
+
+    // 範圍精準：429（限流）與 5xx（伺服器異常）語意已清楚，維持原文案、不帶 code。
+    @Test func sync_failure_429_and_5xx_keep_dedicated_reason_without_code() {
+        let m429 = SyncFailurePresentation.message(
+            label: "pull", error: KGError.httpError(statusCode: 429, detail: "")
+        )
+        #expect(!m429.contains("429"))
+
+        let m500 = SyncFailurePresentation.message(
+            label: "pull", error: KGError.httpError(statusCode: 500, detail: "")
+        )
+        #expect(!m500.contains("500"))
+    }
 }
