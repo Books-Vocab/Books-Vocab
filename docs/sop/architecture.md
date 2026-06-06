@@ -60,7 +60,7 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化
 | `appearance` | `mode`、`updated_at` | `AppAppearanceStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 mode，不保存 resolved value |
 | `language` | `app_language`、`updated_at` | `AppLanguageStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 selection，不保存系統解析結果 |
 | `podcast` | `followed_series_ids`、`updated_at` | `PodcastSeries.isFollowed` local SwiftData | LWW 或 per-series timestamp；server list 用於排序與 cross-platform follow |
-| `vocab_ui` | `active_notebook_id` | `activeNotebookId` UserDefaults | LWW；server 必須拒絕已刪 notebook，client 保留本機 fallback |
+| `vocab_ui` | `active_notebook_id`、`updated_at` | `activeNotebookId` UserDefaults | LWW；server 必須拒絕已刪 notebook，client 保留本機 fallback |
 
 分階段實作時，先擴充後端 response 以向後相容方式回傳 optional domains，再讓 iOS 依 domain-level `updated_at` merge。每個 domain 的 PATCH 必須是 partial update，不能用缺欄位覆蓋既有 server config；client 也不能在 fetch 失敗時把本機舊值重新 PUT 成權威。
 
@@ -119,6 +119,28 @@ Migration 順序：
 - metadata tombstone 同步到後端，其他裝置隱藏該書。
 - 本機檔案可立即刪除；object storage asset 是否刪除由 retention / recovery policy 決定。
 - 詞卡的 `bookId` 關聯不應硬刪詞卡；只解除來源書關聯或保留書名 snapshot。
+
+### Rollout PR sequence（目標順序）
+
+後端權威化應拆成多個可回滾 PR，不做單次大爆破。每個 PR 都要保持舊版 iOS 可用，且後端 response 新欄位必須 optional / backward-compatible。
+
+| PR | Scope | 主要產出 | Gate |
+|---|---|---|---|
+| 1 | User config timestamps | 後端 `TranslationLanguageConfig.updated_at` + domain-level partial merge；iOS 開啟 translation server LWW | backend tests + iOS settings tests；遠端失敗 rollback |
+| 2 | User config domains | reader / review / appearance / language / vocab_ui optional domains；iOS 啟動 fetch + local cache fallback | 每個 domain partial PATCH 測試；fetch 失敗不可 PUT 舊值 |
+| 3 | Podcast follow backend | `podcast.followed_series_ids` 或 dedicated follow endpoint；iOS optimistic toggle + migration | 不存在 series 收斂；登出 / account switch 清 projection |
+| 4 | Podcast progress CloudKit退場 | `PodcastProgress` local-only projection；啟動一次性補推 CloudKit/local rows | LWW tie-break 一致；重複 migration 冪等 |
+| 5 | Library metadata + position backend | `/api/library/books*` metadata / tombstone / position；iOS `Book.remoteBookId` + position outbox | 不上傳 asset 也可用；EPUB/PDF position contract 一致 |
+| 6 | Library asset sync | object storage upload/download、quota、privacy copy、download state UI | 大檔不上 DB；quota / entitlement / retry / cancellation tests |
+| 7 | CloudKit / iCloud KVS cleanup | 移除不再需要的 cross-device Apple-only authority；保留 UserDefaults 啟動快取 | 發版週期觀測完成；舊資料 migration 完成；rollback path 明確 |
+
+每個實作 PR 的 docs gate：
+
+- 改 backend endpoint / DB / env / schema 時，同步 `docs/reference/tech_index.md`。
+- 新增已上線 user-facing 功能時，同步 `docs/reference/product_surface.md`。
+- 改 iOS feature 分層或檔名時，同步對應 `docs/reference/feature_boundary/*.md`。
+- 改 sync 狀態流轉時，同步 `docs/reference/sync_lifecycle.md`。
+- 只寫目標規劃而未實作 endpoint/schema 時，不更新 reference SoT，以免把 roadmap 誤標成產品現況。
 
 ---
 
