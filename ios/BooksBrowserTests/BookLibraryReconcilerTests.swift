@@ -349,4 +349,24 @@ struct BookLibraryReconcilerTests {
         #expect(book.author == "Author")
         #expect(book.progression == 0.2)
     }
+
+    @Test func reconcilerDoesNotDeleteDistinctBooksWithEmptyFileName() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 兩本不同的書，epubFileName 都還是預設 ""（模擬 CloudKit 部分同步中間態）
+        let a = Book(title: "Book A", author: "", fileName: "", format: .epub)
+        let b = Book(title: "Book B", author: "", fileName: "", format: .epub)
+        context.insert(a)
+        context.insert(b)
+        try context.save()
+
+        let result = try BookLibraryReconciler(rootDirectory: root).reconcile(context: context)
+
+        let books = try context.fetch(FetchDescriptor<Book>())
+        #expect(result.duplicateRowsRemoved == 0)
+        #expect(books.count == 2)
+    }
 }
