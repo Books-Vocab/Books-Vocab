@@ -173,9 +173,13 @@ final class BookshelfImportService: BookshelfImporting {
                 .appendingPathComponent(".\(UUID().uuidString).tmp")
             fm.createFile(atPath: tmp.path, contents: nil)
 
+            // 寫入區塊：reader/writer 以 defer 無條件 close（含 throw 解開路徑，避免 fd 洩漏），
+            // 且 defer 在本 do 結束時即觸發 → 早於下方 move。
             do {
                 let reader = try FileHandle(forReadingFrom: src)
+                defer { try? reader.close() }
                 let writer = try FileHandle(forWritingTo: tmp)
+                defer { try? writer.close() }
                 var written: Int64 = 0
                 progress?(0.0)
                 while true {
@@ -187,14 +191,12 @@ final class BookshelfImportService: BookshelfImporting {
                         progress?(min(1.0, Double(written) / Double(totalBytes)))
                     }
                 }
-                try writer.close()
-                try reader.close()
             } catch {
                 try? fm.removeItem(at: tmp)  // 清半檔，最終路徑保持乾淨
                 throw error
             }
 
-            // 全部寫完才原子替換最終位置
+            // 全部寫完、handle 已關才原子替換最終位置
             do {
                 if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
                 try fm.moveItem(at: tmp, to: dst)
