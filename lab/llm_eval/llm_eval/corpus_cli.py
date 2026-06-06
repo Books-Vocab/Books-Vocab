@@ -20,14 +20,17 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("private_corpus"),
         help="Directory for ignored private JSONL outputs.",
     )
-    parser.add_argument("--limit", type=int, default=None, help="Optional max source cards.")
+    parser.add_argument("--limit", type=_non_negative_int, default=None, help="Optional max source cards.")
     parser.add_argument(
         "--context-chars",
-        type=int,
+        type=_positive_int,
         default=320,
         help="Maximum context characters kept per candidate.",
     )
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code)
 
     outputs = build_private_corpus(
         args.dump_path,
@@ -36,7 +39,6 @@ def main(argv: list[str] | None = None) -> int:
         context_chars=args.context_chars,
     )
     summary = {
-        "dump_path": str(args.dump_path),
         "output_dir": str(args.output_dir),
         "files": {
             name: {
@@ -54,3 +56,17 @@ def _count_jsonl_rows(path: Path) -> int:
     if not path.exists():
         return 0
     return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+
+
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
