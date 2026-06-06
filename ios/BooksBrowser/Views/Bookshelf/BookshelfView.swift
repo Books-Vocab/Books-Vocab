@@ -93,18 +93,12 @@ struct BookshelfView: View {
                     .accessibilityIdentifier("bookshelf.settingsButton")
 
                     #if targetEnvironment(macCatalyst)
-                    Button(action: {
-                        Task {
-                            await coordinator.sync(
-                                container: modelContext.container,
-                                kgService: kgService,
-                                toastCoordinator: toastCoordinator
-                            )
-                        }
-                    }) {
+                    // 可見的同步 affordance（Mac 無 pull-to-refresh）。⌘R 由
+                    // `MacMenuCommands` 全域擁有（任一畫面可觸發），此處**不**再綁一次
+                    // ⌘R 以免雙重綁定；兩者均經 `ExplicitSync` 給一致的 toast 回饋。
+                    Button(action: { Task { await performSync() } }) {
                         AppToolbarGlyph(systemImage: "arrow.clockwise")
                     }
-                    .keyboardShortcut(.init("r"), modifiers: .command)
                     .accessibilityLabel("同步".localized)
                     .accessibilityIdentifier("bookshelf.refreshButton")
                     #endif

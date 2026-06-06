@@ -14,6 +14,7 @@ struct MacMenuCommands: Commands {
     var coordinator: AppCommandCoordinator
     var kgService: KGService
     var modelContainer: ModelContainer
+    var toastCoordinator: AppToastCoordinator
 
     // 畫面相關動作 — view 經 .focusedSceneValue publish,無 publish 時 nil → menu 自動 disable。
     @FocusedValue(\.importBook) private var importBook
@@ -31,12 +32,19 @@ struct MacMenuCommands: Commands {
             .keyboardShortcut(",", modifiers: .command)
         }
 
-        // 立即同步 ⌘R — 置於 App menu(設定下方),語意為全域資料動作。
-        // app 直接持 kgService + modelContainer,不經 coordinator;與 scenePhase/post-login
-        // 的 sync 共用 claimBackgroundSync() 併發互斥,不重入。
+        // 立即同步 ⌘R — 置於 App menu(設定下方),語意為全域資料動作,任一畫面可觸發。
+        // 經 `ExplicitSync` 與書架 toolbar 鈕 / pull-to-refresh 共用同一回饋政策(成功彈
+        // 確認 toast、失敗 warning + read-then-clear);底層 claimBackgroundSync() 仍與
+        // scenePhase/post-login 併發互斥,不重入。
         CommandGroup(after: .appSettings) {
             Button(L10n.string("同步")) {
-                Task { await kgService.backgroundSync(container: modelContainer) }
+                Task {
+                    await ExplicitSync.run(
+                        kgService: kgService,
+                        container: modelContainer,
+                        toastCoordinator: toastCoordinator
+                    )
+                }
             }
             .keyboardShortcut("r", modifiers: .command)
         }
