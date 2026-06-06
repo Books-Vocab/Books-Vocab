@@ -30,6 +30,30 @@ enum PodcastHighlightResolver {
     }
 }
 
+enum PodcastTranscriptMarkLayer {
+    enum Placement {
+        case background
+        case overlay
+    }
+
+    case vocabHighlight
+    case playbackUnderline
+
+    var placement: Placement {
+        switch self {
+        case .vocabHighlight: return .background
+        case .playbackUnderline: return .overlay
+        }
+    }
+
+    var zIndex: Double {
+        switch self {
+        case .vocabHighlight: return 0
+        case .playbackUnderline: return 1
+        }
+    }
+}
+
 /// Chat-style transcript: sentences laid out as left/right bubbles by speaker.
 ///
 /// Design principles:
@@ -94,11 +118,13 @@ struct PodcastSentenceLevelView: View {
     /// 詞庫已查詞集（`translationHandler.lookedUpWords`），驅動字幕詞庫螢光筆。原始未正規化
     /// 字串;column 每次 render 折疊一次供比對。
     let lookedUpWords: Set<String>
+    let highlightPreferences: VocabHighlightPreferences
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
     let onExplainTap: (String, String) -> Void
     @Environment(\.appSkin) private var skin
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
 
     @State private var isFollowing = true
@@ -303,6 +329,7 @@ struct PodcastSentenceLevelView: View {
             currentId: currentId,
             scrollLeadId: scrollLeadId,
             lookedUpWords: lookedUpWords,
+            highlightPreferences: highlightPreferences,
             selectionState: selectionState,
             subtitleSize: subtitleSize,
             wordFollowEnabled: wordFollowEnabled,
@@ -311,6 +338,7 @@ struct PodcastSentenceLevelView: View {
             liveAnchor: liveAnchor,
             speakerSlots: speakerSlots,
             skin: skin,
+            colorScheme: colorScheme,
             onSentenceTap: { sentence in
                 // Tapping a bubble while browsing (follow disengaged via manual
                 // scroll) re-engages follow: seek to its head AND snap follow back
@@ -437,6 +465,7 @@ private struct PodcastTranscriptColumn: View {
     /// on the host view so the column can light the upcoming bubble ahead of audio.
     let scrollLeadId: Int?
     let lookedUpWords: Set<String>
+    let highlightPreferences: VocabHighlightPreferences
     let selectionState: PodcastSentenceSelection?
     let subtitleSize: PodcastSubtitleSize
     let wordFollowEnabled: Bool
@@ -445,6 +474,7 @@ private struct PodcastTranscriptColumn: View {
     let liveAnchor: PodcastLiveAnchor
     let speakerSlots: [String: Int]
     let skin: AppSkin
+    let colorScheme: ColorScheme
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
@@ -501,6 +531,7 @@ private struct PodcastTranscriptColumn: View {
                     isNext: isNext,
                     isHighlighted: isHighlighted,
                     vocabHighlightIndices: vocabHits,
+                    highlightPreferences: highlightPreferences,
                     isSelecting: isSelectingThis,
                     initialSelectionRange: isSelectingThis ? selectionState?.initialRange : nil,
                     hasActiveSelection: hasActiveSelection,
@@ -513,6 +544,7 @@ private struct PodcastTranscriptColumn: View {
                     words: sentence.words,
                     fullText: sentence.text,
                     skin: PodcastBubbleSkin(skin: skin, slot: slot),
+                    colorScheme: colorScheme,
                     liveAnchor: liveAnchor,
                     duration: duration,
                     hasNext: hasNext,
@@ -580,10 +612,6 @@ private struct PodcastBubbleSkin: Equatable {
     let primaryText: Color
     let secondaryText: Color
     let cornerRadius: CGFloat
-    /// 詞庫螢光筆標記色（`palette.highlightMark`，全主題的單一 highlight token）。
-    /// Carried, not compared — 由 `paletteBase` 決定，已在 `==` 涵蓋。
-    let highlightMark: Color
-
     init(skin: AppSkin, slot: Int) {
         self.paletteBase = skin.palette.base
         self.slot = slot
@@ -591,7 +619,6 @@ private struct PodcastBubbleSkin: Equatable {
         self.primaryText = skin.palette.primaryText
         self.secondaryText = skin.palette.secondaryText
         self.cornerRadius = skin.radii.card
-        self.highlightMark = skin.palette.highlightMark
     }
 
     static func == (l: PodcastBubbleSkin, r: PodcastBubbleSkin) -> Bool {
@@ -629,6 +656,7 @@ private struct PodcastBubbleCell: View, Equatable {
     /// 經 `PodcastVocabHighlightResolver` 算出。與 playback 無關、所有句子常駐。
     /// Compared in `==` 以隨加 / 刪詞庫（`lookedUpWords` 變動）重繪。
     let vocabHighlightIndices: Set<Int>
+    let highlightPreferences: VocabHighlightPreferences
     let isSelecting: Bool
     let initialSelectionRange: NSRange?
     let hasActiveSelection: Bool
@@ -641,6 +669,7 @@ private struct PodcastBubbleCell: View, Equatable {
     let words: [PodcastSubtitleCue]
     let fullText: String
     let skin: PodcastBubbleSkin
+    let colorScheme: ColorScheme
     // Per-frame channel + stable closures — EXCLUDED from == (determined by
     // `sentenceId` or read live per frame):
     let liveAnchor: PodcastLiveAnchor
@@ -676,6 +705,7 @@ private struct PodcastBubbleCell: View, Equatable {
             && l.isNext == r.isNext
             && l.isHighlighted == r.isHighlighted
             && l.vocabHighlightIndices == r.vocabHighlightIndices
+            && l.highlightPreferences == r.highlightPreferences
             && l.isSelecting == r.isSelecting
             && l.initialSelectionRange == r.initialSelectionRange
             && l.hasActiveSelection == r.hasActiveSelection
@@ -685,6 +715,7 @@ private struct PodcastBubbleCell: View, Equatable {
             && l.alignRight == r.alignRight
             && l.showSpeaker == r.showSpeaker
             && l.skin == r.skin
+            && l.colorScheme == r.colorScheme
     }
 
     var body: some View {
@@ -765,12 +796,14 @@ private struct PodcastBubbleCell: View, Equatable {
             onTranslateSelection: { phrase, context in onPhraseTap(phrase, context) },
             onExplainSelection: { text, context in onExplainTap(text, context) }
         )
-        .overlay {
-            vocabHighlightOverlay(rects: wordRects)
+        .background {
+            vocabHighlightLayer(rects: wordRects)
+                .zIndex(PodcastTranscriptMarkLayer.vocabHighlight.zIndex)
         }
         .overlay {
             if !isSelecting, isCurrent || isNext {
                 continuousUnderline(rects: wordRects)
+                    .zIndex(PodcastTranscriptMarkLayer.playbackUnderline.zIndex)
             }
         }
         .padding(.horizontal, AppSpacing.s3)
@@ -797,31 +830,20 @@ private struct PodcastBubbleCell: View, Equatable {
         .animation(AppMotion.contentFade, value: isSelecting)
     }
 
-    /// 螢光筆底色不透明度。實際色是 `skin.palette.highlightMark`（muted khaki，依 light/dark
-    /// theme-resolved，非 `AppColors` 的 bright HSB token）。色帶疊在字上（`.overlay`），半透明
-    /// 讓字仍可讀；此值只決定螢光筆可見度——0.4 暖卡其疊在 tint 氣泡上 light/dark 皆可見，且與
-    /// 藍灰 speaker tint 區隔。device 可微調。
-    private static let vocabHighlightOpacity: Double = 0.4
-
-    /// 螢光筆色帶高度占字高比例。對齊 Reader 的 `.vocab-word`（`linear-gradient(to top,
-    /// color 32%, transparent 32%)`，見 `ReaderContentStyle.swift`）——只塗字底約 1/3，呈底
-    /// 線式螢光筆，而非整字高色塊。
-    private static let vocabHighlightBandFraction: CGFloat = 0.32
-
     /// 常駐詞庫螢光筆:把命中詞庫的詞（`vocabHighlightIndices`）用其 word rect 畫一條字底
-    /// 色帶（高度 = `rect.height * vocabHighlightBandFraction`，貼齊字底），對齊 Reader 的
-    /// 底線式螢光筆而非整字高色塊。與逐詞底線共用同一組 TextKit rect（text-view 座標系，★B2
-    /// 免 inset），但與 playback 無關、所有句子常駐（不受 `isCurrent || isNext` gate）。選取
-    /// 模式**仍顯示**（與 Reader 一致：匡選文字時同 block 既有螢光筆不消失）——色帶為字底
-    /// 半透明且 `allowsHitTesting(false)`，與系統原生選取反白可共存、不擋 tap / 長按手勢。
+    /// 色帶，並明確放在文字背景層。播放底線是另一個 overlay 層，永遠在其上方。
     @ViewBuilder
-    private func vocabHighlightOverlay(rects: [Int: CGRect]) -> some View {
+    private func vocabHighlightLayer(rects: [Int: CGRect]) -> some View {
         if !vocabHighlightIndices.isEmpty {
             ForEach(vocabHighlightIndices.sorted(), id: \.self) { index in
                 if let rect = rects[index] {
-                    let bandHeight = rect.height * Self.vocabHighlightBandFraction
+                    let bandHeight = rect.height * highlightPreferences.bandFraction
                     RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
-                        .fill(skin.highlightMark.opacity(Self.vocabHighlightOpacity))
+                        .fill(
+                            highlightPreferences.colorPreset
+                                .swiftUIColor(for: colorScheme)
+                                .opacity(highlightPreferences.opacity)
+                        )
                         // +4:螢光筆刻意比字寬 4pt（左右各 2）包住字邊，更像實體螢光筆；逐詞
                         // 底線無此 padding 故不共用同一 rect 尺寸。高度只取字底 32% 色帶
                         // （position y 貼齊 `rect.maxY`），呈底線式螢光筆。
@@ -971,7 +993,8 @@ enum PodcastSpeakerTint {
             subtitleSize: .xLarge,
             initialScrollPositionResolved: true,
             scrollLeadId: 1,
-            lookedUpWords: [],
+            lookedUpWords: ["comfortable"],
+            highlightPreferences: .default,
             onSentenceTap: { _ in },
             onWordTap: { _, _ in },
             onPhraseTap: { _, _ in },

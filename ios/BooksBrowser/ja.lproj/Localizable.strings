@@ -1005,3 +1005,9 @@
 "慢" = "遅い";
 "正常" = "普通";
 "快" = "速い";
+"vocab.highlight.color.label" = "色";
+"vocab.highlight.opacity.label" = "濃さ";
+"vocab.highlight.color.paper" = "紙色";
+"vocab.highlight.color.blue" = "ブルー";
+"vocab.highlight.color.sage" = "セージ";
+"vocab.highlight.color.rose" = "ローズ";

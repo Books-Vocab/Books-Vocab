@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: 746dafaa
+verified_against: e264e4ce
 -->
 # UI Component & Pattern Inventory
 
@@ -133,6 +133,7 @@ Scope: `ios/BooksBrowser`
 - `ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
 - `ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
 - `ios/BooksBrowser/Views/Reader/ReaderSettingsPanel.swift`
+- `ios/BooksBrowser/Views/Reader/VocabHighlightColorPresetPicker.swift`
 - `ios/BooksBrowser/Views/Reader/ReaderSettingsPanelPresenter.swift`
 - `ios/BooksBrowser/Views/Reader/ReaderSettingsVocabPresenter.swift`
 - `ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
@@ -146,10 +147,12 @@ Scope: `ios/BooksBrowser`
 - `ReaderSettingsVocabPresenter`
 - `ReaderViewPresenter`
 - `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter（vocab 單一模式，glass 分支已移除）
+- `VocabHighlightColorPresetPicker` — Reader / Podcast 共用詞庫 highlight 顏色 swatch picker，採 `ReaderSelectionTile` 與 `VocabHighlightColorPreset` 色票
 - `PDFReaderView` — PDF 格式閱讀器（iOS only）
 
 責任：
 - reader loading / overlay / header / translation / settings panel
+- reader / podcast 共用 highlight 顏色入口
 - PDF reader 獨立路徑
 - 整層以 `#if os(iOS)` 隔離 —— Catalyst 下 `os(iOS)` 為 true 仍編譯仍啟用
 

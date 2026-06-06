@@ -143,18 +143,32 @@ extension ReaderSettingsPresenter {
 
     var vocabHighlightSection: some View {
         vocabSettingsSection(title: "生字標記".localized) {
-            HStack(spacing: AppSpacing.s2) {
-                ForEach(opacityOptions, id: \.label) { option in
-                    let isSelected = bindings.underlineOpacity.wrappedValue == option.value
-                    Button { onSelectUnderlineOpacity(option.value) } label: {
-                        ReaderSelectionTile(isSelected: isSelected) {
-                            Text(option.label.localized)
-                                .font(appSkin.typography.caption)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
+            VStack(alignment: .leading, spacing: AppSpacing.s4) {
+                VocabHighlightColorPresetPicker(
+                    selection: bindings.vocabHighlightColorPreset,
+                    title: L10n.string("vocab.highlight.color.label")
+                )
+
+                Divider().overlay(appSkin.palette.divider)
+
+                VStack(alignment: .leading, spacing: AppSpacing.s2) {
+                    Text(L10n.string("vocab.highlight.opacity.label"))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                    HStack(spacing: AppSpacing.s2) {
+                        ForEach(opacityOptions, id: \.label) { option in
+                            let isSelected = bindings.underlineOpacity.wrappedValue == option.value
+                            Button { onSelectUnderlineOpacity(option.value) } label: {
+                                ReaderSelectionTile(isSelected: isSelected) {
+                                    Text(option.label.localized)
+                                        .font(appSkin.typography.caption)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
