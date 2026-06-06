@@ -637,7 +637,6 @@
 "匯出全部單字 CSV" = "Export all words as CSV";
 "取消下載" = "Cancel download";
 "取消全選" = "Deselect all";
-"另有 %@ 筆來自其他裝置" = "%@ more from other devices";
 "可在設定中開啟「孤立節點」以瀏覽所有已收錄單字。" = "Turn on “Isolated nodes” in Settings to browse all collected words.";
 "可用方向鍵評分，按 Space 展開答案" = "Use arrow keys to rate, press Space to reveal the answer";
 "啟動保護模式" = "Safe mode active";

@@ -44,6 +44,7 @@ enum AppBootstrap {
             )
             AuthManager.shared.modelContainer = container
             runMigrationIfNeeded(container: container)
+            removeSyntheticReviewRecordsIfNeeded(container: container)
             AppLog.app.info("ModelContainer initialized — models: \(fullModelTypes.map { String(describing: $0) }.joined(separator: ", "))")
             return Outcome(container: container, failure: nil)
         } catch {
@@ -105,6 +106,18 @@ enum AppBootstrap {
             AppLog.app.info("iCloud EPUB migration completed: \(epubs.count) files")
         } else {
             AppLog.app.warning("iCloud EPUB migration incomplete: \(failedCount)/\(epubs.count) failed, will retry next launch")
+        }
+    }
+
+    @MainActor
+    private static func removeSyntheticReviewRecordsIfNeeded(container: ModelContainer) {
+        do {
+            let removed = try ReviewActivityLog.removeSyntheticPlaceholderRecords(context: container.mainContext)
+            if removed > 0 {
+                AppLog.app.info("Removed \(removed) synthetic review records")
+            }
+        } catch {
+            AppLog.app.warning("Synthetic review record cleanup failed: \(error.localizedDescription)")
         }
     }
 
