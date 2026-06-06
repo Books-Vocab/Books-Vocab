@@ -3,10 +3,25 @@ import Foundation
 protocol KGUserConfigRemoteHandling {
     func fetchUserConfig(baseURL: URL, token: String) async throws -> KGUserConfig
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig
+    func updateReviewClockConfig(baseURL: URL, token: String, reviewClock: KGReviewClockConfig) async throws -> KGUserConfig
 }
 
+/// PUT /api/user/config 的 partial patch。後端各欄位獨立 optional(不送=不更新),
+/// 故只 encode 有值的欄位(encodeIfPresent),避免送 null 造成「覆寫 vs 略過」語意混淆。
 private struct KGUserConfigPatch: Encodable {
     let translation: KGTranslationConfig?
+    let review_clock: KGReviewClockConfig?
+
+    enum CodingKeys: String, CodingKey {
+        case translation
+        case review_clock
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(translation, forKey: .translation)
+        try c.encodeIfPresent(review_clock, forKey: .review_clock)
+    }
 }
 
 final class KGUserConfigClient: KGUserConfigRemoteHandling {
@@ -17,7 +32,12 @@ final class KGUserConfigClient: KGUserConfigRemoteHandling {
     }
 
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(translation: translation)
+        let patch = KGUserConfigPatch(translation: translation, review_clock: nil)
+        return try await update(baseURL: baseURL, token: token, patch: patch)
+    }
+
+    func updateReviewClockConfig(baseURL: URL, token: String, reviewClock: KGReviewClockConfig) async throws -> KGUserConfig {
+        let patch = KGUserConfigPatch(translation: nil, review_clock: reviewClock)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 
