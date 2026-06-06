@@ -20,6 +20,7 @@ struct ReaderNotebookPicker: View {
     private var notebooks: [Notebook]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -65,6 +66,7 @@ struct ReaderNotebookPicker: View {
     private var followGlobalRow: some View {
         Button {
             book.preferredNotebookId = nil
+            persistBookBinding()
             dismiss()
         } label: {
             HStack(spacing: AppSpacing.s2) {
@@ -98,6 +100,7 @@ struct ReaderNotebookPicker: View {
     private func notebookRow(_ notebook: Notebook) -> some View {
         Button {
             book.preferredNotebookId = notebook.remoteId
+            persistBookBinding()
             dismiss()
         } label: {
             HStack(spacing: AppSpacing.s2) {
@@ -142,6 +145,13 @@ struct ReaderNotebookPicker: View {
         let exists = notebooks.contains { $0.remoteId == boundId }
         if !exists {
             book.preferredNotebookId = nil
+            persistBookBinding()
+        }
+    }
+
+    private func persistBookBinding() {
+        if modelContext.safeSave() {
+            BookManifestStore().writeBestEffort(book: book)
         }
     }
 }

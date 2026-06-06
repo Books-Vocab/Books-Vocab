@@ -1,0 +1,207 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# ///
+"""Registry-backed docs impact hints.
+
+First pass: path-hint detector only. It maps changed paths to docs/registry.yml
+`sources` entries and emits candidate docs that may need sync.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import json
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass
+class Document:
+    id: str
+    path: str
+    kind: str
+    authority: str = ""
+    generator: str = ""
+    triggers: list[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
+
+
+def run_git(args: list[str], *, check: bool = True) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if check and result.returncode != 0:
+        raise SystemExit(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout
+
+
+def repo_root() -> Path:
+    return Path(run_git(["rev-parse", "--show-toplevel"]).strip())
+
+
+def strip_scalar(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def parse_registry(path: Path) -> list[Document]:
+    documents: list[Document] = []
+    current: Document | None = None
+    list_field: str | None = None
+
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if line.startswith("  - id:"):
+            if current is not None:
+                documents.append(current)
+            current = Document(id=strip_scalar(line.split(":", 1)[1]), path="", kind="")
+            list_field = None
+            continue
+
+        if current is None or not line.startswith("    "):
+            continue
+
+        if line.startswith("    ") and not line.startswith("      - "):
+            key, sep, value = stripped.partition(":")
+            if not sep:
+                continue
+            value = strip_scalar(value)
+            if key in {"triggers", "sources"}:
+                list_field = key
+                continue
+            list_field = None
+            if hasattr(current, key):
+                setattr(current, key, value)
+            continue
+
+        if line.startswith("      - ") and list_field in {"triggers", "sources"}:
+            getattr(current, list_field).append(strip_scalar(stripped[2:].strip()))
+
+    if current is not None:
+        documents.append(current)
+    return documents
+
+
+def normalize_path(path: str) -> str:
+    return path.removeprefix("./").strip()
+
+
+def default_changed_base() -> str:
+    if run_git(["rev-parse", "--verify", "origin/HEAD"], check=False).strip():
+        return run_git(["merge-base", "origin/HEAD", "HEAD"]).strip()
+    return run_git(["rev-parse", "HEAD"]).strip()
+
+
+def changed_paths_since(base: str) -> list[str]:
+    if not run_git(["rev-parse", "--verify", f"{base}^{{commit}}"], check=False).strip():
+        raise SystemExit(f"ERROR --since 不是有效 commit: {base}")
+
+    output = "\n".join(
+        [
+            run_git(["diff", "--name-only", "--diff-filter=ACMR", f"{base}..HEAD"], check=False),
+            run_git(["diff", "--name-only", "--diff-filter=ACMR", "--cached"], check=False),
+            run_git(["diff", "--name-only", "--diff-filter=ACMR"], check=False),
+            run_git(["ls-files", "--others", "--exclude-standard"], check=False),
+        ]
+    )
+    return sorted({normalize_path(line) for line in output.splitlines() if line.strip()})
+
+
+def source_matches(source: str, changed_path: str) -> bool:
+    source = normalize_path(source)
+    changed_path = normalize_path(changed_path)
+    if any(mark in source for mark in "*?["):
+        return fnmatch.fnmatch(changed_path, source)
+    if source.endswith("/"):
+        return changed_path.startswith(source)
+    return changed_path == source
+
+
+def impact_documents(documents: list[Document], changed_paths: list[str]) -> list[dict[str, object]]:
+    impacts: list[dict[str, object]] = []
+    for doc in documents:
+        matched_sources: list[str] = []
+        matched_paths: list[str] = []
+        for source in doc.sources:
+            for changed_path in changed_paths:
+                if source_matches(source, changed_path):
+                    matched_sources.append(source)
+                    matched_paths.append(changed_path)
+        if matched_paths:
+            impacts.append(
+                {
+                    "id": doc.id,
+                    "path": doc.path,
+                    "kind": doc.kind,
+                    "authority": doc.authority,
+                    "triggers": doc.triggers,
+                    "matched_sources": sorted(set(matched_sources)),
+                    "matched_paths": sorted(set(matched_paths)),
+                }
+            )
+    return impacts
+
+
+def print_human(base: str | None, changed_paths: list[str], impacts: list[dict[str, object]]) -> None:
+    base_label = base if base else "files"
+    if not impacts:
+        print(f"docs_impact: no registry impacts (base={base_label}, changed={len(changed_paths)})")
+        return
+
+    print(f"docs_impact: base={base_label} changed={len(changed_paths)} impacts={len(impacts)}")
+    for impact in impacts:
+        triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
+        sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
+        paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
+        print(
+            "IMPACT "
+            f"{impact['id']} {impact['path']} "
+            f"via={sources} changed={paths} triggers={triggers}"
+        )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--since", help="Git base rev; scans <rev>..HEAD plus index/worktree changes.")
+    parser.add_argument("--files", nargs="+", help="Explicit changed paths, for tests or scripted callers.")
+    parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    args = parser.parse_args(argv)
+
+    root = repo_root()
+    registry_path = root / args.registry
+    if not registry_path.is_file():
+        raise SystemExit(f"ERROR registry 不存在: {args.registry}")
+
+    documents = parse_registry(registry_path)
+    if args.files:
+        base = None
+        changed_paths = sorted({normalize_path(path) for path in args.files})
+    else:
+        base = args.since or default_changed_base()
+        changed_paths = changed_paths_since(base)
+
+    impacts = impact_documents(documents, changed_paths)
+    if args.json:
+        print(json.dumps({"base": base, "changed_paths": changed_paths, "impacts": impacts}, indent=2, ensure_ascii=False))
+    else:
+        print_human(base, changed_paths, impacts)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -86,6 +86,18 @@ struct BookManifestStore {
         try data.write(to: url(for: manifest.bookId), options: [.atomic])
     }
 
+    func write(book: Book, originalFileName: String? = nil) throws {
+        try write(BookManifest(book: book, originalFileName: originalFileName))
+    }
+
+    func writeBestEffort(book: Book, originalFileName: String? = nil) {
+        do {
+            try write(book: book, originalFileName: originalFileName)
+        } catch {
+            AppLog.book.warning("Book manifest write failed (\(book.epubFileName)): \(error.localizedDescription)")
+        }
+    }
+
     func read(bookId: UUID) throws -> BookManifest {
         let data = try Data(contentsOf: url(for: bookId))
         return try Self.decoder.decode(BookManifest.self, from: data)

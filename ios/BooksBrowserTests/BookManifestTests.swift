@@ -57,4 +57,24 @@ struct BookManifestTests {
         #expect(try store.read(bookId: manifest.bookId) == manifest)
         #expect(FileManager.default.fileExists(atPath: store.url(for: manifest.bookId).path))
     }
+
+    @Test func storeWritesCurrentBookSnapshot() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BookManifestTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let book = Book(title: "Updated", author: "Author", fileName: "updated.epub")
+        book.progression = 0.8
+        book.preferredNotebookId = "nb-2"
+
+        let store = BookManifestStore(rootDirectory: root)
+        try store.write(book: book, originalFileName: "source.epub")
+
+        let manifest = try store.read(bookId: book.id)
+        #expect(manifest.title == "Updated")
+        #expect(manifest.fileName == "updated.epub")
+        #expect(manifest.originalFileName == "source.epub")
+        #expect(manifest.progression == 0.8)
+        #expect(manifest.preferredNotebookId == "nb-2")
+    }
 }

@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Bookshelf/
-verified_against: 932eec98
+verified_against: 5aa3dccb
 -->
 # Bookshelf Feature Boundary
 
@@ -14,7 +14,7 @@ verified_against: 932eec98
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `BookshelfView.swift` | ~300 | 主容器 `struct BookshelfView: View`，**純書籍書架** + 匯入流程；row 子 view 已抽出至 `Components/`。**podcast 已抽離為獨立頂層 section**（見 `podcast.md` `PodcastHomeView`）——本 view 不再持有 podcast query / overlay master pane / `selectedSeriesRemoteId` / `PodcastNavRoute` 路由 / podcast 同步觸發。**Navigation 契約（仍守）**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`；**root content 恒定**：bookGrid / emptyState 由 `if books.isEmpty` 直接決定，**不可**用 `if/else` 替換 root content（root-content swap 在顯示過替換內容後會**永久破壞** value-based push，NAVDBG 坐實）。`navigationDestination(for: Book.self)` 接住書籍 → reader 的 value-based push（freeze-fix 契約 PR #366/#368/#370/#373）。書本為本地 `@Query`、無遠端 catalog；`.refreshable`（iOS/iPadOS，掛 emptyState + bookGrid）與 Mac toolbar `bookshelf.refreshButton` 觸發的是**帳號資料背景同步**（詞庫/複習/KG，**非**刷新書本清單），均經 `coordinator.sync` → `ExplicitSync` 統一回饋。Mac ⌘R 由 `MacMenuCommands` 全域擁有，toolbar 鈕**不**重綁。鏡射 `NotebookListView.swift` root-恒定模式 |
+| `BookshelfView.swift` | ~300 | 主容器 `struct BookshelfView: View`，**純書籍書架** + 匯入流程；row 子 view 已抽出至 `Components/`。**podcast 已抽離為獨立頂層 section**（見 `podcast.md` `PodcastHomeView`）——本 view 不再持有 podcast query / overlay master pane / `selectedSeriesRemoteId` / `PodcastNavRoute` 路由 / podcast 同步觸發。**Navigation 契約（仍守）**：root 必須 `NavigationStack(path: $navigationPath)`（app 持有 `@State NavigationPath`），**不可** bare `NavigationStack { }`；**root content 恒定**：bookGrid / emptyState 由 `if books.isEmpty` 直接決定，**不可**用 `if/else` 替換 root content（root-content swap 在顯示過替換內容後會**永久破壞** value-based push，NAVDBG 坐實）。`navigationDestination(for: Book.self)` 接住書籍 → reader 的 value-based push（freeze-fix 契約 PR #366/#368/#370/#373）。書本 UI 來源仍為本地 SwiftData `@Query`、無遠端 catalog；書籍檔案/metadata 的恢復權威由 `BookManifest` sidecar + `BookLibraryReconciler` 補強（匯入、刪除、閱讀進度、reader notebook 綁定皆 write-through；正常啟動補 manifest-backed missing row / missing manifest / 同檔名去重，裸檔補 row 僅限明確 recovery opt-in，避免 CloudKit 匯入競態；含 legacy `Documents/EPUBs` / `.icloud` placeholder）。`.refreshable`（iOS/iPadOS，掛 emptyState + bookGrid）與 Mac toolbar `bookshelf.refreshButton` 觸發的是**帳號資料背景同步**（詞庫/複習/KG，**非**刷新書本清單），均經 `coordinator.sync` → `ExplicitSync` 統一回饋,且共用**資格 gate**（登出 / demo → 靜默 no-op，對齊自動同步;空書架正是登出用戶畫面,故必擋以免誤觸 `unauthorized` 而誤彈「登入已過期」）。Mac ⌘R 由 `MacMenuCommands` 全域擁有，toolbar 鈕**不**重綁。鏡射 `NotebookListView.swift` root-恒定模式 |
 | `BookshelfPreviews.swift` | 133 | `#Preview` 集中地（mock data scaffolds、各 row 型態樣本） |
 
 ### Coordinator Layer（導航協調）
@@ -43,7 +43,7 @@ verified_against: 932eec98
 - **新增匯入流程** → `BookshelfView` body（建議走 `.sheet` + 既有 `appSheet` modifier）+ `BookshelfCoordinator` 加 navigation state
 - **新增資料來源（書籍/播客以外的內容類型）** → 評估是否獨立成新 feature scope，避免 `BookshelfView` 繼續長
 - **新增可復用 UI 元件** → 評估是否屬於 app shell 級（`AppShellComponents.swift`）；feature 專屬留在 `BookshelfView` 內
-- **改顯式同步行為**（pull-to-refresh / toolbar 鈕 / ⌘R）→ 動 `Services/ExplicitSync.swift`（單一真相：成功彈 toast、失敗 warning + `lastBackgroundSyncError` read-then-clear）。**勿**在 view/coordinator 重抄這段；自動同步（scenePhase / post-login）刻意維持成功靜默，見 `BooksBrowserApp`
+- **改顯式同步行為**（pull-to-refresh / toolbar 鈕 / ⌘R）→ 動 `Services/ExplicitSync.swift`（單一真相：資格 gate `isLoggedIn && !isDemoMode`〔登出/demo 靜默 no-op〕→ 成功彈 toast、失敗 warning + `lastBackgroundSyncError` read-then-clear）。eligibility 以 bool 傳入（不耦合 `AuthManaging`）。**勿**在 view/coordinator 重抄這段；自動同步（scenePhase / post-login）刻意維持成功靜默，見 `BooksBrowserApp`
 - **新增 metric token** → 跨 feature 用先升級到 `AppMetrics`；單 feature 用留 `AppBookshelfMetrics`（參考 `feature_metrics.md` 升降規則）
 
 ## State 邊界
