@@ -31,12 +31,24 @@ class TrackedLLM:
     construction) injects nothing and preserves exact prior behavior.
     """
 
-    __slots__ = ("_client", "user_id", "_provider")
+    __slots__ = ("_client", "user_id", "_provider", "_enforce_quota", "_is_pro", "_reserve_quota")
 
-    def __init__(self, client, user_id: str, provider: LLMProvider | None = None) -> None:
+    def __init__(
+        self,
+        client,
+        user_id: str,
+        provider: LLMProvider | None = None,
+        *,
+        enforce_quota: bool = False,
+        is_pro: bool = False,
+        reserve_quota: bool = True,
+    ) -> None:
         self._client = client
         self.user_id = user_id
         self._provider = provider
+        self._enforce_quota = enforce_quota
+        self._is_pro = is_pro
+        self._reserve_quota = reserve_quota
 
     def _chat_kwargs(self, kwargs: dict) -> dict:
         """Merge provider-level chat defaults into kwargs and return it (caller
@@ -56,7 +68,8 @@ class TrackedLLM:
 
     def chat(self, call_type: str, **kwargs):
         kwargs = self._chat_kwargs(kwargs)
-        with reserve(self.user_id, estimate_call_cost(call_type)):
+        reservation = estimate_call_cost(call_type) if self._reserve_quota else 0.0
+        with reserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
             try:
                 resp = self._client.chat.completions.create(**kwargs)
             except Exception as exc:
@@ -67,7 +80,8 @@ class TrackedLLM:
 
     async def chat_async(self, call_type: str, **kwargs):
         kwargs = self._chat_kwargs(kwargs)
-        with reserve(self.user_id, estimate_call_cost(call_type)):
+        reservation = estimate_call_cost(call_type) if self._reserve_quota else 0.0
+        with reserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
             try:
                 resp = await self._client.chat.completions.create(**kwargs)
             except Exception as exc:
@@ -77,7 +91,8 @@ class TrackedLLM:
         return resp
 
     def embed(self, call_type: str = "embed", **kwargs):
-        with reserve(self.user_id, estimate_call_cost(call_type)):
+        reservation = estimate_call_cost(call_type) if self._reserve_quota else 0.0
+        with reserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
             try:
                 resp = self._client.embeddings.create(**kwargs)
             except Exception as exc:

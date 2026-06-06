@@ -1,6 +1,9 @@
 """Tests for store cache eviction behavior."""
+from __future__ import annotations
+
 import threading
 import time
+from queue import Queue
 from unittest.mock import MagicMock
 
 from kg.service_factories import _get_cached, clear_store_cache
@@ -44,6 +47,54 @@ def test_clear_store_cache_closes_all():
     mock2.close.assert_called_once()
 
 
+def test_clear_store_cache_prevents_inflight_factory_reinsert():
+    """A clear that returns while a factory is still running must remain a
+    linearization point: the late result is returned to its caller, but not
+    inserted back into the global cache after clear."""
+    import kg.service_factories as sf
+
+    clear_store_cache()
+    started = threading.Event()
+    release = threading.Event()
+    result: Queue[object] = Queue()
+    errors: Queue[BaseException] = Queue()
+    late_store = MagicMock(name="late_store")
+
+    def factory():
+        started.set()
+        release.wait(timeout=5)
+        return late_store
+
+    def worker():
+        try:
+            result.put(_get_cached("late", factory))
+        except BaseException as exc:
+            errors.put(exc)
+
+    thread = threading.Thread(target=worker)
+    try:
+        thread.start()
+        assert started.wait(timeout=5)
+
+        clear_store_cache()
+        with sf._STORE_CACHE_LOCK:
+            assert "late" not in sf._STORE_CACHE
+
+        release.set()
+        thread.join(timeout=5)
+
+        assert not thread.is_alive()
+        assert errors.empty(), list(errors.queue)
+        assert result.get_nowait() is late_store
+        with sf._STORE_CACHE_LOCK:
+            assert "late" not in sf._STORE_CACHE
+        late_store.close.assert_not_called()
+    finally:
+        release.set()
+        thread.join(timeout=5)
+        clear_store_cache()
+
+
 def test_factory_runs_outside_lock():
     """factory() must execute without holding _STORE_CACHE_LOCK so slow
     SQLite/npy initialisation doesn't block other cache lookups."""
@@ -72,33 +123,40 @@ def test_factory_runs_outside_lock():
 
 def test_concurrent_misses_dedupe_to_single_factory_call():
     """Two threads racing on the same key should both end up with the same
-    cached instance (last writer wins) rather than constructing two."""
+    cached instance, and the underlying factory must only run once."""
     clear_store_cache()
-    try:
-        call_count = {"n": 0}
-        gate = threading.Event()
+    calls = 0
+    calls_lock = threading.Lock()
+    start = threading.Barrier(2)
+    results: Queue[object] = Queue()
+    errors: Queue[BaseException] = Queue()
 
-        def factory():
-            call_count["n"] += 1
-            gate.wait(timeout=2.0)
-            return MagicMock(name=f"instance_{call_count['n']}")
-
-        results: list[object] = []
-
-        def worker():
-            results.append(_get_cached("shared", factory))
-
-        threads = [threading.Thread(target=worker) for _ in range(2)]
-        for t in threads:
-            t.start()
-        # let both threads enter the factory (or one enter, other wait)
+    def factory():
+        nonlocal calls
+        with calls_lock:
+            calls += 1
         time.sleep(0.05)
-        gate.set()
-        for t in threads:
-            t.join(timeout=3.0)
+        return MagicMock(name=f"instance_{calls}")
 
-        # Both callers must observe the same cached instance.
-        assert len(results) == 2
-        assert results[0] is results[1]
+    def worker():
+        try:
+            start.wait(timeout=5)
+            results.put(_get_cached("shared", factory))
+        except BaseException as exc:
+            errors.put(exc)
+
+    try:
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        assert all(not thread.is_alive() for thread in threads)
+        assert errors.empty(), list(errors.queue)
+        built = list(results.queue)
+        assert len(built) == 2
+        assert built[0] is built[1]
+        assert calls == 1
     finally:
         clear_store_cache()

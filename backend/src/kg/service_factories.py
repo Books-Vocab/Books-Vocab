@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 _STORE_CACHE: OrderedDict[str, object] = OrderedDict()
 _STORE_CACHE_LOCK = threading.Lock()
+_STORE_INIT_EVENTS: dict[str, threading.Event] = {}
+_STORE_CACHE_GENERATION = 0
 _STORE_CACHE_MAX = 100
 
 
@@ -34,40 +36,50 @@ def _close_store(store: object) -> None:
 
 
 def _get_cached(key: str, factory):
-    """Cache-or-build with double-checked locking.
+    """Cache-or-build with per-key in-flight coordination.
 
     Builds (factory()) run *outside* `_STORE_CACHE_LOCK` so slow store init
     (SQLite engine open + PRAGMAs + .npy load) doesn't serialise unrelated
-    cache lookups. If two callers race on the same missing key, both build
-    their own instance; the second arrival discards its build and returns
-    the already-cached one — duplicate close is harmless.
+    cache lookups. One caller owns a missing key's in-flight build; same-key
+    waiters block on its event, then re-check the cache. If the just-built
+    instance was evicted before a waiter wakes, the waiter registers itself as
+    the next sole builder under the global lock, so same-key builds still never
+    overlap.
     """
-    # Fast path: existing entry.
-    with _STORE_CACHE_LOCK:
-        if key in _STORE_CACHE:
-            _STORE_CACHE.move_to_end(key)
-            return _STORE_CACHE[key]
+    while True:
+        with _STORE_CACHE_LOCK:
+            if key in _STORE_CACHE:
+                _STORE_CACHE.move_to_end(key)
+                return _STORE_CACHE[key]
+            event = _STORE_INIT_EVENTS.get(key)
+            if event is None:
+                event = threading.Event()
+                _STORE_INIT_EVENTS[key] = event
+                generation = _STORE_CACHE_GENERATION
+                break
+        event.wait()
 
-    # Build outside the lock.
-    instance = factory()
+    try:
+        instance = factory()
+    except BaseException:
+        with _STORE_CACHE_LOCK:
+            if _STORE_INIT_EVENTS.get(key) is event:
+                _STORE_INIT_EVENTS.pop(key, None)
+                event.set()
+        raise
 
-    # Insert + evict under the lock; drop our build if another thread won.
+    # Insert + evict under the global lock.
     with _STORE_CACHE_LOCK:
-        existing = _STORE_CACHE.get(key)
-        if existing is not None:
-            _STORE_CACHE.move_to_end(key)
-            evicted_self = instance
-            instance = existing
-        else:
-            _STORE_CACHE[key] = instance
-            evicted_self = None
         evicted: list[object] = []
+        if _STORE_CACHE_GENERATION == generation:
+            _STORE_CACHE[key] = instance
         while len(_STORE_CACHE) > _STORE_CACHE_MAX:
             _, victim = _STORE_CACHE.popitem(last=False)
             evicted.append(victim)
+        if _STORE_INIT_EVENTS.get(key) is event:
+            _STORE_INIT_EVENTS.pop(key, None)
+            event.set()
 
-    if evicted_self is not None:
-        _close_store(evicted_self)
     for victim in evicted:
         _close_store(victim)
     return instance
@@ -84,7 +96,9 @@ def evict_notebook_cache(user_dir: Path, notebook_id: str) -> None:
 
 
 def clear_store_cache() -> None:
+    global _STORE_CACHE_GENERATION
     with _STORE_CACHE_LOCK:
+        _STORE_CACHE_GENERATION += 1
         for store in _STORE_CACHE.values():
             _close_store(store)
         _STORE_CACHE.clear()

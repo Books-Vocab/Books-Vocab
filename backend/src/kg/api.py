@@ -11,7 +11,9 @@ Usage:
 from __future__ import annotations
 
 import atexit
+import json
 import logging
+import re
 import uuid as _uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,6 +30,78 @@ logging.basicConfig(
     format='{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
 )
 logger = logging.getLogger(__name__)
+
+_VALIDATION_SECRET_KEYS = {
+    "access_token",
+    "accesstoken",
+    "admin_session",
+    "adminsession",
+    "api_key",
+    "apikey",
+    "authorization",
+    "bearer",
+    "client_secret",
+    "clientsecret",
+    "code",
+    "cookie",
+    "id_token",
+    "idtoken",
+    "password",
+    "refresh_token",
+    "refreshtoken",
+    "signed_payload",
+    "signedpayload",
+    "secret",
+    "token",
+}
+_VALIDATION_SECRET_RE = re.compile(
+    r'(?P<prefix>["\']?(?:access[_-]?token|accessToken|admin[_-]?session|adminSession|api[_-]?key|apiKey|'
+    r'authorization|bearer|client[_-]?secret|clientSecret|code|cookie|id[_-]?token|idToken|password|'
+    r'refresh[_-]?token|refreshToken|signed[_-]?payload|signedPayload|secret|token)["\']?\s*[:=]\s*["\']?)'
+    r"(?P<value>[^\"'\s,;}&]+)",
+    re.IGNORECASE,
+)
+
+
+def _validation_key_norm(key: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(key).lower())
+
+
+def _is_validation_secret_key(key: Any) -> bool:
+    key_text = str(key).replace("-", "_").lower()
+    return key_text in _VALIDATION_SECRET_KEYS or _validation_key_norm(key) in _VALIDATION_SECRET_KEYS
+
+
+def _redact_validation_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[Any, Any] = {}
+        secret_error_input = False
+        loc = value.get("loc")
+        if isinstance(loc, (list, tuple)):
+            secret_error_input = any(_is_validation_secret_key(part) for part in loc)
+        for key, item in value.items():
+            if _is_validation_secret_key(key) or (key == "input" and secret_error_input):
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = _redact_validation_payload(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_validation_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_validation_payload(item) for item in value)
+    return value
+
+
+def _redact_validation_body(body: str | None) -> str | None:
+    if body is None:
+        return None
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        if _VALIDATION_SECRET_RE.search(body):
+            return "[non-json body omitted: secret-like field present]"
+        return body[:500]
+    return json.dumps(_redact_validation_payload(parsed), ensure_ascii=False, separators=(",", ":"))[:500]
 
 # Memory ring-buffer log handler for the admin dashboard.
 # Re-exported so existing tests (from kg.api import _mem_log) keep working.
@@ -297,14 +371,15 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         body = None
         try:
             body = await request.body()
-            body = body.decode("utf-8", errors="replace")[:500]
+            body = body.decode("utf-8", errors="replace")
         except Exception:
             pass
+        errors = _redact_validation_payload(jsonable_encoder(exc.errors()))
         logger.warning(
             "Validation error [%s %s] body=%s errors=%s",
-            request.method, request.url.path, body, exc.errors(),
+            request.method, request.url.path, _redact_validation_body(body), errors,
         )
-        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+        return JSONResponse(status_code=422, content={"detail": errors})
 
     from .exceptions import KGError
 

@@ -101,10 +101,17 @@ def _resolve_embedding_store(
     factory is absent (delete still works without embedding eviction)."""
     if embedding_store_factory is None or client_factory is None:
         return None
+    from ..deps_quota import _is_pro
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
     provider = provider_for("embed")
-    llm = TrackedLLM(client_factory(provider), user.get("id", "unknown"), provider=provider)
+    llm = TrackedLLM(
+        client_factory(provider),
+        user.get("id", "unknown"),
+        provider=provider,
+        enforce_quota=True,
+        is_pro=_is_pro(user),
+    )
     return embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id)
 
 

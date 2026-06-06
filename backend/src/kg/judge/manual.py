@@ -8,6 +8,7 @@ import re
 
 from ..retry import llm_retryable_exceptions, sync_retry
 from ..tracked_llm import TrackedLLM
+from ..exceptions import QuotaExceededError
 from .models import Judgement
 from .prompts import MANUAL_LINK_SYSTEM_PROMPT
 
@@ -43,6 +44,8 @@ class ManualLinkJudge:
                 accepted=True, reject_reason=None,
                 reason=judgement.reason, source="manual",
             )
+        except QuotaExceededError:
+            raise
         except Exception:
             logger.warning("Failed to write judge_log (manual)", exc_info=True)
 
@@ -103,6 +106,8 @@ class ManualLinkJudge:
                 step_name="Manual judge LLM",
                 uid=self.user_id,
             )
+        except QuotaExceededError:
+            raise
         except Exception:
             logger.warning(
                 "Manual judge LLM transport failure; degrading to %s",
