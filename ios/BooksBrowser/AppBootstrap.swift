@@ -25,6 +25,10 @@ enum AppBootstrap {
 
     @MainActor
     static func run() -> Outcome {
+        // 一次性自癒：清除舊版寫入的非法 review-event pull watermark，避免後端 400
+        // 造成的背景同步死鎖（必須早於任何 sync 觸發）。
+        KGService.migrateReviewEventBoundaryIfNeeded()
+
         let localConfig = ModelConfiguration(
             "LocalStore",
             schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
