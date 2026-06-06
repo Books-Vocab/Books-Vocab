@@ -199,7 +199,11 @@ final class SettingsCoordinator: SettingsCoordinating {
         authManager.login(customToken: id)
     }
 
-    func resync(kgService: any KGServing, modelContext: ModelContext) async {
+    func resync(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async {
+        // 資格 gate：demo 模式 `isLoggedIn == true` 但無真 token，同步會踩 `unauthorized`
+        // → 誤彈「登入已過期」。與 `ExplicitSync` / 自動同步同政策：登出 / demo 一律 no-op。
+        // （UI 已以 syncSummary 擋登出，此處 defense-in-depth 並補上 demo 漏洞。）
+        guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
         guard !isResyncing else { return }
         isResyncing = true
         defer { isResyncing = false }

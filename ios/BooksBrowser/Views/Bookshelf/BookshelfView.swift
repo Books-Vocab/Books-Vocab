@@ -148,10 +148,13 @@ struct BookshelfView: View {
     }
 
     /// Shared sync action for pull-to-refresh (iOS/iPadOS) and toolbar button (Mac Catalyst).
+    /// 資格 gate（登出 / demo → no-op）由 `ExplicitSync` 集中處理，此處只供 facts。
     private func performSync() async {
         await coordinator.sync(
             container: modelContext.container,
             kgService: kgService,
+            isLoggedIn: authManager.isLoggedIn,
+            isDemoMode: authManager.isDemoMode,
             toastCoordinator: toastCoordinator
         )
     }
