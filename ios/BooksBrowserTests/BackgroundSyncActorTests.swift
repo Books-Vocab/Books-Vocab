@@ -511,15 +511,32 @@ struct BackgroundSyncActorTests {
         let container = try makeContainer()
         let context = ModelContext(container)
         context.insert(ReviewRecord(word: "（跨裝置同步）", entryID: nil, feedback: 1, reviewedAt: Date()))
-        context.insert(ReviewRecord(word: "（遷移資料）", entryID: nil, feedback: 1, reviewedAt: Date()))
+        let syntheticDate = try #require(AppDateFormatters.dayKey.date(from: "2026-06-06"))
+        context.insert(ReviewRecord(word: "（遷移資料）", entryID: nil, feedback: 1, reviewedAt: syntheticDate))
         context.insert(ReviewRecord(word: "real", entryID: nil, feedback: 0, reviewedAt: Date()))
         try context.save()
 
         let removed = try ReviewActivityLog.removeSyntheticPlaceholderRecords(context: context)
         let records = try context.fetch(FetchDescriptor<ReviewRecord>())
 
-        #expect(removed == 2)
-        #expect(records.map(\.word) == ["real"])
+        #expect(removed == 1)
+        #expect(records.map(\.word).sorted() == ["real", "（跨裝置同步）"])
+    }
+
+    @Test func reviewActivityLog_keepsRealReviewEventWithSentinelText() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let entryID = UUID()
+        let event = ReviewRecord(word: "（跨裝置同步）", entryID: entryID, feedback: 1, reviewedAt: Date())
+        context.insert(event)
+        try context.save()
+
+        let removed = try ReviewActivityLog.removeSyntheticPlaceholderRecords(context: context)
+        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
+
+        #expect(removed == 0)
+        #expect(records.count == 1)
+        #expect(records.first?.id == event.id)
     }
 
     @Test func clearUserData_removes_all_books() async throws {

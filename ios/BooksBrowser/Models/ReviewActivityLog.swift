@@ -115,7 +115,7 @@ enum ReviewActivityLog {
     static func removeSyntheticPlaceholderRecords(context: ModelContext) throws -> Int {
         let records = try context.fetch(FetchDescriptor<ReviewRecord>())
         var removed = 0
-        for record in records where syntheticRecordWords.contains(record.word) {
+        for record in records where isSyntheticPlaceholderRecord(record) {
             context.delete(record)
             removed += 1
         }
@@ -133,5 +133,15 @@ enum ReviewActivityLog {
             result[record.dayKey, default: 0] += 1
         }
         return result
+    }
+
+    private static func isSyntheticPlaceholderRecord(_ record: ReviewRecord) -> Bool {
+        guard syntheticRecordWords.contains(record.word),
+              record.entryID == nil,
+              record.notebookId == "default",
+              let dayStart = dayFormatter.date(from: record.dayKey) else {
+            return false
+        }
+        return abs(record.reviewedAt.timeIntervalSince(dayStart)) < 0.001
     }
 }
