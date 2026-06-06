@@ -63,7 +63,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 applyServerReviewMode(config.review_mode)
             } catch {
                 // Non-fatal: local + iCloud KV remain the fallback authority for
-                // translation config, so we log rather than report to Sentry.
+                // translation / review_clock / review_mode config, so we log rather than report to Sentry.
                 AppLog.kg.warning("fetchUserConfig failed: \(error.localizedDescription)")
             }
         }
