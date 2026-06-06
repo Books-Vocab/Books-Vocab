@@ -19,6 +19,8 @@
   // Mirrors shared/pure.js ACTIVE_NOTEBOOK_KEY. Content scripts run in an
   // isolated world, so they cannot reach the shared classic-script global.
   const ACTIVE_NOTEBOOK_KEY = 'active_notebook_id';
+  // Mirrors shared/pure.js ACTIVE_NOTEBOOK_UPDATED_KEY — LWW timestamp companion.
+  const ACTIVE_NOTEBOOK_UPDATED_KEY = 'active_notebook_updated_at';
   // Cap on extracted surrounding-sentence context sent to the backend.
   const MAX_CONTEXT_LEN = 500;
 
@@ -654,10 +656,28 @@
 
   function setActiveNotebook(notebookId) {
     if (!storageLocalAvailable()) return;
+    const id = notebookId || 'default';
+    const updatedAt = Date.now() / 1000;
     try {
-      chrome.storage.local.set({ [ACTIVE_NOTEBOOK_KEY]: notebookId || 'default' });
+      // Write id + LWW timestamp together (atomic group, mirrors the side panel's
+      // persistActiveNotebook and iOS setActive).
+      chrome.storage.local.set({
+        [ACTIVE_NOTEBOOK_KEY]: id,
+        [ACTIVE_NOTEBOOK_UPDATED_KEY]: updatedAt,
+      });
     } catch (_err) {
       // Orphaned content script after extension reload — ignore the write.
+      return;
+    }
+    // Best-effort push to the backend vocab_ui group so iOS / web / side panel
+    // converge. No await / no rollback — storage.local already holds local truth.
+    try {
+      chrome.runtime.sendMessage({
+        type: 'updateUserConfig',
+        config: { vocab_ui: { active_notebook_id: id, updated_at: updatedAt } },
+      });
+    } catch (_err) {
+      // Orphaned content script / unauthenticated — the local write still stands.
     }
   }
 
