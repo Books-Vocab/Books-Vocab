@@ -22,7 +22,7 @@ import os
     func clearError()
     func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting, toastCoordinator: AppToastCoordinator)
     func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
-    func sync(container: ModelContainer, kgService: any BackgroundSyncing, toastCoordinator: AppToastCoordinator) async
+    func sync(container: ModelContainer, kgService: any BackgroundSyncing, isLoggedIn: Bool, isDemoMode: Bool, toastCoordinator: AppToastCoordinator) async
 }
 
 @Observable @MainActor
@@ -148,6 +148,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     func sync(
         container: ModelContainer,
         kgService: any BackgroundSyncing,
+        isLoggedIn: Bool,
+        isDemoMode: Bool,
         toastCoordinator: AppToastCoordinator
     ) async {
         guard !isSyncing else { return }
@@ -155,6 +157,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         defer { isSyncing = false }
         await ExplicitSync.run(
             kgService: kgService,
+            isLoggedIn: isLoggedIn,
+            isDemoMode: isDemoMode,
             container: container,
             toastCoordinator: toastCoordinator
         )
