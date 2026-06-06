@@ -385,6 +385,18 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 
     @app.exception_handler(KGError)
     async def kg_error_handler(request: Request, exc: KGError):
+        # Domain errors used to return silently — no log, no Sentry, no metric.
+        # That blind spot hid the review-event watermark deadlock (a 400 on every
+        # background sync, invisible server-side). Emit one structured line so the
+        # whole class of client-rejected / upstream-failed requests is greppable
+        # in `logs` and countable. 5xx → error (our fault), 4xx → warning.
+        request_id = getattr(request.state, "request_id", "unknown")
+        log = logger.error if exc.status_code >= 500 else logger.warning
+        log(
+            "%s [%s] %s %s -> %d: %s",
+            type(exc).__name__, request_id, request.method, request.url.path,
+            exc.status_code, exc,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content=exc.to_detail(),
