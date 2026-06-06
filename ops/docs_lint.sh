@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# docs_lint.sh — 掃描 docs/ frontmatter 並回報 staleness
+# docs_lint.sh — docs gate / audit / registry checks
 #
 # 邏輯:
-#   1. 對每份 docs/**/*.md(除了 assets/),解析 doc-meta frontmatter
-#   2. 確認 5 個必填欄位齊全:tier / authority / update_trigger / scope / verified_against
-#   3. 對非 archive doc,計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
+#   1. 預設 gate 模式只掃本分支/工作樹變更的 docs,避免既有 doc debt 阻塞日常 PR
+#   2. audit/all 模式才對 docs/**/*.md(除了 assets/legal)做全 repo freshness 盤點
+#   3. registry 模式驗證 docs/registry.yml 控制平面(path/kind/generator 基本有效性)
+#   4. 對選中的 doc 解析 doc-meta frontmatter,檢查 tier / authority / update_trigger / scope / verified_against
+#   5. audit 模式對非 archive doc 計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
 #      - 超過 STALE_THRESHOLD(預設 30)→ WARN
 #      - verified_against 不是有效 sha(且不是 frozen)→ ERROR
 #
 # 用法:
-#   ops/docs_lint.sh                 # 全掃描
+#   ops/docs_lint.sh                 # gate: registry + changed docs
 #   ops/docs_lint.sh --changed       # 只掃本分支/工作樹變更的 docs
 #   ops/docs_lint.sh --since <rev>   # 只掃 <rev>..HEAD + 工作樹變更的 docs
 #   ops/docs_lint.sh --files <docs...>
+#   ops/docs_lint.sh --registry      # 只驗證 docs/registry.yml
+#   ops/docs_lint.sh --audit|--all   # 全 repo audit(可暴露既有 debt)
 #   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
 #   STALE_THRESHOLD=10 ops/docs_lint.sh
 #
@@ -24,18 +28,13 @@
 
 set -euo pipefail
 
-# 切到 main checkout（cwd 無關）。--show-toplevel 從 linked worktree 內會回傳【該 worktree】路徑，
-# 致 staleness 用 worktree 不完整歷史計算（verified_against commit 可能不可達 → 誤判 / ERROR）。
-# 改用 --git-common-dir 派生 main checkout：從 main / 任意 worktree / 子目錄皆正確。
-if _gcd="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [ -n "$_gcd" ]; then
-  cd "$(dirname "$_gcd")"                 # git >= 2.31
-else
-  cd "$(git rev-parse --git-common-dir)/.."   # 古董 git fallback（git-common-dir 從 worktree 回絕對；從 main 回相對亦正確）
-fi
+# 檢查呼叫者所在 checkout。linked worktree 與 main 共用 object store,但工作樹檔案各自獨立；
+# 強制 cd 回 main 會漏掉 PR worktree 內尚未 commit 的 docs/registry 變更。
+cd "$(git rev-parse --show-toplevel)"
 
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
 STRICT=0
-MODE="all"
+MODE="gate"
 SINCE_REV=""
 FILE_ARGS=()
 
@@ -50,7 +49,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --changed)
-      MODE="changed"
+      MODE="gate"
       shift
       ;;
     --since)
@@ -58,7 +57,7 @@ while [ "$#" -gt 0 ]; do
         echo "Missing value for --since" >&2
         exit 2
       fi
-      MODE="changed"
+      MODE="gate"
       SINCE_REV="$2"
       shift 2
       ;;
@@ -71,6 +70,14 @@ while [ "$#" -gt 0 ]; do
           *) FILE_ARGS+=("$1"); shift ;;
         esac
       done
+      ;;
+    --registry)
+      MODE="registry"
+      shift
+      ;;
+    --audit|--all)
+      MODE="audit"
+      shift
       ;;
     -h|--help)
       usage
@@ -85,10 +92,96 @@ done
 
 REQUIRED_FIELDS="tier authority update_trigger scope verified_against"
 VALID_TIERS="policy sop reference snapshot runbook archive assets"
+REGISTRY_KINDS="contract generated reference sop policy decision guide snapshot runbook archive assets"
 
 errors=0
 warnings=0
 ok=0
+
+validate_registry() {
+  reg="docs/registry.yml"
+  if [ ! -f "$reg" ]; then
+    echo "ERROR registry — missing $reg"
+    errors=$((errors+1))
+    return
+  fi
+
+  entries_tmp="$(mktemp "${TMPDIR:-/tmp}/kg_docs_registry.XXXXXX")"
+  awk '
+    function flush() {
+      if (id != "") {
+        print "ENTRY\t" id "\t" path "\t" kind "\t" generator
+      }
+    }
+    /^  - id:[[:space:]]*/ {
+      flush()
+      id=$0
+      sub(/^  - id:[[:space:]]*/, "", id)
+      path=""
+      kind=""
+      generator=""
+      next
+    }
+    id != "" && /^    path:[[:space:]]*/ {
+      path=$0
+      sub(/^    path:[[:space:]]*/, "", path)
+      next
+    }
+    id != "" && /^    kind:[[:space:]]*/ {
+      kind=$0
+      sub(/^    kind:[[:space:]]*/, "", kind)
+      next
+    }
+    id != "" && /^    generator:[[:space:]]*/ {
+      generator=$0
+      sub(/^    generator:[[:space:]]*/, "", generator)
+      next
+    }
+    END { flush() }
+  ' "$reg" > "$entries_tmp"
+
+  reg_bad=0
+  entry_count=0
+  while IFS="$(printf '\t')" read -r tag id path kind generator; do
+    [ "$tag" = "ENTRY" ] || continue
+    entry_count=$((entry_count+1))
+    if [ -z "$id" ] || [ -z "$path" ] || [ -z "$kind" ]; then
+      echo "ERROR registry — entry 缺 id/path/kind: id=$id path=$path kind=$kind"
+      reg_bad=$((reg_bad+1))
+      continue
+    fi
+    if ! echo " $REGISTRY_KINDS " | grep -q " $kind "; then
+      echo "ERROR registry — $id 非法 kind: $kind(允許: $REGISTRY_KINDS)"
+      reg_bad=$((reg_bad+1))
+    fi
+    if [ ! -f "$path" ]; then
+      echo "ERROR registry — $id path 不存在: $path"
+      reg_bad=$((reg_bad+1))
+    fi
+    if [ "$kind" = "generated" ]; then
+      if [ -z "$generator" ]; then
+        echo "ERROR registry — $id kind=generated 但缺 generator"
+        reg_bad=$((reg_bad+1))
+      elif [ ! -f "$generator" ]; then
+        echo "ERROR registry — $id generator 不存在: $generator"
+        reg_bad=$((reg_bad+1))
+      fi
+    fi
+  done < "$entries_tmp"
+  rm -f "$entries_tmp"
+
+  if [ "$entry_count" -eq 0 ]; then
+    echo "ERROR registry — no document entries"
+    errors=$((errors+1))
+    return
+  fi
+  if [ "$reg_bad" -gt 0 ]; then
+    echo "ERROR registry — $reg_bad invalid entr$( [ "$reg_bad" -eq 1 ] && echo "y" || echo "ies" )"
+    errors=$((errors+1))
+    return
+  fi
+  echo "REGISTRY OK: $entry_count documents"
+}
 
 filter_docs() {
   awk '
@@ -158,9 +251,23 @@ files_docs() {
   printf '%s\n' "${FILE_ARGS[@]}" | sort -u
 }
 
+echo "docs_lint: mode=$MODE"
+validate_registry
+
+if [ "$MODE" = "registry" ]; then
+  echo ""
+  echo "─────────────────────────────────────"
+  echo "OK:    $ok"
+  echo "WARN:  $warnings"
+  echo "ERROR: $errors"
+  echo "─────────────────────────────────────"
+  [ "$errors" -gt 0 ] && exit 1
+  exit 0
+fi
+
 case "$MODE" in
-  all) DOCS=$(all_docs) ;;
-  changed) DOCS=$(changed_docs) ;;
+  audit) DOCS=$(all_docs) ;;
+  gate) DOCS=$(changed_docs) ;;
   files) DOCS=$(files_docs) ;;
   *) echo "internal error: unknown MODE=$MODE" >&2; exit 2 ;;
 esac

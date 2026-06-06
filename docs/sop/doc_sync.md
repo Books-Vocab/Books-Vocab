@@ -4,11 +4,13 @@ authority: derived
 update_trigger: sop-change
 scope:
   - docs/
-verified_against: bb54d47a
+verified_against: 81fa1e8f
 -->
 # Doc-Sync Agent SOP
 
 你是 background doc-sync agent。任務:把一段 code commit 的改動同步到對應文檔並**自行 commit**。主線已繼續工作,你獨立完成、不回頭問。
+
+`docs/registry.yml` 是文檔控制平面的機器可讀 SoT:每份活文檔的 `kind`、權威性、語意 trigger、source hint、generator 都先看 registry。下方路由表是人類速查,若衝突以 registry 為準。
 
 ## 輸入
 
@@ -17,11 +19,11 @@ verified_against: bb54d47a
 ## 步驟
 
 1. `git show <hash>` / `git diff <range>` 看實際改了什麼。
-2. 對照下方**路由表**判斷影響哪些 doc(可能 0 份 → 回報「無需同步」即收工)。
+2. 先讀 `docs/registry.yml`,把 diff 對應到 registry 的語意 trigger,再用下方**路由表**輔助判斷影響哪些 doc(可能 0 份 → 回報「無需同步」即收工)。
 3. 每份目標 doc:`grep` 舊命令/欄位/旗標/模組名清單,凡引用到被改掉的舊狀態 → 更新成新狀態。**不臆造**:找不到對應 doc 或拿不準就如實回報,別硬寫。
-4. **reference tier** 的 doc:更新內容後把 frontmatter `verified_against` 改成**本次最新 code commit hash**(短 hash)。
-5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**(既有 WARN 是技術債,不歸你處理;只要你 touch 的 doc 沒新增 ERROR/staleness WARN)。
-   注意:`docs_lint.sh` 的 staleness / `verified_against` 判定以 **已提交的 git 基準** 為準,**不吃未提交工作樹**的 frontmatter 變更。若你剛在 working tree bump `verified_against` 但尚未 commit,lint 仍可能報舊 hash 的 STALE;這不是本次修改失敗。判斷原則:看你實際 touch 的 doc diff,確認沒有新增 schema/frontmatter 錯誤;需要讓 stale 判定消失,必須在 commit 後再跑一次。
+4. **reference / contract / policy** 類活文檔:更新內容後把 frontmatter `verified_against` 改成被同步的**main 可達 code commit**(短 hash)。禁止寫只存在於 PR branch 的 ephemeral hash；若 PR 會 squash merge,merge 後用 squash commit hash 補同步,或在 PR 內保持舊 anchor 並明示 post-merge bump。
+5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,不會因既有全 repo doc debt 失敗。
+   需要全 repo 健康盤點時才跑 `./ops/docs_lint.sh --audit` 或 `--all`；audit 會暴露歷史 invalid anchor / stale debt,不得把既有 audit debt 當成本次 doc-sync 失敗。
 6. `git commit`,prefix `docs:`,訊息一句話講同步了什麼。結尾加:
    ```
    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
@@ -44,10 +46,12 @@ verified_against: bb54d47a
 | user/agent-facing 介面(admin endpoint / CLI flag / 設定 schema) | 另 grep `.claude/skills/`、`docs/sop/`、`docs/runbook/` 凡引用舊清單一併更新 | — |
 | `lab/llm_eval/` 新增 prompt / dataset / judge / provider | `docs/reference/llm_eval.md` | reference |
 | eval CLI 新增 flag / subcommand / output format / scoring rule | `docs/reference/llm_eval.md` + `docs/sop/llm_eval.md` | reference + sop |
+| 文檔 workflow / registry / docs gate / audit 語意改變 | `docs/registry.yml` + `docs/sop/doc_sync.md` + `docs/reference/tech_index.md` + agent/PR template 引用點 | registry + sop + reference |
 
 ## Tier 契約
 
-- **reference** = doc-as-code,改實作必同步 + bump `verified_against`。標 **(SoT)** 衝突時權威。
+- **contract / reference / policy** = 活契約或索引,改相關語意 surface 必同步 + bump `verified_against` 到 main 可達 code commit。標 **(SoT)** 衝突時權威。
+- **generated** = 機器產物,registry 必須有 `generator`;不手改產物內容。
 - **sop** = 流程變了才動;純實作變動不必碰。
 - **policy** = 改動需在 commit message 說明原因。
 - **snapshot / archive / legal / assets** = **不碰**(機器生成 / 凍結歷史 / 法務 / 行銷)。iOS 大重構後的 `docs/snapshot/ios_baseline.md` 由 `ops/gen_ios_baseline.sh` 再生,不手改。
