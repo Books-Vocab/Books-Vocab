@@ -32,6 +32,7 @@ from ..deps import (
     _notebook_store,
     _review_event_store,
     get_current_user,
+    logger,
 )
 from ..service_factories import create_client
 from ..vocab_handlers import (

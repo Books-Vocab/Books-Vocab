@@ -1,4 +1,4 @@
-"""Review state sync operations: push/pull review states and daily stats."""
+"""Review state sync operations for per-card spaced-repetition fields."""
 
 from __future__ import annotations
 
@@ -123,4 +123,3 @@ def push_review_states(
     if pending_updates:
         cards_store.batch_update(pending_updates)
     return {"updated": updated, "skipped": skipped}
-
