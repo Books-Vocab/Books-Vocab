@@ -312,13 +312,15 @@ struct KGServiceTests {
     @Test func user_config_round_trips_through_codable() throws {
         let original = KGUserConfig(
             translation: KGTranslationConfig(source_lang: "en", target_lang: "fr"),
-            review_clock: nil
+            review_clock: nil,
+            review_mode: nil
         )
         let encoded = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(KGUserConfig.self, from: encoded)
         #expect(decoded.translation?.source_lang == "en")
         #expect(decoded.translation?.target_lang == "fr")
         #expect(decoded.review_clock == nil)
+        #expect(decoded.review_mode == nil)
     }
 
     // MARK: - JWTExpiry — auth token pre-check (currentAuthToken)

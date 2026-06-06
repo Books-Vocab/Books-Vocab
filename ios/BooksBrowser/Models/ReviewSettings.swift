@@ -269,29 +269,15 @@ final class ReviewSettingsStore {
             || settings.customMinimumIntervalHours != self.settings.customMinimumIntervalHours
             || settings.customMaximumIntervalHours != self.settings.customMaximumIntervalHours
         self.settings = settings
+        let modeState = Self.currentModeState(settings, updatedAt: nil)
         // mode + 自訂 SRS 參數本地層:總是寫(冪等,與既有行為一致)。
-        defaults.set(settings.mode.rawValue, forKey: Keys.mode)
-        let dict: [String: Double] = [
-            "initialIntervalHours": settings.customInitialIntervalHours,
-            "rememberedMultiplier": settings.customRememberedMultiplier,
-            "forgotMultiplier": settings.customForgotMultiplier,
-            "minimumIntervalHours": settings.customMinimumIntervalHours,
-            "maximumIntervalHours": settings.customMaximumIntervalHours
-        ]
-        let customData = try? JSONSerialization.data(withJSONObject: dict)
-        if let customData {
-            defaults.set(customData, forKey: Keys.customParams)
-        }
-        // mode/custom 雲端層 + LWW 時戳:只在 mode 或 custom 參數真的變動時推進 updatedAt
-        // 並寫 iCloud(改 pause/autoplay 不該動 mode 的 LWW clock,否則跨裝置誤判較新)。
+        writeLocalMode(modeState)
+        // mode/custom 雲端層 + LWW 時戳:只在 mode 或 custom 真變動時推進 updatedAt 並
+        // 整組寫 iCloud(改 pause/autoplay 不該動 mode 的 LWW clock,否則跨裝置誤判較新)。
         if modeChanged {
             let ts = Date().timeIntervalSince1970
             defaults.set(ts, forKey: Keys.modeUpdatedAt)
-            cloud.set(settings.mode.rawValue, forKey: Keys.mode)
-            if let customData, let json = String(data: customData, encoding: .utf8) {
-                cloud.set(json, forKey: Keys.customParams)
-            }
-            cloud.set(ts, forKey: Keys.modeUpdatedAt)
+            writeCloudMode(modeState, timestamp: ts)
         }
         // pause clock 本地層:總是寫(冪等,與既有行為一致)。
         writeLocalPause(settings.isProgressPaused, settings.progressPausedAt)
@@ -378,6 +364,98 @@ final class ReviewSettingsStore {
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double]
         else { return nil }
         return dict
+    }
+
+    // MARK: - Review mode layer writes
+
+    /// 從完整 `ReviewSettings` 取出 mode 三層子狀態(`updatedAt` 由呼叫端決定:
+    /// update 寫入時為 nil 佔位,push/rollback 帶實際時戳)。
+    private static func currentModeState(_ settings: ReviewSettings, updatedAt: Double?) -> ReviewModeState {
+        ReviewModeState(
+            mode: settings.mode,
+            customInitialIntervalHours: settings.customInitialIntervalHours,
+            customRememberedMultiplier: settings.customRememberedMultiplier,
+            customForgotMultiplier: settings.customForgotMultiplier,
+            customMinimumIntervalHours: settings.customMinimumIntervalHours,
+            customMaximumIntervalHours: settings.customMaximumIntervalHours,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func encodeCustomParams(_ state: ReviewModeState) -> Data? {
+        let dict: [String: Double] = [
+            "initialIntervalHours": state.customInitialIntervalHours,
+            "rememberedMultiplier": state.customRememberedMultiplier,
+            "forgotMultiplier": state.customForgotMultiplier,
+            "minimumIntervalHours": state.customMinimumIntervalHours,
+            "maximumIntervalHours": state.customMaximumIntervalHours,
+        ]
+        return try? JSONSerialization.data(withJSONObject: dict)
+    }
+
+    /// 寫 mode 三層的本地層(mode + customParams,冪等總是寫)。
+    private func writeLocalMode(_ state: ReviewModeState) {
+        defaults.set(state.mode.rawValue, forKey: Keys.mode)
+        if let data = Self.encodeCustomParams(state) {
+            defaults.set(data, forKey: Keys.customParams)
+        }
+    }
+
+    /// 整組寫雲端(mode + customParams + updatedAt 一起),確保跨裝置「整組原子」不半寫。
+    /// customParams 對固定 5 個 Double 的 dict 序列化不會失敗;萬一失敗,讀取端缺 key
+    /// 經 `modeState` 回退 default 仍整組收斂(不會殘留他欄位的舊值)。
+    private func writeCloudMode(_ state: ReviewModeState, timestamp: Double) {
+        cloud.set(state.mode.rawValue, forKey: Keys.mode)
+        if let json = Self.encodeCustomParams(state).flatMap({ String(data: $0, encoding: .utf8) }) {
+            cloud.set(json, forKey: Keys.customParams)
+        }
+        cloud.set(timestamp, forKey: Keys.modeUpdatedAt)
+    }
+
+    // MARK: - Review mode push/rollback support (Phase A3)
+
+    /// 當前 mode 三層的 LWW 快照(rollback 前取;updatedAt 取本地層)。
+    var reviewModeSnapshot: ReviewModeState {
+        Self.currentModeState(settings, updatedAt: Self.readLocalModeState(defaults).updatedAt)
+    }
+
+    /// 遠端 push 失敗時還原 mode 三層到快照(含原 updatedAt),使回滾值不會被 iCloud LWW
+    /// 當成比其他裝置並發寫更新。對標 `restorePauseState`。
+    func restoreModeState(_ snapshot: ReviewModeState) {
+        var s = settings
+        s.mode = snapshot.mode
+        s.customInitialIntervalHours = snapshot.customInitialIntervalHours
+        s.customRememberedMultiplier = snapshot.customRememberedMultiplier
+        s.customForgotMultiplier = snapshot.customForgotMultiplier
+        s.customMinimumIntervalHours = snapshot.customMinimumIntervalHours
+        s.customMaximumIntervalHours = snapshot.customMaximumIntervalHours
+        settings = s
+        writeLocalMode(snapshot)
+        if let ts = snapshot.updatedAt {
+            defaults.set(ts, forKey: Keys.modeUpdatedAt)
+            writeCloudMode(snapshot, timestamp: ts)
+        } else {
+            // 先前從未寫過:清本地時戳;KVS 無 removeObject,寫 0 讓他裝置真寫(ts>0)勝出。
+            defaults.removeObject(forKey: Keys.modeUpdatedAt)
+            cloud.set(0.0, forKey: Keys.modeUpdatedAt)
+        }
+    }
+
+    /// Server cold-start 套用:本機從未寫過 mode 時,以 server 值初始化本地三層(記 server
+    /// updatedAt 作後續 LWW 基準;不回寫 iCloud,避免與他裝置 KV 競爭)。對標 `applyServerPauseState`。
+    func applyServerModeState(_ state: ReviewModeState) {
+        var s = settings
+        s.mode = state.mode
+        s.customInitialIntervalHours = state.customInitialIntervalHours
+        s.customRememberedMultiplier = state.customRememberedMultiplier
+        s.customForgotMultiplier = state.customForgotMultiplier
+        s.customMinimumIntervalHours = state.customMinimumIntervalHours
+        s.customMaximumIntervalHours = state.customMaximumIntervalHours
+        settings = s
+        writeLocalMode(state)
+        if let ts = state.updatedAt {
+            defaults.set(ts, forKey: Keys.modeUpdatedAt)
+        }
     }
 
     // MARK: - Pause clock push/rollback support (Phase 3)

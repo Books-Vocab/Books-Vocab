@@ -60,6 +60,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 let config = try await kgService.fetchUserConfig()
                 applyServerTranslationConfig(config.translation)
                 applyServerReviewClock(config.review_clock)
+                applyServerReviewMode(config.review_mode)
             } catch {
                 // Non-fatal: local + iCloud KV remain the fallback authority for
                 // translation config, so we log rather than report to Sentry.
@@ -123,6 +124,29 @@ final class SettingsCoordinator: SettingsCoordinating {
         )
     }
 
+    /// Reconcile server review-mode with local + iCloud KV (mirrors pause clock).
+    /// Cold-start only: server wins ONLY when this device has never written the
+    /// review mode locally (`snapshot.updatedAt == nil`). After any local write,
+    /// iCloud KV is the cross-device authority. Real LWW awaits the backend flag.
+    /// 後端 snake_case wire(`KGReviewModeConfig`)→ iOS `ReviewModeState` 的轉換在此。
+    private func applyServerReviewMode(_ mode: KGReviewModeConfig?) {
+        guard let mode else { return }
+        let store = ReviewSettingsStore.shared
+        guard store.reviewModeSnapshot.updatedAt == nil else { return }
+        _ = KGFeatureFlags.serverReviewModeLwwEnabled  // keep wired for future LWW flip
+        store.applyServerModeState(
+            ReviewModeState(
+                mode: ReviewSettingsMode(rawValue: mode.mode) ?? .relaxed,
+                customInitialIntervalHours: mode.custom_initial_interval_hours,
+                customRememberedMultiplier: mode.custom_remembered_multiplier,
+                customForgotMultiplier: mode.custom_forgot_multiplier,
+                customMinimumIntervalHours: mode.custom_minimum_interval_hours,
+                customMaximumIntervalHours: mode.custom_maximum_interval_hours,
+                updatedAt: mode.updated_at
+            )
+        )
+    }
+
     /// 切換複習時鐘暫停:樂觀寫本地+iCloud,登入則 push 後端;push 失敗 rollback 三層
     /// (對標 updateTranslationLanguage)。回 true=已存(或免存的 guest),false=遠端失敗。
     @discardableResult
@@ -156,6 +180,44 @@ final class SettingsCoordinator: SettingsCoordinating {
             reviewSettingsStore.restorePauseState(snapshot)
             toastCoordinator.error("設定儲存失敗".localized)
             AppLog.kg.error("updateReviewClockConfig failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// 更新複習模式 + 自訂 SRS 參數:樂觀寫本地+iCloud,登入則 push 後端;push 失敗 rollback
+    /// 三層(對標 updateReviewClock)。回 true=已存(或免存的 guest),false=遠端失敗。
+    /// iOS `ReviewSettings`(camelCase customParams)→ 後端 snake_case wire 的轉換在此。
+    @discardableResult
+    func updateReviewMode(
+        _ newSettings: ReviewSettings,
+        reviewSettingsStore: ReviewSettingsStore,
+        authManager: any AuthManaging,
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
+    ) async -> Bool {
+        let snapshot = reviewSettingsStore.reviewModeSnapshot   // 寫之前快照,rollback 用
+        reviewSettingsStore.update(newSettings)
+
+        guard authManager.isLoggedIn else { return true }
+
+        let newSnapshot = reviewSettingsStore.reviewModeSnapshot
+        do {
+            _ = try await kgService.updateReviewModeConfig(
+                KGReviewModeConfig(
+                    mode: newSnapshot.mode.rawValue,
+                    custom_initial_interval_hours: newSnapshot.customInitialIntervalHours,
+                    custom_remembered_multiplier: newSnapshot.customRememberedMultiplier,
+                    custom_forgot_multiplier: newSnapshot.customForgotMultiplier,
+                    custom_minimum_interval_hours: newSnapshot.customMinimumIntervalHours,
+                    custom_maximum_interval_hours: newSnapshot.customMaximumIntervalHours,
+                    updated_at: newSnapshot.updatedAt
+                )
+            )
+            return true
+        } catch {
+            reviewSettingsStore.restoreModeState(snapshot)
+            toastCoordinator.error("設定儲存失敗".localized)
+            AppLog.kg.error("updateReviewModeConfig failed: \(error.localizedDescription)")
             return false
         }
     }

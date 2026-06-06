@@ -54,8 +54,22 @@ struct KGReviewClockConfig: Codable {
     let updated_at: Double?
 }
 
+/// Per-user 複習模式 + 自訂 SRS 參數(對應後端 ReviewModeConfig)。mode + 5 個 custom_*
+/// 複合,共用 updated_at 驅動跨裝置 LWW。欄位名為後端 snake_case(wire format),
+/// 與 iOS store 的 camelCase customParams 之間由 SettingsCoordinator 的 push/cold-start mapper 轉換。
+struct KGReviewModeConfig: Codable {
+    let mode: String
+    let custom_initial_interval_hours: Double
+    let custom_remembered_multiplier: Double
+    let custom_forgot_multiplier: Double
+    let custom_minimum_interval_hours: Double
+    let custom_maximum_interval_hours: Double
+    let updated_at: Double?
+}
+
 /// User config request/response
 struct KGUserConfig: Codable {
     let translation: KGTranslationConfig?
     let review_clock: KGReviewClockConfig?
+    let review_mode: KGReviewModeConfig?
 }
