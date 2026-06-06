@@ -129,10 +129,11 @@ Migration 順序：
 | 1 | User config timestamps | 後端 `TranslationLanguageConfig.updated_at` + domain-level partial merge；iOS 開啟 translation server LWW | backend tests + iOS settings tests；遠端失敗 rollback |
 | 2 | User config domains | reader / review / appearance / language / vocab_ui optional domains；iOS 啟動 fetch + local cache fallback | 每個 domain partial PATCH 測試；fetch 失敗不可 PUT 舊值 |
 | 3 | Podcast follow backend | `podcast.followed_series_ids` 或 dedicated follow endpoint；iOS optimistic toggle + migration | 不存在 series 收斂；登出 / account switch 清 projection |
-| 4 | Podcast progress CloudKit退場 | `PodcastProgress` local-only projection；啟動一次性補推 CloudKit/local rows | LWW tie-break 一致；重複 migration 冪等 |
-| 5 | Library metadata + position backend | `/api/library/books*` metadata / tombstone / position；iOS `Book.remoteBookId` + position outbox | 不上傳 asset 也可用；EPUB/PDF position contract 一致 |
-| 6 | Library asset sync | object storage upload/download、quota、privacy copy、download state UI | 大檔不上 DB；quota / entitlement / retry / cancellation tests |
-| 7 | CloudKit / iCloud KVS cleanup | 移除不再需要的 cross-device Apple-only authority；保留 UserDefaults 啟動快取 | 發版週期觀測完成；舊資料 migration 完成；rollback path 明確 |
+| 4 | Podcast progress backend hardening | 啟動一次性補推 CloudKit/local rows 到後端，維持 CloudKit 讀取作過渡；加 migration/drift counters | LWW tie-break 一致；重複 migration 冪等；至少一個發版週期觀測 |
+| 5 | Podcast progress CloudKit退場 | `PodcastProgress` 改 local-only projection，不再把 CloudKit 當權威 | PR4 觀測完成；feature flag 可回 legacy；無嚴重 drift |
+| 6 | Library metadata + position backend | `/api/library/books*` metadata / tombstone / position；iOS `Book.remoteBookId` + position outbox | 不上傳 asset 也可用；EPUB/PDF position contract 一致 |
+| 7 | Library asset sync | object storage upload/download、quota、privacy copy、download state UI | 大檔不上 DB；quota / entitlement / retry / cancellation tests |
+| 8 | CloudKit / iCloud KVS cleanup | 移除不再需要的 cross-device Apple-only authority；保留 UserDefaults 啟動快取 | 發版週期觀測完成；舊資料 migration 完成；rollback path 明確 |
 
 每個實作 PR 的 docs gate：
 
