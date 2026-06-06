@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: c06dadb1
+verified_against: 304ba983
 -->
 # Chrome Extension Feature Boundary
 
