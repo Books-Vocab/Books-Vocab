@@ -31,6 +31,7 @@ from typing import Any
 
 from filelock import FileLock
 
+from kg.api_models.common import VocabSource
 from kg.cards import CardStore
 from kg.cards.model import Card
 from kg.graph.models import LinkKind
@@ -46,7 +47,7 @@ from kg.ops_edit_shared import (
     users_lock_file,
 )
 from kg.ops_shared import data_dir
-from kg.user_store import load_users_from, save_users_to
+from kg.user_store import load_users_from, parse_datetime, save_users_to
 
 _VALID_REVIEW_STATES = ("new", "due", "reviewed")
 
@@ -184,6 +185,32 @@ def _review_fields(state: str, interval_hours: float | None, now: datetime) -> d
         "last_review_feedback": 1,
         "review_interval_hours": iv,
     }
+
+
+def _parse_seed_datetime(raw: Any, label: str) -> datetime | None:
+    parsed = parse_datetime(raw)
+    if raw is not None and parsed is None:
+        raise EditError(f"{label} 必須是 ISO datetime 或 Unix timestamp:{raw!r}")
+    return parsed
+
+
+def _source_to_json(raw: Any, label: str) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        if not raw.strip():
+            return None
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise EditError(f"{label} 字串必須是 VocabSource JSON object") from exc
+    if not isinstance(raw, dict):
+        raise EditError(f"{label} 必須是 VocabSource object 或 JSON string")
+    try:
+        source = VocabSource(**raw)
+    except Exception as exc:
+        raise EditError(f"{label} 不符合 VocabSource schema:{exc}") from exc
+    return source.model_dump_json(exclude_none=True)
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -726,6 +753,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
     notebooks = spec.get("notebooks", [])
     cards = spec.get("cards", [])
     links = spec.get("links", [])
+    review_anchor = _parse_seed_datetime(spec.get("review_anchor"), "review_anchor")
 
     # 預驗(寫入前,確保原子性):任何缺漏在動 DB 前就 raise,不留孤兒 notebook。
     def _prevalidate() -> None:
@@ -750,6 +778,9 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 st = rv.get("state")
                 if st not in (None, "") and st not in _VALID_REVIEW_STATES:
                     raise EditError(f"cards[{i}] review.state 非法:{st!r}(僅 {_VALID_REVIEW_STATES})")
+                _parse_seed_datetime(rv.get("anchor"), f"cards[{i}].review.anchor")
+            if "source" in c:
+                _source_to_json(c.get("source"), f"cards[{i}].source")
         for i, lk in enumerate(links):
             for k in ("from", "to", "kind", "confidence", "reason"):
                 if lk.get(k) in (None, ""):
@@ -784,7 +815,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
 
     def apply_fn() -> dict[str, Any]:
         # _prevalidate() 已在 plan 前跑過(dry-run 也驗);此處不重複。
-        now = datetime.now(tz=UTC)
+        now = review_anchor or datetime.now(tz=UTC)
         nb_store = _notebook_store(ctx.user_dir)
         nb_store.ensure_default()
         # name → id 映射。**先納入所有既存 notebook**(operator 可能先
@@ -852,9 +883,12 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 updates["note"] = c["note"]
             if "difficulty" in c:
                 updates["difficulty"] = c["difficulty"]
+            if "source" in c:
+                updates["source"] = _source_to_json(c.get("source"), "cards[].source")
             rv = c.get("review")
             if isinstance(rv, dict) and rv.get("state"):
-                updates.update(_review_fields(rv["state"], rv.get("interval"), now))
+                review_now = _parse_seed_datetime(rv.get("anchor"), "cards[].review.anchor") or now
+                updates.update(_review_fields(rv["state"], rv.get("interval"), review_now))
             card_store.update(card.id, **updates)
             card_checks.append({"content": c["content"].strip(), "nb_id": nb_id,
                                 "meaning": c.get("meaning", "")})
