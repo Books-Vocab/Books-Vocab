@@ -95,6 +95,28 @@ struct PodcastUpsertSeriesTests {
         #expect(url.deletingLastPathComponent().lastPathComponent == "podcast-covers")
     }
 
+    @Test func removeCachedCover_does_not_delete_prefix_collision_series() throws {
+        let target = PodcastSyncService.cachedCoverURL(
+            seriesId: "a",
+            coverImageURL: "/api/podcasts/a/cover?v=old")
+        let sibling = PodcastSyncService.cachedCoverURL(
+            seriesId: "a_b",
+            coverImageURL: "/api/podcasts/a_b/cover?v=live")
+        defer {
+            try? FileManager.default.removeItem(at: target)
+            try? FileManager.default.removeItem(at: sibling)
+        }
+        try FileManager.default.createDirectory(
+            at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([1]).write(to: target)
+        try Data([2]).write(to: sibling)
+
+        PodcastSyncService.removeCachedCover(seriesId: "a", path: target.path)
+
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        #expect(FileManager.default.fileExists(atPath: sibling.path))
+    }
+
     @Test func upsert_inserts_new_series_and_episodes() throws {
         let ctx = try makeContext()
         PodcastSyncService.upsertSeries(detail: detail("a", episodes: [1, 2]), context: ctx)

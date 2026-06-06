@@ -321,7 +321,23 @@ def test_check_pending_publish_when_local_cover_exists():
     s3.seed_series("legacy")  # no cover in S3
     report = cp.check(s3, bucket="b", series_ids=["legacy"], local_covers={"legacy": _PNG})
     assert report["states"]["legacy"] == "pending_publish"
-    assert report["in_sync"] is True  # pending is not drift
+    assert set(report["pending"]) == {"legacy"}
+    assert report["in_sync"] is False
+
+
+def test_check_pending_publish_when_local_cover_version_changed():
+    s3 = FakeS3()
+    old_png = _PNG + b"old"
+    new_png = _PNG + b"new"
+    s3.seed_series("flow_x", cover_url=cp.cover_url_for("flow_x", old_png))
+    s3.store["flow_x/cover.png"] = (old_png, cp._COVER_CT)
+
+    report = cp.check(s3, bucket="b", series_ids=["flow_x"], local_covers={"flow_x": new_png})
+
+    assert report["states"]["flow_x"] == "pending_publish"
+    assert set(report["pending"]) == {"flow_x"}
+    assert report["drift"] == {}
+    assert report["in_sync"] is False
 
 
 # --- cover source resolution -----------------------------------------------
@@ -391,6 +407,20 @@ def test_main_check_drift_exits_1(monkeypatch):
     s3.seed_series("dangling", cover_url="/api/podcasts/dangling/cover")  # url, no png
     monkeypatch.setattr(cp, "_make_client", lambda region, endpoint: s3)
     rc = cp.main(["--bucket", "b", "--check", "--series", "dangling"])
+    assert rc == 1
+
+
+def test_main_check_pending_publish_exits_1(tmp_path, monkeypatch):
+    ws = tmp_path / "flow_x"
+    (ws / "plan").mkdir(parents=True)
+    (ws / "plan" / "cover.png").write_bytes(_PNG + b"new")
+    s3 = FakeS3()
+    s3.seed_series("flow_x", cover_url=cp.cover_url_for("flow_x", _PNG + b"old"))
+    s3.store["flow_x/cover.png"] = (_PNG + b"old", cp._COVER_CT)
+    monkeypatch.setattr(cp, "_make_client", lambda region, endpoint: s3)
+
+    rc = cp.main(["--bucket", "b", "--check", "--workspace", str(ws)])
+
     assert rc == 1
 
 

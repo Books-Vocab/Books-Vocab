@@ -242,12 +242,14 @@ def check(s3, *, bucket: str, series_ids: list[str],
     """Read-only drift report for cover ⟷ coverImageURL consistency. For each
     series classifies one of:
       - in_sync:               cover.png present AND metadata points at it
+                               (and, when local cover bytes are available,
+                               metadata carries the matching version token)
       - url_without_cover_png: metadata points at a cover that isn't in S3 (→ 404)
       - cover_png_without_url: cover.png in S3 but metadata doesn't point at it
                                (client can't see it — step 2 never completed)
       - unpublished:           neither (legacy / pre-cover series)
-    If ``local_covers`` is given, a series that is ``unpublished`` but has a
-    local cover is flagged ``pending_publish``."""
+    If ``local_covers`` is given, a series whose local cover is not reflected
+    by metadata is flagged ``pending_publish``."""
     local_covers = local_covers or {}
     rows = {}
     for sid in series_ids:
@@ -255,7 +257,9 @@ def check(s3, *, bucket: str, series_ids: list[str],
         meta_url = meta.get("coverImageURL") if isinstance(meta, dict) else None
         points = cover_url_points_at(sid, meta_url)
         has_png = _key_exists(s3, bucket, f"{sid}/cover.png")
-        if points and has_png:
+        if sid in local_covers and has_png and meta_url != cover_url_for(sid, local_covers[sid]):
+            state = "pending_publish"
+        elif points and has_png:
             state = "in_sync"
         elif points and not has_png:
             state = "url_without_cover_png"
@@ -268,7 +272,8 @@ def check(s3, *, bucket: str, series_ids: list[str],
         rows[sid] = state
     drift = {s: st for s, st in rows.items()
              if st in ("url_without_cover_png", "cover_png_without_url")}
-    return {"states": rows, "drift": drift, "in_sync": not drift}
+    pending = {s: st for s, st in rows.items() if st == "pending_publish"}
+    return {"states": rows, "drift": drift, "pending": pending, "in_sync": not drift and not pending}
 
 
 # --- cover source resolution ----------------------------------------------
@@ -369,7 +374,10 @@ def main(argv: list[str] | None = None) -> int:
         report = check(s3, bucket=args.bucket, series_ids=series_ids, local_covers=local)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         if not report["in_sync"]:
-            print(f"✗ drift: {len(report['drift'])} series", file=sys.stderr)
+            if report["pending"]:
+                print(f"✗ pending publish: {len(report['pending'])} series", file=sys.stderr)
+            else:
+                print(f"✗ drift: {len(report['drift'])} series", file=sys.stderr)
             return 1
         print("✓ covers ↔ metadata in sync")
         return 0

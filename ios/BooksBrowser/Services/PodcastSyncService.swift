@@ -220,14 +220,6 @@ final class PodcastSyncService {
             try? fm.removeItem(atPath: path)
         }
         try? fm.removeItem(at: cachedCoverURL(seriesId: seriesId))
-        let root = coversRoot()
-        guard let files = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
-            return
-        }
-        let prefix = "\(seriesId)_"
-        for url in files where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "png" {
-            try? fm.removeItem(at: url)
-        }
     }
 
     static func isValidCoverResponse(data: Data, response: URLResponse) -> Bool {
