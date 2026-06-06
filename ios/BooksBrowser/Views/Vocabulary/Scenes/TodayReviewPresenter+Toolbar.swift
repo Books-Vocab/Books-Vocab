@@ -291,6 +291,7 @@ extension TodayReviewPresenter {
                                 .fill(appSkin.palette.mutedFill)
                         )
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel(state.autoplaySpeed.displayName)
             }
             .foregroundStyle(appSkin.palette.primaryText)
