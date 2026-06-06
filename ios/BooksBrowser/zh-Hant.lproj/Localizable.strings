@@ -58,6 +58,7 @@
 "sync.failure.reason.rateLimited" = "伺服器忙碌，請稍後再試";
 "sync.failure.reason.serverUnavailable" = "伺服器暫時不可用";
 "sync.failure.reason.serverRejected" = "伺服器拒絕請求";
+"sync.failure.reason.serverRejectedCode" = "伺服器拒絕請求（HTTP %@）";
 "sync.failure.reason.decoding" = "資料格式不相容";
 "sync.failure.reason.server" = "伺服器錯誤";
 "sync.failure.reason.unknown" = "未知錯誤";

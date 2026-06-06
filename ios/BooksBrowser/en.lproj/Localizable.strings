@@ -58,6 +58,7 @@
 "sync.failure.reason.rateLimited" = "Server is busy. Try again later";
 "sync.failure.reason.serverUnavailable" = "Server temporarily unavailable";
 "sync.failure.reason.serverRejected" = "Server rejected the request";
+"sync.failure.reason.serverRejectedCode" = "Server rejected the request (HTTP %@)";
 "sync.failure.reason.decoding" = "Data format mismatch";
 "sync.failure.reason.server" = "Server error";
 "sync.failure.reason.unknown" = "Unknown error";
