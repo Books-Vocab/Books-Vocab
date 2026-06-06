@@ -45,3 +45,4 @@ class ReviewEventsPushResponse(BaseModel):
 
 class ReviewEventsResponse(BaseModel):
     entries: list[ReviewEventEntry]
+    cursor: str | None = None
