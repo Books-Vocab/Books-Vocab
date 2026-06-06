@@ -130,6 +130,25 @@ def test_unknown_card_id_is_preserved(tmp_path):
     assert pulled[0].card_id == "deleted-card"
 
 
+def test_monotonic_guard_keeps_ingested_at_unique_when_clock_is_frozen(tmp_path, monkeypatch):
+    """With a frozen wall clock (models same-microsecond bursts and backward steps),
+    ingested_at must still be strictly increasing and unique — both within one
+    insert_many call and continued across the next call. This is what lets the strict
+    ``>`` cursor never skip an event. Without the max+1µs guard every row would share
+    the frozen timestamp and collide."""
+    frozen = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr("kg.review_events._now", lambda: frozen)
+
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events([_event(f"a-{i}") for i in range(5)], event_store=store)
+    push_review_events([_event(f"b-{i}") for i in range(5)], event_store=store)
+
+    ingested = [row.ingested_at for row in store.all()]
+    assert len(ingested) == 10
+    assert len(set(ingested)) == 10, "frozen clock collided ingested_at"
+    assert ingested == sorted(ingested), "ingested_at not strictly increasing"
+
+
 def test_legacy_store_without_ingested_at_is_migrated(tmp_path):
     """A pre-existing DB created before the ingested_at column must self-upgrade
     and backfill ingested_at from reviewed_at on open."""
