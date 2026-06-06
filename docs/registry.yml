@@ -83,9 +83,11 @@ documents:
       - docs_workflow_changed
       - registry_changed
       - docs_gate_changed
+      - docs_impact_changed
     sources:
       - docs/registry.yml
       - ops/docs_lint.sh
+      - ops/docs_impact.py
 
   - id: sop.backend
     path: docs/sop/backend.md
