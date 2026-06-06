@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: f536e721
+verified_against: c06dadb1
 -->
 # Implemented Product Surface
 

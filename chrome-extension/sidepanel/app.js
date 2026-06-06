@@ -900,11 +900,13 @@ function markDetailShareFailed() {
   detailShare.dataset.state = 'failed';
   detailShare.setAttribute('aria-label', t('detailCopyFailed'));
   detailShare.setAttribute('title', t('detailCopyFailed'));
+  KGIcons.setIcon(detailShare, 'square.and.arrow.up');
   setTimeout(() => {
     if (!detailShare || detailShare.dataset.state !== 'failed') return;
     detailShare.dataset.state = 'idle';
     detailShare.setAttribute('aria-label', t('detailShareAria'));
     detailShare.setAttribute('title', t('detailShareAria'));
+    KGIcons.setIcon(detailShare, 'square.and.arrow.up');
   }, 1600);
 }
 

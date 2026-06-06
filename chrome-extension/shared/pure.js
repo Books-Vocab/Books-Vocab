@@ -498,7 +498,7 @@ function vocabPlainTextExport(item) {
 
   const note = String(raw.note == null ? '' : raw.note)
     .replace(/\r\n/g, '\n')
-    .split(/\n+/)
+    .split(/\n{2,}/)
     .map(_inlinePlainText)
     .filter(Boolean);
   lines.push(...note);

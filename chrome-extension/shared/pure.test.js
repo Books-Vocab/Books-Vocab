@@ -433,6 +433,14 @@ test('vocabPlainTextExport trims blanks and omits absent sections', () => {
   }), 'daft\n\n愚蠢的');
 });
 
+test('vocabPlainTextExport keeps single newlines inside iOS meaning paragraphs', () => {
+  assert.equal(vocabPlainTextExport({
+    word: 'cadence',
+    meaning: '節奏',
+    note: '第一行解釋\n第二行仍是同一段\n\n第三行才是新段落',
+  }), 'cadence\n\n節奏\n\n第一行解釋\n第二行仍是同一段\n\n第三行才是新段落');
+});
+
 // ---------------------------------------------------------------------------
 // normalizeVocabItem
 // ---------------------------------------------------------------------------
