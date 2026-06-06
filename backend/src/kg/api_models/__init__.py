@@ -42,10 +42,6 @@ from kg.api_models.podcast import (
     PodcastSeriesSummary,
 )
 from kg.api_models.review import (
-    DailyReviewStatEntry,
-    DailyReviewStatsPushRequest,
-    DailyReviewStatsPushResponse,
-    DailyReviewStatsResponse,
     ReviewEventEntry,
     ReviewEventsPushRequest,
     ReviewEventsPushResponse,
@@ -98,10 +94,6 @@ __all__ = [
     "BatchDeleteResponse",
     "CardLinkSummaryResponse",
     "CardResponse",
-    "DailyReviewStatEntry",
-    "DailyReviewStatsPushRequest",
-    "DailyReviewStatsPushResponse",
-    "DailyReviewStatsResponse",
     "DeleteAccountResponse",
     "DeleteWordResponse",
     "EntitlementsResponse",

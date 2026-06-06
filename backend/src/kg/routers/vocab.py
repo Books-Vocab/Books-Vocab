@@ -11,9 +11,6 @@ from ..api_models import (
     BatchDeleteRequest,
     BatchDeleteResponse,
     CardResponse,
-    DailyReviewStatsPushRequest,
-    DailyReviewStatsPushResponse,
-    DailyReviewStatsResponse,
     DeleteWordResponse,
     GraphLinkResponse,
     ManualLinkRequest,
@@ -30,13 +27,11 @@ from ..deps import (
     _card_response,
     _card_store,
     _check_quota,
-    _daily_stats_store,
     _embedding_store,
     _graph_store,
     _notebook_store,
     _review_event_store,
     get_current_user,
-    logger,
 )
 from ..service_factories import create_client
 from ..vocab_handlers import (
@@ -51,9 +46,7 @@ from ..vocab_handlers import (
     hide_graph_link_response,
     list_vocab_response,
     lookup_word_response,
-    pull_daily_stats_response,
     pull_review_events_response,
-    push_daily_stats_response,
     push_review_events_response,
     push_review_response,
     unhide_graph_link_response,
@@ -115,22 +108,6 @@ def batch_archive(
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
-    )
-
-
-@router.get("/api/vocab/daily-stats", response_model=DailyReviewStatsResponse)
-def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_user)):
-    return pull_daily_stats_response(
-        since, user,
-        daily_stats_store_factory=_daily_stats_store,
-    )
-
-
-@router.patch("/api/vocab/daily-stats", response_model=DailyReviewStatsPushResponse)
-def push_daily_stats(req: DailyReviewStatsPushRequest, user: dict = Depends(get_current_user)):
-    return push_daily_stats_response(
-        req, user,
-        daily_stats_store_factory=_daily_stats_store, logger=logger,
     )
 
 

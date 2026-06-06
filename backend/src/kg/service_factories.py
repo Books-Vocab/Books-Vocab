@@ -9,7 +9,6 @@ from collections import OrderedDict
 from pathlib import Path
 
 from .cards import CardStore
-from .daily_stats import DailyReviewStatsStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
 from .llm.providers import REGISTRY, LLMProvider
@@ -94,11 +93,6 @@ def clear_store_cache() -> None:
 def create_card_store(user_dir: Path) -> CardStore:
     key = f"card:{user_dir}"
     return _get_cached(key, lambda: CardStore(user_dir / "cards.db"))
-
-
-def create_daily_stats_store(user_dir: Path) -> DailyReviewStatsStore:
-    key = f"stats:{user_dir}"
-    return _get_cached(key, lambda: DailyReviewStatsStore(user_dir / "daily_review_stats.db"))
 
 
 def create_review_event_store(user_dir: Path) -> ReviewEventStore:
