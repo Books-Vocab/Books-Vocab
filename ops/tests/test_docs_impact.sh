@@ -37,8 +37,22 @@ fi
 grep -q "sop.doc_sync" "$tmpdir/registry.out"
 
 ./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift >"$tmpdir/ios.out"
-grep -q "contract.sync_lifecycle" "$tmpdir/ios.out"
+if grep -q "contract.sync_lifecycle" "$tmpdir/ios.out"; then
+  echo "ordinary reader view changes should not imply sync lifecycle contract impact" >&2
+  exit 1
+fi
 grep -q "generated.ios_baseline" "$tmpdir/ios.out"
+grep -q "reference.feature_boundary.reader" "$tmpdir/ios.out"
+
+./ops/docs_impact.py --files ios/BooksBrowser/Views/Settings/SettingsView.swift >"$tmpdir/settings.out"
+if grep -q "contract.sync_lifecycle" "$tmpdir/settings.out"; then
+  echo "ordinary settings view changes should not imply sync lifecycle contract impact" >&2
+  exit 1
+fi
+grep -q "reference.feature_boundary.settings" "$tmpdir/settings.out"
+
+./ops/docs_impact.py --files ios/BooksBrowser/Services/KGService+Sync.swift ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift >"$tmpdir/sync_sources.out"
+grep -q "contract.sync_lifecycle" "$tmpdir/sync_sources.out"
 
 ./ops/docs_impact.py --files README.md >"$tmpdir/none.out"
 grep -q "docs_impact: no registry impacts" "$tmpdir/none.out"

@@ -21,7 +21,7 @@ verified_against: 9de624ce
 | backend-change | partial | `backend/src/kg/routers/vocab.py` 能快速找到 registry / doc_sync / tech_index,但 broad `backend/` 曾過度提示 `policy.safety`、`sop.deploy`、`sop.backend` |
 | ops-change | partial | `ops/devops_kg_safe.sh` 必要提示應集中於 safety / deploy / debug / tech_index；`tech_index` 對 safe wrapper 命令面描述過淺 |
 | docs-tooling-change | pass | `ops/docs_lint.sh` 只提示 tech_index / doc_sync / dogfood protocol,未再誤觸 host/safety/deploy/debug/product docs |
-| ios-feature-change | partial | `ios/BooksBrowser/Models/Book.swift` 未能直接提示 bookshelf feature boundary；`sop.ios`、`sync_lifecycle` 對一般 book model 過寬 |
+| ios-feature-change | partial | `ios/BooksBrowser/Models/Book.swift` 未能直接提示 bookshelf feature boundary；`sop.ios`、`sync_lifecycle` 曾對一般 iOS change 過寬 |
 | maintenance | partial | gate/audit/registry 可找到且全綠；docs tooling test changes 曾誤提示 tech_index；`--registry` summary `OK: 0` 不直覺 |
 
 ## Consolidated Issues
@@ -29,6 +29,7 @@ verified_against: 9de624ce
 | priority | issue | evidence | fix |
 |---|---|---|---|
 | P1 | Feature boundary discoverability 不足 | iOS dogfood: `Book.swift` impact 沒有 `docs/reference/feature_boundary/bookshelf.md` | registry 新增 `reference.feature_boundary.bookshelf`,並補 bookshelf frontmatter scope |
+| P1 | Sync lifecycle source 過寬 | iOS dogfood: 一般 Reader/Settings/Book model change 會提示 `contract.sync_lifecycle` | registry 與 `sync_lifecycle.md` frontmatter scope 收斂到 sync 狀態機、payload schema、收斂流程檔案；Reader/Settings 一般 view change 改由 feature boundary docs 承接 |
 | P1 | Broad backend hints 噪音 | backend dogfood: router change 提示 safety/deploy/backend SOP | registry 對 `backend/src/kg/routers/*.py` 排除 safety/deploy/backend workflow docs |
 | P1 | Docs tooling test 噪音 | maintenance dogfood: `ops/tests/test_docs_lint.sh` 提示 tech_index | registry 對 tech_index 排除 `ops/tests/test_docs_*.sh` |
 | P2 | Safe wrapper command surface 不好查 | ops dogfood: `devops_kg_safe.sh` row 只有「部署 / 維護 safe wrapper」 | tech_index 補 safe wrapper command surface 與 blocklist 摘要 |
@@ -39,9 +40,10 @@ verified_against: 9de624ce
 
 ## Follow-up Changes
 
-- `docs/registry.yml`:新增 `reference.feature_boundary.bookshelf` / `chrome` / `notebook` / `podcast` / `reader` / `settings` / `vocabulary`,並加上 backend/router、devops wrapper、docs tooling test 的精準排除。
+- `docs/registry.yml`:新增 `reference.feature_boundary.bookshelf` / `chrome` / `notebook` / `podcast` / `reader` / `settings` / `vocabulary`,並加上 backend/router、devops wrapper、docs tooling test 的精準排除；`contract.sync_lifecycle` 從 iOS/backend 全目錄收斂為 sync-specific source set。
+- `docs/reference/sync_lifecycle.md`:frontmatter scope 對齊 registry,避免文檔宣稱與控制面不同步。
 - `ops/docs_lint.sh`:registry 驗證成功時計入 summary OK。
-- `ops/tests/test_docs_impact.sh`:新增 dogfood regression 覆蓋 backend/router、devops wrapper、Book model、docs tooling tests。
+- `ops/tests/test_docs_impact.sh`:新增 dogfood regression 覆蓋 backend/router、devops wrapper、Book model、docs tooling tests；Reader/Settings 一般 view change 不再提示 sync lifecycle,而 `KGService+Sync` / `SyncCoordinator` 仍提示 sync contract。
 - `ops/tests/test_docs_lint.sh`:audit/all 目前為健康 gate,要求 WARN/ERROR 皆為 0；registry summary 要 `OK: 1`。
 - `ops/docs_impact.py`:generated impact 會輸出 `generator`。
 - `ops/docs_registry_coverage.py`:新增 registry coverage report / strict mode；coverage regression 要求所有 feature boundary docs 必須登記。
@@ -62,4 +64,5 @@ verified_against: 9de624ce
   - `./ops/docs_impact.py --files ops/docs_lint.sh` → tech/doc_sync/dogfood
   - `./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift` → product/bookshelf boundary/ios baseline,其中 generated baseline 顯示 `generator=ops/gen_ios_baseline.sh`
   - `./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift chrome-extension/background.js ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift` → chrome/notebook/reader/vocabulary feature boundary docs 分別命中
+  - `./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift ios/BooksBrowser/Views/Settings/SettingsView.swift ios/BooksBrowser/Services/KGService+Sync.swift ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift chrome-extension/shared/vocab-outbox.js backend/src/kg/vocab_intake.py` → sync contract 只由 sync/outbox/backend vocab paths 命中,Reader/Settings view 只走 feature boundary docs
   - `./ops/docs_impact.py --files ops/tests/test_docs_lint.sh` → no registry impacts
