@@ -17,6 +17,7 @@ struct KGVocabView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @Binding var searchText: String
 
     let notebookId: String
@@ -60,7 +61,7 @@ struct KGVocabView: View {
     }
 
     var body: some View {
-        let n = Date()
+        let n = reviewSettingsStore.settings.reviewReferenceDate()
         let c = VocabularyEntryPresentation.classifyKnowledgeEntries(in: syncedEntries, now: n)
         let filtered = VocabularyEntryPresentation.sortAndFilter(
             c.mergedBucket(for: selectedReviewStates),

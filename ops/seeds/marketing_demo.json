@@ -1,0 +1,181 @@
+{
+  "review_anchor": "2026-06-06T00:00:00Z",
+  "notebooks": [
+    {
+      "name": "Demo Literature",
+      "color": "#8C6A5D",
+      "cover_pattern": "waves"
+    },
+    {
+      "name": "Demo Science",
+      "color": "#4F7C73",
+      "cover_pattern": "grid"
+    }
+  ],
+  "cards": [
+    {
+      "content": "meticulous",
+      "meaning": "一絲不苟的；非常仔細的",
+      "pos": "adj.",
+      "examples": [
+        "Her meticulous notes made the archive feel alive."
+      ],
+      "collocations": [
+        "meticulous planning",
+        "meticulous attention"
+      ],
+      "difficulty": 4.8,
+      "notebook": "Demo Literature",
+      "source": {
+        "type": "book",
+        "title": "A Room of One's Own",
+        "chapter": "Chapter 2"
+      },
+      "review": {
+        "state": "reviewed",
+        "interval": 72
+      }
+    },
+    {
+      "content": "resilient",
+      "meaning": "有韌性的；能迅速復原的",
+      "pos": "adj.",
+      "examples": [
+        "The resilient community rebuilt its routines after the storm."
+      ],
+      "collocations": [
+        "resilient system",
+        "resilient mindset"
+      ],
+      "difficulty": 4.2,
+      "notebook": "Demo Literature",
+      "source": {
+        "type": "book",
+        "title": "The Waves",
+        "chapter": "Interlude"
+      },
+      "review": {
+        "state": "due",
+        "interval": 24
+      }
+    },
+    {
+      "content": "evoke",
+      "meaning": "喚起；引發",
+      "pos": "v.",
+      "examples": [
+        "The opening paragraph evokes a quiet sense of exile."
+      ],
+      "collocations": [
+        "evoke memories",
+        "evoke sympathy"
+      ],
+      "difficulty": 4.6,
+      "notebook": "Demo Literature",
+      "source": {
+        "type": "book",
+        "title": "A Room of One's Own",
+        "chapter": "Chapter 1"
+      },
+      "review": {
+        "state": "new",
+        "interval": 12
+      }
+    },
+    {
+      "content": "entropy",
+      "meaning": "熵；系統混亂程度",
+      "pos": "n.",
+      "examples": [
+        "Entropy increases when usable energy spreads through the system."
+      ],
+      "collocations": [
+        "entropy increase",
+        "statistical entropy"
+      ],
+      "difficulty": 5.6,
+      "notebook": "Demo Science",
+      "source": {
+        "type": "book",
+        "title": "A Brief History of Time",
+        "chapter": "The Arrow of Time"
+      },
+      "review": {
+        "state": "reviewed",
+        "interval": 168
+      }
+    },
+    {
+      "content": "cascade",
+      "meaning": "一連串；連鎖反應",
+      "pos": "n.",
+      "examples": [
+        "A small mutation can trigger a cascade of downstream effects."
+      ],
+      "collocations": [
+        "signal cascade",
+        "cascade effect"
+      ],
+      "difficulty": 4.9,
+      "notebook": "Demo Science",
+      "source": {
+        "type": "book",
+        "title": "The Selfish Gene",
+        "chapter": "Replicators"
+      },
+      "review": {
+        "state": "due",
+        "interval": 48
+      }
+    },
+    {
+      "content": "coherent",
+      "meaning": "連貫的；一致的",
+      "pos": "adj.",
+      "examples": [
+        "The model gives a coherent explanation for scattered observations."
+      ],
+      "collocations": [
+        "coherent argument",
+        "coherent signal"
+      ],
+      "difficulty": 4.4,
+      "notebook": "Demo Science",
+      "source": {
+        "type": "book",
+        "title": "The Selfish Gene",
+        "chapter": "Memes"
+      },
+      "review": {
+        "state": "new",
+        "interval": 12
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": "meticulous",
+      "to": "evoke",
+      "kind": "shares_usage",
+      "confidence": 0.76,
+      "reason": "Both often appear in literary analysis and close-reading notes.",
+      "notebook": "Demo Literature"
+    },
+    {
+      "from": "entropy",
+      "to": "cascade",
+      "kind": "shares_usage",
+      "confidence": 0.81,
+      "reason": "Both describe system-level change over time.",
+      "notebook": "Demo Science"
+    },
+    {
+      "from": "cascade",
+      "to": "coherent",
+      "kind": "contrasts_with",
+      "confidence": 0.64,
+      "reason": "Cascade emphasizes propagation; coherent emphasizes orderly structure.",
+      "notebook": "Demo Science"
+    }
+  ]
+}

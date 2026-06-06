@@ -116,10 +116,14 @@ ops-edit restore <uid> [--backup <path>]                         # 從備份還�
 # link 嚴格 per-notebook:兩端 card 必須與 link 同本(seed/link-add 跨本連結會被擋並提示)。
 
 # seed spec JSON:
-#   {"notebooks":[{"name","color"?,"cover_pattern"?}],
+#   {"review_anchor"?: "2026-06-06T00:00:00Z",
+#    "notebooks":[{"name","color"?,"cover_pattern"?}],
 #    "cards":[{"content","meaning","pos"?,"examples"?,"collocations"?,"note"?,"difficulty"?,
-#              "mode"?,"notebook"?,"review"?:{"state","interval"?}}],
+#              "mode"?,"notebook"?,"source"?: VocabSource,
+#              "review"?:{"state","interval"?,"anchor"?}}],
 #    "links":[{"from","to","kind","confidence","reason","notebook"?}]}      # from/to 用 card content 參照
+# review_anchor/anchor 固定 seed 的複習時鐘,行銷 demo 重跑不會因今天日期不同而漂移。
+# 內建行銷 seed: ops/seeds/marketing_demo.json
 ```
 
 ### data_inspect（本地用）

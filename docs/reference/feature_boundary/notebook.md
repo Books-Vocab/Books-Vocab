@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: 3bec5ff6
+verified_against: 3f14c595
 -->
 # Notebook Feature Boundary
 
@@ -21,7 +21,7 @@ verified_against: 3bec5ff6
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/NotebookListView.swift` | ~553 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**單欄 drill-down 導航(2026-06 #671 收斂)** — notebook row 一律 `NavigationLink(value: notebook.remoteId)` → `navigationDestination(for: String.self)` push `VocabularyListView(notebookId:)`,所有 layout(含 regular / Catalyst)皆然;舊「regular row button selection + 右側 `safeAreaInset` inline 第二欄 + 可拖拉分隔線」雙欄已移除,連帶刪 `NotebookActivationMode` / `NotebookSelectionPolicy` / `NotebookMasterDetailMetrics`(收斂後零引用)及 `selectedNotebookId` / `containerWidth` / `reconcileSelectedNotebook` 等 inline 專屬 state。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
+| `Scenes/NotebookListView.swift` | 457 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**單欄 drill-down 導航(2026-06 #671 收斂)** — notebook row 一律 `NavigationLink(value: notebook.remoteId)` → `navigationDestination(for: String.self)` push `VocabularyListView(notebookId:)`,所有 layout(含 regular / Catalyst)皆然;舊「regular row button selection + 右側 `safeAreaInset` inline 第二欄 + 可拖拉分隔線」雙欄已移除,連帶刪 `NotebookActivationMode` / `NotebookSelectionPolicy` / `NotebookMasterDetailMetrics`(收斂後零引用)及 `selectedNotebookId` / `containerWidth` / `reconcileSelectedNotebook` 等 inline 專屬 state。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。Notebook stats/CTA due 計算使用 review pause reference date。 |
 | `Scenes/NotebookListCoordinator.swift` | 282 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原） |
 | `Scenes/NotebookEditSheet.swift` | 279 | `struct NotebookEditSheet: View`，建立/編輯 notebook sheet（含 cover system 選色/選 pattern/匯入照片） |
 

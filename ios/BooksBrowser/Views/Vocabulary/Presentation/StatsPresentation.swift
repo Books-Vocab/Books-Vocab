@@ -36,12 +36,12 @@ enum StatsPresentation {
     static func buildSummary(
         from entries: [VocabularyEntry],
         reviewRecords: [ReviewRecord],
-        forecastDays: Int = 14
+        forecastDays: Int = 14,
+        now: Date = Date()
     ) -> Summary {
         // shouldAppearInKnowledgeList == isSynced && !delete && !isArchived.
         // Archived entries must NOT inflate the review forecast / stats.
         let synced = entries.filter(\.shouldAppearInKnowledgeList)
-        let now = Date()
 
         // Forecast
         var forecastMap: [String: Int] = [:]

@@ -31,6 +31,8 @@ struct ReviewSettings {
     var customForgotMultiplier: Double
     var customMinimumIntervalHours: Double
     var customMaximumIntervalHours: Double
+    var isProgressPaused: Bool = false
+    var progressPausedAt: Date? = nil
 
     static let `default` = ReviewSettings(
         mode: .relaxed,
@@ -80,6 +82,21 @@ struct ReviewSettings {
         case .custom: return customMaximumIntervalHours
         }
     }
+
+    func reviewReferenceDate(now: Date = Date()) -> Date {
+        guard isProgressPaused else { return now }
+        return progressPausedAt ?? now
+    }
+
+    mutating func pauseProgress(at date: Date = Date()) {
+        isProgressPaused = true
+        progressPausedAt = progressPausedAt ?? date
+    }
+
+    mutating func resumeProgress() {
+        isProgressPaused = false
+        progressPausedAt = nil
+    }
 }
 
 @Observable
@@ -89,6 +106,8 @@ final class ReviewSettingsStore {
     private enum Keys {
         static let mode = "review_settings_mode"
         static let customParams = "review_settings_custom_params"
+        static let isProgressPaused = "review_settings_progress_paused"
+        static let progressPausedAt = "review_settings_progress_paused_at"
     }
 
     private(set) var settings: ReviewSettings
@@ -103,6 +122,9 @@ final class ReviewSettingsStore {
         var customForgot: Double = 0.45
         var customMin: Double = 6
         var customMax: Double = 1440
+        let isProgressPaused = defaults.bool(forKey: Keys.isProgressPaused)
+        let progressPausedAtRaw = defaults.object(forKey: Keys.progressPausedAt) as? Double
+        let progressPausedAt = progressPausedAtRaw.map(Date.init(timeIntervalSince1970:))
 
         if let data = defaults.data(forKey: Keys.customParams),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double] {
@@ -119,7 +141,9 @@ final class ReviewSettingsStore {
             customRememberedMultiplier: customRemembered,
             customForgotMultiplier: customForgot,
             customMinimumIntervalHours: customMin,
-            customMaximumIntervalHours: customMax
+            customMaximumIntervalHours: customMax,
+            isProgressPaused: isProgressPaused,
+            progressPausedAt: progressPausedAt
         )
     }
 
@@ -136,6 +160,12 @@ final class ReviewSettingsStore {
         ]
         if let data = try? JSONSerialization.data(withJSONObject: dict) {
             defaults.set(data, forKey: Keys.customParams)
+        }
+        defaults.set(settings.isProgressPaused, forKey: Keys.isProgressPaused)
+        if let pausedAt = settings.progressPausedAt {
+            defaults.set(pausedAt.timeIntervalSince1970, forKey: Keys.progressPausedAt)
+        } else {
+            defaults.removeObject(forKey: Keys.progressPausedAt)
         }
     }
 
