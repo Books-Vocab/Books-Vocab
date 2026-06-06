@@ -51,8 +51,11 @@ struct ReviewClockLWWTests {
 @MainActor
 final class FakeCloudKVStore: CloudKeyValueStore {
     private var doubles: [String: Double] = [:]
+    private var strings: [String: String] = [:]
     func double(forKey key: String) -> Double? { doubles[key] }
     func set(_ value: Double, forKey key: String) { doubles[key] = value }
+    func string(forKey key: String) -> String? { strings[key] }
+    func set(_ value: String, forKey key: String) { strings[key] = value }
 }
 
 @MainActor

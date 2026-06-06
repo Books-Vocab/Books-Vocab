@@ -145,11 +145,13 @@ struct ReviewSettings {
 
 // MARK: - Pause clock cross-device sync (Phase 2)
 
-/// iCloud KVS 抽象 seam(僅 pause clock 需要的 Double get/set),讓
-/// `ReviewSettingsStore` 可注入 fake 測 LWW。`CloudPreferencesSync` 已提供,空 extension conform。
+/// iCloud KVS 抽象 seam(pause clock 的 Double + review mode 的 String get/set),讓
+/// `ReviewSettingsStore` 可注入 fake 測 LWW。`CloudPreferencesSync` 已提供這四個方法,空 extension conform。
 protocol CloudKeyValueStore {
     func double(forKey key: String) -> Double?
     func set(_ value: Double, forKey key: String)
+    func string(forKey key: String) -> String?
+    func set(_ value: String, forKey key: String)
 }
 
 extension CloudPreferencesSync: CloudKeyValueStore {}
@@ -175,6 +177,32 @@ enum ReviewClockLWW {
     }
 }
 
+/// 複習模式 + 自訂 SRS 參數的跨裝置狀態快照:`mode` + 5 個 custom 參數複合,共用單一
+/// `updatedAt` 時戳。custom 參數只在 `.custom` 模式生效,但即使非 custom 仍保存使用者調過的值。
+struct ReviewModeState: Equatable {
+    var mode: ReviewSettingsMode
+    var customInitialIntervalHours: Double
+    var customRememberedMultiplier: Double
+    var customForgotMultiplier: Double
+    var customMinimumIntervalHours: Double
+    var customMaximumIntervalHours: Double
+    var updatedAt: Double?   // LWW timestamp(秒, since 1970);nil = 從未寫過
+}
+
+/// Last-write-wins 決議:取 `updatedAt` 較新的**整組**(mode + 5 custom 共用一個時戳,確保
+/// 原子收斂,絕不讓 mode 取一邊、custom 參數取另一邊)。雙方皆無時戳則保留 local(可能是
+/// default)。mode/custom 不一致會讓跨裝置算出不同 SRS 間隔 → 複習排程漂移。
+enum ReviewModeLWW {
+    static func resolve(local: ReviewModeState, cloud: ReviewModeState) -> ReviewModeState {
+        switch (local.updatedAt, cloud.updatedAt) {
+        case let (l?, c?): return c > l ? cloud : local
+        case (nil, _?): return cloud
+        case (_?, nil): return local
+        case (nil, nil): return local
+        }
+    }
+}
+
 @Observable
 final class ReviewSettingsStore {
     static let shared = ReviewSettingsStore()
@@ -182,6 +210,7 @@ final class ReviewSettingsStore {
     private enum Keys {
         static let mode = "review_settings_mode"
         static let customParams = "review_settings_custom_params"
+        static let modeUpdatedAt = "review_settings_mode_updated_at"
         static let isProgressPaused = "review_settings_progress_paused"
         static let progressPausedAt = "review_settings_progress_paused_at"
         static let progressUpdatedAt = "review_settings_progress_updated_at"
@@ -200,14 +229,12 @@ final class ReviewSettingsStore {
     init(defaults: UserDefaults, cloud: CloudKeyValueStore = CloudPreferencesSync.shared) {
         self.defaults = defaults
         self.cloud = cloud
-        let modeRaw = defaults.string(forKey: Keys.mode)
-        let mode = modeRaw.flatMap(ReviewSettingsMode.init(rawValue:)) ?? .relaxed
-
-        var customInitial: Double = 12
-        var customRemembered: Double = 1.9
-        var customForgot: Double = 0.45
-        var customMin: Double = 6
-        var customMax: Double = 1440
+        // mode + 自訂 SRS 參數三層 LWW:本地(UserDefaults)與雲端(iCloud KVS)各取一組,
+        // 比 updatedAt 取較新整組 → 跨裝置 SRS 間隔一致(否則各裝置複習排程不同)。
+        let resolvedMode = ReviewModeLWW.resolve(
+            local: Self.readLocalModeState(defaults),
+            cloud: Self.readCloudModeState(cloud)
+        )
         // pause clock 三層 LWW:本地(UserDefaults)與雲端(iCloud KVS)各取一組,比
         // updatedAt 取較新整組 → 跨裝置複習基準一致(否則各裝置算出不同 due 量)。
         let resolvedPause = ReviewClockLWW.resolve(
@@ -218,22 +245,13 @@ final class ReviewSettingsStore {
         let autoplaySpeed = autoplaySpeedRaw.flatMap(AutoplaySpeed.init(rawValue:)) ?? .normal
         let autoplaySoundEnabled = defaults.object(forKey: Keys.autoplaySoundEnabled) as? Bool ?? true
 
-        if let data = defaults.data(forKey: Keys.customParams),
-           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double] {
-            customInitial = dict["initialIntervalHours"] ?? customInitial
-            customRemembered = dict["rememberedMultiplier"] ?? customRemembered
-            customForgot = dict["forgotMultiplier"] ?? customForgot
-            customMin = dict["minimumIntervalHours"] ?? customMin
-            customMax = dict["maximumIntervalHours"] ?? customMax
-        }
-
         self.settings = ReviewSettings(
-            mode: mode,
-            customInitialIntervalHours: customInitial,
-            customRememberedMultiplier: customRemembered,
-            customForgotMultiplier: customForgot,
-            customMinimumIntervalHours: customMin,
-            customMaximumIntervalHours: customMax,
+            mode: resolvedMode.mode,
+            customInitialIntervalHours: resolvedMode.customInitialIntervalHours,
+            customRememberedMultiplier: resolvedMode.customRememberedMultiplier,
+            customForgotMultiplier: resolvedMode.customForgotMultiplier,
+            customMinimumIntervalHours: resolvedMode.customMinimumIntervalHours,
+            customMaximumIntervalHours: resolvedMode.customMaximumIntervalHours,
             isProgressPaused: resolvedPause.isPaused,
             progressPausedAt: resolvedPause.pausedAt,
             autoplaySpeed: autoplaySpeed,
@@ -244,7 +262,14 @@ final class ReviewSettingsStore {
     func update(_ settings: ReviewSettings) {
         let pauseChanged = settings.isProgressPaused != self.settings.isProgressPaused
             || settings.progressPausedAt != self.settings.progressPausedAt
+        let modeChanged = settings.mode != self.settings.mode
+            || settings.customInitialIntervalHours != self.settings.customInitialIntervalHours
+            || settings.customRememberedMultiplier != self.settings.customRememberedMultiplier
+            || settings.customForgotMultiplier != self.settings.customForgotMultiplier
+            || settings.customMinimumIntervalHours != self.settings.customMinimumIntervalHours
+            || settings.customMaximumIntervalHours != self.settings.customMaximumIntervalHours
         self.settings = settings
+        // mode + 自訂 SRS 參數本地層:總是寫(冪等,與既有行為一致)。
         defaults.set(settings.mode.rawValue, forKey: Keys.mode)
         let dict: [String: Double] = [
             "initialIntervalHours": settings.customInitialIntervalHours,
@@ -253,8 +278,20 @@ final class ReviewSettingsStore {
             "minimumIntervalHours": settings.customMinimumIntervalHours,
             "maximumIntervalHours": settings.customMaximumIntervalHours
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: dict) {
-            defaults.set(data, forKey: Keys.customParams)
+        let customData = try? JSONSerialization.data(withJSONObject: dict)
+        if let customData {
+            defaults.set(customData, forKey: Keys.customParams)
+        }
+        // mode/custom 雲端層 + LWW 時戳:只在 mode 或 custom 參數真的變動時推進 updatedAt
+        // 並寫 iCloud(改 pause/autoplay 不該動 mode 的 LWW clock,否則跨裝置誤判較新)。
+        if modeChanged {
+            let ts = Date().timeIntervalSince1970
+            defaults.set(ts, forKey: Keys.modeUpdatedAt)
+            cloud.set(settings.mode.rawValue, forKey: Keys.mode)
+            if let customData, let json = String(data: customData, encoding: .utf8) {
+                cloud.set(json, forKey: Keys.customParams)
+            }
+            cloud.set(ts, forKey: Keys.modeUpdatedAt)
         }
         // pause clock 本地層:總是寫(冪等,與既有行為一致)。
         writeLocalPause(settings.isProgressPaused, settings.progressPausedAt)
@@ -291,6 +328,56 @@ final class ReviewSettingsStore {
             pausedAt: pausedAtRaw.flatMap { $0 == 0 ? nil : Date(timeIntervalSince1970: $0) },
             updatedAt: cloud.double(forKey: Keys.progressUpdatedAt)
         )
+    }
+
+    // MARK: - Review mode layer reads (LWW inputs)
+
+    static func readLocalModeState(_ defaults: UserDefaults) -> ReviewModeState {
+        let mode = defaults.string(forKey: Keys.mode)
+            .flatMap(ReviewSettingsMode.init(rawValue:)) ?? .relaxed
+        return Self.modeState(
+            mode: mode,
+            params: Self.decodeCustomParams(defaults.data(forKey: Keys.customParams)),
+            updatedAt: defaults.object(forKey: Keys.modeUpdatedAt) as? Double
+        )
+    }
+
+    static func readCloudModeState(_ cloud: CloudKeyValueStore) -> ReviewModeState {
+        let mode = cloud.string(forKey: Keys.mode)
+            .flatMap(ReviewSettingsMode.init(rawValue:)) ?? .relaxed
+        return Self.modeState(
+            mode: mode,
+            params: Self.decodeCustomParams(cloud.string(forKey: Keys.customParams)?.data(using: .utf8)),
+            updatedAt: cloud.double(forKey: Keys.modeUpdatedAt)
+        )
+    }
+
+    /// 把 customParams(local data 或 cloud string 解碼後的 dict)套 `ReviewSettings.default`
+    /// 缺值回退,組成 `ReviewModeState`。local 與 cloud 共用,保證兩層解析語意一致。
+    private static func modeState(
+        mode: ReviewSettingsMode, params: [String: Double]?, updatedAt: Double?
+    ) -> ReviewModeState {
+        ReviewModeState(
+            mode: mode,
+            customInitialIntervalHours: params?["initialIntervalHours"]
+                ?? ReviewSettings.default.customInitialIntervalHours,
+            customRememberedMultiplier: params?["rememberedMultiplier"]
+                ?? ReviewSettings.default.customRememberedMultiplier,
+            customForgotMultiplier: params?["forgotMultiplier"]
+                ?? ReviewSettings.default.customForgotMultiplier,
+            customMinimumIntervalHours: params?["minimumIntervalHours"]
+                ?? ReviewSettings.default.customMinimumIntervalHours,
+            customMaximumIntervalHours: params?["maximumIntervalHours"]
+                ?? ReviewSettings.default.customMaximumIntervalHours,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func decodeCustomParams(_ data: Data?) -> [String: Double]? {
+        guard let data,
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double]
+        else { return nil }
+        return dict
     }
 
     // MARK: - Pause clock push/rollback support (Phase 3)
