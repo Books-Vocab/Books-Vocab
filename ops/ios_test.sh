@@ -130,21 +130,41 @@ trap cleanup EXIT INT TERM
 echo "[ios_test] lock acquired — running ${#ONLY_FLAGS[@]} tests (0=all)..."
 START=$(date +%s)
 
-# Run xcodebuild test, capture output to parse results
-TMPOUT=$(mktemp)
-set +e
-xcodebuild test \
-  -project "$XCODEPROJ" \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -parallel-testing-enabled NO \
-  -test-timeouts-enabled YES \
-  -default-test-execution-time-allowance 60 \
-  -maximum-test-execution-time-allowance 120 \
-  ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
-  2>&1 | tee "$TMPOUT" | grep -E '^(Test |[[:space:]]*[✔✘✓✗] Test |◇|Passing|Failing|Executed|\*\* TEST)' || true
-EXIT_CODE=${PIPESTATUS[0]}
-set -e
+is_build_db_lock_failure() {
+  grep -qE 'build\.db.*database is locked|unable to attach DB' "$TMPOUT" 2>/dev/null
+}
+
+# Run xcodebuild test, capture output to parse results. Xcode can keep the
+# shared DerivedData build database locked briefly after the previous simulator
+# test process exits, so retry that infrastructure failure before surfacing it.
+MAX_BUILD_DB_LOCK_RETRIES=3
+ATTEMPT=1
+EXIT_CODE=0
+while :; do
+  [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
+  TMPOUT=$(mktemp)
+  set +e
+  xcodebuild test \
+    -project "$XCODEPROJ" \
+    -scheme BooksBrowser \
+    -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+    -parallel-testing-enabled NO \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 60 \
+    -maximum-test-execution-time-allowance 120 \
+    ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
+    2>&1 | tee "$TMPOUT" | grep -E '^(Test |[[:space:]]*[✔✘✓✗] Test |◇|Passing|Failing|Executed|\*\* TEST)' || true
+  EXIT_CODE=${PIPESTATUS[0]}
+  set -e
+
+  if is_build_db_lock_failure && [[ "$ATTEMPT" -le "$MAX_BUILD_DB_LOCK_RETRIES" ]]; then
+    echo "[ios_test] build database locked; retrying xcodebuild attempt $((ATTEMPT + 1))/$((MAX_BUILD_DB_LOCK_RETRIES + 1)) after 10s" >&2
+    sleep 10
+    ATTEMPT=$((ATTEMPT + 1))
+    continue
+  fi
+  break
+done
 
 ELAPSED=$(( $(date +%s) - START ))
 
