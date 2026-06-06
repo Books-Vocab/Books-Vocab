@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ios_test_discovery.sh — sourceable test-discovery for ops/ios_test.sh -g.
 #
-# discover_only_flags <test_dir> <grep_pattern>
+# discover_only_flags <test_dir> <grep_pattern> [target_name]
 #   Scans every *.swift under <test_dir> and prints one
-#   `-only-testing:BooksBrowserTests/<Container>/<func>` line per matching test
+#   `-only-testing:<target_name>/<Container>/<func>` line per matching test
 #   func, attributing each func to its OWN enclosing test container.
 #
 # Discovery contract (replaces the old `grep '^struct' | head -1`, which
@@ -33,8 +33,8 @@
 
 # Print -only-testing flags for one file. $1=file, $2=pattern (may be empty).
 _discover_file() {
-  local file="$1" pattern="$2"
-  awk -v pattern="$pattern" '
+  local file="$1" pattern="$2" target="${3:-BooksBrowserTests}"
+  awk -v pattern="$pattern" -v target="$target" '
     function emit(fn, is_swift) {
       if (container == "") return
       if (pattern != "" && tolower(fn) !~ tolower(pattern)) return
@@ -42,7 +42,7 @@ _discover_file() {
       # identifier; XCTest uses the bare method name. Emitting the XCTest form for
       # a @Test func makes xcodebuild match 0 tests → "TEST SUCCEEDED" with nothing
       # run (silent FALSE GREEN). Append "()" only for Swift Testing funcs.
-      print "-only-testing:BooksBrowserTests/" container "/" fn (is_swift ? "()" : "")
+      print "-only-testing:" target "/" container "/" fn (is_swift ? "()" : "")
     }
     {
       line = $0
@@ -111,16 +111,16 @@ _discover_file() {
 
 # Print all -only-testing flags across <test_dir>. $1=dir, $2=pattern.
 discover_only_flags() {
-  local test_dir="$1" pattern="${2:-}" f
+  local test_dir="$1" pattern="${2:-}" target="${3:-BooksBrowserTests}" f
   for f in "$test_dir"/*.swift; do
     [[ -f "$f" ]] || continue
-    _discover_file "$f" "$pattern"
+    _discover_file "$f" "$pattern" "$target"
   done
 }
 
-# Print all -only-testing flags from one test file. $1=file, $2=pattern.
+# Print all -only-testing flags from one test file. $1=file, $2=pattern, $3=target.
 discover_file_only_flags() {
-  local file="$1" pattern="${2:-}"
+  local file="$1" pattern="${2:-}" target="${3:-BooksBrowserTests}"
   [[ -f "$file" ]] || return 1
-  _discover_file "$file" "$pattern"
+  _discover_file "$file" "$pattern" "$target"
 }

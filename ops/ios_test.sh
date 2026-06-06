@@ -6,6 +6,8 @@
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
 #   ./ops/ios_test.sh -g "notebook"               # grep: run tests matching pattern
 #   ./ops/ios_test.sh --file BooksBrowserTests.swift
+#   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
+#   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -21,6 +23,7 @@ TIMEOUT=600
 POLL_INTERVAL=3
 GREP_PATTERN=""
 TEST_FILE=""
+TEST_SCOPE="unit"
 SPECIFIC_TESTS=()
 LIST_ONLY=0
 
@@ -28,6 +31,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -g|--grep) GREP_PATTERN="$2"; shift 2 ;;
     --file) TEST_FILE="$2"; shift 2 ;;
+    --unit) TEST_SCOPE="unit"; shift ;;
+    --ui) TEST_SCOPE="ui"; shift ;;
+    --all-targets|--scheme) TEST_SCOPE="all"; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --list) LIST_ONLY=1; shift ;;   # dry-run: print resolved -only-testing flags, no xcodebuild
     *) SPECIFIC_TESTS+=("$1"); shift ;;
@@ -47,14 +53,38 @@ CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev
 
 # --- Build -only-testing flags ---
 ONLY_FLAGS=()
+TEST_TARGET="BooksBrowserTests"
+TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+
+case "$TEST_SCOPE" in
+  unit)
+    TEST_TARGET="BooksBrowserTests"
+    TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+    ;;
+  ui)
+    TEST_TARGET="BooksBrowserUITests"
+    TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserUITests"
+    ;;
+  all)
+    TEST_TARGET=""
+    ;;
+  *)
+    echo "[ios_test] internal error: unknown test scope '$TEST_SCOPE'" >&2
+    exit 2
+    ;;
+esac
 
 if [[ -n "$GREP_PATTERN" && -n "$TEST_FILE" ]]; then
   echo "[ios_test] error: --file and --grep cannot be combined" >&2
   exit 1
 fi
 
+if [[ "$TEST_SCOPE" == "all" && ( -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SPECIFIC_TESTS[@]} -gt 0 ) ]]; then
+  echo "[ios_test] error: --all-targets cannot be combined with --file, --grep, or specific tests" >&2
+  exit 1
+fi
+
 if [[ -n "$TEST_FILE" ]]; then
-  TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
   if [[ "$TEST_FILE" = /* ]]; then
     FILE_PATH="$TEST_FILE"
   elif [[ "$TEST_FILE" == */* ]]; then
@@ -65,29 +95,34 @@ if [[ -n "$TEST_FILE" ]]; then
   [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE" >&2; exit 1; }
   while IFS= read -r flag; do
     [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
-  done < <(discover_file_only_flags "$FILE_PATH" "")
+  done < <(discover_file_only_flags "$FILE_PATH" "" "$TEST_TARGET")
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests discovered in file '$TEST_FILE'" >&2
     exit 1
   fi
-  echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests in file '$TEST_FILE'"
+  echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests in file '$TEST_FILE' ($TEST_TARGET)"
 elif [[ -n "$GREP_PATTERN" ]]; then
   # Auto-discover test funcs matching the pattern, attributing each func to its
   # OWN enclosing top-level container (struct / @Suite struct / class). See
   # lib/ios_test_discovery.sh for the discovery contract.
-  TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
   while IFS= read -r flag; do
     [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
-  done < <(discover_only_flags "$TEST_DIR" "$GREP_PATTERN")
+  done < <(discover_only_flags "$TEST_DIR" "$GREP_PATTERN" "$TEST_TARGET")
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests matching pattern '$GREP_PATTERN'" >&2
     exit 1
   fi
-  echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests for pattern '$GREP_PATTERN'"
+  echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests for pattern '$GREP_PATTERN' ($TEST_TARGET)"
 elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
   for t in "${SPECIFIC_TESTS[@]}"; do
-    ONLY_FLAGS+=("-only-testing:BooksBrowserTests/BooksBrowserTests/$t")
+    if [[ "$t" == */* ]]; then
+      ONLY_FLAGS+=("-only-testing:$TEST_TARGET/$t")
+    else
+      ONLY_FLAGS+=("-only-testing:$TEST_TARGET/$TEST_TARGET/$t")
+    fi
   done
+elif [[ "$TEST_SCOPE" != "all" ]]; then
+  ONLY_FLAGS+=("-only-testing:$TEST_TARGET")
 fi
 
 # Dry-run: print resolved flags and exit before touching the lock / xcodebuild.
@@ -102,7 +137,13 @@ fi
 
 # --- Lock acquire (shared with ios_build.sh) ---
 TMPOUT=""
-cleanup() { rm -f "$LOCK_FILE" "${TMPOUT:-}"; }
+PRESERVE_TMPOUT=0
+cleanup() {
+  rm -f "$LOCK_FILE"
+  if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
+    rm -f "${TMPOUT:-}"
+  fi
+}
 
 echo "[ios_test] caller=$CALLER waiting for lock..."
 WAITED=0
@@ -127,7 +168,7 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
 done
 trap cleanup EXIT INT TERM
 
-echo "[ios_test] lock acquired — running ${#ONLY_FLAGS[@]} tests (0=all)..."
+echo "[ios_test] lock acquired — scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
 START=$(date +%s)
 
 is_build_db_lock_failure() {
@@ -221,16 +262,23 @@ elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   # Show failing test details
   grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20
   echo ""
+  PRESERVE_TMPOUT=1
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
   echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
+  echo "[ios_test] full log preserved: $TMPOUT" >&2
   EXIT_CODE=1
 else
   echo ""
   # Show last 10 lines for unexpected output
   tail -10 "$TMPOUT"
+  PRESERVE_TMPOUT=1
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
+  echo "[ios_test] full log preserved: $TMPOUT" >&2
+  EXIT_CODE=1
 fi
 
-rm -f "$TMPOUT"
+if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
+  rm -f "$TMPOUT"
+fi
 exit $EXIT_CODE
