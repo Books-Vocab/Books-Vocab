@@ -93,7 +93,22 @@ struct BookManifestStore {
     /// 閱讀位置 / 日期 / notebook 等則一律採 row 的當前值（那正是這次寫入的目的）。
     func write(book: Book, originalFileName: String? = nil) throws {
         let incoming = BookManifest(book: book, originalFileName: originalFileName)
-        try write(Self.merged(incoming: incoming, existing: try? read(bookId: book.id)))
+        try write(Self.merged(incoming: incoming, existing: try existingManifestForMerge(bookId: book.id)))
+    }
+
+    /// 合併前讀既有 manifest。把「檔案不存在」與「manifest 損毀」視為無既有
+    /// （正常新書 / 需重建）；其他 I/O 錯誤（如 iCloud eviction、暫時讀失敗）往上拋，
+    /// 讓 `writeBestEffort` 這次跳過——寧可漏寫一次（下次 progress / reconcile 會補），
+    /// 也不要在讀失敗時用 fallback row 蓋掉還在磁碟上的乾淨 manifest。
+    private func existingManifestForMerge(bookId: UUID) throws -> BookManifest? {
+        do {
+            return try read(bookId: bookId)
+        } catch let error as NSError
+            where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            return nil
+        } catch is DecodingError {
+            return nil
+        }
     }
 
     /// 合併策略：incoming 為主，但 fallback/空/nil 的識別性欄位讓位給既有乾淨值。
