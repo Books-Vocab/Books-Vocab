@@ -39,6 +39,11 @@ struct NotebookCardData {
     let pendingCount: Int
     let lastActivity: Date?
     let isActive: Bool
+
+    /// 封面黃點數字 = 需使用者動作的卡（到期複習 + 未學新卡），
+    /// 與「今日複習」入口徽章（`dueCount + unlearnedCount`）同口徑，
+    /// 避免封面 587 與今日複習 597 兩數字不一致造成困惑。
+    var actionableCount: Int { dueCount + unlearnedCount }
 }
 
 struct NotebookCard: View {
@@ -146,12 +151,12 @@ struct NotebookCard: View {
 
                             Spacer(minLength: AppSpacing.s2)
 
-                            if data.dueCount > 0 {
+                            if data.actionableCount > 0 {
                                 HStack(spacing: AppSpacing.microGap) {
                                     Circle()
                                         .fill(skin.palette.warning)
                                         .frame(width: 5, height: 5)
-                                    Text("\(data.dueCount)")
+                                    Text("\(data.actionableCount)")
                                         .font(skin.typography.caption)
                                         .monospacedDigit()
                                         .foregroundStyle(skin.palette.secondaryText)
