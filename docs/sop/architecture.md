@@ -48,6 +48,22 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。使用者可
 - 書籍與音訊等大型資產走 object storage 或本機 cache；SQLite / SwiftData 只保存 metadata、進度與檔案索引。
 - 衝突解決必須寫成 contract：append-only event 用 client UUID 冪等，偏好設定與 progress 用 timestamp LWW，刪除/封存用 tombstone 或明確 bucket 收斂。
 
+### User config contract（目標狀態）
+
+目前後端 `/api/user/config` 只持久化 translation language；iOS 仍把多個跨裝置偏好放在 `UserDefaults` / iCloud KVS。多平台化前，user config 應收斂成 typed server contract，並讓本機 store 只作啟動快取與離線 pending patch。
+
+| Config domain | 目標欄位 | 目前 iOS 來源 | 衝突規則 |
+|---|---|---|---|
+| `translation` | `source_lang`、`target_lang`、`updated_at` | `TranslationLanguage` + iCloud KVS；後端已保存語言但缺 timestamp LWW | `updated_at` LWW；遠端失敗 rollback 本機 |
+| `reader` | `font`、`font_size`、`line_height`、`scroll_mode`、`underline_opacity`、`updated_at` | `ReaderSettings` UserDefaults + iCloud KVS | 整個 reader object LWW；debug hit-testing 不同步 |
+| `review` | `mode`、custom intervals、`progress_paused`、`progress_paused_at`、`updated_at` | `ReviewSettingsStore` UserDefaults | LWW；pause/resume 必須跨裝置一致，避免 due/reviewed 計算漂移 |
+| `appearance` | `mode`、`updated_at` | `AppAppearanceStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 mode，不保存 resolved value |
+| `language` | `app_language`、`updated_at` | `AppLanguageStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 selection，不保存系統解析結果 |
+| `podcast` | `followed_series_ids`、`updated_at` | `PodcastSeries.isFollowed` local SwiftData | LWW 或 per-series timestamp；server list 用於排序與 cross-platform follow |
+| `vocab_ui` | `active_notebook_id` | `activeNotebookId` UserDefaults | LWW；server 必須拒絕已刪 notebook，client 保留本機 fallback |
+
+分階段實作時，先擴充後端 response 以向後相容方式回傳 optional domains，再讓 iOS 依 domain-level `updated_at` merge。每個 domain 的 PATCH 必須是 partial update，不能用缺欄位覆蓋既有 server config；client 也不能在 fetch 失敗時把本機舊值重新 PUT 成權威。
+
 ---
 
 ## 核心資料模型: `VocabularyEntry` & `AuthManager`
