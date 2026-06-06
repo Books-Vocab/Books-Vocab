@@ -85,6 +85,41 @@ Progress CloudKit 退場不可直接刪 schema。安全順序：
 
 Follow 後端化應優先走 user config domain（`podcast.followed_series_ids`），除非需要 per-series audit / notification 才拆 dedicated table。client 的 toggle contract 必須是 optimistic local update，server 失敗 rollback；若 server 回傳某 series 已不存在，client 應清除該 follow 並顯示一般同步收斂，不視為 fatal error。
 
+### Reading library migration（目標狀態）
+
+`Book` 目前由 SwiftData CloudKit 保存 metadata、cover blob、`lastReadLocatorJSON`、`progression`、`preferredNotebookId` 與檔名；實體檔案在 iCloud container / Documents。這讓 iOS 裝置間可同步，但 web / Android / backend 無法讀取，且 CloudKit schema 仍綁住 app 資料架構。後端化後應拆成兩層：
+
+| Layer | 後端權威 | iOS cache | 備註 |
+|---|---|---|---|
+| Library metadata | `book_id`、title、author、format、source hash、cover asset id、created/updated/deleted timestamps | `Book` projection | `book_id` 應為 server id；本機 UUID 可作 migration client id |
+| Reading position | `last_locator_json`、`progression`、`date_last_read`、`updated_at` | `Book.lastReadLocatorJSON` / `progression` cache | LWW；EPUB/PDF 都走同一 contract，避免 PDF 顯式 save、EPUB debounce save 行為漂移 |
+| Notebook binding | `preferred_notebook_id` | `Book.preferredNotebookId` cache | server 拒絕 deleted / nonexistent notebook；client 失敗 fallback 到 active/default |
+| Asset manifest | object key、size、sha256、format、upload status | `epubFileName` / local path cache | 原始 EPUB/PDF/TXT/MD 不進 SQLite；TXT/MD 轉 EPUB 後可同時保留 original asset |
+| Cover | cover asset key 或 derived thumbnail | local cover cache / optional SwiftData blob during migration | 大圖不長期塞 SwiftData blob；可由 backend 產生或 client upload |
+
+建議 API contract（後續實作，非現況）：
+
+- `GET /api/library/books?since=`：增量列出 metadata + tombstone。
+- `POST /api/library/books`：建立 book metadata，帶 `client_book_id` 冪等鍵與 optional asset manifest。
+- `PATCH /api/library/books/{book_id}`：partial update metadata / notebook binding。
+- `PUT /api/library/books/{book_id}/position`：LWW 更新 locator / progression。
+- `POST /api/library/books/{book_id}/asset-upload`：取得 object storage upload target 或宣告本機-only asset。
+- `GET /api/library/books/{book_id}/asset`：下載 / redirect 至可授權的 object storage URL。
+
+Migration 順序：
+
+1. 先只同步 metadata + reading position，不要求原始檔上傳；跨裝置可看到書目與進度，但沒有 asset 時顯示「需下載 / 重新匯入」狀態。
+2. 加入 asset upload entitlement / quota policy：免費層可只同步 metadata；Pro 或明確容量限制才同步原始檔。
+3. iOS 首次啟動 migration 掃描現有 `Book`，以 `client_book_id` 冪等 upsert 到後端；成功後保存 `remoteBookId`（後續實作需新增欄位）。
+4. Reader 每次 debounce save 後排 position outbox，不讓翻頁直接阻塞網路；進背景 / 關閉 reader 時 flush 本機與 best-effort remote。
+5. 後端 metadata / position 穩定後，`Book` 可移出 CloudKit store；但移除 CloudKit entitlement 前要確認沒有其他 model 仍依賴 CloudKit。
+
+刪除語意必須是 tombstone，而不是只刪本機 row。使用者刪書時：
+
+- metadata tombstone 同步到後端，其他裝置隱藏該書。
+- 本機檔案可立即刪除；object storage asset 是否刪除由 retention / recovery policy 決定。
+- 詞卡的 `bookId` 關聯不應硬刪詞卡；只解除來源書關聯或保留書名 snapshot。
+
 ---
 
 ## 核心資料模型: `VocabularyEntry` & `AuthManager`
