@@ -92,6 +92,18 @@ struct StatsPresenterTests {
         #expect(summary.forecast.allSatisfy { $0.count == 0 })
     }
 
+    @Test func graphThumbnailBody_usesInlineEmptyAfterLinksLoadWithNoNodes() {
+        #expect(
+            StatsPresentation.graphThumbnailBodyKind(linksLoaded: true, nodeCount: 0) == .empty,
+            "loaded graph links with zero renderable nodes must use the inline empty body, not a nested state card"
+        )
+    }
+
+    @Test func graphThumbnailBody_distinguishesLoadingEmptyAndGraph() {
+        #expect(StatsPresentation.graphThumbnailBodyKind(linksLoaded: false, nodeCount: 0) == .loading)
+        #expect(StatsPresentation.graphThumbnailBodyKind(linksLoaded: true, nodeCount: 1) == .graph)
+    }
+
     @Test func singleCard_singleReview_countsAsOne() {
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 0)],

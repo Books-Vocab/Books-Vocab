@@ -1,6 +1,6 @@
 ---
 name: steward
-description: "程式碼管家模式 — 使用者設定目標改善數（「steward 50」「audit 100個」「steward backend/ 80」），自動多輪並行掃描 + 執行 behavior-preserving 優化直到達標，輸出 PR。完全取代手動 /swarm 做 codebase 健康度任務。"
+description: "程式碼管家模式 — 使用者設定目標改善數（「steward 50」「audit 100個」「steward backend/ 80」），自動多輪並行掃描 + 執行 behavior-preserving 優化直到達標，輸出 PR。"
 user-invocable: true
 version: 1.0.0
 ---
@@ -12,7 +12,7 @@ version: 1.0.0
 - `/steward 100` — 對 backend/ 做 100 個改善
 - `/steward backend/ 50` — 指定目錄 + 目標數
 - 「audit codebase」「codebase 健康度」「自動修 N 個」「steward 幫我跑」
-- 「把 swarm 換成 steward」「用 workflow 修到 N 個」
+- 「用 workflow 修到 N 個」
 
 ## 核心思想
 
@@ -183,7 +183,7 @@ Workflow 執行：
    - **一輪刪、另一輪改** → 保留刪除（避免復活死碼）
 4. Push 整合 branch → PR commit 自動更新
 
-如果 cherry-pick 有衝突無法自動解決：派 agent 處理（見 swarm skill 的衝突解決模式）。
+如果 cherry-pick 有衝突無法自動解決：派 agent 在整合 worktree 內處理衝突，完成後重新驗證並 commit。
 
 ---
 
