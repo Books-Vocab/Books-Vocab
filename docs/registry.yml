@@ -1,0 +1,147 @@
+version: 1
+description: "KG docs control-plane registry. Path globs are impact hints; semantic triggers and validators are the authority."
+
+documents:
+  - id: contract.sync_lifecycle
+    path: docs/reference/sync_lifecycle.md
+    kind: contract
+    authority: SoT
+    triggers:
+      - sync_status_changed
+      - sync_payload_changed
+      - conflict_resolution_changed
+    sources:
+      - ios/BooksBrowser/
+      - backend/src/kg/
+
+  - id: contract.card_format
+    path: docs/reference/card_format.md
+    kind: contract
+    authority: SoT
+    triggers:
+      - card_schema_changed
+      - csv_format_changed
+    sources:
+      - backend/src/kg/
+
+  - id: contract.host_topology
+    path: docs/reference/host_topology.md
+    kind: contract
+    authority: SoT
+    triggers:
+      - host_route_changed
+      - container_port_changed
+      - caddy_route_changed
+    sources:
+      - ops/
+
+  - id: policy.safety
+    path: docs/policy/safety.md
+    kind: policy
+    authority: SoT
+    triggers:
+      - production_safety_policy_changed
+      - destructive_command_guard_changed
+    sources:
+      - ops/
+      - backend/
+      - docs/runbook/
+
+  - id: reference.product_surface
+    path: docs/reference/product_surface.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - user_facing_feature_changed
+      - admin_surface_changed
+      - chrome_surface_changed
+      - ios_surface_changed
+    sources:
+      - ios/
+      - backend/
+      - chrome-extension/
+      - ops/
+
+  - id: reference.tech_index
+    path: docs/reference/tech_index.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - endpoint_changed
+      - env_var_changed
+      - db_schema_changed
+      - ops_command_changed
+    sources:
+      - backend/
+      - ops/
+
+  - id: sop.doc_sync
+    path: docs/sop/doc_sync.md
+    kind: sop
+    authority: derived
+    triggers:
+      - docs_workflow_changed
+      - registry_changed
+      - docs_gate_changed
+    sources:
+      - docs/registry.yml
+      - ops/docs_lint.sh
+
+  - id: sop.backend
+    path: docs/sop/backend.md
+    kind: sop
+    authority: derived
+    triggers:
+      - backend_workflow_changed
+      - backend_test_command_changed
+      - provider_registry_workflow_changed
+    sources:
+      - backend/
+      - ops/
+
+  - id: sop.ios
+    path: docs/sop/ios.md
+    kind: sop
+    authority: derived
+    triggers:
+      - ios_build_workflow_changed
+      - ios_release_workflow_changed
+      - app_store_workflow_changed
+    sources:
+      - ios/
+      - ops/ios_build.sh
+      - ops/ios_release.sh
+
+  - id: sop.deploy
+    path: docs/sop/deploy.md
+    kind: sop
+    authority: derived
+    triggers:
+      - deploy_workflow_changed
+      - migration_workflow_changed
+      - env_surface_changed
+    sources:
+      - ops/
+      - backend/
+
+  - id: sop.debug
+    path: docs/sop/debug.md
+    kind: sop
+    authority: derived
+    triggers:
+      - incident_workflow_changed
+      - debug_command_changed
+      - production_observability_changed
+    sources:
+      - ops/
+      - docs/runbook/
+
+  - id: generated.ios_baseline
+    path: docs/snapshot/ios_baseline.md
+    kind: generated
+    authority: generated
+    generator: ops/gen_ios_baseline.sh
+    triggers:
+      - ios_large_refactor
+    sources:
+      - ios/BooksBrowser/
