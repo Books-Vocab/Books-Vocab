@@ -103,6 +103,7 @@ struct NotebookReconcilerTests {
         ctx.insert(orphan); ctx.insert(real)
         let stray = VocabularyEntry(word: "ghost", translation: "幽靈", context: "ctx", bookTitle: "B")
         stray.notebookId = "local-aaaa"
+        stray.markSynced()  // synced+add：若 reap 誤 queueDelete 會變 .delete → 下方斷言 load-bearing
         ctx.insert(stray)
         try ctx.save()
 
@@ -115,7 +116,32 @@ struct NotebookReconcilerTests {
         try ctx.save()
 
         #expect(stray.notebookId == "default", "孤兒殘留 entry 應改派 default")
-        #expect(stray.syncAction != .delete, "改派而非刪卡（卡屬 server 真本）")
+        #expect(stray.syncAction == .add, "改派而非刪卡（reap 不得 queueDelete，卡屬 server 真本）")
+    }
+
+    @Test func reconcile_reaps_orphan_but_keeps_canonical_default_placeholder() throws {
+        // 真實中毒態：離線占位 default(remoteId=="default", syncStatus=0) 與殘留 local-* 孤兒並存。
+        // 占位非 local- 前綴 → 不可被 reap；孤兒該被 reap；真本(server id "default")合併占位。
+        let ctx = try makeContext()
+        let placeholder = localNB("default", name: "我的單字本", isDefault: true, syncStatus: 0)
+        let orphan = localNB("local-aaaa", name: "我的單字本", isDefault: true, syncStatus: 0)
+        ctx.insert(placeholder); ctx.insert(orphan)
+        try ctx.save()
+
+        let removed = NotebookReconciler.reconcile(
+            remote: [remote("default", name: "我的單字本", isDefault: true)],
+            local: [placeholder, orphan],
+            allEntries: [],
+            modelContext: ctx
+        )
+        try ctx.save()
+
+        let alive = try aliveNotebooks(ctx)
+        #expect(alive.count == 1, "占位 default 合併真本 + 孤兒回收 → 只剩一個")
+        #expect(alive.first?.remoteId == "default")
+        #expect(alive.first?.syncStatus == 1, "canonical default 占位被 server 真本 upsert 升 synced")
+        #expect(removed.contains("local-aaaa"))
+        #expect(!removed.contains("default"), "canonical default 占位不可被當孤兒 reap")
     }
 
     // MARK: - Fix A：canonical default 占位 + 可被真本合併
