@@ -41,3 +41,26 @@ class DailyReviewStatsPushResponse(BaseModel):
 
 class DailyReviewStatsResponse(BaseModel):
     entries: list[DailyReviewStatEntry]
+
+
+class ReviewEventEntry(BaseModel):
+    event_id: str
+    card_id: str | None = None
+    word_snapshot: str
+    notebook_id: str = "default"
+    feedback: int = Field(ge=0, le=1)
+    reviewed_at: str
+    created_at: str
+
+
+class ReviewEventsPushRequest(BaseModel):
+    entries: list[ReviewEventEntry] = Field(max_length=10000)
+
+
+class ReviewEventsPushResponse(BaseModel):
+    inserted: int
+    skipped: int
+
+
+class ReviewEventsResponse(BaseModel):
+    entries: list[ReviewEventEntry]
