@@ -54,6 +54,42 @@ grep -q "reference.feature_boundary.settings" "$tmpdir/settings.out"
 ./ops/docs_impact.py --files ios/BooksBrowser/Services/KGService+Sync.swift ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift >"$tmpdir/sync_sources.out"
 grep -q "contract.sync_lifecycle" "$tmpdir/sync_sources.out"
 
+./ops/docs_impact.py --files ios/BooksBrowser/UIComponents/AppShellComponents.swift >"$tmpdir/ui_components.out"
+grep -q "reference.ui_components" "$tmpdir/ui_components.out"
+grep -q "reference.ui_state_matrix" "$tmpdir/ui_components.out"
+
+./ops/docs_impact.py --files ios/BooksBrowser/Models/AppMetrics.swift ops/ui_token_lint.sh >"$tmpdir/ui_design.out"
+grep -q "sop.ui_design" "$tmpdir/ui_design.out"
+grep -q "reference.ui_review_checklist" "$tmpdir/ui_design.out"
+
+./ops/docs_impact.py --files ops/ui_token_lint.sh >"$tmpdir/ui_token_lint.out"
+grep -q "sop.ui_design" "$tmpdir/ui_token_lint.out"
+grep -q "reference.ui_review_checklist" "$tmpdir/ui_token_lint.out"
+if grep -q "contract.host_topology" "$tmpdir/ui_token_lint.out"; then
+  echo "UI token lint changes should not imply host topology impact" >&2
+  exit 1
+fi
+if grep -q "policy.safety" "$tmpdir/ui_token_lint.out"; then
+  echo "UI token lint changes should not imply production safety impact" >&2
+  exit 1
+fi
+if grep -q "reference.product_surface" "$tmpdir/ui_token_lint.out"; then
+  echo "UI token lint changes should not imply product surface impact" >&2
+  exit 1
+fi
+if grep -q "sop.backend" "$tmpdir/ui_token_lint.out"; then
+  echo "UI token lint changes should not imply backend workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.deploy" "$tmpdir/ui_token_lint.out"; then
+  echo "UI token lint changes should not imply deploy workflow impact" >&2
+  exit 1
+fi
+if grep -q "sop.debug" "$tmpdir/ui_token_lint.out"; then
+  echo "UI token lint changes should not imply debug workflow impact" >&2
+  exit 1
+fi
+
 ./ops/docs_impact.py --files README.md >"$tmpdir/none.out"
 grep -q "docs_impact: no registry impacts" "$tmpdir/none.out"
 

@@ -18,12 +18,22 @@ if grep -q "docs/reference/feature_boundary/" "$tmpdir/coverage.out"; then
   cat "$tmpdir/coverage.out" >&2
   exit 1
 fi
+if grep -Eq "docs/(sop/ui-design|reference/ui/)" "$tmpdir/coverage.out"; then
+  echo "UI design docs should all be registered" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
 
 ./ops/docs_registry_coverage.py --json >"$tmpdir/coverage.json"
 grep -q '"registered_count"' "$tmpdir/coverage.json"
 grep -q '"unregistered_by_tier"' "$tmpdir/coverage.json"
 if grep -q '"docs/reference/feature_boundary/' "$tmpdir/coverage.json"; then
   echo "feature boundary docs should all be registered in JSON output" >&2
+  cat "$tmpdir/coverage.json" >&2
+  exit 1
+fi
+if grep -Eq '"docs/(sop/ui-design|reference/ui/)' "$tmpdir/coverage.json"; then
+  echo "UI design docs should all be registered in JSON output" >&2
   cat "$tmpdir/coverage.json" >&2
   exit 1
 fi

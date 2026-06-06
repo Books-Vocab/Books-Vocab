@@ -58,6 +58,11 @@ documents:
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -73,6 +78,11 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
       - backend/
       - "!backend/src/kg/routers/*.py"
       - docs/runbook/
@@ -97,6 +107,11 @@ documents:
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
       - "!ops/devops_kg_safe.sh"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
@@ -254,6 +269,76 @@ documents:
       - ios/BooksBrowser/Services/KGService+Graph.swift
       - ios/BooksBrowser/Services/VocabularyExporter.swift
 
+  - id: sop.ui_design
+    path: docs/sop/ui-design.md
+    kind: sop
+    authority: derived
+    triggers:
+      - ui_design_system_changed
+      - motion_contract_changed
+      - catalyst_ui_policy_changed
+      - design_token_policy_changed
+    sources:
+      - ios/BooksBrowser/Models/AppColors.swift
+      - ios/BooksBrowser/Models/AppFonts.swift
+      - ios/BooksBrowser/Models/AppMetrics.swift
+      - ios/BooksBrowser/Models/AppSkin*.swift
+      - ios/BooksBrowser/Models/AppTheme.swift
+      - ios/BooksBrowser/Models/DesignTokens.swift
+      - ios/BooksBrowser/Platform/
+      - ios/BooksBrowser/Views/Reader/ReaderContentStyle.swift
+      - design-system/
+      - ops/ui_token_lint.sh
+      - ops/ui_token_lint.py
+      - ops/test_ui_token_lint.sh
+      - ops/gen_web_tokens.py
+      - ops/gen_web_components.py
+
+  - id: reference.ui_components
+    path: docs/reference/ui/components.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui_component_added
+      - ui_pattern_changed
+      - shared_modifier_changed
+    sources:
+      - ios/BooksBrowser/UIComponents/
+      - ios/BooksBrowser/Views/
+      - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
+      - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
+
+  - id: reference.ui_review_checklist
+    path: docs/reference/ui/review_checklist.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui_review_policy_changed
+      - ui_quality_gate_changed
+      - ui_design_system_changed
+    sources:
+      - docs/sop/ui-design.md
+      - docs/reference/ui/
+      - CLAUDE.md
+      - ios/BooksBrowser/Models/AppMetrics.swift
+      - ios/BooksBrowser/Models/AppTheme.swift
+      - ops/ui_token_lint.sh
+      - ops/ui_token_lint.py
+
+  - id: reference.ui_state_matrix
+    path: docs/reference/ui/state_matrix.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui_state_changed
+      - loading_empty_error_state_changed
+      - view_flow_changed
+    sources:
+      - ios/BooksBrowser/UIComponents/
+      - ios/BooksBrowser/Views/
+      - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
+      - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
+
   - id: sop.backend
     path: docs/sop/backend.md
     kind: sop
@@ -272,6 +357,11 @@ documents:
       - "!ops/test_ops.sh"
       - "!backend/src/kg/routers/*.py"
       - "!ops/devops_kg_safe.sh"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -303,6 +393,11 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
       - backend/
       - "!backend/src/kg/routers/*.py"
 
@@ -321,6 +416,11 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/ui_token_lint.sh"
+      - "!ops/ui_token_lint.py"
+      - "!ops/test_ui_token_lint.sh"
+      - "!ops/gen_web_tokens.py"
+      - "!ops/gen_web_components.py"
       - docs/runbook/
 
   - id: generated.ios_baseline
