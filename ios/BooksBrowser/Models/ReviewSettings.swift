@@ -24,6 +24,46 @@ enum ReviewSettingsMode: String, CaseIterable {
     }
 }
 
+enum AutoplaySpeed: String, CaseIterable {
+    case slow
+    case normal
+    case fast
+
+    var displayName: String {
+        switch self {
+        case .slow: return L10n.string("慢")
+        case .normal: return L10n.string("正常")
+        case .fast: return L10n.string("快")
+        }
+    }
+
+    /// 卡片正面停留時間（翻面前的等待）
+    var revealDelay: Duration {
+        switch self {
+        case .slow: return .seconds(4)
+        case .normal: return .seconds(2)
+        case .fast: return .seconds(1)
+        }
+    }
+
+    /// 卡片背面停留時間（翻到下一張前的等待）
+    var stayDelay: Duration {
+        switch self {
+        case .slow: return .seconds(8)
+        case .normal: return .seconds(4)
+        case .fast: return .seconds(2)
+        }
+    }
+
+    var next: AutoplaySpeed {
+        switch self {
+        case .slow: return .normal
+        case .normal: return .fast
+        case .fast: return .slow
+        }
+    }
+}
+
 struct ReviewSettings {
     var mode: ReviewSettingsMode
     var customInitialIntervalHours: Double
@@ -33,6 +73,7 @@ struct ReviewSettings {
     var customMaximumIntervalHours: Double
     var isProgressPaused: Bool = false
     var progressPausedAt: Date? = nil
+    var autoplaySpeed: AutoplaySpeed = .normal
 
     static let `default` = ReviewSettings(
         mode: .relaxed,
@@ -40,7 +81,8 @@ struct ReviewSettings {
         customRememberedMultiplier: 1.9,
         customForgotMultiplier: 0.45,
         customMinimumIntervalHours: 6,
-        customMaximumIntervalHours: 1440
+        customMaximumIntervalHours: 1440,
+        autoplaySpeed: .normal
     )
 
     var effectiveInitialIntervalHours: Double {
@@ -108,6 +150,7 @@ final class ReviewSettingsStore {
         static let customParams = "review_settings_custom_params"
         static let isProgressPaused = "review_settings_progress_paused"
         static let progressPausedAt = "review_settings_progress_paused_at"
+        static let autoplaySpeed = "review_settings_autoplay_speed"
     }
 
     private(set) var settings: ReviewSettings
@@ -125,6 +168,8 @@ final class ReviewSettingsStore {
         let isProgressPaused = defaults.bool(forKey: Keys.isProgressPaused)
         let progressPausedAtRaw = defaults.object(forKey: Keys.progressPausedAt) as? Double
         let progressPausedAt = progressPausedAtRaw.map(Date.init(timeIntervalSince1970:))
+        let autoplaySpeedRaw = defaults.string(forKey: Keys.autoplaySpeed)
+        let autoplaySpeed = autoplaySpeedRaw.flatMap(AutoplaySpeed.init(rawValue:)) ?? .normal
 
         if let data = defaults.data(forKey: Keys.customParams),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double] {
@@ -143,7 +188,8 @@ final class ReviewSettingsStore {
             customMinimumIntervalHours: customMin,
             customMaximumIntervalHours: customMax,
             isProgressPaused: isProgressPaused,
-            progressPausedAt: progressPausedAt
+            progressPausedAt: progressPausedAt,
+            autoplaySpeed: autoplaySpeed
         )
     }
 
@@ -167,6 +213,7 @@ final class ReviewSettingsStore {
         } else {
             defaults.removeObject(forKey: Keys.progressPausedAt)
         }
+        defaults.set(settings.autoplaySpeed.rawValue, forKey: Keys.autoplaySpeed)
     }
 
     init(previewSettings: ReviewSettings) {
