@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: bb54d47a
+verified_against: d0e9a0cb
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -70,7 +70,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動：
 
 1. **Push Review State** — 推送本地複習狀態（`review_count`、`next_review_date` 等），LWW 策略以 `last_reviewed_at` 判定
-2. **Push Daily Stats** — 推送每日複習統計
+2. **Push Review Events** — 推送完整複習事件（`event_id`、`card_id`、`word_snapshot`、`notebook_id`、`feedback`、`reviewed_at`、`created_at`），以 client UUID 冪等去重
 3. **Upload Deletes** — 找出 `actionType == "delete"` 項目，呼叫 API 刪除
 4. **Upload Adds** — 找出 `syncStatus == 0` 新詞，POST 到 KG
 5. **Fire-and-Forget Pipeline** — 呼叫 `/api/pipeline` 觸發背景 AI 處理（Enrich → Embed → Judge → Difficulty），每次執行寫入 `pipeline_log.db` 記錄 per-run/step timing + status + items
@@ -78,6 +78,7 @@ App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背�
    - 增量同步（`since` 時間戳），只拉異動過的 KGCard
    - 背景執行緒合併翻譯、詞性、難度、graph links
    - 全量同步時做 Orphan Cleanup（安全閾值 50 筆 / ratio < 0.8 保護）
+7. **Pull Review Events** — 從 `/api/vocab/review-events` 增量拉回跨裝置複習事件，寫入本地 `ReviewRecord` 鏡像；月曆與每日明細只讀真實事件，不再用 daily aggregate placeholder 補洞
 
 ### Bilateral Optimistic Sync（hide/unhide/delete links）
 

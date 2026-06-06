@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: d4c80730
+verified_against: d0e9a0cb
 -->
 # Technical Reference Index
 
@@ -23,7 +23,7 @@ verified_against: d4c80730
 | `auth.py` | `/auth/*` | JWT 驗證、Apple/Google token 交換 |
 | `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | Web OAuth + admin cookie session。`/login` 會 mint `oauth_state` HttpOnly Secure cookie；Google 走 redirect state，Apple 以 SameSite=None state cookie + `response_mode=form_post` 直送 Apple authorize，callback 以 cookie/state compare 防 CSRF |
 | `user.py` | `/api/user/*` | 設定、entitlements、quota |
-| `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync |
+| `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發（iOS sync 收斂後 + chrome-extension 加詞 outbox flush 收斂後皆 `POST /api/pipeline?notebook_id` 觸發 server enrich） |
@@ -47,6 +47,7 @@ verified_against: d4c80730
 | `token_tracker.py` | `token_usage` | LLM token / cost,provider-aware |
 | `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄；落 DB 前遮罩 bearer/API key/token/password/secret-like 值 |
 | `podcast_progress.py` | `podcast_progress` | per-user 播客 LWW 進度 |
+| `review_events.py` | `review_events` | per-user 複習事件 append-only log；`event_id` 為 client UUID 冪等主鍵，供 iOS 月曆與每日明細跨裝置同步 |
 | `admin_audit.py` | `admin_audit_log` | grant/revoke 等管理員操作 |
 | `app_store.py` | app store receipts | 訂閱收據 |
 | `secret_store.py` | secrets | 加密憑證 |
