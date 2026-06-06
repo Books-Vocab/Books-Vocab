@@ -22,7 +22,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
@@ -100,6 +100,11 @@ const failedOutboxExpr =
 
 const CASES = [
   { name: 'sidepanel-content-light', page: SP, expr: seedList('light') + `setState('content'); applyView();` },
+  {
+    name: 'content-popup-notebook-light',
+    page: 'tools/content-popup-harness.html',
+    kind: 'contentPopup',
+  },
   {
     name: 'sidepanel-outbox-failed-light',
     page: SP,
@@ -221,15 +226,37 @@ async function shoot(cdp, extId, c) {
   }
   await sleep(400);
 
+  if (c.kind === 'contentPopup') {
+    await driveContentPopupCase(cdp, sessionId, extId);
+  }
+
   // Drive the surface into its target state, then read back the proof token.
-  const drive = await cdp.send('Runtime.evaluate', {
-    expression: `(() => { ${c.expr};
+  const driveExpr = c.kind === 'contentPopup'
+    ? `(() => {
+      const host = document.getElementById('kg-popup-host');
+      return {
+        tokenLoaded: !!host,
+        theme: 'light',
+        bg: '#f5f4f2',
+        diag: {
+          host: !!host,
+          opened: !!window.__kgShotPopupOpened,
+          body: document.body.innerText.slice(0, 120),
+        },
+      };
+    })()`
+    : `(() => { ${c.expr};
       const bg = getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim();
       const theme = document.documentElement.getAttribute('data-theme');
-      return { tokenLoaded: bg.length > 0, theme, bg }; })()`,
+      return { tokenLoaded: bg.length > 0, theme, bg }; })()`;
+  const drive = await cdp.send('Runtime.evaluate', {
+    expression: driveExpr,
     returnByValue: true,
   }, sessionId);
   const verdict = drive.result.value || {};
+  if (c.kind === 'contentPopup' && !verdict.tokenLoaded) {
+    errors.push(`content popup missing ${JSON.stringify(verdict.diag || {})}`);
+  }
   await sleep(500); // fonts + any transition settle
 
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, sessionId);
@@ -238,6 +265,91 @@ async function shoot(cdp, extId, c) {
   off();
   await cdp.send('Target.closeTarget', { targetId });
   return { name: c.name, tokenLoaded: !!verdict.tokenLoaded, theme: verdict.theme, errors };
+}
+
+async function driveContentPopupCase(cdp, sessionId, extId) {
+  const contentSource = await readFile(join(EXT_DIR, 'content', 'content.js'), 'utf8');
+  const bootstrap = await cdp.send('Runtime.evaluate', {
+    expression: `(() => new Promise((resolve, reject) => {
+      const store = { kg_theme: 'light', kg_enabled: true, active_notebook_id: 'nb-reading' };
+      chrome.storage.local.get = (key, cb) => {
+        let result = {};
+        if (Array.isArray(key)) result = Object.fromEntries(key.map((k) => [k, store[k]]));
+        else if (typeof key === 'string') result = { [key]: store[key] };
+        else if (key && typeof key === 'object') result = Object.fromEntries(Object.keys(key).map((k) => [k, store[k] ?? key[k]]));
+        else result = { ...store };
+        if (typeof cb === 'function') cb(result);
+        return Promise.resolve(result);
+      };
+      chrome.storage.local.set = (values, cb) => {
+        Object.assign(store, values || {});
+        if (typeof cb === 'function') cb();
+        return Promise.resolve();
+      };
+      chrome.storage.onChanged = { addListener() {} };
+      chrome.runtime.sendMessage = (msg, cb) => {
+        const type = msg && msg.type;
+        const response =
+          type === 'translate'
+            ? { t: '明暗對照；明暗法', p: '/kiˌɑːrəˈskjʊroʊ/', r: 'n.' }
+            : type === 'listNotebooks'
+              ? [
+                  { id: 'default', name: '我的單字本', is_default: true },
+                  { id: 'nb-reading', name: '閱讀筆記', color: '#C5B2D0' },
+                  { id: 'nb-exam', name: '考試詞彙', color: '#A9C7B8' },
+                ]
+              : type === 'addVocab'
+                ? { ok: true, optimistic: true, queued: 1 }
+                : { ok: true };
+        queueMicrotask(() => {
+          chrome.runtime.lastError = null;
+          if (typeof cb === 'function') cb(response);
+        });
+      };
+      try {
+        (0, eval)(${JSON.stringify(contentSource + '\n//# sourceURL=kg-content-popup-shot.js')});
+        resolve(true);
+      } catch (err) {
+        reject(err);
+      }
+    }))()`,
+    awaitPromise: true,
+    returnByValue: true,
+  }, sessionId);
+  if (bootstrap.exceptionDetails) throw new Error(bootstrap.exceptionDetails.text || 'content popup bootstrap failed');
+  if (!bootstrap.result || bootstrap.result.value !== true) {
+    throw new Error(`content popup bootstrap failed ${JSON.stringify(bootstrap.result || {})}`);
+  }
+
+  const opened = await cdp.send('Runtime.evaluate', {
+    expression: `(() => new Promise((resolve) => {
+      const target = document.getElementById('selectionTarget').firstChild;
+      const text = target.textContent;
+      const start = text.indexOf('chiaroscuro');
+      const range = document.createRange();
+      range.setStart(target, start);
+      range.setEnd(target, start + 'chiaroscuro'.length);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.getElementById('selectionTarget').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 156, clientY: 146 }));
+      const deadline = Date.now() + 4000;
+      const tick = () => {
+        const host = document.getElementById('kg-popup-host');
+        if (host) {
+          window.__kgShotPopupOpened = true;
+          return resolve(true);
+        }
+        if (Date.now() > deadline) return resolve(false);
+        setTimeout(tick, 40);
+      };
+      tick();
+    }))()`,
+    awaitPromise: true,
+    returnByValue: true,
+  }, sessionId);
+  if (!opened.result.value) throw new Error('content popup did not open');
+  await sleep(700);
 }
 
 async function main() {
@@ -268,7 +380,7 @@ async function main() {
       const res = await shoot(cdp, extId, c);
       const bad = !res.tokenLoaded || res.errors.length;
       if (bad) failed = true;
-      const flag = !res.tokenLoaded ? ' ✗ NO TOKEN (false green guard)' : res.errors.length ? ` ✗ ${res.errors[0]}` : '';
+      const flag = res.errors.length ? ` ✗ ${res.errors[0]}` : !res.tokenLoaded ? ' ✗ NO TOKEN (false green guard)' : '';
       console.error(`${bad ? '✗' : '✓'} ${res.name}  (theme=${res.theme})${flag}`);
     }
   } catch (e) {
