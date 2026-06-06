@@ -581,7 +581,6 @@ documents:
       - eval_scoring_changed
     sources:
       - lab/llm_eval/
-      - ops/prompt_sync_lint.sh
 
   - id: sop.llm_eval
     path: docs/sop/llm_eval.md
@@ -594,7 +593,6 @@ documents:
     sources:
       - lab/llm_eval/
       - docs/reference/llm_eval.md
-      - ops/prompt_sync_lint.sh
       - backend/src/kg/llm/providers.py
 
   - id: sop.backend

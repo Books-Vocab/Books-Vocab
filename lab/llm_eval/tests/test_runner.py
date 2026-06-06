@@ -49,6 +49,7 @@ async def test_call_one_success(mock_prompt, sample):
     assert result.parsed_output == {"t": "你好"}
     assert result.input_tokens == 10
     assert result.output_tokens == 5
+    assert result.scores == {}
 
 
 @pytest.mark.asyncio
@@ -109,6 +110,226 @@ async def test_run_eval_basic(mock_prompt):
     assert summary.success_count == 2
     assert summary.error_count == 0
     assert len(summary.samples) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_eval_scores_each_result_for_prompt_name():
+    prompt = RenderedPrompt(
+        name="translate_quick",
+        version="v1",
+        system=None,
+        user="Translate: hello",
+        schema={},
+    )
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(message=MagicMock(content='{"t":"輝煌的","p":"adj.","r":"resplendent"}'))]
+    mock_resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            prompt,
+            [{"id": "s1", "word": "resplendent", "gold_status": "unverified"}],
+            ["gemini-2.5-flash-lite"],
+        )
+
+    summary = results["gemini-2.5-flash-lite"]
+    assert summary.samples[0].scores["json_valid"] == 1.0
+    assert summary.samples[0].scores["pos_correct"] == 1.0
+    assert summary.format_score_avg == 1.0
+    assert summary.quality_score_avg is None
+
+
+@pytest.mark.asyncio
+async def test_run_eval_quality_score_only_counts_human_gold():
+    prompt = RenderedPrompt(
+        name="translate_quick",
+        version="v1",
+        system=None,
+        user="Translate: hello",
+        schema={},
+    )
+    responses = [
+        MagicMock(
+            choices=[MagicMock(message=MagicMock(content='{"t":"輝煌的","p":"adj.","r":"resplendent"}'))],
+            usage=MagicMock(prompt_tokens=10, completion_tokens=5),
+        ),
+        MagicMock(
+            choices=[MagicMock(message=MagicMock(content='{"t":"輝煌","p":"adj.","r":"resplendent"}'))],
+            usage=MagicMock(prompt_tokens=10, completion_tokens=5),
+        ),
+    ]
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=responses)
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            prompt,
+            [
+                {
+                    "id": "gold",
+                    "word": "resplendent",
+                    "gold_status": "human_gold",
+                    "gold_translation": "輝煌的",
+                    "gold_pos": "adj.",
+                    "gold_root": "resplendent",
+                },
+                {
+                    "id": "candidate",
+                    "word": "resplendent",
+                    "gold_status": "unverified",
+                    "gold_translation": "錯誤參考",
+                    "gold_pos": "n.",
+                    "gold_root": "wrong",
+                },
+            ],
+            ["gemini-2.5-flash-lite"],
+        )
+
+    summary = results["gemini-2.5-flash-lite"]
+    assert summary.sample_count == 2
+    assert summary.quality_score_avg == 1.0
+    assert summary.format_score_avg == 1.0
+
+
+@pytest.mark.asyncio
+async def test_call_one_preserves_json_list_for_judge_and_enrich(mock_prompt, sample):
+    mock_resp = MagicMock()
+    mock_resp.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='[{"word":"sloppy","link":"contrasts_with","confidence":0.9,"reason":"相反的意思"}]'
+            )
+        )
+    ]
+    mock_resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
+        mock_client_factory.return_value = mock_client
+
+        result = await _call_one(
+            "gemini",
+            "gemini-2.5-flash-lite",
+            mock_prompt,
+            sample,
+            EvalConfig(prompt_name="judge_batch"),
+        )
+
+    assert isinstance(result.parsed_output, list)
+    assert result.parsed_output[0]["word"] == "sloppy"
+    assert result.scores["schema_conform"] == 1.0
+    assert result.scores["link_valid"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_translate_prompt_rejects_json_list_schema(sample):
+    prompt = RenderedPrompt(
+        name="translate_quick",
+        version="v1",
+        system=None,
+        user="Translate",
+        schema={},
+    )
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(message=MagicMock(content='[{"t":"喚起","p":"v.","r":"evoke"}]'))]
+    mock_resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
+        mock_client_factory.return_value = mock_client
+
+        result = await _call_one(
+            "gemini",
+            "gemini-2.5-flash-lite",
+            prompt,
+            sample,
+            EvalConfig(prompt_name="translate_quick"),
+        )
+
+    assert isinstance(result.parsed_output, list)
+    assert result.scores["json_valid"] == 1.0
+    assert result.scores["schema_conform"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_quality_score_counts_failed_human_gold_result_as_zero():
+    prompt = RenderedPrompt(
+        name="translate_quick",
+        version="v1",
+        system=None,
+        user="Translate",
+        schema={},
+    )
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=asyncio.TimeoutError)
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            prompt,
+            [
+                {
+                    "id": "gold",
+                    "word": "evoke",
+                    "gold_status": "human_gold",
+                    "gold_translation": "喚起",
+                    "gold_pos": "v.",
+                    "gold_root": "evoke",
+                }
+            ],
+            ["gemini-2.5-flash-lite"],
+            EvalConfig(prompt_name="translate_quick", cloud_timeout_s=0.01),
+        )
+
+    summary = results["gemini-2.5-flash-lite"]
+    assert summary.error_count == 1
+    assert summary.quality_score_avg == 0.0
+
+
+@pytest.mark.asyncio
+async def test_human_gold_schema_failure_quality_score_is_zero(sample):
+    prompt = RenderedPrompt(
+        name="translate_quick",
+        version="v1",
+        system=None,
+        user="Translate",
+        schema={},
+    )
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(message=MagicMock(content='[{"t":"喚起","p":"v.","r":"evoke"}]'))]
+    mock_resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            prompt,
+            [
+                {
+                    "id": "test_001",
+                    "word": "evoke",
+                    "gold_status": "human_gold",
+                    "gold_translation": "喚起",
+                    "gold_pos": "v.",
+                    "gold_root": "evoke",
+                }
+            ],
+            ["gemini-2.5-flash-lite"],
+            EvalConfig(prompt_name="translate_quick"),
+        )
+
+    assert results["gemini-2.5-flash-lite"].quality_score_avg == 0.0
 
 
 @pytest.mark.asyncio

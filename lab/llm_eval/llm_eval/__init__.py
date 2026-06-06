@@ -22,7 +22,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .config import EvalConfig
+from .corpus import build_private_corpus, sanitize_context
 from .datasets import load_dataset
+from .reporting import compare_to_baseline, write_report
 from .registry import PromptRegistry, RenderedPrompt
 from .runner import EvalResult, EvalSummary, run_eval
 
@@ -32,9 +34,13 @@ __all__ = [
     "EvalSummary",
     "PromptRegistry",
     "RenderedPrompt",
+    "build_private_corpus",
+    "compare_to_baseline",
     "load_dataset",
     "make_render_fn",
     "run_eval",
+    "sanitize_context",
+    "write_report",
     "compare_prompts",
 ]
 

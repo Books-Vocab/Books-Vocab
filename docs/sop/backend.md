@@ -109,7 +109,7 @@ backend/.venv/bin/python -m pytest -q
 
 - Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。
 - 路由 `provider_for(call_type)` 依 env 解析（清單見 `docs/sop/deploy.md` 的「LLM Provider env vars」）。預設全 `gemini`，`embed` 永遠獨立留 Gemini。
-- A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`。
+- A/B / prompt / provider 品質比較：使用 `lab/llm_eval/` workbench；`kg.llm.ab` 僅保留 deprecated shim。
 
 ### 改 API 契約 / auth / 錯誤處理
 
