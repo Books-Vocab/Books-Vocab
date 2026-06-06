@@ -18,7 +18,7 @@ final class BooksBrowserUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["書庫"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["生詞庫"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["單字本"].waitForExistence(timeout: 5))
     }
 
     @MainActor
