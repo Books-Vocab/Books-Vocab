@@ -10,7 +10,7 @@
 #
 # Three layers, fail-fast:
 #   1. static  — manifest integrity, JS syntax, HTML asset refs, i18n keys
-#   2. unit    — node:test (pure logic + CSS/inline-mirror drift guards)
+#   2. unit    — node:test (pure logic + CSS/inline-mirror/background effect guards)
 #   3. smoke   — loads the unpacked extension into the system Chrome headless
 #                (zero install, isolated profile) and asserts every [hidden]
 #                element computes display:none + no uncaught errors on load
@@ -38,7 +38,7 @@ echo "▸ Layer 1: static integrity"
 node tools/static.mjs
 
 echo "▸ Layer 2: unit tests"
-node --test --test-reporter=dot shared/*.test.js
+node --test --test-reporter=dot shared/*.test.js background.test.mjs
 
 if [ "$STATIC_ONLY" -eq 1 ]; then
   echo "▸ Layer 3: skipped (--static-only)"

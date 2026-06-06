@@ -70,6 +70,17 @@
     // checkmark — active item in the sort menu (mirrors iOS Menu selection check)
     'check':
       '<path d="M5 13l4 4L19 7"/>',
+    // plus — create notebook
+    'plus':
+      '<path d="M12 5v14M5 12h14"/>',
+    // pencil — rename/edit notebook
+    'pencil':
+      '<path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10z"/>' +
+      '<path d="M13.5 6.5l4 4"/>',
+    // trash — delete notebook
+    'trash':
+      '<path d="M4 7h16M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"/>' +
+      '<path d="M6.5 7l.8 13h9.4l.8-13M10 11v5M14 11v5"/>',
 
     // --- Word-detail / navigation / popup glyphs ---
     // speaker.wave.2 — pronounce (TTS via Web Speech); mirrors iOS detail speaker
