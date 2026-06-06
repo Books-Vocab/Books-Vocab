@@ -9,7 +9,7 @@ verified_against: e286e0fd
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
-BooksBrowser 採用**後端權威、離線優先**的資料架構。使用者可跨裝置、跨平台共享的 domain state 以後端 Knowledge Graph (KG) 伺服器為權威來源；iOS 的 `SwiftData` 是本機投影、離線 cache 與 outbox 執行基礎，不再是跨裝置的 Single Source of Truth。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化的跨裝置 domain state 以 Knowledge Graph (KG) 伺服器為權威來源；尚未後端化的共享 state 依本文資料權威邊界分階段遷移。iOS 的 `SwiftData` 應收斂為本機投影、離線 cache 與 outbox 執行基礎，不再作為跨裝置 Single Source of Truth 的長期架構。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
 
 本機仍必須保存資料，因為核心場景包含離線閱讀、離線查詞、離線複習與低延遲 UI。但本機保存的語意分三類：
 
@@ -63,6 +63,27 @@ BooksBrowser 採用**後端權威、離線優先**的資料架構。使用者可
 | `vocab_ui` | `active_notebook_id` | `activeNotebookId` UserDefaults | LWW；server 必須拒絕已刪 notebook，client 保留本機 fallback |
 
 分階段實作時，先擴充後端 response 以向後相容方式回傳 optional domains，再讓 iOS 依 domain-level `updated_at` merge。每個 domain 的 PATCH 必須是 partial update，不能用缺欄位覆蓋既有 server config；client 也不能在 fetch 失敗時把本機舊值重新 PUT 成權威。
+
+### Podcast state migration（目標狀態）
+
+Podcast catalog 與 media 已由後端 / object storage 提供，iOS 的 series / episode rows 是 cache。剩餘要收斂的是 per-user state：progress 已有後端 LWW store，follow 仍是本機偏好。
+
+| State | 現況 | 目標 | 退場條件 |
+|---|---|---|---|
+| Catalog | `/api/podcasts*` + object storage 權威；iOS `PodcastSeries` / `PodcastEpisode` cache | 維持現況 | 不使用空 catalog 進行 mass tombstone；短暫 S3 index 故障只降級 |
+| Progress | 後端 `podcast_progress.db` LWW；iOS `PodcastProgress` 仍在 SwiftData CloudKit store | 後端為唯一跨裝置權威；iOS row 只作 cache + pending push | iOS 啟動 / catalog sync 先 pull remote，播放中節流 push；確認 migration 後把 `PodcastProgress` 移出 CloudKit config |
+| Follow | `PodcastSeries.isFollowed` local SwiftData | 後端 user config 或 dedicated follow endpoint 權威；iOS optimistic toggle + rollback | API 回傳 followed set + `updated_at`；iOS 首次 migration 上傳本機 followed series；server 拒絕不存在 / deleted series |
+| Downloaded audio | `PodcastDownloadManager` 本機檔案 | 純 device cache | 登出 / account switch 清本機下載；不可當作跨裝置權威 |
+| Cover cache | `podcast-covers/` 本機檔案 | 純 device cache | server cover retracted 時刪 cache；登出清 cache |
+
+Progress CloudKit 退場不可直接刪 schema。安全順序：
+
+1. 後端 progress endpoint 與 iOS pull/push 已雙向上線，且 tie-break 規則一致（同 instant 取較大 position）。
+2. 新版本 iOS 啟動時先把現有 CloudKit/local `PodcastProgress` 補推到後端，再 pull remote merge。
+3. 觀測一個發版週期後，`PodcastProgress` 改到 local-only store；CloudKit 舊資料只讀一次 migration，不再作權威。
+4. 最後移除 CloudKit dependency 前，確認 `Book` 也已有後端 library contract；否則 `CloudStore` 還會因 `Book` 存在而保留。
+
+Follow 後端化應優先走 user config domain（`podcast.followed_series_ids`），除非需要 per-series audit / notification 才拆 dedicated table。client 的 toggle contract 必須是 optimistic local update，server 失敗 rollback；若 server 回傳某 series 已不存在，client 應清除該 follow 並顯示一般同步收斂，不視為 fatal error。
 
 ---
 
