@@ -131,6 +131,7 @@ extension KGService {
 
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
+        defaults.removeObject(forKey: SyncKeys.reviewEventPullBoundary)
         defaults.removeObject(forKey: SyncKeys.payloadVersion)
         defaults.removeObject(forKey: "activeNotebookId")
         defaults.removeObject(forKey: NotebookFilter.storageKey)
