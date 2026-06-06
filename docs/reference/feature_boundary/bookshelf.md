@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Bookshelf/
-verified_against: 9a3c6249
+verified_against: 5aa3dccb
 -->
 # Bookshelf Feature Boundary
 

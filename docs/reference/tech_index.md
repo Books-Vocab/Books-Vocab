@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 9a3c6249
+verified_against: 5aa3dccb
 -->
 # Technical Reference Index
 
