@@ -85,8 +85,20 @@ def test_review_events_since_malformed_returns_400(isolated_api):
     assert r.status_code == 400, r.text
 
 
+def test_review_events_patch_rejects_non_iso_timestamps(isolated_api):
+    payload = {"entries": [_payload("evt-bad-time")]}
+    payload["entries"][0]["reviewed_at"] = "1717668000"
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json=payload,
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 400, r.text
+
+
 def test_review_events_require_auth(isolated_api):
     r = isolated_api.client.get("/api/vocab/review-events")
 
     assert r.status_code in {401, 403}
-

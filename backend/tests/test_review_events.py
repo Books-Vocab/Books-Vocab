@@ -75,12 +75,24 @@ def test_since_filters_by_reviewed_at(tmp_path):
     assert [event.event_id for event in pulled] == ["new"]
 
 
-@pytest.mark.parametrize("bad_since", ["garbage", "2026-13-99", "2026-06-01"])
+@pytest.mark.parametrize("bad_since", ["garbage", "2026-13-99", "2026-06-01", "1717668000", "2026-06-01T10:00:00"])
 def test_since_must_be_iso8601(tmp_path, bad_since):
     store = ReviewEventStore(tmp_path / "review_events.db")
 
     with pytest.raises(BadRequestError):
         pull_review_events(since=bad_since, event_store=store)
+
+
+@pytest.mark.parametrize("field_name", ["reviewed_at", "created_at"])
+@pytest.mark.parametrize("bad_value", ["2026-06-01", "1717668000", "2026-06-01T10:00:00"])
+def test_event_timestamps_must_be_timezone_aware_iso8601(tmp_path, field_name, bad_value):
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    event = _event("evt-bad-time")
+    data = event.model_dump()
+    data[field_name] = bad_value
+
+    with pytest.raises(BadRequestError):
+        push_review_events([ReviewEventEntry(**data)], event_store=store)
 
 
 def test_unknown_card_id_is_preserved(tmp_path):
@@ -91,4 +103,3 @@ def test_unknown_card_id_is_preserved(tmp_path):
 
     pulled = pull_review_events(since=None, event_store=store)
     assert pulled[0].card_id == "deleted-card"
-
