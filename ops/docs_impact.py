@@ -134,25 +134,30 @@ def source_matches(source: str, changed_path: str) -> bool:
 def impact_documents(documents: list[Document], changed_paths: list[str]) -> list[dict[str, object]]:
     impacts: list[dict[str, object]] = []
     for doc in documents:
+        include_sources = [source for source in doc.sources if not source.startswith("!")]
+        exclude_sources = [source[1:] for source in doc.sources if source.startswith("!")]
         matched_sources: list[str] = []
         matched_paths: list[str] = []
-        for source in doc.sources:
+        for source in include_sources:
             for changed_path in changed_paths:
+                if any(source_matches(exclude, changed_path) for exclude in exclude_sources):
+                    continue
                 if source_matches(source, changed_path):
                     matched_sources.append(source)
                     matched_paths.append(changed_path)
         if matched_paths:
-            impacts.append(
-                {
-                    "id": doc.id,
-                    "path": doc.path,
-                    "kind": doc.kind,
-                    "authority": doc.authority,
-                    "triggers": doc.triggers,
-                    "matched_sources": sorted(set(matched_sources)),
-                    "matched_paths": sorted(set(matched_paths)),
-                }
-            )
+            impact = {
+                "id": doc.id,
+                "path": doc.path,
+                "kind": doc.kind,
+                "authority": doc.authority,
+                "triggers": doc.triggers,
+                "matched_sources": sorted(set(matched_sources)),
+                "matched_paths": sorted(set(matched_paths)),
+            }
+            if doc.generator:
+                impact["generator"] = doc.generator
+            impacts.append(impact)
     return impacts
 
 
@@ -167,10 +172,11 @@ def print_human(base: str | None, changed_paths: list[str], impacts: list[dict[s
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
         sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
         paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
+        generator = f" generator={impact['generator']}" if "generator" in impact else ""
         print(
             "IMPACT "
             f"{impact['id']} {impact['path']} "
-            f"via={sources} changed={paths} triggers={triggers}"
+            f"via={sources} changed={paths} triggers={triggers}{generator}"
         )
 
 

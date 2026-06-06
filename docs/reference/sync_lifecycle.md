@@ -3,8 +3,26 @@ tier: reference
 authority: SoT
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/
-  - backend/src/kg/
+  - ios/BooksBrowser/Models/VocabularyEntry.swift
+  - ios/BooksBrowser/Views/Vocabulary/SyncView.swift
+  - ios/BooksBrowser/Views/Vocabulary/AutoSyncMonitor.swift
+  - ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift
+  - ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
+  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
+  - ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift
+  - ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift
+  - ios/BooksBrowser/Services/BackgroundSyncActor.swift
+  - ios/BooksBrowser/Services/KGService+Sync.swift
+  - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
+  - ios/BooksBrowser/Services/KGService+Models.swift
+  - backend/src/kg/api_models/vocab.py
+  - backend/src/kg/routers/vocab.py
+  - backend/src/kg/vocab_intake.py
+  - backend/src/kg/vocab_crud.py
+  - backend/src/kg/vocab_handlers/intake.py
+  - backend/src/kg/vocab_handlers/crud.py
+  - chrome-extension/background.js
+  - chrome-extension/shared/vocab-outbox.js
 verified_against: 746dafaa
 -->
 # Sync Lifecycle
