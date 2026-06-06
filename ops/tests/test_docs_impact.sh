@@ -209,6 +209,16 @@ grep -q "reference.ui_state_matrix" "$tmpdir/ui_components.out"
 grep -q "sop.ui_design" "$tmpdir/ui_design.out"
 grep -q "reference.ui_review_checklist" "$tmpdir/ui_design.out"
 
+./ops/docs_impact.py --files design-system/tokens.json ops/gen_figma_sets.py ops/verify_design_system.sh >"$tmpdir/figma_tokens.out"
+grep -q "sop.figma_token_workflow" "$tmpdir/figma_tokens.out"
+grep -q "sop.ui_design" "$tmpdir/figma_tokens.out"
+
+./ops/docs_impact.py --files design-system/components.json ops/gen_web_components.py >"$tmpdir/design_components.out"
+if grep -q "sop.figma_token_workflow" "$tmpdir/design_components.out"; then
+  echo "web component token tooling should not imply Figma token workflow impact" >&2
+  exit 1
+fi
+
 ./ops/docs_impact.py --files ops/ui_token_lint.sh >"$tmpdir/ui_token_lint.out"
 grep -q "sop.ui_design" "$tmpdir/ui_token_lint.out"
 grep -q "reference.ui_review_checklist" "$tmpdir/ui_token_lint.out"
