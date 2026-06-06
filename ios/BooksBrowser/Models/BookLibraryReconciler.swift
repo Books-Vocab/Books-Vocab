@@ -29,15 +29,17 @@ struct BookLibraryReconciler {
         allowBareFileRecovery: Bool = false
     ) throws -> BookLibraryReconcileResult {
         let filesByName = scanBookFiles()
-        let manifestsByFileName = Self.manifestsByFileName(manifestStore.readAll())
+        let manifests = manifestStore.readAll()
+        let manifestsByFileName = Self.manifestsByFileName(manifests)
+        let manifestsById = Self.manifestsById(manifests)
         var existingBooks = try context.fetch(FetchDescriptor<Book>())
         var result = BookLibraryReconcileResult()
         result.duplicateRowsRemoved = removeDuplicateRows(
             context: context,
             books: &existingBooks,
-            manifests: Array(manifestsByFileName.values)
+            manifestsById: manifestsById
         )
-        var existingByFileName = Dictionary(uniqueKeysWithValues: existingBooks.map { ($0.epubFileName, $0) })
+        var existingByFileName = Self.booksByFileName(existingBooks, manifestsById: manifestsById)
         var existingManifestIds = Set(manifestsByFileName.values.map(\.bookId))
 
         for (fileName, _) in filesByName {
@@ -77,20 +79,17 @@ struct BookLibraryReconciler {
     private func removeDuplicateRows(
         context: ModelContext,
         books: inout [Book],
-        manifests: [BookManifest]
+        manifestsById: [UUID: BookManifest]
     ) -> Int {
-        let manifestsById = Dictionary(uniqueKeysWithValues: manifests.map { ($0.bookId, $0) })
         let grouped = Dictionary(grouping: books, by: \.epubFileName)
-        var keepIds = Set<UUID>()
+        var keepersByFileName: [String: Book] = [:]
         var removed = 0
 
-        for (_, group) in grouped where group.count > 1 {
-            let keeper = group.max {
-                Self.recoveryScore($0, manifest: manifestsById[$0.id])
-                    < Self.recoveryScore($1, manifest: manifestsById[$1.id])
-            }!
-            keepIds.insert(keeper.id)
-            for book in group where book.id != keeper.id {
+        for (fileName, group) in grouped where group.count > 1 {
+            let keeper = Self.bestBook(in: group, manifestsById: manifestsById)
+            keepersByFileName[fileName] = keeper
+            for book in group where book !== keeper {
+                Self.mergeRecoverableMetadata(into: keeper, from: book)
                 context.delete(book)
                 removed += 1
             }
@@ -98,9 +97,31 @@ struct BookLibraryReconciler {
 
         guard removed > 0 else { return 0 }
         books.removeAll { book in
-            grouped[book.epubFileName, default: []].count > 1 && !keepIds.contains(book.id)
+            guard let keeper = keepersByFileName[book.epubFileName] else { return false }
+            return book !== keeper
         }
         return removed
+    }
+
+    private static func booksByFileName(
+        _ books: [Book],
+        manifestsById: [UUID: BookManifest]
+    ) -> [String: Book] {
+        Dictionary(grouping: books, by: \.epubFileName).compactMapValues { group in
+            bestBook(in: group, manifestsById: manifestsById)
+        }
+    }
+
+    private static func bestBook(
+        in group: [Book],
+        manifestsById: [UUID: BookManifest]
+    ) -> Book {
+        group.max {
+            let lhsScore = recoveryScore($0, manifest: manifestsById[$0.id])
+            let rhsScore = recoveryScore($1, manifest: manifestsById[$1.id])
+            if lhsScore != rhsScore { return lhsScore < rhsScore }
+            return $0.dateAdded < $1.dateAdded
+        }!
     }
 
     private static func recoveryScore(_ book: Book, manifest: BookManifest?) -> Int {
@@ -115,6 +136,47 @@ struct BookLibraryReconciler {
         return score
     }
 
+    private static func mergeRecoverableMetadata(into keeper: Book, from duplicate: Book) {
+        if keeper.coverImageData == nil, let cover = duplicate.coverImageData {
+            keeper.coverImageData = cover
+        }
+        if looksLikeFallbackTitle(keeper.title, fileName: keeper.epubFileName)
+            && !looksLikeFallbackTitle(duplicate.title, fileName: duplicate.epubFileName) {
+            keeper.title = duplicate.title
+        }
+        if keeper.author.isEmpty || keeper.author == "Unknown" {
+            if !duplicate.author.isEmpty, duplicate.author != "Unknown" {
+                keeper.author = duplicate.author
+            }
+        }
+        if duplicate.dateAdded < keeper.dateAdded {
+            keeper.dateAdded = duplicate.dateAdded
+        }
+        if shouldUseReadingPosition(from: duplicate, over: keeper) {
+            keeper.dateLastRead = duplicate.dateLastRead
+            keeper.progression = duplicate.progression
+            keeper.lastReadLocatorJSON = duplicate.lastReadLocatorJSON
+        } else {
+            if keeper.progression == nil { keeper.progression = duplicate.progression }
+            if keeper.lastReadLocatorJSON == nil { keeper.lastReadLocatorJSON = duplicate.lastReadLocatorJSON }
+            if keeper.dateLastRead == nil { keeper.dateLastRead = duplicate.dateLastRead }
+        }
+        if keeper.preferredNotebookId == nil {
+            keeper.preferredNotebookId = duplicate.preferredNotebookId
+        }
+    }
+
+    private static func shouldUseReadingPosition(from candidate: Book, over current: Book) -> Bool {
+        switch (candidate.dateLastRead, current.dateLastRead) {
+        case let (candidateDate?, currentDate?):
+            return candidateDate > currentDate
+        case (.some, nil):
+            return true
+        case (nil, .some), (nil, nil):
+            return current.progression == nil && candidate.progression != nil
+        }
+    }
+
     private static func looksLikeFallbackTitle(_ title: String, fileName: String) -> Bool {
         let baseName = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
         return title == baseName || UUID(uuidString: title) != nil
@@ -122,6 +184,12 @@ struct BookLibraryReconciler {
 
     private static func manifestsByFileName(_ manifests: [BookManifest]) -> [String: BookManifest] {
         Dictionary(grouping: manifests, by: \.fileName).compactMapValues { group in
+            group.max { manifestScore($0) < manifestScore($1) }
+        }
+    }
+
+    private static func manifestsById(_ manifests: [BookManifest]) -> [UUID: BookManifest] {
+        Dictionary(grouping: manifests, by: \.bookId).compactMapValues { group in
             group.max { manifestScore($0) < manifestScore($1) }
         }
     }
