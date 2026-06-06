@@ -50,6 +50,7 @@
 "sync.failure.operation.pull" = "单词下载";
 "sync.failure.operation.pullReviewEvents" = "复习记录下载";
 "sync.failure.operation.generic" = "同步";
+"sync.failure.message" = "%@失败：%@";
 "sync.failure.reason.authExpired" = "登录已过期";
 "sync.failure.reason.offline" = "目前没有网络连接";
 "sync.failure.reason.timeout" = "网络超时";
