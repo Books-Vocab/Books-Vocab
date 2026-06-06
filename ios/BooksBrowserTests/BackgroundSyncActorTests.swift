@@ -507,6 +507,21 @@ struct BackgroundSyncActorTests {
         #expect(records.first?.word == "gamma")
     }
 
+    @Test func reviewActivityLog_removesSyntheticPlaceholderRecordsOnly() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        context.insert(ReviewRecord(word: "（跨裝置同步）", entryID: nil, feedback: 1, reviewedAt: Date()))
+        context.insert(ReviewRecord(word: "（遷移資料）", entryID: nil, feedback: 1, reviewedAt: Date()))
+        context.insert(ReviewRecord(word: "real", entryID: nil, feedback: 0, reviewedAt: Date()))
+        try context.save()
+
+        let removed = try ReviewActivityLog.removeSyntheticPlaceholderRecords(context: context)
+        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
+
+        #expect(removed == 2)
+        #expect(records.map(\.word) == ["real"])
+    }
+
     @Test func clearUserData_removes_all_books() async throws {
         let container = try makeContainer()
         try seedBooks(container, count: 3)

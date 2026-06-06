@@ -3,7 +3,6 @@
 //  BooksBrowser
 //
 //  複習活動查詢工具。資料來源為 SwiftData ReviewRecord。
-//  保留舊 UserDefaults 資料的一次性遷移邏輯。
 //
 
 import Foundation
@@ -13,6 +12,10 @@ enum ReviewActivityLog {
     private static let calendar = Calendar.current
 
     private static let dayFormatter = AppDateFormatters.dayKey
+    private static let syntheticRecordWords: Set<String> = [
+        "\u{FF08}\u{8DE8}\u{88DD}\u{7F6E}\u{540C}\u{6B65}\u{FF09}",
+        "\u{FF08}\u{9077}\u{79FB}\u{8CC7}\u{6599}\u{FF09}"
+    ]
 
     // MARK: - Record
 
@@ -105,6 +108,21 @@ enum ReviewActivityLog {
     static func recordsForDay(_ dayKey: String, from records: [ReviewRecord]) -> [ReviewRecord] {
         records.filter { $0.dayKey == dayKey }
             .sorted { $0.reviewedAt > $1.reviewedAt }
+    }
+
+    @MainActor
+    @discardableResult
+    static func removeSyntheticPlaceholderRecords(context: ModelContext) throws -> Int {
+        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
+        var removed = 0
+        for record in records where syntheticRecordWords.contains(record.word) {
+            context.delete(record)
+            removed += 1
+        }
+        if removed > 0 {
+            try context.save()
+        }
+        return removed
     }
 
     // MARK: - Helpers
