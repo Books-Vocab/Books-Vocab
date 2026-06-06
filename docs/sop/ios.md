@@ -68,6 +68,8 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 `ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
 
+**執行權限**：仍遵守 `AGENTS.md` scope 規則 — agent **不主動跑 `ios_test.sh`**（包含 worktree subagent），除非使用者明確要求；`ios_build.sh` 不受此限。
+
 ```bash
 ./ops/ios_test.sh --timeout 1200                       # 預設只跑 BooksBrowserTests unit target
 ./ops/ios_test.sh --file NotebookCoverContrastTests.swift
