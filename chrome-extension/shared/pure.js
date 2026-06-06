@@ -172,6 +172,11 @@ function canDeleteNotebook(notebook) {
   return !!(nb && nb.id && nb.id !== 'default' && !nb.isDefault && !nb.isDeleted);
 }
 
+function pendingItemsForNotebook(items, notebookId = 'default') {
+  const active = notebookId || 'default';
+  return (items || []).filter((item) => ((item && item.notebookId) || 'default') === active);
+}
+
 /**
  * Normalise a single raw vocab payload into one canonical shape, collapsing the
  * snake_case-vs-camelCase / legacy field aliases the panel must otherwise paper
@@ -1019,6 +1024,7 @@ const KGPureExports = {
   buildNotebookCreatePayload,
   buildNotebookUpdatePayload,
   canDeleteNotebook,
+  pendingItemsForNotebook,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,

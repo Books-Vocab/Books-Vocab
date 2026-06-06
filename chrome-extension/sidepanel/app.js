@@ -725,8 +725,7 @@ async function loadPendingSyncItems(serverItems) {
     const stored = await chrome.storage.local.get(KGOutbox.OUTBOX_KEY);
     const queue = Array.isArray(stored[KGOutbox.OUTBOX_KEY]) ? stored[KGOutbox.OUTBOX_KEY] : [];
     const serverWords = new Set(serverItems.map((i) => i.word));
-    pendingSyncItems = KGOutbox.pendingOutboxItems(queue, serverWords)
-      .filter((it) => (it.notebookId || 'default') === activeNotebookId)
+    pendingSyncItems = KGPure.pendingItemsForNotebook(KGOutbox.pendingOutboxItems(queue, serverWords), activeNotebookId)
       .map(decoratePendingItem);
   } catch (err) {
     console.error('[KG] loadPendingSyncItems failed:', err);

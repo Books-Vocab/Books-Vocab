@@ -15,6 +15,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   resolveTheme,
@@ -29,6 +31,7 @@ const {
   buildNotebookCreatePayload,
   buildNotebookUpdatePayload,
   canDeleteNotebook,
+  pendingItemsForNotebook,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,
@@ -55,6 +58,7 @@ const {
   DEFAULT_THEME,
   NOTEBOOK_PALETTE,
   NOTEBOOK_COVER_PATTERNS,
+  ACTIVE_NOTEBOOK_KEY,
 } = require('./pure.js');
 
 // ---------------------------------------------------------------------------
@@ -130,6 +134,11 @@ test('buildVocabQuery can scope to a notebook_id', () => {
     buildVocabQuery('2024-01-01T00:00:00Z', 'nb reading'),
     '?since=2024-01-01T00%3A00%3A00Z&notebook_id=nb%20reading',
   );
+});
+
+test('content script ACTIVE_NOTEBOOK_KEY inline mirror stays in sync', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../content/content.js'), 'utf8');
+  assert.match(src, new RegExp(`const ACTIVE_NOTEBOOK_KEY = '${ACTIVE_NOTEBOOK_KEY}'`));
 });
 
 // ---------------------------------------------------------------------------
@@ -240,6 +249,16 @@ test('canDeleteNotebook blocks default/deleted/missing notebooks', () => {
   assert.equal(canDeleteNotebook({ id: 'nb1', isDefault: false, isDeleted: false }), true);
   assert.equal(canDeleteNotebook({ id: 'nb1', isDefault: false, isDeleted: true }), false);
   assert.equal(canDeleteNotebook(null), false);
+});
+
+test('pendingItemsForNotebook keeps only the active notebook optimistic rows', () => {
+  const items = [
+    { word: 'alpha', notebookId: 'default' },
+    { word: 'beta', notebookId: 'nb-reading' },
+    { word: 'gamma' },
+  ];
+  assert.deepEqual(pendingItemsForNotebook(items, 'nb-reading'), [{ word: 'beta', notebookId: 'nb-reading' }]);
+  assert.deepEqual(pendingItemsForNotebook(items, 'default').map((i) => i.word), ['alpha', 'gamma']);
 });
 
 // ---------------------------------------------------------------------------
