@@ -20,6 +20,8 @@ const REQUIRED = [
   'settings',
   'source-web', 'source-local',
   'search', 'clear', 'check',
+  'books.vertical', 'magnifyingglass', 'sparkles', 'checkmark.seal', 'leaf',
+  'line.3.horizontal.decrease.circle',
   'error-login', 'error-quota', 'error-network', 'error-server', 'error-generic',
   // word-detail + navigation + popup glyphs (Phase 0 — unblocks the detail panel,
   // back navigation, speaker TTS, link accessory, refresh, calendar/link footer).

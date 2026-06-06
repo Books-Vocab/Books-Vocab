@@ -17,6 +17,9 @@ const stateContent = $('#stateContent');
 const searchInput  = $('#searchInput');
 const searchIcon   = $('#searchIcon');
 const searchClear  = $('#searchClear');
+const emptyIcon    = $('#emptyIcon');
+const emptyTitle   = $('#emptyTitle');
+const emptySubtitle = $('#emptySubtitle');
 const themeBtn     = $('#themeBtn');
 const settingsBtn  = $('#settingsBtn');
 const retryBtn     = $('#retryBtn');
@@ -176,10 +179,48 @@ async function cycleTheme() {
  * @param {'loading'|'empty'|'error'|'content'} state
  */
 function setState(state) {
+  if (state === 'empty') renderStandaloneEmptyState();
   stateLoading.hidden = state !== 'loading';
   stateEmpty.hidden   = state !== 'empty';
   stateError.hidden   = state !== 'error';
   stateContent.hidden = state !== 'content';
+}
+
+function currentEmptyState(hasNoEntries) {
+  return KGPure.vocabEmptyState({
+    hasNoEntries,
+    searchText: searchInput.value,
+    filters: selectedStates,
+  });
+}
+
+function createEmptyStateElement(model, compact = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'kg-empty' + (compact ? ' kg-empty--inline' : '');
+  wrap.dataset.emptyKind = model.kind;
+
+  const icon = document.createElement('span');
+  icon.className = 'kg-empty__icon';
+  icon.setAttribute('aria-hidden', 'true');
+  KGIcons.setIcon(icon, model.systemImage);
+
+  const title = document.createElement('p');
+  title.className = 'kg-empty__title';
+  title.textContent = t(model.titleKey);
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'kg-empty__subtitle';
+  subtitle.textContent = t(model.descriptionKey);
+
+  wrap.append(icon, title, subtitle);
+  return wrap;
+}
+
+function renderStandaloneEmptyState() {
+  const model = currentEmptyState(true);
+  if (emptyIcon) KGIcons.setIcon(emptyIcon, model.systemImage);
+  if (emptyTitle) emptyTitle.textContent = t(model.titleKey);
+  if (emptySubtitle) emptySubtitle.textContent = t(model.descriptionKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +265,7 @@ async function loadVocabList() {
     await loadPendingSyncItems(items);
 
     if (items.length === 0 && pendingSyncItems.length === 0) {
+      renderStandaloneEmptyState();
       setState('empty');
     } else {
       setState('content');
@@ -269,6 +311,7 @@ async function refreshVocabSilently() {
 
     if (items.length === 0 && pendingSyncItems.length === 0) {
       closeDetail();
+      renderStandaloneEmptyState();
       setState('empty');
       return;
     }
@@ -596,13 +639,10 @@ function renderList(items) {
   renderFilterBar(corpus);
   renderSortPill(corpus);
 
-  // No match for the active search/filter (corpus is non-empty) — iOS shows a
-  // "沒有符合的單字" empty state; mirror it inline so the chrome stays put.
+  // No match for the active search/filter (corpus is non-empty) — mirror iOS
+  // KGVocabEmptyState while keeping list chrome mounted.
   if (items.length === 0) {
-    const hint = document.createElement('p');
-    hint.className = 'kg-list-nomatch';
-    hint.textContent = t('noMatch');
-    stateContent.appendChild(hint);
+    stateContent.appendChild(createEmptyStateElement(currentEmptyState(false), true));
     setState('content');
     return;
   }

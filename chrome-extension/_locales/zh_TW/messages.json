@@ -60,6 +60,13 @@
   "settingsOpenAria": { "message": "開啟設定" },
   "emptyTitle": { "message": "還沒有詞彙" },
   "emptySubtitle": { "message": "在網頁上選取文字來翻譯和收藏" },
+  "emptyCollectedTitle": { "message": "尚無已收錄單字" },
+  "emptyCollectedSubtitle": { "message": "在書架閱讀時長按生字加入單字本，或重新整理以拉取雲端已有資料。" },
+  "emptySearchTitle": { "message": "沒有符合的單字" },
+  "emptySearchSubtitle": { "message": "試試其他關鍵字，或取消部分篩選條件。" },
+  "emptyFilterTitle": { "message": "目前沒有符合篩選條件的單字" },
+  "emptyFilterSubtitle": { "message": "試試取消部分篩選條件，或切換排序方式。" },
+  "emptySyncedSubtitle": { "message": "同步完成後，這裡會顯示你的雲端單字。" },
 
   "sortDefault": { "message": "複習優先" },
   "sortAlphabetical": { "message": "字母序" },

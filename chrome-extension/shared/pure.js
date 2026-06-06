@@ -404,6 +404,62 @@ function sortVocab(items, sortOption = 'default', nowMs = Date.now()) {
 }
 
 /**
+ * Resolve the vocabulary empty state using the same branch priority as iOS
+ * KGVocabEmptyState: whole notebook empty > search > filters > default.
+ *
+ * @param {{hasNoEntries?: boolean, searchText?: string,
+ *          filters?: Set<string>|Array<string>|null}} opts
+ * @returns {{kind:string,titleKey:string,descriptionKey:string,systemImage:string}}
+ */
+function vocabEmptyState({ hasNoEntries = false, searchText = '', filters = null } = {}) {
+  const q = String(searchText || '');
+  const stateSet = filters && typeof filters.has === 'function'
+    ? filters
+    : new Set(Array.isArray(filters) ? filters : []);
+
+  if (hasNoEntries) {
+    return {
+      kind: 'empty',
+      titleKey: 'emptyCollectedTitle',
+      descriptionKey: 'emptyCollectedSubtitle',
+      systemImage: 'books.vertical',
+    };
+  }
+
+  if (q.length > 0) {
+    return {
+      kind: 'search',
+      titleKey: 'emptySearchTitle',
+      descriptionKey: 'emptySearchSubtitle',
+      systemImage: 'magnifyingglass',
+    };
+  }
+
+  if (stateSet.size > 0) {
+    let systemImage = 'line.3.horizontal.decrease.circle';
+    if (stateSet.size === 1) {
+      const state = stateSet.values().next().value;
+      if (state === 'unlearned') systemImage = 'sparkles';
+      else if (state === 'due') systemImage = 'checkmark.seal';
+      else if (state === 'reviewed') systemImage = 'leaf';
+    }
+    return {
+      kind: 'filter',
+      titleKey: 'emptyFilterTitle',
+      descriptionKey: 'emptyFilterSubtitle',
+      systemImage,
+    };
+  }
+
+  return {
+    kind: 'default',
+    titleKey: 'emptyCollectedTitle',
+    descriptionKey: 'emptySyncedSubtitle',
+    systemImage: 'line.3.horizontal.decrease.circle',
+  };
+}
+
+/**
  * Classify an error response (from the background worker / ApiError.toJSON())
  * into the user-facing presentation used by the side panel error state.
  *
@@ -716,6 +772,7 @@ const KGPureExports = {
   VOCAB_SORT_OPTIONS,
   filterVocab,
   sortVocab,
+  vocabEmptyState,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,

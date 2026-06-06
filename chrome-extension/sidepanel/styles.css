@@ -209,15 +209,6 @@ body {
   height: 13px;
 }
 
-/* No-match hint when search/filter excludes everything (corpus non-empty). */
-.kg-list-nomatch {
-  padding: var(--sp-6, 32px) var(--page-h-padding);
-  text-align: center;
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  color: var(--text-tertiary);
-}
-
 /* Review CTA pill — brandHero fill (mirrors iOS VocabReviewCTAPill) */
 .kg-review-cta {
   display: inline-flex;
@@ -359,11 +350,26 @@ body {
   text-align: center;
 }
 
-.kg-empty__illustration {
-  width: 96px;
-  height: 96px;
+.kg-empty--inline {
+  min-height: 220px;
+  padding: var(--sp-6, 32px) var(--page-h-padding);
+}
+
+.kg-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
   margin-bottom: var(--sp-md);
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
   color: var(--text-tertiary);
+}
+
+.kg-empty__icon svg {
+  width: 28px;
+  height: 28px;
 }
 
 .kg-empty__title {

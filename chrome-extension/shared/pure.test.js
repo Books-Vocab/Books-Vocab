@@ -29,6 +29,7 @@ const {
   VOCAB_SORT_OPTIONS,
   filterVocab,
   sortVocab,
+  vocabEmptyState,
   classifyError,
   pickPreferredVoice,
   ROUTABLE_MESSAGE_TYPES,
@@ -345,6 +346,42 @@ test('sortVocab does not mutate input; unknown option → default', () => {
   const out = sortVocab(CORPUS, 'nonsense', NOW);
   assert.deepEqual(CORPUS, copy);            // untouched
   assert.deepEqual(out.map((i) => i.word), ['apple', 'banana', 'cherry', 'date']);
+});
+
+// ---------------------------------------------------------------------------
+// vocabEmptyState (mirrors iOS KGVocabEmptyState)
+// ---------------------------------------------------------------------------
+
+test('vocabEmptyState prioritizes whole-empty over search and filters', () => {
+  assert.deepEqual(
+    vocabEmptyState({ hasNoEntries: true, searchText: 'cat', filters: ['due'] }),
+    {
+      kind: 'empty',
+      titleKey: 'emptyCollectedTitle',
+      descriptionKey: 'emptyCollectedSubtitle',
+      systemImage: 'books.vertical',
+    },
+  );
+});
+
+test('vocabEmptyState returns search copy before filter copy', () => {
+  assert.deepEqual(
+    vocabEmptyState({ hasNoEntries: false, searchText: 'cat', filters: ['due'] }),
+    {
+      kind: 'search',
+      titleKey: 'emptySearchTitle',
+      descriptionKey: 'emptySearchSubtitle',
+      systemImage: 'magnifyingglass',
+    },
+  );
+});
+
+test('vocabEmptyState uses single-filter iOS system-image branches', () => {
+  assert.equal(vocabEmptyState({ filters: ['unlearned'] }).systemImage, 'sparkles');
+  assert.equal(vocabEmptyState({ filters: ['due'] }).systemImage, 'checkmark.seal');
+  assert.equal(vocabEmptyState({ filters: ['reviewed'] }).systemImage, 'leaf');
+  assert.equal(vocabEmptyState({ filters: ['due', 'reviewed'] }).systemImage, 'line.3.horizontal.decrease.circle');
+  assert.equal(vocabEmptyState({ filters: [] }).systemImage, 'line.3.horizontal.decrease.circle');
 });
 
 // ---------------------------------------------------------------------------
