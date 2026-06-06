@@ -25,7 +25,13 @@ version: 3.0.0
 | `/cleanup A,B` / `/cleanup except C,D` | **PR mode** + 白/黑名單 | 同上，限縮 PR 範圍 |
 | `/cleanup all` | **Full convergence** | repo 完全收斂：零 outstanding PR **+ branch + worktree + local change** |
 
+**`all` 的權威定義（使用者原話，一字不漏）：**
+
+> make sure that the repository is fully converged and synchronized. There are no outstanding branches, worktrees, pull requests, or local changes.
+
 **Full convergence（`all`）= PR mode 全跑完，再追加分支/worktree 收斂（見 Phase 2.5）。** 核心差異：`all` 把「branch/worktree 的存在本身」也當待收斂項，目標終態是 `git branch` 只剩 main、`git worktree list` 只剩主 repo、working tree clean。
+
+> ⚠️ **squash-merge 陷阱（記死）**：判斷分支是否已整合**不能只信 `git branch --merged main`** —— squash-merge 後 commit hash 變了，已整合的分支會被它列為「未 merged」，誤判成活工作而放生。每條未刪分支必須交叉驗證：對應 PR 是否 `MERGED`（`gh pr view <branch> --json state,mergedAt`）／分支內容是否已在 main（`git cat-file -e HEAD:<分支新增的代表檔>`）。任一為真 = 已整合，直接刪 local + remote。
 
 > 效率原則：**能 squash 就不開 PR**。`all` 模式對 unpushed 含工作的分支走**本地 squash 進 main**（`git merge --squash` → commit → push），不繞 GitHub PR round-trip。PR 流程只在「已有 open PR」或「要 review 痕跡/CI gate」時用。
 
@@ -92,7 +98,7 @@ PR 全收完後跑。逐一處置**每條 local branch + 每個 worktree**，直
 
 | 分支狀態 | 處置 |
 |---|---|
-| 已 merge 進 main（`git branch --merged main` 列出） | 直接 `git branch -d`，其 worktree `git worktree remove` |
+| 已整合進 main（`git branch --merged main` 列出，**或** 對應 PR `MERGED` / 分支內容已在 main — 見上方 squash-merge 陷阱） | 直接刪 local（`git branch -D`）+ remote（`git push origin --delete`）+ worktree（`git worktree remove`） |
 | unpushed 含工作、**驗證綠** | **本地 squash 進 main**（不開 PR），再刪分支 + 移 worktree |
 | unpushed 含工作、**驗證紅/不確定** | **報告並停手，不擅自刪**（B 的底線：不丟未整合工作）。列出要使用者裁決 |
 | scope 黑名單 / 活 agent 佔用 | 神聖不碰 |
