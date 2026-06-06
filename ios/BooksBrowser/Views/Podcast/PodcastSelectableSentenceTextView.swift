@@ -245,6 +245,14 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
         ) -> UIMenu? {
             guard let selection = selectionPayload(for: range) else { return nil }
 
+            // [診斷] DEBUG-gated：確認 editMenu delegate 對任意選取(含多詞片語)都被
+            // 呼叫且回兩個 action。若實機片語選取時這條沒印 → delegate 沒被觸發；
+            // 印了但 UI 缺「解釋」→ menu 呈現層問題。RELEASE 零成本。
+            PerfLog.general.mark(
+                "podcastEditMenu",
+                "len=\(range.length) route=\(PodcastSelectionRouting.route(for: selection.text)) text=\(selection.text)"
+            )
+
             // Translate routes single-word → word path, multi-word → phrase path
             // (mirrors reader). Explain is offered for BOTH word and phrase, matching
             // reader's gate-free edit menu.
