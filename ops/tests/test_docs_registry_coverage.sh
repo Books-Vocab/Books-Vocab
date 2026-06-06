@@ -13,6 +13,20 @@ trap 'rm -rf "$tmpdir"' EXIT
 grep -q "docs_registry_coverage:" "$tmpdir/coverage.out"
 grep -q "registered=" "$tmpdir/coverage.out"
 grep -q "unregistered=" "$tmpdir/coverage.out"
+grep -q "active_unregistered=" "$tmpdir/coverage.out"
+grep -q "backlog_unregistered=" "$tmpdir/coverage.out"
+grep -q "BACKLOG_UNREGISTERED" "$tmpdir/coverage.out"
+grep -q "docs/plans/2026-05-23-notebook-editorial-stack.md" "$tmpdir/coverage.out"
+if grep -q "ACTIVE_UNREGISTERED" "$tmpdir/coverage.out"; then
+  echo "active docs should all be registered; only backlog docs may remain unregistered" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
+if grep -q "docs/sop/figma-token-workflow.md" "$tmpdir/coverage.out"; then
+  echo "Figma token workflow is an active SOP and should be registered" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
 if grep -q "docs/reference/feature_boundary/" "$tmpdir/coverage.out"; then
   echo "feature boundary docs should all be registered" >&2
   cat "$tmpdir/coverage.out" >&2
@@ -37,6 +51,15 @@ fi
 ./ops/docs_registry_coverage.py --json >"$tmpdir/coverage.json"
 grep -q '"registered_count"' "$tmpdir/coverage.json"
 grep -q '"unregistered_by_tier"' "$tmpdir/coverage.json"
+grep -q '"active_unregistered_count": 0' "$tmpdir/coverage.json"
+grep -q '"backlog_unregistered_count"' "$tmpdir/coverage.json"
+grep -q '"backlog_unregistered"' "$tmpdir/coverage.json"
+grep -q '"docs/plans/2026-05-23-notebook-editorial-stack.md"' "$tmpdir/coverage.json"
+if grep -q '"docs/sop/figma-token-workflow.md"' "$tmpdir/coverage.json"; then
+  echo "Figma token workflow should be registered in JSON output" >&2
+  cat "$tmpdir/coverage.json" >&2
+  exit 1
+fi
 if grep -q '"docs/reference/feature_boundary/' "$tmpdir/coverage.json"; then
   echo "feature boundary docs should all be registered in JSON output" >&2
   cat "$tmpdir/coverage.json" >&2
@@ -58,8 +81,5 @@ if grep -Eq '"docs/(sop/(architecture|backup|backup_restore|i18n_lint|i18n_plura
   exit 1
 fi
 
-if ./ops/docs_registry_coverage.py --strict >"$tmpdir/strict.out" 2>&1; then
-  echo "docs_registry_coverage --strict unexpectedly passed despite unregistered active docs" >&2
-  exit 1
-fi
-grep -q "STRICT FAIL" "$tmpdir/strict.out"
+./ops/docs_registry_coverage.py --strict >"$tmpdir/strict.out"
+grep -q "active_unregistered=0" "$tmpdir/strict.out"
