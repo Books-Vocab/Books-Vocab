@@ -4,7 +4,7 @@ authority: SoT
 update_trigger: code-change
 scope:
   - backend/src/kg/
-verified_against: 1f55231f
+verified_against: 746dafaa
 -->
 # Card 欄位格式規範
 

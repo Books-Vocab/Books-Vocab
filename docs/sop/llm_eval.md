@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/llm_eval/
   - docs/reference/llm_eval.md
-verified_against: d1a5a383
+verified_against: 746dafaa
 -->
 # LLM Eval Runbook
 

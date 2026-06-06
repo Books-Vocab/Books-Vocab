@@ -4,7 +4,7 @@ authority: derived
 update_trigger: manual
 scope:
   - ios/BooksBrowser/
-verified_against: bb54d47a
+verified_against: 746dafaa
 -->
 # UI Review Checklist
 
