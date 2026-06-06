@@ -39,6 +39,10 @@ const notebookForm = $('#notebookForm');
 const notebookSheetTitle = $('#notebookSheetTitle');
 const notebookSheetClose = $('#notebookSheetClose');
 const notebookNameInput = $('#notebookNameInput');
+const notebookCoverPreview = $('#notebookCoverPreview');
+const notebookCoverPreviewName = $('#notebookCoverPreviewName');
+const notebookColorSwatches = $('#notebookColorSwatches');
+const notebookPatternChoices = $('#notebookPatternChoices');
 const notebookSheetError = $('#notebookSheetError');
 const notebookSheetDelete = $('#notebookSheetDelete');
 const notebookSheetSubmit = $('#notebookSheetSubmit');
@@ -81,6 +85,8 @@ let activeNotebookId = 'default';
 
 /** @type {'create'|'rename'|null} */
 let notebookSheetMode = null;
+let notebookDraftColor = KGPure.NOTEBOOK_DEFAULT_COLOR;
+let notebookDraftPattern = null;
 
 /**
  * Selected review-state filter (iOS multi-select chips). Empty = show all.
@@ -150,6 +156,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (notebookSheetScrim) notebookSheetScrim.addEventListener('click', closeNotebookSheet);
   if (notebookForm) notebookForm.addEventListener('submit', submitNotebookForm);
+  if (notebookNameInput) notebookNameInput.addEventListener('input', renderNotebookCoverPreview);
+  if (notebookColorSwatches) notebookColorSwatches.addEventListener('click', onNotebookColorClick);
+  if (notebookPatternChoices) notebookPatternChoices.addEventListener('click', onNotebookPatternClick);
   if (notebookSheetDelete) notebookSheetDelete.addEventListener('click', deleteActiveNotebook);
 
   // Word detail panel — back navigation + delegated speaker / link-nav actions.
@@ -447,8 +456,12 @@ function openNotebookSheet(mode, options = {}) {
     ? t('notebookAdd')
     : (options.focusDelete ? t('notebookManage') : t('notebookRename'));
   notebookNameInput.value = mode === 'create' ? '' : ((nb && nb.name) || '');
+  notebookDraftColor = KGPure.normalizeNotebookColor(mode === 'create' ? KGPure.NOTEBOOK_DEFAULT_COLOR : nb && nb.color)
+    || KGPure.NOTEBOOK_DEFAULT_COLOR;
+  notebookDraftPattern = KGPure.normalizeNotebookCoverPattern(mode === 'create' ? null : nb && nb.coverPattern) || null;
   notebookNameInput.placeholder = t('notebookNamePlaceholder');
   notebookSheetSubmit.textContent = mode === 'create' ? t('notebookCreateSubmit') : t('notebookRenameSubmit');
+  renderNotebookAppearanceControls();
   const canDelete = mode === 'rename' && KGPure.canDeleteNotebook(nb);
   if (notebookSheetDelete) {
     notebookSheetDelete.hidden = !canDelete;
@@ -479,13 +492,57 @@ function showNotebookSheetError(message) {
   notebookSheetError.hidden = false;
 }
 
+function renderNotebookAppearanceControls() {
+  if (notebookColorSwatches) {
+    notebookColorSwatches.innerHTML = KGPure.NOTEBOOK_PALETTE.map((item) => {
+      const selected = item.hex === notebookDraftColor;
+      return `<button class="kg-notebook-swatch${selected ? ' is-selected' : ''}" type="button" data-color="${esc(item.hex)}" title="${esc(item.name)}" aria-label="${esc(item.name)}" aria-pressed="${selected ? 'true' : 'false'}" style="--swatch:${esc(item.hex)}"></button>`;
+    }).join('');
+  }
+  if (notebookPatternChoices) {
+    const options = [{ id: '', label: t('notebookPatternNone') }, ...KGPure.NOTEBOOK_COVER_PATTERNS];
+    notebookPatternChoices.innerHTML = options.map((item) => {
+      const selected = (item.id || null) === notebookDraftPattern;
+      const patternClass = item.id ? ` kg-notebook-pattern--${esc(item.id)}` : '';
+      return `<button class="kg-notebook-pattern${patternClass}${selected ? ' is-selected' : ''}" type="button" data-pattern="${esc(item.id)}" aria-pressed="${selected ? 'true' : 'false'}" style="--cover-color:${esc(notebookDraftColor)}"><span class="kg-notebook-pattern__sample"></span><span>${esc(item.label)}</span></button>`;
+    }).join('');
+  }
+  renderNotebookCoverPreview();
+}
+
+function renderNotebookCoverPreview() {
+  if (!notebookCoverPreview || !notebookCoverPreviewName) return;
+  const name = (notebookNameInput && notebookNameInput.value.trim()) || t('notebookPreviewName');
+  notebookCoverPreview.style.setProperty('--cover-color', notebookDraftColor || KGPure.NOTEBOOK_DEFAULT_COLOR);
+  notebookCoverPreview.dataset.pattern = notebookDraftPattern || '';
+  notebookCoverPreviewName.textContent = name;
+}
+
+function onNotebookColorClick(event) {
+  const btn = event.target.closest('[data-color]');
+  if (!btn) return;
+  const color = KGPure.normalizeNotebookColor(btn.dataset.color);
+  if (!color) return;
+  notebookDraftColor = color;
+  renderNotebookAppearanceControls();
+}
+
+function onNotebookPatternClick(event) {
+  const btn = event.target.closest('[data-pattern]');
+  if (!btn) return;
+  const pattern = KGPure.normalizeNotebookCoverPattern(btn.dataset.pattern || null);
+  if (pattern === undefined) return;
+  notebookDraftPattern = pattern;
+  renderNotebookAppearanceControls();
+}
+
 async function submitNotebookForm(event) {
   event.preventDefault();
   if (!notebookSheetMode || !notebookNameInput || !notebookSheetSubmit) return;
   clearNotebookSheetError();
   const payload = notebookSheetMode === 'create'
-    ? KGPure.buildNotebookCreatePayload(notebookNameInput.value)
-    : KGPure.buildNotebookUpdatePayload(notebookNameInput.value);
+    ? KGPure.buildNotebookCreatePayload(notebookNameInput.value, notebookDraftColor, notebookDraftPattern)
+    : KGPure.buildNotebookUpdatePayload(notebookNameInput.value, notebookDraftColor, notebookDraftPattern);
   if (!payload) {
     showNotebookSheetError(t('notebookNameInvalid'));
     return;

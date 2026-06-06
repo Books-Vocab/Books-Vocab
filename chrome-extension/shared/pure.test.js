@@ -53,6 +53,8 @@ const {
   parseInlineMarks,
   VALID_THEMES,
   DEFAULT_THEME,
+  NOTEBOOK_PALETTE,
+  NOTEBOOK_COVER_PATTERNS,
 } = require('./pure.js');
 
 // ---------------------------------------------------------------------------
@@ -207,6 +209,30 @@ test('buildNotebookCreatePayload / update payload use backend field names', () =
   assert.deepEqual(buildNotebookUpdatePayload(' 新名字 '), { name: '新名字' });
   assert.equal(buildNotebookCreatePayload('  '), null);
   assert.equal(buildNotebookUpdatePayload('x'.repeat(101)), null);
+});
+
+test('notebook appearance constants mirror the iOS/backend contract', () => {
+  assert.deepEqual(
+    NOTEBOOK_COVER_PATTERNS.map((p) => p.id),
+    ['dots', 'lines', 'grid', 'waves', 'circles', 'noise'],
+  );
+  assert.equal(NOTEBOOK_PALETTE.length, 12);
+  assert.ok(NOTEBOOK_PALETTE.every((c) => /^#[0-9A-F]{6}$/.test(c.hex)));
+});
+
+test('notebook payloads carry validated cover color and pattern', () => {
+  assert.deepEqual(buildNotebookCreatePayload(' 閱讀 ', '#AFC2D3', 'grid'), {
+    name: '閱讀',
+    color: '#AFC2D3',
+    cover_pattern: 'grid',
+  });
+  assert.deepEqual(buildNotebookUpdatePayload(' 新名字 ', '#afc2d3', null), {
+    name: '新名字',
+    color: '#AFC2D3',
+    cover_pattern: '',
+  });
+  assert.equal(buildNotebookCreatePayload('閱讀', 'blue', 'grid'), null);
+  assert.equal(buildNotebookCreatePayload('閱讀', '#AFC2D3', 'stripes'), null);
 });
 
 test('canDeleteNotebook blocks default/deleted/missing notebooks', () => {

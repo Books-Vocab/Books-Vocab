@@ -95,6 +95,11 @@ const seedList = (theme) =>
 
 const CASES = [
   { name: 'sidepanel-content-light', page: SP, expr: seedList('light') + `setState('content'); applyView();` },
+  {
+    name: 'sidepanel-notebook-sheet-light',
+    page: SP,
+    expr: seedList('light') + `setState('content'); applyView(); openNotebookSheet('create'); notebookNameInput.value='閱讀筆記'; notebookDraftColor='#C5B2D0'; notebookDraftPattern='grid'; renderNotebookAppearanceControls();`,
+  },
   { name: 'sidepanel-content-dark', page: SP, expr: seedList('dark') + `setState('content'); applyView();` },
   { name: 'sidepanel-content-sepia', page: SP, expr: seedList('sepia') + `setState('content'); applyView();` },
   { name: 'sidepanel-detail-light', page: SP, expr: seedList('light') + `setState('content'); applyView(); openDetail(vocabData[0]);` },

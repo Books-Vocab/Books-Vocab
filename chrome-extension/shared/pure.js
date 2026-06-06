@@ -10,6 +10,29 @@
 
 const VALID_THEMES = ['light', 'dark', 'sepia'];
 const DEFAULT_THEME = 'light';
+const NOTEBOOK_PALETTE = [
+  { name: '森林', hex: '#B1C5AE' },
+  { name: '海洋', hex: '#AFC2D3' },
+  { name: '琥珀', hex: '#DEC69C' },
+  { name: '紫藤', hex: '#C5B2D0' },
+  { name: '珊瑚', hex: '#DCABA4' },
+  { name: '石墨', hex: '#AFB2B7' },
+  { name: '薄荷', hex: '#B7D2C9' },
+  { name: '靛藍', hex: '#ADABCB' },
+  { name: '玫瑰', hex: '#DEBAC2' },
+  { name: '焦糖', hex: '#D2B69D' },
+  { name: '天空', hex: '#C5DAE2' },
+  { name: '薰衣草', hex: '#C3BCCF' },
+];
+const NOTEBOOK_COVER_PATTERNS = [
+  { id: 'dots', label: '圓點' },
+  { id: 'lines', label: '條紋' },
+  { id: 'grid', label: '格線' },
+  { id: 'waves', label: '波浪' },
+  { id: 'circles', label: '同心圓' },
+  { id: 'noise', label: '噪點' },
+];
+const NOTEBOOK_DEFAULT_COLOR = '#AFC2D3';
 
 /**
  * Build the request body for `/api/translate/phrase`.
@@ -107,14 +130,41 @@ function validateNotebookName(value) {
   return { ok: true, value: name, error: null };
 }
 
-function buildNotebookCreatePayload(name) {
-  const valid = validateNotebookName(name);
-  return valid.ok ? { name: valid.value } : null;
+function normalizeNotebookColor(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const color = String(value).trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(color) ? color : undefined;
 }
 
-function buildNotebookUpdatePayload(name) {
+function normalizeNotebookCoverPattern(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const pattern = String(value).trim();
+  return NOTEBOOK_COVER_PATTERNS.some((p) => p.id === pattern) ? pattern : undefined;
+}
+
+function buildNotebookPayload(name, color, coverPattern, { includeClears = false } = {}) {
   const valid = validateNotebookName(name);
-  return valid.ok ? { name: valid.value } : null;
+  if (!valid.ok) return null;
+  const payload = { name: valid.value };
+  const normalizedColor = normalizeNotebookColor(color);
+  const normalizedPattern = normalizeNotebookCoverPattern(coverPattern);
+  if (normalizedColor === undefined && color !== undefined) return null;
+  if (normalizedPattern === undefined && coverPattern !== undefined) return null;
+  if (normalizedColor !== undefined) payload.color = normalizedColor;
+  if (normalizedPattern !== undefined) {
+    payload.cover_pattern = normalizedPattern === null && includeClears ? '' : normalizedPattern;
+  }
+  return payload;
+}
+
+function buildNotebookCreatePayload(name, color, coverPattern) {
+  return buildNotebookPayload(name, color, coverPattern);
+}
+
+function buildNotebookUpdatePayload(name, color, coverPattern) {
+  return buildNotebookPayload(name, color, coverPattern, { includeClears: true });
 }
 
 function canDeleteNotebook(notebook) {
@@ -952,6 +1002,9 @@ function escapeHtml(str) {
 const KGPureExports = {
   VALID_THEMES,
   DEFAULT_THEME,
+  NOTEBOOK_PALETTE,
+  NOTEBOOK_COVER_PATTERNS,
+  NOTEBOOK_DEFAULT_COLOR,
   resolveTheme,
   buildPhraseTranslateBody,
   buildSinceQuery,
@@ -961,6 +1014,8 @@ const KGPureExports = {
   normalizeNotebookList,
   normalizeNotebookItem,
   validateNotebookName,
+  normalizeNotebookColor,
+  normalizeNotebookCoverPattern,
   buildNotebookCreatePayload,
   buildNotebookUpdatePayload,
   canDeleteNotebook,
