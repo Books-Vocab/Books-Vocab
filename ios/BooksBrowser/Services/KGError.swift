@@ -51,7 +51,7 @@ enum KGError: LocalizedError {
 
 enum SyncFailurePresentation {
     static func message(label: String, error: Error) -> String {
-        L10n.format("%@失敗：%@", operationTitle(for: label), reasonTitle(for: error))
+        L10n.format("sync.failure.message", operationTitle(for: label), reasonTitle(for: error))
     }
 
     private static func operationTitle(for label: String) -> String {

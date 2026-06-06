@@ -50,6 +50,7 @@
 "sync.failure.operation.pull" = "단어 다운로드";
 "sync.failure.operation.pullReviewEvents" = "복습 기록 다운로드";
 "sync.failure.operation.generic" = "동기화";
+"sync.failure.message" = "%@ 실패: %@";
 "sync.failure.reason.authExpired" = "로그인이 만료되었습니다";
 "sync.failure.reason.offline" = "인터넷 연결이 없습니다";
 "sync.failure.reason.timeout" = "네트워크 시간이 초과되었습니다";

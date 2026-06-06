@@ -153,15 +153,20 @@ extension KGService {
     }
 
     /// 處理單一 backgroundSync phase 的並行結果，統一處理 401 / log / Sentry /
-    /// CancellationError 過濾。回傳該 phase 的 failure label 陣列；若遇到 401
+    /// CancellationError 過濾。回傳該 phase 的 failure label + UI message；若遇到 401
     /// 則已內部處理 handleUnauthorized + lastBackgroundSyncError 並回傳 nil
     /// 以通知 caller 直接 return。
+    private struct SyncPhaseFailure {
+        let label: String
+        let message: String
+    }
+
     private func processSyncPhase(
         results: [Result<Void, Error>],
         labels: [String],
         container: ModelContainer
-    ) async -> [String]? {
-        var failures: [String] = []
+    ) async -> [SyncPhaseFailure]? {
+        var failures: [SyncPhaseFailure] = []
         for (result, label) in zip(results, labels) {
             if case .failure(let error) = result {
                 if error is KGError, case KGError.unauthorized = error {
@@ -173,7 +178,10 @@ extension KGService {
                 if !(error is CancellationError) {
                     AppCrashReporting.record(error, context: "kg.sync.\(label)")
                 }
-                failures.append(SyncFailurePresentation.message(label: label, error: error))
+                failures.append(SyncPhaseFailure(
+                    label: label,
+                    message: SyncFailurePresentation.message(label: label, error: error)
+                ))
             }
         }
         return failures
@@ -202,7 +210,8 @@ extension KGService {
         }
 
         AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.start")
-        var failures: [String] = []
+        var failureMessages: [String] = []
+        var failureLabels: [String] = []
 
         // Phase 1: push review states & review events in parallel
         async let pushReviewResult = Self.captureResult { _ = try await self.pushReviewStates(container: container) }
@@ -212,7 +221,8 @@ extension KGService {
         if let pushFailures = await processSyncPhase(
             results: pushResults, labels: ["pushReview", "pushReviewEvents"], container: container
         ) {
-            failures.append(contentsOf: pushFailures)
+            failureMessages.append(contentsOf: pushFailures.map(\.message))
+            failureLabels.append(contentsOf: pushFailures.map(\.label))
         } else {
             return
         }
@@ -225,7 +235,8 @@ extension KGService {
         if let pullFailures = await processSyncPhase(
             results: pullResults, labels: ["pull", "pullReviewEvents"], container: container
         ) {
-            failures.append(contentsOf: pullFailures)
+            failureMessages.append(contentsOf: pullFailures.map(\.message))
+            failureLabels.append(contentsOf: pullFailures.map(\.label))
         } else {
             return
         }
@@ -239,17 +250,17 @@ extension KGService {
         // 失敗僅記 log，不影響 vocab 結果。token 過期已在前面 vocab pull 的 401 分支提早 return。
         await syncPodcastCatalog(container: container)
 
-        if failures.isEmpty {
+        if failureMessages.isEmpty {
             lastBackgroundSyncError = nil
             lastSyncDate = .now
             AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.end.success")
         } else {
-            lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failures.joined(separator: ", "))
+            lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failureMessages.joined(separator: ", "))
             AppCrashReporting.addBreadcrumb(
                 category: "sync",
                 message: "sync.end.partial",
                 level: .warning,
-                data: ["failures": failures]
+                data: ["failures": failureLabels]
             )
         }
     }

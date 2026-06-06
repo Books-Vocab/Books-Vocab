@@ -50,6 +50,7 @@
 "sync.failure.operation.pull" = "Vocabulary download";
 "sync.failure.operation.pullReviewEvents" = "Review history download";
 "sync.failure.operation.generic" = "Sync";
+"sync.failure.message" = "%@ failed: %@";
 "sync.failure.reason.authExpired" = "Session expired";
 "sync.failure.reason.offline" = "No internet connection";
 "sync.failure.reason.timeout" = "Network timed out";
