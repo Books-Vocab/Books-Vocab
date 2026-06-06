@@ -128,6 +128,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         }
 
         fileManager.deleteBookFile(named: book.epubFileName)
+        BookManifestStore().delete(bookId: book.id)
         modelContext.delete(book)
         if modelContext.safeSaveWithToast(toastCoordinator) {
             toastCoordinator.success("已刪除".localized)
@@ -240,6 +241,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     )
                     modelContext.insert(book)
                     if modelContext.safeSaveWithToast(toastCoordinator) {
+                        BookManifestStore().writeBestEffort(book: book, originalFileName: url.lastPathComponent)
                         AppLog.book.info("Book saved: \(book.title)")
                         succeeded += 1
                     } else {

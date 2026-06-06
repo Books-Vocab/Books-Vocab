@@ -336,7 +336,9 @@ private struct PDFKitRepresentable: UIViewRepresentable {
                 : 1.0
             book.dateLastRead = Date()
 
-            modelContext.safeSave()
+            if modelContext.safeSave() {
+                BookManifestStore().writeBestEffort(book: book)
+            }
         }
 
         // MARK: - Selection → Vocabulary
