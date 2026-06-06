@@ -29,11 +29,11 @@ def test_different_user_dirs_different_card_store(tmp_path):
     assert s1 is not s2
 
 
-def test_same_daily_stats_store_instance(tmp_path):
+def test_same_review_event_store_instance(tmp_path):
     d = tmp_path / "user1"
     d.mkdir()
-    s1 = sf.create_daily_stats_store(d)
-    s2 = sf.create_daily_stats_store(d)
+    s1 = sf.create_review_event_store(d)
+    s2 = sf.create_review_event_store(d)
     assert s1 is s2
 
 

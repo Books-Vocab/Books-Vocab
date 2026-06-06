@@ -1,14 +1,13 @@
 """Tests for kg.vocab_review — push/pull review states using lightweight fakes.
 
-Complements test_sync_merge.py (CardStore integration) and test_daily_stats.py
-(stats happy path). Focuses on branches that are otherwise easy to regress:
+Complements test_sync_merge.py (CardStore integration). Focuses on branches
+that are otherwise easy to regress:
   * card_id-precise match wins over word fallback.
   * deleted card with matching card_id is treated as "not found".
   * get_batch is only called when at least one entry carries a card_id.
   * word-fallback updates *every* card sharing that word.
   * pending_updates is flushed via a single batch_update call.
   * client client_last unparseable -> skipped; no batch_update.
-  * pull_daily_review_stats since="" branch + empty store.
 """
 
 from __future__ import annotations
@@ -16,15 +15,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import Any
 
-from kg.api_models import DailyReviewStatEntry, ReviewStateEntry
-from kg.vocab_review import (
-    pull_daily_review_stats,
-    push_daily_review_stats,
-    push_review_states,
-)
+from kg.api_models import ReviewStateEntry
+from kg.vocab_review import push_review_states
 
 
 # --------------------------------------------------------------------- #
@@ -325,88 +319,3 @@ class TestPushReviewStatesFakes:
         assert store.get_batch_calls == []
         assert store.batch_update_calls == []
 
-
-# --------------------------------------------------------------------- #
-# push_daily_review_stats / pull_daily_review_stats branch coverage
-# --------------------------------------------------------------------- #
-class TestDailyReviewStatsBranches:
-    def test_pull_with_empty_since_uses_all(self):
-        """Falsy `since` (None or "") must take the .all() branch, not .get_since('')."""
-        store = _FakeStatsStore()
-        store._all = [
-            SimpleNamespace(day_key="2026-05-12", total=3, remembered=2, forgot=1),
-        ]
-        result = pull_daily_review_stats(since=None, stats_store=store)
-        assert len(result) == 1
-        result2 = pull_daily_review_stats(since="", stats_store=store)  # falsy str
-        assert len(result2) == 1
-        assert isinstance(result[0], DailyReviewStatEntry)
-
-    def test_pull_with_since_filters(self):
-        store = _FakeStatsStore()
-        store._all = [
-            SimpleNamespace(day_key="2026-05-10", total=1, remembered=1, forgot=0),
-            SimpleNamespace(day_key="2026-05-12", total=3, remembered=2, forgot=1),
-        ]
-        result = pull_daily_review_stats(since="2026-05-11", stats_store=store)
-        assert [r.day_key for r in result] == ["2026-05-12"]
-
-    def test_pull_returns_pydantic_models(self):
-        store = _FakeStatsStore()
-        store._all = [SimpleNamespace(day_key="2026-05-12", total=3, remembered=2, forgot=1)]
-        result = pull_daily_review_stats(since=None, stats_store=store)
-        assert all(isinstance(r, DailyReviewStatEntry) for r in result)
-        assert result[0].total == 3 and result[0].remembered == 2 and result[0].forgot == 1
-
-    def test_push_returns_upserted_count(self):
-        store = _FakeStatsStore()
-        entries = [
-            DailyReviewStatEntry(day_key="2026-05-12", total=3, remembered=2, forgot=1),
-            DailyReviewStatEntry(day_key="2026-05-13", total=1, remembered=1, forgot=0),
-        ]
-        out = push_daily_review_stats(entries, stats_store=store, logger=logging.getLogger())
-        assert out == {"upserted": 2}
-        assert [u["day_key"] for u in store.upserts] == ["2026-05-12", "2026-05-13"]
-
-    def test_push_empty_is_zero(self):
-        store = _FakeStatsStore()
-        out = push_daily_review_stats([], stats_store=store, logger=logging.getLogger())
-        assert out == {"upserted": 0}
-        assert store.upserts == []
-
-
-# --------------------------------------------------------------------- #
-# pull_daily_review_stats `since` format validation (vocab_review.py:140-146)
-# day_key filtering is a raw string >= compare, so a non-YYYY-MM-DD value
-# must be rejected up front rather than silently mis-filtering.
-# --------------------------------------------------------------------- #
-import pytest  # noqa: E402
-
-from kg.exceptions import BadRequestError  # noqa: E402
-
-
-class TestPullDailyReviewStatsSinceFormat:
-    @pytest.mark.parametrize(
-        "bad_since",
-        [
-            "2024-01-01T00:00",  # ISO timestamp, not a bare day_key
-            "garbage",           # not a date at all
-            "2024-13-99",        # syntactically date-shaped but invalid month/day
-            "2024/01/01",        # wrong separator
-            "20240101",          # no separators
-        ],
-    )
-    def test_rejects_non_calendar_day(self, bad_since):
-        store = _FakeStatsStore()
-        store._all = [SimpleNamespace(day_key="2026-05-12", total=1, remembered=1, forgot=0)]
-        with pytest.raises(BadRequestError):
-            pull_daily_review_stats(since=bad_since, stats_store=store)
-
-    def test_accepts_valid_day_key(self):
-        store = _FakeStatsStore()
-        store._all = [
-            SimpleNamespace(day_key="2026-05-10", total=1, remembered=1, forgot=0),
-            SimpleNamespace(day_key="2026-05-12", total=3, remembered=2, forgot=1),
-        ]
-        result = pull_daily_review_stats(since="2026-05-11", stats_store=store)
-        assert [r.day_key for r in result] == ["2026-05-12"]
