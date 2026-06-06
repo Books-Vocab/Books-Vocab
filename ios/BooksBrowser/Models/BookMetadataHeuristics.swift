@@ -16,4 +16,20 @@ enum BookMetadataHeuristics {
     static func looksLikeFallbackAuthor(_ author: String) -> Bool {
         author.isEmpty || author == "Unknown"
     }
+
+    /// 從 EPUB 抽出的 title 是否「可用來覆蓋 fallback」。
+    ///
+    /// 拒絕：空白、Readium 的佔位 `"Untitled"`、UUID、與檔名 base 相同——這些都不是
+    /// 真書名，覆蓋上去只是換一種髒。
+    static func isUsableExtractedTitle(_ title: String, fileName: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "Untitled" else { return false }
+        return !looksLikeFallbackTitle(trimmed, fileName: fileName)
+    }
+
+    /// 從 EPUB 抽出的 author 是否可用（非空、非 Readium 佔位 `"Unknown"`）。
+    static func isUsableExtractedAuthor(_ author: String) -> Bool {
+        let trimmed = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != "Unknown"
+    }
 }
