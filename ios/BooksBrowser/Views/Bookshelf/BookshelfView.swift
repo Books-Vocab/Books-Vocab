@@ -24,6 +24,7 @@ struct BookshelfView: View {
     @Environment(\.bookFileManager) private var bookFileManager
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.authManager) private var authManager
+    @Environment(\.kgService) private var kgService
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
@@ -90,6 +91,21 @@ struct BookshelfView: View {
                     }
                     .accessibilityLabel("設定".localized)
                     .accessibilityIdentifier("bookshelf.settingsButton")
+
+                    #if targetEnvironment(macCatalyst)
+                    Button(action: {
+                        coordinator.sync(
+                            container: modelContext.container,
+                            kgService: kgService,
+                            toastCoordinator: toastCoordinator
+                        )
+                    }) {
+                        AppToolbarGlyph(systemImage: "arrow.clockwise")
+                    }
+                    .keyboardShortcut(.init("r"), modifiers: .command)
+                    .accessibilityLabel("同步".localized)
+                    .accessibilityIdentifier("bookshelf.refreshButton")
+                    #endif
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {

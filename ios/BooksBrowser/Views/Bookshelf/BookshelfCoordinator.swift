@@ -22,6 +22,7 @@ import os
     func clearError()
     func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting, toastCoordinator: AppToastCoordinator)
     func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
+    func sync(container: ModelContainer, kgService: KGService, toastCoordinator: AppToastCoordinator)
 }
 
 @Observable @MainActor
@@ -49,6 +50,12 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     // can't catch this — max(0, ratioA) still writes ratioA). Each batch
     // captures its generation; a stale write is dropped on gen mismatch.
     private var importGeneration = 0
+
+    // Tracks the in-flight manual sync so repeated taps/button-presses are
+    // coalesced. backgroundSync itself has an internal claim lock, but the
+    // coordinator needs its own guard to avoid spawning redundant tasks that
+    // would all race to read lastBackgroundSyncError before the real one finishes.
+    private var syncTask: Task<Void, Never>?
 
     func presentImporter() {
         // 新一輪匯入觸發前清掉殘留的 inline error，避免持續顯示已過期的失敗訊息
@@ -130,6 +137,24 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         modelContext.delete(book)
         if modelContext.safeSaveWithToast(toastCoordinator) {
             toastCoordinator.success("已刪除".localized)
+        }
+    }
+
+    func sync(
+        container: ModelContainer,
+        kgService: KGService,
+        toastCoordinator: AppToastCoordinator
+    ) {
+        guard syncTask == nil else { return }
+        syncTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.syncTask = nil }
+            await kgService.backgroundSync(container: container)
+            if let error = kgService.lastBackgroundSyncError {
+                toastCoordinator.warning(error)
+            } else {
+                toastCoordinator.success("同步完成".localized)
+            }
         }
     }
 
