@@ -1,8 +1,8 @@
 ---
 name: cleanup
-description: "快速收斂分支狀態：scope 圈定 PR → 火速 merge（衝突當場解）→ 收斂後才平行 review+測試 → 殘留問題 forward-fix 補合。收斂優先於驗證。"
+description: "快速收斂分支狀態：scope 圈定 PR → 火速 merge（衝突當場解）→ 收斂後才平行 review+測試 → 殘留問題 forward-fix 補合。收斂優先於驗證。`all` mode 另含 branch/worktree 收斂 + 全 doc-debt 清除（docs_lint 0 STALE/0 ERROR）。"
 user-invocable: true
-version: 3.0.0
+version: 3.1.0
 ---
 
 # Cleanup：最快讓分支狀態收斂
@@ -29,7 +29,7 @@ version: 3.0.0
 
 > make sure that the repository is fully converged and synchronized. There are no outstanding branches, worktrees, pull requests, or local changes.
 
-**Full convergence（`all`）= PR mode 全跑完，再追加分支/worktree 收斂（見 Phase 2.5）。** 核心差異：`all` 把「branch/worktree 的存在本身」也當待收斂項，目標終態是 `git branch` 只剩 main、`git worktree list` 只剩主 repo、working tree clean。
+**Full convergence（`all`）= PR mode 全跑完，再追加分支/worktree 收斂（見 Phase 2.5）+ doc-debt 全清（見 Phase 4b）。** 核心差異：`all` 把「branch/worktree 的存在本身」**與「累積的文檔 debt」**也當待收斂項，目標終態是 `git branch` 只剩 main、`git worktree list` 只剩主 repo、working tree clean、**`ops/docs_lint.sh` 0 STALE / 0 ERROR（僅剩有記錄的 legitimate 豁免）**。doc-debt **不論是否本批造成一律清**（使用者指令，2026-06-06）。
 
 > ⚠️ **squash-merge 陷阱（記死）**：判斷分支是否已整合**不能只信 `git branch --merged main`** —— squash-merge 後 commit hash 變了，已整合的分支會被它列為「未 merged」，誤判成活工作而放生。每條未刪分支必須交叉驗證：對應 PR 是否 `MERGED`（`gh pr view <branch> --json state,mergedAt`）／分支內容是否已在 main（`git cat-file -e HEAD:<分支新增的代表檔>`）。任一為真 = 已整合，直接刪 local + remote。
 
@@ -153,16 +153,29 @@ git branch -D <branch>
 
 ---
 
-## Phase 4 — Doc-sync（後置，可派隔離 agent）
+## Phase 4 — Doc-sync + Doc-debt 全清（後置，可派隔離 agent）
 
+兩件事：**4a** 同步本批 code 變更的 doc（一向如此）；**4b** 清掉 repo **累積的全部 doc-debt**——`all` mode 必跑、不論是否本批造成（使用者指令，2026-06-06）。
+
+### 4a. 本批 doc-sync
 跳過條件：純樣板 / doc-only。否則合進的 code 變更照 `docs/sop/doc_sync.md` 路由同步。
+- 多數 PR 應已 doc-as-code 自帶 doc 改動。重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
 
-- 多數 PR 應已 doc-as-code 自帶 doc 改動。剩餘走 `(cd <wt> && ./ops/docs_lint.sh)`：
-  - 內容因本批真過時 → 改內容 + bump `verified_against` 到新 HEAD。
-  - 純 threshold lag（>30 commit）但內容仍對 → 只 bump `verified_against`。
-- 重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
-- 派 doc-auditor 時用 `doc-auditor-prompt.md`；**agent 只分析、主 agent 統一 Edit**；要派會 commit 的就 `isolation: worktree`。
-- 完成 `docs:` commit（commit 無妨；push 見下）。
+### 4b. Doc-debt 全清（`all` mode 必跑；其它 mode 至少跑並把無法當場清的列入報告）
+跑 `(cd <wt> && ./ops/docs_lint.sh)`，把**每一條** STALE / ERROR 清到 0（或縮到有記錄的 legitimate 豁免）。**這是 `all` 收斂終態的一部分，不是 best-effort。** 量大時派多個 doc-auditor agent（`model: opus`, `run_in_background: true`）平行審，但 **agent 只分析、主 agent 統一 Edit + 單一 `docs:` commit**（要派會自行 commit 的就 `isolation: worktree`）。逐條按 lint 訊號處置：
+
+| docs_lint 訊號 | 根因 | 處置 |
+|---|---|---|
+| **STALE**（`verified_against..HEAD` 動到 scope 超閾值） | 內容可能落後 | 派 doc-auditor 比對 doc vs 自 `verified_against` 以來動到其 scope 的 commit：**內容仍對** → 只 bump `verified_against` 到 HEAD；**內容過時** → 套 agent 回報的精確 Edit + bump |
+| **ERROR — `verified_against` 不是有效 commit** | 該 hash 被 squash 掉了（歷史重寫） | 確認內容仍對後，re-point `verified_against` 到**當前有效 commit**（HEAD，或最近動到該 scope 的 commit）；內容已過時則先修內容再 re-point |
+| **ERROR — frontmatter 缺漏/格式壞** | `<!-- doc-meta -->` 不完整 | 補齊/修正 frontmatter 欄位 |
+| **snapshot tier（機器生成）STALE** | 該檔由腳本產出，**不可手 bump** | 重跑生成腳本再生：`ios_baseline.md` → `ops/gen_ios_baseline.sh`；web token → `gen_web_tokens.py`。腳本產物不手改 |
+
+**legitimate 豁免**（保留並在報告列出，不強清）：tier=`archive`（凍結歷史，不更新不引用）、tier=`legal`（不在 lint 掃描範圍）、明示 dated snapshot 且 `verified_against` 標註過時為預期者。
+
+- 派 doc-auditor 時用 `doc-auditor-prompt.md`（把該 doc 的 `verified_against..HEAD` scope diff 餵進「變更清單」欄）。
+- bump `verified_against` 前**務必確認 hash 是當前 reachable commit**（squash 後舊 hash 會失效，這正是 ERROR 的來源）。
+- 完成 `docs:` commit（commit 無妨；push 見下）。doc-debt 清除可與本批 doc-sync 合進同一個 `docs:` commit，或分開——邏輯獨立就分。
 
 ---
 
@@ -199,7 +212,8 @@ git fetch --prune
 - backend ✅ N passed ｜ chrome ✅ ｜ iOS compile ✅/跳過
 - forward-fix: #X（修 <跨 PR 組合態問題>）
 ### Doc / Git
-- doc-sync：✅ / 派 isolation agent / 跳過
+- doc-sync（4a 本批）：✅ / 派 isolation agent / 跳過
+- doc-debt 全清（4b，`all` 必含）：✅ docs_lint N STALE+M ERROR → 0（豁免 X 條已列）/ 跳過（非 all）
 - worktree/branch 收尾：✅
 - 部署：跳過（待明確指示）
 ```
@@ -214,4 +228,5 @@ git fetch --prune
 4. **`gh pr merge` 不要在被合分支上跑**（gh 會跳 checkout main 撞 local main）。
 5. **squash 後 local diverge**：worktree `git merge --ff-only origin/main`（或 reset 到 origin/main），**絕不碰使用者 local main**。
 6. **backend 測試必 `uv run pytest`**；cwd 不靠持久，一律 subshell。
+7. **doc-debt 清除（Phase 4b）兩陷阱**：(a) `ERROR verified_against 不是有效 commit` = 該 hash 被 squash 重寫掉了，re-point 前先確認內容仍對、新 hash 是當前 reachable；(b) `snapshot` tier（`ios_baseline.md` 等）STALE **不可手 bump**，必須重跑生成腳本（`ops/gen_ios_baseline.sh`），手改會與下次再生衝突。`archive`/`legal` tier 不清，列入豁免。
 7. **push/deploy 須明確指示**；生產禁令永不繞過。
