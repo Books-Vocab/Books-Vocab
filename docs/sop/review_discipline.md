@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - .claude/skills/
   - docs/sop/
-verified_against: b2445f70
+verified_against: 746dafaa
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 

@@ -21,8 +21,8 @@ VIEWS_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" 2>/d
 PREVIEW_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" -exec grep -l "#Preview" {} \; 2>/dev/null | wc -l | tr -d ' ')
 
 # 4. Concurrency stats
-MAIN_ACTOR=$(grep -r "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null | wc -l | tr -d ' ')
-ASYNC_FUNC=$(grep -r "async func" "$IOS_DIR" --include="*.swift" 2>/dev/null | wc -l | tr -d ' ')
+MAIN_ACTOR=$({ grep -r "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
+ASYNC_FUNC=$({ grep -r "async func" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
 
 cat > "$OUTPUT" << EOF
 <!-- doc-meta
