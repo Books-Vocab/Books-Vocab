@@ -22,6 +22,18 @@
     </div>
   </header>
 
+  <!-- Notebook scope (mirrors iOS current notebook selection). -->
+  <div class="kg-notebook-switcher" id="notebookSwitcher" hidden>
+    <label class="kg-notebook-switcher__label" for="notebookSelect" data-i18n="notebookScope">單字本</label>
+    <select class="kg-notebook-switcher__select" id="notebookSelect" data-i18n-attr="aria-label:notebookScopeAria" aria-label="選擇單字本"></select>
+    <button class="kg-notebook-switcher__icon" id="notebookAddBtn" type="button"
+            data-i18n-attr="title:notebookAdd;aria-label:notebookAdd" title="新增單字本" aria-label="新增單字本"></button>
+    <button class="kg-notebook-switcher__icon" id="notebookEditBtn" type="button"
+            data-i18n-attr="title:notebookRename;aria-label:notebookRename" title="重新命名單字本" aria-label="重新命名單字本"></button>
+    <button class="kg-notebook-switcher__icon kg-notebook-switcher__icon--danger" id="notebookDeleteBtn" type="button"
+            data-i18n-attr="title:notebookDelete;aria-label:notebookDelete" title="刪除單字本" aria-label="刪除單字本"></button>
+  </div>
+
   <!-- Filter + Sort Bar (mirrors iOS KGVocabPresenter chip+sort row) -->
   <div class="kg-filter-bar" id="filterBar">
     <div class="kg-filter-bar__chips" id="filterChips"></div>
@@ -65,6 +77,34 @@
 
   <!-- State: Content -->
   <div class="kg-list" id="stateContent" hidden></div>
+
+  <!-- Notebook management sheet — mirrors iOS NotebookEditSheet appearance basics. -->
+  <section class="kg-notebook-sheet" id="notebookSheet" hidden>
+    <div class="kg-notebook-sheet__scrim" id="notebookSheetScrim"></div>
+    <form class="kg-notebook-sheet__panel" id="notebookForm">
+      <header class="kg-notebook-sheet__header">
+        <h2 class="kg-notebook-sheet__title" id="notebookSheetTitle">單字本</h2>
+        <button class="kg-notebook-sheet__close" id="notebookSheetClose" type="button"
+                data-i18n-attr="aria-label:detailBack" aria-label="返回"></button>
+      </header>
+      <div class="kg-notebook-cover-preview" id="notebookCoverPreview">
+        <span class="kg-notebook-cover-preview__name" id="notebookCoverPreviewName">預覽</span>
+      </div>
+      <label class="kg-notebook-sheet__label" for="notebookNameInput" data-i18n="notebookNameLabel">名稱</label>
+      <input class="kg-notebook-sheet__input" id="notebookNameInput" type="text" maxlength="100" autocomplete="off">
+      <div class="kg-notebook-appearance">
+        <p class="kg-notebook-sheet__label" data-i18n="notebookColorLabel">顏色</p>
+        <div class="kg-notebook-swatches" id="notebookColorSwatches"></div>
+        <p class="kg-notebook-sheet__label" data-i18n="notebookPatternLabel">圖案</p>
+        <div class="kg-notebook-patterns" id="notebookPatternChoices"></div>
+      </div>
+      <p class="kg-notebook-sheet__error" id="notebookSheetError" hidden></p>
+      <footer class="kg-notebook-sheet__actions">
+        <button class="kg-btn kg-notebook-sheet__delete" id="notebookSheetDelete" type="button" hidden></button>
+        <button class="kg-btn kg-btn--accent" id="notebookSheetSubmit" type="submit"></button>
+      </footer>
+    </form>
+  </section>
 
   <!-- Word detail — full-cover push panel (mirrors iOS WordDetailSheet; the list
        stays mounted underneath so scroll / search / filter survive a round-trip). -->

@@ -174,8 +174,9 @@ async function explain(word, context) {
  * @param {Array<{word: string, translation: string, context?: string,
  *   source?: {type: string, title?: string, url?: string}}>} entries
  */
-async function addVocab(entries) {
-  return apiFetch('/api/vocab', {
+async function addVocab(entries, notebookId = 'default') {
+  const nb = encodeURIComponent(notebookId || 'default');
+  return apiFetch(`/api/vocab?notebook_id=${nb}`, {
     method: 'POST',
     body: JSON.stringify(entries),
   });
@@ -187,9 +188,49 @@ async function addVocab(entries) {
  * @param {(res: Response) => void} [onResponse] — advisory header peek (e.g. to
  *   read X-Pipeline-Pending during enrich polling)
  */
-async function listVocab(since, onResponse) {
-  const params = globalThis.KGPure.buildVocabQuery(since);
+async function listVocab(since, onResponse, notebookId) {
+  const params = globalThis.KGPure.buildVocabQuery(since, notebookId);
   return apiFetch(`/api/vocab${params}`, onResponse ? { onResponse } : {});
+}
+
+/**
+ * List notebooks, optionally only items updated since a timestamp.
+ * @param {string} [since]
+ */
+async function listNotebooks(since) {
+  const params = globalThis.KGPure.buildSinceQuery(since);
+  return apiFetch(`/api/notebooks${params}`);
+}
+
+/**
+ * Create a notebook.
+ * @param {{name:string, color?:string|null, cover_pattern?:string|null}} notebook
+ */
+async function createNotebook(notebook) {
+  return apiFetch('/api/notebooks', {
+    method: 'POST',
+    body: JSON.stringify(notebook),
+  });
+}
+
+/**
+ * Update a notebook.
+ * @param {string} notebookId
+ * @param {{name?:string, color?:string|null, cover_pattern?:string|null, sort_order?:number}} patch
+ */
+async function updateNotebook(notebookId, patch) {
+  return apiFetch(`/api/notebooks/${encodeURIComponent(notebookId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * Delete a notebook.
+ * @param {string} notebookId
+ */
+async function deleteNotebook(notebookId) {
+  return apiFetch(`/api/notebooks/${encodeURIComponent(notebookId)}`, { method: 'DELETE' });
 }
 
 /**
@@ -254,6 +295,10 @@ export {
   explain,
   addVocab,
   listVocab,
+  listNotebooks,
+  createNotebook,
+  updateNotebook,
+  deleteNotebook,
   triggerPipeline,
   lookupWord,
   getUserConfig,

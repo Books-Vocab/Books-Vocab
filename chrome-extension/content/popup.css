@@ -135,6 +135,41 @@
   transition: var(--transition-content-swap);
 }
 
+/* --- Target notebook picker — compact Reader parity control --- */
+
+.kg-popup__notebook {
+  display: grid;
+  gap: var(--sp-xs);
+  margin: var(--sp-sm) 0 var(--sp-compact);
+}
+
+.kg-popup__notebook[hidden] {
+  display: none;
+}
+
+.kg-popup__notebook-label {
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+}
+
+.kg-popup__notebook-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 var(--sp-sm);
+  border: var(--sp-hairline) solid var(--card-border);
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-subhead);
+}
+
+.kg-popup__notebook-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
 /* --- Explanation --- */
 
 .kg-popup__explanation {
