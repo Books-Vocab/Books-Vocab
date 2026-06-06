@@ -24,8 +24,26 @@
   const POPUP_EST_HEIGHT = 220;
 
   // Short i18n accessor. Content scripts read chrome.i18n directly — their UI
-  // is built in JS (not HTML), so shared/i18n.js does not apply here.
-  const t = (key, subs) => chrome.i18n.getMessage(key, subs);
+  // is built in JS (not HTML), so shared/i18n.js does not apply here. Guard it
+  // because orphaned content scripts (after extension reload/update) may keep
+  // running in the page after the extension context has died; in that state,
+  // touching chrome.i18n can itself throw "Extension context invalidated".
+  const I18N_FALLBACKS = {
+    popupContextInvalidated: '擴充功能已更新，請重新整理頁面後再試一次。',
+    popupSpeakAria: '朗讀',
+    popupCloseAria: '關閉',
+  };
+  const t = (key, subs) => {
+    try {
+      if (chrome?.runtime?.id && chrome?.i18n?.getMessage) {
+        const value = chrome.i18n.getMessage(key, subs);
+        if (value) return value;
+      }
+    } catch (_err) {
+      // Invalidated extension context — fall through to static fallback text.
+    }
+    return I18N_FALLBACKS[key] || '';
+  };
 
   // Shown when this content script is orphaned by an extension reload/update
   // (see extensionContextValid). Resolved ONCE at load time (context still
