@@ -142,7 +142,7 @@ git branch -D <branch>
 - backend：`(cd backend && uv run pytest -q <被動到的 test 檔...>)`（**必用 `uv run`**，裸 python3 會用錯版本致假失敗）
 - chrome：`(cd chrome-extension && node --test shared/*.test.js)`
 - ops shell：`(cd <wt> && ./ops/tests/test_<x>.sh)`
-- iOS：**只 compile**（此沙盒無 PTY 跑不了 sim 測試）`./ops/ios_build.sh`；動 navigation/發版時加 `--catalyst` 雙跑。**不主動跑 `ios_test.sh`**。
+- iOS：先跑 `./ops/ios_build.sh`;若合併內容動 iOS 行為 / UI / test infra,依 `docs/sop/ios.md §iOS 開發驗證梯度` 跑最小足夠 `./ops/ios_test.sh` scope。cleanup all / release / scheme/test runner 變更收尾跑 `./ops/ios_test.sh --all-targets --timeout 1200`。若當前環境 simulator 不可用,明確記錄阻塞證據,不可用 build 假裝 test 綠。
 - **優先跑「跨 PR 共享面」的測試**（web_auth / api 契約 / sync_lifecycle / i18n lint），這是語義衝突最會炸的地方。
 
 ### 3b. 平行 review（逐項，鐵律 4）

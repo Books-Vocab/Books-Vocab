@@ -205,7 +205,9 @@ KG_LOG_TZ=Asia/Taipei ./ops/devops_kg_safe.sh logs 50
 
 # iOS 測試
 ./ops/ios_test.sh -g "sanitize"     # 跑含 "sanitize" 的 test
-./ops/ios_test.sh                    # 跑全部 test
+./ops/ios_test.sh                    # 跑 unit target
+./ops/ios_test.sh --ui --file BooksBrowserUITests.swift
+./ops/ios_test.sh --all-targets --timeout 1200  # scheme 全量: unit + UI
 ```
 
 ## 機器層健康巡檢（infra-health）

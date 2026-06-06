@@ -68,7 +68,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 `ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
 
-**執行權限**：仍遵守 `AGENTS.md` scope 規則 — agent **不主動跑 `ios_test.sh`**（包含 worktree subagent），除非使用者明確要求；`ios_build.sh` 不受此限。
+**第一性原理流程**：測試系統已具備 scope、heartbeat、log preserve、false-green 防護與 DB lock retry；因此 iOS 開發不再採「不主動跑測試」的保守規則，而是採**最小足夠驗證**。
 
 ```bash
 ./ops/ios_test.sh --timeout 1200                       # 預設只跑 BooksBrowserTests unit target
@@ -85,6 +85,24 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
 - 失敗或 inconclusive 時保留完整 xcodebuild log，stdout 會印出 log path；成功時清掉臨時 log。
 - 若 Xcode 回 `build.db database is locked` / `unable to attach DB`，runner 會在同一把 repo lock 內短暫等待並重試，避免把 infrastructure lock 誤判成測試失敗。
+
+### iOS 開發驗證梯度
+
+| 變更 / 狀態 | 必跑 |
+|---|---|
+| 純註解 / doc-only | 不跑 iOS test;跑 docs gate 即可 |
+| iOS 編譯面或簡單型別修正 | `./ops/ios_build.sh` |
+| iOS model/service/presenter/test 邏輯 | `./ops/ios_test.sh --file <相關Tests.swift>` 或 `-g <pattern>` + `./ops/ios_build.sh` |
+| UI / navigation / accessibility / app launch | 相關 unit test + `./ops/ios_test.sh --ui ...` + `./ops/ios_build.sh` |
+| test runner / scheme / SwiftData model / sync lifecycle / 跨 feature 共用面 | `./ops/ios_test.sh --all-targets --timeout 1200` + `./ops/ios_build.sh` |
+| 多個 test 失敗或原因不清 | `./ops/ios_test_matrix.sh --timeout 300 [--start-at File.swift]`,逐檔定位後再修 |
+| release / cleanup all / 宣稱 iOS 全綠 | `./ops/ios_test.sh --all-targets --timeout 1200` + `./ops/ios_build.sh` |
+
+原則:
+- 不用 `--all-targets` 當第一反應;先跑最小可證明範圍,避免把多個根因混在一起。
+- 不用 build 代替 test;build 只證明可編譯,不證明行為。
+- 看到 tool failure / inconclusive / false green 先修 runner 或 invocation,不要將就。
+- 長 UI permutations 正常會跑數分鐘;依 heartbeat 判斷進度,不要因短期無 test case output 就殺掉。
 
 ## 發版 / TestFlight（`ops/ios_release.sh`）
 
