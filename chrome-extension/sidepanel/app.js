@@ -28,6 +28,24 @@ const errorTitle   = $('#errorTitle');
 const errorSubtitle = $('#errorSubtitle');
 const filterChips  = $('#filterChips');
 const filterActions = $('#filterActions');
+const notebookSwitcher = $('#notebookSwitcher');
+const notebookSelect = $('#notebookSelect');
+const notebookAddBtn = $('#notebookAddBtn');
+const notebookEditBtn = $('#notebookEditBtn');
+const notebookDeleteBtn = $('#notebookDeleteBtn');
+const notebookSheet = $('#notebookSheet');
+const notebookSheetScrim = $('#notebookSheetScrim');
+const notebookForm = $('#notebookForm');
+const notebookSheetTitle = $('#notebookSheetTitle');
+const notebookSheetClose = $('#notebookSheetClose');
+const notebookNameInput = $('#notebookNameInput');
+const notebookCoverPreview = $('#notebookCoverPreview');
+const notebookCoverPreviewName = $('#notebookCoverPreviewName');
+const notebookColorSwatches = $('#notebookColorSwatches');
+const notebookPatternChoices = $('#notebookPatternChoices');
+const notebookSheetError = $('#notebookSheetError');
+const notebookSheetDelete = $('#notebookSheetDelete');
+const notebookSheetSubmit = $('#notebookSheetSubmit');
 const stateDetail  = $('#stateDetail');
 const detailBack   = $('#detailBack');
 const detailShare  = $('#detailShare');
@@ -58,6 +76,17 @@ let vocabData = [];
  * @type {Array<object>}
  */
 let pendingSyncItems = [];
+
+/** @type {Array<object>} notebook list from API */
+let notebooks = [];
+
+/** Active notebook scope for list/add parity with iOS. */
+let activeNotebookId = 'default';
+
+/** @type {'create'|'rename'|null} */
+let notebookSheetMode = null;
+let notebookDraftColor = KGPure.NOTEBOOK_DEFAULT_COLOR;
+let notebookDraftPattern = null;
 
 /**
  * Selected review-state filter (iOS multi-select chips). Empty = show all.
@@ -106,6 +135,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     onSearch();
     searchInput.focus();
   });
+  if (notebookSelect) {
+    notebookSelect.addEventListener('change', onNotebookChanged);
+  }
+  if (notebookAddBtn) {
+    KGIcons.setIcon(notebookAddBtn, 'plus');
+    notebookAddBtn.addEventListener('click', () => openNotebookSheet('create'));
+  }
+  if (notebookEditBtn) {
+    KGIcons.setIcon(notebookEditBtn, 'pencil');
+    notebookEditBtn.addEventListener('click', () => openNotebookSheet('rename'));
+  }
+  if (notebookDeleteBtn) {
+    KGIcons.setIcon(notebookDeleteBtn, 'trash');
+    notebookDeleteBtn.addEventListener('click', () => openNotebookSheet('rename', { focusDelete: true }));
+  }
+  if (notebookSheetClose) {
+    KGIcons.setIcon(notebookSheetClose, 'xmark');
+    notebookSheetClose.addEventListener('click', closeNotebookSheet);
+  }
+  if (notebookSheetScrim) notebookSheetScrim.addEventListener('click', closeNotebookSheet);
+  if (notebookForm) notebookForm.addEventListener('submit', submitNotebookForm);
+  if (notebookNameInput) notebookNameInput.addEventListener('input', renderNotebookCoverPreview);
+  if (notebookColorSwatches) notebookColorSwatches.addEventListener('click', onNotebookColorClick);
+  if (notebookPatternChoices) notebookPatternChoices.addEventListener('click', onNotebookPatternClick);
+  if (notebookSheetDelete) notebookSheetDelete.addEventListener('click', deleteActiveNotebook);
 
   // Word detail panel — back navigation + delegated speaker / link-nav actions.
   KGIcons.setIcon(detailBack, 'chevron-left');
@@ -115,6 +169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   detailBody.addEventListener('click', onDetailAction);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !stateDetail.hidden) popDetail();
+    else if (e.key === 'Escape' && notebookSheet && !notebookSheet.hidden) closeNotebookSheet();
   });
 
   // React to cross-context storage changes.
@@ -237,7 +292,8 @@ async function loadVocabList() {
   syncClearButton();
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
+    await loadNotebookScope();
+    const response = await chrome.runtime.sendMessage({ type: 'listVocab', notebookId: activeNotebookId });
 
     // A missing/torn-down service worker resolves sendMessage with `undefined`
     // (no error thrown). Treat that as a connection failure rather than an
@@ -302,7 +358,8 @@ async function refreshVocabSilently() {
   if (!stateLoading.hidden || !stateError.hidden) return;
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
+    await loadNotebookScope({ silent: true });
+    const response = await chrome.runtime.sendMessage({ type: 'listVocab', notebookId: activeNotebookId });
     if (response == null || response.error) return; // keep the current view
 
     const items = KGPure.normalizeVocabList(response)
@@ -326,6 +383,213 @@ async function refreshVocabSilently() {
     if (scroller) scroller.scrollTop = savedTop;
   } catch (err) {
     console.error('[KG] refreshVocabSilently failed:', err);
+  }
+}
+
+async function loadNotebookScope(options = {}) {
+  const silent = !!options.silent;
+  try {
+    const stored = await chrome.storage.local.get(KGPure.ACTIVE_NOTEBOOK_KEY);
+    const storedId = stored[KGPure.ACTIVE_NOTEBOOK_KEY] || 'default';
+    const response = await chrome.runtime.sendMessage({ type: 'listNotebooks' });
+    if (response == null || response.error) {
+      if (!silent) renderNotebookSwitcher([]);
+      activeNotebookId = storedId || 'default';
+      return;
+    }
+    notebooks = KGPure.normalizeNotebookList(response).filter((nb) => !nb.isDeleted);
+    const hasStored = notebooks.some((nb) => nb.id === storedId);
+    activeNotebookId = hasStored ? storedId : 'default';
+    if (storedId !== activeNotebookId) {
+      await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    }
+    renderNotebookSwitcher(notebooks);
+  } catch (err) {
+    console.error('[KG] loadNotebookScope failed:', err);
+    activeNotebookId = 'default';
+    if (!silent) renderNotebookSwitcher([]);
+  }
+}
+
+function renderNotebookSwitcher(items) {
+  if (!notebookSwitcher || !notebookSelect) return;
+  notebookSelect.innerHTML = '';
+  const list = Array.isArray(items) && items.length
+    ? items
+    : [{ id: 'default', name: t('notebookDefaultName'), color: null, isDefault: true }];
+  for (const nb of list) {
+    const opt = document.createElement('option');
+    opt.value = nb.id;
+    opt.textContent = nb.name || nb.id;
+    opt.selected = nb.id === activeNotebookId;
+    notebookSelect.appendChild(opt);
+  }
+  syncNotebookActionButtons();
+  notebookSwitcher.hidden = false;
+}
+
+function syncNotebookActionButtons() {
+  const nb = currentNotebook();
+  const canDelete = KGPure.canDeleteNotebook(nb);
+  if (notebookEditBtn) notebookEditBtn.disabled = !nb;
+  if (notebookDeleteBtn) notebookDeleteBtn.disabled = !canDelete;
+}
+
+function currentNotebook() {
+  return notebooks.find((nb) => nb.id === activeNotebookId) || null;
+}
+
+async function onNotebookChanged() {
+  const next = notebookSelect && notebookSelect.value ? notebookSelect.value : 'default';
+  if (next === activeNotebookId) return;
+  activeNotebookId = next;
+  await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+  loadVocabList();
+}
+
+function openNotebookSheet(mode, options = {}) {
+  const nb = currentNotebook();
+  notebookSheetMode = mode;
+  if (!notebookSheet || !notebookNameInput || !notebookSheetTitle || !notebookSheetSubmit) return;
+  clearNotebookSheetError();
+  notebookSheetTitle.textContent = mode === 'create'
+    ? t('notebookAdd')
+    : (options.focusDelete ? t('notebookManage') : t('notebookRename'));
+  notebookNameInput.value = mode === 'create' ? '' : ((nb && nb.name) || '');
+  notebookDraftColor = KGPure.normalizeNotebookColor(mode === 'create' ? KGPure.NOTEBOOK_DEFAULT_COLOR : nb && nb.color)
+    || KGPure.NOTEBOOK_DEFAULT_COLOR;
+  notebookDraftPattern = KGPure.normalizeNotebookCoverPattern(mode === 'create' ? null : nb && nb.coverPattern) || null;
+  notebookNameInput.placeholder = t('notebookNamePlaceholder');
+  notebookSheetSubmit.textContent = mode === 'create' ? t('notebookCreateSubmit') : t('notebookRenameSubmit');
+  renderNotebookAppearanceControls();
+  const canDelete = mode === 'rename' && KGPure.canDeleteNotebook(nb);
+  if (notebookSheetDelete) {
+    notebookSheetDelete.hidden = !canDelete;
+    notebookSheetDelete.textContent = t('notebookDelete');
+  }
+  notebookSheet.hidden = false;
+  setTimeout(() => {
+    if (options.focusDelete && canDelete && notebookSheetDelete) notebookSheetDelete.focus();
+    else notebookNameInput.focus();
+  }, 0);
+}
+
+function closeNotebookSheet() {
+  if (notebookSheet) notebookSheet.hidden = true;
+  notebookSheetMode = null;
+  clearNotebookSheetError();
+}
+
+function clearNotebookSheetError() {
+  if (!notebookSheetError) return;
+  notebookSheetError.textContent = '';
+  notebookSheetError.hidden = true;
+}
+
+function showNotebookSheetError(message) {
+  if (!notebookSheetError) return;
+  notebookSheetError.textContent = message;
+  notebookSheetError.hidden = false;
+}
+
+function renderNotebookAppearanceControls() {
+  if (notebookColorSwatches) {
+    notebookColorSwatches.innerHTML = KGPure.NOTEBOOK_PALETTE.map((item) => {
+      const selected = item.hex === notebookDraftColor;
+      return `<button class="kg-notebook-swatch${selected ? ' is-selected' : ''}" type="button" data-color="${esc(item.hex)}" title="${esc(item.name)}" aria-label="${esc(item.name)}" aria-pressed="${selected ? 'true' : 'false'}" style="--swatch:${esc(item.hex)}"></button>`;
+    }).join('');
+  }
+  if (notebookPatternChoices) {
+    const options = [{ id: '', label: t('notebookPatternNone') }, ...KGPure.NOTEBOOK_COVER_PATTERNS];
+    notebookPatternChoices.innerHTML = options.map((item) => {
+      const selected = (item.id || null) === notebookDraftPattern;
+      const patternClass = item.id ? ` kg-notebook-pattern--${esc(item.id)}` : '';
+      return `<button class="kg-notebook-pattern${patternClass}${selected ? ' is-selected' : ''}" type="button" data-pattern="${esc(item.id)}" aria-pressed="${selected ? 'true' : 'false'}" style="--cover-color:${esc(notebookDraftColor)}"><span class="kg-notebook-pattern__sample"></span><span>${esc(item.label)}</span></button>`;
+    }).join('');
+  }
+  renderNotebookCoverPreview();
+}
+
+function renderNotebookCoverPreview() {
+  if (!notebookCoverPreview || !notebookCoverPreviewName) return;
+  const name = (notebookNameInput && notebookNameInput.value.trim()) || t('notebookPreviewName');
+  notebookCoverPreview.style.setProperty('--cover-color', notebookDraftColor || KGPure.NOTEBOOK_DEFAULT_COLOR);
+  notebookCoverPreview.dataset.pattern = notebookDraftPattern || '';
+  notebookCoverPreviewName.textContent = name;
+}
+
+function onNotebookColorClick(event) {
+  const btn = event.target.closest('[data-color]');
+  if (!btn) return;
+  const color = KGPure.normalizeNotebookColor(btn.dataset.color);
+  if (!color) return;
+  notebookDraftColor = color;
+  renderNotebookAppearanceControls();
+}
+
+function onNotebookPatternClick(event) {
+  const btn = event.target.closest('[data-pattern]');
+  if (!btn) return;
+  const pattern = KGPure.normalizeNotebookCoverPattern(btn.dataset.pattern || null);
+  if (pattern === undefined) return;
+  notebookDraftPattern = pattern;
+  renderNotebookAppearanceControls();
+}
+
+async function submitNotebookForm(event) {
+  event.preventDefault();
+  if (!notebookSheetMode || !notebookNameInput || !notebookSheetSubmit) return;
+  clearNotebookSheetError();
+  const payload = notebookSheetMode === 'create'
+    ? KGPure.buildNotebookCreatePayload(notebookNameInput.value, notebookDraftColor, notebookDraftPattern)
+    : KGPure.buildNotebookUpdatePayload(notebookNameInput.value, notebookDraftColor, notebookDraftPattern);
+  if (!payload) {
+    showNotebookSheetError(t('notebookNameInvalid'));
+    return;
+  }
+  notebookSheetSubmit.disabled = true;
+  try {
+    const msg = notebookSheetMode === 'create'
+      ? { type: 'createNotebook', notebook: payload }
+      : { type: 'updateNotebook', notebookId: activeNotebookId, patch: payload };
+    const response = await chrome.runtime.sendMessage(msg);
+    if (response == null || response.error) {
+      showNotebookSheetError((response && response.message) || t('notebookSaveError'));
+      return;
+    }
+    const nb = KGPure.normalizeNotebookItem(response);
+    activeNotebookId = nb.id || activeNotebookId;
+    await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    closeNotebookSheet();
+    await loadVocabList();
+  } catch (err) {
+    console.error('[KG] submitNotebookForm failed:', err);
+    showNotebookSheetError(t('notebookSaveError'));
+  } finally {
+    notebookSheetSubmit.disabled = false;
+  }
+}
+
+async function deleteActiveNotebook() {
+  const nb = currentNotebook();
+  if (!KGPure.canDeleteNotebook(nb) || !notebookSheetDelete) return;
+  clearNotebookSheetError();
+  notebookSheetDelete.disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'deleteNotebook', notebookId: nb.id });
+    if (response == null || response.error) {
+      showNotebookSheetError((response && response.message) || t('notebookDeleteError'));
+      return;
+    }
+    activeNotebookId = 'default';
+    await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    closeNotebookSheet();
+    await loadVocabList();
+  } catch (err) {
+    console.error('[KG] deleteActiveNotebook failed:', err);
+    showNotebookSheetError(t('notebookDeleteError'));
+  } finally {
+    notebookSheetDelete.disabled = false;
   }
 }
 
@@ -461,7 +725,8 @@ async function loadPendingSyncItems(serverItems) {
     const stored = await chrome.storage.local.get(KGOutbox.OUTBOX_KEY);
     const queue = Array.isArray(stored[KGOutbox.OUTBOX_KEY]) ? stored[KGOutbox.OUTBOX_KEY] : [];
     const serverWords = new Set(serverItems.map((i) => i.word));
-    pendingSyncItems = KGOutbox.pendingOutboxItems(queue, serverWords).map(decoratePendingItem);
+    pendingSyncItems = KGPure.pendingItemsForNotebook(KGOutbox.pendingOutboxItems(queue, serverWords), activeNotebookId)
+      .map(decoratePendingItem);
   } catch (err) {
     console.error('[KG] loadPendingSyncItems failed:', err);
     pendingSyncItems = [];
@@ -713,6 +978,15 @@ function createRow(item) {
     else if (item.syncState === 'pending') trailingEl.classList.add('kg-vocab-row__trailing--syncing');
     trailingEl.textContent = item.dueInfo;
     topRow.appendChild(trailingEl);
+
+    if (item.syncState === 'failed') {
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'kg-vocab-row__sync-retry';
+      retryBtn.textContent = t('syncRetry');
+      retryBtn.addEventListener('click', retryOutboxNow);
+      topRow.appendChild(retryBtn);
+    }
   }
 
   content.appendChild(topRow);
@@ -783,6 +1057,23 @@ function createRow(item) {
   }
 
   return row;
+}
+
+async function retryOutboxNow(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const btn = event.currentTarget;
+  if (btn) btn.disabled = true;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'retryOutbox' });
+    if (!response || response.error) {
+      throw new Error((response && response.message) || 'retryOutbox failed');
+    }
+    await loadVocabList();
+  } catch (err) {
+    console.error('[KG] retryOutboxNow failed:', err);
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------------------

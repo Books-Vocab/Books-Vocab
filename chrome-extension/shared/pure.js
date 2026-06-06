@@ -10,6 +10,29 @@
 
 const VALID_THEMES = ['light', 'dark', 'sepia'];
 const DEFAULT_THEME = 'light';
+const NOTEBOOK_PALETTE = [
+  { name: '森林', hex: '#B1C5AE' },
+  { name: '海洋', hex: '#AFC2D3' },
+  { name: '琥珀', hex: '#DEC69C' },
+  { name: '紫藤', hex: '#C5B2D0' },
+  { name: '珊瑚', hex: '#DCABA4' },
+  { name: '石墨', hex: '#AFB2B7' },
+  { name: '薄荷', hex: '#B7D2C9' },
+  { name: '靛藍', hex: '#ADABCB' },
+  { name: '玫瑰', hex: '#DEBAC2' },
+  { name: '焦糖', hex: '#D2B69D' },
+  { name: '天空', hex: '#C5DAE2' },
+  { name: '薰衣草', hex: '#C3BCCF' },
+];
+const NOTEBOOK_COVER_PATTERNS = [
+  { id: 'dots', label: '圓點' },
+  { id: 'lines', label: '條紋' },
+  { id: 'grid', label: '格線' },
+  { id: 'waves', label: '波浪' },
+  { id: 'circles', label: '同心圓' },
+  { id: 'noise', label: '噪點' },
+];
+const NOTEBOOK_DEFAULT_COLOR = '#AFC2D3';
 
 /**
  * Build the request body for `/api/translate/phrase`.
@@ -42,11 +65,28 @@ function resolveTheme(raw) {
  * @param {*} since — ISO 8601 timestamp or falsy
  * @returns {string} e.g. '' or '?since=2024-01-01T00%3A00%3A00Z'
  */
-function buildVocabQuery(since) {
+function buildSinceQuery(since) {
   if (since === undefined || since === null) return '';
   const s = String(since).trim();
   if (!s) return '';
   return `?since=${encodeURIComponent(s)}`;
+}
+
+/**
+ * Build the query string for `/api/vocab`, optionally filtering by `since` and
+ * notebook. `notebook_id` mirrors backend/iOS naming; absence means all notebooks.
+ * @param {*} since — ISO 8601 timestamp or falsy
+ * @param {*} notebookId — notebook id or falsy
+ * @returns {string}
+ */
+function buildVocabQuery(since, notebookId) {
+  const params = [];
+  const s = since === undefined || since === null ? '' : String(since).trim();
+  if (s) params.push(['since', s]);
+  const nb = notebookId === undefined || notebookId === null ? '' : String(notebookId).trim();
+  if (nb) params.push(['notebook_id', nb]);
+  if (params.length === 0) return '';
+  return `?${params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}`;
 }
 
 /**
@@ -61,6 +101,80 @@ function normalizeVocabList(response) {
   if (response && Array.isArray(response.items)) return response.items;
   if (response && Array.isArray(response.data)) return response.data;
   return [];
+}
+
+function normalizeNotebookList(response) {
+  const raw = normalizeVocabList(response);
+  return raw.map(normalizeNotebookItem);
+}
+
+function normalizeNotebookItem(item) {
+  const raw = item && typeof item === 'object' ? item : {};
+  return {
+    id: raw.id || 'default',
+    name: raw.name || '我的單字本',
+    color: raw.color || null,
+    coverPattern: raw.coverPattern || raw.cover_pattern || null,
+    sortOrder: Number(raw.sortOrder ?? raw.sort_order) || 0,
+    isDefault: !!(raw.isDefault ?? raw.is_default),
+    isDeleted: !!(raw.isDeleted ?? raw.is_deleted),
+    cardCount: Number(raw.cardCount ?? raw.card_count) || 0,
+    updatedAt: raw.updatedAt || raw.updated_at || null,
+  };
+}
+
+function validateNotebookName(value) {
+  const name = String(value == null ? '' : value).trim();
+  if (!name) return { ok: false, value: '', error: 'empty' };
+  if (name.length > 100) return { ok: false, value: name, error: 'too_long' };
+  return { ok: true, value: name, error: null };
+}
+
+function normalizeNotebookColor(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const color = String(value).trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(color) ? color : undefined;
+}
+
+function normalizeNotebookCoverPattern(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const pattern = String(value).trim();
+  return NOTEBOOK_COVER_PATTERNS.some((p) => p.id === pattern) ? pattern : undefined;
+}
+
+function buildNotebookPayload(name, color, coverPattern, { includeClears = false } = {}) {
+  const valid = validateNotebookName(name);
+  if (!valid.ok) return null;
+  const payload = { name: valid.value };
+  const normalizedColor = normalizeNotebookColor(color);
+  const normalizedPattern = normalizeNotebookCoverPattern(coverPattern);
+  if (normalizedColor === undefined && color !== undefined) return null;
+  if (normalizedPattern === undefined && coverPattern !== undefined) return null;
+  if (normalizedColor !== undefined) payload.color = normalizedColor;
+  if (normalizedPattern !== undefined) {
+    payload.cover_pattern = normalizedPattern === null && includeClears ? '' : normalizedPattern;
+  }
+  return payload;
+}
+
+function buildNotebookCreatePayload(name, color, coverPattern) {
+  return buildNotebookPayload(name, color, coverPattern);
+}
+
+function buildNotebookUpdatePayload(name, color, coverPattern) {
+  return buildNotebookPayload(name, color, coverPattern, { includeClears: true });
+}
+
+function canDeleteNotebook(notebook) {
+  const nb = notebook && typeof notebook === 'object' ? notebook : null;
+  return !!(nb && nb.id && nb.id !== 'default' && !nb.isDefault && !nb.isDeleted);
+}
+
+function pendingItemsForNotebook(items, notebookId = 'default') {
+  const active = notebookId || 'default';
+  return (items || []).filter((item) => ((item && item.notebookId) || 'default') === active);
 }
 
 /**
@@ -654,6 +768,11 @@ const ROUTABLE_MESSAGE_TYPES = [
   'explain',
   'addVocab',
   'listVocab',
+  'listNotebooks',
+  'createNotebook',
+  'updateNotebook',
+  'deleteNotebook',
+  'retryOutbox',
   'lookupWord',
   'getUserConfig',
   'updateUserConfig',
@@ -689,9 +808,19 @@ function routeMessage(msg) {
     case 'explain':
       return { kind: 'explain', args: [msg.word, msg.context] };
     case 'addVocab':
-      return { kind: 'addVocab', args: [msg.entries] };
+      return { kind: 'addVocab', args: [msg.entries, msg.notebookId] };
     case 'listVocab':
-      return { kind: 'listVocab', args: [msg.since] };
+      return { kind: 'listVocab', args: [msg.since, undefined, msg.notebookId] };
+    case 'listNotebooks':
+      return { kind: 'listNotebooks', args: [msg.since] };
+    case 'createNotebook':
+      return { kind: 'createNotebook', args: [msg.notebook] };
+    case 'updateNotebook':
+      return { kind: 'updateNotebook', args: [msg.notebookId, msg.patch] };
+    case 'deleteNotebook':
+      return { kind: 'deleteNotebook', args: [msg.notebookId] };
+    case 'retryOutbox':
+      return { kind: 'retryOutbox', args: [] };
     case 'lookupWord':
       return { kind: 'lookupWord', args: [msg.word] };
     case 'getUserConfig':
@@ -717,6 +846,7 @@ function routeMessage(msg) {
  * and the contract is pinned by pure.test.js.
  */
 const VOCAB_DIRTY_KEY = 'vocab_dirty';
+const ACTIVE_NOTEBOOK_KEY = 'active_notebook_id';
 
 /**
  * Routed `kind`s whose success means the user's vocab list changed, so any open
@@ -880,11 +1010,24 @@ function escapeHtml(str) {
 const KGPureExports = {
   VALID_THEMES,
   DEFAULT_THEME,
+  NOTEBOOK_PALETTE,
+  NOTEBOOK_COVER_PATTERNS,
+  NOTEBOOK_DEFAULT_COLOR,
   resolveTheme,
   buildPhraseTranslateBody,
+  buildSinceQuery,
   buildVocabQuery,
   normalizeVocabList,
   normalizeVocabItem,
+  normalizeNotebookList,
+  normalizeNotebookItem,
+  validateNotebookName,
+  normalizeNotebookColor,
+  normalizeNotebookCoverPattern,
+  buildNotebookCreatePayload,
+  buildNotebookUpdatePayload,
+  canDeleteNotebook,
+  pendingItemsForNotebook,
   classifyReviewState,
   countReviewStates,
   compactReviewLabel,
@@ -902,6 +1045,7 @@ const KGPureExports = {
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   VOCAB_DIRTY_KEY,
+  ACTIVE_NOTEBOOK_KEY,
   isVocabMutatingKind,
   isTrustedExternalOrigin,
   safeUrl,

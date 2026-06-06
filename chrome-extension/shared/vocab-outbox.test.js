@@ -25,6 +25,7 @@ const {
   pruneSynced,
   summarizeOutbox,
   pendingOutboxItems,
+  groupEntriesByNotebook,
 } = require('./vocab-outbox.js');
 
 // Convenience: a fully-formed pending entry.
@@ -49,9 +50,15 @@ test('makeOutboxEntry yields a pending entry with defaults', () => {
   assert.equal(e.status, OUTBOX_STATUS.PENDING);
   assert.equal(e.attempts, 0);
   assert.equal(e.cardId, null);
+  assert.equal(e.notebookId, 'default');
   assert.equal(e.word, 'qoder');
   assert.equal(e.translation, 'qoder-t');
   assert.equal(e.localId, 'l1');
+});
+
+test('makeOutboxEntry preserves an explicit notebookId', () => {
+  const e = pending('l1', 'qoder', { notebookId: 'nb-reading' });
+  assert.equal(e.notebookId, 'nb-reading');
 });
 
 test('makeOutboxEntry preserves byte-exact word (no normalization)', () => {
@@ -78,6 +85,13 @@ test('enqueueAdd dedups an unresolved same-word entry (idempotent UX)', () => {
   q = enqueueAdd(q, pending('l2', 'alpha')); // double-click same word
   assert.equal(q.length, 1, 'should not queue a 2nd pending for same word');
   assert.equal(q[0].localId, 'l1', 'keeps the first');
+});
+
+test('enqueueAdd keeps same word in different notebooks distinct', () => {
+  let q = enqueueAdd([], pending('l1', 'alpha', { notebookId: 'default' }));
+  q = enqueueAdd(q, pending('l2', 'alpha', { notebookId: 'nb-reading' }));
+  assert.equal(q.length, 2);
+  assert.deepEqual(q.map((e) => e.notebookId).sort(), ['default', 'nb-reading']);
 });
 
 test('enqueueAdd re-queues a word that already synced (legit re-add)', () => {
@@ -132,6 +146,17 @@ test('reconcileAddResponse converges a FAILED entry when its cardId echoes', () 
   q = reconcileAddResponse(q, { alpha: 'card-a' });
   assert.equal(q[0].status, OUTBOX_STATUS.SYNCED, 'failed converges on echo');
   assert.equal(q[0].cardId, 'card-a');
+});
+
+test('reconcileAddResponse scopes convergence to the flushed notebook', () => {
+  const q = [
+    pending('l1', 'alpha', { notebookId: 'default' }),
+    pending('l2', 'alpha', { notebookId: 'nb-reading' }),
+  ];
+  const next = reconcileAddResponse(q, { alpha: 'card-a' }, 'nb-reading');
+  assert.equal(next[0].status, OUTBOX_STATUS.PENDING);
+  assert.equal(next[1].status, OUTBOX_STATUS.SYNCED);
+  assert.equal(next[1].cardId, 'card-a');
 });
 
 test('reconcileAddResponse never re-resolves an already-synced entry', () => {
@@ -225,13 +250,30 @@ test('pendingOutboxItems returns unresolved entries absent from the server list'
 });
 
 test('pendingOutboxItems accepts an array for serverWords and carries source', () => {
-  const q = enqueueAdd([], pending('l1', 'alpha'));
+  const q = enqueueAdd([], pending('l1', 'alpha', { notebookId: 'nb-reading' }));
   const items = pendingOutboxItems(q, []); // array form
   assert.equal(items.length, 1);
   assert.equal(items[0].word, 'alpha');
+  assert.equal(items[0].notebookId, 'nb-reading');
   assert.equal(items[0].syncState, OUTBOX_STATUS.PENDING);
   assert.deepEqual(items[0].source, { type: 'web', title: 'T', url: 'https://x' });
   assert.equal(pendingOutboxItems(q, ['alpha']).length, 0, 'array exclusion works');
+});
+
+test('groupEntriesByNotebook batches unresolved entries by notebookId', () => {
+  const q = [
+    pending('l1', 'a', { notebookId: 'default' }),
+    pending('l2', 'b', { notebookId: 'nb-reading' }),
+    pending('l3', 'c', { notebookId: 'nb-reading' }),
+  ];
+  const groups = groupEntriesByNotebook(q);
+  assert.deepEqual(
+    groups.map((g) => ({ notebookId: g.notebookId, words: g.entries.map((e) => e.word) })),
+    [
+      { notebookId: 'default', words: ['a'] },
+      { notebookId: 'nb-reading', words: ['b', 'c'] },
+    ],
+  );
 });
 
 test('pendingOutboxItems byte-exact server match (no normalization)', () => {

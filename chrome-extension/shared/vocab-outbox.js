@@ -49,11 +49,12 @@ function isUnresolved(entry) {
  * of this pure module. `word` is stored verbatim (the reconcile key).
  *
  * @param {{localId: string, word: string, translation: string,
- *   context?: string, source?: object, createdAt?: string}} fields
+ *   context?: string, source?: object, notebookId?: string, createdAt?: string}} fields
  */
 function makeOutboxEntry(fields) {
   return {
     localId: fields.localId,
+    notebookId: fields.notebookId || 'default',
     word: fields.word,
     translation: fields.translation,
     context: fields.context == null ? '' : fields.context,
@@ -72,10 +73,33 @@ function makeOutboxEntry(fields) {
  * Immutable — never mutates `queue`.
  */
 function enqueueAdd(queue, entry) {
-  if (queue.some((e) => e.word === entry.word && isUnresolved(e))) {
+  const notebookId = entry.notebookId || 'default';
+  if (queue.some((e) => e.word === entry.word && (e.notebookId || 'default') === notebookId && isUnresolved(e))) {
     return queue.slice();
   }
   return [...queue, entry];
+}
+
+/**
+ * Group flush candidates by notebook. `/api/vocab` scopes a batch by query
+ * parameter, so one POST cannot legally contain words for multiple notebooks.
+ * First-seen order is kept to preserve queue/debug readability.
+ *
+ * @param {Array<object>} entries
+ * @returns {Array<{notebookId:string, entries:Array<object>}>}
+ */
+function groupEntriesByNotebook(entries) {
+  const order = [];
+  const groups = new Map();
+  for (const entry of entries || []) {
+    const notebookId = entry.notebookId || 'default';
+    if (!groups.has(notebookId)) {
+      groups.set(notebookId, []);
+      order.push(notebookId);
+    }
+    groups.get(notebookId).push(entry);
+  }
+  return order.map((notebookId) => ({ notebookId, entries: groups.get(notebookId) }));
 }
 
 /**
@@ -86,9 +110,11 @@ function enqueueAdd(queue, entry) {
  *
  * @param {Array<object>} queue
  * @param {Record<string,string>} cardIds — { rawWord: cardId } from VocabAddResponse
+ * @param {string} [notebookId] — restrict reconciliation to one notebook batch
  */
-function reconcileAddResponse(queue, cardIds) {
+function reconcileAddResponse(queue, cardIds, notebookId) {
   const map = cardIds || {};
+  const scopedNotebookId = notebookId || null;
   let changed = false;
   const next = queue.map((entry) => {
     // SYNCED is terminal — never re-resolve (a later/stale cardIds map must not
@@ -98,6 +124,7 @@ function reconcileAddResponse(queue, cardIds) {
     // is authoritative proof the card exists (backend is idempotent — a re-sent
     // duplicate echoes the same cardId), so a failed-then-resent entry resolves
     // instead of looping forever in entriesToFlush.
+    if (scopedNotebookId && (entry.notebookId || 'default') !== scopedNotebookId) return entry;
     if (!Object.prototype.hasOwnProperty.call(map, entry.word)) return entry;
     changed = true;
     return { ...entry, status: OUTBOX_STATUS.SYNCED, cardId: map[entry.word] };
@@ -156,6 +183,7 @@ function pendingOutboxItems(queue, serverWords) {
       word: entry.word,
       meaning: entry.translation,
       source: entry.source,
+      notebookId: entry.notebookId || 'default',
       syncState: entry.status,
     }));
 }
@@ -185,6 +213,7 @@ const KGOutboxExports = {
   reconcileAddResponse,
   markFailed,
   entriesToFlush,
+  groupEntriesByNotebook,
   pruneSynced,
   summarizeOutbox,
   pendingOutboxItems,
