@@ -77,4 +77,118 @@ struct BookManifestTests {
         #expect(manifest.progression == 0.8)
         #expect(manifest.preferredNotebookId == "nb-2")
     }
+
+    // MARK: - merge-on-write 防固化
+
+    @Test func progressWriteDoesNotOverwriteCleanManifestWithFallbackRow() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BookManifestTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "F9634750-1CEE-4E8E-A7A7-13594801B886.epub"
+        let store = BookManifestStore(rootDirectory: root)
+
+        // 既有乾淨 manifest（已含真 title/author/cover）
+        let bookId = UUID()
+        try store.write(BookManifest(
+            bookId: bookId,
+            fileName: fileName,
+            originalFileName: "Real Book.epub",
+            title: "Real Book",
+            author: "Real Author",
+            format: .epub,
+            coverImageData: Data([1, 2, 3]),
+            dateAdded: Date(timeIntervalSince1970: 1),
+            dateLastRead: nil,
+            progression: nil,
+            lastReadLocatorJSON: nil,
+            preferredNotebookId: nil
+        ))
+
+        // reader progress save：row 仍是 fallback（UUID title、空 author、nil cover）但有進度
+        let fallbackRow = Book(
+            title: "F9634750-1CEE-4E8E-A7A7-13594801B886",
+            author: "",
+            fileName: fileName,
+            format: .epub
+        )
+        fallbackRow.id = bookId
+        fallbackRow.progression = 0.5
+        fallbackRow.lastReadLocatorJSON = #"{"href":"x"}"#
+        fallbackRow.dateLastRead = Date(timeIntervalSince1970: 100)
+
+        try store.write(book: fallbackRow)
+
+        let merged = try store.read(bookId: bookId)
+        // 識別性欄位保留乾淨值
+        #expect(merged.title == "Real Book")
+        #expect(merged.author == "Real Author")
+        #expect(merged.coverImageData == Data([1, 2, 3]))
+        #expect(merged.originalFileName == "Real Book.epub")
+        // 閱讀位置採 row 當前值
+        #expect(merged.progression == 0.5)
+        #expect(merged.lastReadLocatorJSON == #"{"href":"x"}"#)
+        #expect(merged.dateLastRead == Date(timeIntervalSince1970: 100))
+    }
+
+    @Test func cleanRowWriteUpgradesFallbackManifest() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BookManifestTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "ABCDEF01-2345-6789-ABCD-EF0123456789.epub"
+        let store = BookManifestStore(rootDirectory: root)
+
+        // 既有 fallback manifest
+        let bookId = UUID()
+        try store.write(BookManifest(
+            bookId: bookId,
+            fileName: fileName,
+            originalFileName: nil,
+            title: "ABCDEF01-2345-6789-ABCD-EF0123456789",
+            author: "",
+            format: .epub,
+            coverImageData: nil,
+            dateAdded: Date(timeIntervalSince1970: 1),
+            dateLastRead: nil,
+            progression: nil,
+            lastReadLocatorJSON: nil,
+            preferredNotebookId: nil
+        ))
+
+        // 乾淨 row（repair 後）寫回 → 升級 manifest
+        let cleanRow = Book(
+            title: "Real Title",
+            author: "Real Author",
+            coverImageData: Data([9]),
+            fileName: fileName,
+            format: .epub
+        )
+        cleanRow.id = bookId
+
+        try store.write(book: cleanRow)
+
+        let merged = try store.read(bookId: bookId)
+        #expect(merged.title == "Real Title")
+        #expect(merged.author == "Real Author")
+        #expect(merged.coverImageData == Data([9]))
+    }
+
+    @Test func mergeKeepsIncomingWhenNoExistingManifest() throws {
+        let incoming = BookManifest(
+            bookId: UUID(),
+            fileName: "x.epub",
+            originalFileName: nil,
+            title: "x",
+            author: "",
+            format: .epub,
+            coverImageData: nil,
+            dateAdded: Date(timeIntervalSince1970: 1),
+            dateLastRead: nil,
+            progression: 0.1,
+            lastReadLocatorJSON: nil,
+            preferredNotebookId: nil
+        )
+        #expect(BookManifestStore.merged(incoming: incoming, existing: nil) == incoming)
+    }
 }
