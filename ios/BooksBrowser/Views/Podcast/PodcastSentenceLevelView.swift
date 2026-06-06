@@ -67,6 +67,7 @@ struct PodcastSentenceLevelView: View {
     let isPlaying: Bool
     let hostNames: [String]
     let subtitleSize: PodcastSubtitleSize
+    let initialScrollPositionResolved: Bool
     /// Follow-scroll target id, LEADING the spoken sentence by ~0.5 s (ViewModel's
     /// `scrollLeadSentenceId`). Drives auto-follow only — highlight/underline stay
     /// keyed on the precise `currentId`, so the scroll arrives early while the
@@ -83,6 +84,7 @@ struct PodcastSentenceLevelView: View {
     @State private var isFollowing = true
     @State private var selectionState: PodcastSentenceSelection?
     @State private var scrollAnimationTask: Task<Void, Never>?
+    @State private var didApplyInitialScrollPosition = false
 
     private var currentId: Int? { renderState?.sentenceId }
 
@@ -157,15 +159,19 @@ struct PodcastSentenceLevelView: View {
             // replaces `sentences` without recreating it. Re-center on the new
             // episode's current sentence.
             .onChange(of: PodcastTranscriptIdentity(sentences: sentences)) { _, _ in
-                followScroll(to: currentId, proxy: proxy)
+                didApplyInitialScrollPosition = false
+                applyInitialScrollPositionIfNeeded(proxy: proxy)
+                if didApplyInitialScrollPosition == false {
+                    followScroll(to: currentId, proxy: proxy)
+                }
             }
-            // Initial placement: `onChange` does not fire for the value present at
-            // mount. `onAppear`'s `scrollTo` can no-op because the `LazyVStack`
-            // hasn't realized/laid out the target row yet, so defer one runloop
-            // turn via `.task` before centering (no animation on first placement).
+            .onChange(of: initialScrollPositionResolved) { _, _ in
+                applyInitialScrollPositionIfNeeded(proxy: proxy)
+            }
+            // 初次進場或字幕稍後才補載成功時，先做一次無動畫定位；之後才回到
+            // 既有 follow-scroll 動畫路徑。
             .task {
-                await Task.yield()
-                if let id = currentId { proxy.scrollTo(id, anchor: .center) }
+                applyInitialScrollPositionIfNeeded(proxy: proxy)
             }
             // Manual browse: any user drag disengages follow (the native scroll
             // itself still handles the movement — this gesture only flips the
@@ -203,7 +209,7 @@ struct PodcastSentenceLevelView: View {
     /// duration is what makes the move read as a continuous glide rather than a
     /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
-        guard isFollowing, let id else { return }
+        guard isFollowing, didApplyInitialScrollPosition, let id else { return }
         scrollAnimationTask?.cancel()
         scrollAnimationTask = Task {
             try? await Task.sleep(for: .milliseconds(50))
@@ -213,6 +219,18 @@ struct PodcastSentenceLevelView: View {
                     proxy.scrollTo(id, anchor: .center)
                 }
             }
+        }
+    }
+
+    private func applyInitialScrollPositionIfNeeded(proxy: ScrollViewProxy) {
+        guard initialScrollPositionResolved, didApplyInitialScrollPosition == false else { return }
+        didApplyInitialScrollPosition = true
+        guard let id = currentId else { return }
+        scrollAnimationTask?.cancel()
+        scrollAnimationTask = Task {
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            proxy.scrollTo(id, anchor: .center)
         }
     }
 
@@ -842,6 +860,7 @@ enum PodcastSpeakerTint {
             isPlaying: false,
             hostNames: ["Maya", "Kai"],
             subtitleSize: .xLarge,
+            initialScrollPositionResolved: true,
             scrollLeadId: 1,
             onSentenceTap: { _ in },
             onWordTap: { _, _ in },

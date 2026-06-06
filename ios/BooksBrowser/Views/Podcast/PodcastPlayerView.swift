@@ -66,7 +66,7 @@ struct PodcastPlayerView: View {
     }
     @State private var loadTask: Task<Void, Never>?
     @State private var loadedEpisodeId: String?
-    @State private var progressRestored = false
+    @State private var progressBootstrapCompleted = false
     /// 連續播放換集 override（auto-advance）：nil → 用 push 進來的 `episodeId`；
     /// 設成下一集 remoteId 後，`.task(id: activeEpisodeId)` 偵測變化即 teardown 舊集
     /// + load 新集（複用既有換集路徑，nav stack 不堆疊——對齊串流連續播放）。
@@ -270,9 +270,8 @@ struct PodcastPlayerView: View {
                         }
                     )
                     .onChange(of: vm.state) { _, newState in
-                        if newState == .ready, !progressRestored {
-                            progressRestored = true
-                            restoreProgress(vm: vm, episodeRemoteId: activeEpisodeId)
+                        if newState == .ready, !progressBootstrapCompleted {
+                            progressBootstrapCompleted = true
                             return
                         }
                         if newState == .paused || newState == .ready {
@@ -356,7 +355,7 @@ struct PodcastPlayerView: View {
             viewModel?.stop()
             viewModel = nil
             loadedEpisodeId = activeEpisodeId
-            progressRestored = false
+            progressBootstrapCompleted = false
             lastSavedTime = 0
             pushState = PodcastProgressPushState()
             loadEpisode()
@@ -383,7 +382,7 @@ struct PodcastPlayerView: View {
             viewModel?.shutdown()
             viewModel = nil
             loadedEpisodeId = nil
-            progressRestored = false
+            progressBootstrapCompleted = false
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { saveProgress() }
@@ -442,6 +441,7 @@ struct PodcastPlayerView: View {
                 PodcastSubtitleView(
                     viewModel: vm,
                     subtitleSize: subtitleSize,
+                    initialScrollPositionResolved: vm.initialPositionResolved,
                     onRetrySubtitle: { retrySubtitle() }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -579,7 +579,7 @@ struct PodcastPlayerView: View {
         loadTask = nil
         viewModel?.stop()
         viewModel = nil
-        progressRestored = false
+        progressBootstrapCompleted = false
         lastSavedTime = 0
         pushState = PodcastProgressPushState()
         loadEpisode()
@@ -615,6 +615,7 @@ struct PodcastPlayerView: View {
 
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
+        let initialProgressTime = initialProgressTime(for: activeEpisodeId)
 
         loadTask = Task { [weak vm] in
             guard let vm else { return }
@@ -694,7 +695,8 @@ struct PodcastPlayerView: View {
                     subtitleContent: subtitleContent,
                     title: episodeTitle,
                     audioHTTPHeaders: audioHeaders,
-                    prefetchedDurationSec: prefetchedDuration
+                    prefetchedDurationSec: prefetchedDuration,
+                    initialProgressTime: initialProgressTime
                 )
             }
         }
@@ -733,7 +735,7 @@ struct PodcastPlayerView: View {
     }
 
     @MainActor
-    private func restoreProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
+    private func initialProgressTime(for episodeRemoteId: String) -> TimeInterval? {
         let targetId = episodeRemoteId
         let descriptor = FetchDescriptor<PodcastProgress>(
             predicate: #Predicate { $0.episodeRemoteId == targetId },
@@ -742,8 +744,9 @@ struct PodcastPlayerView: View {
         if let progress = try? modelContext.fetch(descriptor).first,
            progress.lastPlayedTime > 0,
            !progress.completed {
-            vm.seek(to: progress.lastPlayedTime)
+            return progress.lastPlayedTime
         }
+        return nil
     }
 
     private func saveProgressIfNeeded(time: TimeInterval) {
@@ -755,7 +758,7 @@ struct PodcastPlayerView: View {
     private func saveProgress(reason: PodcastProgressPushState.Reason = .pause) {
         guard let vm = viewModel else { return }
         guard loadedEpisodeId == activeEpisodeId else { return }
-        if !progressRestored && vm.currentTime == 0 { return }
+        if !progressBootstrapCompleted && vm.currentTime == 0 { return }
         saveProgress(vm: vm, episodeRemoteId: activeEpisodeId, reason: reason)
     }
 
