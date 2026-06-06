@@ -91,6 +91,12 @@ enum TodayReviewMetrics {
     static let swipeThreshold: CGFloat = 100
     static let swipeMaxRotation: Double = 12
     static let swipeOpacityFloor: Double = 0.3
+
+    // MARK: Autoplay player
+    static let autoplayProgressBarHeight: CGFloat = 4
+    static let autoplayProgressBarBottomGap: CGFloat = AppSpacing.s2
+    static let autoplaySpeedPillHeight: CGFloat = 28
+    static let autoplaySpeedPillHorizontalPadding: CGFloat = AppSpacing.s3
 }
 
 extension AnyTransition {

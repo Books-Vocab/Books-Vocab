@@ -123,6 +123,7 @@ struct TodayReviewPresenter: View {
     let onAddLink: () -> Void
     let onToggleAutoPlay: () -> Void
     let onToggleAutoPlayPause: () -> Void
+    let onChangeAutoPlaySpeed: () -> Void
     let onDetailTap: () -> Void
     let onToggleHelp: () -> Void
     let onExplainCollocation: (String) -> Void

@@ -14,6 +14,7 @@ enum ReviewIntent {
     case showDetail
     case toggleAutoplay
     case toggleAutoplayPause
+    case changeAutoplaySpeed
     case close
     case showHelp
 }
@@ -116,6 +117,7 @@ struct TodayReviewView: View {
             onAddLink: { showAddLink = true },
             onToggleAutoPlay: { perform(.toggleAutoplay) },
             onToggleAutoPlayPause: { perform(.toggleAutoplayPause) },
+            onChangeAutoPlaySpeed: { perform(.changeAutoplaySpeed) },
             onDetailTap: { perform(.showDetail) },
             onToggleHelp: { perform(.showHelp) },
             onExplainCollocation: { collocation in
@@ -421,6 +423,10 @@ struct TodayReviewView: View {
         case .toggleAutoplayPause:
             guard state.isAutoPlaying else { return false }
             state.toggleAutoPlayPause()
+            return true
+
+        case .changeAutoplaySpeed:
+            state.changeAutoplaySpeed(to: state.autoplaySpeed.next)
             return true
 
         case .close:

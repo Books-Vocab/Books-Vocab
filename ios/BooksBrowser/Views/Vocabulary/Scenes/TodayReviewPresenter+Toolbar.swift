@@ -236,40 +236,66 @@ extension TodayReviewPresenter {
     // MARK: - Autoplay Controls
 
     var autoplayControls: some View {
-        HStack(spacing: appSkin.metrics.sectionHeaderGap * 2) {
-            Button {
-                guard isCardInteractive else { return }
-                onPrevious()
-            } label: {
-                Image(systemName: "backward.end.fill")
-                    .font(AppFonts.h2())
-            }
-            .disabled(!state.canGoPrevious)
-            .accessibilityLabel(L10n.string("todayReview.autoplay.previous"))
+        VStack(spacing: TodayReviewMetrics.autoplayProgressBarBottomGap) {
+            // Progress bar
+            ProgressCapsule(
+                progress: state.autoplayProgress,
+                label: state.progressText,
+                fillColor: appSkin.palette.accent,
+                trackColor: appSkin.palette.mutedFill.opacity(0.5),
+                labelFont: appSkin.typography.monoLabel,
+                height: TodayReviewMetrics.autoplayProgressBarHeight
+            )
 
-            Button(action: onToggleAutoPlayPause) {
-                Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
-                    .font(AppFonts.h1())
-                    .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
-                    .background(
-                        Circle()
-                            .fill(appSkin.palette.mutedFill)
-                    )
-            }
-            .accessibilityLabel(L10n.string(state.isAutoPlayPaused ? "todayReview.autoplay.playpause.play" : "todayReview.autoplay.playpause.pause"))
+            HStack(spacing: appSkin.metrics.sectionHeaderGap * 2) {
+                Button {
+                    guard isCardInteractive else { return }
+                    onPrevious()
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                        .font(AppFonts.h2())
+                }
+                .disabled(!state.canGoPrevious)
+                .accessibilityLabel(L10n.string("todayReview.autoplay.previous"))
 
-            Button {
-                guard isCardInteractive else { return }
-                onNext()
-            } label: {
-                Image(systemName: "forward.end.fill")
-                    .font(AppFonts.h2())
+                Button(action: onToggleAutoPlayPause) {
+                    Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
+                        .font(AppFonts.h1())
+                        .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
+                        .background(
+                            Circle()
+                                .fill(appSkin.palette.mutedFill)
+                        )
+                }
+                .accessibilityLabel(L10n.string(state.isAutoPlayPaused ? "todayReview.autoplay.playpause.play" : "todayReview.autoplay.playpause.pause"))
+
+                Button {
+                    guard isCardInteractive else { return }
+                    onNext()
+                } label: {
+                    Image(systemName: "forward.end.fill")
+                        .font(AppFonts.h2())
+                }
+                .disabled(!state.canGoNext)
+                .accessibilityLabel(L10n.string("todayReview.autoplay.next"))
+
+                // Speed pill
+                Button(action: onChangeAutoPlaySpeed) {
+                    Text(state.autoplaySpeed.displayName)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .padding(.horizontal, TodayReviewMetrics.autoplaySpeedPillHorizontalPadding)
+                        .frame(height: TodayReviewMetrics.autoplaySpeedPillHeight)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(appSkin.palette.mutedFill)
+                        )
+                }
+                .accessibilityLabel(L10n.string("todayReview.autoplay.speed") + " " + state.autoplaySpeed.displayName)
             }
-            .disabled(!state.canGoNext)
-            .accessibilityLabel(L10n.string("todayReview.autoplay.next"))
+            .foregroundStyle(appSkin.palette.primaryText)
+            .frame(maxWidth: .infinity)
         }
-        .foregroundStyle(appSkin.palette.primaryText)
-        .frame(maxWidth: .infinity)
     }
 
     var navButtons: some View {
