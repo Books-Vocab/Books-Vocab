@@ -86,6 +86,120 @@ struct BooksBrowserTests {
         #expect(restored.settings.autoplaySoundEnabled == false)
     }
 
+    @Test func reviewSessionStoreRestoresKgBackedOrderAcrossLocalUUIDChanges() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-kg"))
+        defaults.removePersistentDomain(forName: "review-session-order-kg")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-kg") }
+
+        let first = Self.makeReviewEntry("alpha", kgCardId: "card-alpha")
+        let second = Self.makeReviewEntry("beta", kgCardId: "card-beta")
+        ReviewSessionStore.saveOrder([second, first], userID: "user-1", defaults: defaults)
+
+        let replacementFirst = Self.makeReviewEntry("alpha", kgCardId: "card-alpha")
+        let replacementSecond = Self.makeReviewEntry("beta", kgCardId: "card-beta")
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [replacementFirst, replacementSecond],
+            userID: "user-1",
+            defaults: defaults
+        )
+
+        #expect(restored?.map(\.kgCardId) == ["card-beta", "card-alpha"])
+    }
+
+    @Test func reviewSessionStoreRestoresLocalOrderForUnsyncedCards() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-local"))
+        defaults.removePersistentDomain(forName: "review-session-order-local")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-local") }
+
+        let first = Self.makeReviewEntry("alpha")
+        let second = Self.makeReviewEntry("beta")
+        ReviewSessionStore.saveOrder([second, first], userID: nil, defaults: defaults)
+
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [first, second],
+            userID: nil,
+            defaults: defaults
+        )
+
+        #expect(restored?.map(\.id) == [second.id, first.id])
+    }
+
+    @Test func reviewSessionStoreIsolatesOrderByUser() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-user"))
+        defaults.removePersistentDomain(forName: "review-session-order-user")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-user") }
+
+        let first = Self.makeReviewEntry("alpha", kgCardId: "card-alpha")
+        let second = Self.makeReviewEntry("beta", kgCardId: "card-beta")
+        ReviewSessionStore.saveOrder([second, first], userID: "user-A", defaults: defaults)
+
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [first, second],
+            userID: "user-B",
+            defaults: defaults
+        )
+
+        #expect(restored == nil)
+    }
+
+    @Test func reviewSessionStoreDoesNotApplyLegacyOrderForLoggedInUser() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-legacy-user"))
+        defaults.removePersistentDomain(forName: "review-session-order-legacy-user")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-legacy-user") }
+
+        let first = Self.makeReviewEntry("alpha")
+        let second = Self.makeReviewEntry("beta")
+        defaults.set([second.id.uuidString, first.id.uuidString], forKey: "kg.review.shuffledOrder")
+
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [first, second],
+            userID: "user-1",
+            defaults: defaults
+        )
+
+        #expect(restored == nil)
+    }
+
+    @Test func reviewSessionStoreRejectsDifferentQueueFingerprint() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-fingerprint"))
+        defaults.removePersistentDomain(forName: "review-session-order-fingerprint")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-fingerprint") }
+
+        let first = Self.makeReviewEntry("alpha", kgCardId: "card-alpha")
+        let second = Self.makeReviewEntry("beta", kgCardId: "card-beta")
+        let third = Self.makeReviewEntry("gamma", kgCardId: "card-gamma")
+        ReviewSessionStore.saveOrder([second, first], userID: "user-1", defaults: defaults)
+
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [first, third],
+            userID: "user-1",
+            defaults: defaults
+        )
+
+        #expect(restored == nil)
+    }
+
+    @Test func reviewSessionStoreFiltersMissingCardsAndAppendsNewCards() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "review-session-order-append"))
+        defaults.removePersistentDomain(forName: "review-session-order-append")
+        defer { defaults.removePersistentDomain(forName: "review-session-order-append") }
+
+        let first = Self.makeReviewEntry("alpha", kgCardId: "card-alpha")
+        let second = Self.makeReviewEntry("beta", kgCardId: "card-beta")
+        ReviewSessionStore.saveOrder([second, first], userID: "user-1", defaults: defaults)
+
+        let replacementFirst = Self.makeReviewEntry("alpha", kgCardId: "card-alpha")
+        let newThird = Self.makeReviewEntry("gamma", kgCardId: "card-gamma")
+        let restored = ReviewSessionStore.loadOrder(
+            availableEntries: [replacementFirst, newThird],
+            userID: "user-1",
+            allowPartialQueue: true,
+            defaults: defaults
+        )
+
+        #expect(restored?.map(\.kgCardId) == ["card-alpha", "card-gamma"])
+    }
+
     @Test @MainActor func todayReviewStateRestoresProgressAcrossSessionReload() async throws {
         TodayReviewSessionSnapshotStore.clear(for: nil)
         let container = try ModelContainer(
@@ -1196,5 +1310,16 @@ struct BooksBrowserTests {
             navigateToLocator: nil,
             isInteractionBlocked: false
         )
+    }
+
+    private static func makeReviewEntry(_ word: String, kgCardId: String? = nil) -> VocabularyEntry {
+        let entry = VocabularyEntry(
+            word: word,
+            translation: "t-\(word)",
+            context: "\(word) context",
+            bookTitle: "Test"
+        )
+        entry.kgCardId = kgCardId
+        return entry
     }
 }
