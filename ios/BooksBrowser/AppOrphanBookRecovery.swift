@@ -12,10 +12,13 @@ import os
 
 enum AppOrphanBookRecovery {
     @MainActor
-    static func run(container: ModelContainer) {
+    static func run(container: ModelContainer, allowBareFileRecovery: Bool = false) {
         do {
-            let result = try BookLibraryReconciler().reconcile(context: ModelContext(container))
-            AppLog.app.info("recoverOrphanBooks: recovered=\(result.recoveredRows), manifests=\(result.writtenManifests)")
+            let result = try BookLibraryReconciler().reconcile(
+                context: ModelContext(container),
+                allowBareFileRecovery: allowBareFileRecovery
+            )
+            AppLog.app.info("recoverOrphanBooks: recovered=\(result.recoveredRows), manifests=\(result.writtenManifests), duplicatesRemoved=\(result.duplicateRowsRemoved)")
         } catch {
             AppLog.app.error("recoverOrphanBooks: reconcile failed: \(error.localizedDescription)")
         }

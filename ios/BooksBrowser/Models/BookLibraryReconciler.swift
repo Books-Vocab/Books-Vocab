@@ -5,6 +5,7 @@ import os
 struct BookLibraryReconcileResult: Equatable {
     var recoveredRows = 0
     var writtenManifests = 0
+    var duplicateRowsRemoved = 0
 }
 
 struct BookLibraryReconciler {
@@ -23,16 +24,21 @@ struct BookLibraryReconciler {
     }
 
     @MainActor
-    func reconcile(context: ModelContext) throws -> BookLibraryReconcileResult {
+    func reconcile(
+        context: ModelContext,
+        allowBareFileRecovery: Bool = false
+    ) throws -> BookLibraryReconcileResult {
         let filesByName = scanBookFiles()
-        let manifestsByFileName = Dictionary(
-            uniqueKeysWithValues: manifestStore.readAll().map { ($0.fileName, $0) }
-        )
+        let manifestsByFileName = Self.manifestsByFileName(manifestStore.readAll())
         var existingBooks = try context.fetch(FetchDescriptor<Book>())
+        var result = BookLibraryReconcileResult()
+        result.duplicateRowsRemoved = removeDuplicateRows(
+            context: context,
+            books: &existingBooks,
+            manifests: Array(manifestsByFileName.values)
+        )
         var existingByFileName = Dictionary(uniqueKeysWithValues: existingBooks.map { ($0.epubFileName, $0) })
         var existingManifestIds = Set(manifestsByFileName.values.map(\.bookId))
-
-        var result = BookLibraryReconcileResult()
 
         for (fileName, _) in filesByName {
             if let book = existingByFileName[fileName] {
@@ -47,8 +53,10 @@ struct BookLibraryReconciler {
             let book: Book
             if let manifest = manifestsByFileName[fileName] {
                 book = Self.book(from: manifest)
-            } else {
+            } else if allowBareFileRecovery {
                 book = Self.bookFromFileName(fileName)
+            } else {
+                continue
             }
             context.insert(book)
             existingBooks.append(book)
@@ -56,11 +64,77 @@ struct BookLibraryReconciler {
             result.recoveredRows += 1
         }
 
-        if result.recoveredRows > 0 || result.writtenManifests > 0 {
+        if result.recoveredRows > 0
+            || result.writtenManifests > 0
+            || result.duplicateRowsRemoved > 0 {
             try context.save()
         }
 
         return result
+    }
+
+    @MainActor
+    private func removeDuplicateRows(
+        context: ModelContext,
+        books: inout [Book],
+        manifests: [BookManifest]
+    ) -> Int {
+        let manifestsById = Dictionary(uniqueKeysWithValues: manifests.map { ($0.bookId, $0) })
+        let grouped = Dictionary(grouping: books, by: \.epubFileName)
+        var keepIds = Set<UUID>()
+        var removed = 0
+
+        for (_, group) in grouped where group.count > 1 {
+            let keeper = group.max {
+                Self.recoveryScore($0, manifest: manifestsById[$0.id])
+                    < Self.recoveryScore($1, manifest: manifestsById[$1.id])
+            }!
+            keepIds.insert(keeper.id)
+            for book in group where book.id != keeper.id {
+                context.delete(book)
+                removed += 1
+            }
+        }
+
+        guard removed > 0 else { return 0 }
+        books.removeAll { book in
+            grouped[book.epubFileName, default: []].count > 1 && !keepIds.contains(book.id)
+        }
+        return removed
+    }
+
+    private static func recoveryScore(_ book: Book, manifest: BookManifest?) -> Int {
+        var score = 0
+        if manifest != nil { score += 100 }
+        if book.coverImageData != nil { score += 20 }
+        if !looksLikeFallbackTitle(book.title, fileName: book.epubFileName) { score += 15 }
+        if !book.author.isEmpty, book.author != "Unknown" { score += 10 }
+        if book.progression != nil { score += 5 }
+        if book.dateLastRead != nil { score += 5 }
+        if book.lastReadLocatorJSON != nil { score += 5 }
+        return score
+    }
+
+    private static func looksLikeFallbackTitle(_ title: String, fileName: String) -> Bool {
+        let baseName = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
+        return title == baseName || UUID(uuidString: title) != nil
+    }
+
+    private static func manifestsByFileName(_ manifests: [BookManifest]) -> [String: BookManifest] {
+        Dictionary(grouping: manifests, by: \.fileName).compactMapValues { group in
+            group.max { manifestScore($0) < manifestScore($1) }
+        }
+    }
+
+    private static func manifestScore(_ manifest: BookManifest) -> Int {
+        var score = 0
+        if manifest.coverImageData != nil { score += 20 }
+        if !looksLikeFallbackTitle(manifest.title, fileName: manifest.fileName) { score += 15 }
+        if !manifest.author.isEmpty, manifest.author != "Unknown" { score += 10 }
+        if manifest.progression != nil { score += 5 }
+        if manifest.dateLastRead != nil { score += 5 }
+        if manifest.lastReadLocatorJSON != nil { score += 5 }
+        return score
     }
 
     private func scanBookFiles() -> [String: URL] {
