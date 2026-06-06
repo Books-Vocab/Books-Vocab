@@ -140,7 +140,15 @@ struct PodcastPlayerView: View {
     }
 
     var body: some View {
-        fullBody
+        // 在 TOP-LEVEL body 註冊 `lookedUpWords` 依賴：mid-episode 查一個新詞 →
+        // `appendLookedUpWordIfNeeded` 樂觀 append → 此讀取使 body 失效重評 → 字幕子樹
+        // 拿到新 `lookedUpWords` 即時長出螢光筆。否則唯一讀取點埋在帶參數的
+        // `playerContent(_:)` @ViewBuilder func 內（再經 `Set(...)` 包裝），`@Observable`
+        // 失效不及於 body，highlight 只在跳出再重進該集（`.onAppear → loadLookedUpWords`
+        // 重建整棵字幕樹）後才出現。鏡射 ReaderView 在其 body 層直讀 `handler.lookedUpWords`
+        // 的 proven pattern（亦同本 app `AppThemeContainer` 的 `let _ = fontTracker...` 慣例）。
+        let _ = translationHandler.lookedUpWords.count
+        return fullBody
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
         }

@@ -127,7 +127,11 @@ struct BooksBrowserApp: App {
                 // .id(selection) 強制 SwiftUI 在 selection 變更時重建整棵 view tree,
                 // 讓所有 L10n.string 重新計算。代價是切語言瞬間全 tree 重建(可接受)。
                 .id(appLanguage.selection)
-                .tint(AppColors.tintLight)
+                // tint 由 AppThemeContainer 的 .tint(theme.palette.tint) 統一供給
+                // （scheme-aware：light→tintLight、dark→tintDark 近白）。此處勿再寫死
+                // .tint(AppColors.tintLight)——它離葉較近會覆蓋外層 scheme-aware tint，
+                // 害 dark mode 下全 app 的 accent/tint 元件（tab bar 選中態、menu icon/
+                // checkmark）以深灰疊深底、對比過低看不清。
                 #if os(iOS)
                 .environment(\.readiumService, readiumService)
                 .environment(\.bookshelfImportService, bookshelfImportService)
