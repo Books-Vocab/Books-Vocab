@@ -87,6 +87,65 @@ struct BookLibraryReconcilerTests {
         #expect(manifest.format == .pdf)
     }
 
+    @Test func reconcilerBackfillsFallbackRowFromManifestMetadata() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "F9634750-1CEE-4E8E-A7A7-13594801B886.epub"
+        try Data("epub".utf8).write(to: root.appendingPathComponent(fileName))
+        let bookId = UUID()
+        let book = Book(title: "F9634750-1CEE-4E8E-A7A7-13594801B886", author: "", fileName: fileName, format: .epub)
+        book.id = bookId
+        context.insert(book)
+        try context.save()
+        try BookManifestStore(rootDirectory: root).write(BookManifest(
+            bookId: bookId,
+            fileName: fileName,
+            originalFileName: "Real Book.epub",
+            title: "Real Book",
+            author: "Author",
+            format: .epub,
+            coverImageData: Data([4, 5, 6]),
+            dateAdded: Date(timeIntervalSince1970: 1),
+            dateLastRead: Date(timeIntervalSince1970: 2),
+            progression: 0.33,
+            lastReadLocatorJSON: #"{"href":"chapter"}"#,
+            preferredNotebookId: "nb"
+        ))
+
+        let result = try BookLibraryReconciler(rootDirectory: root).reconcile(context: context)
+
+        let saved = try #require(try context.fetch(FetchDescriptor<Book>()).first)
+        #expect(result.updatedRows == 1)
+        #expect(saved.title == "Real Book")
+        #expect(saved.author == "Author")
+        #expect(saved.coverImageData == Data([4, 5, 6]))
+        #expect(saved.progression == 0.33)
+        #expect(saved.lastReadLocatorJSON == #"{"href":"chapter"}"#)
+        #expect(saved.preferredNotebookId == "nb")
+    }
+
+    @Test func reconcilerDoesNotPersistManifestForMetadataPoorFallbackRow() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileName = "D8D20CE3-F60E-45E0-9410-12D0A5DCCD78.epub"
+        try Data("epub".utf8).write(to: root.appendingPathComponent(fileName))
+        let book = Book(title: "D8D20CE3-F60E-45E0-9410-12D0A5DCCD78", author: "", fileName: fileName, format: .epub)
+        context.insert(book)
+        try context.save()
+
+        let result = try BookLibraryReconciler(rootDirectory: root).reconcile(context: context)
+
+        #expect(result.writtenManifests == 0)
+        let persistedManifest = try? BookManifestStore(rootDirectory: root).read(bookId: book.id)
+        #expect(persistedManifest == nil)
+    }
+
     @Test func reconcilerDoesNotCreateBareRowsDuringNormalCloudStartup() throws {
         let container = try makeContainer()
         let context = ModelContext(container)

@@ -6,6 +6,7 @@ struct BookLibraryReconcileResult: Equatable {
     var recoveredRows = 0
     var writtenManifests = 0
     var duplicateRowsRemoved = 0
+    var updatedRows = 0
 }
 
 struct BookLibraryReconciler {
@@ -34,6 +35,12 @@ struct BookLibraryReconciler {
         let manifestsById = Self.manifestsById(manifests)
         var existingBooks = try context.fetch(FetchDescriptor<Book>())
         var result = BookLibraryReconcileResult()
+        debugDump(
+            stage: "start",
+            books: existingBooks,
+            manifests: manifests,
+            filesByName: filesByName
+        )
         result.duplicateRowsRemoved = removeDuplicateRows(
             context: context,
             books: &existingBooks,
@@ -44,7 +51,11 @@ struct BookLibraryReconciler {
 
         for (fileName, _) in filesByName {
             if let book = existingByFileName[fileName] {
-                if !existingManifestIds.contains(book.id) {
+                if let manifest = manifestsByFileName[fileName],
+                   Self.mergeManifestMetadata(into: book, from: manifest) {
+                    result.updatedRows += 1
+                }
+                if !existingManifestIds.contains(book.id), Self.shouldPersistManifest(for: book) {
                     try manifestStore.write(BookManifest(book: book))
                     existingManifestIds.insert(book.id)
                     result.writtenManifests += 1
@@ -68,9 +79,16 @@ struct BookLibraryReconciler {
 
         if result.recoveredRows > 0
             || result.writtenManifests > 0
-            || result.duplicateRowsRemoved > 0 {
+            || result.duplicateRowsRemoved > 0
+            || result.updatedRows > 0 {
             try context.save()
         }
+        debugDump(
+            stage: "end",
+            books: existingBooks,
+            manifests: manifestStore.readAll(),
+            filesByName: filesByName
+        )
 
         return result
     }
@@ -166,6 +184,56 @@ struct BookLibraryReconciler {
         }
     }
 
+    private static func mergeManifestMetadata(into book: Book, from manifest: BookManifest) -> Bool {
+        var changed = false
+        if looksLikeFallbackTitle(book.title, fileName: book.epubFileName)
+            && !looksLikeFallbackTitle(manifest.title, fileName: manifest.fileName) {
+            book.title = manifest.title
+            changed = true
+        }
+        if (book.author.isEmpty || book.author == "Unknown"),
+           !manifest.author.isEmpty,
+           manifest.author != "Unknown" {
+            book.author = manifest.author
+            changed = true
+        }
+        if book.coverImageData == nil, let cover = manifest.coverImageData {
+            book.coverImageData = cover
+            changed = true
+        }
+        if shouldUseManifestReadingPosition(manifest, over: book) {
+            book.dateLastRead = manifest.dateLastRead
+            book.progression = manifest.progression
+            book.lastReadLocatorJSON = manifest.lastReadLocatorJSON
+            changed = true
+        }
+        if book.preferredNotebookId == nil, let notebookId = manifest.preferredNotebookId {
+            book.preferredNotebookId = notebookId
+            changed = true
+        }
+        return changed
+    }
+
+    private static func shouldUseManifestReadingPosition(_ manifest: BookManifest, over book: Book) -> Bool {
+        switch (manifest.dateLastRead, book.dateLastRead) {
+        case let (manifestDate?, bookDate?):
+            return manifestDate > bookDate
+        case (.some, nil):
+            return true
+        case (nil, .some), (nil, nil):
+            return book.progression == nil && manifest.progression != nil
+        }
+    }
+
+    private static func shouldPersistManifest(for book: Book) -> Bool {
+        !looksLikeFallbackTitle(book.title, fileName: book.epubFileName)
+            || book.coverImageData != nil
+            || book.dateLastRead != nil
+            || book.progression != nil
+            || book.lastReadLocatorJSON != nil
+            || book.preferredNotebookId != nil
+    }
+
     private static func shouldUseReadingPosition(from candidate: Book, over current: Book) -> Bool {
         switch (candidate.dateLastRead, current.dateLastRead) {
         case let (candidateDate?, currentDate?):
@@ -203,6 +271,33 @@ struct BookLibraryReconciler {
         if manifest.dateLastRead != nil { score += 5 }
         if manifest.lastReadLocatorJSON != nil { score += 5 }
         return score
+    }
+
+    private func debugDump(
+        stage: String,
+        books: [Book],
+        manifests: [BookManifest],
+        filesByName: [String: URL]
+    ) {
+        #if DEBUG
+        let manifestsByFileName = Self.manifestsByFileName(manifests)
+        let duplicateFileNames = Dictionary(grouping: books, by: \.epubFileName)
+            .filter { $0.value.count > 1 }
+            .keys
+            .sorted()
+        let fallbackRows = books.filter { Self.looksLikeFallbackTitle($0.title, fileName: $0.epubFileName) }
+        AppLog.book.debug(
+            "BookLibraryReconciler[\(stage, privacy: .public)] summary books=\(books.count) files=\(filesByName.count) manifests=\(manifests.count) duplicateFiles=\(duplicateFileNames.joined(separator: ","), privacy: .public) fallbackRows=\(fallbackRows.count)"
+        )
+        for book in books.sorted(by: { $0.epubFileName < $1.epubFileName }) {
+            let manifest = manifestsByFileName[book.epubFileName]
+            let fileURL = filesByName[book.epubFileName]
+            let fileReadable = fileURL.map { FileManager.default.isReadableFile(atPath: $0.path) } ?? false
+            AppLog.book.debug(
+                "BookLibraryReconciler[\(stage, privacy: .public)] row file=\(book.epubFileName, privacy: .public) id=\(book.id.uuidString, privacy: .public) title=\(book.title, privacy: .public) fallback=\(Self.looksLikeFallbackTitle(book.title, fileName: book.epubFileName)) coverBytes=\(book.coverImageData?.count ?? 0) progress=\(book.progression ?? -1, privacy: .public) localReadable=\(fileReadable) manifestTitle=\(manifest?.title ?? "nil", privacy: .public) manifestFallback=\(manifest.map { Self.looksLikeFallbackTitle($0.title, fileName: $0.fileName) } ?? false) manifestCoverBytes=\(manifest?.coverImageData?.count ?? 0) original=\(manifest?.originalFileName ?? "nil", privacy: .public)"
+            )
+        }
+        #endif
     }
 
     private func scanBookFiles() -> [String: URL] {
