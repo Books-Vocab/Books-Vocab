@@ -7,8 +7,14 @@ from kg.languages import SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
 
 
 class TranslationLanguageConfig(BaseModel):
+    """翻譯語言偏好（source→target），屬 `/api/user/config` 的 LWW 家族。source 與
+    target 語意上一組（一起改、一起跨裝置收斂），故共用**單一 group** `updated_at`
+    整組 LWW，對齊 `ReviewModeConfig` / `VocabUIConfig`（非 per-field 時戳）。
+    `updated_at=None` = 從未寫過（向後相容：舊 users.json blob 無此欄→None）。"""
+
     source_lang: str = "en"
     target_lang: str = "zh-Hant"
+    updated_at: float | None = None  # LWW timestamp, epoch 秒
 
     @field_validator("source_lang")
     @classmethod

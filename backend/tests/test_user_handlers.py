@@ -32,7 +32,7 @@ class TestMergeUserConfig:
             translation=TranslationLanguageConfig(source_lang="en", target_lang="ja")
         )
         _merge_user_config(config, req)
-        assert config["translation"] == {"source_lang": "en", "target_lang": "ja"}
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ja", "updated_at": None}
 
     def test_no_update_when_translation_none(self):
         config = {"translation": {"source_lang": "en", "target_lang": "ja"}}
@@ -46,7 +46,40 @@ class TestMergeUserConfig:
             translation=TranslationLanguageConfig(source_lang="en", target_lang="ko")
         )
         _merge_user_config(config, req)
-        assert config["translation"] == {"source_lang": "en", "target_lang": "ko"}
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ko", "updated_at": None}
+
+    def test_translation_merge_with_updated_at(self):
+        # LWW 時戳隨 group 一起寫入（對齊 review_mode / vocab_ui 家族）。
+        config = {}
+        req = UserConfigRequest(
+            translation=TranslationLanguageConfig(
+                source_lang="en", target_lang="ja", updated_at=1717668000.0
+            )
+        )
+        _merge_user_config(config, req)
+        assert config["translation"] == {
+            "source_lang": "en",
+            "target_lang": "ja",
+            "updated_at": 1717668000.0,
+        }
+
+
+class TestBuildUserConfigTranslation:
+    """translation 三層後端化:source/target 偏好 + 單一 group updated_at 驅動整組 LWW。"""
+
+    def test_build_includes_translation_updated_at(self):
+        config = {"translation": {"source_lang": "en", "target_lang": "ja", "updated_at": 3.0}}
+        resp = _build_user_config_response(config)
+        assert resp.translation.source_lang == "en"
+        assert resp.translation.target_lang == "ja"
+        assert resp.translation.updated_at == 3.0
+
+    def test_build_translation_default_updated_at_none(self):
+        # 向後相容:既有 users.json 的 translation blob 無 updated_at → None,不炸。
+        resp = _build_user_config_response({"translation": {"source_lang": "en", "target_lang": "ja"}})
+        assert resp.translation.updated_at is None
+        # 完全無 translation 時亦回 default config + updated_at None。
+        assert _build_user_config_response({}).translation.updated_at is None
 
 
 class TestMergeUserConfigReviewClock:
@@ -95,7 +128,7 @@ class TestMergeUserConfigReviewClock:
             ),
         )
         _merge_user_config(config, req)
-        assert config["translation"] == {"source_lang": "en", "target_lang": "ja"}
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ja", "updated_at": None}
         assert config["review_clock"]["is_paused"] is True
 
 

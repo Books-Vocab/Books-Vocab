@@ -31,6 +31,7 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
         translation = TranslationLanguageConfig(
             source_lang=translation_data.get("source_lang", "en"),
             target_lang=translation_data.get("target_lang", "zh-Hant"),
+            updated_at=translation_data.get("updated_at"),
         )
     else:
         translation = TranslationLanguageConfig()
@@ -77,11 +78,14 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
 
 
 def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
-    # Translation config
-    if req.translation:
+    # Translation config（source+target 偏好 + 單一 group updated_at 整組 LWW）。
+    # 用 `is not None` 對齊其他 group（有送=更新, None=不動既有）；統一語意並消除
+    # 「未來 model 變得可 falsy 就誤略過」的隱患（現 model 全 default 不會 falsy）。
+    if req.translation is not None:
         config["translation"] = {
             "source_lang": req.translation.source_lang,
             "target_lang": req.translation.target_lang,
+            "updated_at": req.translation.updated_at,
         }
     # Review clock (pause state). 複合原子;resume 時 paused_at 已由 ReviewClockConfig
     # validator 正規化為 None。只在 client 有送 review_clock 時更新(None = 不動既有)。
