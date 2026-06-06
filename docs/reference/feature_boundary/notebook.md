@@ -5,9 +5,10 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
+  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: 3f14c595
+verified_against: f576134d
 -->
 # Notebook Feature Boundary
 
@@ -22,7 +23,8 @@ verified_against: 3f14c595
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Scenes/NotebookListView.swift` | 457 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**單欄 drill-down 導航(2026-06 #671 收斂)** — notebook row 一律 `NavigationLink(value: notebook.remoteId)` → `navigationDestination(for: String.self)` push `VocabularyListView(notebookId:)`,所有 layout(含 regular / Catalyst)皆然;舊「regular row button selection + 右側 `safeAreaInset` inline 第二欄 + 可拖拉分隔線」雙欄已移除,連帶刪 `NotebookActivationMode` / `NotebookSelectionPolicy` / `NotebookMasterDetailMetrics`(收斂後零引用)及 `selectedNotebookId` / `containerWidth` / `reconcileSelectedNotebook` 等 inline 專屬 state。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。Notebook stats/CTA due 計算使用 review pause reference date。 |
-| `Scenes/NotebookListCoordinator.swift` | 282 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原） |
+| `Scenes/NotebookListCoordinator.swift` | 257 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原）。`reconcileNotebooks` 只負責 fetch + 失敗時 `NotebookReconciler.ensureOfflineDefault` 占位；reconcile 純邏輯已抽至 `NotebookReconciler`。`deleteNotebook` 對 local-only 本子（`remoteId` 前綴 `local-` 或 `syncStatus==0`）跳過 server 呼叫，只做本地刪除（避免 404 throw 鎖死孤兒）。 |
+| `Scenes/NotebookReconciler.swift` | 131 | `enum NotebookReconciler`（純邏輯、無 IO、不 save，對齊 `PodcastSyncService.reconcileLocalState` 範式）。`reconcile(remote:local:allEntries:modelContext:)`：upsert + tombstone（`syncStatus==1` 缺席→刪）+ **reap 孤兒**（`local-*` 且 `syncStatus==0` 的離線占位本，在有真本時硬刪、殘留 entry 改派 `default`）+ cascade（僅 tombstone 真本下 entries `queueDelete`）；回傳轉不可見 remoteId 集合供清 `activeNotebookId`。`ensureOfflineDefault`：離線無可見本時建 `remoteId=="default"` sentinel 占位（非隨機 `local-UUID`），真本同步進來 upsert 就地合併、不分裂幽靈本。修「多個『我的單字本』」client↔server 不一致根因。 |
 | `Scenes/NotebookEditSheet.swift` | 279 | `struct NotebookEditSheet: View`，建立/編輯 notebook sheet（含 cover system 選色/選 pattern/匯入照片） |
 
 ### Components Layer（可復用元件）
@@ -51,6 +53,7 @@ verified_against: 3f14c595
 - **新增 filter / sort** → `NotebookFilterChip` 擴 enum；資料層走 SwiftData `@Query` predicate
 - **改動 notebook 統計／篩選邏輯** → `NotebookStatsCalculator`（pure，加 unit test 於 `NotebookStatsCalculatorTests.swift`）；改 sort comparator 走 `NotebookSortOption.sort(stats:)`
 - **改動 notebook 與卡片的綁定關係** → 涉及 `resolveNotebookId` chokepoint / `sanitizeOutbox` / `triggerPipelinesIsolated`，動之前讀 `docs/sop/architecture.md` §Notebook 同步 + `docs/reference/sync_lifecycle.md`
+- **改動 notebook reconcile / 孤兒回收 / 離線占位** → 純邏輯走 `NotebookReconciler`（加 unit test 於 `NotebookReconcilerTests.swift`，鏡像 `PodcastReconcileTests`）；`reconcileNotebooks` 只做 fetch + 委派。離線占位本一律用 canonical `"default"` sentinel，**禁**隨機 `local-UUID`（會製造永遠回收不掉的重複「我的單字本」，client↔server 不一致根因）
 
 ## State 邊界
 
