@@ -134,10 +134,14 @@ def source_matches(source: str, changed_path: str) -> bool:
 def impact_documents(documents: list[Document], changed_paths: list[str]) -> list[dict[str, object]]:
     impacts: list[dict[str, object]] = []
     for doc in documents:
+        include_sources = [source for source in doc.sources if not source.startswith("!")]
+        exclude_sources = [source[1:] for source in doc.sources if source.startswith("!")]
         matched_sources: list[str] = []
         matched_paths: list[str] = []
-        for source in doc.sources:
+        for source in include_sources:
             for changed_path in changed_paths:
+                if any(source_matches(exclude, changed_path) for exclude in exclude_sources):
+                    continue
                 if source_matches(source, changed_path):
                     matched_sources.append(source)
                     matched_paths.append(changed_path)

@@ -34,6 +34,9 @@ documents:
       - caddy_route_changed
     sources:
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/tests/test_docs_*.sh"
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -44,6 +47,9 @@ documents:
       - destructive_command_guard_changed
     sources:
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/tests/test_docs_*.sh"
       - backend/
       - docs/runbook/
 
@@ -61,6 +67,9 @@ documents:
       - backend/
       - chrome-extension/
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/tests/test_docs_*.sh"
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
@@ -100,6 +109,9 @@ documents:
     sources:
       - backend/
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/tests/test_docs_*.sh"
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -124,6 +136,9 @@ documents:
       - env_surface_changed
     sources:
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/tests/test_docs_*.sh"
       - backend/
 
   - id: sop.debug
@@ -136,6 +151,9 @@ documents:
       - production_observability_changed
     sources:
       - ops/
+      - "!ops/docs_lint.sh"
+      - "!ops/docs_impact.py"
+      - "!ops/tests/test_docs_*.sh"
       - docs/runbook/
 
   - id: generated.ios_baseline

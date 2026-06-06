@@ -16,17 +16,15 @@ if grep -q "STALE docs/" /tmp/kg_docs_lint_default.out; then
   exit 1
 fi
 
-if ./ops/docs_lint.sh --audit >/tmp/kg_docs_lint_audit.out 2>&1; then
-  echo "docs_lint --audit unexpectedly passed despite known historical doc debt" >&2
-  exit 1
-fi
+./ops/docs_lint.sh --audit >/tmp/kg_docs_lint_audit.out 2>&1
 grep -q "mode=audit" /tmp/kg_docs_lint_audit.out
+grep -q "WARN:  0" /tmp/kg_docs_lint_audit.out
+grep -q "ERROR: 0" /tmp/kg_docs_lint_audit.out
 
-if ./ops/docs_lint.sh --all >/tmp/kg_docs_lint_all.out 2>&1; then
-  echo "docs_lint --all unexpectedly passed despite known historical doc debt" >&2
-  exit 1
-fi
+./ops/docs_lint.sh --all >/tmp/kg_docs_lint_all.out 2>&1
 grep -q "mode=audit" /tmp/kg_docs_lint_all.out
+grep -q "WARN:  0" /tmp/kg_docs_lint_all.out
+grep -q "ERROR: 0" /tmp/kg_docs_lint_all.out
 
 ./ops/docs_lint.sh --registry >/tmp/kg_docs_lint_registry.out
 grep -q "REGISTRY OK" /tmp/kg_docs_lint_registry.out
