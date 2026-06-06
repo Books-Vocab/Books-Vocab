@@ -763,6 +763,16 @@ cmd_ops_cli() {
   container_exec_argv python3 /app/ops_cli.py "$@"
 }
 
+# ── 指令：ops-edit <subcommand> [args] ──────────────────────────────────
+# ops_cli.py 的**寫入**對應面。dry-run 預設(不傳 --commit 只印 plan)、寫前自動
+# 備份 user_dir、寫後讀回 verify、audit。安全模型在工具內(EditContext),故與
+# ops-cli 同級 argv pass-through —— is_blocked_run 的 shell-string 過濾不適用
+# (argv 不走 remote shell 解析,破壞性已由 --commit gate + 自動備份守護)。
+cmd_ops_edit() {
+  [[ -z "${1:-}" ]] && err "用法: $0 ops-edit <subcommand> [args...]"
+  container_exec_argv python3 /app/ops_edit.py "$@"
+}
+
 # ── 指令：container-script <local-script> [args] ────────────────────────
 cmd_container_script() {
   local script="${1:-}"
@@ -814,6 +824,7 @@ case "${1:-help}" in
   container-run) cmd_container_run "${@:2}" ;;
   migrate-run)  cmd_migrate_run "${@:2}" ;;
   ops-cli)          cmd_ops_cli "${@:2}" ;;
+  ops-edit)         cmd_ops_edit "${@:2}" ;;
   container-script) cmd_container_script "${@:2}" ;;
   ssh)          cmd_ssh ;;
   help|--help|-h|*)
@@ -839,7 +850,8 @@ case "${1:-help}" in
     echo "  run \"<cmd>\"             在遠端 host 執行任意指令"
     echo "  container-run \"<cmd>\"   在 Docker 容器內執行指令"
     echo "  migrate-run \"<cmd>\"     container-run + 自動重啟（清 cache）"
-    echo "  ops-cli <sub> [args]    在容器內執行 ops_cli.py <sub> [args]"
+    echo "  ops-cli <sub> [args]    在容器內執行 ops_cli.py <sub> [args]（唯讀查詢）"
+    echo "  ops-edit <sub> [args]   在容器內執行 ops_edit.py <sub> [args]（寫入,dry-run 預設）"
     echo "  container-script <file> [args]  上傳本地腳本到容器內執行（.py/.sh）"
     echo "  ssh                     開啟互動式 SSH（人工用，agent 改用 run）"
     echo ""

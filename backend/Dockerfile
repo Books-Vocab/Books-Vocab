@@ -30,7 +30,7 @@ COPY tests/ tests/
 COPY pytest.ini ./
 COPY index.html privacy.html support.html terms.html guide.html ./
 COPY static/ static/
-COPY ops_cli.py ops_analyze.py ./
+COPY ops_cli.py ops_analyze.py ops_edit.py ./
 
 # 非 root 用戶（UID 1000 匹配 host ubuntu 預設）
 RUN useradd --create-home --shell /bin/bash --uid 1000 appuser \
