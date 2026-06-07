@@ -115,6 +115,11 @@ echo "$malformed_runs_json" | jq -e 'all([.build,.test][]; has("jsonVerdictFile"
   && ok "runs malformed/legacy fallback keeps stable keys" || fail_t "runs malformed/legacy fallback missing stable keys: $malformed_runs_json"
 [[ ! -s "$malformed_runs_tmp/stderr" ]] \
   && ok "runs --json suppresses malformed verdict parser noise" || fail_t "runs malformed-verdict stderr not clean: $(cat "$malformed_runs_tmp/stderr")"
+malformed_runs_text="$(TMPDIR="$malformed_runs_tmp" bash "$IOS_OPS" runs 2>"$malformed_runs_tmp/text_stderr")"
+echo "$malformed_runs_text" | grep -q 'kind=build status=ok' \
+  && ok "runs text uses normalized verdict fallback" || fail_t "runs text malformed fallback invalid: $malformed_runs_text"
+[[ ! -s "$malformed_runs_tmp/text_stderr" ]] \
+  && ok "runs text suppresses malformed verdict parser noise" || fail_t "runs text malformed-verdict stderr not clean: $(cat "$malformed_runs_tmp/text_stderr")"
 rm -rf "$malformed_runs_tmp"
 doctor_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json)"
 echo "$doctor_json" | jq -e '.schema=="kg.ios.doctor.v1" and (.readiness|length >= 7) and any(.readiness[]; .key=="testflight")' >/dev/null \

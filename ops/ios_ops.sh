@@ -659,6 +659,7 @@ cmd_runs() {
     [[ -n "$log_path" ]] && echo "[ios][run] kind=$kind log=$log_path exists=$log_exists"
     [[ -n "$xcresult_path" ]] && echo "[ios][run] kind=$kind xcresult=$xcresult_path exists=$xcresult_exists"
   done
+  return 0
 }
 
 cmd_snapshot_json() {
