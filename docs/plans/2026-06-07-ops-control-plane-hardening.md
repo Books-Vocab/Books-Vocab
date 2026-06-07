@@ -13,14 +13,15 @@ verified_against: 887a248d
 
 ## P0 — 讓 ops regression 代表真實綠燈
 
-1. 修正 `docs-lint` 契約矛盾。
+1. ✅ 修正 `docs-lint` 契約矛盾。
    - 現象:`./ops/test_ops.sh` 會因 `docs-lint` group 失敗;根因是 `ops/tests/test_docs_lint.sh` 要求 `--audit` `WARN: 0`,但 `ops/docs_lint.sh` 的設計是 WARN 不應 fail,除非 `--strict`。
-   - 決策點:要嘛清掉當前 `docs/sop/doc_sync.md` / `docs/sop/ios.md` stale debt,要嘛把測試改成驗「audit 可報 WARN 但 exit 0」。
-   - 完成判準:`./ops/test_ops.sh docs-lint` 穩定通過;測試輸出清楚列出 WARN 是否預期。
+   - 決策:保留 `docs_lint.sh` 的 contract(WARN 不 fail,除非 `--strict`),把 regression 改成驗 `--audit`/`--all` exit 0 + `ERROR: 0`;stale WARN 仍在 audit 輸出中可見。
+   - 驗證:`./ops/test_ops.sh docs-lint` 通過。
 
-2. 測試失敗時自動 dump 對應 out 檔。
+2. ✅ 測試失敗時自動 dump 對應 out 檔。
    - 現象:部分 shell tests 把 stdout/stderr redirect 到 `/tmp`,失敗只回 rc,agent 需要二次調用才知道原因。
-   - 完成判準:每個 `ops/tests/*.sh` 失敗時至少印最後 80 行相關 out/err,並保留 path。
+   - 決策:`ops/tests/test_docs_lint.sh` 新增 `run_capture` / `require_grep` / `dump_file`,命令失敗或 pattern 缺失時印最後 80 行與檔案 path。
+   - 驗證:`./ops/test_ops.sh` 通過 12 groups / 0 failed。
 
 ## P1 — 統一 Python entrypoint 執行環境
 
