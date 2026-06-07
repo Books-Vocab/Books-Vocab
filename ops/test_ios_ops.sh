@@ -108,6 +108,13 @@ else
   grep -q 'fixture log failure' "$fail_logs_tmp/err" \
     && ok "logs text propagates log show failure" || fail_t "logs text failure stderr missing"
 fi
+if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --json --since 1m >"$fail_logs_tmp/json_out" 2>"$fail_logs_tmp/json_err"; then
+  fail_t "logs --json propagates log show failure"
+else
+  rc=$?
+  grep -q 'fixture log failure' "$fail_logs_tmp/json_err" && [[ "$rc" -eq 42 ]] \
+    && ok "logs --json propagates log show failure" || fail_t "logs --json failure stderr missing"
+fi
 rm -rf "$fail_logs_tmp"
 
 section "JSON smoke fixtures"
@@ -157,8 +164,11 @@ workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
 echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
   && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
 snapshot_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
-echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6" and .runs.test.executed=="12"' >/dev/null \
+echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6" and .runs.test.executed=="12" and .logs==null' >/dev/null \
   && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
+snapshot_logs_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" snapshot --json --include-logs --log-since 1m --log-limit 1)"
+echo "$snapshot_logs_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .logs.schema=="kg.ios.logs.v1" and .logs.since=="1m" and .logs.limit==1 and .logs.summary.filteredCount==1 and (.logs.entries|length)==1' >/dev/null \
+  && ok "snapshot --json can include runtime logs" || fail_t "snapshot --json logs invalid: $snapshot_logs_json"
 rm -rf "$runs_parent"
 bad_args_tmp="$(mktemp -d)"
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json garbage >"$bad_args_tmp/out" 2>"$bad_args_tmp/err"; then
@@ -168,6 +178,21 @@ else
     && ok "doctor --json rejects unknown trailing args" || fail_t "doctor --json bad-arg message missing"
 fi
 rm -rf "$bad_args_tmp"
+bad_snapshot_tmp="$(mktemp -d)"
+if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json --log-limit nope >"$bad_snapshot_tmp/out" 2>"$bad_snapshot_tmp/err"; then
+  fail_t "snapshot rejects non-numeric log limit"
+else
+  grep -q -- '--log-limit must be' "$bad_snapshot_tmp/err" \
+    && ok "snapshot rejects non-numeric log limit" || fail_t "snapshot bad-log-limit message missing"
+fi
+if KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" snapshot --json --include-logs --log-since 1m >"$bad_snapshot_tmp/log_out" 2>"$bad_snapshot_tmp/log_err"; then
+  fail_t "snapshot --include-logs propagates log failure"
+else
+  rc=$?
+  grep -q 'fixture log failure' "$bad_snapshot_tmp/log_err" && [[ "$rc" -eq 42 ]] \
+    && ok "snapshot --include-logs propagates log failure" || fail_t "snapshot include-logs failure stderr missing"
+fi
+rm -rf "$bad_snapshot_tmp"
 
 section "Archive fixture"
 tmp="$(mktemp -d)"

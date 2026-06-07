@@ -13,7 +13,7 @@
 #   ./ops/ios_ops.sh doctor [--json]
 #   ./ops/ios_ops.sh workflow release [--json]
 #   ./ops/ios_ops.sh runs [--json]
-#   ./ops/ios_ops.sh snapshot [--json]
+#   ./ops/ios_ops.sh snapshot [--json] [--include-logs] [--log-since 5m] [--log-limit 200]
 #
 # Side-effect model:
 # - status/archives/issues/logs/sentry/doctor/workflow/runs/snapshot/dashboard are read-only.
@@ -410,6 +410,10 @@ cmd_logs_text() {
 
 run_log_show_ndjson() {
   local since="$1" predicate="$2"
+  if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
+    echo "fixture log failure" >&2
+    return 42
+  fi
   if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
     cat <<'NDJSON'
 {"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksBrowser"}
@@ -422,14 +426,19 @@ NDJSON
 }
 
 cmd_logs_json() {
-  local since="$1" predicate="$2" limit="$3" generated_at tmp err
+  local since="$1" predicate="$2" limit="$3" generated_at tmp err rc
   generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   tmp="$(mktemp)"
   err="$(mktemp)"
-  if ! run_log_show_ndjson "$since" "$predicate" >"$tmp" 2>"$err"; then
+  if run_log_show_ndjson "$since" "$predicate" >"$tmp" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if (( rc != 0 )); then
     cat "$err" >&2
     rm -f "$tmp" "$err"
-    return 1
+    return "$rc"
   fi
   rm -f "$err"
   jq -s \
@@ -781,7 +790,8 @@ cmd_runs() {
 }
 
 cmd_snapshot_json() {
-  local doctor_json workflow_json runs_json generated_at
+  local include_logs="$1" log_since="$2" log_limit="$3" log_predicate="$4"
+  local doctor_json workflow_json runs_json logs_json generated_at
   if ! doctor_json="$(cmd_doctor_json)"; then
     return 1
   fi
@@ -791,6 +801,15 @@ cmd_snapshot_json() {
   if ! runs_json="$(cmd_runs_json)"; then
     return 1
   fi
+  if (( include_logs )); then
+    if logs_json="$(cmd_logs_json "$log_since" "$log_predicate" "$log_limit")"; then
+      :
+    else
+      return $?
+    fi
+  else
+    logs_json='null'
+  fi
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
   jq -n \
@@ -799,6 +818,7 @@ cmd_snapshot_json() {
     --argjson doctor "$doctor_json" \
     --argjson workflow "$workflow_json" \
     --argjson runs "$runs_json" \
+    --argjson logs "$logs_json" \
     '{
       schema:$schema,
       generated_at:$generated_at,
@@ -807,17 +827,22 @@ cmd_snapshot_json() {
       testflight:$doctor.testflight,
       readiness:$doctor.readiness,
       workflow:$workflow,
-      runs:$runs
+      runs:$runs,
+      logs:$logs
     }'
 }
 
 cmd_snapshot() {
-  local json=0
+  local json=0 include_logs=0 log_since="5m" log_limit=200 log_limit_num log_predicate="$DEFAULT_LOG_PREDICATE"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=1; shift ;;
+      --include-logs|--with-logs) include_logs=1; shift ;;
+      --log-since) log_since="${2:?--log-since needs value}"; shift 2 ;;
+      --log-limit) log_limit="${2:?--log-limit needs value}"; shift 2 ;;
+      --log-predicate) log_predicate="${2:?--log-predicate needs value}"; shift 2 ;;
       -h|--help|help)
-        echo "Usage: ./ops/ios_ops.sh snapshot [--json]"
+        echo "Usage: ./ops/ios_ops.sh snapshot [--json] [--include-logs] [--log-since 5m] [--log-limit 200] [--log-predicate <predicate>]"
         return 0
         ;;
       *)
@@ -826,9 +851,14 @@ cmd_snapshot() {
         ;;
     esac
   done
+  if [[ -z "$log_limit" || "$log_limit" == *[!0-9]* ]]; then
+    echo "✗ --log-limit must be a non-negative integer" >&2
+    return 1
+  fi
+  log_limit_num="$((10#$log_limit))"
 
   if (( json )); then
-    cmd_snapshot_json
+    cmd_snapshot_json "$include_logs" "$log_since" "$log_limit_num" "$log_predicate"
     return
   fi
 
@@ -838,6 +868,10 @@ cmd_snapshot() {
   cmd_workflow_release
   echo "[ios][snapshot] phase=runs"
   cmd_runs
+  if (( include_logs )); then
+    echo "[ios][snapshot] phase=logs"
+    cmd_logs --since "$log_since" --limit "$log_limit_num" --predicate "$log_predicate"
+  fi
 }
 
 cmd="${1:-}"
