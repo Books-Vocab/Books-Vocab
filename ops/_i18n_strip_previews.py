@@ -45,11 +45,15 @@ from pathlib import Path
 # same line (Swift macro syntax requires it).
 PREVIEW_MACRO_RE = re.compile(r"^\s*#Preview\b[^{]*\{")
 
-# Detect a private preview struct. We accept `Preview`, `Preview_Previews`,
-# and any other identifier whose name ends in `Preview` and is `private`.
+# Detect a preview struct. We accept `Preview`, `Preview_Previews`, and any
+# other identifier whose name ends in `Preview`. The access modifier is
+# optional: harnesses are routinely lifted `private` → `internal` so the
+# DEBUG Playbook catalog can reuse them, but they remain preview-only code
+# (the `*Preview` name suffix is the reliable signal, not the access level).
 # Conformance list / generic clause may follow. Opening brace on same line.
 PREVIEW_STRUCT_RE = re.compile(
-    r"^\s*private\s+struct\s+\w*Preview(?:_Previews)?\s*(?::\s*[^{]+)?\{"
+    r"^\s*(?:private\s+|fileprivate\s+|internal\s+|public\s+)?"
+    r"struct\s+\w*Preview(?:_Previews)?\s*(?::\s*[^{]+)?\{"
 )
 
 
