@@ -60,6 +60,34 @@ class ReviewEvent(SQLModel, table=True):
     # monotonic in the order the server received events, so a cursor over it never
     # misses a late-arriving event whose reviewed_at lies in the past.
     ingested_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC), index=True)
+    # SRS 前後狀態快照 — 複習當下由 iOS 計算,backend 原樣鏡像(不算 SRS)。逐筆事件自包含
+    # 複習當下的間隔/下次複習/count/streak/lapse,研究「每張卡學習曲線 / 遺忘規律」才有料。
+    # 舊事件無此資訊(migration 落 NULL),Phase 5 iOS 固化後新事件帶值。
+    interval_before: float | None = SQLField(default=None)
+    interval_after: float | None = SQLField(default=None)
+    next_review_before: datetime | None = SQLField(default=None)
+    next_review_after: datetime | None = SQLField(default=None)
+    review_count_after: int | None = SQLField(default=None)
+    streak_after: int | None = SQLField(default=None)
+    lapse_after: int | None = SQLField(default=None)
+    # 合成的過去(一次性遷移回填) vs 真實的未來(上線後 iOS 上報),研究時 WHERE 篩選互不污染。
+    is_synthetic: bool = SQLField(default=False, index=True)
+
+
+# SRS 快照 + is_synthetic 加寬欄位。為既有 store ADD COLUMN(SQLite 不支援改既有欄約束,
+# 故全部 nullable;既有列 SRS 快照落 NULL、is_synthetic 落 0)。card_id 維持 nullable —
+# 根治不靠 schema 約束而靠 Phase 5 iOS 固化 + 一次性遷移清舊垃圾,符合「不向後兼容、用資料
+# 適配架構」(實驗階段)。
+_WIDEN_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("interval_before", "REAL"),
+    ("interval_after", "REAL"),
+    ("next_review_before", "DATETIME"),
+    ("next_review_after", "DATETIME"),
+    ("review_count_after", "INTEGER"),
+    ("streak_after", "INTEGER"),
+    ("lapse_after", "INTEGER"),
+    ("is_synthetic", "BOOLEAN NOT NULL DEFAULT 0"),
+)
 
 
 class ReviewEventStore:
@@ -73,6 +101,21 @@ class ReviewEventStore:
         _install_serializable_sqlite(self.engine)
         ReviewEvent.metadata.create_all(self.engine, tables=[ReviewEvent.__table__], checkfirst=True)
         self._migrate_ingested_at()
+        self._migrate_widen_schema()
+
+    def _migrate_widen_schema(self) -> None:
+        """為既有 store 補上 SRS 前後快照 + is_synthetic 欄位。逐欄 ADD COLUMN(冪等:
+        已存在則跳過);既有列的 SRS 快照落 NULL、is_synthetic 落 0。is_synthetic 補 index
+        對齊全新表(create_all 已含),使研究 WHERE is_synthetic 篩選兩條建表路徑一致。"""
+        table = ReviewEvent.__tablename__
+        with self.engine.begin() as conn:
+            columns = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").all()}
+            for name, ddl in _WIDEN_COLUMNS:
+                if name not in columns:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+            conn.exec_driver_sql(
+                f"CREATE INDEX IF NOT EXISTS ix_{table}_is_synthetic ON {table} (is_synthetic)"
+            )
 
     def _migrate_ingested_at(self) -> None:
         """Add the ingested_at column to pre-existing stores and backfill it from
@@ -123,6 +166,14 @@ class ReviewEventStore:
                         reviewed_at=reviewed_at,
                         created_at=created_at,
                         ingested_at=ingested_at,
+                        interval_before=entry.interval_before,
+                        interval_after=entry.interval_after,
+                        next_review_before=_parse_optional_timestamp(entry.next_review_before),
+                        next_review_after=_parse_optional_timestamp(entry.next_review_after),
+                        review_count_after=entry.review_count_after,
+                        streak_after=entry.streak_after,
+                        lapse_after=entry.lapse_after,
+                        is_synthetic=entry.is_synthetic,
                     )
                 )
                 inserted += 1
@@ -180,7 +231,27 @@ def _entry_from_event(event: ReviewEvent) -> ReviewEventEntry:
         feedback=event.feedback,
         reviewed_at=_format_timestamp(event.reviewed_at),
         created_at=_format_timestamp(event.created_at),
+        interval_before=event.interval_before,
+        interval_after=event.interval_after,
+        next_review_before=_format_optional_timestamp(event.next_review_before),
+        next_review_after=_format_optional_timestamp(event.next_review_after),
+        review_count_after=event.review_count_after,
+        streak_after=event.streak_after,
+        lapse_after=event.lapse_after,
+        is_synthetic=event.is_synthetic,
     )
+
+
+def _parse_optional_timestamp(raw: str | None) -> datetime | None:
+    """SRS 快照的 next_review 時間戳:None 直通;否則寬鬆 parse(對齊 since watermark 的
+    容忍度,naive 補 UTC)。這些是研究用快照,backend 不對其算 SRS,故比 reviewed_at 寬鬆。"""
+    if raw is None:
+        return None
+    return _parse_iso8601_timestamp(raw)
+
+
+def _format_optional_timestamp(value: datetime | None) -> str | None:
+    return _format_timestamp(value) if value is not None else None
 
 
 def _parse_iso8601_timestamp(raw: str) -> datetime:
