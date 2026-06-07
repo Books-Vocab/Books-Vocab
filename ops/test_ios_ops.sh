@@ -26,9 +26,14 @@ echo "$help_out" | grep -qE 'xcodebuild archive|xcodebuild test|xcodebuild .*bui
   && fail_t "ios_ops help appears to run xcodebuild" || ok "ios_ops help is side-effect free"
 
 section "Dispatch surface"
-for sub in status build test archive archives issues logs sentry doctor; do
-  grep -qE "^[[:space:]]*$sub\\)" "$IOS_OPS" \
-    && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+for sub in status build test archive archives issues logs sentry doctor workflow; do
+  if [[ "$sub" == "workflow" ]]; then
+    grep -qE '^[[:space:]]*workflow\|flow\)' "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  else
+    grep -qE "^[[:space:]]*$sub\\)" "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  fi
 done
 
 section "Doctor release readiness surface"
@@ -46,6 +51,21 @@ grep -q 'Products\\.storekit' <<<"$doctor_body" \
 grep -qE 'xcodebuild (archive|build|test)|altool --upload-app|--upload' <<<"$doctor_body" \
   && fail_t "doctor contains side-effecting build/archive/upload path" \
   || ok "doctor stays read-only"
+
+section "Release workflow surface"
+for key in preflight tests build archive upload asc-review metadata submit; do
+  grep -q "\"$key\"" "$IOS_OPS" \
+    && ok "workflow includes $key step" || fail_t "workflow missing $key step"
+done
+grep -q './ops/ios_ops.sh test --all-targets --timeout 1200' "$IOS_OPS" \
+  && ok "workflow includes all-targets test gate" || fail_t "workflow missing all-targets test command"
+grep -q './ops/asc_text_bundle.py dump -o asc.json' "$IOS_OPS" \
+  && ok "workflow includes ASC text bundle review" || fail_t "workflow missing asc_text_bundle dump"
+grep -q 'ASC GUI' "$IOS_OPS" \
+  && ok "workflow marks submit as GUI/manual" || fail_t "workflow missing GUI submit boundary"
+grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS" \
+  && fail_t "workflow contains direct Xcode side-effect path" \
+  || ok "workflow stays orchestration/read-only"
 
 section "Archive fixture"
 tmp="$(mktemp -d)"

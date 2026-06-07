@@ -67,7 +67,7 @@ run_one() {
       ./ops/tests/test_docs_lint.sh
       ;;
     ios-ops)
-      ./ops/test_ios_ops.sh
+      ./ops/test_ios_ops.sh &&
       "$UV_BIN" run --project backend pytest -q ops/tests/test_ios_diagnostics.py
       ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
