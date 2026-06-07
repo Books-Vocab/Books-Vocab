@@ -54,6 +54,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ./ops/ios_ops.sh sentry                 # iOS Sentry wiring 摘要
 ./ops/ios_ops.sh workflow release       # read-only 發版工作流：下一步命令 + todo/ready/block/warn/manual
 ./ops/ios_ops.sh workflow release --json # 同上，輸出 kg.ios.workflow.v1 結構化 JSON
+./ops/ios_ops.sh snapshot --json        # 一次拉 project/Organizer/TestFlight/readiness/workflow
 ```
 
 輸出契約:第一屏固定優先看 `[ios][issues]` / `[ios][summary]` / `[ios][next]` 類摘要;需要原始資料時再開 log path。
@@ -63,6 +64,8 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 `ios_ops.sh doctor` 是 release readiness 儀表板:read-only 彙總 project `MARKETING_VERSION(CURRENT_PROJECT_VERSION)`、Organizer latest archive、TestFlight latest build、ASC version state、manual signing export options、StoreKit scheme/file、Sentry release wiring。ASC version-state 查詢有短 deadline，逾時只會 `status=warn`，不阻塞本機 readiness。`status=block` 代表發版前必修（例如 build number 未增加），`status=warn` 代表資訊缺失或 local artifact 落後。agent/CI 要少調用工具時用 `--json`，schema 為 `kg.ios.doctor.v1`，核心陣列是 `readiness[]`。
 
 `ios_ops.sh workflow release` 是 read-only 發版操作編排:輸出 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`。它不跑測試/編譯/archive/upload,只根據目前 project/Organizer/TestFlight/ASC state 列下一步命令;submit/resubmit 邊界仍標 `manual`，因為 ASC submit-for-review / 撤回送審刻意不做 CLI 寫入。agent/CI 要直接讀步驟時用 `--json`，schema 為 `kg.ios.workflow.v1`，核心陣列是 `steps[]`。
+
+`ios_ops.sh snapshot --json` 是 agent 第一輪狀態入口:schema 為 `kg.ios.snapshot.v1`,合併 project、Organizer latest、TestFlight latest、`readiness[]` 與 release `workflow.steps[]`。它仍是 read-only，只組合既有 `doctor --json` 與 `workflow release --json`;人要看文字 dashboard 可用 `ios_ops.sh snapshot` 或 alias `dashboard`。
 
 ## iOS 編譯 3 步驟 SOP
 

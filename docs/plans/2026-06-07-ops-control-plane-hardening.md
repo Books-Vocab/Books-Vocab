@@ -87,6 +87,11 @@ verified_against: 887a248d
    - 決策:`doctor --json` 輸出 `kg.ios.doctor.v1` + `readiness[]`;`workflow release --json` 輸出 `kg.ios.workflow.v1` + `steps[]`。文字與 JSON 共用 readiness 判斷 helper，workflow status 收斂為 `todo|ready|block|warn|manual`，降低 drift。
    - 驗證:`./ops/ios_ops.sh doctor --json | jq ...`、`./ops/ios_ops.sh workflow release --json | jq ...`、`./ops/test_ops.sh ios-ops`。
 
+6. ✅ `ios_ops.sh snapshot/dashboard` 補單次狀態拉取入口。
+   - 方向:agent 第一輪要能用一個 read-only command 拉到 project、Organizer、TestFlight、readiness 與 release workflow,不再多次調用 `status`/`doctor`/`workflow` 後自行合併。
+   - 決策:`snapshot --json` 輸出 `kg.ios.snapshot.v1`,合併 `doctor --json` 與 `workflow release --json`;`dashboard` 作為 human-readable alias。
+   - 驗證:`KG_IOS_OPS_FIXTURE=1 ./ops/ios_ops.sh snapshot --json | jq ...` 與 `./ops/test_ops.sh ios-ops`。
+
 ## 驗證矩陣
 
 - `./ops/test_ops.sh docs-lint`
