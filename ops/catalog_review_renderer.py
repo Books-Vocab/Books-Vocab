@@ -236,6 +236,10 @@ def render_html(manifest: dict) -> str:
       background: rgba(255,255,255,0.82);
       box-shadow: 0 10px 25px rgba(31, 22, 13, 0.05);
     }}
+    .card.focused {{
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+    }}
     .card img {{
       display: block;
       width: 100%;
@@ -283,6 +287,16 @@ def render_html(manifest: dict) -> str:
     .actions button[data-state="shortlist"].selected {{ background: #e3f3e8; color: var(--good); border-color: #b8d8c3; }}
     .actions button[data-state="review"].selected {{ background: #fff0cf; color: var(--warn); border-color: #e8ca82; }}
     .actions button[data-state="reject"].selected {{ background: #f7dddd; color: var(--bad); border-color: #e6b6b6; }}
+    .utility-actions {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }}
+    .utility-actions button {{
+      padding: 8px 0;
+      border-radius: 10px;
+      font-size: 12px;
+    }}
     .empty {{
       border: 1px dashed var(--line);
       border-radius: 16px;
@@ -447,7 +461,7 @@ def render_html(manifest: dict) -> str:
 
     function matches(item) {{
       if (state.search) {{
-        const hay = `${{item.category}} ${{item.title}}`.toLowerCase();
+        const hay = `${{item.category}} ${{item.title}} ${{item.assetID}}`.toLowerCase();
         if (!hay.includes(state.search)) return false;
       }}
       if (state.device && item.device !== state.device) return false;
@@ -502,6 +516,10 @@ def render_html(manifest: dict) -> str:
             <button data-state="review" class="${{status === "review" ? "selected" : ""}}">再看</button>
             <button data-state="reject" class="${{status === "reject" ? "selected" : ""}}">砍</button>
           </div>
+          <div class="utility-actions">
+            <button data-action="copy-id">Copy ID</button>
+            <button data-action="copy-link">Permalink</button>
+          </div>
         </div>
       `;
       for (const button of wrapper.querySelectorAll(".actions button")) {{
@@ -510,7 +528,28 @@ def render_html(manifest: dict) -> str:
           setStatus(item, next);
         }});
       }}
+      for (const button of wrapper.querySelectorAll(".utility-actions button")) {{
+        button.addEventListener("click", async () => {{
+          const action = button.dataset.action;
+          const permalink = `${{window.location.pathname}}#asset-${{item.assetID}}`;
+          const text = action === "copy-link" ? permalink : item.assetID;
+          if (navigator.clipboard?.writeText) {{
+            await navigator.clipboard.writeText(text);
+          }}
+        }});
+      }}
       return wrapper;
+    }}
+
+    function applyHashTarget() {{
+      const hash = window.location.hash || "";
+      document.querySelectorAll(".card.focused").forEach((card) => card.classList.remove("focused"));
+      if (!hash.startsWith("#asset-")) return;
+      const assetId = decodeURIComponent(hash.slice("#asset-".length));
+      const card = document.getElementById(`asset-${{assetId}}`);
+      if (!card) return;
+      card.classList.add("focused");
+      card.scrollIntoView({{ block: "center", behavior: "smooth" }});
     }}
 
     function render() {{
@@ -593,8 +632,10 @@ def render_html(manifest: dict) -> str:
         nav.innerHTML = `<span>${{promise}}</span><small>${{items.length}} 張 / ${{categories.length}} 組</small>`;
         document.getElementById("promise-nav").appendChild(nav);
       }}
+      applyHashTarget();
     }}
 
+    window.addEventListener("hashchange", render);
     mountFilterButtons();
     render();
   </script>
