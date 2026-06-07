@@ -14,8 +14,16 @@ from __future__ import annotations
 from .judge_log import DEGREE_CAP_EXCLUSION_SQL
 
 # pipeline_runs 終態失敗 = 一次業務錯誤。
-PIPELINE_FAILURE_WHERE = "status = 'failed'"
+# STATUS 是裸狀態值(與 pipeline_log end_run 寫入端一致),供 IN 清單/CASE 等
+# 非 WHERE 形狀的 query 重用;WHERE 片段由其組成,兩者永不分歧。
+PIPELINE_FAILURE_STATUS = "failed"
+PIPELINE_FAILURE_WHERE = f"status = '{PIPELINE_FAILURE_STATUS}'"
 
 # auto-judge 拒絕 = 一次業務錯誤,但排除 degree_cap(容量保護,非品質問題)。
-# degree_cap 排除沿用 judge_log 的 SoT 常數,改一處即同步兩面。
-JUDGE_AUTO_REJECT_WHERE = f"source = 'auto' AND accepted = 0 AND {DEGREE_CAP_EXCLUSION_SQL}"
+# 拆成原子謂詞:不同 query 形狀(WHERE 串接 / CASE WHEN 計數)組合同一組 SoT。
+# degree_cap 排除沿用 judge_log 的 SoT 常數,改一處即同步所有消費面。
+JUDGE_AUTO_SOURCE_WHERE = "source = 'auto'"
+JUDGE_REJECTED_WHERE = "accepted = 0"
+JUDGE_AUTO_REJECT_WHERE = (
+    f"{JUDGE_AUTO_SOURCE_WHERE} AND {JUDGE_REJECTED_WHERE} AND {DEGREE_CAP_EXCLUSION_SQL}"
+)

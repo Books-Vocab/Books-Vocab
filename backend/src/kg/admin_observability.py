@@ -65,18 +65,20 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
     Excludes runs still 'running' (use ended runs only). A run counts in the
     window if its ``started_at`` falls within the 24h cutoff.
     """
+    from . import error_signals as es
     from . import pipeline_log as pl
 
     cutoff = _cutoff_iso(_WINDOW_24H)
     with pl._lock:
         conn = pl._get_conn()
-        # Count terminal-state runs in window (exclude running/interrupted)
+        # Count terminal-state runs in window (exclude running/interrupted).
+        # 失敗判定走 error_signals SoT —— 站台監控與 admin_trends/ops trends 同義。
         row = conn.execute(
             "SELECT "
             "  COUNT(*) AS total, "
-            "  SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed "
+            f"  SUM(CASE WHEN {es.PIPELINE_FAILURE_WHERE} THEN 1 ELSE 0 END) AS failed "
             "FROM pipeline_runs "
-            "WHERE started_at >= ? AND status IN ('ok','failed')",
+            f"WHERE started_at >= ? AND status IN ('ok', '{es.PIPELINE_FAILURE_STATUS}')",
             (cutoff,),
         ).fetchone()
     total = _cell(row, 0)
@@ -151,16 +153,18 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
 
 def _judge_rejection_rate_24h() -> dict[str, Any]:
     """Auto-judge rejection rate (source='auto') over the last 24h."""
+    from . import error_signals as es
     from . import judge_log as jl
 
     cutoff = _cutoff_iso(_WINDOW_24H)
     with jl._lock:
         conn = jl._get_conn()
+        # auto-judge reject 判定走 error_signals SoT 原子謂詞 + judge_log degree_cap。
         row = conn.execute(
             "SELECT COUNT(*) AS total, "
-            "       SUM(CASE WHEN accepted=0 THEN 1 ELSE 0 END) AS rejected "
+            f"       SUM(CASE WHEN {es.JUDGE_REJECTED_WHERE} THEN 1 ELSE 0 END) AS rejected "
             "FROM judge_log "
-            "WHERE source='auto' AND created_at >= ? "
+            f"WHERE {es.JUDGE_AUTO_SOURCE_WHERE} AND created_at >= ? "
             f"  AND {jl.DEGREE_CAP_EXCLUSION_SQL}",
             (cutoff,),
         ).fetchone()
