@@ -609,4 +609,8 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert payload["repair"]["sampleRepairs"][0]["assetID"] == asset_id
     assert payload["report"]["promises"][0]["promise"] == "Read"
     assert payload["report"]["nextActions"]
+    assert payload["focusRecommendations"][0]["promise"] == "Read"
+    assert payload["focusRecommendations"][0]["attentionScore"] > 0
+    assert payload["focusRecommendations"][0]["recommendedActions"]
+    assert payload["focusRecommendations"][0]["recommendedActions"][0]["promise"] == "Read"
     assert payload["blockingErrors"] == []
