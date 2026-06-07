@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 10679845
+verified_against: eb157d73
 -->
 # Technical Reference Index
 
@@ -47,7 +47,8 @@ verified_against: 10679845
 | `token_tracker.py` | `token_usage` | LLM token / cost,provider-aware |
 | `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄；落 DB 前遮罩 bearer/API key/token/password/secret-like 值 |
 | `podcast_progress.py` | `podcast_progress` | per-user 播客 LWW 進度 |
-| `review_events.py` | `review_events` | per-user 複習事件 append-only log；`event_id` 為 client UUID 冪等主鍵，供 iOS 月曆與每日明細跨裝置同步。pull 以 server 端單調遞增 `ingested_at` 為 cursor watermark（回應含 `cursor` 欄位），用 ingestion 序而非 `reviewed_at`，避免遲到事件漏拉 |
+| `review_events.py` | `review_events` | per-user 複習事件 append-only log；`event_id` 為 client UUID 冪等主鍵，供 iOS 月曆與每日明細跨裝置同步。pull 以 server 端單調遞增 `ingested_at` 為 cursor watermark（回應含 `cursor` 欄位），用 ingestion 序而非 `reviewed_at`，避免遲到事件漏拉。**SoT 回溯帳本**:已加寬 SRS 前後快照欄(`interval_before/after`、`next_review_before/after`、`review_count_after`、`streak_after`、`lapse_after`)+ `is_synthetic`(True=一次性回填的合成過去、False=上線後累積的真實事件),供深度研究逐筆還原學習曲線;欄位全 nullable、ADD COLUMN 冪等遷移、新舊 client 互通 |
+| `graph_event_log.py` | `graph_events` + `graph_snapshots` | per-user 圖譜 append-only 變更帳本(**SoT 回溯**)。`GraphEventStore` 記 8 種 mutation(link_added/updated/hidden/unhidden/deprecated/deleted…)每筆含 confidence/status before+after、`source`(auto/manual/synth)、`is_synthetic`;`event_id` 冪等、`ingested_at` 單調 watermark。`GraphSnapshotStore` 存週期性 links 全量快照(`links_json` + `is_synthetic`),`latest()` 以 `(taken_at desc, snapshot_id desc)` 決定式 tie-break;diff events + 快照可還原任一時點。攔截點在 `GraphStore`(唯一 100% 覆蓋,pipeline AI 回寫亦經此) |
 | `admin_audit.py` | `admin_audit_log` | grant/revoke 等管理員操作 |
 | `app_store.py` | app store receipts | 訂閱收據 |
 | `secret_store.py` | secrets | 加密憑證 |
@@ -113,6 +114,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `release_bump.sh` | 版號改寫 primitive(api: `backend/pyproject.toml`+`src/kg/api.py` / ios: `project.pbxproj` 的 `MARKETING_VERSION`+`CURRENT_PROJECT_VERSION`+1);一般經 `release.sh bump` 呼叫。前身 `scripts/bump-version.sh` |
 | `release_changelog.sh` | changelog 生成 primitive(依 `api:`/`ios:` prefix 從 git log 自上個同類 tag 分類成 新功能/修復/其他/維運);一般經 `release.sh changelog` 呼叫。前身 `scripts/generate-changelog.sh` |
 | `gen_ios_baseline.sh` | 再生 `docs/snapshot/ios_baseline.md` 快照 |
+| `migrate_sot_history.py` | **SoT 回溯帳本一次性遷移** CLI(`backend/src/kg/sot_history_migrate.py` 的 ops 入口,uv shebang)。對指定 `-u <uid>` 或 `--all` 用戶:清掉 legacy `review_events.db` junk(一次性 `.premigration.bak` 備份)、從 `cards.db` 確定式合成 SRS 完整的 `review_events`(`is_synthetic=True`)、逐 notebook 從 terminal links 合成 `graph_events` 史、並存初始全量 `graph_snapshots`。**dry-run 預設**,`--apply` 才寫;`resolve_uid` 走 `data_dir()`、user_dir/cards.db/graph_*.json 存在性 hard guard;snapshot/backup 冪等可重跑。輸出 `MigrationReport`。合成引擎 `demo_review_synth.py`(複習史)+ `graph_history_synth.py`(圖譜史) |
 | `devops_kg_safe.sh` | 部署 / 維護 safe wrapper。命令面:`preflight` / `deploy` / `restart` / `status` / `health [--json]` / `logs [n]` / `backup` / `backup-s3-test` / `env-check` / `env-drift` / `migrate` / `users` / `user-info <id>` / `run` / `container-run` / `migrate-run` / `ops-cli` / `ops-edit` / `container-script`。預設擋 `setup` / `push-env` / `delete-user` / `ssh` / destructive run command；任意遠端命令先經 `is_blocked_run` |
 | `status_all.sh` | 相容入口；不再直接 SSH，委派 `devops_kg_safe.sh status` + `devops_kg_safe.sh health` 一覽 backend / caddy / 容器 / host health |
 | `backup_verify.sh` | tarball 還原演練 + SQLite integrity |
