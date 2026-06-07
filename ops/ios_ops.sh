@@ -28,11 +28,52 @@ usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
 
 cmd_status() {
   local version build
-  version="$(xcodebuild -project "$XCODEPROJ" -target "$SCHEME" -configuration Release -showBuildSettings 2>/dev/null | awk -F' = ' '/ MARKETING_VERSION /{print $2; exit}' | tr -d '[:space:]')"
-  build="$(xcodebuild -project "$XCODEPROJ" -target "$SCHEME" -configuration Release -showBuildSettings 2>/dev/null | awk -F' = ' '/ CURRENT_PROJECT_VERSION /{print $2; exit}' | tr -d '[:space:]')"
+  read_project_settings version build
   echo "[ios][status] project_version=${version:-unknown} project_build=${build:-unknown}"
   "$SCRIPT_DIR/ios_archive.sh" latest 2>/dev/null | tail -1 | awk -F'\t' 'NF>=6 {printf "[ios][status] organizer_latest=%s(%s) archive=%s\n", $4, $5, $6}'
   "$SCRIPT_DIR/asc.sh" builds 2>/dev/null | sed 's/^/[ios][status] /' || true
+}
+
+read_project_settings() {
+  local __version_var="$1" __build_var="$2" settings _version _build
+  settings="$(xcodebuild -project "$XCODEPROJ" -target "$SCHEME" -configuration Release -showBuildSettings 2>/dev/null || true)"
+  _version="$(awk -F' = ' '/ MARKETING_VERSION /{print $2; exit}' <<<"$settings" | tr -d '[:space:]')"
+  _build="$(awk -F' = ' '/ CURRENT_PROJECT_VERSION /{print $2; exit}' <<<"$settings" | tr -d '[:space:]')"
+  printf -v "$__version_var" '%s' "$_version"
+  printf -v "$__build_var" '%s' "$_build"
+}
+
+read_organizer_latest() {
+  "$SCRIPT_DIR/ios_archive.sh" latest 2>/dev/null | tail -1 || true
+}
+
+read_testflight_latest_build() {
+  "$SCRIPT_DIR/asc.sh" builds 2>/dev/null | grep -Eo '[0-9]+' | tail -1 || true
+}
+
+read_asc_version_state() {
+  local tmp pid waited=0
+  tmp="$(mktemp)"
+  "$SCRIPT_DIR/asc.sh" versions >"$tmp" 2>/dev/null &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( waited >= 12 )); then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      rm -f "$tmp"
+      return 124
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$pid" 2>/dev/null || true
+  sed -n '/[^[:space:]]/p' "$tmp" | head -1
+  rm -f "$tmp"
+}
+
+emit_readiness() {
+  local key="$1" status="$2" detail="$3"
+  echo "[ios][readiness] $key status=$status $detail"
 }
 
 cmd_logs() {
@@ -67,11 +108,71 @@ cmd_doctor() {
   cmd_status
   echo "[ios][doctor] phase=sentry"
   cmd_sentry
-  echo "[ios][doctor] phase=storekit"
-  if rg -q 'StoreKit Configuration' "$ROOT/ios" "$XCODEPROJ" 2>/dev/null; then
-    echo "[ios][doctor] storekit_config_reference=present"
+  echo "[ios][doctor] phase=release-readiness"
+
+  local version build archive_line archive_version archive_build archive_path tf_latest
+  read_project_settings version build
+  if [[ -n "$version" && -n "$build" ]]; then
+    emit_readiness "project" "ok" "version=$version build=$build"
   else
-    echo "[ios][doctor] storekit_config_reference=unknown"
+    emit_readiness "project" "warn" "version=${version:-unknown} build=${build:-unknown}"
+  fi
+
+  archive_line="$(read_organizer_latest)"
+  if [[ -n "$archive_line" ]]; then
+    archive_version="$(awk -F'\t' '{print $4}' <<<"$archive_line")"
+    archive_build="$(awk -F'\t' '{print $5}' <<<"$archive_line")"
+    archive_path="$(awk -F'\t' '{print $6}' <<<"$archive_line")"
+    if [[ "$archive_version" == "$version" && "$archive_build" == "$build" ]]; then
+      emit_readiness "organizer" "ok" "latest=$archive_version($archive_build) archive=$archive_path"
+    else
+      emit_readiness "organizer" "warn" "latest=$archive_version($archive_build) project=$version($build) archive=$archive_path"
+    fi
+  else
+    emit_readiness "organizer" "warn" "latest=unknown"
+  fi
+
+  tf_latest="$(read_testflight_latest_build)"
+  if [[ -n "$tf_latest" && "$tf_latest" =~ ^[0-9]+$ && "$build" =~ ^[0-9]+$ ]]; then
+    if (( build > tf_latest )); then
+      emit_readiness "testflight" "ok" "latest=$tf_latest project_build=$build upload_allowed=true"
+    else
+      emit_readiness "testflight" "block" "latest=$tf_latest project_build=$build upload_allowed=false reason=build-number-not-increased"
+    fi
+  else
+    emit_readiness "testflight" "warn" "latest=${tf_latest:-unknown} project_build=${build:-unknown}"
+  fi
+
+  local asc_state
+  if asc_state="$(read_asc_version_state)"; then
+    if [[ -n "$asc_state" ]]; then
+      emit_readiness "asc_version" "ok" "latest=\"$asc_state\""
+    else
+      emit_readiness "asc_version" "warn" "latest=unknown"
+    fi
+  else
+    emit_readiness "asc_version" "warn" "latest=timeout"
+  fi
+
+  if plutil -p "$ROOT/ios/ExportOptions.plist" 2>/dev/null | grep -q '"KG App Store"' \
+     && plutil -p "$ROOT/ios/ExportOptions.plist" 2>/dev/null | grep -q '"Apple Distribution"'; then
+    emit_readiness "signing" "ok" "exportOptions=manual profile=\"KG App Store\" certificate=\"Apple Distribution\""
+  else
+    emit_readiness "signing" "warn" "exportOptions=$ROOT/ios/ExportOptions.plist missing expected manual signing fields"
+  fi
+
+  if [[ -f "$ROOT/ios/BooksBrowser/Products.storekit" ]] \
+     && rg -q 'Products\.storekit' "$ROOT/ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowser.xcscheme" 2>/dev/null; then
+    emit_readiness "storekit" "ok" "scheme_reference=Products.storekit file=present"
+  else
+    emit_readiness "storekit" "warn" "scheme_reference_or_file=missing"
+  fi
+
+  if rg -q 'canImport\(Sentry\)' "$ROOT/ios/BooksBrowser/Services/AppCrashReporting.swift" \
+     && rg -q 'SentryDSN|SENTRY_ENABLED_IN_DEBUG|-sentryTest' "$ROOT/ios"; then
+    emit_readiness "sentry" "ok" "release_name=bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION dist=CURRENT_PROJECT_VERSION"
+  else
+    emit_readiness "sentry" "warn" "wiring=incomplete"
   fi
 }
 
