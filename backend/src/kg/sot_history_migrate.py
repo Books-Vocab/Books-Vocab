@@ -38,6 +38,7 @@ from .review_events import ReviewEventStore, push_review_events
 _REVIEW_DB = "review_events.db"
 _GRAPH_DB = "graph_events.db"
 _REVIEW_BAK = "review_events.db.premigration.bak"
+_MIGRATED_MARKER = ".sot_history_migrated"  # 存在 = 首次遷移已跑,re-run 不再 purge card_id NULL
 
 
 @dataclass
@@ -220,9 +221,13 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
         graph_drafts.extend(synthesize_graph_history_many(links, notebook_id=nb))
     report.graph_events_synthesized = len(graph_drafts)
 
-    # 待清垃圾數(card_id NULL 同步殘渣)。唯讀計數,dry-run / apply 皆不改原始檔。
+    # purge 僅限「首次遷移」(marker 未建)。card_id NULL 是 purge 的唯一信號,但它在上線後也
+    # 可能命中 word-only fallback 的真實複習(正是本 PR 別處在修的 nil-card-id 類);故只在
+    # 上線前的首次遷移清(此時 card_id NULL 必為同步殘渣),之後 re-run 絕不再 purge。
     review_db = user_dir / _REVIEW_DB
-    report.review_events_old_purged = _count_review_junk(review_db)
+    marker = user_dir / _MIGRATED_MARKER
+    will_purge = not marker.exists()
+    report.review_events_old_purged = _count_review_junk(review_db) if will_purge else 0
 
     if not apply:
         # dry-run:唯讀回報「會取幾張」初始 snapshot(尚無者才取),不建檔/不改 schema。
@@ -231,11 +236,10 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
         )
         return report
 
-    # ── 清舊垃圾(就地、只刪 card_id NULL 殘渣)+ 灌合成複習史 ───────────────
-    # 不整檔 wipe:wipe 會(a)在二次遷移銷毀上線後 iOS 推入的真實事件(is_synthetic=False),
-    # (b)unlink 孤兒化 server 開啟中的 inode。改為就地只刪 card_id NULL 垃圾 —— 真實/合成事件
-    # 永遠保留,合成靠 event_id 去重補上,re-run 安全且冪等。首次備份原始檔當安全網。
-    if review_db.exists():
+    # ── 清舊垃圾(就地、只刪 card_id NULL 殘渣,且僅首次遷移)+ 灌合成複習史 ─────────
+    # 不整檔 wipe:wipe 會(a)在二次遷移銷毀上線後 iOS 推入的真實事件,(b)unlink 孤兒化 server
+    # 開啟中的 inode。改為就地只刪垃圾,真實/合成事件永遠保留,合成靠 event_id 去重補上。
+    if will_purge and review_db.exists():
         bak = user_dir / _REVIEW_BAK
         if not bak.exists():
             _checkpoint_wal(review_db)  # 併 WAL,使單檔備份完整
@@ -248,6 +252,8 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
     fresh_review = ReviewEventStore(review_db)
     push_review_events(synth_review, event_store=fresh_review)
     fresh_review.engine.dispose()
+    if will_purge:
+        marker.write_text("")  # 標記已遷移:後續 re-run 不再 purge card_id NULL
 
     # ── 灌合成圖譜史(event_id 去重 → 冪等,毋須 wipe)──────────────────
     graph_store = GraphEventStore(user_dir / _GRAPH_DB)

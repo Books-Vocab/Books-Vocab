@@ -268,6 +268,33 @@ def test_rerun_apply_preserves_real_events(tmp_path):
             _uuid.UUID(e.event_id)
 
 
+def test_rerun_does_not_purge_card_id_null_events_after_first_migration(tmp_path):
+    """上線後 re-run 不得刪 card_id NULL 事件 —— 此時它可能是 word-only fallback 的真實複習,
+    非同步殘渣。purge 僅限首次遷移(上線前,card_id NULL 必為殘渣)。"""
+    from kg.api_models.review import ReviewEventEntry
+    from kg.review_events import push_review_events
+
+    user_dir = _seed_user(tmp_path)
+    migrate_user(user_dir, apply=True)  # 首次遷移(設下 marker)
+
+    # 上線後:一筆 card_id NULL 但真實的 word-only 複習(正是本 PR 別處在修的 nil-card-id 類)
+    store = ReviewEventStore(user_dir / "review_events.db")
+    push_review_events([ReviewEventEntry(
+        event_id="legacy-real-nullcard", card_id=None, word_snapshot="serendipity",
+        notebook_id="default", feedback=1,
+        reviewed_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
+        created_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
+        is_synthetic=False,
+    )], event_store=store)
+    store.engine.dispose()
+
+    migrate_user(user_dir, apply=True)  # 二次遷移:不得 purge 該真實事件
+
+    store2 = ReviewEventStore(user_dir / "review_events.db")
+    pulled, _ = pull_review_events(since=None, event_store=store2)
+    assert "legacy-real-nullcard" in {e.event_id for e in pulled}
+
+
 def test_multiple_notebooks_are_all_migrated(tmp_path):
     user_dir = tmp_path / "u"
     user_dir.mkdir()
