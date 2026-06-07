@@ -514,6 +514,7 @@ cmd_catalog_snapshots_json() {
   local build_cmd="" scope_test_cmd="" use_cached_xctestrun=0 scope_requested=0
   local cache_key="" cache_status="not-applicable"
   local dataset_status="not-requested" dataset_rc=0 dataset_simulator_path="" dataset_b64=""
+  local container_png_count=0 salvaged="false"
 
   wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -705,9 +706,20 @@ cmd_catalog_snapshots_json() {
   container_lookup_ms=$(( phase_end_ms - phase_start_ms ))
   catalog_trace_phase "container_lookup" "done" "wallMs=$container_lookup_ms container=${container_data:-<empty>} source=${snapshot_source:-<empty>}"
 
+  # Count PNGs already produced inside the simulator container BEFORE copy, so a
+  # failed run can still distinguish "nothing was generated" from "generated but
+  # not copied back". This is the salvage source of truth.
+  if [[ -d "$snapshot_source" ]]; then
+    container_png_count="$(find "$snapshot_source" -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+  else
+    container_png_count=0
+  fi
+
   phase_start_ms="$(catalog_now_ms)"
-  catalog_trace_phase "copy" "start" "source=${snapshot_source:-<empty>} outRoot=$out_root"
-  if [[ "$rc" -eq 0 ]] && [[ -d "$snapshot_source" ]]; then
+  catalog_trace_phase "copy" "start" "source=${snapshot_source:-<empty>} outRoot=$out_root containerPngCount=$container_png_count"
+  # Salvage even on failure: if the container has snapshots, copy them back so a
+  # crash in a later phase does not make already-rendered PNGs invisible.
+  if [[ -d "$snapshot_source" ]]; then
     if mkdir -p "$out_root" && cp -R "$snapshot_source/." "$out_root/"; then
       copy_rc=0
     else
@@ -718,7 +730,11 @@ cmd_catalog_snapshots_json() {
   fi
   phase_end_ms="$(catalog_now_ms)"
   copy_ms=$(( phase_end_ms - phase_start_ms ))
-  catalog_trace_phase "copy" "done" "wallMs=$copy_ms exitCode=$copy_rc"
+  if [[ "$rc" -ne 0 && "$rc" != "87" && "$copy_rc" -eq 0 && "$container_png_count" -gt 0 ]]; then
+    salvaged="true"
+    catalog_phase_emit "salvage" "recovered" "test failed (exitCode=$rc) but $container_png_count container PNG(s) copied to $out_root"
+  fi
+  catalog_trace_phase "copy" "done" "wallMs=$copy_ms exitCode=$copy_rc salvaged=$salvaged"
 
   phase_start_ms="$(catalog_now_ms)"
   catalog_trace_phase "artifact_index" "start" "outRoot=$out_root"
@@ -769,6 +785,8 @@ cmd_catalog_snapshots_json() {
     --arg datasetRequestedPath "$dataset_path" \
     --arg datasetSimulatorPath "$dataset_simulator_path" \
     --arg datasetStatus "$dataset_status" \
+    --argjson containerPngCount "$container_png_count" \
+    --argjson salvaged "$salvaged" \
     --argjson reuseBuild "$reuse_build_only" \
     --argjson commandWallMs "$command_wall_ms" \
     --argjson playbookBuildMs "$playbook_build_ms" \
@@ -815,7 +833,7 @@ cmd_catalog_snapshots_json() {
         groups:(if $groups == "" then [] else ($groups | split(",")) end),
         scenarios:(if $scenarios == "" then [] else ($scenarios | split(",")) end)
       },
-      artifacts:$artifacts,
+      artifacts:($artifacts + {containerPngCount:$containerPngCount}),
       timings:{
         wrapperWallMs:$wrapperWallMs,
         commandWallMs:$commandWallMs,
@@ -845,7 +863,8 @@ cmd_catalog_snapshots_json() {
         resolvedDeviceUDID:(if $resolvedDevice == "" then null else $resolvedDevice end),
         containerDataPath:$container,
         sourcePath:$sourcePath,
-        exitCode:$copyExit
+        exitCode:$copyExit,
+        salvaged:$salvaged
       },
       simulator:$simulator,
       flags:{
@@ -860,7 +879,9 @@ cmd_catalog_snapshots_json() {
         +
         (if $testExit == 0 and $container == "" then [{key:"catalog-container",status:"error",exitCode:null,error:"app-container-required"}] else [] end)
         +
-        (if $testExit == 0 and $copyExit != 0 then [{key:"catalog-copy",status:"error",exitCode:$copyExit,error:"snapshot-copy-failed"}] else [] end)
+        (if $copyExit != 0 and $containerPngCount > 0 then [{key:"catalog-copy",status:"error",exitCode:$copyExit,error:"snapshot-copy-failed"}] else [] end)
+        +
+        (if $salvaged then [{key:"catalog-salvage",status:"info",exitCode:null,error:"snapshots-salvaged-after-failure",pngCount:($artifacts.pngCount // 0),containerPngCount:$containerPngCount}] else [] end)
         +
         (if $testExit == 0 and $copyExit == 0 and ($artifacts.pngCount // 0) == 0 then [{key:"catalog-artifacts",status:"error",exitCode:null,error:"no-png-artifacts"}] else [] end)
         +
