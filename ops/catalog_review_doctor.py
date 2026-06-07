@@ -191,10 +191,9 @@ def build_doctor_payload(
         **core_playbooks,
         "blockingErrors": blocking_errors,
     }
-def project_doctor_view(payload: dict, *, mode: str) -> dict:
-    if mode == "overview":
-        return payload
-    root = str(Path(payload["state"]).parent)
+
+
+def _build_health_base(payload: dict, *, mode: str, root: str) -> dict:
     severity = "ok"
     if payload["blockingErrors"]:
         severity = "error"
@@ -224,7 +223,7 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             source="repair",
             source_mode=mode,
         )
-    health = {
+    return with_action_plan_fields({
         "severity": severity,
         "verifyStatus": payload["verify"]["status"],
         "repairCount": payload["repair"]["repairCount"],
@@ -237,52 +236,59 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
         },
-    }
-    health = with_action_plan_fields(health, action_plan)
+    }, action_plan)
+
+
+def _build_cleanup_playbook(payload: dict) -> dict:
+    cleanup_primary = (
+        payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
+        if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
+        else None
+    )
+    cleanup_followup = (
+        payload["cleanupRecommendations"][0]["recommendedActions"][1]["command"]
+        if payload["cleanupRecommendations"] and len(payload["cleanupRecommendations"][0]["recommendedActions"]) > 1
+        else None
+    )
+    return with_starter_plan({
+        "mode": "cleanup",
+        "goal": "清掉弱訊號與工程性 screenshot debt，避免污染行銷審稿視野。",
+        "steps": [
+            "先按 category 批量處理 Weak promise，避免逐張消耗注意力。",
+            "優先清掉 count 最大的非核心分類，讓 review desk 聚焦在核心承諾。",
+            "只有在 cleanup 降到可控後，再回到核心 promise 做最終選圖。",
+        ],
+    },
+        primary_command=cleanup_primary,
+        followup_command=cleanup_followup,
+        source_mode="cleanup",
+    )
+
+
+def _resolve_mode_view(payload: dict, *, mode: str) -> tuple[list[dict], dict]:
+    if mode == "hero-first":
+        return payload["heroFirstCoreRecommendations"], payload["heroFirstPlaybook"]
+    if mode == "coverage-first":
+        return payload["coverageFirstCoreRecommendations"], payload["coverageFirstPlaybook"]
+    if mode == "cleanup":
+        return payload["cleanupRecommendations"], _build_cleanup_playbook(payload)
+    raise ValueError(f"Unsupported doctor mode: {mode}")
+
+
+def project_doctor_view(payload: dict, *, mode: str) -> dict:
+    if mode == "overview":
+        return payload
+    root = str(Path(payload["state"]).parent)
+    health = _build_health_base(payload, mode=mode, root=root)
+    recommendations, playbook = _resolve_mode_view(payload, mode=mode)
     view = {
         "status": payload["status"],
         "mode": mode,
         "health": health,
+        "recommendations": recommendations,
+        "playbook": playbook,
     }
-    if mode == "hero-first":
-        view["recommendations"] = payload["heroFirstCoreRecommendations"]
-        view["playbook"] = payload["heroFirstPlaybook"]
-        if health["recommendedOperatorAction"] == "proceed-review":
-            health["actionPlan"] = payload["heroFirstPlaybook"]["starterPlan"]
-    elif mode == "coverage-first":
-        view["recommendations"] = payload["coverageFirstCoreRecommendations"]
-        view["playbook"] = payload["coverageFirstPlaybook"]
-        if health["recommendedOperatorAction"] == "proceed-review":
-            health["actionPlan"] = payload["coverageFirstPlaybook"]["starterPlan"]
-    elif mode == "cleanup":
-        cleanup_primary = (
-            payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
-            if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
-            else None
-        )
-        cleanup_followup = (
-            payload["cleanupRecommendations"][0]["recommendedActions"][1]["command"]
-            if payload["cleanupRecommendations"] and len(payload["cleanupRecommendations"][0]["recommendedActions"]) > 1
-            else None
-        )
-        view["recommendations"] = payload["cleanupRecommendations"]
-        view["playbook"] = with_starter_plan({
-            "mode": "cleanup",
-            "goal": "清掉弱訊號與工程性 screenshot debt，避免污染行銷審稿視野。",
-            "steps": [
-                "先按 category 批量處理 Weak promise，避免逐張消耗注意力。",
-                "優先清掉 count 最大的非核心分類，讓 review desk 聚焦在核心承諾。",
-                "只有在 cleanup 降到可控後，再回到核心 promise 做最終選圖。",
-            ],
-        },
-            primary_command=cleanup_primary,
-            followup_command=cleanup_followup,
-            source_mode="cleanup",
-        )
-        if health["recommendedOperatorAction"] == "proceed-review":
-            health["actionPlan"] = view["playbook"]["starterPlan"]
-    else:
-        raise ValueError(f"Unsupported doctor mode: {mode}")
-    health = with_action_plan_fields(health, health["actionPlan"])
-    view["health"] = health
+    if health["recommendedOperatorAction"] == "proceed-review":
+        health = with_action_plan_fields(health, playbook["starterPlan"])
+        view["health"] = health
     return view
