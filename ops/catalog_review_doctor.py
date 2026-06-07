@@ -169,10 +169,20 @@ def build_doctor_payload(
 def project_doctor_view(payload: dict, *, mode: str) -> dict:
     if mode == "overview":
         return payload
+    severity = "ok"
+    if payload["blockingErrors"]:
+        severity = "error"
+    elif payload["repair"]["repairCount"] > 0 or payload["status"] == "needs-attention":
+        severity = "warn"
     health = {
+        "severity": severity,
         "verifyStatus": payload["verify"]["status"],
         "repairCount": payload["repair"]["repairCount"],
         "blockingErrors": payload["blockingErrors"],
+        "summary": {
+            "status": payload["status"],
+            "blockingErrorCount": len(payload["blockingErrors"]),
+        },
     }
     view = {
         "status": payload["status"],
