@@ -137,6 +137,7 @@ def build_core_playbooks(core_modes: dict) -> dict:
         },
             primary_command=hero_first_command,
             followup_command=hero_followup_command,
+            source_mode="hero-first",
         ),
         "coverageFirstPlaybook": with_starter_plan({
             "mode": "coverage-first",
@@ -149,6 +150,7 @@ def build_core_playbooks(core_modes: dict) -> dict:
         },
             primary_command=coverage_first_command,
             followup_command=coverage_followup_command,
+            source_mode="coverage-first",
         ),
     }
 
@@ -209,11 +211,18 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         recommended_operator_action = "proceed-review"
     else:
         recommended_operator_action = "healthy-idle"
-    action_plan = build_action_plan(primary_command=None, followup_command=None)
+    action_plan = build_action_plan(
+        primary_command=None,
+        followup_command=None,
+        source="idle",
+        source_mode=mode,
+    )
     if recommended_operator_action == "repair-first":
         action_plan = build_action_plan(
             primary_command=f"./ops/catalog_review_cli.py {root} repair",
             followup_command=f"./ops/catalog_review_cli.py {root} verify",
+            source="repair",
+            source_mode=mode,
         )
     health = {
         "severity": severity,
@@ -271,6 +280,7 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         },
             primary_command=cleanup_primary,
             followup_command=cleanup_followup,
+            source_mode="cleanup",
         )
         if health["recommendedOperatorAction"] == "proceed-review":
             health["actionPlan"] = view["playbook"]["starterPlan"]
