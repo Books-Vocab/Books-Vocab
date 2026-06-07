@@ -26,6 +26,12 @@ def classify_action_command(command: str) -> dict:
     }
 
 
+def build_action_ref(command: str | None) -> dict | None:
+    if not command:
+        return None
+    return classify_action_command(command)
+
+
 def build_action_bundle(*, primary_command: str | None, followup_command: str | None) -> list[dict]:
     actions: list[dict] = []
     if primary_command:

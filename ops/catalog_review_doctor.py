@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from catalog_review_actions import build_action_plan
+from catalog_review_actions import build_action_plan, build_action_ref
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -102,11 +102,22 @@ def build_core_playbooks(core_modes: dict) -> dict:
     hero_first = core_modes["heroFirstCoreRecommendations"]
     coverage_first = core_modes["coverageFirstCoreRecommendations"]
 
-    def first_action(items: list[dict]) -> str | None:
+    def first_command(items: list[dict]) -> str | None:
         if not items or not items[0]["recommendedActions"]:
             return None
+        inspect_action = next(
+            (
+                action for action in items[0]["recommendedActions"]
+                if action.get("commandAction", {}).get("kind") == "inspect"
+            ),
+            None,
+        )
+        if inspect_action:
+            return inspect_action["command"]
         return items[0]["recommendedActions"][0]["command"]
 
+    hero_first_command = first_command(hero_first)
+    coverage_first_command = first_command(coverage_first)
     return {
         "heroFirstPlaybook": {
             "mode": "hero-first",
@@ -116,7 +127,8 @@ def build_core_playbooks(core_modes: dict) -> dict:
                 "對同一 promise 做 variant 比較，避免先被大面積 coverage 吸走注意力。",
                 "確認 hero 候選後，再回頭處理該 promise 的 top category 收斂。",
             ],
-            "firstCommand": first_action(hero_first),
+            "firstAction": build_action_ref(hero_first_command),
+            "firstCommand": hero_first_command,
         },
         "coverageFirstPlaybook": {
             "mode": "coverage-first",
@@ -126,7 +138,8 @@ def build_core_playbooks(core_modes: dict) -> dict:
                 "用 category 為單位做批次過濾，避免逐張翻圖。",
                 "coverage 壓下來後，再回頭從該 promise 內挑 hero 圖做 shortlist。",
             ],
-            "firstCommand": first_action(coverage_first),
+            "firstAction": build_action_ref(coverage_first_command),
+            "firstCommand": coverage_first_command,
         },
     }
 
@@ -218,7 +231,10 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         view["recommendations"] = payload["heroFirstCoreRecommendations"]
         view["playbook"] = payload["heroFirstPlaybook"]
         if health["recommendedOperatorAction"] == "proceed-review":
-            health["recommendedCommand"] = payload["heroFirstPlaybook"]["firstCommand"]
+            health["recommendedCommand"] = (
+                payload["heroFirstPlaybook"]["firstAction"]["command"]
+                if payload["heroFirstPlaybook"]["firstAction"] else None
+            )
             health["followupCommand"] = (
                 view["recommendations"][0]["recommendedActions"][1]["command"]
                 if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
@@ -228,7 +244,10 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         view["recommendations"] = payload["coverageFirstCoreRecommendations"]
         view["playbook"] = payload["coverageFirstPlaybook"]
         if health["recommendedOperatorAction"] == "proceed-review":
-            health["recommendedCommand"] = payload["coverageFirstPlaybook"]["firstCommand"]
+            health["recommendedCommand"] = (
+                payload["coverageFirstPlaybook"]["firstAction"]["command"]
+                if payload["coverageFirstPlaybook"]["firstAction"] else None
+            )
             health["followupCommand"] = (
                 view["recommendations"][0]["recommendedActions"][1]["command"]
                 if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
@@ -244,12 +263,22 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
                 "優先清掉 count 最大的非核心分類，讓 review desk 聚焦在核心承諾。",
                 "只有在 cleanup 降到可控後，再回到核心 promise 做最終選圖。",
             ],
-            "firstCommand": payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
-            if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
-            else None,
+            "firstAction": build_action_ref(
+                payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
+                if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
+                else None
+            ),
+            "firstCommand": (
+                payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
+                if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
+                else None
+            ),
         }
         if health["recommendedOperatorAction"] == "proceed-review":
-            health["recommendedCommand"] = view["playbook"]["firstCommand"]
+            health["recommendedCommand"] = (
+                view["playbook"]["firstAction"]["command"]
+                if view["playbook"]["firstAction"] else None
+            )
             health["followupCommand"] = (
                 view["recommendations"][0]["recommendedActions"][1]["command"]
                 if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
