@@ -3,11 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from catalog_review_cli_artifacts import build_artifact_refs, load_review_artifacts, write_json
 from catalog_review_cli_support import (
-    build_artifact_refs,
     effective_status,
-    load_review_artifacts,
-    write_json,
 )
 from catalog_review_doctor import build_doctor_payload, project_doctor_view
 from catalog_review_repair import repair_review_state, summarize_repairs
