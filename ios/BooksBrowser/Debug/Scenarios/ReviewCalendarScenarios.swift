@@ -66,7 +66,10 @@ private enum ReviewCalendarSeed {
     }
 }
 
-// MARK: - Scene harness (@MainActor: seeds mainContext)
+// MARK: - Scene harness
+// Seeds mainContext in `init`; kept nonisolated so the nonisolated Scenario
+// closure can construct it. Safe because Playbook renders on the main thread
+// (marking the struct @MainActor would block the Scenario-closure call).
 
 private struct ReviewCalendarScene: View {
     let seed: ReviewCalendarSeed
