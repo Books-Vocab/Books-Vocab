@@ -94,9 +94,12 @@ def query_cost_rows(
 
     pcol = column_expr(conn, "token_usage", "provider")
     mcol = column_expr(conn, "token_usage", "model")
-    select_uid = "user_id" if user_id is None else "?"
+    # 跨用戶(user_id=None)才投影領頭 uid 欄供 cost-overview 依 row[0] 分組;
+    # 單用戶不需要 —— fold_user_summary 只讀 row[-6:],省掉 uid 欄即免去 echo
+    # 一個沒人讀的值與位置敏感的雙重 param 綁定。
+    uid_select = "user_id AS uid, " if user_id is None else ""
     sql = (
-        f"SELECT {select_uid} AS uid, call_type, {pcol} AS provider, "
+        f"SELECT {uid_select}call_type, {pcol} AS provider, "
         f"{mcol} AS model, COUNT(*) AS cnt, "
         "SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out "
         "FROM token_usage"
@@ -104,7 +107,6 @@ def query_cost_rows(
     where: list[str] = []
     params: list = []
     if user_id is not None:
-        params.append(user_id)  # 對應 SELECT 的 ? placeholder
         where.append("user_id = ?")
         params.append(user_id)
     if since is not None:
