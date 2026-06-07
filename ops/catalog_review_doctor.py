@@ -204,6 +204,7 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         "recommendedOperatorAction": recommended_operator_action,
         "recommendedCommand": recommended_command,
         "followupCommand": followup_command,
+        "actionCommands": [],
         "summary": {
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
@@ -224,8 +225,7 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
                 if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
                 else None
             )
-        return view
-    if mode == "coverage-first":
+    elif mode == "coverage-first":
         view["recommendations"] = payload["coverageFirstCoreRecommendations"]
         view["playbook"] = payload["coverageFirstPlaybook"]
         if health["recommendedOperatorAction"] == "proceed-review":
@@ -235,8 +235,7 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
                 if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
                 else None
             )
-        return view
-    if mode == "cleanup":
+    elif mode == "cleanup":
         view["recommendations"] = payload["cleanupRecommendations"]
         view["playbook"] = {
             "mode": "cleanup",
@@ -257,5 +256,18 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
                 if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
                 else None
             )
-        return view
-    raise ValueError(f"Unsupported doctor mode: {mode}")
+    else:
+        raise ValueError(f"Unsupported doctor mode: {mode}")
+    if health["recommendedCommand"]:
+        health["actionCommands"].append({
+            "role": "primary",
+            "command": health["recommendedCommand"],
+            "dryRunSafe": "--dry-run" in health["recommendedCommand"] or " list " in health["recommendedCommand"],
+        })
+    if health["followupCommand"]:
+        health["actionCommands"].append({
+            "role": "followup",
+            "command": health["followupCommand"],
+            "dryRunSafe": "--dry-run" in health["followupCommand"] or " list " in health["followupCommand"] or " verify" in health["followupCommand"],
+        })
+    return view
