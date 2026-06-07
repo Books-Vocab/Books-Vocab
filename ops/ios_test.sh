@@ -139,6 +139,8 @@ fi
 TMPOUT=""
 PRESERVE_TMPOUT=0
 CURRENT_XCODE_PID=""
+RESULT_DIR=""
+RESULT_BUNDLE=""
 cleanup() {
   if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
     kill "$CURRENT_XCODE_PID" 2>/dev/null || true
@@ -203,11 +205,12 @@ run_xcodebuild_once() {
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
     -maximum-test-execution-time-allowance 120 \
+    -resultBundlePath "$RESULT_BUNDLE" \
     ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
     >"$TMPOUT" 2>&1 &
   xcode_pid=$!
   CURRENT_XCODE_PID="$xcode_pid"
-  echo "[ios_test] xcodebuild pid=$xcode_pid log=$TMPOUT"
+  echo "[ios_test] xcodebuild pid=$xcode_pid log=$TMPOUT xcresult=$RESULT_BUNDLE"
 
   last_line=0
   heartbeat_at=$(date +%s)
@@ -248,6 +251,9 @@ EXIT_CODE=0
 while :; do
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
   TMPOUT=$(mktemp)
+  [[ -n "$RESULT_DIR" ]] && rm -rf "$RESULT_DIR"
+  RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_result.XXXXXX")"
+  RESULT_BUNDLE="$RESULT_DIR/Test.xcresult"
   set +e
   run_xcodebuild_once
   EXIT_CODE=$?
@@ -263,6 +269,13 @@ while :; do
 done
 
 ELAPSED=$(( $(date +%s) - START ))
+DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
+if [[ -x "$DIAGNOSTICS" ]]; then
+  diag_result="fail"; [[ $EXIT_CODE -eq 0 ]] && diag_result="pass"
+  "$DIAGNOSTICS" --kind test --xcresult "$RESULT_BUNDLE" --log "$TMPOUT" --result "$diag_result" --limit 40 || true
+else
+  echo "[ios_test] diagnostics unavailable: $DIAGNOSTICS" >&2
+fi
 
 # Count tests xcodebuild actually executed, so a SUCCEEDED with zero tests run
 # (bogus -only-testing IDs → "TEST SUCCEEDED" but nothing executed) is caught as
@@ -293,6 +306,15 @@ count_executed_tests() {
   echo "$n"
 }
 
+count_executed_tests_xcresult() {
+  local n
+  [[ -n "$RESULT_BUNDLE" && -d "$RESULT_BUNDLE" ]] || return 1
+  n="$("$SCRIPT_DIR/ios_diagnostics.py" --kind test --xcresult "$RESULT_BUNDLE" --json 2>/dev/null \
+    | jq -r '.counts.tests // empty' 2>/dev/null)"
+  [[ "$n" =~ ^[0-9]+$ ]] || return 1
+  echo "$n"
+}
+
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
 # script's). Read this instead of trusting a piped `$?`.
@@ -300,36 +322,38 @@ VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_test_verdict"
 
 # Extract summary from xcresult if available
 if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
-  EXECUTED=$(count_executed_tests)
+  EXECUTED="$(count_executed_tests_xcresult || count_executed_tests)"
   if [[ "$EXECUTED" -eq 0 ]]; then
     echo ""
     echo "[ios_test] ✗ FALSE GREEN: xcodebuild reported TEST SUCCEEDED but 0 tests executed" >&2
     echo "[ios_test]   (likely a stale/bogus -only-testing test ID matched nothing) — $CALLER" >&2
-    echo "RESULT=fail reason=false-green-0-executed caller=$CALLER" > "$VERDICT_FILE"
+    echo "RESULT=fail reason=false-green-0-executed caller=$CALLER log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
     rm -f "$TMPOUT"
     exit 1
   fi
   echo ""
-  echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
-  echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)"
+  echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   # Show failing test details
   grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20
   echo ""
   PRESERVE_TMPOUT=1
-  echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
-  echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
+  echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
+  echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
   EXIT_CODE=1
 else
   echo ""
   # Show last 10 lines for unexpected output
   tail -10 "$TMPOUT"
   PRESERVE_TMPOUT=1
-  echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
-  echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
+  echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
+  echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
   EXIT_CODE=1
 fi
 

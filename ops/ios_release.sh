@@ -114,11 +114,33 @@ echo "[release] lock acquired by $CALLER (pid=$$)"
 echo "[release] ▶ archive ($CONFIGURATION) — key=$KEY_ID …"
 rm -rf "$ARCHIVE"
 mkdir -p "$BUILD_DIR"
+START_ARCHIVE=$(date +%s)
+ARCHIVE_LOG="$(mktemp "${TMPDIR:-/tmp}/kg_ios_release_archive.XXXXXX").log"
+RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_release_result.XXXXXX")"
+RESULT_BUNDLE="$RESULT_DIR/Archive.xcresult"
+set +e
 xcodebuild archive \
   -project "$XCODEPROJ" -scheme "$SCHEME" -configuration "$CONFIGURATION" \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
-  "${auth[@]}"
+  -resultBundlePath "$RESULT_BUNDLE" \
+  "${auth[@]}" \
+  >"$ARCHIVE_LOG" 2>&1
+ARCHIVE_EXIT=$?
+set -e
+ARCHIVE_ELAPSED=$(( $(date +%s) - START_ARCHIVE ))
+DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
+if [[ -x "$DIAGNOSTICS" ]]; then
+  diag_result="fail"; [[ $ARCHIVE_EXIT -eq 0 ]] && diag_result="pass"
+  "$DIAGNOSTICS" --xcresult "$RESULT_BUNDLE" --log "$ARCHIVE_LOG" --result "$diag_result" --limit 40 || true
+else
+  echo "[release] diagnostics unavailable: $DIAGNOSTICS" >&2
+fi
+if [[ $ARCHIVE_EXIT -ne 0 ]]; then
+  echo "[release] ✗ archive failed (exit $ARCHIVE_EXIT, ${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" >&2
+  exit "$ARCHIVE_EXIT"
+fi
+echo "[release] ✓ archive succeeded (${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE"
 
 # ---- export ipa ----
 # manual signing（ExportOptions 指定 Apple Distribution + "KG App Store" profile，均已本機就緒）。
