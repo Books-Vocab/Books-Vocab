@@ -69,28 +69,40 @@ trap cleanup EXIT
 
 echo "[ios_build] lock acquired by $CALLER (pid=$$) — building..."
 START=$(date +%s)
+TMPOUT="$(mktemp "${TMPDIR:-/tmp}/kg_ios_build.XXXXXX").log"
+RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_build_result.XXXXXX")"
+RESULT_BUNDLE="$RESULT_DIR/Build.xcresult"
 
 set +e
 xcodebuild \
   -project "$XCODEPROJ" \
   -scheme BooksBrowser \
   -destination "$DESTINATION" \
-  -quiet build
+  -resultBundlePath "$RESULT_BUNDLE" \
+  -quiet build \
+  >"$TMPOUT" 2>&1
 EXIT_CODE=$?
 set -e
 
 ELAPSED=$(( $(date +%s) - START ))
+DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
+if [[ -x "$DIAGNOSTICS" ]]; then
+  diag_result="fail"; [[ $EXIT_CODE -eq 0 ]] && diag_result="pass"
+  "$DIAGNOSTICS" --xcresult "$RESULT_BUNDLE" --log "$TMPOUT" --result "$diag_result" --limit 40 || true
+else
+  echo "[ios_build] diagnostics unavailable: $DIAGNOSTICS" >&2
+fi
 
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_build.sh | tail`, where the pipeline's exit code is tail's 0, not
 # the build's). Read this instead of trusting a piped `$?`.
 VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_build_verdict"
 if [[ $EXIT_CODE -eq 0 ]]; then
-  echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
-  echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)"
+  echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 else
-  echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s" > "$VERDICT_FILE"
-  echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  (verdict: $VERDICT_FILE)" >&2
+  echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE" >&2
 fi
 
 exit $EXIT_CODE

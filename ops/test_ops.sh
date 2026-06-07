@@ -29,6 +29,7 @@ ALL_TESTS=(
   python-entrypoints
   ui-token
   docs-lint
+  ios-ops
   ios-test-discovery
   chrome-bundle
   podcast-ops
@@ -55,6 +56,10 @@ run_one() {
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh
       ./ops/tests/test_docs_lint.sh
+      ;;
+    ios-ops)
+      ./ops/test_ios_ops.sh
+      "$UV_BIN" run --project backend pytest -q ops/tests/test_ios_diagnostics.py
       ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;
