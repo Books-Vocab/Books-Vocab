@@ -77,7 +77,7 @@ private struct ReviewCalendarScene: View {
 
     init(seed: ReviewCalendarSeed) {
         self.seed = seed
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         // ReviewRecord plus siblings the presenter's container universe expects.
         let container = try! ModelContainer(
             for: ReviewRecord.self,

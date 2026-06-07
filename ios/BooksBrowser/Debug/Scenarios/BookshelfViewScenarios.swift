@@ -46,7 +46,7 @@ private struct BookshelfViewScene: View {
     init(fixture: BookshelfViewFixture) {
         let container = try! ModelContainer(
             for: Book.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = container.mainContext
         Self.seed(fixture, into: context)

@@ -56,7 +56,7 @@ private struct PodcastHomeScene: View {
     init(fixture: PodcastHomeFixture) {
         let container = try! ModelContainer(
             for: PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = container.mainContext
         Self.seed(fixture, into: context)
