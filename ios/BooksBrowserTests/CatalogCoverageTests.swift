@@ -10,9 +10,8 @@
 //  drops out of the catalog and snapshot coverage with no compile error.
 //
 //  This suite turns that omission into a red test by pinning the set of registered
-//  group names (Playbook "categories") against the known surface inventory. Group
-//  names below were enumerated directly from `buildPlaybook()`'s registration body,
-//  not from any doc.
+//  group names (Playbook "categories") against the catalog manifest that also
+//  drives `buildPlaybook()`.
 //
 
 #if DEBUG && canImport(Playbook)
@@ -23,23 +22,6 @@ import Playbook
 
 @Suite struct CatalogCoverageTests {
 
-    /// Group names ("categories") that `buildPlaybook()` is currently expected to
-    /// register. Sourced from the `addScenarios(of:)` calls across
-    /// `Debug/Scenarios/*.swift`. Note several providers register more than one
-    /// group (e.g. `NotebookDetailScenarios` adds both "· Row" and "· CTA Pill"),
-    /// so this list is longer than the number of `register(in:)` calls.
-    private static let expectedGroups: Set<String> = [
-        "Bookshelf",
-        "Settings",
-        "Notebook Detail · Row",
-        "Notebook Detail · CTA Pill",
-        "Notebooks · Stack",
-        "Notebooks · Card",
-        "Today Review",
-        "Design Tokens",
-        "Welcome",
-    ]
-
     private func registeredGroupNames() -> Set<String> {
         let playbook = CatalogScene.buildPlaybook()
         return Set(playbook.stores.map { $0.category.rawValue })
@@ -49,20 +31,21 @@ import Playbook
 
     @Test func buildPlaybookRegistersAllKnownGroups() async throws {
         let registered = registeredGroupNames()
-        // Every known surface group must still be wired into the catalog. A missing
-        // entry here means a `Scenarios.register(in:)` line was dropped (or a group
-        // was renamed without updating this inventory).
-        let missing = Self.expectedGroups.subtracting(registered)
+        let expected = CatalogScene.Manifest.categoryNames
+        let missing = expected.subtracting(registered)
         #expect(
             missing.isEmpty,
             "buildPlaybook() is missing expected catalog group(s): \(missing.sorted())"
         )
+        let unexpected = registered.subtracting(expected)
+        #expect(
+            unexpected.isEmpty,
+            "buildPlaybook() registered unexpected catalog group(s): \(unexpected.sorted())"
+        )
     }
 
-    @Test func buildPlaybookCoversAtLeastKnownGroupCount() async throws {
-        // Defense-in-depth floor: the catalog is known to expose 9 groups. New
-        // surfaces should only grow this number; a drop signals a lost registration.
-        #expect(registeredGroupNames().count >= 9)
+    @Test func manifestMatchesRegisteredGroupCount() async throws {
+        #expect(registeredGroupNames().count == CatalogScene.Manifest.categoryNames.count)
     }
 
     // MARK: - Scenario population
@@ -84,6 +67,22 @@ import Playbook
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.
         #expect(registeredGroupNames() == registeredGroupNames())
+    }
+
+    @Test func filteredPlaybookByGroupKeepsOnlyRequestedStore() async throws {
+        let playbook = CatalogScene.buildPlaybook(
+            filter: CatalogScene.filter(groups: ["Bookshelf"], scenarios: [])
+        )
+        #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Bookshelf"])
+        #expect((playbook.stores.first?.scenarios.count ?? 0) > 0)
+    }
+
+    @Test func filteredPlaybookByScenarioKeepsOnlyRequestedScenario() async throws {
+        let playbook = CatalogScene.buildPlaybook(
+            filter: CatalogScene.filter(groups: [], scenarios: ["Today Review/Front"])
+        )
+        #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Today Review"])
+        #expect(playbook.stores.first?.scenarios.map { $0.title.rawValue } == ["Front"])
     }
 }
 #endif

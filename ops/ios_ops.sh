@@ -20,11 +20,14 @@
 #   ./ops/ios_ops.sh simulator screenshot [--out <png>] [--device booted] [--json]
 #   ./ops/ios_ops.sh runs [--json]
 #   ./ops/ios_ops.sh snapshot [--json] [--skip-xcode] [--skip-simulator] [--include-logs] [--log-since 5m] [--log-limit 200]
+#   ./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json]
+#   ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--reuse-build] [--json]
+#   ./ops/ios_ops.sh catalog clean [--json]
 #   ./ops/ios_ops.sh commands [--json]
 #
 # Side-effect model:
 # - status/archives/issues/logs/sentry/doctor/workflow/gate/xcode/simulator status/runs/snapshot/dashboard/commands are read-only.
-# - build/test/archive/simulator screenshot are local machine side effects.
+# - build/test/archive/simulator screenshot/catalog snapshots are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
 set -euo pipefail
@@ -65,6 +68,9 @@ source "$SCRIPT_DIR/lib/ios_ops_runs.sh"
 # shellcheck source=lib/ios_ops_snapshot.sh
 source "$SCRIPT_DIR/lib/ios_ops_snapshot.sh"
 
+# shellcheck source=lib/ios_ops_catalog.sh
+source "$SCRIPT_DIR/lib/ios_ops_catalog.sh"
+
 cmd="${1:-}"
 [[ -n "$cmd" ]] || { usage; exit 0; }
 shift || true
@@ -86,6 +92,7 @@ case "$cmd" in
   simulator|sim) cmd_simulator "$@" ;;
   runs|reports) cmd_runs "$@" ;;
   snapshot|dashboard) cmd_snapshot "$@" ;;
+  catalog) cmd_catalog "$@" ;;
   commands|capabilities) cmd_commands "$@" ;;
   -h|--help|help) usage ;;
   *)

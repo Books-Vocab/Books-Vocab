@@ -14,6 +14,7 @@ struct BookCard: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.iCloudDownloadManager) private var downloadManager
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.fixtureReferenceDate) private var fixtureReferenceDate
     let book: Book
     var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
     @State private var decodedCoverImage: PlatformImage?
@@ -49,7 +50,7 @@ struct BookCard: View {
                 // 永遠保留此行占位：無「上次閱讀時間」時放單空格撐出等高，避免同
                 // row 兩欄卡片因高度差在預設置中對齊下上下緣錯位（對齊 podcast 卡的
                 // 全固定高原則）。
-                Text(book.dateLastRead.map(\.relativeShort) ?? " ")
+                Text(book.dateLastRead.map { $0.relativeShort(relativeTo: fixtureReferenceDate) } ?? " ")
                     .font(AppFonts.caption2())
                     .foregroundStyle(appTheme.palette.quaternaryText)
                     .lineLimit(1)
@@ -226,8 +227,8 @@ private struct ICloudProgressBadge: View {
 }
 
 private extension Date {
-    var relativeShort: String {
-        LocaleAwareFormatter.shared.relativeString(for: self, relativeTo: Date(), style: .short)
+    func relativeShort(relativeTo referenceDate: Date?) -> String {
+        LocaleAwareFormatter.shared.relativeString(for: self, relativeTo: referenceDate ?? Date(), style: .short)
     }
 }
 #endif

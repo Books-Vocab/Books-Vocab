@@ -9,6 +9,7 @@ IOS_OPS_LOGS_LIB="$WORKSPACE/ops/lib/ios_ops_logs.sh"
 IOS_OPS_RUNS_LIB="$WORKSPACE/ops/lib/ios_ops_runs.sh"
 IOS_OPS_SNAPSHOT_LIB="$WORKSPACE/ops/lib/ios_ops_snapshot.sh"
 IOS_OPS_SIMULATOR_LIB="$WORKSPACE/ops/lib/ios_ops_simulator.sh"
+IOS_OPS_CATALOG_LIB="$WORKSPACE/ops/lib/ios_ops_catalog.sh"
 IOS_OPS_RELEASE_LIB="$WORKSPACE/ops/lib/ios_ops_release.sh"
 IOS_OPS_COMMANDS_LIB="$WORKSPACE/ops/lib/ios_ops_commands.sh"
 IOS_OPS_CORE_LIB="$WORKSPACE/ops/lib/ios_ops_core.sh"
@@ -21,7 +22,7 @@ fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; }
 
 section "Syntax and executable bits"
-for f in "$IOS_OPS" "$IOS_OPS_CORE_LIB" "$IOS_OPS_XCODE_LIB" "$IOS_OPS_LOGS_LIB" "$IOS_OPS_RUNS_LIB" "$IOS_OPS_SNAPSHOT_LIB" "$IOS_OPS_SIMULATOR_LIB" "$IOS_OPS_RELEASE_LIB" "$IOS_OPS_COMMANDS_LIB" "$IOS_ARCHIVE" "$IOS_DIAG"; do
+for f in "$IOS_OPS" "$IOS_OPS_CORE_LIB" "$IOS_OPS_XCODE_LIB" "$IOS_OPS_LOGS_LIB" "$IOS_OPS_RUNS_LIB" "$IOS_OPS_SNAPSHOT_LIB" "$IOS_OPS_SIMULATOR_LIB" "$IOS_OPS_CATALOG_LIB" "$IOS_OPS_RELEASE_LIB" "$IOS_OPS_COMMANDS_LIB" "$IOS_ARCHIVE" "$IOS_DIAG"; do
   [[ -f "$f" ]] && ok "$(basename "$f") exists" || fail_t "$(basename "$f") missing"
 done
 bash -n "$IOS_OPS" && ok "ios_ops.sh syntax" || fail_t "ios_ops.sh syntax"
@@ -31,6 +32,7 @@ bash -n "$IOS_OPS_LOGS_LIB" && ok "ios_ops_logs.sh syntax" || fail_t "ios_ops_lo
 bash -n "$IOS_OPS_RUNS_LIB" && ok "ios_ops_runs.sh syntax" || fail_t "ios_ops_runs.sh syntax"
 bash -n "$IOS_OPS_SNAPSHOT_LIB" && ok "ios_ops_snapshot.sh syntax" || fail_t "ios_ops_snapshot.sh syntax"
 bash -n "$IOS_OPS_SIMULATOR_LIB" && ok "ios_ops_simulator.sh syntax" || fail_t "ios_ops_simulator.sh syntax"
+bash -n "$IOS_OPS_CATALOG_LIB" && ok "ios_ops_catalog.sh syntax" || fail_t "ios_ops_catalog.sh syntax"
 bash -n "$IOS_OPS_RELEASE_LIB" && ok "ios_ops_release.sh syntax" || fail_t "ios_ops_release.sh syntax"
 bash -n "$IOS_OPS_COMMANDS_LIB" && ok "ios_ops_commands.sh syntax" || fail_t "ios_ops_commands.sh syntax"
 bash -n "$IOS_ARCHIVE" && ok "ios_archive.sh syntax" || fail_t "ios_archive.sh syntax"
@@ -48,10 +50,12 @@ grep -q 'source "$SCRIPT_DIR/lib/ios_ops_snapshot.sh"' "$IOS_OPS" \
   && ok "ios_ops sources snapshot lib" || fail_t "ios_ops does not source snapshot lib"
 grep -q 'source "$SCRIPT_DIR/lib/ios_ops_simulator.sh"' "$IOS_OPS" \
   && ok "ios_ops sources simulator lib" || fail_t "ios_ops does not source simulator lib"
+grep -q 'source "$SCRIPT_DIR/lib/ios_ops_catalog.sh"' "$IOS_OPS" \
+  && ok "ios_ops sources catalog lib" || fail_t "ios_ops does not source catalog lib"
 grep -q 'source "$SCRIPT_DIR/lib/ios_ops_release.sh"' "$IOS_OPS" \
   && ok "ios_ops sources release lib" || fail_t "ios_ops does not source release lib"
 prev_source_line=0
-for lib in ios_ops_core.sh ios_ops_commands.sh ios_ops_logs.sh ios_ops_release.sh ios_ops_xcode.sh ios_ops_simulator.sh ios_ops_runs.sh ios_ops_snapshot.sh; do
+for lib in ios_ops_core.sh ios_ops_commands.sh ios_ops_logs.sh ios_ops_release.sh ios_ops_xcode.sh ios_ops_simulator.sh ios_ops_runs.sh ios_ops_snapshot.sh ios_ops_catalog.sh; do
   source_line="$(grep -n "source \"\\\$SCRIPT_DIR/lib/$lib\"" "$IOS_OPS" | head -1 | cut -d: -f1)"
   if [[ -n "$source_line" && "$source_line" -gt "$prev_source_line" ]]; then
     ok "source order: $lib"
@@ -76,7 +80,7 @@ echo "$help_out" | grep -qE 'xcodebuild archive|xcodebuild test|xcodebuild .*bui
   && fail_t "ios_ops help appears to run xcodebuild" || ok "ios_ops help is side-effect free"
 
 section "Dispatch surface"
-for sub in status build test archive archives issues logs sentry doctor workflow gate xcode simulator runs snapshot commands; do
+for sub in status build test archive archives issues logs sentry doctor workflow gate xcode simulator runs snapshot catalog commands; do
   if [[ "$sub" == "workflow" ]]; then
     grep -qE '^[[:space:]]*workflow\|flow\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
@@ -95,6 +99,9 @@ for sub in status build test archive archives issues logs sentry doctor workflow
   elif [[ "$sub" == "snapshot" ]]; then
     grep -qE '^[[:space:]]*snapshot\|dashboard\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  elif [[ "$sub" == "catalog" ]]; then
+    grep -qE '^[[:space:]]*catalog\)' "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   elif [[ "$sub" == "commands" ]]; then
     grep -qE '^[[:space:]]*commands\|capabilities\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
@@ -110,7 +117,7 @@ grep -q 'cmd_commands_json' "$IOS_OPS_COMMANDS_LIB" && grep -q 'kg.ios.commands.
 grep -qE '^cmd_commands(_json)?\(\)' "$IOS_OPS" \
   && fail_t "ios_ops should not redefine commands catalog functions" || ok "ios_ops keeps commands catalog out of façade"
 commands_json="$(bash "$IOS_OPS" commands --json)"
-echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 16) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
+echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
   && ok "commands --json exposes machine-readable command catalog" || fail_t "commands --json invalid: $commands_json"
 capabilities_json="$(bash "$IOS_OPS" capabilities --json)"
 echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.commands[]; .key=="commands")' >/dev/null \
@@ -118,6 +125,8 @@ echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.comman
 commands_text="$(bash "$IOS_OPS" commands)"
 echo "$commands_text" | grep -q 'key=snapshot' \
   && ok "commands text lists snapshot" || fail_t "commands text missing snapshot: $commands_text"
+echo "$commands_text" | grep -q 'key=catalog' \
+  && ok "commands text lists catalog" || fail_t "commands text missing catalog: $commands_text"
 echo "$commands_text" | grep -q 'kg.ios.commands.v1' \
   && ok "commands text lists catalog schema" || fail_t "commands text missing schema: $commands_text"
 
@@ -180,6 +189,61 @@ else
     && ok "simulator status reports missing booted device" || fail_t "simulator missing-booted invalid: $(cat "$sim_shot_tmp/no_booted.json") stderr=$(cat "$sim_shot_tmp/no_booted.err") rc=$rc"
 fi
 rm -rf "$sim_shot_tmp"
+
+section "Catalog snapshot export surface"
+catalog_tmp="$(mktemp -d)"
+catalog_xctestrun_tmp="$(mktemp -d)"
+mkdir -p "$catalog_xctestrun_tmp/Build/Products"
+touch "$catalog_xctestrun_tmp/Build/Products/BooksBrowserCatalogSnapshots_BooksBrowserCatalogSnapshots_iphonesimulator26.4-arm64.xctestrun"
+touch "$catalog_xctestrun_tmp/Build/Products/BooksBrowserCatalogSnapshots_BooksBrowserCatalogSnapshots_iphonesimulator26.4-arm64.scoped.xctestrun"
+catalog_xctestrun_path="$(
+  ROOT="$WORKSPACE" \
+  XCODEPROJ="$WORKSPACE/ios/BooksBrowser.xcodeproj" \
+  bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_find_xctestrun "'"$catalog_xctestrun_tmp"'"'
+)"
+[[ "$catalog_xctestrun_path" == *.xctestrun && "$catalog_xctestrun_path" != *.scoped.xctestrun ]] \
+  && ok "catalog scoped cache prefers base xctestrun over scoped copy" || fail_t "catalog scoped cache selected wrong xctestrun: $catalog_xctestrun_path"
+catalog_cache_root="$catalog_tmp/cache-root"
+prepare_catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog prepare --json)"
+echo "$prepare_catalog_json" | jq -e --arg root "$catalog_cache_root" '.schema=="kg.ios.catalog.prepare.v1" and .action=="prepare" and .status=="ok" and (.cache.root|startswith($root)) and (.cache.key|length > 8) and .cache.productsReady==true and (.cache.xctestrunPath|endswith(".xctestrun")) and .cache.status=="prepared" and (.build.command|contains("build-for-testing")) and .build.exitCode==0' >/dev/null \
+  && ok "catalog prepare --json seeds reusable build cache" || fail_t "catalog prepare --json invalid: $prepare_catalog_json"
+prepare_xctestrun="$(echo "$prepare_catalog_json" | jq -r '.cache.xctestrunPath')"
+[[ -f "$prepare_xctestrun" ]] \
+  && ok "catalog prepare materializes xctestrun artifact" || fail_t "catalog prepare missing xctestrun: $prepare_xctestrun"
+prepare_catalog_hit_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog prepare --json)"
+echo "$prepare_catalog_hit_json" | jq -e '.schema=="kg.ios.catalog.prepare.v1" and .status=="ok" and .cache.status=="hit" and .build.exitCode==0' >/dev/null \
+  && ok "catalog prepare reuses ready cache without rebuilding" || fail_t "catalog prepare hit invalid: $prepare_catalog_hit_json"
+catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json)"
+echo "$catalog_json" | jq -e --arg root "$catalog_tmp/build/snapshots" '.schema=="kg.ios.catalog.v1" and .action=="snapshots" and .status=="ok" and .mode=="fixture" and .artifacts.root==$root and .artifacts.pngCount==2 and (.artifacts.paths|length)==2 and (.scope.groups|length)==0 and (.scope.scenarios|length)==0 and all(.artifacts.paths[]; startswith($root)) and (.validation.status=="ok") and .validation.actualPngCount==2 and .validation.uniformImageCount==0 and .validation.minPixelWidth==16 and .validation.maxPixelWidth==16 and .validation.minPixelHeight==16 and .validation.maxPixelHeight==16 and (.validation.images|length)==2 and .cache.status=="not-applicable" and .cache.key==null and .cache.root==null and (.test.command|contains("CatalogSnapshotTests")) and .test.exitCode==0 and .copy.exitCode==0 and .copy.containerDataPath=="/tmp/kg-sim-fixture/container" and .flags.compileTimeFlag=="KG_RUN_CATALOG_SNAPSHOTS"' >/dev/null \
+  && ok "catalog snapshots --json exports fixture PNG artifacts" || fail_t "catalog snapshots --json invalid: $catalog_json"
+catalog_text="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots)"
+echo "$catalog_text" | grep -q '\[ios\]\[catalog\].*status=ok.*pngCount=2' && echo "$catalog_text" | grep -q 'validation status=ok' && echo "$catalog_text" | grep -q 'CatalogSnapshotTests' \
+  && ok "catalog snapshots text reports artifact summary" || fail_t "catalog snapshots text invalid: $catalog_text"
+scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --group Bookshelf --group 'Today Review' --scenario 'Today Review/Front' --json)"
+echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksBrowserCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
+  && ok "catalog snapshots --json reports scoped group/scenario filters" || fail_t "catalog scoped json invalid: $scoped_catalog_json"
+reuse_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json)"
+echo "$reuse_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="ok" and .options.reuseBuild==true and .test.exitCode==0' >/dev/null \
+  && ok "catalog snapshots accepts reuse-build option" || fail_t "catalog reuse-build json invalid: $reuse_catalog_json"
+clean_catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog clean --json)"
+echo "$clean_catalog_json" | jq -e --arg root "$catalog_cache_root" '.schema=="kg.ios.catalog.clean.v1" and .action=="clean" and .status=="ok" and .cache.root==$root and .cache.existedBefore==true and .cache.existsAfter==false and .cache.removed==true' >/dev/null \
+  && ok "catalog clean --json removes reusable build cache" || fail_t "catalog clean --json invalid: $clean_catalog_json"
+[[ ! -e "$catalog_cache_root" ]] \
+  && ok "catalog clean removes cache root from disk" || fail_t "catalog clean left cache root behind: $catalog_cache_root"
+bad_catalog_tmp="$(mktemp -d)"
+if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapshots --unknown >"$bad_catalog_tmp/out" 2>"$bad_catalog_tmp/err"; then
+  fail_t "catalog snapshots rejects unknown option"
+else
+  grep -q 'unknown catalog snapshots option' "$bad_catalog_tmp/err" \
+    && ok "catalog snapshots rejects unknown option" || fail_t "catalog snapshots bad-arg message missing"
+fi
+if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" catalog prepare --unknown >"$bad_catalog_tmp/prepare.out" 2>"$bad_catalog_tmp/prepare.err"; then
+  fail_t "catalog prepare rejects unknown option"
+else
+  grep -q 'unknown catalog prepare option' "$bad_catalog_tmp/prepare.err" \
+    && ok "catalog prepare rejects unknown option" || fail_t "catalog prepare bad-arg message missing"
+fi
+rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"
 
 section "Doctor release readiness surface"
 doctor_body="$(awk '/^doctor_readiness\(\)/,/^}/' "$IOS_OPS_RELEASE_LIB")"
