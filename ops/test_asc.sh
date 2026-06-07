@@ -142,6 +142,15 @@ help_out="$(bash "$ASC" --help 2>&1)"
 hasme "$help_out" 'set -euo pipefail|^KEY_ID=|^ISSUER_ID=' \
   && fail_t "help leaks shell code" || ok "help is comment-only (no shell code leak)"
 
+# Bash 會把部分非 ASCII 字元視為變數名延伸；`$field」` 在 set -u 下會讀成未定義變數。
+section "Bash variable braces before non-ASCII"
+bad_vars="$(
+  awk 'match($0, /\$[A-Za-z_][A-Za-z0-9_]*[」）]/) { print FNR ":" $0 }' "$ASC"
+)"
+[[ -z "$bad_vars" ]] \
+  && ok "no unbraced shell vars before Chinese punctuation" \
+  || fail_t "unbraced shell vars before Chinese punctuation:\n$bad_vars"
+
 # ── 10. raw 寫入 helper（一般化 PATCH/POST/DELETE）+ set-review 經集中 gate ──
 section "Raw write helper + set-review (gated)"
 WRITE="$WORKSPACE/ops/asc_write.py"
