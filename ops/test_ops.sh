@@ -28,6 +28,7 @@ DEFAULT_TESTS=(
   devops
   deploy-smoke
   infra-health
+  branch-audit
   python-entrypoints
   ui-token
   docs-lint
@@ -59,6 +60,7 @@ run_one() {
     devops)             ./ops/test_devops.sh ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
+    branch-audit)       ./ops/tests/test_branch_audit.sh ;;
     python-entrypoints) ./ops/tests/test_python_entrypoints.sh ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     docs-lint)
