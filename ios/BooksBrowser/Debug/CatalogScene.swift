@@ -110,7 +110,14 @@ struct CatalogScene: View {
             .init(id: "calendar_grid", categories: ["Vocab Calendar"], register: VocabCalendarGridScenarios.register),
             .init(id: "forecast", categories: ["Vocab Forecast"], register: VocabForecastScenarios.register),
             .init(id: "progress_capsule", categories: ["Progress Capsule"], register: ProgressCapsuleScenarios.register),
-            .init(id: "notebook_filter_chip", categories: ["Notebook Filter Chip"], register: NotebookFilterChipScenarios.register),
+            .init(
+                id: "notebook_filter_chip",
+                categories: [
+                    "Notebook Filter Chip · Chip",
+                    "Notebook Filter Chip · Picker",
+                ],
+                register: NotebookFilterChipScenarios.register
+            ),
             .init(id: "notebook_review_action_bar", categories: ["Notebook Review Action Bar"], register: NotebookReviewActionBarScenarios.register),
             .init(id: "selection_toolbar", categories: ["Selection Toolbar"], register: SelectionToolbarScenarios.register),
             .init(id: "podcast_hero", categories: ["Podcast Hero"], register: PodcastSeriesHeroScenarios.register),
@@ -123,6 +130,115 @@ struct CatalogScene: View {
             .init(id: "delete_account_sheet", categories: ["Delete Account Sheet"], register: DeleteAccountSheetScenarios.register),
             .init(id: "translation_lang_settings", categories: ["Translation Language Settings"], register: TranslationLanguageSettingsScenarios.register),
             .init(id: "bookcard", categories: ["Book Card"], register: BookCardScenarios.register),
+            .init(
+                id: "vocab_components",
+                categories: [
+                    "Vocab Components · Tone Chip",
+                    "Vocab Components · Tier Label",
+                    "Vocab Components · Empty State",
+                    "Vocab Components · Review Progress Bar",
+                    "Vocab Components · Review Gradient Bar",
+                ],
+                register: VocabComponentScenarios.register
+            ),
+            .init(
+                id: "vocab_shell_components",
+                categories: [
+                    "Vocab Shell · Chrome Icon Button",
+                    "Vocab Shell · Search Field",
+                    "Vocab Shell · Toolbar Glyph",
+                    "Vocab Shell · Accessory Icon Button",
+                    "Vocab Shell · Inline Action Button",
+                    "Vocab Shell · Metric Hero Card",
+                    "Vocab Shell · Section Header",
+                    "Vocab Shell · Slider Row",
+                    "Vocab Shell · Sort Pill",
+                ],
+                register: VocabShellComponentsScenarios.register
+            ),
+            .init(
+                id: "card_sections",
+                categories: [
+                    "Card Sections · Hero",
+                    "Card Sections · Examples",
+                    "Card Sections · Explanation",
+                    "Card Sections · Forms",
+                    "Card Sections · Source",
+                    "Card Sections · Primitives",
+                    "Card Sections · Document",
+                ],
+                register: CardSectionsScenarios.register
+            ),
+            .init(
+                id: "word_detail_components",
+                categories: [
+                    "Word Detail Components · Sync Badge",
+                    "Word Detail Components · Graph Link Row",
+                ],
+                register: WordDetailComponentScenarios.register
+            ),
+            .init(id: "notebook_cover", categories: ["Notebook Cover"], register: NotebookCoverScenarios.register),
+            .init(id: "link_reason_sheet", categories: ["Link Reason Sheet"], register: LinkReasonSheetScenarios.register),
+            .init(id: "reader_notebook_picker", categories: ["Reader Notebook Picker"], register: ReaderNotebookPickerScenarios.register),
+            .init(id: "subscription_views", categories: ["Subscription Views · Gate Card"], register: SubscriptionViewsScenarios.register),
+            .init(id: "podcast_continue_card", categories: ["Podcast Continue Card"], register: PodcastContinueCardScenarios.register),
+            .init(
+                id: "settings_components",
+                categories: [
+                    "Settings Components · Section Header",
+                    "Settings Components · Section Footer",
+                    "Settings Components · Status Badge",
+                    "Settings Components · Status Value",
+                    "Settings Components · Status Summary",
+                    "Settings Components · Disclosure Value",
+                    "Settings Components · Menu Value",
+                    "Settings Components · Title Subtitle",
+                    "Settings Components · Chevron Icon",
+                ],
+                register: SettingsComponentsScenarios.register
+            ),
+            .init(
+                id: "settings_controls",
+                categories: [
+                    "Settings Controls · Stepper",
+                    "Settings Controls · Modifiers",
+                    "Settings Controls · Input Field",
+                ],
+                register: SettingsControlsScenarios.register
+            ),
+            .init(
+                id: "settings_actions",
+                categories: [
+                    "Settings Actions · Buttons",
+                    "Settings Actions · Subscription",
+                    "Settings Actions · Plan Table",
+                ],
+                register: SettingsActionsScenarios.register
+            ),
+            .init(
+                id: "settings_sections",
+                categories: [
+                    "Settings Sections · Review",
+                    "Settings Sections · Preferences",
+                ],
+                register: SettingsSectionsScenarios.register
+            ),
+            .init(
+                id: "account_section",
+                categories: [
+                    "Account Section · Section",
+                    "Account Section · Auth Summary",
+                    "Account Section · Pro Badge",
+                ],
+                register: SettingsAccountSectionScenarios.register
+            ),
+            .init(id: "today_review_presenter", categories: ["Today Review Presenter"], register: TodayReviewPresenterScenarios.register),
+            .init(id: "review_calendar_presenter", categories: ["Review Calendar Presenter"], register: ReviewCalendarScenarios.register),
+            .init(id: "pending_vocab_presenter", categories: ["Pending Vocab Presenter"], register: PendingVocabPresenterScenarios.register),
+            .init(id: "word_detail_presenter", categories: ["Word Detail Presenter"], register: WordDetailPresenterScenarios.register),
+            .init(id: "translation_vocab_presenter", categories: ["Translation Vocab Presenter"], register: TranslationVocabPresenterScenarios.register),
+            .init(id: "reader_settings_presenter", categories: ["Reader Settings Presenter"], register: ReaderSettingsPresenterScenarios.register),
+            .init(id: "app_startup_recovery", categories: ["Startup Recovery"], register: AppStartupRecoveryScenarios.register),
             .init(id: "settings", categories: ["Settings"], register: SettingsScenarios.register),
             .init(id: "today_review", categories: ["Today Review"], register: TodayReviewScenarios.register),
             .init(id: "bookshelf", categories: ["Bookshelf"], register: BookshelfScenarios.register),
