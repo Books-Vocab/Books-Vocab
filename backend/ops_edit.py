@@ -33,6 +33,9 @@ from typing import Any
 from filelock import FileLock
 
 from kg.api_models.common import VocabSource
+from kg.api_models.notebook import VocabUIConfig
+from kg.api_models.review import ReviewClockConfig, ReviewModeConfig
+from kg.api_models.translate import TranslationLanguageConfig
 from kg.cards import CardStore
 from kg.cards.model import Card
 from kg.demo_review_synth import CardReviewState, synthesize_many
@@ -662,6 +665,190 @@ def cmd_notebook_create(args: argparse.Namespace) -> int:
     return ctx.run(action="notebook-create", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
 
+def cmd_user_config_set(args: argparse.Namespace) -> int:
+    """更新 users.json 內的 per-user config，供 marketing / mock surface 造景。"""
+    dd = data_dir()
+    ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
+    now_epoch = datetime.now(tz=UTC).timestamp()
+    updates: dict[str, Any] = {}
+
+    if args.translation_source is not None or args.translation_target is not None:
+        updates["translation"] = {
+            "source_lang": args.translation_source,
+            "target_lang": args.translation_target,
+        }
+
+    if args.paused_at is not None and args.review_clock != "paused":
+        raise EditError("--paused-at 需搭配 --review-clock paused")
+    if args.review_clock is not None:
+        if args.paused_at is not None:
+            if parse_datetime(args.paused_at) is None:
+                raise EditError(f"--paused-at 必須是 ISO datetime 或 Unix timestamp:{args.paused_at!r}")
+            paused_at = args.paused_at
+        elif args.review_clock == "paused":
+            paused_at = datetime.now(tz=UTC).isoformat()
+        else:
+            paused_at = None
+        updates["review_clock"] = {
+            "is_paused": args.review_clock == "paused",
+            "paused_at": paused_at,
+        }
+
+    review_mode_fields = (
+        args.review_mode,
+        args.custom_initial_interval_hours,
+        args.custom_remembered_multiplier,
+        args.custom_forgot_multiplier,
+        args.custom_minimum_interval_hours,
+        args.custom_maximum_interval_hours,
+    )
+    if any(v is not None for v in review_mode_fields):
+        updates["review_mode"] = {
+            "mode": args.review_mode,
+            "custom_initial_interval_hours": args.custom_initial_interval_hours,
+            "custom_remembered_multiplier": args.custom_remembered_multiplier,
+            "custom_forgot_multiplier": args.custom_forgot_multiplier,
+            "custom_minimum_interval_hours": args.custom_minimum_interval_hours,
+            "custom_maximum_interval_hours": args.custom_maximum_interval_hours,
+        }
+
+    resolved_nb_id = None
+    if args.active_notebook is not None:
+        resolved_nb_id = _resolve_notebook_id(ctx.user_dir, args.active_notebook)
+        updates["vocab_ui"] = {"active_notebook_id": resolved_nb_id}
+
+    if not updates:
+        raise EditError(
+            "user-config-set 需至少一個 translation/review_clock/review_mode/vocab_ui 相關旗標"
+        )
+
+    plan = {"updates": updates}
+    state: dict[str, Any] = {}
+
+    def apply_fn() -> dict[str, Any]:
+        def mutate(users: dict[str, Any]) -> dict[str, Any]:
+            record = users.get(args.uid, {}) if isinstance(users.get(args.uid), dict) else {}
+            config = record.get("config", {}) if isinstance(record.get("config"), dict) else {}
+
+            if "translation" in updates:
+                current = config.get("translation", {}) if isinstance(config.get("translation"), dict) else {}
+                translation = TranslationLanguageConfig(
+                    source_lang=updates["translation"]["source_lang"] or current.get("source_lang", "en"),
+                    target_lang=updates["translation"]["target_lang"] or current.get("target_lang", "zh-Hant"),
+                    updated_at=now_epoch,
+                )
+                config["translation"] = {
+                    "source_lang": translation.source_lang,
+                    "target_lang": translation.target_lang,
+                    "updated_at": translation.updated_at,
+                }
+
+            if "review_clock" in updates:
+                clock = ReviewClockConfig(
+                    is_paused=updates["review_clock"]["is_paused"],
+                    paused_at=updates["review_clock"]["paused_at"],
+                    updated_at=now_epoch,
+                )
+                config["review_clock"] = {
+                    "is_paused": clock.is_paused,
+                    "paused_at": clock.paused_at,
+                    "updated_at": clock.updated_at,
+                }
+
+            if "review_mode" in updates:
+                current = config.get("review_mode", {}) if isinstance(config.get("review_mode"), dict) else {}
+                mode = ReviewModeConfig(
+                    mode=updates["review_mode"]["mode"] or current.get("mode", "relaxed"),
+                    custom_initial_interval_hours=(
+                        updates["review_mode"]["custom_initial_interval_hours"]
+                        if updates["review_mode"]["custom_initial_interval_hours"] is not None
+                        else current.get("custom_initial_interval_hours", 12)
+                    ),
+                    custom_remembered_multiplier=(
+                        updates["review_mode"]["custom_remembered_multiplier"]
+                        if updates["review_mode"]["custom_remembered_multiplier"] is not None
+                        else current.get("custom_remembered_multiplier", 1.9)
+                    ),
+                    custom_forgot_multiplier=(
+                        updates["review_mode"]["custom_forgot_multiplier"]
+                        if updates["review_mode"]["custom_forgot_multiplier"] is not None
+                        else current.get("custom_forgot_multiplier", 0.45)
+                    ),
+                    custom_minimum_interval_hours=(
+                        updates["review_mode"]["custom_minimum_interval_hours"]
+                        if updates["review_mode"]["custom_minimum_interval_hours"] is not None
+                        else current.get("custom_minimum_interval_hours", 6)
+                    ),
+                    custom_maximum_interval_hours=(
+                        updates["review_mode"]["custom_maximum_interval_hours"]
+                        if updates["review_mode"]["custom_maximum_interval_hours"] is not None
+                        else current.get("custom_maximum_interval_hours", 1440)
+                    ),
+                    updated_at=now_epoch,
+                )
+                config["review_mode"] = {
+                    "mode": mode.mode,
+                    "custom_initial_interval_hours": mode.custom_initial_interval_hours,
+                    "custom_remembered_multiplier": mode.custom_remembered_multiplier,
+                    "custom_forgot_multiplier": mode.custom_forgot_multiplier,
+                    "custom_minimum_interval_hours": mode.custom_minimum_interval_hours,
+                    "custom_maximum_interval_hours": mode.custom_maximum_interval_hours,
+                    "updated_at": mode.updated_at,
+                }
+
+            if "vocab_ui" in updates:
+                vocab_ui = VocabUIConfig(
+                    active_notebook_id=updates["vocab_ui"]["active_notebook_id"],
+                    updated_at=now_epoch,
+                )
+                config["vocab_ui"] = {
+                    "active_notebook_id": vocab_ui.active_notebook_id,
+                    "updated_at": vocab_ui.updated_at,
+                }
+
+            record["config"] = config
+            users[args.uid] = record
+            return config
+
+        cfg = _mutate_users(dd, mutate)
+        state["config"] = cfg
+        return {"config": cfg}
+
+    def verify_fn() -> dict[str, Any]:
+        users = load_users_from(users_file(dd), _passthrough_normalize)
+        record = users.get(args.uid, {}) if isinstance(users.get(args.uid), dict) else {}
+        config = record.get("config", {}) if isinstance(record.get("config"), dict) else {}
+        mismatches: list[str] = []
+        if "translation" in updates:
+            tr = config.get("translation", {}) if isinstance(config.get("translation"), dict) else {}
+            exp = state.get("config", {}).get("translation", {})
+            if tr.get("source_lang") != exp.get("source_lang"):
+                mismatches.append("translation.source_lang")
+            if tr.get("target_lang") != exp.get("target_lang"):
+                mismatches.append("translation.target_lang")
+        if "review_clock" in updates:
+            rc = config.get("review_clock", {}) if isinstance(config.get("review_clock"), dict) else {}
+            exp = state.get("config", {}).get("review_clock", {})
+            if rc.get("is_paused") != exp.get("is_paused"):
+                mismatches.append("review_clock.is_paused")
+            if rc.get("paused_at") != exp.get("paused_at"):
+                mismatches.append("review_clock.paused_at")
+        if "review_mode" in updates:
+            rm = config.get("review_mode", {}) if isinstance(config.get("review_mode"), dict) else {}
+            for key, value in state.get("config", {}).get("review_mode", {}).items():
+                if key == "updated_at":
+                    continue
+                if rm.get(key) != value:
+                    mismatches.append(f"review_mode.{key}")
+        if "vocab_ui" in updates:
+            vu = config.get("vocab_ui", {}) if isinstance(config.get("vocab_ui"), dict) else {}
+            if vu.get("active_notebook_id") != resolved_nb_id:
+                mismatches.append("vocab_ui.active_notebook_id")
+        return {"ok": not mismatches, "mismatched": mismatches}
+
+    return ctx.run(action="user-config-set", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
+
 def cmd_link_add(args: argparse.Namespace) -> int:
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
@@ -1051,8 +1238,10 @@ def cmd_notebook_update(args: argparse.Namespace) -> int:
         updates["color"] = args.color
     if args.cover is not None:
         updates["cover_pattern"] = args.cover
+    if args.sort_order is not None:
+        updates["sort_order"] = args.sort_order
     if not updates:
-        raise EditError("notebook-update 需至少一個 --name / --color / --cover")
+        raise EditError("notebook-update 需至少一個 --name / --color / --cover / --sort-order")
     plan = {"notebook_id": nb_id, "updates": updates}
 
     def apply_fn() -> dict[str, Any]:
@@ -1061,7 +1250,7 @@ def cmd_notebook_update(args: argparse.Namespace) -> int:
         if nb is None:
             raise EditError(f"notebook not found 或已刪除:{nb_id}")
         return {"notebook": {"id": nb.id, "name": nb.name, "color": nb.color,
-                             "cover_pattern": nb.cover_pattern}}
+                             "cover_pattern": nb.cover_pattern, "sort_order": nb.sort_order}}
 
     def verify_fn() -> dict[str, Any]:
         store = _notebook_store(ctx.user_dir)
@@ -1527,6 +1716,22 @@ def main() -> None:
     p.add_argument("--cover", help="cover_pattern")
     p.set_defaults(func=cmd_notebook_create)
 
+    p = sub.add_parser("user-config-set", parents=[jp, cp],
+                       help="更新 user config(translation/review clock/mode/vocab UI)")
+    p.add_argument("uid")
+    p.add_argument("--translation-source")
+    p.add_argument("--translation-target")
+    p.add_argument("--review-clock", choices=["paused", "running"])
+    p.add_argument("--paused-at", help="ISO datetime;僅搭配 --review-clock paused")
+    p.add_argument("--review-mode", choices=["relaxed", "intensive", "custom"])
+    p.add_argument("--custom-initial-interval-hours", type=float)
+    p.add_argument("--custom-remembered-multiplier", type=float)
+    p.add_argument("--custom-forgot-multiplier", type=float)
+    p.add_argument("--custom-minimum-interval-hours", type=float)
+    p.add_argument("--custom-maximum-interval-hours", type=float)
+    p.add_argument("--active-notebook", help="notebook id 或 name")
+    p.set_defaults(func=cmd_user_config_set)
+
     p = sub.add_parser("link-add", parents=[jp, cp], help="連結兩張卡(知識圖譜)")
     p.add_argument("uid")
     p.add_argument("from_ref", metavar="from", help="來源 card id 或 content")
@@ -1569,6 +1774,7 @@ def main() -> None:
     p.add_argument("--name")
     p.add_argument("--color")
     p.add_argument("--cover", help="cover_pattern")
+    p.add_argument("--sort-order", type=int)
     p.set_defaults(func=cmd_notebook_update)
 
     p = sub.add_parser("notebook-delete", parents=[jp, cp], help="軟刪筆記本(default 不可刪)")
