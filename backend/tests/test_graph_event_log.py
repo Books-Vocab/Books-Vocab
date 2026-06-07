@@ -116,6 +116,49 @@ def test_query_by_link_and_type(tmp_path):
     assert {e.event_id for e in store.query(event_type=GraphEventType.LINK_DELETED)} == {"e3"}
 
 
+def test_get_since_accepts_naive_cursor(tmp_path):
+    # cursor 傳 naive(呼叫端忘了帶 tz):須正規化為 UTC 後比較,不可漏撈/重撈。
+    store = GraphEventStore(tmp_path / "g.db")
+    store.insert_many([_draft(f"e{i}") for i in range(5)])
+    aware_cursor = store.all()[2].ingested_at
+    aware_cursor = aware_cursor.replace(tzinfo=UTC) if aware_cursor.tzinfo is None else aware_cursor
+    naive_cursor = aware_cursor.replace(tzinfo=None)
+    assert [e.event_id for e in store.get_since(naive_cursor)] == ["e3", "e4"]
+
+
+def test_query_by_source_and_notebook(tmp_path):
+    store = GraphEventStore(tmp_path / "g.db")
+    store.insert_many(
+        [
+            _draft("e1", source=GraphEventSource.MANUAL, notebook_id="default"),
+            _draft("e2", source=GraphEventSource.OPS, notebook_id="default"),
+            _draft("e3", source=GraphEventSource.MANUAL, notebook_id="work"),
+        ]
+    )
+    assert {e.event_id for e in store.query(source=GraphEventSource.MANUAL)} == {"e1", "e3"}
+    assert {e.event_id for e in store.query(notebook_id="work")} == {"e3"}
+    assert {
+        e.event_id
+        for e in store.query(source=GraphEventSource.MANUAL, notebook_id="default")
+    } == {"e1"}
+
+
+def test_ingested_at_fallback_when_clock_does_not_advance(tmp_path, monkeypatch):
+    # 凍結 wall clock:同微秒多筆寫入仍須靠 +1µs fallback 保持嚴格遞增、唯一。
+    import kg.graph_event_log as mod
+
+    frozen = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(mod, "_now", lambda: frozen)
+    store = GraphEventStore(tmp_path / "g.db")
+    store.insert_many([_draft(f"e{i}") for i in range(4)])
+    ts = [
+        (t.replace(tzinfo=UTC) if t.tzinfo is None else t)
+        for t in (e.ingested_at for e in store.all())
+    ]
+    assert all(ts[i] < ts[i + 1] for i in range(len(ts) - 1))  # 嚴格遞增
+    assert len(set(ts)) == 4                                    # 全唯一
+
+
 def test_append_single_convenience(tmp_path):
     store = GraphEventStore(tmp_path / "g.db")
     store.append(

@@ -120,3 +120,33 @@ def test_migration_adds_columns_to_legacy_db(tmp_path):
     assert len(entries) == 1
     assert entries[0].is_synthetic is False
     assert entries[0].interval_before is None
+
+
+def test_migrated_legacy_db_accepts_new_synthetic_writes(tmp_path):
+    """migration 後的舊 db 上新寫帶 SRS 快照 + is_synthetic=True 的事件,須完整落地 ——
+    確認 ADD COLUMN 出來的欄位真能寫(非只讀得回 None)、新舊事件共存。"""
+    path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """CREATE TABLE reviewevent (
+            event_id VARCHAR PRIMARY KEY, card_id VARCHAR,
+            word_snapshot VARCHAR NOT NULL, notebook_id VARCHAR NOT NULL,
+            feedback INTEGER NOT NULL, reviewed_at DATETIME NOT NULL,
+            created_at DATETIME NOT NULL, ingested_at DATETIME)"""
+    )
+    conn.execute(
+        "INSERT INTO reviewevent VALUES ('old1','c','musty','default',1,"
+        "'2026-03-01 12:00:00','2026-03-01 12:00:00','2026-03-01 12:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = ReviewEventStore(path)  # 觸發 migration
+    push_review_events([_entry("new1", is_synthetic=True)], event_store=store)
+    entries, _ = pull_review_events(since=None, event_store=store)
+    by_id = {e.event_id: e for e in entries}
+    assert set(by_id) == {"old1", "new1"}            # 新舊共存
+    assert by_id["old1"].is_synthetic is False       # 舊事件 migration 落 False
+    assert by_id["new1"].is_synthetic is True        # 新事件寫得進加寬欄
+    assert by_id["new1"].interval_after == 22.8
+    assert by_id["new1"].streak_after == 2

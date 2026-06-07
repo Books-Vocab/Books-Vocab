@@ -234,6 +234,9 @@ class GraphEventStore:
 
     def get_since(self, since: datetime) -> list[GraphEvent]:
         # Strict ``>``: ingested_at 單調且唯一,cursor 邊界事件已交付過,不需重撈。
+        # 正規化 cursor 為 tz-aware UTC —— 呼叫端傳 naive 時與 store 存的 aware 直接比較
+        # 會 silent 走錯邊界(SQLite 字面字串比較),先轉齊避免漏撈/重撈。
+        since = _as_utc(since)
         with Session(self.engine) as session:
             return list(
                 session.exec(
