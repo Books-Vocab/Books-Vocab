@@ -10,8 +10,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 
 def _make_db(path: Path, rows: list[tuple], *, with_provider: bool, with_model: bool) -> Path:
     """建 token_usage.db。rows = (uid, call_type, in, out, created_at[, provider][, model])。"""
@@ -92,6 +90,57 @@ def test_admin_ops_parity(tmp_path):
     assert ops_summary["by_call_type"] == admin_summary["by_call_type"]
     assert ops_summary["total_cost_usd"] == admin_summary["total_cost_usd"]
     assert ops_summary["total_calls"] == admin_summary["total_calls"]
+
+
+def test_public_callpath_parity(tmp_path, monkeypatch):
+    """真正的 call-path parity:驅動 admin 公開入口 get_user_cost_summary 與
+    ops 公開入口 cmd_cost,對同一 DB 斷言 by_call_type/totals 一致。
+
+    這比 core-level parity 更強:它釘住「兩個公開入口都還在用共用核心」——
+    若日後有人在 cmd_cost 或 get_user_cost_summary 重新內聯分歧邏輯,此測試紅燈。
+    """
+    import io
+    import json as _json
+    from contextlib import redirect_stdout
+    from types import SimpleNamespace
+
+    db = _make_db(tmp_path, _ROWS_FULL, with_provider=True, with_model=True)
+
+    # admin 公開入口:monkeypatch token_tracker 指向此 DB。
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    import kg.token_tracker as tt
+
+    monkeypatch.setattr(tt, "DATA_DIR", tmp_path, raising=True)
+    monkeypatch.setattr(tt, "DB_PATH", db, raising=True)
+    tt._conn = None
+    try:
+        from kg.admin_cost_summary import get_user_cost_summary
+
+        admin = get_user_cost_summary("u1", range_="all")
+    finally:
+        if tt._conn is not None:
+            tt._conn.close()
+            tt._conn = None
+
+    # ops 公開入口:cmd_cost(--json),connect_ro 讀同一 DB。data_dir() 每次
+    # 重讀 KG_DATA_DIR,故設 env 即可,無需 reload。
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    import sys
+
+    backend_root = str(Path(__file__).resolve().parent.parent)
+    if backend_root not in sys.path:
+        sys.path.insert(0, backend_root)
+    import ops_cli
+
+    args = SimpleNamespace(uid="u1", range="all", json=True)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ops_cli.cmd_cost(args)
+    ops = _json.loads(buf.getvalue())
+
+    assert ops["by_call_type"] == admin["by_call_type"]
+    assert ops["total_cost_usd"] == admin["total_cost_usd"]
+    assert ops["total_calls"] == admin["total_calls"]
 
 
 def test_legacy_no_provider_no_model(tmp_path):
