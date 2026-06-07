@@ -21,11 +21,16 @@ set -euo pipefail
 LOCK_FILE="/tmp/kg-ios-build.lock"
 TIMEOUT=600
 POLL_INTERVAL=3
+DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro Max'
+SIMULATOR_BOOT_SELECTOR='iPhone 17 Pro Max'
 GREP_PATTERN=""
 TEST_FILE=""
 TEST_SCOPE="unit"
 SPECIFIC_TESTS=()
 LIST_ONLY=0
+TEST_SCHEME="BooksBrowser"
+TEST_CACHE_ACTION=""
+JSON_MODE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,6 +41,10 @@ while [[ $# -gt 0 ]]; do
     --all-targets|--scheme) TEST_SCOPE="all"; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --list) LIST_ONLY=1; shift ;;   # dry-run: print resolved -only-testing flags, no xcodebuild
+    --prepare-cache) TEST_CACHE_ACTION="prepare"; shift ;;
+    --cache-status) TEST_CACHE_ACTION="status"; shift ;;
+    --clean-cache) TEST_CACHE_ACTION="clean"; shift ;;
+    --json) JSON_MODE=1; shift ;;
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
@@ -43,6 +52,8 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
+IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
+TEST_CACHE_ROOT="${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived-data}"
 
 # shellcheck source=lib/ios_test_discovery.sh
 source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
@@ -50,6 +61,73 @@ source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
 [[ -d "$XCODEPROJ" ]] || { echo "error: $XCODEPROJ not found" >&2; exit 1; }
 
 CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo 'unknown')}"
+
+ios_test_now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
+}
+
+ios_test_build_input_paths() {
+  {
+    printf '%s\n' \
+      "ios/BooksBrowser.xcodeproj/project.pbxproj" \
+      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowser.xcscheme" \
+      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowserUnitTests.xcscheme" \
+      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowserUITests.xcscheme" \
+      "ios/BooksBrowser.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    rg --files ios/BooksBrowser ios/BooksBrowserTests ios/BooksBrowserUITests -g '*.swift' -g '*.plist'
+  } | sort -u
+}
+
+ios_test_build_cache_key() {
+  local xcode_version
+  xcode_version="$(xcodebuild -version 2>/dev/null || true)"
+  {
+    printf 'destination=%s\n' "$DESTINATION"
+    printf 'scope=%s\n' "$TEST_SCOPE"
+    printf 'scheme=%s\n' "$TEST_SCHEME"
+    printf 'xcode=%s\n' "$xcode_version"
+    while IFS= read -r relative_path; do
+      [[ -f "$PROJECT_ROOT/$relative_path" ]] || continue
+      printf 'path=%s\n' "$relative_path"
+      shasum -a 256 "$PROJECT_ROOT/$relative_path"
+    done < <(ios_test_build_input_paths)
+  } | shasum -a 256 | awk '{print $1}'
+}
+
+ios_test_derived_data_root() {
+  local cache_key
+  cache_key="$(ios_test_build_cache_key)"
+  mkdir -p "$TEST_CACHE_ROOT"
+  printf '%s/%s\n' "$TEST_CACHE_ROOT" "$cache_key"
+}
+
+ios_test_find_xctestrun() {
+  local derived_data_root="$1"
+  [[ -d "$derived_data_root/Build/Products" ]] || return 1
+  rg --files "$derived_data_root/Build/Products" -g '*.xctestrun' 2>/dev/null | head -1
+}
+
+ios_test_cached_products_ready() {
+  local xctestrun_path="$1"
+  local products_root app_bundle unit_bundle ui_bundle
+  [[ -n "$xctestrun_path" && -f "$xctestrun_path" ]] || return 1
+  products_root="$(dirname "$xctestrun_path")"
+  app_bundle="$products_root/Debug-iphonesimulator/BooksBrowser.app"
+  unit_bundle="$app_bundle/PlugIns/BooksBrowserTests.xctest"
+  ui_bundle="$products_root/Debug-iphonesimulator/BooksBrowserUITests-Runner.app"
+  [[ -d "$app_bundle" ]] || return 1
+  case "$TEST_SCOPE" in
+    unit)
+      [[ -d "$unit_bundle" ]] || return 1
+      ;;
+    ui)
+      [[ -d "$ui_bundle" ]] || return 1
+      ;;
+    all)
+      [[ -d "$unit_bundle" && -d "$ui_bundle" ]] || return 1
+      ;;
+  esac
+}
 
 # --- Build -only-testing flags ---
 ONLY_FLAGS=()
@@ -60,13 +138,16 @@ case "$TEST_SCOPE" in
   unit)
     TEST_TARGET="BooksBrowserTests"
     TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+    TEST_SCHEME="BooksBrowserUnitTests"
     ;;
   ui)
     TEST_TARGET="BooksBrowserUITests"
     TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserUITests"
+    TEST_SCHEME="BooksBrowserUITests"
     ;;
   all)
     TEST_TARGET=""
+    TEST_SCHEME="BooksBrowser"
     ;;
   *)
     echo "[ios_test] internal error: unknown test scope '$TEST_SCOPE'" >&2
@@ -81,6 +162,11 @@ fi
 
 if [[ "$TEST_SCOPE" == "all" && ( -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SPECIFIC_TESTS[@]} -gt 0 ) ]]; then
   echo "[ios_test] error: --all-targets cannot be combined with --file, --grep, or specific tests" >&2
+  exit 1
+fi
+
+if [[ -n "$TEST_CACHE_ACTION" && ( "$LIST_ONLY" -eq 1 || -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SPECIFIC_TESTS[@]} -gt 0 ) ]]; then
+  echo "[ios_test] error: cache actions cannot be combined with --list, --file, --grep, or specific tests" >&2
   exit 1
 fi
 
@@ -135,6 +221,47 @@ if [[ "$LIST_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
+print_cache_payload() {
+  local action="$1" status="$2" cache_key="$3" derived_root="$4" xctestrun_path="$5" products_ready="$6" build_ms="${7:-0}" boot_ms="${8:-0}" error_key="${9:-}" error_message="${10:-}"
+  jq -n \
+    --arg schema "kg.ios.test-cache.v1" \
+    --arg action "$action" \
+    --arg status "$status" \
+    --arg scope "$TEST_SCOPE" \
+    --arg scheme "$TEST_SCHEME" \
+    --arg destination "$DESTINATION" \
+    --arg cacheKey "$cache_key" \
+    --arg cacheRoot "$TEST_CACHE_ROOT" \
+    --arg derivedRoot "$derived_root" \
+    --arg xctestrunPath "$xctestrun_path" \
+    --argjson productsReady "$products_ready" \
+    --argjson buildMs "$build_ms" \
+    --argjson bootMs "$boot_ms" \
+    --arg errorKey "$error_key" \
+    --arg errorMessage "$error_message" \
+    '{
+      schema:$schema,
+      generated_at:(now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+      action:$action,
+      status:$status,
+      scope:$scope,
+      scheme:$scheme,
+      destination:$destination,
+      cache:{
+        key:$cacheKey,
+        root:$cacheRoot,
+        derivedDataRoot:$derivedRoot,
+        xctestrunPath:(if $xctestrunPath == "" then null else $xctestrunPath end),
+        productsReady:$productsReady
+      },
+      timings:{
+        bootMs:$bootMs,
+        buildForTestingMs:$buildMs
+      },
+      errors:(if $errorKey == "" then [] else [{key:$errorKey,status:"error",error:$errorMessage}] end)
+    }'
+}
+
 # --- Lock acquire (shared with ios_build.sh) ---
 TMPOUT=""
 PRESERVE_TMPOUT=0
@@ -176,6 +303,94 @@ trap cleanup EXIT INT TERM
 
 echo "[ios_test] lock acquired — scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
 START=$(date +%s)
+START_MS="$(ios_test_now_ms)"
+BOOT_MS=0
+XCODEBUILD_MS=0
+BUILD_FOR_TESTING_MS=0
+TEST_INVOCATION_MS=0
+CACHE_STATUS="none"
+DERIVED_DATA_ROOT=""
+XCTESTRUN_PATH=""
+TEST_BODY_MS=0
+XCRESULT_SESSION_MS=0
+XCRESULT_HARNESS_OVERHEAD_MS=0
+INVOCATION_OVERHEAD_MS=0
+boot_simulator_if_needed() {
+  local boot_start_ms boot_end_ms
+  boot_start_ms="$(ios_test_now_ms)"
+  "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR" >/dev/null
+  boot_end_ms="$(ios_test_now_ms)"
+  BOOT_MS=$(( boot_end_ms - boot_start_ms ))
+  echo "[ios_test] simulator ensure-booted device=\"$SIMULATOR_BOOT_SELECTOR\" bootMs=$BOOT_MS"
+}
+
+handle_cache_action() {
+  local cache_key derived_root xctestrun_path products_ready payload build_log build_result_dir build_result_bundle build_exit
+  local action="$1"
+  cache_key="$(ios_test_build_cache_key)"
+  derived_root="$(ios_test_derived_data_root)"
+  DERIVED_DATA_ROOT="$derived_root"
+  xctestrun_path="$(ios_test_find_xctestrun "$derived_root" || true)"
+  products_ready=false
+  if ios_test_cached_products_ready "$xctestrun_path"; then
+    products_ready=true
+  fi
+
+  case "$action" in
+    status)
+      payload="$(print_cache_payload status ok "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready")"
+      ;;
+    clean)
+      rm -rf "$derived_root"
+      payload="$(print_cache_payload clean ok "$cache_key" "$derived_root" "" false)"
+      ;;
+    prepare)
+      boot_simulator_if_needed
+      if [[ "$products_ready" == true ]]; then
+        payload="$(print_cache_payload prepare hit "$cache_key" "$derived_root" "$xctestrun_path" true 0 "$BOOT_MS")"
+      else
+        build_log="$(mktemp)"
+        build_result_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
+        build_result_bundle="$build_result_dir/BuildForTesting.xcresult"
+        rebuild_test_cache "$build_log" "$build_result_bundle"
+        build_exit=$?
+        if [[ "$build_exit" -eq 0 ]]; then
+          xctestrun_path="$(ios_test_find_xctestrun "$derived_root" || true)"
+          products_ready=false
+          if ios_test_cached_products_ready "$xctestrun_path"; then
+            products_ready=true
+          fi
+          payload="$(print_cache_payload prepare prepared "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready" "$BUILD_FOR_TESTING_MS" "$BOOT_MS")"
+        else
+          payload="$(print_cache_payload prepare error "$cache_key" "$derived_root" "$xctestrun_path" false "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "build-for-testing" "prepare-cache-failed")"
+        fi
+        rm -f "$build_log"
+        rm -rf "$build_result_dir"
+      fi
+      ;;
+    *)
+      echo "[ios_test] internal error: unknown cache action '$action'" >&2
+      exit 2
+      ;;
+  esac
+
+  if (( JSON_MODE )); then
+    printf '%s\n' "$payload"
+  else
+    jq -r '
+      "[ios][test-cache] action=\(.action) status=\(.status) scope=\(.scope) scheme=\(.scheme)",
+      "[ios][test-cache] key=\(.cache.key) root=\(.cache.root) derivedDataRoot=\(.cache.derivedDataRoot)",
+      "[ios][test-cache] productsReady=\(.cache.productsReady) xctestrun=\(.cache.xctestrunPath // "")",
+      "[ios][test-cache] timings bootMs=\(.timings.bootMs) buildForTestingMs=\(.timings.buildForTestingMs)",
+      (.errors[]? | "[ios][test-cache] error key=\(.key) status=\(.status) error=\(.error)")
+    ' <<<"$payload"
+  fi
+
+  if [[ "$(jq -r '.status' <<<"$payload")" == "error" ]]; then
+    exit 1
+  fi
+  exit 0
+}
 
 is_build_db_lock_failure() {
   grep -qE 'build\.db.*database is locked|unable to attach DB' "$TMPOUT" 2>/dev/null
@@ -195,12 +410,13 @@ last_test_event() {
     | sed 's/^[[:space:]]*//'
 }
 
-run_xcodebuild_once() {
-  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event
+run_xcodebuild_test_once() {
+  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
+  xcode_start_ms="$(ios_test_now_ms)"
   xcodebuild test \
     -project "$XCODEPROJ" \
-    -scheme BooksBrowser \
-    -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+    -scheme "$TEST_SCHEME" \
+    -destination "$DESTINATION" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
@@ -234,6 +450,9 @@ run_xcodebuild_once() {
 
   wait "$xcode_pid"
   local status=$?
+  xcode_end_ms="$(ios_test_now_ms)"
+  TEST_INVOCATION_MS=$(( xcode_end_ms - xcode_start_ms ))
+  XCODEBUILD_MS=$TEST_INVOCATION_MS
   CURRENT_XCODE_PID=""
   current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
   if [[ "$current_line" -gt "$last_line" ]]; then
@@ -242,12 +461,90 @@ run_xcodebuild_once() {
   return "$status"
 }
 
+run_xcodebuild_test_without_building_once() {
+  local xctestrun_path="$1"
+  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
+  xcode_start_ms="$(ios_test_now_ms)"
+  xcodebuild test-without-building \
+    -xctestrun "$xctestrun_path" \
+    -destination "$DESTINATION" \
+    -parallel-testing-enabled NO \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 60 \
+    -maximum-test-execution-time-allowance 120 \
+    -resultBundlePath "$RESULT_BUNDLE" \
+    ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
+    >"$TMPOUT" 2>&1 &
+  xcode_pid=$!
+  CURRENT_XCODE_PID="$xcode_pid"
+  echo "[ios_test] xcodebuild pid=$xcode_pid mode=test-without-building xctestrun=$xctestrun_path log=$TMPOUT xcresult=$RESULT_BUNDLE"
+
+  last_line=0
+  heartbeat_at=$(date +%s)
+  while kill -0 "$xcode_pid" 2>/dev/null; do
+    current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
+    if [[ "$current_line" -gt "$last_line" ]]; then
+      emit_new_test_output "$((last_line + 1))" "$current_line"
+      last_line="$current_line"
+    fi
+
+    now=$(date +%s)
+    if [[ $((now - heartbeat_at)) -ge 30 ]]; then
+      elapsed=$((now - START))
+      recent_event="$(last_test_event)"
+      [[ -n "$recent_event" ]] || recent_event="xcodebuild still running"
+      echo "[ios_test] … still running (${elapsed}s, pid=$xcode_pid, log=$TMPOUT) — last: $recent_event"
+      heartbeat_at="$now"
+    fi
+    sleep 2
+  done
+
+  wait "$xcode_pid"
+  local status=$?
+  xcode_end_ms="$(ios_test_now_ms)"
+  TEST_INVOCATION_MS=$(( xcode_end_ms - xcode_start_ms ))
+  XCODEBUILD_MS=$(( BUILD_FOR_TESTING_MS + TEST_INVOCATION_MS ))
+  CURRENT_XCODE_PID=""
+  current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
+  if [[ "$current_line" -gt "$last_line" ]]; then
+    emit_new_test_output "$((last_line + 1))" "$current_line"
+  fi
+  return "$status"
+}
+
+rebuild_test_cache() {
+  local build_log="$1" build_result_bundle="$2"
+  local build_start_ms build_end_ms
+  mkdir -p "$DERIVED_DATA_ROOT"
+  build_start_ms="$(ios_test_now_ms)"
+  xcodebuild build-for-testing \
+    -project "$XCODEPROJ" \
+    -scheme "$TEST_SCHEME" \
+    -destination "$DESTINATION" \
+    -parallel-testing-enabled NO \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 60 \
+    -maximum-test-execution-time-allowance 120 \
+    -derivedDataPath "$DERIVED_DATA_ROOT" \
+    -resultBundlePath "$build_result_bundle" \
+    >"$build_log" 2>&1
+  build_end_ms="$(ios_test_now_ms)"
+  BUILD_FOR_TESTING_MS=$(( build_end_ms - build_start_ms ))
+}
+
+if [[ -n "$TEST_CACHE_ACTION" ]]; then
+  handle_cache_action "$TEST_CACHE_ACTION"
+fi
+
 # Run xcodebuild test, capture output to parse results. Xcode can keep the
 # shared DerivedData build database locked briefly after the previous simulator
 # test process exits, so retry that infrastructure failure before surfacing it.
 MAX_BUILD_DB_LOCK_RETRIES=3
 ATTEMPT=1
 EXIT_CODE=0
+boot_simulator_if_needed
+DERIVED_DATA_ROOT="$(ios_test_derived_data_root)"
+XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
 while :; do
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
   TMPOUT=$(mktemp)
@@ -255,8 +552,49 @@ while :; do
   RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_result.XXXXXX")"
   RESULT_BUNDLE="$RESULT_DIR/Test.xcresult"
   set +e
-  run_xcodebuild_once
-  EXIT_CODE=$?
+  BUILD_FOR_TESTING_MS=0
+  TEST_INVOCATION_MS=0
+  if ios_test_cached_products_ready "$XCTESTRUN_PATH"; then
+    CACHE_STATUS="hit"
+    run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
+    EXIT_CODE=$?
+    if [[ "$EXIT_CODE" -ne 0 ]]; then
+      CACHE_STATUS="rebuild-after-failure"
+      BUILD_LOG="$(mktemp)"
+      BUILD_RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
+      BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
+      rebuild_test_cache "$BUILD_LOG" "$BUILD_RESULT_BUNDLE"
+      BUILD_EXIT=$?
+      if [[ "$BUILD_EXIT" -eq 0 ]]; then
+        XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
+        run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
+        EXIT_CODE=$?
+      else
+        cat "$BUILD_LOG" >"$TMPOUT"
+        EXIT_CODE="$BUILD_EXIT"
+      fi
+      rm -f "$BUILD_LOG"
+      rm -rf "$BUILD_RESULT_DIR"
+    fi
+  else
+    CACHE_STATUS="miss"
+    BUILD_LOG="$(mktemp)"
+    BUILD_RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
+    BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
+    rebuild_test_cache "$BUILD_LOG" "$BUILD_RESULT_BUNDLE"
+    BUILD_EXIT=$?
+    if [[ "$BUILD_EXIT" -eq 0 ]]; then
+      XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
+      run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
+      EXIT_CODE=$?
+      CACHE_STATUS="prepared"
+    else
+      cat "$BUILD_LOG" >"$TMPOUT"
+      EXIT_CODE="$BUILD_EXIT"
+    fi
+    rm -f "$BUILD_LOG"
+    rm -rf "$BUILD_RESULT_DIR"
+  fi
   set -e
 
   if is_build_db_lock_failure && [[ "$ATTEMPT" -le "$MAX_BUILD_DB_LOCK_RETRIES" ]]; then
@@ -269,6 +607,8 @@ while :; do
 done
 
 ELAPSED=$(( $(date +%s) - START ))
+END_MS="$(ios_test_now_ms)"
+TOTAL_MS=$(( END_MS - START_MS ))
 DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
 if [[ -x "$DIAGNOSTICS" ]]; then
   diag_result="fail"; [[ $EXIT_CODE -eq 0 ]] && diag_result="pass"
@@ -315,6 +655,42 @@ count_executed_tests_xcresult() {
   echo "$n"
 }
 
+read_timing_breakdown_xcresult() {
+  local diag_json body_ms session_ms
+  [[ -n "$RESULT_BUNDLE" && -d "$RESULT_BUNDLE" ]] || return 1
+  diag_json="$("$SCRIPT_DIR/ios_diagnostics.py" --kind test --xcresult "$RESULT_BUNDLE" --json 2>/dev/null)" || return 1
+  body_ms="$(jq -r '.timings.testBodyMs // empty' <<<"$diag_json" 2>/dev/null)" || return 1
+  session_ms="$(jq -r '.timings.xcresultSessionMs // empty' <<<"$diag_json" 2>/dev/null)" || return 1
+  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ ]] || return 1
+  echo "$body_ms $session_ms"
+}
+
+populate_timing_breakdown() {
+  local breakdown body_ms session_ms
+  TEST_BODY_MS=0
+  XCRESULT_SESSION_MS=0
+  XCRESULT_HARNESS_OVERHEAD_MS=0
+  INVOCATION_OVERHEAD_MS=0
+  breakdown="$(read_timing_breakdown_xcresult || true)"
+  [[ -n "$breakdown" ]] || return 0
+  read -r body_ms session_ms <<<"$breakdown"
+  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ ]] || return 0
+  TEST_BODY_MS="$body_ms"
+  XCRESULT_SESSION_MS="$session_ms"
+  XCRESULT_HARNESS_OVERHEAD_MS=$(( XCRESULT_SESSION_MS - TEST_BODY_MS ))
+  if (( XCRESULT_HARNESS_OVERHEAD_MS < 0 )); then
+    XCRESULT_HARNESS_OVERHEAD_MS=0
+  fi
+  INVOCATION_OVERHEAD_MS=$(( TEST_INVOCATION_MS - XCRESULT_SESSION_MS ))
+  if (( INVOCATION_OVERHEAD_MS < 0 )); then
+    INVOCATION_OVERHEAD_MS=0
+  fi
+}
+
+print_timing_summary() {
+  echo "[ios_test] timings cacheStatus=$CACHE_STATUS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+}
+
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
 # script's). Read this instead of trusting a piped `$?`.
@@ -333,6 +709,16 @@ write_json_verdict() {
     --arg executed "$executed" \
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
+    --argjson bootMs "$BOOT_MS" \
+    --argjson xcodebuildMs "$XCODEBUILD_MS" \
+    --argjson buildForTestingMs "$BUILD_FOR_TESTING_MS" \
+    --argjson testInvocationMs "$TEST_INVOCATION_MS" \
+    --argjson testBodyMs "$TEST_BODY_MS" \
+    --argjson xcresultSessionMs "$XCRESULT_SESSION_MS" \
+    --argjson xcresultHarnessOverheadMs "$XCRESULT_HARNESS_OVERHEAD_MS" \
+    --argjson invocationOverheadMs "$INVOCATION_OVERHEAD_MS" \
+    --argjson totalMs "$TOTAL_MS" \
+    --arg cacheStatus "$CACHE_STATUS" \
     '{
       schema:$schema,
       kind:$kind,
@@ -343,12 +729,26 @@ write_json_verdict() {
       caller:$caller,
       elapsed:$elapsed,
       executed:(if $executed == "" then null else $executed end),
+      timings:{
+        bootMs:$bootMs,
+        xcodebuildMs:$xcodebuildMs,
+        buildForTestingMs:$buildForTestingMs,
+        testInvocationMs:$testInvocationMs,
+        testBodyMs:$testBodyMs,
+        xcresultSessionMs:$xcresultSessionMs,
+        xcresultHarnessOverheadMs:$xcresultHarnessOverheadMs,
+        invocationOverheadMs:$invocationOverheadMs,
+        totalMs:$totalMs
+      },
+      cache:{status:$cacheStatus},
       artifacts:{log:$log,xcresult:$xcresult}
     }' >"$VERDICT_JSON_FILE" || true
 }
 
+populate_timing_breakdown
+
 # Extract summary from xcresult if available
-if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
+if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   EXECUTED="$(count_executed_tests_xcresult || count_executed_tests)"
   if [[ "$EXECUTED" -eq 0 ]]; then
     echo ""
@@ -362,8 +762,9 @@ if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   echo ""
   echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "ok" "0" "" "$EXECUTED"
+  print_timing_summary
   echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
-elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
+elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   # Show failing test details
   grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20
@@ -371,6 +772,7 @@ elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   PRESERVE_TMPOUT=1
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "fail" "1" "tests-failed" ""
+  print_timing_summary
   echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
@@ -382,6 +784,7 @@ else
   PRESERVE_TMPOUT=1
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
+  print_timing_summary
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2

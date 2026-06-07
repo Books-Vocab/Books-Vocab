@@ -32,6 +32,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
+IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 
 if [[ ! -d "$XCODEPROJ" ]]; then
   echo "error: $XCODEPROJ not found" >&2
@@ -39,6 +40,18 @@ if [[ ! -d "$XCODEPROJ" ]]; then
 fi
 
 CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo 'unknown')}"
+
+ios_build_now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
+}
+
+destination_is_simulator() {
+  [[ "$DESTINATION" == *"platform=iOS Simulator"* ]]
+}
+
+destination_simulator_name() {
+  sed -n 's/.*name=\([^,]*\).*/\1/p' <<<"$DESTINATION" | head -1
+}
 
 # --- Lock acquire (shlock spin-wait) ---
 cleanup() { rm -f "$LOCK_FILE"; }
@@ -69,11 +82,26 @@ trap cleanup EXIT
 
 echo "[ios_build] lock acquired by $CALLER (pid=$$) — building..."
 START=$(date +%s)
+START_MS="$(ios_build_now_ms)"
+BOOT_MS=0
+XCODEBUILD_MS=0
 TMPOUT="$(mktemp "${TMPDIR:-/tmp}/kg_ios_build.XXXXXX").log"
 RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_build_result.XXXXXX")"
 RESULT_BUNDLE="$RESULT_DIR/Build.xcresult"
 
+if destination_is_simulator; then
+  SIMULATOR_BOOT_SELECTOR="$(destination_simulator_name)"
+  if [[ -n "$SIMULATOR_BOOT_SELECTOR" ]]; then
+    BOOT_START_MS="$(ios_build_now_ms)"
+    "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR" >/dev/null
+    BOOT_END_MS="$(ios_build_now_ms)"
+    BOOT_MS=$(( BOOT_END_MS - BOOT_START_MS ))
+    echo "[ios_build] simulator ensure-booted device=\"$SIMULATOR_BOOT_SELECTOR\" bootMs=$BOOT_MS"
+  fi
+fi
+
 set +e
+XCODEBUILD_START_MS="$(ios_build_now_ms)"
 xcodebuild \
   -project "$XCODEPROJ" \
   -scheme BooksBrowser \
@@ -82,9 +110,13 @@ xcodebuild \
   -quiet build \
   >"$TMPOUT" 2>&1
 EXIT_CODE=$?
+XCODEBUILD_END_MS="$(ios_build_now_ms)"
+XCODEBUILD_MS=$(( XCODEBUILD_END_MS - XCODEBUILD_START_MS ))
 set -e
 
 ELAPSED=$(( $(date +%s) - START ))
+END_MS="$(ios_build_now_ms)"
+TOTAL_MS=$(( END_MS - START_MS ))
 DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
 if [[ -x "$DIAGNOSTICS" ]]; then
   diag_result="fail"; [[ $EXIT_CODE -eq 0 ]] && diag_result="pass"
@@ -109,6 +141,9 @@ write_json_verdict() {
     --arg elapsed "${ELAPSED}s" \
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
+    --argjson bootMs "$BOOT_MS" \
+    --argjson xcodebuildMs "$XCODEBUILD_MS" \
+    --argjson totalMs "$TOTAL_MS" \
     '{
       schema:$schema,
       kind:$kind,
@@ -119,16 +154,23 @@ write_json_verdict() {
       caller:$caller,
       elapsed:$elapsed,
       executed:null,
+      timings:{
+        bootMs:$bootMs,
+        xcodebuildMs:$xcodebuildMs,
+        totalMs:$totalMs
+      },
       artifacts:{log:$log,xcresult:$xcresult}
     }' >"$VERDICT_JSON_FILE" || true
 }
 if [[ $EXIT_CODE -eq 0 ]]; then
   echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "ok" "0"
+  echo "[ios_build] timings bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
   echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 else
   echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "fail" "$EXIT_CODE"
+  echo "[ios_build] timings bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
   echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE" >&2
 fi
 
