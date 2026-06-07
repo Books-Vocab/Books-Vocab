@@ -527,6 +527,8 @@ grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'build-for-testing' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
+grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
 grep -Eq 'TEST \(EXECUTE \)\?SUCCEEDED|TEST\( EXECUTE\)\? SUCCEEDED|TEST\( EXECUTE\)\?SUCCEEDED|TEST \(EXECUTE\)\? FAILED|TEST\( EXECUTE\)\?FAILED' "$WORKSPACE/ops/ios_test.sh" \
   || grep -qE 'TEST\( EXECUTE\)\? SUCCEEDED|TEST \(EXECUTE \)\? SUCCEEDED|TEST \(EXECUTE \)\? FAILED' "$WORKSPACE/ops/ios_test.sh"
 if [[ $? -eq 0 ]]; then
