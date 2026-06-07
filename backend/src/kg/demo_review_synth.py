@@ -35,6 +35,21 @@ _MIN_RECENT_GAP_HOURS = 8.0
 # 壓縮視窗時保留的安全邊際(小時),確保最早事件嚴格晚於 created_at。
 _WINDOW_EPSILON_HOURS = 0.5
 
+# SRS 演進預設(對標 iOS ReviewSettings.default / backend ReviewModeConfig default):
+# relaxed 模式 12 / 1.9 / 0.45 / 6 / 1440。合成的「過去」沒有真實逐筆 SRS 紀錄,
+# 用同一套參數從初始間隔逐筆回放,末筆強制錨定卡片現存 interval 使末態自洽。
+_SRS_INITIAL_INTERVAL_HOURS = 12.0
+_SRS_REMEMBERED_MULTIPLIER = 1.9
+_SRS_FORGOT_MULTIPLIER = 0.45
+_SRS_MIN_INTERVAL_HOURS = 6.0
+_SRS_MAX_INTERVAL_HOURS = 1440.0
+
+
+def _next_interval(current: float, feedback: int) -> float:
+    """單步 SRS 間隔演進:記得 ×remembered、忘記 ×forgot,clamp 到 [min, max]。"""
+    mult = _SRS_REMEMBERED_MULTIPLIER if feedback == 1 else _SRS_FORGOT_MULTIPLIER
+    return max(_SRS_MIN_INTERVAL_HOURS, min(_SRS_MAX_INTERVAL_HOURS, current * mult))
+
 
 @dataclass(frozen=True)
 class CardReviewState:
@@ -158,8 +173,20 @@ def synthesize_review_events(card: CardReviewState) -> list[ReviewEventEntry]:
     fb = _feedback_sequence(n, card.lapse_count, card.review_streak, card.last_review_feedback)
     times = _timestamps(card)
     events: list[ReviewEventEntry] = []
+    interval_before = _SRS_INITIAL_INTERVAL_HOURS  # 第一筆之前的排程間隔
+    next_review_before: str | None = None          # 第一筆無先前排程
+    streak = 0
+    lapse = 0
     for i in range(n):
-        iso = times[i].isoformat()
+        reviewed = times[i]
+        iso = reviewed.isoformat()
+        streak = streak + 1 if fb[i] == 1 else 0
+        lapse = lapse + (1 if fb[i] == 0 else 0)
+        # 末筆強制錨定卡片現存 interval,使逐筆回放的末態 == 卡片儲存聚合。
+        interval_after = (
+            card.review_interval_hours if i == n - 1 else _next_interval(interval_before, fb[i])
+        )
+        next_review_after = (reviewed + timedelta(hours=interval_after)).isoformat()
         events.append(
             ReviewEventEntry(
                 event_id=f"demo-{card.card_id}-{i}",
@@ -169,8 +196,18 @@ def synthesize_review_events(card: CardReviewState) -> list[ReviewEventEntry]:
                 feedback=fb[i],
                 reviewed_at=iso,
                 created_at=iso,
+                interval_before=interval_before,
+                interval_after=interval_after,
+                next_review_before=next_review_before,
+                next_review_after=next_review_after,
+                review_count_after=i + 1,
+                streak_after=streak,
+                lapse_after=lapse,
+                is_synthetic=True,
             )
         )
+        interval_before = interval_after
+        next_review_before = next_review_after
     return events
 
 

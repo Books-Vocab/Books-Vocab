@@ -261,3 +261,87 @@ def test_never_feedback_sentinel_only_emits_zero_or_one():
         _state(review_count=4, lapse_count=1, review_streak=0, last_review_feedback=-1)
     )
     assert all(e.feedback in (0, 1) for e in events)
+
+
+# ── Phase 3a:SRS 前後快照 + is_synthetic(供圖譜/複習史回溯研究)──
+
+
+def test_all_synthetic_events_carry_synthetic_flag():
+    events = synthesize_review_events(_state(review_count=5))
+    assert all(e.is_synthetic is True for e in events)
+
+
+def test_review_count_after_is_one_based_running_index():
+    events = synthesize_review_events(_state(review_count=6))
+    assert [e.review_count_after for e in events] == [1, 2, 3, 4, 5, 6]
+
+
+def test_streak_and_lapse_after_match_stored_aggregate_at_end():
+    card = _state(review_count=6, lapse_count=2, review_streak=3, last_review_feedback=1)
+    events = synthesize_review_events(card)
+    # 逐筆回放的末態必須 == 卡片儲存聚合(事件自包含、可獨立還原卡況)。
+    assert events[-1].streak_after == 3
+    assert events[-1].lapse_after == 2
+
+
+def test_streak_after_resets_on_lapse_and_counts_consecutive_good():
+    # fb = [1,0,1,1] → streak_after = [1,0,1,2];lapse_after = [0,1,1,1]。
+    card = _state(review_count=4, lapse_count=1, review_streak=2, last_review_feedback=1)
+    events = synthesize_review_events(card)
+    assert [e.feedback for e in events] == [1, 0, 1, 1]
+    assert [e.streak_after for e in events] == [1, 0, 1, 2]
+    assert [e.lapse_after for e in events] == [0, 1, 1, 1]
+
+
+def test_interval_before_chains_from_previous_after():
+    events = synthesize_review_events(_state(review_count=5))
+    for prev, cur in zip(events, events[1:]):
+        assert cur.interval_before == prev.interval_after
+
+
+def test_first_interval_before_is_srs_initial():
+    events = synthesize_review_events(_state(review_count=3))
+    assert events[0].interval_before == 12.0  # ReviewSettings.default initial
+
+
+def test_last_interval_after_is_anchored_to_card_interval():
+    card = _state(review_count=5, review_interval_hours=240.0)
+    events = synthesize_review_events(card)
+    assert events[-1].interval_after == 240.0
+
+
+def test_interval_after_within_srs_bounds_except_anchor():
+    card = _state(review_count=8, lapse_count=3, review_interval_hours=240.0)
+    events = synthesize_review_events(card)
+    for e in events[:-1]:  # 末筆是 anchor,不受 clamp 約束
+        assert 6.0 <= e.interval_after <= 1440.0
+
+
+def test_next_review_after_equals_reviewed_plus_interval():
+    events = synthesize_review_events(_state(review_count=4))
+    for e in events:
+        reviewed = datetime.fromisoformat(e.reviewed_at)
+        nxt = datetime.fromisoformat(e.next_review_after)
+        delta_hours = (nxt - reviewed).total_seconds() / 3600.0
+        assert abs(delta_hours - e.interval_after) < 1e-6
+
+
+def test_next_review_before_chains_and_first_is_none():
+    events = synthesize_review_events(_state(review_count=4))
+    assert events[0].next_review_before is None
+    for prev, cur in zip(events, events[1:]):
+        assert cur.next_review_before == prev.next_review_after
+
+
+def test_srs_snapshots_survive_store_round_trip(tmp_path):
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    card = _state(review_count=5, lapse_count=1, review_streak=2,
+                  review_interval_hours=240.0, card_id="srs")
+    push_review_events(synthesize_review_events(card), event_store=store)
+    pulled, _ = pull_review_events(since=None, event_store=store)
+    pulled.sort(key=lambda e: e.reviewed_at)
+    assert all(e.is_synthetic is True for e in pulled)
+    assert [e.review_count_after for e in pulled] == [1, 2, 3, 4, 5]
+    assert pulled[-1].interval_after == 240.0
+    assert pulled[-1].streak_after == 2
+    assert pulled[-1].lapse_after == 1
