@@ -66,6 +66,34 @@ def split_focus_lanes(recommendations: list[dict], *, limit: int | None) -> dict
     }
 
 
+def build_core_modes(core_recommendations: list[dict], *, limit: int | None) -> dict:
+    hero_first = sorted(
+        core_recommendations,
+        key=lambda item: (
+            -item["heroUnmarked"],
+            -item["attentionScore"],
+            -item["unmarked"],
+            item["promise"],
+        ),
+    )
+    coverage_first = sorted(
+        core_recommendations,
+        key=lambda item: (
+            -item["unmarked"],
+            -item["attentionScore"],
+            -item["heroUnmarked"],
+            item["promise"],
+        ),
+    )
+    if limit is not None:
+        hero_first = hero_first[:limit]
+        coverage_first = coverage_first[:limit]
+    return {
+        "heroFirstCoreRecommendations": hero_first,
+        "coverageFirstCoreRecommendations": coverage_first,
+    }
+
+
 def build_doctor_payload(
     manifest: dict,
     state: dict,
@@ -81,6 +109,7 @@ def build_doctor_payload(
     full_report = build_report_payload(manifest, state, effective_status_fn=effective_status_fn, root=root, limit=limit)
     focus_recommendations = build_focus_recommendations(full_report, limit=limit)
     focus_lanes = split_focus_lanes(focus_recommendations, limit=limit)
+    core_modes = build_core_modes(focus_lanes["coreRecommendations"], limit=limit)
     report = dict(full_report)
     report["nextActions"] = report["nextActions"][:limit] if limit is not None else report["nextActions"]
     blocking_errors = [error for error in verify["errors"] if error not in {"state-schema-errors"}]
@@ -96,5 +125,6 @@ def build_doctor_payload(
         "report": report,
         "focusRecommendations": focus_recommendations,
         **focus_lanes,
+        **core_modes,
         "blockingErrors": blocking_errors,
     }
