@@ -92,7 +92,7 @@ private struct ArchivedVocabScene: View {
     init(entries: [VocabularyEntry]) {
         let container = try! ModelContainer(
             for: VocabularyEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = container.mainContext
         for entry in entries {

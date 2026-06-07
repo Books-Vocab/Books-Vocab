@@ -25,8 +25,9 @@ import SwiftData
 /// in-memory `ModelContainer` inside a `@MainActor` View body so the
 /// `MainActor.assumeIsolated`-constructed env-default services (`KGService`,
 /// `SubscriptionManager`, toast coordinator) resolve before `@Query` reads.
-/// `.task` calls `kgService.healthCheck()`, which self-no-ops when logged out
-/// and is harmless against the disposable preview service.
+/// Catalog uses a DEBUG seam to skip non-render side effects (`healthCheck`,
+/// `KGVocabView.loadInitialData`) so the full-screen surface stays deterministic
+/// and does not trigger real sync/network work during snapshot runs.
 enum VocabularyListViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Vocabulary List View") {
@@ -173,7 +174,7 @@ private struct VocabularyListViewScene: View {
     init(entries: [VocabularyEntry], loggedIn: Bool) {
         let container = try! ModelContainer(
             for: VocabularyEntry.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = container.mainContext
 
@@ -193,7 +194,7 @@ private struct VocabularyListViewScene: View {
     var body: some View {
         AppThemeContainer {
             NavigationStack {
-                VocabularyListView(notebookId: "default")
+                VocabularyListView(notebookId: "default", skipCatalogTasks: true)
             }
             .modelContainer(container)
             .environment(\.authManager, auth)
