@@ -12,9 +12,10 @@
 #   ./ops/ios_ops.sh sentry
 #   ./ops/ios_ops.sh doctor [--json]
 #   ./ops/ios_ops.sh workflow release [--json]
+#   ./ops/ios_ops.sh snapshot [--json]
 #
 # Side-effect model:
-# - status/archives/issues/logs/sentry/doctor/workflow are read-only.
+# - status/archives/issues/logs/sentry/doctor/workflow/snapshot/dashboard are read-only.
 # - build/test/archive are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
@@ -451,6 +452,59 @@ cmd_workflow() {
   esac
 }
 
+cmd_snapshot_json() {
+  local doctor_json workflow_json generated_at
+  if ! doctor_json="$(cmd_doctor_json)"; then
+    return 1
+  fi
+  if ! workflow_json="$(cmd_workflow_release_json)"; then
+    return 1
+  fi
+  generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+  jq -n \
+    --arg schema "kg.ios.snapshot.v1" \
+    --arg generated_at "$generated_at" \
+    --argjson doctor "$doctor_json" \
+    --argjson workflow "$workflow_json" \
+    '{
+      schema:$schema,
+      generated_at:$generated_at,
+      project:$doctor.project,
+      organizer:$doctor.organizer,
+      testflight:$doctor.testflight,
+      readiness:$doctor.readiness,
+      workflow:$workflow
+    }'
+}
+
+cmd_snapshot() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh snapshot [--json]"
+        return 0
+        ;;
+      *)
+        echo "✗ unknown snapshot option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if (( json )); then
+    cmd_snapshot_json
+    return
+  fi
+
+  echo "[ios][snapshot] phase=doctor"
+  cmd_doctor
+  echo "[ios][snapshot] phase=workflow"
+  cmd_workflow_release
+}
+
 cmd="${1:-}"
 [[ -n "$cmd" ]] || { usage; exit 0; }
 shift || true
@@ -467,6 +521,7 @@ case "$cmd" in
   sentry) cmd_sentry "$@" ;;
   doctor) cmd_doctor "$@" ;;
   workflow|flow) cmd_workflow "$@" ;;
+  snapshot|dashboard) cmd_snapshot "$@" ;;
   -h|--help|help) usage ;;
   *)
     echo "✗ unknown subcommand: $cmd" >&2
