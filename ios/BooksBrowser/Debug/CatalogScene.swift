@@ -239,6 +239,10 @@ struct CatalogScene: View {
             .init(id: "translation_vocab_presenter", categories: ["Translation Vocab Presenter"], register: TranslationVocabPresenterScenarios.register),
             .init(id: "reader_settings_presenter", categories: ["Reader Settings Presenter"], register: ReaderSettingsPresenterScenarios.register),
             .init(id: "app_startup_recovery", categories: ["Startup Recovery"], register: AppStartupRecoveryScenarios.register),
+            .init(id: "vocabulary_list_view", categories: ["Vocabulary List View"], register: VocabularyListViewScenarios.register),
+            .init(id: "stats_view", categories: ["Stats View"], register: StatsViewScenarios.register),
+            .init(id: "today_review_container", categories: ["Today Review Container"], register: TodayReviewContainerScenarios.register),
+            .init(id: "podcast_home_view", categories: ["Podcast Home View"], register: PodcastHomeViewScenarios.register),
             .init(
                 id: "review_fold_surface",
                 categories: [
