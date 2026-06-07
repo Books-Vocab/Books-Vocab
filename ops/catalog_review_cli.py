@@ -23,10 +23,50 @@ def resolve_paths(root: Path) -> tuple[Path, Path]:
     return manifest_path, state_path
 
 
+def load_review_context(root: Path) -> tuple[dict, dict]:
+    manifest_path, state_path = resolve_paths(root)
+    return load_json(manifest_path), load_json(state_path)
+
+
+def effective_status(item: dict, state: dict) -> str:
+    return state["entries"].get(item["assetID"], {}).get("status") or item.get("reviewStatus", "")
+
+
+def matches_filters(
+    item: dict,
+    state: dict,
+    *,
+    promise: str | None,
+    category: str | None,
+    status: str | None,
+    search: str | None,
+) -> bool:
+    current_state = state["entries"].get(item["assetID"], {})
+    if promise and item["promise"] != promise:
+        return False
+    if category and item["category"] != category:
+        return False
+    if status is not None and effective_status(item, state) != status:
+        return False
+    if search:
+        hay = " ".join([
+            item["assetID"],
+            item["category"],
+            item["title"],
+            item["device"],
+            item["appearance"],
+            item["relPath"],
+            current_state.get("status", ""),
+            current_state.get("note", ""),
+        ]).lower()
+        if search.lower() not in hay:
+            return False
+    return True
+
+
 def cmd_summary(root: Path) -> int:
     manifest_path, state_path = resolve_paths(root)
-    manifest = load_json(manifest_path)
-    state = load_json(state_path)
+    manifest, state = load_review_context(root)
     payload = {
         "status": "ok",
         "manifest": str(manifest_path),
@@ -41,9 +81,7 @@ def cmd_summary(root: Path) -> int:
 
 
 def cmd_show(root: Path, asset_id: str) -> int:
-    manifest_path, state_path = resolve_paths(root)
-    manifest = load_json(manifest_path)
-    state = load_json(state_path)
+    manifest, state = load_review_context(root)
     item = next((entry for entry in manifest["items"] if entry["assetID"] == asset_id), None)
     if item is None:
         print(json.dumps({"status": "error", "error": "asset-not-found", "assetID": asset_id}, ensure_ascii=False))
@@ -63,8 +101,7 @@ def cmd_mark(root: Path, asset_id: str, status: str, note: str | None) -> int:
         print(json.dumps({"status": "error", "error": "invalid-status", "allowed": sorted(VALID_STATUSES)}, ensure_ascii=False))
         return 2
     manifest_path, state_path = resolve_paths(root)
-    manifest = load_json(manifest_path)
-    state = load_json(state_path)
+    manifest, state = load_review_context(root)
     item = next((entry for entry in manifest["items"] if entry["assetID"] == asset_id), None)
     if item is None:
         print(json.dumps({"status": "error", "error": "asset-not-found", "assetID": asset_id}, ensure_ascii=False))
@@ -85,6 +122,43 @@ def cmd_mark(root: Path, asset_id: str, status: str, note: str | None) -> int:
     return 0
 
 
+def cmd_list(
+    root: Path,
+    *,
+    promise: str | None,
+    category: str | None,
+    status: str | None,
+    search: str | None,
+    limit: int | None,
+) -> int:
+    manifest, state = load_review_context(root)
+    matches = [
+        {
+            **item,
+            "effectiveStatus": effective_status(item, state),
+            "permalink": f"file://{root / 'review.html'}#asset-{item['assetID']}",
+        }
+        for item in manifest["items"]
+        if matches_filters(item, state, promise=promise, category=category, status=status, search=search)
+    ]
+    if limit is not None:
+        matches = matches[:limit]
+    payload = {
+        "status": "ok",
+        "count": len(matches),
+        "filters": {
+            "promise": promise,
+            "category": category,
+            "status": status,
+            "search": search,
+            "limit": limit,
+        },
+        "items": matches,
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect and update catalog review state sidecars.")
     parser.add_argument("root", type=Path, help="Directory containing review_manifest.json and review_state.json")
@@ -100,6 +174,13 @@ def build_parser() -> argparse.ArgumentParser:
     mark.add_argument("--status", default="review")
     mark.add_argument("--note", default=None)
 
+    list_cmd = subparsers.add_parser("list")
+    list_cmd.add_argument("--promise", default=None)
+    list_cmd.add_argument("--category", default=None)
+    list_cmd.add_argument("--status", default=None)
+    list_cmd.add_argument("--search", default=None)
+    list_cmd.add_argument("--limit", type=int, default=None)
+
     return parser
 
 
@@ -113,6 +194,15 @@ def main() -> int:
         return cmd_show(root, args.asset_id)
     if args.command == "mark":
         return cmd_mark(root, args.asset_id, args.status, args.note)
+    if args.command == "list":
+        return cmd_list(
+            root,
+            promise=args.promise,
+            category=args.category,
+            status=args.status,
+            search=args.search,
+            limit=args.limit,
+        )
     parser.error(f"unknown command: {args.command}")
     return 2
 

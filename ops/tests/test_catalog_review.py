@@ -188,3 +188,46 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
 
     state_payload = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
     assert state_payload["entries"][asset_id]["status"] == "shortlist"
+
+    listed = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "list",
+            "--status",
+            "shortlist",
+            "--search",
+            "settings view",
+            "--limit",
+            "5",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert listed.returncode == 0, listed.stderr
+    listed_payload = json.loads(listed.stdout)
+    assert listed_payload["count"] == 1
+    assert listed_payload["items"][0]["assetID"] == asset_id
+    assert listed_payload["items"][0]["effectiveStatus"] == "shortlist"
+
+    listed_by_note = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "list",
+            "--search",
+            "hero",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert listed_by_note.returncode == 0, listed_by_note.stderr
+    listed_by_note_payload = json.loads(listed_by_note.stdout)
+    assert listed_by_note_payload["count"] == 1
+    assert listed_by_note_payload["items"][0]["assetID"] == asset_id
