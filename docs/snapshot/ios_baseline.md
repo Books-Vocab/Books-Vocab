@@ -4,12 +4,12 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksBrowser
-verified_against: 746dafaa
+verified_against: d0ecbc2a
 -->
 
 # iOS Frontend Baseline
 
-基線日期: 2026-06-06
+基線日期: 2026-06-08
 
 ---
 
@@ -17,18 +17,18 @@ verified_against: 746dafaa
 
 | 行數 | 路徑 |
 |------|------|
-| 904 | `Views/Podcast/PodcastSentenceLevelView.swift` |
-| 877 | `Views/Podcast/PodcastPlayerView.swift` |
+| 1006 | `Views/Podcast/PodcastSentenceLevelView.swift` |
+| 886 | `Views/Podcast/PodcastPlayerView.swift` |
 | 610 | `Services/PodcastSyncService.swift` |
 | 593 | `Services/PodcastAudioEngine.swift` |
-| 538 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
+| 553 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
+| 530 | `Models/ReviewSettings.swift` |
+| 527 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
 | 525 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
-| 513 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
-| 493 | `Views/Reader/PDFReaderView.swift` |
-| 490 | `Views/Podcast/PodcastPlayerViewModel.swift` |
-| 487 | `Views/Vocabulary/Scenes/TodayReviewView.swift` |
+| 500 | `Support/Fixtures/Settings/SettingsFixtures.swift` |
+| 493 | `Views/Vocabulary/Scenes/TodayReviewView.swift` |
 
-總 Swift 行數: 53919 / 340 檔案
+總 Swift 行數: 65343 / 422 檔案
 
 ---
 
@@ -36,7 +36,7 @@ verified_against: 746dafaa
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 217 |
+| Views/ + UIComponents/ 檔案總數 | 219 |
 | 含 #Preview 的檔案數 | 64 |
 
 ---
@@ -45,5 +45,5 @@ verified_against: 746dafaa
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 145 |
+| @MainActor | 202 |
 | async func | 0 |

@@ -9,8 +9,8 @@ DATE="$(date +%Y-%m-%d)"
 
 # 1. Top 10 by line count
 TOP10=$(find "$IOS_DIR" -name "*.swift" -exec wc -l {} + \
-  | sort -rn | grep -v "total" | head -10 \
-  | awk -v base="$IOS_DIR/" '{path=$2; sub(base,"",path); printf "| %d | `%s` |\n", $1, path}')
+  | sort -rn | grep -v "total" \
+  | awk -v base="$IOS_DIR/" 'NR <= 10 {path=$2; sub(base,"",path); printf "| %d | `%s` |\n", $1, path}')
 
 # 2. Total lines and files
 TOTAL_LINES=$(find "$IOS_DIR" -name "*.swift" -exec wc -l {} + | tail -1 | awk '{print $1}')
