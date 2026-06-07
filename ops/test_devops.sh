@@ -226,6 +226,22 @@ grep -qE '^info\(\)[[:space:]]*\{[[:space:]]*echo "▶ \$\*" >&2;' "$KG" \
   && ok "info() routed to stderr" \
   || fail_t "info() not routed to stderr (would pollute --json stdout)"
 
+# ── 11. status_all 相容入口不得繞過 safe wrapper ─────────────────────────
+section "status_all delegates to safe wrapper"
+STATUS_ALL="$WORKSPACE/ops/status_all.sh"
+bash -n "$STATUS_ALL" \
+  && ok "status_all syntax" \
+  || fail_t "status_all syntax"
+grep -q 'devops_kg_safe.sh' "$STATUS_ALL" \
+  && ok "status_all calls devops_kg_safe.sh" \
+  || fail_t "status_all does not call safe wrapper"
+grep -q '"$SAFE" status' "$STATUS_ALL" && grep -q '"$SAFE" health' "$STATUS_ALL" \
+  && ok "status_all delegates status + health" \
+  || fail_t "status_all missing status/health delegation"
+grep -qE '(^|[[:space:]])ssh([[:space:]]|$)|run_remote\(\)' "$STATUS_ALL" \
+  && fail_t "status_all still has raw ssh/run_remote bypass" \
+  || ok "status_all has no raw ssh/run_remote bypass"
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
