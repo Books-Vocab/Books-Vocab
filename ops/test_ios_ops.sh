@@ -694,10 +694,13 @@ grep -q -- '--xcresult' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build feeds xcresult to diagnostics" || fail_t "ios_build does not feed xcresult to diagnostics"
 grep -q 'simulator ensure-booted' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build warms simulator before xcodebuild when targeting simulator" || fail_t "ios_build missing simulator preboot"
-grep -q 'bootMs:' "$WORKSPACE/ops/ios_build.sh" \
+grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_build.sh" \
+  && grep -q 'bootMs:' "$WORKSPACE/ops/ios_build.sh" \
   && grep -q 'xcodebuildMs:' "$WORKSPACE/ops/ios_build.sh" \
   && grep -q 'totalMs:' "$WORKSPACE/ops/ios_build.sh" \
-  && ok "ios_build verdict records timing breakdown" || fail_t "ios_build verdict missing timing fields"
+  && ok "ios_build verdict records timing breakdown (incl lock wait)" || fail_t "ios_build verdict missing timing fields"
+grep -qE 'lockWaitMs=\$LOCK_WAIT_MS' "$WORKSPACE/ops/ios_build.sh" \
+  && ok "ios_build surfaces lock wait time on stdout" || fail_t "ios_build does not surface lock wait on stdout"
 
 section "ios_test emits xcresult-first diagnostics"
 grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_test.sh" \
@@ -715,6 +718,9 @@ grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
 grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
+grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -qE 'lockWaitMs=\$LOCK_WAIT_MS' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test verdict records lock wait time and surfaces it on stdout" || fail_t "ios_test missing lock wait timing"
 grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses dedicated UI scheme for UI scope" || fail_t "ios_test missing UI-only scheme"
 grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
