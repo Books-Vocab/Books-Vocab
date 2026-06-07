@@ -3,59 +3,23 @@ import Playbook
 import SwiftUI
 
 /// Catalog scenarios for the Today Review surface.
-/// Reuses `TodayReviewPresenterPreviewData` so state and stub cards
-/// stay in lock-step with the existing `#Preview` blocks.
+/// Reuses fixture-driven preview scenes so Preview / Catalog / Snapshot stay aligned.
 enum TodayReviewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Today Review") {
             Scenario("Front", layout: .fill) {
-                scene(
-                    state: TodayReviewPresenterPreviewData.state(stage: .front),
-                    showHint: true
-                )
+                TodayReviewFixtureScene(fixtureID: .front)
             }
             Scenario("Back", layout: .fill) {
-                scene(
-                    state: TodayReviewPresenterPreviewData.state(stage: .back),
-                    showHint: false
-                )
+                TodayReviewFixtureScene(fixtureID: .back)
             }
             Scenario("Completed", layout: .fill) {
-                scene(
-                    state: TodayReviewPresenterPreviewData.completedState,
-                    showHint: false
-                )
+                TodayReviewFixtureScene(fixtureID: .completed)
             }
             Scenario("Autoplay", layout: .fill) {
-                scene(
-                    state: TodayReviewPresenterPreviewData.autoplayState(),
-                    showHint: false
-                )
+                TodayReviewFixtureScene(fixtureID: .autoplay)
             }
         }
-    }
-
-    private static func scene(state: TodayReviewPresenterState, showHint: Bool) -> some View {
-        let cb = TodayReviewPresenterPreviewData.noopCallbacks
-        return AppThemeContainer {
-            TodayReviewPresenter(
-                state: state,
-                isHelpPresented: false,
-                showFirstRunHint: showHint,
-                onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
-                onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-                onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-                onAddLink: cb.onAddLink,
-                onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-                onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
-                onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
-                onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
-                onExplainCollocation: cb.onExplainCollocation,
-                onViewCollocationExplanation: cb.onViewCollocationExplanation,
-                onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
-            )
-        }
-        .environmentObject(AppAppearanceStore.preview)
     }
 }
 #endif
