@@ -88,4 +88,27 @@ struct TranslationLanguageDefaultTests {
             #expect(updatedAt <= after + 0.1)
         }
     }
+
+    @Test func test_applyServerColdStart_writes_local_with_server_timestamp() async throws {
+        // TranslationLanguage 用 UserDefaults.standard + 單例 KVS，靠 snapshot/restore
+        // 隔離（比照 test_setter_writes_updated_at_timestamp）。
+        let prevSource = TranslationLanguage.currentSource
+        let prevTarget = TranslationLanguage.currentTarget
+        let prevS = TranslationLanguage.sourceUpdatedAt
+        let prevT = TranslationLanguage.targetUpdatedAt
+        defer {
+            TranslationLanguage.restore(
+                source: prevSource, sourceUpdatedAt: prevS,
+                target: prevTarget, targetUpdatedAt: prevT
+            )
+        }
+
+        TranslationLanguage.applyServerColdStart(source: .ja, target: .ko, updatedAt: 99999)
+
+        // cold-start 套 server 值到本地層，source/target 共用 server 的單一 group 時戳。
+        #expect(UserDefaults.standard.string(forKey: "translation_source_lang") == "ja")
+        #expect(UserDefaults.standard.string(forKey: "translation_target_lang") == "ko")
+        #expect(UserDefaults.standard.object(forKey: "translation_source_lang_updated_at") as? Double == 99999)
+        #expect(UserDefaults.standard.object(forKey: "translation_target_lang_updated_at") as? Double == 99999)
+    }
 }

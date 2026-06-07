@@ -263,16 +263,19 @@ async function getUserConfig() {
 }
 
 /**
- * Update the user's translation-language config.
- * PUT /api/user/config with { translation } → the updated UserConfigResponse.
- * Server validates source_lang ∈ {en,ja,ko,fr,de,es} and target_lang ∈
+ * Update the user's config (partial patch). PUT /api/user/config with any subset
+ * of config groups → the updated UserConfigResponse. The body is the patch object
+ * itself, e.g. `{ translation: {source_lang, target_lang} }` or
+ * `{ vocab_ui: {active_notebook_id, updated_at} }`; only the groups present are
+ * updated server-side (kg/user_handlers.py `_merge_user_config`). Server validates
+ * translation source_lang ∈ {en,ja,ko,fr,de,es} and target_lang ∈
  * {zh-Hant,zh-Hans,en,ja,ko} (kg/languages.py) — a bad pair 422s.
- * @param {{source_lang: string, target_lang: string}} translation
+ * @param {{translation?: object, vocab_ui?: object}} config — the config patch
  */
-async function updateUserConfig(translation) {
+async function updateUserConfig(config) {
   return apiFetch('/api/user/config', {
     method: 'PUT',
-    body: JSON.stringify({ translation }),
+    body: JSON.stringify(config),
   });
 }
 

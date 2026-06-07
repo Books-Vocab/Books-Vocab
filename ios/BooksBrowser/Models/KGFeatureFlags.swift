@@ -11,11 +11,12 @@ import Foundation
 
 enum KGFeatureFlags {
     /// Whether to send `updated_at` and trust server-returned `updated_at` for
-    /// LWW resolution on TranslationLanguage sync.
-    /// Backend dependency: `TranslationLanguageConfig.updated_at` field must be
-    /// persisted and returned by `GET /api/user/config`. Until then, server LWW
-    /// is single-direction (server-wins on initial fetch) and iCloud KV is the
-    /// authoritative cross-device path.
+    /// LWW resolution on TranslationLanguage sync. Backend now persists
+    /// `TranslationLanguageConfig.updated_at` (Feature C) and iOS already sends it
+    /// on push + applies the server timestamp on cold-start (local-only, no KVS
+    /// write-back). Until this flag is on, server is single-direction (server-wins
+    /// on cold-start) and iCloud KV is the authoritative cross-device path —
+    /// mirrors `serverVocabUiLwwEnabled` / `serverReviewModeLwwEnabled`.
     static var serverTranslationLwwEnabled: Bool { false }
 
     /// Whether to send `updated_at` and trust server-returned `updated_at` for
@@ -32,6 +33,15 @@ enum KGFeatureFlags {
     /// iCloud KV is the authoritative cross-device path — mirrors
     /// `serverReviewClockLwwEnabled`.
     static var serverReviewModeLwwEnabled: Bool { false }
+
+    /// Whether to send `updated_at` and trust server-returned `updated_at` for
+    /// LWW on the active notebook (`vocab_ui`) cursor. Backend dependency:
+    /// `vocab_ui.updated_at` persisted + returned by `GET /api/user/config`.
+    /// Until on, server is single-direction (server-wins on cold-start) and
+    /// iCloud KV is the authoritative cross-device path for Apple devices —
+    /// mirrors `serverReviewModeLwwEnabled`. (chrome / web read active notebook
+    /// via the backend group.)
+    static var serverVocabUiLwwEnabled: Bool { false }
 
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the

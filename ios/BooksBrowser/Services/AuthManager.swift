@@ -129,7 +129,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
             // 與 clearLocalData 對齊：漏清 review-event cursor 會讓經 login(customToken:)
             // 的手動帳號切換（SettingsCoordinator）讓 B 沿用 A 的 review pull cursor。
             defaults.removeObject(forKey: KGService.SyncKeys.reviewEventPullBoundary)
-            defaults.removeObject(forKey: "activeNotebookId")
+            ActiveNotebookStore.shared.clear()
             defaults.removeObject(forKey: NotebookFilter.storageKey)
             AppAnalytics.track(.accountSwitchDetected)
         }

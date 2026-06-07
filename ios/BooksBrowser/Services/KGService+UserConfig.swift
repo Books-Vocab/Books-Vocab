@@ -133,6 +133,17 @@ extension KGService {
         return config
     }
 
+    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
+        let config = try await userConfigClient.updateVocabUIConfig(
+            baseURL: baseURL,
+            token: token,
+            vocabUI: vocabUI
+        )
+        AppLog.kg.info("Updated vocab_ui (active notebook) config successfully")
+        return config
+    }
+
     func deleteAccount() async throws {
         try await authenticatedVoid(path: "api/user/account", method: "DELETE")
     }

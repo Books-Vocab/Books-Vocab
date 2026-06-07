@@ -71,40 +71,33 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     /// Reconcile server-provided translation config with local + iCloud KV state.
     ///
-    /// Until the backend persists `updated_at` on `TranslationLanguageConfig`
-    /// (`KGFeatureFlags.serverTranslationLwwEnabled` gate), we cannot LWW
-    /// against the server timestamp. Two policies:
+    /// Backend 現已持久化 `updated_at`（Feature C / C1），故 cold-start 套用時能寫回
+    /// server 的真實時戳；但 `serverTranslationLwwEnabled` 仍 off，維持 cold-start-only
+    /// 政策（不做真 LWW 比較，避免翻 flag 前語意回歸）：
     ///
-    /// - **Flag off (current)**: server-wins ONLY on first load (when this
-    ///   device has never written locally — `sourceUpdatedAt == nil`). After
-    ///   first local write, iCloud KV is the cross-device authority and we
-    ///   no longer let server config overwrite. This preserves the LWW
-    ///   semantics that Phase 4 added.
-    /// - **Flag on (future)**: compare server `updated_at` to local; server
-    ///   wins only when newer.
+    /// - **Flag off (current)**: server-wins ONLY on cold-start —— 本機從未寫過
+    ///   translation（source/target 兩時戳皆 nil）且 server 帶真實 `updated_at` 時，以
+    ///   server 值 + server 的單一 group 時戳初始化本地層（**不回寫 iCloud KVS**，
+    ///   避免新 Apple 裝置覆蓋他裝置未傳播的 local write）。任一本機寫入後 iCloud KV
+    ///   即跨裝置權威。
+    /// - **Flag on (future)**: 比較 server `updated_at` 與本地，server 較新才整組套。
     private func applyServerTranslationConfig(_ translation: KGTranslationConfig?) {
         guard let translation else { return }
+        _ = KGFeatureFlags.serverTranslationLwwEnabled  // keep wired for future LWW flip
 
-        // TODO(backend): once `TranslationLanguageConfig.updated_at` is wired,
-        // implement actual LWW comparison and flip the conditional below.
-        // For now, even with the flag on, fall back to the safer "local-untouched
-        // only" policy so a flip doesn't silently regress the design.
-        let shouldApplySource = (TranslationLanguage.sourceUpdatedAt == nil)
-        let shouldApplyTarget = (TranslationLanguage.targetUpdatedAt == nil)
-        _ = KGFeatureFlags.serverTranslationLwwEnabled  // referenced to keep flag wired
+        // Cold-start only（設計 A group LWW，對齊 vocab_ui / review_mode）：兩時戳皆 nil
+        // ＝整組從未被本機 touch，且 server 帶真實 updated_at 才套。任一非 nil ＝已 touch
+        // → 保留本機值（避免重套迴圈：套後本地時戳非 nil，下次 fetch 不再套）。
+        guard TranslationLanguage.sourceUpdatedAt == nil,
+              TranslationLanguage.targetUpdatedAt == nil,
+              let ts = translation.updated_at,
+              let src = translation.source_lang, let srcLang = TranslationLanguage(rawValue: src),
+              let tgt = translation.target_lang, let tgtLang = TranslationLanguage(rawValue: tgt)
+        else { return }
 
-        if shouldApplySource,
-           let src = translation.source_lang,
-           let lang = TranslationLanguage(rawValue: src) {
-            translationSourceLang = lang
-            TranslationLanguage.currentSource = lang
-        }
-        if shouldApplyTarget,
-           let tgt = translation.target_lang,
-           let lang = TranslationLanguage(rawValue: tgt) {
-            translationTargetLang = lang
-            TranslationLanguage.currentTarget = lang
-        }
+        TranslationLanguage.applyServerColdStart(source: srcLang, target: tgtLang, updatedAt: ts)
+        translationSourceLang = srcLang
+        translationTargetLang = tgtLang
     }
 
     /// Reconcile server pause-clock with local + iCloud KV (mirrors translation).
@@ -289,7 +282,10 @@ final class SettingsCoordinator: SettingsCoordinating {
             _ = try await kgService.updateTranslationConfig(
                 KGTranslationConfig(
                     source_lang: source.rawValue,
-                    target_lang: target.rawValue
+                    target_lang: target.rawValue,
+                    // 單一 group 時戳（設計 A）：source/target 剛由上方 setter 同刻寫入，
+                    // 取兩者較新者作整組 LWW 時戳，push 給後端 vocab/web cold-start 用。
+                    updated_at: [TranslationLanguage.sourceUpdatedAt, TranslationLanguage.targetUpdatedAt].compactMap { $0 }.max()
                 )
             )
             return true
