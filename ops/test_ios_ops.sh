@@ -529,6 +529,8 @@ grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
 grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
+grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test uses dedicated UI scheme for UI scope" || fail_t "ios_test missing UI-only scheme"
 grep -Eq 'TEST \(EXECUTE \)\?SUCCEEDED|TEST\( EXECUTE\)\? SUCCEEDED|TEST\( EXECUTE\)\?SUCCEEDED|TEST \(EXECUTE\)\? FAILED|TEST\( EXECUTE\)\?FAILED' "$WORKSPACE/ops/ios_test.sh" \
   || grep -qE 'TEST\( EXECUTE\)\? SUCCEEDED|TEST \(EXECUTE \)\? SUCCEEDED|TEST \(EXECUTE \)\? FAILED' "$WORKSPACE/ops/ios_test.sh"
 if [[ $? -eq 0 ]]; then
@@ -539,6 +541,9 @@ fi
 grep -q 'xcresult=.*RESULT_BUNDLE' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records xcresult" || fail_t "ios_test verdict missing xcresult path"
 grep -q 'bootMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'testBodyMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'xcresultSessionMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'invocationOverheadMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'xcodebuildMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'totalMs:' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records timing breakdown" || fail_t "ios_test verdict missing timing fields"

@@ -113,6 +113,8 @@ def test_parse_xcresult_test_results_uses_official_summary_and_failures():
     assert parsed["result"] == "fail"
     assert parsed["counts"]["tests"] == 7
     assert parsed["counts"]["failedTests"] == 1
+    assert parsed["timings"]["testBodyMs"] == 0
+    assert parsed["timings"]["xcresultSessionMs"] is None
     assert parsed["diagnostics"][0]["category"] == "test"
     assert "testSyncFails" in parsed["diagnostics"][0]["message"]
 
@@ -136,3 +138,50 @@ def test_format_text_includes_test_counts():
 
     assert "source=xcresult-test-results" in text
     assert "tests=3 passed=3 failed=0 skipped=0" in text
+    assert "testBodyMs=0 xcresultSessionMs=None" in text
+
+
+def test_parse_xcresult_test_results_extracts_case_durations():
+    mod = _load_module()
+    parsed = mod.parse_xcresult_test_results(
+        {
+            "result": "Passed",
+            "totalTestCount": 2,
+            "passedTests": 2,
+            "failedTests": 0,
+            "skippedTests": 0,
+            "expectedFailures": 0,
+            "testFailures": [],
+            "startTime": 100.0,
+            "finishTime": 103.5,
+        },
+        {
+            "testNodes": [
+                {
+                    "nodeType": "Test Plan",
+                    "children": [
+                        {
+                            "nodeType": "Unit test bundle",
+                            "children": [
+                                {
+                                    "nodeType": "Test Case",
+                                    "name": "a()",
+                                    "result": "Passed",
+                                    "duration": "0.2500s",
+                                },
+                                {
+                                    "nodeType": "Test Case",
+                                    "name": "b()",
+                                    "result": "Passed",
+                                    "duration": "1.5秒",
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert parsed["timings"]["testBodyMs"] == 1750
+    assert parsed["timings"]["xcresultSessionMs"] == 3500
