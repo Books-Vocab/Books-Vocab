@@ -388,7 +388,7 @@ follow_limit_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow --li
 [[ "$(echo "$follow_limit_text" | grep -c .)" -eq 1 ]] && echo "$follow_limit_text" | grep -q 'sync completed' \
   && ok "logs --follow honors --limit" || fail_t "logs --follow limit invalid: $follow_limit_text"
 follow_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow --json --limit 1 2>/dev/null)"
-echo "$follow_json" | jq -e '.schema=="kg.ios.logs.stream.v1" and .message=="sync completed" and .category=="sync"' >/dev/null \
+echo "$follow_json" | jq -e '.schema=="kg.ios.log-stream.v1" and .message=="sync completed" and .category=="sync"' >/dev/null \
   && ok "logs --follow --json emits ndjson entries" || fail_t "logs --follow --json invalid: $follow_json"
 follow_fail_tmp="$(mktemp -d)"
 if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --follow >"$follow_fail_tmp/out" 2>"$follow_fail_tmp/err"; then
@@ -398,6 +398,17 @@ else
     && ok "logs --follow propagates stream failure" || fail_t "logs --follow failure stderr missing"
 fi
 rm -rf "$follow_fail_tmp"
+# real SIGPIPE(141) path: unbounded producer + --limit stop gate must exit 0 with N lines
+stream_text="$(KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --limit 1 2>/dev/null)"; stream_rc=$?
+[[ "$stream_rc" -eq 0 && "$(echo "$stream_text" | grep -c .)" -eq 1 ]] && echo "$stream_text" | grep -q 'sync completed' \
+  && ok "logs --follow handles producer SIGPIPE at limit (text)" || fail_t "logs --follow SIGPIPE text rc=$stream_rc out=$stream_text"
+stream_json="$(KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --json --limit 1 2>/dev/null)"; stream_json_rc=$?
+[[ "$stream_json_rc" -eq 0 ]] && echo "$stream_json" | jq -e '.schema=="kg.ios.log-stream.v1" and .message=="sync completed"' >/dev/null \
+  && ok "logs --follow handles producer SIGPIPE at limit (json)" || fail_t "logs --follow SIGPIPE json rc=$stream_json_rc out=$stream_json"
+# pipefail must not leak out of the sourceable follow helpers
+leak_check="$(set -o pipefail; source "$IOS_OPS_LOGS_LIB"; KG_IOS_OPS_LOG_STREAM_FIXTURE=1 cmd_logs_follow_text 'p' 1 >/dev/null 2>&1; if set -o | grep -q 'pipefail.*on'; then echo intact; else echo leaked; fi)"
+[[ "$leak_check" == "intact" ]] \
+  && ok "logs --follow does not leak pipefail to caller" || fail_t "logs --follow leaked pipefail: $leak_check"
 
 section "JSON smoke fixtures"
 runs_parent="$(mktemp -d)"

@@ -64,7 +64,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--json]",
         delegate:null,
         purpose:"runtime log console with framework noise filtering; --follow live-streams (one ndjson object per line with --json)",
-        jsonSchemas:["kg.ios.logs.v1","kg.ios.logs.stream.v1"]
+        jsonSchemas:["kg.ios.logs.v1","kg.ios.log-stream.v1"]
       },
       {
         key:"sentry",

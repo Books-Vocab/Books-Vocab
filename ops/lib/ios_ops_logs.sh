@@ -53,6 +53,14 @@ run_log_stream_compact() {
 LOG
     return 0
   fi
+  if [[ "${KG_IOS_OPS_LOG_STREAM_FIXTURE:-}" == "1" ]]; then
+    # unbounded producer: exercises the real SIGPIPE(141) path when a downstream
+    # `head -n` closes the pipe after the limit is reached.
+    while :; do
+      printf '%s\n' '2026-06-07 12:00:00.000000+0800 BooksBrowser[123:456] [com.Max0228.BooksBrowser:sync] sync completed'
+    done
+    return 0
+  fi
   /usr/bin/log stream --style compact --predicate "$predicate"
 }
 
@@ -70,35 +78,44 @@ run_log_stream_ndjson() {
 NDJSON
     return 0
   fi
+  if [[ "${KG_IOS_OPS_LOG_STREAM_FIXTURE:-}" == "1" ]]; then
+    while :; do
+      printf '%s\n' '{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksBrowser"}'
+    done
+    return 0
+  fi
   /usr/bin/log stream --style ndjson --predicate "$predicate"
 }
 
 # Stream live compact logs, filtering framework noise. limit>0 stops after N lines.
+# Runs in a subshell so `set +o pipefail` stays local (this is a sourceable lib).
+# Subshell exit status carries PIPESTATUS[0] (the producer's rc).
 cmd_logs_follow_text() {
-  local predicate="$1" limit="$2" pipe_status
-  {
+  local predicate="$1" limit="$2" rc=0
+  (
     set +o pipefail
     if (( limit > 0 )); then
       run_log_stream_compact "$predicate" | grep --line-buffered -vE "$LOG_NOISE_REGEX" | head -n "$limit"
     else
       run_log_stream_compact "$predicate" | grep --line-buffered -vE "$LOG_NOISE_REGEX"
     fi
-    pipe_status="${PIPESTATUS[0]}"
-  }
-  # Propagate underlying `log stream` failures; SIGPIPE (head closed) and grep no-match are benign.
-  if (( pipe_status != 0 && pipe_status != 141 )); then
-    return "$pipe_status"
+    exit "${PIPESTATUS[0]}"
+  ) || rc=$?
+  # Propagate real `log stream` failures; SIGPIPE (head closed) is benign.
+  # rc is PIPESTATUS[0] (producer); grep no-match lives in PIPESTATUS[1] and is dropped.
+  if (( rc != 0 && rc != 141 )); then
+    return "$rc"
   fi
   return 0
 }
 
 # Stream live ndjson logs as one filtered JSON object per line. limit>0 stops after N.
 cmd_logs_follow_json() {
-  local predicate="$1" limit="$2" pipe_status
-  {
+  local predicate="$1" limit="$2" rc=0
+  (
     set +o pipefail
     run_log_stream_ndjson "$predicate" \
-      | jq -c --unbuffered --arg schema "kg.ios.logs.stream.v1" --arg noise "$LOG_NOISE_REGEX" '
+      | jq -c --unbuffered --arg schema "kg.ios.log-stream.v1" --arg noise "$LOG_NOISE_REGEX" '
           def message: (.eventMessage // .formatString // "");
           select((message | test($noise)) | not)
           | {
@@ -113,10 +130,10 @@ cmd_logs_follow_json() {
             }
         ' \
       | { if (( limit > 0 )); then head -n "$limit"; else cat; fi; }
-    pipe_status="${PIPESTATUS[0]}"
-  }
-  if (( pipe_status != 0 && pipe_status != 141 )); then
-    return "$pipe_status"
+    exit "${PIPESTATUS[0]}"
+  ) || rc=$?
+  if (( rc != 0 && rc != 141 )); then
+    return "$rc"
   fi
   return 0
 }
