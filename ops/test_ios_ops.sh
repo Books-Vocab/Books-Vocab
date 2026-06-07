@@ -684,6 +684,19 @@ grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
 grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
+ios_test_xctestrun_tmp="$(mktemp -d)"
+mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
+touch "$ios_test_xctestrun_tmp/Build/Products/BooksBrowserUnitTests_BooksBrowserUnitTests_iphonesimulator26.4-arm64.xctestrun"
+touch "$ios_test_xctestrun_tmp/Build/Products/BooksBrowserUnitTests_BooksBrowserUnitTests_iphonesimulator26.4-arm64.scoped.xctestrun"
+ios_test_xctestrun_path="$(
+  bash -lc '
+    eval "$(sed -n '"'"'/^ios_test_find_xctestrun()/,/^}/p'"'"' "'"$WORKSPACE/ops/ios_test.sh"'")"
+    ios_test_find_xctestrun "'"$ios_test_xctestrun_tmp"'"
+  '
+)"
+[[ "$ios_test_xctestrun_path" == *.xctestrun && "$ios_test_xctestrun_path" != *.scoped.xctestrun ]] \
+  && ok "ios_test xctestrun lookup prefers base artifact over scoped copy" || fail_t "ios_test xctestrun lookup selected wrong artifact: $ios_test_xctestrun_path"
+rm -rf "$ios_test_xctestrun_tmp"
 grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
 grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
