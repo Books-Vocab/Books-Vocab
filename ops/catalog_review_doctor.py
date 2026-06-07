@@ -209,11 +209,12 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         recommended_operator_action = "proceed-review"
     else:
         recommended_operator_action = "healthy-idle"
-    recommended_command = None
-    followup_command = None
+    action_plan = build_action_plan(primary_command=None, followup_command=None)
     if recommended_operator_action == "repair-first":
-        recommended_command = f"./ops/catalog_review_cli.py {root} repair"
-        followup_command = f"./ops/catalog_review_cli.py {root} verify"
+        action_plan = build_action_plan(
+            primary_command=f"./ops/catalog_review_cli.py {root} repair",
+            followup_command=f"./ops/catalog_review_cli.py {root} verify",
+        )
     health = {
         "severity": severity,
         "verifyStatus": payload["verify"]["status"],
@@ -223,13 +224,14 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         "shouldRepairFirst": should_repair_first,
         "needsReviewAttention": needs_review_attention,
         "recommendedOperatorAction": recommended_operator_action,
-        "recommendedCommand": recommended_command,
-        "followupCommand": followup_command,
-        "actionCommands": [],
+        "recommendedCommand": action_plan["primary"]["command"] if action_plan["primary"] else None,
+        "followupCommand": action_plan["followup"]["command"] if action_plan["followup"] else None,
+        "actionCommands": action_plan["actions"],
         "summary": {
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
         },
+        "actionPlan": action_plan,
     }
     view = {
         "status": payload["status"],
@@ -240,26 +242,12 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         view["recommendations"] = payload["heroFirstCoreRecommendations"]
         view["playbook"] = payload["heroFirstPlaybook"]
         if health["recommendedOperatorAction"] == "proceed-review":
-            health["recommendedCommand"] = (
-                payload["heroFirstPlaybook"]["starterPlan"]["primary"]["command"]
-                if payload["heroFirstPlaybook"]["starterPlan"]["primary"] else None
-            )
-            health["followupCommand"] = (
-                payload["heroFirstPlaybook"]["starterPlan"]["followup"]["command"]
-                if payload["heroFirstPlaybook"]["starterPlan"]["followup"] else None
-            )
+            health["actionPlan"] = payload["heroFirstPlaybook"]["starterPlan"]
     elif mode == "coverage-first":
         view["recommendations"] = payload["coverageFirstCoreRecommendations"]
         view["playbook"] = payload["coverageFirstPlaybook"]
         if health["recommendedOperatorAction"] == "proceed-review":
-            health["recommendedCommand"] = (
-                payload["coverageFirstPlaybook"]["starterPlan"]["primary"]["command"]
-                if payload["coverageFirstPlaybook"]["starterPlan"]["primary"] else None
-            )
-            health["followupCommand"] = (
-                payload["coverageFirstPlaybook"]["starterPlan"]["followup"]["command"]
-                if payload["coverageFirstPlaybook"]["starterPlan"]["followup"] else None
-            )
+            health["actionPlan"] = payload["coverageFirstPlaybook"]["starterPlan"]
     elif mode == "cleanup":
         cleanup_primary = (
             payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
@@ -285,21 +273,10 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             followup_command=cleanup_followup,
         )
         if health["recommendedOperatorAction"] == "proceed-review":
-            health["recommendedCommand"] = (
-                view["playbook"]["starterPlan"]["primary"]["command"]
-                if view["playbook"]["starterPlan"]["primary"] else None
-            )
-            health["followupCommand"] = (
-                view["playbook"]["starterPlan"]["followup"]["command"]
-                if view["playbook"]["starterPlan"]["followup"] else None
-            )
+            health["actionPlan"] = view["playbook"]["starterPlan"]
     else:
         raise ValueError(f"Unsupported doctor mode: {mode}")
-    health["actionPlan"] = build_action_plan(
-        primary_command=health["recommendedCommand"],
-        followup_command=health["followupCommand"],
-    )
-    health["actionCommands"] = health["actionPlan"]["actions"]
     health["recommendedCommand"] = health["actionPlan"]["primary"]["command"] if health["actionPlan"]["primary"] else None
     health["followupCommand"] = health["actionPlan"]["followup"]["command"] if health["actionPlan"]["followup"] else None
+    health["actionCommands"] = health["actionPlan"]["actions"]
     return view
