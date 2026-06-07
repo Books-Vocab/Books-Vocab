@@ -25,10 +25,10 @@ cmd_commands_json() {
         key:"test",
         aliases:[],
         sideEffect:"local-test",
-        command:"./ops/ios_ops.sh test [ios_test.sh args...]",
+        command:"./ops/ios_ops.sh test [ios_test.sh args...] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
         delegate:"./ops/ios_test.sh",
-        purpose:"scoped iOS verification with false-green protection",
-        jsonSchemas:[]
+        purpose:"scoped iOS verification plus explicit reusable test-cache lifecycle control",
+        jsonSchemas:["kg.ios.test-cache.v1"]
       },
       {
         key:"archive",
