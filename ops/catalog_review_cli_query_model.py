@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+from catalog_review_cli_artifacts import load_review_context
 from catalog_review_cli_support import (
-    effective_status,
     filtered_items,
-    load_review_context,
     serialize_review_item,
 )
 
