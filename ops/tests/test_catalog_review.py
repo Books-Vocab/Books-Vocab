@@ -633,8 +633,12 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert hero_mode.returncode == 1, hero_mode.stderr
     hero_payload = json.loads(hero_mode.stdout)
     assert hero_payload["mode"] == "hero-first"
+    assert hero_payload["health"]["verifyStatus"] == "error"
+    assert hero_payload["health"]["repairCount"] == 1
     assert hero_payload["recommendations"][0]["promise"] == "Read"
     assert hero_payload["playbook"]["mode"] == "hero-first"
+    assert "verify" not in hero_payload
+    assert "repair" not in hero_payload
 
     hero_shortcut = subprocess.run(
         [sys.executable, str(REVIEW_CLI), str(output_root), "hero", "--limit", "2"],
