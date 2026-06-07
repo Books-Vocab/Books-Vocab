@@ -86,6 +86,9 @@ EXCLUDE_GLOBS=(
   --glob '!**/*Preview*.swift'
   --glob '!**/*Tests*.swift'
   --glob '!**/*PreviewData*'
+  # DEBUG-only Playbook catalog fixtures (#if DEBUG && canImport(Playbook));
+  # visual-regression scenes, never user-facing — same rationale as #Preview exclusion.
+  --glob '!**/Debug/Scenarios/*.swift'
 )
 
 # ---- helpers ----------------------------------------------------------------

@@ -61,8 +61,6 @@ private struct ReviewBannerScene: View {
 }
 
 private struct DemoBannerScene: View {
-    @Environment(\.appTheme) private var appTheme
-
     var body: some View {
         AppThemeContainer {
             DemoBannerContent()
