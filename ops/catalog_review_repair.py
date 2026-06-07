@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from catalog_review_state import review_timestamp
 
 
@@ -85,3 +87,19 @@ def repair_review_state(manifest: dict, state: dict) -> tuple[dict, list[dict]]:
         "profile": state.get("profile", {}),
         "entries": repaired_entries,
     }, repairs
+
+
+def summarize_repairs(repairs: list[dict], *, limit: int | None) -> dict:
+    repair_type_counts = Counter()
+    for repair in repairs:
+        repair_type_counts.update(repair["repairs"])
+    if limit is None:
+        sample_repairs = repairs
+    else:
+        sample_repairs = repairs[:limit]
+    return {
+        "repairCount": len(repairs),
+        "repairTypeCounts": dict(repair_type_counts),
+        "sampleRepairs": sample_repairs,
+        "truncatedRepairCount": max(0, len(repairs) - len(sample_repairs)),
+    }

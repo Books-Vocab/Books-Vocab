@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 import json
 from pathlib import Path
 
-from catalog_review_repair import repair_review_state
+from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_state import append_history
 from catalog_review_sync import hydrate_manifest, write_review_outputs
 from catalog_review_verify import verify_review_artifacts
@@ -400,20 +400,25 @@ def cmd_verify(root: Path) -> int:
     return 0 if payload["status"] == "ok" else 1
 
 
-def cmd_repair(root: Path, *, dry_run: bool) -> int:
+def cmd_repair(root: Path, *, dry_run: bool, limit: int | None, include_repairs: bool) -> int:
     manifest_path, state_path = resolve_paths(root)
     manifest = load_json(manifest_path)
     state = load_json(state_path)
     repaired_state, repairs = repair_review_state(manifest, state)
     hydrated_manifest = hydrate_manifest(manifest, repaired_state)
+    repair_summary = summarize_repairs(repairs, limit=limit)
     payload = {
         "status": "ok",
         "dryRun": dry_run,
         "manifest": str(manifest_path),
         "state": str(state_path),
-        "repairCount": len(repairs),
-        "repairs": repairs,
+        "repairCount": repair_summary["repairCount"],
+        "repairTypeCounts": repair_summary["repairTypeCounts"],
+        "sampleRepairs": repair_summary["sampleRepairs"],
+        "truncatedRepairCount": repair_summary["truncatedRepairCount"],
     }
+    if include_repairs:
+        payload["repairs"] = repairs
     if dry_run or not repairs:
         print(json.dumps(payload, ensure_ascii=False))
         return 0
@@ -469,6 +474,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("verify")
     repair_cmd = subparsers.add_parser("repair")
     repair_cmd.add_argument("--dry-run", action="store_true")
+    repair_cmd.add_argument("--limit", type=int, default=20)
+    repair_cmd.add_argument("--include-repairs", action="store_true")
 
     return parser
 
@@ -518,7 +525,7 @@ def main() -> int:
     if args.command == "verify":
         return cmd_verify(root)
     if args.command == "repair":
-        return cmd_repair(root, dry_run=args.dry_run)
+        return cmd_repair(root, dry_run=args.dry_run, limit=args.limit, include_repairs=args.include_repairs)
     parser.error(f"unknown command: {args.command}")
     return 2
 
