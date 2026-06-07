@@ -293,6 +293,9 @@ echo "$salvage_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" 
   && ok "catalog snapshots salvages container PNGs when test fails (distinguishes generated-but-not-copied)" || fail_t "catalog salvage failed: $salvage_json"
 grep -q 'phase=salvage recovered' "$salvage_err" \
   && ok "catalog salvage emits stderr recovery notice" || fail_t "catalog salvage stderr missing: $(cat "$salvage_err")"
+salvage_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots 2>/dev/null || true)"
+echo "$salvage_text" | grep -q 'note key=catalog-salvage' && ! echo "$salvage_text" | grep -q 'error key=catalog-salvage' \
+  && ok "catalog salvage info renders as note (not error) in text output" || fail_t "catalog salvage text mislabeled: $salvage_text"
 ok_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null)"
 echo "$ok_json" | jq -e '.status=="ok" and .copy.salvaged==false and .artifacts.containerPngCount==2 and (all(.errors[]; .key!="catalog-salvage"))' >/dev/null \
   && ok "catalog snapshots success path keeps salvaged=false and no salvage error" || fail_t "catalog success salvage regression: $ok_json"
