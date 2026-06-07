@@ -13,8 +13,9 @@ review_streak / last_reviewed_at / last_review_feedback / review_interval_hours)
   視窗,間隔依 SRS 慣例越早越大;保證嚴格遞增(µs 級夾),視窗異常(created≥last)時
   退化為自末次往前 µs 堆疊。輸入 timestamp 一律先正規化為 tz-aware UTC(來源 cards.db
   存 naive 'YYYY-MM-DD HH:MM:SS.ffffff',若不轉 store 會拒收)。
-* **event_id** = ``demo-<card_id>-<chronological_index>`` → 穩定;重跑經 store 的
-  event_id 去重而冪等。
+* **event_id** = ``uuid5(NS, "demo-<card_id>-<index>")`` → 確定式穩定(重跑經 store 的
+  event_id 去重而冪等)且為合法 UUID(iOS mergeReviewEvents 的 UUID(uuidString:) guard
+  會丟棄非 UUID 的 event_id,故合成 id 必須是 UUID,見 #2)。
 
 刻意不用 RNG —— 跨卡 heatmap 多樣性來自每張卡相異的真實 anchor/N/interval,
 不需注入隨機,且保證確定式重跑。
@@ -22,11 +23,22 @@ review_streak / last_reviewed_at / last_review_feedback / review_interval_hours)
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from .api_models.review import ReviewEventEntry
+
+# 合成 SoT 事件的固定命名空間。event_id = uuid5(NS, "demo-<card>-<i>"):確定式(同卡同序
+# → 同 id,經 store 的 event_id 去重而冪等)且為**合法 UUID** —— iOS mergeReviewEvents 的
+# UUID(uuidString:) guard 會丟棄非 UUID 的 event_id,舊的 "demo-..." 字串會讓整批合成複習史
+# 在 iOS 端被靜默丟棄(#2)。
+_SYNTH_NAMESPACE = uuid.UUID("6f1d2c3a-0b4e-5a6f-8c9d-2e1f0a3b4c5d")
+
+
+def _synth_review_event_id(card_id: str, index: int) -> str:
+    return str(uuid.uuid5(_SYNTH_NAMESPACE, f"demo-{card_id}-{index}"))
 
 # SRS 間隔向過去回推的成長係數(越早的複習間隔越小)。約 1.7 ≈ SuperMemo ease 區間。
 _INTERVAL_GROWTH = 1.7
@@ -34,6 +46,21 @@ _INTERVAL_GROWTH = 1.7
 _MIN_RECENT_GAP_HOURS = 8.0
 # 壓縮視窗時保留的安全邊際(小時),確保最早事件嚴格晚於 created_at。
 _WINDOW_EPSILON_HOURS = 0.5
+
+# SRS 演進預設(對標 iOS ReviewSettings.default / backend ReviewModeConfig default):
+# relaxed 模式 12 / 1.9 / 0.45 / 6 / 1440。合成的「過去」沒有真實逐筆 SRS 紀錄,
+# 用同一套參數從初始間隔逐筆回放,末筆強制錨定卡片現存 interval 使末態自洽。
+_SRS_INITIAL_INTERVAL_HOURS = 12.0
+_SRS_REMEMBERED_MULTIPLIER = 1.9
+_SRS_FORGOT_MULTIPLIER = 0.45
+_SRS_MIN_INTERVAL_HOURS = 6.0
+_SRS_MAX_INTERVAL_HOURS = 1440.0
+
+
+def _next_interval(current: float, feedback: int) -> float:
+    """單步 SRS 間隔演進:記得 ×remembered、忘記 ×forgot,clamp 到 [min, max]。"""
+    mult = _SRS_REMEMBERED_MULTIPLIER if feedback == 1 else _SRS_FORGOT_MULTIPLIER
+    return max(_SRS_MIN_INTERVAL_HOURS, min(_SRS_MAX_INTERVAL_HOURS, current * mult))
 
 
 @dataclass(frozen=True)
@@ -158,19 +185,46 @@ def synthesize_review_events(card: CardReviewState) -> list[ReviewEventEntry]:
     fb = _feedback_sequence(n, card.lapse_count, card.review_streak, card.last_review_feedback)
     times = _timestamps(card)
     events: list[ReviewEventEntry] = []
+    interval_before = _SRS_INITIAL_INTERVAL_HOURS  # 第一筆之前的排程間隔
+    next_review_before: str | None = None          # 第一筆無先前排程
+    streak = 0
+    lapse = 0
     for i in range(n):
-        iso = times[i].isoformat()
+        reviewed = times[i]
+        iso = reviewed.isoformat()
+        streak = streak + 1 if fb[i] == 1 else 0
+        lapse = lapse + (1 if fb[i] == 0 else 0)
+        # 末筆強制錨定卡片儲存聚合,使逐筆回放的末態 == 卡片現狀。interval / streak / lapse 同錨:
+        # 矛盾聚合(罕見,如 streak=0 但 last_feedback=1)時 fb 序列以較顯著維度為準,可能讓
+        # 回推 streak/lapse 與儲存值差 1;末筆 clamp 保證末態自洽,不污染新增的研究欄(#10)。
+        is_last = i == n - 1
+        interval_after = (
+            card.review_interval_hours if is_last else _next_interval(interval_before, fb[i])
+        )
+        streak_after = card.review_streak if is_last else streak
+        lapse_after = card.lapse_count if is_last else lapse
+        next_review_after = (reviewed + timedelta(hours=interval_after)).isoformat()
         events.append(
             ReviewEventEntry(
-                event_id=f"demo-{card.card_id}-{i}",
+                event_id=_synth_review_event_id(card.card_id, i),
                 card_id=card.card_id,
                 word_snapshot=card.content,
                 notebook_id=card.notebook_id,
                 feedback=fb[i],
                 reviewed_at=iso,
                 created_at=iso,
+                interval_before=interval_before,
+                interval_after=interval_after,
+                next_review_before=next_review_before,
+                next_review_after=next_review_after,
+                review_count_after=i + 1,
+                streak_after=streak_after,
+                lapse_after=lapse_after,
+                is_synthetic=True,
             )
         )
+        interval_before = interval_after
+        next_review_before = next_review_after
     return events
 
 

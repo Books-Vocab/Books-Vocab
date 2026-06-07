@@ -688,6 +688,7 @@ def cmd_link_add(args: argparse.Namespace) -> int:
         link = graph.add_link(
             from_id=from_card.id, to_id=to_card.id,
             kind=LinkKind(args.kind), confidence=args.confidence, reason=args.reason,
+            source="ops",
         )
         state["link_id"] = link.id
         is_idem = pre_existing is not None and pre_existing.id == link.id
@@ -715,7 +716,7 @@ def cmd_link_delete(args: argparse.Namespace) -> int:
         graph = _graph_store(ctx.user_dir, nb_id)
         if graph.get_link(args.link_id) is None:
             raise EditError(f"link not found: {args.link_id}")
-        from_id, to_id = graph.hard_delete_link(args.link_id)
+        from_id, to_id = graph.hard_delete_link(args.link_id, source="ops")
         return {"deleted_link": args.link_id, "from_id": from_id, "to_id": to_id}
 
     def verify_fn() -> dict[str, Any]:
@@ -911,7 +912,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 to_card = _resolve_card_in_notebook(card_store, lk["to"], nb_id)
                 graph = _graph_store(ctx.user_dir, nb_id)
                 graph.add_link(from_id=from_card.id, to_id=to_card.id, kind=LinkKind(lk["kind"]),
-                               confidence=float(lk["confidence"]), reason=lk["reason"])
+                               confidence=float(lk["confidence"]), reason=lk["reason"], source="ops")
                 added_links += 1
             except (EditError, ValueError, KeyError) as exc:
                 link_errors.append(f"{lk.get('from')}→{lk.get('to')}: {exc}")
@@ -1152,7 +1153,7 @@ def cmd_card_move(args: argparse.Namespace) -> int:
         for gnb in all_nb_ids:
             graph = _graph_store(ctx.user_dir, gnb)
             for lk in graph.get_links_for(moved_id):
-                graph.hard_delete_link(lk.id)
+                graph.hard_delete_link(lk.id, source="ops")
                 purged_links.append(lk.id)
         updated = store.update(card.id, notebook_id=target_nb)
         if updated is None:
@@ -1195,7 +1196,7 @@ def cmd_link_update(args: argparse.Namespace) -> int:
         graph = _graph_store(ctx.user_dir, nb_id)
         if graph.get_link(args.link_id) is None:
             raise EditError(f"link not found: {args.link_id}")
-        lk = graph.update_link(args.link_id, **updates)
+        lk = graph.update_link(args.link_id, source="ops", **updates)
         return {"link": {"id": lk.id, "confidence": lk.confidence,
                          "reason": lk.reason, "kind": str(lk.kind)}}
 

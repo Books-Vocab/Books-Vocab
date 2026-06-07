@@ -26,6 +26,9 @@ class _LinksMixin:
     def _blocked_to_serializable(self) -> list[list[str]]: ...  # noqa: D102
     def _flush_links(self, snapshot: list[dict]) -> None: ...  # noqa: D102
     def _flush_blocked(self, snapshot: list[list[str]]) -> None: ...  # noqa: D102
+    def _emit_graph_event(self, event_type: str, **kw: Any) -> None: ...  # noqa: D102
+    def _build_graph_event_draft(self, event_type: str, **kw: Any) -> Any: ...  # noqa: D102
+    def _emit_graph_events(self, drafts: list[Any]) -> None: ...  # noqa: D102
 
     @staticmethod
     def _normalize_pair(a: str, b: str) -> tuple[str, str]: ...  # noqa: D102
@@ -41,6 +44,8 @@ class _LinksMixin:
         kind: LinkKind,
         confidence: float,
         reason: str,
+        *,
+        source: str = "auto",
     ) -> GraphLink:
         """Create and store a new link. Idempotent per pair; disk write outside lock.
 
@@ -70,11 +75,19 @@ class _LinksMixin:
             self._index_link(link)
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
+        self._emit_graph_event(
+            "link_added", link_id=link.id, from_id=from_id, to_id=to_id,
+            kind=str(kind), source=source, confidence_before=None,
+            confidence_after=confidence, status_before=None, status_after="active",
+            reason=reason,
+        )
         return link
 
     def batch_add_links(
         self,
         links: list[tuple[str, str, LinkKind, float, str]],
+        *,
+        source: str = "auto",
     ) -> list[GraphLink]:
         """Create multiple links with a single disk write. Returns created links."""
         created: list[GraphLink] = []
@@ -99,6 +112,15 @@ class _LinksMixin:
             snapshot = self._links_to_serializable() if created else None
         if snapshot is not None:
             self._flush_links(snapshot)
+            self._emit_graph_events([
+                self._build_graph_event_draft(
+                    "link_added", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
+                    kind=str(lk.kind), source=source, confidence_before=None,
+                    confidence_after=lk.confidence, status_before=None, status_after="active",
+                    reason=lk.reason,
+                )
+                for lk in created
+            ])
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
@@ -167,48 +189,72 @@ class _LinksMixin:
         with self._lock:
             return self._links.get(link_id)
 
-    def update_link(self, link_id: str, **attrs: Any) -> GraphLink:
+    def update_link(self, link_id: str, *, source: str = "auto", **attrs: Any) -> GraphLink:
         """Update attributes of an existing link and persist."""
         ALLOWED = {"status", "kind", "confidence", "reason"}
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
                 raise KeyError(link_id)
+            conf_before, status_before = lk.confidence, lk.status
             for key, value in attrs.items():
                 if key not in ALLOWED:
                     raise ValueError(f"Cannot update attribute: {key}")
                 setattr(lk, key, value)
+            conf_after, status_after = lk.confidence, lk.status
+            reason_after = lk.reason
+            from_id, to_id, kind = lk.from_id, lk.to_id, str(lk.kind)
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
+        self._emit_graph_event(
+            "link_updated", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            source=source, confidence_before=conf_before, confidence_after=conf_after,
+            status_before=status_before, status_after=status_after, reason=reason_after,
+        )
         return lk
 
-    def hide_link(self, link_id: str) -> None:
+    def hide_link(self, link_id: str, *, source: str = "auto") -> None:
         """Set link status to hidden. Raises KeyError if not found."""
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
                 raise KeyError(link_id)
+            status_before = lk.status
             lk.status = "hidden"
+            from_id, to_id, kind, conf = lk.from_id, lk.to_id, str(lk.kind), lk.confidence
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
+        self._emit_graph_event(
+            "link_hidden", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            source=source, confidence_before=conf, confidence_after=conf,
+            status_before=status_before, status_after="hidden",
+        )
 
-    def unhide_link(self, link_id: str) -> None:
+    def unhide_link(self, link_id: str, *, source: str = "auto") -> None:
         """Set link status back to active. Raises KeyError if not found."""
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
                 raise KeyError(link_id)
+            status_before = lk.status
             lk.status = "active"
+            from_id, to_id, kind, conf = lk.from_id, lk.to_id, str(lk.kind), lk.confidence
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
+        self._emit_graph_event(
+            "link_unhidden", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            source=source, confidence_before=conf, confidence_after=conf,
+            status_before=status_before, status_after="active",
+        )
 
-    def hard_delete_link(self, link_id: str) -> tuple[str, str]:
+    def hard_delete_link(self, link_id: str, *, source: str = "auto") -> tuple[str, str]:
         """Delete a link and add the pair to blocked list. Returns (from_id, to_id)."""
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
                 raise KeyError(link_id)
             from_id, to_id = lk.from_id, lk.to_id
+            kind, conf, status_before = str(lk.kind), lk.confidence, lk.status
             self._unindex_link(lk)
             del self._links[link_id]
             pair = self._normalize_pair(from_id, to_id)
@@ -220,6 +266,11 @@ class _LinksMixin:
             blocked_snapshot = self._blocked_to_serializable()
         self._flush_links(links_snapshot)
         self._flush_blocked(blocked_snapshot)
+        self._emit_graph_event(
+            "link_deleted", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            source=source, confidence_before=conf, confidence_after=None,
+            status_before=status_before, status_after=None,
+        )
         return (from_id, to_id)
 
     def is_blocked(self, from_id: str, to_id: str) -> bool:

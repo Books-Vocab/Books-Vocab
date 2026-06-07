@@ -264,7 +264,7 @@ class _FakeArchiveGraph:
         self.restored_for = []
         self.removed_blocked_for = []
 
-    def deprecate_links_for(self, card_id):
+    def deprecate_links_for(self, card_id, *, source="auto"):
         self.deprecated_for.append(card_id)
         return 1
 
@@ -275,11 +275,11 @@ class _FakeArchiveGraph:
     def remove_blocked_pairs_for(self, card_id):
         self.removed_blocked_for.append(card_id)
 
-    def restore_links_for(self, card_id, cards_store):
+    def restore_links_for(self, card_id, cards_store, *, source="auto"):
         self.restored_for.append(card_id)
         return 1
 
-    def cleanup_for_card(self, card_id, *, remove_blocked=False):
+    def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
         self.deprecate_links_for(card_id)
         self.remove_candidates_for(card_id)
         if remove_blocked:
@@ -319,7 +319,7 @@ class TestArchiveVocabWord:
         cards = _FakeCardsStore([card])
 
         class _FailingGraph(_FakeArchiveGraph):
-            def cleanup_for_card(self, card_id, *, remove_blocked=False):
+            def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
                 raise RuntimeError("graph write failed")
 
         with pytest.raises(RuntimeError):
@@ -334,7 +334,7 @@ class TestArchiveVocabWord:
         cards = _FakeCardsStore([card])
 
         class _FailingGraph(_FakeArchiveGraph):
-            def restore_links_for(self, card_id, cards_store):
+            def restore_links_for(self, card_id, cards_store, *, source="auto"):
                 raise RuntimeError("graph restore failed")
 
         with pytest.raises(RuntimeError):
@@ -359,11 +359,11 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
     card_id = card.id
 
     class _FailingGraph:
-        def deprecate_links_for(self, cid):
+        def deprecate_links_for(self, cid, *, source="auto"):
             raise RuntimeError("graph write failed")
         def remove_candidates_for(self, cid):
             pass
-        def cleanup_for_card(self, cid, *, remove_blocked=False):
+        def cleanup_for_card(self, cid, *, remove_blocked=False, source="auto"):
             self.deprecate_links_for(cid)
             self.remove_candidates_for(cid)
 
@@ -459,7 +459,7 @@ class TestBatchDeleteVocabWords:
         ])
 
         class _FailSecondGraph(_FakeArchiveGraph):
-            def cleanup_for_card(self, card_id, *, remove_blocked=False):
+            def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
                 if card_id == "c2":
                     raise RuntimeError("graph boom")
                 return super().cleanup_for_card(card_id, remove_blocked=remove_blocked)
@@ -553,7 +553,7 @@ class TestBatchArchiveVocabWords:
         ])
 
         class _FailSecondGraph(_FakeArchiveGraph):
-            def cleanup_for_card(self, card_id, *, remove_blocked=False):
+            def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
                 if card_id == "c2":
                     raise RuntimeError("graph boom")
                 return super().cleanup_for_card(card_id, remove_blocked=remove_blocked)
@@ -581,7 +581,7 @@ class TestBatchArchiveVocabWords:
         ])
 
         class _FailRestoreGraph(_FakeArchiveGraph):
-            def restore_links_for(self, card_id, cards_store):
+            def restore_links_for(self, card_id, cards_store, *, source="auto"):
                 if card_id == "c2":
                     raise RuntimeError("restore boom")
                 return super().restore_links_for(card_id, cards_store)
@@ -766,7 +766,7 @@ class TestDeleteEvictsEmbedding:
         emb = _FakeEmbeddingStore(ids=[card.id])
 
         class _FailingGraph:
-            def cleanup_for_card(self, cid, *, remove_blocked=False):
+            def cleanup_for_card(self, cid, *, remove_blocked=False, source="auto"):
                 raise RuntimeError("graph write failed")
 
         with pytest.raises(RuntimeError):
@@ -894,7 +894,7 @@ class _PartialFailingGraph:
         self._fail_for = fail_for
         self.cleaned: list[str] = []
 
-    def cleanup_for_card(self, card_id, *, remove_blocked=False):
+    def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
         if card_id == self._fail_for:
             raise RuntimeError("graph cleanup blew up for %s" % card_id)
         self.cleaned.append(card_id)
