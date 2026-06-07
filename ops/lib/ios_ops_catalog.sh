@@ -552,7 +552,12 @@ cmd_catalog_snapshots_json() {
     snapshot_source="$fixture_root/tmp/kg-catalog-snapshots"
     printf 'fixture xcodebuild test\n' >"$xcode_log"
     : >"$xcode_err"
-    rc=0
+    # Test seam: inject a failure exit code to exercise the cache-miss (87) and
+    # salvage-on-failure JSON paths without a real simulator/xcodebuild run.
+    rc="${KG_IOS_OPS_CATALOG_FIXTURE_EXIT:-0}"
+    if [[ "$rc" == "87" ]]; then
+      cache_status="miss"
+    fi
   else
     if [[ -n "$dataset_path" ]]; then
       if ! dataset_b64="$(catalog_dataset_base64 "$dataset_path")"; then
@@ -787,7 +792,8 @@ cmd_catalog_snapshots_json() {
       generated_at:$generated_at,
       action:"snapshots",
       status:(
-        if $testExit != 0 then "error"
+        if $testExit == 87 then "cache-miss"
+        elif $testExit != 0 then "error"
         elif $datasetExit != 0 then "error"
         elif $copyExit != 0 then "error"
         elif ($artifacts.pngCount // 0) == 0 then "error"
@@ -848,9 +854,9 @@ cmd_catalog_snapshots_json() {
       errors:(
         (if $datasetExit != 0 then [{key:"catalog-dataset",status:"error",exitCode:$datasetExit,error:"dataset-injection-failed"}] else [] end)
         +
-        (if $testExit != 0 then [{key:"catalog-test",status:"error",exitCode:$testExit,error:"xcodebuild-test-failed"}] else [] end)
+        (if $testExit != 0 and $testExit != 87 then [{key:"catalog-test",status:"error",exitCode:$testExit,error:"xcodebuild-test-failed"}] else [] end)
         +
-        (if $testExit == 87 then [{key:"catalog-cache",status:"error",exitCode:$testExit,error:"reuse-build-cache-required"}] else [] end)
+        (if $testExit == 87 then [{key:"catalog-cache",status:"cache-miss",exitCode:$testExit,error:"reuse-build-cache-miss",hint:"run `catalog prepare` first or drop --reuse-build"}] else [] end)
         +
         (if $testExit == 0 and $container == "" then [{key:"catalog-container",status:"error",exitCode:null,error:"app-container-required"}] else [] end)
         +
@@ -862,7 +868,12 @@ cmd_catalog_snapshots_json() {
       )
     }')"
   printf '%s\n' "$payload"
-  if [[ "$(jq -r '.status' <<<"$payload")" != "ok" ]]; then
+  local final_status
+  final_status="$(jq -r '.status' <<<"$payload")"
+  if [[ "$final_status" == "cache-miss" ]]; then
+    catalog_phase_emit "cache" "miss" "reuse-build requested but cache is stale/absent — run \`catalog prepare\` first or drop --reuse-build"
+  fi
+  if [[ "$final_status" != "ok" ]]; then
     return 1
   fi
 }
