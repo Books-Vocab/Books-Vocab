@@ -2,6 +2,8 @@
 # ios_ops_catalog.sh — sourceable catalog snapshot export commands for ios_ops.sh.
 
 CATALOG_SCHEME="BooksBrowserCatalogSnapshots"
+CATALOG_LAST_BUILD_WALL_MS=0
+CATALOG_LAST_COMMAND_WALL_MS=0
 
 catalog_default_root() {
   local base="${TMPDIR:-$ROOT}"
@@ -10,6 +12,10 @@ catalog_default_root() {
 
 catalog_default_derived_data_root() {
   printf '%s\n' "${KG_IOS_OPS_CATALOG_CACHE_ROOT:-$ROOT/.cache/ios-catalog-derived-data}"
+}
+
+catalog_now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
 
 catalog_fixture_write_png() {
@@ -200,6 +206,8 @@ catalog_prepare_scoped_xctestrun() {
 
 catalog_run_scoped_xctestrun() {
   local xctestrun_path="$1" destination="$2" log_path="$3" err_path="$4"
+  local start_ms end_ms rc
+  start_ms="$(catalog_now_ms)"
   xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$destination" \
@@ -207,12 +215,18 @@ catalog_run_scoped_xctestrun() {
     -test-timeouts-enabled NO \
     -only-testing:BooksBrowserTests/CatalogSnapshotTests \
     >>"$log_path" 2>>"$err_path"
+  rc=$?
+  end_ms="$(catalog_now_ms)"
+  CATALOG_LAST_COMMAND_WALL_MS=$(( end_ms - start_ms ))
+  return "$rc"
 }
 
 catalog_rebuild_scoped_cache() {
   local destination="$1" derived_data_root="$2" log_path="$3" err_path="$4"
+  local start_ms end_ms rc
   rm -rf "$derived_data_root"
   mkdir -p "$derived_data_root"
+  start_ms="$(catalog_now_ms)"
   xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
     -scheme "$CATALOG_SCHEME" \
@@ -222,6 +236,10 @@ catalog_rebuild_scoped_cache() {
     -derivedDataPath "$derived_data_root" \
     OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS' \
     >"$log_path" 2>"$err_path"
+  rc=$?
+  end_ms="$(catalog_now_ms)"
+  CATALOG_LAST_BUILD_WALL_MS=$(( end_ms - start_ms ))
+  return "$rc"
 }
 
 catalog_build_for_testing_command() {
@@ -249,6 +267,12 @@ catalog_extract_scenario_count_from_log() {
   local log_path="$1"
   [[ -f "$log_path" ]] || return 1
   sed -n 's/^ - resolved\.scenarioCount: //p' "$log_path" | tail -n 1
+}
+
+catalog_extract_timing_ms_from_log() {
+  local log_path="$1" metric="$2"
+  [[ -f "$log_path" ]] || return 1
+  sed -n "s/^ - timing\\.${metric}: //p" "$log_path" | tail -n 1
 }
 
 catalog_inspect_pngs_json() {
@@ -352,7 +376,7 @@ cmd_catalog_snapshots_json() {
   local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" reuse_build_only="${5:-0}"
   local generated_at mode container_data snapshot_source xcode_log xcode_err rc test_cmd
   local sim_payload sim_rc=0 copy_rc=0 pngs_json payload resolved_device container_source
-  local validation_json expected_scenario_count=""
+  local validation_json expected_scenario_count="" command_wall_ms=0 test_body_ms=0 playbook_build_ms=0 snapshot_run_ms=0 startup_overhead_ms=0
   local fixture_root="" derived_data_root="" base_xctestrun="" run_xctestrun=""
   local build_cmd="" scope_test_cmd="" use_cached_xctestrun=0 scope_requested=0
   local cache_key="" cache_status="not-applicable"
@@ -450,6 +474,8 @@ cmd_catalog_snapshots_json() {
         fi
       fi
     else
+      local full_test_start_ms full_test_end_ms
+      full_test_start_ms="$(catalog_now_ms)"
       if xcodebuild test \
         -project "$XCODEPROJ" \
         -scheme "$CATALOG_SCHEME" \
@@ -463,6 +489,8 @@ cmd_catalog_snapshots_json() {
       else
         rc=$?
       fi
+      full_test_end_ms="$(catalog_now_ms)"
+      CATALOG_LAST_COMMAND_WALL_MS=$(( full_test_end_ms - full_test_start_ms ))
     fi
   fi
 
@@ -508,6 +536,19 @@ cmd_catalog_snapshots_json() {
 
   pngs_json="$(catalog_collect_pngs_json "$out_root")"
   expected_scenario_count="$(catalog_extract_scenario_count_from_log "$xcode_log" || true)"
+  command_wall_ms="${CATALOG_LAST_COMMAND_WALL_MS:-0}"
+  playbook_build_ms="$(catalog_extract_timing_ms_from_log "$xcode_log" "playbookBuildMs" || true)"
+  snapshot_run_ms="$(catalog_extract_timing_ms_from_log "$xcode_log" "snapshotRunMs" || true)"
+  test_body_ms="$(catalog_extract_timing_ms_from_log "$xcode_log" "testBodyMs" || true)"
+  command_wall_ms="${command_wall_ms:-0}"
+  playbook_build_ms="${playbook_build_ms:-0}"
+  snapshot_run_ms="${snapshot_run_ms:-0}"
+  test_body_ms="${test_body_ms:-0}"
+  if [[ "$command_wall_ms" =~ ^[0-9]+$ && "$test_body_ms" =~ ^[0-9]+$ ]] && (( command_wall_ms >= test_body_ms )); then
+    startup_overhead_ms=$(( command_wall_ms - test_body_ms ))
+  else
+    startup_overhead_ms=0
+  fi
   validation_json="$(catalog_inspect_pngs_json "$out_root" "$expected_scenario_count")"
   payload="$(jq -n \
     --arg schema "kg.ios.catalog.v1" \
@@ -526,6 +567,11 @@ cmd_catalog_snapshots_json() {
     --arg cacheRoot "$derived_data_root" \
     --arg cacheStatus "$cache_status" \
     --argjson reuseBuild "$reuse_build_only" \
+    --argjson commandWallMs "$command_wall_ms" \
+    --argjson playbookBuildMs "$playbook_build_ms" \
+    --argjson snapshotRunMs "$snapshot_run_ms" \
+    --argjson testBodyMs "$test_body_ms" \
+    --argjson startupOverheadMs "$startup_overhead_ms" \
     --argjson testExit "$rc" \
     --argjson copyExit "$copy_rc" \
     --argjson artifacts "$pngs_json" \
@@ -553,6 +599,13 @@ cmd_catalog_snapshots_json() {
         scenarios:(if $scenarios == "" then [] else ($scenarios | split(",")) end)
       },
       artifacts:$artifacts,
+      timings:{
+        commandWallMs:$commandWallMs,
+        playbookBuildMs:$playbookBuildMs,
+        snapshotRunMs:$snapshotRunMs,
+        testBodyMs:$testBodyMs,
+        startupOverheadMs:$startupOverheadMs
+      },
       validation:$validation,
       cache:{
         key:(if $cacheKey == "" then null else $cacheKey end),
@@ -642,6 +695,7 @@ cmd_catalog_snapshots() {
     "[ios][catalog] schema=\(.schema) action=\(.action) status=\(.status) mode=\(.mode) pngCount=\(.artifacts.pngCount) root=\(.artifacts.root)",
     "[ios][catalog] scope groups=\(.scope.groups | join(", ")) scenarios=\(.scope.scenarios | join(", "))",
     "[ios][catalog] cache status=\(.cache.status) key=\(.cache.key // "") root=\(.cache.root // "")",
+    "[ios][catalog] timings commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs)",
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",
     "[ios][catalog] copy exitCode=\(.copy.exitCode) source=\(.copy.sourcePath // "") container=\(.copy.containerDataPath // "")",
@@ -653,7 +707,7 @@ cmd_catalog_snapshots() {
 cmd_catalog_prepare_json() {
   local destination="$1"
   local generated_at derived_data_root cache_key base_xctestrun build_cmd xcode_log xcode_err payload
-  local rc=0 cache_status="miss" products_ready=false
+  local rc=0 cache_status="miss" products_ready=false build_wall_ms=0
 
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   derived_data_root="$(catalog_resolve_derived_data_root "$destination")"
@@ -681,6 +735,7 @@ cmd_catalog_prepare_json() {
       rc=$?
       cache_status="error"
     fi
+    build_wall_ms="${CATALOG_LAST_BUILD_WALL_MS:-0}"
   fi
 
   base_xctestrun="$(catalog_find_xctestrun "$derived_data_root" || true)"
@@ -699,6 +754,7 @@ cmd_catalog_prepare_json() {
     --arg command "$build_cmd" \
     --arg log "$xcode_log" \
     --arg errorLog "$xcode_err" \
+    --argjson buildWallMs "$build_wall_ms" \
     --argjson buildExit "$rc" \
     --argjson productsReady "$products_ready" \
     '{
@@ -717,6 +773,7 @@ cmd_catalog_prepare_json() {
       build:{
         command:$command,
         exitCode:$buildExit,
+        wallMs:$buildWallMs,
         log:$log,
         errorLog:$errorLog
       },
@@ -765,7 +822,7 @@ cmd_catalog_prepare() {
   jq -r '
     "[ios][catalog-prepare] schema=\(.schema) action=\(.action) status=\(.status) destination=\(.destination)",
     "[ios][catalog-prepare] cache status=\(.cache.status) key=\(.cache.key) root=\(.cache.root) productsReady=\(.cache.productsReady) xctestrun=\(.cache.xctestrunPath // "")",
-    "[ios][catalog-prepare] build exitCode=\(.build.exitCode) command=\"\(.build.command)\"",
+    "[ios][catalog-prepare] build exitCode=\(.build.exitCode) wallMs=\(.build.wallMs) command=\"\(.build.command)\"",
     (.errors[]? | "[ios][catalog-prepare] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
   ' <<<"$payload"
   return "$rc"

@@ -27,6 +27,10 @@ private let catalogSnapshotCompileFlagEnabled = false
         let scenarios: [String]
     }
 
+    private static func elapsedMilliseconds(since start: CFAbsoluteTime) -> Int {
+        Int(((CFAbsoluteTimeGetCurrent() - start) * 1_000).rounded())
+    }
+
     private static func parseList(_ rawValue: String) -> [String] {
         return rawValue
             .split(whereSeparator: { $0 == "," || $0 == "\n" })
@@ -73,6 +77,7 @@ private let catalogSnapshotCompileFlagEnabled = false
             return
         }
 
+        let testBodyStart = CFAbsoluteTimeGetCurrent()
         let outputDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-catalog-snapshots", isDirectory: true)
         let fileScope = Self.parseScopeFile()
@@ -83,7 +88,9 @@ private let catalogSnapshotCompileFlagEnabled = false
             .ifEmpty(Self.parseListArgument("-KG_CATALOG_SCENARIOS"))
             .ifEmpty(fileScope?.scenarios ?? [])
         let filter = CatalogScene.filter(groups: groups, scenarios: scenarios)
+        let playbookBuildStart = CFAbsoluteTimeGetCurrent()
         let playbook = CatalogScene.buildPlaybook(filter: filter)
+        let playbookBuildMs = Self.elapsedMilliseconds(since: playbookBuildStart)
         let resolvedCategories = playbook.stores.map { $0.category.rawValue }.sorted()
         let resolvedScenarioCount = Self.scopedScenarioCount(in: playbook)
         let scopeSummary = [
@@ -103,7 +110,10 @@ private let catalogSnapshotCompileFlagEnabled = false
             ]
         )
 
+        let snapshotRunStart = CFAbsoluteTimeGetCurrent()
         try snapshot.run(with: playbook)
+        let snapshotRunMs = Self.elapsedMilliseconds(since: snapshotRunStart)
+        let testBodyMs = Self.elapsedMilliseconds(since: testBodyStart)
 
         print("KG catalog snapshots written to: \(outputDirectory.path)")
         print(
@@ -114,6 +124,9 @@ private let catalogSnapshotCompileFlagEnabled = false
              - scopeFile.present: \(fileScope != nil)
              - resolved.categories: \(resolvedCategories.joined(separator: " | "))
              - resolved.scenarioCount: \(resolvedScenarioCount)
+             - timing.playbookBuildMs: \(playbookBuildMs)
+             - timing.snapshotRunMs: \(snapshotRunMs)
+             - timing.testBodyMs: \(testBodyMs)
             """
         )
         if !scopeSummary.isEmpty {
