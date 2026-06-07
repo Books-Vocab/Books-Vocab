@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-from collections import Counter
 import json
 from pathlib import Path
 
+from catalog_review_cli_query_model import build_match_stats, load_query_matches
 from catalog_review_cli_support import (
     build_artifact_refs,
     build_filter_payload,
     build_permalink,
     effective_status,
     find_item_by_asset_id,
-    filtered_items,
     load_review_context,
     resolve_paths,
-    serialize_review_item,
 )
 from catalog_review_report import build_report_payload
 
@@ -59,13 +57,14 @@ def cmd_list(
     search: str | None,
     limit: int | None,
 ) -> int:
-    manifest, state = load_review_context(root)
-    matches = [
-        serialize_review_item(root, item, state)
-        for item in filtered_items(manifest, state, promise=promise, category=category, status=status, search=search)
-    ]
-    if limit is not None:
-        matches = matches[:limit]
+    _, _, matches = load_query_matches(
+        root,
+        promise=promise,
+        category=category,
+        status=status,
+        search=search,
+        limit=limit,
+    )
     payload = {
         "status": "ok",
         "count": len(matches),
@@ -91,23 +90,19 @@ def cmd_stats(
     search: str | None,
     limit: int | None,
 ) -> int:
-    manifest, state = load_review_context(root)
-    matches = filtered_items(manifest, state, promise=promise, category=category, status=status, search=search)
-    promise_counts = Counter(item["promise"] for item in matches)
-    category_counts = Counter(item["category"] for item in matches)
-    effective_status_counts = Counter(effective_status(item, state) or "unmarked" for item in matches)
-
-    top_categories = [
-        {"category": category_name, "count": count}
-        for category_name, count in category_counts.most_common(limit)
-    ] if limit is not None else [
-        {"category": category_name, "count": count}
-        for category_name, count in category_counts.most_common()
-    ]
+    _, _, matches = load_query_matches(
+        root,
+        promise=promise,
+        category=category,
+        status=status,
+        search=search,
+        limit=None,
+    )
+    stats = build_match_stats(matches, limit=limit)
 
     payload = {
         "status": "ok",
-        "count": len(matches),
+        **stats,
         "filters": build_filter_payload(
             promise=promise,
             category=category,
@@ -115,9 +110,6 @@ def cmd_stats(
             search=search,
             limit=limit,
         ),
-        "promiseCounts": dict(promise_counts),
-        "effectiveStatusCounts": dict(effective_status_counts),
-        "topCategories": top_categories,
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
