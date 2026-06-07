@@ -243,6 +243,14 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         # data_dir so a test app never touches the real backend/data/.
         from .worker_guard import assert_single_worker
         assert_single_worker(settings.data_dir / ".worker.lock")
+        # Crash recovery: sweep orphaned 'running' pipeline runs → 'interrupted'.
+        # Explicit startup step (not a side-effect of first DB access) so reads
+        # stay write-free. Safe only post single-worker lock: workers must not
+        # cross-mark each other's runs (see worker_guard).
+        from .pipeline_log import reap_orphaned_runs
+        reaped = reap_orphaned_runs()
+        if reaped:
+            logger.info("Reaped %d orphaned pipeline run(s) → interrupted", reaped)
         yield
         logger.info("KG API shutting down")
         from .worker_guard import release_worker_lock

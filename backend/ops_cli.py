@@ -14,7 +14,13 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from kg.admin_cost_summary import VALID_RANGES, since_iso
+from kg.admin_cost_summary import (
+    VALID_RANGES,
+    fold_user_summary,
+    query_cost_rows,
+    since_iso,
+)
+from kg.error_signals import JUDGE_AUTO_REJECT_WHERE, PIPELINE_FAILURE_WHERE
 from kg.ops_edit_shared import users_file
 from kg.ops_shared import (
     assert_readonly_sql,
@@ -512,8 +518,8 @@ def cmd_db_query(args: argparse.Namespace) -> None:
 def cmd_cost(args: argparse.Namespace) -> None:
     """單用戶 cost-by-call_type 拆解（唯讀）。
 
-    GROUP BY call_type + provider,各 provider 切片以自身費率定價後折回
-    per-call_type bucket。`token_usage.db` 不存在則回傳全零 summary。
+    查/定價/折疊走 `kg.admin_cost_summary` 共用核心(與 admin 同一語意),
+    本命令只 connect_ro + 投影 by_call_type/totals。DB 不存在回全零 summary。
     """
     uid = resolve_uid(args.uid, data_dir())
     range_ = args.range
@@ -532,41 +538,16 @@ def cmd_cost(args: argparse.Namespace) -> None:
     }
 
     if db_path.exists():
+        # ops 面只負責「怎麼連」(connect_ro 唯讀);查/折交給共用核心,
+        # 與 admin 路徑共用同一語意。CLI 只投影 by_call_type + totals。
         conn = connect_ro(db_path)
-        pcol = provider_column_expr(conn)
-        sql = (
-            f"SELECT call_type, {pcol} AS provider, COUNT(*), "
-            "SUM(input_tokens), SUM(output_tokens) "
-            "FROM token_usage WHERE user_id = ?"
-        )
-        params: list = [uid]
-        if since is not None:
-            sql += " AND created_at >= ?"
-            params.append(since)
-        sql += f" GROUP BY call_type, {pcol}"
-        rows = conn.execute(sql, params).fetchall()
+        folded = fold_user_summary(query_cost_rows(conn, user_id=uid, since=since))
         conn.close()
-
-        for call_type, provider, cnt, t_in, t_out in rows:
-            ti = int(t_in or 0)
-            to = int(t_out or 0)
-            cost = token_cost_usd(call_type, ti, to, provider=provider)
-            bucket = summary["by_call_type"].setdefault(
-                call_type,
-                {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0},
-            )
-            bucket["calls"] += cnt
-            bucket["input_tokens"] += ti
-            bucket["output_tokens"] += to
-            bucket["cost_usd"] += cost
-            summary["total_calls"] += cnt
-            summary["total_input_tokens"] += ti
-            summary["total_output_tokens"] += to
-            summary["total_cost_usd"] += cost
-
-        for bucket in summary["by_call_type"].values():
-            bucket["cost_usd"] = round(bucket["cost_usd"], 6)
-        summary["total_cost_usd"] = round(summary["total_cost_usd"], 6)
+        summary["total_calls"] = folded["total_calls"]
+        summary["total_input_tokens"] = folded["total_input_tokens"]
+        summary["total_output_tokens"] = folded["total_output_tokens"]
+        summary["total_cost_usd"] = folded["total_cost_usd"]
+        summary["by_call_type"] = folded["by_call_type"]
 
     if args.json:
         emit_json(summary)
@@ -597,31 +578,27 @@ def cmd_cost_overview(args: argparse.Namespace) -> None:
     result: dict = {"range": range_, "since": since, "users": []}
 
     if db_path.exists():
+        # 跨用戶 cost:共用核心查全表(user_id=None),CLI 端按 uid 分組折疊
+        # totals —— 定價/欄相容語意與 admin 共用,不重寫。
         conn = connect_ro(db_path)
-        pcol = provider_column_expr(conn)
-        sql = (
-            f"SELECT user_id, call_type, {pcol} AS provider, COUNT(*), "
-            "SUM(input_tokens), SUM(output_tokens) FROM token_usage"
-        )
-        params: list = []
-        if since is not None:
-            sql += " WHERE created_at >= ?"
-            params.append(since)
-        sql += f" GROUP BY user_id, call_type, {pcol}"
-        rows = conn.execute(sql, params).fetchall()
+        rows = query_cost_rows(conn, user_id=None, since=since)
         conn.close()
 
+        by_uid: dict[str, list] = {}
+        for row in rows:
+            by_uid.setdefault(row[0], []).append(row)
         per_user: dict[str, dict] = {}
-        for user_id, call_type, provider, cnt, t_in, t_out in rows:
-            cost = token_cost_usd(call_type, int(t_in or 0), int(t_out or 0), provider=provider)
-            u = per_user.setdefault(user_id, {"total_calls": 0, "total_cost_usd": 0.0})
-            u["total_calls"] += cnt
-            u["total_cost_usd"] += cost
+        for user_id, urows in by_uid.items():
+            f = fold_user_summary(urows)
+            per_user[user_id] = {
+                "total_calls": f["total_calls"],
+                "total_cost_usd": f["total_cost_usd"],
+            }
 
         result["users"] = sorted(
             (
                 {"user_id": uid, "total_calls": u["total_calls"],
-                 "total_cost_usd": round(u["total_cost_usd"], 6)}
+                 "total_cost_usd": u["total_cost_usd"]}  # fold_user_summary 已 round 6dp
                 for uid, u in per_user.items()
             ),
             key=lambda u: u["total_cost_usd"],
@@ -1053,7 +1030,7 @@ def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str,
 def cmd_trends(args: argparse.Namespace) -> None:
     """全域監控趨勢 — errors / llm_errors(真火) / active_users / tokens 逐日。
 
-    **業務錯誤**:errors = 失敗 pipeline_runs(status='failed')+ auto-judge rejects
+    **業務錯誤**:errors = 失敗 pipeline_runs(error_signals.PIPELINE_FAILURE_WHERE)+ auto-judge rejects
     (degree-cap 除外)。這是 token_usage 看不到的「有沒有東西在壞」訊號。
     **真火錯誤**:llm_errors = 真實 LLM 基礎設施失敗(429/5xx/timeout),獨立於業務拒絕。
     語意對齊 kg.admin_trends(SoT),但此處以 connect_ro 唯讀**重實作** —— 不可 import
@@ -1067,10 +1044,9 @@ def cmd_trends(args: argparse.Namespace) -> None:
     cutoff = days[0]  # date-only;ISO created_at >= 'YYYY-MM-DD' 字串比較涵蓋當日全時刻
 
     pipe_fail = _count_by_day_ro(dd / "pipeline_runs.db", "pipeline_runs", "started_at",
-                                 cutoff, where=" AND status = 'failed'")
+                                 cutoff, where=f" AND {PIPELINE_FAILURE_WHERE}")
     judge_rej = _count_by_day_ro(dd / "judge_log.db", "judge_log", "created_at", cutoff,
-                                 where=" AND source = 'auto' AND accepted = 0 "
-                                       "AND (reject_reason IS NULL OR reject_reason != 'degree_cap')")
+                                 where=f" AND {JUDGE_AUTO_REJECT_WHERE}")
     actives = _count_by_day_ro(dd / "token_usage.db", "token_usage", "created_at", cutoff,
                                count="COUNT(DISTINCT user_id)")
 

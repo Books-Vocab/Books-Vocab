@@ -16,33 +16,58 @@ _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 
 
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    """Idempotent DDL — table + indexes. Side-effect-free (no row mutation)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT UNIQUE NOT NULL,
+            user_id TEXT NOT NULL,
+            notebook_id TEXT NOT NULL,
+            trigger TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            steps TEXT NOT NULL DEFAULT '[]'
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_user ON pipeline_runs(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_started ON pipeline_runs(started_at)")
+
+
 def _get_conn() -> sqlite3.Connection:
+    """Acquire the singleton connection + ensure schema. **Read-safe**: opening
+    the connection mutates no rows. Orphaned-run recovery is a *separate*,
+    explicit step (:func:`reap_orphaned_runs`) wired into API startup — so a
+    pure read (admin dashboard, telemetry query) can never trigger a write."""
     global _conn
     if _conn is None:
         from .sqlite_utils import open_singleton
         _conn = open_singleton(DB_PATH)
-        _conn.execute("""
-            CREATE TABLE IF NOT EXISTS pipeline_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT UNIQUE NOT NULL,
-                user_id TEXT NOT NULL,
-                notebook_id TEXT NOT NULL,
-                trigger TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                ended_at TEXT,
-                status TEXT NOT NULL DEFAULT 'running',
-                steps TEXT NOT NULL DEFAULT '[]'
-            )
-        """)
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_user ON pipeline_runs(user_id)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_started ON pipeline_runs(started_at)")
-        # Mark orphaned runs from previous crashes as interrupted
-        _conn.execute(
+        _ensure_schema(_conn)
+        _conn.commit()
+    return _conn
+
+
+def reap_orphaned_runs() -> int:
+    """Mark crashed ``running`` rows ``interrupted`` and return the count reaped.
+
+    Single source of the crash-recovery semantic. Invoked **once at API
+    startup** (lifespan, after the single-worker lock — see worker_guard),
+    not lazily on first connection. Decoupling it from :func:`_get_conn` is
+    the root-cause fix for the read-causes-write coupling that forced ops to
+    re-implement a read-only path: connection acquisition is now provably
+    side-effect-free, and the ``running→interrupted`` predicate lives in
+    exactly one place.
+    """
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
             "UPDATE pipeline_runs SET status='interrupted', ended_at=? WHERE status='running'",
             (datetime.now(UTC).isoformat(),),
         )
-        _conn.commit()
-    return _conn
+        conn.commit()
+        return cur.rowcount
 
 
 def _reset() -> None:
