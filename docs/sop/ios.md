@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 6b55b1e8
+verified_against: 41b404c0
 -->
 # BooksBrowser iOS 開發技能
 
@@ -356,6 +356,7 @@ Apple/Google SSO
 - `./ops/ios_ops.sh snapshot --json` 現在也內嵌 `sentry` surface，並把 wiring 漂移收斂成 `summary.counts.sentryWarnings`；若只想知道 release dashboard 是否因 Sentry wiring 漂掉而變黃，不必再手動額外跑 `sentry`
 - 對這類 wiring surface，不要只測 happy path。`ops/test_ios_ops.sh` 現在用 fixture env 直接模擬 `source missing / canImport=false / dsnReference=false`，驗證 `snapshot --json` 會把 drift 轉成 `summary.counts.sentryWarnings` 與 `summary.nextActions[].source=="sentry"`；這是控制面經驗固化的正確模式
 - 同一個 surface 不能各自重算。`doctor` 的 sentry readiness 與頂層 `doctor.sentry` 現在都直接重用 `sentry_summary_json()`；`snapshot` 也直接吃 `doctor.sentry`，避免 `doctor` / `sentry --json` / `snapshot` 三條路各自 grep、最後判讀不一致
+- 連 wiring failure 清單也收斂成單一真相:`sentry_summary_json()` 直接輸出 `issues[]`（逐 wiring failure,含 key/message/command）;`doctor` verdict = `issues|length==0`、`snapshot` nextActions = `map(issues)`、`sentryWarnings` = `issues|length` 全衍生自此。新增一個 wiring check 只改 `issues[]` 一處,不必同步三處列舉——這是「判讀規則(不只資料來源)單一真相」的範例
 
 ### Hot Reload（InjectionNext + Inject）
 
