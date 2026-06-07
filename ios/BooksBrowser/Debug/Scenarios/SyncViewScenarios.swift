@@ -46,7 +46,7 @@ private struct SyncViewScene: View {
     init(fixture: SyncViewFixture) {
         let container = try! ModelContainer(
             for: VocabularyEntry.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = container.mainContext
         Self.seed(fixture, into: context)

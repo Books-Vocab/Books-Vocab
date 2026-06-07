@@ -26,6 +26,7 @@ struct KGVocabView: View {
     /// 詳情頁「開始複習」CTA callback — 由父層 (VocabularyListView+State) 注入。
     /// `nil` ⇒ chip+sort 列尾端不顯示 CTA pill (e.g. macOS split detail pane)。
     var onStartReview: (([VocabularyEntry]) -> Void)?
+    private let skipInitialLoadTask: Bool
 
     @Query private var syncedEntries: [VocabularyEntry]
     @Environment(\.authManager) private var authManager
@@ -48,6 +49,7 @@ struct KGVocabView: View {
         self.notebookId = notebookId
         self.onEntrySelected = onEntrySelected
         self.onStartReview = onStartReview
+        self.skipInitialLoadTask = false
         let nbId = notebookId
         // Notebook-scoped knowledge list. The isArchived guard (inside the shared
         // predicate) keeps archived words out of the KG list and out of
@@ -59,6 +61,29 @@ struct KGVocabView: View {
         }
         self._pendingDeletes = Query(filter: deleteFilter)
     }
+
+#if DEBUG
+    init(
+        searchText: Binding<String>,
+        notebookId: String = "default",
+        onEntrySelected: ((VocabularyEntry) -> Void)? = nil,
+        onStartReview: (([VocabularyEntry]) -> Void)? = nil,
+        skipInitialLoadTask: Bool
+    ) {
+        self._searchText = searchText
+        self.notebookId = notebookId
+        self.onEntrySelected = onEntrySelected
+        self.onStartReview = onStartReview
+        self.skipInitialLoadTask = skipInitialLoadTask
+        let nbId = notebookId
+        self._syncedEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(notebookId: nbId))
+        let deleteFilter = #Predicate<VocabularyEntry> {
+            $0.actionType == "delete" &&
+            $0.notebookId == nbId
+        }
+        self._pendingDeletes = Query(filter: deleteFilter)
+    }
+#endif
 
     var body: some View {
         let n = reviewSettingsStore.settings.reviewReferenceDate()
@@ -89,6 +114,7 @@ struct KGVocabView: View {
                 .appSheet(.large)
         }
         .task {
+            guard !skipInitialLoadTask else { return }
             await coordinator.loadInitialData(
                 authManager: authManager,
                 kgService: kgService,

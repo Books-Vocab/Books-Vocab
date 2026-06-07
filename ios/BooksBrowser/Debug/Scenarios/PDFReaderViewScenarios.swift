@@ -36,7 +36,7 @@ private struct PDFReaderViewScene: View {
     init() {
         let container = try! ModelContainer(
             for: Book.self, VocabularyEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let book = Book(
             title: "Sample PDF",

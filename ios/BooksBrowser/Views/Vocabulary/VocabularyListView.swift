@@ -18,6 +18,7 @@ struct VocabularyListView: View {
     @Environment(\.modelContext) var modelContext
 
     let notebookId: String
+    let skipCatalogTasks: Bool
 
     @State var searchText = ""
     @State var debouncedSearchText = ""
@@ -36,6 +37,7 @@ struct VocabularyListView: View {
 
     init(notebookId: String = "default") {
         self.notebookId = notebookId
+        self.skipCatalogTasks = false
         let nbId = notebookId
         _allEntries = Query(
             filter: #Predicate<VocabularyEntry> { $0.notebookId == nbId },
@@ -44,6 +46,20 @@ struct VocabularyListView: View {
         )
         _notebooks = Query(sort: \Notebook.sortOrder)
     }
+
+#if DEBUG
+    init(notebookId: String = "default", skipCatalogTasks: Bool) {
+        self.notebookId = notebookId
+        self.skipCatalogTasks = skipCatalogTasks
+        let nbId = notebookId
+        _allEntries = Query(
+            filter: #Predicate<VocabularyEntry> { $0.notebookId == nbId },
+            sort: \.dateAdded,
+            order: .reverse
+        )
+        _notebooks = Query(sort: \Notebook.sortOrder)
+    }
+#endif
 
     var body: some View {
         VocabularyListPresenter(
@@ -69,6 +85,7 @@ struct VocabularyListView: View {
             allEntries: allEntries
         ))
         .task {
+            guard !skipCatalogTasks else { return }
             guard !authManager.isDemoMode else { return }
             await kgService.healthCheck()
         }

@@ -121,7 +121,7 @@ private struct StatsViewScene: View {
     init(entries: [VocabularyEntry], records: [ReviewRecord]) {
         let container = try! ModelContainer(
             for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = container.mainContext
         for entry in entries {
