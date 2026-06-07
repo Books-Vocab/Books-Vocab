@@ -117,7 +117,7 @@ grep -q 'cmd_commands_json' "$IOS_OPS_COMMANDS_LIB" && grep -q 'kg.ios.commands.
 grep -qE '^cmd_commands(_json)?\(\)' "$IOS_OPS" \
   && fail_t "ios_ops should not redefine commands catalog functions" || ok "ios_ops keeps commands catalog out of façade"
 commands_json="$(bash "$IOS_OPS" commands --json)"
-echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
+echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.command|test("--dataset <name>")) and (.command|test("--dataset-file <path>")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
   && ok "commands --json exposes machine-readable command catalog" || fail_t "commands --json invalid: $commands_json"
 capabilities_json="$(bash "$IOS_OPS" capabilities --json)"
 echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.commands[]; .key=="commands")' >/dev/null \
@@ -212,6 +212,17 @@ echo "$prepare_catalog_json" | jq -e '(.build.wallMs|type)=="number" and .build.
 prepare_xctestrun="$(echo "$prepare_catalog_json" | jq -r '.cache.xctestrunPath')"
 [[ -f "$prepare_xctestrun" ]] \
   && ok "catalog prepare materializes xctestrun artifact" || fail_t "catalog prepare missing xctestrun: $prepare_xctestrun"
+dataset_fixture_json="$catalog_tmp/dataset.json"
+cat >"$dataset_fixture_json" <<'JSON'
+{"schema":"kg.fixture.dataset.v1","datasetID":"fixture-catalog-test"}
+JSON
+dataset_fixture_b64="$(base64 <"$dataset_fixture_json" | tr -d '\n')"
+dataset_scoped_xctestrun="$catalog_tmp/dataset.scoped.xctestrun"
+ROOT="$WORKSPACE" XCODEPROJ="$WORKSPACE/ios/BooksBrowser.xcodeproj" \
+  bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_prepare_scoped_xctestrun "'"$prepare_xctestrun"'" "" "" "'"$dataset_fixture_b64"'" "'"$dataset_scoped_xctestrun"'"'
+[[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
+  && [[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
+  && ok "catalog scoped xctestrun embeds fixture dataset env" || fail_t "catalog scoped xctestrun missing fixture dataset env"
 prepare_catalog_hit_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog prepare --json)"
 echo "$prepare_catalog_hit_json" | jq -e '.schema=="kg.ios.catalog.prepare.v1" and .status=="ok" and .cache.status=="hit" and .build.exitCode==0' >/dev/null \
   && ok "catalog prepare reuses ready cache without rebuilding" || fail_t "catalog prepare hit invalid: $prepare_catalog_hit_json"
@@ -226,6 +237,9 @@ echo "$catalog_text" | grep -q '\[ios\]\[catalog\].*status=ok.*pngCount=2' && ec
 scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --group Bookshelf --group 'Today Review' --scenario 'Today Review/Front' --json)"
 echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksBrowserCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
   && ok "catalog snapshots --json reports scoped group/scenario filters" || fail_t "catalog scoped json invalid: $scoped_catalog_json"
+dataset_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json)"
+echo "$dataset_catalog_json" | jq -e --arg path "$dataset_fixture_json" '.schema=="kg.ios.catalog.v1" and .status=="ok" and .dataset.requestedPath==$path and .dataset.status=="not-applicable"' >/dev/null \
+  && ok "catalog snapshots accepts dataset-file option" || fail_t "catalog dataset-file json invalid: $dataset_catalog_json"
 reuse_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json)"
 echo "$reuse_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="ok" and .options.reuseBuild==true and .test.exitCode==0' >/dev/null \
   && ok "catalog snapshots accepts reuse-build option" || fail_t "catalog reuse-build json invalid: $reuse_catalog_json"
@@ -240,6 +254,12 @@ if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapsh
 else
   grep -q 'unknown catalog snapshots option' "$bad_catalog_tmp/err" \
     && ok "catalog snapshots rejects unknown option" || fail_t "catalog snapshots bad-arg message missing"
+fi
+if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset missing-dataset >"$bad_catalog_tmp/out2" 2>"$bad_catalog_tmp/err2"; then
+  fail_t "catalog snapshots rejects missing named dataset"
+else
+  grep -q 'dataset file not found' "$bad_catalog_tmp/err2" \
+    && ok "catalog snapshots rejects missing named dataset" || fail_t "catalog missing dataset message invalid: $(cat "$bad_catalog_tmp/err2")"
 fi
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" catalog prepare --unknown >"$bad_catalog_tmp/prepare.out" 2>"$bad_catalog_tmp/prepare.err"; then
   fail_t "catalog prepare rejects unknown option"

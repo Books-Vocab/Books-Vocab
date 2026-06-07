@@ -1,0 +1,322 @@
+{
+  "schema": "kg.fixture.dataset.v1",
+  "datasetID": "marketing_demo",
+  "settings": {
+    "subscribed_active": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "MC",
+        "avatarURL": null,
+        "displayName": "Max Chen",
+        "email": "max@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 240,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "已解鎖全部功能，適合上架與宣傳截圖。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 240 張 · 剛剛"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "pricing_unavailable": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "MC",
+        "avatarURL": null,
+        "displayName": "Max Chen",
+        "email": "max@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 240,
+        "lastSyncDescription": "10 分鐘前",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "Pro",
+        "badgeText": "確認中",
+        "badgeTone": "neutral",
+        "summary": "免費試用與月費將以 App Store 顯示為準。",
+        "detail": "目前已取得方案狀態，但價格資訊尚未回來。",
+        "sourceLabel": "App Store",
+        "managementNote": "價格與試用週期會在 App Store 完整顯示。",
+        "pricingUnavailableMessage": "App Store 價格載入中，稍後會自動更新。",
+        "restoreLabel": "可恢復購買",
+        "restoreDescription": "若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "開始免費試用",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 240 張 · 10 分鐘前"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    }
+  },
+  "bookshelf": {
+    "progress_card": {
+      "books": [
+        {
+          "title": "Editorial English",
+          "author": "KG Studio",
+          "fileName": "editorial-english.epub",
+          "format": "epub",
+          "progression": 0.64,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-05T00:00:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "placeholder_card": {
+      "books": [
+        {
+          "title": "Prototype Thinking",
+          "author": "A. Rivera",
+          "fileName": "prototype-thinking.epub",
+          "format": "epub",
+          "progression": 0.18,
+          "dateAdded": "2026-01-01T00:00:00Z",
+          "dateLastRead": "2026-01-06T18:00:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "with_books_library": {
+      "books": [
+        {
+          "title": "Editorial English",
+          "author": "KG Studio",
+          "fileName": "editorial-english.epub",
+          "format": "epub",
+          "progression": 0.64,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-05T00:00:00Z"
+        },
+        {
+          "title": "Prototype Thinking",
+          "author": "A. Rivera",
+          "fileName": "prototype-thinking.epub",
+          "format": "epub",
+          "progression": 0.18,
+          "dateAdded": "2026-01-01T00:00:00Z",
+          "dateLastRead": "2026-01-06T18:00:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    }
+  },
+  "todayReview": {
+    "front": {
+      "progressText": "4 / 12",
+      "currentCard": {
+        "word": "discerning",
+        "translation": "有鑑別力的",
+        "context": "She is discerning about what deserves her focus.",
+        "explanation": "形容人判斷細膩、有眼光。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Editorial English",
+        "chapterTitle": "Tone",
+        "dateAdded": "2026-01-01T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "She is discerning about what deserves her focus."
+        ],
+        "rootForm": "discerning",
+        "inflections": [
+          "discernment"
+        ],
+        "graphLinksByKind": {}
+      },
+      "nextCard": null,
+      "revealStage": "front",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 8,
+      "forgotCount": 1,
+      "rememberedCount": 3,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "back": {
+      "progressText": "4 / 12",
+      "currentCard": {
+        "word": "discerning",
+        "translation": "有鑑別力的",
+        "context": "She is discerning about what deserves her focus.",
+        "explanation": "形容人判斷細膩、有眼光。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Editorial English",
+        "chapterTitle": "Tone",
+        "dateAdded": "2026-01-01T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "She is discerning about what deserves her focus."
+        ],
+        "rootForm": "discerning",
+        "inflections": [
+          "discernment"
+        ],
+        "graphLinksByKind": {}
+      },
+      "nextCard": null,
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 8,
+      "forgotCount": 1,
+      "rememberedCount": 3,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "completed": {
+      "progressText": "12 / 12",
+      "currentCard": null,
+      "nextCard": null,
+      "revealStage": "front",
+      "canShuffle": false,
+      "canGoPrevious": false,
+      "canGoNext": false,
+      "remainingCount": 0,
+      "forgotCount": 4,
+      "rememberedCount": 8,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 1,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "autoplay": {
+      "progressText": "4 / 12",
+      "currentCard": {
+        "word": "prototype",
+        "translation": "原型；雛形",
+        "context": "The team turned the idea into a prototype in two days.",
+        "explanation": "指產品、設計或流程的初步版本。",
+        "partOfSpeech": "n.",
+        "bookTitle": "Prototype Thinking",
+        "chapterTitle": "Iteration",
+        "dateAdded": "2026-01-02T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The team turned the idea into a prototype in two days."
+        ],
+        "rootForm": "prototype",
+        "inflections": [
+          "prototypes"
+        ],
+        "graphLinksByKind": {}
+      },
+      "nextCard": null,
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 8,
+      "forgotCount": 0,
+      "rememberedCount": 0,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": true,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.5,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    }
+  }
+}
