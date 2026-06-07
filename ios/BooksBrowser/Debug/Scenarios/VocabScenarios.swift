@@ -9,8 +9,10 @@ import SwiftData
 enum VocabScenarios {
     static func register(in playbook: Playbook) {
         // MARK: Overview Tab
+        // NOTE: in-memory container is empty, so this renders the zero-data
+        // state (no seeded entries) rather than a populated dashboard.
         playbook.addScenarios(of: "Vocabulary · Overview") {
-            Scenario("Logged In", layout: .fill) {
+            Scenario("Empty DB", layout: .fill) {
                 AppThemeContainer {
                     OverviewTab()
                         .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
@@ -58,7 +60,7 @@ enum VocabScenarios {
         // MARK: Linked Card Overlay
         playbook.addScenarios(of: "Vocabulary · Linked Card") {
             Scenario("Single card", layout: .fill) {
-                LinkedCardOverlayScene(entry: Self.sampleEntry(word: "serendipity"))
+                LinkedCardOverlayScene(entries: [Self.sampleEntry(word: "serendipity")])
             }
             Scenario("Stacked 3-deep", layout: .fill) {
                 LinkedCardOverlayScene(entries: [
@@ -109,11 +111,6 @@ enum VocabScenarios {
 private struct LinkedCardOverlayScene: View {
     let entries: [VocabularyEntry]
     @State private var stack: [VocabularyEntry]
-
-    init(entry: VocabularyEntry) {
-        self.entries = [entry]
-        self._stack = State(initialValue: [entry])
-    }
 
     init(entries: [VocabularyEntry]) {
         self.entries = entries
