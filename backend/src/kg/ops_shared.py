@@ -79,14 +79,18 @@ def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
 
 
-def provider_column_expr(conn: sqlite3.Connection) -> str:
-    """token_usage.provider 的 SQL 欄位表達式,容忍尚無此欄的 legacy DB。
+def column_expr(conn: sqlite3.Connection, table: str, col: str) -> str:
+    """``col`` 的 SQL 欄位表達式,容忍缺該欄的 legacy DB。
 
-    有欄回 ``"provider"``;無欄回字面 ``"NULL"`` —— 讓下游定價把該列
-    視為未標記 legacy 列,fallback 到當前 route 的 provider。三套 ops 工具
-    (`ops_cli` / `ops_analyze`)原本各自重複此判斷,集中於此杜絕偏移。
+    有欄回 ``col`` 本身;無欄回字面 ``"NULL"`` —— 讓下游把該列視為未標記
+    legacy 列。legacy 欄偵測的單一真相源(admin / ops 皆委派此處,杜絕偏移)。
     """
-    return "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+    return col if col in table_columns(conn, table) else "NULL"
+
+
+def provider_column_expr(conn: sqlite3.Connection) -> str:
+    """token_usage.provider 欄表達式 —— :func:`column_expr` 的便捷別名。"""
+    return column_expr(conn, "token_usage", "provider")
 
 
 _READONLY_STMT_RE = re.compile(r"^\s*(?:SELECT|WITH|EXPLAIN)\b", re.IGNORECASE)
