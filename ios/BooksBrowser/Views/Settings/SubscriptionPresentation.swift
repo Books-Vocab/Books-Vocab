@@ -57,7 +57,7 @@ enum SubscriptionPresentation {
             return L10n.string("免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
         if status.is_active {
-            return L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與第三方整合。")
+            return L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜、內建複習與 Podcast。")
         }
         return L10n.string("升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。")
     }
