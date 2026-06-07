@@ -281,6 +281,20 @@ else
   grep -q 'unknown catalog prepare option' "$bad_catalog_tmp/prepare.err" \
     && ok "catalog prepare rejects unknown option" || fail_t "catalog prepare bad-arg message missing"
 fi
+hb_log="$catalog_tmp/hb.log"; hb_err="$catalog_tmp/hb.err"; hb_cap="$catalog_tmp/hb.cap"
+hb_stdout="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "build-for-testing" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "echo building-stdout; exit 0"' 2>"$hb_cap")"
+grep -q 'phase=build-for-testing start' "$hb_cap" && grep -q 'phase=build-for-testing done exitCode=0' "$hb_cap" \
+  && ok "catalog heartbeat emits phase milestones to stderr" || fail_t "catalog heartbeat missing phase milestones: $(cat "$hb_cap")"
+grep -q 'building-stdout' "$hb_log" && [[ -z "$hb_stdout" ]] \
+  && ok "catalog heartbeat keeps stdout clean (command output to log, phases to stderr)" || fail_t "catalog heartbeat polluted stdout: '$hb_stdout'"
+hb_rc=0
+ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "full-test" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "exit 87"' 2>"$hb_cap" || hb_rc=$?
+[[ "$hb_rc" -eq 87 ]] && grep -q 'phase=full-test done exitCode=87' "$hb_cap" \
+  && ok "catalog heartbeat propagates real exit code" || fail_t "catalog heartbeat lost exit code: rc=$hb_rc cap=$(cat "$hb_cap")"
+catalog_stderr_cap="$catalog_tmp/snap.stderr"
+catalog_json_clean="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>"$catalog_stderr_cap")"
+echo "$catalog_json_clean" | jq -e '.schema=="kg.ios.catalog.v1"' >/dev/null \
+  && ok "catalog snapshots --json stdout remains single valid JSON despite stderr observability" || fail_t "catalog snapshots stdout not clean JSON: $catalog_json_clean"
 rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"
 
 section "Doctor release readiness surface"
