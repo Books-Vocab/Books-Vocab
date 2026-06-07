@@ -207,6 +207,8 @@ catalog_cache_root="$catalog_tmp/cache-root"
 prepare_catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog prepare --json)"
 echo "$prepare_catalog_json" | jq -e --arg root "$catalog_cache_root" '.schema=="kg.ios.catalog.prepare.v1" and .action=="prepare" and .status=="ok" and (.cache.root|startswith($root)) and (.cache.key|length > 8) and .cache.productsReady==true and (.cache.xctestrunPath|endswith(".xctestrun")) and .cache.status=="prepared" and (.build.command|contains("build-for-testing")) and .build.exitCode==0' >/dev/null \
   && ok "catalog prepare --json seeds reusable build cache" || fail_t "catalog prepare --json invalid: $prepare_catalog_json"
+echo "$prepare_catalog_json" | jq -e '(.build.wallMs|type)=="number" and .build.wallMs >= 0' >/dev/null \
+  && ok "catalog prepare --json exposes build wall time" || fail_t "catalog prepare timing invalid: $prepare_catalog_json"
 prepare_xctestrun="$(echo "$prepare_catalog_json" | jq -r '.cache.xctestrunPath')"
 [[ -f "$prepare_xctestrun" ]] \
   && ok "catalog prepare materializes xctestrun artifact" || fail_t "catalog prepare missing xctestrun: $prepare_xctestrun"
@@ -216,6 +218,8 @@ echo "$prepare_catalog_hit_json" | jq -e '.schema=="kg.ios.catalog.prepare.v1" a
 catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json)"
 echo "$catalog_json" | jq -e --arg root "$catalog_tmp/build/snapshots" '.schema=="kg.ios.catalog.v1" and .action=="snapshots" and .status=="ok" and .mode=="fixture" and .artifacts.root==$root and .artifacts.pngCount==2 and (.artifacts.paths|length)==2 and (.scope.groups|length)==0 and (.scope.scenarios|length)==0 and all(.artifacts.paths[]; startswith($root)) and (.validation.status=="ok") and .validation.actualPngCount==2 and .validation.uniformImageCount==0 and .validation.minPixelWidth==16 and .validation.maxPixelWidth==16 and .validation.minPixelHeight==16 and .validation.maxPixelHeight==16 and (.validation.images|length)==2 and .cache.status=="not-applicable" and .cache.key==null and .cache.root==null and (.test.command|contains("CatalogSnapshotTests")) and .test.exitCode==0 and .copy.exitCode==0 and .copy.containerDataPath=="/tmp/kg-sim-fixture/container" and .flags.compileTimeFlag=="KG_RUN_CATALOG_SNAPSHOTS"' >/dev/null \
   && ok "catalog snapshots --json exports fixture PNG artifacts" || fail_t "catalog snapshots --json invalid: $catalog_json"
+echo "$catalog_json" | jq -e '(.timings.commandWallMs|type)=="number" and .timings.commandWallMs >= 0 and (.timings.testBodyMs|type)=="number" and .timings.testBodyMs >= 0 and (.timings.playbookBuildMs|type)=="number" and .timings.playbookBuildMs >= 0 and (.timings.snapshotRunMs|type)=="number" and .timings.snapshotRunMs >= 0 and (.timings.startupOverheadMs|type)=="number" and .timings.startupOverheadMs >= 0' >/dev/null \
+  && ok "catalog snapshots --json exposes timing breakdown" || fail_t "catalog snapshots timing invalid: $catalog_json"
 catalog_text="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots)"
 echo "$catalog_text" | grep -q '\[ios\]\[catalog\].*status=ok.*pngCount=2' && echo "$catalog_text" | grep -q 'validation status=ok' && echo "$catalog_text" | grep -q 'CatalogSnapshotTests' \
   && ok "catalog snapshots text reports artifact summary" || fail_t "catalog snapshots text invalid: $catalog_text"
