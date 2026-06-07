@@ -70,7 +70,7 @@ class _Graph:
     def is_blocked(self, a, b):
         return False
 
-    def add_link(self, fr, to, kind, confidence, reason):
+    def add_link(self, fr, to, kind, confidence, reason, *, source="auto"):
         return _Link(kind, reason)
 
 

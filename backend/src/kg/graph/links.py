@@ -77,6 +77,7 @@ class _LinksMixin:
             "link_added", link_id=link.id, from_id=from_id, to_id=to_id,
             kind=str(kind), source=source, confidence_before=None,
             confidence_after=confidence, status_before=None, status_after="active",
+            reason=reason,
         )
         return link
 
@@ -114,6 +115,7 @@ class _LinksMixin:
                     "link_added", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
                     kind=str(lk.kind), source=source, confidence_before=None,
                     confidence_after=lk.confidence, status_before=None, status_after="active",
+                    reason=lk.reason,
                 )
         return created
 
@@ -196,13 +198,14 @@ class _LinksMixin:
                     raise ValueError(f"Cannot update attribute: {key}")
                 setattr(lk, key, value)
             conf_after, status_after = lk.confidence, lk.status
+            reason_after = lk.reason
             from_id, to_id, kind = lk.from_id, lk.to_id, str(lk.kind)
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
         self._emit_graph_event(
             "link_updated", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
             source=source, confidence_before=conf_before, confidence_after=conf_after,
-            status_before=status_before, status_after=status_after,
+            status_before=status_before, status_after=status_after, reason=reason_after,
         )
         return lk
 

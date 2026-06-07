@@ -69,18 +69,18 @@ class GraphEventType(StrEnum):
     LINK_ADDED = "link_added"
     LINK_UPDATED = "link_updated"        # confidence / kind / reason / status 改值
     LINK_HIDDEN = "link_hidden"
-    LINK_UNHIDDEN = "link_unhidden"
+    LINK_UNHIDDEN = "link_unhidden"      # hidden → active(取消隱藏)
     LINK_DEPRECATED = "link_deprecated"  # 刪卡連帶,標 status=deprecated
+    LINK_RESTORED = "link_restored"      # deprecated → active(卡復原連帶,與 unhidden 區隔)
     LINK_DELETED = "link_deleted"        # 硬刪(物理移除 link + block pair)
 
 
 class GraphEventSource(StrEnum):
-    """變動的觸發管道。研究時可區分人工 vs AI vs 系統修復。"""
+    """變動的觸發管道。研究時可區分人工 vs AI vs ops。"""
 
     AUTO = "auto"        # pipeline embed+judge 自動建 / 改
-    MANUAL = "manual"    # 使用者手動 API(vocab_graph_ops)
+    MANUAL = "manual"    # 使用者手動 API(vocab_graph_ops / vocab_crud)
     OPS = "ops"          # ops_edit 工具
-    ORPHAN = "orphan"    # orphan_scan 修復旁路
     SYNTH = "synth"      # 一次性合成歷史回填(配 is_synthetic=True)
 
 

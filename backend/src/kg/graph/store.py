@@ -140,12 +140,15 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         confidence_after: float | None = None,
         status_before: str | None = None,
         status_after: str | None = None,
+        reason: str | None = None,
     ) -> None:
         """Append a real(``is_synthetic=False``) mutation event. 必須在 _lock 外、改檔
         成功後呼叫。帳本是研究料,非寫入關鍵路徑:emit 失敗只記 log,絕不冒泡打斷圖譜寫入。
 
         ``event_id`` 用 uuid4 —— 真實事件非冪等重放,每筆一個新 id。``occurred_at`` 為
-        mutation 當下。``source`` 由呼叫端傳(pipeline=auto / 手動 API=manual / ops / orphan)。
+        mutation 當下。``source`` 由呼叫端傳(pipeline=auto / 手動 API=manual / ops)。``reason``
+        記 link 的當前理由(add=新理由、update=改後理由),供 snapshot+diff 無損重建;status-only
+        轉移(hide/unhide/deprecate/restore/delete)無「為何轉移」依據,沿用合成史哲學留 None。
         """
         if self._event_store is None:
             return
@@ -164,6 +167,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 confidence_after=confidence_after,
                 status_before=status_before,
                 status_after=status_after,
+                reason=reason,
                 is_synthetic=False,
             )
         except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
@@ -272,15 +276,15 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             self._flush_links(snapshot)
             for lk in affected:
                 self._emit_graph_event(
-                    "link_unhidden", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
+                    "link_restored", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
                     kind=str(lk.kind), source=source, confidence_before=lk.confidence,
                     confidence_after=lk.confidence, status_before="deprecated", status_after="active",
                 )
         return len(affected)
 
-    def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dict:
+    def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False, source: str = "auto") -> dict:
         """Deprecate links + remove candidates + remove pending_judge (+ blocked pairs if deleting)."""
-        dep_count = self.deprecate_links_for(card_id)
+        dep_count = self.deprecate_links_for(card_id, source=source)
         cand_count = self.remove_candidates_for(card_id)
         pj_count = self.remove_pending_judge_for(card_id)
         if remove_blocked:

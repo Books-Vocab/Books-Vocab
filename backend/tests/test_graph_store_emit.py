@@ -110,6 +110,67 @@ def test_deprecate_links_for_emits_per_link(tmp_path):
     assert all(e.source == "auto" for e in dep)
 
 
+class _FakeCard:
+    def __init__(self, alive: bool = True) -> None:
+        self.is_deleted = not alive
+        self.is_archived = False
+
+
+class _FakeCardsStore:
+    """restore_links_for 只用 .get(other_id).is_deleted/is_archived。"""
+
+    def get(self, _card_id: str):  # noqa: ANN001
+        return _FakeCard(alive=True)
+
+
+def test_add_link_emits_reason(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "因為同詞根")
+    assert ev.all()[0].reason == "因為同詞根"
+
+
+def test_batch_add_emits_reason_per_link(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.batch_add_links([
+        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+        ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
+    ])
+    reasons = {e.link_id: e.reason for e in ev.query(event_type=GraphEventType.LINK_ADDED)}
+    assert set(reasons.values()) == {"r1", "r2"}
+
+
+def test_update_link_emits_new_reason(tmp_path):
+    gs, ev = _store(tmp_path)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "old")
+    gs.update_link(link.id, reason="new reason")
+    upd = ev.query(event_type=GraphEventType.LINK_UPDATED)
+    assert len(upd) == 1 and upd[0].reason == "new reason"
+
+
+def test_restore_links_for_emits_link_restored(tmp_path):
+    gs, ev = _store(tmp_path)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "r")
+    gs.deprecate_links_for("a")
+    restored = gs.restore_links_for("a", _FakeCardsStore(), source="manual")
+    assert restored == 1
+    ev_restored = ev.query(event_type=GraphEventType.LINK_RESTORED)
+    assert len(ev_restored) == 1
+    e = ev_restored[0]
+    assert e.link_id == link.id
+    assert e.status_before == "deprecated" and e.status_after == "active"
+    assert e.source == "manual"
+    # 不得再用 link_unhidden 混淆 deprecated→active
+    assert ev.query(event_type=GraphEventType.LINK_UNHIDDEN) == []
+
+
+def test_cleanup_for_card_source_propagates(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "r")
+    gs.cleanup_for_card("a", source="manual")
+    dep = ev.query(event_type=GraphEventType.LINK_DEPRECATED)
+    assert len(dep) == 1 and dep[0].source == "manual"
+
+
 def test_no_event_store_is_silent_noop(tmp_path):
     gs, ev = _store(tmp_path, with_events=False)
     link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
