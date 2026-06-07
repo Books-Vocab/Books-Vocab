@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from catalog_review_actions import build_action_plan, with_starter_plan
+from catalog_review_actions import build_action_plan, with_action_plan_fields, with_starter_plan
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -233,15 +233,12 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         "shouldRepairFirst": should_repair_first,
         "needsReviewAttention": needs_review_attention,
         "recommendedOperatorAction": recommended_operator_action,
-        "recommendedCommand": action_plan["primary"]["command"] if action_plan["primary"] else None,
-        "followupCommand": action_plan["followup"]["command"] if action_plan["followup"] else None,
-        "actionCommands": action_plan["actions"],
         "summary": {
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
         },
-        "actionPlan": action_plan,
     }
+    health = with_action_plan_fields(health, action_plan)
     view = {
         "status": payload["status"],
         "mode": mode,
@@ -286,7 +283,6 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             health["actionPlan"] = view["playbook"]["starterPlan"]
     else:
         raise ValueError(f"Unsupported doctor mode: {mode}")
-    health["recommendedCommand"] = health["actionPlan"]["primary"]["command"] if health["actionPlan"]["primary"] else None
-    health["followupCommand"] = health["actionPlan"]["followup"]["command"] if health["actionPlan"]["followup"] else None
-    health["actionCommands"] = health["actionPlan"]["actions"]
+    health = with_action_plan_fields(health, health["actionPlan"])
+    view["health"] = health
     return view
