@@ -26,8 +26,12 @@ def test_load_profile_and_build_commands():
     assert profile.materialize.uid == "marketing-demo"
     assert profile.snapshot.dataset_file.name == "marketing_demo.json"
     assert profile.render.variant == "app-store"
-    assert profile.render.target == "legacy"
-    assert profile.render.source_mode == "legacy-framed-sources"
+    assert profile.render.target == "promotion"
+    assert profile.render.source_mode == "snapshot-derived"
+    assert len(profile.shots) == 4
+    assert profile.shots[0].appearance == "light"
+    assert profile.shots[0].copy_title
+    assert profile.shots[0].copy_subtitle
 
     dry_run_commands = build_ops_edit_commands(profile, commit=False)
     assert dry_run_commands[0][:4] == [
@@ -53,14 +57,20 @@ def test_load_profile_and_build_commands():
     assert "--dataset-file" in snapshot_command
     assert "--reuse-build" in snapshot_command
 
-    render_command = build_render_command(profile)
+    render_command = build_render_command(
+        profile,
+        source_dir=ROOT / "tmp" / "framed",
+        shots_json=ROOT / "tmp" / "shots.json",
+    )
     assert render_command[:3] == [
         str(ROOT / "promotion" / "screenshots" / "scripts" / "render_screenshots.py"),
         "--variant",
         "app-store",
     ]
     assert "--target" in render_command
-    assert "legacy" in render_command
+    assert "promotion" in render_command
+    assert "--source-dir" in render_command
+    assert "--shots-json" in render_command
 
 
 def test_plan_outputs_machine_readable_json():
@@ -79,29 +89,64 @@ def test_plan_outputs_machine_readable_json():
     assert payload["materialize"]["uid"] == "marketing-demo"
     assert payload["snapshot"]["datasetFile"].endswith("ops/fixtures/catalog/marketing_demo.json")
     assert payload["render"]["variant"] == "app-store"
-    assert payload["render"]["target"] == "legacy"
-    assert payload["render"]["sourceMode"] == "legacy-framed-sources"
-    assert payload["render"]["autoRunEligible"] is False
+    assert payload["render"]["target"] == "promotion"
+    assert payload["render"]["sourceMode"] == "snapshot-derived"
+    assert payload["render"]["autoRunEligible"] is True
+    assert len(payload["shots"]) == 4
+    assert payload["shots"][0]["appearance"] == "light"
+    assert payload["shots"][0]["copy"]["title"]
+    assert payload["shots"][0]["copy"]["subtitle"]
 
 
-def test_run_stops_at_manual_render_handoff_for_legacy_sources(monkeypatch, capsys):
+def test_run_bridges_snapshot_outputs_into_render_inputs(monkeypatch, capsys, tmp_path: Path):
     profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
     calls: list[list[str]] = []
+    snapshot_root = tmp_path / "snapshots"
+    raw_paths = [
+        snapshot_root / "iPhone 17 Pro Max portrait" / "Bookshelf" / "With_Books.png",
+        snapshot_root / "iPhone 17 Pro Max portrait" / "Today_Review" / "Front.png",
+        snapshot_root / "iPhone 17 Pro Max portrait" / "Settings" / "Subscribed_Active.png",
+        snapshot_root / "iPhone 17 Pro Max portrait" / "Welcome" / "Step_1___Capture.png",
+    ]
+    for path in raw_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"png")
 
     def fake_run(command: list[str]):
         calls.append(command)
         if command[1:3] == ["catalog", "snapshots"]:
-            return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"status": "ok"}), stderr="")
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "status": "ok",
+                        "artifacts": {
+                            "root": str(snapshot_root),
+                            "pngCount": len(raw_paths),
+                            "paths": [str(path) for path in raw_paths],
+                        },
+                    }
+                ),
+                stderr="",
+            )
         return subprocess.CompletedProcess(command, 0, stdout='{"status":"ok"}', stderr="")
 
     monkeypatch.setattr(MODULE, "run_command", fake_run)
+    monkeypatch.setattr(MODULE, "frame_snapshot_sources", lambda *args, **kwargs: {
+        "shotsJson": str(tmp_path / "shots.json"),
+        "framedSourceDir": str(tmp_path / "framed"),
+        "shots": [{"id": "bookshelf"}],
+    })
 
     rc = MODULE.cmd_run(profile, commit=False, reuse_build=True)
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
     assert rc == 0
-    assert payload["status"] == "manual"
-    assert payload["render"]["status"] == "manual"
-    assert "checked-in framed sources" in payload["render"]["reason"]
-    assert len(calls) == 3 + 1  # seed + 2 shaping steps + snapshot
+    assert payload["status"] == "ok"
+    assert payload["bridge"]["shotsJson"].endswith("shots.json")
+    assert payload["render"]["sourceMode"] == "snapshot-derived"
+    assert "--source-dir" in calls[-1]
+    assert "--shots-json" in calls[-1]
+    assert len(calls) == 2  # snapshot + render; dry-run 不實際 materialize

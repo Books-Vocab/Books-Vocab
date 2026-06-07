@@ -7,6 +7,7 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SAFE_WRAPPER = ROOT / "ops" / "devops_kg_safe.sh"
 IOS_OPS = ROOT / "ops" / "ios_ops.sh"
 PROMO_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "render_screenshots.py"
+FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_screenshots.py"
 
 
 class CaptureProfileError(RuntimeError):
@@ -52,11 +54,22 @@ class RenderConfig:
 
 
 @dataclass(frozen=True)
+class ShotConfig:
+    shot_id: str
+    source_scenario: str
+    output_name: str
+    appearance: str
+    copy_title: str
+    copy_subtitle: str
+
+
+@dataclass(frozen=True)
 class CaptureProfile:
     profile_id: str
     materialize: MaterializeConfig
     snapshot: SnapshotConfig
     render: RenderConfig
+    shots: list[ShotConfig]
 
 
 def _ensure_list(raw: Any, *, field: str) -> list[Any]:
@@ -139,12 +152,37 @@ def load_profile(path: str | Path) -> CaptureProfile:
         raise CaptureProfileError("render.sourceMode 必須是 legacy-framed-sources 或 snapshot-derived")
     if not PROMO_RENDER.exists():
         raise CaptureProfileError(f"render script 不存在: {PROMO_RENDER}")
+    if not FRAME_RENDER.exists():
+        raise CaptureProfileError(f"framing script 不存在: {FRAME_RENDER}")
+
+    shots: list[ShotConfig] = []
+    for index, shot_raw in enumerate(_ensure_list(data.get("shots"), field="shots")):
+        if not isinstance(shot_raw, dict):
+            raise CaptureProfileError(f"shots[{index}] 必須是 object")
+        copy_raw = shot_raw.get("copy")
+        if not isinstance(copy_raw, dict):
+            raise CaptureProfileError(f"shots[{index}].copy 必須是 object")
+        shots.append(
+            ShotConfig(
+                shot_id=_ensure_str(shot_raw.get("id"), field=f"shots[{index}].id"),
+                source_scenario=_ensure_str(shot_raw.get("sourceScenario"), field=f"shots[{index}].sourceScenario"),
+                output_name=_ensure_str(shot_raw.get("outputName"), field=f"shots[{index}].outputName"),
+                appearance=str(shot_raw.get("appearance", "light")).strip() or "light",
+                copy_title=_ensure_str(copy_raw.get("title"), field=f"shots[{index}].copy.title"),
+                copy_subtitle=_ensure_str(copy_raw.get("subtitle"), field=f"shots[{index}].copy.subtitle"),
+            )
+        )
+    if not shots:
+        raise CaptureProfileError("shots 至少需要一筆")
+    if any(shot.appearance not in {"light", "dark"} for shot in shots):
+        raise CaptureProfileError("shots.appearance 只能是 light 或 dark")
 
     return CaptureProfile(
         profile_id=_ensure_str(data.get("id"), field="id"),
         materialize=materialize,
         snapshot=snapshot,
         render=render,
+        shots=shots,
     )
 
 
@@ -193,7 +231,23 @@ def build_snapshot_command(profile: CaptureProfile, *, reuse_build: bool) -> lis
     return command
 
 
-def build_render_command(profile: CaptureProfile) -> list[str]:
+def build_prepare_command(profile: CaptureProfile) -> list[str]:
+    return [
+        str(IOS_OPS),
+        "catalog",
+        "prepare",
+        "--destination",
+        profile.snapshot.destination,
+        "--json",
+    ]
+
+
+def build_render_command(
+    profile: CaptureProfile,
+    *,
+    source_dir: Path | None = None,
+    shots_json: Path | None = None,
+) -> list[str]:
     command = [
         str(PROMO_RENDER),
         "--variant",
@@ -201,6 +255,10 @@ def build_render_command(profile: CaptureProfile) -> list[str]:
         "--target",
         profile.render.target,
     ]
+    if source_dir is not None:
+        command.extend(["--source-dir", str(source_dir)])
+    if shots_json is not None:
+        command.extend(["--shots-json", str(shots_json)])
     if profile.render.output_dir is not None:
         command.extend(["--output-dir", str(profile.render.output_dir)])
     return command
@@ -218,6 +276,102 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
 
 def emit_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def parse_json_stdout(result: subprocess.CompletedProcess[str]) -> dict[str, Any] | None:
+    try:
+        return json.loads(result.stdout) if result.stdout.strip() else None
+    except json.JSONDecodeError:
+        return None
+
+
+def should_prepare_cache(snapshot_result: subprocess.CompletedProcess[str], snapshot_payload: dict[str, Any] | None) -> bool:
+    if snapshot_result.returncode == 87:
+        return True
+    if not snapshot_payload:
+        return False
+    test_exit = snapshot_payload.get("test", {}).get("exitCode")
+    return test_exit == 87
+
+
+def snapshot_slug(raw: str) -> str:
+    return "".join(char if char.isalnum() else "_" for char in raw)
+
+
+def resolve_shot_artifacts(profile: CaptureProfile, snapshot_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    artifact_paths = [Path(path) for path in snapshot_payload.get("artifacts", {}).get("paths", [])]
+    resolved: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for index, shot in enumerate(profile.shots, start=1):
+        try:
+            category, title = shot.source_scenario.split("/", 1)
+        except ValueError as exc:
+            raise CaptureProfileError(f"shots.sourceScenario 格式必須是 Category/Title: {shot.source_scenario}") from exc
+        suffix = f"/{snapshot_slug(category)}/{snapshot_slug(title)}.png"
+        match = next((path for path in artifact_paths if str(path).endswith(suffix)), None)
+        if shot.appearance == "light":
+            match = next((path for path in artifact_paths if str(path).endswith(suffix) and "(dark)" not in str(path)), match)
+        else:
+            match = next((path for path in artifact_paths if str(path).endswith(suffix) and "(dark)" in str(path)), match)
+        if match is None:
+            missing.append(shot.source_scenario)
+            continue
+        resolved.append(
+            {
+                "id": shot.shot_id,
+                "sourceScenario": shot.source_scenario,
+                "appearance": shot.appearance,
+                "rawPath": str(match),
+                "sourceStem": f"{index:02d}_{shot.shot_id}",
+                "outputName": shot.output_name,
+                "copy": {
+                    "title": shot.copy_title,
+                    "subtitle": shot.copy_subtitle,
+                },
+            }
+        )
+    if missing:
+        raise CaptureProfileError(f"snapshot artifacts 缺少 shots 對應場景: {', '.join(missing)}")
+    return resolved
+
+
+def frame_snapshot_sources(profile: CaptureProfile, snapshot_payload: dict[str, Any]) -> dict[str, Any]:
+    capture_root = ROOT / "build" / "capture_profiles"
+    capture_root.mkdir(parents=True, exist_ok=True)
+    workspace_root = Path(
+        tempfile.mkdtemp(prefix=f"capture-{profile.profile_id}-", dir=str(capture_root))
+    )
+    raw_root = workspace_root / "raw"
+    framed_root = workspace_root / "framed"
+    shots_json = workspace_root / "shots.json"
+    raw_root.mkdir(parents=True, exist_ok=True)
+    framed_root.mkdir(parents=True, exist_ok=True)
+
+    shots = resolve_shot_artifacts(profile, snapshot_payload)
+    shots_json.write_text(json.dumps(shots, ensure_ascii=False, indent=2))
+
+    command = [
+        str(FRAME_RENDER),
+        "--shots-json",
+        str(shots_json),
+        "--output-dir",
+        str(framed_root),
+    ]
+    result = run_command(command)
+    if result.returncode != 0:
+        raise CaptureProfileError(
+            f"frame catalog screenshots failed: {result.stderr.strip() or result.stdout.strip() or 'unknown error'}"
+        )
+    outputs = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return {
+        "workspaceRoot": str(workspace_root),
+        "shotsJson": str(shots_json),
+        "framedSourceDir": str(framed_root),
+        "rawRoot": str(raw_root),
+        "shots": shots,
+        "outputs": outputs,
+        "command": command,
+    }
 
 
 def cmd_plan(profile: CaptureProfile) -> int:
@@ -251,6 +405,16 @@ def cmd_plan(profile: CaptureProfile) -> int:
                 "autoRunEligible": profile.render.source_mode == "snapshot-derived",
                 "outputDir": str(profile.render.output_dir) if profile.render.output_dir else None,
             },
+            "shots": [
+                {
+                    "id": shot.shot_id,
+                    "sourceScenario": shot.source_scenario,
+                    "outputName": shot.output_name,
+                    "appearance": shot.appearance,
+                    "copy": {"title": shot.copy_title, "subtitle": shot.copy_subtitle},
+                }
+                for shot in profile.shots
+            ],
         }
     )
     return 0
@@ -258,6 +422,18 @@ def cmd_plan(profile: CaptureProfile) -> int:
 
 def cmd_materialize(profile: CaptureProfile, *, commit: bool) -> int:
     commands = build_ops_edit_commands(profile, commit=commit)
+    if not commit:
+        emit_json(
+            {
+                "schema": "kg.capture.run.v1",
+                "action": "materialize",
+                "profile": profile.profile_id,
+                "commit": False,
+                "status": "dry-run",
+                "results": [{"command": command, "planned": True} for command in commands],
+            }
+        )
+        return 0
     results = []
     failed = False
     for command in commands:
@@ -289,10 +465,7 @@ def cmd_materialize(profile: CaptureProfile, *, commit: bool) -> int:
 def cmd_snapshot(profile: CaptureProfile, *, reuse_build: bool) -> int:
     command = build_snapshot_command(profile, reuse_build=reuse_build)
     result = run_command(command)
-    try:
-        payload = json.loads(result.stdout) if result.stdout.strip() else None
-    except json.JSONDecodeError:
-        payload = None
+    payload = parse_json_stdout(result)
     emit_json(
         {
             "schema": "kg.capture.run.v1",
@@ -309,64 +482,58 @@ def cmd_snapshot(profile: CaptureProfile, *, reuse_build: bool) -> int:
 
 
 def cmd_render(profile: CaptureProfile) -> int:
-    command = build_render_command(profile)
-    result = run_command(command)
-    outputs = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    emit_json(
-        {
-            "schema": "kg.capture.run.v1",
-            "action": "render",
-            "profile": profile.profile_id,
-            "status": "ok" if result.returncode == 0 else "error",
-            "command": command,
-            "render": {
-                "variant": profile.render.variant,
-                "target": profile.render.target,
-                "sourceMode": profile.render.source_mode,
-                "outputDir": str(profile.render.output_dir) if profile.render.output_dir else None,
-                "outputs": outputs,
-            },
-            "stderr": result.stderr,
-        }
-    )
-    return result.returncode
+    raise CaptureProfileError("snapshot-derived render 需透過 run 先產生 framed source；目前不支援單獨 render")
 
 
 def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
     materialize_commands = build_ops_edit_commands(profile, commit=commit)
     materialize_results = []
-    for command in materialize_commands:
-        result = run_command(command)
-        materialize_results.append(
-            {
-                "command": command,
-                "exitCode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
-        )
-        if result.returncode != 0:
-            emit_json(
+    if commit:
+        for command in materialize_commands:
+            result = run_command(command)
+            materialize_results.append(
                 {
-                    "schema": "kg.capture.run.v1",
-                    "action": "run",
-                    "profile": profile.profile_id,
-                    "commit": commit,
-                    "reuseBuild": reuse_build,
-                    "status": "error",
-                    "materialize": materialize_results,
-                    "snapshot": None,
-                    "render": None,
+                    "command": command,
+                    "exitCode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
                 }
             )
-            return 1
+            if result.returncode != 0:
+                emit_json(
+                    {
+                        "schema": "kg.capture.run.v1",
+                        "action": "run",
+                        "profile": profile.profile_id,
+                        "commit": commit,
+                        "reuseBuild": reuse_build,
+                        "status": "error",
+                        "materialize": materialize_results,
+                        "snapshot": None,
+                        "render": None,
+                    }
+                )
+                return 1
+    else:
+        materialize_results = [{"command": command, "planned": True} for command in materialize_commands]
 
     snapshot_command = build_snapshot_command(profile, reuse_build=reuse_build)
     snapshot_result = run_command(snapshot_command)
-    try:
-        snapshot_payload = json.loads(snapshot_result.stdout) if snapshot_result.stdout.strip() else None
-    except json.JSONDecodeError:
-        snapshot_payload = None
+    snapshot_payload = parse_json_stdout(snapshot_result)
+    prepare_step: dict[str, Any] | None = None
+    if reuse_build and should_prepare_cache(snapshot_result, snapshot_payload):
+        prepare_command = build_prepare_command(profile)
+        prepare_result = run_command(prepare_command)
+        prepare_payload = parse_json_stdout(prepare_result)
+        prepare_step = {
+            "command": prepare_command,
+            "exitCode": prepare_result.returncode,
+            "payload": prepare_payload,
+            "stderr": prepare_result.stderr,
+        }
+        if prepare_result.returncode == 0:
+            snapshot_result = run_command(snapshot_command)
+            snapshot_payload = parse_json_stdout(snapshot_result)
     if snapshot_result.returncode != 0:
         emit_json(
             {
@@ -382,42 +549,19 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
                     "exitCode": snapshot_result.returncode,
                     "payload": snapshot_payload,
                     "stderr": snapshot_result.stderr,
+                    "prepare": prepare_step,
                 },
                 "render": None,
             }
         )
         return snapshot_result.returncode
 
-    if profile.render.source_mode != "snapshot-derived":
-        emit_json(
-            {
-                "schema": "kg.capture.run.v1",
-                "action": "run",
-                "profile": profile.profile_id,
-                "commit": commit,
-                "reuseBuild": reuse_build,
-                "status": "manual",
-                "materialize": materialize_results,
-                "snapshot": {
-                    "command": snapshot_command,
-                    "exitCode": snapshot_result.returncode,
-                    "payload": snapshot_payload,
-                    "stderr": snapshot_result.stderr,
-                },
-                "render": {
-                    "command": build_render_command(profile),
-                    "status": "manual",
-                    "variant": profile.render.variant,
-                    "target": profile.render.target,
-                    "sourceMode": profile.render.source_mode,
-                    "reason": "current render pipeline consumes checked-in framed sources, not the freshly exported catalog snapshots",
-                    "outputDir": str(profile.render.output_dir) if profile.render.output_dir else None,
-                },
-            }
-        )
-        return 0
-
-    render_command = build_render_command(profile)
+    bridge = frame_snapshot_sources(profile, snapshot_payload or {})
+    render_command = build_render_command(
+        profile,
+        source_dir=Path(bridge["framedSourceDir"]),
+        shots_json=Path(bridge["shotsJson"]),
+    )
     render_result = run_command(render_command)
     render_outputs = [line.strip() for line in render_result.stdout.splitlines() if line.strip()]
     emit_json(
@@ -434,7 +578,9 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
                 "exitCode": snapshot_result.returncode,
                 "payload": snapshot_payload,
                 "stderr": snapshot_result.stderr,
+                "prepare": prepare_step,
             },
+            "bridge": bridge,
             "render": {
                 "command": render_command,
                 "exitCode": render_result.returncode,

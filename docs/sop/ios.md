@@ -457,14 +457,15 @@ enum FooScenarios {
 **若目標是行銷 / App Store 素材，優先從 capture profile 進，不要直接手拼 snapshot 與 renderer 命令**：
 
 ```bash
-# 先看完整 recipe：造景 -> catalog snapshot -> promo render
-uv run python ops/capture_profile.py plan ops/capture_profiles/marketing_demo.json
+# 先看完整 recipe：造景 -> catalog snapshot -> local framing -> promo render
+./ops/capture_profile.py plan ops/capture_profiles/marketing_demo.json
 
-# 真正執行時，可拆開 materialize / snapshot / render；`run` 目前只會自動做到 snapshot，若 profile 的 render 仍是 legacy framed-source 模式，會停在 manual handoff
-uv run python ops/capture_profile.py run ops/capture_profiles/marketing_demo.json --reuse-build
+# 真正執行時，可拆開 materialize / snapshot / render；`run` 會在 dry-run 下略過真寫入，
+# 但仍自動完成 snapshot -> local framing -> final app-store PNG
+./ops/capture_profile.py run ops/capture_profiles/marketing_demo.json --reuse-build
 ```
 
-`capture_profile.py` 現在是 orchestrator；`catalog snapshots` 是內容畫面輸出；`promotion/screenshots/scripts/render_screenshots.py` 是最終 marketing asset renderer。**注意：目前 checked-in `marketing_demo` profile 的 render 仍吃既有 framed sources，不直接消費剛輸出的 catalog PNG，所以 `run` 會明確回 `manual` handoff，而不是假裝端到端完成。** ASC 截圖上傳仍是 GUI/manual，不在這條自動化內。
+`capture_profile.py` 現在是 orchestrator；`catalog snapshots` 是內容畫面輸出；`frame_catalog_screenshots.py` 會在本地把 raw screenshot 套成 iPhone framed source；`render_screenshots.py` 再吃 framed source + profile 內 `shots[].copy` 產出最終 App Store PNG。ASC 截圖上傳仍是 GUI/manual，不在這條自動化內。
 
 **執行方式**（manual，**不要主動跑** — 遵守 CLAUDE.md 鐵律 7 `ios_test.sh` 規則）：
 

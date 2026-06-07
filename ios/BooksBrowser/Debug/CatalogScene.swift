@@ -243,6 +243,10 @@ struct CatalogScene: View {
             .init(id: "stats_view", categories: ["Stats View"], register: StatsViewScenarios.register),
             .init(id: "today_review_container", categories: ["Today Review Container"], register: TodayReviewContainerScenarios.register),
             .init(id: "podcast_home_view", categories: ["Podcast Home View"], register: PodcastHomeViewScenarios.register),
+            .init(id: "bookshelf_view", categories: ["Bookshelf View"], register: BookshelfViewScenarios.register),
+            .init(id: "knowledge_graph_view", categories: ["Knowledge Graph View"], register: KnowledgeGraphViewScenarios.register),
+            .init(id: "pdf_reader_view", categories: ["PDF Reader View"], register: PDFReaderViewScenarios.register),
+            .init(id: "sync_view_surface", categories: ["Sync View"], register: SyncViewScenarios.register),
             .init(
                 id: "review_fold_surface",
                 categories: [
