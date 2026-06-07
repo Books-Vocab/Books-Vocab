@@ -1,0 +1,204 @@
+//
+//  VocabularyListViewScenarios.swift
+//  BooksBrowser
+//
+//  Catalog scenarios for `VocabularyListView` (a notebook's recorded vocab list).
+//
+
+#if DEBUG && canImport(Playbook)
+import Playbook
+import SwiftUI
+import SwiftData
+
+/// Catalog scenarios for `VocabularyListView`.
+///
+/// The view is `@Query`-backed (filter `notebookId == "default"`, sort by
+/// `dateAdded` reverse) and branches on `authManager.isLoggedIn`:
+/// - logged out → `loggedOutState` empty card + demo CTA (the env-default
+///   `AuthManager.shared` is logged out, so that path is honest by default);
+/// - logged in → the real `KGVocabView` knowledge list, which itself queries
+///   `knowledgeListPredicate` (syncStatus == synced, action != delete, not
+///   archived).
+///
+/// To exercise the populated / empty *list* paths we inject a logged-in
+/// `AuthManaging` mock (DEBUG-only, no production change) and seed a fresh
+/// in-memory `ModelContainer` inside a `@MainActor` View body so the
+/// `MainActor.assumeIsolated`-constructed env-default services (`KGService`,
+/// `SubscriptionManager`, toast coordinator) resolve before `@Query` reads.
+/// `.task` calls `kgService.healthCheck()`, which self-no-ops when logged out
+/// and is harmless against the disposable preview service.
+enum VocabularyListViewScenarios {
+    static func register(in playbook: Playbook) {
+        playbook.addScenarios(of: "Vocabulary List View") {
+            Scenario("Populated · mixed sync states", layout: .fill) {
+                VocabularyListViewScene(
+                    entries: VocabularyListViewFixtures.populated,
+                    loggedIn: true
+                )
+            }
+            Scenario("Single card", layout: .fill) {
+                VocabularyListViewScene(
+                    entries: VocabularyListViewFixtures.single,
+                    loggedIn: true
+                )
+            }
+            Scenario("Long list (stress)", layout: .fill) {
+                VocabularyListViewScene(
+                    entries: VocabularyListViewFixtures.long,
+                    loggedIn: true
+                )
+            }
+            Scenario("Empty · zero data", layout: .fill) {
+                VocabularyListViewScene(
+                    entries: [],
+                    loggedIn: true
+                )
+            }
+            Scenario("Logged out", layout: .fill) {
+                VocabularyListViewScene(
+                    entries: [],
+                    loggedIn: false
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Fixtures
+
+private enum VocabularyListViewFixtures {
+    static let notebookId = "default"
+
+    /// A synced + non-archived + non-delete entry → satisfies
+    /// `knowledgeListPredicate` so it renders in the knowledge list.
+    static func synced(
+        word: String,
+        translation: String,
+        explanation: String? = nil,
+        partOfSpeech: String? = "n.",
+        bookTitle: String = "Sample Book",
+        chapterTitle: String? = "第一章"
+    ) -> VocabularyEntry {
+        let entry = VocabularyEntry(
+            word: word,
+            translation: translation,
+            context: "It was pure \(word) — the moment lingered in memory.",
+            explanation: explanation ?? "A short AI-style contextual gloss for \(word).",
+            partOfSpeech: partOfSpeech,
+            bookTitle: bookTitle,
+            chapterTitle: chapterTitle
+        )
+        entry.notebookId = notebookId
+        entry.isArchived = false
+        entry.syncStatus = VocabularySyncState.synced.rawValue
+        entry.actionType = VocabularySyncAction.add.rawValue
+        return entry
+    }
+
+    /// A pending-add entry: present in the view's `allEntries` (drives the
+    /// toolbar pending badge) but filtered out of the synced knowledge list.
+    static func pendingAdd(word: String, translation: String) -> VocabularyEntry {
+        let entry = synced(word: word, translation: translation)
+        entry.syncStatus = VocabularySyncState.pending.rawValue
+        entry.actionType = VocabularySyncAction.add.rawValue
+        return entry
+    }
+
+    static var single: [VocabularyEntry] {
+        [synced(word: "serendipity", translation: "機緣巧合")]
+    }
+
+    static var populated: [VocabularyEntry] {
+        [
+            synced(word: "serendipity", translation: "機緣巧合"),
+            synced(word: "ephemeral", translation: "短暫的", partOfSpeech: "adj."),
+            synced(word: "petrichor", translation: "雨後泥土香"),
+            synced(word: "ineffable", translation: "難以言喻的", partOfSpeech: "adj."),
+            pendingAdd(word: "quintessential", translation: "典型的"),
+        ]
+    }
+
+    static var long: [VocabularyEntry] {
+        (1...40).map { idx in
+            synced(
+                word: "knowledge-word-\(idx)",
+                translation: "知識單字 \(idx)",
+                bookTitle: "Book \(idx % 5)"
+            )
+        }
+    }
+}
+
+// MARK: - Logged-in mock (DEBUG only)
+
+/// Minimal `AuthManaging` mock so the populated/empty list paths render the real
+/// `KGVocabView` instead of the logged-out empty card. `@MainActor` (the
+/// protocol is `@MainActor`-isolated) → constructed inside the scene body.
+private final class VocabularyListViewPreviewAuth: AuthManaging {
+    var isLoggedIn: Bool
+    var userId: String?
+    var token: String?
+    var displayName: String?
+    var userEmail: String?
+    var avatarURL: URL?
+    var authError: String?
+    var isAuthenticating: Bool = false
+    var isDemoMode: Bool = false
+
+    init(isLoggedIn: Bool) {
+        self.isLoggedIn = isLoggedIn
+        self.userId = isLoggedIn ? "preview-user" : nil
+        self.token = isLoggedIn ? "preview-token" : nil
+    }
+
+    func enterDemoMode(modelContainer: ModelContainer) {}
+    func exitDemoMode(modelContainer: ModelContainer) {}
+    func refreshSessionIfNeeded() {}
+    func login(userId: String, token: String) {}
+    func login(customToken: String) async {}
+    func logout(modelContainer: ModelContainer?, reason: String) {}
+    func loginWithGoogle(modelContainer: ModelContainer?) {}
+    func loginWithApple(modelContainer: ModelContainer?) {}
+}
+
+// MARK: - Scene harness
+
+/// `@MainActor` body so the in-memory container is seeded and the
+/// `MainActor.assumeIsolated` env-default services resolve on the main actor
+/// before `@Query` reads. Mirrors `ArchivedVocabScene`.
+private struct VocabularyListViewScene: View {
+    let container: ModelContainer
+    let auth: VocabularyListViewPreviewAuth
+
+    init(entries: [VocabularyEntry], loggedIn: Bool) {
+        let container = try! ModelContainer(
+            for: VocabularyEntry.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = container.mainContext
+
+        let notebook = Notebook(remoteId: "default", name: "我的單字本", isDefault: true)
+        notebook.syncStatus = 1
+        context.insert(notebook)
+
+        for entry in entries {
+            context.insert(entry)
+        }
+        try? context.save()
+
+        self.container = container
+        self.auth = VocabularyListViewPreviewAuth(isLoggedIn: loggedIn)
+    }
+
+    var body: some View {
+        AppThemeContainer {
+            NavigationStack {
+                VocabularyListView(notebookId: "default")
+            }
+            .modelContainer(container)
+            .environment(\.authManager, auth)
+        }
+        .environmentObject(AppAppearanceStore.preview)
+    }
+}
+#endif
