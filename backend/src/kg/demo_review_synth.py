@@ -13,8 +13,9 @@ review_streak / last_reviewed_at / last_review_feedback / review_interval_hours)
   視窗,間隔依 SRS 慣例越早越大;保證嚴格遞增(µs 級夾),視窗異常(created≥last)時
   退化為自末次往前 µs 堆疊。輸入 timestamp 一律先正規化為 tz-aware UTC(來源 cards.db
   存 naive 'YYYY-MM-DD HH:MM:SS.ffffff',若不轉 store 會拒收)。
-* **event_id** = ``demo-<card_id>-<chronological_index>`` → 穩定;重跑經 store 的
-  event_id 去重而冪等。
+* **event_id** = ``uuid5(NS, "demo-<card_id>-<index>")`` → 確定式穩定(重跑經 store 的
+  event_id 去重而冪等)且為合法 UUID(iOS mergeReviewEvents 的 UUID(uuidString:) guard
+  會丟棄非 UUID 的 event_id,故合成 id 必須是 UUID,見 #2)。
 
 刻意不用 RNG —— 跨卡 heatmap 多樣性來自每張卡相異的真實 anchor/N/interval,
 不需注入隨機,且保證確定式重跑。
@@ -22,11 +23,22 @@ review_streak / last_reviewed_at / last_review_feedback / review_interval_hours)
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from .api_models.review import ReviewEventEntry
+
+# 合成 SoT 事件的固定命名空間。event_id = uuid5(NS, "demo-<card>-<i>"):確定式(同卡同序
+# → 同 id,經 store 的 event_id 去重而冪等)且為**合法 UUID** —— iOS mergeReviewEvents 的
+# UUID(uuidString:) guard 會丟棄非 UUID 的 event_id,舊的 "demo-..." 字串會讓整批合成複習史
+# 在 iOS 端被靜默丟棄(#2)。
+_SYNTH_NAMESPACE = uuid.UUID("6f1d2c3a-0b4e-5a6f-8c9d-2e1f0a3b4c5d")
+
+
+def _synth_review_event_id(card_id: str, index: int) -> str:
+    return str(uuid.uuid5(_SYNTH_NAMESPACE, f"demo-{card_id}-{index}"))
 
 # SRS 間隔向過去回推的成長係數(越早的複習間隔越小)。約 1.7 ≈ SuperMemo ease 區間。
 _INTERVAL_GROWTH = 1.7
@@ -189,7 +201,7 @@ def synthesize_review_events(card: CardReviewState) -> list[ReviewEventEntry]:
         next_review_after = (reviewed + timedelta(hours=interval_after)).isoformat()
         events.append(
             ReviewEventEntry(
-                event_id=f"demo-{card.card_id}-{i}",
+                event_id=_synth_review_event_id(card.card_id, i),
                 card_id=card.card_id,
                 word_snapshot=card.content,
                 notebook_id=card.notebook_id,

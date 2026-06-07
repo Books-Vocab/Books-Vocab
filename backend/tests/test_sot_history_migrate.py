@@ -157,7 +157,7 @@ def test_apply_purges_old_review_event_junk(tmp_path):
     assert report.review_events_old_purged == 1
     store = ReviewEventStore(user_dir / "review_events.db")
     pulled, _ = pull_review_events(since=None, event_store=store)
-    assert all(e.event_id.startswith("demo-") for e in pulled)  # 垃圾沒了,只剩合成
+    assert all(e.is_synthetic for e in pulled)        # 垃圾沒了,只剩合成
     assert not any(e.card_id is None for e in pulled)
 
 
@@ -258,10 +258,14 @@ def test_rerun_apply_preserves_real_events(tmp_path):
 
     store2 = ReviewEventStore(user_dir / "review_events.db")
     pulled, _ = pull_review_events(since=None, event_store=store2)
+    import uuid as _uuid
     ids = {e.event_id for e in pulled}
     assert "real-ios-1" in ids                  # 真實事件保住
     assert any(e.is_synthetic for e in pulled)  # 合成仍在
-    assert any(e.event_id.startswith("demo-") for e in pulled)
+    # 合成 id 為合法 UUID(iOS 不會丟棄)
+    for e in pulled:
+        if e.is_synthetic:
+            _uuid.UUID(e.event_id)
 
 
 def test_multiple_notebooks_are_all_migrated(tmp_path):

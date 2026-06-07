@@ -113,10 +113,27 @@ def test_event_ids_unique_stable_and_carry_card_metadata():
     events = synthesize_review_events(card)
     ids = [e.event_id for e in events]
     assert len(set(ids)) == 5
-    assert all(eid.startswith("demo-abc123-") for eid in ids)
     assert all(e.word_snapshot == "ephemeral" for e in events)
     assert all(e.notebook_id == "nbk" for e in events)
     assert all(e.card_id == "abc123" for e in events)
+
+
+def test_event_ids_are_valid_uuids():
+    """合成 review event_id 必須是合法 UUID,否則 iOS mergeReviewEvents 的
+    UUID(uuidString:) guard 會整批丟棄合成複習史(#2)。仍須確定式 + 唯一。"""
+    import uuid
+
+    card = _state(review_count=5, card_id="abc123")
+    events = synthesize_review_events(card)
+    for e in events:
+        parsed = uuid.UUID(e.event_id)  # 非法 → ValueError
+        assert str(parsed) == e.event_id  # 規範化 36 字元含連字號形式
+    # 確定式:重跑同卡 → 同 id(經 event_id 去重而冪等)
+    again = synthesize_review_events(card)
+    assert [e.event_id for e in events] == [e.event_id for e in again]
+    # 不同卡 → 不同 id 空間
+    other = synthesize_review_events(_state(review_count=5, card_id="xyz789"))
+    assert set(e.event_id for e in events).isdisjoint(e.event_id for e in other)
 
 
 def test_deterministic_across_calls():
