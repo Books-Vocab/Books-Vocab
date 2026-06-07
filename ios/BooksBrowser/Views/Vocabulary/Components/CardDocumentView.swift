@@ -72,7 +72,7 @@ struct CardDocumentView: View {
     }
 }
 
-private struct CardDocumentHeroBlock: View {
+    struct CardDocumentHeroBlock: View {
     @Environment(\.appSkin) private var appSkin
     @Environment(\.speechService) private var speechService
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -134,7 +134,7 @@ private struct CardDocumentHeroBlock: View {
     }
 }
 
-private struct CardDocumentExampleBlock: View {
+    struct CardDocumentExampleBlock: View {
     @Environment(\.appSkin) private var appSkin
     let paragraph: CardDocumentParagraph
     var truncateRadius: Int? = nil
@@ -172,7 +172,7 @@ private struct CardDocumentExampleBlock: View {
     }
 }
 
-private struct CardDocumentMeaningBlock: View {
+    struct CardDocumentMeaningBlock: View {
     @Environment(\.appSkin) private var appSkin
     let meaning: CardDocumentMeaning
     var compact: Bool = false
@@ -209,7 +209,7 @@ private struct CardDocumentMeaningBlock: View {
     }
 }
 
-private struct CardDocumentSourceBlock: View {
+    struct CardDocumentSourceBlock: View {
     @Environment(\.appSkin) private var appSkin
     let source: CardDocumentSource
 
@@ -238,7 +238,7 @@ private struct CardDocumentSourceBlock: View {
     }
 }
 
-private struct CardDocumentCollocationsBlock: View {
+    struct CardDocumentCollocationsBlock: View {
     @Environment(\.appSkin) private var appSkin
     let items: [String]
     var compact: Bool = false
