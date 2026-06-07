@@ -81,6 +81,16 @@ struct CatalogScene: View {
                 ],
                 register: VocabScenarios.register
             ),
+            .init(
+                id: "word_detail",
+                categories: ["Word Detail · Sheet", "Word Detail · Card Document"],
+                register: WordDetailScenarios.register
+            ),
+            .init(
+                id: "podcast_player",
+                categories: ["Podcast · Subtitle", "Podcast · Episode Row"],
+                register: PodcastPlayerScenarios.register
+            ),
             .init(id: "settings", categories: ["Settings"], register: SettingsScenarios.register),
             .init(id: "today_review", categories: ["Today Review"], register: TodayReviewScenarios.register),
             .init(id: "bookshelf", categories: ["Bookshelf"], register: BookshelfScenarios.register),
