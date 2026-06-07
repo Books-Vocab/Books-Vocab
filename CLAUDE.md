@@ -42,7 +42,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `cleanup` | `/cleanup` 或「收尾」 | merge PRs → update docs → git cleanup → test → deploy |
+| `cleanup` | `/cleanup` 或「收尾」 | 先盤四層真相(origin/main / local committed / local uncommitted / docs debt) → 單一 final worktree 吞完 → 一次驗證 → 清平 branch/worktree/local changes/doc-debt |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 | `steward` | 「steward N」「audit N個」「codebase 健康度」「修到 N 個」「steward backend/ N」 | **Codebase 管家模式** — 使用者設目標改善數，自動多輪並行掃描 + behavior-preserving 優化直到達標，輸出單一 PR。 |
 
