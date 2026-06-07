@@ -28,6 +28,7 @@ TEST_FILE=""
 TEST_SCOPE="unit"
 SPECIFIC_TESTS=()
 LIST_ONLY=0
+TEST_SCHEME="BooksBrowser"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,6 +65,7 @@ ios_test_build_input_paths() {
     printf '%s\n' \
       "ios/BooksBrowser.xcodeproj/project.pbxproj" \
       "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowser.xcscheme" \
+      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowserUnitTests.xcscheme" \
       "ios/BooksBrowser.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
     rg --files ios/BooksBrowser ios/BooksBrowserTests ios/BooksBrowserUITests -g '*.swift' -g '*.plist'
   } | sort -u
@@ -75,6 +77,7 @@ ios_test_build_cache_key() {
   {
     printf 'destination=%s\n' "$DESTINATION"
     printf 'scope=%s\n' "$TEST_SCOPE"
+    printf 'scheme=%s\n' "$TEST_SCHEME"
     printf 'xcode=%s\n' "$xcode_version"
     while IFS= read -r relative_path; do
       [[ -f "$PROJECT_ROOT/$relative_path" ]] || continue
@@ -120,13 +123,16 @@ case "$TEST_SCOPE" in
   unit)
     TEST_TARGET="BooksBrowserTests"
     TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+    TEST_SCHEME="BooksBrowserUnitTests"
     ;;
   ui)
     TEST_TARGET="BooksBrowserUITests"
     TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserUITests"
+    TEST_SCHEME="BooksBrowser"
     ;;
   all)
     TEST_TARGET=""
+    TEST_SCHEME="BooksBrowser"
     ;;
   *)
     echo "[ios_test] internal error: unknown test scope '$TEST_SCOPE'" >&2
@@ -276,7 +282,7 @@ run_xcodebuild_test_once() {
   xcode_start_ms="$(ios_test_now_ms)"
   xcodebuild test \
     -project "$XCODEPROJ" \
-    -scheme BooksBrowser \
+    -scheme "$TEST_SCHEME" \
     -destination "$DESTINATION" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
@@ -380,7 +386,7 @@ rebuild_test_cache() {
   build_start_ms="$(ios_test_now_ms)"
   xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
-    -scheme BooksBrowser \
+    -scheme "$TEST_SCHEME" \
     -destination "$DESTINATION" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
