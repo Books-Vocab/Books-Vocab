@@ -63,7 +63,12 @@ cmd_snapshot_json() {
         message:(.message // ""),
         file:(.file // null),
         line:(.line // null),
-        command:(if $kind == "build" then "./ops/ios_ops.sh build" else "./ops/ios_ops.sh test" end)
+        command:(
+          if $kind == "build" then "./ops/ios_ops.sh build"
+          elif $kind == "archive" then "./ops/ios_ops.sh archive"
+          else "./ops/ios_ops.sh test"
+          end
+        )
       }];
     def gate_actions($items; $severity):
       [($items // [])[]? | {
@@ -83,6 +88,40 @@ cmd_snapshot_json() {
         command:$command,
         message:(.error // .detail // .note // "")
       }];
+    def timing_summary($run):
+      {
+        cacheStatus:($run.cache.status // null),
+        totalMs:($run.timings.totalMs // null),
+        bootMs:($run.timings.bootMs // null),
+        xcodebuildMs:($run.timings.xcodebuildMs // null),
+        buildForTestingMs:($run.timings.buildForTestingMs // null),
+        testInvocationMs:($run.timings.testInvocationMs // null),
+        testBodyMs:($run.timings.testBodyMs // null),
+        xcresultSessionMs:($run.timings.xcresultSessionMs // null),
+        xcresultHarnessOverheadMs:($run.timings.xcresultHarnessOverheadMs // null),
+        appLaunchAverageMs:($run.timings.appLaunchAverageMs // null),
+        appLaunchSamples:($run.timings.appLaunchSamples // null),
+        invocationOverheadMs:($run.timings.invocationOverheadMs // null)
+      };
+    def archive_timing_summary($run):
+      {
+        totalMs:($run.timings.totalMs // null),
+        lockWaitMs:($run.timings.lockWaitMs // null),
+        archiveMs:($run.timings.archiveMs // null),
+        exportMs:($run.timings.exportMs // null),
+        uploadMs:($run.timings.uploadMs // null)
+      };
+    def simulator_timing_summary($simulator):
+      if $simulator == null then
+        null
+      else
+        {
+          totalMs:($simulator.timings.totalMs // null),
+          simctlDevicesMs:($simulator.timings.simctlDevicesMs // null),
+          appContainerMs:($simulator.timings.appContainerMs // null),
+          appProcessMs:($simulator.timings.appProcessMs // null)
+        }
+      end;
     (
       n($gate.summary.blocks) as $gateBlocks
       | n($gate.summary.warnings) as $gateWarnings
@@ -93,6 +132,8 @@ cmd_snapshot_json() {
       | n($runs.test.diagnostics.counts.errors) as $testErrors
       | n($runs.test.diagnostics.counts.warnings) as $testWarnings
       | n($runs.test.diagnostics.counts.failedTests) as $testFailures
+      | n($runs.archive.diagnostics.counts.errors) as $archiveErrors
+      | n($runs.archive.diagnostics.counts.warnings) as $archiveWarnings
       | (if $xcode == null then 0 else ($xcode.errors // [] | length) end) as $xcodeErrors
       | (if $simulator == null then 0 elif $simulator.status == "error" then (($simulator.errors // []) | length) else 0 end) as $simulatorErrors
       | (if $logs == null then 0 else n($logs.summary.filteredCount) end) as $runtimeLogs
@@ -100,6 +141,7 @@ cmd_snapshot_json() {
           gate_actions($gate.blocks; "block")
           + diag_actions("build"; $runs.build.diagnostics)
           + diag_actions("test"; $runs.test.diagnostics)
+          + diag_actions("archive"; $runs.archive.diagnostics)
           + source_errors("xcode"; (if $xcode == null then [] else $xcode.errors end); "warn"; "./ops/ios_ops.sh xcode --json")
           + source_errors("simulator"; (if $simulator == null then [] else $simulator.errors end); "warn"; "./ops/ios_ops.sh simulator status --json")
           + gate_actions($gate.warnings; "warn")
@@ -110,8 +152,8 @@ cmd_snapshot_json() {
       generated_at:$generated_at,
       summary:{
         verdict:(
-          if ($gateBlocks + $buildErrors + $testErrors + $testFailures) > 0 then "block"
-          elif ($gateWarnings + $buildWarnings + $testWarnings + $xcodeErrors + $simulatorErrors) > 0 then "warn"
+          if ($gateBlocks + $buildErrors + $testErrors + $testFailures + $archiveErrors) > 0 then "block"
+          elif ($gateWarnings + $buildWarnings + $testWarnings + $archiveWarnings + $xcodeErrors + $simulatorErrors) > 0 then "warn"
           else "pass"
           end
         ),
@@ -125,11 +167,19 @@ cmd_snapshot_json() {
           testErrors:$testErrors,
           testWarnings:$testWarnings,
           testFailures:$testFailures,
+          archiveErrors:$archiveErrors,
+          archiveWarnings:$archiveWarnings,
           xcodeErrors:$xcodeErrors,
           simulatorErrors:$simulatorErrors,
           runtimeLogs:$runtimeLogs
         },
-        nextActions:$nextActions
+        nextActions:$nextActions,
+        timings:{
+          build: timing_summary($runs.build),
+          test: timing_summary($runs.test),
+          archive: archive_timing_summary($runs.archive),
+          simulator: simulator_timing_summary($simulator)
+        }
       },
       project:$doctor.project,
       organizer:$doctor.organizer,
@@ -149,7 +199,18 @@ cmd_snapshot_text_from_json() {
   local payload="$1"
   jq -r '
     .summary.counts as $c
-    | "[ios][summary] schema=\(.schema) verdict=\(.summary.verdict) gateBlocks=\($c.gateBlocks) gateWarnings=\($c.gateWarnings) gateTodos=\($c.gateTodos) buildErrors=\($c.buildErrors) buildWarnings=\($c.buildWarnings) testErrors=\($c.testErrors) testWarnings=\($c.testWarnings) testFailures=\($c.testFailures) xcodeErrors=\($c.xcodeErrors) simulatorErrors=\($c.simulatorErrors) runtimeLogs=\($c.runtimeLogs)",
+    | .summary.timings as $t
+    | "[ios][summary] schema=\(.schema) verdict=\(.summary.verdict) gateBlocks=\($c.gateBlocks) gateWarnings=\($c.gateWarnings) gateTodos=\($c.gateTodos) buildErrors=\($c.buildErrors) buildWarnings=\($c.buildWarnings) testErrors=\($c.testErrors) testWarnings=\($c.testWarnings) testFailures=\($c.testFailures) archiveErrors=\($c.archiveErrors) archiveWarnings=\($c.archiveWarnings) xcodeErrors=\($c.xcodeErrors) simulatorErrors=\($c.simulatorErrors) runtimeLogs=\($c.runtimeLogs)",
+      "[ios][timing] build cacheStatus=\($t.build.cacheStatus // "n/a") totalMs=\($t.build.totalMs // "n/a") bootMs=\($t.build.bootMs // "n/a") xcodebuildMs=\($t.build.xcodebuildMs // "n/a")",
+      "[ios][timing] test cacheStatus=\($t.test.cacheStatus // "n/a") totalMs=\($t.test.totalMs // "n/a") bootMs=\($t.test.bootMs // "n/a") buildForTestingMs=\($t.test.buildForTestingMs // "n/a") testInvocationMs=\($t.test.testInvocationMs // "n/a") testBodyMs=\($t.test.testBodyMs // "n/a") xcresultSessionMs=\($t.test.xcresultSessionMs // "n/a") appLaunchAverageMs=\($t.test.appLaunchAverageMs // "n/a") appLaunchSamples=\($t.test.appLaunchSamples // "n/a") invocationOverheadMs=\($t.test.invocationOverheadMs // "n/a")",
+      "[ios][timing] archive totalMs=\($t.archive.totalMs // "n/a") lockWaitMs=\($t.archive.lockWaitMs // "n/a") archiveMs=\($t.archive.archiveMs // "n/a") exportMs=\($t.archive.exportMs // "n/a") uploadMs=\($t.archive.uploadMs // "n/a")",
+      (
+        if $t.simulator == null then
+          "[ios][timing] simulator totalMs=n/a simctlDevicesMs=n/a appContainerMs=n/a appProcessMs=n/a"
+        else
+          "[ios][timing] simulator totalMs=\($t.simulator.totalMs // "n/a") simctlDevicesMs=\($t.simulator.simctlDevicesMs // "n/a") appContainerMs=\($t.simulator.appContainerMs // "n/a") appProcessMs=\($t.simulator.appProcessMs // "n/a")"
+        end
+      ),
       (
         if (.summary.nextActions | length) == 0 then
           "[ios][next] none"
@@ -161,6 +222,7 @@ cmd_snapshot_text_from_json() {
       "[ios][snapshot] gate verdict=\(.gate.verdict // "unknown") blocks=\(.gate.summary.blocks // 0) warnings=\(.gate.summary.warnings // 0) todos=\(.gate.summary.todos // 0) manual=\(.gate.summary.manual // 0)",
       "[ios][snapshot] run kind=build result=\(.runs.build.result // "unknown") errors=\($c.buildErrors) warnings=\($c.buildWarnings) log=\(.runs.build.artifacts.log // "") xcresult=\(.runs.build.artifacts.xcresult // "")",
       "[ios][snapshot] run kind=test result=\(.runs.test.result // "unknown") executed=\(.runs.test.executed // "n/a") errors=\($c.testErrors) warnings=\($c.testWarnings) failures=\($c.testFailures) log=\(.runs.test.artifacts.log // "") xcresult=\(.runs.test.artifacts.xcresult // "")",
+      "[ios][snapshot] run kind=archive result=\(.runs.archive.result // "unknown") errors=\($c.archiveErrors) warnings=\($c.archiveWarnings) log=\(.runs.archive.artifacts.log // "") xcresult=\(.runs.archive.artifacts.xcresult // "")",
       (if .xcode == null then "[ios][snapshot] xcode=skipped" else "[ios][snapshot] xcode version=\(.xcode.xcode.version // "unknown") build=\(.xcode.xcode.build // "unknown") destinations=\(.xcode.destinations.available | length) ineligible=\(.xcode.destinations.ineligible | length)" end),
       (if .simulator == null then "[ios][snapshot] simulator=skipped" else "[ios][snapshot] simulator status=\(.simulator.status) device=\(.simulator.device.name // "none") appProcess=\(.simulator.app.process.status // "unknown")" end),
       (if .logs == null then "[ios][snapshot] logs=skipped" else "[ios][snapshot] logs emitted=\(.logs.summary.emittedCount // 0) filtered=\(.logs.summary.filteredCount // 0) since=\(.logs.since // "")" end)

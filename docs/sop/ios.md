@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 219e0f94
+verified_against: e128e12f
 -->
 # BooksBrowser iOS 開發技能
 
@@ -47,12 +47,15 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ./ops/ios_ops.sh build                  # 委派 ios_build.sh，結束即列 warnings/errors diagnostics
 ./ops/ios_ops.sh test --file FooTests.swift
 ./ops/ios_ops.sh archive                # archive + export，預設不上傳
+./ops/ios_ops.sh archive --json         # machine-readable archive/export/upload report:kg.ios.archive.v1
 ./ops/ios_ops.sh archive --upload       # 明示才上傳 TestFlight
 ./ops/ios_ops.sh archives latest        # 本機 Organizer latest archive
 ./ops/ios_ops.sh issues --log <log>     # 解析既有 xcodebuild log
-./ops/ios_ops.sh logs --since 5m        # runtime log，過濾常見 Apple framework 噪音
+./ops/ios_ops.sh logs --since 5m        # runtime log 回溯快照（log show），過濾常見 Apple framework 噪音
 ./ops/ios_ops.sh logs --json --limit 200 # 同上，輸出 kg.ios.logs.v1 結構化 JSON
-./ops/ios_ops.sh sentry                 # iOS Sentry wiring 摘要
+./ops/ios_ops.sh logs --follow          # 即時串流（log stream）；--limit N 為 stop-after-N gate
+./ops/ios_ops.sh logs --follow --json   # 即時串流，逐行輸出 kg.ios.log-stream.v1（一行一物件）
+./ops/ios_ops.sh sentry [--json]        # iOS Sentry wiring 摘要 / schema=kg.ios.sentry.v1
 ./ops/ios_ops.sh workflow release       # read-only 發版工作流：下一步命令 + todo/ready/block/warn/manual
 ./ops/ios_ops.sh workflow release --json # 同上，輸出 kg.ios.workflow.v1 結構化 JSON
 ./ops/ios_ops.sh gate release --json    # release hard-stop verdict:0 pass / 1 warn / 2 block
@@ -76,19 +79,23 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 `ios_ops.sh doctor` 是 release readiness 儀表板:read-only 彙總 project `MARKETING_VERSION(CURRENT_PROJECT_VERSION)`、Organizer latest archive、TestFlight latest build、ASC version state、manual signing export options、StoreKit scheme/file、Sentry release wiring。ASC version-state 查詢有短 deadline，逾時只會 `status=warn`，不阻塞本機 readiness。`status=block` 代表發版前必修（例如 build number 未增加），`status=warn` 代表資訊缺失或 local artifact 落後。agent/CI 要少調用工具時用 `--json`，schema 為 `kg.ios.doctor.v1`，核心陣列是 `readiness[]`。
 
+`ios_ops.sh status --json` 是更輕量的 quick summary：只回 `kg.ios.status.v1`，含 project version/build、Organizer latest archive 與 TestFlight latest build，不做 readiness/gate 判斷。適合 agent 第一輪只想知道「現在 local/Organizer/TestFlight 各是多少」時使用。
+
 `ios_ops.sh workflow release` 是 read-only 發版操作編排:輸出 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`。它不跑測試/編譯/archive/upload,只根據目前 project/Organizer/TestFlight/ASC state 列下一步命令;submit/resubmit 邊界仍標 `manual`，因為 ASC submit-for-review / 撤回送審刻意不做 CLI 寫入。agent/CI 要直接讀步驟時用 `--json`，schema 為 `kg.ios.workflow.v1`，核心陣列是 `steps[]`。
 
 `ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`1=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步,但不讓 gate 永遠失敗。`block` 只來自 readiness/workflow 的 `status=block`（例如 TestFlight build number 未增加）。
 
 `ios_ops.sh xcode --json` 是 Xcode Project Navigator / destination selector / Devices 視角的 read-only inventory:schema 為 `kg.ios.xcode.v1`,組合 `xcodebuild -version`、`xcode-select -p`、`xcodebuild -list -json`、`xcodebuild -showdestinations` 與 `xcrun simctl list devices --json`。輸出包含 Xcode 版本、DeveloperDir、project configurations/schemes/targets、destinations `available[]`/`ineligible[]`、simulator runtimes/devices 與 booted/available summary。各來源都有 `sources.*.status/exitCode/error`,頂層 `errors[]` 保留 CLI failure 診斷;來源失敗時仍輸出可解析 JSON。文字 alias `environment` 供人掃第一屏;agent 要選 `--destination` 或確認 booted simulator 時讀 JSON。
 
-`ios_ops.sh simulator status --json` / `sim status --json` 是 Simulator GUI 狀態的窄面:schema 為 `kg.ios.simulator.v1`,組合 `xcrun simctl list devices --json`、`xcrun simctl get_app_container booted com.Max0228.BooksBrowser data` 與 `xcrun simctl spawn <device> pgrep -x BooksBrowser`,回傳 booted device、app data container、app process `running|stopped|skipped|unknown` 與 errors[]。app 沒在跑是觀測狀態(`process.status=stopped`,pgrep exit 1),不讓整體 status 失敗;沒有 booted simulator 才回穩定 JSON + exit 1。`ios_ops.sh simulator launch --json` / `terminate --json` 對齊 Xcode Run/Stop toolbar 的窄面:底層只呼叫官方 `xcrun simctl launch|terminate`,然後重新讀 BooksBrowser process,回傳 `app.lifecycle` 與 `app.process`。它不 build、不 install、不 boot、不改 ASC;launch 需要 app 已安裝。`ios_ops.sh simulator screenshot --out <png> --json` 只做本機 artifact side effect,底層是 `xcrun simctl io <device> screenshot <png>`。
+`ios_ops.sh simulator status --json` / `sim status --json` 是 Simulator GUI 狀態的窄面:schema 為 `kg.ios.simulator.v1`,組合 `xcrun simctl list devices --json`、`xcrun simctl get_app_container booted com.Max0228.BooksBrowser data` 與 host-side `ps -axo pid,command` probe（以 device UDID + `BooksBrowser.app/BooksBrowser` 鎖定 simulator app process），回傳 booted device、app data container、app process `running|stopped|skipped|unknown` 與 errors[]。app 沒在跑是觀測狀態(`process.status=stopped`,probe exit 1),不讓整體 status 失敗;沒有 booted simulator 才回穩定 JSON + exit 1。每個 simulator action 現在都會帶 `timings`：`status` 含 `simctlDevicesMs/appContainerMs/appProcessMs/totalMs`，`ensure-booted` 含 `resolveMs/bootMs/bootstatusMs/totalMs`，`launch|terminate` 含 `statusMs/lifecycleMs/appProcessMs/totalMs`，`screenshot` 含 `statusMs/screenshotMs/totalMs`；文字模式也會印對應 `[ios][simulator] timings ...`。`ios_ops.sh simulator launch --json` / `terminate --json` 對齊 Xcode Run/Stop toolbar 的窄面:底層只呼叫官方 `xcrun simctl launch|terminate`,然後重新讀 BooksBrowser process,回傳 `app.lifecycle` 與 `app.process`。它不 build、不 install、不 boot、不改 ASC;launch 需要 app 已安裝。`ios_ops.sh simulator screenshot --out <png> --json` 只做本機 artifact side effect,底層是 `xcrun simctl io <device> screenshot <png>`。
 
-`ios_ops.sh runs --json` 是 Xcode Report Navigator + Issue Navigator 的輕量對應面:schema 為 `kg.ios.runs.v1`,讀最近 `ios_build.sh` / `ios_test.sh` 寫出的 verdict file,回傳 build/test result、caller、elapsed、executed tests、log path、xcresult path、artifact 是否仍存在,並在每個 run 內嵌 `diagnostics`:`kg.ios.diagnostics.v1`。diagnostics 優先讀官方 `.xcresult`,不可讀時用 raw log fallback;缺 artifact 時給穩定 `source:"missing-artifacts"` 空摘要,不讓 `runs`/`snapshot` 中斷。新 verdict 優先讀 `.json`（避免含空白 path 被 legacy `KEY=value` 格式截斷）,舊單行 verdict 只作相容 fallback；含空白 path 的準確 artifact 判定以 JSON verdict 為準。它不重跑 build/test。
+`ios_ops.sh runs --json` 是 Xcode Report Navigator + Issue Navigator 的輕量對應面:schema 為 `kg.ios.runs.v1`,讀最近 `ios_build.sh` / `ios_test.sh` / `ios_release.sh` 寫出的 verdict file,回傳 build/test/archive result、caller、elapsed、executed tests、log path、xcresult path、artifact 是否仍存在,並在每個 run 內嵌 `diagnostics`:`kg.ios.diagnostics.v1`。diagnostics 優先讀官方 `.xcresult`,不可讀時用 raw log fallback;缺 artifact 時給穩定 `source:"missing-artifacts"` 空摘要,不讓 `runs`/`snapshot` 中斷。新 verdict 優先讀 `.json`（避免含空白 path 被 legacy `KEY=value` 格式截斷）,舊單行 verdict 只作相容 fallback；含空白 path 的準確 artifact 判定以 JSON verdict 為準。archive run 另外保留 `timings.lockWaitMs/archiveMs/exportMs/uploadMs/totalMs`，可直接判斷發版成本花在哪一段。它不重跑 build/test/archive。
 
-`ios_ops.sh logs --json` 是 Xcode Console 的輕量對應面:schema 為 `kg.ios.logs.v1`,資料源是 Apple Unified Logging 官方 CLI `/usr/bin/log show --style ndjson`。輸出包含 `summary.rawCount` / `filteredCount` / `emittedCount` / `byEventType` 與 `entries[]`（timestamp、eventType、processID、subsystem、category、message、sender）；常見 RunningBoard/WebKit assertion 噪音會先過濾。`--limit` 只限制輸出的 entries 數量,不重跑 app。
+`ios_ops.sh logs --json` 是 Xcode Console 的輕量對應面:schema 為 `kg.ios.logs.v1`,資料源是 Apple Unified Logging 官方 CLI `/usr/bin/log show --style ndjson`（回溯快照）。輸出包含 `summary.rawCount` / `filteredCount` / `emittedCount` / `byEventType` 與 `entries[]`（timestamp、eventType、processID、subsystem、category、message、sender）；常見 RunningBoard/WebKit assertion 噪音會先過濾。`--limit` 只限制輸出的 entries 數量,不重跑 app。
 
-`ios_ops.sh snapshot --json` 是 agent 第一輪狀態入口:schema 為 `kg.ios.snapshot.v1`,合併 project、Organizer latest、TestFlight latest、`readiness[]`、release `workflow.steps[]`、release `gate` verdict、Xcode `xcode` inventory、Simulator `simulator` 狀態與最近 `runs`。頂層 `summary` 是第一屏判讀層:`summary.verdict=pass|warn|block`,`summary.counts` 聚合 gate/build/test/xcode/simulator/runtime counts,`summary.nextActions[]` 把 gate hard-stop/todo、build/test diagnostics、xcode/simulator observation errors 轉成可直接執行或檢查的 action。非 JSON 文字模式也共用同一份 snapshot JSON formatter,第一行固定是 `[ios][summary]`,後續先列 `[ios][next]`,不再輸出舊式 `phase=doctor` dump。`runs.build.diagnostics` / `runs.test.diagnostics` 仍保留完整 `kg.ios.diagnostics.v1`,讓第一輪 payload 就有可行動問題,不用再二次跑 `issues` 或 grep log。預設不查 unified log,所以 `logs` 欄位為 `null`;需要 Xcode Console 視角時加 `--include-logs --log-since 5m --log-limit 200`,snapshot 會內嵌同一份 `kg.ios.logs.v1`。預設會查 `kg.ios.xcode.v1` 讓 agent 第一輪就有 scheme/destination/simulator inventory 視角;需要快速 dashboard 時加 `--skip-xcode`,此時 `xcode:null`。預設也會查 `kg.ios.simulator.v1` 讓 agent 第一輪知道 booted device、app container 與 BooksBrowser process `running|stopped|skipped|unknown`;需要跳過 Simulator GUI 狀態時加 `--skip-simulator`,此時 `simulator:null`。沒有 booted simulator 時 snapshot 仍回 0 並把 `.simulator.status` 設為 `error`,避免 dashboard 因觀測缺口中斷;log provider 失敗則仍傳遞非零 exit。snapshot 只做觀測並回傳 gate 物件,不因 gate warn/block 自己失敗;需要 hard-stop exit code 時跑 `ios_ops.sh gate release --json`。它仍是 read-only，只組合既有 `doctor --json`、`workflow release --json`、gate helper、`xcode --json`、`simulator status --json`、`runs --json` 與可選 `logs --json`;人要看文字 dashboard 可用 `ios_ops.sh snapshot` 或 alias `dashboard`。
+`ios_ops.sh logs --follow` 是同一面的即時串流變體,改走 `/usr/bin/log stream`（compact 文字;`--json` 改 `log stream --style ndjson`,逐行輸出 `kg.ios.log-stream.v1`,一行一 JSON 物件便於串流消費）。沿用同一份 noise 過濾;`--limit N` 在 follow 模式是 stop-after-N gate（預設無界）,`--since` 不適用。串流長駐,適合 `simulator launch` 後即時盯 log;主線請用鐵律 5 的背景執行(`run_in_background`),由 notification 取增量。底層 producer 被 `head` 關閉(達 limit)收 SIGPIPE 視為正常終止,真實 `log stream` 失敗才傳遞非零 exit。
+
+`ios_ops.sh snapshot --json` 是 agent 第一輪狀態入口:schema 為 `kg.ios.snapshot.v1`,合併 project、Organizer latest、TestFlight latest、`readiness[]`、release `workflow.steps[]`、release `gate` verdict、Xcode `xcode` inventory、Simulator `simulator` 狀態與最近 `runs`。頂層 `summary` 是第一屏判讀層:`summary.verdict=pass|warn|block`,`summary.counts` 聚合 gate/build/test/archive/xcode/simulator/runtime counts,`summary.nextActions[]` 把 gate hard-stop/todo、build/test/archive diagnostics、xcode/simulator observation errors 轉成可直接執行或檢查的 action。非 JSON 文字模式也共用同一份 snapshot JSON formatter,第一行固定是 `[ios][summary]`,後續先列 `[ios][next]`,不再輸出舊式 `phase=doctor` dump。`runs.build.diagnostics` / `runs.test.diagnostics` / `runs.archive.diagnostics` 仍保留完整 `kg.ios.diagnostics.v1`,讓第一輪 payload 就有可行動問題,不用再二次跑 `issues` 或 grep log。預設不查 unified log,所以 `logs` 欄位為 `null`;需要 Xcode Console 視角時加 `--include-logs --log-since 5m --log-limit 200`,snapshot 會內嵌同一份 `kg.ios.logs.v1`。預設會查 `kg.ios.xcode.v1` 讓 agent 第一輪就有 scheme/destination/simulator inventory 視角;需要快速 dashboard 時加 `--skip-xcode`,此時 `xcode:null`。預設也會查 `kg.ios.simulator.v1` 讓 agent 第一輪知道 booted device、app container 與 BooksBrowser process `running|stopped|skipped|unknown`;需要跳過 Simulator GUI 狀態時加 `--skip-simulator`,此時 `simulator:null`。沒有 booted simulator 時 snapshot 仍回 0 並把 `.simulator.status` 設為 `error`,避免 dashboard 因觀測缺口中斷;log provider 失敗則仍傳遞非零 exit。snapshot 只做觀測並回傳 gate 物件,不因 gate warn/block 自己失敗;需要 hard-stop exit code 時跑 `ios_ops.sh gate release --json`。它仍是 read-only，只組合既有 `doctor --json`、`workflow release --json`、gate helper、`xcode --json`、`simulator status --json`、`runs --json` 與可選 `logs --json`;人要看文字 dashboard 可用 `ios_ops.sh snapshot` 或 alias `dashboard`。
 
 `ios_ops.sh commands --json` 是 agent capability catalog:schema 為 `kg.ios.commands.v1`,列每個 subcommand 的 `key`、`aliases`、`sideEffect`、固定 `delegate` 欄位（無委派為 `null`）、用途與輸出 JSON schema。新 agent 不確定能不能寫入或該讀哪個 schema 時先查這個,不要解析 help 文字。
 
@@ -122,27 +129,44 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 ## iOS 測試入口（`ops/ios_ops.sh test` / `ops/ios_test.sh`）
 
-`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。test runner 的 unit scope 走 dedicated `BooksBrowserUnitTests` scheme，UI scope 走 dedicated `BooksBrowserUITests` scheme，先走 `simulator ensure-booted`，再採 cache-first `build-for-testing` / `test-without-building` 重用 `.cache/ios-test-derived-data`；`./ops/ios_ops.sh test --cache-status|--prepare-cache|--clean-cache [--unit|--ui|--all-targets] [--json]` 可顯式管理這層 warm cache。verdict JSON 會寫 `timings.bootMs/buildForTestingMs/testInvocationMs/testBodyMs/xcresultSessionMs/xcresultHarnessOverheadMs/invocationOverheadMs/xcodebuildMs/totalMs` 與 `cache.status`；stdout 第一屏也會有 `[ios][test-timing] testBodyMs=... xcresultSessionMs=...`。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
+`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。test runner 的 unit scope 走 dedicated `BooksBrowserUnitTests` scheme，UI scope 走 dedicated `BooksBrowserUITests` scheme，先走 `simulator ensure-booted`，再採 cache-first `build-for-testing` / `test-without-building` 重用 `.cache/ios-test-derived-data`；`./ops/ios_ops.sh test --cache-status|--prepare-cache|--clean-cache [--unit|--ui|--all-targets] [--json]` 可顯式管理這層 warm cache。verdict JSON 會寫 `timings.bootMs/buildForTestingMs/testInvocationMs/testBodyMs/xcresultSessionMs/xcresultHarnessOverheadMs/appLaunchAverageMs/appLaunchSamples/invocationOverheadMs/xcodebuildMs/totalMs` 與 `cache.status`；stdout 第一屏也會有 `[ios][test-timing] ...`，若 xcresult 含 `XCTApplicationLaunchMetric` 另會印 `[ios][perf] metric=AppLaunch averageMs=...`。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
 
 **第一性原理流程**：測試系統已具備 scope、heartbeat、log preserve、false-green 防護與 DB lock retry；因此 iOS 開發不再採「不主動跑測試」的保守規則，而是採**最小足夠驗證**。
 
 ```bash
+./ops/ios_ops.sh build --json                              # machine-readable kg.ios.run.v1
 ./ops/ios_ops.sh test --timeout 1200                       # 預設只跑 BooksBrowserTests unit target
+./ops/ios_ops.sh test --json                               # machine-readable kg.ios.run.v1
 ./ops/ios_ops.sh test --file NotebookCoverContrastTests.swift
 ./ops/ios_ops.sh test -g "sanitizeOutbox"
 ./ops/ios_ops.sh test --ui --file BooksBrowserUITests.swift # 只跑 UI test 檔案
 ./ops/ios_ops.sh test --ui testLaunchShowsPrimaryTabs       # 只跑 UI test method
+./ops/ios_ops.sh test --launch-benchmark
+./ops/ios_ops.sh test --ui --ui-launch-profile standard testLaunchShowsPrimaryTabs
 ./ops/ios_ops.sh test --all-targets --timeout 1200          # scheme 全量：unit + UI
 ./ops/ios_ops.sh test --file FooTests.swift --list          # 只列 resolved -only-testing selectors
 ```
 
 - 預設 scope 是 `unit`，會自動加 `-only-testing:BooksBrowserTests`；UI tests 不會被誤混進 unit full。
-- `--ui` 會把 discovery target 切到 `BooksBrowserUITests`，支援 `--file` / method selector。
+- `./ops/ios_ops.sh build --json` / 一般 `test --json` 會把 delegate stdout/stderr 導到 stderr，stdout 保留單一 `kg.ios.run.v1` payload；已存在原生 JSON 契約的 `test --cache-status|--prepare-cache|--clean-cache --json` 維持原 schema，不再包一層 run report。
+- `--ui` 會把 discovery target 切到 `BooksBrowserUITests`，支援 `--file` / method selector；未明示時會自動帶 `--ui-launch-profile ui-smoke`，把 UI smoke 驗證切到較輕的 app launch profile。若要回到完整 startup 行為做 baseline / A/B，明示 `--ui-launch-profile standard`。
+- `--launch-benchmark` 是正式的 UI launch perf 入口，固定跑 `BooksBrowserUITests/testLaunchPerformance`；目前以 XCTest 內建 `XCTApplicationLaunchMetric` 預設行為為準，會在第一屏輸出 `appLaunchAverageMs` / `appLaunchSamples` 供比較。
 - `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
 - 測試結束第一屏會列 `[ios][issues] source=xcresult-test-results` 與 `[ios][tests] tests=... passed=... failed=...`；false-green 執行數優先取官方 `.xcresult`，raw log 只作 fallback。
 - 失敗或 inconclusive 時保留完整 xcodebuild log 與 `.xcresult`，stdout 會印出 log / xcresult path；成功時 verdict 也記錄 log / xcresult path。
 - 若 Xcode 回 `build.db database is locked` / `unable to attach DB`，runner 會在同一把 repo lock 內短暫等待並重試，避免把 infrastructure lock 誤判成測試失敗。
 - 若要把 build-for-testing 成本拆出日常迭代回路，先跑 `./ops/ios_ops.sh test --prepare-cache --unit` 或 `--ui`，後續 scoped `test` 會優先重用 `.xctestrun`；`--cache-status --json` 會回 `kg.ios.test-cache.v1`，含 `productsReady` / `xctestrunPath` / `timings.bootMs/buildForTestingMs`。
+- 若要讓 agent/human 在第一屏就看懂時間分布，不要只翻 raw log：`./ops/ios_ops.sh runs --json` 會保留每次 build/test/archive 的 `options` / `cache` / `timings`；`./ops/ios_ops.sh snapshot --json` 會再把它們收斂成 `summary.timings.build|test|archive|simulator`，文字模式固定在 `[ios][summary]` 後緊接 `[ios][timing] build ...` / `[ios][timing] test ...` / `[ios][timing] archive ...` / `[ios][timing] simulator ...`。
+
+### iOS 測試效能經驗固化
+
+- `simulator ensure-booted` 很重要，但它只吃掉 cold boot 那層；若 warm path 仍慢，下一個嫌疑通常是 `test-without-building` 的 host/session，而不是 simulator 本身。
+- 要判斷「是不是 simulator lifecycle 在吞時間」，先看 `kg.ios.simulator.v1.timings`：`bootMs/bootstatusMs` 高代表 cold boot，`statusMs` 高代表你在 launch/terminate/screenshot 前就花在狀態探測，`lifecycleMs` 高才是 `simctl launch|terminate` 本體慢。
+- 不要再依賴 simulator 內 `pgrep` 類工具做 app process probe：iOS 26.4 runtime 上 `pgrep` 會卡 `sysmond service not found`，而且 `simctl spawn` 對 bare command name 的 PATH 行為也不穩。現行做法改成 host-side `ps` + device UDID + app executable path，穩定性更高。
+- `build-for-testing` 要顯式拆出日常回路；不先做 cache reuse，就會把每次 scoped test 的固定成本看錯成 render 成本。
+- `XCTApplicationLaunchMetric` 的 `appLaunchAverageMs` 是單次 app launch 平均，不是整個 UI benchmark wall time；判讀時要同時看 `testBodyMs`、`xcresultSessionMs`、`invocationOverheadMs`。
+- 任何「好像有變快」都不算結論，除非 timing 已回寫到 verdict JSON / `runs` / `snapshot`；沒有進控制面的數字，下一輪 agent 就無法延續判讀。
+- 若某個優化旗標沒有在 xcresult sample count 或 timing 上留下可驗證差異，就不要把它留成表面功能。
 
 ### iOS 開發驗證梯度
 
@@ -170,6 +194,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 ```bash
 ./ops/ios_ops.sh archive              # archive + export 出 .ipa（無對外副作用，預設）
+./ops/ios_ops.sh archive --json       # machine-readable kg.ios.archive.v1
 ./ops/ios_ops.sh archive --upload     # 額外上傳 → TestFlight（對外副作用，需明示）
 ./ops/ios_release.sh                  # primitive:同 archive
 ./ops/ios_release.sh --upload         # primitive:同 archive --upload
@@ -178,6 +203,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 ```
 
 - **產物**：`ios/build/export/BooksBrowser.ipa`（git-ignored）。
+- **JSON façade**：`./ops/ios_ops.sh archive --json` 會把 delegate stdout/stderr 導到 stderr，stdout 保留單一 `kg.ios.archive.v1` payload；語意分成 `archive` / `export` / `upload` 三段，不與一般 `kg.ios.run.v1` 混用。
 - **diagnostics**：archive 階段保留 raw log 與 `Archive.xcresult`，並在第一屏用 `ios_diagnostics.py` 列 warnings/errors；archive 失敗時先看 `[ios][issues]` 與 `xcresult=` path。
 - **簽章**：manual signing — Apple Distribution cert（keychain）+ `KG App Store` profile（`ios/ExportOptions.plist`）。`method=app-store`（Xcode 26 印 deprecated 警告但可用；新式 `app-store-connect` 即使 manual 仍強制 Xcode 內登入 ASC account，純 CLI 不適用）。
 - **build-number guard**：`--upload` 前比對本機 `CURRENT_PROJECT_VERSION`（`-target BooksBrowser`）與 TestFlight 最新 build，重複即中止 — 須先 bump 版號。archive/export 不受此限。
@@ -319,6 +345,7 @@ Apple/Google SSO
 - Bootstrap 順序：`AppCrashReporting.bootstrap()` 在 `BooksBrowserApp.init()` 第一步執行（早於 `ModelContainer` init，捕捉儲存初始化失敗）
 - User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange — 登出時清除，避免多帳戶污染
 - `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 自動 strip query string
+- `./ops/ios_ops.sh sentry --json` 會回 `kg.ios.sentry.v1`，把 source path/existence、`canImport(Sentry)` guard、`SENTRY_ENABLED_IN_DEBUG=1` / `-sentryTest` contract、release name/dist 格式提升成 machine-readable control plane，避免每次靠 grep 手動判讀 wiring
 
 ### Hot Reload（InjectionNext + Inject）
 

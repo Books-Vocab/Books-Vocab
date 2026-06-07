@@ -7,37 +7,37 @@ cmd_commands_json() {
         key:"status",
         aliases:[],
         sideEffect:"read-only",
-        command:"./ops/ios_ops.sh status",
+        command:"./ops/ios_ops.sh status [--json]",
         delegate:null,
         purpose:"project, Organizer, and TestFlight status summary",
-        jsonSchemas:[]
+        jsonSchemas:["kg.ios.status.v1"]
       },
       {
         key:"build",
         aliases:[],
         sideEffect:"local-build",
-        command:"./ops/ios_ops.sh build [ios_build.sh args...]",
+        command:"./ops/ios_ops.sh build [ios_build.sh args...] [--json]",
         delegate:"./ops/ios_build.sh",
         purpose:"Release compile gate with xcresult/log diagnostics",
-        jsonSchemas:[]
+        jsonSchemas:["kg.ios.run.v1"]
       },
       {
         key:"test",
         aliases:[],
         sideEffect:"local-test",
-        command:"./ops/ios_ops.sh test [ios_test.sh args...] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
+        command:"./ops/ios_ops.sh test [ios_test.sh args...] [--json] | ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>] [--json] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
         delegate:"./ops/ios_test.sh",
-        purpose:"scoped iOS verification plus explicit reusable test-cache lifecycle control",
-        jsonSchemas:["kg.ios.test-cache.v1"]
+        purpose:"scoped iOS verification, UI launch benchmarking, plus explicit reusable test-cache lifecycle control",
+        jsonSchemas:["kg.ios.run.v1","kg.ios.test-cache.v1"]
       },
       {
         key:"archive",
         aliases:["release"],
         sideEffect:"local-archive; external-upload only with --upload",
-        command:"./ops/ios_ops.sh archive [--upload] [ios_release.sh args...]",
+        command:"./ops/ios_ops.sh archive [--upload] [ios_release.sh args...] [--json]",
         delegate:"./ops/ios_release.sh",
         purpose:"archive/export and optional TestFlight upload",
-        jsonSchemas:[]
+        jsonSchemas:["kg.ios.archive.v1"]
       },
       {
         key:"archives",
@@ -61,19 +61,19 @@ cmd_commands_json() {
         key:"logs",
         aliases:[],
         sideEffect:"read-only",
-        command:"./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]",
+        command:"./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--json]",
         delegate:null,
-        purpose:"runtime log console with framework noise filtering",
-        jsonSchemas:["kg.ios.logs.v1"]
+        purpose:"runtime log console with framework noise filtering; --follow live-streams (one ndjson object per line with --json)",
+        jsonSchemas:["kg.ios.logs.v1","kg.ios.log-stream.v1"]
       },
       {
         key:"sentry",
         aliases:[],
         sideEffect:"read-only",
-        command:"./ops/ios_ops.sh sentry",
+        command:"./ops/ios_ops.sh sentry [--json]",
         delegate:null,
         purpose:"iOS Sentry wiring summary",
-        jsonSchemas:[]
+        jsonSchemas:["kg.ios.sentry.v1"]
       },
       {
         key:"doctor",

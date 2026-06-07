@@ -117,7 +117,7 @@ grep -q 'cmd_commands_json' "$IOS_OPS_COMMANDS_LIB" && grep -q 'kg.ios.commands.
 grep -qE '^cmd_commands(_json)?\(\)' "$IOS_OPS" \
   && fail_t "ios_ops should not redefine commands catalog functions" || ok "ios_ops keeps commands catalog out of façade"
 commands_json="$(bash "$IOS_OPS" commands --json)"
-echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.command|test("--dataset <name>")) and (.command|test("--dataset-file <path>")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="test" and (.jsonSchemas|index("kg.ios.test-cache.v1")) and (.command|test("--cache-status")) and (.command|test("--prepare-cache")) and (.command|test("--clean-cache"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate")) and (.command|test("ensure-booted"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
+echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="status" and (.jsonSchemas|index("kg.ios.status.v1")) and (.command|test("--json"))) and any(.commands[]; .key=="build" and (.jsonSchemas|index("kg.ios.run.v1")) and (.command|test("--json"))) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.command|test("--dataset <name>")) and (.command|test("--dataset-file <path>")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="test" and (.jsonSchemas|index("kg.ios.run.v1")) and (.jsonSchemas|index("kg.ios.test-cache.v1")) and (.command|test("--launch-benchmark")) and (.command|test("--cache-status")) and (.command|test("--prepare-cache")) and (.command|test("--clean-cache")) and (.command|test("--json"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="sentry" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.sentry.v1")) and (.command|test("--json"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate")) and (.command|test("ensure-booted"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.jsonSchemas|index("kg.ios.archive.v1")) and (.command|test("--json")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
   && ok "commands --json exposes machine-readable command catalog" || fail_t "commands --json invalid: $commands_json"
 capabilities_json="$(bash "$IOS_OPS" capabilities --json)"
 echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.commands[]; .key=="commands")' >/dev/null \
@@ -131,6 +131,12 @@ echo "$commands_text" | grep -q 'kg.ios.commands.v1' \
   && ok "commands text lists catalog schema" || fail_t "commands text missing schema: $commands_text"
 
 section "Xcode environment surface"
+status_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" status --json)"
+echo "$status_json" | jq -e '.schema=="kg.ios.status.v1" and .project.version=="1.6" and .project.build=="4" and .organizer.latest.version=="1.6" and .organizer.latest.build=="4" and (.organizer.latest.archive|contains("BooksBrowser.xcarchive")) and .testflight.latestBuild=="3"' >/dev/null \
+  && ok "status --json exposes project, Organizer, and TestFlight summary" || fail_t "status --json invalid: $status_json"
+status_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" status)"
+echo "$status_text" | grep -q 'project_version=1.6 project_build=4' && echo "$status_text" | grep -q 'organizer_latest=1.6(4)' && echo "$status_text" | grep -q 'testflight_latest_build=3' \
+  && ok "status text reports normalized summary lines" || fail_t "status text invalid: $status_text"
 xcode_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" xcode --json)"
 echo "$xcode_json" | jq -e '.schema=="kg.ios.xcode.v1" and (.errors|length)==0 and .xcode.version=="16.4" and .project.scheme=="BooksBrowser" and (.project.list.schemes|index("BooksBrowser")) and any(.destinations.available[]; .id=="fixture-iphone-17-pro-max" and .platform=="iOS Simulator" and .name=="iPhone 17 Pro Max") and any(.destinations.ineligible[]; .id=="fixture-ineligible" and (.error|contains("OS mismatch, please download runtime"))) and all(.destinations.available[]; .id!="fixture-ineligible") and .simulators.summary.booted==1' >/dev/null \
   && ok "xcode --json exposes project destinations and simulators" || fail_t "xcode --json invalid: $xcode_json"
@@ -146,28 +152,28 @@ echo "$xcode_bad_developer_json" | jq -e '.schema=="kg.ios.xcode.v1" and (.error
 
 section "Simulator interaction surface"
 sim_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator status --json)"
-echo "$sim_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="status" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.container.data=="/tmp/kg-sim-fixture/container" and .app.container.status=="ok" and .app.process.status=="running" and .app.process.pid=="74736" and .sources.app_process.status=="ok"' >/dev/null \
+echo "$sim_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="status" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.container.data=="/tmp/kg-sim-fixture/container" and .app.container.status=="ok" and .app.process.status=="running" and .app.process.pid=="74736" and .sources.app_process.status=="ok" and (.timings.totalMs|type)=="number" and (.timings.simctlDevicesMs|type)=="number" and (.timings.appContainerMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator status --json exposes booted device, app container, and process" || fail_t "simulator status --json invalid: $sim_json"
 sim_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sim status)"
-echo "$sim_text" | grep -q 'schema=kg.ios.simulator.v1' && echo "$sim_text" | grep -q 'udid=fixture-iphone-17-pro-max' && echo "$sim_text" | grep -q 'app_process status=running pid=74736' \
+echo "$sim_text" | grep -q 'schema=kg.ios.simulator.v1' && echo "$sim_text" | grep -q 'udid=fixture-iphone-17-pro-max' && echo "$sim_text" | grep -q 'app_process status=running pid=74736' && echo "$sim_text" | grep -q 'timings totalMs=' \
   && ok "sim alias text lists booted simulator" || fail_t "sim text invalid: $sim_text"
 sim_stopped_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1 bash "$IOS_OPS" simulator status --json)"
 echo "$sim_stopped_json" | jq -e '.schema=="kg.ios.simulator.v1" and .status=="ok" and .app.process.status=="stopped" and .app.process.pid==null and .sources.app_process.exitCode==1 and (.errors|length)==0' >/dev/null \
   && ok "simulator status --json reports stopped app process without failing" || fail_t "simulator stopped app invalid: $sim_stopped_json"
 sim_launch_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1 bash "$IOS_OPS" simulator launch --json)"
-echo "$sim_launch_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="launch" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.lifecycle.output=="74736" and .app.process.status=="running" and .app.process.pid=="74736"' >/dev/null \
+echo "$sim_launch_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="launch" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.lifecycle.output=="74736" and .app.process.status=="running" and .app.process.pid=="74736" and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator launch --json starts installed app and refreshes process state" || fail_t "simulator launch invalid: $sim_launch_json"
 sim_launch_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sim launch)"
-echo "$sim_launch_text" | grep -q 'action=launch status=ok' && echo "$sim_launch_text" | grep -q 'app_process status=running pid=74736' \
+echo "$sim_launch_text" | grep -q 'action=launch status=ok' && echo "$sim_launch_text" | grep -q 'app_process status=running pid=74736' && echo "$sim_launch_text" | grep -q 'timings totalMs=' \
   && ok "simulator launch text reports process state" || fail_t "simulator launch text invalid: $sim_launch_text"
 sim_terminate_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator terminate --json)"
-echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null' >/dev/null \
+echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator terminate --json stops installed app and refreshes process state" || fail_t "simulator terminate invalid: $sim_terminate_json"
 sim_ensure_booted_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=1 bash "$IOS_OPS" simulator ensure-booted --json)"
-echo "$sim_ensure_booted_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="ensure-booted" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .boot.status=="ok" and .boot.exitCode==0 and .boot.wasAlreadyBooted==false and .boot.waitedForBootstatus==true' >/dev/null \
+echo "$sim_ensure_booted_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="ensure-booted" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .boot.status=="ok" and .boot.exitCode==0 and .boot.wasAlreadyBooted==false and .boot.waitedForBootstatus==true and (.timings.totalMs|type)=="number" and (.timings.resolveMs|type)=="number" and (.timings.bootMs|type)=="number" and (.timings.bootstatusMs|type)=="number"' >/dev/null \
   && ok "simulator ensure-booted --json boots the default simulator when none are booted" || fail_t "simulator ensure-booted invalid: $sim_ensure_booted_json"
 sim_ensure_booted_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator ensure-booted)"
-echo "$sim_ensure_booted_text" | grep -q 'action=ensure-booted status=ok' && echo "$sim_ensure_booted_text" | grep -q 'wasAlreadyBooted=true' \
+echo "$sim_ensure_booted_text" | grep -q 'action=ensure-booted status=ok' && echo "$sim_ensure_booted_text" | grep -q 'wasAlreadyBooted=true' && echo "$sim_ensure_booted_text" | grep -q 'timings totalMs=' \
   && ok "simulator ensure-booted text reports warm-boot reuse" || fail_t "simulator ensure-booted text invalid: $sim_ensure_booted_text"
 sim_shot_tmp="$(mktemp -d)"
 sim_shot="$sim_shot_tmp/screenshot with spaces.png"
@@ -175,8 +181,10 @@ sim_shot_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator screenshot --out
 echo "$sim_shot_json" | jq -e --arg path "$sim_shot" '.schema=="kg.ios.simulator.v1" and .action=="screenshot" and .status=="ok" and .artifact.path==$path and .artifact.exists==true and .artifact.bytes > 0 and .device.udid=="fixture-iphone-17-pro-max"' >/dev/null \
   && [[ -s "$sim_shot" ]] \
   && ok "simulator screenshot --json creates local artifact" || fail_t "simulator screenshot invalid: $sim_shot_json"
+echo "$sim_shot_json" | jq -e '(.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.screenshotMs|type)=="number"' >/dev/null \
+  && ok "simulator screenshot --json exposes timing breakdown" || fail_t "simulator screenshot timings invalid: $sim_shot_json"
 sim_shot_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator screenshot --out "$sim_shot_tmp/text.png")"
-echo "$sim_shot_text" | grep -q 'artifact=' && echo "$sim_shot_text" | grep -q 'text.png' \
+echo "$sim_shot_text" | grep -q 'artifact=' && echo "$sim_shot_text" | grep -q 'text.png' && echo "$sim_shot_text" | grep -q 'timings totalMs=' \
   && ok "simulator screenshot text reports artifact path" || fail_t "simulator screenshot text invalid: $sim_shot_text"
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator screenshot --out /dev/null/kg-shot.png --json >"$sim_shot_tmp/bad_parent.json" 2>"$sim_shot_tmp/bad_parent.err"; then
   fail_t "simulator screenshot reports unwritable parent as JSON error"
@@ -342,6 +350,14 @@ else
 fi
 rm -rf "$gate_block_tmp"
 
+section "Sentry wiring surface"
+sentry_json="$(bash "$IOS_OPS" sentry --json)"
+echo "$sentry_json" | jq -e '.schema=="kg.ios.sentry.v1" and .source.path=="'"$WORKSPACE"'/ios/BooksBrowser/Services/AppCrashReporting.swift" and .source.exists==true and (.wiring.canImportGuard|type)=="boolean" and (.wiring.dsnKeyReference|type)=="boolean" and .debug.requiresEnv=="SENTRY_ENABLED_IN_DEBUG=1" and .debug.testArgument=="-sentryTest" and .release.name=="bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION" and .release.dist=="CURRENT_PROJECT_VERSION"' >/dev/null \
+  && ok "sentry --json exposes machine-readable wiring summary" || fail_t "sentry --json invalid: $sentry_json"
+sentry_text="$(bash "$IOS_OPS" sentry)"
+echo "$sentry_text" | grep -q '\[ios\]\[sentry\] source=' && echo "$sentry_text" | grep -q 'can_import_guard=' && echo "$sentry_text" | grep -q 'debug_requires_env=' && echo "$sentry_text" | grep -q 'release_name=' \
+  && ok "sentry text reports wiring summary" || fail_t "sentry text invalid: $sentry_text"
+
 section "Runtime log surface"
 logs_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --since 1m --limit 1)"
 echo "$logs_json" | jq -e '.schema=="kg.ios.logs.v1" and .since=="1m" and .limit==1 and .summary.rawCount==3 and .summary.filteredCount==1 and .summary.emittedCount==1 and .summary.byEventType.logEvent==1 and (.entries|length)==1 and .entries[0].message=="sync completed"' >/dev/null \
@@ -378,11 +394,103 @@ else
 fi
 rm -rf "$fail_logs_tmp"
 
+# logs --follow (live stream) fixtures
+follow_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow 2>/dev/null)"
+echo "$follow_text" | grep -q 'sync completed' && echo "$follow_text" | grep -q 'reader opened' \
+  && ok "logs --follow streams app entries" || fail_t "logs --follow missing app entries: $follow_text"
+echo "$follow_text" | grep -q 'RBSServiceErrorDomain' \
+  && fail_t "logs --follow failed to filter framework noise: $follow_text" || ok "logs --follow filters framework noise"
+follow_limit_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow --limit 1 2>/dev/null)"
+[[ "$(echo "$follow_limit_text" | grep -c .)" -eq 1 ]] && echo "$follow_limit_text" | grep -q 'sync completed' \
+  && ok "logs --follow honors --limit" || fail_t "logs --follow limit invalid: $follow_limit_text"
+follow_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow --json --limit 1 2>/dev/null)"
+echo "$follow_json" | jq -e '.schema=="kg.ios.log-stream.v1" and .message=="sync completed" and .category=="sync"' >/dev/null \
+  && ok "logs --follow --json emits ndjson entries" || fail_t "logs --follow --json invalid: $follow_json"
+follow_fail_tmp="$(mktemp -d)"
+if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --follow >"$follow_fail_tmp/out" 2>"$follow_fail_tmp/err"; then
+  fail_t "logs --follow propagates stream failure"
+else
+  grep -q 'fixture log failure' "$follow_fail_tmp/err" \
+    && ok "logs --follow propagates stream failure" || fail_t "logs --follow failure stderr missing"
+fi
+rm -rf "$follow_fail_tmp"
+# real SIGPIPE(141) path: unbounded producer + --limit stop gate must exit 0 with N lines
+stream_text="$(KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --limit 1 2>/dev/null)"; stream_rc=$?
+[[ "$stream_rc" -eq 0 && "$(echo "$stream_text" | grep -c .)" -eq 1 ]] && echo "$stream_text" | grep -q 'sync completed' \
+  && ok "logs --follow handles producer SIGPIPE at limit (text)" || fail_t "logs --follow SIGPIPE text rc=$stream_rc out=$stream_text"
+stream_json="$(KG_IOS_OPS_LOG_STREAM_FIXTURE=1 bash "$IOS_OPS" logs --follow --json --limit 1 2>/dev/null)"; stream_json_rc=$?
+[[ "$stream_json_rc" -eq 0 ]] && echo "$stream_json" | jq -e '.schema=="kg.ios.log-stream.v1" and .message=="sync completed"' >/dev/null \
+  && ok "logs --follow handles producer SIGPIPE at limit (json)" || fail_t "logs --follow SIGPIPE json rc=$stream_json_rc out=$stream_json"
+# pipefail must not leak out of the sourceable follow helpers
+leak_check="$(set -o pipefail; source "$IOS_OPS_LOGS_LIB"; KG_IOS_OPS_LOG_STREAM_FIXTURE=1 cmd_logs_follow_text 'p' 1 >/dev/null 2>&1; if set -o | grep -q 'pipefail.*on'; then echo intact; else echo leaked; fi)"
+[[ "$leak_check" == "intact" ]] \
+  && ok "logs --follow does not leak pipefail to caller" || fail_t "logs --follow leaked pipefail: $leak_check"
+
 section "JSON smoke fixtures"
+delegate_tmp="$(mktemp -d)"
+cat > "$delegate_tmp/build_stub.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+verdict="${TMPDIR:-/tmp}/kg_ios_build_verdict"
+json="$verdict.json"
+printf 'RESULT=ok EXIT=0 caller=stub-build elapsed=1s log=%s/build.log xcresult=%s/Build.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
+mkdir -p "${TMPDIR:-/tmp}/Build.xcresult"
+: > "${TMPDIR:-/tmp}/build.log"
+jq -nc --arg log "${TMPDIR:-/tmp}/build.log" --arg xcresult "${TMPDIR:-/tmp}/Build.xcresult" '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-build",elapsed:"1s",executed:null,timings:{bootMs:11,xcodebuildMs:22,totalMs:33},artifacts:{log:$log,xcresult:$xcresult}}' >"$json"
+echo "build stub stdout"
+SH
+cat > "$delegate_tmp/test_stub.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if printf '%s\n' "$@" | grep -qx -- '--cache-status'; then
+  jq -nc '{schema:"kg.ios.test-cache.v1",scope:"unit",status:"ok",cache:{status:"hit"}}'
+  exit 0
+fi
+verdict="${TMPDIR:-/tmp}/kg_ios_test_verdict"
+json="$verdict.json"
+printf 'RESULT=ok EXIT=0 caller=stub-test elapsed=2s executed=7 log=%s/test.log xcresult=%s/Test.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
+mkdir -p "${TMPDIR:-/tmp}/Test.xcresult"
+: > "${TMPDIR:-/tmp}/test.log"
+jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult}}' >"$json"
+echo "test stub stdout"
+SH
+cat > "$delegate_tmp/archive_stub.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+verdict="${TMPDIR:-/tmp}/kg_ios_archive_verdict"
+json="$verdict.json"
+mkdir -p "${TMPDIR:-/tmp}/Archive.xcresult" "${TMPDIR:-/tmp}/export"
+: > "${TMPDIR:-/tmp}/archive.log"
+: > "${TMPDIR:-/tmp}/export/BooksBrowser.ipa"
+printf 'RESULT=ok EXIT=0 caller=stub-archive archive=%s/BooksBrowser.xcarchive log=%s/archive.log xcresult=%s/Archive.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
+jq -nc --arg archive "${TMPDIR:-/tmp}/BooksBrowser.xcarchive" --arg log "${TMPDIR:-/tmp}/archive.log" --arg xcresult "${TMPDIR:-/tmp}/Archive.xcresult" --arg exportDir "${TMPDIR:-/tmp}/export" --arg ipa "${TMPDIR:-/tmp}/export/BooksBrowser.ipa" '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"stub-archive",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"12s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false}}' >"$json"
+echo "archive stub stdout"
+SH
+chmod +x "$delegate_tmp/build_stub.sh" "$delegate_tmp/test_stub.sh" "$delegate_tmp/archive_stub.sh"
+build_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_BUILD_DELEGATE="$delegate_tmp/build_stub.sh" bash "$IOS_OPS" build --json 2>"$delegate_tmp/build_stderr")"
+echo "$build_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="build" and .result=="ok" and .caller=="stub-build" and .timings.totalMs==33 and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
+  && ok "build --json emits machine-readable run report" || fail_t "build --json invalid: $build_direct_json"
+grep -q 'build stub stdout' "$delegate_tmp/build_stderr" \
+  && ok "build --json redirects delegate stdout to stderr" || fail_t "build --json missing delegate output forwarding"
+test_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --json 2>"$delegate_tmp/test_stderr")"
+echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
+  && ok "test --json emits machine-readable run report" || fail_t "test --json invalid: $test_direct_json"
+grep -q 'test stub stdout' "$delegate_tmp/test_stderr" \
+  && ok "test --json redirects delegate stdout to stderr" || fail_t "test --json missing delegate output forwarding"
+test_cache_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --cache-status --json)"
+echo "$test_cache_json" | jq -e '.schema=="kg.ios.test-cache.v1" and .cache.status=="hit"' >/dev/null \
+  && ok "test --cache-status --json keeps native cache schema" || fail_t "test cache native json invalid: $test_cache_json"
+archive_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_RELEASE_DELEGATE="$delegate_tmp/archive_stub.sh" bash "$IOS_OPS" archive --json 2>"$delegate_tmp/archive_stderr")"
+echo "$archive_direct_json" | jq -e '.schema=="kg.ios.archive.v1" and .status=="ok" and .caller=="stub-archive" and .archive.status=="ok" and .archive.elapsed=="12s" and .export.status=="ok" and .upload.status=="skipped"' >/dev/null \
+  && ok "archive --json emits machine-readable archive report" || fail_t "archive --json invalid: $archive_direct_json"
+grep -q 'archive stub stdout' "$delegate_tmp/archive_stderr" \
+  && ok "archive --json redirects delegate stdout to stderr" || fail_t "archive --json missing delegate output forwarding"
+rm -rf "$delegate_tmp"
+
 runs_parent="$(mktemp -d)"
 runs_tmp="$runs_parent/with spaces"
 mkdir -p "$runs_tmp"
-mkdir -p "$runs_tmp/Build.xcresult" "$runs_tmp/Test.xcresult"
+mkdir -p "$runs_tmp/Build.xcresult" "$runs_tmp/Test.xcresult" "$runs_tmp/Archive.xcresult"
 cat > "$runs_tmp/build.log" <<'LOG'
 warning: StoreKit Configuration file for scheme "BooksBrowser" can't be found at path "/tmp/missing.storekit"
 ** BUILD SUCCEEDED **
@@ -390,31 +498,39 @@ LOG
 cat > "$runs_tmp/test.log" <<'LOG'
 ** TEST SUCCEEDED **
 LOG
+cat > "$runs_tmp/archive.log" <<'LOG'
+warning: StoreKit Configuration file for scheme "BooksBrowser" can't be found at path "/tmp/archive-missing.storekit"
+** BUILD SUCCEEDED **
+LOG
 echo "RESULT=legacy" > "$runs_tmp/kg_ios_build_verdict"
 jq -nc --arg log "$runs_tmp/build.log" --arg xcresult "$runs_tmp/Build.xcresult" \
-  '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"3s",executed:null,artifacts:{log:$log,xcresult:$xcresult}}' \
+  '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"3s",executed:null,timings:{bootMs:120,xcodebuildMs:3000,totalMs:3120},artifacts:{log:$log,xcresult:$xcresult}}' \
   > "$runs_tmp/kg_ios_build_verdict.json"
 jq -nc --arg log "$runs_tmp/test.log" --arg xcresult "$runs_tmp/Test.xcresult" \
-  '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"5s",executed:"12",artifacts:{log:$log,xcresult:$xcresult}}' \
+  '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"5s",executed:"12",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:250,buildForTestingMs:0,testInvocationMs:6000,testBodyMs:2000,xcresultSessionMs:3500,xcresultHarnessOverheadMs:1500,appLaunchAverageMs:1450,appLaunchSamples:5,invocationOverheadMs:2500,xcodebuildMs:6000,totalMs:6500},artifacts:{log:$log,xcresult:$xcresult}}' \
   > "$runs_tmp/kg_ios_test_verdict.json"
+jq -nc --arg log "$runs_tmp/archive.log" --arg xcresult "$runs_tmp/Archive.xcresult" --arg archive "$runs_tmp/BooksBrowser.xcarchive" --arg exportDir "$runs_tmp/export" --arg ipa "$runs_tmp/export/BooksBrowser.ipa" \
+  '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"fixture with spaces",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"14s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false},timings:{lockWaitMs:10,archiveMs:12000,exportMs:1500,uploadMs:0,totalMs:13510},artifacts:{log:$log,xcresult:$xcresult,archive:$archive,exportDirectory:$exportDir,ipa:$ipa}}' \
+  > "$runs_tmp/kg_ios_archive_verdict.json"
 runs_json="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs --json)"
-echo "$runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.result=="ok" and .build.caller=="fixture with spaces" and .test.executed=="12" and .build.artifacts.logExists==true and .test.artifacts.xcresultExists==true and .build.diagnostics.schema=="kg.ios.diagnostics.v1" and .build.diagnostics.counts.warnings==1 and .build.diagnostics.counts.storekit==1' >/dev/null \
-  && ok "runs --json parses latest build/test verdicts" || fail_t "runs --json invalid: $runs_json"
-echo "$runs_json" | jq -e 'all([.build,.test][]; has("kind") and has("status") and has("result") and has("exit") and has("reason") and has("caller") and has("elapsed") and has("executed") and has("verdictFile") and has("jsonVerdictFile") and has("artifacts") and has("diagnostics"))' >/dev/null \
+echo "$runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.result=="ok" and .build.caller=="fixture with spaces" and .test.executed=="12" and .archive.result=="ok" and .archive.timings.totalMs==13510 and .archive.timings.archiveMs==12000 and .archive.artifacts.logExists==true and .archive.artifacts.xcresultExists==true and .build.artifacts.logExists==true and .test.artifacts.xcresultExists==true and .build.diagnostics.schema=="kg.ios.diagnostics.v1" and .archive.diagnostics.schema=="kg.ios.diagnostics.v1" and .build.diagnostics.counts.warnings==1 and .archive.diagnostics.counts.warnings==1 and .build.timings.totalMs==3120 and .test.cache.status=="hit" and .test.options.uiLaunchProfile=="standard" and .test.timings.appLaunchAverageMs==1450 and .test.timings.appLaunchSamples==5' >/dev/null \
+  && ok "runs --json parses latest build/test/archive verdicts" || fail_t "runs --json invalid: $runs_json"
+echo "$runs_json" | jq -e 'all([.build,.test,.archive][]; has("kind") and has("status") and has("result") and has("exit") and has("reason") and has("caller") and has("elapsed") and has("executed") and has("options") and has("cache") and has("timings") and has("verdictFile") and has("jsonVerdictFile") and has("artifacts") and has("diagnostics"))' >/dev/null \
   && ok "runs --json uses stable verdict object keys" || fail_t "runs --json missing stable keys: $runs_json"
 missing_runs_tmp="$(mktemp -d)"
 missing_runs_json="$(TMPDIR="$missing_runs_tmp" bash "$IOS_OPS" runs --json)"
-echo "$missing_runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.status=="missing" and .build.artifacts.log==null and .build.artifacts.logExists==false and .test.result=="missing"' >/dev/null \
+echo "$missing_runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.status=="missing" and .build.artifacts.log==null and .build.artifacts.logExists==false and .test.result=="missing" and .archive.result=="missing"' >/dev/null \
   && ok "runs --json has stable missing-verdict schema" || fail_t "runs missing-verdict schema invalid: $missing_runs_json"
 rm -rf "$missing_runs_tmp"
 malformed_runs_tmp="$(mktemp -d)"
 echo "RESULT=ok caller=legacy elapsed=1s log=$malformed_runs_tmp/build.log xcresult=$malformed_runs_tmp/Build.xcresult" > "$malformed_runs_tmp/kg_ios_build_verdict"
 echo '{bad json' > "$malformed_runs_tmp/kg_ios_build_verdict.json"
 echo '{bad json' > "$malformed_runs_tmp/kg_ios_test_verdict.json"
+echo '{bad json' > "$malformed_runs_tmp/kg_ios_archive_verdict.json"
 malformed_runs_json="$(TMPDIR="$malformed_runs_tmp" bash "$IOS_OPS" runs --json 2>"$malformed_runs_tmp/stderr")"
-echo "$malformed_runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.result=="ok" and .test.status=="malformed" and .test.reason=="malformed-json-verdict"' >/dev/null \
+echo "$malformed_runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.result=="ok" and .test.status=="malformed" and .test.reason=="malformed-json-verdict" and .archive.status=="malformed" and .archive.reason=="malformed-json-verdict"' >/dev/null \
   && ok "runs --json falls back or reports malformed JSON verdicts" || fail_t "runs malformed-verdict schema invalid: $malformed_runs_json"
-echo "$malformed_runs_json" | jq -e 'all([.build,.test][]; has("jsonVerdictFile") and has("artifacts"))' >/dev/null \
+echo "$malformed_runs_json" | jq -e 'all([.build,.test,.archive][]; has("jsonVerdictFile") and has("artifacts"))' >/dev/null \
   && ok "runs malformed/legacy fallback keeps stable keys" || fail_t "runs malformed/legacy fallback missing stable keys: $malformed_runs_json"
 [[ ! -s "$malformed_runs_tmp/stderr" ]] \
   && ok "runs --json suppresses malformed verdict parser noise" || fail_t "runs malformed-verdict stderr not clean: $(cat "$malformed_runs_tmp/stderr")"
@@ -431,7 +547,7 @@ workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
 echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
   && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
 snapshot_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
-echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .gate.schema=="kg.ios.gate.v1" and .gate.verdict=="pass" and .gate.exitCode==0 and .summary.verdict=="warn" and .summary.counts.buildWarnings==1 and any(.summary.nextActions[]; .source=="runs.build.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and .xcode.schema=="kg.ios.xcode.v1" and .xcode.simulators.summary.booted==1 and .simulator.schema=="kg.ios.simulator.v1" and .simulator.app.process.status=="running" and .project.version=="1.6" and .runs.test.executed=="12" and .runs.build.diagnostics.counts.warnings==1 and .runs.build.diagnostics.diagnostics[0].category=="storekit" and .logs==null' >/dev/null \
+echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .gate.schema=="kg.ios.gate.v1" and .gate.verdict=="pass" and .gate.exitCode==0 and .summary.verdict=="warn" and .summary.counts.buildWarnings==1 and .summary.counts.archiveWarnings==1 and .summary.timings.build.totalMs==3120 and .summary.timings.test.cacheStatus=="hit" and .summary.timings.test.appLaunchAverageMs==1450 and .summary.timings.test.appLaunchSamples==5 and .summary.timings.archive.totalMs==13510 and .summary.timings.archive.archiveMs==12000 and (.summary.timings.simulator.totalMs|type)=="number" and (.summary.timings.simulator.simctlDevicesMs|type)=="number" and (.summary.timings.simulator.appContainerMs|type)=="number" and (.summary.timings.simulator.appProcessMs|type)=="number" and any(.summary.nextActions[]; .source=="runs.build.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="runs.archive.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and .xcode.schema=="kg.ios.xcode.v1" and .xcode.simulators.summary.booted==1 and .simulator.schema=="kg.ios.simulator.v1" and .simulator.app.process.status=="running" and .project.version=="1.6" and .runs.test.executed=="12" and .runs.archive.result=="ok" and .runs.archive.diagnostics.counts.warnings==1 and .logs==null' >/dev/null \
   && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
 snapshot_skip_xcode_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json --skip-xcode)"
 echo "$snapshot_skip_xcode_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.verdict=="warn" and .xcode==null and .simulator.schema=="kg.ios.simulator.v1" and .runs.test.executed=="12"' >/dev/null \
@@ -448,6 +564,14 @@ echo "$snapshot_logs_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.c
 snapshot_text="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --skip-xcode --skip-simulator)"
 printf '%s\n' "$snapshot_text" | sed -n '1p' | grep -q '^\[ios\]\[summary\].*verdict=warn.*buildWarnings=1' \
   && ok "snapshot text starts with summary verdict" || fail_t "snapshot text first line missing summary: $snapshot_text"
+printf '%s\n' "$snapshot_text" | sed -n '2p' | grep -q '^\[ios\]\[timing\] build cacheStatus=n/a totalMs=3120 bootMs=120 xcodebuildMs=3000' \
+  && ok "snapshot text prints build timing line" || fail_t "snapshot text missing build timing line: $snapshot_text"
+printf '%s\n' "$snapshot_text" | sed -n '3p' | grep -q '^\[ios\]\[timing\] test cacheStatus=hit totalMs=6500 bootMs=250 buildForTestingMs=0 testInvocationMs=6000 testBodyMs=2000 xcresultSessionMs=3500 appLaunchAverageMs=1450 appLaunchSamples=5 invocationOverheadMs=2500' \
+  && ok "snapshot text prints test timing line" || fail_t "snapshot text missing test timing line: $snapshot_text"
+printf '%s\n' "$snapshot_text" | sed -n '4p' | grep -q '^\[ios\]\[timing\] archive totalMs=13510 lockWaitMs=10 archiveMs=12000 exportMs=1500 uploadMs=0' \
+  && ok "snapshot text prints archive timing line" || fail_t "snapshot text missing archive timing line: $snapshot_text"
+printf '%s\n' "$snapshot_text" | sed -n '5p' | grep -q '^\[ios\]\[timing\] simulator totalMs=n/a simctlDevicesMs=n/a appContainerMs=n/a appProcessMs=n/a' \
+  && ok "snapshot text prints simulator timing line when simulator is skipped" || fail_t "snapshot text missing simulator timing line: $snapshot_text"
 echo "$snapshot_text" | grep -q '\[ios\]\[next\].*source=runs.build.diagnostics.*severity=warn.*category=storekit' \
   && ok "snapshot text lists next actions" || fail_t "snapshot text missing next action: $snapshot_text"
 echo "$snapshot_text" | grep -q 'phase=doctor' \
@@ -534,10 +658,16 @@ grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'build-for-testing' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
+grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
 grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
 grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses dedicated UI scheme for UI scope" || fail_t "ios_test missing UI-only scheme"
+grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q -- '--launch-benchmark' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'KG_UI_TEST_APP_ARGS_JSON' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test can inject UI app launch profiles into XCUIApplication" || fail_t "ios_test missing UI launch-profile injection"
 grep -Eq 'TEST \(EXECUTE \)\?SUCCEEDED|TEST\( EXECUTE\)\? SUCCEEDED|TEST\( EXECUTE\)\?SUCCEEDED|TEST \(EXECUTE\)\? FAILED|TEST\( EXECUTE\)\?FAILED' "$WORKSPACE/ops/ios_test.sh" \
   || grep -qE 'TEST\( EXECUTE\)\? SUCCEEDED|TEST \(EXECUTE \)\? SUCCEEDED|TEST \(EXECUTE \)\? FAILED' "$WORKSPACE/ops/ios_test.sh"
 if [[ $? -eq 0 ]]; then
@@ -550,6 +680,8 @@ grep -q 'xcresult=.*RESULT_BUNDLE' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'bootMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'testBodyMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'xcresultSessionMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'appLaunchAverageMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'appLaunchSamples:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'invocationOverheadMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'xcodebuildMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'totalMs:' "$WORKSPACE/ops/ios_test.sh" \

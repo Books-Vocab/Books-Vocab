@@ -69,7 +69,18 @@ read_app_container_path() {
 
 read_app_process_pid() {
   local device="$1" process_name="$2"
-  xcrun simctl spawn "$device" pgrep -x "$process_name"
+  local pid
+  pid="$(
+    ps -axo pid=,command= \
+      | awk -v device="$device" -v needle="/${process_name}.app/${process_name}" '
+          index($0, device) && index($0, needle) { print $1; exit }
+        '
+  )"
+  if [[ -n "$pid" ]]; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  return 1
 }
 
 read_app_launch_output() {
@@ -307,6 +318,7 @@ verdict_file_for() {
   case "$kind" in
     build) printf '%s/kg_ios_build_verdict\n' "${base%/}" ;;
     test) printf '%s/kg_ios_test_verdict\n' "${base%/}" ;;
+    archive) printf '%s/kg_ios_archive_verdict\n' "${base%/}" ;;
     *) return 1 ;;
   esac
 }

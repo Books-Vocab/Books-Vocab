@@ -187,7 +187,85 @@ def _parse_duration_seconds(value: Any) -> float | None:
         return None
 
 
-def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: dict[str, Any] | None = None, *, limit: int = 80) -> dict[str, Any]:
+def _summarize_metric_entry(metric: dict[str, Any]) -> dict[str, Any]:
+    measurements = [
+        float(value)
+        for value in (metric.get("measurements") or [])
+        if isinstance(value, (int, float))
+    ]
+    sample_count = len(measurements)
+    average = (sum(measurements) / sample_count) if sample_count else None
+    return {
+        "identifier": metric.get("identifier"),
+        "displayName": metric.get("displayName"),
+        "unit": metric.get("unitOfMeasurement"),
+        "sampleCount": sample_count,
+        "average": average,
+        "min": min(measurements) if measurements else None,
+        "max": max(measurements) if measurements else None,
+        "measurements": measurements,
+    }
+
+
+def summarize_performance_metrics(metrics_payload: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    if not metrics_payload:
+        return None
+    tests: list[dict[str, Any]] = []
+    app_launch_summaries: list[dict[str, Any]] = []
+    total_samples = 0
+    weighted_sum_ms = 0.0
+
+    for test_entry in metrics_payload:
+        if not isinstance(test_entry, dict):
+            continue
+        test_runs = test_entry.get("testRuns") or []
+        metrics: list[dict[str, Any]] = []
+        for run in test_runs:
+            if not isinstance(run, dict):
+                continue
+            for metric in run.get("metrics") or []:
+                if not isinstance(metric, dict):
+                    continue
+                summary = _summarize_metric_entry(metric)
+                metrics.append(summary)
+                identifier = str(summary.get("identifier") or "")
+                if identifier == "com.apple.dt.XCTMetric_ApplicationLaunch-AppLaunch.duration":
+                    sample_count = int(summary["sampleCount"])
+                    avg = summary["average"]
+                    if sample_count and isinstance(avg, (int, float)):
+                        total_samples += sample_count
+                        weighted_sum_ms += float(avg) * 1000.0 * sample_count
+                        app_launch_summaries.append(summary)
+        if metrics:
+            tests.append(
+                {
+                    "testIdentifier": test_entry.get("testIdentifier"),
+                    "metrics": metrics,
+                }
+            )
+
+    if not tests:
+        return None
+
+    app_launch = None
+    if app_launch_summaries:
+        min_ms = min(int(round(float(item["min"]) * 1000.0)) for item in app_launch_summaries if item["min"] is not None)
+        max_ms = max(int(round(float(item["max"]) * 1000.0)) for item in app_launch_summaries if item["max"] is not None)
+        app_launch = {
+            "tests": len(app_launch_summaries),
+            "samples": total_samples,
+            "averageMs": int(round(weighted_sum_ms / total_samples)) if total_samples else None,
+            "minMs": min_ms,
+            "maxMs": max_ms,
+        }
+
+    return {
+        "tests": tests,
+        "appLaunch": app_launch,
+    }
+
+
+def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: dict[str, Any] | None = None, metrics_payload: list[dict[str, Any]] | None = None, *, limit: int = 80) -> dict[str, Any]:
     total = int(summary_payload.get("totalTestCount") or 0)
     passed = int(summary_payload.get("passedTests") or 0)
     failed = int(summary_payload.get("failedTests") or 0)
@@ -257,6 +335,8 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
         except (TypeError, ValueError):
             session_duration_seconds = None
 
+    performance_metrics = summarize_performance_metrics(metrics_payload)
+
     return {
         "schema": "kg.ios.diagnostics.v1",
         "source": "xcresult-test-results",
@@ -282,6 +362,7 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
                 else None
             ),
         },
+        "performanceMetrics": performance_metrics,
         "diagnostics": visible,
         "truncated": len(diagnostics) > limit,
         "totalDiagnostics": len(diagnostics),
@@ -321,6 +402,18 @@ def read_xcresult_tests(path: Path) -> dict[str, Any]:
     return json.loads(proc.stdout)
 
 
+def read_xcresult_metrics(path: Path) -> list[dict[str, Any]]:
+    proc = subprocess.run(
+        ["xcrun", "xcresulttool", "get", "test-results", "metrics", "--path", str(path), "--compact"],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    payload = json.loads(proc.stdout)
+    return payload if isinstance(payload, list) else []
+
+
 def apply_result_override(summary: dict[str, Any], override: str | None) -> dict[str, Any]:
     if override:
         summary["result"] = override
@@ -354,6 +447,17 @@ def format_text(summary: dict[str, Any], *, log_path: str | None = None, xcresul
                     xcresultSessionMs=timings.get("xcresultSessionMs"),
                 )
             )
+        app_launch = ((summary.get("performanceMetrics") or {}).get("appLaunch") or {})
+        if app_launch.get("samples"):
+            lines.append(
+                "[ios][perf] metric=AppLaunch tests={tests} samples={samples} averageMs={averageMs} minMs={minMs} maxMs={maxMs}".format(
+                    tests=app_launch.get("tests"),
+                    samples=app_launch.get("samples"),
+                    averageMs=app_launch.get("averageMs"),
+                    minMs=app_launch.get("minMs"),
+                    maxMs=app_launch.get("maxMs"),
+                )
+            )
     for item in summary["diagnostics"]:
         location = ""
         if item.get("file"):
@@ -384,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--xcresult", help="Xcode result bundle path; preferred source")
     parser.add_argument("--log", help="raw xcodebuild log path; fallback source")
-    parser.add_argument("--kind", choices=("build", "test"), default="build", help="xcresult surface to read")
+    parser.add_argument("--kind", choices=("build", "test", "archive"), default="build", help="xcresult surface to read")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=80)
     parser.add_argument("--result", choices=("pass", "fail", "unknown"), help="override result from caller exit code")
@@ -400,6 +504,7 @@ def main(argv: list[str] | None = None) -> int:
                 summary = parse_xcresult_test_results(
                     read_xcresult_test_summary(xcresult_path),
                     read_xcresult_tests(xcresult_path),
+                    read_xcresult_metrics(xcresult_path),
                     limit=args.limit,
                 )
             else:
