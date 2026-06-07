@@ -13,7 +13,7 @@ from catalog_review_cli_support import (
     serialize_review_item,
     write_json,
 )
-from catalog_review_state import append_history
+from catalog_review_state import update_review_entry
 from catalog_review_sync import write_review_outputs
 
 
@@ -30,18 +30,14 @@ def cmd_mark(root: Path, asset_id: str, status: str, note: str | None) -> int:
     if item is None:
         print(json.dumps({"status": "error", "error": "asset-not-found", "assetID": asset_id}, ensure_ascii=False))
         return 1
-    entry = state["entries"].setdefault(asset_id, {})
-    entry.update({
-        "status": status,
-        "note": note if note is not None else entry.get("note", ""),
-        "promise": item["promise"],
-        "category": item["category"],
-        "title": item["title"],
-        "device": item["device"],
-        "appearance": item["appearance"],
-        "relPath": item["relPath"],
-    })
-    append_history(entry, action="mark", status=status, note=entry["note"])
+    entry = update_review_entry(
+        state["entries"],
+        item,
+        asset_id=asset_id,
+        status=status,
+        note=note,
+        action="mark",
+    )
     write_json(state_path, state)
     write_review_outputs(root, manifest, state)
     print(json.dumps({"status": "ok", "assetID": asset_id, "reviewStatus": status, "note": entry["note"]}, ensure_ascii=False))
@@ -93,18 +89,14 @@ def cmd_apply(
         return 0
 
     for item in matches:
-        entry = state["entries"].setdefault(item["assetID"], {})
-        entry.update({
-            "status": target_status,
-            "note": note if note is not None else entry.get("note", ""),
-            "promise": item["promise"],
-            "category": item["category"],
-            "title": item["title"],
-            "device": item["device"],
-            "appearance": item["appearance"],
-            "relPath": item["relPath"],
-        })
-        append_history(entry, action="apply", status=target_status, note=entry["note"])
+        update_review_entry(
+            state["entries"],
+            item,
+            asset_id=item["assetID"],
+            status=target_status,
+            note=note,
+            action="apply",
+        )
 
     write_json(state_path, state)
     write_review_outputs(root, manifest, state)
