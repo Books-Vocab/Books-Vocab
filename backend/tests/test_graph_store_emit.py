@@ -192,3 +192,69 @@ def test_real_events_are_not_synthetic(tmp_path):
     gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
     assert ev.query(synthetic=True) == []
     assert len(ev.query(synthetic=False)) == 1
+
+
+class _CountingStore(GraphEventStore):
+    """記錄 insert_many 被呼叫幾次,驗證 batch 操作只開一筆交易。"""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.insert_many_calls = 0
+
+    def insert_many(self, drafts):  # noqa: ANN001
+        self.insert_many_calls += 1
+        return super().insert_many(drafts)
+
+
+def test_batch_add_emits_single_transaction(tmp_path):
+    ev = _CountingStore(tmp_path / "graph_events.db")
+    gs = GraphStore(
+        links_path=tmp_path / "graph_default.json",
+        candidates_path=tmp_path / "candidates_default.json",
+        blocked_path=tmp_path / "blocked_default.json",
+        event_store=ev, event_notebook_id="default",
+    )
+    gs.batch_add_links([
+        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+        ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
+        ("e", "f", LinkKind.SHARES_USAGE, 0.5, "r3"),
+    ])
+    assert ev.insert_many_calls == 1  # 不是逐 link 一筆交易
+    assert len(ev.query(event_type=GraphEventType.LINK_ADDED)) == 3
+
+
+def test_deprecate_emits_single_transaction(tmp_path):
+    ev = _CountingStore(tmp_path / "graph_events.db")
+    gs = GraphStore(
+        links_path=tmp_path / "graph_default.json",
+        candidates_path=tmp_path / "candidates_default.json",
+        blocked_path=tmp_path / "blocked_default.json",
+        event_store=ev, event_notebook_id="default",
+    )
+    gs.batch_add_links([
+        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+        ("a", "c", LinkKind.SHARES_USAGE, 0.6, "r2"),
+    ])
+    before = ev.insert_many_calls
+    gs.deprecate_links_for("a")
+    assert ev.insert_many_calls == before + 1  # 兩條 deprecate 共一筆交易
+    assert len(ev.query(event_type=GraphEventType.LINK_DEPRECATED)) == 2
+
+
+def test_event_store_provider_resolved_per_emit_survives_eviction(tmp_path):
+    """GraphStore 透過 provider 取 event_store,故快取逐出後重建仍 emit 到 live store。"""
+    db = tmp_path / "graph_events.db"
+    holder = {"store": GraphEventStore(db)}
+    gs = GraphStore(
+        links_path=tmp_path / "graph_default.json",
+        candidates_path=tmp_path / "candidates_default.json",
+        blocked_path=tmp_path / "blocked_default.json",
+        event_store_provider=lambda: holder["store"],
+        event_notebook_id="default",
+    )
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
+    # 模擬 LRU 逐出:舊 store 關閉並由 cache 重建為新實例(同檔)
+    holder["store"].close()
+    holder["store"] = GraphEventStore(db)
+    gs.add_link("c", "d", LinkKind.SHARES_USAGE, 0.7, "r2")  # 不得拋例外
+    assert len(holder["store"].query(event_type=GraphEventType.LINK_ADDED)) == 2

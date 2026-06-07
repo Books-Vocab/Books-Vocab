@@ -7,6 +7,7 @@ import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
 from .candidates import _CandidatesMixin
@@ -15,7 +16,7 @@ from .models import CandidatePair, GraphLink
 from .persistence import _PersistenceMixin
 
 if TYPE_CHECKING:
-    from ..graph_event_log import GraphEventStore
+    from ..graph_event_log import GraphEventDraft, GraphEventStore
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         pending_judge_path: Path | None = None,
         *,
         event_store: GraphEventStore | None = None,
+        event_store_provider: Callable[[], GraphEventStore] | None = None,
         event_notebook_id: str = "default",
     ) -> None:
         self.links_path = links_path
@@ -58,7 +60,11 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self.pending_judge_path = pending_judge_path
         # Append-only 變動帳本(Phase 6)。None = 不記錄(既有用法 / 測試零影響)。
         # 每個 mutation 成功改檔後 emit 一筆 diff 事件,is_synthetic=False 區隔合成過去。
+        # ``event_store_provider`` 優先(生產用):每次 emit 透過 service_factories 快取
+        # 重新解析,避免長期持有被 LRU 逐出的 store 而靜默丟事件;``event_store`` 為直接注入
+        # (測試用)。
         self._event_store = event_store
+        self._event_store_provider = event_store_provider
         self._event_notebook_id = event_notebook_id
         self._lock = threading.Lock()
         # Per-file write locks: serialise concurrent _atomic_json_write calls
@@ -127,6 +133,68 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             for c in self._candidates
         }
 
+    def _resolve_event_store(self) -> GraphEventStore | None:
+        """取 live event_store。provider(生產)優先,每次重解析以避開 LRU 逐出後的死引用;
+        否則用直接注入的 store(測試)。"""
+        if self._event_store_provider is not None:
+            return self._event_store_provider()
+        return self._event_store
+
+    def _build_graph_event_draft(
+        self,
+        event_type: str,
+        *,
+        link_id: str,
+        from_id: str,
+        to_id: str,
+        kind: str,
+        source: str,
+        confidence_before: float | None = None,
+        confidence_after: float | None = None,
+        status_before: str | None = None,
+        status_after: str | None = None,
+        reason: str | None = None,
+    ) -> GraphEventDraft:
+        """組一筆真實(``is_synthetic=False``)變動事件草稿。``event_id`` 用 uuid4(真實事件
+        非冪等重放,每筆新 id);``occurred_at`` 為 mutation 當下;``reason`` 記 link 當前理由
+        (add=新、update=改後);status-only 轉移無「為何」依據,沿用合成史哲學留 None。"""
+        from ..graph_event_log import GraphEventDraft
+
+        return GraphEventDraft(
+            event_id=uuid.uuid4().hex,
+            event_type=event_type,
+            link_id=link_id,
+            from_id=from_id,
+            to_id=to_id,
+            kind=kind,
+            confidence_before=confidence_before,
+            confidence_after=confidence_after,
+            reason=reason,
+            status_before=status_before,
+            status_after=status_after,
+            source=source,
+            notebook_id=self._event_notebook_id,
+            occurred_at=datetime.now(UTC),
+            is_synthetic=False,
+        )
+
+    def _emit_graph_events(self, drafts: list[GraphEventDraft]) -> None:
+        """批次 append。必須在 _lock 外、改檔成功後呼叫。一筆 logical mutation(含 batch)
+        只開一筆 insert_many 交易,避免逐 link 各取寫鎖。帳本是研究料,非寫入關鍵路徑:
+        emit 失敗只記 log,絕不冒泡打斷圖譜寫入。"""
+        if not drafts:
+            return
+        store = self._resolve_event_store()
+        if store is None:
+            return
+        try:
+            store.insert_many(drafts)
+        except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
+            logger.warning(
+                "graph event emit failed (%d drafts, first=%s)",
+                len(drafts), drafts[0].event_type, exc_info=True,
+            )
+
     def _emit_graph_event(
         self,
         event_type: str,
@@ -142,36 +210,17 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         status_after: str | None = None,
         reason: str | None = None,
     ) -> None:
-        """Append a real(``is_synthetic=False``) mutation event. 必須在 _lock 外、改檔
-        成功後呼叫。帳本是研究料,非寫入關鍵路徑:emit 失敗只記 log,絕不冒泡打斷圖譜寫入。
-
-        ``event_id`` 用 uuid4 —— 真實事件非冪等重放,每筆一個新 id。``occurred_at`` 為
-        mutation 當下。``source`` 由呼叫端傳(pipeline=auto / 手動 API=manual / ops)。``reason``
-        記 link 的當前理由(add=新理由、update=改後理由),供 snapshot+diff 無損重建;status-only
-        轉移(hide/unhide/deprecate/restore/delete)無「為何轉移」依據,沿用合成史哲學留 None。
-        """
-        if self._event_store is None:
+        """單筆便利 emit(內部仍走 batch 路徑)。"""
+        if self._event_store_provider is None and self._event_store is None:
             return
-        try:
-            self._event_store.append(
-                event_id=uuid.uuid4().hex,
-                event_type=event_type,
-                link_id=link_id,
-                from_id=from_id,
-                to_id=to_id,
-                kind=kind,
-                source=source,
-                notebook_id=self._event_notebook_id,
-                occurred_at=datetime.now(UTC),
-                confidence_before=confidence_before,
-                confidence_after=confidence_after,
-                status_before=status_before,
-                status_after=status_after,
-                reason=reason,
-                is_synthetic=False,
+        self._emit_graph_events([
+            self._build_graph_event_draft(
+                event_type, link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+                source=source, confidence_before=confidence_before,
+                confidence_after=confidence_after, status_before=status_before,
+                status_after=status_after, reason=reason,
             )
-        except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
-            logger.warning("graph event emit failed (%s, link=%s)", event_type, link_id, exc_info=True)
+        ])
 
     # Link kinds removed from the enum; silently drop on load.
     _RETIRED_KINDS: ClassVar[frozenset[str]] = frozenset({"confusable"})
@@ -250,12 +299,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
-            for lk in affected:
-                self._emit_graph_event(
+            self._emit_graph_events([
+                self._build_graph_event_draft(
                     "link_deprecated", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
                     kind=str(lk.kind), source=source, confidence_before=lk.confidence,
                     confidence_after=lk.confidence, status_before="active", status_after="deprecated",
                 )
+                for lk in affected
+            ])
         return len(affected)
 
     def restore_links_for(self, card_id: str, cards_store, *, source: str = "auto") -> int:
@@ -274,12 +325,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
-            for lk in affected:
-                self._emit_graph_event(
+            self._emit_graph_events([
+                self._build_graph_event_draft(
                     "link_restored", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
                     kind=str(lk.kind), source=source, confidence_before=lk.confidence,
                     confidence_after=lk.confidence, status_before="deprecated", status_after="active",
                 )
+                for lk in affected
+            ])
         return len(affected)
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False, source: str = "auto") -> dict:

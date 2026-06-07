@@ -27,6 +27,8 @@ class _LinksMixin:
     def _flush_links(self, snapshot: list[dict]) -> None: ...  # noqa: D102
     def _flush_blocked(self, snapshot: list[list[str]]) -> None: ...  # noqa: D102
     def _emit_graph_event(self, event_type: str, **kw: Any) -> None: ...  # noqa: D102
+    def _build_graph_event_draft(self, event_type: str, **kw: Any) -> Any: ...  # noqa: D102
+    def _emit_graph_events(self, drafts: list[Any]) -> None: ...  # noqa: D102
 
     @staticmethod
     def _normalize_pair(a: str, b: str) -> tuple[str, str]: ...  # noqa: D102
@@ -110,13 +112,15 @@ class _LinksMixin:
             snapshot = self._links_to_serializable() if created else None
         if snapshot is not None:
             self._flush_links(snapshot)
-            for lk in created:
-                self._emit_graph_event(
+            self._emit_graph_events([
+                self._build_graph_event_draft(
                     "link_added", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
                     kind=str(lk.kind), source=source, confidence_before=None,
                     confidence_after=lk.confidence, status_before=None, status_after="active",
                     reason=lk.reason,
                 )
+                for lk in created
+            ])
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:

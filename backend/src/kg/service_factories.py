@@ -162,12 +162,15 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
     ])
     pj_path = user_dir / f"pending_judge_{notebook_id}.json"
     # 注入 per-user 變動帳本,讓 Store 層每筆 mutation emit 真實事件(Phase 6)。
-    event_store = create_graph_event_store(user_dir)
+    # 用 provider 而非直接注入:GraphStore 可能被長期持有(pipeline 跨秒 hold),而
+    # event_store 在共享 LRU 快取中可能先被逐出並 close;每次 emit 透過 provider 重解析,
+    # 命中快取(逐出則重建)後再寫,杜絕對死引用靜默丟事件。
     return _get_cached(
         key,
         lambda: GraphStore(
             links_path, candidates_path, blocked_path, pending_judge_path=pj_path,
-            event_store=event_store, event_notebook_id=notebook_id,
+            event_store_provider=lambda: create_graph_event_store(user_dir),
+            event_notebook_id=notebook_id,
         ),
     )
 
