@@ -37,3 +37,20 @@ def build_action_bundle(*, primary_command: str | None, followup_command: str | 
         followup_action["role"] = "followup"
         actions.append(followup_action)
     return actions
+
+
+def build_action_plan(*, primary_command: str | None, followup_command: str | None) -> dict:
+    actions = build_action_bundle(
+        primary_command=primary_command,
+        followup_command=followup_command,
+    )
+    plan = {
+        "primary": None,
+        "followup": None,
+        "actions": actions,
+    }
+    if actions:
+        plan["primary"] = actions[0]
+    if len(actions) > 1:
+        plan["followup"] = actions[1]
+    return plan
