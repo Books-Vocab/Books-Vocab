@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from catalog_review_actions import build_action_plan, build_action_ref
+from catalog_review_actions import build_action_plan, with_starter_plan
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -126,7 +126,7 @@ def build_core_playbooks(core_modes: dict) -> dict:
     hero_followup_command = followup_command(hero_first)
     coverage_followup_command = followup_command(coverage_first)
     return {
-        "heroFirstPlaybook": {
+        "heroFirstPlaybook": with_starter_plan({
             "mode": "hero-first",
             "goal": "先抓最能代表產品承諾的 hero 候選，再進行變體比較與 shortlist。",
             "steps": [
@@ -134,14 +134,11 @@ def build_core_playbooks(core_modes: dict) -> dict:
                 "對同一 promise 做 variant 比較，避免先被大面積 coverage 吸走注意力。",
                 "確認 hero 候選後，再回頭處理該 promise 的 top category 收斂。",
             ],
-            "firstAction": build_action_ref(hero_first_command),
-            "firstCommand": hero_first_command,
-            "starterPlan": build_action_plan(
-                primary_command=hero_first_command,
-                followup_command=hero_followup_command,
-            ),
         },
-        "coverageFirstPlaybook": {
+            primary_command=hero_first_command,
+            followup_command=hero_followup_command,
+        ),
+        "coverageFirstPlaybook": with_starter_plan({
             "mode": "coverage-first",
             "goal": "先清最大覆蓋債，快速把高量未審分類壓縮到可管理範圍。",
             "steps": [
@@ -149,13 +146,10 @@ def build_core_playbooks(core_modes: dict) -> dict:
                 "用 category 為單位做批次過濾，避免逐張翻圖。",
                 "coverage 壓下來後，再回頭從該 promise 內挑 hero 圖做 shortlist。",
             ],
-            "firstAction": build_action_ref(coverage_first_command),
-            "firstCommand": coverage_first_command,
-            "starterPlan": build_action_plan(
-                primary_command=coverage_first_command,
-                followup_command=coverage_followup_command,
-            ),
         },
+            primary_command=coverage_first_command,
+            followup_command=coverage_followup_command,
+        ),
     }
 
 
@@ -278,7 +272,7 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             else None
         )
         view["recommendations"] = payload["cleanupRecommendations"]
-        view["playbook"] = {
+        view["playbook"] = with_starter_plan({
             "mode": "cleanup",
             "goal": "清掉弱訊號與工程性 screenshot debt，避免污染行銷審稿視野。",
             "steps": [
@@ -286,13 +280,10 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
                 "優先清掉 count 最大的非核心分類，讓 review desk 聚焦在核心承諾。",
                 "只有在 cleanup 降到可控後，再回到核心 promise 做最終選圖。",
             ],
-            "firstAction": build_action_ref(cleanup_primary),
-            "firstCommand": cleanup_primary,
-            "starterPlan": build_action_plan(
-                primary_command=cleanup_primary,
-                followup_command=cleanup_followup,
-            ),
-        }
+        },
+            primary_command=cleanup_primary,
+            followup_command=cleanup_followup,
+        )
         if health["recommendedOperatorAction"] == "proceed-review":
             health["recommendedCommand"] = (
                 view["playbook"]["starterPlan"]["primary"]["command"]
