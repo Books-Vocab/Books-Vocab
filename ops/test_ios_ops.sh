@@ -37,11 +37,15 @@ for sub in status build test archive archives issues logs sentry doctor workflow
 done
 
 section "Doctor release readiness surface"
-doctor_body="$(awk '/^cmd_doctor\(\)/,/^}/' "$IOS_OPS")"
+doctor_body="$(awk '/^doctor_readiness\(\)/,/^}/' "$IOS_OPS")"
 for key in project organizer testflight asc_version signing storekit sentry; do
-  grep -q "emit_readiness \"$key\"" <<<"$doctor_body" \
+  grep -q "\"$key\"" <<<"$doctor_body" \
     && ok "doctor checks $key readiness" || fail_t "doctor missing $key readiness"
 done
+grep -q 'cmd_doctor_json' "$IOS_OPS" && grep -q 'kg.ios.doctor.v1' "$IOS_OPS" \
+  && ok "doctor exposes machine-readable JSON schema" || fail_t "doctor missing JSON schema"
+grep -q 'doctor_readiness emit_readiness_json' "$IOS_OPS" \
+  && ok "doctor JSON reuses readiness checks" || fail_t "doctor JSON does not reuse readiness checks"
 grep -q 'read_asc_version_state' <<<"$doctor_body" && grep -q 'waited >= 12' "$IOS_OPS" \
   && ok "doctor bounds ASC version-state lookup" || fail_t "doctor missing bounded ASC version lookup"
 grep -q 'ExportOptions.plist' <<<"$doctor_body" \
@@ -57,6 +61,10 @@ for key in preflight tests build archive upload asc-review metadata submit; do
   grep -q "\"$key\"" "$IOS_OPS" \
     && ok "workflow includes $key step" || fail_t "workflow missing $key step"
 done
+grep -q 'cmd_workflow_release_json' "$IOS_OPS" && grep -q 'kg.ios.workflow.v1' "$IOS_OPS" \
+  && ok "workflow exposes machine-readable JSON schema" || fail_t "workflow missing JSON schema"
+grep -q 'emit_workflow_step_json' "$IOS_OPS" \
+  && ok "workflow JSON emits structured steps" || fail_t "workflow JSON missing structured step emitter"
 grep -q './ops/ios_ops.sh test --all-targets --timeout 1200' "$IOS_OPS" \
   && ok "workflow includes all-targets test gate" || fail_t "workflow missing all-targets test command"
 grep -q './ops/asc_text_bundle.py dump -o asc.json' "$IOS_OPS" \
@@ -66,6 +74,22 @@ grep -q 'ASC GUI' "$IOS_OPS" \
 grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS" \
   && fail_t "workflow contains direct Xcode side-effect path" \
   || ok "workflow stays orchestration/read-only"
+
+section "JSON smoke fixtures"
+doctor_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json)"
+echo "$doctor_json" | jq -e '.schema=="kg.ios.doctor.v1" and (.readiness|length >= 7) and any(.readiness[]; .key=="testflight")' >/dev/null \
+  && ok "doctor --json parses with readiness array" || fail_t "doctor --json invalid: $doctor_json"
+workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
+echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
+  && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
+bad_args_tmp="$(mktemp -d)"
+if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json garbage >"$bad_args_tmp/out" 2>"$bad_args_tmp/err"; then
+  fail_t "doctor --json rejects unknown trailing args"
+else
+  grep -q 'unknown doctor option' "$bad_args_tmp/err" \
+    && ok "doctor --json rejects unknown trailing args" || fail_t "doctor --json bad-arg message missing"
+fi
+rm -rf "$bad_args_tmp"
 
 section "Archive fixture"
 tmp="$(mktemp -d)"

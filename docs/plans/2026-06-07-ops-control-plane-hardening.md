@@ -79,8 +79,13 @@ verified_against: 887a248d
 
 4. ✅ `ios_ops.sh workflow release` 補發版操作編排。
    - 方向:把「跑 doctor → all-targets test → build → archive → upload → ASC metadata/rejection → GUI submit」變成 read-only workflow output,不要讓 agent 靠 SOP 記憶拼命令。
-   - 決策:新增 `[ios][workflow] step=N key=... status=todo|ready|block|manual command="..." note="..."`;submit/resubmit 保持 `manual` 邊界。
+   - 決策:新增 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`;submit/resubmit 保持 `manual` 邊界。
    - 驗證:`./ops/ios_ops.sh workflow release` 可輸出 build 4 upload ready、ASC 1.6 REJECTED rejection-resolution todo;`./ops/test_ops.sh ios-ops` 通過。
+
+5. ✅ `ios_ops.sh doctor/workflow` 補機器可讀 JSON contract。
+   - 方向:保留人看的第一屏摘要，同時讓 agent/CI 用一次命令取得完整 readiness/workflow 物件，減少重複查詢與文字解析。
+   - 決策:`doctor --json` 輸出 `kg.ios.doctor.v1` + `readiness[]`;`workflow release --json` 輸出 `kg.ios.workflow.v1` + `steps[]`。文字與 JSON 共用 readiness 判斷 helper，workflow status 收斂為 `todo|ready|block|warn|manual`，降低 drift。
+   - 驗證:`./ops/ios_ops.sh doctor --json | jq ...`、`./ops/ios_ops.sh workflow release --json | jq ...`、`./ops/test_ops.sh ios-ops`。
 
 ## 驗證矩陣
 
