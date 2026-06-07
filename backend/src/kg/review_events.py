@@ -2,48 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import event, func
+from sqlalchemy import func
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from .api_models import ReviewEventEntry
 from .exceptions import BadRequestError
-
-
-def _install_serializable_sqlite(engine: Any) -> None:
-    """Apply per-connection PRAGMAs to *every* pooled connection and make every
-    transaction take SQLite's write lock up front (``BEGIN IMMEDIATE``).
-
-    This serializes the read-max-then-insert in ``insert_many`` across concurrent
-    same-user writers (two devices pushing at once), so ``ingested_at`` stays
-    strictly monotonic and unique — not just within a single call. ``busy_timeout``
-    lets the waiting writer block instead of failing with "database is locked".
-    Standard SQLAlchemy/pysqlite serialized-transaction recipe.
-    """
-
-    @event.listens_for(engine, "connect")
-    def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
-        cur = dbapi_conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
-        cur.execute("PRAGMA busy_timeout=30000")
-        cur.close()
-        # Disable pysqlite's implicit BEGIN so the begin-listener drives it explicitly.
-        dbapi_conn.isolation_level = None
-
-    @event.listens_for(engine, "begin")
-    def _begin_immediate(conn):  # noqa: ANN001
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
-
-
-def _now() -> datetime:
-    """Indirection over the wall clock so tests can freeze it to exercise the
-    monotonic ingestion guard (same-instant / backward-clock scenarios)."""
-    return datetime.now(UTC)
+from .sqlite_ledger import (
+    install_serializable_sqlite as _install_serializable_sqlite,
+)
+from .sqlite_ledger import (
+    next_ingested_at,
+    normalize_last_ingested,
+)
+from .sqlite_ledger import (
+    now_utc as _now,
+)
 
 
 class ReviewEvent(SQLModel, table=True):
@@ -140,9 +118,9 @@ class ReviewEventStore:
             # Continue the monotonic ingestion clock from the current max so each new
             # event gets a strictly increasing, unique ingested_at — even across a
             # backward wall-clock step (NTP) or multiple inserts within one microsecond.
-            last_ingested = session.exec(select(func.max(ReviewEvent.ingested_at))).one()
-            if last_ingested is not None and last_ingested.tzinfo is None:
-                last_ingested = last_ingested.replace(tzinfo=UTC)
+            last_ingested = normalize_last_ingested(
+                session.exec(select(func.max(ReviewEvent.ingested_at))).one()
+            )
             for entry in entries:
                 existing = session.get(ReviewEvent, entry.event_id)
                 if existing is not None:
@@ -150,11 +128,7 @@ class ReviewEventStore:
                     continue
                 reviewed_at = _parse_required_timestamp(entry.reviewed_at, "reviewed_at")
                 created_at = _parse_required_timestamp(entry.created_at, "created_at")
-                now = _now()
-                if last_ingested is None or now > last_ingested:
-                    ingested_at = now
-                else:
-                    ingested_at = last_ingested + timedelta(microseconds=1)
+                ingested_at = next_ingested_at(last_ingested, _now())
                 last_ingested = ingested_at
                 session.add(
                     ReviewEvent(

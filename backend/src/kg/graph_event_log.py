@@ -19,48 +19,27 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
-from sqlalchemy import event, func
+from sqlalchemy import func
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
-
-def _install_serializable_sqlite(engine: Any) -> None:
-    """每條 pooled 連線套 WAL + ``BEGIN IMMEDIATE``,把 read-max-then-insert 的
-    ``ingested_at`` 取號序列化,使並發寫入(合成 / 遷移批次,以及未來 GraphStore emit)下
-    ``ingested_at`` 仍嚴格單調且唯一。與 ``review_events`` 同一套 serialized-transaction
-    recipe;``busy_timeout`` 讓等待的 writer 阻塞而非 "database is locked" 失敗。"""
-
-    @event.listens_for(engine, "connect")
-    def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
-        cur = dbapi_conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
-        cur.execute("PRAGMA busy_timeout=30000")
-        cur.close()
-        # 關閉 pysqlite 隱式 BEGIN,改由 begin-listener 顯式驅動。
-        dbapi_conn.isolation_level = None
-
-    @event.listens_for(engine, "begin")
-    def _begin_immediate(conn):  # noqa: ANN001
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
-
-
-def _now() -> datetime:
-    """Indirection over the wall clock so tests can exercise the monotonic guard."""
-    return datetime.now(UTC)
-
-
-def _as_utc(dt: datetime) -> datetime:
-    """正規化為 tz-aware UTC。naive(來源 cards.db 'YYYY-MM-DD HH:MM:SS' 或合成產出)
-    視為 UTC;aware 轉 UTC。不轉的話 SQLite 存回的 naive 與 aware cursor 相比會 TypeError。"""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
+from .sqlite_ledger import (
+    as_utc as _as_utc,
+)
+from .sqlite_ledger import (
+    install_serializable_sqlite as _install_serializable_sqlite,
+)
+from .sqlite_ledger import (
+    next_ingested_at,
+    normalize_last_ingested,
+)
+from .sqlite_ledger import (
+    now_utc as _now,
+)
 
 
 class GraphEventType(StrEnum):
@@ -148,18 +127,14 @@ class GraphEventStore:
         with Session(self.engine) as session:
             # 從現有 max 續接單調 ingestion clock,使新事件 ingested_at 嚴格遞增、唯一 ——
             # 即使遇 NTP 回撥或同微秒多筆寫入。
-            last_ingested = session.exec(select(func.max(GraphEvent.ingested_at))).one()
-            if last_ingested is not None and last_ingested.tzinfo is None:
-                last_ingested = last_ingested.replace(tzinfo=UTC)
+            last_ingested = normalize_last_ingested(
+                session.exec(select(func.max(GraphEvent.ingested_at))).one()
+            )
             for d in drafts:
                 if session.get(GraphEvent, d.event_id) is not None:
                     skipped += 1
                     continue
-                now = _now()
-                if last_ingested is None or now > last_ingested:
-                    ingested_at = now
-                else:
-                    ingested_at = last_ingested + timedelta(microseconds=1)
+                ingested_at = next_ingested_at(last_ingested, _now())
                 last_ingested = ingested_at
                 session.add(
                     GraphEvent(

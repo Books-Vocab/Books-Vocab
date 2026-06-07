@@ -27,23 +27,17 @@ confidence / reason / created_at / status),不存「怎麼變成這樣」的逐�
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from .graph.models import GraphLink
 from .graph_event_log import GraphEventDraft, GraphEventSource, GraphEventType
+from .sqlite_ledger import as_utc as _as_utc
 
 # terminal status → 從 active 轉移過去的事件型別。active/candidate 無轉移(見下)。
 _TERMINAL_TRANSITION: dict[str, GraphEventType] = {
     "hidden": GraphEventType.LINK_HIDDEN,
     "deprecated": GraphEventType.LINK_DEPRECATED,
 }
-
-
-def _as_utc(dt: datetime) -> datetime:
-    """正規化為 tz-aware UTC(圖譜檔可能存 naive created_at)。"""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
 
 
 def synthesize_graph_history(link: GraphLink, *, notebook_id: str) -> list[GraphEventDraft]:
