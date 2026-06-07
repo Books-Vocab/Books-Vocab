@@ -257,7 +257,9 @@ struct CatalogScene: View {
             .init(id: "podcast_progress_ticker", categories: ["Podcast Progress Ticker"], register: PodcastProgressTickerScenarios.register),
             .init(id: "settings_social_badge", categories: ["Settings · Social Badge"], register: SettingsSocialBadgeScenarios.register),
             .init(id: "shimmer_line", categories: ["Word Detail · Shimmer"], register: ShimmerLineScenarios.register),
-            .init(id: "today_review_shortcut_chips", categories: ["Today Review · Shortcut Key Cap", "Today Review · Shortcut Hint Chip"], register: TodayReviewShortcutScenarios.register),
+            // `categories` 透過 enum 計算屬性同步 macCatalyst gating:非 Catalyst
+            // 時 register 為 no-op,manifest 亦回報空 categories,使覆蓋測試對稱。
+            .init(id: "today_review_shortcut_chips", categories: TodayReviewShortcutScenarios.manifestCategories, register: TodayReviewShortcutScenarios.register),
             .init(
                 id: "review_fold_surface",
                 categories: [
