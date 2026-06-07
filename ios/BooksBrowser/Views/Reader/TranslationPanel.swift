@@ -149,7 +149,7 @@ struct TranslationPanel: View {
     }
 }
 
-private struct TranslationPanelPreviewScene: View {
+struct TranslationPanelPreviewScene: View {
     @Environment(\.appTheme) private var appTheme
     var isExpanded: Bool
     var isExplanationOnly: Bool
