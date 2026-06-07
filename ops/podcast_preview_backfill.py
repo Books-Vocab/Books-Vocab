@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 --with boto3 python
 """Backfill free-tier **preview** clips for podcast series already in S3.
 
 Why this exists separately from ``ops/podcast_upload.sh``:

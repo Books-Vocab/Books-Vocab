@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project backend python
 """KG data inspector — observe card/graph/pipeline quality from local DB.
 
 Usage:

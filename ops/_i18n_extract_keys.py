@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 # Extract i18n keys statically referenced from Swift sources.
 #
 # Outputs JSON to stdout:

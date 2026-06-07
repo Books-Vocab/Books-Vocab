@@ -41,6 +41,57 @@ grep -q 'python find 3.13' "$f" \
   && ok "$name resolves Python 3.13 through uv" \
   || fail_t "$name missing uv-resolved Python 3.13 helpers"
 
+section "All ops Python entrypoints avoid bare python3 shebang"
+bad_shebangs="$(
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -print \
+    | sort \
+    | while IFS= read -r py; do
+        first="$(head -1 "$py")"
+        if [[ "$first" == '#!'*python3* ]]; then
+          printf '%s\t%s\n' "$py" "$first"
+        fi
+      done
+)"
+if [[ -z "$bad_shebangs" ]]; then
+  ok "no ops/*.py uses bare python3 shebang"
+else
+  fail_t "bare python3 shebangs found:\n$bad_shebangs"
+fi
+
+section "Executable Python entrypoints use uv shebang"
+bad_exec="$(
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm +111 -print \
+    | sort \
+    | while IFS= read -r py; do
+        first="$(head -1 "$py")"
+        if [[ "$first" != '#!'*'uv run'* ]]; then
+          printf '%s\t%s\n' "$py" "$first"
+        fi
+      done
+)"
+if [[ -z "$bad_exec" ]]; then
+  ok "executable ops/*.py entrypoints use uv shebang"
+else
+  fail_t "executable ops/*.py without uv shebang:\n$bad_exec"
+fi
+
+section "Shebang Python tools are executable"
+not_executable="$(
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -print \
+    | sort \
+    | while IFS= read -r py; do
+        first="$(head -1 "$py")"
+        if [[ "$first" == '#!'* && ! -x "$py" ]]; then
+          printf '%s\t%s\n' "$py" "$first"
+        fi
+      done
+)"
+if [[ -z "$not_executable" ]]; then
+  ok "all ops/*.py files with shebang are executable"
+else
+  fail_t "ops/*.py files with shebang but no executable bit:\n$not_executable"
+fi
+
 section "Smoke"
 "$ROOT/ops/ui_token_lint.sh" --help >/dev/null \
   && ok "ui_token_lint --help" || fail_t "ui_token_lint --help"

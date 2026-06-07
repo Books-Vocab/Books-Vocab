@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 --with boto3 python
 """Headless podcast-pipeline observability CLI.
 
 The podcast monitor's observability logic (status cascade, per-episode gates,
