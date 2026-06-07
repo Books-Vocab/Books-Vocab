@@ -517,7 +517,7 @@ def test_catalog_review_verify_detects_schema_drift_and_repair_fixes_it(tmp_path
     assert "state-schema-errors" in verify_bad_payload["errors"]
 
     repair_dry_run = subprocess.run(
-        [sys.executable, str(REVIEW_CLI), str(output_root), "repair", "--dry-run"],
+        [sys.executable, str(REVIEW_CLI), str(output_root), "repair", "--dry-run", "--limit", "1"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -526,10 +526,12 @@ def test_catalog_review_verify_detects_schema_drift_and_repair_fixes_it(tmp_path
     assert repair_dry_run.returncode == 0, repair_dry_run.stderr
     repair_dry_run_payload = json.loads(repair_dry_run.stdout)
     assert repair_dry_run_payload["repairCount"] >= 1
-    assert any("backfilled-history" in repair["repairs"] for repair in repair_dry_run_payload["repairs"])
+    assert repair_dry_run_payload["truncatedRepairCount"] >= 0
+    assert any("backfilled-history" in repair["repairs"] for repair in repair_dry_run_payload["sampleRepairs"])
+    assert "repairs" not in repair_dry_run_payload
 
     repair = subprocess.run(
-        [sys.executable, str(REVIEW_CLI), str(output_root), "repair"],
+        [sys.executable, str(REVIEW_CLI), str(output_root), "repair", "--include-repairs"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -538,6 +540,8 @@ def test_catalog_review_verify_detects_schema_drift_and_repair_fixes_it(tmp_path
     assert repair.returncode == 0, repair.stderr
     repair_payload = json.loads(repair.stdout)
     assert repair_payload["repairCount"] >= 1
+    assert repair_payload["repairTypeCounts"]["backfilled-history"] >= 1
+    assert "repairs" in repair_payload
 
     repaired_state = json.loads(state_path.read_text(encoding="utf-8"))
     repaired_entry = repaired_state["entries"][asset_id]
