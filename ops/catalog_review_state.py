@@ -52,3 +52,27 @@ def append_history(entry: dict, *, action: str, status: str, note: str) -> None:
     })
     entry["history"] = history
     entry["updatedAt"] = history[-1]["at"]
+
+
+def update_review_entry(
+    entries: dict[str, dict],
+    item: dict,
+    *,
+    asset_id: str,
+    status: str,
+    note: str | None,
+    action: str,
+) -> dict:
+    entry = entries.setdefault(asset_id, {})
+    entry.update({
+        "status": status,
+        "note": note if note is not None else entry.get("note", ""),
+        "promise": item["promise"],
+        "category": item["category"],
+        "title": item["title"],
+        "device": item["device"],
+        "appearance": item["appearance"],
+        "relPath": item["relPath"],
+    })
+    append_history(entry, action=action, status=status, note=entry["note"])
+    return entry
