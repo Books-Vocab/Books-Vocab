@@ -204,7 +204,7 @@ struct BookCard: View {
 
 // MARK: - iCloud 下載進度徽章
 
-private struct ICloudProgressBadge: View {
+struct ICloudProgressBadge: View {
     let progress: Double
     private let foreground = AppBookshelfMetrics.badgeForeground
 

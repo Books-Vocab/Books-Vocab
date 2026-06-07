@@ -111,7 +111,7 @@ struct WordDetailGraphLinkRow: View {
 
 // MARK: - ShimmerLine
 
-private struct ShimmerLine: View {
+struct ShimmerLine: View {
     @Environment(\.appSkin) private var appSkin
     @State private var shimmerPhase = false
 
