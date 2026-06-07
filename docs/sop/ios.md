@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: c7a88204
+verified_against: 219e0f94
 -->
 # BooksBrowser iOS 開發技能
 
@@ -55,8 +55,16 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ./ops/ios_ops.sh sentry                 # iOS Sentry wiring 摘要
 ./ops/ios_ops.sh workflow release       # read-only 發版工作流：下一步命令 + todo/ready/block/warn/manual
 ./ops/ios_ops.sh workflow release --json # 同上，輸出 kg.ios.workflow.v1 結構化 JSON
-./ops/ios_ops.sh runs --json            # 最近 build/test verdict + log/xcresult artifact path
-./ops/ios_ops.sh snapshot --json        # 一次拉 project/Organizer/TestFlight/readiness/workflow/runs
+./ops/ios_ops.sh gate release --json    # release hard-stop verdict:0 pass / 1 warn / 2 block
+./ops/ios_ops.sh xcode --json           # Xcode/project/destination/simulator inventory:kg.ios.xcode.v1
+./ops/ios_ops.sh simulator status --json # booted simulator + app data container/process:kg.ios.simulator.v1
+./ops/ios_ops.sh simulator launch --json # launch installed app, then re-check process state
+./ops/ios_ops.sh simulator terminate --json # stop installed app, then re-check process state
+./ops/ios_ops.sh simulator screenshot --out build/sim/current.png --json # 本機截圖 artifact，不上傳
+./ops/ios_ops.sh runs --json            # 最近 build/test verdict + log/xcresult artifact path + diagnostics
+./ops/ios_ops.sh snapshot --json        # 一次拉 project/Organizer/TestFlight/readiness/workflow/gate/xcode/simulator/runs
+./ops/ios_ops.sh snapshot --json --skip-xcode # 快速模式:不拉 Xcode destination/simulator inventory
+./ops/ios_ops.sh snapshot --json --skip-simulator # 快速模式:不拉 booted simulator/app process
 ./ops/ios_ops.sh snapshot --json --include-logs --log-limit 50 # 同上,再內嵌 runtime logs
 ./ops/ios_ops.sh commands --json        # 自描述 CLI catalog:side-effect / schema / delegate
 ```
@@ -69,11 +77,17 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 `ios_ops.sh workflow release` 是 read-only 發版操作編排:輸出 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`。它不跑測試/編譯/archive/upload,只根據目前 project/Organizer/TestFlight/ASC state 列下一步命令;submit/resubmit 邊界仍標 `manual`，因為 ASC submit-for-review / 撤回送審刻意不做 CLI 寫入。agent/CI 要直接讀步驟時用 `--json`，schema 為 `kg.ios.workflow.v1`，核心陣列是 `steps[]`。
 
-`ios_ops.sh runs --json` 是 Xcode Report Navigator 的輕量對應面:schema 為 `kg.ios.runs.v1`,讀最近 `ios_build.sh` / `ios_test.sh` 寫出的 verdict file,回傳 build/test result、caller、elapsed、executed tests、log path、xcresult path 與 artifact 是否仍存在。新 verdict 優先讀 `.json`（避免含空白 path 被 legacy `KEY=value` 格式截斷）,舊單行 verdict 只作相容 fallback；含空白 path 的準確 artifact 判定以 JSON verdict 為準。它不重跑 build/test。
+`ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`1=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步,但不讓 gate 永遠失敗。`block` 只來自 readiness/workflow 的 `status=block`（例如 TestFlight build number 未增加）。
+
+`ios_ops.sh xcode --json` 是 Xcode Project Navigator / destination selector / Devices 視角的 read-only inventory:schema 為 `kg.ios.xcode.v1`,組合 `xcodebuild -version`、`xcode-select -p`、`xcodebuild -list -json`、`xcodebuild -showdestinations` 與 `xcrun simctl list devices --json`。輸出包含 Xcode 版本、DeveloperDir、project configurations/schemes/targets、destinations `available[]`/`ineligible[]`、simulator runtimes/devices 與 booted/available summary。各來源都有 `sources.*.status/exitCode/error`,頂層 `errors[]` 保留 CLI failure 診斷;來源失敗時仍輸出可解析 JSON。文字 alias `environment` 供人掃第一屏;agent 要選 `--destination` 或確認 booted simulator 時讀 JSON。
+
+`ios_ops.sh simulator status --json` / `sim status --json` 是 Simulator GUI 狀態的窄面:schema 為 `kg.ios.simulator.v1`,組合 `xcrun simctl list devices --json`、`xcrun simctl get_app_container booted com.Max0228.BooksBrowser data` 與 `xcrun simctl spawn <device> pgrep -x BooksBrowser`,回傳 booted device、app data container、app process `running|stopped|skipped|unknown` 與 errors[]。app 沒在跑是觀測狀態(`process.status=stopped`,pgrep exit 1),不讓整體 status 失敗;沒有 booted simulator 才回穩定 JSON + exit 1。`ios_ops.sh simulator launch --json` / `terminate --json` 對齊 Xcode Run/Stop toolbar 的窄面:底層只呼叫官方 `xcrun simctl launch|terminate`,然後重新讀 BooksBrowser process,回傳 `app.lifecycle` 與 `app.process`。它不 build、不 install、不 boot、不改 ASC;launch 需要 app 已安裝。`ios_ops.sh simulator screenshot --out <png> --json` 只做本機 artifact side effect,底層是 `xcrun simctl io <device> screenshot <png>`。
+
+`ios_ops.sh runs --json` 是 Xcode Report Navigator + Issue Navigator 的輕量對應面:schema 為 `kg.ios.runs.v1`,讀最近 `ios_build.sh` / `ios_test.sh` 寫出的 verdict file,回傳 build/test result、caller、elapsed、executed tests、log path、xcresult path、artifact 是否仍存在,並在每個 run 內嵌 `diagnostics`:`kg.ios.diagnostics.v1`。diagnostics 優先讀官方 `.xcresult`,不可讀時用 raw log fallback;缺 artifact 時給穩定 `source:"missing-artifacts"` 空摘要,不讓 `runs`/`snapshot` 中斷。新 verdict 優先讀 `.json`（避免含空白 path 被 legacy `KEY=value` 格式截斷）,舊單行 verdict 只作相容 fallback；含空白 path 的準確 artifact 判定以 JSON verdict 為準。它不重跑 build/test。
 
 `ios_ops.sh logs --json` 是 Xcode Console 的輕量對應面:schema 為 `kg.ios.logs.v1`,資料源是 Apple Unified Logging 官方 CLI `/usr/bin/log show --style ndjson`。輸出包含 `summary.rawCount` / `filteredCount` / `emittedCount` / `byEventType` 與 `entries[]`（timestamp、eventType、processID、subsystem、category、message、sender）；常見 RunningBoard/WebKit assertion 噪音會先過濾。`--limit` 只限制輸出的 entries 數量,不重跑 app。
 
-`ios_ops.sh snapshot --json` 是 agent 第一輪狀態入口:schema 為 `kg.ios.snapshot.v1`,合併 project、Organizer latest、TestFlight latest、`readiness[]`、release `workflow.steps[]` 與最近 `runs`。預設不查 unified log,所以 `logs` 欄位為 `null`;需要 Xcode Console 視角時加 `--include-logs --log-since 5m --log-limit 200`,snapshot 會內嵌同一份 `kg.ios.logs.v1`。它仍是 read-only，只組合既有 `doctor --json`、`workflow release --json`、`runs --json` 與可選 `logs --json`;人要看文字 dashboard 可用 `ios_ops.sh snapshot` 或 alias `dashboard`。
+`ios_ops.sh snapshot --json` 是 agent 第一輪狀態入口:schema 為 `kg.ios.snapshot.v1`,合併 project、Organizer latest、TestFlight latest、`readiness[]`、release `workflow.steps[]`、release `gate` verdict、Xcode `xcode` inventory、Simulator `simulator` 狀態與最近 `runs`。頂層 `summary` 是第一屏判讀層:`summary.verdict=pass|warn|block`,`summary.counts` 聚合 gate/build/test/xcode/simulator/runtime counts,`summary.nextActions[]` 把 gate hard-stop/todo、build/test diagnostics、xcode/simulator observation errors 轉成可直接執行或檢查的 action。非 JSON 文字模式也共用同一份 snapshot JSON formatter,第一行固定是 `[ios][summary]`,後續先列 `[ios][next]`,不再輸出舊式 `phase=doctor` dump。`runs.build.diagnostics` / `runs.test.diagnostics` 仍保留完整 `kg.ios.diagnostics.v1`,讓第一輪 payload 就有可行動問題,不用再二次跑 `issues` 或 grep log。預設不查 unified log,所以 `logs` 欄位為 `null`;需要 Xcode Console 視角時加 `--include-logs --log-since 5m --log-limit 200`,snapshot 會內嵌同一份 `kg.ios.logs.v1`。預設會查 `kg.ios.xcode.v1` 讓 agent 第一輪就有 scheme/destination/simulator inventory 視角;需要快速 dashboard 時加 `--skip-xcode`,此時 `xcode:null`。預設也會查 `kg.ios.simulator.v1` 讓 agent 第一輪知道 booted device、app container 與 BooksBrowser process `running|stopped|skipped|unknown`;需要跳過 Simulator GUI 狀態時加 `--skip-simulator`,此時 `simulator:null`。沒有 booted simulator 時 snapshot 仍回 0 並把 `.simulator.status` 設為 `error`,避免 dashboard 因觀測缺口中斷;log provider 失敗則仍傳遞非零 exit。snapshot 只做觀測並回傳 gate 物件,不因 gate warn/block 自己失敗;需要 hard-stop exit code 時跑 `ios_ops.sh gate release --json`。它仍是 read-only，只組合既有 `doctor --json`、`workflow release --json`、gate helper、`xcode --json`、`simulator status --json`、`runs --json` 與可選 `logs --json`;人要看文字 dashboard 可用 `ios_ops.sh snapshot` 或 alias `dashboard`。
 
 `ios_ops.sh commands --json` 是 agent capability catalog:schema 為 `kg.ios.commands.v1`,列每個 subcommand 的 `key`、`aliases`、`sideEffect`、固定 `delegate` 欄位（無委派為 `null`）、用途與輸出 JSON schema。新 agent 不確定能不能寫入或該讀哪個 schema 時先查這個,不要解析 help 文字。
 
@@ -392,10 +406,10 @@ enum FooScenarios {
 **simctl 截圖協作**：
 
 ```bash
-xcrun simctl io booted screenshot /tmp/kg-catalog-page.png
+./ops/ios_ops.sh simulator screenshot --out /tmp/kg-catalog-page.png --json
 ```
 
-把 PNG 路徑貼給 Claude 即可協作視覺迭代。所有 catalog 程式碼都包在 `#if DEBUG` 內，**production binary 不包含**。
+把 JSON 的 `artifact.path` 貼給 Claude 即可協作視覺迭代。所有 catalog 程式碼都包在 `#if DEBUG` 內，**production binary 不包含**。
 
 ### Catalog Snapshot Export（PlaybookSnapshot → PNG batch）
 
@@ -416,7 +430,7 @@ KG_RUN_CATALOG_SNAPSHOTS=1 xcodebuild test \
 
 ```bash
 # 找 BooksBrowserTests host app 的 data container
-container=$(xcrun simctl get_app_container booted com.Max0228.BooksBrowser data 2>/dev/null)
+container=$(./ops/ios_ops.sh simulator status --json | jq -r '.app.container.data // empty')
 # PNG 在 NSTemporaryDirectory → tmp/kg-catalog-snapshots/<device>/<category>/<scenario>.png
 find "$container/tmp/kg-catalog-snapshots" -name "*.png" 2>/dev/null
 # 或直接複製到專案下供 Claude 讀
