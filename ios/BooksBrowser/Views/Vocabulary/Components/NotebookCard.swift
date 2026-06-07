@@ -357,7 +357,7 @@ struct NotebookCard: View {
 /// 以 `.overlay` 套在既有 cover view 之上,跟著 `coverArea.rotationEffect` 一起旋轉。
 /// Spine 走 `NotebookPalette.darken(coverColor, by: 0.4)` (HSB brightness ×0.6,同色族加深)。
 /// Rule 走 `NotebookPalette.darken(coverColor, by: 0.3)`(brightness ×0.7),寬度 = cover 寬 × 0.25 (GeometryReader)。
-private struct EditorialCoverComposition: View {
+struct EditorialCoverComposition: View {
     let name: String
     let cardCount: Int
     let coverColor: Color

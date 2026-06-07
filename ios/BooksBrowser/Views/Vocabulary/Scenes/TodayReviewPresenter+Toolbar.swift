@@ -408,7 +408,7 @@ extension TodayReviewPresenter {
 }
 
 #if targetEnvironment(macCatalyst)
-private struct ShortcutHintChip: View {
+struct ShortcutHintChip: View {
     @Environment(\.appSkin) private var appSkin
 
     let hint: TodayReviewPresenter.ShortcutHint
@@ -433,7 +433,7 @@ private struct ShortcutHintChip: View {
     }
 }
 
-private struct ShortcutKeyCap: View {
+struct ShortcutKeyCap: View {
     @Environment(\.appSkin) private var appSkin
 
     let key: String
