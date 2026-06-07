@@ -4,9 +4,7 @@ import json
 from pathlib import Path
 
 from catalog_review_cli_artifacts import build_artifact_refs, load_review_artifacts, write_json
-from catalog_review_cli_support import (
-    effective_status,
-)
+from catalog_review_cli_serialization import effective_status
 from catalog_review_doctor import build_doctor_payload, project_doctor_view
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_sync import hydrate_manifest, write_review_outputs
