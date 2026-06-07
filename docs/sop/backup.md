@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/data
-verified_against: 746dafaa
+verified_against: d0ecbc2a
 -->
 # Backup 策略總覽
 
