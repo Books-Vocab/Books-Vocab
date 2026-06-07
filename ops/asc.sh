@@ -115,7 +115,7 @@ emit_write() {
     resp="$(printf '%s' "$body" | write_raw "$method" "$path")"
     printf '%s' "$resp" | jq -e 'has("_httpError")' >/dev/null 2>&1 \
       && err "寫入失敗：HTTP $(printf '%s' "$resp" | jq -c '._httpError')  $(printf '%s' "$resp" | jq -c '._detail.errors // ._detail')"
-    echo "✓ 已寫入（$method $path）。"
+    echo "✓ 已寫入（${method} ${path}）。"
   else
     echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste）："
     echo "  $hint"
@@ -186,7 +186,7 @@ cmd_info() {  # App 層完整讀面（codemagic 基本欄位 + raw 補 App 資�
     echo "# appInfo=$aid  state=$aistate$( [[ "$aistate" == "READY_FOR_SALE" ]] && echo "（無可編輯草稿，寫入須先在 GUI 建新版本）" )"
     loc="$(resolve_appinfo_loc "$aid")"
     if [[ -n "$loc" ]]; then
-      echo "## App 層本地化（$LOCALE）："
+      echo "## App 層本地化（${LOCALE}）："
       raw "/v1/appInfoLocalizations/$loc" \
         | jq -r '.data.attributes | "  name: \(.name // "（空）")\n  subtitle: \(.subtitle // "（空）")\n  privacyPolicyUrl: \(.privacyPolicyUrl // "（空）")\n  privacyChoicesUrl: \(.privacyChoicesUrl // "（空）")"'
     fi
@@ -253,10 +253,10 @@ cmd_set() {
     support-url)       flag="--support-url";       jkey="supportUrl" ;;
     promotional-text)  flag="--promotional-text";  jkey="promotionalText" ;;
     notes|demo-name|demo-password|demo-required|contact-first|contact-last|contact-phone|contact-email)
-      err "「$field」屬審查資訊（appStoreReviewDetail），請用：asc.sh set-review $field <value>" ;;
+      err "「${field}」屬審查資訊（appStoreReviewDetail），請用：asc.sh set-review ${field} <value>" ;;
     name|subtitle|privacy-url|privacy-choices-url|privacy-policy-text)
-      err "「$field」屬 App 層本地化（appInfoLocalization），請用：asc.sh set-appinfo $field <value>" ;;
-    *) err "不支援的 field：$field（可用 description/keywords/whats-new/marketing-url/support-url/promotional-text）" ;;
+      err "「${field}」屬 App 層本地化（appInfoLocalization），請用：asc.sh set-appinfo ${field} <value>" ;;
+    *) err "不支援的 field：${field}（可用 description/keywords/whats-new/marketing-url/support-url/promotional-text）" ;;
   esac
   require_key   # 金鑰只在「確定要打 API」前才需要（用錯子命令/欄位先報，不必先要金鑰）
   local ver loc old
@@ -269,7 +269,7 @@ cmd_set() {
   echo "  新值：$value"
   if [[ $YES -eq 1 ]]; then
     asc app-store-version-localizations modify "$loc" "$flag" "$value"
-    echo "✓ 已寫入正式 App Store 版本（$LOCALE）。"
+    echo "✓ 已寫入正式 App Store 版本（${LOCALE}）。"
   else
     echo "[dry-run] 未送出。確認無誤後加 --yes 才會真寫（下行可直接 copy-paste，含空白/換行已 shell-quote）："
     printf '  ./ops/asc.sh set %s %q --locale %s --yes\n' "$field" "$value" "$LOCALE"
@@ -292,8 +292,8 @@ cmd_set_review() {
     contact-phone)  jkey="contactPhone" ;;
     contact-email)  jkey="contactEmail" ;;
     description|keywords|whats-new|whatsnew|marketing-url|support-url|promotional-text)
-      err "「$field」屬版本文案（appStoreVersionLocalization），請用：asc.sh set $field <value>" ;;
-    *) err "不支援的 review field：$field（notes/demo-name/demo-password/demo-required/contact-first/contact-last/contact-phone/contact-email）" ;;
+      err "「${field}」屬版本文案（appStoreVersionLocalization），請用：asc.sh set ${field} <value>" ;;
+    *) err "不支援的 review field：${field}（notes/demo-name/demo-password/demo-required/contact-first/contact-last/contact-phone/contact-email）" ;;
   esac
   require_key   # 金鑰只在「確定要打 API」前才需要
 
@@ -313,7 +313,7 @@ cmd_set_review() {
 
   # 組 PATCH body（jq 負責跳脫；demo-required 走 boolean，其餘 string）
   if [[ "$jkey" == "demoAccountRequired" ]]; then
-    [[ "$value" == "true" || "$value" == "false" ]] || err "demo-required 只能 true 或 false（給的是：$value）"
+    [[ "$value" == "true" || "$value" == "false" ]] || err "demo-required 只能 true 或 false（給的是：${value}）"
     body="$(jq -nc --arg id "$rid" --argjson v "$value" \
       '{data:{type:"appStoreReviewDetails",id:$id,attributes:{demoAccountRequired:$v}}}')"
   else
@@ -346,8 +346,8 @@ cmd_set_appinfo() {
     privacy-choices-url) jkey="privacyChoicesUrl" ;;
     privacy-policy-text) jkey="privacyPolicyText" ;;
     description|keywords|whats-new|whatsnew|marketing-url|support-url|promotional-text)
-      err "「$field」屬版本文案（appStoreVersionLocalization），請用：asc.sh set $field <value>" ;;
-    *) err "不支援的 app-info field：$field（name/subtitle/privacy-url/privacy-choices-url/privacy-policy-text）" ;;
+      err "「${field}」屬版本文案（appStoreVersionLocalization），請用：asc.sh set ${field} <value>" ;;
+    *) err "不支援的 app-info field：${field}（name/subtitle/privacy-url/privacy-choices-url/privacy-policy-text）" ;;
   esac
   require_key
   local aid loc data old body
@@ -443,7 +443,7 @@ cmd_set_rating() {
 cmd_reviews() {
   require_key
   local lim="${1:-20}"
-  [[ "$lim" =~ ^[0-9]+$ ]] || err "reviews 的 N 需為數字（給的是：$lim）"
+  [[ "$lim" =~ ^[0-9]+$ ]] || err "reviews 的 N 需為數字（給的是：${lim}）"
   echo "# 最新用戶評論（territory · rating · 暱稱 · 日期 · id）；app 未上架時通常為空："
   raw "/v1/apps/$APP_ID/customerReviews?sort=-createdDate&limit=$lim&include=response" \
     | jq -r 'if has("_httpError") then "（讀取失敗：HTTP \(._httpError)）"
@@ -489,7 +489,7 @@ cmd_reply_review() {
     body="$(jq -nc --arg rid "$rid" --arg v "$text" \
       '{data:{type:"customerReviewResponses",attributes:{responseBody:$v},relationships:{review:{data:{type:"customerReviews",id:$rid}}}}}')"
   fi
-  emit_write "$method" "review=$rid  回覆（$method）" "$old" "$text" "$path" "$body" \
+  emit_write "$method" "review=$rid  回覆（${method}）" "$old" "$text" "$path" "$body" \
     "$(printf './ops/asc.sh reply-review %s %q --yes' "$rid" "$text")"
 }
 
@@ -504,7 +504,7 @@ cmd_subscriptions() {
   local gid gname
   while IFS=$'\t' read -r gid gname; do
     [[ -z "$gid" ]] && continue
-    echo "▸ 群組「$gname」（$gid）"
+    echo "▸ 群組「${gname}」（${gid}）"
     local subs sid pid sname sstate speriod prices price locs
     subs="$(raw "/v1/subscriptionGroups/$gid/subscriptions?limit=50")"
     while IFS=$'\t' read -r sid pid sname sstate speriod; do
@@ -620,7 +620,7 @@ cmd_set_sub_price() {
   # preserveCurrentPrice=true：既有訂戶維持原價（較安全預設），僅新訂戶適用新價
   body="$(jq -nc --arg sub "$subid" --arg pp "$ppid" --arg t "$terr" \
     '{data:{type:"subscriptionPrices",attributes:{preserveCurrentPrice:true},relationships:{subscription:{data:{type:"subscriptions",id:$sub}},subscriptionPricePoint:{data:{type:"subscriptionPricePoints",id:$pp}},territory:{data:{type:"territories",id:$t}}}}}')"
-  echo "⚠ 這會改變正式 App Store 訂閱價格（$terr）—— 動到真實計費。"
+  echo "⚠ 這會改變正式 App Store 訂閱價格（${terr}）—— 動到真實計費。"
   echo "⚠ preserveCurrentPrice=true：既有訂戶維持原價，僅新訂戶適用新價。"
   echo "⚠ KG 後端以 key 6Y7DC88RUY 驗訂閱權益；改價/方案前確認與後端邏輯一致。"
   emit_write POST "subscription=$subid  territory=$terr  pricePoint=$ppid" "$old" "$price" \
@@ -637,7 +637,7 @@ _resolve_phased() {  # $1=version_id → 印 phasedRelease id（無則空；_htt
 cmd_release_plan() {  # 唯讀：發布方式 + 分階段發布狀態
   require_key
   local ver; ver="$(resolve_version)"; [[ -n "$ver" ]] || err "找不到版本"
-  echo "# 發布方式（version=$ver）："
+  echo "# 發布方式（version=${ver}）："
   raw "/v1/appStoreVersions/$ver" \
     | jq -r 'if has("_httpError") then "  （讀取失敗：HTTP \(._httpError)）"
              else .data.attributes as $a
@@ -688,7 +688,7 @@ cmd_phased() {  # 分階段發布：start=POST / pause|resume|complete=PATCH sta
   case "$action" in
     start)
       pid="$(_resolve_phased "$ver")"
-      [[ -z "$pid" ]] || err "分階段發布已存在（id=$pid）；改用 pause/resume/complete/cancel"
+      [[ -z "$pid" ]] || err "分階段發布已存在（id=${pid}）；改用 pause/resume/complete/cancel"
       body="$(jq -nc --arg v "$ver" \
         '{data:{type:"appStoreVersionPhasedReleases",attributes:{phasedReleaseState:"ACTIVE"},relationships:{appStoreVersion:{data:{type:"appStoreVersions",id:$v}}}}}')"
       emit_write POST "version=$ver  啟動分階段發布" "（未啟用）" "ACTIVE" \
@@ -772,28 +772,28 @@ case "${SUB:-}" in
   review-detail) cmd_review_detail ;;
   screenshots)   cmd_screenshots ;;
   categories)    cmd_categories ;;
-  reviews)       cmd_reviews "${ARGS[@]:-}" ;;
+  reviews)       cmd_reviews "${ARGS[@]}" ;;
   accessibility) cmd_accessibility ;;
-  reply-review)  cmd_reply_review "${ARGS[@]:-}" ;;
+  reply-review)  cmd_reply_review "${ARGS[@]}" ;;
   subscriptions) cmd_subscriptions ;;
   iap)           cmd_iap ;;
   pricing)       cmd_pricing ;;
-  set-sub-name)        cmd_set_sub_name "${ARGS[@]:-}" ;;
-  set-sub-desc)        cmd_set_sub_desc "${ARGS[@]:-}" ;;
-  set-sub-review-note) cmd_set_sub_review_note "${ARGS[@]:-}" ;;
-  set-sub-price)       cmd_set_sub_price "${ARGS[@]:-}" ;;
-  set)           cmd_set "${ARGS[@]:-}" ;;
-  set-review)    cmd_set_review "${ARGS[@]:-}" ;;
-  set-appinfo)   cmd_set_appinfo "${ARGS[@]:-}" ;;
-  set-eula)      cmd_set_eula "${ARGS[@]:-}" ;;
-  set-content-rights) cmd_set_content_rights "${ARGS[@]:-}" ;;
-  set-category)  cmd_set_category "${ARGS[@]:-}" ;;
-  set-rating)    cmd_set_rating "${ARGS[@]:-}" ;;
-  submissions)   cmd_submissions "${ARGS[@]:-}" ;;
-  sub-offers)    cmd_sub_offers "${ARGS[@]:-}" ;;
+  set-sub-name)        cmd_set_sub_name "${ARGS[@]}" ;;
+  set-sub-desc)        cmd_set_sub_desc "${ARGS[@]}" ;;
+  set-sub-review-note) cmd_set_sub_review_note "${ARGS[@]}" ;;
+  set-sub-price)       cmd_set_sub_price "${ARGS[@]}" ;;
+  set)           cmd_set "${ARGS[@]}" ;;
+  set-review)    cmd_set_review "${ARGS[@]}" ;;
+  set-appinfo)   cmd_set_appinfo "${ARGS[@]}" ;;
+  set-eula)      cmd_set_eula "${ARGS[@]}" ;;
+  set-content-rights) cmd_set_content_rights "${ARGS[@]}" ;;
+  set-category)  cmd_set_category "${ARGS[@]}" ;;
+  set-rating)    cmd_set_rating "${ARGS[@]}" ;;
+  submissions)   cmd_submissions "${ARGS[@]}" ;;
+  sub-offers)    cmd_sub_offers "${ARGS[@]}" ;;
   release-plan)  cmd_release_plan ;;
-  set-release-type) cmd_set_release_type "${ARGS[@]:-}" ;;
-  phased)        cmd_phased "${ARGS[@]:-}" ;;
+  set-release-type) cmd_set_release_type "${ARGS[@]}" ;;
+  phased)        cmd_phased "${ARGS[@]}" ;;
   ""|help)       usage ;;
   *)             err "unknown subcommand: $SUB（asc.sh help 看用法）" ;;
 esac
