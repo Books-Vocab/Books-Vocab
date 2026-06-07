@@ -36,9 +36,27 @@ def test_admin_trends_uses_sot():
 def test_ops_cli_uses_sot():
     """ops_cli cmd_trends 不得再出現硬編的 degree_cap 字面 —— 必須走 SoT。"""
     import inspect
+    import sys
+    from pathlib import Path
 
+    backend_root = str(Path(__file__).resolve().parent.parent)
+    if backend_root not in sys.path:
+        sys.path.insert(0, backend_root)
     import ops_cli
 
     src = inspect.getsource(ops_cli.cmd_trends)
     assert "degree_cap" not in src, "ops_cli 仍硬編 degree_cap 字面,未走 error_signals SoT"
     assert "status = 'failed'" not in src, "ops_cli 仍硬編 pipeline failure 字面"
+
+
+def test_observability_alerts_uses_degree_cap_sot():
+    """check_judge_rejection_rate 的 degree_cap 排除必須走 judge_log SoT 常數,
+    不得在 SQL 內硬編字面(第三處 drift 源)。"""
+    import inspect
+
+    import kg.observability_alerts as oa
+
+    src = inspect.getsource(oa.check_judge_rejection_rate)
+    assert "reject_reason != 'degree_cap'" not in src, (
+        "observability_alerts 仍硬編 degree_cap 字面,未引用 DEGREE_CAP_EXCLUSION_SQL"
+    )
