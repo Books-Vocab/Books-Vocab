@@ -81,7 +81,7 @@ struct ReaderSettingsPanel: View {
     }
 }
 
-private struct ReaderSettingsPanelPreviewHarness: View {
+struct ReaderSettingsPanelPreviewHarness: View {
     @Environment(\.appTheme) private var appTheme
     let initialFontSizeText: String
     let canDecreaseFontSize: Bool

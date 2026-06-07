@@ -49,11 +49,36 @@ struct QuotaBar: View {
     }
 }
 
-#Preview("QuotaBar / Normal") {
-    AppThemeContainer {
-        QuotaBar(isLoggedIn: true)
-            .padding()
+struct QuotaBarPreviewHarness: View {
+    let isLoggedIn: Bool
+    let fraction: Double
+    let level: QuotaStore.Level
+
+    var body: some View {
+        AppThemeContainer {
+            QuotaBar(isLoggedIn: isLoggedIn)
+                .environment(\.quotaStore, MockQuotaStore(fraction: fraction, level: level))
+                .padding()
+        }
+        .environmentObject(AppAppearanceStore.preview)
     }
-    .environmentObject(AppAppearanceStore.preview)
+}
+
+private final class MockQuotaStore: QuotaProviding {
+    var fraction: Double
+    var level: QuotaStore.Level
+    var isExhausted: Bool { fraction <= 0 }
+    var resetText: String { "Resets in 1h" }
+
+    init(fraction: Double, level: QuotaStore.Level) {
+        self.fraction = fraction
+        self.level = level
+    }
+
+    func update(from response: HTTPURLResponse) {}
+}
+
+#Preview("QuotaBar / Normal") {
+    QuotaBarPreviewHarness(isLoggedIn: true, fraction: 0.75, level: .normal)
 }
 #endif

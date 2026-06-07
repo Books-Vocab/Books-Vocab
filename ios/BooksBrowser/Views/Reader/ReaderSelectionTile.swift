@@ -30,7 +30,7 @@ struct ReaderSelectionTile<Content: View>: View {
     .environmentObject(AppAppearanceStore.preview)
 }
 
-private struct ReaderSelectionTilePreview: View {
+struct ReaderSelectionTilePreview: View {
     @Environment(\.appSkin) private var appSkin
 
     var body: some View {
