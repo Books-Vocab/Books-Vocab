@@ -633,8 +633,10 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert hero_mode.returncode == 1, hero_mode.stderr
     hero_payload = json.loads(hero_mode.stdout)
     assert hero_payload["mode"] == "hero-first"
+    assert hero_payload["health"]["severity"] == "warn"
     assert hero_payload["health"]["verifyStatus"] == "error"
     assert hero_payload["health"]["repairCount"] == 1
+    assert hero_payload["health"]["summary"]["blockingErrorCount"] == 0
     assert hero_payload["recommendations"][0]["promise"] == "Read"
     assert hero_payload["playbook"]["mode"] == "hero-first"
     assert "verify" not in hero_payload
