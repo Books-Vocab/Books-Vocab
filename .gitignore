@@ -59,6 +59,7 @@ chrome-extension/tools/audit/
 # Python cache in root if any
 __pycache__/
 .pytest_cache/
+.cache/
 .worktrees/
 .claude/worktrees/
 .claude/scheduled_tasks.lock

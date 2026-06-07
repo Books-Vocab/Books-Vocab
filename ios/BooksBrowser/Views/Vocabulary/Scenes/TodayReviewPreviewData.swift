@@ -1,141 +1,10 @@
 import SwiftUI
 
 enum TodayReviewPresenterPreviewData {
-    static let baseCard: CardPresentation = {
-        let entry = VocabularyEntry(
-            word: "meticulous",
-            translation: "一絲不苟的；非常仔細的",
-            context: "The editor was meticulous about every line break and caption.",
-            explanation: "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
-            partOfSpeech: "adj.",
-            bookTitle: "Designing Interfaces",
-            chapterTitle: "Writing Tone"
-        )
-        entry.dateAdded = Date(timeIntervalSince1970: 1_736_000_000)
-        entry.difficultyTier = "advanced"
-        entry.reviewMode = .recognition
-        entry.reviewExamples = ["The editor was meticulous about every line break and caption."]
-        entry.syncState = .synced
-        entry.rootForm = "meticulous"
-        entry.inflections = ["meticulously", "meticulousness"]
-        entry.graphLinksByKind = [
-            "shares_usage": [
-                KGCardLinkSummary(id: "link-1", cardId: "card-1", word: "precise", kind: "shares_usage", label: "相關", confidence: 0.82, reason: "都與精確相關"),
-                KGCardLinkSummary(id: "link-2", cardId: "card-2", word: "thorough", kind: "shares_usage", label: "相關", confidence: 0.79, reason: "都與仔細相關"),
-                KGCardLinkSummary(id: "link-3", cardId: "card-3", word: "scrupulous", kind: "shares_usage", label: "相關", confidence: 0.75, reason: "都與嚴謹相關")
-            ]
-        ]
-        return entry.cardPresentation
-    }()
-
-    static let currentCard: TodayReviewPresenterState.CurrentCard = {
-        let groups: [TodayReviewPresenterState.LinkGroup] = [
-            .init(
-                id: "shares_usage",
-                label: "相關",
-                items: [
-                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "shares_usage", label: "相關", confidence: 0.82, reason: "都與精確相關"),
-                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "shares_usage", label: "相關", confidence: 0.79, reason: "都與仔細相關")
-                ],
-                overflowCount: 1
-            )
-        ]
-        let backDoc = baseCard.document.reviewBackSubset()
-        return .init(
-            card: baseCard,
-            linkGroups: groups,
-            backDocument: backDoc,
-            postExampleMetrics: .from(backDoc)
-        )
-    }()
-
-    static let nextCard: TodayReviewPresenterState.CurrentCard = {
-        let card: CardPresentation = {
-            let entry = VocabularyEntry(
-                word: "ephemeral",
-                translation: "短暫的；轉瞬即逝的",
-                context: "Social media posts are ephemeral by nature.",
-                explanation: "形容事物存在時間極短。",
-                partOfSpeech: "adj.",
-                bookTitle: "Designing Interfaces",
-                chapterTitle: "Writing Tone"
-            )
-            entry.dateAdded = Date(timeIntervalSince1970: 1_736_001_000)
-            entry.reviewMode = .recognition
-            return entry.cardPresentation
-        }()
-        let backDoc = card.document.reviewBackSubset()
-        return .init(
-            card: card,
-            linkGroups: [],
-            backDocument: backDoc,
-            postExampleMetrics: .from(backDoc)
-        )
-    }()
-
-    static func state(stage: TodayReviewRevealStage) -> TodayReviewPresenterState {
-        .init(
-            progressText: "3 / 12",
-            currentCard: currentCard,
-            nextCard: nextCard,
-            revealStage: stage,
-            canShuffle: true,
-            canGoPrevious: true,
-            canGoNext: true,
-            remainingCount: 9,
-            forgotCount: 1,
-            rememberedCount: 2,
-            rememberedFeedbackTrigger: 0,
-            forgotFeedbackTrigger: 0,
-            isAutoPlaying: false,
-            isAutoPlayPaused: false,
-            autoplayProgress: 0.25,
-            autoplaySpeed: .normal,
-            autoplaySoundEnabled: true
-        )
-    }
-
-    static let completedState = TodayReviewPresenterState(
-        progressText: "12 / 12",
-        currentCard: nil,
-        nextCard: nil,
-        revealStage: .front,
-        canShuffle: false,
-        canGoPrevious: false,
-        canGoNext: false,
-        remainingCount: 0,
-        forgotCount: 4,
-        rememberedCount: 8,
-        rememberedFeedbackTrigger: 0,
-        forgotFeedbackTrigger: 0,
-        isAutoPlaying: false,
-        isAutoPlayPaused: false,
-        autoplayProgress: 1.0,
-        autoplaySpeed: .normal,
-        autoplaySoundEnabled: true
-    )
-
-    static func autoplayState(paused: Bool = false) -> TodayReviewPresenterState {
-        .init(
-            progressText: "3 / 12",
-            currentCard: currentCard,
-            nextCard: nextCard,
-            revealStage: .back,
-            canShuffle: true,
-            canGoPrevious: true,
-            canGoNext: true,
-            remainingCount: 9,
-            forgotCount: 0,
-            rememberedCount: 0,
-            rememberedFeedbackTrigger: 0,
-            forgotFeedbackTrigger: 0,
-            isAutoPlaying: true,
-            isAutoPlayPaused: paused,
-            autoplayProgress: 0.25,
-            autoplaySpeed: .normal,
-            autoplaySoundEnabled: true
-        )
-    }
+    static var frontState: TodayReviewPresenterState { TodayReviewFixtures.state(for: .front) }
+    static var backState: TodayReviewPresenterState { TodayReviewFixtures.state(for: .back) }
+    static var completedState: TodayReviewPresenterState { TodayReviewFixtures.state(for: .completed) }
+    static var autoplayState: TodayReviewPresenterState { TodayReviewFixtures.state(for: .autoplay) }
 
     static let noopCallbacks: (
         onClose: () -> Void,
@@ -160,94 +29,49 @@ enum TodayReviewPresenterPreviewData {
     ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {}, {}, {}, { _ in }, { _ in }, { _ in })
 }
 
-#Preview("Today Review / Front") {
-    let cb = TodayReviewPresenterPreviewData.noopCallbacks
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.state(stage: .front),
-            isHelpPresented: false,
-            showFirstRunHint: true,
-            onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
-            onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onAddLink: cb.onAddLink,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
-            onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
-            onExplainCollocation: cb.onExplainCollocation,
-            onViewCollocationExplanation: cb.onViewCollocationExplanation,
-            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
-        )
+struct TodayReviewFixtureScene: View {
+    let fixtureID: TodayReviewFixtureID
+
+    private var renderModel: TodayReviewFixtureRenderModel {
+        TodayReviewFixtures.renderModel(for: fixtureID)
     }
-    .environmentObject(AppAppearanceStore.preview)
+
+    var body: some View {
+        let cb = TodayReviewPresenterPreviewData.noopCallbacks
+        return AppThemeContainer {
+            TodayReviewPresenter(
+                state: renderModel.state,
+                isHelpPresented: false,
+                showFirstRunHint: renderModel.showFirstRunHint,
+                onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
+                onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
+                onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+                onAddLink: cb.onAddLink,
+                onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+                onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
+                onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
+                onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
+                onExplainCollocation: cb.onExplainCollocation,
+                onViewCollocationExplanation: cb.onViewCollocationExplanation,
+                onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
+            )
+        }
+        .environmentObject(AppAppearanceStore.preview)
+    }
+}
+
+#Preview("Today Review / Front") {
+    TodayReviewFixtureScene(fixtureID: .front)
 }
 
 #Preview("Today Review / Back") {
-    let cb = TodayReviewPresenterPreviewData.noopCallbacks
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.state(stage: .back),
-            isHelpPresented: false,
-            showFirstRunHint: false,
-            onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
-            onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onAddLink: cb.onAddLink,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
-            onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
-            onExplainCollocation: cb.onExplainCollocation,
-            onViewCollocationExplanation: cb.onViewCollocationExplanation,
-            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
-        )
-    }
-    .environmentObject(AppAppearanceStore.preview)
+    TodayReviewFixtureScene(fixtureID: .back)
 }
 
 #Preview("Today Review / Completed") {
-    let cb = TodayReviewPresenterPreviewData.noopCallbacks
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.completedState,
-            isHelpPresented: false,
-            showFirstRunHint: false,
-            onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
-            onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onAddLink: cb.onAddLink,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
-            onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
-            onExplainCollocation: cb.onExplainCollocation,
-            onViewCollocationExplanation: cb.onViewCollocationExplanation,
-            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
-        )
-    }
-    .environmentObject(AppAppearanceStore.preview)
+    TodayReviewFixtureScene(fixtureID: .completed)
 }
 
 #Preview("Today Review / Autoplay") {
-    let cb = TodayReviewPresenterPreviewData.noopCallbacks
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.autoplayState(),
-            isHelpPresented: false,
-            showFirstRunHint: false,
-            onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
-            onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onAddLink: cb.onAddLink,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
-            onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
-            onExplainCollocation: cb.onExplainCollocation,
-            onViewCollocationExplanation: cb.onViewCollocationExplanation,
-            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
-        )
-    }
-    .environmentObject(AppAppearanceStore.preview)
+    TodayReviewFixtureScene(fixtureID: .autoplay)
 }

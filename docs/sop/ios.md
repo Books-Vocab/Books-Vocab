@@ -418,12 +418,20 @@ enum FooScenarios {
 **執行方式**（manual，**不要主動跑** — 遵守 CLAUDE.md 鐵律 7 `ios_test.sh` 規則）：
 
 ```bash
-# 由使用者明確要求才跑：
-KG_RUN_CATALOG_SNAPSHOTS=1 xcodebuild test \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -only-testing:BooksBrowserTests/CatalogSnapshotTests
+# 先 warm reusable build cache（冷啟成本顯式拆出）
+./ops/ios_ops.sh catalog prepare \
+  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'
+
+# 再跑 scoped/full snapshot；--reuse-build 代表 miss/stale 時直接報錯，不偷偷重建
+./ops/ios_ops.sh catalog snapshots \
+  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  --scenario 'Today Review/Front' \
+  --reuse-build \
+  --json
+
+# 如需 full catalog，去掉 --scenario / --group 即可
+./ops/ios_ops.sh catalog snapshots \
+  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'
 ```
 
 **從 simulator sandbox 撈 PNG**：
@@ -441,7 +449,7 @@ mkdir -p build/snapshots && cp -R "$container/tmp/kg-catalog-snapshots/." build/
 
 **閉環 demo**：
 1. 你改 `AppTheme.swift` 一個 hue 值 + InjectionNext 秒級重渲染
-2. 確認 catalog 樣式可接受後跑上述 `xcodebuild test`
+2. 確認 catalog 樣式可接受後跑上述 `catalog prepare` + `catalog snapshots`
 3. 撈 PNG → 貼給 Claude → Claude 跨 scenario 比對找出視覺 regression
 4. 不滿意回 step 1
 
