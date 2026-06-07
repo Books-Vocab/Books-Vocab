@@ -78,6 +78,24 @@ def test_empty_links_snapshot_is_valid(tmp_path):
     assert snap.links == []
 
 
+def test_latest_deterministic_on_tied_taken_at(tmp_path):
+    # 同 taken_at 多筆:latest 須確定回 snapshot_id 最大者,不可非確定。
+    store = GraphSnapshotStore(tmp_path / "g.db")
+    ts = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+    ids = {store.save("default", _links(i + 1), is_synthetic=True, taken_at=ts) for i in range(5)}
+    snap = store.latest("default")
+    assert snap.snapshot_id == max(ids)
+
+
+def test_chinese_reason_round_trips(tmp_path):
+    store = GraphSnapshotStore(tmp_path / "g.db")
+    links = [{"id": "L0", "from_id": "a", "to_id": "b", "kind": "contrasts_with",
+              "confidence": 0.9, "reason": "語意對比:嚴謹 vs 馬虎", "created_at": "2026-04-01T00:00:00+00:00",
+              "status": "active"}]
+    store.save("default", links, is_synthetic=True)
+    assert store.latest("default").links[0]["reason"] == "語意對比:嚴謹 vs 馬虎"
+
+
 def test_persists_across_reopen(tmp_path):
     path = tmp_path / "g.db"
     store = GraphSnapshotStore(path)

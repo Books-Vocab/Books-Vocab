@@ -355,7 +355,12 @@ class GraphSnapshotStore:
             row = session.exec(
                 select(GraphSnapshot)
                 .where(GraphSnapshot.notebook_id == notebook_id)
-                .order_by(GraphSnapshot.taken_at.desc())  # type: ignore[attr-defined]
+                # 次要排序 snapshot_id 打破同 taken_at 平手,讓 "latest" 確定(批量
+                # 同時戳寫入時不致非確定回任一筆)。
+                .order_by(
+                    GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
+                    GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
+                )
             ).first()
             return self._view(row) if row is not None else None
 
