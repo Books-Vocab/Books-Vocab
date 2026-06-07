@@ -14,6 +14,7 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 build_ops_edit_commands = MODULE.build_ops_edit_commands
+build_render_command = MODULE.build_render_command
 build_snapshot_command = MODULE.build_snapshot_command
 load_profile = MODULE.load_profile
 
@@ -24,6 +25,9 @@ def test_load_profile_and_build_commands():
     assert profile.profile_id == "marketing_demo"
     assert profile.materialize.uid == "marketing-demo"
     assert profile.snapshot.dataset_file.name == "marketing_demo.json"
+    assert profile.render.variant == "app-store"
+    assert profile.render.target == "legacy"
+    assert profile.render.source_mode == "legacy-framed-sources"
 
     dry_run_commands = build_ops_edit_commands(profile, commit=False)
     assert dry_run_commands[0][:4] == [
@@ -49,6 +53,15 @@ def test_load_profile_and_build_commands():
     assert "--dataset-file" in snapshot_command
     assert "--reuse-build" in snapshot_command
 
+    render_command = build_render_command(profile)
+    assert render_command[:3] == [
+        str(ROOT / "promotion" / "screenshots" / "scripts" / "render_screenshots.py"),
+        "--variant",
+        "app-store",
+    ]
+    assert "--target" in render_command
+    assert "legacy" in render_command
+
 
 def test_plan_outputs_machine_readable_json():
     result = subprocess.run(
@@ -65,3 +78,30 @@ def test_plan_outputs_machine_readable_json():
     assert payload["profile"] == "marketing_demo"
     assert payload["materialize"]["uid"] == "marketing-demo"
     assert payload["snapshot"]["datasetFile"].endswith("ops/fixtures/catalog/marketing_demo.json")
+    assert payload["render"]["variant"] == "app-store"
+    assert payload["render"]["target"] == "legacy"
+    assert payload["render"]["sourceMode"] == "legacy-framed-sources"
+    assert payload["render"]["autoRunEligible"] is False
+
+
+def test_run_stops_at_manual_render_handoff_for_legacy_sources(monkeypatch, capsys):
+    profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str]):
+        calls.append(command)
+        if command[1:3] == ["catalog", "snapshots"]:
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"status": "ok"}), stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"ok"}', stderr="")
+
+    monkeypatch.setattr(MODULE, "run_command", fake_run)
+
+    rc = MODULE.cmd_run(profile, commit=False, reuse_build=True)
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert rc == 0
+    assert payload["status"] == "manual"
+    assert payload["render"]["status"] == "manual"
+    assert "checked-in framed sources" in payload["render"]["reason"]
+    assert len(calls) == 3 + 1  # seed + 2 shaping steps + snapshot

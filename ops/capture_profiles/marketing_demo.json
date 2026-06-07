@@ -33,5 +33,10 @@
     "scenarios": [
       "Today Review/Front"
     ]
+  },
+  "render": {
+    "variant": "app-store",
+    "target": "legacy",
+    "sourceMode": "legacy-framed-sources"
   }
 }

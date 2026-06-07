@@ -163,7 +163,7 @@ verified_against: ef298cb2
 - Safe wrapper
 - Smart deploy: auto fast/full path + rsync `--delete` stale files
 - ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`user-config-set` + `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景）
-- capture profile 編排層（`ops/capture_profile.py`；將 `ops_edit` 真資料造景與 `ios_ops.sh catalog snapshots --dataset-file ...` 綁成單一 recipe，`plan`/`materialize`/`snapshot`/`run` 四段式，預設 dry-run、明示 `--commit` 才真寫）
+- capture profile 編排層（`ops/capture_profile.py`；目前最接近 marketing screenshot 主入口的 orchestrator。把 `ops_edit` 真資料造景、`ios_ops.sh catalog snapshots --dataset-file ...` 與 promotion renderer 收進同一個 recipe，`plan`/`materialize`/`snapshot`/`render`/`run` 五段式；但若 profile 的 render 仍是 `legacy-framed-sources`，`run` 會停在 manual handoff，不假裝端到端完成。預設 dry-run、明示 `--commit` 才真寫）
 - container-script (本地腳本上傳執行)
 - `ops_analyze.py` one-command deep graph analysis levels 1-6
 - Preflight / backup / restart / status / logs (`KG_LOG_TZ` 時區轉換) / migration workflows
