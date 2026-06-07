@@ -319,6 +319,33 @@ count_executed_tests_xcresult() {
 # (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
 # script's). Read this instead of trusting a piped `$?`.
 VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_test_verdict"
+VERDICT_JSON_FILE="$VERDICT_FILE.json"
+write_json_verdict() {
+  local result="$1" exit_code="$2" reason="$3" executed="$4"
+  jq -nc \
+    --arg schema "kg.ios.run-verdict.v1" \
+    --arg kind "test" \
+    --arg result "$result" \
+    --arg exit "$exit_code" \
+    --arg reason "$reason" \
+    --arg caller "$CALLER" \
+    --arg elapsed "${ELAPSED}s" \
+    --arg executed "$executed" \
+    --arg log "$TMPOUT" \
+    --arg xcresult "$RESULT_BUNDLE" \
+    '{
+      schema:$schema,
+      kind:$kind,
+      status:$result,
+      result:$result,
+      exit:$exit,
+      reason:(if $reason == "" then null else $reason end),
+      caller:$caller,
+      elapsed:$elapsed,
+      executed:(if $executed == "" then null else $executed end),
+      artifacts:{log:$log,xcresult:$xcresult}
+    }' >"$VERDICT_JSON_FILE" || true
+}
 
 # Extract summary from xcresult if available
 if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
@@ -328,11 +355,13 @@ if grep -q '^\*\* TEST SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     echo "[ios_test] ✗ FALSE GREEN: xcodebuild reported TEST SUCCEEDED but 0 tests executed" >&2
     echo "[ios_test]   (likely a stale/bogus -only-testing test ID matched nothing) — $CALLER" >&2
     echo "RESULT=fail reason=false-green-0-executed caller=$CALLER log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+    write_json_verdict "fail" "1" "false-green-0-executed" "0"
     rm -f "$TMPOUT"
     exit 1
   fi
   echo ""
   echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  write_json_verdict "ok" "0" "" "$EXECUTED"
   echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
@@ -341,6 +370,7 @@ elif grep -q '^\*\* TEST FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   PRESERVE_TMPOUT=1
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  write_json_verdict "fail" "1" "tests-failed" ""
   echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
@@ -351,6 +381,7 @@ else
   tail -10 "$TMPOUT"
   PRESERVE_TMPOUT=1
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2

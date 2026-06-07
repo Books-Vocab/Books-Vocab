@@ -97,11 +97,38 @@ fi
 # (e.g. `ios_build.sh | tail`, where the pipeline's exit code is tail's 0, not
 # the build's). Read this instead of trusting a piped `$?`.
 VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_build_verdict"
+VERDICT_JSON_FILE="$VERDICT_FILE.json"
+write_json_verdict() {
+  local result="$1" exit_code="$2"
+  jq -nc \
+    --arg schema "kg.ios.run-verdict.v1" \
+    --arg kind "build" \
+    --arg result "$result" \
+    --arg exit "$exit_code" \
+    --arg caller "$CALLER" \
+    --arg elapsed "${ELAPSED}s" \
+    --arg log "$TMPOUT" \
+    --arg xcresult "$RESULT_BUNDLE" \
+    '{
+      schema:$schema,
+      kind:$kind,
+      status:$result,
+      result:$result,
+      exit:$exit,
+      reason:null,
+      caller:$caller,
+      elapsed:$elapsed,
+      executed:null,
+      artifacts:{log:$log,xcresult:$xcresult}
+    }' >"$VERDICT_JSON_FILE" || true
+}
 if [[ $EXIT_CODE -eq 0 ]]; then
   echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  write_json_verdict "ok" "0"
   echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 else
   echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  write_json_verdict "fail" "$EXIT_CODE"
   echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE" >&2
 fi
 
