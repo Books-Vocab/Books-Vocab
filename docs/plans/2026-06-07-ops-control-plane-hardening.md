@@ -77,6 +77,11 @@ verified_against: 887a248d
    - 決策:doctor 新增 `[ios][readiness]` summary,read-only 覆蓋 project / Organizer / TestFlight / ASC version state / signing / StoreKit / Sentry;ASC state 有短 deadline;TestFlight build number 未增加時標 `status=block`。
    - 驗證:`./ops/ios_ops.sh doctor` 可輸出 project=1.6(4)、Organizer latest=1.6(3)、TestFlight latest=3、ASC 1.6=REJECTED、signing/storekit/sentry ok;`./ops/test_ops.sh ios-ops` 通過。
 
+4. ✅ `ios_ops.sh workflow release` 補發版操作編排。
+   - 方向:把「跑 doctor → all-targets test → build → archive → upload → ASC metadata/rejection → GUI submit」變成 read-only workflow output,不要讓 agent 靠 SOP 記憶拼命令。
+   - 決策:新增 `[ios][workflow] step=N key=... status=todo|ready|block|manual command="..." note="..."`;submit/resubmit 保持 `manual` 邊界。
+   - 驗證:`./ops/ios_ops.sh workflow release` 可輸出 build 4 upload ready、ASC 1.6 REJECTED rejection-resolution todo;`./ops/test_ops.sh ios-ops` 通過。
+
 ## 驗證矩陣
 
 - `./ops/test_ops.sh docs-lint`

@@ -11,9 +11,10 @@
 #   ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>]
 #   ./ops/ios_ops.sh sentry
 #   ./ops/ios_ops.sh doctor
+#   ./ops/ios_ops.sh workflow release
 #
 # Side-effect model:
-# - status/archives/issues/logs/sentry/doctor are read-only.
+# - status/archives/issues/logs/sentry/doctor/workflow are read-only.
 # - build/test/archive are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
@@ -74,6 +75,11 @@ read_asc_version_state() {
 emit_readiness() {
   local key="$1" status="$2" detail="$3"
   echo "[ios][readiness] $key status=$status $detail"
+}
+
+emit_workflow_step() {
+  local num="$1" key="$2" status="$3" command="$4" note="$5"
+  echo "[ios][workflow] step=$num key=$key status=$status command=\"$command\" note=\"$note\""
 }
 
 cmd_logs() {
@@ -176,6 +182,73 @@ cmd_doctor() {
   fi
 }
 
+cmd_workflow_release() {
+  local version build tf_latest archive_line archive_version archive_build asc_state
+  read_project_settings version build
+  tf_latest="$(read_testflight_latest_build)"
+  archive_line="$(read_organizer_latest)"
+  archive_version="$(awk -F'\t' '{print $4}' <<<"$archive_line")"
+  archive_build="$(awk -F'\t' '{print $5}' <<<"$archive_line")"
+
+  echo "[ios][workflow] name=release mode=read-only version=${version:-unknown} build=${build:-unknown}"
+
+  emit_workflow_step 1 "preflight" "todo" "./ops/ios_ops.sh doctor" "readiness dashboard; fix status=block before upload"
+  emit_workflow_step 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --timeout 1200" "prove unit+UI scheme behavior before release claim"
+  emit_workflow_step 3 "build" "todo" "./ops/ios_ops.sh build" "compile gate; first screen shows xcresult warnings/errors"
+
+  if [[ -n "$archive_line" && "$archive_version" == "$version" && "$archive_build" == "$build" ]]; then
+    emit_workflow_step 4 "archive" "ok" "./ops/ios_ops.sh archives latest" "Organizer already has matching archive $archive_version($archive_build)"
+  else
+    emit_workflow_step 4 "archive" "todo" "./ops/ios_ops.sh archive" "create matching Organizer archive/export; no upload by default"
+  fi
+
+  if [[ -n "$tf_latest" && "$tf_latest" =~ ^[0-9]+$ && "$build" =~ ^[0-9]+$ ]]; then
+    if (( build > tf_latest )); then
+      emit_workflow_step 5 "upload" "ready" "./ops/ios_ops.sh archive --upload" "project build $build is greater than TestFlight latest $tf_latest"
+    else
+      emit_workflow_step 5 "upload" "block" "./ops/release.sh bump ios <next-version>" "project build $build is not greater than TestFlight latest $tf_latest"
+    fi
+  else
+    emit_workflow_step 5 "upload" "warn" "./ops/ios_ops.sh doctor" "cannot prove TestFlight latest build"
+  fi
+
+  if asc_state="$(read_asc_version_state)"; then
+    case "$asc_state" in
+      *REJECTED*|*UNRESOLVED_ISSUES*)
+        emit_workflow_step 6 "asc-review" "todo" "./ops/asc.sh review-status && ./ops/asc.sh review-detail" "current ASC state requires rejection-resolution workflow: $asc_state"
+        ;;
+      *READY_FOR_REVIEW*|*PREPARE_FOR_SUBMISSION*|*DEVELOPER_REJECTED*)
+        emit_workflow_step 6 "asc-review" "ready" "./ops/asc_text_bundle.py dump -o asc.json" "metadata can be reviewed before submission: $asc_state"
+        ;;
+      "")
+        emit_workflow_step 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version state unknown"
+        ;;
+      *)
+        emit_workflow_step 6 "asc-review" "info" "./ops/asc.sh versions" "ASC state: $asc_state"
+        ;;
+    esac
+  else
+    emit_workflow_step 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version-state lookup timed out"
+  fi
+
+  emit_workflow_step 7 "metadata" "todo" "./ops/asc_text_bundle.py dump -o asc.json" "review/apply low-risk ASC text bundle; apply is dry-run unless --yes"
+  emit_workflow_step 8 "submit" "manual" "ASC GUI" "bind uploaded build, inspect screenshots/privacy/rejection notes, submit/resubmit"
+}
+
+cmd_workflow() {
+  local name="${1:-release}"
+  case "$name" in
+    release) cmd_workflow_release ;;
+    -h|--help|help)
+      echo "Usage: ./ops/ios_ops.sh workflow release"
+      ;;
+    *)
+      echo "✗ unknown workflow: $name" >&2
+      return 1
+      ;;
+  esac
+}
+
 cmd="${1:-}"
 [[ -n "$cmd" ]] || { usage; exit 0; }
 shift || true
@@ -191,6 +264,7 @@ case "$cmd" in
   logs) cmd_logs "$@" ;;
   sentry) cmd_sentry "$@" ;;
   doctor) cmd_doctor "$@" ;;
+  workflow|flow) cmd_workflow "$@" ;;
   -h|--help|help) usage ;;
   *)
     echo "✗ unknown subcommand: $cmd" >&2
