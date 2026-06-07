@@ -6,8 +6,10 @@ from collections import Counter, defaultdict
 import json
 from pathlib import Path
 
+from catalog_review_repair import repair_review_state
 from catalog_review_state import append_history
 from catalog_review_sync import hydrate_manifest, write_review_outputs
+from catalog_review_verify import verify_review_artifacts
 
 
 VALID_STATUSES = {"shortlist", "review", "reject", ""}
@@ -388,53 +390,38 @@ def cmd_verify(root: Path) -> int:
     state = load_json(state_path)
     html_path = root / "review.html"
     html_text = html_path.read_text(encoding="utf-8")
-
-    manifest_ids = [item["assetID"] for item in manifest["items"]]
-    state_ids = set(state["entries"])
-    missing_state_ids = [asset_id for asset_id in manifest_ids if asset_id not in state_ids]
-    dangling_state_ids = sorted(state_ids.difference(manifest_ids))
-    duplicate_manifest_ids = [asset_id for asset_id, count in Counter(manifest_ids).items() if count > 1]
-    state_counts = Counter(
-        (entry.get("status") or "")
-        for entry in state["entries"].values()
-        if entry.get("status")
-    )
-
-    errors = []
-    if manifest["totalImages"] != len(manifest["items"]):
-        errors.append("manifest-total-mismatch")
-    if len(state["entries"]) != len(manifest["items"]):
-        errors.append("state-entry-count-mismatch")
-    if duplicate_manifest_ids:
-        errors.append("duplicate-manifest-asset-ids")
-    if missing_state_ids:
-        errors.append("missing-state-entries")
-    if dangling_state_ids:
-        errors.append("dangling-state-entries")
-    if manifest.get("stateCounts", {}) != dict(state_counts):
-        errors.append("state-counts-mismatch")
-    if f'"stateFile": "{manifest.get("stateFile")}"' not in html_text:
-        errors.append("html-missing-statefile")
-    if '"assetID": "' not in html_text:
-        errors.append("html-missing-assetid-payload")
-
     payload = {
-        "status": "ok" if not errors else "error",
         "manifest": str(manifest_path),
         "state": str(state_path),
         "html": str(html_path),
-        "totalImages": manifest["totalImages"],
-        "manifestItemCount": len(manifest["items"]),
-        "stateEntryCount": len(state["entries"]),
-        "duplicateManifestAssetIDs": duplicate_manifest_ids,
-        "missingStateAssetIDs": missing_state_ids,
-        "danglingStateAssetIDs": dangling_state_ids,
-        "manifestStateCounts": manifest.get("stateCounts", {}),
-        "derivedStateCounts": dict(state_counts),
-        "errors": errors,
+        **verify_review_artifacts(manifest, state, html_text),
     }
     print(json.dumps(payload, ensure_ascii=False))
-    return 0 if not errors else 1
+    return 0 if payload["status"] == "ok" else 1
+
+
+def cmd_repair(root: Path, *, dry_run: bool) -> int:
+    manifest_path, state_path = resolve_paths(root)
+    manifest = load_json(manifest_path)
+    state = load_json(state_path)
+    repaired_state, repairs = repair_review_state(manifest, state)
+    hydrated_manifest = hydrate_manifest(manifest, repaired_state)
+    payload = {
+        "status": "ok",
+        "dryRun": dry_run,
+        "manifest": str(manifest_path),
+        "state": str(state_path),
+        "repairCount": len(repairs),
+        "repairs": repairs,
+    }
+    if dry_run or not repairs:
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+
+    write_json(state_path, repaired_state)
+    write_review_outputs(root, hydrated_manifest, repaired_state)
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -480,6 +467,8 @@ def build_parser() -> argparse.ArgumentParser:
     report_cmd.add_argument("--limit", type=int, default=None)
 
     subparsers.add_parser("verify")
+    repair_cmd = subparsers.add_parser("repair")
+    repair_cmd.add_argument("--dry-run", action="store_true")
 
     return parser
 
@@ -528,6 +517,8 @@ def main() -> int:
         return cmd_report(root, limit=args.limit)
     if args.command == "verify":
         return cmd_verify(root)
+    if args.command == "repair":
+        return cmd_repair(root, dry_run=args.dry_run)
     parser.error(f"unknown command: {args.command}")
     return 2
 
