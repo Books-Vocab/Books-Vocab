@@ -99,7 +99,10 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 
 | 腳本 | 用途 |
 |------|------|
-| `ios_build.sh` | iOS Release build,共享 `shlock` |
+| `ios_ops.sh` | iOS ops 統一入口(agent 優先用):`status`(project/Organizer/TestFlight 摘要)、`build`/`test`/`archive`(委派 primitives)、`archives`(Organizer `.xcarchive` 查詢)、`issues`(xcodebuild log diagnostics)、`logs`(runtime log show + 噪音過濾)、`sentry`/`doctor`(Sentry wiring + 版本/StoreKit 檢查)。高風險 upload 仍只在 `archive --upload` 明示時發生。測試 `ops/test_ios_ops.sh` + `ops/tests/test_ios_diagnostics.py` |
+| `ios_diagnostics.py` | iOS diagnostics adapter:`xcresulttool get build-results` 為優先資料源,抽官方 `.xcresult` 的 `errorCount`/`warningCount`/issues;raw xcodebuild log parser 只作 fallback,分類 Swift 6 concurrency、StoreKit config、SPM、signing。文字輸出第一屏 summary,`--json` 給 agent/CI。`ios_build.sh` 已接線,build 成功也會列 warning 摘要、`.xcresult` path 與 raw log path |
+| `ios_archive.sh` | 本機 Xcode Organizer archive 唯讀查詢:`list`/`latest`/`inspect` + `--json`,讀 `~/Library/Developer/Xcode/Archives/**/*.xcarchive/Info.plist` 的 `CFBundleShortVersionString`/`CFBundleVersion`/bundle id/creation date,不 export/刪除/上傳 |
+| `ios_build.sh` | iOS Release build,共享 `shlock`;保留 raw xcodebuild log,結束即跑 `ios_diagnostics.py` 顯示 warnings/errors 摘要 |
 | `ios_test.sh` | iOS test runner;預設 unit target,支援 `--ui` / `--all-targets` / `--file` / `-g` / `--list`;共享 build lock,heartbeat,失敗保留 log,false-green 防護,build DB lock retry |
 | `ios_test_matrix.sh` | 逐 Swift 測試檔隔離跑 BooksBrowserTests(委派 `ios_test.sh`),`--timeout` / `--start-at`,debug 用;最終才跑 all-tests |
 | `ios_release.sh` | iOS App Store/TestFlight 發版:archive→export→`--upload`(對外 gate,預設不上傳);manual signing(Apple Distribution cert + `KG App Store` profile,一次性建置與憑證見 `~/.secrets/apple/README.md`);共用 `/tmp/kg-ios-build.lock`;`--upload` 前擋重複 build number;`--key <id>` 選 ASC API key。設定檔 `ios/ExportOptions.plist` |
