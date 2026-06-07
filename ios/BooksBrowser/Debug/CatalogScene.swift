@@ -247,6 +247,7 @@ struct CatalogScene: View {
             .init(id: "knowledge_graph_view", categories: ["Knowledge Graph View"], register: KnowledgeGraphViewScenarios.register),
             .init(id: "pdf_reader_view", categories: ["PDF Reader View"], register: PDFReaderViewScenarios.register),
             .init(id: "sync_view_surface", categories: ["Sync View"], register: SyncViewScenarios.register),
+            .init(id: "settings_view", categories: ["Settings View"], register: SettingsViewScenarios.register),
             .init(
                 id: "review_fold_surface",
                 categories: [
