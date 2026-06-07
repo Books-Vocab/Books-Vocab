@@ -6,7 +6,7 @@ from collections import Counter
 import json
 from pathlib import Path
 
-from catalog_review_doctor import build_doctor_payload
+from catalog_review_doctor import DOCTOR_MODES, build_doctor_payload, project_doctor_view
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_state import append_history
@@ -350,13 +350,13 @@ def cmd_repair(root: Path, *, dry_run: bool, limit: int | None, include_repairs:
     return 0
 
 
-def cmd_doctor(root: Path, *, limit: int | None) -> int:
+def cmd_doctor(root: Path, *, limit: int | None, mode: str) -> int:
     manifest_path, state_path = resolve_paths(root)
     manifest = load_json(manifest_path)
     state = load_json(state_path)
     html_path = root / "review.html"
     html_text = html_path.read_text(encoding="utf-8")
-    payload = {
+    full_payload = {
         "manifest": str(manifest_path),
         "state": str(state_path),
         "html": str(html_path),
@@ -369,6 +369,7 @@ def cmd_doctor(root: Path, *, limit: int | None) -> int:
             limit=limit,
         ),
     }
+    payload = project_doctor_view(full_payload, mode=mode)
     print(json.dumps(payload, ensure_ascii=False))
     return 0 if payload["status"] == "ok" else 1
 
@@ -422,6 +423,7 @@ def build_parser() -> argparse.ArgumentParser:
     repair_cmd.add_argument("--include-repairs", action="store_true")
     doctor_cmd = subparsers.add_parser("doctor")
     doctor_cmd.add_argument("--limit", type=int, default=5)
+    doctor_cmd.add_argument("--mode", choices=sorted(DOCTOR_MODES), default="overview")
 
     return parser
 
@@ -473,7 +475,7 @@ def main() -> int:
     if args.command == "repair":
         return cmd_repair(root, dry_run=args.dry_run, limit=args.limit, include_repairs=args.include_repairs)
     if args.command == "doctor":
-        return cmd_doctor(root, limit=args.limit)
+        return cmd_doctor(root, limit=args.limit, mode=args.mode)
     parser.error(f"unknown command: {args.command}")
     return 2
 

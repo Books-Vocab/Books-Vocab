@@ -13,6 +13,7 @@ PROMISE_WEIGHTS = {
     "Weak": 1,
 }
 CORE_PROMISES = {"Read", "Connect", "Retain", "Continue"}
+DOCTOR_MODES = {"overview", "hero-first", "coverage-first", "cleanup"}
 
 
 def build_focus_recommendations(report: dict, *, limit: int | None) -> list[dict]:
@@ -163,3 +164,39 @@ def build_doctor_payload(
         **core_playbooks,
         "blockingErrors": blocking_errors,
     }
+
+
+def project_doctor_view(payload: dict, *, mode: str) -> dict:
+    if mode == "overview":
+        return payload
+    view = {
+        "status": payload["status"],
+        "mode": mode,
+        "verify": payload["verify"],
+        "repair": payload["repair"],
+        "blockingErrors": payload["blockingErrors"],
+    }
+    if mode == "hero-first":
+        view["recommendations"] = payload["heroFirstCoreRecommendations"]
+        view["playbook"] = payload["heroFirstPlaybook"]
+        return view
+    if mode == "coverage-first":
+        view["recommendations"] = payload["coverageFirstCoreRecommendations"]
+        view["playbook"] = payload["coverageFirstPlaybook"]
+        return view
+    if mode == "cleanup":
+        view["recommendations"] = payload["cleanupRecommendations"]
+        view["playbook"] = {
+            "mode": "cleanup",
+            "goal": "清掉弱訊號與工程性 screenshot debt，避免污染行銷審稿視野。",
+            "steps": [
+                "先按 category 批量處理 Weak promise，避免逐張消耗注意力。",
+                "優先清掉 count 最大的非核心分類，讓 review desk 聚焦在核心承諾。",
+                "只有在 cleanup 降到可控後，再回到核心 promise 做最終選圖。",
+            ],
+            "firstCommand": payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
+            if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
+            else None,
+        }
+        return view
+    raise ValueError(f"Unsupported doctor mode: {mode}")
