@@ -169,12 +169,15 @@ def build_doctor_payload(
 def project_doctor_view(payload: dict, *, mode: str) -> dict:
     if mode == "overview":
         return payload
+    health = {
+        "verifyStatus": payload["verify"]["status"],
+        "repairCount": payload["repair"]["repairCount"],
+        "blockingErrors": payload["blockingErrors"],
+    }
     view = {
         "status": payload["status"],
         "mode": mode,
-        "verify": payload["verify"],
-        "repair": payload["repair"],
-        "blockingErrors": payload["blockingErrors"],
+        "health": health,
     }
     if mode == "hero-first":
         view["recommendations"] = payload["heroFirstCoreRecommendations"]
