@@ -32,31 +32,36 @@ enum SettingsViewScenarios {
 
 // MARK: - Scene harness
 
+@MainActor
+func makeSettingsCatalogContainer(entryCount: Int) throws -> ModelContainer {
+    let container = try ModelContainer(
+        for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+    )
+    let context = container.mainContext
+    for i in 0..<entryCount {
+        let entry = VocabularyEntry(
+            word: "word\(i)",
+            translation: "翻譯\(i)",
+            context: "Context line \(i).",
+            explanation: "Gloss \(i).",
+            partOfSpeech: "n.",
+            bookTitle: "Sample Book",
+            chapterTitle: "第一章"
+        )
+        entry.syncStatus = VocabularySyncState.synced.rawValue
+        entry.actionType = VocabularySyncAction.add.rawValue
+        context.insert(entry)
+    }
+    try? context.save()
+    return container
+}
+
 private struct SettingsViewScene: View {
     let container: ModelContainer
 
     init(entryCount: Int) {
-        let container = try! ModelContainer(
-            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let context = container.mainContext
-        for i in 0..<entryCount {
-            let entry = VocabularyEntry(
-                word: "word\(i)",
-                translation: "翻譯\(i)",
-                context: "Context line \(i).",
-                explanation: "Gloss \(i).",
-                partOfSpeech: "n.",
-                bookTitle: "Sample Book",
-                chapterTitle: "第一章"
-            )
-            entry.syncStatus = VocabularySyncState.synced.rawValue
-            entry.actionType = VocabularySyncAction.add.rawValue
-            context.insert(entry)
-        }
-        try? context.save()
-        self.container = container
+        self.container = try! makeSettingsCatalogContainer(entryCount: entryCount)
     }
 
     var body: some View {
