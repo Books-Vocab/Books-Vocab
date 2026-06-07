@@ -281,7 +281,13 @@ class GraphSnapshotView:
 
 
 class GraphSnapshotStore:
-    """SQLite-backed per-user graph snapshot store(與 GraphEventStore 共用 graph_events.db)。"""
+    """SQLite-backed per-user graph snapshot store(與 GraphEventStore 共用 graph_events.db)。
+
+    限制(待辦):目前 ``save()`` 僅在一次性遷移時被呼叫(每 notebook 一張初始合成快照),
+    尚無**週期性**快照寫入器。事件 log 隨真實 mutation 無界成長,而 checkpoint 只有遷移當下
+    那一張,故「從最近 snapshot 起套 diff 重建」的 bound 會隨時間退化。後續應加一個按事件數 /
+    時間門檻自動 ``save()`` 的寫入器(見 review #13)。
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = path

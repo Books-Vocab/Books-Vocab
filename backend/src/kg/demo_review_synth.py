@@ -194,10 +194,15 @@ def synthesize_review_events(card: CardReviewState) -> list[ReviewEventEntry]:
         iso = reviewed.isoformat()
         streak = streak + 1 if fb[i] == 1 else 0
         lapse = lapse + (1 if fb[i] == 0 else 0)
-        # 末筆強制錨定卡片現存 interval,使逐筆回放的末態 == 卡片儲存聚合。
+        # 末筆強制錨定卡片儲存聚合,使逐筆回放的末態 == 卡片現狀。interval / streak / lapse 同錨:
+        # 矛盾聚合(罕見,如 streak=0 但 last_feedback=1)時 fb 序列以較顯著維度為準,可能讓
+        # 回推 streak/lapse 與儲存值差 1;末筆 clamp 保證末態自洽,不污染新增的研究欄(#10)。
+        is_last = i == n - 1
         interval_after = (
-            card.review_interval_hours if i == n - 1 else _next_interval(interval_before, fb[i])
+            card.review_interval_hours if is_last else _next_interval(interval_before, fb[i])
         )
+        streak_after = card.review_streak if is_last else streak
+        lapse_after = card.lapse_count if is_last else lapse
         next_review_after = (reviewed + timedelta(hours=interval_after)).isoformat()
         events.append(
             ReviewEventEntry(
@@ -213,8 +218,8 @@ def synthesize_review_events(card: CardReviewState) -> list[ReviewEventEntry]:
                 next_review_before=next_review_before,
                 next_review_after=next_review_after,
                 review_count_after=i + 1,
-                streak_after=streak,
-                lapse_after=lapse,
+                streak_after=streak_after,
+                lapse_after=lapse_after,
                 is_synthetic=True,
             )
         )

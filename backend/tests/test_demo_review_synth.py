@@ -136,6 +136,24 @@ def test_event_ids_are_valid_uuids():
     assert set(e.event_id for e in events).isdisjoint(e.event_id for e in other)
 
 
+def test_final_srs_snapshot_matches_stored_aggregate_on_contradiction():
+    """末筆 streak_after/lapse_after 必須錨定卡片儲存聚合 —— 即使聚合矛盾
+    (streak=0 但 last_feedback=1,real data 罕見)。否則逐筆回放末態 != 卡片現狀,
+    污染本 PR 新增的研究欄(#10)。"""
+    card = _state(review_count=4, lapse_count=2, review_streak=0, last_review_feedback=1)
+    events = synthesize_review_events(card)
+    assert events[-1].streak_after == 0   # == card.review_streak
+    assert events[-1].lapse_after == 2    # == card.lapse_count
+
+
+def test_final_srs_snapshot_matches_stored_aggregate_consistent():
+    """一致聚合下 clamp 為 no-op:末態本就 == 聚合。"""
+    card = _state(review_count=5, lapse_count=0, review_streak=5, last_review_feedback=1)
+    events = synthesize_review_events(card)
+    assert events[-1].streak_after == 5
+    assert events[-1].lapse_after == 0
+
+
 def test_deterministic_across_calls():
     card = _state(review_count=7, lapse_count=2, review_streak=3, card_id="det-1")
     a = synthesize_review_events(card)
