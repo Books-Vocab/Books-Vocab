@@ -13,6 +13,16 @@ import SwiftUI
 /// These views only exist under `targetEnvironment(macCatalyst)`, so this file
 /// is gated the same way.
 enum TodayReviewShortcutScenarios {
+    /// Manifest categories — 與 `register` 的 macCatalyst gating 對稱:非 Catalyst
+    /// 時為空,避免 `CatalogCoverageTests` 把宣告但未註冊的群組判為缺漏。
+    static var manifestCategories: [String] {
+        #if targetEnvironment(macCatalyst)
+        ["Today Review · Shortcut Key Cap", "Today Review · Shortcut Hint Chip"]
+        #else
+        []
+        #endif
+    }
+
     static func register(in playbook: Playbook) {
         // `ShortcutKeyCap` / `ShortcutHintChip` 僅在 macCatalyst 編譯;非 Catalyst
         // 時 register 為 no-op,讓 manifest entry 可無條件引用本 enum。
