@@ -106,40 +106,16 @@ cmd_snapshot_json() {
         command:.command,
         message:.message
       }];
+    # Dynamic passthrough: surface the whole run timings object instead of a
+    # hardcoded allowlist, so any new timing field a wrapper emits (e.g.
+    # lockWaitMs) reaches the snapshot first screen without editing this file.
+    # cacheStatus is folded in for build/test (archive/simulator have no cache).
     def timing_summary($run):
-      {
-        cacheStatus:($run.cache.status // null),
-        totalMs:($run.timings.totalMs // null),
-        bootMs:($run.timings.bootMs // null),
-        xcodebuildMs:($run.timings.xcodebuildMs // null),
-        buildForTestingMs:($run.timings.buildForTestingMs // null),
-        testInvocationMs:($run.timings.testInvocationMs // null),
-        testBodyMs:($run.timings.testBodyMs // null),
-        xcresultSessionMs:($run.timings.xcresultSessionMs // null),
-        xcresultHarnessOverheadMs:($run.timings.xcresultHarnessOverheadMs // null),
-        appLaunchAverageMs:($run.timings.appLaunchAverageMs // null),
-        appLaunchSamples:($run.timings.appLaunchSamples // null),
-        invocationOverheadMs:($run.timings.invocationOverheadMs // null)
-      };
+      (($run.timings // {}) + {cacheStatus:($run.cache.status // null)});
     def archive_timing_summary($run):
-      {
-        totalMs:($run.timings.totalMs // null),
-        lockWaitMs:($run.timings.lockWaitMs // null),
-        archiveMs:($run.timings.archiveMs // null),
-        exportMs:($run.timings.exportMs // null),
-        uploadMs:($run.timings.uploadMs // null)
-      };
+      ($run.timings // {});
     def simulator_timing_summary($simulator):
-      if $simulator == null then
-        null
-      else
-        {
-          totalMs:($simulator.timings.totalMs // null),
-          simctlDevicesMs:($simulator.timings.simctlDevicesMs // null),
-          appContainerMs:($simulator.timings.appContainerMs // null),
-          appProcessMs:($simulator.timings.appProcessMs // null)
-        }
-      end;
+      if $simulator == null then null else ($simulator.timings // {}) end;
     (
       n($doctor.summary.counts.ok) as $readinessOk
       | n($doctor.summary.counts.warn) as $readinessWarns
