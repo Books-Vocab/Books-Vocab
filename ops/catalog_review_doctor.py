@@ -179,6 +179,9 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         "verifyStatus": payload["verify"]["status"],
         "repairCount": payload["repair"]["repairCount"],
         "blockingErrors": payload["blockingErrors"],
+        "canProceed": not payload["blockingErrors"],
+        "shouldRepairFirst": payload["repair"]["repairCount"] > 0,
+        "needsReviewAttention": payload["status"] == "needs-attention",
         "summary": {
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
