@@ -337,3 +337,24 @@ def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Pat
     assert stats_payload["count"] == 2
     assert stats_payload["effectiveStatusCounts"]["review"] == 2
     assert stats_payload["topCategories"][0]["category"] == "Settings View"
+
+    report = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "report",
+            "--limit",
+            "3",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert report.returncode == 0, report.stderr
+    report_payload = json.loads(report.stdout)
+    settings_promise = next(p for p in report_payload["promises"] if p["promise"] == "Weak")
+    assert settings_promise["review"] == 2
+    assert settings_promise["unmarked"] == 0
+    assert settings_promise["topUnmarkedCategories"] == []
