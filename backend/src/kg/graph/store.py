@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import logging
 import threading
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from .candidates import _CandidatesMixin
 from .links import _LinksMixin
 from .models import CandidatePair, GraphLink
 from .persistence import _PersistenceMixin
+
+if TYPE_CHECKING:
+    from ..graph_event_log import GraphEventStore
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +48,18 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         candidates_path: Path,
         blocked_path: Path | None = None,
         pending_judge_path: Path | None = None,
+        *,
+        event_store: GraphEventStore | None = None,
+        event_notebook_id: str = "default",
     ) -> None:
         self.links_path = links_path
         self.candidates_path = candidates_path
         self.blocked_path = blocked_path
         self.pending_judge_path = pending_judge_path
+        # Append-only 變動帳本(Phase 6)。None = 不記錄(既有用法 / 測試零影響)。
+        # 每個 mutation 成功改檔後 emit 一筆 diff 事件,is_synthetic=False 區隔合成過去。
+        self._event_store = event_store
+        self._event_notebook_id = event_notebook_id
         self._lock = threading.Lock()
         # Per-file write locks: serialise concurrent _atomic_json_write calls
         # so that tmp->bak->replace sequence is always consistent on disk.
@@ -115,6 +127,48 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             for c in self._candidates
         }
 
+    def _emit_graph_event(
+        self,
+        event_type: str,
+        *,
+        link_id: str,
+        from_id: str,
+        to_id: str,
+        kind: str,
+        source: str,
+        confidence_before: float | None = None,
+        confidence_after: float | None = None,
+        status_before: str | None = None,
+        status_after: str | None = None,
+    ) -> None:
+        """Append a real(``is_synthetic=False``) mutation event. 必須在 _lock 外、改檔
+        成功後呼叫。帳本是研究料,非寫入關鍵路徑:emit 失敗只記 log,絕不冒泡打斷圖譜寫入。
+
+        ``event_id`` 用 uuid4 —— 真實事件非冪等重放,每筆一個新 id。``occurred_at`` 為
+        mutation 當下。``source`` 由呼叫端傳(pipeline=auto / 手動 API=manual / ops / orphan)。
+        """
+        if self._event_store is None:
+            return
+        try:
+            self._event_store.append(
+                event_id=uuid.uuid4().hex,
+                event_type=event_type,
+                link_id=link_id,
+                from_id=from_id,
+                to_id=to_id,
+                kind=kind,
+                source=source,
+                notebook_id=self._event_notebook_id,
+                occurred_at=datetime.now(UTC),
+                confidence_before=confidence_before,
+                confidence_after=confidence_after,
+                status_before=status_before,
+                status_after=status_after,
+                is_synthetic=False,
+            )
+        except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
+            logger.warning("graph event emit failed (%s, link=%s)", event_type, link_id, exc_info=True)
+
     # Link kinds removed from the enum; silently drop on load.
     _RETIRED_KINDS: ClassVar[frozenset[str]] = frozenset({"confusable"})
 
@@ -179,26 +233,32 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     # Cleanup
     # ------------------------------------------------------------------
 
-    def deprecate_links_for(self, card_id: str) -> int:
+    def deprecate_links_for(self, card_id: str, *, source: str = "auto") -> int:
         """Deprecate all active links involving a card. Returns count of deprecated links."""
+        affected: list[GraphLink] = []
         with self._lock:
             link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
-            count = 0
             for lid in list(link_ids):
                 lk = self._links.get(lid)
                 if lk and lk.status == "active":
                     lk.status = "deprecated"
-                    count += 1
-            snapshot = self._links_to_serializable() if count else None
+                    affected.append(lk.model_copy())
+            snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
-        return count
+            for lk in affected:
+                self._emit_graph_event(
+                    "link_deprecated", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
+                    kind=str(lk.kind), source=source, confidence_before=lk.confidence,
+                    confidence_after=lk.confidence, status_before="active", status_after="deprecated",
+                )
+        return len(affected)
 
-    def restore_links_for(self, card_id: str, cards_store) -> int:
+    def restore_links_for(self, card_id: str, cards_store, *, source: str = "auto") -> int:
         """Restore deprecated links for a card, only if the other end is alive."""
+        affected: list[GraphLink] = []
         with self._lock:
             link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
-            count = 0
             for lid in list(link_ids):
                 lk = self._links.get(lid)
                 if lk and lk.status == "deprecated":
@@ -206,11 +266,17 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                     other_card = cards_store.get(other_id)
                     if other_card and not other_card.is_deleted and not other_card.is_archived:
                         lk.status = "active"
-                        count += 1
-            snapshot = self._links_to_serializable() if count else None
+                        affected.append(lk.model_copy())
+            snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
-        return count
+            for lk in affected:
+                self._emit_graph_event(
+                    "link_unhidden", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
+                    kind=str(lk.kind), source=source, confidence_before=lk.confidence,
+                    confidence_after=lk.confidence, status_before="deprecated", status_after="active",
+                )
+        return len(affected)
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dict:
         """Deprecate links + remove candidates + remove pending_judge (+ blocked pairs if deleting)."""

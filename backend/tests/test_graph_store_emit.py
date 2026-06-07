@@ -1,0 +1,133 @@
+"""GraphStore → graph_event_log emit 測試(Phase 6)。
+
+Store 層是圖譜變動的唯一 100% 攔截點(pipeline AI 回寫不經 sync handler),故真實
+變動歷史在此 emit。每個 mutation 方法成功改檔後 append 一筆 diff 事件(is_synthetic=
+False,與合成過去區隔);event_store=None 時完全 no-op(既有用法零影響);emit 失敗
+不可炸掉圖譜寫入(帳本是研究料,不是寫入關鍵路徑)。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from kg.graph.models import LinkKind
+from kg.graph.store import GraphStore
+from kg.graph_event_log import GraphEventStore, GraphEventType
+
+
+def _store(tmp_path: Path, with_events: bool = True) -> tuple[GraphStore, GraphEventStore | None]:
+    ev = GraphEventStore(tmp_path / "graph_events.db") if with_events else None
+    gs = GraphStore(
+        links_path=tmp_path / "graph_default.json",
+        candidates_path=tmp_path / "candidates_default.json",
+        blocked_path=tmp_path / "blocked_default.json",
+        event_store=ev,
+        event_notebook_id="default",
+    )
+    return gs, ev
+
+
+def test_add_link_emits_link_added(tmp_path):
+    gs, ev = _store(tmp_path)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
+    events = ev.all()
+    assert len(events) == 1
+    e = events[0]
+    assert e.event_type == GraphEventType.LINK_ADDED
+    assert e.link_id == link.id
+    assert e.confidence_before is None and e.confidence_after == 0.8
+    assert e.status_before is None and e.status_after == "active"
+    assert e.is_synthetic is False
+    assert e.source == "auto"
+    assert e.notebook_id == "default"
+
+
+def test_add_link_source_override(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r", source="manual")
+    assert ev.all()[0].source == "manual"
+
+
+def test_duplicate_add_does_not_emit(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.9, "r2")  # dedup → 既有,不應再 emit
+    assert len(ev.all()) == 1
+
+
+def test_batch_add_emits_one_per_created(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.batch_add_links([
+        ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
+        ("c", "d", LinkKind.CONTRASTS_WITH, 0.6, "r2"),
+        ("a", "b", LinkKind.SHARES_USAGE, 0.5, "dup"),  # dedup,不 emit
+    ])
+    added = ev.query(event_type=GraphEventType.LINK_ADDED)
+    assert len(added) == 2
+
+
+def test_update_link_emits_diff(tmp_path):
+    gs, ev = _store(tmp_path)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "r")
+    gs.update_link(link.id, confidence=0.95)
+    upd = ev.query(event_type=GraphEventType.LINK_UPDATED)
+    assert len(upd) == 1
+    assert upd[0].confidence_before == 0.5
+    assert upd[0].confidence_after == 0.95
+    assert upd[0].status_before == "active"
+    assert upd[0].status_after == "active"
+
+
+def test_hide_and_unhide_emit(tmp_path):
+    gs, ev = _store(tmp_path)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "r")
+    gs.hide_link(link.id)
+    gs.unhide_link(link.id)
+    hidden = ev.query(event_type=GraphEventType.LINK_HIDDEN)
+    unhidden = ev.query(event_type=GraphEventType.LINK_UNHIDDEN)
+    assert len(hidden) == 1 and hidden[0].status_before == "active" and hidden[0].status_after == "hidden"
+    assert len(unhidden) == 1 and unhidden[0].status_before == "hidden" and unhidden[0].status_after == "active"
+
+
+def test_hard_delete_emits_link_deleted(tmp_path):
+    gs, ev = _store(tmp_path)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "r")
+    gs.hard_delete_link(link.id)
+    deleted = ev.query(event_type=GraphEventType.LINK_DELETED)
+    assert len(deleted) == 1
+    assert deleted[0].status_before == "active"
+    assert deleted[0].link_id == link.id
+
+
+def test_deprecate_links_for_emits_per_link(tmp_path):
+    gs, ev = _store(tmp_path)
+    l1 = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.5, "r")
+    l2 = gs.add_link("a", "c", LinkKind.SHARES_USAGE, 0.6, "r")
+    gs.deprecate_links_for("a")
+    dep = ev.query(event_type=GraphEventType.LINK_DEPRECATED)
+    assert {e.link_id for e in dep} == {l1.id, l2.id}
+    assert all(e.status_before == "active" and e.status_after == "deprecated" for e in dep)
+    assert all(e.source == "auto" for e in dep)
+
+
+def test_no_event_store_is_silent_noop(tmp_path):
+    gs, ev = _store(tmp_path, with_events=False)
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
+    gs.update_link(link.id, confidence=0.9)
+    gs.hide_link(link.id)
+    gs.hard_delete_link(link.id)  # 不得拋例外
+    assert ev is None
+
+
+def test_emit_failure_does_not_break_mutation(tmp_path):
+    gs, ev = _store(tmp_path)
+    ev.close()  # 關掉 store → append 會炸;mutation 仍須成功
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
+    assert link.id in {lk.id for lk in gs.all_links()}  # 圖譜寫入未受影響
+
+
+def test_real_events_are_not_synthetic(tmp_path):
+    gs, ev = _store(tmp_path)
+    gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")
+    assert ev.query(synthetic=True) == []
+    assert len(ev.query(synthetic=False)) == 1
