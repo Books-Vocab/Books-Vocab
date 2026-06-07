@@ -2,8 +2,32 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Callable
 
 from catalog_review_doctor import DOCTOR_MODES
+
+
+def _add_limit_argument(parser: argparse.ArgumentParser, *, default: int | None) -> None:
+    parser.add_argument("--limit", type=int, default=default)
+
+
+def _add_filter_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    include_status: bool,
+    status_name: str = "--status",
+) -> None:
+    parser.add_argument("--promise", default=None)
+    parser.add_argument("--category", default=None)
+    if include_status:
+        parser.add_argument(status_name, default=None)
+    parser.add_argument("--search", default=None)
+    _add_limit_argument(parser, default=None)
+
+
+def _register_shortcut(subparsers: argparse._SubParsersAction[argparse.ArgumentParser], name: str) -> None:
+    shortcut = subparsers.add_parser(name)
+    _add_limit_argument(shortcut, default=5)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,74 +46,58 @@ def build_parser() -> argparse.ArgumentParser:
     mark.add_argument("--note", default=None)
 
     list_cmd = subparsers.add_parser("list")
-    list_cmd.add_argument("--promise", default=None)
-    list_cmd.add_argument("--category", default=None)
-    list_cmd.add_argument("--status", default=None)
-    list_cmd.add_argument("--search", default=None)
-    list_cmd.add_argument("--limit", type=int, default=None)
+    _add_filter_arguments(list_cmd, include_status=True)
 
     apply_cmd = subparsers.add_parser("apply")
-    apply_cmd.add_argument("--promise", default=None)
-    apply_cmd.add_argument("--category", default=None)
-    apply_cmd.add_argument("--match-status", default=None)
-    apply_cmd.add_argument("--search", default=None)
+    _add_filter_arguments(apply_cmd, include_status=True, status_name="--match-status")
     apply_cmd.add_argument("--status", required=True)
     apply_cmd.add_argument("--note", default=None)
-    apply_cmd.add_argument("--limit", type=int, default=None)
     apply_cmd.add_argument("--dry-run", action="store_true")
 
     stats_cmd = subparsers.add_parser("stats")
-    stats_cmd.add_argument("--promise", default=None)
-    stats_cmd.add_argument("--category", default=None)
-    stats_cmd.add_argument("--status", default=None)
-    stats_cmd.add_argument("--search", default=None)
-    stats_cmd.add_argument("--limit", type=int, default=None)
+    _add_filter_arguments(stats_cmd, include_status=True)
 
     report_cmd = subparsers.add_parser("report")
-    report_cmd.add_argument("--limit", type=int, default=None)
+    _add_limit_argument(report_cmd, default=None)
 
     subparsers.add_parser("verify")
 
     repair_cmd = subparsers.add_parser("repair")
     repair_cmd.add_argument("--dry-run", action="store_true")
-    repair_cmd.add_argument("--limit", type=int, default=20)
+    _add_limit_argument(repair_cmd, default=20)
     repair_cmd.add_argument("--include-repairs", action="store_true")
 
     doctor_cmd = subparsers.add_parser("doctor")
-    doctor_cmd.add_argument("--limit", type=int, default=5)
+    _add_limit_argument(doctor_cmd, default=5)
     doctor_cmd.add_argument("--mode", choices=sorted(DOCTOR_MODES), default="overview")
 
-    hero_cmd = subparsers.add_parser("hero")
-    hero_cmd.add_argument("--limit", type=int, default=5)
-
-    coverage_cmd = subparsers.add_parser("coverage")
-    coverage_cmd.add_argument("--limit", type=int, default=5)
-
-    cleanup_cmd = subparsers.add_parser("cleanup")
-    cleanup_cmd.add_argument("--limit", type=int, default=5)
+    for shortcut_name in ("hero", "coverage", "cleanup"):
+        _register_shortcut(subparsers, shortcut_name)
 
     return parser
 
 
-def dispatch_command(args: argparse.Namespace, root: Path, *, handlers: dict[str, callable], parser: argparse.ArgumentParser) -> int:
+def dispatch_command(
+    args: argparse.Namespace,
+    root: Path,
+    *,
+    handlers: dict[str, Callable],
+    parser: argparse.ArgumentParser,
+) -> int:
     command = args.command
-    if command == "summary":
-        return handlers["summary"](root)
-    if command == "show":
-        return handlers["show"](root, args.asset_id)
-    if command == "mark":
-        return handlers["mark"](root, args.asset_id, args.status, args.note)
-    if command == "list":
-        return handlers["list"](
+    dispatchers: dict[str, Callable[[], int]] = {
+        "summary": lambda: handlers["summary"](root),
+        "show": lambda: handlers["show"](root, args.asset_id),
+        "mark": lambda: handlers["mark"](root, args.asset_id, args.status, args.note),
+        "list": lambda: handlers["list"](
             root,
             promise=args.promise,
             category=args.category,
             status=args.status,
             search=args.search,
             limit=args.limit,
-        )
-    if command == "apply":
-        return handlers["apply"](
+        ),
+        "apply": lambda: handlers["apply"](
             root,
             promise=args.promise,
             category=args.category,
@@ -99,29 +107,29 @@ def dispatch_command(args: argparse.Namespace, root: Path, *, handlers: dict[str
             note=args.note,
             limit=args.limit,
             dry_run=args.dry_run,
-        )
-    if command == "stats":
-        return handlers["stats"](
+        ),
+        "stats": lambda: handlers["stats"](
             root,
             promise=args.promise,
             category=args.category,
             status=args.status,
             search=args.search,
             limit=args.limit,
-        )
-    if command == "report":
-        return handlers["report"](root, limit=args.limit)
-    if command == "verify":
-        return handlers["verify"](root)
-    if command == "repair":
-        return handlers["repair"](root, dry_run=args.dry_run, limit=args.limit, include_repairs=args.include_repairs)
-    if command == "doctor":
-        return handlers["doctor"](root, limit=args.limit, mode=args.mode)
-    if command == "hero":
-        return handlers["shortcut"](root, limit=args.limit, mode="hero-first")
-    if command == "coverage":
-        return handlers["shortcut"](root, limit=args.limit, mode="coverage-first")
-    if command == "cleanup":
-        return handlers["shortcut"](root, limit=args.limit, mode="cleanup")
+        ),
+        "report": lambda: handlers["report"](root, limit=args.limit),
+        "verify": lambda: handlers["verify"](root),
+        "repair": lambda: handlers["repair"](
+            root,
+            dry_run=args.dry_run,
+            limit=args.limit,
+            include_repairs=args.include_repairs,
+        ),
+        "doctor": lambda: handlers["doctor"](root, limit=args.limit, mode=args.mode),
+        "hero": lambda: handlers["shortcut"](root, limit=args.limit, mode="hero-first"),
+        "coverage": lambda: handlers["shortcut"](root, limit=args.limit, mode="coverage-first"),
+        "cleanup": lambda: handlers["shortcut"](root, limit=args.limit, mode="cleanup"),
+    }
+    if command in dispatchers:
+        return dispatchers[command]()
     parser.error(f"unknown command: {command}")
     return 2
