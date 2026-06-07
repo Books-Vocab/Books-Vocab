@@ -12,6 +12,7 @@ PROMISE_WEIGHTS = {
     "Continue": 3,
     "Weak": 1,
 }
+CORE_PROMISES = {"Read", "Connect", "Retain", "Continue"}
 
 
 def build_focus_recommendations(report: dict, *, limit: int | None) -> list[dict]:
@@ -47,6 +48,24 @@ def build_focus_recommendations(report: dict, *, limit: int | None) -> list[dict
     return recommendations if limit is None else recommendations[:limit]
 
 
+def split_focus_lanes(recommendations: list[dict], *, limit: int | None) -> dict:
+    core = [
+        item for item in recommendations
+        if item["promise"] in CORE_PROMISES and (item["heroUnmarked"] > 0 or item["unmarked"] > 0)
+    ]
+    cleanup = [
+        item for item in recommendations
+        if item["promise"] not in CORE_PROMISES
+    ]
+    if limit is not None:
+        core = core[:limit]
+        cleanup = cleanup[:limit]
+    return {
+        "coreRecommendations": core,
+        "cleanupRecommendations": cleanup,
+    }
+
+
 def build_doctor_payload(
     manifest: dict,
     state: dict,
@@ -61,6 +80,7 @@ def build_doctor_payload(
     repair = summarize_repairs(repairs, limit=limit)
     full_report = build_report_payload(manifest, state, effective_status_fn=effective_status_fn, root=root, limit=limit)
     focus_recommendations = build_focus_recommendations(full_report, limit=limit)
+    focus_lanes = split_focus_lanes(focus_recommendations, limit=limit)
     report = dict(full_report)
     report["nextActions"] = report["nextActions"][:limit] if limit is not None else report["nextActions"]
     blocking_errors = [error for error in verify["errors"] if error not in {"state-schema-errors"}]
@@ -75,5 +95,6 @@ def build_doctor_payload(
         "repair": repair,
         "report": report,
         "focusRecommendations": focus_recommendations,
+        **focus_lanes,
         "blockingErrors": blocking_errors,
     }
