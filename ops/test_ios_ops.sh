@@ -287,6 +287,15 @@ echo "$cachemiss_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="cache
   && ok "catalog snapshots exitCode 87 surfaces cache-miss (not generic test-failure)" || fail_t "catalog cache-miss signal wrong: $cachemiss_json"
 grep -q 'phase=cache miss' "$cachemiss_err" \
   && ok "catalog cache-miss emits human-readable stderr hint" || fail_t "catalog cache-miss stderr hint missing: $(cat "$cachemiss_err")"
+salvage_err="$catalog_tmp/sv.err"
+salvage_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>"$salvage_err" || true)"
+echo "$salvage_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" and .test.exitCode==65 and .artifacts.containerPngCount==2 and .artifacts.pngCount==2 and .copy.salvaged==true and .copy.exitCode==0 and (any(.errors[]; .key=="catalog-salvage" and .status=="info" and .pngCount==2 and .containerPngCount==2)) and (all(.errors[]; .key!="catalog-copy"))' >/dev/null \
+  && ok "catalog snapshots salvages container PNGs when test fails (distinguishes generated-but-not-copied)" || fail_t "catalog salvage failed: $salvage_json"
+grep -q 'phase=salvage recovered' "$salvage_err" \
+  && ok "catalog salvage emits stderr recovery notice" || fail_t "catalog salvage stderr missing: $(cat "$salvage_err")"
+ok_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null)"
+echo "$ok_json" | jq -e '.status=="ok" and .copy.salvaged==false and .artifacts.containerPngCount==2 and (all(.errors[]; .key!="catalog-salvage"))' >/dev/null \
+  && ok "catalog snapshots success path keeps salvaged=false and no salvage error" || fail_t "catalog success salvage regression: $ok_json"
 hb_log="$catalog_tmp/hb.log"; hb_err="$catalog_tmp/hb.err"; hb_cap="$catalog_tmp/hb.cap"
 hb_stdout="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "build-for-testing" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "echo building-stdout; exit 0"' 2>"$hb_cap")"
 grep -q 'phase=build-for-testing start' "$hb_cap" && grep -q 'phase=build-for-testing done exitCode=0' "$hb_cap" \
