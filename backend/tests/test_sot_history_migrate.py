@@ -197,6 +197,73 @@ def test_review_events_strictly_increasing_per_card(tmp_path):
         assert len(set(parsed)) == len(parsed)  # 嚴格遞增 → 全相異
 
 
+def _legacy_review_db(path: Path) -> None:
+    """建一個 pre-widen schema 的 review_events.db(無 ingested_at/SRS/is_synthetic),
+    塞一筆舊垃圾。用來驗 dry-run 不得改 schema。"""
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """CREATE TABLE reviewevent (
+            event_id TEXT PRIMARY KEY, card_id TEXT, word_snapshot TEXT,
+            notebook_id TEXT, feedback INTEGER, reviewed_at DATETIME, created_at DATETIME)"""
+    )
+    conn.execute(
+        "INSERT INTO reviewevent VALUES ('junk-1', NULL, '(同步)', 'default', 1, "
+        "'2025-01-01T00:00:00+00:00', '2025-01-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+
+def _review_columns(path: Path) -> set[str]:
+    conn = sqlite3.connect(path)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(reviewevent)").fetchall()}
+    conn.close()
+    return cols
+
+
+def test_dry_run_does_not_mutate_review_db(tmp_path):
+    """dry-run「只報告不寫」:不得 ALTER TABLE / 建備份 / 改既有列。"""
+    user_dir = _seed_user(tmp_path)
+    review_db = user_dir / "review_events.db"
+    _legacy_review_db(review_db)
+    before = _review_columns(review_db)
+    report = migrate_user(user_dir, apply=False)
+    after = _review_columns(review_db)
+    assert before == after  # schema 未被 probe 改動
+    assert "is_synthetic" not in after and "ingested_at" not in after
+    assert not (user_dir / "review_events.db.premigration.bak").exists()
+    assert report.review_events_old_purged == 1  # 仍正確計數(唯讀)
+
+
+def test_rerun_apply_preserves_real_events(tmp_path):
+    """二次 apply 不得銷毀首次遷移後 iOS 推入的真實(is_synthetic=False)事件。"""
+    from kg.api_models.review import ReviewEventEntry
+    from kg.review_events import push_review_events
+
+    user_dir = _seed_user(tmp_path)
+    migrate_user(user_dir, apply=True)  # 首次:備份 + wipe 垃圾 + 種合成
+
+    # 模擬上線後 iOS 推入真實事件
+    store = ReviewEventStore(user_dir / "review_events.db")
+    push_review_events([ReviewEventEntry(
+        event_id="real-ios-1", card_id="cardA", word_snapshot="alpha",
+        notebook_id="default", feedback=1,
+        reviewed_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
+        created_at=datetime(2026, 6, 5, tzinfo=UTC).isoformat(),
+        is_synthetic=False,
+    )], event_store=store)
+    store.engine.dispose()
+
+    migrate_user(user_dir, apply=True)  # 二次:不得銷毀 real-ios-1
+
+    store2 = ReviewEventStore(user_dir / "review_events.db")
+    pulled, _ = pull_review_events(since=None, event_store=store2)
+    ids = {e.event_id for e in pulled}
+    assert "real-ios-1" in ids                  # 真實事件保住
+    assert any(e.is_synthetic for e in pulled)  # 合成仍在
+    assert any(e.event_id.startswith("demo-") for e in pulled)
+
+
 def test_multiple_notebooks_are_all_migrated(tmp_path):
     user_dir = tmp_path / "u"
     user_dir.mkdir()

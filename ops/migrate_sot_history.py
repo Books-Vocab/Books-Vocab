@@ -1,14 +1,16 @@
 #!/usr/bin/env -S uv run --project backend python
 """一次性把用戶資料夾回填成合成 SoT 歷史帳本(複習史 + 圖譜史)。
 
-dry-run 預設(只報告不寫);--apply 才動檔(備份只建一次後 wipe 舊 review_events,
-灌合成史)。確定式 + 冪等。詳見 backend/src/kg/sot_history_migrate.py。
+dry-run 預設(只報告不寫);--apply 才動檔(備份只建一次→就地清 card_id NULL 殘渣→灌合成史)。
+確定式 + 冪等 + re-run 保留真實事件。詳見 backend/src/kg/sot_history_migrate.py。
+
+--apply 會就地寫入,須先停 API 容器並加 --i-stopped-the-api 顯式聲明(避免與線上併發寫)。
 
 Usage:
-    ops/migrate_sot_history.py -u chen              # dry-run 單一用戶
-    ops/migrate_sot_history.py -u chen --apply      # 實際回填單一用戶
-    ops/migrate_sot_history.py --all                # dry-run 全用戶
-    ops/migrate_sot_history.py --all --apply        # 實際回填全用戶
+    ops/migrate_sot_history.py -u chen                                   # dry-run 單一用戶
+    ops/migrate_sot_history.py -u chen --apply --i-stopped-the-api       # 實際回填單一用戶
+    ops/migrate_sot_history.py --all                                     # dry-run 全用戶
+    ops/migrate_sot_history.py --all --apply --i-stopped-the-api         # 實際回填全用戶
 """
 
 from __future__ import annotations
@@ -45,7 +47,21 @@ def main() -> None:
     g.add_argument("-u", "--user", help="user id (partial ok)")
     g.add_argument("--all", action="store_true", help="all users under data dir")
     ap.add_argument("--apply", action="store_true", help="write (default: dry-run)")
+    ap.add_argument(
+        "--i-stopped-the-api", action="store_true",
+        help="acknowledge the API container is stopped (required with --apply)",
+    )
     args = ap.parse_args()
+
+    # 併發寫入護欄:--apply 會就地改 review_events.db / graph_events.db。若 API 容器仍在跑,
+    # 它與遷移會同時寫同一 per-user SQLite(WAL 下雖不致損毀,但備份快照可能不一致、且兩邊
+    # 寫入交錯)。要求顯式聲明已停服務,避免在 live data dir 上盲跑。
+    if args.apply and not args.i_stopped_the_api:
+        sys.exit(
+            "✗ --apply 需同時加 --i-stopped-the-api。\n"
+            "  遷移會就地寫入 per-user review_events.db / graph_events.db;請先停掉 API 容器\n"
+            "  (見 ops/devops_kg_safe.sh)再回填,避免與線上寫入併發。"
+        )
 
     if args.all:
         # 納入有 cards.db 或任一 graph_*.json 的用戶(graph-only 用戶的圖譜史也要回填)。

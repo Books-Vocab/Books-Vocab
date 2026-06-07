@@ -3,7 +3,9 @@
 上線前用戶資料只有「當前態」:cards.db 存複習聚合(無逐筆事件)、graph_{nb}.json 存 link
 終態(無變動歷史),而舊 review_events.db 多是 card_id NULL 的同步殘渣。本遷移:
 
-1. **清舊垃圾** — 備份(只一次,保住真原始檔)後 wipe review_events.db。
+1. **清舊垃圾** — 備份(只一次,保住真原始檔)後**就地**刪 card_id IS NULL 的同步殘渣
+   (不整檔 wipe、不 unlink):re-run 不銷毀上線後 iOS 推入的真實事件,也不孤兒化 server
+   開啟中的 inode。損毀/非 db 檔才 unlink 重建。
 2. **灌合成複習史** — 從 cards.db 每張有複習的卡確定式展開逐筆事件
    (:func:`demo_review_synth.synthesize_review_events`,is_synthetic=True)。
 3. **灌合成圖譜史** — 每個 notebook 的 graph_{nb}.json 終態 link 展開生命史
@@ -19,16 +21,19 @@ dry-run 預設(只報告不寫);apply 才動檔。確定式 + 冪等(event_id �
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+
 from .demo_review_synth import CardReviewState, synthesize_review_events
 from .graph.models import GraphLink
 from .graph_event_log import GraphEventStore, GraphSnapshotStore
 from .graph_history_synth import synthesize_graph_history_many
-from .review_events import ReviewEventStore, pull_review_events, push_review_events
+from .review_events import ReviewEventStore, push_review_events
 
 _REVIEW_DB = "review_events.db"
 _GRAPH_DB = "graph_events.db"
@@ -122,6 +127,75 @@ def _discover_notebooks(user_dir: Path, cards_db: Path) -> list[str]:
     return sorted(nbs)
 
 
+def _is_sqlite_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(16) == _SQLITE_MAGIC
+    except OSError:
+        return False
+
+
+def _count_review_junk(review_db: Path) -> int:
+    """唯讀計「待清垃圾」數 = card_id IS NULL 的同步殘渣。**不**開 ReviewEventStore —— 其
+    __init__ 會 ALTER TABLE / CREATE INDEX / backfill,在 dry-run 會改動原始檔。改走唯讀
+    連線純 SELECT。只算 card_id NULL:真實事件(card_id 有值)與合成事件不在 purge 範圍。"""
+    if not review_db.exists() or not _is_sqlite_file(review_db):
+        return 0
+    try:
+        with closing(sqlite3.connect(f"file:{review_db}?mode=ro", uri=True)) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM reviewevent WHERE card_id IS NULL"
+            ).fetchone()
+            return int(row[0]) if row else 0
+    except sqlite3.Error:
+        return 0
+
+
+def _purge_review_junk(review_db: Path) -> None:
+    """就地刪除 card_id IS NULL 的同步殘渣(不 unlink → 不孤兒化 server 開啟中的 inode,
+    且絕不碰真實/合成事件)。表不存在或損毀則忽略(下游 fresh store 仍會重建)。"""
+    try:
+        with closing(sqlite3.connect(review_db)) as conn:
+            conn.execute("DELETE FROM reviewevent WHERE card_id IS NULL")
+            conn.commit()
+    except sqlite3.Error:
+        pass
+
+
+def _notebooks_without_snapshot_ro(graph_db: Path, notebooks: Iterable[str]) -> int:
+    """唯讀計「尚無初始 snapshot」的 notebook 數(dry-run 報告用)。不建檔、不改 schema。"""
+    nbs = list(notebooks)
+    if not graph_db.exists() or not _is_sqlite_file(graph_db):
+        return len(nbs)
+    try:
+        with closing(sqlite3.connect(f"file:{graph_db}?mode=ro", uri=True)) as conn:
+            has_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='graphsnapshot'"
+            ).fetchone()
+            if not has_table:
+                return len(nbs)
+            return sum(
+                1 for nb in nbs
+                if conn.execute(
+                    "SELECT 1 FROM graphsnapshot WHERE notebook_id=? LIMIT 1", (nb,)
+                ).fetchone() is None
+            )
+    except sqlite3.Error:
+        return len(nbs)
+
+
+def _checkpoint_wal(db: Path) -> None:
+    """備份前把 WAL 併回主檔,使單檔 read_bytes 備份完整(不漏 -wal 內未 checkpoint 的列)。
+    僅對有效 sqlite 檔嘗試;失敗忽略(備份退回原樣)。"""
+    if not _is_sqlite_file(db):
+        return
+    try:
+        with closing(sqlite3.connect(db)) as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.Error:
+        pass
+
+
 def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
     """回填單一用戶的合成 SoT 歷史。``apply=False`` 只報告不寫。"""
     user_dir = Path(user_dir)
@@ -146,36 +220,31 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
         graph_drafts.extend(synthesize_graph_history_many(links, notebook_id=nb))
     report.graph_events_synthesized = len(graph_drafts)
 
-    # 既有舊事件數(報告 purge 量)。dry-run 也照算供決策。
+    # 待清垃圾數(card_id NULL 同步殘渣)。唯讀計數,dry-run / apply 皆不改原始檔。
     review_db = user_dir / _REVIEW_DB
-    if review_db.exists():
-        try:
-            existing = ReviewEventStore(review_db)
-            old, _ = pull_review_events(since=None, event_store=existing)
-            report.review_events_old_purged = len(old)
-            existing.engine.dispose()
-        except Exception:  # noqa: BLE001 — 損毀/非 db 舊檔仍要備份後 wipe,計 0 purged
-            report.review_events_old_purged = 0
+    report.review_events_old_purged = _count_review_junk(review_db)
 
     if not apply:
-        # dry-run:回報「會取幾張」初始 snapshot(尚無者才取)。
-        if (user_dir / _GRAPH_DB).exists():
-            probe = GraphSnapshotStore(user_dir / _GRAPH_DB)
-            report.graph_snapshots_taken = sum(
-                1 for nb in links_by_nb if probe.latest(nb) is None
-            )
-            probe.close()
-        else:
-            report.graph_snapshots_taken = len(links_by_nb)
+        # dry-run:唯讀回報「會取幾張」初始 snapshot(尚無者才取),不建檔/不改 schema。
+        report.graph_snapshots_taken = _notebooks_without_snapshot_ro(
+            user_dir / _GRAPH_DB, links_by_nb.keys()
+        )
         return report
 
-    # ── 清舊垃圾(備份只一次,保住真原始檔)+ 灌合成複習史 ──────────────
+    # ── 清舊垃圾(就地、只刪 card_id NULL 殘渣)+ 灌合成複習史 ───────────────
+    # 不整檔 wipe:wipe 會(a)在二次遷移銷毀上線後 iOS 推入的真實事件(is_synthetic=False),
+    # (b)unlink 孤兒化 server 開啟中的 inode。改為就地只刪 card_id NULL 垃圾 —— 真實/合成事件
+    # 永遠保留,合成靠 event_id 去重補上,re-run 安全且冪等。首次備份原始檔當安全網。
     if review_db.exists():
         bak = user_dir / _REVIEW_BAK
-        if not bak.exists():  # 二次遷移不可用合成 db 覆蓋原始備份
+        if not bak.exists():
+            _checkpoint_wal(review_db)  # 併 WAL,使單檔備份完整
             bak.write_bytes(review_db.read_bytes())
             report.backups.append(bak)
-        review_db.unlink()
+        if _is_sqlite_file(review_db):
+            _purge_review_junk(review_db)  # 就地刪垃圾,保留 inode 與真實事件
+        else:
+            review_db.unlink()  # 非 db 垃圾檔(損毀殘留),直接移除重建
     fresh_review = ReviewEventStore(review_db)
     push_review_events(synth_review, event_store=fresh_review)
     fresh_review.engine.dispose()
