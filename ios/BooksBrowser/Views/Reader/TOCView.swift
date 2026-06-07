@@ -4,14 +4,14 @@ import ReadiumShared
 import os
 import Inject
 
-enum LoadState {
-    case loading
-    case loaded
-    case empty
-    case failed(String)
-}
-
 struct TOCView: View {
+    enum LoadState {
+        case loading
+        case loaded
+        case empty
+        case failed(String)
+    }
+
     @ObserveInjection private var inject
 
     let publication: Publication
@@ -145,7 +145,7 @@ struct TOCView: View {
 
 struct TOCViewPreviewScene: View {
     @Environment(\.appTheme) private var appTheme
-    let loadState: LoadState
+    let loadState: TOCView.LoadState
     let tocTitles: [String]
 
     var body: some View {

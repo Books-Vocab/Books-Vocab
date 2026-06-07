@@ -58,10 +58,13 @@ enum ReaderScenarios {
             }
             Scenario("Explanation Error", layout: .fill) {
                 AppThemeContainer {
+                    // explanation:"" suppresses the harness fallback so this
+                    // scenario isolates the error overlay (nil would coalesce
+                    // to the default explanation text and muddy the state).
                     TranslationPanelPreviewScene(
                         isExpanded: true,
                         isExplanationOnly: false,
-                        explanation: nil,
+                        explanation: "",
                         explanationErrorMessage: "語境分析暫時不可用。"
                     )
                 }
