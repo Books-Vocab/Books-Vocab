@@ -184,10 +184,12 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         emit 失敗只記 log,絕不冒泡打斷圖譜寫入。"""
         if not drafts:
             return
-        store = self._resolve_event_store()
-        if store is None:
-            return
         try:
+            # provider() 解析也包進 try:provider 會開 SQLite(disk-full / corrupt /
+            # 開檔錯誤皆可能拋),不可冒泡打斷圖譜寫入。
+            store = self._resolve_event_store()
+            if store is None:
+                return
             store.insert_many(drafts)
         except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
             logger.warning(

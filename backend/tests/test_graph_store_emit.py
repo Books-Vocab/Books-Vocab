@@ -258,3 +258,18 @@ def test_event_store_provider_resolved_per_emit_survives_eviction(tmp_path):
     holder["store"] = GraphEventStore(db)
     gs.add_link("c", "d", LinkKind.SHARES_USAGE, 0.7, "r2")  # 不得拋例外
     assert len(holder["store"].query(event_type=GraphEventType.LINK_ADDED)) == 2
+
+
+def test_raising_provider_does_not_break_mutation(tmp_path):
+    """provider 自己拋(開 SQLite 失敗)也不得打斷圖譜寫入。"""
+    def _boom():
+        raise RuntimeError("cannot open event store")
+
+    gs = GraphStore(
+        links_path=tmp_path / "graph_default.json",
+        candidates_path=tmp_path / "candidates_default.json",
+        blocked_path=tmp_path / "blocked_default.json",
+        event_store_provider=_boom, event_notebook_id="default",
+    )
+    link = gs.add_link("a", "b", LinkKind.SHARES_USAGE, 0.8, "r")  # 不得拋例外
+    assert link.id in {lk.id for lk in gs.all_links()}
