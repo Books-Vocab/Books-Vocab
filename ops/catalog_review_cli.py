@@ -5,6 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
+from catalog_review_sync import hydrate_manifest, write_review_outputs
+
 
 VALID_STATUSES = {"shortlist", "review", "reject", ""}
 
@@ -25,7 +27,9 @@ def resolve_paths(root: Path) -> tuple[Path, Path]:
 
 def load_review_context(root: Path) -> tuple[dict, dict]:
     manifest_path, state_path = resolve_paths(root)
-    return load_json(manifest_path), load_json(state_path)
+    manifest = load_json(manifest_path)
+    state = load_json(state_path)
+    return hydrate_manifest(manifest, state), state
 
 
 def effective_status(item: dict, state: dict) -> str:
@@ -118,6 +122,7 @@ def cmd_mark(root: Path, asset_id: str, status: str, note: str | None) -> int:
         "relPath": item["relPath"],
     })
     write_json(state_path, state)
+    write_review_outputs(root, manifest, state)
     print(json.dumps({"status": "ok", "assetID": asset_id, "reviewStatus": status, "note": entry["note"]}, ensure_ascii=False))
     return 0
 

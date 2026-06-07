@@ -7,8 +7,8 @@ from pathlib import Path
 
 from catalog_review_manifest import build_manifest, collect_items
 from catalog_review_profile import load_profile
-from catalog_review_renderer import render_html
 from catalog_review_state import build_review_state, load_review_state
+from catalog_review_sync import write_review_outputs
 
 DEFAULT_PROFILE_PATH = Path(__file__).with_name("catalog_review_profile.json")
 
@@ -34,11 +34,7 @@ def main() -> int:
     review_state = build_review_state(items, profile, existing_state)
     state_path.write_text(json.dumps(review_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     manifest = build_manifest(items, profile, state_file=state_path.name, review_state=review_state)
-    (output_root / "review_manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (output_root / "review.html").write_text(render_html(manifest), encoding="utf-8")
+    write_review_outputs(output_root, manifest, review_state)
     print(
         json.dumps(
             {
