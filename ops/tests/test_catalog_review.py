@@ -315,3 +315,25 @@ def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Pat
     assert all(entry["note"] == "batch-pass" for entry in state_after["entries"].values())
     manifest_after = json.loads((output_root / "review_manifest.json").read_text(encoding="utf-8"))
     assert manifest_after["stateCounts"]["review"] == 2
+
+    stats = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "stats",
+            "--status",
+            "review",
+            "--limit",
+            "3",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert stats.returncode == 0, stats.stderr
+    stats_payload = json.loads(stats.stdout)
+    assert stats_payload["count"] == 2
+    assert stats_payload["effectiveStatusCounts"]["review"] == 2
+    assert stats_payload["topCategories"][0]["category"] == "Settings View"
