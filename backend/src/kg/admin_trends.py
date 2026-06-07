@@ -68,7 +68,7 @@ def _count_by_day(
 
 
 def _pipeline_failures_by_day(cutoff_iso: str) -> dict[str, int]:
-    """Count terminal-state runs with status='failed' per UTC date."""
+    """Count failed pipeline runs (PIPELINE_FAILURE_WHERE SoT) per UTC date."""
     from . import pipeline_log as pl
 
     return _count_by_day(
