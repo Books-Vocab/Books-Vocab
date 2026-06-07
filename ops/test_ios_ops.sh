@@ -26,7 +26,7 @@ echo "$help_out" | grep -qE 'xcodebuild archive|xcodebuild test|xcodebuild .*bui
   && fail_t "ios_ops help appears to run xcodebuild" || ok "ios_ops help is side-effect free"
 
 section "Dispatch surface"
-for sub in status build test archive archives issues logs sentry doctor workflow runs snapshot; do
+for sub in status build test archive archives issues logs sentry doctor workflow runs snapshot commands; do
   if [[ "$sub" == "workflow" ]]; then
     grep -qE '^[[:space:]]*workflow\|flow\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
@@ -36,11 +36,27 @@ for sub in status build test archive archives issues logs sentry doctor workflow
   elif [[ "$sub" == "snapshot" ]]; then
     grep -qE '^[[:space:]]*snapshot\|dashboard\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  elif [[ "$sub" == "commands" ]]; then
+    grep -qE '^[[:space:]]*commands\|capabilities\)' "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   else
     grep -qE "^[[:space:]]*$sub\\)" "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   fi
 done
+
+section "Command catalog surface"
+commands_json="$(bash "$IOS_OPS" commands --json)"
+echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 13) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
+  && ok "commands --json exposes machine-readable command catalog" || fail_t "commands --json invalid: $commands_json"
+capabilities_json="$(bash "$IOS_OPS" capabilities --json)"
+echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.commands[]; .key=="commands")' >/dev/null \
+  && ok "capabilities alias exposes command catalog" || fail_t "capabilities --json invalid: $capabilities_json"
+commands_text="$(bash "$IOS_OPS" commands)"
+echo "$commands_text" | grep -q 'key=snapshot' \
+  && ok "commands text lists snapshot" || fail_t "commands text missing snapshot: $commands_text"
+echo "$commands_text" | grep -q 'kg.ios.commands.v1' \
+  && ok "commands text lists catalog schema" || fail_t "commands text missing schema: $commands_text"
 
 section "Doctor release readiness surface"
 doctor_body="$(awk '/^doctor_readiness\(\)/,/^}/' "$IOS_OPS")"

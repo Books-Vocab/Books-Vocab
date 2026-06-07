@@ -107,6 +107,11 @@ verified_against: 887a248d
    - 決策:`snapshot --json` 預設仍快且不查 unified log,輸出 `logs:null`;加 `--include-logs --log-since <duration> --log-limit <n>` 時內嵌 `kg.ios.logs.v1`。文字 dashboard 同樣可用 `--include-logs` 追加 logs phase。
    - 驗證:`KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FIXTURE=1 ./ops/ios_ops.sh snapshot --json --include-logs --log-since 1m --log-limit 1 | jq ...`、default `logs:null` fixture、bad `--log-limit` regression、`./ops/test_ops.sh ios-ops`。
 
+10. ✅ `ios_ops.sh commands/capabilities` 補自描述 command catalog。
+   - 方向:agent 不應靠 help 文字或 docs 記憶推斷 side-effect、delegate 與 JSON schema。
+   - 決策:`commands --json` 輸出 `kg.ios.commands.v1`,列每個 subcommand 的 key、aliases、sideEffect、delegate、purpose、jsonSchemas;文字模式保留 `[ios][command]` 行供人掃描。
+   - 驗證:`./ops/ios_ops.sh commands --json | jq ...`、catalog text fixture、`./ops/test_ops.sh ios-ops`。
+
 ## 驗證矩陣
 
 - `./ops/test_ops.sh docs-lint`
@@ -114,6 +119,7 @@ verified_against: 887a248d
 - `./ops/test_ops.sh ios-ops`
 - `KG_IOS_OPS_LOG_FIXTURE=1 ./ops/ios_ops.sh logs --json --since 1m --limit 1 | jq ...`
 - `KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FIXTURE=1 ./ops/ios_ops.sh snapshot --json --include-logs --log-since 1m --log-limit 1 | jq ...`
+- `./ops/ios_ops.sh commands --json | jq ...`
 - `./ops/test_ops.sh ios-release` 或等效 release surface group
 - `./ops/test_ops.sh asc` 或等效 ASC group
 - `./ops/docs_lint.sh --files docs/plans/2026-06-07-ops-control-plane-hardening.md`
