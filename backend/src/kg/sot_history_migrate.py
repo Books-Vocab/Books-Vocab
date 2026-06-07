@@ -26,7 +26,7 @@ from pathlib import Path
 
 from .demo_review_synth import CardReviewState, synthesize_review_events
 from .graph.models import GraphLink
-from .graph_event_log import GraphEventStore
+from .graph_event_log import GraphEventStore, GraphSnapshotStore
 from .graph_history_synth import synthesize_graph_history_many
 from .review_events import ReviewEventStore, pull_review_events, push_review_events
 
@@ -43,6 +43,7 @@ class MigrationReport:
     review_events_synthesized: int = 0
     review_events_old_purged: int = 0
     graph_events_synthesized: int = 0
+    graph_snapshots_taken: int = 0
     backups: list[Path] = field(default_factory=list)
 
 
@@ -135,13 +136,14 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
 
     # ── 圖譜史 ───────────────────────────────────────────────────────────
     graph_drafts = []
+    links_by_nb: dict[str, list[GraphLink]] = {}
     for nb in report.notebooks:
         graph_path = user_dir / f"graph_{nb}.json"
         if not graph_path.exists():
             continue
-        graph_drafts.extend(
-            synthesize_graph_history_many(_load_links(graph_path), notebook_id=nb)
-        )
+        links = _load_links(graph_path)
+        links_by_nb[nb] = links
+        graph_drafts.extend(synthesize_graph_history_many(links, notebook_id=nb))
     report.graph_events_synthesized = len(graph_drafts)
 
     # 既有舊事件數(報告 purge 量)。dry-run 也照算供決策。
@@ -156,6 +158,15 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
             report.review_events_old_purged = 0
 
     if not apply:
+        # dry-run:回報「會取幾張」初始 snapshot(尚無者才取)。
+        if (user_dir / _GRAPH_DB).exists():
+            probe = GraphSnapshotStore(user_dir / _GRAPH_DB)
+            report.graph_snapshots_taken = sum(
+                1 for nb in links_by_nb if probe.latest(nb) is None
+            )
+            probe.close()
+        else:
+            report.graph_snapshots_taken = len(links_by_nb)
         return report
 
     # ── 清舊垃圾(備份只一次,保住真原始檔)+ 灌合成複習史 ──────────────
@@ -173,5 +184,17 @@ def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:
     graph_store = GraphEventStore(user_dir / _GRAPH_DB)
     graph_store.insert_many(graph_drafts)
     graph_store.close()
+
+    # ── 初始合成 snapshot(每 notebook 一張終態整檔 checkpoint)──────────
+    # 配 diff 事件即可重建任意時間點;is_synthetic=True 標記為遷移當下的合成基準。
+    snap_store = GraphSnapshotStore(user_dir / _GRAPH_DB)
+    for nb, links in links_by_nb.items():
+        if snap_store.latest(nb) is not None:
+            continue  # 已有 snapshot(遷移已跑過)→ 不重複堆疊,保冪等
+        snap_store.save(
+            nb, [lk.model_dump(mode="json") for lk in links], is_synthetic=True
+        )
+        report.graph_snapshots_taken += 1
+    snap_store.close()
 
     return report

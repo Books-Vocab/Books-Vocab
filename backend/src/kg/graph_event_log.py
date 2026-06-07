@@ -16,6 +16,8 @@ GraphStore 寫方法 emit,``False``),研究時可 ``WHERE is_synthetic`` 一刀�
 
 from __future__ import annotations
 
+import json
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -269,6 +271,101 @@ class GraphEventStore:
             if synthetic is not None:
                 stmt = stmt.where(GraphEvent.is_synthetic == synthetic)
             return list(session.exec(stmt.order_by(GraphEvent.ingested_at)).all())
+
+    def close(self) -> None:
+        if self.engine is not None:
+            self.engine.dispose()
+            self.engine = None
+
+
+class GraphSnapshot(SQLModel, table=True):
+    """One full-graph checkpoint for a notebook at a point in time.
+
+    ``links_json`` 是該時點整檔 link 的序列化。配 ``GraphEvent`` diff,可從最近 snapshot
+    起套後續事件重建任意時間點;也是 event log 被截斷時的安全網。
+    """
+
+    snapshot_id: str = SQLField(primary_key=True)
+    notebook_id: str = SQLField(index=True)
+    taken_at: datetime = SQLField(index=True)
+    link_count: int = SQLField(default=0)
+    links_json: str = SQLField(default="[]")
+    is_synthetic: bool = SQLField(default=False, index=True)
+
+
+@dataclass(frozen=True)
+class GraphSnapshotView:
+    """讀回的 snapshot,``links`` 已反序列化為 list[dict]。"""
+
+    snapshot_id: str
+    notebook_id: str
+    taken_at: datetime
+    link_count: int
+    links: list[dict]
+    is_synthetic: bool
+
+
+class GraphSnapshotStore:
+    """SQLite-backed per-user graph snapshot store(與 GraphEventStore 共用 graph_events.db)。"""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.engine = create_engine(f"sqlite:///{self.path.absolute()}")
+        _install_serializable_sqlite(self.engine)
+        GraphSnapshot.metadata.create_all(
+            self.engine, tables=[GraphSnapshot.__table__], checkfirst=True
+        )
+
+    def save(
+        self,
+        notebook_id: str,
+        links: list[dict],
+        *,
+        is_synthetic: bool,
+        taken_at: datetime | None = None,
+    ) -> str:
+        snapshot_id = uuid.uuid4().hex
+        with Session(self.engine) as session:
+            session.add(
+                GraphSnapshot(
+                    snapshot_id=snapshot_id,
+                    notebook_id=notebook_id,
+                    taken_at=_as_utc(taken_at) if taken_at else _now(),
+                    link_count=len(links),
+                    links_json=json.dumps(links, default=str),
+                    is_synthetic=is_synthetic,
+                )
+            )
+            session.commit()
+        return snapshot_id
+
+    def _view(self, row: GraphSnapshot) -> GraphSnapshotView:
+        return GraphSnapshotView(
+            snapshot_id=row.snapshot_id,
+            notebook_id=row.notebook_id,
+            taken_at=row.taken_at,
+            link_count=row.link_count,
+            links=json.loads(row.links_json),
+            is_synthetic=row.is_synthetic,
+        )
+
+    def latest(self, notebook_id: str) -> GraphSnapshotView | None:
+        with Session(self.engine) as session:
+            row = session.exec(
+                select(GraphSnapshot)
+                .where(GraphSnapshot.notebook_id == notebook_id)
+                .order_by(GraphSnapshot.taken_at.desc())  # type: ignore[attr-defined]
+            ).first()
+            return self._view(row) if row is not None else None
+
+    def all(self, *, notebook_id: str | None = None) -> list[GraphSnapshotView]:
+        with Session(self.engine) as session:
+            stmt = select(GraphSnapshot)
+            if notebook_id is not None:
+                stmt = stmt.where(GraphSnapshot.notebook_id == notebook_id)
+            rows = session.exec(stmt.order_by(GraphSnapshot.taken_at)).all()
+            return [self._view(r) for r in rows]
 
     def close(self) -> None:
         if self.engine is not None:

@@ -19,7 +19,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from kg.graph_event_log import GraphEventStore, GraphEventType
+from kg.graph_event_log import GraphEventStore, GraphEventType, GraphSnapshotStore
 from kg.review_events import ReviewEventStore, pull_review_events
 from kg.sot_history_migrate import migrate_user
 
@@ -116,6 +116,27 @@ def test_apply_plants_synthetic_graph_history(tmp_path):
     assert link_ids == {"lk1", "lk2"}                       # == 終態 link 集合
     added = [e for e in events if e.event_type == GraphEventType.LINK_ADDED]
     assert {e.link_id for e in added} == {"lk1", "lk2"}     # 每條 ≥1 add
+
+
+def test_apply_takes_initial_synthetic_snapshot(tmp_path):
+    user_dir = _seed_user(tmp_path)
+    report = migrate_user(user_dir, apply=True)
+    assert report.graph_snapshots_taken == 1
+    snap = GraphSnapshotStore(user_dir / "graph_events.db").latest("default")
+    assert snap is not None
+    assert snap.is_synthetic is True
+    assert snap.link_count == 2                       # 終態 2 links (lk1, lk2)
+    assert {lk["id"] for lk in snap.links} == {"lk1", "lk2"}
+
+
+def test_re_migration_does_not_stack_snapshots(tmp_path):
+    user_dir = _seed_user(tmp_path)
+    first = migrate_user(user_dir, apply=True)
+    second = migrate_user(user_dir, apply=True)
+    assert first.graph_snapshots_taken == 1
+    assert second.graph_snapshots_taken == 0          # 已有 → 不重複堆疊
+    snaps = GraphSnapshotStore(user_dir / "graph_events.db").all(notebook_id="default")
+    assert len(snaps) == 1
 
 
 def test_apply_purges_old_review_event_junk(tmp_path):

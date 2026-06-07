@@ -34,6 +34,7 @@ def _print(report: MigrationReport) -> None:
     print(f"  review events synth  : {report.review_events_synthesized}")
     print(f"  old review purged    : {report.review_events_old_purged}")
     print(f"  graph events synth   : {report.graph_events_synthesized}")
+    print(f"  graph snapshots      : {report.graph_snapshots_taken}")
     if report.backups:
         print(f"  backups              : {', '.join(b.name for b in report.backups)}")
 
