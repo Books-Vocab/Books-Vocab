@@ -239,6 +239,32 @@ struct CatalogScene: View {
             .init(id: "translation_vocab_presenter", categories: ["Translation Vocab Presenter"], register: TranslationVocabPresenterScenarios.register),
             .init(id: "reader_settings_presenter", categories: ["Reader Settings Presenter"], register: ReaderSettingsPresenterScenarios.register),
             .init(id: "app_startup_recovery", categories: ["Startup Recovery"], register: AppStartupRecoveryScenarios.register),
+            .init(
+                id: "review_fold_surface",
+                categories: [
+                    "Review Fold · Chevron Pill",
+                    "Review Fold · Paper Fold",
+                    "Review Fold · Segment",
+                ],
+                register: ReviewFoldScenarios.register
+            ),
+            .init(
+                id: "settings_modifiers",
+                categories: [
+                    "Settings Modifiers · Button Chrome",
+                    "Settings Modifiers · Card",
+                    "Settings Modifiers · Text Input",
+                ],
+                register: SettingsModifierScenarios.register
+            ),
+            .init(id: "settings_account_detail", categories: ["Settings Account Detail"], register: SettingsAccountDetailScenarios.register),
+            .init(id: "settings_subscription_section", categories: ["Settings Subscription Section"], register: SettingsSubscriptionSectionScenarios.register),
+            .init(id: "today_review_phase_view", categories: ["Today Review Phase"], register: TodayReviewPhaseScenarios.register),
+            .init(id: "today_review_view", categories: ["Today Review View"], register: TodayReviewViewScenarios.register),
+            .init(id: "kg_vocab_view", categories: ["KG Vocab View"], register: KGVocabPresenterScenarios.register),
+            .init(id: "vocabulary_list_toolbar", categories: ["Vocabulary List Toolbar"], register: VocabularyListToolbarScenarios.register),
+            .init(id: "step_duration_view", categories: ["Sync Step Duration"], register: StepDurationScenarios.register),
+            .init(id: "reader_view", categories: ["Reader View · Chrome"], register: ReaderChromeScenarios.register),
             .init(id: "settings", categories: ["Settings"], register: SettingsScenarios.register),
             .init(id: "today_review", categories: ["Today Review"], register: TodayReviewScenarios.register),
             .init(id: "bookshelf", categories: ["Bookshelf"], register: BookshelfScenarios.register),
