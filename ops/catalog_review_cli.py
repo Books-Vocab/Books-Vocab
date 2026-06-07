@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 import json
 from pathlib import Path
 
+from catalog_review_state import append_history
 from catalog_review_sync import hydrate_manifest, write_review_outputs
 
 
@@ -112,6 +113,7 @@ def cmd_show(root: Path, asset_id: str) -> int:
         "status": "ok",
         "asset": item,
         "state": state["entries"].get(asset_id, {}),
+        "history": state["entries"].get(asset_id, {}).get("history", []),
         "permalink": f"file://{root / 'review.html'}#asset-{asset_id}",
     }
     print(json.dumps(payload, ensure_ascii=False))
@@ -139,6 +141,7 @@ def cmd_mark(root: Path, asset_id: str, status: str, note: str | None) -> int:
         "appearance": item["appearance"],
         "relPath": item["relPath"],
     })
+    append_history(entry, action="mark", status=status, note=entry["note"])
     write_json(state_path, state)
     write_review_outputs(root, manifest, state)
     print(json.dumps({"status": "ok", "assetID": asset_id, "reviewStatus": status, "note": entry["note"]}, ensure_ascii=False))
@@ -221,6 +224,7 @@ def cmd_apply(
                 "category": item["category"],
                 "title": item["title"],
                 "effectiveStatus": effective_status(item, state),
+                "updatedAt": state["entries"].get(item["assetID"], {}).get("updatedAt"),
                 "permalink": f"file://{root / 'review.html'}#asset-{item['assetID']}",
             }
             for item in matches
@@ -242,6 +246,7 @@ def cmd_apply(
             "appearance": item["appearance"],
             "relPath": item["relPath"],
         })
+        append_history(entry, action="apply", status=target_status, note=entry["note"])
 
     write_json(state_path, state)
     write_review_outputs(root, manifest, state)

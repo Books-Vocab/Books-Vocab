@@ -172,6 +172,7 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     assert show.returncode == 0, show.stderr
     show_payload = json.loads(show.stdout)
     assert show_payload["asset"]["assetID"] == asset_id
+    assert show_payload["history"] == []
     assert show_payload["permalink"].endswith(f"#asset-{asset_id}")
 
     mark = subprocess.run(
@@ -188,6 +189,9 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
 
     state_payload = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
     assert state_payload["entries"][asset_id]["status"] == "shortlist"
+    assert state_payload["entries"][asset_id]["updatedAt"]
+    assert state_payload["entries"][asset_id]["history"][-1]["action"] == "mark"
+    assert state_payload["entries"][asset_id]["history"][-1]["status"] == "shortlist"
     manifest_after_mark = json.loads((output_root / "review_manifest.json").read_text(encoding="utf-8"))
     assert manifest_after_mark["stateCounts"]["shortlist"] == 1
     assert manifest_after_mark["items"][0]["reviewStatus"] == "shortlist"
@@ -313,6 +317,8 @@ def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Pat
     state_after = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
     assert all(entry["status"] == "review" for entry in state_after["entries"].values())
     assert all(entry["note"] == "batch-pass" for entry in state_after["entries"].values())
+    assert all(entry["updatedAt"] for entry in state_after["entries"].values())
+    assert all(entry["history"][-1]["action"] == "apply" for entry in state_after["entries"].values())
     manifest_after = json.loads((output_root / "review_manifest.json").read_text(encoding="utf-8"))
     assert manifest_after["stateCounts"]["review"] == 2
 
