@@ -449,6 +449,92 @@ struct BackgroundSyncActorTests {
         #expect(item.created_at.contains("2027"))
     }
 
+    @Test func buildReviewEventsPushPayload_usesFixatedCardIdWhenEntryGone() async throws {
+        // 根因迴歸:卡離場(store 裡查無對應 entry)時,固化在 ReviewRecord 上的 kgCardId
+        // 仍須讓 card_id 不退化成 nil(舊版即時三段反查到此會回 nil → 後端 card_id NULL)。
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let record = ReviewRecord(
+            word: "orphaned",
+            entryID: UUID(),                       // 對應 entry 不存在於 store
+            feedback: 1,
+            reviewedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            kgCardId: "card-fixated",
+            intervalBefore: 12.0,
+            intervalAfter: 22.8,
+            nextReviewBefore: Date(timeIntervalSince1970: 1_800_000_000),
+            nextReviewAfter: Date(timeIntervalSince1970: 1_800_082_080),
+            reviewCountAfter: 3,
+            streakAfter: 2,
+            lapseAfter: 1
+        )
+        record.id = UUID(uuidString: "44444444-4444-4444-4444-444444444444")!
+        context.insert(record)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let item = try #require(try await actor.buildReviewEventsPushPayload().first)
+        #expect(item.card_id == "card-fixated")        // 不再退化
+        #expect(item.interval_before == 12.0)
+        #expect(item.interval_after == 22.8)
+        #expect(item.review_count_after == 3)
+        #expect(item.streak_after == 2)
+        #expect(item.lapse_after == 1)
+        #expect(item.next_review_before != nil)
+        #expect(item.next_review_after != nil)
+    }
+
+    @Test func buildReviewEventsPushPayload_legacyRecordFallsBackToLookup() async throws {
+        // legacy 紀錄(kgCardId 未固化)且 entry 仍在:回退舊三段反查仍能解出 card_id。
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let entryID = UUID()
+        let entry = VocabularyEntry(word: "legacy", translation: "m", context: "ctx", bookTitle: "Book")
+        entry.id = entryID
+        entry.kgCardId = "card-legacy"
+        entry.markSynced()
+        context.insert(entry)
+        let record = ReviewRecord(word: "legacy", entryID: entryID, feedback: 0)  // kgCardId nil
+        record.id = UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+        context.insert(record)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let item = try #require(try await actor.buildReviewEventsPushPayload().first)
+        #expect(item.card_id == "card-legacy")          // fallback 反查解出
+        #expect(item.interval_after == nil)             // legacy 無 SRS 快照
+    }
+
+    @Test func mergeReviewEvents_fixatesRemoteCardIdAndSRS() async throws {
+        // 拉回的遠端事件即使本機查無對應 entry,也固化 card_id + SRS,不退化。
+        let container = try makeContainer()
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let remote = [KGReviewEventPayload(
+            event_id: "66666666-6666-6666-6666-666666666666",
+            card_id: "card-remote",
+            word_snapshot: "delta",
+            notebook_id: "default",
+            feedback: 1,
+            reviewed_at: "2026-06-04T10:00:00+00:00",
+            created_at: "2026-06-04T10:00:00+00:00",
+            interval_before: 12.0,
+            interval_after: 22.8,
+            next_review_before: "2026-06-04T10:00:00+00:00",
+            next_review_after: "2026-06-05T08:48:00+00:00",
+            review_count_after: 4,
+            streak_after: 3,
+            lapse_after: 0
+        )]
+        try await actor.mergeReviewEvents(remote)
+
+        let context = ModelContext(container)
+        let record = try #require(try context.fetch(FetchDescriptor<ReviewRecord>()).first)
+        #expect(record.kgCardId == "card-remote")
+        #expect(record.intervalAfter == 22.8)
+        #expect(record.reviewCountAfter == 4)
+        #expect(record.streakAfter == 3)
+    }
+
     @Test func mergeReviewEvents_insertsMissingAndSkipsDuplicates() async throws {
         let container = try makeContainer()
         let seedContext = ModelContext(container)

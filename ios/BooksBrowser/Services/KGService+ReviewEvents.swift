@@ -14,6 +14,48 @@ struct KGReviewEventPayload: Codable, Sendable, Equatable {
     let feedback: Int
     let reviewed_at: String
     let created_at: String
+    // SRS 前後快照(對應後端 ReviewEventEntry 加寬欄位)。全 optional:legacy 紀錄不帶、
+    // pull 回舊事件缺鍵時 Codable 自動 nil。is_synthetic 不送 —— iOS 上報一律真實事件,
+    // 後端預設 False。
+    let interval_before: Double?
+    let interval_after: Double?
+    let next_review_before: String?  // ISO8601
+    let next_review_after: String?   // ISO8601
+    let review_count_after: Int?
+    let streak_after: Int?
+    let lapse_after: Int?
+
+    init(
+        event_id: String,
+        card_id: String?,
+        word_snapshot: String,
+        notebook_id: String,
+        feedback: Int,
+        reviewed_at: String,
+        created_at: String,
+        interval_before: Double? = nil,
+        interval_after: Double? = nil,
+        next_review_before: String? = nil,
+        next_review_after: String? = nil,
+        review_count_after: Int? = nil,
+        streak_after: Int? = nil,
+        lapse_after: Int? = nil
+    ) {
+        self.event_id = event_id
+        self.card_id = card_id
+        self.word_snapshot = word_snapshot
+        self.notebook_id = notebook_id
+        self.feedback = feedback
+        self.reviewed_at = reviewed_at
+        self.created_at = created_at
+        self.interval_before = interval_before
+        self.interval_after = interval_after
+        self.next_review_before = next_review_before
+        self.next_review_after = next_review_after
+        self.review_count_after = review_count_after
+        self.streak_after = streak_after
+        self.lapse_after = lapse_after
+    }
 }
 
 // MARK: - Review Event Sync
