@@ -94,6 +94,39 @@ def build_core_modes(core_recommendations: list[dict], *, limit: int | None) -> 
     }
 
 
+def build_core_playbooks(core_modes: dict) -> dict:
+    hero_first = core_modes["heroFirstCoreRecommendations"]
+    coverage_first = core_modes["coverageFirstCoreRecommendations"]
+
+    def first_action(items: list[dict]) -> str | None:
+        if not items or not items[0]["recommendedActions"]:
+            return None
+        return items[0]["recommendedActions"][0]["command"]
+
+    return {
+        "heroFirstPlaybook": {
+            "mode": "hero-first",
+            "goal": "先抓最能代表產品承諾的 hero 候選，再進行變體比較與 shortlist。",
+            "steps": [
+                "先看第一名 promise 的 hero 候選，確認是否能單張自證承諾。",
+                "對同一 promise 做 variant 比較，避免先被大面積 coverage 吸走注意力。",
+                "確認 hero 候選後，再回頭處理該 promise 的 top category 收斂。",
+            ],
+            "firstCommand": first_action(hero_first),
+        },
+        "coverageFirstPlaybook": {
+            "mode": "coverage-first",
+            "goal": "先清最大覆蓋債，快速把高量未審分類壓縮到可管理範圍。",
+            "steps": [
+                "先處理第一名 promise 的最大未審 category，批量標成 review 候選。",
+                "用 category 為單位做批次過濾，避免逐張翻圖。",
+                "coverage 壓下來後，再回頭從該 promise 內挑 hero 圖做 shortlist。",
+            ],
+            "firstCommand": first_action(coverage_first),
+        },
+    }
+
+
 def build_doctor_payload(
     manifest: dict,
     state: dict,
@@ -110,6 +143,7 @@ def build_doctor_payload(
     focus_recommendations = build_focus_recommendations(full_report, limit=limit)
     focus_lanes = split_focus_lanes(focus_recommendations, limit=limit)
     core_modes = build_core_modes(focus_lanes["coreRecommendations"], limit=limit)
+    core_playbooks = build_core_playbooks(core_modes)
     report = dict(full_report)
     report["nextActions"] = report["nextActions"][:limit] if limit is not None else report["nextActions"]
     blocking_errors = [error for error in verify["errors"] if error not in {"state-schema-errors"}]
@@ -126,5 +160,6 @@ def build_doctor_payload(
         "focusRecommendations": focus_recommendations,
         **focus_lanes,
         **core_modes,
+        **core_playbooks,
         "blockingErrors": blocking_errors,
     }

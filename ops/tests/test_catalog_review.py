@@ -616,5 +616,9 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert payload["coreRecommendations"][0]["promise"] == "Read"
     assert payload["heroFirstCoreRecommendations"][0]["promise"] == "Read"
     assert payload["coverageFirstCoreRecommendations"][0]["promise"] == "Read"
+    assert payload["heroFirstPlaybook"]["mode"] == "hero-first"
+    assert payload["coverageFirstPlaybook"]["mode"] == "coverage-first"
+    assert payload["heroFirstPlaybook"]["firstCommand"]
+    assert payload["coverageFirstPlaybook"]["firstCommand"]
     assert payload["cleanupRecommendations"] == []
     assert payload["blockingErrors"] == []
