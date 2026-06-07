@@ -623,6 +623,8 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert payload["coverageFirstPlaybook"]["mode"] == "coverage-first"
     assert payload["heroFirstPlaybook"]["firstCommand"]
     assert payload["coverageFirstPlaybook"]["firstCommand"]
+    assert payload["heroFirstPlaybook"]["firstAction"]["kind"] in {"inspect", "narrow"}
+    assert payload["coverageFirstPlaybook"]["firstAction"]["kind"] in {"inspect", "narrow"}
     assert payload["cleanupRecommendations"] == []
     assert payload["blockingErrors"] == []
 
