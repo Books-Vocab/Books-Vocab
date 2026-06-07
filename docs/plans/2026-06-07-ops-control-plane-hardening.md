@@ -97,11 +97,17 @@ verified_against: 887a248d
    - 決策:`runs --json` 輸出 `kg.ios.runs.v1`,優先讀 `kg_ios_build_verdict.json` / `kg_ios_test_verdict.json`,legacy 單行 verdict 只作 fallback;`snapshot --json` 內嵌同一份 `runs`。
    - 驗證:`TMPDIR=<fixture-with-spaces> ./ops/ios_ops.sh runs --json | jq ...`、missing verdict schema fixture、`snapshot --json` fixture 驗 `.runs`、`./ops/test_ops.sh ios-ops`。
 
+8. ✅ `ios_ops.sh logs` 補 Xcode Console 對應的 JSON runtime log 面。
+   - 方向:agent 第一輪要能取得 runtime log 摘要與 entries,不用自行解析 compact console 文字。
+   - 決策:`logs --json` 走 Apple Unified Logging 官方 CLI `/usr/bin/log show --style ndjson`,輸出 `kg.ios.logs.v1`;保留文字模式,兩者共用 RunningBoard/WebKit assertion 噪音過濾;`--limit` 控制 entries 數。底層 `log show` 失敗必須保留 exit code/stderr,不可被文字過濾 pipeline 吞掉。
+   - 驗證:`KG_IOS_OPS_LOG_FIXTURE=1 ./ops/ios_ops.sh logs --json --since 1m --limit 1 | jq ...`、fixture text filtering、bad limit regression、log failure propagation regression、`./ops/test_ops.sh ios-ops`。
+
 ## 驗證矩陣
 
 - `./ops/test_ops.sh docs-lint`
 - `./ops/test_ops.sh python-entrypoints`
 - `./ops/test_ops.sh ios-ops`
+- `KG_IOS_OPS_LOG_FIXTURE=1 ./ops/ios_ops.sh logs --json --since 1m --limit 1 | jq ...`
 - `./ops/test_ops.sh ios-release` 或等效 release surface group
 - `./ops/test_ops.sh asc` 或等效 ASC group
 - `./ops/docs_lint.sh --files docs/plans/2026-06-07-ops-control-plane-hardening.md`

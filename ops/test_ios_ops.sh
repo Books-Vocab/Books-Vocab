@@ -81,6 +81,35 @@ grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS" \
   && fail_t "workflow contains direct Xcode side-effect path" \
   || ok "workflow stays orchestration/read-only"
 
+section "Runtime log surface"
+logs_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --since 1m --limit 1)"
+echo "$logs_json" | jq -e '.schema=="kg.ios.logs.v1" and .since=="1m" and .limit==1 and .summary.rawCount==3 and .summary.filteredCount==1 and .summary.emittedCount==1 and .summary.byEventType.logEvent==1 and (.entries|length)==1 and .entries[0].message=="sync completed"' >/dev/null \
+  && ok "logs --json emits filtered runtime log schema" || fail_t "logs --json invalid: $logs_json"
+logs_leading_zero_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --limit 001)"
+echo "$logs_leading_zero_json" | jq -e '.limit==1 and .summary.emittedCount==1' >/dev/null \
+  && ok "logs --json normalizes numeric limit" || fail_t "logs --json leading-zero limit invalid: $logs_leading_zero_json"
+logs_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --since 1m --limit 5 2>/dev/null)"
+echo "$logs_text" | grep -q 'sync completed' \
+  && ok "logs text emits app log entries" || fail_t "logs text missing app entry: $logs_text"
+echo "$logs_text" | grep -q 'RBSServiceErrorDomain' \
+  && fail_t "logs text failed to filter framework noise: $logs_text" || ok "logs text filters framework noise"
+bad_logs_tmp="$(mktemp -d)"
+if KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --limit nope >"$bad_logs_tmp/out" 2>"$bad_logs_tmp/err"; then
+  fail_t "logs rejects non-numeric limit"
+else
+  grep -q -- '--limit must be' "$bad_logs_tmp/err" \
+    && ok "logs rejects non-numeric limit" || fail_t "logs bad-limit message missing"
+fi
+rm -rf "$bad_logs_tmp"
+fail_logs_tmp="$(mktemp -d)"
+if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --since 1m >"$fail_logs_tmp/out" 2>"$fail_logs_tmp/err"; then
+  fail_t "logs text propagates log show failure"
+else
+  grep -q 'fixture log failure' "$fail_logs_tmp/err" \
+    && ok "logs text propagates log show failure" || fail_t "logs text failure stderr missing"
+fi
+rm -rf "$fail_logs_tmp"
+
 section "JSON smoke fixtures"
 runs_parent="$(mktemp -d)"
 runs_tmp="$runs_parent/with spaces"
