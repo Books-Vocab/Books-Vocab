@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """
 i18n_lint preview-stripper.
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """Project tokens.json → Tokens Studio multi-set sidecar (read-only view).
 
 The single source of truth is ``design-system/tokens.json`` (consumed by the

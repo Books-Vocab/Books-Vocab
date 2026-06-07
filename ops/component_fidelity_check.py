@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """component_fidelity_check — guard web component COMPOSITION against the iOS twins.
 
 token_drift_check.py guards token VALUES (tokens.json ↔ iOS Swift literals). This
@@ -19,7 +19,7 @@ Verification chain (honest boundary):
   iOS twin uses token X       ← human-reviewed + audit-verified (documented per entry);
                                 SwiftUI body composition is not auto-parsed.
 
-Run:  uv run --no-project --python 3.13 python ops/component_fidelity_check.py
+Run:  uv run --python 3.13 python ops/component_fidelity_check.py
 Exit: 0 = all primitives conform, 1 = drift.
 Env override (tests): KG_COMPONENTS_CSS.
 """

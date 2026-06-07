@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """token_drift_check — guard the web design tokens against the iOS Swift SoT.
 
 design-system/tokens.json claims to mirror the iOS token literals. This script

@@ -25,12 +25,14 @@ verified_against: 887a248d
 
 ## P1 — 統一 Python entrypoint 執行環境
 
-1. 掃全 `ops/*.py` 的 shebang / wrapper。
+1. ✅ 掃全 `ops/*.py` 的 shebang / wrapper。
    - 目標:所有 Python entrypoint 要嘛使用 uv shebang,要嘛由 shell wrapper 以 `uv run --python 3.13` 或專案 venv 呼叫。
-   - 背景:目前只有少數 wrapper 被 `ops/tests/test_python_entrypoints.sh` 守住;旁路 Python 腳本仍可能吃到 Homebrew `python3`。
+   - 決策:裸 `#!/usr/bin/env python3` 全部改為 uv shebang;stdlib 工具固定 `uv run --python 3.13`,backend/numpy 工具走 `--project backend`,S3 podcast 工具明確 `--with boto3`。
+   - 驗證:`./ops/test_ops.sh python-entrypoints` 通過;代表性 direct smoke: `ops/data_inspect.py --help` / `ops/podcast_ops.py --help` / `ops/gen_web_tokens.py --help` / `ops/graph_analysis.py --help`。
 
-2. 擴大 `test_python_entrypoints.sh`。
+2. ✅ 擴大 `test_python_entrypoints.sh`。
    - 完成判準:測試掃描全 `ops/*.py` 與 known wrappers,禁止裸 `#!/usr/bin/env python3`,除非明確 allowlist + 理由。
+   - 決策:新增三條 regression:全 `ops/*.py` 禁裸 `python3` shebang;可執行 Python entrypoint 必須是 uv shebang;有 shebang 的 Python 工具必須有 executable bit。
    - 驗證:`./ops/test_ops.sh python-entrypoints` 通過。
 
 ## P1 — Release-critical surfaces 納入聚合測試

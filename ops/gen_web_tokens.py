@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """gen_web_tokens — render the cross-platform design tokens into web CSS.
 
 SoT = design-system/tokens.json (W3C DTCG format). This script is the ONE place
