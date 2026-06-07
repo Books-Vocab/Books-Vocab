@@ -25,10 +25,10 @@ cmd_commands_json() {
         key:"test",
         aliases:[],
         sideEffect:"local-test",
-        command:"./ops/ios_ops.sh test [ios_test.sh args...]",
+        command:"./ops/ios_ops.sh test [ios_test.sh args...] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
         delegate:"./ops/ios_test.sh",
-        purpose:"scoped iOS verification with false-green protection",
-        jsonSchemas:[]
+        purpose:"scoped iOS verification plus explicit reusable test-cache lifecycle control",
+        jsonSchemas:["kg.ios.test-cache.v1"]
       },
       {
         key:"archive",
@@ -114,10 +114,10 @@ cmd_commands_json() {
       {
         key:"simulator",
         aliases:["sim"],
-        sideEffect:"read-only status; local-simulator-lifecycle launch/terminate; local-artifact screenshot",
-        command:"./ops/ios_ops.sh simulator status [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]",
+        sideEffect:"read-only status; local-simulator-lifecycle ensure-booted/launch/terminate; local-artifact screenshot",
+        command:"./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]",
         delegate:null,
-        purpose:"booted simulator status, app launch/terminate, app data container lookup, and local screenshot artifact capture",
+        purpose:"booted simulator status, lifecycle warm-up/reuse, app launch/terminate, app data container lookup, and local screenshot artifact capture",
         jsonSchemas:["kg.ios.simulator.v1"]
       },
       {

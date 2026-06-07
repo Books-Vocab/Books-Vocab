@@ -169,6 +169,24 @@ def _walk_test_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return flat
 
 
+def _parse_duration_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("s"):
+        text = text[:-1]
+    elif text.endswith("秒"):
+        text = text[:-1]
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: dict[str, Any] | None = None, *, limit: int = 80) -> dict[str, Any]:
     total = int(summary_payload.get("totalTestCount") or 0)
     passed = int(summary_payload.get("passedTests") or 0)
@@ -198,9 +216,12 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
             }
         )
 
-    if not diagnostics and tests_payload:
+    all_test_nodes: list[dict[str, Any]] = []
+    if tests_payload:
         nodes = tests_payload.get("testNodes") if isinstance(tests_payload, dict) else None
-        for node in _walk_test_nodes([n for n in (nodes or []) if isinstance(n, dict)]):
+        all_test_nodes = _walk_test_nodes([n for n in (nodes or []) if isinstance(n, dict)])
+    if not diagnostics and all_test_nodes:
+        for node in all_test_nodes:
             if str(node.get("result") or "").lower() != "failed":
                 continue
             name = str(node.get("nodeIdentifier") or node.get("name") or "failed test")
@@ -219,6 +240,23 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
             )
 
     visible = diagnostics[:limit]
+    body_duration_seconds = 0.0
+    for node in all_test_nodes:
+        if str(node.get("nodeType") or "") != "Test Case":
+            continue
+        parsed_duration = _parse_duration_seconds(node.get("duration"))
+        if parsed_duration is not None:
+            body_duration_seconds += parsed_duration
+
+    session_duration_seconds = None
+    start_time = summary_payload.get("startTime")
+    finish_time = summary_payload.get("finishTime")
+    if start_time is not None and finish_time is not None:
+        try:
+            session_duration_seconds = max(float(finish_time) - float(start_time), 0.0)
+        except (TypeError, ValueError):
+            session_duration_seconds = None
+
     return {
         "schema": "kg.ios.diagnostics.v1",
         "source": "xcresult-test-results",
@@ -235,6 +273,14 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
             "failedTests": failed,
             "skippedTests": skipped,
             "expectedFailures": expected,
+        },
+        "timings": {
+            "testBodyMs": int(round(body_duration_seconds * 1000)),
+            "xcresultSessionMs": (
+                int(round(session_duration_seconds * 1000))
+                if session_duration_seconds is not None
+                else None
+            ),
         },
         "diagnostics": visible,
         "truncated": len(diagnostics) > limit,
@@ -300,6 +346,14 @@ def format_text(summary: dict[str, Any], *, log_path: str | None = None, xcresul
                 **counts
             )
         )
+        timings = summary.get("timings") or {}
+        if timings:
+            lines.append(
+                "[ios][test-timing] testBodyMs={testBodyMs} xcresultSessionMs={xcresultSessionMs}".format(
+                    testBodyMs=timings.get("testBodyMs", 0),
+                    xcresultSessionMs=timings.get("xcresultSessionMs"),
+                )
+            )
     for item in summary["diagnostics"]:
         location = ""
         if item.get("file"):
