@@ -4,7 +4,14 @@ from collections import Counter
 import json
 from pathlib import Path
 
-from catalog_review_cli_support import effective_status, filtered_items, load_review_context, resolve_paths
+from catalog_review_cli_support import (
+    build_artifact_refs,
+    build_permalink,
+    effective_status,
+    filtered_items,
+    load_review_context,
+    resolve_paths,
+)
 from catalog_review_report import build_report_payload
 
 
@@ -13,8 +20,7 @@ def cmd_summary(root: Path) -> int:
     manifest, state = load_review_context(root)
     payload = {
         "status": "ok",
-        "manifest": str(manifest_path),
-        "state": str(state_path),
+        **build_artifact_refs(root),
         "totalImages": manifest["totalImages"],
         "stateEntries": len(state["entries"]),
         "promiseCounts": manifest["promiseCounts"],
@@ -35,7 +41,7 @@ def cmd_show(root: Path, asset_id: str) -> int:
         "asset": item,
         "state": state["entries"].get(asset_id, {}),
         "history": state["entries"].get(asset_id, {}).get("history", []),
-        "permalink": f"file://{root / 'review.html'}#asset-{asset_id}",
+        "permalink": build_permalink(root, asset_id),
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
@@ -55,7 +61,7 @@ def cmd_list(
         {
             **item,
             "effectiveStatus": effective_status(item, state),
-            "permalink": f"file://{root / 'review.html'}#asset-{item['assetID']}",
+            "permalink": build_permalink(root, item["assetID"]),
         }
         for item in filtered_items(manifest, state, promise=promise, category=category, status=status, search=search)
     ]
