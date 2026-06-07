@@ -208,6 +208,7 @@ struct TOCViewPreviewScene: View {
     AppThemeContainer {
         TOCViewPreviewScene(loadState: .loading, tocTitles: [])
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("TOC / Loaded") {
@@ -221,12 +222,14 @@ struct TOCViewPreviewScene: View {
             ]
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("TOC / Empty") {
     AppThemeContainer {
         TOCViewPreviewScene(loadState: .empty, tocTitles: [])
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("TOC / Failed") {
@@ -236,5 +239,6 @@ struct TOCViewPreviewScene: View {
             tocTitles: []
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif
