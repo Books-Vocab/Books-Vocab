@@ -58,7 +58,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 2. **驗證先於宣稱** — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
 3. **根因先於修復** — 遇 bug 必須確認根因才動手。不可看到錯就補 patch。
 4. **逐項 review,不批次** — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。適用所有程式碼修改。
-5. **長時操作背景執行** — 任何 `Agent()` 與耗時 Bash(`ios_build.sh`、`ios_test.sh`、backend `pytest`、deploy/rsync、長下載/install)一律 `run_in_background: true`。**主線不阻塞**,完成由 notification 觸發。
+5. **長時操作背景執行** — 任何 `Agent()` 與耗時 Bash(`ios_ops.sh build`/`test`、backend `pytest`、deploy/rsync、長下載/install)一律 `run_in_background: true`。**主線不阻塞**,完成由 notification 觸發。
 6. **主動查文檔(Doc Lookup Discipline)** — 涉及 endpoint / 模組 / env var / DB schema / 既有 feature / ops 工作流,**判斷「這需要查一下」就立即讀對應 reference,不靠記憶**。dispatch 有複雜度的工作時,prompt 必須明示「拿不準就讀 doc,不要省 token」。純樣板修改(typo / rename)不適用。
 7. **生產禁用指令** — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。
 8. **禁止 iOS raw 中文字串** — `Text("中文")` / `Button("中文")` / `.navigationTitle("中文")` 由 `ops/i18n_lint.sh` 擋。所有 user-facing 字串走 `L10n.string(_:)` / `L10n.format(_:_:)`。豁免用行內 `// i18n-allow: <reason>`(品牌名、人名、ASCII-only 技術 ID)。詳見 `docs/sop/i18n_lint.md`。
@@ -72,7 +72,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 ## Scope 規則(觸發式,非 always-on)
 
 - **改 iOS View / UI** → 動手前讀 `docs/sop/ui-design.md`(規範) + `docs/reference/ui/components.md`(現有元件) + `docs/reference/ui/review_checklist.md`(自查 5 項) + `docs/reference/ui/state_matrix.md`(狀態覆蓋);對應 feature scope 另讀 `docs/reference/feature_boundary/<reader|vocabulary|notebook|bookshelf|podcast|settings>.md`。
-- **iOS 驗證** → 唯一合法入口 `./ops/ios_build.sh` / `./ops/ios_test.sh`(共享 `shlock` 鎖,多 worktree 安全);細節見 `docs/sop/ios.md`。現在 `ios_test.sh` 已有 unit/UI/all-targets scope、heartbeat、log preserve、false-green 防護與 DB lock retry,所以改 iOS code/test 時**主動跑最小足夠測試**:先用 `--file`/`-g`/method 重現與驗證局部;改 UI/navigation/accessibility 時用 `--ui` 精準測;跨 feature / test infra / release / cleanup 收尾才跑 `--all-targets`。`ios_build.sh` 仍作為編譯 gate,不以 build 取代相關測試。
+- **iOS 驗證** → 統一入口 `./ops/ios_ops.sh build` / `./ops/ios_ops.sh test`(底層 `ios_build.sh`/`ios_test.sh`/`ios_release.sh` 共享 `shlock` 鎖,多 worktree 安全);細節見 `docs/sop/ios.md`。現在 `ios_test.sh` 已有 unit/UI/all-targets scope、heartbeat、log preserve、false-green 防護與 DB lock retry,所以改 iOS code/test 時**主動跑最小足夠測試**:先用 `--file`/`-g`/method 重現與驗證局部;改 UI/navigation/accessibility 時用 `--ui` 精準測;跨 feature / test infra / release / cleanup 收尾才跑 `--all-targets`。`ios_ops.sh build` 仍作為編譯 gate,不以 build 取代相關測試。
 - **改 user/agent-facing 介面**(`backend/ops_*.py`、`backend/*_cli.py`、admin endpoint、CLI subcommand、env var、設定 schema) → **同 PR 內**grep `.claude/skills/`、`docs/reference/product_surface.md`、`docs/reference/tech_index.md`、`docs/sop/`、`docs/policy/`、`docs/runbook/`,凡引用到舊命令/欄位/旗標清單立即同步。下個 agent 不知道新功能 = 任務沒閉環。Review agent prompt 必須含此項檢查。
 
 ## Doc 路由(語意 → 路徑)
