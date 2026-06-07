@@ -20,8 +20,7 @@ final class PodcastNavigationUITests: XCTestCase {
 
     @MainActor
     func testEpisodeTapDoesNotPopToRoot() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-ui-testing", "-skipWelcome"]
+        let app = makeConfiguredApp()
         app.launch()
 
         // 1. podcast series 卡片：accessibilityLabel = "<title>, podcast"

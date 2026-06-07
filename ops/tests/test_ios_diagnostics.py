@@ -185,3 +185,84 @@ def test_parse_xcresult_test_results_extracts_case_durations():
 
     assert parsed["timings"]["testBodyMs"] == 1750
     assert parsed["timings"]["xcresultSessionMs"] == 3500
+
+
+def test_parse_xcresult_test_results_extracts_app_launch_metric_summary():
+    mod = _load_module()
+    parsed = mod.parse_xcresult_test_results(
+        {
+            "result": "Passed",
+            "totalTestCount": 1,
+            "passedTests": 1,
+            "failedTests": 0,
+            "skippedTests": 0,
+            "expectedFailures": 0,
+            "testFailures": [],
+        },
+        {"testNodes": []},
+        [
+            {
+                "testIdentifier": "BooksBrowserUITests/testLaunchPerformance()",
+                "testRuns": [
+                    {
+                        "metrics": [
+                            {
+                                "displayName": "Duration (AppLaunch)",
+                                "identifier": "com.apple.dt.XCTMetric_ApplicationLaunch-AppLaunch.duration",
+                                "measurements": [1.54, 1.42, 1.50],
+                                "unitOfMeasurement": "s",
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+    )
+
+    app_launch = parsed["performanceMetrics"]["appLaunch"]
+    assert app_launch == {
+        "tests": 1,
+        "samples": 3,
+        "averageMs": 1487,
+        "minMs": 1420,
+        "maxMs": 1540,
+    }
+
+
+def test_format_text_includes_app_launch_perf_summary():
+    mod = _load_module()
+    parsed = mod.parse_xcresult_test_results(
+        {
+            "result": "Passed",
+            "totalTestCount": 1,
+            "passedTests": 1,
+            "failedTests": 0,
+            "skippedTests": 0,
+            "expectedFailures": 0,
+            "testFailures": [],
+        },
+        {"testNodes": []},
+        [
+            {
+                "testIdentifier": "BooksBrowserUITests/testLaunchPerformance()",
+                "testRuns": [
+                    {
+                        "metrics": [
+                            {
+                                "displayName": "Duration (AppLaunch)",
+                                "identifier": "com.apple.dt.XCTMetric_ApplicationLaunch-AppLaunch.duration",
+                                "measurements": [1.4, 1.5],
+                                "unitOfMeasurement": "s",
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+    )
+
+    text = mod.format_text(parsed, xcresult_path="/tmp/Test.xcresult")
+
+    assert "metric=AppLaunch" in text
+    assert "samples=2" in text
+    assert "averageMs=1450" in text

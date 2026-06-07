@@ -14,7 +14,7 @@ final class BooksBrowserUITests: XCTestCase {
 
     @MainActor
     func testLaunchShowsPrimaryTabs() throws {
-        let app = makeApp()
+        let app = makeConfiguredApp()
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["書庫"].waitForExistence(timeout: 5))
@@ -23,7 +23,7 @@ final class BooksBrowserUITests: XCTestCase {
 
     @MainActor
     func testBookshelfSettingsSheetOpens() throws {
-        let app = makeApp()
+        let app = makeConfiguredApp()
         app.launch()
 
         let settingsButton = app.buttons["bookshelf.settingsButton"]
@@ -36,13 +36,7 @@ final class BooksBrowserUITests: XCTestCase {
     @MainActor
     func testLaunchPerformance() throws {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            makeApp().launch()
+            makeConfiguredApp().launch()
         }
-    }
-
-    private func makeApp() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments += ["-ui-testing", "-skipWelcome"]
-        return app
     }
 }

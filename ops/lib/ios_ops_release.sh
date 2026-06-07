@@ -95,9 +95,52 @@ emit_readiness_text_adapter() {
 
 cmd_sentry() {
   local source="$ROOT/ios/BooksBrowser/Services/AppCrashReporting.swift"
-  local has_sdk has_dsn_key
+  local has_sdk has_dsn_key json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh sentry [--json]"
+        return 0
+        ;;
+      *)
+        echo "✗ unknown sentry option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
   grep -q 'canImport(Sentry)' "$source" && has_sdk=1 || has_sdk=0
   rg -q 'SentryDSN|SENTRY_ENABLED_IN_DEBUG|-sentryTest' "$ROOT/ios" && has_dsn_key=1 || has_dsn_key=0
+  if (( json )); then
+    jq -n \
+      --arg schema "kg.ios.sentry.v1" \
+      --arg source "$source" \
+      --argjson sourceExists "$(path_exists_json_bool file "$source")" \
+      --argjson canImport "$has_sdk" \
+      --argjson dsnReference "$has_dsn_key" \
+      '{
+        schema:$schema,
+        source:{
+          path:$source,
+          exists:$sourceExists
+        },
+        wiring:{
+          canImportGuard:($canImport == 1),
+          dsnKeyReference:($dsnReference == 1)
+        },
+        debug:{
+          requiresEnv:"SENTRY_ENABLED_IN_DEBUG=1",
+          testArgument:"-sentryTest"
+        },
+        release:{
+          name:"bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION",
+          dist:"CURRENT_PROJECT_VERSION"
+        }
+      }'
+    return 0
+  fi
+
   echo "[ios][sentry] source=$source"
   echo "[ios][sentry] can_import_guard=$has_sdk dsn_key_reference=$has_dsn_key"
   echo "[ios][sentry] debug_requires_env=SENTRY_ENABLED_IN_DEBUG=1 test_arg=-sentryTest"

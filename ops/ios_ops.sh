@@ -5,14 +5,15 @@
 #   ./ops/ios_ops.sh status
 #   ./ops/ios_ops.sh build [ios_build.sh args...]
 #   ./ops/ios_ops.sh test [ios_test.sh args...]
+#   ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>]
 #   ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json]
 #   ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json]
 #   ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]
-#   ./ops/ios_ops.sh archive [--upload] [ios_release.sh args...]
+#   ./ops/ios_ops.sh archive [--upload] [ios_release.sh args...] [--json]
 #   ./ops/ios_ops.sh archives [list|latest|inspect ...]
 #   ./ops/ios_ops.sh issues --log <xcodebuild.log> [--json]
-#   ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]
-#   ./ops/ios_ops.sh sentry
+#   ./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--json]
+#   ./ops/ios_ops.sh sentry [--json]
 #   ./ops/ios_ops.sh doctor [--json]
 #   ./ops/ios_ops.sh workflow release [--json]
 #   ./ops/ios_ops.sh gate release [--json]
@@ -37,6 +38,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+IOS_BUILD_DELEGATE="${KG_IOS_BUILD_DELEGATE:-$SCRIPT_DIR/ios_build.sh}"
+IOS_TEST_DELEGATE="${KG_IOS_TEST_DELEGATE:-$SCRIPT_DIR/ios_test.sh}"
+IOS_RELEASE_DELEGATE="${KG_IOS_RELEASE_DELEGATE:-$SCRIPT_DIR/ios_release.sh}"
 
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
 
@@ -46,12 +50,222 @@ source "$SCRIPT_DIR/lib/ios_ops_core.sh"
 # shellcheck source=lib/ios_ops_commands.sh
 source "$SCRIPT_DIR/lib/ios_ops_commands.sh"
 
-cmd_status() {
-  local version build
+cmd_status_json() {
+  local version build archive_line archive_created archive_name archive_bundle archive_version archive_build archive_path testflight_latest generated_at
   read_project_settings version build
-  echo "[ios][status] project_version=${version:-unknown} project_build=${build:-unknown}"
-  "$SCRIPT_DIR/ios_archive.sh" latest 2>/dev/null | tail -1 | awk -F'\t' 'NF>=6 {printf "[ios][status] organizer_latest=%s(%s) archive=%s\n", $4, $5, $6}'
-  "$SCRIPT_DIR/asc.sh" builds 2>/dev/null | sed 's/^/[ios][status] /' || true
+  archive_line="$(read_organizer_latest)"
+  if [[ -n "$archive_line" ]]; then
+    IFS=$'\t' read -r archive_created archive_name archive_bundle archive_version archive_build archive_path <<<"$archive_line"
+  fi
+  testflight_latest="$(read_testflight_latest_build)"
+  generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  jq -n \
+    --arg schema "kg.ios.status.v1" \
+    --arg generated_at "$generated_at" \
+    --arg version "${version:-}" \
+    --arg build "${build:-}" \
+    --arg archiveCreated "${archive_created:-}" \
+    --arg archiveName "${archive_name:-}" \
+    --arg archiveBundle "${archive_bundle:-}" \
+    --arg archiveVersion "${archive_version:-}" \
+    --arg archiveBuild "${archive_build:-}" \
+    --arg archivePath "${archive_path:-}" \
+    --arg testflightLatest "${testflight_latest:-}" \
+    '{
+      schema:$schema,
+      generated_at:$generated_at,
+      project:{
+        version:(if $version == "" then null else $version end),
+        build:(if $build == "" then null else $build end)
+      },
+      organizer:{
+        latest:(
+          if $archivePath == "" then null else {
+            createdAt:(if $archiveCreated == "" then null else $archiveCreated end),
+            name:(if $archiveName == "" then null else $archiveName end),
+            bundleId:(if $archiveBundle == "" then null else $archiveBundle end),
+            version:(if $archiveVersion == "" then null else $archiveVersion end),
+            build:(if $archiveBuild == "" then null else $archiveBuild end),
+            archive:(if $archivePath == "" then null else $archivePath end)
+          } end
+        )
+      },
+      testflight:{
+        latestBuild:(if $testflightLatest == "" then null else $testflightLatest end)
+      }
+    }'
+}
+
+cmd_status() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh status [--json]"
+        return 0
+        ;;
+      *)
+        echo "✗ unknown status option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  local payload
+  payload="$(cmd_status_json)"
+  if (( json )); then
+    printf '%s\n' "$payload"
+    return 0
+  fi
+
+  jq -r '
+    "[ios][status] project_version=\(.project.version // "unknown") project_build=\(.project.build // "unknown")",
+    (if .organizer.latest == null then
+      "[ios][status] organizer_latest=unknown"
+    else
+      "[ios][status] organizer_latest=\(.organizer.latest.version // "unknown")(\(.organizer.latest.build // "unknown")) archive=\(.organizer.latest.archive // "")"
+    end),
+    "[ios][status] testflight_latest_build=\(.testflight.latestBuild // "unknown")"
+  ' <<<"$payload"
+}
+
+delegate_supports_native_json() {
+  local kind="$1"
+  shift || true
+  if [[ "$kind" == "test" ]]; then
+    local arg
+    for arg in "$@"; do
+      case "$arg" in
+        --cache-status|--prepare-cache|--clean-cache)
+          return 0
+          ;;
+      esac
+    done
+  fi
+  return 1
+}
+
+cmd_delegate_with_optional_json() {
+  local kind="$1" delegate="$2"
+  shift 2 || true
+  if delegate_supports_native_json "$kind" "$@"; then
+    "$delegate" "$@"
+    return
+  fi
+
+  local json=0
+  local -a forwarded=()
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "--json" ]]; then
+      json=1
+    else
+      forwarded+=("$arg")
+    fi
+  done
+
+  if (( json == 0 )); then
+    if ((${#forwarded[@]})); then
+      "$delegate" "${forwarded[@]}"
+    else
+      "$delegate"
+    fi
+    return
+  fi
+
+  local rc=0 payload
+  if ((${#forwarded[@]})); then
+    if "$delegate" "${forwarded[@]}" >&2; then
+      rc=0
+    else
+      rc=$?
+    fi
+  elif "$delegate" >&2; then
+    rc=0
+  else
+    rc=$?
+  fi
+  payload="$(emit_single_run_json "$kind" "$(verdict_file_for "$kind")")"
+  printf '%s\n' "$payload"
+  return "$rc"
+}
+
+emit_archive_json() {
+  local file json_file
+  file="$(verdict_file_for archive)"
+  json_file="$(verdict_json_file_for archive)"
+
+  if [[ -f "$json_file" ]] && jq -e . "$json_file" >/dev/null 2>&1; then
+    cat "$json_file"
+    return 0
+  fi
+
+  jq -nc \
+    --arg schema "kg.ios.archive.v1" \
+    --arg status "$(verdict_field "$file" RESULT)" \
+    --arg exit_code "$(verdict_field "$file" EXIT)" \
+    --arg caller "$(verdict_field "$file" caller)" \
+    --arg archive_path "$(verdict_field "$file" archive)" \
+    --arg archive_log "$(verdict_field "$file" log)" \
+    --arg archive_xcresult "$(verdict_field "$file" xcresult)" \
+    '{
+      schema:$schema,
+      status:(if $status == "" then "missing" else $status end),
+      exit:(if $exit_code == "" then null else $exit_code end),
+      caller:(if $caller == "" then null else $caller end),
+      options:{keyId:null,uploadRequested:false},
+      archive:{
+        status:(if $status == "" then "missing" else $status end),
+        elapsed:null,
+        path:(if $archive_path == "" then null else $archive_path end),
+        log:(if $archive_log == "" then null else $archive_log end),
+        xcresult:(if $archive_xcresult == "" then null else $archive_xcresult end)
+      },
+      export:{status:"unknown",directory:null,ipa:null},
+      upload:{status:"unknown",requested:false,completed:false}
+    }'
+}
+
+cmd_archive_with_optional_json() {
+  local delegate="$1"
+  shift || true
+
+  local json=0
+  local -a forwarded=()
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "--json" ]]; then
+      json=1
+    else
+      forwarded+=("$arg")
+    fi
+  done
+
+  if (( json == 0 )); then
+    if ((${#forwarded[@]})); then
+      "$delegate" "${forwarded[@]}"
+    else
+      "$delegate"
+    fi
+    return
+  fi
+
+  local rc=0 payload
+  if ((${#forwarded[@]})); then
+    if "$delegate" "${forwarded[@]}" >&2; then
+      rc=0
+    else
+      rc=$?
+    fi
+  elif "$delegate" >&2; then
+    rc=0
+  else
+    rc=$?
+  fi
+  payload="$(emit_archive_json)"
+  printf '%s\n' "$payload"
+  return "$rc"
 }
 
 # shellcheck source=lib/ios_ops_logs.sh
@@ -81,10 +295,10 @@ shift || true
 
 case "$cmd" in
   status) cmd_status "$@" ;;
-  build) "$SCRIPT_DIR/ios_build.sh" "$@" ;;
-  test) "$SCRIPT_DIR/ios_test.sh" "$@" ;;
-  archive) "$SCRIPT_DIR/ios_release.sh" "$@" ;;
-  release) "$SCRIPT_DIR/ios_release.sh" "$@" ;;
+  build) cmd_delegate_with_optional_json build "$IOS_BUILD_DELEGATE" "$@" ;;
+  test) cmd_delegate_with_optional_json test "$IOS_TEST_DELEGATE" "$@" ;;
+  archive) cmd_archive_with_optional_json "$IOS_RELEASE_DELEGATE" "$@" ;;
+  release) cmd_archive_with_optional_json "$IOS_RELEASE_DELEGATE" "$@" ;;
   archives) "$SCRIPT_DIR/ios_archive.sh" "${@:-list}" ;;
   issues) "$SCRIPT_DIR/ios_diagnostics.py" "$@" ;;
   logs) cmd_logs "$@" ;;

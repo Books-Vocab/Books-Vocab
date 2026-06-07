@@ -22,6 +22,9 @@ emit_run_verdict_json() {
           caller:(.caller // null),
           elapsed:(.elapsed // null),
           executed:(.executed // null),
+          options:(.options // null),
+          cache:(.cache // null),
+          timings:(.timings // null),
           verdictFile:$verdictFile,
           jsonVerdictFile:$jsonVerdictFile,
           artifacts:{
@@ -41,14 +44,17 @@ emit_run_verdict_json() {
           status:"malformed",
           result:"malformed",
           exit:null,
-          reason:"malformed-json-verdict",
-          caller:null,
-          elapsed:null,
-          executed:null,
-          verdictFile:$verdictFile,
-          jsonVerdictFile:$jsonVerdictFile,
-          artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
-        }'
+        reason:"malformed-json-verdict",
+        caller:null,
+        elapsed:null,
+        executed:null,
+        options:null,
+        cache:null,
+        timings:null,
+        verdictFile:$verdictFile,
+        jsonVerdictFile:$jsonVerdictFile,
+        artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
+      }'
       return
     fi
   fi
@@ -64,6 +70,9 @@ emit_run_verdict_json() {
         caller:null,
         elapsed:null,
         executed:null,
+        options:null,
+        cache:null,
+        timings:null,
         verdictFile:$verdictFile,
         jsonVerdictFile:($verdictFile + ".json"),
         artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
@@ -94,6 +103,9 @@ emit_run_verdict_json() {
     --arg executed "${executed:-}" \
     --arg log "$log_path" \
     --arg xcresult "$xcresult_path" \
+    --argjson options 'null' \
+    --argjson cache 'null' \
+    --argjson timings 'null' \
     --arg verdictFile "$file" \
     --arg jsonVerdictFile "$json_file" \
     --argjson logExists "$log_exists" \
@@ -107,6 +119,9 @@ emit_run_verdict_json() {
       caller:(if $caller == "" then null else $caller end),
       elapsed:(if $elapsed == "" then null else $elapsed end),
       executed:(if $executed == "" then null else $executed end),
+      options:$options,
+      cache:$cache,
+      timings:$timings,
       verdictFile:$verdictFile,
       jsonVerdictFile:$jsonVerdictFile,
       artifacts:{
@@ -172,21 +187,30 @@ emit_run_report_json() {
   jq -c --argjson diagnostics "$diagnostics_json" '. + {diagnostics:$diagnostics}' <<<"$run_json"
 }
 
+emit_single_run_json() {
+  local kind="$1" file="$2" report_json
+  report_json="$(emit_run_report_json "$kind" "$file")"
+  jq -c --arg schema "kg.ios.run.v1" '. + {schema:$schema}' <<<"$report_json"
+}
+
 cmd_runs_json() {
-  local build_json test_json generated_at
+  local build_json test_json archive_json generated_at
   build_json="$(emit_run_report_json build "$(verdict_file_for build)")"
   test_json="$(emit_run_report_json test "$(verdict_file_for test)")"
+  archive_json="$(emit_run_report_json archive "$(verdict_file_for archive)")"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   jq -n \
     --arg schema "kg.ios.runs.v1" \
     --arg generated_at "$generated_at" \
     --argjson build "$build_json" \
     --argjson test "$test_json" \
+    --argjson archive "$archive_json" \
     '{
       schema:$schema,
       generated_at:$generated_at,
       build:$build,
-      test:$test
+      test:$test,
+      archive:$archive
     }'
 }
 
@@ -211,8 +235,8 @@ cmd_runs() {
     return
   fi
 
-  local kind file run_json result reason caller elapsed executed log_path xcresult_path log_exists xcresult_exists diag_source diag_result diag_errors diag_warnings
-  for kind in build test; do
+  local kind file run_json result reason caller elapsed executed log_path xcresult_path log_exists xcresult_exists diag_source diag_result diag_errors diag_warnings timing_summary cache_status
+  for kind in build test archive; do
     file="$(verdict_file_for "$kind")"
     run_json="$(emit_run_report_json "$kind" "$file")"
     result="$(jq -r '.result // "unknown"' <<<"$run_json")"
@@ -228,9 +252,19 @@ cmd_runs() {
     diag_result="$(jq -r '.diagnostics.result // "unknown"' <<<"$run_json")"
     diag_errors="$(jq -r '.diagnostics.counts.errors // 0' <<<"$run_json")"
     diag_warnings="$(jq -r '.diagnostics.counts.warnings // 0' <<<"$run_json")"
+    timing_summary="$(jq -r '
+      if (.timings // null) == null then
+        ""
+      else
+        (.timings | to_entries | map(select(.value != null) | "\(.key)=\(.value)") | join(" "))
+      end
+    ' <<<"$run_json")"
+    cache_status="$(jq -r '.cache.status // empty' <<<"$run_json")"
     echo "[ios][run] kind=$kind status=${result:-unknown} caller=${caller:-unknown} elapsed=${elapsed:-unknown} executed=${executed:-n/a} reason=${reason:-none} verdict=$file"
     [[ -n "$log_path" ]] && echo "[ios][run] kind=$kind log=$log_path exists=$log_exists"
     [[ -n "$xcresult_path" ]] && echo "[ios][run] kind=$kind xcresult=$xcresult_path exists=$xcresult_exists"
+    [[ -n "$cache_status" ]] && echo "[ios][run] kind=$kind cacheStatus=$cache_status"
+    [[ -n "$timing_summary" ]] && echo "[ios][run] kind=$kind timings $timing_summary"
     echo "[ios][run] kind=$kind diagnostics source=$diag_source result=$diag_result errors=$diag_errors warnings=$diag_warnings"
     jq -r --arg kind "$kind" '.diagnostics.diagnostics[]? | "[ios][run][\(.severity)] kind=\($kind) category=\(.category) \(.message)"' <<<"$run_json"
   done
