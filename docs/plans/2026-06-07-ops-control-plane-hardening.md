@@ -51,9 +51,11 @@ verified_against: 887a248d
 
 ## P2 — 縮小 raw remote command 面
 
-1. 收斂 `status_all.sh` 這類 SSH 旁路。
+1. ✅ 收斂 `status_all.sh` 這類 SSH 旁路。
    - 方向:砍掉,或改成 `devops_kg_safe.sh status/health` 的薄 wrapper。
+   - 決策:`status_all.sh` 保留相容入口,但移除 raw SSH / `run_remote`,改為委派 `devops_kg_safe.sh status` + `health`。
    - 完成判準:常用維運查詢都有 typed subcommand;agent 不需呼叫 raw `ssh` / raw `run` 來查基本狀態。
+   - 驗證:`./ops/test_ops.sh devops` 通過,並新增 regression 禁止 `status_all.sh` 出現 raw `ssh` / `run_remote`。
 
 2. 持續把高頻 raw `run` 用法轉成 typed subcommand。
    - 原則:`devops_kg_safe.sh` blocklist 是最後防線,不是主要 API。新增 typed subcommand 比擴黑名單更可靠。
