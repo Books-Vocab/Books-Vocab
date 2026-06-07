@@ -18,6 +18,59 @@ catalog_now_ms() {
   perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
 
+# catalog_phase_emit — always-on phase milestone to stderr (stdout stays a pure
+# JSON contract). Unlike catalog_trace_phase, this is NOT gated behind a debug
+# flag: long xcodebuild phases must surface a live signal so callers do not have
+# to side-channel via ps/xcresult to tell whether work is progressing.
+catalog_phase_emit() {
+  local phase="$1" event="$2" detail="${3:-}"
+  if [[ -n "$detail" ]]; then
+    printf '[ios][catalog] phase=%s %s %s\n' "$phase" "$event" "$detail" >&2
+  else
+    printf '[ios][catalog] phase=%s %s\n' "$phase" "$event" >&2
+  fi
+}
+
+catalog_log_tail_line() {
+  local log_path="$1"
+  [[ -f "$log_path" ]] || { printf '<no-log>'; return 0; }
+  tail -n 1 "$log_path" 2>/dev/null | tr -d '\n' | cut -c1-120
+}
+
+# catalog_run_xcodebuild_heartbeat — run a long xcodebuild invocation in the
+# background while emitting periodic phase heartbeats to stderr, then return the
+# real exit code. Mirrors the proven ios_test.sh heartbeat loop so catalog long
+# tasks stop being silent black boxes.
+# usage: catalog_run_xcodebuild_heartbeat <label> <log> <err> <append:0|1> -- <cmd> [args...]
+catalog_run_xcodebuild_heartbeat() {
+  local label="$1" log_path="$2" err_path="$3" append="$4"
+  shift 4
+  [[ "${1:-}" == "--" ]] && shift
+  local pid start now hb_at elapsed interval rc
+  interval="${KG_IOS_OPS_CATALOG_HEARTBEAT_SEC:-20}"
+  if [[ "$append" == "1" ]]; then
+    "$@" >>"$log_path" 2>>"$err_path" &
+  else
+    "$@" >"$log_path" 2>"$err_path" &
+  fi
+  pid=$!
+  start="$(date +%s)"
+  hb_at="$start"
+  catalog_phase_emit "$label" "start" "pid=$pid log=$log_path"
+  while kill -0 "$pid" 2>/dev/null; do
+    now="$(date +%s)"
+    if (( now - hb_at >= interval )); then
+      elapsed=$(( now - start ))
+      catalog_phase_emit "$label" "running" "${elapsed}s pid=$pid last=$(catalog_log_tail_line "$log_path")"
+      hb_at="$now"
+    fi
+    sleep 2
+  done
+  if wait "$pid"; then rc=0; else rc=$?; fi
+  catalog_phase_emit "$label" "done" "exitCode=$rc"
+  return "$rc"
+}
+
 catalog_trace_phase() {
   local phase="$1" event="$2" detail="${3:-}"
   [[ "${KG_IOS_OPS_CATALOG_TRACE:-0}" == "1" ]] || return 0
@@ -280,14 +333,17 @@ catalog_run_scoped_xctestrun() {
   local xctestrun_path="$1" destination="$2" log_path="$3" err_path="$4"
   local start_ms end_ms rc
   start_ms="$(catalog_now_ms)"
-  xcodebuild test-without-building \
+  if catalog_run_xcodebuild_heartbeat "test-without-building" "$log_path" "$err_path" 1 -- \
+    xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$destination" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled NO \
-    -only-testing:BooksBrowserTests/CatalogSnapshotTests \
-    >>"$log_path" 2>>"$err_path"
-  rc=$?
+    -only-testing:BooksBrowserTests/CatalogSnapshotTests; then
+    rc=0
+  else
+    rc=$?
+  fi
   end_ms="$(catalog_now_ms)"
   CATALOG_LAST_COMMAND_WALL_MS=$(( end_ms - start_ms ))
   return "$rc"
@@ -299,16 +355,19 @@ catalog_rebuild_scoped_cache() {
   rm -rf "$derived_data_root"
   mkdir -p "$derived_data_root"
   start_ms="$(catalog_now_ms)"
-  xcodebuild build-for-testing \
+  if catalog_run_xcodebuild_heartbeat "build-for-testing" "$log_path" "$err_path" 0 -- \
+    xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
     -scheme "$CATALOG_SCHEME" \
     -destination "$destination" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled NO \
     -derivedDataPath "$derived_data_root" \
-    OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS' \
-    >"$log_path" 2>"$err_path"
-  rc=$?
+    OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS'; then
+    rc=0
+  else
+    rc=$?
+  fi
   end_ms="$(catalog_now_ms)"
   CATALOG_LAST_BUILD_WALL_MS=$(( end_ms - start_ms ))
   return "$rc"
@@ -582,15 +641,15 @@ cmd_catalog_snapshots_json() {
     else
       local full_test_start_ms full_test_end_ms
       full_test_start_ms="$(catalog_now_ms)"
-      if xcodebuild test \
+      if catalog_run_xcodebuild_heartbeat "full-test" "$xcode_log" "$xcode_err" 0 -- \
+        xcodebuild test \
         -project "$XCODEPROJ" \
         -scheme "$CATALOG_SCHEME" \
         -destination "$destination" \
         -parallel-testing-enabled NO \
         -test-timeouts-enabled NO \
         -only-testing:BooksBrowserTests/CatalogSnapshotTests \
-        OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS' \
-        >"$xcode_log" 2>"$xcode_err"; then
+        OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS'; then
         rc=0
       else
         rc=$?
