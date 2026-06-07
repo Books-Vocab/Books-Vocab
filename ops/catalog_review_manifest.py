@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 from pathlib import Path
+import re
 
 
 def normalize_label(text: str) -> str:
     return text.replace("_", " ").strip()
+
+
+def slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug or "item"
+
+
+def build_asset_id(rel_path: Path) -> str:
+    rel_text = rel_path.with_suffix("").as_posix()
+    digest = hashlib.blake2s(rel_text.encode("utf-8"), digest_size=4).hexdigest()
+    return f"{slugify(rel_text)}--{digest}"
 
 
 def has_prefix(category: str, prefixes: tuple[str, ...]) -> bool:
@@ -55,7 +68,11 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
         device = device_dir.replace(" (dark)", "")
         promise = classify_promise(category, profile)
         eligibility = classify_eligibility(category, promise, profile)
+        cluster_id = f"{slugify(category)}--{slugify(title)}"
+        asset_id = build_asset_id(rel)
         items.append({
+            "assetID": asset_id,
+            "clusterID": cluster_id,
             "relPath": rel.as_posix(),
             "deviceDir": device_dir,
             "device": device,
@@ -70,21 +87,31 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
     return items
 
 
-def build_manifest(items: list[dict], profile: dict) -> dict:
+def build_manifest(items: list[dict], profile: dict, *, state_file: str | None = None, review_state: dict | None = None) -> dict:
     counts = Counter(item["promise"] for item in items)
     category_counts = Counter(item["category"] for item in items)
     eligibility_counts = Counter(item["eligibility"] for item in items)
+    state_entries = review_state.get("entries", {}) if review_state else {}
+    items_with_state = []
+    for item in items:
+        state_entry = state_entries.get(item["assetID"], {})
+        item_with_state = dict(item)
+        item_with_state["reviewStatus"] = state_entry.get("status", "")
+        item_with_state["reviewNote"] = state_entry.get("note", "")
+        items_with_state.append(item_with_state)
     return {
         "schema": "kg.catalog.review.v1",
         "profile": {
             "path": str(profile.get("_path", "")),
             "schema": profile.get("schema"),
         },
+        "stateFile": state_file,
         "totalImages": len(items),
         "promiseCounts": dict(counts),
         "categoryCounts": dict(category_counts),
         "eligibilityCounts": dict(eligibility_counts),
         "newSincePr878Count": sum(1 for item in items if item["newSincePr878"]),
         "heroCandidateCount": sum(1 for item in items if item["heroCandidate"]),
-        "items": items,
+        "stateCounts": dict(Counter(item["reviewStatus"] for item in items_with_state if item["reviewStatus"])),
+        "items": items_with_state,
     }

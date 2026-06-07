@@ -8,6 +8,7 @@ from pathlib import Path
 from catalog_review_manifest import build_manifest, collect_items
 from catalog_review_profile import load_profile
 from catalog_review_renderer import render_html
+from catalog_review_state import build_review_state, load_review_state
 
 DEFAULT_PROFILE_PATH = Path(__file__).with_name("catalog_review_profile.json")
 
@@ -25,10 +26,14 @@ def main() -> int:
     source_root = args.source_root.resolve()
     output_root = (args.output_root or source_root).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
+    state_path = output_root / "review_state.json"
 
     profile = load_profile(args.profile.resolve())
     items = collect_items(source_root, profile)
-    manifest = build_manifest(items, profile)
+    existing_state = load_review_state(state_path)
+    review_state = build_review_state(items, profile, existing_state)
+    state_path.write_text(json.dumps(review_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    manifest = build_manifest(items, profile, state_file=state_path.name, review_state=review_state)
     (output_root / "review_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -42,6 +47,7 @@ def main() -> int:
                 "outputRoot": str(output_root),
                 "totalImages": len(items),
                 "promiseCounts": manifest["promiseCounts"],
+                "stateFile": str(state_path),
             },
             ensure_ascii=False,
         )

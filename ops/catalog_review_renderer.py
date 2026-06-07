@@ -266,6 +266,10 @@ def render_html(manifest: dict) -> str:
       font-size: 11px;
       border: 1px solid #eadfce;
     }}
+    .chip.mono {{
+      font-family: "SF Mono", "Menlo", "Monaco", monospace;
+      font-size: 10px;
+    }}
     .actions {{
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -428,14 +432,14 @@ def render_html(manifest: dict) -> str:
     }}
 
     function currentStatus(item) {{
-      return reviewStates[item.relPath] || "";
+      return reviewStates[item.assetID] || item.reviewStatus || "";
     }}
 
     function setStatus(item, next) {{
       if (next) {{
-        reviewStates[item.relPath] = next;
+        reviewStates[item.assetID] = next;
       }} else {{
-        delete reviewStates[item.relPath];
+        delete reviewStates[item.assetID];
       }}
       localStorage.setItem(storageKey, JSON.stringify(reviewStates));
       render();
@@ -481,6 +485,7 @@ def render_html(manifest: dict) -> str:
       const status = currentStatus(item);
       const wrapper = document.createElement("article");
       wrapper.className = "card";
+      wrapper.id = `asset-${{item.assetID}}`;
       wrapper.innerHTML = `
         <a href="${{item.relPath}}" target="_blank" rel="noreferrer">
           <img loading="lazy" src="${{item.relPath}}" alt="${{item.category}} / ${{item.title}}">
@@ -490,6 +495,7 @@ def render_html(manifest: dict) -> str:
           <div class="chips">
             <span class="chip">${{item.device}}</span>
             <span class="chip">${{item.appearance}}</span>
+            <span class="chip mono">${{item.assetID}}</span>
           </div>
           <div class="actions">
             <button data-state="shortlist" class="${{status === "shortlist" ? "selected" : ""}}">留</button>
