@@ -139,6 +139,15 @@ cmd_commands_json() {
         jsonSchemas:["kg.ios.snapshot.v1","kg.ios.gate.v1","kg.ios.xcode.v1","kg.ios.simulator.v1","kg.ios.logs.v1"]
       },
       {
+        key:"catalog",
+        aliases:[],
+        sideEffect:"local-test; local-artifact export",
+        command:"./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json] | snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--reuse-build] [--json] | clean [--json]",
+        delegate:null,
+        purpose:"prepare or reuse catalog snapshot build cache, batch-render Playbook scenarios, and clean local snapshot cache",
+        jsonSchemas:["kg.ios.catalog.prepare.v1","kg.ios.catalog.v1","kg.ios.catalog.clean.v1"]
+      },
+      {
         key:"commands",
         aliases:["capabilities"],
         sideEffect:"read-only",

@@ -4,38 +4,37 @@ import SwiftData
 import SwiftUI
 
 /// Catalog scenarios for the Bookshelf surface.
-/// Reuses `BookshelfPreviewData` / `BookCardPreviewScene` / `BookshelfLoadingPreview`
-/// (defined in `BookshelfPreviews.swift`) so state stays in lock-step with the
-/// existing `#Preview` blocks.
+/// Reuses fixture-driven preview scenes so Preview / Catalog / Snapshot stay aligned.
 enum BookshelfScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Bookshelf") {
             Scenario("Card / Progress", layout: .fill) {
                 AppThemeContainer {
-                    BookCardPreviewScene(book: BookshelfPreviewData.activeBook)
+                    BookshelfCardFixtureScene(fixtureID: .progressCard)
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Card / Placeholder", layout: .fill) {
                 AppThemeContainer {
-                    BookCardPreviewScene(book: BookshelfPreviewData.placeholderBook)
+                    BookshelfCardFixtureScene(fixtureID: .placeholderCard)
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Empty", layout: .fill) {
                 AppThemeContainer {
-                    BookshelfView()
-                        .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
+                    BookshelfFixtureLibraryScene(fixtureID: .emptyLibrary)
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("With Books", layout: .fill) {
-                BookshelfWithBooksScene()
+                AppThemeContainer {
+                    BookshelfFixtureLibraryScene(fixtureID: .withBooksLibrary)
+                }
+                .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Loading", layout: .fill) {
                 AppThemeContainer {
                     BookshelfLoadingPreview()
-                        .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
@@ -129,21 +128,4 @@ private struct PodcastContinueRailCardScene: View {
 }
 #endif
 
-// Why: `BookshelfPreviewData.containerWithBooks` is `@MainActor` (touches ModelContainer
-// init paths that require main-thread); the Scenario content closure itself is
-// non-isolated, so accessing it directly trips Swift 6 strict concurrency.
-// SwiftUI `body` is implicitly `@MainActor`-isolated → wrap the access in a View.
-private struct BookshelfWithBooksScene: View {
-    var body: some View {
-        AppThemeContainer {
-            if let container = BookshelfPreviewData.containerWithBooks {
-                BookshelfView()
-                    .modelContainer(container)
-            } else {
-                EmptyView()
-            }
-        }
-        .environmentObject(AppAppearanceStore.preview)
-    }
-}
 #endif
