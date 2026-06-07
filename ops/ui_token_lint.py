@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """ui_token_lint — gate raw spacing/radius/shadow/color/font magic numbers.
 
 Every visual constant in the iOS app must flow through a design token:

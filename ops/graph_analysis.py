@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --project backend python
 """Graph pipeline analysis — threshold vs connection count + actual link audit.
 
 Usage:

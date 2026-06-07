@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """One-time migration: KG tokens.json → W3C DTCG tokens.json.
 
 Run: uv run python ops/migrate_tokens_to_dtcg.py

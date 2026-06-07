@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """injection_lint — verify InjectionNext three-piece coverage on Views/.
 
 Three rules:

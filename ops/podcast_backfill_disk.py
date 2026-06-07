@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 --with boto3 python
 """Served-disk → S3 podcast backfill + drift reconcile.
 
 The Track-B migration switched the backend to S3-only podcast serving

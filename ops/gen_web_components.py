@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """gen_web_components — render cross-platform component specs into web CSS + JS.
 
 SoT = design-system/components.json (hand-authored component structure).
