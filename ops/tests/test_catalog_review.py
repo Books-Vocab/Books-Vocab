@@ -640,6 +640,8 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert hero_payload["health"]["shouldRepairFirst"] is True
     assert hero_payload["health"]["needsReviewAttention"] is True
     assert hero_payload["health"]["recommendedOperatorAction"] == "repair-first"
+    assert hero_payload["health"]["recommendedCommand"].endswith(" repair")
+    assert hero_payload["health"]["followupCommand"].endswith(" verify")
     assert hero_payload["health"]["summary"]["blockingErrorCount"] == 0
     assert hero_payload["recommendations"][0]["promise"] == "Read"
     assert hero_payload["playbook"]["mode"] == "hero-first"
@@ -656,3 +658,4 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert hero_shortcut.returncode == 1, hero_shortcut.stderr
     hero_shortcut_payload = json.loads(hero_shortcut.stdout)
     assert hero_shortcut_payload["mode"] == "hero-first"
+    assert hero_shortcut_payload["health"]["recommendedOperatorAction"] == "repair-first"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -169,6 +171,7 @@ def build_doctor_payload(
 def project_doctor_view(payload: dict, *, mode: str) -> dict:
     if mode == "overview":
         return payload
+    root = str(Path(payload["state"]).parent)
     severity = "ok"
     if payload["blockingErrors"]:
         severity = "error"
@@ -185,6 +188,11 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         recommended_operator_action = "proceed-review"
     else:
         recommended_operator_action = "healthy-idle"
+    recommended_command = None
+    followup_command = None
+    if recommended_operator_action == "repair-first":
+        recommended_command = f"./ops/catalog_review_cli.py {root} repair"
+        followup_command = f"./ops/catalog_review_cli.py {root} verify"
     health = {
         "severity": severity,
         "verifyStatus": payload["verify"]["status"],
@@ -194,6 +202,8 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         "shouldRepairFirst": should_repair_first,
         "needsReviewAttention": needs_review_attention,
         "recommendedOperatorAction": recommended_operator_action,
+        "recommendedCommand": recommended_command,
+        "followupCommand": followup_command,
         "summary": {
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
@@ -207,10 +217,24 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
     if mode == "hero-first":
         view["recommendations"] = payload["heroFirstCoreRecommendations"]
         view["playbook"] = payload["heroFirstPlaybook"]
+        if health["recommendedOperatorAction"] == "proceed-review":
+            health["recommendedCommand"] = payload["heroFirstPlaybook"]["firstCommand"]
+            health["followupCommand"] = (
+                view["recommendations"][0]["recommendedActions"][1]["command"]
+                if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
+                else None
+            )
         return view
     if mode == "coverage-first":
         view["recommendations"] = payload["coverageFirstCoreRecommendations"]
         view["playbook"] = payload["coverageFirstPlaybook"]
+        if health["recommendedOperatorAction"] == "proceed-review":
+            health["recommendedCommand"] = payload["coverageFirstPlaybook"]["firstCommand"]
+            health["followupCommand"] = (
+                view["recommendations"][0]["recommendedActions"][1]["command"]
+                if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
+                else None
+            )
         return view
     if mode == "cleanup":
         view["recommendations"] = payload["cleanupRecommendations"]
@@ -226,5 +250,12 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
             else None,
         }
+        if health["recommendedOperatorAction"] == "proceed-review":
+            health["recommendedCommand"] = view["playbook"]["firstCommand"]
+            health["followupCommand"] = (
+                view["recommendations"][0]["recommendedActions"][1]["command"]
+                if view["recommendations"] and len(view["recommendations"][0]["recommendedActions"]) > 1
+                else None
+            )
         return view
     raise ValueError(f"Unsupported doctor mode: {mode}")
