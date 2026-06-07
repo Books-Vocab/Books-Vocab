@@ -642,6 +642,10 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert hero_payload["health"]["recommendedOperatorAction"] == "repair-first"
     assert hero_payload["health"]["recommendedCommand"].endswith(" repair")
     assert hero_payload["health"]["followupCommand"].endswith(" verify")
+    assert hero_payload["health"]["actionCommands"][0]["role"] == "primary"
+    assert hero_payload["health"]["actionCommands"][0]["dryRunSafe"] is False
+    assert hero_payload["health"]["actionCommands"][1]["role"] == "followup"
+    assert hero_payload["health"]["actionCommands"][1]["dryRunSafe"] is True
     assert hero_payload["health"]["summary"]["blockingErrorCount"] == 0
     assert hero_payload["recommendations"][0]["promise"] == "Read"
     assert hero_payload["playbook"]["mode"] == "hero-first"
