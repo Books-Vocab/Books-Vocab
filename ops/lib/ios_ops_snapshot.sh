@@ -95,33 +95,17 @@ cmd_snapshot_json() {
         command:$command,
         message:(.error // .detail // .note // "")
       }];
+    # Derives entirely from sentry.issues[] (single source of truth in
+    # sentry_summary_json); adding a wiring check there flows through here.
     def sentry_actions($sentry):
-      [
-        if ($sentry.source.exists // false) then empty else {
-          source:"sentry",
-          severity:"warn",
-          key:"source",
-          status:"warn",
-          command:"./ops/ios_ops.sh sentry --json",
-          message:("source missing: " + ($sentry.source.path // "unknown"))
-        } end,
-        if ($sentry.wiring.canImportGuard // false) then empty else {
-          source:"sentry",
-          severity:"warn",
-          key:"canImportGuard",
-          status:"warn",
-          command:"./ops/ios_ops.sh sentry --json",
-          message:"missing canImport(Sentry) guard"
-        } end,
-        if ($sentry.wiring.dsnKeyReference // false) then empty else {
-          source:"sentry",
-          severity:"warn",
-          key:"dsnKeyReference",
-          status:"warn",
-          command:"./ops/ios_ops.sh sentry --json",
-          message:"missing Sentry DSN/debug test wiring"
-        } end
-      ];
+      [ ($sentry.issues // [])[]? | {
+        source:"sentry",
+        severity:"warn",
+        key:.key,
+        status:"warn",
+        command:.command,
+        message:.message
+      }];
     def timing_summary($run):
       {
         cacheStatus:($run.cache.status // null),
@@ -176,11 +160,7 @@ cmd_snapshot_json() {
       | n($runs.test.diagnostics.counts.failedTests) as $testFailures
       | n($runs.archive.diagnostics.counts.errors) as $archiveErrors
       | n($runs.archive.diagnostics.counts.warnings) as $archiveWarnings
-      | (
-          (if ($sentry.source.exists // false) then 0 else 1 end)
-          + (if ($sentry.wiring.canImportGuard // false) then 0 else 1 end)
-          + (if ($sentry.wiring.dsnKeyReference // false) then 0 else 1 end)
-        ) as $sentryWarnings
+      | (($sentry.issues // []) | length) as $sentryWarnings
       | (if $xcode == null then 0 else ($xcode.errors // [] | length) end) as $xcodeErrors
       | (if $simulator == null then 0 elif $simulator.status == "error" then (($simulator.errors // []) | length) else 0 end) as $simulatorErrors
       | (if $logs == null then 0 else n($logs.summary.filteredCount) end) as $runtimeLogs
