@@ -4,10 +4,8 @@ from collections import Counter
 from pathlib import Path
 
 from catalog_review_cli_artifacts import load_review_context
-from catalog_review_cli_support import (
-    filtered_items,
-    serialize_review_item,
-)
+from catalog_review_cli_filters import filtered_items
+from catalog_review_cli_serialization import serialize_review_item
 
 
 def load_query_matches(
