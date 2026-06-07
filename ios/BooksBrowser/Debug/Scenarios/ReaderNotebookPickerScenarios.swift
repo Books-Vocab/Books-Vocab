@@ -44,8 +44,12 @@ enum ReaderNotebookPickerScenarios {
 // MARK: - Scene harness
 
 /// Builds an in-memory store, seeds the supplied notebooks + a single book, then
-/// presents `ReaderNotebookPicker`. Both `ModelContainer` creation and `insert`
-/// run on `@MainActor` via this view's `init`/`body`.
+/// presents `ReaderNotebookPicker`. Seeding runs in this struct's `init`; the
+/// struct stays nonisolated so the `Scenario { ... }` closure (also nonisolated)
+/// can construct it. This is safe because Playbook drives all rendering on the
+/// main thread, so `mainContext` is only ever touched there. (Cannot mark the
+/// struct `@MainActor`: that would make `init` main-actor-isolated and the
+/// nonisolated Scenario closure could no longer call it.)
 private struct ReaderNotebookPickerScene: View {
     private let container: ModelContainer
     private let book: Book

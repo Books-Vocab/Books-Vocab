@@ -1,7 +1,7 @@
 #if os(iOS)
 import SwiftUI
 
-private struct ReaderChromePreviewScene: View {
+struct ReaderChromePreviewScene: View {
     let state: ReaderViewPresenterState
     let showsErrorCard: Bool
 
