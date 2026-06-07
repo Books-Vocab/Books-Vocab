@@ -21,6 +21,7 @@ from .api_models import (
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
+    VocabUIConfig,
 )
 
 
@@ -30,6 +31,7 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
         translation = TranslationLanguageConfig(
             source_lang=translation_data.get("source_lang", "en"),
             target_lang=translation_data.get("target_lang", "zh-Hant"),
+            updated_at=translation_data.get("updated_at"),
         )
     else:
         translation = TranslationLanguageConfig()
@@ -58,19 +60,32 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     else:
         review_mode = ReviewModeConfig()
 
+    vu_data = config.get("vocab_ui")
+    if isinstance(vu_data, dict):
+        vocab_ui = VocabUIConfig(
+            active_notebook_id=vu_data.get("active_notebook_id", "default"),
+            updated_at=vu_data.get("updated_at"),
+        )
+    else:
+        vocab_ui = VocabUIConfig()
+
     return UserConfigResponse(
         translation=translation,
         review_clock=review_clock,
         review_mode=review_mode,
+        vocab_ui=vocab_ui,
     )
 
 
 def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
-    # Translation config
-    if req.translation:
+    # Translation config（source+target 偏好 + 單一 group updated_at 整組 LWW）。
+    # 用 `is not None` 對齊其他 group（有送=更新, None=不動既有）；統一語意並消除
+    # 「未來 model 變得可 falsy 就誤略過」的隱患（現 model 全 default 不會 falsy）。
+    if req.translation is not None:
         config["translation"] = {
             "source_lang": req.translation.source_lang,
             "target_lang": req.translation.target_lang,
+            "updated_at": req.translation.updated_at,
         }
     # Review clock (pause state). 複合原子;resume 時 paused_at 已由 ReviewClockConfig
     # validator 正規化為 None。只在 client 有送 review_clock 時更新(None = 不動既有)。
@@ -93,6 +108,15 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
             "custom_minimum_interval_hours": rm.custom_minimum_interval_hours,
             "custom_maximum_interval_hours": rm.custom_maximum_interval_hours,
             "updated_at": rm.updated_at,
+        }
+    # Vocab UI(目前僅全域 active notebook 游標)。決定新選詞歸屬;單一 updated_at 驅動
+    # 整組跨裝置 LWW。只在 client 有送時更新(None = 不動既有);stale id 由各 client
+    # reconcile(後端此階段 passthrough,不驗 notebook 存在性,與其他 group 一致)。
+    if req.vocab_ui is not None:
+        vu = req.vocab_ui
+        config["vocab_ui"] = {
+            "active_notebook_id": vu.active_notebook_id,
+            "updated_at": vu.updated_at,
         }
 
 

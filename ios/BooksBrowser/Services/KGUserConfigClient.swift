@@ -5,6 +5,7 @@ protocol KGUserConfigRemoteHandling {
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig
     func updateReviewClockConfig(baseURL: URL, token: String, reviewClock: KGReviewClockConfig) async throws -> KGUserConfig
     func updateReviewModeConfig(baseURL: URL, token: String, reviewMode: KGReviewModeConfig) async throws -> KGUserConfig
+    func updateVocabUIConfig(baseURL: URL, token: String, vocabUI: KGVocabUIConfig) async throws -> KGUserConfig
 }
 
 /// PUT /api/user/config 的 partial patch。後端各欄位獨立 optional(不送=不更新),
@@ -13,11 +14,13 @@ private struct KGUserConfigPatch: Encodable {
     let translation: KGTranslationConfig?
     let review_clock: KGReviewClockConfig?
     let review_mode: KGReviewModeConfig?
+    let vocab_ui: KGVocabUIConfig?
 
     enum CodingKeys: String, CodingKey {
         case translation
         case review_clock
         case review_mode
+        case vocab_ui
     }
 
     func encode(to encoder: Encoder) throws {
@@ -25,6 +28,7 @@ private struct KGUserConfigPatch: Encodable {
         try c.encodeIfPresent(translation, forKey: .translation)
         try c.encodeIfPresent(review_clock, forKey: .review_clock)
         try c.encodeIfPresent(review_mode, forKey: .review_mode)
+        try c.encodeIfPresent(vocab_ui, forKey: .vocab_ui)
     }
 }
 
@@ -36,17 +40,22 @@ final class KGUserConfigClient: KGUserConfigRemoteHandling {
     }
 
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(translation: translation, review_clock: nil, review_mode: nil)
+        let patch = KGUserConfigPatch(translation: translation, review_clock: nil, review_mode: nil, vocab_ui: nil)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 
     func updateReviewClockConfig(baseURL: URL, token: String, reviewClock: KGReviewClockConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(translation: nil, review_clock: reviewClock, review_mode: nil)
+        let patch = KGUserConfigPatch(translation: nil, review_clock: reviewClock, review_mode: nil, vocab_ui: nil)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 
     func updateReviewModeConfig(baseURL: URL, token: String, reviewMode: KGReviewModeConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(translation: nil, review_clock: nil, review_mode: reviewMode)
+        let patch = KGUserConfigPatch(translation: nil, review_clock: nil, review_mode: reviewMode, vocab_ui: nil)
+        return try await update(baseURL: baseURL, token: token, patch: patch)
+    }
+
+    func updateVocabUIConfig(baseURL: URL, token: String, vocabUI: KGVocabUIConfig) async throws -> KGUserConfig {
+        let patch = KGUserConfigPatch(translation: nil, review_clock: nil, review_mode: nil, vocab_ui: vocabUI)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 
