@@ -11,6 +11,7 @@ from pathlib import Path
 from .cards import CardStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
+from .graph_event_log import GraphEventStore
 from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
 from .review_events import ReviewEventStore
@@ -114,6 +115,12 @@ def create_review_event_store(user_dir: Path) -> ReviewEventStore:
     return _get_cached(key, lambda: ReviewEventStore(user_dir / "review_events.db"))
 
 
+def create_graph_event_store(user_dir: Path) -> GraphEventStore:
+    """Per-user 圖譜變動帳本(單檔,notebook_id 為欄位,跨 notebook 共享)。"""
+    key = f"graph_events:{user_dir}"
+    return _get_cached(key, lambda: GraphEventStore(user_dir / "graph_events.db"))
+
+
 def _migrate_legacy_file(legacy: Path, target: Path) -> None:
     """Rename a legacy file to its notebook-scoped path. Race-safe."""
     if not target.exists() and legacy.exists():
@@ -154,7 +161,18 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
         NOTEBOOK_FILE_SPECS["blocked"],
     ])
     pj_path = user_dir / f"pending_judge_{notebook_id}.json"
-    return _get_cached(key, lambda: GraphStore(links_path, candidates_path, blocked_path, pending_judge_path=pj_path))
+    # 注入 per-user 變動帳本,讓 Store 層每筆 mutation emit 真實事件(Phase 6)。
+    # 用 provider 而非直接注入:GraphStore 可能被長期持有(pipeline 跨秒 hold),而
+    # event_store 在共享 LRU 快取中可能先被逐出並 close;每次 emit 透過 provider 重解析,
+    # 命中快取(逐出則重建)後再寫,杜絕對死引用靜默丟事件。
+    return _get_cached(
+        key,
+        lambda: GraphStore(
+            links_path, candidates_path, blocked_path, pending_judge_path=pj_path,
+            event_store_provider=lambda: create_graph_event_store(user_dir),
+            event_notebook_id=notebook_id,
+        ),
+    )
 
 
 def create_notebook_store(user_dir: Path) -> NotebookStore:

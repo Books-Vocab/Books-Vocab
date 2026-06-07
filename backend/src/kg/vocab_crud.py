@@ -82,9 +82,9 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
     if graph is not None:
         try:
             if archived:
-                graph.cleanup_for_card(card.id)
+                graph.cleanup_for_card(card.id, source="manual")
             else:
-                graph.restore_links_for(card.id, cards_store)
+                graph.restore_links_for(card.id, cards_store, source="manual")
         except Exception:
             # Roll the card's archive state back to its original value so a
             # failed graph op never leaves card state and the response out of
@@ -122,7 +122,7 @@ def delete_vocab_word(
     cards_store.delete(card.id)
     if graph is not None:
         try:
-            graph.cleanup_for_card(card.id, remove_blocked=True)
+            graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
         except Exception:
             logger.error("Graph operation failed for card %s", card.id, exc_info=True)
             try:
@@ -245,7 +245,7 @@ def batch_delete_vocab_words(
         cards_store.delete(card.id)
         if graph is not None:
             try:
-                graph.cleanup_for_card(card.id, remove_blocked=True)
+                graph.cleanup_for_card(card.id, remove_blocked=True, source="manual")
             except Exception as exc:
                 logger.error("Graph operation failed for card %s", card.id, exc_info=True)
                 try:
@@ -307,9 +307,9 @@ def batch_archive_vocab_words(
         if graph is not None:
             try:
                 if archived:
-                    graph.cleanup_for_card(card.id)
+                    graph.cleanup_for_card(card.id, source="manual")
                 else:
-                    graph.restore_links_for(card.id, cards_store)
+                    graph.restore_links_for(card.id, cards_store, source="manual")
             except Exception as exc:
                 # Roll the card's archive state back to its original value so a
                 # failed graph op never leaves card state and the response out of

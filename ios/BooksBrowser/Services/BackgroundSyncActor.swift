@@ -381,10 +381,15 @@ extension BackgroundSyncActor {
         let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
 
         return records.map { record in
+            // 優先用複習當下固化在事件上的 kgCardId(自包含,不退化)。只有 legacy 紀錄
+            // (固化前)才回退舊的 entryID→entry→kgCardId 三段反查 —— 卡若已離場仍會是
+            // nil,但那是固化上線前的歷史殘留,新事件不再受此影響。
             let cardId: String?
-            if let entryID = record.entryID,
-               let resolvedCardId = entriesByID[entryID]?.kgCardId,
-               !resolvedCardId.isEmpty {
+            if let fixated = record.kgCardId, !fixated.isEmpty {
+                cardId = fixated
+            } else if let entryID = record.entryID,
+                      let resolvedCardId = entriesByID[entryID]?.kgCardId,
+                      !resolvedCardId.isEmpty {
                 cardId = resolvedCardId
             } else {
                 cardId = nil
@@ -396,7 +401,14 @@ extension BackgroundSyncActor {
                 notebook_id: record.notebookId,
                 feedback: record.feedback,
                 reviewed_at: AppDateFormatters.iso8601.string(from: record.reviewedAt),
-                created_at: AppDateFormatters.iso8601.string(from: record.reviewedAt)
+                created_at: AppDateFormatters.iso8601.string(from: record.reviewedAt),
+                interval_before: record.intervalBefore,
+                interval_after: record.intervalAfter,
+                next_review_before: record.nextReviewBefore.map { AppDateFormatters.iso8601.string(from: $0) },
+                next_review_after: record.nextReviewAfter.map { AppDateFormatters.iso8601.string(from: $0) },
+                review_count_after: record.reviewCountAfter,
+                streak_after: record.streakAfter,
+                lapse_after: record.lapseAfter
             )
         }
     }
@@ -428,7 +440,17 @@ extension BackgroundSyncActor {
                 word: event.word_snapshot,
                 entryID: event.card_id.flatMap { entryIDsByCardID[$0] },
                 feedback: event.feedback,
-                reviewedAt: reviewedAt
+                reviewedAt: reviewedAt,
+                // 固化遠端事件帶的 kgCardId + SRS 快照,本機即使查無對應 entry(卡未同步到)
+                // 也保住 card 身分與學習曲線,下次上報不會因本機反查不到而退化。
+                kgCardId: event.card_id.flatMap { $0.isEmpty ? nil : $0 },
+                intervalBefore: event.interval_before,
+                intervalAfter: event.interval_after,
+                nextReviewBefore: event.next_review_before.flatMap { Self.parseISO8601($0) },
+                nextReviewAfter: event.next_review_after.flatMap { Self.parseISO8601($0) },
+                reviewCountAfter: event.review_count_after,
+                streakAfter: event.streak_after,
+                lapseAfter: event.lapse_after
             )
             record.id = eventID
             record.notebookId = event.notebook_id

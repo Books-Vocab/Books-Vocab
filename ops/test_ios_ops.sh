@@ -26,7 +26,7 @@ echo "$help_out" | grep -qE 'xcodebuild archive|xcodebuild test|xcodebuild .*bui
   && fail_t "ios_ops help appears to run xcodebuild" || ok "ios_ops help is side-effect free"
 
 section "Dispatch surface"
-for sub in status build test archive archives issues logs sentry doctor workflow runs snapshot; do
+for sub in status build test archive archives issues logs sentry doctor workflow runs snapshot commands; do
   if [[ "$sub" == "workflow" ]]; then
     grep -qE '^[[:space:]]*workflow\|flow\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
@@ -36,11 +36,27 @@ for sub in status build test archive archives issues logs sentry doctor workflow
   elif [[ "$sub" == "snapshot" ]]; then
     grep -qE '^[[:space:]]*snapshot\|dashboard\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  elif [[ "$sub" == "commands" ]]; then
+    grep -qE '^[[:space:]]*commands\|capabilities\)' "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   else
     grep -qE "^[[:space:]]*$sub\\)" "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   fi
 done
+
+section "Command catalog surface"
+commands_json="$(bash "$IOS_OPS" commands --json)"
+echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 13) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
+  && ok "commands --json exposes machine-readable command catalog" || fail_t "commands --json invalid: $commands_json"
+capabilities_json="$(bash "$IOS_OPS" capabilities --json)"
+echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.commands[]; .key=="commands")' >/dev/null \
+  && ok "capabilities alias exposes command catalog" || fail_t "capabilities --json invalid: $capabilities_json"
+commands_text="$(bash "$IOS_OPS" commands)"
+echo "$commands_text" | grep -q 'key=snapshot' \
+  && ok "commands text lists snapshot" || fail_t "commands text missing snapshot: $commands_text"
+echo "$commands_text" | grep -q 'kg.ios.commands.v1' \
+  && ok "commands text lists catalog schema" || fail_t "commands text missing schema: $commands_text"
 
 section "Doctor release readiness surface"
 doctor_body="$(awk '/^doctor_readiness\(\)/,/^}/' "$IOS_OPS")"
@@ -80,6 +96,42 @@ grep -q 'ASC GUI' "$IOS_OPS" \
 grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS" \
   && fail_t "workflow contains direct Xcode side-effect path" \
   || ok "workflow stays orchestration/read-only"
+
+section "Runtime log surface"
+logs_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --since 1m --limit 1)"
+echo "$logs_json" | jq -e '.schema=="kg.ios.logs.v1" and .since=="1m" and .limit==1 and .summary.rawCount==3 and .summary.filteredCount==1 and .summary.emittedCount==1 and .summary.byEventType.logEvent==1 and (.entries|length)==1 and .entries[0].message=="sync completed"' >/dev/null \
+  && ok "logs --json emits filtered runtime log schema" || fail_t "logs --json invalid: $logs_json"
+logs_leading_zero_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --limit 001)"
+echo "$logs_leading_zero_json" | jq -e '.limit==1 and .summary.emittedCount==1' >/dev/null \
+  && ok "logs --json normalizes numeric limit" || fail_t "logs --json leading-zero limit invalid: $logs_leading_zero_json"
+logs_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --since 1m --limit 5 2>/dev/null)"
+echo "$logs_text" | grep -q 'sync completed' \
+  && ok "logs text emits app log entries" || fail_t "logs text missing app entry: $logs_text"
+echo "$logs_text" | grep -q 'RBSServiceErrorDomain' \
+  && fail_t "logs text failed to filter framework noise: $logs_text" || ok "logs text filters framework noise"
+bad_logs_tmp="$(mktemp -d)"
+if KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --limit nope >"$bad_logs_tmp/out" 2>"$bad_logs_tmp/err"; then
+  fail_t "logs rejects non-numeric limit"
+else
+  grep -q -- '--limit must be' "$bad_logs_tmp/err" \
+    && ok "logs rejects non-numeric limit" || fail_t "logs bad-limit message missing"
+fi
+rm -rf "$bad_logs_tmp"
+fail_logs_tmp="$(mktemp -d)"
+if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --since 1m >"$fail_logs_tmp/out" 2>"$fail_logs_tmp/err"; then
+  fail_t "logs text propagates log show failure"
+else
+  grep -q 'fixture log failure' "$fail_logs_tmp/err" \
+    && ok "logs text propagates log show failure" || fail_t "logs text failure stderr missing"
+fi
+if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --json --since 1m >"$fail_logs_tmp/json_out" 2>"$fail_logs_tmp/json_err"; then
+  fail_t "logs --json propagates log show failure"
+else
+  rc=$?
+  grep -q 'fixture log failure' "$fail_logs_tmp/json_err" && [[ "$rc" -eq 42 ]] \
+    && ok "logs --json propagates log show failure" || fail_t "logs --json failure stderr missing"
+fi
+rm -rf "$fail_logs_tmp"
 
 section "JSON smoke fixtures"
 runs_parent="$(mktemp -d)"
@@ -128,8 +180,11 @@ workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
 echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
   && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
 snapshot_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
-echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6" and .runs.test.executed=="12"' >/dev/null \
+echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6" and .runs.test.executed=="12" and .logs==null' >/dev/null \
   && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
+snapshot_logs_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" snapshot --json --include-logs --log-since 1m --log-limit 1)"
+echo "$snapshot_logs_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .logs.schema=="kg.ios.logs.v1" and .logs.since=="1m" and .logs.limit==1 and .logs.summary.filteredCount==1 and (.logs.entries|length)==1' >/dev/null \
+  && ok "snapshot --json can include runtime logs" || fail_t "snapshot --json logs invalid: $snapshot_logs_json"
 rm -rf "$runs_parent"
 bad_args_tmp="$(mktemp -d)"
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json garbage >"$bad_args_tmp/out" 2>"$bad_args_tmp/err"; then
@@ -139,6 +194,21 @@ else
     && ok "doctor --json rejects unknown trailing args" || fail_t "doctor --json bad-arg message missing"
 fi
 rm -rf "$bad_args_tmp"
+bad_snapshot_tmp="$(mktemp -d)"
+if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json --log-limit nope >"$bad_snapshot_tmp/out" 2>"$bad_snapshot_tmp/err"; then
+  fail_t "snapshot rejects non-numeric log limit"
+else
+  grep -q -- '--log-limit must be' "$bad_snapshot_tmp/err" \
+    && ok "snapshot rejects non-numeric log limit" || fail_t "snapshot bad-log-limit message missing"
+fi
+if KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" snapshot --json --include-logs --log-since 1m >"$bad_snapshot_tmp/log_out" 2>"$bad_snapshot_tmp/log_err"; then
+  fail_t "snapshot --include-logs propagates log failure"
+else
+  rc=$?
+  grep -q 'fixture log failure' "$bad_snapshot_tmp/log_err" && [[ "$rc" -eq 42 ]] \
+    && ok "snapshot --include-logs propagates log failure" || fail_t "snapshot include-logs failure stderr missing"
+fi
+rm -rf "$bad_snapshot_tmp"
 
 section "Archive fixture"
 tmp="$(mktemp -d)"
