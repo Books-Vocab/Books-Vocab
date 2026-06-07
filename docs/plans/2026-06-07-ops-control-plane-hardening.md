@@ -37,13 +37,17 @@ verified_against: 887a248d
 
 ## P1 — Release-critical surfaces 納入聚合測試
 
-1. 把 iOS release regression 納入預設聚合。
+1. ✅ 把 iOS release regression 納入預設聚合。
    - 現況:`ops/test_ios_release.sh` 存在但未被 `test_ops.sh` 預設跑。
+   - 決策:`test_ops.sh` 新增預設 group `ios-release`;`ops/test_ios_release.sh` 設為 executable。
    - 完成判準:`./ops/test_ops.sh --list` 有 `ios-release` 或併入 `ios-ops`;預設 `./ops/test_ops.sh` 會覆蓋 `ios_release.sh` help guard / upload gate / value guard。
+   - 驗證:`./ops/test_ops.sh ios-release` 通過。
 
-2. ASC 測試提供明確入口。
+2. ✅ ASC 測試提供明確入口。
    - 現況:`test_asc.sh` 與 `test_asc_text_bundle.py` 是 release-critical,但不在非 ASC 聚合;容易讓「ops 全綠」產生假安全感。
+   - 決策:`test_ops.sh` 新增 optional group `asc` 與 `release-surfaces`;預設仍是非 ASC ops regression,避免日常 gate 語意改變。
    - 完成判準:新增 `./ops/test_ops.sh asc` 或 `release-surfaces`,至少跑 ASC shell regression 與 text bundle unit tests;文件明確說是否納入 default。
+   - 驗證:`./ops/test_ops.sh asc` 與 `./ops/test_ops.sh release-surfaces` 通過。
 
 ## P2 — 縮小 raw remote command 面
 

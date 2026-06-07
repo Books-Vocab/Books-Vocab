@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# test_ops.sh — aggregate non-ASC ops regression tests.
+# test_ops.sh — aggregate ops regression tests.
 #
 # Usage:
 #   ./ops/test_ops.sh          # run the full non-ASC ops suite
 #   ./ops/test_ops.sh --list   # list available test groups
 #   ./ops/test_ops.sh release backup-verify
+#   ./ops/test_ops.sh asc      # run App Store Connect offline surface tests
 
 set -euo pipefail
 
@@ -20,8 +21,9 @@ if [[ -z "$UV_BIN" ]]; then
   fi
 fi
 
-ALL_TESTS=(
+DEFAULT_TESTS=(
   release
+  ios-release
   backup-verify
   devops
   deploy-smoke
@@ -35,17 +37,24 @@ ALL_TESTS=(
   podcast-ops
 )
 
+OPTIONAL_TESTS=(
+  asc
+  release-surfaces
+)
+
 usage() {
   awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
 }
 
 list_tests() {
-  printf '%s\n' "${ALL_TESTS[@]}"
+  printf '%s\n' "${DEFAULT_TESTS[@]}"
+  printf '%s (optional)\n' "${OPTIONAL_TESTS[@]}"
 }
 
 run_one() {
   case "$1" in
     release)            ./ops/test_release.sh ;;
+    ios-release)        ./ops/test_ios_release.sh ;;
     backup-verify)      ./ops/tests/test_backup_verify.sh ;;
     devops)             ./ops/test_devops.sh ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
@@ -68,6 +77,15 @@ run_one() {
         ops/test_podcast_ops.py \
         ops/tests/test_podcast_backfill_disk.py \
         ops/tests/test_podcast_cover_publish.py
+      ;;
+    asc)
+      ./ops/test_asc.sh
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_asc_text_bundle.py
+      ;;
+    release-surfaces)
+      run_one release
+      run_one ios-release
+      run_one asc
       ;;
     *) return 64 ;;
   esac
@@ -97,7 +115,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "${#selected[@]}" -eq 0 ]]; then
-  selected=("${ALL_TESTS[@]}")
+  selected=("${DEFAULT_TESTS[@]}")
 fi
 
 passed=0
