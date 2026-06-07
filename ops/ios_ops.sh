@@ -8,15 +8,16 @@
 #   ./ops/ios_ops.sh archive [--upload] [ios_release.sh args...]
 #   ./ops/ios_ops.sh archives [list|latest|inspect ...]
 #   ./ops/ios_ops.sh issues --log <xcodebuild.log> [--json]
-#   ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>]
+#   ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]
 #   ./ops/ios_ops.sh sentry
 #   ./ops/ios_ops.sh doctor [--json]
 #   ./ops/ios_ops.sh workflow release [--json]
 #   ./ops/ios_ops.sh runs [--json]
-#   ./ops/ios_ops.sh snapshot [--json]
+#   ./ops/ios_ops.sh snapshot [--json] [--include-logs] [--log-since 5m] [--log-limit 200]
+#   ./ops/ios_ops.sh commands [--json]
 #
 # Side-effect model:
-# - status/archives/issues/logs/sentry/doctor/workflow/runs/snapshot/dashboard are read-only.
+# - status/archives/issues/logs/sentry/doctor/workflow/runs/snapshot/dashboard/commands are read-only.
 # - build/test/archive are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
@@ -26,8 +27,160 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$ROOT/ios/BooksBrowser.xcodeproj"
 SCHEME="BooksBrowser"
+DEFAULT_LOG_PREDICATE='process == "BooksBrowser" OR subsystem BEGINSWITH "com.Max0228.BooksBrowser" OR subsystem BEGINSWITH "com.wordnexus"'
+LOG_NOISE_REGEX='runningboard\.assertions\.webkit|RBSServiceErrorDomain|ProcessAssertion'
 
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
+
+cmd_commands_json() {
+  jq -n '{
+    schema:"kg.ios.commands.v1",
+    generated_at:(now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+    commands:[
+      {
+        key:"status",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh status",
+        delegate:null,
+        purpose:"project, Organizer, and TestFlight status summary",
+        jsonSchemas:[]
+      },
+      {
+        key:"build",
+        aliases:[],
+        sideEffect:"local-build",
+        command:"./ops/ios_ops.sh build [ios_build.sh args...]",
+        delegate:"./ops/ios_build.sh",
+        purpose:"Release compile gate with xcresult/log diagnostics",
+        jsonSchemas:[]
+      },
+      {
+        key:"test",
+        aliases:[],
+        sideEffect:"local-test",
+        command:"./ops/ios_ops.sh test [ios_test.sh args...]",
+        delegate:"./ops/ios_test.sh",
+        purpose:"scoped iOS verification with false-green protection",
+        jsonSchemas:[]
+      },
+      {
+        key:"archive",
+        aliases:["release"],
+        sideEffect:"local-archive; external-upload only with --upload",
+        command:"./ops/ios_ops.sh archive [--upload] [ios_release.sh args...]",
+        delegate:"./ops/ios_release.sh",
+        purpose:"archive/export and optional TestFlight upload",
+        jsonSchemas:[]
+      },
+      {
+        key:"archives",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh archives [list|latest|inspect ...]",
+        delegate:"./ops/ios_archive.sh",
+        purpose:"inspect local Xcode Organizer archives",
+        jsonSchemas:["kg.ios.archives.v1"]
+      },
+      {
+        key:"issues",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh issues --log <xcodebuild.log> [--json]",
+        delegate:"./ops/ios_diagnostics.py",
+        purpose:"parse xcresult/log diagnostics",
+        jsonSchemas:["kg.ios.diagnostics.v1"]
+      },
+      {
+        key:"logs",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]",
+        delegate:null,
+        purpose:"runtime log console with framework noise filtering",
+        jsonSchemas:["kg.ios.logs.v1"]
+      },
+      {
+        key:"sentry",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh sentry",
+        delegate:null,
+        purpose:"iOS Sentry wiring summary",
+        jsonSchemas:[]
+      },
+      {
+        key:"doctor",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh doctor [--json]",
+        delegate:null,
+        purpose:"release readiness checks",
+        jsonSchemas:["kg.ios.doctor.v1"]
+      },
+      {
+        key:"workflow",
+        aliases:["flow"],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh workflow release [--json]",
+        delegate:null,
+        purpose:"release workflow steps and next commands",
+        jsonSchemas:["kg.ios.workflow.v1"]
+      },
+      {
+        key:"runs",
+        aliases:["reports"],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh runs [--json]",
+        delegate:null,
+        purpose:"latest build/test verdicts and artifacts",
+        jsonSchemas:["kg.ios.runs.v1"]
+      },
+      {
+        key:"snapshot",
+        aliases:["dashboard"],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh snapshot [--json] [--include-logs] [--log-since 5m] [--log-limit 200]",
+        delegate:null,
+        purpose:"single-call project/readiness/workflow/runs dashboard, with optional runtime logs",
+        jsonSchemas:["kg.ios.snapshot.v1","kg.ios.logs.v1"]
+      },
+      {
+        key:"commands",
+        aliases:["capabilities"],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh commands [--json]",
+        delegate:null,
+        purpose:"self-describing command catalog for agents",
+        jsonSchemas:["kg.ios.commands.v1"]
+      }
+    ]
+  }'
+}
+
+cmd_commands() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh commands [--json]"
+        return 0
+        ;;
+      *)
+        echo "✗ unknown commands option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if (( json )); then
+    cmd_commands_json
+    return
+  fi
+
+  cmd_commands_json | jq -r '.commands[] | "[ios][command] key=\(.key) sideEffect=\(.sideEffect) command=\"\(.command)\" schemas=\((.jsonSchemas // []) | join(","))"'
+}
 
 cmd_status() {
   local version build
@@ -346,19 +499,144 @@ emit_readiness_text_adapter() {
 }
 
 cmd_logs() {
-  local since="5m" predicate='process == "BooksBrowser" OR subsystem BEGINSWITH "com.Max0228.BooksBrowser" OR subsystem BEGINSWITH "com.wordnexus"'
+  local since="5m" predicate="$DEFAULT_LOG_PREDICATE" limit=200 limit_num json=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --since) since="${2:?--since needs value}"; shift 2 ;;
       --predicate) predicate="${2:?--predicate needs value}"; shift 2 ;;
-      -h|--help) echo "Usage: ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>]"; return 0 ;;
+      --limit) limit="${2:?--limit needs value}"; shift 2 ;;
+      --json) json=1; shift ;;
+      -h|--help) echo "Usage: ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]"; return 0 ;;
       *) echo "✗ unknown logs option: $1" >&2; return 1 ;;
     esac
   done
+  if [[ -z "$limit" || "$limit" == *[!0-9]* ]]; then
+    echo "✗ --limit must be a non-negative integer" >&2
+    return 1
+  fi
+  limit_num="$((10#$limit))"
+  if (( json )); then
+    cmd_logs_json "$since" "$predicate" "$limit_num"
+    return
+  fi
   echo "[ios][logs] since=$since predicate=$predicate" >&2
-  log show --style compact --last "$since" --predicate "$predicate" 2>/dev/null \
-    | grep -vE 'runningboard\.assertions\.webkit|RBSServiceErrorDomain|ProcessAssertion' \
-    || true
+  cmd_logs_text "$since" "$predicate" "$limit_num"
+}
+
+run_log_show_compact() {
+  local since="$1" predicate="$2"
+  if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
+    echo "fixture log failure" >&2
+    return 42
+  fi
+  if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
+    cat <<'LOG'
+2026-06-07 12:00:00.000000+0800 BooksBrowser[123:456] [com.Max0228.BooksBrowser:sync] sync completed
+2026-06-07 12:00:01.000000+0800 BooksBrowser[123:456] RBSServiceErrorDomain ProcessAssertion noise
+2026-06-07 12:00:02.000000+0800 BooksBrowser[123:456] [com.Max0228.BooksBrowser:reader] reader opened
+LOG
+    return 0
+  fi
+  /usr/bin/log show --style compact --last "$since" --predicate "$predicate"
+}
+
+cmd_logs_text() {
+  local since="$1" predicate="$2" limit="$3" tmp err rc
+  tmp="$(mktemp)"
+  err="$(mktemp)"
+  if run_log_show_compact "$since" "$predicate" >"$tmp" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if (( rc != 0 )); then
+    cat "$err" >&2
+    rm -f "$tmp" "$err"
+    return "$rc"
+  fi
+  rm -f "$err"
+  grep -vE "$LOG_NOISE_REGEX" "$tmp" | head -n "$limit" || true
+  rm -f "$tmp"
+}
+
+run_log_show_ndjson() {
+  local since="$1" predicate="$2"
+  if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
+    echo "fixture log failure" >&2
+    return 42
+  fi
+  if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
+    cat <<'NDJSON'
+{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksBrowser"}
+{"timestamp":"2026-06-07 12:00:01.000000+0800","eventType":"logEvent","processID":123,"subsystem":"","category":"","eventMessage":"RBSServiceErrorDomain ProcessAssertion noise","senderImagePath":"/System/Library/Frameworks/RunningBoardServices.framework/RunningBoardServices"}
+{"timestamp":"2026-06-07 12:00:02.000000+0800","eventType":"activityCreateEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"reader","eventMessage":"reader opened","senderImagePath":"/tmp/BooksBrowser"}
+NDJSON
+    return 0
+  fi
+  /usr/bin/log show --style ndjson --last "$since" --predicate "$predicate"
+}
+
+cmd_logs_json() {
+  local since="$1" predicate="$2" limit="$3" generated_at tmp err rc
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  tmp="$(mktemp)"
+  err="$(mktemp)"
+  if run_log_show_ndjson "$since" "$predicate" >"$tmp" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if (( rc != 0 )); then
+    cat "$err" >&2
+    rm -f "$tmp" "$err"
+    return "$rc"
+  fi
+  rm -f "$err"
+  jq -s \
+    --arg schema "kg.ios.logs.v1" \
+    --arg generatedAt "$generated_at" \
+    --arg since "$since" \
+    --arg predicate "$predicate" \
+    --arg source "/usr/bin/log show --style ndjson" \
+    --arg noise "$LOG_NOISE_REGEX" \
+    --argjson limit "$limit" \
+    '
+      def message: (.eventMessage // .formatString // "");
+      . as $raw
+      | ($raw | map(select((message | test($noise)) | not))) as $filtered
+      | {
+          schema:$schema,
+          generatedAt:$generatedAt,
+          since:$since,
+          predicate:$predicate,
+          limit:$limit,
+          source:$source,
+          summary:{
+            rawCount:($raw | length),
+            filteredCount:(($raw | length) - ($filtered | length)),
+            emittedCount:($filtered[0:$limit] | length),
+            byEventType:(
+              reduce $filtered[] as $event
+                ({}; ($event.eventType // "unknown") as $key | .[$key] = ((.[$key] // 0) + 1))
+            )
+          },
+          entries:(
+            $filtered[0:$limit]
+            | map({
+                timestamp:(.timestamp // null),
+                eventType:(.eventType // null),
+                processID:(.processID // null),
+                subsystem:(.subsystem // null),
+                category:(.category // null),
+                message:message,
+                sender:(.senderImagePath // null)
+              })
+          )
+        }
+    ' "$tmp"
+  local rc=$?
+  rm -f "$tmp"
+  return "$rc"
 }
 
 cmd_sentry() {
@@ -663,7 +941,8 @@ cmd_runs() {
 }
 
 cmd_snapshot_json() {
-  local doctor_json workflow_json runs_json generated_at
+  local include_logs="$1" log_since="$2" log_limit="$3" log_predicate="$4"
+  local doctor_json workflow_json runs_json logs_json generated_at
   if ! doctor_json="$(cmd_doctor_json)"; then
     return 1
   fi
@@ -673,6 +952,15 @@ cmd_snapshot_json() {
   if ! runs_json="$(cmd_runs_json)"; then
     return 1
   fi
+  if (( include_logs )); then
+    if logs_json="$(cmd_logs_json "$log_since" "$log_predicate" "$log_limit")"; then
+      :
+    else
+      return $?
+    fi
+  else
+    logs_json='null'
+  fi
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
   jq -n \
@@ -681,6 +969,7 @@ cmd_snapshot_json() {
     --argjson doctor "$doctor_json" \
     --argjson workflow "$workflow_json" \
     --argjson runs "$runs_json" \
+    --argjson logs "$logs_json" \
     '{
       schema:$schema,
       generated_at:$generated_at,
@@ -689,17 +978,22 @@ cmd_snapshot_json() {
       testflight:$doctor.testflight,
       readiness:$doctor.readiness,
       workflow:$workflow,
-      runs:$runs
+      runs:$runs,
+      logs:$logs
     }'
 }
 
 cmd_snapshot() {
-  local json=0
+  local json=0 include_logs=0 log_since="5m" log_limit=200 log_limit_num log_predicate="$DEFAULT_LOG_PREDICATE"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=1; shift ;;
+      --include-logs|--with-logs) include_logs=1; shift ;;
+      --log-since) log_since="${2:?--log-since needs value}"; shift 2 ;;
+      --log-limit) log_limit="${2:?--log-limit needs value}"; shift 2 ;;
+      --log-predicate) log_predicate="${2:?--log-predicate needs value}"; shift 2 ;;
       -h|--help|help)
-        echo "Usage: ./ops/ios_ops.sh snapshot [--json]"
+        echo "Usage: ./ops/ios_ops.sh snapshot [--json] [--include-logs] [--log-since 5m] [--log-limit 200] [--log-predicate <predicate>]"
         return 0
         ;;
       *)
@@ -708,9 +1002,14 @@ cmd_snapshot() {
         ;;
     esac
   done
+  if [[ -z "$log_limit" || "$log_limit" == *[!0-9]* ]]; then
+    echo "✗ --log-limit must be a non-negative integer" >&2
+    return 1
+  fi
+  log_limit_num="$((10#$log_limit))"
 
   if (( json )); then
-    cmd_snapshot_json
+    cmd_snapshot_json "$include_logs" "$log_since" "$log_limit_num" "$log_predicate"
     return
   fi
 
@@ -720,6 +1019,10 @@ cmd_snapshot() {
   cmd_workflow_release
   echo "[ios][snapshot] phase=runs"
   cmd_runs
+  if (( include_logs )); then
+    echo "[ios][snapshot] phase=logs"
+    cmd_logs --since "$log_since" --limit "$log_limit_num" --predicate "$log_predicate"
+  fi
 }
 
 cmd="${1:-}"
@@ -740,6 +1043,7 @@ case "$cmd" in
   workflow|flow) cmd_workflow "$@" ;;
   runs|reports) cmd_runs "$@" ;;
   snapshot|dashboard) cmd_snapshot "$@" ;;
+  commands|capabilities) cmd_commands "$@" ;;
   -h|--help|help) usage ;;
   *)
     echo "✗ unknown subcommand: $cmd" >&2

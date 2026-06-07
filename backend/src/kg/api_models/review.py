@@ -32,6 +32,19 @@ class ReviewEventEntry(BaseModel):
     feedback: int = Field(ge=0, le=1)
     reviewed_at: str
     created_at: str
+    # SRS 前後狀態快照 — 複習當下由 iOS 計算,backend 原樣鏡像(不算 SRS)。研究「每張卡
+    # 學習曲線 / 遺忘規律」需逐筆事件自包含,不能只靠卡片現狀聚合反推。舊 client 不帶這些
+    # 欄位仍合法(default None),新 client(Phase 5)固化後上報。
+    interval_before: float | None = None
+    interval_after: float | None = None
+    next_review_before: str | None = None  # ISO8601
+    next_review_after: str | None = None  # ISO8601
+    review_count_after: int | None = None
+    streak_after: int | None = None
+    lapse_after: int | None = None
+    # 區分「合成的過去」(一次性遷移回填)與「真實的未來」(上線後 iOS 上報),研究時可
+    # WHERE 篩選互不污染。
+    is_synthetic: bool = False
 
 
 class ReviewEventsPushRequest(BaseModel):

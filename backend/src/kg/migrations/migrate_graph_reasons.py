@@ -112,7 +112,8 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
                     continue
 
                 old_reason = link.reason
-                graph.update_link(link.id, reason=new_reason)
+                # source=ops:此為一次性運維遷移,圖譜事件帳本不應記成 pipeline(auto)變動。
+                graph.update_link(link.id, reason=new_reason, source="ops")
                 total_updated += 1
                 logger.info("    %s <-> %s: %s -> %s",
                             card_a.content, card_b.content,

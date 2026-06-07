@@ -102,11 +102,11 @@ def create_manual_link(
     # Hidden → unhide directly, skip LLM. Reversible: roll back to hidden if the
     # touch barrier fails so graph and card state stay consistent.
     if existing and existing.status == "hidden":
-        graph.unhide_link(existing.id)
+        graph.unhide_link(existing.id, source="manual")
         try:
             _touch_both(cards_store, from_id, to_id)
         except Exception:
-            graph.hide_link(existing.id)
+            graph.hide_link(existing.id, source="manual")
             raise
         return existing
 
@@ -125,6 +125,7 @@ def create_manual_link(
         LinkKind(judgement.link),
         confidence=1.0,
         reason=judgement.reason,
+        source="manual",
     )
 
     # New link is not cleanly reversible (add_link's inverse, hard_delete, would
@@ -169,7 +170,8 @@ def hide_graph_link(
     """Hide a link (user wants to stop seeing it but not permanently delete)."""
     _reversible_link_toggle(
         link_id=link_id, graph=graph, cards_store=cards_store,
-        apply=graph.hide_link, revert=graph.unhide_link,
+        apply=lambda lid: graph.hide_link(lid, source="manual"),
+        revert=lambda lid: graph.unhide_link(lid, source="manual"),
     )
 
 
@@ -182,7 +184,8 @@ def unhide_graph_link(
     """Unhide a previously hidden link."""
     _reversible_link_toggle(
         link_id=link_id, graph=graph, cards_store=cards_store,
-        apply=graph.unhide_link, revert=graph.hide_link,
+        apply=lambda lid: graph.unhide_link(lid, source="manual"),
+        revert=lambda lid: graph.hide_link(lid, source="manual"),
     )
 
 
@@ -194,7 +197,7 @@ def delete_graph_link(
 ) -> None:
     """Hard-delete a link and block the pair from being re-created."""
     try:
-        from_id, to_id = graph.hard_delete_link(link_id)
+        from_id, to_id = graph.hard_delete_link(link_id, source="manual")
     except KeyError:
         raise NotFoundError("Link", link_id)
     # hard_delete is destructive and not cleanly reversible. Rely on the

@@ -175,11 +175,22 @@ enum ReviewSessionPersistence {
             )
 
             if (try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx)) == nil {
+                // 固化 kgCardId + SRS 前後快照(此刻 entry 還在手上,值全可得):
+                // baseline=複習前,applySubmittedAnswer 後 entry=複習後。事件自包含,
+                // 上報不再靠卡離場即退化的三段反查,研究也能逐筆還原學習曲線。
                 let record = ReviewRecord(
                     word: entry.word,
                     entryID: entry.id,
                     feedback: answer.feedback.rawValue,
-                    reviewedAt: answer.answeredAt
+                    reviewedAt: answer.answeredAt,
+                    kgCardId: entry.kgCardId.flatMap { $0.isEmpty ? nil : $0 },
+                    intervalBefore: baseline.reviewIntervalHours,
+                    intervalAfter: entry.reviewIntervalHours,
+                    nextReviewBefore: baseline.nextReviewAt,
+                    nextReviewAfter: entry.nextReviewAt,
+                    reviewCountAfter: entry.reviewCount,
+                    streakAfter: entry.reviewStreak,
+                    lapseAfter: entry.lapseCount
                 )
                 record.id = answer.reviewRecordID
                 record.notebookId = entry.notebookId
