@@ -38,6 +38,25 @@ def build_permalink(root: Path, asset_id: str) -> str:
     return f"file://{review_html_path(root)}#asset-{asset_id}"
 
 
+def build_filter_payload(
+    *,
+    promise: str | None,
+    category: str | None,
+    status: str | None,
+    search: str | None,
+    limit: int | None,
+    status_key: str = "status",
+) -> dict:
+    payload = {
+        "promise": promise,
+        "category": category,
+        "search": search,
+        "limit": limit,
+    }
+    payload[status_key] = status
+    return payload
+
+
 def load_review_context(root: Path) -> tuple[dict, dict]:
     manifest_path, state_path = resolve_paths(root)
     manifest = load_json(manifest_path)
@@ -64,6 +83,27 @@ def load_review_artifacts(root: Path, *, hydrate: bool, include_html: bool) -> d
 
 def effective_status(item: dict, state: dict) -> str:
     return state["entries"].get(item["assetID"], {}).get("status") or item.get("reviewStatus", "")
+
+
+def find_item_by_asset_id(manifest: dict, asset_id: str) -> dict | None:
+    return next((entry for entry in manifest["items"] if entry["assetID"] == asset_id), None)
+
+
+def serialize_review_item(
+    root: Path,
+    item: dict,
+    state: dict,
+    *,
+    include_updated_at: bool = False,
+) -> dict:
+    payload = {
+        **item,
+        "effectiveStatus": effective_status(item, state),
+        "permalink": build_permalink(root, item["assetID"]),
+    }
+    if include_updated_at:
+        payload["updatedAt"] = state["entries"].get(item["assetID"], {}).get("updatedAt")
+    return payload
 
 
 def matches_filters(
