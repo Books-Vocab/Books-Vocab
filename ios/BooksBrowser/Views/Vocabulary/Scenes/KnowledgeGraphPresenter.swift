@@ -218,7 +218,7 @@ struct KnowledgeGraphPresenter: View {
 
 }
 
-private struct KnowledgeGraphPresenterPreviewHarness: View {
+struct KnowledgeGraphPresenterPreviewHarness: View {
     @State private var centerForce = 0.24
     @State private var repelForce = 0.76
     @State private var linkForce = 0.32
@@ -254,7 +254,7 @@ private struct KnowledgeGraphPresenterPreviewHarness: View {
     }
 }
 
-private enum KnowledgeGraphPresenterPreviewData {
+enum KnowledgeGraphPresenterPreviewData {
     static let sampleNodes = [
         KnowledgeGraphNode(id: "1", word: "subtle", tier: "gradient", colorHex: ReviewGradient.cssHex(for: 0.2), ratio: 0.2, degree: 3),
         KnowledgeGraphNode(id: "2", word: "nuance", tier: "gradient", colorHex: ReviewGradient.cssHex(for: 2.0), ratio: 2.0, degree: 2),
