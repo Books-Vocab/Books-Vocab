@@ -2,14 +2,19 @@
   "review_anchor": "2026-06-06T00:00:00Z",
   "notebooks": [
     {
-      "name": "Demo Literature",
+      "name": "Editorial Picks",
       "color": "#8C6A5D",
       "cover_pattern": "waves"
     },
     {
-      "name": "Demo Science",
+      "name": "Systems Thinking",
       "color": "#4F7C73",
       "cover_pattern": "grid"
+    },
+    {
+      "name": "Creative Practice",
+      "color": "#B96F5B",
+      "cover_pattern": "dots"
     }
   ],
   "cards": [
@@ -25,7 +30,7 @@
         "meticulous attention"
       ],
       "difficulty": 4.8,
-      "notebook": "Demo Literature",
+      "notebook": "Editorial Picks",
       "source": {
         "type": "book",
         "title": "A Room of One's Own",
@@ -37,26 +42,26 @@
       }
     },
     {
-      "content": "resilient",
-      "meaning": "有韌性的；能迅速復原的",
+      "content": "discerning",
+      "meaning": "有洞察力的；能辨別細微差異的",
       "pos": "adj.",
       "examples": [
-        "The resilient community rebuilt its routines after the storm."
+        "A discerning editor can hear what a paragraph is trying to become."
       ],
       "collocations": [
-        "resilient system",
-        "resilient mindset"
+        "discerning reader",
+        "discerning eye"
       ],
       "difficulty": 4.2,
-      "notebook": "Demo Literature",
+      "notebook": "Editorial Picks",
       "source": {
         "type": "book",
-        "title": "The Waves",
-        "chapter": "Interlude"
+        "title": "Letters to a Young Poet",
+        "chapter": "Letter 3"
       },
       "review": {
-        "state": "due",
-        "interval": 24
+        "state": "reviewed",
+        "interval": 96
       }
     },
     {
@@ -71,11 +76,34 @@
         "evoke sympathy"
       ],
       "difficulty": 4.6,
-      "notebook": "Demo Literature",
+      "notebook": "Editorial Picks",
       "source": {
         "type": "book",
         "title": "A Room of One's Own",
         "chapter": "Chapter 1"
+      },
+      "review": {
+        "state": "due",
+        "interval": 24
+      }
+    },
+    {
+      "content": "luminous",
+      "meaning": "清晰動人的；明亮的",
+      "pos": "adj.",
+      "examples": [
+        "Her luminous prose makes a hard idea feel intimate."
+      ],
+      "collocations": [
+        "luminous essay",
+        "luminous style"
+      ],
+      "difficulty": 4.1,
+      "notebook": "Editorial Picks",
+      "source": {
+        "type": "book",
+        "title": "On Writing",
+        "chapter": "Toolbox"
       },
       "review": {
         "state": "new",
@@ -94,7 +122,7 @@
         "statistical entropy"
       ],
       "difficulty": 5.6,
-      "notebook": "Demo Science",
+      "notebook": "Systems Thinking",
       "source": {
         "type": "book",
         "title": "A Brief History of Time",
@@ -117,7 +145,7 @@
         "cascade effect"
       ],
       "difficulty": 4.9,
-      "notebook": "Demo Science",
+      "notebook": "Systems Thinking",
       "source": {
         "type": "book",
         "title": "The Selfish Gene",
@@ -140,11 +168,126 @@
         "coherent signal"
       ],
       "difficulty": 4.4,
-      "notebook": "Demo Science",
+      "notebook": "Systems Thinking",
       "source": {
         "type": "book",
         "title": "The Selfish Gene",
         "chapter": "Memes"
+      },
+      "review": {
+        "state": "new",
+        "interval": 12
+      }
+    },
+    {
+      "content": "leverage",
+      "meaning": "善用；槓桿化地放大效果",
+      "pos": "v.",
+      "examples": [
+        "Small teams leverage systems so one good decision compounds."
+      ],
+      "collocations": [
+        "leverage constraints",
+        "leverage data"
+      ],
+      "difficulty": 4.7,
+      "notebook": "Systems Thinking",
+      "source": {
+        "type": "book",
+        "title": "Thinking in Systems",
+        "chapter": "Leverage Points"
+      },
+      "review": {
+        "state": "due",
+        "interval": 36
+      }
+    },
+    {
+      "content": "cadence",
+      "meaning": "節奏；穩定推進的步調",
+      "pos": "n.",
+      "examples": [
+        "A sustainable creative cadence beats occasional bursts of effort."
+      ],
+      "collocations": [
+        "weekly cadence",
+        "creative cadence"
+      ],
+      "difficulty": 4.3,
+      "notebook": "Creative Practice",
+      "source": {
+        "type": "book",
+        "title": "Daily Rituals",
+        "chapter": "Writers"
+      },
+      "review": {
+        "state": "due",
+        "interval": 36
+      }
+    },
+    {
+      "content": "iterate",
+      "meaning": "反覆打磨；迭代改進",
+      "pos": "v.",
+      "examples": [
+        "Designers iterate in public so the work can mature faster."
+      ],
+      "collocations": [
+        "iterate quickly",
+        "iterate on feedback"
+      ],
+      "difficulty": 4.0,
+      "notebook": "Creative Practice",
+      "source": {
+        "type": "book",
+        "title": "The Creative Habit",
+        "chapter": "Rituals"
+      },
+      "review": {
+        "state": "reviewed",
+        "interval": 60
+      }
+    },
+    {
+      "content": "tactile",
+      "meaning": "有觸感的；能喚起手感的",
+      "pos": "adj.",
+      "examples": [
+        "The tactile notebook invites slower, more deliberate thinking."
+      ],
+      "collocations": [
+        "tactile feedback",
+        "tactile material"
+      ],
+      "difficulty": 3.9,
+      "notebook": "Creative Practice",
+      "source": {
+        "type": "book",
+        "title": "The Shape of Design",
+        "chapter": "Craft"
+      },
+      "review": {
+        "state": "new",
+        "interval": 12
+      }
+    },
+    {
+      "content": "prototype",
+      "meaning": "原型；先做出可驗證的版本",
+      "pos": "n.",
+      "examples": [
+        "A rough prototype reveals what the brief is still hiding."
+      ],
+      "collocations": [
+        "build a prototype",
+        "prototype early"
+      ],
+      "difficulty": 4.1,
+      "notebook": "Creative Practice",
+      "source": {
+        "type": "book",
+        "title": "Creative Confidence",
+        "chapter": "Build to Think"
       },
       "review": {
         "state": "new",
@@ -158,8 +301,16 @@
       "to": "evoke",
       "kind": "shares_usage",
       "confidence": 0.76,
-      "reason": "Both often appear in literary analysis and close-reading notes.",
-      "notebook": "Demo Literature"
+      "reason": "Both show up in close-reading notes and editorial commentary.",
+      "notebook": "Editorial Picks"
+    },
+    {
+      "from": "discerning",
+      "to": "luminous",
+      "kind": "shares_usage",
+      "confidence": 0.72,
+      "reason": "One judges quality; the other names the effect polished prose can create.",
+      "notebook": "Editorial Picks"
     },
     {
       "from": "entropy",
@@ -167,7 +318,7 @@
       "kind": "shares_usage",
       "confidence": 0.81,
       "reason": "Both describe system-level change over time.",
-      "notebook": "Demo Science"
+      "notebook": "Systems Thinking"
     },
     {
       "from": "cascade",
@@ -175,7 +326,23 @@
       "kind": "contrasts_with",
       "confidence": 0.64,
       "reason": "Cascade emphasizes propagation; coherent emphasizes orderly structure.",
-      "notebook": "Demo Science"
+      "notebook": "Systems Thinking"
+    },
+    {
+      "from": "iterate",
+      "to": "prototype",
+      "kind": "shares_usage",
+      "confidence": 0.84,
+      "reason": "Both belong to fast feedback loops in product and design work.",
+      "notebook": "Creative Practice"
+    },
+    {
+      "from": "cadence",
+      "to": "tactile",
+      "kind": "shares_usage",
+      "confidence": 0.68,
+      "reason": "Both point to the felt rhythm and texture of a practice.",
+      "notebook": "Creative Practice"
     }
   ]
 }

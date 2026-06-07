@@ -10,6 +10,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ops_helpers import run_ops_cli as _cli
 from ops_helpers import run_ops_edit as _edit
 
 
@@ -60,7 +61,7 @@ def _notebook_rows(tmp_path: Path, uid: str) -> list[dict]:
     conn = sqlite3.connect(str(db))
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        "SELECT id, name FROM notebook WHERE is_deleted = 0"
+        "SELECT id, name, sort_order FROM notebook WHERE is_deleted = 0"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -624,6 +625,31 @@ class TestSeedFourthRound:
         source = json.loads(_card_by_content(tmp_path, uid, "w")["source"])
         assert source == {"type": "book", "title": "Demo Book", "chapter": "Chapter 1"}
 
+    def test_bundled_marketing_seed_is_good_showcase_data(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        spec = Path(__file__).resolve().parents[2] / "ops" / "seeds" / "marketing_demo.json"
+        r = _edit(str(tmp_path), "seed", uid, str(spec), "--commit", "--json")
+        assert r.returncode == 0, r.stderr
+
+        rows = _card_rows(tmp_path, uid)
+        assert len(rows) == 12
+        counts = {0: 0, 1: 0, 2: 0}
+        for row in rows:
+            counts[row["review_count"]] = counts.get(row["review_count"], 0) + 1
+        assert counts[0] == 4, "marketing seed 應保留 4 張 new 卡給未學習畫面"
+        assert counts[1] == 4, "marketing seed 應保留 4 張 due 卡給 Today Review"
+        assert counts[2] == 4, "marketing seed 應保留 4 張 reviewed 卡給已學習狀態"
+
+        notebooks = _notebook_rows(tmp_path, uid)
+        names = {nb["name"] for nb in notebooks}
+        assert {"Editorial Picks", "Systems Thinking", "Creative Practice"} <= names
+
+        total_links = 0
+        for nb in ("Editorial Picks", "Systems Thinking", "Creative Practice"):
+            nb_id = next(row["id"] for row in notebooks if row["name"] == nb)
+            total_links += len(_graph_links(tmp_path, uid, nb_id))
+        assert total_links == 6
+
 
 class TestIntervalValidation:
     def test_negative_interval_rejected(self, tmp_path):
@@ -661,3 +687,51 @@ class TestLinkListAndMoveAlias:
                   "--commit", "--json")
         assert r.returncode == 0, r.stderr
         assert _card_by_content(tmp_path, uid, "mv")["notebook_id"] == dst
+
+
+class TestMarketingSurfaceShaping:
+    def test_notebook_update_can_set_sort_order(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        nb_id = _mk_notebook(tmp_path, uid, "Marketing")
+        r = _edit(
+            str(tmp_path), "notebook-update", uid, nb_id,
+            "--sort-order", "-10", "--commit", "--json"
+        )
+        assert r.returncode == 0, r.stderr
+        notebook = next(nb for nb in _notebook_rows(tmp_path, uid) if nb["id"] == nb_id)
+        assert notebook["sort_order"] == -10
+
+    def test_user_config_set_can_shape_settings_surface(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        nb_id = _mk_notebook(tmp_path, uid, "Promo Focus")
+        r = _edit(
+            str(tmp_path), "user-config-set", uid,
+            "--translation-source", "en",
+            "--translation-target", "ja",
+            "--review-clock", "paused",
+            "--paused-at", "2026-06-07T09:30:00Z",
+            "--review-mode", "custom",
+            "--custom-initial-interval-hours", "18",
+            "--custom-remembered-multiplier", "2.1",
+            "--custom-forgot-multiplier", "0.4",
+            "--custom-minimum-interval-hours", "8",
+            "--custom-maximum-interval-hours", "720",
+            "--active-notebook", "Promo Focus",
+            "--commit", "--json",
+        )
+        assert r.returncode == 0, r.stderr
+
+        cfg = _cli(str(tmp_path), "user-config", uid, "--json")
+        assert cfg.returncode == 0, cfg.stderr
+        data = json.loads(cfg.stdout)["config"]
+        assert data["translation"]["source_lang"] == "en"
+        assert data["translation"]["target_lang"] == "ja"
+        assert data["review_clock"]["is_paused"] is True
+        assert data["review_clock"]["paused_at"] == "2026-06-07T09:30:00Z"
+        assert data["review_mode"]["mode"] == "custom"
+        assert data["review_mode"]["custom_initial_interval_hours"] == 18
+        assert data["review_mode"]["custom_remembered_multiplier"] == 2.1
+        assert data["review_mode"]["custom_forgot_multiplier"] == 0.4
+        assert data["review_mode"]["custom_minimum_interval_hours"] == 8
+        assert data["review_mode"]["custom_maximum_interval_hours"] == 720
+        assert data["vocab_ui"]["active_notebook_id"] == nb_id
