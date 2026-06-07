@@ -4,7 +4,7 @@ import ReadiumShared
 import os
 import Inject
 
-private enum LoadState {
+enum LoadState {
     case loading
     case loaded
     case empty

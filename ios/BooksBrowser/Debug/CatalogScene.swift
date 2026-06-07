@@ -71,6 +71,16 @@ struct CatalogScene: View {
                 categories: ["Notebooks · Stack"],
                 register: NotebookListScenarios.register
             ),
+            .init(
+                id: "vocabulary",
+                categories: [
+                    "Vocabulary · Overview",
+                    "Vocabulary · Knowledge Graph",
+                    "Vocabulary · Linked Card",
+                    "Vocabulary · Add Link",
+                ],
+                register: VocabScenarios.register
+            ),
             .init(id: "settings", categories: ["Settings"], register: SettingsScenarios.register),
             .init(id: "today_review", categories: ["Today Review"], register: TodayReviewScenarios.register),
             .init(id: "bookshelf", categories: ["Bookshelf"], register: BookshelfScenarios.register),
