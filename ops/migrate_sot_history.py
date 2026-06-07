@@ -23,7 +23,8 @@ sys.path.insert(0, str(ROOT / "backend" / "src"))
 from kg.ops_shared import data_dir, resolve_uid  # noqa: E402
 from kg.sot_history_migrate import MigrationReport, migrate_user  # noqa: E402
 
-USERS = data_dir() / "users"
+DATA = data_dir()
+USERS = DATA / "users"
 
 
 def _print(report: MigrationReport) -> None:
@@ -46,10 +47,21 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.all:
-        user_dirs = sorted(p for p in USERS.iterdir() if (p / "cards.db").exists())
+        # 納入有 cards.db 或任一 graph_*.json 的用戶(graph-only 用戶的圖譜史也要回填)。
+        user_dirs = sorted(
+            p
+            for p in USERS.iterdir()
+            if p.is_dir() and ((p / "cards.db").exists() or any(p.glob("graph_*.json")))
+        )
     else:
-        uid = resolve_uid(args.user, USERS)
-        user_dirs = [USERS / uid]
+        # resolve_uid 自己接 /users,故傳 data_dir() 而非 USERS,否則 partial 匹配失效。
+        uid = resolve_uid(args.user, DATA)
+        user_dir = USERS / uid
+        if not user_dir.is_dir():
+            sys.exit(f"✗ 用戶目錄不存在: {user_dir}（uid {uid!r} 無法解析）")
+        if not (user_dir / "cards.db").exists() and not any(user_dir.glob("graph_*.json")):
+            sys.exit(f"✗ {user_dir} 無 cards.db 也無 graph_*.json,沒有可回填的資料")
+        user_dirs = [user_dir]
 
     if not args.apply:
         print("※ dry-run（未加 --apply,不寫任何檔）\n")
