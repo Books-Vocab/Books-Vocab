@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/
-verified_against: 746dafaa
+verified_against: ef298cb2
 -->
 # System Runbook
 
@@ -15,11 +15,13 @@ Provide one stable operations system so any agent can safely execute tasks from:
 
 ## Startup Checklist
 1. Run `ops/devops_kg_safe.sh preflight`
+2. Before cleanup / branch convergence, run `ops/branch_audit.sh`
 
 ## Allowed Production Entrypoints
 - KG API: `ops/devops_kg_safe.sh`
 - Global status: `ops/devops_kg_safe.sh status` + `ops/devops_kg_safe.sh health`
 - Compatibility status wrapper: `ops/status_all.sh`
+- Branch convergence audit: `ops/branch_audit.sh`
 
 Do not bypass these entrypoints unless explicitly required and reviewed.
 
@@ -48,4 +50,5 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 ## Hard Stop Conditions
 - Missing SSH key or unreachable host.
 - No backup path before deploy/migration.
+- `ops/branch_audit.sh` reports `merged-pr-but-ahead`, `orphan-ahead`, or `stale-ahead` during cleanup; PR state is metadata, commit reachability is the source of truth.
 - Any command resembles destructive wildcard cleanup.

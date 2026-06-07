@@ -58,6 +58,8 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/branch_audit.sh"
+      - "!ops/tests/test_branch_audit.sh"
       - "!ops/devops_kg_safe.sh"
       - "!ops/ios_release.sh"
       - "!ops/i18n_lint.sh"
@@ -84,6 +86,8 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/branch_audit.sh"
+      - "!ops/tests/test_branch_audit.sh"
       - "!ops/ios_release.sh"
       - "!ops/i18n_lint.sh"
       - "!ops/_i18n_*.py"
@@ -462,7 +466,9 @@ documents:
     sources:
       - ops/devops_kg_safe.sh
       - ops/status_all.sh
+      - ops/branch_audit.sh
       - ops/test_devops.sh
+      - ops/tests/test_branch_audit.sh
       - docs/policy/safety.md
       - docs/sop/deploy.md
       - docs/sop/debug.md
@@ -630,6 +636,8 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/branch_audit.sh"
+      - "!ops/tests/test_branch_audit.sh"
       - "!backend/src/kg/routers/*.py"
       - "!ops/devops_kg_safe.sh"
       - "!ops/ios_release.sh"
@@ -674,6 +682,8 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/branch_audit.sh"
+      - "!ops/tests/test_branch_audit.sh"
       - "!ops/i18n_lint.sh"
       - "!ops/_i18n_*.py"
       - "!ops/podcast_*.sh"
@@ -704,6 +714,8 @@ documents:
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
+      - "!ops/branch_audit.sh"
+      - "!ops/tests/test_branch_audit.sh"
       - "!ops/i18n_lint.sh"
       - "!ops/_i18n_*.py"
       - "!ops/podcast_*.sh"
