@@ -1030,7 +1030,7 @@ def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str,
 def cmd_trends(args: argparse.Namespace) -> None:
     """全域監控趨勢 — errors / llm_errors(真火) / active_users / tokens 逐日。
 
-    **業務錯誤**:errors = 失敗 pipeline_runs(status='failed')+ auto-judge rejects
+    **業務錯誤**:errors = 失敗 pipeline_runs(error_signals.PIPELINE_FAILURE_WHERE)+ auto-judge rejects
     (degree-cap 除外)。這是 token_usage 看不到的「有沒有東西在壞」訊號。
     **真火錯誤**:llm_errors = 真實 LLM 基礎設施失敗(429/5xx/timeout),獨立於業務拒絕。
     語意對齊 kg.admin_trends(SoT),但此處以 connect_ro 唯讀**重實作** —— 不可 import
