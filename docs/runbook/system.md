@@ -18,7 +18,8 @@ Provide one stable operations system so any agent can safely execute tasks from:
 
 ## Allowed Production Entrypoints
 - KG API: `ops/devops_kg_safe.sh`
-- Global status: `ops/status_all.sh`
+- Global status: `ops/devops_kg_safe.sh status` + `ops/devops_kg_safe.sh health`
+- Compatibility status wrapper: `ops/status_all.sh`
 
 Do not bypass these entrypoints unless explicitly required and reviewed.
 
