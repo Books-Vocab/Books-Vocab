@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from catalog_review_cli_support import effective_status, filtered_items, load_review_context, resolve_paths, write_json
+from catalog_review_cli_support import (
+    build_permalink,
+    effective_status,
+    filtered_items,
+    load_review_context,
+    resolve_paths,
+    write_json,
+)
 from catalog_review_state import append_history
 from catalog_review_sync import write_review_outputs
 
@@ -80,7 +87,7 @@ def cmd_apply(
                 "title": item["title"],
                 "effectiveStatus": effective_status(item, state),
                 "updatedAt": state["entries"].get(item["assetID"], {}).get("updatedAt"),
-                "permalink": f"file://{root / 'review.html'}#asset-{item['assetID']}",
+                "permalink": build_permalink(root, item["assetID"]),
             }
             for item in matches
         ],
