@@ -188,6 +188,11 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
 
     state_payload = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
     assert state_payload["entries"][asset_id]["status"] == "shortlist"
+    manifest_after_mark = json.loads((output_root / "review_manifest.json").read_text(encoding="utf-8"))
+    assert manifest_after_mark["stateCounts"]["shortlist"] == 1
+    assert manifest_after_mark["items"][0]["reviewStatus"] == "shortlist"
+    review_html = (output_root / "review.html").read_text(encoding="utf-8")
+    assert '"stateCounts": {"shortlist": 1}' in review_html
 
     listed = subprocess.run(
         [
