@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
+from catalog_review_actions import classify_action_command
+
 
 PROMISE_ORDER = ["Read", "Connect", "Retain", "Continue", "Weak"]
 
@@ -60,25 +62,29 @@ def build_report_payload(manifest: dict, state: dict, *, effective_status_fn, ro
             }
         )
         if bucket["heroUnmarked"] > 0:
+            hero_command = (
+                f"./ops/catalog_review_cli.py {root} list --promise {promise} --search hero --limit {limit or 10}"
+            )
             next_actions.append({
                 "kind": "hero-unmarked",
                 "promise": promise,
                 "count": bucket["heroUnmarked"],
-                "command": (
-                    f"./ops/catalog_review_cli.py {root} list --promise {promise} --search hero --limit {limit or 10}"
-                ),
+                "command": hero_command,
+                "commandAction": classify_action_command(hero_command),
             })
         if top_unmarked:
             top_category = top_unmarked[0]["category"]
+            category_command = (
+                f"./ops/catalog_review_cli.py {root} apply --promise {promise} --category '{top_category}' "
+                f"--status review --limit {limit or 10} --dry-run"
+            )
             next_actions.append({
                 "kind": "top-unmarked-category",
                 "promise": promise,
                 "category": top_category,
                 "count": top_unmarked[0]["count"],
-                "command": (
-                    f"./ops/catalog_review_cli.py {root} apply --promise {promise} --category '{top_category}' "
-                    f"--status review --limit {limit or 10} --dry-run"
-                ),
+                "command": category_command,
+                "commandAction": classify_action_command(category_command),
             })
 
     return {
