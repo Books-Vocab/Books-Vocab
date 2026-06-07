@@ -12,6 +12,49 @@ file_size_bytes() {
   fi
 }
 
+simulator_resolve_selector_json() {
+  local selector="${1:-$DEFAULT_SIMULATOR_NAME}" devices_source
+  devices_source="$(capture_source_json simctl_devices read_simctl_devices_json)"
+  jq -n \
+    --arg selector "$selector" \
+    --arg defaultName "$DEFAULT_SIMULATOR_NAME" \
+    --argjson devicesSource "$devices_source" '
+      def all_devices: [($devicesSource.payload.devices // {}) | to_entries[]?.value[]?];
+      def pick_target:
+        if $selector == "booted" then (all_devices | map(select(.state == "Booted"))[0] // null)
+        else (
+          all_devices
+          | map(select(.udid == $selector or .name == $selector))[0]
+          // (if $selector == $defaultName then (all_devices | map(select(.name == $defaultName))[0] // null) else null end)
+        )
+        end;
+      (pick_target) as $device
+      | {
+          selector:$selector,
+          status:(
+            if $devicesSource.status != "ok" then "error"
+            elif $device == null then "error"
+            else "ok"
+            end
+          ),
+          device:(
+            if $device == null then null else {
+              name:($device.name // null),
+              udid:($device.udid // null),
+              state:($device.state // null),
+              isAvailable:($device.isAvailable // null),
+              deviceTypeIdentifier:($device.deviceTypeIdentifier // null),
+              lastBootedAt:($device.lastBootedAt // null)
+            } end
+          ),
+          errors:(
+            (if $devicesSource.status != "ok" then [{key:"simctl-devices",status:$devicesSource.status,exitCode:$devicesSource.exitCode,error:$devicesSource.error}] else [] end)
+            +
+            (if $devicesSource.status == "ok" and $device == null then [{key:"simulator-device",status:"error",exitCode:null,error:("unresolved-device-selector:" + $selector)}] else [] end)
+          )
+        }'
+}
+
 cmd_simulator_status_json() {
   local devices_source container_source process_source generated_at payload status
   devices_source="$(capture_source_json simctl_devices read_simctl_devices_json)"
@@ -388,6 +431,138 @@ cmd_simulator_lifecycle() {
   fi
 }
 
+cmd_simulator_ensure_booted() {
+  local json=0 device_selector="$DEFAULT_SIMULATOR_NAME"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      --device) device_selector="${2:?--device needs value}"; shift 2 ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh simulator ensure-booted [--device <udid|name>] [--json]"
+        return 0
+        ;;
+      *)
+        echo "✗ unknown simulator ensure-booted option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  local resolve_payload resolve_status resolve_errors device_json resolved_device already_booted
+  local generated_at boot_out boot_err wait_out wait_err rc_boot=0 rc_wait=0 payload
+  resolve_payload="$(simulator_resolve_selector_json "$device_selector")"
+  resolve_status="$(jq -r '.status' <<<"$resolve_payload")"
+  if [[ "$resolve_status" != "ok" ]]; then
+    payload="$(jq -n \
+      --arg schema "kg.ios.simulator.v1" \
+      --arg generated_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+      --arg selector "$device_selector" \
+      --argjson resolve "$resolve_payload" '
+      {
+        schema:$schema,
+        generated_at:$generated_at,
+        action:"ensure-booted",
+        status:"error",
+        selector:$selector,
+        device:$resolve.device,
+        boot:{status:"error",exitCode:null,output:null,error:"unresolved-device-selector",wasAlreadyBooted:false,waitedForBootstatus:false},
+        errors:$resolve.errors
+      }')"
+    if (( json )); then
+      printf '%s\n' "$payload"
+    else
+      jq -r '
+        "[ios][simulator] schema=\(.schema) action=\(.action) status=\(.status) selector=\(.selector)",
+        (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
+      ' <<<"$payload"
+    fi
+    return 1
+  fi
+
+  device_json="$(jq -c '.device' <<<"$resolve_payload")"
+  resolved_device="$(jq -r '.device.udid' <<<"$resolve_payload")"
+  already_booted="$(jq -r '.device.state == "Booted"' <<<"$resolve_payload")"
+  boot_out="$(mktemp)"
+  boot_err="$(mktemp)"
+  wait_out="$(mktemp)"
+  wait_err="$(mktemp)"
+
+  if [[ "$already_booted" == "true" ]]; then
+    printf 'already booted\n' >"$boot_out"
+    printf 'bootstatus skipped: already booted\n' >"$wait_out"
+  else
+    if read_simctl_boot_output "$resolved_device" >"$boot_out" 2>"$boot_err"; then
+      rc_boot=0
+    else
+      rc_boot=$?
+    fi
+    if [[ "$rc_boot" -eq 0 ]]; then
+      if read_simctl_bootstatus_output "$resolved_device" >"$wait_out" 2>"$wait_err"; then
+        rc_wait=0
+      else
+        rc_wait=$?
+      fi
+    fi
+  fi
+
+  generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  payload="$(jq -n \
+    --arg schema "kg.ios.simulator.v1" \
+    --arg generated_at "$generated_at" \
+    --arg selector "$device_selector" \
+    --argjson device "$device_json" \
+    --arg bootOutput "$(cat "$boot_out")" \
+    --arg bootError "$(cat "$boot_err")" \
+    --arg waitOutput "$(cat "$wait_out")" \
+    --arg waitError "$(cat "$wait_err")" \
+    --argjson bootExit "$rc_boot" \
+    --argjson waitExit "$rc_wait" \
+    --argjson alreadyBooted "$already_booted" '
+      def trim_newlines: gsub("\\n+$"; "");
+      {
+        schema:$schema,
+        generated_at:$generated_at,
+        action:"ensure-booted",
+        status:(if $bootExit == 0 and $waitExit == 0 then "ok" else "error" end),
+        selector:$selector,
+        device:($device + {state:"Booted"}),
+        boot:{
+          status:(if $bootExit == 0 and $waitExit == 0 then "ok" else "error" end),
+          exitCode:(if $bootExit != 0 then $bootExit else $waitExit end),
+          output:(
+            (($bootOutput | trim_newlines) + (if ($waitOutput | trim_newlines) == "" then "" else "\n" + ($waitOutput | trim_newlines) end))
+            | if . == "" then null else . end
+          ),
+          error:(
+            if $bootExit != 0 then ($bootError | trim_newlines)
+            elif $waitExit != 0 then ($waitError | trim_newlines)
+            else null
+            end
+          ),
+          wasAlreadyBooted:$alreadyBooted,
+          waitedForBootstatus:(if $alreadyBooted then true else ($bootExit == 0) end)
+        },
+        errors:(
+          []
+          + (if $bootExit != 0 then [{key:"simctl-boot",status:"error",exitCode:$bootExit,error:($bootError | trim_newlines)}] else [] end)
+          + (if $bootExit == 0 and $waitExit != 0 then [{key:"simctl-bootstatus",status:"error",exitCode:$waitExit,error:($waitError | trim_newlines)}] else [] end)
+        )
+      }')"
+  rm -f "$boot_out" "$boot_err" "$wait_out" "$wait_err"
+
+  if (( json )); then
+    printf '%s\n' "$payload"
+  else
+    jq -r '
+      "[ios][simulator] schema=\(.schema) action=\(.action) status=\(.status) selector=\(.selector) device=\(.device.udid // "")",
+      "[ios][simulator] boot status=\(.boot.status) exitCode=\(.boot.exitCode // "") wasAlreadyBooted=\(.boot.wasAlreadyBooted) waitedForBootstatus=\(.boot.waitedForBootstatus)",
+      (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
+    ' <<<"$payload"
+  fi
+
+  [[ "$(jq -r '.status' <<<"$payload")" == "ok" ]]
+}
+
 cmd_simulator() {
   local action="${1:-status}"
   [[ $# -gt 0 ]] && shift || true
@@ -415,11 +590,14 @@ cmd_simulator() {
     launch)
       cmd_simulator_lifecycle launch "$@"
       ;;
+    ensure-booted|boot)
+      cmd_simulator_ensure_booted "$@"
+      ;;
     terminate|stop)
       cmd_simulator_lifecycle terminate "$@"
       ;;
     -h|--help|help)
-      echo "Usage: ./ops/ios_ops.sh simulator status [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]"
+      echo "Usage: ./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]"
       ;;
     *)
       echo "✗ unknown simulator action: $action" >&2

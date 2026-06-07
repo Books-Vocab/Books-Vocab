@@ -2,6 +2,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$ROOT/ios/BooksBrowser.xcodeproj"
 SCHEME="BooksBrowser"
 BUNDLE_ID="com.Max0228.BooksBrowser"
+DEFAULT_SIMULATOR_NAME="${KG_IOS_DEFAULT_SIMULATOR_NAME:-iPhone 17 Pro Max}"
 DEFAULT_LOG_PREDICATE='process == "BooksBrowser" OR subsystem BEGINSWITH "com.Max0228.BooksBrowser" OR subsystem BEGINSWITH "com.wordnexus"'
 LOG_NOISE_REGEX='runningboard\.assertions\.webkit|RBSServiceErrorDomain|ProcessAssertion'
 
@@ -85,6 +86,16 @@ read_app_terminate_output() {
 write_simulator_screenshot() {
   local device="$1" out="$2"
   xcrun simctl io "$device" screenshot "$out"
+}
+
+read_simctl_boot_output() {
+  local device="$1"
+  xcrun simctl boot "$device"
+}
+
+read_simctl_bootstatus_output() {
+  local device="$1"
+  xcrun simctl bootstatus "$device" -b
 }
 
 capture_source_text() {
@@ -196,6 +207,13 @@ EOF
         devices:{
           "com.apple.CoreSimulator.SimRuntime.iOS-26-4":[
             {
+              name:"iPhone 17 Pro Max",
+              udid:"fixture-iphone-17-pro-max",
+              state:"Shutdown",
+              isAvailable:true,
+              deviceTypeIdentifier:"com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
+            },
+            {
               name:"iPhone 17",
               udid:"fixture-iphone-17",
               state:"Shutdown",
@@ -262,6 +280,19 @@ EOF
     local _device="$1" out="$2"
     mkdir -p "$(dirname "$out")"
     printf 'fixture png\n' >"$out"
+  }
+
+  read_simctl_boot_output() {
+    local device="$1"
+    [[ "$device" == "fixture-iphone-17-pro-max" || "$device" == "iPhone 17 Pro Max" ]] || return 9
+    export KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=0
+    printf 'booted %s\n' "$device"
+  }
+
+  read_simctl_bootstatus_output() {
+    local device="$1"
+    [[ "$device" == "fixture-iphone-17-pro-max" || "$device" == "iPhone 17 Pro Max" ]] || return 9
+    printf 'bootstatus %s ready\n' "$device"
   }
 fi
 
