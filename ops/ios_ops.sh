@@ -12,10 +12,11 @@
 #   ./ops/ios_ops.sh sentry
 #   ./ops/ios_ops.sh doctor [--json]
 #   ./ops/ios_ops.sh workflow release [--json]
+#   ./ops/ios_ops.sh runs [--json]
 #   ./ops/ios_ops.sh snapshot [--json]
 #
 # Side-effect model:
-# - status/archives/issues/logs/sentry/doctor/workflow/snapshot/dashboard are read-only.
+# - status/archives/issues/logs/sentry/doctor/workflow/runs/snapshot/dashboard are read-only.
 # - build/test/archive are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
@@ -97,6 +98,156 @@ cleanup_tmp() {
   local path="$1" rc="${2:-0}"
   rm -f "$path"
   return "$rc"
+}
+
+verdict_file_for() {
+  local kind="$1" base="${TMPDIR:-/tmp}"
+  case "$kind" in
+    build) printf '%s/kg_ios_build_verdict\n' "${base%/}" ;;
+    test) printf '%s/kg_ios_test_verdict\n' "${base%/}" ;;
+    *) return 1 ;;
+  esac
+}
+
+verdict_json_file_for() {
+  local kind="$1"
+  printf '%s.json\n' "$(verdict_file_for "$kind")"
+}
+
+verdict_field() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return 0
+  tr ' ' '\n' <"$file" | awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, ""); print; exit}'
+}
+
+path_exists_json_bool() {
+  local kind="$1" path="$2"
+  if [[ -z "$path" ]]; then
+    printf 'false'
+  elif [[ "$kind" == "dir" && -d "$path" ]]; then
+    printf 'true'
+  elif [[ "$kind" == "file" && -f "$path" ]]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+emit_run_verdict_json() {
+  local kind="$1" file="$2"
+  local json_file
+  json_file="$(verdict_json_file_for "$kind")"
+  if [[ -f "$json_file" ]]; then
+    if jq -e . "$json_file" >/dev/null 2>&1; then
+      jq -c \
+        --arg kind "$kind" \
+        --arg verdictFile "$file" \
+        --arg jsonVerdictFile "$json_file" \
+        --argjson logExists "$(path_exists_json_bool file "$(jq -r '.artifacts.log // ""' "$json_file")")" \
+        --argjson xcresultExists "$(path_exists_json_bool dir "$(jq -r '.artifacts.xcresult // ""' "$json_file")")" \
+        '{
+          kind:$kind,
+          status:(.status // .result // "unknown"),
+          result:(.result // .status // "unknown"),
+          exit:(.exit // null),
+          reason:(.reason // null),
+          caller:(.caller // null),
+          elapsed:(.elapsed // null),
+          executed:(.executed // null),
+          verdictFile:$verdictFile,
+          jsonVerdictFile:$jsonVerdictFile,
+          artifacts:{
+            log:(.artifacts.log // null),
+            logExists:$logExists,
+            xcresult:(.artifacts.xcresult // null),
+            xcresultExists:$xcresultExists
+          }
+        }' "$json_file"
+      return
+    fi
+
+    if [[ ! -f "$file" ]]; then
+      jq -nc --arg kind "$kind" --arg verdictFile "$file" --arg jsonVerdictFile "$json_file" \
+        '{
+          kind:$kind,
+          status:"malformed",
+          result:"malformed",
+          exit:null,
+          reason:"malformed-json-verdict",
+          caller:null,
+          elapsed:null,
+          executed:null,
+          verdictFile:$verdictFile,
+          jsonVerdictFile:$jsonVerdictFile,
+          artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
+        }'
+      return
+    fi
+  fi
+
+  if [[ ! -f "$file" ]]; then
+    jq -nc --arg kind "$kind" --arg verdictFile "$file" \
+      '{
+        kind:$kind,
+        status:"missing",
+        result:"missing",
+        exit:null,
+        reason:null,
+        caller:null,
+        elapsed:null,
+        executed:null,
+        verdictFile:$verdictFile,
+        jsonVerdictFile:($verdictFile + ".json"),
+        artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
+      }'
+    return
+  fi
+
+  local result exit_code reason caller elapsed executed log_path xcresult_path log_exists xcresult_exists
+  result="$(verdict_field "$file" RESULT)"
+  exit_code="$(verdict_field "$file" EXIT)"
+  reason="$(verdict_field "$file" reason)"
+  caller="$(verdict_field "$file" caller)"
+  elapsed="$(verdict_field "$file" elapsed)"
+  executed="$(verdict_field "$file" executed)"
+  log_path="$(verdict_field "$file" log)"
+  xcresult_path="$(verdict_field "$file" xcresult)"
+  log_exists="$(path_exists_json_bool file "$log_path")"
+  xcresult_exists="$(path_exists_json_bool dir "$xcresult_path")"
+
+  jq -nc \
+    --arg kind "$kind" \
+    --arg status "${result:-unknown}" \
+    --arg result "${result:-unknown}" \
+    --arg exit "${exit_code:-}" \
+    --arg reason "${reason:-}" \
+    --arg caller "${caller:-}" \
+    --arg elapsed "${elapsed:-}" \
+    --arg executed "${executed:-}" \
+    --arg log "$log_path" \
+    --arg xcresult "$xcresult_path" \
+    --arg verdictFile "$file" \
+    --arg jsonVerdictFile "$json_file" \
+    --argjson logExists "$log_exists" \
+    --argjson xcresultExists "$xcresult_exists" \
+    '{
+      kind:$kind,
+      status:$status,
+      result:$result,
+      exit:(if $exit == "" then null else $exit end),
+      reason:(if $reason == "" then null else $reason end),
+      caller:(if $caller == "" then null else $caller end),
+      elapsed:(if $elapsed == "" then null else $elapsed end),
+      executed:(if $executed == "" then null else $executed end),
+      verdictFile:$verdictFile,
+      jsonVerdictFile:$jsonVerdictFile,
+      artifacts:{
+        log:(if $log == "" then null else $log end),
+        logExists:$logExists,
+        xcresult:(if $xcresult == "" then null else $xcresult end),
+        xcresultExists:$xcresultExists
+      }
+    }'
 }
 
 emit_readiness() {
@@ -452,12 +603,73 @@ cmd_workflow() {
   esac
 }
 
+cmd_runs_json() {
+  local build_json test_json generated_at
+  build_json="$(emit_run_verdict_json build "$(verdict_file_for build)")"
+  test_json="$(emit_run_verdict_json test "$(verdict_file_for test)")"
+  generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  jq -n \
+    --arg schema "kg.ios.runs.v1" \
+    --arg generated_at "$generated_at" \
+    --argjson build "$build_json" \
+    --argjson test "$test_json" \
+    '{
+      schema:$schema,
+      generated_at:$generated_at,
+      build:$build,
+      test:$test
+    }'
+}
+
+cmd_runs() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh runs [--json]"
+        return 0
+        ;;
+      *)
+        echo "✗ unknown runs option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if (( json )); then
+    cmd_runs_json
+    return
+  fi
+
+  local kind file run_json result reason caller elapsed executed log_path xcresult_path log_exists xcresult_exists
+  for kind in build test; do
+    file="$(verdict_file_for "$kind")"
+    run_json="$(emit_run_verdict_json "$kind" "$file")"
+    result="$(jq -r '.result // "unknown"' <<<"$run_json")"
+    reason="$(jq -r '.reason // "none"' <<<"$run_json")"
+    caller="$(jq -r '.caller // "unknown"' <<<"$run_json")"
+    elapsed="$(jq -r '.elapsed // "unknown"' <<<"$run_json")"
+    executed="$(jq -r '.executed // "n/a"' <<<"$run_json")"
+    log_path="$(jq -r '.artifacts.log // empty' <<<"$run_json")"
+    xcresult_path="$(jq -r '.artifacts.xcresult // empty' <<<"$run_json")"
+    log_exists="$(jq -r '.artifacts.logExists' <<<"$run_json")"
+    xcresult_exists="$(jq -r '.artifacts.xcresultExists' <<<"$run_json")"
+    echo "[ios][run] kind=$kind status=${result:-unknown} caller=${caller:-unknown} elapsed=${elapsed:-unknown} executed=${executed:-n/a} reason=${reason:-none} verdict=$file"
+    [[ -n "$log_path" ]] && echo "[ios][run] kind=$kind log=$log_path exists=$log_exists"
+    [[ -n "$xcresult_path" ]] && echo "[ios][run] kind=$kind xcresult=$xcresult_path exists=$xcresult_exists"
+  done
+}
+
 cmd_snapshot_json() {
-  local doctor_json workflow_json generated_at
+  local doctor_json workflow_json runs_json generated_at
   if ! doctor_json="$(cmd_doctor_json)"; then
     return 1
   fi
   if ! workflow_json="$(cmd_workflow_release_json)"; then
+    return 1
+  fi
+  if ! runs_json="$(cmd_runs_json)"; then
     return 1
   fi
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -467,6 +679,7 @@ cmd_snapshot_json() {
     --arg generated_at "$generated_at" \
     --argjson doctor "$doctor_json" \
     --argjson workflow "$workflow_json" \
+    --argjson runs "$runs_json" \
     '{
       schema:$schema,
       generated_at:$generated_at,
@@ -474,7 +687,8 @@ cmd_snapshot_json() {
       organizer:$doctor.organizer,
       testflight:$doctor.testflight,
       readiness:$doctor.readiness,
-      workflow:$workflow
+      workflow:$workflow,
+      runs:$runs
     }'
 }
 
@@ -503,6 +717,8 @@ cmd_snapshot() {
   cmd_doctor
   echo "[ios][snapshot] phase=workflow"
   cmd_workflow_release
+  echo "[ios][snapshot] phase=runs"
+  cmd_runs
 }
 
 cmd="${1:-}"
@@ -521,6 +737,7 @@ case "$cmd" in
   sentry) cmd_sentry "$@" ;;
   doctor) cmd_doctor "$@" ;;
   workflow|flow) cmd_workflow "$@" ;;
+  runs|reports) cmd_runs "$@" ;;
   snapshot|dashboard) cmd_snapshot "$@" ;;
   -h|--help|help) usage ;;
   *)

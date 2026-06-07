@@ -26,9 +26,12 @@ echo "$help_out" | grep -qE 'xcodebuild archive|xcodebuild test|xcodebuild .*bui
   && fail_t "ios_ops help appears to run xcodebuild" || ok "ios_ops help is side-effect free"
 
 section "Dispatch surface"
-for sub in status build test archive archives issues logs sentry doctor workflow snapshot; do
+for sub in status build test archive archives issues logs sentry doctor workflow runs snapshot; do
   if [[ "$sub" == "workflow" ]]; then
     grep -qE '^[[:space:]]*workflow\|flow\)' "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  elif [[ "$sub" == "runs" ]]; then
+    grep -qE '^[[:space:]]*runs\|reports\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   elif [[ "$sub" == "snapshot" ]]; then
     grep -qE '^[[:space:]]*snapshot\|dashboard\)' "$IOS_OPS" \
@@ -79,15 +82,50 @@ grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS" \
   || ok "workflow stays orchestration/read-only"
 
 section "JSON smoke fixtures"
+runs_parent="$(mktemp -d)"
+runs_tmp="$runs_parent/with spaces"
+mkdir -p "$runs_tmp"
+mkdir -p "$runs_tmp/Build.xcresult" "$runs_tmp/Test.xcresult"
+touch "$runs_tmp/build.log" "$runs_tmp/test.log"
+echo "RESULT=legacy" > "$runs_tmp/kg_ios_build_verdict"
+jq -nc --arg log "$runs_tmp/build.log" --arg xcresult "$runs_tmp/Build.xcresult" \
+  '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"3s",executed:null,artifacts:{log:$log,xcresult:$xcresult}}' \
+  > "$runs_tmp/kg_ios_build_verdict.json"
+jq -nc --arg log "$runs_tmp/test.log" --arg xcresult "$runs_tmp/Test.xcresult" \
+  '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"5s",executed:"12",artifacts:{log:$log,xcresult:$xcresult}}' \
+  > "$runs_tmp/kg_ios_test_verdict.json"
+runs_json="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs --json)"
+echo "$runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.result=="ok" and .build.caller=="fixture with spaces" and .test.executed=="12" and .build.artifacts.logExists==true and .test.artifacts.xcresultExists==true' >/dev/null \
+  && ok "runs --json parses latest build/test verdicts" || fail_t "runs --json invalid: $runs_json"
+echo "$runs_json" | jq -e 'all([.build,.test][]; has("kind") and has("status") and has("result") and has("exit") and has("reason") and has("caller") and has("elapsed") and has("executed") and has("verdictFile") and has("jsonVerdictFile") and has("artifacts"))' >/dev/null \
+  && ok "runs --json uses stable verdict object keys" || fail_t "runs --json missing stable keys: $runs_json"
+missing_runs_tmp="$(mktemp -d)"
+missing_runs_json="$(TMPDIR="$missing_runs_tmp" bash "$IOS_OPS" runs --json)"
+echo "$missing_runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.status=="missing" and .build.artifacts.log==null and .build.artifacts.logExists==false and .test.result=="missing"' >/dev/null \
+  && ok "runs --json has stable missing-verdict schema" || fail_t "runs missing-verdict schema invalid: $missing_runs_json"
+rm -rf "$missing_runs_tmp"
+malformed_runs_tmp="$(mktemp -d)"
+echo "RESULT=ok caller=legacy elapsed=1s log=$malformed_runs_tmp/build.log xcresult=$malformed_runs_tmp/Build.xcresult" > "$malformed_runs_tmp/kg_ios_build_verdict"
+echo '{bad json' > "$malformed_runs_tmp/kg_ios_build_verdict.json"
+echo '{bad json' > "$malformed_runs_tmp/kg_ios_test_verdict.json"
+malformed_runs_json="$(TMPDIR="$malformed_runs_tmp" bash "$IOS_OPS" runs --json 2>"$malformed_runs_tmp/stderr")"
+echo "$malformed_runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .build.result=="ok" and .test.status=="malformed" and .test.reason=="malformed-json-verdict"' >/dev/null \
+  && ok "runs --json falls back or reports malformed JSON verdicts" || fail_t "runs malformed-verdict schema invalid: $malformed_runs_json"
+echo "$malformed_runs_json" | jq -e 'all([.build,.test][]; has("jsonVerdictFile") and has("artifacts"))' >/dev/null \
+  && ok "runs malformed/legacy fallback keeps stable keys" || fail_t "runs malformed/legacy fallback missing stable keys: $malformed_runs_json"
+[[ ! -s "$malformed_runs_tmp/stderr" ]] \
+  && ok "runs --json suppresses malformed verdict parser noise" || fail_t "runs malformed-verdict stderr not clean: $(cat "$malformed_runs_tmp/stderr")"
+rm -rf "$malformed_runs_tmp"
 doctor_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json)"
 echo "$doctor_json" | jq -e '.schema=="kg.ios.doctor.v1" and (.readiness|length >= 7) and any(.readiness[]; .key=="testflight")' >/dev/null \
   && ok "doctor --json parses with readiness array" || fail_t "doctor --json invalid: $doctor_json"
 workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
 echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
   && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
-snapshot_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
-echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6"' >/dev/null \
+snapshot_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
+echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6" and .runs.test.executed=="12"' >/dev/null \
   && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
+rm -rf "$runs_parent"
 bad_args_tmp="$(mktemp -d)"
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json garbage >"$bad_args_tmp/out" 2>"$bad_args_tmp/err"; then
   fail_t "doctor --json rejects unknown trailing args"
@@ -129,6 +167,8 @@ grep -q 'ios_diagnostics.py' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build calls diagnostics parser" || fail_t "ios_build missing diagnostics parser"
 grep -q 'kg_ios_build.*log' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build preserves raw log path" || fail_t "ios_build does not preserve log path"
+grep -q 'VERDICT_JSON_FILE' "$WORKSPACE/ops/ios_build.sh" \
+  && ok "ios_build writes JSON verdict" || fail_t "ios_build missing JSON verdict"
 grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build emits xcresult bundle" || fail_t "ios_build missing -resultBundlePath"
 grep -q -- '--xcresult' "$WORKSPACE/ops/ios_build.sh" \
@@ -143,6 +183,8 @@ grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test counts executed tests from xcresult first" || fail_t "ios_test missing xcresult executed-count path"
 grep -q 'xcresult=.*RESULT_BUNDLE' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records xcresult" || fail_t "ios_test verdict missing xcresult path"
+grep -q 'VERDICT_JSON_FILE' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test writes JSON verdict" || fail_t "ios_test missing JSON verdict"
 
 echo ""
 echo "══════════════════════════════"

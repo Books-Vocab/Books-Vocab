@@ -92,6 +92,11 @@ verified_against: 887a248d
    - 決策:`snapshot --json` 輸出 `kg.ios.snapshot.v1`,合併 `doctor --json` 與 `workflow release --json`;`dashboard` 作為 human-readable alias。
    - 驗證:`KG_IOS_OPS_FIXTURE=1 ./ops/ios_ops.sh snapshot --json | jq ...` 與 `./ops/test_ops.sh ios-ops`。
 
+7. ✅ `ios_ops.sh runs/reports` 補最近 build/test 報告入口。
+   - 方向:對齊 Xcode Report Navigator,讓 agent 第一輪看到最近 build/test verdict、log、xcresult path 與 artifact 是否仍存在。
+   - 決策:`runs --json` 輸出 `kg.ios.runs.v1`,優先讀 `kg_ios_build_verdict.json` / `kg_ios_test_verdict.json`,legacy 單行 verdict 只作 fallback;`snapshot --json` 內嵌同一份 `runs`。
+   - 驗證:`TMPDIR=<fixture-with-spaces> ./ops/ios_ops.sh runs --json | jq ...`、missing verdict schema fixture、`snapshot --json` fixture 驗 `.runs`、`./ops/test_ops.sh ios-ops`。
+
 ## 驗證矩陣
 
 - `./ops/test_ops.sh docs-lint`
