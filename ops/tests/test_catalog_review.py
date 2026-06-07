@@ -236,3 +236,82 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     listed_by_note_payload = json.loads(listed_by_note.stdout)
     assert listed_by_note_payload["count"] == 1
     assert listed_by_note_payload["items"][0]["assetID"] == asset_id
+
+
+def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+    (image_dir / "Signed_in.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    dry_run = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "apply",
+            "--category",
+            "Settings View",
+            "--status",
+            "review",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert dry_run.returncode == 0, dry_run.stderr
+    dry_run_payload = json.loads(dry_run.stdout)
+    assert dry_run_payload["dryRun"] is True
+    assert dry_run_payload["appliedCount"] == 2
+    state_before = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
+    assert all(entry["status"] == "" for entry in state_before["entries"].values())
+
+    apply = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "apply",
+            "--category",
+            "Settings View",
+            "--status",
+            "review",
+            "--note",
+            "batch-pass",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert apply.returncode == 0, apply.stderr
+    apply_payload = json.loads(apply.stdout)
+    assert apply_payload["dryRun"] is False
+    assert apply_payload["appliedCount"] == 2
+
+    state_after = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
+    assert all(entry["status"] == "review" for entry in state_after["entries"].values())
+    assert all(entry["note"] == "batch-pass" for entry in state_after["entries"].values())
+    manifest_after = json.loads((output_root / "review_manifest.json").read_text(encoding="utf-8"))
+    assert manifest_after["stateCounts"]["review"] == 2
