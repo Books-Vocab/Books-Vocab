@@ -31,6 +31,22 @@ for sub in status build test archive archives issues logs sentry doctor; do
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
 
+section "Doctor release readiness surface"
+doctor_body="$(awk '/^cmd_doctor\(\)/,/^}/' "$IOS_OPS")"
+for key in project organizer testflight asc_version signing storekit sentry; do
+  grep -q "emit_readiness \"$key\"" <<<"$doctor_body" \
+    && ok "doctor checks $key readiness" || fail_t "doctor missing $key readiness"
+done
+grep -q 'read_asc_version_state' <<<"$doctor_body" && grep -q 'waited >= 12' "$IOS_OPS" \
+  && ok "doctor bounds ASC version-state lookup" || fail_t "doctor missing bounded ASC version lookup"
+grep -q 'ExportOptions.plist' <<<"$doctor_body" \
+  && ok "doctor checks export signing options" || fail_t "doctor missing ExportOptions check"
+grep -q 'Products\\.storekit' <<<"$doctor_body" \
+  && ok "doctor checks StoreKit scheme/file" || fail_t "doctor missing StoreKit check"
+grep -qE 'xcodebuild (archive|build|test)|altool --upload-app|--upload' <<<"$doctor_body" \
+  && fail_t "doctor contains side-effecting build/archive/upload path" \
+  || ok "doctor stays read-only"
+
 section "Archive fixture"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

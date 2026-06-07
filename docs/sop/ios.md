@@ -42,7 +42,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 ```bash
 ./ops/ios_ops.sh status                 # project version/build + Organizer latest + TestFlight latest
-./ops/ios_ops.sh doctor                 # status + Sentry wiring + StoreKit quick check
+./ops/ios_ops.sh doctor                 # release readiness: project/Organizer/TestFlight/signing/StoreKit/Sentry
 ./ops/ios_ops.sh build                  # 委派 ios_build.sh，結束即列 warnings/errors diagnostics
 ./ops/ios_ops.sh test --file FooTests.swift
 ./ops/ios_ops.sh archive                # archive + export，預設不上傳
@@ -56,6 +56,8 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 輸出契約:第一屏固定優先看 `[ios][issues]` / `[ios][summary]` / `[ios][next]` 類摘要;需要原始資料時再開 log path。
 
 原則:優先組合 Xcode 官方 CLI,不重造輪子。`ios_build.sh`/`ios_ops.sh build` 與 `ios_release.sh` archive 會產生 `-resultBundlePath <*.xcresult>`,再用 `xcrun xcresulttool get build-results` 抽 warnings/errors;`ios_test.sh` 會用 `xcrun xcresulttool get test-results summary/tests` 抽 executed/failures。raw xcodebuild log parser 只作 fallback。
+
+`ios_ops.sh doctor` 是 release readiness 儀表板:read-only 彙總 project `MARKETING_VERSION(CURRENT_PROJECT_VERSION)`、Organizer latest archive、TestFlight latest build、ASC version state、manual signing export options、StoreKit scheme/file、Sentry release wiring。ASC version-state 查詢有短 deadline，逾時只會 `status=warn`，不阻塞本機 readiness。`status=block` 代表發版前必修（例如 build number 未增加），`status=warn` 代表資訊缺失或 local artifact 落後。
 
 ## iOS 編譯 3 步驟 SOP
 
