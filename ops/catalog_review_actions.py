@@ -60,3 +60,15 @@ def build_action_plan(*, primary_command: str | None, followup_command: str | No
     if len(actions) > 1:
         plan["followup"] = actions[1]
     return plan
+
+
+def with_starter_plan(playbook: dict, *, primary_command: str | None, followup_command: str | None) -> dict:
+    starter_plan = build_action_plan(
+        primary_command=primary_command,
+        followup_command=followup_command,
+    )
+    enriched = dict(playbook)
+    enriched["starterPlan"] = starter_plan
+    enriched["firstAction"] = starter_plan["primary"]
+    enriched["firstCommand"] = starter_plan["primary"]["command"] if starter_plan["primary"] else None
+    return enriched
