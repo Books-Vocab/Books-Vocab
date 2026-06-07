@@ -174,14 +174,26 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
         severity = "error"
     elif payload["repair"]["repairCount"] > 0 or payload["status"] == "needs-attention":
         severity = "warn"
+    can_proceed = not payload["blockingErrors"]
+    should_repair_first = payload["repair"]["repairCount"] > 0
+    needs_review_attention = payload["status"] == "needs-attention"
+    if not can_proceed:
+        recommended_operator_action = "stop-blocking-error"
+    elif should_repair_first:
+        recommended_operator_action = "repair-first"
+    elif needs_review_attention:
+        recommended_operator_action = "proceed-review"
+    else:
+        recommended_operator_action = "healthy-idle"
     health = {
         "severity": severity,
         "verifyStatus": payload["verify"]["status"],
         "repairCount": payload["repair"]["repairCount"],
         "blockingErrors": payload["blockingErrors"],
-        "canProceed": not payload["blockingErrors"],
-        "shouldRepairFirst": payload["repair"]["repairCount"] > 0,
-        "needsReviewAttention": payload["status"] == "needs-attention",
+        "canProceed": can_proceed,
+        "shouldRepairFirst": should_repair_first,
+        "needsReviewAttention": needs_review_attention,
+        "recommendedOperatorAction": recommended_operator_action,
         "summary": {
             "status": payload["status"],
             "blockingErrorCount": len(payload["blockingErrors"]),
