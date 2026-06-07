@@ -374,6 +374,10 @@ def cmd_doctor(root: Path, *, limit: int | None, mode: str) -> int:
     return 0 if payload["status"] == "ok" else 1
 
 
+def cmd_doctor_shortcut(root: Path, *, limit: int | None, mode: str) -> int:
+    return cmd_doctor(root, limit=limit, mode=mode)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect and update catalog review state sidecars.")
     parser.add_argument("root", type=Path, help="Directory containing review_manifest.json and review_state.json")
@@ -424,6 +428,15 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_cmd = subparsers.add_parser("doctor")
     doctor_cmd.add_argument("--limit", type=int, default=5)
     doctor_cmd.add_argument("--mode", choices=sorted(DOCTOR_MODES), default="overview")
+
+    hero_cmd = subparsers.add_parser("hero")
+    hero_cmd.add_argument("--limit", type=int, default=5)
+
+    coverage_cmd = subparsers.add_parser("coverage")
+    coverage_cmd.add_argument("--limit", type=int, default=5)
+
+    cleanup_cmd = subparsers.add_parser("cleanup")
+    cleanup_cmd.add_argument("--limit", type=int, default=5)
 
     return parser
 
@@ -476,6 +489,12 @@ def main() -> int:
         return cmd_repair(root, dry_run=args.dry_run, limit=args.limit, include_repairs=args.include_repairs)
     if args.command == "doctor":
         return cmd_doctor(root, limit=args.limit, mode=args.mode)
+    if args.command == "hero":
+        return cmd_doctor_shortcut(root, limit=args.limit, mode="hero-first")
+    if args.command == "coverage":
+        return cmd_doctor_shortcut(root, limit=args.limit, mode="coverage-first")
+    if args.command == "cleanup":
+        return cmd_doctor_shortcut(root, limit=args.limit, mode="cleanup")
     parser.error(f"unknown command: {args.command}")
     return 2
 
