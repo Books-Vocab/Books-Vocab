@@ -26,9 +26,12 @@ echo "$help_out" | grep -qE 'xcodebuild archive|xcodebuild test|xcodebuild .*bui
   && fail_t "ios_ops help appears to run xcodebuild" || ok "ios_ops help is side-effect free"
 
 section "Dispatch surface"
-for sub in status build test archive archives issues logs sentry doctor workflow; do
+for sub in status build test archive archives issues logs sentry doctor workflow snapshot; do
   if [[ "$sub" == "workflow" ]]; then
     grep -qE '^[[:space:]]*workflow\|flow\)' "$IOS_OPS" \
+      && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
+  elif [[ "$sub" == "snapshot" ]]; then
+    grep -qE '^[[:space:]]*snapshot\|dashboard\)' "$IOS_OPS" \
       && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
   else
     grep -qE "^[[:space:]]*$sub\\)" "$IOS_OPS" \
@@ -82,6 +85,9 @@ echo "$doctor_json" | jq -e '.schema=="kg.ios.doctor.v1" and (.readiness|length 
 workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
 echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
   && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
+snapshot_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
+echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .project.version=="1.6"' >/dev/null \
+  && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
 bad_args_tmp="$(mktemp -d)"
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor --json garbage >"$bad_args_tmp/out" 2>"$bad_args_tmp/err"; then
   fail_t "doctor --json rejects unknown trailing args"
