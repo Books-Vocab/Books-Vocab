@@ -25,8 +25,8 @@ def test_judge_reject_predicate_references_degree_cap_sot():
 
 def test_admin_trends_uses_sot():
     """admin_trends 的 judge-reject extra_where 必須 == SoT 常數(同義)。"""
-    import kg.error_signals as es
     import kg.admin_trends as at
+    import kg.error_signals as es
 
     # admin_trends 應引用 SoT,不再自組字面。
     assert es.JUDGE_AUTO_REJECT_WHERE == at._JUDGE_REJECT_WHERE
