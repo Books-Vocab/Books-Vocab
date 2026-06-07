@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 # ios_ops_simulator.sh — sourceable simulator status/screenshot commands for ios_ops.sh.
 
+simulator_now_ms() {
+  if python3 - <<'PY' >/dev/null 2>&1; then
+import time
+print(int(time.time() * 1000))
+PY
+    python3 - <<'PY'
+import time
+print(int(time.time() * 1000))
+PY
+  else
+    perl -MTime::HiRes=time -e 'printf "%.0f\n", time()*1000'
+  fi
+}
+
 file_size_bytes() {
   local path="$1"
   if [[ ! -f "$path" ]]; then
@@ -57,18 +71,34 @@ simulator_resolve_selector_json() {
 
 cmd_simulator_status_json() {
   local devices_source container_source process_source generated_at payload status
+  local start_ms end_ms devices_start_ms devices_end_ms container_start_ms container_end_ms process_start_ms process_end_ms
+  local total_ms devices_ms container_ms process_ms
+  start_ms="$(simulator_now_ms)"
+  devices_start_ms="$(simulator_now_ms)"
   devices_source="$(capture_source_json simctl_devices read_simctl_devices_json)"
+  devices_end_ms="$(simulator_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  devices_ms=$(( devices_end_ms - devices_start_ms ))
+  container_ms=0
+  process_ms=0
 
   local booted_udid
   booted_udid="$(jq -r '[.payload.devices // {} | to_entries[]?.value[]? | select(.state == "Booted")][0].udid // empty' <<<"$devices_source")"
   if [[ -n "$booted_udid" ]]; then
+    container_start_ms="$(simulator_now_ms)"
     container_source="$(capture_source_text app_container read_app_container_path "$booted_udid" "$BUNDLE_ID" data)"
+    container_end_ms="$(simulator_now_ms)"
+    process_start_ms="$(simulator_now_ms)"
     process_source="$(capture_source_text app_process read_app_process_pid "$booted_udid" "$SCHEME")"
+    process_end_ms="$(simulator_now_ms)"
+    container_ms=$(( container_end_ms - container_start_ms ))
+    process_ms=$(( process_end_ms - process_start_ms ))
   else
     container_source='null'
     process_source='null'
   fi
+  end_ms="$(simulator_now_ms)"
+  total_ms=$(( end_ms - start_ms ))
 
   payload="$(jq -n \
     --arg schema "kg.ios.simulator.v1" \
@@ -77,6 +107,10 @@ cmd_simulator_status_json() {
     --argjson devicesSource "$devices_source" \
     --argjson containerSource "$container_source" \
     --argjson processSource "$process_source" \
+    --argjson totalMs "$total_ms" \
+    --argjson simctlDevicesMs "$devices_ms" \
+    --argjson appContainerMs "$container_ms" \
+    --argjson appProcessMs "$process_ms" \
     '
       def trim_newlines: gsub("\\n+$"; "");
       ($devicesSource.payload.devices // {}) as $devices
@@ -131,6 +165,12 @@ cmd_simulator_status_json() {
             app_container:(if $containerSource == null then null else {status:$containerSource.status,exitCode:$containerSource.exitCode,error:$containerSource.error} end),
             app_process:(if $processSource == null then null else {status:$processSource.status,exitCode:$processSource.exitCode,error:$processSource.error} end)
           },
+          timings:{
+            totalMs:$totalMs,
+            simctlDevicesMs:$simctlDevicesMs,
+            appContainerMs:$appContainerMs,
+            appProcessMs:$appProcessMs
+          },
           errors:(
             (if $devicesSource.status != "ok" then [{key:"simctl-devices",status:$devicesSource.status,exitCode:$devicesSource.exitCode,error:$devicesSource.error}] else [] end)
             +
@@ -164,6 +204,7 @@ cmd_simulator_status() {
     end),
     "[ios][simulator] app_container status=\(.app.container.status) data=\(.app.container.data // "")",
     "[ios][simulator] app_process status=\(.app.process.status) pid=\(.app.process.pid // "") name=\(.app.process.name)",
+    "[ios][simulator] timings totalMs=\(.timings.totalMs) simctlDevicesMs=\(.timings.simctlDevicesMs) appContainerMs=\(.timings.appContainerMs) appProcessMs=\(.timings.appProcessMs)",
     (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
   ' <<<"$payload"
   return "$rc"
@@ -192,13 +233,22 @@ cmd_simulator_screenshot() {
   fi
 
   local status_payload status_rc=0 resolved_device device_json err rc generated_at bytes exists payload
+  local start_ms end_ms status_start_ms status_end_ms screenshot_start_ms screenshot_end_ms total_ms status_ms screenshot_ms
+  start_ms="$(simulator_now_ms)"
+  status_start_ms="$(simulator_now_ms)"
   status_payload="$(cmd_simulator_status_json)" || status_rc=$?
+  status_end_ms="$(simulator_now_ms)"
+  status_ms=$(( status_end_ms - status_start_ms ))
   if (( status_rc != 0 )); then
+    end_ms="$(simulator_now_ms)"
+    total_ms=$(( end_ms - start_ms ))
     payload="$(jq -n \
       --arg schema "kg.ios.simulator.v1" \
       --arg generated_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
       --arg out "$out" \
       --argjson statusPayload "$status_payload" \
+      --argjson totalMs "$total_ms" \
+      --argjson statusMs "$status_ms" \
       '{
         schema:$schema,
         generated_at:$generated_at,
@@ -206,6 +256,7 @@ cmd_simulator_screenshot() {
         status:"error",
         device:null,
         artifact:{path:$out,exists:false,bytes:0},
+        timings:{totalMs:$totalMs,statusMs:$statusMs,screenshotMs:0},
         errors:($statusPayload.errors + [{key:"screenshot",status:"error",exitCode:null,error:"booted-simulator-required"}])
       }')"
     if (( json )); then
@@ -225,12 +276,17 @@ cmd_simulator_screenshot() {
   fi
 
   err="$(mktemp)"
+  screenshot_start_ms="$(simulator_now_ms)"
   if mkdir -p "$(dirname "$out")" 2>"$err" && write_simulator_screenshot "$resolved_device" "$out" 2>>"$err"; then
     rc=0
   else
     rc=$?
   fi
+  screenshot_end_ms="$(simulator_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  screenshot_ms=$(( screenshot_end_ms - screenshot_start_ms ))
+  end_ms="$(simulator_now_ms)"
+  total_ms=$(( end_ms - start_ms ))
   bytes="$(file_size_bytes "$out")"
   exists="$(path_exists_json_bool file "$out")"
   payload="$(jq -n \
@@ -242,6 +298,9 @@ cmd_simulator_screenshot() {
     --argjson exists "$exists" \
     --argjson bytes "$bytes" \
     --argjson device "$device_json" \
+    --argjson totalMs "$total_ms" \
+    --argjson statusMs "$status_ms" \
+    --argjson screenshotMs "$screenshot_ms" \
     '{
       schema:$schema,
       generated_at:$generated_at,
@@ -249,6 +308,7 @@ cmd_simulator_screenshot() {
       status:(if $rc == 0 then "ok" else "error" end),
       device:$device,
       artifact:{path:$out,exists:$exists,bytes:$bytes},
+      timings:{totalMs:$totalMs,statusMs:$statusMs,screenshotMs:$screenshotMs},
       errors:(if $rc == 0 then [] else [{key:"screenshot",status:"error",exitCode:$rc,error:$stderr}] end)
     }')"
   rm -f "$err"
@@ -258,6 +318,7 @@ cmd_simulator_screenshot() {
   else
     jq -r '
       "[ios][simulator] schema=\(.schema) action=\(.action) status=\(.status) device=\(.device.udid // "") artifact=\(.artifact.path) exists=\(.artifact.exists) bytes=\(.artifact.bytes)",
+      "[ios][simulator] timings totalMs=\(.timings.totalMs) statusMs=\(.timings.statusMs) screenshotMs=\(.timings.screenshotMs)",
       (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
     ' <<<"$payload"
   fi
@@ -293,15 +354,24 @@ cmd_simulator_lifecycle() {
   done
 
   local status_payload status_rc=0 resolved_device device_json generated_at payload lifecycle_out lifecycle_err rc process_source
+  local start_ms end_ms status_start_ms status_end_ms lifecycle_start_ms lifecycle_end_ms process_start_ms process_end_ms total_ms status_ms lifecycle_ms process_ms
+  start_ms="$(simulator_now_ms)"
+  status_start_ms="$(simulator_now_ms)"
   status_payload="$(cmd_simulator_status_json)" || status_rc=$?
+  status_end_ms="$(simulator_now_ms)"
+  status_ms=$(( status_end_ms - status_start_ms ))
   if [[ "$device_selector" == "booted" ]]; then
     if (( status_rc != 0 )); then
+      end_ms="$(simulator_now_ms)"
+      total_ms=$(( end_ms - start_ms ))
       payload="$(jq -n \
         --arg schema "kg.ios.simulator.v1" \
         --arg generated_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         --arg action "$action" \
         --arg bundle_id "$BUNDLE_ID" \
         --argjson statusPayload "$status_payload" \
+        --argjson totalMs "$total_ms" \
+        --argjson statusMs "$status_ms" \
         '{
           schema:$schema,
           generated_at:$generated_at,
@@ -313,6 +383,7 @@ cmd_simulator_lifecycle() {
             lifecycle:{status:"error",exitCode:null,output:null,error:"booted-simulator-required"},
             process:{name:"BooksBrowser",pid:null,status:"skipped",exitCode:null,error:null}
           },
+          timings:{totalMs:$totalMs,statusMs:$statusMs,lifecycleMs:0,appProcessMs:0},
           errors:($statusPayload.errors + [{key:$action,status:"error",exitCode:null,error:"booted-simulator-required"}])
         }')"
       if (( json )); then
@@ -331,6 +402,7 @@ cmd_simulator_lifecycle() {
 
   lifecycle_out="$(mktemp)"
   lifecycle_err="$(mktemp)"
+  lifecycle_start_ms="$(simulator_now_ms)"
   if [[ "$action" == "launch" ]]; then
     if ((${#app_args[@]})); then
       if read_app_launch_output "$resolved_device" "$BUNDLE_ID" "${app_args[@]}" >"$lifecycle_out" 2>"$lifecycle_err"; then
@@ -352,8 +424,15 @@ cmd_simulator_lifecycle() {
       rc=$?
     fi
   fi
+  lifecycle_end_ms="$(simulator_now_ms)"
+  process_start_ms="$(simulator_now_ms)"
   process_source="$(capture_source_text app_process read_app_process_pid "$resolved_device" "$SCHEME")"
+  process_end_ms="$(simulator_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  lifecycle_ms=$(( lifecycle_end_ms - lifecycle_start_ms ))
+  process_ms=$(( process_end_ms - process_start_ms ))
+  end_ms="$(simulator_now_ms)"
+  total_ms=$(( end_ms - start_ms ))
 
   payload="$(jq -n \
     --arg schema "kg.ios.simulator.v1" \
@@ -365,6 +444,10 @@ cmd_simulator_lifecycle() {
     --argjson rc "$rc" \
     --argjson device "$device_json" \
     --argjson processSource "$process_source" \
+    --argjson totalMs "$total_ms" \
+    --argjson statusMs "$status_ms" \
+    --argjson lifecycleMs "$lifecycle_ms" \
+    --argjson appProcessMs "$process_ms" \
     '
       def trim_newlines: gsub("\\n+$"; "");
       ($lifecycleOutput | trim_newlines) as $life_output
@@ -407,6 +490,12 @@ cmd_simulator_lifecycle() {
             lifecycle:{status:(if $rc == 0 then "ok" else "error" end),exitCode:$rc,error:(if $rc == 0 then null else $life_error end)},
             app_process:{status:$processSource.status,exitCode:$processSource.exitCode,error:$processSource.error}
           },
+          timings:{
+            totalMs:$totalMs,
+            statusMs:$statusMs,
+            lifecycleMs:$lifecycleMs,
+            appProcessMs:$appProcessMs
+          },
           errors:(
             (if $rc == 0 then [] else [{key:$action,status:"error",exitCode:$rc,error:$life_error}] end)
             +
@@ -423,6 +512,7 @@ cmd_simulator_lifecycle() {
       "[ios][simulator] schema=\(.schema) action=\(.action) status=\(.status) device=\(.device.udid // "") bundleID=\(.app.bundleID)",
       "[ios][simulator] lifecycle status=\(.app.lifecycle.status) exitCode=\(.app.lifecycle.exitCode) output=\(.app.lifecycle.output // "")",
       "[ios][simulator] app_process status=\(.app.process.status) pid=\(.app.process.pid // "") name=\(.app.process.name)",
+      "[ios][simulator] timings totalMs=\(.timings.totalMs) statusMs=\(.timings.statusMs) lifecycleMs=\(.timings.lifecycleMs) appProcessMs=\(.timings.appProcessMs)",
       (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
     ' <<<"$payload"
   fi
@@ -450,14 +540,23 @@ cmd_simulator_ensure_booted() {
 
   local resolve_payload resolve_status resolve_errors device_json resolved_device already_booted
   local generated_at boot_out boot_err wait_out wait_err rc_boot=0 rc_wait=0 payload
+  local start_ms end_ms resolve_start_ms resolve_end_ms boot_start_ms boot_end_ms wait_start_ms wait_end_ms total_ms resolve_ms boot_ms wait_ms
+  start_ms="$(simulator_now_ms)"
+  resolve_start_ms="$(simulator_now_ms)"
   resolve_payload="$(simulator_resolve_selector_json "$device_selector")"
+  resolve_end_ms="$(simulator_now_ms)"
   resolve_status="$(jq -r '.status' <<<"$resolve_payload")"
+  resolve_ms=$(( resolve_end_ms - resolve_start_ms ))
   if [[ "$resolve_status" != "ok" ]]; then
+    end_ms="$(simulator_now_ms)"
+    total_ms=$(( end_ms - start_ms ))
     payload="$(jq -n \
       --arg schema "kg.ios.simulator.v1" \
       --arg generated_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
       --arg selector "$device_selector" \
-      --argjson resolve "$resolve_payload" '
+      --argjson resolve "$resolve_payload" \
+      --argjson totalMs "$total_ms" \
+      --argjson resolveMs "$resolve_ms" '
       {
         schema:$schema,
         generated_at:$generated_at,
@@ -466,6 +565,7 @@ cmd_simulator_ensure_booted() {
         selector:$selector,
         device:$resolve.device,
         boot:{status:"error",exitCode:null,output:null,error:"unresolved-device-selector",wasAlreadyBooted:false,waitedForBootstatus:false},
+        timings:{totalMs:$totalMs,resolveMs:$resolveMs,bootMs:0,bootstatusMs:0},
         errors:$resolve.errors
       }')"
     if (( json )); then
@@ -486,26 +586,36 @@ cmd_simulator_ensure_booted() {
   boot_err="$(mktemp)"
   wait_out="$(mktemp)"
   wait_err="$(mktemp)"
+  boot_ms=0
+  wait_ms=0
 
   if [[ "$already_booted" == "true" ]]; then
     printf 'already booted\n' >"$boot_out"
     printf 'bootstatus skipped: already booted\n' >"$wait_out"
   else
+    boot_start_ms="$(simulator_now_ms)"
     if read_simctl_boot_output "$resolved_device" >"$boot_out" 2>"$boot_err"; then
       rc_boot=0
     else
       rc_boot=$?
     fi
+    boot_end_ms="$(simulator_now_ms)"
+    boot_ms=$(( boot_end_ms - boot_start_ms ))
     if [[ "$rc_boot" -eq 0 ]]; then
+      wait_start_ms="$(simulator_now_ms)"
       if read_simctl_bootstatus_output "$resolved_device" >"$wait_out" 2>"$wait_err"; then
         rc_wait=0
       else
         rc_wait=$?
       fi
+      wait_end_ms="$(simulator_now_ms)"
+      wait_ms=$(( wait_end_ms - wait_start_ms ))
     fi
   fi
 
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  end_ms="$(simulator_now_ms)"
+  total_ms=$(( end_ms - start_ms ))
   payload="$(jq -n \
     --arg schema "kg.ios.simulator.v1" \
     --arg generated_at "$generated_at" \
@@ -517,7 +627,11 @@ cmd_simulator_ensure_booted() {
     --arg waitError "$(cat "$wait_err")" \
     --argjson bootExit "$rc_boot" \
     --argjson waitExit "$rc_wait" \
-    --argjson alreadyBooted "$already_booted" '
+    --argjson alreadyBooted "$already_booted" \
+    --argjson totalMs "$total_ms" \
+    --argjson resolveMs "$resolve_ms" \
+    --argjson bootMs "$boot_ms" \
+    --argjson bootstatusMs "$wait_ms" '
       def trim_newlines: gsub("\\n+$"; "");
       {
         schema:$schema,
@@ -542,6 +656,12 @@ cmd_simulator_ensure_booted() {
           wasAlreadyBooted:$alreadyBooted,
           waitedForBootstatus:(if $alreadyBooted then true else ($bootExit == 0) end)
         },
+        timings:{
+          totalMs:$totalMs,
+          resolveMs:$resolveMs,
+          bootMs:$bootMs,
+          bootstatusMs:$bootstatusMs
+        },
         errors:(
           []
           + (if $bootExit != 0 then [{key:"simctl-boot",status:"error",exitCode:$bootExit,error:($bootError | trim_newlines)}] else [] end)
@@ -556,6 +676,7 @@ cmd_simulator_ensure_booted() {
     jq -r '
       "[ios][simulator] schema=\(.schema) action=\(.action) status=\(.status) selector=\(.selector) device=\(.device.udid // "")",
       "[ios][simulator] boot status=\(.boot.status) exitCode=\(.boot.exitCode // "") wasAlreadyBooted=\(.boot.wasAlreadyBooted) waitedForBootstatus=\(.boot.waitedForBootstatus)",
+      "[ios][simulator] timings totalMs=\(.timings.totalMs) resolveMs=\(.timings.resolveMs) bootMs=\(.timings.bootMs) bootstatusMs=\(.timings.bootstatusMs)",
       (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
     ' <<<"$payload"
   fi

@@ -7,6 +7,8 @@
 #   ./ops/ios_test.sh -g "notebook"               # grep: run tests matching pattern
 #   ./ops/ios_test.sh --file BooksBrowserTests.swift
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
+#   ./ops/ios_test.sh --launch-benchmark
+#   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
 #
 # Examples:
@@ -31,6 +33,8 @@ LIST_ONLY=0
 TEST_SCHEME="BooksBrowser"
 TEST_CACHE_ACTION=""
 JSON_MODE=0
+UI_LAUNCH_PROFILE="${KG_IOS_TEST_UI_LAUNCH_PROFILE:-}"
+LAUNCH_BENCHMARK=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +49,8 @@ while [[ $# -gt 0 ]]; do
     --cache-status) TEST_CACHE_ACTION="status"; shift ;;
     --clean-cache) TEST_CACHE_ACTION="clean"; shift ;;
     --json) JSON_MODE=1; shift ;;
+    --ui-launch-profile) UI_LAUNCH_PROFILE="$2"; shift 2 ;;
+    --launch-benchmark) LAUNCH_BENCHMARK=1; shift ;;
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
@@ -165,6 +171,16 @@ if [[ "$TEST_SCOPE" == "all" && ( -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SP
   exit 1
 fi
 
+if [[ "$LAUNCH_BENCHMARK" -eq 1 && ( -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SPECIFIC_TESTS[@]} -gt 0 || "$TEST_SCOPE" == "all" ) ]]; then
+  echo "[ios_test] error: --launch-benchmark cannot be combined with --all-targets, --file, --grep, or specific tests" >&2
+  exit 1
+fi
+
+if [[ -n "$UI_LAUNCH_PROFILE" && "$TEST_SCOPE" == "unit" && "$LAUNCH_BENCHMARK" -eq 0 ]]; then
+  echo "[ios_test] error: --ui-launch-profile requires --ui or --all-targets" >&2
+  exit 1
+fi
+
 if [[ -n "$TEST_CACHE_ACTION" && ( "$LIST_ONLY" -eq 1 || -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SPECIFIC_TESTS[@]} -gt 0 ) ]]; then
   echo "[ios_test] error: cache actions cannot be combined with --list, --file, --grep, or specific tests" >&2
   exit 1
@@ -211,6 +227,21 @@ elif [[ "$TEST_SCOPE" != "all" ]]; then
   ONLY_FLAGS+=("-only-testing:$TEST_TARGET")
 fi
 
+if [[ "$TEST_SCOPE" == "ui" && -z "$UI_LAUNCH_PROFILE" ]]; then
+  UI_LAUNCH_PROFILE="ui-smoke"
+fi
+
+if [[ "$LAUNCH_BENCHMARK" -eq 1 ]]; then
+  TEST_SCOPE="ui"
+  TEST_TARGET="BooksBrowserUITests"
+  TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserUITests"
+  TEST_SCHEME="BooksBrowserUITests"
+  ONLY_FLAGS=("-only-testing:BooksBrowserUITests/BooksBrowserUITests/testLaunchPerformance")
+  if [[ -z "$UI_LAUNCH_PROFILE" ]]; then
+    UI_LAUNCH_PROFILE="standard"
+  fi
+fi
+
 # Dry-run: print resolved flags and exit before touching the lock / xcodebuild.
 if [[ "$LIST_ONLY" -eq 1 ]]; then
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
@@ -222,13 +253,14 @@ if [[ "$LIST_ONLY" -eq 1 ]]; then
 fi
 
 print_cache_payload() {
-  local action="$1" status="$2" cache_key="$3" derived_root="$4" xctestrun_path="$5" products_ready="$6" build_ms="${7:-0}" boot_ms="${8:-0}" error_key="${9:-}" error_message="${10:-}"
+  local action="$1" status="$2" cache_key="$3" derived_root="$4" xctestrun_path="$5" products_ready="$6" build_ms="${7:-0}" boot_ms="${8:-0}" error_key="${9:-}" error_message="${10:-}" build_log_path="${11:-}" result_bundle_path="${12:-}"
   jq -n \
     --arg schema "kg.ios.test-cache.v1" \
     --arg action "$action" \
     --arg status "$status" \
     --arg scope "$TEST_SCOPE" \
     --arg scheme "$TEST_SCHEME" \
+    --arg uiLaunchProfile "$UI_LAUNCH_PROFILE" \
     --arg destination "$DESTINATION" \
     --arg cacheKey "$cache_key" \
     --arg cacheRoot "$TEST_CACHE_ROOT" \
@@ -239,6 +271,8 @@ print_cache_payload() {
     --argjson bootMs "$boot_ms" \
     --arg errorKey "$error_key" \
     --arg errorMessage "$error_message" \
+    --arg buildLogPath "$build_log_path" \
+    --arg resultBundlePath "$result_bundle_path" \
     '{
       schema:$schema,
       generated_at:(now | strftime("%Y-%m-%dT%H:%M:%SZ")),
@@ -246,6 +280,7 @@ print_cache_payload() {
       status:$status,
       scope:$scope,
       scheme:$scheme,
+      uiLaunchProfile:(if $uiLaunchProfile == "" then null else $uiLaunchProfile end),
       destination:$destination,
       cache:{
         key:$cacheKey,
@@ -257,6 +292,10 @@ print_cache_payload() {
       timings:{
         bootMs:$bootMs,
         buildForTestingMs:$buildMs
+      },
+      artifacts:{
+        buildLog:(if $buildLogPath == "" then null else $buildLogPath end),
+        resultBundle:(if $resultBundlePath == "" then null else $resultBundlePath end)
       },
       errors:(if $errorKey == "" then [] else [{key:$errorKey,status:"error",error:$errorMessage}] end)
     }'
@@ -324,6 +363,14 @@ boot_simulator_if_needed() {
   echo "[ios_test] simulator ensure-booted device=\"$SIMULATOR_BOOT_SELECTOR\" bootMs=$BOOT_MS"
 }
 
+ui_test_launch_args_json() {
+  if [[ -n "$UI_LAUNCH_PROFILE" ]]; then
+    jq -nc --arg profile "$UI_LAUNCH_PROFILE" '["-appLaunchProfile", $profile]'
+  else
+    jq -nc '[]'
+  fi
+}
+
 handle_cache_action() {
   local cache_key derived_root xctestrun_path products_ready payload build_log build_result_dir build_result_bundle build_exit
   local action="$1"
@@ -360,12 +407,14 @@ handle_cache_action() {
           if ios_test_cached_products_ready "$xctestrun_path"; then
             products_ready=true
           fi
-          payload="$(print_cache_payload prepare prepared "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready" "$BUILD_FOR_TESTING_MS" "$BOOT_MS")"
+          payload="$(print_cache_payload prepare prepared "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready" "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "" "" "$build_log" "$build_result_bundle")"
         else
-          payload="$(print_cache_payload prepare error "$cache_key" "$derived_root" "$xctestrun_path" false "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "build-for-testing" "prepare-cache-failed")"
+          payload="$(print_cache_payload prepare error "$cache_key" "$derived_root" "$xctestrun_path" false "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "build-for-testing" "prepare-cache-failed" "$build_log" "$build_result_bundle")"
         fi
-        rm -f "$build_log"
-        rm -rf "$build_result_dir"
+        if [[ "$build_exit" -eq 0 ]]; then
+          rm -f "$build_log"
+          rm -rf "$build_result_dir"
+        fi
       fi
       ;;
     *)
@@ -382,6 +431,7 @@ handle_cache_action() {
       "[ios][test-cache] key=\(.cache.key) root=\(.cache.root) derivedDataRoot=\(.cache.derivedDataRoot)",
       "[ios][test-cache] productsReady=\(.cache.productsReady) xctestrun=\(.cache.xctestrunPath // "")",
       "[ios][test-cache] timings bootMs=\(.timings.bootMs) buildForTestingMs=\(.timings.buildForTestingMs)",
+      (if .artifacts.buildLog then "[ios][test-cache] buildLog=\(.artifacts.buildLog) resultBundle=\(.artifacts.resultBundle // "")" else empty end),
       (.errors[]? | "[ios][test-cache] error key=\(.key) status=\(.status) error=\(.error)")
     ' <<<"$payload"
   fi
@@ -413,7 +463,7 @@ last_test_event() {
 run_xcodebuild_test_once() {
   local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
   xcode_start_ms="$(ios_test_now_ms)"
-  xcodebuild test \
+  KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test \
     -project "$XCODEPROJ" \
     -scheme "$TEST_SCHEME" \
     -destination "$DESTINATION" \
@@ -426,7 +476,7 @@ run_xcodebuild_test_once() {
     >"$TMPOUT" 2>&1 &
   xcode_pid=$!
   CURRENT_XCODE_PID="$xcode_pid"
-  echo "[ios_test] xcodebuild pid=$xcode_pid log=$TMPOUT xcresult=$RESULT_BUNDLE"
+  echo "[ios_test] xcodebuild pid=$xcode_pid uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} log=$TMPOUT xcresult=$RESULT_BUNDLE"
 
   last_line=0
   heartbeat_at=$(date +%s)
@@ -465,7 +515,7 @@ run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
   local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
   xcode_start_ms="$(ios_test_now_ms)"
-  xcodebuild test-without-building \
+  KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$DESTINATION" \
     -parallel-testing-enabled NO \
@@ -477,7 +527,7 @@ run_xcodebuild_test_without_building_once() {
     >"$TMPOUT" 2>&1 &
   xcode_pid=$!
   CURRENT_XCODE_PID="$xcode_pid"
-  echo "[ios_test] xcodebuild pid=$xcode_pid mode=test-without-building xctestrun=$xctestrun_path log=$TMPOUT xcresult=$RESULT_BUNDLE"
+  echo "[ios_test] xcodebuild pid=$xcode_pid mode=test-without-building uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} xctestrun=$xctestrun_path log=$TMPOUT xcresult=$RESULT_BUNDLE"
 
   last_line=0
   heartbeat_at=$(date +%s)
@@ -532,6 +582,26 @@ rebuild_test_cache() {
   BUILD_FOR_TESTING_MS=$(( build_end_ms - build_start_ms ))
 }
 
+ensure_xctestrun_ready_or_fail() {
+  local xctestrun_path="$1"
+  if [[ -z "$xctestrun_path" || ! -f "$xctestrun_path" ]]; then
+    cat >"$TMPOUT" <<EOF
+[ios_test] error: build-for-testing completed but no .xctestrun artifact was found
+[ios_test] derivedDataRoot=$DERIVED_DATA_ROOT
+[ios_test] scheme=$TEST_SCHEME
+EOF
+    return 1
+  fi
+  if ! ios_test_cached_products_ready "$xctestrun_path"; then
+    cat >"$TMPOUT" <<EOF
+[ios_test] error: .xctestrun exists but cached test products are incomplete
+[ios_test] xctestrun=$xctestrun_path
+[ios_test] derivedDataRoot=$DERIVED_DATA_ROOT
+EOF
+    return 1
+  fi
+}
+
 if [[ -n "$TEST_CACHE_ACTION" ]]; then
   handle_cache_action "$TEST_CACHE_ACTION"
 fi
@@ -567,8 +637,12 @@ while :; do
       BUILD_EXIT=$?
       if [[ "$BUILD_EXIT" -eq 0 ]]; then
         XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
-        run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
-        EXIT_CODE=$?
+        if ensure_xctestrun_ready_or_fail "$XCTESTRUN_PATH"; then
+          run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
+          EXIT_CODE=$?
+        else
+          EXIT_CODE=1
+        fi
       else
         cat "$BUILD_LOG" >"$TMPOUT"
         EXIT_CODE="$BUILD_EXIT"
@@ -585,9 +659,13 @@ while :; do
     BUILD_EXIT=$?
     if [[ "$BUILD_EXIT" -eq 0 ]]; then
       XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
-      run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
-      EXIT_CODE=$?
-      CACHE_STATUS="prepared"
+      if ensure_xctestrun_ready_or_fail "$XCTESTRUN_PATH"; then
+        run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
+        EXIT_CODE=$?
+        CACHE_STATUS="prepared"
+      else
+        EXIT_CODE=1
+      fi
     else
       cat "$BUILD_LOG" >"$TMPOUT"
       EXIT_CODE="$BUILD_EXIT"
@@ -656,27 +734,33 @@ count_executed_tests_xcresult() {
 }
 
 read_timing_breakdown_xcresult() {
-  local diag_json body_ms session_ms
+  local diag_json body_ms session_ms app_launch_avg_ms app_launch_samples
   [[ -n "$RESULT_BUNDLE" && -d "$RESULT_BUNDLE" ]] || return 1
   diag_json="$("$SCRIPT_DIR/ios_diagnostics.py" --kind test --xcresult "$RESULT_BUNDLE" --json 2>/dev/null)" || return 1
   body_ms="$(jq -r '.timings.testBodyMs // empty' <<<"$diag_json" 2>/dev/null)" || return 1
   session_ms="$(jq -r '.timings.xcresultSessionMs // empty' <<<"$diag_json" 2>/dev/null)" || return 1
-  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ ]] || return 1
-  echo "$body_ms $session_ms"
+  app_launch_avg_ms="$(jq -r '.performanceMetrics.appLaunch.averageMs // 0' <<<"$diag_json" 2>/dev/null)" || return 1
+  app_launch_samples="$(jq -r '.performanceMetrics.appLaunch.samples // 0' <<<"$diag_json" 2>/dev/null)" || return 1
+  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ && "$app_launch_avg_ms" =~ ^[0-9]+$ && "$app_launch_samples" =~ ^[0-9]+$ ]] || return 1
+  echo "$body_ms $session_ms $app_launch_avg_ms $app_launch_samples"
 }
 
 populate_timing_breakdown() {
-  local breakdown body_ms session_ms
+  local breakdown body_ms session_ms app_launch_avg_ms app_launch_samples
   TEST_BODY_MS=0
   XCRESULT_SESSION_MS=0
   XCRESULT_HARNESS_OVERHEAD_MS=0
   INVOCATION_OVERHEAD_MS=0
+  APP_LAUNCH_AVERAGE_MS=0
+  APP_LAUNCH_SAMPLES=0
   breakdown="$(read_timing_breakdown_xcresult || true)"
   [[ -n "$breakdown" ]] || return 0
-  read -r body_ms session_ms <<<"$breakdown"
-  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ ]] || return 0
+  read -r body_ms session_ms app_launch_avg_ms app_launch_samples <<<"$breakdown"
+  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ && "$app_launch_avg_ms" =~ ^[0-9]+$ && "$app_launch_samples" =~ ^[0-9]+$ ]] || return 0
   TEST_BODY_MS="$body_ms"
   XCRESULT_SESSION_MS="$session_ms"
+  APP_LAUNCH_AVERAGE_MS="$app_launch_avg_ms"
+  APP_LAUNCH_SAMPLES="$app_launch_samples"
   XCRESULT_HARNESS_OVERHEAD_MS=$(( XCRESULT_SESSION_MS - TEST_BODY_MS ))
   if (( XCRESULT_HARNESS_OVERHEAD_MS < 0 )); then
     XCRESULT_HARNESS_OVERHEAD_MS=0
@@ -688,7 +772,7 @@ populate_timing_breakdown() {
 }
 
 print_timing_summary() {
-  echo "[ios_test] timings cacheStatus=$CACHE_STATUS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  echo "[ios_test] timings cacheStatus=$CACHE_STATUS uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS appLaunchAverageMs=$APP_LAUNCH_AVERAGE_MS appLaunchSamples=$APP_LAUNCH_SAMPLES invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
 }
 
 # Machine-readable verdict file — survives even when stdout/stderr is piped
@@ -705,6 +789,7 @@ write_json_verdict() {
     --arg exit "$exit_code" \
     --arg reason "$reason" \
     --arg caller "$CALLER" \
+    --arg uiLaunchProfile "$UI_LAUNCH_PROFILE" \
     --arg elapsed "${ELAPSED}s" \
     --arg executed "$executed" \
     --arg log "$TMPOUT" \
@@ -716,6 +801,8 @@ write_json_verdict() {
     --argjson testBodyMs "$TEST_BODY_MS" \
     --argjson xcresultSessionMs "$XCRESULT_SESSION_MS" \
     --argjson xcresultHarnessOverheadMs "$XCRESULT_HARNESS_OVERHEAD_MS" \
+    --argjson appLaunchAverageMs "$APP_LAUNCH_AVERAGE_MS" \
+    --argjson appLaunchSamples "$APP_LAUNCH_SAMPLES" \
     --argjson invocationOverheadMs "$INVOCATION_OVERHEAD_MS" \
     --argjson totalMs "$TOTAL_MS" \
     --arg cacheStatus "$CACHE_STATUS" \
@@ -727,6 +814,9 @@ write_json_verdict() {
       exit:$exit,
       reason:(if $reason == "" then null else $reason end),
       caller:$caller,
+      options:{
+        uiLaunchProfile:(if $uiLaunchProfile == "" then null else $uiLaunchProfile end)
+      },
       elapsed:$elapsed,
       executed:(if $executed == "" then null else $executed end),
       timings:{
@@ -737,6 +827,8 @@ write_json_verdict() {
         testBodyMs:$testBodyMs,
         xcresultSessionMs:$xcresultSessionMs,
         xcresultHarnessOverheadMs:$xcresultHarnessOverheadMs,
+        appLaunchAverageMs:$appLaunchAverageMs,
+        appLaunchSamples:$appLaunchSamples,
         invocationOverheadMs:$invocationOverheadMs,
         totalMs:$totalMs
       },

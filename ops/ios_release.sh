@@ -27,11 +27,19 @@ DO_UPLOAD=0
 TIMEOUT=600
 POLL_INTERVAL=3
 LOCK_FILE="/tmp/kg-ios-build.lock"  # 與 ios_build.sh 共用
+VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_archive_verdict"
+VERDICT_JSON_FILE="$VERDICT_FILE.json"
+LOCK_WAIT_MS=0
+ARCHIVE_MS=0
+EXPORT_MS=0
+UPLOAD_MS=0
+TOTAL_MS=0
 
 # 只印開頭連續註解區（停在第一個非 # 行）作為 help。
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
 # 取值型選項守衛：$2 缺失/為空/是另一個 flag 時給友善訊息，而非 set -u 的 unbound variable。
 need_val() { [[ -n "${2:-}" && "${2:-}" != -* ]] || { echo "✗ $1 需要一個值（不可為空或接另一個選項）" >&2; exit 1; }; }
+now_ms() { perl -MTime::HiRes=time -e 'printf("%.0f\n", time()*1000)'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -67,6 +75,72 @@ asc() {  # codemagic CLI wrapper（uvx，免 fastlane/ruby）
     --issuer-id "$ISSUER_ID" --key-id "$KEY_ID"
 }
 
+write_json_verdict() {
+  local status="$1" exit_code="$2" archive_status="$3" export_status="$4" upload_status="$5"
+  jq -nc \
+    --arg schema "kg.ios.archive.v1" \
+    --arg status "$status" \
+    --arg exit "$exit_code" \
+    --arg caller "$CALLER" \
+    --arg keyId "$KEY_ID" \
+    --arg archivePath "$ARCHIVE" \
+    --arg archiveLog "$ARCHIVE_LOG" \
+    --arg archiveXcresult "$RESULT_BUNDLE" \
+    --arg archiveStatus "$archive_status" \
+    --arg archiveElapsed "${ARCHIVE_ELAPSED:-}" \
+    --arg exportDir "$EXPORT_DIR" \
+    --arg ipa "${IPA:-}" \
+    --arg exportStatus "$export_status" \
+    --arg uploadStatus "$upload_status" \
+    --argjson uploadRequested "$DO_UPLOAD" \
+    --argjson lockWaitMs "$LOCK_WAIT_MS" \
+    --argjson archiveMs "$ARCHIVE_MS" \
+    --argjson exportMs "$EXPORT_MS" \
+    --argjson uploadMs "$UPLOAD_MS" \
+    --argjson totalMs "$TOTAL_MS" \
+    '{
+      schema:$schema,
+      status:$status,
+      exit:$exit,
+      caller:$caller,
+      options:{
+        keyId:$keyId,
+        uploadRequested:($uploadRequested == 1)
+      },
+      archive:{
+        status:$archiveStatus,
+        elapsed:(if $archiveElapsed == "" then null else ($archiveElapsed + "s") end),
+        path:(if $archivePath == "" then null else $archivePath end),
+        log:(if $archiveLog == "" then null else $archiveLog end),
+        xcresult:(if $archiveXcresult == "" then null else $archiveXcresult end)
+      },
+      export:{
+        status:$exportStatus,
+        directory:(if $exportDir == "" then null else $exportDir end),
+        ipa:(if $ipa == "" then null else $ipa end)
+      },
+      upload:{
+        status:$uploadStatus,
+        requested:($uploadRequested == 1),
+        completed:($uploadStatus == "ok")
+      },
+      timings:{
+        lockWaitMs:$lockWaitMs,
+        archiveMs:$archiveMs,
+        exportMs:$exportMs,
+        uploadMs:$uploadMs,
+        totalMs:$totalMs
+      },
+      artifacts:{
+        log:(if $archiveLog == "" then null else $archiveLog end),
+        xcresult:(if $archiveXcresult == "" then null else $archiveXcresult end),
+        archive:(if $archivePath == "" then null else $archivePath end),
+        exportDirectory:(if $exportDir == "" then null else $exportDir end),
+        ipa:(if $ipa == "" then null else $ipa end)
+      }
+    }' >"$VERDICT_JSON_FILE" || true
+}
+
 # ---- build number guard（僅上傳前；archive 不受限但傳會被 Apple 拒重）----
 guard_build_number() {
   local local_build latest_tf
@@ -87,6 +161,7 @@ guard_build_number() {
 # ---- lock acquire（shlock spin-wait，對齊 ios_build.sh）----
 CALLER="${WORKTREE_BRANCH:-$(git -C "$ROOT" branch --show-current 2>/dev/null || echo 'unknown')}"
 cleanup() { rm -f "$LOCK_FILE"; }
+START_TOTAL_MS="$(now_ms)"
 echo "[release] caller=$CALLER waiting for lock..."
 WAITED=0
 while ! shlock -f "$LOCK_FILE" -p $$; do
@@ -106,6 +181,7 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
   WAITED=$(( WAITED + POLL_INTERVAL ))
 done
 trap cleanup EXIT
+LOCK_WAIT_MS="$(( $(now_ms) - START_TOTAL_MS ))"
 echo "[release] lock acquired by $CALLER (pid=$$)"
 
 [[ $DO_UPLOAD -eq 1 ]] && guard_build_number
@@ -115,6 +191,7 @@ echo "[release] ▶ archive ($CONFIGURATION) — key=$KEY_ID …"
 rm -rf "$ARCHIVE"
 mkdir -p "$BUILD_DIR"
 START_ARCHIVE=$(date +%s)
+START_ARCHIVE_MS="$(now_ms)"
 ARCHIVE_LOG="$(mktemp "${TMPDIR:-/tmp}/kg_ios_release_archive.XXXXXX").log"
 RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_release_result.XXXXXX")"
 RESULT_BUNDLE="$RESULT_DIR/Archive.xcresult"
@@ -129,6 +206,7 @@ xcodebuild archive \
 ARCHIVE_EXIT=$?
 set -e
 ARCHIVE_ELAPSED=$(( $(date +%s) - START_ARCHIVE ))
+ARCHIVE_MS="$(( $(now_ms) - START_ARCHIVE_MS ))"
 DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
 if [[ -x "$DIAGNOSTICS" ]]; then
   diag_result="fail"; [[ $ARCHIVE_EXIT -eq 0 ]] && diag_result="pass"
@@ -137,30 +215,46 @@ else
   echo "[release] diagnostics unavailable: $DIAGNOSTICS" >&2
 fi
 if [[ $ARCHIVE_EXIT -ne 0 ]]; then
+  echo "RESULT=fail EXIT=$ARCHIVE_EXIT caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  write_json_verdict "fail" "$ARCHIVE_EXIT" "fail" "skipped" "skipped"
   echo "[release] ✗ archive failed (exit $ARCHIVE_EXIT, ${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" >&2
   exit "$ARCHIVE_EXIT"
 fi
+echo "RESULT=ok EXIT=0 caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
 echo "[release] ✓ archive succeeded (${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE"
 
 # ---- export ipa ----
 # manual signing（ExportOptions 指定 Apple Distribution + "KG App Store" profile，均已本機就緒）。
 # 不帶 -allowProvisioningUpdates／auth：避免觸發 cloud-signing（現用 App Manager key 權限不足）。
 echo "[release] ▶ export ipa …"
+START_EXPORT_MS="$(now_ms)"
 rm -rf "$EXPORT_DIR"
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$EXPORT_OPTS"
 shopt -s nullglob; ipas=("$EXPORT_DIR"/*.ipa); shopt -u nullglob
 IPA="${ipas[0]:-}"
-[[ -n "$IPA" ]] || { echo "✗ export 未產出 .ipa" >&2; exit 1; }
+EXPORT_MS="$(( $(now_ms) - START_EXPORT_MS ))"
+if [[ -z "$IPA" ]]; then
+  TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
+  write_json_verdict "fail" "1" "ok" "fail" "skipped"
+  echo "✗ export 未產出 .ipa" >&2
+  exit 1
+fi
 echo "[release] ✓ ipa: $IPA"
 
 # ---- upload（對外副作用，需 --upload 明示）----
 if [[ $DO_UPLOAD -eq 1 ]]; then
   echo "[release] ▶ upload → App Store Connect (TestFlight) …"
+  START_UPLOAD_MS="$(now_ms)"
   xcrun altool --upload-app -f "$IPA" --type ios \
     --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+  UPLOAD_MS="$(( $(now_ms) - START_UPLOAD_MS ))"
+  TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
+  write_json_verdict "ok" "0" "ok" "ok" "ok"
   echo "[release] ✓ uploaded — 數分鐘後於 TestFlight 顯示，processing 完才可送審"
 else
+  TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
+  write_json_verdict "ok" "0" "ok" "ok" "skipped"
   echo "[release] 完成 archive+export（未上傳）。要上 TestFlight 加 --upload。"
 fi

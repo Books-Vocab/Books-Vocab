@@ -14,6 +14,7 @@ import GoogleSignIn
 
 @main
 struct BooksBrowserApp: App {
+    private let runtimeArguments = ProcessInfo.processInfo.arguments
     @StateObject private var appLanguage = AppLanguageStore.shared
     @StateObject private var appearanceStore = AppAppearanceStore.shared
     #if targetEnvironment(macCatalyst)
@@ -40,13 +41,17 @@ struct BooksBrowserApp: App {
 
     init() {
         // Initialize crash reporting first so any subsequent startup failure is captured.
-        AppCrashReporting.bootstrap()
+        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
+            AppCrashReporting.bootstrap()
+        }
 
         #if os(iOS)
         AppFonts.ensureSerifCJKAvailable()
         AppFonts.configureGlobalAppearance()
         #endif
-        NSUbiquitousKeyValueStore.default.synchronize()
+        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
+            NSUbiquitousKeyValueStore.default.synchronize()
+        }
         #if os(iOS)
         bookshelfImportService = BookshelfImportService(readiumService: readiumService)
         bookMetadataRepairService = BookMetadataRepairService(
@@ -60,12 +65,16 @@ struct BooksBrowserApp: App {
         _startupFailure = State(initialValue: outcome.failure)
 
         // Always recover orphan book files (idempotent — skips files with existing records)
-        AppOrphanBookRecovery.run(container: outcome.container)
+        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
+            AppOrphanBookRecovery.run(container: outcome.container)
+        }
 
         #if os(iOS)
         // PodcastDownloadManager must hold a ModelContainer ref before any
         // background URLSession delegate callback can persist localAudioPath.
-        PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
+        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
+            PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
+        }
         #endif
     }
 
@@ -164,10 +173,12 @@ struct BooksBrowserApp: App {
                     GIDSignIn.sharedInstance.handle(url)
                 }
                 .task {
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     iCloudDownloadManager.startMonitoring()
                 }
                 #if os(iOS)
                 .task {
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     // UI 掛載後從本機可讀 EPUB 重抽 metadata，修復被 UUID fallback
                     // 污染的書（title=UUID、cover=0）。不放進 init / 同步啟動路徑，
                     // 避免 Readium parsing 拖慢冷啟動。service 內建 in-flight guard +
@@ -176,9 +187,11 @@ struct BooksBrowserApp: App {
                 }
                 #endif
                 .task {
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     try? Tips.configure()
                 }
                 .task {
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     if !authManager.isLoggedIn {
                         let actor = BackgroundSyncActor(modelContainer: modelContainer)
                         do {
@@ -197,6 +210,7 @@ struct BooksBrowserApp: App {
                     await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
                 }
                 .onChange(of: authManager.isLoggedIn) { wasLoggedIn, isNowLoggedIn in
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     // Tag Sentry scope with user id (clear on logout) — runs on every transition.
                     AppCrashReporting.setUser(id: isNowLoggedIn ? authManager.userId : nil)
                     // Trigger sync immediately after login (scenePhase won't re-fire .active)
@@ -214,6 +228,7 @@ struct BooksBrowserApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
+                    guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
                     switch newPhase {
                     case .active:
                         AppAnalytics.track(.appSessionStarted)
