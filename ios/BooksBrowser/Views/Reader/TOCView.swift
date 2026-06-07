@@ -143,7 +143,7 @@ struct TOCView: View {
     }
 }
 
-private struct TOCViewPreviewScene: View {
+struct TOCViewPreviewScene: View {
     @Environment(\.appTheme) private var appTheme
     let loadState: LoadState
     let tocTitles: [String]

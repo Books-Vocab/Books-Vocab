@@ -45,6 +45,18 @@ struct CatalogScene: View {
         static let entries: [ManifestEntry] = [
             .init(id: "design_tokens", categories: ["Design Tokens"], register: TokenSheetScenarios.register),
             .init(
+                id: "reader",
+                categories: [
+                    "Reader · Translation",
+                    "Reader · TOC",
+                    "Reader · Settings",
+                    "Reader · Quota",
+                    "Reader · Selection Tile",
+                    "Reader · Step Control",
+                ],
+                register: ReaderScenarios.register
+            ),
+            .init(
                 id: "notebook_detail",
                 categories: ["Notebook Detail · Row", "Notebook Detail · CTA Pill"],
                 register: NotebookDetailScenarios.register
