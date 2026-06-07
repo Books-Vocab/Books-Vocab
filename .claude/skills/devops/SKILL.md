@@ -287,7 +287,7 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 - podcast 運維/觀測(workspace 狀態瀑布、failed 根因、逐集 gate、cost、`logs`、workspace↔S3 reconcile)→ **headless `ops/podcast_ops.py`**(免起 dashboard;`status` exit 0/1/2、不存在 dir exit 3),用法見 `docs/sop/podcast_pipeline.md` §5「Headless 觀測 CLI」。
 - podcast 生成管線(EPUB→TTS→字幕 15 階段)→ 觸發 `podcast` skill。
-- **iOS / App Store Connect 發版**(archive / 文案 metadata / TestFlight / 送審 / 被拒處理)不屬本 skill → 見 `docs/sop/ios.md §發版` + `ops/ios_release.sh`(出 build)+ `ops/asc.sh`(查詢/改文案)。
+- **iOS / App Store Connect 發版**(archive / 文案 metadata / TestFlight / 送審 / 被拒處理)不屬本 skill → 見 `docs/sop/ios.md §發版` + `ops/ios_release.sh`(出 build)+ `ops/asc.sh`(查詢/改文案逐欄)+ `ops/asc_text_bundle.py`(整包文案:`dump -o asc.json` 拉全部文案/審查/訂閱/截圖摘要,編輯後 `apply asc.json [--yes]` dry-run diff→PATCH 低風險文字欄位;不送審/不改價格/不傳截圖)。
 
 ## Deep Reference
 
