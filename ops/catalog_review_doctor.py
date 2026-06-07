@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from catalog_review_actions import build_action_bundle
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -166,26 +167,6 @@ def build_doctor_payload(
         **core_playbooks,
         "blockingErrors": blocking_errors,
     }
-
-
-def _classify_action_command(command: str) -> dict:
-    if " verify" in command:
-        kind = "verify"
-    elif " repair" in command or (" apply " in command and "--dry-run" not in command):
-        kind = "mutate"
-    elif " apply " in command and "--dry-run" in command:
-        kind = "narrow"
-    elif " list " in command:
-        kind = "inspect"
-    else:
-        kind = "inspect"
-    return {
-        "kind": kind,
-        "command": command,
-        "dryRunSafe": kind in {"inspect", "narrow", "verify"},
-    }
-
-
 def project_doctor_view(payload: dict, *, mode: str) -> dict:
     if mode == "overview":
         return payload
@@ -276,12 +257,8 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             )
     else:
         raise ValueError(f"Unsupported doctor mode: {mode}")
-    if health["recommendedCommand"]:
-        primary_action = _classify_action_command(health["recommendedCommand"])
-        primary_action["role"] = "primary"
-        health["actionCommands"].append(primary_action)
-    if health["followupCommand"]:
-        followup_action = _classify_action_command(health["followupCommand"])
-        followup_action["role"] = "followup"
-        health["actionCommands"].append(followup_action)
+    health["actionCommands"] = build_action_bundle(
+        primary_command=health["recommendedCommand"],
+        followup_command=health["followupCommand"],
+    )
     return view
