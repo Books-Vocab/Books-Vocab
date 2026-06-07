@@ -109,8 +109,21 @@ ios_test_derived_data_root() {
 
 ios_test_find_xctestrun() {
   local derived_data_root="$1"
-  [[ -d "$derived_data_root/Build/Products" ]] || return 1
-  rg --files "$derived_data_root/Build/Products" -g '*.xctestrun' 2>/dev/null | head -1
+  local candidate=""
+  [[ -d "$derived_data_root" ]] || return 1
+  while IFS= read -r candidate; do
+    [[ "$candidate" == *.scoped.xctestrun ]] && continue
+    [[ -f "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(find "$derived_data_root" -type f -name '*.xctestrun' | sort)
+  return 1
+}
+
+ios_test_list_xctestrun_artifacts() {
+  local derived_data_root="$1"
+  [[ -d "$derived_data_root" ]] || return 0
+  find "$derived_data_root" -type f -name '*.xctestrun' | sort
 }
 
 ios_test_cached_products_ready() {
@@ -585,11 +598,15 @@ rebuild_test_cache() {
 ensure_xctestrun_ready_or_fail() {
   local xctestrun_path="$1"
   if [[ -z "$xctestrun_path" || ! -f "$xctestrun_path" ]]; then
+    local discovered_xctestruns
+    discovered_xctestruns="$(ios_test_list_xctestrun_artifacts "$DERIVED_DATA_ROOT" | sed 's#^#[ios_test] discovered=#')"
     cat >"$TMPOUT" <<EOF
 [ios_test] error: build-for-testing completed but no .xctestrun artifact was found
 [ios_test] derivedDataRoot=$DERIVED_DATA_ROOT
 [ios_test] scheme=$TEST_SCHEME
+[ios_test] destination=$DESTINATION
 EOF
+    [[ -n "$discovered_xctestruns" ]] && printf '%s\n' "$discovered_xctestruns" >>"$TMPOUT"
     return 1
   fi
   if ! ios_test_cached_products_ready "$xctestrun_path"; then

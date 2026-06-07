@@ -7,6 +7,7 @@ struct ImageReport: Encodable {
     let path: String
     let pixelWidth: Int
     let pixelHeight: Int
+    let sampledPixelCount: Int
     let alphaMin: Int
     let alphaMax: Int
     let luminanceMin: Int
@@ -20,45 +21,75 @@ private enum InspectError: Error {
     case unreadableBitmap(String)
 }
 
-private func clampByte(_ value: CGFloat) -> Int {
-    Int(max(0, min(255, lround(Double(value * 255.0)))))
+private func sampleCoordinates(length: Int, targetBuckets: Int = 64) -> [Int] {
+    guard length > 0 else { return [] }
+    let step = max(1, length / targetBuckets)
+    var coordinates = Array(stride(from: 0, to: length, by: step))
+    if coordinates.last != length - 1 {
+        coordinates.append(length - 1)
+    }
+    return coordinates
 }
 
 private func report(for path: String) throws -> ImageReport {
     guard
         let image = NSImage(contentsOfFile: path),
-        let tiff = image.tiffRepresentation,
-        let bitmap = NSBitmapImageRep(data: tiff)
+        let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     else {
         throw InspectError.unreadableImage(path)
     }
 
-    let width = bitmap.pixelsWide
-    let height = bitmap.pixelsHigh
+    let width = cgImage.width
+    let height = cgImage.height
     guard width > 0, height > 0 else {
         throw InspectError.unreadableBitmap(path)
     }
+
+    let bytesPerPixel = 4
+    let bitsPerComponent = 8
+    let bytesPerRow = width * bytesPerPixel
+    guard
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+        let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: bitsPerComponent,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ),
+        let data = context.data
+    else {
+        throw InspectError.unreadableBitmap(path)
+    }
+
+    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+    context.draw(cgImage, in: rect)
+    let pixels = data.assumingMemoryBound(to: UInt8.self)
 
     var alphaMin = 255
     var alphaMax = 0
     var luminanceMin = 255
     var luminanceMax = 0
+    let sampleXs = sampleCoordinates(length: width)
+    let sampleYs = sampleCoordinates(length: height)
+    var sampledPixelCount = 0
 
-    for y in 0 ..< height {
-        for x in 0 ..< width {
-            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
-                throw InspectError.unreadableBitmap(path)
-            }
-            let alpha = clampByte(color.alphaComponent)
-            let red = clampByte(color.redComponent)
-            let green = clampByte(color.greenComponent)
-            let blue = clampByte(color.blueComponent)
+    for y in sampleYs {
+        for x in sampleXs {
+            let offset = (y * bytesPerRow) + (x * bytesPerPixel)
+            let red = Int(pixels[offset])
+            let green = Int(pixels[offset + 1])
+            let blue = Int(pixels[offset + 2])
+            let alpha = Int(pixels[offset + 3])
             let luminance = Int(round(0.2126 * Double(red) + 0.7152 * Double(green) + 0.0722 * Double(blue)))
 
             alphaMin = min(alphaMin, alpha)
             alphaMax = max(alphaMax, alpha)
             luminanceMin = min(luminanceMin, luminance)
             luminanceMax = max(luminanceMax, luminance)
+            sampledPixelCount += 1
         }
     }
 
@@ -66,6 +97,7 @@ private func report(for path: String) throws -> ImageReport {
         path: path,
         pixelWidth: width,
         pixelHeight: height,
+        sampledPixelCount: sampledPixelCount,
         alphaMin: alphaMin,
         alphaMax: alphaMax,
         luminanceMin: luminanceMin,
