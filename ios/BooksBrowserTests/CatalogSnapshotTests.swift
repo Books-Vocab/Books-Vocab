@@ -15,20 +15,83 @@ import Playbook
 import PlaybookSnapshot
 @testable import BooksBrowser
 
+#if KG_RUN_CATALOG_SNAPSHOTS
+private let catalogSnapshotCompileFlagEnabled = true
+#else
+private let catalogSnapshotCompileFlagEnabled = false
+#endif
+
 @Suite struct CatalogSnapshotTests {
+    private struct ScopeFile: Decodable {
+        let groups: [String]
+        let scenarios: [String]
+    }
+
+    private static func parseList(_ rawValue: String) -> [String] {
+        return rawValue
+            .split(whereSeparator: { $0 == "," || $0 == "\n" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func parseListEnv(_ key: String) -> [String] {
+        parseList(ProcessInfo.processInfo.environment[key] ?? "")
+    }
+
+    private static func parseListArguments(_ arguments: [String], flag: String) -> [String] {
+        guard let flagIndex = arguments.firstIndex(of: flag) else { return [] }
+        let valueIndex = arguments.index(after: flagIndex)
+        guard arguments.indices.contains(valueIndex) else { return [] }
+        return parseList(arguments[valueIndex])
+    }
+
+    private static func parseListArgument(_ flag: String) -> [String] {
+        parseListArguments(ProcessInfo.processInfo.arguments, flag: flag)
+    }
+
+    private static func parseScopeFile() -> ScopeFile? {
+        let url = URL(fileURLWithPath: "/tmp/kg-catalog-scope.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ScopeFile.self, from: data)
+    }
+
+    private static func scopedScenarioCount(in playbook: Playbook) -> Int {
+        playbook.stores.reduce(into: 0) { $0 += $1.scenarios.count }
+    }
+
     /// Render every scenario registered by `CatalogScene.buildPlaybook()` to PNG
     /// at `<NSTemporaryDirectory>/kg-catalog-snapshots/<device>/<category>/<scenario>.png`.
     ///
     /// 本 test 不對結果做 assertion;它的職責是「生圖」,給 Claude / CLI 後續比對。
     /// 失敗條件只剩 PlaybookSnapshot 內部 timeout 或寫檔錯誤,會以 throw 冒出。
     @Test @MainActor func generateAllScenarioPNGs() throws {
-        guard ProcessInfo.processInfo.environment["KG_RUN_CATALOG_SNAPSHOTS"] == "1" else {
-            print("KG catalog snapshot export skipped; set KG_RUN_CATALOG_SNAPSHOTS=1 to render PNGs.")
+        guard
+            catalogSnapshotCompileFlagEnabled
+                || ProcessInfo.processInfo.environment["KG_RUN_CATALOG_SNAPSHOTS"] == "1"
+        else {
+            print("KG catalog snapshot export skipped; enable compile flag KG_RUN_CATALOG_SNAPSHOTS or set env KG_RUN_CATALOG_SNAPSHOTS=1 to render PNGs.")
             return
         }
 
         let outputDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-catalog-snapshots", isDirectory: true)
+        let fileScope = Self.parseScopeFile()
+        let groups = Self.parseListEnv("KG_CATALOG_GROUPS")
+            .ifEmpty(Self.parseListArgument("-KG_CATALOG_GROUPS"))
+            .ifEmpty(fileScope?.groups ?? [])
+        let scenarios = Self.parseListEnv("KG_CATALOG_SCENARIOS")
+            .ifEmpty(Self.parseListArgument("-KG_CATALOG_SCENARIOS"))
+            .ifEmpty(fileScope?.scenarios ?? [])
+        let filter = CatalogScene.filter(groups: groups, scenarios: scenarios)
+        let playbook = CatalogScene.buildPlaybook(filter: filter)
+        let resolvedCategories = playbook.stores.map { $0.category.rawValue }.sorted()
+        let resolvedScenarioCount = Self.scopedScenarioCount(in: playbook)
+        let scopeSummary = [
+            groups.isEmpty ? nil : "groups=\(groups.joined(separator: ", "))",
+            scenarios.isEmpty ? nil : "scenarios=\(scenarios.joined(separator: ", "))",
+        ]
+        .compactMap { $0 }
+        .joined(separator: " | ")
 
         let snapshot = Snapshot(
             directory: outputDirectory,
@@ -40,9 +103,41 @@ import PlaybookSnapshot
             ]
         )
 
-        try snapshot.run(with: CatalogScene.buildPlaybook())
+        try snapshot.run(with: playbook)
 
         print("KG catalog snapshots written to: \(outputDirectory.path)")
+        print(
+            """
+            KG catalog snapshot debug:
+             - env.groups: \(ProcessInfo.processInfo.environment["KG_CATALOG_GROUPS"] ?? "<empty>")
+             - env.scenarios: \(ProcessInfo.processInfo.environment["KG_CATALOG_SCENARIOS"] ?? "<empty>")
+             - scopeFile.present: \(fileScope != nil)
+             - resolved.categories: \(resolvedCategories.joined(separator: " | "))
+             - resolved.scenarioCount: \(resolvedScenarioCount)
+            """
+        )
+        if !scopeSummary.isEmpty {
+            print("KG catalog snapshot scope: \(scopeSummary)")
+        }
+    }
+
+    @Test func parseListArgumentsReadsLaunchArgumentPairs() {
+        let groups = Self.parseListArguments(
+            ["xctest", "-KG_CATALOG_GROUPS", "Bookshelf, Today Review"],
+            flag: "-KG_CATALOG_GROUPS"
+        )
+        let scenarios = Self.parseListArguments(
+            ["xctest", "-KG_CATALOG_SCENARIOS", "Today Review/Front\nBookshelf/With Books"],
+            flag: "-KG_CATALOG_SCENARIOS"
+        )
+        #expect(groups == ["Bookshelf", "Today Review"])
+        #expect(scenarios == ["Today Review/Front", "Bookshelf/With Books"])
+    }
+}
+
+private extension [String] {
+    func ifEmpty(_ fallback: [String]) -> [String] {
+        isEmpty ? fallback : self
     }
 }
 #endif
