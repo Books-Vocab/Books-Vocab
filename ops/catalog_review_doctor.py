@@ -168,6 +168,24 @@ def build_doctor_payload(
     }
 
 
+def _classify_action_command(command: str) -> dict:
+    if " verify" in command:
+        kind = "verify"
+    elif " repair" in command or (" apply " in command and "--dry-run" not in command):
+        kind = "mutate"
+    elif " apply " in command and "--dry-run" in command:
+        kind = "narrow"
+    elif " list " in command:
+        kind = "inspect"
+    else:
+        kind = "inspect"
+    return {
+        "kind": kind,
+        "command": command,
+        "dryRunSafe": kind in {"inspect", "narrow", "verify"},
+    }
+
+
 def project_doctor_view(payload: dict, *, mode: str) -> dict:
     if mode == "overview":
         return payload
@@ -259,15 +277,11 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
     else:
         raise ValueError(f"Unsupported doctor mode: {mode}")
     if health["recommendedCommand"]:
-        health["actionCommands"].append({
-            "role": "primary",
-            "command": health["recommendedCommand"],
-            "dryRunSafe": "--dry-run" in health["recommendedCommand"] or " list " in health["recommendedCommand"],
-        })
+        primary_action = _classify_action_command(health["recommendedCommand"])
+        primary_action["role"] = "primary"
+        health["actionCommands"].append(primary_action)
     if health["followupCommand"]:
-        health["actionCommands"].append({
-            "role": "followup",
-            "command": health["followupCommand"],
-            "dryRunSafe": "--dry-run" in health["followupCommand"] or " list " in health["followupCommand"] or " verify" in health["followupCommand"],
-        })
+        followup_action = _classify_action_command(health["followupCommand"])
+        followup_action["role"] = "followup"
+        health["actionCommands"].append(followup_action)
     return view
