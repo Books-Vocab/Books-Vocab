@@ -9,7 +9,7 @@ import SwiftUI
 /// to mimic a loading detail block.
 enum ShimmerLineScenarios {
     static func register(in playbook: Playbook) {
-        playbook.addScenarios(of: "Word Detail") {
+        playbook.addScenarios(of: "Word Detail · Shimmer") {
             Scenario("Shimmer Line", layout: .compressed) {
                 AppThemeContainer {
                     ShimmerLine()
