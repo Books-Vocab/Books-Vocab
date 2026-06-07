@@ -412,6 +412,8 @@ def test_catalog_review_report_emits_next_actions_for_unmarked_work(tmp_path: Pa
     assert first["promise"] == "Read"
     assert first["kind"] in {"hero-unmarked", "top-unmarked-category"}
     assert first["command"].startswith("./ops/catalog_review_cli.py ")
+    assert first["commandAction"]["kind"] in {"inspect", "narrow"}
+    assert first["commandAction"]["intent"] in {"gather-evidence", "reduce-review-scope"}
 
 
 def test_catalog_review_verify_reports_ok_and_detects_drift(tmp_path: Path):
@@ -613,6 +615,7 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert payload["focusRecommendations"][0]["attentionScore"] > 0
     assert payload["focusRecommendations"][0]["recommendedActions"]
     assert payload["focusRecommendations"][0]["recommendedActions"][0]["promise"] == "Read"
+    assert payload["focusRecommendations"][0]["recommendedActions"][0]["commandAction"]["kind"] in {"inspect", "narrow"}
     assert payload["coreRecommendations"][0]["promise"] == "Read"
     assert payload["heroFirstCoreRecommendations"][0]["promise"] == "Read"
     assert payload["coverageFirstCoreRecommendations"][0]["promise"] == "Read"
