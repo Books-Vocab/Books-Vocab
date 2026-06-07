@@ -64,11 +64,17 @@ struct QuotaBarPreviewHarness: View {
     }
 }
 
-private struct MockQuotaStore: QuotaProviding {
+private final class MockQuotaStore: QuotaProviding {
     var fraction: Double
     var level: QuotaStore.Level
     var isExhausted: Bool { fraction <= 0 }
     var resetText: String { "Resets in 1h" }
+
+    init(fraction: Double, level: QuotaStore.Level) {
+        self.fraction = fraction
+        self.level = level
+    }
+
     func update(from response: HTTPURLResponse) {}
 }
 
