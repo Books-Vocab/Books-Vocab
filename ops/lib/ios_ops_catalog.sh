@@ -967,7 +967,7 @@ cmd_catalog_snapshots() {
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",
     "[ios][catalog] copy exitCode=\(.copy.exitCode) source=\(.copy.sourcePath // "") container=\(.copy.containerDataPath // "")",
-    (.errors[]? | "[ios][catalog] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
+    (.errors[]? | "[ios][catalog] \(if .status == "info" then "note" else "error" end) key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
   ' <<<"$payload"
   return "$rc"
 }
