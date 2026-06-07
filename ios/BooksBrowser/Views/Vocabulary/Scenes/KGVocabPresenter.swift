@@ -196,7 +196,7 @@ struct KGVocabPresenter: View {
 ///    避免 list 中每個 row 都訂閱 selection state 變動而觸發重繪。
 /// 2. 不在 row 內部掛 `.animateSpring(selectionState.isSelecting)`，500+ rows 時可省下 500+ 個 animation observer。
 ///    動畫由父層容器（`LazyVStack`）統一驅動。
-private struct KGVocabRow: View {
+struct KGVocabRow: View {
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 

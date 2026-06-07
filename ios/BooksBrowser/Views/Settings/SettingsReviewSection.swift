@@ -186,7 +186,7 @@ struct SettingsReviewSection: View {
         }
     }
 
-    private struct ParamRow: View {
+    struct ParamRow: View {
         @Environment(\.appSkin) private var appSkin
         let label: String
         let value: String

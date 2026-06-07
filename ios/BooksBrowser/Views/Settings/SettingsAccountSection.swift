@@ -254,12 +254,12 @@ struct SettingsProBadge: View {
 
 // MARK: - Private Helpers
 
-private enum SettingsSocialKind {
+enum SettingsSocialKind {
     case google
     case apple
 }
 
-private struct SettingsSocialBadge: View {
+struct SettingsSocialBadge: View {
     @Environment(\.appSkin) private var appSkin
     let kind: SettingsSocialKind
 
