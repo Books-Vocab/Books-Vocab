@@ -12,11 +12,13 @@ pytestmark = pytest.mark.usefixtures("isolate_pipeline_db")
 
 
 def test_pipeline_log_run_without_end_marked_running_until_timeout(tmp_path):
-    """A run that never calls end_run stays 'running'; on next process startup
-    (simulated via _reset → _get_conn re-open), it is reaped to 'interrupted'.
+    """A run that never calls end_run stays 'running'; the explicit startup
+    crash-recovery sweep (reap_orphaned_runs, wired into the API lifespan)
+    reaps it to 'interrupted'.
 
-    No wall-clock timeout exists today — the recovery mechanism is connection
-    re-init at startup, which acts as a crash-recovery sweep.
+    No wall-clock timeout exists today — recovery is the explicit startup
+    reap. (Reaping is decoupled from _get_conn so reads never mutate; see
+    test_pipeline_reaper_decoupling.)
     """
     pipeline_log.start_run("orphan_run", "u1", "nb1", "manual")
     pipeline_log.start_step("orphan_run", "Enrich")
@@ -27,9 +29,10 @@ def test_pipeline_log_run_without_end_marked_running_until_timeout(tmp_path):
     assert runs[0]["status"] == "running"
     assert runs[0]["ended_at"] is None
 
-    # Simulate a process restart: close & reopen the connection.
-    # _get_conn's bootstrap should sweep orphaned 'running' runs → 'interrupted'.
+    # Simulate a process restart: reopen the connection, then run the explicit
+    # startup sweep the lifespan performs.
     pipeline_log._reset()
+    pipeline_log.reap_orphaned_runs()
 
     runs_after = pipeline_log.get_runs("u1")
     assert len(runs_after) == 1
