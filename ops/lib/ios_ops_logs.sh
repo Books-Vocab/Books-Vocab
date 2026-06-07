@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# ios_ops_logs.sh — sourceable runtime log commands for ios_ops.sh.
+
+cmd_logs() {
+  local since="5m" predicate="$DEFAULT_LOG_PREDICATE" limit=200 limit_num json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --since) since="${2:?--since needs value}"; shift 2 ;;
+      --predicate) predicate="${2:?--predicate needs value}"; shift 2 ;;
+      --limit) limit="${2:?--limit needs value}"; shift 2 ;;
+      --json) json=1; shift ;;
+      -h|--help) echo "Usage: ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]"; return 0 ;;
+      *) echo "✗ unknown logs option: $1" >&2; return 1 ;;
+    esac
+  done
+  if [[ -z "$limit" || "$limit" == *[!0-9]* ]]; then
+    echo "✗ --limit must be a non-negative integer" >&2
+    return 1
+  fi
+  limit_num="$((10#$limit))"
+  if (( json )); then
+    cmd_logs_json "$since" "$predicate" "$limit_num"
+    return
+  fi
+  echo "[ios][logs] since=$since predicate=$predicate" >&2
+  cmd_logs_text "$since" "$predicate" "$limit_num"
+}
+
+run_log_show_compact() {
+  local since="$1" predicate="$2"
+  if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
+    echo "fixture log failure" >&2
+    return 42
+  fi
+  if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
+    cat <<'LOG'
+2026-06-07 12:00:00.000000+0800 BooksBrowser[123:456] [com.Max0228.BooksBrowser:sync] sync completed
+2026-06-07 12:00:01.000000+0800 BooksBrowser[123:456] RBSServiceErrorDomain ProcessAssertion noise
+2026-06-07 12:00:02.000000+0800 BooksBrowser[123:456] [com.Max0228.BooksBrowser:reader] reader opened
+LOG
+    return 0
+  fi
+  /usr/bin/log show --style compact --last "$since" --predicate "$predicate"
+}
+
+cmd_logs_text() {
+  local since="$1" predicate="$2" limit="$3" tmp err rc
+  tmp="$(mktemp)"
+  err="$(mktemp)"
+  if run_log_show_compact "$since" "$predicate" >"$tmp" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if (( rc != 0 )); then
+    cat "$err" >&2
+    rm -f "$tmp" "$err"
+    return "$rc"
+  fi
+  rm -f "$err"
+  grep -vE "$LOG_NOISE_REGEX" "$tmp" | head -n "$limit" || true
+  rm -f "$tmp"
+}
+
+run_log_show_ndjson() {
+  local since="$1" predicate="$2"
+  if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
+    echo "fixture log failure" >&2
+    return 42
+  fi
+  if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
+    cat <<'NDJSON'
+{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksBrowser"}
+{"timestamp":"2026-06-07 12:00:01.000000+0800","eventType":"logEvent","processID":123,"subsystem":"","category":"","eventMessage":"RBSServiceErrorDomain ProcessAssertion noise","senderImagePath":"/System/Library/Frameworks/RunningBoardServices.framework/RunningBoardServices"}
+{"timestamp":"2026-06-07 12:00:02.000000+0800","eventType":"activityCreateEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"reader","eventMessage":"reader opened","senderImagePath":"/tmp/BooksBrowser"}
+NDJSON
+    return 0
+  fi
+  /usr/bin/log show --style ndjson --last "$since" --predicate "$predicate"
+}
+
+cmd_logs_json() {
+  local since="$1" predicate="$2" limit="$3" generated_at tmp err rc
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  tmp="$(mktemp)"
+  err="$(mktemp)"
+  if run_log_show_ndjson "$since" "$predicate" >"$tmp" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if (( rc != 0 )); then
+    cat "$err" >&2
+    rm -f "$tmp" "$err"
+    return "$rc"
+  fi
+  rm -f "$err"
+  jq -s \
+    --arg schema "kg.ios.logs.v1" \
+    --arg generatedAt "$generated_at" \
+    --arg since "$since" \
+    --arg predicate "$predicate" \
+    --arg source "/usr/bin/log show --style ndjson" \
+    --arg noise "$LOG_NOISE_REGEX" \
+    --argjson limit "$limit" \
+    '
+      def message: (.eventMessage // .formatString // "");
+      . as $raw
+      | ($raw | map(select((message | test($noise)) | not))) as $filtered
+      | {
+          schema:$schema,
+          generatedAt:$generatedAt,
+          since:$since,
+          predicate:$predicate,
+          limit:$limit,
+          source:$source,
+          summary:{
+            rawCount:($raw | length),
+            filteredCount:(($raw | length) - ($filtered | length)),
+            emittedCount:($filtered[0:$limit] | length),
+            byEventType:(
+              reduce $filtered[] as $event
+                ({}; ($event.eventType // "unknown") as $key | .[$key] = ((.[$key] // 0) + 1))
+            )
+          },
+          entries:(
+            $filtered[0:$limit]
+            | map({
+                timestamp:(.timestamp // null),
+                eventType:(.eventType // null),
+                processID:(.processID // null),
+                subsystem:(.subsystem // null),
+                category:(.category // null),
+                message:message,
+                sender:(.senderImagePath // null)
+              })
+          )
+        }
+    ' "$tmp"
+  local rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
