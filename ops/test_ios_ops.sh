@@ -117,7 +117,7 @@ grep -q 'cmd_commands_json' "$IOS_OPS_COMMANDS_LIB" && grep -q 'kg.ios.commands.
 grep -qE '^cmd_commands(_json)?\(\)' "$IOS_OPS" \
   && fail_t "ios_ops should not redefine commands catalog functions" || ok "ios_ops keeps commands catalog out of façade"
 commands_json="$(bash "$IOS_OPS" commands --json)"
-echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
+echo "$commands_json" | jq -e '.schema=="kg.ios.commands.v1" and (.commands|length >= 17) and all(.commands[]; has("delegate")) and any(.commands[]; .key=="snapshot" and (.jsonSchemas|index("kg.ios.snapshot.v1")) and (.jsonSchemas|index("kg.ios.gate.v1")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="catalog" and (.jsonSchemas|index("kg.ios.catalog.v1")) and (.command|test("catalog prepare")) and (.command|test("catalog snapshots")) and (.command|test("catalog clean")) and (.command|test("--dataset <name>")) and (.command|test("--dataset-file <path>")) and (.sideEffect|test("local-test")) and (.sideEffect|test("local-artifact"))) and any(.commands[]; .key=="logs" and .sideEffect=="read-only" and (.jsonSchemas|index("kg.ios.logs.v1"))) and any(.commands[]; .key=="issues" and .delegate=="./ops/ios_diagnostics.py" and (.jsonSchemas|index("kg.ios.diagnostics.v1"))) and any(.commands[]; .key=="gate" and (.aliases|index("verdict")) and (.jsonSchemas|index("kg.ios.gate.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="xcode" and (.aliases|index("environment")) and (.jsonSchemas|index("kg.ios.xcode.v1")) and .sideEffect=="read-only") and any(.commands[]; .key=="simulator" and (.aliases|index("sim")) and (.jsonSchemas|index("kg.ios.simulator.v1")) and (.sideEffect|test("local-artifact screenshot")) and (.sideEffect|test("local-simulator-lifecycle")) and (.command|test("launch")) and (.command|test("terminate")) and (.command|test("ensure-booted"))) and any(.commands[]; .key=="archive" and (.aliases|index("release")) and (.sideEffect|test("external-upload only with --upload"))) and any(.commands[]; .key=="commands" and (.aliases|index("capabilities")))' >/dev/null \
   && ok "commands --json exposes machine-readable command catalog" || fail_t "commands --json invalid: $commands_json"
 capabilities_json="$(bash "$IOS_OPS" capabilities --json)"
 echo "$capabilities_json" | jq -e '.schema=="kg.ios.commands.v1" and any(.commands[]; .key=="commands")' >/dev/null \
@@ -163,6 +163,12 @@ echo "$sim_launch_text" | grep -q 'action=launch status=ok' && echo "$sim_launch
 sim_terminate_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator terminate --json)"
 echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null' >/dev/null \
   && ok "simulator terminate --json stops installed app and refreshes process state" || fail_t "simulator terminate invalid: $sim_terminate_json"
+sim_ensure_booted_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=1 bash "$IOS_OPS" simulator ensure-booted --json)"
+echo "$sim_ensure_booted_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="ensure-booted" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .boot.status=="ok" and .boot.exitCode==0 and .boot.wasAlreadyBooted==false and .boot.waitedForBootstatus==true' >/dev/null \
+  && ok "simulator ensure-booted --json boots the default simulator when none are booted" || fail_t "simulator ensure-booted invalid: $sim_ensure_booted_json"
+sim_ensure_booted_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator ensure-booted)"
+echo "$sim_ensure_booted_text" | grep -q 'action=ensure-booted status=ok' && echo "$sim_ensure_booted_text" | grep -q 'wasAlreadyBooted=true' \
+  && ok "simulator ensure-booted text reports warm-boot reuse" || fail_t "simulator ensure-booted text invalid: $sim_ensure_booted_text"
 sim_shot_tmp="$(mktemp -d)"
 sim_shot="$sim_shot_tmp/screenshot with spaces.png"
 sim_shot_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator screenshot --out "$sim_shot" --json)"
@@ -226,6 +232,13 @@ echo "$catalog_text" | grep -q '\[ios\]\[catalog\].*status=ok.*pngCount=2' && ec
 scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --group Bookshelf --group 'Today Review' --scenario 'Today Review/Front' --json)"
 echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksBrowserCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
   && ok "catalog snapshots --json reports scoped group/scenario filters" || fail_t "catalog scoped json invalid: $scoped_catalog_json"
+dataset_fixture_json="$catalog_tmp/dataset.json"
+cat >"$dataset_fixture_json" <<'JSON'
+{"schema":"kg.fixture.dataset.v1","datasetID":"fixture-catalog-test"}
+JSON
+dataset_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json)"
+echo "$dataset_catalog_json" | jq -e --arg path "$dataset_fixture_json" '.schema=="kg.ios.catalog.v1" and .status=="ok" and .dataset.requestedPath==$path and .dataset.status=="not-applicable"' >/dev/null \
+  && ok "catalog snapshots accepts dataset-file option" || fail_t "catalog dataset-file json invalid: $dataset_catalog_json"
 reuse_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json)"
 echo "$reuse_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="ok" and .options.reuseBuild==true and .test.exitCode==0' >/dev/null \
   && ok "catalog snapshots accepts reuse-build option" || fail_t "catalog reuse-build json invalid: $reuse_catalog_json"
@@ -240,6 +253,12 @@ if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapsh
 else
   grep -q 'unknown catalog snapshots option' "$bad_catalog_tmp/err" \
     && ok "catalog snapshots rejects unknown option" || fail_t "catalog snapshots bad-arg message missing"
+fi
+if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset missing-dataset >"$bad_catalog_tmp/out2" 2>"$bad_catalog_tmp/err2"; then
+  fail_t "catalog snapshots rejects missing named dataset"
+else
+  grep -q 'dataset file not found' "$bad_catalog_tmp/err2" \
+    && ok "catalog snapshots rejects missing named dataset" || fail_t "catalog missing dataset message invalid: $(cat "$bad_catalog_tmp/err2")"
 fi
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" catalog prepare --unknown >"$bad_catalog_tmp/prepare.out" 2>"$bad_catalog_tmp/prepare.err"; then
   fail_t "catalog prepare rejects unknown option"
@@ -489,16 +508,38 @@ grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build emits xcresult bundle" || fail_t "ios_build missing -resultBundlePath"
 grep -q -- '--xcresult' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build feeds xcresult to diagnostics" || fail_t "ios_build does not feed xcresult to diagnostics"
+grep -q 'simulator ensure-booted' "$WORKSPACE/ops/ios_build.sh" \
+  && ok "ios_build warms simulator before xcodebuild when targeting simulator" || fail_t "ios_build missing simulator preboot"
+grep -q 'bootMs:' "$WORKSPACE/ops/ios_build.sh" \
+  && grep -q 'xcodebuildMs:' "$WORKSPACE/ops/ios_build.sh" \
+  && grep -q 'totalMs:' "$WORKSPACE/ops/ios_build.sh" \
+  && ok "ios_build verdict records timing breakdown" || fail_t "ios_build verdict missing timing fields"
 
 section "ios_test emits xcresult-first diagnostics"
 grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test emits xcresult bundle" || fail_t "ios_test missing -resultBundlePath"
+grep -q 'simulator ensure-booted' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test warms simulator before xcodebuild" || fail_t "ios_test missing simulator preboot"
 grep -q -- '--kind test' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test reads xcresult test-results" || fail_t "ios_test missing --kind test diagnostics"
 grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test counts executed tests from xcresult first" || fail_t "ios_test missing xcresult executed-count path"
+grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'build-for-testing' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
+grep -Eq 'TEST \(EXECUTE \)\?SUCCEEDED|TEST\( EXECUTE\)\? SUCCEEDED|TEST\( EXECUTE\)\?SUCCEEDED|TEST \(EXECUTE\)\? FAILED|TEST\( EXECUTE\)\?FAILED' "$WORKSPACE/ops/ios_test.sh" \
+  || grep -qE 'TEST\( EXECUTE\)\? SUCCEEDED|TEST \(EXECUTE \)\? SUCCEEDED|TEST \(EXECUTE \)\? FAILED' "$WORKSPACE/ops/ios_test.sh"
+if [[ $? -eq 0 ]]; then
+  ok "ios_test recognizes test-without-building success banner"
+else
+  fail_t "ios_test missing TEST EXECUTE SUCCEEDED handling"
+fi
 grep -q 'xcresult=.*RESULT_BUNDLE' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records xcresult" || fail_t "ios_test verdict missing xcresult path"
+grep -q 'bootMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'xcodebuildMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'totalMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test verdict records timing breakdown" || fail_t "ios_test verdict missing timing fields"
 grep -q 'VERDICT_JSON_FILE' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test writes JSON verdict" || fail_t "ios_test missing JSON verdict"
 
