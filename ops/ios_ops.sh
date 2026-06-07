@@ -11,7 +11,7 @@
 #   ./ops/ios_ops.sh archive [--upload] [ios_release.sh args...]
 #   ./ops/ios_ops.sh archives [list|latest|inspect ...]
 #   ./ops/ios_ops.sh issues --log <xcodebuild.log> [--json]
-#   ./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]
+#   ./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--json]
 #   ./ops/ios_ops.sh sentry
 #   ./ops/ios_ops.sh doctor [--json]
 #   ./ops/ios_ops.sh workflow release [--json]

@@ -378,6 +378,27 @@ else
 fi
 rm -rf "$fail_logs_tmp"
 
+# logs --follow (live stream) fixtures
+follow_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow 2>/dev/null)"
+echo "$follow_text" | grep -q 'sync completed' && echo "$follow_text" | grep -q 'reader opened' \
+  && ok "logs --follow streams app entries" || fail_t "logs --follow missing app entries: $follow_text"
+echo "$follow_text" | grep -q 'RBSServiceErrorDomain' \
+  && fail_t "logs --follow failed to filter framework noise: $follow_text" || ok "logs --follow filters framework noise"
+follow_limit_text="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow --limit 1 2>/dev/null)"
+[[ "$(echo "$follow_limit_text" | grep -c .)" -eq 1 ]] && echo "$follow_limit_text" | grep -q 'sync completed' \
+  && ok "logs --follow honors --limit" || fail_t "logs --follow limit invalid: $follow_limit_text"
+follow_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --follow --json --limit 1 2>/dev/null)"
+echo "$follow_json" | jq -e '.schema=="kg.ios.logs.stream.v1" and .message=="sync completed" and .category=="sync"' >/dev/null \
+  && ok "logs --follow --json emits ndjson entries" || fail_t "logs --follow --json invalid: $follow_json"
+follow_fail_tmp="$(mktemp -d)"
+if KG_IOS_OPS_LOG_FAIL_FIXTURE=1 bash "$IOS_OPS" logs --follow >"$follow_fail_tmp/out" 2>"$follow_fail_tmp/err"; then
+  fail_t "logs --follow propagates stream failure"
+else
+  grep -q 'fixture log failure' "$follow_fail_tmp/err" \
+    && ok "logs --follow propagates stream failure" || fail_t "logs --follow failure stderr missing"
+fi
+rm -rf "$follow_fail_tmp"
+
 section "JSON smoke fixtures"
 runs_parent="$(mktemp -d)"
 runs_tmp="$runs_parent/with spaces"

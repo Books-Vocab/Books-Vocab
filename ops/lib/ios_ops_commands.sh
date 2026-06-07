@@ -61,10 +61,10 @@ cmd_commands_json() {
         key:"logs",
         aliases:[],
         sideEffect:"read-only",
-        command:"./ops/ios_ops.sh logs [--since 5m] [--predicate <predicate>] [--limit 200] [--json]",
+        command:"./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--json]",
         delegate:null,
-        purpose:"runtime log console with framework noise filtering",
-        jsonSchemas:["kg.ios.logs.v1"]
+        purpose:"runtime log console with framework noise filtering; --follow live-streams (one ndjson object per line with --json)",
+        jsonSchemas:["kg.ios.logs.v1","kg.ios.logs.stream.v1"]
       },
       {
         key:"sentry",
