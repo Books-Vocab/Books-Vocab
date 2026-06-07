@@ -90,6 +90,34 @@ def with_starter_plan(
     return enriched
 
 
+def with_starter_plan_from_actions(
+    playbook: dict,
+    recommended_actions: list[dict],
+    *,
+    source_mode: str | None = None,
+) -> dict:
+    primary_action = next(
+        (
+            action for action in recommended_actions
+            if action.get("commandAction", {}).get("kind") == "inspect"
+        ),
+        recommended_actions[0] if recommended_actions else None,
+    )
+    followup_action = next(
+        (
+            action for action in recommended_actions
+            if primary_action and action.get("command") != primary_action.get("command")
+        ),
+        None,
+    )
+    return with_starter_plan(
+        playbook,
+        primary_command=primary_action.get("command") if primary_action else None,
+        followup_command=followup_action.get("command") if followup_action else None,
+        source_mode=source_mode,
+    )
+
+
 def with_action_plan_fields(payload: dict, action_plan: dict) -> dict:
     enriched = dict(payload)
     enriched["actionPlan"] = action_plan

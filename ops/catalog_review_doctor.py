@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from catalog_review_actions import build_action_plan, with_action_plan_fields, with_starter_plan
+from catalog_review_actions import (
+    build_action_plan,
+    with_action_plan_fields,
+    with_starter_plan,
+    with_starter_plan_from_actions,
+)
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -101,32 +106,8 @@ def build_core_modes(core_recommendations: list[dict], *, limit: int | None) -> 
 def build_core_playbooks(core_modes: dict) -> dict:
     hero_first = core_modes["heroFirstCoreRecommendations"]
     coverage_first = core_modes["coverageFirstCoreRecommendations"]
-
-    def followup_command(items: list[dict]) -> str | None:
-        if not items or len(items[0]["recommendedActions"]) <= 1:
-            return None
-        return items[0]["recommendedActions"][1]["command"]
-
-    def first_command(items: list[dict]) -> str | None:
-        if not items or not items[0]["recommendedActions"]:
-            return None
-        inspect_action = next(
-            (
-                action for action in items[0]["recommendedActions"]
-                if action.get("commandAction", {}).get("kind") == "inspect"
-            ),
-            None,
-        )
-        if inspect_action:
-            return inspect_action["command"]
-        return items[0]["recommendedActions"][0]["command"]
-
-    hero_first_command = first_command(hero_first)
-    coverage_first_command = first_command(coverage_first)
-    hero_followup_command = followup_command(hero_first)
-    coverage_followup_command = followup_command(coverage_first)
     return {
-        "heroFirstPlaybook": with_starter_plan({
+        "heroFirstPlaybook": with_starter_plan_from_actions({
             "mode": "hero-first",
             "goal": "先抓最能代表產品承諾的 hero 候選，再進行變體比較與 shortlist。",
             "steps": [
@@ -135,11 +116,10 @@ def build_core_playbooks(core_modes: dict) -> dict:
                 "確認 hero 候選後，再回頭處理該 promise 的 top category 收斂。",
             ],
         },
-            primary_command=hero_first_command,
-            followup_command=hero_followup_command,
+            hero_first[0]["recommendedActions"] if hero_first else [],
             source_mode="hero-first",
         ),
-        "coverageFirstPlaybook": with_starter_plan({
+        "coverageFirstPlaybook": with_starter_plan_from_actions({
             "mode": "coverage-first",
             "goal": "先清最大覆蓋債，快速把高量未審分類壓縮到可管理範圍。",
             "steps": [
@@ -148,8 +128,7 @@ def build_core_playbooks(core_modes: dict) -> dict:
                 "coverage 壓下來後，再回頭從該 promise 內挑 hero 圖做 shortlist。",
             ],
         },
-            primary_command=coverage_first_command,
-            followup_command=coverage_followup_command,
+            coverage_first[0]["recommendedActions"] if coverage_first else [],
             source_mode="coverage-first",
         ),
     }
@@ -240,17 +219,11 @@ def _build_health_base(payload: dict, *, mode: str, root: str) -> dict:
 
 
 def _build_cleanup_playbook(payload: dict) -> dict:
-    cleanup_primary = (
-        payload["cleanupRecommendations"][0]["recommendedActions"][0]["command"]
-        if payload["cleanupRecommendations"] and payload["cleanupRecommendations"][0]["recommendedActions"]
-        else None
+    cleanup_actions = (
+        payload["cleanupRecommendations"][0]["recommendedActions"]
+        if payload["cleanupRecommendations"] else []
     )
-    cleanup_followup = (
-        payload["cleanupRecommendations"][0]["recommendedActions"][1]["command"]
-        if payload["cleanupRecommendations"] and len(payload["cleanupRecommendations"][0]["recommendedActions"]) > 1
-        else None
-    )
-    return with_starter_plan({
+    return with_starter_plan_from_actions({
         "mode": "cleanup",
         "goal": "清掉弱訊號與工程性 screenshot debt，避免污染行銷審稿視野。",
         "steps": [
@@ -259,8 +232,7 @@ def _build_cleanup_playbook(payload: dict) -> dict:
             "只有在 cleanup 降到可控後，再回到核心 promise 做最終選圖。",
         ],
     },
-        primary_command=cleanup_primary,
-        followup_command=cleanup_followup,
+        cleanup_actions,
         source_mode="cleanup",
     )
 
