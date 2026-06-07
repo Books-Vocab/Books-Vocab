@@ -2,18 +2,19 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
+from collections import Counter
 import json
 from pathlib import Path
 
+from catalog_review_doctor import build_doctor_payload
 from catalog_review_repair import repair_review_state, summarize_repairs
+from catalog_review_report import build_report_payload
 from catalog_review_state import append_history
 from catalog_review_sync import hydrate_manifest, write_review_outputs
 from catalog_review_verify import verify_review_artifacts
 
 
 VALID_STATUSES = {"shortlist", "review", "reject", ""}
-PROMISE_ORDER = ["Read", "Connect", "Retain", "Continue", "Weak"]
 
 
 def load_json(path: Path) -> dict:
@@ -299,87 +300,7 @@ def cmd_stats(
 
 def cmd_report(root: Path, *, limit: int | None) -> int:
     manifest, state = load_review_context(root)
-    by_promise: dict[str, dict] = defaultdict(
-        lambda: {
-            "total": 0,
-            "shortlist": 0,
-            "review": 0,
-            "reject": 0,
-            "unmarked": 0,
-            "heroTotal": 0,
-            "heroUnmarked": 0,
-            "unmarkedCategories": Counter(),
-        }
-    )
-
-    for item in manifest["items"]:
-        promise = item["promise"]
-        bucket = by_promise[promise]
-        bucket["total"] += 1
-        effective = effective_status(item, state) or "unmarked"
-        bucket[effective] += 1
-        if item.get("heroCandidate"):
-            bucket["heroTotal"] += 1
-            if effective == "unmarked":
-                bucket["heroUnmarked"] += 1
-        if effective == "unmarked":
-            bucket["unmarkedCategories"][item["category"]] += 1
-
-    promise_report = []
-    next_actions = []
-    for promise in PROMISE_ORDER:
-        if promise not in by_promise:
-            continue
-        bucket = by_promise[promise]
-        top_unmarked = [
-            {"category": category, "count": count}
-            for category, count in bucket["unmarkedCategories"].most_common(limit)
-        ] if limit is not None else [
-            {"category": category, "count": count}
-            for category, count in bucket["unmarkedCategories"].most_common()
-        ]
-        promise_report.append(
-            {
-                "promise": promise,
-                "total": bucket["total"],
-                "shortlist": bucket["shortlist"],
-                "review": bucket["review"],
-                "reject": bucket["reject"],
-                "unmarked": bucket["unmarked"],
-                "heroTotal": bucket["heroTotal"],
-                "heroUnmarked": bucket["heroUnmarked"],
-                "topUnmarkedCategories": top_unmarked,
-            }
-        )
-        if bucket["heroUnmarked"] > 0:
-            next_actions.append({
-                "kind": "hero-unmarked",
-                "promise": promise,
-                "count": bucket["heroUnmarked"],
-                "command": (
-                    f"./ops/catalog_review_cli.py {root} list --promise {promise} --search hero --limit {limit or 10}"
-                ),
-            })
-        if top_unmarked:
-            top_category = top_unmarked[0]["category"]
-            next_actions.append({
-                "kind": "top-unmarked-category",
-                "promise": promise,
-                "category": top_category,
-                "count": top_unmarked[0]["count"],
-                "command": (
-                    f"./ops/catalog_review_cli.py {root} apply --promise {promise} --category '{top_category}' "
-                    f"--status review --limit {limit or 10} --dry-run"
-                ),
-            })
-
-    payload = {
-        "status": "ok",
-        "totalImages": manifest["totalImages"],
-        "stateCounts": manifest.get("stateCounts", {}),
-        "promises": promise_report,
-        "nextActions": next_actions,
-    }
+    payload = build_report_payload(manifest, state, effective_status_fn=effective_status, root=str(root), limit=limit)
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 
@@ -429,6 +350,29 @@ def cmd_repair(root: Path, *, dry_run: bool, limit: int | None, include_repairs:
     return 0
 
 
+def cmd_doctor(root: Path, *, limit: int | None) -> int:
+    manifest_path, state_path = resolve_paths(root)
+    manifest = load_json(manifest_path)
+    state = load_json(state_path)
+    html_path = root / "review.html"
+    html_text = html_path.read_text(encoding="utf-8")
+    payload = {
+        "manifest": str(manifest_path),
+        "state": str(state_path),
+        "html": str(html_path),
+        **build_doctor_payload(
+            manifest,
+            state,
+            html_text,
+            effective_status_fn=effective_status,
+            root=str(root),
+            limit=limit,
+        ),
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0 if payload["status"] == "ok" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect and update catalog review state sidecars.")
     parser.add_argument("root", type=Path, help="Directory containing review_manifest.json and review_state.json")
@@ -476,6 +420,8 @@ def build_parser() -> argparse.ArgumentParser:
     repair_cmd.add_argument("--dry-run", action="store_true")
     repair_cmd.add_argument("--limit", type=int, default=20)
     repair_cmd.add_argument("--include-repairs", action="store_true")
+    doctor_cmd = subparsers.add_parser("doctor")
+    doctor_cmd.add_argument("--limit", type=int, default=5)
 
     return parser
 
@@ -526,6 +472,8 @@ def main() -> int:
         return cmd_verify(root)
     if args.command == "repair":
         return cmd_repair(root, dry_run=args.dry_run, limit=args.limit, include_repairs=args.include_repairs)
+    if args.command == "doctor":
+        return cmd_doctor(root, limit=args.limit)
     parser.error(f"unknown command: {args.command}")
     return 2
 

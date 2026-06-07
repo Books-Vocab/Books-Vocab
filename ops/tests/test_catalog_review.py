@@ -560,3 +560,53 @@ def test_catalog_review_verify_detects_schema_drift_and_repair_fixes_it(tmp_path
     assert verify_ok.returncode == 0, verify_ok.stderr
     verify_ok_payload = json.loads(verify_ok.stdout)
     assert verify_ok_payload["status"] == "ok"
+
+
+def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Reader_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Hero.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    state_path = output_root / "review_state.json"
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    asset_id = next(iter(state_payload["entries"]))
+    state_payload["entries"][asset_id].pop("history", None)
+    state_payload["entries"][asset_id].pop("updatedAt", None)
+    state_path.write_text(json.dumps(state_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    doctor = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "doctor", "--limit", "2"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert doctor.returncode == 1, doctor.stderr
+    payload = json.loads(doctor.stdout)
+    assert payload["status"] == "needs-attention"
+    assert payload["verify"]["status"] == "error"
+    assert "state-schema-errors" in payload["verify"]["errors"]
+    assert payload["repair"]["repairCount"] == 1
+    assert payload["repair"]["sampleRepairs"][0]["assetID"] == asset_id
+    assert payload["report"]["promises"][0]["promise"] == "Read"
+    assert payload["report"]["nextActions"]
+    assert payload["blockingErrors"] == []
