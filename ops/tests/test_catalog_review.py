@@ -466,3 +466,93 @@ def test_catalog_review_verify_reports_ok_and_detects_drift(tmp_path: Path):
     verify_bad_payload = json.loads(verify_bad.stdout)
     assert verify_bad_payload["status"] == "error"
     assert "missing-state-entries" in verify_bad_payload["errors"]
+
+
+def test_catalog_review_verify_detects_schema_drift_and_repair_fixes_it(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    asset_id = build_asset_id(Path("iPhone 15 Pro portrait/Settings_View/Signed_out.png"))
+    state_path = output_root / "review_state.json"
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    state_payload["schema"] = "legacy"
+    state_payload["entries"][asset_id]["status"] = "review"
+    state_payload["entries"][asset_id]["note"] = "legacy-state"
+    state_payload["entries"][asset_id]["history"] = []
+    state_payload["entries"][asset_id]["updatedAt"] = None
+    state_payload["entries"][asset_id]["category"] = "Wrong Category"
+    state_path.write_text(json.dumps(state_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    verify_bad = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "verify"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert verify_bad.returncode == 1, verify_bad.stderr
+    verify_bad_payload = json.loads(verify_bad.stdout)
+    assert "invalid-state-schema" in verify_bad_payload["errors"]
+    assert "state-metadata-drift" in verify_bad_payload["errors"]
+    assert "state-schema-errors" in verify_bad_payload["errors"]
+
+    repair_dry_run = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "repair", "--dry-run"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert repair_dry_run.returncode == 0, repair_dry_run.stderr
+    repair_dry_run_payload = json.loads(repair_dry_run.stdout)
+    assert repair_dry_run_payload["repairCount"] >= 1
+    assert any("backfilled-history" in repair["repairs"] for repair in repair_dry_run_payload["repairs"])
+
+    repair = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "repair"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert repair.returncode == 0, repair.stderr
+    repair_payload = json.loads(repair.stdout)
+    assert repair_payload["repairCount"] >= 1
+
+    repaired_state = json.loads(state_path.read_text(encoding="utf-8"))
+    repaired_entry = repaired_state["entries"][asset_id]
+    assert repaired_state["schema"] == "kg.catalog.review.state.v1"
+    assert repaired_entry["category"] == "Settings View"
+    assert repaired_entry["history"][-1]["action"] == "repair"
+    assert repaired_entry["updatedAt"] == repaired_entry["history"][-1]["at"]
+
+    verify_ok = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "verify"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert verify_ok.returncode == 0, verify_ok.stderr
+    verify_ok_payload = json.loads(verify_ok.stdout)
+    assert verify_ok_payload["status"] == "ok"
