@@ -86,3 +86,53 @@ def test_result_override_handles_quiet_xcodebuild_logs(tmp_path, capsys):
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["result"] == "pass"
+
+
+def test_parse_xcresult_test_results_uses_official_summary_and_failures():
+    mod = _load_module()
+    summary_payload = {
+        "result": "Failed",
+        "totalTestCount": 7,
+        "passedTests": 5,
+        "failedTests": 1,
+        "skippedTests": 1,
+        "expectedFailures": 0,
+        "testFailures": [
+            {
+                "testName": "BooksBrowserTests.testSyncFails()",
+                "targetName": "BooksBrowserTests",
+                "failureText": "XCTAssertEqual failed",
+                "testIdentifierString": "BooksBrowserTests/testSyncFails()",
+            }
+        ],
+    }
+
+    parsed = mod.parse_xcresult_test_results(summary_payload, {"testNodes": []})
+
+    assert parsed["source"] == "xcresult-test-results"
+    assert parsed["result"] == "fail"
+    assert parsed["counts"]["tests"] == 7
+    assert parsed["counts"]["failedTests"] == 1
+    assert parsed["diagnostics"][0]["category"] == "test"
+    assert "testSyncFails" in parsed["diagnostics"][0]["message"]
+
+
+def test_format_text_includes_test_counts():
+    mod = _load_module()
+    parsed = mod.parse_xcresult_test_results(
+        {
+            "result": "Passed",
+            "totalTestCount": 3,
+            "passedTests": 3,
+            "failedTests": 0,
+            "skippedTests": 0,
+            "expectedFailures": 0,
+            "testFailures": [],
+        },
+        {"testNodes": []},
+    )
+
+    text = mod.format_text(parsed, xcresult_path="/tmp/Test.xcresult")
+
+    assert "source=xcresult-test-results" in text
+    assert "tests=3 passed=3 failed=0 skipped=0" in text

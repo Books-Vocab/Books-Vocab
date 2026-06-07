@@ -68,6 +68,16 @@ grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_build.sh" \
 grep -q -- '--xcresult' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build feeds xcresult to diagnostics" || fail_t "ios_build does not feed xcresult to diagnostics"
 
+section "ios_test emits xcresult-first diagnostics"
+grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test emits xcresult bundle" || fail_t "ios_test missing -resultBundlePath"
+grep -q -- '--kind test' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test reads xcresult test-results" || fail_t "ios_test missing --kind test diagnostics"
+grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test counts executed tests from xcresult first" || fail_t "ios_test missing xcresult executed-count path"
+grep -q 'xcresult=.*RESULT_BUNDLE' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test verdict records xcresult" || fail_t "ios_test verdict missing xcresult path"
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"

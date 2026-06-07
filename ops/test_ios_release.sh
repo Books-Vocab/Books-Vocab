@@ -45,6 +45,17 @@ grep -q -- '--upload' "$IR" \
 grep -qE 'DO_UPLOAD=0' "$IR" \
   && ok "DO_UPLOAD defaults off"            || fail_t "DO_UPLOAD not defaulting off"
 
+# ── 5. archive diagnostics：保留 log + .xcresult，第一屏列 warning/error ──────
+section "Archive diagnostics"
+grep -q -- '-resultBundlePath' "$IR" \
+  && ok "archive emits xcresult bundle"       || fail_t "archive missing -resultBundlePath"
+grep -q 'kg_ios_release_archive.*log' "$IR" \
+  && ok "archive preserves raw log path"      || fail_t "archive missing raw log path"
+grep -q 'ios_diagnostics.py' "$IR" \
+  && ok "archive calls diagnostics parser"    || fail_t "archive missing diagnostics parser"
+grep -q -- '--xcresult' "$IR" && grep -q -- '--log' "$IR" \
+  && ok "archive feeds xcresult + log to diagnostics" || fail_t "archive diagnostics missing xcresult/log"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

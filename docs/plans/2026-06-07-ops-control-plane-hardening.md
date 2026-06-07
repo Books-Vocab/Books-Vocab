@@ -62,11 +62,15 @@ verified_against: 887a248d
 
 ## P2 — iOS ops 後續收斂
 
-1. `ios_test.sh` 改為 `xcresult-first`。
+1. ✅ `ios_test.sh` 改為 `xcresult-first`。
    - 方向:加 `-resultBundlePath`,用 `xcrun xcresulttool get test-results summary/tests` 抽 failing tests / executed count;現有 raw log false-green 防護保留為 fallback。
+   - 決策:`ios_diagnostics.py --kind test` 讀官方 test summary/tests;`ios_test.sh` 產出 `Test.xcresult`,第一屏列 `[ios][tests]`,false-green executed count 優先取 `.xcresult`、raw log fallback。
+   - 驗證:`./ops/test_ops.sh ios-ops ios-release` 與 `uv run --project backend pytest -q ops/tests/test_ios_diagnostics.py` 通過。
 
-2. `ios_release.sh` archive 階段接 `.xcresult` diagnostics。
+2. ✅ `ios_release.sh` archive 階段接 `.xcresult` diagnostics。
    - 方向:和 `ios_build.sh` 一樣輸出 `[ios][issues] source=xcresult-build-results ...`,讓 archive warning/error 第一屏可見。
+   - 決策:archive 階段保存 raw log + `Archive.xcresult`,成功/失敗都跑 `ios_diagnostics.py`;archive 失敗時保留兩個 path。
+   - 驗證:`./ops/test_ops.sh ios-ops ios-release` 通過。
 
 3. `ios_ops.sh doctor` 擴充成完整 release readiness。
    - 檢查 project `MARKETING_VERSION(CURRENT_PROJECT_VERSION)`、Organizer latest、TestFlight latest、ASC version state、Sentry wiring、StoreKit config、signing profile。
