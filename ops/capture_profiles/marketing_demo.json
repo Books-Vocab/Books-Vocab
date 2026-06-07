@@ -1,0 +1,37 @@
+{
+  "schema": "kg.capture.profile.v1",
+  "id": "marketing_demo",
+  "materialize": {
+    "uid": "marketing-demo",
+    "seedFile": "ops/seeds/marketing_demo.json",
+    "steps": [
+      {
+        "subcommand": "user-config-set",
+        "args": [
+          "--active-notebook",
+          "Editorial Picks",
+          "--review-clock",
+          "paused",
+          "--paused-at",
+          "2026-06-07T09:30:00Z"
+        ]
+      },
+      {
+        "subcommand": "notebook-update",
+        "args": [
+          "Editorial Picks",
+          "--sort-order",
+          "-10"
+        ]
+      }
+    ]
+  },
+  "snapshot": {
+    "datasetFile": "ops/fixtures/catalog/marketing_demo.json",
+    "destination": "platform=iOS Simulator,name=iPhone 17 Pro Max",
+    "groups": [],
+    "scenarios": [
+      "Today Review/Front"
+    ]
+  }
+}
