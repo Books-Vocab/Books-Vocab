@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 import json
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from catalog_review_sync import hydrate_manifest, write_review_outputs
 
 
 VALID_STATUSES = {"shortlist", "review", "reject", ""}
+PROMISE_ORDER = ["Read", "Connect", "Retain", "Continue", "Weak"]
 
 
 def load_json(path: Path) -> dict:
@@ -289,6 +290,70 @@ def cmd_stats(
     return 0
 
 
+def cmd_report(root: Path, *, limit: int | None) -> int:
+    manifest, state = load_review_context(root)
+    by_promise: dict[str, dict] = defaultdict(
+        lambda: {
+            "total": 0,
+            "shortlist": 0,
+            "review": 0,
+            "reject": 0,
+            "unmarked": 0,
+            "heroTotal": 0,
+            "heroUnmarked": 0,
+            "unmarkedCategories": Counter(),
+        }
+    )
+
+    for item in manifest["items"]:
+        promise = item["promise"]
+        bucket = by_promise[promise]
+        bucket["total"] += 1
+        effective = effective_status(item, state) or "unmarked"
+        bucket[effective] += 1
+        if item.get("heroCandidate"):
+            bucket["heroTotal"] += 1
+            if effective == "unmarked":
+                bucket["heroUnmarked"] += 1
+        if effective == "unmarked":
+            bucket["unmarkedCategories"][item["category"]] += 1
+
+    promise_report = []
+    for promise in PROMISE_ORDER:
+        if promise not in by_promise:
+            continue
+        bucket = by_promise[promise]
+        top_unmarked = [
+            {"category": category, "count": count}
+            for category, count in bucket["unmarkedCategories"].most_common(limit)
+        ] if limit is not None else [
+            {"category": category, "count": count}
+            for category, count in bucket["unmarkedCategories"].most_common()
+        ]
+        promise_report.append(
+            {
+                "promise": promise,
+                "total": bucket["total"],
+                "shortlist": bucket["shortlist"],
+                "review": bucket["review"],
+                "reject": bucket["reject"],
+                "unmarked": bucket["unmarked"],
+                "heroTotal": bucket["heroTotal"],
+                "heroUnmarked": bucket["heroUnmarked"],
+                "topUnmarkedCategories": top_unmarked,
+            }
+        )
+
+    payload = {
+        "status": "ok",
+        "totalImages": manifest["totalImages"],
+        "stateCounts": manifest.get("stateCounts", {}),
+        "promises": promise_report,
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect and update catalog review state sidecars.")
     parser.add_argument("root", type=Path, help="Directory containing review_manifest.json and review_state.json")
@@ -327,6 +392,9 @@ def build_parser() -> argparse.ArgumentParser:
     stats_cmd.add_argument("--status", default=None)
     stats_cmd.add_argument("--search", default=None)
     stats_cmd.add_argument("--limit", type=int, default=None)
+
+    report_cmd = subparsers.add_parser("report")
+    report_cmd.add_argument("--limit", type=int, default=None)
 
     return parser
 
@@ -371,6 +439,8 @@ def main() -> int:
             search=args.search,
             limit=args.limit,
         )
+    if args.command == "report":
+        return cmd_report(root, limit=args.limit)
     parser.error(f"unknown command: {args.command}")
     return 2
 
