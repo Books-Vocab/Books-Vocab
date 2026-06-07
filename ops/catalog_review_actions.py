@@ -45,12 +45,20 @@ def build_action_bundle(*, primary_command: str | None, followup_command: str | 
     return actions
 
 
-def build_action_plan(*, primary_command: str | None, followup_command: str | None) -> dict:
+def build_action_plan(
+    *,
+    primary_command: str | None,
+    followup_command: str | None,
+    source: str = "ad-hoc",
+    source_mode: str | None = None,
+) -> dict:
     actions = build_action_bundle(
         primary_command=primary_command,
         followup_command=followup_command,
     )
     plan = {
+        "source": source,
+        "sourceMode": source_mode,
         "primary": None,
         "followup": None,
         "actions": actions,
@@ -62,10 +70,18 @@ def build_action_plan(*, primary_command: str | None, followup_command: str | No
     return plan
 
 
-def with_starter_plan(playbook: dict, *, primary_command: str | None, followup_command: str | None) -> dict:
+def with_starter_plan(
+    playbook: dict,
+    *,
+    primary_command: str | None,
+    followup_command: str | None,
+    source_mode: str | None = None,
+) -> dict:
     starter_plan = build_action_plan(
         primary_command=primary_command,
         followup_command=followup_command,
+        source="playbook",
+        source_mode=source_mode or playbook.get("mode"),
     )
     enriched = dict(playbook)
     enriched["starterPlan"] = starter_plan
