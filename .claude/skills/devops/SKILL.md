@@ -103,7 +103,16 @@ ops-edit card-delete <uid> <id|content>                          # 軟刪
 ops-edit card-move <uid> <id|content> --to-notebook|--notebook <id|name>   # 跨本搬卡(驗目標本無同 content;硬刪原本跨本 link)
 ops-edit card-import <uid> <csv> [--notebook]                    # card_format.md 格式;CSV 可帶 review_state 欄
 ops-edit notebook-create <uid> <name> [--color] [--cover]
-ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover]
+ops-edit user-config-set <uid> [--translation-source L] [--translation-target L]
+                         [--review-clock paused|running] [--paused-at ISO]
+                         [--review-mode relaxed|intensive|custom]
+                         [--custom-initial-interval-hours H]
+                         [--custom-remembered-multiplier X]
+                         [--custom-forgot-multiplier X]
+                         [--custom-minimum-interval-hours H]
+                         [--custom-maximum-interval-hours H]
+                         [--active-notebook <id|name>]           # settings/active notebook 行銷造景
+ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover] [--sort-order N]
 ops-edit notebook-delete <uid> <id|name> [--cascade]             # 軟刪(default 不可刪;非空須 --cascade 一併軟刪卡,否則拒絕)
 ops-edit link-add <uid> <from> <to> --kind contrasts_with|shares_usage --confidence C --reason R [--notebook]
 ops-edit link-update <uid> <link_id> [--confidence] [--reason] [--kind] [--notebook]   # 改既有 link(link-add 撞既有回 idempotent 不改值)

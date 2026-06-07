@@ -218,6 +218,7 @@ struct WelcomePreviewScene: View {
         AppThemeContainer {
             WelcomeView(initialPage: initialPage, onStart: {}, onLogin: {}, onTryDemo: {})
         }
+        .environmentObject(AppAppearanceStore.preview)
         .preferredColorScheme(preferredColorScheme)
         .enableInjection()
     }
