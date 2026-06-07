@@ -50,6 +50,7 @@ sentry_summary_json() {
   jq -n \
     --arg schema "kg.ios.sentry.v1" \
     --arg source "$source" \
+    --arg cmd "./ops/ios_ops.sh sentry --json" \
     --argjson sourceExists "$source_exists" \
     --argjson canImport "$has_sdk" \
     --argjson dsnReference "$has_dsn_key" \
@@ -71,7 +72,15 @@ sentry_summary_json() {
         name:"bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION",
         dist:"CURRENT_PROJECT_VERSION"
       }
-    }'
+    }
+    # issues[] is the single source of truth for sentry wiring failures: doctor
+    # verdict, snapshot nextActions and sentryWarnings count all derive from it,
+    # so adding a wiring check only edits this list.
+    | .issues = ([
+        (if (.source.exists) then empty else {key:"source",message:("source missing: "+$source),command:$cmd} end),
+        (if (.wiring.canImportGuard) then empty else {key:"canImportGuard",message:"missing canImport(Sentry) guard",command:$cmd} end),
+        (if (.wiring.dsnKeyReference) then empty else {key:"dsnKeyReference",message:"missing Sentry DSN/debug test wiring",command:$cmd} end)
+      ])'
 }
 
 doctor_readiness() {
@@ -138,7 +147,9 @@ doctor_readiness() {
   sentry_source_exists="$(jq -r '.source.exists' <<<"$sentry_json")"
   sentry_can_import="$(jq -r '.wiring.canImportGuard' <<<"$sentry_json")"
   sentry_dsn_reference="$(jq -r '.wiring.dsnKeyReference' <<<"$sentry_json")"
-  if [[ "$sentry_source_exists" == "true" && "$sentry_can_import" == "true" && "$sentry_dsn_reference" == "true" ]]; then
+  # Verdict derives from issues[] (single source of truth); detail keeps the
+  # per-field booleans for human readability.
+  if [[ "$(jq -r '.issues | length' <<<"$sentry_json")" -eq 0 ]]; then
     "$emitter" "$out" "sentry" "ok" "release_name=bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION dist=CURRENT_PROJECT_VERSION"
   else
     "$emitter" "$out" "sentry" "warn" "source_exists=$sentry_source_exists can_import_guard=$sentry_can_import dsn_key_reference=$sentry_dsn_reference"
