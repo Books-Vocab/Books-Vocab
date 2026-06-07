@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: df2a59d5
+verified_against: c7a88204
 -->
 # BooksBrowser iOS 開發技能
 
@@ -21,7 +21,7 @@ verified_against: df2a59d5
 
 ## 最高指導原則
 
-**Exit Code `0` = 編譯成功，任務結束。不用懷疑。**
+**Exit Code `0` = 編譯成功；release 前仍需看第一屏 diagnostics summary 的 warnings。**
 
 ---
 
@@ -36,18 +36,39 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 ---
 
+## iOS ops 統一入口（agent 優先）
+
+新工作流優先走 `ops/ios_ops.sh`，底層 `ios_build.sh` / `ios_test.sh` / `ios_release.sh` 仍保留為 primitives。
+
+```bash
+./ops/ios_ops.sh status                 # project version/build + Organizer latest + TestFlight latest
+./ops/ios_ops.sh doctor                 # status + Sentry wiring + StoreKit quick check
+./ops/ios_ops.sh build                  # 委派 ios_build.sh，結束即列 warnings/errors diagnostics
+./ops/ios_ops.sh test --file FooTests.swift
+./ops/ios_ops.sh archive                # archive + export，預設不上傳
+./ops/ios_ops.sh archive --upload       # 明示才上傳 TestFlight
+./ops/ios_ops.sh archives latest        # 本機 Organizer latest archive
+./ops/ios_ops.sh issues --log <log>     # 解析既有 xcodebuild log
+./ops/ios_ops.sh logs --since 5m        # runtime log，過濾常見 Apple framework 噪音
+./ops/ios_ops.sh sentry                 # iOS Sentry wiring 摘要
+```
+
+輸出契約:第一屏固定優先看 `[ios][issues]` / `[ios][summary]` / `[ios][next]` 類摘要;需要原始資料時再開 log path。
+
+原則:優先組合 Xcode 官方 CLI,不重造輪子。`ios_build.sh`/`ios_ops.sh build` 會產生 `-resultBundlePath <Build.xcresult>`,再用 `xcrun xcresulttool get build-results` 抽 warnings/errors;raw xcodebuild log parser 只作 fallback。測試結果後續同理應優先走 `xcresulttool get test-results`。
+
 ## iOS 編譯 3 步驟 SOP
 
 ### Step 1：靜默編譯，直擊錯誤
 
 ```bash
-./ops/ios_build.sh                 # 預設 iPhone Simulator
-./ops/ios_build.sh --catalyst      # Mac Catalyst（platform=macOS,variant=Mac Catalyst）
-./ops/ios_build.sh --destination '<xcodebuild destination>'  # 自訂 destination
+./ops/ios_ops.sh build                 # 預設 iPhone Simulator
+./ops/ios_ops.sh build --catalyst      # Mac Catalyst（platform=macOS,variant=Mac Catalyst）
+./ops/ios_ops.sh build --destination '<xcodebuild destination>'  # 自訂 destination
 ```
 
-- Exit Code `0` → 完成，停止
-- Exit Code 非 `0` → 畫面殘留的就是純淨錯誤清單，進 Step 2
+- Exit Code `0` → 編譯成功;仍看 `[ios][issues] warnings=...`，release 前不可無視新增 warnings
+- Exit Code 非 `0` → 第一屏 diagnostics 會列官方 `.xcresult` top errors/warnings + raw log path，進 Step 2
 - 動到三平台 navigation / Catalyst 專屬路徑時，`--catalyst` 與預設各跑一次驗證（`--timeout` 預設 600s）
 
 ### Step 2：還原案發現場
@@ -64,20 +85,20 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 修復後立刻重跑 Step 1。反覆「編譯 → 讀上下文 → 修改」直到 Exit Code 歸零。
 
-## iOS 測試入口（`ops/ios_test.sh`）
+## iOS 測試入口（`ops/ios_ops.sh test` / `ops/ios_test.sh`）
 
 `ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
 
 **第一性原理流程**：測試系統已具備 scope、heartbeat、log preserve、false-green 防護與 DB lock retry；因此 iOS 開發不再採「不主動跑測試」的保守規則，而是採**最小足夠驗證**。
 
 ```bash
-./ops/ios_test.sh --timeout 1200                       # 預設只跑 BooksBrowserTests unit target
-./ops/ios_test.sh --file NotebookCoverContrastTests.swift
-./ops/ios_test.sh -g "sanitizeOutbox"
-./ops/ios_test.sh --ui --file BooksBrowserUITests.swift # 只跑 UI test 檔案
-./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs       # 只跑 UI test method
-./ops/ios_test.sh --all-targets --timeout 1200          # scheme 全量：unit + UI
-./ops/ios_test.sh --file FooTests.swift --list          # 只列 resolved -only-testing selectors
+./ops/ios_ops.sh test --timeout 1200                       # 預設只跑 BooksBrowserTests unit target
+./ops/ios_ops.sh test --file NotebookCoverContrastTests.swift
+./ops/ios_ops.sh test -g "sanitizeOutbox"
+./ops/ios_ops.sh test --ui --file BooksBrowserUITests.swift # 只跑 UI test 檔案
+./ops/ios_ops.sh test --ui testLaunchShowsPrimaryTabs       # 只跑 UI test method
+./ops/ios_ops.sh test --all-targets --timeout 1200          # scheme 全量：unit + UI
+./ops/ios_ops.sh test --file FooTests.swift --list          # 只列 resolved -only-testing selectors
 ```
 
 - 預設 scope 是 `unit`，會自動加 `-only-testing:BooksBrowserTests`；UI tests 不會被誤混進 unit full。
@@ -91,12 +112,12 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 | 變更 / 狀態 | 必跑 |
 |---|---|
 | 純註解 / doc-only | 不跑 iOS test;跑 docs gate 即可 |
-| iOS 編譯面或簡單型別修正 | `./ops/ios_build.sh` |
-| iOS model/service/presenter/test 邏輯 | `./ops/ios_test.sh --file <相關Tests.swift>` 或 `-g <pattern>` + `./ops/ios_build.sh` |
-| UI / navigation / accessibility / app launch | 相關 unit test + `./ops/ios_test.sh --ui ...` + `./ops/ios_build.sh` |
-| test runner / scheme / SwiftData model / sync lifecycle / 跨 feature 共用面 | `./ops/ios_test.sh --all-targets --timeout 1200` + `./ops/ios_build.sh` |
+| iOS 編譯面或簡單型別修正 | `./ops/ios_ops.sh build` |
+| iOS model/service/presenter/test 邏輯 | `./ops/ios_ops.sh test --file <相關Tests.swift>` 或 `-g <pattern>` + `./ops/ios_ops.sh build` |
+| UI / navigation / accessibility / app launch | 相關 unit test + `./ops/ios_ops.sh test --ui ...` + `./ops/ios_ops.sh build` |
+| test runner / scheme / SwiftData model / sync lifecycle / 跨 feature 共用面 | `./ops/ios_ops.sh test --all-targets --timeout 1200` + `./ops/ios_ops.sh build` |
 | 多個 test 失敗或原因不清 | `./ops/ios_test_matrix.sh --timeout 300 [--start-at File.swift]`,逐檔定位後再修 |
-| release / cleanup all / 宣稱 iOS 全綠 | `./ops/ios_test.sh --all-targets --timeout 1200` + `./ops/ios_build.sh` |
+| release / cleanup all / 宣稱 iOS 全綠 | `./ops/ios_ops.sh test --all-targets --timeout 1200` + `./ops/ios_ops.sh build` |
 
 原則:
 - 不用 `--all-targets` 當第一反應;先跑最小可證明範圍,避免把多個根因混在一起。
@@ -111,8 +132,10 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 > 版號 bump / `ios/x.y.z` tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`changelog`/`publish`，單一入口；`publish` dry-run 預設、`--yes` 才 commit+tag+push）。本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施——版號 tag 與出 build 互不依賴。注意目前無 tag-triggered CI，tag 僅為版本標記。
 
 ```bash
-./ops/ios_release.sh                  # archive + export 出 .ipa（無對外副作用，預設）
-./ops/ios_release.sh --upload         # 額外上傳 → TestFlight（對外副作用，需明示）
+./ops/ios_ops.sh archive              # archive + export 出 .ipa（無對外副作用，預設）
+./ops/ios_ops.sh archive --upload     # 額外上傳 → TestFlight（對外副作用，需明示）
+./ops/ios_release.sh                  # primitive:同 archive
+./ops/ios_release.sh --upload         # primitive:同 archive --upload
 ./ops/ios_release.sh --key 6Y7DC88RUY # 換 ASC API key（預設 TCXVHFRXMS / App Manager）
 ./ops/ios_release.sh --timeout 900    # 自訂 build lock 等待秒數
 ```
