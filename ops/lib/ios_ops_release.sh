@@ -20,9 +20,63 @@ emit_workflow_step_json() {
     '{step:$step,key:$key,status:$status,command:$command,note:$note}' >>"$out"
 }
 
+sentry_summary_json() {
+  local source="$ROOT/ios/BooksBrowser/Services/AppCrashReporting.swift"
+  local source_exists has_sdk has_dsn_key
+  if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_FIXTURE:-}" ]]; then
+    source="$KG_IOS_OPS_SENTRY_SOURCE_FIXTURE"
+  fi
+  if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}" ]]; then
+    source_exists="$KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE"
+  elif [[ -f "$source" ]]; then
+    source_exists=1
+  else
+    source_exists=0
+  fi
+  if [[ -n "${KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE:-}" ]]; then
+    has_sdk="$KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE"
+  elif [[ "$source_exists" == "1" ]] && grep -q 'canImport(Sentry)' "$source"; then
+    has_sdk=1
+  else
+    has_sdk=0
+  fi
+  if [[ -n "${KG_IOS_OPS_SENTRY_DSN_FIXTURE:-}" ]]; then
+    has_dsn_key="$KG_IOS_OPS_SENTRY_DSN_FIXTURE"
+  elif rg -q 'SentryDSN|SENTRY_ENABLED_IN_DEBUG|-sentryTest' "$ROOT/ios"; then
+    has_dsn_key=1
+  else
+    has_dsn_key=0
+  fi
+  jq -n \
+    --arg schema "kg.ios.sentry.v1" \
+    --arg source "$source" \
+    --argjson sourceExists "$source_exists" \
+    --argjson canImport "$has_sdk" \
+    --argjson dsnReference "$has_dsn_key" \
+    '{
+      schema:$schema,
+      source:{
+        path:$source,
+        exists:($sourceExists == true or $sourceExists == 1)
+      },
+      wiring:{
+        canImportGuard:($canImport == 1),
+        dsnKeyReference:($dsnReference == 1)
+      },
+      debug:{
+        requiresEnv:"SENTRY_ENABLED_IN_DEBUG=1",
+        testArgument:"-sentryTest"
+      },
+      release:{
+        name:"bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION",
+        dist:"CURRENT_PROJECT_VERSION"
+      }
+    }'
+}
+
 doctor_readiness() {
   local emitter="$1" out="${2:-}"
-  local version build archive_line archive_version archive_build archive_path tf_latest
+  local version build archive_line archive_version archive_build archive_path tf_latest sentry_json sentry_source_exists sentry_can_import sentry_dsn_reference
   read_project_settings version build
   if [[ -n "$version" && -n "$build" ]]; then
     "$emitter" "$out" "project" "ok" "version=$version build=$build"
@@ -80,11 +134,14 @@ doctor_readiness() {
     "$emitter" "$out" "storekit" "warn" "scheme_reference_or_file=missing"
   fi
 
-  if rg -q 'canImport\(Sentry\)' "$ROOT/ios/BooksBrowser/Services/AppCrashReporting.swift" \
-     && rg -q 'SentryDSN|SENTRY_ENABLED_IN_DEBUG|-sentryTest' "$ROOT/ios"; then
+  sentry_json="$(sentry_summary_json)"
+  sentry_source_exists="$(jq -r '.source.exists' <<<"$sentry_json")"
+  sentry_can_import="$(jq -r '.wiring.canImportGuard' <<<"$sentry_json")"
+  sentry_dsn_reference="$(jq -r '.wiring.dsnKeyReference' <<<"$sentry_json")"
+  if [[ "$sentry_source_exists" == "true" && "$sentry_can_import" == "true" && "$sentry_dsn_reference" == "true" ]]; then
     "$emitter" "$out" "sentry" "ok" "release_name=bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION dist=CURRENT_PROJECT_VERSION"
   else
-    "$emitter" "$out" "sentry" "warn" "wiring=incomplete"
+    "$emitter" "$out" "sentry" "warn" "source_exists=$sentry_source_exists can_import_guard=$sentry_can_import dsn_key_reference=$sentry_dsn_reference"
   fi
 }
 
@@ -93,9 +150,92 @@ emit_readiness_text_adapter() {
   emit_readiness "$key" "$status" "$detail"
 }
 
+doctor_summary_json_from_file() {
+  local readiness_file="$1"
+  jq -s '
+    {
+      verdict:(
+        if any(.[]; .status == "block") then "block"
+        elif any(.[]; .status == "warn") then "warn"
+        else "pass"
+        end
+      ),
+      counts:{
+        ok:([.[] | select(.status == "ok")] | length),
+        warn:([.[] | select(.status == "warn")] | length),
+        block:([.[] | select(.status == "block")] | length),
+        total:length
+      }
+    }' "$readiness_file"
+}
+
+workflow_summary_json_from_file() {
+  local steps_file="$1"
+  jq -s '
+    {
+      verdict:(
+        if any(.[]; .status == "block") then "block"
+        elif any(.[]; .status == "warn") then "warn"
+        else "pass"
+        end
+      ),
+      counts:{
+        ready:([.[] | select(.status == "ready")] | length),
+        todo:([.[] | select(.status == "todo")] | length),
+        block:([.[] | select(.status == "block")] | length),
+        warn:([.[] | select(.status == "warn")] | length),
+        manual:([.[] | select(.status == "manual")] | length),
+        total:length
+      }
+    }' "$steps_file"
+}
+
+write_workflow_release_steps_json() {
+  local out="$1" version="$2" build="$3" tf_latest="$4" archive_line="$5" archive_version="$6" archive_build="$7" asc_state="$8"
+  emit_workflow_step_json "$out" 1 "preflight" "todo" "./ops/ios_ops.sh doctor" "readiness dashboard; fix status=block before upload"
+  emit_workflow_step_json "$out" 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --timeout 1200" "prove unit+UI scheme behavior before release claim"
+  emit_workflow_step_json "$out" 3 "build" "todo" "./ops/ios_ops.sh build" "compile gate; first screen shows xcresult warnings/errors"
+
+  if [[ -n "$archive_line" && "$archive_version" == "$version" && "$archive_build" == "$build" ]]; then
+    emit_workflow_step_json "$out" 4 "archive" "ready" "./ops/ios_ops.sh archives latest" "Organizer already has matching archive $archive_version($archive_build)"
+  else
+    emit_workflow_step_json "$out" 4 "archive" "todo" "./ops/ios_ops.sh archive" "create matching Organizer archive/export; no upload by default"
+  fi
+
+  if [[ -n "$tf_latest" && "$tf_latest" =~ ^[0-9]+$ && "$build" =~ ^[0-9]+$ ]]; then
+    if (( build > tf_latest )); then
+      emit_workflow_step_json "$out" 5 "upload" "ready" "./ops/ios_ops.sh archive --upload" "project build $build is greater than TestFlight latest $tf_latest"
+    else
+      emit_workflow_step_json "$out" 5 "upload" "block" "./ops/release.sh bump ios <next-version>" "project build $build is not greater than TestFlight latest $tf_latest"
+    fi
+  else
+    emit_workflow_step_json "$out" 5 "upload" "warn" "./ops/ios_ops.sh doctor" "cannot prove TestFlight latest build"
+  fi
+
+  if [[ "${asc_state:-}" == "__ASC_TIMEOUT__" ]]; then
+    emit_workflow_step_json "$out" 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version-state lookup timed out"
+  elif [[ -n "${asc_state:-}" ]]; then
+    case "$asc_state" in
+      *REJECTED*|*UNRESOLVED_ISSUES*)
+        emit_workflow_step_json "$out" 6 "asc-review" "todo" "./ops/asc.sh review-status && ./ops/asc.sh review-detail" "current ASC state requires rejection-resolution workflow: $asc_state"
+        ;;
+      *READY_FOR_REVIEW*|*PREPARE_FOR_SUBMISSION*|*DEVELOPER_REJECTED*)
+        emit_workflow_step_json "$out" 6 "asc-review" "ready" "./ops/asc_text_bundle.py dump -o asc.json" "metadata can be reviewed before submission: $asc_state"
+        ;;
+      *)
+        emit_workflow_step_json "$out" 6 "asc-review" "ready" "./ops/asc.sh versions" "ASC state: $asc_state"
+        ;;
+    esac
+  else
+    emit_workflow_step_json "$out" 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version state unknown"
+  fi
+
+  emit_workflow_step_json "$out" 7 "metadata" "todo" "./ops/asc_text_bundle.py dump -o asc.json" "review/apply low-risk ASC text bundle; apply is dry-run unless --yes"
+  emit_workflow_step_json "$out" 8 "submit" "manual" "ASC GUI" "bind uploaded build, inspect screenshots/privacy/rejection notes, submit/resubmit"
+}
+
 cmd_sentry() {
-  local source="$ROOT/ios/BooksBrowser/Services/AppCrashReporting.swift"
-  local has_sdk has_dsn_key json=0
+  local json=0 sentry_json
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=1; shift ;;
@@ -110,39 +250,14 @@ cmd_sentry() {
     esac
   done
 
-  grep -q 'canImport(Sentry)' "$source" && has_sdk=1 || has_sdk=0
-  rg -q 'SentryDSN|SENTRY_ENABLED_IN_DEBUG|-sentryTest' "$ROOT/ios" && has_dsn_key=1 || has_dsn_key=0
+  sentry_json="$(sentry_summary_json)"
   if (( json )); then
-    jq -n \
-      --arg schema "kg.ios.sentry.v1" \
-      --arg source "$source" \
-      --argjson sourceExists "$(path_exists_json_bool file "$source")" \
-      --argjson canImport "$has_sdk" \
-      --argjson dsnReference "$has_dsn_key" \
-      '{
-        schema:$schema,
-        source:{
-          path:$source,
-          exists:$sourceExists
-        },
-        wiring:{
-          canImportGuard:($canImport == 1),
-          dsnKeyReference:($dsnReference == 1)
-        },
-        debug:{
-          requiresEnv:"SENTRY_ENABLED_IN_DEBUG=1",
-          testArgument:"-sentryTest"
-        },
-        release:{
-          name:"bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION",
-          dist:"CURRENT_PROJECT_VERSION"
-        }
-      }'
+    printf '%s\n' "$sentry_json"
     return 0
   fi
 
-  echo "[ios][sentry] source=$source"
-  echo "[ios][sentry] can_import_guard=$has_sdk dsn_key_reference=$has_dsn_key"
+  echo "[ios][sentry] source=$(jq -r '.source.path' <<<"$sentry_json")"
+  echo "[ios][sentry] can_import_guard=$(jq -r '.wiring.canImportGuard | if . then 1 else 0 end' <<<"$sentry_json") dsn_key_reference=$(jq -r '.wiring.dsnKeyReference | if . then 1 else 0 end' <<<"$sentry_json")"
   echo "[ios][sentry] debug_requires_env=SENTRY_ENABLED_IN_DEBUG=1 test_arg=-sentryTest"
   echo "[ios][sentry] release_name=bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION dist=CURRENT_PROJECT_VERSION"
 }
@@ -168,22 +283,36 @@ cmd_doctor() {
     return
   fi
 
+  local readiness summary
+  readiness="$(mktemp)"
+  trap 'rm -f "$readiness"' RETURN
+
   echo "[ios][doctor] phase=status"
   cmd_status
   echo "[ios][doctor] phase=sentry"
   cmd_sentry
   echo "[ios][doctor] phase=release-readiness"
-  doctor_readiness emit_readiness_text_adapter
+  if ! doctor_readiness emit_readiness_json "$readiness"; then
+    trap - RETURN
+    cleanup_tmp "$readiness" 1
+    return 1
+  fi
+  jq -r '. | "[ios][readiness] \(.key) status=\(.status) \(.detail)"' "$readiness"
+  summary="$(doctor_summary_json_from_file "$readiness")"
+  echo "[ios][doctor] summary verdict=$(jq -r '.verdict' <<<"$summary") ok=$(jq -r '.counts.ok' <<<"$summary") warn=$(jq -r '.counts.warn' <<<"$summary") block=$(jq -r '.counts.block' <<<"$summary") total=$(jq -r '.counts.total' <<<"$summary")"
+  trap - RETURN
+  cleanup_tmp "$readiness"
 }
 
 cmd_doctor_json() {
-  local version build archive_line archive_version archive_build archive_path tf_latest
+  local version build archive_line archive_version archive_build archive_path tf_latest sentry_json summary_json
   read_project_settings version build
   archive_line="$(read_organizer_latest)"
   archive_version="$(awk -F'\t' '{print $4}' <<<"$archive_line")"
   archive_build="$(awk -F'\t' '{print $5}' <<<"$archive_line")"
   archive_path="$(awk -F'\t' '{print $6}' <<<"$archive_line")"
   tf_latest="$(read_testflight_latest_build)"
+  sentry_json="$(sentry_summary_json)"
 
   local readiness
   readiness="$(mktemp)"
@@ -193,6 +322,7 @@ cmd_doctor_json() {
     cleanup_tmp "$readiness" 1
     return 1
   fi
+  summary_json="$(doctor_summary_json_from_file "$readiness")"
 
   if ! jq -s \
     --arg schema "kg.ios.doctor.v1" \
@@ -202,11 +332,15 @@ cmd_doctor_json() {
     --arg organizer_build "${archive_build:-unknown}" \
     --arg organizer_path "${archive_path:-}" \
     --arg testflight_latest "${tf_latest:-unknown}" \
+    --argjson sentry "$sentry_json" \
+    --argjson summary "$summary_json" \
     '{
       schema:$schema,
       project:{version:$version,build:$build},
       organizer:{latest:{version:$organizer_version,build:$organizer_build,path:$organizer_path}},
       testflight:{latest_build:$testflight_latest},
+      summary:$summary,
+      sentry:$sentry,
       readiness:.
     }' "$readiness"; then
     trap - RETURN
@@ -219,6 +353,7 @@ cmd_doctor_json() {
 
 cmd_workflow_release() {
   local version build tf_latest archive_line archive_version archive_build asc_state
+  local steps summary
   read_project_settings version build
   tf_latest="$(read_testflight_latest_build)"
   archive_line="$(read_organizer_latest)"
@@ -226,53 +361,24 @@ cmd_workflow_release() {
   archive_build="$(awk -F'\t' '{print $5}' <<<"$archive_line")"
 
   echo "[ios][workflow] name=release mode=read-only version=${version:-unknown} build=${build:-unknown}"
-
-  emit_workflow_step 1 "preflight" "todo" "./ops/ios_ops.sh doctor" "readiness dashboard; fix status=block before upload"
-  emit_workflow_step 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --timeout 1200" "prove unit+UI scheme behavior before release claim"
-  emit_workflow_step 3 "build" "todo" "./ops/ios_ops.sh build" "compile gate; first screen shows xcresult warnings/errors"
-
-  if [[ -n "$archive_line" && "$archive_version" == "$version" && "$archive_build" == "$build" ]]; then
-    emit_workflow_step 4 "archive" "ready" "./ops/ios_ops.sh archives latest" "Organizer already has matching archive $archive_version($archive_build)"
-  else
-    emit_workflow_step 4 "archive" "todo" "./ops/ios_ops.sh archive" "create matching Organizer archive/export; no upload by default"
-  fi
-
-  if [[ -n "$tf_latest" && "$tf_latest" =~ ^[0-9]+$ && "$build" =~ ^[0-9]+$ ]]; then
-    if (( build > tf_latest )); then
-      emit_workflow_step 5 "upload" "ready" "./ops/ios_ops.sh archive --upload" "project build $build is greater than TestFlight latest $tf_latest"
-    else
-      emit_workflow_step 5 "upload" "block" "./ops/release.sh bump ios <next-version>" "project build $build is not greater than TestFlight latest $tf_latest"
-    fi
-  else
-    emit_workflow_step 5 "upload" "warn" "./ops/ios_ops.sh doctor" "cannot prove TestFlight latest build"
-  fi
-
+  steps="$(mktemp)"
+  trap 'rm -f "$steps"' RETURN
   if asc_state="$(read_asc_version_state)"; then
-    case "$asc_state" in
-      *REJECTED*|*UNRESOLVED_ISSUES*)
-        emit_workflow_step 6 "asc-review" "todo" "./ops/asc.sh review-status && ./ops/asc.sh review-detail" "current ASC state requires rejection-resolution workflow: $asc_state"
-        ;;
-      *READY_FOR_REVIEW*|*PREPARE_FOR_SUBMISSION*|*DEVELOPER_REJECTED*)
-        emit_workflow_step 6 "asc-review" "ready" "./ops/asc_text_bundle.py dump -o asc.json" "metadata can be reviewed before submission: $asc_state"
-        ;;
-      "")
-        emit_workflow_step 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version state unknown"
-        ;;
-      *)
-        emit_workflow_step 6 "asc-review" "ready" "./ops/asc.sh versions" "ASC state: $asc_state"
-        ;;
-    esac
+    :
   else
-    emit_workflow_step 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version-state lookup timed out"
+    asc_state="__ASC_TIMEOUT__"
   fi
-
-  emit_workflow_step 7 "metadata" "todo" "./ops/asc_text_bundle.py dump -o asc.json" "review/apply low-risk ASC text bundle; apply is dry-run unless --yes"
-  emit_workflow_step 8 "submit" "manual" "ASC GUI" "bind uploaded build, inspect screenshots/privacy/rejection notes, submit/resubmit"
+  write_workflow_release_steps_json "$steps" "${version:-unknown}" "${build:-unknown}" "${tf_latest:-}" "$archive_line" "${archive_version:-}" "${archive_build:-}" "$asc_state"
+  jq -r '"[ios][workflow] step=\(.step) key=\(.key) status=\(.status) command=\"\(.command)\" note=\"\(.note)\""' "$steps"
+  summary="$(workflow_summary_json_from_file "$steps")"
+  echo "[ios][workflow] summary verdict=$(jq -r '.verdict' <<<"$summary") ready=$(jq -r '.counts.ready' <<<"$summary") todo=$(jq -r '.counts.todo' <<<"$summary") block=$(jq -r '.counts.block' <<<"$summary") warn=$(jq -r '.counts.warn' <<<"$summary") manual=$(jq -r '.counts.manual' <<<"$summary") total=$(jq -r '.counts.total' <<<"$summary")"
+  trap - RETURN
+  cleanup_tmp "$steps"
 }
 
 cmd_workflow_release_json() {
   local version build tf_latest archive_line archive_version archive_build asc_state
-  local steps
+  local steps summary_json
   steps="$(mktemp)"
   trap 'rm -f "$steps"' RETURN
 
@@ -281,48 +387,13 @@ cmd_workflow_release_json() {
   archive_line="$(read_organizer_latest)"
   archive_version="$(awk -F'\t' '{print $4}' <<<"$archive_line")"
   archive_build="$(awk -F'\t' '{print $5}' <<<"$archive_line")"
-
-  emit_workflow_step_json "$steps" 1 "preflight" "todo" "./ops/ios_ops.sh doctor" "readiness dashboard; fix status=block before upload"
-  emit_workflow_step_json "$steps" 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --timeout 1200" "prove unit+UI scheme behavior before release claim"
-  emit_workflow_step_json "$steps" 3 "build" "todo" "./ops/ios_ops.sh build" "compile gate; first screen shows xcresult warnings/errors"
-
-  if [[ -n "$archive_line" && "$archive_version" == "$version" && "$archive_build" == "$build" ]]; then
-    emit_workflow_step_json "$steps" 4 "archive" "ready" "./ops/ios_ops.sh archives latest" "Organizer already has matching archive $archive_version($archive_build)"
-  else
-    emit_workflow_step_json "$steps" 4 "archive" "todo" "./ops/ios_ops.sh archive" "create matching Organizer archive/export; no upload by default"
-  fi
-
-  if [[ -n "$tf_latest" && "$tf_latest" =~ ^[0-9]+$ && "$build" =~ ^[0-9]+$ ]]; then
-    if (( build > tf_latest )); then
-      emit_workflow_step_json "$steps" 5 "upload" "ready" "./ops/ios_ops.sh archive --upload" "project build $build is greater than TestFlight latest $tf_latest"
-    else
-      emit_workflow_step_json "$steps" 5 "upload" "block" "./ops/release.sh bump ios <next-version>" "project build $build is not greater than TestFlight latest $tf_latest"
-    fi
-  else
-    emit_workflow_step_json "$steps" 5 "upload" "warn" "./ops/ios_ops.sh doctor" "cannot prove TestFlight latest build"
-  fi
-
   if asc_state="$(read_asc_version_state)"; then
-    case "$asc_state" in
-      *REJECTED*|*UNRESOLVED_ISSUES*)
-        emit_workflow_step_json "$steps" 6 "asc-review" "todo" "./ops/asc.sh review-status && ./ops/asc.sh review-detail" "current ASC state requires rejection-resolution workflow: $asc_state"
-        ;;
-      *READY_FOR_REVIEW*|*PREPARE_FOR_SUBMISSION*|*DEVELOPER_REJECTED*)
-        emit_workflow_step_json "$steps" 6 "asc-review" "ready" "./ops/asc_text_bundle.py dump -o asc.json" "metadata can be reviewed before submission: $asc_state"
-        ;;
-      "")
-        emit_workflow_step_json "$steps" 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version state unknown"
-        ;;
-      *)
-        emit_workflow_step_json "$steps" 6 "asc-review" "ready" "./ops/asc.sh versions" "ASC state: $asc_state"
-        ;;
-    esac
+    :
   else
-    emit_workflow_step_json "$steps" 6 "asc-review" "warn" "./ops/asc.sh versions" "ASC version-state lookup timed out"
+    asc_state="__ASC_TIMEOUT__"
   fi
-
-  emit_workflow_step_json "$steps" 7 "metadata" "todo" "./ops/asc_text_bundle.py dump -o asc.json" "review/apply low-risk ASC text bundle; apply is dry-run unless --yes"
-  emit_workflow_step_json "$steps" 8 "submit" "manual" "ASC GUI" "bind uploaded build, inspect screenshots/privacy/rejection notes, submit/resubmit"
+  write_workflow_release_steps_json "$steps" "${version:-unknown}" "${build:-unknown}" "${tf_latest:-}" "$archive_line" "${archive_version:-}" "${archive_build:-}" "$asc_state"
+  summary_json="$(workflow_summary_json_from_file "$steps")"
 
   if ! jq -s \
     --arg schema "kg.ios.workflow.v1" \
@@ -330,12 +401,14 @@ cmd_workflow_release_json() {
     --arg mode "read-only" \
     --arg version "${version:-unknown}" \
     --arg build "${build:-unknown}" \
+    --argjson summary "$summary_json" \
     '{
       schema:$schema,
       name:$name,
       mode:$mode,
       version:$version,
       build:$build,
+      summary:$summary,
       steps:.
     }' "$steps"; then
     trap - RETURN

@@ -193,11 +193,46 @@ emit_single_run_json() {
   jq -c --arg schema "kg.ios.run.v1" '. + {schema:$schema}' <<<"$report_json"
 }
 
+runs_summary_json() {
+  local build_json="$1" test_json="$2" archive_json="$3"
+  jq -n \
+    --argjson build "$build_json" \
+    --argjson test "$test_json" \
+    --argjson archive "$archive_json" \
+    '
+    def bad_result($run):
+      (($run.result // "unknown") != "ok")
+      and (($run.result // "unknown") != "missing");
+    def missing_result($run): (($run.result // "unknown") == "missing");
+    def malformed_result($run): (($run.result // "unknown") == "malformed");
+    def diag_errors($run): ($run.diagnostics.counts.errors // 0);
+    def diag_warnings($run): ($run.diagnostics.counts.warnings // 0);
+    def failed_tests($run): ($run.diagnostics.counts.failedTests // 0);
+    {
+      verdict:(
+        if (bad_result($build) or bad_result($test) or bad_result($archive) or diag_errors($build) > 0 or diag_errors($test) > 0 or diag_errors($archive) > 0 or failed_tests($test) > 0) then "block"
+        elif (diag_warnings($build) + diag_warnings($test) + diag_warnings($archive)) > 0 then "warn"
+        elif (missing_result($build) and missing_result($test) and missing_result($archive)) then "unknown"
+        else "pass"
+        end
+      ),
+      counts:{
+        errors:(diag_errors($build) + diag_errors($test) + diag_errors($archive)),
+        warnings:(diag_warnings($build) + diag_warnings($test) + diag_warnings($archive)),
+        failedTests:failed_tests($test),
+        missing:([ $build, $test, $archive ] | map(select(missing_result(.))) | length),
+        malformed:([ $build, $test, $archive ] | map(select(malformed_result(.))) | length),
+        failing:([ $build, $test, $archive ] | map(select(bad_result(.))) | length)
+      }
+    }'
+}
+
 cmd_runs_json() {
-  local build_json test_json archive_json generated_at
+  local build_json test_json archive_json summary_json generated_at
   build_json="$(emit_run_report_json build "$(verdict_file_for build)")"
   test_json="$(emit_run_report_json test "$(verdict_file_for test)")"
   archive_json="$(emit_run_report_json archive "$(verdict_file_for archive)")"
+  summary_json="$(runs_summary_json "$build_json" "$test_json" "$archive_json")"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   jq -n \
     --arg schema "kg.ios.runs.v1" \
@@ -205,9 +240,11 @@ cmd_runs_json() {
     --argjson build "$build_json" \
     --argjson test "$test_json" \
     --argjson archive "$archive_json" \
+    --argjson summary "$summary_json" \
     '{
       schema:$schema,
       generated_at:$generated_at,
+      summary:$summary,
       build:$build,
       test:$test,
       archive:$archive
@@ -234,6 +271,10 @@ cmd_runs() {
     cmd_runs_json
     return
   fi
+
+  local summary_json
+  summary_json="$(cmd_runs_json | jq -c '.summary')"
+  echo "[ios][runs] summary verdict=$(jq -r '.verdict' <<<"$summary_json") errors=$(jq -r '.counts.errors' <<<"$summary_json") warnings=$(jq -r '.counts.warnings' <<<"$summary_json") failedTests=$(jq -r '.counts.failedTests' <<<"$summary_json") missing=$(jq -r '.counts.missing' <<<"$summary_json") malformed=$(jq -r '.counts.malformed' <<<"$summary_json") failing=$(jq -r '.counts.failing' <<<"$summary_json")"
 
   local kind file run_json result reason caller elapsed executed log_path xcresult_path log_exists xcresult_exists diag_source diag_result diag_errors diag_warnings timing_summary cache_status
   for kind in build test archive; do

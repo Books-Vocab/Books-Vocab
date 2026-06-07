@@ -3,7 +3,7 @@
 
 cmd_snapshot_json() {
   local include_xcode="$1" include_simulator="$2" include_logs="$3" log_since="$4" log_limit="$5" log_predicate="$6"
-  local doctor_json workflow_json gate_json xcode_json simulator_json runs_json logs_json generated_at simulator_rc
+  local doctor_json workflow_json gate_json xcode_json simulator_json runs_json logs_json sentry_json generated_at simulator_rc
   if ! doctor_json="$(cmd_doctor_json)"; then
     return 1
   fi
@@ -11,6 +11,12 @@ cmd_snapshot_json() {
     return 1
   fi
   if ! gate_json="$(cmd_gate_release_json_from_state "$doctor_json" "$workflow_json")"; then
+    return 1
+  fi
+  if ! sentry_json="$(jq -c '.sentry' <<<"$doctor_json")"; then
+    return 1
+  fi
+  if [[ -z "$sentry_json" || "$sentry_json" == "null" ]]; then
     return 1
   fi
   if (( include_xcode )); then
@@ -49,6 +55,7 @@ cmd_snapshot_json() {
     --argjson doctor "$doctor_json" \
     --argjson workflow "$workflow_json" \
     --argjson gate "$gate_json" \
+    --argjson sentry "$sentry_json" \
     --argjson xcode "$xcode_json" \
     --argjson simulator "$simulator_json" \
     --argjson runs "$runs_json" \
@@ -88,6 +95,33 @@ cmd_snapshot_json() {
         command:$command,
         message:(.error // .detail // .note // "")
       }];
+    def sentry_actions($sentry):
+      [
+        if ($sentry.source.exists // false) then empty else {
+          source:"sentry",
+          severity:"warn",
+          key:"source",
+          status:"warn",
+          command:"./ops/ios_ops.sh sentry --json",
+          message:("source missing: " + ($sentry.source.path // "unknown"))
+        } end,
+        if ($sentry.wiring.canImportGuard // false) then empty else {
+          source:"sentry",
+          severity:"warn",
+          key:"canImportGuard",
+          status:"warn",
+          command:"./ops/ios_ops.sh sentry --json",
+          message:"missing canImport(Sentry) guard"
+        } end,
+        if ($sentry.wiring.dsnKeyReference // false) then empty else {
+          source:"sentry",
+          severity:"warn",
+          key:"dsnKeyReference",
+          status:"warn",
+          command:"./ops/ios_ops.sh sentry --json",
+          message:"missing Sentry DSN/debug test wiring"
+        } end
+      ];
     def timing_summary($run):
       {
         cacheStatus:($run.cache.status // null),
@@ -123,7 +157,15 @@ cmd_snapshot_json() {
         }
       end;
     (
-      n($gate.summary.blocks) as $gateBlocks
+      n($doctor.summary.counts.ok) as $readinessOk
+      | n($doctor.summary.counts.warn) as $readinessWarns
+      | n($doctor.summary.counts.block) as $readinessBlocks
+      | n($workflow.summary.counts.ready) as $workflowReady
+      | n($workflow.summary.counts.todo) as $workflowTodos
+      | n($workflow.summary.counts.warn) as $workflowWarns
+      | n($workflow.summary.counts.block) as $workflowBlocks
+      | n($workflow.summary.counts.manual) as $workflowManual
+      | n($gate.summary.blocks) as $gateBlocks
       | n($gate.summary.warnings) as $gateWarnings
       | n($gate.summary.todos) as $gateTodos
       | n($gate.summary.manual) as $gateManual
@@ -134,6 +176,11 @@ cmd_snapshot_json() {
       | n($runs.test.diagnostics.counts.failedTests) as $testFailures
       | n($runs.archive.diagnostics.counts.errors) as $archiveErrors
       | n($runs.archive.diagnostics.counts.warnings) as $archiveWarnings
+      | (
+          (if ($sentry.source.exists // false) then 0 else 1 end)
+          + (if ($sentry.wiring.canImportGuard // false) then 0 else 1 end)
+          + (if ($sentry.wiring.dsnKeyReference // false) then 0 else 1 end)
+        ) as $sentryWarnings
       | (if $xcode == null then 0 else ($xcode.errors // [] | length) end) as $xcodeErrors
       | (if $simulator == null then 0 elif $simulator.status == "error" then (($simulator.errors // []) | length) else 0 end) as $simulatorErrors
       | (if $logs == null then 0 else n($logs.summary.filteredCount) end) as $runtimeLogs
@@ -142,10 +189,12 @@ cmd_snapshot_json() {
           + diag_actions("build"; $runs.build.diagnostics)
           + diag_actions("test"; $runs.test.diagnostics)
           + diag_actions("archive"; $runs.archive.diagnostics)
+          + sentry_actions($sentry)
           + source_errors("xcode"; (if $xcode == null then [] else $xcode.errors end); "warn"; "./ops/ios_ops.sh xcode --json")
           + source_errors("simulator"; (if $simulator == null then [] else $simulator.errors end); "warn"; "./ops/ios_ops.sh simulator status --json")
           + gate_actions($gate.warnings; "warn")
           + gate_actions($gate.todos; "todo")
+          + gate_actions($gate.manual; "manual")
         ) as $nextActions
       | {
       schema:$schema,
@@ -153,11 +202,19 @@ cmd_snapshot_json() {
       summary:{
         verdict:(
           if ($gateBlocks + $buildErrors + $testErrors + $testFailures + $archiveErrors) > 0 then "block"
-          elif ($gateWarnings + $buildWarnings + $testWarnings + $archiveWarnings + $xcodeErrors + $simulatorErrors) > 0 then "warn"
+          elif ($gateWarnings + $buildWarnings + $testWarnings + $archiveWarnings + $sentryWarnings + $xcodeErrors + $simulatorErrors) > 0 then "warn"
           else "pass"
           end
         ),
         counts:{
+          readinessOk:$readinessOk,
+          readinessWarns:$readinessWarns,
+          readinessBlocks:$readinessBlocks,
+          workflowReady:$workflowReady,
+          workflowTodos:$workflowTodos,
+          workflowWarns:$workflowWarns,
+          workflowBlocks:$workflowBlocks,
+          workflowManual:$workflowManual,
           gateBlocks:$gateBlocks,
           gateWarnings:$gateWarnings,
           gateTodos:$gateTodos,
@@ -169,6 +226,7 @@ cmd_snapshot_json() {
           testFailures:$testFailures,
           archiveErrors:$archiveErrors,
           archiveWarnings:$archiveWarnings,
+          sentryWarnings:$sentryWarnings,
           xcodeErrors:$xcodeErrors,
           simulatorErrors:$simulatorErrors,
           runtimeLogs:$runtimeLogs
@@ -187,6 +245,7 @@ cmd_snapshot_json() {
       readiness:$doctor.readiness,
       workflow:$workflow,
       gate:$gate,
+      sentry:$sentry,
       xcode:$xcode,
       simulator:$simulator,
       runs:$runs,
@@ -200,7 +259,7 @@ cmd_snapshot_text_from_json() {
   jq -r '
     .summary.counts as $c
     | .summary.timings as $t
-    | "[ios][summary] schema=\(.schema) verdict=\(.summary.verdict) gateBlocks=\($c.gateBlocks) gateWarnings=\($c.gateWarnings) gateTodos=\($c.gateTodos) buildErrors=\($c.buildErrors) buildWarnings=\($c.buildWarnings) testErrors=\($c.testErrors) testWarnings=\($c.testWarnings) testFailures=\($c.testFailures) archiveErrors=\($c.archiveErrors) archiveWarnings=\($c.archiveWarnings) xcodeErrors=\($c.xcodeErrors) simulatorErrors=\($c.simulatorErrors) runtimeLogs=\($c.runtimeLogs)",
+    | "[ios][summary] schema=\(.schema) verdict=\(.summary.verdict) readinessOk=\($c.readinessOk) readinessWarns=\($c.readinessWarns) readinessBlocks=\($c.readinessBlocks) workflowReady=\($c.workflowReady) workflowTodos=\($c.workflowTodos) workflowWarns=\($c.workflowWarns) workflowBlocks=\($c.workflowBlocks) workflowManual=\($c.workflowManual) gateBlocks=\($c.gateBlocks) gateWarnings=\($c.gateWarnings) gateTodos=\($c.gateTodos) buildErrors=\($c.buildErrors) buildWarnings=\($c.buildWarnings) testErrors=\($c.testErrors) testWarnings=\($c.testWarnings) testFailures=\($c.testFailures) archiveErrors=\($c.archiveErrors) archiveWarnings=\($c.archiveWarnings) sentryWarnings=\($c.sentryWarnings) xcodeErrors=\($c.xcodeErrors) simulatorErrors=\($c.simulatorErrors) runtimeLogs=\($c.runtimeLogs)",
       "[ios][timing] build cacheStatus=\($t.build.cacheStatus // "n/a") totalMs=\($t.build.totalMs // "n/a") bootMs=\($t.build.bootMs // "n/a") xcodebuildMs=\($t.build.xcodebuildMs // "n/a")",
       "[ios][timing] test cacheStatus=\($t.test.cacheStatus // "n/a") totalMs=\($t.test.totalMs // "n/a") bootMs=\($t.test.bootMs // "n/a") buildForTestingMs=\($t.test.buildForTestingMs // "n/a") testInvocationMs=\($t.test.testInvocationMs // "n/a") testBodyMs=\($t.test.testBodyMs // "n/a") xcresultSessionMs=\($t.test.xcresultSessionMs // "n/a") appLaunchAverageMs=\($t.test.appLaunchAverageMs // "n/a") appLaunchSamples=\($t.test.appLaunchSamples // "n/a") invocationOverheadMs=\($t.test.invocationOverheadMs // "n/a")",
       "[ios][timing] archive totalMs=\($t.archive.totalMs // "n/a") lockWaitMs=\($t.archive.lockWaitMs // "n/a") archiveMs=\($t.archive.archiveMs // "n/a") exportMs=\($t.archive.exportMs // "n/a") uploadMs=\($t.archive.uploadMs // "n/a")",
@@ -223,6 +282,7 @@ cmd_snapshot_text_from_json() {
       "[ios][snapshot] run kind=build result=\(.runs.build.result // "unknown") errors=\($c.buildErrors) warnings=\($c.buildWarnings) log=\(.runs.build.artifacts.log // "") xcresult=\(.runs.build.artifacts.xcresult // "")",
       "[ios][snapshot] run kind=test result=\(.runs.test.result // "unknown") executed=\(.runs.test.executed // "n/a") errors=\($c.testErrors) warnings=\($c.testWarnings) failures=\($c.testFailures) log=\(.runs.test.artifacts.log // "") xcresult=\(.runs.test.artifacts.xcresult // "")",
       "[ios][snapshot] run kind=archive result=\(.runs.archive.result // "unknown") errors=\($c.archiveErrors) warnings=\($c.archiveWarnings) log=\(.runs.archive.artifacts.log // "") xcresult=\(.runs.archive.artifacts.xcresult // "")",
+      "[ios][snapshot] sentry sourceExists=\(.sentry.source.exists // false) canImportGuard=\(.sentry.wiring.canImportGuard // false) dsnKeyReference=\(.sentry.wiring.dsnKeyReference // false)",
       (if .xcode == null then "[ios][snapshot] xcode=skipped" else "[ios][snapshot] xcode version=\(.xcode.xcode.version // "unknown") build=\(.xcode.xcode.build // "unknown") destinations=\(.xcode.destinations.available | length) ineligible=\(.xcode.destinations.ineligible | length)" end),
       (if .simulator == null then "[ios][snapshot] simulator=skipped" else "[ios][snapshot] simulator status=\(.simulator.status) device=\(.simulator.device.name // "none") appProcess=\(.simulator.app.process.status // "unknown")" end),
       (if .logs == null then "[ios][snapshot] logs=skipped" else "[ios][snapshot] logs emitted=\(.logs.summary.emittedCount // 0) filtered=\(.logs.summary.filteredCount // 0) since=\(.logs.since // "")" end)
