@@ -79,6 +79,118 @@ def model_for(call_type: str) -> str:
     return _MODEL_MAP.get(call_type, _DEFAULT_MODEL)
 
 
+def _col_expr(conn: Any, table: str, col: str) -> str:
+    """回傳 ``col`` 的 SQL 表達式;欄不存在的 legacy DB 回字面 ``NULL``。
+
+    與 :func:`kg.ops_shared.provider_column_expr` 同義但對任意欄位通用,且不
+    引入 admin→ops_shared 依賴方向。下游把 NULL 視為未標記 legacy 列。
+    """
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    has = any(row[1] == col for row in cur.fetchall())
+    return col if has else "NULL"
+
+
+def query_cost_rows(
+    conn: Any, *, user_id: str | None = None, since: str | None = None
+) -> list[tuple]:
+    """Connection-agnostic:對 ``token_usage`` 跑唯一的 cost 聚合 query。
+
+    cost-by-call_type 業務語意的**單一真相源** —— admin(RW conn)與 ops
+    (``connect_ro``)都呼叫本函式,各自只負責「怎麼連」,不重寫「查什麼」。
+    回傳 ``(uid, call_type, provider, model, cnt, total_in, total_out)``;
+    ``user_id=None`` 表跨用戶(供 cost-overview)。``provider``/``model`` 欄缺的
+    legacy DB 以 NULL 切片回傳,由 :func:`fold_user_summary` fallback 定價/推斷。
+    """
+    pcol = _col_expr(conn, "token_usage", "provider")
+    mcol = _col_expr(conn, "token_usage", "model")
+    select_uid = "user_id" if user_id is None else "?"
+    sql = (
+        f"SELECT {select_uid} AS uid, call_type, {pcol} AS provider, "
+        f"{mcol} AS model, COUNT(*) AS cnt, "
+        "SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out "
+        "FROM token_usage"
+    )
+    where: list[str] = []
+    params: list = []
+    if user_id is not None:
+        params.append(user_id)  # 對應 SELECT 的 ? placeholder
+        where.append("user_id = ?")
+        params.append(user_id)
+    if since is not None:
+        where.append("created_at >= ?")
+        params.append(since)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    group = (
+        "call_type, provider, model"
+        if user_id is not None
+        else "user_id, call_type, provider, model"
+    )
+    sql += f" GROUP BY {group}"
+    return conn.execute(sql, params).fetchall()
+
+
+def _empty_user_summary() -> dict[str, Any]:
+    return {
+        "total_calls": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_tokens": 0,
+        "total_cost_usd": 0.0,
+        "by_service": {},
+        "by_model": {},
+        "by_call_type": {},
+    }
+
+
+def fold_user_summary(rows: list[tuple]) -> dict[str, Any]:
+    """Pure fold:把 :func:`query_cost_rows` 的列折成 by_service/by_model/
+    by_call_type + totals。每個 (call_type, provider) 切片以自身 provider 費率
+    定價;NULL provider 的 legacy 列 fallback 到 call_type 當前 route 的 provider。
+
+    只讀每列尾端的 ``call_type, provider, model, cnt, total_in, total_out``,
+    領頭 uid(若有)忽略 —— 故單用戶/跨用戶共用同一折疊邏輯。
+    """
+    from .quota_service import token_cost_usd
+
+    out = _empty_user_summary()
+    by_call_type = out["by_call_type"]
+    by_service = out["by_service"]
+    by_model = out["by_model"]
+    total_in = total_out = total_calls = 0
+    total_cost = 0.0
+
+    for row in rows:
+        call_type, provider, model, cnt, t_in, t_out = row[-6:]
+        ti = int(t_in or 0)
+        to = int(t_out or 0)
+        c = int(cnt or 0)
+        cost = token_cost_usd(call_type, ti, to, provider=provider)
+
+        total_in += ti
+        total_out += to
+        total_cost += cost
+        total_calls += c
+
+        mdl = model or model_for(call_type)
+        for buckets, key in (
+            (by_call_type, call_type),
+            (by_service, service_for(call_type)),
+            (by_model, mdl),
+        ):
+            _accumulate(buckets, key, calls=c, input_tokens=ti, output_tokens=to, cost=cost)
+
+    for bucket in (*by_service.values(), *by_model.values(), *by_call_type.values()):
+        bucket["cost_usd"] = round(bucket["cost_usd"], 6)
+
+    out["total_calls"] = total_calls
+    out["total_input_tokens"] = total_in
+    out["total_output_tokens"] = total_out
+    out["total_tokens"] = total_in + total_out
+    out["total_cost_usd"] = round(total_cost, 6)
+    return out
+
+
 def _accumulate(
     buckets: dict[str, dict[str, Any]],
     key: str,
@@ -114,82 +226,31 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
 
     # Import lazily so unit tests can monkeypatch DATA_DIR before module
     # initialises its SQLite connection.
-    from .quota_service import EMBED_PER_M, INPUT_PER_M, OUTPUT_PER_M, token_cost_usd
+    from .quota_service import EMBED_PER_M, INPUT_PER_M, OUTPUT_PER_M
     from .token_tracker import _get_conn, _lock
 
     since = since_iso(range_)
 
-    where = "WHERE user_id = ?"
-    params: list = [user_id]
-    if since is not None:
-        where += " AND created_at >= ?"
-        params.append(since)
-
+    # admin 面只負責「怎麼連」(RW singleton + _lock);「查什麼/怎麼折」
+    # 全交給共用核心,與 ops 的 connect_ro 路徑共用同一語意。
     with _lock:
         conn = _get_conn()
-        rows = conn.execute(
-            f"""
-            SELECT call_type, provider, model,
-                   COUNT(*)            AS cnt,
-                   SUM(input_tokens)   AS total_in,
-                   SUM(output_tokens)  AS total_out
-            FROM token_usage
-            {where}
-            GROUP BY call_type, provider, model
-            """,
-            params,
-        ).fetchall()
+        rows = query_cost_rows(conn, user_id=user_id, since=since)
 
-    by_call_type: dict[str, dict[str, Any]] = {}
-    by_service: dict[str, dict[str, Any]] = {}
-    by_model: dict[str, dict[str, Any]] = {}
-    total_in = 0
-    total_out = 0
-    total_cost = 0.0
-    total_calls = 0
-
-    # GROUP BY (call_type, provider, model) yields one row per distinct
-    # combination, so a single call_type may appear multiple times — each
-    # slice is priced by its own provider and folded into the buckets.
-    for call_type, provider, model, cnt, t_in, t_out in rows:
-        ti = int(t_in or 0)
-        to = int(t_out or 0)
-        c = int(cnt or 0)
-        cost = token_cost_usd(call_type, ti, to, provider=provider)
-
-        total_in += ti
-        total_out += to
-        total_cost += cost
-        total_calls += c
-
-        # Prefer the row's recorded model; legacy NULL rows fall back to
-        # the call_type-inferred name so historical data still renders.
-        mdl = model or model_for(call_type)
-        for buckets, key in (
-            (by_call_type, call_type),
-            (by_service, service_for(call_type)),
-            (by_model, mdl),
-        ):
-            _accumulate(
-                buckets, key, calls=c, input_tokens=ti, output_tokens=to, cost=cost
-            )
-
-    # Round cost_usd at the leaves once aggregation is complete.
-    for bucket in (*by_service.values(), *by_model.values(), *by_call_type.values()):
-        bucket["cost_usd"] = round(bucket["cost_usd"], 6)
+    summary = fold_user_summary(rows)
 
     return {
         "user_id": user_id,
         "range": range_,
         "since": since,
-        "total_calls": total_calls,
-        "total_input_tokens": total_in,
-        "total_output_tokens": total_out,
-        "total_tokens": total_in + total_out,
-        "total_cost_usd": round(total_cost, 6),
-        "by_service": by_service,
-        "by_model": by_model,
-        "by_call_type": by_call_type,
+        "total_calls": summary["total_calls"],
+        "total_input_tokens": summary["total_input_tokens"],
+        "total_output_tokens": summary["total_output_tokens"],
+        "total_tokens": summary["total_tokens"],
+        "total_cost_usd": summary["total_cost_usd"],
+        "by_service": summary["by_service"],
+        "by_model": summary["by_model"],
+        "by_call_type": summary["by_call_type"],
         "pricing_assumptions": {
             "input_usd_per_m_tokens": INPUT_PER_M,
             "output_usd_per_m_tokens": OUTPUT_PER_M,
