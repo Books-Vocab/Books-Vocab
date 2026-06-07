@@ -21,7 +21,7 @@
 #   ./ops/ios_ops.sh runs [--json]
 #   ./ops/ios_ops.sh snapshot [--json] [--skip-xcode] [--skip-simulator] [--include-logs] [--log-since 5m] [--log-limit 200]
 #   ./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json]
-#   ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--reuse-build] [--json]
+#   ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--dataset <name> | --dataset-file <path>] [--reuse-build] [--json]
 #   ./ops/ios_ops.sh catalog clean [--json]
 #   ./ops/ios_ops.sh commands [--json]
 #

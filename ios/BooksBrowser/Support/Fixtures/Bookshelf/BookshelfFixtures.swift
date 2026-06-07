@@ -14,7 +14,7 @@ enum BookshelfFixtureID: String, CaseIterable {
     }
 }
 
-struct BookshelfBookSeed {
+struct BookshelfBookSeed: Codable {
     let title: String
     let author: String
     let fileName: String
@@ -24,7 +24,7 @@ struct BookshelfBookSeed {
     let dateLastRead: Date?
 }
 
-struct BookshelfFixtureSeed {
+struct BookshelfFixtureSeed: Codable {
     let books: [BookshelfBookSeed]
     let referenceDate: Date
 }
@@ -111,7 +111,8 @@ enum BookshelfFixtures {
 
     @MainActor
     static func renderModel(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureRenderModel {
-        let seed = registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.bookshelfSeed(for: fixtureID)
+            ?? registry.recipe(for: fixtureID.key).build()
         return .init(
             books: seed.books.map(makeBook(from:)),
             container: makeContainer(from: seed.books),

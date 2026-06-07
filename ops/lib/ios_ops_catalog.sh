@@ -160,6 +160,28 @@ catalog_scope_file_path() {
   printf '%s/Library/Developer/CoreSimulator/Devices/%s/data/tmp/kg-catalog-scope.json\n' "$HOME" "$device_udid"
 }
 
+catalog_fixture_dataset_path() {
+  local device_udid="$1"
+  printf '%s/Library/Developer/CoreSimulator/Devices/%s/data/tmp/kg-fixture-dataset.json\n' "$HOME" "$device_udid"
+}
+
+catalog_named_dataset_path() {
+  local dataset_name="$1"
+  printf '%s/ops/fixtures/catalog/%s.json\n' "$ROOT" "$dataset_name"
+}
+
+catalog_stage_fixture_dataset() {
+  local device_udid="$1" source_path="${2:-}"
+  local destination_path
+  destination_path="$(catalog_fixture_dataset_path "$device_udid")"
+  mkdir -p "$(dirname "$destination_path")"
+  if [[ -z "$source_path" ]]; then
+    rm -f "$destination_path"
+    return 0
+  fi
+  cp "$source_path" "$destination_path"
+}
+
 catalog_write_scope_file() {
   local device_udid="$1" groups_csv="$2" scenarios_csv="$3"
   local scope_path groups_json scenarios_json
@@ -197,20 +219,60 @@ catalog_upsert_plist_string() {
   fi
 }
 
+catalog_upsert_plist_json() {
+  local plist_path="$1" key_path="$2" json_value="$3"
+  if ! plutil -replace "$key_path" -json "$json_value" "$plist_path" 2>/dev/null; then
+    plutil -insert "$key_path" -json "$json_value" "$plist_path"
+  fi
+}
+
+catalog_ensure_plist_dict() {
+  local plist_path="$1" key_path="$2"
+  plutil -extract "$key_path" raw -o - "$plist_path" >/dev/null 2>&1 && return 0
+  plutil -insert "$key_path" -json '{}' "$plist_path"
+}
+
+catalog_remove_plist_key() {
+  local plist_path="$1" key_path="$2"
+  plutil -remove "$key_path" "$plist_path" >/dev/null 2>&1 || true
+}
+
+catalog_dataset_base64() {
+  local dataset_path="$1"
+  [[ -n "$dataset_path" ]] || return 0
+  [[ -f "$dataset_path" ]] || return 1
+  base64 <"$dataset_path" | tr -d '\n'
+}
+
 catalog_prepare_scoped_xctestrun() {
-  local base_xctestrun="$1" groups_csv="$2" scenarios_csv="$3" scoped_xctestrun="$4"
+  local base_xctestrun="$1" groups_csv="$2" scenarios_csv="$3" dataset_b64="$4" scoped_xctestrun="$5"
   local args_json
   cp "$base_xctestrun" "$scoped_xctestrun"
   args_json="$(catalog_scope_command_args_json "$groups_csv" "$scenarios_csv")"
 
-  plutil -replace 'TestConfigurations.0.TestTargets.0.CommandLineArguments' -json "$args_json" "$scoped_xctestrun"
+  catalog_upsert_plist_json "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.CommandLineArguments' "$args_json"
+  catalog_ensure_plist_dict "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables'
+  catalog_ensure_plist_dict "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables'
   if [[ -n "$groups_csv" ]]; then
     catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_CATALOG_GROUPS' "$groups_csv"
     catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_CATALOG_GROUPS' "$groups_csv"
+  else
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_CATALOG_GROUPS'
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_CATALOG_GROUPS'
   fi
   if [[ -n "$scenarios_csv" ]]; then
     catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_CATALOG_SCENARIOS' "$scenarios_csv"
     catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_CATALOG_SCENARIOS' "$scenarios_csv"
+  else
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_CATALOG_SCENARIOS'
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_CATALOG_SCENARIOS'
+  fi
+  if [[ -n "$dataset_b64" ]]; then
+    catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64' "$dataset_b64"
+    catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64' "$dataset_b64"
+  else
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64'
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64'
   fi
 }
 
@@ -383,7 +445,7 @@ catalog_resolve_destination_device_udid() {
 }
 
 cmd_catalog_snapshots_json() {
-  local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" reuse_build_only="${5:-0}"
+  local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" dataset_path="${5:-}" reuse_build_only="${6:-0}"
   local generated_at mode container_data snapshot_source xcode_log xcode_err rc test_cmd
   local sim_payload sim_rc=0 copy_rc=0 pngs_json payload resolved_device container_source
   local validation_json expected_scenario_count="" command_wall_ms=0 test_body_ms=0 playbook_build_ms=0 snapshot_run_ms=0 startup_overhead_ms=0
@@ -392,6 +454,7 @@ cmd_catalog_snapshots_json() {
   local fixture_root="" derived_data_root="" base_xctestrun="" run_xctestrun=""
   local build_cmd="" scope_test_cmd="" use_cached_xctestrun=0 scope_requested=0
   local cache_key="" cache_status="not-applicable"
+  local dataset_status="not-requested" dataset_rc=0 dataset_simulator_path="" dataset_b64=""
 
   wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -410,7 +473,7 @@ cmd_catalog_snapshots_json() {
   if [[ -n "$groups_csv" || -n "$scenarios_csv" ]]; then
     scope_requested=1
   fi
-  if [[ "$scope_requested" -eq 1 || "$reuse_build_only" -eq 1 ]]; then
+  if [[ "$scope_requested" -eq 1 || "$reuse_build_only" -eq 1 || -n "$dataset_path" ]]; then
     derived_data_root="$(catalog_resolve_derived_data_root "$destination")"
     cache_key="$(basename "$derived_data_root")"
     use_cached_xctestrun=1
@@ -420,6 +483,7 @@ cmd_catalog_snapshots_json() {
 
   if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then
     mode="fixture"
+    dataset_status="not-applicable"
     derived_data_root=""
     cache_key=""
     cache_status="not-applicable"
@@ -431,15 +495,44 @@ cmd_catalog_snapshots_json() {
     : >"$xcode_err"
     rc=0
   else
-    if [[ "$use_cached_xctestrun" -eq 1 ]]; then
+    if [[ -n "$dataset_path" ]]; then
+      if ! dataset_b64="$(catalog_dataset_base64 "$dataset_path")"; then
+        dataset_rc=89
+        dataset_status="encode-failed"
+      else
+        dataset_status="embedded"
+      fi
+    fi
+
+    if [[ "$dataset_rc" -eq 0 && -n "$resolved_device" ]]; then
+      dataset_simulator_path="$(catalog_fixture_dataset_path "$resolved_device")"
+      if catalog_stage_fixture_dataset "$resolved_device" "$dataset_path"; then
+        if [[ -n "$dataset_path" ]]; then
+          dataset_status="embedded+copied"
+        else
+          dataset_status="cleared"
+        fi
+      else
+        dataset_rc=$?
+        if [[ -n "$dataset_path" ]]; then
+          dataset_status="copy-failed"
+        else
+          dataset_status="clear-failed"
+        fi
+      fi
+    fi
+
+    if [[ "$dataset_rc" -ne 0 ]]; then
+      rc="$dataset_rc"
+    elif [[ "$use_cached_xctestrun" -eq 1 ]]; then
       base_xctestrun="$(catalog_find_xctestrun "$derived_data_root")"
       if catalog_cached_products_ready "$derived_data_root" "$base_xctestrun"; then
         cache_status="hit"
         : >"$xcode_log"
         : >"$xcode_err"
-        if [[ "$scope_requested" -eq 1 ]]; then
+        if [[ "$scope_requested" -eq 1 || -n "$dataset_b64" ]]; then
           run_xctestrun="$(dirname "$base_xctestrun")/$(basename "${base_xctestrun%.xctestrun}").scoped.xctestrun"
-          catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$run_xctestrun"
+          catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$dataset_b64" "$run_xctestrun"
         else
           run_xctestrun="$base_xctestrun"
         fi
@@ -463,9 +556,9 @@ cmd_catalog_snapshots_json() {
             if [[ -z "$base_xctestrun" ]]; then
               rc=86
             else
-              if [[ "$scope_requested" -eq 1 ]]; then
+              if [[ "$scope_requested" -eq 1 || -n "$dataset_b64" ]]; then
                 run_xctestrun="$(dirname "$base_xctestrun")/$(basename "${base_xctestrun%.xctestrun}").scoped.xctestrun"
-                catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$run_xctestrun"
+                catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$dataset_b64" "$run_xctestrun"
               else
                 run_xctestrun="$base_xctestrun"
               fi
@@ -609,6 +702,9 @@ cmd_catalog_snapshots_json() {
     --arg cacheKey "$cache_key" \
     --arg cacheRoot "$derived_data_root" \
     --arg cacheStatus "$cache_status" \
+    --arg datasetRequestedPath "$dataset_path" \
+    --arg datasetSimulatorPath "$dataset_simulator_path" \
+    --arg datasetStatus "$dataset_status" \
     --argjson reuseBuild "$reuse_build_only" \
     --argjson commandWallMs "$command_wall_ms" \
     --argjson playbookBuildMs "$playbook_build_ms" \
@@ -622,6 +718,7 @@ cmd_catalog_snapshots_json() {
     --argjson artifactIndexMs "$artifact_index_ms" \
     --argjson validationMs "$validation_ms" \
     --argjson testExit "$rc" \
+    --argjson datasetExit "$dataset_rc" \
     --argjson copyExit "$copy_rc" \
     --argjson artifacts "$pngs_json" \
     --argjson validation "$validation_json" \
@@ -632,6 +729,7 @@ cmd_catalog_snapshots_json() {
       action:"snapshots",
       status:(
         if $testExit != 0 then "error"
+        elif $datasetExit != 0 then "error"
         elif $copyExit != 0 then "error"
         elif ($artifacts.pngCount // 0) == 0 then "error"
         elif $validation.status != "ok" then "error"
@@ -642,6 +740,11 @@ cmd_catalog_snapshots_json() {
       destination:$destination,
       options:{
         reuseBuild:($reuseBuild == 1)
+      },
+      dataset:{
+        requestedPath:(if $datasetRequestedPath == "" then null else $datasetRequestedPath end),
+        simulatorPath:(if $datasetSimulatorPath == "" then null else $datasetSimulatorPath end),
+        status:$datasetStatus
       },
       scope:{
         groups:(if $groups == "" then [] else ($groups | split(",")) end),
@@ -684,6 +787,8 @@ cmd_catalog_snapshots_json() {
         compileTimeFlag:"KG_RUN_CATALOG_SNAPSHOTS"
       },
       errors:(
+        (if $datasetExit != 0 then [{key:"catalog-dataset",status:"error",exitCode:$datasetExit,error:"dataset-injection-failed"}] else [] end)
+        +
         (if $testExit != 0 then [{key:"catalog-test",status:"error",exitCode:$testExit,error:"xcodebuild-test-failed"}] else [] end)
         +
         (if $testExit == 87 then [{key:"catalog-cache",status:"error",exitCode:$testExit,error:"reuse-build-cache-required"}] else [] end)
@@ -708,6 +813,8 @@ cmd_catalog_snapshots() {
   local out_root destination
   local groups=()
   local scenarios=()
+  local dataset_name=""
+  local dataset_path=""
   local reuse_build_only=0
   out_root="$(catalog_default_root)"
   destination='platform=iOS Simulator,name=iPhone 17 Pro Max'
@@ -719,9 +826,11 @@ cmd_catalog_snapshots() {
       --destination) destination="${2:?--destination needs value}"; shift 2 ;;
       --group) groups+=("${2:?--group needs value}"); shift 2 ;;
       --scenario) scenarios+=("${2:?--scenario needs value}"); shift 2 ;;
+      --dataset) dataset_name="${2:?--dataset needs value}"; shift 2 ;;
+      --dataset-file) dataset_path="${2:?--dataset-file needs value}"; shift 2 ;;
       --reuse-build) reuse_build_only=1; shift ;;
       -h|--help|help)
-        echo "Usage: ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--reuse-build] [--json]"
+        echo "Usage: ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--dataset <name> | --dataset-file <path>] [--reuse-build] [--json]"
         return 0
         ;;
       *)
@@ -740,7 +849,19 @@ cmd_catalog_snapshots() {
   if ((${#scenarios[@]})); then
     scenarios_csv="$(IFS=,; printf '%s' "${scenarios[*]}")"
   fi
-  payload="$(cmd_catalog_snapshots_json "$out_root" "$destination" "$groups_csv" "$scenarios_csv" "$reuse_build_only")" || rc=$?
+  if [[ -n "$dataset_name" && -n "$dataset_path" ]]; then
+    echo "✗ choose either --dataset or --dataset-file" >&2
+    return 1
+  fi
+  if [[ -n "$dataset_name" ]]; then
+    dataset_path="$(catalog_named_dataset_path "$dataset_name")"
+  fi
+  if [[ -n "$dataset_path" && ! -f "$dataset_path" ]]; then
+    echo "✗ dataset file not found: $dataset_path" >&2
+    return 1
+  fi
+
+  payload="$(cmd_catalog_snapshots_json "$out_root" "$destination" "$groups_csv" "$scenarios_csv" "$dataset_path" "$reuse_build_only")" || rc=$?
   if (( json )); then
     printf '%s\n' "$payload"
     return "$rc"
@@ -749,6 +870,7 @@ cmd_catalog_snapshots() {
   jq -r '
     "[ios][catalog] schema=\(.schema) action=\(.action) status=\(.status) mode=\(.mode) pngCount=\(.artifacts.pngCount) root=\(.artifacts.root)",
     "[ios][catalog] scope groups=\(.scope.groups | join(", ")) scenarios=\(.scope.scenarios | join(", "))",
+    "[ios][catalog] dataset status=\(.dataset.status) requested=\(.dataset.requestedPath // "") simulator=\(.dataset.simulatorPath // "")",
     "[ios][catalog] cache status=\(.cache.status) key=\(.cache.key // "") root=\(.cache.root // "")",
     "[ios][catalog] timings wrapperWallMs=\(.timings.wrapperWallMs) commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs) simulatorStatusMs=\(.timings.simulatorStatusMs) containerLookupMs=\(.timings.containerLookupMs) copyMs=\(.timings.copyMs) artifactIndexMs=\(.timings.artifactIndexMs) validationMs=\(.timings.validationMs)",
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",

@@ -121,6 +121,7 @@ private let catalogSnapshotCompileFlagEnabled = false
             KG catalog snapshot debug:
              - env.groups: \(ProcessInfo.processInfo.environment["KG_CATALOG_GROUPS"] ?? "<empty>")
              - env.scenarios: \(ProcessInfo.processInfo.environment["KG_CATALOG_SCENARIOS"] ?? "<empty>")
+             - fixture.dataset: \(FixtureDatasetStore.debugSummary())
              - scopeFile.present: \(fileScope != nil)
              - resolved.categories: \(resolvedCategories.joined(separator: " | "))
              - resolved.scenarioCount: \(resolvedScenarioCount)

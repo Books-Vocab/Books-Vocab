@@ -13,8 +13,8 @@ enum SettingsFixtureID: String, CaseIterable {
     }
 }
 
-struct SettingsFixtureSeed {
-    struct Auth {
+struct SettingsFixtureSeed: Codable {
+    struct Auth: Codable {
         let isLoggedIn: Bool
         let userInitials: String?
         let avatarURL: URL?
@@ -26,8 +26,8 @@ struct SettingsFixtureSeed {
         let manualLoginHint: String?
     }
 
-    struct KG {
-        struct Observation {
+    struct KG: Codable {
+        struct Observation: Codable {
             let previewLines: [String]
             let totalCount: Int
         }
@@ -42,7 +42,7 @@ struct SettingsFixtureSeed {
         let observation: Observation?
     }
 
-    struct Subscription {
+    struct Subscription: Codable {
         let isActive: Bool
         let planName: String
         let badgeText: String
@@ -59,7 +59,7 @@ struct SettingsFixtureSeed {
         let isRefreshing: Bool
     }
 
-    struct Preferences {
+    struct Preferences: Codable {
         let selectedLanguage: String
         let selectedAppearance: String
         let translationSource: String
@@ -69,18 +69,18 @@ struct SettingsFixtureSeed {
         let showAutoSync: Bool
     }
 
-    struct SyncSummary {
+    struct SyncSummary: Codable {
         let isConnected: Bool
         let isSyncing: Bool
         let summaryText: String
     }
 
-    struct About {
+    struct About: Codable {
         let version: String
         let developerName: String
     }
 
-    struct Danger {
+    struct Danger: Codable {
         let isDeletingAccount: Bool
     }
 
@@ -414,7 +414,8 @@ enum SettingsFixtures {
     }
 
     static func renderModel(for fixtureID: SettingsFixtureID) -> SettingsFixtureRenderModel {
-        let seed = registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.settingsSeed(for: fixtureID)
+            ?? registry.recipe(for: fixtureID.key).build()
         return .init(
             state: SettingsFixtureAdapter.makeState(from: seed),
             manualLoginUserId: seed.manualLoginUserId,
