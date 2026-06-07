@@ -122,7 +122,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 ## iOS 測試入口（`ops/ios_ops.sh test` / `ops/ios_test.sh`）
 
-`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。test runner 會先走 `simulator ensure-booted`，再採 cache-first `build-for-testing` / `test-without-building` 重用 `.cache/ios-test-derived-data`；verdict JSON 會寫 `timings.bootMs/buildForTestingMs/testInvocationMs/xcodebuildMs/totalMs` 與 `cache.status`。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
+`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。test runner 的 unit scope 走 dedicated `BooksBrowserUnitTests` scheme，先走 `simulator ensure-booted`，再採 cache-first `build-for-testing` / `test-without-building` 重用 `.cache/ios-test-derived-data`；verdict JSON 會寫 `timings.bootMs/buildForTestingMs/testInvocationMs/xcodebuildMs/totalMs` 與 `cache.status`。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
 
 **第一性原理流程**：測試系統已具備 scope、heartbeat、log preserve、false-green 防護與 DB lock retry；因此 iOS 開發不再採「不主動跑測試」的保守規則，而是採**最小足夠驗證**。
 
