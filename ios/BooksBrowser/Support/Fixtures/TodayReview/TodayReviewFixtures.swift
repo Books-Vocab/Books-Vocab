@@ -11,8 +11,8 @@ enum TodayReviewFixtureID: String, CaseIterable {
     }
 }
 
-struct TodayReviewCardSeed {
-    struct LinkSeed {
+struct TodayReviewCardSeed: Codable {
+    struct LinkSeed: Codable {
         let id: String
         let cardId: String
         let word: String
@@ -39,7 +39,7 @@ struct TodayReviewCardSeed {
     let graphLinksByKind: [String: [LinkSeed]]
 }
 
-struct TodayReviewSessionSeed {
+struct TodayReviewSessionSeed: Codable {
     let progressText: String
     let currentCard: TodayReviewCardSeed?
     let nextCard: TodayReviewCardSeed?
@@ -111,7 +111,8 @@ enum TodayReviewFixtures {
     }
 
     static func renderModel(for fixtureID: TodayReviewFixtureID) -> TodayReviewFixtureRenderModel {
-        let seed = registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.todayReviewSeed(for: fixtureID)
+            ?? registry.recipe(for: fixtureID.key).build()
         return .init(
             state: TodayReviewFixtureAdapter.makeState(from: seed),
             showFirstRunHint: seed.showFirstRunHint

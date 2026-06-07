@@ -426,7 +426,15 @@ enum FooScenarios {
 ./ops/ios_ops.sh catalog snapshots \
   --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
   --scenario 'Today Review/Front' \
+  --dataset marketing_demo \
   --reuse-build \
+  --json
+
+# 或直接指定任意外部檔案（不必改 iOS code）
+./ops/ios_ops.sh catalog snapshots \
+  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  --dataset-file ops/fixtures/catalog/marketing_demo.json \
+  --scenario 'Today Review/Front' \
   --json
 
 # 如需 full catalog，去掉 --scenario / --group 即可
