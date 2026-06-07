@@ -19,7 +19,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh build [ios_build.sh args...] [--json]",
         delegate:"./ops/ios_build.sh",
         purpose:"Release compile gate with xcresult/log diagnostics",
-        jsonSchemas:["kg.ios.run.v1"]
+        jsonSchemas:["kg.ios.run.v1","kg.ios.diagnostics.v1"]
       },
       {
         key:"test",
@@ -28,7 +28,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh test [ios_test.sh args...] [--json] | ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>] [--json] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
         delegate:"./ops/ios_test.sh",
         purpose:"scoped iOS verification, UI launch benchmarking, plus explicit reusable test-cache lifecycle control",
-        jsonSchemas:["kg.ios.run.v1","kg.ios.test-cache.v1"]
+        jsonSchemas:["kg.ios.run.v1","kg.ios.test-cache.v1","kg.ios.diagnostics.v1"]
       },
       {
         key:"archive",
@@ -37,7 +37,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh archive [--upload] [ios_release.sh args...] [--json]",
         delegate:"./ops/ios_release.sh",
         purpose:"archive/export and optional TestFlight upload",
-        jsonSchemas:["kg.ios.archive.v1"]
+        jsonSchemas:["kg.ios.archive.v1","kg.ios.diagnostics.v1"]
       },
       {
         key:"archives",
@@ -82,7 +82,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh doctor [--json]",
         delegate:null,
         purpose:"release readiness checks",
-        jsonSchemas:["kg.ios.doctor.v1"]
+        jsonSchemas:["kg.ios.doctor.v1","kg.ios.sentry.v1"]
       },
       {
         key:"workflow",
@@ -127,7 +127,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh runs [--json]",
         delegate:null,
         purpose:"latest build/test verdicts and artifacts",
-        jsonSchemas:["kg.ios.runs.v1"]
+        jsonSchemas:["kg.ios.runs.v1","kg.ios.diagnostics.v1"]
       },
       {
         key:"snapshot",
@@ -136,7 +136,7 @@ cmd_commands_json() {
         command:"./ops/ios_ops.sh snapshot [--json] [--skip-xcode] [--skip-simulator] [--include-logs] [--log-since 5m] [--log-limit 200]",
         delegate:null,
         purpose:"single-call project/readiness/workflow/xcode/simulator/runs dashboard, with optional runtime logs",
-        jsonSchemas:["kg.ios.snapshot.v1","kg.ios.gate.v1","kg.ios.xcode.v1","kg.ios.simulator.v1","kg.ios.logs.v1"]
+        jsonSchemas:["kg.ios.snapshot.v1","kg.ios.workflow.v1","kg.ios.gate.v1","kg.ios.sentry.v1","kg.ios.xcode.v1","kg.ios.simulator.v1","kg.ios.runs.v1","kg.ios.diagnostics.v1","kg.ios.logs.v1"]
       },
       {
         key:"catalog",
