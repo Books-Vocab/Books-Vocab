@@ -162,7 +162,7 @@ verified_against: ef298cb2
 
 - Safe wrapper
 - Smart deploy: auto fast/full path + rsync `--delete` stale files
-- ops-cli (container 內查詢工具,`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config：translation / review_clock / review_mode / vocab_ui active notebook)
+- ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`user-config-set` + `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景）
 - container-script (本地腳本上傳執行)
 - `ops_analyze.py` one-command deep graph analysis levels 1-6
 - Preflight / backup / restart / status / logs (`KG_LOG_TZ` 時區轉換) / migration workflows
