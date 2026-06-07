@@ -72,8 +72,10 @@ verified_against: 887a248d
    - 決策:archive 階段保存 raw log + `Archive.xcresult`,成功/失敗都跑 `ios_diagnostics.py`;archive 失敗時保留兩個 path。
    - 驗證:`./ops/test_ops.sh ios-ops ios-release` 通過。
 
-3. `ios_ops.sh doctor` 擴充成完整 release readiness。
+3. ✅ `ios_ops.sh doctor` 擴充成完整 release readiness。
    - 檢查 project `MARKETING_VERSION(CURRENT_PROJECT_VERSION)`、Organizer latest、TestFlight latest、ASC version state、Sentry wiring、StoreKit config、signing profile。
+   - 決策:doctor 新增 `[ios][readiness]` summary,read-only 覆蓋 project / Organizer / TestFlight / ASC version state / signing / StoreKit / Sentry;ASC state 有短 deadline;TestFlight build number 未增加時標 `status=block`。
+   - 驗證:`./ops/ios_ops.sh doctor` 可輸出 project=1.6(4)、Organizer latest=1.6(3)、TestFlight latest=3、ASC 1.6=REJECTED、signing/storekit/sentry ok;`./ops/test_ops.sh ios-ops` 通過。
 
 ## 驗證矩陣
 
