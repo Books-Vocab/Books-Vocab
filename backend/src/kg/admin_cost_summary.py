@@ -79,17 +79,6 @@ def model_for(call_type: str) -> str:
     return _MODEL_MAP.get(call_type, _DEFAULT_MODEL)
 
 
-def _col_expr(conn: Any, table: str, col: str) -> str:
-    """回傳 ``col`` 的 SQL 表達式;欄不存在的 legacy DB 回字面 ``NULL``。
-
-    與 :func:`kg.ops_shared.provider_column_expr` 同義但對任意欄位通用,且不
-    引入 admin→ops_shared 依賴方向。下游把 NULL 視為未標記 legacy 列。
-    """
-    cur = conn.execute(f"PRAGMA table_info({table})")
-    has = any(row[1] == col for row in cur.fetchall())
-    return col if has else "NULL"
-
-
 def query_cost_rows(
     conn: Any, *, user_id: str | None = None, since: str | None = None
 ) -> list[tuple]:
@@ -101,8 +90,10 @@ def query_cost_rows(
     ``user_id=None`` 表跨用戶(供 cost-overview)。``provider``/``model`` 欄缺的
     legacy DB 以 NULL 切片回傳,由 :func:`fold_user_summary` fallback 定價/推斷。
     """
-    pcol = _col_expr(conn, "token_usage", "provider")
-    mcol = _col_expr(conn, "token_usage", "model")
+    from .ops_shared import column_expr
+
+    pcol = column_expr(conn, "token_usage", "provider")
+    mcol = column_expr(conn, "token_usage", "model")
     select_uid = "user_id" if user_id is None else "?"
     sql = (
         f"SELECT {select_uid} AS uid, call_type, {pcol} AS provider, "

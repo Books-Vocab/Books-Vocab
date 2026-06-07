@@ -598,7 +598,7 @@ def cmd_cost_overview(args: argparse.Namespace) -> None:
         result["users"] = sorted(
             (
                 {"user_id": uid, "total_calls": u["total_calls"],
-                 "total_cost_usd": round(u["total_cost_usd"], 6)}
+                 "total_cost_usd": u["total_cost_usd"]}  # fold_user_summary 已 round 6dp
                 for uid, u in per_user.items()
             ),
             key=lambda u: u["total_cost_usd"],
