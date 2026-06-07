@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from catalog_review_actions import build_action_bundle
+from catalog_review_actions import build_action_plan
 from catalog_review_repair import repair_review_state, summarize_repairs
 from catalog_review_report import build_report_payload
 from catalog_review_verify import verify_review_artifacts
@@ -257,8 +257,11 @@ def project_doctor_view(payload: dict, *, mode: str) -> dict:
             )
     else:
         raise ValueError(f"Unsupported doctor mode: {mode}")
-    health["actionCommands"] = build_action_bundle(
+    health["actionPlan"] = build_action_plan(
         primary_command=health["recommendedCommand"],
         followup_command=health["followupCommand"],
     )
+    health["actionCommands"] = health["actionPlan"]["actions"]
+    health["recommendedCommand"] = health["actionPlan"]["primary"]["command"] if health["actionPlan"]["primary"] else None
+    health["followupCommand"] = health["actionPlan"]["followup"]["command"] if health["actionPlan"]["followup"] else None
     return view
