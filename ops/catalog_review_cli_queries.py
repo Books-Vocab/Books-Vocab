@@ -6,11 +6,14 @@ from pathlib import Path
 
 from catalog_review_cli_support import (
     build_artifact_refs,
+    build_filter_payload,
     build_permalink,
     effective_status,
+    find_item_by_asset_id,
     filtered_items,
     load_review_context,
     resolve_paths,
+    serialize_review_item,
 )
 from catalog_review_report import build_report_payload
 
@@ -32,7 +35,7 @@ def cmd_summary(root: Path) -> int:
 
 def cmd_show(root: Path, asset_id: str) -> int:
     manifest, state = load_review_context(root)
-    item = next((entry for entry in manifest["items"] if entry["assetID"] == asset_id), None)
+    item = find_item_by_asset_id(manifest, asset_id)
     if item is None:
         print(json.dumps({"status": "error", "error": "asset-not-found", "assetID": asset_id}, ensure_ascii=False))
         return 1
@@ -58,11 +61,7 @@ def cmd_list(
 ) -> int:
     manifest, state = load_review_context(root)
     matches = [
-        {
-            **item,
-            "effectiveStatus": effective_status(item, state),
-            "permalink": build_permalink(root, item["assetID"]),
-        }
+        serialize_review_item(root, item, state)
         for item in filtered_items(manifest, state, promise=promise, category=category, status=status, search=search)
     ]
     if limit is not None:
@@ -70,13 +69,13 @@ def cmd_list(
     payload = {
         "status": "ok",
         "count": len(matches),
-        "filters": {
-            "promise": promise,
-            "category": category,
-            "status": status,
-            "search": search,
-            "limit": limit,
-        },
+        "filters": build_filter_payload(
+            promise=promise,
+            category=category,
+            status=status,
+            search=search,
+            limit=limit,
+        ),
         "items": matches,
     }
     print(json.dumps(payload, ensure_ascii=False))
@@ -109,13 +108,13 @@ def cmd_stats(
     payload = {
         "status": "ok",
         "count": len(matches),
-        "filters": {
-            "promise": promise,
-            "category": category,
-            "status": status,
-            "search": search,
-            "limit": limit,
-        },
+        "filters": build_filter_payload(
+            promise=promise,
+            category=category,
+            status=status,
+            search=search,
+            limit=limit,
+        ),
         "promiseCounts": dict(promise_counts),
         "effectiveStatusCounts": dict(effective_status_counts),
         "topCategories": top_categories,

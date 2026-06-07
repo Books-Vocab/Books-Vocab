@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 
 from catalog_review_cli_support import (
-    build_permalink,
+    build_filter_payload,
     effective_status,
+    find_item_by_asset_id,
     filtered_items,
     load_review_context,
     resolve_paths,
+    serialize_review_item,
     write_json,
 )
 from catalog_review_state import append_history
@@ -24,7 +26,7 @@ def cmd_mark(root: Path, asset_id: str, status: str, note: str | None) -> int:
         return 2
     manifest_path, state_path = resolve_paths(root)
     manifest, state = load_review_context(root)
-    item = next((entry for entry in manifest["items"] if entry["assetID"] == asset_id), None)
+    item = find_item_by_asset_id(manifest, asset_id)
     if item is None:
         print(json.dumps({"status": "error", "error": "asset-not-found", "assetID": asset_id}, ensure_ascii=False))
         return 1
@@ -73,22 +75,16 @@ def cmd_apply(
         "dryRun": dry_run,
         "appliedCount": len(matches),
         "targetStatus": target_status,
-        "filters": {
-            "promise": promise,
-            "category": category,
-            "matchStatus": match_status,
-            "search": search,
-            "limit": limit,
-        },
+        "filters": build_filter_payload(
+            promise=promise,
+            category=category,
+            status=match_status,
+            search=search,
+            limit=limit,
+            status_key="matchStatus",
+        ),
         "items": [
-            {
-                "assetID": item["assetID"],
-                "category": item["category"],
-                "title": item["title"],
-                "effectiveStatus": effective_status(item, state),
-                "updatedAt": state["entries"].get(item["assetID"], {}).get("updatedAt"),
-                "permalink": build_permalink(root, item["assetID"]),
-            }
+            serialize_review_item(root, item, state, include_updated_at=True)
             for item in matches
         ],
     }
