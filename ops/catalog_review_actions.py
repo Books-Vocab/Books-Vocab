@@ -88,3 +88,12 @@ def with_starter_plan(
     enriched["firstAction"] = starter_plan["primary"]
     enriched["firstCommand"] = starter_plan["primary"]["command"] if starter_plan["primary"] else None
     return enriched
+
+
+def with_action_plan_fields(payload: dict, action_plan: dict) -> dict:
+    enriched = dict(payload)
+    enriched["actionPlan"] = action_plan
+    enriched["recommendedCommand"] = action_plan["primary"]["command"] if action_plan["primary"] else None
+    enriched["followupCommand"] = action_plan["followup"]["command"] if action_plan["followup"] else None
+    enriched["actionCommands"] = action_plan["actions"]
+    return enriched
