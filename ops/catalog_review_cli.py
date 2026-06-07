@@ -68,6 +68,22 @@ def matches_filters(
     return True
 
 
+def filtered_items(
+    manifest: dict,
+    state: dict,
+    *,
+    promise: str | None,
+    category: str | None,
+    status: str | None,
+    search: str | None,
+) -> list[dict]:
+    return [
+        item
+        for item in manifest["items"]
+        if matches_filters(item, state, promise=promise, category=category, status=status, search=search)
+    ]
+
+
 def cmd_summary(root: Path) -> int:
     manifest_path, state_path = resolve_paths(root)
     manifest, state = load_review_context(root)
@@ -143,8 +159,7 @@ def cmd_list(
             "effectiveStatus": effective_status(item, state),
             "permalink": f"file://{root / 'review.html'}#asset-{item['assetID']}",
         }
-        for item in manifest["items"]
-        if matches_filters(item, state, promise=promise, category=category, status=status, search=search)
+        for item in filtered_items(manifest, state, promise=promise, category=category, status=status, search=search)
     ]
     if limit is not None:
         matches = matches[:limit]
@@ -160,6 +175,74 @@ def cmd_list(
         },
         "items": matches,
     }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def cmd_apply(
+    root: Path,
+    *,
+    promise: str | None,
+    category: str | None,
+    match_status: str | None,
+    search: str | None,
+    target_status: str,
+    note: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> int:
+    if target_status not in VALID_STATUSES:
+        print(json.dumps({"status": "error", "error": "invalid-status", "allowed": sorted(VALID_STATUSES)}, ensure_ascii=False))
+        return 2
+
+    manifest_path, state_path = resolve_paths(root)
+    manifest, state = load_review_context(root)
+    matches = filtered_items(manifest, state, promise=promise, category=category, status=match_status, search=search)
+    if limit is not None:
+        matches = matches[:limit]
+
+    payload = {
+        "status": "ok",
+        "dryRun": dry_run,
+        "appliedCount": len(matches),
+        "targetStatus": target_status,
+        "filters": {
+            "promise": promise,
+            "category": category,
+            "matchStatus": match_status,
+            "search": search,
+            "limit": limit,
+        },
+        "items": [
+            {
+                "assetID": item["assetID"],
+                "category": item["category"],
+                "title": item["title"],
+                "effectiveStatus": effective_status(item, state),
+                "permalink": f"file://{root / 'review.html'}#asset-{item['assetID']}",
+            }
+            for item in matches
+        ],
+    }
+    if dry_run or not matches:
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+
+    for item in matches:
+        entry = state["entries"].setdefault(item["assetID"], {})
+        entry.update({
+            "status": target_status,
+            "note": note if note is not None else entry.get("note", ""),
+            "promise": item["promise"],
+            "category": item["category"],
+            "title": item["title"],
+            "device": item["device"],
+            "appearance": item["appearance"],
+            "relPath": item["relPath"],
+        })
+
+    write_json(state_path, state)
+    write_review_outputs(root, manifest, state)
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 
@@ -186,6 +269,16 @@ def build_parser() -> argparse.ArgumentParser:
     list_cmd.add_argument("--search", default=None)
     list_cmd.add_argument("--limit", type=int, default=None)
 
+    apply_cmd = subparsers.add_parser("apply")
+    apply_cmd.add_argument("--promise", default=None)
+    apply_cmd.add_argument("--category", default=None)
+    apply_cmd.add_argument("--match-status", default=None)
+    apply_cmd.add_argument("--search", default=None)
+    apply_cmd.add_argument("--status", required=True)
+    apply_cmd.add_argument("--note", default=None)
+    apply_cmd.add_argument("--limit", type=int, default=None)
+    apply_cmd.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -207,6 +300,18 @@ def main() -> int:
             status=args.status,
             search=args.search,
             limit=args.limit,
+        )
+    if args.command == "apply":
+        return cmd_apply(
+            root,
+            promise=args.promise,
+            category=args.category,
+            match_status=args.match_status,
+            search=args.search,
+            target_status=args.status,
+            note=args.note,
+            limit=args.limit,
+            dry_run=args.dry_run,
         )
     parser.error(f"unknown command: {args.command}")
     return 2
