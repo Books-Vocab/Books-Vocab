@@ -456,7 +456,7 @@ struct PodcastSentenceLevelView: View {
 /// Dropping it and gating at per-cell granularity is the fix. The column body re-
 /// runs on parent renders, but that is cheap now (only value structs are built;
 /// the token trees live behind the per-cell Equatable boundary).
-private struct PodcastTranscriptColumn: View {
+struct PodcastTranscriptColumn: View {
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
     let currentId: Int?
@@ -604,7 +604,7 @@ private struct PodcastTranscriptColumn: View {
 /// The resolved colors/metrics are CARRIED for the body but NOT compared: with the
 /// same `paletteBase` + `slot` they are deterministically identical, so comparing
 /// them (Color `==` is unreliable) would be both wrong and wasteful.
-private struct PodcastBubbleSkin: Equatable {
+struct PodcastBubbleSkin: Equatable {
     let paletteBase: AppTheme.Palette
     let slot: Int
     // Carried, not compared:
@@ -638,7 +638,7 @@ private struct PodcastBubbleSkin: Equatable {
 /// parent render). `words` / `fullText` / `speaker` are excluded too — they are
 /// fully determined by `sentenceId` + `contentHash`, so comparing the scalar keys
 /// is enough and avoids an O(n·words) array compare.
-private struct PodcastBubbleCell: View, Equatable {
+struct PodcastBubbleCell: View, Equatable {
     let sentenceId: Int
     let contentHash: Int
     let isCurrent: Bool

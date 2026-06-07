@@ -248,6 +248,16 @@ struct CatalogScene: View {
             .init(id: "pdf_reader_view", categories: ["PDF Reader View"], register: PDFReaderViewScenarios.register),
             .init(id: "sync_view_surface", categories: ["Sync View"], register: SyncViewScenarios.register),
             .init(id: "settings_view", categories: ["Settings View"], register: SettingsViewScenarios.register),
+            .init(id: "card_document_blocks", categories: ["Card Document · Hero", "Card Document · Example", "Card Document · Meaning", "Card Document · Source", "Card Document · Collocations"], register: CardDocumentBlocksScenarios.register),
+            .init(id: "editorial_cover", categories: ["Notebook Cover · Editorial"], register: NotebookCardEditorialCoverScenarios.register),
+            .init(id: "icloud_progress_badge", categories: ["iCloud Progress Badge"], register: ICloudProgressBadgeScenarios.register),
+            .init(id: "kg_vocab_row", categories: ["KG Vocab Row"], register: KGVocabRowScenarios.register),
+            .init(id: "settings_param_row", categories: ["Settings · ParamRow"], register: SettingsParamRowScenarios.register),
+            .init(id: "podcast_sentence_cells", categories: ["Podcast · Transcript Column", "Podcast · Bubble Cell"], register: PodcastSentenceCellsScenarios.register),
+            .init(id: "podcast_progress_ticker", categories: ["Podcast Progress Ticker"], register: PodcastProgressTickerScenarios.register),
+            .init(id: "settings_social_badge", categories: ["Settings · Social Badge"], register: SettingsSocialBadgeScenarios.register),
+            .init(id: "shimmer_line", categories: ["Word Detail · Shimmer"], register: ShimmerLineScenarios.register),
+            .init(id: "today_review_shortcut_chips", categories: ["Today Review · Shortcut Key Cap", "Today Review · Shortcut Hint Chip"], register: TodayReviewShortcutScenarios.register),
             .init(
                 id: "review_fold_surface",
                 categories: [
