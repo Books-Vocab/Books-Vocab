@@ -35,7 +35,7 @@ struct ReaderStepControlButton: View {
     .environmentObject(AppAppearanceStore.preview)
 }
 
-private struct ReaderStepControlButtonPreview: View {
+struct ReaderStepControlButtonPreview: View {
     @Environment(\.appSkin) private var appSkin
 
     var body: some View {
