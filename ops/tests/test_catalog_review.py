@@ -22,6 +22,7 @@ manifest_module = load_module("catalog_review_manifest", ROOT / "ops" / "catalog
 profile_module = load_module("catalog_review_profile", ROOT / "ops" / "catalog_review_profile.py")
 state_module = load_module("catalog_review_state", ROOT / "ops" / "catalog_review_state.py")
 build_asset_id = manifest_module.build_asset_id
+REVIEW_CLI = ROOT / "ops" / "catalog_review_cli.py"
 
 
 def test_collect_items_assigns_stable_asset_ids():
@@ -121,3 +122,69 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
 
     review_state = json.loads((tmp_path / "out" / "review_state.json").read_text(encoding="utf-8"))
     assert review_state["entries"][expected_asset_id]["status"] == "review"
+
+
+def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    asset_id = build_asset_id(Path("iPhone 15 Pro portrait/Settings_View/Signed_out.png"))
+
+    summary = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "summary"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert summary.returncode == 0, summary.stderr
+    summary_payload = json.loads(summary.stdout)
+    assert summary_payload["totalImages"] == 1
+    assert summary_payload["stateEntries"] == 1
+
+    show = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "show", asset_id],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert show.returncode == 0, show.stderr
+    show_payload = json.loads(show.stdout)
+    assert show_payload["asset"]["assetID"] == asset_id
+    assert show_payload["permalink"].endswith(f"#asset-{asset_id}")
+
+    mark = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "mark", asset_id, "--status", "shortlist", "--note", "hero"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert mark.returncode == 0, mark.stderr
+    mark_payload = json.loads(mark.stdout)
+    assert mark_payload["reviewStatus"] == "shortlist"
+    assert mark_payload["note"] == "hero"
+
+    state_payload = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
+    assert state_payload["entries"][asset_id]["status"] == "shortlist"
