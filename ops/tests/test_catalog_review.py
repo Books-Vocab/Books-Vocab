@@ -412,3 +412,57 @@ def test_catalog_review_report_emits_next_actions_for_unmarked_work(tmp_path: Pa
     assert first["promise"] == "Read"
     assert first["kind"] in {"hero-unmarked", "top-unmarked-category"}
     assert first["command"].startswith("./ops/catalog_review_cli.py ")
+
+
+def test_catalog_review_verify_reports_ok_and_detects_drift(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    verify_ok = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "verify"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert verify_ok.returncode == 0, verify_ok.stderr
+    verify_ok_payload = json.loads(verify_ok.stdout)
+    assert verify_ok_payload["status"] == "ok"
+    assert verify_ok_payload["errors"] == []
+
+    state_path = output_root / "review_state.json"
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    state_payload["entries"] = {}
+    state_path.write_text(json.dumps(state_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    verify_bad = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "verify"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert verify_bad.returncode == 1
+    verify_bad_payload = json.loads(verify_bad.stdout)
+    assert verify_bad_payload["status"] == "error"
+    assert "missing-state-entries" in verify_bad_payload["errors"]
