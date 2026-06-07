@@ -172,6 +172,23 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
         CloudPreferencesSync.shared.set(timestamp, forKey: updatedAtKey)
     }
 
+    /// Server cold-start：以 server 值初始化本地層 + 記 server 的**單一 group 時戳**
+    /// 作後續 LWW 基準（設計 A：source/target 共用一個 `updated_at`）。
+    /// **只寫 UserDefaults，不回寫 iCloud KVS** —— 對齊 `ActiveNotebookStore.applyServerState`
+    /// / `ReviewSettingsStore.applyServerModeState`：避免新 Apple 裝置 cold-start 覆蓋
+    /// 他裝置尚未傳播的 genuine local write。caller 須 guard「本機從未寫過」
+    /// （`sourceUpdatedAt == nil && targetUpdatedAt == nil`）才呼叫。
+    static func applyServerColdStart(
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        updatedAt: TimeInterval
+    ) {
+        UserDefaults.standard.set(source.rawValue, forKey: sourceKey)
+        UserDefaults.standard.set(updatedAt, forKey: sourceUpdatedAtKey)
+        UserDefaults.standard.set(target.rawValue, forKey: targetKey)
+        UserDefaults.standard.set(updatedAt, forKey: targetUpdatedAtKey)
+    }
+
     /// Restore previously-snapshotted source/target with their original
     /// timestamps. Use this on remote-update rollback so the rolled-back
     /// values don't appear to be "newer than" concurrent writes from other

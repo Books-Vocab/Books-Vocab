@@ -59,6 +59,9 @@ const {
   NOTEBOOK_PALETTE,
   NOTEBOOK_COVER_PATTERNS,
   ACTIVE_NOTEBOOK_KEY,
+  ACTIVE_NOTEBOOK_UPDATED_KEY,
+  resolveActiveNotebook,
+  buildVocabUiConfigPatch,
 } = require('./pure.js');
 
 // ---------------------------------------------------------------------------
@@ -139,6 +142,11 @@ test('buildVocabQuery can scope to a notebook_id', () => {
 test('content script ACTIVE_NOTEBOOK_KEY inline mirror stays in sync', () => {
   const src = fs.readFileSync(path.join(__dirname, '../content/content.js'), 'utf8');
   assert.match(src, new RegExp(`const ACTIVE_NOTEBOOK_KEY = '${ACTIVE_NOTEBOOK_KEY}'`));
+});
+
+test('content script ACTIVE_NOTEBOOK_UPDATED_KEY inline mirror stays in sync', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../content/content.js'), 'utf8');
+  assert.match(src, new RegExp(`const ACTIVE_NOTEBOOK_UPDATED_KEY = '${ACTIVE_NOTEBOOK_UPDATED_KEY}'`));
 });
 
 // ---------------------------------------------------------------------------
@@ -814,10 +822,79 @@ test('routeMessage maps user config / entitlements kinds', () => {
     kind: 'getEntitlements',
     args: [],
   });
-  const translation = { source_lang: 'en', target_lang: 'zh-Hant' };
-  assert.deepEqual(routeMessage({ type: 'updateUserConfig', translation }), {
+  // updateUserConfig is a generic user-config patch route: it forwards the whole
+  // `config` object (translation / vocab_ui / …) positionally so any group can be
+  // PUT without adding a per-group message type.
+  const config = { translation: { source_lang: 'en', target_lang: 'zh-Hant' } };
+  assert.deepEqual(routeMessage({ type: 'updateUserConfig', config }), {
     kind: 'updateUserConfig',
-    args: [translation],
+    args: [config],
+  });
+  const vuConfig = { vocab_ui: { active_notebook_id: 'nb-7', updated_at: 42 } };
+  assert.deepEqual(routeMessage({ type: 'updateUserConfig', config: vuConfig }), {
+    kind: 'updateUserConfig',
+    args: [vuConfig],
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveActiveNotebook — two-layer LWW (chrome.storage.local vs backend vocab_ui)
+// ---------------------------------------------------------------------------
+
+test('resolveActiveNotebook picks the side with the newer updatedAt', () => {
+  const local = { id: 'a', updatedAt: 100 };
+  const remote = { id: 'b', updatedAt: 200 };
+  assert.deepEqual(resolveActiveNotebook(local, remote), { id: 'b', updatedAt: 200 });
+  assert.deepEqual(
+    resolveActiveNotebook({ id: 'a', updatedAt: 300 }, { id: 'b', updatedAt: 200 }),
+    { id: 'a', updatedAt: 300 },
+  );
+});
+
+test('resolveActiveNotebook takes remote when local has no timestamp', () => {
+  assert.deepEqual(
+    resolveActiveNotebook({ id: 'a', updatedAt: null }, { id: 'b', updatedAt: 1 }),
+    { id: 'b', updatedAt: 1 },
+  );
+});
+
+test('resolveActiveNotebook keeps local when remote has no timestamp', () => {
+  assert.deepEqual(
+    resolveActiveNotebook({ id: 'a', updatedAt: 1 }, { id: 'b', updatedAt: null }),
+    { id: 'a', updatedAt: 1 },
+  );
+});
+
+test('resolveActiveNotebook keeps local when both lack a timestamp', () => {
+  // Mirrors iOS ActiveNotebookLWW: double-nil → local (avoids clobbering a never-set
+  // local cursor with a stale-but-also-never-set remote default).
+  assert.deepEqual(
+    resolveActiveNotebook({ id: 'a', updatedAt: null }, { id: 'b', updatedAt: null }),
+    { id: 'a', updatedAt: null },
+  );
+});
+
+test('resolveActiveNotebook keeps local on a timestamp tie', () => {
+  // iOS resolves `c > l ? cloud : local`, so an exact tie keeps local.
+  assert.deepEqual(
+    resolveActiveNotebook({ id: 'a', updatedAt: 5 }, { id: 'b', updatedAt: 5 }),
+    { id: 'a', updatedAt: 5 },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// buildVocabUiConfigPatch — backend vocab_ui wire shape (snake_case)
+// ---------------------------------------------------------------------------
+
+test('buildVocabUiConfigPatch shapes the snake_case vocab_ui group', () => {
+  assert.deepEqual(buildVocabUiConfigPatch('nb-7', 42), {
+    vocab_ui: { active_notebook_id: 'nb-7', updated_at: 42 },
+  });
+});
+
+test('buildVocabUiConfigPatch forwards a null timestamp verbatim', () => {
+  assert.deepEqual(buildVocabUiConfigPatch('default', null), {
+    vocab_ui: { active_notebook_id: 'default', updated_at: null },
   });
 });
 
@@ -877,7 +954,7 @@ test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () 
     retryOutbox: { type: 'retryOutbox' },
     lookupWord: { type: 'lookupWord', word: 'w' },
     getUserConfig: { type: 'getUserConfig' },
-    updateUserConfig: { type: 'updateUserConfig', translation: {} },
+    updateUserConfig: { type: 'updateUserConfig', config: {} },
     getEntitlements: { type: 'getEntitlements' },
     get_auth_status: { type: 'get_auth_status' },
     logout: { type: 'logout' },

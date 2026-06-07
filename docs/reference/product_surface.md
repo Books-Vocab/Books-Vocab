@@ -87,7 +87,7 @@ verified_against: e264e4ce
 ## Chrome Extension (`chrome-extension/`)
 
 - Side panel vocab lookup
-- Chrome notebook scope + 管理：side panel 先讀 `/api/notebooks`，以 `active_notebook_id` 持久化目前單字本，`GET /api/vocab?notebook_id=...` 只顯示該本；若儲存的 notebook 已不存在則回落 canonical `default`。content popup 翻譯完成後也會讀 `listNotebooks` 顯示目標 notebook selector，選擇寫回同一 storage key，使網頁選詞可當下指定目標本而非永遠 default。scope row 提供 icon-only 新增 / 重新命名 / 刪除（default notebook 不可刪），sheet 走 backend notebook CRUD，名稱驗證 1..100 字元，並對齊 iOS `NotebookEditSheet` 的 12 色 Morandi palette + 6 種 cover pattern，送出 `color` / `cover_pattern`。
+- Chrome notebook scope + 管理：side panel 先讀 `/api/notebooks`，以 `active_notebook_id` 持久化目前單字本（active notebook 已**後端化**：chrome.storage.local 本地 + backend `vocab_ui` group 兩層 LWW 橋樑，`loadNotebookScope` 開啟時 cold-start resolve、切換/submit/delete 時 best-effort push，使 iOS/web 跨平台收斂同一 active notebook），`GET /api/vocab?notebook_id=...` 只顯示該本；若儲存的 notebook 已不存在則回落 canonical `default`。content popup 翻譯完成後也會讀 `listNotebooks` 顯示目標 notebook selector，選擇寫回同一 storage key，使網頁選詞可當下指定目標本而非永遠 default。scope row 提供 icon-only 新增 / 重新命名 / 刪除（default notebook 不可刪），sheet 走 backend notebook CRUD，名稱驗證 1..100 字元，並對齊 iOS `NotebookEditSheet` 的 12 色 Morandi palette + 6 種 cover pattern，送出 `color` / `cover_pattern`。
 - Chrome 加詞 outbox：content popup 加詞先寫入 `chrome.storage.local.vocab_outbox`，sidepanel 立即顯示該 notebook 的 pending/failed optimistic rows；背景 worker 依 notebook 分批 sync 到 `/api/vocab?notebook_id=...`，成功後觸發同 notebook enrich pipeline，失敗則標記「待重試」，可由列內「重試」立即 flush，並用 alarm 週期喚醒重送。
 - 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
 - 單字本 row 點開全幅 word-detail push 面板（覆蓋於 list 上保留 scroll/search/filter）：hero(詞+詞性+難度+TTS) → 例句(目標詞 highlight，`markWordInExample`+`parseInlineMarks` 對標 iOS) → 釋義/定義 → 搭配 → 變化形 → 知識連結(對比/相關 group，本地語料命中可導航 push/back) → 複習進度 → metadata footer → 來源；TTS 走裝置端 Web Speech API；top bar share action 先走 Web Share、fallback clipboard，純文字格式由 `vocabPlainTextExport` 對齊 iOS `CardDocument.plainTextExport`；唯讀無 mutation
@@ -162,7 +162,7 @@ verified_against: e264e4ce
 
 - Safe wrapper
 - Smart deploy: auto fast/full path + rsync `--delete` stale files
-- ops-cli (container 內查詢工具,`db-query` 不需引號)
+- ops-cli (container 內查詢工具,`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config：translation / review_clock / review_mode / vocab_ui active notebook)
 - container-script (本地腳本上傳執行)
 - `ops_analyze.py` one-command deep graph analysis levels 1-6
 - Preflight / backup / restart / status / logs (`KG_LOG_TZ` 時區轉換) / migration workflows

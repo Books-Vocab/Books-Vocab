@@ -826,7 +826,9 @@ function routeMessage(msg) {
     case 'getUserConfig':
       return { kind: 'getUserConfig', args: [] };
     case 'updateUserConfig':
-      return { kind: 'updateUserConfig', args: [msg.translation] };
+      // Generic user-config patch: forward the whole `config` object (translation
+      // / vocab_ui / …) so any group can be PUT without a per-group message type.
+      return { kind: 'updateUserConfig', args: [msg.config] };
     case 'getEntitlements':
       return { kind: 'getEntitlements', args: [] };
     case 'get_auth_status':
@@ -847,6 +849,52 @@ function routeMessage(msg) {
  */
 const VOCAB_DIRTY_KEY = 'vocab_dirty';
 const ACTIVE_NOTEBOOK_KEY = 'active_notebook_id';
+
+/**
+ * Companion key to `ACTIVE_NOTEBOOK_KEY` holding the LWW timestamp (epoch seconds)
+ * of the last active-notebook write. Drives the two-layer last-write-wins between
+ * chrome.storage.local and the backend `vocab_ui` group (chrome has no iCloud KVS,
+ * so backend is the cross-platform bridge to iOS / web). Mirrors the iOS
+ * `active_notebook_updated_at` UserDefaults key.
+ */
+const ACTIVE_NOTEBOOK_UPDATED_KEY = 'active_notebook_updated_at';
+
+/**
+ * Two-layer last-write-wins for the active-notebook cursor: chrome.storage.local
+ * (local) vs the backend `vocab_ui` group (remote). Picks whichever side carries
+ * the newer `updatedAt`; a side with a nil timestamp loses to one that has it;
+ * when both lack a timestamp (or tie) local wins. Byte-for-byte aligned with iOS
+ * `ActiveNotebookLWW.resolve` so chrome / iOS converge on the same cursor.
+ *
+ * @param {{id: string, updatedAt: number|null}} local
+ * @param {{id: string, updatedAt: number|null}} remote
+ * @returns {{id: string, updatedAt: number|null}}
+ */
+function resolveActiveNotebook(local, remote) {
+  const l = local && typeof local.updatedAt === 'number' ? local.updatedAt : null;
+  const r = remote && typeof remote.updatedAt === 'number' ? remote.updatedAt : null;
+  if (l != null && r != null) return r > l ? remote : local;
+  if (l == null && r != null) return remote;
+  return local;
+}
+
+/**
+ * Shape the backend `vocab_ui` config patch (snake_case wire contract, matching
+ * `kg.api_models.notebook.VocabUIConfig`). The active-notebook id and its LWW
+ * timestamp are written as one atomic group via PUT /api/user/config.
+ *
+ * @param {string} activeNotebookId
+ * @param {number|null} updatedAt — epoch seconds, or null when never set
+ * @returns {{vocab_ui: {active_notebook_id: string, updated_at: number|null}}}
+ */
+function buildVocabUiConfigPatch(activeNotebookId, updatedAt) {
+  return {
+    vocab_ui: {
+      active_notebook_id: activeNotebookId,
+      updated_at: updatedAt == null ? null : updatedAt,
+    },
+  };
+}
 
 /**
  * Routed `kind`s whose success means the user's vocab list changed, so any open
@@ -1046,6 +1094,9 @@ const KGPureExports = {
   routeMessage,
   VOCAB_DIRTY_KEY,
   ACTIVE_NOTEBOOK_KEY,
+  ACTIVE_NOTEBOOK_UPDATED_KEY,
+  resolveActiveNotebook,
+  buildVocabUiConfigPatch,
   isVocabMutatingKind,
   isTrustedExternalOrigin,
   safeUrl,

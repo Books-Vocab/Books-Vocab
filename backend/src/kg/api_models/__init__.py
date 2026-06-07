@@ -33,6 +33,7 @@ from kg.api_models.notebook import (
     NotebookCreateRequest,
     NotebookResponse,
     NotebookUpdateRequest,
+    VocabUIConfig,
 )
 from kg.api_models.podcast import (
     PodcastProgressListResponse,
@@ -132,5 +133,6 @@ __all__ = [
     "VocabAddResponse",
     "VocabEntry",
     "VocabSource",
+    "VocabUIConfig",
     "_normalize_context",
 ]

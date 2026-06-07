@@ -133,7 +133,7 @@ extension KGService {
         defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
         defaults.removeObject(forKey: SyncKeys.reviewEventPullBoundary)
         defaults.removeObject(forKey: SyncKeys.payloadVersion)
-        defaults.removeObject(forKey: "activeNotebookId")
+        ActiveNotebookStore.shared.clear()
         defaults.removeObject(forKey: NotebookFilter.storageKey)
         lastSyncDate = nil
         serverCardCount = 0

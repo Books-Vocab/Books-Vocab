@@ -309,7 +309,7 @@ async function onLangChange() {
   const next = { source_lang: sourceLangSelect.value, target_lang: targetLangSelect.value };
   setLangControlsEnabled(false);
   try {
-    const updated = await bgRequest({ type: 'updateUserConfig', translation: next });
+    const updated = await bgRequest({ type: 'updateUserConfig', config: { translation: next } });
     const tr = (updated && updated.translation) || next;
     currentTranslation = { source_lang: tr.source_lang, target_lang: tr.target_lang };
     // Reflect the server's canonical values (in case it normalized them).

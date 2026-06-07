@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from kg.api_models.notebook import VocabUIConfig
 from kg.api_models.review import ReviewClockConfig, ReviewModeConfig
 from kg.api_models.translate import TranslationLanguageConfig
 
@@ -29,12 +30,14 @@ class UserConfigRequest(BaseModel):
     translation: TranslationLanguageConfig | None = None
     review_clock: ReviewClockConfig | None = None
     review_mode: ReviewModeConfig | None = None
+    vocab_ui: VocabUIConfig | None = None
 
 
 class UserConfigResponse(BaseModel):
     translation: TranslationLanguageConfig | None = None
     review_clock: ReviewClockConfig | None = None
     review_mode: ReviewModeConfig | None = None
+    vocab_ui: VocabUIConfig | None = None
 
 
 class DeleteAccountResponse(BaseModel):

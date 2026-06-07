@@ -386,11 +386,72 @@ async function refreshVocabSilently() {
   }
 }
 
+// Pull the backend `vocab_ui` cursor via the background worker. Returns null when
+// unauthenticated / offline / never-set so the caller keeps the local cursor.
+async function fetchRemoteActiveNotebook() {
+  try {
+    const config = await chrome.runtime.sendMessage({ type: 'getUserConfig' });
+    if (config == null || config.error) return null;
+    const vu = config.vocab_ui;
+    if (!vu || typeof vu.active_notebook_id !== 'string') return null;
+    return {
+      id: vu.active_notebook_id,
+      updatedAt: typeof vu.updated_at === 'number' ? vu.updated_at : null,
+    };
+  } catch (_err) {
+    return null;
+  }
+}
+
+// Persist the active-notebook cursor locally (id + LWW timestamp) and push it to
+// the backend `vocab_ui` group so iOS / web / content script converge. Best-effort
+// push: a failure is logged, never rolled back — chrome.storage.local is the local
+// source of truth; the backend is the cross-platform bridge.
+async function persistActiveNotebook(id) {
+  const updatedAt = Date.now() / 1000;
+  await chrome.storage.local.set({
+    [KGPure.ACTIVE_NOTEBOOK_KEY]: id,
+    [KGPure.ACTIVE_NOTEBOOK_UPDATED_KEY]: updatedAt,
+  });
+  try {
+    await chrome.runtime.sendMessage({
+      type: 'updateUserConfig',
+      config: KGPure.buildVocabUiConfigPatch(id, updatedAt),
+    });
+  } catch (err) {
+    console.error('[KG] push active notebook failed:', err);
+  }
+}
+
 async function loadNotebookScope(options = {}) {
   const silent = !!options.silent;
   try {
-    const stored = await chrome.storage.local.get(KGPure.ACTIVE_NOTEBOOK_KEY);
-    const storedId = stored[KGPure.ACTIVE_NOTEBOOK_KEY] || 'default';
+    // Two-layer LWW cold-start: reconcile the local cursor (chrome.storage.local)
+    // with the backend `vocab_ui` group so a notebook selected on iOS / web shows
+    // here, and vice-versa. Best-effort — a failed / unauthenticated pull keeps
+    // the local cursor.
+    const stored = await chrome.storage.local.get([
+      KGPure.ACTIVE_NOTEBOOK_KEY,
+      KGPure.ACTIVE_NOTEBOOK_UPDATED_KEY,
+    ]);
+    let cursor = {
+      id: stored[KGPure.ACTIVE_NOTEBOOK_KEY] || 'default',
+      updatedAt: typeof stored[KGPure.ACTIVE_NOTEBOOK_UPDATED_KEY] === 'number'
+        ? stored[KGPure.ACTIVE_NOTEBOOK_UPDATED_KEY]
+        : null,
+    };
+    const remote = await fetchRemoteActiveNotebook();
+    if (remote) {
+      const resolved = KGPure.resolveActiveNotebook(cursor, remote);
+      if (resolved.id !== cursor.id || resolved.updatedAt !== cursor.updatedAt) {
+        await chrome.storage.local.set({
+          [KGPure.ACTIVE_NOTEBOOK_KEY]: resolved.id,
+          [KGPure.ACTIVE_NOTEBOOK_UPDATED_KEY]: resolved.updatedAt,
+        });
+      }
+      cursor = resolved;
+    }
+    const storedId = cursor.id;
     const response = await chrome.runtime.sendMessage({ type: 'listNotebooks' });
     if (response == null || response.error) {
       if (!silent) renderNotebookSwitcher([]);
@@ -401,7 +462,9 @@ async function loadNotebookScope(options = {}) {
     const hasStored = notebooks.some((nb) => nb.id === storedId);
     activeNotebookId = hasStored ? storedId : 'default';
     if (storedId !== activeNotebookId) {
-      await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+      // Local cursor points at a notebook deleted elsewhere — fall back to default
+      // and push it so the backend (and other platforms) drop the dead id too.
+      await persistActiveNotebook(activeNotebookId);
     }
     renderNotebookSwitcher(notebooks);
   } catch (err) {
@@ -443,7 +506,7 @@ async function onNotebookChanged() {
   const next = notebookSelect && notebookSelect.value ? notebookSelect.value : 'default';
   if (next === activeNotebookId) return;
   activeNotebookId = next;
-  await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+  await persistActiveNotebook(activeNotebookId);
   loadVocabList();
 }
 
@@ -559,7 +622,7 @@ async function submitNotebookForm(event) {
     }
     const nb = KGPure.normalizeNotebookItem(response);
     activeNotebookId = nb.id || activeNotebookId;
-    await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    await persistActiveNotebook(activeNotebookId);
     closeNotebookSheet();
     await loadVocabList();
   } catch (err) {
@@ -582,7 +645,7 @@ async function deleteActiveNotebook() {
       return;
     }
     activeNotebookId = 'default';
-    await chrome.storage.local.set({ [KGPure.ACTIVE_NOTEBOOK_KEY]: activeNotebookId });
+    await persistActiveNotebook(activeNotebookId);
     closeNotebookSheet();
     await loadVocabList();
   } catch (err) {

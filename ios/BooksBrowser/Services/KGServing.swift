@@ -36,6 +36,7 @@ protocol KGServing: BackgroundSyncing {
     func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig
     func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig
     func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig
+    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig
     func deleteAccount() async throws
     func pullGraphLinks() async throws -> [KGGraphLink]
     func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink

@@ -1,5 +1,6 @@
 """ops_cli.py 單元測試 — 用 tmp_path 建立假 DB 驗證核心函數。"""
 
+import json
 import sqlite3
 import sys
 from datetime import UTC, datetime
@@ -24,7 +25,7 @@ from ops_helpers import (
 if str(CLI_PATH.parent) not in sys.path:
     sys.path.insert(0, str(CLI_PATH.parent))
 
-from ops_cli import _bucket_key  # noqa: E402
+from ops_cli import _bucket_key, _flatten_user_config  # noqa: E402
 
 
 def _create_cards_db(path: Path, rows: list[tuple]) -> None:
@@ -46,6 +47,59 @@ def _create_cards_db(path: Path, rows: list[tuple]) -> None:
     )
     conn.commit()
     conn.close()
+
+
+class TestFlattenUserConfig:
+    """_flatten_user_config — 攤平 users.json config blob，對齊後端 _build_user_config_response。"""
+
+    def test_empty_config_all_defaults(self):
+        flat = _flatten_user_config({})
+        assert flat["translation"] == {"source_lang": "en", "target_lang": "zh-Hant"}
+        assert flat["vocab_ui"] == {"active_notebook_id": "default", "updated_at": None}
+        assert flat["review_mode"]["mode"] == "relaxed"
+        assert flat["review_clock"]["is_paused"] is False
+
+    def test_vocab_ui_flattened(self):
+        flat = _flatten_user_config({"vocab_ui": {"active_notebook_id": "nb-7", "updated_at": 42.0}})
+        assert flat["vocab_ui"] == {"active_notebook_id": "nb-7", "updated_at": 42.0}
+
+    def test_non_dict_group_falls_back_to_default(self):
+        # 髒資料（group 不是 dict）退回 default，不爆 —— 對齊 _build_user_config_response 的 isinstance guard。
+        flat = _flatten_user_config({"vocab_ui": "garbage", "translation": None})
+        assert flat["vocab_ui"]["active_notebook_id"] == "default"
+        assert flat["translation"]["source_lang"] == "en"
+
+
+class TestUserConfig:
+    """user-config 子指令 — 唯讀檢視 users.json 的 per-user config（含 vocab_ui active notebook）。"""
+
+    @staticmethod
+    def _write_users(data_dir: Path, users: dict) -> None:
+        (data_dir / "users.json").write_text(json.dumps(users, ensure_ascii=False))
+
+    def test_json_output_includes_vocab_ui(self, tmp_path):
+        self._write_users(tmp_path, {
+            "user1": {"config": {"vocab_ui": {"active_notebook_id": "nb-9", "updated_at": 100.0}}}
+        })
+        result = _run_cli(str(tmp_path), "user-config", "user1", "--json")
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["user_id"] == "user1"
+        assert payload["config"]["vocab_ui"]["active_notebook_id"] == "nb-9"
+        assert payload["config"]["vocab_ui"]["updated_at"] == 100.0
+
+    def test_defaults_when_config_absent(self, tmp_path):
+        self._write_users(tmp_path, {"user1": {}})
+        result = _run_cli(str(tmp_path), "user-config", "user1", "--json")
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["config"]["vocab_ui"]["active_notebook_id"] == "default"
+        assert payload["config"]["translation"]["target_lang"] == "zh-Hant"
+
+    def test_unknown_user_errors(self, tmp_path):
+        self._write_users(tmp_path, {"user1": {}})
+        result = _run_cli(str(tmp_path), "user-config", "nobody")
+        assert result.returncode != 0
 
 
 class TestUserQuota:
