@@ -5,6 +5,9 @@
 #   ./ops/ios_ops.sh status
 #   ./ops/ios_ops.sh build [ios_build.sh args...]
 #   ./ops/ios_ops.sh test [ios_test.sh args...]
+#   ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json]
+#   ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json]
+#   ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]
 #   ./ops/ios_ops.sh archive [--upload] [ios_release.sh args...]
 #   ./ops/ios_ops.sh archives [list|latest|inspect ...]
 #   ./ops/ios_ops.sh issues --log <xcodebuild.log> [--json]
@@ -15,6 +18,7 @@
 #   ./ops/ios_ops.sh gate release [--json]
 #   ./ops/ios_ops.sh xcode [--json]
 #   ./ops/ios_ops.sh simulator status [--json]
+#   ./ops/ios_ops.sh simulator ensure-booted [--device <udid|name>] [--json]
 #   ./ops/ios_ops.sh simulator launch [--json] [-- app args...]
 #   ./ops/ios_ops.sh simulator terminate [--json]
 #   ./ops/ios_ops.sh simulator screenshot [--out <png>] [--device booted] [--json]
