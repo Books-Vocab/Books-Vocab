@@ -281,6 +281,12 @@ else
   grep -q 'unknown catalog prepare option' "$bad_catalog_tmp/prepare.err" \
     && ok "catalog prepare rejects unknown option" || fail_t "catalog prepare bad-arg message missing"
 fi
+cachemiss_err="$catalog_tmp/cm.err"
+cachemiss_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=87 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json 2>"$cachemiss_err" || true)"
+echo "$cachemiss_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="cache-miss" and .test.exitCode==87 and .cache.status=="miss" and (any(.errors[]; .key=="catalog-cache" and .error=="reuse-build-cache-miss" and (.hint|test("catalog prepare")))) and (all(.errors[]; .error!="xcodebuild-test-failed"))' >/dev/null \
+  && ok "catalog snapshots exitCode 87 surfaces cache-miss (not generic test-failure)" || fail_t "catalog cache-miss signal wrong: $cachemiss_json"
+grep -q 'phase=cache miss' "$cachemiss_err" \
+  && ok "catalog cache-miss emits human-readable stderr hint" || fail_t "catalog cache-miss stderr hint missing: $(cat "$cachemiss_err")"
 hb_log="$catalog_tmp/hb.log"; hb_err="$catalog_tmp/hb.err"; hb_cap="$catalog_tmp/hb.cap"
 hb_stdout="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "build-for-testing" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "echo building-stdout; exit 0"' 2>"$hb_cap")"
 grep -q 'phase=build-for-testing start' "$hb_cap" && grep -q 'phase=build-for-testing done exitCode=0' "$hb_cap" \
