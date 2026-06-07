@@ -16,9 +16,10 @@ Two asset families exist:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from typing import Iterable, NamedTuple, Sequence
 
 try:
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -30,6 +31,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised by operators.
 
 class PromoShot(NamedTuple):
     source_stem: str
+    app_store_output: str
     app_store_title: str
     app_store_subtitle: str
     web_name: str
@@ -40,6 +42,7 @@ class PromoShot(NamedTuple):
 SHOTS: tuple[PromoShot, ...] = (
     PromoShot(
         "01_vocab_list",
+        "final_01_vocab_list.png",
         "你的單字，一目了然",
         "自動追蹤學習進度，掌握每個單字的熟練狀態",
         "iphone-vocab-list.png",
@@ -48,6 +51,7 @@ SHOTS: tuple[PromoShot, ...] = (
     ),
     PromoShot(
         "02_review_card",
+        "final_02_review_card.png",
         "在原文語境中複習",
         "釋義、發音、例句、關聯詞——一張卡片全掌握",
         "iphone-review-card.png",
@@ -56,6 +60,7 @@ SHOTS: tuple[PromoShot, ...] = (
     ),
     PromoShot(
         "03_other",
+        "final_03_other.png",
         "單字不再孤立",
         "知識圖譜串起詞彙網絡，越讀越融會貫通",
         "iphone-knowledge-graph.png",
@@ -64,6 +69,7 @@ SHOTS: tuple[PromoShot, ...] = (
     ),
     PromoShot(
         "04_reader",
+        "final_04_reader.png",
         "閱讀中即查即學",
         "輕觸生詞即時翻譯，閱讀不中斷、學習不費力",
         "iphone-reader.png",
@@ -71,6 +77,37 @@ SHOTS: tuple[PromoShot, ...] = (
         "輕觸生詞即時翻譯，閱讀不中斷、學習不費力",
     ),
 )
+
+
+def load_shots_manifest(path: Path) -> list[PromoShot]:
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, list):
+        raise SystemExit("shots json 必須是 array")
+    shots: list[PromoShot] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise SystemExit(f"shots[{index}] 必須是 object")
+        copy = item.get("copy")
+        if not isinstance(copy, dict):
+            raise SystemExit(f"shots[{index}].copy 必須是 object")
+        source_stem = item.get("sourceStem")
+        output_name = item.get("outputName")
+        title = copy.get("title")
+        subtitle = copy.get("subtitle")
+        if not all(isinstance(value, str) and value.strip() for value in (source_stem, output_name, title, subtitle)):
+            raise SystemExit(f"shots[{index}] 缺 sourceStem/outputName/copy.title/copy.subtitle")
+        shots.append(
+            PromoShot(
+                source_stem=source_stem.strip(),
+                app_store_output=output_name.strip(),
+                app_store_title=title.strip(),
+                app_store_subtitle=subtitle.strip(),
+                web_name=output_name.replace("final_", "iphone-"),
+                web_title=title.strip(),
+                web_subtitle=subtitle.strip(),
+            )
+        )
+    return shots
 
 
 def repo_root_from_script() -> Path:
@@ -149,9 +186,18 @@ def centered_text(
     return bbox
 
 
-def render_app_store(root: Path | None = None, output_dir: Path | None = None, *, target: str = "promotion") -> list[Path]:
+def render_app_store(
+    root: Path | None = None,
+    output_dir: Path | None = None,
+    *,
+    target: str = "promotion",
+    source_dir: Path | None = None,
+    shots: Sequence[PromoShot] | None = None,
+) -> list[Path]:
     root = root or repo_root_from_script()
     output_dir = output_dir or app_store_output_dir(root, target=target)
+    source_dir = source_dir or iphone_source_dir(root)
+    shots = tuple(shots or SHOTS)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     title_font_path, pingfang_path = font_paths()
@@ -161,8 +207,8 @@ def render_app_store(root: Path | None = None, output_dir: Path | None = None, *
     target_w, target_h = 1284, 2778
     frame_w = 1200
     written: list[Path] = []
-    for shot in SHOTS:
-        frame = Image.open(iphone_source_dir(root) / f"{shot.source_stem}.png").convert("RGBA")
+    for shot in shots:
+        frame = Image.open(source_dir / f"{shot.source_stem}.png").convert("RGBA")
         ratio = frame_w / frame.width
         new_h = int(frame.height * ratio)
         frame = frame.resize((frame_w, new_h), Image.Resampling.LANCZOS)
@@ -193,15 +239,24 @@ def render_app_store(root: Path | None = None, output_dir: Path | None = None, *
             phone_layer.paste(cropped_frame, (frame_x, frame_y), cropped_frame)
         canvas = Image.alpha_composite(canvas, phone_layer)
 
-        target = output_dir / f"final_{shot.source_stem}.png"
+        target = output_dir / shot.app_store_output
         canvas.convert("RGB").save(target, "PNG")
         written.append(target)
     return written
 
 
-def render_web(root: Path | None = None, output_dir: Path | None = None, *, target: str = "promotion") -> list[Path]:
+def render_web(
+    root: Path | None = None,
+    output_dir: Path | None = None,
+    *,
+    target: str = "promotion",
+    source_dir: Path | None = None,
+    shots: Sequence[PromoShot] | None = None,
+) -> list[Path]:
     root = root or repo_root_from_script()
     output_dir = output_dir or web_output_dir(root, target=target)
+    source_dir = source_dir or iphone_source_dir(root)
+    shots = tuple(shots or SHOTS)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     title_font_path, pingfang_path = font_paths()
@@ -212,8 +267,8 @@ def render_web(root: Path | None = None, output_dir: Path | None = None, *, targ
     frame_w = 432
     frame_y = 134
     written: list[Path] = []
-    for shot in SHOTS:
-        frame = Image.open(iphone_source_dir(root) / f"{shot.source_stem}.png").convert("RGBA")
+    for shot in shots:
+        frame = Image.open(source_dir / f"{shot.source_stem}.png").convert("RGBA")
         frame_h = round(frame.height * frame_w / frame.width)
         frame = frame.resize((frame_w, frame_h), Image.Resampling.BILINEAR)
 
@@ -240,6 +295,8 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         help="promotion writes under promotion/screenshots/dist; legacy refreshes existing consumer paths",
     )
     parser.add_argument("--output-dir", type=Path, help="override output directory; only valid for one variant")
+    parser.add_argument("--source-dir", type=Path, help="override framed screenshot source directory")
+    parser.add_argument("--shots-json", type=Path, help="external shots manifest with sourceStem/copy/outputName")
     return parser.parse_args(list(argv))
 
 
@@ -248,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     root = repo_root_from_script()
     if args.output_dir and args.variant == "all":
         raise SystemExit("--output-dir requires --variant app-store or --variant web")
+    shots = load_shots_manifest(args.shots_json) if args.shots_json else None
 
     written: list[Path] = []
     if args.variant in {"app-store", "all"}:
@@ -256,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
                 root=root,
                 output_dir=args.output_dir if args.variant == "app-store" else None,
                 target=args.target,
+                source_dir=args.source_dir,
+                shots=shots,
             )
         )
     if args.variant in {"web", "all"}:
@@ -264,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
                 root=root,
                 output_dir=args.output_dir if args.variant == "web" else None,
                 target=args.target,
+                source_dir=args.source_dir,
+                shots=shots,
             )
         )
 

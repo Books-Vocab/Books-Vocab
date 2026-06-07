@@ -163,7 +163,7 @@ verified_against: 6b55b1e8
 - Safe wrapper
 - Smart deploy: auto fast/full path + rsync `--delete` stale files
 - ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`user-config-set` + `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景）
-- capture profile 編排層（`ops/capture_profile.py`；將 `ops_edit` 真資料造景與 `ios_ops.sh catalog snapshots --dataset-file ...` 綁成單一 recipe，`plan`/`materialize`/`snapshot`/`run` 四段式，預設 dry-run、明示 `--commit` 才真寫）
+- capture profile 編排層（`ops/capture_profile.py`；marketing screenshot 主入口 orchestrator。把 `ops_edit` 真資料造景、`ios_ops.sh catalog snapshots --dataset-file ...`、`frame_catalog_screenshots.py` 的外框橋接、以及 `render_screenshots.py` 最終宣傳圖渲染收進同一個 recipe。profile 內以 `shots[]` 同時描述 `sourceScenario + appearance + copy.title/subtitle + outputName`，因此改資料、改文案、改 shot mapping 都不必動 iOS code 或 renderer 常數。`run` 預設 dry-run materialize、不寫 demo 帳號；若 `--reuse-build` 遇 stale cache，會自動 `catalog prepare` 再重試 snapshot）
 - container-script (本地腳本上傳執行)
 - `ops_analyze.py` one-command deep graph analysis levels 1-6
 - Preflight / backup / restart / status / logs (`KG_LOG_TZ` 時區轉換) / migration workflows

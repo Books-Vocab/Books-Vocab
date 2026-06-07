@@ -78,6 +78,7 @@ enum ReaderScenarios {
                 AppThemeContainer {
                     TOCViewPreviewScene(loadState: .loading, tocTitles: [])
                 }
+                .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Loaded", layout: .fill) {
                 AppThemeContainer {
@@ -86,11 +87,13 @@ enum ReaderScenarios {
                         tocTitles: ["第一章", "第二章", "第三章", "第四章", "第五章"]
                     )
                 }
+                .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Empty", layout: .fill) {
                 AppThemeContainer {
                     TOCViewPreviewScene(loadState: .empty, tocTitles: [])
                 }
+                .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Failed", layout: .fill) {
                 AppThemeContainer {
@@ -99,6 +102,7 @@ enum ReaderScenarios {
                         tocTitles: []
                     )
                 }
+                .environmentObject(AppAppearanceStore.preview)
             }
         }
 

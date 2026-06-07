@@ -31,12 +31,57 @@
     "destination": "platform=iOS Simulator,name=iPhone 17 Pro Max",
     "groups": [],
     "scenarios": [
-      "Today Review/Front"
+      "Bookshelf/With Books",
+      "Today Review/Front",
+      "Settings/Subscribed Active",
+      "Welcome/Step 1 / Capture"
     ]
   },
   "render": {
     "variant": "app-store",
-    "target": "legacy",
-    "sourceMode": "legacy-framed-sources"
-  }
+    "target": "promotion",
+    "sourceMode": "snapshot-derived"
+  },
+  "shots": [
+    {
+      "id": "bookshelf",
+      "sourceScenario": "Bookshelf/With Books",
+      "outputName": "final_01_bookshelf.png",
+      "appearance": "light",
+      "copy": {
+        "title": "你的閱讀進度，集中在同一個書庫",
+        "subtitle": "匯入書本、接續閱讀，快速看到每本書的完成進度。"
+      }
+    },
+    {
+      "id": "today_review",
+      "sourceScenario": "Today Review/Front",
+      "outputName": "final_02_today_review.png",
+      "appearance": "light",
+      "copy": {
+        "title": "每天用單字卡快速複習",
+        "subtitle": "進度、發音與記憶標記同頁完成，今天該複習什麼一眼就懂。"
+      }
+    },
+    {
+      "id": "settings",
+      "sourceScenario": "Settings/Subscribed Active",
+      "outputName": "final_03_settings.png",
+      "appearance": "light",
+      "copy": {
+        "title": "帳號、同步與偏好一次管好",
+        "subtitle": "訂閱狀態、同步開關與學習偏好集中管理。"
+      }
+    },
+    {
+      "id": "welcome",
+      "sourceScenario": "Welcome/Step 1 / Capture",
+      "outputName": "final_04_welcome.png",
+      "appearance": "light",
+      "copy": {
+        "title": "先試用，再決定要不要登入",
+        "subtitle": "用 Demo 先看流程，登入後再同步你的詞彙與筆記。"
+      }
+    }
+  ]
 }
