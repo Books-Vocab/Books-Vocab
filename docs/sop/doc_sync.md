@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - docs/
-verified_against: 81fa1e8f
+verified_against: 219e0f94
 -->
 # Doc-Sync Agent SOP
 
