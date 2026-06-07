@@ -16,6 +16,9 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from .error_signals import JUDGE_AUTO_REJECT_WHERE as _JUDGE_REJECT_WHERE
+from .error_signals import PIPELINE_FAILURE_WHERE as _PIPELINE_FAILURE_WHERE
+
 DEFAULT_WINDOW_DAYS = 30
 MAX_WINDOW_DAYS = 90
 
@@ -70,7 +73,7 @@ def _pipeline_failures_by_day(cutoff_iso: str) -> dict[str, int]:
 
     return _count_by_day(
         pl, cutoff_iso, table="pipeline_runs", ts_col="started_at",
-        extra_where=" AND status = 'failed'",
+        extra_where=f" AND {_PIPELINE_FAILURE_WHERE}",
     )
 
 
@@ -82,7 +85,7 @@ def _judge_rejects_by_day(cutoff_iso: str) -> dict[str, int]:
         return {}
     return _count_by_day(
         jl, cutoff_iso, table="judge_log", ts_col="created_at",
-        extra_where=f" AND source = 'auto' AND accepted = 0 AND {jl.DEGREE_CAP_EXCLUSION_SQL}",
+        extra_where=f" AND {_JUDGE_REJECT_WHERE}",
     )
 
 

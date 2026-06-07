@@ -20,6 +20,7 @@ from kg.admin_cost_summary import (
     query_cost_rows,
     since_iso,
 )
+from kg.error_signals import JUDGE_AUTO_REJECT_WHERE, PIPELINE_FAILURE_WHERE
 from kg.ops_edit_shared import users_file
 from kg.ops_shared import (
     assert_readonly_sql,
@@ -1043,10 +1044,9 @@ def cmd_trends(args: argparse.Namespace) -> None:
     cutoff = days[0]  # date-only;ISO created_at >= 'YYYY-MM-DD' 字串比較涵蓋當日全時刻
 
     pipe_fail = _count_by_day_ro(dd / "pipeline_runs.db", "pipeline_runs", "started_at",
-                                 cutoff, where=" AND status = 'failed'")
+                                 cutoff, where=f" AND {PIPELINE_FAILURE_WHERE}")
     judge_rej = _count_by_day_ro(dd / "judge_log.db", "judge_log", "created_at", cutoff,
-                                 where=" AND source = 'auto' AND accepted = 0 "
-                                       "AND (reject_reason IS NULL OR reject_reason != 'degree_cap')")
+                                 where=f" AND {JUDGE_AUTO_REJECT_WHERE}")
     actives = _count_by_day_ro(dd / "token_usage.db", "token_usage", "created_at", cutoff,
                                count="COUNT(DISTINCT user_id)")
 
