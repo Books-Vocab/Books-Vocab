@@ -84,7 +84,9 @@ def synthesize_graph_history(link: GraphLink, *, notebook_id: str) -> list[Graph
                 kind=kind,
                 confidence_before=link.confidence,
                 confidence_after=link.confidence,
-                reason=link.reason,
+                # 終態無從得知「為何隱藏/棄用」,留 None 比沿用建立理由誠實 ——
+                # 免得研究時把 transition.reason 誤讀為隱藏理由。
+                reason=None,
                 status_before="active",
                 status_after=status,
                 source=str(GraphEventSource.SYNTH),

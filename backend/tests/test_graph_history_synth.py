@@ -84,6 +84,7 @@ def test_hidden_link_yields_add_then_hide():
     assert hide.status_after == "hidden"
     assert hide.event_id == "synth-lk1-1"
     assert hide.is_synthetic is True
+    assert hide.reason is None  # 終態無從得知隱藏理由,不沿用建立理由
 
 
 def test_deprecated_link_yields_add_then_deprecate():
