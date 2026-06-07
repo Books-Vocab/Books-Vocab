@@ -319,6 +319,7 @@ def cmd_report(root: Path, *, limit: int | None) -> int:
             bucket["unmarkedCategories"][item["category"]] += 1
 
     promise_report = []
+    next_actions = []
     for promise in PROMISE_ORDER:
         if promise not in by_promise:
             continue
@@ -343,12 +344,34 @@ def cmd_report(root: Path, *, limit: int | None) -> int:
                 "topUnmarkedCategories": top_unmarked,
             }
         )
+        if bucket["heroUnmarked"] > 0:
+            next_actions.append({
+                "kind": "hero-unmarked",
+                "promise": promise,
+                "count": bucket["heroUnmarked"],
+                "command": (
+                    f"./ops/catalog_review_cli.py {root} list --promise {promise} --search hero --limit {limit or 10}"
+                ),
+            })
+        if top_unmarked:
+            top_category = top_unmarked[0]["category"]
+            next_actions.append({
+                "kind": "top-unmarked-category",
+                "promise": promise,
+                "category": top_category,
+                "count": top_unmarked[0]["count"],
+                "command": (
+                    f"./ops/catalog_review_cli.py {root} apply --promise {promise} --category '{top_category}' "
+                    f"--status review --limit {limit or 10} --dry-run"
+                ),
+            })
 
     payload = {
         "status": "ok",
         "totalImages": manifest["totalImages"],
         "stateCounts": manifest.get("stateCounts", {}),
         "promises": promise_report,
+        "nextActions": next_actions,
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
