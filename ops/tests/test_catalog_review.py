@@ -625,6 +625,8 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert payload["coverageFirstPlaybook"]["firstCommand"]
     assert payload["heroFirstPlaybook"]["firstAction"]["kind"] in {"inspect", "narrow"}
     assert payload["coverageFirstPlaybook"]["firstAction"]["kind"] in {"inspect", "narrow"}
+    assert payload["heroFirstPlaybook"]["starterPlan"]["primary"]["command"] == payload["heroFirstPlaybook"]["firstCommand"]
+    assert payload["coverageFirstPlaybook"]["starterPlan"]["primary"]["command"] == payload["coverageFirstPlaybook"]["firstCommand"]
     assert payload["cleanupRecommendations"] == []
     assert payload["blockingErrors"] == []
 
@@ -649,6 +651,8 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert hero_payload["health"]["followupCommand"].endswith(" verify")
     assert hero_payload["health"]["actionPlan"]["primary"]["command"].endswith(" repair")
     assert hero_payload["health"]["actionPlan"]["followup"]["command"].endswith(" verify")
+    assert hero_payload["health"]["actionPlan"]["primary"]["command"] == hero_payload["health"]["recommendedCommand"]
+    assert hero_payload["health"]["actionPlan"]["followup"]["command"] == hero_payload["health"]["followupCommand"]
     assert hero_payload["health"]["actionCommands"][0]["role"] == "primary"
     assert hero_payload["health"]["actionCommands"][0]["kind"] == "mutate"
     assert hero_payload["health"]["actionCommands"][0]["intent"] == "change-review-state"
