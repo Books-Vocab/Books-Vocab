@@ -311,6 +311,10 @@ TEST_INVOCATION_MS=0
 CACHE_STATUS="none"
 DERIVED_DATA_ROOT=""
 XCTESTRUN_PATH=""
+TEST_BODY_MS=0
+XCRESULT_SESSION_MS=0
+XCRESULT_HARNESS_OVERHEAD_MS=0
+INVOCATION_OVERHEAD_MS=0
 boot_simulator_if_needed() {
   local boot_start_ms boot_end_ms
   boot_start_ms="$(ios_test_now_ms)"
@@ -651,6 +655,42 @@ count_executed_tests_xcresult() {
   echo "$n"
 }
 
+read_timing_breakdown_xcresult() {
+  local diag_json body_ms session_ms
+  [[ -n "$RESULT_BUNDLE" && -d "$RESULT_BUNDLE" ]] || return 1
+  diag_json="$("$SCRIPT_DIR/ios_diagnostics.py" --kind test --xcresult "$RESULT_BUNDLE" --json 2>/dev/null)" || return 1
+  body_ms="$(jq -r '.timings.testBodyMs // empty' <<<"$diag_json" 2>/dev/null)" || return 1
+  session_ms="$(jq -r '.timings.xcresultSessionMs // empty' <<<"$diag_json" 2>/dev/null)" || return 1
+  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ ]] || return 1
+  echo "$body_ms $session_ms"
+}
+
+populate_timing_breakdown() {
+  local breakdown body_ms session_ms
+  TEST_BODY_MS=0
+  XCRESULT_SESSION_MS=0
+  XCRESULT_HARNESS_OVERHEAD_MS=0
+  INVOCATION_OVERHEAD_MS=0
+  breakdown="$(read_timing_breakdown_xcresult || true)"
+  [[ -n "$breakdown" ]] || return 0
+  read -r body_ms session_ms <<<"$breakdown"
+  [[ "$body_ms" =~ ^[0-9]+$ && "$session_ms" =~ ^[0-9]+$ ]] || return 0
+  TEST_BODY_MS="$body_ms"
+  XCRESULT_SESSION_MS="$session_ms"
+  XCRESULT_HARNESS_OVERHEAD_MS=$(( XCRESULT_SESSION_MS - TEST_BODY_MS ))
+  if (( XCRESULT_HARNESS_OVERHEAD_MS < 0 )); then
+    XCRESULT_HARNESS_OVERHEAD_MS=0
+  fi
+  INVOCATION_OVERHEAD_MS=$(( TEST_INVOCATION_MS - XCRESULT_SESSION_MS ))
+  if (( INVOCATION_OVERHEAD_MS < 0 )); then
+    INVOCATION_OVERHEAD_MS=0
+  fi
+}
+
+print_timing_summary() {
+  echo "[ios_test] timings cacheStatus=$CACHE_STATUS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+}
+
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
 # script's). Read this instead of trusting a piped `$?`.
@@ -673,6 +713,10 @@ write_json_verdict() {
     --argjson xcodebuildMs "$XCODEBUILD_MS" \
     --argjson buildForTestingMs "$BUILD_FOR_TESTING_MS" \
     --argjson testInvocationMs "$TEST_INVOCATION_MS" \
+    --argjson testBodyMs "$TEST_BODY_MS" \
+    --argjson xcresultSessionMs "$XCRESULT_SESSION_MS" \
+    --argjson xcresultHarnessOverheadMs "$XCRESULT_HARNESS_OVERHEAD_MS" \
+    --argjson invocationOverheadMs "$INVOCATION_OVERHEAD_MS" \
     --argjson totalMs "$TOTAL_MS" \
     --arg cacheStatus "$CACHE_STATUS" \
     '{
@@ -690,12 +734,18 @@ write_json_verdict() {
         xcodebuildMs:$xcodebuildMs,
         buildForTestingMs:$buildForTestingMs,
         testInvocationMs:$testInvocationMs,
+        testBodyMs:$testBodyMs,
+        xcresultSessionMs:$xcresultSessionMs,
+        xcresultHarnessOverheadMs:$xcresultHarnessOverheadMs,
+        invocationOverheadMs:$invocationOverheadMs,
         totalMs:$totalMs
       },
       cache:{status:$cacheStatus},
       artifacts:{log:$log,xcresult:$xcresult}
     }' >"$VERDICT_JSON_FILE" || true
 }
+
+populate_timing_breakdown
 
 # Extract summary from xcresult if available
 if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
@@ -712,7 +762,7 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   echo ""
   echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "ok" "0" "" "$EXECUTED"
-  echo "[ios_test] timings cacheStatus=$CACHE_STATUS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  print_timing_summary
   echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
@@ -722,7 +772,7 @@ elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
   PRESERVE_TMPOUT=1
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "fail" "1" "tests-failed" ""
-  echo "[ios_test] timings cacheStatus=$CACHE_STATUS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  print_timing_summary
   echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
@@ -734,7 +784,7 @@ else
   PRESERVE_TMPOUT=1
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
-  echo "[ios_test] timings cacheStatus=$CACHE_STATUS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  print_timing_summary
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
