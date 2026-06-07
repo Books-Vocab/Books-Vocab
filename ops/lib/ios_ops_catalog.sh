@@ -18,6 +18,16 @@ catalog_now_ms() {
   perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
 
+catalog_trace_phase() {
+  local phase="$1" event="$2" detail="${3:-}"
+  [[ "${KG_IOS_OPS_CATALOG_TRACE:-0}" == "1" ]] || return 0
+  if [[ -n "$detail" ]]; then
+    printf '[ios][catalog][trace] phase=%s event=%s %s\n' "$phase" "$event" "$detail" >&2
+  else
+    printf '[ios][catalog][trace] phase=%s event=%s\n' "$phase" "$event" >&2
+  fi
+}
+
 catalog_fixture_write_png() {
   local path="$1"
   mkdir -p "$(dirname "$path")"
@@ -377,10 +387,13 @@ cmd_catalog_snapshots_json() {
   local generated_at mode container_data snapshot_source xcode_log xcode_err rc test_cmd
   local sim_payload sim_rc=0 copy_rc=0 pngs_json payload resolved_device container_source
   local validation_json expected_scenario_count="" command_wall_ms=0 test_body_ms=0 playbook_build_ms=0 snapshot_run_ms=0 startup_overhead_ms=0
+  local wrapper_start_ms wrapper_wall_ms=0 sim_status_ms=0 container_lookup_ms=0 copy_ms=0 artifact_index_ms=0 validation_ms=0
+  local phase_start_ms phase_end_ms
   local fixture_root="" derived_data_root="" base_xctestrun="" run_xctestrun=""
   local build_cmd="" scope_test_cmd="" use_cached_xctestrun=0 scope_requested=0
   local cache_key="" cache_status="not-applicable"
 
+  wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   catalog_prepare_output_root "$out_root"
   resolved_device="$(catalog_resolve_destination_device_udid "$destination")"
@@ -494,7 +507,15 @@ cmd_catalog_snapshots_json() {
     fi
   fi
 
+  phase_start_ms="$(catalog_now_ms)"
+  catalog_trace_phase "simulator_status" "start" "destination=\"$destination\""
   sim_payload="$(cmd_simulator_status_json)" || sim_rc=$?
+  phase_end_ms="$(catalog_now_ms)"
+  sim_status_ms=$(( phase_end_ms - phase_start_ms ))
+  catalog_trace_phase "simulator_status" "done" "wallMs=$sim_status_ms exitCode=$sim_rc"
+
+  phase_start_ms="$(catalog_now_ms)"
+  catalog_trace_phase "container_lookup" "start" "resolvedDevice=${resolved_device:-<empty>}"
   if [[ -n "$resolved_device" ]]; then
     container_source="$(capture_source_text app_container read_app_container_path "$resolved_device" "$BUNDLE_ID" data)"
     container_data="$(jq -r 'if .status == "ok" then (.output | sub("\n+$"; "")) else empty end' <<<"$container_source")"
@@ -523,7 +544,12 @@ cmd_catalog_snapshots_json() {
       container_data="${snapshot_source%/tmp/kg-catalog-snapshots}"
     fi
   fi
+  phase_end_ms="$(catalog_now_ms)"
+  container_lookup_ms=$(( phase_end_ms - phase_start_ms ))
+  catalog_trace_phase "container_lookup" "done" "wallMs=$container_lookup_ms container=${container_data:-<empty>} source=${snapshot_source:-<empty>}"
 
+  phase_start_ms="$(catalog_now_ms)"
+  catalog_trace_phase "copy" "start" "source=${snapshot_source:-<empty>} outRoot=$out_root"
   if [[ "$rc" -eq 0 ]] && [[ -d "$snapshot_source" ]]; then
     if mkdir -p "$out_root" && cp -R "$snapshot_source/." "$out_root/"; then
       copy_rc=0
@@ -533,8 +559,17 @@ cmd_catalog_snapshots_json() {
   else
     copy_rc=1
   fi
+  phase_end_ms="$(catalog_now_ms)"
+  copy_ms=$(( phase_end_ms - phase_start_ms ))
+  catalog_trace_phase "copy" "done" "wallMs=$copy_ms exitCode=$copy_rc"
 
+  phase_start_ms="$(catalog_now_ms)"
+  catalog_trace_phase "artifact_index" "start" "outRoot=$out_root"
   pngs_json="$(catalog_collect_pngs_json "$out_root")"
+  phase_end_ms="$(catalog_now_ms)"
+  artifact_index_ms=$(( phase_end_ms - phase_start_ms ))
+  catalog_trace_phase "artifact_index" "done" "wallMs=$artifact_index_ms pngCount=$(jq -r '.pngCount // 0' <<<"$pngs_json")"
+
   expected_scenario_count="$(catalog_extract_scenario_count_from_log "$xcode_log" || true)"
   command_wall_ms="${CATALOG_LAST_COMMAND_WALL_MS:-0}"
   playbook_build_ms="$(catalog_extract_timing_ms_from_log "$xcode_log" "playbookBuildMs" || true)"
@@ -549,7 +584,15 @@ cmd_catalog_snapshots_json() {
   else
     startup_overhead_ms=0
   fi
+
+  phase_start_ms="$(catalog_now_ms)"
+  catalog_trace_phase "validation" "start" "expectedScenarios=${expected_scenario_count:-<empty>}"
   validation_json="$(catalog_inspect_pngs_json "$out_root" "$expected_scenario_count")"
+  phase_end_ms="$(catalog_now_ms)"
+  validation_ms=$(( phase_end_ms - phase_start_ms ))
+  catalog_trace_phase "validation" "done" "wallMs=$validation_ms status=$(jq -r '.status' <<<"$validation_json")"
+
+  wrapper_wall_ms=$(( $(catalog_now_ms) - wrapper_start_ms ))
   payload="$(jq -n \
     --arg schema "kg.ios.catalog.v1" \
     --arg generated_at "$generated_at" \
@@ -572,6 +615,12 @@ cmd_catalog_snapshots_json() {
     --argjson snapshotRunMs "$snapshot_run_ms" \
     --argjson testBodyMs "$test_body_ms" \
     --argjson startupOverheadMs "$startup_overhead_ms" \
+    --argjson wrapperWallMs "$wrapper_wall_ms" \
+    --argjson simulatorStatusMs "$sim_status_ms" \
+    --argjson containerLookupMs "$container_lookup_ms" \
+    --argjson copyMs "$copy_ms" \
+    --argjson artifactIndexMs "$artifact_index_ms" \
+    --argjson validationMs "$validation_ms" \
     --argjson testExit "$rc" \
     --argjson copyExit "$copy_rc" \
     --argjson artifacts "$pngs_json" \
@@ -600,11 +649,17 @@ cmd_catalog_snapshots_json() {
       },
       artifacts:$artifacts,
       timings:{
+        wrapperWallMs:$wrapperWallMs,
         commandWallMs:$commandWallMs,
         playbookBuildMs:$playbookBuildMs,
         snapshotRunMs:$snapshotRunMs,
         testBodyMs:$testBodyMs,
-        startupOverheadMs:$startupOverheadMs
+        startupOverheadMs:$startupOverheadMs,
+        simulatorStatusMs:$simulatorStatusMs,
+        containerLookupMs:$containerLookupMs,
+        copyMs:$copyMs,
+        artifactIndexMs:$artifactIndexMs,
+        validationMs:$validationMs
       },
       validation:$validation,
       cache:{
@@ -695,7 +750,7 @@ cmd_catalog_snapshots() {
     "[ios][catalog] schema=\(.schema) action=\(.action) status=\(.status) mode=\(.mode) pngCount=\(.artifacts.pngCount) root=\(.artifacts.root)",
     "[ios][catalog] scope groups=\(.scope.groups | join(", ")) scenarios=\(.scope.scenarios | join(", "))",
     "[ios][catalog] cache status=\(.cache.status) key=\(.cache.key // "") root=\(.cache.root // "")",
-    "[ios][catalog] timings commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs)",
+    "[ios][catalog] timings wrapperWallMs=\(.timings.wrapperWallMs) commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs) simulatorStatusMs=\(.timings.simulatorStatusMs) containerLookupMs=\(.timings.containerLookupMs) copyMs=\(.timings.copyMs) artifactIndexMs=\(.timings.artifactIndexMs) validationMs=\(.timings.validationMs)",
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",
     "[ios][catalog] copy exitCode=\(.copy.exitCode) source=\(.copy.sourcePath // "") container=\(.copy.containerDataPath // "")",
