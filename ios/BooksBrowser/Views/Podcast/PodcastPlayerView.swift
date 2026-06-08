@@ -13,34 +13,6 @@ struct PodcastPlayerView: View {
     /// `NavigationStack` host 設定鍵，但該內層 stack 嵌在 BookshelfView 外層
     /// NavigationStack subtree 內，會**持久破壞外層 value-based push**（NAVDBG
     /// 坐實：顯示過 inline player 後 reader 永久無法 push，Catalyst SwiftUI 缺陷）。
-#if DEBUG
-    /// Catalog-only seam: when set, the player skips its async audio load and
-    /// renders a deterministic, AVPlayer-free `.ready` chrome seeded with this
-    /// preview — lets the offline Playbook catalog show the real player surface
-    /// (transcript + scrubber + transport) without audio/network. DEBUG-only, so
-    /// production carries no extra stored property at all.
-    struct CatalogPreview {
-        let durationSec: TimeInterval
-        let currentSec: TimeInterval
-        let subtitleSRT: String?
-    }
-    private let catalogPreview: CatalogPreview?
-
-    init(episodeId: String) {
-        self.episodeId = episodeId
-        self.catalogPreview = nil
-    }
-
-    init(episodeId: String, catalogPreview: CatalogPreview) {
-        self.episodeId = episodeId
-        self.catalogPreview = catalogPreview
-    }
-#else
-    init(episodeId: String) {
-        self.episodeId = episodeId
-    }
-#endif
-
     @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
@@ -50,6 +22,9 @@ struct PodcastPlayerView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.authManager) private var authManager
+#if DEBUG
+    @Environment(\.podcastPlayerCatalogPreview) private var catalogPreview
+#endif
 
     @Query private var allVocabulary: [VocabularyEntry]
 
@@ -437,51 +412,37 @@ struct PodcastPlayerView: View {
     }
 
     private var missingEpisodeView: some View {
-        VStack(spacing: skin.spacing.sectionGap) {
-            Image(systemName: "waveform.badge.exclamationmark")
-                .font(skin.typography.symbolHero)
-                .foregroundStyle(skin.palette.secondaryText)
-            Text(L10n.string("podcast.player.missingEpisode.title"))
-                .font(skin.typography.sectionTitle)
-                .foregroundStyle(skin.palette.primaryText)
-            Text(L10n.string("podcast.player.missingEpisode.description"))
-                .font(skin.typography.caption)
-                .foregroundStyle(skin.palette.secondaryText)
-                .multilineTextAlignment(.center)
+        podcastStateCard(
+            title: L10n.string("podcast.player.missingEpisode.title"),
+            systemImage: "waveform.badge.exclamationmark",
+            description: L10n.string("podcast.player.missingEpisode.description")
+        ) {
             Button(L10n.string("重試")) { reloadEpisode() }
                 .buttonStyle(.appCompactAction(.primary))
         }
-        .padding(AppSpacing.s6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.palette.pageBackground)
     }
 
     @ViewBuilder
     private func playerContent(_ vm: PodcastPlayerViewModel) -> some View {
         switch vm.state {
         case .idle, .loading:
-            VStack(spacing: skin.spacing.sectionGap) {
+            podcastStateCard(
+                title: L10n.string("載入音訊…"),
+                systemImage: "waveform"
+            ) {
                 ProgressView()
-                Text(L10n.string("載入音訊…"))
-                    .font(skin.typography.caption)
-                    .foregroundStyle(skin.palette.secondaryText)
+                    .controlSize(.large)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .error(let msg):
-            VStack(spacing: skin.spacing.sectionGap) {
-                Image(systemName: "xmark.octagon")
-                    .font(skin.typography.symbolHero)
-                    .foregroundStyle(skin.palette.destructive)
-                Text(L10n.string("音訊載入失敗"))
-                    .font(skin.typography.sectionTitle)
-                Text(msg)
-                    .font(skin.typography.caption)
-                    .foregroundStyle(skin.palette.secondaryText)
+            podcastStateCard(
+                title: L10n.string("音訊載入失敗"),
+                systemImage: "xmark.octagon",
+                description: msg
+            ) {
                 Button(L10n.string("重試")) { reloadEpisode() }
                     .buttonStyle(.appCompactAction(.primary))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .ready, .playing, .paused:
             VStack(spacing: 0) {
@@ -575,6 +536,25 @@ struct PodcastPlayerView: View {
         }
     }
 
+    private func podcastStateCard<Accessory: View>(
+        title: String,
+        systemImage: String,
+        description: String? = nil,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        AppStateMessageCard(
+            title: title,
+            systemImage: systemImage,
+            description: description,
+            style: .vocab(skin),
+            accessory: accessory
+        )
+        .frame(maxWidth: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(AppSpacing.s6)
+        .background(theme.palette.pageBackground)
+    }
+
     private func handlePanelVisibilityChange(
         from old: String?,
         to new: String?,
@@ -657,7 +637,7 @@ struct PodcastPlayerView: View {
     /// Catalog-only counterpart to `loadEpisode()`: builds a synchronous, AVPlayer-
     /// free `.ready` viewModel so the Playbook catalog renders the real player
     /// chrome (transcript + scrubber + transport) deterministically.
-    private func loadCatalogPreview(_ preview: CatalogPreview) {
+    private func loadCatalogPreview(_ preview: PodcastPlayerCatalogPreview) {
         guard let series = loadedSeries else { return }
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         vm.catalogReadyPreview(
@@ -690,20 +670,10 @@ struct PodcastPlayerView: View {
 
         loadTask = Task { [weak vm] in
             guard let vm else { return }
-            // Local-first: if the episode was downloaded, stream from disk.
-            // file:// URLs need no auth header and AVPlayer skips network
-            // entirely → instant ready, zero buffer concerns.
-            let localURL: URL? = {
-                guard let path = episode.localAudioPath,
-                      FileManager.default.fileExists(atPath: path) else { return nil }
-                return URL(fileURLWithPath: path)
-            }()
-            guard let audioURL = localURL
-                ?? episode.audioURL.flatMap(URL.init(string:)) else {
+            guard let plan = PodcastPlayerLoadPlan.make(episode: episode) else {
                 await MainActor.run { vm.reportError(L10n.string("無音訊 URL")) }
                 return
             }
-            let isLocal = localURL != nil
 
             await MainActor.run { vm.setLoading() }
             if Task.isCancelled { return }
@@ -717,9 +687,10 @@ struct PodcastPlayerView: View {
             // fetch entirely — saves one round-trip and removes a failure
             // mode the user has to recover from.
             var subtitleContent: String?
-            if let inline = episode.inlineSubtitle, !inline.isEmpty {
+            switch plan.subtitleSource {
+            case .inline(let inline):
                 subtitleContent = inline
-            } else if let subtitleURLStr = episode.subtitleURL {
+            case .remote(let subtitleURLStr):
                 await MainActor.run { vm.setSubtitleLoading() }
                 subtitleContent = await Self.fetchSubtitle(
                     urlString: subtitleURLStr, kgService: kgService
@@ -728,7 +699,7 @@ struct PodcastPlayerView: View {
                 if subtitleContent == nil {
                     await MainActor.run { vm.markSubtitleFailed() }
                 }
-            } else {
+            case .unavailable:
                 await MainActor.run { vm.markSubtitleUnavailable() }
             }
             if Task.isCancelled { return }
@@ -740,7 +711,7 @@ struct PodcastPlayerView: View {
             // means no auth needed, and we avoid blocking on a token fetch
             // that could fail offline.
             let audioHeaders: [String: String]
-            if isLocal {
+            if plan.usesLocalAudio {
                 audioHeaders = [:]
             } else {
                 do {
@@ -757,16 +728,14 @@ struct PodcastPlayerView: View {
             }
             if Task.isCancelled { return }
 
-            let episodeTitle = episode.displayTitle
-            let prefetchedDuration = episode.durationSec
             await MainActor.run {
                 guard !Task.isCancelled else { return }
                 vm.loadEpisode(
-                    audioURL: audioURL,
+                    audioURL: plan.audioURL,
                     subtitleContent: subtitleContent,
-                    title: episodeTitle,
+                    title: plan.title,
                     audioHTTPHeaders: audioHeaders,
-                    prefetchedDurationSec: prefetchedDuration,
+                    prefetchedDurationSec: plan.durationSec,
                     initialProgressTime: initialProgressTime
                 )
             }
