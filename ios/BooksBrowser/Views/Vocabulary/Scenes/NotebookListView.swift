@@ -9,7 +9,46 @@ import SwiftData
 import TipKit
 import Inject
 
+/// 薄殼：唯一持有 `DetailRouter` 並呈現 detail/review cover 的層，**刻意不含 `@Query`**。
+///
+/// 複習翻卡的背景 DB 寫入只會失效 `NotebookListContent` 的 `@Query`、不會觸及本層，
+/// 因此 cover 的 content closure 不再隨翻卡重跑 → 不再重建「建完即丟」的
+/// `TodayReviewState`（這是翻卡落定後主線凍結的 Cost B 來源）。cover 的複習資料走
+/// `detailState.contextEntries` 快照（`showReview` 當下擷取），故本層傳 `allEntries: []` 安全。
 struct NotebookListView: View {
+    @ObserveInjection private var inject
+    @Environment(\.authManager) private var authManager
+    @State private var detailState = DetailRouter()
+    private let skipCatalogTasks: Bool
+
+    init() {
+        self.skipCatalogTasks = false
+    }
+
+#if DEBUG
+    /// Catalog-only seam: forwarded to `NotebookListContent` so its cold-start
+    /// reconcile `.task` is skipped for deterministic seeded rendering.
+    init(skipCatalogTasks: Bool) {
+        self.skipCatalogTasks = skipCatalogTasks
+    }
+#endif
+
+    var body: some View {
+        NotebookListContent(detailState: detailState, skipCatalogTasks: skipCatalogTasks)
+            .environment(\.detailRouter, detailState)
+            .modifier(NotebookDetailPresentation(
+                detailState: detailState,
+                allEntries: [],
+                currentUserID: authManager.userId
+            ))
+            .enableInjection()
+    }
+}
+
+/// 生詞庫 tab 的列表內容（持 `@Query` + 全部列表 UI 狀態），由 `NotebookListView` 薄殼
+/// 注入 `detailState`。複習中（被 cover 蓋住）body 跳過 `stats`/`filtered`/`sort` 重算
+/// （見 body 內 `covered` gate）——這些值的消費者此刻全不可見、不可互動（Cost A）。
+struct NotebookListContent: View {
     @ObserveInjection private var inject
     @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
@@ -23,23 +62,15 @@ struct NotebookListView: View {
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @State private var coordinator = NotebookListCoordinator()
     @State private var showLoginSheet = false
+    let detailState: DetailRouter
     private let skipCatalogTasks: Bool
 
-    init() {
-        self.skipCatalogTasks = false
-        _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
-        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
-    }
-
-#if DEBUG
-    /// Catalog-only seam: skip the cold-start reconcile `.task` so the seeded
-    /// notebook list renders deterministically without sync/network work.
-    init(skipCatalogTasks: Bool) {
+    init(detailState: DetailRouter, skipCatalogTasks: Bool = false) {
+        self.detailState = detailState
         self.skipCatalogTasks = skipCatalogTasks
         _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
         _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
     }
-#endif
 
     @State private var showCreateSheet = false
     @State private var editingNotebook: Notebook?
@@ -51,10 +82,43 @@ struct NotebookListView: View {
     @State private var showArchiveList = false
     @State private var showFilterSheet = false
     @State private var navigationPath = NavigationPath()
-    @State private var detailState = DetailRouter()
 
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
+    }
+
+    /// 列表 body 所需的衍生資料（每本 notebook 統計 + 篩選後到期/未學集合 + 排序）。
+    private struct ListModel {
+        var stats: [String: NotebookStats] = [:]
+        var due: [VocabularyEntry] = []
+        var unlearned: [VocabularyEntry] = []
+        var sortedNotebooks: [Notebook] = []
+        var totalDue: Int = 0
+        var totalUnlearned: Int = 0
+    }
+
+    /// 計算 `ListModel`。被 detail/review cover 蓋住時（`covered`）回空結果，跳過 636-entry
+    /// 的 `compute`/`filtered`/`sort`（Cost A，~80ms）。抽成獨立 method 讓 body 維持平凡
+    /// 賦值——既好讀，也避開 Inject 熱重載對「@ViewBuilder body 內三元套 trailing-closure
+    /// + `.value`」符號解析吐野指標而崩潰（dev-tool bug，非 production）。
+    private func computeListModel(covered: Bool, reviewNow: Date) -> ListModel {
+        guard !covered else { return ListModel() }
+        let stats = PerfLog.review.measure("notebookList.stats", "n=\(allEntries.count)") {
+            NotebookStatsCalculator.compute(allEntries, pendingEntries: pendingEntries, now: reviewNow)
+        }.value
+        // The filter pill only renders with ≥2 notebooks. If a user filtered then deleted
+        // notebooks down to <2, the persisted filter must NOT keep silently hiding entries
+        // with no UI to clear it — apply an unfiltered view while keeping reviewFilter intact.
+        let effectiveFilter = notebooks.count >= 2 ? reviewFilter : NotebookFilter()
+        let filtered = NotebookStatsCalculator.filtered(allEntries, filter: effectiveFilter, now: reviewNow)
+        return ListModel(
+            stats: stats,
+            due: filtered.due,
+            unlearned: filtered.unlearned,
+            sortedNotebooks: sortOption.sort(notebooks, stats: stats),
+            totalDue: stats.values.reduce(0) { $0 + $1.dueCount },
+            totalUnlearned: stats.values.reduce(0) { $0 + $1.unlearnedCount }
+        )
     }
 
     var body: some View {
@@ -69,27 +133,21 @@ struct NotebookListView: View {
             PerfLog.review.mark("notebookList.reeval", "duringReview")
         } }()
         let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
-        let (stats, _) = PerfLog.review.measure("notebookList.stats", "n=\(allEntries.count)") {
-            NotebookStatsCalculator.compute(
-                allEntries,
-                pendingEntries: pendingEntries,
-                now: reviewNow
-            )
-        }
-        // The filter pill (to change/clear reviewFilter) only renders with ≥2
-        // notebooks. If a user filtered then deleted notebooks down to <2, the
-        // persisted filter must NOT keep silently hiding entries with no UI to
-        // clear it — apply an unfiltered view while keeping reviewFilter intact
-        // (it re-applies once they have ≥2 notebooks again).
-        let effectiveFilter = notebooks.count >= 2 ? reviewFilter : NotebookFilter()
-        let (filteredDueEntries, filteredUnlearnedEntries) = NotebookStatsCalculator.filtered(
-            allEntries,
-            filter: effectiveFilter,
-            now: reviewNow
-        )
-        let totalDueCount = stats.values.reduce(0) { $0 + $1.dueCount }
-        let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
-        let sortedNotebooks = sortOption.sort(notebooks, stats: stats)
+        // GATE (Cost A): while a detail/review cover is presented this list is fully
+        // obscured and non-interactive — every consumer below (NotebookReviewActionBar,
+        // notebook grid ForEach, Mac ⌘⏎ menu) is hidden. The flip's background DB write
+        // invalidates our @Query and forces a body re-eval anyway; the heavy 636-entry
+        // stats/filtered/sort recompute (~80ms, the落定後 freeze) is skipped inside
+        // `computeListModel` when covered. On cover dismiss `covered` flips false and a
+        // single body eval recomputes the real grid in one pass (no empty-state flash).
+        let covered = detailState.activeReviewSession != nil
+        let model = computeListModel(covered: covered, reviewNow: reviewNow)
+        let stats = model.stats
+        let filteredDueEntries = model.due
+        let filteredUnlearnedEntries = model.unlearned
+        let totalDueCount = model.totalDue
+        let totalUnlearnedCount = model.totalUnlearned
+        let sortedNotebooks = model.sortedNotebooks
 
         // Editorial tight overrides — 全 app token (`pageHorizontalPadding = s5 = 32pt` /
         // `sectionSpacing = s6 = 48pt` / `sectionGap = 14` / `pageTopInset = 16`) 對
@@ -296,12 +354,8 @@ struct NotebookListView: View {
                 Text("此單字本及所有單字將被永久刪除，無法復原。".localized)
             }
         }
-        .environment(\.detailRouter, detailState)
-        .modifier(NotebookDetailPresentation(
-            detailState: detailState,
-            allEntries: allEntries,
-            currentUserID: authManager.userId
-        ))
+        // detail/review cover 與 detailRouter 注入已上移至 NotebookListView 薄殼，
+        // 使其脫離本 view 的 @Query — 翻卡寫入不再透過本層重跑 cover content closure。
         // 新增單字本 ⌘N(Mac menu)— 未登入不 publish → menu 自動 disable(對應 view 內 .disabled(!isLoggedIn))。
         .focusedSceneValue(
             \.newNotebook,
