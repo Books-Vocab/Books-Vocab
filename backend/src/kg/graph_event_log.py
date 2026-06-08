@@ -283,11 +283,12 @@ class GraphSnapshotView:
 class GraphSnapshotStore:
     """SQLite-backed per-user graph snapshot store(與 GraphEventStore 共用 graph_events.db)。
 
-    限制(待辦):目前 ``save()`` 僅在一次性遷移時被呼叫(每 notebook 一張初始合成快照),
-    尚無**週期性**快照寫入器。事件 log 隨真實 mutation 無界成長,而 checkpoint 只有遷移當下
-    那一張,故「從最近 snapshot 起套 diff 重建」的 bound 會隨時間退化。後續應加一個按事件數 /
-    時間門檻自動 ``save()`` 的寫入器(見 review #13)。
+    週期 snapshot policy：若某 notebook 還沒有任何 snapshot,第一個真實 mutation 後立刻補
+    一張；之後每累積一定數量的 graph diff event 再補下一張。這讓 replay 的重建長度有上界,
+    不會永遠只剩遷移當下那張初始基線。
     """
+
+    PERIODIC_EVENT_THRESHOLD = 50
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -352,6 +353,88 @@ class GraphSnapshotStore:
                 stmt = stmt.where(GraphSnapshot.notebook_id == notebook_id)
             rows = session.exec(stmt.order_by(GraphSnapshot.taken_at)).all()
             return [self._view(r) for r in rows]
+
+    def maybe_save_periodic(
+        self,
+        notebook_id: str,
+        links: list[dict],
+        *,
+        min_events_since_snapshot: int | None = None,
+    ) -> dict[str, int | bool | str | None]:
+        """依 event-count policy 決定是否追加一張真實 snapshot。
+
+        規則:
+        - 若該 notebook 尚無任何 snapshot:立刻補一張真實 snapshot
+        - 否則計算自 latest snapshot 之後累積的 graph event 數,達門檻才再存
+        """
+
+        threshold = (
+            min_events_since_snapshot
+            if min_events_since_snapshot is not None
+            else self.PERIODIC_EVENT_THRESHOLD
+        )
+        with Session(self.engine) as session:
+            latest = session.exec(
+                select(GraphSnapshot)
+                .where(GraphSnapshot.notebook_id == notebook_id)
+                .order_by(
+                    GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
+                    GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
+                )
+            ).first()
+            if latest is None:
+                snapshot_id = uuid.uuid4().hex
+                session.add(
+                    GraphSnapshot(
+                        snapshot_id=snapshot_id,
+                        notebook_id=notebook_id,
+                        taken_at=_now(),
+                        link_count=len(links),
+                        links_json=json.dumps(links, default=str),
+                        is_synthetic=False,
+                    )
+                )
+                session.commit()
+                return {
+                    "saved": True,
+                    "reason": "no-snapshot",
+                    "snapshot_id": snapshot_id,
+                    "events_since_snapshot": None,
+                }
+            events_since = session.exec(
+                select(func.count())
+                .select_from(GraphEvent)
+                .where(
+                    GraphEvent.notebook_id == notebook_id,
+                    GraphEvent.ingested_at > latest.taken_at,
+                )
+            ).one()
+            event_count = int(events_since or 0)
+            if event_count < threshold:
+                return {
+                    "saved": False,
+                    "reason": "below-threshold",
+                    "snapshot_id": None,
+                    "events_since_snapshot": event_count,
+                }
+            snapshot_id = uuid.uuid4().hex
+            session.add(
+                GraphSnapshot(
+                    snapshot_id=snapshot_id,
+                    notebook_id=notebook_id,
+                    taken_at=_now(),
+                    link_count=len(links),
+                    links_json=json.dumps(links, default=str),
+                    is_synthetic=False,
+                )
+            )
+            session.commit()
+            return {
+                "saved": True,
+                "reason": "event-threshold",
+                "snapshot_id": snapshot_id,
+                "events_since_snapshot": event_count,
+            }
 
     def close(self) -> None:
         if self.engine is not None:

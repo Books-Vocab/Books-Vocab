@@ -16,7 +16,7 @@ from .models import CandidatePair, GraphLink
 from .persistence import _PersistenceMixin
 
 if TYPE_CHECKING:
-    from ..graph_event_log import GraphEventDraft, GraphEventStore
+    from ..graph_event_log import GraphEventDraft, GraphEventStore, GraphSnapshotStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,8 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         *,
         event_store: GraphEventStore | None = None,
         event_store_provider: Callable[[], GraphEventStore] | None = None,
+        snapshot_store: GraphSnapshotStore | None = None,
+        snapshot_store_provider: Callable[[], GraphSnapshotStore] | None = None,
         event_notebook_id: str = "default",
     ) -> None:
         self.links_path = links_path
@@ -65,6 +67,8 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         # (測試用)。
         self._event_store = event_store
         self._event_store_provider = event_store_provider
+        self._snapshot_store = snapshot_store
+        self._snapshot_store_provider = snapshot_store_provider
         self._event_notebook_id = event_notebook_id
         self._lock = threading.Lock()
         # Per-file write locks: serialise concurrent _atomic_json_write calls
@@ -140,6 +144,11 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             return self._event_store_provider()
         return self._event_store
 
+    def _resolve_snapshot_store(self) -> GraphSnapshotStore | None:
+        if self._snapshot_store_provider is not None:
+            return self._snapshot_store_provider()
+        return self._snapshot_store
+
     def _build_graph_event_draft(
         self,
         event_type: str,
@@ -178,7 +187,12 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             is_synthetic=False,
         )
 
-    def _emit_graph_events(self, drafts: list[GraphEventDraft]) -> None:
+    def _emit_graph_events(
+        self,
+        drafts: list[GraphEventDraft],
+        *,
+        links_snapshot: list[dict] | None = None,
+    ) -> None:
         """批次 append。必須在 _lock 外、改檔成功後呼叫。一筆 logical mutation(含 batch)
         只開一筆 insert_many 交易,避免逐 link 各取寫鎖。帳本是研究料,非寫入關鍵路徑:
         emit 失敗只記 log,絕不冒泡打斷圖譜寫入。"""
@@ -189,8 +203,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             # 開檔錯誤皆可能拋),不可冒泡打斷圖譜寫入。
             store = self._resolve_event_store()
             if store is None:
-                return
-            store.insert_many(drafts)
+                if links_snapshot is None:
+                    return
+            else:
+                store.insert_many(drafts)
+            if links_snapshot is not None:
+                snap_store = self._resolve_snapshot_store()
+                if snap_store is not None:
+                    snap_store.maybe_save_periodic(self._event_notebook_id, links_snapshot)
         except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
             logger.warning(
                 "graph event emit failed (%d drafts, first=%s)",
@@ -201,6 +221,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self,
         event_type: str,
         *,
+        links_snapshot: list[dict] | None = None,
         link_id: str,
         from_id: str,
         to_id: str,
@@ -214,7 +235,8 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     ) -> None:
         """單筆便利 emit(內部仍走 batch 路徑)。"""
         if self._event_store_provider is None and self._event_store is None:
-            return
+            if self._snapshot_store_provider is None and self._snapshot_store is None:
+                return
         self._emit_graph_events([
             self._build_graph_event_draft(
                 event_type, link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
@@ -222,7 +244,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 confidence_after=confidence_after, status_before=status_before,
                 status_after=status_after, reason=reason,
             )
-        ])
+        ], links_snapshot=links_snapshot)
 
     # Link kinds removed from the enum; silently drop on load.
     _RETIRED_KINDS: ClassVar[frozenset[str]] = frozenset({"confusable"})
@@ -308,7 +330,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                     confidence_after=lk.confidence, status_before="active", status_after="deprecated",
                 )
                 for lk in affected
-            ])
+            ], links_snapshot=snapshot)
         return len(affected)
 
     def restore_links_for(self, card_id: str, cards_store, *, source: str = "auto") -> int:
@@ -334,7 +356,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                     confidence_after=lk.confidence, status_before="deprecated", status_after="active",
                 )
                 for lk in affected
-            ])
+            ], links_snapshot=snapshot)
         return len(affected)
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False, source: str = "auto") -> dict:

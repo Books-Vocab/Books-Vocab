@@ -26,6 +26,7 @@ import sys
 import tarfile
 from collections.abc import Callable
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,13 @@ from typing import Any
 _USER_ID_ALLOWED = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 _BACKUP_DIRNAME = "_ops_backups"
+_WORLD_BACKUP_DIRNAME = "_ops_world_backups"
 _AUDIT_FILENAME = "_ops_edit_audit.jsonl"
+_META_DIRNAME = ".ops_meta"
+_USER_RECORD_SNAPSHOT = "user_record.json"
+_EMAIL_INDEX_SNAPSHOT = "email_index.json"
+_BACKUP_MANIFEST = "backup_manifest.json"
+_WORLD_ROOT_ARCNAME = "__kg_world__"
 # 檔名上限保守值(macOS/Linux 單段 255 bytes;留 buffer 給備份檔的 timestamp 後綴)。
 _MAX_UID_LEN = 200
 
@@ -92,6 +99,65 @@ def _now_stamp() -> str:
     return datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _load_users_json_raw(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _backup_root(data_dir: Path) -> Path:
+    return Path(data_dir) / _BACKUP_DIRNAME
+
+
+def world_backup_root(data_dir: Path) -> Path:
+    return Path(data_dir) / _WORLD_BACKUP_DIRNAME
+
+
+def _add_bytes_member(tar: tarfile.TarFile, arcname: str, payload: bytes) -> None:
+    info = tarfile.TarInfo(name=arcname)
+    info.size = len(payload)
+    info.mtime = int(datetime.now(tz=UTC).timestamp())
+    tar.addfile(info, BytesIO(payload))
+
+
+def _user_meta_arc(uid: str, filename: str) -> str:
+    return f"{uid}/{_META_DIRNAME}/{filename}"
+
+
+def _world_meta_arc(filename: str) -> str:
+    return f"{_WORLD_ROOT_ARCNAME}/{_META_DIRNAME}/{filename}"
+
+
+def _read_json_member(
+    tar: tarfile.TarFile, arcname: str,
+) -> dict[str, Any] | None:
+    member = tar.getmember(arcname) if arcname in tar.getnames() else None
+    if member is None:
+        return None
+    fileobj = tar.extractfile(member)
+    if fileobj is None:
+        return None
+    try:
+        data = json.loads(fileobj.read().decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _world_snapshot_members(data_dir: Path) -> list[Path]:
+    excluded = {
+        _BACKUP_DIRNAME,
+        _WORLD_BACKUP_DIRNAME,
+        _AUDIT_FILENAME,
+        "users.json.lock",
+    }
+    return [p for p in sorted(Path(data_dir).iterdir()) if p.name not in excluded]
+
+
 def backup_user_dir(data_dir: Path, uid: str) -> Path | None:
     """寫前快照:把整個 ``users/<uid>/`` tar.gz 到 ``data_dir/_ops_backups/``。
 
@@ -101,7 +167,7 @@ def backup_user_dir(data_dir: Path, uid: str) -> Path | None:
     src = user_dir_for(data_dir, uid)
     if not src.exists():
         return None
-    backup_root = Path(data_dir) / _BACKUP_DIRNAME
+    backup_root = _backup_root(data_dir)
     backup_root.mkdir(parents=True, exist_ok=True)
     dest = backup_root / f"{uid}__{_now_stamp()}.tar.gz"
     # 同秒多次 commit 不覆蓋:碰撞則加序號。
@@ -109,8 +175,66 @@ def backup_user_dir(data_dir: Path, uid: str) -> Path | None:
     while dest.exists():
         dest = backup_root / f"{uid}__{_now_stamp()}__{n}.tar.gz"
         n += 1
+    users = _load_users_json_raw(users_file(Path(data_dir)))
+    record = users.get(uid) if isinstance(users.get(uid), dict) else None
+    email_index = users.get("_email_index") if isinstance(users.get("_email_index"), dict) else {}
+    scoped_email_index = {k: v for k, v in email_index.items() if v == uid}
+    manifest = {
+        "schema": "kg.ops_user_backup.v2",
+        "uid": uid,
+        "capturedAt": _now_iso(),
+        "includes": {
+            "userDir": True,
+            "userRecord": record is not None,
+            "emailIndex": bool(scoped_email_index),
+        },
+    }
     with tarfile.open(dest, "w:gz") as tar:
         tar.add(src, arcname=uid)
+        _add_bytes_member(
+            tar,
+            _user_meta_arc(uid, _BACKUP_MANIFEST),
+            json.dumps(manifest, ensure_ascii=False, default=str).encode("utf-8"),
+        )
+        if record is not None:
+            _add_bytes_member(
+                tar,
+                _user_meta_arc(uid, _USER_RECORD_SNAPSHOT),
+                json.dumps(record, ensure_ascii=False, default=str).encode("utf-8"),
+            )
+        if scoped_email_index:
+            _add_bytes_member(
+                tar,
+                _user_meta_arc(uid, _EMAIL_INDEX_SNAPSHOT),
+                json.dumps(scoped_email_index, ensure_ascii=False, default=str).encode("utf-8"),
+            )
+    return dest
+
+
+def backup_world(data_dir: Path, *, label: str = "world") -> Path:
+    root = world_backup_root(data_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-") or "world"
+    dest = root / f"{safe_label}__{_now_stamp()}.tar.gz"
+    n = 1
+    while dest.exists():
+        dest = root / f"{safe_label}__{_now_stamp()}__{n}.tar.gz"
+        n += 1
+    members = _world_snapshot_members(Path(data_dir))
+    manifest = {
+        "schema": "kg.ops_world_backup.v1",
+        "label": safe_label,
+        "capturedAt": _now_iso(),
+        "members": [p.name for p in members],
+    }
+    with tarfile.open(dest, "w:gz") as tar:
+        for member in members:
+            tar.add(member, arcname=f"{_WORLD_ROOT_ARCNAME}/{member.name}")
+        _add_bytes_member(
+            tar,
+            _world_meta_arc(_BACKUP_MANIFEST),
+            json.dumps(manifest, ensure_ascii=False, default=str).encode("utf-8"),
+        )
     return dest
 
 

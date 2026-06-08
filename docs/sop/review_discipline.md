@@ -29,6 +29,23 @@ verified_against: d0ecbc2a
 
 ## 怎麼派
 
+## Receipt 契約（機械可驗）
+
+每個要被本 SOP 管的 commit message 必須二選一：
+
+- `Reviewed-by: <reviewer>`
+- `Review-Exempt: <reason>`
+
+允許的 `Review-Exempt` 僅限：
+
+- `trivial-typo`
+- `rename-only`
+- `format-only`
+- `generated-snapshot`
+- `single-line-small-file`
+
+用 [`ops/review_audit.sh`](../../ops/review_audit.sh) 審 `origin/main..HEAD`（或 `--base` / `--rev-range` 指定範圍）。它不判斷 review 品質，只判斷 receipt 是否存在且合法；任一 commit 缺 receipt 或 exemption reason 不在白名單，exit `2`。
+
 固定模板：
 
 ```

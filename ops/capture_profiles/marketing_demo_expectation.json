@@ -1,0 +1,68 @@
+{
+  "schema": "kg.ops_world_expectation.v1",
+  "config": {
+    "review_clock": {
+      "is_paused": true
+    }
+  },
+  "notebooks": [
+    {
+      "name": "Editorial Picks",
+      "cover_pattern": "waves"
+    },
+    {
+      "name": "Systems Thinking",
+      "cover_pattern": "grid"
+    },
+    {
+      "name": "Creative Practice",
+      "cover_pattern": "dots"
+    }
+  ],
+  "cards": [
+    {
+      "content": "meticulous",
+      "meaning": "一絲不苟的；非常仔細的"
+    },
+    {
+      "content": "entropy",
+      "meaning": "熵；系統混亂程度"
+    },
+    {
+      "content": "prototype",
+      "meaning": "原型；先做出可驗證的版本"
+    }
+  ],
+  "graphs": [
+    {
+      "notebook": "Editorial Picks",
+      "links": [
+        {
+          "from": "meticulous",
+          "to": "evoke",
+          "kind": "shares_usage"
+        }
+      ]
+    },
+    {
+      "notebook": "Systems Thinking",
+      "links": [
+        {
+          "from": "entropy",
+          "to": "cascade",
+          "kind": "shares_usage"
+        }
+      ]
+    },
+    {
+      "notebook": "Creative Practice",
+      "links": [
+        {
+          "from": "iterate",
+          "to": "prototype",
+          "kind": "shares_usage"
+        }
+      ]
+    }
+  ]
+}
