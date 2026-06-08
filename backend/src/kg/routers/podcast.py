@@ -67,6 +67,7 @@ from ..podcast_access import (
     is_free_previewable_episode,
     resolve_podcast_tier,
 )
+from .podcast_browse import build_podcast_browse_router
 from .podcast_progress import build_podcast_progress_router
 from ..settings import KGSettings
 from ..types import UserRecord
@@ -351,45 +352,16 @@ def _serve_static_media(
     )
 
 
-@router.get(
-    "/api/podcasts",
-    response_model=list[PodcastSeriesSummary],
-    response_model_exclude_unset=True,
+router.include_router(
+    build_podcast_browse_router(
+        validate_series_id=_validate_series_id,
+        using_s3=_using_s3,
+        read_json_from_s3=_read_json_from_s3,
+        podcasts_dir=_podcasts_dir,
+        read_json_file=_read_json_file,
+        serve_static_media=_serve_static_media,
+    )
 )
-def list_podcasts(request: Request, user: OptionalCurrentUser):
-    if _using_s3(request):
-        data = _read_json_from_s3(request, "index.json", context="index")
-        if data is None:
-            return []
-    else:
-        index_file = _podcasts_dir(request) / "index.json"
-        if not index_file.exists():
-            return []
-        data = _read_json_file(index_file, context="index")
-    if not isinstance(data, list):
-        logger.error("Podcast index malformed (expected list)")
-        raise HTTPException(status_code=500, detail="Malformed podcast index")
-    return data
-
-
-@router.get(
-    "/api/podcasts/{series_id}",
-    response_model=PodcastSeriesDetail,
-    response_model_exclude_unset=True,
-)
-def get_podcast_series(series_id: str, request: Request, user: OptionalCurrentUser):
-    _validate_series_id(series_id)
-    if _using_s3(request):
-        data = _read_json_from_s3(
-            request, f"{series_id}/metadata.json", context="metadata",
-        )
-        if data is None:
-            raise HTTPException(status_code=404, detail="Series not found")
-        return data
-    meta_file = _podcasts_dir(request) / series_id / "metadata.json"
-    if not meta_file.exists():
-        raise HTTPException(status_code=404, detail="Series not found")
-    return _read_json_file(meta_file, context="metadata")
 
 
 _AUDIO_CHUNK_SIZE = 64 * 1024  # 64 KiB per network read — balances RAM vs syscalls.
@@ -663,32 +635,4 @@ def get_podcast_subtitle(
         media_type="text/plain",
         context="subtitle",
         transform=lambda raw: raw.decode("utf-8", errors="replace"),
-    )
-
-
-@router.get("/api/podcasts/{series_id}/cover")
-def get_podcast_cover(
-    series_id: str,
-    request: Request,
-    user: OptionalCurrentUser,
-):
-    """Authenticated series cover image (PNG), produced by the pipeline ``cover``
-    stage and uploaded as ``<sid>/cover.png``. Mirrors the subtitle proxy: S3
-    ``get_object`` in production, disk fallback in dev. 404 when the series has
-    no cover (legacy / pre-cover series) — the client then renders a procedural
-    cover from ``color``/``coverPattern``.
-
-    Two path segments (``{series_id}/cover``) — distinct from the 1-segment
-    ``/{series_id}`` detail and 3-segment ``/{series_id}/{ep_num}/*`` routes, so
-    there is no route-matching collision.
-    """
-    _validate_series_id(series_id)
-    return _serve_static_media(
-        request,
-        series_id,
-        "cover.png",
-        media_type="image/png",
-        context="cover",
-        headers={"Cache-Control": "private, max-age=86400"},
-        stream_s3=True,
     )
