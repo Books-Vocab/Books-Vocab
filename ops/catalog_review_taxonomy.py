@@ -191,6 +191,12 @@ def expected_facets_for_lane(lane: str) -> tuple[str, ...]:
     return EXPECTED_FACETS_BY_LANE.get(lane, ())
 
 
+# A feature-surface that exhibits any of these is data-bearing (it loads/holds
+# content) and therefore owes the full data lifecycle. A surface that shows none
+# of them is static/presentational and owes only its default state.
+_DATA_LIFECYCLE_FACETS = frozenset({"populated", "empty", "loading"})
+
+
 def build_taxonomy(category: str, title: str, profile: dict, transparent_margin: bool = False) -> dict:
     group, surface_variant = split_surface(category)
     feature = classify_feature(category, profile)
@@ -264,13 +270,23 @@ def build_surface_index(items: list[dict]) -> list[dict]:
         surface_role = Counter(item["surfaceRole"] for item in group).most_common(1)[0][0]
         expected = expected_facets_for_lane(lane)
         present_set = set(facets_present)
-        # List/container feature-surfaces (Bookshelf View, Podcast Home View…)
-        # have no separate idle "default" shot — their canonical resting state IS
-        # "populated" (content already loaded). When populated is present but
-        # default is not, default is not a real gap; drop it so the backlog stays
-        # honest instead of demanding a default shot that conceptually can't exist.
-        if lane == "feature-surface" and "populated" in present_set and "default" not in present_set:
-            expected = tuple(facet for facet in expected if facet != "default")
+        if lane == "feature-surface":
+            # A flat per-lane expectation lies for static screens: an onboarding
+            # flow, a settings form, or a presentational card has no empty/
+            # loading/error state, yet the lane checklist demands all three. A
+            # surface owes the data lifecycle only if it actually exhibits one of
+            # its states (populated/empty/loading); otherwise it owes just the
+            # default. This is derived from the shots themselves — no per-surface
+            # curation — so it stays self-maintaining as new screens are added.
+            if not (present_set & _DATA_LIFECYCLE_FACETS):
+                expected = ("default",)
+            # List/container feature-surfaces (Bookshelf View, Podcast Home View…)
+            # have no separate idle "default" shot — their canonical resting state
+            # IS "populated" (content already loaded). When populated is present
+            # but default is not, default is not a real gap; drop it so the
+            # backlog stays honest instead of demanding a conceptually-absent shot.
+            elif "populated" in present_set and "default" not in present_set:
+                expected = tuple(facet for facet in expected if facet != "default")
         missing = [facet for facet in expected if facet not in present_set]
         surfaces.append({
             "surfaceKey": key,
