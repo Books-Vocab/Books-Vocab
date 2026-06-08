@@ -303,3 +303,15 @@ if grep -q "reference.tech_index" "$tmpdir/docs_test.out"; then
   echo "docs tooling test changes should not imply tech index impact" >&2
   exit 1
 fi
+
+./ops/docs_impact.py --files ops/docs_lint.sh --explain >"$tmpdir/explain.out"
+grep -q '^EXCLUDED contract.host_topology ' "$tmpdir/explain.out"
+grep -q 'excluded_by=!ops/docs_lint.sh' "$tmpdir/explain.out"
+grep -q '^EXCLUDED policy.safety ' "$tmpdir/explain.out"
+grep -q '^EXCLUDED reference.product_surface ' "$tmpdir/explain.out"
+
+./ops/docs_impact.py --files ops/docs_lint.sh --json --explain >"$tmpdir/explain.json"
+grep -q '"excluded_impacts"' "$tmpdir/explain.json"
+grep -q '"id": "contract.host_topology"' "$tmpdir/explain.json"
+grep -q '"excluded_by": \[' "$tmpdir/explain.json"
+grep -q '"!ops/docs_lint.sh"' "$tmpdir/explain.json"
