@@ -33,7 +33,15 @@ enum PDFReaderContext {
             let before = pageText[start..<range.lowerBound]
             let highlight = pageText[range]
             let after = pageText[range.upperBound..<end]
-            raw = "\(before)**\(highlight)**\(after)"
+            // Keep whitespace outside the ** markers so emphasis wraps exactly
+            // the selected token(s) — matches EPUB, whose highlight arrives
+            // pre-trimmed. A raw PDF drag can include leading/trailing spaces.
+            let leadingCount = highlight.prefix { $0.isWhitespace }.count
+            let trailingCount = highlight.reversed().prefix { $0.isWhitespace }.count
+            let leading = highlight.prefix(leadingCount)
+            let trailing = highlight.suffix(trailingCount)
+            let core = highlight.dropFirst(leadingCount).dropLast(trailingCount)
+            raw = "\(before)\(leading)**\(core)**\(trailing)\(after)"
         } else {
             raw = String(pageText[start..<end])
         }
