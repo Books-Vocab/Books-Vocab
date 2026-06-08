@@ -8,6 +8,95 @@ import re
 from catalog_review_taxonomy import build_manifest_indexes, build_taxonomy
 
 
+def _slug_feature(label: str) -> str:
+    return slugify(label)
+
+
+def build_node_tree(items: list[dict]) -> dict:
+    feature_groups: dict[str, list[dict]] = {}
+    for item in items:
+        feature_groups.setdefault(item["feature"], []).append(item)
+
+    feature_nodes: list[dict] = []
+    for feature_label in sorted(feature_groups):
+        feature_items = feature_groups[feature_label]
+        feature_slug = _slug_feature(feature_label)
+
+        surface_groups: dict[str, list[dict]] = {}
+        for item in feature_items:
+            surface_groups.setdefault(item["surfaceKey"], []).append(item)
+
+        surface_nodes: list[dict] = []
+        for surface_key in sorted(surface_groups, key=lambda key: surface_groups[key][0]["surface"].lower()):
+            surface_items = surface_groups[surface_key]
+            sample = surface_items[0]
+            surface_path = f"{feature_slug}/{surface_key}"
+
+            state_groups: dict[str, list[dict]] = {}
+            for item in surface_items:
+                state_groups.setdefault(item["stateKey"], []).append(item)
+
+            state_nodes: list[dict] = []
+            for state_key in sorted(state_groups, key=lambda key: state_groups[key][0]["stateLabel"].lower()):
+                state_items = state_groups[state_key]
+                state_sample = state_items[0]
+                state_path = f"{surface_path}/{state_key}"
+                asset_nodes = [
+                    {
+                        "nodePath": f"{state_path}/{asset['assetID']}",
+                        "kind": "asset",
+                        "label": f"{asset['device']} · {asset['appearance']}",
+                        "assetID": asset["assetID"],
+                        "relPath": asset["relPath"],
+                        "device": asset["device"],
+                        "appearance": asset["appearance"],
+                        "eligibility": asset["eligibility"],
+                        "heroCandidate": asset["heroCandidate"],
+                        "newSincePr878": asset["newSincePr878"],
+                        "count": 1,
+                    }
+                    for asset in sorted(
+                        state_items,
+                        key=lambda asset: (asset["device"].lower(), asset["appearance"], asset["assetID"]),
+                    )
+                ]
+                state_nodes.append({
+                    "nodePath": state_path,
+                    "kind": "state",
+                    "label": state_sample["stateLabel"],
+                    "count": len(state_items),
+                    "children": asset_nodes,
+                })
+
+            surface_nodes.append({
+                "nodePath": surface_path,
+                "kind": "surface",
+                "label": sample["surface"],
+                "promise": sample["promise"],
+                "assetKind": sample["assetKind"],
+                "surfaceRole": sample["surfaceRole"],
+                "heroCandidate": any(item["heroCandidate"] for item in surface_items),
+                "count": len(surface_items),
+                "children": state_nodes,
+            })
+
+        feature_nodes.append({
+            "nodePath": feature_slug,
+            "kind": "feature",
+            "label": feature_label,
+            "count": len(feature_items),
+            "children": surface_nodes,
+        })
+
+    return {
+        "nodePath": "",
+        "kind": "root",
+        "label": "KG",
+        "count": len(items),
+        "children": feature_nodes,
+    }
+
+
 def normalize_label(text: str) -> str:
     return text.replace("_", " ").strip()
 
@@ -119,5 +208,6 @@ def build_manifest(items: list[dict], profile: dict, *, state_file: str | None =
         "newSincePr878Count": sum(1 for item in items if item["newSincePr878"]),
         "heroCandidateCount": sum(1 for item in items if item["heroCandidate"]),
         "stateCounts": dict(Counter(item["reviewStatus"] for item in items_with_state if item["reviewStatus"])),
+        "tree": build_node_tree(items_with_state),
         "items": items_with_state,
     }
