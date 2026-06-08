@@ -152,6 +152,23 @@ documents:
       - ops/
       - "!ops/tests/test_docs_*.sh"
 
+  - id: reference.ops_state_plane
+    path: docs/reference/ops_state_plane.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - ops_command_changed
+      - world_projection_changed
+      - capture_profile_changed
+    sources:
+      - backend/ops_edit.py
+      - backend/ops_cli.py
+      - backend/src/kg/ops_edit_shared.py
+      - backend/src/kg/ops_world_projection.py
+      - backend/src/kg/ops_world_expectation.py
+      - backend/src/kg/ops_world_diff.py
+      - ops/capture_profile.py
+
   - id: sop.doc_sync
     path: docs/sop/doc_sync.md
     kind: sop
