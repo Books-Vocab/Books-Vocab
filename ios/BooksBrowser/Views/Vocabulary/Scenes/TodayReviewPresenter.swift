@@ -226,6 +226,15 @@ struct TodayReviewPresenter: View {
             "todayReview.card.body",
             "chars=\(card.word.count) reveal=\(state.revealStage.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
         )
+        // 轉場合成追蹤：僅在轉場期間(fling 中或有 swipe offset)逐幀 mark 作用中
+        // 互動卡片的單字 + 狀態機,對照 stack.preview / front.chrome 看 fling 期間
+        // 究竟合成了哪一層、chrome 何時補上。idle 不觸發,避免 reveal 動畫洪流。
+        if dismissPhase != .idle || swipeOffset != 0 {
+            PerfLog.review.mark(
+                "compose.active",
+                "w=\(card.word) dismiss=\(dismissPhase == .idle ? "idle" : "out") supp=\(suppressTransition) off=\(Int(swipeOffset))"
+            )
+        }
 
         return ZStack(alignment: .top) {
             // 牌堆 — 不隨 .id() 銷毀重建
@@ -236,6 +245,9 @@ struct TodayReviewPresenter: View {
             VStack(spacing: 0) {
                 frontFoldSurface(card)
                     .overlay(alignment: .topTrailing) {
+                        let _ = { if dismissPhase != .idle || swipeOffset != 0 {
+                            PerfLog.review.mark("front.chrome", "w=\(card.word) (active card chrome rendered)")
+                        } }()
                         HStack(spacing: appSkin.spacing.inlineGap) {
                             VocabChromeIconButton(
                                 systemImage: "speaker.wave.2.fill",

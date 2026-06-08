@@ -32,6 +32,12 @@ extension TodayReviewPresenter {
                 .appElevation(.z1)
 
             if depth == 1, let nextCard = state.nextCard {
+                let _ = { if progress > 0 || dismissPhase != .idle {
+                    PerfLog.review.mark(
+                        "stack.preview",
+                        "w=\(nextCard.card.word) scale=\(String(format: "%.3f", scale)) op=\(String(format: "%.2f", opacity)) prog=\(String(format: "%.2f", progress))"
+                    )
+                } }()
                 reviewCardFront(nextCard.card)
                     .allowsHitTesting(false)
             }
