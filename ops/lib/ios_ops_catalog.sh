@@ -75,15 +75,17 @@ catalog_persist_workspace_artifact_json() {
     --arg root "$workspace_root" \
     --arg name "$artifact_name" \
     --arg artifactRoot "$artifact_root" \
-    --arg canvasHtml "$artifact_root/catalog.html" \
+    --arg reviewHtml "$artifact_root/review.html" \
     --arg reviewManifest "$artifact_root/review_manifest.json" \
+    --arg reviewState "$artifact_root/review_state.json" \
     '{
       status:"ok",
       root:$root,
       name:$name,
       artifactRoot:$artifactRoot,
-      canvasHtml:$canvasHtml,
-      reviewManifest:$reviewManifest
+      reviewHtml:$reviewHtml,
+      reviewManifest:$reviewManifest,
+      reviewState:$reviewState
     }'
 }
 
@@ -485,36 +487,41 @@ catalog_render_review_json() {
   local out_root="$1"
   local renderer="$ROOT/ops/render_catalog_review.py"
   local profile="$ROOT/ops/catalog_review_profile.json"
-  local canvas_html="$out_root/catalog.html"
+  local review_html="$out_root/review.html"
   local review_manifest="$out_root/review_manifest.json"
+  local review_state="$out_root/review_state.json"
   local render_output=""
   local detail=""
   if [[ ! -x "$renderer" && ! -f "$renderer" ]]; then
     jq -n \
       --arg root "$out_root" \
-      --arg canvasHtml "$canvas_html" \
+      --arg reviewHtml "$review_html" \
       --arg reviewManifest "$review_manifest" \
+      --arg reviewState "$review_state" \
       '{
         status:"warn",
         root:$root,
-        canvasHtml:$canvasHtml,
+        reviewHtml:$reviewHtml,
         reviewManifest:$reviewManifest,
-        error:"atlas-renderer-missing"
+        reviewState:$reviewState,
+        error:"review-renderer-missing"
       }'
     return 0
   fi
   if render_output="$("$renderer" "$out_root" --output-root "$out_root" --profile "$profile" 2>&1)"; then
     jq -n \
       --arg root "$out_root" \
-      --arg canvasHtml "$canvas_html" \
+      --arg reviewHtml "$review_html" \
       --arg reviewManifest "$review_manifest" \
+      --arg reviewState "$review_state" \
       --argjson render "${render_output:-null}" \
       '($render // {}) as $render
       | {
           status:"ok",
           root:$root,
-          canvasHtml:$canvasHtml,
+          reviewHtml:$reviewHtml,
           reviewManifest:$reviewManifest,
+          reviewState:$reviewState,
           totalImages:($render.totalImages // null),
           promiseCounts:($render.promiseCounts // {})
         }'
@@ -523,15 +530,17 @@ catalog_render_review_json() {
   detail="$(printf '%s' "$render_output" | tail -n 1)"
   jq -n \
     --arg root "$out_root" \
-    --arg canvasHtml "$canvas_html" \
+    --arg reviewHtml "$review_html" \
     --arg reviewManifest "$review_manifest" \
+    --arg reviewState "$review_state" \
     --arg detail "$detail" \
     '{
       status:"warn",
       root:$root,
-      canvasHtml:$canvasHtml,
+      reviewHtml:$reviewHtml,
       reviewManifest:$reviewManifest,
-      error:"atlas-render-failed",
+      reviewState:$reviewState,
+      error:"review-render-failed",
       detail:($detail | select(length > 0))
     }'
 }

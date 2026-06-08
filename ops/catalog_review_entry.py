@@ -172,7 +172,7 @@ def wait_for_listener_directory(port: int, expected_directory: str, *, timeout_s
 
 
 def cmd_current(_: argparse.Namespace) -> int:
-    artifacts = collect_review_artifacts(SNAPSHOT_ROOT)
+    artifacts = collect_review_artifacts()
     blessed = choose_blessed_artifact(artifacts)
     usable_count = sum(1 for item in artifacts if item["isUsable"])
     stale_artifacts = [
@@ -196,10 +196,11 @@ def cmd_current(_: argparse.Namespace) -> int:
         "blessed": {
             "name": blessed["name"],
             "root": blessed_root,
-            "canvasHtml": str(blessed["root"] / "catalog.html"),
+            "reviewHtml": str(blessed["root"] / "review.html"),
             "reviewManifest": str(blessed["root"] / "review_manifest.json"),
             "totalImages": blessed["totalImages"],
             "promiseCounts": blessed["promiseCounts"],
+            "stateCounts": blessed["stateCounts"],
             "categories": blessed["categories"],
             "clusters": blessed["clusters"],
             "heroCandidates": blessed["heroCandidates"],
@@ -256,16 +257,15 @@ def cmd_prune_superseded(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    artifacts = collect_review_artifacts(SNAPSHOT_ROOT)
+    artifacts = collect_review_artifacts()
     blessed = choose_blessed_artifact(artifacts)
     if not blessed["isUsable"]:
         print(json.dumps({
             "status": "needs-regeneration",
-            "error": "no-usable-catalog-artifact",
+            "error": "no-usable-review-artifact",
             "blessedCandidate": {
                 "name": blessed["name"],
                 "root": str(blessed["root"]),
-                "canvasHtml": str(blessed["root"] / "catalog.html"),
                 "totalImages": blessed["totalImages"],
             },
         }, ensure_ascii=False))
@@ -302,8 +302,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         "blessed": {
             "name": blessed["name"],
             "root": str(blessed["root"]),
-            "canvasHtml": str(blessed["root"] / "catalog.html"),
-            "url": f"http://127.0.0.1:{args.port}/catalog.html",
+            "reviewHtml": str(blessed["root"] / "review.html"),
+            "url": f"http://127.0.0.1:{args.port}/review.html",
             "totalImages": blessed["totalImages"],
         },
     }
