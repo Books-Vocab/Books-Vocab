@@ -11,15 +11,16 @@ from filelock import FileLock
 
 from ..api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEntitlementResponse
 from ..exceptions import NotFoundError
+from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
 
 
 def admin_user_entitlement_response(
     user_id: str,
     *,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
-    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
+    load_users: Callable[[], UsersPayload],
+    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
 ) -> AdminUserEntitlementResponse:
     users = load_users()
     record = users.get(user_id)
@@ -36,11 +37,11 @@ def _mutate_admin_grant(
     user_id: str,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
-    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
-    grant_updates: dict[str, Any] | None = None,
+    load_users: Callable[[], UsersPayload],
+    save_users: Callable[[UsersPayload], None],
+    current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
+    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    grant_updates: AdminGrantRecord | None = None,
 ) -> AdminUserEntitlementResponse:
     """Shared logic for granting/revoking admin Pro access."""
     with FileLock(str(users_lock_file)):
@@ -67,10 +68,10 @@ def admin_grant_pro_access_response(
     req: AdminGrantRequest,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
-    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    load_users: Callable[[], UsersPayload],
+    save_users: Callable[[UsersPayload], None],
+    current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
+    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
     admin_uid: str | None = None,
 ) -> AdminUserEntitlementResponse:
     from ..admin_audit import record_audit
@@ -112,10 +113,10 @@ def admin_revoke_pro_access_response(
     user_id: str,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
-    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    load_users: Callable[[], UsersPayload],
+    save_users: Callable[[UsersPayload], None],
+    current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
+    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
     admin_uid: str | None = None,
 ) -> AdminUserEntitlementResponse:
     from ..admin_audit import record_audit

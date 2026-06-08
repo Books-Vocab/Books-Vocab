@@ -11,19 +11,11 @@ Usage:
 from __future__ import annotations
 
 import atexit
-import json
 import logging
-import re
-import uuid as _uuid
-from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.encoders import jsonable_encoder
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,85 +23,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_VALIDATION_SECRET_KEYS = {
-    "access_token",
-    "accesstoken",
-    "admin_session",
-    "adminsession",
-    "api_key",
-    "apikey",
-    "authorization",
-    "bearer",
-    "client_secret",
-    "clientsecret",
-    "code",
-    "cookie",
-    "id_token",
-    "idtoken",
-    "password",
-    "refresh_token",
-    "refreshtoken",
-    "signed_payload",
-    "signedpayload",
-    "secret",
-    "token",
-}
-_VALIDATION_SECRET_RE = re.compile(
-    r'(?P<prefix>["\']?(?:access[_-]?token|accessToken|admin[_-]?session|adminSession|api[_-]?key|apiKey|'
-    r'authorization|bearer|client[_-]?secret|clientSecret|code|cookie|id[_-]?token|idToken|password|'
-    r'refresh[_-]?token|refreshToken|signed[_-]?payload|signedPayload|secret|token)["\']?\s*[:=]\s*["\']?)'
-    r"(?P<value>[^\"'\s,;}&]+)",
-    re.IGNORECASE,
-)
-
-
-def _validation_key_norm(key: Any) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(key).lower())
-
-
-def _is_validation_secret_key(key: Any) -> bool:
-    key_text = str(key).replace("-", "_").lower()
-    return key_text in _VALIDATION_SECRET_KEYS or _validation_key_norm(key) in _VALIDATION_SECRET_KEYS
-
-
-def _redact_validation_payload(value: Any) -> Any:
-    if isinstance(value, dict):
-        redacted: dict[Any, Any] = {}
-        secret_error_input = False
-        loc = value.get("loc")
-        if isinstance(loc, (list, tuple)):
-            secret_error_input = any(_is_validation_secret_key(part) for part in loc)
-        for key, item in value.items():
-            if _is_validation_secret_key(key) or (key == "input" and secret_error_input):
-                redacted[key] = "[REDACTED]"
-            else:
-                redacted[key] = _redact_validation_payload(item)
-        return redacted
-    if isinstance(value, list):
-        return [_redact_validation_payload(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_redact_validation_payload(item) for item in value)
-    return value
-
-
-def _redact_validation_body(body: str | None) -> str | None:
-    if body is None:
-        return None
-    try:
-        parsed = json.loads(body)
-    except json.JSONDecodeError:
-        if _VALIDATION_SECRET_RE.search(body):
-            return "[non-json body omitted: secret-like field present]"
-        return body[:500]
-    return json.dumps(_redact_validation_payload(parsed), ensure_ascii=False, separators=(",", ":"))[:500]
-
 # Memory ring-buffer log handler for the admin dashboard.
 # Re-exported so existing tests (from kg.api import _mem_log) keep working.
 from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 
 _mem_log = install_memory_log_handler(maxlen=1000)
 
-from .admin_wiring import create_admin_handlers
+from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
+from .app_lifespan import AppLifespanDependencies, build_app_lifespan_from_dependencies
+from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
+from .app_middleware import AppMiddlewareDependencies, _anon_rate_limit_key, install_app_middlewares_from_dependencies
+from .app_exception_handlers import (
+    AppExceptionHandlerDependencies,
+    _redact_validation_body,
+    _redact_validation_payload,
+    install_app_exception_handlers_from_dependencies,
+)
 from .api_compat import *  # noqa: F401,F403 - stable kg.api compatibility surface
 from .api_compat import (
     _build_entitlements_response,
@@ -118,28 +47,8 @@ from .api_compat import (
     _default_subscription_payload,
 )
 from .rate_limit import api_limiter, translate_limiter
-from .routers import (
-    auth_router,
-    billing_router,
-    notebook_router,
-    pipeline_router,
-    static_pages_router,
-    system_router,
-    translate_router,
-    user_router,
-    vocab_router,
-    web_auth_router,
-)
-from .routers.admin import (
-    build_admin_routers,
-)
-from .routers.podcast import router as podcast_router
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
-from .user_store import (
-    CachedUserStore,
-    normalize_users_payload,
-)
 
 load_dotenv()
 
@@ -150,29 +59,6 @@ from .sentry_init import init_sentry  # noqa: E402
 init_sentry()
 
 
-def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
-    """Derive the rate-limit key for an anonymous (no-auth) request.
-
-    `hops` = number of trusted proxy hops in front of the app. The real client
-    IP is taken from the `hops`-th-from-end X-Forwarded-For segment.
-
-    Production contract: single-layer bare Caddy on AWS public net appends the
-    real client IP to the END of XFF, so hops=1 selects the last segment — this
-    is byte-for-byte identical to the legacy `xff.split(",")[-1].strip()`.
-    Raise hops to N+1 only when N trusted proxies (CDN/ALB) front Caddy.
-
-    Safe fallbacks: empty XFF -> client_host (or "unknown"); hops exceeding the
-    available segment count -> the frontmost segment (never raises IndexError).
-    """
-    if xff:
-        segments = [s.strip() for s in xff.split(",")]
-        # hops=1 -> index -1 (last). Clamp so hops beyond segment count (or a
-        # non-positive misconfig) safely lands on the frontmost segment.
-        idx = max(0, len(segments) - max(1, hops))
-        return segments[idx]
-    return client_host if client_host else "unknown"
-
-
 def create_app(settings: KGSettings | None = None) -> FastAPI:
     atexit.register(clear_store_cache)
 
@@ -181,252 +67,78 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     # Sync quota limits with settings
     from .quota_service import configure_limits
     configure_limits(pro=settings.pro_daily_limit_usd, free=settings.free_daily_limit_usd)
+    from .pipeline_log import reap_orphaned_runs
+    from .service_factories import reset_async_clients, reset_clients
+    from .worker_guard import assert_single_worker, release_worker_lock
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        logger.info("KG API starting up")
-        # Fail loud if a second worker boots: quota reservations, translate
-        # singleflight and pipeline_log are all process-local and only
-        # correct under --workers 1. Lock under the injected settings'
-        # data_dir so a test app never touches the real backend/data/.
-        from .worker_guard import assert_single_worker
-        assert_single_worker(settings.data_dir / ".worker.lock")
-        # Crash recovery: sweep orphaned 'running' pipeline runs → 'interrupted'.
-        # Explicit startup step (not a side-effect of first DB access) so reads
-        # stay write-free. Safe only post single-worker lock: workers must not
-        # cross-mark each other's runs (see worker_guard).
-        from .pipeline_log import reap_orphaned_runs
-        reaped = reap_orphaned_runs()
-        if reaped:
-            logger.info("Reaped %d orphaned pipeline run(s) → interrupted", reaped)
-        yield
-        logger.info("KG API shutting down")
-        from .worker_guard import release_worker_lock
-        release_worker_lock()
-        from .service_factories import reset_async_clients, reset_clients
-        reset_clients()
-        await reset_async_clients()
-
-    app = FastAPI(title="Knowledge Graph API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Knowledge Graph API",
+        version="0.1.0",
+        lifespan=build_app_lifespan_from_dependencies(
+            dependencies=AppLifespanDependencies(
+                settings=settings,
+                logger=logger,
+                assert_single_worker_fn=assert_single_worker,
+                reap_orphaned_runs_fn=reap_orphaned_runs,
+                release_worker_lock_fn=release_worker_lock,
+                reset_clients_fn=reset_clients,
+                reset_async_clients_fn=reset_async_clients,
+            )
+        ),
+    )
     app.state.kg_settings = settings
 
     # --- user store helpers ---
-    def _normalize_users_payload_fn(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-        from .secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(app.state.kg_settings.users_file, _normalize_users_payload_fn)
-    app.state.user_store = user_store
-
-    def _load_users_fn() -> dict[str, dict[str, Any]]:
-        return app.state.user_store.load()
-
-    def _save_users_fn(users: dict[str, dict[str, Any]]) -> None:
-        app.state.user_store.save(users)
-
-    app.state.load_users = _load_users_fn
-    app.state.save_users = _save_users_fn
-    app.state.normalize_users_payload = _normalize_users_payload_fn
-
-    # --- middleware stack ---
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    runtime_user_state = install_runtime_user_state_from_dependencies(
+        dependencies=RuntimeUserStateDependencies(
+            app=app,
+            settings=settings,
+            default_subscription_payload_fn=_default_subscription_payload,
+        )
     )
 
+    # --- middleware stack ---
     from . import sentry_init as _sentry_init
     from .request_context import request_id_var
 
-    @app.middleware("http")
-    async def request_id_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or _uuid.uuid4().hex[:16]
-        request.state.request_id = request_id
-        token = request_id_var.set(request_id)
-        # Tag the Sentry scope so error events / traces carry the same
-        # correlation id surfaced in logs + the X-Request-ID response header.
-        # No-op when Sentry isn't initialized (dev/test).
-        _sentry_init.tag_request_id(request_id)
-        try:
-            response = await call_next(request)
-        finally:
-            request_id_var.reset(token)
-        response.headers["X-Request-ID"] = request_id
-        return response
-
-    @app.middleware("http")
-    async def limit_request_body(request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 10 * 1024 * 1024:
-            return JSONResponse({"detail": "Request body too large"}, status_code=413)
-        return await call_next(request)
-
-    # Rate-limit exempt prefixes. Compared with `path.startswith(p)` so any
-    # path that begins with one of these is bypassed.
-    #
-    # Why OAuth callbacks are exempt:
-    # * `/auth/web/google/callback` is reached by the user's browser after
-    #   Google's redirect — but the limiter key falls back to XFF / client.host
-    #   (no Authorization header yet), which collides across shared NAT and
-    #   can 429 unrelated users mid-login.
-    # * `/auth/web/apple/callback` is reached via a POST from Apple's servers
-    #   themselves, so every callback shares one source IP. With a Pro user
-    #   community larger than `API_RATE_LIMIT` per minute, Apple sign-in
-    #   would silently fail for everyone after the burst.
-    # The callbacks are state-validated (oauth_state cookie + provider state)
-    # and naturally rare per session, so abuse protection is already in place.
-    _RATE_LIMIT_EXEMPT = {
-        "/docs", "/openapi.json", "/privacy", "/support", "/terms", "/guide",
-        "/api/billing/app-store/notifications",
-        "/api/system/info",
-        "/auth/web/google/callback",
-        "/auth/web/apple/callback",
-    }
-
-    @app.middleware("http")
-    async def rate_limit_middleware(request: Request, call_next):
-        path = request.url.path
-        if any(path.startswith(p) for p in _RATE_LIMIT_EXEMPT):
-            return await call_next(request)
-        auth = request.headers.get("authorization", "")
-        if len(auth) > 16:
-            key = auth[-16:]
-        else:
-            xff = request.headers.get("x-forwarded-for", "")
-            client_host = request.client.host if request.client else None
-            key = _anon_rate_limit_key(
-                xff, client_host, settings.rate_limit_trusted_hops
-            )
-        limiter = translate_limiter if "/api/translate" in path else api_limiter
-        if not await limiter.is_allowed(key):
-            return JSONResponse(
-                {"detail": "Too many requests"}, status_code=429,
-                headers={"Retry-After": str(limiter.window_seconds)},
-            )
-        return await call_next(request)
-
-    @app.middleware("http")
-    async def security_headers_middleware(request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["X-XSS-Protection"] = "0"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.url.scheme == "https":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        return response
-
-    from fastapi.exceptions import RequestValidationError
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(request: Request, exc: RequestValidationError):
-        body = None
-        try:
-            body = await request.body()
-            body = body.decode("utf-8", errors="replace")
-        except Exception:
-            pass
-        errors = _redact_validation_payload(jsonable_encoder(exc.errors()))
-        logger.warning(
-            "Validation error [%s %s] body=%s errors=%s",
-            request.method, request.url.path, _redact_validation_body(body), errors,
+    install_app_middlewares_from_dependencies(
+        dependencies=AppMiddlewareDependencies(
+            app=app,
+            cors_origins=settings.cors_origins,
+            rate_limit_trusted_hops=settings.rate_limit_trusted_hops,
+            request_id_var=request_id_var,
+            tag_request_id=_sentry_init.tag_request_id,
+            api_limiter=api_limiter,
+            translate_limiter=translate_limiter,
         )
-        return JSONResponse(status_code=422, content={"detail": errors})
-
-    from .exceptions import KGError
-
-    @app.exception_handler(KGError)
-    async def kg_error_handler(request: Request, exc: KGError):
-        # Domain errors used to return silently — no log, no Sentry, no metric.
-        # That blind spot hid the review-event watermark deadlock (a 400 on every
-        # background sync, invisible server-side). Emit one structured line so the
-        # whole class of client-rejected / upstream-failed requests is greppable
-        # in `logs` and countable. 5xx → error (our fault), 4xx → warning.
-        request_id = getattr(request.state, "request_id", "unknown")
-        log = logger.error if exc.status_code >= 500 else logger.warning
-        log(
-            "%s [%s] %s %s -> %d: %s",
-            type(exc).__name__, request_id, request.method, request.url.path,
-            exc.status_code, exc,
+    )
+    install_app_exception_handlers_from_dependencies(
+        dependencies=AppExceptionHandlerDependencies(
+            app=app,
+            logger=logger,
         )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=exc.to_detail(),
-            headers=exc.headers if exc.headers else None,
-        )
-
-    @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception):
-        request_id = getattr(request.state, "request_id", "unknown")
-        logger.error("Unhandled exception [%s]: %s", request_id, exc, exc_info=True)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
+    )
 
     # --- routers ---
-    app.include_router(system_router)
-    app.include_router(static_pages_router)
-    app.include_router(user_router)
-    app.include_router(billing_router)
-    app.include_router(vocab_router)
-    app.include_router(notebook_router)
-    app.include_router(pipeline_router)
-    app.include_router(translate_router)
-    app.include_router(auth_router)
-    app.include_router(web_auth_router)
-    app.include_router(podcast_router)
-
-    # Admin router uses builder pattern (runtime closures)
     def _settings_fn() -> KGSettings:
         return app.state.kg_settings
 
     def _users_lock_file_fn() -> Path:
         return app.state.kg_settings.users_lock_file
 
-    admin_handlers = create_admin_handlers(
-        runtime_settings_fn=_settings_fn,
-        runtime_users_lock_file_fn=_users_lock_file_fn,
-        load_users_fn=_load_users_fn,
-        save_users_fn=_save_users_fn,
-        mem_log_getter=_mem_log.get,
-        card_store_factory=_card_store,
-        build_entitlements_response_fn=_build_entitlements_response,
-        current_admin_grant_record_fn=_current_admin_grant_record,
+    app_routers = build_app_routers_from_dependencies(
+        dependencies=AppRouterDependencies(
+            runtime_settings_fn=_settings_fn,
+            runtime_users_lock_file_fn=_users_lock_file_fn,
+            load_users_fn=runtime_user_state.load_users,
+            save_users_fn=runtime_user_state.save_users,
+            mem_log_getter=_mem_log.get,
+            card_store_factory=_card_store,
+            build_entitlements_response_fn=_build_entitlements_response,
+            current_admin_grant_record_fn=_current_admin_grant_record,
+        )
     )
-    admin_routers = build_admin_routers(
-        admin_ui=admin_handlers.admin_ui,
-        admin_stats=admin_handlers.admin_stats,
-        admin_logs=admin_handlers.admin_logs,
-        admin_user_entitlement=admin_handlers.admin_user_entitlement,
-        admin_grant_pro_access=admin_handlers.admin_grant_pro_access,
-        admin_revoke_pro_access=admin_handlers.admin_revoke_pro_access,
-        admin_run_tests=admin_handlers.admin_run_tests,
-        admin_last_test_run=admin_handlers.admin_last_test_run,
-        admin_test_catalog=admin_handlers.admin_test_catalog,
-        admin_tests_ui=admin_handlers.admin_tests_ui,
-        admin_graph_density=admin_handlers.admin_graph_density,
-        admin_graph_playback=admin_handlers.admin_graph_playback,
-        admin_pipeline_runs=admin_handlers.admin_pipeline_runs,
-        admin_judge_stats=admin_handlers.admin_judge_stats,
-        admin_translate_history=admin_handlers.admin_translate_history,
-        admin_user_activity=admin_handlers.admin_user_activity,
-        admin_user_usage=admin_handlers.admin_user_usage,
-        admin_user_cost_summary=admin_handlers.admin_user_cost_summary,
-        admin_host_metrics=admin_handlers.admin_host_metrics,
-        admin_users_search=admin_handlers.admin_users_search,
-        admin_observability=admin_handlers.admin_observability,
-        admin_stats_trends=admin_handlers.admin_stats_trends,
-        admin_log_retention_run=admin_handlers.admin_log_retention_run,
-        admin_audit=admin_handlers.admin_audit,
-        admin_orphans_scan=admin_handlers.admin_orphans_scan,
-        admin_user_detail_ui=admin_handlers.admin_user_detail_ui,
-        runtime_settings_fn=_settings_fn,
-    )
-    app.include_router(admin_routers.login)
-    app.include_router(admin_routers.html)
-    app.include_router(admin_routers.api)
+    include_app_routers(app, app_routers)
 
     # NOTE: the legacy public /api/podcast-media/ StaticFiles mount was removed
     # (2026-05). It served podcast audio/subtitles WITHOUT auth — a public-read

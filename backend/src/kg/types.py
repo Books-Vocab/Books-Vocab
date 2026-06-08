@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypeAlias, TypedDict
 
 
 class UserRecord(TypedDict, total=False):
@@ -13,6 +13,53 @@ class UserRecord(TypedDict, total=False):
     dir: Path
     record: dict[str, Any]
     config: dict[str, Any]
+
+
+class SubscriptionRecord(TypedDict, total=False):
+    """Stored App Store subscription snapshot / entitlement-bearing payload."""
+
+    is_active: bool
+    product_id: str | None
+    plan_name: str
+    price_display: str | None
+    status: str
+    is_trial: bool
+    trial_days: int | None
+    will_renew: bool
+    expires_at: str | None
+    source: str
+    last_synced_at: str | None
+    transaction_id: str | None
+    original_transaction_id: str | None
+    environment: str | None
+
+
+class AdminGrantRecord(TypedDict, total=False):
+    """Stored manual Pro grant payload."""
+
+    is_active: bool
+    plan_name: str
+    status: str
+    source: str
+    expires_at: str | None
+    granted_at: str | None
+    granted_by: str | None
+    reason: str | None
+    last_synced_at: str | None
+
+
+class StoredUserRecord(TypedDict, total=False):
+    """Persisted user entry in ``users.json`` (excluding reserved metadata rows)."""
+
+    config: dict[str, Any]
+    subscription: SubscriptionRecord
+    admin_grant: AdminGrantRecord
+    linked_ids: list[str]
+    _linked_to: str
+
+
+UsersPayload: TypeAlias = dict[str, Any]
+CardsById: TypeAlias = dict[str, Any]
 
 
 class QuotaState(TypedDict):

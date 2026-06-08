@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from ..types import UsersPayload
 
 
 def upsert_subscription_index(
-    users: dict[str, Any],
+    users: UsersPayload,
     user_id: str,
     original_transaction_id: str | None,
     transaction_id: str | None,
@@ -23,7 +23,7 @@ def upsert_subscription_index(
 
 
 def resolve_user_id_from_subscription_index(
-    users: dict[str, Any],
+    users: UsersPayload,
     original_transaction_id: str | None,
     transaction_id: str | None,
 ) -> str | None:
