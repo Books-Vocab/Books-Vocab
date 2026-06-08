@@ -6,7 +6,7 @@ scope:
   - ios/BooksBrowser/Models/ReaderSettings.swift
   - ios/BooksBrowser/Models/VocabHighlightPreferences.swift
   - ios/BooksBrowser/Views/Reader/
-verified_against: e264e4ce
+verified_against: 2b1bf578
 -->
 # Reader Feature Boundary
 
@@ -80,6 +80,19 @@ verified_against: e264e4ce
 | `VocabHighlightColorPresetPicker.swift` | ~55 | Reader / Podcast 共用 highlight 顏色 swatch picker；寫回 `ReaderSettings.vocabHighlightColorPreset` |
 | `TOCView.swift` | 222 | `struct TOCView: View`，目錄；regular / Catalyst 收斂內容寬度，compact 維持 full-width sheet |
 | `ReaderNotebookPicker.swift` | 133 | Reader 內選擇目標單字本；regular / Catalyst 收斂短選單寬度，compact 維持 full-width sheet |
+
+### PDF Reader（原生 PDFKit 路徑）
+
+EPUB/TXT/MD 走 `ReaderView`（Readium），`.pdf` 走獨立 `PDFReaderView`（`BookshelfView` 依 `book.format` 路由）。PDF 為原生 `PDFView`（無 WebView/DOM/JS），但**共用** `ReaderTranslationHandler` 與 `TranslationPanel`，選詞→翻譯/解釋/儲存行為與 EPUB 對齊。
+
+| 檔案 | 說明 |
+|------|------|
+| `PDFReaderView.swift` | PDFKit 渲染 + 選詞捕捉；`UIEditMenuInteraction` 提供「翻譯」「解釋」。「翻譯」依 token 數分流 word（`handleWordSelected`）/ phrase（`handlePhraseSelected`），「解釋」走 `handleExplainSelected`。已對齊：已收藏詞顯示「查看詳情」(`WordDetailSheet`)、`canUseProReaderFeature` 閘、開啟 bump `dateLastRead`。進度存 `PDFPosition{pageIndex}`（頁級，非 Locator），翻頁同步存。 |
+| `ReaderWordCapture.swift` | 選詞層 sanitize（去頭尾 `'`/`-`、丟 <2 字元）+ `isPhraseSelection` 分類；鏡像 EPUB JS 選詞層，與 `normalizeWord` capture 契約分離、組合使用。 |
+| `PDFReaderContext.swift` | 純函式 context 視窗抽取（plain / marked `before**highlight**after`），對齊 EPUB 兩種 context 形狀；可單元測試。 |
+| `ReaderEntitlement.swift` | Reader pro-feature 閘單一真相，EPUB（`ReaderView`）與 PDF 共用委派。 |
+
+**刻意不對齊（格式本質）**：PDF 無字型/行距/主題（固定排版）、無已收藏詞自動畫底線（PDFKit 無可靠渲染完成訊號 + 無按詞搜全頁 API）、無章節 TOC（PDFKit 無 outline API）。
 
 ---
 
