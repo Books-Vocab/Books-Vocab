@@ -74,6 +74,17 @@ def build_parser() -> argparse.ArgumentParser:
     for shortcut_name in ("hero", "coverage", "cleanup"):
         _register_shortcut(subparsers, shortcut_name)
 
+    tree_cmd = subparsers.add_parser("tree")
+    tree_cmd.add_argument("--node", default="")
+    tree_cmd.add_argument("--depth", type=int, default=None)
+
+    node_cmd = subparsers.add_parser("node")
+    node_cmd.add_argument("node_path")
+
+    url_cmd = subparsers.add_parser("node-url")
+    url_cmd.add_argument("node_path")
+    url_cmd.add_argument("--base", default=None)
+
     return parser
 
 
@@ -128,6 +139,9 @@ def dispatch_command(
         "hero": lambda: handlers["shortcut"](root, limit=args.limit, mode="hero-first"),
         "coverage": lambda: handlers["shortcut"](root, limit=args.limit, mode="coverage-first"),
         "cleanup": lambda: handlers["shortcut"](root, limit=args.limit, mode="cleanup"),
+        "tree": lambda: handlers["tree"](root, node=args.node, depth=args.depth),
+        "node": lambda: handlers["node"](root, args.node_path),
+        "node-url": lambda: handlers["node_url"](root, args.node_path, base=args.base),
     }
     if command in dispatchers:
         return dispatchers[command]()
