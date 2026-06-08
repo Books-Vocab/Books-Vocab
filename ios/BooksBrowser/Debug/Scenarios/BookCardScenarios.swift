@@ -14,22 +14,22 @@ import SwiftUI
 enum BookCardScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Book Card") {
-            Scenario("Placeholder · EPUB", layout: .fill) {
+            Scenario("Placeholder · EPUB", layout: .compressed) {
                 BookCardScene(spec: .placeholderEpub)
             }
-            Scenario("Placeholder · PDF badge", layout: .fill) {
+            Scenario("Placeholder · PDF badge", layout: .compressed) {
                 BookCardScene(spec: .pdfFormat)
             }
-            Scenario("Progress · Mid", layout: .fill) {
+            Scenario("Progress · Mid", layout: .compressed) {
                 BookCardScene(spec: .midProgress)
             }
-            Scenario("Progress · Complete", layout: .fill) {
+            Scenario("Progress · Complete", layout: .compressed) {
                 BookCardScene(spec: .complete)
             }
-            Scenario("Long title + author", layout: .fill) {
+            Scenario("Long title + author", layout: .compressed) {
                 BookCardScene(spec: .longTitle)
             }
-            Scenario("A11y3", layout: .fill) {
+            Scenario("A11y3", layout: .compressed) {
                 BookCardScene(spec: .midProgress)
                     .environment(\.dynamicTypeSize, .accessibility3)
             }

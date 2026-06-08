@@ -15,20 +15,20 @@ enum PodcastShelfCardsScenarios {
         // the `主持人 · N 集` meta line is single-line tail-truncated, so the
         // long-host / multi-host / a11y3 cases prove card height stays uniform.
         playbook.addScenarios(of: "Podcast Series Card") {
-            Scenario("Normal", layout: .fill) {
+            Scenario("Normal", layout: .compressed) {
                 PodcastSeriesCardScene(title: "Atomic Habits Unpacked", hosts: ["Ava Chen"], count: 7)
             }
-            Scenario("Long host", layout: .fill) {
+            Scenario("Long host", layout: .compressed) {
                 PodcastSeriesCardScene(
                     title: "Finding Flow: The Science of Optimal Experience",
                     hosts: ["Mihaly Csikszentmihalyi", "Alexandra Penultimate-Featherstonehaugh"],
                     count: 24
                 )
             }
-            Scenario("Narrow", layout: .fill) {
+            Scenario("Narrow", layout: .compressed) {
                 PodcastSeriesCardScene(title: "Let Them, Let Me", hosts: ["Leo Park", "Ava Chen"], count: 8, width: 120)
             }
-            Scenario("A11y3", layout: .fill) {
+            Scenario("A11y3", layout: .compressed) {
                 PodcastSeriesCardScene(title: "Hidden Hand", hosts: ["Leo Park"], count: 12)
                     .environment(\.dynamicTypeSize, .accessibility3)
             }
@@ -38,19 +38,19 @@ enum PodcastShelfCardsScenarios {
         // resume/no-progress/長標題/大時數/a11y3 證明卡高一致 + 單行截斷 + clock
         // monospacedDigit 對齊。
         playbook.addScenarios(of: "Podcast Continue Rail Card") {
-            Scenario("Resume", layout: .fill) {
+            Scenario("Resume", layout: .compressed) {
                 PodcastContinueRailCardScene(seriesTitle: "Atomic Habits Unpacked", epTitle: "On Deep Work", epNumber: 2, duration: 1832, played: 612)
             }
-            Scenario("No progress", layout: .fill) {
+            Scenario("No progress", layout: .compressed) {
                 PodcastContinueRailCardScene(seriesTitle: "Atomic Habits Unpacked", epTitle: "The Comfort Crisis", epNumber: 1, duration: 1832, played: nil)
             }
-            Scenario("Long title", layout: .fill) {
+            Scenario("Long title", layout: .compressed) {
                 PodcastContinueRailCardScene(seriesTitle: "Finding Flow: The Science of Optimal Experience", epTitle: "A Very Long Episode Title That Must Truncate Cleanly On One Line", epNumber: 12, duration: 5432, played: 1700)
             }
-            Scenario("Large numbers", layout: .fill) {
+            Scenario("Large numbers", layout: .compressed) {
                 PodcastContinueRailCardScene(seriesTitle: "The Long Haul", epTitle: "Marathon Session", epNumber: 8, duration: 12_345, played: 321)
             }
-            Scenario("A11y3", layout: .fill) {
+            Scenario("A11y3", layout: .compressed) {
                 PodcastContinueRailCardScene(seriesTitle: "Hidden Hand", epTitle: "Origins", epNumber: 3, duration: 1832, played: 900)
                     .environment(\.dynamicTypeSize, .accessibility3)
             }

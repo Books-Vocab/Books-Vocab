@@ -5,25 +5,25 @@ import SwiftUI
 enum SettingsSubscriptionSectionScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Settings Subscription Section") {
-            Scenario("Pro Active", layout: .fill) {
+            Scenario("Pro Active", layout: .fillH) {
                 SubscriptionSectionScene(
                     state: SettingsPresenterPreviewData.subscribedActive.subscription!
                 )
             }
 
-            Scenario("Loading", layout: .fill) {
+            Scenario("Loading", layout: .fillH) {
                 SubscriptionSectionScene(
                     state: SettingsPresenterPreviewData.subscriptionLoading.subscription!
                 )
             }
 
-            Scenario("Pricing Unavailable", layout: .fill) {
+            Scenario("Pricing Unavailable", layout: .fillH) {
                 SubscriptionSectionScene(
                     state: SettingsPresenterPreviewData.pricingUnavailable.subscription!
                 )
             }
 
-            Scenario("Inactive · Free", layout: .fill) {
+            Scenario("Inactive · Free", layout: .fillH) {
                 SubscriptionSectionScene(state: .inactiveFreeFixture)
             }
         }

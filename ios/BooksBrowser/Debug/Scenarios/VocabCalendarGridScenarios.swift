@@ -15,23 +15,23 @@ enum VocabCalendarGridScenarios {
         playbook.addScenarios(of: "Vocab Calendar") {
             // 一個月份的密集活動：覆蓋全部 intensity 階梯（dot + cellFill），
             // 證明色階分層與 Monday-first 排版。
-            Scenario("Active month", layout: .fill) {
+            Scenario("Active month", layout: .fillH) {
                 VocabCalendarGridScene(fixture: .activeMonth)
             }
             // 選中某一天：驗證 selected cell 的 mutedFill 背景與 primaryText。
-            Scenario("Day selected", layout: .fill) {
+            Scenario("Day selected", layout: .fillH) {
                 VocabCalendarGridScene(fixture: .daySelected)
             }
             // 高強度壓力：所有天都是 15+ 活動，逼出最深的 cellFill / dot。
-            Scenario("Heavy intensity", layout: .fill) {
+            Scenario("Heavy intensity", layout: .fillH) {
                 VocabCalendarGridScene(fixture: .heavyIntensity)
             }
             // 空月份：沒有任何活動，只有日期數字與格線（empty state）。
-            Scenario("No activity", layout: .fill) {
+            Scenario("No activity", layout: .fillH) {
                 VocabCalendarGridScene(fixture: .noActivity)
             }
             // 含 today 的當月：驗證 today cell 的 chartHighlight 文字色。
-            Scenario("Current month with today", layout: .fill) {
+            Scenario("Current month with today", layout: .fillH) {
                 VocabCalendarGridScene(fixture: .currentMonth)
             }
         }

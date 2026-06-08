@@ -10,7 +10,7 @@ import SwiftUI
 enum SubscriptionViewsScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Subscription Views · Gate Card") {
-            Scenario("Happy path", layout: .fill) {
+            Scenario("Happy path", layout: .fillH) {
                 GateCardScene(
                     title: "解鎖知識圖譜",
                     description: "升級至 Pro 即可使用知識圖譜、Today Review 與播客功能。",
@@ -18,7 +18,7 @@ enum SubscriptionViewsScenarios {
                     systemImage: "sparkles"
                 )
             }
-            Scenario("Long copy stress", layout: .fill) {
+            Scenario("Long copy stress", layout: .fillH) {
                 GateCardScene(
                     title: "解鎖完整 Pro 學習體驗與全部進階功能",
                     description: "升級後可無限使用知識圖譜連結推薦、每日 Today Review 排程複習、整本書播客生成、跨裝置同步詞庫，以及未來所有新增的進階學習工具。",
@@ -26,7 +26,7 @@ enum SubscriptionViewsScenarios {
                     systemImage: "graduationcap.fill"
                 )
             }
-            Scenario("Narrow width 320pt", layout: .fill) {
+            Scenario("Narrow width 320pt", layout: .fillH) {
                 GateCardScene(
                     title: "解鎖 Today Review",
                     description: "升級至 Pro 解鎖間隔重複複習排程。",
@@ -35,7 +35,7 @@ enum SubscriptionViewsScenarios {
                     maxWidth: 320
                 )
             }
-            Scenario("Dynamic Type · accessibility3", layout: .fill) {
+            Scenario("Dynamic Type · accessibility3", layout: .fillH) {
                 GateCardScene(
                     title: "解鎖播客",
                     description: "升級至 Pro 即可把整本書轉成播客。",

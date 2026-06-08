@@ -10,19 +10,19 @@ import SwiftUI
 enum PodcastShelfScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Podcast Shelf") {
-            Scenario("Continue rail / Full", layout: .fill) {
+            Scenario("Continue rail / Full", layout: .fillH) {
                 PodcastShelfScene(kind: .full, title: "繼續收聽")
             }
-            Scenario("Continue rail / Single card", layout: .fill) {
+            Scenario("Continue rail / Single card", layout: .fillH) {
                 PodcastShelfScene(kind: .single, title: "繼續收聽")
             }
-            Scenario("Continue rail / Long shelf title", layout: .fill) {
+            Scenario("Continue rail / Long shelf title", layout: .fillH) {
                 PodcastShelfScene(
                     kind: .full,
                     title: "繼續收聽：你最近開始但還沒聽完的所有單集都在這裡"
                 )
             }
-            Scenario("Continue rail / A11y3", layout: .fill) {
+            Scenario("Continue rail / A11y3", layout: .fillH) {
                 PodcastShelfScene(kind: .full, title: "繼續收聽")
                     .environment(\.dynamicTypeSize, .accessibility3)
             }
