@@ -3,7 +3,7 @@ import Playbook
 import SwiftUI
 
 /// Catalog scenarios for the Settings account surface:
-/// `SettingsAccountSection`, `SettingsAuthSummary`, `SettingsProBadge`.
+/// `SettingsAccountSection`, `SettingsAuthSummary`.
 ///
 /// `SettingsAccountSection` consumes plain value state (`SettingsPresenterState.AuthSection`
 /// + optional `SubscriptionSection`) plus a `SettingsPresenterActions` closure bag, so no
@@ -58,17 +58,6 @@ enum SettingsAccountSectionScenarios {
                     state: SettingsAccountSectionScenarios.longIdentityState,
                     isProActive: true
                 )
-            }
-        }
-
-        // MARK: Pro badge atom
-        playbook.addScenarios(of: "Account Section · Pro Badge") {
-            Scenario("Pro Badge", layout: .compressed) {
-                AppThemeContainer {
-                    SettingsProBadge()
-                        .padding()
-                }
-                .environmentObject(AppAppearanceStore.preview)
             }
         }
     }
