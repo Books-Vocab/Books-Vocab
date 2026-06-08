@@ -179,7 +179,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, UITextViewDelegate, UIEditMenuInteractionDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, @preconcurrency UIEditMenuInteractionDelegate {
         let onWordSelection: (String, String) -> Void
         let onTranslateSelection: (String, String) -> Void
         let onExplainSelection: (String, String) -> Void
