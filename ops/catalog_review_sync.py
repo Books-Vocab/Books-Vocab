@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from catalog_canvas_renderer import render_canvas_html
 from catalog_review_renderer import render_html
 
 
@@ -32,3 +33,4 @@ def write_review_outputs(root: Path, manifest: dict, review_state: dict) -> None
         encoding="utf-8",
     )
     (root / "review.html").write_text(render_html(hydrated), encoding="utf-8")
+    (root / "catalog.html").write_text(render_canvas_html(hydrated), encoding="utf-8")

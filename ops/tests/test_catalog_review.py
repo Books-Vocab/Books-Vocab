@@ -217,6 +217,12 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
     assert "Feature" in review_html
     assert "Eligibility" in review_html
 
+    canvas_html = (tmp_path / "out" / "catalog.html").read_text(encoding="utf-8")
+    assert "KG UI Atlas" in canvas_html
+    assert '"tree":' in canvas_html
+    assert "#node=" in canvas_html
+    assert expected_asset_id in canvas_html
+
 
 def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     source_root = tmp_path / "snapshots"
