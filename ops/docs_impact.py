@@ -132,6 +132,11 @@ def source_matches(source: str, changed_path: str) -> bool:
     return changed_path == source
 
 
+def is_broad_source(source: str) -> bool:
+    source = normalize_path(source)
+    return source.endswith("/") or any(mark in source for mark in "*?[")
+
+
 def impact_documents(
     documents: list[Document], changed_paths: list[str], *, explain: bool = False
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -161,11 +166,15 @@ def impact_documents(
                 matched_sources.add(source)
                 matched_paths.add(changed_path)
         if matched_paths:
+            match_type = "broad" if any(is_broad_source(source) for source in matched_sources) else "exact"
+            if explain and excluded_paths:
+                match_type = "suppressed-partial"
             impact = {
                 "id": doc.id,
                 "path": doc.path,
                 "kind": doc.kind,
                 "authority": doc.authority,
+                "match_type": match_type,
                 "triggers": doc.triggers,
                 "matched_sources": sorted(matched_sources),
                 "matched_paths": sorted(matched_paths),
@@ -183,6 +192,7 @@ def impact_documents(
                 "path": doc.path,
                 "kind": doc.kind,
                 "authority": doc.authority,
+                "match_type": "suppressed",
                 "triggers": doc.triggers,
                 "matched_sources": sorted(excluded_sources),
                 "matched_paths": sorted(excluded_paths),
@@ -212,6 +222,7 @@ def print_human(
         summary += f" excluded={len(excluded_impacts)}"
     print(summary)
     for impact in impacts:
+        match_type = str(impact.get("match_type", "unknown"))
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
         sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
         paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
@@ -225,9 +236,10 @@ def print_human(
         print(
             "IMPACT "
             f"{impact['id']} {impact['path']} "
-            f"via={sources} changed={paths}{excluded_paths}{excluded_by} triggers={triggers}{generator}"
+            f"match_type={match_type} via={sources} changed={paths}{excluded_paths}{excluded_by} triggers={triggers}{generator}"
         )
     for impact in excluded_impacts:
+        match_type = str(impact.get("match_type", "suppressed"))
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
         sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
         paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
@@ -236,7 +248,7 @@ def print_human(
         print(
             "EXCLUDED "
             f"{impact['id']} {impact['path']} "
-            f"via={sources} changed={paths} excluded_by={excluded_by} triggers={triggers}{generator}"
+            f"match_type={match_type} via={sources} changed={paths} excluded_by={excluded_by} triggers={triggers}{generator}"
         )
 
 

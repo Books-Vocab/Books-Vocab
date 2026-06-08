@@ -77,10 +77,11 @@ impact_probe="ops/.docs_lint_impact_probe"
 trap 'rm -f "$impact_probe"' EXIT
 printf 'probe\n' >"$impact_probe"
 run_capture /tmp/kg_docs_lint_impact.out ./ops/docs_lint.sh --since HEAD
-require_grep "docs_lint: registry impact hints" /tmp/kg_docs_lint_impact.out
+require_grep "docs_lint: current checkout impact hints" /tmp/kg_docs_lint_impact.out
 require_grep "reference.tech_index" /tmp/kg_docs_lint_impact.out
 require_grep "docs_lint: inspect suppression with ./ops/docs_impact.py --since HEAD --explain" /tmp/kg_docs_lint_impact.out
 require_grep "docs_lint: frontmatter checks below only cover docs changed in the current checkout; use the impact hints above to judge non-doc changes" /tmp/kg_docs_lint_impact.out
+require_grep "docs_lint: next-step heuristic -> impact hints are sync candidates, not auto-required; STALE means freshness risk, not automatic doc-sync for this change" /tmp/kg_docs_lint_impact.out
 rm -f "$impact_probe"
 trap - EXIT
 
