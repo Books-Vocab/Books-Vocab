@@ -18,6 +18,60 @@ build_world_diff_command = MODULE.build_world_diff_command
 build_render_command = MODULE.build_render_command
 build_snapshot_command = MODULE.build_snapshot_command
 load_profile = MODULE.load_profile
+build_expectation = MODULE.build_expectation
+
+
+def _assertion_is_subset(small, big, path=""):
+    """big 的對應節點是否滿足 small 的每條斷言（用於 derived ⊇ handwritten）。"""
+    if isinstance(small, dict):
+        assert isinstance(big, dict), f"{path}: 型別不符"
+        for k, v in small.items():
+            assert k in big, f"{path}.{k}: derived 缺漏手寫斷言"
+            _assertion_is_subset(v, big[k], f"{path}.{k}")
+    elif isinstance(small, list):
+        assert isinstance(big, list), f"{path}: 型別不符"
+        # list 以「small 每個元素都能在 big 找到滿足者」比對（順序無關）。
+        # 存在性比對非雙射,不證 cardinality;此處 card content / notebook name /
+        # link (from,to,kind) 在手寫 spec 皆唯一鍵,不可能虛假雙重匹配,故足夠。
+        for i, item in enumerate(small):
+            assert any(
+                _try_subset(item, cand) for cand in big
+            ), f"{path}[{i}]: derived 找不到滿足手寫斷言的元素 {item}"
+    else:
+        assert small == big, f"{path}: {small!r} != {big!r}"
+
+
+def _try_subset(small, big):
+    try:
+        _assertion_is_subset(small, big)
+        return True
+    except AssertionError:
+        return False
+
+
+def test_derive_expectation_covers_handwritten():
+    """derived expectation 必須涵蓋手寫 marketing_demo_expectation.json 的每條斷言。
+
+    證明手寫 spec 可被 derive 取代，drift 來源消失。
+    """
+    profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
+    derived = build_expectation(profile)
+    handwritten = json.loads(
+        (ROOT / "ops" / "capture_profiles" / "marketing_demo_expectation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert derived["schema"] == handwritten["schema"]
+    _assertion_is_subset(handwritten, derived, path="root")
+
+
+def test_derive_check_detects_drift(tmp_path):
+    """--check 對 stale expectation 檔回非零（drift guard）。"""
+    profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
+    stale = tmp_path / "stale.json"
+    stale.write_text(json.dumps({"schema": "kg.ops_world_expectation.v1"}), encoding="utf-8")
+    rc = MODULE.cmd_derive_expectation(profile, out=stale, check=True)
+    assert rc != 0
 
 
 def test_load_profile_and_build_commands():
