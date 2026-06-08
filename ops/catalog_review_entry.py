@@ -172,7 +172,7 @@ def wait_for_listener_directory(port: int, expected_directory: str, *, timeout_s
 
 
 def cmd_current(_: argparse.Namespace) -> int:
-    artifacts = collect_review_artifacts()
+    artifacts = collect_review_artifacts(SNAPSHOT_ROOT)
     blessed = choose_blessed_artifact(artifacts)
     usable_count = sum(1 for item in artifacts if item["isUsable"])
     stale_artifacts = [
@@ -258,7 +258,7 @@ def cmd_prune_superseded(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    artifacts = collect_review_artifacts()
+    artifacts = collect_review_artifacts(SNAPSHOT_ROOT)
     blessed = choose_blessed_artifact(artifacts)
     if not blessed["isUsable"]:
         print(json.dumps({
@@ -267,6 +267,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
             "blessedCandidate": {
                 "name": blessed["name"],
                 "root": str(blessed["root"]),
+                "reviewHtml": str(blessed["root"] / "review.html"),
+                "canvasHtml": str(blessed["root"] / "catalog.html"),
                 "totalImages": blessed["totalImages"],
             },
         }, ensure_ascii=False))
