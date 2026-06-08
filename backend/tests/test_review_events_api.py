@@ -86,6 +86,37 @@ def test_review_events_since_filter(isolated_api):
     assert [event["event_id"] for event in r.json()["entries"]] == ["evt-new"]
 
 
+def test_review_events_since_with_literal_plus_is_not_corrupted(isolated_api):
+    """回歸：2026-06-08 下載死鎖。帶 '+00:00' offset 的 watermark 以裸 '+' 走 query
+    （URLComponents 不會 percent-encode 它），Starlette 依 x-www-form-urlencoded 解成空格。
+    server 必須仍把它當 cursor 用、而非 400。以原始 URL 字串送（**不**走 params=，否則
+    httpx 會 percent-encode 成 %2B 而蓋掉 bug — 與 test_review_events_since_filter 對照）。"""
+    isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [_payload("evt-old", reviewed_at=datetime(2026, 6, 1, 10, 0, tzinfo=UTC))]},
+        headers=isolated_api.headers,
+    )
+    cursor = isolated_api.client.get(
+        "/api/vocab/review-events", headers=isolated_api.headers
+    ).json()["cursor"]
+    isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [_payload("evt-new", reviewed_at=datetime(2026, 6, 2, 10, 0, tzinfo=UTC))]},
+        headers=isolated_api.headers,
+    )
+
+    # 模擬現場舊格式 '+00:00' watermark，以裸 '+' 回送。
+    legacy_since = cursor.replace("Z", "+00:00")
+    assert "+" in legacy_since, legacy_since
+    r = isolated_api.client.get(
+        f"/api/vocab/review-events?since={legacy_since}",
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 200, r.text
+    assert [e["event_id"] for e in r.json()["entries"]] == ["evt-new"]
+
+
 def test_review_events_since_malformed_returns_400(isolated_api):
     r = isolated_api.client.get(
         "/api/vocab/review-events",
