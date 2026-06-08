@@ -19,6 +19,7 @@ Core API for agents:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 from .config import EvalConfig
@@ -85,6 +86,17 @@ def make_render_fn(
             vars.setdefault("candidate_list", "\n".join(lines))
             vars.setdefault("n", str(len(candidates)))
             vars.setdefault("max_links", str(max(1, len(candidates) // 2)))
+        # enrich-style prompts expect a JSON array of words with meaning/context;
+        # build it from the per-sample fields so {{ words_json }} isn't empty.
+        if "word" in sample:
+            vars.setdefault("words_json", json.dumps(
+                [{
+                    "word": sample.get("word", ""),
+                    "meaning": sample.get("meaning", ""),
+                    "context": sample.get("context", ""),
+                }],
+                ensure_ascii=False,
+            ))
         return registry.render(name, version, **vars)
 
     return _render
