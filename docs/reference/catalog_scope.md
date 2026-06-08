@@ -20,7 +20,7 @@ verified_against: 230f6c16
 | IN — 視圖（screen + overlay） | **35** |
 | IN — 必要組件（去重後唯一） | **27** |
 | CUT — 該砍 catalog surface | **58** |
-| MISSING — app 有但 catalog 缺 | **25**（28 − 3 已補：Tab Selector / Review CTA Pill / Selection Toolbar）|
+| MISSING — app 有但 catalog 缺 | **18**（28 − 3 campaign 3a 落地 − 7 scout 驗證已覆蓋/N-A）|
 | RELOCATE — surface 真實存在但歸錯 slice | **3** |
 
 IN 視圖拆分：screen **18** / overlay **17**。
@@ -326,14 +326,23 @@ IN 視圖拆分：screen **18** / overlay **17**。
 - **Review Rhythm Settings** — `screen`（promote）
 - **Subscription Detail (訂閱)** — `screen`（promote）
 
-### 必要組件層 — 需新 surface
-- ~~Review State Tab Selector / Review CTA Pill / Selection Toolbar（vocab）~~ — ✅ campaign 3a 已落地（`VocabShellComponentsScenarios` + `SelectionToolbarScenarios`，layout-by-kind）
-- Graph Canvas / Graph Force Settings Overlay / Graph Thumbnail Entry Card（KG + stats）
-- Swipe Deck / Card Answer Link Strip（review）
-- Podcast Controls / Preview Upgrade Banner（podcast）
-- Subscription summary row / Sync status row / Quota row（settings）
-- Translation language selectable row / Review mode selection tile（settings）
-- Free vs Pro comparison table（paywall）
+### 必要組件層 — reconciled（2026-06-09 scout + render 驗證）
+
+**已覆蓋（既有 scenario 已含 → MISSING 為 stale，不重建）：**
+- ~~Review State Tab Selector / Review CTA Pill / Selection Toolbar（vocab）~~ — ✅ campaign 3a 落地（`VocabShellComponentsScenarios` + `SelectionToolbarScenarios`）
+- ~~Card Answer Link Strip（review）~~ — ✅ Today Review「Back」scenario 已渲染（`currentCardSeed` 含 3 links；驗證 PNG 見 📎 相關:precise｜thorough +1 ⊕）→ 屬母視圖 state，依計數契約不另計組件
+- ~~Subscription summary row（settings）~~ — ✅ `SettingsSubscriptionSectionScenarios`（4 態，含 `SettingsStatusBadge`）
+- ~~Sync status row（settings）~~ — ✅ `SyncScenarios`（5 態 phase）
+- ~~Translation language selectable row（settings）~~ — ✅ `TranslationLanguageSettingsScenarios`（4 語對，`SettingsSelectableRow` in context）
+- ~~Review mode selection tile（settings）~~ — ✅ `SettingsSectionsScenarios`（寬鬆/密集/自訂，`SettingsSelectionTile`）
+- ~~Free vs Pro comparison table（paywall）~~ — ✅ = 既存 `Settings Actions · Plan Table`（eng surface，唯一定義）
+- ~~Quota row（settings）~~ — ✅ N/A：`QuotaBar` 已於 CUT 清單判死碼（僅 `#Preview`），不補
+
+**真缺但耦合（非廉價：需 presenter/VM harness，暫不建以免污染生產 API）：**
+- Graph Canvas / Graph Force Settings Overlay / Graph Thumbnail Entry Card（KG — `GraphWebView` WKWebView + force sim + private @State）
+- Swipe Deck（review — gesture/motion private @State coordinator）
+- Podcast Controls（`PodcastControlsView` 耦合 `PodcastPlayerViewModel` + KVO/audio session）
+- Preview Upgrade Banner（podcast — `PodcastPlayerView` computed prop，耦合 `PodcastPlayerAccessState`）
 
 ### 畫面 / 組件狀態 — 既有 surface 補拍
 - Stats logged-out gate state
