@@ -117,7 +117,8 @@ _TEMPLATE = r"""<!doctype html>
     .facet-pip { padding: 3px 8px; border-radius: 999px; font-size: 10px; border: 1px dashed var(--line-strong); color: var(--muted); }
     .facet-pip.present { border-style: solid; background: #fff; color: var(--ink); }
     .facet-pip.present strong { font-weight: 700; }
-    .facet-pip.missing { opacity: 0.5; }
+    .facet-pip.gap { border-style: solid; border-color: var(--bad); background: #f7dddd; color: var(--bad); font-weight: 600; }
+    .facet-pip.na { opacity: 0.4; }
     .matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
     .surface.focused .matrix { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
     .scene { border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: white; cursor: pointer; transition: transform 0.08s ease, box-shadow 0.08s ease; }
@@ -140,7 +141,7 @@ _TEMPLATE = r"""<!doctype html>
     .scene-shots img { display: block; width: 100%; height: auto; }
     .scene-shots.both img { width: 50%; }
     .scene-cap { padding: 7px 9px; display: grid; gap: 5px; }
-    .scene-cap h5 { margin: 0; font-size: 12px; line-height: 1.25; font-weight: 600; }
+    .scene-cap h5 { margin: 0; font-size: 12px; line-height: 1.25; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .scene-cap .facet-tag { font-size: 10px; color: var(--muted); }
     .facet-tag.f-empty, .facet-tag.f-loading { color: var(--warn); }
     .facet-tag.f-error { color: var(--bad); }
@@ -381,13 +382,17 @@ _TEMPLATE = r"""<!doctype html>
     }
 
     function facetRail(surface, scenes) {
-      const present = new Set(scenes.map((s) => s.stateFacet));
       const counts = {};
       for (const s of scenes) counts[s.stateFacet] = (counts[s.stateFacet] || 0) + 1;
+      // Lane-aware coverage strip, three-state like the Coverage view: present
+      // (have it), gap (this lane expects it but it's absent — the real backlog),
+      // na (this lane doesn't require it, so absence is not a gap).
+      const expected = new Set(surface.expectedFacets || []);
       return FACET_ORDER.map((f) => {
-        const has = present.has(f);
         const n = counts[f] || 0;
-        return `<span class="facet-pip ${has ? "present" : "missing"}">${has ? `<strong>${f}</strong> ${n}` : f}</span>`;
+        if (n) return `<span class="facet-pip present"><strong>${f}</strong> ${n}</span>`;
+        if (expected.has(f)) return `<span class="facet-pip gap">${f} 缺</span>`;
+        return `<span class="facet-pip na">${f}</span>`;
       }).join("");
     }
 
@@ -402,7 +407,7 @@ _TEMPLATE = r"""<!doctype html>
       tile.innerHTML = `
         <div class="scene-shots checker ${both ? "both" : ""}">${imgs}</div>
         <div class="scene-cap">
-          <h5>${esc(scene.stateLabel)}</h5>
+          <h5 title="${esc(scene.stateLabel)}">${esc(scene.stateLabel)}</h5>
           <span class="facet-tag f-${scene.stateFacet}">${scene.stateFacet}</span>
         </div>`;
       tile.onclick = () => openLeaf(scene, surface);
@@ -684,7 +689,7 @@ _TEMPLATE = r"""<!doctype html>
         const laneLabel = (LANES.find((l) => l.id === state.lane) || LANES[0]).label;
         const top = document.createElement("div");
         top.className = "topbar";
-        top.innerHTML = `<div><h2>Coverage · ${laneLabel}</h2><div class="sub">${covSurfaces.length} surface × ${FACET_ORDER.length} facet · 找缺口</div></div>`;
+        top.innerHTML = `<div><h2>Coverage · ${laneLabel}</h2><div class="sub">${covSurfaces.length} surface · 缺口 = 該 lane 期望卻缺的 state（building-block / engineering-only 不設目標）</div></div>`;
         top.appendChild(viewToggle());
         main.appendChild(top);
         renderCoverage(main);
