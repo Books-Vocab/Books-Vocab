@@ -81,6 +81,7 @@ RAW_CHINESE_PATTERN='(Text|Button|Label|Section|Toggle|Picker|Menu|TextField)\("
 RAW_RETURN_CHINESE_PATTERN='\breturn\s+"[^"]*[\x{4e00}-\x{9fff}]'
 
 STATIC_FORMATTER_PATTERN='static\s+let\s+\w+.*(DateFormatter|RelativeDateTimeFormatter|NumberFormatter)'
+LOCALIZED_USAGE_PATTERN='\.localized\b'
 
 EXCLUDE_GLOBS=(
   --glob '!**/*Preview*.swift'
@@ -170,6 +171,11 @@ scan_static_formatter() {
     "$STATIC_FORMATTER_PATTERN" "$IOS_SRC" 2>/dev/null \
     | rg --invert-match --line-buffered 'i18n-allow|LocaleAwareFormatter|ISO8601DateFormatter|=\s*AppDateFormatters\.' \
     | filter_locale_neutral_files || true
+}
+
+scan_localized_usage() {
+  rg --no-heading -n --pcre2 --type swift "${EXCLUDE_GLOBS[@]}" \
+    "$LOCALIZED_USAGE_PATTERN" "$IOS_SRC" 2>/dev/null || true
 }
 
 # Parse .xcstrings JSON for entries with state=needs_review and empty value.
@@ -343,11 +349,13 @@ raw_hits="$(scan_raw_chinese)"
 ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
 xc_hits="$(scan_xcstrings_needs_review)"
+localized_hits="$(scan_localized_usage)"
 
 raw_count=$(count_lines "$raw_hits")
 ret_count=$(count_lines "$ret_hits")
 fmt_count=$(count_lines "$fmt_hits")
 xc_count=$(count_lines "$xc_hits")
+localized_count=$(count_lines "$localized_hits")
 total=$((raw_count + ret_count + fmt_count + xc_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
@@ -394,14 +402,17 @@ print_findings() {
     printf '%s\n' "$plural_missing_hits"
     echo
   fi
-  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count xcstrings=$xc_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count)"
+  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count xcstrings=$xc_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count localized_calls=$localized_count)"
 }
 
 case "$MODE" in
   --baseline)
     print_findings
-    printf '%s\n' "$total" > "$BASELINE_FILE"
-    echo "[i18n_lint] baseline written to $BASELINE_FILE = $total"
+    cat > "$BASELINE_FILE" <<EOF
+findings=$total
+localized_calls=$localized_count
+EOF
+    echo "[i18n_lint] baseline written to $BASELINE_FILE (findings=$total localized_calls=$localized_count)"
     exit 0
     ;;
   --baseline-check)
@@ -410,9 +421,17 @@ case "$MODE" in
       echo "[i18n_lint] error: $BASELINE_FILE missing; run --baseline first" >&2
       exit 2
     fi
-    baseline=$(tr -d '[:space:]' < "$BASELINE_FILE")
+    baseline=$(awk -F= '/^findings=/{print $2}' "$BASELINE_FILE")
+    localized_baseline=$(awk -F= '/^localized_calls=/{print $2}' "$BASELINE_FILE")
+    if [ -z "$baseline" ]; then
+      baseline=$(tr -d '[:space:]' < "$BASELINE_FILE")
+    fi
     if [ "$total" -gt "$baseline" ]; then
       echo "[i18n_lint] REGRESSION: $total > baseline $baseline" >&2
+      exit 1
+    fi
+    if [ -n "$localized_baseline" ] && [ "$localized_count" -gt "$localized_baseline" ]; then
+      echo "[i18n_lint] REGRESSION: localized_calls $localized_count > baseline $localized_baseline" >&2
       exit 1
     fi
     echo "[i18n_lint] ok: $total <= baseline $baseline"

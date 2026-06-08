@@ -14,19 +14,19 @@ struct SubscriptionPaywallSheet: View {
     private var activeFeatures: [SettingsSubscriptionFeatureItem] {
         [
             .init(
-                title: "AI 翻譯與語境解釋".localized,
+                title: L10n.string("AI 翻譯與語境解釋"),
                 description: nil,
                 icon: "checkmark.circle.fill",
                 tone: appSkin.palette.success
             ),
             .init(
-                title: "雲端同步與跨裝置狀態".localized,
+                title: L10n.string("雲端同步與跨裝置狀態"),
                 description: nil,
                 icon: "checkmark.circle.fill",
                 tone: appSkin.palette.success
             ),
             .init(
-                title: "關聯圖與內建複習".localized,
+                title: L10n.string("關聯圖與內建複習"),
                 description: nil,
                 icon: "checkmark.circle.fill",
                 tone: appSkin.palette.success
@@ -37,20 +37,20 @@ struct SubscriptionPaywallSheet: View {
     private var paywallFeatures: [SettingsSubscriptionFeatureItem] {
         [
             .init(
-                title: "AI 翻譯與語境解釋".localized,
-                description: "閱讀時即時查詢翻譯與語境".localized,
+                title: L10n.string("AI 翻譯與語境解釋"),
+                description: L10n.string("閱讀時即時查詢翻譯與語境"),
                 icon: "sparkles",
                 tone: appSkin.palette.accent
             ),
             .init(
-                title: "雲端同步與跨裝置狀態".localized,
-                description: "生詞與閱讀進度跨裝置同步".localized,
+                title: L10n.string("雲端同步與跨裝置狀態"),
+                description: L10n.string("生詞與閱讀進度跨裝置同步"),
                 icon: "sparkles",
                 tone: appSkin.palette.accent
             ),
             .init(
-                title: "關聯圖與內建複習".localized,
-                description: "視覺化詞彙關聯與間隔複習".localized,
+                title: L10n.string("關聯圖與內建複習"),
+                description: L10n.string("視覺化詞彙關聯與間隔複習"),
                 icon: "sparkles",
                 tone: appSkin.palette.accent
             )
@@ -61,42 +61,42 @@ struct SubscriptionPaywallSheet: View {
     private var comparisonRows: [SettingsPlanComparisonRow] {
         [
             .init(
-                title: "閱讀器（EPUB/PDF/TXT/MD）".localized,
+                title: L10n.string("閱讀器（EPUB/PDF/TXT/MD）"),
                 freeMark: .check,
                 proMark: .check
             ),
             .init(
-                title: "本地生詞捕捉".localized,
+                title: L10n.string("本地生詞捕捉"),
                 freeMark: .check,
                 proMark: .check
             ),
             .init(
-                title: "AI 翻譯與語境解釋".localized,
-                freeMark: .label("有限".localized),
+                title: L10n.string("AI 翻譯與語境解釋"),
+                freeMark: .label(L10n.string("有限")),
                 proMark: .check
             ),
             .init(
-                title: "雲端同步與跨裝置狀態".localized,
-                freeMark: .label("有限".localized),
+                title: L10n.string("雲端同步與跨裝置狀態"),
+                freeMark: .label(L10n.string("有限")),
                 proMark: .check
             ),
             .init(
-                title: "知識圖譜與關聯卡片".localized,
-                freeMark: .label("有限".localized),
+                title: L10n.string("知識圖譜與關聯卡片"),
+                freeMark: .label(L10n.string("有限")),
                 proMark: .check
             ),
             .init(
-                title: "間隔複習（Today Review）".localized,
-                freeMark: .label("有限".localized),
+                title: L10n.string("間隔複習（Today Review）"),
+                freeMark: .label(L10n.string("有限")),
                 proMark: .check
             ),
             .init(
-                title: "Podcast 跨集播放".localized,
-                freeMark: .label("有限".localized),
+                title: L10n.string("Podcast 跨集播放"),
+                freeMark: .label(L10n.string("有限")),
                 proMark: .check
             ),
             .init(
-                title: "每日 AI 額度".localized,
+                title: L10n.string("每日 AI 額度"),
                 freeMark: .label("1x"),
                 proMark: .label("10x")
             )
@@ -113,14 +113,14 @@ struct SubscriptionPaywallSheet: View {
                 }
             }
             .background(appSkin.palette.pageBackground.ignoresSafeArea())
-            .navigationTitle("訂閱".localized)
+            .navigationTitle(L10n.string("訂閱"))
             .inlineNavigationBarTitle()
             .task {
                 await subscriptionManager.loadProducts()
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成".localized) { dismiss() }
+                    Button(L10n.string("完成")) { dismiss() }
                 }
             }
             .animatePhaseChange(subscriptionManager.hasProAccess)
@@ -139,7 +139,7 @@ struct SubscriptionPaywallSheet: View {
                     .font(appSkin.typography.symbolHero)
                     .foregroundStyle(isCancelledButActive ? appSkin.palette.accent : appSkin.palette.success)
 
-                Text(isCancelledButActive ? "Pro 即將到期".localized : "Pro 已啟用".localized)
+                Text(isCancelledButActive ? L10n.string("Pro 即將到期") : L10n.string("Pro 已啟用"))
                     .font(appSkin.typography.displayTitle)
                     .foregroundStyle(appSkin.palette.primaryText)
 
@@ -175,7 +175,7 @@ struct SubscriptionPaywallSheet: View {
                         }
                     } label: {
                         paywallActionLabel(
-                            title: "管理訂閱".localized,
+                            title: L10n.string("管理訂閱"),
                             trailingSystemImage: "arrow.up.forward"
                         )
                     }
@@ -261,7 +261,7 @@ struct SubscriptionPaywallSheet: View {
                         await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
                     }
                 } label: {
-                    paywallActionLabel(title: "恢復購買".localized)
+                    paywallActionLabel(title: L10n.string("恢復購買"))
                 }
                 .buttonStyle(.vocabAction(.neutral))
                 .disabled(subscriptionManager.isLoading)
@@ -299,14 +299,14 @@ struct SubscriptionPaywallSheet: View {
 
     private var loadProductsRetryCard: some View {
         VocabStateMessageCard(
-            title: "訂閱方案載入中".localized,
+            title: L10n.string("訂閱方案載入中"),
             systemImage: "arrow.clockwise.circle",
-            description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。".localized
+            description: L10n.string("App Store 尚未回傳訂閱資訊，請稍候或點下方重試。")
         ) {
             Button {
                 Task { await subscriptionManager.loadProducts() }
             } label: {
-                paywallActionLabel(title: "重新載入".localized, font: appSkin.typography.caption)
+                paywallActionLabel(title: L10n.string("重新載入"), font: appSkin.typography.caption)
             }
             .buttonStyle(.vocabAction(.neutral))
             .disabled(subscriptionManager.isLoading)
