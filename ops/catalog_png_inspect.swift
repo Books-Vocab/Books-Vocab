@@ -12,6 +12,7 @@ struct ImageReport: Encodable {
     let alphaMax: Int
     let luminanceMin: Int
     let luminanceMax: Int
+    let isFullyTransparent: Bool
     let isUniform: Bool
 }
 
@@ -19,16 +20,6 @@ private enum InspectError: Error {
     case usage
     case unreadableImage(String)
     case unreadableBitmap(String)
-}
-
-private func sampleCoordinates(length: Int, targetBuckets: Int = 64) -> [Int] {
-    guard length > 0 else { return [] }
-    let step = max(1, length / targetBuckets)
-    var coordinates = Array(stride(from: 0, to: length, by: step))
-    if coordinates.last != length - 1 {
-        coordinates.append(length - 1)
-    }
-    return coordinates
 }
 
 private func report(for path: String) throws -> ImageReport {
@@ -45,15 +36,18 @@ private func report(for path: String) throws -> ImageReport {
         throw InspectError.unreadableBitmap(path)
     }
 
+    let thumbnailEdge = 128
+    let sampleWidth = min(width, thumbnailEdge)
+    let sampleHeight = min(height, thumbnailEdge)
     let bytesPerPixel = 4
     let bitsPerComponent = 8
-    let bytesPerRow = width * bytesPerPixel
+    let bytesPerRow = sampleWidth * bytesPerPixel
     guard
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
         let context = CGContext(
             data: nil,
-            width: width,
-            height: height,
+            width: sampleWidth,
+            height: sampleHeight,
             bitsPerComponent: bitsPerComponent,
             bytesPerRow: bytesPerRow,
             space: colorSpace,
@@ -64,7 +58,9 @@ private func report(for path: String) throws -> ImageReport {
         throw InspectError.unreadableBitmap(path)
     }
 
-    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+    context.interpolationQuality = .high
+    context.clear(CGRect(x: 0, y: 0, width: sampleWidth, height: sampleHeight))
+    let rect = CGRect(x: 0, y: 0, width: sampleWidth, height: sampleHeight)
     context.draw(cgImage, in: rect)
     let pixels = data.assumingMemoryBound(to: UInt8.self)
 
@@ -72,12 +68,10 @@ private func report(for path: String) throws -> ImageReport {
     var alphaMax = 0
     var luminanceMin = 255
     var luminanceMax = 0
-    let sampleXs = sampleCoordinates(length: width)
-    let sampleYs = sampleCoordinates(length: height)
     var sampledPixelCount = 0
 
-    for y in sampleYs {
-        for x in sampleXs {
+    for y in 0..<sampleHeight {
+        for x in 0..<sampleWidth {
             let offset = (y * bytesPerRow) + (x * bytesPerPixel)
             let red = Int(pixels[offset])
             let green = Int(pixels[offset + 1])
@@ -102,6 +96,7 @@ private func report(for path: String) throws -> ImageReport {
         alphaMax: alphaMax,
         luminanceMin: luminanceMin,
         luminanceMax: luminanceMax,
+        isFullyTransparent: alphaMax == 0,
         isUniform: alphaMin == alphaMax && luminanceMin == luminanceMax
     )
 }

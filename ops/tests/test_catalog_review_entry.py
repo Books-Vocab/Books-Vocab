@@ -68,6 +68,28 @@ def test_choose_blessed_artifact_breaks_ties_by_name(tmp_path: Path):
     assert blessed["name"] == "catalog-full-20260608-020244"
 
 
+def test_choose_blessed_artifact_prefers_usable_over_empty_newer_artifact(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-999999", total_images=0, continue_count=0, weak_count=0)
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+    blessed = entry_module.choose_blessed_artifact(artifacts)
+
+    assert blessed["name"] == "catalog-full-20260608-003356"
+    assert blessed["isUsable"] is True
+
+
+def test_prune_stale_artifacts_removes_empty_review_roots(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-empty", total_images=0, continue_count=0, weak_count=0)
+    write_manifest(tmp_path, "catalog-full-usable", total_images=10, continue_count=2, weak_count=1)
+
+    removed = entry_module.prune_stale_artifacts(tmp_path, dry_run=False)
+
+    assert [item["name"] for item in removed] == ["catalog-full-empty"]
+    assert not (tmp_path / "catalog-full-empty").exists()
+    assert (tmp_path / "catalog-full-usable").exists()
+
+
 def test_extract_directory_from_command():
     command = "/usr/bin/python3 -m http.server 8787 --directory /tmp/catalog-full-20260608-020244"
     assert entry_module.extract_directory_from_command(command) == "/tmp/catalog-full-20260608-020244"

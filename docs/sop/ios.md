@@ -170,7 +170,9 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - **先分「排隊」再分「執行」**:build/test/archive verdict 都有 `timings.lockWaitMs`(共享 `/tmp/kg-ios-build.lock` 的排隊等待,三者同義)。一個 run 看起來慢,先看 `lockWaitMs` 是不是卡在別的 worktree 後面,再看 `xcodebuildMs`/`testInvocationMs` 等執行段;沒有 lock-wait 數字時,排隊延遲會偽裝成執行慢。
 - **catalog 長任務不是黑盒**:`catalog snapshots` 的 build-for-testing / test-without-building / full-test 階段會發 `[ios][catalog] phase=<label> start/running/done` 到 **stderr**(預設開,每 ~20s 帶 elapsed/pid/last log line),`stdout` 維持純 `kg.ios.catalog.v1` JSON。執行期沒輸出別急著 `ps`/xcresult 旁路觀測,先看 stderr heartbeat;細粒度 phase trace 仍由 `KG_IOS_OPS_CATALOG_TRACE=1` 開。
 - **cache-miss 不是 test failure**:`catalog snapshots --reuse-build` 命中 stale/缺失 cache 時頂層 `status:"cache-miss"`(非 `error`)、`errors[].catalog-cache` 帶可行動 hint、stderr 印一行提示。看到 `cache-miss` 就跑 `catalog prepare` 或拿掉 `--reuse-build`,不要當成程式碼壞掉去追。
+- **uniform image 改走 warning 語意**:`uniform-image-detected` 現在只會讓 `validation.status:"warn"` 與頂層 `status:"warn"`，不再把已成功產出的 PNG 誤判成 fatal `error`。真正 fatal 的仍是 `png-count-mismatch`、degenerate dimensions、xcodebuild/test/copy 失敗。
 - **失敗也會搶救 PNG**:full run 失敗時 wrapper 仍把 simulator container 內已生成的截圖 salvage 回本地。`artifacts.containerPngCount` = container 內實際張數,`copy.salvaged=true` + `errors[].catalog-salvage`(info note)代表「有生成但 run 失敗已救回」;`containerPngCount==0` 才是真的沒生成。別再手動進 container 撈圖。
+- **snapshot 會順手生 review sidecar**:`catalog snapshots` 成功複製 PNG 後，會在同一個 `out_root` 自動生成 `review.html` / `review_manifest.json` / `review_state.json`；JSON payload 的 `review.*` 與文字輸出都會帶路徑。sidecar 生成失敗只記 warning，不會遮蔽 raw PNG 已成功落地。
 
 ### 日常 warm-loop 建議
 
@@ -499,6 +501,11 @@ enum FooScenarios {
 # 如需 full catalog，去掉 --scenario / --group 即可
 ./ops/ios_ops.sh catalog snapshots \
   --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'
+
+# 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
+./ops/catalog_review_entry.py current
+./ops/catalog_review_entry.py prune-stale --dry-run
+./ops/catalog_review_entry.py prune-stale
 ```
 
 **從 simulator sandbox 撈 PNG**：

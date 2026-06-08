@@ -92,8 +92,22 @@ let path = CommandLine.arguments[1]
 let size = NSSize(width: 8, height: 8)
 let image = NSImage(size: size)
 image.lockFocus()
+if ProcessInfo.processInfo.environment["KG_IOS_OPS_CATALOG_FIXTURE_TRANSPARENT"] == "1" {
+  image.unlockFocus()
+  let bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!
+  let png = bitmap.representation(using: .png, properties: [:])!
+  try png.write(to: URL(fileURLWithPath: path))
+  exit(0)
+}
 NSColor.white.setFill()
 NSBezierPath(rect: NSRect(x: 0, y: 0, width: 8, height: 8)).fill()
+if ProcessInfo.processInfo.environment["KG_IOS_OPS_CATALOG_FIXTURE_UNIFORM"] == "1" {
+  image.unlockFocus()
+  let bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!
+  let png = bitmap.representation(using: .png, properties: [:])!
+  try png.write(to: URL(fileURLWithPath: path))
+  exit(0)
+}
 NSColor.black.setFill()
 NSBezierPath(rect: NSRect(x: 0, y: 0, width: 4, height: 4)).fill()
 NSColor.systemBlue.setFill()
@@ -394,6 +408,68 @@ catalog_collect_pngs_json() {
   }'
 }
 
+catalog_render_review_json() {
+  local out_root="$1"
+  local renderer="$ROOT/ops/render_catalog_review.py"
+  local profile="$ROOT/ops/catalog_review_profile.json"
+  local review_html="$out_root/review.html"
+  local review_manifest="$out_root/review_manifest.json"
+  local review_state="$out_root/review_state.json"
+  local render_output=""
+  local detail=""
+  if [[ ! -x "$renderer" && ! -f "$renderer" ]]; then
+    jq -n \
+      --arg root "$out_root" \
+      --arg reviewHtml "$review_html" \
+      --arg reviewManifest "$review_manifest" \
+      --arg reviewState "$review_state" \
+      '{
+        status:"warn",
+        root:$root,
+        reviewHtml:$reviewHtml,
+        reviewManifest:$reviewManifest,
+        reviewState:$reviewState,
+        error:"review-renderer-missing"
+      }'
+    return 0
+  fi
+  if render_output="$("$renderer" "$out_root" --output-root "$out_root" --profile "$profile" 2>&1)"; then
+    jq -n \
+      --arg root "$out_root" \
+      --arg reviewHtml "$review_html" \
+      --arg reviewManifest "$review_manifest" \
+      --arg reviewState "$review_state" \
+      --argjson render "${render_output:-null}" \
+      '($render // {}) as $render
+      | {
+          status:"ok",
+          root:$root,
+          reviewHtml:$reviewHtml,
+          reviewManifest:$reviewManifest,
+          reviewState:$reviewState,
+          totalImages:($render.totalImages // null),
+          promiseCounts:($render.promiseCounts // {})
+        }'
+    return 0
+  fi
+  detail="$(printf '%s' "$render_output" | tail -n 1)"
+  jq -n \
+    --arg root "$out_root" \
+    --arg reviewHtml "$review_html" \
+    --arg reviewManifest "$review_manifest" \
+    --arg reviewState "$review_state" \
+    --arg detail "$detail" \
+    '{
+      status:"warn",
+      root:$root,
+      reviewHtml:$reviewHtml,
+      reviewManifest:$reviewManifest,
+      reviewState:$reviewState,
+      error:"review-render-failed",
+      detail:($detail | select(length > 0))
+    }'
+}
+
 catalog_extract_scenario_count_from_log() {
   local log_path="$1"
   [[ -f "$log_path" ]] || return 1
@@ -450,10 +526,12 @@ catalog_inspect_pngs_json() {
     --argjson countMatches "$count_matches" '
       {
         status:(
-          if ($images | any(.pixelWidth <= 1 or .pixelHeight <= 1 or .isUniform))
+          if ($images | any(.pixelWidth <= 1 or .pixelHeight <= 1 or .isFullyTransparent))
           then "error"
           elif ($expectedPngCount != null and ($countMatches | not))
           then "error"
+          elif ($images | any(.isUniform))
+          then "warn"
           else "ok"
           end
         ),
@@ -464,16 +542,22 @@ catalog_inspect_pngs_json() {
           if $expectedPngCount == null then null else $countMatches end
         ),
         uniformImageCount:($images | map(select(.isUniform)) | length),
+        transparentImageCount:($images | map(select(.isFullyTransparent)) | length),
         minPixelWidth:($images | map(.pixelWidth) | min),
         maxPixelWidth:($images | map(.pixelWidth) | max),
         minPixelHeight:($images | map(.pixelHeight) | min),
         maxPixelHeight:($images | map(.pixelHeight) | max),
         images:$images,
+        transparentImages:($images | map(select(.isFullyTransparent) | .path)),
         errors:(
           []
           + (if ($images | any(.pixelWidth <= 1 or .pixelHeight <= 1)) then ["degenerate-dimensions"] else [] end)
-          + (if ($images | any(.isUniform)) then ["uniform-image-detected"] else [] end)
+          + (if ($images | any(.isFullyTransparent)) then ["fully-transparent-image-detected"] else [] end)
           + (if $expectedPngCount != null and ($countMatches | not) then ["png-count-mismatch"] else [] end)
+        ),
+        warnings:(
+          []
+          + (if ($images | any(.isUniform)) then ["uniform-image-detected"] else [] end)
         )
       }
     '
@@ -515,6 +599,7 @@ cmd_catalog_snapshots_json() {
   local cache_key="" cache_status="not-applicable"
   local dataset_status="not-requested" dataset_rc=0 dataset_simulator_path="" dataset_b64=""
   local container_png_count=0 salvaged="false"
+  local review_json='{"status":"skipped"}'
 
   wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -765,6 +850,14 @@ cmd_catalog_snapshots_json() {
   validation_ms=$(( phase_end_ms - phase_start_ms ))
   catalog_trace_phase "validation" "done" "wallMs=$validation_ms status=$(jq -r '.status' <<<"$validation_json")"
 
+  if [[ "$copy_rc" -eq 0 && "$(jq -r '.pngCount // 0' <<<"$pngs_json")" -gt 0 ]]; then
+    phase_start_ms="$(catalog_now_ms)"
+    catalog_trace_phase "review" "start" "outRoot=$out_root"
+    review_json="$(catalog_render_review_json "$out_root")"
+    phase_end_ms="$(catalog_now_ms)"
+    catalog_trace_phase "review" "done" "wallMs=$(( phase_end_ms - phase_start_ms )) status=$(jq -r '.status' <<<"$review_json")"
+  fi
+
   wrapper_wall_ms=$(( $(catalog_now_ms) - wrapper_start_ms ))
   payload="$(jq -n \
     --arg schema "kg.ios.catalog.v1" \
@@ -804,6 +897,7 @@ cmd_catalog_snapshots_json() {
     --argjson copyExit "$copy_rc" \
     --argjson artifacts "$pngs_json" \
     --argjson validation "$validation_json" \
+    --argjson review "$review_json" \
     --argjson simulator "$sim_payload" \
     '{
       schema:$schema,
@@ -815,7 +909,8 @@ cmd_catalog_snapshots_json() {
         elif $datasetExit != 0 then "error"
         elif $copyExit != 0 then "error"
         elif ($artifacts.pngCount // 0) == 0 then "error"
-        elif $validation.status != "ok" then "error"
+        elif $validation.status == "error" then "error"
+        elif $validation.status == "warn" or $review.status == "warn" then "warn"
         else "ok"
         end
       ),
@@ -848,6 +943,7 @@ cmd_catalog_snapshots_json() {
         validationMs:$validationMs
       },
       validation:$validation,
+      review:$review,
       cache:{
         key:(if $cacheKey == "" then null else $cacheKey end),
         root:(if $cacheRoot == "" then null else $cacheRoot end),
@@ -885,7 +981,12 @@ cmd_catalog_snapshots_json() {
         +
         (if $testExit == 0 and $copyExit == 0 and ($artifacts.pngCount // 0) == 0 then [{key:"catalog-artifacts",status:"error",exitCode:null,error:"no-png-artifacts"}] else [] end)
         +
-        (if $validation.status != "ok" then ($validation.errors | map({key:"catalog-validation",status:"error",exitCode:null,error:.})) else [] end)
+        (if $validation.status == "error" then ($validation.errors | map({key:"catalog-validation",status:"error",exitCode:null,error:.})) else [] end)
+      ),
+      warnings:(
+        (if $validation.status == "warn" then ($validation.warnings | map({key:"catalog-validation",status:"warn",exitCode:null,warning:.})) else [] end)
+        +
+        (if $review.status == "warn" then [{key:"catalog-review",status:"warn",exitCode:null,warning:($review.error // "review-sidecar-warning"),detail:($review.detail // null)}] else [] end)
       )
     }')"
   printf '%s\n' "$payload"
@@ -894,7 +995,7 @@ cmd_catalog_snapshots_json() {
   if [[ "$final_status" == "cache-miss" ]]; then
     catalog_phase_emit "cache" "miss" "reuse-build requested but cache is stale/absent — run \`catalog prepare\` first or drop --reuse-build"
   fi
-  if [[ "$final_status" != "ok" ]]; then
+  if [[ "$final_status" != "ok" && "$final_status" != "warn" ]]; then
     return 1
   fi
 }
@@ -964,9 +1065,11 @@ cmd_catalog_snapshots() {
     "[ios][catalog] dataset status=\(.dataset.status) requested=\(.dataset.requestedPath // "") simulator=\(.dataset.simulatorPath // "")",
     "[ios][catalog] cache status=\(.cache.status) key=\(.cache.key // "") root=\(.cache.root // "")",
     "[ios][catalog] timings wrapperWallMs=\(.timings.wrapperWallMs) commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs) simulatorStatusMs=\(.timings.simulatorStatusMs) containerLookupMs=\(.timings.containerLookupMs) copyMs=\(.timings.copyMs) artifactIndexMs=\(.timings.artifactIndexMs) validationMs=\(.timings.validationMs)",
-    "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
+    "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) transparentImages=\(.validation.transparentImageCount // 0) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
+    "[ios][catalog] review status=\(.review.status) html=\(.review.reviewHtml // "") manifest=\(.review.reviewManifest // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",
     "[ios][catalog] copy exitCode=\(.copy.exitCode) source=\(.copy.sourcePath // "") container=\(.copy.containerDataPath // "")",
+    (.warnings[]? | "[ios][catalog] warn key=\(.key) status=\(.status) exitCode=\(.exitCode // "") warning=\(.warning // "") detail=\(.detail // "")"),
     (.errors[]? | "[ios][catalog] \(if .status == "info" then "note" else "error" end) key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
   ' <<<"$payload"
   return "$rc"
