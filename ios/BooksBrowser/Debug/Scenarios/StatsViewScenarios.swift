@@ -117,6 +117,7 @@ private enum StatsViewFixtures {
 /// services resolve on the main actor before `@Query` reads.
 private struct StatsViewScene: View {
     let container: ModelContainer
+    let initialSummary: StatsPresentation.Summary
 
     init(entries: [VocabularyEntry], records: [ReviewRecord]) {
         let container = try! ModelContainer(
@@ -132,11 +133,20 @@ private struct StatsViewScene: View {
         }
         try? context.save()
         self.container = container
+        self.initialSummary = StatsPresentation.buildSummary(
+            from: entries,
+            reviewRecords: records,
+            forecastDays: 14,
+            now: Date()
+        )
     }
 
     var body: some View {
         AppThemeContainer {
-            StatsPresenter(filter: NotebookFilter())
+            StatsPresenter(
+                filter: NotebookFilter(),
+                initialSummary: initialSummary
+            )
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
