@@ -2,7 +2,7 @@
 name: cleanup
 description: "最快把 repo 收斂到單一真相：先盤 live state、先保住 dirty work、把非黑名單內容推進 main、再把 surviving PR rebase 到新 main。收斂優先，驗證可後置切換。"
 user-invocable: true
-version: 3.3.0
+version: 3.4.0
 ---
 
 # Cleanup：把 repo 收斂到單一真相
@@ -12,7 +12,9 @@ version: 3.3.0
 不是追求每一步完美，而是先把真相收斂。  
 不是先把所有測試跑滿，而是先保住內容、更新 main、消掉殘影、再決定驗證深度。
 
-> 一句話契約：cleanup = 先盤 live state → 先把 dirty work 變 durable → 收斂非黑名單內容到 `main` → surviving PR rebase 到新 `main` → 再做驗證 / forward-fix / doc 收尾。
+更精確地說：**cleanup 的第一責任不是清乾淨，而是保存所有 agent 已經做出的工作。**
+
+> 一句話契約：cleanup = 先盤 live state → 先把所有 dirty work 變 durable 並保住 work identity → 收斂非黑名單內容到 `main` → surviving PR rebase 到新 `main` → 再做驗證 / forward-fix / doc 收尾。
 
 ---
 
@@ -42,6 +44,31 @@ v3.3 改成：
 - 只有內容碎裂、風險高、或不適合直接留在原 branch 上時，才退回 patch / copy 流程
 
 原則：**先把 work 變 durable，再談 cleanup。**
+
+### 2.5 保存的不只是 commit，還要保存 work identity
+
+v3.4 明確補上：**cleanup 必須保存的不只是內容，還有「這份工作現在歸誰、掛在哪裡」的身份感。**
+
+只把 commit 留在 reflog、或偷偷搬到別的 branch 而不回報 mapping，都不算成功保存。
+
+必須同時做到：
+
+- 內容被保存成 commit
+- 工作被放進明確 branch / worktree
+- agent 能知道「我的工作現在在哪裡」
+
+若某份工作原本掛在 `main` 上，而 cleanup 需要讓 `main` 回到 `origin/main`，那麼：
+
+1. **先建顯式 branch**
+2. **必要時建立對應 worktree**
+3. **把工作 identity 映射清楚**
+4. **再 reset / rebase `main`**
+
+不允許的做法：
+
+- 先 reset `main`，再事後說「commit 還在 reflog」
+- 只保存 hash，不保存 branch/worktree 落點
+- 讓原 agent 從自己的工作視角感知成「東西不見了」
 
 ### 3. 驗證是策略，不是固定順序
 
@@ -204,6 +231,8 @@ git diff --stat origin/main..<branch>
 
 這是 v3.3 的第一優先級。
 
+v3.4 補充：這一步不只是在做版本控制 hygiene，而是在**先替每個 agent 的工作建立可搬運、可 rebase、可交接的身份**。
+
 ### 規則
 
 只要未提交內容符合以下條件，就**先 commit**：
@@ -224,6 +253,32 @@ git diff --stat origin/main..<branch>
 git add <files...>
 git commit -m "<prefix>: <message>"
 ```
+
+若 dirty work 目前掛在 `main`，而 `main` 稍後必須同步回 `origin/main`，先做：
+
+```bash
+git branch <blacklist-branch> main
+git worktree add <path> <blacklist-branch>   # 需要持續工作時
+```
+
+然後才允許對主 checkout 的 `main` 做 reset / rebase / cleanup。
+
+### `main`-local dirty work 的強制規則
+
+這是硬規則，不是建議：
+
+- **任何黑名單工作若目前掛在 `main`，必須先抽成顯式 branch**
+- **若該工作對應到活 agent，優先補對應 worktree**
+- **先回報 mapping，再同步 `main`**
+
+回報格式至少要有：
+
+- 原位置：`main`
+- 新 branch：`<name>`
+- 新 worktree：`<path>`（若有）
+- 保留 commits：`<sha list>`
+
+只有完成這一步，才算真正「保存所有 agent 的工作」。
 
 ### 何時不用先 commit
 
@@ -371,6 +426,9 @@ git rebase origin/main
 
 這一步的定義是：**surviving PR synchronization**。
 
+補充：若 surviving work 不是 PR，而是從 `main` 抽出的黑名單 branch，也適用同一原則。  
+也就是：**黑名單 work 不一定要 merge，但必須能在新 `main` 上繼續工作。**
+
 ---
 
 ## Phase 6 — 驗證與 forward-fix（可後置）
@@ -446,6 +504,7 @@ git rebase origin/main
 - 僅保留：
   - 主 repo `main`
   - surviving PR 對應 branch/worktree
+- 或從 `main` 抽出的黑名單 branch/worktree
 - surviving PR 都已 rebase 到最新 `main`
 - `branch_audit` 只剩黑名單 PR
 
@@ -509,10 +568,12 @@ kill -9 <pid...>   # 只在正常 kill 無效時
 永遠生效：
 
 1. 黑名單 surviving PR 不吸收、不刪，但允許 rebase / 解衝突 / force-push
-2. 主 checkout 若被活工作佔用，就用隔離 worktree 操作
-3. 不在被 merge 的 PR branch 上執行 `gh pr merge`
-4. 不 non-interactive reset 使用者正在工作的 branch
-5. doc-sync / review / test agent 若會動 git，必須隔離在 worktree
+2. 黑名單工作若原本掛在 `main`，先抽 branch/worktree，再同步 `main`
+3. 主 checkout 若被活工作佔用，就用隔離 worktree 操作
+4. cleanup 不能只保存 commit，還要保存 work identity 的 mapping
+5. 不在被 merge 的 PR branch 上執行 `gh pr merge`
+6. 不 non-interactive reset 使用者正在工作的 branch
+7. doc-sync / review / test agent 若會動 git，必須隔離在 worktree
 
 ---
 
@@ -528,6 +589,11 @@ scope: <mode + 白/黑名單>
 ### surviving PR
 - #885 back：rebase 到 <sha>，已 force-push
 - #886 codex/ios-front-techdebt：rebase 到 <sha>，已解衝突並 force-push
+
+### blacklisted work preserved
+- 原本掛在 `main` 的工作：已抽到 <branch> / <worktree>
+- preserved commits: <sha...>
+- agent remap: <old location> → <new location>
 
 ### 驗證
 - strategy: verify-first / execution-first
@@ -547,9 +613,11 @@ scope: <mode + 白/黑名單>
 
 1. `all except` 不是「完全不碰黑名單」，而是「不吸收，但要同步」。
 2. dirty work 不先 commit，cleanup 風險會暴增。
-3. `final-cleanup` 只是容器，不是第二主線。
-4. `gh pr merge` 不要在 PR branch 上跑，避免 gh 切回 `main` 撞使用者工作。
-5. squash 後 branch 是否已整合，要看 reachability / tree，不看單一 merged flag。
-6. 驗證可以後置，但**已知失敗要明講**，不能假裝全綠。
-7. 長時背景測試若不再需要，必須主動取消，不要讓它卡住 worktree 清理。
-8. docs debt 在 `all` / `all except` 是正式收斂項，不是附帶 housekeeping。
+3. 只保存 commit、不保存 branch/worktree mapping，agent 仍會感知成「工作被清掉」。
+4. 若黑名單工作掛在 `main`，先抽 branch/worktree，再 reset `main`；反過來做會造成工作身份消失。
+5. `final-cleanup` 只是容器，不是第二主線。
+6. `gh pr merge` 不要在 PR branch 上跑，避免 gh 切回 `main` 撞使用者工作。
+7. squash 後 branch 是否已整合，要看 reachability / tree，不看單一 merged flag。
+8. 驗證可以後置，但**已知失敗要明講**，不能假裝全綠。
+9. 長時背景測試若不再需要，必須主動取消，不要讓它卡住 worktree 清理。
+10. docs debt 在 `all` / `all except` 是正式收斂項，不是附帶 housekeeping。
