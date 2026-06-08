@@ -267,11 +267,11 @@ IN 視圖拆分：screen **18** / overlay **17**。
 
 ---
 
-## RELOCATE 清單（surface 真實存在但歸錯 slice，搬遷不新建）
+## RELOCATE 清單（surface 真實存在但歸錯 slice，搬遷不新建）— ✅ campaign 2 已落地
 
-- **Podcast Series Card** — scenario 在 `BookshelfScenarios.swift:37-51`，搬至 podcast slice
-- **Podcast Continue Rail Card** — scenario 在 `BookshelfScenarios.swift:57-69`，搬至 podcast slice
-- 搬遷後 **Bookshelf surface** 移除 podcast 卡，僅剩 Book Card + Loading（見 CUT collapse）
+- **Podcast Series Card** — ✅ 搬至 podcast slice，現為 `block("Podcast Series Card", .podcast)`（`PodcastShelfCardsScenarios.swift`）
+- **Podcast Continue Rail Card** — ✅ 搬至 podcast slice，現為 `block("Podcast Continue Rail Card", .podcast)`（同檔）
+- 搬遷後 **Bookshelf surface** 已移除 podcast 卡，僅剩 Book Card + Loading（collapse 待後續 campaign，見 CUT 清單）
 
 ---
 

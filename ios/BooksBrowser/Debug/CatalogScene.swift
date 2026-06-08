@@ -208,6 +208,11 @@ struct CatalogScene: View {
             .init(id: "subscription_views", surfaces: [block("Subscription Views · Gate Card", .monetization)], register: SubscriptionViewsScenarios.register),
             .init(id: "podcast_continue_card", surfaces: [block("Podcast Continue Card", .podcast)], register: PodcastContinueCardScenarios.register),
             .init(
+                id: "podcast_shelf_cards",
+                surfaces: [block("Podcast Series Card", .podcast), block("Podcast Continue Rail Card", .podcast)],
+                register: PodcastShelfCardsScenarios.register
+            ),
+            .init(
                 id: "settings_actions",
                 surfaces: [
                     eng("Settings Actions · Plan Table", .settings),
