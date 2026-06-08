@@ -15,15 +15,21 @@ verified_against: 230f6c16
 
 ## Summary
 
-| 指標 | 數 |
-|---|---|
-| IN — 視圖（screen + overlay） | **35** |
-| IN — 必要組件（去重後唯一） | **27** |
-| CUT — 該砍 catalog surface | **58** |
-| MISSING — app 有但 catalog 缺 | **18**（28 − 3 campaign 3a 落地 − 7 scout 驗證已覆蓋/N-A）|
-| RELOCATE — surface 真實存在但歸錯 slice | **3** |
+> **2026-06-09 收斂校正**：下方「處方」欄是原始規劃估計；「現況」欄是 CatalogScene 源碼實測（CUT 爭戰後）。最大修正 = **組件數被嚴重低估**：10 個真組件原被誤宣告為 `eng()`（藏在 engineering lane、未計數），已 reclassify 回 `block()`。故真實 IN 遠高於原估 62。
 
-IN 視圖拆分：screen **18** / overlay **17**。
+| 指標 | 處方（原估） | 現況（源碼實測，終局） |
+|---|---|---|
+| IN — screen（feature-surface） | 18 | **18** |
+| IN — overlay | 17 | **13** |
+| IN — 必要組件（block） | 27 | **45**（+10 從 eng lane 正名 + campaign 3a/2 新增） |
+| **IN 合計** | 62 | **76** |
+| eng（OUT，誠實 lane-filtered，不計 IN） | （未列） | **5**（KG Vocab Row／Pending Vocab Presenter／Review Fold ×3） |
+| **catalog surface 總數** | — | **81** |
+| CUT — 該砍 | 58 | 已砍 ~41（含 Bookshelf grab-bag）；餘為已 reclassify 或 eng-lane 化 |
+| MISSING — app 有但 catalog 缺 | 18 | 18（多數耦合，見下） |
+| RELOCATE | 3 | ✅ 3 已落地 |
+
+**lane 真相修正**：gallery 的 engineering-only lane 曾因 stale profile eligibility 壓過 declared kind 而誤標（Selection Toolbar 等被當 engineering）；已修 `classify_lane` 讓 declared 權威（commit b9691720）。現 eng lane = 真正的 5 個工程內構件。
 
 ### 計數契約（可復現）
 **「必要組件」= 有自身 sourceFile + 多於一個可區分狀態 + 使用者可指名的具名視圖物件**。凡「以 scenario 覆蓋為畫面狀態」「折入母視圖狀態」者**不計入組件數**，僅作母視圖的 state 列出。主表中被計數者標 `[組件]`，折入者標 `(折入狀態)`。
