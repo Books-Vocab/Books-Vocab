@@ -338,7 +338,7 @@ extension TodayReviewPresenter {
         let buttonsDisabled = false
 
         return HStack(spacing: appSkin.metrics.sectionHeaderGap) {
-            Button { flingCard(direction: -1, callback: onForgot) } label: {
+            Button { flingCard(direction: -1, source: "button", callback: onForgot) } label: {
                 HStack(spacing: AppSpacing.s1) {
                     Image(systemName: "xmark")
                     Text("忘記".localized)
@@ -362,7 +362,7 @@ extension TodayReviewPresenter {
             .opacity(forgotButtonOpacity)
             .animation(spring, value: swipeIntensity)
 
-            Button { flingCard(direction: 1, callback: onRemembered) } label: {
+            Button { flingCard(direction: 1, source: "button", callback: onRemembered) } label: {
                 HStack(spacing: AppSpacing.s1) {
                     Image(systemName: "checkmark")
                     Text("記得".localized)

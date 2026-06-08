@@ -44,6 +44,9 @@
 
 import Foundation
 import os
+#if canImport(QuartzCore)
+import QuartzCore
+#endif
 
 /// App-wide perf categories. `rawValue` is the Console/Xcode category string and
 /// the `KG_PERF_LOG` token. Add cases as new subsystems get instrumented.
@@ -124,6 +127,12 @@ final class PerfChannel: @unchecked Sendable {
     }
     private let rate = OSAllocatedUnfairLock(initialState: RateState())
     private static let flushSeconds: Double = 1.0
+    /// Active CADisplayLink frame samplers keyed by label. Lets a caller bracket a
+    /// window (a fling, a scroll) and get the real per-frame cadence the main thread
+    /// produced — something SwiftUI body-eval marks miss, because Core Animation
+    /// interpolates modifiers (offset/opacity) at the render layer without re-running
+    /// the body each frame. Summary on stop: frames / dur / fps / maxGap / stalls.
+    private let frameSamplers = OSAllocatedUnfairLock(initialState: [String: FrameSampler]())
     #endif
 
     init(_ category: PerfCategory) {
@@ -244,7 +253,76 @@ final class PerfChannel: @unchecked Sendable {
         }
         if let summary { log.debug("rate \(summary, privacy: .public)") }
     }
+
+    /// CADisplayLink-backed per-frame cadence recorder. Created on start, retained by
+    /// the run loop until invalidated on stop. NSObject for the @objc selector target.
+    final class FrameSampler: NSObject {
+        private var link: CADisplayLink?
+        private let log: Logger
+        private let label: String
+        private let start = DispatchTime.now()
+        private var lastFrame: DispatchTime
+        private var frames = 0
+        private var maxGapMs: Double = 0
+        private var maxGapAtMs: Double = 0   // ms-since-start of the worst gap → pins the freeze to the timeline
+        private var stalls = 0   // inter-frame gaps > 33ms (≈ a dropped frame at 60fps)
+
+        init(log: Logger, label: String) {
+            self.log = log
+            self.label = label
+            self.lastFrame = .now()
+            super.init()
+            let dl = CADisplayLink(target: self, selector: #selector(onFrame))
+            dl.add(to: .main, forMode: .common)
+            self.link = dl
+        }
+
+        @objc private func onFrame() {
+            let now = DispatchTime.now()
+            let gapMs = Double(now.uptimeNanoseconds &- lastFrame.uptimeNanoseconds) / 1_000_000
+            lastFrame = now
+            frames += 1
+            if frames > 1 {   // first callback's gap includes setup latency — skip it
+                if gapMs > maxGapMs {
+                    maxGapMs = gapMs
+                    maxGapAtMs = Double(now.uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000
+                }
+                if gapMs > 33 { stalls += 1 }
+            }
+        }
+
+        func stop() {
+            link?.invalidate()
+            link = nil
+            let totalMs = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000
+            let fps = totalMs > 0 ? Double(frames) / (totalMs / 1000) : 0
+            log.debug("\(self.label).summary frames=\(self.frames) dur=\(totalMs, format: .fixed(precision: 1))ms fps=\(fps, format: .fixed(precision: 0)) maxGap=\(self.maxGapMs, format: .fixed(precision: 1))ms maxGapAt=\(self.maxGapAtMs, format: .fixed(precision: 1))ms stalls=\(self.stalls)")
+        }
+    }
     #endif
+
+    /// Begin a per-frame cadence sample under `label`; pair with `stopFrameSampler`.
+    /// DEBUG + main-thread only (CADisplayLink lives on the main run loop); a no-op in
+    /// RELEASE and when the category is disabled. Re-starting an active label restarts.
+    func startFrameSampler(_ label: String) {
+        #if DEBUG
+        guard PerfLog.isEnabled(category) else { return }
+        frameSamplers.withLock { samplers in
+            samplers[label]?.stop()
+            samplers[label] = FrameSampler(log: log, label: label)
+        }
+        #endif
+    }
+
+    /// End the `label` sample and emit its summary line. Idempotent.
+    func stopFrameSampler(_ label: String) {
+        #if DEBUG
+        frameSamplers.withLock { samplers in
+            samplers[label]?.stop()
+            samplers[label] = nil
+        }
+        #endif
+    }
 }
 
 /// Handle returned by `PerfChannel.interval`. `end()` closes the signpost, logs

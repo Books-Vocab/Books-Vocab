@@ -58,7 +58,16 @@ struct NotebookListView: View {
     }
 
     var body: some View {
+        let _bodyStart = DispatchTime.now()
         let _ = PerfLog.review.tick("notebookList.body", "entries=\(allEntries.count)")
+        // While a review is presented (cover over this list), this list should NOT
+        // need to re-evaluate. If it does, the flip's background DB write invalidated
+        // our @Query → host re-render → the cover's content closure re-runs →
+        // throwaway TodayReviewState rebuild. One-shot mark times each such re-eval
+        // against the fling timeline.
+        let _ = { if detailState.activeReviewSession != nil {
+            PerfLog.review.mark("notebookList.reeval", "duringReview")
+        } }()
         let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
         let (stats, _) = PerfLog.review.measure("notebookList.stats", "n=\(allEntries.count)") {
             NotebookStatsCalculator.compute(
@@ -89,6 +98,13 @@ struct NotebookListView: View {
         let editorialSectionGap: CGFloat = AppSpacing.s1   // 4pt  (was 8pt — user feedback 緊湊)
         let editorialGridSpacing: CGFloat = AppSpacing.s1  // 4pt  (was 8pt — 卡片之間更貼)
         let editorialTopInset: CGFloat = AppSpacing.zero   // 0    (was 4pt — 頂部不留 inset)
+
+        // Synchronous compute cost of the let-chain above (stats + filtered + sort
+        // over 636 entries) before any view-tree construction. If this stays small
+        // while settle.frames maxGap is ~140ms, the freeze is NOT this compute — it's
+        // the @Query refetch (pre-body) + SwiftUI tree rebuild, both downstream of the
+        // same review-write invalidation.
+        let _ = PerfLog.review.mark("notebookList.letchain", "\(PerfChannel.ms(since: _bodyStart))ms")
 
         NavigationStack(path: $navigationPath) {
             ScrollView {
