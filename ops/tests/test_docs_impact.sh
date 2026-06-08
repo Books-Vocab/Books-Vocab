@@ -309,6 +309,7 @@ fi
 
 ./ops/docs_impact.py --files ops/docs_lint.sh --explain >"$tmpdir/explain.out"
 grep -q "docs_impact: match_type legend" "$tmpdir/explain.out"
+grep -q "docs_impact: recommended review order" "$tmpdir/explain.out"
 grep -q '^EXCLUDED contract.host_topology ' "$tmpdir/explain.out"
 grep -q 'match_type=exact' "$tmpdir/explain.out"
 grep -q 'excluded_by=!ops/docs_lint.sh' "$tmpdir/explain.out"
@@ -323,6 +324,8 @@ grep -q '"excluded_by": \[' "$tmpdir/explain.json"
 grep -q '"!ops/docs_lint.sh"' "$tmpdir/explain.json"
 
 ./ops/docs_impact.py --files ops/docs_lint.sh ops/devops_kg_safe.sh --explain >"$tmpdir/explain_partial.out"
+grep -q '^IMPACT runbook.system ' "$tmpdir/explain_partial.out"
+grep -q '^IMPACT policy.safety ' "$tmpdir/explain_partial.out"
 grep -q '^IMPACT policy.safety ' "$tmpdir/explain_partial.out"
 grep -q 'match_type=suppressed-partial' "$tmpdir/explain_partial.out"
 grep -q 'excluded_changed=ops/docs_lint.sh' "$tmpdir/explain_partial.out"
