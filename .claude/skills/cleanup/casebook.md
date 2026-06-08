@@ -1,88 +1,85 @@
 # Cleanup Casebook
 
-這份文件記錄**實戰案例與決策模式**。  
-原則是：看到相似症狀時，可以直接比對這裡的案例，不必再從頭推理一次。
-
 ---
 
-## Case 1 — Blacklist Work Hung on `main`
+## Case 1 — 黑名單工作掛在 `main`
 
 ### 症狀
 
 - 某 agent 直接在 `main` 上 commit
-- 但 cleanup 需要讓 `main` 回到 `origin/main`
-- agent 之後抱怨自己的工作「消失了」
+- 但這批工作現在是黑名單
+- 你又需要把 `main` 同步回最新 shared baseline
 
 ### 正確做法
 
-1. 從 `main` 抽出顯式 branch
-2. 必要時建立對應 worktree
-3. 回報 mapping
-4. 再 reset / rebase `main`
-
-### 不要做什麼
-
-- 先 reset `main`
-- 事後才說 commit 還在 reflog
+1. 從 `main` 抽出黑名單 branch
+2. 必要時建立 worktree
+3. 回報 preserved mapping
+4. 再同步 `main`
 
 ### 為什麼
 
-reflog 只保存內容，不保存 work identity。  
-對 agent 來說，沒有 branch/worktree 落點就等於工作被清掉。
+不這樣做，雖然 commit 可能還在 reflog，但對原 agent 來說工作身份已經消失。
 
 ---
 
-## Case 2 — Promote Committed Subset from Active Branch
+## Case 2 — Promote 活 branch 的已提交子集
 
 ### 症狀
 
-- `catalog/scope-campaign` 還在持續修改
-- 你想先把其中已成熟的 5 個 commits 拉進 `main`
-- 不想打斷活 branch 本體
+- `catalog/scope-campaign` 還在修改
+- 你想先把其中 5 個已提交 commits 拉進 `main`
+- 不想影響 branch 本體
 
 ### 正確做法
 
-1. 建 integration worktree
-2. 從 `main` 出發 `cherry-pick` 目標 commits
-3. 推進 `main`
-4. 其他 blacklist rebase 到新 `main`
+1. 用 integration worktree 從 `main` 出發
+2. `cherry-pick` 那 5 個 commits
+3. push 到 `main`
+4. 其他黑名單 rebase 到新 `main`
 5. 活 branch 本體保持不動
-
-### 結果
-
-- `main` 吸收成熟成果
-- 活 branch 保持工作節奏
-- 之後那條 branch rebase 時，被投影進 `main` 的 commits 會被 skip
 
 ### 意義
 
-把成熟內容升格成 shared baseline，但不擾動正在修改的 branch。
+把成熟成果升格成 shared baseline，同時不打斷活工作。
 
 ---
 
-## Case 3 — Projected Then Rebase
+## Case 3 — 已投影進 `main` 的 branch 再 rebase
 
 ### 症狀
 
-- 某條 branch 的 commits 先被 promote / cherry-pick 進 `main`
-- 之後你又對那條 branch 做 `rebase main`
-
-### 會看到什麼
-
-- `warning: skipped previously applied commit ...`
+- 某 branch 的 commits 先被投影進 `main`
+- 之後對 branch 做 `rebase main`
+- 出現 `skipped previously applied commit`
 
 ### 正確解讀
 
-這通常代表：
-
-- 這些 commits 的語意已經在 `main`
-- branch 現在只剩沒被吸收的增量
-
-不是資料丟失。
+這通常是成功，不是失敗。  
+代表那些 commits 已經等價存在於 `main`，branch 之後只剩真正未吸收的增量。
 
 ---
 
-## Case 4 — Draft PR Blocks Merge
+## Case 4 — 黑名單 PR 不是不動，而是要同步
+
+### 症狀
+
+- 使用者說某 PR 是黑名單
+- 它不應該這輪 merge
+
+### 正確做法
+
+- 不吸收進 `main`
+- 但 `main` 一旦前進，它就必須 rebase 到新 `main`
+- 有 remote / PR 時 force-push 回去
+
+### 為什麼
+
+黑名單代表暫時保留，不代表允許 stale。
+
+---
+
+## Case 5 — Ready / Draft 只是 GitHub workflow state
 
 ### 症狀
 
@@ -95,22 +92,20 @@ gh pr ready <N>
 gh pr merge <N> --squash --delete-branch
 ```
 
-### 重點
+### 為什麼
 
-這不是 code conflict，而是 GitHub workflow state。
+這不是 code conflict，只是 PR 狀態未切換。
 
 ---
 
-## Case 5 — Merged PR but Local/Remote Branch Still Alive
+## Case 6 — 已 merge 但 remote branch 殘留
 
 ### 症狀
 
 - PR 已 merge
-- `branch_audit` 還看到 `merged-pr-but-ahead`
+- `branch_audit` 還看到 merged branch ahead
 
 ### 正確做法
-
-先確認 branch 內容是否已在 `main`，再刪：
 
 ```bash
 git push origin --delete <branch>
@@ -120,27 +115,5 @@ git fetch --prune
 
 ### 為什麼
 
-cleanup 的終態不是「PR merged」，而是「殘影也清掉」。
-
----
-
-## Case 6 — Background Verification Blocks Worktree Cleanup
-
-### 症狀
-
-- `ios_test.sh --all-targets` 還在跑
-- 但策略已切成「先收斂再驗證」
-- worktree remove 被卡住
-
-### 正確做法
-
-```bash
-ps -Ao pid,ppid,command | rg 'final-cleanup|ios_test.sh|ios_ops.sh build|xcodebuild'
-kill <pid...>
-kill -9 <pid...>   # 只在正常 kill 無效時
-```
-
-### 重點
-
-長時背景驗證不是 sacred；當策略改變時，應主動取消，不要讓它持有第二真相。
+真正的收斂不是「PR merged」，而是「殘影也消失」。
 
