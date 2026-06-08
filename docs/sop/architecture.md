@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: 94a66d63
+verified_against: 84f6998e
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 

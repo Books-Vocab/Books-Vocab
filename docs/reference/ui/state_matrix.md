@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: d0ecbc2a
+verified_against: 84f6998e
 -->
 # UI State Matrix
 
@@ -469,4 +469,3 @@ Preview matrix 已補齊：
 #### Priority 3
 - Bookshelf podcast sync running 的微 indicator（pull-to-refresh 期間 OK，自動 sync 期間缺）
 - `warmFollowedSeriesAudio` 失敗的 telemetry（純 silent，不需 UI）
-

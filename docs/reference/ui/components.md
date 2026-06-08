@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: e264e4ce
+verified_against: 84f6998e
 -->
 # UI Component & Pattern Inventory
 
