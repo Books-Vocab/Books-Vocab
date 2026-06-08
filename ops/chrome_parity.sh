@@ -26,6 +26,10 @@
 #         IOS_REF_DIR  iOS reference PNG folder (default: ~/Desktop/IOS截圖參考)
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXT_DIR="$(cd "$SCRIPT_DIR/../chrome-extension" && pwd)"
 cd "$EXT_DIR"
@@ -34,6 +38,10 @@ AUDIT=0
 ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --audit)
       AUDIT=1
       shift
