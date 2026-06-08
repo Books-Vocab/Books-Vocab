@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 94a66d63
+verified_against: a281cba6
 -->
 # BooksBrowser iOS 開發技能
 
@@ -410,22 +410,18 @@ DEBUG-only 元件 catalog，讓 simulator 啟動時直接進入「狀態矩陣�
 - `ios/BooksBrowser/Debug/CatalogScene.swift` — 入口 view + `static func buildPlaybook()`(BooksBrowserTests 也 reuse 同一份 surface registration)
 - `ios/BooksBrowser/Debug/Scenarios/*Scenarios.swift` — 每個 surface 一檔，通過 `register(in:)` 加 scenarios
 
-**目前涵蓋**（9 groups / 60 scenarios — 數字由 `CatalogCoverageTests` 把關，新增 surface 漏掉 `register(in:)` 會紅）：
-- Settings × 6（Logged Out / Subscribed Active / Subscription Loading / Deleting Account / Pricing Unavailable / Debug Backend Local）
-- Today Review × 4（Front / Back / Completed / Autoplay）
-- Bookshelf × 5（Card Progress / Card Placeholder / Empty / With Books / Loading）
-- Welcome × 4（Step 1 Capture / Step 2 Link / Step 3 Review / Step 3 Dark）
-- Notebooks · Card × 4（Hero heavy / Hero fresh / Grid two-up / Hero long-name truncate）
-- Notebooks · Stack × 22（stress / depth 1-4 層 / active·inactive × light·dark state / a11y / editorial seeds / cover composition）
-- Notebook Detail · Row × 6（happy / long word truncate / long translation / 4-digit numbers / 320pt narrow / accessibility3）
-- Notebook Detail · CTA Pill × 5（due only / unlearned only / both / large numbers / no-CTA）
-- Design Tokens × 4（Palette light·dark / Typography / Radii & Spacing）
+**Taxonomy 是 source of truth（2026-06）**：每個 Playbook category 由 `CatalogScene.Manifest` 的 `CatalogSurface` 宣告三個維度 — `kind`（`SurfaceKind`：`featureScreen` / `overlay` / `buildingBlock` / `engineering`，決定 lane）、`feature`、`screen`（`ScreenID`，**僅 `featureScreen` 有**，= app 真實全螢幕身分）。**不要在 doc 手抄 group / scenario 數**（必漂）：權威清單一律讀 source（`CatalogScene.Manifest.surfaces`）與 `CatalogCoverageTests`。
 
-**未涵蓋**（留待 future phase）：
-- Reader 本體（Readium SDK runtime 太重，需先抽 `ReaderViewPresenter` chrome layer）
-- Podcast Player（需先拆 `PodcastPlayerPresenter`）
-- Auth 多狀態（authenticating / error，需先把 `AuthManager` 抽 protocol）
-- Vocab WordDetail（無現成 preview factory，待補 stub）
+契約由 `CatalogCoverageTests` 強制（漏 register、重複螢幕、缺宣告、缺覆蓋都會紅）：
+- **register 完整性**：`buildPlaybook()` 註冊的 group 必須 = `Manifest.categoryNames`。
+- **一螢幕一 surface**：每個 `featureScreen` 的 `screen` 不可重複（防三胞胎，例如舊 `Today Review` / `Today Review View` / `Today Review Presenter` 渲染同一畫面的歷史病）。
+- **kind 宣告完整**：每個 category 都有 `CatalogSurface`（無漏宣告 lane）。
+- **覆蓋無缺口**：`Set(ScreenID.allCases) − Manifest.pendingCoverage` 必須全被 `featureScreen` 覆蓋（`pendingCoverage` 目前為空 = 全覆蓋；它是顯式遞減的 debt set，不能對已覆蓋螢幕說謊）。
+- **index round-trip**：`Manifest.indexJSONData()` 必須一 category 一筆、各帶 source-declared kind/feature/screen。
+
+**離線 gallery 消費 `catalog_index.json`（不再猜）**：snapshot run（`CatalogSnapshotTests`）在 PNG 旁吐 `catalog_index.json`（`category → {kind, feature, screen}`，來自 `Manifest.indexJSONData()`）；`ops/catalog_review_*.py` 讀它決定 lane/feature/screen，**退役**舊的透明邊緣像素 sniff + `Presenter`/` View` regex（僅在 index 缺失的 legacy artifact 才降級為 fallback）。改 lane/feature 分類 = 改 iOS source 的 `CatalogSurface`，不是改 Python heuristic。
+
+**仍排除**：Reader 本體（Readium SDK runtime 太重，catalog 只蓋 `Reader View · Chrome` 層；ReadiumNavigator 為嵌入式不獨立）。
 
 **新增 surface scenarios 範本**：
 
@@ -449,7 +445,11 @@ enum FooScenarios {
 #endif
 ```
 
-寫完別忘了在 `CatalogScene.buildPlaybook()` 加一行 `FooScenarios.register(in: pb)`，並把新 group 名加進 `CatalogCoverageTests.expectedGroups`（漏 register 會被該 test 擋紅）。
+寫完在 `CatalogScene.Manifest.entries` 加一筆 `ManifestEntry`，用 factory 宣告 surface 的 kind/feature/screen 再掛 `register`：
+- 全螢幕 → `screen("Foo View", .someFeature, .fooScreen)`（先在 `ScreenID` 加 case；一個 case 對一個 `featureScreen`）
+- 浮層 → `overlay("Foo Sheet", .someFeature)`；元件 → `block("Foo Card", .someFeature)`；dev harness → `eng("Foo Presenter", .someFeature)`
+
+漏宣告 / 漏 register / 螢幕重複 / 覆蓋缺口都會被 `CatalogCoverageTests` 擋紅。**真實全螢幕優先走統一 seam**（seeded in-memory `ModelContainer` + 注入 `CatalogPreviewAuth` + DEBUG `skipCatalogTasks` 跳 `.task` 副作用），別依賴 `AuthManager.shared` 殘留 session（曾致 Settings 顯示已登入卻標 logged-out 的像素說謊）。範式見 `VocabularyListViewScenarios` / `NotebookListViewScenarios`。
 
 **simctl 截圖協作**：
 
@@ -461,7 +461,7 @@ enum FooScenarios {
 
 ### Catalog Snapshot Export（PlaybookSnapshot → PNG batch）
 
-`BooksBrowserTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把目前 catalog 註冊的 69 個 scenarios × 2 appearances（iPhone15Pro portrait light/dark）渲染成 PNG，**不用人工逐頁截**。
+`BooksBrowserTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把目前 catalog 註冊的全部 scenarios × 2 appearances（iPhone15Pro portrait light/dark）渲染成 PNG，並在 root 旁吐 `catalog_index.json`（taxonomy ground truth），**不用人工逐頁截**。（scenario 數隨 source 變動，不在此手記；以 `CatalogScene.Manifest` 為準。）
 
 **若目標是行銷 / App Store 素材，優先從 capture profile 進，不要直接手拼 snapshot 與 renderer 命令**：
 
