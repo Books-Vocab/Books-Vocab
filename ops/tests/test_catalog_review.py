@@ -287,6 +287,39 @@ def test_list_surface_default_populated_equivalence():
     assert "default" not in surf2["missingFacets"]
 
 
+def test_static_feature_surface_does_not_owe_the_data_lifecycle():
+    """A flat per-lane expectation makes the gap column lie: a static screen
+    (onboarding steps, a settings form, a presentational card) that legitimately
+    has no empty/loading/error state gets flagged as missing all three — noise,
+    not backlog. A surface owes the data lifecycle only if it actually exhibits
+    one (populated/empty/loading); otherwise it owes just `default`. Derived from
+    the shots themselves, so it stays self-maintaining (no per-surface curation)."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+
+    # Static screen: only default + quality facets, never a data-lifecycle state.
+    static_items = [
+        _surface_item("Welcome", "feature-surface", "feature-surface", "w1", "default"),
+        _surface_item("Welcome", "feature-surface", "feature-surface", "w2", "a11y"),
+        _surface_item("Welcome", "feature-surface", "feature-surface", "w3", "overflow"),
+    ]
+    surf = {s["surface"]: s for s in taxonomy.build_surface_index(static_items)}["Welcome"]
+    assert surf["expectedFacets"] == ["default"]
+    assert surf["coverageGap"] == 0          # empty/loading/error are NOT owed
+    assert surf["coverageTracked"] is True   # still a tracked feature-surface
+
+    # Data-bearing screen: exhibits a lifecycle state, so it owes the full set
+    # and a genuinely-absent lifecycle facet stays a real gap.
+    data_items = [
+        _surface_item("Today Review", "feature-surface", "feature-surface", "t1", "default"),
+        _surface_item("Today Review", "feature-surface", "feature-surface", "t2", "populated"),
+    ]
+    surf2 = {s["surface"]: s for s in taxonomy.build_surface_index(data_items)}["Today Review"]
+    assert "empty" in surf2["expectedFacets"]
+    assert "empty" in surf2["missingFacets"]
+    assert "loading" in surf2["missingFacets"]
+    assert "error" in surf2["missingFacets"]
+
+
 def test_asset_kind_uses_transparent_pixel_signal():
     """Name tokens can't tell a component from a screen (both are 1179x2556).
     A transparent margin (component rendered on an empty canvas) overrides the
@@ -437,7 +470,10 @@ def test_catalog_review_cli_gaps_query(tmp_path: Path):
     source_root = tmp_path / "snapshots"
     screen_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     screen_dir.mkdir(parents=True)
-    (screen_dir / "Default.png").write_bytes(b"png")  # default-only → missing populated/empty/loading/error
+    # Data-bearing (it ships a populated state), so it owes the full lifecycle and
+    # genuinely misses loading. A default-ONLY screen would be static and owe
+    # nothing beyond default — that's the honest-gap behaviour, not a query bug.
+    (screen_dir / "Populated.png").write_bytes(b"png")  # → missing empty/loading/error
     badge_dir = source_root / "iPhone 15 Pro portrait" / "iCloud_Progress_Badge"
     badge_dir.mkdir(parents=True)
     (badge_dir / "Idle.png").write_bytes(b"png")  # building-block → untracked, must never show as a gap
