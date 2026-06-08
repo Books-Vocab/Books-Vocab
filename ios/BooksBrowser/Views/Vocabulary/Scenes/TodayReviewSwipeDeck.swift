@@ -96,22 +96,42 @@ extension TodayReviewPresenter {
     }
 
     /// 統一的甩出動畫 — swipe 和按鈕共用
-    func flingCard(direction: CGFloat, velocity: CGFloat = 1200, callback: @escaping () -> Void) {
+    func flingCard(direction: CGFloat, velocity: CGFloat = 1200, source: String = "swipe", callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissPhase = .animatingOut
         frozenSwipeIntensity = swipeIntensity
         flingHapticTrigger += 1
         let _flingStart = DispatchTime.now()
-        PerfLog.review.mark("fling.start", "dir=\(direction) vel=\(velocity)")
+        PerfLog.review.mark("fling.start", "source=\(source) dir=\(direction) vel=\(velocity)")
+        // Record the real per-frame cadence across the fly-off window. Distinguishes
+        // "animation ran smoothly to completion" from "main thread idle, advance gated
+        // by the 0.8s safety net" — body-eval marks can't see this (CA interpolates the
+        // offset at the render layer without re-running the body each frame).
+        PerfLog.review.startFrameSampler("fling.frames")
+        // Second sampler over a WIDER window: fling.frames stops at fling.complete
+        // (~200ms) and so cannot see the post-landing reinit storm (the detached DB
+        // save → @Query invalidation → cover-closure re-run lands async, AFTER the
+        // fling). settle.frames runs the full 800ms (stopped in the safety Task) to
+        // capture whether that storm actually drops frames — the link the earlier
+        // measurement window structurally missed.
+        PerfLog.review.startFrameSampler("settle.frames")
 
         let distance = screenWidth * 1.3 + min(velocity / 2000, 0.5) * screenWidth * 0.4
 
-        // Completion block — shared between animation callback and safety fallback
-        let completeFling: @MainActor @Sendable () -> Void = { [self] in
-            guard dismissPhase == .animatingOut else { return }
+        // Completion block — shared between animation callback and safety fallback.
+        // `caller` tags WHICH path fired it: `animation` = withAnimation completion
+        // fired (and anim_dur ≈ how long .logicallyComplete took for the spring);
+        // `safetyNet` = the 0.8s fallback fired because completion never did. Decisive
+        // discriminator for the flip→next-card pause root cause.
+        let completeFling: @MainActor @Sendable (String) -> Void = { [self] caller in
+            guard dismissPhase == .animatingOut else {
+                PerfLog.review.mark("fling.complete.skip", "caller=\(caller) at=\(PerfChannel.ms(since: _flingStart))ms (already idle)")
+                return
+            }
+            PerfLog.review.stopFrameSampler("fling.frames")
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
-            PerfLog.review.mark("fling.complete", "anim_dur=\(PerfChannel.ms(since: _flingStart))ms (fling.start->complete)")
+            PerfLog.review.mark("fling.complete", "caller=\(caller) anim_dur=\(PerfChannel.ms(since: _flingStart))ms (fling.start->complete)")
             TodayReviewState.flingClock = .now()
             PerfLog.review.measure("fling.transaction") {
                 withTransaction(noAnim) {
@@ -125,20 +145,25 @@ extension TodayReviewPresenter {
             }
             DispatchQueue.main.async {
                 suppressTransition = false
+                PerfLog.review.mark("suppress.reset", "at=\(PerfChannel.ms(since: _flingStart))ms (fling.start->suppressOff)")
             }
         }
 
         withAnimation(AppMotion.swipeFlingSpring, completionCriteria: .logicallyComplete) {
             swipeOffset = direction * distance
         } completion: {
-            completeFling()
+            completeFling("animation")
         }
 
         // Safety fallback: if animation completion never fires (macOS edge case),
         // force-complete after a generous timeout to prevent UI deadlock.
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
-            completeFling()
+            completeFling("safetyNet")
+            // Always close the wide window here (the safety Task runs regardless of
+            // whether completeFling skipped) → 800ms frame trace spanning fling +
+            // reinit storm.
+            PerfLog.review.stopFrameSampler("settle.frames")
         }
     }
 }
