@@ -95,7 +95,9 @@
         "Card Document",
         "Vocab Components",
         "Vocab Shell",
-        "Archived Vocab"
+        "Archived Vocab",
+        "Translation Vocab",
+        "KG Empty"
       ]
     },
     {
@@ -123,7 +125,8 @@
       "name": "Settings",
       "needles": [
         "Settings",
-        "Account Section"
+        "Account Section",
+        "Delete Account"
       ]
     },
     {
