@@ -135,7 +135,7 @@ struct CatalogScene: View {
             ),
             .init(
                 id: "notebooks",
-                surfaces: [block("Notebooks · Stack", .notebook), block("Notebooks · Card", .notebook)],
+                surfaces: [block("Notebooks · Card", .notebook)],
                 register: NotebooksScenarios.register
             ),
             .init(
