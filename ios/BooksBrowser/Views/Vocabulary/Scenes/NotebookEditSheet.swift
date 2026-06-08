@@ -36,7 +36,7 @@ struct NotebookEditSheet: View {
     @State private var selectedColor: String?
     @State private var selectedPattern: String?
     @State private var coverImagePath: String?
-    @State private var originalCoverImagePath: String?
+    private let originalCoverImagePath: String?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isProcessingPhoto = false
     @State private var photoError: String?
@@ -50,13 +50,13 @@ struct NotebookEditSheet: View {
             _selectedColor = State(initialValue: nil)
             _selectedPattern = State(initialValue: nil)
             _coverImagePath = State(initialValue: nil)
-            _originalCoverImagePath = State(initialValue: nil)
+            self.originalCoverImagePath = nil
         case .edit(let n, let c, let p, let img):
             _name = State(initialValue: n)
             _selectedColor = State(initialValue: c)
             _selectedPattern = State(initialValue: p)
             _coverImagePath = State(initialValue: img)
-            _originalCoverImagePath = State(initialValue: img)
+            self.originalCoverImagePath = img
         }
     }
 

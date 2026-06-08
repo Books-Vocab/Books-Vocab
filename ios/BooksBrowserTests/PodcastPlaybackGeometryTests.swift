@@ -90,7 +90,8 @@ struct PodcastWordProgressTests {
         var t = 0.0
         while t < 0.6 {
             let r = PodcastWordProgress.locate(time: t, words: words)
-            #expect(r.index >= 0)
+            let expected = min(Int(t / 0.2), words.count - 1)
+            #expect(r.index == expected, "t=\(t) should resolve to word \(expected), got \(r.index)")
             #expect(r.fraction >= 0 && r.fraction <= 1)
             t += 1.0 / 60.0
         }

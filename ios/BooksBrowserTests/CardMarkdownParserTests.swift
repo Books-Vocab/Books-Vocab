@@ -63,145 +63,44 @@ import Testing
 
     // MARK: - parseInlines: plain text & each delimiter
 
-    // No delimiter: every char buffers, flushed once at EOF (lines 69-73).
-    @Test func parseInlines_plainText_isSingleTextRun() async throws {
-        #expect(tags(CardMarkdownInlineParser.parseInlines("hello")) == ["text:hello"])
-    }
-
-    // "==hi==": hasPrefix "==" + dropFirst(2)="hi==" finds closing "==";
-    // contentStart = +2, value = raw[2..<closing] = "hi" → .mark (lines 27-35).
-    @Test func parseInlines_doubleEquals_becomesMark() async throws {
-        #expect(tags(CardMarkdownInlineParser.parseInlines("==hi==")) == ["mark:hi"])
-    }
-
-    // "**bold**": same branch as "==", also produces .mark (lines 38-46).
-    @Test func parseInlines_doubleStar_becomesMark() async throws {
-        #expect(tags(CardMarkdownInlineParser.parseInlines("**bold**")) == ["mark:bold"])
-    }
-
-    // backticks → .code, surrounding text flushed around it (lines 49-57).
-    @Test func parseInlines_backticks_becomeCodeWithSurroundingText() async throws {
-        #expect(
-            tags(CardMarkdownInlineParser.parseInlines("use `code` now"))
-                == ["text:use ", "code:code", "text: now"]
-        )
-    }
-
-    // single underscores → .emphasis (lines 59-67).
-    @Test func parseInlines_underscores_becomeEmphasis() async throws {
-        #expect(
-            tags(CardMarkdownInlineParser.parseInlines("a _b_ c"))
-                == ["text:a ", "em:b", "text: c"]
-        )
-    }
-
-    // Unclosed "==hi": dropFirst(2)="hi" has no closing "==", so the "==" branch
-    // is skipped; the '=' chars fall through to `buffer.append` (line 69) and the
-    // whole string flushes as one text run at EOF.
-    @Test func parseInlines_unclosedMark_fallsBackToText() async throws {
-        #expect(tags(CardMarkdownInlineParser.parseInlines("==hi")) == ["text:==hi"])
-    }
-
-    // Unclosed backtick: firstIndex(of "`") after the first finds nothing, so the
-    // '`' branch is skipped and the backtick itself buffers as text.
-    @Test func parseInlines_unclosedCode_fallsBackToText() async throws {
-        #expect(tags(CardMarkdownInlineParser.parseInlines("a `b")) == ["text:a `b"])
+    @Test(arguments: [
+        ("hello", ["text:hello"]),                                          // No delimiter: every char buffers, flushed once at EOF (lines 69-73).
+        ("==hi==", ["mark:hi"]),                                            // "==hi==": hasPrefix "==" + dropFirst(2)="hi==" finds closing "=="; contentStart = +2, value = raw[2..<closing] = "hi" → .mark (lines 27-35).
+        ("**bold**", ["mark:bold"]),                                        // "**bold**": same branch as "==", also produces .mark (lines 38-46).
+        ("use `code` now", ["text:use ", "code:code", "text: now"]),        // backticks → .code, surrounding text flushed around it (lines 49-57).
+        ("a _b_ c", ["text:a ", "em:b", "text: c"]),                        // single underscores → .emphasis (lines 59-67).
+        ("==hi", ["text:==hi"]),                                            // Unclosed "==hi": dropFirst(2)="hi" has no closing "==", so the "==" branch is skipped; the '=' chars fall through to `buffer.append` (line 69) and the whole string flushes as one text run at EOF.
+        ("a `b", ["text:a `b"]),                                            // Unclosed backtick: firstIndex(of "`") after the first finds nothing, so the '`' branch is skipped and the backtick itself buffers as text.
+    ])
+    func parseInlines(input: String, expected: [String]) async throws {
+        #expect(tags(CardMarkdownInlineParser.parseInlines(input)) == expected)
     }
 
     // "====": dropFirst(2)="==" finds closing "==" immediately; value = raw[2..<2]
     // = "" which is `.isEmpty`, so nothing is appended and index jumps to EOF.
-    // Result is an EMPTY inline array (lines 30-34). buffer was empty → no flush.
-    @Test func parseInlines_emptyMarkContent_yieldsNoInlines() async throws {
-        #expect(CardMarkdownInlineParser.parseInlines("====").isEmpty)
-    }
-
-    // Empty backtick pair "``": value between the two backticks is "" → dropped.
-    @Test func parseInlines_emptyCodeContent_yieldsNoInlines() async throws {
-        #expect(CardMarkdownInlineParser.parseInlines("``").isEmpty)
-    }
-
-    // Empty string → while loop never runs, buffer empty → [].
-    @Test func parseInlines_emptyString_yieldsNoInlines() async throws {
-        #expect(CardMarkdownInlineParser.parseInlines("").isEmpty)
+    // "``": value between the two backticks is "" → dropped.
+    // "": while loop never runs, buffer empty → [].
+    @Test(arguments: ["====", "``", ""])
+    func parseInlines_yieldsNoInlines(input: String) async throws {
+        #expect(CardMarkdownInlineParser.parseInlines(input).isEmpty)
     }
 
     // MARK: - normalizeLeadingMarker (via parseParagraph)
 
-    // "==名詞==,數量" → [.mark("名詞"), .text(",數量")]. Leading marker "名詞" is in
-    // demotedLeadingMarkers AND the next text trimmed starts with "," → demote to
-    // .text (lines 107-113). Final: [.text("名詞"), .text(",數量")].
-    @Test func normalizeLeadingMarker_posBeforeComma_demotesToText() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==名詞==,數量")
-        #expect(tags(p.inlines) == ["text:名詞", "text:,數量"])
-    }
-
-    // Fullwidth comma "，" also triggers demotion (line 113).
-    @Test func normalizeLeadingMarker_posBeforeFullwidthComma_demotes() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==動詞==，移動")
-        #expect(tags(p.inlines) == ["text:動詞", "text:，移動"])
-    }
-
-    // Colon (halfwidth or fullwidth) also triggers demotion (line 113).
-    @Test func normalizeLeadingMarker_posBeforeColon_demotes() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==noun==: a thing")
-        #expect(tags(p.inlines) == ["text:noun", "text:: a thing"])
-    }
-
-    // "==verb== to run" → [.mark("verb"), .text(" to run")]. "verb" is in the set
-    // but the following text trimmed = "to run" does NOT start with comma/colon,
-    // so shouldDemoteLeadingMarker returns false → marker stays .mark (line 113
-    // false branch). NOTE: the leading space is trimmed only for the prefix test;
-    // the stored text run keeps its leading space.
-    @Test func normalizeLeadingMarker_posWithFollowingWord_staysMark() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==verb== to run")
-        #expect(tags(p.inlines) == ["mark:verb", "text: to run"])
-    }
-
-    // "==名詞==" → [.mark("名詞")] with nothing following. following.first is nil →
-    // shouldDemoteLeadingMarker returns true (line 109) → demote to .text.
-    @Test func normalizeLeadingMarker_posWithNoFollowing_demotes() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==名詞==")
-        #expect(tags(p.inlines) == ["text:名詞"])
-    }
-
-    // "==Apple==" → [.mark("Apple")]. "apple" (lowercased) is NOT in the set →
-    // no demotion regardless of what follows (line 107 guard fails).
-    @Test func normalizeLeadingMarker_nonPosMarker_staysMark() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==Apple==,fruit")
-        #expect(tags(p.inlines) == ["mark:Apple", "text:,fruit"])
-    }
-
-    // Case-insensitivity: "NOUN" lowercases to "noun" which IS in the set, and the
-    // comma-prefixed follower triggers demotion (lines 106-113).
-    @Test func normalizeLeadingMarker_uppercasePos_demotesCaseInsensitively() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==NOUN==,thing")
-        #expect(tags(p.inlines) == ["text:NOUN", "text:,thing"])
-    }
-
-    // Abbreviation form "n." is in the set; comma follower → demote.
-    @Test func normalizeLeadingMarker_abbreviationPos_demotes() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("==n.==,a noun")
-        #expect(tags(p.inlines) == ["text:n.", "text:,a noun"])
-    }
-
-    // Leading non-mark text means firstContentIndex is the .text run (which is not
-    // a .mark), so the `case .mark` guard at line 91 fails → no demotion, even if
-    // a pos marker appears later (normalize only inspects the FIRST content inline).
-    @Test func normalizeLeadingMarker_textBeforeMark_noDemotion() async throws {
-        let p = CardMarkdownInlineParser.parseParagraph("x ==名詞==,y")
-        #expect(tags(p.inlines) == ["text:x ", "mark:名詞", "text:,y"])
-    }
-
-    // A leading whitespace-only text run is skipped by firstContentIndex (line 83
-    // trims and treats empty as non-content), so the first *content* inline is the
-    // mark, which then demotes. The leading-space text run is preserved as-is.
-    @Test func normalizeLeadingMarker_leadingWhitespaceTextThenPos_demotes() async throws {
-        // "  " then "==名詞==" then ",z". parseInlines: buffer "  " flushed as
-        // text before the mark → [.text("  "), .mark("名詞"), .text(",z")].
-        // firstContentIndex skips index 0 (whitespace-only) → index 1 (mark) →
-        // following = [.text(",z")] starts with "," → demote index 1.
-        let p = CardMarkdownInlineParser.parseParagraph("  ==名詞==,z")
-        #expect(tags(p.inlines) == ["text:  ", "text:名詞", "text:,z"])
+    @Test(arguments: [
+        ("==名詞==,數量", ["text:名詞", "text:,數量"]),                       // "==名詞==,數量" → [.mark("名詞"), .text(",數量")]. Leading marker "名詞" is in demotedLeadingMarkers AND the next text trimmed starts with "," → demote to .text (lines 107-113). Final: [.text("名詞"), .text(",數量")].
+        ("==動詞==，移動", ["text:動詞", "text:，移動"]),                       // Fullwidth comma "，" also triggers demotion (line 113).
+        ("==noun==: a thing", ["text:noun", "text:: a thing"]),            // Colon (halfwidth or fullwidth) also triggers demotion (line 113).
+        ("==verb== to run", ["mark:verb", "text: to run"]),                // "==verb== to run" → [.mark("verb"), .text(" to run")]. "verb" is in the set but the following text trimmed = "to run" does NOT start with comma/colon, so shouldDemoteLeadingMarker returns false → marker stays .mark (line 113 false branch). NOTE: the leading space is trimmed only for the prefix test; the stored text run keeps its leading space.
+        ("==名詞==", ["text:名詞"]),                                         // "==名詞==" → [.mark("名詞")] with nothing following. following.first is nil → shouldDemoteLeadingMarker returns true (line 109) → demote to .text.
+        ("==Apple==,fruit", ["mark:Apple", "text:,fruit"]),                // "==Apple==" → [.mark("Apple")]. "apple" (lowercased) is NOT in the set → no demotion regardless of what follows (line 107 guard fails).
+        ("==NOUN==,thing", ["text:NOUN", "text:,thing"]),                  // Case-insensitivity: "NOUN" lowercases to "noun" which IS in the set, and the comma-prefixed follower triggers demotion (lines 106-113).
+        ("==n.==,a noun", ["text:n.", "text:,a noun"]),                    // Abbreviation form "n." is in the set; comma follower → demote.
+        ("x ==名詞==,y", ["text:x ", "mark:名詞", "text:,y"]),               // Leading non-mark text means firstContentIndex is the .text run (which is not a .mark), so the `case .mark` guard at line 91 fails → no demotion, even if a pos marker appears later (normalize only inspects the FIRST content inline).
+        ("  ==名詞==,z", ["text:  ", "text:名詞", "text:,z"]),               // A leading whitespace-only text run is skipped by firstContentIndex (line 83 trims and treats empty as non-content), so the first *content* inline is the mark, which then demotes. The leading-space text run is preserved as-is. parseInlines flushes "  " as text before the mark → [.text("  "), .mark("名詞"), .text(",z")]; firstContentIndex skips index 0 → index 1 (mark) → following [.text(",z")] starts with "," → demote index 1.
+    ])
+    func normalizeLeadingMarker(input: String, expected: [String]) async throws {
+        #expect(tags(CardMarkdownInlineParser.parseParagraph(input).inlines) == expected)
     }
 
     // MARK: - CardDocumentBuilder.build
