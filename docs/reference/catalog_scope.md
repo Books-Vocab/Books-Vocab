@@ -344,13 +344,23 @@ IN 視圖拆分：screen **18** / overlay **17**。
 - Podcast Controls（`PodcastControlsView` 耦合 `PodcastPlayerViewModel` + KVO/audio session）
 - Preview Upgrade Banner（podcast — `PodcastPlayerView` computed prop，耦合 `PodcastPlayerAccessState`）
 
-### 畫面 / 組件狀態 — 既有 surface 補拍
-- Stats logged-out gate state
-- Today Review · swiping/fling in-flight（最 motion-heavy 未覆蓋）/ long-content overflow card / production-mode front card（cloze）
-- Notebook List · reconcile-error / empty logged-out vs logged-in / loading placeholder
-- Notebook Edit · photo error / processing states
-- Bookshelf · loading overlay / import-error inline banner / empty logged-out vs logged-in / Book Card format badge + iCloud states
-- Podcast Episode List · Stale Data Banner
-- Startup Recovery status banner 中間態（working / cacheCleared / mailUnavailable）
-- Paywall active / expiring / admin layouts
-- Login Sheet authenticating + error states
+### 畫面 / 組件狀態 — 既有 surface 補拍（2026-06-09 scout 驗證重分級）
+
+**已覆蓋（既有 scenario 已含 → stale）：**
+- ~~Bookshelf · loading overlay~~ — ✅ `BookshelfScenarios`「Loading」
+- ~~Bookshelf · empty logged-out vs logged-in~~ — ✅ `BookshelfViewScenarios`「Empty shelf」
+- ~~Bookshelf · Book Card format badge~~ — ✅ `BookCardScenarios`（EPUB/PDF badge）
+- ~~Paywall active / expiring / admin~~ — ✅ `PaywallScenarios`（renewing / cancelled-but-active / admin-granted）
+- ~~Login Sheet authenticating + error~~ — ✅ `LoginSheetScenarios`（Authenticating / Error）
+
+**廉價可補（走既有 fixture seam，非污染 production view）：**
+- Today Review · long-content overflow card / production-mode front card（cloze）— 加 `TodayReviewFixtureID` case + seed（long strings / `reviewMode: .fillBlank`）；注意 `allCases` ripple（fixture tests）
+
+**耦合，暫不補（私有 @State / async / CloudKit — 補需污染生產 view 的 DEBUG init seam，前作者已刻意不做）：**
+- Startup Recovery 中間態（working / cacheCleared / mailUnavailable）— **confirmed**：`phase` 私有 @State、點擊驅動，static snapshot 只達 `.idle`（見 `AppStartupRecoveryScenarios` docstring）
+- Today Review · swiping/fling in-flight — motion/gesture private state
+- Bookshelf · import-error inline banner（async import 失敗）/ iCloud states（CloudKit @Model metadata）
+- Notebook List · reconcile-error / empty-logged-out / loading（coordinator 私有 @State；scout 標 cheap 但需驗 init seam）
+- Notebook Edit · photo error / processing（sheet 私有 @State；同上）
+- Stats logged-out gate state（需 `CatalogPreviewAuth` env 注入，待驗）
+- Podcast Episode List · Stale Data Banner（`loadError`+episodes 私有 @State，待驗）
