@@ -99,6 +99,7 @@ REGISTRY_KINDS="contract generated reference sop policy decision guide snapshot 
 errors=0
 warnings=0
 ok=0
+IMPACT_HINTS_EMITTED=0
 
 validate_registry() {
   reg="docs/registry.yml"
@@ -243,6 +244,7 @@ emit_impact_hints() {
   }
 
   if echo "$impact_out" | grep -q '^IMPACT '; then
+    IMPACT_HINTS_EMITTED=1
     echo "docs_lint: registry impact hints (warn only)"
     echo "$impact_out" | sed -n 's/^IMPACT /WARN impact — /p'
     echo "docs_lint: inspect suppression with ./ops/docs_impact.py --since $GATE_BASE --explain"
@@ -308,6 +310,9 @@ esac
 
 if [ -z "$DOCS" ]; then
   echo "docs_lint: no docs selected (mode=$MODE)"
+  if [ "$MODE" = "gate" ] && [ "$IMPACT_HINTS_EMITTED" -eq 1 ]; then
+    echo "docs_lint: only non-doc files changed, so no doc frontmatter was linted; use the impact hints above to decide whether doc sync is needed"
+  fi
   echo ""
   echo "─────────────────────────────────────"
   echo "OK:    $ok"
