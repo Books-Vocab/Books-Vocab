@@ -4,6 +4,17 @@
 # 輸出 markdown 到 stdout
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
 COMPONENT="${1:?用法: ops/release_changelog.sh <api|ios>}"
 
 KG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

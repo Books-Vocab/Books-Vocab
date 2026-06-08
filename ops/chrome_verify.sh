@@ -20,6 +20,10 @@
 # Env:    CHROME_BIN  override the Chrome/Chromium binary path
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXT_DIR="$(cd "$SCRIPT_DIR/../chrome-extension" && pwd)"
 cd "$EXT_DIR"
@@ -28,9 +32,13 @@ VERBOSE=""
 STATIC_ONLY=0
 for arg in "$@"; do
   case "$arg" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --verbose) VERBOSE="--verbose" ;;
     --static-only) STATIC_ONLY=1 ;;
-    *) echo "unknown arg: $arg" >&2; exit 2 ;;
+    *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
 

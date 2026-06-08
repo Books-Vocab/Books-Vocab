@@ -3,6 +3,17 @@
 # 用法: ops/release_bump.sh <api|ios> <new-version>（一般經 ops/release.sh bump 呼叫）
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
 COMPONENT="${1:?用法: ops/release_bump.sh <api|ios> <version>}"
 VERSION="${2:?請提供版本號，例如 1.3.0}"
 

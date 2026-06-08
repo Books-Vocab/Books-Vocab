@@ -104,6 +104,13 @@ run_verify() {
   echo "$rc|$logfile"
 }
 
+run_help() {
+  local logfile="$TMPDIR/log_$RANDOM.txt"
+  "$SCRIPT" --help >"$logfile" 2>&1
+  local rc=$?
+  echo "$rc|$logfile"
+}
+
 assert_rc() {
   local name="$1" expected="$2" got="$3" logfile="$4"
   if [[ "$got" == "$expected" ]]; then
@@ -127,6 +134,11 @@ assert_log_contains() {
 # ── Syntax 先過 ────────────────────────────────────────────────────────────
 section "Syntax"
 bash -n "$SCRIPT" && ok "backup_verify.sh syntax" || fail_t "backup_verify.sh syntax"
+
+section "help surface"
+out=$(run_help); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "help exits 0" 0 "$rc" "$log"
+assert_log_contains "help has usage" "Usage:" "$log"
 
 # ── 1. 健康 backup（auto-find）→ pass ──────────────────────────────────────
 section "case 1: healthy backup, auto-find"

@@ -16,6 +16,17 @@
 
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 info() { echo "▶ $*"; }
 ok()   { echo "✓ $*"; }

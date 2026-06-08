@@ -85,6 +85,13 @@ run_bundle() {
   echo "$rc|$logfile"
 }
 
+run_help() {
+  local logfile="$TMPDIR/log_$RANDOM.txt"
+  "$SCRIPT" --help >"$logfile" 2>&1
+  local rc=$?
+  echo "$rc|$logfile"
+}
+
 run_bundle_without_rsync() {
   local ext_dir="$1" dist_dir="$2"
   local logfile="$TMPDIR/log_$RANDOM.txt"
@@ -126,6 +133,11 @@ assert_log_contains() {
 # ── Syntax 先過 ────────────────────────────────────────────────────────────
 section "Syntax"
 bash -n "$SCRIPT" && ok "chrome_ext_bundle.sh syntax" || fail_t "chrome_ext_bundle.sh syntax"
+
+section "help surface"
+out=$(run_help); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "help exits 0" 0 "$rc" "$log"
+assert_log_contains "help has 用法" "用法：" "$log"
 
 # ── 1. 健康 manifest → 產出 zip ─────────────────────────────────────────────
 section "case 1: healthy manifest → produces zip"
