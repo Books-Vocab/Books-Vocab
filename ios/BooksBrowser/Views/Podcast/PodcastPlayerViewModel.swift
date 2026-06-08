@@ -294,6 +294,26 @@ final class PodcastPlayerViewModel {
         state = .error(message)
     }
 
+#if DEBUG
+    /// Catalog-only: drive the VM into a deterministic, AVPlayer-free `.ready`
+    /// state so the offline Playbook catalog renders the *real* player chrome
+    /// (transcript + scrubber + transport) without spinning up audio or hitting
+    /// the network. `syncPlaybackPosition` aligns the subtitle render state /
+    /// current sentence to `currentTime`, so the captured frame shows a live,
+    /// mid-episode player instead of a cold one. Never called outside DEBUG.
+    func catalogReadyPreview(duration: TimeInterval, currentTime: TimeInterval, subtitleSRT: String?) {
+        self.duration = duration
+        if let srt = subtitleSRT {
+            applySubtitle(content: srt)
+        }
+        self.currentTime = currentTime
+        syncPlaybackPosition(currentTime, pinLead: true)
+        playbackAnchor = PodcastPlaybackClock.makeAnchor(mediaTime: currentTime, now: nowRef(), rate: 0)
+        initialPositionResolved = true
+        state = .ready
+    }
+#endif
+
     // MARK: - Playback Controls
 
     func play() {
