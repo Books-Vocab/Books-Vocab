@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import shlex
+import shutil
 from pathlib import Path
 
 
@@ -44,13 +45,31 @@ def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
 def choose_blessed_artifact(artifacts: list[dict]) -> dict:
     if not artifacts:
         raise SystemExit("No review artifacts found under build/snapshots")
+    usable = [item for item in artifacts if item["isUsable"]]
+    candidates = usable or artifacts
     return max(
-        artifacts,
+        candidates,
         key=lambda item: (
             item["totalImages"],
             item["name"],
         ),
     )
+
+
+def prune_stale_artifacts(snapshot_root: Path = SNAPSHOT_ROOT, *, dry_run: bool) -> list[dict]:
+    artifacts = collect_review_artifacts(snapshot_root)
+    removed: list[dict] = []
+    for artifact in artifacts:
+        if artifact["isUsable"]:
+            continue
+        removed.append({
+            "name": artifact["name"],
+            "root": str(artifact["root"]),
+            "totalImages": artifact["totalImages"],
+        })
+        if not dry_run:
+            shutil.rmtree(artifact["root"], ignore_errors=True)
+    return removed
 
 
 def extract_directory_from_command(command: str) -> str | None:
@@ -125,6 +144,15 @@ def cmd_current(_: argparse.Namespace) -> int:
     artifacts = collect_review_artifacts()
     blessed = choose_blessed_artifact(artifacts)
     usable_count = sum(1 for item in artifacts if item["isUsable"])
+    stale_artifacts = [
+        {
+            "name": item["name"],
+            "root": str(item["root"]),
+            "totalImages": item["totalImages"],
+        }
+        for item in artifacts
+        if not item["isUsable"]
+    ]
     listener = inspect_listener(8787)
     blessed_root = str(blessed["root"])
     status = "ok" if blessed["isUsable"] else "needs-regeneration"
@@ -132,6 +160,7 @@ def cmd_current(_: argparse.Namespace) -> int:
         "status": status,
         "artifactCount": len(artifacts),
         "usableArtifactCount": usable_count,
+        "staleArtifactCount": len(stale_artifacts),
         "blessed": {
             "name": blessed["name"],
             "root": blessed_root,
@@ -146,6 +175,7 @@ def cmd_current(_: argparse.Namespace) -> int:
             "newSincePr878": blessed["newSincePr878"],
             "isUsable": blessed["isUsable"],
         },
+        "staleArtifacts": stale_artifacts,
         "activeServer8787": (
             None if listener is None else {
                 **listener,
@@ -166,6 +196,18 @@ def cmd_current(_: argparse.Namespace) -> int:
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0 if status == "ok" else 1
+
+
+def cmd_prune(args: argparse.Namespace) -> int:
+    removed = prune_stale_artifacts(dry_run=args.dry_run)
+    payload = {
+        "status": "ok",
+        "dryRun": args.dry_run,
+        "removedCount": len(removed),
+        "removed": removed,
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -232,6 +274,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve")
     serve.add_argument("--port", type=int, default=8787)
 
+    prune = subparsers.add_parser("prune-stale")
+    prune.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -242,6 +287,8 @@ def main() -> int:
         return cmd_current(args)
     if args.command == "serve":
         return cmd_serve(args)
+    if args.command == "prune-stale":
+        return cmd_prune(args)
     parser.error(f"unknown command: {args.command}")
     return 2
 
