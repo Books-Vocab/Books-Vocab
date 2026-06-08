@@ -47,7 +47,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
 
@@ -59,7 +59,7 @@ from ..api_models.podcast import (
     PodcastSeriesSummary,
 )
 from .. import podcast_progress as progress_store
-from ..deps import get_current_user, get_current_user_optional
+from ..deps import CurrentUser, OptionalCurrentUser
 from ..podcast_access import (
     ERR_AUTH_REQUIRED,
     ERR_UPGRADE_REQUIRED,
@@ -349,7 +349,7 @@ def _serve_static_media(
     response_model=list[PodcastSeriesSummary],
     response_model_exclude_unset=True,
 )
-def list_podcasts(request: Request, user: UserRecord | None = Depends(get_current_user_optional)):
+def list_podcasts(request: Request, user: OptionalCurrentUser):
     if _using_s3(request):
         data = _read_json_from_s3(request, "index.json", context="index")
         if data is None:
@@ -402,7 +402,7 @@ def _canonical_updated_at(raw: str) -> str:
 
 
 @router.get("/api/podcasts/progress", response_model=PodcastProgressListResponse)
-def list_user_progress(user: dict = Depends(get_current_user)):
+def list_user_progress(user: CurrentUser):
     """Return every progress row for the calling user."""
     items = progress_store.list_for_user(user_id=user["id"])
     return {"items": items}
@@ -413,7 +413,7 @@ def upsert_user_progress(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
     payload: PodcastProgressRequest,
-    user: dict = Depends(get_current_user),
+    user: CurrentUser,
 ):
     """Last-write-wins upsert keyed by ``(user, series, ep)``.
 
@@ -437,7 +437,7 @@ def upsert_user_progress(
 def get_user_progress(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
-    user: dict = Depends(get_current_user),
+    user: CurrentUser,
 ):
     _validate_series_id(series_id)
     row = progress_store.get_single(
@@ -453,7 +453,7 @@ def get_user_progress(
     response_model=PodcastSeriesDetail,
     response_model_exclude_unset=True,
 )
-def get_podcast_series(series_id: str, request: Request, user: UserRecord | None = Depends(get_current_user_optional)):
+def get_podcast_series(series_id: str, request: Request, user: OptionalCurrentUser):
     _validate_series_id(series_id)
     if _using_s3(request):
         data = _read_json_from_s3(
@@ -649,7 +649,7 @@ def get_podcast_audio(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
     request: Request,
-    user: UserRecord | None = Depends(get_current_user_optional),
+    user: OptionalCurrentUser,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
 ):
     """Tiered audio stream with HTTP Range / 206 Partial Content support.
@@ -723,7 +723,7 @@ def get_podcast_subtitle(
     series_id: str,
     ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
     request: Request,
-    user: UserRecord | None = Depends(get_current_user_optional),
+    user: OptionalCurrentUser,
 ):
     _validate_series_id(series_id)
     # Same wall as audio: a free caller must not read the full transcript of a
@@ -746,7 +746,7 @@ def get_podcast_subtitle(
 def get_podcast_cover(
     series_id: str,
     request: Request,
-    user: UserRecord | None = Depends(get_current_user_optional),
+    user: OptionalCurrentUser,
 ):
     """Authenticated series cover image (PNG), produced by the pipeline ``cover``
     stage and uploaded as ``<sid>/cover.png``. Mirrors the subtitle proxy: S3

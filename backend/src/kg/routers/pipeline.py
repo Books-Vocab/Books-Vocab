@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Query, Response
 
 from ..api_models import PipelineQueueResponse
 from ..deps import (
+    CurrentUser,
     _apply_quota_headers,
     _card_store,
     _check_quota,
     _embedding_store,
     _graph_store,
     _notebook_store,
-    get_current_user,
     get_user_lock,
     logger,
 )
@@ -41,7 +41,7 @@ async def _run_pipeline_background(user: UserRecord, *, force_enrich: bool = Fal
 async def run_pipeline(
     background_tasks: BackgroundTasks,
     response: Response,
-    user: dict = Depends(get_current_user),
+    user: CurrentUser,
     force_enrich: bool = False,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):

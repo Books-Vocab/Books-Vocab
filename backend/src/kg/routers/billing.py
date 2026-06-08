@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
 from ..api_models import (
     AppStoreNotificationRequest,
@@ -23,11 +23,11 @@ from ..billing_handlers import (
     sync_app_store_subscription_response,
 )
 from ..deps import (
+    CurrentUser,
     _build_entitlements_response,
     _parse_datetime,
     _resolve_user_id_from_subscription_index,
     _write_subscription_snapshot,
-    get_current_user,
 )
 from ..settings import KGSettings
 
@@ -42,7 +42,7 @@ def _decode_signed_txn(signed_transaction_info: str, settings: KGSettings) -> di
 
 
 @router.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)
-def sync_app_store_subscription(req: AppStoreSyncRequest, request: Request, user: dict = Depends(get_current_user)):
+def sync_app_store_subscription(req: AppStoreSyncRequest, request: Request, user: CurrentUser):
     settings = request.app.state.kg_settings
 
     return sync_app_store_subscription_response(
@@ -84,7 +84,7 @@ def app_store_notifications(req: AppStoreNotificationRequest, request: Request):
 
 @router.post("/api/billing/app-store/reconcile", response_model=EntitlementsResponse)
 async def reconcile_app_store_subscription(
-    req: AppStoreReconcileRequest, request: Request, user: dict = Depends(get_current_user),
+    req: AppStoreReconcileRequest, request: Request, user: CurrentUser,
 ):
     settings = request.app.state.kg_settings
 
