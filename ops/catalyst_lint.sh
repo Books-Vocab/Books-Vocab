@@ -17,9 +17,39 @@
 
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/ios/BooksBrowser"
-MODE="${1:---report}"
+MODE="--report"
+
+case "$#" in
+  0)
+    ;;
+  1)
+    case "${1:-}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --report|--strict)
+        MODE="$1"
+        ;;
+      *)
+        echo "✗ unknown option: $1" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    echo "✗ catalyst_lint 只接受單一 mode 參數" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
 
 found=0
 while IFS= read -r -d '' f; do

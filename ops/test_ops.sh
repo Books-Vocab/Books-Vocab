@@ -37,6 +37,7 @@ DEFAULT_TESTS=(
   ios-ops
   ios-test-discovery
   chrome-bundle
+  script-help
   podcast-ops
 )
 
@@ -80,6 +81,7 @@ run_one() {
       ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;
+    script-help)        ./ops/tests/test_script_help.sh ;;
     podcast-ops)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
         ops/test_podcast_ops.py \

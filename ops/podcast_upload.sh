@@ -4,6 +4,17 @@
 # Usage: ./ops/podcast_upload.sh <workspace_path> [--dry-run]
 set -euo pipefail
 
+usage() {
+  awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
 # ── Machine-local config (gap-fill) ──────────────────────────────────────────
 # The monitor does NOT load .env, and a launching shell / cron may not export
 # the bucket or AWS profile — both used to fall through to the default AWS
