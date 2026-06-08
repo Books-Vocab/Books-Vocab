@@ -67,7 +67,7 @@ struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
                 SettingsTrailingChevronIcon()
             }
             .padding(.horizontal, appSkin.spacing.cardPadding)
-            .padding(.vertical, 13)
+            .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
             .appHoverRowTint()
         }
         .buttonStyle(.plain)
@@ -131,7 +131,7 @@ struct SettingsActionRowLabel<Trailing: View>: View {
         }
         .foregroundStyle(appSkin.palette.primaryText)
         .padding(.horizontal, appSkin.spacing.cardPadding)
-        .padding(.vertical, 13)
+        .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
         .frame(minHeight: 50)
         .enableInjection()
     }
@@ -155,7 +155,7 @@ struct SettingsCompactActionButton: View {
             .font(appSkin.typography.caption)
             .foregroundStyle(isEnabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
             .padding(.horizontal, AppSpacing.s3)
-            .padding(.vertical, 9)
+            .padding(.vertical, appSkin.spacing.rowPadding)
             .background(
                 RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .fill(appSkin.palette.pageBackground)
@@ -432,8 +432,8 @@ struct SettingsSelectionTile<Content: View>: View {
     var body: some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, appSkin.spacing.controlHorizontalPadding)
+            .padding(.vertical, appSkin.spacing.controlHorizontalPadding)
             .background(
                 RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .fill(isSelected ? appSkin.palette.mutedFill : appSkin.palette.pageBackground)

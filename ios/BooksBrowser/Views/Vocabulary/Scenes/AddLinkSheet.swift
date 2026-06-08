@@ -117,6 +117,6 @@ struct AddLinkSheet: View {
                 .platformTextInputConfig()
         }
         .padding(appSkin.metrics.cardBlockInnerGap * 1.5)
-        .background(appSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .background(appSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: AppRadius.md))
     }
 }

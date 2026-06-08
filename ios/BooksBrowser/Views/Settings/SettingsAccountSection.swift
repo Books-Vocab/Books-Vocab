@@ -54,7 +54,7 @@ struct SettingsAccountSection: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: appSkin.spacing.controlHorizontalPadding, style: .continuous))
                     .opacity(state.iconBreathing ? 0.85 : 1.0)
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 

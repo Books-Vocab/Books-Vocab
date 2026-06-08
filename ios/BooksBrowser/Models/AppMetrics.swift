@@ -170,6 +170,11 @@ enum AppSpacing {
     static let cardOuterPadding: CGFloat = s6  // 24
     static let cardInnerGap: CGFloat = s4      // 16
     static let cardSectionGap: CGFloat = s3    // 12
+    static let cardPadding: CGFloat = DesignTokens.Space.Semantic.cardPadding
+    static let sectionGap: CGFloat = DesignTokens.Space.Semantic.sectionGap
+    static let chipPaddingHorizontal: CGFloat = DesignTokens.Space.Semantic.chipPaddingH
+    static let chipPaddingVertical: CGFloat = DesignTokens.Space.Semantic.chipPaddingV
+    static let actionButtonVerticalPadding: CGFloat = 13
 }
 
 /// Radius scale — 收斂到 4 主階 + hairline + pill。新元件不使用 7/9/13/14/18 等鄰近半階值。
@@ -181,6 +186,8 @@ enum AppRadius {
     static let md: CGFloat = DesignTokens.Radius.Scale.md
     static let lg: CGFloat = DesignTokens.Radius.Scale.lg
     static let xl: CGFloat = DesignTokens.Radius.Scale.xl
+    static let appIcon: CGFloat = 18
+    static let hairline: CGFloat = 1.5
     /// Capsule / pill — 直接用 `Capsule()` shape 即可，此值為 RoundedRectangle 場合的 fallback
     static let pill: CGFloat = DesignTokens.Radius.Scale.pill
 }

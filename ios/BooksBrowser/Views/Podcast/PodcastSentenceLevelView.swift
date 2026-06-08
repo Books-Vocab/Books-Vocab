@@ -433,7 +433,7 @@ struct PodcastSentenceLevelView: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 6) { content() }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, AppSkin.baseSpacing.controlHorizontalPadding)
                 .padding(.vertical, AppSpacing.s2)
                 .background(
                     Capsule()
@@ -806,7 +806,7 @@ struct PodcastBubbleCell: View, Equatable {
             }
         }
         .padding(.horizontal, AppSpacing.s3)
-        .padding(.vertical, 10)
+        .padding(.vertical, AppSkin.baseSpacing.compactRowVerticalPadding)
         // Bubble fill + border live in their OWN shape-only layer so the active↔
         // inactive skin crossfade animates on `active` WITHOUT dragging the underline
         // overlay's insert/remove (display↔select) into the same transaction. Scoping

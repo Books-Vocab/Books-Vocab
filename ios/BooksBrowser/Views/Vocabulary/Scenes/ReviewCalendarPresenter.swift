@@ -150,7 +150,7 @@ struct ReviewCalendarPresenter: View {
                         if index > 0 {
                             Divider()
                                 .foregroundStyle(appSkin.palette.divider)
-                                .padding(.leading, 28)
+                                .padding(.leading, AppSpacing.s7 - AppSpacing.s1)
                         }
                         recordRow(record)
                     }

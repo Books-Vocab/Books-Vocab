@@ -19,7 +19,7 @@ struct AppActionButtonStyle: ButtonStyle {
             .foregroundStyle(palette.foreground)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppSpacing.s4)
-            .padding(.vertical, 13)
+            .padding(.vertical, AppSpacing.actionButtonVerticalPadding)
             .background(
                 RoundedRectangle(
                     cornerRadius: AppRadius.md,
