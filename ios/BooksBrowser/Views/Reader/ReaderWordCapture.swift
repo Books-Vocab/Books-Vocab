@@ -27,5 +27,14 @@ enum ReaderWordCapture {
         guard stripped.count >= minWordLength else { return nil }
         return stripped
     }
+
+    /// Classifies a raw selection as a phrase (multi-token) vs a single word, so
+    /// the PDF edit menu can route to `handlePhraseSelected` vs
+    /// `handleWordSelected` — matching EPUB, where a tap is a word and a
+    /// multi-word selection is a phrase. Any internal whitespace ⇒ phrase.
+    static func isPhraseSelection(_ raw: String) -> Bool {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .contains { $0.isWhitespace }
+    }
 }
 #endif
