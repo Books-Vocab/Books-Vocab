@@ -154,7 +154,7 @@ struct TodayReviewPresenter: View {
 
                             if state.revealStage == .front {
                                 revealExpandZone(
-                                    title: "點一下展開".localized,
+                                    title: L10n.string("點一下展開"),
                                     minHeight: max(geo.size.height * TodayReviewMetrics.frontHeightRatio, 180),
                                     action: onAdvanceReveal
                                 )
@@ -289,10 +289,10 @@ struct TodayReviewPresenter: View {
         VStack(spacing: appSkin.metrics.cardBlockPadding) {
             Spacer()
             VocabEmptyStateContent(
-                title: "今天複習完成".localized,
+                title: L10n.string("今天複習完成"),
                 systemImage: "checkmark.circle",
-                description: "這一輪 session 的卡片都處理完了。".localized,
-                guidanceText: "明天再來複習新到期的單字",
+                description: L10n.string("這一輪 session 的卡片都處理完了。"),
+                guidanceText: L10n.string("明天再來複習新到期的單字"),
                 symbolBounce: celebrationTriggered
             )
             .scaleEffect(celebrationTriggered ? 1 : 0.8)
@@ -302,7 +302,7 @@ struct TodayReviewPresenter: View {
                     celebrationTriggered = true
                 }
             }
-            Button("返回單字本".localized, action: onClose)
+            Button(L10n.string("返回單字本"), action: onClose)
                 .buttonStyle(.ghost(appSkin.palette.primaryText))
             Spacer()
         }

@@ -7,7 +7,7 @@ import SwiftUI
 /// - `ShortcutKeyCap` — a single mono key cap (e.g. `␣`, `1`, `←`).
 /// - `ShortcutHintChip` — a key cap + label capsule, primary / secondary styling.
 ///
-/// Both are pure value views (take `String` / `TodayReviewPresenter.ShortcutHint`,
+/// Both are pure value views (take `String` / `TodayReviewShortcutHint`,
 /// no `@MainActor` construction), so scenarios build them inline without a Scene
 /// struct. They read `appSkin` from the environment via `AppThemeContainer`.
 /// These views only exist under `targetEnvironment(macCatalyst)`, so this file
@@ -62,7 +62,7 @@ enum TodayReviewShortcutScenarios {
             Scenario("Primary", layout: .compressed) {
                 AppThemeContainer {
                     ShortcutHintChip(
-                        hint: TodayReviewPresenter.ShortcutHint(
+                        hint: TodayReviewShortcutHint(
                             id: "space",
                             key: "␣",
                             label: "翻面",
@@ -76,7 +76,7 @@ enum TodayReviewShortcutScenarios {
             Scenario("Secondary", layout: .compressed) {
                 AppThemeContainer {
                     ShortcutHintChip(
-                        hint: TodayReviewPresenter.ShortcutHint(
+                        hint: TodayReviewShortcutHint(
                             id: "shuffle",
                             key: "S",
                             label: "洗牌",
@@ -90,7 +90,7 @@ enum TodayReviewShortcutScenarios {
             Scenario("Long label", layout: .compressed) {
                 AppThemeContainer {
                     ShortcutHintChip(
-                        hint: TodayReviewPresenter.ShortcutHint(
+                        hint: TodayReviewShortcutHint(
                             id: "remembered",
                             key: "→",
                             label: "標記為已記住並前往下一張",
@@ -105,17 +105,17 @@ enum TodayReviewShortcutScenarios {
                 AppThemeContainer {
                     HStack(spacing: 12) {
                         ShortcutHintChip(
-                            hint: TodayReviewPresenter.ShortcutHint(
+                            hint: TodayReviewShortcutHint(
                                 id: "space", key: "␣", label: "翻面", isPrimary: true
                             )
                         )
                         ShortcutHintChip(
-                            hint: TodayReviewPresenter.ShortcutHint(
+                            hint: TodayReviewShortcutHint(
                                 id: "left", key: "←", label: "忘記", isPrimary: false
                             )
                         )
                         ShortcutHintChip(
-                            hint: TodayReviewPresenter.ShortcutHint(
+                            hint: TodayReviewShortcutHint(
                                 id: "right", key: "→", label: "記住", isPrimary: false
                             )
                         )

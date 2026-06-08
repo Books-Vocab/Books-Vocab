@@ -225,7 +225,7 @@ struct NotebookListContent: View {
                 .padding(.top, editorialTopInset)
             }
             .background(skin.palette.pageBackground)
-            .navigationTitle("單字本".localized)
+            .navigationTitle(NotebookListCopy.navigationTitle)
             .largeNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -319,14 +319,14 @@ struct NotebookListContent: View {
                 )
             }
             .confirmationDialog(
-                "確定要刪除此單字本？".localized,
+                NotebookListCopy.deleteTitle,
                 isPresented: Binding(
                     get: { notebookToDelete != nil },
                     set: { if !$0 { notebookToDelete = nil } }
                 ),
                 titleVisibility: .visible
             ) {
-                Button("刪除".localized, role: .destructive) {
+                Button(NotebookListCopy.deleteButtonTitle, role: .destructive) {
                     if let notebook = notebookToDelete {
                         Task { @MainActor in
                             await coordinator.deleteNotebook(
@@ -344,7 +344,7 @@ struct NotebookListContent: View {
                     }
                 }
             } message: {
-                Text("此單字本及所有單字將被永久刪除，無法復原。".localized)
+                Text(NotebookListCopy.deleteMessage)
             }
         }
         // detail/review cover 與 detailRouter 注入已上移至 NotebookListView 薄殼，
@@ -425,11 +425,11 @@ struct NotebookListContent: View {
                     Label(option.label, systemImage: option.systemImage).tag(option)
                 }
             } label: {
-                Text("排序方式".localized)
+                Text(NotebookListCopy.sortMenuTitle)
             }
         } label: {
             Image(systemName: "arrow.up.arrow.down")
-                .accessibilityLabel("排序".localized)
+                .accessibilityLabel(NotebookListCopy.sortAccessibilityLabel)
         }
     }
 
@@ -449,7 +449,7 @@ struct NotebookListContent: View {
         if let url {
             coordinator.exportURL = url
         } else {
-            toastCoordinator.error("匯出失敗".localized)
+            toastCoordinator.error(NotebookListCopy.exportFailure)
         }
     }
 
@@ -461,11 +461,11 @@ struct NotebookListContent: View {
     @ViewBuilder
     private func reconcileErrorBanner(message: String) -> some View {
         AppStateMessageCard(
-            title: "單字本同步失敗".localized,
+            title: NotebookListCopy.reconcileErrorTitle,
             systemImage: "exclamationmark.triangle",
             description: message
         ) {
-            Button("重試".localized) {
+            Button(NotebookListCopy.retryTitle) {
                 Task { @MainActor in
                     await coordinator.reconcileNotebooks(
                         authManager: authManager,
@@ -498,14 +498,15 @@ struct NotebookListContent: View {
 
     @ViewBuilder
     private var emptyState: some View {
+        let copy = NotebookListCopy.emptyState(isLoggedIn: authManager.isLoggedIn)
         if authManager.isLoggedIn {
             VocabSceneShell(phase: .empty(
-                title: "還沒有單字本".localized,
+                title: copy.title,
                 systemImage: "books.vertical",
-                description: "建立第一本，開始整理你的單字".localized,
+                description: copy.description,
                 action: .init(
-                    title: "建立第一本單字本".localized,
-                    systemImage: "plus.circle.fill",
+                    title: copy.actionTitle,
+                    systemImage: copy.actionSystemImage,
                     handler: { showCreateSheet = true }
                 )
             )) {
@@ -513,10 +514,10 @@ struct NotebookListContent: View {
             }
         } else {
             VocabSceneShell(phase: .empty(
-                title: "還沒有單字本".localized,
+                title: copy.title,
                 systemImage: "books.vertical",
-                description: "登入後自動建立預設單字本".localized,
-                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { loginGate.presentLogin() })
+                description: copy.description,
+                action: .init(title: copy.actionTitle, systemImage: copy.actionSystemImage, handler: { loginGate.presentLogin() })
             )) {
                 EmptyView()
             }

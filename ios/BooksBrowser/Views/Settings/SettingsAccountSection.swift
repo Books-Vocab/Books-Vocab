@@ -13,7 +13,7 @@ struct SettingsAccountSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "帳號".localized, icon: "person.crop.circle")
+            SettingsSectionHeader(title: SettingsAccountCopy.sectionTitle, icon: "person.crop.circle")
 
             VStack(spacing: 0) {
                 if state.isLoggedIn {
@@ -33,7 +33,7 @@ struct SettingsAccountSection: View {
                         VStack(spacing: appSkin.spacing.controlGap) {
                             ProgressView()
                                 .controlSize(.regular)
-                            Text("正在驗證帳號…".localized)
+                            Text(SettingsAccountCopy.authenticatingTitle)
                                 .font(appSkin.typography.caption)
                                 .foregroundStyle(appSkin.palette.secondaryText)
                         }
@@ -59,10 +59,10 @@ struct SettingsAccountSection: View {
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 
                 VStack(spacing: AppSpacing.s1) {
-                    Text("解鎖完整功能".localized)
+                    Text(SettingsAccountCopy.marketingTitle)
                         .font(appSkin.typography.displayTitle)
                         .foregroundStyle(appSkin.palette.primaryText)
-                    Text("AI 翻譯・知識圖譜・雲端同步".localized)
+                    Text(SettingsAccountCopy.marketingSubtitle)
                         .font(appSkin.typography.body)
                         .foregroundStyle(appSkin.palette.secondaryText)
                 }
@@ -80,7 +80,7 @@ struct SettingsAccountSection: View {
                 }
                 .buttonStyle(.pressable)
                 .appSettingsButtonChrome()
-                .accessibilityLabel("使用 Google 帳號登入".localized)
+                .accessibilityLabel(SettingsAccountCopy.googleLoginAccessibility)
 
                 Button(action: actions.loginWithApple) {
                     SettingsAuthButton(title: "以 Apple 繼續") {
@@ -89,7 +89,7 @@ struct SettingsAccountSection: View {
                 }
                 .buttonStyle(.pressable)
                 .appSettingsButtonChrome()
-                .accessibilityLabel("使用 Apple 帳號登入".localized)
+                .accessibilityLabel(SettingsAccountCopy.appleLoginAccessibility)
 
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
@@ -97,17 +97,17 @@ struct SettingsAccountSection: View {
                         .padding(.vertical, AppSpacing.s2)
 
                     HStack(spacing: AppSpacing.s2) {
-                        TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
+                        TextField(SettingsAccountCopy.manualLoginPlaceholder, text: manualLoginUserId)
                             .appSettingsTextInputStyle(alignment: .leading)
                             // Account ID is ASCII-only — force English IME regardless of source lang.
                             .platformSourceLangTextInput(source: .en)
 
                         SettingsCompactActionButton(
-                            title: "登入".localized,
+                            title: SettingsAccountCopy.manualLoginTitle,
                             isEnabled: !manualLoginUserId.wrappedValue.isEmpty,
                             action: actions.manualLogin
                         )
-                            .accessibilityLabel("開發者登入".localized)
+                            .accessibilityLabel(SettingsAccountCopy.manualLoginAccessibility)
                     }
 
                     if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
@@ -121,7 +121,7 @@ struct SettingsAccountSection: View {
 
                 if let error = state.authError {
                     VocabStateMessageCard(
-                        title: "登入暫時失敗".localized,
+                        title: SettingsAccountCopy.authErrorTitle,
                         systemImage: "exclamationmark.triangle.fill",
                         description: error
                     )
@@ -149,13 +149,13 @@ struct SettingsAccountSection: View {
 
             // Logout button
             Button(role: .destructive, action: actions.logout) {
-                Text("登出帳號".localized)
+                Text(SettingsAccountCopy.logoutTitle)
                     .font(appSkin.typography.body)
                     .foregroundStyle(appSkin.palette.destructive)
             }
             .buttonStyle(.appAction(.destructive))
             .padding(appSkin.spacing.cardPadding)
-            .accessibilityLabel("登出帳號".localized)
+            .accessibilityLabel(SettingsAccountCopy.logoutTitle)
         }
     }
 
@@ -203,7 +203,7 @@ struct SettingsAccountSection: View {
                 subscriptionBadge(subscription)
             } else {
                 SettingsStatusBadge(
-                    text: "升級".localized,
+                    text: SettingsAccountCopy.upgradeTitle,
                     tone: appSkin.palette.accent
                 )
             }
@@ -215,7 +215,10 @@ struct SettingsAccountSection: View {
     }
 
     private func subscriptionRowTitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
-        subscription.isActive ? "Pro 已啟用".localized : subscription.planName
+        SettingsAccountCopy.subscriptionRowTitle(
+            isActive: subscription.isActive,
+            planName: subscription.planName
+        )
     }
 
     private func subscriptionRowSubtitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
@@ -239,7 +242,7 @@ struct SettingsProBadge: View {
         HStack(spacing: appSkin.spacing.microGap) {
             Image(systemName: "sparkles")
                 .font(appSkin.typography.caption)
-            Text("PRO".localized)
+            Text(SettingsAccountCopy.proBadgeTitle)
                 .font(appSkin.typography.monoLabel)
         }
         .foregroundStyle(appSkin.palette.accent)
@@ -316,7 +319,7 @@ private struct SettingsAuthButton<Leading: View>: View {
         HStack(spacing: AppSettingsMetrics.accountButtonSpacing) {
             leading
 
-            Text(title.localized)
+            Text(L10n.string(title))
                 .font(appSkin.typography.body.weight(.medium))
 
             Spacer()
@@ -347,7 +350,7 @@ struct SettingsAuthSummary: View {
                         if isProActive {
                             SettingsProBadge()
                                 .transition(.modalSwap)
-                                .accessibilityLabel("Pro 訂閱已啟用".localized)
+                                .accessibilityLabel(SettingsAccountCopy.proAccessibilityLabel)
                         }
                     }
                     .animation(AppMotion.modalSwapSpring, value: isProActive)
