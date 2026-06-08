@@ -70,7 +70,7 @@ def select_items(manifest, *, surface=None, lane=None, facet=None, feature=None,
     sel = [it for it in manifest["items"] if keep(it)]
     sel.sort(key=lambda it: (it["surface"], it.get("stateFacetRank", 0),
                              it["stateLabel"], it["appearance"]))
-    if limit:
+    if limit is not None:
         sel = sel[:limit]
     return sel
 
