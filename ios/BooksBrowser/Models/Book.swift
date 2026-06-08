@@ -164,6 +164,6 @@ final class Book {
     /// 在 UI 層處理（選擇時過濾 isSoftDeleted，若綁定的本被刪則自動清除綁定）。
     var resolvedNotebookId: String {
         if let bound = preferredNotebookId { return bound }
-        return UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
+        return ActiveNotebookStore.shared.activeNotebookId
     }
 }
