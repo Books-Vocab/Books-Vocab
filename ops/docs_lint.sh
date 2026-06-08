@@ -245,10 +245,11 @@ emit_impact_hints() {
 
   if echo "$impact_out" | grep -q '^IMPACT '; then
     IMPACT_HINTS_EMITTED=1
-    echo "docs_lint: registry impact hints (warn only)"
+    echo "docs_lint: current checkout impact hints (warn only)"
     echo "$impact_out" | sed -n 's/^IMPACT /WARN impact — /p'
     echo "docs_lint: inspect suppression with ./ops/docs_impact.py --since $GATE_BASE --explain"
     echo "docs_lint: frontmatter checks below only cover docs changed in the current checkout; use the impact hints above to judge non-doc changes"
+    echo "docs_lint: next-step heuristic -> impact hints are sync candidates, not auto-required; STALE means freshness risk, not automatic doc-sync for this change"
   fi
 }
 
@@ -324,6 +325,8 @@ if [ -z "$DOCS" ]; then
   [ "$STRICT" -eq 1 ] && [ "$warnings" -gt 0 ] && exit 1
   exit 0
 fi
+
+[ "$MODE" = "gate" ] && echo "docs_lint: changed-doc frontmatter checks"
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
