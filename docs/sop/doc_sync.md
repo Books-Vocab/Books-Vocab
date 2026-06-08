@@ -24,7 +24,7 @@ verified_against: e237d84f
 4. **reference / contract / policy** 類活文檔:更新內容後把 frontmatter `verified_against` 改成被同步的**main 可達 code commit**(短 hash)。禁止寫只存在於 PR branch 的 ephemeral hash；若 PR 會 squash merge,merge 後用 squash commit hash 補同步,或在 PR 內保持舊 anchor 並明示 post-merge bump。
 5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,並用 `docs_impact.py` 印出 registry impact hints 供 reviewer 檢查；當 gate 偵測到 impact hints 時,也會直接提示 `./ops/docs_impact.py --since <base> --explain` 這條 follow-up 命令,方便追 suppression 細節，並明示「下面的 frontmatter checks 只覆蓋目前 checkout 裡有變更的 docs；non-doc 變更要以上方 impact hints 判讀」。若這次完全沒有 docs 被選進 lint,gate 也會直說,避免把 `no docs selected` 誤讀成工具無結論。impact hints 第一版 warn-only,不會因既有全 repo doc debt 失敗。
    需要全 repo 健康盤點時才跑 `./ops/docs_lint.sh --audit` 或 `--all`；audit 會暴露歷史 invalid anchor / stale debt,不得把既有 audit debt 當成本次 doc-sync 失敗。
-   要盤點控制平面覆蓋率時跑 `./ops/docs_registry_coverage.py`；輸出會分 `active_unregistered`(應補進 registry 的活文檔)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt)。`--strict` 只會因尚未登記的 active docs 失敗,用來追 registry coverage debt,不是日常 PR gate。
+   要盤點控制平面覆蓋率時跑 `./ops/docs_registry_coverage.py`；human output 會優先分 `active_unregistered`(應補進 registry 的活文檔)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt),並明示 backlog 只屬資訊、不屬日常 gate。`--strict` 只會因尚未登記的 active docs 失敗,用來追 registry coverage debt,不是日常 PR gate。
 6. `git commit`,prefix `docs:`,訊息一句話講同步了什麼。結尾加:
    ```
    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
