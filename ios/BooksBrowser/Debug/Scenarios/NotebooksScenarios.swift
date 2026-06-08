@@ -10,16 +10,16 @@ import SwiftUI
 enum NotebooksScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Notebooks · Card") {
-            Scenario("Hero · single notebook (heavy usage)", layout: .fill) {
+            Scenario("Hero · single notebook (heavy usage)", layout: .fillH) {
                 cardSheet(style: .hero, cards: [Self.heavyCard])
             }
-            Scenario("Hero · fresh notebook (no progress)", layout: .fill) {
+            Scenario("Hero · fresh notebook (no progress)", layout: .fillH) {
                 cardSheet(style: .hero, cards: [Self.freshCard])
             }
-            Scenario("Grid · two notebooks", layout: .fill) {
+            Scenario("Grid · two notebooks", layout: .fillH) {
                 gridSheet(cards: [Self.heavyCard, Self.lightCard])
             }
-            Scenario("Hero · long name truncate", layout: .fill) {
+            Scenario("Hero · long name truncate", layout: .fillH) {
                 cardSheet(style: .hero, cards: [Self.longNameCard])
             }
         }

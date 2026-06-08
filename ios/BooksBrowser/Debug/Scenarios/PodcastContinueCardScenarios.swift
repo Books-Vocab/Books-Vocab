@@ -9,7 +9,7 @@ import SwiftUI
 enum PodcastContinueCardScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Podcast Continue Card") {
-            Scenario("In Progress (Resume)", layout: .fill) {
+            Scenario("In Progress (Resume)", layout: .fillH) {
                 PodcastContinueCardScene(
                     episode: PodcastContinueCardScenarios.episode(2, "On Deep Work and Attention"),
                     progress: PodcastProgress(episodeRemoteId: "s-1_ep_2", lastPlayedTime: 410, completed: false),
@@ -17,7 +17,7 @@ enum PodcastContinueCardScenarios {
                 )
             }
 
-            Scenario("Fresh (Play)", layout: .fill) {
+            Scenario("Fresh (Play)", layout: .fillH) {
                 PodcastContinueCardScene(
                     episode: PodcastContinueCardScenarios.episode(1, "The Comfort Crisis"),
                     progress: nil,
@@ -25,7 +25,7 @@ enum PodcastContinueCardScenarios {
                 )
             }
 
-            Scenario("Completed (Replay)", layout: .fill) {
+            Scenario("Completed (Replay)", layout: .fillH) {
                 PodcastContinueCardScene(
                     episode: PodcastContinueCardScenarios.episode(1, "The Comfort Crisis"),
                     progress: PodcastProgress(episodeRemoteId: "s-1_ep_1", lastPlayedTime: 932, completed: true),
@@ -33,7 +33,7 @@ enum PodcastContinueCardScenarios {
                 )
             }
 
-            Scenario("Free Preview", layout: .fill) {
+            Scenario("Free Preview", layout: .fillH) {
                 PodcastContinueCardScene(
                     episode: PodcastContinueCardScenarios.episode(1, "The Comfort Crisis", preview: true),
                     progress: nil,
@@ -41,7 +41,7 @@ enum PodcastContinueCardScenarios {
                 )
             }
 
-            Scenario("Gated (Sign In / Upgrade / Unavailable)", layout: .fill) {
+            Scenario("Gated (Sign In / Upgrade / Unavailable)", layout: .fillH) {
                 PodcastContinueCardGatedScene()
             }
         }

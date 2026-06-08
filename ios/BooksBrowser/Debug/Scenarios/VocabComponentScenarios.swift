@@ -9,7 +9,7 @@ enum VocabComponentScenarios {
     static func register(in playbook: Playbook) {
         // MARK: - Tone Chip
         playbook.addScenarios(of: "Vocab Components · Tone Chip") {
-            Scenario("Variants", layout: .fill) {
+            Scenario("Variants", layout: .compressed) {
                 AppThemeContainer {
                     VStack(alignment: .leading, spacing: 16) {
                         VocabToneChip(text: "正式", tone: .blue)
@@ -21,7 +21,7 @@ enum VocabComponentScenarios {
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
-            Scenario("Long text", layout: .fill) {
+            Scenario("Long text", layout: .compressed) {
                 AppThemeContainer {
                     VocabToneChip(text: "正式而帶有書面語色彩的語氣", tone: .indigo)
                         .padding(24)
@@ -92,7 +92,7 @@ enum VocabComponentScenarios {
 
         // MARK: - Review Progress Bar
         playbook.addScenarios(of: "Vocab Components · Review Progress Bar") {
-            Scenario("Ratios", layout: .fill) {
+            Scenario("Ratios", layout: .compressed) {
                 AppThemeContainer {
                     VStack(alignment: .trailing, spacing: 24) {
                         VocabReviewProgressBar(progress: VocabReviewProgress(
@@ -108,7 +108,7 @@ enum VocabComponentScenarios {
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
-            Scenario("Detail only (no bar)", layout: .fill) {
+            Scenario("Detail only (no bar)", layout: .compressed) {
                 AppThemeContainer {
                     VocabReviewProgressBar(progress: VocabReviewProgress(
                         statusLabel: "暫無進度", detailLabel: "尚未開始複習", ratio: nil))
@@ -116,7 +116,7 @@ enum VocabComponentScenarios {
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
-            Scenario("Over 100% (clamped)", layout: .fill) {
+            Scenario("Over 100% (clamped)", layout: .compressed) {
                 AppThemeContainer {
                     VocabReviewProgressBar(progress: VocabReviewProgress(
                         statusLabel: "超額", detailLabel: "15 / 12", ratio: 1.5))

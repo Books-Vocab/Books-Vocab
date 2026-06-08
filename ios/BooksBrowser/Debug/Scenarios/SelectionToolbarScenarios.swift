@@ -8,13 +8,13 @@ import SwiftUI
 enum SelectionToolbarScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Selection Toolbar") {
-            Scenario("No selection (disabled)", layout: .fill) {
+            Scenario("No selection (disabled)", layout: .fillH) {
                 toolbarScene(count: 0)
             }
-            Scenario("Single selected", layout: .fill) {
+            Scenario("Single selected", layout: .fillH) {
                 toolbarScene(count: 1)
             }
-            Scenario("Multiple selected", layout: .fill) {
+            Scenario("Multiple selected", layout: .fillH) {
                 toolbarScene(count: 12)
             }
         }
