@@ -31,7 +31,8 @@ extension TodayReviewPresenter {
     }
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
-        VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {
+        let _ = PerfLog.review.mark("front.body", "w=\(card.word) reveal=\(state.revealStage)")
+        return VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
                 switch card.reviewMode {
                 case .recognition:

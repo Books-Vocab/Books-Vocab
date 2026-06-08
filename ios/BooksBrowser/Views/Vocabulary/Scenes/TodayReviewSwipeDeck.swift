@@ -98,13 +98,16 @@ extension TodayReviewPresenter {
             guard dismissPhase == .animatingOut else { return }
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
-            withTransaction(noAnim) {
-                suppressTransition = true
-                frozenSwipeIntensity = 0
-                swipeOffset = 0
-                stackRotations = [.random(in: -1...1), .random(in: -1...1)]
-                callback()
-                dismissPhase = .idle
+            PerfLog.review.mark("fling.complete", "callback->submit begins")
+            PerfLog.review.measure("fling.transaction") {
+                withTransaction(noAnim) {
+                    suppressTransition = true
+                    frozenSwipeIntensity = 0
+                    swipeOffset = 0
+                    stackRotations = [.random(in: -1...1), .random(in: -1...1)]
+                    callback()
+                    dismissPhase = .idle
+                }
             }
             DispatchQueue.main.async {
                 suppressTransition = false
