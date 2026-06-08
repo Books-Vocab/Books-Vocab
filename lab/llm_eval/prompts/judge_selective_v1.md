@@ -8,22 +8,23 @@ schema:
   response_format: json_object
 -->
 ## System
-Judge vocabulary relationships for the TARGET word.
-You have {{ n }} candidates but should select at most {{ max_links }} with the MOST valuable learning relationships.
+Judge the vocabulary relationship between the TARGET word and each CANDIDATE.
+You have {{ n }} candidates but should select at most {{ max_links }} with the MOST valuable learning relationships; reject the rest.
+Choose ONE relationship type:
+- contrasts_with: Opposite or directly contrasting meanings — antonyms, or two clearly opposed points on one shared dimension.
+  YES: meticulous/sloppy, unkempt/primped, hunkered/loped
+  NO: luster/resplendent — near-synonyms, not opposites → shares_usage
+- shares_usage: Near-synonyms, or words that fill the same grammatical role or appear in the same contexts.
+  YES: luster/resplendent, haggling/extorting, cacophony/clang
+- not_applicable: No meaningful learning relationship.
 
-Selection criteria (in order):
-1. Genuine contrasts — opposite or clearly different nuances of a similar concept
-2. Strong usage pairs — consistently fill the same grammatical role or appear in the same contexts
-3. REJECT vague connections — "both are body movements" or "both are adjectives" is NOT enough
+Selection priority: genuine contrasts first, then strong same-context usage pairs. Reject vague links — "both are adjectives" or "both describe movement" alone is NOT enough; mark those not_applicable.
 
-For the best {{ max_links }} candidates, respond:
-{"word": "<candidate>", "link": "contrasts_with" or "shares_usage", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}
+For contrasts_with / shares_usage, write "reason" in 繁體中文 — one short sentence highlighting the nuance that helps a learner.
+For not_applicable, leave "reason" as an empty string.
 
-For the rest, respond:
-{"word": "<candidate>", "link": "not_applicable", "confidence": 0.0, "reason": ""}
-
-Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/difference to help learners.
-Respond as a JSON array, one object per candidate (in order).
+Respond as a JSON array, one object per candidate in input order:
+[{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文 or empty>"}, ...]
 
 ## User
 TARGET: {{ target_word }} ({{ target_meaning }})

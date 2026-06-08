@@ -57,7 +57,7 @@ prompts:
         source_of_truth: backend/src/kg/judge/prompts.py:MANUAL_LINK_SYSTEM_PROMPT
         tags: [judge, production, json_output]
         schema:
-          required_keys: [link, confidence, reason]
+          required_keys: [link, reason]
           response_format: json_object
 
   - name: enrich
