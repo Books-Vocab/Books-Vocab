@@ -8,6 +8,32 @@
 import Foundation
 
 extension KGService {
+    /// Build the request URL from `baseURL` + `path` + `queryItems`, percent-encoding
+    /// any literal `+` in a query value to `%2B`.
+    ///
+    /// `URLComponents.queryItems` leaves `+` un-encoded — `+` is a legal RFC 3986 query
+    /// character — but HTTP servers decode the query string as
+    /// `application/x-www-form-urlencoded`, where `+` means a space. A value containing
+    /// `+` (e.g. an ISO8601 cursor's `+00:00` offset) is therefore silently corrupted to
+    /// a space on the wire (this caused the review-event download 400 deadlock). Encoding
+    /// it as `%2B` makes every query value round-trip byte-for-byte. Only raw `+` from
+    /// values reaches `percentEncodedQuery`; every other reserved char is already encoded
+    /// by the `queryItems` setter, so the replacement is safe and idempotent.
+    static func composeRequestURL(
+        baseURL: URL, path: String, queryItems: [URLQueryItem]?
+    ) -> URL? {
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent(path),
+            resolvingAgainstBaseURL: false
+        ) else { return nil }
+        if let queryItems, !queryItems.isEmpty {
+            components.queryItems = queryItems
+            components.percentEncodedQuery = components.percentEncodedQuery?
+                .replacingOccurrences(of: "+", with: "%2B")
+        }
+        return components.url
+    }
+
     func authenticatedRequest(
         path: String,
         method: String = "GET",
@@ -18,16 +44,9 @@ extension KGService {
     ) async throws -> (Data, HTTPURLResponse) {
         let token = try await currentAuthToken()
 
-        guard var components = URLComponents(
-            url: baseURL.appendingPathComponent(path),
-            resolvingAgainstBaseURL: false
+        guard let url = KGService.composeRequestURL(
+            baseURL: baseURL, path: path, queryItems: queryItems
         ) else {
-            throw KGError.serverError("Invalid URL for \(path)")
-        }
-        if let queryItems, !queryItems.isEmpty {
-            components.queryItems = queryItems
-        }
-        guard let url = components.url else {
             throw KGError.serverError("Invalid URL for \(path)")
         }
 
