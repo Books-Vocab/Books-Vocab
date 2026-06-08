@@ -80,6 +80,11 @@ final class TodayReviewState {
         Self.instanceCounter += 1
         self.instanceSeq = Self.instanceCounter
         self.currentUserID = currentUserID
+        // Per-phase sub-timing folded into the single `state.init` line so a throwaway
+        // init's cost is attributable (load vs restore vs 636-entry lookup vs prewarm) —
+        // decides whether killing the throwaway needs full ownership injection or just a
+        // lazy `start()`. DispatchTime captures match the existing `_initStart` precedent.
+        let _tLoad = DispatchTime.now()
         let ordered = ReviewSessionStore.loadOrder(
             availableEntries: entries,
             userID: currentUserID,
@@ -87,15 +92,20 @@ final class TodayReviewState {
             // since the shuffle was saved; new cards are appended and missing cards filtered.
             allowPartialQueue: true
         ) ?? entries
+        let _msLoad = PerfChannel.ms(since: _tLoad)
+        let _tRestore = DispatchTime.now()
         let restored = ReviewSessionPersistence.restoreSnapshotIfPossible(
             orderedEntries: ordered,
             userId: currentUserID
         )
+        let _msRestore = PerfChannel.ms(since: _tRestore)
         queue = ordered
         queuePersistenceIDs = ordered.map(ReviewSessionPersistence.persistenceID(for:))
         queueBaselines = ordered.map(ReviewSessionPersistence.makeBaseline(from:))
         sessionStartTime = restored?.sessionStartTime ?? Date()
+        let _tLookup = DispatchTime.now()
         linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
+        let _msLookup = PerfChannel.ms(since: _tLookup)
         if let restored {
             queue = restored.queue
             queuePersistenceIDs = restored.persistenceIDs
@@ -107,9 +117,11 @@ final class TodayReviewState {
                 forgotCount: restored.forgotCount
             )
         }
+        let _tPrewarm = DispatchTime.now()
         prewarmCardWindow()
+        let _msPrewarm = PerfChannel.ms(since: _tPrewarm)
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
-        PerfLog.review.mark("state.init", "inst=#\(instanceSeq) entries=\(entries.count) all=\(allEntries.count) queue=\(ordered.count) \(PerfChannel.ms(since: _initStart))ms")
+        PerfLog.review.mark("state.init", "inst=#\(instanceSeq) entries=\(entries.count) all=\(allEntries.count) queue=\(ordered.count) load=\(String(format: "%.1f", _msLoad)) restore=\(String(format: "%.1f", _msRestore)) lookup=\(String(format: "%.1f", _msLookup)) prewarm=\(String(format: "%.1f", _msPrewarm)) total=\(PerfChannel.ms(since: _initStart))ms")
     }
 
     // MARK: - Computed (State Projection)
@@ -166,8 +178,16 @@ final class TodayReviewState {
 
     /// Fallback: build on-demand if async cache hasn't completed yet.
     private func cachedOrBuildCard(for entry: VocabularyEntry) -> TodayReviewPresenterState.CurrentCard? {
-        if let cached = preparedCardCache[entry.id] { return cached }
-        let built = Self.buildPreparedCardCache(from: [entry])
+        if let cached = preparedCardCache[entry.id] {
+            PerfLog.review.tick("card.cacheHit", "w=\(entry.word)")
+            return cached
+        }
+        // Cache MISS = on-demand rich-card build on the main actor during render. With the
+        // DB-merge storm gone this is the prime suspect for the residual next-card cost;
+        // measure each miss so a flip-time miss (vs a warm prewarm hit) is attributable.
+        let built = PerfLog.review.measure("card.cacheMiss", "w=\(entry.word)") {
+            Self.buildPreparedCardCache(from: [entry])
+        }.value
         if let card = built[entry.id] {
             preparedCardCache[entry.id] = card
             return card
