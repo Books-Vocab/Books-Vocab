@@ -4,8 +4,9 @@
 # ///
 """Registry-backed docs impact hints.
 
-First pass: path-hint detector only. It maps changed paths to docs/registry.yml
-`sources` entries and emits candidate docs that may need sync.
+Path-hint detector: maps changed paths to docs/registry.yml `sources` entries
+and emits candidate docs that may need sync. `--explain` additionally shows
+which broad matches were suppressed by registry `!path` / `!glob` exclusions.
 """
 
 from __future__ import annotations
@@ -131,20 +132,34 @@ def source_matches(source: str, changed_path: str) -> bool:
     return changed_path == source
 
 
-def impact_documents(documents: list[Document], changed_paths: list[str]) -> list[dict[str, object]]:
+def impact_documents(
+    documents: list[Document], changed_paths: list[str], *, explain: bool = False
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     impacts: list[dict[str, object]] = []
+    excluded_impacts: list[dict[str, object]] = []
     for doc in documents:
         include_sources = [source for source in doc.sources if not source.startswith("!")]
         exclude_sources = [source[1:] for source in doc.sources if source.startswith("!")]
-        matched_sources: list[str] = []
-        matched_paths: list[str] = []
+        matched_sources: set[str] = set()
+        matched_paths: set[str] = set()
+        excluded_sources: set[str] = set()
+        excluded_paths: set[str] = set()
+        excluded_by: set[str] = set()
         for source in include_sources:
             for changed_path in changed_paths:
-                if any(source_matches(exclude, changed_path) for exclude in exclude_sources):
+                if not source_matches(source, changed_path):
                     continue
-                if source_matches(source, changed_path):
-                    matched_sources.append(source)
-                    matched_paths.append(changed_path)
+                path_excludes = [
+                    f"!{exclude}" for exclude in exclude_sources if source_matches(exclude, changed_path)
+                ]
+                if path_excludes:
+                    if explain:
+                        excluded_sources.add(source)
+                        excluded_paths.add(changed_path)
+                        excluded_by.update(path_excludes)
+                    continue
+                matched_sources.add(source)
+                matched_paths.add(changed_path)
         if matched_paths:
             impact = {
                 "id": doc.id,
@@ -152,22 +167,46 @@ def impact_documents(documents: list[Document], changed_paths: list[str]) -> lis
                 "kind": doc.kind,
                 "authority": doc.authority,
                 "triggers": doc.triggers,
-                "matched_sources": sorted(set(matched_sources)),
-                "matched_paths": sorted(set(matched_paths)),
+                "matched_sources": sorted(matched_sources),
+                "matched_paths": sorted(matched_paths),
             }
             if doc.generator:
                 impact["generator"] = doc.generator
             impacts.append(impact)
-    return impacts
+        elif explain and excluded_paths:
+            impact = {
+                "id": doc.id,
+                "path": doc.path,
+                "kind": doc.kind,
+                "authority": doc.authority,
+                "triggers": doc.triggers,
+                "matched_sources": sorted(excluded_sources),
+                "matched_paths": sorted(excluded_paths),
+                "excluded_by": sorted(excluded_by),
+            }
+            if doc.generator:
+                impact["generator"] = doc.generator
+            excluded_impacts.append(impact)
+    return impacts, excluded_impacts
 
 
-def print_human(base: str | None, changed_paths: list[str], impacts: list[dict[str, object]]) -> None:
+def print_human(
+    base: str | None,
+    changed_paths: list[str],
+    impacts: list[dict[str, object]],
+    *,
+    excluded_impacts: list[dict[str, object]] | None = None,
+) -> None:
     base_label = base if base else "files"
-    if not impacts:
+    excluded_impacts = excluded_impacts or []
+    if not impacts and not excluded_impacts:
         print(f"docs_impact: no registry impacts (base={base_label}, changed={len(changed_paths)})")
         return
 
-    print(f"docs_impact: base={base_label} changed={len(changed_paths)} impacts={len(impacts)}")
+    summary = f"docs_impact: base={base_label} changed={len(changed_paths)} impacts={len(impacts)}"
+    if excluded_impacts:
+        summary += f" excluded={len(excluded_impacts)}"
+    print(summary)
     for impact in impacts:
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
         sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
@@ -178,6 +217,17 @@ def print_human(base: str | None, changed_paths: list[str], impacts: list[dict[s
             f"{impact['id']} {impact['path']} "
             f"via={sources} changed={paths} triggers={triggers}{generator}"
         )
+    for impact in excluded_impacts:
+        triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
+        sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
+        paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
+        excluded_by = ",".join(str(p) for p in impact["excluded_by"]) or "-"
+        generator = f" generator={impact['generator']}" if "generator" in impact else ""
+        print(
+            "EXCLUDED "
+            f"{impact['id']} {impact['path']} "
+            f"via={sources} changed={paths} excluded_by={excluded_by} triggers={triggers}{generator}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -186,6 +236,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--files", nargs="+", help="Explicit changed paths, for tests or scripted callers.")
     parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="Also emit candidates suppressed by registry !path/!glob exclusions.",
+    )
     args = parser.parse_args(argv)
 
     root = repo_root()
@@ -201,11 +256,14 @@ def main(argv: list[str] | None = None) -> int:
         base = args.since or default_changed_base()
         changed_paths = changed_paths_since(base)
 
-    impacts = impact_documents(documents, changed_paths)
+    impacts, excluded_impacts = impact_documents(documents, changed_paths, explain=args.explain)
     if args.json:
-        print(json.dumps({"base": base, "changed_paths": changed_paths, "impacts": impacts}, indent=2, ensure_ascii=False))
+        payload = {"base": base, "changed_paths": changed_paths, "impacts": impacts}
+        if args.explain:
+            payload["excluded_impacts"] = excluded_impacts
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print_human(base, changed_paths, impacts)
+        print_human(base, changed_paths, impacts, excluded_impacts=excluded_impacts if args.explain else None)
     return 0
 
 

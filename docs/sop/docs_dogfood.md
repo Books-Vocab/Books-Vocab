@@ -20,7 +20,7 @@ verified_against: e237d84f
 |---|---|---|
 | backend-change | 假設要改 `backend/src/kg/routers/vocab.py`,判斷需同步哪些 docs | `docs/registry.yml`, `ops/docs_impact.py`, `docs/reference/tech_index.md`, `docs/sop/doc_sync.md` |
 | ops-change | 假設要改 `ops/devops_kg_safe.sh`,判斷 docs gate 會提示什麼,哪些提示是必要/噪音 | `docs/registry.yml`, `ops/docs_impact.py`, `docs/policy/safety.md`, `docs/sop/deploy.md`, `docs/sop/debug.md` |
-| docs-tooling-change | 假設要改 `ops/docs_lint.sh`,判斷 impact hints 是否足夠精準 | `ops/docs_impact.py`, `docs/registry.yml`, `docs/sop/doc_sync.md` |
+| docs-tooling-change | 假設要改 `ops/docs_lint.sh`,判斷 impact hints 是否足夠精準,必要時用 `--explain` 追噪音/漏報來源 | `ops/docs_impact.py`, `docs/registry.yml`, `docs/sop/doc_sync.md` |
 | ios-feature-change | 假設要改 `ios/BooksBrowser/Models/Book.swift`,判斷該查哪些 feature boundary / snapshot | `docs/registry.yml`, `docs/reference/tech_index.md`, `docs/reference/feature_boundary/bookshelf.md` |
 | maintenance | 只看文檔系統本身,判斷新 agent 如何知道該跑哪些 gate | `CLAUDE.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `ops/tests/test_docs_lint.sh` |
 
@@ -35,7 +35,7 @@ verified_against: e237d84f
 ./ops/docs_registry_coverage.py
 ```
 
-`docs_impact.py --files ...` 是假設單一檔案改動時的精準樣本；`./ops/docs_lint.sh` 反映目前 checkout 內所有 range / staged / unstaged / untracked 變更,會包含 dogfood branch 自身正在改的檔案。回報時要分開判讀,不要把 default gate 的 ambient hints 當成該角色假設檔案的唯一結果。
+`docs_impact.py --files ...` 是假設單一檔案改動時的精準樣本；需要理解某份 doc 為何被 broad source 命中後又被 `!path` / `!glob` 排除時,補跑 `--explain`。`./ops/docs_lint.sh` 反映目前 checkout 內所有 range / staged / unstaged / untracked 變更,會包含 dogfood branch 自身正在改的檔案。回報時要分開判讀,不要把 default gate 的 ambient hints 當成該角色假設檔案的唯一結果。
 
 ## 回報格式
 
