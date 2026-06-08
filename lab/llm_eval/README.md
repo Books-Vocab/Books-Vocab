@@ -29,8 +29,25 @@ results = run_eval(prompt, dataset, models=["gemma3:4b", "gemini-2.5-flash-lite"
 
 見 `datasets/`（JSONL 格式）
 
+## 評分模型（重要）
+
+`scoring.py` **只做客觀的機械格式檢查**（JSON 合法 / schema keys / 繁簡偵測 OpenCC / POS 後綴 / link kind / confidence 範圍）。
+**翻譯與語意品質不在此自動評分** —— 同義詞、語感、nuance 的判斷由 **agent 讀 eval report 人工審核**，不靠脆弱的 gold exact-match。
+
+工作流：
+```
+# 1. 跑 eval（產生 report JSON，含 raw/parsed 輸出 + 格式分數）
+cli.py eval --prompt translate_quick --dataset translate_quick_gold \
+    --models deepseek-v4-flash --output-dir results
+
+# 2. 產生 reviewable 格式（模型輸出 vs gold join），交給 agent 審核
+cli.py review --prompt translate_quick                # 最新 report
+cli.py review --prompt translate_quick --range 0:20   # 分塊給平行 reviewer
+cli.py review --prompt translate_quick --json         # 機器交接給 subagent
+```
+
 ## 如何新增 eval
 
 1. 在 `prompts/` 新增 `.md` + 更新 `manifest.yaml`
-2. 在 `datasets/` 新增 `.jsonl`
-3. 在 `llm_eval/scoring.py` 新增對應的 `_PROMPT_SCORERS` entry
+2. 在 `datasets/` 新增 `.jsonl`（human gold 樣本帶 `gold_status: human_gold` + `gold_*` 欄位）
+3. 若有**客觀格式規則**要驗（非品質判斷），才在 `llm_eval/scoring.py` 加 `_PROMPT_SCORERS` entry
