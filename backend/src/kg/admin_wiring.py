@@ -33,18 +33,18 @@ from .admin_test_matrix import (
     store_last_test_run,
 )
 from .api_models import AdminGrantRequest, AdminTestRunRequest, EntitlementsResponse
+from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
 
 PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
 
 RuntimeSettingsFn = Callable[[], Any]
-UsersPayload = dict[str, dict[str, Any]]
 UsersLoader = Callable[[], UsersPayload]
 UsersSaver = Callable[[UsersPayload], None]
 MemLogGetter = Callable[..., list[dict[str, Any]]]
 CardStoreFactory = Callable[..., Any]
-EntitlementsBuilder = Callable[[dict[str, Any] | None], EntitlementsResponse]
-AdminGrantRecordReader = Callable[[dict[str, Any] | None], dict[str, Any]]
+EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
+AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]
 
 
 @dataclass(frozen=True)

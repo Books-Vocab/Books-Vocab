@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .types import UsersPayload
+
 
 def is_real_user(user_id: str, record: Any) -> bool:
     """True when ``(user_id, record)`` is a genuine user entry.
@@ -155,7 +157,7 @@ def parse_datetime(raw: Any) -> datetime | None:
     return None
 
 
-def collect_account_ids_for_deletion(users: dict[str, dict[str, Any]], user_id: str) -> tuple[str, list[str]]:
+def collect_account_ids_for_deletion(users: UsersPayload, user_id: str) -> tuple[str, list[str]]:
     """Return canonical id + all related ids that must be purged."""
     record = users.get(user_id, {})
     canonical_id = user_id

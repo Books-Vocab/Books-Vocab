@@ -38,7 +38,7 @@ from .service_factories import (
     create_review_event_store,
 )
 from .settings import KGSettings
-from .types import UserRecord
+from .types import AdminGrantRecord, CardsById, StoredUserRecord, SubscriptionRecord, UserRecord, UsersPayload
 from .user_context import resolve_current_user
 from .user_store import collect_account_ids_for_deletion, parse_datetime
 from .vocab_shared import card_response
@@ -167,46 +167,46 @@ def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):
     return create_embedding_store(user_dir, llm=llm, notebook_id=notebook_id)
 
 
-def _card_response(card, graph: GraphStore, cards_by_id: dict[str, Any]):
+def _card_response(card, graph: GraphStore, cards_by_id: CardsById):
     return card_response(
         card, graph=graph, cards_by_id=cards_by_id,
         tier_getter=get_tier, link_kinds=list(LinkKind), link_labels=LINK_LABELS,
     )
 
 
-def _collect_account_ids_for_deletion(users: dict[str, dict[str, Any]], user_id: str) -> tuple[str, list[str]]:
+def _collect_account_ids_for_deletion(users: UsersPayload, user_id: str) -> tuple[str, list[str]]:
     return collect_account_ids_for_deletion(users, user_id)
 
 
-def _default_subscription_payload() -> dict[str, Any]:
+def _default_subscription_payload() -> SubscriptionRecord:
     return default_subscription_payload()
 
 
-def _build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
+def _build_entitlements_response(user_record: StoredUserRecord | None) -> EntitlementsResponse:
     return build_entitlements_response(user_record)
 
 
-def _current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+def _current_admin_grant_record(user_record: StoredUserRecord | None) -> AdminGrantRecord:
     return current_admin_grant_record(user_record)
 
 
-def _current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+def _current_subscription_record(user_record: StoredUserRecord | None) -> SubscriptionRecord:
     return current_subscription_record(user_record)
 
 
 
 def _resolve_user_id_from_subscription_index(
-    users: dict[str, Any], original_transaction_id: str | None, transaction_id: str | None,
+    users: UsersPayload, original_transaction_id: str | None, transaction_id: str | None,
 ) -> str | None:
     return resolve_user_id_from_subscription_index(users, original_transaction_id, transaction_id)
 
 
 def _write_subscription_snapshot(
-    users: dict[str, Any], user_id: str, *,
+    users: UsersPayload, user_id: str, *,
     product_id: str, status: str, is_trial: bool, expires_at: str | None,
     will_renew: bool, environment: str, transaction_id: str | None,
     original_transaction_id: str | None, price_display: str | None, source: str,
-) -> dict[str, Any]:
+) -> StoredUserRecord:
     return write_subscription_snapshot(
         users, user_id, product_id=product_id, status=status,
         is_trial=is_trial, expires_at=expires_at, will_renew=will_renew,

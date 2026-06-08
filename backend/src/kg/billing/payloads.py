@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..api_models import EntitlementsResponse, SubscriptionStatusResponse
+from ..types import AdminGrantRecord, StoredUserRecord, SubscriptionRecord
 from ..user_store import parse_datetime
 
 # Subscription statuses that still confer an entitlement (drive is_active /
@@ -23,7 +24,7 @@ def _allow_sandbox_purchase() -> bool:
     return os.getenv("KG_ALLOW_SANDBOX_PURCHASE", "").strip().lower() in {"1", "true", "yes"}
 
 
-def subscription_environment_is_trusted(subscription: dict[str, Any] | None) -> bool:
+def subscription_environment_is_trusted(subscription: SubscriptionRecord | None) -> bool:
     """A subscription snapshot is entitlement-bearing only when production.
 
     The ``environment`` field is sourced from the *verified* App Store JWS
@@ -44,7 +45,7 @@ def subscription_environment_is_trusted(subscription: dict[str, Any] | None) -> 
     return str(env).strip().lower() == "production"
 
 
-def default_subscription_payload() -> dict[str, Any]:
+def default_subscription_payload() -> SubscriptionRecord:
     return {
         "is_active": False,
         "product_id": None,
@@ -60,7 +61,7 @@ def default_subscription_payload() -> dict[str, Any]:
     }
 
 
-def default_admin_grant_payload() -> dict[str, Any]:
+def default_admin_grant_payload() -> AdminGrantRecord:
     return {
         "is_active": False,
         "plan_name": "Books & Vocab Pro",
@@ -74,7 +75,7 @@ def default_admin_grant_payload() -> dict[str, Any]:
     }
 
 
-def current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+def current_admin_grant_record(user_record: StoredUserRecord | None) -> AdminGrantRecord:
     record = user_record if isinstance(user_record, dict) else {}
     raw_admin_grant = record.get("admin_grant")
     admin_grant = default_admin_grant_payload()
@@ -83,7 +84,7 @@ def current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str, 
     return admin_grant
 
 
-def admin_grant_is_active(user_record: dict[str, Any] | None) -> bool:
+def admin_grant_is_active(user_record: StoredUserRecord | None) -> bool:
     admin_grant = current_admin_grant_record(user_record)
     if not admin_grant.get("is_active"):
         return False
@@ -93,7 +94,7 @@ def admin_grant_is_active(user_record: dict[str, Any] | None) -> bool:
     return True
 
 
-def subscription_is_active(subscription: dict[str, Any]) -> bool:
+def subscription_is_active(subscription: SubscriptionRecord) -> bool:
     """Resolve whether a stored subscription still grants Pro right now.
 
     The stored ``is_active`` flag is a static snapshot computed at sync time
@@ -112,7 +113,7 @@ def subscription_is_active(subscription: dict[str, Any]) -> bool:
     return True
 
 
-def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+def current_subscription_record(user_record: StoredUserRecord | None) -> SubscriptionRecord:
     record = user_record if isinstance(user_record, dict) else {}
     raw_subscription = record.get("subscription")
     subscription = default_subscription_payload()
@@ -124,7 +125,7 @@ def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str,
     return subscription
 
 
-def current_pro_entitlement_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+def current_pro_entitlement_record(user_record: StoredUserRecord | None) -> SubscriptionRecord:
     if admin_grant_is_active(user_record):
         admin_grant = current_admin_grant_record(user_record)
         return {
@@ -152,5 +153,5 @@ def current_pro_entitlement_record(user_record: dict[str, Any] | None) -> dict[s
     return subscription
 
 
-def build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
+def build_entitlements_response(user_record: StoredUserRecord | None) -> EntitlementsResponse:
     return EntitlementsResponse(pro=SubscriptionStatusResponse(**current_pro_entitlement_record(user_record)))

@@ -22,6 +22,7 @@ from .routers import (
     web_auth_router,
 )
 from .routers.admin import AdminRouters, build_admin_route_handlers, build_admin_routers_from_handlers
+from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
 
 
 @dataclass(frozen=True)
@@ -50,12 +51,12 @@ def build_app_routers(
     *,
     runtime_settings_fn: Callable[[], Any],
     runtime_users_lock_file_fn: Callable[[], Path],
-    load_users_fn: Callable[[], dict[str, dict[str, Any]]],
-    save_users_fn: Callable[[dict[str, dict[str, Any]]], None],
+    load_users_fn: Callable[[], UsersPayload],
+    save_users_fn: Callable[[UsersPayload], None],
     mem_log_getter: Callable[..., list[dict[str, Any]]],
     card_store_factory: Callable[..., Any],
-    build_entitlements_response_fn: Callable[[dict[str, Any] | None], Any],
-    current_admin_grant_record_fn: Callable[[dict[str, Any] | None], dict[str, Any]],
+    build_entitlements_response_fn: Callable[[StoredUserRecord | None], Any],
+    current_admin_grant_record_fn: Callable[[StoredUserRecord | None], AdminGrantRecord],
 ) -> AppRouters:
     admin_handlers = create_admin_handlers_from_dependencies(
         dependencies=AdminHandlerDependencies(
