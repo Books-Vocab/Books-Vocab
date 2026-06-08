@@ -507,6 +507,8 @@ enum FooScenarios {
 # 並由 review entry 自動把最新可用那份視為 blessed
 ./ops/catalog_review_entry.py current
 ./ops/catalog_review_entry.py serve --port 8787
+./ops/catalog_review_entry.py prune-superseded --dry-run
+./ops/catalog_review_entry.py prune-superseded
 
 # 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
 ./ops/catalog_review_entry.py current
