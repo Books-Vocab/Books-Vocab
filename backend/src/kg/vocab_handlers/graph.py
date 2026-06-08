@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from ..api_models import GraphLinkResponse, ManualLinkRequest
-from ..notebook import validate_notebook_access
 from ..vocab_graph import graph_links_payload
 from ..vocab_graph_ops import (
     create_manual_link,
@@ -23,10 +22,14 @@ def get_graph_links_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> list[GraphLinkResponse]:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
-    return graph_links_payload(graph=graph)
+    stores = _resolve_stores(
+        user,
+        notebook_id,
+        card_store_factory=lambda _path: None,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
+    return graph_links_payload(graph=stores.graph)
 
 
 def create_manual_link_response(
@@ -39,15 +42,15 @@ def create_manual_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> GraphLinkResponse:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
 
-    from ..judge import ManualLinkJudge
     from ..deps_quota import _is_pro
+    from ..judge import ManualLinkJudge
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
     provider = provider_for("judge_manual")
@@ -65,7 +68,7 @@ def create_manual_link_response(
 
     link = create_manual_link(
         from_id=req.from_id, to_id=req.to_id,
-        cards_store=cards, graph=graph, judge=judge,
+        cards_store=stores.cards, graph=stores.graph, judge=judge,
         notebook_id=notebook_id,
     )
     return GraphLinkResponse(
@@ -87,13 +90,13 @@ def delete_graph_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    delete_graph_link(link_id=link_id, graph=graph, cards_store=cards)
+    delete_graph_link(link_id=link_id, graph=stores.graph, cards_store=stores.cards)
 
 
 def hide_graph_link_response(
@@ -105,13 +108,13 @@ def hide_graph_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    hide_graph_link(link_id=link_id, graph=graph, cards_store=cards)
+    hide_graph_link(link_id=link_id, graph=stores.graph, cards_store=stores.cards)
 
 
 def unhide_graph_link_response(
@@ -123,10 +126,10 @@ def unhide_graph_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    unhide_graph_link(link_id=link_id, graph=graph, cards_store=cards)
+    unhide_graph_link(link_id=link_id, graph=stores.graph, cards_store=stores.cards)
