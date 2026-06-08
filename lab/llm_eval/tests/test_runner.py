@@ -144,7 +144,9 @@ async def test_run_eval_scores_each_result_for_prompt_name():
 
 
 @pytest.mark.asyncio
-async def test_run_eval_quality_score_only_counts_human_gold():
+async def test_run_eval_quality_score_is_never_auto_scored():
+    """Quality is agent-reviewed, not auto-scored — quality_score_avg stays None
+    even for human_gold samples; only format scoring runs automatically."""
     prompt = RenderedPrompt(
         name="translate_quick",
         version="v1",
@@ -183,9 +185,6 @@ async def test_run_eval_quality_score_only_counts_human_gold():
                     "id": "candidate",
                     "word": "resplendent",
                     "gold_status": "unverified",
-                    "gold_translation": "錯誤參考",
-                    "gold_pos": "n.",
-                    "gold_root": "wrong",
                 },
             ],
             ["gemini-2.5-flash-lite"],
@@ -193,7 +192,7 @@ async def test_run_eval_quality_score_only_counts_human_gold():
 
     summary = results["gemini-2.5-flash-lite"]
     assert summary.sample_count == 2
-    assert summary.quality_score_avg == 1.0
+    assert summary.quality_score_avg is None
     assert summary.format_score_avg == 1.0
 
 
@@ -260,7 +259,7 @@ async def test_translate_prompt_rejects_json_list_schema(sample):
 
 
 @pytest.mark.asyncio
-async def test_quality_score_counts_failed_human_gold_result_as_zero():
+async def test_errored_result_excluded_from_format_score():
     prompt = RenderedPrompt(
         name="translate_quick",
         version="v1",
@@ -292,11 +291,12 @@ async def test_quality_score_counts_failed_human_gold_result_as_zero():
 
     summary = results["gemini-2.5-flash-lite"]
     assert summary.error_count == 1
-    assert summary.quality_score_avg == 0.0
+    assert summary.format_score_avg is None
+    assert summary.quality_score_avg is None
 
 
 @pytest.mark.asyncio
-async def test_human_gold_schema_failure_quality_score_is_zero(sample):
+async def test_human_gold_schema_failure_lowers_format_score(sample):
     prompt = RenderedPrompt(
         name="translate_quick",
         version="v1",
@@ -329,7 +329,10 @@ async def test_human_gold_schema_failure_quality_score_is_zero(sample):
             EvalConfig(prompt_name="translate_quick"),
         )
 
-    assert results["gemini-2.5-flash-lite"].quality_score_avg == 0.0
+    summary = results["gemini-2.5-flash-lite"]
+    # list-shaped output fails dict schema → schema_conform 0 → format < 1
+    assert summary.format_score_avg == 0.5
+    assert summary.quality_score_avg is None
 
 
 @pytest.mark.asyncio

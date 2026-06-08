@@ -1,6 +1,13 @@
-"""Rule-based scoring for LLM eval outputs.
+"""Rule-based FORMAT scoring for LLM eval outputs.
 
-Reuses production validation logic where possible.
+Scope is deliberately narrow: only objective, mechanical checks that verify the
+output obeys the prompt's own stated format rules (valid JSON, schema keys,
+Traditional-Chinese-only, POS suffix conventions, valid link kinds / confidence
+ranges). These are cheap first-pass gates.
+
+Translation/semantic QUALITY is NOT scored here — synonym-vs-synonym and
+nuance judgements are done by agent review of the eval report (see the `review`
+CLI command), not by brittle gold exact-match.
 """
 
 from __future__ import annotations
@@ -106,25 +113,8 @@ class TranslateQualityScorer:
         # Lemma sanity check (not a full dictionary validation — just heuristics)
         r_val = str(parsed.get("r", "")).strip()
         result["lemma_ok"] = _check_lemma(r_val, sample.get("word", ""))
-        result.update(_translate_gold_scores(parsed, sample))
 
         return result
-
-
-class ExplainQualityScorer:
-    """Deterministic human-gold checks for explanation outputs."""
-
-    def score(self, parsed: Any, sample: dict[str, Any]) -> dict[str, float]:
-        if not parsed or not isinstance(parsed, dict):
-            return {}
-        if sample.get("gold_status") != "human_gold":
-            return {}
-        keywords = sample.get("gold_keywords") or []
-        if not keywords:
-            return {}
-        explanation = str(parsed.get("e", ""))
-        hits = sum(1 for kw in keywords if str(kw) in explanation)
-        return {"quality_keyword_coverage": hits / len(keywords)}
 
 
 class JudgeBatchScorer:
@@ -218,7 +208,6 @@ _PROMPT_SCORERS: dict[str, list[Scorer]] = {
     ],
     "translate_explain": [
         JsonSchemaScorer(["e"]),
-        ExplainQualityScorer(),
     ],
     "judge_batch": [
         JsonSchemaScorer(["word", "link", "confidence", "reason"], allow_list=True),
@@ -252,32 +241,6 @@ def score_result(
     for scorer in scorers:
         scores.update(scorer.score(parsed or {}, sample))
     return scores
-
-
-def _translate_gold_scores(parsed: dict[str, Any], sample: dict[str, Any]) -> dict[str, float]:
-    if sample.get("gold_status") != "human_gold":
-        return {}
-    scores: dict[str, float] = {}
-    gold_translation = sample.get("gold_translation")
-    if gold_translation is not None:
-        scores["quality_translation_match"] = (
-            1.0 if _norm_text(parsed.get("t")) == _norm_text(gold_translation) else 0.0
-        )
-    gold_pos = sample.get("gold_pos")
-    if gold_pos is not None:
-        scores["quality_pos_match"] = (
-            1.0 if _norm_text(parsed.get("p")) == _norm_text(gold_pos) else 0.0
-        )
-    gold_root = sample.get("gold_root")
-    if gold_root is not None:
-        scores["quality_root_match"] = (
-            1.0 if _norm_text(parsed.get("r")) == _norm_text(gold_root) else 0.0
-        )
-    return scores
-
-
-def _norm_text(value: Any) -> str:
-    return str(value or "").strip().lower()
 
 
 def _contains_simplified(text: str) -> bool:
