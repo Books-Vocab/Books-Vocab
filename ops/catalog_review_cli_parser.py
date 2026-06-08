@@ -60,6 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
     report_cmd = subparsers.add_parser("report")
     _add_limit_argument(report_cmd, default=None)
 
+    # Surface-level coverage query (machine face for the gallery's Coverage view):
+    # "which shippable surfaces are missing which ship-critical states". Named
+    # "gaps" to avoid the existing "coverage" shortcut (review-backlog doctor mode).
+    gaps_cmd = subparsers.add_parser("gaps")
+    gaps_cmd.add_argument("--lane", default=None)
+    gaps_cmd.add_argument("--missing", default=None, help="only surfaces missing this state facet")
+    gaps_cmd.add_argument("--feature", default=None)
+    gaps_cmd.add_argument("--min-gap", type=int, default=1)
+    _add_limit_argument(gaps_cmd, default=None)
+
     subparsers.add_parser("verify")
 
     repair_cmd = subparsers.add_parser("repair")
@@ -117,6 +127,14 @@ def dispatch_command(
             limit=args.limit,
         ),
         "report": lambda: handlers["report"](root, limit=args.limit),
+        "gaps": lambda: handlers["gaps"](
+            root,
+            lane=args.lane,
+            missing=args.missing,
+            feature=args.feature,
+            min_gap=args.min_gap,
+            limit=args.limit,
+        ),
         "verify": lambda: handlers["verify"](root),
         "repair": lambda: handlers["repair"](
             root,

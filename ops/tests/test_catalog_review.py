@@ -311,6 +311,50 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
     assert "Eligibility" in review_html
 
 
+def test_catalog_review_cli_gaps_query(tmp_path: Path):
+    """The machine face must let an agent query surface coverage directly instead
+    of parsing the whole manifest: which shippable surfaces are missing which
+    ship-critical states, filterable by lane / missing-facet, with untracked
+    lanes (building blocks, harness) never fabricating a gap."""
+    source_root = tmp_path / "snapshots"
+    screen_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    screen_dir.mkdir(parents=True)
+    (screen_dir / "Default.png").write_bytes(b"png")  # default-only → missing populated/empty/loading/error
+    badge_dir = source_root / "iPhone 15 Pro portrait" / "iCloud_Progress_Badge"
+    badge_dir.mkdir(parents=True)
+    (badge_dir / "Idle.png").write_bytes(b"png")  # building-block → untracked, must never show as a gap
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [sys.executable, str(ROOT / "ops" / "render_catalog_review.py"), str(source_root),
+         "--output-root", str(output_root), "--profile", str(ROOT / "ops" / "catalog_review_profile.json")],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    gaps = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "gaps", "--missing", "loading"],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+    assert gaps.returncode == 0, gaps.stderr
+    payload = json.loads(gaps.stdout)
+    assert payload["status"] == "ok"
+    surfaces = {s["surface"]: s for s in payload["surfaces"]}
+    assert "Settings View" in surfaces
+    assert "loading" in surfaces["Settings View"]["missingFacets"]
+    assert surfaces["Settings View"]["lane"] == "feature-surface"
+    # untracked building block must never appear as a gap
+    assert "iCloud Progress Badge" not in surfaces
+
+    # lane filter narrows to a single lane
+    overlay = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "gaps", "--lane", "overlay"],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+    assert overlay.returncode == 0, overlay.stderr
+    assert all(s["lane"] == "overlay" for s in json.loads(overlay.stdout)["surfaces"])
+
+
 def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     source_root = tmp_path / "snapshots"
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
