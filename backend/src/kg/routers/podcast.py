@@ -38,19 +38,17 @@ move is to add an ``owner_id`` field to ``metadata.json`` and compare it to
 auth entirely, was removed in 2026-05.)
 """
 
-import json
 import logging
 import re
 from collections.abc import Callable
-from email.utils import formatdate
-from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi import Path as PathParam
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 
+from . import podcast_media as _podcast_media
 from ..api_models.podcast import (
     PodcastProgressListResponse,
     PodcastProgressRequest,
@@ -93,217 +91,100 @@ router.include_router(
 
 
 def _podcasts_dir(request: Request | None = None) -> Path:
-    if request is not None:
-        return request.app.state.kg_settings.podcasts_dir
-    from ..settings import load_settings
-    return load_settings().podcasts_dir
+    return _podcast_media._podcasts_dir(request)
 
 
 def _settings(request: Request) -> KGSettings:
-    return request.app.state.kg_settings
+    return _podcast_media._settings(request)
 
 
 def _using_s3(request: Request) -> bool:
-    return bool(_settings(request).podcast_bucket)
+    return _podcast_media._using_s3(request)
 
 
-# boto3 clients are thread-safe and recommend reuse — cache one per
-# (bucket, region, endpoint) so we don't pay the credential-resolution +
-# HTTPS pool setup cost on every audio chunk request.
-@lru_cache(maxsize=4)
 def _s3_client_cached(region: str, endpoint_url: str | None):
-    import boto3  # local import: keeps disk-mode tests off boto3 entirely
-    from botocore.config import Config
-
-    return boto3.client(
-        "s3",
-        region_name=region,
-        endpoint_url=endpoint_url,
-        # Default signature works for both standard S3 and Lightsail Object
-        # Storage. Read-heavy workload → larger pool to avoid serialization.
-        config=Config(
-            signature_version="s3v4",
-            max_pool_connections=32,
-            retries={"max_attempts": 3, "mode": "standard"},
-        ),
-    )
+    return _podcast_media._s3_client_cached(region, endpoint_url)
 
 
 def _s3_client(request: Request):
-    cfg = _settings(request)
-    return _s3_client_cached(cfg.podcast_bucket_region, cfg.podcast_bucket_endpoint_url)
+    return _podcast_media._s3_client(request)
 
 
 def _is_s3_not_found(exc: Exception, s3) -> bool:
-    """True iff ``exc`` is a 404 / NoSuchKey (Lightsail sometimes returns a
-    ClientError("404") instead of NoSuchKey for missing keys). Any other error
-    is a real fault the caller must surface, not swallow."""
-    if isinstance(exc, s3.exceptions.NoSuchKey):
-        return True
-    response = getattr(exc, "response", None)
-    code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
-    return code in ("NoSuchKey", "404")
+    return _podcast_media._is_s3_not_found(exc, s3)
 
 
-# Per-(bucket, series) resolved audio extension. A series' format is fixed at
-# publish time (all episodes share one format), so resolving it once and
-# caching avoids an S3 metadata read on every Range request during streaming.
-# Cleared implicitly on process restart — acceptable staleness for a re-publish
-# that changes format (rare; restart or a new bucket clears it).
-_S3_AUDIO_FMT_CACHE: dict[tuple[str | None, str], str] = {}
+_S3_AUDIO_FMT_CACHE = _podcast_media._S3_AUDIO_FMT_CACHE
 
 
 def _s3_audio_format(request: Request, series_id: str) -> str:
-    """Resolve a series' audio extension (``"m4a"`` / ``"mp3"``) in S3 mode.
-
-    Trusts ``metadata.json``'s ``audioFormat`` field (written by
-    ``ops/podcast_upload.sh`` / the backfill script). Legacy series whose
-    metadata predates that field fall back to probing the bucket in
-    m4a → mp3 order. Result cached per ``(bucket, series_id)``.
-    """
-    cfg = _settings(request)
-    cache_key = (cfg.podcast_bucket, series_id)
-    cached = _S3_AUDIO_FMT_CACHE.get(cache_key)
-    if cached:
-        return cached
-
-    fmt: str | None = None
-    meta = _read_json_from_s3(request, f"{series_id}/metadata.json", context="metadata")
-    if isinstance(meta, dict):
-        raw = meta.get("audioFormat")
-        if isinstance(raw, str) and raw in ("m4a", "mp3"):
-            fmt = raw
-
-    if fmt is None:
-        # Legacy metadata without audioFormat — probe ep_01 (representative,
-        # since all episodes in a series share one format).
-        s3 = _s3_client(request)
-        for cand in ("m4a", "mp3"):
-            try:
-                s3.head_object(Bucket=cfg.podcast_bucket, Key=f"{series_id}/ep_01/audio.{cand}")
-                fmt = cand
-                break
-            except Exception as exc:  # noqa: BLE001
-                if _is_s3_not_found(exc, s3):
-                    continue
-                # Loud-fail on real faults (perms / throttle / network): caching
-                # a default here would pin a wrong format until restart and mask
-                # the error as a downstream 404. Mirror _read_json_from_s3.
-                logger.error("Podcast audio-format probe failed for %s/ep_01/audio.%s: %s",
-                             series_id, cand, exc)
-                raise HTTPException(status_code=502, detail="Storage error resolving audio format") from exc
-
-    fmt = fmt or "m4a"
-    _S3_AUDIO_FMT_CACHE[cache_key] = fmt
-    return fmt
+    return _podcast_media._s3_audio_format(
+        request,
+        series_id,
+        settings_fn=_settings,
+        read_json_from_s3=_read_json_from_s3,
+        s3_client_fn=_s3_client,
+        is_s3_not_found_fn=_is_s3_not_found,
+        logger_=logger,
+        cache=_S3_AUDIO_FMT_CACHE,
+    )
 
 
 def _audio_filename(request: Request, series_id: str, ep_num: int, *, stem: str = FULL_AUDIO_STEM) -> str:
-    """Resolve the audio filename for an episode, honouring m4a-first / mp3-fallback.
-
-    ``stem`` selects the asset: ``"audio"`` (full episode) or ``"preview"`` (the
-    free-tier clip). The preview is produced by stream-copy from the full audio
-    so it shares the series' container/format — hence the same ``audioFormat``
-    resolution applies to both.
-
-    For S3-backed deployments we trust ``metadata.json``'s ``audioFormat``
-    field (written by ``ops/podcast_upload.sh``). For disk deployments we
-    probe the filesystem in m4a → mp3 order so series uploaded before
-    Track B keep playing without manual migration.
-    """
-    if _using_s3(request):
-        return f"{stem}.{_s3_audio_format(request, series_id)}"
-    base = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}"
-    for name in (f"{stem}.m4a", f"{stem}.mp3"):
-        if (base / name).exists():
-            return name
-    return f"{stem}.m4a"
+    return _podcast_media._audio_filename(
+        request,
+        series_id,
+        ep_num,
+        stem=stem,
+        using_s3=_using_s3,
+        s3_audio_format=_s3_audio_format,
+        podcasts_dir=_podcasts_dir,
+    )
 
 
 def _media_type_for(filename: str) -> str:
-    return "audio/mp4" if filename.endswith(".m4a") else "audio/mpeg"
+    return _podcast_media._media_type_for(filename)
 
 
 def _read_json_file(path: Path, *, context: str):
-    """Read + parse JSON with a clear 500 on corruption instead of a raw
-    JSONDecodeError trace."""
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        logger.error("Podcast %s corrupt at %s: %s", context, path, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Malformed {context}") from e
+    return _podcast_media._read_json_file(path, context=context, logger_=logger)
 
 
 def _read_json_from_s3(request: Request, key: str, *, context: str):
-    """Read + parse JSON from the configured podcast bucket.
-
-    Returns ``None`` if the object does not exist (so callers can mirror the
-    disk path's ``Path.exists()`` branch); raises ``HTTPException(500)`` on
-    malformed JSON to preserve the corruption-handling semantics of the
-    disk path.
-    """
-    cfg = _settings(request)
-    s3 = _s3_client(request)
-    try:
-        obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-    except Exception as exc:  # noqa: BLE001
-        # Lightsail Object Storage occasionally returns ClientError("404") for
-        # missing keys instead of NoSuchKey. Treat any 404 the same.
-        if _is_s3_not_found(exc, s3):
-            return None
-        logger.error("Podcast %s S3 read failed for s3://%s/%s: %s",
-                     context, cfg.podcast_bucket, key, exc, exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Storage error reading {context}") from exc
-    body = obj["Body"].read()
-    try:
-        return json.loads(body)
-    except json.JSONDecodeError as e:
-        logger.error("Podcast %s corrupt in s3://%s/%s: %s",
-                     context, cfg.podcast_bucket, key, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Malformed {context}") from e
+    return _podcast_media._read_json_from_s3(
+        request,
+        key,
+        context=context,
+        settings_fn=_settings,
+        s3_client_fn=_s3_client,
+        is_s3_not_found_fn=_is_s3_not_found,
+        logger_=logger,
+    )
 
 
 def _get_object_from_s3(request: Request, key: str, *, context: str):
-    cfg = _settings(request)
-    s3 = _s3_client(request)
-    try:
-        return s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
-    except Exception as exc:  # noqa: BLE001
-        # Lightsail Object Storage occasionally returns ClientError("404") for
-        # missing keys instead of NoSuchKey. Treat any 404 the same.
-        if _is_s3_not_found(exc, s3):
-            return None
-        logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Storage error fetching {context}") from exc
+    return _podcast_media._get_object_from_s3(
+        request,
+        key,
+        context=context,
+        settings_fn=_settings,
+        s3_client_fn=_s3_client,
+        is_s3_not_found_fn=_is_s3_not_found,
+        logger_=logger,
+    )
 
 
 def _read_bytes_from_s3(request: Request, key: str, *, context: str) -> bytes | None:
-    """Read raw object bytes from the configured podcast bucket.
-
-    Returns ``None`` if the object does not exist (so callers can mirror the
-    disk path's ``Path.exists()`` branch); raises ``HTTPException(502)`` on a
-    real storage fault. The bytes-oriented sibling of ``_read_json_from_s3``,
-    used by subtitle media proxies that need an in-memory text transform.
-    """
-    obj = _get_object_from_s3(request, key, context=context)
-    if obj is None:
-        return None
-    return obj["Body"].read()
+    return _podcast_media._read_bytes_from_s3(
+        request,
+        key,
+        context=context,
+        get_object_from_s3=_get_object_from_s3,
+    )
 
 
 def _s3_static_headers(obj: dict, base_headers: dict[str, str] | None = None) -> dict[str, str]:
-    headers = dict(base_headers or {})
-    content_length = obj.get("ContentLength")
-    if content_length is not None:
-        headers["Content-Length"] = str(content_length)
-    if etag := obj.get("ETag"):
-        headers["ETag"] = str(etag)
-    if last_modified := obj.get("LastModified"):
-        if hasattr(last_modified, "timestamp"):
-            headers["Last-Modified"] = formatdate(last_modified.timestamp(), usegmt=True)
-        else:
-            headers["Last-Modified"] = str(last_modified)
-    return headers
+    return _podcast_media._s3_static_headers(obj, base_headers)
 
 
 def _serve_static_media(
@@ -317,38 +198,21 @@ def _serve_static_media(
     transform: Callable[[bytes], bytes | str] = lambda b: b,
     stream_s3: bool = False,
 ):
-    """Serve a single static media object (subtitle / cover) over the shared
-    disk-exists / S3-404 dichotomy.
-
-    ``rel_key`` is the path under the series root (``ep_NN/subtitle.srt`` or
-    ``cover.png``); the S3 key is ``{series_id}/{rel_key}`` and the disk path is
-    ``_podcasts_dir/series_id/rel_key``. ``transform`` lets the subtitle path
-    decode bytes → text (round-tripped through ``PlainTextResponse``) while the
-    cover path passes raw bytes through unchanged.
-    """
-    if _using_s3(request) and stream_s3:
-        obj = _get_object_from_s3(request, f"{series_id}/{rel_key}", context=context)
-        if obj is None:
-            raise HTTPException(status_code=404, detail=f"{context.capitalize()} not found")
-        return StreamingResponse(
-            _iter_s3_body(obj["Body"]),
-            media_type=media_type,
-            headers=_s3_static_headers(obj, headers),
-        )
-
-    if _using_s3(request):
-        raw = _read_bytes_from_s3(request, f"{series_id}/{rel_key}", context=context)
-        if raw is None:
-            raise HTTPException(status_code=404, detail=f"{context.capitalize()} not found")
-        return Response(content=transform(raw), media_type=media_type, headers=headers)
-
-    disk_file = _podcasts_dir(request) / series_id / rel_key
-    if not disk_file.exists():
-        raise HTTPException(status_code=404, detail=f"{context.capitalize()} not found")
-    return Response(
-        content=transform(disk_file.read_bytes()),
+    return _podcast_media._serve_static_media(
+        request,
+        series_id,
+        rel_key,
         media_type=media_type,
+        context=context,
         headers=headers,
+        transform=transform,
+        stream_s3=stream_s3,
+        using_s3=_using_s3,
+        get_object_from_s3=_get_object_from_s3,
+        iter_s3_body=_iter_s3_body,
+        s3_static_headers=_s3_static_headers,
+        read_bytes_from_s3=_read_bytes_from_s3,
+        podcasts_dir=_podcasts_dir,
     )
 
 
@@ -434,23 +298,7 @@ def _iter_file_range(path: Path, start: int, end: int, chunk_size: int = _AUDIO_
 
 
 def _iter_s3_body(body, chunk_size: int = _AUDIO_CHUNK_SIZE):
-    """Yield chunks from a botocore StreamingBody, closing it at the end.
-
-    botocore's StreamingBody is iterable but doesn't expose a context-manager
-    interface; wrapping the iteration in try/finally guarantees the socket
-    returns to the pool even if the client drops the connection mid-stream.
-    """
-    try:
-        while True:
-            buf = body.read(chunk_size)
-            if not buf:
-                break
-            yield buf
-    finally:
-        try:
-            body.close()
-        except Exception:  # noqa: BLE001
-            pass
+    return _podcast_media._iter_s3_body(body, chunk_size)
 
 
 def _serve_audio_from_s3(
@@ -461,48 +309,19 @@ def _serve_audio_from_s3(
     *,
     stem: str = FULL_AUDIO_STEM,
 ):
-    cfg = _settings(request)
-    s3 = _s3_client(request)
-    filename = _audio_filename(request, series_id, ep_num, stem=stem)
-    key = f"{series_id}/ep_{ep_num:02d}/{filename}"
-    media_type = _media_type_for(filename)
-
-    get_kwargs = {"Bucket": cfg.podcast_bucket, "Key": key}
-    if range_header:
-        # S3 implements RFC 7233 Range natively. Pass the client's header through
-        # so we don't reinvent suffix-range / open-ended-range parsing here.
-        get_kwargs["Range"] = range_header
-
-    try:
-        obj = s3.get_object(**get_kwargs)
-    except Exception as exc:  # noqa: BLE001
-        http_status = int(getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode", 0)) \
-            if hasattr(exc, "response") else 0
-        if _is_s3_not_found(exc, s3) or http_status == 404:
-            raise HTTPException(status_code=404, detail="Audio not found") from None
-        if http_status == 416:
-            # Surface the 416 with the Content-Range S3 returned, mirroring
-            # what _parse_range_header would have done.
-            raise HTTPException(status_code=416, detail="Range not satisfiable") from None
-        logger.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
-        raise HTTPException(status_code=502, detail="Storage error fetching audio") from exc
-
-    body = obj["Body"]
-    status_code = obj.get("ResponseMetadata", {}).get("HTTPStatusCode", 200)
-    content_length = obj.get("ContentLength")
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "private, no-transform",
-    }
-    if content_length is not None:
-        headers["Content-Length"] = str(content_length)
-    if "ContentRange" in obj:
-        headers["Content-Range"] = obj["ContentRange"]
-    return StreamingResponse(
-        _iter_s3_body(body),
-        status_code=status_code,
-        media_type=media_type,
-        headers=headers,
+    return _podcast_media._serve_audio_from_s3(
+        request,
+        series_id,
+        ep_num,
+        range_header,
+        stem=stem,
+        settings_fn=_settings,
+        s3_client_fn=_s3_client,
+        audio_filename=_audio_filename,
+        media_type_for=_media_type_for,
+        is_s3_not_found_fn=_is_s3_not_found,
+        iter_s3_body=_iter_s3_body,
+        logger_=logger,
     )
 
 
