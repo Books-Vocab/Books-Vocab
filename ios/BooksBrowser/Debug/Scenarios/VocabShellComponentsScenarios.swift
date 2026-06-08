@@ -43,6 +43,43 @@ enum VocabShellComponentsScenarios {
                 VocabSortPillScene(initial: .difficulty)
             }
         }
+
+        // MARK: Review State Tab Selector
+        // The vocabulary list's review-state filter bar (未學習 / 待複習 / 已複習).
+        playbook.addScenarios(of: "Vocab Shell · Tab Selector") {
+            Scenario("With counts · due selected", layout: .fill) {
+                VocabTabSelectorScene(initial: .due, counts: [.unlearned: 12, .due: 5, .reviewed: 38])
+            }
+            Scenario("No counts · unlearned selected", layout: .fill) {
+                VocabTabSelectorScene(initial: .unlearned, counts: [:])
+            }
+            Scenario("Zero counts · reviewed selected", layout: .fill) {
+                VocabTabSelectorScene(initial: .reviewed, counts: [.unlearned: 0, .due: 0, .reviewed: 0])
+            }
+        }
+
+        // MARK: Review CTA Pill
+        // brandHero 填色 capsule，依到期 / 未學數量切 single-button vs menu。
+        playbook.addScenarios(of: "Vocab Shell · Review CTA Pill") {
+            Scenario("Both types (menu)", layout: .fill) {
+                wrap {
+                    VocabReviewCTAPill(dueCount: 5, unlearnedCount: 12,
+                                       onStartDue: {}, onStartUnlearned: {}, onStartMixed: {})
+                }
+            }
+            Scenario("Due only", layout: .fill) {
+                wrap {
+                    VocabReviewCTAPill(dueCount: 5, unlearnedCount: 0,
+                                       onStartDue: {}, onStartUnlearned: {}, onStartMixed: {})
+                }
+            }
+            Scenario("Unlearned only", layout: .fill) {
+                wrap {
+                    VocabReviewCTAPill(dueCount: 0, unlearnedCount: 8,
+                                       onStartDue: {}, onStartUnlearned: {}, onStartMixed: {})
+                }
+            }
+        }
     }
 
     // MARK: - Layout helper (no @MainActor types involved → nonisolated ok)
@@ -58,7 +95,7 @@ enum VocabShellComponentsScenarios {
     }
 }
 
-// MARK: - Binding-backed scene harness
+// MARK: - Binding-backed scene harnesses
 
 private struct VocabSortPillScene: View {
     @State private var sortOption: KGVocabSortOption
@@ -70,6 +107,29 @@ private struct VocabSortPillScene: View {
     var body: some View {
         AppThemeContainer {
             VocabSortPill(sortOption: $sortOption)
+                .padding(24)
+        }
+        .environmentObject(AppAppearanceStore.preview)
+    }
+}
+
+/// Hosts `VocabTabSelector` with a live `@State` selection so the segment
+/// switch renders the selected pill. `counts` empty → options carry no count badge.
+private struct VocabTabSelectorScene: View {
+    @State private var selection: VocabularyReviewState
+    let counts: [VocabularyReviewState: Int]
+
+    init(initial: VocabularyReviewState, counts: [VocabularyReviewState: Int]) {
+        self._selection = State(initialValue: initial)
+        self.counts = counts
+    }
+
+    var body: some View {
+        let options = VocabularyReviewState.allCases.map {
+            VocabTabOption(id: $0, title: $0.title, count: counts[$0])
+        }
+        return AppThemeContainer {
+            VocabTabSelector(options: options, selection: $selection)
                 .padding(24)
         }
         .environmentObject(AppAppearanceStore.preview)
