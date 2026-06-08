@@ -50,7 +50,6 @@ def choose_blessed_artifact(artifacts: list[dict]) -> dict:
     return max(
         candidates,
         key=lambda item: (
-            item["totalImages"],
             item["name"],
         ),
     )

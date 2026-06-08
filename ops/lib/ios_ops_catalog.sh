@@ -14,6 +14,81 @@ catalog_default_derived_data_root() {
   printf '%s\n' "${KG_IOS_OPS_CATALOG_CACHE_ROOT:-$ROOT/.cache/ios-catalog-derived-data}"
 }
 
+catalog_workspace_snapshot_root() {
+  printf '%s\n' "${KG_IOS_OPS_CATALOG_PERSIST_ROOT:-$ROOT/build/snapshots}"
+}
+
+catalog_artifact_name_from_generated_at() {
+  local generated_at="$1"
+  printf 'catalog-full-%s\n' "$(sed -E 's/^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z$/\1\2\3-\4\5\6/' <<<"$generated_at")"
+}
+
+catalog_persist_workspace_artifact_json() {
+  local source_root="$1" generated_at="$2"
+  local workspace_root artifact_name artifact_root
+  workspace_root="$(catalog_workspace_snapshot_root)"
+  artifact_name="$(catalog_artifact_name_from_generated_at "$generated_at")"
+  artifact_root="$workspace_root/$artifact_name"
+
+  if [[ ! -d "$source_root" ]]; then
+    jq -n \
+      --arg root "$workspace_root" \
+      --arg name "$artifact_name" \
+      '{
+        status:"error",
+        root:$root,
+        name:$name,
+        error:"source-root-missing"
+      }'
+    return 0
+  fi
+
+  mkdir -p "$workspace_root" || {
+    jq -n \
+      --arg root "$workspace_root" \
+      --arg name "$artifact_name" \
+      '{
+        status:"error",
+        root:$root,
+        name:$name,
+        error:"workspace-root-create-failed"
+      }'
+    return 0
+  }
+  rm -rf "$artifact_root"
+  if ! cp -R "$source_root" "$artifact_root"; then
+    jq -n \
+      --arg root "$workspace_root" \
+      --arg name "$artifact_name" \
+      --arg artifactRoot "$artifact_root" \
+      '{
+        status:"error",
+        root:$root,
+        name:$name,
+        artifactRoot:$artifactRoot,
+        error:"artifact-copy-failed"
+      }'
+    return 0
+  fi
+
+  jq -n \
+    --arg root "$workspace_root" \
+    --arg name "$artifact_name" \
+    --arg artifactRoot "$artifact_root" \
+    --arg reviewHtml "$artifact_root/review.html" \
+    --arg reviewManifest "$artifact_root/review_manifest.json" \
+    --arg reviewState "$artifact_root/review_state.json" \
+    '{
+      status:"ok",
+      root:$root,
+      name:$name,
+      artifactRoot:$artifactRoot,
+      reviewHtml:$reviewHtml,
+      reviewManifest:$reviewManifest,
+      reviewState:$reviewState
+    }'
+}
+
 catalog_now_ms() {
   perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
@@ -588,7 +663,7 @@ catalog_resolve_destination_device_udid() {
 }
 
 cmd_catalog_snapshots_json() {
-  local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" dataset_path="${5:-}" reuse_build_only="${6:-0}"
+  local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" dataset_path="${5:-}" reuse_build_only="${6:-0}" persist_workspace_artifact="${7:-0}"
   local generated_at mode container_data snapshot_source xcode_log xcode_err rc test_cmd
   local sim_payload sim_rc=0 copy_rc=0 pngs_json payload resolved_device container_source
   local validation_json expected_scenario_count="" command_wall_ms=0 test_body_ms=0 playbook_build_ms=0 snapshot_run_ms=0 startup_overhead_ms=0
@@ -600,6 +675,7 @@ cmd_catalog_snapshots_json() {
   local dataset_status="not-requested" dataset_rc=0 dataset_simulator_path="" dataset_b64=""
   local container_png_count=0 salvaged="false"
   local review_json='{"status":"skipped"}'
+  local workspace_artifact_json='{"status":"skipped"}'
 
   wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -858,6 +934,16 @@ cmd_catalog_snapshots_json() {
     catalog_trace_phase "review" "done" "wallMs=$(( phase_end_ms - phase_start_ms )) status=$(jq -r '.status' <<<"$review_json")"
   fi
 
+  if [[ "$persist_workspace_artifact" -eq 1 && "$copy_rc" -eq 0 && "$(jq -r '.pngCount // 0' <<<"$pngs_json")" -gt 0 && "$(jq -r '.status' <<<"$review_json")" == "ok" ]]; then
+    if [[ "$mode" != "fixture" || -n "${KG_IOS_OPS_CATALOG_PERSIST_ROOT:-}" ]]; then
+    phase_start_ms="$(catalog_now_ms)"
+    catalog_trace_phase "persist" "start" "source=$out_root"
+    workspace_artifact_json="$(catalog_persist_workspace_artifact_json "$out_root" "$generated_at")"
+    phase_end_ms="$(catalog_now_ms)"
+    catalog_trace_phase "persist" "done" "wallMs=$(( phase_end_ms - phase_start_ms )) status=$(jq -r '.status' <<<"$workspace_artifact_json") root=$(jq -r '.artifactRoot // .root' <<<"$workspace_artifact_json")"
+    fi
+  fi
+
   wrapper_wall_ms=$(( $(catalog_now_ms) - wrapper_start_ms ))
   payload="$(jq -n \
     --arg schema "kg.ios.catalog.v1" \
@@ -898,6 +984,7 @@ cmd_catalog_snapshots_json() {
     --argjson artifacts "$pngs_json" \
     --argjson validation "$validation_json" \
     --argjson review "$review_json" \
+    --argjson workspaceArtifact "$workspace_artifact_json" \
     --argjson simulator "$sim_payload" \
     '{
       schema:$schema,
@@ -910,6 +997,7 @@ cmd_catalog_snapshots_json() {
         elif $copyExit != 0 then "error"
         elif ($artifacts.pngCount // 0) == 0 then "error"
         elif $validation.status == "error" then "error"
+        elif $workspaceArtifact.status == "error" then "error"
         elif $validation.status == "warn" or $review.status == "warn" then "warn"
         else "ok"
         end
@@ -944,6 +1032,7 @@ cmd_catalog_snapshots_json() {
       },
       validation:$validation,
       review:$review,
+      workspaceArtifact:$workspaceArtifact,
       cache:{
         key:(if $cacheKey == "" then null else $cacheKey end),
         root:(if $cacheRoot == "" then null else $cacheRoot end),
@@ -981,6 +1070,8 @@ cmd_catalog_snapshots_json() {
         +
         (if $testExit == 0 and $copyExit == 0 and ($artifacts.pngCount // 0) == 0 then [{key:"catalog-artifacts",status:"error",exitCode:null,error:"no-png-artifacts"}] else [] end)
         +
+        (if $workspaceArtifact.status == "error" then [{key:"catalog-workspace-artifact",status:"error",exitCode:null,error:($workspaceArtifact.error // "workspace-artifact-persist-failed")}] else [] end)
+        +
         (if $validation.status == "error" then ($validation.errors | map({key:"catalog-validation",status:"error",exitCode:null,error:.})) else [] end)
       ),
       warnings:(
@@ -1008,13 +1099,14 @@ cmd_catalog_snapshots() {
   local dataset_name=""
   local dataset_path=""
   local reuse_build_only=0
+  local explicit_out_root=0
   out_root="$(catalog_default_root)"
   destination='platform=iOS Simulator,name=iPhone 17 Pro Max'
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=1; shift ;;
-      --out-root) out_root="${2:?--out-root needs value}"; shift 2 ;;
+      --out-root) out_root="${2:?--out-root needs value}"; explicit_out_root=1; shift 2 ;;
       --destination) destination="${2:?--destination needs value}"; shift 2 ;;
       --group) groups+=("${2:?--group needs value}"); shift 2 ;;
       --scenario) scenarios+=("${2:?--scenario needs value}"); shift 2 ;;
@@ -1053,7 +1145,12 @@ cmd_catalog_snapshots() {
     return 1
   fi
 
-  payload="$(cmd_catalog_snapshots_json "$out_root" "$destination" "$groups_csv" "$scenarios_csv" "$dataset_path" "$reuse_build_only")" || rc=$?
+  local persist_workspace_artifact=0
+  if [[ "$explicit_out_root" -eq 0 && -z "$groups_csv" && -z "$scenarios_csv" ]]; then
+    persist_workspace_artifact=1
+  fi
+
+  payload="$(cmd_catalog_snapshots_json "$out_root" "$destination" "$groups_csv" "$scenarios_csv" "$dataset_path" "$reuse_build_only" "$persist_workspace_artifact")" || rc=$?
   if (( json )); then
     printf '%s\n' "$payload"
     return "$rc"
@@ -1067,6 +1164,7 @@ cmd_catalog_snapshots() {
     "[ios][catalog] timings wrapperWallMs=\(.timings.wrapperWallMs) commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs) simulatorStatusMs=\(.timings.simulatorStatusMs) containerLookupMs=\(.timings.containerLookupMs) copyMs=\(.timings.copyMs) artifactIndexMs=\(.timings.artifactIndexMs) validationMs=\(.timings.validationMs)",
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) transparentImages=\(.validation.transparentImageCount // 0) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
     "[ios][catalog] review status=\(.review.status) html=\(.review.reviewHtml // "") manifest=\(.review.reviewManifest // "")",
+    "[ios][catalog] workspaceArtifact status=\(.workspaceArtifact.status) root=\(.workspaceArtifact.artifactRoot // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",
     "[ios][catalog] copy exitCode=\(.copy.exitCode) source=\(.copy.sourcePath // "") container=\(.copy.containerDataPath // "")",
     (.warnings[]? | "[ios][catalog] warn key=\(.key) status=\(.status) exitCode=\(.exitCode // "") warning=\(.warning // "") detail=\(.detail // "")"),
