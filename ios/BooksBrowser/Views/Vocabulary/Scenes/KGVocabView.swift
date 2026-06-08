@@ -36,7 +36,7 @@ struct KGVocabView: View {
     @State private var sortOption: KGVocabSortOption = .default
     @State private var selectionState = SelectionModeState()
     @State private var selectedRowID: UUID?
-    @State private var showLoginSheet = false
+    @State private var loginGate = LoginGateState()
     @Query private var pendingDeletes: [VocabularyEntry]
 
     init(
@@ -205,7 +205,7 @@ struct KGVocabView: View {
                 }
             }
         }
-        .loginSheet(isPresented: $showLoginSheet)
+        .loginGateSheet($loginGate)
     }
 
     // MARK: - Computed
@@ -218,7 +218,7 @@ struct KGVocabView: View {
                 title: "尚未登入".localized,
                 systemImage: "person.crop.circle.badge.exclamationmark",
                 description: "登入後，您在閱讀時標記的生詞將會自動整理於此。".localized,
-                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { loginGate.presentLogin() })
             )
         } else if coordinator.errorMessage != nil && syncedEntries.isEmpty {
             return .error(

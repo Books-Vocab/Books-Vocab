@@ -49,8 +49,8 @@ struct NotebookListContent: View {
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
     @State private var coordinator = NotebookListCoordinator()
-    @State private var showLoginSheet = false
     let detailState: DetailRouter
+    @State private var loginGate = LoginGateState()
 
     init(detailState: DetailRouter) {
         self.detailState = detailState
@@ -509,11 +509,11 @@ struct NotebookListContent: View {
                 title: "還沒有單字本".localized,
                 systemImage: "books.vertical",
                 description: "登入後自動建立預設單字本".localized,
-                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+                action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { loginGate.presentLogin() })
             )) {
                 EmptyView()
             }
-            .loginSheet(isPresented: $showLoginSheet)
+            .loginGateSheet($loginGate)
         }
     }
 
