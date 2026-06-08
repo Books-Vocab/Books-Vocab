@@ -2,7 +2,12 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""Report docs/registry.yml coverage over linted docs."""
+"""Report docs/registry.yml coverage over linted docs.
+
+Coverage debt is split into:
+- active_unregistered: should usually be added to docs/registry.yml
+- backlog_unregistered: path-based informational debt under docs/archive|plans|specs|snapshot
+"""
 
 from __future__ import annotations
 
@@ -138,6 +143,10 @@ def print_human(report: dict[str, object]) -> None:
             print("docs_registry_coverage: no registry coverage debt for linted docs")
         else:
             print("docs_registry_coverage: no active registry debt; backlog docs below are informational only")
+            print(
+                "docs_registry_coverage: backlog classification is path-based "
+                "(docs/archive|docs/plans|docs/specs|docs/snapshot)"
+            )
     else:
         print("docs_registry_coverage: active docs below should be registered; use --strict to fail on them")
     active_by_tier = report["active_unregistered_by_tier"]
@@ -159,8 +168,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", help="Repository root override, mainly for fixtures.")
     parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
-    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
-    parser.add_argument("--strict", action="store_true", help="Exit nonzero when active docs are unregistered.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON with full active/backlog breakdown.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit nonzero only when active_unregistered docs exist; backlog remains informational.",
+    )
     args = parser.parse_args()
 
     root = Path(args.root).resolve() if args.root else repo_root()
