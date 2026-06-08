@@ -9,9 +9,6 @@ import SwiftUI
 /// - TranslationPanel.swift
 /// - TOCView.swift
 /// - ReaderSettingsPanel.swift
-/// - ReaderSelectionTile.swift
-/// - ReaderStepControlButton.swift
-/// - QuotaBar.swift
 enum ReaderScenarios {
     static func register(in playbook: Playbook) {
         // MARK: Translation Panel
@@ -125,42 +122,6 @@ enum ReaderScenarios {
                         canDecreaseFontSize: false,
                         canIncreaseFontSize: true
                     )
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
-        }
-
-        // MARK: Quota Bar
-        playbook.addScenarios(of: "Reader · Quota") {
-            Scenario("Normal", layout: .fill) {
-                QuotaBarPreviewHarness(isLoggedIn: true, fraction: 0.75, level: .normal)
-            }
-            Scenario("Warning", layout: .fill) {
-                QuotaBarPreviewHarness(isLoggedIn: true, fraction: 0.35, level: .warning)
-            }
-            Scenario("Critical", layout: .fill) {
-                QuotaBarPreviewHarness(isLoggedIn: true, fraction: 0.08, level: .critical)
-            }
-            Scenario("Exhausted", layout: .fill) {
-                QuotaBarPreviewHarness(isLoggedIn: true, fraction: 0.0, level: .exhausted)
-            }
-        }
-
-        // MARK: Selection Tile
-        playbook.addScenarios(of: "Reader · Selection Tile") {
-            Scenario("Default", layout: .fill) {
-                AppThemeContainer {
-                    ReaderSelectionTilePreview()
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
-        }
-
-        // MARK: Step Control Button
-        playbook.addScenarios(of: "Reader · Step Control") {
-            Scenario("Default", layout: .fill) {
-                AppThemeContainer {
-                    ReaderStepControlButtonPreview()
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }

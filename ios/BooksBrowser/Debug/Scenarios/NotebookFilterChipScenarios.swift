@@ -1,28 +1,12 @@
 #if DEBUG && canImport(Playbook)
 import Playbook
 import SwiftUI
-import SwiftData
 
-/// Catalog scenarios for `NotebookFilterChip` and its picker sheet.
-/// The chip uses a `@Query` for notebooks, so the chip scenarios install an
-/// in-memory `modelContainer` (empty DB — chip renders from the binding only).
+/// Catalog scenarios for the `NotebookFilterChip` picker sheet.
 /// The picker sheet takes a plain `[Notebook]` array, so it is fed synthetic
 /// fixtures directly without a container.
 enum NotebookFilterChipScenarios {
     static func register(in playbook: Playbook) {
-        // MARK: Chip states
-        playbook.addScenarios(of: "Notebook Filter Chip · Chip") {
-            Scenario("Unfiltered", layout: .fill) {
-                NotebookFilterChipScene(initialFilter: NotebookFilter())
-            }
-            Scenario("Single selected", layout: .fill) {
-                NotebookFilterChipScene(initialFilter: NotebookFilter(selectedIds: ["nb-1"]))
-            }
-            Scenario("Multiple selected", layout: .fill) {
-                NotebookFilterChipScene(initialFilter: NotebookFilter(selectedIds: ["nb-1", "nb-2", "nb-3"]))
-            }
-        }
-
         // MARK: Picker sheet
         playbook.addScenarios(of: "Notebook Filter Chip · Picker") {
             Scenario("With notebooks", layout: .fill) {
@@ -52,28 +36,7 @@ enum NotebookFilterChipScenarios {
     }
 }
 
-// MARK: - Scene harnesses
-
-/// Hosts the chip with a live `@State` binding and an empty in-memory container
-/// so the `@Query` dependency resolves.
-private struct NotebookFilterChipScene: View {
-    @State private var filter: NotebookFilter
-
-    init(initialFilter: NotebookFilter) {
-        self._filter = State(initialValue: initialFilter)
-    }
-
-    var body: some View {
-        AppThemeContainer {
-            VStack(spacing: AppSpacing.s4) {
-                NotebookFilterChip(filter: $filter)
-            }
-            .padding()
-            .modelContainer(for: [Notebook.self], inMemory: true)
-        }
-        .environmentObject(AppAppearanceStore.preview)
-    }
-}
+// MARK: - Scene harness
 
 /// Renders the picker sheet directly with synthetic notebooks (no `@Query`).
 private struct NotebookFilterPickerScene: View {
