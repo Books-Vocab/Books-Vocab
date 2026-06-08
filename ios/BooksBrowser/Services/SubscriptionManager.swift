@@ -1,6 +1,5 @@
 import Foundation
 import StoreKit
-import os
 
 enum SubscriptionPurchaseError: LocalizedError {
     case unverifiedTransaction

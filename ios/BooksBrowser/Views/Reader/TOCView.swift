@@ -1,7 +1,6 @@
 #if os(iOS)
 import SwiftUI
 import ReadiumShared
-import os
 import Inject
 
 struct TOCView: View {

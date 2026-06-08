@@ -10,7 +10,6 @@ import Foundation
 import GoogleSignIn
 import SwiftData
 import AuthenticationServices
-import os
 
 @MainActor
 @Observable

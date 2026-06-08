@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let flingSafetyNetTimeout: Duration = .milliseconds(800)
+
 // MARK: - Swipe Deck (card stack + swipe gesture)
 
 extension TodayReviewPresenter {
@@ -158,7 +160,7 @@ extension TodayReviewPresenter {
         // Safety fallback: if animation completion never fires (macOS edge case),
         // force-complete after a generous timeout to prevent UI deadlock.
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
+            try? await Task.sleep(for: flingSafetyNetTimeout)
             completeFling("safetyNet")
             // Always close the wide window here (the safety Task runs regardless of
             // whether completeFling skipped) → 800ms frame trace spanning fling +

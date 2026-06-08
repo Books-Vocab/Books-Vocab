@@ -18,7 +18,6 @@
 
 import UIKit
 import ImageIO
-import os
 
 enum CoverImageDownsampler {
 
