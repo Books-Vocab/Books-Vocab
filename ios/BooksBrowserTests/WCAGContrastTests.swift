@@ -48,72 +48,33 @@ import SwiftUI
         return (hi + 0.05) / (lo + 0.05)
     }
 
-    // MARK: - Light theme guarantees
+    // MARK: - Palette contrast guarantees (light / dark / metadata tiers)
 
-    @Test func accentLight_meetsAA_onCard() {
+    @Test(arguments: [
         // accentLight 作為連結文字色，貼在白色卡片上需 ≥4.5:1。
-        #expect(contrast(AppColors.accentLight, AppTheme.light.palette.cardBackground) >= 4.5)
-    }
-
-    @Test func brandHeroLight_meetsAA_forOnBrandHero() {
+        (AppColors.accentLight, AppTheme.light.palette.cardBackground, 4.5),
         // 奶黃 brandHeroLight + onBrandHero (deep charcoal) ≥ 4.5:1。
         // 不再支援 .white 作為前景（奶黃 + 白字 fail AA）。
-        #expect(contrast(AppColors.onBrandHero, AppColors.brandHeroLight) >= 4.5)
-    }
-
-    @Test func primaryText_light_meetsAAA() {
+        (AppColors.onBrandHero, AppColors.brandHeroLight, 4.5),
         // 正文（暖近黑 #37352F）需 ≥7:1 達 AAA。
-        #expect(contrast(AppTheme.light.palette.primaryText, AppTheme.light.palette.cardBackground) >= 7.0)
-    }
-
-    @Test func destructiveLight_meetsAA() {
-        #expect(contrast(AppColors.destructiveLight, AppTheme.light.palette.cardBackground) >= 4.5)
-    }
-
-    @Test func savedLight_meetsAA() {
-        #expect(contrast(AppColors.savedLight, AppTheme.light.palette.cardBackground) >= 4.5)
-    }
-
-    // MARK: - Dark theme guarantees
-
-    @Test func accentDark_meetsAA_onPage() {
+        (AppTheme.light.palette.primaryText, AppTheme.light.palette.cardBackground, 7.0),
+        (AppColors.destructiveLight, AppTheme.light.palette.cardBackground, 4.5),
+        (AppColors.savedLight, AppTheme.light.palette.cardBackground, 4.5),
         // accentDark 連結色貼於深灰頁面（#191919）需 ≥4.5:1。
-        #expect(contrast(AppColors.accentDark, AppTheme.dark.palette.pageBackground) >= 4.5)
-    }
-
-    @Test func brandHeroDark_meetsAA_forOnBrandHero() {
+        (AppColors.accentDark, AppTheme.dark.palette.pageBackground, 4.5),
         // 奶黃 brandHeroDark + onBrandHero (deep charcoal) ≥ 4.5:1（實測 ~7.05:1）。
-        #expect(contrast(AppColors.onBrandHero, AppColors.brandHeroDark) >= 4.5)
-    }
-
-    @Test func primaryText_dark_meetsAAA() {
-        #expect(contrast(AppTheme.dark.palette.primaryText, AppTheme.dark.palette.pageBackground) >= 7.0)
-    }
-
-    @Test func destructiveDark_meetsAA() {
-        #expect(contrast(AppColors.destructiveDark, AppTheme.dark.palette.pageBackground) >= 4.5)
-    }
-
-    @Test func savedDark_meetsAA() {
-        #expect(contrast(AppColors.savedDark, AppTheme.dark.palette.pageBackground) >= 4.5)
-    }
-
-    // MARK: - Metadata tier (≥3:1, graphical / large text)
-
-    @Test func secondaryText_light_meetsAALarge() {
-        #expect(contrast(AppTheme.light.palette.secondaryText, AppTheme.light.palette.cardBackground) >= 4.5)
-    }
-
-    @Test func tertiaryText_light_meetsGraphical() {
-        #expect(contrast(AppTheme.light.palette.tertiaryText, AppTheme.light.palette.cardBackground) >= 3.0)
-    }
-
-    @Test func secondaryText_dark_meetsAALarge() {
-        #expect(contrast(AppTheme.dark.palette.secondaryText, AppTheme.dark.palette.pageBackground) >= 4.5)
-    }
-
-    @Test func tertiaryText_dark_meetsGraphical() {
-        #expect(contrast(AppTheme.dark.palette.tertiaryText, AppTheme.dark.palette.pageBackground) >= 3.0)
+        (AppColors.onBrandHero, AppColors.brandHeroDark, 4.5),
+        (AppTheme.dark.palette.primaryText, AppTheme.dark.palette.pageBackground, 7.0),
+        (AppColors.destructiveDark, AppTheme.dark.palette.pageBackground, 4.5),
+        (AppColors.savedDark, AppTheme.dark.palette.pageBackground, 4.5),
+        // Metadata tier (≥3:1, graphical / large text)
+        (AppTheme.light.palette.secondaryText, AppTheme.light.palette.cardBackground, 4.5),
+        (AppTheme.light.palette.tertiaryText, AppTheme.light.palette.cardBackground, 3.0),
+        (AppTheme.dark.palette.secondaryText, AppTheme.dark.palette.pageBackground, 4.5),
+        (AppTheme.dark.palette.tertiaryText, AppTheme.dark.palette.pageBackground, 3.0),
+    ])
+    func meetsContrast(fg: Color, bg: Color, min: Double) {
+        #expect(contrast(fg, bg) >= min)
     }
 
     // MARK: - appAction(.primary) button label legibility
@@ -124,18 +85,9 @@ import SwiftUI
     // effectively invisible. These assert the REAL pairing the style returns
     // (via AppActionButtonStyle.palette) flips with the scheme and stays legible.
 
-    @Test func primaryButtonLabel_light_meetsAA() {
-        let p = AppActionButtonStyle.palette(tone: .primary, theme: .light)
-        #expect(contrast(p.foreground, p.background) >= 4.5)
-    }
-
-    @Test func primaryButtonLabel_dark_meetsAA() {
-        let p = AppActionButtonStyle.palette(tone: .primary, theme: .dark)
-        #expect(contrast(p.foreground, p.background) >= 4.5)
-    }
-
-    @Test func primaryButtonLabel_sepia_meetsAA() {
-        let p = AppActionButtonStyle.palette(tone: .primary, theme: .sepia)
+    @Test(arguments: [AppTheme.light, AppTheme.dark, AppTheme.sepia])
+    func primaryButtonLabelMeetsAA(theme: AppTheme) {
+        let p = AppActionButtonStyle.palette(tone: .primary, theme: theme)
         #expect(contrast(p.foreground, p.background) >= 4.5)
     }
 }

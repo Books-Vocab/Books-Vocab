@@ -71,7 +71,8 @@ struct PodcastSilentFailureTests {
         let srt = "1\n00:00:00,000 --> 00:00:00,400\n[Maya] Hello\n"
         vm.applySubtitle(content: srt)
         #expect(vm.subtitleState == .loaded)
-        #expect(vm.visibleSentences.isEmpty == false)
+        #expect(vm.visibleSentences.first?.text.contains("Hello") == true)
+        #expect(vm.visibleSentences.first?.speaker == "Maya")
     }
 
     @Test func subtitle_state_reaches_failed_on_fetch_failure() {

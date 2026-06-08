@@ -7,7 +7,7 @@ import Foundation
 /// when one lands it lands here once, not per-reader.
 enum ReaderEntitlement {
     static func canUseProReaderFeature() -> Bool {
-        return true
+        true
     }
 }
 #endif
