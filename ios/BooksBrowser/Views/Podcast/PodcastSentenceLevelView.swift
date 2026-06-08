@@ -225,7 +225,9 @@ struct PodcastSentenceLevelView: View {
             // NOT trigger DragGesture, so that platform uses the always-on pill.
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8).onChanged { _ in
-                    if isFollowing { isFollowing = false }
+                    if PodcastTranscriptScrollPolicy.shouldDisengageFollowOnManualDrag(isFollowing: isFollowing) {
+                        isFollowing = false
+                    }
                 }
             )
             .animation(AppMotion.contentFade, value: isFollowing)
@@ -255,7 +257,11 @@ struct PodcastSentenceLevelView: View {
     /// duration is what makes the move read as a continuous glide rather than a
     /// jump; tuned for feel (`AppMotion.podcastFollowScroll`).
     private func followScroll(to id: Int?, proxy: ScrollViewProxy) {
-        guard isFollowing, didApplyInitialScrollPosition, let id else { return }
+        guard let id = PodcastTranscriptScrollPolicy.followTarget(
+            isFollowing: isFollowing,
+            didApplyInitialScrollPosition: didApplyInitialScrollPosition,
+            targetId: id
+        ) else { return }
         scrollAnimationTask?.cancel()
         scrollAnimationTask = Task {
             try? await Task.sleep(for: .milliseconds(50))
@@ -269,9 +275,14 @@ struct PodcastSentenceLevelView: View {
     }
 
     private func applyInitialScrollPositionIfNeeded(proxy: ScrollViewProxy) {
-        guard initialScrollPositionResolved, didApplyInitialScrollPosition == false else { return }
+        let decision = PodcastTranscriptScrollPolicy.initialDecision(
+            initialScrollPositionResolved: initialScrollPositionResolved,
+            didApplyInitialScrollPosition: didApplyInitialScrollPosition,
+            currentId: currentId
+        )
+        guard decision != .none else { return }
         didApplyInitialScrollPosition = true
-        guard let id = currentId else { return }
+        guard case let .scrollTo(id) = decision else { return }
         scrollAnimationTask?.cancel()
         scrollAnimationTask = Task {
             await Task.yield()
