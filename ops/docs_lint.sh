@@ -245,6 +245,7 @@ emit_impact_hints() {
   if echo "$impact_out" | grep -q '^IMPACT '; then
     echo "docs_lint: registry impact hints (warn only)"
     echo "$impact_out" | sed -n 's/^IMPACT /WARN impact — /p'
+    echo "docs_lint: inspect suppression with ./ops/docs_impact.py --since $GATE_BASE --explain"
   fi
 }
 
