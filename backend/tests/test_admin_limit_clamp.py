@@ -81,13 +81,13 @@ def translate_isolated(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("bad_limit", [-1, 0, -100])
 def test_pipeline_runs_non_positive_limit_clamped(handlers, pipeline_isolated, bad_limit):
-    out = handlers["admin_pipeline_runs"]("u1", limit=bad_limit)
+    out = handlers.admin_pipeline_runs("u1", limit=bad_limit)
     # Must clamp to a single legal row, never dump the whole (5-row) table.
     assert len(out["runs"]) == 1, f"limit={bad_limit} leaked {len(out['runs'])} rows"
 
 
 def test_pipeline_runs_positive_limit_unaffected(handlers, pipeline_isolated):
-    out = handlers["admin_pipeline_runs"]("u1", limit=3)
+    out = handlers.admin_pipeline_runs("u1", limit=3)
     assert len(out["runs"]) == 3
 
 
@@ -95,10 +95,10 @@ def test_pipeline_runs_positive_limit_unaffected(handlers, pipeline_isolated):
 
 @pytest.mark.parametrize("bad_limit", [-1, 0, -100])
 def test_translate_history_non_positive_limit_clamped(handlers, translate_isolated, bad_limit):
-    out = handlers["admin_translate_history"]("u1", limit=bad_limit)
+    out = handlers.admin_translate_history("u1", limit=bad_limit)
     assert len(out["history"]) == 1, f"limit={bad_limit} leaked {len(out['history'])} rows"
 
 
 def test_translate_history_positive_limit_unaffected(handlers, translate_isolated):
-    out = handlers["admin_translate_history"]("u1", limit=2)
+    out = handlers.admin_translate_history("u1", limit=2)
     assert len(out["history"]) == 2

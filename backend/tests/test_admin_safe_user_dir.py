@@ -19,7 +19,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from kg.admin_wiring import create_admin_handlers
+from kg.admin_wiring import AdminHandlers, create_admin_handlers
 
 
 def _noop(*_a, **_k):  # pragma: no cover - tripwire for unexpected deps
@@ -41,6 +41,10 @@ def handlers(tmp_path: Path):
     )
 
 
+def test_handlers_are_typed_contract(handlers):
+    assert isinstance(handlers, AdminHandlers)
+
+
 @pytest.mark.parametrize(
     "bad_uid",
     [
@@ -53,12 +57,12 @@ def handlers(tmp_path: Path):
 )
 def test_traversal_uid_rejected(handlers, bad_uid):
     with pytest.raises(HTTPException) as exc:
-        handlers["admin_graph_density"](bad_uid)
+        handlers.admin_graph_density(bad_uid)
     assert exc.value.status_code == 400
 
 
 def test_legit_uid_resolves(handlers, tmp_path: Path):
     # Well-formed uid (Apple-sub style, dots/dashes/underscores allowed):
     # the guard must pass; with no cards.db the handler returns an empty result.
-    out = handlers["admin_graph_density"]("001234.abcDEF-_.99")
+    out = handlers.admin_graph_density("001234.abcDEF-_.99")
     assert out["points"] == []
