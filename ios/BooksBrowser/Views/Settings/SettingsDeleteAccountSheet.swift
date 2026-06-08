@@ -47,13 +47,11 @@ struct SettingsDeleteAccountSheet: View {
     }
 
     private var deleteButtonTitle: String {
-        if isDeleting {
-            return "刪除中…".localized
-        }
-        if countdownRemaining > 0 && allAcknowledged && confirmTextMatches {
-            return L10n.format("等候 %@ 秒…", "\(countdownRemaining)")
-        }
-        return "永久刪除帳號".localized
+        SettingsDeleteAccountCopy.deleteButtonTitle(
+            isDeleting: isDeleting,
+            countdownRemaining: countdownRemaining,
+            isReadyForCountdown: allAcknowledged && confirmTextMatches
+        )
     }
 
     var body: some View {
@@ -73,11 +71,11 @@ struct SettingsDeleteAccountSheet: View {
                 .padding(appSkin.spacing.sheetPaddingCompact)
             }
             .background(appSkin.palette.pageBackground.ignoresSafeArea())
-            .navigationTitle("確認刪除帳號".localized)
+            .navigationTitle(SettingsDeleteAccountCopy.navigationTitle)
             .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消".localized) { dismiss() }
+                    Button(SettingsDeleteAccountCopy.cancelTitle) { dismiss() }
                         .disabled(isDeleting)
                 }
             }
@@ -110,12 +108,12 @@ struct SettingsDeleteAccountSheet: View {
                 .foregroundStyle(appSkin.palette.destructive)
                 .symbolEffect(.pulse, options: .repeating, value: isDeleting)
 
-            Text("此操作不可復原".localized)
+            Text(SettingsDeleteAccountCopy.heroTitle)
                 .font(appSkin.typography.displayTitle)
                 .foregroundStyle(appSkin.palette.primaryText)
                 .multilineTextAlignment(.center)
 
-            Text("刪除後將立即移除你的帳號、雲端生詞、閱讀進度、訂閱記錄。請仔細確認下列項目後才能繼續。".localized)
+            Text(SettingsDeleteAccountCopy.heroDescription)
                 .font(appSkin.typography.body)
                 .foregroundStyle(appSkin.palette.secondaryText)
                 .multilineTextAlignment(.center)
@@ -130,16 +128,14 @@ struct SettingsDeleteAccountSheet: View {
     private var consequencesCard: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(
-                title: "將被永久刪除的資料".localized,
+                title: SettingsDeleteAccountCopy.consequencesTitle,
                 icon: "trash"
             )
 
             VStack(alignment: .leading, spacing: appSkin.spacing.rowContentSpacing) {
-                consequenceRow(icon: "person.crop.circle", text: "帳號資訊與登入記錄".localized)
-                consequenceRow(icon: "books.vertical", text: "雲端生詞與筆記本".localized)
-                consequenceRow(icon: "point.3.connected.trianglepath.dotted", text: "知識圖譜與關聯".localized)
-                consequenceRow(icon: "book.closed", text: "閱讀進度與書架".localized)
-                consequenceRow(icon: "checkmark.seal", text: "訂閱記錄（App Store 訂閱請另行至設定取消）".localized)
+                ForEach(Array(SettingsDeleteAccountCopy.consequenceRows.enumerated()), id: \.offset) { entry in
+                    consequenceRow(icon: entry.element.icon, text: entry.element.text)
+                }
             }
             .padding(appSkin.spacing.cardPadding)
             .background(appSkin.palette.destructiveBg)
@@ -172,24 +168,24 @@ struct SettingsDeleteAccountSheet: View {
     private var acknowledgementsCard: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(
-                title: "請確認你已知悉".localized,
+                title: SettingsDeleteAccountCopy.acknowledgementsTitle,
                 icon: "checkmark.square"
             )
 
             VStack(spacing: 0) {
                 ackRow(
                     isOn: $ackDataLoss,
-                    title: "我了解所有資料將被永久刪除".localized
+                    title: SettingsDeleteAccountCopy.acknowledgementRows[0]
                 )
                 SettingsDivider(leadingInset: 0)
                 ackRow(
                     isOn: $ackIrreversible,
-                    title: "我了解此操作無法復原".localized
+                    title: SettingsDeleteAccountCopy.acknowledgementRows[1]
                 )
                 SettingsDivider(leadingInset: 0)
                 ackRow(
                     isOn: $ackNoSupport,
-                    title: "我了解資料一旦刪除即無法經由客服救回".localized
+                    title: SettingsDeleteAccountCopy.acknowledgementRows[2]
                 )
             }
             .settingsCard()
@@ -215,12 +211,12 @@ struct SettingsDeleteAccountSheet: View {
     private var confirmationTypeCard: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(
-                title: "輸入確認字串".localized,
+                title: SettingsDeleteAccountCopy.confirmationTitle,
                 icon: "keyboard"
             )
 
             VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
-                Text(L10n.format("為避免誤觸，請輸入 %@ 後繼續：", Self.confirmationPhrase))
+                Text(SettingsDeleteAccountCopy.confirmationPrompt(phrase: Self.confirmationPhrase))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -272,7 +268,7 @@ struct SettingsDeleteAccountSheet: View {
             .disabled(!canDelete)
             .opacity(canDelete || isDeleting ? 1.0 : 0.55)
 
-            Button("取消".localized) { dismiss() }
+            Button(SettingsDeleteAccountCopy.cancelTitle) { dismiss() }
                 .buttonStyle(.appAction(.neutral))
                 .disabled(isDeleting)
         }
