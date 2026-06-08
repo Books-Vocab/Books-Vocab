@@ -94,12 +94,6 @@ enum PerfLog {
     /// Benignly racy by design — worst case one stale frame of logging.
     nonisolated(unsafe) static var runtimeCategories: Set<PerfCategory>?
 
-    /// Last `mark()` payload, used as a render breadcrumb: when a FrameSampler records
-    /// a new worst gap it snapshots this, so a hitchy frame is attributed to whatever
-    /// view marked just before/during it (e.g. `compose.active` vs `stack.preview`).
-    /// Main-thread only in practice (marks + CADisplayLink both on main); benignly racy.
-    nonisolated(unsafe) static var lastBreadcrumb: String = ""
-
     /// Parsed once from KG_PERF_LOG; immutable ⇒ free to read concurrently.
     static let envCategories: Set<PerfCategory> = {
         guard let raw = ProcessInfo.processInfo.environment["KG_PERF_LOG"]?.lowercased() else {
@@ -133,6 +127,11 @@ final class PerfChannel: @unchecked Sendable {
     }
     private let rate = OSAllocatedUnfairLock(initialState: RateState())
     private static let flushSeconds: Double = 1.0
+    /// Last `mark()` payload, used as a render breadcrumb: when a FrameSampler records
+    /// a new worst gap it snapshots this, so a hitchy frame is attributed to whatever
+    /// view marked just before/during it (e.g. `compose.active` vs `stack.preview`).
+    /// Main-thread only in practice (marks + CADisplayLink both on main); benignly racy.
+    nonisolated(unsafe) static var lastBreadcrumb: String = ""
     /// Active CADisplayLink frame samplers keyed by label. Lets a caller bracket a
     /// window (a fling, a scroll) and get the real per-frame cadence the main thread
     /// produced — something SwiftUI body-eval marks miss, because Core Animation
