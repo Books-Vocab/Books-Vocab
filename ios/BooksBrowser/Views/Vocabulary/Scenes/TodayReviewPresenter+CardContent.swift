@@ -14,6 +14,10 @@ extension TodayReviewPresenter {
 
     func frontFoldSurface(_ card: CardPresentation) -> some View {
         let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
+        if let clock = TodayReviewState.flingClock {
+            PerfLog.review.mark("front.gap", "w=\(card.word) \(PerfChannel.ms(since: clock))ms (fling->current-front body)")
+            TodayReviewState.flingClock = nil
+        }
         return ReviewFoldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
