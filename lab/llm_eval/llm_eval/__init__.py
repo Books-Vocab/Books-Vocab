@@ -79,6 +79,12 @@ def make_render_fn(
             "target_lang_name",
             _LANG_NAMES.get(sample.get("target_lang", "zh-Hant"), sample.get("target_lang", "Traditional Chinese")),
         )
+        candidates = sample.get("candidates")
+        if isinstance(candidates, list) and candidates and isinstance(candidates[0], list):
+            lines = [f"- {c[1]} ({c[2]})" for c in candidates if len(c) >= 3]
+            vars.setdefault("candidate_list", "\n".join(lines))
+            vars.setdefault("n", str(len(candidates)))
+            vars.setdefault("max_links", str(max(1, len(candidates) // 2)))
         return registry.render(name, version, **vars)
 
     return _render
