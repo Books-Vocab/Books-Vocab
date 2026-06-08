@@ -21,7 +21,14 @@ struct NotebookListView: View {
     @State private var detailState = DetailRouter()
 
     var body: some View {
-        NotebookListContent(detailState: detailState)
+        // Phase-1 probe: the shell owns the cover. If `shell.body` fires per flip, the
+        // shell (or its upstream) is re-evaluating → it rebuilds NotebookDetailPresentation
+        // → cover content closure re-runs → throwaway TodayReviewState. This is the
+        // first-hand signal that replaces inferring the mechanism from `state.init`.
+        // NOTE: during pure flipping no source file is saved, so `@ObserveInjection`
+        // cannot fire here — any per-flip `shell.body` is real, not an Inject artifact.
+        let _ = PerfLog.review.mark("shell.body")
+        return NotebookListContent(detailState: detailState)
             .environment(\.detailRouter, detailState)
             .modifier(NotebookDetailPresentation(
                 detailState: detailState,

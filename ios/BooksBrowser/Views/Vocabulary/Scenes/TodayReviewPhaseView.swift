@@ -67,7 +67,12 @@ struct TodayReviewPhaseView: View {
     }
 
     var body: some View {
-        Group {
+        // Phase-1 probe: this view's `.session` branch builds TodayReviewView, whose
+        // `init` runs `State(initialValue: TodayReviewState(...))` (eager autoclosure =
+        // throwaway construction). `phaseView.body` firing per flip ⇒ the cover content
+        // closure rebuilt this view ⇒ `state.init` climb is downstream of that.
+        let _ = PerfLog.review.mark("phaseView.body")
+        return Group {
             switch phase {
             case .loading:
                 VocabSceneShell(phase: .loading(
