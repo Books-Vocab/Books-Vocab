@@ -110,6 +110,7 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 _mem_log = install_memory_log_handler(maxlen=1000)
 
 from .app_router_composition import build_app_routers, include_app_routers
+from .app_runtime_state import install_runtime_user_state
 from .api_compat import *  # noqa: F401,F403 - stable kg.api compatibility surface
 from .api_compat import (
     _build_entitlements_response,
@@ -120,10 +121,6 @@ from .api_compat import (
 from .rate_limit import api_limiter, translate_limiter
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
-from .user_store import (
-    CachedUserStore,
-    normalize_users_payload,
-)
 
 load_dotenv()
 
@@ -195,24 +192,11 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.state.kg_settings = settings
 
     # --- user store helpers ---
-    def _normalize_users_payload_fn(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-        from .secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
-
-    user_store = CachedUserStore(app.state.kg_settings.users_file, _normalize_users_payload_fn)
-    app.state.user_store = user_store
-
-    def _load_users_fn() -> dict[str, dict[str, Any]]:
-        return app.state.user_store.load()
-
-    def _save_users_fn(users: dict[str, dict[str, Any]]) -> None:
-        app.state.user_store.save(users)
-
-    app.state.load_users = _load_users_fn
-    app.state.save_users = _save_users_fn
-    app.state.normalize_users_payload = _normalize_users_payload_fn
+    runtime_user_state = install_runtime_user_state(
+        app,
+        settings,
+        default_subscription_payload_fn=_default_subscription_payload,
+    )
 
     # --- middleware stack ---
     app.add_middleware(
@@ -359,8 +343,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app_routers = build_app_routers(
         runtime_settings_fn=_settings_fn,
         runtime_users_lock_file_fn=_users_lock_file_fn,
-        load_users_fn=_load_users_fn,
-        save_users_fn=_save_users_fn,
+        load_users_fn=runtime_user_state.load_users,
+        save_users_fn=runtime_user_state.save_users,
         mem_log_getter=_mem_log.get,
         card_store_factory=_card_store,
         build_entitlements_response_fn=_build_entitlements_response,
