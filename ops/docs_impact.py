@@ -170,6 +170,10 @@ def impact_documents(
                 "matched_sources": sorted(matched_sources),
                 "matched_paths": sorted(matched_paths),
             }
+            if explain and excluded_paths:
+                impact["excluded_sources"] = sorted(excluded_sources)
+                impact["excluded_paths"] = sorted(excluded_paths)
+                impact["excluded_by"] = sorted(excluded_by)
             if doc.generator:
                 impact["generator"] = doc.generator
             impacts.append(impact)
@@ -211,11 +215,17 @@ def print_human(
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
         sources = ",".join(str(s) for s in impact["matched_sources"]) or "-"
         paths = ",".join(str(p) for p in impact["matched_paths"]) or "-"
+        excluded_paths = ""
+        excluded_by = ""
+        if "excluded_paths" in impact:
+            excluded_paths = f" excluded_changed={','.join(str(p) for p in impact['excluded_paths']) or '-'}"
+        if "excluded_by" in impact:
+            excluded_by = f" excluded_by={','.join(str(p) for p in impact['excluded_by']) or '-'}"
         generator = f" generator={impact['generator']}" if "generator" in impact else ""
         print(
             "IMPACT "
             f"{impact['id']} {impact['path']} "
-            f"via={sources} changed={paths} triggers={triggers}{generator}"
+            f"via={sources} changed={paths}{excluded_paths}{excluded_by} triggers={triggers}{generator}"
         )
     for impact in excluded_impacts:
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
