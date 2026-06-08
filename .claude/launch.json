@@ -6,6 +6,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-lc", "cd lab/podcast && ./start.sh --bg 8765 && tail -f monitor.log"],
       "port": 8765
+    },
+    {
+      "name": "ui-asset-gallery",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "uv run ops/catalog_review_entry.py serve >/dev/null 2>&1; sleep 1; tail -f /dev/null"],
+      "port": 8787
     }
   ]
 }

@@ -42,9 +42,14 @@ def test_collect_items_assigns_stable_asset_ids(tmp_path: Path):
     assert "--" in sample["assetID"]
     assert " " not in sample["assetID"]
     assert sample["feature"] == "Settings"
+    # depth-0 category: surface == surfaceGroup == category
     assert sample["surface"] == "Settings View"
+    assert sample["surfaceGroup"] == "Settings View"
     assert sample["assetKind"] == "screen"
     assert sample["surfaceRole"] == "feature-surface"
+    assert sample["lane"] == "feature-surface"
+    assert sample["stateFacet"]
+    assert sample["qualityTier"]
 
 
 def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
@@ -62,14 +67,17 @@ def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
 
     reader = by_category["Reader · Translation"]
     assert reader["feature"] == "Reader"
-    assert reader["surface"] == "Reader"
+    # depth-1 category: surface is the FULL category (first-class), surfaceGroup is the pre-· token
+    assert reader["surface"] == "Reader · Translation"
+    assert reader["surfaceGroup"] == "Reader"
     assert reader["surfaceVariant"] == "Translation"
     assert reader["stateLabel"] == "Hero"
     assert reader["assetKind"] == "screen"
 
     settings = by_category["Settings · ParamRow"]
     assert settings["feature"] == "Settings"
-    assert settings["surface"] == "Settings"
+    assert settings["surface"] == "Settings · ParamRow"
+    assert settings["surfaceGroup"] == "Settings"
     assert settings["surfaceVariant"] == "ParamRow"
     assert settings["stateLabel"] == "Subscribed"
     assert settings["assetKind"] == "component"
