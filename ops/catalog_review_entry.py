@@ -71,6 +71,38 @@ def prune_stale_artifacts(snapshot_root: Path = SNAPSHOT_ROOT, *, dry_run: bool)
     return removed
 
 
+def prune_superseded_artifacts(snapshot_root: Path = SNAPSHOT_ROOT, *, dry_run: bool) -> dict:
+    artifacts = collect_review_artifacts(snapshot_root)
+    blessed = choose_blessed_artifact(artifacts)
+    removed: list[dict] = []
+    kept: list[dict] = []
+    for artifact in artifacts:
+        entry = {
+            "name": artifact["name"],
+            "root": str(artifact["root"]),
+            "totalImages": artifact["totalImages"],
+            "isUsable": artifact["isUsable"],
+        }
+        if artifact["name"] == blessed["name"]:
+            kept.append(entry)
+            continue
+        if artifact["isUsable"]:
+            removed.append(entry)
+            if not dry_run:
+                shutil.rmtree(artifact["root"], ignore_errors=True)
+        else:
+            kept.append(entry)
+    return {
+        "blessed": {
+            "name": blessed["name"],
+            "root": str(blessed["root"]),
+            "totalImages": blessed["totalImages"],
+        },
+        "removed": removed,
+        "kept": kept,
+    }
+
+
 def extract_directory_from_command(command: str) -> str | None:
     try:
         tokens = shlex.split(command)
@@ -160,6 +192,7 @@ def cmd_current(_: argparse.Namespace) -> int:
         "artifactCount": len(artifacts),
         "usableArtifactCount": usable_count,
         "staleArtifactCount": len(stale_artifacts),
+        "supersededArtifactCount": max(usable_count - 1, 0),
         "blessed": {
             "name": blessed["name"],
             "root": blessed_root,
@@ -204,6 +237,20 @@ def cmd_prune(args: argparse.Namespace) -> int:
         "dryRun": args.dry_run,
         "removedCount": len(removed),
         "removed": removed,
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def cmd_prune_superseded(args: argparse.Namespace) -> int:
+    result = prune_superseded_artifacts(dry_run=args.dry_run)
+    payload = {
+        "status": "ok",
+        "dryRun": args.dry_run,
+        "blessed": result["blessed"],
+        "removedCount": len(result["removed"]),
+        "removed": result["removed"],
+        "kept": result["kept"],
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
@@ -276,6 +323,9 @@ def build_parser() -> argparse.ArgumentParser:
     prune = subparsers.add_parser("prune-stale")
     prune.add_argument("--dry-run", action="store_true")
 
+    prune_superseded = subparsers.add_parser("prune-superseded")
+    prune_superseded.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -288,6 +338,8 @@ def main() -> int:
         return cmd_serve(args)
     if args.command == "prune-stale":
         return cmd_prune(args)
+    if args.command == "prune-superseded":
+        return cmd_prune_superseded(args)
     parser.error(f"unknown command: {args.command}")
     return 2
 

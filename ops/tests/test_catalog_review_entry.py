@@ -90,6 +90,24 @@ def test_prune_stale_artifacts_removes_empty_review_roots(tmp_path: Path):
     assert (tmp_path / "catalog-full-usable").exists()
 
 
+def test_prune_superseded_artifacts_keeps_latest_blessed(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-012236", total_images=996, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-999999", total_images=0, continue_count=0, weak_count=0)
+
+    result = entry_module.prune_superseded_artifacts(tmp_path, dry_run=False)
+
+    assert result["blessed"]["name"] == "catalog-full-20260608-012236"
+    assert [item["name"] for item in result["removed"]] == ["catalog-full-20260608-003356"]
+    assert sorted(item["name"] for item in result["kept"]) == [
+        "catalog-full-20260608-012236",
+        "catalog-full-20260608-999999",
+    ]
+    assert not (tmp_path / "catalog-full-20260608-003356").exists()
+    assert (tmp_path / "catalog-full-20260608-012236").exists()
+    assert (tmp_path / "catalog-full-20260608-999999").exists()
+
+
 def test_extract_directory_from_command():
     command = "/usr/bin/python3 -m http.server 8787 --directory /tmp/catalog-full-20260608-020244"
     assert entry_module.extract_directory_from_command(command) == "/tmp/catalog-full-20260608-020244"
