@@ -24,11 +24,25 @@ from .routers import (
 from .routers.admin import AdminRouters, build_admin_route_handlers, build_admin_routers_from_handlers
 from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
 
+RuntimeSettingsFn = Callable[[], Any]
+
 
 @dataclass(frozen=True)
 class AppRouters:
     domain: tuple[APIRouter, ...]
     admin: AdminRouters
+
+
+@dataclass(frozen=True)
+class AppRouterDependencies:
+    runtime_settings_fn: RuntimeSettingsFn
+    runtime_users_lock_file_fn: Callable[[], Path]
+    load_users_fn: Callable[[], UsersPayload]
+    save_users_fn: Callable[[UsersPayload], None]
+    mem_log_getter: Callable[..., list[dict[str, Any]]]
+    card_store_factory: Callable[..., Any]
+    build_entitlements_response_fn: Callable[[StoredUserRecord | None], Any]
+    current_admin_grant_record_fn: Callable[[StoredUserRecord | None], AdminGrantRecord]
 
 
 def build_domain_routers() -> tuple[APIRouter, ...]:
@@ -47,27 +61,21 @@ def build_domain_routers() -> tuple[APIRouter, ...]:
     )
 
 
-def build_app_routers(
+def build_app_routers_from_dependencies(
     *,
-    runtime_settings_fn: Callable[[], Any],
-    runtime_users_lock_file_fn: Callable[[], Path],
-    load_users_fn: Callable[[], UsersPayload],
-    save_users_fn: Callable[[UsersPayload], None],
-    mem_log_getter: Callable[..., list[dict[str, Any]]],
-    card_store_factory: Callable[..., Any],
-    build_entitlements_response_fn: Callable[[StoredUserRecord | None], Any],
-    current_admin_grant_record_fn: Callable[[StoredUserRecord | None], AdminGrantRecord],
+    dependencies: AppRouterDependencies,
 ) -> AppRouters:
+    runtime_settings_fn = dependencies.runtime_settings_fn
     admin_handlers = create_admin_handlers_from_dependencies(
         dependencies=AdminHandlerDependencies(
             runtime_settings_fn=runtime_settings_fn,
-            runtime_users_lock_file_fn=runtime_users_lock_file_fn,
-            load_users_fn=load_users_fn,
-            save_users_fn=save_users_fn,
-            mem_log_getter=mem_log_getter,
-            card_store_factory=card_store_factory,
-            build_entitlements_response_fn=build_entitlements_response_fn,
-            current_admin_grant_record_fn=current_admin_grant_record_fn,
+            runtime_users_lock_file_fn=dependencies.runtime_users_lock_file_fn,
+            load_users_fn=dependencies.load_users_fn,
+            save_users_fn=dependencies.save_users_fn,
+            mem_log_getter=dependencies.mem_log_getter,
+            card_store_factory=dependencies.card_store_factory,
+            build_entitlements_response_fn=dependencies.build_entitlements_response_fn,
+            current_admin_grant_record_fn=dependencies.current_admin_grant_record_fn,
         )
     )
     admin_routers = build_admin_routers_from_handlers(
@@ -77,6 +85,32 @@ def build_app_routers(
     return AppRouters(
         domain=build_domain_routers(),
         admin=admin_routers,
+    )
+
+
+def build_app_routers(
+    *,
+    runtime_settings_fn: RuntimeSettingsFn,
+    runtime_users_lock_file_fn: Callable[[], Path],
+    load_users_fn: Callable[[], UsersPayload],
+    save_users_fn: Callable[[UsersPayload], None],
+    mem_log_getter: Callable[..., list[dict[str, Any]]],
+    card_store_factory: Callable[..., Any],
+    build_entitlements_response_fn: Callable[[StoredUserRecord | None], Any],
+    current_admin_grant_record_fn: Callable[[StoredUserRecord | None], AdminGrantRecord],
+) -> AppRouters:
+    """Backward-compatible wrapper around :func:`build_app_routers_from_dependencies`."""
+    return build_app_routers_from_dependencies(
+        dependencies=AppRouterDependencies(
+            runtime_settings_fn=runtime_settings_fn,
+            runtime_users_lock_file_fn=runtime_users_lock_file_fn,
+            load_users_fn=load_users_fn,
+            save_users_fn=save_users_fn,
+            mem_log_getter=mem_log_getter,
+            card_store_factory=card_store_factory,
+            build_entitlements_response_fn=build_entitlements_response_fn,
+            current_admin_grant_record_fn=current_admin_grant_record_fn,
+        )
     )
 
 

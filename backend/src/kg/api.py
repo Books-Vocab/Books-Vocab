@@ -30,7 +30,7 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 
 _mem_log = install_memory_log_handler(maxlen=1000)
 
-from .app_router_composition import build_app_routers, include_app_routers
+from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
 from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
 from .app_middleware import _anon_rate_limit_key, install_app_middlewares
 from .app_exception_handlers import (
@@ -126,15 +126,17 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     def _users_lock_file_fn() -> Path:
         return app.state.kg_settings.users_lock_file
 
-    app_routers = build_app_routers(
-        runtime_settings_fn=_settings_fn,
-        runtime_users_lock_file_fn=_users_lock_file_fn,
-        load_users_fn=runtime_user_state.load_users,
-        save_users_fn=runtime_user_state.save_users,
-        mem_log_getter=_mem_log.get,
-        card_store_factory=_card_store,
-        build_entitlements_response_fn=_build_entitlements_response,
-        current_admin_grant_record_fn=_current_admin_grant_record,
+    app_routers = build_app_routers_from_dependencies(
+        dependencies=AppRouterDependencies(
+            runtime_settings_fn=_settings_fn,
+            runtime_users_lock_file_fn=_users_lock_file_fn,
+            load_users_fn=runtime_user_state.load_users,
+            save_users_fn=runtime_user_state.save_users,
+            mem_log_getter=_mem_log.get,
+            card_store_factory=_card_store,
+            build_entitlements_response_fn=_build_entitlements_response,
+            current_admin_grant_record_fn=_current_admin_grant_record,
+        )
     )
     include_app_routers(app, app_routers)
 
