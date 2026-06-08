@@ -35,7 +35,7 @@ verified_against: e237d84f
 ./ops/docs_registry_coverage.py
 ```
 
-`docs_impact.py --files ...` 是假設單一檔案改動時的精準樣本；需要理解某份 doc 為何被 broad source 命中後又被 `!path` / `!glob` 排除時,補跑 `--explain`。若某份 doc 仍有有效 impact,但其中一部分路徑被 suppression 壓掉,同一行 `IMPACT` 也會帶 `excluded_changed=` / `excluded_by=`。`./ops/docs_lint.sh` 反映目前 checkout 內所有 range / staged / unstaged / untracked 變更,會包含 dogfood branch 自身正在改的檔案；當它印出 registry impact hints 時,現在也會直接附 `./ops/docs_impact.py --since <base> --explain` follow-up。回報時要分開判讀,不要把 default gate 的 ambient hints 當成該角色假設檔案的唯一結果。
+`docs_impact.py --files ...` 是假設單一檔案改動時的精準樣本；需要理解某份 doc 為何被 broad source 命中後又被 `!path` / `!glob` 排除時,補跑 `--explain`。若某份 doc 仍有有效 impact,但其中一部分路徑被 suppression 壓掉,同一行 `IMPACT` 也會帶 `excluded_changed=` / `excluded_by=`。`./ops/docs_lint.sh` 反映目前 checkout 內所有 range / staged / unstaged / untracked 變更,會包含 dogfood branch 自身正在改的檔案；當它印出 registry impact hints 時,現在也會直接附 `./ops/docs_impact.py --since <base> --explain` follow-up，並明說下方 frontmatter checks 只覆蓋目前 checkout 裡有變更的 docs、non-doc 變更要以上方 impact hints 判讀。若這次完全沒有 docs 被選進 lint,它也會直說。回報時要分開判讀,不要把 default gate 的 ambient hints 當成該角色假設檔案的唯一結果。
 
 ## 回報格式
 

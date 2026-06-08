@@ -50,8 +50,8 @@ require_grep "ERROR: 0" /tmp/kg_docs_lint_files.out
 
 run_capture /tmp/kg_docs_lint_default.out ./ops/docs_lint.sh
 require_grep "mode=gate" /tmp/kg_docs_lint_default.out
-if grep -q "STALE docs/" /tmp/kg_docs_lint_default.out; then
-  echo "docs_lint default mode should not run full-repo staleness audit" >&2
+if grep -q "docs_lint: mode=audit" /tmp/kg_docs_lint_default.out; then
+  echo "docs_lint default mode should stay in gate mode, not silently flip to audit" >&2
   dump_file /tmp/kg_docs_lint_default.out
   exit 1
 fi
@@ -80,7 +80,7 @@ run_capture /tmp/kg_docs_lint_impact.out ./ops/docs_lint.sh --since HEAD
 require_grep "docs_lint: registry impact hints" /tmp/kg_docs_lint_impact.out
 require_grep "reference.tech_index" /tmp/kg_docs_lint_impact.out
 require_grep "docs_lint: inspect suppression with ./ops/docs_impact.py --since HEAD --explain" /tmp/kg_docs_lint_impact.out
-require_grep "docs_lint: only non-doc files changed, so no doc frontmatter was linted; use the impact hints above to decide whether doc sync is needed" /tmp/kg_docs_lint_impact.out
+require_grep "docs_lint: frontmatter checks below only cover docs changed in the current checkout; use the impact hints above to judge non-doc changes" /tmp/kg_docs_lint_impact.out
 rm -f "$impact_probe"
 trap - EXIT
 
