@@ -162,7 +162,8 @@ private struct VocabularyListViewScene: View {
     var body: some View {
         AppThemeContainer {
             NavigationStack {
-                VocabularyListView(notebookId: "default", skipCatalogTasks: true)
+                VocabularyListView(notebookId: "default")
+                    .environment(\.catalogTaskPolicy, .disabled)
             }
             .modelContainer(container)
             .environment(\.authManager, auth)

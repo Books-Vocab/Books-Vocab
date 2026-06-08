@@ -48,6 +48,7 @@ struct PodcastHomeView: View {
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
@@ -63,22 +64,6 @@ struct PodcastHomeView: View {
     @State private var navigationPath = NavigationPath()
     @State private var isSyncingCatalog = false
     @State private var syncFailed = false
-
-    /// 啟動時自動同步播客目錄的開關。production 恆為 `false`（不跳過）；僅
-    /// DEBUG catalog/snapshot 透過下方 init 設為 `true`,以避免 `syncPodcastCatalog`
-    /// 的 `fetchSeriesList()` 打真網路、破壞 deterministic 快照。
-    private let skipAutoSyncForCatalog: Bool
-
-    init() {
-        self.skipAutoSyncForCatalog = false
-    }
-
-    #if DEBUG
-    /// DEBUG-only：給 Playbook catalog 注入「跳過啟動自動同步」用。
-    init(skipAutoSyncForCatalog: Bool) {
-        self.skipAutoSyncForCatalog = skipAutoSyncForCatalog
-    }
-    #endif
 
     private var phase: PodcastHomePhase {
         PodcastHomePhase.resolve(
@@ -153,7 +138,7 @@ struct PodcastHomeView: View {
             // `.task(id:)` 對齊 NotebookListView：login 狀態翻轉才重跑，避免
             // Catalyst sidebar 切回 podcast section（remount）以外的無謂重同步。
             .task(id: authManager.isLoggedIn) {
-                guard !skipAutoSyncForCatalog else { return }
+                guard catalogTaskPolicy.runsTasks else { return }
                 await syncPodcastCatalog(showToastOnFailure: true, warmAudioAfterSync: true)
             }
         }
