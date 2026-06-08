@@ -65,14 +65,19 @@ extension ReaderTranslationHandler {
 
     /// Capture-normalize for single-word selections before translate/save.
     ///
-    /// Contract (kept in lock-step with backend `_clean_content` —
-    /// `backend/src/kg/vocab_shared.py`): NFC compat mapping → trim whitespace
-    /// → strip *trailing* sentence punctuation `.,;:!?`. Podcast (UITextView)
-    /// and PDF (PDFKit) selections arrive with trailing punctuation attached;
-    /// stripping here keeps the local card / vocab preview clean instead of
-    /// relying on the backend as the only cleanup point. Case and word-internal
-    /// punctuation (`don't`, `well-known`) are preserved; lowercasing is the
-    /// backend's dedup concern, not capture's. This is *capture* normalize, not
+    /// Steps: NFC compat mapping (NFKC) → trim whitespace → strip *trailing*
+    /// sentence punctuation `.,;:!?`. Only the last two steps are a shared
+    /// contract with backend `_clean_content` (`backend/src/kg/vocab_shared.py`,
+    /// `.strip().rstrip(".,;:!?")`); the NFC step is iOS-only — `_clean_content`
+    /// does no Unicode normalization (backend's NFC lives in the separate
+    /// dedup-key path `_normalize_word`, and is canonical NFC, not NFKC). See
+    /// `docs/reference/card_format.md` §"Word capture normalization" for the
+    /// per-end step table. Podcast (UITextView) and PDF (PDFKit) selections
+    /// arrive with trailing punctuation attached; stripping here keeps the local
+    /// card / vocab preview clean instead of relying on the backend as the only
+    /// cleanup point. Case and word-internal punctuation (`don't`, `well-known`)
+    /// are preserved; lowercasing is the backend's dedup concern, not capture's.
+    /// This is *capture* normalize, not
     /// *match* normalize — highlight matching has its own looser rules
     /// (`PodcastVocabHighlightResolver` / EPUB JS) applied live on both sides.
     func normalizeWord(_ word: String) -> String {
