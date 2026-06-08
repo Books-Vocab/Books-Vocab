@@ -225,13 +225,17 @@ struct PDFReaderView: View {
     }
 
     private var loadingView: some View {
-        VStack {
-            Spacer()
+        AppStateMessageCard(
+            title: "正在開啟 PDF".localized,
+            systemImage: "doc.richtext",
+            description: "正在載入文件內容與閱讀位置。".localized
+        ) {
             ProgressView()
-                .scaleEffect(AppMetrics.loadingIndicatorScaleMedium)
-            Spacer()
+                .controlSize(.large)
         }
+        .frame(maxWidth: 420)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(AppSpacing.s6)
     }
 
     private func errorView(_ message: String) -> some View {

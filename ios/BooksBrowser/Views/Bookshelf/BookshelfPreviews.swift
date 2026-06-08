@@ -100,16 +100,10 @@ struct BookshelfLoadingPreview: View {
         ZStack {
             appTheme.palette.pageBackground
                 .ignoresSafeArea()
-            appTheme.palette.scrim
-                .ignoresSafeArea()
-            VStack(spacing: AppSpacing.s4) {
-                ProgressView()
-                Text(L10n.string("正在匯入書籍..."))
-                    .font(AppFonts.caption())
-                    .foregroundStyle(appTheme.palette.secondaryText)
-            }
-            .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
+            BookshelfLoadingOverlay(
+                message: L10n.string("正在匯入書籍..."),
+                progress: nil
+            )
         }
         .enableInjection()
     }
