@@ -69,6 +69,81 @@ struct PodcastTranscriptInteractionRulesTests {
         #expect(range == nil)
     }
 
+    @Test func initialScrollWaitsUntilPositionIsResolved() {
+        let decision = PodcastTranscriptScrollPolicy.initialDecision(
+            initialScrollPositionResolved: false,
+            didApplyInitialScrollPosition: false,
+            currentId: 42
+        )
+
+        #expect(decision == .none)
+    }
+
+    @Test func initialScrollDoesNotRepeatAfterApplied() {
+        let decision = PodcastTranscriptScrollPolicy.initialDecision(
+            initialScrollPositionResolved: true,
+            didApplyInitialScrollPosition: true,
+            currentId: 42
+        )
+
+        #expect(decision == .none)
+    }
+
+    @Test func initialScrollMarksAppliedWhenCurrentSentenceIsUnavailable() {
+        let decision = PodcastTranscriptScrollPolicy.initialDecision(
+            initialScrollPositionResolved: true,
+            didApplyInitialScrollPosition: false,
+            currentId: nil
+        )
+
+        #expect(decision == .markAppliedWithoutTarget)
+    }
+
+    @Test func initialScrollTargetsCurrentSentenceWhenAvailable() {
+        let decision = PodcastTranscriptScrollPolicy.initialDecision(
+            initialScrollPositionResolved: true,
+            didApplyInitialScrollPosition: false,
+            currentId: 7
+        )
+
+        #expect(decision == .scrollTo(7))
+    }
+
+    @Test func followScrollWaitsUntilInitialScrollApplied() {
+        let target = PodcastTranscriptScrollPolicy.followTarget(
+            isFollowing: true,
+            didApplyInitialScrollPosition: false,
+            targetId: 7
+        )
+
+        #expect(target == nil)
+    }
+
+    @Test func followScrollWaitsWhenFollowIsDisabled() {
+        let target = PodcastTranscriptScrollPolicy.followTarget(
+            isFollowing: false,
+            didApplyInitialScrollPosition: true,
+            targetId: 7
+        )
+
+        #expect(target == nil)
+    }
+
+    @Test func followScrollTargetsLeadSentenceWhenReady() {
+        let target = PodcastTranscriptScrollPolicy.followTarget(
+            isFollowing: true,
+            didApplyInitialScrollPosition: true,
+            targetId: 7
+        )
+
+        #expect(target == 7)
+    }
+
+    @Test func manualDragOnlyDisengagesActiveFollowMode() {
+        #expect(PodcastTranscriptScrollPolicy.shouldDisengageFollowOnManualDrag(isFollowing: true))
+        #expect(PodcastTranscriptScrollPolicy.shouldDisengageFollowOnManualDrag(isFollowing: false) == false)
+    }
+
     private func cue(_ word: String) -> PodcastSubtitleCue {
         PodcastSubtitleCue(id: 0, startTime: 0, endTime: 1, speaker: "A", word: word)
     }

@@ -31,4 +31,39 @@ enum PodcastSentenceSelectionRange {
         return nil
     }
 }
+
+enum PodcastTranscriptInitialScrollDecision: Equatable {
+    case none
+    case markAppliedWithoutTarget
+    case scrollTo(Int)
+}
+
+enum PodcastTranscriptScrollPolicy {
+    static func initialDecision(
+        initialScrollPositionResolved: Bool,
+        didApplyInitialScrollPosition: Bool,
+        currentId: Int?
+    ) -> PodcastTranscriptInitialScrollDecision {
+        guard initialScrollPositionResolved, didApplyInitialScrollPosition == false else {
+            return .none
+        }
+        guard let currentId else {
+            return .markAppliedWithoutTarget
+        }
+        return .scrollTo(currentId)
+    }
+
+    static func followTarget(
+        isFollowing: Bool,
+        didApplyInitialScrollPosition: Bool,
+        targetId: Int?
+    ) -> Int? {
+        guard isFollowing, didApplyInitialScrollPosition else { return nil }
+        return targetId
+    }
+
+    static func shouldDisengageFollowOnManualDrag(isFollowing: Bool) -> Bool {
+        isFollowing
+    }
+}
 #endif
