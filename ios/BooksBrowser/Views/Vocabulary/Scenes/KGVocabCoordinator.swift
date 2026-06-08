@@ -20,10 +20,12 @@ import SwiftUI
 final class KGVocabCoordinator: KGVocabCoordinating {
     var isLoading = false
     var errorMessage: String?
+    var refreshSuccessMessage: String?
     var selectedEntry: VocabularyEntry?
 
     func dismissBanner() {
         errorMessage = nil
+        refreshSuccessMessage = nil
     }
 
     func handleRowTap(_ entryID: UUID, syncedEntries: [VocabularyEntry]) {
@@ -59,8 +61,10 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
             errorMessage = nil
+            refreshSuccessMessage = L10n.string("單字庫已更新")
         } catch {
             errorMessage = error.localizedDescription
+            refreshSuccessMessage = nil
         }
     }
 
@@ -75,8 +79,10 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
             errorMessage = nil
+            refreshSuccessMessage = L10n.string("單字庫已更新")
         } catch {
             errorMessage = error.localizedDescription
+            refreshSuccessMessage = nil
         }
         await health
     }
@@ -126,6 +132,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             // 全數收斂成功 → 清空前次失敗殘留的 error banner，
             // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
             errorMessage = nil
+            refreshSuccessMessage = L10n.string("待刪除項目已同步")
         }
 
         await kgService.healthCheck()
@@ -190,6 +197,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 // 全數封存成功 → 清空前次部分失敗殘留的 error banner，
                 // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
                 errorMessage = nil
+                refreshSuccessMessage = L10n.string("封存已同步")
                 toastCoordinator.success(L10n.format("已封存 %@ 個", String(entries.count)))
             }
         }

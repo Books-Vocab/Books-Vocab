@@ -97,7 +97,13 @@ private struct KGVocabPresenterScene: View {
             )
         case .bannerAndCTA:
             return KGVocabPresenter.State(
-                banner: .init(message: "3 個單字刪除待同步", canDismiss: false, canRetry: true),
+                banner: .init(
+                    message: "3 個單字刪除待同步",
+                    systemImage: "exclamationmark.triangle.fill",
+                    tone: .warning,
+                    canDismiss: false,
+                    canRetry: true
+                ),
                 reviewStateOptions: Self.options,
                 rows: Self.rows,
                 emptyState: Self.contentEmptyState,
