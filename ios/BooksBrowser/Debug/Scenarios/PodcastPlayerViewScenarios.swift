@@ -17,13 +17,13 @@ import SwiftData
 /// in `.task(id:)`. An audio-less episode does NOT short-circuit to a loaded
 /// player — its async load reports "無音訊 URL" while the captured frame is stuck
 /// on the `.idle` loading spinner (a non-deterministic race). So the preview state
-/// drives the DEBUG-only `catalogPreview` seam instead: it builds a synchronous,
+/// drives the DEBUG-only catalog preview environment seam instead: it builds a synchronous,
 /// AVPlayer-free `.ready` viewModel (seeded duration + synthetic SRT, paused
 /// mid-episode) so the real player chrome renders deterministically — no audio,
-/// no network. See `PodcastPlayerView.CatalogPreview` / `catalogReadyPreview`.
+/// no network. See `PodcastPlayerCatalogPreview` / `catalogReadyPreview`.
 ///
 /// Two surface states:
-/// - **Preview episode** → `catalogPreview` seam → `playerCore` renders the live
+/// - **Preview episode** → catalog preview environment seam → `playerCore` renders the live
 ///   `.ready` chrome (transcript + scrubber + transport + preview banner).
 /// - **Locked gate** → a non-preview episode reached as a guest hits the
 ///   defense-in-depth `lockedGateView` (sign-in CTA) — audio is never loaded, so
@@ -54,7 +54,7 @@ private struct PodcastPlayerViewScene: View {
     let container: ModelContainer
     let auth: CatalogPreviewAuth
     let episodeId: String
-    let preview: PodcastPlayerView.CatalogPreview?
+    let preview: PodcastPlayerCatalogPreview?
 
     init(fixture: PodcastPlayerFixture) {
         let container = try! ModelContainer(
@@ -90,12 +90,9 @@ private struct PodcastPlayerViewScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    @ViewBuilder private var player: some View {
-        if let preview {
-            PodcastPlayerView(episodeId: episodeId, catalogPreview: preview)
-        } else {
-            PodcastPlayerView(episodeId: episodeId)
-        }
+    private var player: some View {
+        PodcastPlayerView(episodeId: episodeId)
+            .environment(\.podcastPlayerCatalogPreview, preview)
     }
 
     /// Synthetic WORD-level SRT (one cue per word, gap-free + monotonic), 11
