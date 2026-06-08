@@ -133,8 +133,9 @@ def _parse_prompt_md(raw: str, schema: dict[str, Any]) -> tuple[str | None, str,
     - The `## User` section (or everything if no sections) is the user prompt.
     - If schema contains `response_format: json_object`, set response_format accordingly.
     """
-    system_match = re.search(r"^##\s*System\s*\n(.*?)(?=\n##\s|$)", raw, re.DOTALL | re.IGNORECASE)
-    user_match = re.search(r"^##\s*User\s*\n(.*?)(?=\n##\s|$)", raw, re.DOTALL | re.IGNORECASE)
+    raw = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL).strip()
+    system_match = re.search(r"^##\s*System\s*\n(.*?)(?=\n##\s|\Z)", raw, re.DOTALL | re.MULTILINE | re.IGNORECASE)
+    user_match = re.search(r"^##\s*User\s*\n(.*?)(?=\n##\s|\Z)", raw, re.DOTALL | re.MULTILINE | re.IGNORECASE)
 
     system = system_match.group(1).strip() if system_match else None
     if user_match:
