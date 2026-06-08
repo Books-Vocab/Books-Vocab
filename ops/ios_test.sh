@@ -332,6 +332,7 @@ cleanup() {
 
 echo "[ios_test] caller=$CALLER waiting for lock..."
 WAITED=0
+LOCK_WAIT_START_MS="$(ios_test_now_ms)"
 while ! shlock -f "$LOCK_FILE" -p $$; do
   HOLDER_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
   if [[ -n "$HOLDER_PID" ]] && ! kill -0 "$HOLDER_PID" 2>/dev/null; then
@@ -352,8 +353,9 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
   fi
 done
 trap cleanup EXIT INT TERM
+LOCK_WAIT_MS=$(( $(ios_test_now_ms) - LOCK_WAIT_START_MS ))
 
-echo "[ios_test] lock acquired — scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
+echo "[ios_test] lock acquired lockWaitMs=$LOCK_WAIT_MS — scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
 START=$(date +%s)
 START_MS="$(ios_test_now_ms)"
 BOOT_MS=0
@@ -811,6 +813,7 @@ write_json_verdict() {
     --arg executed "$executed" \
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
+    --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
     --argjson bootMs "$BOOT_MS" \
     --argjson xcodebuildMs "$XCODEBUILD_MS" \
     --argjson buildForTestingMs "$BUILD_FOR_TESTING_MS" \
@@ -837,6 +840,7 @@ write_json_verdict() {
       elapsed:$elapsed,
       executed:(if $executed == "" then null else $executed end),
       timings:{
+        lockWaitMs:$lockWaitMs,
         bootMs:$bootMs,
         xcodebuildMs:$xcodebuildMs,
         buildForTestingMs:$buildForTestingMs,
