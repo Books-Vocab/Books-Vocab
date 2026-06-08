@@ -13,6 +13,34 @@ struct PodcastPlayerView: View {
     /// `NavigationStack` host 設定鍵，但該內層 stack 嵌在 BookshelfView 外層
     /// NavigationStack subtree 內，會**持久破壞外層 value-based push**（NAVDBG
     /// 坐實：顯示過 inline player 後 reader 永久無法 push，Catalyst SwiftUI 缺陷）。
+#if DEBUG
+    /// Catalog-only seam: when set, the player skips its async audio load and
+    /// renders a deterministic, AVPlayer-free `.ready` chrome seeded with this
+    /// preview — lets the offline Playbook catalog show the real player surface
+    /// (transcript + scrubber + transport) without audio/network. DEBUG-only, so
+    /// production carries no extra stored property at all.
+    struct CatalogPreview {
+        let durationSec: TimeInterval
+        let currentSec: TimeInterval
+        let subtitleSRT: String?
+    }
+    private let catalogPreview: CatalogPreview?
+
+    init(episodeId: String) {
+        self.episodeId = episodeId
+        self.catalogPreview = nil
+    }
+
+    init(episodeId: String, catalogPreview: CatalogPreview) {
+        self.episodeId = episodeId
+        self.catalogPreview = catalogPreview
+    }
+#else
+    init(episodeId: String) {
+        self.episodeId = episodeId
+    }
+#endif
+
     @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
@@ -366,6 +394,12 @@ struct PodcastPlayerView: View {
             progressBootstrapCompleted = false
             lastSavedTime = 0
             pushState = PodcastProgressPushState()
+#if DEBUG
+            if let preview = catalogPreview {
+                loadCatalogPreview(preview)
+                return
+            }
+#endif
             loadEpisode()
         }
         // Trigger on `.count` (新增/刪除 entry) rather than the whole array,
@@ -606,6 +640,22 @@ struct PodcastPlayerView: View {
         ) else { return }
         overrideEpisodeId = next.remoteId
     }
+
+#if DEBUG
+    /// Catalog-only counterpart to `loadEpisode()`: builds a synchronous, AVPlayer-
+    /// free `.ready` viewModel so the Playbook catalog renders the real player
+    /// chrome (transcript + scrubber + transport) deterministically.
+    private func loadCatalogPreview(_ preview: CatalogPreview) {
+        guard let series = loadedSeries else { return }
+        let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
+        vm.catalogReadyPreview(
+            duration: preview.durationSec,
+            currentTime: preview.currentSec,
+            subtitleSRT: preview.subtitleSRT
+        )
+        viewModel = vm
+    }
+#endif
 
     private func loadEpisode() {
         // `loadedEpisode` / `loadedSeries` / `vocabularyContext` are now
