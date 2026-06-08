@@ -9,7 +9,7 @@ from catalog_review_cli_artifacts import load_review_context
 def _find_node(tree: dict, node_path: str) -> dict | None:
     if tree.get("nodePath", "") == node_path:
         return tree
-    for child in tree.get("children", []) or []:
+    for child in tree.get("children") or []:
         found = _find_node(child, node_path)
         if found is not None:
             return found
@@ -17,13 +17,12 @@ def _find_node(tree: dict, node_path: str) -> dict | None:
 
 
 def _truncate(node: dict, depth: int | None) -> dict:
-    if depth is None or depth < 0:
-        return node
     pruned = {key: value for key, value in node.items() if key != "children"}
     children = node.get("children") or []
-    if depth == 0:
-        pruned["childCount"] = len(children)
-    else:
+    pruned["childCount"] = len(children)
+    if depth is None:
+        pruned["children"] = [_truncate(child, None) for child in children]
+    elif depth > 0:
         pruned["children"] = [_truncate(child, depth - 1) for child in children]
     return pruned
 
@@ -41,10 +40,7 @@ def _resolve_canvas_base(root: Path, base: str | None) -> str:
     canvas = root / "catalog.html"
     if canvas.exists():
         return canvas.resolve().as_uri()
-    review = root / "review.html"
-    if review.exists():
-        return review.resolve().as_uri()
-    return "catalog.html"
+    return (root / "catalog.html").resolve().as_uri()
 
 
 def cmd_tree(root: Path, *, node: str, depth: int | None) -> int:
