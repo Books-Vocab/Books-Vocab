@@ -46,15 +46,15 @@ def write_manifest(root: Path, name: str, *, total_images: int, continue_count: 
     )
 
 
-def test_choose_blessed_artifact_prefers_highest_total_images(tmp_path: Path):
-    write_manifest(tmp_path, "catalog-full-older", total_images=896, continue_count=258, weak_count=364)
-    write_manifest(tmp_path, "catalog-full-newer", total_images=1000, continue_count=290, weak_count=436)
+def test_choose_blessed_artifact_prefers_latest_usable_artifact(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-010944", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
 
     artifacts = entry_module.collect_review_artifacts(tmp_path)
     blessed = entry_module.choose_blessed_artifact(artifacts)
 
-    assert blessed["name"] == "catalog-full-newer"
-    assert blessed["totalImages"] == 1000
+    assert blessed["name"] == "catalog-full-20260608-020244"
+    assert blessed["totalImages"] == 996
     assert blessed["promiseCounts"]["Continue"] == 290
 
 
