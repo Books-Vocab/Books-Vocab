@@ -33,13 +33,25 @@ def classify_feature(category: str, profile: dict) -> str:
     return "Misc"
 
 
-def classify_asset_kind(category: str, group: str) -> str:
+_OVERLAY_TOKENS = (" Sheet", "Popover", "Picker", "Login", "Paywall", "Overlay", "Translation")
+
+
+def classify_asset_kind(category: str, group: str, transparent_margin: bool = False) -> str:
     text = f"{category} {group}"
     # A presenter is a dev harness even when its name embeds a screen token
     # ("Today Review Presenter" contains the "Today Review" screen token). Match
     # it first so a harness can never be mistaken for a shippable screen and get
     # held to feature-surface coverage it should never have.
     if "Presenter" in category:
+        return "component"
+    # The pixel signal beats the name. Capture renders components/overlays on a
+    # transparent 1179x2556 canvas, so a transparent margin means "not a full-bleed
+    # screen" no matter how screen-like the category name is (e.g. "Reader ·
+    # Translation" is an overlay, "Bookshelf" card shots are components). This is
+    # what name-token matching alone gets wrong.
+    if transparent_margin:
+        if any(token in text for token in _OVERLAY_TOKENS):
+            return "overlay"
         return "component"
     if any(token in text for token in (" View", "Bookshelf", "Knowledge Graph", "Reader ·", "Today Review", "Sync View", "Welcome")):
         return "screen"
@@ -175,10 +187,10 @@ def expected_facets_for_lane(lane: str) -> tuple[str, ...]:
     return EXPECTED_FACETS_BY_LANE.get(lane, ())
 
 
-def build_taxonomy(category: str, title: str, profile: dict) -> dict:
+def build_taxonomy(category: str, title: str, profile: dict, transparent_margin: bool = False) -> dict:
     group, surface_variant = split_surface(category)
     feature = classify_feature(category, profile)
-    kind = classify_asset_kind(category, group)
+    kind = classify_asset_kind(category, group, transparent_margin)
     surface_role = classify_surface_role(group, category, kind)
     state_label = title or surface_variant or "Default"
     facet = classify_state_facet(state_label)
@@ -239,7 +251,13 @@ def build_surface_index(items: list[dict]) -> list[dict]:
         for item in group:
             facet_scenes.setdefault(item["stateFacet"], set()).add(item["clusterID"])
         facets_present = sorted(facet_scenes, key=state_facet_rank)
-        lane = first["lane"]
+        # A surface's lane is the majority lane across its shots, not the first
+        # shot's. Some categories mix component shots (transparent canvas) with a
+        # couple of real screen shots (e.g. "Bookshelf" = mostly cards + a few
+        # full-bleed states); a first-shot heuristic would flip the whole surface
+        # on one stray shot. Majority keeps the surface's identity stable.
+        lane = Counter(item["lane"] for item in group).most_common(1)[0][0]
+        surface_role = Counter(item["surfaceRole"] for item in group).most_common(1)[0][0]
         expected = expected_facets_for_lane(lane)
         present_set = set(facets_present)
         # List/container feature-surfaces (Bookshelf View, Podcast Home View…)
@@ -257,7 +275,7 @@ def build_surface_index(items: list[dict]) -> list[dict]:
             "surfaceGroupKey": first["surfaceGroupKey"],
             "feature": first["feature"],
             "lane": lane,
-            "surfaceRole": first["surfaceRole"],
+            "surfaceRole": surface_role,
             "promise": first["promise"],
             "eligibility": _rollup_eligibility({item["eligibility"] for item in group}),
             "sceneCount": len(scenes),
