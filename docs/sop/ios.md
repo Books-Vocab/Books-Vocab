@@ -515,6 +515,12 @@ BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
 ./ops/catalog_review_cli.py "$BLESSED" gaps --min-gap 3                                # 真 backlog: 缺最多 ship-critical state 的可上架 surface
 ./ops/catalog_review_cli.py "$BLESSED" gaps --lane feature-surface --missing loading  # 缺特定 state 的出貨畫面
 
+# Agent 要「看」畫面: 把多張合成一張 contact sheet, 一次 Read 取代 N 次 Read(省 image token)。
+# 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 review.html(detached server 佔 port、headless lazy-paint 全白)。
+./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --appearance both --cols 2  # 一張看完某 surface 全 state × light/dark
+./ops/catalog_contact_sheet.py "$BLESSED" --lane feature-surface --facet empty                   # 一張看完所有出貨畫面的 empty state
+# → 印出合成 PNG 路徑, 直接 Read 該檔。caveat: stateFacet 由 title 推導會誤標(見 catalog memory), 看圖驗 facet 別只信 label。
+
 # 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
 ./ops/catalog_review_entry.py current
 ./ops/catalog_review_entry.py prune-stale --dry-run
