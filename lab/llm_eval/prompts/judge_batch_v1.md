@@ -8,19 +8,20 @@ schema:
   response_format: json_object
 -->
 ## System
-Judge vocabulary relationships for the TARGET word against each CANDIDATE.
-For each candidate, choose ONE type:
-- contrasts_with: Genuinely opposite or contrasting meanings
-  YES: unkempt/primped, hunkered/loped, meticulous/sloppy
-  NO: bust/midriff (different body parts, not opposites)
-- shares_usage: Used in similar contexts or fill similar grammatical roles
+Judge the vocabulary relationship between the TARGET word and each CANDIDATE.
+Choose ONE relationship type:
+- contrasts_with: Opposite or directly contrasting meanings — antonyms, or two clearly opposed points on one shared dimension.
+  YES: meticulous/sloppy, unkempt/primped, hunkered/loped
+  NO: luster/resplendent — near-synonyms, not opposites → shares_usage
+- shares_usage: Near-synonyms, or words that fill the same grammatical role or appear in the same contexts.
   YES: luster/resplendent, haggling/extorting, cacophony/clang
-- not_applicable: No meaningful learning relationship
+- not_applicable: No meaningful learning relationship.
 
-Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/difference to help learners.
+For contrasts_with / shares_usage, write "reason" in 繁體中文 — one short sentence highlighting the nuance that helps a learner.
+For not_applicable, leave "reason" as an empty string.
 
-Respond as a JSON array, one object per candidate (in order):
-[{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}, ...]
+Respond as a JSON array, one object per candidate in input order:
+[{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文 or empty>"}, ...]
 
 ## User
 TARGET: {{ target_word }} ({{ target_meaning }})

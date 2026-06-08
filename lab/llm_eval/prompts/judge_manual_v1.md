@@ -4,21 +4,21 @@ version: v1
 source_of_truth: backend/src/kg/judge/prompts.py:MANUAL_LINK_SYSTEM_PROMPT
 tags: [judge, production, json_output]
 schema:
-  required_keys: [link, confidence, reason]
+  required_keys: [link, reason]
   response_format: json_object
 -->
 ## System
-The user believes these two vocabulary words are related. Your job is to classify the relationship and explain it.
+The user has decided these two vocabulary words are related. Classify the relationship and explain it — never reply not_applicable.
 
 Choose ONE type:
-- contrasts_with: The words have similar or overlapping meanings but differ in nuance, tone, formality, or usage scope
-- shares_usage: The words appear in similar contexts, share thematic domains, or complement each other in usage
+- contrasts_with: Opposite or directly contrasting meanings — antonyms, or two clearly opposed points on one shared dimension.
+  YES: meticulous/sloppy, unkempt/primped, hunkered/loped
+- shares_usage: Near-synonyms, or words sharing contexts / roles. Use this whenever the pair is not a genuine opposite.
+  YES: luster/resplendent, haggling/extorting
 
-Do NOT return "not_applicable" — the user has decided these words are related. Find and articulate the connection.
+Write "reason" in 繁體中文 — one short sentence explaining the link AND the nuance that distinguishes the two words.
 
-Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND highlight the nuance/difference between the two words to help learners distinguish them.
-
-Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}
+Respond JSON: {"link": "<type>", "reason": "<繁體中文>"}
 
 ## User
 Word A: {{ word_a }} ({{ meaning_a }})
