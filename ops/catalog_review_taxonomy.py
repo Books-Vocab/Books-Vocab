@@ -139,13 +139,18 @@ def state_facet_rank(facet: str) -> int:
 LANE_ORDER = ["feature-surface", "overlay", "building-block", "engineering-only"]
 
 
-def classify_lane(surface_role: str, eligibility: str) -> str:
+def classify_lane(surface_role: str, eligibility: str, source_declared: bool = False) -> str:
     if surface_role == "feature-surface":
         return "feature-surface"
     if surface_role == "overlay":
         return "overlay"
     if surface_role == "presenter":
         return "engineering-only"
+    # Source-declared buildingBlock is authoritative: a stale profile eligibility
+    # must NOT demote a real, declared component into the engineering lane.
+    # (declared wins — no consumption-side profile patch.)
+    if source_declared:
+        return "building-block"
     if eligibility == "engineering":
         return "engineering-only"
     return "building-block"
