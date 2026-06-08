@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 import kg.api as api_mod
+import kg.api_compat as compat_mod
 from kg.settings import KGSettings
 
 
@@ -41,6 +42,39 @@ def test_api_module_exposes_expected_surface():
 
     missing = [name for name in expected_symbols if not hasattr(api_mod, name)]
     assert not missing, f"Missing compatibility symbols: {missing}"
+
+
+def test_api_compat_declares_stable_reexport_surface():
+    expected = {
+        "get_current_user",
+        "get_user_lock",
+        "_card_store",
+        "_graph_store",
+        "_embedding_store",
+        "_parse_datetime",
+        "_default_subscription_payload",
+        "_build_entitlements_response",
+        "_current_subscription_record",
+        "_resolve_user_id_from_subscription_index",
+        "_write_subscription_snapshot",
+        "_notification_status",
+        "translate_quick",
+        "translate_phrase",
+        "translate_explain",
+        "_create_jwt_token",
+        "_resolve_and_link_user",
+        "auth_verify",
+        "list_vocab",
+        "lookup_word",
+        "delete_word",
+        "get_graph_links",
+        "add_vocab",
+        "_card_response",
+        "_run_pipeline_background",
+        "run_pipeline",
+        "_get_settings",
+    }
+    assert expected.issubset(set(compat_mod.__all__))
 
 
 def test_api_module_no_legacy_globals():
