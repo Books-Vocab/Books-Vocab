@@ -46,12 +46,15 @@ struct NotebookListView: View {
     }
 
     var body: some View {
+        let _ = PerfLog.review.tick("notebookList.body", "entries=\(allEntries.count)")
         let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
-        let stats = NotebookStatsCalculator.compute(
-            allEntries,
-            pendingEntries: pendingEntries,
-            now: reviewNow
-        )
+        let (stats, _) = PerfLog.review.measure("notebookList.stats", "n=\(allEntries.count)") {
+            NotebookStatsCalculator.compute(
+                allEntries,
+                pendingEntries: pendingEntries,
+                now: reviewNow
+            )
+        }
         // The filter pill (to change/clear reviewFilter) only renders with ≥2
         // notebooks. If a user filtered then deleted notebooks down to <2, the
         // persisted filter must NOT keep silently hiding entries with no UI to

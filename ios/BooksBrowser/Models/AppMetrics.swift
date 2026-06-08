@@ -46,8 +46,8 @@ enum AppMotion {
     static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
 
     // MARK: - Micro-interaction Springs
-    /// 卡片甩出畫面（高剛性快速飛離）
-    static let swipeFlingSpring = Animation.interpolatingSpring(stiffness: 500, damping: 28)
+    /// 卡片甩出畫面（臨界阻尼、極短時長 — 瞬間飛離，露出已預渲染的下一張，消除中間等待）
+    static let swipeFlingSpring = Animation.spring(response: 0.18, dampingFraction: 1.0)
     /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
     static let feedbackButtonSpring = Animation.spring(response: 0.22, dampingFraction: 0.72)
     /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）
