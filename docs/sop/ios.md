@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 6b55b1e8
+verified_against: a173bae5
 -->
 # BooksBrowser iOS 開發技能
 
@@ -129,7 +129,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 ## iOS 測試入口（`ops/ios_ops.sh test` / `ops/ios_test.sh`）
 
-`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。test runner 的 unit scope 走 dedicated `BooksBrowserUnitTests` scheme，UI scope 走 dedicated `BooksBrowserUITests` scheme，先走 `simulator ensure-booted`，再採 cache-first `build-for-testing` / `test-without-building` 重用 `.cache/ios-test-derived-data`；`./ops/ios_ops.sh test --cache-status|--prepare-cache|--clean-cache [--unit|--ui|--all-targets] [--json]` 可顯式管理這層 warm cache。verdict JSON 會寫 `timings.bootMs/buildForTestingMs/testInvocationMs/testBodyMs/xcresultSessionMs/xcresultHarnessOverheadMs/appLaunchAverageMs/appLaunchSamples/invocationOverheadMs/xcodebuildMs/totalMs` 與 `cache.status`；stdout 第一屏也會有 `[ios][test-timing] ...`，若 xcresult 含 `XCTApplicationLaunchMetric` 另會印 `[ios][perf] metric=AppLaunch averageMs=...`。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
+`ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`，避免多 worktree / 多 runner 同時碰同一份 DerivedData。test runner 的 unit scope 走 dedicated `BooksBrowserUnitTests` scheme，UI scope 走 dedicated `BooksBrowserUITests` scheme，先走 `simulator ensure-booted`，再採 cache-first `build-for-testing` / `test-without-building` 重用 `.cache/ios-test-derived-data`；`./ops/ios_ops.sh test --cache-status|--prepare-cache|--clean-cache [--unit|--ui|--all-targets] [--json]` 可顯式管理這層 warm cache。verdict JSON 會寫 `timings.lockWaitMs/bootMs/buildForTestingMs/testInvocationMs/testBodyMs/xcresultSessionMs/xcresultHarnessOverheadMs/appLaunchAverageMs/appLaunchSamples/invocationOverheadMs/xcodebuildMs/totalMs` 與 `cache.status`(`lockWaitMs` = 等 `/tmp/kg-ios-build.lock` 排隊時間,與 build/archive 同義;先用它排除「排隊久」再談「執行久」)；stdout 第一屏也會有 `[ios][test-timing] ...` 與 `lockWaitMs=` 取鎖行，若 xcresult 含 `XCTApplicationLaunchMetric` 另會印 `[ios][perf] metric=AppLaunch averageMs=...`。長 UI 測試會每 30 秒輸出 heartbeat（elapsed / xcodebuild pid / log path / 最近 test event），不要讓 6 分鐘以上的 launch permutations 變黑盒。
 
 **第一性原理流程**：測試系統已具備 scope、heartbeat、log preserve、false-green 防護與 DB lock retry；因此 iOS 開發不再採「不主動跑測試」的保守規則，而是採**最小足夠驗證**。
 
@@ -167,6 +167,10 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - `XCTApplicationLaunchMetric` 的 `appLaunchAverageMs` 是單次 app launch 平均，不是整個 UI benchmark wall time；判讀時要同時看 `testBodyMs`、`xcresultSessionMs`、`invocationOverheadMs`。
 - 任何「好像有變快」都不算結論，除非 timing 已回寫到 verdict JSON / `runs` / `snapshot`；沒有進控制面的數字，下一輪 agent 就無法延續判讀。
 - 若某個優化旗標沒有在 xcresult sample count 或 timing 上留下可驗證差異，就不要把它留成表面功能。
+- **先分「排隊」再分「執行」**:build/test/archive verdict 都有 `timings.lockWaitMs`(共享 `/tmp/kg-ios-build.lock` 的排隊等待,三者同義)。一個 run 看起來慢,先看 `lockWaitMs` 是不是卡在別的 worktree 後面,再看 `xcodebuildMs`/`testInvocationMs` 等執行段;沒有 lock-wait 數字時,排隊延遲會偽裝成執行慢。
+- **catalog 長任務不是黑盒**:`catalog snapshots` 的 build-for-testing / test-without-building / full-test 階段會發 `[ios][catalog] phase=<label> start/running/done` 到 **stderr**(預設開,每 ~20s 帶 elapsed/pid/last log line),`stdout` 維持純 `kg.ios.catalog.v1` JSON。執行期沒輸出別急著 `ps`/xcresult 旁路觀測,先看 stderr heartbeat;細粒度 phase trace 仍由 `KG_IOS_OPS_CATALOG_TRACE=1` 開。
+- **cache-miss 不是 test failure**:`catalog snapshots --reuse-build` 命中 stale/缺失 cache 時頂層 `status:"cache-miss"`(非 `error`)、`errors[].catalog-cache` 帶可行動 hint、stderr 印一行提示。看到 `cache-miss` 就跑 `catalog prepare` 或拿掉 `--reuse-build`,不要當成程式碼壞掉去追。
+- **失敗也會搶救 PNG**:full run 失敗時 wrapper 仍把 simulator container 內已生成的截圖 salvage 回本地。`artifacts.containerPngCount` = container 內實際張數,`copy.salvaged=true` + `errors[].catalog-salvage`(info note)代表「有生成但 run 失敗已救回」;`containerPngCount==0` 才是真的沒生成。別再手動進 container 撈圖。
 
 ### 日常 warm-loop 建議
 

@@ -58,6 +58,7 @@ cleanup() { rm -f "$LOCK_FILE"; }
 
 echo "[ios_build] caller=$CALLER waiting for lock..."
 WAITED=0
+LOCK_WAIT_START_MS="$(ios_build_now_ms)"
 while ! shlock -f "$LOCK_FILE" -p $$; do
   # Check if holder PID is still alive; if not, steal lock
   HOLDER_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
@@ -79,8 +80,9 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
   WAITED=$(( WAITED + POLL_INTERVAL ))
 done
 trap cleanup EXIT
+LOCK_WAIT_MS=$(( $(ios_build_now_ms) - LOCK_WAIT_START_MS ))
 
-echo "[ios_build] lock acquired by $CALLER (pid=$$) — building..."
+echo "[ios_build] lock acquired by $CALLER (pid=$$) lockWaitMs=$LOCK_WAIT_MS — building..."
 START=$(date +%s)
 START_MS="$(ios_build_now_ms)"
 BOOT_MS=0
@@ -141,6 +143,7 @@ write_json_verdict() {
     --arg elapsed "${ELAPSED}s" \
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
+    --argjson lockWaitMs "$LOCK_WAIT_MS" \
     --argjson bootMs "$BOOT_MS" \
     --argjson xcodebuildMs "$XCODEBUILD_MS" \
     --argjson totalMs "$TOTAL_MS" \
@@ -155,6 +158,7 @@ write_json_verdict() {
       elapsed:$elapsed,
       executed:null,
       timings:{
+        lockWaitMs:$lockWaitMs,
         bootMs:$bootMs,
         xcodebuildMs:$xcodebuildMs,
         totalMs:$totalMs
@@ -165,12 +169,12 @@ write_json_verdict() {
 if [[ $EXIT_CODE -eq 0 ]]; then
   echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "ok" "0"
-  echo "[ios_build] timings bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  echo "[ios_build] timings lockWaitMs=$LOCK_WAIT_MS bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
   echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 else
   echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "fail" "$EXIT_CODE"
-  echo "[ios_build] timings bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  echo "[ios_build] timings lockWaitMs=$LOCK_WAIT_MS bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
   echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE" >&2
 fi
 

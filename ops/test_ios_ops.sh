@@ -281,6 +281,38 @@ else
   grep -q 'unknown catalog prepare option' "$bad_catalog_tmp/prepare.err" \
     && ok "catalog prepare rejects unknown option" || fail_t "catalog prepare bad-arg message missing"
 fi
+cachemiss_err="$catalog_tmp/cm.err"
+cachemiss_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=87 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json 2>"$cachemiss_err" || true)"
+echo "$cachemiss_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="cache-miss" and .test.exitCode==87 and .cache.status=="miss" and (any(.errors[]; .key=="catalog-cache" and .error=="reuse-build-cache-miss" and (.hint|test("catalog prepare")))) and (all(.errors[]; .error!="xcodebuild-test-failed"))' >/dev/null \
+  && ok "catalog snapshots exitCode 87 surfaces cache-miss (not generic test-failure)" || fail_t "catalog cache-miss signal wrong: $cachemiss_json"
+grep -q 'phase=cache miss' "$cachemiss_err" \
+  && ok "catalog cache-miss emits human-readable stderr hint" || fail_t "catalog cache-miss stderr hint missing: $(cat "$cachemiss_err")"
+salvage_err="$catalog_tmp/sv.err"
+salvage_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>"$salvage_err" || true)"
+echo "$salvage_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" and .test.exitCode==65 and .artifacts.containerPngCount==2 and .artifacts.pngCount==2 and .copy.salvaged==true and .copy.exitCode==0 and (any(.errors[]; .key=="catalog-salvage" and .status=="info" and .pngCount==2 and .containerPngCount==2)) and (all(.errors[]; .key!="catalog-copy"))' >/dev/null \
+  && ok "catalog snapshots salvages container PNGs when test fails (distinguishes generated-but-not-copied)" || fail_t "catalog salvage failed: $salvage_json"
+grep -q 'phase=salvage recovered' "$salvage_err" \
+  && ok "catalog salvage emits stderr recovery notice" || fail_t "catalog salvage stderr missing: $(cat "$salvage_err")"
+salvage_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots 2>/dev/null || true)"
+echo "$salvage_text" | grep -q 'note key=catalog-salvage' && ! echo "$salvage_text" | grep -q 'error key=catalog-salvage' \
+  && ok "catalog salvage info renders as note (not error) in text output" || fail_t "catalog salvage text mislabeled: $salvage_text"
+ok_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null)"
+echo "$ok_json" | jq -e '.status=="ok" and .copy.salvaged==false and .artifacts.containerPngCount==2 and (all(.errors[]; .key!="catalog-salvage"))' >/dev/null \
+  && ok "catalog snapshots success path keeps salvaged=false and no salvage error" || fail_t "catalog success salvage regression: $ok_json"
+hb_log="$catalog_tmp/hb.log"; hb_err="$catalog_tmp/hb.err"; hb_cap="$catalog_tmp/hb.cap"
+hb_stdout="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "build-for-testing" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "echo building-stdout; exit 0"' 2>"$hb_cap")"
+grep -q 'phase=build-for-testing start' "$hb_cap" && grep -q 'phase=build-for-testing done exitCode=0' "$hb_cap" \
+  && ok "catalog heartbeat emits phase milestones to stderr" || fail_t "catalog heartbeat missing phase milestones: $(cat "$hb_cap")"
+grep -q 'building-stdout' "$hb_log" && [[ -z "$hb_stdout" ]] \
+  && ok "catalog heartbeat keeps stdout clean (command output to log, phases to stderr)" || fail_t "catalog heartbeat polluted stdout: '$hb_stdout'"
+hb_rc=0
+ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "full-test" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "exit 87"' 2>"$hb_cap" || hb_rc=$?
+[[ "$hb_rc" -eq 87 ]] && grep -q 'phase=full-test done exitCode=87' "$hb_cap" \
+  && ok "catalog heartbeat propagates real exit code" || fail_t "catalog heartbeat lost exit code: rc=$hb_rc cap=$(cat "$hb_cap")"
+catalog_stderr_cap="$catalog_tmp/snap.stderr"
+catalog_json_clean="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>"$catalog_stderr_cap")"
+echo "$catalog_json_clean" | jq -e '.schema=="kg.ios.catalog.v1"' >/dev/null \
+  && ok "catalog snapshots --json stdout remains single valid JSON despite stderr observability" || fail_t "catalog snapshots stdout not clean JSON: $catalog_json_clean"
 rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"
 
 section "Doctor release readiness surface"
@@ -509,17 +541,17 @@ warning: StoreKit Configuration file for scheme "BooksBrowser" can't be found at
 LOG
 echo "RESULT=legacy" > "$runs_tmp/kg_ios_build_verdict"
 jq -nc --arg log "$runs_tmp/build.log" --arg xcresult "$runs_tmp/Build.xcresult" \
-  '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"3s",executed:null,timings:{bootMs:120,xcodebuildMs:3000,totalMs:3120},artifacts:{log:$log,xcresult:$xcresult}}' \
+  '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"3s",executed:null,timings:{lockWaitMs:90,bootMs:120,xcodebuildMs:3000,totalMs:3120},artifacts:{log:$log,xcresult:$xcresult}}' \
   > "$runs_tmp/kg_ios_build_verdict.json"
 jq -nc --arg log "$runs_tmp/test.log" --arg xcresult "$runs_tmp/Test.xcresult" \
-  '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"5s",executed:"12",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:250,buildForTestingMs:0,testInvocationMs:6000,testBodyMs:2000,xcresultSessionMs:3500,xcresultHarnessOverheadMs:1500,appLaunchAverageMs:1450,appLaunchSamples:5,invocationOverheadMs:2500,xcodebuildMs:6000,totalMs:6500},artifacts:{log:$log,xcresult:$xcresult}}' \
+  '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"5s",executed:"12",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{lockWaitMs:140,bootMs:250,buildForTestingMs:0,testInvocationMs:6000,testBodyMs:2000,xcresultSessionMs:3500,xcresultHarnessOverheadMs:1500,appLaunchAverageMs:1450,appLaunchSamples:5,invocationOverheadMs:2500,xcodebuildMs:6000,totalMs:6500},artifacts:{log:$log,xcresult:$xcresult}}' \
   > "$runs_tmp/kg_ios_test_verdict.json"
 jq -nc --arg log "$runs_tmp/archive.log" --arg xcresult "$runs_tmp/Archive.xcresult" --arg archive "$runs_tmp/BooksBrowser.xcarchive" --arg exportDir "$runs_tmp/export" --arg ipa "$runs_tmp/export/BooksBrowser.ipa" \
   '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"fixture with spaces",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"14s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false},timings:{lockWaitMs:10,archiveMs:12000,exportMs:1500,uploadMs:0,totalMs:13510},artifacts:{log:$log,xcresult:$xcresult,archive:$archive,exportDirectory:$exportDir,ipa:$ipa}}' \
   > "$runs_tmp/kg_ios_archive_verdict.json"
 runs_json="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs --json)"
-echo "$runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .summary.verdict=="warn" and .summary.counts.errors==0 and .summary.counts.warnings==2 and .summary.counts.failedTests==0 and .summary.counts.missing==0 and .summary.counts.malformed==0 and .summary.counts.failing==0 and .build.result=="ok" and .build.caller=="fixture with spaces" and .test.executed=="12" and .archive.result=="ok" and .archive.timings.totalMs==13510 and .archive.timings.archiveMs==12000 and .archive.artifacts.logExists==true and .archive.artifacts.xcresultExists==true and .build.artifacts.logExists==true and .test.artifacts.xcresultExists==true and .build.diagnostics.schema=="kg.ios.diagnostics.v1" and .archive.diagnostics.schema=="kg.ios.diagnostics.v1" and .build.diagnostics.counts.warnings==1 and .archive.diagnostics.counts.warnings==1 and .build.timings.totalMs==3120 and .test.cache.status=="hit" and .test.options.uiLaunchProfile=="standard" and .test.timings.appLaunchAverageMs==1450 and .test.timings.appLaunchSamples==5' >/dev/null \
-  && ok "runs --json parses latest build/test/archive verdicts" || fail_t "runs --json invalid: $runs_json"
+echo "$runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .summary.verdict=="warn" and .summary.counts.errors==0 and .summary.counts.warnings==2 and .summary.counts.failedTests==0 and .summary.counts.missing==0 and .summary.counts.malformed==0 and .summary.counts.failing==0 and .build.result=="ok" and .build.caller=="fixture with spaces" and .test.executed=="12" and .archive.result=="ok" and .archive.timings.totalMs==13510 and .archive.timings.archiveMs==12000 and .archive.artifacts.logExists==true and .archive.artifacts.xcresultExists==true and .build.artifacts.logExists==true and .test.artifacts.xcresultExists==true and .build.diagnostics.schema=="kg.ios.diagnostics.v1" and .archive.diagnostics.schema=="kg.ios.diagnostics.v1" and .build.diagnostics.counts.warnings==1 and .archive.diagnostics.counts.warnings==1 and .build.timings.totalMs==3120 and .build.timings.lockWaitMs==90 and .test.timings.lockWaitMs==140 and .test.cache.status=="hit" and .test.options.uiLaunchProfile=="standard" and .test.timings.appLaunchAverageMs==1450 and .test.timings.appLaunchSamples==5' >/dev/null \
+  && ok "runs --json parses latest build/test/archive verdicts (incl lockWaitMs passthrough)" || fail_t "runs --json invalid: $runs_json"
 echo "$runs_json" | jq -e 'all([.build,.test,.archive][]; has("kind") and has("status") and has("result") and has("exit") and has("reason") and has("caller") and has("elapsed") and has("executed") and has("options") and has("cache") and has("timings") and has("verdictFile") and has("jsonVerdictFile") and has("artifacts") and has("diagnostics"))' >/dev/null \
   && ok "runs --json uses stable verdict object keys" || fail_t "runs --json missing stable keys: $runs_json"
 runs_text="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs)"
@@ -564,7 +596,7 @@ workflow_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release)"
 echo "$workflow_text" | grep -Eq '^\[ios\]\[workflow\] summary verdict=(pass|warn|block) ready=' \
   && ok "workflow text reports aggregate summary" || fail_t "workflow text missing summary: $workflow_text"
 snapshot_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
-echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .gate.schema=="kg.ios.gate.v1" and .gate.verdict=="pass" and .gate.exitCode==0 and .summary.verdict=="warn" and .summary.counts.readinessOk==([.readiness[] | select(.status=="ok")] | length) and .summary.counts.readinessWarns==([.readiness[] | select(.status=="warn")] | length) and .summary.counts.readinessBlocks==([.readiness[] | select(.status=="block")] | length) and .summary.counts.workflowReady==.workflow.summary.counts.ready and .summary.counts.workflowTodos==.workflow.summary.counts.todo and .summary.counts.workflowWarns==.workflow.summary.counts.warn and .summary.counts.workflowBlocks==.workflow.summary.counts.block and .summary.counts.workflowManual==.workflow.summary.counts.manual and .summary.counts.buildWarnings==1 and .summary.counts.archiveWarnings==1 and .summary.counts.sentryWarnings==0 and .summary.timings.build.totalMs==3120 and .summary.timings.test.cacheStatus=="hit" and .summary.timings.test.appLaunchAverageMs==1450 and .summary.timings.test.appLaunchSamples==5 and .summary.timings.archive.totalMs==13510 and .summary.timings.archive.archiveMs==12000 and (.summary.timings.simulator.totalMs|type)=="number" and (.summary.timings.simulator.simctlDevicesMs|type)=="number" and (.summary.timings.simulator.appContainerMs|type)=="number" and (.summary.timings.simulator.appProcessMs|type)=="number" and any(.summary.nextActions[]; .source=="runs.build.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="runs.archive.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="gate" and .severity=="manual" and .key=="submit") and .sentry.schema=="kg.ios.sentry.v1" and .sentry.source.exists==true and .sentry.wiring.canImportGuard==true and .sentry.wiring.dsnKeyReference==true and .xcode.schema=="kg.ios.xcode.v1" and .xcode.simulators.summary.booted==1 and .simulator.schema=="kg.ios.simulator.v1" and .simulator.app.process.status=="running" and .project.version=="1.6" and .runs.test.executed=="12" and .runs.archive.result=="ok" and .runs.archive.diagnostics.counts.warnings==1 and .logs==null' >/dev/null \
+echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .gate.schema=="kg.ios.gate.v1" and .gate.verdict=="pass" and .gate.exitCode==0 and .summary.verdict=="warn" and .summary.counts.readinessOk==([.readiness[] | select(.status=="ok")] | length) and .summary.counts.readinessWarns==([.readiness[] | select(.status=="warn")] | length) and .summary.counts.readinessBlocks==([.readiness[] | select(.status=="block")] | length) and .summary.counts.workflowReady==.workflow.summary.counts.ready and .summary.counts.workflowTodos==.workflow.summary.counts.todo and .summary.counts.workflowWarns==.workflow.summary.counts.warn and .summary.counts.workflowBlocks==.workflow.summary.counts.block and .summary.counts.workflowManual==.workflow.summary.counts.manual and .summary.counts.buildWarnings==1 and .summary.counts.archiveWarnings==1 and .summary.counts.sentryWarnings==0 and .summary.timings.build.totalMs==3120 and .summary.timings.build.lockWaitMs==90 and .summary.timings.test.lockWaitMs==140 and .summary.timings.test.cacheStatus=="hit" and .summary.timings.test.appLaunchAverageMs==1450 and .summary.timings.test.appLaunchSamples==5 and .summary.timings.archive.totalMs==13510 and .summary.timings.archive.archiveMs==12000 and (.summary.timings.simulator.totalMs|type)=="number" and (.summary.timings.simulator.simctlDevicesMs|type)=="number" and (.summary.timings.simulator.appContainerMs|type)=="number" and (.summary.timings.simulator.appProcessMs|type)=="number" and any(.summary.nextActions[]; .source=="runs.build.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="runs.archive.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="gate" and .severity=="manual" and .key=="submit") and .sentry.schema=="kg.ios.sentry.v1" and .sentry.source.exists==true and .sentry.wiring.canImportGuard==true and .sentry.wiring.dsnKeyReference==true and .xcode.schema=="kg.ios.xcode.v1" and .xcode.simulators.summary.booted==1 and .simulator.schema=="kg.ios.simulator.v1" and .simulator.app.process.status=="running" and .project.version=="1.6" and .runs.test.executed=="12" and .runs.archive.result=="ok" and .runs.archive.diagnostics.counts.warnings==1 and .logs==null' >/dev/null \
   && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
 snapshot_skip_xcode_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json --skip-xcode)"
 echo "$snapshot_skip_xcode_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.verdict=="warn" and .sentry.schema=="kg.ios.sentry.v1" and .xcode==null and .simulator.schema=="kg.ios.simulator.v1" and .runs.test.executed=="12"' >/dev/null \
@@ -665,10 +697,13 @@ grep -q -- '--xcresult' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build feeds xcresult to diagnostics" || fail_t "ios_build does not feed xcresult to diagnostics"
 grep -q 'simulator ensure-booted' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build warms simulator before xcodebuild when targeting simulator" || fail_t "ios_build missing simulator preboot"
-grep -q 'bootMs:' "$WORKSPACE/ops/ios_build.sh" \
+grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_build.sh" \
+  && grep -q 'bootMs:' "$WORKSPACE/ops/ios_build.sh" \
   && grep -q 'xcodebuildMs:' "$WORKSPACE/ops/ios_build.sh" \
   && grep -q 'totalMs:' "$WORKSPACE/ops/ios_build.sh" \
-  && ok "ios_build verdict records timing breakdown" || fail_t "ios_build verdict missing timing fields"
+  && ok "ios_build verdict records timing breakdown (incl lock wait)" || fail_t "ios_build verdict missing timing fields"
+grep -qE 'lockWaitMs=\$LOCK_WAIT_MS' "$WORKSPACE/ops/ios_build.sh" \
+  && ok "ios_build surfaces lock wait time on stdout" || fail_t "ios_build does not surface lock wait on stdout"
 
 section "ios_test emits xcresult-first diagnostics"
 grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_test.sh" \
@@ -699,6 +734,9 @@ ios_test_xctestrun_path="$(
 rm -rf "$ios_test_xctestrun_tmp"
 grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
+grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -qE 'lockWaitMs=\$LOCK_WAIT_MS' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test verdict records lock wait time and surfaces it on stdout" || fail_t "ios_test missing lock wait timing"
 grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses dedicated UI scheme for UI scope" || fail_t "ios_test missing UI-only scheme"
 grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
