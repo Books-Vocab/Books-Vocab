@@ -26,6 +26,44 @@ build_asset_id = manifest_module.build_asset_id
 REVIEW_CLI = ROOT / "ops" / "catalog_review_cli.py"
 
 
+def _make_rgba_png(path: Path, width: int, height: int, *, corner_alpha: int) -> None:
+    """Write a minimal 8-bit RGBA PNG whose left/right column has the given alpha
+    (the rest opaque), so tests can simulate a component on a transparent canvas
+    (corner_alpha=0) vs a full-bleed screen (corner_alpha=255) with no PIL dep."""
+    import struct
+    import zlib
+
+    def chunk(typ: bytes, payload: bytes) -> bytes:
+        body = typ + payload
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)  # 8-bit RGBA
+    raw = bytearray()
+    for _y in range(height):
+        raw.append(0)  # filter: None
+        for x in range(width):
+            edge = x == 0 or x == width - 1
+            raw += bytes((10, 20, 30, corner_alpha if edge else 255))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+    path.write_bytes(png)
+
+
+def test_read_png_transparent_margin_separates_component_from_screen(tmp_path: Path):
+    """Components are rendered centered on a transparent 1179x2556 canvas, screens
+    fill it — same size, so only the pixel alpha tells them apart. The detector
+    reads the first scanline's corner alpha."""
+    comp = tmp_path / "component.png"
+    screen = tmp_path / "screen.png"
+    _make_rgba_png(comp, 40, 30, corner_alpha=0)     # transparent margins → component
+    _make_rgba_png(screen, 40, 30, corner_alpha=255)  # opaque → full-bleed screen
+    assert manifest_module.read_png_transparent_margin(comp) is True
+    assert manifest_module.read_png_transparent_margin(screen) is False
+    # non-PNG / unreadable must be treated as opaque (never a false component)
+    junk = tmp_path / "junk.png"
+    junk.write_bytes(b"not a png")
+    assert manifest_module.read_png_transparent_margin(junk) is False
+
+
 def test_collect_items_assigns_stable_asset_ids(tmp_path: Path):
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     source_root = tmp_path / "snapshots"
@@ -218,6 +256,57 @@ def test_list_surface_default_populated_equivalence():
     surf2 = {s["surface"]: s for s in taxonomy.build_surface_index(with_default)}["Param Form View"]
     assert "default" in surf2["expectedFacets"]
     assert "default" not in surf2["missingFacets"]
+
+
+def test_asset_kind_uses_transparent_pixel_signal():
+    """Name tokens can't tell a component from a screen (both are 1179x2556).
+    A transparent margin (component rendered on an empty canvas) overrides the
+    name-based screen guess; a full-bleed (opaque) asset keeps the screen verdict."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    ak = taxonomy.classify_asset_kind
+
+    # transparent → never a screen; overlay if it reads as a floating layer
+    assert ak("Bookshelf", "Bookshelf", transparent_margin=True) == "component"
+    assert ak("Reader · Translation", "Reader", transparent_margin=True) == "overlay"
+    assert ak("Reader · Quota", "Reader", transparent_margin=True) == "component"
+    # opaque full-bleed → the name-based screen verdict stands (no false demotion)
+    assert ak("Reader · TOC", "Reader", transparent_margin=False) == "screen"
+    assert ak("Bookshelf View", "Bookshelf", transparent_margin=False) == "screen"
+
+
+def test_surface_lane_is_majority_vote_across_shots():
+    """A category that mixes component shots (transparent) with a few real screen
+    shots — like Bookshelf — must take the majority lane, not whichever shot is
+    first, so a card grab-bag isn't mislabeled feature-surface by one stray shot."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    # screen shots FIRST (minority) so a first-shot heuristic would wrongly pick
+    # feature-surface; only a true majority vote yields building-block.
+    items = [
+        _surface_item("Bookshelf", "feature-surface", "feature-surface", f"s{i}", "empty")
+        for i in range(3)
+    ] + [
+        _surface_item("Bookshelf", "building-block", "building-block", f"c{i}", "populated")
+        for i in range(11)
+    ]
+    surf = {s["surface"]: s for s in taxonomy.build_surface_index(items)}["Bookshelf"]
+    assert surf["lane"] == "building-block"  # 11 component shots outvote 3 screen shots
+
+
+def test_presenter_named_category_is_engineering_only_even_when_full_bleed():
+    """A presenter harness renders full-bleed (so the transparent-pixel signal
+    can't catch it), so presenter-ness must live in the category name. The fix is
+    at the iOS source — KGVocabPresenterScenarios captures as "KG Vocab Presenter",
+    not "KG Vocab View" — so the existing `"Presenter" in category` rule lands it in
+    engineering-only without a consumption-side profile patch."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    tax = taxonomy.build_taxonomy("KG Vocab Presenter", "Populated", profile, transparent_margin=False)
+    assert tax["assetKind"] == "component"
+    assert tax["surfaceRole"] == "presenter"
+    assert taxonomy.classify_lane(tax["surfaceRole"], "review") == "engineering-only"
+    # the real production list view stays a feature-surface
+    real = taxonomy.build_taxonomy("Vocabulary List View", "Populated", profile, transparent_margin=False)
+    assert real["surfaceRole"] == "feature-surface"
 
 
 def test_review_state_preserves_existing_annotations():
