@@ -74,8 +74,13 @@ class Judge:
         )
 
         if max_links is not None and len(candidates) >= 5:
-            system_prompt = SELECTIVE_BATCH_SYSTEM_PROMPT.format(
-                n=len(candidates), max_links=max_links,
+            # .replace (not .format): the prompt embeds a literal JSON schema
+            # whose braces would make str.format raise KeyError. Only the two
+            # named placeholders are substituted.
+            system_prompt = (
+                SELECTIVE_BATCH_SYSTEM_PROMPT
+                .replace("{n}", str(len(candidates)))
+                .replace("{max_links}", str(max_links))
             )
         else:
             system_prompt = BATCH_SYSTEM_PROMPT

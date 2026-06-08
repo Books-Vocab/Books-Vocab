@@ -10,7 +10,7 @@ from ..retry import llm_retryable_exceptions, sync_retry
 from ..tracked_llm import TrackedLLM
 from ..exceptions import QuotaExceededError
 from .models import Judgement
-from .prompts import MANUAL_LINK_SYSTEM_PROMPT
+from .prompts import MANUAL_LINK_SYSTEM_PROMPT, MANUAL_USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,9 @@ class ManualLinkJudge:
         from_id: str = "",
         to_id: str = "",
     ) -> Judgement:
-        user_msg = f"Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
+        user_msg = MANUAL_USER_TEMPLATE.format(
+            word_a=word_a, meaning_a=meaning_a, word_b=word_b, meaning_b=meaning_b,
+        )
 
         try:
             # sync_retry rides out transient provider 5xx / rate limits (aligned
