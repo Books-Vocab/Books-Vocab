@@ -1,51 +1,83 @@
-"""LLM prompt templates for card relationship judgement."""
+"""LLM prompt templates for card relationship judgement.
+
+Single source of truth for the three judge call paths (batch / selective /
+manual). All three share one canonical definition of the link types so the
+same pair is judged identically regardless of entry point:
+
+- contrasts_with — strict opposite / antonym (meticulous↔sloppy). NOT a
+  near-synonym: luster/resplendent are similar, so they are shares_usage.
+- shares_usage  — near-synonyms or words filling the same role / context.
+- not_applicable — no meaningful learning relationship (auto paths only;
+  the manual path never returns this).
+
+Cost note (deepseek-v4-flash: output is 2x input, system prompt is prefix
+-cached): keep the system prompt rich but push the *output* to the floor —
+empty reason for not_applicable, no confidence field on the manual path.
+"""
 
 from __future__ import annotations
 
-BATCH_SYSTEM_PROMPT = """Judge vocabulary relationships for the TARGET word against each CANDIDATE.
-For each candidate, choose ONE type:
-- contrasts_with: Genuinely opposite or contrasting meanings
-  YES: unkempt/primped, hunkered/loped, meticulous/sloppy
-  NO: bust/midriff (different body parts, not opposites)
-- shares_usage: Used in similar contexts or fill similar grammatical roles
+# Shared canonical link-type definition. Embedded verbatim into every system
+# prompt so batch / selective / manual cannot drift apart again.
+_LINK_TYPES = """Choose ONE relationship type:
+- contrasts_with: Opposite or directly contrasting meanings — antonyms, or two clearly opposed points on one shared dimension.
+  YES: meticulous/sloppy, unkempt/primped, hunkered/loped
+  NO: luster/resplendent — near-synonyms, not opposites → shares_usage
+- shares_usage: Near-synonyms, or words that fill the same grammatical role or appear in the same contexts.
   YES: luster/resplendent, haggling/extorting, cacophony/clang
-- not_applicable: No meaningful learning relationship
+- not_applicable: No meaningful learning relationship."""
 
-Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/difference to help learners.
+# Reason-writing rule shared by the auto (batch/selective) paths. The reason
+# is only meaningful for a real link; not_applicable reasons are log-only and
+# never shown, so leaving them empty is pure output-token savings.
+_AUTO_REASON_RULE = (
+    'For contrasts_with / shares_usage, write "reason" in 繁體中文 — one short '
+    "sentence highlighting the nuance that helps a learner.\n"
+    'For not_applicable, leave "reason" as an empty string.'
+)
 
-Respond as a JSON array, one object per candidate (in order):
-[{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}, ...]"""
+# Response schema line shared by batch and selective (parsing matches by the
+# "word" field and filters on "confidence" against the 0.7 threshold, so both
+# keys are required even for rejects).
+_AUTO_SCHEMA = (
+    "Respond as a JSON array, one object per candidate in input order:\n"
+    '[{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, '
+    '"reason": "<繁體中文 or empty>"}, ...]'
+)
 
-SELECTIVE_BATCH_SYSTEM_PROMPT = """Judge vocabulary relationships for the TARGET word.
-You have {n} candidates but should select at most {max_links} with the MOST valuable learning relationships.
+BATCH_SYSTEM_PROMPT = f"""Judge the vocabulary relationship between the TARGET word and each CANDIDATE.
+{_LINK_TYPES}
 
-Selection criteria (in order):
-1. Genuine contrasts — opposite or clearly different nuances of a similar concept
-2. Strong usage pairs — consistently fill the same grammatical role or appear in the same contexts
-3. REJECT vague connections — "both are body movements" or "both are adjectives" is NOT enough
+{_AUTO_REASON_RULE}
 
-For the best {max_links} candidates, respond:
-{{"word": "<candidate>", "link": "contrasts_with" or "shares_usage", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}}
+{_AUTO_SCHEMA}"""
 
-For the rest, respond:
-{{"word": "<candidate>", "link": "not_applicable", "confidence": 0.0, "reason": ""}}
+SELECTIVE_BATCH_SYSTEM_PROMPT = f"""Judge the vocabulary relationship between the TARGET word and each CANDIDATE.
+You have {{n}} candidates but should select at most {{max_links}} with the MOST valuable learning relationships; reject the rest.
+{_LINK_TYPES}
 
-Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/difference to help learners.
-Respond as a JSON array, one object per candidate (in order)."""
+Selection priority: genuine contrasts first, then strong same-context usage pairs. Reject vague links — "both are adjectives" or "both describe movement" alone is NOT enough; mark those not_applicable.
+
+{_AUTO_REASON_RULE}
+
+{_AUTO_SCHEMA}"""
 
 BATCH_USER_TEMPLATE = """TARGET: {target_word} ({target_meaning})
 
 Candidates:
 {candidate_list}"""
 
-MANUAL_LINK_SYSTEM_PROMPT = """The user believes these two vocabulary words are related. Your job is to classify the relationship and explain it.
+MANUAL_LINK_SYSTEM_PROMPT = """The user has decided these two vocabulary words are related. Classify the relationship and explain it — never reply not_applicable.
 
 Choose ONE type:
-- contrasts_with: The words have similar or overlapping meanings but differ in nuance, tone, formality, or usage scope
-- shares_usage: The words appear in similar contexts, share thematic domains, or complement each other in usage
+- contrasts_with: Opposite or directly contrasting meanings — antonyms, or two clearly opposed points on one shared dimension.
+  YES: meticulous/sloppy, unkempt/primped
+- shares_usage: Near-synonyms, or words sharing contexts / roles. Use this whenever the pair is not a genuine opposite.
+  YES: luster/resplendent, haggling/extorting
 
-Do NOT return "not_applicable" — the user has decided these words are related. Find and articulate the connection.
+Write "reason" in 繁體中文 — one short sentence explaining the link AND the nuance that distinguishes the two words.
 
-Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND highlight the nuance/difference between the two words to help learners distinguish them.
+Respond JSON: {"link": "<type>", "reason": "<繁體中文>"}"""
 
-Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}"""
+MANUAL_USER_TEMPLATE = """Word A: {word_a} ({meaning_a})
+Word B: {word_b} ({meaning_b})"""
