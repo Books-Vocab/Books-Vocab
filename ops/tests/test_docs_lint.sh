@@ -45,6 +45,14 @@ grep -q "ops/docs_impact.py" CLAUDE.md
 grep -q "ops/docs_lint.sh" CLAUDE.md
 grep -q "ops/docs_registry_coverage.py" CLAUDE.md
 
+./ops/docs_lint.sh --help > /tmp/kg_docs_lint_help.out
+if grep -q '^!/usr/bin/env bash' /tmp/kg_docs_lint_help.out; then
+  echo "docs_lint --help should not expose the shebang line" >&2
+  dump_file /tmp/kg_docs_lint_help.out
+  exit 1
+fi
+require_grep "docs_lint.sh — docs gate / audit / registry checks" /tmp/kg_docs_lint_help.out
+
 run_capture /tmp/kg_docs_lint_files.out ./ops/docs_lint.sh --files docs/reference/tech_index.md docs/sop/architecture.md
 require_grep "ERROR: 0" /tmp/kg_docs_lint_files.out
 

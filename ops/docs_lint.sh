@@ -41,7 +41,7 @@ FILE_ARGS=()
 GATE_BASE=""
 
 usage() {
-  sed -n '1,22p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ "$#" -gt 0 ]; do
