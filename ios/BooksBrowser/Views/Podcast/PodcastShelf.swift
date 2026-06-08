@@ -136,7 +136,7 @@ struct PodcastContinueRailCard: View {
 #if os(iOS)
 #Preview("PodcastShelf") {
     let series = PodcastSeries(remoteId: "s-1", title: "Atomic Habits Unpacked", hostNames: ["Ava Chen"])
-    series.color = "#4A90D9"
+    series.color = "#4A90D9" // token-allow: preview fixture notebook data color
     series.coverPattern = NotebookCoverPattern.waves.rawValue
 
     func ep(_ n: Int, _ title: String) -> PodcastEpisode {

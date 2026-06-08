@@ -138,7 +138,7 @@ extension GraphThumbnailWebView {
         }
         let tierNames = ["gray", "archived"]
         let colorPairs = tierNames.reduce(into: [String: TierPair]()) { result, name in
-            let hex = theme.tierHexes[name] ?? "#888888"
+            let hex = theme.tierHexes[name] ?? "#888888" // token-allow: web graph payload fallback color
             result[name] = TierPair(dark: hex, light: hex)
         }
         let themePayload = ThemePayload(

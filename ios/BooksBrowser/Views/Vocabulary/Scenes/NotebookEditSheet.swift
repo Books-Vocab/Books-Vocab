@@ -80,10 +80,10 @@ struct NotebookEditSheet: View {
                 }
 
                 Section("顏色".localized) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 36))], spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 36))], spacing: AppSpacing.chipPaddingHorizontal) {
                         ForEach(NotebookPalette.colors, id: \.hex) { item in
                             Circle()
-                                .fill(Color(hex: item.hex) ?? skin.palette.accent)
+                                .fill(Color(hex: item.hex) ?? skin.palette.accent) // token-allow: notebook palette data color
                                 .frame(width: 32, height: 32)
                                 .overlay {
                                     if selectedColor == item.hex {
@@ -183,12 +183,12 @@ struct NotebookEditSheet: View {
         let color = NotebookPalette.color(for: selectedColor)
         VStack(spacing: AppSpacing.s1) {
             ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
                     .fill(patternId == nil ? skin.palette.mutedFill : color)
                     .frame(width: 48, height: 36)
                 if let pid = patternId, let p = NotebookCoverPattern(rawValue: pid) {
                     p.patternOverlay(size: CGSize(width: 48, height: 36))
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                 }
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")

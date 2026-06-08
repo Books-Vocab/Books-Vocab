@@ -105,7 +105,7 @@ struct ReaderNotebookPicker: View {
         } label: {
             HStack(spacing: AppSpacing.s2) {
                 RoundedRectangle(cornerRadius: AppRadius.xs)
-                    .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent)
+                    .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent) // token-allow: user notebook data color
                     .frame(width: 4, height: AppSpacing.s7)
 
                 VStack(alignment: .leading, spacing: AppSpacing.microGap) {

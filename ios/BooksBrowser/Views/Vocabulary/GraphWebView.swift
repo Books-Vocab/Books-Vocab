@@ -133,7 +133,7 @@ extension GraphWebView {
         let tierNames = ["gray", "archived"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
-            let hex = tierHexes[tierName] ?? "#888888"
+            let hex = tierHexes[tierName] ?? "#888888" // token-allow: web graph payload fallback color
             colorsDict[tierName] = ["dark": hex, "light": hex]
         }
 
@@ -171,7 +171,7 @@ extension GraphWebView {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
         }
         let colorPairs = colorsDict.reduce(into: [String: TierPair]()) { partialResult, entry in
-            let dark = entry.value["dark"] ?? "#888888"
+            let dark = entry.value["dark"] ?? "#888888" // token-allow: web graph payload fallback color
             let light = entry.value["light"] ?? dark
             partialResult[entry.key] = TierPair(dark: dark, light: light)
         }

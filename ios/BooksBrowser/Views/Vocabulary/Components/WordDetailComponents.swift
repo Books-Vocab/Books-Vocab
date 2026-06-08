@@ -116,7 +116,7 @@ struct ShimmerLine: View {
     @State private var shimmerPhase = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: AppRadius.xs)
             .fill(appSkin.palette.tertiaryText.opacity(shimmerPhase ? 0.18 : 0.08))
             .frame(width: 140, height: 10)
             .frame(maxWidth: .infinity, alignment: .leading)

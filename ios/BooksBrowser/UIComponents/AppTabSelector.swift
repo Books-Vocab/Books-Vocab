@@ -75,7 +75,7 @@ func appChipLabel<ID: Hashable>(
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(minWidth: 26)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, AppSkin.baseSpacing.compactChipHorizontalPadding)
                 .padding(.vertical, AppSpacing.microGap)
                 .background(
                     Capsule(style: .continuous)

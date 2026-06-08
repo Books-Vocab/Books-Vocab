@@ -128,7 +128,7 @@ extension TodayReviewPresenter {
                 Text("可用方向鍵評分，按 Space 展開答案".localized)
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
-                    .padding(.top, 28)
+                    .padding(.top, AppSpacing.s7 - AppSpacing.s1)
                     .transition(.overlayFade)
             }
         }
@@ -442,7 +442,7 @@ struct ShortcutKeyCap: View {
         Text(key)
             .font(AppFonts.monoNumbers(size: 12))
             .foregroundStyle(appSkin.palette.primaryText)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
             .padding(.vertical, AppSpacing.s1)
             .background(
                 RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)

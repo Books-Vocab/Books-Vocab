@@ -20,7 +20,7 @@ struct NotebookHeaderPillLabel<Content: View>: View {
             .font(appSkin.typography.caption.weight(.semibold))
             .foregroundStyle(foregroundColor)
             .padding(.horizontal, AppSpacing.s2 + 2)   // 10pt
-            .padding(.vertical, 7)
+            .padding(.vertical, AppSpacing.s2 - AppSpacing.hairline)
             .frame(minWidth: 32)
             .background(Capsule(style: .continuous).fill(fillColor))
     }
