@@ -41,6 +41,13 @@ enum TodayReviewPhaseScenarios {
             Scenario("Session · multi card", layout: .fill) {
                 TodayReviewPhaseSessionScene(entries: TodayReviewPhaseScenarioFixtures.multipleEntries)
             }
+
+            // Long-content layout stress (migrated from the former "Today Review
+            // Container" surface): one card with very long context + explanation
+            // proves the review card stays readable + scrollable under heavy text.
+            Scenario("Session · long content stress", layout: .fill) {
+                TodayReviewPhaseSessionScene(entries: TodayReviewPhaseScenarioFixtures.longContentEntry)
+            }
         }
     }
 }
@@ -117,6 +124,18 @@ private enum TodayReviewPhaseScenarioFixtures {
                 chapter: "Bounce Back"
             ),
         ]
+    }
+
+    static var longContentEntry: [VocabularyEntry] {
+        [entry(
+            word: "circumlocution",
+            translation: "迂迴冗長的說法",
+            context: "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked.",
+            explanation: "用過多、間接的詞語來表達原本可以簡短說明的意思,常見於迴避正面回答的場合;這個解釋刻意寫得很長,用來壓力測試複習卡片在大量文字下的版面與滾動行為是否仍然穩定且易讀。",
+            partOfSpeech: "n.",
+            book: "The Art of Rhetoric",
+            chapter: "Evasion and Indirection"
+        )]
     }
 
     private static func entry(
