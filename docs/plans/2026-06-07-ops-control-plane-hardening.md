@@ -5,7 +5,7 @@ update_trigger: planning
 scope:
   - ops/
   - docs/
-verified_against: 219e0f94
+verified_against: 94a66d63
 -->
 # Ops Control Plane Hardening Plan
 
