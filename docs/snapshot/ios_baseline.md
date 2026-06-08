@@ -4,12 +4,12 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksBrowser
-verified_against: 84f6998e
+verified_against: a0cce07d
 -->
 
 # iOS Frontend Baseline
 
-基線日期: 2026-06-08
+基線日期: 2026-06-09
 
 ---
 
@@ -18,17 +18,17 @@ verified_against: 84f6998e
 | 行數 | 路徑 |
 |------|------|
 | 1016 | `Views/Podcast/PodcastSentenceLevelView.swift` |
-| 906 | `Views/Podcast/PodcastPlayerView.swift` |
+| 866 | `Views/Podcast/PodcastPlayerView.swift` |
 | 610 | `Services/PodcastSyncService.swift` |
+| 602 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
 | 593 | `Services/PodcastAudioEngine.swift` |
-| 575 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
 | 561 | `Views/Reader/PDFReaderView.swift` |
-| 540 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
+| 548 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
 | 534 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
 | 530 | `Models/ReviewSettings.swift` |
 | 527 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
 
-總 Swift 行數: 68063 / 444 檔案
+總 Swift 行數: 64988 / 435 檔案
 
 ---
 
@@ -36,7 +36,7 @@ verified_against: 84f6998e
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 230 |
+| Views/ + UIComponents/ 檔案總數 | 242 |
 | 含 #Preview 的檔案數 | 64 |
 
 ---
@@ -45,5 +45,5 @@ verified_against: 84f6998e
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 222 |
+| @MainActor | 208 |
 | async func | 0 |
