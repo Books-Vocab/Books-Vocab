@@ -502,6 +502,12 @@ enum FooScenarios {
 ./ops/ios_ops.sh catalog snapshots \
   --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'
 
+# full run 會自動落地成新的 workspace artifact：
+# build/snapshots/catalog-full-<UTC timestamp>/
+# 並由 review entry 自動把最新可用那份視為 blessed
+./ops/catalog_review_entry.py current
+./ops/catalog_review_entry.py serve --port 8787
+
 # 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
 ./ops/catalog_review_entry.py current
 ./ops/catalog_review_entry.py prune-stale --dry-run
