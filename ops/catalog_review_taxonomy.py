@@ -197,11 +197,57 @@ def expected_facets_for_lane(lane: str) -> tuple[str, ...]:
 _DATA_LIFECYCLE_FACETS = frozenset({"populated", "empty", "loading"})
 
 
-def build_taxonomy(category: str, title: str, profile: dict, transparent_margin: bool = False) -> dict:
+# --- Source-declared taxonomy (ground truth) -------------------------------
+# `CatalogScene.swift` is the single source of truth for a surface's kind/feature/
+# screen. The iOS snapshot run emits `catalog_index.json`, and these maps translate
+# its enum raw values into the gallery's classification vocabulary — retiring the
+# transparent-margin pixel sniff + "Presenter"/" View" regex for any category the
+# index covers. Heuristics remain the fallback when the index is absent (legacy or
+# un-blessed artifacts), so `declared=None` reproduces the old behaviour exactly.
+_DECLARED_KIND_TO_ASSET = {
+    "featureScreen": "screen",
+    "overlay": "overlay",
+    "buildingBlock": "component",
+    "engineering": "component",
+}
+_DECLARED_KIND_TO_SURFACE_ROLE = {
+    "featureScreen": "feature-surface",
+    "overlay": "overlay",
+    "buildingBlock": "building-block",
+    "engineering": "presenter",
+}
+_DECLARED_FEATURE_DISPLAY = {
+    "reader": "Reader",
+    "vocabulary": "Vocabulary",
+    "notebook": "Notebook",
+    "bookshelf": "Bookshelf",
+    "podcast": "Podcast",
+    "review": "Review",
+    "settings": "Settings",
+    "monetization": "Monetization",
+    "onboarding": "Onboarding",
+    "misc": "Misc",
+}
+
+
+def build_taxonomy(
+    category: str,
+    title: str,
+    profile: dict,
+    transparent_margin: bool = False,
+    declared: dict | None = None,
+) -> dict:
     group, surface_variant = split_surface(category)
-    feature = classify_feature(category, profile)
-    kind = classify_asset_kind(category, group, transparent_margin)
-    surface_role = classify_surface_role(group, category, kind)
+    if declared:
+        feature = _DECLARED_FEATURE_DISPLAY.get(declared.get("feature", ""), classify_feature(category, profile))
+        kind = _DECLARED_KIND_TO_ASSET.get(declared.get("kind", ""), classify_asset_kind(category, group, transparent_margin))
+        surface_role = _DECLARED_KIND_TO_SURFACE_ROLE.get(declared.get("kind", ""), classify_surface_role(group, category, kind))
+        screen = declared.get("screen", "")
+    else:
+        feature = classify_feature(category, profile)
+        kind = classify_asset_kind(category, group, transparent_margin)
+        surface_role = classify_surface_role(group, category, kind)
+        screen = ""
     state_label = title or surface_variant or "Default"
     facet = classify_state_facet(state_label)
     return {
@@ -217,6 +263,10 @@ def build_taxonomy(category: str, title: str, profile: dict, transparent_margin:
         "stateFacetRank": state_facet_rank(facet),
         "assetKind": kind,
         "surfaceRole": surface_role,
+        # Source-declared full-screen identity (empty for overlays/blocks and when
+        # the surface predates the index). Powers the gallery's 1:1 screen↔surface view.
+        "screen": screen,
+        "sourceDeclared": bool(declared),
     }
 
 

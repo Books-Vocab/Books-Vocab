@@ -121,6 +121,53 @@ def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
     assert settings["assetKind"] == "component"
 
 
+def test_collect_items_consumes_catalog_index_ground_truth(tmp_path: Path):
+    """The source-of-truth ``catalog_index.json`` emitted by the iOS snapshot run
+    overrides the pixel/regex guess. A podcast-player surface *declared* as a
+    ``featureScreen`` is a screen even though its PNG carries a transparent margin
+    (which the heuristic alone would read as a component)."""
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Player_View"
+    img_dir.mkdir(parents=True)
+    # transparent margin → the pixel heuristic would call this a "component"
+    _make_rgba_png(img_dir / "Preview_episode.png", 40, 30, corner_alpha=0)
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({
+            "version": 1,
+            "surfaces": {
+                "Podcast Player View": {
+                    "kind": "featureScreen", "feature": "podcast", "screen": "podcastPlayer",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    items = manifest_module.collect_items(source_root, profile)
+    item = next(i for i in items if i["category"] == "Podcast Player View")
+    assert item["assetKind"] == "screen"            # index beats the transparent-margin pixel guess
+    assert item["surfaceRole"] == "feature-surface"
+    assert item["lane"] == "feature-surface"
+    assert item["feature"] == "Podcast"
+    assert item["screen"] == "podcastPlayer"
+
+
+def test_collect_items_falls_back_to_heuristics_without_index(tmp_path: Path):
+    """No ``catalog_index.json`` (legacy / un-blessed artifact) → the pixel/regex
+    heuristics still classify, and the declared ``screen`` is empty."""
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)  # opaque → full-bleed screen
+    items = manifest_module.collect_items(source_root, profile)
+    item = next(i for i in items if i["category"] == "Settings View")
+    assert item["assetKind"] == "screen"
+    assert item["surfaceRole"] == "feature-surface"
+    assert item["screen"] == ""
+
+
 def _surface_item(surface, lane, surface_role, cluster, facet, **extra):
     base = {
         "surfaceKey": surface.lower().replace(" ", "-"),
