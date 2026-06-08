@@ -219,9 +219,19 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
 
     canvas_html = (tmp_path / "out" / "catalog.html").read_text(encoding="utf-8")
     assert "KG UI Atlas" in canvas_html
+    assert "JetBrains+Mono" in canvas_html
+    assert 'xmlns="http://www.w3.org/2000/svg"' in canvas_html
+    assert '<g id="viewport"' in canvas_html
     assert '"tree":' in canvas_html
-    assert "#node=" in canvas_html
+    assert '"nodePath": "settings"' in canvas_html or '"nodePath":"settings"' in canvas_html
     assert expected_asset_id in canvas_html
+    assert "iPhone 15 Pro portrait/Settings_View/Signed_out.png" in canvas_html
+    # canvas payload is trimmed: items[] is not embedded a second time, only the tree
+    assert '"reviewStatus"' not in canvas_html
+    assert '"reviewNote"' not in canvas_html
+    # design language: warm-grey admin tokens, not review.html's serif/orange
+    assert "Iowan Old Style" not in canvas_html
+    assert "#9a4b1f" not in canvas_html
 
 
 def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):

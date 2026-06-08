@@ -4,7 +4,11 @@ import json
 
 
 def render_canvas_html(manifest: dict) -> str:
-    payload = json.dumps(manifest, ensure_ascii=False)
+    canvas_payload = {
+        "totalImages": manifest.get("totalImages", 0),
+        "tree": manifest.get("tree", {}),
+    }
+    payload = json.dumps(canvas_payload, ensure_ascii=False)
     return f"""<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -200,7 +204,7 @@ def render_canvas_html(manifest: dict) -> str:
         const parent = positions.get(parentPath);
         if (parent) {{
           const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          const px = parent.x + (parent.node.kind === "asset" ? ASSET_W : BRANCH_W);
+          const px = parent.x + BRANCH_W;
           const mx = (px + x) / 2;
           path.setAttribute("d", `M${{px}},${{parent.y}} C${{mx}},${{parent.y}} ${{mx}},${{y}} ${{x}},${{y}}`);
           path.setAttribute("class", "edge");
@@ -281,7 +285,6 @@ def render_canvas_html(manifest: dict) -> str:
       img.setAttribute("width", ASSET_W - 4);
       img.setAttribute("height", ASSET_H - 28);
       img.setAttribute("preserveAspectRatio", "xMidYMid slice");
-      img.setAttributeNS("http://www.w3.org/1999/xlink", "href", node.relPath);
       img.setAttribute("href", node.relPath);
       g.appendChild(img);
 
