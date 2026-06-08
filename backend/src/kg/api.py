@@ -31,7 +31,7 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 _mem_log = install_memory_log_handler(maxlen=1000)
 
 from .app_router_composition import build_app_routers, include_app_routers
-from .app_runtime_state import install_runtime_user_state
+from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
 from .app_middleware import _anon_rate_limit_key, install_app_middlewares
 from .app_exception_handlers import (
     _redact_validation_body,
@@ -96,10 +96,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.state.kg_settings = settings
 
     # --- user store helpers ---
-    runtime_user_state = install_runtime_user_state(
-        app,
-        settings,
-        default_subscription_payload_fn=_default_subscription_payload,
+    runtime_user_state = install_runtime_user_state_from_dependencies(
+        dependencies=RuntimeUserStateDependencies(
+            app=app,
+            settings=settings,
+            default_subscription_payload_fn=_default_subscription_payload,
+        )
     )
 
     # --- middleware stack ---
