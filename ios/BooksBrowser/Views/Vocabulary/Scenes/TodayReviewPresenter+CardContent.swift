@@ -10,6 +10,10 @@ extension TodayReviewPresenter {
     var frontCardHeight: CGFloat { TodayReviewMetrics.frontMinHeight }
     var answerCardHeight: CGFloat { TodayReviewMetrics.answerMinHeight }
 
+    /// 右上角 chrome（喇叭 + 詳情）兩顆 44pt HIG 觸控框 + 中間 inlineGap 的總寬，
+    /// 供單字列保留 trailing 空間，避免長詞被圖示擋住。與 frontCardChrome 佈局同源。
+    var frontChromeReserveWidth: CGFloat { 44 * 2 + appSkin.spacing.inlineGap }
+
     // MARK: Front Surface
 
     func frontFoldSurface(_ card: CardPresentation) -> some View {
@@ -83,6 +87,10 @@ extension TodayReviewPresenter {
                         .foregroundStyle(appSkin.palette.tertiaryText)
                 }
             }
+            // 右上角 chrome（喇叭 / 詳情）是 overlay（必須在 reveal Button 外才能獨立點），
+            // 故在單字列保留其寬度的 trailing 空間，長詞（如 "be eaten alive"）在碰到
+            // 圖示前先縮放 / 換行，不被擋字。
+            .padding(.trailing, frontChromeReserveWidth)
 
             if card.reviewMode == .production, let example = card.examples.first {
                 CardRichTextRenderer.text(
