@@ -105,6 +105,23 @@ struct TodayReviewPresenter: View {
         .random(in: -1.0...1.0)
     ]
 
+    // Back-content mount gate. Decoupled from `showsAnswer` so the heavy back
+    // tree (CardDocumentView / CardRichTextRenderer / VocabTierLabel /
+    // reviewLinkStrip) is NOT built while the FRONT card is shown (subtraction
+    // probe — see answerFoldSurface), yet STAYS mounted through the whole collapse
+    // fold. `showsAnswer` flips instantly but `PaperFoldModifier.progress`
+    // interpolates 1→0 over the spring; unmounting on the instant flip would tear
+    // the real content out at progress≈1 and fold an empty box. So: mount on the
+    // rising edge (content appears under the opacity-0 cover of the opening fold),
+    // and defer unmount to AFTER the spring settles on the falling edge.
+    @State var backContentMounted = false
+    // Generation token: cancels a pending deferred-unmount when the user
+    // re-reveals before the collapse settles, or when the card advances.
+    @State private var backMountGeneration = 0
+    // Spring settle budget for reviewRevealSpring (response 0.42, damping 0.88).
+    // Mirrors the 0.8s safety window the swipe deck uses for settle.frames.
+    private static let revealSettleSeconds: Double = 0.85
+
     enum DismissPhase {
         case idle
         case animatingOut
@@ -197,6 +214,18 @@ struct TodayReviewPresenter: View {
                 guard stage.showsAnswer else { return }
                 speakCurrentAutoplayCardIfNeeded()
             }
+            .onChange(of: state.revealStage.showsAnswer, initial: true) { _, shows in
+                updateBackContentMount(showsAnswer: shows)
+            }
+            .onChange(of: currentCardKey) { _, _ in
+                // Card advanced (next / previous / shuffle / submit / autoplay-advance):
+                // the answer subtree is structurally replaced via `.id(cardIdentity)`.
+                // Drop the gate immediately so the NEW front card doesn't inherit a
+                // mounted heavy back tree (would defeat the front-render subtraction
+                // probe). Bump the generation so any pending deferred-unmount no-ops.
+                backMountGeneration += 1
+                backContentMounted = false
+            }
             .onChange(of: state.progressText) { _, _ in
                 lastAutoplaySpokenCardKey = nil
             }
@@ -204,6 +233,50 @@ struct TodayReviewPresenter: View {
             .animation(AppMotion.panelState, value: isHelpPresented)
         }
         .enableInjection()
+    }
+
+    /// Presenter-level identity for the active card. Mirrors `reviewCard`'s
+    /// `cardIdentity` so the mount gate resets on the same boundary the subtree
+    /// is rebuilt.
+    private var currentCardKey: String {
+        guard let card = state.currentCard?.card else { return "" }
+        return "\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
+    }
+
+    /// Drive `backContentMounted` with a lagged falling edge so the collapse fold
+    /// always folds the real back content (blocker: collapse regression), while
+    /// keeping it unmounted on the front card (subtraction probe).
+    ///
+    /// - rising (front→back): mount synchronously — the content must exist as the
+    ///   `PaperFoldModifier` opens (progress 0→1, opacity 0→1), so it builds under
+    ///   the opacity-0 cover and reveals in-place. Also opens a `reveal.frames`
+    ///   sampler so the operator can confirm the now-reveal-time back-tree build
+    ///   doesn't drop frames (didn't move the hitch from front render to reveal).
+    /// - falling (back→front, same card): KEEP mounted; defer unmount to after the
+    ///   spring settles so progress 1→0 folds the real content. Generation-guarded
+    ///   so a re-reveal mid-collapse cancels the unmount.
+    private func updateBackContentMount(showsAnswer: Bool) {
+        backMountGeneration += 1
+        let generation = backMountGeneration
+        if showsAnswer {
+            backContentMounted = true
+            #if DEBUG
+            PerfLog.review.startFrameSampler("reveal.frames")
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(Self.revealSettleSeconds * 1_000_000_000))
+                PerfLog.review.stopFrameSampler("reveal.frames")
+            }
+            #endif
+        } else {
+            // Defer unmount until the collapse fold finishes; re-reveal or card
+            // advance bumps the generation and cancels this.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(Self.revealSettleSeconds * 1_000_000_000))
+                guard generation == backMountGeneration,
+                      !state.revealStage.showsAnswer else { return }
+                backContentMounted = false
+            }
+        }
     }
 
     private func speakCurrentAutoplayCardIfNeeded() {
