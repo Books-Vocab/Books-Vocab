@@ -128,11 +128,11 @@ struct KnowledgeGraphPresenter: View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 VocabOverlayHeader(
-                    title: "關聯圖".localized,
+                    title: KnowledgeGraphCopy.settingsTitle,
                     systemImage: "point.3.connected.trianglepath.dotted",
                     onClose: onToggleSettings,
                     leadingAccessory: {
-                        VocabInlineActionButton(title: "重設".localized, action: onResetForces)
+                        VocabInlineActionButton(title: KnowledgeGraphCopy.resetTitle, action: onResetForces)
                     }
                 )
 
@@ -140,25 +140,25 @@ struct KnowledgeGraphPresenter: View {
 
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
-                        VocabSectionHeader(title: "力".localized)
+                        VocabSectionHeader(title: KnowledgeGraphCopy.forcesSectionTitle)
                             .padding(.bottom, appSkin.spacing.microGap)
-                        VocabSliderRow(label: "向心力".localized, value: bindings.centerForce, range: 0...1, format: "%.2f")
-                        VocabSliderRow(label: "排斥力".localized, value: bindings.repelForce, range: 0...1, format: "%.2f")
-                        VocabSliderRow(label: "連結強度".localized, value: bindings.linkForce, range: 0...1, format: "%.2f")
-                        VocabSliderRow(label: "連結距離".localized, value: bindings.linkDistance, range: 20...300, format: "%.0f")
+                        VocabSliderRow(label: KnowledgeGraphCopy.centerForceTitle, value: bindings.centerForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: KnowledgeGraphCopy.repelForceTitle, value: bindings.repelForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: KnowledgeGraphCopy.linkForceTitle, value: bindings.linkForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: KnowledgeGraphCopy.linkDistanceTitle, value: bindings.linkDistance, range: 20...300, format: "%.0f")
                     }
 
                     CardSectionDivider(horizontalPadding: 0)
                         .padding(.vertical, appSkin.spacing.sectionGap)
 
                     VStack(spacing: 0) {
-                        VocabSectionHeader(title: "顯示".localized)
+                        VocabSectionHeader(title: KnowledgeGraphCopy.displaySectionTitle)
                             .padding(.bottom, appSkin.spacing.microGap)
-                        VocabSliderRow(label: "節點大小".localized, value: bindings.nodeSize, range: 1...10, format: "%.1f")
-                        VocabSliderRow(label: "連結粗細".localized, value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
+                        VocabSliderRow(label: KnowledgeGraphCopy.nodeSizeTitle, value: bindings.nodeSize, range: 1...10, format: "%.1f")
+                        VocabSliderRow(label: KnowledgeGraphCopy.linkThicknessTitle, value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
 
                         Toggle(isOn: bindings.showsIsolatedNodes) {
-                            Text("孤立節點".localized)
+                            Text(KnowledgeGraphCopy.isolatedNodesTitle)
                                 .font(appSkin.typography.caption)
                                 .foregroundStyle(appSkin.palette.primaryText)
                         }
@@ -183,13 +183,13 @@ struct KnowledgeGraphPresenter: View {
                 .clipShape(Capsule(style: .continuous))
 
             HStack(spacing: 0) {
-                Text("安全".localized)
+                Text(KnowledgeGraphCopy.safeTitle)
                     .foregroundStyle(ReviewGradient.color(for: 0))
                 Spacer()
-                Text("到期".localized)
+                Text(KnowledgeGraphCopy.dueTitle)
                     .foregroundStyle(ReviewGradient.color(for: 1.0))
                 Spacer()
-                Text("逾期".localized)
+                Text(KnowledgeGraphCopy.overdueTitle)
                     .foregroundStyle(ReviewGradient.color(for: 2.5))
             }
             .font(appSkin.typography.monoLabel)
@@ -199,7 +199,7 @@ struct KnowledgeGraphPresenter: View {
                 Circle()
                     .fill(appSkin.palette.quaternaryText.opacity(0.5))
                     .frame(width: 6, height: 6)
-                Text("未學習 / 封存".localized)
+                Text(KnowledgeGraphCopy.unlearnedArchivedTitle)
                     .font(appSkin.typography.monoLabel)
                     .foregroundStyle(appSkin.palette.quaternaryText)
             }
@@ -288,9 +288,9 @@ enum KnowledgeGraphPresenterPreviewData {
 
     static let emptyState = KnowledgeGraphPresenter.State(
         emptyState: .init(
-            title: "知識圖譜為空",
+            title: KnowledgeGraphCopy.emptyGraphTitle,
             systemImage: "point.3.connected.trianglepath.dotted",
-            description: "尚無已收錄單字，或尚未與伺服器同步。"
+            description: KnowledgeGraphCopy.emptyGraphDescription
         ),
         nodes: [],
         edges: [],
@@ -309,9 +309,9 @@ enum KnowledgeGraphPresenterPreviewData {
 
     static let noLinksState = KnowledgeGraphPresenter.State(
         emptyState: .init(
-            title: "尚無知識連結",
+            title: KnowledgeGraphCopy.noLinksTitle,
             systemImage: "point.3.connected.trianglepath.dotted",
-            description: "持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。"
+            description: KnowledgeGraphCopy.noLinksDescription
         ),
         nodes: [],
         edges: [],

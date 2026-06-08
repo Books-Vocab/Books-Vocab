@@ -69,7 +69,7 @@ struct BookshelfView: View {
             }
             .animation(AppMotion.phaseChange, value: coordinator.showError)
             .animation(AppMotion.phaseChange, value: coordinator.errorMessage)
-            .navigationTitle("書庫".localized)
+            .navigationTitle(BookshelfCopy.navigationTitle)
             .largeNavigationBarTitle()
             .animatePhaseChange(books.isEmpty)
             .animateContentFade(coordinator.isLoading)
@@ -89,7 +89,7 @@ struct BookshelfView: View {
                     Button(action: coordinator.presentSettings) {
                         AppToolbarGlyph(systemImage: "gearshape")
                     }
-                    .accessibilityLabel("設定".localized)
+                    .accessibilityLabel(BookshelfCopy.settingsAccessibilityLabel)
                     .accessibilityIdentifier("bookshelf.settingsButton")
 
                     #if targetEnvironment(macCatalyst)
@@ -99,7 +99,7 @@ struct BookshelfView: View {
                     Button(action: { Task { await performSync() } }) {
                         AppToolbarGlyph(systemImage: "arrow.clockwise")
                     }
-                    .accessibilityLabel("同步".localized)
+                    .accessibilityLabel(BookshelfCopy.syncAccessibilityLabel)
                     .accessibilityIdentifier("bookshelf.refreshButton")
                     #endif
                 }
@@ -108,7 +108,7 @@ struct BookshelfView: View {
                     Button(action: coordinator.presentImporter) {
                         AppToolbarGlyph(systemImage: "plus")
                     }
-                    .accessibilityLabel("匯入".localized)
+                    .accessibilityLabel(BookshelfCopy.importAccessibilityLabel)
                     .accessibilityIdentifier("bookshelf.importButton")
                 }
             }
@@ -130,12 +130,12 @@ struct BookshelfView: View {
                 )
             }
             .alert(
-                coordinator.errorDiagnosis.map { L10n.format("匯入錯誤・%@", $0) } ?? "匯入錯誤".localized,
+                BookshelfCopy.importErrorTitle(diagnosis: coordinator.errorDiagnosis),
                 isPresented: $coordinator.showError
             ) {
-                Button("確定".localized, role: .cancel, action: coordinator.dismissError)
+                Button(BookshelfCopy.confirmButtonTitle, role: .cancel, action: coordinator.dismissError)
             } message: {
-                Text(coordinator.errorMessage ?? "未知錯誤".localized)
+                Text(coordinator.errorMessage ?? BookshelfCopy.unknownErrorTitle)
             }
             .settingsSheet(isPresented: $coordinator.showSettings)
             .loginGateSheet($loginGate)
@@ -162,16 +162,17 @@ struct BookshelfView: View {
     @Environment(\.openURL) private var openURL
 
     private var emptyState: some View {
-        ScrollView {
+        let copy = BookshelfCopy.emptyState
+        return ScrollView {
             // Mochi 16/24 節奏 — 用 s4 取代既有 s5(20)，對齊 Mochi long-form 留白
             VStack(spacing: AppSpacing.s4) {
                 Spacer(minLength: 120)
 
                 AppEmptyStateContent(
-                    title: "尚無書籍".localized,
+                    title: copy.title,
                     systemImage: "book",
-                    description: "匯入電子書開始閱讀（EPUB・TXT・MD・PDF）".localized,
-                    guidanceText: "點擊上方匯入按鈕加入你的第一本書",
+                    description: copy.description,
+                    guidanceText: copy.guidanceText,
                     style: .bookshelf(appTheme)
                 )
 
@@ -182,7 +183,7 @@ struct BookshelfView: View {
                 }
                 .padding(.horizontal)
 
-                Button("匯入".localized) {
+                Button(copy.primaryActionTitle) {
                     coordinator.presentImporter()
                 }
                 .buttonStyle(.appAction(.outline))
@@ -190,7 +191,7 @@ struct BookshelfView: View {
 
                 if !authManager.isDemoMode && !authManager.isLoggedIn {
                     Button(action: { loginGate.presentLogin() }) {
-                        Label("登入帳號".localized, systemImage: "person.crop.circle")
+                        Label(copy.loginActionTitle, systemImage: "person.crop.circle")
                     }
                     .buttonStyle(.appAction(.outline))
 
@@ -199,7 +200,7 @@ struct BookshelfView: View {
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "play.circle")
-                            Text("體驗複習與圖譜".localized)
+                            Text(copy.demoActionTitle)
                         }
                         .font(AppFonts.caption(weight: .medium))
                         .foregroundStyle(appTheme.palette.accent)
@@ -232,7 +233,7 @@ struct BookshelfView: View {
                     }
                     .buttonStyle(.bookshelfCard)
                     .accessibilityLabel("\(book.title), \(book.author)")
-                    .accessibilityHint("點兩下開始閱讀".localized)
+                    .accessibilityHint(BookshelfCopy.readBookHint)
                     .transition(.bookshelfCard)
                     .contextMenu {
                         Button(role: .destructive) {
@@ -243,7 +244,7 @@ struct BookshelfView: View {
                                 toastCoordinator: toastCoordinator
                             )
                         } label: {
-                            Label("刪除".localized, systemImage: "trash")
+                            Label(BookshelfCopy.deleteTitle, systemImage: "trash")
                         }
                     }
                 }
@@ -267,7 +268,7 @@ struct BookshelfView: View {
 
     private var epubGuideHint: some View {
         Link(destination: AppURLs.guide) {
-            Text("了解更多".localized)
+            Text(BookshelfCopy.readMoreTitle)
                 .font(AppFonts.caption2())
                 .foregroundStyle(appTheme.palette.quaternaryText)
                 .frame(maxWidth: .infinity)
@@ -282,17 +283,17 @@ struct BookshelfView: View {
     @ViewBuilder
     private func importErrorBanner(message: String) -> some View {
         AppStateMessageCard(
-            title: coordinator.errorDiagnosis.map { L10n.format("匯入錯誤・%@", $0) } ?? "匯入錯誤".localized,
+            title: BookshelfCopy.importErrorTitle(diagnosis: coordinator.errorDiagnosis),
             systemImage: "exclamationmark.triangle",
             description: message.localized
         ) {
             HStack(spacing: AppSpacing.s2) {
-                Button("再試匯入".localized) {
+                Button(BookshelfCopy.retryImportTitle) {
                     coordinator.presentImporter()
                 }
                 .buttonStyle(.appCompactAction(.primary))
 
-                Button("關閉".localized) {
+                Button(BookshelfCopy.closeTitle) {
                     coordinator.clearError()
                 }
                 .buttonStyle(.appCompactAction(.outline))

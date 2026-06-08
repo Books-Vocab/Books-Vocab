@@ -685,30 +685,13 @@ struct PodcastPlayerView: View {
             await MainActor.run { vm.setLoading() }
             if Task.isCancelled { return }
 
-            // Subtitle load is tracked on the VM separately from audio: a
-            // failed fetch surfaces an inline retry instead of being silently
-            // swallowed (the player still plays audio meanwhile).
-            //
-            // Fast path: when metadata.json already carried the SRT inline
-            // (ops/podcast_upload.sh embeds it), skip the auth'd subtitle
-            // fetch entirely — saves one round-trip and removes a failure
-            // mode the user has to recover from.
-            var subtitleContent: String?
-            switch plan.subtitleSource {
-            case .inline(let inline):
-                subtitleContent = inline
-            case .remote(let subtitleURLStr):
+            if case .remote = plan.subtitleSource {
                 await MainActor.run { vm.setSubtitleLoading() }
-                subtitleContent = await Self.fetchSubtitle(
-                    urlString: subtitleURLStr, kgService: kgService
-                )
-                if Task.isCancelled { return }
-                if subtitleContent == nil {
-                    await MainActor.run { vm.markSubtitleFailed() }
-                }
-            case .unavailable:
-                await MainActor.run { vm.markSubtitleUnavailable() }
             }
+            let resolvedSubtitle = await PodcastPlayerLoader.resolveSubtitle(
+                from: plan.subtitleSource,
+                kgService: kgService
+            )
             if Task.isCancelled { return }
 
             // Fetch the auth token AFTER subtitle so token refresh latency
@@ -718,28 +701,39 @@ struct PodcastPlayerView: View {
             // means no auth needed, and we avoid blocking on a token fetch
             // that could fail offline.
             let audioHeaders: [String: String]
-            if plan.usesLocalAudio {
-                audioHeaders = [:]
-            } else {
-                do {
-                    let token = try await kgService.currentAuthToken()
-                    audioHeaders = ["Authorization": "Bearer \(token)"]
-                } catch is CancellationError {
-                    return
-                } catch {
-                    await MainActor.run {
-                        vm.reportError(L10n.format("無法取得認證 token：%@", error.localizedDescription))
-                    }
-                    return
+            do {
+                audioHeaders = try await PodcastPlayerLoader.resolveAudioHeaders(
+                    for: plan,
+                    kgService: kgService
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run {
+                    vm.reportError(L10n.format("無法取得認證 token：%@", error.localizedDescription))
                 }
+                return
             }
             if Task.isCancelled { return }
 
             await MainActor.run {
                 guard !Task.isCancelled else { return }
+                switch resolvedSubtitle {
+                case .content:
+                    break
+                case .unavailable:
+                    vm.markSubtitleUnavailable()
+                case .failed:
+                    vm.markSubtitleFailed()
+                }
                 vm.loadEpisode(
                     audioURL: plan.audioURL,
-                    subtitleContent: subtitleContent,
+                    subtitleContent: {
+                        if case .content(let subtitleContent) = resolvedSubtitle {
+                            return subtitleContent
+                        }
+                        return nil
+                    }(),
                     title: plan.title,
                     audioHTTPHeaders: audioHeaders,
                     prefetchedDurationSec: plan.durationSec,
@@ -747,15 +741,6 @@ struct PodcastPlayerView: View {
                 )
             }
         }
-    }
-
-    /// Fetches + decodes the SRT for an episode. Returns nil on any
-    /// network/decode failure so the caller can drive the inline retry state.
-    static func fetchSubtitle(urlString: String, kgService: any KGServing) async -> String? {
-        guard let data = try? await PodcastSyncService.authedData(
-            from: urlString, kgService: kgService
-        ) else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 
     /// Re-runs ONLY the subtitle load branch — used by the inline
@@ -768,7 +753,7 @@ struct PodcastPlayerView: View {
         vm.setSubtitleLoading()
         Task { [weak vm] in
             guard let vm else { return }
-            let content = await Self.fetchSubtitle(
+            let content = await PodcastPlayerLoader.fetchSubtitle(
                 urlString: subtitleURLStr, kgService: kgService
             )
             await MainActor.run {
@@ -876,31 +861,6 @@ struct PodcastPlayerView: View {
             kgService: kgService,
             reason: reason
         )
-    }
-}
-
-/// 把 15Hz `currentTime` 的 `@Observable` 訂閱關進一個只渲染 `Color.clear` 的葉子
-/// view,使父層 `PodcastPlayerView.body` 不再訂閱 currentTime。
-///
-/// 背景:`@Observable` 的失效粒度是 per-view-body——某個 view 的 body 在求值時讀了
-/// 哪些 property,就只訂閱那些。先前進度持久化的 `.onChange(of: vm.currentTime)` 直接
-/// 掛在 `playerCore`,等於讓整個 player body 訂閱 15Hz 的 currentTime,每 tick 連鎖
-/// 重建非 Equatable 的字幕子樹 + 每秒重建 follow `TimelineView` 15 次 → 捲動卡頓 +
-/// 自動捲動失效。把讀取隔離到這個無子樹的葉子後,每 tick 只重求值一個 `Color.clear`
-/// (O(1)),父 body 與字幕子樹不再被 currentTime 牽連。
-///
-/// `onTick` 僅在 `state == .playing` 時呼叫,保留原 `.onChange` 的語意(節流/持久化
-/// gating 仍由呼叫端 `saveProgressIfNeeded` 的 `lastSavedTime` 判斷負責)。
-struct PodcastProgressTicker: View {
-    let viewModel: PodcastPlayerViewModel
-    let onTick: (TimeInterval) -> Void
-
-    var body: some View {
-        Color.clear
-            .onChange(of: viewModel.currentTime) { _, newTime in
-                guard viewModel.state == .playing else { return }
-                onTick(newTime)
-            }
     }
 }
 #endif

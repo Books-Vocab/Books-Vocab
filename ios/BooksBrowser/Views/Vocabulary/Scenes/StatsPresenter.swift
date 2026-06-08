@@ -161,15 +161,15 @@ struct StatsPresenter: View {
         // (handled inline via graphLoadError + retry button in graphEntryBody).
         guard let summary else {
             return .loading(
-                title: "計算統計資料...".localized,
+                title: StatsCopy.loadingTitle,
                 systemImage: "chart.bar"
             )
         }
         if isSummaryEmpty(summary) {
             return .empty(
-                title: "尚無學習資料".localized,
+                title: StatsCopy.emptyTitle,
                 systemImage: "chart.bar.xaxis",
-                description: "完成同步並開始複習後，這裡會顯示你的進度與預測。".localized
+                description: StatsCopy.emptyDescription
             )
         }
         return .content
@@ -265,7 +265,7 @@ struct StatsPresenter: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(appSkin.typography.iconMedium)
                 .foregroundStyle(appSkin.palette.warning)
-            Text("關聯圖載入失敗".localized)
+            Text(StatsCopy.graphErrorTitle)
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.primaryText)
             Button {
@@ -274,7 +274,7 @@ struct StatsPresenter: View {
                 HStack(spacing: appSkin.spacing.microGap) {
                     Image(systemName: "arrow.clockwise")
                         .font(appSkin.typography.iconSmall)
-                    Text("重試".localized)
+                    Text(StatsCopy.retryTitle)
                         .font(appSkin.typography.caption)
                 }
                 .padding(.horizontal, appSkin.spacing.inlineGap)
@@ -293,7 +293,7 @@ struct StatsPresenter: View {
             Image(systemName: "point.3.connected.trianglepath.dotted")
                 .font(appSkin.typography.iconMedium)
                 .foregroundStyle(AppColors.chartHighlight)
-            Text("關聯圖".localized)
+            Text(StatsCopy.graphTitle)
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.primaryText)
             if graphLoadError && graphLinks != nil {
@@ -301,7 +301,7 @@ struct StatsPresenter: View {
                 Circle()
                     .fill(appSkin.palette.warning)
                     .frame(width: 6, height: 6)
-                    .accessibilityLabel(Text("資料可能不是最新".localized))
+                    .accessibilityLabel(Text(StatsCopy.staleDataTitle))
             }
             Spacer()
             if let graphLinks, !graphLinks.isEmpty {
@@ -333,7 +333,7 @@ struct StatsPresenter: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .empty:
             AppStateMessageContent(
-                title: "探索單字建立連結".localized,
+                title: StatsCopy.graphEmptyTitle,
                 systemImage: "point.3.connected.trianglepath.dotted",
                 style: .vocab(appSkin)
             )
@@ -407,15 +407,15 @@ struct StatsPresenter: View {
     private func streakSection(_ summary: StatsPresentation.Summary) -> some View {
         HStack(spacing: appSkin.spacing.sectionGap) {
             statCard(
-                title: "連續學習".localized,
+                title: StatsCopy.currentStreakTitle,
                 value: "\(summary.currentStreak)",
-                unit: "天".localized,
+                unit: StatsCopy.dayUnit,
                 systemImage: "flame"
             )
             statCard(
-                title: "最長紀錄".localized,
+                title: StatsCopy.longestStreakTitle,
                 value: "\(summary.longestStreak)",
-                unit: "天".localized,
+                unit: StatsCopy.dayUnit,
                 systemImage: "trophy"
             )
         }
@@ -455,7 +455,7 @@ struct StatsPresenter: View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Button { showCalendar = true } label: {
                 HStack(spacing: appSkin.spacing.microGap) {
-                    sectionHeader(title: "學習日曆".localized, systemImage: "calendar")
+                    sectionHeader(title: StatsCopy.calendarTitle, systemImage: "calendar")
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(appSkin.typography.iconSmall)
@@ -480,7 +480,7 @@ struct StatsPresenter: View {
     private func forecastSection(_ summary: StatsPresentation.Summary) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             HStack {
-                sectionHeader(title: "複習預測".localized, systemImage: "chart.bar")
+                sectionHeader(title: StatsCopy.forecastTitle, systemImage: "chart.bar")
                 Spacer()
                 VocabTabSelector(
                     options: [

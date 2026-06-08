@@ -121,26 +121,26 @@ enum KnowledgeGraphPresentation {
     ) -> KnowledgeGraphPresenter.State.EmptyState? {
         if !isLoggedIn {
             return .init(
-                title: "需登入帳號".localized,
+                title: KnowledgeGraphCopy.loginTitle,
                 systemImage: "person.crop.circle.badge.exclamationmark",
-                description: "請至設定中登入以查閱您的知識關聯。".localized
+                description: KnowledgeGraphCopy.loginDescription
             )
         }
         if isLoading {
             return .init(
-                title: "正在載入關聯圖...".localized,
+                title: KnowledgeGraphCopy.loadingTitle,
                 systemImage: "point.3.connected.trianglepath.dotted",
-                description: "正在向伺服器拉取知識連結與節點資訊。".localized
+                description: KnowledgeGraphCopy.loadingDescription
             )
         }
         if let errorMessage {
             return .init(
-                title: "載入失敗".localized,
+                title: KnowledgeGraphCopy.errorTitle,
                 systemImage: "exclamationmark.triangle",
                 description: errorMessage,
                 action: onRetry.map { retry in
                     AppEmptyStateAction(
-                        title: "重試".localized,
+                        title: KnowledgeGraphCopy.retryTitle,
                         systemImage: "arrow.clockwise",
                         handler: retry
                     )
@@ -151,22 +151,22 @@ enum KnowledgeGraphPresentation {
             // 細分：有同步單字但無連結 vs 完全無單字
             if syncedEntryCount > 0 && linkCount == 0 {
                 return .init(
-                    title: "尚無知識連結".localized,
+                    title: KnowledgeGraphCopy.noLinksTitle,
                     systemImage: "point.3.connected.trianglepath.dotted",
-                    description: "持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。".localized
+                    description: KnowledgeGraphCopy.noLinksDescription
                 )
             }
             if syncedEntryCount > 0 && !showsIsolatedNodes {
                 return .init(
-                    title: "目前無已連結節點".localized,
+                    title: KnowledgeGraphCopy.noLinkedNodesTitle,
                     systemImage: "point.3.connected.trianglepath.dotted",
-                    description: "可在設定中開啟「孤立節點」以瀏覽所有已收錄單字。".localized
+                    description: KnowledgeGraphCopy.noLinkedNodesDescription
                 )
             }
             return .init(
-                title: "知識圖譜為空".localized,
+                title: KnowledgeGraphCopy.emptyGraphTitle,
                 systemImage: "point.3.connected.trianglepath.dotted",
-                description: "尚無已收錄單字，或尚未與伺服器同步。".localized
+                description: KnowledgeGraphCopy.emptyGraphDescription
             )
         }
         return nil

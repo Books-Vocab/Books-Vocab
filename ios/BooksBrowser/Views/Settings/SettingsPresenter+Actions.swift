@@ -257,7 +257,7 @@ struct SettingsSubscriptionFeatureItem: Identifiable {
 
 /// Paywall Free vs Pro 對照表的單行資料
 struct SettingsPlanComparisonRow: Identifiable {
-    enum Mark {
+    enum Mark: Equatable {
         case check
         case cross
         case label(String)
@@ -299,7 +299,7 @@ struct SettingsPlanComparisonTable: View {
 
     private var headerRow: some View {
         HStack(spacing: appSkin.spacing.controlGap) {
-            Text("功能".localized)
+            Text(L10n.string("功能"))
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.tertiaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
