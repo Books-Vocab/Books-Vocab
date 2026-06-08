@@ -234,6 +234,6 @@ PR #402 引入：
 4. **partOfSpeech / unit / 短 label 用 `.fixedSize(horizontal: true, vertical: false)`**  
    保留視覺重量，防止被中間 text 撐到換行。
 5. **新增高密度 list 元件時，必加對應 `Debug/Scenarios/*Scenarios.swift`**  
-   涵蓋 happy / long-content / large-numbers / narrow-width / dynamicTypeSize(.accessibility3) 五種 stress case，作為 visual baseline。範例：`NotebookDetailScenarios.swift`。
+   涵蓋 happy / long-content / large-numbers / narrow-width / dynamicTypeSize(.accessibility3) 五種 stress case，作為 visual baseline。範例：`NotebookListScenarios.swift`、`BookCardScenarios.swift`。
 
 > Phase 2(2026-05) 起 `WordRow` / `VocabReviewProgressBar` 已套用上述規則。新元件 PR Reviewer 看到缺漏直接退件。
