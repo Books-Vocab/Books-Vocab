@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import atexit
 import logging
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,6 +30,7 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 _mem_log = install_memory_log_handler(maxlen=1000)
 
 from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
+from .app_lifespan import AppLifespanDependencies, build_app_lifespan_from_dependencies
 from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
 from .app_middleware import AppMiddlewareDependencies, _anon_rate_limit_key, install_app_middlewares_from_dependencies
 from .app_exception_handlers import (
@@ -67,33 +67,25 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     # Sync quota limits with settings
     from .quota_service import configure_limits
     configure_limits(pro=settings.pro_daily_limit_usd, free=settings.free_daily_limit_usd)
+    from .pipeline_log import reap_orphaned_runs
+    from .service_factories import reset_async_clients, reset_clients
+    from .worker_guard import assert_single_worker, release_worker_lock
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        logger.info("KG API starting up")
-        # Fail loud if a second worker boots: quota reservations, translate
-        # singleflight and pipeline_log are all process-local and only
-        # correct under --workers 1. Lock under the injected settings'
-        # data_dir so a test app never touches the real backend/data/.
-        from .worker_guard import assert_single_worker
-        assert_single_worker(settings.data_dir / ".worker.lock")
-        # Crash recovery: sweep orphaned 'running' pipeline runs → 'interrupted'.
-        # Explicit startup step (not a side-effect of first DB access) so reads
-        # stay write-free. Safe only post single-worker lock: workers must not
-        # cross-mark each other's runs (see worker_guard).
-        from .pipeline_log import reap_orphaned_runs
-        reaped = reap_orphaned_runs()
-        if reaped:
-            logger.info("Reaped %d orphaned pipeline run(s) → interrupted", reaped)
-        yield
-        logger.info("KG API shutting down")
-        from .worker_guard import release_worker_lock
-        release_worker_lock()
-        from .service_factories import reset_async_clients, reset_clients
-        reset_clients()
-        await reset_async_clients()
-
-    app = FastAPI(title="Knowledge Graph API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Knowledge Graph API",
+        version="0.1.0",
+        lifespan=build_app_lifespan_from_dependencies(
+            dependencies=AppLifespanDependencies(
+                settings=settings,
+                logger=logger,
+                assert_single_worker_fn=assert_single_worker,
+                reap_orphaned_runs_fn=reap_orphaned_runs,
+                release_worker_lock_fn=release_worker_lock,
+                reset_clients_fn=reset_clients,
+                reset_async_clients_fn=reset_async_clients,
+            )
+        ),
+    )
     app.state.kg_settings = settings
 
     # --- user store helpers ---
