@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ..types import StoredUserRecord, UsersPayload
 from .index import upsert_subscription_index
 from .payloads import ACTIVE_BEARING_STATUSES, default_subscription_payload
 
@@ -18,7 +19,7 @@ def append_app_store_event(notifications_file: Path, payload: dict[str, Any]) ->
 
 
 def write_subscription_snapshot(
-    users: dict[str, Any],
+    users: UsersPayload,
     user_id: str,
     *,
     product_id: str,
@@ -31,7 +32,7 @@ def write_subscription_snapshot(
     original_transaction_id: str | None,
     price_display: str | None,
     source: str,
-) -> dict[str, Any]:
+) -> StoredUserRecord:
     now_iso = datetime.now(tz=UTC).isoformat()
     record = users.setdefault(user_id, {})
     subscription = default_subscription_payload()

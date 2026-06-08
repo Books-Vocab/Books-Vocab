@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
 
 logger = logging.getLogger("kg.admin_handlers")
@@ -19,10 +20,10 @@ logger = logging.getLogger("kg.admin_handlers")
 
 def admin_stats_response(
     *,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
+    load_users: Callable[[], UsersPayload],
     get_all_stats: Callable[[], dict[str, Any]],
-    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
-    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
+    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
     data_dir: Any,
     card_store_factory: Callable[[Any], Any],
 ) -> dict[str, Any]:

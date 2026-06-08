@@ -23,6 +23,7 @@ from .api_models import (
     UserConfigResponse,
     VocabUIConfig,
 )
+from .types import StoredUserRecord, UserRecord, UsersPayload
 
 
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
@@ -120,25 +121,25 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
 
 
-def get_user_config_response(user: dict[str, Any]) -> UserConfigResponse:
+def get_user_config_response(user: UserRecord) -> UserConfigResponse:
     return _build_user_config_response(user["config"])
 
 
 def get_user_entitlements_response(
-    user: dict[str, Any],
+    user: UserRecord,
     *,
-    build_entitlements_response: Callable[[dict[str, Any] | None], EntitlementsResponse],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
 ) -> EntitlementsResponse:
     return build_entitlements_response(user.get("record"))
 
 
 def update_user_config_response(
     req: UserConfigRequest,
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    load_users: Callable[[], UsersPayload],
+    save_users: Callable[[UsersPayload], None],
 ) -> UserConfigResponse:
     with FileLock(str(users_lock_file)):
         users = load_users()
@@ -158,12 +159,12 @@ def update_user_config_response(
 
 
 def delete_user_account_response(
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     users_lock_file: Path,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    save_users: Callable[[dict[str, dict[str, Any]]], None],
-    collect_account_ids_for_deletion: Callable[[dict[str, dict[str, Any]], str], tuple[str, list[str]]],
+    load_users: Callable[[], UsersPayload],
+    save_users: Callable[[UsersPayload], None],
+    collect_account_ids_for_deletion: Callable[[UsersPayload, str], tuple[str, list[str]]],
     data_dir: Path,
     logger: Logger,
 ) -> DeleteAccountResponse:
