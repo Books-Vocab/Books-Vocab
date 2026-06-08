@@ -7,9 +7,9 @@ import SwiftUI
 /// `KnowledgeGraphView(allEntries:)` takes its vocab as a plain array (no
 /// `@Query`) and loads graph links in `.task { coordinator.loadGraphData(...) }`.
 /// That coordinator method opens with `guard authManager.isLoggedIn else
-/// { return }`, so on the env-default (logged-out) `AuthManager.shared` it
+/// { return }`; we inject a logged-out `CatalogPreviewAuth` so it deterministically
 /// no-ops to the empty / sign-in graph surface — no WKWebView force-graph render,
-/// no network — which is the deterministic catalog rendering. Env-default
+/// no network — instead of depending on the simulator's persisted session. Env-default
 /// services (`KGService`, detail router, review settings store) resolve in the
 /// `@MainActor` body.
 enum KnowledgeGraphViewScenarios {
@@ -28,6 +28,7 @@ private struct KnowledgeGraphViewScene: View {
     var body: some View {
         AppThemeContainer {
             KnowledgeGraphView(allEntries: [])
+                .environment(\.authManager, CatalogPreviewAuth(isLoggedIn: false))
         }
         .environmentObject(AppAppearanceStore.preview)
     }
