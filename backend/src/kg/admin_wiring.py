@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import Cookie, Header, HTTPException, Query
@@ -36,6 +37,36 @@ PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
 
 
+@dataclass(frozen=True)
+class AdminHandlers:
+    admin_ui: Callable
+    admin_stats: Callable
+    admin_logs: Callable
+    admin_user_entitlement: Callable
+    admin_grant_pro_access: Callable
+    admin_revoke_pro_access: Callable
+    admin_run_tests: Callable
+    admin_last_test_run: Callable
+    admin_test_catalog: Callable
+    admin_tests_ui: Callable
+    admin_graph_density: Callable
+    admin_graph_playback: Callable
+    admin_pipeline_runs: Callable
+    admin_judge_stats: Callable
+    admin_translate_history: Callable
+    admin_user_activity: Callable
+    admin_user_usage: Callable
+    admin_user_cost_summary: Callable
+    admin_host_metrics: Callable
+    admin_users_search: Callable
+    admin_observability: Callable
+    admin_stats_trends: Callable
+    admin_log_retention_run: Callable
+    admin_audit: Callable
+    admin_user_detail_ui: Callable
+    admin_orphans_scan: Callable
+
+
 def _clamp_limit(limit: int, cap: int) -> int:
     return max(1, min(limit, cap))
 
@@ -50,11 +81,10 @@ def create_admin_handlers(
     card_store_factory: Callable,
     build_entitlements_response_fn: Callable,
     current_admin_grant_record_fn: Callable,
-) -> dict[str, Callable]:
+) -> AdminHandlers:
     """Create all admin endpoint handler functions with dependencies wired in.
 
-    Returns a dict whose keys match the ``admin_*`` parameter names
-    expected by :func:`route_registration.register_routes`.
+    Returns a typed bundle consumed by admin router composition.
     """
 
     def admin_ui():
@@ -336,4 +366,31 @@ def create_admin_handlers(
             scan, data_dir=runtime_settings_fn().data_dir
         )
 
-    return {name: fn for name, fn in locals().items() if name.startswith("admin_")}
+    return AdminHandlers(
+        admin_ui=admin_ui,
+        admin_stats=admin_stats,
+        admin_logs=admin_logs,
+        admin_user_entitlement=admin_user_entitlement,
+        admin_grant_pro_access=admin_grant_pro_access,
+        admin_revoke_pro_access=admin_revoke_pro_access,
+        admin_run_tests=admin_run_tests,
+        admin_last_test_run=admin_last_test_run,
+        admin_test_catalog=admin_test_catalog,
+        admin_tests_ui=admin_tests_ui,
+        admin_graph_density=admin_graph_density,
+        admin_graph_playback=admin_graph_playback,
+        admin_pipeline_runs=admin_pipeline_runs,
+        admin_judge_stats=admin_judge_stats,
+        admin_translate_history=admin_translate_history,
+        admin_user_activity=admin_user_activity,
+        admin_user_usage=admin_user_usage,
+        admin_user_cost_summary=admin_user_cost_summary,
+        admin_host_metrics=admin_host_metrics,
+        admin_users_search=admin_users_search,
+        admin_observability=admin_observability,
+        admin_stats_trends=admin_stats_trends,
+        admin_log_retention_run=admin_log_retention_run,
+        admin_audit=admin_audit,
+        admin_user_detail_ui=admin_user_detail_ui,
+        admin_orphans_scan=admin_orphans_scan,
+    )
