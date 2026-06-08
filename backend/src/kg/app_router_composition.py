@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI
 
-from .admin_wiring import create_admin_handlers
+from .admin_wiring import AdminHandlerDependencies, create_admin_handlers_from_dependencies
 from .routers import (
     auth_router,
     billing_router,
@@ -57,15 +57,17 @@ def build_app_routers(
     build_entitlements_response_fn: Callable[[dict[str, Any] | None], Any],
     current_admin_grant_record_fn: Callable[[dict[str, Any] | None], dict[str, Any]],
 ) -> AppRouters:
-    admin_handlers = create_admin_handlers(
-        runtime_settings_fn=runtime_settings_fn,
-        runtime_users_lock_file_fn=runtime_users_lock_file_fn,
-        load_users_fn=load_users_fn,
-        save_users_fn=save_users_fn,
-        mem_log_getter=mem_log_getter,
-        card_store_factory=card_store_factory,
-        build_entitlements_response_fn=build_entitlements_response_fn,
-        current_admin_grant_record_fn=current_admin_grant_record_fn,
+    admin_handlers = create_admin_handlers_from_dependencies(
+        dependencies=AdminHandlerDependencies(
+            runtime_settings_fn=runtime_settings_fn,
+            runtime_users_lock_file_fn=runtime_users_lock_file_fn,
+            load_users_fn=load_users_fn,
+            save_users_fn=save_users_fn,
+            mem_log_getter=mem_log_getter,
+            card_store_factory=card_store_factory,
+            build_entitlements_response_fn=build_entitlements_response_fn,
+            current_admin_grant_record_fn=current_admin_grant_record_fn,
+        )
     )
     admin_routers = build_admin_routers_from_handlers(
         handlers=build_admin_route_handlers(admin_handlers),
