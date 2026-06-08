@@ -315,3 +315,13 @@ grep -q '"excluded_impacts"' "$tmpdir/explain.json"
 grep -q '"id": "contract.host_topology"' "$tmpdir/explain.json"
 grep -q '"excluded_by": \[' "$tmpdir/explain.json"
 grep -q '"!ops/docs_lint.sh"' "$tmpdir/explain.json"
+
+./ops/docs_impact.py --files ops/docs_lint.sh ops/devops_kg_safe.sh --explain >"$tmpdir/explain_partial.out"
+grep -q '^IMPACT policy.safety ' "$tmpdir/explain_partial.out"
+grep -q 'excluded_changed=ops/docs_lint.sh' "$tmpdir/explain_partial.out"
+grep -q 'excluded_by=!ops/docs_lint.sh' "$tmpdir/explain_partial.out"
+
+./ops/docs_impact.py --files ops/docs_lint.sh ops/devops_kg_safe.sh --json --explain >"$tmpdir/explain_partial.json"
+grep -q '"id": "policy.safety"' "$tmpdir/explain_partial.json"
+grep -q '"excluded_paths": \[' "$tmpdir/explain_partial.json"
+grep -q '"ops/docs_lint.sh"' "$tmpdir/explain_partial.json"
