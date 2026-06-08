@@ -18,6 +18,7 @@ def load_module(name: str, path: Path):
     return module
 
 
+load_module("catalog_review_taxonomy", ROOT / "ops" / "catalog_review_taxonomy.py")
 manifest_module = load_module("catalog_review_manifest", ROOT / "ops" / "catalog_review_manifest.py")
 profile_module = load_module("catalog_review_profile", ROOT / "ops" / "catalog_review_profile.py")
 state_module = load_module("catalog_review_state", ROOT / "ops" / "catalog_review_state.py")
@@ -25,9 +26,12 @@ build_asset_id = manifest_module.build_asset_id
 REVIEW_CLI = ROOT / "ops" / "catalog_review_cli.py"
 
 
-def test_collect_items_assigns_stable_asset_ids():
+def test_collect_items_assigns_stable_asset_ids(tmp_path: Path):
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
-    source_root = ROOT / "build" / "snapshots" / "catalog-full-20260608-020244"
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
 
     items = manifest_module.collect_items(source_root, profile)
     assert items
@@ -37,6 +41,38 @@ def test_collect_items_assigns_stable_asset_ids():
     assert sample["clusterID"]
     assert "--" in sample["assetID"]
     assert " " not in sample["assetID"]
+    assert sample["feature"] == "Settings"
+    assert sample["surface"] == "Settings View"
+    assert sample["assetKind"] == "screen"
+    assert sample["surfaceRole"] == "feature-surface"
+
+
+def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    reader_dir = source_root / "iPhone 15 Pro portrait" / "Reader_·_Translation"
+    reader_dir.mkdir(parents=True)
+    (reader_dir / "Hero.png").write_bytes(b"png")
+    settings_dir = source_root / "iPhone 15 Pro portrait" / "Settings_·_ParamRow"
+    settings_dir.mkdir(parents=True)
+    (settings_dir / "Subscribed.png").write_bytes(b"png")
+
+    items = manifest_module.collect_items(source_root, profile)
+    by_category = {item["category"]: item for item in items}
+
+    reader = by_category["Reader · Translation"]
+    assert reader["feature"] == "Reader"
+    assert reader["surface"] == "Reader"
+    assert reader["surfaceVariant"] == "Translation"
+    assert reader["stateLabel"] == "Hero"
+    assert reader["assetKind"] == "screen"
+
+    settings = by_category["Settings · ParamRow"]
+    assert settings["feature"] == "Settings"
+    assert settings["surface"] == "Settings"
+    assert settings["surfaceVariant"] == "ParamRow"
+    assert settings["stateLabel"] == "Subscribed"
+    assert settings["assetKind"] == "component"
 
 
 def test_review_state_preserves_existing_annotations():
@@ -116,12 +152,18 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
     manifest = json.loads((tmp_path / "out" / "review_manifest.json").read_text(encoding="utf-8"))
     expected_asset_id = build_asset_id(Path("iPhone 15 Pro portrait/Settings_View/Signed_out.png"))
     assert manifest["stateFile"] == "review_state.json"
+    assert manifest["featureCounts"]["Settings"] == 1
+    assert manifest["surfaceCounts"]["Settings View"] == 1
     assert manifest["items"][0]["assetID"] == expected_asset_id
     assert manifest["items"][0]["reviewStatus"] == "review"
     assert manifest["items"][0]["reviewNote"] == "check copy"
 
     review_state = json.loads((tmp_path / "out" / "review_state.json").read_text(encoding="utf-8"))
     assert review_state["entries"][expected_asset_id]["status"] == "review"
+    review_html = (tmp_path / "out" / "review.html").read_text(encoding="utf-8")
+    assert "KG UI Asset Gallery" in review_html
+    assert "Feature" in review_html
+    assert "Eligibility" in review_html
 
 
 def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
