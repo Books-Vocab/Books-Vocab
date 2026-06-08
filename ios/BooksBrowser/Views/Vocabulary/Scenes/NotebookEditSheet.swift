@@ -68,7 +68,7 @@ struct NotebookEditSheet: View {
                         color: NotebookPalette.color(for: selectedColor),
                         pattern: selectedPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
                         coverImagePath: coverImagePath,
-                        name: name.isEmpty ? "預覽".localized : name
+                        name: name.isEmpty ? NotebookEditCopy.previewTitle : name
                     )
                     .frame(height: 100)
                     .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
@@ -76,10 +76,10 @@ struct NotebookEditSheet: View {
                 }
 
                 Section {
-                    TextField("單字本名稱".localized, text: $name)
+                    TextField(NotebookEditCopy.namePlaceholder, text: $name)
                 }
 
-                Section("顏色".localized) {
+                Section(NotebookEditCopy.colorSectionTitle) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 36))], spacing: AppSpacing.chipPaddingHorizontal) {
                         ForEach(NotebookPalette.colors, id: \.hex) { item in
                             Circle()
@@ -99,10 +99,10 @@ struct NotebookEditSheet: View {
                     .padding(.vertical, AppSpacing.s1)
                 }
 
-                Section("圖案".localized) {
+                Section(NotebookEditCopy.patternSectionTitle) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: AppSpacing.s2) {
-                            patternOption(nil, label: "無".localized)
+                            patternOption(nil, label: NotebookEditCopy.noPatternTitle)
                             ForEach(NotebookCoverPattern.allCases) { pattern in
                                 patternOption(pattern.rawValue, label: pattern.label)
                             }
@@ -111,10 +111,10 @@ struct NotebookEditSheet: View {
                     }
                 }
 
-                Section("自訂圖片".localized) {
+                Section(NotebookEditCopy.customImageSectionTitle) {
                     HStack {
                         PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Label(coverImagePath == nil ? "選擇圖片".localized : "更換圖片".localized, systemImage: "photo")
+                            Label(NotebookEditCopy.imagePickerTitle(hasImage: coverImagePath != nil), systemImage: "photo")
                         }
 
                         if coverImagePath != nil {
@@ -122,14 +122,14 @@ struct NotebookEditSheet: View {
                             Button(role: .destructive) {
                                 removeCoverImage()
                             } label: {
-                                Label("移除".localized, systemImage: "trash")
+                                Label(NotebookEditCopy.removeImageTitle, systemImage: "trash")
                             }
                         }
                     }
                     .disabled(isProcessingPhoto)
 
                     if isProcessingPhoto {
-                        ProgressView("處理中...".localized)
+                        ProgressView(NotebookEditCopy.processingImageTitle)
                     }
 
                     if let photoError {
@@ -139,11 +139,11 @@ struct NotebookEditSheet: View {
                     }
                 }
             }
-            .navigationTitle(isCreating ? "新增單字本".localized : "編輯單字本".localized)
+            .navigationTitle(NotebookEditCopy.navigationTitle(isCreating: isCreating))
             .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消".localized) {
+                    Button(NotebookEditCopy.cancelTitle) {
                         // 捨棄未保存的新檔（使用者選了圖但按取消）
                         if let staged = coverImagePath, staged != originalCoverImagePath {
                             try? FileManager.default.removeItem(atPath: staged)
@@ -152,7 +152,7 @@ struct NotebookEditSheet: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isCreating ? "建立".localized : "儲存".localized) {
+                    Button(NotebookEditCopy.saveTitle(isCreating: isCreating)) {
                         // 舊原檔的刪除延到 updateNotebook API 成功後才做（見
                         // NotebookCoverCommit），失敗則原檔保留 + coverImagePath 不變，
                         // 避免「新封面 + server 舊欄位」drift（track-23）。
@@ -215,12 +215,12 @@ struct NotebookEditSheet: View {
         defer { isProcessingPhoto = false }
 
         guard let data = try? await item.loadTransferable(type: Data.self) else {
-            photoError = "無法載入圖片".localized
+            photoError = NotebookEditCopy.photoErrorMessage(.loadFailed)
             return
         }
 
         guard let uiImage = UIImage(data: data) else {
-            photoError = "圖片格式不支援".localized
+            photoError = NotebookEditCopy.photoErrorMessage(.unsupportedFormat)
             return
         }
         let maxDim: CGFloat = 600
@@ -229,12 +229,12 @@ struct NotebookEditSheet: View {
         let renderer = UIGraphicsImageRenderer(size: newSize)
         let resizedImage = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: newSize)) }
         guard let jpegData = resizedImage.jpegData(compressionQuality: 0.7) else {
-            photoError = "圖片處理失敗".localized
+            photoError = NotebookEditCopy.photoErrorMessage(.processingFailed)
             return
         }
 
         guard jpegData.count <= 500_000 else {
-            photoError = "圖片太大，請選擇較小的圖片".localized
+            photoError = NotebookEditCopy.photoErrorMessage(.fileTooLarge)
             return
         }
 
@@ -246,7 +246,7 @@ struct NotebookEditSheet: View {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try jpegData.write(to: fileURL)
         } catch {
-            photoError = "儲存圖片失敗".localized
+            photoError = NotebookEditCopy.photoErrorMessage(.saveFailed)
             return
         }
         // 清掉本次編輯中已 staged 的舊新檔（非 original），避免 orphan
