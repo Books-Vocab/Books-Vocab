@@ -122,16 +122,8 @@ struct CatalogScene: View {
                     overlay("Reader · Translation", .reader),
                     overlay("Reader · TOC", .reader),
                     overlay("Reader · Settings", .reader),
-                    block("Reader · Quota", .reader),
-                    block("Reader · Selection Tile", .reader),
-                    block("Reader · Step Control", .reader),
                 ],
                 register: ReaderScenarios.register
-            ),
-            .init(
-                id: "notebook_detail",
-                surfaces: [block("Notebook Detail · Row", .notebook), block("Notebook Detail · CTA Pill", .notebook)],
-                register: NotebookDetailScenarios.register
             ),
             .init(
                 id: "notebooks",
@@ -160,7 +152,7 @@ struct CatalogScene: View {
             ),
             .init(
                 id: "podcast_player",
-                surfaces: [block("Podcast · Subtitle", .podcast), eng("Podcast · Episode Row", .podcast)],
+                surfaces: [eng("Podcast · Episode Row", .podcast)],
                 register: PodcastPlayerScenarios.register
             ),
             .init(id: "notebook_edit", surfaces: [block("Notebook Edit", .notebook)], register: NotebookEditSheetScenarios.register),
@@ -180,7 +172,7 @@ struct CatalogScene: View {
             .init(id: "forecast", surfaces: [block("Vocab Forecast", .review)], register: VocabForecastScenarios.register),
             .init(
                 id: "notebook_filter_chip",
-                surfaces: [eng("Notebook Filter Chip · Chip", .notebook), overlay("Notebook Filter Chip · Picker", .notebook)],
+                surfaces: [overlay("Notebook Filter Chip · Picker", .notebook)],
                 register: NotebookFilterChipScenarios.register
             ),
             .init(id: "notebook_review_action_bar", surfaces: [eng("Notebook Review Action Bar", .notebook)], register: NotebookReviewActionBarScenarios.register),
@@ -197,24 +189,15 @@ struct CatalogScene: View {
                 id: "vocab_components",
                 surfaces: [
                     block("Vocab Components · Tone Chip", .vocabulary),
-                    block("Vocab Components · Tier Label", .vocabulary),
                     block("Vocab Components · Empty State", .vocabulary),
                     block("Vocab Components · Review Progress Bar", .vocabulary),
-                    block("Vocab Components · Review Gradient Bar", .vocabulary),
                 ],
                 register: VocabComponentScenarios.register
             ),
             .init(
                 id: "vocab_shell_components",
                 surfaces: [
-                    block("Vocab Shell · Chrome Icon Button", .vocabulary),
-                    block("Vocab Shell · Search Field", .vocabulary),
-                    block("Vocab Shell · Toolbar Glyph", .vocabulary),
-                    block("Vocab Shell · Accessory Icon Button", .vocabulary),
-                    block("Vocab Shell · Inline Action Button", .vocabulary),
                     block("Vocab Shell · Metric Hero Card", .vocabulary),
-                    block("Vocab Shell · Section Header", .vocabulary),
-                    block("Vocab Shell · Slider Row", .vocabulary),
                     block("Vocab Shell · Sort Pill", .vocabulary),
                 ],
                 register: VocabShellComponentsScenarios.register
@@ -227,8 +210,6 @@ struct CatalogScene: View {
             .init(
                 id: "settings_actions",
                 surfaces: [
-                    eng("Settings Actions · Buttons", .settings),
-                    eng("Settings Actions · Subscription", .settings),
                     eng("Settings Actions · Plan Table", .settings),
                 ],
                 register: SettingsActionsScenarios.register
@@ -246,7 +227,6 @@ struct CatalogScene: View {
                 surfaces: [
                     eng("Account Section · Section", .settings),
                     eng("Account Section · Auth Summary", .settings),
-                    eng("Account Section · Pro Badge", .settings),
                 ],
                 register: SettingsAccountSectionScenarios.register
             ),

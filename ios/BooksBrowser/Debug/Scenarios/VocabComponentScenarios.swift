@@ -30,32 +30,6 @@ enum VocabComponentScenarios {
             }
         }
 
-        // MARK: - Tier Label
-        playbook.addScenarios(of: "Vocab Components · Tier Label") {
-            Scenario("Plain", layout: .fill) {
-                AppThemeContainer {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(["A", "B", "C", "D"], id: \.self) { tier in
-                            VocabTierLabel(tier: tier)
-                        }
-                    }
-                    .padding(24)
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
-            Scenario("Prominent", layout: .fill) {
-                AppThemeContainer {
-                    HStack(spacing: 12) {
-                        ForEach(["A", "B", "C", "D"], id: \.self) { tier in
-                            VocabTierLabel(tier: tier, prominent: true)
-                        }
-                    }
-                    .padding(24)
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
-        }
-
         // MARK: - Empty State (Content + Card)
         playbook.addScenarios(of: "Vocab Components · Empty State") {
             Scenario("Content — basic", layout: .fill) {
@@ -147,19 +121,6 @@ enum VocabComponentScenarios {
                     VocabReviewProgressBar(progress: VocabReviewProgress(
                         statusLabel: "超額", detailLabel: "15 / 12", ratio: 1.5))
                     .padding(24)
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
-        }
-
-        // MARK: - Review Gradient Bar
-        playbook.addScenarios(of: "Vocab Components · Review Gradient Bar") {
-            Scenario("Full spectrum", layout: .fill) {
-                AppThemeContainer {
-                    ReviewGradientBar()
-                        .frame(height: 12)
-                        .clipShape(Capsule(style: .continuous))
-                        .padding(24)
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
