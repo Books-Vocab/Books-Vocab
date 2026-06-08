@@ -38,8 +38,7 @@ extension VocabularyListView {
                 },
                 onStartReview: { entries in
                     coordinator.startKnowledgeReview(entries: entries)
-                },
-                skipInitialLoadTask: skipCatalogTasks
+                }
             )
         }
     }

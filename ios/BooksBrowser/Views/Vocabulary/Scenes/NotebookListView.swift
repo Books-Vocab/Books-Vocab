@@ -19,22 +19,9 @@ struct NotebookListView: View {
     @ObserveInjection private var inject
     @Environment(\.authManager) private var authManager
     @State private var detailState = DetailRouter()
-    private let skipCatalogTasks: Bool
-
-    init() {
-        self.skipCatalogTasks = false
-    }
-
-#if DEBUG
-    /// Catalog-only seam: forwarded to `NotebookListContent` so its cold-start
-    /// reconcile `.task` is skipped for deterministic seeded rendering.
-    init(skipCatalogTasks: Bool) {
-        self.skipCatalogTasks = skipCatalogTasks
-    }
-#endif
 
     var body: some View {
-        NotebookListContent(detailState: detailState, skipCatalogTasks: skipCatalogTasks)
+        NotebookListContent(detailState: detailState)
             .environment(\.detailRouter, detailState)
             .modifier(NotebookDetailPresentation(
                 detailState: detailState,
@@ -60,14 +47,13 @@ struct NotebookListContent: View {
     @Environment(\.appSkin) private var skin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
+    @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
     @State private var coordinator = NotebookListCoordinator()
     @State private var showLoginSheet = false
     let detailState: DetailRouter
-    private let skipCatalogTasks: Bool
 
-    init(detailState: DetailRouter, skipCatalogTasks: Bool = false) {
+    init(detailState: DetailRouter) {
         self.detailState = detailState
-        self.skipCatalogTasks = skipCatalogTasks
         _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
         _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
     }
@@ -312,7 +298,7 @@ struct NotebookListContent: View {
                 PlatformShareView(url: url)
             }
             .task(id: authManager.isLoggedIn) {
-                guard !skipCatalogTasks else { return }
+                guard catalogTaskPolicy.runsTasks else { return }
                 await coordinator.reconcileNotebooks(
                     authManager: authManager,
                     currentNotebooks: notebooks,

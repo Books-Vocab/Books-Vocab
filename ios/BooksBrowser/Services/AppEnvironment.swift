@@ -82,6 +82,17 @@ private struct SpeechServiceKey: EnvironmentKey {
     static let defaultValue: any Speaking = SpeechService.shared
 }
 
+enum CatalogTaskPolicy: Equatable {
+    case live
+    case disabled
+
+    var runsTasks: Bool { self == .live }
+}
+
+private struct CatalogTaskPolicyKey: EnvironmentKey {
+    static let defaultValue: CatalogTaskPolicy = .live
+}
+
 #if os(iOS)
 private struct ReaderSettingsKey: EnvironmentKey {
     static let defaultValue: ReaderSettings = .shared
@@ -129,6 +140,10 @@ extension EnvironmentValues {
     var speechService: any Speaking {
         get { self[SpeechServiceKey.self] }
         set { self[SpeechServiceKey.self] = newValue }
+    }
+    var catalogTaskPolicy: CatalogTaskPolicy {
+        get { self[CatalogTaskPolicyKey.self] }
+        set { self[CatalogTaskPolicyKey.self] = newValue }
     }
     #if os(iOS)
     var readerSettings: ReaderSettings {
