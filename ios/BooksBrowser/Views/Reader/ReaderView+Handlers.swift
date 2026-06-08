@@ -119,7 +119,7 @@ extension ReaderView {
     }
 
     func canUseProReaderFeature() -> Bool {
-        return true
+        ReaderEntitlement.canUseProReaderFeature()
     }
 }
 #endif
