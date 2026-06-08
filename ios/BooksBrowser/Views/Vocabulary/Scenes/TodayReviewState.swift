@@ -377,24 +377,26 @@ final class TodayReviewState {
         ))
 
         let flushedIndex = currentIndex
-        ReviewSessionPersistence.flushSubmittedAnswer(
-            at: flushedIndex,
-            queuePersistenceIDs: queuePersistenceIDs,
-            queueBaselines: queueBaselines,
-            submittedAnswers: scoring.submittedAnswers,
-            container: container,
-            reviewSettings: reviewSettings,
-            onSaveFailure: onSaveFailure,
-            onSaveSuccess: { [weak self] in
-                // DB flush confirmed — mark the answer flushed and rewrite the
-                // snapshot so a later restore won't re-flush it.
-                self?.markAnswerFlushed(at: flushedIndex)
-            }
-        )
-        persistSnapshot()
+        PerfLog.review.measure("submit.flush") {
+            ReviewSessionPersistence.flushSubmittedAnswer(
+                at: flushedIndex,
+                queuePersistenceIDs: queuePersistenceIDs,
+                queueBaselines: queueBaselines,
+                submittedAnswers: scoring.submittedAnswers,
+                container: container,
+                reviewSettings: reviewSettings,
+                onSaveFailure: onSaveFailure,
+                onSaveSuccess: { [weak self] in
+                    // DB flush confirmed — mark the answer flushed and rewrite the
+                    // snapshot so a later restore won't re-flush it.
+                    self?.markAnswerFlushed(at: flushedIndex)
+                }
+            )
+        }
+        PerfLog.review.measure("submit.snapshot") { persistSnapshot() }
         revealStage = .front
         currentIndex += 1
-        prewarmCardWindow()
+        PerfLog.review.measure("submit.prewarm") { prewarmCardWindow() }
 
         finishSessionIfComplete()
     }
@@ -500,8 +502,11 @@ final class TodayReviewState {
     ) -> [UUID: TodayReviewPresenterState.CurrentCard] {
         var cache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
         cache.reserveCapacity(entries.count)
+        PerfLog.review.mark("prewarm.build", "count=\(entries.count)")
         for entry in entries {
-            let card = CardPresentation(entry: entry)
+            let (card, _) = PerfLog.review.measure("prewarm.card", "w=\(entry.word)") {
+                CardPresentation(entry: entry)
+            }
             let compactGroups = card.activeLinkGroups.map { fullGroup in
                 let shuffled = fullGroup.shuffled()
                 let limited = shuffled.limited(to: 2)
