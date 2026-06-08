@@ -7,8 +7,8 @@ import SwiftUI
 ///
 /// `PodcastHomeView` is `@Query`-backed (`PodcastSeries` filtered by
 /// `!isSoftDeleted`, plus `PodcastProgress`) and normally runs a network
-/// auto-sync `.task`. The DEBUG seam `init(skipAutoSyncForCatalog:)` skips that
-/// task so the view renders purely off the seeded in-memory store.
+/// auto-sync `.task`. `CatalogTaskPolicy.disabled` skips that task so the view
+/// renders purely off the seeded in-memory store.
 ///
 /// `PodcastHomePhase.resolve` is `seriesCount`-first: any seeded series ⇒
 /// `.content` (grid + 「繼續收聽」 shelf when un-completed progress exists); an
@@ -66,8 +66,9 @@ private struct PodcastHomeScene: View {
 
     var body: some View {
         AppThemeContainer {
-            PodcastHomeView(skipAutoSyncForCatalog: true)
+            PodcastHomeView()
                 .modelContainer(container)
+                .environment(\.catalogTaskPolicy, .disabled)
         }
         .environmentObject(AppAppearanceStore.preview)
     }

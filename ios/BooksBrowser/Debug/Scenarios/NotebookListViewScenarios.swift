@@ -14,10 +14,10 @@ import SwiftData
 ///
 /// `NotebookListView` is `@Query`-backed over `Notebook` + `VocabularyEntry` and
 /// its `.task(id: authManager.isLoggedIn)` runs a cold-start reconcile (sync /
-/// network). We render it via the DEBUG `init(skipCatalogTasks:)` seam so the
-/// seeded notebook list shows deterministically, inject a logged-in
-/// `CatalogPreviewAuth` (the list chrome + create affordance are auth-gated), and
-/// seed a fresh in-memory store inside a `@MainActor` View body.
+/// network). We disable catalog tasks through `CatalogTaskPolicy` so the seeded
+/// notebook list shows deterministically, inject a logged-in `CatalogPreviewAuth`
+/// (the list chrome + create affordance are auth-gated), and seed a fresh
+/// in-memory store inside a `@MainActor` View body.
 ///
 /// The zero-notebooks empty state is intentionally not catalogued here: it is
 /// gated on `coordinator.hasLoadedOnce`, which only flips after the reconcile
@@ -61,9 +61,10 @@ private struct NotebookListViewScene: View {
 
     var body: some View {
         AppThemeContainer {
-            NotebookListView(skipCatalogTasks: true)
+            NotebookListView()
                 .modelContainer(container)
                 .environment(\.authManager, auth)
+                .environment(\.catalogTaskPolicy, .disabled)
         }
         .environmentObject(AppAppearanceStore.preview)
     }
