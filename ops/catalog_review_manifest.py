@@ -5,6 +5,8 @@ import hashlib
 from pathlib import Path
 import re
 
+from catalog_review_taxonomy import build_manifest_indexes, build_taxonomy
+
 
 def normalize_label(text: str) -> str:
     return text.replace("_", " ").strip()
@@ -68,6 +70,7 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
         device = device_dir.replace(" (dark)", "")
         promise = classify_promise(category, profile)
         eligibility = classify_eligibility(category, promise, profile)
+        taxonomy = build_taxonomy(category, title, profile)
         cluster_id = f"{slugify(category)}--{slugify(title)}"
         asset_id = build_asset_id(rel)
         items.append({
@@ -83,6 +86,7 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
             "eligibility": eligibility,
             "newSincePr878": is_new_since_release(category, profile, release_marker),
             "heroCandidate": is_hero_candidate(category, profile),
+            **taxonomy,
         })
     return items
 
@@ -91,6 +95,7 @@ def build_manifest(items: list[dict], profile: dict, *, state_file: str | None =
     counts = Counter(item["promise"] for item in items)
     category_counts = Counter(item["category"] for item in items)
     eligibility_counts = Counter(item["eligibility"] for item in items)
+    indexes = build_manifest_indexes(items)
     state_entries = review_state.get("entries", {}) if review_state else {}
     items_with_state = []
     for item in items:
@@ -110,6 +115,7 @@ def build_manifest(items: list[dict], profile: dict, *, state_file: str | None =
         "promiseCounts": dict(counts),
         "categoryCounts": dict(category_counts),
         "eligibilityCounts": dict(eligibility_counts),
+        **indexes,
         "newSincePr878Count": sum(1 for item in items if item["newSincePr878"]),
         "heroCandidateCount": sum(1 for item in items if item["heroCandidate"]),
         "stateCounts": dict(Counter(item["reviewStatus"] for item in items_with_state if item["reviewStatus"])),

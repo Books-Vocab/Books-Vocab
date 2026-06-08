@@ -10,19 +10,22 @@ def render_html(manifest: dict) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KG Catalog Review Desk</title>
+  <title>KG UI Asset Gallery</title>
   <style>
     :root {{
       --bg: #f3efe7;
-      --panel: #fffaf2;
+      --panel: rgba(255, 251, 245, 0.86);
       --line: #d8cfc0;
+      --line-strong: #c8baa5;
       --ink: #1e1c19;
       --muted: #6d655d;
-      --accent: #b54d2e;
-      --accent-soft: #f7d8cc;
+      --accent: #9a4b1f;
+      --accent-soft: #f5dfcf;
+      --accent-wash: #fff4eb;
       --good: #1f6b3a;
       --bad: #8f2d2d;
       --warn: #8a5a0a;
+      --shadow: 0 18px 40px rgba(31, 22, 13, 0.08);
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -35,7 +38,7 @@ def render_html(manifest: dict) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: 300px 1fr;
+      grid-template-columns: 320px 1fr;
       min-height: 100vh;
     }}
     .sidebar {{
@@ -46,24 +49,24 @@ def render_html(manifest: dict) -> str:
       overflow: auto;
       padding: 24px 20px;
       border-right: 1px solid var(--line);
-      background: rgba(255, 250, 242, 0.9);
-      backdrop-filter: blur(8px);
+      background: rgba(255, 249, 241, 0.92);
+      backdrop-filter: blur(10px);
     }}
     .sidebar h1 {{
       margin: 0 0 8px;
-      font-size: 28px;
-      line-height: 1;
+      font-size: 30px;
+      line-height: 0.95;
     }}
     .sidebar p {{
       margin: 0 0 18px;
       color: var(--muted);
       font-size: 14px;
-      line-height: 1.5;
+      line-height: 1.55;
     }}
     .side-block {{
-      margin-bottom: 18px;
+      margin-bottom: 20px;
       padding-bottom: 18px;
-      border-bottom: 1px solid rgba(216, 207, 192, 0.8);
+      border-bottom: 1px solid rgba(216, 207, 192, 0.85);
     }}
     .stats {{
       display: grid;
@@ -73,14 +76,17 @@ def render_html(manifest: dict) -> str:
     .stat {{
       padding: 10px 12px;
       border: 1px solid var(--line);
-      background: var(--panel);
-      border-radius: 14px;
+      background: white;
+      border-radius: 16px;
     }}
-    .stat strong {{ display: block; font-size: 22px; }}
-    .stat span {{ color: var(--muted); font-size: 12px; }}
-    .filters {{
-      display: grid;
-      gap: 12px;
+    .stat strong {{
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }}
+    .stat span {{
+      color: var(--muted);
+      font-size: 12px;
     }}
     label {{
       display: block;
@@ -89,6 +95,10 @@ def render_html(manifest: dict) -> str:
       letter-spacing: 0.04em;
       text-transform: uppercase;
       color: var(--muted);
+    }}
+    .filters {{
+      display: grid;
+      gap: 12px;
     }}
     input, select {{
       width: 100%;
@@ -99,7 +109,21 @@ def render_html(manifest: dict) -> str:
       color: var(--ink);
       font: inherit;
     }}
-    .promise-buttons, .status-buttons {{
+    button {{
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font: inherit;
+    }}
+    button.active {{
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }}
+    .button-row {{
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
@@ -126,42 +150,28 @@ def render_html(manifest: dict) -> str:
       color: var(--muted);
       font-size: 12px;
     }}
-    button {{
-      cursor: pointer;
-      border: 1px solid var(--line);
-      background: white;
-      color: var(--ink);
-      border-radius: 999px;
-      padding: 8px 12px;
-      font: inherit;
-    }}
-    button.active {{
-      border-color: var(--accent);
-      background: var(--accent-soft);
-      color: var(--accent);
-    }}
     .main {{
       padding: 28px;
     }}
-    .lead {{
+    .hero {{
       display: grid;
-      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+      grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
       gap: 18px;
-      margin-bottom: 28px;
+      margin-bottom: 26px;
     }}
-    .lead-card {{
+    .hero-card {{
       border: 1px solid var(--line);
-      border-radius: 22px;
-      padding: 20px;
-      background: rgba(255,255,255,0.78);
-      box-shadow: 0 10px 25px rgba(31, 22, 13, 0.05);
+      border-radius: 24px;
+      padding: 22px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
     }}
-    .lead-card h2 {{
+    .hero-card h2 {{
       margin: 0 0 10px;
-      font-size: 28px;
-      line-height: 1.05;
+      font-size: 30px;
+      line-height: 1;
     }}
-    .lead-card p {{
+    .hero-card p {{
       margin: 0;
       color: var(--muted);
       font-size: 15px;
@@ -172,56 +182,76 @@ def render_html(manifest: dict) -> str:
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }}
+    .summary-card {{
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      background: white;
+    }}
+    .summary-card strong {{
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }}
+    .summary-card span {{
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }}
     .section {{
-      margin-bottom: 38px;
+      margin-bottom: 34px;
     }}
     .section-header {{
       display: flex;
       justify-content: space-between;
-      gap: 16px;
       align-items: baseline;
-      margin-bottom: 12px;
-      border-bottom: 1px solid var(--line);
-      padding-bottom: 8px;
+      gap: 16px;
+      border-bottom: 1px solid var(--line-strong);
+      padding-bottom: 10px;
+      margin-bottom: 14px;
     }}
     .section-header h2 {{
       margin: 0;
-      font-size: 24px;
+      font-size: 26px;
+      line-height: 1.05;
     }}
     .section-header span {{
       color: var(--muted);
       font-size: 13px;
     }}
-    .cluster-list {{
+    .surface-stack {{
       display: grid;
-      gap: 18px;
+      gap: 16px;
     }}
-    .cluster {{
+    .surface {{
       border: 1px solid var(--line);
       border-radius: 22px;
       padding: 16px;
-      background: rgba(255,255,255,0.68);
+      background: rgba(255, 255, 255, 0.75);
+      box-shadow: 0 12px 28px rgba(31, 22, 13, 0.05);
     }}
-    .cluster-header {{
+    .surface-header {{
       display: flex;
       align-items: baseline;
       justify-content: space-between;
       gap: 16px;
       margin-bottom: 12px;
     }}
-    .cluster-header h3 {{
+    .surface-header h3 {{
       margin: 0;
-      font-size: 18px;
-      line-height: 1.2;
+      font-size: 19px;
+      line-height: 1.15;
     }}
-    .cluster-header p {{
+    .surface-header p {{
       margin: 4px 0 0;
       color: var(--muted);
       font-size: 13px;
     }}
-    .cluster-meta {{
+    .surface-meta {{
       color: var(--muted);
       font-size: 12px;
+      text-align: right;
       white-space: nowrap;
     }}
     .variant-grid {{
@@ -233,8 +263,8 @@ def render_html(manifest: dict) -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       overflow: hidden;
-      background: rgba(255,255,255,0.82);
-      box-shadow: 0 10px 25px rgba(31, 22, 13, 0.05);
+      background: white;
+      box-shadow: 0 10px 24px rgba(31, 22, 13, 0.05);
     }}
     .card.focused {{
       outline: 3px solid var(--accent);
@@ -298,13 +328,13 @@ def render_html(manifest: dict) -> str:
       font-size: 12px;
     }}
     .empty {{
-      border: 1px dashed var(--line);
-      border-radius: 16px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 18px;
       padding: 18px;
       color: var(--muted);
-      background: rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.55);
     }}
-    @media (max-width: 980px) {{
+    @media (max-width: 1024px) {{
       .layout {{ grid-template-columns: 1fr; }}
       .sidebar {{
         position: static;
@@ -313,29 +343,54 @@ def render_html(manifest: dict) -> str:
         border-bottom: 1px solid var(--line);
       }}
       .main {{ padding: 18px; }}
-      .lead {{
-        grid-template-columns: 1fr;
-      }}
+      .hero {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h1>Catalog Review Desk</h1>
-      <p>這不是作品集。這是審稿台。先砍垃圾圖，再挑 promise 候選。</p>
+      <h1>KG UI Asset Gallery</h1>
+      <p>這不是 996 張平鋪圖牆。這是離線 UI 資產系統：先看 feature 與 surface，再看 state，最後才看單張截圖。</p>
       <div class="side-block">
         <div class="stats">
-          <div class="stat"><strong id="total-count">0</strong><span>總圖數</span></div>
+          <div class="stat"><strong id="total-count">0</strong><span>總資產</span></div>
           <div class="stat"><strong id="visible-count">0</strong><span>目前可見</span></div>
-          <div class="stat"><strong id="shortlist-count">0</strong><span>Shortlist</span></div>
-          <div class="stat"><strong id="reject-count">0</strong><span>Reject</span></div>
+          <div class="stat"><strong id="feature-count">0</strong><span>Feature</span></div>
+          <div class="stat"><strong id="surface-count">0</strong><span>Surface</span></div>
         </div>
       </div>
       <div class="filters side-block">
         <div>
           <label for="search">搜尋</label>
-          <input id="search" type="search" placeholder="scenario / category">
+          <input id="search" type="search" placeholder="feature / surface / state / asset id">
+        </div>
+        <div>
+          <label for="feature">Feature</label>
+          <select id="feature"><option value="">全部</option></select>
+        </div>
+        <div>
+          <label for="promise">Promise</label>
+          <select id="promise"><option value="">全部</option></select>
+        </div>
+        <div>
+          <label for="eligibility">Eligibility</label>
+          <select id="eligibility">
+            <option value="">全部</option>
+            <option value="marketing">Marketing</option>
+            <option value="review">Review</option>
+            <option value="engineering">Engineering</option>
+          </select>
+        </div>
+        <div>
+          <label for="kind">Kind</label>
+          <select id="kind">
+            <option value="">全部</option>
+            <option value="screen">Screen</option>
+            <option value="scene">Scene</option>
+            <option value="overlay">Overlay</option>
+            <option value="component">Component</option>
+          </select>
         </div>
         <div>
           <label for="device">裝置</label>
@@ -350,17 +405,17 @@ def render_html(manifest: dict) -> str:
           </select>
         </div>
         <div>
-          <label>Promise</label>
-          <div class="promise-buttons" id="promise-buttons"></div>
+          <label>視角</label>
+          <div class="button-row" id="mode-buttons"></div>
         </div>
         <div>
           <label>審稿狀態</label>
-          <div class="status-buttons" id="status-buttons"></div>
+          <div class="button-row" id="status-buttons"></div>
         </div>
       </div>
       <div class="side-block">
-        <label>Promise 導航</label>
-        <div class="nav-list" id="promise-nav"></div>
+        <label>導航</label>
+        <div class="nav-list" id="group-nav"></div>
       </div>
     </aside>
     <main class="main" id="app"></main>
@@ -370,76 +425,37 @@ def render_html(manifest: dict) -> str:
     const storageKey = "kg-catalog-review-states";
     const reviewStates = JSON.parse(localStorage.getItem(storageKey) || "{{}}");
     const promiseOrder = ["Read", "Connect", "Retain", "Continue", "Weak"];
+    const modeOptions = [
+      {{ id: "feature", label: "Feature" }},
+      {{ id: "surface", label: "Surface" }},
+      {{ id: "promise", label: "Promise" }}
+    ];
     const statusOptions = [
       {{ id: "", label: "全部" }},
       {{ id: "shortlist", label: "Shortlist" }},
       {{ id: "review", label: "Needs Review" }},
       {{ id: "reject", label: "Reject" }}
     ];
-
     const state = {{
       search: "",
+      feature: "",
+      promise: "",
+      eligibility: "",
+      kind: "",
       device: "",
       appearance: "",
-      promise: "",
-      status: ""
+      status: "",
+      mode: "feature"
     }};
 
     const app = document.getElementById("app");
     const totalCount = document.getElementById("total-count");
     const visibleCount = document.getElementById("visible-count");
-    const shortlistCount = document.getElementById("shortlist-count");
-    const rejectCount = document.getElementById("reject-count");
+    const featureCount = document.getElementById("feature-count");
+    const surfaceCount = document.getElementById("surface-count");
     totalCount.textContent = String(manifest.totalImages);
-
-    function mountFilterButtons() {{
-      const promiseButtons = document.getElementById("promise-buttons");
-      const promises = ["", ...promiseOrder.filter((p) => manifest.promiseCounts[p])];
-      for (const promise of promises) {{
-        const btn = document.createElement("button");
-        btn.textContent = promise || "全部";
-        btn.dataset.value = promise;
-        btn.onclick = () => {{
-          state.promise = promise;
-          render();
-        }};
-        promiseButtons.appendChild(btn);
-      }}
-
-      const statusButtons = document.getElementById("status-buttons");
-      for (const option of statusOptions) {{
-        const btn = document.createElement("button");
-        btn.textContent = option.label;
-        btn.dataset.value = option.id;
-        btn.onclick = () => {{
-          state.status = option.id;
-          render();
-        }};
-        statusButtons.appendChild(btn);
-      }}
-
-      const devices = [...new Set(manifest.items.map((item) => item.device))].sort();
-      const deviceSelect = document.getElementById("device");
-      for (const device of devices) {{
-        const option = document.createElement("option");
-        option.value = device;
-        option.textContent = device;
-        deviceSelect.appendChild(option);
-      }}
-
-      document.getElementById("search").addEventListener("input", (e) => {{
-        state.search = e.target.value.trim().toLowerCase();
-        render();
-      }});
-      deviceSelect.addEventListener("change", (e) => {{
-        state.device = e.target.value;
-        render();
-      }});
-      document.getElementById("appearance").addEventListener("change", (e) => {{
-        state.appearance = e.target.value;
-        render();
-      }});
-    }}
+    featureCount.textContent = String(Object.keys(manifest.featureCounts || {{}}).length);
+    surfaceCount.textContent = String(Object.keys(manifest.surfaceCounts || {{}}).length);
 
     function slug(text) {{
       return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -459,35 +475,125 @@ def render_html(manifest: dict) -> str:
       render();
     }}
 
+    function mountControls() {{
+      const featureSelect = document.getElementById("feature");
+      for (const feature of Object.keys(manifest.featureCounts || {{}}).sort()) {{
+        const option = document.createElement("option");
+        option.value = feature;
+        option.textContent = feature;
+        featureSelect.appendChild(option);
+      }}
+      featureSelect.addEventListener("change", (e) => {{
+        state.feature = e.target.value;
+        render();
+      }});
+
+      const promiseSelect = document.getElementById("promise");
+      for (const promise of promiseOrder.filter((name) => manifest.promiseCounts[name])) {{
+        const option = document.createElement("option");
+        option.value = promise;
+        option.textContent = promise;
+        promiseSelect.appendChild(option);
+      }}
+      promiseSelect.addEventListener("change", (e) => {{
+        state.promise = e.target.value;
+        render();
+      }});
+
+      const deviceSelect = document.getElementById("device");
+      for (const device of [...new Set(manifest.items.map((item) => item.device))].sort()) {{
+        const option = document.createElement("option");
+        option.value = device;
+        option.textContent = device;
+        deviceSelect.appendChild(option);
+      }}
+      deviceSelect.addEventListener("change", (e) => {{
+        state.device = e.target.value;
+        render();
+      }});
+
+      document.getElementById("eligibility").addEventListener("change", (e) => {{
+        state.eligibility = e.target.value;
+        render();
+      }});
+      document.getElementById("kind").addEventListener("change", (e) => {{
+        state.kind = e.target.value;
+        render();
+      }});
+      document.getElementById("appearance").addEventListener("change", (e) => {{
+        state.appearance = e.target.value;
+        render();
+      }});
+      document.getElementById("search").addEventListener("input", (e) => {{
+        state.search = e.target.value.trim().toLowerCase();
+        render();
+      }});
+
+      const modeButtons = document.getElementById("mode-buttons");
+      for (const mode of modeOptions) {{
+        const btn = document.createElement("button");
+        btn.textContent = mode.label;
+        btn.dataset.value = mode.id;
+        btn.onclick = () => {{
+          state.mode = mode.id;
+          render();
+        }};
+        modeButtons.appendChild(btn);
+      }}
+
+      const statusButtons = document.getElementById("status-buttons");
+      for (const option of statusOptions) {{
+        const btn = document.createElement("button");
+        btn.textContent = option.label;
+        btn.dataset.value = option.id;
+        btn.onclick = () => {{
+          state.status = option.id;
+          render();
+        }};
+        statusButtons.appendChild(btn);
+      }}
+    }}
+
     function matches(item) {{
       if (state.search) {{
-        const hay = `${{item.category}} ${{item.title}} ${{item.assetID}}`.toLowerCase();
+        const hay = `${{item.feature}} ${{item.surface}} ${{item.surfaceVariant}} ${{item.title}} ${{item.category}} ${{item.assetID}}`.toLowerCase();
         if (!hay.includes(state.search)) return false;
       }}
+      if (state.feature && item.feature !== state.feature) return false;
+      if (state.promise && item.promise !== state.promise) return false;
+      if (state.eligibility && item.eligibility !== state.eligibility) return false;
+      if (state.kind && item.assetKind !== state.kind) return false;
       if (state.device && item.device !== state.device) return false;
       if (state.appearance && item.appearance !== state.appearance) return false;
-      if (state.promise && item.promise !== state.promise) return false;
       if (state.status && currentStatus(item) !== state.status) return false;
       return true;
     }}
 
-    function renderLead(filtered) {{
+    function countByStatus(items, target) {{
+      return items.filter((item) => currentStatus(item) === target).length;
+    }}
+
+    function renderHero(filtered) {{
       const wrap = document.createElement("section");
-      wrap.className = "lead";
+      wrap.className = "hero";
       const left = document.createElement("div");
-      left.className = "lead-card";
+      left.className = "hero-card";
       left.innerHTML = `
-        <h2>先看承諾，不先看頁面。</h2>
-        <p>這裡的工作不是欣賞畫面，而是快速回答三件事：哪一張在賣核心價值、哪一張只是 feature 截圖、哪一張該立刻淘汰。現在的版面把同 promise 的 category 綁在一起，讓你先做決策，再看細節。</p>
+        <h2>UI 不是圖庫，是資產系統。</h2>
+        <p>這裡先按 feature 與 surface 管理畫面，再看 state 與變體。promise 仍保留，但退到輔助視角；它不再主宰資訊架構。你現在可以在不開 app 的前提下，直接瀏覽哪個功能有多少 surface、每個 surface 有哪些 state，以及哪些只是 engineering coverage。</p>
       `;
       const right = document.createElement("div");
       right.className = "summary-grid";
-      for (const promise of promiseOrder) {{
-        const items = filtered.filter((item) => item.promise === promise);
-        if (!items.length) continue;
+      const cards = [
+        {{ label: "目前可見", value: filtered.length }},
+        {{ label: "Feature", value: new Set(filtered.map((item) => item.feature)).size }},
+        {{ label: "Surface", value: new Set(filtered.map((item) => item.surfaceKey)).size }},
+        {{ label: "Shortlist", value: countByStatus(filtered, "shortlist") }},
+      ];
+      for (const card of cards) {{
         const box = document.createElement("div");
-        box.className = "lead-card";
-        box.innerHTML = `<h2>${{items.length}}</h2><p><strong>${{promise}}</strong><br>分類 ${{new Set(items.map((item) => item.category)).size}} 組</p>`;
+        box.className = "summary-card";
+        box.innerHTML = `<strong>${{card.value}}</strong><span>${{card.label}}</span>`;
         right.appendChild(box);
       }}
       wrap.appendChild(left);
@@ -505,8 +611,10 @@ def render_html(manifest: dict) -> str:
           <img loading="lazy" src="${{item.relPath}}" alt="${{item.category}} / ${{item.title}}">
         </a>
         <div class="meta">
-          <h4>${{item.title}}</h4>
+          <h4>${{item.stateLabel}}</h4>
           <div class="chips">
+            <span class="chip">${{item.feature}}</span>
+            <span class="chip">${{item.surfaceRole}}</span>
             <span class="chip">${{item.device}}</span>
             <span class="chip">${{item.appearance}}</span>
             <span class="chip mono">${{item.assetID}}</span>
@@ -518,127 +626,168 @@ def render_html(manifest: dict) -> str:
           </div>
           <div class="utility-actions">
             <button data-action="copy-id">Copy ID</button>
-            <button data-action="copy-link">Permalink</button>
+            <button data-action="permalink">Permalink</button>
           </div>
         </div>
       `;
-      for (const button of wrapper.querySelectorAll(".actions button")) {{
-        button.addEventListener("click", () => {{
-          const next = button.dataset.state === status ? "" : button.dataset.state;
-          setStatus(item, next);
-        }});
-      }}
-      for (const button of wrapper.querySelectorAll(".utility-actions button")) {{
-        button.addEventListener("click", async () => {{
-          const action = button.dataset.action;
-          const permalink = `${{window.location.pathname}}#asset-${{item.assetID}}`;
-          const text = action === "copy-link" ? permalink : item.assetID;
-          if (navigator.clipboard?.writeText) {{
-            await navigator.clipboard.writeText(text);
-          }}
-        }});
-      }}
+      wrapper.querySelectorAll(".actions button").forEach((button) => {{
+        button.onclick = () => setStatus(item, button.dataset.state === status ? "" : button.dataset.state);
+      }});
+      wrapper.querySelector('[data-action="copy-id"]').onclick = async () => {{
+        await navigator.clipboard.writeText(item.assetID);
+      }};
+      wrapper.querySelector('[data-action="permalink"]').onclick = async () => {{
+        const url = `${{window.location.origin}}${{window.location.pathname}}#asset-${{item.assetID}}`;
+        await navigator.clipboard.writeText(url);
+        window.location.hash = `asset-${{item.assetID}}`;
+      }};
       return wrapper;
     }}
 
-    function applyHashTarget() {{
-      const hash = window.location.hash || "";
-      document.querySelectorAll(".card.focused").forEach((card) => card.classList.remove("focused"));
-      if (!hash.startsWith("#asset-")) return;
-      const assetId = decodeURIComponent(hash.slice("#asset-".length));
-      const card = document.getElementById(`asset-${{assetId}}`);
-      if (!card) return;
-      card.classList.add("focused");
-      card.scrollIntoView({{ block: "center", behavior: "smooth" }});
+    function groupBy(items, keyFn) {{
+      const map = new Map();
+      for (const item of items) {{
+        const key = keyFn(item);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(item);
+      }}
+      return map;
+    }}
+
+    function renderSurface(surfaceItems) {{
+      const first = surfaceItems[0];
+      const wrap = document.createElement("article");
+      wrap.className = "surface";
+      wrap.id = `section-${{first.surfaceKey}}`;
+      const states = [...new Set(surfaceItems.map((item) => item.stateGroup))].filter(Boolean);
+      const marketing = surfaceItems.filter((item) => item.eligibility === "marketing").length;
+      wrap.innerHTML = `
+        <div class="surface-header">
+          <div>
+            <h3>${{first.surface}}</h3>
+            <p>${{first.feature}} · ${{first.promise}} · ${{first.assetKind}} · ${{first.surfaceRole}}</p>
+          </div>
+          <div class="surface-meta">${{surfaceItems.length}} 張 · ${{states.length}} 個 state 群 · marketing ${{marketing}}</div>
+        </div>
+      `;
+      const grid = document.createElement("div");
+      grid.className = "variant-grid";
+      for (const item of surfaceItems.sort((a, b) => a.stateLabel.localeCompare(b.stateLabel) || a.device.localeCompare(b.device) || a.appearance.localeCompare(b.appearance))) {{
+        grid.appendChild(card(item));
+      }}
+      wrap.appendChild(grid);
+      return wrap;
+    }}
+
+    function buildSections(items) {{
+      if (state.mode === "surface") {{
+        return [...groupBy(items, (item) => item.surfaceKey).entries()]
+          .sort((a, b) => a[1][0].surface.localeCompare(b[1][0].surface))
+          .map(([key, grouped]) => ({{
+            id: key,
+            title: grouped[0].surface,
+            meta: `${{grouped[0].feature}} · ${{grouped.length}} 張`,
+            surfaces: [grouped]
+          }}));
+      }}
+      if (state.mode === "promise") {{
+        return promiseOrder
+          .filter((promise) => items.some((item) => item.promise === promise))
+          .map((promise) => {{
+            const promiseItems = items.filter((item) => item.promise === promise);
+            const surfaces = [...groupBy(promiseItems, (item) => item.surfaceKey).values()]
+              .sort((a, b) => a[0].surface.localeCompare(b[0].surface));
+            return {{
+              id: slug(promise),
+              title: promise,
+              meta: `${{promiseItems.length}} 張 · ${{surfaces.length}} 個 surface`,
+              surfaces
+            }};
+          }});
+      }}
+      return [...groupBy(items, (item) => item.feature).entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([feature, featureItems]) => {{
+          const surfaces = [...groupBy(featureItems, (item) => item.surfaceKey).values()]
+            .sort((a, b) => a[0].surface.localeCompare(b[0].surface));
+          return {{
+            id: slug(feature),
+            title: feature,
+            meta: `${{featureItems.length}} 張 · ${{surfaces.length}} 個 surface`,
+            surfaces
+          }};
+        }});
+    }}
+
+    function mountNav(sections) {{
+      const nav = document.getElementById("group-nav");
+      nav.innerHTML = "";
+      for (const section of sections) {{
+        const link = document.createElement("a");
+        link.className = "nav-link";
+        link.href = `#section-${{section.id}}`;
+        link.innerHTML = `<span>${{section.title}}</span><small>${{section.meta}}</small>`;
+        nav.appendChild(link);
+      }}
+    }}
+
+    function renderSections(filtered) {{
+      const sections = buildSections(filtered);
+      mountNav(sections);
+      if (!sections.length) {{
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "目前沒有符合條件的資產。";
+        return empty;
+      }}
+      const wrap = document.createElement("div");
+      for (const section of sections) {{
+        const sectionEl = document.createElement("section");
+        sectionEl.className = "section";
+        sectionEl.id = `section-${{section.id}}`;
+        sectionEl.innerHTML = `
+          <div class="section-header">
+            <h2>${{section.title}}</h2>
+            <span>${{section.meta}}</span>
+          </div>
+        `;
+        const stack = document.createElement("div");
+        stack.className = "surface-stack";
+        for (const surfaceItems of section.surfaces) {{
+          stack.appendChild(renderSurface(surfaceItems));
+        }}
+        sectionEl.appendChild(stack);
+        wrap.appendChild(sectionEl);
+      }}
+      return wrap;
+    }}
+
+    function syncButtons() {{
+      document.querySelectorAll("#mode-buttons button").forEach((button) => {{
+        button.classList.toggle("active", button.dataset.value === state.mode);
+      }});
+      document.querySelectorAll("#status-buttons button").forEach((button) => {{
+        button.classList.toggle("active", button.dataset.value === state.status);
+      }});
     }}
 
     function render() {{
-      document.querySelectorAll("#promise-buttons button").forEach((btn) => {{
-        btn.classList.toggle("active", btn.dataset.value === state.promise);
-      }});
-      document.querySelectorAll("#status-buttons button").forEach((btn) => {{
-        btn.classList.toggle("active", btn.dataset.value === state.status);
-      }});
-
+      syncButtons();
       const filtered = manifest.items.filter(matches);
       visibleCount.textContent = String(filtered.length);
-      shortlistCount.textContent = String(manifest.items.filter((item) => currentStatus(item) === "shortlist").length);
-      rejectCount.textContent = String(manifest.items.filter((item) => currentStatus(item) === "reject").length);
       app.innerHTML = "";
-      document.getElementById("promise-nav").innerHTML = "";
-
-      if (!filtered.length) {{
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "目前沒有符合條件的圖。";
-        app.appendChild(empty);
-        return;
-      }}
-
-      app.appendChild(renderLead(filtered));
-
-      const grouped = new Map();
-      for (const promise of promiseOrder) grouped.set(promise, []);
-      for (const item of filtered) grouped.get(item.promise).push(item);
-
-      for (const promise of promiseOrder) {{
-        const items = grouped.get(promise);
-        if (!items.length) continue;
-        const categoryMap = new Map();
-        for (const item of items) {{
-          if (!categoryMap.has(item.category)) categoryMap.set(item.category, []);
-          categoryMap.get(item.category).push(item);
+      app.appendChild(renderHero(filtered));
+      app.appendChild(renderSections(filtered));
+      requestAnimationFrame(() => {{
+        if (window.location.hash.startsWith("#asset-")) {{
+          const target = document.querySelector(window.location.hash);
+          if (target) target.classList.add("focused");
         }}
-        const categories = [...categoryMap.entries()].sort((a, b) => {{
-          if (b[1].length !== a[1].length) return b[1].length - a[1].length;
-          return a[0].localeCompare(b[0]);
-        }});
-
-        const section = document.createElement("section");
-        section.className = "section";
-        section.id = `promise-${{slug(promise)}}`;
-        const header = document.createElement("div");
-        header.className = "section-header";
-        header.innerHTML = `<h2>${{promise}}</h2><span>${{items.length}} 張 / ${{categories.length}} 組</span>`;
-        const clusterList = document.createElement("div");
-        clusterList.className = "cluster-list";
-        for (const [category, bucket] of categories) {{
-          bucket.sort((a, b) => `${{a.title}}/${{a.appearance}}/${{a.device}}`.localeCompare(`${{b.title}}/${{b.appearance}}/${{b.device}}`));
-          const cluster = document.createElement("article");
-          cluster.className = "cluster";
-          const clusterHeader = document.createElement("div");
-          clusterHeader.className = "cluster-header";
-          clusterHeader.innerHTML = `
-            <div>
-              <h3>${{category}}</h3>
-              <p>${{bucket[0].promise}} promise 下的同組變體，請一起看，不要拆散判斷。</p>
-            </div>
-            <div class="cluster-meta">${{bucket.length}} 張</div>
-          `;
-          const variantGrid = document.createElement("div");
-          variantGrid.className = "variant-grid";
-          bucket.forEach((item) => variantGrid.appendChild(card(item)));
-          cluster.appendChild(clusterHeader);
-          cluster.appendChild(variantGrid);
-          clusterList.appendChild(cluster);
-        }}
-        section.appendChild(header);
-        section.appendChild(clusterList);
-        app.appendChild(section);
-
-        const nav = document.createElement("a");
-        nav.className = "nav-link";
-        nav.href = `#promise-${{slug(promise)}}`;
-        nav.innerHTML = `<span>${{promise}}</span><small>${{items.length}} 張 / ${{categories.length}} 組</small>`;
-        document.getElementById("promise-nav").appendChild(nav);
-      }}
-      applyHashTarget();
+      }});
     }}
 
-    window.addEventListener("hashchange", render);
-    mountFilterButtons();
+    mountControls();
     render();
   </script>
 </body>
-</html>
-"""
+</html>"""

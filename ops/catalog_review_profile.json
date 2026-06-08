@@ -50,6 +50,97 @@
       ]
     }
   ],
+  "features": [
+    {
+      "name": "Reader",
+      "needles": [
+        "Reader",
+        "PDF Reader",
+        "TOC",
+        "Selection Toolbar",
+        "Reader Notebook Picker",
+        "Translation Language Settings",
+        "Vocab Highlight Picker"
+      ]
+    },
+    {
+      "name": "Review",
+      "needles": [
+        "Today Review",
+        "Review Calendar",
+        "Pending Vocab",
+        "Review Fold",
+        "Vocab Heatmap",
+        "Vocab Forecast",
+        "Vocab Calendar",
+        "Progress Capsule",
+        "Sync View",
+        "Sync",
+        "Stats View"
+      ]
+    },
+    {
+      "name": "Vocabulary",
+      "needles": [
+        "Vocabulary",
+        "KG Vocab",
+        "Knowledge Graph",
+        "Linked Card",
+        "Add Link",
+        "Link Reason",
+        "Collocation Explain",
+        "Word Detail",
+        "Word Edit",
+        "Card Sections",
+        "Card Document",
+        "Vocab Components",
+        "Vocab Shell",
+        "Archived Vocab"
+      ]
+    },
+    {
+      "name": "Notebook",
+      "needles": [
+        "Notebook",
+        "Notebooks"
+      ]
+    },
+    {
+      "name": "Bookshelf",
+      "needles": [
+        "Bookshelf",
+        "Book Card",
+        "iCloud Progress Badge"
+      ]
+    },
+    {
+      "name": "Podcast",
+      "needles": [
+        "Podcast"
+      ]
+    },
+    {
+      "name": "Settings",
+      "needles": [
+        "Settings",
+        "Account Section"
+      ]
+    },
+    {
+      "name": "Monetization",
+      "needles": [
+        "Subscription",
+        "Paywall",
+        "Login Sheet"
+      ]
+    },
+    {
+      "name": "Onboarding",
+      "needles": [
+        "Welcome"
+      ]
+    }
+  ],
   "eligibility": {
     "engineeringOnlyPrefixes": [
       "Settings Components",
