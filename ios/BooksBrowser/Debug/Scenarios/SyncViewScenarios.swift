@@ -9,9 +9,9 @@ import SwiftUI
 /// not yet synced) and renders `SyncPresenter(state:)`. Its `.task` only calls
 /// `refreshStepLayoutIfIdle()` — pure local layout, no network — so the view is
 /// fully catalogable by seeding a fresh in-memory store. `presenterState` reads
-/// `authManager.isLoggedIn` / `kgService.isConnected`, both falsy on the
-/// env-default services (`AuthManager.shared` boots logged-out), which is the
-/// honest default catalog rendering. Seeding happens inside a (nonisolated) View
+/// `authManager.isLoggedIn` / `kgService.isConnected`; we inject a logged-out
+/// `CatalogPreviewAuth` so the rendering is deterministic instead of depending on
+/// the simulator's persisted `AuthManager.shared` session. Seeding happens inside a (nonisolated) View
 /// scene whose `init` touches `mainContext`; safe because Playbook renders on the
 /// main thread (mirrors `StatsViewScene`).
 enum SyncViewScenarios {
@@ -58,6 +58,7 @@ private struct SyncViewScene: View {
         AppThemeContainer {
             SyncView()
                 .modelContainer(container)
+                .environment(\.authManager, CatalogPreviewAuth(isLoggedIn: false))
         }
         .environmentObject(AppAppearanceStore.preview)
     }

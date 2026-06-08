@@ -32,9 +32,11 @@ private struct LoginSheetScene: View {
     var authError: String?
 
     var body: some View {
-        let auth = PreviewAuthManager()
-        auth.isAuthenticating = isAuthenticating
-        auth.authError = authError
+        let auth = CatalogPreviewAuth(
+            isLoggedIn: false,
+            isAuthenticating: isAuthenticating,
+            authError: authError
+        )
         return AppThemeContainer {
             LoginSheet()
                 .environment(\.authManager, auth)
@@ -42,30 +44,5 @@ private struct LoginSheetScene: View {
         }
         .environmentObject(AppAppearanceStore.preview)
     }
-}
-
-// MARK: - Mock AuthManaging
-
-/// Inert preview double for `AuthManaging`. All mutating calls are no-ops so the
-/// catalog renders a stable, deterministic snapshot.
-private final class PreviewAuthManager: AuthManaging {
-    var isLoggedIn: Bool = false
-    var userId: String?
-    var token: String?
-    var displayName: String?
-    var userEmail: String?
-    var avatarURL: URL?
-    var authError: String?
-    var isAuthenticating: Bool = false
-    var isDemoMode: Bool = false
-
-    func enterDemoMode(modelContainer: ModelContainer) {}
-    func exitDemoMode(modelContainer: ModelContainer) {}
-    func refreshSessionIfNeeded() {}
-    func login(userId: String, token: String) {}
-    func login(customToken: String) async {}
-    func logout(modelContainer: ModelContainer?, reason: String) {}
-    func loginWithGoogle(modelContainer: ModelContainer?) {}
-    func loginWithApple(modelContainer: ModelContainer?) {}
 }
 #endif
