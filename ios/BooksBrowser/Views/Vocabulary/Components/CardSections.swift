@@ -37,7 +37,7 @@ struct CardSectionLabel: View {
 
     var body: some View {
         Label {
-            Text(title.localized)
+            Text(title)
                 .font(appSkin.typography.caption)
         } icon: {
             Image(systemName: systemImage)
@@ -113,10 +113,10 @@ struct CardHeroSection: View {
                 .lineSpacing(appSkin.metrics.paragraphLineSpacing)
         }
         .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
+            Button(CardSectionsCopy.copyTitle, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(card.word)
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
+                toastCoordinator.success(CardSectionsCopy.copiedTitle)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -137,7 +137,7 @@ struct CardExamplesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
-            CardSectionLabel(title: "例句".localized, systemImage: "text.quote")
+            CardSectionLabel(title: CardSectionsCopy.examplesTitle, systemImage: "text.quote")
 
             ForEach(Array(examples.enumerated()), id: \.offset) { _, example in
                 CardRichTextRenderer.text(
@@ -159,10 +159,10 @@ struct CardExamplesSection: View {
             }
         }
         .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
+            Button(CardSectionsCopy.copyTitle, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(examples.joined(separator: "\n"))
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
+                toastCoordinator.success(CardSectionsCopy.copiedTitle)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -192,7 +192,7 @@ struct CardSourceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "來源".localized, systemImage: "book.closed")
+            CardSectionLabel(title: CardSectionsCopy.sourceTitle, systemImage: "book.closed")
 
             HStack(spacing: appSkin.spacing.sourceMetadataGap) {
                 Text(bookTitle)
@@ -204,10 +204,10 @@ struct CardSourceSection: View {
             .foregroundStyle(appSkin.palette.secondaryText)
         }
         .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
+            Button(CardSectionsCopy.copyTitle, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(copyText)
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
+                toastCoordinator.success(CardSectionsCopy.copiedTitle)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -228,7 +228,7 @@ struct CardExplanationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "教學筆記".localized, systemImage: "text.book.closed")
+            CardSectionLabel(title: CardSectionsCopy.explanationTitle, systemImage: "text.book.closed")
 
             CardRichTextRenderer.text(
                 explanation,
@@ -247,10 +247,10 @@ struct CardExplanationSection: View {
             .lineSpacing(appSkin.metrics.paragraphLineSpacing)
         }
         .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
+            Button(CardSectionsCopy.copyTitle, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(explanation)
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
+                toastCoordinator.success(CardSectionsCopy.copiedTitle)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -272,7 +272,7 @@ struct CardFormsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "變化形".localized, systemImage: "text.badge.plus")
+            CardSectionLabel(title: CardSectionsCopy.formsTitle, systemImage: "text.badge.plus")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
@@ -286,10 +286,10 @@ struct CardFormsSection: View {
             }
         }
         .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
+            Button(CardSectionsCopy.copyTitle, systemImage: "doc.on.doc") {
                 PlatformClipboard.copy(forms.joined(separator: ", "))
                 copyTrigger.toggle()
-                toastCoordinator.success("已複製".localized)
+                toastCoordinator.success(CardSectionsCopy.copiedTitle)
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)

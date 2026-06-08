@@ -10,97 +10,17 @@ struct SubscriptionPaywallSheet: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.kgService) private var kgService
 
-
     private var activeFeatures: [SettingsSubscriptionFeatureItem] {
-        [
-            .init(
-                title: L10n.string("AI 翻譯與語境解釋"),
-                description: nil,
-                icon: "checkmark.circle.fill",
-                tone: appSkin.palette.success
-            ),
-            .init(
-                title: L10n.string("雲端同步與跨裝置狀態"),
-                description: nil,
-                icon: "checkmark.circle.fill",
-                tone: appSkin.palette.success
-            ),
-            .init(
-                title: L10n.string("關聯圖與內建複習"),
-                description: nil,
-                icon: "checkmark.circle.fill",
-                tone: appSkin.palette.success
-            )
-        ]
+        SubscriptionPaywallFeatureCatalog.activeItems(successTone: appSkin.palette.success)
     }
 
     private var paywallFeatures: [SettingsSubscriptionFeatureItem] {
-        [
-            .init(
-                title: L10n.string("AI 翻譯與語境解釋"),
-                description: L10n.string("閱讀時即時查詢翻譯與語境"),
-                icon: "sparkles",
-                tone: appSkin.palette.accent
-            ),
-            .init(
-                title: L10n.string("雲端同步與跨裝置狀態"),
-                description: L10n.string("生詞與閱讀進度跨裝置同步"),
-                icon: "sparkles",
-                tone: appSkin.palette.accent
-            ),
-            .init(
-                title: L10n.string("關聯圖與內建複習"),
-                description: L10n.string("視覺化詞彙關聯與間隔複習"),
-                icon: "sparkles",
-                tone: appSkin.palette.accent
-            )
-        ]
+        SubscriptionPaywallFeatureCatalog.paywallItems(accentTone: appSkin.palette.accent)
     }
 
     /// Free vs Pro 對照表 — 強化升級決策資訊密度
     private var comparisonRows: [SettingsPlanComparisonRow] {
-        [
-            .init(
-                title: L10n.string("閱讀器（EPUB/PDF/TXT/MD）"),
-                freeMark: .check,
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("本地生詞捕捉"),
-                freeMark: .check,
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("AI 翻譯與語境解釋"),
-                freeMark: .label(L10n.string("有限")),
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("雲端同步與跨裝置狀態"),
-                freeMark: .label(L10n.string("有限")),
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("知識圖譜與關聯卡片"),
-                freeMark: .label(L10n.string("有限")),
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("間隔複習（Today Review）"),
-                freeMark: .label(L10n.string("有限")),
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("Podcast 跨集播放"),
-                freeMark: .label(L10n.string("有限")),
-                proMark: .check
-            ),
-            .init(
-                title: L10n.string("每日 AI 額度"),
-                freeMark: .label("1x"),
-                proMark: .label("10x")
-            )
-        ]
+        SubscriptionPaywallFeatureCatalog.comparisonRows
     }
 
     var body: some View {
