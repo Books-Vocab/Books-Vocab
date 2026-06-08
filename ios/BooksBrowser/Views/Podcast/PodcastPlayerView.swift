@@ -35,8 +35,7 @@ struct PodcastPlayerView: View {
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
     @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
     @State private var progressPersistence = PodcastProgressPersistenceController()
-    @State private var showLoginSheet = false
-    @State private var showPaywall = false
+    @State private var monetizationGate = MonetizationGateState()
 
     /// Tiered-access UX mirror (server is the security boundary). Centralizes
     /// player gate + preview state so policy predicates do not drift inside the
@@ -143,7 +142,7 @@ struct PodcastPlayerView: View {
         // 的 proven pattern（亦同本 app `AppThemeContainer` 的 `let _ = fontTracker...` 慣例）。
         let _ = translationHandler.lookedUpWords.count
         return fullBody
-        .monetizationGateSheets(login: $showLoginSheet, paywall: $showPaywall)
+        .monetizationGateSheets($monetizationGate)
         .enableInjection()
     }
 
@@ -224,10 +223,10 @@ struct PodcastPlayerView: View {
     @MainActor
     private func presentUpgradeOrLogin() {
         if accessState.gateDestination == .login {
-            showLoginSheet = true
+            monetizationGate.presentLogin()
         } else {
             subscriptionManager.activePaywallSource = .podcast
-            showPaywall = true
+            monetizationGate.presentPaywall()
         }
     }
 

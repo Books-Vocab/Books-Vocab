@@ -50,7 +50,7 @@ struct ReaderView: View {
 
     // 單字本選擇
     @State private var showNotebookPicker = false
-    @State var showLoginSheet = false
+    @State var loginGate = LoginGateState()
     /// retry 重新載入的 in-flight handle。`.task` 走結構化作用域隨 view 自動取消，
     /// 但 retry 是手動觸發的非結構化 Task — 持 handle 以便 onDisappear 一併取消，
     /// 否則 retry 載入中途 dismiss 仍會 fire-and-forget 寫回已棄置的 handler。
@@ -146,7 +146,7 @@ struct ReaderView: View {
             ReaderNotebookPicker(book: book)
                 .appSheet(.adaptive)
         }
-        .loginSheet(isPresented: $showLoginSheet)
+        .loginGateSheet($loginGate)
         .enableInjection()
     }
 

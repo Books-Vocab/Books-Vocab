@@ -50,8 +50,7 @@ struct PodcastEpisodeListView: View {
     private var tier: PodcastTier {
         PodcastAccess.tier(hasProAccess: subscriptionManager.hasProAccess, hasToken: authManager.token != nil)
     }
-    @State private var showLoginSheet = false
-    @State private var showPaywall = false
+    @State private var monetizationGate = MonetizationGateState()
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
     // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
@@ -179,7 +178,7 @@ struct PodcastEpisodeListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .podcastCatalogDidSync)) { _ in
             Task { await reloadFromStore() }
         }
-        .monetizationGateSheets(login: $showLoginSheet, paywall: $showPaywall)
+        .monetizationGateSheets($monetizationGate)
         .enableInjection()
     }
 
@@ -189,10 +188,10 @@ struct PodcastEpisodeListView: View {
     private func handleLockedTap() {
         switch tier {
         case .guest:
-            showLoginSheet = true
+            monetizationGate.presentLogin()
         case .free:
             subscriptionManager.activePaywallSource = .podcast
-            showPaywall = true
+            monetizationGate.presentPaywall()
         case .pro:
             break  // pro is never locked
         }

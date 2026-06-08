@@ -16,7 +16,7 @@ struct OverviewTab: View {
     @Environment(\.appSkin) private var skin
 
     @State private var filter = NotebookFilter.load()
-    @State private var showLoginSheet = false
+    @State private var loginGate = LoginGateState()
 
     var body: some View {
         NavigationStack {
@@ -44,7 +44,7 @@ struct OverviewTab: View {
                     title: "需登入帳號".localized,
                     systemImage: "person.crop.circle.badge.exclamationmark",
                     description: "總覽功能需要登入帳號後才能存取您的雲端資料。".localized,
-                    action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+                    action: .init(title: "登入帳號".localized, systemImage: "person.crop.circle", handler: { loginGate.presentLogin() })
                 )
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -52,7 +52,7 @@ struct OverviewTab: View {
         }
         .navigationTitle("總覽".localized)
         .largeNavigationBarTitle()
-        .loginSheet(isPresented: $showLoginSheet)
+        .loginGateSheet($loginGate)
     }
 }
 

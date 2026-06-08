@@ -156,7 +156,7 @@ extension ReaderView {
                     handler.dismiss()
                     closeOverlay(.translation)
                 },
-                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
+                onLogin: authManager.isLoggedIn ? nil : { loginGate.presentLogin() },
                 onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
                     ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
                     : nil,
