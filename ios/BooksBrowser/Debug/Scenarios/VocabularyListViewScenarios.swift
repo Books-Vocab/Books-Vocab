@@ -130,38 +130,6 @@ private enum VocabularyListViewFixtures {
     }
 }
 
-// MARK: - Logged-in mock (DEBUG only)
-
-/// Minimal `AuthManaging` mock so the populated/empty list paths render the real
-/// `KGVocabView` instead of the logged-out empty card. `@MainActor` (the
-/// protocol is `@MainActor`-isolated) → constructed inside the scene body.
-private final class VocabularyListViewPreviewAuth: AuthManaging {
-    var isLoggedIn: Bool
-    var userId: String?
-    var token: String?
-    var displayName: String?
-    var userEmail: String?
-    var avatarURL: URL?
-    var authError: String?
-    var isAuthenticating: Bool = false
-    var isDemoMode: Bool = false
-
-    init(isLoggedIn: Bool) {
-        self.isLoggedIn = isLoggedIn
-        self.userId = isLoggedIn ? "preview-user" : nil
-        self.token = isLoggedIn ? "preview-token" : nil
-    }
-
-    func enterDemoMode(modelContainer: ModelContainer) {}
-    func exitDemoMode(modelContainer: ModelContainer) {}
-    func refreshSessionIfNeeded() {}
-    func login(userId: String, token: String) {}
-    func login(customToken: String) async {}
-    func logout(modelContainer: ModelContainer?, reason: String) {}
-    func loginWithGoogle(modelContainer: ModelContainer?) {}
-    func loginWithApple(modelContainer: ModelContainer?) {}
-}
-
 // MARK: - Scene harness
 
 /// `@MainActor` body so the in-memory container is seeded and the
@@ -169,7 +137,7 @@ private final class VocabularyListViewPreviewAuth: AuthManaging {
 /// before `@Query` reads. Mirrors `ArchivedVocabScene`.
 private struct VocabularyListViewScene: View {
     let container: ModelContainer
-    let auth: VocabularyListViewPreviewAuth
+    let auth: CatalogPreviewAuth
 
     init(entries: [VocabularyEntry], loggedIn: Bool) {
         let container = try! ModelContainer(
@@ -188,7 +156,7 @@ private struct VocabularyListViewScene: View {
         try? context.save()
 
         self.container = container
-        self.auth = VocabularyListViewPreviewAuth(isLoggedIn: loggedIn)
+        self.auth = CatalogPreviewAuth(isLoggedIn: loggedIn)
     }
 
     var body: some View {
