@@ -63,10 +63,32 @@ extension ReaderTranslationHandler {
         markAlreadySaved(selection.word)
     }
 
+    /// Capture-normalize for single-word selections before translate/save.
+    ///
+    /// Contract (kept in lock-step with backend `_clean_content` —
+    /// `backend/src/kg/vocab_shared.py`): NFC compat mapping → trim whitespace
+    /// → strip *trailing* sentence punctuation `.,;:!?`. Podcast (UITextView)
+    /// and PDF (PDFKit) selections arrive with trailing punctuation attached;
+    /// stripping here keeps the local card / vocab preview clean instead of
+    /// relying on the backend as the only cleanup point. Case and word-internal
+    /// punctuation (`don't`, `well-known`) are preserved; lowercasing is the
+    /// backend's dedup concern, not capture's. This is *capture* normalize, not
+    /// *match* normalize — highlight matching has its own looser rules
+    /// (`PodcastVocabHighlightResolver` / EPUB JS) applied live on both sides.
     func normalizeWord(_ word: String) -> String {
-        word.precomposedStringWithCompatibilityMapping
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = Substring(
+            word.precomposedStringWithCompatibilityMapping
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        while let last = result.last, Self.trailingCapturePunctuation.contains(last) {
+            result = result.dropLast()
+        }
+        return String(result)
     }
+
+    /// Trailing sentence punctuation removed at capture time. Mirrors backend
+    /// `_clean_content`'s `.rstrip(".,;:!?")`.
+    private static let trailingCapturePunctuation: Set<Character> = [".", ",", ";", ":", "!", "?"]
 
     private func markAlreadySaved(_ word: String) {
         appendLookedUpWordIfNeeded(word)
