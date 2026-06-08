@@ -1,7 +1,10 @@
 import SwiftUI
 import SwiftData
-import os
 import Inject
+
+private enum ReviewTiming {
+    static let shortcutHintDismissDelay: Duration = .seconds(3)
+}
 
 enum ReviewIntent {
     case reveal
@@ -260,7 +263,7 @@ struct TodayReviewView: View {
             guard !hasShownShortcutHint else { return }
             shortcutHintTask?.cancel()
             shortcutHintTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(3 * 1_000_000_000))
+                try? await Task.sleep(for: ReviewTiming.shortcutHintDismissDelay)
                 guard !Task.isCancelled else { return }
                 hasConsumedShortcutHint = true
                 hasShownShortcutHint = true

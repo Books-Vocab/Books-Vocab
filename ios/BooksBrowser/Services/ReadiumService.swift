@@ -11,7 +11,6 @@ import UIKit
 import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
-import os
 
 /// Readium 服務 — 封裝 EPUB 開啟與 Publication 管理
 @MainActor

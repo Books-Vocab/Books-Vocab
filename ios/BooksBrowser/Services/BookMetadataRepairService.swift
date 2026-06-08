@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 import SwiftData
-import os
 
 /// 從本機可讀 EPUB 重抽 metadata，修復被 UUID fallback 污染的 Book row 與 manifest。
 ///

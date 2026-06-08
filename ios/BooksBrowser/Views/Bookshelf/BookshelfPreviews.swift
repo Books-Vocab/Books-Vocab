@@ -109,25 +109,6 @@ struct BookshelfLoadingPreview: View {
     }
 }
 
-private struct BookshelfEmptyPreviewScene: View {
-    let fixtureID: BookshelfFixtureID = .emptyLibrary
-
-    @MainActor
-    private var renderModel: BookshelfFixtureRenderModel {
-        BookshelfFixtures.renderModel(for: fixtureID)
-    }
-
-    var body: some View {
-        if let container = renderModel.container {
-            BookshelfView()
-                .modelContainer(container)
-                .environment(\.fixtureReferenceDate, renderModel.referenceDate)
-        } else {
-            EmptyView()
-        }
-    }
-}
-
 struct BookshelfFixtureLibraryScene: View {
     let fixtureID: BookshelfFixtureID
 

@@ -8,7 +8,6 @@
 import SwiftUI
 import SwiftData
 import TipKit
-import os
 
 import GoogleSignIn
 
