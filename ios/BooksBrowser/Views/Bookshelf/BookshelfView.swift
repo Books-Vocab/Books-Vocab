@@ -27,7 +27,7 @@ struct BookshelfView: View {
     @Environment(\.kgService) private var kgService
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @State private var coordinator = BookshelfCoordinator()
-    @State private var showLoginSheet = false
+    @State private var loginGate = LoginGateState()
     @State private var navigationPath = NavigationPath()
 
     // podcast 已抽離為獨立頂層 section（見 `PodcastHomeView`），本 view 回歸純書架：
@@ -138,7 +138,7 @@ struct BookshelfView: View {
                 Text(coordinator.errorMessage ?? "未知錯誤".localized)
             }
             .settingsSheet(isPresented: $coordinator.showSettings)
-            .loginSheet(isPresented: $showLoginSheet)
+            .loginGateSheet($loginGate)
         }
         // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
         .focusedSceneValue(\.importBook, ImportBookAction { coordinator.presentImporter() })
@@ -189,7 +189,7 @@ struct BookshelfView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
                 if !authManager.isDemoMode && !authManager.isLoggedIn {
-                    Button(action: { showLoginSheet = true }) {
+                    Button(action: { loginGate.presentLogin() }) {
                         Label("登入帳號".localized, systemImage: "person.crop.circle")
                     }
                     .buttonStyle(.appAction(.outline))

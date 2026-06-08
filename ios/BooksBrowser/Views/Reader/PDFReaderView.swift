@@ -35,7 +35,7 @@ struct PDFReaderView: View {
     @State private var loadError: String?
     @State private var handler = ReaderTranslationHandler()
     @State private var showTranslation = false
-    @State private var showLoginSheet = false
+    @State private var loginGate = LoginGateState()
     @State private var detailEntry: VocabularyEntry?
 
     private var vocabularyContext: ReaderVocabularyContext {
@@ -101,7 +101,7 @@ struct PDFReaderView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .macReaderImmersion()
-        .loginSheet(isPresented: $showLoginSheet)
+        .loginGateSheet($loginGate)
         .toastSheet(item: $detailEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: allVocabulary)
         }
@@ -210,7 +210,7 @@ struct PDFReaderView: View {
                         showTranslation = false
                     }
                 },
-                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
+                onLogin: authManager.isLoggedIn ? nil : { loginGate.presentLogin() },
                 onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
                     ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
                     : nil,
