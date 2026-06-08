@@ -138,9 +138,7 @@ struct ReaderView: View {
                 handler.clearHighlightTrigger = UUID()
             }
         }
-        .toastSheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
-            SubscriptionPaywallSheet()
-        }
+        .subscriptionPaywallSheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 }))
         .toastSheet(item: Binding(get: { readerState.detailEntry }, set: { readerState.detailEntry = $0 })) { entry in
             WordDetailSheet(entry: entry, allEntries: allVocabulary)
         }
@@ -148,9 +146,7 @@ struct ReaderView: View {
             ReaderNotebookPicker(book: book)
                 .appSheet(.adaptive)
         }
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
-        }
+        .loginSheet(isPresented: $showLoginSheet)
         .enableInjection()
     }
 

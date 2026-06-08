@@ -179,12 +179,7 @@ struct PodcastEpisodeListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .podcastCatalogDidSync)) { _ in
             Task { await reloadFromStore() }
         }
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
-        }
-        .toastSheet(isPresented: $showPaywall) {
-            SubscriptionPaywallSheet()
-        }
+        .monetizationGateSheets(login: $showLoginSheet, paywall: $showPaywall)
         .enableInjection()
     }
 

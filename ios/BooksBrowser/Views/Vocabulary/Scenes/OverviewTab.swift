@@ -52,9 +52,7 @@ struct OverviewTab: View {
         }
         .navigationTitle("總覽".localized)
         .largeNavigationBarTitle()
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
-        }
+        .loginSheet(isPresented: $showLoginSheet)
     }
 }
 

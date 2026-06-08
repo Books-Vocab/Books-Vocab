@@ -138,9 +138,7 @@ struct BookshelfView: View {
                 Text(coordinator.errorMessage ?? "未知錯誤".localized)
             }
             .settingsSheet(isPresented: $coordinator.showSettings)
-            .sheet(isPresented: $showLoginSheet) {
-                LoginSheet()
-            }
+            .loginSheet(isPresented: $showLoginSheet)
         }
         // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
         .focusedSceneValue(\.importBook, ImportBookAction { coordinator.presentImporter() })
