@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run python
+#!/usr/bin/env -S uv run --python 3.13 python
 """Capture profile runner: combine ops-edit shaping and iOS catalog snapshots."""
 
 from __future__ import annotations
