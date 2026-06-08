@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 import hashlib
+import json
 import struct
 import zlib
 from pathlib import Path
@@ -138,7 +139,26 @@ def read_png_transparent_margin(path: Path) -> bool:
     return top_left_alpha < 16 and top_right_alpha < 16
 
 
+def load_catalog_index(source_root: Path) -> dict[str, dict]:
+    """Read the source-of-truth taxonomy index emitted by the iOS snapshot run.
+
+    Returns ``{category: {kind, feature, screen}}`` keyed by the raw category
+    string (which matches ``normalize_label(category_dir)``). An empty dict when
+    the file is absent or malformed — the gallery then falls back to the
+    pixel/regex heuristics, so legacy/un-blessed artifacts still render."""
+    index_path = source_root / "catalog_index.json"
+    if not index_path.is_file():
+        return {}
+    try:
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    surfaces = data.get("surfaces", {}) if isinstance(data, dict) else {}
+    return surfaces if isinstance(surfaces, dict) else {}
+
+
 def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr878") -> list[dict]:
+    index = load_catalog_index(source_root)
     items: list[dict] = []
     for path in sorted(source_root.rglob("*.png")):
         rel = path.relative_to(source_root)
@@ -153,7 +173,10 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
         promise = classify_promise(category, profile)
         eligibility = classify_eligibility(category, promise, profile)
         transparent_margin = read_png_transparent_margin(path)
-        taxonomy = build_taxonomy(category, title, profile, transparent_margin=transparent_margin)
+        declared = index.get(category)
+        taxonomy = build_taxonomy(
+            category, title, profile, transparent_margin=transparent_margin, declared=declared
+        )
         hero_candidate = is_hero_candidate(category, profile)
         cluster_id = build_cluster_id(category, title)
         asset_id = build_asset_id(rel)
