@@ -169,6 +169,41 @@ struct PodcastSilentFailureTests {
         #expect(PodcastPlayerView.shouldPersist(currentTime: 42, reason: .pause))
     }
 
+    // MARK: - Completed decision hoisted for deferred (post-teardown) persist
+
+    // `onDisappear` snapshots the completed flag SYNCHRONOUSLY before tearing
+    // the vm down (`shutdown()` flips `state` → `.idle`), then persists OFF the
+    // teardown runloop turn — a synchronous `modelContext.save()` inside
+    // `_UIHostingView.__deallocating_deinit` posts a SwiftData notification that
+    // `_SwiftData_SwiftUI` observes against the deallocating `@Query` →
+    // EXC_BREAKPOINT (confirmed via crash report). Hoisting the rule to a pure
+    // function keeps the snapshot and the live-vm wrapper computing it identically.
+
+    @Test func completed_when_ready_at_end() {
+        #expect(PodcastPlayerView.isCompleted(currentTime: 1832, duration: 1832, isReady: true))
+    }
+
+    @Test func completed_within_one_second_of_end() {
+        // Playback rarely lands exactly on duration; within 1s counts as done.
+        #expect(PodcastPlayerView.isCompleted(currentTime: 1831.5, duration: 1832, isReady: true))
+    }
+
+    @Test func not_completed_mid_episode() {
+        #expect(PodcastPlayerView.isCompleted(currentTime: 6, duration: 1832, isReady: true) == false)
+    }
+
+    @Test func not_completed_when_not_ready() {
+        // Why the snapshot must be taken BEFORE `shutdown()`: once state flips to
+        // `.idle` (isReady == false), an at-the-end position must NOT be recorded
+        // as completed — that would be the deferred-save regression we guard against.
+        #expect(PodcastPlayerView.isCompleted(currentTime: 1832, duration: 1832, isReady: false) == false)
+    }
+
+    @Test func not_completed_with_zero_duration() {
+        // Duration unknown (load failed / pre-ready) → never mark completed.
+        #expect(PodcastPlayerView.isCompleted(currentTime: 0, duration: 0, isReady: true) == false)
+    }
+
     // MARK: - Podcast 初始定位 bootstrap
 
     @Test func bootstrap_initial_progress_primes_mid_episode_position() {
