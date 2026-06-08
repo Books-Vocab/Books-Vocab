@@ -152,7 +152,7 @@ struct CatalogScene: View {
             ),
             .init(
                 id: "podcast_player",
-                surfaces: [eng("Podcast · Episode Row", .podcast)],
+                surfaces: [block("Podcast · Episode Row", .podcast)],
                 register: PodcastPlayerScenarios.register
             ),
             .init(id: "notebook_edit", surfaces: [block("Notebook Edit", .notebook)], register: NotebookEditSheetScenarios.register),
@@ -175,7 +175,7 @@ struct CatalogScene: View {
                 surfaces: [overlay("Notebook Filter Chip · Picker", .notebook)],
                 register: NotebookFilterChipScenarios.register
             ),
-            .init(id: "notebook_review_action_bar", surfaces: [eng("Notebook Review Action Bar", .notebook)], register: NotebookReviewActionBarScenarios.register),
+            .init(id: "notebook_review_action_bar", surfaces: [block("Notebook Review Action Bar", .notebook)], register: NotebookReviewActionBarScenarios.register),
             .init(id: "selection_toolbar", surfaces: [block("Selection Toolbar", .vocabulary)], register: SelectionToolbarScenarios.register),
             .init(id: "podcast_hero", surfaces: [block("Podcast Hero", .podcast)], register: PodcastSeriesHeroScenarios.register),
             .init(id: "podcast_shelf", surfaces: [block("Podcast Shelf", .podcast)], register: PodcastShelfScenarios.register),
@@ -217,27 +217,27 @@ struct CatalogScene: View {
             .init(
                 id: "settings_actions",
                 surfaces: [
-                    eng("Settings Actions · Plan Table", .settings),
+                    block("Settings Actions · Plan Table", .settings),
                 ],
                 register: SettingsActionsScenarios.register
             ),
             .init(
                 id: "settings_sections",
                 surfaces: [
-                    eng("Settings Sections · Review", .settings),
-                    eng("Settings Sections · Preferences", .settings),
+                    block("Settings Sections · Review", .settings),
+                    block("Settings Sections · Preferences", .settings),
                 ],
                 register: SettingsSectionsScenarios.register
             ),
             .init(
                 id: "account_section",
                 surfaces: [
-                    eng("Account Section · Section", .settings),
-                    eng("Account Section · Auth Summary", .settings),
+                    block("Account Section · Section", .settings),
+                    block("Account Section · Auth Summary", .settings),
                 ],
                 register: SettingsAccountSectionScenarios.register
             ),
-            .init(id: "review_calendar_presenter", surfaces: [eng("Review Calendar Presenter", .review)], register: ReviewCalendarScenarios.register),
+            .init(id: "review_calendar_presenter", surfaces: [overlay("Review Calendar Presenter", .review)], register: ReviewCalendarScenarios.register),
             .init(id: "pending_vocab_presenter", surfaces: [eng("Pending Vocab Presenter", .review)], register: PendingVocabPresenterScenarios.register),
             .init(id: "app_startup_recovery", surfaces: [screen("Startup Recovery", .misc, .appStartupRecovery)], register: AppStartupRecoveryScenarios.register),
             .init(id: "vocabulary_list_view", surfaces: [screen("Vocabulary List View", .vocabulary, .vocabularyList)], register: VocabularyListViewScenarios.register),
@@ -252,7 +252,7 @@ struct CatalogScene: View {
             .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer)], register: PodcastPlayerViewScenarios.register),
             .init(id: "editorial_cover", surfaces: [block("Notebook Cover · Editorial", .notebook)], register: NotebookCardEditorialCoverScenarios.register),
             .init(id: "kg_vocab_row", surfaces: [eng("KG Vocab Row", .vocabulary)], register: KGVocabRowScenarios.register),
-            .init(id: "podcast_sentence_cells", surfaces: [eng("Podcast · Transcript Column", .podcast), eng("Podcast · Bubble Cell", .podcast)], register: PodcastSentenceCellsScenarios.register),
+            .init(id: "podcast_sentence_cells", surfaces: [block("Podcast · Transcript Column", .podcast), block("Podcast · Bubble Cell", .podcast)], register: PodcastSentenceCellsScenarios.register),
             // `surfaces` 透過 enum 計算屬性同步 macCatalyst gating:非 Catalyst 時
             // register 為 no-op,manifest 亦回報空 categories,使覆蓋測試對稱。
             .init(id: "today_review_shortcut_chips", surfaces: blocks(TodayReviewShortcutScenarios.manifestCategories, .review), register: TodayReviewShortcutScenarios.register),
