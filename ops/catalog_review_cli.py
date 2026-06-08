@@ -1,12 +1,8 @@
 #!/usr/bin/env -S /Users/chenliangyu/.local/bin/uv run --python 3.13 python
 from __future__ import annotations
 
-from catalog_review_cli_maintenance import cmd_doctor, cmd_doctor_shortcut, cmd_repair, cmd_verify
-from catalog_review_cli_mutations import cmd_apply, cmd_mark
 from catalog_review_cli_navigator import cmd_node, cmd_node_url, cmd_tree
 from catalog_review_cli_parser import build_parser, dispatch_command
-from catalog_review_cli_queries import cmd_list, cmd_report, cmd_show, cmd_stats, cmd_summary
-from pathlib import Path
 
 
 def main() -> int:
@@ -14,17 +10,6 @@ def main() -> int:
     args = parser.parse_args()
     root = args.root.resolve()
     return dispatch_command(args, root, handlers={
-        "summary": cmd_summary,
-        "show": cmd_show,
-        "mark": cmd_mark,
-        "list": cmd_list,
-        "apply": cmd_apply,
-        "stats": cmd_stats,
-        "report": cmd_report,
-        "verify": cmd_verify,
-        "repair": cmd_repair,
-        "doctor": cmd_doctor,
-        "shortcut": cmd_doctor_shortcut,
         "tree": cmd_tree,
         "node": cmd_node,
         "node_url": cmd_node_url,

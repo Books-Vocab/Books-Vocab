@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from catalog_review_cli_artifacts import load_review_context
+
+def _load_manifest(root: Path) -> dict:
+    return json.loads((root / "review_manifest.json").read_text(encoding="utf-8"))
 
 
 def _find_node(tree: dict, node_path: str) -> dict | None:
@@ -44,7 +46,7 @@ def _resolve_canvas_base(root: Path, base: str | None) -> str:
 
 
 def cmd_tree(root: Path, *, node: str, depth: int | None) -> int:
-    manifest, _ = load_review_context(root)
+    manifest = _load_manifest(root)
     tree = manifest.get("tree")
     if tree is None:
         print(json.dumps({"status": "error", "error": "manifest-missing-tree"}, ensure_ascii=False))
@@ -64,7 +66,7 @@ def cmd_tree(root: Path, *, node: str, depth: int | None) -> int:
 
 
 def cmd_node(root: Path, node: str) -> int:
-    manifest, _ = load_review_context(root)
+    manifest = _load_manifest(root)
     tree = manifest.get("tree")
     if tree is None:
         print(json.dumps({"status": "error", "error": "manifest-missing-tree"}, ensure_ascii=False))
@@ -89,7 +91,7 @@ def cmd_node(root: Path, node: str) -> int:
 
 
 def cmd_node_url(root: Path, node: str, *, base: str | None) -> int:
-    manifest, _ = load_review_context(root)
+    manifest = _load_manifest(root)
     tree = manifest.get("tree")
     if tree is None:
         print(json.dumps({"status": "error", "error": "manifest-missing-tree"}, ensure_ascii=False))
