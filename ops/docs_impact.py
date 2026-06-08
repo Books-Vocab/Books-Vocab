@@ -139,6 +139,16 @@ def is_broad_source(source: str) -> bool:
     return source.endswith("/") or any(mark in source for mark in "*?[")
 
 
+def match_type_rank(match_type: str) -> int:
+    order = {
+        "exact": 0,
+        "suppressed-partial": 1,
+        "broad": 2,
+        "suppressed": 3,
+    }
+    return order.get(match_type, 99)
+
+
 def impact_documents(
     documents: list[Document], changed_paths: list[str], *, explain: bool = False
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -203,6 +213,10 @@ def impact_documents(
             if doc.generator:
                 impact["generator"] = doc.generator
             excluded_impacts.append(impact)
+    impacts.sort(key=lambda impact: (match_type_rank(str(impact.get("match_type", ""))), str(impact["id"])))
+    excluded_impacts.sort(
+        key=lambda impact: (match_type_rank(str(impact.get("match_type", ""))), str(impact["id"]))
+    )
     return impacts, excluded_impacts
 
 
@@ -227,6 +241,11 @@ def print_human(
         "docs_impact: match_type legend -> "
         "exact=source exact match, broad=directory/glob candidate, "
         "suppressed-partial=impact kept but some paths excluded, suppressed=fully excluded"
+    )
+    print(
+        "docs_impact: recommended review order -> "
+        "exact first, then suppressed-partial, then broad candidates; "
+        "suppressed rows are explanation only"
     )
     for impact in impacts:
         match_type = str(impact.get("match_type", "unknown"))
