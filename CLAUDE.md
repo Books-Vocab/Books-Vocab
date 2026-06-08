@@ -30,6 +30,16 @@ uv run ops/ops_edit.py <subcommand> [args]
 
 不確定有哪些子指令 → `uv run ops/ops_cli.py --help` / `uv run ops/ops_edit.py --help`。完整子指令表與安全契約在 `devops` skill 內。
 
+## llm_eval 工具（always-on）
+
+LLM prompt 評估 / 語料管理統一入口：
+
+```
+uv run lab/llm_eval/cli.py <subcommand> [args]
+```
+
+子指令：`eval` / `prompts` / `datasets` / `providers` / `corpus-build` / `gold-queue`。`--help` 查完整用法。**禁止讀 llm_eval/*.py 原始碼後自行拼 API 呼叫**。
+
 ## 對話啟動流程
 
 1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合。
