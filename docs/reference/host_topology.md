@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ops/
   - docs/policy/
-verified_against: 94a66d63
+verified_against: 84f6998e
 -->
 # Host Background (Single Source of Truth)
 

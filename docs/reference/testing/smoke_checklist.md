@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: d0ecbc2a
+verified_against: 84f6998e
 -->
 # iOS Smoke Test Checklist
 
