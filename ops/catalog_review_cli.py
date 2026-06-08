@@ -4,7 +4,7 @@ from __future__ import annotations
 from catalog_review_cli_maintenance import cmd_doctor, cmd_doctor_shortcut, cmd_repair, cmd_verify
 from catalog_review_cli_mutations import cmd_apply, cmd_mark
 from catalog_review_cli_parser import build_parser, dispatch_command
-from catalog_review_cli_queries import cmd_list, cmd_report, cmd_show, cmd_stats, cmd_summary
+from catalog_review_cli_queries import cmd_gaps, cmd_list, cmd_report, cmd_show, cmd_stats, cmd_summary
 from pathlib import Path
 
 
@@ -20,6 +20,7 @@ def main() -> int:
         "apply": cmd_apply,
         "stats": cmd_stats,
         "report": cmd_report,
+        "gaps": cmd_gaps,
         "verify": cmd_verify,
         "repair": cmd_repair,
         "doctor": cmd_doctor,

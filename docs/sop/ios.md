@@ -510,12 +510,10 @@ enum FooScenarios {
 ./ops/catalog_review_entry.py prune-superseded --dry-run
 ./ops/catalog_review_entry.py prune-superseded
 
-# 與 agent 共用 nodePath 坐標導覽 blessed artifact:
+# Agent 查 surface 層 lane-aware 覆蓋缺口（不開瀏覽器、不 parse 整份 manifest）:
 BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
-./ops/catalog_review_cli.py "$BLESSED" tree --depth 1                   # 第一層 feature 清單
-./ops/catalog_review_cli.py "$BLESSED" node reader/reader-reader        # 某 surface 的 metadata + children
-./ops/catalog_review_cli.py "$BLESSED" node-url reader/reader-reader \
-  --base http://127.0.0.1:8787/catalog.html                              # canvas deep link
+./ops/catalog_review_cli.py "$BLESSED" gaps --min-gap 3                                # 真 backlog: 缺最多 ship-critical state 的可上架 surface
+./ops/catalog_review_cli.py "$BLESSED" gaps --lane feature-surface --missing loading  # 缺特定 state 的出貨畫面
 
 # 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
 ./ops/catalog_review_entry.py current
