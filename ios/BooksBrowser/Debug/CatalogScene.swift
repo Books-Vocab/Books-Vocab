@@ -65,8 +65,11 @@ struct CatalogScene: View {
         case todayReview, todayReviewPhase, knowledgeGraph
         case stats, sync, vocabularyList, podcastHome, welcome
         // pending coverage — authored in P3 (see Manifest.pendingCoverage)
-        case podcastPlayer, podcastEpisodeList, kgVocab, notebookList
+        case podcastPlayer, podcastEpisodeList, notebookList
         case settingsAccountDetail, translationLanguageSettings, appStartupRecovery
+        // NOTE: KGVocabView is never presented standalone — VocabularyListView's
+        // logged-in path renders it — so it is covered by the .vocabularyList
+        // screen surface + the "KG Vocab Presenter" component, not its own screen.
     }
 
     /// Declared taxonomy for one Playbook category. `screen` is non-nil iff
@@ -108,11 +111,8 @@ struct CatalogScene: View {
 
         /// Screens we intend to cover but haven't authored a surface for yet.
         /// `CatalogCoverageTests` allows exactly these ScreenIDs to be missing.
-        /// Shrinks to empty as P3 lands.
-        static let pendingCoverage: Set<ScreenID> = [
-            .podcastPlayer, .podcastEpisodeList, .kgVocab, .notebookList,
-            .settingsAccountDetail, .translationLanguageSettings, .appStartupRecovery,
-        ]
+        /// Now empty: every ScreenID has a featureScreen surface (P3 complete).
+        static let pendingCoverage: Set<ScreenID> = []
 
         static let entries: [ManifestEntry] = [
             .init(id: "design_tokens", surfaces: [eng("Design Tokens", .misc)], register: TokenSheetScenarios.register),
@@ -194,7 +194,7 @@ struct CatalogScene: View {
             .init(id: "login_sheet", surfaces: [overlay("Login Sheet", .monetization)], register: LoginSheetScenarios.register),
             .init(id: "vocab_highlight_picker", surfaces: [overlay("Vocab Highlight Picker", .vocabulary)], register: VocabHighlightPickerScenarios.register),
             .init(id: "delete_account_sheet", surfaces: [overlay("Delete Account Sheet", .settings)], register: DeleteAccountSheetScenarios.register),
-            .init(id: "translation_lang_settings", surfaces: [block("Translation Language Settings", .reader)], register: TranslationLanguageSettingsScenarios.register),
+            .init(id: "translation_lang_settings", surfaces: [screen("Translation Language Settings", .settings, .translationLanguageSettings)], register: TranslationLanguageSettingsScenarios.register),
             .init(id: "bookcard", surfaces: [block("Book Card", .bookshelf)], register: BookCardScenarios.register),
             .init(
                 id: "vocab_components",
@@ -303,7 +303,7 @@ struct CatalogScene: View {
             .init(id: "word_detail_presenter", surfaces: [eng("Word Detail Presenter", .vocabulary)], register: WordDetailPresenterScenarios.register),
             .init(id: "translation_vocab_presenter", surfaces: [eng("Translation Vocab Presenter", .vocabulary)], register: TranslationVocabPresenterScenarios.register),
             .init(id: "reader_settings_presenter", surfaces: [eng("Reader Settings Presenter", .reader)], register: ReaderSettingsPresenterScenarios.register),
-            .init(id: "app_startup_recovery", surfaces: [eng("Startup Recovery", .misc)], register: AppStartupRecoveryScenarios.register),
+            .init(id: "app_startup_recovery", surfaces: [screen("Startup Recovery", .misc, .appStartupRecovery)], register: AppStartupRecoveryScenarios.register),
             .init(id: "vocabulary_list_view", surfaces: [screen("Vocabulary List View", .vocabulary, .vocabularyList)], register: VocabularyListViewScenarios.register),
             .init(id: "stats_view", surfaces: [screen("Stats View", .review, .stats)], register: StatsViewScenarios.register),
             .init(id: "podcast_home_view", surfaces: [screen("Podcast Home View", .podcast, .podcastHome)], register: PodcastHomeViewScenarios.register),
@@ -311,6 +311,9 @@ struct CatalogScene: View {
             .init(id: "knowledge_graph_view", surfaces: [screen("Knowledge Graph View", .vocabulary, .knowledgeGraph)], register: KnowledgeGraphViewScenarios.register),
             .init(id: "pdf_reader_view", surfaces: [screen("PDF Reader View", .reader, .pdfReader)], register: PDFReaderViewScenarios.register),
             .init(id: "sync_view_surface", surfaces: [screen("Sync View", .review, .sync)], register: SyncViewScenarios.register),
+            .init(id: "notebook_list_view", surfaces: [screen("Notebook List View", .notebook, .notebookList)], register: NotebookListViewScenarios.register),
+            .init(id: "podcast_episode_list_view", surfaces: [screen("Podcast Episode List View", .podcast, .podcastEpisodeList)], register: PodcastEpisodeListViewScenarios.register),
+            .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer)], register: PodcastPlayerViewScenarios.register),
             .init(
                 id: "card_document_blocks",
                 surfaces: [
@@ -351,7 +354,7 @@ struct CatalogScene: View {
                 ],
                 register: SettingsModifierScenarios.register
             ),
-            .init(id: "settings_account_detail", surfaces: [block("Settings Account Detail", .settings)], register: SettingsAccountDetailScenarios.register),
+            .init(id: "settings_account_detail", surfaces: [screen("Settings Account Detail", .settings, .settingsAccountDetail)], register: SettingsAccountDetailScenarios.register),
             .init(id: "settings_subscription_section", surfaces: [block("Settings Subscription Section", .settings)], register: SettingsSubscriptionSectionScenarios.register),
             .init(id: "today_review_phase_view", surfaces: [screen("Today Review Phase", .review, .todayReviewPhase)], register: TodayReviewPhaseScenarios.register),
             .init(id: "kg_vocab_presenter", surfaces: [eng("KG Vocab Presenter", .vocabulary)], register: KGVocabPresenterScenarios.register),
