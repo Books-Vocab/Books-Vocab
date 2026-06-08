@@ -328,6 +328,21 @@ def test_lane_and_feature_classification_corrections():
     assert taxonomy.classify_feature("Design Tokens", profile) == "Misc"
 
 
+def test_declared_building_block_lane_ignores_stale_profile_eligibility():
+    """Source-declared buildingBlock must lane as building-block even when the
+    (stale) profile marks its eligibility 'engineering' — declared kind wins, no
+    consumption-side profile patch. Regression: a vocab component (e.g. Selection
+    Toolbar, reclassified from eng→block) was rendering as engineering-only because
+    the profile eligibility overrode the declared kind."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    # declared buildingBlock (surfaceRole building-block) wins over engineering eligibility
+    assert taxonomy.classify_lane("building-block", "engineering", source_declared=True) == "building-block"
+    # declared engineering (surfaceRole presenter) is still engineering-only
+    assert taxonomy.classify_lane("presenter", "review", source_declared=True) == "engineering-only"
+    # legacy / un-declared artifacts keep the old eligibility-based demotion
+    assert taxonomy.classify_lane("building-block", "engineering", source_declared=False) == "engineering-only"
+
+
 def test_list_surface_default_populated_equivalence():
     """A list/container feature-surface whose resting state IS 'populated' has no
     separate idle 'default' shot — default must not be reported as a gap. But a

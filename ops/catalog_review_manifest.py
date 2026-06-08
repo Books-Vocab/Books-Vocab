@@ -199,7 +199,7 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
             "title": title,
             "promise": promise,
             "eligibility": eligibility,
-            "lane": classify_lane(taxonomy["surfaceRole"], eligibility),
+            "lane": classify_lane(taxonomy["surfaceRole"], eligibility, taxonomy["sourceDeclared"]),
             "qualityTier": classify_quality_tier(promise, eligibility, hero_candidate),
             "newSincePr878": is_new_since_release(category, profile, release_marker),
             "heroCandidate": hero_candidate,
