@@ -32,10 +32,10 @@ from .graph import LINK_LABELS, GraphStore, LinkKind
 from .sentry_init import bind_user
 from .service_factories import (
     create_card_store,
-    create_review_event_store,
     create_embedding_store,
     create_graph_store,
     create_notebook_store,
+    create_review_event_store,
 )
 from .settings import KGSettings
 from .types import UserRecord
@@ -86,14 +86,11 @@ def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
 
 
-def get_current_user(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> UserRecord:
+def _resolve_request_user(request: Request, token: str) -> UserRecord:
     settings = request.app.state.kg_settings
     load_users_fn = request.app.state.load_users
     user = resolve_current_user(
-        credentials.credentials,
+        token,
         settings=settings,
         load_users=load_users_fn,
         parse_datetime=_parse_datetime,
@@ -102,6 +99,13 @@ def get_current_user(
     # No-op when Sentry isn't initialized; id-only so no PII leaks.
     bind_user(user.get("id"))
     return user
+
+
+def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> UserRecord:
+    return _resolve_request_user(request, credentials.credentials)
 
 
 def get_current_user_optional(
@@ -129,16 +133,7 @@ def get_current_user_optional(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return None
-    settings = request.app.state.kg_settings
-    load_users_fn = request.app.state.load_users
-    user = resolve_current_user(
-        credentials.credentials,
-        settings=settings,
-        load_users=load_users_fn,
-        parse_datetime=_parse_datetime,
-    )
-    bind_user(user.get("id"))
-    return user
+    return _resolve_request_user(request, credentials.credentials)
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.routing import APIRoute
 
 import kg.api as api_mod
+from kg.api_models import AdminUserEntitlementResponse
 
 
 def test_registered_routes_cover_core_api_surface():
@@ -49,3 +50,21 @@ def test_registered_routes_cover_core_api_surface():
 
     missing = expected_routes - routes
     assert not missing, f"Missing registered routes: {sorted(missing)}"
+
+
+def test_admin_entitlement_mutation_routes_keep_explicit_response_models():
+    routes = {
+        (route.path, tuple(sorted(route.methods))): route
+        for route in api_mod.app.routes
+        if isinstance(route, APIRoute)
+    }
+
+    expected = {
+        ("/api/admin/users/{user_id}/entitlement", ("GET",)),
+        ("/api/admin/users/{user_id}/admin-grant", ("POST",)),
+        ("/api/admin/users/{user_id}/admin-grant", ("DELETE",)),
+    }
+
+    for key in expected:
+        route = routes[key]
+        assert route.response_model is AdminUserEntitlementResponse

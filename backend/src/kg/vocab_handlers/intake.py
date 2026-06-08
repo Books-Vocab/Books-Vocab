@@ -27,7 +27,7 @@ def add_vocab_response(
     from ..quota_service import estimate_call_cost, reserve
     from ..tracked_llm import TrackedLLM
 
-    cards, _ = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -38,7 +38,7 @@ def add_vocab_response(
         return add_vocab_entries(
             entries,
             user=user,
-            cards=cards,
+            cards=stores.cards,
             embeddings=embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id),
             graph=graph_store_factory(user["dir"], notebook_id=notebook_id),
             logger=logger,

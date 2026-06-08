@@ -31,7 +31,7 @@ def list_vocab_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
 ) -> list[Any]:
-    cards_store, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
@@ -39,8 +39,8 @@ def list_vocab_response(
     )
     return list_vocab_cards(
         since=since,
-        cards_store=cards_store,
-        graph=graph,
+        cards_store=stores.cards,
+        graph=stores.graph,
         card_response_builder=card_response_builder,
         notebook_id=notebook_id,
     )
@@ -56,7 +56,7 @@ def lookup_word_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
@@ -64,8 +64,8 @@ def lookup_word_response(
     )
     return lookup_vocab_word(
         word,
-        cards_store=cards,
-        graph=graph,
+        cards_store=stores.cards,
+        graph=stores.graph,
         card_response_builder=card_response_builder,
         notebook_id=notebook_id,
     )
@@ -81,38 +81,19 @@ def archive_word_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
 ) -> dict[str, str]:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    return archive_vocab_word(word, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
-
-
-def _resolve_embedding_store(
-    user: dict[str, Any],
-    notebook_id: str,
-    *,
-    embedding_store_factory: Callable[..., Any] | None,
-    client_factory: Callable[..., Any] | None,
-) -> Any | None:
-    """Build an embedding store for the delete path, or None if either
-    factory is absent (delete still works without embedding eviction)."""
-    if embedding_store_factory is None or client_factory is None:
-        return None
-    from ..deps_quota import _is_pro
-    from ..llm.providers import provider_for
-    from ..tracked_llm import TrackedLLM
-    provider = provider_for("embed")
-    llm = TrackedLLM(
-        client_factory(provider),
-        user.get("id", "unknown"),
-        provider=provider,
-        enforce_quota=True,
-        is_pro=_is_pro(user),
+    return archive_vocab_word(
+        word,
+        archived=req.archived,
+        cards_store=stores.cards,
+        graph=stores.graph,
+        notebook_id=notebook_id,
     )
-    return embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id)
 
 
 def delete_word_response(
@@ -126,20 +107,20 @@ def delete_word_response(
     client_factory: Callable[..., Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, str]:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
-    )
-    embeddings = _resolve_embedding_store(
-        user, notebook_id,
         embedding_store_factory=embedding_store_factory,
         client_factory=client_factory,
     )
     return delete_vocab_word(
-        word, cards_store=cards, graph=graph,
-        embeddings=embeddings, notebook_id=notebook_id,
+        word,
+        cards_store=stores.cards,
+        graph=stores.graph,
+        embeddings=stores.embeddings,
+        notebook_id=notebook_id,
     )
 
 
@@ -154,20 +135,20 @@ def batch_delete_response(
     client_factory: Callable[..., Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
-    )
-    embeddings = _resolve_embedding_store(
-        user, notebook_id,
         embedding_store_factory=embedding_store_factory,
         client_factory=client_factory,
     )
     return batch_delete_vocab_words(
-        req.words, cards_store=cards, graph=graph,
-        embeddings=embeddings, notebook_id=notebook_id,
+        req.words,
+        cards_store=stores.cards,
+        graph=stores.graph,
+        embeddings=stores.embeddings,
+        notebook_id=notebook_id,
     )
 
 
@@ -180,10 +161,16 @@ def batch_archive_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
-    cards, graph = _resolve_stores(
+    stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    return batch_archive_vocab_words(req.words, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
+    return batch_archive_vocab_words(
+        req.words,
+        archived=req.archived,
+        cards_store=stores.cards,
+        graph=stores.graph,
+        notebook_id=notebook_id,
+    )
