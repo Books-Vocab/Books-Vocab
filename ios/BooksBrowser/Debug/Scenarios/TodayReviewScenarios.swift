@@ -19,6 +19,9 @@ enum TodayReviewScenarios {
             Scenario("Autoplay", layout: .fill) {
                 TodayReviewFixtureScene(fixtureID: .autoplay)
             }
+            Scenario("Long content overflow", layout: .fill) {
+                TodayReviewFixtureScene(fixtureID: .longContent)
+            }
         }
     }
 }
