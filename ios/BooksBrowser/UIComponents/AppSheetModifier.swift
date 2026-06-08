@@ -15,7 +15,11 @@ enum AppSheetPreset {
 
 private struct AppSheetModifier: ViewModifier {
     let preset: AppSheetPreset
+#if KG_RUN_CATALOG_SNAPSHOTS
+    @State private var contentVisible = true
+#else
     @State private var contentVisible = false
+#endif
 
     func body(content: Content) -> some View {
         // Apply opacity/scale to the content BEFORE presentation modifiers so that
@@ -25,9 +29,13 @@ private struct AppSheetModifier: ViewModifier {
             .opacity(contentVisible ? 1 : 0)
             .scaleEffect(contentVisible ? 1 : 0.97)
             .onAppear {
+#if KG_RUN_CATALOG_SNAPSHOTS
+                contentVisible = true
+#else
                 withAnimation(AppMotion.sheetContentAppear) {
                     contentVisible = true
                 }
+#endif
             }
 
         switch preset {
