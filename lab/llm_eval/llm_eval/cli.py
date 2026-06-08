@@ -302,6 +302,130 @@ def _fmt_score(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.3f}"
 
 
+def _resolve_report(args: argparse.Namespace) -> Path | None:
+    """Pick the report JSON: explicit --results, else newest in results-dir
+    matching --prompt (and --dataset if given)."""
+    import glob
+
+    if args.results:
+        p = Path(args.results)
+        return p if p.exists() else None
+    results_dir = args.results_dir or "lab/llm_eval/results"
+    paths = sorted(glob.glob(str(Path(results_dir) / "*.json")))
+    if args.prompt:
+        paths = [p for p in paths if f"_{args.prompt}_" in Path(p).name]
+    if args.dataset:
+        paths = [p for p in paths if Path(p).name.endswith(f"_{args.dataset}.json")]
+    return Path(paths[-1]) if paths else None
+
+
+def _gold_fields(sample: dict[str, Any]) -> dict[str, Any]:
+    """All human-gold reference fields on a sample (gold_* keys), minus status."""
+    return {
+        k[len("gold_"):]: v
+        for k, v in sample.items()
+        if k.startswith("gold_") and k != "gold_status"
+    }
+
+
+def _review_records(report: dict[str, Any], model: str, samples_by_id: dict[str, dict]) -> list[dict]:
+    """Join one model's raw outputs with dataset word/context/gold + format scores."""
+    records = []
+    for r in report["models"][model]["samples"]:
+        sid = r["sample_id"]
+        s = samples_by_id.get(sid, {})
+        records.append({
+            "id": sid,
+            "subject": s.get("word") or s.get("target_word") or "",
+            "context": s.get("context", ""),
+            "llm": r.get("parsed_output"),
+            "raw": r.get("raw_output", ""),
+            "gold": _gold_fields(s),
+            "format": r.get("scores", {}),
+            "error": r.get("error"),
+        })
+    return records
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    """Emit a reviewable, chunkable join of model outputs + gold for AGENT review.
+
+    Quality is judged by reading this — not auto-scored. Use --range to hand
+    slices to parallel reviewers; --json for machine handoff to a subagent.
+    """
+    from llm_eval.datasets import load_dataset
+
+    report_path = _resolve_report(args)
+    if report_path is None:
+        print("Error: no matching report found (try --results <path>)", file=sys.stderr)
+        return 1
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    models = report.get("models", {})
+    if not models:
+        print("Error: report has no model results", file=sys.stderr)
+        return 1
+    model = args.model or next(iter(models))
+    if model not in models:
+        print(f"Error: model {model!r} not in report (have: {list(models)})", file=sys.stderr)
+        return 1
+
+    dataset_name = report.get("dataset_name", "")
+    try:
+        dataset = load_dataset(dataset_name)
+    except FileNotFoundError:
+        dataset = []
+    samples_by_id = {str(s.get("id", s.get("word", "unknown"))): s for s in dataset}
+
+    records = _review_records(report, model, samples_by_id)
+
+    if args.range:
+        try:
+            start_s, _, end_s = args.range.partition(":")
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else len(records)
+        except ValueError:
+            print(f"Error: bad --range {args.range!r} (use START:END)", file=sys.stderr)
+            return 1
+        records = records[start:end]
+
+    header = {
+        "report": str(report_path),
+        "prompt": f"{report['prompt']['name']}@{report['prompt']['version']}",
+        "dataset": dataset_name,
+        "model": model,
+        "count": len(records),
+    }
+
+    if args.json:
+        _emit_json({"header": header, "records": records})
+        return 0
+
+    print(f"# Review: {header['prompt']}  |  {model}  |  {dataset_name}  ({len(records)} samples)")
+    print(f"# source: {report_path}")
+    print(f"# quality is YOUR judgement — format scores below are mechanical only\n")
+    for i, rec in enumerate(records):
+        print(f"## [{i}] {rec['id']}  —  {rec['subject']}")
+        if rec["context"]:
+            print(f"- context: {rec['context']}")
+        if rec["error"]:
+            print(f"- ERROR: {rec['error']}")
+        print(f"- llm:  {json.dumps(rec['llm'], ensure_ascii=False)}")
+        if rec["gold"]:
+            print(f"- gold: {json.dumps(rec['gold'], ensure_ascii=False)}")
+        fmt = " ".join(f"{k}={_compact_num(v)}" for k, v in rec["format"].items())
+        if fmt:
+            print(f"- format: {fmt}")
+        print()
+    return 0
+
+
+def _compact_num(v: Any) -> str:
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
 # -- main --
 
 
@@ -356,6 +480,19 @@ def main(argv: list[str] | None = None) -> int:
     # providers
     p_providers = sub.add_parser("providers", parents=[jp], help="List available LLM providers")
     p_providers.set_defaults(func=cmd_providers)
+
+    # review — agent-readable join of model output + gold for manual quality judging
+    p_review = sub.add_parser(
+        "review", parents=[jp],
+        help="Emit reviewable model-output vs gold join for agent quality review",
+    )
+    p_review.add_argument("--results", default=None, help="Report JSON path (default: newest match)")
+    p_review.add_argument("--prompt", default=None, help="Filter newest report by prompt name")
+    p_review.add_argument("--dataset", default=None, help="Filter newest report by dataset name")
+    p_review.add_argument("--results-dir", default=None, help="Dir to search (default: lab/llm_eval/results)")
+    p_review.add_argument("--model", default=None, help="Model in report (default: first)")
+    p_review.add_argument("--range", default=None, help="Slice samples START:END (for chunked review)")
+    p_review.set_defaults(func=cmd_review)
 
     args = parser.parse_args(argv)
     if not hasattr(args, "func"):

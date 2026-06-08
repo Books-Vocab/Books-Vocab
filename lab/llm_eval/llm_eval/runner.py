@@ -95,21 +95,6 @@ def _format_score(result: EvalResult) -> float | None:
     return _mean(values)
 
 
-def _result_quality_score(result: EvalResult, sample: dict[str, Any]) -> float | None:
-    if sample.get("gold_status") != "human_gold":
-        return None
-    if result.error is not None:
-        return 0.0
-    fmt = _format_score(result)
-    if fmt is not None and fmt < 1.0:
-        return 0.0
-    values = [
-        value for key, value in result.scores.items()
-        if key.startswith("quality_")
-    ]
-    return _mean(values)
-
-
 def _score_breakdown(results: list[EvalResult]) -> dict[str, float]:
     buckets: dict[str, list[float]] = {}
     for result in results:
@@ -291,10 +276,6 @@ async def run_eval(
     results = await asyncio.gather(*tasks)
 
     # Aggregate by model
-    sample_by_id = {
-        str(s.get("id", s.get("word", "unknown"))): s
-        for s in samples
-    }
     summaries: dict[str, EvalSummary] = {}
     for m in models:
         if m not in provider_map:
@@ -318,10 +299,9 @@ async def run_eval(
             score for r in model_results
             if (score := _format_score(r)) is not None
         ])
-        quality_score_avg = _mean([
-            score for r in model_results
-            if (score := _result_quality_score(r, sample_by_id.get(r.sample_id, {}))) is not None
-        ])
+        # Translation/semantic quality is judged by agent review of the report,
+        # not auto-scored here — kept as None so the report honestly shows n/a.
+        quality_score_avg = None
 
         summaries[m] = EvalSummary(
             model=m,

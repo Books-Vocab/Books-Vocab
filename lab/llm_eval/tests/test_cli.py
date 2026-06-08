@@ -108,6 +108,68 @@ def test_eval_requires_args(capsys):
     assert exc_info.value.code == 2
 
 
+def _write_report(tmp_path, dataset_name="translate_quick_gold"):
+    report = {
+        "timestamp": "20260101T000000Z",
+        "prompt": {"name": "translate_quick", "version": "v1"},
+        "dataset_name": dataset_name,
+        "models": {
+            "deepseek-v4-flash": {
+                "provider": "deepseek",
+                "samples": [
+                    {
+                        "sample_id": "s1",
+                        "parsed_output": {"t": "喚起", "p": "v.", "r": "evoke"},
+                        "raw_output": '{"t":"喚起","p":"v.","r":"evoke"}',
+                        "scores": {"json_valid": 1.0, "schema_conform": 1.0},
+                        "error": None,
+                    }
+                ],
+            }
+        },
+    }
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_review_json_joins_output(tmp_path, capsys):
+    path = _write_report(tmp_path, dataset_name="nonexistent_dataset")
+    code = main(["review", "--results", str(path), "--json"])
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["header"]["model"] == "deepseek-v4-flash"
+    assert len(data["records"]) == 1
+    rec = data["records"][0]
+    assert rec["id"] == "s1"
+    assert rec["llm"]["t"] == "喚起"
+    assert rec["format"]["json_valid"] == 1.0
+
+
+def test_review_range_slice(tmp_path, capsys):
+    path = _write_report(tmp_path, dataset_name="nonexistent_dataset")
+    code = main(["review", "--results", str(path), "--range", "1:5", "--json"])
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["records"] == []
+
+
+def test_review_missing_report(capsys):
+    code = main(["review", "--results", "/nonexistent/report.json"])
+    assert code == 1
+    assert "no matching report" in capsys.readouterr().err
+
+
+def test_review_markdown_default(tmp_path, capsys):
+    path = _write_report(tmp_path, dataset_name="nonexistent_dataset")
+    code = main(["review", "--results", str(path)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "# Review" in out
+    assert "s1" in out
+    assert "llm:" in out
+
+
 def test_corpus_build_shows_help(capsys):
     code = main(["corpus-build"])
     assert code == 0
