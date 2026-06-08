@@ -120,3 +120,58 @@ def cmd_report(root: Path, *, limit: int | None) -> int:
     payload = build_report_payload(manifest, state, effective_status_fn=effective_status, root=str(root), limit=limit)
     print(json.dumps(payload, ensure_ascii=False))
     return 0
+
+
+def cmd_gaps(
+    root: Path,
+    *,
+    lane: str | None,
+    missing: str | None,
+    feature: str | None,
+    min_gap: int,
+    limit: int | None,
+) -> int:
+    """Surface-level coverage query — the machine face of the gallery's Coverage
+    view. Reads the surface index's lane-aware coverage fields directly so an
+    agent can ask "which shippable surfaces are missing which ship-critical
+    states" without parsing the whole manifest. Untracked lanes (building blocks,
+    engineering-only harness) carry no coverage target and are never reported."""
+    manifest, _ = load_review_context(root)
+    tracked = [s for s in manifest.get("surfaces", []) if s.get("coverageTracked")]
+    rows = []
+    for surface in tracked:
+        if lane and surface.get("lane") != lane:
+            continue
+        if feature and surface.get("feature") != feature:
+            continue
+        if missing and missing not in surface.get("missingFacets", []):
+            continue
+        if surface.get("coverageGap", 0) < min_gap:
+            continue
+        rows.append(surface)
+    rows.sort(key=lambda s: (-s.get("coverageGap", 0), s.get("feature", ""), s.get("surface", "")))
+    if limit is not None:
+        rows = rows[:limit]
+    payload = {
+        "status": "ok",
+        **build_artifact_refs(root),
+        "filters": {"lane": lane, "missing": missing, "feature": feature, "minGap": min_gap, "limit": limit},
+        "trackedSurfaceCount": len(tracked),
+        "matchCount": len(rows),
+        "totalGap": sum(s.get("coverageGap", 0) for s in rows),
+        "surfaces": [
+            {
+                "surface": s["surface"],
+                "feature": s["feature"],
+                "lane": s["lane"],
+                "coverageGap": s["coverageGap"],
+                "missingFacets": s["missingFacets"],
+                "facetsPresent": s["facetsPresent"],
+                "expectedFacets": s["expectedFacets"],
+                "sceneCount": s["sceneCount"],
+            }
+            for s in rows
+        ],
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
