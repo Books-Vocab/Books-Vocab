@@ -282,7 +282,7 @@ struct CatalogScene: View {
             .init(id: "settings_subscription_section", categories: ["Settings Subscription Section"], register: SettingsSubscriptionSectionScenarios.register),
             .init(id: "today_review_phase_view", categories: ["Today Review Phase"], register: TodayReviewPhaseScenarios.register),
             .init(id: "today_review_view", categories: ["Today Review View"], register: TodayReviewViewScenarios.register),
-            .init(id: "kg_vocab_view", categories: ["KG Vocab View"], register: KGVocabPresenterScenarios.register),
+            .init(id: "kg_vocab_presenter", categories: ["KG Vocab Presenter"], register: KGVocabPresenterScenarios.register),
             .init(id: "vocabulary_list_toolbar", categories: ["Vocabulary List Toolbar"], register: VocabularyListToolbarScenarios.register),
             .init(id: "step_duration_view", categories: ["Sync Step Duration"], register: StepDurationScenarios.register),
             .init(id: "reader_view", categories: ["Reader View · Chrome"], register: ReaderChromeScenarios.register),
