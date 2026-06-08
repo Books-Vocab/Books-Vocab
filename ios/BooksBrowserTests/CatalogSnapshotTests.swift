@@ -113,9 +113,19 @@ private let catalogSnapshotCompileFlagEnabled = false
         let snapshotRunStart = CFAbsoluteTimeGetCurrent()
         try snapshot.run(with: playbook)
         let snapshotRunMs = Self.elapsedMilliseconds(since: snapshotRunStart)
+
+        // Emit the source-of-truth taxonomy index next to the PNGs. `snapshot.run`
+        // cleans `outputDirectory` then writes `<device>/<category>/...`, so this
+        // sits at the root the `ops/catalog_review_*.py` gallery treats as
+        // `source_root`. The gallery consumes it to assign lane/feature/screen
+        // instead of guessing from transparent-margin pixels + title regex.
+        let indexURL = outputDirectory.appendingPathComponent("catalog_index.json")
+        try CatalogScene.Manifest.indexJSONData().write(to: indexURL)
+
         let testBodyMs = Self.elapsedMilliseconds(since: testBodyStart)
 
         print("KG catalog snapshots written to: \(outputDirectory.path)")
+        print("KG catalog index written to: \(indexURL.path)")
         print(
             """
             KG catalog snapshot debug:
