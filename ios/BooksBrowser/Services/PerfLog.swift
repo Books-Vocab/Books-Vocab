@@ -94,6 +94,12 @@ enum PerfLog {
     /// Benignly racy by design — worst case one stale frame of logging.
     nonisolated(unsafe) static var runtimeCategories: Set<PerfCategory>?
 
+    /// Last `mark()` payload, used as a render breadcrumb: when a FrameSampler records
+    /// a new worst gap it snapshots this, so a hitchy frame is attributed to whatever
+    /// view marked just before/during it (e.g. `compose.active` vs `stack.preview`).
+    /// Main-thread only in practice (marks + CADisplayLink both on main); benignly racy.
+    nonisolated(unsafe) static var lastBreadcrumb: String = ""
+
     /// Parsed once from KG_PERF_LOG; immutable ⇒ free to read concurrently.
     static let envCategories: Set<PerfCategory> = {
         guard let raw = ProcessInfo.processInfo.environment["KG_PERF_LOG"]?.lowercased() else {
@@ -161,6 +167,7 @@ final class PerfChannel: @unchecked Sendable {
         #if DEBUG
         guard PerfLog.isEnabled(category) else { return }
         let d = detail()
+        PerfChannel.lastBreadcrumb = d.isEmpty ? label.description : "\(label.description) \(d)"
         if PerfLog.signpostsEnabled { signposter.emitEvent(label, "\(d, privacy: .public)") }
         if d.isEmpty { log.debug("\(label)") } else { log.debug("\(label) \(d, privacy: .public)") }
         #else
@@ -265,6 +272,7 @@ final class PerfChannel: @unchecked Sendable {
         private var frames = 0
         private var maxGapMs: Double = 0
         private var maxGapAtMs: Double = 0   // ms-since-start of the worst gap → pins the freeze to the timeline
+        private var maxGapCrumb = ""         // PerfChannel.lastBreadcrumb at the worst gap → names the culprit render
         private var stalls = 0   // inter-frame gaps > 33ms (≈ a dropped frame at 60fps)
 
         init(log: Logger, label: String) {
@@ -286,6 +294,7 @@ final class PerfChannel: @unchecked Sendable {
                 if gapMs > maxGapMs {
                     maxGapMs = gapMs
                     maxGapAtMs = Double(now.uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000
+                    maxGapCrumb = PerfChannel.lastBreadcrumb
                 }
                 if gapMs > 33 { stalls += 1 }
             }
@@ -296,7 +305,7 @@ final class PerfChannel: @unchecked Sendable {
             link = nil
             let totalMs = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000
             let fps = totalMs > 0 ? Double(frames) / (totalMs / 1000) : 0
-            log.debug("\(self.label).summary frames=\(self.frames) dur=\(totalMs, format: .fixed(precision: 1))ms fps=\(fps, format: .fixed(precision: 0)) maxGap=\(self.maxGapMs, format: .fixed(precision: 1))ms maxGapAt=\(self.maxGapAtMs, format: .fixed(precision: 1))ms stalls=\(self.stalls)")
+            log.debug("\(self.label).summary frames=\(self.frames) dur=\(totalMs, format: .fixed(precision: 1))ms fps=\(fps, format: .fixed(precision: 0)) maxGap=\(self.maxGapMs, format: .fixed(precision: 1))ms maxGapAt=\(self.maxGapAtMs, format: .fixed(precision: 1))ms stalls=\(self.stalls) after=[\(self.maxGapCrumb, privacy: .public)]")
         }
     }
     #endif
