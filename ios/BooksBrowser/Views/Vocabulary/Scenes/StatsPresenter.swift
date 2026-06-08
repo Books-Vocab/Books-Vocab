@@ -381,7 +381,7 @@ struct StatsPresenter: View {
         return VStack(spacing: 0) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 1)
+                    RoundedRectangle(cornerRadius: AppRadius.hairline)
                         .fill(LinearGradient(
                             stops: stops,
                             startPoint: .leading,

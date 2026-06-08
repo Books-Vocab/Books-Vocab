@@ -17,10 +17,10 @@ extension SettingsPresenter {
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppRadius.hairline, style: .continuous)
                         .fill(quotaBarColor.opacity(0.15))
 
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppRadius.hairline, style: .continuous)
                         .fill(quotaBarColor)
                         .frame(width: geo.size.width * quotaStore.fraction)
                         .animateSpring(quotaStore.fraction)

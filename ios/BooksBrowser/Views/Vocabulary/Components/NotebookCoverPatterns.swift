@@ -216,8 +216,7 @@ struct NotebookCoverView: View {
                     Text(name)
                         .font(AppFonts.body(weight: .semibold))
                         .foregroundStyle(.white)
-                        // 文字易讀性投影（白字壓在彩色封面上），非 UI elevation — 刻意不走 AppElevation
-                        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                        .shadow(color: .black.opacity(0.3), radius: 2, y: 1) // token-allow: cover text legibility shadow, not UI elevation
                         .lineLimit(2)
                         .truncationMode(.tail)
                         .minimumScaleFactor(0.85)
@@ -241,13 +240,13 @@ struct NotebookCoverView: View {
     LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: AppSpacing.s3) {
         ForEach(NotebookCoverPattern.allCases) { pattern in
             NotebookCoverView(
-                color: Color(hex: "#4A90D9") ?? .blue,
+                color: Color(hex: "#4A90D9") ?? .blue, // token-allow: preview fixture notebook data color
                 pattern: pattern,
                 coverImagePath: nil,
                 name: pattern.label
             )
             .frame(height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         }
     }
     .padding()

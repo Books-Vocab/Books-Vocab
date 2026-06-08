@@ -239,7 +239,7 @@ struct PodcastContinueCard: View {
         title: "Atomic Habits Unpacked",
         hostNames: ["Ava Chen", "Leo Park"]
     )
-    series.color = "#4A90D9"
+    series.color = "#4A90D9" // token-allow: preview fixture notebook data color
     series.coverPattern = NotebookCoverPattern.waves.rawValue
     series.episodeCount = 7
     series.totalDurationSec = 7 * 932

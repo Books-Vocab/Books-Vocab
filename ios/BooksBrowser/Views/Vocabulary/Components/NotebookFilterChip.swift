@@ -91,7 +91,7 @@ struct NotebookFilterPickerSheet: View {
                         HStack {
                             if let hex = notebook.color {
                                 Circle()
-                                    .fill(Color(hex: hex) ?? skin.palette.accent)
+                                    .fill(Color(hex: hex) ?? skin.palette.accent) // token-allow: user notebook data color
                                     .frame(width: 12, height: 12)
                             }
                             Text(notebook.name)

@@ -19,8 +19,8 @@ struct AppToast: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
+        .padding(.horizontal, AppSpacing.cardPadding)
+        .padding(.vertical, AppSkin.baseSpacing.compactRowVerticalPadding)
         .background(
             Capsule()
                 .fill(tintColor.opacity(0.12))

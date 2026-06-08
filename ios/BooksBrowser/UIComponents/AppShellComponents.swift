@@ -188,7 +188,7 @@ struct AppSearchField: View {
             }
         }
         .padding(.horizontal, AppSpacing.s3)
-        .padding(.vertical, 9)
+        .padding(.vertical, AppSkin.baseSpacing.rowPadding)
         .background(
             RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
                 .fill(style.background)
