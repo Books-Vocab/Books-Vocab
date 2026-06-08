@@ -170,6 +170,45 @@ def test_server_cursor_always_accepted_by_since_parser(moment):
     assert parsed == expected
 
 
+# 生產事故根因（2026-06-08）：cursor `_format_timestamp` 產出帶 '+00:00' offset，client
+# 用 URLComponents 原樣回送（'+' 是 RFC 3986 query 合法字元，不被 percent-encode），
+# Starlette 依 x-www-form-urlencoded 解碼把 '+' → 空格 → handler 收到 '...183209 00:00'
+# → fromisoformat 炸 → 400 → watermark 永不前進 → review 下載永久 400（push 走 body 不受影響）。
+# 既有契約守門（test_server_cursor_always_accepted_by_since_parser）直接傳字串、沒過
+# URL 編碼，故抓不到；唯有「裸 '+' 走 wire」才重現（見 test_review_events_api 的回歸測試）。
+# 三層修法：① cursor 改吐 'Z'（源頭去 '+'）② parser 容忍被吃成空格的 '+'（解現場存量）
+# ③ iOS 端 '+' → '%2B'（合約正確，另在 iOS commit）。
+def test_since_tolerates_url_decoded_plus_offset():
+    """② parser 容錯：'+' offset 被 query 解碼吃成空格後，仍須 parse 成同一時間點。"""
+    eaten = "2026-06-06T07:02:00.183209 00:00"  # '+00:00' 的 '+' → 空格
+    canonical = _parse_iso8601_timestamp("2026-06-06T07:02:00.183209+00:00")
+    assert _parse_iso8601_timestamp(eaten) == canonical
+
+
+def test_cursor_is_url_safe_no_plus():
+    """① 源頭修法：emit 的 cursor 不得帶 '+'（用 'Z'），才能對任何 client（新舊）無損
+    穿越 query string。"""
+    cursor = _format_timestamp(datetime(2026, 6, 1, 10, 0, 0, 123456, tzinfo=UTC))
+    assert "+" not in cursor, cursor
+    assert cursor.endswith("Z"), cursor
+
+
+@pytest.mark.parametrize(
+    "moment",
+    [
+        datetime(2026, 6, 1, 10, 0, tzinfo=UTC),
+        datetime(2026, 6, 1, 10, 0, 0, 183209, tzinfo=UTC),
+        datetime(2026, 12, 31, 23, 59, 59, 999999, tzinfo=UTC),
+    ],
+)
+def test_server_cursor_survives_query_string_round_trip(moment):
+    """完整 wire round-trip：emit cursor → 模擬 query string 的 '+'→空格解碼 → 重新 parse，
+    須還原同一 instant。守住整條 client↔server cursor 迴圈（既有守門只覆蓋 in-process 字串）。"""
+    cursor = _format_timestamp(moment)
+    on_wire = cursor.replace("+", " ")  # Starlette 交給 handler 的樣子
+    assert _parse_iso8601_timestamp(on_wire) == moment
+
+
 @pytest.mark.parametrize("field_name", ["reviewed_at", "created_at"])
 @pytest.mark.parametrize("bad_value", ["2026-06-01", "1717668000", "2026-06-01T10:00:00"])
 def test_event_timestamps_must_be_timezone_aware_iso8601(tmp_path, field_name, bad_value):

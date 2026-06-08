@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -242,6 +243,14 @@ def _parse_iso8601_timestamp(raw: str) -> datetime:
         candidate = candidate.replace(" ", "T", 1)
     # Swift Date.description style leaves a space before the offset ("...00 +0000").
     candidate = candidate.replace(" +", "+").replace(" -", "-")
+    # A '+' offset is eaten to a space by x-www-form-urlencoded query decoding: the
+    # client sends a literal '+' (URLComponents does not percent-encode it), and '+'
+    # means space in a query string, so the handler receives "...10:00:00 00:00".
+    # After the date/time 'T' is settled, a space immediately before a trailing
+    # HH:MM(:SS) / HHMM offset can only be that eaten '+' (negative offsets keep
+    # their '-' — URL decode never touches it). Restore it so our own UTC cursor,
+    # which always carries a '+00:00' offset, round-trips back instead of 400-ing.
+    candidate = re.sub(r" (?=\d{2}:?\d{2}$)", "+", candidate)
     try:
         parsed = datetime.fromisoformat(candidate)
     except ValueError:
@@ -264,6 +273,12 @@ def _parse_required_timestamp(raw: str, field_name: str) -> datetime:
 
 
 def _format_timestamp(value: datetime) -> str:
+    # Emit the UTC offset as 'Z', never '+00:00'. This cursor is echoed back by the
+    # client as the `since` query value; a literal '+' there is decoded to a space by
+    # x-www-form-urlencoded handling and breaks the round-trip (the 2026-06-08 download
+    # deadlock). 'Z' (and ':' '.' '-') traverse a query string untouched for every
+    # client. See _parse_iso8601_timestamp for the matching restore of legacy '+00:00'
+    # watermarks already stored in the field.
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).isoformat()
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
