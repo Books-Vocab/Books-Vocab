@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 import hashlib
+import struct
 from pathlib import Path
 
 from catalog_review_taxonomy import (
@@ -70,6 +71,18 @@ def is_hero_candidate(category: str, profile: dict) -> bool:
     return has_prefix(category, tuple(profile["heroCandidatePrefixes"]))
 
 
+def read_png_size(path: Path) -> tuple[int, int]:
+    """(width, height) from the PNG IHDR header — assets have heterogeneous
+    shapes (full screens vs thin tickers vs square badges), so the gallery must
+    render each at its true aspect ratio instead of one hard-coded phone box."""
+    with path.open("rb") as handle:
+        header = handle.read(24)
+    if header[:8] != b"\x89PNG\r\n\x1a\n" or len(header) < 24:
+        return (0, 0)
+    width, height = struct.unpack(">II", header[16:24])
+    return (width, height)
+
+
 def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr878") -> list[dict]:
     items: list[dict] = []
     for path in sorted(source_root.rglob("*.png")):
@@ -88,6 +101,7 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
         hero_candidate = is_hero_candidate(category, profile)
         cluster_id = build_cluster_id(category, title)
         asset_id = build_asset_id(rel)
+        width, height = read_png_size(path)
         items.append({
             "assetID": asset_id,
             "clusterID": cluster_id,
@@ -95,6 +109,8 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
             "deviceDir": device_dir,
             "device": device,
             "appearance": appearance,
+            "width": width,
+            "height": height,
             "category": category,
             "title": title,
             "promise": promise,

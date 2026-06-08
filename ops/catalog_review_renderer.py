@@ -124,8 +124,20 @@ _TEMPLATE = r"""<!doctype html>
     .scene:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(31, 22, 13, 0.12); }
     .scene.rejected { opacity: 0.42; }
     .scene.shortlisted { outline: 2px solid var(--good); outline-offset: -2px; }
-    .scene-shots { display: flex; background: #ddd7cf; }
-    .scene-shots img { display: block; width: 100%; aspect-ratio: 1179 / 2556; object-fit: cover; }
+    /* Theme-neutral transparency checkerboard: clear / letterboxed areas read as
+       "no content" in both light and dark mode (never mistaken for the asset). */
+    .checker {
+      background-color: #a39d94;
+      background-image:
+        linear-gradient(45deg, rgba(0, 0, 0, 0.17) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.17) 75%),
+        linear-gradient(45deg, rgba(0, 0, 0, 0.17) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.17) 75%);
+      background-size: 14px 14px;
+      background-position: 0 0, 7px 7px;
+    }
+    .scene-shots { display: flex; align-items: flex-start; }
+    /* Each shot renders at its real pixel aspect ratio (set inline per image), so
+       tickers stay thin and badges stay square instead of being cropped to a phone. */
+    .scene-shots img { display: block; width: 100%; height: auto; }
     .scene-shots.both img { width: 50%; }
     .scene-cap { padding: 7px 9px; display: grid; gap: 5px; }
     .scene-cap h5 { margin: 0; font-size: 12px; line-height: 1.25; font-weight: 600; }
@@ -143,9 +155,10 @@ _TEMPLATE = r"""<!doctype html>
     .leaf-head .crumb { font-size: 12px; }
     .leaf-close { border-radius: 999px; padding: 6px 14px; }
     .leaf-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
-    .leaf-shot { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: white; }
-    .leaf-shot figcaption { padding: 6px 10px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
-    .leaf-shot img { display: block; width: 100%; }
+    .leaf-shot { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .leaf-shot figcaption { padding: 6px 10px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; background: var(--panel); }
+    .leaf-shot .shot-frame { display: flex; justify-content: center; align-items: center; padding: 8px; }
+    .leaf-shot img { display: block; max-width: 100%; max-height: 72vh; height: auto; }
     .leaf-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .leaf-actions .group { display: flex; gap: 6px; }
     .leaf-actions button[data-act="shortlist"].sel { background: #e3f3e8; color: var(--good); border-color: #b8d8c3; }
@@ -338,6 +351,12 @@ _TEMPLATE = r"""<!doctype html>
 
     function badge(text, cls) { return `<span class="badge ${cls || ""}">${esc(text)}</span>`; }
 
+    // Render a shot at its true pixel aspect ratio (falls back to no lock if unknown).
+    function shotImg(shot) {
+      const ar = shot.width && shot.height ? ` style="aspect-ratio:${shot.width}/${shot.height}"` : "";
+      return `<img loading="lazy" src="${shot.relPath}" alt=""${ar}>`;
+    }
+
     function facetRail(surface, scenes) {
       const present = new Set(scenes.map((s) => s.stateFacet));
       const counts = {};
@@ -355,10 +374,10 @@ _TEMPLATE = r"""<!doctype html>
       tile.className = "scene" + (status === "reject" ? " rejected" : "") + (status === "shortlist" ? " shortlisted" : "");
       const both = state.appearance === "both";
       const imgs = both
-        ? `<img loading="lazy" src="${scene.light.relPath}" alt=""><img loading="lazy" src="${scene.dark.relPath}" alt="">`
-        : `<img loading="lazy" src="${(state.appearance === "dark" ? scene.dark : scene.light).relPath}" alt="">`;
+        ? shotImg(scene.light) + shotImg(scene.dark)
+        : shotImg(state.appearance === "dark" ? scene.dark : scene.light);
       tile.innerHTML = `
-        <div class="scene-shots ${both ? "both" : ""}">${imgs}</div>
+        <div class="scene-shots checker ${both ? "both" : ""}">${imgs}</div>
         <div class="scene-cap">
           <h5>${esc(scene.stateLabel)}</h5>
           <span class="facet-tag f-${scene.stateFacet}">${scene.stateFacet}</span>
@@ -422,8 +441,8 @@ _TEMPLATE = r"""<!doctype html>
           <button class="leaf-close">關閉 ✕</button>
         </div>
         <div class="leaf-shots">
-          <figure class="leaf-shot"><a href="${scene.light.relPath}" target="_blank" rel="noreferrer"><img src="${scene.light.relPath}" alt=""></a><figcaption><span>Light</span><span>${scene.light.device}</span></figcaption></figure>
-          <figure class="leaf-shot"><a href="${scene.dark.relPath}" target="_blank" rel="noreferrer"><img src="${scene.dark.relPath}" alt=""></a><figcaption><span>Dark</span><span>${scene.dark.device}</span></figcaption></figure>
+          <figure class="leaf-shot"><a class="shot-frame checker" href="${scene.light.relPath}" target="_blank" rel="noreferrer"><img src="${scene.light.relPath}" alt=""></a><figcaption><span>Light</span><span>${scene.light.width}×${scene.light.height}</span></figcaption></figure>
+          <figure class="leaf-shot"><a class="shot-frame checker" href="${scene.dark.relPath}" target="_blank" rel="noreferrer"><img src="${scene.dark.relPath}" alt=""></a><figcaption><span>Dark</span><span>${scene.dark.width}×${scene.dark.height}</span></figcaption></figure>
         </div>
         <div class="leaf-actions">
           <div class="group">
