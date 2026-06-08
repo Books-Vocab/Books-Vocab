@@ -66,3 +66,8 @@ def test_choose_blessed_artifact_breaks_ties_by_name(tmp_path: Path):
     blessed = entry_module.choose_blessed_artifact(artifacts)
 
     assert blessed["name"] == "catalog-full-20260608-020244"
+
+
+def test_extract_directory_from_command():
+    command = "/usr/bin/python3 -m http.server 8787 --directory /tmp/catalog-full-20260608-020244"
+    assert entry_module.extract_directory_from_command(command) == "/tmp/catalog-full-20260608-020244"
