@@ -62,7 +62,7 @@ enum PodcastSeriesHeroScenarios {
 #if os(iOS)
 /// `PodcastSeriesHero` baseline harness. `PodcastSeries` construction touches
 /// `@MainActor` paths, so it lives in a `View` body (same reason as the
-/// `PodcastSeriesCardScene` harness in `BookshelfScenarios`).
+/// `PodcastSeriesCardScene` harness in `PodcastShelfCardsScenarios`).
 private struct PodcastSeriesHeroScene: View {
     let title: String
     let hosts: [String]
