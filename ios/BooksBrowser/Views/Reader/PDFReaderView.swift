@@ -63,9 +63,21 @@ struct PDFReaderView: View {
                                 context: context,
                                 vocabularyContext: vocabularyContext
                             )
-                            withAnimation(AppMotion.panelState) {
-                                showTranslation = true
-                            }
+                            presentTranslationPanel()
+                        },
+                        onPhraseSelected: { phrase, context in
+                            guard canUseProReaderFeature() else { return }
+                            handler.handlePhraseSelected(
+                                phrase: phrase,
+                                context: context,
+                                vocabularyContext: vocabularyContext
+                            )
+                            presentTranslationPanel()
+                        },
+                        onExplainSelected: { text, context in
+                            guard canUseProReaderFeature() else { return }
+                            handler.handleExplainSelected(text: text, context: context)
+                            presentTranslationPanel()
                         }
                     )
                     .ignoresSafeArea(edges: [.horizontal, .bottom])
@@ -126,12 +138,17 @@ struct PDFReaderView: View {
         loadDocument()
     }
 
-    /// Parity hook with `ReaderView.canUseProReaderFeature()` (EPUB path). Both
-    /// readers gate vocabulary capture through this so a future entitlement check
-    /// lands in one contract instead of letting the PDF reader silently bypass
-    /// it. Returns `true` today (no gating shipped yet).
+    /// Parity hook with the EPUB path — both readers gate vocabulary capture
+    /// through the shared `ReaderEntitlement` so a future entitlement check lands
+    /// in exactly one place instead of letting the PDF reader silently bypass it.
     private func canUseProReaderFeature() -> Bool {
-        return true
+        ReaderEntitlement.canUseProReaderFeature()
+    }
+
+    private func presentTranslationPanel() {
+        withAnimation(AppMotion.panelState) {
+            showTranslation = true
+        }
     }
 
     // MARK: - State Views
@@ -231,6 +248,8 @@ private struct PDFKitRepresentable: UIViewRepresentable {
     let book: Book
     let modelContext: ModelContext
     let onWordSelected: (String, String) -> Void
+    let onPhraseSelected: (String, String) -> Void
+    let onExplainSelected: (String, String) -> Void
 
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
@@ -284,7 +303,13 @@ private struct PDFKitRepresentable: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(book: book, modelContext: modelContext, onWordSelected: onWordSelected)
+        Coordinator(
+            book: book,
+            modelContext: modelContext,
+            onWordSelected: onWordSelected,
+            onPhraseSelected: onPhraseSelected,
+            onExplainSelected: onExplainSelected
+        )
     }
 
     private func restorePosition(in pdfView: PDFView) {
@@ -305,17 +330,23 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         let book: Book
         let modelContext: ModelContext
         let onWordSelected: (String, String) -> Void
+        let onPhraseSelected: (String, String) -> Void
+        let onExplainSelected: (String, String) -> Void
         weak var pdfView: PDFView?
         weak var menuInteraction: UIEditMenuInteraction?
 
         init(
             book: Book,
             modelContext: ModelContext,
-            onWordSelected: @escaping (String, String) -> Void
+            onWordSelected: @escaping (String, String) -> Void,
+            onPhraseSelected: @escaping (String, String) -> Void,
+            onExplainSelected: @escaping (String, String) -> Void
         ) {
             self.book = book
             self.modelContext = modelContext
             self.onWordSelected = onWordSelected
+            self.onPhraseSelected = onPhraseSelected
+            self.onExplainSelected = onExplainSelected
         }
 
         // MARK: - Progress Saving
@@ -386,32 +417,62 @@ private struct PDFKitRepresentable: UIViewRepresentable {
                 title: "翻譯".localized,
                 image: UIImage(systemName: "character.book.closed")
             ) { [weak self] _ in
-                self?.triggerWordSelection()
+                self?.triggerTranslate()
+            }
+            let explainAction = UIAction(
+                title: "解釋".localized,
+                image: UIImage(systemName: "text.bubble")
+            ) { [weak self] _ in
+                self?.triggerExplain()
             }
 
-            // Keep system actions (Copy, etc.) and prepend translate
-            return UIMenu(children: [translateAction] + suggestedActions)
+            // Keep system actions (Copy, etc.) and prepend our vocab actions,
+            // mirroring EPUB's edit-menu「翻譯」/「解釋」pair.
+            return UIMenu(children: [translateAction, explainAction] + suggestedActions)
         }
 
-        private func triggerWordSelection() {
+        /// 「翻譯」:依選取的 token 數分流 —— 單詞走 word path(sanitize + 詞庫
+        /// dedup/儲存,plain context);多詞走 phrase path(marked context),
+        /// 對齊 EPUB 的 tap=word / selection=phrase 語意。
+        private func triggerTranslate() {
             guard let pdfView,
                   let selection = pdfView.currentSelection,
-                  let raw = selection.string,
-                  let word = ReaderWordCapture.sanitizeSelectedWord(raw)
+                  let raw = selection.string
             else { return }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
 
-            // Extract surrounding context from the page
-            let context = extractContext(for: selection, in: pdfView)
-            pdfView.clearSelection()
-
-            Task { @MainActor in
-                onWordSelected(word, context)
+            if ReaderWordCapture.isPhraseSelection(raw) {
+                let context = extractContext(for: selection, in: pdfView, marked: true)
+                pdfView.clearSelection()
+                Task { @MainActor in onPhraseSelected(trimmed, context) }
+            } else {
+                guard let word = ReaderWordCapture.sanitizeSelectedWord(raw) else { return }
+                let context = extractContext(for: selection, in: pdfView, marked: false)
+                pdfView.clearSelection()
+                Task { @MainActor in onWordSelected(word, context) }
             }
+        }
+
+        /// 「解釋」:對單詞或片語皆送 marked context 給 explanation flow
+        /// (不入詞庫),對齊 EPUB 的 aiExplain。
+        private func triggerExplain() {
+            guard let pdfView,
+                  let selection = pdfView.currentSelection,
+                  let raw = selection.string
+            else { return }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+
+            let context = extractContext(for: selection, in: pdfView, marked: true)
+            pdfView.clearSelection()
+            Task { @MainActor in onExplainSelected(trimmed, context) }
         }
 
         private func extractContext(
             for selection: PDFSelection,
-            in pdfView: PDFView
+            in pdfView: PDFView,
+            marked: Bool
         ) -> String {
             guard let page = selection.pages.first,
                   let pageText = page.string
@@ -425,33 +486,10 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             guard let selectionRange = pageTextRange(for: selection, on: page, in: pageText) else {
                 // Fallback:API 取不到範圍(極少數情況)時退回字串搜尋,
                 // 仍優於回傳裸選取詞。
-                return fallbackContext(selectedText: selection.string ?? "", in: pageText)
+                return fallbackContext(selectedText: selection.string ?? "", in: pageText, marked: marked)
             }
 
-            return contextWindow(around: selectionRange, in: pageText)
-        }
-
-        /// 以給定字元範圍為中心,取前後 ~100 字元的窗口,並把換行壓成空白後 trim。
-        /// extractContext / fallbackContext 共用,確保兩條路徑的上下文格式一致。
-        private func contextWindow(
-            around range: Range<String.Index>,
-            in pageText: String
-        ) -> String {
-            let contextRadius = 100
-            let start = pageText.index(
-                range.lowerBound,
-                offsetBy: -contextRadius,
-                limitedBy: pageText.startIndex
-            ) ?? pageText.startIndex
-            let end = pageText.index(
-                range.upperBound,
-                offsetBy: contextRadius,
-                limitedBy: pageText.endIndex
-            ) ?? pageText.endIndex
-
-            return String(pageText[start..<end])
-                .replacingOccurrences(of: "\n", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return PDFReaderContext.window(around: selectionRange, in: pageText, marked: marked)
         }
 
         /// 將 PDFSelection 在指定 page 上的實際字元範圍(NSRange,對 page.string)
@@ -481,11 +519,11 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             return Range(coveringNSRange, in: pageText)
         }
 
-        private func fallbackContext(selectedText: String, in pageText: String) -> String {
+        private func fallbackContext(selectedText: String, in pageText: String, marked: Bool) -> String {
             guard !selectedText.isEmpty, let range = pageText.range(of: selectedText) else {
                 return selectedText
             }
-            return contextWindow(around: range, in: pageText)
+            return PDFReaderContext.window(around: range, in: pageText, marked: marked)
         }
     }
 }
