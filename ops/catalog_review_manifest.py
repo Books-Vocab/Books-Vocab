@@ -175,26 +175,17 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
     return items
 
 
-def build_manifest(items: list[dict], profile: dict, *, state_file: str | None = None, review_state: dict | None = None) -> dict:
+def build_manifest(items: list[dict], profile: dict) -> dict:
     counts = Counter(item["promise"] for item in items)
     category_counts = Counter(item["category"] for item in items)
     eligibility_counts = Counter(item["eligibility"] for item in items)
     indexes = build_manifest_indexes(items)
-    state_entries = review_state.get("entries", {}) if review_state else {}
-    items_with_state = []
-    for item in items:
-        state_entry = state_entries.get(item["assetID"], {})
-        item_with_state = dict(item)
-        item_with_state["reviewStatus"] = state_entry.get("status", "")
-        item_with_state["reviewNote"] = state_entry.get("note", "")
-        items_with_state.append(item_with_state)
     return {
-        "schema": "kg.catalog.review.v1",
+        "schema": "kg.catalog.atlas.v1",
         "profile": {
             "path": str(profile.get("_path", "")),
             "schema": profile.get("schema"),
         },
-        "stateFile": state_file,
         "totalImages": len(items),
         "promiseCounts": dict(counts),
         "categoryCounts": dict(category_counts),
@@ -202,7 +193,6 @@ def build_manifest(items: list[dict], profile: dict, *, state_file: str | None =
         **indexes,
         "newSincePr878Count": sum(1 for item in items if item["newSincePr878"]),
         "heroCandidateCount": sum(1 for item in items if item["heroCandidate"]),
-        "stateCounts": dict(Counter(item["reviewStatus"] for item in items_with_state if item["reviewStatus"])),
-        "tree": build_node_tree(items_with_state),
-        "items": items_with_state,
+        "tree": build_node_tree(items),
+        "items": items,
     }

@@ -196,12 +196,10 @@ def cmd_current(_: argparse.Namespace) -> int:
         "blessed": {
             "name": blessed["name"],
             "root": blessed_root,
-            "reviewHtml": str(blessed["root"] / "review.html"),
             "canvasHtml": str(blessed["root"] / "catalog.html"),
             "reviewManifest": str(blessed["root"] / "review_manifest.json"),
             "totalImages": blessed["totalImages"],
             "promiseCounts": blessed["promiseCounts"],
-            "stateCounts": blessed["stateCounts"],
             "categories": blessed["categories"],
             "clusters": blessed["clusters"],
             "heroCandidates": blessed["heroCandidates"],
@@ -263,11 +261,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if not blessed["isUsable"]:
         print(json.dumps({
             "status": "needs-regeneration",
-            "error": "no-usable-review-artifact",
+            "error": "no-usable-catalog-artifact",
             "blessedCandidate": {
                 "name": blessed["name"],
                 "root": str(blessed["root"]),
-                "reviewHtml": str(blessed["root"] / "review.html"),
                 "canvasHtml": str(blessed["root"] / "catalog.html"),
                 "totalImages": blessed["totalImages"],
             },
@@ -305,10 +302,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         "blessed": {
             "name": blessed["name"],
             "root": str(blessed["root"]),
-            "reviewHtml": str(blessed["root"] / "review.html"),
             "canvasHtml": str(blessed["root"] / "catalog.html"),
-            "url": f"http://127.0.0.1:{args.port}/review.html",
-            "canvasUrl": f"http://127.0.0.1:{args.port}/catalog.html",
+            "url": f"http://127.0.0.1:{args.port}/catalog.html",
             "totalImages": blessed["totalImages"],
         },
     }
