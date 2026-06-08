@@ -31,15 +31,31 @@ enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
     }
 
     func swiftUIColor(for colorScheme: ColorScheme) -> Color {
-        switch (self, colorScheme) {
-        case (.paper, .light): return Color(red: 0.90, green: 0.84, blue: 0.57)
-        case (.paper, .dark): return Color(red: 0.73, green: 0.66, blue: 0.33)
-        case (.blue, .light): return Color(red: 0.30, green: 0.45, blue: 0.59)
-        case (.blue, .dark): return Color(red: 0.54, green: 0.65, blue: 0.76)
-        case (.sage, .light): return Color(red: 0.42, green: 0.57, blue: 0.41)
-        case (.sage, .dark): return Color(red: 0.58, green: 0.70, blue: 0.56)
-        case (.rose, .light): return Color(red: 0.70, green: 0.45, blue: 0.52)
-        case (.rose, .dark): return Color(red: 0.78, green: 0.58, blue: 0.64)
+        switch self {
+        case .paper:
+            switch colorScheme {
+            case .light: return Color(red: 0.90, green: 0.84, blue: 0.57)
+            case .dark: return Color(red: 0.73, green: 0.66, blue: 0.33)
+            @unknown default: return Color(red: 0.90, green: 0.84, blue: 0.57)
+            }
+        case .blue:
+            switch colorScheme {
+            case .light: return Color(red: 0.30, green: 0.45, blue: 0.59)
+            case .dark: return Color(red: 0.54, green: 0.65, blue: 0.76)
+            @unknown default: return Color(red: 0.30, green: 0.45, blue: 0.59)
+            }
+        case .sage:
+            switch colorScheme {
+            case .light: return Color(red: 0.42, green: 0.57, blue: 0.41)
+            case .dark: return Color(red: 0.58, green: 0.70, blue: 0.56)
+            @unknown default: return Color(red: 0.42, green: 0.57, blue: 0.41)
+            }
+        case .rose:
+            switch colorScheme {
+            case .light: return Color(red: 0.70, green: 0.45, blue: 0.52)
+            case .dark: return Color(red: 0.78, green: 0.58, blue: 0.64)
+            @unknown default: return Color(red: 0.70, green: 0.45, blue: 0.52)
+            }
         }
     }
 }

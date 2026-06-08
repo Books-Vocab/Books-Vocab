@@ -1,6 +1,6 @@
 #if os(iOS)
 import Foundation
-import WebKit
+@preconcurrency import WebKit
 import os
 
 extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
@@ -20,8 +20,9 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
         // WKScriptMessage.body / .name are only valid during this synchronous
         // delegate callback. Capture them now before hopping to the MainActor;
         // reading them inside the Task would be a use-after-scope.
-        let name = message.name
-        let body = message.body
+        let (name, body) = MainActor.assumeIsolated {
+            (message.name, message.body)
+        }
         Task { @MainActor in
             switch name {
             case "selectionState":
