@@ -94,7 +94,11 @@ _STATE_FACET_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("a11y", re.compile(r"a11y|accessib|dynamic type|large numbers|xxl|\bbig text\b")),
     ("overflow", re.compile(r"\blong\b|overflow|truncat|stress|\bmany\b|\blarge\b|\bheavy\b|wrap|multiline|\bnarrow\b|\bdense\b|\bdepth\b|超長|密集")),
     ("bounds", re.compile(r"\bmin\b|\bmax\b|bounds?|minimum|maximum|\bshort\b|\bcompact\b|\bsingle\b|\btight\b|at maximum|at minimum|clamp|僅")),
-    ("disabled", re.compile(r"disabled|locked|read.?only|paywall|gated|\bpro\b|\bfree\b|關閉|停用|鎖定|凍結")),
+    # NOTE: "pro"/"free" name a subscription *tier*, not a disabled control — they
+    # used to live here and bucketed active subscriptions ("Pro Active") as
+    # disabled, the opposite of their meaning. Tier labels now fall through to
+    # selected ("active") / default; only genuine locked/gated states stay here.
+    ("disabled", re.compile(r"disabled|locked|read.?only|paywall|gated|關閉|停用|鎖定|凍結")),
     ("selected", re.compile(r"selected|\bactive\b|\bfocus\b|highlight|expanded|collapsed?|toggled|revealed|展開|收合|選取")),
     ("populated", re.compile(r"populated|loaded|content|\bfull\b|\bgrid\b|\blist\b|multiple|stacked|\brich\b|\bmixed\b|\bboth\b|completed|progress|pending|\bdue\b|continue|session|\bhero\b|\bcard\b|\bwith\b|完成|部分|含")),
 ]
