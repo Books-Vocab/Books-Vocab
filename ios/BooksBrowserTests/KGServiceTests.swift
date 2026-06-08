@@ -462,31 +462,58 @@ struct KGServiceTests {
 
     // MARK: - URL composition (authenticatedRequest baseURL + path + query)
 
-    /// `baseURL.appendingPathComponent` + `URLComponents.queryItems` is how the request URL
-    /// is built. Pin that query items survive into the final URL.
+    /// `KGService.composeRequestURL` (used by `authenticatedRequest`) builds the request
+    /// URL. Pin that query items survive into the final URL.
     @Test func query_items_compose_into_request_url() throws {
         let base = URL(string: "https://wordnexus.lol")!
-        var components = try #require(URLComponents(
-            url: base.appendingPathComponent("api/cards"),
-            resolvingAgainstBaseURL: false
+        let url = try #require(KGService.composeRequestURL(
+            baseURL: base,
+            path: "api/cards",
+            queryItems: [
+                URLQueryItem(name: "since", value: "2026-05-01"),
+                URLQueryItem(name: "limit", value: "50"),
+            ]
         ))
-        components.queryItems = [
-            URLQueryItem(name: "since", value: "2026-05-01"),
-            URLQueryItem(name: "limit", value: "50"),
-        ]
-        let url = try #require(components.url)
         #expect(url.path == "/api/cards")
         #expect(url.query?.contains("since=2026-05-01") == true)
         #expect(url.query?.contains("limit=50") == true)
     }
 
-    /// An empty/nil queryItems array leaves the URL clean — `authenticatedRequest` skips
-    /// assignment when `queryItems` is empty.
+    /// An empty/nil queryItems array leaves the URL clean — `composeRequestURL` skips
+    /// query assignment when `queryItems` is empty.
     @Test func empty_query_items_leave_url_unchanged() throws {
         let base = URL(string: "https://wordnexus.lol")!
-        let url = try #require(base.appendingPathComponent("api/health") as URL?)
+        let url = try #require(KGService.composeRequestURL(
+            baseURL: base, path: "api/health", queryItems: nil
+        ))
         #expect(url.absoluteString == "https://wordnexus.lol/api/health")
         #expect(url.query == nil)
+    }
+
+    /// Regression for the 2026-06-08 review-event download 400 deadlock: a query value
+    /// containing a literal `+` (an ISO8601 cursor's `+00:00` offset) must be encoded as
+    /// `%2B` on the wire. `URLComponents.queryItems` leaves `+` raw, and a server decodes
+    /// query strings as x-www-form-urlencoded where `+` means a space — corrupting the
+    /// timestamp to `...183209 00:00` and 400-ing every pull.
+    @Test func plus_in_query_value_is_percent_encoded_to_survive_form_decoding() throws {
+        let base = URL(string: "https://wordnexus.lol")!
+        let cursor = "2026-06-06T07:02:00.183209+00:00"
+        let url = try #require(KGService.composeRequestURL(
+            baseURL: base,
+            path: "api/vocab/review-events",
+            queryItems: [URLQueryItem(name: "since", value: cursor)]
+        ))
+        // `URL.query` returns the raw (still percent-encoded) query — i.e. the wire bytes.
+        let wire = try #require(url.query)
+        #expect(wire.contains("%2B00:00"), "literal '+' must be encoded as %2B, got: \(wire)")
+        #expect(!wire.contains("+00:00"), "raw '+' would be decoded to a space by the server: \(wire)")
+        // The server's x-www-form-urlencoded decode (%2B → '+', any bare '+' → space)
+        // must recover the exact original cursor.
+        let serverDecoded = wire
+            .replacingOccurrences(of: "since=", with: "")
+            .replacingOccurrences(of: "+", with: " ")
+            .replacingOccurrences(of: "%2B", with: "+")
+        #expect(serverDecoded == cursor)
     }
 
     // MARK: - errorDescription formatting (UI-facing messages)
