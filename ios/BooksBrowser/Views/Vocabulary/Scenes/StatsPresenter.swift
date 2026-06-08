@@ -40,8 +40,13 @@ struct StatsPresenter: View {
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
-    init(filter: NotebookFilter = NotebookFilter()) {
+    init(
+        filter: NotebookFilter = NotebookFilter(),
+        initialSummary: StatsPresentation.Summary? = nil
+    ) {
         self.filter = filter
+        _summary = State(initialValue: initialSummary)
+        _contentReady = State(initialValue: initialSummary != nil)
         let cutoff = Self.sixMonthsAgo
         _reviewRecords = Query(
             filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
@@ -69,9 +74,13 @@ struct StatsPresenter: View {
                 .opacity(contentReady ? 1 : 0)
                 .scaleEffect(contentReady ? 1 : 0.98)
                 .onAppear {
+#if KG_RUN_CATALOG_SNAPSHOTS
+                    contentReady = true
+#else
                     withAnimation(AppMotion.contentReveal) {
                         contentReady = true
                     }
+#endif
                 }
             }
         }

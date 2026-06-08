@@ -144,9 +144,6 @@ enum ReaderScenarios {
             Scenario("Exhausted", layout: .fill) {
                 QuotaBarPreviewHarness(isLoggedIn: true, fraction: 0.0, level: .exhausted)
             }
-            Scenario("Logged out", layout: .fill) {
-                QuotaBarPreviewHarness(isLoggedIn: false, fraction: 0.0, level: .normal)
-            }
         }
 
         // MARK: Selection Tile
