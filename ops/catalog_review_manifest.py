@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 import hashlib
 import struct
+import zlib
 from pathlib import Path
 
 from catalog_review_taxonomy import (
@@ -83,6 +84,60 @@ def read_png_size(path: Path) -> tuple[int, int]:
     return (width, height)
 
 
+def read_png_transparent_margin(path: Path) -> bool:
+    """True if the asset is rendered on a transparent canvas (a component/overlay
+    floating on emptiness) rather than a full-bleed screen.
+
+    This is the only honest screen-vs-component signal: capture renders screens,
+    overlays, and components all at the same 1179x2556 size, so dimensions and
+    category names can't tell them apart — but a component leaves its margins
+    transparent while a real screen fills them. We decode just the first scanline
+    (cheap) and read its top-left and top-right pixel alpha. Anything that isn't a
+    readable 8-bit RGBA PNG is treated as opaque, so a decode failure can never
+    fabricate a false component.
+    """
+    try:
+        with path.open("rb") as handle:
+            data = handle.read()
+    except OSError:
+        return False
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or len(data) < 26:
+        return False
+    width, height, bit_depth, color_type = struct.unpack(">IIBB", data[16:26])
+    if color_type != 6 or bit_depth != 8 or width < 1:
+        return False  # only 8-bit RGBA carries alpha; treat everything else as opaque
+    idat = bytearray()
+    offset = 8
+    while offset + 8 <= len(data):
+        length = struct.unpack(">I", data[offset:offset + 4])[0]
+        ctype = data[offset + 4:offset + 8]
+        if ctype == b"IDAT":
+            idat += data[offset + 8:offset + 8 + length]
+        elif ctype == b"IEND":
+            break
+        offset += 12 + length
+    try:
+        raw = zlib.decompress(bytes(idat))
+    except zlib.error:
+        return False
+    stride = 4 * width
+    if len(raw) < 1 + stride:
+        return False
+    # First scanline only. Its up/upleft neighbours are 0, so Sub(1)/Paeth(4)
+    # reduce to "add left", Average(3) to "add left//2"; None(0)/Up(2) leave bytes raw.
+    filter_type = raw[0]
+    row = bytearray(raw[1:1 + stride])
+    if filter_type in (1, 4):
+        for i in range(4, len(row)):
+            row[i] = (row[i] + row[i - 4]) & 0xFF
+    elif filter_type == 3:
+        for i in range(4, len(row)):
+            row[i] = (row[i] + row[i - 4] // 2) & 0xFF
+    top_left_alpha = row[3]
+    top_right_alpha = row[4 * (width - 1) + 3]
+    return top_left_alpha < 16 and top_right_alpha < 16
+
+
 def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr878") -> list[dict]:
     items: list[dict] = []
     for path in sorted(source_root.rglob("*.png")):
@@ -97,7 +152,8 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
         device = device_dir.replace(" (dark)", "")
         promise = classify_promise(category, profile)
         eligibility = classify_eligibility(category, promise, profile)
-        taxonomy = build_taxonomy(category, title, profile)
+        transparent_margin = read_png_transparent_margin(path)
+        taxonomy = build_taxonomy(category, title, profile, transparent_margin=transparent_margin)
         hero_candidate = is_hero_candidate(category, profile)
         cluster_id = build_cluster_id(category, title)
         asset_id = build_asset_id(rel)
@@ -111,6 +167,7 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
             "appearance": appearance,
             "width": width,
             "height": height,
+            "transparentMargin": transparent_margin,
             "category": category,
             "title": title,
             "promise": promise,
