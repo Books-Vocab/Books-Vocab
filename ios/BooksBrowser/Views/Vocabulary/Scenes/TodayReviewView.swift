@@ -94,7 +94,8 @@ struct TodayReviewView: View {
     }
 
     var body: some View {
-        TodayReviewPresenter(
+        let _ = PerfLog.review.mark("treview.held", "inst=#\(state.instanceSeq) viewBody")
+        return TodayReviewPresenter(
             state: state.presenterState,
             isHelpPresented: isHelpPresented,
             showFirstRunHint: shouldShowFirstRunHint,

@@ -65,10 +65,20 @@ final class TodayReviewState {
     let linkedEntryLookup: [String: VocabularyEntry]
     let currentUserID: String?
 
+    // MARK: - Diagnostics (throwaway-init detection)
+    // Each construction bumps the global counter. If `state.init inst=#N` climbs
+    // per flip while `treview.held inst=#M` (logged in the View body) stays fixed,
+    // the climbing instances are built-and-discarded by a re-running
+    // `State(initialValue:)` autoclosure — the real held state never changes.
+    nonisolated(unsafe) static var instanceCounter = 0
+    let instanceSeq: Int
+
     // MARK: - Init
 
     init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], currentUserID: String?) {
         let _initStart = DispatchTime.now()
+        Self.instanceCounter += 1
+        self.instanceSeq = Self.instanceCounter
         self.currentUserID = currentUserID
         let ordered = ReviewSessionStore.loadOrder(
             availableEntries: entries,
@@ -99,7 +109,7 @@ final class TodayReviewState {
         }
         prewarmCardWindow()
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
-        PerfLog.review.mark("state.init", "entries=\(entries.count) all=\(allEntries.count) queue=\(ordered.count) \(PerfChannel.ms(since: _initStart))ms")
+        PerfLog.review.mark("state.init", "inst=#\(instanceSeq) entries=\(entries.count) all=\(allEntries.count) queue=\(ordered.count) \(PerfChannel.ms(since: _initStart))ms")
     }
 
     // MARK: - Computed (State Projection)
@@ -373,6 +383,7 @@ final class TodayReviewState {
             return
         }
 
+        PerfLog.review.mark("submit.enter", "idx=\(currentIndex) fb=\(feedback == .remembered ? "R" : "F")")
         scoring.record(feedback, at: currentIndex)
 
         AppAnalytics.track(.reviewCardSubmitted(
@@ -401,6 +412,7 @@ final class TodayReviewState {
         PerfLog.review.measure("submit.snapshot") { persistSnapshot() }
         revealStage = .front
         currentIndex += 1
+        PerfLog.review.mark("submit.advance", "idx=\(currentIndex - 1)->\(currentIndex)")
         PerfLog.review.measure("submit.prewarm") { prewarmCardWindow() }
 
         finishSessionIfComplete()
