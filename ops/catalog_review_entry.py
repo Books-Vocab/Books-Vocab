@@ -197,6 +197,7 @@ def cmd_current(_: argparse.Namespace) -> int:
             "name": blessed["name"],
             "root": blessed_root,
             "reviewHtml": str(blessed["root"] / "review.html"),
+            "canvasHtml": str(blessed["root"] / "catalog.html"),
             "reviewManifest": str(blessed["root"] / "review_manifest.json"),
             "totalImages": blessed["totalImages"],
             "promiseCounts": blessed["promiseCounts"],
@@ -303,7 +304,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
             "name": blessed["name"],
             "root": str(blessed["root"]),
             "reviewHtml": str(blessed["root"] / "review.html"),
+            "canvasHtml": str(blessed["root"] / "catalog.html"),
             "url": f"http://127.0.0.1:{args.port}/review.html",
+            "canvasUrl": f"http://127.0.0.1:{args.port}/catalog.html",
             "totalImages": blessed["totalImages"],
         },
     }
