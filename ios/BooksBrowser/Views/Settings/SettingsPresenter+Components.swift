@@ -57,22 +57,6 @@ struct SettingsTrailingChevronIcon: View {
     }
 }
 
-struct SettingsDisclosureValue: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(text)
-                .font(appSkin.typography.caption)
-                .foregroundStyle(appSkin.palette.secondaryText)
-            SettingsTrailingChevronIcon()
-        }
-        .enableInjection()
-    }
-}
-
 struct SettingsMenuValue: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin

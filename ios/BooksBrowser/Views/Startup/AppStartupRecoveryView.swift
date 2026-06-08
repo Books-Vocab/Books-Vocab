@@ -283,14 +283,14 @@ struct AppStartupRecoveryView: View {
     }
 
     private func openSupportMail() {
-        if let url = actions.supportMailURL(failure) {
-            openURL(url) { accepted in
-                if !accepted {
-                    Task { @MainActor in phase = .mailUnavailable }
-                }
-            }
-        } else {
+        guard let url = actions.supportMailURL(failure) else {
             phase = .mailUnavailable
+            return
+        }
+        openURL(url) { accepted in
+            if !accepted {
+                Task { @MainActor in phase = .mailUnavailable }
+            }
         }
     }
 }

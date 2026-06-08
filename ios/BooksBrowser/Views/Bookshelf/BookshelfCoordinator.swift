@@ -122,10 +122,13 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         let fileName = book.epubFileName  // 先捕捉：row 刪除 + save 後再讀 property 可能已 fault
         var descriptor = FetchDescriptor<VocabularyEntry>()
         descriptor.predicate = #Predicate<VocabularyEntry> { $0.bookId == bookId }
-        if let entries = try? modelContext.fetch(descriptor) {
+        do {
+            let entries = try modelContext.fetch(descriptor)
             for entry in entries {
                 entry.bookId = nil
             }
+        } catch {
+            AppLog.book.error("delete cascade: vocab fetch failed for bookId=\(bookId): \(error.localizedDescription)")
         }
 
         // DB-first：先刪 row + save（可回滾），成功才做破壞性磁碟刪除。save 失敗則
