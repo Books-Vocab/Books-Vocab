@@ -75,6 +75,58 @@ def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
     assert settings["assetKind"] == "component"
 
 
+def test_build_manifest_emits_four_level_node_tree(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    reader_light_dir = source_root / "iPhone 15 Pro portrait" / "Reader_·_Translation"
+    reader_light_dir.mkdir(parents=True)
+    (reader_light_dir / "Default.png").write_bytes(b"png")
+    (reader_light_dir / "Loading.png").write_bytes(b"png")
+    reader_dark_dir = source_root / "iPhone 15 Pro portrait (dark)" / "Reader_·_Translation"
+    reader_dark_dir.mkdir(parents=True)
+    (reader_dark_dir / "Default.png").write_bytes(b"png")
+    settings_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    settings_dir.mkdir(parents=True)
+    (settings_dir / "Signed_out.png").write_bytes(b"png")
+
+    items = manifest_module.collect_items(source_root, profile)
+    manifest = manifest_module.build_manifest(items, profile)
+    tree = manifest["tree"]
+
+    assert tree["kind"] == "root"
+    assert tree["nodePath"] == ""
+    assert tree["count"] == len(items)
+
+    feature_labels = [child["label"] for child in tree["children"]]
+    assert feature_labels == sorted(feature_labels)
+    assert {"Reader", "Settings"}.issubset(set(feature_labels))
+
+    reader = next(child for child in tree["children"] if child["label"] == "Reader")
+    assert reader["kind"] == "feature"
+    assert reader["nodePath"] == "reader"
+    assert reader["count"] == 3
+    surfaces = reader["children"]
+    assert all(surface["kind"] == "surface" for surface in surfaces)
+    reader_surface = next(s for s in surfaces if s["label"] == "Reader")
+    assert reader_surface["promise"] == "Read"
+    assert reader_surface["heroCandidate"] is True
+    assert reader_surface["count"] == 3
+    assert reader_surface["nodePath"].startswith("reader/")
+
+    state_labels = [state["label"] for state in reader_surface["children"]]
+    assert state_labels == sorted(state_labels, key=str.lower)
+    translation_state = next(state for state in reader_surface["children"] if state["label"] == "Translation")
+    assert translation_state["kind"] == "state"
+    assert translation_state["count"] == 2
+    appearances = sorted(asset["appearance"] for asset in translation_state["children"])
+    assert appearances == ["dark", "light"]
+    leaf = translation_state["children"][0]
+    assert leaf["kind"] == "asset"
+    assert leaf["relPath"].endswith(".png")
+    assert leaf["nodePath"].startswith(translation_state["nodePath"] + "/")
+    assert leaf["assetID"] in leaf["nodePath"]
+
+
 def test_review_state_preserves_existing_annotations():
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     items = [
