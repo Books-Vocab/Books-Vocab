@@ -19,6 +19,10 @@ IOS_OPS = ROOT / "ops" / "ios_ops.sh"
 PROMO_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "render_screenshots.py"
 FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_screenshots.py"
 
+# 純宣告轉換（不讀 DB），用來從 seed/steps 自動導出 world expectation。
+sys.path.insert(0, str(ROOT / "backend" / "src"))
+from kg.ops_world_expectation import derive_expectation  # noqa: E402
+
 
 class CaptureProfileError(RuntimeError):
     pass
@@ -293,6 +297,44 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+def build_expectation(profile: CaptureProfile) -> dict[str, Any]:
+    """從 profile 的 seedFile + materialize.steps 純宣告導出 world expectation。
+
+    不讀 DB；產物即可取代手寫 expectationFile，消除 spec drift 來源。card↔notebook
+    membership 不在斷言範圍（derive 不導 card.notebook），與 ops_world_diff 以 content
+    為 card key 的 scope 一致。
+    """
+    seed = json.loads(profile.materialize.seed_file.read_text(encoding="utf-8"))
+    steps = [{"subcommand": s.subcommand, "args": s.args} for s in profile.materialize.steps]
+    return derive_expectation(seed, steps)
+
+
+def cmd_derive_expectation(
+    profile: CaptureProfile, *, out: Path | None = None, check: bool = False
+) -> int:
+    """從 seed/steps 導出 expectation 寫檔（或 --check 驗 stale）。"""
+    spec = build_expectation(profile)
+    target = out or profile.materialize.expectation_file
+    if check:
+        if target is None or not Path(target).exists():
+            emit_json({"schema": "kg.capture.run.v1", "action": "derive-expectation",
+                       "status": "error", "error": "無 expectation 檔可比對"})
+            return 1
+        current = json.loads(Path(target).read_text(encoding="utf-8"))
+        drift = current != spec
+        emit_json({"schema": "kg.capture.run.v1", "action": "derive-expectation",
+                   "status": "drift" if drift else "ok", "path": str(target)})
+        return 1 if drift else 0
+    text = json.dumps(spec, ensure_ascii=False, indent=2) + "\n"
+    if target is None:
+        sys.stdout.write(text)
+        return 0
+    Path(target).write_text(text, encoding="utf-8")
+    emit_json({"schema": "kg.capture.run.v1", "action": "derive-expectation",
+               "status": "written", "path": str(target)})
+    return 0
 
 
 def emit_json(payload: dict[str, Any]) -> None:
@@ -699,6 +741,11 @@ def make_parser() -> argparse.ArgumentParser:
     render = sub.add_parser("render")
     render.add_argument("profile")
 
+    derive = sub.add_parser("derive-expectation")
+    derive.add_argument("profile")
+    derive.add_argument("--out", help="輸出路徑（預設 profile 的 expectationFile；未設則印 stdout）")
+    derive.add_argument("--check", action="store_true", help="只驗現有 expectation 檔是否 stale，drift 回非零")
+
     run = sub.add_parser("run")
     run.add_argument("profile")
     run.add_argument("--commit", action="store_true")
@@ -722,6 +769,10 @@ def main() -> int:
             return cmd_verify(profile)
         if args.action == "render":
             return cmd_render(profile)
+        if args.action == "derive-expectation":
+            return cmd_derive_expectation(
+                profile, out=Path(args.out) if args.out else None, check=args.check
+            )
         if args.action == "run":
             return cmd_run(profile, commit=args.commit, reuse_build=args.reuse_build)
     except CaptureProfileError as exc:
