@@ -46,6 +46,7 @@ def matches_filters(
             item["device"],
             item["appearance"],
             item["relPath"],
+            "hero" if item.get("heroCandidate") else "",
             current_state.get("status", ""),
             current_state.get("note", ""),
         ]).lower()

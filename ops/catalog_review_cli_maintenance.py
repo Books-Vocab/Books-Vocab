@@ -62,7 +62,7 @@ def cmd_doctor(root: Path, *, limit: int | None, mode: str) -> int:
     }
     payload = project_doctor_view(full_payload, mode=mode)
     print(json.dumps(payload, ensure_ascii=False))
-    return 0 if payload["status"] == "ok" else 1
+    return 0 if payload["status"] != "error" else 1
 
 
 def cmd_doctor_shortcut(root: Path, *, limit: int | None, mode: str) -> int:

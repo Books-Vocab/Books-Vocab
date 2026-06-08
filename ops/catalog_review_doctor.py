@@ -4,6 +4,7 @@ from pathlib import Path
 
 from catalog_review_actions import (
     build_action_plan,
+    build_shell_command,
     with_action_plan_fields,
     with_starter_plan_from_actions,
 )
@@ -73,8 +74,8 @@ def _build_health_base(payload: dict, *, mode: str, root: str) -> dict:
     )
     if recommended_operator_action == "repair-first":
         action_plan = build_action_plan(
-            primary_command=f"./ops/catalog_review_cli.py {root} repair",
-            followup_command=f"./ops/catalog_review_cli.py {root} verify",
+            primary_command=build_shell_command(["./ops/catalog_review_cli.py", root, "repair"]),
+            followup_command=build_shell_command(["./ops/catalog_review_cli.py", root, "verify"]),
             source="repair",
             source_mode=mode,
         )
