@@ -42,6 +42,18 @@ struct PDFReaderContextTests {
         #expect(ctx.contains("brown"))
     }
 
+    @Test func markedWindowKeepsWhitespaceOutsideMarkers() {
+        // A raw drag whose range includes surrounding spaces must still wrap the
+        // bare token — no "** brown **" with whitespace inside the markers.
+        let p = "x  brown  y"
+        let r = p.range(of: "  brown  ")!
+        let ctx = PDFReaderContext.window(around: r, in: p, marked: true)
+        #expect(ctx.contains("**brown**"))
+        // No whitespace *inside* the markers (surrounding prose spaces are fine).
+        #expect(!ctx.contains("** brown"))
+        #expect(!ctx.contains("brown **"))
+    }
+
     @Test func windowClampsToPageBounds() {
         // Highlight at the very start/end must not crash and must still wrap.
         let startCtx = PDFReaderContext.window(around: range(of: "The"), in: page, marked: true)
