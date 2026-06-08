@@ -153,6 +153,26 @@ def test_collect_items_consumes_catalog_index_ground_truth(tmp_path: Path):
     assert item["screen"] == "podcastPlayer"
 
 
+def test_collect_items_survives_malformed_index_entry(tmp_path: Path):
+    """A corrupted entry value (string instead of dict, e.g. hand-edited JSON)
+    must fall back to heuristics for that category — not crash with AttributeError.
+    Honours load_catalog_index's "malformed → fallback" contract per-entry."""
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)  # opaque → screen
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({"version": 1, "surfaces": {"Settings View": "not-a-dict"}}),
+        encoding="utf-8",
+    )
+    items = manifest_module.collect_items(source_root, profile)  # must not raise
+    item = next(i for i in items if i["category"] == "Settings View")
+    assert item["assetKind"] == "screen"      # heuristic fallback for the bad entry
+    assert item["sourceDeclared"] is False
+    assert item["screen"] == ""
+
+
 def test_collect_items_falls_back_to_heuristics_without_index(tmp_path: Path):
     """No ``catalog_index.json`` (legacy / un-blessed artifact) → the pixel/regex
     heuristics still classify, and the declared ``screen`` is empty."""
