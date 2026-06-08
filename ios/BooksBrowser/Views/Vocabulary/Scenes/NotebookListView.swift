@@ -23,11 +23,23 @@ struct NotebookListView: View {
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @State private var coordinator = NotebookListCoordinator()
     @State private var showLoginSheet = false
+    private let skipCatalogTasks: Bool
 
     init() {
+        self.skipCatalogTasks = false
         _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
         _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
     }
+
+#if DEBUG
+    /// Catalog-only seam: skip the cold-start reconcile `.task` so the seeded
+    /// notebook list renders deterministically without sync/network work.
+    init(skipCatalogTasks: Bool) {
+        self.skipCatalogTasks = skipCatalogTasks
+        _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
+        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
+    }
+#endif
 
     @State private var showCreateSheet = false
     @State private var editingNotebook: Notebook?
@@ -226,6 +238,7 @@ struct NotebookListView: View {
                 PlatformShareView(url: url)
             }
             .task(id: authManager.isLoggedIn) {
+                guard !skipCatalogTasks else { return }
                 await coordinator.reconcileNotebooks(
                     authManager: authManager,
                     currentNotebooks: notebooks,
