@@ -8,7 +8,6 @@
 
 import Foundation
 import SwiftData
-import os
 
 enum AppStartupRecovery {
     static func composeSupportMailURL(for failure: AppStartupFailure) -> URL? {

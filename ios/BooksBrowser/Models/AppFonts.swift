@@ -11,7 +11,6 @@
 import SwiftUI
 import UIKit
 import CoreText
-import os
 
 extension Notification.Name {
     static let serifCJKFontDidBecomeAvailable = Notification.Name("serifCJKFontDidBecomeAvailable")

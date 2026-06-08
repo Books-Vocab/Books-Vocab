@@ -7,8 +7,11 @@
 
 import SwiftUI
 import SwiftData
-import UniformTypeIdentifiers
 import Inject
+
+private enum Metrics {
+    static let searchDebounce: Duration = .milliseconds(300)
+}
 
 /// 單字本內的已收錄列表
 struct VocabularyListView: View {
@@ -79,7 +82,7 @@ struct VocabularyListView: View {
                 debouncedSearchText = ""
                 return
             }
-            try? await Task.sleep(for: .milliseconds(300))
+            try? await Task.sleep(for: Metrics.searchDebounce)
             debouncedSearchText = searchText
         }
         .onChange(of: coordinator.activeReviewSession) { _, session in

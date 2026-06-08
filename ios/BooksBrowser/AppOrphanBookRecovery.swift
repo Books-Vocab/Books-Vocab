@@ -8,7 +8,6 @@
 
 import Foundation
 import SwiftData
-import os
 
 enum AppOrphanBookRecovery {
     @MainActor

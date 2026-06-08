@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import os
 
 /// AI 翻譯結果
 struct TranslationResult: Codable {
