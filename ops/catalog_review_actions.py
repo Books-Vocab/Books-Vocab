@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import shlex
+
+
+def build_shell_command(parts: list[str]) -> str:
+    return shlex.join(parts)
+
 
 def classify_action_command(command: str) -> dict:
     if " verify" in command:

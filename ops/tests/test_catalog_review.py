@@ -313,6 +313,9 @@ def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Pat
     apply_payload = json.loads(apply.stdout)
     assert apply_payload["dryRun"] is False
     assert apply_payload["appliedCount"] == 2
+    assert all(item["reviewStatus"] == "review" for item in apply_payload["items"])
+    assert all(item["effectiveStatus"] == "review" for item in apply_payload["items"])
+    assert all(item["updatedAt"] for item in apply_payload["items"])
 
     state_after = json.loads((output_root / "review_state.json").read_text(encoding="utf-8"))
     assert all(entry["status"] == "review" for entry in state_after["entries"].values())
@@ -414,6 +417,112 @@ def test_catalog_review_report_emits_next_actions_for_unmarked_work(tmp_path: Pa
     assert first["command"].startswith("./ops/catalog_review_cli.py ")
     assert first["commandAction"]["kind"] in {"inspect", "narrow"}
     assert first["commandAction"]["intent"] in {"gather-evidence", "reduce-review-scope"}
+
+
+def test_catalog_review_report_hero_command_returns_hero_candidates(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Home_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    report = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "report",
+            "--limit",
+            "5",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert report.returncode == 0, report.stderr
+    hero_command = json.loads(report.stdout)["nextActions"][0]["command"]
+
+    listed = subprocess.run(
+        ["zsh", "-lc", hero_command],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert listed.returncode == 0, listed.stderr
+    listed_payload = json.loads(listed.stdout)
+    assert listed_payload["count"] == 1
+    assert listed_payload["items"][0]["heroCandidate"] is True
+
+
+def test_catalog_review_report_commands_quote_root_paths(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Home_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out with space"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    report = subprocess.run(
+        [
+            sys.executable,
+            str(REVIEW_CLI),
+            str(output_root),
+            "report",
+            "--limit",
+            "5",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert report.returncode == 0, report.stderr
+
+    payload = json.loads(report.stdout)
+    for action in payload["nextActions"]:
+        replay = subprocess.run(
+            ["zsh", "-lc", action["command"]],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert replay.returncode == 0, replay.stderr
 
 
 def test_catalog_review_verify_reports_ok_and_detects_drift(tmp_path: Path):
@@ -602,7 +711,7 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
         capture_output=True,
         check=False,
     )
-    assert doctor.returncode == 1, doctor.stderr
+    assert doctor.returncode == 0, doctor.stderr
     payload = json.loads(doctor.stdout)
     assert payload["status"] == "needs-attention"
     assert payload["verify"]["status"] == "error"
@@ -632,6 +741,75 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     assert payload["cleanupRecommendations"] == []
     assert payload["blockingErrors"] == []
 
+
+def test_catalog_review_doctor_needs_attention_is_non_blocking(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Home_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    doctor = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "doctor"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert doctor.returncode == 0, doctor.stderr
+    payload = json.loads(doctor.stdout)
+    assert payload["status"] == "needs-attention"
+    assert payload["blockingErrors"] == []
+
+
+def test_catalog_review_doctor_projected_modes_keep_repair_plan_non_blocking(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Reader_View"
+    image_dir.mkdir(parents=True)
+    (image_dir / "Hero.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    state_path = output_root / "review_state.json"
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    asset_id = next(iter(state_payload["entries"]))
+    state_payload["entries"][asset_id].pop("history", None)
+    state_payload["entries"][asset_id].pop("updatedAt", None)
+    state_path.write_text(json.dumps(state_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
     hero_mode = subprocess.run(
         [sys.executable, str(REVIEW_CLI), str(output_root), "doctor", "--limit", "2", "--mode", "hero-first"],
         cwd=ROOT,
@@ -639,7 +817,7 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
         capture_output=True,
         check=False,
     )
-    assert hero_mode.returncode == 1, hero_mode.stderr
+    assert hero_mode.returncode == 0, hero_mode.stderr
     hero_payload = json.loads(hero_mode.stdout)
     assert hero_payload["mode"] == "hero-first"
     assert hero_payload["health"]["severity"] == "warn"
@@ -678,7 +856,7 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
         capture_output=True,
         check=False,
     )
-    assert hero_shortcut.returncode == 1, hero_shortcut.stderr
+    assert hero_shortcut.returncode == 0, hero_shortcut.stderr
     hero_shortcut_payload = json.loads(hero_shortcut.stdout)
     assert hero_shortcut_payload["mode"] == "hero-first"
     assert hero_shortcut_payload["health"]["recommendedOperatorAction"] == "repair-first"
