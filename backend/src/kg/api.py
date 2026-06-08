@@ -14,7 +14,6 @@ import atexit
 import json
 import logging
 import re
-import uuid as _uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,6 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 logging.basicConfig(
@@ -111,6 +109,7 @@ _mem_log = install_memory_log_handler(maxlen=1000)
 
 from .app_router_composition import build_app_routers, include_app_routers
 from .app_runtime_state import install_runtime_user_state
+from .app_middleware import _anon_rate_limit_key, install_app_middlewares
 from .api_compat import *  # noqa: F401,F403 - stable kg.api compatibility surface
 from .api_compat import (
     _build_entitlements_response,
@@ -129,29 +128,6 @@ load_dotenv()
 from .sentry_init import init_sentry  # noqa: E402
 
 init_sentry()
-
-
-def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
-    """Derive the rate-limit key for an anonymous (no-auth) request.
-
-    `hops` = number of trusted proxy hops in front of the app. The real client
-    IP is taken from the `hops`-th-from-end X-Forwarded-For segment.
-
-    Production contract: single-layer bare Caddy on AWS public net appends the
-    real client IP to the END of XFF, so hops=1 selects the last segment — this
-    is byte-for-byte identical to the legacy `xff.split(",")[-1].strip()`.
-    Raise hops to N+1 only when N trusted proxies (CDN/ALB) front Caddy.
-
-    Safe fallbacks: empty XFF -> client_host (or "unknown"); hops exceeding the
-    available segment count -> the frontmost segment (never raises IndexError).
-    """
-    if xff:
-        segments = [s.strip() for s in xff.split(",")]
-        # hops=1 -> index -1 (last). Clamp so hops beyond segment count (or a
-        # non-positive misconfig) safely lands on the frontmost segment.
-        idx = max(0, len(segments) - max(1, hops))
-        return segments[idx]
-    return client_host if client_host else "unknown"
 
 
 def create_app(settings: KGSettings | None = None) -> FastAPI:
@@ -199,94 +175,18 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     )
 
     # --- middleware stack ---
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    )
-
     from . import sentry_init as _sentry_init
     from .request_context import request_id_var
 
-    @app.middleware("http")
-    async def request_id_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or _uuid.uuid4().hex[:16]
-        request.state.request_id = request_id
-        token = request_id_var.set(request_id)
-        # Tag the Sentry scope so error events / traces carry the same
-        # correlation id surfaced in logs + the X-Request-ID response header.
-        # No-op when Sentry isn't initialized (dev/test).
-        _sentry_init.tag_request_id(request_id)
-        try:
-            response = await call_next(request)
-        finally:
-            request_id_var.reset(token)
-        response.headers["X-Request-ID"] = request_id
-        return response
-
-    @app.middleware("http")
-    async def limit_request_body(request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 10 * 1024 * 1024:
-            return JSONResponse({"detail": "Request body too large"}, status_code=413)
-        return await call_next(request)
-
-    # Rate-limit exempt prefixes. Compared with `path.startswith(p)` so any
-    # path that begins with one of these is bypassed.
-    #
-    # Why OAuth callbacks are exempt:
-    # * `/auth/web/google/callback` is reached by the user's browser after
-    #   Google's redirect — but the limiter key falls back to XFF / client.host
-    #   (no Authorization header yet), which collides across shared NAT and
-    #   can 429 unrelated users mid-login.
-    # * `/auth/web/apple/callback` is reached via a POST from Apple's servers
-    #   themselves, so every callback shares one source IP. With a Pro user
-    #   community larger than `API_RATE_LIMIT` per minute, Apple sign-in
-    #   would silently fail for everyone after the burst.
-    # The callbacks are state-validated (oauth_state cookie + provider state)
-    # and naturally rare per session, so abuse protection is already in place.
-    _RATE_LIMIT_EXEMPT = {
-        "/docs", "/openapi.json", "/privacy", "/support", "/terms", "/guide",
-        "/api/billing/app-store/notifications",
-        "/api/system/info",
-        "/auth/web/google/callback",
-        "/auth/web/apple/callback",
-    }
-
-    @app.middleware("http")
-    async def rate_limit_middleware(request: Request, call_next):
-        path = request.url.path
-        if any(path.startswith(p) for p in _RATE_LIMIT_EXEMPT):
-            return await call_next(request)
-        auth = request.headers.get("authorization", "")
-        if len(auth) > 16:
-            key = auth[-16:]
-        else:
-            xff = request.headers.get("x-forwarded-for", "")
-            client_host = request.client.host if request.client else None
-            key = _anon_rate_limit_key(
-                xff, client_host, settings.rate_limit_trusted_hops
-            )
-        limiter = translate_limiter if "/api/translate" in path else api_limiter
-        if not await limiter.is_allowed(key):
-            return JSONResponse(
-                {"detail": "Too many requests"}, status_code=429,
-                headers={"Retry-After": str(limiter.window_seconds)},
-            )
-        return await call_next(request)
-
-    @app.middleware("http")
-    async def security_headers_middleware(request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["X-XSS-Protection"] = "0"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.url.scheme == "https":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        return response
+    install_app_middlewares(
+        app,
+        cors_origins=settings.cors_origins,
+        rate_limit_trusted_hops=settings.rate_limit_trusted_hops,
+        request_id_var=request_id_var,
+        tag_request_id=_sentry_init.tag_request_id,
+        api_limiter=api_limiter,
+        translate_limiter=translate_limiter,
+    )
 
     from fastapi.exceptions import RequestValidationError
 
