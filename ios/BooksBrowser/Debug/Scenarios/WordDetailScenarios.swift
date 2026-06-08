@@ -29,13 +29,13 @@ enum WordDetailScenarios {
 
         // MARK: Card Document
         playbook.addScenarios(of: "Word Detail · Card Document") {
-            Scenario("Full", layout: .fill) {
+            Scenario("Full", layout: .compressed) {
                 cardSheet(document: Self.richDocument(), compact: false)
             }
-            Scenario("Compact", layout: .fill) {
+            Scenario("Compact", layout: .compressed) {
                 cardSheet(document: Self.richDocument(), compact: true)
             }
-            Scenario("No example / collocations", layout: .fill) {
+            Scenario("No example / collocations", layout: .compressed) {
                 cardSheet(document: Self.minimalDocument(), compact: false)
             }
         }

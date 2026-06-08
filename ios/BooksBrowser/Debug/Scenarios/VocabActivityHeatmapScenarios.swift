@@ -7,35 +7,35 @@ import SwiftUI
 enum VocabActivityHeatmapScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Vocab Heatmap") {
-            Scenario("Dense · graded", layout: .fill) {
+            Scenario("Dense · graded", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
                     thresholds: [2, 5, 9],
                     weeks: 20
                 )
             }
-            Scenario("Sparse", layout: .fill) {
+            Scenario("Sparse", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.sparseActivity(),
                     thresholds: [2, 5, 9],
                     weeks: 20
                 )
             }
-            Scenario("No thresholds (flat level)", layout: .fill) {
+            Scenario("No thresholds (flat level)", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
                     thresholds: [],
                     weeks: 20
                 )
             }
-            Scenario("Empty", layout: .fill) {
+            Scenario("Empty", layout: .compressed) {
                 HeatmapScene(
                     activity: [:],
                     thresholds: [2, 5, 9],
                     weeks: 20
                 )
             }
-            Scenario("Short range (8 weeks)", layout: .fill) {
+            Scenario("Short range (8 weeks)", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
                     thresholds: [2, 5, 9],

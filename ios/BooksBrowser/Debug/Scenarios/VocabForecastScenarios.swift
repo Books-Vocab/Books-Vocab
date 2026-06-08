@@ -8,16 +8,16 @@ import SwiftUI
 enum VocabForecastScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Vocab Forecast") {
-            Scenario("7-day forecast", layout: .fill) {
+            Scenario("7-day forecast", layout: .fillH) {
                 ForecastScene(buckets: Self.buckets(counts: [12, 5, 8, 3, 6, 9, 4]))
             }
-            Scenario("14-day forecast", layout: .fill) {
+            Scenario("14-day forecast", layout: .fillH) {
                 ForecastScene(buckets: Self.buckets(counts: [12, 5, 8, 3, 6, 9, 4, 2, 7, 1, 5, 3, 6, 2]))
             }
-            Scenario("Compact (30 days)", layout: .fill) {
+            Scenario("Compact (30 days)", layout: .fillH) {
                 ForecastScene(buckets: Self.buckets(counts: (0..<30).map { ($0 * 7 + 3) % 13 }))
             }
-            Scenario("Sparse — single spike", layout: .fill) {
+            Scenario("Sparse — single spike", layout: .fillH) {
                 ForecastScene(buckets: Self.buckets(counts: [18, 0, 0, 0, 0, 0, 0]))
             }
         }

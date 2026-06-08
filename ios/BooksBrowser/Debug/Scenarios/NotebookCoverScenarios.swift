@@ -13,12 +13,12 @@ import SwiftUI
 enum NotebookCoverScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Notebook Cover") {
-            Scenario("All patterns · blue", layout: .fill) {
+            Scenario("All patterns · blue", layout: .fillH) {
                 stage {
                     patternGrid(color: Self.blue)
                 }
             }
-            Scenario("All patterns · color swatches", layout: .fill) {
+            Scenario("All patterns · color swatches", layout: .fillH) {
                 stage {
                     VStack(spacing: 16) {
                         ForEach(Array(Self.swatches.enumerated()), id: \.offset) { _, color in
@@ -27,7 +27,7 @@ enum NotebookCoverScenarios {
                     }
                 }
             }
-            Scenario("Solid color · no pattern", layout: .fill) {
+            Scenario("Solid color · no pattern", layout: .fillH) {
                 stage {
                     LazyVGrid(columns: Self.columns, spacing: 16) {
                         ForEach(Array(Self.swatches.enumerated()), id: \.offset) { _, color in
@@ -36,7 +36,7 @@ enum NotebookCoverScenarios {
                     }
                 }
             }
-            Scenario("Long name truncate", layout: .fill) {
+            Scenario("Long name truncate", layout: .fillH) {
                 stage {
                     LazyVGrid(columns: Self.columns, spacing: 16) {
                         cover(color: Self.blue, pattern: .dots, name: "我的英文單字本 — 進階學術詞彙與片語收藏夾")
@@ -45,12 +45,12 @@ enum NotebookCoverScenarios {
                     }
                 }
             }
-            Scenario("showsName = false (overlay use)", layout: .fill) {
+            Scenario("showsName = false (overlay use)", layout: .fillH) {
                 stage {
                     patternGrid(color: Self.purple, showsName: false)
                 }
             }
-            Scenario("Image path fallback (missing → pattern)", layout: .fill) {
+            Scenario("Image path fallback (missing → pattern)", layout: .fillH) {
                 stage {
                     LazyVGrid(columns: Self.columns, spacing: 16) {
                         // 路徑不存在 → loadImage 回 nil → 降級渲染 pattern

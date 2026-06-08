@@ -13,16 +13,16 @@ enum BannerScenarios {
     static func register(in playbook: Playbook) {
         // MARK: Review Banner
         playbook.addScenarios(of: "Banners · Review") {
-            Scenario("Both types (mixed)", layout: .fill) {
+            Scenario("Both types (mixed)", layout: .fillH) {
                 ReviewBannerScene(dueCount: 42, unlearnedCount: 12)
             }
-            Scenario("Due only", layout: .fill) {
+            Scenario("Due only", layout: .fillH) {
                 ReviewBannerScene(dueCount: 5, unlearnedCount: 0)
             }
-            Scenario("Unlearned only", layout: .fill) {
+            Scenario("Unlearned only", layout: .fillH) {
                 ReviewBannerScene(dueCount: 0, unlearnedCount: 3)
             }
-            Scenario("Large counts (stress)", layout: .fill) {
+            Scenario("Large counts (stress)", layout: .fillH) {
                 ReviewBannerScene(dueCount: 1280, unlearnedCount: 999)
             }
         }
