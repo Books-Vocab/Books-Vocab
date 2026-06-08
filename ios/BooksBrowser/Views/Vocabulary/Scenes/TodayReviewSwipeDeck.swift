@@ -90,6 +90,8 @@ extension TodayReviewPresenter {
         dismissPhase = .animatingOut
         frozenSwipeIntensity = swipeIntensity
         flingHapticTrigger += 1
+        let _flingStart = DispatchTime.now()
+        PerfLog.review.mark("fling.start", "dir=\(direction) vel=\(velocity)")
 
         let distance = screenWidth * 1.3 + min(velocity / 2000, 0.5) * screenWidth * 0.4
 
@@ -98,7 +100,8 @@ extension TodayReviewPresenter {
             guard dismissPhase == .animatingOut else { return }
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
-            PerfLog.review.mark("fling.complete", "callback->submit begins")
+            PerfLog.review.mark("fling.complete", "anim_dur=\(PerfChannel.ms(since: _flingStart))ms (fling.start->complete)")
+            TodayReviewState.flingClock = .now()
             PerfLog.review.measure("fling.transaction") {
                 withTransaction(noAnim) {
                     suppressTransition = true

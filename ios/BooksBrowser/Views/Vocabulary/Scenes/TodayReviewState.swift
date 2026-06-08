@@ -53,6 +53,9 @@ final class TodayReviewState {
     // the main actor during session start causes visible hitches on large queues.
     private var cacheBuildTask: Task<Void, Never>?
 
+    // MARK: - Perf (fling→front render gap self-measurement)
+    nonisolated(unsafe) static var flingClock: DispatchTime?
+
     // MARK: - Analytics
 
     let sessionStartTime: Date
@@ -65,6 +68,7 @@ final class TodayReviewState {
     // MARK: - Init
 
     init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], currentUserID: String?) {
+        let _initStart = DispatchTime.now()
         self.currentUserID = currentUserID
         let ordered = ReviewSessionStore.loadOrder(
             availableEntries: entries,
@@ -95,6 +99,7 @@ final class TodayReviewState {
         }
         prewarmCardWindow()
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
+        PerfLog.review.mark("state.init", "entries=\(entries.count) all=\(allEntries.count) queue=\(ordered.count) \(PerfChannel.ms(since: _initStart))ms")
     }
 
     // MARK: - Computed (State Projection)
