@@ -288,7 +288,13 @@ struct PodcastPlayerView: View {
             } else {
                 switch bootstrapPhase {
                 case .loading, .ready:
-                    ProgressView(L10n.string("載入中…"))
+                    podcastStateCard(
+                        title: L10n.string("載入中…"),
+                        systemImage: "waveform"
+                    ) {
+                        ProgressView()
+                            .controlSize(.large)
+                    }
                 case .missingEpisode:
                     missingEpisodeView
                 }
