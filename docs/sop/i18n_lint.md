@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 94a66d63
+verified_against: 84f6998e
 -->
 # i18n Lint
 
