@@ -74,10 +74,7 @@ final class TranslationService: Translating {
             )
         } catch {
             AppAnalytics.endInterval("TranslateQuick", signpostState)
-            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
-            AppAnalytics.track(.translationFailed(word: word, type: .quick, error: error.localizedDescription))
-            _ = latencyMs
-            recordTranslationFailureIfNeeded(error, context: "kg.translate.quick")
+            recordTranslationFailure(error, word: word, type: .quick, context: "kg.translate.quick")
             throw error
         }
 
@@ -117,10 +114,7 @@ final class TranslationService: Translating {
             AppAnalytics.track(.translationCompleted(word: phrase, type: .phrase, latencyMs: latencyMs))
             return result.t
         } catch {
-            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
-            AppAnalytics.track(.translationFailed(word: phrase, type: .phrase, error: error.localizedDescription))
-            _ = latencyMs
-            recordTranslationFailureIfNeeded(error, context: "kg.translate.phrase")
+            recordTranslationFailure(error, word: phrase, type: .phrase, context: "kg.translate.phrase")
             throw error
         }
     }
@@ -157,12 +151,19 @@ final class TranslationService: Translating {
             return (result.e, latency)
         } catch {
             AppAnalytics.endInterval("FetchExplanation", signpostState)
-            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
-            AppAnalytics.track(.translationFailed(word: word, type: .explanation, error: error.localizedDescription))
-            _ = latencyMs
-            recordTranslationFailureIfNeeded(error, context: "kg.translate.explain")
+            recordTranslationFailure(error, word: word, type: .explanation, context: "kg.translate.explain")
             throw error
         }
+    }
+
+    private func recordTranslationFailure(
+        _ error: Error,
+        word: String,
+        type: AnalyticsEvent.TranslationType,
+        context: String
+    ) {
+        AppAnalytics.track(.translationFailed(word: word, type: type, error: error.localizedDescription))
+        recordTranslationFailureIfNeeded(error, context: context)
     }
 
     /// Filter helper: only forward server-side / parser / unexpected failures to Sentry.
