@@ -21,7 +21,7 @@ from .routers import (
     vocab_router,
     web_auth_router,
 )
-from .routers.admin import AdminRouters, build_admin_routers
+from .routers.admin import AdminRouters, build_admin_route_handlers, build_admin_routers_from_handlers
 
 
 @dataclass(frozen=True)
@@ -67,33 +67,8 @@ def build_app_routers(
         build_entitlements_response_fn=build_entitlements_response_fn,
         current_admin_grant_record_fn=current_admin_grant_record_fn,
     )
-    admin_routers = build_admin_routers(
-        admin_ui=admin_handlers.admin_ui,
-        admin_stats=admin_handlers.admin_stats,
-        admin_logs=admin_handlers.admin_logs,
-        admin_user_entitlement=admin_handlers.admin_user_entitlement,
-        admin_grant_pro_access=admin_handlers.admin_grant_pro_access,
-        admin_revoke_pro_access=admin_handlers.admin_revoke_pro_access,
-        admin_run_tests=admin_handlers.admin_run_tests,
-        admin_last_test_run=admin_handlers.admin_last_test_run,
-        admin_test_catalog=admin_handlers.admin_test_catalog,
-        admin_tests_ui=admin_handlers.admin_tests_ui,
-        admin_graph_density=admin_handlers.admin_graph_density,
-        admin_graph_playback=admin_handlers.admin_graph_playback,
-        admin_pipeline_runs=admin_handlers.admin_pipeline_runs,
-        admin_judge_stats=admin_handlers.admin_judge_stats,
-        admin_translate_history=admin_handlers.admin_translate_history,
-        admin_user_activity=admin_handlers.admin_user_activity,
-        admin_user_usage=admin_handlers.admin_user_usage,
-        admin_user_cost_summary=admin_handlers.admin_user_cost_summary,
-        admin_host_metrics=admin_handlers.admin_host_metrics,
-        admin_users_search=admin_handlers.admin_users_search,
-        admin_observability=admin_handlers.admin_observability,
-        admin_stats_trends=admin_handlers.admin_stats_trends,
-        admin_log_retention_run=admin_handlers.admin_log_retention_run,
-        admin_audit=admin_handlers.admin_audit,
-        admin_orphans_scan=admin_handlers.admin_orphans_scan,
-        admin_user_detail_ui=admin_handlers.admin_user_detail_ui,
+    admin_routers = build_admin_routers_from_handlers(
+        handlers=build_admin_route_handlers(admin_handlers),
         runtime_settings_fn=runtime_settings_fn,
     )
     return AppRouters(
