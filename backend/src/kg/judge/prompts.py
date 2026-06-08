@@ -71,7 +71,7 @@ MANUAL_LINK_SYSTEM_PROMPT = """The user has decided these two vocabulary words a
 
 Choose ONE type:
 - contrasts_with: Opposite or directly contrasting meanings — antonyms, or two clearly opposed points on one shared dimension.
-  YES: meticulous/sloppy, unkempt/primped
+  YES: meticulous/sloppy, unkempt/primped, hunkered/loped
 - shares_usage: Near-synonyms, or words sharing contexts / roles. Use this whenever the pair is not a genuine opposite.
   YES: luster/resplendent, haggling/extorting
 
