@@ -146,6 +146,25 @@ _TEMPLATE = r"""<!doctype html>
     .facet-tag.f-error { color: var(--bad); }
     .facet-tag.f-a11y, .facet-tag.f-overflow { color: #2b4f7e; }
     .empty { border: 1px dashed var(--line-strong); border-radius: 16px; padding: 20px; color: var(--muted); background: rgba(255,255,255,0.55); }
+    /* Coverage matrix */
+    .cov-legend { color: var(--muted); font-size: 13px; margin: 0 2px 16px; }
+    .cov-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 12px; background: rgba(255,255,255,0.6); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .cov-table th, .cov-table td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 7px 6px; text-align: center; }
+    .cov-table th { background: rgba(255,249,241,0.95); font-weight: 600; color: var(--muted); letter-spacing: 0.02em; position: sticky; top: 0; }
+    .cov-fhead { font-size: 11px; }
+    .cov-rowhead { text-align: left; min-width: 190px; max-width: 240px; line-height: 1.25; }
+    td.cov-rowhead { font-size: 13px; }
+    .cov-crumb { color: var(--muted); font-size: 10px; }
+    .cov-link { cursor: pointer; }
+    .cov-link:hover { color: var(--accent); }
+    .cov-cell { width: 56px; }
+    .cov-has { background: var(--accent-soft); color: var(--accent); font-weight: 700; cursor: pointer; }
+    .cov-has:hover { background: var(--accent); color: white; }
+    .cov-gap { color: #cdc4b6; }
+    .cov-gapcount { background: rgba(255,255,255,0.4); color: var(--muted); font-weight: 600; }
+    .cov-gaphot { background: #f7dddd; color: var(--bad); }
+    .cov-eng td.cov-rowhead { color: #8a7e6a; }
+    .cov-eng { opacity: 0.82; }
     /* Leaf detail overlay */
     .overlay-back { position: fixed; inset: 0; background: rgba(28, 22, 13, 0.55); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 50; }
     .overlay-back.open { display: flex; }
@@ -254,7 +273,7 @@ _TEMPLATE = r"""<!doctype html>
       { id: "weak", label: "Weak · cull" },
     ];
 
-    const state = { search: "", lane: "", feature: "", facet: "", eligibility: "", quality: "", appearance: "light", focus: "" };
+    const state = { view: "gallery", search: "", lane: "", feature: "", facet: "", eligibility: "", quality: "", appearance: "light", focus: "" };
 
     // shots grouped by surface, then into scenes (clusterID) pairing light+dark.
     const shotsBySurface = new Map();
@@ -527,6 +546,107 @@ _TEMPLATE = r"""<!doctype html>
       return wrap;
     }
 
+    function viewToggle() {
+      const wrap = document.createElement("div");
+      wrap.className = "appearance-toggle";
+      for (const v of [["gallery", "Gallery"], ["coverage", "Coverage"]]) {
+        const b = document.createElement("button");
+        b.textContent = v[1];
+        b.className = state.view === v[0] ? "active" : "";
+        b.onclick = () => { state.view = v[0]; state.focus = ""; render(); };
+        wrap.appendChild(b);
+      }
+      return wrap;
+    }
+
+    // Surfaces in scope for the coverage matrix: lane / feature / search only
+    // (facet & quality filters are intentionally ignored — the matrix IS the
+    // facet view). Built straight off the surface index's facetSceneCounts.
+    function coverageSurfaces() {
+      const q = state.search;
+      return surfacesIndex.filter((s) => {
+        if (state.lane && state.lane !== "weak" && s.lane !== state.lane) return false;
+        if (state.feature && s.feature !== state.feature) return false;
+        if (q && !(s.surface + " " + s.feature + " " + s.surfaceGroup).toLowerCase().includes(q)) return false;
+        return true;
+      });
+    }
+
+    function renderCoverage(main) {
+      const surfaces = coverageSurfaces();
+      const facets = FACET_ORDER;
+      const byFeature = new Map();
+      for (const s of surfaces) {
+        if (!byFeature.has(s.feature)) byFeature.set(s.feature, []);
+        byFeature.get(s.feature).push(s);
+      }
+      if (!surfaces.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "目前沒有符合條件的 surface。";
+        main.appendChild(empty);
+        return;
+      }
+      const legend = document.createElement("div");
+      legend.className = "cov-legend";
+      legend.innerHTML = `每格 = 該 surface 在該 state facet 的 scene 數;空格 = <strong>缺口</strong>。點 surface 名或格子跳到該 surface。`;
+      main.appendChild(legend);
+      for (const feature of [...byFeature.keys()].sort()) {
+        const rows = byFeature.get(feature).sort((a, b) =>
+          (b.facetsPresent.length - a.facetsPresent.length) || a.surface.localeCompare(b.surface));
+        const section = document.createElement("section");
+        section.className = "feature-section";
+        const header = document.createElement("div");
+        header.className = "feature-header";
+        header.innerHTML = `<h3>${esc(feature)}</h3><span>${rows.length} surface</span>`;
+        section.appendChild(header);
+        const table = document.createElement("table");
+        table.className = "cov-table";
+        const head = ["<th class=\"cov-rowhead\">surface</th>"]
+          .concat(facets.map((f) => `<th class="cov-fhead">${f}</th>`))
+          .concat(["<th class=\"cov-fhead\">缺</th>"]);
+        const thead = document.createElement("thead");
+        thead.innerHTML = `<tr>${head.join("")}</tr>`;
+        table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        for (const s of rows) {
+          const missing = facets.filter((f) => f !== "default" && !(s.facetSceneCounts || {})[f]).length;
+          const tr = document.createElement("tr");
+          if (s.lane === "engineering-only") tr.className = "cov-eng";
+          const rowhead = document.createElement("td");
+          rowhead.className = "cov-rowhead cov-link";
+          rowhead.innerHTML = `<span class="cov-crumb">${esc(s.surfaceGroup)}</span><br>${esc(s.surface)}`;
+          rowhead.onclick = () => jumpToSurface(s.surfaceKey);
+          tr.appendChild(rowhead);
+          for (const f of facets) {
+            const n = (s.facetSceneCounts || {})[f] || 0;
+            const td = document.createElement("td");
+            td.className = "cov-cell" + (n ? " cov-has" : " cov-gap");
+            td.textContent = n ? String(n) : "·";
+            if (n) td.onclick = () => jumpToSurface(s.surfaceKey, f);
+            tr.appendChild(td);
+          }
+          const gap = document.createElement("td");
+          gap.className = "cov-cell cov-gapcount" + (missing >= 6 ? " cov-gaphot" : "");
+          gap.textContent = String(missing);
+          tr.appendChild(gap);
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        section.appendChild(table);
+        main.appendChild(section);
+      }
+    }
+
+    function jumpToSurface(surfaceKey, facet) {
+      state.view = "gallery";
+      state.focus = surfaceKey;
+      state.facet = facet || "";
+      document.getElementById("facet").value = state.facet;
+      if (facet) state.appearance = "both";
+      render();
+    }
+
     function syncLaneButtons() {
       document.querySelectorAll("#lane-rail .lane-btn").forEach((b) => b.classList.toggle("active", b.dataset.value === state.lane));
     }
@@ -535,6 +655,21 @@ _TEMPLATE = r"""<!doctype html>
       syncLaneButtons();
       const main = document.getElementById("main");
       main.innerHTML = "";
+
+      if (state.view === "coverage") {
+        const covSurfaces = coverageSurfaces();
+        document.getElementById("stat-visible").textContent = String(covSurfaces.length);
+        const laneLabel = (LANES.find((l) => l.id === state.lane) || LANES[0]).label;
+        const top = document.createElement("div");
+        top.className = "topbar";
+        top.innerHTML = `<div><h2>Coverage · ${laneLabel}</h2><div class="sub">${covSurfaces.length} surface × ${FACET_ORDER.length} facet · 找缺口</div></div>`;
+        top.appendChild(viewToggle());
+        main.appendChild(top);
+        renderCoverage(main);
+        mountFeatureNav([]);
+        return;
+      }
+
       const groups = visibleSurfaces();
       document.getElementById("stat-visible").textContent = String(groups.length);
 
@@ -543,7 +678,11 @@ _TEMPLATE = r"""<!doctype html>
       const laneLabel = (LANES.find((l) => l.id === state.lane) || LANES[0]).label;
       const sceneTotal = groups.reduce((n, g) => n + g.scenes.length, 0);
       top.innerHTML = `<div><h2>${state.focus ? "Focus compare" : laneLabel}</h2><div class="sub">${groups.length} surface · ${sceneTotal} state${state.focus ? " · 單一 surface 並排 light/dark" : ""}</div></div>`;
-      top.appendChild(appearanceToggle());
+      const toggles = document.createElement("div");
+      toggles.style.cssText = "display:flex;gap:10px;align-items:center";
+      toggles.appendChild(viewToggle());
+      toggles.appendChild(appearanceToggle());
+      top.appendChild(toggles);
       main.appendChild(top);
 
       if (!groups.length) {
