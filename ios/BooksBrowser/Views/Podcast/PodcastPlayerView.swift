@@ -417,7 +417,16 @@ struct PodcastPlayerView: View {
             translationHandler.loadLookedUpWords(from: allVocabulary)
         }
         .onDisappear {
-            saveProgress()
+            // Snapshot the final position SYNCHRONOUSLY — before `shutdown()` flips
+            // the vm state to `.idle` — then persist OFF this runloop turn. A
+            // synchronous `modelContext.save()` here executes inside
+            // `ViewGraphHost.tearDown` (deferred onDisappear at `_UIHostingView`
+            // deinit); its SwiftData change notification is observed by
+            // `_SwiftData_SwiftUI` against the deallocating `@Query` →
+            // EXC_BREAKPOINT (confirmed via crash report). Deferring runs the save
+            // after teardown completes, when no `@Query` is mid-dealloc. App-kill
+            // is covered by the `scenePhase` save below (runs outside teardown).
+            let pending = pendingProgressOnDisappear()
             loadTask?.cancel()
             loadTask = nil
             translationHandler.cancelCurrentTranslationTask()
@@ -425,6 +434,17 @@ struct PodcastPlayerView: View {
             viewModel = nil
             loadedEpisodeId = nil
             progressBootstrapCompleted = false
+            if let pending {
+                Task { @MainActor in
+                    persistProgress(
+                        currentTime: pending.currentTime,
+                        duration: pending.duration,
+                        isCompleted: pending.isCompleted,
+                        episodeRemoteId: pending.episodeRemoteId,
+                        reason: .pause
+                    )
+                }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { saveProgress() }
@@ -821,6 +841,28 @@ struct PodcastPlayerView: View {
         saveProgress(vm: vm, episodeRemoteId: activeEpisodeId, reason: reason)
     }
 
+    /// Progress snapshot to persist when the player disappears — same guards as
+    /// `saveProgress(reason:)` but returns captured scalars (not the live vm) so
+    /// the write can be deferred past view teardown. Returns nil when there is
+    /// nothing meaningful to persist. The catalog preview never persists (it is a
+    /// static fixture), so it returns nil here too — no pointless deferred Task.
+    private func pendingProgressOnDisappear()
+        -> (currentTime: TimeInterval, duration: TimeInterval, isCompleted: Bool, episodeRemoteId: String)? {
+#if DEBUG
+        if catalogPreview != nil { return nil }
+#endif
+        guard let vm = viewModel, loadedEpisodeId == activeEpisodeId else { return nil }
+        if !progressBootstrapCompleted && vm.currentTime == 0 { return nil }
+        return (
+            currentTime: vm.currentTime,
+            duration: vm.duration,
+            isCompleted: Self.isCompleted(
+                currentTime: vm.currentTime, duration: vm.duration, isReady: vm.state == .ready
+            ),
+            episodeRemoteId: activeEpisodeId
+        )
+    }
+
     /// Decides whether a `position == 0` write is meaningful.
     ///
     /// A `.tick` at position 0 is pure noise (audio not advanced yet) and must
@@ -838,12 +880,51 @@ struct PodcastPlayerView: View {
         return true
     }
 
+    /// Whether a position counts as "episode completed". Hoisted to a pure
+    /// function so `onDisappear`'s synchronous snapshot and the live-vm save path
+    /// compute it identically — and so it stays unit-testable. `isReady` must
+    /// reflect the vm state CAPTURED BEFORE `shutdown()`, which flips it to `.idle`.
+    static func isCompleted(currentTime: TimeInterval, duration: TimeInterval, isReady: Bool) -> Bool {
+        isReady && duration > 0 && currentTime >= duration - 1
+    }
+
     private func saveProgress(
         vm: PodcastPlayerViewModel,
         episodeRemoteId: String,
         reason: PodcastProgressPushState.Reason = .pause
     ) {
-        guard Self.shouldPersist(currentTime: vm.currentTime, reason: reason) else { return }
+        persistProgress(
+            currentTime: vm.currentTime,
+            duration: vm.duration,
+            isCompleted: Self.isCompleted(
+                currentTime: vm.currentTime, duration: vm.duration, isReady: vm.state == .ready
+            ),
+            episodeRemoteId: episodeRemoteId,
+            reason: reason
+        )
+    }
+
+    /// Scalar-based persistence core (no live-vm dependency) so it can run
+    /// DEFERRED, after view teardown, from `onDisappear` — see that call site for
+    /// the EXC_BREAKPOINT rationale. The completed flag is precomputed by the
+    /// caller while the vm state is still valid (before `shutdown()`).
+    private func persistProgress(
+        currentTime: TimeInterval,
+        duration: TimeInterval,
+        isCompleted: Bool,
+        episodeRemoteId: String,
+        reason: PodcastProgressPushState.Reason
+    ) {
+#if DEBUG
+        // The catalog preview is a static fixture — it must never write progress
+        // to the (in-memory) store. Without this guard the preview player's
+        // onDisappear save crashes the Playbook snapshot test on teardown with the
+        // very EXC_BREAKPOINT this whole change addresses (SwiftData save posts a
+        // notification observed by _SwiftData_SwiftUI against the deallocating
+        // @Query during _UIHostingView teardown).
+        if catalogPreview != nil { return }
+#endif
+        guard Self.shouldPersist(currentTime: currentTime, reason: reason) else { return }
         let targetId = episodeRemoteId
         let descriptor = FetchDescriptor<PodcastProgress>(
             predicate: #Predicate { $0.episodeRemoteId == targetId },
@@ -861,12 +942,8 @@ struct PodcastPlayerView: View {
             modelContext.insert(progress)
         }
         let now = Date()
-        progress.lastPlayedTime = vm.currentTime
-        progress.completed = (
-            vm.state == .ready
-            && vm.duration > 0
-            && vm.currentTime >= vm.duration - 1
-        )
+        progress.lastPlayedTime = currentTime
+        progress.completed = isCompleted
         progress.updatedAt = now
         do {
             try modelContext.save()
@@ -878,8 +955,8 @@ struct PodcastPlayerView: View {
         // Throttle lives in PodcastProgressPushState (unit-tested). Capture
         // values on the main actor; the detached Task uses the snapshot only.
         let shouldPush = pushState.shouldPush(
-            position: vm.currentTime,
-            duration: vm.duration,
+            position: currentTime,
+            duration: duration,
             now: now,
             reason: reason
         )
@@ -888,8 +965,8 @@ struct PodcastPlayerView: View {
         let captured = (
             seriesId: parsed.seriesId,
             episodeNumber: parsed.episodeNumber,
-            positionSec: vm.currentTime,
-            durationSec: vm.duration,
+            positionSec: currentTime,
+            durationSec: duration,
             updatedAt: now
         )
         let service = PodcastSyncService(kgService: kgService)
