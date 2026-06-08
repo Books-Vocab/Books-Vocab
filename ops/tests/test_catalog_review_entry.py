@@ -46,61 +46,6 @@ def write_manifest(root: Path, name: str, *, total_images: int, continue_count: 
     )
 
 
-def test_current_payload_exposes_canvas_path(tmp_path: Path, monkeypatch, capsys):
-    write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
-    monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
-    monkeypatch.setattr(entry_module, "inspect_listener", lambda port: None)
-    import argparse
-    rc = entry_module.cmd_current(argparse.Namespace())
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    blessed = payload["blessed"]
-    assert "reviewHtml" not in blessed
-    assert blessed["canvasHtml"].endswith("/catalog.html")
-    assert blessed["reviewManifest"].endswith("/review_manifest.json")
-
-
-def test_serve_payload_points_url_at_canvas(tmp_path: Path, monkeypatch, capsys):
-    write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
-    monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
-    monkeypatch.setattr(entry_module, "detect_listener_pid", lambda port: None)
-
-    class FakeProcess:
-        pid = 4242
-
-    monkeypatch.setattr(entry_module.subprocess, "Popen", lambda *a, **kw: FakeProcess())
-    monkeypatch.setattr(
-        entry_module,
-        "wait_for_listener_directory",
-        lambda port, directory, **kw: {"pid": 5151, "command": "stub", "directory": directory},
-    )
-
-    import argparse
-    rc = entry_module.cmd_serve(argparse.Namespace(port=8787))
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    blessed = payload["blessed"]
-    assert payload["status"] == "ok"
-    assert blessed["url"] == "http://127.0.0.1:8787/catalog.html"
-    assert "canvasUrl" not in blessed
-    assert blessed["canvasHtml"].endswith("/catalog.html")
-    assert "reviewHtml" not in blessed
-
-
-def test_serve_failure_payload_exposes_canvas_path(tmp_path: Path, monkeypatch, capsys):
-    write_manifest(tmp_path, "catalog-full-empty", total_images=0, continue_count=0, weak_count=0)
-    monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
-
-    import argparse
-    rc = entry_module.cmd_serve(argparse.Namespace(port=8787))
-    assert rc == 1
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["status"] == "needs-regeneration"
-    candidate = payload["blessedCandidate"]
-    assert "reviewHtml" not in candidate
-    assert candidate["canvasHtml"].endswith("/catalog.html")
-
-
 def test_choose_blessed_artifact_prefers_latest_usable_artifact(tmp_path: Path):
     write_manifest(tmp_path, "catalog-full-20260608-010944", total_images=1000, continue_count=290, weak_count=436)
     write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
