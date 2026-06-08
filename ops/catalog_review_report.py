@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
-from catalog_review_actions import classify_action_command
+from catalog_review_actions import build_shell_command, classify_action_command
 
 
 PROMISE_ORDER = ["Read", "Connect", "Retain", "Continue", "Weak"]
@@ -62,9 +62,17 @@ def build_report_payload(manifest: dict, state: dict, *, effective_status_fn, ro
             }
         )
         if bucket["heroUnmarked"] > 0:
-            hero_command = (
-                f"./ops/catalog_review_cli.py {root} list --promise {promise} --search hero --limit {limit or 10}"
-            )
+            hero_command = build_shell_command([
+                "./ops/catalog_review_cli.py",
+                root,
+                "list",
+                "--promise",
+                promise,
+                "--search",
+                "hero",
+                "--limit",
+                str(limit or 10),
+            ])
             next_actions.append({
                 "kind": "hero-unmarked",
                 "promise": promise,
@@ -74,10 +82,20 @@ def build_report_payload(manifest: dict, state: dict, *, effective_status_fn, ro
             })
         if top_unmarked:
             top_category = top_unmarked[0]["category"]
-            category_command = (
-                f"./ops/catalog_review_cli.py {root} apply --promise {promise} --category '{top_category}' "
-                f"--status review --limit {limit or 10} --dry-run"
-            )
+            category_command = build_shell_command([
+                "./ops/catalog_review_cli.py",
+                root,
+                "apply",
+                "--promise",
+                promise,
+                "--category",
+                top_category,
+                "--status",
+                "review",
+                "--limit",
+                str(limit or 10),
+                "--dry-run",
+            ])
             next_actions.append({
                 "kind": "top-unmarked-category",
                 "promise": promise,

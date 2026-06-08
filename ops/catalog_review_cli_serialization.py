@@ -20,11 +20,14 @@ def serialize_review_item(
     *,
     include_updated_at: bool = False,
 ) -> dict:
+    state_entry = state["entries"].get(item["assetID"], {})
     payload = {
         **item,
+        "reviewStatus": state_entry.get("status", item.get("reviewStatus", "")),
+        "reviewNote": state_entry.get("note", item.get("reviewNote", "")),
         "effectiveStatus": effective_status(item, state),
         "permalink": build_permalink(root, item["assetID"]),
     }
     if include_updated_at:
-        payload["updatedAt"] = state["entries"].get(item["assetID"], {}).get("updatedAt")
+        payload["updatedAt"] = state_entry.get("updatedAt")
     return payload

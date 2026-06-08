@@ -59,7 +59,7 @@ def cmd_apply(
     if limit is not None:
         matches = matches[:limit]
 
-    payload = {
+    payload_base = {
         "status": "ok",
         "dryRun": dry_run,
         "appliedCount": len(matches),
@@ -72,12 +72,15 @@ def cmd_apply(
             limit=limit,
             status_key="matchStatus",
         ),
-        "items": [
-            serialize_review_item(root, item, state, include_updated_at=True)
-            for item in matches
-        ],
     }
     if dry_run or not matches:
+        payload = {
+            **payload_base,
+            "items": [
+                serialize_review_item(root, item, state, include_updated_at=True)
+                for item in matches
+            ],
+        }
         print(json.dumps(payload, ensure_ascii=False))
         return 0
 
@@ -93,5 +96,12 @@ def cmd_apply(
 
     write_json(state_path, state)
     write_review_outputs(root, manifest, state)
+    payload = {
+        **payload_base,
+        "items": [
+            serialize_review_item(root, item, state, include_updated_at=True)
+            for item in matches
+        ],
+    }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
