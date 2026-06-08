@@ -1,11 +1,15 @@
 # Cleanup Playbook
 
-這份文件是 `cleanup` 的**完整操作手冊**。  
-`SKILL.md` 只保留契約；真正動手時的 phase、指令與分支策略放這裡。
+這份文件只服務兩種工作流：
+
+1. `Blacklist-Driven Convergence`
+2. `Promote Active Branch`
 
 ---
 
-## Phase 0 — 盤點真相
+## Workflow 1 — Blacklist-Driven Convergence
+
+### Step 0 — 盤 live state
 
 ```bash
 git fetch --all --prune
@@ -15,236 +19,215 @@ git branch -vv
 git worktree list
 gh pr list --state open --json number,title,headRefName,mergeable,mergeStateStatus
 ./ops/branch_audit.sh --json
-./ops/docs_lint.sh --audit
 ```
 
-盤四層：
-
-1. `origin/main`
-2. local committed
-3. local uncommitted
-4. docs debt
-
-對每條 branch / worktree 再跑：
+對每條 branch / worktree 進一步看：
 
 ```bash
 git log --oneline --left-right --cherry-pick origin/main...<branch>
 git diff --stat origin/main..<branch>
 ```
 
-判斷：
+目的是先回答兩件事：
 
-- 真正 ahead
-- tree 等價但 hash 不同
-- 已被 squash 吞掉的歷史殘影
+- 哪些是黑名單
+- 哪些是非黑名單白名單
 
----
+### Step 1 — 保存所有工作
 
-## Phase 1 — 保存所有 dirty work
-
-### 1.1 預設路徑：先 commit
-
-只要 scope 清楚、邏輯單一：
+#### 1.1 預設：先 commit
 
 ```bash
 git add <files...>
 git commit -m "<prefix>: <message>"
 ```
 
-### 1.2 黑名單工作掛在 `main`
-
-若這批工作不能進 `main`，但目前掛在 `main` 上：
+#### 1.2 黑名單工作掛在 `main`
 
 ```bash
 git branch <blacklist-branch> main
-git worktree add <path> <blacklist-branch>   # 需要繼續工作的話
+git worktree add <path> <blacklist-branch>   # 若要繼續工作
 ```
 
-然後回報 mapping：
+然後回報：
 
-- old location: `main`
-- new branch: `<blacklist-branch>`
-- new worktree: `<path>`
-- preserved commits: `<sha list>`
+- old location
+- new branch
+- new worktree
+- preserved commits
 
-最後才允許：
+只有完成這一步，才允許同步 `main`。
+
+### Step 2 — 收白名單進 `main`
+
+白名單來源可能是：
+
+- ready PR
+- local-only branch
+- main 上的非黑名單 local commits
+
+常見方式：
+
+```bash
+gh pr ready <N>               # 若仍是 draft
+gh pr merge <N> --squash --delete-branch
+```
+
+或在隔離 worktree：
+
+```bash
+git cherry-pick <commit...>
+git merge --squash <branch>
+```
+
+若主 checkout 的 `main` 需要對齊 remote，再做：
 
 ```bash
 git reset --hard origin/main
 ```
 
-### 1.3 例外路徑：patch / copy
+但前提是所有黑名單工作都已先抽離。
 
-只有內容很碎、不適合直接留在原 branch 時才用：
+### Step 3 — push / sync remote
+
+目標不是只有本地 `main` 收斂，而是 remote 也同步。
 
 ```bash
-git diff --binary > /tmp/<name>.patch
-git ls-files --others --exclude-standard
+git push origin main
+git fetch --prune
 ```
+
+### Step 4 — rebase 黑名單
+
+對每條 surviving blacklist：
+
+```bash
+git -C <worktree> rebase origin/main
+```
+
+若有 remote / PR：
+
+```bash
+git -C <worktree> push --force-with-lease
+```
+
+### Step 5 — 清掉白名單殘影
+
+對已吸收進 `main` 的白名單 branch/worktree：
+
+```bash
+git worktree remove <path>
+git branch -D <branch>
+git push origin --delete <branch>   # remote 殘影時
+git worktree prune
+git fetch --prune
+```
+
+### Step 6 — 收尾狀態
+
+完成時應該看到：
+
+- `main` 是當前 shared baseline
+- 黑名單全部站在最新 `main` 上
+- `branch_audit` 只剩黑名單 PR
+- 白名單殘影清乾淨
 
 ---
 
-## Phase 2 — 決定收斂策略
+## Workflow 2 — Promote Active Branch
 
-### 2.1 普通 merge / absorb
+### 使用時機
 
-適用：
+當某條 branch：
 
-- branch 已靜止
-- PR 已 ready
-- 目標就是收入 `main`
+- 仍在持續修改
+- 但其中有一部分**已提交**內容你想先收入 `main`
+- 且你不想打斷該 branch 的活工作
 
-### 2.2 Surviving blacklist
-
-適用：
-
-- 這批工作暫時不收
-- 但要保留並同步新 `main`
-
-操作：
+### Step 0 — 確認只 promote 已提交內容
 
 ```bash
-git rebase origin/main
-git push --force-with-lease   # 有 remote / PR 時
+git log --reverse --oneline main..<branch>
+git -C <branch-worktree> status --short --branch
 ```
 
-### 2.3 Promote committed subset from active branch
+dirty work 不是這輪 promote 的對象。  
+它可以留在活 branch 上，後續再保存。
 
-適用：
-
-- branch 還在活躍修改
-- 你只想先把其中一部分**已提交**內容收入 `main`
-- 不想打斷原 branch 的活工作
-
-做法：
+### Step 1 — 建 integration worktree
 
 ```bash
 git worktree add -b <integration-branch> <path> main
+```
+
+### Step 2 — 投影指定 commits
+
+```bash
 git -C <path> cherry-pick <commit...>
+```
+
+這裡的重點是：
+
+- promote commits
+- 不動活 branch 本體
+
+### Step 3 — 推進 `main`
+
+```bash
 git -C <path> push origin HEAD:main
+git fetch origin
+git reset --hard origin/main
 ```
 
-之後：
-
-- 活 branch 本體不動
-- 其他 blacklist rebase 到新 `main`
-- 最後才看要不要讓原 branch 自己 rebase
-
----
-
-## Phase 3 — 收斂進 `main`
-
-### 3.1 PR mode
+### Step 4 — rebase 其他黑名單
 
 ```bash
-gh pr view <N> --json mergeable,mergeStateStatus,headRefName,files
-gh pr merge <N> --squash --delete-branch
+git -C <other-blacklist-worktree> rebase origin/main
+git -C <other-blacklist-worktree> push --force-with-lease
 ```
 
-注意：
+### Step 5 — 最後再看原 branch 本體
 
-- 不要在 PR branch 上跑 `gh pr merge`
-- draft PR 先 `gh pr ready <N>`
-
-### 3.2 `all` / `all except`
-
-建立一次性整合 worktree：
+如果你現在要讓原 branch 跟上 `main`：
 
 ```bash
-git worktree add -b final-cleanup /Users/chenliangyu/kg-worktrees/final-cleanup-<tag> origin/main
+git -C <active-branch-worktree> rebase main
 ```
 
-把非黑名單內容吸進去：
+若那些 commits 已經投影進 `main`，你通常會看到：
 
-```bash
-git cherry-pick <commit...>
-# 或
-git merge --squash <branch>
-# 或
-git apply --3way /tmp/<patch>
-```
+- `skipped previously applied commit ...`
 
-再決定：
+這通常代表：
 
-- `verify-first`：先驗證再推 `main`
-- `execution-first`：先推 `main` 再補驗證
+- 這些 commits 已被主線吸收
+- branch 只剩未吸收增量
 
----
-
-## Phase 4 — Rebase surviving blacklist
-
-`main` 一旦前進，剩下黑名單都要同步：
-
-```bash
-git -C <blacklist-worktree> rebase origin/main
-git -C <blacklist-worktree> push --force-with-lease   # 有 remote 時
-```
-
-### 已投影進 `main` 的 branch
-
-若該 branch 的部分 commits 已經先被 promote 進 `main`：
-
-- rebase 時那些 commits 通常會被 skip
-- 這通常是正確結果
-- branch 之後只剩真正還沒被主線吸收的增量
-
----
-
-## Phase 5 — 驗證 / doc-sync / forward-fix
-
-優先順序：
-
-```bash
-./ops/docs_lint.sh --audit
-./ops/i18n_lint.sh --baseline-check
-uv run pytest -q <targets>
-node --test <targets>
-./ops/ios_build.sh
-./ops/ios_test.sh <minimal-scope>
-```
-
-cleanup 收尾或 infra 變更才跑：
-
-```bash
-./ops/ios_test.sh --all-targets --timeout 1200
-```
-
-若測試或 review 發現問題：
-
-- 不回退整批 cleanup
-- 最小修補
-- 新 commit / PR / squash merge
-
----
-
-## Phase 6 — 清理一次性 worktree
-
-integration / final worktree 用完即刪：
+### Step 6 — 刪掉 integration 容器
 
 ```bash
 git worktree remove <path>
 git branch -D <integration-branch>
-git worktree prune
 ```
-
-不允許留成第二真相。
 
 ---
 
-## Phase 7 — 最終狀態
+## Working Heuristics
 
-### `all`
+### 什麼時候選 Workflow 1
 
-- `git status` 乾淨
-- `git worktree list` 只剩主 repo
-- `gh pr list --state open` 為空
-- `./ops/branch_audit.sh --json` `total=0`
-- `./ops/docs_lint.sh --audit` `WARN=0 ERROR=0`
+- 你已經知道黑名單是誰
+- 目標是把其餘全部收斂
+- 這是預設模式
 
-### `all except`
+### 什麼時候選 Workflow 2
 
-- `main` 已是最新單一真相
-- 非黑名單內容全部收斂
-- 僅保留 surviving blacklist branches/worktrees
-- blacklist 全部 rebase 到新 `main`
+- 活 branch 仍在修改
+- 但其中一些已提交成果已值得成為 shared baseline
+
+### 什麼時候不要直接動 branch 本體
+
+- worktree 有活修改
+- 該 branch 是另一個 agent 的主戰場
+- 你只想 promote 其中一部分 commits
 
