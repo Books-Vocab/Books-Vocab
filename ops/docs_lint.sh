@@ -248,6 +248,7 @@ emit_impact_hints() {
     echo "docs_lint: registry impact hints (warn only)"
     echo "$impact_out" | sed -n 's/^IMPACT /WARN impact — /p'
     echo "docs_lint: inspect suppression with ./ops/docs_impact.py --since $GATE_BASE --explain"
+    echo "docs_lint: frontmatter checks below only cover docs changed in the current checkout; use the impact hints above to judge non-doc changes"
   fi
 }
 
