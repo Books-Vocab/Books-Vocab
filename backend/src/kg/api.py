@@ -109,7 +109,7 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 
 _mem_log = install_memory_log_handler(maxlen=1000)
 
-from .admin_wiring import create_admin_handlers
+from .app_router_composition import build_app_routers, include_app_routers
 from .api_compat import *  # noqa: F401,F403 - stable kg.api compatibility surface
 from .api_compat import (
     _build_entitlements_response,
@@ -118,22 +118,6 @@ from .api_compat import (
     _default_subscription_payload,
 )
 from .rate_limit import api_limiter, translate_limiter
-from .routers import (
-    auth_router,
-    billing_router,
-    notebook_router,
-    pipeline_router,
-    static_pages_router,
-    system_router,
-    translate_router,
-    user_router,
-    vocab_router,
-    web_auth_router,
-)
-from .routers.admin import (
-    build_admin_routers,
-)
-from .routers.podcast import router as podcast_router
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
 from .user_store import (
@@ -366,26 +350,13 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
 
     # --- routers ---
-    app.include_router(system_router)
-    app.include_router(static_pages_router)
-    app.include_router(user_router)
-    app.include_router(billing_router)
-    app.include_router(vocab_router)
-    app.include_router(notebook_router)
-    app.include_router(pipeline_router)
-    app.include_router(translate_router)
-    app.include_router(auth_router)
-    app.include_router(web_auth_router)
-    app.include_router(podcast_router)
-
-    # Admin router uses builder pattern (runtime closures)
     def _settings_fn() -> KGSettings:
         return app.state.kg_settings
 
     def _users_lock_file_fn() -> Path:
         return app.state.kg_settings.users_lock_file
 
-    admin_handlers = create_admin_handlers(
+    app_routers = build_app_routers(
         runtime_settings_fn=_settings_fn,
         runtime_users_lock_file_fn=_users_lock_file_fn,
         load_users_fn=_load_users_fn,
@@ -395,38 +366,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         build_entitlements_response_fn=_build_entitlements_response,
         current_admin_grant_record_fn=_current_admin_grant_record,
     )
-    admin_routers = build_admin_routers(
-        admin_ui=admin_handlers.admin_ui,
-        admin_stats=admin_handlers.admin_stats,
-        admin_logs=admin_handlers.admin_logs,
-        admin_user_entitlement=admin_handlers.admin_user_entitlement,
-        admin_grant_pro_access=admin_handlers.admin_grant_pro_access,
-        admin_revoke_pro_access=admin_handlers.admin_revoke_pro_access,
-        admin_run_tests=admin_handlers.admin_run_tests,
-        admin_last_test_run=admin_handlers.admin_last_test_run,
-        admin_test_catalog=admin_handlers.admin_test_catalog,
-        admin_tests_ui=admin_handlers.admin_tests_ui,
-        admin_graph_density=admin_handlers.admin_graph_density,
-        admin_graph_playback=admin_handlers.admin_graph_playback,
-        admin_pipeline_runs=admin_handlers.admin_pipeline_runs,
-        admin_judge_stats=admin_handlers.admin_judge_stats,
-        admin_translate_history=admin_handlers.admin_translate_history,
-        admin_user_activity=admin_handlers.admin_user_activity,
-        admin_user_usage=admin_handlers.admin_user_usage,
-        admin_user_cost_summary=admin_handlers.admin_user_cost_summary,
-        admin_host_metrics=admin_handlers.admin_host_metrics,
-        admin_users_search=admin_handlers.admin_users_search,
-        admin_observability=admin_handlers.admin_observability,
-        admin_stats_trends=admin_handlers.admin_stats_trends,
-        admin_log_retention_run=admin_handlers.admin_log_retention_run,
-        admin_audit=admin_handlers.admin_audit,
-        admin_orphans_scan=admin_handlers.admin_orphans_scan,
-        admin_user_detail_ui=admin_handlers.admin_user_detail_ui,
-        runtime_settings_fn=_settings_fn,
-    )
-    app.include_router(admin_routers.login)
-    app.include_router(admin_routers.html)
-    app.include_router(admin_routers.api)
+    include_app_routers(app, app_routers)
 
     # NOTE: the legacy public /api/podcast-media/ StaticFiles mount was removed
     # (2026-05). It served podcast audio/subtitles WITHOUT auth — a public-read
