@@ -137,6 +137,17 @@ documents:
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
 
+  - id: reference.catalog_scope
+    path: docs/reference/catalog_scope.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - catalog_scope_changed
+      - ios_surface_changed
+    sources:
+      - ios/BooksBrowser/Views/
+      - ios/BooksBrowser/Debug/
+
   - id: reference.tech_index
     path: docs/reference/tech_index.md
     kind: reference
