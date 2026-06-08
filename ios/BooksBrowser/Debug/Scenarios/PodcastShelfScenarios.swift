@@ -4,7 +4,7 @@ import SwiftData
 import SwiftUI
 
 /// Catalog scenarios for the `PodcastShelf` carousel container (title + horizontal
-/// card rail). The card-level baselines live in `BookshelfScenarios`; here we prove
+/// card rail). The card-level baselines live in `PodcastShelfCardsScenarios`; here we prove
 /// the *shelf* composition: multi-card rail, single card, long title truncation,
 /// and a11y3 vertical growth.
 enum PodcastShelfScenarios {
@@ -34,7 +34,7 @@ enum PodcastShelfScenarios {
 /// Shelf-level harness. `PodcastSeries` / `PodcastEpisode` / `PodcastProgress` are
 /// SwiftData `@Model` types whose inits touch `@MainActor` paths, so fixture
 /// construction must live in a `View` body (same reason as the card harnesses in
-/// `BookshelfScenarios`).
+/// `PodcastShelfCardsScenarios`).
 private struct PodcastShelfScene: View {
     enum Kind { case full, single }
     let kind: Kind

@@ -7,7 +7,7 @@ import SwiftUI
 /// `Book` is a SwiftData `@Model`; its initializer is fine to call standalone
 /// (no `ModelContext` required), but we still construct fixtures inside a
 /// `@MainActor` `View` body to stay clear of the Scenario closure isolation trap.
-/// These complement `BookshelfScenarios` (which drives the fixture render model)
+/// These complement `BookshelfViewScenarios` (which drives the full-screen render model)
 /// by stressing the card's own layout invariants: equal-height metadata block,
 /// 2-line title clamp, format badge on the placeholder cover, and progress bar
 /// occupancy across 0% / mid / 100%.

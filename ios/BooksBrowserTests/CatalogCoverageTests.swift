@@ -71,9 +71,9 @@ import Playbook
 
     @Test func filteredPlaybookByGroupKeepsOnlyRequestedStore() async throws {
         let playbook = CatalogScene.buildPlaybook(
-            filter: CatalogScene.filter(groups: ["Bookshelf"], scenarios: [])
+            filter: CatalogScene.filter(groups: ["Book Card"], scenarios: [])
         )
-        #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Bookshelf"])
+        #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Book Card"])
         #expect((playbook.stores.first?.scenarios.count ?? 0) > 0)
     }
 

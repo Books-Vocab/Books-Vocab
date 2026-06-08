@@ -271,7 +271,6 @@ struct CatalogScene: View {
             .init(id: "reader_view", surfaces: [screen("Reader View · Chrome", .reader, .reader)], register: ReaderChromeScenarios.register),
             .init(id: "settings", surfaces: [screen("Settings", .settings, .settings)], register: SettingsScenarios.register),
             .init(id: "today_review", surfaces: [screen("Today Review", .review, .todayReview)], register: TodayReviewScenarios.register),
-            .init(id: "bookshelf", surfaces: [block("Bookshelf", .bookshelf)], register: BookshelfScenarios.register),
             .init(id: "welcome", surfaces: [screen("Welcome", .onboarding, .welcome)], register: WelcomeScenarios.register),
         ]
 
