@@ -20,7 +20,7 @@ verified_against: 230f6c16
 | IN — 視圖（screen + overlay） | **35** |
 | IN — 必要組件（去重後唯一） | **27** |
 | CUT — 該砍 catalog surface | **58** |
-| MISSING — app 有但 catalog 缺 | **28** |
+| MISSING — app 有但 catalog 缺 | **25**（28 − 3 已補：Tab Selector / Review CTA Pill / Selection Toolbar）|
 | RELOCATE — surface 真實存在但歸錯 slice | **3** |
 
 IN 視圖拆分：screen **18** / overlay **17**。
@@ -327,7 +327,7 @@ IN 視圖拆分：screen **18** / overlay **17**。
 - **Subscription Detail (訂閱)** — `screen`（promote）
 
 ### 必要組件層 — 需新 surface
-- Review State Tab Selector / Review CTA Pill / Selection Toolbar（vocab）
+- ~~Review State Tab Selector / Review CTA Pill / Selection Toolbar（vocab）~~ — ✅ campaign 3a 已落地（`VocabShellComponentsScenarios` + `SelectionToolbarScenarios`，layout-by-kind）
 - Graph Canvas / Graph Force Settings Overlay / Graph Thumbnail Entry Card（KG + stats）
 - Swipe Deck / Card Answer Link Strip（review）
 - Podcast Controls / Preview Upgrade Banner（podcast）
