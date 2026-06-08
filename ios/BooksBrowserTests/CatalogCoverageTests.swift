@@ -84,5 +84,75 @@ import Playbook
         #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Today Review"])
         #expect(playbook.stores.first?.scenarios.map { $0.title.rawValue } == ["Front"])
     }
+
+    // MARK: - Taxonomy contract (source-of-truth guards)
+    //
+    // The iOS Manifest is the single source of truth for each surface's
+    // kind/feature/screen. These guards make the two recurring failure modes —
+    // duplicate surfaces for one screen, and screens with no coverage — into red
+    // tests so they cannot silently regress. The gallery (ops/catalog_review_*.py)
+    // consumes this declared taxonomy via catalog_index.json.
+
+    @Test func everyRegisteredCategoryHasDeclaredKind() async throws {
+        // A registered category with no CatalogSurface means an addScenarios(of:)
+        // landed without declaring its taxonomy — the gallery would be forced to
+        // guess the lane from pixels/regex (the exact failure we're retiring).
+        let declared = Set(CatalogScene.Manifest.surfaces.map(\.category))
+        let undeclared = registeredGroupNames().subtracting(declared)
+        #expect(
+            undeclared.isEmpty,
+            "Registered catalog category(ies) with no declared CatalogSurface: \(undeclared.sorted())"
+        )
+    }
+
+    @Test func featureScreensHaveNoDuplicateScreen() async throws {
+        // The core no-dup contract: each ScreenID maps to AT MOST one
+        // featureScreen surface. Re-adding e.g. "Today Review View" (a 2nd surface
+        // for .todayReview rendering the same fixture) turns this red.
+        let screens = CatalogScene.Manifest.featureScreenSurfaces.compactMap(\.screen)
+        let dupes = Dictionary(grouping: screens, by: { $0 })
+            .filter { $0.value.count > 1 }
+            .keys
+            .map(\.rawValue)
+            .sorted()
+        #expect(dupes.isEmpty, "Multiple featureScreen surfaces share a ScreenID: \(dupes)")
+    }
+
+    @Test func featureScreenSurfacesAllDeclareAScreen() async throws {
+        // kind == .featureScreen implies a non-nil screen identity.
+        let missing = CatalogScene.Manifest.featureScreenSurfaces
+            .filter { $0.screen == nil }
+            .map(\.category)
+            .sorted()
+        #expect(missing.isEmpty, "featureScreen surface(s) missing a ScreenID: \(missing)")
+    }
+
+    @Test func everyScreenIsCoveredExceptPending() async throws {
+        // The coverage contract: every ScreenID has a featureScreen surface,
+        // except those explicitly tracked as P3 debt in Manifest.pendingCoverage.
+        let covered = Set(CatalogScene.Manifest.featureScreenSurfaces.compactMap(\.screen))
+        let expected = Set(CatalogScene.ScreenID.allCases)
+            .subtracting(CatalogScene.Manifest.pendingCoverage)
+        let uncovered = expected.subtracting(covered).map(\.rawValue).sorted()
+        #expect(
+            uncovered.isEmpty,
+            "Screen(s) with no featureScreen surface (and not in pendingCoverage): \(uncovered)"
+        )
+    }
+
+    @Test func pendingCoverageScreensAreActuallyMissing() async throws {
+        // Keep pendingCoverage honest: a pending screen must NOT already have a
+        // surface. When P3 authors it, this turns red until it's removed from the
+        // pending set — so the debt list can never silently lie.
+        let covered = Set(CatalogScene.Manifest.featureScreenSurfaces.compactMap(\.screen))
+        let pendingButCovered = CatalogScene.Manifest.pendingCoverage
+            .intersection(covered)
+            .map(\.rawValue)
+            .sorted()
+        #expect(
+            pendingButCovered.isEmpty,
+            "Screen(s) in pendingCoverage that already have a surface (remove them): \(pendingButCovered)"
+        )
+    }
 }
 #endif

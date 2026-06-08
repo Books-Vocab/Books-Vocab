@@ -20,18 +20,11 @@ enum BookshelfScenarios {
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
-            Scenario("Empty", layout: .fill) {
-                AppThemeContainer {
-                    BookshelfFixtureLibraryScene(fixtureID: .emptyLibrary)
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
-            Scenario("With Books", layout: .fill) {
-                AppThemeContainer {
-                    BookshelfFixtureLibraryScene(fixtureID: .withBooksLibrary)
-                }
-                .environmentObject(AppAppearanceStore.preview)
-            }
+            // NOTE: full-library states (Empty / With Books) live on the
+            // "Bookshelf View" featureScreen surface (real `BookshelfView`).
+            // This "Bookshelf" surface is building-block scoped: book cards +
+            // podcast cards + loading. The former library fixtures here were a
+            // byte-identical duplicate of Bookshelf View and were removed.
             Scenario("Loading", layout: .fill) {
                 AppThemeContainer {
                     BookshelfLoadingPreview()
