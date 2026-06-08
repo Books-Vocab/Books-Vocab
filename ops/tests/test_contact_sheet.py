@@ -57,3 +57,53 @@ def test_select_items_filters_appearance_and_lane_and_sorts():
         mod.select_items(manifest, appearance="both")) == 3
     # limit truncates after sort
     assert len(mod.select_items(manifest, appearance="both", limit=2)) == 2
+
+
+def test_select_items_by_ids_preserves_requested_order():
+    mod = _load()
+    manifest = {"items": [
+        {"assetID": "x1", "surface": "A", "appearance": "light", "lane": "l",
+         "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "a", "feature": "F"},
+        {"assetID": "x2", "surface": "B", "appearance": "light", "lane": "l",
+         "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "b", "feature": "F"},
+        {"assetID": "x3", "surface": "C", "appearance": "light", "lane": "l",
+         "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "c", "feature": "F"},
+    ]}
+    # ids select exactly those, in the REQUESTED order (not canonical sort)
+    sel = mod.select_items(manifest, ids=["x3", "x1"], appearance="both")
+    assert [s["assetID"] for s in sel] == ["x3", "x1"]
+    # unknown id is silently skipped, not an error
+    assert [s["assetID"] for s in mod.select_items(
+        manifest, ids=["x2", "nope"], appearance="both")] == ["x2"]
+
+
+def test_select_items_ids_intersect_other_filters():
+    mod = _load()
+    manifest = {"items": [
+        {"assetID": "x1", "surface": "A", "appearance": "light", "lane": "l",
+         "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "a", "feature": "F"},
+        {"assetID": "x2", "surface": "A", "appearance": "dark", "lane": "l",
+         "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "a", "feature": "F"},
+    ]}
+    sel = mod.select_items(manifest, ids=["x1", "x2"], appearance="light")
+    assert [s["assetID"] for s in sel] == ["x1"]
+
+
+def test_resolve_crop_box_presets():
+    mod = _load()
+    assert mod.resolve_crop_box(100, 200, None) == (0, 0, 100, 200)
+    assert mod.resolve_crop_box(100, 200, "full") == (0, 0, 100, 200)
+    assert mod.resolve_crop_box(100, 200, "top") == (0, 0, 100, 100)
+    assert mod.resolve_crop_box(100, 200, "bottom") == (0, 100, 100, 200)
+    assert mod.resolve_crop_box(100, 200, "center") == (25, 50, 75, 150)
+    assert mod.resolve_crop_box(100, 200, "left") == (0, 0, 50, 200)
+    assert mod.resolve_crop_box(100, 200, "right") == (50, 0, 100, 200)
+
+
+def test_resolve_crop_box_fractional_and_clamps():
+    mod = _load()
+    assert mod.resolve_crop_box(100, 200, "0,0,0.5,0.5") == (0, 0, 50, 100)
+    # x+w / y+h overshoot clamps to image bounds, never out of range
+    assert mod.resolve_crop_box(100, 200, "0.5,0.5,1,1") == (50, 100, 100, 200)
+    # degenerate (zero-area) request falls back to full frame, not an empty box
+    assert mod.resolve_crop_box(100, 200, "0,0,0,0") == (0, 0, 100, 200)
