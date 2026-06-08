@@ -15,8 +15,14 @@ grep -q "registered=" "$tmpdir/coverage.out"
 grep -q "unregistered=" "$tmpdir/coverage.out"
 grep -q "active_unregistered=" "$tmpdir/coverage.out"
 grep -q "backlog_unregistered=" "$tmpdir/coverage.out"
+grep -q "no active registry debt; backlog docs below are informational only" "$tmpdir/coverage.out"
 grep -q "BACKLOG_UNREGISTERED" "$tmpdir/coverage.out"
 grep -q "docs/plans/2026-05-23-notebook-editorial-stack.md" "$tmpdir/coverage.out"
+if grep -q "^UNREGISTERED " "$tmpdir/coverage.out"; then
+  echo "coverage human output should not duplicate backlog entries as generic UNREGISTERED rows" >&2
+  cat "$tmpdir/coverage.out" >&2
+  exit 1
+fi
 if grep -q "ACTIVE_UNREGISTERED" "$tmpdir/coverage.out"; then
   echo "active docs should all be registered; only backlog docs may remain unregistered" >&2
   cat "$tmpdir/coverage.out" >&2
@@ -134,3 +140,4 @@ YAML
 ./ops/docs_registry_coverage.py --root "$fixture_root" --registry docs/registry.yml --strict >"$tmpdir/fixture_strict_pass.out"
 grep -q "active_unregistered=0" "$tmpdir/fixture_strict_pass.out"
 grep -q "backlog_unregistered=1" "$tmpdir/fixture_strict_pass.out"
+grep -q "no active registry debt; backlog docs below are informational only" "$tmpdir/fixture_strict_pass.out"

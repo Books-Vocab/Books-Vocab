@@ -133,6 +133,13 @@ def print_human(report: dict[str, object]) -> None:
         f"active_unregistered={report['active_unregistered_count']} "
         f"backlog_unregistered={report['backlog_unregistered_count']}"
     )
+    if report["active_unregistered_count"] == 0:
+        if report["backlog_unregistered_count"] == 0:
+            print("docs_registry_coverage: no registry coverage debt for linted docs")
+        else:
+            print("docs_registry_coverage: no active registry debt; backlog docs below are informational only")
+    else:
+        print("docs_registry_coverage: active docs below should be registered; use --strict to fail on them")
     active_by_tier = report["active_unregistered_by_tier"]
     assert isinstance(active_by_tier, dict)
     for tier, paths in active_by_tier.items():
@@ -144,13 +151,6 @@ def print_human(report: dict[str, object]) -> None:
     assert isinstance(backlog_by_tier, dict)
     for tier, paths in backlog_by_tier.items():
         print(f"BACKLOG_UNREGISTERED tier={tier} count={len(paths)}")
-        for path in paths:
-            print(f"  {path}")
-
-    by_tier = report["unregistered_by_tier"]
-    assert isinstance(by_tier, dict)
-    for tier, paths in by_tier.items():
-        print(f"UNREGISTERED tier={tier} count={len(paths)}")
         for path in paths:
             print(f"  {path}")
 
