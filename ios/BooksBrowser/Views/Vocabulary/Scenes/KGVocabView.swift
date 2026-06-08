@@ -145,7 +145,7 @@ struct KGVocabView: View {
             state: state,
             selectedReviewStates: $selectedReviewStates,
             sortOption: $sortOption,
-            onDismissBanner: coordinator.errorMessage == nil ? nil : { coordinator.dismissBanner() },
+            onDismissBanner: { coordinator.dismissBanner() },
             onRetryBanner: pendingDeletes.isEmpty ? nil : {
                 Task {
                     await coordinator.retryPendingDeletes(
@@ -246,6 +246,8 @@ struct KGVocabView: View {
         if !pendingDeletes.isEmpty {
             return .init(
                 message: L10n.format("%@ 個單字刪除待同步", "\(pendingDeletes.count)"),
+                systemImage: "exclamationmark.triangle.fill",
+                tone: .warning,
                 canDismiss: false,
                 canRetry: true
             )
@@ -253,6 +255,17 @@ struct KGVocabView: View {
         if coordinator.errorMessage != nil {
             return .init(
                 message: L10n.string("離線模式，同步失敗。請確認網路連線後重試"),
+                systemImage: "exclamationmark.triangle.fill",
+                tone: .warning,
+                canDismiss: true,
+                canRetry: false
+            )
+        }
+        if let message = coordinator.refreshSuccessMessage {
+            return .init(
+                message: message,
+                systemImage: "checkmark.circle.fill",
+                tone: .success,
                 canDismiss: true,
                 canRetry: false
             )

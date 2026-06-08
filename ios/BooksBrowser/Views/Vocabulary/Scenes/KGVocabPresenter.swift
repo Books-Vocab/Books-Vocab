@@ -18,6 +18,8 @@ struct KGVocabPresenter: View {
     struct State {
         struct Banner {
             let message: String
+            let systemImage: String
+            let tone: AppBanner.Tone
             let canDismiss: Bool
             let canRetry: Bool
         }
@@ -114,7 +116,8 @@ struct KGVocabPresenter: View {
                 if let banner = state.banner {
                     AppBanner(
                         message: banner.message,
-                        systemImage: "exclamationmark.triangle.fill",
+                        systemImage: banner.systemImage,
+                        tone: banner.tone,
                         onRetry: banner.canRetry ? onRetryBanner : nil,
                         onDismiss: banner.canDismiss ? onDismissBanner : nil
                     )
@@ -277,7 +280,13 @@ private enum KGVocabPresenterPreviewData {
     }()
 
     static let populatedState = KGVocabPresenter.State(
-        banner: .init(message: "2 個單字刪除待同步", canDismiss: false, canRetry: true),
+        banner: .init(
+            message: "2 個單字刪除待同步",
+            systemImage: "exclamationmark.triangle.fill",
+            tone: .warning,
+            canDismiss: false,
+            canRetry: true
+        ),
         reviewStateOptions: options,
         rows: rows,
         emptyState: .init(
