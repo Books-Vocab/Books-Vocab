@@ -9,6 +9,9 @@ cd "$ROOT"
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/kg_docs_impact.XXXXXX")"
 trap 'rm -rf "$tmpdir"' EXIT
 
+./ops/docs_impact.py --help >"$tmpdir/help.out"
+grep -q "match_type" "$tmpdir/help.out"
+
 ./ops/docs_impact.py --files ops/docs_lint.sh >"$tmpdir/ops.out"
 grep -q "reference.tech_index" "$tmpdir/ops.out"
 grep -q "sop.doc_sync" "$tmpdir/ops.out"
@@ -305,6 +308,7 @@ if grep -q "reference.tech_index" "$tmpdir/docs_test.out"; then
 fi
 
 ./ops/docs_impact.py --files ops/docs_lint.sh --explain >"$tmpdir/explain.out"
+grep -q "docs_impact: match_type legend" "$tmpdir/explain.out"
 grep -q '^EXCLUDED contract.host_topology ' "$tmpdir/explain.out"
 grep -q 'match_type=exact' "$tmpdir/explain.out"
 grep -q 'excluded_by=!ops/docs_lint.sh' "$tmpdir/explain.out"

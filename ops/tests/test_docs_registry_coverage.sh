@@ -9,6 +9,11 @@ cd "$ROOT"
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/kg_docs_registry_coverage.XXXXXX")"
 trap 'rm -rf "$tmpdir"' EXIT
 
+./ops/docs_registry_coverage.py --help >"$tmpdir/help.out"
+grep -q "active_unregistered" "$tmpdir/help.out"
+grep -q "backlog_unregistered" "$tmpdir/help.out"
+grep -q "Exit nonzero only when active_unregistered docs exist" "$tmpdir/help.out"
+
 ./ops/docs_registry_coverage.py >"$tmpdir/coverage.out"
 grep -q "docs_registry_coverage:" "$tmpdir/coverage.out"
 grep -q "registered=" "$tmpdir/coverage.out"
@@ -16,6 +21,7 @@ grep -q "unregistered=" "$tmpdir/coverage.out"
 grep -q "active_unregistered=" "$tmpdir/coverage.out"
 grep -q "backlog_unregistered=" "$tmpdir/coverage.out"
 grep -q "no active registry debt; backlog docs below are informational only" "$tmpdir/coverage.out"
+grep -q "backlog classification is path-based" "$tmpdir/coverage.out"
 grep -q "BACKLOG_UNREGISTERED" "$tmpdir/coverage.out"
 grep -q "docs/plans/2026-05-23-notebook-editorial-stack.md" "$tmpdir/coverage.out"
 if grep -q "^UNREGISTERED " "$tmpdir/coverage.out"; then

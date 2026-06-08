@@ -5,8 +5,10 @@
 """Registry-backed docs impact hints.
 
 Path-hint detector: maps changed paths to docs/registry.yml `sources` entries
-and emits candidate docs that may need sync. `--explain` additionally shows
-which broad matches were suppressed by registry `!path` / `!glob` exclusions.
+and emits candidate docs that may need sync. `match_type` indicates whether a
+candidate came from an exact source, a broad directory/glob hint, or a
+partially/fully suppressed broad match. `--explain` shows which broad matches
+were suppressed by registry `!path` / `!glob` exclusions.
 """
 
 from __future__ import annotations
@@ -221,6 +223,11 @@ def print_human(
     if excluded_impacts:
         summary += f" excluded={len(excluded_impacts)}"
     print(summary)
+    print(
+        "docs_impact: match_type legend -> "
+        "exact=source exact match, broad=directory/glob candidate, "
+        "suppressed-partial=impact kept but some paths excluded, suppressed=fully excluded"
+    )
     for impact in impacts:
         match_type = str(impact.get("match_type", "unknown"))
         triggers = ",".join(str(t) for t in impact["triggers"]) or "-"
