@@ -60,6 +60,51 @@ def test_current_payload_exposes_review_and_canvas_paths(tmp_path: Path, monkeyp
     assert blessed["reviewHtml"].rsplit("/", 1)[0] == blessed["canvasHtml"].rsplit("/", 1)[0]
 
 
+def test_serve_payload_pairs_review_and_canvas_urls(tmp_path: Path, monkeypatch, capsys):
+    write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
+    monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
+    monkeypatch.setattr(entry_module, "detect_listener_pid", lambda port: None)
+
+    class FakeProcess:
+        pid = 4242
+
+    monkeypatch.setattr(entry_module.subprocess, "Popen", lambda *a, **kw: FakeProcess())
+    monkeypatch.setattr(
+        entry_module,
+        "wait_for_listener_directory",
+        lambda port, directory, **kw: {"pid": 5151, "command": "stub", "directory": directory},
+    )
+
+    import argparse
+    rc = entry_module.cmd_serve(argparse.Namespace(port=8787))
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    blessed = payload["blessed"]
+    assert payload["status"] == "ok"
+    assert blessed["url"] == "http://127.0.0.1:8787/review.html"
+    assert blessed["canvasUrl"] == "http://127.0.0.1:8787/catalog.html"
+    # invariant: review and canvas URLs share host:port, differ only in document
+    assert blessed["url"].rsplit("/", 1)[0] == blessed["canvasUrl"].rsplit("/", 1)[0]
+    assert blessed["reviewHtml"].endswith("review.html")
+    assert blessed["canvasHtml"].endswith("catalog.html")
+
+
+def test_serve_failure_payload_carries_both_html_paths(tmp_path: Path, monkeypatch, capsys):
+    # totalImages=0 → not usable → cmd_serve returns 1 with blessedCandidate
+    write_manifest(tmp_path, "catalog-full-empty", total_images=0, continue_count=0, weak_count=0)
+    monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
+
+    import argparse
+    rc = entry_module.cmd_serve(argparse.Namespace(port=8787))
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "needs-regeneration"
+    candidate = payload["blessedCandidate"]
+    assert candidate["reviewHtml"].endswith("review.html")
+    assert candidate["canvasHtml"].endswith("catalog.html")
+    assert candidate["reviewHtml"].rsplit("/", 1)[0] == candidate["canvasHtml"].rsplit("/", 1)[0]
+
+
 def test_choose_blessed_artifact_prefers_latest_usable_artifact(tmp_path: Path):
     write_manifest(tmp_path, "catalog-full-20260608-010944", total_images=1000, continue_count=290, weak_count=436)
     write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
