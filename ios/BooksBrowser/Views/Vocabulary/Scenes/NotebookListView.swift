@@ -527,9 +527,7 @@ struct NotebookListContent: View {
             )) {
                 EmptyView()
             }
-            .sheet(isPresented: $showLoginSheet) {
-                LoginSheet()
-            }
+            .loginSheet(isPresented: $showLoginSheet)
         }
     }
 

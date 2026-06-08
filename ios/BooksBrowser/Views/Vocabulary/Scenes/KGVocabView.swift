@@ -229,9 +229,7 @@ struct KGVocabView: View {
                 }
             }
         }
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
-        }
+        .loginSheet(isPresented: $showLoginSheet)
     }
 
     // MARK: - Computed

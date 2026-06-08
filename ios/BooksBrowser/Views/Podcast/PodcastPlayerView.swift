@@ -177,12 +177,7 @@ struct PodcastPlayerView: View {
         // 的 proven pattern（亦同本 app `AppThemeContainer` 的 `let _ = fontTracker...` 慣例）。
         let _ = translationHandler.lookedUpWords.count
         return fullBody
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
-        }
-        .toastSheet(isPresented: $showPaywall) {
-            SubscriptionPaywallSheet()
-        }
+        .monetizationGateSheets(login: $showLoginSheet, paywall: $showPaywall)
         .enableInjection()
     }
 

@@ -91,9 +91,7 @@ struct SettingsView: View {
         .onAppear {
             coordinator.handleAppear()
         }
-        .toastSheet(isPresented: $coordinator.showSubscriptionPaywall) {
-            SubscriptionPaywallSheet()
-        }
+        .subscriptionPaywallSheet(isPresented: $coordinator.showSubscriptionPaywall)
         .toastSheet(item: $exportURL) { url in
             PlatformShareView(url: url)
         }
