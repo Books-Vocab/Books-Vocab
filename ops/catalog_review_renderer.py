@@ -161,8 +161,12 @@ _TEMPLATE = r"""<!doctype html>
     .cov-has { background: var(--accent-soft); color: var(--accent); font-weight: 700; cursor: pointer; }
     .cov-has:hover { background: var(--accent); color: white; }
     .cov-gap { color: #cdc4b6; }
+    .cov-gap-real { background: #f7dddd; color: var(--bad); font-weight: 700; }
     .cov-gapcount { background: rgba(255,255,255,0.4); color: var(--muted); font-weight: 600; }
+    .cov-gapok { background: rgba(120,170,120,0.2); color: #4f7a4f; }
     .cov-gaphot { background: #f7dddd; color: var(--bad); }
+    .cov-gapna { color: #bdb4a4; font-weight: 500; }
+    .cov-k-gap { color: var(--bad); }
     .cov-eng td.cov-rowhead { color: #8a7e6a; }
     .cov-eng { opacity: 0.82; }
     /* Leaf detail overlay */
@@ -589,11 +593,14 @@ _TEMPLATE = r"""<!doctype html>
       }
       const legend = document.createElement("div");
       legend.className = "cov-legend";
-      legend.innerHTML = `每格 = 該 surface 在該 state facet 的 scene 數;空格 = <strong>缺口</strong>。點 surface 名或格子跳到該 surface。`;
+      legend.innerHTML = `每格 = scene 數。<strong class="cov-k-gap">紅</strong> = 該 lane 期望卻缺的 state;灰點 = 該 lane 不要求(非缺口);「缺」欄對 building-block / engineering-only 顯示 <strong>—</strong>(不設覆蓋目標)。點格子跳到該 surface。`;
       main.appendChild(legend);
       for (const feature of [...byFeature.keys()].sort()) {
         const rows = byFeature.get(feature).sort((a, b) =>
-          (b.facetsPresent.length - a.facetsPresent.length) || a.surface.localeCompare(b.surface));
+          (Number(b.coverageTracked) - Number(a.coverageTracked))
+          || (b.coverageGap - a.coverageGap)
+          || (b.facetsPresent.length - a.facetsPresent.length)
+          || a.surface.localeCompare(b.surface));
         const section = document.createElement("section");
         section.className = "feature-section";
         const header = document.createElement("div");
@@ -610,9 +617,9 @@ _TEMPLATE = r"""<!doctype html>
         table.appendChild(thead);
         const tbody = document.createElement("tbody");
         for (const s of rows) {
-          const missing = facets.filter((f) => f !== "default" && !(s.facetSceneCounts || {})[f]).length;
+          const expectedSet = new Set(s.expectedFacets || []);
           const tr = document.createElement("tr");
-          if (s.lane === "engineering-only") tr.className = "cov-eng";
+          if (!s.coverageTracked) tr.className = "cov-eng";
           const rowhead = document.createElement("td");
           rowhead.className = "cov-rowhead cov-link";
           rowhead.innerHTML = `<span class="cov-crumb">${esc(s.surfaceGroup)}</span><br>${esc(s.surface)}`;
@@ -621,14 +628,29 @@ _TEMPLATE = r"""<!doctype html>
           for (const f of facets) {
             const n = (s.facetSceneCounts || {})[f] || 0;
             const td = document.createElement("td");
-            td.className = "cov-cell" + (n ? " cov-has" : " cov-gap");
-            td.textContent = n ? String(n) : "·";
-            if (n) td.onclick = () => jumpToSurface(s.surfaceKey, f);
+            if (n) {
+              td.className = "cov-cell cov-has";
+              td.textContent = String(n);
+              td.onclick = () => jumpToSurface(s.surfaceKey, f);
+            } else if (expectedSet.has(f)) {
+              td.className = "cov-cell cov-gap-real";
+              td.textContent = "缺";
+            } else {
+              td.className = "cov-cell cov-gap";
+              td.textContent = "·";
+            }
             tr.appendChild(td);
           }
           const gap = document.createElement("td");
-          gap.className = "cov-cell cov-gapcount" + (missing >= 6 ? " cov-gaphot" : "");
-          gap.textContent = String(missing);
+          if (s.coverageTracked) {
+            gap.className = "cov-cell cov-gapcount"
+              + (s.coverageGap === 0 ? " cov-gapok" : "")
+              + (s.coverageGap >= 3 ? " cov-gaphot" : "");
+            gap.textContent = String(s.coverageGap);
+          } else {
+            gap.className = "cov-cell cov-gapcount cov-gapna";
+            gap.textContent = "—";
+          }
           tr.appendChild(gap);
           tbody.appendChild(tr);
         }

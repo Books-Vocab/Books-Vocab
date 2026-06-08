@@ -83,6 +83,60 @@ def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
     assert settings["assetKind"] == "component"
 
 
+def _surface_item(surface, lane, surface_role, cluster, facet, **extra):
+    base = {
+        "surfaceKey": surface.lower().replace(" ", "-"),
+        "surface": surface,
+        "surfaceGroup": surface.split(" · ")[0],
+        "surfaceGroupKey": surface.split(" · ")[0].lower().replace(" ", "-"),
+        "feature": surface.split(" · ")[0],
+        "lane": lane,
+        "surfaceRole": surface_role,
+        "promise": "Continue",
+        "eligibility": "review",
+        "clusterID": cluster,
+        "stateFacet": facet,
+        "heroCandidate": False,
+        "newSincePr878": False,
+    }
+    base.update(extra)
+    return base
+
+
+def test_surface_index_computes_lane_aware_coverage_gap():
+    """Coverage gap must be measured against the facets a lane is *expected* to
+    cover, not a flat 10-facet target — otherwise engineering-only harness rows
+    and pure building blocks fabricate gaps they should never be held to."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+
+    items = [
+        # feature-surface with only default + populated present (missing empty/loading/error)
+        _surface_item("Bookshelf View", "feature-surface", "feature-surface", "c1", "default"),
+        _surface_item("Bookshelf View", "feature-surface", "feature-surface", "c2", "populated"),
+        # engineering-only harness — must carry NO coverage target
+        _surface_item("Translation Vocab Presenter", "engineering-only", "presenter", "c3", "default"),
+        # building block — variant-driven, not facet-gap-tracked
+        _surface_item("iCloud Progress Badge", "building-block", "building-block", "c4", "default"),
+    ]
+    surfaces = {s["surface"]: s for s in taxonomy.build_surface_index(items)}
+
+    fs = surfaces["Bookshelf View"]
+    assert fs["expectedFacets"] == ["default", "populated", "empty", "loading", "error"]
+    assert fs["coverageTracked"] is True
+    assert set(fs["missingFacets"]) == {"empty", "loading", "error"}
+    assert fs["coverageGap"] == 3
+
+    eng = surfaces["Translation Vocab Presenter"]
+    assert eng["expectedFacets"] == []
+    assert eng["coverageTracked"] is False
+    assert eng["missingFacets"] == []
+    assert eng["coverageGap"] == 0
+
+    block = surfaces["iCloud Progress Badge"]
+    assert block["coverageTracked"] is False
+    assert block["coverageGap"] == 0
+
+
 def test_review_state_preserves_existing_annotations():
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     items = [
