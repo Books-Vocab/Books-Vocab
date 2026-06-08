@@ -36,6 +36,7 @@ struct PDFReaderView: View {
     @State private var handler = ReaderTranslationHandler()
     @State private var showTranslation = false
     @State private var showLoginSheet = false
+    @State private var detailEntry: VocabularyEntry?
 
     private var vocabularyContext: ReaderVocabularyContext {
         ReaderVocabularyContext(
@@ -103,6 +104,9 @@ struct PDFReaderView: View {
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
         }
+        .toastSheet(item: $detailEntry) { entry in
+            WordDetailSheet(entry: entry, allEntries: allVocabulary)
+        }
     }
 
     // MARK: - Loading
@@ -130,6 +134,15 @@ struct PDFReaderView: View {
         }
         loadError = nil
         pdfDocument = document
+
+        // Record the open like EPUB does on initial locationDidChange: bump
+        // dateLastRead so a PDF opened-but-not-paged still surfaces in
+        // continue-reading. Position/progression are left to pageDidChange
+        // (already persisted synchronously per page turn).
+        book.dateLastRead = Date()
+        if modelContext.safeSave() {
+            BookManifestStore().writeBestEffort(book: book)
+        }
     }
 
     private func retryLoad() {
@@ -155,12 +168,14 @@ struct PDFReaderView: View {
 
     @ViewBuilder private var translationPanelOverlay: some View {
         if showTranslation, let selection = handler.wordSelection {
-            makeTranslationPanel(selection: selection)
+            // 與 EPUB 同樣快取一次詞庫查找,避免 body 重算時重複 O(n) 掃描。
+            let existingDetailEntry = vocabularyContext.existingEntry(matching: selection.word)
+            makeTranslationPanel(selection: selection, existingDetailEntry: existingDetailEntry)
         }
     }
 
     @ViewBuilder
-    private func makeTranslationPanel(selection: WordSelection) -> some View {
+    private func makeTranslationPanel(selection: WordSelection, existingDetailEntry: VocabularyEntry?) -> some View {
         TranslationPanel(
                 word: selection.word,
                 result: handler.translationResult,
@@ -183,10 +198,14 @@ struct PDFReaderView: View {
                         showTranslation = false
                     }
                 },
-                // PDF reader 沒有「查看詳情」導航目的地,一律傳 nil 讓 TranslationPanel
-                // 隱藏該按鈕(VocabChromeIconButton 由 `if let onShowDetail` 控制),
-                // 避免顯示點了沒反應的死按鈕。
-                onShowDetail: nil,
+                // 與 EPUB 對齊:已在詞庫的詞才顯示「查看詳情」(entry 為 nil 時
+                // TranslationPanel 由 `if let onShowDetail` 隱藏該按鈕),點擊以
+                // toastSheet 呈現 WordDetailSheet。
+                onShowDetail: existingDetailEntry != nil ? {
+                    if let entry = existingDetailEntry {
+                        detailEntry = entry
+                    }
+                } : nil,
                 onDismiss: {
                     handler.dismiss()
                     withAnimation(AppMotion.panelState) {
