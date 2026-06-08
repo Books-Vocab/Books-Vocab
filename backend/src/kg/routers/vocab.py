@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from ..api_models import (
@@ -23,6 +23,7 @@ from ..api_models import (
     VocabEntry,
 )
 from ..deps import (
+    CurrentUser,
     _apply_quota_headers,
     _card_response,
     _card_store,
@@ -31,7 +32,6 @@ from ..deps import (
     _graph_store,
     _notebook_store,
     _review_event_store,
-    get_current_user,
     logger,
 )
 from ..service_factories import create_client
@@ -61,9 +61,9 @@ router = APIRouter(tags=["vocab"])
 @router.get("/api/vocab", response_model=list[CardResponse])
 def list_vocab(
     response: Response,
+    user: CurrentUser,
     since: str | None = None,
     notebook_id: str | None = Query(None, pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     from ..pipeline_service import is_pipeline_running
 
@@ -83,8 +83,8 @@ def list_vocab(
 @router.post("/api/vocab/batch-delete", response_model=BatchDeleteResponse)
 def batch_delete(
     req: BatchDeleteRequest,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     return batch_delete_response(
         req, user,
@@ -100,8 +100,8 @@ def batch_delete(
 @router.patch("/api/vocab/batch-archive", response_model=BatchArchiveResponse)
 def batch_archive(
     req: BatchArchiveRequest,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     return batch_archive_response(
         req, user,
@@ -115,7 +115,7 @@ def batch_archive(
 @router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)
 def push_review(
     req: ReviewStatePushRequest,
-    user: dict = Depends(get_current_user),
+    user: CurrentUser,
 ):
     # notebook_id 不做過濾：iOS client 推送全部 notebook 的複習狀態，
     # 後端需在全域卡片中查找匹配。
@@ -127,7 +127,7 @@ def push_review(
 
 
 @router.get("/api/vocab/review-events", response_model=ReviewEventsResponse)
-def pull_review_events(since: str | None = None, user: dict = Depends(get_current_user)):
+def pull_review_events(user: CurrentUser, since: str | None = None):
     return pull_review_events_response(
         since, user,
         review_event_store_factory=_review_event_store,
@@ -135,7 +135,7 @@ def pull_review_events(since: str | None = None, user: dict = Depends(get_curren
 
 
 @router.patch("/api/vocab/review-events", response_model=ReviewEventsPushResponse)
-def push_review_events(req: ReviewEventsPushRequest, user: dict = Depends(get_current_user)):
+def push_review_events(req: ReviewEventsPushRequest, user: CurrentUser):
     return push_review_events_response(
         req, user,
         review_event_store_factory=_review_event_store,
@@ -145,8 +145,8 @@ def push_review_events(req: ReviewEventsPushRequest, user: dict = Depends(get_cu
 @router.get("/api/vocab/{word}", response_model=CardResponse)
 def lookup_word(
     word: str,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     return lookup_word_response(
         word, user,
@@ -159,15 +159,15 @@ def lookup_word(
 
 
 @router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
-def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN), user: dict = Depends(get_current_user)):
+def archive_word(word: str, req: ArchiveWordRequest, user: CurrentUser, notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN)):
     return archive_word_response(word, req, user, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
 def delete_word(
     word: str,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     return delete_word_response(
         word, user,
@@ -181,8 +181,8 @@ def delete_word(
 
 @router.get("/api/graph/links", response_model=list[GraphLinkResponse])
 def get_graph_links(
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     return get_graph_links_response(
         user,
@@ -195,8 +195,8 @@ def get_graph_links(
 def create_graph_link(
     req: ManualLinkRequest,
     response: Response,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     # Manual link creation invokes ManualLinkJudge + TrackedLLM (real LLM
     # call). Gate it with the daily quota, like add_vocab / pipeline /
@@ -215,8 +215,8 @@ def create_graph_link(
 @router.patch("/api/graph/links/{link_id}/hide", status_code=204)
 def hide_graph_link(
     link_id: str,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     hide_graph_link_response(
         link_id, user,
@@ -228,8 +228,8 @@ def hide_graph_link(
 @router.patch("/api/graph/links/{link_id}/unhide", status_code=204)
 def unhide_graph_link(
     link_id: str,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     unhide_graph_link_response(
         link_id, user,
@@ -241,8 +241,8 @@ def unhide_graph_link(
 @router.delete("/api/graph/links/{link_id}", status_code=204)
 def delete_graph_link(
     link_id: str,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     delete_graph_link_response(
         link_id, user,
@@ -255,8 +255,8 @@ def delete_graph_link(
 def add_vocab(
     entries: list[VocabEntry],
     response: Response,
+    user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    user: dict = Depends(get_current_user),
 ):
     quota = _check_quota(user, "vocab_add", response)
     result = add_vocab_response(

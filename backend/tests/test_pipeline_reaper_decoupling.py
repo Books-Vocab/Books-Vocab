@@ -54,15 +54,15 @@ def test_reap_is_idempotent():
 
 def test_lifespan_wires_explicit_reaper():
     """API lifespan 必須顯式呼叫 reap_orphaned_runs —— 否則孤兒永不回收。"""
-    from kg import api
+    from kg import app_lifespan
 
-    src = inspect.getsource(api.create_app)
-    assert "reap_orphaned_runs" in src, (
-        "lifespan 未呼叫 reap_orphaned_runs;reaper 已從 _get_conn 移除,"
+    src = inspect.getsource(app_lifespan.build_app_lifespan_from_dependencies)
+    assert "reap_orphaned_runs_fn" in src, (
+        "lifespan builder 未呼叫 reap_orphaned_runs_fn;reaper 已從 _get_conn 移除,"
         "startup 必須顯式回收"
     )
     # 時序紅線:全表回收只在單 worker 存活時安全,reap 必須在 worker 鎖之後。
-    assert src.index("assert_single_worker") < src.index("reap_orphaned_runs"), (
-        "reap_orphaned_runs 必須在 assert_single_worker 之後 —— 否則多 worker "
+    assert src.index("assert_single_worker_fn") < src.index("reap_orphaned_runs_fn"), (
+        "reap_orphaned_runs_fn 必須在 assert_single_worker_fn 之後 —— 否則多 worker "
         "競態窗口內會 cross-mark 彼此正在跑的 run"
     )

@@ -13,9 +13,6 @@ from filelock import FileLock
 
 logger = logging.getLogger(__name__)
 
-UsersLoader: TypeAlias = Callable[[], dict[str, dict[str, Any]]]
-UsersSaver: TypeAlias = Callable[[dict[str, dict[str, Any]]], None]
-
 from .api_models import (
     AppStoreNotificationRequest,
     AppStoreReconcileRequest,
@@ -23,8 +20,11 @@ from .api_models import (
     EntitlementsResponse,
 )
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
+from .types import StoredUserRecord, SubscriptionRecord, UsersPayload
 
-EntitlementsBuilder: TypeAlias = Callable[[dict[str, Any] | None], EntitlementsResponse]
+UsersLoader: TypeAlias = Callable[[], UsersPayload]
+UsersSaver: TypeAlias = Callable[[UsersPayload], None]
+EntitlementsBuilder: TypeAlias = Callable[[StoredUserRecord | None], EntitlementsResponse]
 
 # Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
 # three ingest paths (sync / notification / reconcile). `source` and
@@ -51,14 +51,14 @@ def _map_app_store_errors(verification_log: str, verification_detail: str) -> It
 
 
 def _write_snapshot(
-    write_subscription_snapshot: Callable[..., dict[str, Any]],
-    users: dict[str, dict[str, Any]],
+    write_subscription_snapshot: Callable[..., StoredUserRecord],
+    users: UsersPayload,
     user_id: str,
-    snapshot: dict[str, Any],
+    snapshot: SubscriptionRecord,
     *,
     source: str,
     price_display: str | None = None,
-) -> dict[str, Any]:
+) -> StoredUserRecord:
     """Persist a decoded App Store snapshot via the injected writer, splatting
     the shared snapshot fields so each ingest path needn't restate all eight."""
     return write_subscription_snapshot(
@@ -72,14 +72,14 @@ def _write_snapshot(
 
 def sync_app_store_subscription_response(
     req: AppStoreSyncRequest,
-    user: dict[str, Any],
+    user: StoredUserRecord,
     *,
     allow_unsigned_sync: bool,
     users_lock_file: Path,
     load_users: UsersLoader,
     save_users: UsersSaver,
-    decode_signed_transaction_info: Callable[[str], dict[str, Any]],
-    write_subscription_snapshot: Callable[..., dict[str, Any]],
+    decode_signed_transaction_info: Callable[[str], SubscriptionRecord],
+    write_subscription_snapshot: Callable[..., StoredUserRecord],
     build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     with _map_app_store_errors(
@@ -130,10 +130,10 @@ def app_store_notifications_response(
     users_lock_file: Path,
     load_users: UsersLoader,
     save_users: UsersSaver,
-    decode_notification_payload: Callable[[AppStoreNotificationRequest], tuple[dict[str, Any], dict[str, Any] | None]],
+    decode_notification_payload: Callable[[AppStoreNotificationRequest], tuple[SubscriptionRecord, dict[str, Any] | None]],
     append_app_store_event: Callable[[dict[str, Any]], None],
-    resolve_user_id_from_subscription_index: Callable[[dict[str, Any], str | None, str | None], str | None],
-    write_subscription_snapshot: Callable[..., dict[str, Any]],
+    resolve_user_id_from_subscription_index: Callable[[UsersPayload, str | None, str | None], str | None],
+    write_subscription_snapshot: Callable[..., StoredUserRecord],
     build_entitlements_response: EntitlementsBuilder,
 ) -> dict[str, Any]:
     with _map_app_store_errors(
@@ -196,16 +196,16 @@ def app_store_notifications_response(
 
 async def reconcile_app_store_subscription_response(
     req: AppStoreReconcileRequest,
-    user: dict[str, Any],
+    user: StoredUserRecord,
     *,
     apple_bundle_id: str,
     users_lock_file: Path,
     load_users: UsersLoader,
     save_users: UsersSaver,
     fetch_transaction_info: Callable[..., Awaitable[dict[str, Any]]],
-    decode_signed_transaction_info: Callable[[str], dict[str, Any]],
-    resolve_user_id_from_subscription_index: Callable[[dict[str, Any], str | None, str | None], str | None],
-    write_subscription_snapshot: Callable[..., dict[str, Any]],
+    decode_signed_transaction_info: Callable[[str], SubscriptionRecord],
+    resolve_user_id_from_subscription_index: Callable[[UsersPayload, str | None, str | None], str | None],
+    write_subscription_snapshot: Callable[..., StoredUserRecord],
     build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     try:

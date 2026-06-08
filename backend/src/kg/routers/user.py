@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
 from ..api_models import (
     DeleteAccountResponse,
@@ -11,12 +11,12 @@ from ..api_models import (
     UserConfigResponse,
 )
 from ..deps import (
+    CurrentUser,
     _build_entitlements_response,
     _card_store,
     _collect_account_ids_for_deletion,
     _graph_store,
     _is_pro,
-    get_current_user,
     logger,
 )
 from ..user_handlers import (
@@ -31,23 +31,23 @@ router = APIRouter(tags=["user"])
 
 
 @router.get("/api/user/config", response_model=UserConfigResponse)
-def get_user_config(user: dict = Depends(get_current_user)):
+def get_user_config(user: CurrentUser):
     return get_user_config_response(user)
 
 
 @router.get("/api/user/entitlements", response_model=EntitlementsResponse)
-def get_user_entitlements(user: dict = Depends(get_current_user)):
+def get_user_entitlements(user: CurrentUser):
     return get_user_entitlements_response(user, build_entitlements_response=_build_entitlements_response)
 
 
 @router.get("/api/user/quota", response_model=QuotaResponse)
-def get_user_quota(user: dict = Depends(get_current_user)):
+def get_user_quota(user: CurrentUser):
     from ..quota_service import get_quota_state
     return get_quota_state(user["id"], is_pro=_is_pro(user))
 
 
 @router.put("/api/user/config", response_model=UserConfigResponse)
-def update_user_config(req: UserConfigRequest, request: Request, user: dict = Depends(get_current_user)):
+def update_user_config(req: UserConfigRequest, request: Request, user: CurrentUser):
     settings = request.app.state.kg_settings
     return update_user_config_response(
         req, user,
@@ -58,7 +58,7 @@ def update_user_config(req: UserConfigRequest, request: Request, user: dict = De
 
 
 @router.delete("/api/user/account", response_model=DeleteAccountResponse)
-def delete_user_account(request: Request, user: dict = Depends(get_current_user)):
+def delete_user_account(request: Request, user: CurrentUser):
     settings = request.app.state.kg_settings
     return delete_user_account_response(
         user,
@@ -72,5 +72,5 @@ def delete_user_account(request: Request, user: dict = Depends(get_current_user)
 
 
 @router.get("/api/health", response_model=HealthResponse)
-def health(user: dict = Depends(get_current_user)):
+def health(user: CurrentUser):
     return health_response(user, card_store_factory=_card_store, graph_store_factory=_graph_store)

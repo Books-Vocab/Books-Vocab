@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
-from ..deps import _card_store, _notebook_store, get_current_user
+from ..deps import CurrentUser, _card_store, _notebook_store
 from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_shared import _dt_to_iso
 
@@ -25,7 +25,7 @@ def _notebook_response(nb, card_count: int = 0) -> NotebookResponse:
 
 
 @router.get("/api/notebooks", response_model=list[NotebookResponse])
-def list_notebooks(since: str | None = None, user: dict = Depends(get_current_user)):
+def list_notebooks(user: CurrentUser, since: str | None = None):
     store = _notebook_store(user["dir"])
     store.ensure_default()
     cards = _card_store(user["dir"])
@@ -47,14 +47,14 @@ def list_notebooks(since: str | None = None, user: dict = Depends(get_current_us
 
 
 @router.post("/api/notebooks", response_model=NotebookResponse, status_code=201)
-def create_notebook(req: NotebookCreateRequest, user: dict = Depends(get_current_user)):
+def create_notebook(req: NotebookCreateRequest, user: CurrentUser):
     store = _notebook_store(user["dir"])
     nb = store.create(name=req.name, color=req.color, cover_pattern=req.cover_pattern)
     return _notebook_response(nb)
 
 
 @router.patch("/api/notebooks/{nb_id}", response_model=NotebookResponse)
-def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: dict = Depends(get_current_user)):
+def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: CurrentUser):
     store = _notebook_store(user["dir"])
     kwargs = {}
     if req.name is not None:
@@ -75,7 +75,7 @@ def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: dict = Depends
 
 
 @router.delete("/api/notebooks/{nb_id}")
-def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
+def delete_notebook(nb_id: str, user: CurrentUser):
     store = _notebook_store(user["dir"])
     cards = _card_store(user["dir"])
     result = store.delete(nb_id)

@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import Cookie, Header, HTTPException, Query
 
@@ -31,10 +32,31 @@ from .admin_test_matrix import (
     run_pytest_matrix,
     store_last_test_run,
 )
-from .api_models import AdminGrantRequest, AdminTestRunRequest
+from .api_models import AdminGrantRequest, AdminTestRunRequest, EntitlementsResponse
+from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
 
 PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
+
+RuntimeSettingsFn = Callable[[], Any]
+UsersLoader = Callable[[], UsersPayload]
+UsersSaver = Callable[[UsersPayload], None]
+MemLogGetter = Callable[..., list[dict[str, Any]]]
+CardStoreFactory = Callable[..., Any]
+EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
+AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]
+
+
+@dataclass(frozen=True)
+class AdminHandlerDependencies:
+    runtime_settings_fn: RuntimeSettingsFn
+    runtime_users_lock_file_fn: Callable[[], Path]
+    load_users_fn: UsersLoader
+    save_users_fn: UsersSaver
+    mem_log_getter: MemLogGetter
+    card_store_factory: CardStoreFactory
+    build_entitlements_response_fn: EntitlementsBuilder
+    current_admin_grant_record_fn: AdminGrantRecordReader
 
 
 @dataclass(frozen=True)
@@ -71,21 +93,22 @@ def _clamp_limit(limit: int, cap: int) -> int:
     return max(1, min(limit, cap))
 
 
-def create_admin_handlers(
+def create_admin_handlers_from_dependencies(
     *,
-    runtime_settings_fn: Callable,
-    runtime_users_lock_file_fn: Callable,
-    load_users_fn: Callable,
-    save_users_fn: Callable,
-    mem_log_getter: Callable,
-    card_store_factory: Callable,
-    build_entitlements_response_fn: Callable,
-    current_admin_grant_record_fn: Callable,
+    dependencies: AdminHandlerDependencies,
 ) -> AdminHandlers:
     """Create all admin endpoint handler functions with dependencies wired in.
 
     Returns a typed bundle consumed by admin router composition.
     """
+    runtime_settings_fn = dependencies.runtime_settings_fn
+    runtime_users_lock_file_fn = dependencies.runtime_users_lock_file_fn
+    load_users_fn = dependencies.load_users_fn
+    save_users_fn = dependencies.save_users_fn
+    mem_log_getter = dependencies.mem_log_getter
+    card_store_factory = dependencies.card_store_factory
+    build_entitlements_response_fn = dependencies.build_entitlements_response_fn
+    current_admin_grant_record_fn = dependencies.current_admin_grant_record_fn
 
     def admin_ui():
         """Admin dashboard UI."""
@@ -393,4 +416,30 @@ def create_admin_handlers(
         admin_audit=admin_audit,
         admin_user_detail_ui=admin_user_detail_ui,
         admin_orphans_scan=admin_orphans_scan,
+    )
+
+
+def create_admin_handlers(
+    *,
+    runtime_settings_fn: RuntimeSettingsFn,
+    runtime_users_lock_file_fn: Callable[[], Path],
+    load_users_fn: UsersLoader,
+    save_users_fn: UsersSaver,
+    mem_log_getter: MemLogGetter,
+    card_store_factory: CardStoreFactory,
+    build_entitlements_response_fn: EntitlementsBuilder,
+    current_admin_grant_record_fn: AdminGrantRecordReader,
+) -> AdminHandlers:
+    """Backward-compatible wrapper around :func:`create_admin_handlers_from_dependencies`."""
+    return create_admin_handlers_from_dependencies(
+        dependencies=AdminHandlerDependencies(
+            runtime_settings_fn=runtime_settings_fn,
+            runtime_users_lock_file_fn=runtime_users_lock_file_fn,
+            load_users_fn=load_users_fn,
+            save_users_fn=save_users_fn,
+            mem_log_getter=mem_log_getter,
+            card_store_factory=card_store_factory,
+            build_entitlements_response_fn=build_entitlements_response_fn,
+            current_admin_grant_record_fn=current_admin_grant_record_fn,
+        )
     )
