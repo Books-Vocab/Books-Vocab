@@ -12,6 +12,7 @@ import Testing
             "today_review.back",
             "today_review.completed",
             "today_review.autoplay",
+            "today_review.longContent",
         ])
 
         #expect(catalogKeys == previewKeys)
