@@ -64,22 +64,16 @@ struct PodcastPlayerView: View {
     @State private var showLoginSheet = false
     @State private var showPaywall = false
 
-    /// Tiered-access UX mirror (server is the security boundary). Drives the
-    /// defense-in-depth gate + the preview banner.
-    private var tier: PodcastTier {
-        PodcastAccess.tier(hasProAccess: subscriptionManager.hasProAccess, hasToken: authManager.token != nil)
-    }
-    /// May the caller play this episode? `true` while the row isn't hydrated yet
-    /// (bootstrap owns that state); a hydrated, non-playable episode shows the
-    /// gate instead of loading audio — covers deep-link / continue-playing entry
-    /// that bypasses the list/hero gating.
-    private var playableForTier: Bool {
-        guard let ep = loadedEpisode else { return true }
-        return PodcastAccess.canPlay(tier: tier, episodeNumber: ep.episodeNumber, previewAvailable: ep.previewAvailable)
-    }
-    private var isPreviewPlayback: Bool {
-        guard let ep = loadedEpisode else { return false }
-        return PodcastAccess.isPreviewPlayback(tier: tier, episodeNumber: ep.episodeNumber, previewAvailable: ep.previewAvailable)
+    /// Tiered-access UX mirror (server is the security boundary). Centralizes
+    /// player gate + preview state so policy predicates do not drift inside the
+    /// large SwiftUI view.
+    private var accessState: PodcastPlayerAccessState {
+        PodcastPlayerAccessState.resolve(
+            hasProAccess: subscriptionManager.hasProAccess,
+            hasToken: authManager.token != nil,
+            episodeNumber: loadedEpisode?.episodeNumber,
+            previewAvailable: loadedEpisode?.previewAvailable ?? false
+        )
     }
 
     private var subtitleSize: PodcastSubtitleSize {
@@ -181,7 +175,7 @@ struct PodcastPlayerView: View {
 
     @ViewBuilder
     private var fullBody: some View {
-        if loadedEpisode != nil && !playableForTier {
+        if loadedEpisode != nil && !accessState.playableForTier {
             lockedGateView
         } else {
             playerCore
@@ -192,7 +186,7 @@ struct PodcastPlayerView: View {
     /// directly (deep link / continue-playing). Guest → sign-in CTA; free on a
     /// Pro-only episode → upgrade CTA. Audio is never loaded for this episode.
     private var lockedGateView: some View {
-        let isGuest = tier == .guest
+        let isGuest = accessState.gateDestination == .login
         return VStack(spacing: skin.spacing.sectionGap) {
             Image(systemName: "lock.fill")
                 .font(skin.typography.symbolHero)
@@ -255,7 +249,7 @@ struct PodcastPlayerView: View {
     /// Route the upgrade/login CTA: guest → login sheet; free → Pro paywall.
     @MainActor
     private func presentUpgradeOrLogin() {
-        if tier == .guest {
+        if accessState.gateDestination == .login {
             showLoginSheet = true
         } else {
             subscriptionManager.activePaywallSource = .podcast
@@ -503,7 +497,7 @@ struct PodcastPlayerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
-                if isPreviewPlayback {
+                if accessState.isPreviewPlayback {
                     previewUpgradeBanner
                         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                         .padding(.bottom, skin.spacing.inlineGap)
@@ -649,7 +643,7 @@ struct PodcastPlayerView: View {
     private func advanceToNextEpisode() {
         guard let current = loadedEpisode, let series = loadedSeries else { return }
         guard let next = PodcastQueue.nextPlayable(
-            in: series.episodes, after: current, tier: tier
+            in: series.episodes, after: current, tier: accessState.tier
         ) else { return }
         overrideEpisodeId = next.remoteId
     }
@@ -680,7 +674,7 @@ struct PodcastPlayerView: View {
               let series = loadedSeries else { return }
         // Tier gate (defense in depth): never load audio for an episode the
         // caller can't play — the body shows `lockedGateView` instead.
-        guard PodcastAccess.canPlay(tier: tier, episodeNumber: episode.episodeNumber, previewAvailable: episode.previewAvailable) else { return }
+        guard accessState.playableForTier else { return }
 
         loadTask?.cancel()
         loadTask = nil
