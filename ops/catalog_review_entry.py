@@ -8,6 +8,7 @@ import signal
 import socket
 import subprocess
 import sys
+import shlex
 from pathlib import Path
 
 
@@ -23,17 +24,19 @@ def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
     artifacts: list[dict] = []
     for manifest_path in sorted(snapshot_root.glob("*/review_manifest.json")):
         manifest = load_manifest(manifest_path)
+        total_images = manifest.get("totalImages", 0)
         artifacts.append({
             "name": manifest_path.parent.name,
             "root": manifest_path.parent,
             "manifest": manifest,
-            "totalImages": manifest.get("totalImages", 0),
+            "totalImages": total_images,
             "promiseCounts": manifest.get("promiseCounts", {}),
             "stateCounts": manifest.get("stateCounts", {}),
             "categories": len({item["category"] for item in manifest.get("items", [])}),
             "clusters": len({item["clusterID"] for item in manifest.get("items", [])}),
             "heroCandidates": sum(1 for item in manifest.get("items", []) if item.get("heroCandidate")),
             "newSincePr878": sum(1 for item in manifest.get("items", []) if item.get("newSincePr878")),
+            "isUsable": total_images > 0,
         })
     return artifacts
 
@@ -50,6 +53,17 @@ def choose_blessed_artifact(artifacts: list[dict]) -> dict:
     )
 
 
+def extract_directory_from_command(command: str) -> str | None:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    for index, token in enumerate(tokens):
+        if token == "--directory" and index + 1 < len(tokens):
+            return tokens[index + 1]
+    return None
+
+
 def detect_listener_pid(port: int) -> int | None:
     result = subprocess.run(
         ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
@@ -59,6 +73,24 @@ def detect_listener_pid(port: int) -> int | None:
     )
     pids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     return int(pids[0]) if pids else None
+
+
+def inspect_listener(port: int) -> dict | None:
+    pid = detect_listener_pid(port)
+    if pid is None:
+        return None
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    command = result.stdout.strip()
+    return {
+        "pid": pid,
+        "command": command,
+        "directory": extract_directory_from_command(command),
+    }
 
 
 def wait_for_port(port: int, *, timeout_seconds: float = 3.0) -> bool:
@@ -80,12 +112,17 @@ def wait_for_port(port: int, *, timeout_seconds: float = 3.0) -> bool:
 def cmd_current(_: argparse.Namespace) -> int:
     artifacts = collect_review_artifacts()
     blessed = choose_blessed_artifact(artifacts)
+    usable_count = sum(1 for item in artifacts if item["isUsable"])
+    listener = inspect_listener(8787)
+    blessed_root = str(blessed["root"])
+    status = "ok" if blessed["isUsable"] else "needs-regeneration"
     payload = {
-        "status": "ok",
+        "status": status,
         "artifactCount": len(artifacts),
+        "usableArtifactCount": usable_count,
         "blessed": {
             "name": blessed["name"],
-            "root": str(blessed["root"]),
+            "root": blessed_root,
             "reviewHtml": str(blessed["root"] / "review.html"),
             "reviewManifest": str(blessed["root"] / "review_manifest.json"),
             "totalImages": blessed["totalImages"],
@@ -95,7 +132,14 @@ def cmd_current(_: argparse.Namespace) -> int:
             "clusters": blessed["clusters"],
             "heroCandidates": blessed["heroCandidates"],
             "newSincePr878": blessed["newSincePr878"],
+            "isUsable": blessed["isUsable"],
         },
+        "activeServer8787": (
+            None if listener is None else {
+                **listener,
+                "matchesBlessed": listener["directory"] == blessed_root,
+            }
+        ),
         "artifacts": [
             {
                 "name": item["name"],
@@ -103,17 +147,29 @@ def cmd_current(_: argparse.Namespace) -> int:
                 "totalImages": item["totalImages"],
                 "continueCount": item["promiseCounts"].get("Continue"),
                 "weakCount": item["promiseCounts"].get("Weak"),
+                "isUsable": item["isUsable"],
             }
             for item in artifacts
         ],
     }
     print(json.dumps(payload, ensure_ascii=False))
-    return 0
+    return 0 if status == "ok" else 1
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
     artifacts = collect_review_artifacts()
     blessed = choose_blessed_artifact(artifacts)
+    if not blessed["isUsable"]:
+        print(json.dumps({
+            "status": "needs-regeneration",
+            "error": "no-usable-review-artifact",
+            "blessedCandidate": {
+                "name": blessed["name"],
+                "root": str(blessed["root"]),
+                "totalImages": blessed["totalImages"],
+            },
+        }, ensure_ascii=False))
+        return 1
     existing_pid = detect_listener_pid(args.port)
     replaced_pid = None
     if existing_pid is not None:
