@@ -80,6 +80,7 @@ run_capture /tmp/kg_docs_lint_impact.out ./ops/docs_lint.sh --since HEAD
 require_grep "docs_lint: registry impact hints" /tmp/kg_docs_lint_impact.out
 require_grep "reference.tech_index" /tmp/kg_docs_lint_impact.out
 require_grep "docs_lint: inspect suppression with ./ops/docs_impact.py --since HEAD --explain" /tmp/kg_docs_lint_impact.out
+require_grep "docs_lint: only non-doc files changed, so no doc frontmatter was linted; use the impact hints above to decide whether doc sync is needed" /tmp/kg_docs_lint_impact.out
 rm -f "$impact_probe"
 trap - EXIT
 
