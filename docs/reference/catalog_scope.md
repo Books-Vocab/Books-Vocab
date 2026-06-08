@@ -190,8 +190,8 @@ verified_against: 230f6c16
 
 #### V24. Podcast Home — `screen` — KEEP
 `Podcast/PodcastHomeView.swift` — loading / error / empty / populated / populated-with-continue-shelf
-- `[組件]` **Podcast Series Card**（`PodcastSeriesCard.swift`）— default/followed/no-host/no-cover/long-title — **RELOCATE**（scenario 已在 `BookshelfScenarios.swift:37-51`，搬至 podcast slice，不新建）
-- `[組件]` **Podcast Continue Rail Card**（`PodcastShelf.swift`，scenario `BookshelfScenarios.swift:57-69`）— Resume/No progress/Long title/Large numbers/A11y3 — **RELOCATE**（由 bookshelf 搬至 podcast slice）
+- `[組件]` **Podcast Series Card**（`PodcastSeriesCard.swift`）— default/followed/no-host/no-cover/long-title — **RELOCATE**（scenario 已在 `PodcastShelfCardsScenarios.swift`，搬至 podcast slice，不新建）
+- `[組件]` **Podcast Continue Rail Card**（`PodcastShelf.swift`，scenario `PodcastShelfCardsScenarios.swift`）— Resume/No progress/Long title/Large numbers/A11y3 — **RELOCATE**（由 bookshelf 搬至 podcast slice）
 - `[組件]` **Podcast Shelf (continue carousel)**（`PodcastShelf.swift`）— populated carousel — KEEP
 
 #### V25. Podcast Episode List — `screen` — KEEP
@@ -353,19 +353,19 @@ verified_against: 230f6c16
 ### 畫面 / 組件狀態 — 既有 surface 補拍（2026-06-09 scout 驗證重分級）
 
 **已覆蓋（既有 scenario 已含 → stale）：**
-- ~~Bookshelf · loading overlay~~ — ✅ `BookshelfScenarios`「Loading」
+- ~~Today Review · long-content overflow card~~ — ✅ 本 PR 落地（`TodayReviewFixtureID.longContent` fixture + scenario，走 fixture seam）
 - ~~Bookshelf · empty logged-out vs logged-in~~ — ✅ `BookshelfViewScenarios`「Empty shelf」
 - ~~Bookshelf · Book Card format badge~~ — ✅ `BookCardScenarios`（EPUB/PDF badge）
 - ~~Paywall active / expiring / admin~~ — ✅ `PaywallScenarios`（renewing / cancelled-but-active / admin-granted）
 - ~~Login Sheet authenticating + error~~ — ✅ `LoginSheetScenarios`（Authenticating / Error）
 
 **廉價可補（走既有 fixture seam，非污染 production view）：**
-- Today Review · long-content overflow card / production-mode front card（cloze）— 加 `TodayReviewFixtureID` case + seed（long strings / `reviewMode: .fillBlank`）；注意 `allCases` ripple（fixture tests）
+- Today Review · production-mode front card（cloze）— 加 `TodayReviewFixtureID` case + seed（`reviewMode: .fillBlank`）；注意 `allCases` ripple（fixture tests）。（long-content overflow 已於本 PR 落地，見上）
 
 **耦合，暫不補（私有 @State / async / CloudKit — 補需污染生產 view 的 DEBUG init seam，前作者已刻意不做）：**
 - Startup Recovery 中間態（working / cacheCleared / mailUnavailable）— **confirmed**：`phase` 私有 @State、點擊驅動，static snapshot 只達 `.idle`（見 `AppStartupRecoveryScenarios` docstring）
 - Today Review · swiping/fling in-flight — motion/gesture private state
-- Bookshelf · import-error inline banner（async import 失敗）/ iCloud states（CloudKit @Model metadata）
+- Bookshelf · loading overlay（`BookshelfCoordinator.isLoading` 私有 @State，無注入 seam；舊 grab-bag 的合成 `BookshelfLoadingPreview` 已隨 Bookshelf surface CUT 移除）/ import-error inline banner（async import 失敗）/ iCloud states（CloudKit @Model metadata）
 - Notebook List · reconcile-error / empty-logged-out / loading（coordinator 私有 @State；scout 標 cheap 但需驗 init seam）
 - Notebook Edit · photo error / processing（sheet 私有 @State；同上）
 - Stats logged-out gate state（需 `CatalogPreviewAuth` env 注入，待驗）
