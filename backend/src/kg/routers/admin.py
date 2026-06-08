@@ -127,6 +127,13 @@ class _AdminApiRouteSpec:
     response_model: Any | None = None
 
 
+@dataclass(frozen=True)
+class AdminRouters:
+    login: APIRouter
+    html: APIRouter
+    api: APIRouter
+
+
 def _register_api_route(router: APIRouter, spec: _AdminApiRouteSpec) -> None:
     if spec.endpoint is None:
         return
@@ -210,10 +217,10 @@ def build_api_admin_router(
 
 
 # ---------------------------------------------------------------------------
-# Backward-compatible build_admin_router (still used by api.py)
+# Router composition
 # ---------------------------------------------------------------------------
 
-def build_admin_router(
+def build_admin_routers(
     *,
     admin_ui: Callable[..., Any],
     admin_stats: Callable[..., Any],
@@ -242,8 +249,8 @@ def build_admin_router(
     admin_orphans_scan: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
-) -> tuple[APIRouter, APIRouter, APIRouter]:
-    """Build all three admin routers. Returns (login_router, html_router, api_router)."""
+) -> AdminRouters:
+    """Build the login/html/api admin routers as a named bundle."""
     login = build_login_routes(runtime_settings_fn=runtime_settings_fn)
     html = build_html_admin_router(
         admin_ui=admin_ui,
@@ -276,4 +283,71 @@ def build_admin_router(
         admin_audit=admin_audit,
         admin_orphans_scan=admin_orphans_scan,
     )
-    return login, html, api
+    return AdminRouters(login=login, html=html, api=api)
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible tuple builder
+# ---------------------------------------------------------------------------
+
+def build_admin_router(
+    *,
+    admin_ui: Callable[..., Any],
+    admin_stats: Callable[..., Any],
+    admin_logs: Callable[..., Any],
+    admin_user_entitlement: Callable[..., Any],
+    admin_grant_pro_access: Callable[..., Any],
+    admin_revoke_pro_access: Callable[..., Any],
+    admin_run_tests: Callable[..., Any],
+    admin_last_test_run: Callable[..., Any],
+    admin_test_catalog: Callable[..., Any],
+    admin_tests_ui: Callable[..., Any],
+    admin_graph_density: Callable[..., Any] | None = None,
+    admin_graph_playback: Callable[..., Any] | None = None,
+    admin_pipeline_runs: Callable[..., Any] | None = None,
+    admin_judge_stats: Callable[..., Any] | None = None,
+    admin_translate_history: Callable[..., Any] | None = None,
+    admin_user_activity: Callable[..., Any] | None = None,
+    admin_user_usage: Callable[..., Any] | None = None,
+    admin_user_cost_summary: Callable[..., Any] | None = None,
+    admin_host_metrics: Callable[..., Any] | None = None,
+    admin_users_search: Callable[..., Any] | None = None,
+    admin_observability: Callable[..., Any] | None = None,
+    admin_stats_trends: Callable[..., Any] | None = None,
+    admin_log_retention_run: Callable[..., Any] | None = None,
+    admin_audit: Callable[..., Any] | None = None,
+    admin_orphans_scan: Callable[..., Any] | None = None,
+    admin_user_detail_ui: Callable[..., Any] | None = None,
+    runtime_settings_fn: Callable | None = None,
+) -> tuple[APIRouter, APIRouter, APIRouter]:
+    """Backward-compatible wrapper around :func:`build_admin_routers`."""
+    routers = build_admin_routers(
+        admin_ui=admin_ui,
+        admin_stats=admin_stats,
+        admin_logs=admin_logs,
+        admin_user_entitlement=admin_user_entitlement,
+        admin_grant_pro_access=admin_grant_pro_access,
+        admin_revoke_pro_access=admin_revoke_pro_access,
+        admin_run_tests=admin_run_tests,
+        admin_last_test_run=admin_last_test_run,
+        admin_test_catalog=admin_test_catalog,
+        admin_tests_ui=admin_tests_ui,
+        admin_graph_density=admin_graph_density,
+        admin_graph_playback=admin_graph_playback,
+        admin_pipeline_runs=admin_pipeline_runs,
+        admin_judge_stats=admin_judge_stats,
+        admin_translate_history=admin_translate_history,
+        admin_user_activity=admin_user_activity,
+        admin_user_usage=admin_user_usage,
+        admin_user_cost_summary=admin_user_cost_summary,
+        admin_host_metrics=admin_host_metrics,
+        admin_users_search=admin_users_search,
+        admin_observability=admin_observability,
+        admin_stats_trends=admin_stats_trends,
+        admin_log_retention_run=admin_log_retention_run,
+        admin_audit=admin_audit,
+        admin_orphans_scan=admin_orphans_scan,
+        admin_user_detail_ui=admin_user_detail_ui,
+        runtime_settings_fn=runtime_settings_fn,
+    )
+    return routers.login, routers.html, routers.api

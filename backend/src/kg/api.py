@@ -131,9 +131,7 @@ from .routers import (
     web_auth_router,
 )
 from .routers.admin import (
-    build_api_admin_router,
-    build_html_admin_router,
-    build_login_routes,
+    build_admin_routers,
 )
 from .routers.podcast import router as podcast_router
 from .service_factories import clear_store_cache
@@ -397,14 +395,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         build_entitlements_response_fn=_build_entitlements_response,
         current_admin_grant_record_fn=_current_admin_grant_record,
     )
-    login_r = build_login_routes(runtime_settings_fn=_settings_fn)
-    html_r = build_html_admin_router(
+    admin_routers = build_admin_routers(
         admin_ui=admin_handlers.admin_ui,
-        admin_tests_ui=admin_handlers.admin_tests_ui,
-        admin_user_detail_ui=admin_handlers.admin_user_detail_ui,
-        runtime_settings_fn=_settings_fn,
-    )
-    api_r = build_api_admin_router(
         admin_stats=admin_handlers.admin_stats,
         admin_logs=admin_handlers.admin_logs,
         admin_user_entitlement=admin_handlers.admin_user_entitlement,
@@ -413,6 +405,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         admin_run_tests=admin_handlers.admin_run_tests,
         admin_last_test_run=admin_handlers.admin_last_test_run,
         admin_test_catalog=admin_handlers.admin_test_catalog,
+        admin_tests_ui=admin_handlers.admin_tests_ui,
         admin_graph_density=admin_handlers.admin_graph_density,
         admin_graph_playback=admin_handlers.admin_graph_playback,
         admin_pipeline_runs=admin_handlers.admin_pipeline_runs,
@@ -428,10 +421,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         admin_log_retention_run=admin_handlers.admin_log_retention_run,
         admin_audit=admin_handlers.admin_audit,
         admin_orphans_scan=admin_handlers.admin_orphans_scan,
+        admin_user_detail_ui=admin_handlers.admin_user_detail_ui,
+        runtime_settings_fn=_settings_fn,
     )
-    app.include_router(login_r)
-    app.include_router(html_r)
-    app.include_router(api_r)
+    app.include_router(admin_routers.login)
+    app.include_router(admin_routers.html)
+    app.include_router(admin_routers.api)
 
     # NOTE: the legacy public /api/podcast-media/ StaticFiles mount was removed
     # (2026-05). It served podcast audio/subtitles WITHOUT auth — a public-read
