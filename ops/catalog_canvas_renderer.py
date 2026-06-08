@@ -60,8 +60,11 @@ def render_canvas_html(manifest: dict) -> str:
     }}
     .ops button:hover {{ border-color: var(--ink); color: var(--ink); }}
     #canvas {{
-      position: fixed; top: 44px; left: 0; right: 0; bottom: 0;
+      position: fixed; top: 44px; left: 0;
+      width: 100vw; height: calc(100vh - 44px);
+      display: block;
       cursor: grab;
+      background: var(--bg);
     }}
     #canvas.dragging {{ cursor: grabbing; }}
     .nodepath {{

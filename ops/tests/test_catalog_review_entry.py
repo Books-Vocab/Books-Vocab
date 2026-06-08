@@ -46,7 +46,7 @@ def write_manifest(root: Path, name: str, *, total_images: int, continue_count: 
     )
 
 
-def test_current_payload_exposes_review_and_canvas_paths(tmp_path: Path, monkeypatch, capsys):
+def test_current_payload_exposes_canvas_path(tmp_path: Path, monkeypatch, capsys):
     write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
     monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
     monkeypatch.setattr(entry_module, "inspect_listener", lambda port: None)
@@ -55,12 +55,12 @@ def test_current_payload_exposes_review_and_canvas_paths(tmp_path: Path, monkeyp
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     blessed = payload["blessed"]
-    assert blessed["reviewHtml"].endswith("review.html")
-    assert blessed["canvasHtml"].endswith("catalog.html")
-    assert blessed["reviewHtml"].rsplit("/", 1)[0] == blessed["canvasHtml"].rsplit("/", 1)[0]
+    assert "reviewHtml" not in blessed
+    assert blessed["canvasHtml"].endswith("/catalog.html")
+    assert blessed["reviewManifest"].endswith("/review_manifest.json")
 
 
-def test_serve_payload_pairs_review_and_canvas_urls(tmp_path: Path, monkeypatch, capsys):
+def test_serve_payload_points_url_at_canvas(tmp_path: Path, monkeypatch, capsys):
     write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
     monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
     monkeypatch.setattr(entry_module, "detect_listener_pid", lambda port: None)
@@ -81,16 +81,13 @@ def test_serve_payload_pairs_review_and_canvas_urls(tmp_path: Path, monkeypatch,
     payload = json.loads(capsys.readouterr().out)
     blessed = payload["blessed"]
     assert payload["status"] == "ok"
-    assert blessed["url"] == "http://127.0.0.1:8787/review.html"
-    assert blessed["canvasUrl"] == "http://127.0.0.1:8787/catalog.html"
-    # invariant: review and canvas URLs share host:port, differ only in document
-    assert blessed["url"].rsplit("/", 1)[0] == blessed["canvasUrl"].rsplit("/", 1)[0]
-    assert blessed["reviewHtml"].endswith("review.html")
-    assert blessed["canvasHtml"].endswith("catalog.html")
+    assert blessed["url"] == "http://127.0.0.1:8787/catalog.html"
+    assert "canvasUrl" not in blessed
+    assert blessed["canvasHtml"].endswith("/catalog.html")
+    assert "reviewHtml" not in blessed
 
 
-def test_serve_failure_payload_carries_both_html_paths(tmp_path: Path, monkeypatch, capsys):
-    # totalImages=0 → not usable → cmd_serve returns 1 with blessedCandidate
+def test_serve_failure_payload_exposes_canvas_path(tmp_path: Path, monkeypatch, capsys):
     write_manifest(tmp_path, "catalog-full-empty", total_images=0, continue_count=0, weak_count=0)
     monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
 
@@ -100,9 +97,8 @@ def test_serve_failure_payload_carries_both_html_paths(tmp_path: Path, monkeypat
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "needs-regeneration"
     candidate = payload["blessedCandidate"]
-    assert candidate["reviewHtml"].endswith("review.html")
-    assert candidate["canvasHtml"].endswith("catalog.html")
-    assert candidate["reviewHtml"].rsplit("/", 1)[0] == candidate["canvasHtml"].rsplit("/", 1)[0]
+    assert "reviewHtml" not in candidate
+    assert candidate["canvasHtml"].endswith("/catalog.html")
 
 
 def test_choose_blessed_artifact_prefers_latest_usable_artifact(tmp_path: Path):
