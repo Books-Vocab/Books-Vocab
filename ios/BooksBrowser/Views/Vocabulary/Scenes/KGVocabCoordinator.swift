@@ -58,14 +58,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         isLoading = true
         defer { isLoading = false }
 
-        do {
-            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
-            errorMessage = nil
-            refreshSuccessMessage = L10n.string("單字庫已更新")
-        } catch {
-            errorMessage = error.localizedDescription
-            refreshSuccessMessage = nil
-        }
+        await pullAndApplyResult(kgService: kgService, modelContext: modelContext)
     }
 
     func forceRefresh(
@@ -76,6 +69,14 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         defer { isLoading = false }
 
         async let health: Void = kgService.healthCheck()
+        await pullAndApplyResult(kgService: kgService, modelContext: modelContext)
+        await health
+    }
+
+    private func pullAndApplyResult(
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async {
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
             errorMessage = nil
@@ -84,7 +85,6 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             errorMessage = error.localizedDescription
             refreshSuccessMessage = nil
         }
-        await health
     }
 
     func retryPendingDeletes(

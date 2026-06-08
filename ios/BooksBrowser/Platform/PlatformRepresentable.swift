@@ -8,7 +8,6 @@
 import SwiftUI
 import UIKit
 
-typealias PlatformView = UIView
 typealias PlatformColor = UIColor
 typealias PlatformImage = UIImage
 typealias PlatformFont = UIFont

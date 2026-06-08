@@ -168,21 +168,20 @@ extension KGService {
     ) async -> [SyncPhaseFailure]? {
         var failures: [SyncPhaseFailure] = []
         for (result, label) in zip(results, labels) {
-            if case .failure(let error) = result {
-                if error is KGError, case KGError.unauthorized = error {
-                    await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-                    lastBackgroundSyncError = L10n.string("登入已過期")
-                    return nil
-                }
-                AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
-                if !(error is CancellationError) {
-                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
-                }
-                failures.append(SyncPhaseFailure(
-                    label: label,
-                    message: SyncFailurePresentation.message(label: label, error: error)
-                ))
+            guard case .failure(let error) = result else { continue }
+            if error is KGError, case KGError.unauthorized = error {
+                await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+                lastBackgroundSyncError = L10n.string("登入已過期")
+                return nil
             }
+            AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+            if !(error is CancellationError) {
+                AppCrashReporting.record(error, context: "kg.sync.\(label)")
+            }
+            failures.append(SyncPhaseFailure(
+                label: label,
+                message: SyncFailurePresentation.message(label: label, error: error)
+            ))
         }
         return failures
     }

@@ -171,8 +171,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             return true
         } catch {
             reviewSettingsStore.restorePauseState(snapshot)
-            toastCoordinator.error("設定儲存失敗".localized)
-            AppLog.kg.error("updateReviewClockConfig failed: \(error.localizedDescription)")
+            reportConfigSaveFailure(error, label: "updateReviewClockConfig", toastCoordinator: toastCoordinator)
             return false
         }
     }
@@ -209,10 +208,14 @@ final class SettingsCoordinator: SettingsCoordinating {
             return true
         } catch {
             reviewSettingsStore.restoreModeState(snapshot)
-            toastCoordinator.error("設定儲存失敗".localized)
-            AppLog.kg.error("updateReviewModeConfig failed: \(error.localizedDescription)")
+            reportConfigSaveFailure(error, label: "updateReviewModeConfig", toastCoordinator: toastCoordinator)
             return false
         }
+    }
+
+    private func reportConfigSaveFailure(_ error: Error, label: String, toastCoordinator: AppToastCoordinator) {
+        toastCoordinator.error("設定儲存失敗".localized)
+        AppLog.kg.error("\(label) failed: \(error.localizedDescription)")
     }
 
     func refreshObservationPreview() {
@@ -301,8 +304,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             translationSourceLang = prevSource
             translationTargetLang = prevTarget
-            toastCoordinator.error("設定儲存失敗".localized)
-            AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
+            reportConfigSaveFailure(error, label: "updateUserConfig (translation lang)", toastCoordinator: toastCoordinator)
             return false
         }
     }
@@ -329,7 +331,11 @@ final class SettingsCoordinator: SettingsCoordinating {
         isResyncing = true
         defer { isResyncing = false }
         await kgService.backgroundSync(container: modelContext.container)
-        try? modelContext.container.mainContext.save()
+        do {
+            try modelContext.container.mainContext.save()
+        } catch {
+            AppLog.kg.error("resync mainContext save failed: \(error.localizedDescription)")
+        }
         await kgService.healthCheck()
         await kgService.fetchQuota()
         refreshObservationPreview()

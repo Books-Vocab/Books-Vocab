@@ -75,23 +75,6 @@ struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
     }
 }
 
-struct SettingsInlineInfoButton: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "info.circle")
-                .font(appSkin.typography.iconMedium)
-                .foregroundStyle(appSkin.palette.secondaryText)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.string("settings.inlineInfo.accessibility"))
-        .enableInjection()
-    }
-}
-
 struct SettingsActionRowLabel<Trailing: View>: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin

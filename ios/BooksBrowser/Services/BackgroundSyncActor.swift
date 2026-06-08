@@ -151,13 +151,11 @@ actor BackgroundSyncActor {
                 progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
                 var orphanedWords: [String] = []
                 for entry in localEntries {
-                    if entry.shouldAppearInKnowledgeList {
-                        let orphanKey = mergeKey(entry.word, notebookId: entry.notebookId)
-                        if !fetchedCardKeys.contains(orphanKey) {
-                            orphanedWords.append(entry.word)
-                            modelContext.delete(entry)
-                        }
-                    }
+                    guard entry.shouldAppearInKnowledgeList else { continue }
+                    let orphanKey = mergeKey(entry.word, notebookId: entry.notebookId)
+                    guard !fetchedCardKeys.contains(orphanKey) else { continue }
+                    orphanedWords.append(entry.word)
+                    modelContext.delete(entry)
                 }
                 if !orphanedWords.isEmpty {
                     AppLog.sync.warning("Orphan cleanup removed \(orphanedWords.count) entries: \(orphanedWords.prefix(20).joined(separator: ", "))\(orphanedWords.count > 20 ? "..." : "")")
