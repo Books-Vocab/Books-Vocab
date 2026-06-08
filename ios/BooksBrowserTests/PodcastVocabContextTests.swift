@@ -41,6 +41,47 @@ struct PodcastVocabContextTests {
         return (series, ep)
     }
 
+    private func makeVocabularyContext(
+        ctx: ModelContext,
+        vocabulary: [VocabularyEntry] = [],
+        notebookId: String = "default"
+    ) -> PodcastVocabularyContext {
+        let (series, episode) = attachSeriesAndEpisode(epId: UUID().uuidString, in: ctx)
+        return PodcastVocabularyContext(
+            vocabulary: vocabulary,
+            modelContext: ctx,
+            series: series,
+            episode: episode,
+            notebookId: notebookId,
+            toastCoordinator: AppToastCoordinator()
+        )
+    }
+
+    private func makeEntry(
+        word: String,
+        notebookId: String = "default",
+        rootForm: String? = nil,
+        inflections: [String] = [],
+        syncStatus: Int = 0,
+        actionType: String = "add"
+    ) -> VocabularyEntry {
+        let entry = VocabularyEntry(
+            word: word,
+            translation: "t",
+            context: "ctx",
+            explanation: nil,
+            partOfSpeech: nil,
+            bookTitle: "Series",
+            chapterTitle: "Episode"
+        )
+        entry.notebookId = notebookId
+        entry.rootForm = rootForm
+        entry.inflections = inflections
+        entry.syncStatus = syncStatus
+        entry.actionType = actionType
+        return entry
+    }
+
     // MARK: - Race regression (PR #400)
 
     @Test func resolveVocabularyContext_returnsNilWhenEpisodeRowMissing() throws {
@@ -198,6 +239,69 @@ struct PodcastVocabContextTests {
         )
         #expect(result?.notebookId == "candidate_nb",
                 "cold-start (empty Notebook table) must preserve the candidate notebook id — see `VocabularyEntry.resolveNotebookId` cold-start guard")
+    }
+
+    // MARK: - Capture parity with reader
+
+    @Test func existingEntry_matchesByRootFormAndInflectionLowercase() throws {
+        let ctx = try makeContext()
+        let entry = makeEntry(
+            word: "lay",
+            notebookId: "default",
+            rootForm: "lie",
+            inflections: ["lays", "laid", "laying"]
+        )
+        let capture = makeVocabularyContext(ctx: ctx, vocabulary: [entry])
+
+        #expect(capture.existingEntry(matching: "Lay") != nil)
+        #expect(capture.existingEntry(matching: "Lie") != nil)
+        #expect(capture.existingEntry(matching: "LAID") != nil)
+        #expect(capture.existingEntry(matching: "unrelated") == nil)
+    }
+
+    @Test func saveEntry_restoresEntryQueuedForDeleteAndUpdatesTranslation() throws {
+        let ctx = try makeContext()
+        let queued = makeEntry(word: "ghost", notebookId: "default", actionType: "delete")
+        queued.syncStatus = 0
+        ctx.insert(queued)
+        try ctx.save()
+        let originalId = queued.persistentModelID
+
+        let capture = makeVocabularyContext(ctx: ctx, vocabulary: [queued])
+        let inserted = capture.saveEntry(
+            selection: WordSelection(word: "ghost", context: "ctx", position: .zero),
+            translation: "new translation",
+            rootForm: "ghost"
+        )
+
+        #expect(inserted == true)
+        let all = try ctx.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(all.count == 1)
+        let restored = try #require(all.first)
+        #expect(restored.persistentModelID == originalId)
+        #expect(restored.syncAction == .add)
+        #expect(restored.translation == "new translation")
+        #expect(restored.rootForm == "ghost")
+    }
+
+    @Test func deleteEntry_queuesSyncedEntryAndRemovesUnsyncedEntry() throws {
+        let ctx = try makeContext()
+        let synced = makeEntry(word: "anchor", notebookId: "default", syncStatus: 1)
+        let pending = makeEntry(word: "draft", notebookId: "default", syncStatus: 0)
+        ctx.insert(synced)
+        ctx.insert(pending)
+        try ctx.save()
+
+        let capture = makeVocabularyContext(ctx: ctx, vocabulary: [synced, pending])
+        capture.deleteEntry(matching: "anchor")
+        capture.deleteEntry(matching: "draft")
+
+        let all = try ctx.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(all.count == 1)
+        let surviving = try #require(all.first)
+        #expect(surviving.word == "anchor")
+        #expect(surviving.syncAction == .delete)
+        #expect(surviving.syncState == .pending)
     }
 }
 #endif
