@@ -32,11 +32,12 @@ _mem_log = install_memory_log_handler(maxlen=1000)
 
 from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
 from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
-from .app_middleware import _anon_rate_limit_key, install_app_middlewares
+from .app_middleware import AppMiddlewareDependencies, _anon_rate_limit_key, install_app_middlewares_from_dependencies
 from .app_exception_handlers import (
+    AppExceptionHandlerDependencies,
     _redact_validation_body,
     _redact_validation_payload,
-    install_app_exception_handlers,
+    install_app_exception_handlers_from_dependencies,
 )
 from .api_compat import *  # noqa: F401,F403 - stable kg.api compatibility surface
 from .api_compat import (
@@ -108,16 +109,23 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     from . import sentry_init as _sentry_init
     from .request_context import request_id_var
 
-    install_app_middlewares(
-        app,
-        cors_origins=settings.cors_origins,
-        rate_limit_trusted_hops=settings.rate_limit_trusted_hops,
-        request_id_var=request_id_var,
-        tag_request_id=_sentry_init.tag_request_id,
-        api_limiter=api_limiter,
-        translate_limiter=translate_limiter,
+    install_app_middlewares_from_dependencies(
+        dependencies=AppMiddlewareDependencies(
+            app=app,
+            cors_origins=settings.cors_origins,
+            rate_limit_trusted_hops=settings.rate_limit_trusted_hops,
+            request_id_var=request_id_var,
+            tag_request_id=_sentry_init.tag_request_id,
+            api_limiter=api_limiter,
+            translate_limiter=translate_limiter,
+        )
     )
-    install_app_exception_handlers(app, logger=logger)
+    install_app_exception_handlers_from_dependencies(
+        dependencies=AppExceptionHandlerDependencies(
+            app=app,
+            logger=logger,
+        )
+    )
 
     # --- routers ---
     def _settings_fn() -> KGSettings:

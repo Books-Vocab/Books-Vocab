@@ -11,9 +11,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 
+RateLimiter = Any
+
+
 @dataclass(frozen=True)
 class AppMiddlewareRuntime:
     rate_limit_exempt_prefixes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AppMiddlewareDependencies:
+    app: FastAPI
+    cors_origins: tuple[str, ...]
+    rate_limit_trusted_hops: int
+    request_id_var: ContextVar[str]
+    tag_request_id: Callable[[str | None], None]
+    api_limiter: RateLimiter
+    translate_limiter: RateLimiter
 
 
 def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
@@ -37,16 +51,18 @@ def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
     return client_host if client_host else "unknown"
 
 
-def install_app_middlewares(
-    app: FastAPI,
+def install_app_middlewares_from_dependencies(
     *,
-    cors_origins: tuple[str, ...],
-    rate_limit_trusted_hops: int,
-    request_id_var: ContextVar[str],
-    tag_request_id: Callable[[str | None], None],
-    api_limiter: Any,
-    translate_limiter: Any,
+    dependencies: AppMiddlewareDependencies,
 ) -> AppMiddlewareRuntime:
+    app = dependencies.app
+    cors_origins = dependencies.cors_origins
+    rate_limit_trusted_hops = dependencies.rate_limit_trusted_hops
+    request_id_var = dependencies.request_id_var
+    tag_request_id = dependencies.tag_request_id
+    api_limiter = dependencies.api_limiter
+    translate_limiter = dependencies.translate_limiter
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(cors_origins),
@@ -122,4 +138,28 @@ def install_app_middlewares(
 
     return AppMiddlewareRuntime(
         rate_limit_exempt_prefixes=rate_limit_exempt_prefixes,
+    )
+
+
+def install_app_middlewares(
+    app: FastAPI,
+    *,
+    cors_origins: tuple[str, ...],
+    rate_limit_trusted_hops: int,
+    request_id_var: ContextVar[str],
+    tag_request_id: Callable[[str | None], None],
+    api_limiter: RateLimiter,
+    translate_limiter: RateLimiter,
+) -> AppMiddlewareRuntime:
+    """Backward-compatible wrapper around :func:`install_app_middlewares_from_dependencies`."""
+    return install_app_middlewares_from_dependencies(
+        dependencies=AppMiddlewareDependencies(
+            app=app,
+            cors_origins=cors_origins,
+            rate_limit_trusted_hops=rate_limit_trusted_hops,
+            request_id_var=request_id_var,
+            tag_request_id=tag_request_id,
+            api_limiter=api_limiter,
+            translate_limiter=translate_limiter,
+        )
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -52,6 +53,12 @@ class AppExceptionHandlers:
     unhandled_exception_handler: Callable[..., Any]
 
 
+@dataclass(frozen=True)
+class AppExceptionHandlerDependencies:
+    app: FastAPI
+    logger: logging.Logger | Any
+
+
 def _validation_key_norm(key: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(key).lower())
 
@@ -93,11 +100,13 @@ def _redact_validation_body(body: str | None) -> str | None:
     return json.dumps(_redact_validation_payload(parsed), ensure_ascii=False, separators=(",", ":"))[:500]
 
 
-def install_app_exception_handlers(
-    app: FastAPI,
+def install_app_exception_handlers_from_dependencies(
     *,
-    logger: Any,
+    dependencies: AppExceptionHandlerDependencies,
 ) -> AppExceptionHandlers:
+    app = dependencies.app
+    logger = dependencies.logger
+
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         body = None
@@ -148,4 +157,18 @@ def install_app_exception_handlers(
         validation_error_handler=validation_error_handler,
         kg_error_handler=kg_error_handler,
         unhandled_exception_handler=unhandled_exception_handler,
+    )
+
+
+def install_app_exception_handlers(
+    app: FastAPI,
+    *,
+    logger: logging.Logger | Any,
+) -> AppExceptionHandlers:
+    """Backward-compatible wrapper around :func:`install_app_exception_handlers_from_dependencies`."""
+    return install_app_exception_handlers_from_dependencies(
+        dependencies=AppExceptionHandlerDependencies(
+            app=app,
+            logger=logger,
+        )
     )

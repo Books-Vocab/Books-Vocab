@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
 
 from fastapi import FastAPI
@@ -7,10 +8,12 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
 from kg.app_exception_handlers import (
+    AppExceptionHandlerDependencies,
     AppExceptionHandlers,
     _redact_validation_body,
     _redact_validation_payload,
     install_app_exception_handlers,
+    install_app_exception_handlers_from_dependencies,
 )
 from kg.exceptions import BadRequestError
 
@@ -20,9 +23,18 @@ class _Payload(BaseModel):
     token: str
 
 
+def _dependencies(app: FastAPI) -> AppExceptionHandlerDependencies:
+    return AppExceptionHandlerDependencies(
+        app=app,
+        logger=logging.getLogger("kg.api"),
+    )
+
+
 def test_install_app_exception_handlers_returns_named_bundle_and_handles_routes():
     app = FastAPI()
-    handlers = install_app_exception_handlers(app, logger=logging.getLogger("kg.api"))
+    handlers = install_app_exception_handlers_from_dependencies(
+        dependencies=_dependencies(app),
+    )
 
     @app.post("/validate")
     def validate(payload: _Payload):
@@ -52,6 +64,36 @@ def test_install_app_exception_handlers_returns_named_bundle_and_handles_routes(
     assert boom.status_code == 500
     assert boom.json()["detail"] == "Internal server error"
     assert "request_id" in boom.json()
+
+
+def test_install_app_exception_handlers_from_dependencies_matches_compat_wrapper():
+    named_app = FastAPI()
+    compat_app = FastAPI()
+
+    named = install_app_exception_handlers_from_dependencies(
+        dependencies=_dependencies(named_app),
+    )
+    compat = install_app_exception_handlers(
+        compat_app,
+        logger=logging.getLogger("kg.api"),
+    )
+
+    assert isinstance(named, AppExceptionHandlers)
+    assert isinstance(compat, AppExceptionHandlers)
+    assert callable(named.validation_error_handler)
+    assert callable(named.kg_error_handler)
+    assert callable(named.unhandled_exception_handler)
+    assert callable(compat.validation_error_handler)
+    assert callable(compat.kg_error_handler)
+    assert callable(compat.unhandled_exception_handler)
+
+
+def test_app_exception_handler_dependencies_are_replaceable_named_contract():
+    deps = _dependencies(FastAPI())
+    replacement = replace(deps, logger=logging.getLogger("kg.api.alt"))
+
+    assert deps.logger.name == "kg.api"
+    assert replacement.logger.name == "kg.api.alt"
 
 
 def test_validation_redaction_helpers_preserve_legacy_contract():
