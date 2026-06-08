@@ -8,10 +8,6 @@ import re
 from catalog_review_taxonomy import build_manifest_indexes, build_taxonomy
 
 
-def _slug_feature(label: str) -> str:
-    return slugify(label)
-
-
 def build_node_tree(items: list[dict]) -> dict:
     feature_groups: dict[str, list[dict]] = {}
     for item in items:
@@ -20,7 +16,7 @@ def build_node_tree(items: list[dict]) -> dict:
     feature_nodes: list[dict] = []
     for feature_label in sorted(feature_groups):
         feature_items = feature_groups[feature_label]
-        feature_slug = _slug_feature(feature_label)
+        feature_slug = slugify(feature_label)
 
         surface_groups: dict[str, list[dict]] = {}
         for item in feature_items:
@@ -53,7 +49,6 @@ def build_node_tree(items: list[dict]) -> dict:
                         "eligibility": asset["eligibility"],
                         "heroCandidate": asset["heroCandidate"],
                         "newSincePr878": asset["newSincePr878"],
-                        "count": 1,
                     }
                     for asset in sorted(
                         state_items,
