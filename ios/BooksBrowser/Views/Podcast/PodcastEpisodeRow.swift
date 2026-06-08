@@ -173,7 +173,7 @@ struct PodcastEpisodeRow: View {
                     .rotationEffect(.degrees(-90))
             }
             .frame(width: 11, height: 11)
-            .animation(.easeOut(duration: 0.2), value: frac)
+            .animation(AppMotion.indicatorTransition, value: frac)
             .accessibilityLabel(L10n.string("podcast.episodeRow.downloading"))
             .accessibilityValue("\(Int((frac * 100).rounded()))%")
         } else if downloadFailed {

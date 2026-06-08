@@ -200,7 +200,7 @@ struct PodcastHomeView: View {
                         toggleFollow(series)
                     } label: {
                         Label(
-                            (series.isFollowed ? "取消追蹤" : "追蹤").localized,
+                            L10n.string(series.isFollowed ? "取消追蹤" : "追蹤"),
                             systemImage: series.isFollowed ? "star.slash" : "star"
                         )
                     }
@@ -219,10 +219,10 @@ struct PodcastHomeView: View {
                 Spacer(minLength: 120)
 
                 AppEmptyStateContent(
-                    title: "尚無播客".localized,
+                    title: L10n.string("尚無播客"),
                     systemImage: "waveform",
-                    description: "追蹤喜歡的節目，從這裡開始收聽".localized,
-                    guidanceText: "下拉重新整理以同步節目",
+                    description: L10n.string("追蹤喜歡的節目，從這裡開始收聽"),
+                    guidanceText: L10n.string("下拉重新整理以同步節目"),
                     style: .bookshelf(appTheme)
                 )
 
@@ -240,9 +240,9 @@ struct PodcastHomeView: View {
         VStack {
             Spacer()
             AppStateMessageCard(
-                title: "正在同步播客".localized,
+                title: L10n.string("正在同步播客"),
                 systemImage: "arrow.triangle.2.circlepath",
-                description: "正在向伺服器拉取最新節目清單".localized
+                description: L10n.string("正在向伺服器拉取最新節目清單")
             ) {
                 ProgressView()
                     .controlSize(.small)
@@ -259,12 +259,12 @@ struct PodcastHomeView: View {
                 Spacer(minLength: 120)
 
                 AppEmptyStateContent(
-                    title: "同步失敗".localized,
+                    title: L10n.string("同步失敗"),
                     systemImage: "exclamationmark.triangle",
-                    description: "目前無法取得播客節目清單".localized,
-                    guidanceText: "請確認網路連線後重試",
+                    description: L10n.string("目前無法取得播客節目清單"),
+                    guidanceText: L10n.string("請確認網路連線後重試"),
                     action: AppEmptyStateAction(
-                        title: "重試".localized,
+                        title: L10n.string("重試"),
                         systemImage: "arrow.clockwise",
                         handler: {
                             Task { await refreshPodcastCatalog() }
@@ -293,7 +293,7 @@ struct PodcastHomeView: View {
         let outcome = await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
         syncFailed = outcome == .listFetchFailed
         if syncFailed && showToastOnFailure {
-            toastCoordinator.warning("同步失敗".localized)
+            toastCoordinator.warning(L10n.string("同步失敗"))
         }
         if warmAudioAfterSync && authManager.isLoggedIn {
             await warmFollowedSeriesAudio()
@@ -341,7 +341,7 @@ struct PodcastHomeView: View {
             }
         }
         if outcome == .rolledBack {
-            toastCoordinator.error("追蹤狀態儲存失敗".localized)
+            toastCoordinator.error(L10n.string("追蹤狀態儲存失敗"))
         }
     }
 }
