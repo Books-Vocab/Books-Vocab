@@ -59,8 +59,7 @@ struct PodcastPlayerView: View {
     @State private var showSettingsPopover: Bool = false
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
     @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
-    @State private var lastSavedTime: TimeInterval = 0
-    @State private var pushState = PodcastProgressPushState()
+    @State private var progressPersistence = PodcastProgressPersistenceController()
     @State private var showLoginSheet = false
     @State private var showPaywall = false
 
@@ -379,8 +378,7 @@ struct PodcastPlayerView: View {
             viewModel = nil
             loadedEpisodeId = activeEpisodeId
             progressBootstrapCompleted = false
-            lastSavedTime = 0
-            pushState = PodcastProgressPushState()
+            progressPersistence.reset()
 #if DEBUG
             if let preview = catalogPreview {
                 loadCatalogPreview(preview)
@@ -630,8 +628,7 @@ struct PodcastPlayerView: View {
         viewModel?.stop()
         viewModel = nil
         progressBootstrapCompleted = false
-        lastSavedTime = 0
-        pushState = PodcastProgressPushState()
+        progressPersistence.reset()
         loadEpisode()
     }
 
@@ -816,9 +813,15 @@ struct PodcastPlayerView: View {
     }
 
     private func saveProgressIfNeeded(time: TimeInterval) {
-        guard abs(time - lastSavedTime) > 10 else { return }
-        lastSavedTime = time
-        saveProgress(reason: .tick)
+        guard let vm = viewModel else { return }
+        guard loadedEpisodeId == activeEpisodeId else { return }
+        progressPersistence.saveIfNeeded(
+            time: time,
+            viewModel: vm,
+            episodeRemoteId: activeEpisodeId,
+            modelContext: modelContext,
+            kgService: kgService
+        )
     }
 
     private func saveProgress(reason: PodcastProgressPushState.Reason = .pause) {
@@ -863,8 +866,10 @@ struct PodcastPlayerView: View {
         currentTime: TimeInterval,
         reason: PodcastProgressPushState.Reason
     ) -> Bool {
-        if currentTime == 0 && reason == .tick { return false }
-        return true
+        PodcastProgressPersistenceController.shouldPersist(
+            currentTime: currentTime,
+            reason: reason
+        )
     }
 
     /// Whether a position counts as "episode completed". Hoisted to a pure
@@ -880,96 +885,13 @@ struct PodcastPlayerView: View {
         episodeRemoteId: String,
         reason: PodcastProgressPushState.Reason = .pause
     ) {
-        persistProgress(
-            currentTime: vm.currentTime,
-            duration: vm.duration,
-            isCompleted: Self.isCompleted(
-                currentTime: vm.currentTime, duration: vm.duration, isReady: vm.state == .ready
-            ),
+        progressPersistence.save(
+            viewModel: vm,
             episodeRemoteId: episodeRemoteId,
+            modelContext: modelContext,
+            kgService: kgService,
             reason: reason
         )
-    }
-
-    /// Scalar-based persistence core (no live-vm dependency) so it can run
-    /// DEFERRED, after view teardown, from `onDisappear` — see that call site for
-    /// the EXC_BREAKPOINT rationale. The completed flag is precomputed by the
-    /// caller while the vm state is still valid (before `shutdown()`).
-    private func persistProgress(
-        currentTime: TimeInterval,
-        duration: TimeInterval,
-        isCompleted: Bool,
-        episodeRemoteId: String,
-        reason: PodcastProgressPushState.Reason
-    ) {
-#if DEBUG
-        // The catalog preview is a static fixture — it must never write progress
-        // to the (in-memory) store. Without this guard the preview player's
-        // onDisappear save crashes the Playbook snapshot test on teardown with the
-        // very EXC_BREAKPOINT this whole change addresses (SwiftData save posts a
-        // notification observed by _SwiftData_SwiftUI against the deallocating
-        // @Query during _UIHostingView teardown).
-        if catalogPreview != nil { return }
-#endif
-        guard Self.shouldPersist(currentTime: currentTime, reason: reason) else { return }
-        let targetId = episodeRemoteId
-        let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        let existing = (try? modelContext.fetch(descriptor)) ?? []
-        for stale in existing.dropFirst() {
-            modelContext.delete(stale)
-        }
-        let progress: PodcastProgress
-        if let newest = existing.first {
-            progress = newest
-        } else {
-            progress = PodcastProgress(episodeRemoteId: episodeRemoteId)
-            modelContext.insert(progress)
-        }
-        let now = Date()
-        progress.lastPlayedTime = currentTime
-        progress.completed = isCompleted
-        progress.updatedAt = now
-        do {
-            try modelContext.save()
-        } catch {
-            AppLog.app.error("PodcastProgress save failed: \(error.localizedDescription)")
-        }
-
-        // Mirror the same write to the backend under the throttle policy.
-        // Throttle lives in PodcastProgressPushState (unit-tested). Capture
-        // values on the main actor; the detached Task uses the snapshot only.
-        let shouldPush = pushState.shouldPush(
-            position: currentTime,
-            duration: duration,
-            now: now,
-            reason: reason
-        )
-        guard shouldPush,
-              let parsed = PodcastSyncService.parseEpisodeRemoteId(episodeRemoteId) else { return }
-        let captured = (
-            seriesId: parsed.seriesId,
-            episodeNumber: parsed.episodeNumber,
-            positionSec: currentTime,
-            durationSec: duration,
-            updatedAt: now
-        )
-        let service = PodcastSyncService(kgService: kgService)
-        Task.detached(priority: .utility) {
-            do {
-                try await service.pushProgress(
-                    seriesId: captured.seriesId,
-                    episodeNumber: captured.episodeNumber,
-                    positionSec: captured.positionSec,
-                    durationSec: captured.durationSec,
-                    updatedAt: captured.updatedAt
-                )
-            } catch {
-                AppLog.kg.warning("[PodcastSync] progress push failed: \(error.localizedDescription)")
-            }
-        }
     }
 }
 
