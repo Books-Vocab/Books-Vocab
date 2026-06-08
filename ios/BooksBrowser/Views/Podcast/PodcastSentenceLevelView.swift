@@ -374,12 +374,16 @@ struct PodcastSentenceLevelView: View {
     // 因此 Catalyst 上 pill 常駐為明確 toggle(跟隨中 ⇄ 追隨當前);iPhone/iPad 維持
     // 手指拖曳隱式脫離 follow 的既有體驗(pill 僅在已脫離時出現)。
     private var shouldShowFollowControl: Bool {
-        guard selectionState == nil else { return false }
         #if targetEnvironment(macCatalyst)
-        return true
+        let isCatalyst = true
         #else
-        return !isFollowing
+        let isCatalyst = false
         #endif
+        return PodcastFollowControlVisibility.shouldShow(
+            isFollowing: isFollowing,
+            hasActiveSelection: selectionState != nil,
+            isCatalyst: isCatalyst
+        )
     }
 
     @ViewBuilder
@@ -583,16 +587,11 @@ struct PodcastTranscriptColumn: View {
     /// selectable text view's initial selection. Kept on the column (not the cell)
     /// so the cell stays a pure value — the cell calls back with just the word index.
     private func selectionRange(for sentence: PodcastSentence, wordIndex: Int) -> NSRange? {
-        let nsText = sentence.text as NSString
-        var searchStart = 0
-        for (index, cue) in sentence.words.enumerated() {
-            let searchRange = NSRange(location: searchStart, length: max(0, nsText.length - searchStart))
-            let foundRange = nsText.range(of: cue.word, options: [], range: searchRange)
-            guard foundRange.location != NSNotFound else { continue }
-            if index == wordIndex { return foundRange }
-            searchStart = foundRange.location + foundRange.length
-        }
-        return nil
+        PodcastSentenceSelectionRange.range(
+            in: sentence.text,
+            words: sentence.words,
+            wordIndex: wordIndex
+        )
     }
 }
 
