@@ -1,345 +1,555 @@
 ---
 name: cleanup
-description: "快速收斂分支狀態：scope 圈定 PR → 火速 merge（衝突當場解）→ 收斂後才平行 review+測試 → 殘留問題 forward-fix 補合。收斂優先於驗證。`all` mode 採四層真相盤點 + 單一 final worktree 一次吞完 + docs_lint 0 STALE/0 ERROR。"
+description: "最快把 repo 收斂到單一真相：先盤 live state、先保住 dirty work、把非黑名單內容推進 main、再把 surviving PR rebase 到新 main。收斂優先，驗證可後置切換。"
 user-invocable: true
-version: 3.2.0
+version: 3.3.0
 ---
 
-# Cleanup：最快讓分支狀態收斂
+# Cleanup：把 repo 收斂到單一真相
 
-**唯一目標 = 用最短時間把 open PR 收斂進 main。** 不是「全流程完美收尾」，是「收斂」。
+**唯一目標 = 用最短時間把 repo 收斂到清楚、可交接、可繼續工作的狀態。**
 
-> 一句話契約：cleanup = scope 圈定 PR → 火速 merge（衝突當場解）→ 收斂完才平行 review+測試 → 殘留問題 forward-fix 補合。**收斂優先於驗證，驗證優先於完美。**
+不是追求每一步完美，而是先把真相收斂。  
+不是先把所有測試跑滿，而是先保住內容、更新 main、消掉殘影、再決定驗證深度。
 
-核心反直覺點（v2 → v3 的關鍵調換）：**先 merge，後驗證**。舊流程「先 review 每個 PR 再 merge」慢且擋路；agent 產出的 PR 多半個別已綠，真正阻擋收斂的只有**衝突**。所以把 review/測試/doc-sync 全部後置、async 化，殘留問題用 follow-up commit 補（不 revert、不卡 merge）。
-
-v3.2 補強：**`all` mode 不再逐條邊清邊猜，而是先建真相、再一次到位。**  
-也就是先拆出 4 個 truth surfaces：`origin/main`、local committed、local uncommitted、docs debt；接著在**單一 final-cleanup worktree** 吞掉所有要保留內容，**只跑一次完整驗證**，最後才更新 `main` 與清空 local/worktree/stash。`all` 的目標不是「盡量接近收斂」，而是**repo 單一真相化**。
+> 一句話契約：cleanup = 先盤 live state → 先把 dirty work 變 durable → 收斂非黑名單內容到 `main` → surviving PR rebase 到新 `main` → 再做驗證 / forward-fix / doc 收尾。
 
 ---
 
-## Phase 0 — Mode + Scope 解析（永遠先做）
+## v3.3 與原始 cleanup 的差異
 
-先判 **mode**（決定收斂的範圍是「只 PR」還是「整個 repo」），再解析 scope。
+這一版不是舊版 wording refresh，而是**協作模型改寫**。
 
-| 輸入 | Mode | 收斂目標 |
+### 1. `all except ...` 的語義變了
+
+原始 cleanup 的黑名單比較接近「不要碰」。  
+v3.3 改成：
+
+- **黑名單 PR 不吸收進 `main`**
+- **黑名單 PR 不刪、不 merge**
+- **但黑名單 PR 必須在主線收斂後 rebase 到最新 `main`**
+- **若有衝突，cleanup 當場解掉並 force-push**
+
+也就是：**排除吸收，不排除同步。**
+
+### 2. dirty work 優先 `commit`，不是優先 patch 化
+
+原始 `all` 更偏向先把未提交改動 artifact 化再搬。
+
+v3.3 改成：
+
+- 只要未提交改動 scope 清楚、可形成單一邏輯單位，**先原地 commit**
+- 只有內容碎裂、風險高、或不適合直接留在原 branch 上時，才退回 patch / copy 流程
+
+原則：**先把 work 變 durable，再談 cleanup。**
+
+### 3. 驗證是策略，不是固定順序
+
+原始 cleanup 雖然已經是先 merge 後驗證，但 `all` 仍偏向在 push `main` 前做完整 gate。
+
+v3.3 明確拆成兩種執行策略：
+
+- **verify-first**：需要高把握度時，先在 `final-cleanup` 跑 gate 再推 `main`
+- **execution-first**：需要先把結構收斂時，先完成 `main` 收斂與 surviving PR rebase，再回頭補驗證
+
+預設依使用者意圖切換。  
+若使用者說「先全部做完我的要求再說」，就走 **execution-first**。
+
+### 4. `final-cleanup` 是一次性容器，不是長住分支
+
+`final-cleanup` 的職責只有三個：
+
+1. 吸收非黑名單內容
+2. 作為一次性驗證或推進 `main` 的容器
+3. 推進完成後立刻刪除
+
+**它不是第二真相，不應長期存活。**
+
+### 5. 背景長任務必須可取消
+
+若先前已啟動：
+
+- `./ops/ios_ops.sh build`
+- `./ops/ios_test.sh --all-targets`
+- 長時 pytest / node / deploy / doc generator
+
+而 cleanup 策略中途切成「先收斂再驗證」，就必須：
+
+1. 辨識舊 session / pid
+2. 主動取消長時任務
+3. 釋放 worktree / lock
+4. 再清除暫存 worktree
+
+**不要讓舊的驗證 session 綁住已完成任務的 worktree。**
+
+---
+
+## Phase 0 — 解析 mode / scope / 驗證策略
+
+先判三件事：
+
+1. **mode**
+2. **scope**
+3. **verification strategy**
+
+### Mode
+
+| 輸入 | 模式 | 終態 |
 |---|---|---|
-| `/cleanup` | **PR mode**（預設） | 只把 open PR 收進 main；殘留 branch/worktree 留活路 |
-| `/cleanup A,B` / `/cleanup except C,D` | **PR mode** + 白/黑名單 | 同上，限縮 PR 範圍 |
-| `/cleanup all` | **Full convergence** | repo 完全收斂：零 outstanding PR **+ branch + worktree + local change** |
+| `/cleanup` | PR mode | 把指定 PR 收斂進 `main`；其餘本地工作可保留 |
+| `/cleanup except A,B` | PR mode + 黑名單 | 收斂除 A/B 外的 PR；黑名單保留 |
+| `/cleanup all` | Full convergence | repo 完全收斂：零本地改動、零殘留 branch/worktree、零 open PR |
+| `/cleanup all except A,B` | **Scoped full convergence** | 除 A/B 外全部收斂；允許僅保留 `main + surviving PR branches/worktrees` |
 
-**`all` 的權威定義（使用者原話，一字不漏）：**
-
-> make sure that the repository is fully converged and synchronized. There are no outstanding branches, worktrees, pull requests, or local changes.
-
-**Full convergence（`all`）= PR mode 全跑完，再追加分支/worktree 收斂（見 Phase 2.5）+ doc-debt 全清（見 Phase 4b）。** 核心差異：`all` 把「branch/worktree 的存在本身」**與「累積的文檔 debt」**也當待收斂項，目標終態是 `git branch` 只剩 main、`git worktree list` 只剩主 repo、working tree clean、**`ops/docs_lint.sh` 0 STALE / 0 ERROR（僅剩有記錄的 legitimate 豁免）**。doc-debt **不論是否本批造成一律清**（使用者指令，2026-06-06）。
-
-> ⚠️ **squash-merge 陷阱（記死）**：判斷分支是否已整合**不能只信 `git branch --merged main`** —— squash-merge 後 commit hash 變了，已整合的分支會被它列為「未 merged」，誤判成活工作而放生。每條未刪分支必須交叉驗證：對應 PR 是否 `MERGED`（`gh pr view <branch> --json state,mergedAt`）／分支內容是否已在 main（`git cat-file -e HEAD:<分支新增的代表檔>`）。任一為真 = 已整合，直接刪 local + remote。
-
-> 效率原則：**能 squash 就不開 PR**。`all` 模式對 unpushed 含工作的分支走**本地 squash 進 main**（`git merge --squash` → commit → push），不繞 GitHub PR round-trip。PR 流程只在「已有 open PR」或「要 review 痕跡/CI gate」時用。
-
-scope 翻成 PR 白/黑名單（使用者常**並行派多個 agent，回來時部分還在做**），列表確認再動手：
-
-| 輸入 | 語意 |
-|---|---|
-| `/cleanup A,B`（branch name 或 PR#） | **白名單**：只收這些 |
-| `/cleanup except C,D` | **黑名單**：全部扣掉 C,D（給還在做的 agent 留活路） |
+### 黑名單解析
 
 ```bash
 gh pr list --state open --json number,title,headRefName,mergeable,mergeStateStatus
 ```
 
-解析後輸出對應表（branch name → PR#），標明哪些**納入**、哪些**排除（活 agent）**。排除的分支 = 神聖不可侵犯（見 Phase 並發安全）。
+把使用者輸入翻成：
+
+- PR# → `headRefName`
+- branch name → PR#
+
+輸出要明講：
+
+- 哪些會被吸收進 `main`
+- 哪些是黑名單 surviving PR
+
+### 驗證策略
+
+預設先判斷使用者語意：
+
+- 若使用者強調「先收斂」「先全部做完」→ `execution-first`
+- 若使用者強調「不要冒險」「先驗過再說」→ `verify-first`
+
+若沒明講，預設：
+
+- `PR mode`：偏 `execution-first`
+- `all` / `all except`：偏 `verify-first`
 
 ---
 
-## Phase 1 — 四層真相盤點（`all` 必做；先盤完再動）
+## Phase 1 — 四層真相盤點（永遠先做）
 
 ```bash
 git fetch --all --prune
-git status; git stash list; git branch -vv; git worktree list
+git status
+git stash list
+git branch -vv
+git worktree list
 gh pr list --state open --json number,title,headRefName,mergeable,mergeStateStatus
 ./ops/branch_audit.sh --json
 ./ops/docs_lint.sh --audit
 ```
 
-對 `all`，一開始就把 repo 拆成 4 個 truth surfaces：
+四層真相：
 
-1. `origin/main`：遠端權威真相。
-2. local committed：每條 local branch / worktree 到 `origin/main` 的可達差異。
-3. local uncommitted：主 checkout 與各 worktree 的 staged / unstaged / untracked。
-4. docs debt：`docs_lint --audit` 的 STALE / ERROR 真相。
+1. `origin/main`
+2. local committed
+3. local uncommitted
+4. docs debt
 
-辨識：**主 repo working copy 是否被活 agent 佔用**（detached HEAD、未提交改動、checkout 在某 feature branch）。若是 → 主 repo **完全不碰**，所有後續 git/gh 操作走隔離 worktree。
+### 1.1 local committed
 
-> `all` mode 的禁忌：**不要一邊看到 branch 就一邊刪。** 先盤完四層真相，再決定哪些內容要被 final branch 吞掉、哪些只是歷史殘影。
-
-### 1.1 local committed 真相
-對每條 local branch / worktree 都跑：
+對每條 branch / worktree：
 
 ```bash
 git log --oneline --left-right --cherry-pick origin/main...<branch>
 git diff --stat origin/main..<branch>
 ```
 
-- `log` 看 commit reachability。
-- `diff` 看 tree 是否其實已等價。
-- **hash ahead ≠ 內容 ahead**；squash 後常見「commit 不同、tree 相同」。
+判斷：
 
-### 1.2 local uncommitted 真相
-主 checkout 與各 worktree 的未提交工作要**先封裝再搬運**，不要直接在原地修：
+- 真正 ahead
+- tree 等價但 hash 不同
+- 已被 squash 吞掉的歷史殘影
+
+> **不能只看 `git branch --merged main`。**  
+> squash merge 會讓已整合分支看起來像未 merged。
+
+### 1.2 local uncommitted
+
+對主 checkout 與各 worktree 檢查：
+
+- staged
+- unstaged
+- untracked
+
+這一步不是立刻搬，而是先分類：
+
+- 可以直接 commit
+- 需要 patch / copy
+- 屬於黑名單 surviving branch
+
+### 1.3 docs debt
+
+`all` / `all except` 把 docs debt 視為正式收斂項。
+
+目標：
+
+- `WARN=0`
+- `ERROR=0`
+
+除非是明確記錄的合法豁免：
+
+- `archive`
+- `legal`
+- 明示 dated snapshot 且預期過時
+
+---
+
+## Phase 2 — 先把 dirty work 變 durable
+
+這是 v3.3 的第一優先級。
+
+### 規則
+
+只要未提交內容符合以下條件，就**先 commit**：
+
+- scope 清楚
+- 邏輯單一
+- 不會把 unrelated work 硬綁一起
+
+範例：
+
+- 同一個 iOS copy extraction
+- 同一批 lint 修正
+- 同一個 ops guard 調整
+
+### 命令
 
 ```bash
-git diff --binary > /tmp/kg-main-working.patch
+git add <files...>
+git commit -m "<prefix>: <message>"
+```
+
+### 何時不用先 commit
+
+以下情況才退回 patch / copy：
+
+- 改動彼此混雜，拆不出乾淨 commit
+- 使用者明示不要提交某批工作
+- 內容屬於臨時實驗，不應留在原 branch
+
+可退回：
+
+```bash
+git diff --binary > /tmp/<name>.patch
 git ls-files --others --exclude-standard
 ```
 
-- tracked 改動存成 patch。
-- untracked 新檔另外列出，必要時直接 copy 進 final worktree。
-- 這一步的目的，是把「主 checkout 正在發生的工作」轉成**可重播 artifact**。
+但這是**例外路徑**，不是預設。
 
-### 1.3 docs debt 真相
-`all` mode 把 docs debt 視為正式收斂項，不是最後才想到的 housekeeping：
+---
 
-- `./ops/docs_lint.sh --audit` 先跑，先知道總量。
-- `snapshot` tier 要靠 generator 重生，不可手 bump。
-- `verified_against` 失效要 re-point 到 reachable commit。
-
-## Phase 1.5 — 建唯一整合 worktree（`all` 的主戰場）
-
-`all` mode 不在主 checkout 邊收邊改，而是建立**唯一** final worktree：
+## Phase 3 — 建立單一整合 worktree（`all` / `all except`）
 
 ```bash
 git worktree add -b final-cleanup /Users/chenliangyu/kg-worktrees/final-cleanup-<tag> origin/main
 ```
 
-- 所有 local committed / uncommitted / stray untracked 都往這裡吞。
-- 主 checkout 保持只讀，直到 final branch 全綠。
-- 若要多次整合，**重用同一個 final worktree**，不要每合一批就換地方。
+規則：
+
+- `final-cleanup` 是唯一整合點
+- 主 checkout 盡量不動
+- 不要同時開多個 cleanup worktree
+
+它只吸收：
+
+- 非黑名單 local committed work
+- 非黑名單 local uncommitted work
+- 非黑名單 stray files
+
+它**不吸收**：
+
+- 黑名單 PR 的內容
+- 黑名單 PR 的 branch identity
 
 ---
 
-## Phase 2 — 火速 Merge（收斂的本體，唯一不能延後的階段）
+## Phase 4 — 把非黑名單內容收斂進 `main`
 
-**不 pre-review。直接合。** 但門檻不是零：
+### 4.1 PR mode
 
-### 2a. 並行抓 mergeability + 檔案重疊
+對 scope 內且非黑名單的 open PR：
+
 ```bash
 gh pr view <N> --json mergeable,mergeStateStatus,headRefName,files
-```
-- 用 `files` 預判**同檔衝突**排序：無重疊的先合、共享檔的後合。
-- ⚠️ **路徑不相交 ≠ 無衝突**：可能有語義衝突（A 改 source、B 測該 source 的舊行為）。git 層不衝突但組合態測試會紅。這類**不在 merge 時擋**，留給 Phase 3 的組合態測試抓 + forward-fix（範例：#825×#826 → #827）。
-
-### 2b. 逐一合
-```bash
 gh pr merge <N> --squash --delete-branch
 ```
-- 門檻：只合 `MERGEABLE`，或衝突可機械/語義解的。**跳過的是 pre-merge review，不是 mergeability 檢查**——盲合壞 PR 會污染 main，但那風險由 Phase 3 後置測試 + forward-fix 接住。
-- 下一個轉 `CONFLICTING` → **一次 `git merge origin/main` 解衝突**（別 10-commit `git rebase`；最終 squash 不需保留分支歷史，merge 通常只剩 1-2 個真衝突）：
-  ```bash
-  git checkout <branch>; git merge origin/main
-  # 解衝突 → git add → git commit
-  git push --force-with-lease origin <branch>
-  gh pr merge <N> --squash --delete-branch
-  ```
-- **語義衝突解析是唯一不能延後的正確性工作**：兩 PR 改同塊邏輯時，當場合併兩特性（非二選一），讀 conflict 區塊 + 查欄位語義 + 確認既有慣例 round-trip。其餘（單檔 bug、風格）才後置。
 
-### `all` mode 加嚴：不要在 Phase 2 就把本機活工作一條條直接推 main
+原則：
 
-`all` mode 對 open PR 仍可先合，但 **local committed / local uncommitted / stray worktree work 一律先吞到 `final-cleanup`，不要逐條直接推 `main`**。原因：
+- 不 pre-review
+- 只在 mergeability 或語義衝突上停
+- 單檔 bug / 風格 / 邊角測試問題後置到 forward-fix
 
-- 逐條清 branch 容易被 worktree bookkeeping / stale refs 反咬。
-- 主 checkout 未提交工作若沒先 artifact 化，之後很難證明「哪些真的保留了」。
-- 把所有殘留工作先壓成**單一 final branch**，才能只做一次完整驗證。
+### 4.2 `all` / `all except`
 
-### 坑（記死）
-- **`gh pr merge` 前確保自己不在被合的那條 branch 上**：在 PR 分支上跑會讓 gh 合完跳 checkout `main`，撞使用者並行的 local main + 製造「工作被還原」假警報。在 detached HEAD 或別的 worktree（on `main`）執行最安全。
-- **絕不 ff/reset 使用者的 local main**：他常並行在 local main 工作。
+把非黑名單內容先吞進 `final-cleanup`：
 
----
-
-## Phase 2.5 — 分支/worktree 收斂（**僅 `all` mode**）
-
-PR 全收完後跑。v3.2 的 `all` mode 改成：**先把每條 local branch / worktree 的要保留內容吸進 `final-cleanup`，再一次性清空殘影。** 不是「看到一條刪一條」，而是「先單一真相化，再刪乾淨」。
-
-決策樹（走 B：不丟未整合工作）：
-
-| 分支狀態 | 處置 |
-|---|---|
-| 已整合進 main（`git branch --merged main` 列出，**或** 對應 PR `MERGED` / 分支內容已在 main — 見上方 squash-merge 陷阱） | 直接刪 local（`git branch -D`）+ remote（`git push origin --delete`）+ worktree（`git worktree remove`） |
-| unpushed / local-only 含工作、**驗證綠** | **先 squash / cherry-pick / patch-apply 進 `final-cleanup`**，最後由 `final-cleanup` 一次推進 `main`，再刪分支 + 移 worktree |
-| unpushed 含工作、**驗證紅/不確定** | **報告並停手，不擅自刪**（B 的底線：不丟未整合工作）。列出要使用者裁決 |
-| scope 黑名單 / 活 agent 佔用 | 神聖不碰 |
-
-本地工作吸進 final branch 的優先順序：
-
-1. 已提交 branch：`git merge --squash --no-commit <branch>` 或 `cherry-pick` 到 `final-cleanup`
-2. 主 checkout / 其他 worktree 的 tracked 未提交改動：`git apply --3way /tmp/...patch`
-3. untracked 新檔：直接 copy 進 `final-cleanup`，再納入驗證
-4. 內容等價的歷史殘影：**不吸，直接列為可刪**
-
-本地 squash 合分支（驗證綠後，在 `final-cleanup` 跑）：
 ```bash
-# 先在該分支 / final worktree 跑專案測試 → 綠才合（鐵律 2，不盲合）
-git switch final-cleanup
+git cherry-pick <commit...>
+# 或
 git merge --squash <branch>
-git commit                                       # squash 需手動 commit，prefix 照 Identity 表
+# 或
+git apply --3way /tmp/<patch>
 ```
-- **驗證先於吞**：branch 舊測試結果不算數，final branch 形成後要以 final branch 當下輸出為準。
-- 直到 `final-cleanup` 全綠前，不更新主 checkout `main`。
 
----
+原則：
 
-## Phase 並發安全（正交但永遠生效）
+- 能直接 pick 就直接 pick
+- 能 squash branch 就 squash
+- patch 只用在必要情況
 
-與「快」不衝突，是前提：
+### 4.3 推進 `main`
 
-1. **Scope 黑名單分支 + 其 working copy/worktree 完全不碰**。
-2. **主 repo 被活 agent 佔用時，所有 git/gh 操作走隔離 worktree**：
-   ```bash
-   git worktree add /Users/chenliangyu/kg-worktrees/cleanup-<tag> main   # on main 分支，便於 gh
-   # 所有 merge / 解衝突 / 測試 / doc-sync 都在這跑，做完 git worktree remove
-   ```
-   （`main` 通常沒被任何 worktree 佔用，可在 cleanup worktree 認領。）
-3. **不派非隔離的 doc-sync agent**——它動主 checkout 的 HEAD/index 會跟 cleanup 撞。doc-sync 一律在 worktree 自己做，或派 **`isolation: worktree`** 的單一 agent。
+依驗證策略決定順序：
 
----
+#### `verify-first`
 
-## Phase 3 — 收斂後驗證（後置、平行、async）
-
-合完才跑。問題用 forward-fix，不回退。
-
-### 3a. 組合態測試（在 `final-cleanup`，一次驗整體）
-專案命令（cwd 不靠持久，一律 subshell 或絕對路徑）：
-- backend：`(cd backend && uv run pytest -q <被動到的 test 檔...>)`（**必用 `uv run`**，裸 python3 會用錯版本致假失敗）
-- chrome：`(cd chrome-extension && node --test shared/*.test.js)`
-- ops shell：`(cd <wt> && ./ops/tests/test_<x>.sh)`
-- iOS：先跑 `./ops/ios_build.sh`;若合併內容動 iOS 行為 / UI / test infra,依 `docs/sop/ios.md §iOS 開發驗證梯度` 跑最小足夠 `./ops/ios_test.sh` scope。cleanup all / release / scheme/test runner 變更收尾跑 `./ops/ios_test.sh --all-targets --timeout 1200`。若當前環境 simulator 不可用,明確記錄阻塞證據,不可用 build 假裝 test 綠。
-- **優先跑「跨 PR 共享面」的測試**（web_auth / api 契約 / sync_lifecycle / i18n lint），這是語義衝突最會炸的地方。
-
-`all` mode 的重點是：**不要每吸一批就重跑整套。** 先把所有要保留的內容都吸進 `final-cleanup`，最後跑一次完整 gate：
-
-- targeted pytest / node tests
-- `./ops/test_ios_ops.sh`（若動到 ios ops surface）
-- `./ops/ios_build.sh`
-- 必要時 `./ops/ios_test.sh --all-targets --timeout 1200`
-- `./ops/docs_lint.sh --audit`
-
-### 3b. 平行 review（逐項，鐵律 4）
-合進的每個 PR 派 1 個 background opus agent（`model: opus`, `run_in_background: true`, `general-purpose`）審 diff：隱藏 bug、生產熱路徑（tracked_llm/api/deps/vocab_crud/web_auth）契約相容、i18n 對齊（鐵律 8）、Pydantic v2/@Observable 慣例。**只分析不改**。
-
-### 3c. Forward-fix（殘留問題的標準解）
-測試紅 / review BLOCK → 在 cleanup worktree 開 fix branch → 最小修正 → 驗證綠 → 開 PR → squash-merge。**不 revert 已合的 PR、不卡整批收斂**。commit prefix 照 Identity 表（`api:`/`ios:`/`ops:`/`docs:`）。
-
----
-
-## Phase 4 — Doc-sync + Doc-debt 全清（後置，可派隔離 agent）
-
-兩件事：**4a** 同步本批 code 變更的 doc（一向如此）；**4b** 清掉 repo **累積的全部 doc-debt**——`all` mode 必跑、不論是否本批造成（使用者指令，2026-06-06）。
-
-### 4a. 本批 doc-sync
-跳過條件：純樣板 / doc-only。否則合進的 code 變更照 `docs/sop/doc_sync.md` 路由同步。
-- 多數 PR 應已 doc-as-code 自帶 doc 改動。剩餘走 `(cd <wt> && ./ops/docs_lint.sh)` 日常 gate：
-  - 檢視 registry impact hints,再依 `docs/registry.yml` trigger 判斷本批 code 是否真的影響活文檔 → 改內容 + bump `verified_against` 到 main 可達 code commit。
-  - 重點審：`sync_lifecycle.md`(SoT)、`backend.md`、`product_surface.md`/`tech_index.md`(SoT)、`cost_baseline.md`（費率變動時）。
-  - 全 repo debt 盤點才跑 `./ops/docs_lint.sh --audit`;既有 invalid anchor / stale WARN 不阻塞本批 cleanup,除非是本批引入或本批觸發的文檔。
-- 派 doc-auditor 時用 `doc-auditor-prompt.md`；**agent 只分析、主 agent 統一 Edit**；要派會 commit 的就 `isolation: worktree`。
-- 完成 `docs:` commit（commit 無妨；push 見下）。
-
-### 4b. Doc-debt 全清（`all` mode 必跑；其它 mode 至少跑並把無法當場清的列入報告）
-跑 `(cd <wt> && ./ops/docs_lint.sh --audit)`，把**每一條** STALE / ERROR 清到 0（或縮到有記錄的 legitimate 豁免）。**這是 `all` 收斂終態的一部分，不是 best-effort。** 量大時派多個 doc-auditor agent（`model: opus`, `run_in_background: true`）平行審，但 **agent 只分析、主 agent 統一 Edit + 單一 `docs:` commit**（要派會自行 commit 的就 `isolation: worktree`）。逐條按 lint 訊號處置：
-
-| docs_lint 訊號 | 根因 | 處置 |
-|---|---|---|
-| **STALE**（`verified_against..HEAD` 動到 scope 超閾值） | 內容可能落後 | 派 doc-auditor 比對 doc vs 自 `verified_against` 以來動到其 scope 的 commit：**內容仍對** → 只 bump `verified_against` 到 HEAD；**內容過時** → 套 agent 回報的精確 Edit + bump |
-| **ERROR — `verified_against` 不是有效 commit** | 該 hash 被 squash 掉了（歷史重寫） | 確認內容仍對後，re-point `verified_against` 到**當前有效 commit**（HEAD，或最近動到該 scope 的 commit）；內容已過時則先修內容再 re-point |
-| **ERROR — frontmatter 缺漏/格式壞** | `<!-- doc-meta -->` 不完整 | 補齊/修正 frontmatter 欄位 |
-| **snapshot tier（機器生成）STALE** | 該檔由腳本產出，**不可手 bump** | 重跑生成腳本再生：`ios_baseline.md` → `ops/gen_ios_baseline.sh`；web token → `gen_web_tokens.py`。腳本產物不手改 |
-
-**legitimate 豁免**（保留並在報告列出，不強清）：tier=`archive`（凍結歷史，不更新不引用）、tier=`legal`（不在 lint 掃描範圍）、明示 dated snapshot 且 `verified_against` 標註過時為預期者。
-
-- 派 doc-auditor 時用 `doc-auditor-prompt.md`（把該 doc 的 `verified_against..HEAD` scope diff 餵進「變更清單」欄）。
-- bump `verified_against` 前**務必確認 hash 是當前 reachable commit**（squash 後舊 hash 會失效，這正是 ERROR 的來源）。
-- 完成 `docs:` commit（commit 無妨；push 見下）。doc-debt 清除可與本批 doc-sync 合進同一個 `docs:` commit，或分開——邏輯獨立就分。
-
-> v3.2 補充：若 generator 本身在清 debt 過程爆掉（例如 `pipefail` + `head` 導致的 `141/SIGPIPE`），**修 generator 本身就是 cleanup scope**。不能繞過 generator 假裝 debt 已清。
-
----
-
-## Phase 5 — 部署（預設跳過，需明確指示）
-
-**部署生產一律須使用者明確指示**，不自動跑。  
-**push 遠端分兩類看**：
-
-- PR mode / 一般 cleanup：push 遠端須使用者明確指示。
-- `all` mode：若 final branch 已吸收所有要保留內容、驗證全綠，**可直接 push `main`** 作為 repo 收斂終態的一部分。
-
-有 backend 變更且使用者授權才：
-```bash
-./ops/devops_kg_safe.sh backup && ./ops/devops_kg_safe.sh deploy
-```
-**生產禁令（鐵律 7，永禁）**：`docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`。運維只走 `devops_kg_safe.sh`，不繞 wrapper。
-
----
-
-## Phase 6 — 收尾 + 報告
-
-`all` mode 的收尾固定順序（先更新 `main`，再清本機殘影）：
+先在 `final-cleanup` 驗證，再推：
 
 ```bash
 git push origin final-cleanup:main
 ```
 
-確認 remote `main` 已是 final branch 後，再做：
+#### `execution-first`
+
+先完成吸收與結構收斂，再推：
 
 ```bash
-git reset --hard origin/main
-git clean -fd
-git stash clear
-git worktree remove <殘留 worktree>
+git push origin final-cleanup:main
+```
+
+之後再補驗證與 forward-fix。
+
+> 這裡的關鍵不是命令不同，而是**接受標準不同**。  
+> `execution-first` 允許「先把 main 變單一真相，再追測試」。
+
+---
+
+## Phase 5 — surviving PR 同步到新 `main`
+
+這是 v3.3 新增的正式 phase。
+
+適用於：
+
+- `/cleanup except ...`
+- `/cleanup all except ...`
+
+### 契約
+
+黑名單 PR 可以保留，但**不能 stale**。  
+主線收斂後，它們必須同步到新 `main`。
+
+### 做法
+
+在各自 worktree：
+
+```bash
+git rebase origin/main
+```
+
+若有衝突：
+
+1. 當場解
+2. 保留兩邊語義，不做粗暴二選一
+3. `git add`
+4. `git rebase --continue`
+5. `git push --force-with-lease`
+
+### 衝突原則
+
+黑名單 PR 雖不被吸收，但仍要維持：
+
+- 可繼續 review
+- 可繼續 merge
+- 不因 cleanup 導致 PR 基底過舊
+
+這一步的定義是：**surviving PR synchronization**。
+
+---
+
+## Phase 6 — 驗證與 forward-fix（可後置）
+
+這一階段是否在推 `main` 前執行，取決於策略。
+
+### 最小優先順序
+
+先驗共享面：
+
+- `./ops/docs_lint.sh --audit`
+- `./ops/i18n_lint.sh --baseline-check`
+- 受影響的 `uv run pytest`
+- 受影響的 `node --test`
+- `./ops/ios_build.sh`
+- 必要時 `./ops/ios_test.sh` 精準 scope
+- cleanup 收尾或測試基礎設施變動時，才跑 `./ops/ios_test.sh --all-targets --timeout 1200`
+
+### forward-fix
+
+若驗證或 review 出現問題：
+
+- 不回退整批 cleanup
+- 直接最小修補
+- 補 commit / PR / squash merge
+
+原則：**main 保持單一真相，問題用新 commit 補。**
+
+---
+
+## Phase 7 — Doc-sync 與 docs debt
+
+### 7.1 本批 doc-sync
+
+依 `docs/sop/doc_sync.md` 與 `docs/registry.yml` 判斷是否需同步。
+
+常見動作：
+
+- 更新內容
+- bump `verified_against`
+- 修 registry impact 命中之活文檔
+
+### 7.2 docs debt 全清（`all` / `all except`）
+
+`./ops/docs_lint.sh --audit` 的 STALE / ERROR 要清到 0，除非屬於合法豁免。
+
+重點規則：
+
+- `verified_against` 必須指向 **reachable commit**
+- `snapshot` tier 不手 bump，重跑 generator
+- generator 壞掉也算 cleanup scope
+
+---
+
+## Phase 8 — 收尾
+
+### `all`
+
+終態：
+
+- `git status` 乾淨
+- `git worktree list` 只剩主 repo
+- `gh pr list --state open` 為空
+- `./ops/branch_audit.sh --json` `total=0`
+- `./ops/docs_lint.sh --audit` `WARN=0 ERROR=0`
+
+### `all except A,B`
+
+終態：
+
+- `main` 已是最新單一真相
+- 非黑名單 branch/worktree/local change 全清
+- 僅保留：
+  - 主 repo `main`
+  - surviving PR 對應 branch/worktree
+- surviving PR 都已 rebase 到最新 `main`
+- `branch_audit` 只剩黑名單 PR
+
+### 清除動作
+
+內容已保留後，依序清：
+
+```bash
+git worktree remove <cleanup worktree>
 git worktree prune
-git branch -D <已吸收的本地分支>
-git push origin --delete <殘留 remote 分支>   # PR 已關但 remote branch 還在時手動補
+git branch -D <absorbed branch>
+git push origin --delete <obsolete remote branch>
 git fetch --prune
 ```
 
-- **僅 `all` mode**：在內容已被 `final-cleanup` 保留且驗證全綠後，允許 agent 直接把主 checkout `reset --hard origin/main` 以達成「零 local changes」終態。
-- codex / `.claude` 殘留 worktree 若其內容已被 final branch 吸收或證明為過時 shadow，就直接移除。
-- 最終狀態必須實測：
-  - `git status --short --branch` 乾淨
-  - `git worktree list` 只剩主 repo
-  - `gh pr list --state open` 為空
-  - `./ops/branch_audit.sh --json` `total=0`
-  - `./ops/docs_lint.sh --audit` `WARN=0 ERROR=0`
+若主 checkout 本身就是要收斂到乾淨：
 
-報告：
+```bash
+git switch main
+git reset --hard origin/main
+git clean -fd
+git stash clear
 ```
-## Cleanup 完成（scope: <白/黑名單>）
-### Merged
-- #N ✅ 標題 ｜ #M ✅（衝突已解）｜ #K ✅ forward-fix
-### 排除（活 agent，未動）
-- <branch> (#J)
-### 驗證
-- backend ✅ N passed ｜ chrome ✅ ｜ iOS compile ✅/跳過
-- forward-fix: #X（修 <跨 PR 組合態問題>）
-### Doc / Git
-- doc-sync（4a 本批）：✅ / 派 isolation agent / 跳過
-- doc-debt 全清（4b，`all` 必含）：✅ docs_lint N STALE+M ERROR → 0（豁免 X 條已列）/ 跳過（非 all）
-- worktree/branch/local-change 收尾：✅ `git status clean` / `worktree list=1` / `branch_audit total=0`
-- 部署：跳過（待明確指示）
+
+### `final-cleanup` 收尾規則
+
+推進 `main` 後：
+
+- 立刻刪 worktree
+- 立刻刪 `final-cleanup` branch
+
+**不允許讓它留成長住真相。**
+
+---
+
+## 背景任務取消規則
+
+若 cleanup 過程中策略切換，或使用者明示「先不要測全部」：
+
+1. 找出仍綁住 cleanup worktree 的 pid / session
+2. 取消：
+   - `xcodebuild`
+   - `ios_test.sh`
+   - `ios_ops.sh build`
+   - 其他長時測試 / generator
+3. 確認 lock 與 worktree 已釋放
+4. 再做 worktree remove
+
+範例：
+
+```bash
+ps -Ao pid,ppid,command | rg 'final-cleanup|ios_test.sh|ios_ops.sh build|xcodebuild'
+kill <pid...>
+kill -9 <pid...>   # 只在正常 kill 無效時
 ```
 
 ---
 
-## 踩坑備忘（KG 實戰固化）
+## 並發安全
 
-1. **收斂優先**：別在 merge 前卡 review/測試，那是後置工作。
-2. **路徑不相交 ≠ 無衝突**：語義衝突（source vs 測該 source 的測試）靠組合態測試 + forward-fix 抓，不靠 merge 時人眼。
-3. **主 repo 被活 agent 佔用就走 worktree**，別跟它搶 HEAD（最大時間殺手）。
-4. **`gh pr merge` 不要在被合分支上跑**（gh 會跳 checkout main 撞 local main）。
-5. **squash 後 local diverge**：worktree `git merge --ff-only origin/main`（或 reset 到 origin/main），**絕不碰使用者 local main**。
-6. **backend 測試必 `uv run pytest`**；cwd 不靠持久，一律 subshell。
-7. **doc-debt 清除（Phase 4b）兩陷阱**：(a) `ERROR verified_against 不是有效 commit` = 該 hash 被 squash 重寫掉了，re-point 前先確認內容仍對、新 hash 是當前 reachable；(b) `snapshot` tier（`ios_baseline.md` 等）STALE **不可手 bump**，必須重跑生成腳本（`ops/gen_ios_baseline.sh`），手改會與下次再生衝突。`archive`/`legal` tier 不清，列入豁免。
-8. **generator 失敗也是 cleanup scope**：像 `pipefail` + `head` 造成的 `141/SIGPIPE`，不修 generator 就不算全收斂。
-9. **`all` mode 的正確姿勢是單一 final branch，不是逐條就地清**。先真相盤點、再吞進 final branch、最後一次性 reset/清空本機殘影。
-10. **push/deploy 須分開看**：`all` mode 可直接 push `main` 以達成 repo 收斂；**部署**仍須明確指示，生產禁令永不繞過。
+永遠生效：
+
+1. 黑名單 surviving PR 不吸收、不刪，但允許 rebase / 解衝突 / force-push
+2. 主 checkout 若被活工作佔用，就用隔離 worktree 操作
+3. 不在被 merge 的 PR branch 上執行 `gh pr merge`
+4. 不 non-interactive reset 使用者正在工作的 branch
+5. doc-sync / review / test agent 若會動 git，必須隔離在 worktree
+
+---
+
+## 報告格式
+
+```text
+## Cleanup 完成
+scope: <mode + 白/黑名單>
+
+### 收斂到 main
+- <branch/commit/PR> → main
+
+### surviving PR
+- #885 back：rebase 到 <sha>，已 force-push
+- #886 codex/ios-front-techdebt：rebase 到 <sha>，已解衝突並 force-push
+
+### 驗證
+- strategy: verify-first / execution-first
+- 已跑：<commands>
+- 後置：<commands or known failures>
+
+### 最終狀態
+- git status: clean / dirty
+- worktrees: <count and names>
+- branch_audit: <summary>
+- docs_lint --audit: <summary>
+```
+
+---
+
+## 踩坑備忘
+
+1. `all except` 不是「完全不碰黑名單」，而是「不吸收，但要同步」。
+2. dirty work 不先 commit，cleanup 風險會暴增。
+3. `final-cleanup` 只是容器，不是第二主線。
+4. `gh pr merge` 不要在 PR branch 上跑，避免 gh 切回 `main` 撞使用者工作。
+5. squash 後 branch 是否已整合，要看 reachability / tree，不看單一 merged flag。
+6. 驗證可以後置，但**已知失敗要明講**，不能假裝全綠。
+7. 長時背景測試若不再需要，必須主動取消，不要讓它卡住 worktree 清理。
+8. docs debt 在 `all` / `all except` 是正式收斂項，不是附帶 housekeeping。
