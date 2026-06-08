@@ -45,7 +45,7 @@ struct NotebookFilterChip: View {
 
     private var chipLabel: String {
         if !filter.isFiltered {
-            return "全部單字本".localized
+            return L10n.string("全部單字本")
         }
         let count = filter.selectedIds.count
         if count == 1, let id = filter.selectedIds.first,
@@ -74,7 +74,7 @@ struct NotebookFilterPickerSheet: View {
                     filter.save()
                 } label: {
                     HStack {
-                        Text("全部單字本".localized)
+                        Text(L10n.string("全部單字本"))
                             .foregroundStyle(skin.palette.primaryText)
                         Spacer()
                         if !filter.isFiltered {
@@ -105,11 +105,11 @@ struct NotebookFilterPickerSheet: View {
                     }
                 }
             }
-            .navigationTitle("篩選單字本".localized)
+            .navigationTitle(L10n.string("篩選單字本"))
             .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成".localized) { dismiss() }
+                    Button(L10n.string("完成")) { dismiss() }
                 }
             }
         }

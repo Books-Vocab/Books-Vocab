@@ -1,13 +1,6 @@
 import SwiftUI
 
 extension TodayReviewPresenter {
-    struct ShortcutHint: Identifiable {
-        let id: String
-        let key: String
-        let label: String
-        var isPrimary = false
-    }
-
     // MARK: - Top Bar
 
     var topBar: some View {
@@ -29,7 +22,7 @@ extension TodayReviewPresenter {
                 HStack(spacing: 6) {
                     Image(systemName: "shuffle")
                         .font(appSkin.typography.iconTiny)
-                    Text("洗牌".localized)
+                    Text(TodayReviewShortcutCatalog.shuffleLabel)
                         .font(appSkin.typography.caption)
                 }
                 .foregroundStyle(state.canShuffle ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
@@ -125,7 +118,7 @@ extension TodayReviewPresenter {
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottomLeading) {
             if showFirstRunHint && !isHelpPresented {
-                Text("可用方向鍵評分，按 Space 展開答案".localized)
+                Text(TodayReviewShortcutCatalog.firstRunHint)
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
                     .padding(.top, AppSpacing.s7 - AppSpacing.s1)
@@ -138,20 +131,20 @@ extension TodayReviewPresenter {
     var shortcutHelpOverlay: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             HStack {
-                Text("快捷鍵".localized)
+                Text(TodayReviewShortcutCatalog.overlayTitle)
                     .font(appSkin.typography.sectionTitle)
                     .foregroundStyle(appSkin.palette.primaryText)
                 Spacer()
-                Button("完成".localized, action: onToggleHelp)
+                Button(TodayReviewShortcutCatalog.doneLabel, action: onToggleHelp)
                     .buttonStyle(.ghost(appSkin.palette.secondaryText))
             }
 
             shortcutHelpSection(
-                title: "複習".localized,
+                title: TodayReviewShortcutCatalog.reviewSectionTitle,
                 hints: state.isAutoPlaying ? autoplayShortcutHints : reviewShortcutHints
             )
-            shortcutHelpSection(title: "導覽".localized, hints: navigationShortcutHints)
-            shortcutHelpSection(title: "工作階段".localized, hints: sessionShortcutHints)
+            shortcutHelpSection(title: TodayReviewShortcutCatalog.navigationSectionTitle, hints: navigationShortcutHints)
+            shortcutHelpSection(title: TodayReviewShortcutCatalog.sessionSectionTitle, hints: sessionShortcutHints)
         }
         .padding(appSkin.spacing.cardPadding)
         .background(
@@ -166,7 +159,7 @@ extension TodayReviewPresenter {
         .frame(maxWidth: 420, alignment: .topLeading)
     }
 
-    func shortcutHelpSection(title: String, hints: [ShortcutHint]) -> some View {
+    func shortcutHelpSection(title: String, hints: [TodayReviewShortcutHint]) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Text(title)
                 .font(appSkin.typography.caption)
@@ -184,52 +177,29 @@ extension TodayReviewPresenter {
         }
     }
 
-    var activeShortcutHints: [ShortcutHint] {
-        if state.currentCard == nil {
-            return [
-                .init(id: "esc", key: "Esc", label: "返回".localized, isPrimary: true),
-                .init(id: "help", key: "?", label: "快捷鍵".localized)
-            ]
-        }
-        return state.isAutoPlaying ? autoplayShortcutHints : reviewShortcutHints
+    var activeShortcutHints: [TodayReviewShortcutHint] {
+        TodayReviewShortcutCatalog.activeHints(
+            hasCurrentCard: state.currentCard != nil,
+            revealStage: state.revealStage,
+            isAutoPlaying: state.isAutoPlaying,
+            isAutoPlayPaused: state.isAutoPlayPaused
+        )
     }
 
-    var reviewShortcutHints: [ShortcutHint] {
-        let spaceLabel = state.revealStage == .front ? "展開".localized : "收回".localized
-        return [
-            .init(id: "space", key: "Space", label: spaceLabel, isPrimary: true),
-            .init(id: "left", key: "←", label: "忘記".localized, isPrimary: true),
-            .init(id: "right", key: "→", label: "記得".localized, isPrimary: true),
-            .init(id: "detail", key: "D", label: "詳情".localized),
-            .init(id: "help", key: "?", label: "快捷鍵".localized)
-        ]
+    var reviewShortcutHints: [TodayReviewShortcutHint] {
+        TodayReviewShortcutCatalog.reviewHints(revealStage: state.revealStage)
     }
 
-    var autoplayShortcutHints: [ShortcutHint] {
-        [
-            .init(id: "pause", key: "P", label: state.isAutoPlayPaused ? "繼續".localized : "暫停".localized, isPrimary: true),
-            .init(id: "left", key: "←", label: "上一張".localized, isPrimary: true),
-            .init(id: "right", key: "→", label: "下一張".localized, isPrimary: true),
-            .init(id: "esc", key: "Esc", label: "關閉".localized),
-            .init(id: "help", key: "?", label: "快捷鍵".localized)
-        ]
+    var autoplayShortcutHints: [TodayReviewShortcutHint] {
+        TodayReviewShortcutCatalog.autoplayHints(isAutoPlayPaused: state.isAutoPlayPaused)
     }
 
-    var navigationShortcutHints: [ShortcutHint] {
-        [
-            .init(id: "up", key: "↑", label: "上一張".localized),
-            .init(id: "down", key: "↓", label: "下一張".localized),
-            .init(id: "shuffle", key: "S", label: "洗牌".localized),
-            .init(id: "detail", key: "D", label: "查看詳情".localized)
-        ]
+    var navigationShortcutHints: [TodayReviewShortcutHint] {
+        TodayReviewShortcutCatalog.navigationHints
     }
 
-    var sessionShortcutHints: [ShortcutHint] {
-        [
-            .init(id: "play", key: "P", label: "自動播放".localized),
-            .init(id: "esc", key: "Esc", label: "關閉".localized),
-            .init(id: "help", key: "?", label: "顯示快捷鍵".localized)
-        ]
+    var sessionShortcutHints: [TodayReviewShortcutHint] {
+        TodayReviewShortcutCatalog.sessionHints
     }
     #endif
 
@@ -341,7 +311,7 @@ extension TodayReviewPresenter {
             Button { flingCard(direction: -1, source: "button", callback: onForgot) } label: {
                 HStack(spacing: AppSpacing.s1) {
                     Image(systemName: "xmark")
-                    Text("忘記".localized)
+                    Text(L10n.string("忘記"))
                     if state.forgotCount > 0 {
                         Text("·\(state.forgotCount)").font(appSkin.typography.monoLabel)
                     }
@@ -365,7 +335,7 @@ extension TodayReviewPresenter {
             Button { flingCard(direction: 1, source: "button", callback: onRemembered) } label: {
                 HStack(spacing: AppSpacing.s1) {
                     Image(systemName: "checkmark")
-                    Text("記得".localized)
+                    Text(L10n.string("記得"))
                     if state.rememberedCount > 0 {
                         Text("·\(state.rememberedCount)").font(appSkin.typography.monoLabel)
                     }
@@ -411,7 +381,7 @@ extension TodayReviewPresenter {
 struct ShortcutHintChip: View {
     @Environment(\.appSkin) private var appSkin
 
-    let hint: TodayReviewPresenter.ShortcutHint
+    let hint: TodayReviewShortcutHint
 
     var body: some View {
         HStack(spacing: appSkin.spacing.microGap) {
