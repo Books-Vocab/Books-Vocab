@@ -281,7 +281,7 @@ struct SettingsDeleteAccountSheet: View {
         countdownRemaining = Self.countdownSeconds
         countdownTask = Task { @MainActor in
             while countdownRemaining > 0 {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(for: .seconds(1))
                 if Task.isCancelled { return }
                 // 若使用者中途取消確認，allAcknowledged/confirmTextMatches 變 false → stop
                 guard allAcknowledged && confirmTextMatches else {
