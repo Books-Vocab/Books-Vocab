@@ -10,7 +10,10 @@ struct SubscriptionPaywallFeatureDescriptor: Equatable {
 }
 
 enum SubscriptionPaywallFeatureCatalog {
-    static let descriptors: [SubscriptionPaywallFeatureDescriptor] = [
+    // Computed (not `static let`) so each access re-resolves `L10n.string` against the
+    // current `AppLanguageStore` language — in-app locale switches must update the paywall.
+    static var descriptors: [SubscriptionPaywallFeatureDescriptor] {
+        [
         .init(
             title: L10n.string("閱讀器（EPUB/PDF/TXT/MD）"),
             marketingDescription: nil,
@@ -67,7 +70,8 @@ enum SubscriptionPaywallFeatureCatalog {
             proMark: .label("10x"),
             includeInActiveList: false
         )
-    ]
+        ]
+    }
 
     static var comparisonRows: [SettingsPlanComparisonRow] {
         descriptors.map {

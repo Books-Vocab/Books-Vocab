@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 
 struct NotebookListEmptyStateCopy: Equatable {
@@ -35,3 +36,4 @@ enum NotebookListCopy {
         )
     }
 }
+#endif

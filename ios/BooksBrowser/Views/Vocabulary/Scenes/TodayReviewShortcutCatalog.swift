@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 
 struct TodayReviewShortcutHint: Identifiable, Equatable {
@@ -80,3 +81,4 @@ enum TodayReviewShortcutCatalog {
         ]
     }
 }
+#endif
