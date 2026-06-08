@@ -58,10 +58,31 @@ enum CardRichTextRenderer {
         truncateAroundMarkedWordRadius: Int? = nil,
         targetWord: String? = nil
     ) -> AttributedString {
-        PerfLog.render.tick(
+        // Timed (was tick): splits the AttributedString BUILD cost (regex match + segment
+        // assembly — app-logic we could cache) from downstream CoreText shaping / SwiftUI
+        // layout (not timeable here). Reveals whether the per-flip promoted-card hitch is
+        // this build (esp. the ~214-char back example) or the render layer.
+        PerfLog.render.measure(
             "cardRichText.attributedString",
             "chars=\(raw.count) truncate=\(truncateAroundMarkedWordRadius != nil) mode=\(mode)"
-        )
+        ) {
+            attributedStringUncounted(
+                raw,
+                style: style,
+                mode: mode,
+                truncateAroundMarkedWordRadius: truncateAroundMarkedWordRadius,
+                targetWord: targetWord
+            )
+        }.value
+    }
+
+    private static func attributedStringUncounted(
+        _ raw: String,
+        style: CardRichTextStyle,
+        mode: CardRichTextMode = .highlight,
+        truncateAroundMarkedWordRadius: Int? = nil,
+        targetWord: String? = nil
+    ) -> AttributedString {
         let prepared = preparedRaw(
             from: raw,
             mode: mode,
