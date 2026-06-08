@@ -57,6 +57,7 @@ struct PDFReaderView: View {
                         book: book,
                         modelContext: modelContext,
                         onWordSelected: { word, context in
+                            guard canUseProReaderFeature() else { return }
                             handler.handleWordSelected(
                                 word: word,
                                 context: context,
@@ -123,6 +124,14 @@ struct PDFReaderView: View {
         loadError = nil
         pdfDocument = nil
         loadDocument()
+    }
+
+    /// Parity hook with `ReaderView.canUseProReaderFeature()` (EPUB path). Both
+    /// readers gate vocabulary capture through this so a future entitlement check
+    /// lands in one contract instead of letting the PDF reader silently bypass
+    /// it. Returns `true` today (no gating shipped yet).
+    private func canUseProReaderFeature() -> Bool {
+        return true
     }
 
     // MARK: - State Views
@@ -387,8 +396,8 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         private func triggerWordSelection() {
             guard let pdfView,
                   let selection = pdfView.currentSelection,
-                  let word = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !word.isEmpty
+                  let raw = selection.string,
+                  let word = ReaderWordCapture.sanitizeSelectedWord(raw)
             else { return }
 
             // Extract surrounding context from the page
