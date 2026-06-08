@@ -126,6 +126,7 @@ cmd_snapshot_json() {
       {
         cacheStatus:($run.cache.status // null),
         totalMs:($run.timings.totalMs // null),
+        lockWaitMs:($run.timings.lockWaitMs // null),
         bootMs:($run.timings.bootMs // null),
         xcodebuildMs:($run.timings.xcodebuildMs // null),
         buildForTestingMs:($run.timings.buildForTestingMs // null),

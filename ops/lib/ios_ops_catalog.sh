@@ -18,6 +18,59 @@ catalog_now_ms() {
   perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
 
+# catalog_phase_emit — always-on phase milestone to stderr (stdout stays a pure
+# JSON contract). Unlike catalog_trace_phase, this is NOT gated behind a debug
+# flag: long xcodebuild phases must surface a live signal so callers do not have
+# to side-channel via ps/xcresult to tell whether work is progressing.
+catalog_phase_emit() {
+  local phase="$1" event="$2" detail="${3:-}"
+  if [[ -n "$detail" ]]; then
+    printf '[ios][catalog] phase=%s %s %s\n' "$phase" "$event" "$detail" >&2
+  else
+    printf '[ios][catalog] phase=%s %s\n' "$phase" "$event" >&2
+  fi
+}
+
+catalog_log_tail_line() {
+  local log_path="$1"
+  [[ -f "$log_path" ]] || { printf '<no-log>'; return 0; }
+  tail -n 1 "$log_path" 2>/dev/null | tr -d '\n' | cut -c1-120
+}
+
+# catalog_run_xcodebuild_heartbeat — run a long xcodebuild invocation in the
+# background while emitting periodic phase heartbeats to stderr, then return the
+# real exit code. Mirrors the proven ios_test.sh heartbeat loop so catalog long
+# tasks stop being silent black boxes.
+# usage: catalog_run_xcodebuild_heartbeat <label> <log> <err> <append:0|1> -- <cmd> [args...]
+catalog_run_xcodebuild_heartbeat() {
+  local label="$1" log_path="$2" err_path="$3" append="$4"
+  shift 4
+  [[ "${1:-}" == "--" ]] && shift
+  local pid start now hb_at elapsed interval rc
+  interval="${KG_IOS_OPS_CATALOG_HEARTBEAT_SEC:-20}"
+  if [[ "$append" == "1" ]]; then
+    "$@" >>"$log_path" 2>>"$err_path" &
+  else
+    "$@" >"$log_path" 2>"$err_path" &
+  fi
+  pid=$!
+  start="$(date +%s)"
+  hb_at="$start"
+  catalog_phase_emit "$label" "start" "pid=$pid log=$log_path"
+  while kill -0 "$pid" 2>/dev/null; do
+    now="$(date +%s)"
+    if (( now - hb_at >= interval )); then
+      elapsed=$(( now - start ))
+      catalog_phase_emit "$label" "running" "${elapsed}s pid=$pid last=$(catalog_log_tail_line "$log_path")"
+      hb_at="$now"
+    fi
+    sleep 2
+  done
+  if wait "$pid"; then rc=0; else rc=$?; fi
+  catalog_phase_emit "$label" "done" "exitCode=$rc"
+  return "$rc"
+}
+
 catalog_trace_phase() {
   local phase="$1" event="$2" detail="${3:-}"
   [[ "${KG_IOS_OPS_CATALOG_TRACE:-0}" == "1" ]] || return 0
@@ -280,14 +333,17 @@ catalog_run_scoped_xctestrun() {
   local xctestrun_path="$1" destination="$2" log_path="$3" err_path="$4"
   local start_ms end_ms rc
   start_ms="$(catalog_now_ms)"
-  xcodebuild test-without-building \
+  if catalog_run_xcodebuild_heartbeat "test-without-building" "$log_path" "$err_path" 1 -- \
+    xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$destination" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled NO \
-    -only-testing:BooksBrowserTests/CatalogSnapshotTests \
-    >>"$log_path" 2>>"$err_path"
-  rc=$?
+    -only-testing:BooksBrowserTests/CatalogSnapshotTests; then
+    rc=0
+  else
+    rc=$?
+  fi
   end_ms="$(catalog_now_ms)"
   CATALOG_LAST_COMMAND_WALL_MS=$(( end_ms - start_ms ))
   return "$rc"
@@ -299,16 +355,19 @@ catalog_rebuild_scoped_cache() {
   rm -rf "$derived_data_root"
   mkdir -p "$derived_data_root"
   start_ms="$(catalog_now_ms)"
-  xcodebuild build-for-testing \
+  if catalog_run_xcodebuild_heartbeat "build-for-testing" "$log_path" "$err_path" 0 -- \
+    xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
     -scheme "$CATALOG_SCHEME" \
     -destination "$destination" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled NO \
     -derivedDataPath "$derived_data_root" \
-    OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS' \
-    >"$log_path" 2>"$err_path"
-  rc=$?
+    OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS'; then
+    rc=0
+  else
+    rc=$?
+  fi
   end_ms="$(catalog_now_ms)"
   CATALOG_LAST_BUILD_WALL_MS=$(( end_ms - start_ms ))
   return "$rc"
@@ -455,6 +514,7 @@ cmd_catalog_snapshots_json() {
   local build_cmd="" scope_test_cmd="" use_cached_xctestrun=0 scope_requested=0
   local cache_key="" cache_status="not-applicable"
   local dataset_status="not-requested" dataset_rc=0 dataset_simulator_path="" dataset_b64=""
+  local container_png_count=0 salvaged="false"
 
   wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -493,7 +553,12 @@ cmd_catalog_snapshots_json() {
     snapshot_source="$fixture_root/tmp/kg-catalog-snapshots"
     printf 'fixture xcodebuild test\n' >"$xcode_log"
     : >"$xcode_err"
-    rc=0
+    # Test seam: inject a failure exit code to exercise the cache-miss (87) and
+    # salvage-on-failure JSON paths without a real simulator/xcodebuild run.
+    rc="${KG_IOS_OPS_CATALOG_FIXTURE_EXIT:-0}"
+    if [[ "$rc" == "87" ]]; then
+      cache_status="miss"
+    fi
   else
     if [[ -n "$dataset_path" ]]; then
       if ! dataset_b64="$(catalog_dataset_base64 "$dataset_path")"; then
@@ -582,15 +647,15 @@ cmd_catalog_snapshots_json() {
     else
       local full_test_start_ms full_test_end_ms
       full_test_start_ms="$(catalog_now_ms)"
-      if xcodebuild test \
+      if catalog_run_xcodebuild_heartbeat "full-test" "$xcode_log" "$xcode_err" 0 -- \
+        xcodebuild test \
         -project "$XCODEPROJ" \
         -scheme "$CATALOG_SCHEME" \
         -destination "$destination" \
         -parallel-testing-enabled NO \
         -test-timeouts-enabled NO \
         -only-testing:BooksBrowserTests/CatalogSnapshotTests \
-        OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS' \
-        >"$xcode_log" 2>"$xcode_err"; then
+        OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS'; then
         rc=0
       else
         rc=$?
@@ -641,9 +706,20 @@ cmd_catalog_snapshots_json() {
   container_lookup_ms=$(( phase_end_ms - phase_start_ms ))
   catalog_trace_phase "container_lookup" "done" "wallMs=$container_lookup_ms container=${container_data:-<empty>} source=${snapshot_source:-<empty>}"
 
+  # Count PNGs already produced inside the simulator container BEFORE copy, so a
+  # failed run can still distinguish "nothing was generated" from "generated but
+  # not copied back". This is the salvage source of truth.
+  if [[ -d "$snapshot_source" ]]; then
+    container_png_count="$(find "$snapshot_source" -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+  else
+    container_png_count=0
+  fi
+
   phase_start_ms="$(catalog_now_ms)"
-  catalog_trace_phase "copy" "start" "source=${snapshot_source:-<empty>} outRoot=$out_root"
-  if [[ "$rc" -eq 0 ]] && [[ -d "$snapshot_source" ]]; then
+  catalog_trace_phase "copy" "start" "source=${snapshot_source:-<empty>} outRoot=$out_root containerPngCount=$container_png_count"
+  # Salvage even on failure: if the container has snapshots, copy them back so a
+  # crash in a later phase does not make already-rendered PNGs invisible.
+  if [[ -d "$snapshot_source" ]]; then
     if mkdir -p "$out_root" && cp -R "$snapshot_source/." "$out_root/"; then
       copy_rc=0
     else
@@ -654,7 +730,11 @@ cmd_catalog_snapshots_json() {
   fi
   phase_end_ms="$(catalog_now_ms)"
   copy_ms=$(( phase_end_ms - phase_start_ms ))
-  catalog_trace_phase "copy" "done" "wallMs=$copy_ms exitCode=$copy_rc"
+  if [[ "$rc" -ne 0 && "$rc" != "87" && "$copy_rc" -eq 0 && "$container_png_count" -gt 0 ]]; then
+    salvaged="true"
+    catalog_phase_emit "salvage" "recovered" "test failed (exitCode=$rc) but $container_png_count container PNG(s) copied to $out_root"
+  fi
+  catalog_trace_phase "copy" "done" "wallMs=$copy_ms exitCode=$copy_rc salvaged=$salvaged"
 
   phase_start_ms="$(catalog_now_ms)"
   catalog_trace_phase "artifact_index" "start" "outRoot=$out_root"
@@ -705,6 +785,8 @@ cmd_catalog_snapshots_json() {
     --arg datasetRequestedPath "$dataset_path" \
     --arg datasetSimulatorPath "$dataset_simulator_path" \
     --arg datasetStatus "$dataset_status" \
+    --argjson containerPngCount "$container_png_count" \
+    --argjson salvaged "$salvaged" \
     --argjson reuseBuild "$reuse_build_only" \
     --argjson commandWallMs "$command_wall_ms" \
     --argjson playbookBuildMs "$playbook_build_ms" \
@@ -728,7 +810,8 @@ cmd_catalog_snapshots_json() {
       generated_at:$generated_at,
       action:"snapshots",
       status:(
-        if $testExit != 0 then "error"
+        if $testExit == 87 then "cache-miss"
+        elif $testExit != 0 then "error"
         elif $datasetExit != 0 then "error"
         elif $copyExit != 0 then "error"
         elif ($artifacts.pngCount // 0) == 0 then "error"
@@ -750,7 +833,7 @@ cmd_catalog_snapshots_json() {
         groups:(if $groups == "" then [] else ($groups | split(",")) end),
         scenarios:(if $scenarios == "" then [] else ($scenarios | split(",")) end)
       },
-      artifacts:$artifacts,
+      artifacts:($artifacts + {containerPngCount:$containerPngCount}),
       timings:{
         wrapperWallMs:$wrapperWallMs,
         commandWallMs:$commandWallMs,
@@ -780,7 +863,8 @@ cmd_catalog_snapshots_json() {
         resolvedDeviceUDID:(if $resolvedDevice == "" then null else $resolvedDevice end),
         containerDataPath:$container,
         sourcePath:$sourcePath,
-        exitCode:$copyExit
+        exitCode:$copyExit,
+        salvaged:$salvaged
       },
       simulator:$simulator,
       flags:{
@@ -789,13 +873,15 @@ cmd_catalog_snapshots_json() {
       errors:(
         (if $datasetExit != 0 then [{key:"catalog-dataset",status:"error",exitCode:$datasetExit,error:"dataset-injection-failed"}] else [] end)
         +
-        (if $testExit != 0 then [{key:"catalog-test",status:"error",exitCode:$testExit,error:"xcodebuild-test-failed"}] else [] end)
+        (if $testExit != 0 and $testExit != 87 then [{key:"catalog-test",status:"error",exitCode:$testExit,error:"xcodebuild-test-failed"}] else [] end)
         +
-        (if $testExit == 87 then [{key:"catalog-cache",status:"error",exitCode:$testExit,error:"reuse-build-cache-required"}] else [] end)
+        (if $testExit == 87 then [{key:"catalog-cache",status:"cache-miss",exitCode:$testExit,error:"reuse-build-cache-miss",hint:"run `catalog prepare` first or drop --reuse-build"}] else [] end)
         +
         (if $testExit == 0 and $container == "" then [{key:"catalog-container",status:"error",exitCode:null,error:"app-container-required"}] else [] end)
         +
-        (if $testExit == 0 and $copyExit != 0 then [{key:"catalog-copy",status:"error",exitCode:$copyExit,error:"snapshot-copy-failed"}] else [] end)
+        (if $copyExit != 0 and $containerPngCount > 0 then [{key:"catalog-copy",status:"error",exitCode:$copyExit,error:"snapshot-copy-failed"}] else [] end)
+        +
+        (if $salvaged then [{key:"catalog-salvage",status:"info",exitCode:null,error:"snapshots-salvaged-after-failure",pngCount:($artifacts.pngCount // 0),containerPngCount:$containerPngCount}] else [] end)
         +
         (if $testExit == 0 and $copyExit == 0 and ($artifacts.pngCount // 0) == 0 then [{key:"catalog-artifacts",status:"error",exitCode:null,error:"no-png-artifacts"}] else [] end)
         +
@@ -803,7 +889,12 @@ cmd_catalog_snapshots_json() {
       )
     }')"
   printf '%s\n' "$payload"
-  if [[ "$(jq -r '.status' <<<"$payload")" != "ok" ]]; then
+  local final_status
+  final_status="$(jq -r '.status' <<<"$payload")"
+  if [[ "$final_status" == "cache-miss" ]]; then
+    catalog_phase_emit "cache" "miss" "reuse-build requested but cache is stale/absent — run \`catalog prepare\` first or drop --reuse-build"
+  fi
+  if [[ "$final_status" != "ok" ]]; then
     return 1
   fi
 }
@@ -876,7 +967,7 @@ cmd_catalog_snapshots() {
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",
     "[ios][catalog] copy exitCode=\(.copy.exitCode) source=\(.copy.sourcePath // "") container=\(.copy.containerDataPath // "")",
-    (.errors[]? | "[ios][catalog] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
+    (.errors[]? | "[ios][catalog] \(if .status == "info" then "note" else "error" end) key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
   ' <<<"$payload"
   return "$rc"
 }
