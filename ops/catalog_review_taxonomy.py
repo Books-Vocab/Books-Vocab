@@ -139,6 +139,29 @@ def classify_quality_tier(promise: str, eligibility: str, hero_candidate: bool) 
     return "keep"
 
 
+# --- Coverage expectation (lane-aware) -------------------------------------
+# A flat "10 facets per surface" target lies: of 142 surfaces ~44% are
+# engineering-only harness and a third are pure building blocks, none of which
+# ship as a user-facing screen. Coverage is only a meaningful backlog for the
+# surfaces a user actually sees in distinct states. So the gap is measured
+# against the facets each *lane* is genuinely expected to cover; lanes with an
+# empty expectation are reported as "not tracked" (—), never as a gap.
+EXPECTED_FACETS_BY_LANE: dict[str, tuple[str, ...]] = {
+    # A shippable screen should prove its ship-critical states.
+    "feature-surface": ("default", "populated", "empty", "loading", "error"),
+    # A sheet/popover mainly varies between idle, in-flight, and failure.
+    "overlay": ("default", "loading", "error"),
+    # Building blocks are covered by their *variants*, not a facet checklist.
+    "building-block": (),
+    # Dev harness / presenters never ship — no coverage target.
+    "engineering-only": (),
+}
+
+
+def expected_facets_for_lane(lane: str) -> tuple[str, ...]:
+    return EXPECTED_FACETS_BY_LANE.get(lane, ())
+
+
 def build_taxonomy(category: str, title: str, profile: dict) -> dict:
     group, surface_variant = split_surface(category)
     feature = classify_feature(category, profile)
@@ -203,13 +226,17 @@ def build_surface_index(items: list[dict]) -> list[dict]:
         for item in group:
             facet_scenes.setdefault(item["stateFacet"], set()).add(item["clusterID"])
         facets_present = sorted(facet_scenes, key=state_facet_rank)
+        lane = first["lane"]
+        expected = expected_facets_for_lane(lane)
+        present_set = set(facets_present)
+        missing = [facet for facet in expected if facet not in present_set]
         surfaces.append({
             "surfaceKey": key,
             "surface": first["surface"],
             "surfaceGroup": first["surfaceGroup"],
             "surfaceGroupKey": first["surfaceGroupKey"],
             "feature": first["feature"],
-            "lane": first["lane"],
+            "lane": lane,
             "surfaceRole": first["surfaceRole"],
             "promise": first["promise"],
             "eligibility": _rollup_eligibility({item["eligibility"] for item in group}),
@@ -217,6 +244,13 @@ def build_surface_index(items: list[dict]) -> list[dict]:
             "shotCount": len(group),
             "facetsPresent": facets_present,
             "facetSceneCounts": {facet: len(ids) for facet, ids in facet_scenes.items()},
+            # Lane-aware coverage: a gap is an *expected* facet that is absent.
+            # coverageTracked separates "all expected states present" (gap 0) from
+            # "this lane has no coverage target at all" (— in the UI).
+            "expectedFacets": list(expected),
+            "missingFacets": missing,
+            "coverageGap": len(missing),
+            "coverageTracked": bool(expected),
             "heroCandidate": any(item["heroCandidate"] for item in group),
             "marketingScenes": len({item["clusterID"] for item in group if item["eligibility"] == "marketing"}),
             "newScenes": len({item["clusterID"] for item in group if item["newSincePr878"]}),
