@@ -303,28 +303,42 @@ struct BookshelfView: View {
     // MARK: - 載入覆蓋層
 
     private var loadingOverlay: some View {
+        BookshelfLoadingOverlay(
+            message: coordinator.loadingMessage,
+            progress: coordinator.loadingProgress
+        )
+    }
+
+}
+
+struct BookshelfLoadingOverlay: View {
+    @Environment(\.appTheme) private var appTheme
+    let message: String
+    let progress: Double?
+
+    var body: some View {
         ZStack {
             appTheme.palette.scrim
                 .ignoresSafeArea()
 
-            VStack(spacing: AppSpacing.s4) {
-                if let ratio = coordinator.loadingProgress {
-                    ProgressView(value: ratio, total: 1.0)
+            AppStateMessageCard(
+                title: message.localized,
+                systemImage: "square.and.arrow.down",
+                style: .themed(appTheme)
+            ) {
+                if let progress {
+                    ProgressView(value: progress, total: 1.0)
                         .progressViewStyle(.linear)
                         .frame(width: AppBookshelfMetrics.loadingProgressWidth)
                 } else {
                     ProgressView()
-                        .scaleEffect(1.0)
+                        .controlSize(.regular)
                 }
-                Text(coordinator.loadingMessage)
-                    .font(AppFonts.caption())
-                    .foregroundStyle(appTheme.palette.secondaryText)
             }
+            .frame(maxWidth: 360)
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
         }
     }
-
 }
 
 // MARK: - 書架卡 Button Style（Mochi 北極星五：TapFeedback triplet，無 elevation 升降）
