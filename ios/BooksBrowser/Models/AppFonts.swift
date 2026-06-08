@@ -43,7 +43,7 @@ enum AppFonts {
     // MARK: - Font Builders
 
     private static func platformFont(descriptor: PlatformFontDescriptor, size: CGFloat) -> PlatformFont {
-        return PlatformFont(descriptor: descriptor, size: size)
+        PlatformFont(descriptor: descriptor, size: size)
     }
 
     private static let cascadeListKey = PlatformFontDescriptor.AttributeName(

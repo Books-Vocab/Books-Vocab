@@ -212,11 +212,11 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         // MARK: SelectableNavigatorDelegate
 
         func navigator(_ navigator: any SelectableNavigator, canPerformAction action: EditingAction, for selection: Selection) -> Bool {
-            return true
+            true
         }
 
         func navigator(_ navigator: any SelectableNavigator, shouldShowMenuForSelection selection: Selection) -> Bool {
-            return true
+            true
         }
 
         // MARK: EPUBNavigatorDelegate — JS 注入
