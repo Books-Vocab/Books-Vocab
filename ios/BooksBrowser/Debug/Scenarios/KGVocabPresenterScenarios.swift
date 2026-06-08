@@ -15,7 +15,7 @@ import SwiftData
 /// isolated). The `Scenario { }` closures only instantiate the scene struct.
 enum KGVocabPresenterScenarios {
     static func register(in playbook: Playbook) {
-        playbook.addScenarios(of: "KG Vocab View") {
+        playbook.addScenarios(of: "KG Vocab Presenter") {
             Scenario("Populated", layout: .fill) {
                 KGVocabPresenterScene(kind: .populated)
             }
