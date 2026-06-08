@@ -137,6 +137,41 @@ def test_surface_index_computes_lane_aware_coverage_gap():
     assert block["coverageGap"] == 0
 
 
+def test_state_facet_classifies_cjk_and_english_edge_labels():
+    """The facet classifier is English-regex-first, so CJK scene labels and a
+    handful of English idioms (logged out / with X / wrapping / bound clamp)
+    silently fell into ``default``, inflating the bucket and hiding real state
+    coverage. Verify the semantically-clear ones now route correctly while
+    genuine design-spec labels stay ``default``."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    f = taxonomy.classify_state_facet
+
+    # English idioms that were leaking into default
+    assert f("Logged Out") == "empty"
+    assert f("Signed out · with vocab") == "empty"  # signed-out wins over "with"
+    assert f("With Books") == "populated"
+    assert f("With notebooks · follow global") == "populated"
+    assert f("Wrapping") == "overflow"          # \bwrap\b never matched -ing
+    assert f("Lower bound clamp") == "bounds"   # rule said "bounds" not "bound"
+    assert f("Over 100% (clamped)") == "bounds"
+    assert f("XXL · auto-pause off") == "a11y"
+
+    # CJK labels — pure-English regex was blind to all of these
+    assert f("超長單字") == "overflow"
+    assert f("下載中 (25%)") == "loading"
+    assert f("未登入 無同步列") == "empty"
+    assert f("自動同步關閉") == "disabled"
+    assert f("自訂模式 展開參數") == "selected"
+    assert f("僅書名") == "bounds"
+    assert f("部分已解釋") == "populated"
+
+    # Negative: design-system spec / neutral labels must stay default,
+    # and "logged in" must NOT be mistaken for the logged-out empty state.
+    assert f("Typography") == "default"
+    assert f("Palette · Dark") == "default"
+    assert f("Logged in") == "default"
+
+
 def test_review_state_preserves_existing_annotations():
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     items = [

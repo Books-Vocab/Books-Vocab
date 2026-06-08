@@ -62,16 +62,23 @@ def classify_surface_role(group: str, category: str, kind: str) -> str:
 # vocabulary so a surface's scenes can be ordered by a canonical state sequence
 # and cross-surface "show me every empty state" queries become possible.
 # Rules are priority-ordered: first match wins.
+# Each rule carries (a) the original English vocabulary, (b) English idioms that
+# were silently leaking into ``default`` ("logged out", "with X", "wrapping",
+# "bound clamp"; plus broadening a11y xxxl→xxl so standalone "XXL" matches), and
+# (c) CJK tokens — the labels are bilingual but the regex was Latin-only, so ~46
+# Chinese scenes fell through to default. Tokens are added only where the mapping
+# is unambiguous; genuine design-spec labels (Typography, Palette, layout modes)
+# are intentionally left in ``default``.
 _STATE_FACET_RULES: list[tuple[str, re.Pattern[str]]] = [
-    ("loading", re.compile(r"loading|shimmer|placeholder|skeleton|fetching|authenticat|deleting|saving|sync(ing)?|generating|in progress")),
+    ("loading", re.compile(r"loading|shimmer|placeholder|skeleton|fetching|authenticat|deleting|saving|sync(ing)?|generating|in progress|下載中|載入中|同步中|計算中|產生中|處理中")),
     ("error", re.compile(r"error|fail|unavailable|offline|expired|exhausted|critical|denied|missing|invalid|conflict|revoked|\bout of\b|recovery")),
-    ("empty", re.compile(r"\bempty\b|\bno \b|\bnone\b|\bzero\b|^0 |\bblank\b|first run|\bfresh\b|nothing")),
-    ("a11y", re.compile(r"a11y|accessib|dynamic type|large numbers|xxxl|\bbig text\b")),
-    ("overflow", re.compile(r"\blong\b|overflow|truncat|stress|\bmany\b|\blarge\b|\bheavy\b|\bwrap\b|multiline|\bnarrow\b|\bdense\b|\bdepth\b")),
-    ("bounds", re.compile(r"\bmin\b|\bmax\b|bounds|minimum|maximum|\bshort\b|\bcompact\b|\bsingle\b|\btight\b|at maximum|at minimum")),
-    ("disabled", re.compile(r"disabled|locked|read.?only|paywall|gated|\bpro\b|\bfree\b")),
-    ("selected", re.compile(r"selected|\bactive\b|\bfocus\b|highlight|expanded|collapsed|toggled|revealed")),
-    ("populated", re.compile(r"populated|loaded|content|\bfull\b|\bgrid\b|\blist\b|multiple|stacked|\brich\b|\bmixed\b|\bboth\b|completed|progress|pending|\bdue\b|continue|session|\bhero\b|\bcard\b")),
+    ("empty", re.compile(r"\bempty\b|\bno \b|\bnone\b|\bzero\b|^0 |\bblank\b|first run|\bfresh\b|nothing|logged\s+out|signed\s+out|\bguest\b|\bunlearned\b|未登入")),
+    ("a11y", re.compile(r"a11y|accessib|dynamic type|large numbers|xxl|\bbig text\b")),
+    ("overflow", re.compile(r"\blong\b|overflow|truncat|stress|\bmany\b|\blarge\b|\bheavy\b|wrap|multiline|\bnarrow\b|\bdense\b|\bdepth\b|超長|密集")),
+    ("bounds", re.compile(r"\bmin\b|\bmax\b|bounds?|minimum|maximum|\bshort\b|\bcompact\b|\bsingle\b|\btight\b|at maximum|at minimum|clamp|僅")),
+    ("disabled", re.compile(r"disabled|locked|read.?only|paywall|gated|\bpro\b|\bfree\b|關閉|停用|鎖定|凍結")),
+    ("selected", re.compile(r"selected|\bactive\b|\bfocus\b|highlight|expanded|collapsed?|toggled|revealed|展開|收合|選取")),
+    ("populated", re.compile(r"populated|loaded|content|\bfull\b|\bgrid\b|\blist\b|multiple|stacked|\brich\b|\bmixed\b|\bboth\b|completed|progress|pending|\bdue\b|continue|session|\bhero\b|\bcard\b|\bwith\b|完成|部分|含")),
 ]
 STATE_FACET_ORDER = [
     "default",
