@@ -31,9 +31,9 @@ enum ActiveNotebookLWW {
 /// `ReviewSettingsStore` 的 LWW 機制（本地 vs iCloud KVS 比 updatedAt 取較新整組）。
 ///
 /// 刻意**非 @Observable**：無 View 觀察 store 的 in-memory 狀態 —— NotebookListView 用
-/// @AppStorage 觀察同一 UserDefaults key、`Book.resolvedNotebookId` / `PodcastPlayerView`
-/// 直讀同 key。故為 thread-safe wrapper over UserDefaults + iCloud KVS，清除點在背景
-/// service thread 也安全。init 把 LWW resolved 值寫回本地，使直讀者看到跨裝置收斂後的值。
+/// @AppStorage 觀察同一 UserDefaults key、Reader / Podcast capture 透過此 store 讀取。
+/// 故為 thread-safe wrapper over UserDefaults + iCloud KVS，清除點在背景 service thread
+/// 也安全。init 把 LWW resolved 值寫回本地，使 consumer 看到跨裝置收斂後的值。
 ///
 /// backend 層為 cold-start（首次裝置）+ best-effort push（讓 chrome / web 能讀）；
 /// `serverVocabUiLwwEnabled` 仍 false，iCloud KVS 為 Apple 裝置間實質權威。
@@ -58,9 +58,8 @@ final class ActiveNotebookStore {
     init(defaults: UserDefaults, cloud: CloudKeyValueStore = CloudPreferencesSync.shared) {
         self.defaults = defaults
         self.cloud = cloud
-        // 三層 LWW：本地 vs iCloud KVS 取較新整組，寫回本地讓直讀同一 key 的消費者
-        // （Book.resolvedNotebookId / PodcastPlayerView）看到 resolved 值（cloud 較新時
-        // 不讀到舊 local）。
+        // 三層 LWW：本地 vs iCloud KVS 取較新整組，寫回本地讓 capture consumer 看到
+        // resolved 值（cloud 較新時不讀到舊 local）。
         //
         // 僅在 resolved 帶有效 updatedAt 時寫回：雙方皆未寫過（updatedAt 皆 nil）時
         // resolved 是 (default, nil)，若寫回會把本地 activeId key 實體化成 "default"，
