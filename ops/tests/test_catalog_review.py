@@ -210,6 +210,35 @@ def test_state_facet_classifies_cjk_and_english_edge_labels():
     assert f("Logged in") == "default"
 
 
+def test_subscription_tier_is_not_a_disabled_state():
+    """A subscription tier label ("Pro", "Free") names *which plan*, not a
+    disabled control. The disabled rule was matching the bare tokens \\bpro\\b /
+    \\bfree\\b, so an *active* subscription ("Pro Active", "Subscribed · Pro
+    Active") was bucketed as ``disabled`` — the exact opposite of its meaning,
+    polluting the disabled facet and hiding these as default/selected states."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    f = taxonomy.classify_state_facet
+
+    # Tier labels must NOT read as disabled
+    assert f("Pro Active") != "disabled"
+    assert f("Subscribed · Pro Active") != "disabled"
+    assert f("Pro active (renewing)") != "disabled"
+    assert f("Free Preview") == "default"
+    assert f("Initials · Pro") == "default"
+    assert f("Initials · Free") == "default"
+    assert f("Free vs Pro") == "default"
+    # "active" is the meaningful state for an active plan
+    assert f("Pro Active") == "selected"
+
+    # Genuine disabled / locked states must STILL classify as disabled
+    assert f("Disabled pair") == "disabled"
+    assert f("Both disabled") == "disabled"
+    assert f("自動同步關閉") == "disabled"
+    assert f("Paywall") == "disabled"
+    assert f("Gated") == "disabled"
+    assert f("Locked") == "disabled"
+
+
 def test_lane_and_feature_classification_corrections():
     """Presenter (dev harness) must never be read as a shippable screen, and the
     feature needles must claim the surfaces that legitimately belong to a feature
