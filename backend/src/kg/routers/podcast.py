@@ -40,7 +40,7 @@ auth entirely, was removed in 2026-05.)
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated
 
@@ -66,9 +66,11 @@ from ..podcast_access import (
     resolve_podcast_tier,
 )
 from .podcast_browse import build_podcast_browse_router
+from .podcast_playback import build_podcast_playback_router
 from .podcast_progress import build_podcast_progress_router
 from ..settings import KGSettings
 from ..types import UserRecord
+from . import podcast_playback as _podcast_playback
 
 logger = logging.getLogger(__name__)
 
@@ -229,72 +231,19 @@ router.include_router(
 
 
 _AUDIO_CHUNK_SIZE = 64 * 1024  # 64 KiB per network read — balances RAM vs syscalls.
-_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
 
 def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | None:
-    """Parse a single-range ``Range: bytes=...`` header per RFC 7233.
-
-    Returns ``(start, end)`` inclusive byte offsets, or ``None`` if the
-    header is malformed (caller should fall back to a 200 full-body response).
-    Raises ``HTTPException(416)`` for syntactically valid but unsatisfiable
-    ranges (start beyond EOF), per RFC 7233 §4.4.
-
-    Multi-range is intentionally not supported — AVPlayer / iOS only ever
-    issues single ranges, and multipart/byteranges adds complexity without
-    a real consumer.
-    """
-    m = _RANGE_RE.match(range_header.strip())
-    if not m:
-        return None
-    start_s, end_s = m.group(1), m.group(2)
-    if start_s == "" and end_s == "":
-        return None
-    if start_s == "":
-        # bytes=-N → last N bytes
-        try:
-            suffix = int(end_s)
-        except ValueError:
-            return None
-        if suffix <= 0:
-            return None
-        start = max(0, file_size - suffix)
-        end = file_size - 1
-        return (start, end)
-    try:
-        start = int(start_s)
-    except ValueError:
-        return None
-    if end_s == "":
-        end = file_size - 1
-    else:
-        try:
-            end = int(end_s)
-        except ValueError:
-            return None
-        end = min(end, file_size - 1)
-    if start >= file_size:
-        raise HTTPException(
-            status_code=416,
-            detail="Range not satisfiable",
-            headers={"Content-Range": f"bytes */{file_size}"},
-        )
-    if end < start:
-        return None
-    return (start, end)
+    return _podcast_playback._parse_range_header(range_header, file_size)
 
 
-def _iter_file_range(path: Path, start: int, end: int, chunk_size: int = _AUDIO_CHUNK_SIZE):
-    """Yield ``[start, end]`` (inclusive) bytes from ``path`` in chunks."""
-    remaining = end - start + 1
-    with path.open("rb") as fh:
-        fh.seek(start)
-        while remaining > 0:
-            buf = fh.read(min(chunk_size, remaining))
-            if not buf:
-                break
-            remaining -= len(buf)
-            yield buf
+def _iter_file_range(
+    path: Path,
+    start: int,
+    end: int,
+    chunk_size: int = _AUDIO_CHUNK_SIZE,
+) -> Iterator[bytes]:
+    return _podcast_playback._iter_file_range(path, start, end, chunk_size)
 
 
 def _iter_s3_body(body, chunk_size: int = _AUDIO_CHUNK_SIZE):
@@ -326,132 +275,38 @@ def _serve_audio_from_s3(
 
 
 def _require_episode_access(user: UserRecord | None, ep_num: int) -> str:
-    """Shared tier gate for *episode media* (audio + transcript): both must obey
-    the same wall, else a free user could read the full transcript of a Pro-only
-    episode whose audio is 403'd. Returns the caller's tier; raises:
-
-    * guest → ``401 auth_required`` (must sign in to access any episode media).
-    * free + non-previewable episode → ``403 upgrade_required``.
-    * free + previewable episode / pro → returns the tier.
-
-    Errors carry a machine code in ``detail`` so the client routes to the login
-    sheet vs the paywall without parsing a human string.
-    """
-    tier = resolve_podcast_tier(user)
-    if tier == "guest":
-        raise HTTPException(
-            status_code=401,
-            detail={"code": ERR_AUTH_REQUIRED, "message": "Sign in to play podcasts"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if tier == "free" and not is_free_previewable_episode(ep_num):
-        raise HTTPException(
-            status_code=403,
-            detail={"code": ERR_UPGRADE_REQUIRED, "message": "Upgrade to Pro to play this episode"},
-        )
-    return tier
+    return _podcast_playback._require_episode_access(
+        user,
+        ep_num,
+        resolve_podcast_tier=resolve_podcast_tier,
+        is_free_previewable_episode=is_free_previewable_episode,
+        auth_required_code=ERR_AUTH_REQUIRED,
+        upgrade_required_code=ERR_UPGRADE_REQUIRED,
+    )
 
 
 def _gate_audio_access(user: UserRecord | None, ep_num: int) -> str:
-    """Resolve the audio asset stem after the tier gate: free → ``preview``
-    (ep 1 only), pro → full ``audio``."""
-    tier = _require_episode_access(user, ep_num)
-    return PREVIEW_AUDIO_STEM if tier == "free" else FULL_AUDIO_STEM
-
-
-@router.get("/api/podcasts/{series_id}/{ep_num}/audio")
-def get_podcast_audio(
-    series_id: str,
-    ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
-    request: Request,
-    user: OptionalCurrentUser,
-    range_header: Annotated[str | None, Header(alias="Range")] = None,
-):
-    """Tiered audio stream with HTTP Range / 206 Partial Content support.
-
-    Access is gated by :func:`_gate_audio_access` (guest → 401, free → preview
-    of ep 1 only, pro → full). The resolved *stem* (``audio`` / ``preview``)
-    then drives the same S3-proxy / disk-Range machinery — a free caller is
-    served a *physically separate* ``preview.*`` object, so the full audio is
-    never partially exposed.
-
-    Two backends:
-
-    * **S3 (production, post-Track-B)** — proxy via boto3 ``get_object`` with
-      the client's Range header forwarded. S3 returns 206 + ``Content-Range``
-      natively; we just relay status/headers back to the client. We do NOT
-      redirect to a presigned URL because iOS ``AVURLAssetHTTPHeaderFields``
-      re-attaches the ``Authorization: Bearer`` header to every redirect
-      target, which AWS rejects (409 — pre-signed request signature clash).
-      Proxy mode keeps iOS zero-change.
-    * **Disk (dev / transition)** — hand-rolled Range handler against the
-      filesystem. The legacy public StaticFiles mount was removed in 2026-05.
-    """
-    _validate_series_id(series_id)
-    stem = _gate_audio_access(user, ep_num)
-
-    if _using_s3(request):
-        return _serve_audio_from_s3(request, series_id, ep_num, range_header, stem=stem)
-
-    # ── disk-mode fallback (m4a → mp3 probe) ──
-    filename = _audio_filename(request, series_id, ep_num, stem=stem)
-    audio_file = _podcasts_dir(request) / series_id / f"ep_{ep_num:02d}" / filename
-    if not audio_file.exists():
-        raise HTTPException(status_code=404, detail="Audio not found")
-
-    media_type = _media_type_for(filename)
-    file_size = audio_file.stat().st_size
-    common_headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "private, no-transform",
-    }
-
-    if range_header:
-        parsed = _parse_range_header(range_header, file_size)
-        if parsed is not None:
-            start, end = parsed
-            length = end - start + 1
-            headers = {
-                **common_headers,
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Content-Length": str(length),
-            }
-            return StreamingResponse(
-                _iter_file_range(audio_file, start, end),
-                status_code=206,
-                media_type=media_type,
-                headers=headers,
-            )
-        # parsed is None → malformed Range header; RFC 7233 says ignore + 200.
-
-    headers = {**common_headers, "Content-Length": str(file_size)}
-    return StreamingResponse(
-        _iter_file_range(audio_file, 0, file_size - 1),
-        status_code=200,
-        media_type=media_type,
-        headers=headers,
+    return _podcast_playback._gate_audio_access(
+        user,
+        ep_num,
+        require_episode_access=_require_episode_access,
+        preview_audio_stem=PREVIEW_AUDIO_STEM,
+        full_audio_stem=FULL_AUDIO_STEM,
     )
 
 
-@router.get("/api/podcasts/{series_id}/{ep_num}/subtitle")
-def get_podcast_subtitle(
-    series_id: str,
-    ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
-    request: Request,
-    user: OptionalCurrentUser,
-):
-    _validate_series_id(series_id)
-    # Same wall as audio: a free caller must not read the full transcript of a
-    # Pro-only episode. guest → 401, free → ep1 only, pro → all.
-    _require_episode_access(user, ep_num)
-    # errors="replace" on both backends: a stray non-UTF-8 byte in a subtitle
-    # file must degrade gracefully, not surface as an uncaught 500. The decoded
-    # str is re-encoded by Response exactly as PlainTextResponse did before.
-    return _serve_static_media(
-        request,
-        series_id,
-        f"ep_{ep_num:02d}/subtitle.srt",
-        media_type="text/plain",
-        context="subtitle",
-        transform=lambda raw: raw.decode("utf-8", errors="replace"),
+router.include_router(
+    build_podcast_playback_router(
+        validate_series_id=_validate_series_id,
+        using_s3=_using_s3,
+        serve_audio_from_s3=_serve_audio_from_s3,
+        gate_audio_access=_gate_audio_access,
+        audio_filename=_audio_filename,
+        podcasts_dir=_podcasts_dir,
+        media_type_for=_media_type_for,
+        parse_range_header=_parse_range_header,
+        iter_file_range=_iter_file_range,
+        require_episode_access=_require_episode_access,
+        serve_static_media=_serve_static_media,
     )
+)
