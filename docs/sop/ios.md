@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: a173bae5
+verified_against: be35090f
 -->
 # BooksBrowser iOS 開發技能
 
@@ -360,6 +360,9 @@ Apple/Google SSO
 - `./ops/ios_ops.sh snapshot --json` 現在也內嵌 `sentry` surface，並把 wiring 漂移收斂成 `summary.counts.sentryWarnings`；若只想知道 release dashboard 是否因 Sentry wiring 漂掉而變黃，不必再手動額外跑 `sentry`
 - 對這類 wiring surface，不要只測 happy path。`ops/test_ios_ops.sh` 現在用 fixture env 直接模擬 `source missing / canImport=false / dsnReference=false`，驗證 `snapshot --json` 會把 drift 轉成 `summary.counts.sentryWarnings` 與 `summary.nextActions[].source=="sentry"`；這是控制面經驗固化的正確模式
 - 同一個 surface 不能各自重算。`doctor` 的 sentry readiness 與頂層 `doctor.sentry` 現在都直接重用 `sentry_summary_json()`；`snapshot` 也直接吃 `doctor.sentry`，避免 `doctor` / `sentry --json` / `snapshot` 三條路各自 grep、最後判讀不一致
+- 連 wiring failure 清單也收斂成單一真相:`sentry_summary_json()` 直接輸出 `issues[]`（逐 wiring failure,含 key/message/command）;`doctor` verdict = `issues|length==0`、`snapshot` nextActions = `map(issues)`、`sentryWarnings` = `issues|length` 全衍生自此。新增一個 wiring check 只改 `issues[]` 一處,不必同步三處列舉——這是「判讀規則(不只資料來源)單一真相」的範例
+- **聚合面用動態 passthrough,不用硬編碼 allowlist**:`snapshot` 的 `timing_summary` 從逐欄位 allowlist 改成 `($run.timings // {}) + {cacheStatus}`,wrapper 新增任何 timing 欄位(如 `lockWaitMs`)自動上第一屏,不必改 snapshot。契約測試注入 `probeMs:777` 驗 passthrough(allowlist 會吞掉)。判準:當聚合面只是「轉發子 surface 的欄位」時,passthrough > allowlist;allowlist 每加一個欄位都是一次漏接機會。
+- **何時「不」收斂(false-DRY)也要明確固化**:verdict 三段式（`blocks>0→block / warns>0→warn / pass`）在 doctor/workflow/gate/snapshot 重複,但**刻意不抽**——input 異構(readiness / release-block / diag-errors / 跨源 sum)、runs 另有合理的 `unknown` 分支、跨檔 jq def 共用的耦合脆弱性 > 重複 3 行的成本。改用**一致性契約測試**(`test_ios_ops.sh` 的 canonical `rule($b;$w)`)鎖 3 個 count-based surface 不漂移。判準:重複的是「同一規則」就抽或測;重複的只是「同一形狀、不同語義的視圖」就不抽,改用契約測試防 drift。何時不 DRY 本身就是要記錄的控制面決策。
 
 ### Hot Reload（InjectionNext + Inject）
 

@@ -95,68 +95,27 @@ cmd_snapshot_json() {
         command:$command,
         message:(.error // .detail // .note // "")
       }];
+    # Derives entirely from sentry.issues[] (single source of truth in
+    # sentry_summary_json); adding a wiring check there flows through here.
     def sentry_actions($sentry):
-      [
-        if ($sentry.source.exists // false) then empty else {
-          source:"sentry",
-          severity:"warn",
-          key:"source",
-          status:"warn",
-          command:"./ops/ios_ops.sh sentry --json",
-          message:("source missing: " + ($sentry.source.path // "unknown"))
-        } end,
-        if ($sentry.wiring.canImportGuard // false) then empty else {
-          source:"sentry",
-          severity:"warn",
-          key:"canImportGuard",
-          status:"warn",
-          command:"./ops/ios_ops.sh sentry --json",
-          message:"missing canImport(Sentry) guard"
-        } end,
-        if ($sentry.wiring.dsnKeyReference // false) then empty else {
-          source:"sentry",
-          severity:"warn",
-          key:"dsnKeyReference",
-          status:"warn",
-          command:"./ops/ios_ops.sh sentry --json",
-          message:"missing Sentry DSN/debug test wiring"
-        } end
-      ];
+      [ ($sentry.issues // [])[]? | {
+        source:"sentry",
+        severity:"warn",
+        key:.key,
+        status:"warn",
+        command:.command,
+        message:.message
+      }];
+    # Dynamic passthrough: surface the whole run timings object instead of a
+    # hardcoded allowlist, so any new timing field a wrapper emits (e.g.
+    # lockWaitMs) reaches the snapshot first screen without editing this file.
+    # cacheStatus is folded in for build/test (archive/simulator have no cache).
     def timing_summary($run):
-      {
-        cacheStatus:($run.cache.status // null),
-        totalMs:($run.timings.totalMs // null),
-        lockWaitMs:($run.timings.lockWaitMs // null),
-        bootMs:($run.timings.bootMs // null),
-        xcodebuildMs:($run.timings.xcodebuildMs // null),
-        buildForTestingMs:($run.timings.buildForTestingMs // null),
-        testInvocationMs:($run.timings.testInvocationMs // null),
-        testBodyMs:($run.timings.testBodyMs // null),
-        xcresultSessionMs:($run.timings.xcresultSessionMs // null),
-        xcresultHarnessOverheadMs:($run.timings.xcresultHarnessOverheadMs // null),
-        appLaunchAverageMs:($run.timings.appLaunchAverageMs // null),
-        appLaunchSamples:($run.timings.appLaunchSamples // null),
-        invocationOverheadMs:($run.timings.invocationOverheadMs // null)
-      };
+      (($run.timings // {}) + {cacheStatus:($run.cache.status // null)});
     def archive_timing_summary($run):
-      {
-        totalMs:($run.timings.totalMs // null),
-        lockWaitMs:($run.timings.lockWaitMs // null),
-        archiveMs:($run.timings.archiveMs // null),
-        exportMs:($run.timings.exportMs // null),
-        uploadMs:($run.timings.uploadMs // null)
-      };
+      ($run.timings // {});
     def simulator_timing_summary($simulator):
-      if $simulator == null then
-        null
-      else
-        {
-          totalMs:($simulator.timings.totalMs // null),
-          simctlDevicesMs:($simulator.timings.simctlDevicesMs // null),
-          appContainerMs:($simulator.timings.appContainerMs // null),
-          appProcessMs:($simulator.timings.appProcessMs // null)
-        }
-      end;
+      if $simulator == null then null else ($simulator.timings // {}) end;
     (
       n($doctor.summary.counts.ok) as $readinessOk
       | n($doctor.summary.counts.warn) as $readinessWarns
@@ -177,11 +136,7 @@ cmd_snapshot_json() {
       | n($runs.test.diagnostics.counts.failedTests) as $testFailures
       | n($runs.archive.diagnostics.counts.errors) as $archiveErrors
       | n($runs.archive.diagnostics.counts.warnings) as $archiveWarnings
-      | (
-          (if ($sentry.source.exists // false) then 0 else 1 end)
-          + (if ($sentry.wiring.canImportGuard // false) then 0 else 1 end)
-          + (if ($sentry.wiring.dsnKeyReference // false) then 0 else 1 end)
-        ) as $sentryWarnings
+      | (($sentry.issues // []) | length) as $sentryWarnings
       | (if $xcode == null then 0 else ($xcode.errors // [] | length) end) as $xcodeErrors
       | (if $simulator == null then 0 elif $simulator.status == "error" then (($simulator.errors // []) | length) else 0 end) as $simulatorErrors
       | (if $logs == null then 0 else n($logs.summary.filteredCount) end) as $runtimeLogs
