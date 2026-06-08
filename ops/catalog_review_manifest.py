@@ -154,7 +154,11 @@ def load_catalog_index(source_root: Path) -> dict[str, dict]:
     except (ValueError, OSError):
         return {}
     surfaces = data.get("surfaces", {}) if isinstance(data, dict) else {}
-    return surfaces if isinstance(surfaces, dict) else {}
+    if not isinstance(surfaces, dict):
+        return {}
+    # Drop corrupted per-entry values (string/list instead of object) so a bad
+    # entry falls back to heuristics for that one category rather than crashing.
+    return {category: entry for category, entry in surfaces.items() if isinstance(entry, dict)}
 
 
 def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr878") -> list[dict]:
