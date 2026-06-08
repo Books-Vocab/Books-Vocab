@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, Header, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..admin_handlers import check_admin_auth
+from ..api_models import AdminUserEntitlementResponse
 from ..deps import get_admin_user
 
 # ---------------------------------------------------------------------------
@@ -116,6 +118,23 @@ def build_html_admin_router(
 # API admin router — 403 on auth failure (unchanged behavior)
 # ---------------------------------------------------------------------------
 
+
+@dataclass(frozen=True)
+class _AdminApiRouteSpec:
+    method: str
+    path: str
+    endpoint: Callable[..., Any] | None
+    response_model: Any | None = None
+
+
+def _register_api_route(router: APIRouter, spec: _AdminApiRouteSpec) -> None:
+    if spec.endpoint is None:
+        return
+    kwargs: dict[str, Any] = {"include_in_schema": False}
+    if spec.response_model is not None:
+        kwargs["response_model"] = spec.response_model
+    getattr(router, spec.method)(spec.path, **kwargs)(spec.endpoint)
+
 def build_api_admin_router(
     *,
     admin_stats: Callable[..., Any],
@@ -143,46 +162,50 @@ def build_api_admin_router(
     admin_orphans_scan: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
-    router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
-    router.get("/api/admin/logs", include_in_schema=False)(admin_logs)
-    # NOTE: static "/users/search" MUST register before dynamic "/users/{user_id}/…"
-    # otherwise FastAPI greedy-matches "search" as user_id.
-    if admin_users_search is not None:
-        router.get("/api/admin/users/search", include_in_schema=False)(admin_users_search)
-    router.get("/api/admin/users/{user_id}/entitlement", include_in_schema=False)(admin_user_entitlement)
-    router.post("/api/admin/users/{user_id}/admin-grant", include_in_schema=False)(admin_grant_pro_access)
-    router.delete("/api/admin/users/{user_id}/admin-grant", include_in_schema=False)(admin_revoke_pro_access)
-    router.post("/api/admin/tests/run", include_in_schema=False)(admin_run_tests)
-    router.get("/api/admin/tests/last", include_in_schema=False)(admin_last_test_run)
-    router.get("/api/admin/tests/catalog", include_in_schema=False)(admin_test_catalog)
-    if admin_graph_density is not None:
-        router.get("/api/admin/graph-density", include_in_schema=False)(admin_graph_density)
-    if admin_graph_playback is not None:
-        router.get("/api/admin/graph-playback", include_in_schema=False)(admin_graph_playback)
-    if admin_pipeline_runs is not None:
-        router.get("/api/admin/pipeline-runs", include_in_schema=False)(admin_pipeline_runs)
-    if admin_judge_stats is not None:
-        router.get("/api/admin/judge-stats", include_in_schema=False)(admin_judge_stats)
-    if admin_translate_history is not None:
-        router.get("/api/admin/translate-history", include_in_schema=False)(admin_translate_history)
-    if admin_user_activity is not None:
-        router.get("/api/admin/user-activity", include_in_schema=False)(admin_user_activity)
-    if admin_user_usage is not None:
-        router.get("/api/admin/user-usage", include_in_schema=False)(admin_user_usage)
-    if admin_user_cost_summary is not None:
-        router.get("/api/admin/user-cost-summary", include_in_schema=False)(admin_user_cost_summary)
-    if admin_host_metrics is not None:
-        router.get("/api/admin/host-metrics", include_in_schema=False)(admin_host_metrics)
-    if admin_observability is not None:
-        router.get("/api/admin/observability", include_in_schema=False)(admin_observability)
-    if admin_stats_trends is not None:
-        router.get("/api/admin/stats/trends", include_in_schema=False)(admin_stats_trends)
-    if admin_log_retention_run is not None:
-        router.post("/api/admin/log-retention/run", include_in_schema=False)(admin_log_retention_run)
-    if admin_audit is not None:
-        router.get("/api/admin/audit", include_in_schema=False)(admin_audit)
-    if admin_orphans_scan is not None:
-        router.get("/api/admin/orphans/scan", include_in_schema=False)(admin_orphans_scan)
+    specs = [
+        _AdminApiRouteSpec("get", "/api/admin/stats", admin_stats),
+        _AdminApiRouteSpec("get", "/api/admin/logs", admin_logs),
+        # NOTE: static "/users/search" MUST register before dynamic
+        # "/users/{user_id}/…" or FastAPI will greedy-match "search" as user_id.
+        _AdminApiRouteSpec("get", "/api/admin/users/search", admin_users_search),
+        _AdminApiRouteSpec(
+            "get",
+            "/api/admin/users/{user_id}/entitlement",
+            admin_user_entitlement,
+            response_model=AdminUserEntitlementResponse,
+        ),
+        _AdminApiRouteSpec(
+            "post",
+            "/api/admin/users/{user_id}/admin-grant",
+            admin_grant_pro_access,
+            response_model=AdminUserEntitlementResponse,
+        ),
+        _AdminApiRouteSpec(
+            "delete",
+            "/api/admin/users/{user_id}/admin-grant",
+            admin_revoke_pro_access,
+            response_model=AdminUserEntitlementResponse,
+        ),
+        _AdminApiRouteSpec("post", "/api/admin/tests/run", admin_run_tests),
+        _AdminApiRouteSpec("get", "/api/admin/tests/last", admin_last_test_run),
+        _AdminApiRouteSpec("get", "/api/admin/tests/catalog", admin_test_catalog),
+        _AdminApiRouteSpec("get", "/api/admin/graph-density", admin_graph_density),
+        _AdminApiRouteSpec("get", "/api/admin/graph-playback", admin_graph_playback),
+        _AdminApiRouteSpec("get", "/api/admin/pipeline-runs", admin_pipeline_runs),
+        _AdminApiRouteSpec("get", "/api/admin/judge-stats", admin_judge_stats),
+        _AdminApiRouteSpec("get", "/api/admin/translate-history", admin_translate_history),
+        _AdminApiRouteSpec("get", "/api/admin/user-activity", admin_user_activity),
+        _AdminApiRouteSpec("get", "/api/admin/user-usage", admin_user_usage),
+        _AdminApiRouteSpec("get", "/api/admin/user-cost-summary", admin_user_cost_summary),
+        _AdminApiRouteSpec("get", "/api/admin/host-metrics", admin_host_metrics),
+        _AdminApiRouteSpec("get", "/api/admin/observability", admin_observability),
+        _AdminApiRouteSpec("get", "/api/admin/stats/trends", admin_stats_trends),
+        _AdminApiRouteSpec("post", "/api/admin/log-retention/run", admin_log_retention_run),
+        _AdminApiRouteSpec("get", "/api/admin/audit", admin_audit),
+        _AdminApiRouteSpec("get", "/api/admin/orphans/scan", admin_orphans_scan),
+    ]
+    for spec in specs:
+        _register_api_route(router, spec)
     return router
 
 

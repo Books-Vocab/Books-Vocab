@@ -132,9 +132,9 @@ from .deps import (  # noqa: F401
     _is_pro,
     _notification_status,
     _parse_datetime,
-    _review_event_store,
     _resolve_and_link_user,
     _resolve_user_id_from_subscription_index,
+    _review_event_store,
     _with_quota_check,
     _write_subscription_snapshot,
     get_current_user,
@@ -145,7 +145,6 @@ from .rate_limit import api_limiter, translate_limiter
 from .routers import (
     auth_router,
     billing_router,
-    build_admin_router,
     notebook_router,
     pipeline_router,
     static_pages_router,
@@ -154,6 +153,11 @@ from .routers import (
     user_router,
     vocab_router,
     web_auth_router,
+)
+from .routers.admin import (
+    build_api_admin_router,
+    build_html_admin_router,
+    build_login_routes,
 )
 
 # Re-export endpoint functions from routers for backward compatibility.
@@ -183,8 +187,8 @@ from .routers.vocab import (  # noqa: F401
     list_vocab,
     lookup_word,
     pull_review_events,
-    push_review_events,
     push_review,
+    push_review_events,
 )
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
@@ -447,8 +451,37 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         build_entitlements_response_fn=_build_entitlements_response,
         current_admin_grant_record_fn=_current_admin_grant_record,
     )
-    login_r, html_r, api_r = build_admin_router(
-        **admin_handlers, runtime_settings_fn=_settings_fn,
+    login_r = build_login_routes(runtime_settings_fn=_settings_fn)
+    html_r = build_html_admin_router(
+        admin_ui=admin_handlers.admin_ui,
+        admin_tests_ui=admin_handlers.admin_tests_ui,
+        admin_user_detail_ui=admin_handlers.admin_user_detail_ui,
+        runtime_settings_fn=_settings_fn,
+    )
+    api_r = build_api_admin_router(
+        admin_stats=admin_handlers.admin_stats,
+        admin_logs=admin_handlers.admin_logs,
+        admin_user_entitlement=admin_handlers.admin_user_entitlement,
+        admin_grant_pro_access=admin_handlers.admin_grant_pro_access,
+        admin_revoke_pro_access=admin_handlers.admin_revoke_pro_access,
+        admin_run_tests=admin_handlers.admin_run_tests,
+        admin_last_test_run=admin_handlers.admin_last_test_run,
+        admin_test_catalog=admin_handlers.admin_test_catalog,
+        admin_graph_density=admin_handlers.admin_graph_density,
+        admin_graph_playback=admin_handlers.admin_graph_playback,
+        admin_pipeline_runs=admin_handlers.admin_pipeline_runs,
+        admin_judge_stats=admin_handlers.admin_judge_stats,
+        admin_translate_history=admin_handlers.admin_translate_history,
+        admin_user_activity=admin_handlers.admin_user_activity,
+        admin_user_usage=admin_handlers.admin_user_usage,
+        admin_user_cost_summary=admin_handlers.admin_user_cost_summary,
+        admin_host_metrics=admin_handlers.admin_host_metrics,
+        admin_users_search=admin_handlers.admin_users_search,
+        admin_observability=admin_handlers.admin_observability,
+        admin_stats_trends=admin_handlers.admin_stats_trends,
+        admin_log_retention_run=admin_handlers.admin_log_retention_run,
+        admin_audit=admin_handlers.admin_audit,
+        admin_orphans_scan=admin_handlers.admin_orphans_scan,
     )
     app.include_router(login_r)
     app.include_router(html_r)
