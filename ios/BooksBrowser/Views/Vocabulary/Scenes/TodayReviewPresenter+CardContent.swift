@@ -34,6 +34,30 @@ extension TodayReviewPresenter {
         }
     }
 
+    /// 卡片右上角 chrome（喇叭 / 詳情）。作用中卡片與背後 deck 預覽**共用同一渲染**，
+    /// 確保 fling 飛出期間背後預覽已帶完整 chrome、完成時的 swap 隱形（消除「裸卡 pop」）。
+    /// `interactive=false`（預覽）時純裝飾：無動作、不可點。
+    @ViewBuilder
+    func frontCardChrome(_ card: CardPresentation, interactive: Bool) -> some View {
+        let _ = { if interactive, dismissPhase != .idle || swipeOffset != 0 {
+            PerfLog.review.mark("front.chrome", "w=\(card.word) (active card chrome rendered)")
+        } }()
+        HStack(spacing: appSkin.spacing.inlineGap) {
+            VocabChromeIconButton(
+                systemImage: "speaker.wave.2.fill",
+                label: "播放發音".localized,
+                action: { if interactive { speechService.speak(card.word) } }
+            )
+            VocabChromeIconButton(
+                systemImage: "arrow.up.right",
+                label: "查看詳情".localized,
+                action: { if interactive, isCardInteractive { onDetailTap() } }
+            )
+        }
+        .padding(reviewCardPadding)
+        .allowsHitTesting(interactive)
+    }
+
     func reviewCardFront(_ card: CardPresentation) -> some View {
         let _ = PerfLog.review.mark("front.body", "w=\(card.word) reveal=\(state.revealStage)")
         return VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {

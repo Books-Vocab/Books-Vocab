@@ -89,7 +89,7 @@ struct TodayReviewPresenter: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.appSkin) var appSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
-    @Environment(\.speechService) private var speechService
+    @Environment(\.speechService) var speechService
 
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State var frozenSwipeIntensity: Double = 0
@@ -245,22 +245,7 @@ struct TodayReviewPresenter: View {
             VStack(spacing: 0) {
                 frontFoldSurface(card)
                     .overlay(alignment: .topTrailing) {
-                        let _ = { if dismissPhase != .idle || swipeOffset != 0 {
-                            PerfLog.review.mark("front.chrome", "w=\(card.word) (active card chrome rendered)")
-                        } }()
-                        HStack(spacing: appSkin.spacing.inlineGap) {
-                            VocabChromeIconButton(
-                                systemImage: "speaker.wave.2.fill",
-                                label: "播放發音".localized,
-                                action: { speechService.speak(card.word) }
-                            )
-                            VocabChromeIconButton(
-                                systemImage: "arrow.up.right",
-                                label: "查看詳情".localized,
-                                action: { guard isCardInteractive else { return }; onDetailTap() }
-                            )
-                        }
-                        .padding(reviewCardPadding)
+                        frontCardChrome(card, interactive: true)
                     }
 
                 // 永遠存在於 view tree — 繞過 .id() + conditional insertion
