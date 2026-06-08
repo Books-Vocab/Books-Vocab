@@ -28,6 +28,8 @@ struct ReaderWordCaptureTests {
 
     @Test func dropsSubMinimumLengthNoise() {
         // Single-char or punctuation-only selections are noise (matches EPUB <2).
+        // NOTE: this also drops the valid English words "I"/"a" — accepted to
+        // stay consistent with EPUB's `length < 2`; do not "fix" one-sidedly.
         #expect(ReaderWordCapture.sanitizeSelectedWord("I") == nil)
         #expect(ReaderWordCapture.sanitizeSelectedWord("-") == nil)
         #expect(ReaderWordCapture.sanitizeSelectedWord("'") == nil)
