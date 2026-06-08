@@ -14,6 +14,7 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 build_ops_edit_commands = MODULE.build_ops_edit_commands
+build_world_diff_command = MODULE.build_world_diff_command
 build_render_command = MODULE.build_render_command
 build_snapshot_command = MODULE.build_snapshot_command
 load_profile = MODULE.load_profile
@@ -25,6 +26,8 @@ def test_load_profile_and_build_commands():
     assert profile.profile_id == "marketing_demo"
     assert profile.materialize.uid == "marketing-demo"
     assert profile.snapshot.dataset_file.name == "marketing_demo.json"
+    assert profile.materialize.expectation_file is not None
+    assert profile.materialize.expectation_file.name == "marketing_demo_expectation.json"
     assert profile.render.variant == "app-store"
     assert profile.render.target == "promotion"
     assert profile.render.source_mode == "snapshot-derived"
@@ -46,6 +49,16 @@ def test_load_profile_and_build_commands():
     assert "--commit" in commit_commands[0]
     assert commit_commands[1][2] == "user-config-set"
     assert commit_commands[2][2] == "notebook-update"
+
+    verify_command = build_world_diff_command(profile)
+    assert verify_command is not None
+    assert verify_command[:3] == [
+        str(ROOT / "ops" / "devops_kg_safe.sh"),
+        "ops-cli",
+        "world-diff",
+    ]
+    assert verify_command[3] == "marketing-demo"
+    assert verify_command[-1] == "--json"
 
     snapshot_command = build_snapshot_command(profile, reuse_build=True)
     assert snapshot_command[:4] == [
@@ -87,6 +100,9 @@ def test_plan_outputs_machine_readable_json():
     assert payload["action"] == "plan"
     assert payload["profile"] == "marketing_demo"
     assert payload["materialize"]["uid"] == "marketing-demo"
+    assert payload["materialize"]["expectationFile"].endswith("ops/capture_profiles/marketing_demo_expectation.json")
+    assert payload["verify"]["enabled"] is True
+    assert payload["verify"]["command"][1:3] == ["ops-cli", "world-diff"]
     assert payload["snapshot"]["datasetFile"].endswith("ops/fixtures/catalog/marketing_demo.json")
     assert payload["render"]["variant"] == "app-store"
     assert payload["render"]["target"] == "promotion"
@@ -96,6 +112,27 @@ def test_plan_outputs_machine_readable_json():
     assert payload["shots"][0]["appearance"] == "light"
     assert payload["shots"][0]["copy"]["title"]
     assert payload["shots"][0]["copy"]["subtitle"]
+
+
+def test_verify_requires_matching_world(monkeypatch, capsys):
+    profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
+
+    def fake_run(command: list[str]):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"schema": "kg.ops_world_diff.v1", "ok": False, "mismatchCount": 1, "mismatches": [{"path": "cards[x]"}]}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(MODULE, "run_command", fake_run)
+    rc = MODULE.cmd_verify(profile)
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["action"] == "verify"
+    assert payload["status"] == "error"
+    assert payload["verify"]["ok"] is False
 
 
 def test_run_bridges_snapshot_outputs_into_render_inputs(monkeypatch, capsys, tmp_path: Path):
@@ -145,6 +182,7 @@ def test_run_bridges_snapshot_outputs_into_render_inputs(monkeypatch, capsys, tm
 
     assert rc == 0
     assert payload["status"] == "ok"
+    assert payload["verify"]["planned"] is True
     assert payload["bridge"]["shotsJson"].endswith("shots.json")
     assert payload["render"]["sourceMode"] == "snapshot-derived"
     assert "--source-dir" in calls[-1]

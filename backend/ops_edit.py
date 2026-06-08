@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import shutil
 import sqlite3
 import sys
 import tarfile
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -46,16 +48,23 @@ from kg.ops_edit_shared import (
     EditContext,
     EditError,
     assert_safe_uid,
+    backup_world,
     emit,
     list_user_backups,
+    world_backup_root,
     user_dir_for,
     users_file,
     users_lock_file,
 )
+from kg.ops_world_projection import project_user_world
 from kg.ops_shared import data_dir
 from kg.user_store import load_users_from, parse_datetime, save_users_to
 
 _VALID_REVIEW_STATES = ("new", "due", "reviewed")
+_USER_BACKUP_META_DIR = ".ops_meta"
+_USER_BACKUP_RECORD = "user_record.json"
+_USER_BACKUP_EMAIL_INDEX = "email_index.json"
+_WORLD_BACKUP_ROOT = "__kg_world__"
 
 # `card-update --set` 的可寫欄位白名單。`CardStore.update` 本身用 hasattr 放行
 # **任何**模型欄位(含 id / is_deleted / notebook_id / content_nfc_lower /
@@ -318,6 +327,84 @@ def _mutate_users(data_dir_path: Path, mutate) -> dict[str, Any]:
         result = mutate(users)
         save_users_to(uf, users, _passthrough_normalize)
     return result
+
+
+def _restore_user_record_snapshot(data_dir_path: Path, uid: str, *, record: dict[str, Any] | None,
+                                  email_index: dict[str, Any] | None) -> None:
+    """把 per-user backup 內嵌的 users.json snapshot merge 回目前 users.json。
+
+    restore 粒度是「單帳號」，所以不能用備份裡的整份 users.json 覆蓋現況；只回復
+    target uid 的 record 與對應 email index 條目，避免誤傷其他帳號。
+    """
+
+    if record is None and not email_index:
+        return
+
+    def mutate(users: dict[str, Any]) -> dict[str, Any]:
+        if record is not None:
+            users[uid] = record
+        idx = users.setdefault("_email_index", {})
+        if not isinstance(idx, dict):
+            idx = {}
+            users["_email_index"] = idx
+        stale = [email for email, mapped_uid in idx.items() if mapped_uid == uid]
+        for email in stale:
+            idx.pop(email, None)
+        if email_index:
+            for email, mapped_uid in email_index.items():
+                if mapped_uid == uid:
+                    idx[email] = uid
+        return {"restored": uid}
+
+    _mutate_users(data_dir_path, mutate)
+
+
+def _extract_user_backup_members(tar: tarfile.TarFile, uid: str, target_parent: Path) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    members = tar.getmembers()
+    record: dict[str, Any] | None = None
+    email_index: dict[str, Any] | None = None
+    for member in members:
+        name = member.name.lstrip("./")
+        if name == f"{uid}/{_USER_BACKUP_META_DIR}/{_USER_BACKUP_RECORD}":
+            fileobj = tar.extractfile(member)
+            if fileobj is not None:
+                data = json.loads(fileobj.read().decode("utf-8"))
+                record = data if isinstance(data, dict) else None
+            continue
+        if name == f"{uid}/{_USER_BACKUP_META_DIR}/{_USER_BACKUP_EMAIL_INDEX}":
+            fileobj = tar.extractfile(member)
+            if fileobj is not None:
+                data = json.loads(fileobj.read().decode("utf-8"))
+                email_index = data if isinstance(data, dict) else None
+            continue
+        if f"/{_USER_BACKUP_META_DIR}/" in name:
+            continue
+        tar.extract(member, path=target_parent, filter="data")
+    return record, email_index
+
+
+def _world_members(data_dir_path: Path) -> list[Path]:
+    excluded = {world_backup_root(data_dir_path).name, "_ops_backups", "_ops_edit_audit.jsonl", "users.json.lock"}
+    return [p for p in sorted(Path(data_dir_path).iterdir()) if p.name not in excluded]
+
+
+def _replace_world_from_snapshot(data_dir_path: Path, snapshot_root: Path) -> list[str]:
+    removed: list[str] = []
+    for existing in _world_members(data_dir_path):
+        removed.append(existing.name)
+        if existing.is_dir():
+            shutil.rmtree(existing)
+        else:
+            existing.unlink()
+    restored: list[str] = []
+    for item in sorted(snapshot_root.iterdir()):
+        dest = Path(data_dir_path) / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+        restored.append(item.name)
+    return restored
 
 
 # ── 子指令 ─────────────────────────────────────────────────
@@ -872,16 +959,28 @@ def cmd_link_add(args: argparse.Namespace) -> int:
         # 既有,讓 result 顯式標 idempotent,operator 才不會誤以為改值生效(dogfood C8;
         # 要改既有用 link-update)。
         pre_existing = graph.find_link_between(from_card.id, to_card.id)
-        link = graph.add_link(
-            from_id=from_card.id, to_id=to_card.id,
-            kind=LinkKind(args.kind), confidence=args.confidence, reason=args.reason,
-            source="ops",
-        )
+        if pre_existing is not None and args.if_exists == "update":
+            link = graph.update_link(
+                pre_existing.id,
+                source="ops",
+                kind=LinkKind(args.kind),
+                confidence=args.confidence,
+                reason=args.reason,
+            )
+        else:
+            link = graph.add_link(
+                from_id=from_card.id, to_id=to_card.id,
+                kind=LinkKind(args.kind), confidence=args.confidence, reason=args.reason,
+                source="ops",
+            )
         state["link_id"] = link.id
         is_idem = pre_existing is not None and pre_existing.id == link.id
+        semantic = "updated-existing" if pre_existing is not None and args.if_exists == "update" else "kept-existing"
         return {"link": {"id": link.id, "from": from_card.content, "to": to_card.content,
-                         "kind": str(link.kind), "confidence": link.confidence},
-                "idempotent": is_idem}
+                         "kind": str(link.kind), "confidence": link.confidence, "reason": link.reason},
+                "idempotent": is_idem,
+                "if_exists": args.if_exists,
+                "existing_semantics": semantic if pre_existing is not None else "created-new"}
 
     def verify_fn() -> dict[str, Any]:
         # 讀**磁碟** JSON 驗證這條 link 落盤,而非讀快取實例的記憶體(dogfood C1)。
@@ -1199,10 +1298,12 @@ def cmd_restore(args: argparse.Namespace) -> int:
             f"{{{args.uid!r}}};拒絕還原(避免消滅 target user_dir)"
         )
     db_files = [n for n in names if n.endswith(".db")]
-    graph_files = [n for n in names if n.endswith(".json")]
+    graph_files = [n for n in names if n.endswith(".json") and f"/{_USER_BACKUP_META_DIR}/" not in n]
+    has_record_snapshot = f"{args.uid}/{_USER_BACKUP_META_DIR}/{_USER_BACKUP_RECORD}" in names
     plan = {"restore_from": str(backup_path), "target_dir": str(ctx.user_dir),
             "available_backups": len(backups), "total_members": len(names),
             "db_files": len(db_files), "graph_files": len(graph_files),
+            "has_record_snapshot": has_record_snapshot,
             "sample_members": names[:10]}
 
     def apply_fn() -> dict[str, Any]:
@@ -1210,11 +1311,10 @@ def cmd_restore(args: argparse.Namespace) -> int:
         # 也能再 restore 回來。先清掉現狀再解壓,避免新舊檔殘留混雜。
         if ctx.user_dir.exists():
             shutil.rmtree(ctx.user_dir)
-        # tar 內 arcname=uid,解壓到 users/ 還原成 users/<uid>/。
-        # filter='data' 擋絕對路徑 / .. 逃逸(備份雖自產,仍守一道)。
         with tarfile.open(backup_path) as tar:
-            tar.extractall(ctx.user_dir.parent, filter="data")
-        return {"restored_from": str(backup_path)}
+            record, email_index = _extract_user_backup_members(tar, args.uid, ctx.user_dir.parent)
+        _restore_user_record_snapshot(dd, args.uid, record=record, email_index=email_index)
+        return {"restored_from": str(backup_path), "restored_users_record": record is not None}
 
     def verify_fn() -> dict[str, Any]:
         # 放寬:早期快照(user-create 後、首次 card 操作前)只含 notebooks.db、無
@@ -1546,6 +1646,22 @@ def _count_review_events(events_db: Path) -> int:
         store.close()
 
 
+def _clone_source_fingerprint(src_dir: Path) -> str:
+    """對 clone-demo 實際複製的 vocab 層做穩定指紋，讓 scenario 可 pin 來源狀態。"""
+    sqlite_files, other_files = _clone_source_files(src_dir)
+    digest = hashlib.sha256()
+    for path in [*sqlite_files, *other_files]:
+        digest.update(path.name.encode("utf-8"))
+        digest.update(b"\0")
+        with open(path, "rb") as fh:
+            while True:
+                chunk = fh.read(65536)
+                if not chunk:
+                    break
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
 def cmd_clone_demo(args: argparse.Namespace) -> int:
     """高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history。"""
     dd = data_dir()
@@ -1564,10 +1680,17 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
 
     states = _read_card_review_states(src_dir / "cards.db")
     sqlite_files, other_files = _clone_source_files(src_dir)
+    source_fingerprint = _clone_source_fingerprint(src_dir)
+    if args.expect_source_fingerprint and args.expect_source_fingerprint != source_fingerprint:
+        raise EditError(
+            f"source fingerprint mismatch: expected {args.expect_source_fingerprint}, "
+            f"got {source_fingerprint}"
+        )
     source_links = _count_graph_links(src_dir)
     plan = {
         "source_uid": src_uid,
         "target_uid": args.target_uid,
+        "source_fingerprint": source_fingerprint,
         "source_active_cards": _count_active_cards(src_dir / "cards.db"),
         "source_links": source_links,
         "synthesized_events": sum(s.review_count for s in states),
@@ -1614,6 +1737,7 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
             "cloned_files": [p.name for p in other_files],
             "removed_target_files": removed,
             "review_events_written": events_written,
+            "source_fingerprint": source_fingerprint,
         }
 
     def verify_fn() -> dict[str, Any]:
@@ -1646,6 +1770,118 @@ def cmd_clone_demo(args: argparse.Namespace) -> int:
         }
 
     return ctx.run(action="clone-demo", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
+
+def _list_world_backups(dd: Path) -> list[dict[str, Any]]:
+    root = world_backup_root(dd)
+    if not root.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for p in sorted(root.glob("*.tar.gz"), reverse=True):
+        st = p.stat()
+        out.append({
+            "path": str(p),
+            "size": st.st_size,
+            "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(),
+        })
+    return out
+
+
+def cmd_world_snapshot(args: argparse.Namespace) -> int:
+    dd = data_dir()
+    members = [p.name for p in _world_members(dd)]
+    plan = {
+        "label": args.label,
+        "members": members,
+        "member_count": len(members),
+        "backup_root": str(world_backup_root(dd)),
+    }
+    if not args.commit:
+        emit(
+            {
+                "mode": "dry-run",
+                "action": "world-snapshot",
+                "plan": plan,
+                "committed": False,
+                "hint": "加 --commit 才會真正建立 world snapshot",
+            },
+            json_mode=args.json,
+        )
+        return 0
+    backup = backup_world(dd, label=args.label)
+    emit(
+        {
+            "mode": "commit",
+            "action": "world-snapshot",
+            "plan": plan,
+            "result": {"snapshot": str(backup)},
+            "committed": True,
+        },
+        json_mode=args.json,
+    )
+    return 0
+
+
+def cmd_world_restore(args: argparse.Namespace) -> int:
+    dd = data_dir()
+    snapshots = _list_world_backups(dd)
+    if args.snapshot:
+        snapshot_path = Path(args.snapshot)
+        if not snapshot_path.exists():
+            raise EditError(f"指定的 world snapshot 不存在: {snapshot_path}")
+    else:
+        if not snapshots:
+            raise EditError("無 world snapshot 可還原")
+        snapshot_path = Path(snapshots[0]["path"])
+
+    with tarfile.open(snapshot_path) as tar:
+        names = tar.getnames()
+    top_dirs = {n.split("/")[0] for n in names if n and not n.startswith("/")}
+    if top_dirs != {_WORLD_BACKUP_ROOT}:
+        raise EditError(
+            f"world snapshot root 不符: top={sorted(top_dirs)}, 預期僅 {{{_WORLD_BACKUP_ROOT!r}}}"
+        )
+    plan = {
+        "restore_from": str(snapshot_path),
+        "target_data_dir": str(dd),
+        "available_snapshots": len(snapshots),
+        "total_members": len(names),
+    }
+    if not args.commit:
+        emit(
+            {
+                "mode": "dry-run",
+                "action": "world-restore",
+                "plan": plan,
+                "committed": False,
+                "hint": "加 --commit 才會真正覆蓋整個 data_dir world",
+            },
+            json_mode=args.json,
+        )
+        return 0
+
+    pre_restore = backup_world(dd, label="pre-world-restore")
+    with tempfile.TemporaryDirectory(prefix="kg-world-restore-") as tmp:
+        tmp_root = Path(tmp)
+        with tarfile.open(snapshot_path) as tar:
+            tar.extractall(tmp_root, filter="data")
+        restored = _replace_world_from_snapshot(dd, tmp_root / _WORLD_BACKUP_ROOT)
+    emit(
+        {
+            "mode": "commit",
+            "action": "world-restore",
+            "plan": plan,
+            "result": {
+                "restored_from": str(snapshot_path),
+                "pre_restore_backup": str(pre_restore),
+                "restored_members": restored,
+            },
+            "verified": {"ok": users_file(dd).exists() and (dd / "users").exists()},
+            "committed": True,
+        },
+        json_mode=args.json,
+    )
+    return 0
 
 
 # ── argparse ───────────────────────────────────────────────
@@ -1740,6 +1976,8 @@ def main() -> None:
     p.add_argument("--confidence", type=float, required=True)
     p.add_argument("--reason", required=True)
     p.add_argument("--notebook", default="default")
+    p.add_argument("--if-exists", choices=["keep", "update"], default="keep",
+                   help="既有 pair 存在時：keep=維持既有值(預設)；update=改寫 confidence/kind/reason")
     p.set_defaults(func=cmd_link_add)
 
     p = sub.add_parser("link-delete", parents=[jp, cp], help="硬刪一條連結")
@@ -1757,7 +1995,19 @@ def main() -> None:
                        help="高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history")
     p.add_argument("source_uid", help="來源帳號 uid(讀取,不變更)")
     p.add_argument("target_uid", help="目標 demo 帳號 uid(覆蓋 vocab 層;identity 不動)")
+    p.add_argument("--expect-source-fingerprint",
+                   help="要求來源 vocab 層指紋相符，避免來源漂移導致 clone 結果改變")
     p.set_defaults(func=cmd_clone_demo)
+
+    p = sub.add_parser("world-snapshot", parents=[jp, cp],
+                       help="建立整個 data_dir world snapshot（users.json + users/* + 根目錄 DB）")
+    p.add_argument("--label", default="world")
+    p.set_defaults(func=cmd_world_snapshot)
+
+    p = sub.add_parser("world-restore", parents=[jp, cp],
+                       help="從 world snapshot 還原整個 data_dir")
+    p.add_argument("--snapshot", help="指定 snapshot tar.gz（預設取最新）")
+    p.set_defaults(func=cmd_world_restore)
 
     p = sub.add_parser("list-backups", parents=[jp], help="列出某 uid 的自動備份(最新在前)")
     p.add_argument("uid")

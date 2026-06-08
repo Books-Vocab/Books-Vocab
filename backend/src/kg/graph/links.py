@@ -77,6 +77,7 @@ class _LinksMixin:
         self._flush_links(snapshot)
         self._emit_graph_event(
             "link_added", link_id=link.id, from_id=from_id, to_id=to_id,
+            links_snapshot=snapshot,
             kind=str(kind), source=source, confidence_before=None,
             confidence_after=confidence, status_before=None, status_after="active",
             reason=reason,
@@ -120,7 +121,7 @@ class _LinksMixin:
                     reason=lk.reason,
                 )
                 for lk in created
-            ])
+            ], links_snapshot=snapshot)
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
@@ -208,6 +209,7 @@ class _LinksMixin:
         self._flush_links(snapshot)
         self._emit_graph_event(
             "link_updated", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            links_snapshot=snapshot,
             source=source, confidence_before=conf_before, confidence_after=conf_after,
             status_before=status_before, status_after=status_after, reason=reason_after,
         )
@@ -226,6 +228,7 @@ class _LinksMixin:
         self._flush_links(snapshot)
         self._emit_graph_event(
             "link_hidden", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            links_snapshot=snapshot,
             source=source, confidence_before=conf, confidence_after=conf,
             status_before=status_before, status_after="hidden",
         )
@@ -243,6 +246,7 @@ class _LinksMixin:
         self._flush_links(snapshot)
         self._emit_graph_event(
             "link_unhidden", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            links_snapshot=snapshot,
             source=source, confidence_before=conf, confidence_after=conf,
             status_before=status_before, status_after="active",
         )
@@ -268,6 +272,7 @@ class _LinksMixin:
         self._flush_blocked(blocked_snapshot)
         self._emit_graph_event(
             "link_deleted", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            links_snapshot=links_snapshot,
             source=source, confidence_before=conf, confidence_after=None,
             status_before=status_before, status_after=None,
         )

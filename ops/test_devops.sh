@@ -242,6 +242,69 @@ grep -qE '(^|[[:space:]])ssh([[:space:]]|$)|run_remote\(\)' "$STATUS_ALL" \
   && fail_t "status_all still has raw ssh/run_remote bypass" \
   || ok "status_all has no raw ssh/run_remote bypass"
 
+# ── 12. typed read-only debug surfaces（縮 raw run surface）──────────────────
+section "Typed read-only debug surfaces"
+SAFE_KG="$WORKSPACE/ops/devops_kg_safe.sh"
+grep -q 'caddy-status' "$SAFE_KG" && grep -q 'caddyfile' "$SAFE_KG" \
+  && grep -q 'docker-ps' "$SAFE_KG" && grep -q 'docker-logs' "$SAFE_KG" \
+  && grep -q 'disk-usage' "$SAFE_KG" && grep -q 'memory-usage' "$SAFE_KG" \
+  && grep -q 'docker-stats' "$SAFE_KG" \
+  && ok "safe wrapper exposes typed debug commands" \
+  || fail_t "safe wrapper missing typed debug commands"
+
+STUB_BASE="$(mktemp)"
+cat > "$STUB_BASE" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*"
+STUBEOF
+chmod +x "$STUB_BASE"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" caddy-status 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run sudo systemctl status caddy' ]] \
+  && ok "caddy-status maps to fixed readonly command" \
+  || fail_t "caddy-status mapping drifted: $typed_out"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" caddyfile 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run cat /etc/caddy/Caddyfile' ]] \
+  && ok "caddyfile maps to fixed readonly command" \
+  || fail_t "caddyfile mapping drifted: $typed_out"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" docker-ps 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run docker ps' ]] \
+  && ok "docker-ps maps to fixed readonly command" \
+  || fail_t "docker-ps mapping drifted: $typed_out"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" docker-logs 25 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run docker logs knowledge-graph-api -n 25' ]] \
+  && ok "docker-logs maps to container log tail" \
+  || fail_t "docker-logs mapping drifted: $typed_out"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" disk-usage 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run df -h' ]] \
+  && ok "disk-usage maps to df -h" \
+  || fail_t "disk-usage mapping drifted: $typed_out"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" memory-usage 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run free -m' ]] \
+  && ok "memory-usage maps to free -m" \
+  || fail_t "memory-usage mapping drifted: $typed_out"
+
+typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" docker-stats 2>/dev/null | tail -1)
+[[ "$typed_out" == 'run docker stats --no-stream' ]] \
+  && ok "docker-stats maps to non-streaming stats" \
+  || fail_t "docker-stats mapping drifted: $typed_out"
+
+typed_out=$(bash "$SAFE_KG" run "docker ps" 2>&1 || true)
+echo "$typed_out" | grep -q 'use typed command: docker-ps' \
+  && ok "raw docker ps redirected to typed command" \
+  || fail_t "raw docker ps was not redirected"
+
+typed_out=$(bash "$SAFE_KG" run "sudo systemctl status caddy" 2>&1 || true)
+echo "$typed_out" | grep -q 'use typed command: caddy-status' \
+  && ok "raw caddy status redirected to typed command" \
+  || fail_t "raw caddy status was not redirected"
+rm -f "$STUB_BASE"
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
