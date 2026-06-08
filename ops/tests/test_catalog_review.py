@@ -172,6 +172,54 @@ def test_state_facet_classifies_cjk_and_english_edge_labels():
     assert f("Logged in") == "default"
 
 
+def test_lane_and_feature_classification_corrections():
+    """Presenter (dev harness) must never be read as a shippable screen, and the
+    feature needles must claim the surfaces that legitimately belong to a feature
+    while leaving genuinely cross-cutting ones (design tokens) in Misc."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+
+    # "Today Review Presenter" embeds the "Today Review" screen token but is a
+    # presenter harness — Presenter must win, landing it in engineering-only.
+    assert taxonomy.classify_asset_kind("Today Review Presenter", "Today Review") == "component"
+    tax = taxonomy.build_taxonomy("Today Review Presenter", "Default", profile)
+    assert tax["surfaceRole"] == "presenter"
+    assert taxonomy.classify_lane("presenter", "review") == "engineering-only"
+
+    # feature needles claim the surfaces that were falling into Misc
+    assert taxonomy.classify_feature("Translation Vocab Presenter", profile) == "Vocabulary"
+    assert taxonomy.classify_feature("KG Empty State", profile) == "Vocabulary"
+    assert taxonomy.classify_feature("Delete Account Sheet", profile) == "Settings"
+    # genuinely cross-cutting categories stay Misc (honest, not forced)
+    assert taxonomy.classify_feature("Design Tokens", profile) == "Misc"
+
+
+def test_list_surface_default_populated_equivalence():
+    """A list/container feature-surface whose resting state IS 'populated' has no
+    separate idle 'default' shot — default must not be reported as a gap. But a
+    surface that does ship a default shot still expects the full set."""
+    taxonomy = sys.modules["catalog_review_taxonomy"]
+
+    list_items = [
+        _surface_item("Bookshelf View", "feature-surface", "feature-surface", "c1", "populated"),
+        _surface_item("Bookshelf View", "feature-surface", "feature-surface", "c2", "empty"),
+    ]
+    surf = {s["surface"]: s for s in taxonomy.build_surface_index(list_items)}["Bookshelf View"]
+    assert "default" not in surf["expectedFacets"]   # populated covers the idle state
+    assert "default" not in surf["missingFacets"]
+
+    # Synthetic name: the real "Stats View" is populated-only in production, so a
+    # neutral label avoids implying production behaviour that's actually the
+    # opposite. A screen that DOES ship a distinct idle default keeps the full set.
+    with_default = [
+        _surface_item("Param Form View", "feature-surface", "feature-surface", "d1", "default"),
+        _surface_item("Param Form View", "feature-surface", "feature-surface", "d2", "populated"),
+    ]
+    surf2 = {s["surface"]: s for s in taxonomy.build_surface_index(with_default)}["Param Form View"]
+    assert "default" in surf2["expectedFacets"]
+    assert "default" not in surf2["missingFacets"]
+
+
 def test_review_state_preserves_existing_annotations():
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     items = [
