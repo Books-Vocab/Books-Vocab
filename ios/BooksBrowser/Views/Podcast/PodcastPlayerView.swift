@@ -580,15 +580,23 @@ struct PodcastPlayerView: View {
         to new: String?,
         vm: PodcastPlayerViewModel
     ) {
-        guard autoPauseOnLookup else { return }
-        if old == nil, new != nil {
-            if vm.state == .playing {
-                vm.pause()
-                autoPausedByTranslation = true
-            }
-        } else if new == nil, autoPausedByTranslation {
+        switch PodcastTranslationPausePolicy.action(
+            autoPauseEnabled: autoPauseOnLookup,
+            wasPanelVisible: old != nil,
+            isPanelVisible: new != nil,
+            playerState: vm.state,
+            autoPausedByTranslation: autoPausedByTranslation
+        ) {
+        case .none:
+            return
+        case .pauseAndMarkAutoPaused:
+            vm.pause()
+            autoPausedByTranslation = true
+        case .resumeAndClearAutoPaused:
             autoPausedByTranslation = false
-            if vm.state == .paused { vm.play() }
+            vm.play()
+        case .clearAutoPaused:
+            autoPausedByTranslation = false
         }
     }
 
