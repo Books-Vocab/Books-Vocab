@@ -46,6 +46,20 @@ def write_manifest(root: Path, name: str, *, total_images: int, continue_count: 
     )
 
 
+def test_current_payload_exposes_review_and_canvas_paths(tmp_path: Path, monkeypatch, capsys):
+    write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
+    monkeypatch.setattr(entry_module, "SNAPSHOT_ROOT", tmp_path)
+    monkeypatch.setattr(entry_module, "inspect_listener", lambda port: None)
+    import argparse
+    rc = entry_module.cmd_current(argparse.Namespace())
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    blessed = payload["blessed"]
+    assert blessed["reviewHtml"].endswith("review.html")
+    assert blessed["canvasHtml"].endswith("catalog.html")
+    assert blessed["reviewHtml"].rsplit("/", 1)[0] == blessed["canvasHtml"].rsplit("/", 1)[0]
+
+
 def test_choose_blessed_artifact_prefers_latest_usable_artifact(tmp_path: Path):
     write_manifest(tmp_path, "catalog-full-20260608-010944", total_images=1000, continue_count=290, weak_count=436)
     write_manifest(tmp_path, "catalog-full-20260608-020244", total_images=996, continue_count=290, weak_count=436)
