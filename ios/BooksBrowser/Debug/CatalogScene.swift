@@ -176,7 +176,7 @@ struct CatalogScene: View {
                 register: NotebookFilterChipScenarios.register
             ),
             .init(id: "notebook_review_action_bar", surfaces: [eng("Notebook Review Action Bar", .notebook)], register: NotebookReviewActionBarScenarios.register),
-            .init(id: "selection_toolbar", surfaces: [eng("Selection Toolbar", .reader)], register: SelectionToolbarScenarios.register),
+            .init(id: "selection_toolbar", surfaces: [block("Selection Toolbar", .vocabulary)], register: SelectionToolbarScenarios.register),
             .init(id: "podcast_hero", surfaces: [block("Podcast Hero", .podcast)], register: PodcastSeriesHeroScenarios.register),
             .init(id: "podcast_shelf", surfaces: [block("Podcast Shelf", .podcast)], register: PodcastShelfScenarios.register),
             .init(id: "podcast_settings_popover", surfaces: [overlay("Podcast Settings Popover", .podcast)], register: PodcastSettingsPopoverScenarios.register),
@@ -199,6 +199,8 @@ struct CatalogScene: View {
                 surfaces: [
                     block("Vocab Shell · Metric Hero Card", .vocabulary),
                     block("Vocab Shell · Sort Pill", .vocabulary),
+                    block("Vocab Shell · Tab Selector", .vocabulary),
+                    block("Vocab Shell · Review CTA Pill", .vocabulary),
                 ],
                 register: VocabShellComponentsScenarios.register
             ),
