@@ -109,6 +109,18 @@ def wait_for_port(port: int, *, timeout_seconds: float = 3.0) -> bool:
     return False
 
 
+def wait_for_listener_directory(port: int, expected_directory: str, *, timeout_seconds: float = 3.0) -> dict | None:
+    deadline = timeout_seconds
+    step = 0.05
+    waited = 0.0
+    while waited < deadline:
+        listener = inspect_listener(port)
+        if listener and listener["directory"] == expected_directory:
+            return listener
+        waited += step
+    return None
+
+
 def cmd_current(_: argparse.Namespace) -> int:
     artifacts = collect_review_artifacts()
     blessed = choose_blessed_artifact(artifacts)
@@ -190,12 +202,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
         start_new_session=True,
         cwd=ROOT,
     )
-    if not wait_for_port(args.port):
-        raise SystemExit(f"Failed to start review server on port {args.port}")
+    listener = wait_for_listener_directory(args.port, str(blessed["root"]))
+    if listener is None:
+        raise SystemExit(f"Failed to start blessed review server on port {args.port}")
     payload = {
         "status": "ok",
         "port": args.port,
-        "pid": process.pid,
+        "pid": listener["pid"],
+        "spawnedPid": process.pid,
         "replacedPid": replaced_pid,
         "blessed": {
             "name": blessed["name"],
