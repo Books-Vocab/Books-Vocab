@@ -16,6 +16,20 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | port | `8000` |
 | commit prefix | `ios:` / `api:` / `ops:` / `docs:` |
 
+## ops 資料工具（always-on，不靠 skill 觸發）
+
+凡需要**查詢或修改**用戶資料、單字庫、額度、config、graph、cost，一律用 CLI，**禁止讀 ops/*.py 原始碼後自行拼 SQL 或直接操作檔案**。
+
+```
+# 唯讀查詢
+uv run ops/ops_cli.py <subcommand> [args]
+
+# 寫入（dry-run 預設，--commit 才落地）
+uv run ops/ops_edit.py <subcommand> [args]
+```
+
+不確定有哪些子指令 → `uv run ops/ops_cli.py --help` / `uv run ops/ops_edit.py --help`。完整子指令表與安全契約在 `devops` skill 內。
+
 ## 對話啟動流程
 
 1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合。
