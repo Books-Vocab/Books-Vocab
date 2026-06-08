@@ -336,6 +336,103 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     assert listed_by_note_payload["items"][0]["assetID"] == asset_id
 
 
+def test_catalog_review_cli_tree_node_url_navigate_manifest(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    light_dir = source_root / "iPhone 15 Pro portrait" / "Reader_·_Translation"
+    light_dir.mkdir(parents=True)
+    (light_dir / "Default.png").write_bytes(b"png")
+    (light_dir / "Loading.png").write_bytes(b"png")
+    dark_dir = source_root / "iPhone 15 Pro portrait (dark)" / "Reader_·_Translation"
+    dark_dir.mkdir(parents=True)
+    (dark_dir / "Default.png").write_bytes(b"png")
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+
+    tree_root = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "tree", "--depth", "1"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert tree_root.returncode == 0, tree_root.stderr
+    tree_payload = json.loads(tree_root.stdout)
+    assert tree_payload["status"] == "ok"
+    assert tree_payload["tree"]["kind"] == "root"
+    feature_labels = [child["label"] for child in tree_payload["tree"]["children"]]
+    assert "Reader" in feature_labels
+    reader_child = next(child for child in tree_payload["tree"]["children"] if child["label"] == "Reader")
+    assert "childCount" in reader_child
+    assert "children" not in reader_child
+
+    tree_reader = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "tree", "--node", "reader"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert tree_reader.returncode == 0, tree_reader.stderr
+    reader_tree = json.loads(tree_reader.stdout)
+    assert reader_tree["tree"]["nodePath"] == "reader"
+    state_nodes = reader_tree["tree"]["children"][0]["children"]
+    assert any(state["label"] == "Translation" for state in state_nodes)
+
+    leaf_path = state_nodes[0]["children"][0]["nodePath"]
+
+    node_cmd = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "node", leaf_path],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert node_cmd.returncode == 0, node_cmd.stderr
+    node_payload = json.loads(node_cmd.stdout)
+    assert node_payload["status"] == "ok"
+    assert node_payload["node"]["kind"] == "asset"
+    assert node_payload["node"]["relPath"].endswith(".png")
+    assert node_payload["childCount"] == 0
+    assert node_payload["ancestors"][0] == "reader"
+
+    missing = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "node", "no/such/path"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert missing.returncode == 1
+    assert json.loads(missing.stdout)["error"] == "node-not-found"
+
+    url_cmd = subprocess.run(
+        [sys.executable, str(REVIEW_CLI), str(output_root), "node-url", leaf_path, "--base", "http://127.0.0.1:8787/catalog.html"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert url_cmd.returncode == 0, url_cmd.stderr
+    url_payload = json.loads(url_cmd.stdout)
+    assert url_payload["url"] == f"http://127.0.0.1:8787/catalog.html#node={leaf_path}"
+
+
 def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Path):
     source_root = tmp_path / "snapshots"
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
