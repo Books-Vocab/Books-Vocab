@@ -33,8 +33,10 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 def _md_system_block(filename: str) -> str:
     txt = (_PROMPTS_DIR / filename).read_text(encoding="utf-8")
+    assert "## System" in txt, f"{filename}: missing '## System' section"
+    assert "## User" in txt, f"{filename}: missing '## User' section"
     m = re.search(r"## System\n(.*?)\n## User", txt, re.DOTALL)
-    assert m, f"{filename}: no '## System' / '## User' sections found"
+    assert m, f"{filename}: '## System' must appear before '## User'"
     return m.group(1).strip()
 
 

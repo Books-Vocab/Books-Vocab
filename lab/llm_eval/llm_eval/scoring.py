@@ -218,7 +218,7 @@ _PROMPT_SCORERS: dict[str, list[Scorer]] = {
         JudgeBatchScorer(),
     ],
     "judge_manual": [
-        JsonSchemaScorer(["link", "confidence", "reason"]),
+        JsonSchemaScorer(["link", "reason"]),
     ],
     "enrich": [
         JsonSchemaScorer(["word", "pos", "note", "collocations", "meaning_fix"], allow_list=True),
