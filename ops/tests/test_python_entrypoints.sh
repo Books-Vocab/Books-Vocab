@@ -75,6 +75,23 @@ else
   fail_t "executable ops/*.py without uv shebang:\n$bad_exec"
 fi
 
+section "Executable Python entrypoints avoid bare uv python"
+bad_uv_python="$(
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm +111 -print \
+    | sort \
+    | while IFS= read -r py; do
+        first="$(head -1 "$py")"
+        if [[ "$first" == '#!'*'uv run python'* ]]; then
+          printf '%s\t%s\n' "$py" "$first"
+        fi
+      done
+)"
+if [[ -z "$bad_uv_python" ]]; then
+  ok "no executable ops/*.py uses bare uv run python"
+else
+  fail_t "executable ops/*.py still uses bare uv run python:\n$bad_uv_python"
+fi
+
 section "Shebang Python tools are executable"
 not_executable="$(
   find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -print \
