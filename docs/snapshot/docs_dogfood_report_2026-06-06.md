@@ -6,9 +6,11 @@ scope:
   - docs/
   - ops/docs_impact.py
   - ops/docs_lint.sh
-verified_against: 219e0f94
+verified_against: e237d84f
 -->
 # Docs Dogfood Report — 2026-06-06
+
+> 歷史快照:本報告保留 2026-06-06 dogfood 結果作為控制面演進記錄；後續 registry / gate 數量若有成長,不回寫覆蓋當日觀測值。
 
 ## Scope
 
