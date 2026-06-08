@@ -134,6 +134,24 @@ struct ReaderTranslationHandlerTests {
         #expect(handler.normalizeWord("oﬃce") == "office")
     }
 
+    // Capture-normalize contract: trailing sentence punctuation `.,;:!?` is
+    // stripped at selection time (podcast UITextView / PDF PDFKit both keep it
+    // raw), matching backend `_clean_content`. Word-internal punctuation and
+    // letter case are preserved; leading punctuation is left untouched.
+    @Test func normalizeWord_stripsTrailingSentencePunctuation() {
+        let handler = makeHandler()
+        #expect(handler.normalizeWord("code.") == "code")
+        #expect(handler.normalizeWord("end?!") == "end")
+        #expect(handler.normalizeWord("really,") == "really")
+        #expect(handler.normalizeWord("wait;") == "wait")
+        #expect(handler.normalizeWord("note:") == "note")
+        #expect(handler.normalizeWord("  spaced.  ") == "spaced", "trailing punctuation strip composes with whitespace trim")
+        // Preserved: word-internal punctuation, case, leading punctuation.
+        #expect(handler.normalizeWord("don't") == "don't")
+        #expect(handler.normalizeWord("well-known,") == "well-known")
+        #expect(handler.normalizeWord("Code.") == "Code", "case is NOT folded — lowercasing is backend dedup's job")
+    }
+
     // MARK: - autoSaveToVocabulary
 
     @Test func autoSaveToVocabulary_skipsSaveWhenEntryExistsAndNotDeleted() {
