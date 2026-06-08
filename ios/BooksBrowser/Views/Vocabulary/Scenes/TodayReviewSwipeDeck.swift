@@ -39,6 +39,11 @@ extension TodayReviewPresenter {
                     )
                 } }()
                 reviewCardFront(nextCard.card)
+                    .overlay(alignment: .topTrailing) {
+                        // 與作用中卡片共用 chrome 渲染（裝飾、不可點）— fling 飛出期間
+                        // 背後預覽即帶完整喇叭 / 詳情圖示，完成時 swap 不再 pop。
+                        frontCardChrome(nextCard.card, interactive: false)
+                    }
                     .allowsHitTesting(false)
             }
         }
