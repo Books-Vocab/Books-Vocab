@@ -7,33 +7,6 @@
 import SwiftUI
 import Inject
 
-enum BookshelfPreviewData {
-    @MainActor
-    static var progressCard: BookshelfFixtureRenderModel {
-        BookshelfFixtures.renderModel(for: .progressCard)
-    }
-
-    @MainActor
-    static var placeholderCard: BookshelfFixtureRenderModel {
-        BookshelfFixtures.renderModel(for: .placeholderCard)
-    }
-
-    @MainActor
-    static var emptyLibrary: BookshelfFixtureRenderModel {
-        BookshelfFixtures.renderModel(for: .emptyLibrary)
-    }
-
-    @MainActor
-    static var withBooksLibrary: BookshelfFixtureRenderModel {
-        BookshelfFixtures.renderModel(for: .withBooksLibrary)
-    }
-
-    @MainActor
-    static var loadingOverlay: BookshelfFixtureRenderModel {
-        BookshelfFixtures.renderModel(for: .loadingOverlay)
-    }
-}
-
 #Preview("Bookshelf Card / Progress") {
     AppThemeContainer {
         BookshelfCardFixtureScene(fixtureID: .progressCard)
