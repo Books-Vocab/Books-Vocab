@@ -219,7 +219,8 @@ struct TodayReviewView: View {
             // dismiss does not run it to completion and mutate torn-down state.
             state.cancelBackgroundWork()
 
-            if state.currentIndex < state.queue.count {
+            let completed = state.currentIndex >= state.queue.count
+            if !completed {
                 let durationMs = Int(Date().timeIntervalSince(state.sessionStartTime) * 1000)
                 AppAnalytics.track(.reviewSessionEnded(
                     remembered: state.rememberedCount,
@@ -227,15 +228,28 @@ struct TodayReviewView: View {
                     completed: false,
                     durationMs: durationMs
                 ))
-                state.persistSnapshot()
-            } else {
-                state.clearSnapshot()
             }
 
-            guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
-            Task {
-                await kgService.pushReviewQuietly(container: modelContext.container)
-            }
+            // Single persistence point. The per-flip submit path is store-free (a
+            // per-card SwiftData save merged into the main context and froze the
+            // next-card render); all deferred answers flush here in ONE batched save.
+            // Finalize the crash-recovery snapshot and push to backend ONLY after the
+            // store confirms — a failed flush keeps the snapshot so restore retries.
+            // The flush is a detached background-context save, so this is NOT the
+            // synchronous main-context onDisappear save that trips the teardown trap.
+            let loggedIn = authManager.isLoggedIn && !authManager.isDemoMode
+            let container = modelContext.container
+            let toast = toastCoordinator
+            state.flushPendingAnswers(
+                container: container,
+                reviewSettings: reviewSettingsStore.settings,
+                onFinalize: {
+                    if completed { state.clearSnapshot() } else { state.persistSnapshot() }
+                    guard loggedIn else { return }
+                    Task { await kgService.pushReviewQuietly(container: container) }
+                },
+                onFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
+            )
         }
         #if targetEnvironment(macCatalyst)
         .focusable()
@@ -379,23 +393,19 @@ struct TodayReviewView: View {
 
         case .forgot:
             guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
-            let toast = toastCoordinator
             state.submit(
                 .forgot,
                 container: modelContext.container,
-                reviewSettings: reviewSettingsStore.settings,
-                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
+                reviewSettings: reviewSettingsStore.settings
             )
             return true
 
         case .remembered:
             guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
-            let toast = toastCoordinator
             state.submit(
                 .remembered,
                 container: modelContext.container,
-                reviewSettings: reviewSettingsStore.settings,
-                onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
+                reviewSettings: reviewSettingsStore.settings
             )
             return true
 

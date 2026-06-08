@@ -291,6 +291,11 @@ struct BooksBrowserTests {
         state.submit(.remembered, container: container, reviewSettings: .default)
         state.goPrevious()
         state.submit(.forgot, container: container, reviewSettings: .default)
+        // Persistence is deferred off the per-flip hot path: the per-card submit no
+        // longer writes SwiftData (a per-flip store merge froze the next-card render).
+        // The batched flush (driven by the view's onDisappear in production) is what
+        // reaches the store — and it must stay idempotent: exactly one record per card.
+        state.flushPendingAnswers(container: container, reviewSettings: .default)
         try await Task.sleep(for: .milliseconds(100))
 
         let entry = try context.fetch(FetchDescriptor<VocabularyEntry>()).first { $0.kgCardId == "card-lucid" }

@@ -18,7 +18,12 @@ struct NotebookDetailPresentation: ViewModifier {
     let currentUserID: String?
 
     func body(content: Content) -> some View {
-        content
+        // Phase-1 probe: does THIS modifier value get rebuilt per flip? It is rebuilt
+        // only when the shell (NotebookListView) body re-runs — so `presentation.body`
+        // firing per flip ⇒ shell re-evaluated; not firing while `state.init` still
+        // climbs ⇒ throwaway comes from a path below the cover, not from the shell.
+        let _ = PerfLog.review.mark("presentation.body")
+        return content
             .toastSheet(item: Binding(
                 get: { detailState.selectedEntry },
                 set: { if $0 == nil { detailState.dismiss() } }
@@ -30,6 +35,10 @@ struct NotebookDetailPresentation: ViewModifier {
                 get: { detailState.activeReviewSession },
                 set: { if $0 == nil { detailState.dismiss() } }
             )) { session in
+                // Phase-1 probe: the escaping cover content closure. Re-runs ⇒ the
+                // presented subtree (→ TodayReviewView.init → throwaway state.init) is
+                // rebuilt. Pin its cadence against the fling timeline.
+                let _ = PerfLog.review.mark("cover.content", "buildPhaseView")
                 TodayReviewPhaseView(
                     session: session,
                     allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
