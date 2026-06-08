@@ -123,13 +123,11 @@ struct PodcastPlayerView: View {
         )
     }
 
-    private static let activeNotebookIdKey = "activeNotebookId"
-
     private var vocabularyContext: PodcastVocabularyContext? {
         Self.resolveVocabularyContext(
             episodeId: activeEpisodeId,
             modelContext: modelContext,
-            rawNotebookId: UserDefaults.standard.string(forKey: Self.activeNotebookIdKey) ?? "default",
+            rawNotebookId: ActiveNotebookStore.shared.activeNotebookId,
             toastCoordinator: toastCoordinator,
             vocabulary: allVocabulary
         )
