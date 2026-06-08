@@ -401,11 +401,13 @@ struct PodcastPlayerView: View {
             progressBootstrapCompleted = false
             if let pending {
                 Task { @MainActor in
-                    persistProgress(
+                    progressPersistence.saveSnapshot(
                         currentTime: pending.currentTime,
                         duration: pending.duration,
                         isCompleted: pending.isCompleted,
                         episodeRemoteId: pending.episodeRemoteId,
+                        modelContext: modelContext,
+                        kgService: kgService,
                         reason: .pause
                     )
                 }

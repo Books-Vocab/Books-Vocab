@@ -37,7 +37,31 @@ final class PodcastProgressPersistenceController {
         kgService: any KGServing,
         reason: PodcastProgressPushState.Reason = .pause
     ) {
-        guard Self.shouldPersist(currentTime: viewModel.currentTime, reason: reason) else { return }
+        saveSnapshot(
+            currentTime: viewModel.currentTime,
+            duration: viewModel.duration,
+            isCompleted: (
+                viewModel.state == .ready
+                && viewModel.duration > 0
+                && viewModel.currentTime >= viewModel.duration - 1
+            ),
+            episodeRemoteId: episodeRemoteId,
+            modelContext: modelContext,
+            kgService: kgService,
+            reason: reason
+        )
+    }
+
+    func saveSnapshot(
+        currentTime: TimeInterval,
+        duration: TimeInterval,
+        isCompleted: Bool,
+        episodeRemoteId: String,
+        modelContext: ModelContext,
+        kgService: any KGServing,
+        reason: PodcastProgressPushState.Reason = .pause
+    ) {
+        guard Self.shouldPersist(currentTime: currentTime, reason: reason) else { return }
         let targetId = episodeRemoteId
         let descriptor = FetchDescriptor<PodcastProgress>(
             predicate: #Predicate { $0.episodeRemoteId == targetId },
@@ -57,12 +81,8 @@ final class PodcastProgressPersistenceController {
         }
 
         let now = Date()
-        progress.lastPlayedTime = viewModel.currentTime
-        progress.completed = (
-            viewModel.state == .ready
-            && viewModel.duration > 0
-            && viewModel.currentTime >= viewModel.duration - 1
-        )
+        progress.lastPlayedTime = currentTime
+        progress.completed = isCompleted
         progress.updatedAt = now
         do {
             try modelContext.save()
@@ -71,8 +91,8 @@ final class PodcastProgressPersistenceController {
         }
 
         let shouldPush = pushState.shouldPush(
-            position: viewModel.currentTime,
-            duration: viewModel.duration,
+            position: currentTime,
+            duration: duration,
             now: now,
             reason: reason
         )
@@ -81,8 +101,8 @@ final class PodcastProgressPersistenceController {
         let captured = (
             seriesId: parsed.seriesId,
             episodeNumber: parsed.episodeNumber,
-            positionSec: viewModel.currentTime,
-            durationSec: viewModel.duration,
+            positionSec: currentTime,
+            durationSec: duration,
             updatedAt: now
         )
         let service = PodcastSyncService(kgService: kgService)
