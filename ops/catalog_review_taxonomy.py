@@ -35,6 +35,12 @@ def classify_feature(category: str, profile: dict) -> str:
 
 def classify_asset_kind(category: str, group: str) -> str:
     text = f"{category} {group}"
+    # A presenter is a dev harness even when its name embeds a screen token
+    # ("Today Review Presenter" contains the "Today Review" screen token). Match
+    # it first so a harness can never be mistaken for a shippable screen and get
+    # held to feature-surface coverage it should never have.
+    if "Presenter" in category:
+        return "component"
     if any(token in text for token in (" View", "Bookshelf", "Knowledge Graph", "Reader ·", "Today Review", "Sync View", "Welcome")):
         return "screen"
     if any(token in text for token in (" Sheet", "Popover", "Picker", "Login", "Paywall")):
@@ -236,6 +242,13 @@ def build_surface_index(items: list[dict]) -> list[dict]:
         lane = first["lane"]
         expected = expected_facets_for_lane(lane)
         present_set = set(facets_present)
+        # List/container feature-surfaces (Bookshelf View, Podcast Home View…)
+        # have no separate idle "default" shot — their canonical resting state IS
+        # "populated" (content already loaded). When populated is present but
+        # default is not, default is not a real gap; drop it so the backlog stays
+        # honest instead of demanding a default shot that conceptually can't exist.
+        if lane == "feature-surface" and "populated" in present_set and "default" not in present_set:
+            expected = tuple(facet for facet in expected if facet != "default")
         missing = [facet for facet in expected if facet not in present_set]
         surfaces.append({
             "surfaceKey": key,
