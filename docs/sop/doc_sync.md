@@ -19,7 +19,7 @@ verified_against: e237d84f
 ## 步驟
 
 1. `git show <hash>` / `git diff <range>` 看實際改了什麼。
-2. 先讀 `docs/registry.yml`,必要時跑 `./ops/docs_impact.py --since <base>` 取得 path-hint 候選;再把 diff 對應到 registry 的語意 trigger,用下方**路由表**輔助判斷影響哪些 doc(可能 0 份 → 回報「無需同步」即收工)。impact hint 是提示,不是自動同步命令。
+2. 先讀 `docs/registry.yml`,必要時跑 `./ops/docs_impact.py --since <base>` 取得 path-hint 候選;若要調 registry source hint 精度或追查為何某份 doc 沒出現在提示裡,再補跑 `./ops/docs_impact.py --files <paths...> --explain` 看 `!path` / `!glob` 排除規則是否把 broad match 壓掉。再把 diff 對應到 registry 的語意 trigger,用下方**路由表**輔助判斷影響哪些 doc(可能 0 份 → 回報「無需同步」即收工)。impact hint 是提示,不是自動同步命令。
 3. 每份目標 doc:`grep` 舊命令/欄位/旗標/模組名清單,凡引用到被改掉的舊狀態 → 更新成新狀態。**不臆造**:找不到對應 doc 或拿不準就如實回報,別硬寫。
 4. **reference / contract / policy** 類活文檔:更新內容後把 frontmatter `verified_against` 改成被同步的**main 可達 code commit**(短 hash)。禁止寫只存在於 PR branch 的 ephemeral hash；若 PR 會 squash merge,merge 後用 squash commit hash 補同步,或在 PR 內保持舊 anchor 並明示 post-merge bump。
 5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,並用 `docs_impact.py` 印出 registry impact hints 供 reviewer 檢查；impact hints 第一版 warn-only,不會因既有全 repo doc debt 失敗。
