@@ -125,8 +125,27 @@ extension TodayReviewPresenter {
         let card = currentCard.card
         let answerText = card.reviewMode == .production ? card.word : card.translation
         return ReviewFoldSurface(position: .bottom) {
-            combinedAnswerContent(currentCard, availableHeight: availableHeight)
-                .accessibilityLabel(L10n.format("翻譯：%@", answerText))
+            // Subtraction probe: while the FRONT card is shown the back tree
+            // (CardDocumentView / CardRichTextRenderer / VocabTierLabel /
+            // reviewLinkStrip) is NOT built — only a zero-cost stub holds the
+            // folded slot. Mount is gated by `backContentMounted`, NOT `showsAnswer`:
+            // on reveal it mounts under the opening fold's opacity-0 cover; on
+            // collapse it STAYS mounted until the PaperFoldModifier progress 1→0
+            // finishes, so the fold folds the REAL content (not an empty box).
+            // See TodayReviewPresenter.updateBackContentMount for the falling-edge
+            // defer + generation guard.
+            // stub 用 answerCardHeight 撐 minHeight，與真內容 :191 同源，
+            // 避免折疊→展開時 intrinsic 高度跳動。
+            Group {
+                if backContentMounted {
+                    combinedAnswerContent(currentCard, availableHeight: availableHeight)
+                } else {
+                    let _ = PerfLog.review.mark("back.stub", "w=\(card.word)")
+                    Color.clear
+                        .frame(maxWidth: .infinity, minHeight: answerCardHeight, alignment: .top)
+                }
+            }
+            .accessibilityLabel(L10n.format("翻譯：%@", answerText))
         }
         .overlay(alignment: .top) {
             ReviewFoldChevronPill(action: onCollapseReveal, accessibilityLabel: L10n.string("todayReview.fold.collapse"))
