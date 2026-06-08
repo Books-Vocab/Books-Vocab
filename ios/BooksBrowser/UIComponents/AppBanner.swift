@@ -9,17 +9,30 @@
 import SwiftUI
 
 struct AppBanner: View {
+    enum Tone {
+        case warning
+        case success
+    }
+
     @Environment(\.appTheme) private var appTheme
     let message: String
     var systemImage: String = "wifi.exclamationmark"
+    var tone: Tone = .warning
     var onRetry: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
+
+    private var toneColor: Color {
+        switch tone {
+        case .warning: return appTheme.palette.warning
+        case .success: return appTheme.palette.success
+        }
+    }
 
     var body: some View {
         HStack(spacing: AppBannerMetrics.spacing) {
             Image(systemName: systemImage)
                 .font(AppFonts.caption(weight: .semibold))
-                .foregroundStyle(appTheme.palette.warning)
+                .foregroundStyle(toneColor)
 
             Text(message.localized)
                 .font(AppFonts.caption())
@@ -48,11 +61,11 @@ struct AppBanner: View {
         }
         .padding(.horizontal, AppBannerMetrics.horizontalPadding)
         .padding(.vertical, AppBannerMetrics.verticalPadding)
-        .background(appTheme.palette.warning.opacity(AppBannerMetrics.backgroundOpacity))
+        .background(toneColor.opacity(AppBannerMetrics.backgroundOpacity))
         .overlay(
             Rectangle()
                 .frame(height: AppMetrics.dividerStandard)
-                .foregroundStyle(appTheme.palette.warning.opacity(AppBannerMetrics.borderOpacity)),
+                .foregroundStyle(toneColor.opacity(AppBannerMetrics.borderOpacity)),
             alignment: .bottom
         )
         .transition(.bannerReveal)
