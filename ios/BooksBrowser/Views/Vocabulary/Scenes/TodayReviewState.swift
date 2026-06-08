@@ -371,11 +371,15 @@ final class TodayReviewState {
 
     // MARK: - Submit (Scoring only — persistence deferred to session end)
 
+    /// Score the current card and advance. Persistence to SwiftData is DEFERRED to
+    /// session end / dismiss (`flushPendingAnswers`): a per-flip store write merges
+    /// into the main `ModelContext` and freezes the next-card render ~130ms. The
+    /// per-flip cost here is only the UserDefaults snapshot, which is store-free and
+    /// is the crash-recovery source of truth until the deferred flush confirms.
     func submit(
         _ feedback: ReviewFeedback,
         container: ModelContainer,
-        reviewSettings: ReviewSettings,
-        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
+        reviewSettings: ReviewSettings
     ) {
         guard currentEntry != nil else { return }
         if scoring.hasAnswer(at: currentIndex) {
@@ -392,30 +396,45 @@ final class TodayReviewState {
             totalCards: queue.count
         ))
 
-        let flushedIndex = currentIndex
-        PerfLog.review.measure("submit.flush") {
-            ReviewSessionPersistence.flushSubmittedAnswer(
-                at: flushedIndex,
-                queuePersistenceIDs: queuePersistenceIDs,
-                queueBaselines: queueBaselines,
-                submittedAnswers: scoring.submittedAnswers,
-                container: container,
-                reviewSettings: reviewSettings,
-                onSaveFailure: onSaveFailure,
-                onSaveSuccess: { [weak self] in
-                    // DB flush confirmed — mark the answer flushed and rewrite the
-                    // snapshot so a later restore won't re-flush it.
-                    self?.markAnswerFlushed(at: flushedIndex)
-                }
-            )
-        }
-        PerfLog.review.measure("submit.snapshot") { persistSnapshot() }
         revealStage = .front
         currentIndex += 1
         PerfLog.review.mark("submit.advance", "idx=\(currentIndex - 1)->\(currentIndex)")
+        // Persist AFTER advancing so the crash-recovery snapshot reflects the next
+        // card. (Previously this ran pre-increment and only became correct via the
+        // async flush callback's second persist — fragile; a crash in that window
+        // restored to the already-answered card. Now correct synchronously, which
+        // matters more since the DB flush itself is deferred to dismiss.)
+        PerfLog.review.measure("submit.snapshot") { persistSnapshot() }
         PerfLog.review.measure("submit.prewarm") { prewarmCardWindow() }
 
         finishSessionIfComplete()
+    }
+
+    /// Batched, deferred persistence — the SINGLE point where review results reach
+    /// SwiftData. Called from the view's `onDisappear` (and on restore for answers
+    /// whose previous flush never confirmed). Marks each confirmed answer flushed,
+    /// then runs `onFinalize` so the caller finalizes the crash-recovery snapshot
+    /// ONLY after the store actually holds the data.
+    func flushPendingAnswers(
+        container: ModelContainer,
+        reviewSettings: ReviewSettings,
+        onFinalize: @escaping @MainActor () -> Void = {},
+        onFailure: (@MainActor @Sendable () -> Void)? = nil
+    ) {
+        ReviewSessionPersistence.flushPendingAnswers(
+            queuePersistenceIDs: queuePersistenceIDs,
+            queueBaselines: queueBaselines,
+            submittedAnswers: scoring.submittedAnswers,
+            container: container,
+            reviewSettings: reviewSettings,
+            onFlushed: { [weak self] indices in
+                if let self {
+                    for i in indices { self.scoring.markFlushed(at: i) }
+                }
+                onFinalize()
+            },
+            onFailure: onFailure
+        )
     }
 
     /// Session-completion teardown. Runs once `currentIndex` has advanced past
@@ -429,7 +448,11 @@ final class TodayReviewState {
     private func finishSessionIfComplete() {
         guard currentIndex >= queue.count else { return }
         ReviewSessionStore.clear(userID: currentUserID)
-        clearSnapshot()
+        // NOTE: the crash-recovery snapshot is deliberately NOT cleared here. With
+        // persistence deferred to dismiss, the snapshot is the only record of the
+        // session's answers until `flushPendingAnswers` confirms the store write —
+        // clearing it now would lose data on a crash between completion and dismiss.
+        // The view's onDisappear clears it only after the deferred flush succeeds.
         let durationMs = Int(Date().timeIntervalSince(sessionStartTime) * 1000)
         AppAnalytics.track(.reviewSessionEnded(
             remembered: rememberedCount,
@@ -445,36 +468,20 @@ final class TodayReviewState {
     /// while the snapshot still marked it answered — restore alone never
     /// re-flushed, so the schedule stayed broken forever.
     ///
-    /// Idempotent: `flushSubmittedAnswer` skips DB writes when the
-    /// ReviewRecord already exists, and the success callback flips the flag so a
-    /// second call is a no-op. Safe to call on every appear.
+    /// Idempotent: `flushPendingAnswers` skips records that already exist and only
+    /// touches answers still marked `flushed == false`, so a second call is a no-op.
+    /// Safe to call on every appear.
     func reflushUnflushedRestoredAnswers(
         container: ModelContainer,
         reviewSettings: ReviewSettings,
         onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
-        for (index, answer) in scoring.submittedAnswers where !answer.flushed {
-            ReviewSessionPersistence.flushSubmittedAnswer(
-                at: index,
-                queuePersistenceIDs: queuePersistenceIDs,
-                queueBaselines: queueBaselines,
-                submittedAnswers: scoring.submittedAnswers,
-                container: container,
-                reviewSettings: reviewSettings,
-                onSaveFailure: onSaveFailure,
-                onSaveSuccess: { [weak self] in
-                    self?.markAnswerFlushed(at: index)
-                }
-            )
-        }
-    }
-
-    /// Flip an answer to flushed and rewrite the snapshot so a later restore
-    /// won't re-flush it. Runs on the main actor (callback hops back from the
-    /// detached flush task).
-    private func markAnswerFlushed(at index: Int) {
-        scoring.markFlushed(at: index)
-        persistSnapshot()
+        flushPendingAnswers(
+            container: container,
+            reviewSettings: reviewSettings,
+            onFinalize: { [weak self] in self?.persistSnapshot() },
+            onFailure: onSaveFailure
+        )
     }
 
     func persistSnapshot() {

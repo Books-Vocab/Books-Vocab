@@ -136,80 +136,95 @@ enum ReviewSessionPersistence {
         )
     }
 
-    // MARK: - DB flush (idempotent per answer)
+    // MARK: - DB flush (deferred to session end; batched into ONE save)
 
-    static func flushSubmittedAnswer(
-        at index: Int,
+    /// Persist ALL un-flushed submitted answers in a SINGLE background context with
+    /// ONE `safeSave()` → ONE main-context merge.
+    ///
+    /// The per-flip submit path deliberately does NOT write the store: a per-card
+    /// save merges back into the main `ModelContext`, refetching `NotebookListView`'s
+    /// `@Query<VocabularyEntry>` (~37ms) and re-rendering the review cover — a single
+    /// ~130ms main-thread block that froze the next-card render (measured: the freeze
+    /// aligned exactly with the background save's completion, not the in-memory
+    /// throwaway). Deferring to dismiss removes every per-flip merge; crash safety is
+    /// covered by the per-flip UserDefaults snapshot + restore reflush.
+    ///
+    /// Idempotent: skips answers whose `ReviewRecord` already exists. Reports the
+    /// flushed indices on success so the caller can mark them + finalize the snapshot
+    /// ONLY after the store actually has the data. The empty-pending case still calls
+    /// `onFlushed([])` so callers can finalize without special-casing a no-op.
+    static func flushPendingAnswers(
         queuePersistenceIDs: [String],
         queueBaselines: [TodayReviewSessionSnapshotStore.ReviewBaseline],
         submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
         container: ModelContainer,
         reviewSettings: ReviewSettings,
-        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil,
-        onSaveSuccess: (@MainActor @Sendable () -> Void)? = nil
+        onFlushed: (@MainActor @Sendable (_ indices: [Int]) -> Void)? = nil,
+        onFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
-        guard index < queuePersistenceIDs.count,
-              index < queueBaselines.count,
-              let answer = submittedAnswers[index] else { return }
-
-        let persistenceID = queuePersistenceIDs[index]
-        let baseline = queueBaselines[index]
+        let pending = submittedAnswers.filter { !$0.value.flushed }
+        guard !pending.isEmpty else {
+            if let onFlushed { Task { @MainActor in onFlushed([]) } }
+            return
+        }
         Task.detached(priority: .utility) {
             let ctx = ModelContext(container)
-            guard let entry = try? fetchEntry(for: persistenceID, in: ctx) else {
-                // Entry fetch failed (DB error) or entry missing — the review
-                // result can't be persisted. Report so the caller (and user) knows
-                // the answer wasn't saved instead of silently advancing.
-                AppLog.data.error("flushSubmittedAnswer: entry not found for \(persistenceID), review result not saved")
-                if let onSaveFailure {
-                    await onSaveFailure()
+            var staged: [Int] = []
+            for (index, answer) in pending {
+                guard index < queuePersistenceIDs.count, index < queueBaselines.count else { continue }
+                guard let entry = try? fetchEntry(for: queuePersistenceIDs[index], in: ctx) else {
+                    // Entry fetch failed (DB error) or entry missing — this answer
+                    // can't be persisted; leave it un-flushed so the snapshot + restore
+                    // reflush gets another chance instead of silently dropping it.
+                    AppLog.data.error("flushPendingAnswers: entry not found for \(queuePersistenceIDs[index]), result not saved")
+                    continue
                 }
-                return
+                stageAnswer(answer, baseline: queueBaselines[index], entry: entry, reviewSettings: reviewSettings, in: ctx)
+                staged.append(index)
             }
-
-            applySubmittedAnswer(
-                answer,
-                baseline: baseline,
-                to: entry,
-                reviewSettings: reviewSettings
-            )
-
-            if (try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx)) == nil {
-                // 固化 kgCardId + SRS 前後快照(此刻 entry 還在手上,值全可得):
-                // baseline=複習前,applySubmittedAnswer 後 entry=複習後。事件自包含,
-                // 上報不再靠卡離場即退化的三段反查,研究也能逐筆還原學習曲線。
-                let record = ReviewRecord(
-                    word: entry.word,
-                    entryID: entry.id,
-                    feedback: answer.feedback.rawValue,
-                    reviewedAt: answer.answeredAt,
-                    kgCardId: entry.kgCardId.flatMap { $0.isEmpty ? nil : $0 },
-                    intervalBefore: baseline.reviewIntervalHours,
-                    intervalAfter: entry.reviewIntervalHours,
-                    nextReviewBefore: baseline.nextReviewAt,
-                    nextReviewAfter: entry.nextReviewAt,
-                    reviewCountAfter: entry.reviewCount,
-                    streakAfter: entry.reviewStreak,
-                    lapseAfter: entry.lapseCount
-                )
-                record.id = answer.reviewRecordID
-                record.notebookId = entry.notebookId
-                ctx.insert(record)
-            }
-
-            if ctx.safeSave() {
-                // DB-confirmed: tell the caller so the snapshot records
-                // flushed=true and restore won't re-flush this answer.
-                if let onSaveSuccess {
-                    await onSaveSuccess()
-                }
+            let saved = PerfLog.review.measure("flush.dbSaveBatch", "n=\(staged.count)") { ctx.safeSave() }.value
+            if saved {
+                let confirmed = staged
+                if let onFlushed { await onFlushed(confirmed) }
             } else {
-                let word = entry.word
-                AppLog.data.error("flushSubmittedAnswer: failed to save review result for \(word)")
-                if let onSaveFailure {
-                    await onSaveFailure()
-                }
+                AppLog.data.error("flushPendingAnswers: batch save failed for \(staged.count) answers")
+                if let onFailure { await onFailure() }
             }
+        }
+    }
+
+    /// Apply one answer's SRS mutation to `entry` and insert its `ReviewRecord`
+    /// (idempotent on record existence) into `ctx`. Caller owns the single save.
+    private static func stageAnswer(
+        _ answer: TodayReviewState.SubmittedAnswer,
+        baseline: TodayReviewSessionSnapshotStore.ReviewBaseline,
+        entry: VocabularyEntry,
+        reviewSettings: ReviewSettings,
+        in ctx: ModelContext
+    ) {
+        applySubmittedAnswer(answer, baseline: baseline, to: entry, reviewSettings: reviewSettings)
+
+        if (try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx)) == nil {
+            // 固化 kgCardId + SRS 前後快照(此刻 entry 還在手上,值全可得):
+            // baseline=複習前,applySubmittedAnswer 後 entry=複習後。事件自包含,
+            // 上報不再靠卡離場即退化的三段反查,研究也能逐筆還原學習曲線。
+            let record = ReviewRecord(
+                word: entry.word,
+                entryID: entry.id,
+                feedback: answer.feedback.rawValue,
+                reviewedAt: answer.answeredAt,
+                kgCardId: entry.kgCardId.flatMap { $0.isEmpty ? nil : $0 },
+                intervalBefore: baseline.reviewIntervalHours,
+                intervalAfter: entry.reviewIntervalHours,
+                nextReviewBefore: baseline.nextReviewAt,
+                nextReviewAfter: entry.nextReviewAt,
+                reviewCountAfter: entry.reviewCount,
+                streakAfter: entry.reviewStreak,
+                lapseAfter: entry.lapseCount
+            )
+            record.id = answer.reviewRecordID
+            record.notebookId = entry.notebookId
+            ctx.insert(record)
         }
     }
 
