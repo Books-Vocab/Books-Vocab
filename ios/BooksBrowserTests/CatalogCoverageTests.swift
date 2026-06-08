@@ -154,5 +154,28 @@ import Playbook
             "Screen(s) in pendingCoverage that already have a surface (remove them): \(pendingButCovered)"
         )
     }
+
+    // MARK: - Ground-truth index emit (P4: Python consumes, not guesses)
+
+    @Test func indexJSONCoversEveryCategoryWithDeclaredKind() async throws {
+        // The emitted catalog_index.json is the gallery's ground truth. It must
+        // round-trip every declared surface: one entry per category, each carrying
+        // the source-declared kind + feature, so the Python side never has to fall
+        // back to pixel/regex guessing for a surface the source knows.
+        let data = try CatalogScene.Manifest.indexJSONData()
+        let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(root?["version"] as? Int == 1)
+        let surfaces = try #require(root?["surfaces"] as? [String: [String: String]])
+
+        let declared = CatalogScene.Manifest.surfaces
+        #expect(Set(surfaces.keys) == Set(declared.map(\.category)))
+        for surface in declared {
+            let entry = surfaces[surface.category]
+            #expect(entry?["kind"] == surface.kind.rawValue)
+            #expect(entry?["feature"] == surface.feature.rawValue)
+            // featureScreens carry their screen id; other kinds omit it
+            #expect(entry?["screen"] == surface.screen?.rawValue)
+        }
+    }
 }
 #endif

@@ -1,4 +1,5 @@
 #if DEBUG && canImport(Playbook)
+import Foundation
 import Playbook
 import PlaybookUI
 import SwiftUI
@@ -379,6 +380,28 @@ struct CatalogScene: View {
         /// Surfaces declared as real, full app screens.
         static var featureScreenSurfaces: [CatalogSurface] {
             surfaces.filter { $0.kind == .featureScreen }
+        }
+
+        /// Ground-truth taxonomy index for offline consumers (the Python catalog
+        /// gallery, `ops/catalog_review_*.py`). Keyed by category (the on-disk
+        /// snapshot folder name); each entry carries the source-declared
+        /// kind/feature/screen. Emitted next to the PNGs by `CatalogSnapshotTests`
+        /// as `catalog_index.json` so the gallery consumes truth instead of
+        /// reverse-engineering it from transparent-margin pixels + title regex.
+        static func indexJSONData() throws -> Data {
+            var surfaceMap: [String: [String: String]] = [:]
+            for surface in surfaces {
+                var entry: [String: String] = [
+                    "kind": surface.kind.rawValue,
+                    "feature": surface.feature.rawValue,
+                ]
+                if let screen = surface.screen {
+                    entry["screen"] = screen.rawValue
+                }
+                surfaceMap[surface.category] = entry
+            }
+            let root: [String: Any] = ["version": 1, "surfaces": surfaceMap]
+            return try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         }
     }
 
