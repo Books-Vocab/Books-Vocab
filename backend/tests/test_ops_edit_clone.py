@@ -235,6 +235,27 @@ def test_clone_is_idempotent(tmp_path):
     assert _event_count(tmp_path, TGT) == first_events == _EXPECTED_EVENTS
 
 
+def test_clone_emits_source_fingerprint_and_can_pin_it(tmp_path):
+    _full_fixture(tmp_path)
+    first = _edit(str(tmp_path), "clone-demo", SRC, TGT, "--commit", "--json")
+    assert first.returncode == 0, first.stderr
+    fingerprint = json.loads(first.stdout)["result"]["source_fingerprint"]
+    assert fingerprint
+    pinned = _edit(
+        str(tmp_path), "clone-demo", SRC, TGT,
+        "--expect-source-fingerprint", fingerprint,
+        "--commit", "--json",
+    )
+    assert pinned.returncode == 0, pinned.stderr
+    mismatch = _edit(
+        str(tmp_path), "clone-demo", SRC, TGT,
+        "--expect-source-fingerprint", "deadbeef",
+        "--commit", "--json",
+    )
+    assert mismatch.returncode == 1
+    assert "fingerprint" in (mismatch.stdout + mismatch.stderr).lower()
+
+
 def test_clone_creates_restorable_backup(tmp_path):
     _full_fixture(tmp_path)
     _edit(str(tmp_path), "clone-demo", SRC, TGT, "--commit", "--json")

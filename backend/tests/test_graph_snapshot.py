@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from kg.graph_event_log import GraphSnapshotStore
+from kg.graph_event_log import GraphEventStore, GraphSnapshotStore
 
 
 def _links(n: int) -> list[dict]:
@@ -103,3 +103,73 @@ def test_persists_across_reopen(tmp_path):
     store.close()
     reopened = GraphSnapshotStore(path)
     assert reopened.latest("default").link_count == 4
+
+
+def test_periodic_snapshot_saved_immediately_when_missing(tmp_path):
+    store = GraphSnapshotStore(tmp_path / "g.db")
+    res = store.maybe_save_periodic("default", _links(2), min_events_since_snapshot=50)
+    assert res["saved"] is True
+    assert res["reason"] == "no-snapshot"
+    latest = store.latest("default")
+    assert latest is not None
+    assert latest.is_synthetic is False
+    assert latest.link_count == 2
+
+
+def test_periodic_snapshot_skips_below_threshold(tmp_path):
+    path = tmp_path / "g.db"
+    events = GraphEventStore(path)
+    snaps = GraphSnapshotStore(path)
+    snaps.save("default", _links(1), is_synthetic=False, taken_at=datetime(2026, 6, 1, tzinfo=UTC))
+    for i in range(2):
+        events.append(
+            event_id=f"e{i}",
+            event_type="link_updated",
+            link_id=f"L{i}",
+            from_id="a",
+            to_id="b",
+            kind="shares_usage",
+            source="auto",
+            notebook_id="default",
+            occurred_at=datetime(2026, 6, 2, tzinfo=UTC),
+            confidence_before=0.1,
+            confidence_after=0.2,
+            status_before="active",
+            status_after="active",
+        )
+    res = snaps.maybe_save_periodic("default", _links(3), min_events_since_snapshot=3)
+    assert res["saved"] is False
+    assert res["reason"] == "below-threshold"
+    assert res["events_since_snapshot"] == 2
+    assert len(snaps.all(notebook_id="default")) == 1
+
+
+def test_periodic_snapshot_saves_once_threshold_reached(tmp_path):
+    path = tmp_path / "g.db"
+    events = GraphEventStore(path)
+    snaps = GraphSnapshotStore(path)
+    snaps.save("default", _links(1), is_synthetic=False, taken_at=datetime(2026, 6, 1, tzinfo=UTC))
+    for i in range(3):
+        events.append(
+            event_id=f"e{i}",
+            event_type="link_updated",
+            link_id=f"L{i}",
+            from_id="a",
+            to_id="b",
+            kind="shares_usage",
+            source="auto",
+            notebook_id="default",
+            occurred_at=datetime(2026, 6, 2, tzinfo=UTC),
+            confidence_before=0.1,
+            confidence_after=0.2,
+            status_before="active",
+            status_after="active",
+        )
+    res = snaps.maybe_save_periodic("default", _links(4), min_events_since_snapshot=3)
+    assert res["saved"] is True
+    assert res["reason"] == "event-threshold"
+    latest = snaps.latest("default")
+    assert latest is not None
+    assert latest.link_count == 4
+    assert latest.is_synthetic is False
+    assert len(snaps.all(notebook_id="default")) == 2

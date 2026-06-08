@@ -25,6 +25,7 @@ allowed-tools: Bash, Read, Grep
 ## 指令參考 **(SoT)**
 
 本段為 `./ops/devops_kg_safe.sh`（與 repo-local shortcut `./devops.sh`）的權威指令清單；`docs/sop/deploy.md` / `docs/sop/debug.md` 內任何 `./devops.sh *` 用法以本表為準。
+對 `docker ps`、`sudo systemctl status caddy`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。
 
 ### Safe Wrapper（`./ops/devops_kg_safe.sh`）
 
@@ -36,6 +37,13 @@ allowed-tools: Bash, Read, Grep
 ./ops/devops_kg_safe.sh status
 ./ops/devops_kg_safe.sh health [--json]
 ./ops/devops_kg_safe.sh logs [n]
+./ops/devops_kg_safe.sh caddy-status
+./ops/devops_kg_safe.sh caddyfile
+./ops/devops_kg_safe.sh docker-ps
+./ops/devops_kg_safe.sh docker-logs [n]
+./ops/devops_kg_safe.sh disk-usage
+./ops/devops_kg_safe.sh memory-usage
+./ops/devops_kg_safe.sh docker-stats
 ./ops/devops_kg_safe.sh env-check
 ./ops/devops_kg_safe.sh env-drift
 ./ops/devops_kg_safe.sh migrate
@@ -66,6 +74,8 @@ ops-cli cost <uid> [--range R]            # 單用戶 cost-by-call_type 拆解�
 ops-cli cost-overview [--range R]         # 全用戶 cost 排名
 ops-cli fleet-overview                     # 跨用戶體檢：每用戶 cards/links/月cost + FLEET TOTAL（免逐用戶 loop）
 ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
+ops-cli world-state <uid>                  # 穩定投影 actual world（config/notebooks/cards/graph_*.json）
+ops-cli world-diff <uid> <spec.json>       # 用 kg.ops_world_expectation.v1 比對 actual，拿穩定 mismatch path
 ops-cli timeseries <metric> [--bucket day|week|month] [--range R] [--uid all|<uid>] [--fill-zero]
                                            # 時間序列趨勢；metric=cost|calls|active_users（預設 bucket=day, range=30d, uid=all）
                                            # --fill-zero：補齊區間內零值桶，時間軸連續、斷層顯式化（找「哪幾天/週沒人用」必加）
@@ -90,7 +100,7 @@ ops-cli llm-errors [--window N] [--uid all|<uid>]  # 真火監控——真實 LL
 ### ops-edit 子指令（**寫入**;dry-run 預設,`--commit` 才落地）
 
 `ops-cli` 唯讀查詢的可寫對應面。每個寫操作:**dry-run 預設**(只印 plan)→ `--commit`
-寫前自動 tar 備份 user_dir → 寫後讀回 verify → append `_ops_edit_audit.jsonl`。
+寫前自動 tar 備份 user_dir（並內嵌該 uid 的 `users.json` record/email-index snapshot）→ 寫後讀回 verify → append `_ops_edit_audit.jsonl`。
 寫入複用 app 的 `CardStore`/`GraphStore`/`NotebookStore`(SoT)。皆支援 `--json`。
 
 ```bash
@@ -114,17 +124,20 @@ ops-edit user-config-set <uid> [--translation-source L] [--translation-target L]
                          [--active-notebook <id|name>]           # settings/active notebook 行銷造景
 ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover] [--sort-order N]
 ops-edit notebook-delete <uid> <id|name> [--cascade]             # 軟刪(default 不可刪;非空須 --cascade 一併軟刪卡,否則拒絕)
-ops-edit link-add <uid> <from> <to> --kind contrasts_with|shares_usage --confidence C --reason R [--notebook]
+ops-edit link-add <uid> <from> <to> --kind contrasts_with|shares_usage --confidence C --reason R [--notebook] [--if-exists keep|update]
 ops-edit link-update <uid> <link_id> [--confidence] [--reason] [--kind] [--notebook]   # 改既有 link(link-add 撞既有回 idempotent 不改值)
 ops-edit link-list <uid> [--notebook]                            # 列連結(id+兩端 content),供 link-update/delete 查 id
 ops-edit link-delete <uid> <link_id> [--notebook]
 ops-edit seed <uid> <spec.json>                                  # 一次灌整套 demo(notebooks+cards+links);冪等可重跑
-ops-edit clone-demo <source_uid> <target_uid>                    # 高保真複製來源帳號 vocab 層(cards/notebooks/graph/embeddings/candidates)+ 由複習聚合合成 review_events.db;identity 不動;冪等可重跑
+ops-edit clone-demo <source_uid> <target_uid> [--expect-source-fingerprint SHA256]  # 高保真複製來源帳號 vocab 層;可 pin 來源避免漂移
 ops-edit list-backups <uid>                                      # 列自動備份(最新在前)
-ops-edit restore <uid> [--backup <path>]                         # 從備份還原(預設取最新;commit 前先備份當前狀態)
+ops-edit restore <uid> [--backup <path>]                         # 從備份還原(預設取最新;commit 前先備份當前狀態;會一起回復該 uid 的 users.json config/identity snapshot)
+ops-edit world-snapshot [--label LABEL]                          # 建立整個 data_dir world snapshot（users.json + users/* + root DB）
+ops-edit world-restore [--snapshot <path>]                       # 回滾整個 world（commit 前先做 pre-restore world backup）
 
 # 所有 --notebook / --to-notebook 接受 notebook id 或 name(自動 name→id 解析,杜絕孤兒卡)。
 # link 嚴格 per-notebook:兩端 card 必須與 link 同本(seed/link-add 跨本連結會被擋並提示)。
+# scenario 驗證要查 graph 時，讀磁碟 `graph_*.json`，不要信進程內 GraphStore cache。
 
 # seed spec JSON:
 #   {"review_anchor"?: "2026-06-06T00:00:00Z",
@@ -253,17 +266,17 @@ DNS fail → DNS issue
 
 ```bash
 # Caddy
-./ops/devops_kg_safe.sh run "sudo systemctl status caddy"
-./ops/devops_kg_safe.sh run "cat /etc/caddy/Caddyfile"
+./ops/devops_kg_safe.sh caddy-status
+./ops/devops_kg_safe.sh caddyfile
 
 # Docker
-./ops/devops_kg_safe.sh run "docker ps"
-./ops/devops_kg_safe.sh run "docker logs knowledge-graph-api -n 100"
+./ops/devops_kg_safe.sh docker-ps
+./ops/devops_kg_safe.sh docker-logs 100
 
 # Resources
-./ops/devops_kg_safe.sh run "df -h"
-./ops/devops_kg_safe.sh run "free -m"
-./ops/devops_kg_safe.sh run "docker stats --no-stream"
+./ops/devops_kg_safe.sh disk-usage
+./ops/devops_kg_safe.sh memory-usage
+./ops/devops_kg_safe.sh docker-stats
 
 # Database
 ./ops/devops_kg_safe.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"

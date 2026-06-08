@@ -19,6 +19,13 @@ usage:
   $0 status
   $0 health [--json]
   $0 logs [n]
+  $0 caddy-status
+  $0 caddyfile
+  $0 docker-ps
+  $0 docker-logs [n]
+  $0 disk-usage
+  $0 memory-usage
+  $0 docker-stats
   $0 backup
   $0 backup-s3-test
   $0 env-check
@@ -51,6 +58,24 @@ preflight() {
     echo "domain    : wordnexus.lol"
     echo "container : knowledge-graph-api"
   } >&2
+}
+
+run_fixed_remote() {
+  preflight
+  "$BASE" run "$1"
+}
+
+typed_alias_for_run() {
+  case "$1" in
+    "sudo systemctl status caddy") echo "caddy-status" ;;
+    "cat /etc/caddy/Caddyfile") echo "caddyfile" ;;
+    "docker ps") echo "docker-ps" ;;
+    "df -h") echo "disk-usage" ;;
+    "free -m") echo "memory-usage" ;;
+    "docker stats --no-stream") echo "docker-stats" ;;
+    docker\ logs\ knowledge-graph-api\ -n\ *) echo "docker-logs" ;;
+    *) return 1 ;;
+  esac
 }
 
 is_blocked_run() {
@@ -132,6 +157,28 @@ main() {
       shift
       "$BASE" logs "${1:-80}"
       ;;
+    caddy-status)
+      run_fixed_remote "sudo systemctl status caddy"
+      ;;
+    caddyfile)
+      run_fixed_remote "cat /etc/caddy/Caddyfile"
+      ;;
+    docker-ps)
+      run_fixed_remote "docker ps"
+      ;;
+    docker-logs)
+      shift
+      run_fixed_remote "docker logs knowledge-graph-api -n ${1:-100}"
+      ;;
+    disk-usage)
+      run_fixed_remote "df -h"
+      ;;
+    memory-usage)
+      run_fixed_remote "free -m"
+      ;;
+    docker-stats)
+      run_fixed_remote "docker stats --no-stream"
+      ;;
     health)
       # host 層唯讀健康聚合（系統資源 + 容器 + Caddy + TLS 憑證 + 近期錯誤）。
       # 全唯讀，補 ops-cli（讀業務 DB）看不到的機器層盲區。--json 走 stdout。
@@ -152,6 +199,13 @@ main() {
       shift
       local raw="${*:-}"
       [[ -n "$raw" ]] || { echo "✗ usage: $0 $sub \"<cmd>\"" >&2; exit 1; }
+      if [[ "$sub" == "run" ]]; then
+        local typed_alias
+        if typed_alias="$(typed_alias_for_run "$raw")"; then
+          echo "✗ use typed command: $typed_alias" >&2
+          exit 1
+        fi
+      fi
       if is_blocked_run "$raw"; then
         echo "✗ blocked dangerous command" >&2
         exit 1

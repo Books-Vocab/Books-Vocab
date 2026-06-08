@@ -102,6 +102,151 @@ class TestUserConfig:
         assert result.returncode != 0
 
 
+class TestWorldState:
+    def test_json_output_uses_stable_schema_and_disk_graphs(self, tmp_path):
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        self_users = {
+            uid: {"config": {"vocab_ui": {"active_notebook_id": "default", "updated_at": 10.0}}},
+            "_email_index": {},
+        }
+        (tmp_path / "users.json").write_text(json.dumps(self_users, ensure_ascii=False))
+
+        conn = sqlite3.connect(str(user_dir / "notebooks.db"))
+        conn.execute(
+            "CREATE TABLE notebook (id TEXT PRIMARY KEY, name TEXT, color TEXT, sort_order INTEGER, "
+            "is_default INTEGER, created_at TEXT, updated_at TEXT, is_deleted INTEGER, cover_pattern TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO notebook VALUES ('default','Default',NULL,0,1,?,?,0,NULL)",
+            (now, now),
+        )
+        conn.commit()
+        conn.close()
+        _create_cards_db(user_dir / "cards.db", [("c1", "hello", "你好", 0, now, now)])
+        (user_dir / "graph_default.json").write_text(
+            json.dumps([{"id": "l1", "from_id": "c1", "to_id": "c2", "kind": "shares_usage", "confidence": 0.7, "reason": "r"}]),
+            encoding="utf-8",
+        )
+
+        result = _run_cli(str(tmp_path), "world-state", uid, "--json")
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["schema"] == "kg.ops_world_state.v1"
+        assert payload["user_id"] == uid
+        assert payload["config"]["vocab_ui"]["active_notebook_id"] == "default"
+        assert payload["cards"][0]["content"] == "hello"
+        assert payload["graphs"][0]["links"][0]["id"] == "l1"
+
+    def test_world_diff_matches_expected_projection(self, tmp_path):
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        (tmp_path / "users.json").write_text(json.dumps({
+            uid: {"config": {"review_clock": {"is_paused": True}, "vocab_ui": {"active_notebook_id": "default"}}},
+            "_email_index": {},
+        }, ensure_ascii=False))
+
+        conn = sqlite3.connect(str(user_dir / "notebooks.db"))
+        conn.execute(
+            "CREATE TABLE notebook (id TEXT PRIMARY KEY, name TEXT, color TEXT, sort_order INTEGER, "
+            "is_default INTEGER, created_at TEXT, updated_at TEXT, is_deleted INTEGER, cover_pattern TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO notebook VALUES ('default','Default','#123456',0,1,?,?,0,'waves')",
+            (now, now),
+        )
+        conn.commit()
+        conn.close()
+        _create_cards_db(user_dir / "cards.db", [
+            ("c1", "hello", "你好", 0, now, now),
+            ("c2", "world", "世界", 0, now, now),
+        ])
+        (user_dir / "graph_default.json").write_text(
+            json.dumps([{
+                "id": "l1",
+                "from_id": "c1",
+                "to_id": "c2",
+                "kind": "shares_usage",
+                "confidence": 0.7,
+                "reason": "r",
+            }]),
+            encoding="utf-8",
+        )
+        spec = tmp_path / "expect.json"
+        spec.write_text(json.dumps({
+            "schema": "kg.ops_world_expectation.v1",
+            "config": {"review_clock": {"is_paused": True}},
+            "notebooks": [{"name": "Default", "cover_pattern": "waves"}],
+            "cards": [{"content": "hello", "meaning": "你好"}],
+            "graphs": [{
+                "notebook": "Default",
+                "links": [{"from": "hello", "to": "world", "kind": "shares_usage", "confidence": 0.7}],
+            }],
+        }, ensure_ascii=False), encoding="utf-8")
+
+        result = _run_cli(str(tmp_path), "world-diff", uid, str(spec), "--json")
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["schema"] == "kg.ops_world_diff.v1"
+        assert payload["ok"] is True
+        assert payload["mismatchCount"] == 0
+
+    def test_world_diff_reports_stable_mismatch_paths(self, tmp_path):
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        (tmp_path / "users.json").write_text(json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False))
+        conn = sqlite3.connect(str(user_dir / "notebooks.db"))
+        conn.execute(
+            "CREATE TABLE notebook (id TEXT PRIMARY KEY, name TEXT, color TEXT, sort_order INTEGER, "
+            "is_default INTEGER, created_at TEXT, updated_at TEXT, is_deleted INTEGER, cover_pattern TEXT)"
+        )
+        conn.execute("INSERT INTO notebook VALUES ('default','Default',NULL,0,1,?,?,0,NULL)", (now, now))
+        conn.commit()
+        conn.close()
+        _create_cards_db(user_dir / "cards.db", [
+            ("c1", "hello", "你好", 0, now, now),
+            ("c2", "world", "世界", 0, now, now),
+        ])
+        (user_dir / "graph_default.json").write_text(
+            json.dumps([{
+                "id": "l1",
+                "from_id": "c1",
+                "to_id": "c2",
+                "kind": "shares_usage",
+                "confidence": 0.2,
+                "reason": "actual",
+            }]),
+            encoding="utf-8",
+        )
+
+        spec = tmp_path / "expect-mismatch.json"
+        spec.write_text(json.dumps({
+            "schema": "kg.ops_world_expectation.v1",
+            "config": {"review_clock": {"is_paused": True}},
+            "cards": [{"content": "hello", "meaning": "您好"}],
+            "graphs": [{
+                "notebook": "Default",
+                "links": [{"from": "hello", "to": "world", "kind": "shares_usage", "confidence": 0.9}],
+            }],
+        }, ensure_ascii=False), encoding="utf-8")
+
+        result = _run_cli(str(tmp_path), "world-diff", uid, str(spec), "--json")
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["ok"] is False
+        assert payload["mismatchCount"] >= 3
+        paths = {item["path"] for item in payload["mismatches"]}
+        assert "config.review_clock" in paths or "config.review_clock.is_paused" in paths
+        assert "cards[hello].meaning" in paths
+        assert "graphs[Default].links[hello->world:shares_usage].confidence" in paths
+
+
 class TestUserQuota:
     """user-quota 子指令。"""
 

@@ -4,6 +4,7 @@
   "materialize": {
     "uid": "marketing-demo",
     "seedFile": "ops/seeds/marketing_demo.json",
+    "expectationFile": "ops/capture_profiles/marketing_demo_expectation.json",
     "steps": [
       {
         "subcommand": "user-config-set",

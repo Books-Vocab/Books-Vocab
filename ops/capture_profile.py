@@ -34,6 +34,7 @@ class MaterializeStep:
 class MaterializeConfig:
     uid: str
     seed_file: Path
+    expectation_file: Path | None
     steps: list[MaterializeStep]
 
 
@@ -117,10 +118,17 @@ def load_profile(path: str | Path) -> CaptureProfile:
     materialize = MaterializeConfig(
         uid=_ensure_str(materialize_raw.get("uid"), field="materialize.uid"),
         seed_file=_resolve_path(_ensure_str(materialize_raw.get("seedFile"), field="materialize.seedFile")),
+        expectation_file=(
+            _resolve_path(_ensure_str(materialize_raw.get("expectationFile"), field="materialize.expectationFile"))
+            if materialize_raw.get("expectationFile") is not None
+            else None
+        ),
         steps=steps,
     )
     if not materialize.seed_file.exists():
         raise CaptureProfileError(f"seed file 不存在: {materialize.seed_file}")
+    if materialize.expectation_file is not None and not materialize.expectation_file.exists():
+        raise CaptureProfileError(f"expectation file 不存在: {materialize.expectation_file}")
 
     snapshot = SnapshotConfig(
         dataset_file=_resolve_path(_ensure_str(snapshot_raw.get("datasetFile"), field="snapshot.datasetFile")),
@@ -229,6 +237,19 @@ def build_snapshot_command(profile: CaptureProfile, *, reuse_build: bool) -> lis
         command.append("--reuse-build")
     command.append("--json")
     return command
+
+
+def build_world_diff_command(profile: CaptureProfile) -> list[str] | None:
+    if profile.materialize.expectation_file is None:
+        return None
+    return [
+        str(SAFE_WRAPPER),
+        "ops-cli",
+        "world-diff",
+        profile.materialize.uid,
+        str(profile.materialize.expectation_file),
+        "--json",
+    ]
 
 
 def build_prepare_command(profile: CaptureProfile) -> list[str]:
@@ -375,6 +396,7 @@ def frame_snapshot_sources(profile: CaptureProfile, snapshot_payload: dict[str, 
 
 
 def cmd_plan(profile: CaptureProfile) -> int:
+    verify_command = build_world_diff_command(profile)
     emit_json(
         {
             "schema": "kg.capture.run.v1",
@@ -383,6 +405,7 @@ def cmd_plan(profile: CaptureProfile) -> int:
             "materialize": {
                 "uid": profile.materialize.uid,
                 "seedFile": str(profile.materialize.seed_file),
+                "expectationFile": str(profile.materialize.expectation_file) if profile.materialize.expectation_file else None,
                 "steps": [
                     {"subcommand": "seed", "args": [profile.materialize.uid, str(profile.materialize.seed_file)]},
                     *[
@@ -390,6 +413,10 @@ def cmd_plan(profile: CaptureProfile) -> int:
                         for step in profile.materialize.steps
                     ],
                 ],
+            },
+            "verify": {
+                "enabled": verify_command is not None,
+                "command": verify_command,
             },
             "snapshot": {
                 "datasetFile": str(profile.snapshot.dataset_file),
@@ -485,9 +512,31 @@ def cmd_render(profile: CaptureProfile) -> int:
     raise CaptureProfileError("snapshot-derived render 需透過 run 先產生 framed source；目前不支援單獨 render")
 
 
+def cmd_verify(profile: CaptureProfile) -> int:
+    command = build_world_diff_command(profile)
+    if command is None:
+        raise CaptureProfileError("profile 未設定 materialize.expectationFile，無法 verify")
+    result = run_command(command)
+    payload = parse_json_stdout(result)
+    ok = result.returncode == 0 and bool(payload and payload.get("ok") is True)
+    emit_json(
+        {
+            "schema": "kg.capture.run.v1",
+            "action": "verify",
+            "profile": profile.profile_id,
+            "status": "ok" if ok else "error",
+            "command": command,
+            "verify": payload,
+            "stderr": result.stderr,
+        }
+    )
+    return 0 if ok else 2
+
+
 def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
     materialize_commands = build_ops_edit_commands(profile, commit=commit)
     materialize_results = []
+    verify_step: dict[str, Any] | None = None
     if commit:
         for command in materialize_commands:
             result = run_command(command)
@@ -509,13 +558,44 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
                         "reuseBuild": reuse_build,
                         "status": "error",
                         "materialize": materialize_results,
+                        "verify": None,
                         "snapshot": None,
                         "render": None,
                     }
                 )
                 return 1
+        verify_command = build_world_diff_command(profile)
+        if verify_command is not None:
+            verify_result = run_command(verify_command)
+            verify_payload = parse_json_stdout(verify_result)
+            verify_ok = verify_result.returncode == 0 and bool(verify_payload and verify_payload.get("ok") is True)
+            verify_step = {
+                "command": verify_command,
+                "exitCode": verify_result.returncode,
+                "payload": verify_payload,
+                "stderr": verify_result.stderr,
+            }
+            if not verify_ok:
+                emit_json(
+                    {
+                        "schema": "kg.capture.run.v1",
+                        "action": "run",
+                        "profile": profile.profile_id,
+                        "commit": commit,
+                        "reuseBuild": reuse_build,
+                        "status": "error",
+                        "materialize": materialize_results,
+                        "verify": verify_step,
+                        "snapshot": None,
+                        "render": None,
+                    }
+                )
+                return 2
     else:
         materialize_results = [{"command": command, "planned": True} for command in materialize_commands]
+        verify_command = build_world_diff_command(profile)
+        if verify_command is not None:
+            verify_step = {"command": verify_command, "planned": True}
 
     snapshot_command = build_snapshot_command(profile, reuse_build=reuse_build)
     snapshot_result = run_command(snapshot_command)
@@ -544,6 +624,7 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
                 "reuseBuild": reuse_build,
                 "status": "error",
                 "materialize": materialize_results,
+                "verify": verify_step,
                 "snapshot": {
                     "command": snapshot_command,
                     "exitCode": snapshot_result.returncode,
@@ -573,6 +654,7 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
             "reuseBuild": reuse_build,
             "status": "ok" if render_result.returncode == 0 else "error",
             "materialize": materialize_results,
+            "verify": verify_step,
             "snapshot": {
                 "command": snapshot_command,
                 "exitCode": snapshot_result.returncode,
@@ -611,6 +693,9 @@ def make_parser() -> argparse.ArgumentParser:
     snapshot.add_argument("profile")
     snapshot.add_argument("--reuse-build", action="store_true")
 
+    verify = sub.add_parser("verify")
+    verify.add_argument("profile")
+
     render = sub.add_parser("render")
     render.add_argument("profile")
 
@@ -633,6 +718,8 @@ def main() -> int:
             return cmd_materialize(profile, commit=args.commit)
         if args.action == "snapshot":
             return cmd_snapshot(profile, reuse_build=args.reuse_build)
+        if args.action == "verify":
+            return cmd_verify(profile)
         if args.action == "render":
             return cmd_render(profile)
         if args.action == "run":

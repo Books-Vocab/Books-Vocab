@@ -11,7 +11,7 @@ from pathlib import Path
 from .cards import CardStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
-from .graph_event_log import GraphEventStore
+from .graph_event_log import GraphEventStore, GraphSnapshotStore
 from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
 from .review_events import ReviewEventStore
@@ -121,6 +121,12 @@ def create_graph_event_store(user_dir: Path) -> GraphEventStore:
     return _get_cached(key, lambda: GraphEventStore(user_dir / "graph_events.db"))
 
 
+def create_graph_snapshot_store(user_dir: Path) -> GraphSnapshotStore:
+    """Per-user 圖譜週期 snapshot store（與 graph event ledger 共用同一 SQLite 檔）。"""
+    key = f"graph_snapshots:{user_dir}"
+    return _get_cached(key, lambda: GraphSnapshotStore(user_dir / "graph_events.db"))
+
+
 def _migrate_legacy_file(legacy: Path, target: Path) -> None:
     """Rename a legacy file to its notebook-scoped path. Race-safe."""
     if not target.exists() and legacy.exists():
@@ -170,6 +176,7 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
         lambda: GraphStore(
             links_path, candidates_path, blocked_path, pending_judge_path=pj_path,
             event_store_provider=lambda: create_graph_event_store(user_dir),
+            snapshot_store_provider=lambda: create_graph_snapshot_store(user_dir),
             event_notebook_id=notebook_id,
         ),
     )

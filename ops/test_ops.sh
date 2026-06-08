@@ -29,6 +29,8 @@ DEFAULT_TESTS=(
   deploy-smoke
   infra-health
   branch-audit
+  review-audit
+  capability-matrix
   python-entrypoints
   ui-token
   docs-lint
@@ -61,6 +63,10 @@ run_one() {
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
+    review-audit)       ./ops/tests/test_review_audit.sh ;;
+    capability-matrix)
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_capability_matrix.py
+      ;;
     python-entrypoints) ./ops/tests/test_python_entrypoints.sh ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     docs-lint)

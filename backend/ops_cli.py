@@ -32,6 +32,9 @@ from kg.ops_shared import (
     resolve_uid,
     table_columns,
 )
+from kg.ops_world_diff import diff_world_state, load_expectation
+from kg.ops_world_projection import SCHEMA as WORLD_STATE_SCHEMA
+from kg.ops_world_projection import project_user_world
 from kg.quota_service import token_cost_usd
 from kg.user_store import load_users_from
 
@@ -286,6 +289,42 @@ def cmd_user_config(args: argparse.Namespace) -> None:
             ["vocab_ui", "updated_at", str(vu["updated_at"])],
         ],
     )
+
+
+def cmd_world_state(args: argparse.Namespace) -> None:
+    """單用戶 world-state 投影（供 scenario diff / verify 讀 actual state）。"""
+    dd = data_dir()
+    uid = resolve_uid(args.uid, dd)
+    payload = project_user_world(uid, data_root=dd)
+    if args.json:
+        emit_json(payload)
+        return
+    print(f"schema: {WORLD_STATE_SCHEMA}")
+    print(f"user: {uid}")
+    print(
+        f"cards={len(payload['cards'])} notebooks={len(payload['notebooks'])} "
+        f"graphs={len(payload['graphs'])}"
+    )
+
+
+def cmd_world_diff(args: argparse.Namespace) -> None:
+    """用 declarative expectation spec 比對單用戶 world-state。"""
+    dd = data_dir()
+    uid = resolve_uid(args.uid, dd)
+    actual = project_user_world(uid, data_root=dd)
+    expected = load_expectation(args.spec)
+    payload = diff_world_state(actual, expected)
+    payload["user_id"] = uid
+    payload["specPath"] = str(args.spec)
+    if args.json:
+        emit_json(payload)
+        return
+    verdict = "ok" if payload["ok"] else "mismatch"
+    print(f"world-diff: {verdict}")
+    print(f"user: {uid}")
+    print(f"mismatches: {payload['mismatchCount']}")
+    for mismatch in payload["mismatches"][:10]:
+        print(f"- {mismatch['path']}: {mismatch['kind']}")
 
 
 def cmd_quota_overview(args: argparse.Namespace) -> None:
@@ -1281,6 +1320,17 @@ def main() -> None:
                        help="單用戶 user config（含 vocab_ui active notebook）唯讀檢視")
     p.add_argument("uid", help="User ID")
     p.set_defaults(func=cmd_user_config)
+
+    p = sub.add_parser("world-state", parents=[jp],
+                       help="單用戶 world-state 投影（cards/notebooks/graphs/config）")
+    p.add_argument("uid", help="User ID")
+    p.set_defaults(func=cmd_world_state)
+
+    p = sub.add_parser("world-diff", parents=[jp],
+                       help="用 expectation spec 比對單用戶 world-state")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("spec", help="Expectation JSON path (schema=kg.ops_world_expectation.v1)")
+    p.set_defaults(func=cmd_world_diff)
 
     # quota-overview
     p = sub.add_parser("quota-overview", parents=[jp], help="全用戶 24h 額度總覽")

@@ -12,16 +12,18 @@ from pathlib import Path
 
 from kg.graph.models import LinkKind
 from kg.graph.store import GraphStore
-from kg.graph_event_log import GraphEventStore, GraphEventType
+from kg.graph_event_log import GraphEventStore, GraphEventType, GraphSnapshotStore
 
 
 def _store(tmp_path: Path, with_events: bool = True) -> tuple[GraphStore, GraphEventStore | None]:
     ev = GraphEventStore(tmp_path / "graph_events.db") if with_events else None
+    snap = GraphSnapshotStore(tmp_path / "graph_events.db") if with_events else None
     gs = GraphStore(
         links_path=tmp_path / "graph_default.json",
         candidates_path=tmp_path / "candidates_default.json",
         blocked_path=tmp_path / "blocked_default.json",
         event_store=ev,
+        snapshot_store=snap,
         event_notebook_id="default",
     )
     return gs, ev
@@ -40,6 +42,10 @@ def test_add_link_emits_link_added(tmp_path):
     assert e.is_synthetic is False
     assert e.source == "auto"
     assert e.notebook_id == "default"
+    snap = GraphSnapshotStore(tmp_path / "graph_events.db").latest("default")
+    assert snap is not None
+    assert snap.is_synthetic is False
+    assert snap.link_count == 1
 
 
 def test_add_link_source_override(tmp_path):
@@ -206,13 +212,26 @@ class _CountingStore(GraphEventStore):
         return super().insert_many(drafts)
 
 
+class _CountingSnapshotStore(GraphSnapshotStore):
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.maybe_save_calls = 0
+
+    def maybe_save_periodic(self, notebook_id, links, *, min_events_since_snapshot=None):  # noqa: ANN001
+        self.maybe_save_calls += 1
+        return super().maybe_save_periodic(
+            notebook_id, links, min_events_since_snapshot=min_events_since_snapshot
+        )
+
+
 def test_batch_add_emits_single_transaction(tmp_path):
     ev = _CountingStore(tmp_path / "graph_events.db")
+    snap = _CountingSnapshotStore(tmp_path / "graph_events.db")
     gs = GraphStore(
         links_path=tmp_path / "graph_default.json",
         candidates_path=tmp_path / "candidates_default.json",
         blocked_path=tmp_path / "blocked_default.json",
-        event_store=ev, event_notebook_id="default",
+        event_store=ev, snapshot_store=snap, event_notebook_id="default",
     )
     gs.batch_add_links([
         ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
@@ -220,24 +239,28 @@ def test_batch_add_emits_single_transaction(tmp_path):
         ("e", "f", LinkKind.SHARES_USAGE, 0.5, "r3"),
     ])
     assert ev.insert_many_calls == 1  # 不是逐 link 一筆交易
+    assert snap.maybe_save_calls == 1
     assert len(ev.query(event_type=GraphEventType.LINK_ADDED)) == 3
 
 
 def test_deprecate_emits_single_transaction(tmp_path):
     ev = _CountingStore(tmp_path / "graph_events.db")
+    snap = _CountingSnapshotStore(tmp_path / "graph_events.db")
     gs = GraphStore(
         links_path=tmp_path / "graph_default.json",
         candidates_path=tmp_path / "candidates_default.json",
         blocked_path=tmp_path / "blocked_default.json",
-        event_store=ev, event_notebook_id="default",
+        event_store=ev, snapshot_store=snap, event_notebook_id="default",
     )
     gs.batch_add_links([
         ("a", "b", LinkKind.SHARES_USAGE, 0.7, "r1"),
         ("a", "c", LinkKind.SHARES_USAGE, 0.6, "r2"),
     ])
     before = ev.insert_many_calls
+    snap_before = snap.maybe_save_calls
     gs.deprecate_links_for("a")
     assert ev.insert_many_calls == before + 1  # 兩條 deprecate 共一筆交易
+    assert snap.maybe_save_calls == snap_before + 1
     assert len(ev.query(event_type=GraphEventType.LINK_DEPRECATED)) == 2
 
 

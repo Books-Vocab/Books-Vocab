@@ -179,6 +179,47 @@ class TestRestoreSafety:
         assert r.returncode == 0, r.stderr
         assert json.loads(r.stdout)["verified"]["ok"] is True
 
+    def test_restore_restores_users_json_config_snapshot(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        nb_id = _mk_notebook(tmp_path, uid, "Pinned")
+        first = _edit(
+            str(tmp_path), "user-config-set", uid,
+            "--review-clock", "paused",
+            "--active-notebook", "Pinned",
+            "--commit", "--json",
+        )
+        assert first.returncode == 0, first.stderr
+        second = _edit(
+            str(tmp_path), "user-config-set", uid,
+            "--review-clock", "running",
+            "--commit", "--json",
+        )
+        assert second.returncode == 0, second.stderr
+        latest = json.loads(_edit(str(tmp_path), "list-backups", uid, "--json").stdout)["backups"][0]["path"]
+        restored = _edit(str(tmp_path), "restore", uid, "--backup", latest, "--commit", "--json")
+        assert restored.returncode == 0, restored.stderr
+        users = json.loads((tmp_path / "users.json").read_text())
+        cfg = users[uid]["config"]
+        assert cfg["review_clock"]["is_paused"] is True
+        assert cfg["vocab_ui"]["active_notebook_id"] == nb_id
+
+
+class TestWorldSnapshots:
+    def test_world_snapshot_and_restore_roundtrip(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        assert _edit(str(tmp_path), "card-add", uid, "baseline", "--meaning", "m", "--commit").returncode == 0
+        snap = _edit(str(tmp_path), "world-snapshot", "--label", "baseline", "--commit", "--json")
+        assert snap.returncode == 0, snap.stderr
+        snapshot_path = json.loads(snap.stdout)["result"]["snapshot"]
+
+        assert _edit(str(tmp_path), "card-add", uid, "after", "--meaning", "m", "--commit").returncode == 0
+        assert _mk_user(tmp_path, "other") == "other"
+        restore = _edit(str(tmp_path), "world-restore", "--snapshot", snapshot_path, "--commit", "--json")
+        assert restore.returncode == 0, restore.stderr
+        assert _card_by_content(tmp_path, uid, "baseline") is not None
+        assert _card_by_content(tmp_path, uid, "after") is None
+        assert not (tmp_path / "users" / "other").exists()
+
 
 # ── B2：card-import / seed 寫入前預驗（原子性，杜絕半寫） ──────────
 
@@ -385,6 +426,32 @@ class TestLinkPersistence:
         assert r.returncode == 0, r.stderr
         # 撞既有 link 應顯式標記，不靜默假裝新建。
         assert json.loads(r.stdout)["result"].get("idempotent") is True
+
+    def test_link_add_can_explicitly_update_existing(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        for w in ("p2", "q2"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m", "--commit").returncode == 0
+        assert _edit(
+            str(tmp_path), "link-add", uid, "p2", "q2",
+            "--kind", "shares_usage", "--confidence", "0.5", "--reason", "r1",
+            "--commit", "--json",
+        ).returncode == 0
+        r = _edit(
+            str(tmp_path), "link-add", uid, "p2", "q2",
+            "--kind", "contrasts_with", "--confidence", "0.95", "--reason", "r2",
+            "--if-exists", "update", "--commit", "--json",
+        )
+        assert r.returncode == 0, r.stderr
+        out = json.loads(r.stdout)["result"]
+        assert out["existing_semantics"] == "updated-existing"
+        p2 = _card_by_content(tmp_path, uid, "p2")
+        q2 = _card_by_content(tmp_path, uid, "q2")
+        assert p2 is not None and q2 is not None
+        link = next(
+            lk for lk in _graph_links(tmp_path, uid)
+            if {lk["from_id"], lk["to_id"]} == {p2["id"], q2["id"]}
+        )
+        assert abs(link["confidence"] - 0.95) < 1e-6
 
 
 # ── 完備性新指令：notebook-update/delete、card-move、link-update ──

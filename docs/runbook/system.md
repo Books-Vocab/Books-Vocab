@@ -16,12 +16,14 @@ Provide one stable operations system so any agent can safely execute tasks from:
 ## Startup Checklist
 1. Run `ops/devops_kg_safe.sh preflight`
 2. Before cleanup / branch convergence, run `ops/branch_audit.sh`
+3. Before touching unfamiliar control-plane surfaces, run `ops/capability_matrix.py --json`
 
 ## Allowed Production Entrypoints
 - KG API: `ops/devops_kg_safe.sh`
 - Global status: `ops/devops_kg_safe.sh status` + `ops/devops_kg_safe.sh health`
 - Compatibility status wrapper: `ops/status_all.sh`
 - Branch convergence audit: `ops/branch_audit.sh`
+- Capability contract: `ops/capability_matrix.py`
 
 Do not bypass these entrypoints unless explicitly required and reviewed.
 
