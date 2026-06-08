@@ -302,9 +302,7 @@ struct BooksBrowserApp: App {
                         }
                     )
                 }
-                .sheet(isPresented: $showLoginFromWelcome) {
-                    LoginSheet()
-                }
+                .loginSheet(isPresented: $showLoginFromWelcome)
         }
     }
 

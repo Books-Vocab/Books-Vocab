@@ -101,9 +101,7 @@ struct PDFReaderView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .macReaderImmersion()
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
-        }
+        .loginSheet(isPresented: $showLoginSheet)
         .toastSheet(item: $detailEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: allVocabulary)
         }
