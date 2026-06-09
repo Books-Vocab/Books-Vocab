@@ -36,6 +36,19 @@ class UITestCase: XCTestCase {
         return app
     }
 
+    @discardableResult
+    func launchIsolatedApp(
+        extraArgs: [String] = [],
+        extraEnvironment: [String: String] = [:],
+        perfLog: String? = nil
+    ) -> XCUIApplication {
+        launchApp(
+            extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"] + extraArgs,
+            extraEnvironment: extraEnvironment,
+            perfLog: perfLog
+        )
+    }
+
     func attachDiagnostics(
         for app: XCUIApplication,
         namePrefix: String = "UITest Failure"
