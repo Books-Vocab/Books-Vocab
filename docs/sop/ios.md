@@ -7,7 +7,7 @@ scope:
   - ops/
 verified_against: 98cac27d
 -->
-# BooksBrowser iOS 開發技能
+# Books & Vocab iOS 開發技能
 
 ## 核心資訊
 

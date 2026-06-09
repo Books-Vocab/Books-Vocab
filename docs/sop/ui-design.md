@@ -6,7 +6,7 @@ scope:
   - ios/BooksBrowser/
 verified_against: 84f6998e
 -->
-# BooksBrowser UI Design System
+# Books & Vocab UI Design System
 
 > 文檔網絡：
 > - 開發入口與編譯流程：`docs/sop/ios.md`
@@ -17,7 +17,7 @@ verified_against: 84f6998e
 
 ## 設計系統概覽
 
-BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑）。**CTA 採極淡奶黃** `brandHero #FCDE9A`(pastel cream，兩 mode 同色) — Phase 1c 拍板由古銅蜂蜜金 `#E8C77F` 改淡至 `#FCDE9A`。**Chrome（tab bar / nav button / toolbar）走灰階 tint** (`tintLight #37352F` / `tintDark #E6E6E3`)，刻意不採奶黃以避免稀釋 CTA 訊號。藍色 Morandi grey-blue `accent #4D7396` 維持為**被動色**，留給 link / info / 裝飾：
+Books & Vocab 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑）。**CTA 採極淡奶黃** `brandHero #FCDE9A`(pastel cream，兩 mode 同色) — Phase 1c 拍板由古銅蜂蜜金 `#E8C77F` 改淡至 `#FCDE9A`。**Chrome（tab bar / nav button / toolbar）走灰階 tint** (`tintLight #37352F` / `tintDark #E6E6E3`)，刻意不採奶黃以避免稀釋 CTA 訊號。藍色 Morandi grey-blue `accent #4D7396` 維持為**被動色**，留給 link / info / 裝飾：
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
@@ -69,7 +69,7 @@ KG 的 Mac 支援走 **Mac Catalyst**（`SUPPORTS_MACCATALYST = YES`），**非�
 
 ## Motion Contract
 
-BooksBrowser 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.easeOut(...)`。
+Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.easeOut(...)`。
 動畫必須優先走 `BooksBrowser/Models/AppMetrics.swift` 中的 `AppMotion` 與共享 `AnyTransition` 語意 token。
 
 ### 核心原則
