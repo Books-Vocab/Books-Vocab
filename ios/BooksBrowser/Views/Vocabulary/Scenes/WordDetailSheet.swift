@@ -47,9 +47,15 @@ struct WordDetailSheet: View {
                     onLinkTapped: handleLinkTap,
                     onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
                     onAddLink: { showAddLink = true },
-                    onDeleteLink: handleDeleteLink,
-                    onHideLink: handleHideLink,
-                    onUnhideLink: handleUnhideLink
+                    onDeleteLink: { link in
+                        state.deleteLink(link, from: entry, allEntries: allEntries, kgService: kgService)
+                    },
+                    onHideLink: { link in
+                        state.hideLink(link, from: entry, allEntries: allEntries, kgService: kgService)
+                    },
+                    onUnhideLink: { link in
+                        state.unhideLink(link, from: entry, allEntries: allEntries, kgService: kgService)
+                    }
                 )
                 .overlay(alignment: .top) {
                     if let linkError = state.linkError {
@@ -72,7 +78,7 @@ struct WordDetailSheet: View {
                 .padding()
             }
         }
-        .animation(AppMotion.contentFade, value: presenterState != nil)
+        .animation(AppMotion.contentFade, value: state.presenterState != nil)
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
             // Yield once so SwiftUI can render the loading placeholder before
             // we run the (lightweight but synchronous) presentation computation.

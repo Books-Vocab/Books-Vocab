@@ -61,6 +61,7 @@ verified_against: 8aaece8d
 | `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
 | `Scenes/TodayReviewAutoplayController.swift` | 87 | `@MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration |
 | `Scenes/TodayReviewCollocationState.swift` | 29 | `struct TodayReviewCollocationState`，封裝 collocation explanation 的 scene-local mirror 與 entry mutation；讓 `TodayReviewView` 不再直接持有 explanation mirror / save 流程 |
+| `Scenes/WordDetailSceneState.swift` | 119 | `@Observable @MainActor final class WordDetailSceneState`，封裝 presenterState、link error 與 link mutation orchestration；讓 `WordDetailSheet` 退回 scene 組裝與 routing |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
 
 ### Domain Layer（純規則 / mutation helper）
@@ -100,7 +101,7 @@ verified_against: 8aaece8d
 | `Scenes/SelectionModeState.swift` | 47 | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | 64 | `struct OverviewTab: View`，Vocab 入口 overview tab |
 | `Scenes/AddLinkSheet.swift` | 121 | `struct AddLinkSheet: View`，KG 手動加連線 sheet |
-| `Scenes/WordDetailSheet.swift` | 251 | `struct WordDetailSheet: View` |
+| `Scenes/WordDetailSheet.swift` | 128 | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link orchestration 委派 `WordDetailSceneState` |
 | `Scenes/WordEditSheet.swift` | 105 | `struct WordEditSheet: View` |
 | `Scenes/ArchivedVocabSheet.swift` | 118 | `struct ArchivedVocabSheet: View` |
 | `GraphWebView.swift` | 281 | `struct GraphWebView: UIViewRepresentable` + `GraphForces` |
@@ -163,6 +164,7 @@ verified_against: 8aaece8d
 - `TodayReviewCardCache`：TodayReview rich-card cache helper，僅 `TodayReviewState` 持有
 - `TodayReviewAutoplayController`：autoplay helper，僅 `TodayReviewState` 持有
 - `TodayReviewCollocationState`：collocation explanation substate，僅 `TodayReviewState` 持有
+- `WordDetailSceneState`：Word Detail scene owner，持有 presenterState / link error 與 link mutation orchestration
 - `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
 - `KGVocabCoordinator`：KG 詞彙列表狀態，僅 `KGVocabView` 持有
