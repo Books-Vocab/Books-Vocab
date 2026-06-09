@@ -19,7 +19,7 @@
 	<string>Apple Distribution</string>
 	<key>provisioningProfiles</key>
 	<dict>
-		<key>com.Max0228.BooksAndVocab</key>
+		<key>com.Max0228.BooksBrowser</key>
 		<string>KG App Store</string>
 	</dict>
 	<key>uploadSymbols</key>

@@ -152,7 +152,7 @@ echo "$xcode_bad_developer_json" | jq -e '.schema=="kg.ios.xcode.v1" and (.error
 
 section "Simulator interaction surface"
 sim_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator status --json)"
-echo "$sim_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="status" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .app.bundleID=="com.Max0228.BooksAndVocab" and .app.container.data=="/tmp/kg-sim-fixture/container" and .app.container.status=="ok" and .app.process.status=="running" and .app.process.pid=="74736" and .sources.app_process.status=="ok" and (.timings.totalMs|type)=="number" and (.timings.simctlDevicesMs|type)=="number" and (.timings.appContainerMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
+echo "$sim_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="status" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.container.data=="/tmp/kg-sim-fixture/container" and .app.container.status=="ok" and .app.process.status=="running" and .app.process.pid=="74736" and .sources.app_process.status=="ok" and (.timings.totalMs|type)=="number" and (.timings.simctlDevicesMs|type)=="number" and (.timings.appContainerMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator status --json exposes booted device, app container, and process" || fail_t "simulator status --json invalid: $sim_json"
 sim_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sim status)"
 echo "$sim_text" | grep -q 'schema=kg.ios.simulator.v1' && echo "$sim_text" | grep -q 'udid=fixture-iphone-17-pro-max' && echo "$sim_text" | grep -q 'app_process status=running pid=74736' && echo "$sim_text" | grep -q 'timings totalMs=' \
@@ -161,13 +161,13 @@ sim_stopped_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1 ba
 echo "$sim_stopped_json" | jq -e '.schema=="kg.ios.simulator.v1" and .status=="ok" and .app.process.status=="stopped" and .app.process.pid==null and .sources.app_process.exitCode==1 and (.errors|length)==0' >/dev/null \
   && ok "simulator status --json reports stopped app process without failing" || fail_t "simulator stopped app invalid: $sim_stopped_json"
 sim_launch_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1 bash "$IOS_OPS" simulator launch --json)"
-echo "$sim_launch_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="launch" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksAndVocab" and .app.lifecycle.exitCode==0 and .app.lifecycle.output=="74736" and .app.process.status=="running" and .app.process.pid=="74736" and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
+echo "$sim_launch_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="launch" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.lifecycle.output=="74736" and .app.process.status=="running" and .app.process.pid=="74736" and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator launch --json starts installed app and refreshes process state" || fail_t "simulator launch invalid: $sim_launch_json"
 sim_launch_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sim launch)"
 echo "$sim_launch_text" | grep -q 'action=launch status=ok' && echo "$sim_launch_text" | grep -q 'app_process status=running pid=74736' && echo "$sim_launch_text" | grep -q 'timings totalMs=' \
   && ok "simulator launch text reports process state" || fail_t "simulator launch text invalid: $sim_launch_text"
 sim_terminate_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator terminate --json)"
-echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksAndVocab" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
+echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator terminate --json stops installed app and refreshes process state" || fail_t "simulator terminate invalid: $sim_terminate_json"
 sim_ensure_booted_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=1 bash "$IOS_OPS" simulator ensure-booted --json)"
 echo "$sim_ensure_booted_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="ensure-booted" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .boot.status=="ok" and .boot.exitCode==0 and .boot.wasAlreadyBooted==false and .boot.waitedForBootstatus==true and (.timings.totalMs|type)=="number" and (.timings.resolveMs|type)=="number" and (.timings.bootMs|type)=="number" and (.timings.bootstatusMs|type)=="number"' >/dev/null \
@@ -736,7 +736,7 @@ cat > "$archive/Info.plist" <<'PLIST'
   <key>CreationDate</key><date>2026-06-07T05:00:00Z</date>
   <key>ApplicationProperties</key>
   <dict>
-    <key>CFBundleIdentifier</key><string>com.Max0228.BooksAndVocab</string>
+    <key>CFBundleIdentifier</key><string>com.Max0228.BooksBrowser</string>
     <key>CFBundleShortVersionString</key><string>1.6</string>
     <key>CFBundleVersion</key><string>4</string>
   </dict>
