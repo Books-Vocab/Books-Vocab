@@ -262,7 +262,7 @@ extension VocabularyEntry {
     /// - If `transform` returns `nil` → removes (and cleans up empty groups).
     /// - Returns `nil` when no link with the given `id` exists.
     @discardableResult
-    func mutateLink(id linkId: String, _ transform: (KGCardLinkSummary) -> KGCardLinkSummary?) -> (kind: String, original: KGCardLinkSummary)? {
+    func mutateLink(id linkId: String, _ transform: (KGCardLinkSummary) -> KGCardLinkSummary?) -> (kind: String, link: KGCardLinkSummary)? {
         var dict = graphLinksByKind
         for (kind, links) in dict {
             guard let idx = links.firstIndex(where: { $0.id == linkId }) else { continue }
@@ -274,7 +274,7 @@ extension VocabularyEntry {
                 if dict[kind]?.isEmpty == true { dict[kind] = nil }
             }
             graphLinksByKind = dict
-            return (kind: kind, original: original)
+            return (kind: kind, link: original)
         }
         return nil
     }
