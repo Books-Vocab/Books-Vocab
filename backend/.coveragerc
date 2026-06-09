@@ -1,0 +1,6 @@
+[run]
+source = src/kg
+omit =
+    */migrations/*
+    src/kg/sot_history_migrate.py
+    src/kg/demo_review_synth.py
