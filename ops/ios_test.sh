@@ -412,6 +412,9 @@ PRESERVE_TMPOUT=0
 CURRENT_XCODE_PID=""
 RESULT_DIR=""
 RESULT_BUNDLE=""
+UI_TEST_SCREENSHOT_DIR=""
+UI_TEST_CONTACT_SHEET=""
+UI_TEST_SCREENSHOT_MANIFEST=""
 TEST_DEVICE_LOCK_HELD=0
 TEST_DEVICE_LOCK_FILE=""
 DEVICE_RUN_LOCK_WAIT_MS=0
@@ -728,7 +731,9 @@ run_xcodebuild_test_without_building_once() {
   local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
   acquire_test_device_lock
   xcode_start_ms="$(ios_test_now_ms)"
-  KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test-without-building \
+  KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" \
+  KG_UI_TEST_SCREENSHOT_DIR="$UI_TEST_SCREENSHOT_DIR" \
+  xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$DESTINATION" \
     -parallel-testing-enabled NO \
@@ -893,6 +898,110 @@ EOF
   fi
 }
 
+prepare_ui_step_screenshot_dir() {
+  UI_TEST_SCREENSHOT_DIR=""
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
+  UI_TEST_SCREENSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_steps.XXXXXX")"
+}
+
+build_ui_step_contact_sheet() {
+  [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
+  if ! compgen -G "$UI_TEST_SCREENSHOT_DIR/*.png" >/dev/null; then
+    export_ui_step_attachments_from_xcresult
+  fi
+  compgen -G "$UI_TEST_SCREENSHOT_DIR/*.png" >/dev/null || return 0
+
+  UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_SCREENSHOT_DIR/review_manifest.json"
+  UI_TEST_CONTACT_SHEET="$UI_TEST_SCREENSHOT_DIR/contact_sheet.png"
+  if ! uv run --python 3.13 python - "$UI_TEST_SCREENSHOT_DIR" "$UI_TEST_SCREENSHOT_MANIFEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+manifest = Path(sys.argv[2])
+items = []
+for rank, path in enumerate(sorted(root.glob("*.png")), start=1):
+    stem = path.stem
+    label = stem.split("-", 1)[1] if "-" in stem else stem
+    items.append({
+        "assetID": stem,
+        "relPath": path.name,
+        "surface": "UITest Step",
+        "lane": "ui-test",
+        "stateFacet": "step",
+        "stateFacetRank": rank,
+        "stateLabel": label,
+        "feature": "UITest",
+        "appearance": "light",
+    })
+manifest.write_text(json.dumps({"items": items}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+  then
+    echo "[ios_test][ui-steps] warning: failed to write contact sheet manifest dir=$UI_TEST_SCREENSHOT_DIR" >&2
+    return 0
+  fi
+
+  if "$SCRIPT_DIR/catalog_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
+      --appearance light --cols 3 --cell-width 260 --out "$UI_TEST_CONTACT_SHEET" --json >/dev/null 2>&1; then
+    echo "[ios_test][ui-steps] screenshots=$UI_TEST_SCREENSHOT_DIR contactSheet=$UI_TEST_CONTACT_SHEET"
+  else
+    echo "[ios_test][ui-steps] warning: failed to build contact sheet dir=$UI_TEST_SCREENSHOT_DIR" >&2
+    UI_TEST_CONTACT_SHEET=""
+  fi
+}
+
+export_ui_step_attachments_from_xcresult() {
+  [[ -n "${RESULT_BUNDLE:-}" && -d "$RESULT_BUNDLE" ]] || return 0
+  [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
+
+  local attachment_dir
+  attachment_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_attachments.XXXXXX")"
+  if ! xcrun xcresulttool export attachments \
+      --path "$RESULT_BUNDLE" \
+      --output-path "$attachment_dir" >/dev/null 2>&1; then
+    rm -rf "$attachment_dir"
+    return 0
+  fi
+
+  if ! uv run --python 3.13 python - "$attachment_dir" "$UI_TEST_SCREENSHOT_DIR" <<'PY'
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+manifest = source / "manifest.json"
+if not manifest.exists():
+    raise SystemExit(0)
+
+seen: set[str] = set()
+for test in json.loads(manifest.read_text(encoding="utf-8")):
+    for attachment in test.get("attachments", []):
+        name = attachment.get("suggestedHumanReadableName", "")
+        match = re.match(r"Step ([0-9]{2}-[^_]+).*\.png$", name)
+        if not match:
+            continue
+        step_name = match.group(1)
+        if step_name in seen:
+            continue
+        exported = attachment.get("exportedFileName", "")
+        source_file = source / exported
+        if not source_file.exists():
+            continue
+        shutil.copyfile(source_file, target / f"{step_name}.png")
+        seen.add(step_name)
+PY
+  then
+    echo "[ios_test][ui-steps] warning: failed to export step attachments from xcresult=$RESULT_BUNDLE" >&2
+  fi
+  rm -rf "$attachment_dir"
+}
+
 if [[ -n "$TEST_CACHE_ACTION" ]]; then
   handle_cache_action "$TEST_CACHE_ACTION"
 fi
@@ -912,6 +1021,7 @@ while :; do
   [[ -n "$RESULT_DIR" ]] && rm -rf "$RESULT_DIR"
   RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_result.XXXXXX")"
   RESULT_BUNDLE="$RESULT_DIR/Test.xcresult"
+  prepare_ui_step_screenshot_dir
   set +e
   BUILD_FOR_TESTING_MS=0
   TEST_INVOCATION_MS=0
@@ -1125,6 +1235,8 @@ write_json_verdict() {
     --arg executed "$executed" \
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
+    --arg uiContactSheet "$UI_TEST_CONTACT_SHEET" \
+    --arg uiScreenshotDir "$UI_TEST_SCREENSHOT_DIR" \
     --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
     --argjson deviceRunLockWaitMs "${DEVICE_RUN_LOCK_WAIT_MS:-0}" \
     --argjson bootMs "$BOOT_MS" \
@@ -1168,7 +1280,12 @@ write_json_verdict() {
         totalMs:$totalMs
       },
       cache:{status:$cacheStatus},
-      artifacts:{log:$log,xcresult:$xcresult}
+      artifacts:{
+        log:$log,
+        xcresult:$xcresult,
+        uiContactSheet:(if $uiContactSheet == "" then null else $uiContactSheet end),
+        uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end)
+      }
     }' >"$VERDICT_JSON_PRIVATE" || true
   cp -f "$VERDICT_JSON_PRIVATE" "$VERDICT_JSON_FILE" 2>/dev/null || true
   # Source the metric from the private copy (no concurrent writer) so per-run
@@ -1177,6 +1294,7 @@ write_json_verdict() {
 }
 
 populate_timing_breakdown
+build_ui_step_contact_sheet
 
 # Extract summary from xcresult if available
 if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
@@ -1199,7 +1317,7 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
 elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
   echo ""
   # Show failing test details
-  grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20
+  grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20 || true
   echo ""
   PRESERVE_TMPOUT=1
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
