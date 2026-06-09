@@ -8,10 +8,10 @@
 #     compiled file that xcodebuild emits when NOT using -quiet.
 #
 #   start_build_monitor LOG BASELINE_FILE PREFIX START_EPOCH_SECS
-#     Starts a background subshell that prints a progress line to stdout every
+#     Starts a background subshell that prints a progress line to stderr every
 #     ~8s when new compile events appear, or a heartbeat every 30s during
 #     quiet phases (linking, code-signing, resource copy).
-#     Returns the background PID.  Caller must kill it when xcodebuild exits:
+#     Returns the background PID on stdout. Caller must kill it when xcodebuild exits:
 #
 #       MONITOR_PID=$(start_build_monitor "$LOG" "$BASELINE" "[tag]" "$(date +%s)")
 #       xcodebuild ... >"$LOG" 2>&1
@@ -119,7 +119,7 @@ start_build_monitor() {
         last_tick=$now
       fi
     done
-  ) &
+  ) >&2 &
   echo $!
 }
 
@@ -157,6 +157,6 @@ start_tick_monitor() {
       fi
       last_tick=$now
     done
-  ) &
+  ) >&2 &
   echo $!
 }

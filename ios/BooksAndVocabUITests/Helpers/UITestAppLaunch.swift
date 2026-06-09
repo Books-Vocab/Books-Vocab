@@ -3,7 +3,7 @@ import XCTest
 
 private let uiTestAppArgumentsEnvKey = "KG_UI_TEST_APP_ARGS_JSON"
 private let uiTestLaunchProfileEnvKey = "KG_UI_TEST_LAUNCH_PROFILE"
-private let uiTestPerfLogEnvKey = "KG_UI_TEST_PERF_LOG"
+private let uiTestPerfLogEnvKey = "KG_PERF_LOG"
 
 enum UITestLaunchProfile: String {
     case standard

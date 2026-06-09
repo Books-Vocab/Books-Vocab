@@ -24,6 +24,8 @@ final class PodcastAudioEngine: NSObject {
     private var nowPlayingTitle: String = ""
     private var nowPlayingArtist: String = ""
     private var timeControlObserver: NSKeyValueObservation?
+    private var loadStartedAt: DispatchTime?
+    private var stallStartedAt: DispatchTime?
     // Incremented on every loadAudio; async tasks capture + compare to bail out
     // when a later load has superseded them (prevents stale duration / ready signals).
     private var loadGeneration: UInt64 = 0
@@ -72,6 +74,8 @@ final class PodcastAudioEngine: NSObject {
         // Extract `<seriesId>/ep_NN` from the standard podcast-media URL shape so
         // playback breadcrumbs carry an internal token, not a full URL with query.
         currentSourceToken = Self.sourceToken(from: url)
+        loadStartedAt = .now()
+        stallStartedAt = nil
         AppCrashReporting.addBreadcrumb(
             category: "audio",
             message: "audio.load",
@@ -185,8 +189,10 @@ final class PodcastAudioEngine: NSObject {
                 guard gen == self.loadGeneration else { return }
                 switch observed.timeControlStatus {
                 case .waitingToPlayAtSpecifiedRate:
+                    self.markStallStart()
                     self.startStallWatchdog()
                 case .playing, .paused:
+                    self.markStallEnd(reason: observed.timeControlStatus == .playing ? "playing" : "paused")
                     self.stallWatchdog?.cancel()
                     self.stallWatchdog = nil
                 @unknown default:
@@ -242,6 +248,7 @@ final class PodcastAudioEngine: NSObject {
             }
             guard gen == self.loadGeneration else { return }
             if playable {
+                self.markReadyToPlay()
                 self.onReadyToPlay?()
             } else {
                 self.onLoadFailed?(L10n.string("音訊無法播放"))
@@ -256,6 +263,7 @@ final class PodcastAudioEngine: NSObject {
             message: "audio.play",
             data: ["source": currentSourceToken ?? "unknown"]
         )
+        PerfLog.audio.mark("podcast.player.play.intentCount", "=1 source=\(currentSourceToken ?? "unknown")")
         // Replay-after-end: AVPlayer.play() is a no-op once currentTime has
         // reached duration (actionAtItemEnd defaults to .pause). Seek to 0
         // first so tapping play on a finished episode actually replays it.
@@ -548,9 +556,36 @@ final class PodcastAudioEngine: NSObject {
             try? await Task.sleep(for: .seconds(15))
             guard let self, !Task.isCancelled else { return }
             if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                self.markStallEnd(reason: "timeout")
                 self.onLoadFailed?(L10n.string("網路緩衝逾時"))
             }
         }
+    }
+
+    private func markReadyToPlay() {
+        guard let loadStartedAt else { return }
+        let ms = PerfChannel.ms(since: loadStartedAt)
+        PerfLog.audio.mark(
+            "podcast.player.load.readyLatency",
+            "=\(String(format: "%.2f", ms))ms source=\(currentSourceToken ?? "unknown")"
+        )
+        self.loadStartedAt = nil
+    }
+
+    private func markStallStart() {
+        guard stallStartedAt == nil else { return }
+        stallStartedAt = .now()
+        PerfLog.audio.mark("podcast.player.buffer.stallCount", "=1 source=\(currentSourceToken ?? "unknown")")
+    }
+
+    private func markStallEnd(reason: String) {
+        guard let start = stallStartedAt else { return }
+        let ms = PerfChannel.ms(since: start)
+        PerfLog.audio.mark(
+            "podcast.player.buffer.stallDuration",
+            "=\(String(format: "%.2f", ms))ms reason=\(reason) source=\(currentSourceToken ?? "unknown")"
+        )
+        stallStartedAt = nil
     }
 
     private func removeObservers() {
@@ -580,6 +615,8 @@ final class PodcastAudioEngine: NSObject {
             NotificationCenter.default.removeObserver(obs)
         }
         routeChangeObserver = nil
+        loadStartedAt = nil
+        stallStartedAt = nil
         player?.pause()
         // Detach the item so AVPlayer releases the underlying asset reader
         // (pause alone keeps network buffering alive).

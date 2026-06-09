@@ -28,10 +28,20 @@ struct PodcastPage {
         app.staticTexts["podcast.episodeList.staleBanner"]
     }
 
+    var anyEpisodeRow: XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "podcast.episode."))
+            .firstMatch
+    }
+
     // MARK: - Player
 
     var playerSettingsButton: XCUIElement {
         app.buttons["podcast.player.settingsButton"]
+    }
+
+    var playPauseButton: XCUIElement {
+        app.buttons["podcast.player.playPauseButton"]
     }
 
     // MARK: - Actions
@@ -39,6 +49,12 @@ struct PodcastPage {
     @discardableResult
     func tapFirstSeries(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         anySeriesCard.tapWhenReady(file: file, line: line)
+        return self
+    }
+
+    @discardableResult
+    func tapFirstEpisode(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
+        anyEpisodeRow.tapWhenReady(file: file, line: line)
         return self
     }
 

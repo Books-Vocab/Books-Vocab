@@ -775,6 +775,19 @@ grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build verdict records timing breakdown (incl lock wait)" || fail_t "ios_build verdict missing timing fields"
 grep -qE 'lockWaitMs=\$LOCK_WAIT_MS' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build surfaces lock wait time on stdout" || fail_t "ios_build does not surface lock wait on stdout"
+monitor_probe="$(
+  perl -e 'alarm 5; exec @ARGV' bash -lc '
+    source "'"$WORKSPACE"'/ops/lib/ios_build_progress.sh"
+    log="$(mktemp "${TMPDIR:-/tmp}/kg_ios_monitor_probe.XXXXXX.log")"
+    baseline="$(mktemp "${TMPDIR:-/tmp}/kg_ios_monitor_probe.XXXXXX.baseline")"
+    pid="$(start_build_monitor "$log" "$baseline" "[probe]" "$(date +%s)")"
+    printf "pid=%s\n" "$pid"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  ' 2>/dev/null
+)"
+echo "$monitor_probe" | grep -qE '^pid=[0-9]+$' \
+  && ok "ios_build progress monitor returns PID from command substitution" || fail_t "ios_build progress monitor command substitution hung/failed: $monitor_probe"
 
 section "ios_test emits xcresult-first diagnostics"
 grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_test.sh" \
