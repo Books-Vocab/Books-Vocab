@@ -80,6 +80,15 @@ struct CatalogScene: View {
         let kind: SurfaceKind
         let feature: Feature
         let screen: ScreenID?
+        /// Production view type this surface showcases — the content view its
+        /// catalog scene actually renders, stripped of fixture/theme wrappers
+        /// (`AppThemeContainer`, `.modelContainer`, `NavigationStack`, the catalog's
+        /// own `XxxScene` harness). A metatype, so the compiler *proves* it exists:
+        /// a renamed/deleted view breaks the build, not a silent string-table drift.
+        /// Emitted to `catalog_index.json` so gallery / IndexStore consumers map
+        /// surface→type from source truth instead of a hand-maintained name table.
+        /// `nil` only for inline-composed surfaces with no single backing type.
+        let backing: (any View.Type)?
     }
 
     struct ManifestEntry {
@@ -93,17 +102,21 @@ struct CatalogScene: View {
     enum Manifest {
         // MARK: - Surface factories (concise annotation)
 
-        private static func screen(_ c: String, _ f: Feature, _ s: ScreenID) -> CatalogSurface {
-            .init(category: c, kind: .featureScreen, feature: f, screen: s)
+        // featureScreen backing is REQUIRED: every full screen has a single
+        // production view, so the compiler forces all 18 to declare it.
+        private static func screen(_ c: String, _ f: Feature, _ s: ScreenID, _ backing: any View.Type) -> CatalogSurface {
+            .init(category: c, kind: .featureScreen, feature: f, screen: s, backing: backing)
         }
-        private static func overlay(_ c: String, _ f: Feature) -> CatalogSurface {
-            .init(category: c, kind: .overlay, feature: f, screen: nil)
+        // overlay/block/eng backing is optional (filled per-bucket); inline-composed
+        // surfaces legitimately have no single backing → nil.
+        private static func overlay(_ c: String, _ f: Feature, _ backing: (any View.Type)? = nil) -> CatalogSurface {
+            .init(category: c, kind: .overlay, feature: f, screen: nil, backing: backing)
         }
-        private static func block(_ c: String, _ f: Feature) -> CatalogSurface {
-            .init(category: c, kind: .buildingBlock, feature: f, screen: nil)
+        private static func block(_ c: String, _ f: Feature, _ backing: (any View.Type)? = nil) -> CatalogSurface {
+            .init(category: c, kind: .buildingBlock, feature: f, screen: nil, backing: backing)
         }
-        private static func eng(_ c: String, _ f: Feature) -> CatalogSurface {
-            .init(category: c, kind: .engineering, feature: f, screen: nil)
+        private static func eng(_ c: String, _ f: Feature, _ backing: (any View.Type)? = nil) -> CatalogSurface {
+            .init(category: c, kind: .engineering, feature: f, screen: nil, backing: backing)
         }
         /// Map a dynamic category list (e.g. macCatalyst-gated) to building blocks.
         private static func blocks(_ categories: [String], _ f: Feature) -> [CatalogSurface] {
@@ -183,7 +196,7 @@ struct CatalogScene: View {
             .init(id: "login_sheet", surfaces: [overlay("Login Sheet", .monetization)], register: LoginSheetScenarios.register),
             .init(id: "vocab_highlight_picker", surfaces: [overlay("Vocab Highlight Picker", .vocabulary)], register: VocabHighlightPickerScenarios.register),
             .init(id: "delete_account_sheet", surfaces: [overlay("Delete Account Sheet", .settings)], register: DeleteAccountSheetScenarios.register),
-            .init(id: "translation_lang_settings", surfaces: [screen("Translation Language Settings", .settings, .translationLanguageSettings)], register: TranslationLanguageSettingsScenarios.register),
+            .init(id: "translation_lang_settings", surfaces: [screen("Translation Language Settings", .settings, .translationLanguageSettings, TranslationLanguageSettingsView.self)], register: TranslationLanguageSettingsScenarios.register),
             .init(id: "bookcard", surfaces: [block("Book Card", .bookshelf)], register: BookCardScenarios.register),
             .init(
                 id: "vocab_components",
@@ -238,17 +251,17 @@ struct CatalogScene: View {
                 register: SettingsAccountSectionScenarios.register
             ),
             .init(id: "review_calendar_presenter", surfaces: [overlay("Review Calendar Presenter", .review)], register: ReviewCalendarScenarios.register),
-            .init(id: "app_startup_recovery", surfaces: [screen("Startup Recovery", .misc, .appStartupRecovery)], register: AppStartupRecoveryScenarios.register),
-            .init(id: "vocabulary_list_view", surfaces: [screen("Vocabulary List View", .vocabulary, .vocabularyList)], register: VocabularyListViewScenarios.register),
-            .init(id: "stats_view", surfaces: [screen("Stats View", .review, .stats)], register: StatsViewScenarios.register),
-            .init(id: "podcast_home_view", surfaces: [screen("Podcast Home View", .podcast, .podcastHome)], register: PodcastHomeViewScenarios.register),
-            .init(id: "bookshelf_view", surfaces: [screen("Bookshelf View", .bookshelf, .bookshelf)], register: BookshelfViewScenarios.register),
-            .init(id: "knowledge_graph_view", surfaces: [screen("Knowledge Graph View", .vocabulary, .knowledgeGraph)], register: KnowledgeGraphViewScenarios.register),
-            .init(id: "pdf_reader_view", surfaces: [screen("PDF Reader View", .reader, .pdfReader)], register: PDFReaderViewScenarios.register),
-            .init(id: "sync_view_surface", surfaces: [screen("Sync View", .review, .sync)], register: SyncViewScenarios.register),
-            .init(id: "notebook_list_view", surfaces: [screen("Notebook List View", .notebook, .notebookList)], register: NotebookListViewScenarios.register),
-            .init(id: "podcast_episode_list_view", surfaces: [screen("Podcast Episode List View", .podcast, .podcastEpisodeList)], register: PodcastEpisodeListViewScenarios.register),
-            .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer)], register: PodcastPlayerViewScenarios.register),
+            .init(id: "app_startup_recovery", surfaces: [screen("Startup Recovery", .misc, .appStartupRecovery, AppStartupRecoveryView.self)], register: AppStartupRecoveryScenarios.register),
+            .init(id: "vocabulary_list_view", surfaces: [screen("Vocabulary List View", .vocabulary, .vocabularyList, VocabularyListView.self)], register: VocabularyListViewScenarios.register),
+            .init(id: "stats_view", surfaces: [screen("Stats View", .review, .stats, StatsPresenter.self)], register: StatsViewScenarios.register),
+            .init(id: "podcast_home_view", surfaces: [screen("Podcast Home View", .podcast, .podcastHome, PodcastHomeView.self)], register: PodcastHomeViewScenarios.register),
+            .init(id: "bookshelf_view", surfaces: [screen("Bookshelf View", .bookshelf, .bookshelf, BookshelfView.self)], register: BookshelfViewScenarios.register),
+            .init(id: "knowledge_graph_view", surfaces: [screen("Knowledge Graph View", .vocabulary, .knowledgeGraph, KnowledgeGraphView.self)], register: KnowledgeGraphViewScenarios.register),
+            .init(id: "pdf_reader_view", surfaces: [screen("PDF Reader View", .reader, .pdfReader, PDFReaderView.self)], register: PDFReaderViewScenarios.register),
+            .init(id: "sync_view_surface", surfaces: [screen("Sync View", .review, .sync, SyncView.self)], register: SyncViewScenarios.register),
+            .init(id: "notebook_list_view", surfaces: [screen("Notebook List View", .notebook, .notebookList, NotebookListView.self)], register: NotebookListViewScenarios.register),
+            .init(id: "podcast_episode_list_view", surfaces: [screen("Podcast Episode List View", .podcast, .podcastEpisodeList, PodcastEpisodeListView.self)], register: PodcastEpisodeListViewScenarios.register),
+            .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer, PodcastPlayerView.self)], register: PodcastPlayerViewScenarios.register),
             .init(id: "editorial_cover", surfaces: [block("Notebook Cover · Editorial", .notebook)], register: NotebookCardEditorialCoverScenarios.register),
             .init(id: "kg_vocab_row", surfaces: [eng("KG Vocab Row", .vocabulary)], register: KGVocabRowScenarios.register),
             .init(id: "podcast_sentence_cells", surfaces: [block("Podcast · Transcript Column", .podcast), block("Podcast · Bubble Cell", .podcast)], register: PodcastSentenceCellsScenarios.register),
@@ -264,13 +277,17 @@ struct CatalogScene: View {
                 ],
                 register: ReviewFoldScenarios.register
             ),
-            .init(id: "settings_account_detail", surfaces: [screen("Settings Account Detail", .settings, .settingsAccountDetail)], register: SettingsAccountDetailScenarios.register),
+            .init(id: "settings_account_detail", surfaces: [screen("Settings Account Detail", .settings, .settingsAccountDetail, SettingsAccountDetailView.self)], register: SettingsAccountDetailScenarios.register),
             .init(id: "settings_subscription_section", surfaces: [block("Settings Subscription Section", .settings)], register: SettingsSubscriptionSectionScenarios.register),
-            .init(id: "today_review_phase_view", surfaces: [screen("Today Review Phase", .review, .todayReviewPhase)], register: TodayReviewPhaseScenarios.register),
-            .init(id: "reader_view", surfaces: [screen("Reader View · Chrome", .reader, .reader)], register: ReaderChromeScenarios.register),
-            .init(id: "settings", surfaces: [screen("Settings", .settings, .settings)], register: SettingsScenarios.register),
-            .init(id: "today_review", surfaces: [screen("Today Review", .review, .todayReview)], register: TodayReviewScenarios.register),
-            .init(id: "welcome", surfaces: [screen("Welcome", .onboarding, .welcome)], register: WelcomeScenarios.register),
+            .init(id: "today_review_phase_view", surfaces: [screen("Today Review Phase", .review, .todayReviewPhase, TodayReviewPhaseView.self)], register: TodayReviewPhaseScenarios.register),
+            // backing = ReaderView (the non-generic production reader screen), not the
+            // generic ReaderViewPresenter<…> the scene renders directly: a generic type
+            // has no single concrete metatype. ReaderView is the screen's identity and
+            // wraps ReaderViewPresenter internally (ReaderView.swift:79).
+            .init(id: "reader_view", surfaces: [screen("Reader View · Chrome", .reader, .reader, ReaderView.self)], register: ReaderChromeScenarios.register),
+            .init(id: "settings", surfaces: [screen("Settings", .settings, .settings, SettingsPresenter.self)], register: SettingsScenarios.register),
+            .init(id: "today_review", surfaces: [screen("Today Review", .review, .todayReview, TodayReviewPresenter.self)], register: TodayReviewScenarios.register),
+            .init(id: "welcome", surfaces: [screen("Welcome", .onboarding, .welcome, WelcomeView.self)], register: WelcomeScenarios.register),
         ]
 
         static var categoryNames: Set<String> {
@@ -302,6 +319,9 @@ struct CatalogScene: View {
                 ]
                 if let screen = surface.screen {
                     entry["screen"] = screen.rawValue
+                }
+                if let backing = surface.backing {
+                    entry["backing"] = String(describing: backing)
                 }
                 surfaceMap[surface.category] = entry
             }
