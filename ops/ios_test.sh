@@ -273,7 +273,8 @@ if [[ -n "$TEST_FILE" ]]; then
       FILE_PATH="$FILE_PATH.swift"
     else
       stem="$(basename "$TEST_FILE")"; stem="${stem%.swift}"
-      mapfile -t stem_matches < <(find "$TEST_DIR" -type f -name "$stem.swift" 2>/dev/null)
+      stem_matches=()
+      while IFS= read -r m; do stem_matches+=("$m"); done < <(find "$TEST_DIR" -type f -name "$stem.swift" 2>/dev/null)
       if [[ "${#stem_matches[@]}" -gt 1 ]]; then
         echo "[ios_test] '$TEST_FILE' is ambiguous — ${#stem_matches[@]} files match '$stem.swift':" >&2
         printf '  %s\n' "${stem_matches[@]}" >&2
