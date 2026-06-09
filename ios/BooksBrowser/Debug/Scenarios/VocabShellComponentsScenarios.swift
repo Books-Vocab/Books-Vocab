@@ -65,17 +65,6 @@ enum VocabShellComponentsScenarios {
     // 故不用 .fill（會把元件畫在整支裝置畫布裡、佔幾%空白）。
     // .fillH → 滿寬貼合高（bar/row/card）；.compressed → 貼合 intrinsic（pill/chip）。
 
-    /// 全寬元件：撐滿畫布寬、貼合內容高。搭 `layout: .fillH`。
-    @ViewBuilder
-    private static func wrapWide<Content: View>(@ViewBuilder _ content: @escaping () -> Content) -> some View {
-        AppThemeContainer {
-            content()
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(24)
-        }
-        .environmentObject(AppAppearanceStore.preview)
-    }
-
     /// 緊湊元件：畫布貼合 intrinsic 尺寸。搭 `layout: .compressed`。
     @ViewBuilder
     private static func wrapCompact<Content: View>(@ViewBuilder _ content: @escaping () -> Content) -> some View {
