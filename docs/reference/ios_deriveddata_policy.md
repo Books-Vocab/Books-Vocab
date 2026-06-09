@@ -82,6 +82,19 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 
 三份共享快取(build / test / release)都靠 `/tmp/kg-ios-build.lock` 同一把鎖序列化,不會並行寫壞。
 
+## 並行測試(2026-06-09 細粒度鎖 + 模擬器 pool)
+
+**量測動機**:舊版 `ios_test.sh` 持鎖跑完整段測試執行,實測 3 併發時第 2/3 個 agent 等 246s/309s(資料在 `.cache/ios-run-metrics.jsonl`,每次 build/test/release append 一行 timings)。
+
+**改動**:
+- **細粒度鎖**:`/tmp/kg-ios-build.lock` 只在 `build-for-testing`(共享 DerivedData 唯一寫者)期間持有;`test-without-building` 執行階段**不持鎖**。`release_build_lock` 為 ownership-guarded(鎖檔內容 == `$$` 才刪),`rebuild_test_cache` 內 double-checked locking(取鎖後重驗 ready 則跳過),避免重複建與覆寫他人正讀的產物。
+- **完成 sentinel** `.kg-test-cache-complete`:build 成功才在持鎖下寫;hit 偵測(`ios_test_cache_is_complete`)與 double-check 都要求它。`-d` 目錄檢查無法區分「完整」與「中斷留下的 half-written bundle」,sentinel 是 build 真完成的證明——中斷的 build 不寫 sentinel,下個 agent 重建而非吃毒化 cache。
+- **platform/arch cache key**:test cache key 用 platform token + arch(非具體裝置名),pool 各模擬器共享一份暖 build cache。
+- **模擬器 pool**:`./ops/ios_ops.sh simulator lease`/`release`,有界 pool `kg-pool-1..N`(env `KG_IOS_SIM_POOL_SIZE` 預設 3)。mkdir 原子租借 + `mv` 原子回收 stale(TTL `KG_IOS_SIM_LEASE_TTL` 預設 1800s)。這是當初失控的 155G XCTestDevices clone 的**有界、有生命週期**對應物——租借會重用與回收。
+- **用法**:`./ops/ios_test.sh --unit --lease`(自動租/釋)或 `--device <udid|name>` / `--destination '<...>'`。
+
+不變式:同一 content-key 的 test 產物建一次、就緒後不覆寫(sentinel + double-check 保證),故無鎖的並行 test 執行讀唯讀產物安全。build 仍全域序列化(CPU-bound,單機正解)。
+
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
 - 產物落在 `kg/.cache/ios-build-derived-data`（1.3G）；全域預設**零新孤兒**。
