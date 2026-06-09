@@ -21,6 +21,7 @@ section "SSH array (no string concatenation)"
 grep -q 'SSH_OPTS=(' "$KG"    && ok "KG SSH_OPTS array"    || fail_t "KG SSH_OPTS array"
 grep -q 'SSH_CMD=('  "$KG"    && ok "KG SSH_CMD array"     || fail_t "KG SSH_CMD array"
 grep -q 'SCP_CMD=('  "$KG"    && ok "KG SCP_CMD array"     || fail_t "KG SCP_CMD array"
+grep -q 'KG_SCP_CMD' "$KG"    && ok "KG SCP test seam"     || fail_t "KG SCP test seam missing"
 ! grep -qE '^SSH_CMD="' "$KG"    && ok "KG no bare SSH_CMD string"    || fail_t "KG bare SSH_CMD string found"
 
 # ── 3. 函式名稱一致 ────────────────────────────────────────────────────────
@@ -170,7 +171,58 @@ eval "argv=( $remote_cmd )"
   || fail_t "ops-cli lost 'count(*)': [${argv[*]:7}]"
 rm -f "$STUB"
 
-# ── 9. validate_uid（Apple uid 含點；traversal 仍須擋）─────────────────────
+# ── 9. ops-edit transport quoting（空白 content / notebook 名原封不動）──────
+section "ops-edit transport quoting"
+STUB="$(mktemp)"
+cat > "$STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+arg="$*"
+case "$arg" in
+  *"docker inspect"*) echo true ;;
+  *) printf '%s\n' "$arg" ;;
+esac
+STUBEOF
+chmod +x "$STUB"
+
+remote_cmd=$(KG_SSH_CMD="$STUB" bash "$KG" ops-edit card-move u1 "file in" --to-notebook "Turns of Phrase" --commit --json 2>/dev/null | tail -1)
+eval "argv=( $remote_cmd )"
+expect=(card-move u1 "file in" --to-notebook "Turns of Phrase" --commit --json)
+for i in "${!expect[@]}"; do
+  [[ "${argv[$((5 + i))]}" == "${expect[$i]}" ]] \
+    && ok "ops-edit arg[$i] preserved: ${expect[$i]}" \
+    || fail_t "ops-edit arg[$i] mangled: got [${argv[$((5 + i))]}] want [${expect[$i]}]"
+done
+rm -f "$STUB"
+
+# ── 10. ops-edit-batch wrapper（單次 upload + docker exec）─────────────────
+section "ops-edit-batch wrapper"
+SSH_STUB="$(mktemp)"
+SCP_STUB="$(mktemp)"
+cat > "$SSH_STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+arg="$*"
+case "$arg" in
+  *"docker inspect"*) echo true ;;
+  *) printf '%s\n' "$arg" ;;
+esac
+STUBEOF
+cat > "$SCP_STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+printf 'scp:%s\n' "$*"
+STUBEOF
+chmod +x "$SSH_STUB" "$SCP_STUB"
+PLAN="$(mktemp)"
+printf '{"schema":"kg.ops_edit_batch.v1","ops":[["world-snapshot","--json"]]}\n' > "$PLAN"
+batch_out=$(KG_SSH_CMD="$SSH_STUB" KG_SCP_CMD="$SCP_STUB" bash "$KG" ops-edit-batch "$PLAN" 2>/dev/null || true)
+echo "$batch_out" | grep -q 'docker exec knowledge-graph-api python3 /tmp/ops_edit_batch' \
+  && ok "ops-edit-batch docker exec runner" \
+  || fail_t "ops-edit-batch missing runner docker exec"
+echo "$batch_out" | grep -q '/tmp/ops_edit_batch_plan' \
+  && ok "ops-edit-batch passes uploaded plan path" \
+  || fail_t "ops-edit-batch missing uploaded plan path"
+rm -f "$SSH_STUB" "$SCP_STUB" "$PLAN"
+
+# ── 11. validate_uid（Apple uid 含點；traversal 仍須擋）─────────────────────
 # 根因:Apple Sign-in user_id 含 '.'（如 000287.<hex>.0228），舊白名單
 # [A-Za-z0-9_-] 把真實生產 uid 全擋，導致 user-info/ops-cli 查不了任何 Apple
 # 帳號。修法:放行 '.'，但以「禁 '..' / 禁前導 '.'」對齊後端 _safe_user_dir
@@ -207,7 +259,7 @@ for bad in '..' '../etc' 'a..b' '.hidden' 'a/b' 'a b' 'a;rm' '' "$LONG65"; do
     || fail_t "did NOT block bad uid: '$bad'"
 done
 
-# ── 10. 診斷噪音須走 stderr，讓 --json 的 stdout 可被機器 parse ─────────────
+# ── 12. 診斷噪音須走 stderr，讓 --json 的 stdout 可被機器 parse ─────────────
 # 根因:dogfooding 發現 preflight banner + info "▶ 執行 argv" 印到 stdout,
 # 害每個 ops-cli --json 都 json.loads 失敗。診斷訊息一律 stderr,stdout 只留 payload。
 section "Diagnostics to stderr (clean --json stdout)"
@@ -226,7 +278,7 @@ grep -qE '^info\(\)[[:space:]]*\{[[:space:]]*echo "▶ \$\*" >&2;' "$KG" \
   && ok "info() routed to stderr" \
   || fail_t "info() not routed to stderr (would pollute --json stdout)"
 
-# ── 11. status_all 相容入口不得繞過 safe wrapper ─────────────────────────
+# ── 13. status_all 相容入口不得繞過 safe wrapper ─────────────────────────
 section "status_all delegates to safe wrapper"
 STATUS_ALL="$WORKSPACE/ops/status_all.sh"
 bash -n "$STATUS_ALL" \

@@ -62,7 +62,10 @@ run_one() {
     release)            ./ops/test_release.sh ;;
     ios-release)        ./ops/test_ios_release.sh ;;
     backup-verify)      ./ops/tests/test_backup_verify.sh ;;
-    devops)             ./ops/test_devops.sh ;;
+    devops)
+      ./ops/test_devops.sh &&
+      "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
+      ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;

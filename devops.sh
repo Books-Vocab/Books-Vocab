@@ -27,7 +27,11 @@ if [[ -n "${KG_SSH_CMD:-}" ]]; then
 else
   SSH_CMD=( ssh "${SSH_OPTS[@]}" "$SERVER" )
 fi
-SCP_CMD=( scp -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
+if [[ -n "${KG_SCP_CMD:-}" ]]; then
+  read -r -a SCP_CMD <<< "$KG_SCP_CMD"
+else
+  SCP_CMD=( scp -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
+fi
 
 # 必要環境變數清單（deploy 前自動檢查）
 REQUIRED_ENV_KEYS=(
@@ -77,6 +81,29 @@ confirm() {
 }
 
 run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式）
+
+make_remote_tmp_path() {
+  local stem="$1"
+  local ext="$2"
+  printf '/tmp/%s__%s__%s%s' "$stem" "$(date -u +%Y%m%dT%H%M%SZ)" "$$" "$ext"
+}
+
+copy_local_to_container() {
+  local src="$1"
+  local remote_tmp="$2"
+  [[ -f "$src" ]] || err "檔案不存在: $src"
+  "${SCP_CMD[@]}" "$src" "$SERVER:$remote_tmp"
+  run_remote "docker cp $remote_tmp $CONTAINER:$remote_tmp"
+}
+
+cleanup_remote_tmp() {
+  local remote_tmp
+  for remote_tmp in "$@"; do
+    [[ -n "$remote_tmp" ]] || continue
+    run_remote "docker exec $CONTAINER rm -f $remote_tmp" >/dev/null 2>&1 || true
+    run_remote "rm -f $remote_tmp" >/dev/null 2>&1 || true
+  done
+}
 
 # ── 部署後 smoke verify（從本地打公網，外部視角全鏈路驗證）─────────────────
 # 可注入：CURL_BIN（測試用 mock curl）、KG_SKIP_SMOKE=1 完全跳過、
@@ -774,6 +801,37 @@ cmd_ops_edit() {
   container_exec_argv python3 /app/ops_edit.py "$@"
 }
 
+# ── 指令：ops-edit-batch <local-plan.json> [runner args] ───────────────────
+cmd_ops_edit_batch() {
+  local plan="${1:-}"
+  [[ -z "$plan" ]] && err "用法: $0 ops-edit-batch <local-plan.json> [runner args...]"
+  [[ ! -f "$plan" ]] && err "檔案不存在: $plan"
+  local runner; runner="$(cd "$(dirname "$0")" && pwd)/ops/ops_edit_batch.py"
+  [[ -f "$runner" ]] || err "batch runner 不存在: $runner"
+
+  local remote_runner remote_plan
+  remote_runner="$(make_remote_tmp_path "ops_edit_batch" ".py")"
+  remote_plan="$(make_remote_tmp_path "ops_edit_batch_plan" ".json")"
+
+  info "上傳 batch runner + plan → container"
+  copy_local_to_container "$runner" "$remote_runner"
+  copy_local_to_container "$plan" "$remote_plan"
+
+  shift
+  local quoted_args=""
+  if [[ $# -gt 0 ]]; then
+    quoted_args=$(printf ' %q' "$@")
+  fi
+
+  local rc=0
+  set +e
+  run_remote "docker exec $CONTAINER python3 $remote_runner $remote_plan$quoted_args"
+  rc=$?
+  set -e
+  cleanup_remote_tmp "$remote_runner" "$remote_plan"
+  return "$rc"
+}
+
 # ── 指令：container-script <local-script> [args] ────────────────────────
 cmd_container_script() {
   local script="${1:-}"
@@ -784,8 +842,7 @@ cmd_container_script() {
   local base; base=$(basename "$script")
   local remote_tmp="/tmp/$base"
   info "上傳 $script → container"
-  "${SCP_CMD[@]}" "$script" "$SERVER:$remote_tmp"
-  run_remote "docker cp $remote_tmp $CONTAINER:$remote_tmp"
+  copy_local_to_container "$script" "$remote_tmp"
   shift
   local interp
   [[ "$ext" == "py" ]] && interp="python3" || interp="bash"
@@ -795,8 +852,7 @@ cmd_container_script() {
     quoted_args=$(printf ' %q' "$@")
   fi
   run_remote "docker exec $CONTAINER $interp $remote_tmp$quoted_args"
-  run_remote "docker exec $CONTAINER rm -f $remote_tmp"
-  run_remote "rm -f $remote_tmp"
+  cleanup_remote_tmp "$remote_tmp"
 }
 
 # ── 指令：ssh ─────────────────────────────────────────────────────────────────
@@ -826,6 +882,7 @@ case "${1:-help}" in
   migrate-run)  cmd_migrate_run "${@:2}" ;;
   ops-cli)          cmd_ops_cli "${@:2}" ;;
   ops-edit)         cmd_ops_edit "${@:2}" ;;
+  ops-edit-batch)   cmd_ops_edit_batch "${@:2}" ;;
   container-script) cmd_container_script "${@:2}" ;;
   ssh)          cmd_ssh ;;
   help|--help|-h|*)
@@ -853,6 +910,7 @@ case "${1:-help}" in
     echo "  migrate-run \"<cmd>\"     container-run + 自動重啟（清 cache）"
     echo "  ops-cli <sub> [args]    在容器內執行 ops_cli.py <sub> [args]（唯讀查詢）"
     echo "  ops-edit <sub> [args]   在容器內執行 ops_edit.py <sub> [args]（寫入,dry-run 預設）"
+    echo "  ops-edit-batch <plan>   上傳本地 batch plan 到容器並一次執行（高頻 shaping 用）"
     echo "  container-script <file> [args]  上傳本地腳本到容器內執行（.py/.sh）"
     echo "  ssh                     開啟互動式 SSH（人工用，agent 改用 run）"
     echo ""
