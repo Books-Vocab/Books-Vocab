@@ -662,6 +662,43 @@ class TestJsonCountAndSchema:
         assert "error" in d and "nope" in d["error"]
 
 
+class TestCostOverview:
+    """cost-overview — 全用戶 cost 排名（ops_cli_costs.py）。"""
+
+    def test_cost_overview_json_empty_db(self, tmp_path):
+        r = _run_cli(str(tmp_path), "cost-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["range"] == "month"
+        assert d["users"] == []
+        assert d["count"] == 0
+
+    def test_cost_overview_json_with_data(self, tmp_path):
+        now = _now_iso()
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1000, 500, now),
+            ("u2", "judge", 200, 100, now),
+        ])
+        r = _run_cli(str(tmp_path), "cost-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 2
+        assert {u["user_id"] for u in d["users"]} == {"u1", "u2"}
+        # Descending by cost
+        costs = [u["total_cost_usd"] for u in d["users"]]
+        assert costs == sorted(costs, reverse=True)
+
+
+class TestAnalyze:
+    """analyze — thin wrapper around ops_analyze.py subprocess."""
+
+    def test_analyze_runs_without_crash(self, tmp_path):
+        """Smoke test: analyze must not crash on empty data dir."""
+        r = _run_cli(str(tmp_path), "analyze", "u1", "basic")
+        # ops_analyze.py may 1 on empty data, but must not traceback
+        assert "Traceback" not in r.stderr
+
+
 class TestFleetOverview:
     """fleet-overview — 跨用戶 cards/links/月 cost 聚合 + FLEET TOTAL。"""
 
