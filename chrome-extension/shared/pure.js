@@ -1,5 +1,5 @@
 /**
- * Pure logic for the KG Chrome extension.
+ * Pure logic for the Books & Vocab Chrome extension.
  *
  * Everything here is free of `chrome.*`, DOM and network side effects so it can
  * be unit-tested with Node's built-in `node:test` runner (zero dependencies).

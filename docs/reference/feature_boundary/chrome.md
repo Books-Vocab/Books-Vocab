@@ -8,7 +8,7 @@ verified_against: 8bbd1aa2
 -->
 # Chrome Extension Feature Boundary
 
-KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 → 翻譯 → 寫入用戶詞庫，與 iOS app 共用 backend (`wordnexus.lol`)。
+Books & Vocab Chrome extension（`Books & Vocab`, Manifest V3）— 網頁閱讀選詞 → 翻譯 → 寫入用戶詞庫，與 iOS app 共用 backend (`wordnexus.lol`)。
 
 ## 檔案清冊
 

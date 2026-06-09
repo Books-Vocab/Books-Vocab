@@ -29,7 +29,7 @@ enum KGError: LocalizedError {
         case .networkError(let err):
             return L10n.format("網路錯誤：%@", err.localizedDescription)
         case .serverError(let msg):
-            return L10n.format("KG 伺服器錯誤：%@", msg)
+            return L10n.format("Books & Vocab 服務錯誤：%@", msg)
         }
     }
 

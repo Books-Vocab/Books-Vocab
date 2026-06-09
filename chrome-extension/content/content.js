@@ -1,5 +1,5 @@
 /**
- * KG Chrome Extension — Content Script
+ * Books & Vocab Chrome Extension — Content Script
  *
  * Detects text selection on web pages, creates a Shadow DOM popup
  * for translation and vocabulary capture.

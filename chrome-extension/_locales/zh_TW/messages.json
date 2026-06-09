@@ -1,5 +1,5 @@
 {
-  "appName": { "message": "KG 詞彙助手" },
+  "appName": { "message": "Books & Vocab" },
   "appDescription": { "message": "閱讀時選詞翻譯，建立詞彙知識圖譜" },
 
   "popupErrorNetwork": { "message": "無法連線，請重試" },
@@ -22,7 +22,7 @@
   "popupLoginAction": { "message": "前往登入" },
 
   "settings": { "message": "設定" },
-  "optionsDocTitle": { "message": "KG 詞彙助手 — 設定" },
+  "optionsDocTitle": { "message": "Books & Vocab — 設定" },
   "accountSection": { "message": "帳號" },
   "prefSection": { "message": "偏好" },
   "authLoggedIn": { "message": "已登入" },
@@ -54,7 +54,7 @@
   "aboutSection": { "message": "關於" },
   "aboutVersion": { "message": "版本 0.1.0" },
 
-  "sidepanelDocTitle": { "message": "KG 詞彙" },
+  "sidepanelDocTitle": { "message": "Books & Vocab" },
   "vocabTitle": { "message": "我的單字本" },
   "notebookScope": { "message": "單字本" },
   "notebookScopeAria": { "message": "選擇單字本" },

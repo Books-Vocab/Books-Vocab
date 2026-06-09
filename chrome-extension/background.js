@@ -1,5 +1,5 @@
 /**
- * KG Chrome Extension — Background Service Worker
+ * Books & Vocab Chrome Extension — Background Service Worker
  *
  * Responsibilities:
  * 1. Route API calls from content script / side panel via message passing

@@ -38,7 +38,7 @@ verified_against: 8aaece8d
 |------|------|------|
 | `Scenes/VocabularyListPresenter.swift` | 66 | `struct VocabularyListPresenter<Content>: View` + `VocabularyListPresenterState` |
 | `Scenes/PendingVocabPresenter.swift` | 106 | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
-| `Scenes/KGVocabPresenter.swift` | 345 | KG 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
+| `Scenes/KGVocabPresenter.swift` | 345 | Books & Vocab 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
 | `Scenes/KnowledgeGraphPresenter.swift` | 357 | 知識圖譜佈局 |
 | `Scenes/WordDetailPresenter.swift` | 274 | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆 |
 | `Scenes/SyncPresenter.swift` | 228 | 同步主佈局 |
@@ -88,7 +88,7 @@ verified_against: 8aaece8d
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
+| `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，Books & Vocab 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
 | `Scenes/TodayReviewView.swift` | 414 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage`；scene 組裝、sheet/shortcut chrome、外部 env wiring |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
 | `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
@@ -167,7 +167,7 @@ verified_against: 8aaece8d
 - `WordDetailSceneState`：Word Detail scene owner，持有 presenterState / link error 與 link mutation orchestration
 - `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
-- `KGVocabCoordinator`：KG 詞彙列表狀態，僅 `KGVocabView` 持有
+- `KGVocabCoordinator`：Books & Vocab 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
 - Presentation models（`Presentation/`）：純值類型，可跨 layer 傳遞，但不持有 mutable state
 

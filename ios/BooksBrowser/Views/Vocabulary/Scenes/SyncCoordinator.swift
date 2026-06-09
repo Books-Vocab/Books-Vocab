@@ -98,7 +98,7 @@ final class SyncCoordinator: SyncCoordinating {
         var list: [PipelineStep] = []
 
         if deleteCount > 0 {
-            list.append(PipelineStep(id: "upload_delete", label: "刪除 KG 單字".localized))
+            list.append(PipelineStep(id: "upload_delete", label: "刪除 Books & Vocab 單字".localized))
         }
         if addCount > 0 {
             list.append(PipelineStep(id: "upload_add", label: "上傳新單字".localized))

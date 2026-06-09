@@ -22,9 +22,9 @@
 "繼續收聽" = "Continue Listening";
 "所有節目" = "All Shows";
 "API 錯誤：%@" = "API error: %@";
-"KG 伺服器未連線" = "KG server unavailable";
-"KG 伺服器錯誤：%@" = "KG server error: %@";
-"KG 字庫" = "KG Library";
+"Books & Vocab 服務未連線" = "Books & Vocab service unavailable";
+"Books & Vocab 服務錯誤：%@" = "Books & Vocab service error: %@";
+"Books & Vocab 單字庫" = "Books & Vocab Vocabulary";
 "上傳新單字" = "Upload New Words";
 "下載單字至本地" = "Download vocabulary";
 "中" = "Medium";
@@ -77,7 +77,7 @@
 "匯出 CSV" = "Export CSV";
 "匯出 JSON" = "Export JSON";
 "刪除" = "Delete";
-"刪除 KG 單字" = "Delete KG Words";
+"刪除 Books & Vocab 單字" = "Delete Books & Vocab Words";
 "刪除中..." = "Deleting...";
 "刪除卡片" = "Delete Card";
 "刪除失敗" = "Delete Failed";
