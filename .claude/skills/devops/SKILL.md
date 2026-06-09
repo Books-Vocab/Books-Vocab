@@ -54,6 +54,7 @@ allowed-tools: Bash, Read, Grep
 ./ops/devops_kg_safe.sh migrate-run "<cmd>"
 ./ops/devops_kg_safe.sh ops-cli <subcommand> [args]
 ./ops/devops_kg_safe.sh ops-edit <subcommand> [args]
+./ops/devops_kg_safe.sh ops-edit-batch <plan.json> [runner args]
 ./ops/devops_kg_safe.sh container-script <script> [args]
 ```
 
@@ -134,6 +135,9 @@ ops-edit list-backups <uid>                                      # 列自動備�
 ops-edit restore <uid> [--backup <path>]                         # 從備份還原(預設取最新;commit 前先備份當前狀態;會一起回復該 uid 的 users.json config/identity snapshot)
 ops-edit world-snapshot [--label LABEL]                          # 建立整個 data_dir world snapshot（users.json + users/* + root DB）
 ops-edit world-restore [--snapshot <path>]                       # 回滾整個 world（commit 前先做 pre-restore world backup）
+
+# 高頻 shaping / demo materialize（一次上傳本地 plan，由 runner 在 container 內批次執行）
+ops-edit-batch <plan.json>                                      # plan schema=kg.ops_edit_batch.v1；ops 為 argv list
 
 # 所有 --notebook / --to-notebook 接受 notebook id 或 name(自動 name→id 解析,杜絕孤兒卡)。
 # link 嚴格 per-notebook:兩端 card 必須與 link 同本(seed/link-add 跨本連結會被擋並提示)。

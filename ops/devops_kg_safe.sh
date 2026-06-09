@@ -39,6 +39,7 @@ usage:
   $0 migrate-run "<cmd>"
   $0 ops-cli <subcommand> [args...]
   $0 ops-edit <subcommand> [args...]
+  $0 ops-edit-batch <plan.json> [runner args...]
   $0 container-script <script> [args...]
 
 blocked by default:
@@ -227,6 +228,14 @@ main() {
       shift
       [[ -n "${1:-}" ]] || { echo "✗ usage: $0 ops-edit <subcommand> [args...]" >&2; exit 1; }
       "$BASE" ops-edit "$@"
+      ;;
+    ops-edit-batch)
+      # 高頻 shaping / demo materialize 用的 batch surface：本地 plan 上傳到 container，
+      # 由 runner 一次執行多個 ops_edit 子命令，避免單筆 round-trip 過慢。
+      preflight
+      shift
+      [[ -n "${1:-}" ]] || { echo "✗ usage: $0 ops-edit-batch <plan.json> [runner args...]" >&2; exit 1; }
+      "$BASE" ops-edit-batch "$@"
       ;;
     container-script)
       preflight

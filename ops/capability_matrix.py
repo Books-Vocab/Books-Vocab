@@ -63,6 +63,7 @@ SURFACES = [
     Surface("podcast.ops.reconcile", "./ops/podcast_ops.py", "./ops/podcast_ops.py reconcile --json", "observer", "external-read", "external", "podcast disk-to-S3 publish drift check"),
     Surface("llm_eval.cli", "lab/llm_eval", "(cd lab/llm_eval && uv run python scripts/cli.py <subcommand>)", "operator", "local-test", "local", "LLM prompt evaluation and corpus/gold-queue workbench"),
     Surface("devops.safe.ops_edit", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh ops-edit <subcommand> --commit", "production-capable", "prod-write", "production", "guarded production data mutation"),
+    Surface("devops.safe.ops_edit_batch", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh ops-edit-batch <plan.json>", "production-capable", "prod-write", "production", "guarded batch production data mutation via uploaded plan"),
     Surface("devops.safe.deploy", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh deploy", "production-capable", "prod-write deploy", "production", "deploy code to production"),
     Surface("devops.safe.migrate", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh migrate", "production-capable", "prod-write migration", "production", "run production migration"),
     Surface("devops.safe.restart", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh restart", "production-capable", "prod-write restart", "production", "restart production service"),
