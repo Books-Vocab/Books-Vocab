@@ -587,13 +587,14 @@ def test_render_html_escapes_breakout_sequences():
     sep_2028, sep_2029 = chr(0x2028), chr(0x2029)
     manifest = {
         "surfaces": [], "items": [], "featureCounts": {}, "sceneCount": 0, "totalImages": 0,
-        "laneCounts": {}, "evil": "</script><b>" + sep_2028 + sep_2029,
+        "laneCounts": {}, "evil": "</script><b>&" + sep_2028 + sep_2029,
     }
     html = renderer_module.render_html(manifest)
     assert "</script><b>" not in html                      # tag-breakout neutralised
     assert "\\u003c/script\\u003e\\u003cb\\u003e" in html    # evil payload < > escaped
     assert sep_2028 not in html and sep_2029 not in html    # raw separators gone
     assert "\\u2028" in html and "\\u2029" in html           # escaped forms present
+    assert "\\u0026" in html                               # & escaped
 
 
 def test_gallery_requires_source_declared_when_index_present(tmp_path: Path):
