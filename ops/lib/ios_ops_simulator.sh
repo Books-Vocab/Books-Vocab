@@ -687,6 +687,8 @@ SIM_POOL_PREFIX="${KG_IOS_SIM_POOL_PREFIX:-kg-pool}"
 SIM_POOL_SIZE="${KG_IOS_SIM_POOL_SIZE:-3}"
 SIM_POOL_DEVICE_TYPE="${KG_IOS_SIM_POOL_DEVICE_TYPE:-iPhone 17 Pro Max}"
 SIM_LEASE_TTL="${KG_IOS_SIM_LEASE_TTL:-1800}"
+SIM_LEASE_OWNER_PID="${KG_IOS_SIM_LEASE_OWNER_PID:-}"
+SIM_LEASE_OWNER_TOKEN="${KG_IOS_SIM_LEASE_OWNER_TOKEN:-}"
 
 simulator_device_state() {
   # Print the simctl state ("Booted"/"Shutdown"/...) of UDID $1, or empty.
@@ -727,7 +729,11 @@ simulator_pool_ensure_device() {
 }
 
 simulator_lease_is_stale() {
-  local leasedir="$1" created
+  local leasedir="$1" created owner_pid
+  owner_pid="$(cat "$leasedir/owner_pid" 2>/dev/null)"
+  if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
+    return 1
+  fi
   created="$(cat "$leasedir/created_at" 2>/dev/null)"
   # No timestamp yet = a slot claimed but not finished initializing. Treat as
   # LIVE (not stale) so a concurrent lease never reclaims a just-claimed slot.
@@ -747,7 +753,9 @@ cmd_simulator_lease() {
     esac
   done
   mkdir -p "$SIM_LEASE_ROOT"
-  local i name leasedir udid
+  local i name leasedir udid owner_pid owner_token
+  owner_pid="${SIM_LEASE_OWNER_PID:-$$}"
+  owner_token="$SIM_LEASE_OWNER_TOKEN"
   for (( i=1; i<=SIM_POOL_SIZE; i++ )); do
     name="${SIM_POOL_PREFIX}-${i}"
     leasedir="$SIM_LEASE_ROOT/$name"
@@ -766,10 +774,15 @@ cmd_simulator_lease() {
     # us timestamp-less and reclaims a live lease. Any failure below frees the
     # slot so we never leak a zombie lease dir.
     date +%s > "$leasedir/created_at" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    printf '%s' "$owner_pid" > "$leasedir/owner_pid" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    if [[ -n "$owner_token" ]]; then
+      printf '%s' "$owner_token" > "$leasedir/owner_token" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    else
+      rm -f "$leasedir/owner_token" 2>/dev/null || true
+    fi
     udid="$(simulator_pool_ensure_device "$name")" || { rm -rf "$leasedir" 2>/dev/null; continue; }
     [[ -n "$udid" ]] || { rm -rf "$leasedir" 2>/dev/null; continue; }
     printf '%s' "$udid" > "$leasedir/udid" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
-    printf '%s' "$$" > "$leasedir/owner_pid" 2>/dev/null || true
     # Boot, and surface a real boot failure instead of returning ok with a dead
     # device. `simctl boot` errors when already booted, so on its failure we
     # re-check the state and only treat NON-Booted as a true failure.
@@ -797,16 +810,19 @@ cmd_simulator_lease() {
 }
 
 cmd_simulator_release() {
-  local json=0 target="" shutdown=0
+  local json=0 target="" shutdown=0 owner_token=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=1; shift ;;
       --shutdown) shutdown=1; shift ;;
+      --owner-token)
+        [[ $# -ge 2 ]] || { echo "✗ --owner-token requires a value" >&2; return 1; }
+        owner_token="$2"; shift 2 ;;
       --device|--name)
         [[ $# -ge 2 ]] || { echo "✗ $1 requires a value (udid or pool name)" >&2; return 1; }
         target="$2"; shift 2 ;;
       -h|--help|help)
-        echo "Usage: ./ops/ios_ops.sh simulator release [--device <udid|name>] [--shutdown] [--json]"
+        echo "Usage: ./ops/ios_ops.sh simulator release [--device <udid|name>] [--shutdown] [--owner-token <token>] [--json]"
         return 0 ;;
       *) [[ -z "$target" ]] && { target="$1"; shift; } || { echo "✗ unknown simulator release option: $1" >&2; return 1; } ;;
     esac
@@ -829,6 +845,18 @@ cmd_simulator_release() {
   fi
   leasedir="$SIM_LEASE_ROOT/$name"
   udid="$(cat "$leasedir/udid" 2>/dev/null)"
+  if [[ -n "$owner_token" ]]; then
+    local stored_owner_token
+    stored_owner_token="$(cat "$leasedir/owner_token" 2>/dev/null)"
+    if [[ "$stored_owner_token" != "$owner_token" ]]; then
+      if [[ "$json" -eq 1 ]]; then
+        jq -nc --arg t "$target" '{schema:"kg.ios.sim-release.v1",status:"noop",error:("owner-token-mismatch:"+$t)}'
+      else
+        echo "[ios_ops] skipped release for '$target' (owner token mismatch)"
+      fi
+      return 0
+    fi
+  fi
   [[ "$shutdown" -eq 1 && -n "$udid" ]] && xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
   rm -rf "$leasedir" 2>/dev/null || true
   if [[ "$json" -eq 1 ]]; then
@@ -879,7 +907,7 @@ cmd_simulator() {
       cmd_simulator_release "$@"
       ;;
     -h|--help|help)
-      echo "Usage: ./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | lease [--json] | release [--device <udid|name>] [--shutdown] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]"
+      echo "Usage: ./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | lease [--json] | release [--device <udid|name>] [--shutdown] [--owner-token <token>] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]"
       ;;
     *)
       echo "✗ unknown simulator action: $action" >&2

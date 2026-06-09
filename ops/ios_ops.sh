@@ -21,7 +21,7 @@
 #   ./ops/ios_ops.sh simulator status [--json]
 #   ./ops/ios_ops.sh simulator ensure-booted [--device <udid|name>] [--json]
 #   ./ops/ios_ops.sh simulator lease [--json]                         # claim a pool simulator, print UDID
-#   ./ops/ios_ops.sh simulator release [--device <udid|name>] [--shutdown] [--json]
+#   ./ops/ios_ops.sh simulator release [--device <udid|name>] [--shutdown] [--owner-token <token>] [--json]
 #   ./ops/ios_ops.sh simulator launch [--json] [-- app args...]
 #   ./ops/ios_ops.sh simulator terminate [--json]
 #   ./ops/ios_ops.sh simulator screenshot [--out <png>] [--device booted] [--json]

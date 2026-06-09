@@ -32,6 +32,7 @@ DESTINATION_OVERRIDE=''   # set by --destination (full xcodebuild destination st
 DEVICE_OVERRIDE="${KG_IOS_TEST_DEVICE:-}"  # set by --device (name or UDID); enables per-agent simulators
 AUTO_LEASE="${KG_IOS_TEST_AUTOLEASE:-0}"   # --lease: claim a pool simulator for this run, release on exit
 LEASED_DEVICE=''                            # udid of an auto-leased simulator, released in cleanup
+LEASE_OWNER_TOKEN="kg-ios-test-$$-$(date +%s)-${RANDOM:-0}"
 SIMULATOR_BOOT_SELECTOR=''
 GREP_PATTERN=""
 TEST_FILE=""
@@ -397,13 +398,17 @@ PRESERVE_TMPOUT=0
 CURRENT_XCODE_PID=""
 RESULT_DIR=""
 RESULT_BUNDLE=""
+TEST_DEVICE_LOCK_HELD=0
+TEST_DEVICE_LOCK_FILE=""
+DEVICE_RUN_LOCK_WAIT_MS=0
 cleanup() {
   if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
     kill "$CURRENT_XCODE_PID" 2>/dev/null || true
   fi
+  release_test_device_lock
   release_build_lock   # ownership-guarded; only removes the lock if we still hold it
   if [[ -n "${LEASED_DEVICE:-}" ]]; then
-    "$IOS_OPS" simulator release --device "$LEASED_DEVICE" >/dev/null 2>&1 || true
+    "$IOS_OPS" simulator release --device "$LEASED_DEVICE" --owner-token "$LEASE_OWNER_TOKEN" >/dev/null 2>&1 || true
     LEASED_DEVICE=''
   fi
   if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
@@ -456,6 +461,50 @@ release_build_lock() {
   [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$LOCK_FILE"
   LOCK_HELD=0
 }
+
+destination_requires_device_lock() {
+  [[ "$DESTINATION" == *"platform=iOS Simulator"* ]]
+}
+
+device_lock_key() {
+  local raw_selector="${SIMULATOR_BOOT_SELECTOR:-$DESTINATION}"
+  printf '%s' "$raw_selector" | shasum -a 256 | awk '{print $1}'
+}
+
+acquire_test_device_lock() {
+  [[ "$TEST_DEVICE_LOCK_HELD" -eq 1 ]] && return 0
+  destination_requires_device_lock || return 0
+  local waited=0 lock_wait_start_ms holder_pid lock_key
+  lock_key="$(device_lock_key)"
+  TEST_DEVICE_LOCK_FILE="/tmp/kg-ios-test-device-${lock_key}.lock"
+  echo "[ios_test] caller=$CALLER waiting for device lock selector=\"${SIMULATOR_BOOT_SELECTOR:-$DESTINATION}\"..."
+  lock_wait_start_ms="$(ios_test_now_ms)"
+  while ! shlock -f "$TEST_DEVICE_LOCK_FILE" -p $$; do
+    holder_pid=$(cat "$TEST_DEVICE_LOCK_FILE" 2>/dev/null || echo "")
+    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+      if [[ "$(cat "$TEST_DEVICE_LOCK_FILE" 2>/dev/null || echo "")" == "$holder_pid" ]]; then
+        echo "[ios_test] stale device lock (pid=$holder_pid dead), stealing"
+        rm -f "$TEST_DEVICE_LOCK_FILE"
+      fi
+      continue
+    fi
+    sleep "$POLL_INTERVAL"
+    waited=$((waited + POLL_INTERVAL))
+    if [[ $waited -ge $TIMEOUT ]]; then
+      echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for device lock" >&2
+      exit 1
+    fi
+  done
+  TEST_DEVICE_LOCK_HELD=1
+  DEVICE_RUN_LOCK_WAIT_MS=$(( DEVICE_RUN_LOCK_WAIT_MS + ($(ios_test_now_ms) - lock_wait_start_ms) ))
+  echo "[ios_test] device lock acquired deviceRunLockWaitMs=$DEVICE_RUN_LOCK_WAIT_MS"
+}
+
+release_test_device_lock() {
+  [[ "$TEST_DEVICE_LOCK_HELD" -eq 1 ]] || return 0
+  [[ "$(cat "$TEST_DEVICE_LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$TEST_DEVICE_LOCK_FILE"
+  TEST_DEVICE_LOCK_HELD=0
+}
 trap cleanup EXIT INT TERM
 
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease
@@ -465,7 +514,12 @@ trap cleanup EXIT INT TERM
 # a run that would have errored out anyway.
 if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE" \
       && "$TEST_CACHE_ACTION" != "status" && "$TEST_CACHE_ACTION" != "clean" ]]; then
-  LEASED_DEVICE="$("$IOS_OPS" simulator lease 2>/dev/null | tail -1)"
+  lease_json="$(
+    KG_IOS_SIM_LEASE_OWNER_PID=$$ \
+    KG_IOS_SIM_LEASE_OWNER_TOKEN="$LEASE_OWNER_TOKEN" \
+      "$IOS_OPS" simulator lease --json 2>/dev/null
+  )"
+  LEASED_DEVICE="$(jq -r '.udid // empty' <<<"$lease_json" 2>/dev/null)"
   if [[ -z "$LEASED_DEVICE" ]]; then
     echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
     exit 1
@@ -489,6 +543,7 @@ TEST_BODY_MS=0
 XCRESULT_SESSION_MS=0
 XCRESULT_HARNESS_OVERHEAD_MS=0
 INVOCATION_OVERHEAD_MS=0
+lease_json=""
 boot_simulator_if_needed() {
   local boot_start_ms boot_end_ms
   boot_start_ms="$(ios_test_now_ms)"
@@ -597,9 +652,15 @@ last_test_event() {
     | sed 's/^[[:space:]]*//'
 }
 
+should_rebuild_after_test_without_building_failure() {
+  grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null && return 1
+  grep -qE 'Failed to read xctestrun file|no \.xctestrun artifact|cached test products are incomplete|failed to load test bundle|failed to create test runner|test runner exited before starting|unable to find.*xctestrun|xctestrun file.*(missing|invalid|not found)' "$TMPOUT" 2>/dev/null
+}
+
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
   local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
+  acquire_test_device_lock
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
@@ -641,6 +702,7 @@ run_xcodebuild_test_without_building_once() {
   TEST_INVOCATION_MS=$(( xcode_end_ms - xcode_start_ms ))
   XCODEBUILD_MS=$(( BUILD_FOR_TESTING_MS + TEST_INVOCATION_MS ))
   CURRENT_XCODE_PID=""
+  release_test_device_lock
   current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
   if [[ "$current_line" -gt "$last_line" ]]; then
     emit_new_test_output "$((last_line + 1))" "$current_line"
@@ -759,7 +821,7 @@ while :; do
     CACHE_STATUS="hit"
     run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
     EXIT_CODE=$?
-    if [[ "$EXIT_CODE" -ne 0 ]]; then
+    if [[ "$EXIT_CODE" -ne 0 ]] && should_rebuild_after_test_without_building_failure; then
       CACHE_STATUS="rebuild-after-failure"
       BUILD_LOG="$(mktemp)"
       BUILD_RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
@@ -907,7 +969,7 @@ populate_timing_breakdown() {
 }
 
 print_timing_summary() {
-  echo "[ios_test] timings cacheStatus=$CACHE_STATUS uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS appLaunchAverageMs=$APP_LAUNCH_AVERAGE_MS appLaunchSamples=$APP_LAUNCH_SAMPLES invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+  echo "[ios_test] timings cacheStatus=$CACHE_STATUS uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} deviceRunLockWaitMs=$DEVICE_RUN_LOCK_WAIT_MS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS appLaunchAverageMs=$APP_LAUNCH_AVERAGE_MS appLaunchSamples=$APP_LAUNCH_SAMPLES invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
 }
 
 # Machine-readable verdict file — survives even when stdout/stderr is piped
@@ -938,6 +1000,7 @@ write_json_verdict() {
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
     --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
+    --argjson deviceRunLockWaitMs "${DEVICE_RUN_LOCK_WAIT_MS:-0}" \
     --argjson bootMs "$BOOT_MS" \
     --argjson xcodebuildMs "$XCODEBUILD_MS" \
     --argjson buildForTestingMs "$BUILD_FOR_TESTING_MS" \
@@ -965,6 +1028,7 @@ write_json_verdict() {
       executed:(if $executed == "" then null else $executed end),
       timings:{
         lockWaitMs:$lockWaitMs,
+        deviceRunLockWaitMs:$deviceRunLockWaitMs,
         bootMs:$bootMs,
         xcodebuildMs:$xcodebuildMs,
         buildForTestingMs:$buildForTestingMs,

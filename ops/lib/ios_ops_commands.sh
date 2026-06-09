@@ -115,7 +115,7 @@ cmd_commands_json() {
         key:"simulator",
         aliases:["sim"],
         sideEffect:"read-only status; local-simulator-lifecycle ensure-booted/launch/terminate; lease/release claim/free a pool simulator; local-artifact screenshot",
-        command:"./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | lease [--json] | release [--device <udid|name>] [--shutdown] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]",
+        command:"./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | lease [--json] | release [--device <udid|name>] [--shutdown] [--owner-token <token>] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]",
         delegate:null,
         purpose:"booted simulator status, lifecycle warm-up/reuse, per-agent simulator lease/release pool for parallel test runs, app launch/terminate, app data container lookup, and local screenshot artifact capture",
         jsonSchemas:["kg.ios.simulator.v1","kg.ios.sim-lease.v1","kg.ios.sim-release.v1"]
