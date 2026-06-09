@@ -807,6 +807,69 @@ grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'deviceRunLockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'acquire_test_device_lock' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test records per-device execution lock timing" || fail_t "ios_test missing per-device execution lock timing"
+ios_test_isolation_required="$(
+  PROJECT_ROOT="/tmp/.codex/worktrees/91de/kg" \
+  DESTINATION="platform=iOS Simulator,name=iPhone 17 Pro Max" \
+  DEVICE_OVERRIDE="" \
+  DESTINATION_OVERRIDE="" \
+  AUTO_LEASE=0 \
+  LIST_ONLY=0 \
+  TEST_CACHE_ACTION="" \
+  KG_IOS_TEST_ALLOW_SHARED_SIM=0 \
+  CI="" \
+  WORKTREE_BRANCH="" \
+    bash -lc '
+      eval "$(sed -n "/^destination_requires_device_lock()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^env_flag_enabled()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^running_in_isolation_enforced_context()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^should_require_isolated_simulator()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      if should_require_isolated_simulator; then echo require; else echo allow; fi
+    '
+)"
+[[ "$ios_test_isolation_required" == "require" ]] \
+  && ok "ios_test requires --lease/--device in agent worktree context" || fail_t "ios_test did not require isolated simulator in agent context: $ios_test_isolation_required"
+ios_test_isolation_autolease="$(
+  PROJECT_ROOT="/tmp/.codex/worktrees/91de/kg" \
+  DESTINATION="platform=iOS Simulator,name=iPhone 17 Pro Max" \
+  DEVICE_OVERRIDE="" \
+  DESTINATION_OVERRIDE="" \
+  AUTO_LEASE=1 \
+  LIST_ONLY=0 \
+  TEST_CACHE_ACTION="" \
+  KG_IOS_TEST_ALLOW_SHARED_SIM=0 \
+  CI="" \
+  WORKTREE_BRANCH="" \
+    bash -lc '
+      eval "$(sed -n "/^destination_requires_device_lock()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^env_flag_enabled()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^running_in_isolation_enforced_context()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^should_require_isolated_simulator()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      if should_require_isolated_simulator; then echo require; else echo allow; fi
+    '
+)"
+[[ "$ios_test_isolation_autolease" == "allow" ]] \
+  && ok "ios_test skips isolation guard when auto-lease is enabled" || fail_t "ios_test isolation guard ignored auto-lease: $ios_test_isolation_autolease"
+ios_test_isolation_override="$(
+  PROJECT_ROOT="/tmp/.codex/worktrees/91de/kg" \
+  DESTINATION="platform=iOS Simulator,name=iPhone 17 Pro Max" \
+  DEVICE_OVERRIDE="" \
+  DESTINATION_OVERRIDE="" \
+  AUTO_LEASE=0 \
+  LIST_ONLY=0 \
+  TEST_CACHE_ACTION="" \
+  KG_IOS_TEST_ALLOW_SHARED_SIM=1 \
+  CI="" \
+  WORKTREE_BRANCH="" \
+    bash -lc '
+      eval "$(sed -n "/^destination_requires_device_lock()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^env_flag_enabled()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^running_in_isolation_enforced_context()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      eval "$(sed -n "/^should_require_isolated_simulator()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      if should_require_isolated_simulator; then echo require; else echo allow; fi
+    '
+)"
+[[ "$ios_test_isolation_override" == "allow" ]] \
+  && ok "ios_test allows explicit shared-simulator override" || fail_t "ios_test isolation guard ignored override: $ios_test_isolation_override"
 grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '--launch-benchmark' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_UI_TEST_APP_ARGS_JSON' "$WORKSPACE/ops/ios_test.sh" \
