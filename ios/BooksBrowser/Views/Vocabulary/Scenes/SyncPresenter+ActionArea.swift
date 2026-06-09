@@ -17,7 +17,7 @@ extension SyncPresenter {
                     .disabled(!state.isConnected)
 
                     if !state.isConnected {
-                        Text("KG 伺服器未連線".localized)
+                        Text("Books & Vocab 服務未連線".localized)
                             .font(appSkin.typography.caption)
                             .foregroundStyle(appSkin.palette.destructive)
                     }

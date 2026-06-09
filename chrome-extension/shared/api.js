@@ -1,5 +1,5 @@
 /**
- * KG API client for Chrome extension.
+ * Books & Vocab API client for the Chrome extension.
  * All methods return Promises. Auth token is read from chrome.storage.local.
  */
 

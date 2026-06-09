@@ -5,7 +5,7 @@ update_trigger: app-store-asset-refresh
 scope:
   - marketing/
 -->
-# BooksBrowser 宣傳影片製作指南
+# Books & Vocab 宣傳影片製作指南
 
 純 app 實錄 + 後製。無人物，畫面即主角。
 Apple 產品影片風格：乾淨、精準、節奏感。

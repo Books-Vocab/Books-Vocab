@@ -1,4 +1,4 @@
-# Knowledge Graph (Vocab) Backend — FastAPI 服務
+# Books & Vocab Backend — FastAPI 服務
 
 這是一個以 SQLite 為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、背景 Pipeline、增量同步機制。
 
@@ -12,7 +12,7 @@
 
 > 💡 **後端開發入口**：部署、測試、格式規範與 debug 路徑，請先看：[👉 `../docs/sop/backend.md`](../docs/sop/backend.md)
 >
-> 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見：[👉 `../docs/sop/architecture.md`](../docs/sop/architecture.md)
+> 💡 **完整系統架構**：有關 Books & Vocab backend 如何與 iOS 前端 (Books & Vocab app) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見：[👉 `../docs/sop/architecture.md`](../docs/sop/architecture.md)
 
 ## 快速啟動
 

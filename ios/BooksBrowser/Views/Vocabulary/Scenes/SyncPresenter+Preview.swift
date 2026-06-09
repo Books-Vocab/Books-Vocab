@@ -130,7 +130,7 @@ private enum SyncPresenterPreviewData {
         steps: [
             .init(
                 id: "upload_delete",
-                label: "刪除 KG 單字",
+                label: "刪除 Books & Vocab 單字",
                 status: .error,
                 current: 1,
                 total: 2,

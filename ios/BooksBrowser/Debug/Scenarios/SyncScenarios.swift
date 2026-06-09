@@ -79,7 +79,7 @@ enum SyncScenarios {
             addCount: 2,
             deleteCount: 1,
             steps: [
-                step(id: "upload_delete", label: "刪除 KG 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
+                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
                 step(id: "upload_add", label: "上傳新單字", status: .running, current: 1, total: 2),
                 step(id: "trigger", label: "觸發背景 AI 處理", status: .waiting),
                 step(id: "push_review", label: "上傳複習進度", status: .waiting),
@@ -99,7 +99,7 @@ enum SyncScenarios {
             addCount: 2,
             deleteCount: 1,
             steps: [
-                step(id: "upload_delete", label: "刪除 KG 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
+                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
                 step(id: "upload_add", label: "上傳新單字", status: .done, current: 2, total: 2, detail: "2 新增, 0 已存在"),
                 step(id: "trigger", label: "觸發背景 AI 處理", status: .done, detail: "已交由伺服器背景處理"),
                 step(id: "push_review", label: "上傳複習進度", status: .done, detail: "已同步 5 筆複習紀錄"),
@@ -119,7 +119,7 @@ enum SyncScenarios {
             addCount: 2,
             deleteCount: 1,
             steps: [
-                step(id: "upload_delete", label: "刪除 KG 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
+                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
                 step(id: "upload_add", label: "上傳新單字", status: .error, current: 1, total: 2, detail: "部分上傳失敗（1 筆）"),
                 step(id: "trigger", label: "觸發背景 AI 處理", status: .done, detail: "已交由伺服器背景處理"),
                 step(id: "push_review", label: "上傳複習進度", status: .done, detail: "已同步 5 筆複習紀錄"),
@@ -139,7 +139,7 @@ enum SyncScenarios {
             addCount: 2,
             deleteCount: 1,
             steps: [
-                step(id: "upload_delete", label: "刪除 KG 單字", status: .running, current: 0, total: 1),
+                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .running, current: 0, total: 1),
                 step(id: "upload_add", label: "上傳新單字", status: .waiting),
                 step(id: "trigger", label: "觸發背景 AI 處理", status: .waiting),
                 step(id: "push_review", label: "上傳複習進度", status: .waiting),
