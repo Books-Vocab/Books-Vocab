@@ -28,20 +28,16 @@ struct ReaderNotebookPicker: View {
 
         return NavigationStack {
             List {
-                // 跟隨全域設定
-                Section {
-                    followGlobalRow
-                }
-
-                // Notebook 列表
-                Section {
-                    ForEach(notebooks) { notebook in
-                        notebookRow(notebook)
+                // Notebook 列表（每本書必綁定恰好一本真實單字本，不提供「跟隨全域」）
+                NotebookBindingList(
+                    notebooks: notebooks,
+                    selectedNotebookId: book.preferredNotebookId,
+                    onSelect: { notebook in
+                        book.preferredNotebookId = notebook.remoteId
+                        persistBookBinding()
+                        dismiss()
                     }
-                } header: {
-                    Text("單字本".localized)
-                        .font(AppFonts.caption(weight: .medium))
-                }
+                )
             }
             .frame(maxWidth: presentation.contentMaxWidth)
             .padding(.horizontal, presentation.horizontalPadding)
@@ -60,82 +56,6 @@ struct ReaderNotebookPicker: View {
             }
         }
         .enableInjection()
-    }
-
-    private var followGlobalRow: some View {
-        Button {
-            book.preferredNotebookId = nil
-            persistBookBinding()
-            dismiss()
-        } label: {
-            HStack(spacing: AppSpacing.s2) {
-                Image(systemName: "globe")
-                    .font(AppFonts.subhead())
-                    .foregroundStyle(theme.palette.secondaryText)
-                    .frame(width: AppSpacing.s6)
-
-                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                    Text("跟隨全域設定".localized)
-                        .font(AppFonts.body())
-                        .foregroundStyle(theme.palette.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Text("使用目前選定的單字本".localized)
-                        .font(AppFonts.caption())
-                        .foregroundStyle(theme.palette.tertiaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-
-                Spacer()
-
-                selectionCheckmark(isSelected: book.preferredNotebookId == nil)
-            }
-            .contentShape(Rectangle())
-        }
-    }
-
-    private func notebookRow(_ notebook: Notebook) -> some View {
-        Button {
-            book.preferredNotebookId = notebook.remoteId
-            persistBookBinding()
-            dismiss()
-        } label: {
-            HStack(spacing: AppSpacing.s2) {
-                RoundedRectangle(cornerRadius: AppRadius.xs)
-                    .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent) // token-allow: user notebook data color
-                    .frame(width: 4, height: AppSpacing.s7)
-
-                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                    Text(notebook.name)
-                        .font(AppFonts.body())
-                        .foregroundStyle(theme.palette.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    if notebook.isDefault {
-                        Text("預設".localized)
-                            .font(AppFonts.caption())
-                            .foregroundStyle(theme.palette.tertiaryText)
-                    }
-                }
-
-                Spacer()
-
-                selectionCheckmark(isSelected: book.preferredNotebookId == notebook.remoteId)
-            }
-            .contentShape(Rectangle())
-        }
-    }
-
-    @ViewBuilder
-    private func selectionCheckmark(isSelected: Bool) -> some View {
-        if isSelected {
-            Image(systemName: "checkmark")
-                .font(AppFonts.subhead(weight: .semibold))
-                .foregroundStyle(theme.palette.accent)
-        }
     }
 
     /// 已刪除 notebook 防護：若綁定的 notebook 不在可用列表中，自動清除綁定

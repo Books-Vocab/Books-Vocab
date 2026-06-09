@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocab/Models/ReaderSettings.swift
   - ios/BooksAndVocab/Models/VocabHighlightPreferences.swift
   - ios/BooksAndVocab/Views/Reader/
-verified_against: 2b1bf578
+verified_against: 1d23758d
 -->
 # Reader Feature Boundary
 
@@ -16,7 +16,7 @@ verified_against: 2b1bf578
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `ReaderView.swift` | 211 | 主容器，持有 @State/@Environment，組裝 body |
+| `ReaderView.swift` | 211 | 主容器，持有 @State/@Environment，組裝 body。**單字本綁定 seed**：`seedNotebookBindingIfNeeded`（`.task` + `liveNotebooks` settle 的 `onChange` 觸發）在書未綁定時以全域 active 為 seed 經 `Book.canSeedBinding` gate（須 live 清單內已 settle 的真實本）固化 `book.preferredNotebookId` 並 `safeSave` + `BookManifestStore.writeBestEffort`；`sanitizeStaleBoundNotebook` 清除已刪綁定本。固化後 scope 認綁定本、不隨全域漂移 |
 | `ReaderView+Panels.swift` | 115 | panel content builders |
 | `ReaderView+Handlers.swift` | 94 | callback handlers |
 
@@ -59,7 +59,7 @@ verified_against: 2b1bf578
 | `ReadiumNavigatorJS+Debug.swift` | 76 | `buildDebugScript`（`__toggleDebugBoxes` Token Calculator 黑盒）|
 | `ReadiumNavigatorJS+Selection.swift` | 266 | `buildSelectionScript`（`selectionchange` 監聽 + 單字 caret 點擊偵測）|
 | `ReadiumNavigatorCoordinator+Commands.swift` | 98 | `BridgeCommand` / `HostCommand` / `NavigatorCommand` / `DOMCommand` |
-| `ReadiumNavigatorCoordinator+Planner.swift` | 166 | `struct BridgePlanner`，指令排程 |
+| `ReadiumNavigatorCoordinator+Planner.swift` | 166 | `struct BridgePlanner`，指令排程。換綁定單字本時以 **set-diff 權威重畫** highlight（比對舊/新命中集合 add/remove 底線指令），取代舊的 count-gating |
 | `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
@@ -79,7 +79,7 @@ verified_against: 2b1bf578
 | `ReaderSettingsPresenter+Vocab.swift` | ~260 | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距；「生字標記」區控制 highlight 顏色與濃度 |
 | `VocabHighlightColorPresetPicker.swift` | ~55 | Reader / Podcast 共用 highlight 顏色 swatch picker；寫回 `ReaderSettings.vocabHighlightColorPreset` |
 | `TOCView.swift` | 222 | `struct TOCView: View`，目錄；regular / Catalyst 收斂內容寬度，compact 維持 full-width sheet |
-| `ReaderNotebookPicker.swift` | 133 | Reader 內選擇目標單字本；regular / Catalyst 收斂短選單寬度，compact 維持 full-width sheet |
+| `ReaderNotebookPicker.swift` | 133 | Reader 內為**本書綁定**單字本（`book.preferredNotebookId`，`Book: NotebookBindable`）；每本書綁定恰好一本真實單字本，**已移除「跟隨全域設定」**列、改用共用 presentational `NotebookBindingList`（Vocabulary/，不標示「預設」）；選詞 / highlight / cache scope 認 `book.resolvedNotebookId` 綁定本、**不隨全域 active 漂移**；綁定本被刪 → `sanitizeStaleBoundNotebook` 清 nil（下次開啟由 `ReaderView` re-seed）。regular / Catalyst 收斂短選單寬度，compact 維持 full-width sheet |
 
 ### PDF Reader（原生 PDFKit 路徑）
 
