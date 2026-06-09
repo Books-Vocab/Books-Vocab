@@ -71,7 +71,6 @@ struct TodayReviewView: View {
     @State private var isHelpPresented = false
     @State private var showAddLink = false
     @State private var explainSheetItem: CollocationExplainItem? = nil
-    @State private var currentCollocationExplanations: [String: String] = [:]
     #if targetEnvironment(macCatalyst)
     @State private var hasConsumedShortcutHint = false
     @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
@@ -139,17 +138,16 @@ struct TodayReviewView: View {
                 explainSheetItem = CollocationExplainItem(
                     collocation: collocation,
                     context: entry.context,
-                    existingExplanation: entry.collocationExplanations[collocation]
+                    existingExplanation: state.currentCollocationExplanations[collocation]
                 )
             },
             onDeleteCollocationExplanation: { collocation in
-                updateCollocationExplanation(nil, for: collocation)
+                state.updateCollocationExplanation(nil, for: collocation, modelContext: modelContext)
             },
-            collocationExplanations: currentCollocationExplanations
+            collocationExplanations: state.currentCollocationExplanations
         )
         .toastOverlay()
         .task {
-            refreshCurrentCollocationExplanations()
             // A restored session may hold answers whose background DB flush
             // failed last run (flushed=false). Re-flush them so the card
             // schedule catches up; idempotent, so a clean restore is a no-op.
@@ -176,9 +174,11 @@ struct TodayReviewView: View {
                         do {
                             try await kgService.hideLink(linkId: link.id, notebookId: notebookId)
                         } catch {
-                            entry.mutateLink(id: link.id) { $0.withHidden(false) }
-                            peer?.mutateLink(id: link.id) { $0.withHidden(false) }
-                            state.rebuildCacheForEntry(entry)
+                            state.restoreHiddenLink(
+                                link,
+                                sourceEntry: entry,
+                                targetEntry: peer
+                            )
                         }
                     }
                 }
@@ -200,16 +200,21 @@ struct TodayReviewView: View {
                 context: item.context,
                 existingExplanation: item.existingExplanation,
                 onSave: { explanation in
-                    updateCollocationExplanation(explanation, for: item.collocation)
+                    state.updateCollocationExplanation(
+                        explanation,
+                        for: item.collocation,
+                        modelContext: modelContext
+                    )
                 },
                 onDelete: {
-                    updateCollocationExplanation(nil, for: item.collocation)
+                    state.updateCollocationExplanation(
+                        nil,
+                        for: item.collocation,
+                        modelContext: modelContext
+                    )
                 }
             )
             .appSheet(.medium)
-        }
-        .onChange(of: state.currentEntry?.id) { _, _ in
-            refreshCurrentCollocationExplanations()
         }
         .onDisappear {
             // Stop autoplay on dismiss — this onDisappear runs on every target
@@ -276,22 +281,6 @@ struct TodayReviewView: View {
         .enableInjection()
     }
 
-    private func refreshCurrentCollocationExplanations() {
-        currentCollocationExplanations = state.currentEntry?.collocationExplanations ?? [:]
-    }
-
-    private func updateCollocationExplanation(_ explanation: String?, for collocation: String) {
-        var updated = currentCollocationExplanations
-        if let explanation {
-            updated[collocation] = explanation
-        } else {
-            updated.removeValue(forKey: collocation)
-        }
-        currentCollocationExplanations = updated
-        state.currentEntry?.collocationExplanations = updated
-        modelContext.safeSave()
-    }
-
     private var shouldShowFirstRunHint: Bool {
         #if targetEnvironment(macCatalyst)
         return !hasShownShortcutHint && !hasConsumedShortcutHint && !state.isAutoPlaying && state.currentIndex < min(state.queue.count, 3)
@@ -335,40 +324,23 @@ struct TodayReviewView: View {
     #endif
 
     private func handleAddLink(_ target: VocabularyEntry, for entry: VocabularyEntry) {
-        guard let fromId = entry.kgCardId, let toId = target.kgCardId else { return }
-        let allLinks = entry.graphLinksByKind.values.flatMap { $0 }
-        guard !allLinks.contains(where: { $0.cardId == toId }) else { return }
+        guard let fromId = entry.kgCardId else { return }
+        guard let pending = VocabularyGraphLinkMutation.beginManualLink(from: entry, to: target) else { return }
         let notebookId = entry.notebookId
 
-        // Optimistic insert — placeholder
-        let placeholderId = "pending-\(UUID().uuidString)"
-        let placeholder = KGCardLinkSummary.pending(id: placeholderId, cardId: toId, word: target.word)
-        var current = entry.graphLinksByKind
-        current[placeholder.kind, default: []].append(placeholder)
-        entry.graphLinksByKind = current
         state.rebuildCacheForEntry(entry)
 
-        // Backend call — replace placeholder on success, rollback on failure
         Task {
             do {
-                let link = try await kgService.createManualLink(fromId: fromId, toId: toId, notebookId: notebookId)
-                let summary = KGCardLinkSummary(
-                    id: link.id, cardId: toId, word: target.word,
-                    kind: link.kind,
-                    label: link.kind == "contrasts_with" ? "對比" : "相關",
-                    confidence: link.confidence, reason: link.reason, hidden: false
+                let link = try await kgService.createManualLink(
+                    fromId: fromId,
+                    toId: pending.targetCardId,
+                    notebookId: notebookId
                 )
-                var updated = entry.graphLinksByKind
-                updated[placeholder.kind]?.removeAll { $0.id == placeholderId }
-                if updated[placeholder.kind]?.isEmpty == true { updated.removeValue(forKey: placeholder.kind) }
-                updated[link.kind, default: []].append(summary)
-                entry.graphLinksByKind = updated
+                VocabularyGraphLinkMutation.commitManualLink(pending, result: link, on: entry)
                 state.rebuildCacheForEntry(entry)
             } catch {
-                var rollback = entry.graphLinksByKind
-                rollback[placeholder.kind]?.removeAll { $0.id == placeholderId }
-                if rollback[placeholder.kind]?.isEmpty == true { rollback.removeValue(forKey: placeholder.kind) }
-                entry.graphLinksByKind = rollback
+                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: entry)
                 state.rebuildCacheForEntry(entry)
             }
         }
@@ -377,75 +349,6 @@ struct TodayReviewView: View {
     @discardableResult
     private func perform(_ intent: ReviewIntent) -> Bool {
         switch intent {
-        case .reveal:
-            guard state.revealStage == .front, state.currentEntry != nil else { return false }
-            withAnimation(AppMotion.reviewRevealSpring) {
-                state.advanceReveal()
-            }
-            return true
-
-        case .collapse:
-            guard state.revealStage == .back, state.currentEntry != nil else { return false }
-            withAnimation(AppMotion.reviewRevealSpring) {
-                state.retractReveal()
-            }
-            return true
-
-        case .forgot:
-            guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
-            state.submit(
-                .forgot,
-                container: modelContext.container,
-                reviewSettings: reviewSettingsStore.settings
-            )
-            return true
-
-        case .remembered:
-            guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
-            state.submit(
-                .remembered,
-                container: modelContext.container,
-                reviewSettings: reviewSettingsStore.settings
-            )
-            return true
-
-        case .previous:
-            guard state.currentIndex > 0 else { return false }
-            state.goPrevious()
-            return true
-
-        case .next:
-            guard state.currentIndex < state.queue.count - 1 else { return false }
-            state.goNext()
-            return true
-
-        case .shuffle:
-            guard !state.isAutoPlaying, state.queue.count - state.currentIndex > 1 else { return false }
-            state.shuffleQueue()
-            return true
-
-        case .showDetail:
-            guard state.currentEntry != nil else { return false }
-            state.handleDetailTap()
-            return true
-
-        case .toggleAutoplay:
-            state.toggleAutoPlay()
-            return true
-
-        case .toggleAutoplayPause:
-            guard state.isAutoPlaying else { return false }
-            state.toggleAutoPlayPause()
-            return true
-
-        case .changeAutoplaySpeed:
-            state.changeAutoplaySpeed(to: state.autoplaySpeed.next)
-            return true
-
-        case .toggleAutoplaySound:
-            state.toggleAutoplaySound()
-            return true
-
         case .close:
             onClose()
             return true
@@ -453,6 +356,13 @@ struct TodayReviewView: View {
         case .showHelp:
             isHelpPresented.toggle()
             return true
+
+        default:
+            return state.performReviewIntent(
+                intent,
+                container: modelContext.container,
+                reviewSettings: reviewSettingsStore.settings
+            )
         }
     }
 

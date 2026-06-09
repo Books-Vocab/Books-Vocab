@@ -55,12 +55,19 @@ verified_against: 8aaece8d
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/TodayReviewState.swift` | 551 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration，queue+reveal 導航委派 `TodayReviewSessionState` |
+| `Scenes/TodayReviewState.swift` | 579 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration、review intent gating 與 collocation substate，同時把 queue+reveal 導航委派 `TodayReviewSessionState` |
 | `Scenes/TodayReviewSessionState.swift` | 64 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定 |
 | `Scenes/TodayReviewSessionPersistenceController.swift` | 73 | `struct TodayReviewSessionPersistenceController`，封裝 queue persistence metadata / snapshot / deferred flush；讓 `TodayReviewState` 不直接操作 `ReviewSessionPersistence` |
 | `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
 | `Scenes/TodayReviewAutoplayController.swift` | 87 | `@MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration |
+| `Scenes/TodayReviewCollocationState.swift` | 29 | `struct TodayReviewCollocationState`，封裝 collocation explanation 的 scene-local mirror 與 entry mutation；讓 `TodayReviewView` 不再直接持有 explanation mirror / save 流程 |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
+
+### Domain Layer（純規則 / mutation helper）
+
+| 檔案 | 行數 | 說明 |
+|------|------|------|
+| `Domain/VocabularyGraphLinkMutation.swift` | 106 | `struct VocabularyGraphLinkMutation`，集中 manual-link optimistic insert / commit / rollback、hide/unhide 與 delete rollback；`TodayReviewView` / `WordDetailSheet` 共用同一套 graph-link mutation 規則 |
 
 ### Presentation Models（UI 資料轉換）
 
@@ -81,7 +88,7 @@ verified_against: 8aaece8d
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，KG 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
-| `Scenes/TodayReviewView.swift` | 493 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
+| `Scenes/TodayReviewView.swift` | 414 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage`；scene 組裝、sheet/shortcut chrome、外部 env wiring |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
 | `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
 | `Scenes/TodayReviewPreviewData.swift` | 253 | preview 資料 |
@@ -142,6 +149,7 @@ verified_against: 8aaece8d
 
 - **新增列表 UI** → `Scenes/VocabularyListPresenter.swift` 或新增 Presenter extension
 - **新增業務流程** → Coordinator（`VocabularyListCoordinator` / `SyncCoordinator` / `KGVocabCoordinator`）
+- **新增 pure domain rule / optimistic mutation** → `Domain/`（不得直接塞回 scene / presenter）
 - **新增 UI 資料模型** → `Presentation/` 下新增或擴充現有 Presentation enum/struct
 - **新增可復用元件** → `Components/VocabShellComponents*.swift`（shell 級）或 `Components/VocabComponents.swift`（skin 級）
 - **新增場景** → `Scenes/` 新增 View + Presenter + Coordinator，並在對應 container 的 Sheets extension 掛載
@@ -154,6 +162,8 @@ verified_against: 8aaece8d
 - `TodayReviewSessionPersistenceController`：session persistence helper，僅 `TodayReviewState` 持有
 - `TodayReviewCardCache`：TodayReview rich-card cache helper，僅 `TodayReviewState` 持有
 - `TodayReviewAutoplayController`：autoplay helper，僅 `TodayReviewState` 持有
+- `TodayReviewCollocationState`：collocation explanation substate，僅 `TodayReviewState` 持有
+- `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
 - `KGVocabCoordinator`：KG 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
