@@ -3,7 +3,7 @@
  * All methods return Promises. Auth token is read from chrome.storage.local.
  */
 
-const API_BASE = 'https://wordnexus.lol';
+const API_BASE = globalThis.KGPure.PUBLIC_WEB_ORIGIN;
 const TOKEN_KEY = 'auth_token';
 
 // ---------------------------------------------------------------------------

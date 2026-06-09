@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  * 1. Route API calls from content script / side panel via message passing
- * 2. Receive OAuth token from wordnexus.lol via externally_connectable
+ * 2. Receive OAuth token from the trusted Books & Vocab web origin via externally_connectable
  * 3. Open side panel on extension icon click
  */
 
@@ -35,7 +35,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 // ---------------------------------------------------------------------------
-// External messages — OAuth token from wordnexus.lol
+// External messages — OAuth token from the trusted Books & Vocab web origin
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
