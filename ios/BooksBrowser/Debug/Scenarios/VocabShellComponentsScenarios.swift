@@ -9,28 +9,6 @@ import SwiftUI
 /// @State scene structs so Slider / Menu / Search interactions render live.
 enum VocabShellComponentsScenarios {
     static func register(in playbook: Playbook) {
-        // MARK: Metric Hero Card (full-width card → .fillH: 滿寬、貼合高)
-        playbook.addScenarios(of: "Vocab Shell · Metric Hero Card") {
-            Scenario("Single", layout: .fillH) {
-                wrapWide {
-                    VocabMetricHeroCard(
-                        title: "待複習",
-                        description: "今天到期的卡片數",
-                        value: "42"
-                    )
-                }
-            }
-            Scenario("Stacked metrics", layout: .fillH) {
-                wrapWide {
-                    VStack(spacing: 12) {
-                        VocabMetricHeroCard(title: "總單字", description: "詞庫累積總量", value: "1,284")
-                        VocabMetricHeroCard(title: "已掌握", description: "連續答對 3 次以上", value: "0")
-                        VocabMetricHeroCard(title: "連續天數", description: "目前複習連勝", value: "128")
-                    }
-                }
-            }
-        }
-
         // MARK: Sort Pill (compact pill → .compressed: 貼合 intrinsic)
         playbook.addScenarios(of: "Vocab Shell · Sort Pill") {
             Scenario("Default (複習優先)", layout: .compressed) {

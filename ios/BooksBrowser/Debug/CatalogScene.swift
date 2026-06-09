@@ -224,7 +224,6 @@ struct CatalogScene: View {
             .init(
                 id: "vocab_shell_components",
                 surfaces: [
-                    block("Vocab Shell · Metric Hero Card", .vocabulary, VocabMetricHeroCard.self),
                     block("Vocab Shell · Sort Pill", .vocabulary, VocabSortPill.self),
                     block("Vocab Shell · Tab Selector", .vocabulary),
                     block("Vocab Shell · Review CTA Pill", .vocabulary, VocabReviewCTAPill.self),

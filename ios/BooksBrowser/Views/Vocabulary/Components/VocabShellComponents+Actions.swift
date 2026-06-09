@@ -80,38 +80,6 @@ struct VocabSliderRow: View {
     }
 }
 
-struct VocabMetricHeroCard: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let title: String
-    let description: String
-    let value: String
-
-    var body: some View {
-        VocabCard {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: AppSpacing.s1) {
-                    Text(title.localized)
-                        .font(appSkin.typography.sectionTitle)
-                        .foregroundStyle(appSkin.palette.primaryText)
-
-                    Text(description.localized)
-                        .font(appSkin.typography.body)
-                        .foregroundStyle(appSkin.palette.secondaryText)
-                }
-
-                Spacer()
-
-                Text(value)
-                    .font(appSkin.typography.numericHero)
-                    .foregroundStyle(appSkin.palette.quaternaryText)
-                    .monospacedDigit()
-            }
-        }
-        .enableInjection()
-    }
-}
-
 struct VocabAccessoryIconButton: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
