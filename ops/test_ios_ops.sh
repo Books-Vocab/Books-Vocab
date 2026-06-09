@@ -456,6 +456,9 @@ section "Runtime log surface"
 logs_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --since 1m --limit 1)"
 echo "$logs_json" | jq -e '.schema=="kg.ios.logs.v1" and .since=="1m" and .limit==1 and .summary.rawCount==3 and .summary.filteredCount==1 and .summary.emittedCount==1 and .summary.byEventType.logEvent==1 and (.entries|length)==1 and .entries[0].message=="sync completed"' >/dev/null \
   && ok "logs --json emits filtered runtime log schema" || fail_t "logs --json invalid: $logs_json"
+logs_sim_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --simulator --device TEST-UDID --debug --since 1m --limit 1)"
+echo "$logs_sim_json" | jq -e '.schema=="kg.ios.logs.v1" and (.source|contains("xcrun simctl spawn TEST-UDID log show --debug --info --style ndjson")) and .summary.emittedCount==1' >/dev/null \
+  && ok "logs --json exposes simulator debug source" || fail_t "logs --json simulator debug source invalid: $logs_sim_json"
 logs_leading_zero_json="$(KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" logs --json --limit 001)"
 echo "$logs_leading_zero_json" | jq -e '.limit==1 and .summary.emittedCount==1' >/dev/null \
   && ok "logs --json normalizes numeric limit" || fail_t "logs --json leading-zero limit invalid: $logs_leading_zero_json"

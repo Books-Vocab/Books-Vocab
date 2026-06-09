@@ -231,7 +231,7 @@ cmd_logs_json() {
     --arg generatedAt "$generated_at" \
     --arg since "$since" \
     --arg predicate "$predicate" \
-    --arg source "$([[ "$simulator" == "1" ]] && printf 'xcrun simctl spawn %s log show --style ndjson' "$device" || printf '/usr/bin/log show --style ndjson')" \
+    --arg source "$(logs_show_source "$simulator" "$device" "$debug" "ndjson")" \
     --arg noise "$LOG_NOISE_REGEX" \
     --argjson limit "$limit" \
     '
@@ -271,4 +271,17 @@ cmd_logs_json() {
   local rc=$?
   rm -f "$tmp"
   return "$rc"
+}
+
+logs_show_source() {
+  local simulator="$1" device="$2" debug="$3" style="$4" args="log show"
+  if (( debug )); then
+    args="$args --debug --info"
+  fi
+  args="$args --style $style"
+  if (( simulator )); then
+    printf 'xcrun simctl spawn %s %s' "$device" "$args"
+  else
+    printf '/usr/bin/%s' "$args"
+  fi
 }
