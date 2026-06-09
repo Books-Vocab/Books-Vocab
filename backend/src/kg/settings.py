@@ -24,8 +24,8 @@ class KGSettings:
     google_client_secret: str = ""
     google_redirect_uri: str = "https://wordnexus.lol/auth/web/google/callback"
     chrome_extension_id: str = ""
-    apple_bundle_id: str = "com.Max0228.BooksBrowser"
-    apple_service_id: str = "com.Max0228.BooksBrowser.web"
+    apple_bundle_id: str = "com.Max0228.BooksAndVocab"
+    apple_service_id: str = "com.Max0228.BooksAndVocab.web"
     app_store_allow_unsigned_sync: bool = False
     app_store_allow_unsigned_notifications: bool = False
     admin_token: str = ""
@@ -158,8 +158,8 @@ def load_settings() -> KGSettings:
         google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
         google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "https://wordnexus.lol/auth/web/google/callback"),
         chrome_extension_id=os.getenv("CHROME_EXTENSION_ID", ""),
-        apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser"),
-        apple_service_id=os.getenv("APPLE_SERVICE_ID", "com.Max0228.BooksBrowser.web"),
+        apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksAndVocab"),
+        apple_service_id=os.getenv("APPLE_SERVICE_ID", "com.Max0228.BooksAndVocab.web"),
         app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,
         admin_token=os.getenv("ADMIN_TOKEN", ""),

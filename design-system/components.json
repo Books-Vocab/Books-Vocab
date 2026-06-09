@@ -3,13 +3,13 @@
   "$description": "Component layout/structure specifications that bridge iOS SwiftUI and web CSS. Complements design-system/tokens.json (color/font/space constants). This file is the SoT for component STRUCTURE and ALGORITHMS; tokens.json is the SoT for component MATERIAL (colors, fonts, spacing primitives).",
   "$provenance": {
     "ios_sources": [
-      "ios/BooksBrowser/Views/Vocabulary/Components/WordRow.swift",
-      "ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift",
-      "ios/BooksBrowser/Views/Vocabulary/Components/VocabComponents.swift",
-      "ios/BooksBrowser/UIComponents/ListSectionCard.swift",
-      "ios/BooksBrowser/UIComponents/AppFilterChipBar.swift",
-      "ios/BooksBrowser/UIComponents/AppTabSelector.swift",
-      "ios/BooksBrowser/Models/ReviewGradient.swift"
+      "ios/BooksAndVocab/Views/Vocabulary/Components/WordRow.swift",
+      "ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift",
+      "ios/BooksAndVocab/Views/Vocabulary/Components/VocabComponents.swift",
+      "ios/BooksAndVocab/UIComponents/ListSectionCard.swift",
+      "ios/BooksAndVocab/UIComponents/AppFilterChipBar.swift",
+      "ios/BooksAndVocab/UIComponents/AppTabSelector.swift",
+      "ios/BooksAndVocab/Models/ReviewGradient.swift"
     ],
     "rule": "Structure (flex layout, padding, line-clamp) is hand-authored here as the cross-platform contract. Material (colors, fonts) is REFERENCED via tokens.json keys so a token change auto-propagates."
   },

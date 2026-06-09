@@ -3,7 +3,7 @@ tier: archive
 authority: derived
 update_trigger: manual
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
   - ops/
 verified_against: frozen
 -->
@@ -25,8 +25,8 @@ python3 - <<'PY'
 import subprocess, time
 cmd = [
     'xcodebuild',
-    '-project', 'ios/BooksBrowser.xcodeproj',
-    '-scheme', 'BooksBrowser',
+    '-project', 'ios/BooksAndVocab.xcodeproj',
+    '-scheme', 'BooksAndVocab',
     '-destination', 'platform=iOS Simulator,name=iPhone 17 Pro Max',
     '-quiet', 'build'
 ]

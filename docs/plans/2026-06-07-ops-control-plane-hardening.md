@@ -173,8 +173,8 @@ verified_against: 84f6998e
    - 驗證:先加 core lib 邊界 regression 並確認紅燈,搬移後 `./ops/test_ops.sh ios-ops` 172 shell checks + 6 pytest 通過,完整 `./ops/test_ops.sh` 13 groups / 0 failed,review PASS。`ios_ops.sh` 從 358 行降到 94 行。
 
 23. ✅ `ios_ops.sh simulator status` 補 app process 狀態。
-   - 方向:對齊 Xcode toolbar 的 Running app 視角,agent 第一輪 simulator status 不只要知道 booted device / app data container,也要知道 BooksBrowser 是否正在 simulator 內執行。
-   - 決策:`kg.ios.simulator.v1` 新增 `app.process{name,pid,status,exitCode,error}` 與 `sources.app_process`;底層用 read-only `xcrun simctl spawn <device> pgrep -x BooksBrowser`。`process.status=running|stopped|skipped|unknown`;app stopped(`pgrep` exit 1)是觀測狀態,不讓 `simulator status` 失敗且不進 `errors[]`;意外 provider failure 才列 `errors[]`。
+   - 方向:對齊 Xcode toolbar 的 Running app 視角,agent 第一輪 simulator status 不只要知道 booted device / app data container,也要知道 BooksAndVocab 是否正在 simulator 內執行。
+   - 決策:`kg.ios.simulator.v1` 新增 `app.process{name,pid,status,exitCode,error}` 與 `sources.app_process`;底層用 read-only `xcrun simctl spawn <device> pgrep -x BooksAndVocab`。`process.status=running|stopped|skipped|unknown`;app stopped(`pgrep` exit 1)是觀測狀態,不讓 `simulator status` 失敗且不進 `errors[]`;意外 provider failure 才列 `errors[]`。
    - 驗證:running fixture、stopped fixture、text output、core provider boundary regression、`./ops/test_ops.sh ios-ops` 175 shell checks + 6 pytest 通過,完整 `./ops/test_ops.sh` 13 groups / 0 failed,review PASS。同步 `docs/sop/ios.md`、`docs/reference/tech_index.md`、`docs/reference/product_surface.md`。
 
 24. ✅ `ios_ops.sh snapshot/dashboard` 內嵌 simulator 狀態。
@@ -198,7 +198,7 @@ verified_against: 84f6998e
    - 驗證:fixture regression 要求 `snapshot` 第一行為 `[ios][summary] ... verdict=warn ... buildWarnings=1`,且列出 `source=runs.build.diagnostics` 的 `[ios][next]`,並禁止 `phase=doctor`;`./ops/test_ops.sh ios-ops` 通過。
 
 28. ✅ `ios_ops.sh simulator/sim` 補 Xcode Run/Stop toolbar 的 lifecycle 窄面。
-   - 方向:GUI parity 不能只看 app process / 截圖;agent 也要能透過統一入口啟動或停止已安裝的 BooksBrowser,並立即取得 process re-check。
+   - 方向:GUI parity 不能只看 app process / 截圖;agent 也要能透過統一入口啟動或停止已安裝的 BooksAndVocab,並立即取得 process re-check。
    - 決策:`simulator launch --json` / `simulator terminate --json` 共用 `kg.ios.simulator.v1`,底層只包官方 `xcrun simctl launch|terminate`。payload 新增 `app.lifecycle{status,exitCode,output,error}` 並在命令後重新讀 `app.process`;這是 local simulator side effect,不 build、不 install、不 boot、不改 ASC。`commands --json` 的 `sideEffect` 明確標成 `local-simulator-lifecycle launch/terminate`。
    - 驗證:fixture regression 要求 stopped app 可 `launch` 後 process=running/pid=74736,`terminate` 後 process=stopped,文字模式列 action/status/process;core provider boundary 固定 `read_app_launch_output` / `read_app_terminate_output`;`./ops/test_ops.sh ios-ops` 通過。
 

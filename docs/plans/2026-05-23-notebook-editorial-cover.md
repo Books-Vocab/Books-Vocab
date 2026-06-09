@@ -3,7 +3,7 @@ tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/
+  - ios/BooksAndVocab/Views/Vocabulary/
 verified_against: frozen
 -->
 # Notebook Editorial Cover & List Implementation Plan
@@ -29,15 +29,15 @@ verified_against: frozen
 ## Task 1: Foundation — `NotebookPalette.darken(_:by:)` + `patternOpacity` token
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift`
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift`
-- Create: `ios/BooksBrowserTests/Views/Vocabulary/NotebookPaletteTests.swift`(若已存在則 modify)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackMetrics.swift`
+- Create: `ios/BooksAndVocabTests/Views/Vocabulary/NotebookPaletteTests.swift`(若已存在則 modify)
 
 - [ ] **Step 1: 寫 failing test — `NotebookPaletteTests.swift`**
 ```swift
 import XCTest
 import SwiftUI
-@testable import BooksBrowser
+@testable import BooksAndVocab
 
 final class NotebookPaletteTests: XCTestCase {
     func testDarkenReducesBrightness() {
@@ -60,7 +60,7 @@ final class NotebookPaletteTests: XCTestCase {
 (若 `Color.hsbComponents` 尚不存在,以 `UIColor(swiftUIColor).getHue(...)` 包裝出來;放 `Color+HSB.swift` test helper 或正式 extension)
 
 - [ ] **Step 2: 跑 test 確認失敗**
-Run: 透過 `./ops/ios_test.sh -only-testing:BooksBrowserTests/NotebookPaletteTests` **(user 明確要求才跑;否則延後到 Phase 末批次)**
+Run: 透過 `./ops/ios_test.sh -only-testing:BooksAndVocabTests/NotebookPaletteTests` **(user 明確要求才跑;否則延後到 Phase 末批次)**
 Expected: FAIL — `darken(_:by:)` undefined
 
 - [ ] **Step 3: 最小實作 — `NotebookPalette.darken`**
@@ -103,14 +103,14 @@ Message: `ios: NotebookPalette.darken helper + patternOpacity token (D1 / D1.1 f
 ## Task 2: `EditorialCoverComposition` private view + AA 對比測試
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`(加 private struct `EditorialCoverComposition`)
-- Create: `ios/BooksBrowserTests/Views/Vocabulary/NotebookCoverContrastTests.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`(加 private struct `EditorialCoverComposition`)
+- Create: `ios/BooksAndVocabTests/Views/Vocabulary/NotebookCoverContrastTests.swift`
 
 - [ ] **Step 1: 寫 failing test — `NotebookCoverContrastTests.swift`**
 ```swift
 import XCTest
 import SwiftUI
-@testable import BooksBrowser
+@testable import BooksAndVocab
 
 final class NotebookCoverContrastTests: XCTestCase {
     /// 鎖 Morandi 12 色 cover 對 primaryText light(#37352F)≥ AA 4.5:1
@@ -134,7 +134,7 @@ final class NotebookCoverContrastTests: XCTestCase {
     }
 }
 ```
-(`WCAGContrast.ratio(_:_:)` helper — 若 codebase 無,加 test helper `BooksBrowserTests/Helpers/WCAGContrast.swift`,用標準 sRGB relative luminance 公式)
+(`WCAGContrast.ratio(_:_:)` helper — 若 codebase 無,加 test helper `BooksAndVocabTests/Helpers/WCAGContrast.swift`,用標準 sRGB relative luminance 公式)
 
 - [ ] **Step 2: 跑 test 確認失敗**
 Expected: FAIL — `WCAGContrast` undefined OR contrast 計算未實作
@@ -256,20 +256,20 @@ Message: `ios: EditorialCoverComposition view + AA contrast tests (D1)`
 **重大背景 — `NotebookCoverView` 被 6 處引用,不可直接移除 center name text:**
 
 ```
-1. ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift:593         — 書架封面縮圖
-2. ios/BooksBrowser/Views/Podcast/PodcastEpisodeListView.swift:226  — 播客集數列表
-3. ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift:63 — cover picker preview
-4. ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift:79 — stacked top layer
-5. ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift:191       — hero variant
-6. ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift:190 — #Preview
+1. ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift:593         — 書架封面縮圖
+2. ios/BooksAndVocab/Views/Podcast/PodcastEpisodeListView.swift:226  — 播客集數列表
+3. ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift:63 — cover picker preview
+4. ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift:79 — stacked top layer
+5. ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift:191       — hero variant
+6. ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift:190 — #Preview
 ```
 
 **策略:** 加 `showsName: Bool = true` 參數至 `NotebookCoverView`(default 保持既有行為,Bookshelf/Podcast/EditSheet/Preview 全 zero-touch);`NotebookStackedCoverView` 同樣加 `showsName: Bool = true` 並透傳。`NotebookCard.coverArea` 兩條分支(grid + hero)呼叫時傳 `showsName: false`,讓 editorial overlay 不被底下白字穿透。
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift`(`NotebookCoverView` 加 `showsName` param,gate `Text(name)` 渲染)
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift`(加 `showsName` param 並透傳至 `NotebookCoverView`)
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`(`coverArea` 兩處呼叫傳 `showsName: false`,並加 `.overlay { EditorialCoverComposition(...) }`)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift`(`NotebookCoverView` 加 `showsName` param,gate `Text(name)` 渲染)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift`(加 `showsName` param 並透傳至 `NotebookCoverView`)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`(`coverArea` 兩處呼叫傳 `showsName: false`,並加 `.overlay { EditorialCoverComposition(...) }`)
 
 - [ ] **Step 1: grep 確認 callsite 不變**
 Run: `grep -rn "NotebookCoverView(" /Users/chenliangyu/kg/ios --include="*.swift"`
@@ -339,7 +339,7 @@ Message: `ios: wire EditorialCoverComposition to NotebookCard cover (D1 + D3)`
 ## Task 4: D2 — 底部 metadata 收斂
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`(`metadataArea`)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`(`metadataArea`)
 
 - [ ] **Step 1: 重寫 `metadataArea`**
 ```swift
@@ -380,7 +380,7 @@ Message: `ios: collapse NotebookCard bottom metadata to progress + due chip (D2)
 ## Task 5: D4 — Top section header + `VocabReviewCTAPill`,解除 `VocabReviewBanner` 引用
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift`(`body` 內 banner 區塊)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift`(`body` 內 banner 區塊)
 
 - [ ] **Step 1: 刪除 `VocabReviewBanner` 兩處引用**(line 79-101),改為:
 ```swift
@@ -415,7 +415,7 @@ Message: `ios: replace top banner with section header + VocabReviewCTAPill (D4)`
 ## Task 6: D5 + D6 + D7 — Grid 移除 add card / Filter 進 toolbar / Toolbar 終態
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift`(grid loop + toolbar)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift`(grid loop + toolbar)
 
 - [ ] **Step 1: 刪除 grid 內 `NotebookAddCard` 區塊**
 ```swift
@@ -462,11 +462,11 @@ Message: `ios: remove inline NotebookAddCard + filter moves to toolbar Menu (D5/
 ## Task 7: D1.1 — Pattern overlay opacity 0.18 migration
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift`
 
 - [ ] **Step 1: grep 全部 pattern Canvas `.opacity(...)` callsite**
 ```bash
-grep -n "opacity" ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift
+grep -n "opacity" ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift
 ```
 
 - [ ] **Step 2: 統一替換為 `NotebookStackMetrics.patternOpacity`**
@@ -483,7 +483,7 @@ Message: `ios: pattern overlay opacity 0.3 → 0.18 via patternOpacity token (D1
 ## Task 8: Debug Scenarios 補測 — Notebook stress cases
 
 **Files:**
-- Modify: `ios/BooksBrowser/Debug/Scenarios/NotebookListScenarios.swift`
+- Modify: `ios/BooksAndVocab/Debug/Scenarios/NotebookListScenarios.swift`
 
 - [ ] **Step 1: 加 stress scenarios**
 依 UI Design SOP 鐵律(5 種 stress case):happy / long-name / large-numbers / narrow-width / dynamicTypeSize(.accessibility3)
@@ -533,7 +533,7 @@ Run: `./ops/ios_build.sh`
 Expected: ✓ 0 warning 0 error
 
 - [ ] **Step 2: 整套 test**(user 明確要求才跑,否則交給 phased-workflow 收尾)
-Run: `./ops/ios_test.sh -only-testing:BooksBrowserTests/NotebookPaletteTests -only-testing:BooksBrowserTests/NotebookCoverContrastTests`
+Run: `./ops/ios_test.sh -only-testing:BooksAndVocabTests/NotebookPaletteTests -only-testing:BooksAndVocabTests/NotebookCoverContrastTests`
 Expected: ✓ all pass
 
 - [ ] **Step 3: simulator 走 happy path**

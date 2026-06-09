@@ -17,11 +17,11 @@
 set -euo pipefail
 
 # ---- config ----
-SCHEME="BooksBrowser"
+SCHEME="BooksAndVocab"
 CONFIGURATION="Release"
 TEAM_ID="XNSH5U9FNV"
 ISSUER_ID="d7f86188-7c56-46f7-bc99-f889421025fa"
-APP_ID="6759816274"                 # com.Max0228.BooksBrowser
+APP_ID="6759816274"                 # com.Max0228.BooksAndVocab
 KEY_ID="TCXVHFRXMS"                 # App Manager（可送審）；只上 TestFlight 可改 6Y7DC88RUY（Developer）
 DO_UPLOAD=0
 TIMEOUT=600
@@ -59,11 +59,11 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Optional run-metrics logging — additive, must never break the release.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
-XCODEPROJ="$ROOT/ios/BooksBrowser.xcodeproj"
+XCODEPROJ="$ROOT/ios/BooksAndVocab.xcodeproj"
 EXPORT_OPTS="$ROOT/ios/ExportOptions.plist"
 # Pin archive DerivedData to one shared cache anchored at the main repo (see
 # docs/reference/ios_deriveddata_policy.md). Without -derivedDataPath, archive
-# intermediates leak to ~/Library/.../DerivedData/BooksBrowser-<pathHash>, one
+# intermediates leak to ~/Library/.../DerivedData/BooksAndVocab-<pathHash>, one
 # orphan per worktree. Separate from the Debug build cache so Release and Debug
 # configurations don't invalidate each other's incremental state.
 if [[ -n "${KG_IOS_RELEASE_DERIVED_DATA_ROOT:-}" ]]; then
@@ -77,7 +77,7 @@ else
   fi
 fi
 BUILD_DIR="$ROOT/ios/build"
-ARCHIVE="$BUILD_DIR/BooksBrowser.xcarchive"
+ARCHIVE="$BUILD_DIR/BooksAndVocab.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 
 [[ -d "$XCODEPROJ" ]] || { echo "✗ not found: $XCODEPROJ" >&2; exit 1; }

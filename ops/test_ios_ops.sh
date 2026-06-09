@@ -132,13 +132,13 @@ echo "$commands_text" | grep -q 'kg.ios.commands.v1' \
 
 section "Xcode environment surface"
 status_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" status --json)"
-echo "$status_json" | jq -e '.schema=="kg.ios.status.v1" and .project.version=="1.6" and .project.build=="4" and .organizer.latest.version=="1.6" and .organizer.latest.build=="4" and (.organizer.latest.archive|contains("BooksBrowser.xcarchive")) and .testflight.latestBuild=="3"' >/dev/null \
+echo "$status_json" | jq -e '.schema=="kg.ios.status.v1" and .project.version=="1.6" and .project.build=="4" and .organizer.latest.version=="1.6" and .organizer.latest.build=="4" and (.organizer.latest.archive|contains("BooksAndVocab.xcarchive")) and .testflight.latestBuild=="3"' >/dev/null \
   && ok "status --json exposes project, Organizer, and TestFlight summary" || fail_t "status --json invalid: $status_json"
 status_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" status)"
 echo "$status_text" | grep -q 'project_version=1.6 project_build=4' && echo "$status_text" | grep -q 'organizer_latest=1.6(4)' && echo "$status_text" | grep -q 'testflight_latest_build=3' \
   && ok "status text reports normalized summary lines" || fail_t "status text invalid: $status_text"
 xcode_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" xcode --json)"
-echo "$xcode_json" | jq -e '.schema=="kg.ios.xcode.v1" and (.errors|length)==0 and .xcode.version=="16.4" and .project.scheme=="BooksBrowser" and (.project.list.schemes|index("BooksBrowser")) and any(.destinations.available[]; .id=="fixture-iphone-17-pro-max" and .platform=="iOS Simulator" and .name=="iPhone 17 Pro Max") and any(.destinations.ineligible[]; .id=="fixture-ineligible" and (.error|contains("OS mismatch, please download runtime"))) and all(.destinations.available[]; .id!="fixture-ineligible") and .simulators.summary.booted==1' >/dev/null \
+echo "$xcode_json" | jq -e '.schema=="kg.ios.xcode.v1" and (.errors|length)==0 and .xcode.version=="16.4" and .project.scheme=="BooksAndVocab" and (.project.list.schemes|index("BooksAndVocab")) and any(.destinations.available[]; .id=="fixture-iphone-17-pro-max" and .platform=="iOS Simulator" and .name=="iPhone 17 Pro Max") and any(.destinations.ineligible[]; .id=="fixture-ineligible" and (.error|contains("OS mismatch, please download runtime"))) and all(.destinations.available[]; .id!="fixture-ineligible") and .simulators.summary.booted==1' >/dev/null \
   && ok "xcode --json exposes project destinations and simulators" || fail_t "xcode --json invalid: $xcode_json"
 xcode_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" environment)"
 echo "$xcode_text" | grep -q 'schema=kg.ios.xcode.v1' && echo "$xcode_text" | grep -q 'destination id=fixture-iphone-17-pro-max' \
@@ -152,7 +152,7 @@ echo "$xcode_bad_developer_json" | jq -e '.schema=="kg.ios.xcode.v1" and (.error
 
 section "Simulator interaction surface"
 sim_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator status --json)"
-echo "$sim_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="status" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.container.data=="/tmp/kg-sim-fixture/container" and .app.container.status=="ok" and .app.process.status=="running" and .app.process.pid=="74736" and .sources.app_process.status=="ok" and (.timings.totalMs|type)=="number" and (.timings.simctlDevicesMs|type)=="number" and (.timings.appContainerMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
+echo "$sim_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="status" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .app.bundleID=="com.Max0228.BooksAndVocab" and .app.container.data=="/tmp/kg-sim-fixture/container" and .app.container.status=="ok" and .app.process.status=="running" and .app.process.pid=="74736" and .sources.app_process.status=="ok" and (.timings.totalMs|type)=="number" and (.timings.simctlDevicesMs|type)=="number" and (.timings.appContainerMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator status --json exposes booted device, app container, and process" || fail_t "simulator status --json invalid: $sim_json"
 sim_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sim status)"
 echo "$sim_text" | grep -q 'schema=kg.ios.simulator.v1' && echo "$sim_text" | grep -q 'udid=fixture-iphone-17-pro-max' && echo "$sim_text" | grep -q 'app_process status=running pid=74736' && echo "$sim_text" | grep -q 'timings totalMs=' \
@@ -161,13 +161,13 @@ sim_stopped_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1 ba
 echo "$sim_stopped_json" | jq -e '.schema=="kg.ios.simulator.v1" and .status=="ok" and .app.process.status=="stopped" and .app.process.pid==null and .sources.app_process.exitCode==1 and (.errors|length)==0' >/dev/null \
   && ok "simulator status --json reports stopped app process without failing" || fail_t "simulator stopped app invalid: $sim_stopped_json"
 sim_launch_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1 bash "$IOS_OPS" simulator launch --json)"
-echo "$sim_launch_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="launch" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.lifecycle.output=="74736" and .app.process.status=="running" and .app.process.pid=="74736" and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
+echo "$sim_launch_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="launch" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksAndVocab" and .app.lifecycle.exitCode==0 and .app.lifecycle.output=="74736" and .app.process.status=="running" and .app.process.pid=="74736" and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator launch --json starts installed app and refreshes process state" || fail_t "simulator launch invalid: $sim_launch_json"
 sim_launch_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sim launch)"
 echo "$sim_launch_text" | grep -q 'action=launch status=ok' && echo "$sim_launch_text" | grep -q 'app_process status=running pid=74736' && echo "$sim_launch_text" | grep -q 'timings totalMs=' \
   && ok "simulator launch text reports process state" || fail_t "simulator launch text invalid: $sim_launch_text"
 sim_terminate_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" simulator terminate --json)"
-echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksBrowser" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
+echo "$sim_terminate_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="terminate" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .app.bundleID=="com.Max0228.BooksAndVocab" and .app.lifecycle.exitCode==0 and .app.process.status=="stopped" and .app.process.pid==null and (.timings.totalMs|type)=="number" and (.timings.statusMs|type)=="number" and (.timings.lifecycleMs|type)=="number" and (.timings.appProcessMs|type)=="number"' >/dev/null \
   && ok "simulator terminate --json stops installed app and refreshes process state" || fail_t "simulator terminate invalid: $sim_terminate_json"
 sim_ensure_booted_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=1 bash "$IOS_OPS" simulator ensure-booted --json)"
 echo "$sim_ensure_booted_json" | jq -e '.schema=="kg.ios.simulator.v1" and .action=="ensure-booted" and .status=="ok" and .device.udid=="fixture-iphone-17-pro-max" and .device.state=="Booted" and .boot.status=="ok" and .boot.exitCode==0 and .boot.wasAlreadyBooted==false and .boot.waitedForBootstatus==true and (.timings.totalMs|type)=="number" and (.timings.resolveMs|type)=="number" and (.timings.bootMs|type)=="number" and (.timings.bootstatusMs|type)=="number"' >/dev/null \
@@ -241,11 +241,11 @@ section "Catalog snapshot export surface"
 catalog_tmp="$(mktemp -d)"
 catalog_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$catalog_xctestrun_tmp/Build/Products"
-touch "$catalog_xctestrun_tmp/Build/Products/BooksBrowserCatalogSnapshots_BooksBrowserCatalogSnapshots_iphonesimulator26.4-arm64.xctestrun"
-touch "$catalog_xctestrun_tmp/Build/Products/BooksBrowserCatalogSnapshots_BooksBrowserCatalogSnapshots_iphonesimulator26.4-arm64.scoped.xctestrun"
+touch "$catalog_xctestrun_tmp/Build/Products/BooksAndVocabCatalogSnapshots_BooksAndVocabCatalogSnapshots_iphonesimulator26.4-arm64.xctestrun"
+touch "$catalog_xctestrun_tmp/Build/Products/BooksAndVocabCatalogSnapshots_BooksAndVocabCatalogSnapshots_iphonesimulator26.4-arm64.scoped.xctestrun"
 catalog_xctestrun_path="$(
   ROOT="$WORKSPACE" \
-  XCODEPROJ="$WORKSPACE/ios/BooksBrowser.xcodeproj" \
+  XCODEPROJ="$WORKSPACE/ios/BooksAndVocab.xcodeproj" \
   bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_find_xctestrun "'"$catalog_xctestrun_tmp"'"'
 )"
 [[ "$catalog_xctestrun_path" == *.xctestrun && "$catalog_xctestrun_path" != *.scoped.xctestrun ]] \
@@ -265,7 +265,7 @@ cat >"$dataset_fixture_json" <<'JSON'
 JSON
 dataset_fixture_b64="$(base64 <"$dataset_fixture_json" | tr -d '\n')"
 dataset_scoped_xctestrun="$catalog_tmp/dataset.scoped.xctestrun"
-ROOT="$WORKSPACE" XCODEPROJ="$WORKSPACE/ios/BooksBrowser.xcodeproj" \
+ROOT="$WORKSPACE" XCODEPROJ="$WORKSPACE/ios/BooksAndVocab.xcodeproj" \
   bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_prepare_scoped_xctestrun "'"$prepare_xctestrun"'" "" "" "'"$dataset_fixture_b64"'" "'"$dataset_scoped_xctestrun"'"'
 [[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
   && [[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
@@ -287,7 +287,7 @@ catalog_text="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catal
 echo "$catalog_text" | grep -q '\[ios\]\[catalog\].*status=ok.*pngCount=2' && echo "$catalog_text" | grep -q 'validation status=ok' && echo "$catalog_text" | grep -q 'review status=ok' && echo "$catalog_text" | grep -q 'CatalogSnapshotTests' \
   && ok "catalog snapshots text reports artifact summary" || fail_t "catalog snapshots text invalid: $catalog_text"
 scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --group Bookshelf --group 'Today Review' --scenario 'Today Review/Front' --json)"
-echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksBrowserCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
+echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksAndVocabCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
   && ok "catalog snapshots --json reports scoped group/scenario filters" || fail_t "catalog scoped json invalid: $scoped_catalog_json"
 dataset_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json)"
 echo "$dataset_catalog_json" | jq -e --arg path "$dataset_fixture_json" '.schema=="kg.ios.catalog.v1" and .status=="ok" and .dataset.requestedPath==$path and .dataset.status=="not-applicable"' >/dev/null \
@@ -433,7 +433,7 @@ rm -rf "$gate_block_tmp"
 
 section "Sentry wiring surface"
 sentry_json="$(bash "$IOS_OPS" sentry --json)"
-echo "$sentry_json" | jq -e '.schema=="kg.ios.sentry.v1" and .source.path=="'"$WORKSPACE"'/ios/BooksBrowser/Services/AppCrashReporting.swift" and .source.exists==true and (.wiring.canImportGuard|type)=="boolean" and (.wiring.dsnKeyReference|type)=="boolean" and .debug.requiresEnv=="SENTRY_ENABLED_IN_DEBUG=1" and .debug.testArgument=="-sentryTest" and .release.name=="bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION" and .release.dist=="CURRENT_PROJECT_VERSION"' >/dev/null \
+echo "$sentry_json" | jq -e '.schema=="kg.ios.sentry.v1" and .source.path=="'"$WORKSPACE"'/ios/BooksAndVocab/Services/AppCrashReporting.swift" and .source.exists==true and (.wiring.canImportGuard|type)=="boolean" and (.wiring.dsnKeyReference|type)=="boolean" and .debug.requiresEnv=="SENTRY_ENABLED_IN_DEBUG=1" and .debug.testArgument=="-sentryTest" and .release.name=="bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION" and .release.dist=="CURRENT_PROJECT_VERSION"' >/dev/null \
   && ok "sentry --json exposes machine-readable wiring summary" || fail_t "sentry --json invalid: $sentry_json"
 sentry_text="$(bash "$IOS_OPS" sentry)"
 echo "$sentry_text" | grep -q '\[ios\]\[sentry\] source=' && echo "$sentry_text" | grep -q 'can_import_guard=' && echo "$sentry_text" | grep -q 'debug_requires_env=' && echo "$sentry_text" | grep -q 'release_name=' \
@@ -549,9 +549,9 @@ verdict="${TMPDIR:-/tmp}/kg_ios_archive_verdict"
 json="$verdict.json"
 mkdir -p "${TMPDIR:-/tmp}/Archive.xcresult" "${TMPDIR:-/tmp}/export"
 : > "${TMPDIR:-/tmp}/archive.log"
-: > "${TMPDIR:-/tmp}/export/BooksBrowser.ipa"
-printf 'RESULT=ok EXIT=0 caller=stub-archive archive=%s/BooksBrowser.xcarchive log=%s/archive.log xcresult=%s/Archive.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
-jq -nc --arg archive "${TMPDIR:-/tmp}/BooksBrowser.xcarchive" --arg log "${TMPDIR:-/tmp}/archive.log" --arg xcresult "${TMPDIR:-/tmp}/Archive.xcresult" --arg exportDir "${TMPDIR:-/tmp}/export" --arg ipa "${TMPDIR:-/tmp}/export/BooksBrowser.ipa" '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"stub-archive",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"12s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false}}' >"$json"
+: > "${TMPDIR:-/tmp}/export/BooksAndVocab.ipa"
+printf 'RESULT=ok EXIT=0 caller=stub-archive archive=%s/BooksAndVocab.xcarchive log=%s/archive.log xcresult=%s/Archive.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
+jq -nc --arg archive "${TMPDIR:-/tmp}/BooksAndVocab.xcarchive" --arg log "${TMPDIR:-/tmp}/archive.log" --arg xcresult "${TMPDIR:-/tmp}/Archive.xcresult" --arg exportDir "${TMPDIR:-/tmp}/export" --arg ipa "${TMPDIR:-/tmp}/export/BooksAndVocab.ipa" '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"stub-archive",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"12s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false}}' >"$json"
 echo "archive stub stdout"
 SH
 chmod +x "$delegate_tmp/build_stub.sh" "$delegate_tmp/test_stub.sh" "$delegate_tmp/archive_stub.sh"
@@ -580,14 +580,14 @@ runs_tmp="$runs_parent/with spaces"
 mkdir -p "$runs_tmp"
 mkdir -p "$runs_tmp/Build.xcresult" "$runs_tmp/Test.xcresult" "$runs_tmp/Archive.xcresult"
 cat > "$runs_tmp/build.log" <<'LOG'
-warning: StoreKit Configuration file for scheme "BooksBrowser" can't be found at path "/tmp/missing.storekit"
+warning: StoreKit Configuration file for scheme "BooksAndVocab" can't be found at path "/tmp/missing.storekit"
 ** BUILD SUCCEEDED **
 LOG
 cat > "$runs_tmp/test.log" <<'LOG'
 ** TEST SUCCEEDED **
 LOG
 cat > "$runs_tmp/archive.log" <<'LOG'
-warning: StoreKit Configuration file for scheme "BooksBrowser" can't be found at path "/tmp/archive-missing.storekit"
+warning: StoreKit Configuration file for scheme "BooksAndVocab" can't be found at path "/tmp/archive-missing.storekit"
 ** BUILD SUCCEEDED **
 LOG
 echo "RESULT=legacy" > "$runs_tmp/kg_ios_build_verdict"
@@ -597,7 +597,7 @@ jq -nc --arg log "$runs_tmp/build.log" --arg xcresult "$runs_tmp/Build.xcresult"
 jq -nc --arg log "$runs_tmp/test.log" --arg xcresult "$runs_tmp/Test.xcresult" \
   '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"fixture with spaces",elapsed:"5s",executed:"12",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{lockWaitMs:140,bootMs:250,buildForTestingMs:0,testInvocationMs:6000,testBodyMs:2000,xcresultSessionMs:3500,xcresultHarnessOverheadMs:1500,appLaunchAverageMs:1450,appLaunchSamples:5,invocationOverheadMs:2500,xcodebuildMs:6000,totalMs:6500},artifacts:{log:$log,xcresult:$xcresult}}' \
   > "$runs_tmp/kg_ios_test_verdict.json"
-jq -nc --arg log "$runs_tmp/archive.log" --arg xcresult "$runs_tmp/Archive.xcresult" --arg archive "$runs_tmp/BooksBrowser.xcarchive" --arg exportDir "$runs_tmp/export" --arg ipa "$runs_tmp/export/BooksBrowser.ipa" \
+jq -nc --arg log "$runs_tmp/archive.log" --arg xcresult "$runs_tmp/Archive.xcresult" --arg archive "$runs_tmp/BooksAndVocab.xcarchive" --arg exportDir "$runs_tmp/export" --arg ipa "$runs_tmp/export/BooksAndVocab.ipa" \
   '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"fixture with spaces",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"14s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false},timings:{lockWaitMs:10,archiveMs:12000,exportMs:1500,uploadMs:0,totalMs:13510},artifacts:{log:$log,xcresult:$xcresult,archive:$archive,exportDirectory:$exportDir,ipa:$ipa}}' \
   > "$runs_tmp/kg_ios_archive_verdict.json"
 runs_json="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs --json)"
@@ -725,18 +725,18 @@ rm -rf "$bad_snapshot_tmp"
 section "Archive fixture"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-archive="$tmp/2026-06-07/BooksBrowser 2026-6-7, 1.00 PM.xcarchive"
+archive="$tmp/2026-06-07/BooksAndVocab 2026-6-7, 1.00 PM.xcarchive"
 mkdir -p "$archive"
 cat > "$archive/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Name</key><string>BooksBrowser</string>
+  <key>Name</key><string>BooksAndVocab</string>
   <key>CreationDate</key><date>2026-06-07T05:00:00Z</date>
   <key>ApplicationProperties</key>
   <dict>
-    <key>CFBundleIdentifier</key><string>com.Max0228.BooksBrowser</string>
+    <key>CFBundleIdentifier</key><string>com.Max0228.BooksAndVocab</string>
     <key>CFBundleShortVersionString</key><string>1.6</string>
     <key>CFBundleVersion</key><string>4</string>
   </dict>
@@ -786,8 +786,8 @@ grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
 ios_test_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
-touch "$ios_test_xctestrun_tmp/Build/Products/BooksBrowserUnitTests_BooksBrowserUnitTests_iphonesimulator26.4-arm64.xctestrun"
-touch "$ios_test_xctestrun_tmp/Build/Products/BooksBrowserUnitTests_BooksBrowserUnitTests_iphonesimulator26.4-arm64.scoped.xctestrun"
+touch "$ios_test_xctestrun_tmp/Build/Products/BooksAndVocabUnitTests_BooksAndVocabUnitTests_iphonesimulator26.4-arm64.xctestrun"
+touch "$ios_test_xctestrun_tmp/Build/Products/BooksAndVocabUnitTests_BooksAndVocabUnitTests_iphonesimulator26.4-arm64.scoped.xctestrun"
 ios_test_xctestrun_path="$(
   bash -lc '
     eval "$(sed -n '"'"'/^ios_test_find_xctestrun()/,/^}/p'"'"' "'"$WORKSPACE/ops/ios_test.sh"'")"
@@ -797,12 +797,12 @@ ios_test_xctestrun_path="$(
 [[ "$ios_test_xctestrun_path" == *.xctestrun && "$ios_test_xctestrun_path" != *.scoped.xctestrun ]] \
   && ok "ios_test xctestrun lookup prefers base artifact over scoped copy" || fail_t "ios_test xctestrun lookup selected wrong artifact: $ios_test_xctestrun_path"
 rm -rf "$ios_test_xctestrun_tmp"
-grep -q 'BooksBrowserUnitTests' "$WORKSPACE/ops/ios_test.sh" \
+grep -q 'BooksAndVocabUnitTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses unit-only scheme for default scope" || fail_t "ios_test missing unit-only scheme"
 grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -qE 'lockWaitMs=\$LOCK_WAIT_MS' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records lock wait time and surfaces it on stdout" || fail_t "ios_test missing lock wait timing"
-grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
+grep -q 'BooksAndVocabUITests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses dedicated UI scheme for UI scope" || fail_t "ios_test missing UI-only scheme"
 grep -q 'deviceRunLockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'acquire_test_device_lock' "$WORKSPACE/ops/ios_test.sh" \
@@ -897,7 +897,7 @@ grep -q 'VERDICT_JSON_FILE' "$WORKSPACE/ops/ios_test.sh" \
 ios_test_retry_tmp="$(mktemp -d)"
 cat > "$ios_test_retry_tmp/test_failed.log" <<'LOG'
 Test Suite 'All tests' started
-Test Case '-[BooksBrowserTests PollutedStateTests testPollutedState]' failed (0.123 seconds)
+Test Case '-[BooksAndVocabTests PollutedStateTests testPollutedState]' failed (0.123 seconds)
 ** TEST FAILED **
 LOG
 cat > "$ios_test_retry_tmp/cache_corrupt.log" <<'LOG'

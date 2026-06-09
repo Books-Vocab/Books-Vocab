@@ -143,7 +143,7 @@ export default {
   platforms: {
     swift: {
       transforms: ['kg/name-path'],
-      buildPath: 'ios/BooksBrowser/Models/',
+      buildPath: 'ios/BooksAndVocab/Models/',
       files: [{
         destination: 'DesignTokens.swift',
         format: 'kg/swift-tokens',

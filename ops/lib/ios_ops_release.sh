@@ -21,7 +21,7 @@ emit_workflow_step_json() {
 }
 
 sentry_summary_json() {
-  local source="$ROOT/ios/BooksBrowser/Services/AppCrashReporting.swift"
+  local source="$ROOT/ios/BooksAndVocab/Services/AppCrashReporting.swift"
   local source_exists has_sdk has_dsn_key
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_FIXTURE:-}" ]]; then
     source="$KG_IOS_OPS_SENTRY_SOURCE_FIXTURE"
@@ -136,8 +136,8 @@ doctor_readiness() {
     "$emitter" "$out" "signing" "warn" "exportOptions=$ROOT/ios/ExportOptions.plist missing expected manual signing fields"
   fi
 
-  if [[ -f "$ROOT/ios/BooksBrowser/Products.storekit" ]] \
-     && rg -q 'Products\.storekit' "$ROOT/ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowser.xcscheme" 2>/dev/null; then
+  if [[ -f "$ROOT/ios/BooksAndVocab/Products.storekit" ]] \
+     && rg -q 'Products\.storekit' "$ROOT/ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocab.xcscheme" 2>/dev/null; then
     "$emitter" "$out" "storekit" "ok" "scheme_reference=Products.storekit file=present"
   else
     "$emitter" "$out" "storekit" "warn" "scheme_reference_or_file=missing"

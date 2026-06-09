@@ -3,14 +3,14 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/UIComponents/
-  - ios/BooksBrowser/Views/
+  - ios/BooksAndVocab/UIComponents/
+  - ios/BooksAndVocab/Views/
 verified_against: 84f6998e
 -->
 # UI Component & Pattern Inventory
 
 Date: 2026-05-13
-Scope: `ios/BooksBrowser`
+Scope: `ios/BooksAndVocab`
 
 文檔網絡：
 - 設計規範主文檔：`docs/sop/ui-design.md`
@@ -38,9 +38,9 @@ Scope: `ios/BooksBrowser`
 ### App Shell Layer
 
 主要檔案：
-- `ios/BooksBrowser/ContentView.swift`
-- `ios/BooksBrowser/UIComponents/AppShellComponents.swift`
-- `ios/BooksBrowser/UIComponents/AppSurface.swift`
+- `ios/BooksAndVocab/ContentView.swift`
+- `ios/BooksAndVocab/UIComponents/AppShellComponents.swift`
+- `ios/BooksAndVocab/UIComponents/AppSurface.swift`
 
 核心元件：
 - `AppSectionCard`
@@ -70,10 +70,10 @@ Scope: `ios/BooksBrowser`
 #### Toast 子系統
 
 主要檔案：
-- `ios/BooksBrowser/UIComponents/AppToast.swift`
-- `ios/BooksBrowser/UIComponents/AppToastCoordinator.swift`
-- `ios/BooksBrowser/UIComponents/View+ToastSheet.swift`
-- `ios/BooksBrowser/Services/ModelContext+SafeSave.swift`
+- `ios/BooksAndVocab/UIComponents/AppToast.swift`
+- `ios/BooksAndVocab/UIComponents/AppToastCoordinator.swift`
+- `ios/BooksAndVocab/UIComponents/View+ToastSheet.swift`
+- `ios/BooksAndVocab/Services/ModelContext+SafeSave.swift`
 
 核心元件：
 - `AppToast` — capsule 形狀 toast UI，支援 swipe dismiss
@@ -91,9 +91,9 @@ Scope: `ios/BooksBrowser`
 ### Vocabulary Skin Layer
 
 主要檔案：
-- `ios/BooksBrowser/Models/AppSkin.swift`（前身 `Skin/VocabSkin.swift`，已升格為全 app 共用）
-- `ios/BooksBrowser/Views/Vocabulary/Components/VocabComponents.swift`（前身 `VocabSkinComponents.swift`）
-- `ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift`
+- `ios/BooksAndVocab/Models/AppSkin.swift`（前身 `Skin/VocabSkin.swift`，已升格為全 app 共用）
+- `ios/BooksAndVocab/Views/Vocabulary/Components/VocabComponents.swift`（前身 `VocabSkinComponents.swift`）
+- `ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift`
 
 核心元件：
 - `VocabCard`
@@ -128,15 +128,15 @@ Scope: `ios/BooksBrowser`
 ### Reader Layer
 
 主要檔案：
-- `ios/BooksBrowser/Views/Reader/ReaderContentStyle.swift`
-- `ios/BooksBrowser/Views/Reader/TranslationPanel.swift`
-- `ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
-- `ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
-- `ios/BooksBrowser/Views/Reader/ReaderSettingsPanel.swift`
-- `ios/BooksBrowser/Views/Reader/VocabHighlightColorPresetPicker.swift`
-- `ios/BooksBrowser/Views/Reader/ReaderSettingsPanelPresenter.swift`
-- `ios/BooksBrowser/Views/Reader/ReaderSettingsVocabPresenter.swift`
-- `ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationPanel.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationVocabPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderSettingsPanel.swift`
+- `ios/BooksAndVocab/Views/Reader/VocabHighlightColorPresetPicker.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderSettingsPanelPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderSettingsVocabPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderViewPresenter.swift`
 
 核心元件 / 容器：
 - `TranslationPanel`
@@ -164,8 +164,8 @@ Scope: `ios/BooksBrowser`
 ### Settings Layer
 
 主要檔案：
-- `ios/BooksBrowser/Views/Settings/SettingsPresenter.swift`
-- `ios/BooksBrowser/Views/Settings/SettingsPresentation.swift`
+- `ios/BooksAndVocab/Views/Settings/SettingsPresenter.swift`
+- `ios/BooksAndVocab/Views/Settings/SettingsPresentation.swift`
 
 核心元件：
 - `SettingsSectionHeader`
@@ -188,11 +188,11 @@ Scope: `ios/BooksBrowser`
 ### Models / Tokens Layer
 
 主要檔案：
-- `ios/BooksBrowser/Networking/RetryPolicy.swift`
-- `ios/BooksBrowser/Models/AppMetrics.swift` — AppMetrics / AppSpacing / AppRadius / AppElevation / AppMotion / ElevationDirection（無 AppLayout — readable-width 由 `WordDetailPresenter` local `maxContentWidth=640` 控）
-- `ios/BooksBrowser/Models/AppFonts.swift` — AppFonts.serif/sans/mono + TypeScale(caption2/caption/subhead/body/h2/h1/hero) + Tracking + LineSpacing
-- `ios/BooksBrowser/Models/AppColors.swift` — semantic palette tokens（含 brandHero light/dark）
-- `ios/BooksBrowser/Models/AppTheme.swift` — `@Environment(\.appTheme)` 注入點，Palette/Typography 三組（light/dark/highContrast）
+- `ios/BooksAndVocab/Networking/RetryPolicy.swift`
+- `ios/BooksAndVocab/Models/AppMetrics.swift` — AppMetrics / AppSpacing / AppRadius / AppElevation / AppMotion / ElevationDirection（無 AppLayout — readable-width 由 `WordDetailPresenter` local `maxContentWidth=640` 控）
+- `ios/BooksAndVocab/Models/AppFonts.swift` — AppFonts.serif/sans/mono + TypeScale(caption2/caption/subhead/body/h2/h1/hero) + Tracking + LineSpacing
+- `ios/BooksAndVocab/Models/AppColors.swift` — semantic palette tokens（含 brandHero light/dark）
+- `ios/BooksAndVocab/Models/AppTheme.swift` — `@Environment(\.appTheme)` 注入點，Palette/Typography 三組（light/dark/highContrast）
 
 核心元件 / token：
 - `RetryPolicy` — 網路重試策略，實作指數退避（exponential backoff）+ Retry-After header 解析；所有 authenticated request 統一使用，不各自硬編 retry 邏輯
@@ -216,8 +216,8 @@ Scope: `ios/BooksBrowser`
 ### Interaction — Hover / Pointer Layer
 
 主要檔案：
-- `ios/BooksBrowser/UIComponents/HoverHighlight.swift` — 指標 hover 回饋 modifier
-- `ios/BooksBrowser/Platform/MacColumnResizeCursor.swift` — Catalyst 欄寬游標（`UIPointerInteraction`）
+- `ios/BooksAndVocab/UIComponents/HoverHighlight.swift` — 指標 hover 回饋 modifier
+- `ios/BooksAndVocab/Platform/MacColumnResizeCursor.swift` — Catalyst 欄寬游標（`UIPointerInteraction`）
 
 核心元件：
 - `.appHoverLift(scale:)` — 卡片 hover 輕微 scale 浮起（預設 1.02）；卡片屬按鈕互動故 scale 合 Motion Contract，已 gate `accessibilityReduceMotion`。套用：`BookCard` / `PodcastSeriesCard` / `NotebookCard`。
@@ -304,7 +304,7 @@ Scope: `ios/BooksBrowser`
 - filter / tab / count / row list / divider
 
 優先元件：
-- `ListSectionCard`（`ios/BooksBrowser/UIComponents/ListSectionCard.swift`）— 扁平列表共用卡片容器（`VStack(spacing:0)` + `cardBackground` fill + `cardBorder` stroke + `clipShape` 圓角讓 per-row 選中底色不溢出）。podcast 集數列表與單字列表共同骨架；divider 由 caller 在 `ForEach` 內插（不塞進容器，保語意）
+- `ListSectionCard`（`ios/BooksAndVocab/UIComponents/ListSectionCard.swift`）— 扁平列表共用卡片容器（`VStack(spacing:0)` + `cardBackground` fill + `cardBorder` stroke + `clipShape` 圓角讓 per-row 選中底色不溢出）。podcast 集數列表與單字列表共同骨架；divider 由 caller 在 `ForEach` 內插（不塞進容器，保語意）
 - `VocabListCard`
 - `VocabTabSelector`
 - `VocabSearchField`
@@ -433,7 +433,7 @@ Scope: `ios/BooksBrowser`
 
 現況：
 - `AppOfflineBanner` light mode 對比 ≈ 3.21:1（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**
-- ~~`accentHero` dark mode 4.02:1~~ — 已解除：Phase 1b 起 brandHero 從 Morandi 藍改奶黃 `#B5894B/#C9A968`，前景採 `onBrandHero` deep charcoal `#1C1A17`，light/dark 對比 5.11/7.05:1 ✓ AA/AAA（BooksBrowserTests/WCAGContrastTests.swift 鎖住）
+- ~~`accentHero` dark mode 4.02:1~~ — 已解除：Phase 1b 起 brandHero 從 Morandi 藍改奶黃 `#B5894B/#C9A968`，前景採 `onBrandHero` deep charcoal `#1C1A17`，light/dark 對比 5.11/7.05:1 ✓ AA/AAA（BooksAndVocabTests/WCAGContrastTests.swift 鎖住）
 - ~~`AppCompactActionButtonStyle` primary foreground raw `.white`~~ — 已解除：改走 `AppColors.onBrandHero`；奶黃 + 白字 fail AA → onBrandHero 強制 deep charcoal 是 token-level 保證
 
 影響：

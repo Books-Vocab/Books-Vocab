@@ -3,11 +3,11 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift
 verified_against: e98de859
 -->
 # Notebook Feature Boundary

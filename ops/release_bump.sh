@@ -43,10 +43,10 @@ bump_api() {
 }
 
 bump_ios() {
-  local pbxproj="$KG_ROOT/ios/BooksBrowser.xcodeproj/project.pbxproj"
+  local pbxproj="$KG_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 
   # 只改「主 app target」，以其『當前版號值』為錨：避免全域 sed 波及測試 bundle
-  # （BooksBrowserTests/UITests 各有獨立 MARKETING_VERSION/CURRENT_PROJECT_VERSION，不上架，不該被拖著走）。
+  # （BooksAndVocabTests/UITests 各有獨立 MARKETING_VERSION/CURRENT_PROJECT_VERSION，不上架，不該被拖著走）。
   # 主 app 的當前值＝檔內第一個（與 release.sh current_version 的 grep -m1 同口徑）。
   local cur_mv cur_build new_build
   cur_mv=$(grep -o 'MARKETING_VERSION = [^;]*' "$pbxproj" | head -1 | sed 's/MARKETING_VERSION = //')

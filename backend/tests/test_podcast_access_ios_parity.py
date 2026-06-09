@@ -12,7 +12,7 @@ from pathlib import Path
 from kg.podcast_access import FREE_PREVIEW_EP_NUM
 
 ROOT = Path(__file__).resolve().parents[2]
-IOS_PODCAST_ACCESS = ROOT / "ios" / "BooksBrowser" / "Views" / "Podcast" / "PodcastAccess.swift"
+IOS_PODCAST_ACCESS = ROOT / "ios" / "BooksAndVocab" / "Views" / "Podcast" / "PodcastAccess.swift"
 
 
 def test_ios_free_preview_episode_matches_backend_policy() -> None:

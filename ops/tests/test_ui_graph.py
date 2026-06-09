@@ -131,7 +131,7 @@ def test_auto_discovered_catalog_index_never_blocks_core_graph_when_malformed(tm
 def test_payload_schema_and_counts():
     g = _graph()
     ui_graph.attach_catalog_surfaces(g, _catalog_index())
-    payload = ui_graph.build_payload(g, "ios/BooksBrowser/")
+    payload = ui_graph.build_payload(g, "ios/BooksAndVocab/")
     assert payload["schema"] == "kg.ui.graph.v1"
     assert payload["nodeCount"] == 4
     assert payload["edgeCount"] == 2  # Screen->Card, Card->Pill

@@ -111,7 +111,7 @@ sidecar set 佈局（**生成物，勿手改**；SoT 永遠是 `design-system/to
 **免費版誠實限制**：
 - **單檔 only** — 無法同步 multi-file token 目錄，但本 repo 本就單一 `tokens.json`，無影響。
 - **手動 push/pull** — 沒有自動同步；忘了 Pull 就可能蓋掉新值。養成**先 Pull 再改**習慣。
-- **無自動 iOS 同步** — Push 只動 `tokens.json`，**絕不**碰 `ios/BooksBrowser/...` 的 Swift 檔。iOS 對齊永遠手動（見 §5）。
+- **無自動 iOS 同步** — Push 只動 `tokens.json`，**絕不**碰 `ios/BooksAndVocab/...` 的 Swift 檔。iOS 對齊永遠手動（見 §5）。
 - plugin 不寫 PR description、不跑 CI — 那是 push 之後 GitHub / 本地的事。
 
 ---
@@ -124,7 +124,7 @@ sidecar set 佈局（**生成物，勿手改**；SoT 永遠是 `design-system/to
 Figma 改值
    └─ Push（手動，附 commit message）→ branch design-tokens-figma 的 tokens.json
         └─ 開 PR / 本地 checkout 該 branch
-             └─ npm run build          # Style Dictionary 重生 ios/BooksBrowser/Models/DesignTokens.swift
+             └─ npm run build          # Style Dictionary 重生 ios/BooksAndVocab/Models/DesignTokens.swift
              └─ ops/gen_web_tokens.py   # 重生 web CSS（dist + extension + backend/static 副本）
                   └─ ops/verify_design_system.sh   # 全 gate 必須綠
 ```
@@ -133,7 +133,7 @@ Figma 改值
 拉下 token branch 後：
 
 ```bash
-npm run build                 # 重生 ios/BooksBrowser/Models/DesignTokens.swift（scalar bridge 產物）
+npm run build                 # 重生 ios/BooksAndVocab/Models/DesignTokens.swift（scalar bridge 產物）
 uv run --no-project --python 3.13 python ops/gen_web_tokens.py    # 重生所有 web CSS
 uv run --no-project --python 3.13 python ops/gen_figma_sets.py    # 重生 Tokens Studio sidecar（.tokens-studio/）
 ops/verify_design_system.sh   # 一支跑齊所有 guard

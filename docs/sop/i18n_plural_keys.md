@@ -10,7 +10,7 @@ verified_against: 84f6998e
 # i18n Plural Keys
 
 走 `L10n.format(_:_:)` 配 `%lld` 引發 Apple `NSStringPluralRuleType` 變化。鍵定義在
-各 `ios/BooksBrowser/<lang>.lproj/Localizable.stringsdict`。
+各 `ios/BooksAndVocab/<lang>.lproj/Localizable.stringsdict`。
 
 ## Pipeline
 

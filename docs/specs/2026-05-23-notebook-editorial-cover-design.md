@@ -3,10 +3,10 @@ tier: reference
 authority: derived
 update_trigger: design-decision
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift
   # VocabReviewBanner.swift: 不修檔,但 NotebookListView 解除引用
 verified_against: HEAD
 -->
@@ -320,5 +320,5 @@ Order(leading → trailing):
 - `2026-05-23-notebook-editorial-stack-design.md` — 立體堆卡 + Morandi palette 前置
 - `docs/sop/ui-design.md` — design token 規範
 - `docs/reference/feature_boundary/notebook.md` — Notebook feature scope
-- `ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents+Actions.swift:144` — `VocabReviewCTAPill` 既有元件
-- `ios/BooksBrowser/Views/Vocabulary/Components/VocabReviewBanner.swift` — 將被 NotebookListView 解除引用的舊 banner
+- `ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents+Actions.swift:144` — `VocabReviewCTAPill` 既有元件
+- `ios/BooksAndVocab/Views/Vocabulary/Components/VocabReviewBanner.swift` — 將被 NotebookListView 解除引用的舊 banner

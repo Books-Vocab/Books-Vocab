@@ -3,14 +3,14 @@ tier: archive
 authority: derived
 update_trigger: design-decision
 scope:
-  - ios/BooksBrowser/BooksBrowserApp.swift
-  - ios/BooksBrowser/ContentView.swift
-  - ios/BooksBrowser/Platform/LayoutMode.swift
-  - ios/BooksBrowser/Platform/PlatformCompatibility.swift
-  - ios/BooksBrowser/Views/Reader/ReaderView.swift
-  - ios/BooksBrowser/Views/Vocabulary/MacDividerHandle.swift
-  - ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
+  - ios/BooksAndVocab/BooksAndVocabApp.swift
+  - ios/BooksAndVocab/ContentView.swift
+  - ios/BooksAndVocab/Platform/LayoutMode.swift
+  - ios/BooksAndVocab/Platform/PlatformCompatibility.swift
+  - ios/BooksAndVocab/Views/Reader/ReaderView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/MacDividerHandle.swift
+  - ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift
   - docs/sop/ui-design.md
 verified_against: frozen
 -->
@@ -103,7 +103,7 @@ Info.plist、scene manifest、`LayoutMode` 720 寬度假設、iPad orientation�
 ### 技術決策
 
 - **C-D1 混合觸發機制。** 動作分散在 per-view coordinator(非 app-singleton),menu 在 scene 層宣告,無法直接 reference。故:
-  - **全域恆定動作走 app-level `AppCommandCoordinator`**(新建 `@Observable`,比照既有 `syncCoordinator`/`toastCoordinator` 在 `BooksBrowserApp.swift:118-121` 注入 environment)。持 intent flag,`.commands` 設、各 view `.onChange` 消費。接:**設定 ⌘,**(`CommandGroup(replacing: .appSettings)`)、**立即同步 ⌘R**(`kgService.backgroundSync`)。
+  - **全域恆定動作走 app-level `AppCommandCoordinator`**(新建 `@Observable`,比照既有 `syncCoordinator`/`toastCoordinator` 在 `BooksAndVocabApp.swift:118-121` 注入 environment)。持 intent flag,`.commands` 設、各 view `.onChange` 消費。接:**設定 ⌘,**(`CommandGroup(replacing: .appSettings)`)、**立即同步 ⌘R**(`kgService.backgroundSync`)。
   - **畫面相關動作走 `.focusedSceneValue`**,menu `@FocusedValue` 取出 + `.disabled(action == nil)` 自動 enable/disable。接:**匯入書籍 ⌘I**(BookshelfView)、**新增單字本 ⌘N**(NotebookListView,需登入 gate)、**開始今日複習 ⌘⏎**(預設「全部」模式)。
 - **C-D2 `.commands {}` 整段 gate `#if targetEnvironment(macCatalyst)`**,避免 iPad 外接鍵盤出現多餘 menu。
 - **C-D3 搜尋 ⌘F** 已存在(`VocabularyListPresenter.swift:52` 隱藏 Button)。整合進 Edit menu(`CommandGroup(after: .textEditing)`),確保不與既有隱藏 Button 重複觸發。
@@ -138,7 +138,7 @@ Reader/Podcast 導覽、DetailRouter、DraggableDivider inline panel、各 tab �
 ### 風險
 
 - **書庫消失風險**:分流時若把書庫包進純 iOS `#else`,Catalyst 會丟書庫。書庫必須在 split 與 TabView 兩分支都在。
-- `.id(appLanguage.selection)`(`BooksBrowserApp.swift:109`)切語言重建整棵 tree,sidebar `@State selection` 會 reset——需確認可接受(回預設 section)或還原。
+- `.id(appLanguage.selection)`(`BooksAndVocabApp.swift:109`)切語言重建整棵 tree,sidebar `@State selection` 會 reset——需確認可接受(回預設 section)或還原。
 - Catalyst 視窗縮放使 size class 變動,須驗證單字本 inline panel 不異常 dismiss(`NotebookDetailPresentation.swift:101-106`)。
 - toolbar placement 在 NavigationSplitView 下落點改變(sidebar toolbar vs detail toolbar),settings/import/sort/archive 按鈕需逐一驗證仍在預期欄位。
 

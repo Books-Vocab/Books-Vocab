@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 
-const SWIFT_PATH = 'ios/BooksBrowser/Models/DesignTokens.swift';
+const SWIFT_PATH = 'ios/BooksAndVocab/Models/DesignTokens.swift';
 
 let before;
 try {

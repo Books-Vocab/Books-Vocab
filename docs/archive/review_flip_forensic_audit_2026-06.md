@@ -3,13 +3,13 @@ tier: archive
 authority: frozen
 update_trigger: none
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/
 verified_against: frozen
 -->
 # review-flip 平滑度修復線 — 法證審計報告
 
 Date: 2026-06-09
-Scope: `ios/BooksBrowser/Views/Vocabulary/Scenes/TodayReview*`
+Scope: `ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReview*`
 Frozen audit（archive tier）：凍結歷史記錄，**不更新、不引用為當前真相**。當前狀態請讀 `~/.claude` memory `review-flip-smoothness` 或重跑 device 量測。
 
 > 本報告由 18-agent 法證 workflow（`wf_418a9273-e35`：4 面向平行考古 → 13 條承重結論逐條對抗式反駁 → 綜合）產出，13/13 結論通過反駁、0 被推翻，並以維護者手動 grep 5 份 session transcript 的 `settle.frames` 原始數字交叉核對一致。所有 git ancestry / author-date、device capture 行號、brick 風暴特徵均於審計當下以 `git show`/`grep`/`stat` 重新驗證。

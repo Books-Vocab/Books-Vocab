@@ -3,7 +3,7 @@ tier: reference
 authority: derived
 update_trigger: manual
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
   - backend/src/kg/
 verified_against: 84f6998e
 -->

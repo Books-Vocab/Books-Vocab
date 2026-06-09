@@ -2,7 +2,7 @@
 # ios_test.sh — run iOS unit tests with clean pass/fail output
 #
 # Usage:
-#   ./ops/ios_test.sh                             # run ALL tests in BooksBrowserTests
+#   ./ops/ios_test.sh                             # run ALL tests in BooksAndVocabTests
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
 #   ./ops/ios_test.sh -g "notebook"               # grep: run tests matching pattern
 #   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
@@ -40,7 +40,7 @@ TEST_FILE=""
 TEST_SCOPE="unit"
 SPECIFIC_TESTS=()
 LIST_ONLY=0
-TEST_SCHEME="BooksBrowser"
+TEST_SCHEME="BooksAndVocab"
 TEST_CACHE_ACTION=""
 JSON_MODE=0
 UI_LAUNCH_PROFILE="${KG_IOS_TEST_UI_LAUNCH_PROFILE:-}"
@@ -90,7 +90,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
+XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 TEST_CACHE_ROOT="${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived-data}"
 
@@ -111,12 +111,12 @@ ios_test_now_ms() {
 ios_test_build_input_paths() {
   {
     printf '%s\n' \
-      "ios/BooksBrowser.xcodeproj/project.pbxproj" \
-      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowser.xcscheme" \
-      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowserUnitTests.xcscheme" \
-      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowserUITests.xcscheme" \
-      "ios/BooksBrowser.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-    rg --files ios/BooksBrowser ios/BooksBrowserTests ios/BooksBrowserUITests -g '*.swift' -g '*.plist'
+      "ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+      "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocab.xcscheme" \
+      "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocabUnitTests.xcscheme" \
+      "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocabUITests.xcscheme" \
+      "ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    rg --files ios/BooksAndVocab ios/BooksAndVocabTests ios/BooksAndVocabUITests -g '*.swift' -g '*.plist'
   } | sort -u
 }
 
@@ -177,9 +177,9 @@ ios_test_cached_products_ready() {
   local products_root app_bundle unit_bundle ui_bundle
   [[ -n "$xctestrun_path" && -f "$xctestrun_path" ]] || return 1
   products_root="$(dirname "$xctestrun_path")"
-  app_bundle="$products_root/Debug-iphonesimulator/BooksBrowser.app"
-  unit_bundle="$app_bundle/PlugIns/BooksBrowserTests.xctest"
-  ui_bundle="$products_root/Debug-iphonesimulator/BooksBrowserUITests-Runner.app"
+  app_bundle="$products_root/Debug-iphonesimulator/BooksAndVocab.app"
+  unit_bundle="$app_bundle/PlugIns/BooksAndVocabTests.xctest"
+  ui_bundle="$products_root/Debug-iphonesimulator/BooksAndVocabUITests-Runner.app"
   [[ -d "$app_bundle" ]] || return 1
   case "$TEST_SCOPE" in
     unit)
@@ -209,23 +209,23 @@ ios_test_cache_is_complete() {
 
 # --- Build -only-testing flags ---
 ONLY_FLAGS=()
-TEST_TARGET="BooksBrowserTests"
-TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+TEST_TARGET="BooksAndVocabTests"
+TEST_DIR="$PROJECT_ROOT/ios/BooksAndVocabTests"
 
 case "$TEST_SCOPE" in
   unit)
-    TEST_TARGET="BooksBrowserTests"
-    TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
-    TEST_SCHEME="BooksBrowserUnitTests"
+    TEST_TARGET="BooksAndVocabTests"
+    TEST_DIR="$PROJECT_ROOT/ios/BooksAndVocabTests"
+    TEST_SCHEME="BooksAndVocabUnitTests"
     ;;
   ui)
-    TEST_TARGET="BooksBrowserUITests"
-    TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserUITests"
-    TEST_SCHEME="BooksBrowserUITests"
+    TEST_TARGET="BooksAndVocabUITests"
+    TEST_DIR="$PROJECT_ROOT/ios/BooksAndVocabUITests"
+    TEST_SCHEME="BooksAndVocabUITests"
     ;;
   all)
     TEST_TARGET=""
-    TEST_SCHEME="BooksBrowser"
+    TEST_SCHEME="BooksAndVocab"
     ;;
   *)
     echo "[ios_test] internal error: unknown test scope '$TEST_SCOPE'" >&2
@@ -325,10 +325,10 @@ fi
 
 if [[ "$LAUNCH_BENCHMARK" -eq 1 ]]; then
   TEST_SCOPE="ui"
-  TEST_TARGET="BooksBrowserUITests"
-  TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserUITests"
-  TEST_SCHEME="BooksBrowserUITests"
-  ONLY_FLAGS=("-only-testing:BooksBrowserUITests/BooksBrowserUITests/testLaunchPerformance")
+  TEST_TARGET="BooksAndVocabUITests"
+  TEST_DIR="$PROJECT_ROOT/ios/BooksAndVocabUITests"
+  TEST_SCHEME="BooksAndVocabUITests"
+  ONLY_FLAGS=("-only-testing:BooksAndVocabUITests/BooksAndVocabUITests/testLaunchPerformance")
   if [[ -z "$UI_LAUNCH_PROFILE" ]]; then
     UI_LAUNCH_PROFILE="standard"
   fi

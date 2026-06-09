@@ -21,10 +21,10 @@ def _load_module():
 def test_parse_xcode_log_groups_actionable_diagnostics():
     mod = _load_module()
     text = """
-warning: StoreKit Configuration file for scheme "BooksBrowser" can't be found at path "/tmp/missing.storekit"
-/repo/ios/BooksBrowser/Views/VocabHighlightPreferences.swift:47:12: warning: Switch covers known cases, but 'ColorScheme' may have additional unknown values; this is an error in the Swift 6 language mode
-/repo/ios/BooksBrowser/Views/PodcastSelectableSentenceTextView.swift:10:8: warning: umbrella header for module 'GoogleSignIn' does not include header 'GIDAppCheckError'
-/repo/ios/BooksBrowser/Views/Reader/Foo.swift:12:3: error: cannot find 'missingSymbol' in scope
+warning: StoreKit Configuration file for scheme "BooksAndVocab" can't be found at path "/tmp/missing.storekit"
+/repo/ios/BooksAndVocab/Views/VocabHighlightPreferences.swift:47:12: warning: Switch covers known cases, but 'ColorScheme' may have additional unknown values; this is an error in the Swift 6 language mode
+/repo/ios/BooksAndVocab/Views/PodcastSelectableSentenceTextView.swift:10:8: warning: umbrella header for module 'GoogleSignIn' does not include header 'GIDAppCheckError'
+/repo/ios/BooksAndVocab/Views/Reader/Foo.swift:12:3: error: cannot find 'missingSymbol' in scope
 ** BUILD FAILED **
 """
     summary = mod.parse_log(text)
@@ -99,10 +99,10 @@ def test_parse_xcresult_test_results_uses_official_summary_and_failures():
         "expectedFailures": 0,
         "testFailures": [
             {
-                "testName": "BooksBrowserTests.testSyncFails()",
-                "targetName": "BooksBrowserTests",
+                "testName": "BooksAndVocabTests.testSyncFails()",
+                "targetName": "BooksAndVocabTests",
                 "failureText": "XCTAssertEqual failed",
-                "testIdentifierString": "BooksBrowserTests/testSyncFails()",
+                "testIdentifierString": "BooksAndVocabTests/testSyncFails()",
             }
         ],
     }
@@ -202,7 +202,7 @@ def test_parse_xcresult_test_results_extracts_app_launch_metric_summary():
         {"testNodes": []},
         [
             {
-                "testIdentifier": "BooksBrowserUITests/testLaunchPerformance()",
+                "testIdentifier": "BooksAndVocabUITests/testLaunchPerformance()",
                 "testRuns": [
                     {
                         "metrics": [
@@ -244,7 +244,7 @@ def test_format_text_includes_app_launch_perf_summary():
         {"testNodes": []},
         [
             {
-                "testIdentifier": "BooksBrowserUITests/testLaunchPerformance()",
+                "testIdentifier": "BooksAndVocabUITests/testLaunchPerformance()",
                 "testRuns": [
                     {
                         "metrics": [

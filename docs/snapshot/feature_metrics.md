@@ -3,12 +3,12 @@ tier: archive
 authority: derived
 update_trigger: manual
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
 verified_against: frozen
 -->
 # Feature Metrics Inventory
 
-掃描來源：`ios/BooksBrowser/` 所有 `private enum *Metrics` / `private struct *Metrics`
+掃描來源：`ios/BooksAndVocab/` 所有 `private enum *Metrics` / `private struct *Metrics`
 
 ---
 

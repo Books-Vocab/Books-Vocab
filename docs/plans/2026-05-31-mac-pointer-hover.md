@@ -3,10 +3,10 @@ tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
-  - ios/BooksBrowser/UIComponents/
-  - ios/BooksBrowser/Views/Bookshelf/
-  - ios/BooksBrowser/Views/Vocabulary/
-  - ios/BooksBrowser/Platform/
+  - ios/BooksAndVocab/UIComponents/
+  - ios/BooksAndVocab/Views/Bookshelf/
+  - ios/BooksAndVocab/Views/Vocabulary/
+  - ios/BooksAndVocab/Platform/
 verified_against: frozen
 -->
 # Mac Catalyst Pointer / Hover Implementation Plan(Workstream B)
@@ -16,7 +16,7 @@ verified_against: frozen
 **Goal:** 依 [umbrella spec](../specs/2026-05-31-mac-catalyst-native-feel-design.md) Workstream B,為滑鼠/觸控板操作補上 hover 高亮、可拖曳分隔線 resize 游標、右鍵選單補缺。讓 Mac(及 iPad 觸控板)操作有精準指標回饋。
 
 **Architecture:**
-- 全 codebase **零 hover 基礎建設**(`.onHover`/`.hoverEffect` 0 命中)→ 新建兩個 hover modifier 放 `ios/BooksBrowser/UIComponents/HoverHighlight.swift`:
+- 全 codebase **零 hover 基礎建設**(`.onHover`/`.hoverEffect` 0 命中)→ 新建兩個 hover modifier 放 `ios/BooksAndVocab/UIComponents/HoverHighlight.swift`:
   - `.appHoverLift()` — 卡片用,hover 時輕微 scale 浮起。
   - `.appHoverRowTint(cornerRadius:)` — list row 用,hover 時 bg tint。
 - **hover 層不分流**:`.onHover` 在純觸控 iPhone 無指標事件 → 自動 no-op;iPad 觸控板/妙控與 Mac 共益(spec cross-cutting 鐵律 1 的明確例外)。
@@ -39,10 +39,10 @@ verified_against: frozen
 ## Task 1: `.appHoverLift()` + 卡片套用
 
 **Files:**
-- Create: `ios/BooksBrowser/UIComponents/HoverHighlight.swift`
-- Modify: `ios/BooksBrowser/Views/Bookshelf/Components/BookCard.swift`(body 最外層 VStack)
-- Modify: `ios/BooksBrowser/Views/Bookshelf/Components/PodcastSeriesCard.swift`(body 最外層 VStack)
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`(card body 最外層)
+- Create: `ios/BooksAndVocab/UIComponents/HoverHighlight.swift`
+- Modify: `ios/BooksAndVocab/Views/Bookshelf/Components/BookCard.swift`(body 最外層 VStack)
+- Modify: `ios/BooksAndVocab/Views/Bookshelf/Components/PodcastSeriesCard.swift`(body 最外層 VStack)
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`(card body 最外層)
 
 - [ ] **Step 1: 新建 `HoverHighlight.swift` — `appHoverLift`**
 ```swift
@@ -89,7 +89,7 @@ extension View {
 - [ ] **Step 4: 套 NotebookCard** — `NotebookCard.swift` 的 card body 最外層 view 末端加 `.appHoverLift()`(實作時定位最外層 modifier 鏈;注意 NotebookCard 已有 `NotebookDeckButtonStyle` pressed 效果,hover lift 與之不衝突,一個是 hover、一個是 pressed)。
 
 - [ ] **Step 5: build 驗證**
-Run: `./ops/ios_build.sh`(iOS,驗 no-op 路徑編譯)+ Catalyst build(`xcodebuild -project BooksBrowser.xcodeproj -scheme BooksBrowser -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath /tmp/kg-catalyst-verify build`)。
+Run: `./ops/ios_build.sh`(iOS,驗 no-op 路徑編譯)+ Catalyst build(`xcodebuild -project BooksAndVocab.xcodeproj -scheme BooksAndVocab -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath /tmp/kg-catalyst-verify build`)。
 Expected: 皆綠。
 
 - [ ] **Step 6: Commit**
@@ -100,8 +100,8 @@ Expected: 皆綠。
 ## Task 2: `.appHoverRowTint()` + 可點 row + PodcastSeriesCard contextMenu
 
 **Files:**
-- Modify: `ios/BooksBrowser/UIComponents/HoverHighlight.swift`(加 `appHoverRowTint`)
-- Modify: `ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift`(PodcastSeriesCard 引用處補 `.contextMenu`)
+- Modify: `ios/BooksAndVocab/UIComponents/HoverHighlight.swift`(加 `appHoverRowTint`)
+- Modify: `ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift`(PodcastSeriesCard 引用處補 `.contextMenu`)
 - Modify: list row 套 hover 的檔(設定 `AppKeyValueRow` / NotebookListView 可點 row / OverviewTab 可點 row,實作時逐一定位)
 
 - [ ] **Step 1: 加 `appHoverRowTint` — `HoverHighlight.swift`**
@@ -148,8 +148,8 @@ extension View {
 ## Task 3: Divider resize 游標(UIPointerInteraction,Catalyst-only)
 
 **Files:**
-- Create: `ios/BooksBrowser/Platform/MacColumnResizeCursor.swift`
-- Modify: `ios/BooksBrowser/Views/Vocabulary/MacDividerHandle.swift`(疊游標到 hit area)
+- Create: `ios/BooksAndVocab/Platform/MacColumnResizeCursor.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/MacDividerHandle.swift`(疊游標到 hit area)
 
 - [ ] **Step 1: 新建 `MacColumnResizeCursor.swift`**
 ```swift
