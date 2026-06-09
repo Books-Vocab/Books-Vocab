@@ -19,6 +19,7 @@ final class TodayReviewState {
     private var persistence: TodayReviewSessionPersistenceController
     private var cardCache = TodayReviewCardCache()
     private let autoplay = TodayReviewAutoplayController()
+    private var collocationState = TodayReviewCollocationState()
     var linkedCardStack: [VocabularyEntry] = []
     var tappedLink: KGCardLinkSummary?
     static let cacheLookaheadLimit = 3
@@ -107,6 +108,7 @@ final class TodayReviewState {
             )
         }
         let _tPrewarm = DispatchTime.now()
+        syncCurrentEntryDerivedState()
         prewarmCardWindow()
         let _msPrewarm = PerfChannel.ms(since: _tPrewarm)
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
@@ -119,6 +121,7 @@ final class TodayReviewState {
     var currentIndex: Int { session.currentIndex }
     var revealStage: TodayReviewRevealStage { session.revealStage }
     var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] { cardCache.storage }
+    var currentCollocationExplanations: [String: String] { collocationState.explanations }
     var isAutoPlaying: Bool { autoplay.isPlaying }
     var isAutoPlayPaused: Bool { autoplay.isPaused }
     var autoplaySpeed: AutoplaySpeed { autoplay.speed }
@@ -193,15 +196,41 @@ final class TodayReviewState {
     func hideLink(_ link: KGCardLinkSummary) {
         tappedLink = nil
         guard let entry = currentEntry else { return }
-        entry.mutateLink(id: link.id) { $0.withHidden(true) }
-        rebuildCacheForEntry(entry)
+        setLinkHidden(
+            true,
+            for: link,
+            sourceEntry: entry,
+            targetEntry: linkedEntryLookup[link.cardId]
+        )
+    }
+
+    func restoreHiddenLink(
+        _ link: KGCardLinkSummary,
+        sourceEntry: VocabularyEntry,
+        targetEntry: VocabularyEntry?
+    ) {
+        setLinkHidden(false, for: link, sourceEntry: sourceEntry, targetEntry: targetEntry)
+    }
+
+    private func setLinkHidden(
+        _ hidden: Bool,
+        for link: KGCardLinkSummary,
+        sourceEntry: VocabularyEntry,
+        targetEntry: VocabularyEntry?
+    ) {
+        VocabularyGraphLinkMutation.setHidden(
+            hidden,
+            for: link,
+            source: sourceEntry,
+            peer: targetEntry
+        )
+        rebuildCacheForEntry(sourceEntry)
         // Bidirectional link target: if it lives in the review queue its
         // prepared-card cache is now stale too. VocabularyEntry is a class, so
         // match by identity. currentEntry (always in queue) is rebuilt above.
-        if let target = linkedEntryLookup[link.cardId] {
-            target.mutateLink(id: link.id) { $0.withHidden(true) }
-            if target !== entry, queue.contains(where: { $0 === target }) {
-                rebuildCacheForEntry(target)
+        if let targetEntry {
+            if targetEntry !== sourceEntry, queue.contains(where: { $0 === targetEntry }) {
+                rebuildCacheForEntry(targetEntry)
             }
         }
     }
@@ -228,6 +257,7 @@ final class TodayReviewState {
         withAnimation(AppMotion.reviewNavigationSpring) {
             _ = session.shuffleRemaining()
         }
+        syncCurrentEntryDerivedState()
         syncQueueMetadata()
         prewarmCardWindow()
         ReviewSessionStore.saveOrder(queue, userID: currentUserID)
@@ -239,6 +269,7 @@ final class TodayReviewState {
         withAnimation(AppMotion.reviewNavigationSpring) {
             _ = session.goPrevious()
         }
+        syncCurrentEntryDerivedState()
         if autoplay.isLoopActive {
             startAutoPlayLoop()
         }
@@ -251,6 +282,7 @@ final class TodayReviewState {
         withAnimation(AppMotion.reviewNavigationSpring) {
             _ = session.goNext()
         }
+        syncCurrentEntryDerivedState()
         if autoplay.isLoopActive {
             startAutoPlayLoop()
         }
@@ -280,6 +312,88 @@ final class TodayReviewState {
         autoplay.toggleSound()
     }
 
+    func updateCollocationExplanation(
+        _ explanation: String?,
+        for collocation: String,
+        modelContext: ModelContext
+    ) {
+        collocationState.update(explanation, for: collocation, entry: currentEntry)
+        modelContext.safeSave()
+    }
+
+    @discardableResult
+    func performReviewIntent(
+        _ intent: ReviewIntent,
+        container: ModelContainer,
+        reviewSettings: ReviewSettings
+    ) -> Bool {
+        switch intent {
+        case .reveal:
+            guard revealStage == .front, currentEntry != nil else { return false }
+            withAnimation(AppMotion.reviewRevealSpring) {
+                advanceReveal()
+            }
+            return true
+
+        case .collapse:
+            guard revealStage == .back, currentEntry != nil else { return false }
+            withAnimation(AppMotion.reviewRevealSpring) {
+                retractReveal()
+            }
+            return true
+
+        case .forgot:
+            guard !isAutoPlaying, currentEntry != nil else { return false }
+            submit(.forgot, container: container, reviewSettings: reviewSettings)
+            return true
+
+        case .remembered:
+            guard !isAutoPlaying, currentEntry != nil else { return false }
+            submit(.remembered, container: container, reviewSettings: reviewSettings)
+            return true
+
+        case .previous:
+            guard currentIndex > 0 else { return false }
+            goPrevious()
+            return true
+
+        case .next:
+            guard currentIndex < queue.count - 1 else { return false }
+            goNext()
+            return true
+
+        case .shuffle:
+            guard !isAutoPlaying, queue.count - currentIndex > 1 else { return false }
+            shuffleQueue()
+            return true
+
+        case .showDetail:
+            guard currentEntry != nil else { return false }
+            handleDetailTap()
+            return true
+
+        case .toggleAutoplay:
+            toggleAutoPlay()
+            return true
+
+        case .toggleAutoplayPause:
+            guard isAutoPlaying else { return false }
+            toggleAutoPlayPause()
+            return true
+
+        case .changeAutoplaySpeed:
+            changeAutoplaySpeed(to: autoplaySpeed.next)
+            return true
+
+        case .toggleAutoplaySound:
+            toggleAutoplaySound()
+            return true
+
+        case .close, .showHelp:
+            return false
+        }
+    }
+
     func startAutoPlayLoop() {
         autoplay.startOrRestartLoop(
             isComplete: { [weak self] in self?.session.isComplete ?? true },
@@ -290,6 +404,7 @@ final class TodayReviewState {
                 withAnimation(AppMotion.reviewNavigationSpring) {
                     _ = self.session.advanceAfterSubmission()
                 }
+                self.syncCurrentEntryDerivedState()
                 self.prewarmCardWindow()
                 return true
             }
@@ -324,6 +439,7 @@ final class TodayReviewState {
         ))
 
         let didComplete = session.advanceAfterSubmission()
+        syncCurrentEntryDerivedState()
         PerfLog.review.mark("submit.advance", "idx=\(currentIndex - 1)->\(currentIndex)")
         // Persist AFTER advancing so the crash-recovery snapshot reflects the next
         // card. (Previously this ran pre-increment and only became correct via the
@@ -451,8 +567,13 @@ final class TodayReviewState {
         // completion state. Previously this guarded `< queue.count - 1`, which
         // pinned the last card forever and the completion teardown never ran.
         let didComplete = session.advanceAfterSubmission()
+        syncCurrentEntryDerivedState()
         prewarmCardWindow()
         persistSnapshot()
         finishSessionIfComplete(completed: didComplete)
+    }
+
+    private func syncCurrentEntryDerivedState() {
+        collocationState.sync(from: currentEntry)
     }
 }

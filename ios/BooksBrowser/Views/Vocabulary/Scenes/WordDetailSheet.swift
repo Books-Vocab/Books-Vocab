@@ -7,11 +7,10 @@ struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kgService) private var kgService
     @Environment(\.detailRouter) private var detailRouter
+    @State private var state = WordDetailSceneState()
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
     @State private var showAddLink = false
-    @State private var presenterState: WordDetailPresenter.State?
-    @State private var linkError: String?
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -38,7 +37,7 @@ struct WordDetailSheet: View {
 
     var body: some View {
         Group {
-            if let presenterState {
+            if let presenterState = state.presenterState {
                 WordDetailPresenter(
                     state: presenterState,
                     isExcludedFromReader: entry.isExcludedFromReader,
@@ -53,11 +52,11 @@ struct WordDetailSheet: View {
                     onUnhideLink: handleUnhideLink
                 )
                 .overlay(alignment: .top) {
-                    if let linkError {
+                    if let linkError = state.linkError {
                         AppBanner(
                             message: linkError,
                             systemImage: "exclamationmark.triangle",
-                            onDismiss: { self.linkError = nil }
+                            onDismiss: { state.dismissLinkError() }
                         )
                         .padding(.top, AppSpacing.s1)
                     }
@@ -78,9 +77,7 @@ struct WordDetailSheet: View {
             // Yield once so SwiftUI can render the loading placeholder before
             // we run the (lightweight but synchronous) presentation computation.
             await Task.yield()
-            let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
-            let state = WordDetailPresentation.state(for: entry, in: allEntries, lookup: lookup)
-            presenterState = state
+            state.refreshPresentation(for: entry, in: allEntries)
         }
         .overlay {
             if shouldUseLinkedOverlayStack {
@@ -94,7 +91,9 @@ struct WordDetailSheet: View {
             AddLinkSheet(
                 sourceEntry: entry,
                 allEntries: allEntries,
-                onSelect: handleAddLink
+                onSelect: { target in
+                    state.addLink(target: target, to: entry, kgService: kgService)
+                }
             )
         }
         .enableInjection()
@@ -119,133 +118,11 @@ struct WordDetailSheet: View {
     }
 
     private func handleLinkTap(_ link: KGCardLinkSummary) {
-        let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
-        guard let target = entry.linkedEntry(for: link, lookup: lookup) else { return }
+        guard let target = state.linkedEntry(for: link, from: entry, in: allEntries) else { return }
         if !wrapInNavigation, let detailRouter {
             detailRouter.showWordDetail(target, allEntries: allEntries)
             return
         }
         linkedCardStack.wrappedValue.append(target)
-    }
-
-    private func handleAddLink(_ target: VocabularyEntry) {
-        guard let fromId = entry.kgCardId, let toId = target.kgCardId else { return }
-        // Guard against duplicate add (pending or already linked)
-        let allLinks = entry.graphLinksByKind.values.flatMap { $0 }
-        guard !allLinks.contains(where: { $0.cardId == toId }) else { return }
-        let notebookId = entry.notebookId
-
-        // 1. Optimistic insert — placeholder appears immediately
-        let placeholderId = "pending-\(UUID().uuidString)"
-        let placeholder = KGCardLinkSummary.pending(id: placeholderId, cardId: toId, word: target.word)
-        var current = entry.graphLinksByKind
-        current[placeholder.kind, default: []].append(placeholder)
-        entry.graphLinksByKind = current
-
-        // 2. Backend call — replace placeholder on success, rollback on failure
-        Task {
-            do {
-                let link = try await kgService.createManualLink(
-                    fromId: fromId, toId: toId, notebookId: notebookId
-                )
-                let summary = KGCardLinkSummary(
-                    id: link.id,
-                    cardId: toId,
-                    word: target.word,
-                    kind: link.kind,
-                    label: link.kind == "contrasts_with" ? "對比" : "相關",
-                    confidence: link.confidence,
-                    reason: link.reason,
-                    hidden: false
-                )
-                var updated = entry.graphLinksByKind
-                // Remove placeholder from its temporary group
-                updated[placeholder.kind]?.removeAll { $0.id == placeholderId }
-                if updated[placeholder.kind]?.isEmpty == true {
-                    updated.removeValue(forKey: placeholder.kind)
-                }
-                // Insert real link under correct kind
-                updated[link.kind, default: []].append(summary)
-                entry.graphLinksByKind = updated
-            } catch {
-                // Rollback — remove placeholder
-                var rollback = entry.graphLinksByKind
-                rollback[placeholder.kind]?.removeAll { $0.id == placeholderId }
-                if rollback[placeholder.kind]?.isEmpty == true {
-                    rollback.removeValue(forKey: placeholder.kind)
-                }
-                entry.graphLinksByKind = rollback
-                linkError = "新增連結失敗".localized
-            }
-        }
-    }
-
-    private func counterpart(for link: KGCardLinkSummary) -> VocabularyEntry? {
-        let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
-        return entry.linkedEntry(for: link, lookup: lookup)
-    }
-
-    private func handleDeleteLink(_ link: KGCardLinkSummary) {
-        let notebookId = entry.notebookId
-        let peer = counterpart(for: link)
-
-        // 1. Optimistic remove — bilateral
-        let removed = entry.mutateLink(id: link.id) { _ in nil }
-        let peerRemoved = peer?.mutateLink(id: link.id) { _ in nil }
-
-        // 2. Backend call — rollback on failure
-        Task {
-            do {
-                try await kgService.deleteLink(linkId: link.id, notebookId: notebookId)
-            } catch {
-                if let removed {
-                    entry.insertLink(removed.original, kind: removed.kind)
-                }
-                if let peerRemoved {
-                    peer?.insertLink(peerRemoved.original, kind: peerRemoved.kind)
-                }
-                linkError = "刪除連結失敗".localized
-            }
-        }
-    }
-
-    private func handleHideLink(_ link: KGCardLinkSummary) {
-        let notebookId = entry.notebookId
-        let peer = counterpart(for: link)
-
-        // 1. Optimistic hide — bilateral
-        entry.mutateLink(id: link.id) { $0.withHidden(true) }
-        peer?.mutateLink(id: link.id) { $0.withHidden(true) }
-
-        // 2. Backend call — rollback on failure
-        Task {
-            do {
-                try await kgService.hideLink(linkId: link.id, notebookId: notebookId)
-            } catch {
-                entry.mutateLink(id: link.id) { $0.withHidden(false) }
-                peer?.mutateLink(id: link.id) { $0.withHidden(false) }
-                linkError = "隱藏連結失敗".localized
-            }
-        }
-    }
-
-    private func handleUnhideLink(_ link: KGCardLinkSummary) {
-        let notebookId = entry.notebookId
-        let peer = counterpart(for: link)
-
-        // 1. Optimistic unhide — bilateral
-        entry.mutateLink(id: link.id) { $0.withHidden(false) }
-        peer?.mutateLink(id: link.id) { $0.withHidden(false) }
-
-        // 2. Backend call — rollback on failure
-        Task {
-            do {
-                try await kgService.unhideLink(linkId: link.id, notebookId: notebookId)
-            } catch {
-                entry.mutateLink(id: link.id) { $0.withHidden(true) }
-                peer?.mutateLink(id: link.id) { $0.withHidden(true) }
-                linkError = "恢復連結失敗".localized
-            }
-        }
     }
 }
