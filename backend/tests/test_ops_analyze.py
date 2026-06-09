@@ -27,7 +27,15 @@ def _setup_user(tmp_path: Path, uid: str) -> Path:
 
 
 def _run(data_dir: str, *args: str) -> subprocess.CompletedProcess:
-    env = {**os.environ, "KG_DATA_DIR": data_dir}
+    """執行 ops_analyze.py，設定 KG_DATA_DIR + PYTHONPATH。
+
+    子程序可能跑在裸 python（非專案 venv），缺 PYTHONPATH 則 `import kg.*` 失敗。
+    """
+    env = {
+        **os.environ,
+        "KG_DATA_DIR": data_dir,
+        "PYTHONPATH": str(SCRIPT.parent / "src"),
+    }
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         capture_output=True, text=True, env=env,
