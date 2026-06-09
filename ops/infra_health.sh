@@ -30,9 +30,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${KG_BASE:-$ROOT/devops.sh}"
 DOMAIN="${KG_DOMAIN:-wordnexus.lol}"
+PUBLIC_WEB_BASE_URL="${KG_PUBLIC_WEB_BASE_URL:-https://${DOMAIN}}"
 CONTAINER="${KG_CONTAINER:-knowledge-graph-api}"
 DATA_DIR="${KG_DATA_DIR:-/home/ubuntu/knowledge_graph_api/data}"
-PROBE_URL="${KG_HEALTH_PROBE_URL:-https://${DOMAIN}/api/system/info}"
+PROBE_URL="${KG_HEALTH_PROBE_URL:-${PUBLIC_WEB_BASE_URL}/api/system/info}"
 
 JSON=0
 [[ "${1:-}" == "--json" ]] && JSON=1

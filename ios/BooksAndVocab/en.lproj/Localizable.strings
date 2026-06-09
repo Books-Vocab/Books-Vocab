@@ -759,7 +759,6 @@
 "無法載入圖片" = "Unable to load image";
 "無法開啟 PDF" = "Unable to open PDF";
 "無法開啟此書籍" = "Unable to open this book";
-"無法開啟郵件 App。請手動寄信至 support@wordnexus.lol，並附上技術細節。" = "Unable to open the Mail app. Please email support@wordnexus.lol manually and include the technical details.";
 "無法開啟郵件 App。請手動寄信至 %@，並附上技術細節。" = "Unable to open the Mail app. Please email %@ manually and include the technical details.";
 "無音訊 URL" = "No audio URL";
 "登入已過期" = "Session expired";
