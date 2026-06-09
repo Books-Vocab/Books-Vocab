@@ -16,7 +16,7 @@ enum AppStartupRecovery {
         let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "-"
         let bundleId = Bundle.main.bundleIdentifier ?? "-"
 
-        let subject = L10n.string("[WordNexus] 啟動保護模式 — 需要技術協助")
+        let subject = L10n.string("[Books & Vocab] 啟動保護模式 — 需要技術協助")
         let bodyLines = [
             L10n.string("您好，我的 App 在啟動時觸發保護模式，需要技術協助。"),
             "",

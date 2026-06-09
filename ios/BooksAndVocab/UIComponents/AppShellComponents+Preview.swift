@@ -157,7 +157,7 @@ struct AppShellPreview: View {
                         label: "伺服器",
                         style: keyValueStyle
                     ) {
-                        Text("wordnexus.lol")
+                        Text("Books & Vocab")
                             .font(AppFonts.monoNumbers(size: 12))
                             .foregroundStyle(valueColor)
                     }
@@ -206,7 +206,7 @@ struct AppShellPreview: View {
                         label: "伺服器",
                         style: .settings(appSkin)
                     ) {
-                        Text("wordnexus.lol")
+                        Text("Books & Vocab")
                             .font(appSkin.typography.monoLabel)
                             .foregroundStyle(appSkin.palette.secondaryText)
                     }
