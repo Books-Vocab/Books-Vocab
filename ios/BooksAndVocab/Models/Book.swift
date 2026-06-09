@@ -162,7 +162,7 @@ final class Book {
 
     /// URL 是否位於 iCloud ubiquity container 內
     static func isInICloudContainer(_ url: URL) -> Bool {
-        guard let iCloudDir = _cachedICloudDir else { return false }
+        guard let iCloudDir = _iCloudDirLock.withLock({ $0 }) else { return false }
         return url.path.hasPrefix(iCloudDir.path)
     }
 
