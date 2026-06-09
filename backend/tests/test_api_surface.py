@@ -15,7 +15,7 @@ import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.auth as auth_router_mod
 import kg.routers.vocab as vocab_router_mod
-from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, _swap_settings, make_jwt
+from conftest import TEST_JWT_SECRET, TEST_PRO_PRODUCT_ID, _DummyEmbeddingStore, _swap_settings, make_jwt
 from kg.api import app
 from kg.graph import LinkKind
 from kg.settings import KGSettings
@@ -355,7 +355,7 @@ def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
     users_data = json.loads(isolated_api.users_file.read_text())
     users_data[isolated_api.user_id]["subscription"] = {
         "is_active": True,
-        "product_id": "com.wordnexus.pro.monthly",
+        "product_id": TEST_PRO_PRODUCT_ID,
         "plan_name": "Books & Vocab Pro",
         "price_display": "$1.00/month",
         "status": "trial",
@@ -372,7 +372,7 @@ def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
     body = r.json()["pro"]
     assert body["is_active"] is True
     assert body["status"] == "trial"
-    assert body["product_id"] == "com.wordnexus.pro.monthly"
+    assert body["product_id"] == TEST_PRO_PRODUCT_ID
     assert body["price_display"] == "$1.00/month"
     assert body["will_renew"] is True
 
@@ -384,7 +384,7 @@ def test_get_entitlements_prefers_active_admin_grant(isolated_api):
     users_data = json.loads(isolated_api.users_file.read_text())
     users_data[isolated_api.user_id]["subscription"] = {
         "is_active": True,
-        "product_id": "com.wordnexus.pro.monthly",
+        "product_id": TEST_PRO_PRODUCT_ID,
         "plan_name": "Books & Vocab Pro",
         "price_display": "$1.00/month",
         "status": "active",

@@ -35,6 +35,9 @@ os.environ["LLM_PROVIDER_DEFAULT"] = "gemini"
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 TEST_ALGORITHM = "HS256"
+TEST_PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
+TEST_GOOGLE_REDIRECT_URI = TEST_PUBLIC_WEB_BASE_URL + "/auth/web/google/callback"
+TEST_PRO_PRODUCT_ID = "com.wordnexus.pro.monthly"
 
 
 def make_settings(tmp_path: Path):
