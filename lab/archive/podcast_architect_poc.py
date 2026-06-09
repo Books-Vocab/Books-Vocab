@@ -16,7 +16,8 @@ from openai import OpenAI
 # NOTE: archived — superseded by lab/podcast/pipeline.py. Kept for history.
 # The previously hardcoded gateway token leaked via git history MUST be
 # rotated; reading from env now so this file can't re-leak.
-GATEWAY_URL = "https://wordnexus.lol/claude/v1"
+PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
+GATEWAY_URL = PUBLIC_WEB_BASE_URL + "/claude/v1"
 GATEWAY_TOKEN = os.environ["CCG_API_TOKEN"]
 MODEL = "opus"
 
