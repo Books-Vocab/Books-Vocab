@@ -66,6 +66,8 @@ const {
   buildVocabUiConfigPatch,
 } = require('./pure.js');
 
+const PUBLIC_WEB_HOST = new URL(PUBLIC_WEB_ORIGIN).hostname;
+
 // ---------------------------------------------------------------------------
 // resolveTheme
 // ---------------------------------------------------------------------------
@@ -1006,9 +1008,9 @@ test('isTrustedExternalOrigin accepts the KG https origin', () => {
 });
 
 test('isTrustedExternalOrigin rejects look-alike and insecure origins', () => {
-  assert.equal(isTrustedExternalOrigin('http://wordnexus.lol/'), false);
+  assert.equal(isTrustedExternalOrigin(`http://${PUBLIC_WEB_HOST}/`), false);
   assert.equal(
-    isTrustedExternalOrigin('https://evil.com/wordnexus.lol'),
+    isTrustedExternalOrigin(`https://evil.com/${PUBLIC_WEB_HOST}`),
     false,
   );
   assert.equal(isTrustedExternalOrigin(''), false);
@@ -1020,11 +1022,11 @@ test('isTrustedExternalOrigin rejects look-alike and insecure origins', () => {
 test('isTrustedExternalOrigin rejects subdomain phishing look-alikes', () => {
   // exact-host match — these must NOT pass.
   assert.equal(
-    isTrustedExternalOrigin('https://wordnexus.lol.evil.com/'),
+    isTrustedExternalOrigin(`https://${PUBLIC_WEB_HOST}.evil.com/`),
     false,
   );
   assert.equal(
-    isTrustedExternalOrigin('https://evil.wordnexus.lol/'),
+    isTrustedExternalOrigin(`https://evil.${PUBLIC_WEB_HOST}/`),
     false,
   );
 });
