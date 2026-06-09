@@ -29,7 +29,7 @@ class KGSettings:
     google_client_secret: str = ""
     google_redirect_uri: str = DEFAULT_PUBLIC_WEB_BASE_URL + _GOOGLE_WEB_CALLBACK_PATH
     chrome_extension_id: str = ""
-    apple_bundle_id: str = "com.Max0228.BooksAndVocab"
+    apple_bundle_id: str = "com.Max0228.BooksBrowser"
     apple_service_id: str = "com.Max0228.BooksAndVocab.web"
     app_store_allow_unsigned_sync: bool = False
     app_store_allow_unsigned_notifications: bool = False
@@ -171,7 +171,7 @@ def load_settings() -> KGSettings:
             DEFAULT_PUBLIC_WEB_BASE_URL + _GOOGLE_WEB_CALLBACK_PATH,
         ),
         chrome_extension_id=os.getenv("CHROME_EXTENSION_ID", ""),
-        apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksAndVocab"),
+        apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser"),
         apple_service_id=os.getenv("APPLE_SERVICE_ID", "com.Max0228.BooksAndVocab.web"),
         app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,

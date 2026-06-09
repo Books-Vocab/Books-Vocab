@@ -47,9 +47,9 @@ run_log_stream_compact() {
   fi
   if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
     cat <<'LOG'
-2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksAndVocab:sync] sync completed
+2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:sync] sync completed
 2026-06-07 12:00:01.000000+0800 BooksAndVocab[123:456] RBSServiceErrorDomain ProcessAssertion noise
-2026-06-07 12:00:02.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksAndVocab:reader] reader opened
+2026-06-07 12:00:02.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:reader] reader opened
 LOG
     return 0
   fi
@@ -57,7 +57,7 @@ LOG
     # unbounded producer: exercises the real SIGPIPE(141) path when a downstream
     # `head -n` closes the pipe after the limit is reached.
     while :; do
-      printf '%s\n' '2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksAndVocab:sync] sync completed'
+      printf '%s\n' '2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:sync] sync completed'
     done
     return 0
   fi
@@ -72,15 +72,15 @@ run_log_stream_ndjson() {
   fi
   if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
     cat <<'NDJSON'
-{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksAndVocab","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}
+{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}
 {"timestamp":"2026-06-07 12:00:01.000000+0800","eventType":"logEvent","processID":123,"subsystem":"","category":"","eventMessage":"RBSServiceErrorDomain ProcessAssertion noise","senderImagePath":"/System/Library/Frameworks/RunningBoardServices.framework/RunningBoardServices"}
-{"timestamp":"2026-06-07 12:00:02.000000+0800","eventType":"activityCreateEvent","processID":123,"subsystem":"com.Max0228.BooksAndVocab","category":"reader","eventMessage":"reader opened","senderImagePath":"/tmp/BooksAndVocab"}
+{"timestamp":"2026-06-07 12:00:02.000000+0800","eventType":"activityCreateEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"reader","eventMessage":"reader opened","senderImagePath":"/tmp/BooksAndVocab"}
 NDJSON
     return 0
   fi
   if [[ "${KG_IOS_OPS_LOG_STREAM_FIXTURE:-}" == "1" ]]; then
     while :; do
-      printf '%s\n' '{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksAndVocab","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}'
+      printf '%s\n' '{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}'
     done
     return 0
   fi
@@ -146,9 +146,9 @@ run_log_show_compact() {
   fi
   if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
     cat <<'LOG'
-2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksAndVocab:sync] sync completed
+2026-06-07 12:00:00.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:sync] sync completed
 2026-06-07 12:00:01.000000+0800 BooksAndVocab[123:456] RBSServiceErrorDomain ProcessAssertion noise
-2026-06-07 12:00:02.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksAndVocab:reader] reader opened
+2026-06-07 12:00:02.000000+0800 BooksAndVocab[123:456] [com.Max0228.BooksBrowser:reader] reader opened
 LOG
     return 0
   fi
@@ -182,9 +182,9 @@ run_log_show_ndjson() {
   fi
   if [[ "${KG_IOS_OPS_LOG_FIXTURE:-}" == "1" ]]; then
     cat <<'NDJSON'
-{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksAndVocab","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}
+{"timestamp":"2026-06-07 12:00:00.000000+0800","eventType":"logEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"sync","eventMessage":"sync completed","senderImagePath":"/tmp/BooksAndVocab"}
 {"timestamp":"2026-06-07 12:00:01.000000+0800","eventType":"logEvent","processID":123,"subsystem":"","category":"","eventMessage":"RBSServiceErrorDomain ProcessAssertion noise","senderImagePath":"/System/Library/Frameworks/RunningBoardServices.framework/RunningBoardServices"}
-{"timestamp":"2026-06-07 12:00:02.000000+0800","eventType":"activityCreateEvent","processID":123,"subsystem":"com.Max0228.BooksAndVocab","category":"reader","eventMessage":"reader opened","senderImagePath":"/tmp/BooksAndVocab"}
+{"timestamp":"2026-06-07 12:00:02.000000+0800","eventType":"activityCreateEvent","processID":123,"subsystem":"com.Max0228.BooksBrowser","category":"reader","eventMessage":"reader opened","senderImagePath":"/tmp/BooksAndVocab"}
 NDJSON
     return 0
   fi
