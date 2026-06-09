@@ -127,7 +127,16 @@ struct ReaderView: View {
             sanitizeStaleBoundNotebook()
         }
         .onChange(of: allVocabulary.count) { _, _ in
-            handler.loadLookedUpWords(from: allVocabulary)
+            handler.loadLookedUpWords(
+                from: allVocabulary,
+                notebookId: book.resolvedNotebookId
+            )
+        }
+        .onChange(of: book.resolvedNotebookId) { _, notebookId in
+            handler.loadLookedUpWords(
+                from: allVocabulary,
+                notebookId: notebookId
+            )
         }
         .onChange(of: authManager.isLoggedIn) { _, loggedIn in
             // 登出時立刻清空底線，不等 SwiftData async clear 通知
@@ -220,7 +229,10 @@ struct ReaderView: View {
             await MainActor.run {
                 publication = result.publication
                 readerState.isLoading = false
-                handler.loadLookedUpWords(from: allVocabulary)
+                handler.loadLookedUpWords(
+                    from: allVocabulary,
+                    notebookId: book.resolvedNotebookId
+                )
             }
 
             // 收進 `.task` 結構化作用域：擷取在同一 async 流程內 `await`，

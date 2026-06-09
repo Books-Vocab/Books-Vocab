@@ -107,6 +107,36 @@ struct ReaderVocabularyCaptureTests {
         #expect(capture.existingEntry(matching: "unrelated") == nil)
     }
 
+    @Test func lookedUpWords_filtersToNotebookScopeWhenProvided() throws {
+        let inDefault = makeEntry(
+            word: "anchor",
+            notebookId: "default",
+            rootForm: "anchored",
+            inflections: ["anchors"]
+        )
+        let inOther = makeEntry(
+            word: "foreign",
+            notebookId: "other",
+            rootForm: "foreigner",
+            inflections: ["foreigns"]
+        )
+
+        let lookedUp = Set(
+            ReaderVocabularyContext.lookedUpWords(
+                from: [inDefault, inOther],
+                notebookId: "default"
+            )
+        )
+
+        #expect(lookedUp.contains("anchor"))
+        #expect(lookedUp.contains("anchored"))
+        #expect(lookedUp.contains("anchors"))
+        #expect(!lookedUp.contains("foreign"),
+                "reader underlines must only reflect the active notebook scope; otherwise tapped underlined words can still miss cache and hit the API")
+        #expect(!lookedUp.contains("foreigner"))
+        #expect(!lookedUp.contains("foreigns"))
+    }
+
     // MARK: - saveEntry insert path
 
     @Test func saveEntry_insertsNewEntryWithBookIdAndResolvedNotebookId() throws {
