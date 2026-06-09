@@ -77,7 +77,7 @@ enum PerfLog {
 
     /// Perf signals get their own subsystem suffix so they isolate cleanly from
     /// AppLog in Console.app / Instruments, while staying under the app bundle id.
-    static let subsystem = (Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksAndVocab") + ".perf"
+    static let subsystem = Bundle.main.bundleIdentifier.map { $0 + ".perf" } ?? BrandIdentity.perfSubsystem
 
     /// Signposts: DEBUG by default; RELEASE only when KG_PERF_SIGNPOST=1
     /// (Instruments reads signposts even when console output is suppressed).

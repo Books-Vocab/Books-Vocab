@@ -2,7 +2,7 @@ import Foundation
 import os
 
 enum AppLog {
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksAndVocab"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? BrandIdentity.bundleSubsystemFallback
 
     static let kg = Logger(subsystem: subsystem, category: "KGService")
     static let subscription = Logger(subsystem: subsystem, category: "Subscription")

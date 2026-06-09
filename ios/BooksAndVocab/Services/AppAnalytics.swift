@@ -67,12 +67,12 @@ extension OSSignpostID {
 enum AppAnalytics {
 
     static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksAndVocab",
+        subsystem: Bundle.main.bundleIdentifier ?? BrandIdentity.bundleSubsystemFallback,
         category: "Analytics"
     )
 
     static let signpostLog = OSLog(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksAndVocab",
+        subsystem: Bundle.main.bundleIdentifier ?? BrandIdentity.bundleSubsystemFallback,
         category: .pointsOfInterest
     )
 
