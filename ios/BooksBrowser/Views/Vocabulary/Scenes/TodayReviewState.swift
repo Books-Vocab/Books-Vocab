@@ -178,7 +178,13 @@ final class TodayReviewState {
 
     /// Fallback: build on-demand if async cache hasn't completed yet.
     private func cachedOrBuildCard(for entry: VocabularyEntry) -> TodayReviewPresenterState.CurrentCard? {
-        cardCache.cachedOrBuild(for: entry)
+        // Render-path read MUST be non-mutating: this runs inside SwiftUI body
+        // evaluation (presenterState → currentCardState/nextCardState) and cardCache
+        // is @Observable; a mutating lookup fires a per-render mutation (even on a
+        // hit) → infinite re-eval loop. Hits are served read-only; the
+        // prewarm-covered, near-impossible miss builds an ephemeral card without
+        // writing the observed cache (self-heals on the next prewarmCardWindow()).
+        cardCache.cached(for: entry) ?? TodayReviewCardCache.buildOne(entry)
     }
 
     // MARK: - Actions

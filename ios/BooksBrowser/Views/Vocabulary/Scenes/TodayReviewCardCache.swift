@@ -5,19 +5,19 @@ struct TodayReviewCardCache {
 
     private(set) var storage: [UUID: PreparedCard] = [:]
 
-    mutating func cachedOrBuild(for entry: VocabularyEntry) -> PreparedCard? {
-        if let cached = storage[entry.id] {
+    /// Non-mutating render-path lookup. MUST stay non-`mutating`: it is called from
+    /// `TodayReviewState.currentCardState`/`nextCardState` during SwiftUI body
+    /// evaluation, and `cardCache` is an `@Observable` stored property. A `mutating`
+    /// call here goes through the synthesized `_modify` accessor, which fires a
+    /// spurious per-render mutation notification (even on a cache hit, even when
+    /// storage doesn't change) → body reads+writes the same property → infinite
+    /// re-eval loop. Build/store happens only off-body via `prewarm`/`rebuild`.
+    func cached(for entry: VocabularyEntry) -> PreparedCard? {
+        if let card = storage[entry.id] {
             PerfLog.review.tick("card.cacheHit", "w=\(entry.word)")
-            return cached
-        }
-
-        let built = PerfLog.review.measure("card.cacheMiss", "w=\(entry.word)") {
-            Self.build(from: [entry])
-        }.value
-        if let card = built[entry.id] {
-            storage[entry.id] = card
             return card
         }
+        PerfLog.review.tick("card.cacheMiss", "w=\(entry.word)")
         return nil
     }
 
@@ -69,28 +69,34 @@ struct TodayReviewCardCache {
         cache.reserveCapacity(entries.count)
         PerfLog.review.mark("prewarm.build", "count=\(entries.count)")
         for entry in entries {
-            let (card, _) = PerfLog.review.measure("prewarm.card", "w=\(entry.word)") {
-                CardPresentation(entry: entry)
-            }
-            let compactGroups = card.activeLinkGroups.map { fullGroup in
-                let shuffled = fullGroup.shuffled()
-                let limited = shuffled.limited(to: 2)
-                return TodayReviewPresenterState.LinkGroup(
-                    id: fullGroup.id,
-                    label: fullGroup.label,
-                    items: limited.items,
-                    overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
-                )
-            }
-            let backDocument = card.document.reviewBackSubset()
-            let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDocument)
-            cache[entry.id] = .init(
-                card: card,
-                linkGroups: compactGroups,
-                backDocument: backDocument,
-                postExampleMetrics: metrics
-            )
+            cache[entry.id] = buildOne(entry)
         }
         return cache
+    }
+
+    /// Pure single-card builder (no storage write). Shared by `build` (prewarm) and
+    /// the non-mutating render-miss fallback in `TodayReviewState.cachedOrBuildCard`.
+    static func buildOne(_ entry: VocabularyEntry) -> PreparedCard {
+        let (card, _) = PerfLog.review.measure("prewarm.card", "w=\(entry.word)") {
+            CardPresentation(entry: entry)
+        }
+        let compactGroups = card.activeLinkGroups.map { fullGroup in
+            let shuffled = fullGroup.shuffled()
+            let limited = shuffled.limited(to: 2)
+            return TodayReviewPresenterState.LinkGroup(
+                id: fullGroup.id,
+                label: fullGroup.label,
+                items: limited.items,
+                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
+            )
+        }
+        let backDocument = card.document.reviewBackSubset()
+        let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDocument)
+        return .init(
+            card: card,
+            linkGroups: compactGroups,
+            backDocument: backDocument,
+            postExampleMetrics: metrics
+        )
     }
 }
