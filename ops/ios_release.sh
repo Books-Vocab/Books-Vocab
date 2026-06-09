@@ -56,6 +56,9 @@ KEY_PATH="$HOME/.secrets/apple/AuthKey_${KEY_ID}.p8"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Optional run-metrics logging — additive, must never break the release.
+METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
+[[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
 XCODEPROJ="$ROOT/ios/BooksBrowser.xcodeproj"
 EXPORT_OPTS="$ROOT/ios/ExportOptions.plist"
 # Pin archive DerivedData to one shared cache anchored at the main repo (see
@@ -154,6 +157,7 @@ write_json_verdict() {
         ipa:(if $ipa == "" then null else $ipa end)
       }
     }' >"$VERDICT_JSON_FILE" || true
+  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
 }
 
 # ---- build number guard（僅上傳前；archive 不受限但傳會被 Apple 拒重）----
