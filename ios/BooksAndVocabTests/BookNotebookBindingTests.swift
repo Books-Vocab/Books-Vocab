@@ -39,5 +39,22 @@ struct BookNotebookBindingTests {
         _ = book.ensureBoundNotebook(seed: "nb-z")  // 第二次帶不同 seed
         #expect(book.preferredNotebookId == "nb-x") // 仍維持首次固化值
     }
+
+    // MARK: - seed gate（擋 sentinel 凍結，Phase 2 review block 回歸）
+
+    @Test func canSeedOnlyWhenSeedIsRealLiveNotebook() {
+        // seed 存在於 live 清單 → 可固化
+        #expect(Book.canSeedBinding(seed: "nb-x", liveNotebookIds: ["nb-x", "nb-y"]))
+    }
+
+    @Test func cannotSeedSentinelAbsentFromLiveNotebooks() {
+        // seed 是尚未同步的 "default" sentinel，不在 live 清單 → 不固化
+        #expect(!Book.canSeedBinding(seed: "default", liveNotebookIds: ["nb-x"]))
+    }
+
+    @Test func cannotSeedWhenLiveNotebooksNotSettled() {
+        // liveNotebooks 空（尚未 settle）→ 不固化
+        #expect(!Book.canSeedBinding(seed: "nb-x", liveNotebookIds: []))
+    }
 }
 #endif
