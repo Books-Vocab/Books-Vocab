@@ -68,7 +68,7 @@ struct SyncView: View {
             steps: coordinator.steps,
             summaryText: coordinator.summaryText,
             pendingRows: filtered.map { entry in
-                PendingVocabPresenterState.RowItem(
+                SyncPresenterState.RowItem(
                     id: entry.id,
                     row: entry.wordRowViewData(),
                     actionSystemImage: entry.syncAction == .delete ? "arrow.uturn.backward.circle" : "trash",
