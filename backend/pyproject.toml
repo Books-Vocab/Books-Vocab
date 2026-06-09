@@ -38,23 +38,18 @@ kg-server = "uvicorn:main"
 # `uv sync` (uv installs the default `dev` group automatically) but excluded
 # from the runtime wheel.
 #
-# Interpreter-mismatch background — the console-script form once silently fell
-# back to a Homebrew Python 3.14 (`/opt/homebrew/bin/pytest`, no `kg` /
-# `sentry-sdk`):
-# `import sentry_sdk` inside `kg.observability_alerts` failed, `_sentry_sdk`
-# resolved to `None`, every `_emit` short-circuited at the `_sentry_sdk is None`
-# guard — surfacing as ~11 flaky-looking failures whose stubs never recorded a
-# call. Two distinct causes, both addressed:
-#   1. Interpreter selection on venv (re)creation — guarded by
-#      `backend/.python-version` (= 3.13) + `requires-python` above + pytest
-#      pinned here so it lives in the venv.
-#   2. Stale console-script shebangs — `.venv/bin/pytest` is a generated
-#      script whose `#!` line hard-codes an absolute interpreter path. If the
-#      venv was copied/moved between worktrees, that path goes dead, the kernel
-#      fails to exec it, and `pytest` resolves from PATH instead. Repo policy:
-#      backend test entrypoints use module form (`python -m pytest`) rather
-#      than the fragile console-script form. If you need to repair an existing
-#      broken venv, rebuild scripts with `cd backend && uv sync --reinstall`.
+# Version-locking: `uv.lock` is tracked in git and locks the full resolved
+# dependency tree (including transitive deps). Use `uv sync --locked` to
+# guarantee the locked versions, or `uv lock` after changing `pyproject.toml`.
+#
+# Shebang-drift guard: `.venv/bin/pytest` hard-codes an absolute interpreter
+# path. If the venv was copied/moved between worktrees, that path goes dead and
+# the kernel falls back to PATH → Homebrew Python (e.g. 3.14), causing silent
+# interpreter mismatches. Run `ops/venv_health.py` to detect this; repair with
+# `cd backend && uv sync --reinstall`.
+#
+# Repo policy: backend test entrypoints use module form (`python -m pytest`)
+# rather than the fragile console-script form.
 #
 # Correct way to run the suite (always uses backend/.venv cpython-3.13):
 #   cd backend && uv run python -m pytest -q
