@@ -16,7 +16,7 @@ final class RenderStormProbe {
     static let shared = RenderStormProbe()
 
     private let log = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksAndVocab",
+        subsystem: Bundle.main.bundleIdentifier ?? BrandIdentity.bundleSubsystemFallback,
         category: "RenderStorm"
     )
     private var count: [String: Int] = [:]

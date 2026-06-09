@@ -78,7 +78,7 @@ async def login_page(request: Request):
     nonce = secrets.token_urlsafe(32)
     response = templates.TemplateResponse(request, "login.html", {
         "apple_service_id": settings.apple_service_id,
-        "apple_redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
+        "apple_redirect_uri": settings.apple_redirect_uri,
         "oauth_state": nonce,
     })
     _set_state_cookie(response, nonce, samesite="none")
@@ -119,7 +119,7 @@ async def apple_login(request: Request):
     nonce = secrets.token_urlsafe(32)
     params = urlencode({
         "client_id": settings.apple_service_id,
-        "redirect_uri": "https://wordnexus.lol/auth/web/apple/callback",
+        "redirect_uri": settings.apple_redirect_uri,
         "response_type": "code id_token",
         "scope": "email",
         "response_mode": "form_post",

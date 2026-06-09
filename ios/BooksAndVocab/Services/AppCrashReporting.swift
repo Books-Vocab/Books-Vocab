@@ -35,7 +35,7 @@ enum AppCrashReporting {
 
 
     private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksAndVocab",
+        subsystem: Bundle.main.bundleIdentifier ?? BrandIdentity.bundleSubsystemFallback,
         category: "CrashReporting"
     )
 

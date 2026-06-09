@@ -3,7 +3,7 @@ XCODEPROJ="$ROOT/ios/BooksAndVocab.xcodeproj"
 SCHEME="BooksAndVocab"
 BUNDLE_ID="com.Max0228.BooksAndVocab"
 DEFAULT_SIMULATOR_NAME="${KG_IOS_DEFAULT_SIMULATOR_NAME:-iPhone 17 Pro Max}"
-DEFAULT_LOG_PREDICATE='process == "BooksAndVocab" OR subsystem BEGINSWITH "com.Max0228.BooksAndVocab" OR subsystem BEGINSWITH "com.wordnexus"'
+DEFAULT_LOG_PREDICATE='process == "BooksAndVocab" OR subsystem BEGINSWITH "com.Max0228.BooksAndVocab"'
 LOG_NOISE_REGEX='runningboard\.assertions\.webkit|RBSServiceErrorDomain|ProcessAssertion'
 
 read_project_settings() {
