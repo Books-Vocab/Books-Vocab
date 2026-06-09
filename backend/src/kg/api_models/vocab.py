@@ -8,7 +8,7 @@ MAX_BATCH_WORD_LENGTH = 200
 
 
 class VocabEntry(BaseModel):
-    """A vocabulary entry from BooksBrowser."""
+    """A vocabulary entry from BooksAndVocab."""
 
     word: str = Field(min_length=1, max_length=200)
     translation: str = Field(min_length=1, max_length=1000)

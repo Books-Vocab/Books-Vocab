@@ -13,7 +13,7 @@
 #
 # Allowlist: `// catalyst-allow: <reason>` on the same line as the `.popover(`.
 #
-# Scope: ios/BooksBrowser/**/*.swift, excluding *Preview*.swift / *Tests*.swift.
+# Scope: ios/BooksAndVocab/**/*.swift, excluding *Preview*.swift / *Tests*.swift.
 
 set -euo pipefail
 
@@ -22,7 +22,7 @@ usage() {
 }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/ios/BooksBrowser"
+SRC="$ROOT/ios/BooksAndVocab"
 MODE="--report"
 
 case "$#" in

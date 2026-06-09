@@ -2,8 +2,10 @@
 # ios_build.sh — lock-guarded iOS build for parallel worktree agents
 #
 # Usage:
-#   ./ops/ios_build.sh                  # from project root (any worktree)
-#   ./ops/ios_build.sh --timeout 300    # custom lock wait (default: 600s)
+#   ./ops/ios_build.sh                           # from project root (any worktree)
+#   ./ops/ios_build.sh --timeout 300             # custom lock wait (default: 600s)
+#   ./ops/ios_build.sh --extra-settings KEY=VAL  # pass extra xcodebuild settings (repeatable)
+#   ./ops/ios_build.sh --swift6                  # shorthand: SWIFT_STRICT_CONCURRENCY=complete
 #
 # How it works:
 #   1. Spin-waits to acquire an exclusive lock (shlock, macOS built-in)
@@ -19,12 +21,15 @@ LOCK_FILE="/tmp/kg-ios-build.lock"
 TIMEOUT=600
 POLL_INTERVAL=3
 DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro Max'
+EXTRA_SETTINGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --destination) DESTINATION="$2"; shift 2 ;;
     --catalyst) DESTINATION='platform=macOS,variant=Mac Catalyst'; shift ;;
+    --extra-settings) EXTRA_SETTINGS+=("$2"); shift 2 ;;
+    --swift6) EXTRA_SETTINGS+=("SWIFT_STRICT_CONCURRENCY=complete"); shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -35,7 +40,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Optional run-metrics logging — additive, must never break the build.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
-XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
+XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # DerivedData policy: one shared, bounded cache anchored at the MAIN repo
 # (resolved via git-common-dir, so every worktree maps to the same path). This
@@ -130,10 +135,11 @@ set +e
 XCODEBUILD_START_MS="$(ios_build_now_ms)"
 xcodebuild \
   -project "$XCODEPROJ" \
-  -scheme BooksBrowser \
+  -scheme BooksAndVocab \
   -destination "$DESTINATION" \
   -derivedDataPath "$DERIVED_DATA_ROOT" \
   -resultBundlePath "$RESULT_BUNDLE" \
+  "${EXTRA_SETTINGS[@]+"${EXTRA_SETTINGS[@]}"}" \
   -quiet build \
   >"$TMPOUT" 2>&1
 EXIT_CODE=$?

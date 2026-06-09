@@ -135,17 +135,17 @@ grep -q 'MARKETING_VERSION = \[\^;\]\*/MARKETING_VERSION' "$BUMP" \
   || ok "no unanchored global MARKETING_VERSION sed"
 # 行為：fixture pbxproj（app=9.9 在前、測試 bundle=1.2.0 在後），bump 後只有 app 變、測試 bundle 不動
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/ios/BooksBrowser.xcodeproj"
-cat > "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" <<'PBX'
+mkdir -p "$TMP/ios/BooksAndVocab.xcodeproj"
+cat > "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
 /* app Debug */    MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
 /* app Release */  MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
 /* tests Debug */  MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
 /* tests Release */MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
 PBX
 KG_ROOT="$TMP" bash "$BUMP" ios 9.9.1 >/dev/null 2>&1 || fail_t "bump ios fixture run failed"
-got_app="$(grep -c 'MARKETING_VERSION = 9.9.1;' "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" || true)"
-got_test="$(grep -c 'MARKETING_VERSION = 1.2.0;' "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" || true)"
-got_build="$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$TMP/ios/BooksBrowser.xcodeproj/project.pbxproj" || true)"
+got_app="$(grep -c 'MARKETING_VERSION = 9.9.1;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
+got_test="$(grep -c 'MARKETING_VERSION = 1.2.0;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
+got_build="$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
 [[ "$got_app" -eq 2 ]]  && ok "app MARKETING_VERSION → 9.9.1 (2 處)"      || fail_t "app bump wrong count: $got_app"
 [[ "$got_test" -eq 2 ]] && ok "test bundle MARKETING_VERSION 不動 (still 1.2.0 ×2)" || fail_t "test bundle was clobbered: 1.2.0 count=$got_test"
 [[ "$got_build" -eq 2 ]] && ok "app CURRENT_PROJECT_VERSION → 8 (2 處)"   || fail_t "app build bump wrong count: $got_build"

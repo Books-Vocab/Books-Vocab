@@ -3,7 +3,7 @@ tier: sop
 authority: derived
 update_trigger: sop-change
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
 verified_against: 84f6998e
 -->
 # Books & Vocab UI Design System
@@ -70,7 +70,7 @@ KG 的 Mac 支援走 **Mac Catalyst**（`SUPPORTS_MACCATALYST = YES`），**非�
 ## Motion Contract
 
 Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.easeOut(...)`。
-動畫必須優先走 `BooksBrowser/Models/AppMetrics.swift` 中的 `AppMotion` 與共享 `AnyTransition` 語意 token。
+動畫必須優先走 `BooksAndVocab/Models/AppMetrics.swift` 中的 `AppMotion` 與共享 `AnyTransition` 語意 token。
 
 ### 核心原則
 
@@ -140,7 +140,7 @@ Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.e
 ### 文件責任
 
 - 若是要改 token 定義：
-  先更新 `BooksBrowser/Models/AppMetrics.swift`
+  先更新 `BooksAndVocab/Models/AppMetrics.swift`
 - 若是要改互動規則：
   先更新本頁，再改程式
 - 若是要排查編譯或 SwiftUI 實作錯誤：

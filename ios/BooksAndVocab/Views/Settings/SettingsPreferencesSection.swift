@@ -1,0 +1,115 @@
+import SwiftUI
+
+struct SettingsPreferencesSection: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let state: SettingsPresenterState.PreferencesSection
+    let actions: SettingsPresenterActions
+    let onShowTranslationLanguage: () -> Void
+    let onShowReviewSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "偏好".localized, icon: "slider.horizontal.3")
+
+            VStack(spacing: 0) {
+                // 外觀
+                AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(appSkin)) {
+                    Menu {
+                        ForEach(AppAppearanceMode.allCases) { mode in
+                            Button {
+                                actions.selectAppearance(mode)
+                            } label: {
+                                if state.selectedAppearance == mode.titleKey {
+                                    Label(mode.titleKey.localized, systemImage: "checkmark")
+                                } else {
+                                    Text(mode.titleKey.localized)
+                                }
+                            }
+                        }
+                    } label: {
+                        SettingsMenuValue(text: state.selectedAppearance.localized)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\("選擇外觀".localized)：\(state.selectedAppearance.localized)")
+                }
+
+                SettingsDivider()
+
+                // 翻譯語言
+                SettingsNavigationRow(
+                    icon: "textformat.abc",
+                    label: "翻譯語言",
+                    action: onShowTranslationLanguage
+                ) {
+                    SettingsStatusValue(
+                        text: "\(state.translationSource) → \(state.translationTarget)",
+                        color: appSkin.palette.secondaryText
+                    )
+                }
+
+                SettingsDivider()
+
+                // 語言
+                AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(appSkin)) {
+                    Menu {
+                        ForEach(AppLanguage.allCases) { language in
+                            Button {
+                                actions.selectLanguage(language)
+                            } label: {
+                                if state.selectedLanguage == L10n.string(language.titleKey) {
+                                    Label(L10n.string(language.titleKey), systemImage: "checkmark")
+                                } else {
+                                    Text(L10n.string(language.titleKey))
+                                }
+                            }
+                        }
+                    } label: {
+                        SettingsMenuValue(text: state.selectedLanguage)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
+                }
+
+                SettingsDivider()
+
+                // 複習節奏
+                SettingsNavigationRow(
+                    icon: "timer",
+                    label: "複習節奏",
+                    action: onShowReviewSettings
+                ) {
+                    SettingsStatusValue(
+                        text: state.selectedReviewMode,
+                        color: appSkin.palette.secondaryText
+                    )
+                }
+
+                if state.showAutoSync {
+                    SettingsDivider()
+
+                    AppKeyValueRow(
+                        icon: "arrow.triangle.2.circlepath",
+                        label: "自動同步".localized,
+                        style: .settings(appSkin)
+                    ) {
+                        Toggle("", isOn: Binding(
+                            get: { state.autoSyncEnabled },
+                            set: { actions.toggleAutoSync($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(appSkin.palette.accent)
+                    }
+                }
+            }
+            .settingsCard()
+
+            SettingsSectionFooter(
+                state.showAutoSync
+                    ? "切換後會立即套用到 app 介面。開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。".localized
+                    : "切換後會立即套用到 app 介面。".localized
+            )
+        }
+        .enableInjection()
+    }
+}

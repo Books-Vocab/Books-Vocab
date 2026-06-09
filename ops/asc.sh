@@ -54,8 +54,8 @@ set -euo pipefail
 # ---- config（對齊 ios_release.sh）----
 ISSUER_ID="d7f86188-7c56-46f7-bc99-f889421025fa"
 KEY_ID="TCXVHFRXMS"                 # App Manager（讀 + 寫 metadata）
-APP_ID="6759816274"                 # com.Max0228.BooksBrowser
-BUNDLE_ID="com.Max0228.BooksBrowser"
+APP_ID="6759816274"                 # com.Max0228.BooksAndVocab
+BUNDLE_ID="com.Max0228.BooksAndVocab"
 ASC_KEY_DIR="${ASC_KEY_DIR:-$HOME/.secrets/apple}"   # 部署機 / CI 可覆寫
 LOCALE="zh-Hant"
 VERSION_ID=""

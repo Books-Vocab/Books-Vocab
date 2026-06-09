@@ -4,7 +4,7 @@ The trailing sentence-punctuation set stripped at vocab capture time MUST stay
 in lock-step between:
 
   * iOS  `ReaderTranslationHandler.normalizeWord`
-    (ios/BooksBrowser/Views/Reader/ReaderTranslationHandler+Persistence.swift)
+    (ios/BooksAndVocab/Views/Reader/ReaderTranslationHandler+Persistence.swift)
   * backend `_clean_content` (kg.vocab_shared)
 
 Contract SoT: docs/reference/card_format.md §"Word capture normalization".

@@ -3,7 +3,7 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/
+  - ios/BooksAndVocab/Views/Vocabulary/
 verified_against: 8aaece8d
 -->
 # Vocabulary Feature Boundary
@@ -142,7 +142,7 @@ verified_against: 8aaece8d
 | `Overlay/LinkedCardOverlayStack.swift` | 82 | `struct LinkedCardOverlayStack: View`，關聯卡片 overlay |
 | `Overlay/LinkReasonSheet.swift` | 73 | `struct LinkReasonSheet: View`，KG 連結理由 sheet（顯示 `KGCardLinkSummary`，提供導航/隱藏 link 動作） |
 
-> Design token 已從 feature 本地 `Skin/VocabSkin.swift` 升格為全 app 共用 `AppSkin`(見 `ios/BooksBrowser/Models/AppSkin.swift`),不再屬於 Vocabulary feature scope。
+> Design token 已從 feature 本地 `Skin/VocabSkin.swift` 升格為全 app 共用 `AppSkin`(見 `ios/BooksAndVocab/Models/AppSkin.swift`),不再屬於 Vocabulary feature scope。
 
 ---
 
@@ -154,7 +154,7 @@ verified_against: 8aaece8d
 - **新增 UI 資料模型** → `Presentation/` 下新增或擴充現有 Presentation enum/struct
 - **新增可復用元件** → `Components/VocabShellComponents*.swift`（shell 級）或 `Components/VocabComponents.swift`（skin 級）
 - **新增場景** → `Scenes/` 新增 View + Presenter + Coordinator，並在對應 container 的 Sheets extension 掛載
-- **新增 design token** → `ios/BooksBrowser/Models/AppSkin.swift`（全 app 共用；禁止在 feature 檔案裡硬編碼顏色/間距）
+- **新增 design token** → `ios/BooksAndVocab/Models/AppSkin.swift`（全 app 共用；禁止在 feature 檔案裡硬編碼顏色/間距）
 
 ## State 邊界
 

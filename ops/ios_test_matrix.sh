@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ios_test_matrix.sh — run BooksBrowserTests one Swift file at a time.
+# ios_test_matrix.sh — run BooksAndVocabTests one Swift file at a time.
 #
 # Purpose: debug systematically before the final all-tests run. Each file gets
 # an isolated xcodebuild invocation through ops/ios_test.sh, with logs preserved.
@@ -19,7 +19,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+TEST_DIR="$PROJECT_ROOT/ios/BooksAndVocabTests"
 LOG_DIR="${TMPDIR:-/tmp}/kg_ios_test_matrix_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
 

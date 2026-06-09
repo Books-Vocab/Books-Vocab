@@ -13,7 +13,7 @@ Monorepo，單一 `.git`：iOS（SwiftUI）+ Backend（FastAPI）+ Chrome 擴充
 ```mermaid
 flowchart TB
     subgraph Clients["客戶端"]
-        iOS["📱 iOS / Mac Catalyst<br/>(SwiftUI · BooksBrowser)"]
+        iOS["📱 iOS / Mac Catalyst<br/>(SwiftUI · BooksAndVocab)"]
         Chrome["🧩 Chrome Extension<br/>(sidepanel · content script)"]
         Web["🌐 官網 landing + 法律頁<br/>(static pages)"]
     end

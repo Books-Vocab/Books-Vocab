@@ -43,7 +43,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = Path(os.environ.get("KG_UI_TOKEN_SRC", ROOT / "ios" / "BooksBrowser"))
+SRC = Path(os.environ.get("KG_UI_TOKEN_SRC", ROOT / "ios" / "BooksAndVocab"))
 BASELINE_FILE = Path(
     os.environ.get("KG_UI_TOKEN_BASELINE", ROOT / "ops" / "ui_token_baseline.txt")
 )

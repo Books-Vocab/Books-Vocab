@@ -3,10 +3,10 @@ tier: reference
 authority: derived
 update_trigger: design-decision
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackMetrics.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift
 verified_against: HEAD
 -->
 # Notebook Editorial Stack — Design Spec

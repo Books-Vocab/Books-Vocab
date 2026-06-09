@@ -11,18 +11,18 @@ documents:
       - sync_payload_changed
       - conflict_resolution_changed
     sources:
-      - ios/BooksBrowser/Models/VocabularyEntry.swift
-      - ios/BooksBrowser/Views/Vocabulary/SyncView.swift
-      - ios/BooksBrowser/Views/Vocabulary/AutoSyncMonitor.swift
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
-      - ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift
-      - ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift
-      - ios/BooksBrowser/Services/BackgroundSyncActor.swift
-      - ios/BooksBrowser/Services/KGService+Sync.swift
-      - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
-      - ios/BooksBrowser/Services/KGService+Models.swift
+      - ios/BooksAndVocab/Models/VocabularyEntry.swift
+      - ios/BooksAndVocab/Views/Vocabulary/SyncView.swift
+      - ios/BooksAndVocab/Views/Vocabulary/AutoSyncMonitor.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
+      - ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift
+      - ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift
+      - ios/BooksAndVocab/Services/BackgroundSyncActor.swift
+      - ios/BooksAndVocab/Services/KGService+Sync.swift
+      - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
+      - ios/BooksAndVocab/Services/KGService+Models.swift
       - backend/src/kg/api_models/vocab.py
       - backend/src/kg/routers/vocab.py
       - backend/src/kg/vocab_intake.py
@@ -145,8 +145,8 @@ documents:
       - catalog_scope_changed
       - ios_surface_changed
     sources:
-      - ios/BooksBrowser/Views/
-      - ios/BooksBrowser/Debug/
+      - ios/BooksAndVocab/Views/
+      - ios/BooksAndVocab/Debug/
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
@@ -223,12 +223,12 @@ documents:
       - book_manifest_changed
       - book_recovery_changed
     sources:
-      - ios/BooksBrowser/Views/Bookshelf/
-      - ios/BooksBrowser/Models/Book.swift
-      - ios/BooksBrowser/Models/BookManifest.swift
-      - ios/BooksBrowser/Models/BookLibraryReconciler.swift
-      - ios/BooksBrowser/AppOrphanBookRecovery.swift
-      - ios/BooksBrowser/AppStartupRecovery.swift
+      - ios/BooksAndVocab/Views/Bookshelf/
+      - ios/BooksAndVocab/Models/Book.swift
+      - ios/BooksAndVocab/Models/BookManifest.swift
+      - ios/BooksAndVocab/Models/BookLibraryReconciler.swift
+      - ios/BooksAndVocab/AppOrphanBookRecovery.swift
+      - ios/BooksAndVocab/AppStartupRecovery.swift
 
   - id: reference.feature_boundary.chrome
     path: docs/reference/feature_boundary/chrome.md
@@ -250,13 +250,13 @@ documents:
       - notebook_reconcile_changed
       - notebook_cover_changed
     sources:
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
-      - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
-      - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-      - ios/BooksBrowser/Models/Notebook*.swift
-      - ios/BooksBrowser/Services/KGService+Notebook.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift
+      - ios/BooksAndVocab/Models/Notebook*.swift
+      - ios/BooksAndVocab/Services/KGService+Notebook.swift
 
   - id: reference.feature_boundary.podcast
     path: docs/reference/feature_boundary/podcast.md
@@ -267,9 +267,9 @@ documents:
       - podcast_playback_changed
       - podcast_sync_changed
     sources:
-      - ios/BooksBrowser/Views/Podcast/
-      - ios/BooksBrowser/Models/Podcast*.swift
-      - ios/BooksBrowser/Services/Podcast*.swift
+      - ios/BooksAndVocab/Views/Podcast/
+      - ios/BooksAndVocab/Models/Podcast*.swift
+      - ios/BooksAndVocab/Services/Podcast*.swift
 
   - id: reference.feature_boundary.reader
     path: docs/reference/feature_boundary/reader.md
@@ -280,10 +280,10 @@ documents:
       - reader_translation_changed
       - readium_bridge_changed
     sources:
-      - ios/BooksBrowser/Views/Reader/
-      - ios/BooksBrowser/Models/ReaderSettings.swift
-      - ios/BooksBrowser/Services/ReaderPublicationLoader.swift
-      - ios/BooksBrowser/Services/Readium*.swift
+      - ios/BooksAndVocab/Views/Reader/
+      - ios/BooksAndVocab/Models/ReaderSettings.swift
+      - ios/BooksAndVocab/Services/ReaderPublicationLoader.swift
+      - ios/BooksAndVocab/Services/Readium*.swift
 
   - id: reference.feature_boundary.settings
     path: docs/reference/feature_boundary/settings.md
@@ -294,13 +294,13 @@ documents:
       - account_settings_changed
       - subscription_settings_changed
     sources:
-      - ios/BooksBrowser/Views/Settings/
-      - ios/BooksBrowser/Models/AppLanguage.swift
-      - ios/BooksBrowser/Models/AppAppearanceMode.swift
-      - ios/BooksBrowser/Models/ReviewSettings.swift
-      - ios/BooksBrowser/Models/TranslationLanguage.swift
-      - ios/BooksBrowser/Services/KGUserConfigClient.swift
-      - ios/BooksBrowser/Services/SubscriptionManager*.swift
+      - ios/BooksAndVocab/Views/Settings/
+      - ios/BooksAndVocab/Models/AppLanguage.swift
+      - ios/BooksAndVocab/Models/AppAppearanceMode.swift
+      - ios/BooksAndVocab/Models/ReviewSettings.swift
+      - ios/BooksAndVocab/Models/TranslationLanguage.swift
+      - ios/BooksAndVocab/Services/KGUserConfigClient.swift
+      - ios/BooksAndVocab/Services/SubscriptionManager*.swift
 
   - id: reference.feature_boundary.vocabulary
     path: docs/reference/feature_boundary/vocabulary.md
@@ -312,18 +312,18 @@ documents:
       - graph_surface_changed
       - vocab_sync_changed
     sources:
-      - ios/BooksBrowser/Views/Vocabulary/
-      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift"
-      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift"
-      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift"
-      - "!ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift"
-      - "!ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift"
-      - ios/BooksBrowser/Models/Vocabulary*.swift
-      - ios/BooksBrowser/Models/Review*.swift
-      - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
-      - ios/BooksBrowser/Services/KGService+Sync.swift
-      - ios/BooksBrowser/Services/KGService+Graph.swift
-      - ios/BooksBrowser/Services/VocabularyExporter.swift
+      - ios/BooksAndVocab/Views/Vocabulary/
+      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift"
+      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift"
+      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift"
+      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift"
+      - "!ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift"
+      - ios/BooksAndVocab/Models/Vocabulary*.swift
+      - ios/BooksAndVocab/Models/Review*.swift
+      - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
+      - ios/BooksAndVocab/Services/KGService+Sync.swift
+      - ios/BooksAndVocab/Services/KGService+Graph.swift
+      - ios/BooksAndVocab/Services/VocabularyExporter.swift
 
   - id: sop.ui_design
     path: docs/sop/ui-design.md
@@ -335,14 +335,14 @@ documents:
       - catalyst_ui_policy_changed
       - design_token_policy_changed
     sources:
-      - ios/BooksBrowser/Models/AppColors.swift
-      - ios/BooksBrowser/Models/AppFonts.swift
-      - ios/BooksBrowser/Models/AppMetrics.swift
-      - ios/BooksBrowser/Models/AppSkin*.swift
-      - ios/BooksBrowser/Models/AppTheme.swift
-      - ios/BooksBrowser/Models/DesignTokens.swift
-      - ios/BooksBrowser/Platform/
-      - ios/BooksBrowser/Views/Reader/ReaderContentStyle.swift
+      - ios/BooksAndVocab/Models/AppColors.swift
+      - ios/BooksAndVocab/Models/AppFonts.swift
+      - ios/BooksAndVocab/Models/AppMetrics.swift
+      - ios/BooksAndVocab/Models/AppSkin*.swift
+      - ios/BooksAndVocab/Models/AppTheme.swift
+      - ios/BooksAndVocab/Models/DesignTokens.swift
+      - ios/BooksAndVocab/Platform/
+      - ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift
       - design-system/
       - ops/ui_token_lint.sh
       - ops/ui_token_lint.py
@@ -377,10 +377,10 @@ documents:
       - ui_pattern_changed
       - shared_modifier_changed
     sources:
-      - ios/BooksBrowser/UIComponents/
-      - ios/BooksBrowser/Views/
-      - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
-      - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
+      - ios/BooksAndVocab/UIComponents/
+      - ios/BooksAndVocab/Views/
+      - "!ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift"
+      - "!ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift"
 
   - id: reference.ui_review_checklist
     path: docs/reference/ui/review_checklist.md
@@ -394,8 +394,8 @@ documents:
       - docs/sop/ui-design.md
       - docs/reference/ui/
       - CLAUDE.md
-      - ios/BooksBrowser/Models/AppMetrics.swift
-      - ios/BooksBrowser/Models/AppTheme.swift
+      - ios/BooksAndVocab/Models/AppMetrics.swift
+      - ios/BooksAndVocab/Models/AppTheme.swift
       - ops/ui_token_lint.sh
       - ops/ui_token_lint.py
 
@@ -408,10 +408,10 @@ documents:
       - loading_empty_error_state_changed
       - view_flow_changed
     sources:
-      - ios/BooksBrowser/UIComponents/
-      - ios/BooksBrowser/Views/
-      - "!ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift"
-      - "!ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift"
+      - ios/BooksAndVocab/UIComponents/
+      - ios/BooksAndVocab/Views/
+      - "!ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift"
+      - "!ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift"
 
   - id: reference.testing_backend_strategy
     path: docs/reference/testing/backend_strategy.md
@@ -440,12 +440,12 @@ documents:
       - ops/ios_build.sh
       - ops/release.sh
       - backend/src/kg/routers/
-      - ios/BooksBrowser/ContentView.swift
-      - ios/BooksBrowser/Views/Bookshelf/
-      - ios/BooksBrowser/Views/Reader/
-      - ios/BooksBrowser/Views/Vocabulary/
-      - ios/BooksBrowser/Views/Settings/
-      - ios/BooksBrowser/Views/Podcast/
+      - ios/BooksAndVocab/ContentView.swift
+      - ios/BooksAndVocab/Views/Bookshelf/
+      - ios/BooksAndVocab/Views/Reader/
+      - ios/BooksAndVocab/Views/Vocabulary/
+      - ios/BooksAndVocab/Views/Settings/
+      - ios/BooksAndVocab/Views/Podcast/
 
   - id: reference.cost_baseline
     path: docs/reference/cost_baseline.md
@@ -530,13 +530,13 @@ documents:
       - offline_first_architecture_changed
       - cross_platform_sync_architecture_changed
     sources:
-      - ios/BooksBrowser/AppBootstrap.swift
-      - ios/BooksBrowser/Services/AuthManager*.swift
-      - ios/BooksBrowser/Services/CloudPreferencesSync.swift
-      - ios/BooksBrowser/Services/KGService*.swift
-      - ios/BooksBrowser/Models/VocabularyEntry.swift
-      - ios/BooksBrowser/Models/Notebook.swift
-      - ios/BooksBrowser/Models/Podcast*.swift
+      - ios/BooksAndVocab/AppBootstrap.swift
+      - ios/BooksAndVocab/Services/AuthManager*.swift
+      - ios/BooksAndVocab/Services/CloudPreferencesSync.swift
+      - ios/BooksAndVocab/Services/KGService*.swift
+      - ios/BooksAndVocab/Models/VocabularyEntry.swift
+      - ios/BooksAndVocab/Models/Notebook.swift
+      - ios/BooksAndVocab/Models/Podcast*.swift
       - backend/src/kg/auth_service.py
       - backend/src/kg/user_store.py
       - backend/src/kg/routers/user.py
@@ -588,9 +588,9 @@ documents:
       - ops/_i18n_extract_keys.py
       - ops/_i18n_strip_previews.py
       - ops/i18n_baseline.txt
-      - ios/BooksBrowser/Localization/L10n.swift
-      - ios/BooksBrowser/*.lproj/Localizable.strings
-      - ios/BooksBrowser/*.lproj/Localizable.xcstrings
+      - ios/BooksAndVocab/Localization/L10n.swift
+      - ios/BooksAndVocab/*.lproj/Localizable.strings
+      - ios/BooksAndVocab/*.lproj/Localizable.xcstrings
 
   - id: sop.i18n_plural_keys
     path: docs/sop/i18n_plural_keys.md
@@ -603,8 +603,8 @@ documents:
     sources:
       - ops/i18n_lint.sh
       - ops/_i18n_extract_keys.py
-      - ios/BooksBrowser/Localization/L10n.swift
-      - ios/BooksBrowser/*.lproj/Localizable.stringsdict
+      - ios/BooksAndVocab/Localization/L10n.swift
+      - ios/BooksAndVocab/*.lproj/Localizable.stringsdict
 
   - id: sop.podcast_pipeline
     path: docs/sop/podcast_pipeline.md
@@ -691,9 +691,9 @@ documents:
     sources:
       - ops/ios_build.sh
       - ops/ios_release.sh
-      - ios/BooksBrowser.xcodeproj/
+      - ios/BooksAndVocab.xcodeproj/
       - ios/ExportOptions.plist
-      - ios/BooksBrowser/Products.storekit
+      - ios/BooksAndVocab/Products.storekit
 
   - id: sop.deploy
     path: docs/sop/deploy.md
@@ -764,4 +764,4 @@ documents:
     triggers:
       - ios_large_refactor
     sources:
-      - ios/BooksBrowser/
+      - ios/BooksAndVocab/

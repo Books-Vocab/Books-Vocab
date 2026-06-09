@@ -30,7 +30,7 @@ commit_prefix() { case "$1" in api) echo "api:";; ios) echo "ios:";; esac; }
 current_version() {  # 從版號檔讀目前 marketing 版本
   case "$1" in
     api) grep -m1 '^version = ' "$ROOT/backend/pyproject.toml" | sed -E 's/.*"([^"]+)".*/\1/' ;;
-    ios) grep -m1 'MARKETING_VERSION = ' "$ROOT/ios/BooksBrowser.xcodeproj/project.pbxproj" | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ' ;;
+    ios) grep -m1 'MARKETING_VERSION = ' "$ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj" | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ' ;;
   esac
 }
 
@@ -116,7 +116,7 @@ cmd_publish() {
   [[ "$branch" != HEAD ]] || err "detached HEAD —— 先 checkout 一個分支再發版（避免 push origin HEAD）"
   case "$c" in
     api) files=(backend/pyproject.toml backend/src/kg/api.py) ;;
-    ios) files=(ios/BooksBrowser.xcodeproj/project.pbxproj) ;;
+    ios) files=(ios/BooksAndVocab.xcodeproj/project.pbxproj) ;;
   esac
 
   # preflight

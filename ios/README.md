@@ -49,8 +49,8 @@
 深入了解前後端整合細節，請參見：[👉 `../docs/sop/architecture.md`](../docs/sop/architecture.md)
 
 ```
-BooksBrowser/
-├── BooksBrowserApp.swift       # App 進入點，SwiftData Container 初始化（含遷移容錯）
+BooksAndVocab/
+├── BooksAndVocabApp.swift       # App 進入點，SwiftData Container 初始化（含遷移容錯）
 ├── ContentView.swift           # 根視圖，Tab 導航
 │
 ├── Models/
@@ -105,8 +105,8 @@ BooksBrowser/
 ### 1. Clone & 開啟專案
 ```bash
 git clone <repo-url>
-cd BooksBrowser
-open BooksBrowser.xcodeproj
+cd BooksAndVocab
+open BooksAndVocab.xcodeproj
 ```
 
 ### 2. 登入帳戶（可選）

@@ -28,8 +28,8 @@ verified_against: 291303f1
 我們的工作流會在 `.claude/worktrees/<name>/` 大量開後即丟的 worktree，每個都是新路徑：
 
 ```
-/Users/.../project/kg/.claude/worktrees/podcast-highlight-align/ios/BooksBrowser.xcodeproj  → BooksBrowser-aahl...
-/Users/.../project/kg/.claude/worktrees/ios-word-capture-normalize/ios/...                   → BooksBrowser-acbg...
+/Users/.../project/kg/.claude/worktrees/podcast-highlight-align/ios/BooksAndVocab.xcodeproj  → BooksAndVocab-aahl...
+/Users/.../project/kg/.claude/worktrees/ios-word-capture-normalize/ios/...                   → BooksAndVocab-acbg...
 ... ×252
 ```
 
@@ -122,4 +122,4 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 ## Agent 守則
 1. 跑 iOS build 一律經 `./ops/ios_build.sh`，**不要**自己拼 `xcodebuild`。
 2. 不要把 `-derivedDataPath` 從 build/test 指令拿掉。
-3. 看到 `~/Library/Developer/Xcode/DerivedData/BooksBrowser-*` 又開始增生 = 有人繞過了腳本，回頭查。
+3. 看到 `~/Library/Developer/Xcode/DerivedData/BooksAndVocab-*` 又開始增生 = 有人繞過了腳本，回頭查。

@@ -3,9 +3,9 @@ tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
-  - ios/BooksBrowser/Platform/
-  - ios/BooksBrowser/Views/Reader/ReaderView.swift
-  - ios/BooksBrowser/ContentView.swift
+  - ios/BooksAndVocab/Platform/
+  - ios/BooksAndVocab/Views/Reader/ReaderView.swift
+  - ios/BooksAndVocab/ContentView.swift
 verified_against: frozen
 -->
 # Mac Catalyst Window Chrome Implementation Plan(Workstream A)
@@ -15,7 +15,7 @@ verified_against: frozen
 **Goal:** 依 [umbrella spec](../specs/2026-05-31-mac-catalyst-native-feel-design.md) Workstream A,讓 Mac Catalyst 視窗有像樣的最小尺寸 + 首發尺寸,Reader 進入時隱藏 title bar 沉浸、退出復原。iPhone/iPad 零回歸。
 
 **Architecture:**
-- 新增 `ios/BooksBrowser/Platform/MacWindowChrome.swift` — 集中所有 Catalyst window scene 操作的單一來源。整檔以 `#if targetEnvironment(macCatalyst)` 分流,非 Catalyst 為 no-op modifier。
+- 新增 `ios/BooksAndVocab/Platform/MacWindowChrome.swift` — 集中所有 Catalyst window scene 操作的單一來源。整檔以 `#if targetEnvironment(macCatalyst)` 分流,非 Catalyst 為 no-op modifier。
 - 取 `UIWindowScene` 沿用既有先例 `PlatformCompatibility.swift:115-122`(`connectedScenes.compactMap { $0 as? UIWindowScene }.first`),**不加 SceneDelegate、不動 Info.plist scene manifest**。
 - 尺寸主力走 UIKit `sizeRestrictions.minimumSize` + `requestGeometryUpdate(.Mac(...))`;`.defaultSize`/`.windowResizability` 在 Catalyst 靜默無效,不採用。
 - Reader 沉浸 title bar **scoped 可逆**:`ReaderView` `.onAppear` 隱藏、`.onDisappear` 復原(Reader 與其他 tab 共用同一 window,不可全域隱藏)。
@@ -31,14 +31,14 @@ verified_against: frozen
 ## Task 1: `MacWindowChrome` — 視窗尺寸基礎設施
 
 **Files:**
-- Create: `ios/BooksBrowser/Platform/MacWindowChrome.swift`
-- Create: `ios/BooksBrowserTests/MacWindowChromeTests.swift`(平面結構 — `BooksBrowserTests/` 無子目錄;確認加入 test target membership)
-- Modify: `ios/BooksBrowser/ContentView.swift`(掛 `.macWindowChrome()`)
+- Create: `ios/BooksAndVocab/Platform/MacWindowChrome.swift`
+- Create: `ios/BooksAndVocabTests/MacWindowChromeTests.swift`(平面結構 — `BooksAndVocabTests/` 無子目錄;確認加入 test target membership)
+- Modify: `ios/BooksAndVocab/ContentView.swift`(掛 `.macWindowChrome()`)
 
 - [ ] **Step 1: 寫 failing test — `MacWindowChromeTests.swift`**
 ```swift
 import XCTest
-@testable import BooksBrowser
+@testable import BooksAndVocab
 
 final class MacWindowChromeTests: XCTestCase {
     /// 尺寸 invariant:最小尺寸不得大於首發尺寸,且皆為正。
@@ -143,8 +143,8 @@ Expected: 編譯通過;`MacWindowChromeTests` 綠(若使用者要求跑 test)。
 ## Task 2: Reader 沉浸 title bar(scoped 可逆)
 
 **Files:**
-- Modify: `ios/BooksBrowser/Platform/MacWindowChrome.swift`(加 `setTitlebarHidden`)
-- Modify: `ios/BooksBrowser/Views/Reader/ReaderView.swift`(body 掛 `.macReaderImmersion()`)
+- Modify: `ios/BooksAndVocab/Platform/MacWindowChrome.swift`(加 `setTitlebarHidden`)
+- Modify: `ios/BooksAndVocab/Views/Reader/ReaderView.swift`(body 掛 `.macReaderImmersion()`)
 
 - [ ] **Step 1: 擴充 `MacWindowChrome` — title bar 切換**
 在 `#if targetEnvironment(macCatalyst)` 區塊內加:

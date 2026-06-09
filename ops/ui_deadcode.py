@@ -48,12 +48,12 @@ DEFAULT_KINDS = ("struct", "class")
 ALWAYS_USED_NAMES = frozenset({"CodingKeys"})
 # Markers are plain substrings tested against full paths (a deliberate, configurable
 # primitive). Slashes anchor them: "/Debug/" matches the catalog dir but not a
-# hypothetical "/Debugging/"; "Tests/" matches BooksBrowserTests/ and
-# BooksBrowserUITests/ (segments ending in "Tests/") while the lowercase in dirs
+# hypothetical "/Debugging/"; "Tests/" matches BooksAndVocabTests/ and
+# BooksAndVocabUITests/ (segments ending in "Tests/") while the lowercase in dirs
 # like "Contests/" does not collide. Callers passing custom markers should include
 # slashes to keep the same anchoring.
 DEFAULT_NONPROD_MARKERS = ("/Debug/", "Tests/")
-DEFAULT_SOURCE_ROOT = "ios/BooksBrowser/"
+DEFAULT_SOURCE_ROOT = "ios/BooksAndVocab/"
 
 
 # --------------------------------------------------------------------------- #

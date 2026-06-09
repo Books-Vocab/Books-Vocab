@@ -3,8 +3,8 @@ tier: reference
 authority: SoT
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Views/
-  - ios/BooksBrowser/Debug/
+  - ios/BooksAndVocab/Views/
+  - ios/BooksAndVocab/Debug/
 verified_against: 230f6c16
 -->
 # KG iOS Catalog Scope Bible (SoT)

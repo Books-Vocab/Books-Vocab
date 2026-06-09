@@ -3,10 +3,10 @@ tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
-  - ios/BooksBrowser/Platform/
-  - ios/BooksBrowser/BooksBrowserApp.swift
-  - ios/BooksBrowser/Views/Bookshelf/
-  - ios/BooksBrowser/Views/Vocabulary/
+  - ios/BooksAndVocab/Platform/
+  - ios/BooksAndVocab/BooksAndVocabApp.swift
+  - ios/BooksAndVocab/Views/Bookshelf/
+  - ios/BooksAndVocab/Views/Vocabulary/
 verified_against: frozen
 -->
 # Plan: Workstream C — Mac Catalyst 選單列 + 全域快捷鍵
@@ -24,7 +24,7 @@ umbrella spec:`docs/specs/2026-05-31-mac-catalyst-native-feel-design.md` §Works
 
 ## 既有事實(plan 依據,已 verify)
 
-- `BooksBrowserApp.swift`:`WindowGroup` `:81-92`,後僅接 `.modelContainer` `:92`,**目前無任何 `.commands`**。app 持有 `let kgService`(:22)、`@State modelContainer`(:19)、`let syncCoordinator`(:31)、`let toastCoordinator`(:32);env 注入在 `mainAppContent` `:98-122`。
+- `BooksAndVocabApp.swift`:`WindowGroup` `:81-92`,後僅接 `.modelContainer` `:92`,**目前無任何 `.commands`**。app 持有 `let kgService`(:22)、`@State modelContainer`(:19)、`let syncCoordinator`(:31)、`let toastCoordinator`(:32);env 注入在 `mainAppContent` `:98-122`。
 - coordinator pattern:`@Observable @MainActor final class`(SyncCoordinator.swift:50);env key 在 `Services/AppEnvironment.swift`(`EnvironmentKey` + `EnvironmentValues` accessor,:51-97)。
 - `kgService.backgroundSync(container: ModelContainer) async`(KGService+Sync.swift:143);**無時間 cooldown,僅併發互斥** `claimBackgroundSync()` + 離線跳過。app 直接持 `modelContainer` 可呼叫。
 - 匯入:`coordinator.presentImporter()`(BookshelfCoordinator.swift:17/38),**無登入 gate**。
@@ -39,10 +39,10 @@ umbrella spec:`docs/specs/2026-05-31-mac-catalyst-native-feel-design.md` §Works
 ## Task 1: `AppCommandCoordinator` 基建 + app-global 命令(設定 ⌘, / 同步 ⌘R)
 
 **Files:**
-- Create: `ios/BooksBrowser/Platform/AppCommandCoordinator.swift`
-- Create: `ios/BooksBrowser/Platform/MacMenuCommands.swift`(`Commands` 結構,Catalyst-only)
-- Modify: `ios/BooksBrowser/Services/AppEnvironment.swift`(env key)
-- Modify: `ios/BooksBrowser/BooksBrowserApp.swift`(持有 + 注入 + `.commands`)
+- Create: `ios/BooksAndVocab/Platform/AppCommandCoordinator.swift`
+- Create: `ios/BooksAndVocab/Platform/MacMenuCommands.swift`(`Commands` 結構,Catalyst-only)
+- Modify: `ios/BooksAndVocab/Services/AppEnvironment.swift`(env key)
+- Modify: `ios/BooksAndVocab/BooksAndVocabApp.swift`(持有 + 注入 + `.commands`)
 
 - [ ] **Step 1: `AppCommandCoordinator`** — `@Observable @MainActor final class`,持 app-global 命令 intent:
 ```swift
@@ -57,7 +57,7 @@ final class AppCommandCoordinator {
 
 - [ ] **Step 2: env key** — `AppEnvironment.swift` 比照 SyncCoordinatorKey 加 `AppCommandCoordinatorKey`(`MainActor.assumeIsolated { AppCommandCoordinator() }`)+ `EnvironmentValues.appCommandCoordinator` accessor。
 
-- [ ] **Step 3: app 持有 + 注入** — `BooksBrowserApp.swift`:`let appCommandCoordinator = AppCommandCoordinator()`(:32 旁);`mainAppContent` 加 `.environment(\.appCommandCoordinator, appCommandCoordinator)`。
+- [ ] **Step 3: app 持有 + 注入** — `BooksAndVocabApp.swift`:`let appCommandCoordinator = AppCommandCoordinator()`(:32 旁);`mainAppContent` 加 `.environment(\.appCommandCoordinator, appCommandCoordinator)`。
 
 - [ ] **Step 4: root 觀察 settings flag** — `mainAppContent` 的 `rootView` 加(gate macCatalyst)`.toastSheet(isPresented: ...)` 呈現 `SettingsView()`;binding 取 `appCommandCoordinator.presentingSettings`。**雙開決策(已定論)**:root settings sheet(⌘,)與既有 per-view toolbar gear sheet(`coordinator.showSettings`)是兩條獨立 state,跨-view state 不可見故無法程式互斥。決策:**接受兩條獨立路徑,靠 SwiftUI「已有 sheet 呈現時第二個 presentation 被忽略」的行為自然防疊**(實測若 race 出現 console warning 屬無害);⌘, 走 root sheet 為 app-level 唯一路徑,不加跨-view 協調(YAGNI)。
 
@@ -80,7 +80,7 @@ struct MacMenuCommands: Commands {
     }
 }
 ```
-- [ ] **Step 6: 掛上 WindowGroup** — `BooksBrowserApp.swift` `WindowGroup{…}.modelContainer(...)` 後加:
+- [ ] **Step 6: 掛上 WindowGroup** — `BooksAndVocabApp.swift` `WindowGroup{…}.modelContainer(...)` 後加:
 ```swift
 #if targetEnvironment(macCatalyst)
 .commands { MacMenuCommands(coordinator: appCommandCoordinator, kgService: kgService, modelContainer: modelContainer) }
@@ -94,7 +94,7 @@ struct MacMenuCommands: Commands {
 ## Task 2: 畫面相關命令(匯入 ⌘I / 新增單字本 ⌘N / 今日複習 ⌘⏎)走 focusedSceneValue
 
 **Files:**
-- Create: `ios/BooksBrowser/Platform/FocusedCommandValues.swift`(`FocusedValueKey` 定義)
+- Create: `ios/BooksAndVocab/Platform/FocusedCommandValues.swift`(`FocusedValueKey` 定義)
 - Modify: `MacMenuCommands.swift`(`@FocusedValue` 讀取 + `.disabled`)
 - Modify: `BookshelfView.swift`、`NotebookListView.swift`(publish `.focusedSceneValue`)
 
@@ -160,7 +160,7 @@ menu command 副作用(scene-level focus 傳遞、`Commands.body` 重算、`@Foc
 
 ## 風險
 
-- **⌘R 是第三條 sync 觸發點**:既有 scenePhase `.active`(BooksBrowserApp.swift:197)+ post-login(:174)已各觸發 sync,⌘R 為第三條。三者共用 `claimBackgroundSync()` 併發互斥,連按/併發無害不重入。
+- **⌘R 是第三條 sync 觸發點**:既有 scenePhase `.active`(BooksAndVocabApp.swift:197)+ post-login(:174)已各觸發 sync,⌘R 為第三條。三者共用 `claimBackgroundSync()` 併發互斥,連按/併發無害不重入。
 - **focus / responder chain**:sheet(設定/匯入/複習 modal)開著時 focusedSceneValue 可能仍 active → menu 命令在 modal 上觸發。實作時逐一驗證 modal 開啟時對應命令 disable 或無害。
 - **登入/demo gate**:新增單字本依 `isLoggedIn`,以「未登入不 publish focusedSceneValue」自動反映 menu disable;切換登入狀態時 focus 重算須驗證。
 - **單視窗 focus**:Catalyst 單 window 下 focusedSceneValue 是否穩定傳遞 — 0 先例,Task 2 首次落地需 Catalyst 實機/模擬驗證 menu enable/disable 正確。

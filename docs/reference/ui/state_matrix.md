@@ -3,13 +3,13 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
 verified_against: 84f6998e
 -->
 # UI State Matrix
 
 Date: 2026-06-02
-Scope: `ios/BooksBrowser`
+Scope: `ios/BooksAndVocab`
 
 文檔網絡：
 - 設計規範主文檔：`docs/sop/ui-design.md`
@@ -34,10 +34,10 @@ Scope: `ios/BooksBrowser`
 ## Reader
 
 主要檔案：
-- `ios/BooksBrowser/Views/Reader/ReaderView.swift`
-- `ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
-- `ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
-- `ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderView.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderViewPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter.swift`
+- `ios/BooksAndVocab/Views/Reader/TranslationVocabPresenter.swift`
 
 ### Reader Container State
 
@@ -71,14 +71,14 @@ Scope: `ios/BooksBrowser`
 ## Vocabulary
 
 主要檔案：
-- `ios/BooksBrowser/Views/Vocabulary/VocabularyListView.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabView.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift`
-- `ios/BooksBrowser/Views/Vocabulary/SyncView.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift`
-- `ios/BooksBrowser/Views/Vocabulary/KnowledgeGraphView.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Scenes/TodayReviewPresenter.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/VocabularyListView.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabView.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/SyncView.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/KnowledgeGraphView.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter.swift`
 
 ### Vocabulary List Routing State
 
@@ -146,9 +146,9 @@ Scope: `ios/BooksBrowser`
 ## Settings
 
 主要檔案：
-- `ios/BooksBrowser/Views/Settings/SettingsView.swift`
-- `ios/BooksBrowser/Views/Settings/SettingsPresenter.swift`
-- `ios/BooksBrowser/Views/Settings/SettingsCoordinator.swift`
+- `ios/BooksAndVocab/Views/Settings/SettingsView.swift`
+- `ios/BooksAndVocab/Views/Settings/SettingsPresenter.swift`
+- `ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift`
 
 ### Auth / Account State
 
@@ -251,9 +251,9 @@ Preview matrix 已補齊：
 ## Notebook Card (HStack book-row, `NotebookCard`)
 
 主要檔案：
-- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift`
+- `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift`
 
 > Book-row redesign 後 `NotebookCard` 不再用 `NotebookStackedCoverView`(該 view 改由 Bookshelf / Podcast / EditSheet preview 維持);stack depth / rotation / deck press 行為僅在那些 surface 生效。
 
@@ -297,9 +297,9 @@ Preview matrix 已補齊：
 ## Bookshelf
 
 主要檔案：
-- `ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift`
-- `ios/BooksBrowser/Views/Bookshelf/BookshelfCoordinator.swift`
-- `ios/BooksBrowser/Views/Bookshelf/BookshelfMetrics.swift`
+- `ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift`
+- `ios/BooksAndVocab/Views/Bookshelf/BookshelfCoordinator.swift`
+- `ios/BooksAndVocab/Views/Bookshelf/BookshelfMetrics.swift`
 
 > Bookshelf 是 EPUB/PDF/TXT/MD 書籍 + Podcast Series 的統一書庫入口。同一 `NavigationStack` 同時承載 `Book` 與 `PodcastNavRoute` push。`BookshelfImportError.classify` 把底層錯誤分類成 `unsupportedExtension` / `iCloudUnavailable` / `unknown` 等 diagnosed 形式。
 
@@ -356,12 +356,12 @@ Preview matrix 已補齊：
 ## Podcast
 
 主要檔案：
-- `ios/BooksBrowser/Views/Podcast/PodcastEpisodeListView.swift`
-- `ios/BooksBrowser/Views/Podcast/PodcastPlayerView.swift`
-- `ios/BooksBrowser/Views/Podcast/PodcastPlayerViewModel.swift`（`PodcastPlayerState`、`PodcastSubtitleLoadState`、`SleepTimerMode`）
-- `ios/BooksBrowser/Views/Podcast/PodcastSubtitleView.swift`
-- `ios/BooksBrowser/Views/Podcast/PodcastControlsView.swift`
-- `ios/BooksBrowser/Views/Podcast/PodcastSettingsPopover.swift`
+- `ios/BooksAndVocab/Views/Podcast/PodcastEpisodeListView.swift`
+- `ios/BooksAndVocab/Views/Podcast/PodcastPlayerView.swift`
+- `ios/BooksAndVocab/Views/Podcast/PodcastPlayerViewModel.swift`（`PodcastPlayerState`、`PodcastSubtitleLoadState`、`SleepTimerMode`）
+- `ios/BooksAndVocab/Views/Podcast/PodcastSubtitleView.swift`
+- `ios/BooksAndVocab/Views/Podcast/PodcastControlsView.swift`
+- `ios/BooksAndVocab/Views/Podcast/PodcastSettingsPopover.swift`
 
 > 音訊與字幕狀態**獨立**：`state` 走 audio lifecycle，`subtitleState` 走 SRT 載入；字幕失敗不阻斷播放。
 

@@ -3,7 +3,7 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Views/Settings/
+  - ios/BooksAndVocab/Views/Settings/
 verified_against: 2fb279ae
 -->
 # Settings Feature Boundary

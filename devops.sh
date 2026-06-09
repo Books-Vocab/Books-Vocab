@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# devops.sh — BooksBrowser KG API DevOps 操作腳本
+# devops.sh — BooksAndVocab KG API DevOps 操作腳本
 # 供 Claude Code 代理呼叫。不需理解底層 SSH/Docker 細節，直接執行子指令。
 #
 # Agent 用法：
@@ -829,7 +829,7 @@ case "${1:-help}" in
   ssh)          cmd_ssh ;;
   help|--help|-h|*)
     echo ""
-    echo "devops.sh — BooksBrowser KG API DevOps"
+    echo "devops.sh — BooksAndVocab KG API DevOps"
     echo ""
     echo "用法: ./devops.sh <command> [args]"
     echo ""

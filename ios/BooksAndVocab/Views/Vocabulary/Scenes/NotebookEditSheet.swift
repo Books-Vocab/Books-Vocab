@@ -1,0 +1,266 @@
+//
+//  NotebookEditSheet.swift
+//  Books & Vocab
+//
+//  新建 / 編輯單字本的 sheet
+
+import SwiftUI
+import PhotosUI
+
+struct NotebookAppearance {
+    let name: String
+    let color: String?
+    let coverPattern: String?
+    /// 使用者在 sheet 內選定的封面路徑（staged，nil = 移除封面）。
+    let coverImagePath: String?
+    /// 進入編輯前的原始封面路徑。封面落地 + 舊檔刪除延到 API 成功後，由
+    /// coordinator 用此值算出該刪哪個舊檔（全有或全無，避免 drift）。
+    let originalCoverImagePath: String?
+}
+
+struct NotebookEditSheet: View {
+    @ObserveInjection private var inject
+    enum Mode {
+        case create
+        case edit(name: String, color: String?, coverPattern: String?, coverImagePath: String?)
+    }
+
+    let mode: Mode
+    let onSave: (NotebookAppearance) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appSkin) private var skin
+
+    @State private var name: String = ""
+    @State private var selectedColor: String?
+    @State private var selectedPattern: String?
+    @State private var coverImagePath: String?
+    private let originalCoverImagePath: String?
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isProcessingPhoto = false
+    @State private var photoError: String?
+
+    init(mode: Mode, onSave: @escaping (NotebookAppearance) -> Void) {
+        self.mode = mode
+        self.onSave = onSave
+        switch mode {
+        case .create:
+            _name = State(initialValue: "")
+            _selectedColor = State(initialValue: nil)
+            _selectedPattern = State(initialValue: nil)
+            _coverImagePath = State(initialValue: nil)
+            self.originalCoverImagePath = nil
+        case .edit(let n, let c, let p, let img):
+            _name = State(initialValue: n)
+            _selectedColor = State(initialValue: c)
+            _selectedPattern = State(initialValue: p)
+            _coverImagePath = State(initialValue: img)
+            self.originalCoverImagePath = img
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    NotebookCoverView(
+                        color: NotebookPalette.color(for: selectedColor),
+                        pattern: selectedPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
+                        coverImagePath: coverImagePath,
+                        name: name.isEmpty ? NotebookEditCopy.previewTitle : name
+                    )
+                    .frame(height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                }
+
+                Section {
+                    TextField(NotebookEditCopy.namePlaceholder, text: $name)
+                }
+
+                Section(NotebookEditCopy.colorSectionTitle) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 36))], spacing: AppSpacing.chipPaddingHorizontal) {
+                        ForEach(NotebookPalette.colors, id: \.hex) { item in
+                            Circle()
+                                .fill(Color(hex: item.hex) ?? skin.palette.accent) // token-allow: notebook palette data color
+                                .frame(width: 32, height: 32)
+                                .overlay {
+                                    if selectedColor == item.hex {
+                                        Image(systemName: "checkmark")
+                                            .font(skin.typography.caption)
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                                .onTapGesture { selectedColor = item.hex }
+                                .accessibilityLabel(item.name)
+                        }
+                    }
+                    .padding(.vertical, AppSpacing.s1)
+                }
+
+                Section(NotebookEditCopy.patternSectionTitle) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: AppSpacing.s2) {
+                            patternOption(nil, label: NotebookEditCopy.noPatternTitle)
+                            ForEach(NotebookCoverPattern.allCases) { pattern in
+                                patternOption(pattern.rawValue, label: pattern.label)
+                            }
+                        }
+                        .padding(.vertical, AppSpacing.s1)
+                    }
+                }
+
+                Section(NotebookEditCopy.customImageSectionTitle) {
+                    HStack {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label(NotebookEditCopy.imagePickerTitle(hasImage: coverImagePath != nil), systemImage: "photo")
+                        }
+
+                        if coverImagePath != nil {
+                            Spacer()
+                            Button(role: .destructive) {
+                                removeCoverImage()
+                            } label: {
+                                Label(NotebookEditCopy.removeImageTitle, systemImage: "trash")
+                            }
+                        }
+                    }
+                    .disabled(isProcessingPhoto)
+
+                    if isProcessingPhoto {
+                        ProgressView(NotebookEditCopy.processingImageTitle)
+                    }
+
+                    if let photoError {
+                        Text(photoError)
+                            .font(skin.typography.caption)
+                            .foregroundStyle(skin.palette.destructive)
+                    }
+                }
+            }
+            .navigationTitle(NotebookEditCopy.navigationTitle(isCreating: isCreating))
+            .inlineNavigationBarTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(NotebookEditCopy.cancelTitle) {
+                        // 捨棄未保存的新檔（使用者選了圖但按取消）
+                        if let staged = coverImagePath, staged != originalCoverImagePath {
+                            try? FileManager.default.removeItem(atPath: staged)
+                        }
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(NotebookEditCopy.saveTitle(isCreating: isCreating)) {
+                        // 舊原檔的刪除延到 updateNotebook API 成功後才做（見
+                        // NotebookCoverCommit），失敗則原檔保留 + coverImagePath 不變，
+                        // 避免「新封面 + server 舊欄位」drift（track-23）。
+                        onSave(NotebookAppearance(
+                            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                            color: selectedColor,
+                            coverPattern: selectedPattern,
+                            coverImagePath: coverImagePath,
+                            originalCoverImagePath: originalCoverImagePath
+                        ))
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onChange(of: selectedPhoto) { _, item in
+                guard let item else { return }
+                Task { await processPhoto(item) }
+            }
+        }
+        .appSheet(.large)
+        .enableInjection()
+    }
+
+    @ViewBuilder
+    private func patternOption(_ patternId: String?, label: String) -> some View {
+        let isSelected = selectedPattern == patternId
+        let color = NotebookPalette.color(for: selectedColor)
+        VStack(spacing: AppSpacing.s1) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(patternId == nil ? skin.palette.mutedFill : color)
+                    .frame(width: 48, height: 36)
+                if let pid = patternId, let p = NotebookCoverPattern(rawValue: pid) {
+                    p.patternOverlay(size: CGSize(width: 48, height: 36))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                }
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.white)
+                        .font(skin.typography.iconSmall)
+                }
+            }
+            Text(label)
+                .font(skin.typography.monoLabel)
+                .foregroundStyle(skin.palette.secondaryText)
+        }
+        .onTapGesture { selectedPattern = patternId }
+    }
+
+    private var isCreating: Bool {
+        if case .create = mode { return true }
+        return false
+    }
+
+    @MainActor
+    private func processPhoto(_ item: PhotosPickerItem) async {
+        isProcessingPhoto = true
+        photoError = nil
+        defer { isProcessingPhoto = false }
+
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            photoError = NotebookEditCopy.photoErrorMessage(.loadFailed)
+            return
+        }
+
+        guard let uiImage = UIImage(data: data) else {
+            photoError = NotebookEditCopy.photoErrorMessage(.unsupportedFormat)
+            return
+        }
+        let maxDim: CGFloat = 600
+        let scale = min(maxDim / uiImage.size.width, maxDim / uiImage.size.height, 1.0)
+        let newSize = CGSize(width: uiImage.size.width * scale, height: uiImage.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resizedImage = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: newSize)) }
+        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.7) else {
+            photoError = NotebookEditCopy.photoErrorMessage(.processingFailed)
+            return
+        }
+
+        guard jpegData.count <= 500_000 else {
+            photoError = NotebookEditCopy.photoErrorMessage(.fileTooLarge)
+            return
+        }
+
+        let filename = "notebook_cover_\(UUID().uuidString).jpg"
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("NotebookCovers", isDirectory: true)
+        let fileURL = dir.appendingPathComponent(filename)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try jpegData.write(to: fileURL)
+        } catch {
+            photoError = NotebookEditCopy.photoErrorMessage(.saveFailed)
+            return
+        }
+        // 清掉本次編輯中已 staged 的舊新檔（非 original），避免 orphan
+        if let prev = coverImagePath, prev != originalCoverImagePath {
+            try? FileManager.default.removeItem(atPath: prev)
+        }
+        coverImagePath = fileURL.path
+        selectedPattern = nil
+    }
+
+    private func removeCoverImage() {
+        // 只清掉 staged 新檔；originalCoverImagePath 延遲到 save 再刪
+        if let path = coverImagePath, path != originalCoverImagePath {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        coverImagePath = nil
+    }
+}

@@ -23,7 +23,7 @@ verified_against: e237d84f
 | backend-change | partial | `backend/src/kg/routers/vocab.py` 能快速找到 registry / doc_sync / tech_index,但 broad `backend/` 曾過度提示 `policy.safety`、`sop.deploy`、`sop.backend` |
 | ops-change | partial | `ops/devops_kg_safe.sh` 必要提示應集中於 safety / deploy / debug / tech_index；`tech_index` 對 safe wrapper 命令面描述過淺 |
 | docs-tooling-change | pass | `ops/docs_lint.sh` 只提示 tech_index / doc_sync / dogfood protocol,未再誤觸 host/safety/deploy/debug/product docs |
-| ios-feature-change | partial | `ios/BooksBrowser/Models/Book.swift` 未能直接提示 bookshelf feature boundary；`sop.ios`、`sync_lifecycle` 曾對一般 iOS change 過寬 |
+| ios-feature-change | partial | `ios/BooksAndVocab/Models/Book.swift` 未能直接提示 bookshelf feature boundary；`sop.ios`、`sync_lifecycle` 曾對一般 iOS change 過寬 |
 | maintenance | partial | gate/audit/registry 可找到且全綠；docs tooling test changes 曾誤提示 tech_index；`--registry` summary `OK: 0` 不直覺 |
 
 ## Consolidated Issues
@@ -76,10 +76,10 @@ verified_against: e237d84f
   - `./ops/docs_impact.py --files backend/src/kg/routers/vocab.py` → sync/card/product/tech only; no safety/deploy/backend SOP noise
   - `./ops/docs_impact.py --files ops/devops_kg_safe.sh` → safety/tech/deploy/debug
   - `./ops/docs_impact.py --files ops/docs_lint.sh` → tech/doc_sync/dogfood
-  - `./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift` → product/bookshelf boundary/ios baseline,其中 generated baseline 顯示 `generator=ops/gen_ios_baseline.sh`
-  - `./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift chrome-extension/background.js ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListView.swift ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift` → chrome/notebook/reader/vocabulary feature boundary docs 分別命中
-  - `./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift ios/BooksBrowser/Views/Settings/SettingsView.swift ios/BooksBrowser/Services/KGService+Sync.swift ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift chrome-extension/shared/vocab-outbox.js backend/src/kg/vocab_intake.py` → sync contract 只由 sync/outbox/backend vocab paths 命中,Reader/Settings view 只走 feature boundary docs
-  - `./ops/docs_impact.py --files ios/BooksBrowser/UIComponents/AppShellComponents.swift ios/BooksBrowser/Models/AppMetrics.swift ops/ui_token_lint.sh` → UI component/state/design/checklist docs 命中,且 UI token tooling 不再誤觸 host/safety/deploy/backend/debug/product docs
+  - `./ops/docs_impact.py --files ios/BooksAndVocab/Models/Book.swift` → product/bookshelf boundary/ios baseline,其中 generated baseline 顯示 `generator=ops/gen_ios_baseline.sh`
+  - `./ops/docs_impact.py --files ios/BooksAndVocab/Views/Reader/ReaderView.swift chrome-extension/background.js ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift` → chrome/notebook/reader/vocabulary feature boundary docs 分別命中
+  - `./ops/docs_impact.py --files ios/BooksAndVocab/Views/Reader/ReaderView.swift ios/BooksAndVocab/Views/Settings/SettingsView.swift ios/BooksAndVocab/Services/KGService+Sync.swift ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift chrome-extension/shared/vocab-outbox.js backend/src/kg/vocab_intake.py` → sync contract 只由 sync/outbox/backend vocab paths 命中,Reader/Settings view 只走 feature boundary docs
+  - `./ops/docs_impact.py --files ios/BooksAndVocab/UIComponents/AppShellComponents.swift ios/BooksAndVocab/Models/AppMetrics.swift ops/ui_token_lint.sh` → UI component/state/design/checklist docs 命中,且 UI token tooling 不再誤觸 host/safety/deploy/backend/debug/product docs
   - `./ops/docs_impact.py --files CLAUDE.md` → doc_sync / dogfood / UI checklist,確保 agent 入口變更不會繞過控制面
   - `./ops/docs_impact.py --files backend/tests/test_api.py backend/src/kg/llm/providers.py .claude/skills/billing/SKILL.md ops/ios_release.sh ops/devops_kg_safe.sh` → backend testing / cost / smoke / runbook docs 命中,且 backend tests/provider pricing/iOS release script 不再誤觸不相關 broad docs
   - `./ops/docs_impact.py --files ops/i18n_lint.sh ops/podcast_upload.sh lab/podcast/pipeline.py lab/llm_eval/prompts/manifest.yaml` → i18n / podcast pipeline / LLM eval docs 命中,且 i18n/podcast tooling 不再誤觸不相關 broad docs

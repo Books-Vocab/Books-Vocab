@@ -90,14 +90,14 @@ if grep -q "sop.deploy" "$tmpdir/cost.out"; then
   exit 1
 fi
 
-./ops/docs_impact.py --files ios/BooksBrowser/Services/AuthManager.swift backend/src/kg/auth_service.py >"$tmpdir/architecture.out"
+./ops/docs_impact.py --files ios/BooksAndVocab/Services/AuthManager.swift backend/src/kg/auth_service.py >"$tmpdir/architecture.out"
 grep -q "sop.architecture" "$tmpdir/architecture.out"
 
 ./ops/docs_impact.py --files ops/kg_backup.sh ops/cron/kg-backup.cron ops/backup_verify.sh >"$tmpdir/backup.out"
 grep -q "sop.backup" "$tmpdir/backup.out"
 grep -q "sop.backup_restore" "$tmpdir/backup.out"
 
-./ops/docs_impact.py --files ops/i18n_lint.sh ios/BooksBrowser/Localization/L10n.swift ios/BooksBrowser/en.lproj/Localizable.stringsdict >"$tmpdir/i18n.out"
+./ops/docs_impact.py --files ops/i18n_lint.sh ios/BooksAndVocab/Localization/L10n.swift ios/BooksAndVocab/en.lproj/Localizable.stringsdict >"$tmpdir/i18n.out"
 grep -q "sop.i18n_lint" "$tmpdir/i18n.out"
 grep -q "sop.i18n_plural_keys" "$tmpdir/i18n.out"
 
@@ -186,7 +186,7 @@ if grep -q "sop.debug" "$tmpdir/ios_release.out"; then
   exit 1
 fi
 
-./ops/docs_impact.py --files ios/BooksBrowser/Views/Reader/ReaderView.swift >"$tmpdir/ios.out"
+./ops/docs_impact.py --files ios/BooksAndVocab/Views/Reader/ReaderView.swift >"$tmpdir/ios.out"
 if grep -q "contract.sync_lifecycle" "$tmpdir/ios.out"; then
   echo "ordinary reader view changes should not imply sync lifecycle contract impact" >&2
   exit 1
@@ -194,21 +194,21 @@ fi
 grep -q "generated.ios_baseline" "$tmpdir/ios.out"
 grep -q "reference.feature_boundary.reader" "$tmpdir/ios.out"
 
-./ops/docs_impact.py --files ios/BooksBrowser/Views/Settings/SettingsView.swift >"$tmpdir/settings.out"
+./ops/docs_impact.py --files ios/BooksAndVocab/Views/Settings/SettingsView.swift >"$tmpdir/settings.out"
 if grep -q "contract.sync_lifecycle" "$tmpdir/settings.out"; then
   echo "ordinary settings view changes should not imply sync lifecycle contract impact" >&2
   exit 1
 fi
 grep -q "reference.feature_boundary.settings" "$tmpdir/settings.out"
 
-./ops/docs_impact.py --files ios/BooksBrowser/Services/KGService+Sync.swift ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift >"$tmpdir/sync_sources.out"
+./ops/docs_impact.py --files ios/BooksAndVocab/Services/KGService+Sync.swift ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift >"$tmpdir/sync_sources.out"
 grep -q "contract.sync_lifecycle" "$tmpdir/sync_sources.out"
 
-./ops/docs_impact.py --files ios/BooksBrowser/UIComponents/AppShellComponents.swift >"$tmpdir/ui_components.out"
+./ops/docs_impact.py --files ios/BooksAndVocab/UIComponents/AppShellComponents.swift >"$tmpdir/ui_components.out"
 grep -q "reference.ui_components" "$tmpdir/ui_components.out"
 grep -q "reference.ui_state_matrix" "$tmpdir/ui_components.out"
 
-./ops/docs_impact.py --files ios/BooksBrowser/Models/AppMetrics.swift ops/ui_token_lint.sh >"$tmpdir/ui_design.out"
+./ops/docs_impact.py --files ios/BooksAndVocab/Models/AppMetrics.swift ops/ui_token_lint.sh >"$tmpdir/ui_design.out"
 grep -q "sop.ui_design" "$tmpdir/ui_design.out"
 grep -q "reference.ui_review_checklist" "$tmpdir/ui_design.out"
 
@@ -288,7 +288,7 @@ if grep -q '"id": "sop.backend"' "$tmpdir/devops_safe.json"; then
   exit 1
 fi
 
-./ops/docs_impact.py --files ios/BooksBrowser/Models/Book.swift --json >"$tmpdir/book_model.json"
+./ops/docs_impact.py --files ios/BooksAndVocab/Models/Book.swift --json >"$tmpdir/book_model.json"
 grep -q '"id": "reference.feature_boundary.bookshelf"' "$tmpdir/book_model.json"
 grep -q '"id": "generated.ios_baseline"' "$tmpdir/book_model.json"
 grep -q '"generator": "ops/gen_ios_baseline.sh"' "$tmpdir/book_model.json"

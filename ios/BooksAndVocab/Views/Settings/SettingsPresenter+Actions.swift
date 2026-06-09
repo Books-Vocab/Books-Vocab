@@ -1,0 +1,432 @@
+import SwiftUI
+
+// MARK: - Navigation Rows, Card Navigation, Buttons, Subscription Components, Selection
+
+struct SettingsNavigationRow<Trailing: View>: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let icon: String
+    let label: String
+    let action: () -> Void
+    let trailing: Trailing
+
+    init(
+        icon: String,
+        label: String,
+        action: @escaping () -> Void,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
+        self.icon = icon
+        self.label = label
+        self.action = action
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            AppKeyValueRow(icon: icon, label: label, style: .settings(appSkin)) {
+                HStack(spacing: 6) {
+                    trailing
+                    SettingsTrailingChevronIcon()
+                }
+            }
+            .appHoverRowTint()
+        }
+        .buttonStyle(.plain)
+        .enableInjection()
+    }
+}
+
+struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let action: () -> Void
+    let leading: Leading
+    let trailing: Trailing
+
+    init(
+        action: @escaping () -> Void,
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
+        self.action = action
+        self.leading = leading()
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: appSkin.spacing.controlGap) {
+                leading
+
+                Spacer(minLength: appSkin.spacing.inlineGap)
+
+                trailing
+
+                SettingsTrailingChevronIcon()
+            }
+            .padding(.horizontal, appSkin.spacing.cardPadding)
+            .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
+            .appHoverRowTint()
+        }
+        .buttonStyle(.plain)
+        .enableInjection()
+    }
+}
+
+struct SettingsActionRowLabel<Trailing: View>: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let title: String
+    let systemImage: String
+    let isLoading: Bool
+    let trailing: Trailing
+
+    init(
+        title: String,
+        systemImage: String,
+        isLoading: Bool = false,
+        @ViewBuilder trailing: () -> Trailing = { SettingsTrailingChevronIcon() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.isLoading = isLoading
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: appSkin.spacing.controlGap) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: systemImage)
+                    .font(appSkin.typography.iconMedium)
+            }
+
+            Text(title)
+                .font(appSkin.typography.body.weight(.medium))
+
+            Spacer()
+
+            trailing
+        }
+        .foregroundStyle(appSkin.palette.primaryText)
+        .padding(.horizontal, appSkin.spacing.cardPadding)
+        .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
+        .frame(minHeight: 50)
+        .enableInjection()
+    }
+}
+
+struct SettingsCompactActionButton: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let title: String
+    let action: () -> Void
+    let isEnabled: Bool
+
+    init(title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+        self.isEnabled = isEnabled
+    }
+
+    var body: some View {
+        Button(title, action: action)
+            .font(appSkin.typography.caption)
+            .foregroundStyle(isEnabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
+            .padding(.horizontal, AppSpacing.s3)
+            .padding(.vertical, appSkin.spacing.rowPadding)
+            .background(
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    .fill(appSkin.palette.pageBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    .stroke(appSkin.palette.cardBorder, lineWidth: 1)
+            )
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+            .enableInjection()
+    }
+}
+
+extension SubscriptionBadgeTone {
+    func color(in skin: AppSkin) -> Color {
+        switch self {
+        case .neutral:
+            skin.palette.secondaryText
+        case .accent:
+            skin.palette.accent
+        case .success:
+            skin.palette.success
+        }
+    }
+}
+
+struct SettingsFeaturePanel<Content: View>: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let borderTone: Color
+    let content: Content
+
+    init(borderTone: Color, @ViewBuilder content: () -> Content) {
+        self.borderTone = borderTone
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(appSkin.spacing.cardPadding)
+            .background(appSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                    .stroke(borderTone, lineWidth: 1)
+            )
+            .enableInjection()
+    }
+}
+
+struct SettingsSubscriptionInfoBlock: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let title: String
+    let subtitle: String?
+    let detail: String?
+    let titleFont: Font
+
+    init(title: String, subtitle: String? = nil, detail: String? = nil, titleFont: Font) {
+        self.title = title
+        self.subtitle = subtitle
+        self.detail = detail
+        self.titleFont = titleFont
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+            Text(title)
+                .font(titleFont)
+                .foregroundStyle(appSkin.palette.primaryText)
+
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .lineSpacing(3)
+            }
+
+            if let detail, !detail.isEmpty {
+                Text(detail)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .lineSpacing(3)
+            }
+        }
+        .enableInjection()
+    }
+}
+
+struct SettingsSubscriptionFeatureItem: Identifiable {
+    let title: String
+    let description: String?
+    let icon: String
+    let tone: Color
+
+    var id: String { title }
+}
+
+/// Paywall Free vs Pro 對照表的單行資料
+struct SettingsPlanComparisonRow: Identifiable {
+    enum Mark: Equatable {
+        case check
+        case cross
+        case label(String)
+    }
+
+    let title: String
+    let freeMark: Mark
+    let proMark: Mark
+
+    var id: String { title }
+}
+
+/// Paywall 用 Free vs Pro 功能對照表
+///
+/// 用途：取代「只列 Pro 有什麼」的單欄 bullet list，直接呈現兩欄差異，
+/// 提升決策資訊密度（業界做法：Notion / Linear / Cursor 訂閱頁）。
+struct SettingsPlanComparisonTable: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let rows: [SettingsPlanComparisonRow]
+
+    var body: some View {
+        SettingsFeaturePanel(borderTone: appSkin.palette.cardBorder) {
+            VStack(spacing: 0) {
+                headerRow
+
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    Rectangle()
+                        .fill(appSkin.palette.divider.opacity(0.5))
+                        .frame(height: 1)
+                        .padding(.vertical, appSkin.spacing.microGap)
+
+                    comparisonRow(row, isLast: index == rows.count - 1)
+                }
+            }
+        }
+        .enableInjection()
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: appSkin.spacing.controlGap) {
+            Text(L10n.string("功能"))
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Free")
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+                .frame(width: 52, alignment: .center)
+
+            Text("Pro")
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.accent)
+                .frame(width: 52, alignment: .center)
+        }
+    }
+
+    private func comparisonRow(_ row: SettingsPlanComparisonRow, isLast _: Bool) -> some View {
+        HStack(spacing: appSkin.spacing.controlGap) {
+            Text(row.title)
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            markView(row.freeMark, isProColumn: false)
+                .frame(width: 52, alignment: .center)
+
+            markView(row.proMark, isProColumn: true)
+                .frame(width: 52, alignment: .center)
+        }
+    }
+
+    @ViewBuilder
+    private func markView(_ mark: SettingsPlanComparisonRow.Mark, isProColumn: Bool) -> some View {
+        switch mark {
+        case .check:
+            Image(systemName: "checkmark.circle.fill")
+                .font(appSkin.typography.iconMedium)
+                .foregroundStyle(isProColumn ? appSkin.palette.accent : appSkin.palette.success)
+        case .cross:
+            Image(systemName: "minus")
+                .font(appSkin.typography.iconMedium)
+                .foregroundStyle(appSkin.palette.quaternaryText)
+        case .label(let text):
+            Text(text)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(isProColumn ? appSkin.palette.accent : appSkin.palette.secondaryText)
+        }
+    }
+}
+
+struct SettingsSubscriptionFeatureList: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let borderTone: Color
+    let items: [SettingsSubscriptionFeatureItem]
+
+    var body: some View {
+        SettingsFeaturePanel(borderTone: borderTone) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.rowContentSpacing) {
+                ForEach(items) { item in
+                    HStack(alignment: .top, spacing: appSkin.spacing.controlGap) {
+                        Image(systemName: item.icon)
+                            .font(appSkin.typography.iconMedium)
+                            .foregroundStyle(item.tone)
+
+                        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                            Text(item.title)
+                                .font(item.description == nil ? appSkin.typography.body : appSkin.typography.body.weight(.medium))
+                                .foregroundStyle(appSkin.palette.primaryText)
+
+                            if let description = item.description {
+                                Text(description)
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
+                            }
+                        }
+
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .enableInjection()
+    }
+}
+
+struct SettingsSelectableRow<Leading: View>: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let isSelected: Bool
+    let leading: Leading
+
+    init(isSelected: Bool, @ViewBuilder leading: () -> Leading) {
+        self.isSelected = isSelected
+        self.leading = leading()
+    }
+
+    var body: some View {
+        HStack(spacing: appSkin.spacing.inlineGap) {
+            leading
+
+            Spacer()
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(appSkin.typography.iconSmall)
+                    .foregroundStyle(appSkin.palette.accent)
+            }
+        }
+        .padding(.horizontal, appSkin.spacing.cardPadding)
+        .padding(.vertical, appSkin.spacing.rowPadding)
+        .contentShape(Rectangle())
+        .background(isSelected ? appSkin.palette.accent.opacity(0.08) : Color.clear)
+        .enableInjection()
+    }
+}
+
+struct SettingsSelectionTile<Content: View>: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    let isSelected: Bool
+    let content: Content
+
+    init(isSelected: Bool, @ViewBuilder content: () -> Content) {
+        self.isSelected = isSelected
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, appSkin.spacing.controlHorizontalPadding)
+            .padding(.vertical, appSkin.spacing.controlHorizontalPadding)
+            .background(
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    .fill(isSelected ? appSkin.palette.mutedFill : appSkin.palette.pageBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    .stroke(
+                        isSelected ? appSkin.palette.cardBorder : appSkin.palette.divider.opacity(0.4),
+                        lineWidth: 1
+                    )
+            )
+            .enableInjection()
+    }
+}

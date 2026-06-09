@@ -3,7 +3,7 @@ tier: sop
 authority: derived
 update_trigger: sop-change
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
   - backend/src/kg/
 verified_against: 84f6998e
 -->
@@ -317,7 +317,7 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 
 除了色彩、字體與材質，Books & Vocab 現在也把 motion 視為設計系統的一部分。
 
-- 動畫語意層集中在 `BooksBrowser/Models/AppMetrics.swift` 的 `AppMotion`
+- 動畫語意層集中在 `BooksAndVocab/Models/AppMetrics.swift` 的 `AppMotion`
 - 共享 transition 也集中在同一檔案，避免 feature 各自發明不同進出方式
 - Reader、Review、Sync 是目前優先完成收斂的三條主路徑
 
@@ -340,6 +340,6 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 Backend + iOS 同時整合 Sentry，opt-in 啟動且預設關閉（`SENTRY_DSN` / `Info.plist SentryDSN` 為空時整層 no-op）。本段只談架構分層 — 細節不在此重複。
 
 - **Backend 實作**：`backend/src/kg/sentry_init.py`；FastAPI / Starlette / Logging integrations + auth header / OAuth query scrub；狀態暴露於 `/api/system/info`。
-- **iOS 實作**：`ios/BooksBrowser/Services/AppCrashReporting.swift`；SPM 守門 + `BooksBrowserApp.init()` 第一步 bootstrap + `setUser` 連動 `authManager.isLoggedIn`。
+- **iOS 實作**：`ios/BooksAndVocab/Services/AppCrashReporting.swift`；SPM 守門 + `BooksAndVocabApp.init()` 第一步 bootstrap + `setUser` 連動 `authManager.isLoggedIn`。
 - **Env / 取樣 / 隱私規範（SoT）**：`docs/sop/deploy.md §Sentry 錯誤追蹤`。
 - **iOS bootstrap 順序 / `beforeSend` 過濾規則**：`docs/sop/ios.md §Crash Reporting`。
