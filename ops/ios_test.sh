@@ -402,6 +402,19 @@ RESULT_BUNDLE=""
 TEST_DEVICE_LOCK_HELD=0
 TEST_DEVICE_LOCK_FILE=""
 DEVICE_RUN_LOCK_WAIT_MS=0
+test_log_line_count() {
+  local log_path="${1:-${TMPOUT:-}}"
+  [[ -n "$log_path" && -f "$log_path" ]] || return 1
+  wc -l < "$log_path" | tr -d ' '
+}
+write_missing_test_log_marker() {
+  local log_path="${1:-${TMPOUT:-}}"
+  [[ -n "$log_path" ]] || return 1
+  cat >"$log_path" <<EOF
+[ios_test] error: xcodebuild log path disappeared before diagnostics could read it
+[ios_test] log=$log_path
+EOF
+}
 cleanup() {
   if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
     kill "$CURRENT_XCODE_PID" 2>/dev/null || true
@@ -699,7 +712,7 @@ should_rebuild_after_test_without_building_failure() {
 
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
-  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
+  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
   acquire_test_device_lock
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test-without-building \
@@ -717,9 +730,14 @@ run_xcodebuild_test_without_building_once() {
   echo "[ios_test] xcodebuild pid=$xcode_pid mode=test-without-building uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} xctestrun=$xctestrun_path log=$TMPOUT xcresult=$RESULT_BUNDLE"
 
   last_line=0
+  log_missing=0
   heartbeat_at=$(date +%s)
   while kill -0 "$xcode_pid" 2>/dev/null; do
-    current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
+    if ! current_line="$(test_log_line_count "$TMPOUT")"; then
+      log_missing=1
+      echo "[ios_test] warning: xcodebuild log path disappeared while test was running: $TMPOUT" >&2
+      break
+    fi
     if [[ "$current_line" -gt "$last_line" ]]; then
       emit_new_test_output "$((last_line + 1))" "$current_line"
       last_line="$current_line"
@@ -743,7 +761,10 @@ run_xcodebuild_test_without_building_once() {
   XCODEBUILD_MS=$(( BUILD_FOR_TESTING_MS + TEST_INVOCATION_MS ))
   CURRENT_XCODE_PID=""
   release_test_device_lock
-  current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
+  if ! current_line="$(test_log_line_count "$TMPOUT")"; then
+    [[ "$log_missing" -eq 1 ]] && write_missing_test_log_marker "$TMPOUT" || true
+    current_line="$(test_log_line_count "$TMPOUT" 2>/dev/null || echo 0)"
+  fi
   if [[ "$current_line" -gt "$last_line" ]]; then
     emit_new_test_output "$((last_line + 1))" "$current_line"
   fi

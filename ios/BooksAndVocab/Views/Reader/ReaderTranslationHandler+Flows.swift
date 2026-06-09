@@ -36,7 +36,7 @@ extension ReaderTranslationHandler {
         wordSelection = selection
         lastLookup = LastLookup(kind: .word, text: word, context: context)
 
-        if let existing = vocabularyContext.existingEntry(matching: word),
+        if let existing = vocabularyContext.existingEntry(matching: normalizedWord),
            existing.syncAction != .delete {
             withAnimation(AppMotion.panelState) {
                 translationResult = TranslationResult(
@@ -53,7 +53,7 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
-            AppLog.reader.debug("從生詞庫載入: \(word) → \(existing.word)")
+            AppLog.reader.debug("從生詞庫載入: \(normalizedWord) → \(existing.word)")
             return
         }
 

@@ -136,6 +136,11 @@ struct FixtureDatasetStoreTests {
         """
 
         try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            #expect(FixtureDatasetStore.debugSummary() == "test-marketing @ testing-override")
+            #expect(FixtureDatasetStore.settingsSeed(for: .subscribedActive)?.auth.displayName == "Max Chen")
+            #expect(FixtureDatasetStore.bookshelfSeed(for: .withBooksLibrary)?.books.first?.title == "Editorial English")
+            #expect(FixtureDatasetStore.todayReviewSeed(for: .front)?.currentCard?.word == "discerning")
+
             let settingsModel = SettingsFixtures.renderModel(for: .subscribedActive)
             #expect(settingsModel.state.auth.displayName == "Max Chen")
             #expect(settingsModel.state.about.version == "9.9.9 (999)")

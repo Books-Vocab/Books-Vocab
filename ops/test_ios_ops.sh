@@ -921,6 +921,28 @@ retry_should_rebuild="$(
 )"
 [[ "$retry_should_rebuild" == "rebuild" ]] \
   && ok "ios_test rebuilds only cache/infrastructure failure" || fail_t "ios_test did not rebuild cache corruption failure: $retry_should_rebuild"
+missing_log_count="$(
+  TMPOUT="$ios_test_retry_tmp/does-not-exist.log" \
+    bash -lc '
+      eval "$(sed -n "/^test_log_line_count()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      if test_log_line_count; then echo present; else echo missing; fi
+    '
+)"
+[[ "$missing_log_count" == "missing" ]] \
+  && ok "ios_test treats missing xcodebuild log as structured infra failure input" || fail_t "ios_test missing-log guard invalid: $missing_log_count"
+missing_log_marker="$(
+  TMPOUT="$ios_test_retry_tmp/does-not-exist.log" \
+    bash -lc '
+      eval "$(sed -n "/^write_missing_test_log_marker()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      write_missing_test_log_marker
+      cat "$TMPOUT"
+    '
+)"
+echo "$missing_log_marker" | grep -q 'xcodebuild log path disappeared before diagnostics could read it' \
+  && ok "ios_test can synthesize a readable placeholder when the log path disappears" || fail_t "ios_test missing-log marker invalid: $missing_log_marker"
+missing_diag_json="$("$IOS_DIAG" --kind test --xcresult "$ios_test_retry_tmp/Missing.xcresult" --log "$ios_test_retry_tmp/never-created.log" --json --result fail)"
+echo "$missing_diag_json" | jq -e --arg log "$ios_test_retry_tmp/never-created.log" '.schema=="kg.ios.diagnostics.v1" and .source=="raw-log-missing" and .result=="fail" and .counts.errors==0 and .logError=="log file not found: \($log)" and (.xcresultError|length > 0) and .artifacts.log==$log' >/dev/null \
+  && ok "ios_diagnostics reports missing fallback log as machine-readable error" || fail_t "ios_diagnostics missing-log fallback invalid: $missing_diag_json"
 rm -rf "$ios_test_retry_tmp"
 
 echo ""

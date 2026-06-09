@@ -8,8 +8,11 @@ extension ReaderTranslationHandler {
         dismiss()
     }
 
-    func loadLookedUpWords(from vocabulary: [VocabularyEntry]) {
-        lookedUpWords = ReaderVocabularyContext.lookedUpWords(from: vocabulary)
+    func loadLookedUpWords(from vocabulary: [VocabularyEntry], notebookId: String? = nil) {
+        lookedUpWords = ReaderVocabularyContext.lookedUpWords(
+            from: vocabulary,
+            notebookId: notebookId
+        )
     }
 
     func dismiss() {

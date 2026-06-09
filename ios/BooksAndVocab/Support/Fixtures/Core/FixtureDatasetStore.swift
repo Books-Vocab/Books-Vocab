@@ -90,7 +90,7 @@ enum FixtureDatasetStore {
             let document = try makeDecoder().decode(FixtureDatasetDocument.self, from: source.data)
             return .loaded(document, source: source.description)
         } catch {
-            return .invalid(source: source.description, error: error.localizedDescription)
+            return .invalid(source: source.description, error: String(reflecting: error))
         }
     }
 

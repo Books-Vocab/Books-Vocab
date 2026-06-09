@@ -72,13 +72,19 @@ struct ReaderTranslationHandlerTests {
     private final class MockVocabContext: VocabularyContextProtocol {
         var notebookId: String = "test_nb"
         var existing: VocabularyEntry?
+        var existingResolver: ((String) -> VocabularyEntry?)?
         var savedSelections: [WordSelection] = []
         var savedTranslations: [String] = []
         var savedRootForms: [String?] = []
         var deletedWords: [String] = []
         var saveReturn: Bool = true
 
-        func existingEntry(matching word: String) -> VocabularyEntry? { existing }
+        func existingEntry(matching word: String) -> VocabularyEntry? {
+            if let existingResolver {
+                return existingResolver(word)
+            }
+            return existing
+        }
         func deleteEntry(matching word: String) { deletedWords.append(word) }
         func saveEntry(selection: WordSelection, translation: String, rootForm: String?) -> Bool {
             savedSelections.append(selection)
@@ -241,6 +247,31 @@ struct ReaderTranslationHandlerTests {
         #expect(handler.explanationText == nil)
         #expect(handler.translationErrorMessage == nil)
         #expect(handler.explanationErrorMessage == nil)
+    }
+
+    @Test func handleWordSelected_normalizesBeforeExistingEntryLookup() async {
+        let service = MockTranslating()
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+        ctx.existingResolver = { word in
+            guard word == "delta" else { return nil }
+            return VocabularyEntry(
+                word: "delta",
+                translation: "預存翻譯",
+                context: "",
+                explanation: nil,
+                partOfSpeech: nil,
+                bookTitle: "B",
+                chapterTitle: "C"
+            )
+        }
+
+        handler.handleWordSelected(word: "delta.", context: "some ctx", vocabularyContext: ctx)
+        await drain(handler)
+
+        #expect(service.quickCalls == 0, "normalized existing entry must still short-circuit before hitting the translation service")
+        #expect(handler.translationResult?.translation == "預存翻譯")
+        #expect(handler.wordSelection?.word == "delta", "selection should store the normalized word for downstream save/delete flows")
     }
 
     // MARK: - handleWordSelected — guest path
