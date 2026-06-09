@@ -27,7 +27,7 @@ verified_against: 746dafaa
 -->
 # Sync Lifecycle
 
-這份文件描述 BooksBrowser 本地生詞與 KG 雲端同步時的最小規則，目的不是講實作細節，而是固定「每種狀態應該怎麼表現」。
+這份文件描述 Books & Vocab 本地生詞與 KG 雲端同步時的最小規則，目的不是講實作細節，而是固定「每種狀態應該怎麼表現」。
 
 ## 核心欄位
 

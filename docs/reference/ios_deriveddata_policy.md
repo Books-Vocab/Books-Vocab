@@ -33,7 +33,7 @@ verified_against: 291303f1
 ... ×252
 ```
 
-`git worktree remove` 砍掉 worktree，但全域 DerivedData 的那份**留下來變孤兒**。實測 9 天（6/1–6/9）累積 **252 份 / 110G**，全是同一個 BooksBrowser 專案。
+`git worktree remove` 砍掉 worktree，但全域 DerivedData 的那份**留下來變孤兒**。實測 9 天（6/1–6/9）累積 **252 份 / 110G**，全是同一個 Books & Vocab iOS 專案。
 
 ### 附帶誤導：`XCTestDevices` 的 155G 是假的
 `du` 報 `~/Library/Developer/XCTestDevices` 155G，但刪光只釋出約 5G。原因是 UI test 的 runner 模擬器是系統 runtime 的 **APFS clone（copy-on-write）**，多份共享同一批磁碟 block，`du` 對每份重複計算（[APFS clone 機制](https://eclecticlight.co/2025/04/07/how-robust-are-apfs-clone-and-sparse-files/)）。**判讀 Xcode 空間時，clone 目錄的 `du` 數字不可信，以實際 `df` 釋出量為準。**
