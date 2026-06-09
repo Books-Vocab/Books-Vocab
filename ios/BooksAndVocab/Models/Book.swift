@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 import SwiftData
 
 /// 書籍格式
@@ -63,24 +64,29 @@ final class Book {
 
     // MARK: - 目錄管理
 
-    /// iCloud Books 目錄快取（nil = 尚未取得或 iCloud 不可用）
-    private static var _cachedICloudDir: URL?
+    // OSAllocatedUnfairLock 保護 iCloud 目錄快取，使 read/write 在任意 thread 都安全。
+    // iCloudBooksDirectory 可從 nonisolated 的 LocalBookFileManager 讀取，
+    // clearICloudDirectoryCache() 可從 nonisolated async（LocalDataCleanerService）寫入，
+    // 若以裸 static var 實作則構成 data race。
+    private static let _iCloudDirLock = OSAllocatedUnfairLock<URL?>(initialState: nil)
 
     /// iCloud Books 目錄（nil 表示 iCloud 不可用，不快取 nil 以便下次重試）
     static var iCloudBooksDirectory: URL? {
-        if let cached = _cachedICloudDir { return cached }
-        guard let containerURL = FileManager.default.url(
-            forUbiquityContainerIdentifier: nil
-        ) else { return nil }
-        let dir = containerURL.appendingPathComponent("Documents/Books")
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        } catch {
-            AppLog.book.warning("Failed to create iCloud Books directory: \(error.localizedDescription)")
+        _iCloudDirLock.withLock { cached in
+            if let c = cached { return c }
+            guard let containerURL = FileManager.default.url(
+                forUbiquityContainerIdentifier: nil
+            ) else { return nil }
+            let dir = containerURL.appendingPathComponent("Documents/Books")
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            } catch {
+                AppLog.book.warning("Failed to create iCloud Books directory: \(error.localizedDescription)")
+            }
+            cached = dir
+            AppLog.book.info("Books directory: iCloud (\(dir.path))")
+            return dir
         }
-        _cachedICloudDir = dir
-        AppLog.book.info("Books directory: iCloud (\(dir.path))")
-        return dir
     }
 
     /// 本機 Books 目錄
@@ -102,7 +108,7 @@ final class Book {
     /// 清除 iCloud 目錄快取，讓下次存取時以當前 Apple ID 重取容器路徑。
     /// 在 Apple ID 切換或 KG 帳號登出/切換時呼叫。
     static func clearICloudDirectoryCache() {
-        _cachedICloudDir = nil
+        _iCloudDirLock.withLock { $0 = nil }
     }
 
     /// 新匯入使用的偏好目錄（優先 iCloud）

@@ -79,9 +79,34 @@ final class ICloudDownloadManager {
     private var metadataQuery: NSMetadataQuery?
     private var gatherObserver: Any?
     private var updateObserver: Any?
+    // 帳號切換 observers 與 NSMetadataQuery 生命週期無關，在 init 訂閱、deinit 取消，
+    // 不受 startMonitoring/stopMonitoring 影響，確保外部直接呼叫 stopMonitoring() 後
+    // 仍能收到帳號切換通知。
     private var identityObserver: Any?
     private var userDataClearObserver: Any?
     private var triggeredFiles: Set<String> = []
+
+    init() {
+        identityObserver = NotificationCenter.default.addObserver(
+            forName: .NSUbiquityIdentityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reset() }
+        }
+        userDataClearObserver = NotificationCenter.default.addObserver(
+            forName: .localUserDataDidClear,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reset() }
+        }
+    }
+
+    deinit {
+        if let o = identityObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = userDataClearObserver { NotificationCenter.default.removeObserver(o) }
+    }
 
     /// 取得特定檔案的下載狀態（nil = 查詢尚未追蹤到此檔案）
     func state(for fileName: String) -> ICloudFileState? {
@@ -90,27 +115,6 @@ final class ICloudDownloadManager {
 
     /// 開始監控 iCloud EPUB 檔案
     func startMonitoring() {
-        // 帳號切換通知 — 不依賴 iCloud 可用性，App 全生命週期恆需觀察。
-        // 用 nil guard 避免 reset() 循環呼叫 startMonitoring() 時重複訂閱。
-        if identityObserver == nil {
-            identityObserver = NotificationCenter.default.addObserver(
-                forName: .NSUbiquityIdentityDidChange,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reset() }
-            }
-        }
-        if userDataClearObserver == nil {
-            userDataClearObserver = NotificationCenter.default.addObserver(
-                forName: .localUserDataDidClear,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reset() }
-            }
-        }
-
         guard metadataQuery == nil else { return }
 
         // 診斷：檢查 iCloud 身分與容器
@@ -163,18 +167,14 @@ final class ICloudDownloadManager {
         AppLog.book.info("ICloudDownloadManager: monitoring started")
     }
 
-    /// 停止監控
+    /// 停止監控（只停 NSMetadataQuery；帳號切換 observers 不受影響）
     func stopMonitoring() {
         metadataQuery?.stop()
         metadataQuery = nil
         if let o = gatherObserver { NotificationCenter.default.removeObserver(o) }
         if let o = updateObserver { NotificationCenter.default.removeObserver(o) }
-        if let o = identityObserver { NotificationCenter.default.removeObserver(o) }
-        if let o = userDataClearObserver { NotificationCenter.default.removeObserver(o) }
         gatherObserver = nil
         updateObserver = nil
-        identityObserver = nil
-        userDataClearObserver = nil
     }
 
     /// 帳號切換時重設所有狀態並重新開始監控新帳號的 iCloud 容器。

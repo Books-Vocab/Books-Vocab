@@ -49,6 +49,10 @@ final class LocalDataCleanerService: LocalDataClearing {
         // deleting them would permanently lose the user's library (#758 follow-up).
         Self.purgeNotebookCovers()
         #endif
+        // iCloud 目錄快取以 Apple ID 為準；帳號切換後須重取，否則路徑指向舊帳號容器。
+        // 通知讓 ICloudDownloadManager 重設 fileStates + 重啟 NSMetadataQuery。
+        Book.clearICloudDirectoryCache()
+        NotificationCenter.default.post(name: .localUserDataDidClear, object: nil)
     }
 
     #if os(iOS)
