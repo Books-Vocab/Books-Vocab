@@ -44,6 +44,18 @@ struct PodcastPage {
         app.buttons["podcast.player.playPauseButton"]
     }
 
+    var loginSheet: XCUIElement {
+        app.descendants(matching: .any)["auth.loginSheet"]
+    }
+
+    var playerLoginGate: XCUIElement {
+        app.descendants(matching: .any)["podcast.player.locked.loginGate"]
+    }
+
+    var playerLoginButton: XCUIElement {
+        app.buttons["podcast.player.locked.signInButton"]
+    }
+
     // MARK: - Actions
 
     @discardableResult

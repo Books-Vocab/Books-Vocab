@@ -545,7 +545,9 @@ json="$verdict.json"
 printf 'RESULT=ok EXIT=0 caller=stub-test elapsed=2s executed=7 log=%s/test.log xcresult=%s/Test.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
 mkdir -p "${TMPDIR:-/tmp}/Test.xcresult"
 : > "${TMPDIR:-/tmp}/test.log"
-jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult}}' >"$json"
+mkdir -p "${TMPDIR:-/tmp}/ui-steps"
+: > "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png"
+jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiScreenshotDir:$screenshotDir}}' >"$json"
 echo "test stub stdout"
 SH
 cat > "$delegate_tmp/archive_stub.sh" <<'SH'
@@ -567,7 +569,7 @@ echo "$build_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="build" a
 grep -q 'build stub stdout' "$delegate_tmp/build_stderr" \
   && ok "build --json redirects delegate stdout to stderr" || fail_t "build --json missing delegate output forwarding"
 test_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --json 2>"$delegate_tmp/test_stderr")"
-echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
+echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .artifacts.uiContactSheetExists==true and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
   && ok "test --json emits machine-readable run report" || fail_t "test --json invalid: $test_direct_json"
 grep -q 'test stub stdout' "$delegate_tmp/test_stderr" \
   && ok "test --json redirects delegate stdout to stderr" || fail_t "test --json missing delegate output forwarding"
@@ -800,10 +802,23 @@ grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test counts executed tests from xcresult first" || fail_t "ios_test missing xcresult executed-count path"
 grep -q 'effectiveTests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test treats skipped-only xcresult summaries as non-executed" || fail_t "ios_test still counts skipped-only summaries as executed"
+grep -q "head -20 || true" "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test failure summary cannot abort verdict writing" || fail_t "ios_test failure summary can abort before verdict"
 grep -q 'emit_ui_runner_lifecycle' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q '\[ios_test\]\[ui-lifecycle\]' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'screenshot=' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test emits UI runner lifecycle diagnostics on abnormal UI outcomes" || fail_t "ios_test missing UI runner lifecycle diagnostics"
+grep -q 'KG_UI_TEST_SCREENSHOT_DIR' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'catalog_contact_sheet.py' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test captures UI step screenshots into a contact sheet" || fail_t "ios_test missing UI step contact sheet capture"
+grep -q 'xcresulttool' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'export attachments' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -Fq 'Step ([0-9]{2}-' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test falls back to xcresult step attachments" || fail_t "ios_test missing xcresult step attachment fallback"
+prepare_def_line="$(grep -n '^prepare_ui_step_screenshot_dir()' "$WORKSPACE/ops/ios_test.sh" | cut -d: -f1 | head -1)"
+prepare_call_line="$(grep -n '^[[:space:]]*prepare_ui_step_screenshot_dir$' "$WORKSPACE/ops/ios_test.sh" | cut -d: -f1 | head -1)"
+[[ -n "$prepare_def_line" && -n "$prepare_call_line" && "$prepare_def_line" -lt "$prepare_call_line" ]] \
+  && ok "ios_test defines UI step helper before first use" || fail_t "ios_test UI step helper order invalid"
 grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'build-for-testing' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"

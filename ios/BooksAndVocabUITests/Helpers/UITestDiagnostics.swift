@@ -2,13 +2,16 @@ import XCTest
 
 class UITestCase: XCTestCase {
     private(set) var currentApp: XCUIApplication?
+    private var screenshotStepIndex = 0
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        screenshotStepIndex = 0
     }
 
     override func tearDownWithError() throws {
-        if let app = currentApp, let testRun, !testRun.hasSucceeded {
+        let failed = (testRun?.failureCount ?? 0) > 0 || (testRun?.unexpectedExceptionCount ?? 0) > 0
+        if let app = currentApp, failed {
             attachDiagnostics(for: app)
         }
         currentApp = nil
@@ -41,6 +44,36 @@ class UITestCase: XCTestCase {
         add(XCTAttachment(string: app.debugDescription).named("\(namePrefix) Debug Description"))
         add(XCTAttachment(string: currentTabSummary(in: app)).named("\(namePrefix) Current Tab"))
         add(XCTAttachment(string: visibleElementSummary(in: app)).named("\(namePrefix) Visible Elements"))
+    }
+
+    func captureStep(
+        _ name: String,
+        app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        screenshotStepIndex += 1
+        let screenshot = app.screenshot()
+        let safeName = name
+            .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let stepName = String(format: "%02d-%@", screenshotStepIndex, safeName.isEmpty ? "step" : safeName)
+        add(XCTAttachment(screenshot: screenshot).named("Step \(stepName)"))
+
+        guard let dir = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
+              !dir.isEmpty else { return }
+        let url = URL(fileURLWithPath: dir).appendingPathComponent("\(stepName).png")
+        do {
+            try FileManager.default.createDirectory(
+                at: URL(fileURLWithPath: dir),
+                withIntermediateDirectories: true
+            )
+            try screenshot.pngRepresentation.write(to: url)
+        } catch {
+            XCTContext.runActivity(named: "Failed to write UI step screenshot") { activity in
+                activity.add(XCTAttachment(string: "\(url.path): \(error)").named("Screenshot Write Error"))
+            }
+        }
     }
 
     func currentTabSummary(in app: XCUIApplication) -> String {

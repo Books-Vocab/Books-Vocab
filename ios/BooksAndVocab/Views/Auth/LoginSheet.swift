@@ -64,6 +64,7 @@ struct LoginSheet: View {
                 }
                 .buttonStyle(.pressable)
                 .accessibilityLabel("使用 Google 帳號登入".localized)
+                .accessibilityIdentifier("auth.loginSheet.googleButton")
 
                 Button {
                     authManager.loginWithApple(modelContainer: modelContext.container)
@@ -76,6 +77,7 @@ struct LoginSheet: View {
                 }
                 .buttonStyle(.pressable)
                 .accessibilityLabel("使用 Apple 帳號登入".localized)
+                .accessibilityIdentifier("auth.loginSheet.appleButton")
             }
             .padding(.horizontal, AppSpacing.s4)
             .padding(.bottom, AppSpacing.s6)
@@ -105,6 +107,7 @@ struct LoginSheet: View {
             }
         }
         .animatePhaseChange(authManager.isAuthenticating)
+        .accessibilityIdentifier("auth.loginSheet")
     }
 
     private func loginButtonLabel(title: String, systemImage: String?, isGoogle: Bool) -> some View {

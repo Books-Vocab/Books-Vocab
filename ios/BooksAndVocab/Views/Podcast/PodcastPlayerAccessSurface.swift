@@ -32,11 +32,13 @@ struct PodcastPlayerLockedGateView: View {
             }
             .buttonStyle(.appAction(.primary))
             .frame(maxWidth: 280)
+            .accessibilityIdentifier(isGuest ? "podcast.player.locked.signInButton" : "podcast.player.locked.upgradeButton")
         }
         .padding(AppShellMetrics.pageHorizontalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.palette.pageBackground.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier(isGuest ? "podcast.player.locked.loginGate" : "podcast.player.locked.paywallGate")
     }
 }
 
