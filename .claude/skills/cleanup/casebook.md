@@ -117,3 +117,45 @@ git fetch --prune
 
 真正的收斂不是「PR merged」，而是「殘影也消失」。
 
+---
+
+## Case 7 — 黑名單 branch 持續有人提交
+
+### 症狀
+
+- 黑名單 worktree 還在被另一個 agent 持續修改
+- 你在 cleanup 期間看到新的 dirty work 或新 commit
+- 你不想打斷它，但也不能讓它脫離最新 `main`
+
+### 正確做法
+
+1. 先把當下 dirty work commit 到原 branch
+2. 把這個 commit 視為本輪 snapshot
+3. promote / rebase 只處理到這個 snapshot
+4. 若之後又出現新 commit，不回頭重做本輪
+5. 在 final report 明講：本輪處理到哪個 snapshot，之後新增量留待下一輪
+
+### 為什麼
+
+cleanup 維護的是「本輪已知快照」，不是一條會持續變動的 moving HEAD。
+
+---
+
+## Case 8 — promote 一條、另一條繼續活著再 rebase
+
+### 症狀
+
+- 兩條黑名單都還在活
+- 其中一條改動小、成熟、衝突面低
+- 另一條仍在快速長
+
+### 正確做法
+
+1. 先 promote 較小且成熟的那條前綴進 `main`
+2. push / sync `main`
+3. 把另一條活黑名單 rebase 到新 `main`
+4. 兩條 branch / worktree 都保留
+
+### 為什麼
+
+這樣做的目的不只是避衝突，而是讓 shared baseline 儘快吸收成熟成果，同時不追逐仍在變動的分支本體。

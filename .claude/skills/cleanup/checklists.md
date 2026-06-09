@@ -8,6 +8,8 @@
 - 已跑 `git fetch --all --prune`
 - 已看 `git status` / `stash list` / `branch -vv` / `worktree list`
 - 已看 `gh pr list` / `branch_audit`
+- 已確認哪些 branch 是活分支、哪些只是靜態殘影
+- 已決定這輪每條活分支的 snapshot 邊界
 - 已確認這輪是：
   - `Blacklist-Driven Convergence`
   - 或 `Promote Active Branch`
@@ -29,6 +31,7 @@
 
 - branch 本體是不是還在活躍修改？
 - 你要 promote 的是否都是已提交 commits？
+- 若 branch 有 dirty work，是否已先 commit 成 snapshot？
 - 是否已改用 integration worktree？
 - 是否明確承諾「不碰 branch 本體」？
 
@@ -40,11 +43,13 @@
 - 若不乾淨，是否已先 commit？
 - `main` 是否已是最新 shared baseline？
 - 若有 remote / PR，是否準備好 `push --force-with-lease`？
+- 是否已明確知道這輪 rebase 到哪個 snapshot 為止？
 
 ---
 
 ## Before Final Report
 
+- 每條活分支的 snapshot commit 已列清楚
 - 已收進 `main` 的白名單內容列清楚
 - 黑名單與其新 base 列清楚
 - preserved work mapping 列清楚
@@ -59,6 +64,9 @@
 ## Convergence Round Complete
 blacklist:
 - <branch/PR/worktree>
+
+### snapshots
+- <branch> @ <snapshot-sha>
 
 ### absorbed into main
 - <branch/commit/PR> → main
