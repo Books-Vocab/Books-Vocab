@@ -20,8 +20,8 @@ struct BookshelfPage {
 
     // MARK: - Content
 
-    var emptyStateTitle: XCUIElement {
-        app.staticTexts["bookshelf.emptyState.title"]
+    var emptyState: XCUIElement {
+        app.otherElements["bookshelf.emptyState"]
     }
 
     var emptyStateImportButton: XCUIElement {
@@ -46,20 +46,20 @@ struct BookshelfPage {
     // MARK: - Actions
 
     @discardableResult
-    func tapImport(file: StaticString = #filePath, line: UInt = #line) -> Self {
+    func tapImport(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         importButton.tapWhenReady(file: file, line: line)
         return self
     }
 
     @discardableResult
-    func tapSettings(file: StaticString = #filePath, line: #line) -> SettingsSheetPage {
+    func tapSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> SettingsSheetPage {
         settingsButton.tapWhenReady(file: file, line: line)
         return SettingsSheetPage(app: app)
     }
 
     /// Tap the first available book card, if any.
     @discardableResult
-    func tapFirstBook(file: StaticString = #filePath, line: UInt = #line) -> ReaderPage? {
+    func tapFirstBook(file: StaticString = #filePath, line: UInt = UInt(#line)) -> ReaderPage? {
         guard anyBookCard.waitForExistence(timeout: 5) else { return nil }
         anyBookCard.tap()
         return ReaderPage(app: app)
@@ -67,11 +67,11 @@ struct BookshelfPage {
 
     // MARK: - Assertions
 
-    func assertIsActive(file: StaticString = #filePath, line: UInt = #line) {
+    func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         importButton.assertExists(file: file, line: line)
     }
 
-    func assertEmptyStateVisible(file: StaticString = #filePath, line: UInt = #line) {
-        emptyStateTitle.assertExists(file: file, line: line)
+    func assertEmptyStateVisible(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        emptyState.assertExists(file: file, line: line)
     }
 }

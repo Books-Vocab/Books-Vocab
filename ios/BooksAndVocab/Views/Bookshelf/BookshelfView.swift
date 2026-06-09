@@ -174,6 +174,8 @@ struct BookshelfView: View {
                     guidanceText: copy.guidanceText,
                     style: .bookshelf(appTheme)
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("bookshelf.emptyState")
 
                 TipView(EPUBGuideTip()) { action in
                     if action.id == EPUBGuideTip.guideActionID {

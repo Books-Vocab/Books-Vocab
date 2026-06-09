@@ -70,7 +70,7 @@ final class BooksAndVocabUITests: XCTestCase {
         settings.assertIsPresented()
 
         let _ = settings.dismiss()
-        settings.navBar.assertDoesNotExist()
+        settings.closeButton.assertDoesNotExist()
     }
 
     @MainActor
@@ -92,5 +92,42 @@ final class BooksAndVocabUITests: XCTestCase {
 
         let notebooks = AppPage(app: app).goToNotebooks()
         notebooks.assertIsActive()
+    }
+
+    // MARK: - Overview Flows
+
+    @MainActor
+    func testOverviewTabShowsNavigationTitle() throws {
+        let app = makeConfiguredApp()
+        app.launch()
+
+        let _ = AppPage(app: app).goToOverview()
+        let navTitle = app.navigationBars.staticTexts["總覽"]
+        navTitle.assertExists()
+    }
+
+    // MARK: - Podcast Flows
+
+    @MainActor
+    func testPodcastTabIsAccessible() throws {
+        let app = makeConfiguredApp()
+        app.launch()
+
+        let podcasts = AppPage(app: app).goToPodcasts()
+        podcasts.assertIsActive()
+    }
+
+    // MARK: - Bookshelf → Reader Flow
+
+    @MainActor
+    func testBookshelfToReaderNavigation() throws {
+        let app = makeConfiguredApp()
+        app.launch()
+
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        guard let reader = bookshelf.tapFirstBook() else {
+            throw XCTSkip("無書籍測試資料，無法驗證 Reader 導航")
+        }
+        reader.assertIsActive()
     }
 }
