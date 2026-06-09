@@ -16,11 +16,11 @@ final class TodayReviewState {
     // MARK: - Card Navigation
 
     private var session: TodayReviewSessionState<VocabularyEntry>
-    private var queuePersistenceIDs: [String]
-    private var queueBaselines: [TodayReviewSessionSnapshotStore.ReviewBaseline]
+    private var persistence: TodayReviewSessionPersistenceController
+    private var cardCache = TodayReviewCardCache()
+    private let autoplay = TodayReviewAutoplayController()
     var linkedCardStack: [VocabularyEntry] = []
     var tappedLink: KGCardLinkSummary?
-    var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
     static let cacheLookaheadLimit = 3
 
     // MARK: - Delegated concerns
@@ -34,22 +34,6 @@ final class TodayReviewState {
     var forgotFeedbackTrigger: Int { scoring.forgotFeedbackTrigger }
     var forgotCount: Int { scoring.forgotCount }
     var rememberedCount: Int { scoring.rememberedCount }
-
-    // MARK: - Autoplay
-    // NOTE: autoplay is kept here because its loop body directly mutates
-    // navigation state (currentIndex, revealStage). Extracting it would
-    // require bidirectional coupling — less safe than keeping it co-located.
-
-    var isAutoPlaying = false
-    var isAutoPlayPaused = false
-    var autoplayTask: Task<Void, Never>?
-    var autoplaySpeed: AutoplaySpeed = ReviewSettingsStore.shared.settings.autoplaySpeed
-    var autoplaySoundEnabled: Bool = ReviewSettingsStore.shared.settings.autoplaySoundEnabled
-
-    // MARK: - Cache build
-    // Keep only a small sliding window warm. Building hundreds of rich cards on
-    // the main actor during session start causes visible hitches on large queues.
-    private var cacheBuildTask: Task<Void, Never>?
 
     // MARK: - Perf (fling→front render gap self-measurement)
     nonisolated(unsafe) static var flingClock: DispatchTime?
@@ -98,8 +82,10 @@ final class TodayReviewState {
         )
         let _msRestore = PerfChannel.ms(since: _tRestore)
         session = TodayReviewSessionState(queue: ordered)
-        queuePersistenceIDs = ordered.map(ReviewSessionPersistence.persistenceID(for:))
-        queueBaselines = ordered.map(ReviewSessionPersistence.makeBaseline(from:))
+        persistence = TodayReviewSessionPersistenceController(
+            queue: ordered,
+            currentUserID: currentUserID
+        )
         sessionStartTime = restored?.sessionStartTime ?? Date()
         let _tLookup = DispatchTime.now()
         linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
@@ -109,8 +95,11 @@ final class TodayReviewState {
                 queue: restored.queue,
                 currentIndex: restored.currentIndex
             )
-            queuePersistenceIDs = restored.persistenceIDs
-            queueBaselines = restored.baselines
+            persistence = TodayReviewSessionPersistenceController(
+                queuePersistenceIDs: restored.persistenceIDs,
+                queueBaselines: restored.baselines,
+                currentUserID: currentUserID
+            )
             scoring.restore(
                 submittedAnswers: restored.submittedAnswers,
                 rememberedCount: restored.rememberedCount,
@@ -129,6 +118,11 @@ final class TodayReviewState {
     var queue: [VocabularyEntry] { session.queue }
     var currentIndex: Int { session.currentIndex }
     var revealStage: TodayReviewRevealStage { session.revealStage }
+    var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] { cardCache.storage }
+    var isAutoPlaying: Bool { autoplay.isPlaying }
+    var isAutoPlayPaused: Bool { autoplay.isPaused }
+    var autoplaySpeed: AutoplaySpeed { autoplay.speed }
+    var autoplaySoundEnabled: Bool { autoplay.soundEnabled }
 
     var currentEntry: VocabularyEntry? {
         session.currentEntry
@@ -181,21 +175,7 @@ final class TodayReviewState {
 
     /// Fallback: build on-demand if async cache hasn't completed yet.
     private func cachedOrBuildCard(for entry: VocabularyEntry) -> TodayReviewPresenterState.CurrentCard? {
-        if let cached = preparedCardCache[entry.id] {
-            PerfLog.review.tick("card.cacheHit", "w=\(entry.word)")
-            return cached
-        }
-        // Cache MISS = on-demand rich-card build on the main actor during render. With the
-        // DB-merge storm gone this is the prime suspect for the residual next-card cost;
-        // measure each miss so a flip-time miss (vs a warm prewarm hit) is attributable.
-        let built = PerfLog.review.measure("card.cacheMiss", "w=\(entry.word)") {
-            Self.buildPreparedCardCache(from: [entry])
-        }.value
-        if let card = built[entry.id] {
-            preparedCardCache[entry.id] = card
-            return card
-        }
-        return nil
+        cardCache.cachedOrBuild(for: entry)
     }
 
     // MARK: - Actions
@@ -227,24 +207,7 @@ final class TodayReviewState {
     }
 
     func rebuildCacheForEntry(_ entry: VocabularyEntry) {
-        let card = CardPresentation(entry: entry)
-        let compactGroups = card.activeLinkGroups.map { fullGroup in
-            let limited = fullGroup.limited(to: 2)
-            return TodayReviewPresenterState.LinkGroup(
-                id: fullGroup.id,
-                label: fullGroup.label,
-                items: limited.items,
-                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
-            )
-        }
-        let backDoc = card.document.reviewBackSubset()
-        let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDoc)
-        preparedCardCache[entry.id] = .init(
-            card: card,
-            linkGroups: compactGroups,
-            backDocument: backDoc,
-            postExampleMetrics: metrics
-        )
+        cardCache.rebuild(for: entry)
     }
 
     func handleDetailTap() {
@@ -276,7 +239,7 @@ final class TodayReviewState {
         withAnimation(AppMotion.reviewNavigationSpring) {
             _ = session.goPrevious()
         }
-        if isAutoPlaying && !isAutoPlayPaused {
+        if autoplay.isLoopActive {
             startAutoPlayLoop()
         }
         prewarmCardWindow()
@@ -288,7 +251,7 @@ final class TodayReviewState {
         withAnimation(AppMotion.reviewNavigationSpring) {
             _ = session.goNext()
         }
-        if isAutoPlaying && !isAutoPlayPaused {
+        if autoplay.isLoopActive {
             startAutoPlayLoop()
         }
         prewarmCardWindow()
@@ -298,91 +261,39 @@ final class TodayReviewState {
     // MARK: - Autoplay
 
     func toggleAutoPlay() {
-        if isAutoPlaying {
-            stopAutoPlay()
-        } else {
-            startAutoPlay()
-        }
+        autoplay.togglePlayback(restartLoop: { [weak self] in self?.startAutoPlayLoop() })
     }
 
     func toggleAutoPlayPause() {
-        isAutoPlayPaused.toggle()
-        if !isAutoPlayPaused {
-            startAutoPlayLoop()
-        }
-    }
-
-    func startAutoPlay() {
-        isAutoPlaying = true
-        isAutoPlayPaused = false
-        startAutoPlayLoop()
+        autoplay.togglePause(restartLoop: { [weak self] in self?.startAutoPlayLoop() })
     }
 
     func stopAutoPlay() {
-        autoplayTask?.cancel()
-        autoplayTask = nil
-        isAutoPlaying = false
-        isAutoPlayPaused = false
+        autoplay.stop()
     }
 
     func changeAutoplaySpeed(to speed: AutoplaySpeed) {
-        autoplaySpeed = speed
-        var settings = ReviewSettingsStore.shared.settings
-        settings.autoplaySpeed = speed
-        ReviewSettingsStore.shared.update(settings)
-        if isAutoPlaying && !isAutoPlayPaused {
-            startAutoPlayLoop()
-        }
+        autoplay.changeSpeed(to: speed, restartLoop: { [weak self] in self?.startAutoPlayLoop() })
     }
 
     func toggleAutoplaySound() {
-        autoplaySoundEnabled.toggle()
-        var settings = ReviewSettingsStore.shared.settings
-        settings.autoplaySoundEnabled = autoplaySoundEnabled
-        ReviewSettingsStore.shared.update(settings)
-    }
-
-    /// Cancel any background work tied to the session lifecycle. Called from the
-    /// view's `onDisappear` so an early dismiss tears down the in-flight cache
-    /// build instead of letting it run to completion and mutate state. Idempotent.
-    func cancelBackgroundWork() {
-        cacheBuildTask?.cancel()
-        cacheBuildTask = nil
+        autoplay.toggleSound()
     }
 
     func startAutoPlayLoop() {
-        autoplayTask?.cancel()
-        autoplayTask = Task { @MainActor [weak self] in
-            // [weak self] breaks the state → autoplayTask → closure → state
-            // retain cycle. If state is deallocated mid-loop the guard exits
-            // and the cancelled task tears down naturally.
-            while !Task.isCancelled {
-                guard let self, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
-                guard !self.session.isComplete else {
-                    self.stopAutoPlay()
-                    return
+        autoplay.startOrRestartLoop(
+            isComplete: { [weak self] in self?.session.isComplete ?? true },
+            shouldReveal: { [weak self] in self?.revealStage == .front },
+            reveal: { [weak self] in self?.advanceReveal() },
+            advance: { [weak self] in
+                guard let self, !self.session.isComplete, self.session.canGoNext else { return false }
+                withAnimation(AppMotion.reviewNavigationSpring) {
+                    _ = self.session.advanceAfterSubmission()
                 }
-
-                if self.revealStage == .front {
-                    try? await Task.sleep(for: self.autoplaySpeed.revealDelay)
-                    guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
-                    self.advanceReveal()
-                }
-
-                try? await Task.sleep(for: self.autoplaySpeed.stayDelay)
-                guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
-
-                if !self.session.isComplete, self.session.canGoNext {
-                    withAnimation(AppMotion.reviewNavigationSpring) {
-                        _ = self.session.advanceAfterSubmission()
-                    }
-                    self.prewarmCardWindow()
-                } else {
-                    self.stopAutoPlay()
-                    return
-                }
+                self.prewarmCardWindow()
+                return true
             }
-        }
+        )
     }
 
     // MARK: - Submit (Scoring only — persistence deferred to session end)
@@ -436,19 +347,17 @@ final class TodayReviewState {
         onFinalize: @escaping @MainActor () -> Void = {},
         onFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
-        ReviewSessionPersistence.flushPendingAnswers(
-            queuePersistenceIDs: queuePersistenceIDs,
-            queueBaselines: queueBaselines,
+        persistence.flushPendingAnswers(
             submittedAnswers: scoring.submittedAnswers,
             container: container,
             reviewSettings: reviewSettings,
+            onFinalize: onFinalize,
+            onFailure: onFailure,
             onFlushed: { [weak self] indices in
                 if let self {
                     for i in indices { self.scoring.markFlushed(at: i) }
                 }
-                onFinalize()
-            },
-            onFailure: onFailure
+            }
         )
     }
 
@@ -500,72 +409,26 @@ final class TodayReviewState {
     }
 
     func persistSnapshot() {
-        guard let currentUserID else { return }
-        ReviewSessionPersistence.persistSnapshot(
-            userId: currentUserID,
+        persistence.persistSnapshot(
             sessionStartTime: sessionStartTime,
             currentIndex: currentIndex,
             queueCount: queue.count,
-            queuePersistenceIDs: queuePersistenceIDs,
-            queueBaselines: queueBaselines,
             submittedAnswers: scoring.submittedAnswers
         )
     }
 
     func clearSnapshot() {
-        ReviewSessionPersistence.clearSnapshot(for: currentUserID)
+        persistence.clearSnapshot()
     }
 
     // MARK: - Cache Builders
 
     private func prewarmCardWindow() {
-        guard !queue.isEmpty, currentIndex < queue.count else {
-            preparedCardCache.removeAll(keepingCapacity: false)
-            return
-        }
-
-        let start = max(currentIndex - 1, 0)
-        let end = min(currentIndex + Self.cacheLookaheadLimit, queue.count - 1)
-        let visibleEntries = Array(queue[start...end])
-        let visibleIDs = Set(visibleEntries.map(\.id))
-
-        preparedCardCache = preparedCardCache.filter { visibleIDs.contains($0.key) }
-
-        let missingEntries = visibleEntries.filter { preparedCardCache[$0.id] == nil }
-        guard !missingEntries.isEmpty else { return }
-        preparedCardCache.merge(Self.buildPreparedCardCache(from: missingEntries)) { current, _ in current }
-    }
-
-    static func buildPreparedCardCache(
-        from entries: [VocabularyEntry]
-    ) -> [UUID: TodayReviewPresenterState.CurrentCard] {
-        var cache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
-        cache.reserveCapacity(entries.count)
-        PerfLog.review.mark("prewarm.build", "count=\(entries.count)")
-        for entry in entries {
-            let (card, _) = PerfLog.review.measure("prewarm.card", "w=\(entry.word)") {
-                CardPresentation(entry: entry)
-            }
-            let compactGroups = card.activeLinkGroups.map { fullGroup in
-                let shuffled = fullGroup.shuffled()
-                let limited = shuffled.limited(to: 2)
-                return TodayReviewPresenterState.LinkGroup(
-                    id: fullGroup.id,
-                    label: fullGroup.label,
-                    items: limited.items,
-                    overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
-                )
-            }
-            let backDoc = card.document.reviewBackSubset()
-            let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDoc)
-            cache[entry.id] = .init(
-                card: card,
-                linkGroups: compactGroups,
-                backDocument: backDoc,
-                postExampleMetrics: metrics
-            )
-        }
-        return cache
+        cardCache.prewarm(
+            queue: queue,
+            currentIndex: currentIndex,
+            lookaheadLimit: Self.cacheLookaheadLimit
+        )
     }
 
     private static func buildLinkedEntryLookup(
@@ -578,8 +441,7 @@ final class TodayReviewState {
     }
 
     private func syncQueueMetadata() {
-        queuePersistenceIDs = queue.map(ReviewSessionPersistence.persistenceID(for:))
-        queueBaselines = queue.map(ReviewSessionPersistence.makeBaseline(from:))
+        persistence.syncQueueMetadata(for: queue)
     }
 
     private func advancePastAlreadyScoredCard() {

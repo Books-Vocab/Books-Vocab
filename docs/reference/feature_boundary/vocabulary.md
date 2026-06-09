@@ -57,6 +57,9 @@ verified_against: 8aaece8d
 |------|------|------|
 | `Scenes/TodayReviewState.swift` | 551 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration，queue+reveal 導航委派 `TodayReviewSessionState` |
 | `Scenes/TodayReviewSessionState.swift` | 64 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定 |
+| `Scenes/TodayReviewSessionPersistenceController.swift` | 73 | `struct TodayReviewSessionPersistenceController`，封裝 queue persistence metadata / snapshot / deferred flush；讓 `TodayReviewState` 不直接操作 `ReviewSessionPersistence` |
+| `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
+| `Scenes/TodayReviewAutoplayController.swift` | 87 | `@MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
 
 ### Presentation Models（UI 資料轉換）
@@ -148,6 +151,9 @@ verified_against: 8aaece8d
 
 - `TodayReviewState`：複習 scene owner，負責 orchestration；僅 `TodayReviewView` 持有，不外洩
 - `TodayReviewSessionState`：純 session/navigation state，僅 `TodayReviewState` 持有
+- `TodayReviewSessionPersistenceController`：session persistence helper，僅 `TodayReviewState` 持有
+- `TodayReviewCardCache`：TodayReview rich-card cache helper，僅 `TodayReviewState` 持有
+- `TodayReviewAutoplayController`：autoplay helper，僅 `TodayReviewState` 持有
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
 - `KGVocabCoordinator`：KG 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
