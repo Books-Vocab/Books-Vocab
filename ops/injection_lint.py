@@ -25,7 +25,7 @@ import datetime as dt
 import sys
 from pathlib import Path
 
-VIEWS_ROOT = Path("ios/BooksBrowser/Views")
+VIEWS_ROOT = Path("ios/BooksAndVocab/Views")
 BASELINE_FILE = Path("ops/injection_baseline.txt")
 
 # View-injection grammar shared with the codemod (single source of truth).

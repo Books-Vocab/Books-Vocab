@@ -1,4 +1,4 @@
-"""FastAPI server for Knowledge Graph — lightweight bridge for BooksBrowser.
+"""FastAPI server for Knowledge Graph — lightweight bridge for BooksAndVocab.
 
 App factory, middleware stack, and route wiring.
 Endpoint functions live in their respective routers/*.py files.

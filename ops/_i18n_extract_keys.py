@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-IOS_SRC = ROOT / "ios" / "BooksBrowser"
+IOS_SRC = ROOT / "ios" / "BooksAndVocab"
 STRIP_PREVIEWS = ROOT / "ops" / "_i18n_strip_previews.py"
 
 # Load the preview-stripper as a module (loaded from its absolute path so this

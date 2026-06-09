@@ -137,7 +137,7 @@ cmd_simulator_status_json() {
               error:(if $containerSource == null then null else $containerSource.error end)
             },
             process:{
-              name:"BooksBrowser",
+              name:"BooksAndVocab",
               pid:(if $processSource != null and $processSource.status == "ok" and $process_pid != "" then $process_pid else null end),
               status:(
                 if $processSource == null then "skipped"
@@ -371,7 +371,7 @@ cmd_simulator_lifecycle() {
           app:{
             bundleID:$bundle_id,
             lifecycle:{status:"error",exitCode:null,output:null,error:"booted-simulator-required"},
-            process:{name:"BooksBrowser",pid:null,status:"skipped",exitCode:null,error:null}
+            process:{name:"BooksAndVocab",pid:null,status:"skipped",exitCode:null,error:null}
           },
           timings:{totalMs:$totalMs,statusMs:$statusMs,lifecycleMs:0,appProcessMs:0},
           errors:($statusPayload.errors + [{key:$action,status:"error",exitCode:null,error:"booted-simulator-required"}])
@@ -464,7 +464,7 @@ cmd_simulator_lifecycle() {
               error:(if $rc == 0 then null else $life_error end)
             },
             process:{
-              name:"BooksBrowser",
+              name:"BooksAndVocab",
               pid:(if $processSource.status == "ok" and $process_pid != "" then $process_pid else null end),
               status:(
                 if $processSource.status == "ok" and $process_pid != "" then "running"

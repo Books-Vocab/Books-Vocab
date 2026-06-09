@@ -38,9 +38,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TOKENS_JSON = Path(os.environ.get("KG_TOKENS_JSON", REPO / "design-system" / "tokens.json"))
-MODELS = Path(os.environ.get("KG_IOS_MODELS_DIR", REPO / "ios" / "BooksBrowser" / "Models"))
+MODELS = Path(os.environ.get("KG_IOS_MODELS_DIR", REPO / "ios" / "BooksAndVocab" / "Models"))
 UICOMPONENTS = Path(os.environ.get(
-    "KG_IOS_UICOMPONENTS_DIR", REPO / "ios" / "BooksBrowser" / "UIComponents"))
+    "KG_IOS_UICOMPONENTS_DIR", REPO / "ios" / "BooksAndVocab" / "UIComponents"))
 
 EPS = 5e-3  # Tolerance for hex↔rgb float quantisation (max error = 1/255 ≈ 0.0039)
 _FLOAT = r"[-+]?[0-9]*\.?[0-9]+"

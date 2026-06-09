@@ -40,7 +40,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-IOS_SRC="$ROOT_DIR/ios/BooksBrowser"
+IOS_SRC="$ROOT_DIR/ios/BooksAndVocab"
 XCSTRINGS="$IOS_SRC/Localization/Localizable.xcstrings"
 BASELINE_FILE="$ROOT_DIR/ops/i18n_baseline.txt"
 STRIP_PREVIEWS="$ROOT_DIR/ops/_i18n_strip_previews.py"

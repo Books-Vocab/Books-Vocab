@@ -3,14 +3,14 @@ tier: archive
 authority: derived
 update_trigger: plan-execution
 scope:
-  - ios/BooksBrowser/Views/Podcast/
-  - ios/BooksBrowser/UIComponents/ListSectionCard.swift
+  - ios/BooksAndVocab/Views/Podcast/
+  - ios/BooksAndVocab/UIComponents/ListSectionCard.swift
 verified_against: frozen
 -->
 
 # Podcast 集數列表雙欄 + 對齊單字列表組件 Implementation Plan
 
-> ⚠️ **已撤回（frozen）：** 本計畫的「regular 雙欄 inline player」設計已於後續重構收斂回**單欄 push**（`PodcastDetailRouter` / `PodcastDetailPresentation` 已移除，集數一律 push）。權威現況見 `ios/BooksBrowser/Views/Podcast/PodcastDetailRouter.swift` 檔頭。此檔僅存歷史。
+> ⚠️ **已撤回（frozen）：** 本計畫的「regular 雙欄 inline player」設計已於後續重構收斂回**單欄 push**（`PodcastDetailRouter` / `PodcastDetailPresentation` 已移除，集數一律 push）。權威現況見 `ios/BooksAndVocab/Views/Podcast/PodcastDetailRouter.swift` 檔頭。此檔僅存歷史。
 
 > **執行方式:** 使用 phased-workflow skill，所有 agent 皆 opus、背景執行。逐 task review（鐵律4）PASS 才下一個。
 
@@ -29,8 +29,8 @@ verified_against: frozen
 ### Task 1: `PodcastDetailRouter`（純狀態，TDD）
 
 **Files:**
-- Create: `ios/BooksBrowser/Views/Podcast/PodcastDetailRouter.swift`
-- Test: `ios/BooksBrowserTests/Podcast/PodcastDetailRouterTests.swift`
+- Create: `ios/BooksAndVocab/Views/Podcast/PodcastDetailRouter.swift`
+- Test: `ios/BooksAndVocabTests/Podcast/PodcastDetailRouterTests.swift`
 
 - [ ] **Step 1: 寫 failing test**
 ```swift
@@ -81,7 +81,7 @@ extension EnvironmentValues {
 ### Task 2: `PodcastPlayerView` 支援 inline 呈現
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Podcast/PodcastPlayerView.swift`（`episodeId` L8、`body` L97 委派 `fullBody` L102、`Group{...}`+modifier 鏈在 `fullBody` 內 L104-204）
+- Modify: `ios/BooksAndVocab/Views/Podcast/PodcastPlayerView.swift`（`episodeId` L8、`body` L97 委派 `fullBody` L102、`Group{...}`+modifier 鏈在 `fullBody` 內 L104-204）
 
 > **架構決策（刻意偏離 vocab）:** 單字本 inline panel 用 `WordDetailSheet(wrapInNavigation:false)` + 自製 `VocabOverlayHeader`，**不**嵌套 NavigationStack。本案右欄為 host 住 player 既有 `ToolbarItem(.topBarTrailing)` 設定鍵（`.topBarTrailing` 需 ambient nav bar，否則靜默消失），改採**嵌套 NavigationStack**。此為 opt-in（預設 false，僅 inline caller 傳 true），且 inline 設定鍵可用性列為 Task 5 實機 hard gate。
 
@@ -117,7 +117,7 @@ private var fullBody: some View {
 ### Task 3: `PodcastDetailPresentation` modifier
 
 **Files:**
-- Create: `ios/BooksBrowser/Views/Podcast/PodcastDetailPresentation.swift`
+- Create: `ios/BooksAndVocab/Views/Podcast/PodcastDetailPresentation.swift`
 
 rebuild 自 `NotebookDetailPresentation`（去 review/edit 分支）。
 
@@ -190,7 +190,7 @@ extension View {
 ### Task 4: 抽 `ListSectionCard` 共用容器
 
 **Files:**
-- Create: `ios/BooksBrowser/Views/Components/ListSectionCard.swift`
+- Create: `ios/BooksAndVocab/Views/Components/ListSectionCard.swift`
 
 骨架 = `VStack(spacing:0) + cardBackground fill + border stroke`（podcast L334-367 與 vocab `VocabListCard` 共同形狀）。**注意現況容器 L334-367 = 背景 fill（L360-363）+ `.overlay` border stroke（L364-367 `skin.palette.cardBorder`）**，兩者都要搬進來，否則 podcast 列表掉邊框。
 
@@ -221,7 +221,7 @@ struct ListSectionCard<Content: View>: View {
 ### Task 5: 接線 — 集數列表注入 router + regular 改 select、套 presentation、用 ListSectionCard
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Podcast/PodcastEpisodeListView.swift`（struct L37、episodesSection L334-363、body 外層）
+- Modify: `ios/BooksAndVocab/Views/Podcast/PodcastEpisodeListView.swift`（struct L37、episodesSection L334-363、body 外層）
 
 - [ ] **Step 1:** struct 內加：
 ```swift
@@ -251,7 +251,7 @@ private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) 
 ### Task 6: 集數 row 對齊 `WordRow` 視覺契約
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Podcast/PodcastEpisodeRow.swift`
+- Modify: `ios/BooksAndVocab/Views/Podcast/PodcastEpisodeRow.swift`
 
 對齊 `WordRow` 的 spacing/typography/tone token（standalone 視覺收斂，獨立於雙欄邏輯，故置後）。
 

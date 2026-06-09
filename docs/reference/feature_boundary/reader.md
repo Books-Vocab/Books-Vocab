@@ -3,9 +3,9 @@ tier: reference
 authority: derived
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Models/ReaderSettings.swift
-  - ios/BooksBrowser/Models/VocabHighlightPreferences.swift
-  - ios/BooksBrowser/Views/Reader/
+  - ios/BooksAndVocab/Models/ReaderSettings.swift
+  - ios/BooksAndVocab/Models/VocabHighlightPreferences.swift
+  - ios/BooksAndVocab/Views/Reader/
 verified_against: 2b1bf578
 -->
 # Reader Feature Boundary

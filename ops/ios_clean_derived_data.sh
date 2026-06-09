@@ -2,7 +2,7 @@
 # ios_clean_derived_data.sh — reclaim stale Xcode build artifacts.
 #
 # Two leak sources are swept:
-#   1. Path-hashed BooksBrowser-* dirs under the global default DerivedData
+#   1. Path-hashed BooksAndVocab-* dirs under the global default DerivedData
 #      location (Xcode GUI / any xcodebuild run that did NOT pass an explicit
 #      -derivedDataPath). ops/ios_build.sh now keeps DerivedData inside the
 #      worktree, so new global orphans should stop appearing — this catches
@@ -28,14 +28,14 @@ done
 
 echo "[ios_clean] mode=$([[ $APPLY -eq 1 ]] && echo apply || echo dry-run) days=$DAYS"
 
-# 1. Global path-hashed orphans (BooksBrowser-<hash>) older than $DAYS days.
+# 1. Global path-hashed orphans (BooksAndVocab-<hash>) older than $DAYS days.
 if [[ -d "$DERIVED_DATA_GLOBAL" ]]; then
   while IFS= read -r dir; do
     [[ -n "$dir" ]] || continue
     size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
     echo "[ios_clean] orphan $size  $dir"
     [[ $APPLY -eq 1 ]] && rm -rf "$dir"
-  done < <(find "$DERIVED_DATA_GLOBAL" -maxdepth 1 -name 'BooksBrowser-*' -type d -mtime "+$DAYS" 2>/dev/null)
+  done < <(find "$DERIVED_DATA_GLOBAL" -maxdepth 1 -name 'BooksAndVocab-*' -type d -mtime "+$DAYS" 2>/dev/null)
 fi
 
 # 2. Simulators whose runtime no longer exists.

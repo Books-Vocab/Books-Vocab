@@ -137,7 +137,7 @@ enum Helpers { static func notATest() {} }
 SWIFT
 
 # helper: does the flag set contain exactly this -only-testing path?
-has_flag() { printf '%s\n' "$1" | grep -qxF -e "-only-testing:BooksBrowserTests/$2"; }
+has_flag() { printf '%s\n' "$1" | grep -qxF -e "-only-testing:BooksAndVocabTests/$2"; }
 
 # ── 1. syntax ─────────────────────────────────────────────────────────────────
 section "Syntax"

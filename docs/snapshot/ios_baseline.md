@@ -3,7 +3,7 @@ tier: snapshot
 authority: derived
 update_trigger: machine-generated
 scope:
-  - ios/BooksBrowser
+  - ios/BooksAndVocab
 verified_against: a0cce07d
 -->
 

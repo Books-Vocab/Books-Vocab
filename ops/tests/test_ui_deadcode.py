@@ -42,13 +42,13 @@ def test_coding_keys_is_never_an_orphan():
     """Codable CodingKeys is compiler-synthesized — never an explicit ref, never dead."""
     records = {
         "version": 1,
-        "sourceRoot": "ios/BooksBrowser/",
+        "sourceRoot": "ios/BooksAndVocab/",
         "symbols": [
             {
                 "kind": "enum",
                 "name": "CodingKeys",
                 "usr": "s:ck",
-                "def": {"path": "/repo/ios/BooksBrowser/Models/M.swift", "line": 20},
+                "def": {"path": "/repo/ios/BooksAndVocab/Models/M.swift", "line": 20},
                 "refs": [],
             }
         ],
@@ -109,15 +109,15 @@ def test_definition_role_ref_is_skipped_by_policy():
     of kgindex already stripping definitions upstream."""
     records = {
         "version": 1,
-        "sourceRoot": "ios/BooksBrowser/",
+        "sourceRoot": "ios/BooksAndVocab/",
         "symbols": [
             {
                 "kind": "struct",
                 "name": "OnlyDefRoleRef",
                 "usr": "s:defrole",
-                "def": {"path": "/repo/ios/BooksBrowser/Views/D.swift", "line": 1},
+                "def": {"path": "/repo/ios/BooksAndVocab/Views/D.swift", "line": 1},
                 "refs": [
-                    {"path": "/repo/ios/BooksBrowser/Views/Other.swift", "line": 9, "roles": ["definition"]}
+                    {"path": "/repo/ios/BooksAndVocab/Views/Other.swift", "line": 9, "roles": ["definition"]}
                 ],
             }
         ],

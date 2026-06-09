@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./ops/ios_ops.sh status
-#   ./ops/ios_ops.sh build [ios_build.sh args...]
+#   ./ops/ios_ops.sh build [ios_build.sh args...]          # e.g. --swift6, --extra-settings KEY=VAL
 #   ./ops/ios_ops.sh test [ios_test.sh args...]
 #   ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>]
 #   ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json]

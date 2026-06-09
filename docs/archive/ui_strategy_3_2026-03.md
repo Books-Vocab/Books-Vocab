@@ -3,13 +3,13 @@ tier: archive
 authority: frozen
 update_trigger: none
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
 verified_against: frozen
 -->
 # UI Strategy 3: Verification & Governance
 
 Date: 2026-03-10
-Scope: `ios/BooksBrowser`
+Scope: `ios/BooksAndVocab`
 
 文檔網絡：
 - 主設計規範：`docs/sop/ui-design.md`

@@ -1,9 +1,9 @@
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-XCODEPROJ="$ROOT/ios/BooksBrowser.xcodeproj"
-SCHEME="BooksBrowser"
-BUNDLE_ID="com.Max0228.BooksBrowser"
+XCODEPROJ="$ROOT/ios/BooksAndVocab.xcodeproj"
+SCHEME="BooksAndVocab"
+BUNDLE_ID="com.Max0228.BooksAndVocab"
 DEFAULT_SIMULATOR_NAME="${KG_IOS_DEFAULT_SIMULATOR_NAME:-iPhone 17 Pro Max}"
-DEFAULT_LOG_PREDICATE='process == "BooksBrowser" OR subsystem BEGINSWITH "com.Max0228.BooksBrowser" OR subsystem BEGINSWITH "com.wordnexus"'
+DEFAULT_LOG_PREDICATE='process == "BooksAndVocab" OR subsystem BEGINSWITH "com.Max0228.BooksAndVocab" OR subsystem BEGINSWITH "com.wordnexus"'
 LOG_NOISE_REGEX='runningboard\.assertions\.webkit|RBSServiceErrorDomain|ProcessAssertion'
 
 read_project_settings() {
@@ -160,7 +160,7 @@ if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then
   }
 
   read_organizer_latest() {
-    printf '2026-06-07T05:00:00Z\tBooksBrowser\tcom.Max0228.BooksBrowser\t1.6\t4\t/tmp/BooksBrowser.xcarchive\n'
+    printf '2026-06-07T05:00:00Z\tBooksAndVocab\tcom.Max0228.BooksAndVocab\t1.6\t4\t/tmp/BooksAndVocab.xcarchive\n'
   }
 
   read_testflight_latest_build() {
@@ -189,9 +189,9 @@ EOF
     jq -n '{
       project:{
         configurations:["Debug","Release"],
-        name:"BooksBrowser",
-        schemes:["BooksBrowser"],
-        targets:["BooksBrowser","BooksBrowserTests","BooksBrowserUITests"]
+        name:"BooksAndVocab",
+        schemes:["BooksAndVocab"],
+        targets:["BooksAndVocab","BooksAndVocabTests","BooksAndVocabUITests"]
       }
     }'
   }
@@ -201,10 +201,10 @@ EOF
       return 9
     fi
     cat <<'EOF'
-Available destinations for the "BooksBrowser" scheme:
+Available destinations for the "BooksAndVocab" scheme:
     { platform:iOS Simulator, arch:arm64, id:fixture-iphone-17-pro-max, OS:26.4, name:iPhone 17 Pro Max }
     { platform:macOS, arch:arm64, variant:Mac Catalyst, id:fixture-my-mac, name:My Mac }
-Ineligible destinations for the "BooksBrowser" scheme:
+Ineligible destinations for the "BooksAndVocab" scheme:
     { platform:iOS Simulator, id:fixture-ineligible, OS:26.4, name:iPhone 17, error:OS mismatch, please download runtime }
 EOF
   }
@@ -261,13 +261,13 @@ EOF
 
   read_app_container_path() {
     local device="$1" bundle_id="$2" kind="${3:-data}"
-    [[ "$device" == "fixture-iphone-17-pro-max" && "$bundle_id" == "com.Max0228.BooksBrowser" && "$kind" == "data" ]] || return 9
+    [[ "$device" == "fixture-iphone-17-pro-max" && "$bundle_id" == "com.Max0228.BooksAndVocab" && "$kind" == "data" ]] || return 9
     printf '/tmp/kg-sim-fixture/container\n'
   }
 
   read_app_process_pid() {
     local device="$1" process_name="$2"
-    [[ "$device" == "fixture-iphone-17-pro-max" && "$process_name" == "BooksBrowser" ]] || return 9
+    [[ "$device" == "fixture-iphone-17-pro-max" && "$process_name" == "BooksAndVocab" ]] || return 9
     if [[ "${KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE:-}" == "1" ]]; then
       return 1
     fi
@@ -276,14 +276,14 @@ EOF
 
   read_app_launch_output() {
     local device="$1" bundle_id="$2"
-    [[ "$device" == "fixture-iphone-17-pro-max" && "$bundle_id" == "com.Max0228.BooksBrowser" ]] || return 9
+    [[ "$device" == "fixture-iphone-17-pro-max" && "$bundle_id" == "com.Max0228.BooksAndVocab" ]] || return 9
     export KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=0
     printf '74736\n'
   }
 
   read_app_terminate_output() {
     local device="$1" bundle_id="$2"
-    [[ "$device" == "fixture-iphone-17-pro-max" && "$bundle_id" == "com.Max0228.BooksBrowser" ]] || return 9
+    [[ "$device" == "fixture-iphone-17-pro-max" && "$bundle_id" == "com.Max0228.BooksAndVocab" ]] || return 9
     export KG_IOS_OPS_SIM_APP_STOPPED_FIXTURE=1
   }
 

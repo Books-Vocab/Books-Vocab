@@ -41,7 +41,7 @@ def test_compute_changes_limits_apply_to_editable_text_fields():
         "eula": {"id": "eula-1", "agreementText": "old terms"},
         "appStoreVersion": {
             "id": "version-1",
-            "copyright": "2026 BooksBrowser",
+            "copyright": "2026 BooksAndVocab",
             "localizations": [
                 {
                     "id": "version-loc-1",

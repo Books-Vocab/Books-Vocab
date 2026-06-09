@@ -258,7 +258,7 @@ LLM 走可插拔 provider registry（`backend/src/kg/llm/providers.py`）。所�
 
 #### iOS env / Info.plist
 
-iOS 端（`ios/BooksBrowser/Services/AppCrashReporting.swift`）：
+iOS 端（`ios/BooksAndVocab/Services/AppCrashReporting.swift`）：
 - `Info.plist` `SentryDSN` 鍵為主開關（空 → 全 no-op）
 - `Info.plist` `SentryEnvironment` 可覆寫；無覆寫時 `#if DEBUG` → `"debug"`，release → `"production"`
 - `releaseName = <bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`、`dist = CFBundleVersion`（區分共用版號的 TestFlight build）

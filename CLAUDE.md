@@ -3,7 +3,7 @@
 ## Identity
 
 **KG = Knowledge Graph 英語詞彙學習 app** — EPUB/PDF/TXT/MD reader 選詞 → 翻譯 → 詞庫 → 知識圖譜 → today review → podcast。  
-Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome-extension/` + `lab/`(Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`。
+Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python)+ `chrome-extension/` + `lab/`(Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`。
 
 | key | value |
 |-----|-------|

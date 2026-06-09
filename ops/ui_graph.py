@@ -35,7 +35,7 @@ import kgindex_records  # noqa: E402  (ops/lib shared module)
 
 SCHEMA = "kg.ui.graph.v1"
 DEFAULT_KINDS = ("struct", "class")
-DEFAULT_SOURCE_ROOT = "ios/BooksBrowser/"
+DEFAULT_SOURCE_ROOT = "ios/BooksAndVocab/"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 

@@ -3,11 +3,11 @@ tier: reference
 authority: derived
 update_trigger: design-decision
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift
-  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift
-  - ios/BooksBrowser/Debug/Scenarios/NotebookListScenarios.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackMetrics.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift
+  - ios/BooksAndVocab/Debug/Scenarios/NotebookListScenarios.swift
 verified_against: HEAD
 -->
 # Notebook Editorial Stack Implementation Plan
@@ -33,7 +33,7 @@ verified_against: HEAD
 ## Task 0: Morandi palette swap + legacy migration
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift`
 
 - [ ] **Step 1: 替換 12 色 hex（中文名稱不變）**
 ```swift
@@ -70,7 +70,7 @@ static func color(for hex: String?) -> Color {
 
 - [ ] **Step 3: grep 其他 callsite 確認無破壞**
 ```bash
-grep -rn "NotebookPalette\|#5B8C5A\|#4A90D9\|#D4A843" ios/BooksBrowser --include="*.swift"
+grep -rn "NotebookPalette\|#5B8C5A\|#4A90D9\|#D4A843" ios/BooksAndVocab --include="*.swift"
 ```
 預期：`NotebookEditSheet` / `BookshelfView` / `PodcastEpisodeListView` / `NotebookCard` 只 reference `NotebookPalette.colors` 或 `.color(for:)`，無 hardcoded 舊 hex。**若有 hardcoded 同步更新**。
 
@@ -86,7 +86,7 @@ Expected: success
 ## Task 1: NotebookStackMetrics token surface
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackMetrics.swift`
 
 - [ ] **Step 1: 加 cream paper palette helper**
 新增 static method：
@@ -143,7 +143,7 @@ Expected: success（無 callsite 改動，仍能編）。**若 4s 完成 + log �
 ## Task 2: NotebookStackedCoverView 重寫 ghost 層
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift`
 
 - [ ] **Step 1: View 簽名加 seed 參數**
 ```swift
@@ -220,7 +220,7 @@ private func ghostLayer(depth: Int) -> some View {
 ```
 
 - [ ] **Step 5: 編譯（強制清 cache）**
-Run: `rm -rf ~/Library/Developer/Xcode/DerivedData/BooksBrowser-* && ./ops/ios_build.sh`
+Run: `rm -rf ~/Library/Developer/Xcode/DerivedData/BooksAndVocab-* && ./ops/ios_build.sh`
 Expected: success。若仍 4s — 走 Xcode GUI build 確認。
 
 - [ ] **Step 6: Commit**
@@ -231,7 +231,7 @@ Expected: success。若仍 4s — 走 Xcode GUI build 確認。
 ## Task 3: NotebookCard wire seed + cover↔metadata rule + pill 隨轉
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`
 
 - [ ] **Step 1: 傳 seed**
 `coverArea` 內 `.grid` 分支：
@@ -281,7 +281,7 @@ VStack(alignment: .leading, spacing: 0) {
 ```
 
 - [ ] **Step 4: 編譯**
-Run: `rm -rf ~/Library/Developer/Xcode/DerivedData/BooksBrowser-* && ./ops/ios_build.sh`
+Run: `rm -rf ~/Library/Developer/Xcode/DerivedData/BooksAndVocab-* && ./ops/ios_build.sh`
 Expected: success
 
 - [ ] **Step 5: Commit**
@@ -292,11 +292,11 @@ Expected: success
 ## Task 4: NotebookAddCard editorial restyle
 
 **Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`（同檔下半段）
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift`（同檔下半段）
 
 - [ ] **Step 0: 確認 "新增單字本" L10n key 已存在**
 ```bash
-grep -rn "新增單字本" ios/BooksBrowser/Resources/
+grep -rn "新增單字本" ios/BooksAndVocab/Resources/
 ```
 應 hit `Localizable.strings`。若 miss → 加 key 或改用既有等價 key。避免 `i18n_lint.sh` failure。
 
@@ -342,8 +342,8 @@ Expected: success
 ## Task 5: Scenarios + token cleanup
 
 **Files:**
-- Modify: `ios/BooksBrowser/Debug/Scenarios/NotebookListScenarios.swift`
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift`
+- Modify: `ios/BooksAndVocab/Debug/Scenarios/NotebookListScenarios.swift`
+- Modify: `ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackMetrics.swift`
 
 - [ ] **Step 1: NotebookListScenarios 加 editorial state cases**
 新增 / 補齊：
@@ -362,12 +362,12 @@ View 層已全切 cream paper → 從 `NotebookStackMetrics` 刪：
 
 確認 grep 無外部 callsite：
 ```bash
-grep -rn "deckColor\|shiftingBrightness\|brightnessStep" ios/BooksBrowser
+grep -rn "deckColor\|shiftingBrightness\|brightnessStep" ios/BooksAndVocab
 ```
 應只剩 NotebookStackMetrics 自身。
 
 - [ ] **Step 3: 編譯**
-Run: `rm -rf ~/Library/Developer/Xcode/DerivedData/BooksBrowser-* && ./ops/ios_build.sh`
+Run: `rm -rf ~/Library/Developer/Xcode/DerivedData/BooksAndVocab-* && ./ops/ios_build.sh`
 Expected: success
 
 - [ ] **Step 4: Commit**

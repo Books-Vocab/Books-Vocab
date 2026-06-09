@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VIEWS_ROOT = ROOT / "ios/BooksBrowser/Views"
+VIEWS_ROOT = ROOT / "ios/BooksAndVocab/Views"
 # View-injection grammar shared with the lint (single source of truth).
 from _inject_shared import (  # noqa: E402
     STRUCT_VIEW_RE,

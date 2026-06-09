@@ -33,7 +33,7 @@
 
 # Print -only-testing flags for one file. $1=file, $2=pattern (may be empty).
 _discover_file() {
-  local file="$1" pattern="$2" target="${3:-BooksBrowserTests}"
+  local file="$1" pattern="$2" target="${3:-BooksAndVocabTests}"
   awk -v pattern="$pattern" -v target="$target" '
     function emit(fn, is_swift) {
       if (container == "") return
@@ -111,7 +111,7 @@ _discover_file() {
 
 # Print all -only-testing flags across <test_dir>. $1=dir, $2=pattern.
 discover_only_flags() {
-  local test_dir="$1" pattern="${2:-}" target="${3:-BooksBrowserTests}" f
+  local test_dir="$1" pattern="${2:-}" target="${3:-BooksAndVocabTests}" f
   for f in "$test_dir"/*.swift; do
     [[ -f "$f" ]] || continue
     _discover_file "$f" "$pattern" "$target"
@@ -120,7 +120,7 @@ discover_only_flags() {
 
 # Print all -only-testing flags from one test file. $1=file, $2=pattern, $3=target.
 discover_file_only_flags() {
-  local file="$1" pattern="${2:-}" target="${3:-BooksBrowserTests}"
+  local file="$1" pattern="${2:-}" target="${3:-BooksAndVocabTests}"
   [[ -f "$file" ]] || return 1
   _discover_file "$file" "$pattern" "$target"
 }

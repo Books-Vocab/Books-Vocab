@@ -3,18 +3,18 @@ tier: reference
 authority: SoT
 update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Models/VocabularyEntry.swift
-  - ios/BooksBrowser/Views/Vocabulary/SyncView.swift
-  - ios/BooksBrowser/Views/Vocabulary/AutoSyncMonitor.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/SyncCoordinator.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
-  - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookReconciler.swift
-  - ios/BooksBrowser/Views/Reader/ReaderVocabularyContext.swift
-  - ios/BooksBrowser/Views/Podcast/PodcastVocabularyContext.swift
-  - ios/BooksBrowser/Services/BackgroundSyncActor.swift
-  - ios/BooksBrowser/Services/KGService+Sync.swift
-  - ios/BooksBrowser/Services/KGService+VocabCRUD.swift
-  - ios/BooksBrowser/Services/KGService+Models.swift
+  - ios/BooksAndVocab/Models/VocabularyEntry.swift
+  - ios/BooksAndVocab/Views/Vocabulary/SyncView.swift
+  - ios/BooksAndVocab/Views/Vocabulary/AutoSyncMonitor.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
+  - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
+  - ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift
+  - ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift
+  - ios/BooksAndVocab/Services/BackgroundSyncActor.swift
+  - ios/BooksAndVocab/Services/KGService+Sync.swift
+  - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
+  - ios/BooksAndVocab/Services/KGService+Models.swift
   - backend/src/kg/api_models/vocab.py
   - backend/src/kg/routers/vocab.py
   - backend/src/kg/vocab_intake.py

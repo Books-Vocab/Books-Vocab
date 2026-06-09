@@ -3,8 +3,8 @@ tier: snapshot
 authority: derived
 update_trigger: manual
 scope:
-  - ios/BooksBrowser/Views/Reader/
-  - ios/BooksBrowser/Models/ReaderSettings.swift
+  - ios/BooksAndVocab/Views/Reader/
+  - ios/BooksAndVocab/Models/ReaderSettings.swift
 verified_against: 746dafaa
 -->
 # Reader 對標 Apple Books — 進度與接續計畫

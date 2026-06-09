@@ -3,13 +3,13 @@ tier: archive
 authority: frozen
 update_trigger: none
 scope:
-  - ios/BooksBrowser/Views/Vocabulary/
+  - ios/BooksAndVocab/Views/Vocabulary/
 verified_against: frozen
 -->
 # Vocab Design System Audit
 
 Date: 2026-03-09
-Scope: `ios/BooksBrowser/Views/Vocabulary`, reader vocab panel integration, shared shell dependencies
+Scope: `ios/BooksAndVocab/Views/Vocabulary`, reader vocab panel integration, shared shell dependencies
 
 ## Current Assessment
 
@@ -21,11 +21,11 @@ The current vocab design system is a real feature-level UI system centered on `V
 
 ## What Is Working
 
-- Single token entry point exists in [ios/BooksBrowser/Views/Vocabulary/Skin/VocabSkin.swift](../ios/BooksBrowser/Views/Vocabulary/Skin/VocabSkin.swift).
-- App-level injection exists in [ios/BooksBrowser/Models/AppTheme.swift](../ios/BooksBrowser/Models/AppTheme.swift) via `AppThemeContainer`.
-- Reader explicitly re-injects vocab skin for vocab-mode panels in [ios/BooksBrowser/Views/Reader/ReaderView.swift](../ios/BooksBrowser/Views/Reader/ReaderView.swift).
-- Shared shell reuse is good. Cards, empty states, toolbar glyphs, tab selector, search field, and key-value rows all bridge through [ios/BooksBrowser/UIComponents/AppShellComponents.swift](../ios/BooksBrowser/UIComponents/AppShellComponents.swift).
-- Presentation-level graph theming is wired to the same skin in [ios/BooksBrowser/Views/Vocabulary/Presentation/KnowledgeGraphPresentation.swift](../ios/BooksBrowser/Views/Vocabulary/Presentation/KnowledgeGraphPresentation.swift).
+- Single token entry point exists in [ios/BooksAndVocab/Views/Vocabulary/Skin/VocabSkin.swift](../ios/BooksAndVocab/Views/Vocabulary/Skin/VocabSkin.swift).
+- App-level injection exists in [ios/BooksAndVocab/Models/AppTheme.swift](../ios/BooksAndVocab/Models/AppTheme.swift) via `AppThemeContainer`.
+- Reader explicitly re-injects vocab skin for vocab-mode panels in [ios/BooksAndVocab/Views/Reader/ReaderView.swift](../ios/BooksAndVocab/Views/Reader/ReaderView.swift).
+- Shared shell reuse is good. Cards, empty states, toolbar glyphs, tab selector, search field, and key-value rows all bridge through [ios/BooksAndVocab/UIComponents/AppShellComponents.swift](../ios/BooksAndVocab/UIComponents/AppShellComponents.swift).
+- Presentation-level graph theming is wired to the same skin in [ios/BooksAndVocab/Views/Vocabulary/Presentation/KnowledgeGraphPresentation.swift](../ios/BooksAndVocab/Views/Vocabulary/Presentation/KnowledgeGraphPresentation.swift).
 
 ## Gaps
 
@@ -37,10 +37,10 @@ Problem:
 
 Evidence:
 - `tierColor(for:)` is used as warning/retry color in:
-  - [ios/BooksBrowser/Views/Vocabulary/Components/WordRow.swift](../ios/BooksBrowser/Views/Vocabulary/Components/WordRow.swift)
-  - [ios/BooksBrowser/Views/Vocabulary/Scenes/PendingVocabPresenter.swift](../ios/BooksBrowser/Views/Vocabulary/Scenes/PendingVocabPresenter.swift)
-  - [ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift](../ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift)
-  - [ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift](../ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift)
+  - [ios/BooksAndVocab/Views/Vocabulary/Components/WordRow.swift](../ios/BooksAndVocab/Views/Vocabulary/Components/WordRow.swift)
+  - [ios/BooksAndVocab/Views/Vocabulary/Scenes/PendingVocabPresenter.swift](../ios/BooksAndVocab/Views/Vocabulary/Scenes/PendingVocabPresenter.swift)
+  - [ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift](../ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift)
+  - [ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift](../ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift)
 
 Impact:
 - Hard to retune difficulty colors without affecting system messaging.
@@ -64,10 +64,10 @@ Problem:
 - Many views still use raw values such as `10`, `12`, `16`, `18`, `20`, `24`, `32`, `92`, `120`.
 
 Representative files:
-- [ios/BooksBrowser/Views/Vocabulary/Scenes/TodayReviewPresenter.swift](../ios/BooksBrowser/Views/Vocabulary/Scenes/TodayReviewPresenter.swift)
-- [ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift](../ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift)
-- [ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift](../ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift)
-- [ios/BooksBrowser/Views/Vocabulary/Scenes/PendingVocabPresenter.swift](../ios/BooksBrowser/Views/Vocabulary/Scenes/PendingVocabPresenter.swift)
+- [ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter.swift](../ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter.swift)
+- [ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift](../ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift)
+- [ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift](../ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift)
+- [ios/BooksAndVocab/Views/Vocabulary/Scenes/PendingVocabPresenter.swift](../ios/BooksAndVocab/Views/Vocabulary/Scenes/PendingVocabPresenter.swift)
 
 Impact:
 - The system owns appearance but not composition rhythm.
@@ -130,7 +130,7 @@ Problem:
 - Shared shell has previews, but vocab feature screens do not appear to have a dedicated preview matrix, snapshot coverage, or UI contract tests.
 
 Evidence:
-- Shared shell preview exists in [ios/BooksBrowser/UIComponents/AppShellComponents.swift](../ios/BooksBrowser/UIComponents/AppShellComponents.swift).
+- Shared shell preview exists in [ios/BooksAndVocab/UIComponents/AppShellComponents.swift](../ios/BooksAndVocab/UIComponents/AppShellComponents.swift).
 - No vocab-specific preview/test matrix was found under `Views/Vocabulary`.
 
 Impact:

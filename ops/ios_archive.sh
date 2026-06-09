@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ios_archive.sh — inspect local Xcode Organizer archives for BooksBrowser.
+# ios_archive.sh — inspect local Xcode Organizer archives for BooksAndVocab.
 #
 # Usage:
 #   ./ops/ios_archive.sh list [--json] [--root <ArchivesDir>]
@@ -40,7 +40,7 @@ archive_row() {
 }
 
 list_rows() {
-  find "$ROOT" -maxdepth 3 -name 'BooksBrowser*.xcarchive' -print 2>/dev/null \
+  find "$ROOT" -maxdepth 3 -name 'BooksAndVocab*.xcarchive' -print 2>/dev/null \
     | sort \
     | while IFS= read -r archive; do archive_row "$archive"; done
 }

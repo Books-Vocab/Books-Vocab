@@ -3,13 +3,13 @@ tier: reference
 authority: derived
 update_trigger: manual
 scope:
-  - ios/BooksBrowser/
+  - ios/BooksAndVocab/
 verified_against: 84f6998e
 -->
 # UI Review Checklist
 
 Date: 2026-03-10
-Scope: `ios/BooksBrowser`
+Scope: `ios/BooksAndVocab`
 
 文檔網絡：
 - 設計規範主文檔：`docs/sop/ui-design.md`

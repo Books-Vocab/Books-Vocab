@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ios_ops_catalog.sh — sourceable catalog snapshot export commands for ios_ops.sh.
 
-CATALOG_SCHEME="BooksBrowserCatalogSnapshots"
+CATALOG_SCHEME="BooksAndVocabCatalogSnapshots"
 CATALOG_LAST_BUILD_WALL_MS=0
 CATALOG_LAST_COMMAND_WALL_MS=0
 
@@ -205,9 +205,9 @@ catalog_fixture_seed_cache() {
   local derived_data_root="$1"
   local products_root app_bundle test_bundle xctestrun_path
   products_root="$derived_data_root/Build/Products"
-  app_bundle="$products_root/Debug-iphonesimulator/BooksBrowser.app"
-  test_bundle="$app_bundle/PlugIns/BooksBrowserTests.xctest"
-  xctestrun_path="$products_root/BooksBrowserCatalogSnapshots_BooksBrowserCatalogSnapshots_iphonesimulator26.4-arm64.xctestrun"
+  app_bundle="$products_root/Debug-iphonesimulator/BooksAndVocab.app"
+  test_bundle="$app_bundle/PlugIns/BooksAndVocabTests.xctest"
+  xctestrun_path="$products_root/BooksAndVocabCatalogSnapshots_BooksAndVocabCatalogSnapshots_iphonesimulator26.4-arm64.xctestrun"
 
   mkdir -p "$test_bundle"
   cat >"$xctestrun_path" <<'EOF'
@@ -222,7 +222,7 @@ catalog_fixture_seed_cache() {
       <array>
         <dict>
           <key>BlueprintName</key>
-          <string>BooksBrowserTests</string>
+          <string>BooksAndVocabTests</string>
         </dict>
       </array>
     </dict>
@@ -254,11 +254,11 @@ catalog_build_input_paths() {
   {
     printf '%s\n' \
       "ios/Info.plist" \
-      "ios/BooksBrowser.xcodeproj/project.pbxproj" \
-      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowser.xcscheme" \
-      "ios/BooksBrowser.xcodeproj/xcshareddata/xcschemes/BooksBrowserCatalogSnapshots.xcscheme" \
-      "ios/BooksBrowser.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-    rg --files ios/BooksBrowser ios/BooksBrowserTests -g '*.swift' -g '*.plist'
+      "ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+      "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocab.xcscheme" \
+      "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocabCatalogSnapshots.xcscheme" \
+      "ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    rg --files ios/BooksAndVocab ios/BooksAndVocabTests -g '*.swift' -g '*.plist'
   } | sort -u
 }
 
@@ -292,8 +292,8 @@ catalog_cached_products_ready() {
   local products_root app_bundle test_bundle
   [[ -n "$xctestrun_path" && -f "$xctestrun_path" ]] || return 1
   products_root="$(dirname "$xctestrun_path")"
-  app_bundle="$products_root/Debug-iphonesimulator/BooksBrowser.app"
-  test_bundle="$app_bundle/PlugIns/BooksBrowserTests.xctest"
+  app_bundle="$products_root/Debug-iphonesimulator/BooksAndVocab.app"
+  test_bundle="$app_bundle/PlugIns/BooksAndVocabTests.xctest"
   [[ -d "$app_bundle" && -d "$test_bundle" ]]
 }
 
@@ -428,7 +428,7 @@ catalog_run_scoped_xctestrun() {
     -destination "$destination" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled NO \
-    -only-testing:BooksBrowserTests/CatalogSnapshotTests; then
+    -only-testing:BooksAndVocabTests/CatalogSnapshotTests; then
     rc=0
   else
     rc=$?
@@ -470,7 +470,7 @@ catalog_build_for_testing_command() {
 
 catalog_test_without_building_command() {
   local xctestrun_path="$1" destination="$2"
-  printf 'xcodebuild test-without-building -xctestrun %s -destination %s -parallel-testing-enabled NO -test-timeouts-enabled NO -only-testing:BooksBrowserTests/CatalogSnapshotTests' \
+  printf 'xcodebuild test-without-building -xctestrun %s -destination %s -parallel-testing-enabled NO -test-timeouts-enabled NO -only-testing:BooksAndVocabTests/CatalogSnapshotTests' \
     "$xctestrun_path" "$destination"
 }
 
@@ -748,8 +748,8 @@ cmd_catalog_snapshots_json() {
   xcode_log="$(mktemp)"
   xcode_err="$(mktemp)"
   build_cmd="$(catalog_build_for_testing_command "$destination" "<derived-data-root>")"
-  scope_test_cmd="xcodebuild test-without-building -xctestrun <cached-xctestrun> -destination $destination -parallel-testing-enabled NO -test-timeouts-enabled NO -only-testing:BooksBrowserTests/CatalogSnapshotTests"
-  test_cmd="xcodebuild test -project $XCODEPROJ -scheme $CATALOG_SCHEME -destination $destination -parallel-testing-enabled NO -test-timeouts-enabled NO -only-testing:BooksBrowserTests/CatalogSnapshotTests OTHER_SWIFT_FLAGS=\$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS"
+  scope_test_cmd="xcodebuild test-without-building -xctestrun <cached-xctestrun> -destination $destination -parallel-testing-enabled NO -test-timeouts-enabled NO -only-testing:BooksAndVocabTests/CatalogSnapshotTests"
+  test_cmd="xcodebuild test -project $XCODEPROJ -scheme $CATALOG_SCHEME -destination $destination -parallel-testing-enabled NO -test-timeouts-enabled NO -only-testing:BooksAndVocabTests/CatalogSnapshotTests OTHER_SWIFT_FLAGS=\$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS"
   if [[ -n "$groups_csv" || -n "$scenarios_csv" ]]; then
     scope_requested=1
   fi
@@ -874,7 +874,7 @@ cmd_catalog_snapshots_json() {
         -destination "$destination" \
         -parallel-testing-enabled NO \
         -test-timeouts-enabled NO \
-        -only-testing:BooksBrowserTests/CatalogSnapshotTests \
+        -only-testing:BooksAndVocabTests/CatalogSnapshotTests \
         OTHER_SWIFT_FLAGS='$(inherited) -DKG_RUN_CATALOG_SNAPSHOTS'; then
         rc=0
       else

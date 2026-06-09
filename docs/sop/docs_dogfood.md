@@ -21,7 +21,7 @@ verified_against: e237d84f
 | backend-change | 假設要改 `backend/src/kg/routers/vocab.py`,判斷需同步哪些 docs | `docs/registry.yml`, `ops/docs_impact.py`, `docs/reference/tech_index.md`, `docs/sop/doc_sync.md` |
 | ops-change | 假設要改 `ops/devops_kg_safe.sh`,判斷 docs gate 會提示什麼,哪些提示是必要/噪音 | `docs/registry.yml`, `ops/docs_impact.py`, `docs/policy/safety.md`, `docs/sop/deploy.md`, `docs/sop/debug.md` |
 | docs-tooling-change | 假設要改 `ops/docs_lint.sh`,判斷 impact hints 是否足夠精準,必要時用 `--explain` 追噪音/漏報來源 | `ops/docs_impact.py`, `docs/registry.yml`, `docs/sop/doc_sync.md` |
-| ios-feature-change | 假設要改 `ios/BooksBrowser/Models/Book.swift`,判斷該查哪些 feature boundary / snapshot | `docs/registry.yml`, `docs/reference/tech_index.md`, `docs/reference/feature_boundary/bookshelf.md` |
+| ios-feature-change | 假設要改 `ios/BooksAndVocab/Models/Book.swift`,判斷該查哪些 feature boundary / snapshot | `docs/registry.yml`, `docs/reference/tech_index.md`, `docs/reference/feature_boundary/bookshelf.md` |
 | maintenance | 只看文檔系統本身,判斷新 agent 如何知道該跑哪些 gate；先走 docs-first 入口,必要時才 deep dive | `CLAUDE.md`, `docs/registry.yml`, `docs/sop/doc_sync.md`（必要時再看 `.github/PULL_REQUEST_TEMPLATE.md`, `ops/tests/test_docs_lint.sh`） |
 
 ## 必跑命令
