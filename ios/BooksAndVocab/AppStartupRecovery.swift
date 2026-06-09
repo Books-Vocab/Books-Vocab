@@ -11,7 +11,7 @@ import SwiftData
 
 enum AppStartupRecovery {
     static func composeSupportMailURL(for failure: AppStartupFailure) -> URL? {
-        let recipient = "support@wordnexus.lol"
+        let recipient = BrandIdentity.supportEmail
         let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "-"
         let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "-"
         let bundleId = Bundle.main.bundleIdentifier ?? "-"

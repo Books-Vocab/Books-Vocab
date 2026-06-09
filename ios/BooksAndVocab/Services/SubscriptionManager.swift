@@ -52,7 +52,7 @@ extension SubscriptionManaging {
 @MainActor
 final class SubscriptionManager: SubscriptionManaging {
     static let shared = SubscriptionManager()
-    static let proProductID = "com.wordnexus.pro.monthly"
+    static let proProductID = BrandIdentity.proProductID
 
     var entitlements = KGEntitlements(
         pro: KGSubscriptionStatus(
