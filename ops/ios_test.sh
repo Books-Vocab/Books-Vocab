@@ -409,6 +409,7 @@ cleanup() {
   if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
     rm -f "${TMPOUT:-}"
   fi
+  rm -f "${VERDICT_JSON_PRIVATE:-}"
 }
 
 # Fine-grained build lock (shared /tmp/kg-ios-build.lock with ios_build.sh).
@@ -661,9 +662,14 @@ rebuild_test_cache() {
   local _xctestrun build_rc
   _xctestrun="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" 2>/dev/null || true)"
   if [[ -n "$_xctestrun" ]] && ios_test_cache_is_complete "$_xctestrun"; then
+    # Waiter path: another agent built this exact cache while we held/waited for
+    # the lock. We skipped the rebuild, so this run is a (lock-serialized) HIT,
+    # not a builder — let the caller label cacheStatus truthfully.
+    REBUILD_DID_BUILD=0
     release_build_lock
     return 0
   fi
+  REBUILD_DID_BUILD=1
   # A previous build may have been interrupted, leaving a partial cache with no
   # sentinel. Clear the stale completion marker before rebuilding so a crash
   # mid-build below can never leave an old sentinel pointing at fresh-but-partial
@@ -787,7 +793,11 @@ while :; do
       if ensure_xctestrun_ready_or_fail "$XCTESTRUN_PATH"; then
         run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
         EXIT_CODE=$?
-        CACHE_STATUS="prepared"
+        # Truthful label: "prepared" only if THIS run did the build; a concurrent
+        # agent that waited on the lock and skipped the rebuild (double-check hit)
+        # is a "hit", not a builder. Discriminated by REBUILD_DID_BUILD, not by
+        # buildForTestingMs.
+        if [[ "${REBUILD_DID_BUILD:-1}" -eq 1 ]]; then CACHE_STATUS="prepared"; else CACHE_STATUS="hit"; fi
       else
         EXIT_CODE=1
       fi
@@ -903,8 +913,16 @@ print_timing_summary() {
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
 # script's). Read this instead of trusting a piped `$?`.
-VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_test_verdict"
+VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_test_verdict"   # fixed "latest" path read by `ios_ops runs`
 VERDICT_JSON_FILE="$VERDICT_FILE.json"
+# Per-process private verdict JSON, used as the run-metrics source. The fixed
+# paths above are SHARED across concurrent agents, so reading the fixed JSON back
+# for the metric races: a parallel run can clobber it between our write and our
+# read, producing duplicated / mis-attributed metric lines (observed: two lines
+# for one caller, zero for another under tight concurrency). The metric is
+# sourced from this private copy; the fixed path is still updated for `runs`
+# (last-writer-wins is acceptable for a "latest" pointer).
+VERDICT_JSON_PRIVATE="$VERDICT_JSON_FILE.$$"
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
   jq -nc \
@@ -961,8 +979,11 @@ write_json_verdict() {
       },
       cache:{status:$cacheStatus},
       artifacts:{log:$log,xcresult:$xcresult}
-    }' >"$VERDICT_JSON_FILE" || true
-  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
+    }' >"$VERDICT_JSON_PRIVATE" || true
+  cp -f "$VERDICT_JSON_PRIVATE" "$VERDICT_JSON_FILE" 2>/dev/null || true
+  # Source the metric from the private copy (no concurrent writer) so per-run
+  # attribution is correct even when many agents finish at once.
+  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_PRIVATE"
 }
 
 populate_timing_breakdown
@@ -1002,13 +1023,18 @@ else
   # Show last 10 lines for unexpected output
   tail -10 "$TMPOUT"
   PRESERVE_TMPOUT=1
+  # Inconclusive (no TEST SUCCEEDED/FAILED marker — e.g. a compile/build
+  # failure). Never report success, but PRESERVE a meaningful upstream non-zero
+  # code: xcodebuild's 65 for a build failure flows through here, letting callers
+  # distinguish "build broke" (65) from "tests failed" (1). Only coerce a
+  # spurious 0 up to 1 so an inconclusive run can never exit green.
+  [[ "$EXIT_CODE" -eq 0 ]] && EXIT_CODE=1
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
   print_timing_summary
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
-  EXIT_CODE=1
 fi
 
 if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
