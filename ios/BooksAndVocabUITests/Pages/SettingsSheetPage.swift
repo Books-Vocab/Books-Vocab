@@ -4,37 +4,27 @@ import XCTest
 struct SettingsSheetPage {
     let app: XCUIApplication
 
-    // MARK: - Navigation
-
+    /// Settings is presented in a sheet with a NavigationStack; the nav bar title is "設定".
     var navBar: XCUIElement {
-        app.navigationBars["settings.navBar"]
+        app.navigationBars.firstMatch
     }
 
     var closeButton: XCUIElement {
-        navBar.buttons.firstMatch
-    }
-
-    // MARK: - Content
-
-    var accountSection: XCUIElement {
-        app.staticTexts["settings.section.account"]
-    }
-
-    var reviewSection: XCUIElement {
-        app.staticTexts["settings.section.review"]
+        app.buttons["完成"]
     }
 
     // MARK: - Actions
 
     @discardableResult
-    func dismiss(file: StaticString = #filePath, line: UInt = #line) -> BookshelfPage {
+    func dismiss(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
         closeButton.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
     }
 
     // MARK: - Assertions
 
-    func assertIsPresented(file: StaticString = #filePath, line: UInt = #line) {
-        navBar.assertExists(file: file, line: line)
+    func assertIsPresented(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        // Confirm by the "完成" (Done) button in the sheet toolbar.
+        closeButton.assertExists(file: file, line: line)
     }
 }

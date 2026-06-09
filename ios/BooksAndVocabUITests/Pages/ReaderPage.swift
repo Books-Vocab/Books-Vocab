@@ -21,14 +21,14 @@ struct ReaderPage {
     // MARK: - Actions
 
     @discardableResult
-    func goBack(file: StaticString = #filePath, line: UInt = #line) -> BookshelfPage {
+    func goBack(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
         backButton.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
     }
 
     // MARK: - Assertions
 
-    func assertIsActive(file: StaticString = #filePath, line: UInt = #line) {
+    func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         backButton.assertExists(timeout: 5, file: file, line: line)
     }
 }
