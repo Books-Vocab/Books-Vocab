@@ -6,6 +6,7 @@
 # 送審（submit-for-review）刻意不做：review-status 只唯讀。
 #
 # Usage:
+#   ./ops/asc.sh status                        # 綜合盤點：info + versions + review-status + subscriptions
 #   ./ops/asc.sh versions                      # 列 App Store 版本 + 審查 state
 #   ./ops/asc.sh builds                        # TestFlight 最新 build number
 #   ./ops/asc.sh metadata [--locale zh-Hant]   # 讀某版本某語系的文案欄位
@@ -206,6 +207,21 @@ cmd_review_status() {
     | jq -r '.[] | "\(.attributes.state)\t\(.attributes.platform)\t\(.id)"' \
     | column -t -s $'\t'
   echo "註：被拒的 Resolution Center 文字 public API 不提供，須在 ASC GUI（解決中心）看。"
+}
+
+cmd_status() {
+  require_key
+  echo "== ASC Info =="
+  cmd_info
+  echo
+  echo "== Versions =="
+  cmd_versions
+  echo
+  echo "== Review Status =="
+  cmd_review_status
+  echo
+  echo "== Subscriptions =="
+  cmd_subscriptions
 }
 
 cmd_review_detail() {  # raw：審查聯絡 / demo 帳號 / 送審備註（codemagic 未暴露）
@@ -764,6 +780,7 @@ cmd_sub_offers() {  # 唯讀：訂閱優惠（介紹性 / 促銷 / 兌換碼）
 
 # ---- dispatch ----
 case "${SUB:-}" in
+  status)        cmd_status ;;
   versions)      cmd_versions ;;
   builds)        cmd_builds ;;
   metadata)      cmd_metadata ;;
@@ -795,5 +812,5 @@ case "${SUB:-}" in
   set-release-type) cmd_set_release_type "${ARGS[@]}" ;;
   phased)        cmd_phased "${ARGS[@]}" ;;
   ""|help)       usage ;;
-  *)             err "unknown subcommand: $SUB（asc.sh help 看用法）" ;;
+  *)             err "unknown subcommand: ${SUB}（asc.sh help 看用法）" ;;
 esac
