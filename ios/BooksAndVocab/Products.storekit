@@ -77,7 +77,7 @@
       "localizations" : [
 
       ],
-      "name" : "WordNexus Pro",
+      "name" : "Books & Vocab Pro",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -97,14 +97,14 @@
           },
           "localizations" : [
             {
-              "description" : "Unlock all WordNexus Pro features",
-              "displayName" : "WordNexus Pro Monthly",
+              "description" : "Unlock all Books & Vocab Pro features",
+              "displayName" : "Books & Vocab Pro Monthly",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.wordnexus.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "WordNexus Pro Monthly",
+          "referenceName" : "Books & Vocab Pro Monthly",
           "subscriptionGroupID" : "B0017A02-0000-4000-A000-000000000002",
           "type" : "RecurringSubscription",
           "winbackOffers" : [
