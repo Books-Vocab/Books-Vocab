@@ -316,7 +316,7 @@ struct SubscriptionManagerTests {
     @Test func proProductID_is_stable_and_exposed_via_instance() {
         // The product identifier is a release-critical constant; pin it and confirm
         // the instance accessor mirrors the type-level constant.
-        #expect(SubscriptionManager.proProductID == "com.wordnexus.pro.monthly")
+        #expect(SubscriptionManager.proProductID == BrandIdentity.proProductID)
         #expect(SubscriptionManager.shared.proProductIdentifier == SubscriptionManager.proProductID)
     }
 }

@@ -44,7 +44,7 @@ enum PaywallScenarios {
     ) -> KGSubscriptionStatus {
         KGSubscriptionStatus(
             is_active: is_active,
-            product_id: is_active ? "com.wordnexus.pro.monthly" : nil,
+            product_id: is_active ? BrandIdentity.proProductID : nil,
             plan_name: "Books & Vocab Pro",
             price_display: price_display,
             status: status,
@@ -114,7 +114,7 @@ private final class PreviewSubscriptionManager: SubscriptionManaging {
     var lastError: String?
     var activePaywallSource: PaywallSource?
     var proProduct: Product?
-    var proProductIdentifier: String = "com.wordnexus.pro.monthly"
+    var proProductIdentifier: String = BrandIdentity.proProductID
     var purchaseStatusMessage: String?
 
     var hasProAccess: Bool { entitlements.pro.is_active }

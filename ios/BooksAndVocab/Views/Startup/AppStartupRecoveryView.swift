@@ -33,7 +33,7 @@ struct AppStartupRecoveryActions {
     static let preview = AppStartupRecoveryActions(
         retry: { true },
         clearLocalCache: { true },
-        supportMailURL: { _ in URL(string: "mailto:support@wordnexus.lol") }
+        supportMailURL: { _ in URL(string: "mailto:\(BrandIdentity.supportEmail)") }
     )
 }
 

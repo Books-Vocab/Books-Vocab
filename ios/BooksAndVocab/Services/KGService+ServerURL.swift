@@ -22,11 +22,11 @@ extension KGService {
 
     // MARK: - URL Constants
 
-    static let deployedServerURL = "https://wordnexus.lol"
+    static let deployedServerURL = BrandIdentity.publicBaseURL
 
     /// Hardcoded last-resort fallback URL — guaranteed to parse, used only if both
     /// the user-configured `serverURL` and `deployedServerURL` fail to parse.
-    static let fallbackURL = URL(string: "https://wordnexus.lol")!
+    static let fallbackURL = URL(string: BrandIdentity.publicBaseURL)!
 
     #if DEBUG
     private static let defaultLocalServerURL = "http://127.0.0.1:8000"
