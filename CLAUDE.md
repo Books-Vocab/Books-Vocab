@@ -139,6 +139,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | 生產禁用指令 / preflight / rollback | `docs/policy/safety.md` **(SoT)** — 已寫進鐵律 7 |
 | ops 流程 / change flow / hard stop | `docs/runbook/system.md` |
 | 逐項 review 落地(派 review agent / PASS 判準 / block 處理) | `docs/sop/review_discipline.md` — 鐵律 4 落地 |
+| 找 iOS UI 死碼 / 孤兒元件(刪元件 / cleanup / 重構前盤點) | `./ops/ui_deadcode.py`(IndexStore-based;default struct,class 可信 gate)— 見 `docs/reference/tech_index.md` |
 
 ## Doc Tier 契約
 

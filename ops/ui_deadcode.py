@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""UI dead-code scanner for the iOS app (production-orphan struct/class/enum/protocol).
+"""UI dead-code scanner for the iOS app (production-orphan struct/class; enum/protocol opt-in).
 
 Pipeline:
   ios_ops.sh build (isolated DerivedData) -> Xcode IndexStore
