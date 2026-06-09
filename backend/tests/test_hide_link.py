@@ -310,7 +310,7 @@ class TestBuildLinksIncludesHidden:
             link_kinds=list(LinkKind),
             link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
         )
-        all_links = [l for group in result.values() for l in group]
+        all_links = [link for group in result.values() for link in group]
         assert len(all_links) == 1
         assert all_links[0].hidden is True
 
@@ -322,7 +322,7 @@ class TestBuildLinksIncludesHidden:
             link_kinds=list(LinkKind),
             link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
         )
-        all_links = [l for group in result.values() for l in group]
+        all_links = [link for group in result.values() for link in group]
         assert len(all_links) == 1
         assert all_links[0].hidden is False
 
@@ -399,8 +399,8 @@ class TestBilateralSyncEdges:
         assert store.link_count() == 1
 
         # And both index buckets resolve to the same single link
-        assert {l.id for l in store.get_links_for("a")} == {lk.id}
-        assert {l.id for l in store.get_links_for("b")} == {lk.id}
+        assert {link.id for link in store.get_links_for("a")} == {lk.id}
+        assert {link.id for link in store.get_links_for("b")} == {lk.id}
 
     def test_blocked_pair_persists_across_pipeline_run(self, store):
         """blocked (a,b) → pipeline-style candidate batch must not re-create the link.

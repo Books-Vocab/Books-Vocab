@@ -8,11 +8,10 @@ project_user_world 真讀盤。本測試用「真跑 seed → 真讀 → diff ==
 import json
 from pathlib import Path
 
-from ops_helpers import run_ops_edit as _edit
-
 from kg.ops_world_diff import diff_world_state
 from kg.ops_world_expectation import SPEC_SCHEMA, derive_expectation
 from kg.ops_world_projection import project_user_world
+from ops_helpers import run_ops_edit as _edit
 
 _SEED = {
     "review_anchor": "2026-06-06T00:00:00Z",

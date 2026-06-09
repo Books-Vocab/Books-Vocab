@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
 from .candidates import _CandidatesMixin

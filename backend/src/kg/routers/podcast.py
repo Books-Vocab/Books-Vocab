@@ -42,21 +42,14 @@ import logging
 import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated  # noqa: F401
 
-from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi import Path as PathParam
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Header, HTTPException, Request  # noqa: F401
+from fastapi import Path as PathParam  # noqa: F401
+from fastapi.responses import StreamingResponse  # noqa: F401
 
-from . import podcast_media as _podcast_media
-from ..api_models.podcast import (
-    PodcastProgressListResponse,
-    PodcastProgressRequest,
-    PodcastProgressResponse,
-    PodcastSeriesDetail,
-    PodcastSeriesSummary,
-)
-from ..deps import CurrentUser, OptionalCurrentUser
+from ..api_models.podcast import PodcastProgressRequest  # noqa: F401
+from ..deps import CurrentUser, OptionalCurrentUser  # noqa: F401
 from ..podcast_access import (
     ERR_AUTH_REQUIRED,
     ERR_UPGRADE_REQUIRED,
@@ -65,12 +58,13 @@ from ..podcast_access import (
     is_free_previewable_episode,
     resolve_podcast_tier,
 )
+from ..settings import KGSettings
+from ..types import UserRecord
+from . import podcast_media as _podcast_media
+from . import podcast_playback as _podcast_playback
 from .podcast_browse import build_podcast_browse_router
 from .podcast_playback import build_podcast_playback_router
 from .podcast_progress import build_podcast_progress_router
-from ..settings import KGSettings
-from ..types import UserRecord
-from . import podcast_playback as _podcast_playback
 
 logger = logging.getLogger(__name__)
 

@@ -14,12 +14,12 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
-from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.billing as billing_router_mod
+from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
 from kg.settings import KGSettings
 

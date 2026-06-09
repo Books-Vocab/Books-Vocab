@@ -6,11 +6,10 @@ from pathlib import Path
 
 import jwt as pyjwt
 import pytest
-from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_jwt, make_settings
 from fastapi import HTTPException
 
+from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_jwt, make_settings
 from kg.auth_service import create_jwt_token
-from kg.settings import KGSettings
 from kg.user_context import resolve_current_user
 from kg.user_store import parse_datetime as real_parse_datetime
 

@@ -198,8 +198,8 @@ def delete_graph_link(
     """Hard-delete a link and block the pair from being re-created."""
     try:
         from_id, to_id = graph.hard_delete_link(link_id, source="manual")
-    except KeyError:
-        raise NotFoundError("Link", link_id)
+    except KeyError as exc:
+        raise NotFoundError("Link", link_id) from exc
     # hard_delete is destructive and not cleanly reversible. Rely on the
     # barrier: observable (logged) + re-raise instead of a silent divergence.
     _touch_both(cards_store, from_id, to_id)

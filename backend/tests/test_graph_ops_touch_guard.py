@@ -22,7 +22,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kg.exceptions import NotFoundError
 from kg.graph import GraphStore, LinkKind
 from kg.judge import ManualLinkJudge
 from kg.vocab_graph_ops import (

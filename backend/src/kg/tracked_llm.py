@@ -113,7 +113,8 @@ class TrackedLLM:
     def _record_failure(self, call_type: str, exc: Exception, model: str | None = None) -> None:
         """Best-effort record of a terminal LLM failure. Never raises."""
         try:
-            from .llm_error_log import record as record_error, redact_message
+            from .llm_error_log import record as record_error
+            from .llm_error_log import redact_message
             if model is None and self._provider is not None:
                 model = self._provider.chat_model
             record_error(

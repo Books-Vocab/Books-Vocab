@@ -3,12 +3,9 @@ import logging
 import random
 import time
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
-
 
 _LLM_RETRYABLE: tuple[type[Exception], ...] = ()
 
@@ -27,7 +24,7 @@ def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
     return _LLM_RETRYABLE
 
 
-def sync_retry(
+def sync_retry[T](
     fn: Callable[..., T],
     *args: Any,
     max_attempts: int = 3,

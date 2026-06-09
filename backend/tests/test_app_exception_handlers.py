@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import logging
+from dataclasses import replace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -56,14 +56,14 @@ def test_install_app_exception_handlers_returns_named_bundle_and_handles_routes(
     assert validation.status_code == 422
     assert validation.json()["detail"][0]["type"] == "string_too_short"
 
-    bad_request = client.get("/bad-request")
-    assert bad_request.status_code == 400
-    assert bad_request.json()["code"] == "BadRequestError"
+    bad_request_response = client.get("/bad-request")
+    assert bad_request_response.status_code == 400
+    assert bad_request_response.json()["code"] == "BadRequestError"
 
-    boom = client.get("/boom")
-    assert boom.status_code == 500
-    assert boom.json()["detail"] == "Internal server error"
-    assert "request_id" in boom.json()
+    boom_response = client.get("/boom")
+    assert boom_response.status_code == 500
+    assert boom_response.json()["detail"] == "Internal server error"
+    assert "request_id" in boom_response.json()
 
 
 def test_install_app_exception_handlers_from_dependencies_matches_compat_wrapper():

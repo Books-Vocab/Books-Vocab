@@ -12,7 +12,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, TypeAlias
+from typing import Annotated, Any
 
 from fastapi import Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -139,8 +139,8 @@ def get_current_user_optional(
 # Router-facing auth contracts: one named alias captures both the dependency
 # wiring and the resolved type, so endpoint signatures no longer drift back to
 # bare ``dict = Depends(...)`` annotations.
-CurrentUser: TypeAlias = Annotated[UserRecord, Depends(get_current_user)]
-OptionalCurrentUser: TypeAlias = Annotated[UserRecord | None, Depends(get_current_user_optional)]
+type CurrentUser = Annotated[UserRecord, Depends(get_current_user)]
+type OptionalCurrentUser = Annotated[UserRecord | None, Depends(get_current_user_optional)]
 
 
 # ---------------------------------------------------------------------------

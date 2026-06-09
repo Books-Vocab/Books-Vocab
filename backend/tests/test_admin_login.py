@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from kg.admin_handlers import _sign_cookie
-
 from conftest import ADMIN_TOKEN
+from kg.admin_handlers import _sign_cookie
 
 ADMIN_PASSWORD = "my-secret-admin-password"
 

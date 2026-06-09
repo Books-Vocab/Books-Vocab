@@ -6,9 +6,9 @@ import json
 import logging
 import re
 
+from ..exceptions import QuotaExceededError
 from ..retry import llm_retryable_exceptions, sync_retry
 from ..tracked_llm import TrackedLLM
-from ..exceptions import QuotaExceededError
 from .models import Judgement
 from .prompts import MANUAL_LINK_SYSTEM_PROMPT, MANUAL_USER_TEMPLATE
 

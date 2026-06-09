@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kg.cards import Card
-from kg.exceptions import QuotaExceededError
 from kg.enrich import _build_prompt, _parse_enrich_response
+from kg.exceptions import QuotaExceededError
 from kg.tracked_llm import TrackedLLM
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ class TestEnrichCardsStream:
 
         try:
             return await asyncio.wait_for(_drain(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail(
                 "enrich_cards_stream deadlocked: a batch worker failed to emit "
                 "its terminal message, tasks_remaining never reached 0, and the "

@@ -14,7 +14,6 @@ from kg.api_models import (
     VocabEntry,
 )
 
-
 # --- VocabEntry / Notebook name: non-empty contract ---
 
 

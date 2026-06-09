@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from typing import Any
 
 from ..api_models import EntitlementsResponse, SubscriptionStatusResponse
 from ..types import AdminGrantRecord, StoredUserRecord, SubscriptionRecord

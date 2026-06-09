@@ -69,8 +69,10 @@ def test_pipeline_log_concurrent_runs_same_user_independent():
 
     t1 = threading.Thread(target=worker, args=("run_a", ["Enrich", "Difficulty"], 10))
     t2 = threading.Thread(target=worker, args=("run_b", ["EmbedAndJudge", "ExternalSync"], 20))
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
     pipeline_log.end_run("run_a", "completed")
     pipeline_log.end_run("run_b", "completed")
