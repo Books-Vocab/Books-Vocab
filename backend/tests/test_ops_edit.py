@@ -801,3 +801,40 @@ class TestMarketingSurfaceShaping:
         assert data["review_mode"]["custom_minimum_interval_hours"] == 8
         assert data["review_mode"]["custom_maximum_interval_hours"] == 720
         assert data["vocab_ui"]["active_notebook_id"] == nb_id
+
+
+class TestLinkDelete:
+    def test_link_delete_removes_from_disk(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        for w in ("a", "b"):
+            assert _edit(str(tmp_path), "card-add", uid, w, "--meaning", "m",
+                         "--commit").returncode == 0
+        ra = _edit(str(tmp_path), "link-add", uid, "a", "b",
+                   "--kind", "shares_usage", "--confidence", "0.5",
+                   "--reason", "r", "--commit", "--json")
+        assert ra.returncode == 0, ra.stderr
+        lid = json.loads(ra.stdout)["result"]["link"]["id"]
+        assert any(lk["id"] == lid for lk in _graph_links(tmp_path, uid))
+
+        rd = _edit(str(tmp_path), "link-delete", uid, lid,
+                   "--commit", "--json")
+        assert rd.returncode == 0, rd.stderr
+        assert not any(lk["id"] == lid for lk in _graph_links(tmp_path, uid))
+
+    def test_link_delete_rejects_missing_link(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        fake_lid = "link-does-not-exist-1234"
+        rd = _edit(str(tmp_path), "link-delete", uid, fake_lid,
+                   "--commit", "--json")
+        assert rd.returncode != 0
+        assert "link" in (rd.stdout + rd.stderr).lower()
+
+
+class TestLinkUpdateErrors:
+    def test_link_update_rejects_missing_link(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        fake_lid = "link-does-not-exist-5678"
+        ru = _edit(str(tmp_path), "link-update", uid, fake_lid,
+                   "--confidence", "0.9", "--commit", "--json")
+        assert ru.returncode != 0
+        assert "link" in (ru.stdout + ru.stderr).lower()

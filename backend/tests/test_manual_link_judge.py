@@ -56,7 +56,7 @@ class TestManualLinkJudge:
         assert result is not None
         assert result.link == "shares_usage"
 
-    def test_transport_failure_returns_degraded_judgement(self):
+    def test_transport_failure_returns_degraded_judgement(self, monkeypatch):
         """Provider 5xx穿透 SDK max_retries 後不外漏例外，走與 parse 失敗
         同一條 graceful fallback（never returns None），不碰 quota。"""
         import httpx
@@ -68,6 +68,10 @@ class TestManualLinkJudge:
             "provider 5xx", request, body=None
         )
         judge = ManualLinkJudge(TrackedLLM(client, "test_user"))
+
+        # sync_retry sleeps 2 s → 4 s between attempts; mock it out so the
+        # test exercises the retry/degrade logic, not wall-clock patience.
+        monkeypatch.setattr("kg.retry.time.sleep", lambda _d: None)
 
         # 改前：例外外漏 → 此處 raise，紅燈。
         result = judge.evaluate("word_a", "meaning_a", "word_b", "meaning_b")
