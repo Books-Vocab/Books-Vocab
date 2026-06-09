@@ -3,7 +3,7 @@ import XCTest
 extension XCUIElement {
     /// Tap after waiting for existence, with a descriptive failure message.
     @discardableResult
-    func tapWhenReady(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line) -> Self {
+    func tapWhenReady(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         XCTAssertTrue(
             waitForExistence(timeout: timeout),
             "Expected element to exist before tap: \(self.description)",
@@ -14,7 +14,7 @@ extension XCUIElement {
     }
 
     /// Assert existence with a clear failure message.
-    func assertExists(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line) {
+    func assertExists(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         XCTAssertTrue(
             waitForExistence(timeout: timeout),
             "Expected element to exist: \(self.description)",
@@ -23,7 +23,7 @@ extension XCUIElement {
     }
 
     /// Assert non-existence after a short wait (allow animations to settle).
-    func assertDoesNotExist(timeout: TimeInterval = 2, file: StaticString = #filePath, line: UInt = #line) {
+    func assertDoesNotExist(timeout: TimeInterval = 2, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         let gone = !waitForExistence(timeout: timeout)
         XCTAssertTrue(
             gone,
@@ -33,7 +33,7 @@ extension XCUIElement {
     }
 
     /// Swipe up until the element is hittable (useful for scrollable lists).
-    func scrollIntoView(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line) {
+    func scrollIntoView(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         let start = Date()
         while !isHittable && Date().timeIntervalSince(start) < timeout {
             swipeUp()
