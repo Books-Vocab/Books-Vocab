@@ -484,26 +484,81 @@ catalog_collect_pngs_json() {
 }
 
 catalog_render_review_json() {
-  local out_root="$1"
+  local out_root="$1" derived_data_root="${2:-}"
   local renderer="$ROOT/ops/render_catalog_review.py"
+  local ui_graph_cli="$ROOT/ops/ui_graph.py"
+  local catalog_index="$out_root/catalog_index.json"
+  local ui_graph_json="$out_root/ui_graph.json"
   local profile="$ROOT/ops/catalog_review_profile.json"
   local review_html="$out_root/review.html"
   local review_manifest="$out_root/review_manifest.json"
   local review_state="$out_root/review_state.json"
   local render_output=""
   local detail=""
+  local graph_json='{"status":"skipped"}'
+  local graph_err=""
+  local graph_store=""
+
+  if [[ -f "$catalog_index" && -f "$ui_graph_cli" ]]; then
+    if [[ -n "$derived_data_root" && -d "$derived_data_root/Index.noindex/DataStore" ]]; then
+      graph_store="$derived_data_root/Index.noindex/DataStore"
+      if "$ui_graph_cli" --store-path "$graph_store" --catalog-index "$catalog_index" --json >"$ui_graph_json" 2>"$review_state.ui_graph.stderr"; then
+        graph_json="$(jq -n --arg path "$ui_graph_json" --arg mode "store-path" --argjson payload "$(cat "$ui_graph_json")" '{
+          status:"ok",
+          path:$path,
+          mode:$mode,
+          nodeCount:($payload.nodeCount // null),
+          edgeCount:($payload.edgeCount // null)
+        }')"
+      else
+        graph_err="$(tail -n 1 "$review_state.ui_graph.stderr" 2>/dev/null || true)"
+        rm -f "$ui_graph_json"
+        graph_json="$(jq -n --arg path "$ui_graph_json" --arg mode "store-path" --arg detail "$graph_err" '{
+          status:"warn",
+          path:$path,
+          mode:$mode,
+          error:"ui-graph-render-failed",
+          detail:($detail | select(length > 0))
+        }')"
+      fi
+    else
+      if "$ui_graph_cli" --build --catalog-index "$catalog_index" --json >"$ui_graph_json" 2>"$review_state.ui_graph.stderr"; then
+        graph_json="$(jq -n --arg path "$ui_graph_json" --arg mode "build" --argjson payload "$(cat "$ui_graph_json")" '{
+          status:"ok",
+          path:$path,
+          mode:$mode,
+          nodeCount:($payload.nodeCount // null),
+          edgeCount:($payload.edgeCount // null)
+        }')"
+      else
+        graph_err="$(tail -n 1 "$review_state.ui_graph.stderr" 2>/dev/null || true)"
+        rm -f "$ui_graph_json"
+        graph_json="$(jq -n --arg path "$ui_graph_json" --arg mode "build" --arg detail "$graph_err" '{
+          status:"warn",
+          path:$path,
+          mode:$mode,
+          error:"ui-graph-render-failed",
+          detail:($detail | select(length > 0))
+        }')"
+      fi
+    fi
+    rm -f "$review_state.ui_graph.stderr"
+  fi
+
   if [[ ! -x "$renderer" && ! -f "$renderer" ]]; then
     jq -n \
       --arg root "$out_root" \
       --arg reviewHtml "$review_html" \
       --arg reviewManifest "$review_manifest" \
       --arg reviewState "$review_state" \
+      --argjson uiGraph "$graph_json" \
       '{
         status:"warn",
         root:$root,
         reviewHtml:$reviewHtml,
         reviewManifest:$reviewManifest,
         reviewState:$reviewState,
+        uiGraph:$uiGraph,
         error:"review-renderer-missing"
       }'
     return 0
@@ -514,14 +569,16 @@ catalog_render_review_json() {
       --arg reviewHtml "$review_html" \
       --arg reviewManifest "$review_manifest" \
       --arg reviewState "$review_state" \
+      --argjson uiGraph "$graph_json" \
       --argjson render "${render_output:-null}" \
       '($render // {}) as $render
       | {
-          status:"ok",
+          status:(if $uiGraph.status == "warn" then "warn" else "ok" end),
           root:$root,
           reviewHtml:$reviewHtml,
           reviewManifest:$reviewManifest,
           reviewState:$reviewState,
+          uiGraph:$uiGraph,
           totalImages:($render.totalImages // null),
           promiseCounts:($render.promiseCounts // {})
         }'
@@ -533,6 +590,7 @@ catalog_render_review_json() {
     --arg reviewHtml "$review_html" \
     --arg reviewManifest "$review_manifest" \
     --arg reviewState "$review_state" \
+    --argjson uiGraph "$graph_json" \
     --arg detail "$detail" \
     '{
       status:"warn",
@@ -540,6 +598,7 @@ catalog_render_review_json() {
       reviewHtml:$reviewHtml,
       reviewManifest:$reviewManifest,
       reviewState:$reviewState,
+      uiGraph:$uiGraph,
       error:"review-render-failed",
       detail:($detail | select(length > 0))
     }'
@@ -929,7 +988,7 @@ cmd_catalog_snapshots_json() {
   if [[ "$copy_rc" -eq 0 && "$(jq -r '.pngCount // 0' <<<"$pngs_json")" -gt 0 ]]; then
     phase_start_ms="$(catalog_now_ms)"
     catalog_trace_phase "review" "start" "outRoot=$out_root"
-    review_json="$(catalog_render_review_json "$out_root")"
+    review_json="$(catalog_render_review_json "$out_root" "$derived_data_root")"
     phase_end_ms="$(catalog_now_ms)"
     catalog_trace_phase "review" "done" "wallMs=$(( phase_end_ms - phase_start_ms )) status=$(jq -r '.status' <<<"$review_json")"
   fi
