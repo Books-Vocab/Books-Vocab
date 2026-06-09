@@ -33,6 +33,7 @@ DEFAULT_TESTS=(
   capability-matrix
   ui-deadcode
   ui-graph
+  log-assert
   python-entrypoints
   ui-token
   docs-lint
@@ -80,6 +81,9 @@ run_one() {
     ui-graph)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_graph.py &&
       ./ops/tests/test_ui_graph.sh
+      ;;
+    log-assert)
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ios_log_assert.py
       ;;
     python-entrypoints) ./ops/tests/test_python_entrypoints.sh ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
