@@ -63,6 +63,9 @@ TEST_CACHE_ROOT="${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived
 
 # shellcheck source=lib/ios_test_discovery.sh
 source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
+# Optional run-metrics logging — additive, must never break the test run.
+METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
+[[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
 
 [[ -d "$XCODEPROJ" ]] || { echo "error: $XCODEPROJ not found" >&2; exit 1; }
 
@@ -858,6 +861,7 @@ write_json_verdict() {
       cache:{status:$cacheStatus},
       artifacts:{log:$log,xcresult:$xcresult}
     }' >"$VERDICT_JSON_FILE" || true
+  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
 }
 
 populate_timing_breakdown

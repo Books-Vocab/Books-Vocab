@@ -32,6 +32,9 @@ done
 # Resolve project root from script location
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Optional run-metrics logging — additive, must never break the build.
+METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
+[[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # DerivedData policy: one shared, bounded cache anchored at the MAIN repo
@@ -187,6 +190,7 @@ write_json_verdict() {
       },
       artifacts:{log:$log,xcresult:$xcresult}
     }' >"$VERDICT_JSON_FILE" || true
+  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
 }
 if [[ $EXIT_CODE -eq 0 ]]; then
   echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
