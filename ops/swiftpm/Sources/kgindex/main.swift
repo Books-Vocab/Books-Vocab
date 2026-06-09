@@ -8,9 +8,18 @@ import IndexStoreDB
 //
 // Emits a JSON document to stdout: for every symbol definition of the requested
 // kinds whose definition file path contains <sourceRootSubstring>, the symbol's
-// USR + definition location + every reference/call location (with roles). It
-// applies NO policy — no Debug/Tests exclusion, no orphan judgement. That lives
-// in ops/ui_deadcode.py where it is unit-testable.
+// USR + definition location + every reference/call location (with roles + the
+// enclosing TYPE that contains the reference). It applies NO policy — no
+// Debug/Tests exclusion, no orphan judgement. That lives in the Python consumers
+// (ops/ui_deadcode.py, ops/ui_graph.py) where it is unit-testable.
+//
+// The per-ref `container` is the nearest enclosing nominal type of the reference
+// site, resolved structurally via the index's `containedBy` relation (ref →
+// enclosing method/accessor) then walking `childOf` up to the nearest struct/
+// class/enum/protocol. Extensions are collapsed onto the extended nominal type
+// (see nominalByName) so a type and its extensions are one node. This is what
+// lets a consumer build a type→type dependency graph ("type A references type
+// B"). Resolution is pure structural fact, not policy.
 //
 // Design notes:
 // - libIndexStore.dylib is discovered via `xcode-select -p`, never hardcoded, so
@@ -155,9 +164,96 @@ func rolesStrings(_ roles: SymbolRole) -> [String] {
     return out
 }
 
-// MARK: - Emit neutral records (def + refs), zero policy.
+// MARK: - Container resolution (ref site → nearest enclosing type)
 
-struct RefRecord: Encodable { let path: String; let line: Int; let roles: [String] }
+// Nominal types we stop the walk at. Extensions are handled specially: a member of
+// `extension Foo` has childOf → the EXTENSION symbol (kind .extension, name "Foo",
+// but a DISTINCT USR from Foo's nominal def). For a USR-keyed dependency graph that
+// would split Foo's main decl and its extensions into separate nodes and drop real
+// edges (bodies often live in extensions). So we collapse an extension to its
+// extended nominal type by name lookup (preferring a definition under sourceRoot).
+let nominalKinds: Set<IndexSymbolKind> = [.struct, .class, .enum, .protocol]
+
+struct ContainerRecord: Encodable { let usr: String; let name: String; let kind: String }
+
+// name → nominal type definition (collapses extensions onto the extended type).
+var nominalByNameCache: [String: ContainerRecord?] = [:]
+@MainActor
+func nominalByName(_ name: String) -> ContainerRecord? {
+    if let cached = nominalByNameCache[name] { return cached }
+    var external: ContainerRecord? = nil
+    var result: ContainerRecord? = nil
+    var localUSRs = Set<String>()
+    for occ in db.canonicalOccurrences(ofName: name) where occ.roles.contains(.definition) {
+        let s = occ.symbol
+        guard nominalKinds.contains(s.kind) else { continue }
+        let rec = ContainerRecord(usr: s.usr, name: s.name, kind: kindString(s.kind))
+        if occ.location.path.contains(sourceRoot) {       // prefer local
+            localUSRs.insert(s.usr)
+            if result == nil { result = rec }
+        } else if external == nil {
+            external = rec
+        }
+    }
+    if localUSRs.count > 1 {
+        // ambiguous collapse: don't silently pick a wrong edge — surface it.
+        FileHandle.standardError.write(
+            "kgindex: warning: \(localUSRs.count) local types named '\(name)'; extension collapse uses the first\n".data(using: .utf8)!)
+    }
+    let resolved = result ?? external
+    nominalByNameCache[name] = resolved
+    return resolved
+}
+
+// Memoized walk: a method/accessor/property symbol → its nearest enclosing nominal
+// type. Returns nil for symbols with no type ancestor (free functions, top-level).
+var containerCache: [String: ContainerRecord?] = [:]
+var resolveInProgress = Set<String>()
+@MainActor
+func resolveEnclosingType(usr: String, name: String, kind: IndexSymbolKind) -> ContainerRecord? {
+    if nominalKinds.contains(kind) {
+        return ContainerRecord(usr: usr, name: name, kind: kindString(kind))
+    }
+    if kind == .extension {
+        // collapse onto the extended nominal; fall back to the extension symbol if
+        // the nominal is not indexed (e.g. an extension of a stdlib/SwiftUI type).
+        return nominalByName(name) ?? ContainerRecord(usr: usr, name: name, kind: "extension")
+    }
+    if let cached = containerCache[usr] { return cached }
+    if resolveInProgress.contains(usr) {
+        // childOf cycle (not expected in valid Swift) — surface, don't silently swallow.
+        FileHandle.standardError.write("kgindex: warning: childOf cycle at \(usr)\n".data(using: .utf8)!)
+        return nil
+    }
+    resolveInProgress.insert(usr)
+    var result: ContainerRecord? = nil
+    outer: for occ in db.occurrences(ofUSR: usr, roles: [.definition, .declaration]) {
+        for rel in occ.relations where rel.roles.contains(.childOf) {
+            if let parent = resolveEnclosingType(usr: rel.symbol.usr, name: rel.symbol.name, kind: rel.symbol.kind) {
+                result = parent
+                break outer
+            }
+        }
+    }
+    resolveInProgress.remove(usr)
+    containerCache[usr] = result
+    return result
+}
+
+// The enclosing type of a reference occurrence, via its `containedBy` relation.
+@MainActor
+func containerOf(_ occ: SymbolOccurrence) -> ContainerRecord? {
+    for rel in occ.relations where rel.roles.contains(.containedBy) {
+        if let t = resolveEnclosingType(usr: rel.symbol.usr, name: rel.symbol.name, kind: rel.symbol.kind) {
+            return t
+        }
+    }
+    return nil
+}
+
+// MARK: - Emit neutral records (def + refs + container), zero policy.
+
+struct RefRecord: Encodable { let path: String; let line: Int; let roles: [String]; let container: ContainerRecord? }
 struct SymbolRecord: Encodable {
     let kind: String; let name: String; let usr: String
     let def: Location; let refs: [RefRecord]
@@ -172,7 +268,8 @@ for d in defs {
     for r in occs {
         if r.roles.contains(.definition) { continue }
         if r.location.path == d.path && r.location.line == d.line { continue }
-        refs.append(RefRecord(path: r.location.path, line: r.location.line, roles: rolesStrings(r.roles)))
+        refs.append(RefRecord(path: r.location.path, line: r.location.line,
+                              roles: rolesStrings(r.roles), container: containerOf(r)))
     }
     records.append(SymbolRecord(kind: kindString(d.kind), name: d.name, usr: d.usr,
                                 def: .init(path: d.path, line: d.line), refs: refs))

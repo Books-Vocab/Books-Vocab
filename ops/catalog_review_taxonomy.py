@@ -248,11 +248,13 @@ def build_taxonomy(
         kind = _DECLARED_KIND_TO_ASSET.get(declared.get("kind", ""), classify_asset_kind(category, group, transparent_margin))
         surface_role = _DECLARED_KIND_TO_SURFACE_ROLE.get(declared.get("kind", ""), classify_surface_role(group, category, kind))
         screen = declared.get("screen", "")
+        backing = declared.get("backing", "")
     else:
         feature = classify_feature(category, profile)
         kind = classify_asset_kind(category, group, transparent_margin)
         surface_role = classify_surface_role(group, category, kind)
         screen = ""
+        backing = ""
     state_label = title or surface_variant or "Default"
     facet = classify_state_facet(state_label)
     return {
@@ -271,6 +273,7 @@ def build_taxonomy(
         # Source-declared full-screen identity (empty for overlays/blocks and when
         # the surface predates the index). Powers the gallery's 1:1 screen↔surface view.
         "screen": screen,
+        "backing": backing,
         "sourceDeclared": bool(declared),
     }
 

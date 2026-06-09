@@ -218,7 +218,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - **cache-miss 不是 test failure**:`catalog snapshots --reuse-build` 命中 stale/缺失 cache 時頂層 `status:"cache-miss"`(非 `error`)、`errors[].catalog-cache` 帶可行動 hint、stderr 印一行提示。看到 `cache-miss` 就跑 `catalog prepare` 或拿掉 `--reuse-build`,不要當成程式碼壞掉去追。
 - **uniform image 改走 warning 語意**:`uniform-image-detected` 現在只會讓 `validation.status:"warn"` 與頂層 `status:"warn"`，不再把已成功產出的 PNG 誤判成 fatal `error`。真正 fatal 的仍是 `png-count-mismatch`、degenerate dimensions、xcodebuild/test/copy 失敗。
 - **失敗也會搶救 PNG**:full run 失敗時 wrapper 仍把 simulator container 內已生成的截圖 salvage 回本地。`artifacts.containerPngCount` = container 內實際張數,`copy.salvaged=true` + `errors[].catalog-salvage`(info note)代表「有生成但 run 失敗已救回」;`containerPngCount==0` 才是真的沒生成。別再手動進 container 撈圖。
-- **snapshot 會順手生 atlas sidecar**:`catalog snapshots` 成功複製 PNG 後，會在同一個 `out_root` 自動生成 `catalog.html`（自由縮放 SVG 心智圖，與 CLI `tree/node/node-url` 共用 `nodePath`）與 `review_manifest.json`（含 `tree` 欄位）；JSON payload 的 `review.canvasHtml` / `review.reviewManifest` 與文字輸出都會帶路徑。sidecar 生成失敗只記 warning，不會遮蔽 raw PNG 已成功落地。
+- **snapshot 會順手生 review/graph sidecar**:`catalog snapshots` 成功複製 PNG 後，會在同一個 `out_root` 自動生成 `catalog.html`（自由縮放 SVG 心智圖，與 CLI `tree/node/node-url` 共用 `nodePath`）、`review_manifest.json`（含 `tree` 欄位）以及 `ui_graph.json`（`kg.ui.graph.v1`，把 `CatalogSurface.backing` 接到 type→type 依賴圖）。`review.html` 會直接把這份 graph 摘要上浮到每個 surface 卡：`backing`、`depends`、`impacts`、graph status/health。graph sidecar 生成失敗只記 warning / degrade 結構欄位，不會遮蔽 raw PNG 與 gallery 本體。
 
 ### 日常 warm-loop 建議
 

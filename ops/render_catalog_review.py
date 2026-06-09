@@ -62,7 +62,13 @@ def main() -> int:
     existing_state = load_review_state(state_path)
     review_state = build_review_state(items, profile, existing_state)
     state_path.write_text(json.dumps(review_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    manifest = build_manifest(items, profile, state_file=state_path.name, review_state=review_state)
+    manifest = build_manifest(
+        items,
+        profile,
+        state_file=state_path.name,
+        review_state=review_state,
+        source_root=source_root,
+    )
     write_review_outputs(output_root, manifest, review_state)
     print(
         json.dumps(

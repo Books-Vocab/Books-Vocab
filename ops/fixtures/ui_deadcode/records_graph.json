@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "sourceRoot": "ios/BooksBrowser/",
+  "symbols": [
+    {
+      "kind": "struct",
+      "name": "Screen",
+      "usr": "s:Screen",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Screen.swift", "line": 1 },
+      "refs": []
+    },
+    {
+      "kind": "struct",
+      "name": "Card",
+      "usr": "s:Card",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Card.swift", "line": 1 },
+      "refs": [
+        { "path": "/repo/ios/BooksBrowser/Views/Screen.swift", "line": 10, "roles": ["reference"], "container": { "usr": "s:Screen", "name": "Screen", "kind": "struct" } },
+        { "path": "/repo/ios/BooksBrowser/Views/Card.swift", "line": 20, "roles": ["reference"], "container": { "usr": "s:Card", "name": "Card", "kind": "struct" } },
+        { "path": "/repo/ios/BooksBrowser/Models/Tokens.swift", "line": 5, "roles": ["reference"], "container": { "usr": "s:EnumX", "name": "EnumX", "kind": "enum" } }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Pill",
+      "usr": "s:Pill",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Pill.swift", "line": 1 },
+      "refs": [
+        { "path": "/repo/ios/BooksBrowser/Views/Card.swift", "line": 30, "roles": ["reference"], "container": { "usr": "s:Card", "name": "Card", "kind": "struct" } }
+      ]
+    },
+    {
+      "kind": "class",
+      "name": "Lonely",
+      "usr": "s:Lonely",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Lonely.swift", "line": 1 },
+      "refs": []
+    },
+    {
+      "kind": "enum",
+      "name": "EnumX",
+      "usr": "s:EnumX",
+      "def": { "path": "/repo/ios/BooksBrowser/Models/Tokens.swift", "line": 1 },
+      "refs": []
+    }
+  ]
+}
