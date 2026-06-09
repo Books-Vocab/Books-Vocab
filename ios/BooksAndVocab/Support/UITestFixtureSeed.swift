@@ -4,6 +4,7 @@ import SwiftData
 
 /// Bridges the existing fixture system into the live SwiftData container for UI tests.
 /// Triggered by launch arguments when `-ui-testing` is active.
+@MainActor
 enum UITestFixtureSeed {
     /// Parse `-seedFixture:<domain>:<id>` arguments and inject matching fixtures.
     static func injectIfNeeded(into container: ModelContainer, arguments: [String]) {
