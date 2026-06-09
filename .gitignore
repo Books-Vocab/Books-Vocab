@@ -67,3 +67,6 @@ __pycache__/
 # Codex tooling：AGENTS.md 與 .agents/skills 是 symlink → CLAUDE.md / .claude/skills
 # （單一來源，已於上方追蹤）；.codex/ 為本地 runtime state，不共享
 .codex/
+
+# ops Swift tooling local build (wrapper redirects to .cache/ops-swift-build)
+ops/swiftpm/.build/
