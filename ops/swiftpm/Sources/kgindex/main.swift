@@ -13,12 +13,13 @@ import IndexStoreDB
 // Debug/Tests exclusion, no orphan judgement. That lives in the Python consumers
 // (ops/ui_deadcode.py, ops/ui_graph.py) where it is unit-testable.
 //
-// The per-ref `container` is the nearest enclosing type of the reference site,
-// resolved structurally via the index's `containedBy` relation (ref → enclosing
-// method/accessor) then walking `childOf` up to the nearest struct/class/enum/
-// protocol/extension. This is what lets a consumer build a type→type dependency
-// graph ("type A references type B"). Resolution is pure structural fact, not
-// policy.
+// The per-ref `container` is the nearest enclosing nominal type of the reference
+// site, resolved structurally via the index's `containedBy` relation (ref →
+// enclosing method/accessor) then walking `childOf` up to the nearest struct/
+// class/enum/protocol. Extensions are collapsed onto the extended nominal type
+// (see nominalByName) so a type and its extensions are one node. This is what
+// lets a consumer build a type→type dependency graph ("type A references type
+// B"). Resolution is pure structural fact, not policy.
 //
 // Design notes:
 // - libIndexStore.dylib is discovered via `xcode-select -p`, never hardcoded, so
@@ -182,12 +183,22 @@ func nominalByName(_ name: String) -> ContainerRecord? {
     if let cached = nominalByNameCache[name] { return cached }
     var external: ContainerRecord? = nil
     var result: ContainerRecord? = nil
+    var localUSRs = Set<String>()
     for occ in db.canonicalOccurrences(ofName: name) where occ.roles.contains(.definition) {
         let s = occ.symbol
         guard nominalKinds.contains(s.kind) else { continue }
         let rec = ContainerRecord(usr: s.usr, name: s.name, kind: kindString(s.kind))
-        if occ.location.path.contains(sourceRoot) { result = rec; break }  // prefer local
-        if external == nil { external = rec }
+        if occ.location.path.contains(sourceRoot) {       // prefer local
+            localUSRs.insert(s.usr)
+            if result == nil { result = rec }
+        } else if external == nil {
+            external = rec
+        }
+    }
+    if localUSRs.count > 1 {
+        // ambiguous collapse: don't silently pick a wrong edge — surface it.
+        FileHandle.standardError.write(
+            "kgindex: warning: \(localUSRs.count) local types named '\(name)'; extension collapse uses the first\n".data(using: .utf8)!)
     }
     let resolved = result ?? external
     nominalByNameCache[name] = resolved
