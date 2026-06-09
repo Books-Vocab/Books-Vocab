@@ -29,7 +29,7 @@
 - 翻頁不重載：底線渲染透過 JS 注入，設定異動後即時套用
 
 ### 🧠 知識圖譜雙向同步（KG Sync）與多帳戶隔離
-- 與自架的 **Knowledge Graph (KG) FastAPI 伺服器**雙向同步生詞
+- 與自架的 **Books & Vocab backend（Knowledge Graph, KG）** 雙向同步生詞
 - **沙盒隔離**：支援多設備、多使用者，依據自訂 User ID 將資料完全隔離
 - **上傳**：待同步生詞推送至 KG（含新增與刪除操作）。
 - **觸發背景處理**：呼叫 `/api/pipeline` 交由伺服器在背景執行（AI Enrichment → Difficulty Tier 標記 → 可選第三方整合），App 即刻返回。
@@ -96,7 +96,7 @@ BooksBrowser/
 | [Readium Swift Toolkit](https://github.com/nicegamer7/readium-swift-toolkit) (v3.7.0) | EPUB 解析與排版 |
 | Gemini API (`gemini-flash-lite-latest`) | 雲端 AI 翻譯（低 Token 成本）|
 | [Free Dictionary API](https://dictionaryapi.dev/) | IPA 音標（免費，零 Token）|
-| KG FastAPI Server（自架） | 知識圖譜、雲端同步與背景處理後端 |
+| Books & Vocab Backend（自架） | 知識圖譜、雲端同步與背景處理後端 |
 
 ---
 

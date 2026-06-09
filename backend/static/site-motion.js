@@ -1,4 +1,4 @@
-/* KG public site — progressive-enhancement motion layer.
+/* Books & Vocab public site — progressive-enhancement motion layer.
    No framework, no CDN. Everything degrades cleanly:
    - prefers-reduced-motion OR no IntersectionObserver → reveals show instantly.
    - no JS at all → CSS leaves .reveal visible (the reduced-motion @media also

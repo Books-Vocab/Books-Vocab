@@ -1,5 +1,5 @@
 /* ============================================================
-   KG Web Component Primitives  (HAND-AUTHORED — this dist/ file IS the source.
+   Books & Vocab Web Component Primitives  (HAND-AUTHORED — this dist/ file IS the source.
    Bundled into EVERY web surface — chrome-extension (shared/kg-components.css)
    AND backend/static — via ops/gen_web_tokens.py. The base classes here
    (.kg-btn / .kg-card / .kg-chip) are owned SOLELY by this file; each surface's

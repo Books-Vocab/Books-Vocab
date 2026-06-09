@@ -1,5 +1,5 @@
 /**
- * KG Chrome Extension — Vocab Outbox (pure state machine)
+ * Books & Vocab Chrome Extension — Vocab Outbox (pure state machine)
  *
  * Mirrors the *add path* of iOS `VocabularyEntry`'s sync lifecycle so chrome
  * gains a persistent, retryable write queue instead of fire-and-go POSTs:
