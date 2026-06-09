@@ -352,6 +352,12 @@ grep -q 'phase=build-for-testing start' "$hb_cap" && grep -q 'phase=build-for-te
   && ok "catalog heartbeat emits phase milestones to stderr" || fail_t "catalog heartbeat missing phase milestones: $(cat "$hb_cap")"
 grep -q 'building-stdout' "$hb_log" && [[ -z "$hb_stdout" ]] \
   && ok "catalog heartbeat keeps stdout clean (command output to log, phases to stderr)" || fail_t "catalog heartbeat polluted stdout: '$hb_stdout'"
+hb_tick_log="$catalog_tmp/hb_tick.log"; hb_tick_err="$catalog_tmp/hb_tick.err"; hb_tick_cap="$catalog_tmp/hb_tick.cap"
+hb_tick_stdout="$(ROOT="$WORKSPACE" KG_IOS_OPS_CATALOG_HEARTBEAT_SEC=99 KG_IOS_OPS_CATALOG_TICK_SEC=1 bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "build-for-testing" "'"$hb_tick_log"'" "'"$hb_tick_err"'" 0 -- bash -c "sleep 3; echo tick-stdout; exit 0"' 2>"$hb_tick_cap")"
+grep -q 'phase=build-for-testing tick ' "$hb_tick_cap" \
+  && ok "catalog heartbeat emits short keep-alive ticks before detail heartbeat" || fail_t "catalog heartbeat missing short tick: $(cat "$hb_tick_cap")"
+grep -q 'tick-stdout' "$hb_tick_log" && [[ -z "$hb_tick_stdout" ]] \
+  && ok "catalog heartbeat ticks keep stdout clean" || fail_t "catalog tick polluted stdout: '$hb_tick_stdout'"
 hb_rc=0
 ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcodebuild_heartbeat "full-test" "'"$hb_log"'" "'"$hb_err"'" 0 -- bash -c "exit 87"' 2>"$hb_cap" || hb_rc=$?
 [[ "$hb_rc" -eq 87 ]] && grep -q 'phase=full-test done exitCode=87' "$hb_cap" \

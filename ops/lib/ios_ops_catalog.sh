@@ -121,8 +121,9 @@ catalog_run_xcodebuild_heartbeat() {
   local label="$1" log_path="$2" err_path="$3" append="$4"
   shift 4
   [[ "${1:-}" == "--" ]] && shift
-  local pid start now hb_at elapsed interval rc
-  interval="${KG_IOS_OPS_CATALOG_HEARTBEAT_SEC:-20}"
+  local pid start now hb_at tick_at elapsed interval tick_interval rc
+  interval="${KG_IOS_OPS_CATALOG_HEARTBEAT_SEC:-20}"     # detail line cadence
+  tick_interval="${KG_IOS_OPS_CATALOG_TICK_SEC:-3}"      # short keep-alive tick
   if [[ "$append" == "1" ]]; then
     "$@" >>"$log_path" 2>>"$err_path" &
   else
@@ -131,13 +132,18 @@ catalog_run_xcodebuild_heartbeat() {
   pid=$!
   start="$(date +%s)"
   hb_at="$start"
+  tick_at="$start"
   catalog_phase_emit "$label" "start" "pid=$pid log=$log_path"
   while kill -0 "$pid" 2>/dev/null; do
     now="$(date +%s)"
+    elapsed=$(( now - start ))
     if (( now - hb_at >= interval )); then
-      elapsed=$(( now - start ))
       catalog_phase_emit "$label" "running" "${elapsed}s pid=$pid last=$(catalog_log_tail_line "$log_path")"
       hb_at="$now"
+      tick_at="$now"
+    elif (( now - tick_at >= tick_interval )); then
+      catalog_phase_emit "$label" "tick" "${elapsed}s"
+      tick_at="$now"
     fi
     sleep 2
   done
