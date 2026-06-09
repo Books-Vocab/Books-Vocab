@@ -684,6 +684,126 @@ cmd_simulator_ensure_booted() {
   [[ "$(jq -r '.status' <<<"$payload")" == "ok" ]]
 }
 
+# ── Simulator lease pool ──────────────────────────────────────────────────
+# A bounded pool of pre-named simulators (kg-pool-1..N) that parallel agents
+# claim one-at-a-time so their test runs don't contend on a single shared
+# device. Leasing is cross-process (lease and release are separate ios_ops
+# invocations), so we use an atomic mkdir-based claim under a lease root rather
+# than flock (which only holds while the locking process lives). A lease older
+# than KG_IOS_SIM_LEASE_TTL is treated as stale and reclaimed, so a crashed
+# agent never wedges a pool slot permanently.
+SIM_LEASE_ROOT="${KG_IOS_SIM_LEASE_ROOT:-/tmp/kg-sim-leases}"
+SIM_POOL_PREFIX="${KG_IOS_SIM_POOL_PREFIX:-kg-pool}"
+SIM_POOL_SIZE="${KG_IOS_SIM_POOL_SIZE:-3}"
+SIM_POOL_DEVICE_TYPE="${KG_IOS_SIM_POOL_DEVICE_TYPE:-iPhone 17 Pro Max}"
+SIM_LEASE_TTL="${KG_IOS_SIM_LEASE_TTL:-1800}"
+
+simulator_pool_ensure_device() {
+  # Ensure a simulator named $1 exists; print its UDID (create if missing).
+  local name="$1" udid devtype runtime
+  udid="$(xcrun simctl list devices --json 2>/dev/null \
+    | jq -r --arg n "$name" '[.devices[]?[]? | select(.name==$n)][0].udid // empty')"
+  if [[ -z "$udid" ]]; then
+    devtype="$(xcrun simctl list devicetypes --json 2>/dev/null \
+      | jq -r --arg d "$SIM_POOL_DEVICE_TYPE" '[.devicetypes[] | select(.name==$d)][0].identifier // empty')"
+    runtime="$(xcrun simctl list runtimes --json 2>/dev/null \
+      | jq -r '[.runtimes[] | select(.isAvailable==true and (.identifier|test("iOS")))] | last | .identifier // empty')"
+    [[ -n "$devtype" && -n "$runtime" ]] || return 1
+    udid="$(xcrun simctl create "$name" "$devtype" "$runtime" 2>/dev/null)" || return 1
+  fi
+  printf '%s' "$udid"
+}
+
+simulator_lease_is_stale() {
+  local leasedir="$1" created now
+  created="$(cat "$leasedir/created_at" 2>/dev/null || echo 0)"
+  now="$(date +%s)"
+  (( now - created > SIM_LEASE_TTL ))
+}
+
+cmd_simulator_lease() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh simulator lease [--json]  # claim a pool simulator, boot it, print its UDID"
+        return 0 ;;
+      *) echo "✗ unknown simulator lease option: $1" >&2; return 1 ;;
+    esac
+  done
+  mkdir -p "$SIM_LEASE_ROOT"
+  local i name leasedir udid
+  for (( i=1; i<=SIM_POOL_SIZE; i++ )); do
+    name="${SIM_POOL_PREFIX}-${i}"
+    leasedir="$SIM_LEASE_ROOT/$name"
+    if ! mkdir "$leasedir" 2>/dev/null; then
+      simulator_lease_is_stale "$leasedir" || continue
+      rm -rf "$leasedir" 2>/dev/null; mkdir "$leasedir" 2>/dev/null || continue
+    fi
+    udid="$(simulator_pool_ensure_device "$name")" || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    [[ -n "$udid" ]] || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    date +%s > "$leasedir/created_at"
+    printf '%s' "$udid" > "$leasedir/udid"
+    printf '%s' "$$" > "$leasedir/owner_pid"
+    xcrun simctl bootstatus "$udid" -b >/dev/null 2>&1 || xcrun simctl boot "$udid" >/dev/null 2>&1 || true
+    if [[ "$json" -eq 1 ]]; then
+      jq -nc --arg name "$name" --arg udid "$udid" --arg leaseDir "$leasedir" \
+        '{schema:"kg.ios.sim-lease.v1", status:"ok", name:$name, udid:$udid, leaseDir:$leaseDir}'
+    else
+      printf '%s\n' "$udid"
+    fi
+    return 0
+  done
+  if [[ "$json" -eq 1 ]]; then
+    jq -nc --argjson size "$SIM_POOL_SIZE" '{schema:"kg.ios.sim-lease.v1", status:"error", error:("pool-exhausted:"+($size|tostring))}'
+  else
+    echo "✗ simulator pool exhausted (size=$SIM_POOL_SIZE) — raise KG_IOS_SIM_POOL_SIZE or release leases" >&2
+  fi
+  return 1
+}
+
+cmd_simulator_release() {
+  local json=0 target="" shutdown=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      --shutdown) shutdown=1; shift ;;
+      --device|--name) target="$2"; shift 2 ;;
+      -h|--help|help)
+        echo "Usage: ./ops/ios_ops.sh simulator release [--device <udid|name>] [--shutdown] [--json]"
+        return 0 ;;
+      *) [[ -z "$target" ]] && { target="$1"; shift; } || { echo "✗ unknown simulator release option: $1" >&2; return 1; } ;;
+    esac
+  done
+  [[ -n "$target" ]] || { echo "✗ simulator release requires --device <udid|name>" >&2; return 1; }
+  local leasedir udid name=""
+  # Resolve the lease dir: target may be the pool name or the leased UDID.
+  if [[ -d "$SIM_LEASE_ROOT/$target" ]]; then
+    name="$target"
+  else
+    for leasedir in "$SIM_LEASE_ROOT"/*; do
+      [[ -d "$leasedir" ]] || continue
+      if [[ "$(cat "$leasedir/udid" 2>/dev/null)" == "$target" ]]; then name="$(basename "$leasedir")"; break; fi
+    done
+  fi
+  if [[ -z "$name" ]]; then
+    if [[ "$json" -eq 1 ]]; then jq -nc --arg t "$target" '{schema:"kg.ios.sim-release.v1",status:"noop",error:("no-active-lease:"+$t)}'
+    else echo "[ios_ops] no active lease for '$target' (already released?)"; fi
+    return 0
+  fi
+  leasedir="$SIM_LEASE_ROOT/$name"
+  udid="$(cat "$leasedir/udid" 2>/dev/null)"
+  [[ "$shutdown" -eq 1 && -n "$udid" ]] && xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
+  rm -rf "$leasedir" 2>/dev/null || true
+  if [[ "$json" -eq 1 ]]; then
+    jq -nc --arg name "$name" --arg udid "$udid" --argjson shutdown "$shutdown" \
+      '{schema:"kg.ios.sim-release.v1", status:"ok", name:$name, udid:$udid, shutdown:($shutdown==1)}'
+  else
+    echo "[ios_ops] released lease $name${udid:+ (udid=$udid)}$([[ $shutdown -eq 1 ]] && echo ', shut down')"
+  fi
+}
+
 cmd_simulator() {
   local action="${1:-status}"
   [[ $# -gt 0 ]] && shift || true
@@ -717,8 +837,14 @@ cmd_simulator() {
     terminate|stop)
       cmd_simulator_lifecycle terminate "$@"
       ;;
+    lease)
+      cmd_simulator_lease "$@"
+      ;;
+    release|unlease)
+      cmd_simulator_release "$@"
+      ;;
     -h|--help|help)
-      echo "Usage: ./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]"
+      echo "Usage: ./ops/ios_ops.sh simulator status [--json] | ensure-booted [--device <udid|name>] [--json] | lease [--json] | release [--device <udid|name>] [--shutdown] [--json] | launch [--device booted] [--json] [-- app args...] | terminate [--device booted] [--json] | screenshot --out <png> [--device booted] [--json]"
       ;;
     *)
       echo "✗ unknown simulator action: $action" >&2
