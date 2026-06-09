@@ -535,10 +535,10 @@ def test_admin_test_matrix_endpoints(isolated_api):
             assert client.get("/admin/tests", follow_redirects=False).status_code == 302
             r_ui = client.get("/admin/tests", params={"token": "adm-secret"})
             assert r_ui.status_code == 200
-            assert "WordNexus Admin" in r_ui.text
+            assert "Books &amp; Vocab Admin" in r_ui.text
             r_ui_alias = client.get("/admin/test", params={"token": "adm-secret"})
             assert r_ui_alias.status_code == 200
-            assert "WordNexus Admin" in r_ui_alias.text
+            assert "Books &amp; Vocab Admin" in r_ui_alias.text
 
             r_catalog = client.get("/api/admin/tests/catalog", params={"token": "adm-secret"})
             assert r_catalog.status_code == 200
