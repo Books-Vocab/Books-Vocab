@@ -376,12 +376,14 @@ struct PodcastEpisodeListView: View {
             // never navigate into the player for a gated episode.
             Button { handleLockedTap() } label: { row }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("podcast.episode.\(episode.remoteId)")
         } else {
             NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
                 row
             }
             .buttonStyle(.plain)
             .disabled(!episode.audioAvailable)
+            .accessibilityIdentifier("podcast.episode.\(episode.remoteId)")
             .simultaneousGesture(
                 TapGesture().onEnded {
                     warmConnection(for: episode)
