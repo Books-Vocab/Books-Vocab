@@ -128,7 +128,9 @@ async function refreshAuthUI() {
 
 function handleLogin() {
   try {
-    chrome.tabs.create({ url: 'https://wordnexus.lol/login' }).catch((err) => console.error('[KG] handleLogin tabs.create failed', err));
+    chrome.tabs.create({
+      url: `${KGPure.PUBLIC_WEB_ORIGIN}${KGPure.LOGIN_PATH}`,
+    }).catch((err) => console.error('[KG] handleLogin tabs.create failed', err));
   } catch (err) {
     console.error('[KG] handleLogin failed:', err);
     renderAuthError(t('authErrorOpen'), handleLogin);
