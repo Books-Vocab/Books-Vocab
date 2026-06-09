@@ -28,7 +28,10 @@
 #       SwiftCompile normal arm64 [Compiling\ name.swift] /abs/path.swift (in target 'T' from project 'P')
 
 count_compile_events() {
-  grep -cE '^(SwiftCompile|CompileC) ' "$1" 2>/dev/null || echo 0
+  local count
+  count=$(grep -cE '^(SwiftCompile|CompileC) ' "$1" 2>/dev/null || true)
+  [[ "$count" =~ ^[0-9]+$ ]] || count=0
+  printf '%s\n' "$count"
 }
 
 start_build_monitor() {
