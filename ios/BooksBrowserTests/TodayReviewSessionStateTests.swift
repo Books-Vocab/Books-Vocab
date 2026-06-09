@@ -7,33 +7,43 @@ struct TodayReviewSessionStateTests {
         var state = TodayReviewSessionState(queue: ["alpha", "beta"])
 
         #expect(state.revealStage == .front)
-        #expect(state.advanceReveal())
+        // Swift Testing's #expect captures its expression into an immutable
+        // closure ($0), so mutating members must be called before the macro.
+        let advancedToBack = state.advanceReveal()
+        #expect(advancedToBack)
         #expect(state.revealStage == .back)
 
-        #expect(state.advanceReveal() == false)
+        let advanceBlockedAtBack = state.advanceReveal()
+        #expect(advanceBlockedAtBack == false)
         #expect(state.revealStage == .back)
 
-        #expect(state.retractReveal())
+        let retractedToFront = state.retractReveal()
+        #expect(retractedToFront)
         #expect(state.revealStage == .front)
 
-        #expect(state.retractReveal() == false)
+        let retractBlockedAtFront = state.retractReveal()
+        #expect(retractBlockedAtFront == false)
         #expect(state.revealStage == .front)
     }
 
     @Test func navigationResetsRevealAndMovesWithinQueueBounds() {
         var state = TodayReviewSessionState(queue: ["alpha", "beta", "gamma"])
 
-        #expect(state.goPrevious() == false)
+        let previousBlockedAtStart = state.goPrevious()
+        #expect(previousBlockedAtStart == false)
         #expect(state.currentIndex == 0)
 
-        #expect(state.advanceReveal())
+        let revealedBack = state.advanceReveal()
+        #expect(revealedBack)
         #expect(state.revealStage == .back)
 
-        #expect(state.goNext())
+        let movedNext = state.goNext()
+        #expect(movedNext)
         #expect(state.currentIndex == 1)
         #expect(state.revealStage == .front)
 
-        #expect(state.goPrevious())
+        let movedPrevious = state.goPrevious()
+        #expect(movedPrevious)
         #expect(state.currentIndex == 0)
         #expect(state.revealStage == .front)
     }
@@ -41,12 +51,14 @@ struct TodayReviewSessionStateTests {
     @Test func advanceAfterSubmissionMovesPastQueueAndReportsCompletion() {
         var state = TodayReviewSessionState(queue: ["alpha", "beta"])
 
-        #expect(state.advanceAfterSubmission() == false)
+        let advancedWithinQueue = state.advanceAfterSubmission()
+        #expect(advancedWithinQueue == false)
         #expect(state.currentIndex == 1)
         #expect(state.currentEntry == "beta")
         #expect(state.revealStage == .front)
 
-        #expect(state.advanceAfterSubmission())
+        let advancedPastQueue = state.advanceAfterSubmission()
+        #expect(advancedPastQueue)
         #expect(state.currentIndex == 2)
         #expect(state.currentEntry == nil)
         #expect(state.isComplete)
@@ -58,7 +70,8 @@ struct TodayReviewSessionStateTests {
         _ = state.advanceReveal()
 
         var rng = FixedIndexRNG(indices: [1, 1])
-        #expect(state.shuffleRemaining(using: &rng))
+        let shuffled = state.shuffleRemaining(using: &rng)
+        #expect(shuffled)
 
         #expect(state.queue[0] == "alpha")
         #expect(state.currentIndex == 1)
