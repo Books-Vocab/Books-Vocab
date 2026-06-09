@@ -1,13 +1,13 @@
 # Cleanup Playbook
 
-這份文件只服務兩種工作流：
+這份文件服務兩個命名入口：
 
-1. `Blacklist-Driven Convergence`
-2. `Promote Active Branch`
+1. `cleanup`
+2. `promote`
 
 ---
 
-## Workflow 1 — Blacklist-Driven Convergence
+## `cleanup` — Blacklist-Driven Convergence
 
 ### Step 0 — 盤 live state
 
@@ -169,7 +169,7 @@ git fetch --prune
 
 ---
 
-## Workflow 2 — Promote Active Branch
+## `promote` — Promote Active Branch
 
 ### 使用時機
 
@@ -250,24 +250,30 @@ git -C <active-branch-worktree> rebase main
 - 只把 branch rebase 到新 `main`
 - 讓這些新 commit 自動成為下一輪輸入
 
-### Step 6 — 刪掉 integration 容器
+### Step 6 — 只刪 integration 容器
 
 ```bash
 git worktree remove <path>
 git branch -D <integration-branch>
 ```
 
+這一步只處理 promote 過程中臨時建立的 integration branch / worktree。
+
+- 不刪原 branch
+- 不刪原 worktree
+- 除非使用者明確要求，promote 完不做 cleanup-style 容器回收
+
 ---
 
 ## Working Heuristics
 
-### 什麼時候選 Workflow 1
+### 什麼時候選 `cleanup`
 
 - 你已經知道黑名單是誰
 - 目標是把其餘全部收斂
 - 這是預設模式
 
-### 什麼時候選 Workflow 2
+### 什麼時候選 `promote`
 
 - 活 branch 仍在修改
 - 但其中一些已提交成果已值得成為 shared baseline

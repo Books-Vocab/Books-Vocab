@@ -1,4 +1,4 @@
-# Cleanup Casebook
+# Cleanup / Promote Casebook
 
 ---
 
@@ -38,6 +38,7 @@
 3. push 到 `main`
 4. 其他黑名單 rebase 到新 `main`
 5. 活 branch 本體保持不動
+6. 最多只刪 integration 容器，不刪原 branch / worktree
 
 ### 意義
 
@@ -155,6 +156,7 @@ cleanup 維護的是「本輪已知快照」，不是一條會持續變動的 mo
 2. push / sync `main`
 3. 把另一條活黑名單 rebase 到新 `main`
 4. 兩條 branch / worktree 都保留
+5. promote 那條若也要繼續活著，同樣保留；只回收 integration 容器
 
 ### 為什麼
 

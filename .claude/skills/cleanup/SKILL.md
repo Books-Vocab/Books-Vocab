@@ -1,8 +1,8 @@
 ---
 name: cleanup
-description: "Legacy name, new role: blacklist-driven convergence maintainer. 唯一任務是把非黑名單工作持續收斂到 main，push/sync remote，並讓黑名單永遠 rebase 在最新 main 上。"
+description: "Workflow 1. 黑名單驅動的收斂維護者：把非黑名單工作收進 main、push/sync remote，並讓黑名單永遠 rebase 在最新 main 上。"
 user-invocable: true
-version: 4.1.0
+version: 5.0.0
 ---
 
 # Cleanup
@@ -38,11 +38,28 @@ agent 唯一目標：
 
 ---
 
-## 只保留兩種工作流
+## 命名約定
 
-### 工作流 1：Blacklist-Driven Convergence
+從現在開始：
 
-預設工作流，也是主工作流。
+- `cleanup` = 工作流 1 = `Blacklist-Driven Convergence`
+- `promote` = 工作流 2 = `Promote Active Branch`
+
+也就是說：
+
+- 使用者說 `cleanup`
+  = 你預設進入「黑名單驅動收斂」
+- 使用者說 `promote`
+  = 你預設進入「活 branch 已提交子集升格」
+
+這份 skill 只負責 `cleanup` 本身。  
+`promote` 有獨立 skill 入口，但兩者共享同一套哲學、playbook 與 casebook。
+
+---
+
+## `cleanup` 是什麼
+
+`cleanup` = `Blacklist-Driven Convergence`
 
 輸入：
 
@@ -56,7 +73,9 @@ agent 唯一目標：
 - 白名單殘影清乾淨
 - 黑名單保留為下一輪起點
 
-### 工作流 2：Promote Active Branch
+## `promote` 是什麼
+
+`promote` = `Promote Active Branch`
 
 當某條 branch 還在持續修改，但其中一部分**已提交內容**你想先拉進 `main` 時使用。
 
