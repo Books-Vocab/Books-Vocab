@@ -269,11 +269,11 @@ catalog_build_cache_key() {
   {
     printf 'destination=%s\n' "$destination"
     printf 'xcode=%s\n' "$xcode_version"
-    while IFS= read -r relative_path; do
-      [[ -f "$ROOT/$relative_path" ]] || continue
-      printf 'path=%s\n' "$relative_path"
-      shasum -a 256 "$ROOT/$relative_path"
-    done < <(catalog_build_input_paths)
+    # Hash all inputs in a single shasum process instead of one fork per file
+    # (~5.3s -> ~0.05s). Paths are already sorted+unique and relative to the
+    # repo root, so the digest stays stable across worktrees and listing order.
+    catalog_build_input_paths \
+      | ( cd "$ROOT" && tr '\n' '\0' | xargs -0 shasum -a 256 2>/dev/null )
   } | shasum -a 256 | awk '{print $1}'
 }
 
