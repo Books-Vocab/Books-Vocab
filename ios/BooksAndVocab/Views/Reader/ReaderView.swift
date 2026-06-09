@@ -103,6 +103,7 @@ struct ReaderView: View {
         }
         .task {
             sanitizeStaleBoundNotebook()
+            seedNotebookBindingIfNeeded()
             await loadPublication()
         }
         .onDisappear {
@@ -187,6 +188,17 @@ struct ReaderView: View {
         guard !liveNotebooks.isEmpty else { return }
         if !liveNotebooks.contains(where: { $0.remoteId == boundId }) {
             book.preferredNotebookId = nil
+        }
+    }
+
+    /// 強制綁定 seed：書未綁定時（新書 / 剛被 sanitize 清掉 stale 綁定）以最近使用的
+    /// 真實單字本（全域 active）固化綁定並持久化。固化後此書的 highlight / 查詢 / autoSave
+    /// scope 一律認綁定本、不再隨全域 active 漂移（決策 B：種子綁定 + 之後 picker 乾淨切換）。
+    private func seedNotebookBindingIfNeeded() {
+        guard book.preferredNotebookId == nil else { return }
+        book.ensureBoundNotebook(seed: ActiveNotebookStore.shared.activeNotebookId)
+        if modelContext.safeSave() {
+            BookManifestStore().writeBestEffort(book: book)
         }
     }
 

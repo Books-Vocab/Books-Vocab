@@ -156,13 +156,27 @@ final class Book {
         !isFileLocal
     }
 
-    /// 此書的目標單字本 ID（優先序：書本綁定 → 全域使用中 → 預設）
+    /// 此書的目標單字本 ID。**綁定即真相**：正常流程下書在開啟時即被
+    /// `ensureBoundNotebook(seed:)` 固化綁定，故恆回 `preferredNotebookId`。
+    /// `?? activeNotebookId` 僅為「未經 Reader 開啟流程就讀取」的防禦性 last-resort，
+    /// 非主路徑 —— scope 不再隨全域 active 中途漂移（消除 highlight/cache scope 不一致）。
     ///
     /// 注意：不在此處驗證 notebook 是否已刪除，因為 @Model computed property
-    /// 無法存取 ModelContext。已刪除 notebook 的防護由 ReaderNotebookPicker
-    /// 在 UI 層處理（選擇時過濾 isSoftDeleted，若綁定的本被刪則自動清除綁定）。
+    /// 無法存取 ModelContext。已刪除 notebook 的防護由 ReaderNotebookPicker /
+    /// ReaderView.sanitizeStaleBoundNotebook 在 UI 層處理。
     var resolvedNotebookId: String {
         if let bound = preferredNotebookId { return bound }
         return ActiveNotebookStore.shared.activeNotebookId
+    }
+
+    /// 強制綁定：每本書綁定恰好一本真實單字本。首次開啟（未綁定）時以 seed
+    /// （最近使用的真實單字本，來自 `ActiveNotebookStore`）固化綁定並回傳；
+    /// 已綁定則回既有值、不覆寫（idempotent）。固化後 `resolvedNotebookId` 不再
+    /// runtime fallback，scope 穩定。caller 負責持久化（save + manifest）。
+    @discardableResult
+    func ensureBoundNotebook(seed: String) -> String {
+        if let bound = preferredNotebookId { return bound }
+        preferredNotebookId = seed
+        return seed
     }
 }

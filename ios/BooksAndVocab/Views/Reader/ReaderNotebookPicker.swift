@@ -28,12 +28,7 @@ struct ReaderNotebookPicker: View {
 
         return NavigationStack {
             List {
-                // 跟隨全域設定
-                Section {
-                    followGlobalRow
-                }
-
-                // Notebook 列表
+                // Notebook 列表（每本書必綁定恰好一本真實單字本，不提供「跟隨全域」）
                 Section {
                     ForEach(notebooks) { notebook in
                         notebookRow(notebook)
@@ -60,40 +55,6 @@ struct ReaderNotebookPicker: View {
             }
         }
         .enableInjection()
-    }
-
-    private var followGlobalRow: some View {
-        Button {
-            book.preferredNotebookId = nil
-            persistBookBinding()
-            dismiss()
-        } label: {
-            HStack(spacing: AppSpacing.s2) {
-                Image(systemName: "globe")
-                    .font(AppFonts.subhead())
-                    .foregroundStyle(theme.palette.secondaryText)
-                    .frame(width: AppSpacing.s6)
-
-                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                    Text("跟隨全域設定".localized)
-                        .font(AppFonts.body())
-                        .foregroundStyle(theme.palette.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Text("使用目前選定的單字本".localized)
-                        .font(AppFonts.caption())
-                        .foregroundStyle(theme.palette.tertiaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-
-                Spacer()
-
-                selectionCheckmark(isSelected: book.preferredNotebookId == nil)
-            }
-            .contentShape(Rectangle())
-        }
     }
 
     private func notebookRow(_ notebook: Notebook) -> some View {
