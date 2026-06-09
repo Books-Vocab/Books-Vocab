@@ -105,13 +105,22 @@ class TestGraphStoreLocking:
         # The new link must exist
         assert store.has_link("new_a", "new_b")
 
-    def test_concurrent_reads_during_writes_no_error(self, store):
+    def test_concurrent_reads_during_writes_no_error(self, store, monkeypatch):
         """Read methods must hold _lock — reading while a writer mutates _links
         must not raise `dictionary changed size during iteration` (all_links /
-        link_count) or KeyError (get_links_for / find_link_between)."""
+        link_count) or KeyError (get_links_for / find_link_between).
+
+        The writer's disk I/O is mocked out: the test targets in-memory
+        concurrency safety (lock coverage), not fsync throughput.  Without this
+        the 300 add_link calls would spend ~50 s rewriting links.json under
+        contention — a test-infrastructure cost, not a product concern."""
         n = 300
         writer_done = threading.Event()
         errors: list[Exception] = []
+
+        # Disable disk flush so the test exercises lock behaviour, not O(n²)
+        # file-system contention.
+        monkeypatch.setattr(store, "_flush_links", lambda _snap: None)
 
         def writer():
             try:
@@ -141,9 +150,7 @@ class TestGraphStoreLocking:
         w.start()
         for r in readers:
             r.start()
-        # Writer rewrites the full links.json each add (O(n^2) disk), so give it
-        # room — the point is that readers never raise, not raw throughput.
-        w.join(timeout=120)
+        w.join(timeout=30)
         for r in readers:
             r.join(timeout=10)
 
