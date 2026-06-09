@@ -37,14 +37,14 @@ struct PodcastPage {
     // MARK: - Actions
 
     @discardableResult
-    func tapFirstSeries(file: StaticString = #filePath, line: UInt = #line) -> Self {
+    func tapFirstSeries(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         anySeriesCard.tapWhenReady(file: file, line: line)
         return self
     }
 
     // MARK: - Assertions
 
-    func assertIsActive(file: StaticString = #filePath, line: UInt = #line) {
+    func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         anySeriesCard.assertExists(timeout: 5, file: file, line: line)
     }
 }

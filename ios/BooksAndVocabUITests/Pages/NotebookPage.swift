@@ -24,14 +24,14 @@ struct NotebookPage {
     // MARK: - Actions
 
     @discardableResult
-    func tapAdd(file: StaticString = #filePath, line: UInt = #line) -> Self {
+    func tapAdd(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         addButton.tapWhenReady(file: file, line: line)
         return self
     }
 
     // MARK: - Assertions
 
-    func assertIsActive(file: StaticString = #filePath, line: UInt = #line) {
+    func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         addButton.assertExists(file: file, line: line)
     }
 }
