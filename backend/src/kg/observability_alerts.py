@@ -41,6 +41,8 @@ from . import judge_log, pipeline_log, translate_log
 
 _logger = logging.getLogger(__name__)
 
+_MISSING_SENTRY = object()
+
 # ---------------------------------------------------------------------------
 # Sentry binding (rebindable for tests).
 # ---------------------------------------------------------------------------
@@ -48,7 +50,9 @@ _logger = logging.getLogger(__name__)
 try:
     import sentry_sdk as _sentry_sdk  # type: ignore[assignment]
 except ImportError:  # pragma: no cover — sentry-sdk is a declared dep
-    _sentry_sdk = None  # type: ignore[assignment]
+    # Distinguish "SDK import missing in this environment" from the explicit
+    # None used by tests to assert the availability guard short-circuits _emit.
+    _sentry_sdk = _MISSING_SENTRY  # type: ignore[assignment]
 
 
 def _capture(message: str, level: str, tags: dict[str, Any]) -> None:
@@ -62,7 +66,7 @@ def _capture(message: str, level: str, tags: dict[str, Any]) -> None:
     to stay forward-compatible: tags applied to the forked scope flow into
     the captured event and the scope is torn down on `__exit__`.
     """
-    if _sentry_sdk is None:
+    if _sentry_sdk is None or _sentry_sdk is _MISSING_SENTRY:
         return
     with _sentry_sdk.new_scope() as scope:
         for k, v in tags.items():
