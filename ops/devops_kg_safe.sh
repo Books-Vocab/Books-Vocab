@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # KG_DEVOPS_BASE is a test seam (point it at a stub like /usr/bin/true to assert
 # the blocklist without invoking the real remote wrapper). Defaults to devops.sh.
 BASE="${KG_DEVOPS_BASE:-$ROOT_DIR/devops.sh}"
+KG_PUBLIC_DOMAIN="${KG_PUBLIC_DOMAIN:-wordnexus.lol}"
 
 [[ -x "$BASE" ]] || { echo "✗ base devops.sh not found or not executable: $BASE" >&2; exit 1; }
 
@@ -55,7 +56,7 @@ preflight() {
     echo "base      : $BASE"
     echo "server    : ubuntu@13.193.212.134"
     echo "remote    : ~/knowledge_graph_api"
-    echo "domain    : wordnexus.lol"
+    echo "domain    : $KG_PUBLIC_DOMAIN"
     echo "container : knowledge-graph-api"
   } >&2
 }
