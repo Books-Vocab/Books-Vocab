@@ -68,7 +68,6 @@ uv run lab/llm_eval/cli.py <subcommand> [args]
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
 | `cleanup` | `/cleanup` 或「收尾」 | 先盤四層真相(origin/main / local committed / local uncommitted / docs debt) → 單一 final worktree 吞完 → 一次驗證 → 清平 branch/worktree/local changes/doc-debt |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
-| `steward` | 「steward N」「audit N個」「codebase 健康度」「修到 N 個」「steward backend/ N」 | **Codebase 管家模式** — 使用者設目標改善數，自動多輪並行掃描 + behavior-preserving 優化直到達標，輸出單一 PR。 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
 
