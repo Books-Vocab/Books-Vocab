@@ -13,6 +13,7 @@
 #   ./ops/ios_test.sh --device <name|UDID>        # target a specific simulator (parallel agents)
 #   ./ops/ios_test.sh --destination '<xcodebuild destination>'   # full -destination override
 #   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
+#   KG_IOS_TEST_ALLOW_SHARED_SIM=1 ./ops/ios_test.sh ...         # explicit opt-out for single-machine debugging
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -466,6 +467,43 @@ destination_requires_device_lock() {
   [[ "$DESTINATION" == *"platform=iOS Simulator"* ]]
 }
 
+env_flag_enabled() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+running_in_isolation_enforced_context() {
+  env_flag_enabled "${KG_IOS_TEST_REQUIRE_ISOLATED_SIM:-}" && return 0
+  env_flag_enabled "${CI:-}" && return 0
+  [[ "$PROJECT_ROOT" == *"/.codex/worktrees/"* ]] && return 0
+  [[ -n "${WORKTREE_BRANCH:-}" ]] && return 0
+  return 1
+}
+
+should_require_isolated_simulator() {
+  destination_requires_device_lock || return 1
+  [[ -n "$DEVICE_OVERRIDE" || -n "$DESTINATION_OVERRIDE" || "$AUTO_LEASE" -eq 1 ]] && return 1
+  [[ "$LIST_ONLY" -eq 1 ]] && return 1
+  case "${TEST_CACHE_ACTION:-}" in
+    status|prepare|clean) return 1 ;;
+  esac
+  env_flag_enabled "${KG_IOS_TEST_ALLOW_SHARED_SIM:-}" && return 1
+  running_in_isolation_enforced_context
+}
+
+enforce_isolated_simulator_or_fail() {
+  should_require_isolated_simulator || return 0
+  cat >&2 <<EOF
+[ios_test] error: shared default simulator is disallowed in agent/CI worktree runs
+[ios_test] requested destination=$DESTINATION
+[ios_test] fix: pass --lease, --device <udid|name>, or --destination '<xcodebuild destination>'
+[ios_test] override: KG_IOS_TEST_ALLOW_SHARED_SIM=1
+EOF
+  exit 1
+}
+
 device_lock_key() {
   local raw_selector="${SIMULATOR_BOOT_SELECTOR:-$DESTINATION}"
   printf '%s' "$raw_selector" | shasum -a 256 | awk '{print $1}'
@@ -528,6 +566,8 @@ if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE"
   DESTINATION="platform=iOS Simulator,id=$LEASED_DEVICE"
   SIMULATOR_BOOT_SELECTOR="$LEASED_DEVICE"
 fi
+
+enforce_isolated_simulator_or_fail
 
 echo "[ios_test] caller=$CALLER scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
 START=$(date +%s)
