@@ -502,6 +502,7 @@ documents:
       - docs/sop/debug.md
       - CLAUDE.md
       - .claude/skills/devops/
+      - .claude/skills/converge/
       - .claude/skills/cleanup/
       - .claude/skills/promote/
 

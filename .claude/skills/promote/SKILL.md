@@ -1,39 +1,41 @@
 ---
 name: promote
-description: "Workflow 2. 活 branch 已提交子集升格：把指定已提交 commits 先拉進 main，再讓原 branch 繼續活著並 rebase 到新 main。"
+description: "Converge skill 的 promote mode alias：活 branch 已提交子集升格，核心方法論見 ../converge/。"
 user-invocable: true
-version: 1.0.0
+version: 2.0.0
 ---
 
 # Promote
 
-`promote` = `Promote Active Branch`
+`promote` 不再維護自己的獨立方法論。  
+它是 [`../converge/`](../converge/SKILL.md) 的 **`mode=promote` alias**。
 
-這不是 `cleanup` 的別名輸出，而是獨立的命名入口。
-
-## 什麼時候用
+## 這個 alias 代表什麼
 
 - 某條 branch 還在持續修改
-- 但其中一部分**已提交內容**已經值得成為 shared baseline
-- 你不想打斷 branch 本體，也不想把它整條吸收進 `main`
+- 但其中一部分**已提交內容**要先成為 shared baseline
+- 原 branch / worktree 預設仍保留
 
-## 核心契約
+## 真正的方法論
 
-- 只 promote **已提交 commits**
-- dirty work 若也想納入本輪，先在原 branch commit 成 snapshot
-- promote 解決的是內容升格，不自動代表 branch / worktree 生命周期結束
-- 除非使用者明確要求，promote 完**不自動清 branch / worktree**
+請直接讀：
 
-## 執行順序
+1. [../converge/SKILL.md](../converge/SKILL.md)
+2. [../converge/methodology.md](../converge/methodology.md)
+3. [../converge/checklists.md](../converge/checklists.md)
+4. [../converge/casebook.md](../converge/casebook.md)
 
-1. 先讀 [../cleanup/SKILL.md](../cleanup/SKILL.md)：共用哲學與 snapshot 規則
-2. 再讀 [../cleanup/playbook.md](../cleanup/playbook.md) 的 `promote` 區段
-3. 動手前跑 [../cleanup/checklists.md](../cleanup/checklists.md)
-4. 遇到相似情境時讀 [../cleanup/casebook.md](../cleanup/casebook.md)
+## Promote Mode 契約
 
-## 最小輸出契約
+- 只升格本輪 snapshot 以內的**已提交 commits**
+- dirty work 若要納入，先落成 snapshot，再切 promote 邊界
+- 驗證與整合在離線 integration worktree 做
+- cutover 只發布已準備好的 final state
+- 除非使用者明確要求，不自動清原 branch / worktree
 
-- 這輪 promote 的 snapshot commit
+## 最小輸出
+
+- 本輪 snapshot commit
 - 進 `main` 的 commits
 - 原 branch 是否已 rebase 到新 `main`
-- branch / worktree 是否保留
+- 原 branch / worktree 是否保留
