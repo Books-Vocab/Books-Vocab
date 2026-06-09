@@ -82,8 +82,10 @@ final class ICloudDownloadManager {
     // 帳號切換 observers 與 NSMetadataQuery 生命週期無關，在 init 訂閱、deinit 取消，
     // 不受 startMonitoring/stopMonitoring 影響，確保外部直接呼叫 stopMonitoring() 後
     // 仍能收到帳號切換通知。
-    private var identityObserver: Any?
-    private var userDataClearObserver: Any?
+    // nonisolated(unsafe)：deinit 是 nonisolated，無法存取 @MainActor 屬性；
+    // deinit 時物件即將釋放，無並發存取，unsafe 是安全的。
+    nonisolated(unsafe) private var identityObserver: Any?
+    nonisolated(unsafe) private var userDataClearObserver: Any?
     private var triggeredFiles: Set<String> = []
 
     init() {
