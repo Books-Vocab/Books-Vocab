@@ -96,6 +96,48 @@ struct ReaderProgressSaverTests {
         let restored = try #require(try? Locator(jsonString: json))
         #expect(restored.locations.totalProgression == 0.42)
     }
+
+    // MARK: - Edge cases
+
+    /// Calling flush() twice without an intervening recordChange is a no-op.
+    @Test func doubleFlushWithoutRecordIsNoOp() {
+        let saves = Counter()
+        let sut = ReaderProgressSaver(flushDelay: 0.5)
+
+        sut.recordChange(apply: {}, save: { saves.increment() })
+        sut.flush()   // save #1
+        sut.flush()   // latestSave already nil → no-op
+        #expect(saves.value == 1)
+    }
+
+    /// flush() cancels the pending debounce task; even if the original window
+    /// expires later, no late save fires because the task was cancelled.
+    @Test func flushCancelsPendingTaskSoNoLateSave() async throws {
+        let saves = Counter()
+        let sut = ReaderProgressSaver(flushDelay: 0.5)
+
+        sut.recordChange(apply: {}, save: { saves.increment() })
+        sut.flush()   // immediate save + cancel pending task
+
+        // Wait well past the original debounce window.
+        try await Task.sleep(nanoseconds: 700_000_000)
+        #expect(saves.value == 1)   // still only the flush save
+    }
+
+    /// The save closure from the most recent recordChange wins — intermediate
+    /// closures are never executed.
+    @Test func intermediateSaveClosuresAreNeverExecuted() async throws {
+        let saves = Counter()
+        let sut = ReaderProgressSaver(flushDelay: 0.05)
+
+        sut.recordChange(apply: {}, save: { saves.increment() })          // closure A
+        sut.recordChange(apply: {}, save: { saves.increment() })          // closure B
+        sut.recordChange(apply: {}, save: { saves.increment() })          // closure C
+
+        try await Task.sleep(nanoseconds: 200_000_000)
+        // Only the latest closure (C) executes once; A and B are dropped.
+        #expect(saves.value == 1)
+    }
 }
 
 /// Minimal thread-safe counter for observing save invocations.
