@@ -103,6 +103,7 @@ struct ReaderView: View {
         }
         .task {
             sanitizeStaleBoundNotebook()
+            seedNotebookBindingIfNeeded()
             await loadPublication()
         }
         .onDisappear {
@@ -125,6 +126,8 @@ struct ReaderView: View {
         }
         .onChange(of: liveNotebooks.map(\.remoteId)) { _, _ in
             sanitizeStaleBoundNotebook()
+            // notebooks settle 後補 seed：.task 當下 liveNotebooks 可能尚未 settle 而跳過。
+            seedNotebookBindingIfNeeded()
         }
         .onChange(of: allVocabulary.count) { _, _ in
             handler.loadLookedUpWords(
@@ -187,6 +190,24 @@ struct ReaderView: View {
         guard !liveNotebooks.isEmpty else { return }
         if !liveNotebooks.contains(where: { $0.remoteId == boundId }) {
             book.preferredNotebookId = nil
+        }
+    }
+
+    /// 強制綁定 seed：書未綁定時（新書 / 剛被 sanitize 清掉 stale 綁定）以最近使用的
+    /// 真實單字本（全域 active）固化綁定並持久化。固化後此書的 highlight / 查詢 / autoSave
+    /// scope 一律認綁定本、不再隨全域 active 漂移（決策 B：種子綁定 + 之後 picker 乾淨切換）。
+    private func seedNotebookBindingIfNeeded() {
+        guard book.preferredNotebookId == nil else { return }
+        let seed = ActiveNotebookStore.shared.activeNotebookId
+        // 只在 seed 指向已 settle 的真實 notebook 時固化，避免凍結離線占位 / 未同步的
+        // sentinel；liveNotebooks 尚未 settle 時跳過，待 settle 的 onChange 再 seed。
+        guard Book.canSeedBinding(
+            seed: seed,
+            liveNotebookIds: Set(liveNotebooks.map(\.remoteId))
+        ) else { return }
+        book.ensureBoundNotebook(seed: seed)
+        if modelContext.safeSave() {
+            BookManifestStore().writeBestEffort(book: book)
         }
     }
 

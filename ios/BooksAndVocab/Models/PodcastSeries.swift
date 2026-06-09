@@ -26,6 +26,10 @@ final class PodcastSeries {
     /// 使用者「追蹤」標記。Server 不下發此欄位，純本機偏好。
     /// Series list 排序：isFollowed desc → sortOrder asc。
     var isFollowed: Bool = false
+    /// 綁定的單字本 remoteId（nil = 尚未綁定，待 seed 固化）。Server 不下發，純本機偏好
+    /// （與 isFollowed 同屬本機欄位，reconcile upsert 不覆寫）。選詞 / 底線 / cache 一律
+    /// 認此綁定本 —— 一個系列只歸屬一本單字本。見 NotebookBindable。
+    var preferredNotebookId: String?
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     @Attribute(originalName: "isDeleted")
@@ -40,3 +44,5 @@ final class PodcastSeries {
         self.hostNames = hostNames
     }
 }
+
+extension PodcastSeries: NotebookBindable {}

@@ -156,13 +156,10 @@ final class Book {
         !isFileLocal
     }
 
-    /// 此書的目標單字本 ID（優先序：書本綁定 → 全域使用中 → 預設）
-    ///
-    /// 注意：不在此處驗證 notebook 是否已刪除，因為 @Model computed property
-    /// 無法存取 ModelContext。已刪除 notebook 的防護由 ReaderNotebookPicker
-    /// 在 UI 層處理（選擇時過濾 isSoftDeleted，若綁定的本被刪則自動清除綁定）。
-    var resolvedNotebookId: String {
-        if let bound = preferredNotebookId { return bound }
-        return ActiveNotebookStore.shared.activeNotebookId
-    }
+    // 單字本綁定（resolvedNotebookId / ensureBoundNotebook / canSeedBinding）由
+    // NotebookBindable 提供 —— 與 PodcastSeries 共用「每個容器綁定恰好一本真實單字本」
+    // 不變式。已刪除 notebook 的防護由 ReaderNotebookPicker /
+    // ReaderView.sanitizeStaleBoundNotebook 在 UI 層處理。
 }
+
+extension Book: NotebookBindable {}
