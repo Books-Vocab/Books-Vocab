@@ -122,12 +122,12 @@ final class BooksAndVocabUITests: XCTestCase {
     @MainActor
     func testBookshelfToReaderNavigation() throws {
         let app = makeConfiguredApp()
+        app.launchArguments += ["-seedFixture:bookshelf:withBooksLibrary"]
         app.launch()
 
         let bookshelf = AppPage(app: app).goToBookshelf()
-        guard let reader = bookshelf.tapFirstBook() else {
-            throw XCTSkip("無書籍測試資料，無法驗證 Reader 導航")
-        }
-        reader.assertIsActive()
+        let reader = bookshelf.tapFirstBook()
+        XCTAssertNotNil(reader, "Fixture 已注入書籍，應可點擊進入 Reader")
+        reader?.assertIsActive()
     }
 }
