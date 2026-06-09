@@ -118,6 +118,14 @@ struct TodayReviewPresenter: View {
     // Generation token: cancels a pending deferred-unmount when the user
     // re-reveals before the collapse settles, or when the card advances.
     @State private var backMountGeneration = 0
+    // With the per-card `.id` gone the answer subtree is reused across cards, so
+    // the advance frame would otherwise feed the showsAnswer:true→false falling
+    // edge into the reveal-collapse spring — the new front card would visually
+    // "un-fold" the previous card's back. Suppress the reveal spring for exactly
+    // the advance frame (set true in onChange(currentCardKey), cleared next
+    // runloop) so PaperFoldModifier.progress snaps to 0 without rewinding. Same
+    // single-frame main-thread gate the fling uses for suppressTransition.
+    @State private var suppressFoldAnimation = false
     // Spring settle budget for reviewRevealSpring (response 0.42, damping 0.88).
     // Mirrors the 0.8s safety window the swipe deck uses for settle.frames.
     private static let revealSettleSeconds: Double = 0.85
@@ -219,12 +227,16 @@ struct TodayReviewPresenter: View {
             }
             .onChange(of: currentCardKey) { _, _ in
                 // Card advanced (next / previous / shuffle / submit / autoplay-advance):
-                // the answer subtree is structurally replaced via `.id(cardIdentity)`.
-                // Drop the gate immediately so the NEW front card doesn't inherit a
-                // mounted heavy back tree (would defeat the front-render subtraction
-                // probe). Bump the generation so any pending deferred-unmount no-ops.
+                // the answer subtree is now reused in place after removing `.id`.
+                // Drop the gate immediately (generation bump + unmount) so the NEW
+                // front card doesn't inherit a mounted heavy back tree (would defeat
+                // the front-render subtraction probe). Suppress the reveal-collapse
+                // spring for this single advance frame so the reused fold subtree
+                // snaps progress→0 instead of rewinding the previous card's reveal.
                 backMountGeneration += 1
                 backContentMounted = false
+                suppressFoldAnimation = true
+                DispatchQueue.main.async { suppressFoldAnimation = false }
             }
             .onChange(of: state.progressText) { _, _ in
                 lastAutoplaySpokenCardKey = nil
@@ -235,9 +247,9 @@ struct TodayReviewPresenter: View {
         .enableInjection()
     }
 
-    /// Presenter-level identity for the active card. Mirrors `reviewCard`'s
-    /// `cardIdentity` so the mount gate resets on the same boundary the subtree
-    /// is rebuilt.
+    /// Presenter-level identity for the active card (dateAdded + word). Drives the
+    /// back-mount gate reset and reveal-spring suppression on every card advance;
+    /// independent of any view `.id`, so the reused subtree still resets per card.
     private var currentCardKey: String {
         guard let card = state.currentCard?.card else { return "" }
         return "\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
@@ -294,7 +306,6 @@ struct TodayReviewPresenter: View {
 
     func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
-        let cardIdentity = "review-card-\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
         let _ = PerfLog.render.tick(
             "todayReview.card.body",
             "chars=\(card.word.count) reveal=\(state.revealStage.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
@@ -333,11 +344,15 @@ struct TodayReviewPresenter: View {
                     .allowsHitTesting(state.revealStage.showsAnswer)
             }
             .geometryGroup()
-            .animation(dismissPhase == .idle ? AppMotion.reviewRevealSpring : nil,
+            .animation((dismissPhase == .idle && !suppressFoldAnimation) ? AppMotion.reviewRevealSpring : nil,
                        value: state.revealStage.showsAnswer)
-            // Identity must describe the queue card only. Reveal state stays out
-            // so flip/collapse never tears down the heavy card subtree.
-            .id(cardIdentity)
+            // No per-card `.id`: the skeleton (ReviewFoldSurface×2 / frontCardChrome /
+            // PaperFoldModifier / geometryGroup) is reused in place across cards —
+            // advancing only diffs content, never tears down + rebuilds the heavy
+            // subtree (the measured ~70ms settle.frames hitch). Without per-card
+            // insert/remove, `.reviewCardPromote` now plays once on the session's
+            // first real insertion (correct, not degraded); fling still routes
+            // through `.identity` (suppressTransition == true) untouched.
             .transition(suppressTransition ? .identity : .reviewCardPromote)
             .offset(x: swipeOffset)
             .rotationEffect(

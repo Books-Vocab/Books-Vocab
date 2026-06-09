@@ -28,6 +28,23 @@ enum CardDocumentBlock: Identifiable {
             return "source"
         }
     }
+
+    /// Position-independent case discriminator for composing a stable ForEach key
+    /// (`"\(offset)-\(caseTag)"`). Distinct from `id`: `.divider` returns the bare
+    /// constant `"divider"` (no UUID) so the composite key stays stable across
+    /// frames for a divider at a fixed slot, yet still flips when that slot's case
+    /// changes. Used only as a reuse-diff key — `id` / plainTextExport / reviewBackSubset
+    /// are untouched.
+    var caseTag: String {
+        switch self {
+        case .hero: return "hero"
+        case .example: return "example"
+        case .divider: return "divider"
+        case .meaning: return "meaning"
+        case .collocations: return "collocations"
+        case .source: return "source"
+        }
+    }
 }
 
 struct CardDocumentHero {
