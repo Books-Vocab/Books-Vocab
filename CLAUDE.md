@@ -140,7 +140,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | ops 流程 / change flow / hard stop | `docs/runbook/system.md` |
 | 逐項 review 落地(派 review agent / PASS 判準 / block 處理) | `docs/sop/review_discipline.md` — 鐵律 4 落地 |
 | 找 iOS UI 死碼 / 孤兒元件(刪元件 / cleanup / 重構前盤點) | `./ops/ui_deadcode.py`(IndexStore-based;default struct,class 可信 gate)— 見 `docs/reference/tech_index.md` |
-| 查 iOS UI 元件依賴 / 改某 view 的 impact / 誰用了某元件 | `./ops/ui_graph.py --type <Name>`(type→type 依賴圖;`--json`/`--dot`)— 見 `docs/reference/tech_index.md` |
+| 查 iOS UI 元件依賴 / 改某 view 的 impact / 哪個 catalog surface 吃到它 | `./ops/ui_graph.py --type <Name>` 或 `./ops/ui_graph.py --surface <Catalog Surface>`(type→type 依賴圖;`--json`/`--dot`)— 見 `docs/reference/tech_index.md` |
 
 ## Doc Tier 契約
 
