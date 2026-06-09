@@ -68,7 +68,19 @@ fi
 xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 ```
 
-`git-common-dir` 從主 repo 或任何 worktree 都解析到同一個 `kg/.git`，`dirname` 後即主 repo 根；`.cache/` 已 gitignore。`ios_test.sh` 同樣走 `.cache/ios-test-derived-data`（content-keyed），政策一致。
+`git-common-dir` 從主 repo 或任何 worktree 都解析到同一個 `kg/.git`，`dirname` 後即主 repo 根；`.cache/` 已 gitignore。
+
+### 全腳本覆蓋（2026-06-09 稽核：每個會編譯的 xcodebuild 都須釘 `-derivedDataPath`）
+| 腳本 / 指令 | DerivedData | 備註 |
+|---|---|---|
+| `ios_build.sh` build | `.cache/ios-build-derived-data`（共享） | 主修點 |
+| `ios_test.sh` build-for-testing | `.cache/ios-test-derived-data/<content-key>` | content-keyed warm cache |
+| `ios_test.sh` `test`（cache-miss 後備） | 同上 | 2026-06-09 補釘，原本漏到全域 |
+| `ios_test.sh` test-without-building | 走 `-xctestrun`（不編譯） | 免釘 |
+| `ios_release.sh` archive | `.cache/ios-release-derived-data`（共享） | 2026-06-09 補釘；與 Debug 分開避免互相 invalidate |
+| `ios_ops_catalog.sh` build-for-testing | 已釘 `-derivedDataPath` | catalog snapshot |
+
+三份共享快取(build / test / release)都靠 `/tmp/kg-ios-build.lock` 同一把鎖序列化,不會並行寫壞。
 
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。

@@ -58,6 +58,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$ROOT/ios/BooksBrowser.xcodeproj"
 EXPORT_OPTS="$ROOT/ios/ExportOptions.plist"
+# Pin archive DerivedData to one shared cache anchored at the main repo (see
+# docs/reference/ios_deriveddata_policy.md). Without -derivedDataPath, archive
+# intermediates leak to ~/Library/.../DerivedData/BooksBrowser-<pathHash>, one
+# orphan per worktree. Separate from the Debug build cache so Release and Debug
+# configurations don't invalidate each other's incremental state.
+if [[ -n "${KG_IOS_RELEASE_DERIVED_DATA_ROOT:-}" ]]; then
+  DERIVED_DATA_ROOT="$KG_IOS_RELEASE_DERIVED_DATA_ROOT"
+else
+  GIT_COMMON_DIR="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$GIT_COMMON_DIR" && -d "$GIT_COMMON_DIR" ]]; then
+    DERIVED_DATA_ROOT="$(dirname "$GIT_COMMON_DIR")/.cache/ios-release-derived-data"
+  else
+    DERIVED_DATA_ROOT="$ROOT/.cache/ios-release-derived-data"
+  fi
+fi
 BUILD_DIR="$ROOT/ios/build"
 ARCHIVE="$BUILD_DIR/BooksBrowser.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
@@ -200,6 +215,7 @@ xcodebuild archive \
   -project "$XCODEPROJ" -scheme "$SCHEME" -configuration "$CONFIGURATION" \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
+  -derivedDataPath "$DERIVED_DATA_ROOT" \
   -resultBundlePath "$RESULT_BUNDLE" \
   "${auth[@]}" \
   >"$ARCHIVE_LOG" 2>&1
