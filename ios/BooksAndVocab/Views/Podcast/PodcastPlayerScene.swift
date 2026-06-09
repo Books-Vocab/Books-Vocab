@@ -20,11 +20,14 @@ struct PodcastPlayerScene: View {
 #endif
 
     @Query private var allVocabulary: [VocabularyEntry]
+    @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted })
+    private var liveNotebooks: [Notebook]
 
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = ReaderTranslationHandler()
     @State private var autoPausedByTranslation: Bool = false
     @State private var showSettingsPopover: Bool = false
+    @State private var showNotebookPicker: Bool = false
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
     @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
     @State private var progressPersistence = PodcastProgressPersistenceController()
@@ -77,10 +80,24 @@ struct PodcastPlayerScene: View {
         PodcastPlayerSupport.resolveVocabularyContext(
             episodeId: activeEpisodeId,
             modelContext: modelContext,
-            rawNotebookId: ActiveNotebookStore.shared.activeNotebookId,
+            // 系列綁定即真相：選詞 / cache 認綁定本，不再隨全域 active 漂移。
+            rawNotebookId: loadedSeries?.resolvedNotebookId ?? ActiveNotebookStore.shared.activeNotebookId,
             toastCoordinator: toastCoordinator,
             vocabulary: allVocabulary
         )
+    }
+
+    /// 系列綁定 seed：未綁定時以最近使用的真實單字本固化（gate：seed 須為已 settle 的
+    /// 真實 notebook，擋未同步 sentinel）。固化後底線 / 查詢 scope 認綁定本。
+    private func seedSeriesBindingIfNeeded() {
+        guard let series = loadedSeries, series.preferredNotebookId == nil else { return }
+        let seed = ActiveNotebookStore.shared.activeNotebookId
+        guard PodcastSeries.canSeedBinding(
+            seed: seed,
+            liveNotebookIds: Set(liveNotebooks.map(\.remoteId))
+        ) else { return }
+        series.ensureBoundNotebook(seed: seed)
+        _ = modelContext.safeSave()
     }
 
     var body: some View {
@@ -160,8 +177,23 @@ struct PodcastPlayerScene: View {
         .toolbar(.hidden, for: .tabBar)
 #endif
         .toolbar {
+            if loadedSeries != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showNotebookPicker = true
+                    } label: {
+                        Image(systemName: "books.vertical")
+                    }
+                    .accessibilityLabel(L10n.string("選擇單字本"))
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 PodcastPlayerSettingsButton(action: { showSettingsPopover = true })
+            }
+        }
+        .sheet(isPresented: $showNotebookPicker) {
+            if let series = loadedSeries {
+                PodcastNotebookPicker(series: series)
             }
         }
         .sheet(isPresented: $showSettingsPopover) {
@@ -210,10 +242,17 @@ struct PodcastPlayerScene: View {
             loadEpisode()
         }
         .onChange(of: allVocabulary.count) { _, _ in
-            translationHandler.loadLookedUpWords(from: allVocabulary)
+            translationHandler.loadLookedUpWords(from: allVocabulary, notebookId: loadedSeries?.resolvedNotebookId)
         }
         .onAppear {
-            translationHandler.loadLookedUpWords(from: allVocabulary)
+            translationHandler.loadLookedUpWords(from: allVocabulary, notebookId: loadedSeries?.resolvedNotebookId)
+        }
+        .onChange(of: loadedSeries?.remoteId) { _, _ in
+            seedSeriesBindingIfNeeded()
+            translationHandler.loadLookedUpWords(from: allVocabulary, notebookId: loadedSeries?.resolvedNotebookId)
+        }
+        .onChange(of: liveNotebooks.map(\.remoteId)) { _, _ in
+            seedSeriesBindingIfNeeded()
         }
         .onDisappear {
             let pending = pendingProgressOnDisappear()
