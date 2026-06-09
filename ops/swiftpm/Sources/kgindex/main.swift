@@ -8,9 +8,17 @@ import IndexStoreDB
 //
 // Emits a JSON document to stdout: for every symbol definition of the requested
 // kinds whose definition file path contains <sourceRootSubstring>, the symbol's
-// USR + definition location + every reference/call location (with roles). It
-// applies NO policy — no Debug/Tests exclusion, no orphan judgement. That lives
-// in ops/ui_deadcode.py where it is unit-testable.
+// USR + definition location + every reference/call location (with roles + the
+// enclosing TYPE that contains the reference). It applies NO policy — no
+// Debug/Tests exclusion, no orphan judgement. That lives in the Python consumers
+// (ops/ui_deadcode.py, ops/ui_graph.py) where it is unit-testable.
+//
+// The per-ref `container` is the nearest enclosing type of the reference site,
+// resolved structurally via the index's `containedBy` relation (ref → enclosing
+// method/accessor) then walking `childOf` up to the nearest struct/class/enum/
+// protocol/extension. This is what lets a consumer build a type→type dependency
+// graph ("type A references type B"). Resolution is pure structural fact, not
+// policy.
 //
 // Design notes:
 // - libIndexStore.dylib is discovered via `xcode-select -p`, never hardcoded, so
@@ -155,9 +163,49 @@ func rolesStrings(_ roles: SymbolRole) -> [String] {
     return out
 }
 
-// MARK: - Emit neutral records (def + refs), zero policy.
+// MARK: - Container resolution (ref site → nearest enclosing type)
 
-struct RefRecord: Encodable { let path: String; let line: Int; let roles: [String] }
+let typeKinds: Set<IndexSymbolKind> = [.struct, .class, .enum, .protocol, .extension]
+
+struct ContainerRecord: Encodable { let usr: String; let name: String; let kind: String }
+
+// Memoized walk: a method/accessor/property symbol → its nearest enclosing type.
+// Returns nil for symbols with no type ancestor (free functions, top-level code).
+var containerCache: [String: ContainerRecord?] = [:]
+@MainActor
+func resolveEnclosingType(usr: String, name: String, kind: IndexSymbolKind) -> ContainerRecord? {
+    if typeKinds.contains(kind) {
+        return ContainerRecord(usr: usr, name: name, kind: kindString(kind))
+    }
+    if let cached = containerCache[usr] { return cached }
+    containerCache[usr] = nil  // cycle guard (memoize before recursing)
+    var result: ContainerRecord? = nil
+    outer: for occ in db.occurrences(ofUSR: usr, roles: [.definition, .declaration]) {
+        for rel in occ.relations where rel.roles.contains(.childOf) {
+            if let parent = resolveEnclosingType(usr: rel.symbol.usr, name: rel.symbol.name, kind: rel.symbol.kind) {
+                result = parent
+                break outer
+            }
+        }
+    }
+    containerCache[usr] = result
+    return result
+}
+
+// The enclosing type of a reference occurrence, via its `containedBy` relation.
+@MainActor
+func containerOf(_ occ: SymbolOccurrence) -> ContainerRecord? {
+    for rel in occ.relations where rel.roles.contains(.containedBy) {
+        if let t = resolveEnclosingType(usr: rel.symbol.usr, name: rel.symbol.name, kind: rel.symbol.kind) {
+            return t
+        }
+    }
+    return nil
+}
+
+// MARK: - Emit neutral records (def + refs + container), zero policy.
+
+struct RefRecord: Encodable { let path: String; let line: Int; let roles: [String]; let container: ContainerRecord? }
 struct SymbolRecord: Encodable {
     let kind: String; let name: String; let usr: String
     let def: Location; let refs: [RefRecord]
@@ -172,7 +220,8 @@ for d in defs {
     for r in occs {
         if r.roles.contains(.definition) { continue }
         if r.location.path == d.path && r.location.line == d.line { continue }
-        refs.append(RefRecord(path: r.location.path, line: r.location.line, roles: rolesStrings(r.roles)))
+        refs.append(RefRecord(path: r.location.path, line: r.location.line,
+                              roles: rolesStrings(r.roles), container: containerOf(r)))
     }
     records.append(SymbolRecord(kind: kindString(d.kind), name: d.name, usr: d.usr,
                                 def: .init(path: d.path, line: d.line), refs: refs))
