@@ -14,7 +14,7 @@ import XCTest
 final class ShellSmokeUITests: UITestCase {
     @MainActor
     func testAllTabsVisibleOnLaunch() throws {
-        let app = launchApp(extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"])
+        let app = launchIsolatedApp()
         captureStep("shell-launch", app: app)
         AppPage(app: app).assertAllTabsVisible()
         captureStep("shell-tabs-visible", app: app)
@@ -24,7 +24,7 @@ final class ShellSmokeUITests: UITestCase {
     /// (2) keep the tab bar alive (no crash), and (3) show a navigation bar.
     @MainActor
     func testEachTabEntersWithNavigationChrome() throws {
-        let app = launchApp(extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"])
+        let app = launchIsolatedApp()
         captureStep("shell-launch", app: app)
 
         let shell = AppPage(app: app)

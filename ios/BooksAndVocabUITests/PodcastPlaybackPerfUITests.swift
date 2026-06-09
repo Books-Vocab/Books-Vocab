@@ -4,12 +4,8 @@ final class PodcastPlaybackPerfUITests: UITestCase {
     @MainActor
     func testPodcastPlaybackProbeReachesPlayerAndTapsPlay() throws {
         let podcastFixtureRoot = "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts"
-        let app = launchApp(
-            extraArgs: [
-                "-appLaunchProfile", "ui-smoke",
-                "-isolatedAuthSession",
-                "-seedFixture:podcast:playablePreview"
-            ],
+        let app = launchIsolatedApp(
+            extraArgs: ["-seedFixture:podcast:playablePreview"],
             extraEnvironment: [
                 "KG_UI_TEST_PODCAST_AUDIO": "\(podcastFixtureRoot)/ep_1_flash.m4a",
                 "KG_UI_TEST_PODCAST_SUBTITLE": "\(podcastFixtureRoot)/ep_1_flash.srt",
