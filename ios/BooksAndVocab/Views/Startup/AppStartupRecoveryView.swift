@@ -193,7 +193,7 @@ struct AppStartupRecoveryView: View {
         case .mailUnavailable:
             recoveryNoticeBanner(
                 icon: "envelope.badge",
-                text: L10n.string("無法開啟郵件 App。請手動寄信至 support@wordnexus.lol，並附上技術細節。"),
+                text: L10n.format("無法開啟郵件 App。請手動寄信至 %@，並附上技術細節。", BrandIdentity.supportEmail),
                 tone: .warning
             )
 

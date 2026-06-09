@@ -10,6 +10,8 @@
 
 const VALID_THEMES = ['light', 'dark', 'sepia'];
 const DEFAULT_THEME = 'light';
+const PUBLIC_WEB_ORIGIN = 'https://wordnexus.lol';
+const LOGIN_PATH = '/login';
 const NOTEBOOK_PALETTE = [
   { name: '森林', hex: '#B1C5AE' },
   { name: '海洋', hex: '#AFC2D3' },
@@ -981,7 +983,8 @@ function isTrustedExternalOrigin(url) {
   if (typeof url !== 'string' || !url) return false;
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.hostname === 'wordnexus.lol';
+    const trusted = new URL(PUBLIC_WEB_ORIGIN);
+    return parsed.protocol === trusted.protocol && parsed.hostname === trusted.hostname;
   } catch (_err) {
     return false;
   }
@@ -1058,6 +1061,8 @@ function escapeHtml(str) {
 const KGPureExports = {
   VALID_THEMES,
   DEFAULT_THEME,
+  PUBLIC_WEB_ORIGIN,
+  LOGIN_PATH,
   NOTEBOOK_PALETTE,
   NOTEBOOK_COVER_PATTERNS,
   NOTEBOOK_DEFAULT_COLOR,
