@@ -295,10 +295,26 @@ echo "[release] ✓ ipa: $IPA"
 if [[ $DO_UPLOAD -eq 1 ]]; then
   echo "[release] ▶ upload → App Store Connect (TestFlight) …"
   START_UPLOAD_MS="$(now_ms)"
+  # altool emits nothing until it finishes — keep-alive tick so the upload
+  # doesn't look hung. Output is captured to a log and printed when done.
+  UPLOAD_LOG="$(mktemp "${TMPDIR:-/tmp}/kg_ios_release_upload.XXXXXX").log"
+  set +e
+  UPLOAD_MONITOR_PID=$(start_tick_monitor "$UPLOAD_LOG" "[release][upload]" "$(date +%s)")
   xcrun altool --upload-app -f "$IPA" --type ios \
-    --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+    --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID" \
+    >"$UPLOAD_LOG" 2>&1
+  UPLOAD_EXIT=$?
+  kill "$UPLOAD_MONITOR_PID" 2>/dev/null || true
+  wait "$UPLOAD_MONITOR_PID" 2>/dev/null || true
+  set -e
+  cat "$UPLOAD_LOG"
   UPLOAD_MS="$(( $(now_ms) - START_UPLOAD_MS ))"
   TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
+  if [[ $UPLOAD_EXIT -ne 0 ]]; then
+    write_json_verdict "ok" "0" "ok" "ok" "fail"
+    echo "[release] ✗ upload failed (exit $UPLOAD_EXIT) log=$UPLOAD_LOG" >&2
+    exit "$UPLOAD_EXIT"
+  fi
   write_json_verdict "ok" "0" "ok" "ok" "ok"
   echo "[release] ✓ uploaded — 數分鐘後於 TestFlight 顯示，processing 完才可送審"
 else
