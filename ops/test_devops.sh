@@ -37,6 +37,10 @@ section "Deploy pipeline"
 grep -q 'cmd_backup'       "$KG"    && ok "KG deploy calls cmd_backup"    || fail_t "KG deploy missing cmd_backup"
 grep -q 'for i in $(seq 1' "$KG"    && ok "KG health retry loop"    || fail_t "KG health retry loop missing"
 grep -q 'local http_code'  "$KG"    && ok "KG http_code variable"    || fail_t "KG http_code variable missing"
+grep -q -- "--exclude='_ops_backups/'" "$KG" \
+  && grep -q -- "--exclude='_ops_world_backups/'" "$KG" \
+  && ok "KG backup excludes nested ops backup trees" \
+  || fail_t "KG backup should exclude nested ops backup trees"
 
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
 section "Blocklist (dangerous commands blocked)"
