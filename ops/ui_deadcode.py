@@ -18,6 +18,10 @@ The extraction (kgindex, Swift) carries no policy; all judgement lives here so i
 stays unit-testable. Feed captured records via --records-json to test or iterate
 without a build.
 
+Default kinds are struct + class (the trustworthy gate set). enum/protocol can be
+requested via --kinds but produce false positives (Codable CodingKeys, caseless
+namespace enums) and are for hand triage, not gating — see DEFAULT_KINDS.
+
 Exit codes: 0 success (warn-only, even with orphans) | 1 with --strict if any
 orphan found, or on build/scan failure | 2 usage error.
 """
@@ -33,7 +37,22 @@ import tempfile
 from pathlib import Path
 
 SCHEMA = "kg.ui.deadcode.v1"
-DEFAULT_KINDS = ("struct", "class", "enum", "protocol")
+# struct + class is the trustworthy gate set (proven clean on a post-cleanup tree).
+# enum/protocol are available via --kinds but surface systematic FALSE POSITIVES,
+# so they are NOT in the default and must be triaged by hand, not gated on:
+#   - Codable `CodingKeys` (compiler-synthesized; never an explicit reference)
+#   - caseless namespace enums (e.g. `DesignTokens.Easing`): member access creates
+#     a reference to the leaf member, not to the intermediate enum container, so a
+#     heavily-used namespace enum still reads as zero-ref.
+DEFAULT_KINDS = ("struct", "class")
+# Names that are never explicitly referenced even when used (compiler synthesis).
+ALWAYS_USED_NAMES = frozenset({"CodingKeys"})
+# Markers are plain substrings tested against full paths (a deliberate, configurable
+# primitive). Slashes anchor them: "/Debug/" matches the catalog dir but not a
+# hypothetical "/Debugging/"; "Tests/" matches BooksBrowserTests/ and
+# BooksBrowserUITests/ (segments ending in "Tests/") while the lowercase in dirs
+# like "Contests/" does not collide. Callers passing custom markers should include
+# slashes to keep the same anchoring.
 DEFAULT_NONPROD_MARKERS = ("/Debug/", "Tests/")
 DEFAULT_SOURCE_ROOT = "ios/BooksBrowser/"
 
@@ -66,6 +85,8 @@ def classify_orphans(
     for sym in records.get("symbols", []):
         if sym.get("kind") not in kind_set:
             continue
+        if sym.get("name") in ALWAYS_USED_NAMES:
+            continue  # compiler-synthesized use; never a real orphan
         def_path = sym.get("def", {}).get("path", "")
         if _has_marker(def_path, nonprod_path_markers):
             continue  # definition itself is debug/test code — not a production orphan
@@ -132,8 +153,10 @@ def acquire_records_via_build(source_root: str, kinds: tuple[str, ...]) -> dict:
     try:
         env = dict(os.environ, KG_IOS_BUILD_DERIVED_DATA_ROOT=str(tmp_dd))
         print(f"[ui_deadcode] isolated build -> {tmp_dd}", file=sys.stderr)
+        # Redirect the build's stdout to stderr: ios_build.sh prints [ios_build]
+        # progress to stdout, which would otherwise corrupt our --json output.
         rc = subprocess.run(
-            ["./ops/ios_ops.sh", "build"], cwd=PROJECT_ROOT, env=env
+            ["./ops/ios_ops.sh", "build"], cwd=PROJECT_ROOT, env=env, stdout=sys.stderr
         ).returncode
         verdict = Path(os.environ.get("TMPDIR", "/tmp")) / "kg_ios_build_verdict"
         result = _verdict_field(verdict, "RESULT")
@@ -146,7 +169,11 @@ def acquire_records_via_build(source_root: str, kinds: tuple[str, ...]) -> dict:
             raise SystemExit(f"[ui_deadcode] IndexStore not found at {store}")
         return _run_kgindex(str(store), source_root, kinds)
     finally:
-        subprocess.run(["rm", "-rf", str(tmp_dd)])
+        # best-effort cleanup of the isolated DerivedData; a leak is harmless
+        # (mkdtemp path) but we surface a nonzero rm rather than swallow silently.
+        rc = subprocess.run(["rm", "-rf", str(tmp_dd)], check=False).returncode
+        if rc != 0:
+            print(f"[ui_deadcode] warning: failed to remove {tmp_dd} (rc={rc})", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- #
