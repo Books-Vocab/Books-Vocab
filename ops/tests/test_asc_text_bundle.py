@@ -12,6 +12,8 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "asc_text_bundle.py"
+PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
+PRIVACY_POLICY_URL = PUBLIC_WEB_BASE_URL + "/privacy.html"
 
 
 def _load_module():
@@ -33,7 +35,7 @@ def test_compute_changes_limits_apply_to_editable_text_fields():
                     "locale": "zh-Hant",
                     "name": "Books & Vocab",
                     "subtitle": "便捷的生詞本閱讀器",
-                    "privacyPolicyUrl": "https://wordnexus.lol/privacy.html",
+                    "privacyPolicyUrl": PRIVACY_POLICY_URL,
                     "privacyChoicesUrl": None,
                 }
             ]
@@ -50,7 +52,7 @@ def test_compute_changes_limits_apply_to_editable_text_fields():
                     "keywords": "old,keywords",
                     "marketingUrl": None,
                     "promotionalText": "old promo",
-                    "supportUrl": "https://wordnexus.lol/privacy.html",
+                    "supportUrl": PRIVACY_POLICY_URL,
                     "whatsNew": None,
                 }
             ],
