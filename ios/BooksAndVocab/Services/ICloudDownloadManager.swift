@@ -5,6 +5,12 @@
 
 import Foundation
 
+extension Notification.Name {
+    /// LocalDataCleanerService 清除本機用戶資料後發出（帳號切換/登出）。
+    /// ICloudDownloadManager 觀察此通知以重設狀態並重啟監控。
+    static let localUserDataDidClear = Notification.Name("kg.localUserDataDidClear")
+}
+
 /// 將 NSMetadataItem 的下載屬性映射成 `ICloudFileState` 的純函式邏輯。
 ///
 /// 抽成獨立、不依賴 NSMetadataItem 的純函式以便單元測試。核心修正：下載早期
@@ -73,6 +79,8 @@ final class ICloudDownloadManager {
     private var metadataQuery: NSMetadataQuery?
     private var gatherObserver: Any?
     private var updateObserver: Any?
+    private var identityObserver: Any?
+    private var userDataClearObserver: Any?
     private var triggeredFiles: Set<String> = []
 
     /// 取得特定檔案的下載狀態（nil = 查詢尚未追蹤到此檔案）
@@ -82,6 +90,27 @@ final class ICloudDownloadManager {
 
     /// 開始監控 iCloud EPUB 檔案
     func startMonitoring() {
+        // 帳號切換通知 — 不依賴 iCloud 可用性，App 全生命週期恆需觀察。
+        // 用 nil guard 避免 reset() 循環呼叫 startMonitoring() 時重複訂閱。
+        if identityObserver == nil {
+            identityObserver = NotificationCenter.default.addObserver(
+                forName: .NSUbiquityIdentityDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reset() }
+            }
+        }
+        if userDataClearObserver == nil {
+            userDataClearObserver = NotificationCenter.default.addObserver(
+                forName: .localUserDataDidClear,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reset() }
+            }
+        }
+
         guard metadataQuery == nil else { return }
 
         // 診斷：檢查 iCloud 身分與容器
@@ -140,8 +169,22 @@ final class ICloudDownloadManager {
         metadataQuery = nil
         if let o = gatherObserver { NotificationCenter.default.removeObserver(o) }
         if let o = updateObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = identityObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = userDataClearObserver { NotificationCenter.default.removeObserver(o) }
         gatherObserver = nil
         updateObserver = nil
+        identityObserver = nil
+        userDataClearObserver = nil
+    }
+
+    /// 帳號切換時重設所有狀態並重新開始監控新帳號的 iCloud 容器。
+    func reset() {
+        AppLog.book.info("ICloudDownloadManager: reset for account change")
+        stopMonitoring()
+        fileStates = [:]
+        triggeredFiles = []
+        hasGathered = false
+        startMonitoring()
     }
 
     /// 手動觸發特定檔案下載

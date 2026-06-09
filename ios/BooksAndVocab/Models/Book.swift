@@ -99,6 +99,12 @@ final class Book {
         return dir
     }
 
+    /// 清除 iCloud 目錄快取，讓下次存取時以當前 Apple ID 重取容器路徑。
+    /// 在 Apple ID 切換或 KG 帳號登出/切換時呼叫。
+    static func clearICloudDirectoryCache() {
+        _cachedICloudDir = nil
+    }
+
     /// 新匯入使用的偏好目錄（優先 iCloud）
     static var booksDirectory: URL {
         iCloudBooksDirectory ?? localBooksDirectory
