@@ -89,7 +89,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.state.kg_settings = settings
 
     # --- user store helpers ---
-    runtime_user_state = install_runtime_user_state_from_dependencies(
+    install_runtime_user_state_from_dependencies(
         dependencies=RuntimeUserStateDependencies(
             app=app,
             settings=settings,
@@ -126,12 +126,18 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     def _users_lock_file_fn() -> Path:
         return app.state.kg_settings.users_lock_file
 
+    def _load_users_runtime():
+        return app.state.load_users()
+
+    def _save_users_runtime(users):
+        app.state.save_users(users)
+
     app_routers = build_app_routers_from_dependencies(
         dependencies=AppRouterDependencies(
             runtime_settings_fn=_settings_fn,
             runtime_users_lock_file_fn=_users_lock_file_fn,
-            load_users_fn=runtime_user_state.load_users,
-            save_users_fn=runtime_user_state.save_users,
+            load_users_fn=_load_users_runtime,
+            save_users_fn=_save_users_runtime,
             mem_log_getter=_mem_log.get,
             card_store_factory=_card_store,
             build_entitlements_response_fn=_build_entitlements_response,
