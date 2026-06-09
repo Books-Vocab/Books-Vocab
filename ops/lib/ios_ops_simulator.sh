@@ -698,27 +698,51 @@ SIM_POOL_SIZE="${KG_IOS_SIM_POOL_SIZE:-3}"
 SIM_POOL_DEVICE_TYPE="${KG_IOS_SIM_POOL_DEVICE_TYPE:-iPhone 17 Pro Max}"
 SIM_LEASE_TTL="${KG_IOS_SIM_LEASE_TTL:-1800}"
 
+simulator_device_state() {
+  # Print the simctl state ("Booted"/"Shutdown"/...) of UDID $1, or empty.
+  xcrun simctl list devices --json 2>/dev/null \
+    | jq -r --arg u "$1" '[.devices[]?[]? | select(.udid==$u)][0].state // empty'
+}
+
 simulator_pool_ensure_device() {
   # Ensure a simulator named $1 exists; print its UDID (create if missing).
-  local name="$1" udid devtype runtime
+  local name="$1" udid devtype runtime errf
   udid="$(xcrun simctl list devices --json 2>/dev/null \
     | jq -r --arg n "$name" '[.devices[]?[]? | select(.name==$n)][0].udid // empty')"
   if [[ -z "$udid" ]]; then
     devtype="$(xcrun simctl list devicetypes --json 2>/dev/null \
       | jq -r --arg d "$SIM_POOL_DEVICE_TYPE" '[.devicetypes[] | select(.name==$d)][0].identifier // empty')"
-    runtime="$(xcrun simctl list runtimes --json 2>/dev/null \
-      | jq -r '[.runtimes[] | select(.isAvailable==true and (.identifier|test("iOS")))] | last | .identifier // empty')"
-    [[ -n "$devtype" && -n "$runtime" ]] || return 1
-    udid="$(xcrun simctl create "$name" "$devtype" "$runtime" 2>/dev/null)" || return 1
+    if [[ -n "${KG_IOS_SIM_POOL_RUNTIME:-}" ]]; then
+      runtime="$KG_IOS_SIM_POOL_RUNTIME"
+    else
+      # Newest available iOS runtime — sorted NUMERICALLY by version (simctl does
+      # not guarantee array order, and lexical sort mis-ranks e.g. 9.0 vs 18.6).
+      runtime="$(xcrun simctl list runtimes --json 2>/dev/null \
+        | jq -r '[.runtimes[] | select(.isAvailable==true and (.identifier|test("iOS")))]
+                 | sort_by(.version | split(".") | map(tonumber)) | last | .identifier // empty')"
+    fi
+    if [[ -z "$devtype" || -z "$runtime" ]]; then
+      echo "[ios_ops] error: cannot resolve device type ('$SIM_POOL_DEVICE_TYPE'->'${devtype:-?}') or iOS runtime ('${runtime:-?}') for pool device $name" >&2
+      return 1
+    fi
+    errf="$(mktemp)"
+    if ! udid="$(xcrun simctl create "$name" "$devtype" "$runtime" 2>"$errf")"; then
+      echo "[ios_ops] error: simctl create $name ($devtype, $runtime) failed: $(cat "$errf")" >&2
+      rm -f "$errf"; return 1
+    fi
+    rm -f "$errf"
   fi
+  [[ -n "$udid" ]] || return 1
   printf '%s' "$udid"
 }
 
 simulator_lease_is_stale() {
-  local leasedir="$1" created now
-  created="$(cat "$leasedir/created_at" 2>/dev/null || echo 0)"
-  now="$(date +%s)"
-  (( now - created > SIM_LEASE_TTL ))
+  local leasedir="$1" created
+  created="$(cat "$leasedir/created_at" 2>/dev/null)"
+  # No timestamp yet = a slot claimed but not finished initializing. Treat as
+  # LIVE (not stale) so a concurrent lease never reclaims a just-claimed slot.
+  [[ -n "$created" ]] || return 1
+  (( $(date +%s) - created > SIM_LEASE_TTL ))
 }
 
 cmd_simulator_lease() {
@@ -738,15 +762,34 @@ cmd_simulator_lease() {
     name="${SIM_POOL_PREFIX}-${i}"
     leasedir="$SIM_LEASE_ROOT/$name"
     if ! mkdir "$leasedir" 2>/dev/null; then
+      # Occupied — only reclaim if stale, and ATOMICALLY: a single `mv` can win
+      # the stale dir (two racers cannot both move the same dir away), then one
+      # `mkdir` wins the freed slot. This avoids the rm+mkdir window where two
+      # processes could both end up "holding" the same slot.
       simulator_lease_is_stale "$leasedir" || continue
-      rm -rf "$leasedir" 2>/dev/null; mkdir "$leasedir" 2>/dev/null || continue
+      if mv "$leasedir" "${leasedir}.reclaim.$$" 2>/dev/null; then
+        rm -rf "${leasedir}.reclaim.$$" 2>/dev/null || true
+      fi
+      mkdir "$leasedir" 2>/dev/null || continue
     fi
+    # Slot is ours. Write created_at FIRST so a concurrent stale-check never sees
+    # us timestamp-less and reclaims a live lease. Any failure below frees the
+    # slot so we never leak a zombie lease dir.
+    date +%s > "$leasedir/created_at" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
     udid="$(simulator_pool_ensure_device "$name")" || { rm -rf "$leasedir" 2>/dev/null; continue; }
     [[ -n "$udid" ]] || { rm -rf "$leasedir" 2>/dev/null; continue; }
-    date +%s > "$leasedir/created_at"
-    printf '%s' "$udid" > "$leasedir/udid"
-    printf '%s' "$$" > "$leasedir/owner_pid"
-    xcrun simctl bootstatus "$udid" -b >/dev/null 2>&1 || xcrun simctl boot "$udid" >/dev/null 2>&1 || true
+    printf '%s' "$udid" > "$leasedir/udid" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    printf '%s' "$$" > "$leasedir/owner_pid" 2>/dev/null || true
+    # Boot, and surface a real boot failure instead of returning ok with a dead
+    # device. `simctl boot` errors when already booted, so on its failure we
+    # re-check the state and only treat NON-Booted as a true failure.
+    if ! xcrun simctl bootstatus "$udid" -b >/dev/null 2>&1 \
+       && ! xcrun simctl boot "$udid" >/dev/null 2>&1 \
+       && [[ "$(simulator_device_state "$udid")" != "Booted" ]]; then
+      echo "[ios_ops] error: failed to boot leased simulator $name ($udid); trying next slot" >&2
+      rm -rf "$leasedir" 2>/dev/null || true
+      continue
+    fi
     if [[ "$json" -eq 1 ]]; then
       jq -nc --arg name "$name" --arg udid "$udid" --arg leaseDir "$leasedir" \
         '{schema:"kg.ios.sim-lease.v1", status:"ok", name:$name, udid:$udid, leaseDir:$leaseDir}'
@@ -769,7 +812,9 @@ cmd_simulator_release() {
     case "$1" in
       --json) json=1; shift ;;
       --shutdown) shutdown=1; shift ;;
-      --device|--name) target="$2"; shift 2 ;;
+      --device|--name)
+        [[ $# -ge 2 ]] || { echo "✗ $1 requires a value (udid or pool name)" >&2; return 1; }
+        target="$2"; shift 2 ;;
       -h|--help|help)
         echo "Usage: ./ops/ios_ops.sh simulator release [--device <udid|name>] [--shutdown] [--json]"
         return 0 ;;
