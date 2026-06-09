@@ -126,7 +126,7 @@ final class PodcastProgressPersistenceController {
     /// A `.tick` at position 0 is pure noise (audio not advanced yet) and must
     /// be dropped. But an explicit `.pause` / `.episodeSwitch` at position 0 is
     /// a real user-visible transition that must persist.
-    static func shouldPersist(
+    nonisolated static func shouldPersist(
         currentTime: TimeInterval,
         reason: PodcastProgressPushState.Reason
     ) -> Bool {
