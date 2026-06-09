@@ -202,6 +202,39 @@ else
     && [[ "$rc" -eq 1 ]] \
     && ok "simulator status reports missing booted device" || fail_t "simulator missing-booted invalid: $(cat "$sim_shot_tmp/no_booted.json") stderr=$(cat "$sim_shot_tmp/no_booted.err") rc=$rc"
 fi
+sim_lease_tmp="$(mktemp -d)"
+live_owner_pid=""
+sleep 30 &
+live_owner_pid=$!
+lease_dir="$sim_lease_tmp/kg-pool-1"
+mkdir -p "$lease_dir"
+printf '%s\n' "$(( $(date +%s) - 120 ))" > "$lease_dir/created_at"
+printf '%s\n' "$live_owner_pid" > "$lease_dir/owner_pid"
+printf '%s\n' "fixture-udid" > "$lease_dir/udid"
+printf '%s\n' "fixture-token" > "$lease_dir/owner_token"
+lease_stale_status="$(
+  ROOT="$WORKSPACE" KG_IOS_SIM_LEASE_ROOT="$sim_lease_tmp" KG_IOS_SIM_LEASE_TTL=1 \
+    bash -lc 'source "'"$IOS_OPS_SIMULATOR_LIB"'"; if simulator_lease_is_stale "'"$lease_dir"'"; then echo stale; else echo live; fi'
+)"
+[[ "$lease_stale_status" == "live" ]] \
+  && ok "simulator lease keeps live owner pid from stale reclaim" || fail_t "simulator lease stale-check ignored live owner pid: $lease_stale_status"
+release_token_mismatch_json="$(
+  ROOT="$WORKSPACE" KG_IOS_SIM_LEASE_ROOT="$sim_lease_tmp" \
+    bash -lc 'source "'"$IOS_OPS_SIMULATOR_LIB"'"; cmd_simulator_release --device fixture-udid --owner-token wrong-token --json'
+)"
+echo "$release_token_mismatch_json" | jq -e '.schema=="kg.ios.sim-release.v1" and .status=="noop" and .error=="owner-token-mismatch:fixture-udid"' >/dev/null \
+  && [[ -d "$lease_dir" ]] \
+  && ok "simulator release refuses mismatched owner token" || fail_t "simulator release token mismatch invalid: $release_token_mismatch_json"
+release_token_match_json="$(
+  ROOT="$WORKSPACE" KG_IOS_SIM_LEASE_ROOT="$sim_lease_tmp" \
+    bash -lc 'source "'"$IOS_OPS_SIMULATOR_LIB"'"; cmd_simulator_release --device fixture-udid --owner-token fixture-token --json'
+)"
+echo "$release_token_match_json" | jq -e '.schema=="kg.ios.sim-release.v1" and .status=="ok" and .udid=="fixture-udid"' >/dev/null \
+  && [[ ! -d "$lease_dir" ]] \
+  && ok "simulator release deletes lease only for matching owner token" || fail_t "simulator release token match invalid: $release_token_match_json"
+kill "$live_owner_pid" 2>/dev/null || true
+wait "$live_owner_pid" 2>/dev/null || true
+rm -rf "$sim_lease_tmp"
 rm -rf "$sim_shot_tmp"
 
 section "Catalog snapshot export surface"
@@ -771,6 +804,9 @@ grep -q 'lockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records lock wait time and surfaces it on stdout" || fail_t "ios_test missing lock wait timing"
 grep -q 'BooksBrowserUITests' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test uses dedicated UI scheme for UI scope" || fail_t "ios_test missing UI-only scheme"
+grep -q 'deviceRunLockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'acquire_test_device_lock' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test records per-device execution lock timing" || fail_t "ios_test missing per-device execution lock timing"
 grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '--launch-benchmark' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_UI_TEST_APP_ARGS_JSON' "$WORKSPACE/ops/ios_test.sh" \
@@ -795,6 +831,34 @@ grep -q 'bootMs:' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test verdict records timing breakdown" || fail_t "ios_test verdict missing timing fields"
 grep -q 'VERDICT_JSON_FILE' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test writes JSON verdict" || fail_t "ios_test missing JSON verdict"
+ios_test_retry_tmp="$(mktemp -d)"
+cat > "$ios_test_retry_tmp/test_failed.log" <<'LOG'
+Test Suite 'All tests' started
+Test Case '-[BooksBrowserTests PollutedStateTests testPollutedState]' failed (0.123 seconds)
+** TEST FAILED **
+LOG
+cat > "$ios_test_retry_tmp/cache_corrupt.log" <<'LOG'
+xcodebuild: error: Failed to read xctestrun file
+LOG
+retry_should_not_rebuild="$(
+  TMPOUT="$ios_test_retry_tmp/test_failed.log" \
+    bash -lc '
+      eval "$(sed -n "/^should_rebuild_after_test_without_building_failure()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      if should_rebuild_after_test_without_building_failure; then echo rebuild; else echo preserve; fi
+    '
+)"
+[[ "$retry_should_not_rebuild" == "preserve" ]] \
+  && ok "ios_test preserves genuine TEST FAILED result without rebuild" || fail_t "ios_test retries genuine test failure: $retry_should_not_rebuild"
+retry_should_rebuild="$(
+  TMPOUT="$ios_test_retry_tmp/cache_corrupt.log" \
+    bash -lc '
+      eval "$(sed -n "/^should_rebuild_after_test_without_building_failure()/,/^}/p" "'"$WORKSPACE/ops/ios_test.sh"'")"
+      if should_rebuild_after_test_without_building_failure; then echo rebuild; else echo preserve; fi
+    '
+)"
+[[ "$retry_should_rebuild" == "rebuild" ]] \
+  && ok "ios_test rebuilds only cache/infrastructure failure" || fail_t "ios_test did not rebuild cache corruption failure: $retry_should_rebuild"
+rm -rf "$ios_test_retry_tmp"
 
 echo ""
 echo "══════════════════════════════"
