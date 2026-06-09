@@ -515,7 +515,6 @@ documents:
     sources:
       - CLAUDE.md
       - .claude/skills/phased/
-      - .claude/skills/steward/
       - .claude/skills/app-debug/
       - docs/sop/review_discipline.md
 
