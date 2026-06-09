@@ -5,7 +5,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-IOS_ROOT="$PROJECT_ROOT/ios/BooksBrowser"
+IOS_ROOT="$PROJECT_ROOT/ios/BooksAndVocab"
 
 # 設計系統定義檔（排除）
 EXCLUDE="--exclude=AppColors.swift --exclude=AppTheme.swift --exclude=VocabSkin.swift --exclude=AppMetrics.swift --exclude=AppFonts.swift"
