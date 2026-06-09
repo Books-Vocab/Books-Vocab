@@ -15,6 +15,7 @@ SSH_KEY="$HOME/.ssh/lightsail_kg_prod"
 SERVER="ubuntu@13.193.212.134"
 REMOTE_DIR="~/knowledge_graph_api"
 CONTAINER="knowledge-graph-api"
+PUBLIC_WEB_BASE_URL="https://wordnexus.lol"
 LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
 
@@ -80,10 +81,10 @@ run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式�
 # ── 部署後 smoke verify（從本地打公網，外部視角全鏈路驗證）─────────────────
 # 可注入：CURL_BIN（測試用 mock curl）、KG_SKIP_SMOKE=1 完全跳過、
 #         SENTRY_VERIFY=1 加做 sentry endpoint 探測、
-#         SMOKE_BASE_URL（預設 https://wordnexus.lol）
+#         SMOKE_BASE_URL（預設 ${PUBLIC_WEB_BASE_URL}）
 verify_post_deploy() {
   local deploy_sha="$1"
-  local base_url="${SMOKE_BASE_URL:-https://wordnexus.lol}"
+  local base_url="${SMOKE_BASE_URL:-$PUBLIC_WEB_BASE_URL}"
   local curl_bin="${CURL_BIN:-curl}"
   local rc=0
 

@@ -1,3 +1,6 @@
+IOS_EXPORT_PROFILE_NAME="${IOS_EXPORT_PROFILE_NAME:-KG App Store}"
+IOS_EXPORT_CERTIFICATE_NAME="${IOS_EXPORT_CERTIFICATE_NAME:-Apple Distribution}"
+
 emit_readiness() {
   local key="$1" status="$2" detail="$3"
   echo "[ios][readiness] $key status=$status $detail"
@@ -129,9 +132,9 @@ doctor_readiness() {
     "$emitter" "$out" "asc_version" "warn" "latest=timeout"
   fi
 
-  if plutil -p "$ROOT/ios/ExportOptions.plist" 2>/dev/null | grep -q '"KG App Store"' \
-     && plutil -p "$ROOT/ios/ExportOptions.plist" 2>/dev/null | grep -q '"Apple Distribution"'; then
-    "$emitter" "$out" "signing" "ok" "exportOptions=manual profile=\"KG App Store\" certificate=\"Apple Distribution\""
+  if plutil -p "$ROOT/ios/ExportOptions.plist" 2>/dev/null | grep -q "\"$IOS_EXPORT_PROFILE_NAME\"" \
+     && plutil -p "$ROOT/ios/ExportOptions.plist" 2>/dev/null | grep -q "\"$IOS_EXPORT_CERTIFICATE_NAME\""; then
+    "$emitter" "$out" "signing" "ok" "exportOptions=manual profile=\"$IOS_EXPORT_PROFILE_NAME\" certificate=\"$IOS_EXPORT_CERTIFICATE_NAME\""
   else
     "$emitter" "$out" "signing" "warn" "exportOptions=$ROOT/ios/ExportOptions.plist missing expected manual signing fields"
   fi
