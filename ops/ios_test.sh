@@ -192,6 +192,19 @@ ios_test_cached_products_ready() {
   esac
 }
 
+# A build-for-testing that is interrupted (INT/TERM) or fails mid-write leaves
+# the product bundle DIRECTORIES in place but their contents incomplete, which
+# the -d checks above cannot distinguish from a good build. The sentinel below is
+# written (under the build lock) ONLY after a build verifiably completes, so hit
+# detection and the rebuild double-check require it — a poisoned/partial cache is
+# never treated as ready and is rebuilt instead of served to parallel agents.
+IOS_TEST_CACHE_SENTINEL=".kg-test-cache-complete"
+ios_test_cache_is_complete() {
+  local xctestrun_path="$1"
+  [[ -n "$DERIVED_DATA_ROOT" && -f "$DERIVED_DATA_ROOT/$IOS_TEST_CACHE_SENTINEL" ]] || return 1
+  ios_test_cached_products_ready "$xctestrun_path"
+}
+
 # --- Build -only-testing flags ---
 ONLY_FLAGS=()
 TEST_TARGET="BooksBrowserTests"
@@ -260,8 +273,14 @@ if [[ -n "$TEST_FILE" ]]; then
       FILE_PATH="$FILE_PATH.swift"
     else
       stem="$(basename "$TEST_FILE")"; stem="${stem%.swift}"
-      match="$(find "$TEST_DIR" -type f -name "$stem.swift" 2>/dev/null | head -1)"
-      [[ -n "$match" ]] && FILE_PATH="$match"
+      mapfile -t stem_matches < <(find "$TEST_DIR" -type f -name "$stem.swift" 2>/dev/null)
+      if [[ "${#stem_matches[@]}" -gt 1 ]]; then
+        echo "[ios_test] '$TEST_FILE' is ambiguous — ${#stem_matches[@]} files match '$stem.swift':" >&2
+        printf '  %s\n' "${stem_matches[@]}" >&2
+        echo "[ios_test] pass a path-qualified --file to disambiguate" >&2
+        exit 1
+      fi
+      [[ "${#stem_matches[@]}" -eq 1 ]] && FILE_PATH="${stem_matches[0]}"
     fi
   fi
   [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE (tried .swift suffix and stem search under $TEST_DIR)" >&2; exit 1; }
@@ -442,7 +461,8 @@ trap cleanup EXIT INT TERM
 # explicit targeting always wins. Done after the trap is armed so the lease is
 # always released on exit, and after the validation gates so we never lease for
 # a run that would have errored out anyway.
-if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE" ]]; then
+if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE" \
+      && "$TEST_CACHE_ACTION" != "status" && "$TEST_CACHE_ACTION" != "clean" ]]; then
   LEASED_DEVICE="$("$IOS_OPS" simulator lease 2>/dev/null | tail -1)"
   if [[ -z "$LEASED_DEVICE" ]]; then
     echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
@@ -492,7 +512,7 @@ handle_cache_action() {
   DERIVED_DATA_ROOT="$derived_root"
   xctestrun_path="$(ios_test_find_xctestrun "$derived_root" || true)"
   products_ready=false
-  if ios_test_cached_products_ready "$xctestrun_path"; then
+  if ios_test_cache_is_complete "$xctestrun_path"; then
     products_ready=true
   fi
 
@@ -517,7 +537,7 @@ handle_cache_action() {
         if [[ "$build_exit" -eq 0 ]]; then
           xctestrun_path="$(ios_test_find_xctestrun "$derived_root" || true)"
           products_ready=false
-          if ios_test_cached_products_ready "$xctestrun_path"; then
+          if ios_test_cache_is_complete "$xctestrun_path"; then
             products_ready=true
           fi
           payload="$(print_cache_payload prepare prepared "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready" "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "" "" "$build_log" "$build_result_bundle")"
@@ -571,58 +591,6 @@ last_test_event() {
   grep -E "^(Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|[[:space:]]*[✘✗] Test .+ failed|[✔✘✓✗] Test run with)" "$TMPOUT" \
     | tail -1 \
     | sed 's/^[[:space:]]*//'
-}
-
-run_xcodebuild_test_once() {
-  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms
-  xcode_start_ms="$(ios_test_now_ms)"
-  KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test \
-    -project "$XCODEPROJ" \
-    -scheme "$TEST_SCHEME" \
-    -destination "$DESTINATION" \
-    -derivedDataPath "$DERIVED_DATA_ROOT" \
-    -parallel-testing-enabled NO \
-    -test-timeouts-enabled YES \
-    -default-test-execution-time-allowance 60 \
-    -maximum-test-execution-time-allowance 120 \
-    -resultBundlePath "$RESULT_BUNDLE" \
-    ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
-    >"$TMPOUT" 2>&1 &
-  xcode_pid=$!
-  CURRENT_XCODE_PID="$xcode_pid"
-  echo "[ios_test] xcodebuild pid=$xcode_pid uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} log=$TMPOUT xcresult=$RESULT_BUNDLE"
-
-  last_line=0
-  heartbeat_at=$(date +%s)
-  while kill -0 "$xcode_pid" 2>/dev/null; do
-    current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
-    if [[ "$current_line" -gt "$last_line" ]]; then
-      emit_new_test_output "$((last_line + 1))" "$current_line"
-      last_line="$current_line"
-    fi
-
-    now=$(date +%s)
-    if [[ $((now - heartbeat_at)) -ge 30 ]]; then
-      elapsed=$((now - START))
-      recent_event="$(last_test_event)"
-      [[ -n "$recent_event" ]] || recent_event="xcodebuild still running"
-      echo "[ios_test] … still running (${elapsed}s, pid=$xcode_pid, log=$TMPOUT) — last: $recent_event"
-      heartbeat_at="$now"
-    fi
-    sleep 2
-  done
-
-  wait "$xcode_pid"
-  local status=$?
-  xcode_end_ms="$(ios_test_now_ms)"
-  TEST_INVOCATION_MS=$(( xcode_end_ms - xcode_start_ms ))
-  XCODEBUILD_MS=$TEST_INVOCATION_MS
-  CURRENT_XCODE_PID=""
-  current_line=$(wc -l < "$TMPOUT" | tr -d ' ')
-  if [[ "$current_line" -gt "$last_line" ]]; then
-    emit_new_test_output "$((last_line + 1))" "$current_line"
-  fi
-  return "$status"
 }
 
 run_xcodebuild_test_without_building_once() {
@@ -687,12 +655,17 @@ rebuild_test_cache() {
   # cache while we waited for the lock. If the products are now ready, skip the
   # rebuild — both to avoid redundant work and, critically, to avoid overwriting
   # products another agent may already be reading during its unlocked test run.
-  local _xctestrun
+  local _xctestrun build_rc
   _xctestrun="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" 2>/dev/null || true)"
-  if [[ -n "$_xctestrun" ]] && ios_test_cached_products_ready "$_xctestrun"; then
+  if [[ -n "$_xctestrun" ]] && ios_test_cache_is_complete "$_xctestrun"; then
     release_build_lock
     return 0
   fi
+  # A previous build may have been interrupted, leaving a partial cache with no
+  # sentinel. Clear the stale completion marker before rebuilding so a crash
+  # mid-build below can never leave an old sentinel pointing at fresh-but-partial
+  # products.
+  rm -f "$DERIVED_DATA_ROOT/$IOS_TEST_CACHE_SENTINEL" 2>/dev/null || true
   build_start_ms="$(ios_test_now_ms)"
   xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
@@ -705,11 +678,21 @@ rebuild_test_cache() {
     -derivedDataPath "$DERIVED_DATA_ROOT" \
     -resultBundlePath "$build_result_bundle" \
     >"$build_log" 2>&1
+  build_rc=$?
   build_end_ms="$(ios_test_now_ms)"
   BUILD_FOR_TESTING_MS=$(( build_end_ms - build_start_ms ))
-  # Last statement keeps the function's exit status at 0, matching prior
-  # behavior (callers detect build failure via missing .xctestrun artifacts,
-  # not this return code).
+  # Mark the cache complete ONLY when the build exited 0 AND produced ready
+  # products — written while still holding the lock so the sentinel is atomic
+  # with the build from a concurrent agent's view. An interrupted build never
+  # reaches here (cleanup runs instead), so no sentinel is written and the next
+  # agent rebuilds. Callers still detect failure via missing .xctestrun, so the
+  # function's exit status stays 0 as before.
+  if [[ "$build_rc" -eq 0 ]]; then
+    _xctestrun="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" 2>/dev/null || true)"
+    if [[ -n "$_xctestrun" ]] && ios_test_cached_products_ready "$_xctestrun"; then
+      : > "$DERIVED_DATA_ROOT/$IOS_TEST_CACHE_SENTINEL"
+    fi
+  fi
   release_build_lock
 }
 
@@ -759,7 +742,7 @@ while :; do
   set +e
   BUILD_FOR_TESTING_MS=0
   TEST_INVOCATION_MS=0
-  if ios_test_cached_products_ready "$XCTESTRUN_PATH"; then
+  if ios_test_cache_is_complete "$XCTESTRUN_PATH"; then
     CACHE_STATUS="hit"
     run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
     EXIT_CODE=$?
