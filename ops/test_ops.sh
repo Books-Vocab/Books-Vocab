@@ -77,7 +77,7 @@ run_one() {
       ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
-      "$UV_BIN" run --project backend pytest -q ops/tests/test_ios_diagnostics.py
+      "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ios_diagnostics.py
       ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;

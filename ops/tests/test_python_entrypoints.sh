@@ -4,6 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 pass=0
 fail=0
+UV_BIN="${UV_BIN:-}"
+
+if [[ -z "$UV_BIN" ]]; then
+  if [[ -x "$HOME/.local/bin/uv" ]]; then
+    UV_BIN="$HOME/.local/bin/uv"
+  else
+    UV_BIN="uv"
+  fi
+fi
 
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*" >&2; fail=$((fail+1)); }
@@ -40,6 +49,16 @@ bypass_hits="$(
 grep -q 'python find 3.13' "$f" \
   && ok "$name resolves Python 3.13 through uv" \
   || fail_t "$name missing uv-resolved Python 3.13 helpers"
+
+section "Sourceable shell helpers avoid bare python3"
+f="$ROOT/ops/lib/ios_ops_simulator.sh"
+name="$(basename "$f")"
+bypass_hits="$(
+  rg -n '(^[[:space:]]*python3[[:space:]-]|python3[[:space:]]+<<)' "$f" || true
+)"
+[[ -z "$bypass_hits" ]] \
+  && ok "$name avoids bare python3 helpers" \
+  || fail_t "$name still has bare python3 helpers:\n$bypass_hits"
 
 section "All ops Python entrypoints avoid bare python3 shebang"
 bad_shebangs="$(
@@ -92,6 +111,23 @@ else
   fail_t "executable ops/*.py still uses bare uv run python:\n$bad_uv_python"
 fi
 
+section "Executable Python entrypoints avoid absolute uv paths"
+bad_abs_uv="$(
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm +111 -print \
+    | sort \
+    | while IFS= read -r py; do
+        first="$(head -1 "$py")"
+        if [[ "$first" == '#!'*'/uv run'* ]]; then
+          printf '%s\t%s\n' "$py" "$first"
+        fi
+      done
+)"
+if [[ -z "$bad_abs_uv" ]]; then
+  ok "no executable ops/*.py hard-codes an absolute uv path"
+else
+  fail_t "executable ops/*.py hard-codes absolute uv paths:\n$bad_abs_uv"
+fi
+
 section "Shebang Python tools are executable"
 not_executable="$(
   find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -print \
@@ -108,6 +144,65 @@ if [[ -z "$not_executable" ]]; then
 else
   fail_t "ops/*.py files with shebang but no executable bit:\n$not_executable"
 fi
+
+section "Backend pytest entrypoint avoids fragile console scripts"
+backend_pytest_refs="$(
+  rg -n \
+    -e 'uv run pytest' \
+    -e '\-\-project backend pytest' \
+    -e '^[[:space:]]*pytest -q$' \
+    -e '^[[:space:]]*-[[:space:]]+`pytest -q`' \
+    -e '^[[:space:]]*-[[:space:]]+`pytest -q -k "not slow"`' \
+    "$ROOT/backend/pyproject.toml" \
+    "$ROOT/docs/sop/backend.md" \
+    "$ROOT/docs/reference/testing/backend_strategy.md" \
+    "$ROOT/ops/test_ops.sh" \
+    "$ROOT/ops/tests/test_podcast_backfill_disk.py" \
+    "$ROOT/ops/tests/test_podcast_cover_publish.py" \
+    || true
+)"
+if [[ -z "$backend_pytest_refs" ]]; then
+  ok "backend pytest control plane uses python -m pytest"
+else
+  fail_t "fragile backend pytest entrypoints found:\n$backend_pytest_refs"
+fi
+
+section "Active docs and tools avoid bare python3 examples"
+python3_refs="$(
+  rg -n \
+    -e 'python3 ops/inject_codemod\.py' \
+    -e 'python3 -m json\.tool' \
+    "$ROOT/docs/sop/ios.md" \
+    "$ROOT/docs/sop/debug.md" \
+    "$ROOT/ops/inject_codemod.py" \
+    || true
+)"
+if [[ -z "$python3_refs" ]]; then
+  ok "active docs and tools avoid bare python3 examples"
+else
+  fail_t "bare python3 examples found:\n$python3_refs"
+fi
+
+section "Podcast test instructions use explicit pytest module entrypoints"
+podcast_pytest_refs="$(
+  rg -n \
+    -e 'uv run pytest' \
+    -e 'uv run --with pytest pytest' \
+    "$ROOT/lab/podcast/monitor/test_cost.py" \
+    "$ROOT/lab/podcast/monitor/test_jobs.py" \
+    "$ROOT/lab/podcast/test_subtitle_resilience.py" \
+    || true
+)"
+if [[ -z "$podcast_pytest_refs" ]]; then
+  ok "podcast test instructions use explicit pytest module entrypoints"
+else
+  fail_t "fragile podcast pytest instructions found:\n$podcast_pytest_refs"
+fi
+
+section "Backend pytest module entrypoint smoke"
+"$UV_BIN" run --project "$ROOT/backend" python -m pytest --version >/dev/null \
+  && ok "backend python -m pytest entrypoint resolves" \
+  || fail_t "backend python -m pytest entrypoint failed"
 
 section "Smoke"
 "$ROOT/ops/ui_token_lint.sh" --help >/dev/null \

@@ -12,7 +12,7 @@
 try/except,失敗記錄並續跑,成功的 SRT 照寫,結尾以 nonzero exit 讓
 pipeline 感知部分失敗。
 
-跑法:uv run --with pytest pytest test_subtitle_resilience.py -q
+跑法:uv run --with pytest python -m pytest test_subtitle_resilience.py -q
 """
 from __future__ import annotations
 

@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 84f6998e
+verified_against: 98cac27d
 -->
 # 伺服器排障指南
 
@@ -26,7 +26,7 @@ verified_against: 84f6998e
 
 ```bash
 # 最快：不需 SSH、不需 auth
-curl -s https://wordnexus.lol/api/system/info | python3 -m json.tool
+curl -s https://wordnexus.lol/api/system/info | uv run --python 3.13 python -m json.tool
 
 # 詳細
 cd ~/kg

@@ -1,7 +1,7 @@
 """Tests for JobTracker workspace-busy atomic guard (TOCTOU race fix).
 
 Run:
-    cd lab/podcast && uv run --with pytest pytest monitor/test_jobs.py -v
+    cd lab/podcast && uv run --with pytest python -m pytest monitor/test_jobs.py -v
 """
 
 from __future__ import annotations
