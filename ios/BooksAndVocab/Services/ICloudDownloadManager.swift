@@ -106,8 +106,10 @@ final class ICloudDownloadManager {
     }
 
     deinit {
-        if let o = identityObserver { NotificationCenter.default.removeObserver(o) }
-        if let o = userDataClearObserver { NotificationCenter.default.removeObserver(o) }
+        MainActor.assumeIsolated {
+            if let o = identityObserver { NotificationCenter.default.removeObserver(o) }
+            if let o = userDataClearObserver { NotificationCenter.default.removeObserver(o) }
+        }
     }
 
     /// 取得特定檔案的下載狀態（nil = 查詢尚未追蹤到此檔案）
