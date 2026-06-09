@@ -366,7 +366,8 @@ def cmd_db_query(args: argparse.Namespace) -> None:
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
-    script = Path(__file__).resolve().parent / "ops_analyze.py"
+    # ops_analyze.py 位於 backend/ 根目錄（與 ops_cli.py 同層），非 src/kg/ 內
+    script = Path(__file__).resolve().parent.parent.parent / "ops_analyze.py"
     cmd = [sys.executable, str(script), args.uid, args.level]
     sys.exit(subprocess.call(cmd))
 

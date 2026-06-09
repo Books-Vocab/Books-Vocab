@@ -1261,6 +1261,100 @@ class TestLlmErrors:
         assert size_before == size_after
 
 
+class TestWorldStateError:
+    """world-state 錯誤路徑。"""
+
+    def test_multiple_uid_matches_errors(self, tmp_path):
+        """部分 UID 匹配到多個用戶時應報錯並列出候選。"""
+        users_dir = tmp_path / "users"
+        users_dir.mkdir(parents=True)
+        (users_dir / "userA").mkdir()
+        (users_dir / "userB").mkdir()
+        result = _run_cli(str(tmp_path), "world-state", "user")
+        assert result.returncode != 0
+        assert "userA" in result.stderr
+        assert "userB" in result.stderr
+
+
+class TestWorldDiffError:
+    """world-diff 錯誤路徑。"""
+
+    def test_missing_spec_file_errors(self, tmp_path):
+        """spec 檔案不存在時應報錯。"""
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        (tmp_path / "users.json").write_text(
+            json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False)
+        )
+        conn = sqlite3.connect(str(user_dir / "notebooks.db"))
+        conn.execute(
+            "CREATE TABLE notebook (id TEXT PRIMARY KEY, name TEXT, color TEXT, sort_order INTEGER, "
+            "is_default INTEGER, created_at TEXT, updated_at TEXT, is_deleted INTEGER, cover_pattern TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO notebook VALUES ('default','Default',NULL,0,1,?,?,0,NULL)",
+            (now, now),
+        )
+        conn.commit()
+        conn.close()
+        _create_cards_db(user_dir / "cards.db", [("c1", "hello", "你好", 0, now, now)])
+
+        result = _run_cli(str(tmp_path), "world-diff", uid, "/nonexistent/spec.json")
+        assert result.returncode != 0
+
+
+class TestAnalyze:
+    """analyze 子指令 — ops_cli 透過 subprocess 呼叫 ops_analyze.py。"""
+
+    def _setup(self, tmp_path, uid="user1"):
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        now = _now_iso()
+        (tmp_path / "users.json").write_text(
+            json.dumps({uid: {"config": {}}, "_email_index": {}}, ensure_ascii=False)
+        )
+        conn = sqlite3.connect(str(user_dir / "cards.db"))
+        conn.execute(
+            "CREATE TABLE card (id TEXT PRIMARY KEY, content TEXT, meaning TEXT, is_deleted INTEGER DEFAULT 0)"
+        )
+        conn.execute("INSERT INTO card VALUES ('c1', 'hello', '你好', 0)")
+        conn.commit()
+        conn.close()
+        (user_dir / "graph_default.json").write_text("[]")
+        _create_token_usage_db(tmp_path, [(uid, "translate", 1_000_000, 1_000_000, now)])
+        return uid
+
+    def test_level_1_happy_path(self, tmp_path):
+        """analyze level 1 透過 ops_cli 正常輸出。"""
+        uid = self._setup(tmp_path)
+        result = _run_cli(str(tmp_path), "analyze", uid, "1")
+        assert result.returncode == 0, result.stderr
+        assert "Level 1" in result.stdout
+        assert uid in result.stdout
+
+    def test_missing_user_error(self, tmp_path):
+        """用戶不存在時 ops_analyze.py 應回傳非零 exit code。"""
+        result = _run_cli(str(tmp_path), "analyze", "ghost", "1")
+        assert result.returncode != 0
+
+
+class TestSyncTraceError:
+    """sync-trace 錯誤路徑。"""
+
+    def test_multiple_uid_matches_errors(self, tmp_path):
+        """部分 UID 匹配到多個用戶時應報錯並列出候選。"""
+        users_dir = tmp_path / "users"
+        users_dir.mkdir(parents=True)
+        (users_dir / "uAlice").mkdir()
+        (users_dir / "uAlan").mkdir()
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        result = _run_cli(str(tmp_path), "sync-trace", "uA", "--date", today)
+        assert result.returncode != 0
+        assert "uAlice" in result.stderr or "uAlan" in result.stderr
+
+
 class TestHelp:
     """--help 應正常輸出。"""
 
