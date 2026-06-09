@@ -1,6 +1,6 @@
 //
 //  ReviewEventBoundaryMigrationTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  鎖 review-event pull watermark 的一次性自癒 migration。
 //

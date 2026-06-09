@@ -1,6 +1,6 @@
 //
 //  SettingsView+Bindings.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import SwiftUI

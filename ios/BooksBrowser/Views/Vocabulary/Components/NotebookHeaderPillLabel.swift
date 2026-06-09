@@ -1,6 +1,6 @@
 //
 //  NotebookHeaderPillLabel.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一的 Header pill 視覺規格 — 給 NotebookListView Today Review action bar
 //  三 pill（CTA / filter / plus）共用,確保高度與 padding 完全一致,僅差別在「填色 + 長度」。

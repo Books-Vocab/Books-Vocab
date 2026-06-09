@@ -1,6 +1,6 @@
 //
 //  Notebook.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  單字本 — 用於分組管理單字
 

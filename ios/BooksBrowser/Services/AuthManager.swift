@@ -1,6 +1,6 @@
 //
 //  AuthManager.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Created for Multi-User Apple Sign In
 //

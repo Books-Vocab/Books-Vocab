@@ -1,6 +1,6 @@
 //
 //  VocabularyExporter.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  匯出邏輯 — 純函式型，無狀態、無 UI 依賴
 //  將 VocabularyEntry 陣列轉為 CSV / JSON / Anki TSV 並寫入暫存檔

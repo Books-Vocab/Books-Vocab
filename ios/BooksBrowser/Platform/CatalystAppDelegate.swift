@@ -1,6 +1,6 @@
 //
 //  CatalystAppDelegate.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Catalyst 選單客製 — 整檔 Catalyst-only。
 //

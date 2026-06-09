@@ -1,6 +1,6 @@
 //
 //  KGError.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  KG API client error type.
 //

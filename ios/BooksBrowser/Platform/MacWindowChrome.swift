@@ -1,6 +1,6 @@
 //
 //  MacWindowChrome.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Mac Catalyst 視窗 chrome 單一來源 — 尺寸 + title bar。
 //  非 Catalyst 平台全為 no-op(modifier 直接回傳 self)。

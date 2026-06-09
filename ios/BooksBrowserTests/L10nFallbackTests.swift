@@ -1,6 +1,6 @@
 //
 //  L10nFallbackTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Verifies L10n three-tier fallback (current locale → en → key) and plural format wiring.
 //

@@ -1,6 +1,6 @@
 //
 //  PlatformCompatibility.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  iOS / Mac Catalyst SwiftUI modifier wrapper
 //

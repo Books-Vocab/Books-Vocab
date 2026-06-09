@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  ReadiumNavigatorJS+ContentStyle.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import Foundation

@@ -1,6 +1,6 @@
 //
 //  KGService+Models.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Wire models for KG API responses / requests.
 //

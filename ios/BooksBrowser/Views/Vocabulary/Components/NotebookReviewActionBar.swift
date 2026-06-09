@@ -1,6 +1,6 @@
 //
 //  NotebookReviewActionBar.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  今日複習動作列 — 從 NotebookListView.body 抽出的 pill cluster。
 //  標題 +（三模式 menu / 單模式 button）CTA pill + 篩選 pill + 新增 pill，

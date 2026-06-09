@@ -1,6 +1,6 @@
 //
 //  AppSkeleton.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Loading state skeleton primitives — 取代裸 `ProgressView()`，
 //  讓 list / card / row 在資料載入時有結構化骨架而非空白旋轉。

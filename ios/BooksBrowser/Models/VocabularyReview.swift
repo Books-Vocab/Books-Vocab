@@ -1,6 +1,6 @@
 //
 //  VocabularyReview.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  本地簡化版間隔複習規則與顯示輔助。
 //

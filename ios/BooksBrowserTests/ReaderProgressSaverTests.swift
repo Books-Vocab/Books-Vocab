@@ -1,6 +1,6 @@
 //
 //  ReaderProgressSaverTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Spec for Track 20: EPUB reader last-read locator persistence fix.
 //

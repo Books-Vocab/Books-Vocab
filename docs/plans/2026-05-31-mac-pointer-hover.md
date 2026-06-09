@@ -48,7 +48,7 @@ verified_against: frozen
 ```swift
 //
 //  HoverHighlight.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  指標 hover 回饋 — 卡片浮起 / row tint。
 //  .onHover 在純觸控裝置無指標事件,自動 no-op;iPad 觸控板 + Mac Catalyst 共益。
@@ -155,7 +155,7 @@ extension View {
 ```swift
 //
 //  MacColumnResizeCursor.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  可拖曳分隔線的欄寬調整游標 — Catalyst 專屬。
 //  SwiftUI .pointerStyle(iOS 18+) 在 Mac Catalyst 不可用,故走 UIKit UIPointerInteraction。

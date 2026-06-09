@@ -1,6 +1,6 @@
 //
 //  AppSidebarRow.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Catalyst 側邊欄列 — 整列可點、走 app 設計語言,取代系統 .listStyle(.sidebar) 預設樣式
 //  (系統半透明材質 + 系統藍選取色與 app Notion 風割裂)。

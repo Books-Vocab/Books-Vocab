@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  CoverImageDownsampler.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  封面縮圖降採樣 — 兩條互補路徑共用一個命名空間：
 //

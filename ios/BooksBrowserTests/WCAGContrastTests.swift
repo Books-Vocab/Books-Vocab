@@ -1,6 +1,6 @@
 //
 //  WCAGContrastTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Guards against regressing the palette below WCAG AA. Every accent /
 //  hero color shifted in the Morandi refinement (Phase 1) is asserted

@@ -1,6 +1,6 @@
 //
 //  PodcastNavigationUITests.swift
-//  BooksBrowserUITests
+//  Books & Vocab UI Tests
 //
 //  Regression: Mac Catalyst 點 podcast 集數曾 pop-to-root 回書架。
 //  根因（commit 1c5bd7d0）：BookshelfView bare `NavigationStack { }` 在

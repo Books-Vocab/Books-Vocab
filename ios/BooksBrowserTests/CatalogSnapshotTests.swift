@@ -1,6 +1,6 @@
 //
 //  CatalogSnapshotTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Drives PlaybookSnapshot against the KG catalog to produce PNG renders of
 //  every scenario. Output lives in the simulator sandbox's temporary directory;

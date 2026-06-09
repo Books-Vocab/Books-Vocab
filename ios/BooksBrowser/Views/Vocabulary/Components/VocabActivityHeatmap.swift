@@ -1,6 +1,6 @@
 //
 //  VocabActivityHeatmap.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  類似 GitHub 貢獻圖的學習活動熱力圖。
 //

@@ -1,6 +1,6 @@
 //
 //  VocabCalendarGrid.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  月曆格子元件，顯示每日複習活動色階。
 //

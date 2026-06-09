@@ -1,6 +1,6 @@
 //
 //  StatsPresentation.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統計頁面的資料計算邏輯。
 //

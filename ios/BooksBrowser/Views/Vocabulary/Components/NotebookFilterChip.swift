@@ -1,6 +1,6 @@
 //
 //  NotebookFilterChip.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  單字本篩選 chip — 複習和統計頁共用
 

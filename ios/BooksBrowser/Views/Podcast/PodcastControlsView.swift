@@ -1,6 +1,6 @@
 //
 //  PodcastControlsView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Podcast 播放控制：seek bar、播放/暫停、快進快退、字幕模式、播放速率
 //

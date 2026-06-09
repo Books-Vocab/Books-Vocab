@@ -1,6 +1,6 @@
 //
 //  NotebookSortOption.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  單字本書架排序選項 — 預設 manual（sortOrder asc）
 

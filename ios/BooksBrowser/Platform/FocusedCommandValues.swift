@@ -1,6 +1,6 @@
 //
 //  FocusedCommandValues.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  畫面相關 menu 命令的 focusedSceneValue 通道。動作分散在 per-view coordinator,
 //  scene 層 menu 無法直接 reference,故 view 用 .focusedSceneValue publish 一個動作,

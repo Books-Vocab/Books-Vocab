@@ -1,6 +1,6 @@
 //
 //  VocabularyEntryLangCaptureTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 
 import Foundation

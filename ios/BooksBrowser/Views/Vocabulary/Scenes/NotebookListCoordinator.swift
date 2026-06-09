@@ -1,6 +1,6 @@
 //
 //  NotebookListCoordinator.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  單字本列表的 DB + API 操作封裝
 

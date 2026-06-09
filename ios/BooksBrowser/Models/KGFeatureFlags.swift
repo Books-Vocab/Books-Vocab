@@ -1,6 +1,6 @@
 //
 //  KGFeatureFlags.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Compile-time / runtime feature gates for shipping work-in-progress features
 //  alongside backend dependencies. Default values reflect the current shipping

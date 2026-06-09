@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  ReaderSettings.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Created by Antigravity on 2026/2/25.
 //

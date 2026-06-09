@@ -1,6 +1,6 @@
 //
 //  NetworkMonitor.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  NWPathMonitor wrapper — 即時網路連線狀態，供 UI 層與 Service 層共用
 //

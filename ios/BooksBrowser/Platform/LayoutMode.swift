@@ -1,6 +1,6 @@
 //
 //  LayoutMode.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一 compact/regular layout 判斷
 

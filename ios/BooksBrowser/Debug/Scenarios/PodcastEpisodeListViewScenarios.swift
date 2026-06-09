@@ -1,6 +1,6 @@
 //
 //  PodcastEpisodeListViewScenarios.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Catalog scenarios for `PodcastEpisodeListView` (series detail + episode list).
 //

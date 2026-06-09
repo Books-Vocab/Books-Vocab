@@ -1,6 +1,6 @@
 //
 //  ReviewActivityLog.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  複習活動查詢工具。資料來源為 SwiftData ReviewRecord。
 //

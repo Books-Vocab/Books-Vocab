@@ -1,6 +1,6 @@
 //
 //  JWTExpiry.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  輕量 JWT exp 欄位解碼 — 不驗簽，僅讀取過期時間做預檢
 //

@@ -1,6 +1,6 @@
 //
 //  NotebookCardDataTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  鎖封面黃點口徑：actionableCount = dueCount + unlearnedCount，
 //  與「今日複習」入口徽章一致（避免 587 vs 597 不一致）。

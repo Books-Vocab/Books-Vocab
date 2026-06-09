@@ -1,6 +1,6 @@
 //
 //  HoverHighlight.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  指標 hover 回饋 — 卡片浮起 / row tint。
 //  .onHover 在純觸控裝置無指標事件,自動 no-op;iPad 觸控板 + Mac Catalyst 共益,故不分流。

@@ -1,6 +1,6 @@
 //
 //  PerfLog.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  App-wide performance observability — PERMANENT infrastructure, reused across
 //  optimizations (NOT throwaway diagnostic code). Supersedes the temporary

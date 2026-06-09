@@ -1,6 +1,6 @@
 //
 //  NotebookStackMetricsTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Pins the pure geometry / jitter helpers in `NotebookStackMetrics`. These values
 //  drive `NotebookStackedCoverView` layout every frame, and a regression in

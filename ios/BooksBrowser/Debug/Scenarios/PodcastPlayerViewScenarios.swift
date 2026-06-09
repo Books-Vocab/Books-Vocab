@@ -1,6 +1,6 @@
 //
 //  PodcastPlayerViewScenarios.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Catalog scenarios for `PodcastPlayerView` (the full-screen podcast player).
 //

@@ -1,6 +1,6 @@
 //
 //  AppFonts.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一的字體排印 (Design System Tokens)
 //  Serif:  Athelas (EN) + STSongti-TC (CJK cascade)  — 標題用

@@ -1,6 +1,6 @@
 //
 //  ReviewRecord.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  每次複習的事件紀錄，用於統計日曆和活動歷史。
 //

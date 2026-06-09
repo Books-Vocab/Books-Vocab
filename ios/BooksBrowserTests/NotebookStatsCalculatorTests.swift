@@ -1,6 +1,6 @@
 //
 //  NotebookStatsCalculatorTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  鎖 NotebookStatsCalculator 的分類分支與聚合行為。
 //

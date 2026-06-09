@@ -1,6 +1,6 @@
 //
 //  AppSkin+BaseValues.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Token base 預設值 —— baseTypography / baseRadii / baseSpacing / baseMetrics。
 //  與主檔 AppSkin.swift 分離以降低主檔噪音;typography cache 同檔放(private 不跨檔可見)。

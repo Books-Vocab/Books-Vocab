@@ -1,6 +1,6 @@
 //
 //  KGService+ServerURL.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Server URL configuration — production constant + DEBUG-only local override.
 //

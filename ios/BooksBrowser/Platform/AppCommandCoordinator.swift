@@ -1,6 +1,6 @@
 //
 //  AppCommandCoordinator.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  App-global menu command intent。Catalyst menu(scene 層)無法 reference per-view
 //  coordinator,故恆定動作的 intent flag 集中此處,由 root view 消費。

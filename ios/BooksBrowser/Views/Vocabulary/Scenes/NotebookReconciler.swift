@@ -1,6 +1,6 @@
 //
 //  NotebookReconciler.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Notebook reconcile 的純邏輯核心（無網路 / 無 UserDefaults / 不 save）。
 //  從 `NotebookListCoordinator.reconcileNotebooks` 抽出，使 upsert / tombstone /

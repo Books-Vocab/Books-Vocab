@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  ReaderNotebookPicker.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  閱讀器內選擇目標單字本 — 為當前書綁定或解除綁定 notebook
 

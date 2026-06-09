@@ -1,6 +1,6 @@
 //
 //  SubscriptionPaywallCopy.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  SubscriptionPaywallSheet 的純文案解析 — 對齊既有 SubscriptionPresentation 模式
 //  (static func over KGSubscriptionStatus)。把帳單金額 / 試用 / CTA / footer 等

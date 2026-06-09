@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  ReaderTranslationHandler.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Created by 陳亮宇 on 2026/3/1.
 //

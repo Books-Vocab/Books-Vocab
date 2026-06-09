@@ -1,6 +1,6 @@
 //
 //  ICloudDownloadManager.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import Foundation

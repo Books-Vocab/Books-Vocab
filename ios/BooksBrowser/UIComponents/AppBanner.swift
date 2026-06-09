@@ -1,6 +1,6 @@
 //
 //  AppBanner.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一提示條：取代 ErrorBannerView、SyncErrorBanner、OfflineBanner
 //  支援可選 retry / dismiss 按鈕，icon 可自訂

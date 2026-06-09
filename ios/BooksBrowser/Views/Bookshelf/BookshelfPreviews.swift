@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  BookshelfPreviews.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import SwiftUI

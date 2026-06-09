@@ -1,6 +1,6 @@
 //
 //  AppAnalytics.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  輕量可觀測性基礎設施：結構化事件追蹤 + OSSignposter 延遲度量
 //  所有資料透過 os.Logger 輸出，可在 Console.app / Instruments 中篩選
