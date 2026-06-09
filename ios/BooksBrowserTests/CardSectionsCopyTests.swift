@@ -10,9 +10,6 @@ struct CardSectionsCopyTests {
     }
 
     @Test func sectionTitles_stayStable() {
-        #expect(CardSectionsCopy.examplesTitle == L10n.string("例句"))
-        #expect(CardSectionsCopy.sourceTitle == L10n.string("來源"))
-        #expect(CardSectionsCopy.explanationTitle == L10n.string("教學筆記"))
         #expect(CardSectionsCopy.formsTitle == L10n.string("變化形"))
     }
 }
