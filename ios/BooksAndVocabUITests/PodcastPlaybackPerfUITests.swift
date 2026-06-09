@@ -3,7 +3,23 @@ import XCTest
 final class PodcastPlaybackPerfUITests: UITestCase {
     @MainActor
     func testPodcastPlaybackProbeReachesPlayerAndTapsPlay() throws {
-        let app = launchApp(perfLog: "audio")
+        let podcastFixtureRoot = "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts"
+        let app = launchApp(
+            extraArgs: [
+                "-appLaunchProfile", "ui-smoke",
+                "-isolatedAuthSession",
+                "-seedFixture:podcast:playablePreview"
+            ],
+            extraEnvironment: [
+                "KG_UI_TEST_PODCAST_AUDIO": "\(podcastFixtureRoot)/ep_1_flash.m4a",
+                "KG_UI_TEST_PODCAST_SUBTITLE": "\(podcastFixtureRoot)/ep_1_flash.srt",
+                "KG_UI_TEST_PODCAST_DURATION": "1034.6",
+                "KG_UI_TEST_PODCAST_SERIES_TITLE": "Atomic Habits",
+                "KG_UI_TEST_PODCAST_EPISODE_TITLE": "Actual Lab Episode",
+                "KG_UI_TEST_PODCAST_HOST": "Lab Podcast"
+            ],
+            perfLog: "audio"
+        )
         captureStep("launch", app: app)
 
         let podcast = AppPage(app: app).goToPodcasts()
@@ -26,30 +42,30 @@ final class PodcastPlaybackPerfUITests: UITestCase {
         XCTAssertTrue(app.waitForNavigationToSettle())
         captureStep("episode-tapped", app: app)
 
-        if podcast.loginSheet.waitUntilExists(timeout: 3) {
-            captureStep("login-sheet", app: app)
+        if podcast.loginSheet.waitUntilExists(timeout: 1) {
+            captureStep("unexpected-login-sheet", app: app)
+            XCTFail("lab podcast fixture should be authenticated; login sheet means this probe is not testing playback")
             return
         }
 
-        if podcast.playerLoginGate.waitUntilExists(timeout: 3) {
-            captureStep("player-login-gate", app: app)
-            podcast.playerLoginButton.tap()
-            XCTAssertTrue(podcast.loginSheet.waitUntilExists(timeout: 3))
-            captureStep("login-sheet", app: app)
+        if podcast.playerLoginGate.waitUntilExists(timeout: 1) {
+            captureStep("unexpected-player-login-gate", app: app)
+            XCTFail("lab podcast fixture should satisfy podcast access; login gate means this probe is not testing playback")
             return
         }
 
         guard podcast.playPauseButton.waitUntilExists(timeout: 10) else {
             captureStep("player-not-playable", app: app)
-            throw XCTSkip("未進入可播放 player（可能是鎖定/無音訊 episode），跳過播放手感 probe")
+            XCTFail("lab podcast fixture should reach a playable player")
+            return
         }
         captureStep("player-ready", app: app)
         podcast.playPauseButton.tap()
         captureStep("play-tapped", app: app)
 
         XCTAssertTrue(
-            podcast.playPauseButton.waitUntilExists(timeout: 3),
-            "播放按鈕應維持可操作，供 ops logs 斷言 podcast.player.* audio metrics"
+            podcast.pauseButton.waitUntilExists(timeout: 3),
+            "播放後 control 必須切成 pauseButton，證明 PodcastPlayerViewModel.state == .playing"
         )
         captureStep("play-verified", app: app)
     }
