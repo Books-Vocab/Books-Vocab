@@ -13,272 +13,207 @@ def render_html(manifest: dict) -> str:
         payload.replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
-        .replace("\u2028", "\\u2028")
-        .replace("\u2029", "\\u2029")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
     )
     return _TEMPLATE.replace("__MANIFEST__", payload)
 
 
-# The view is intentionally a single self-contained template with one data hole
-# (``__MANIFEST__``). Token replacement (not an f-string) keeps the JS/CSS braces
-# literal so the surface/state-first logic stays readable.
+# A single self-contained template with one data hole (``__MANIFEST__``). Token
+# replacement (not an f-string) keeps the JS/CSS braces literal.
+#
+# This is a *UI-management* browser, not a marketing-asset curator: the only
+# axes it surfaces are the source-declared ones — feature → surface → state →
+# shot(light/dark) + the three-bucket lane (畫面/浮層/組件, with 工程 secondary).
+# The heuristic curation layer (eligibility / qualityTier / hero / promise /
+# coverage facets / review-state) is intentionally NOT consumed here even though
+# the manifest still carries it for the separate CLI workflow.
+#
+# Visual language mirrors backend /admin (admin_dashboard.html): warm-paper
+# palette, JetBrains Mono labels + Noto Sans TC body, sticky top-nav + tab bar +
+# centred main, no left sidebar, single light theme. The Light/Dark/Both toggle
+# switches which *screenshot* variant shows — it is content, not page theme.
 _TEMPLATE = r"""<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KG UI Asset Gallery</title>
+  <title>KG UI Gallery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f3efe7;
-      --panel: rgba(255, 251, 245, 0.86);
-      --line: #d8cfc0;
-      --line-strong: #c8baa5;
-      --ink: #1e1c19;
-      --muted: #6d655d;
-      --accent: #9a4b1f;
-      --accent-soft: #f5dfcf;
-      --good: #1f6b3a;
-      --bad: #8f2d2d;
-      --warn: #8a5a0a;
-      --shadow: 0 18px 40px rgba(31, 22, 13, 0.08);
+      --bg: #f8f7f4;
+      --surface: #fcfbfa;
+      --border: #dbd6cd;
+      --border-l: #e8e4db;
+      --ink: #2a2520;
+      --sub: #7a756c;
+      --ink-light: #5a5550;
+      --dev: #c0392b;
+      --thead: #f3f0ea;
+      --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --sans: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at top left, #fff7e9 0, transparent 34%),
-        linear-gradient(180deg, #f6f0e6 0%, #efe7db 100%);
+    body { margin: 0; font-family: var(--sans); color: var(--ink); background: var(--bg); }
+    /* top nav */
+    .nav {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      height: 52px; padding: 0 20px; background: var(--surface);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20;
     }
-    .layout { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
-    .sidebar {
-      position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto;
-      padding: 22px 18px; border-right: 1px solid var(--line);
-      background: rgba(255, 249, 241, 0.92); backdrop-filter: blur(10px);
+    .brand { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; display: flex; align-items: center; gap: 9px; }
+    .brand .tag { font-weight: 500; font-size: 10px; letter-spacing: .1em; color: #fff; background: var(--ink); border-radius: 2px; padding: 2px 7px; }
+    .nav-actions { display: flex; align-items: center; gap: 14px; }
+    .counts { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--sub); }
+    .seg { display: flex; gap: 6px; }
+    .seg-btn {
+      font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+      height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 3px;
+      background: transparent; color: var(--ink-light); cursor: pointer;
     }
-    .sidebar h1 { margin: 0 0 6px; font-size: 27px; line-height: 0.98; }
-    .sidebar .lede { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .side-block { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(216, 207, 192, 0.85); }
-    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .stat { padding: 9px 11px; border: 1px solid var(--line); background: white; border-radius: 14px; }
-    .stat strong { display: block; font-size: 20px; line-height: 1; }
-    .stat span { color: var(--muted); font-size: 11px; }
-    label { display: block; margin-bottom: 5px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-    .filters { display: grid; gap: 11px; }
-    input, select {
-      width: 100%; padding: 9px 11px; border-radius: 11px; border: 1px solid var(--line);
-      background: white; color: var(--ink); font: inherit; font-size: 14px;
+    .seg-btn:hover { border-color: var(--ink); color: var(--ink); }
+    .seg-btn.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+    /* tabs */
+    .tabs { display: flex; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
+    .tab {
+      display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px;
+      border: 1px solid var(--border); border-radius: 3px; background: transparent;
+      font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--ink-light); cursor: pointer;
     }
-    button { cursor: pointer; border: 1px solid var(--line); background: white; color: var(--ink); border-radius: 999px; padding: 7px 11px; font: inherit; font-size: 13px; }
-    button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-    .lane-rail { display: grid; gap: 7px; }
-    .lane-btn { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border-radius: 11px; padding: 9px 12px; }
-    .lane-btn small { color: var(--muted); font-size: 12px; }
-    .lane-btn.active small { color: var(--accent); }
-    .nav-list { display: grid; gap: 6px; }
-    .nav-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 11px; border-radius: 11px; border: 1px solid var(--line); background: white; color: var(--ink); text-decoration: none; font-size: 13px; }
-    .nav-link small { color: var(--muted); font-size: 11px; }
-    .main { padding: 26px 28px 60px; }
-    .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-    .topbar h2 { margin: 0; font-size: 26px; line-height: 1.05; }
-    .topbar .sub { color: var(--muted); font-size: 13px; }
-    .appearance-toggle { display: flex; gap: 6px; }
+    .tab:hover { border-color: var(--ink); color: var(--ink); }
+    .tab.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .tab.eng { margin-left: auto; opacity: 0.78; }
+    .tab .n { font-size: 10px; opacity: 0.7; }
+    /* toolbar */
+    .toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 20px 4px; flex-wrap: wrap; }
+    .filter-input {
+      flex: 1; min-width: 220px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 2px;
+      font-family: var(--sans); font-size: 13px; color: var(--ink); background: var(--surface); outline: none;
+    }
+    .filter-input:focus { border-color: var(--ink); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 2px; background: transparent;
+      font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--ink-light); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .chip:hover { border-color: var(--ink); color: var(--ink); }
+    .chip.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .chip .n { opacity: 0.65; }
+    /* stat strip */
+    .stats { display: flex; gap: 8px; padding: 8px 20px 0; flex-wrap: wrap; }
+    .stat { border: 1px solid var(--border); border-radius: 3px; background: var(--surface); padding: 7px 13px; min-width: 96px; }
+    .stat .v { font-family: var(--mono); font-size: 21px; line-height: 1.1; letter-spacing: .03em; color: var(--ink); }
+    .stat .l { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--sub); margin-top: 2px; }
+    /* main */
+    .main { max-width: 1320px; margin: 0 auto; padding: 18px 20px 64px; }
     .feature-section { margin-bottom: 30px; }
-    .feature-header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; border-bottom: 1px solid var(--line-strong); padding-bottom: 8px; margin-bottom: 14px; }
-    .feature-header h3 { margin: 0; font-size: 22px; }
-    .feature-header span { color: var(--muted); font-size: 12px; }
-    .surface-stack { display: grid; gap: 14px; }
-    .group-subhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 6px 2px -4px; padding-bottom: 4px; }
-    .group-subhead span { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; color: var(--accent); }
-    .group-subhead small { color: var(--muted); font-size: 11px; }
-    .surface {
-      border: 1px solid var(--line); border-radius: 20px; padding: 15px 16px;
-      background: rgba(255, 255, 255, 0.78); box-shadow: 0 12px 26px rgba(31, 22, 13, 0.05);
-    }
-    .surface.focused { outline: 2px solid var(--accent); outline-offset: 3px; }
-    .surface-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 10px; }
+    .feature-header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--border); padding-bottom: 7px; margin-bottom: 14px; }
+    .feature-header h3 { margin: 0; font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+    .feature-header span { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: var(--sub); }
+    .surface-stack { display: grid; gap: 12px; }
+    .group-subhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 6px 2px -2px; }
+    .group-subhead span { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-light); }
+    .group-subhead small { font-family: var(--mono); font-size: 10px; color: var(--sub); }
+    .surface { border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; background: var(--surface); }
+    .surface.focused { outline: 2px solid var(--ink); outline-offset: 2px; }
+    .surface-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 11px; }
     .surface-title { display: flex; flex-direction: column; gap: 4px; }
-    .crumb { color: var(--muted); font-size: 11px; letter-spacing: 0.03em; }
-    .surface-title h4 { margin: 0; font-size: 18px; line-height: 1.15; }
-    .badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-    .badge { padding: 3px 8px; border-radius: 999px; font-size: 10px; border: 1px solid #eadfce; background: #f4ede4; color: var(--muted); letter-spacing: 0.02em; }
-    .badge.lane-feature-surface { background: #e7f0ff; border-color: #c3d8f2; color: #2b4f7e; }
-    .badge.lane-building-block { background: #eef3e8; border-color: #cfe0c0; color: #3c5a2c; }
-    .badge.lane-overlay { background: #f3eaff; border-color: #ddccf2; color: #5a3c7e; }
-    .badge.lane-engineering-only { background: #efeae3; border-color: #d8cdbc; color: #6d5a3c; }
-    .badge.elig-marketing { background: #fbe8d6; border-color: #ecc59a; color: var(--accent); }
-    .badge.hero { background: #fff0cf; border-color: #e8ca82; color: var(--warn); }
-    .badge.weak { background: #f0e6e6; border-color: #d8bdbd; color: var(--bad); }
-    .surface-meta { color: var(--muted); font-size: 11px; text-align: right; white-space: nowrap; }
-    .surface-meta .focus-btn { margin-top: 6px; padding: 5px 11px; font-size: 12px; }
-    .facet-rail { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 11px; }
-    .facet-pip { padding: 3px 8px; border-radius: 999px; font-size: 10px; border: 1px dashed var(--line-strong); color: var(--muted); }
-    .facet-pip.present { border-style: solid; background: #fff; color: var(--ink); }
-    .facet-pip.present strong { font-weight: 700; }
-    .facet-pip.gap { border-style: solid; border-color: var(--bad); background: #f7dddd; color: var(--bad); font-weight: 600; }
-    .facet-pip.na { opacity: 0.4; }
-    .matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
-    .surface.focused .matrix { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-    .scene { border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: white; cursor: pointer; transition: transform 0.08s ease, box-shadow 0.08s ease; }
-    .scene:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(31, 22, 13, 0.12); }
-    .scene.rejected { opacity: 0.42; }
-    .scene.shortlisted { outline: 2px solid var(--good); outline-offset: -2px; }
+    .crumb { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); }
+    .surface-title h4 { margin: 0; font-size: 16px; font-weight: 500; line-height: 1.2; color: var(--ink); }
+    .badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+    .badge {
+      border: 1px solid var(--border); border-radius: 2px; padding: 1px 7px;
+      font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-light);
+    }
+    .badge.lane-feature-surface { background: #eef2f7; border-color: #c8d6e6; color: #3a5170; }
+    .badge.lane-overlay { background: #f1ecf6; border-color: #d6c9e4; color: #5a4470; }
+    .badge.lane-building-block { background: #eef2ea; border-color: #cdddc2; color: #45603a; }
+    .badge.lane-engineering-only { background: #efece6; border-color: #d8cdbc; color: #6d5f48; }
+    .surface-meta { font-family: var(--mono); font-size: 10px; color: var(--sub); text-align: right; white-space: nowrap; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 11px; margin-top: 6px;
+      border: 1px solid var(--border); border-radius: 3px; background: transparent; color: var(--ink-light);
+      font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+    }
+    .btn:hover { border-color: var(--ink); color: var(--ink); }
+    .btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+    /* state tiles */
+    .matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+    .surface.focused .matrix { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    .scene { border: 1px solid var(--border); border-radius: 3px; overflow: hidden; background: #fff; cursor: pointer; transition: border-color .1s ease, box-shadow .1s ease; }
+    .scene:hover { border-color: var(--ink); box-shadow: 0 4px 14px rgba(42,37,32,.1); }
     /* Theme-neutral transparency checkerboard: clear / letterboxed areas read as
-       "no content" in both light and dark mode (never mistaken for the asset). */
+       "no content" in both light and dark shots (never mistaken for the asset). */
     .checker {
       background-color: #a39d94;
       background-image:
-        linear-gradient(45deg, rgba(0, 0, 0, 0.17) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.17) 75%),
-        linear-gradient(45deg, rgba(0, 0, 0, 0.17) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.17) 75%);
-      background-size: 14px 14px;
-      background-position: 0 0, 7px 7px;
+        linear-gradient(45deg, rgba(0,0,0,.17) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.17) 75%),
+        linear-gradient(45deg, rgba(0,0,0,.17) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.17) 75%);
+      background-size: 14px 14px; background-position: 0 0, 7px 7px;
     }
     .scene-shots { display: flex; align-items: flex-start; }
-    /* Each shot renders at its real pixel aspect ratio (set inline per image), so
-       tickers stay thin and badges stay square instead of being cropped to a phone. */
     .scene-shots img { display: block; width: 100%; height: auto; }
     .scene-shots.both img { width: 50%; }
-    .scene-cap { padding: 7px 9px; display: grid; gap: 5px; }
-    .scene-cap h5 { margin: 0; font-size: 12px; line-height: 1.25; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .scene-cap .facet-tag { font-size: 10px; color: var(--muted); }
-    .facet-tag.f-empty, .facet-tag.f-loading { color: var(--warn); }
-    .facet-tag.f-error { color: var(--bad); }
-    .facet-tag.f-a11y, .facet-tag.f-overflow { color: #2b4f7e; }
-    .empty { border: 1px dashed var(--line-strong); border-radius: 16px; padding: 20px; color: var(--muted); background: rgba(255,255,255,0.55); }
-    /* Coverage matrix */
-    .cov-legend { color: var(--muted); font-size: 13px; margin: 0 2px 16px; }
-    .cov-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 12px; background: rgba(255,255,255,0.6); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-    .cov-table th, .cov-table td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 7px 6px; text-align: center; }
-    .cov-table th { background: rgba(255,249,241,0.95); font-weight: 600; color: var(--muted); letter-spacing: 0.02em; position: sticky; top: 0; }
-    .cov-fhead { font-size: 11px; }
-    .cov-rowhead { text-align: left; min-width: 190px; max-width: 240px; line-height: 1.25; }
-    td.cov-rowhead { font-size: 13px; }
-    .cov-crumb { color: var(--muted); font-size: 10px; }
-    .cov-link { cursor: pointer; }
-    .cov-link:hover { color: var(--accent); }
-    .cov-cell { width: 56px; }
-    .cov-has { background: var(--accent-soft); color: var(--accent); font-weight: 700; cursor: pointer; }
-    .cov-has:hover { background: var(--accent); color: white; }
-    .cov-gap { color: #cdc4b6; }
-    .cov-gap-real { background: #f7dddd; color: var(--bad); font-weight: 700; }
-    .cov-gapcount { background: rgba(255,255,255,0.4); color: var(--muted); font-weight: 600; }
-    .cov-gapok { background: rgba(120,170,120,0.2); color: #4f7a4f; }
-    .cov-gaphot { background: #f7dddd; color: var(--bad); }
-    .cov-gapna { color: #bdb4a4; font-weight: 500; }
-    .cov-k-gap { color: var(--bad); }
-    .cov-eng td.cov-rowhead { color: #8a7e6a; }
-    .cov-eng { opacity: 0.82; }
-    /* Leaf detail overlay */
-    .overlay-back { position: fixed; inset: 0; background: rgba(28, 22, 13, 0.55); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 50; }
-    .overlay-back.open { display: flex; }
-    .leaf { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 20px; max-width: 1100px; width: 100%; max-height: 92vh; overflow: auto; padding: 20px 22px; box-shadow: var(--shadow); }
-    .leaf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
-    .leaf-head h3 { margin: 0 0 4px; font-size: 22px; }
-    .leaf-head .crumb { font-size: 12px; }
-    .leaf-close { border-radius: 999px; padding: 6px 14px; }
-    .leaf-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
-    .leaf-shot { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-    .leaf-shot figcaption { padding: 6px 10px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; background: var(--panel); }
-    .leaf-shot .shot-frame { display: flex; justify-content: center; align-items: center; padding: 8px; }
-    .leaf-shot img { display: block; max-width: 100%; max-height: 72vh; height: auto; }
-    .leaf-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .leaf-actions .group { display: flex; gap: 6px; }
-    .leaf-actions button[data-act="shortlist"].sel { background: #e3f3e8; color: var(--good); border-color: #b8d8c3; }
-    .leaf-actions button[data-act="review"].sel { background: #fff0cf; color: var(--warn); border-color: #e8ca82; }
-    .leaf-actions button[data-act="reject"].sel { background: #f7dddd; color: var(--bad); border-color: #e6b6b6; }
-    .leaf-id { font-family: "SF Mono", "Menlo", monospace; font-size: 11px; color: var(--muted); margin-left: auto; }
-    @media (max-width: 1024px) {
-      .layout { grid-template-columns: 1fr; }
-      .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-      .main { padding: 16px; }
-      .leaf-shots { grid-template-columns: 1fr; }
-    }
+    .scene-cap { padding: 6px 9px; border-top: 1px solid var(--border-l); }
+    .scene-cap h5 { margin: 0; font-size: 11px; font-weight: 400; line-height: 1.25; color: var(--ink-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .empty { border: 1px dashed var(--border); border-radius: 3px; padding: 20px; color: var(--sub); font-size: 13px; background: var(--surface); }
+    /* leaf modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(42,37,32,.5); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 100; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; max-width: 1100px; width: 100%; max-height: 92vh; overflow: auto; padding: 20px 22px; }
+    .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+    .modal-head h3 { margin: 2px 0 0; font-size: 18px; font-weight: 500; color: var(--ink); }
+    .modal-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .modal-shot { border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+    .modal-shot .frame { display: flex; justify-content: center; align-items: center; padding: 8px; }
+    .modal-shot img { display: block; max-width: 100%; max-height: 72vh; height: auto; }
+    .modal-shot figcaption { padding: 6px 10px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); display: flex; justify-content: space-between; background: var(--surface); border-top: 1px solid var(--border-l); }
+    .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .modal-id { font-family: var(--mono); font-size: 11px; color: var(--sub); margin-left: auto; }
+    @media (max-width: 900px) { .modal-shots { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="sidebar">
-      <h1>KG UI Asset Gallery</h1>
-      <p class="lede">不是 996 張圖牆。一級物件是 <strong>surface</strong>，比較單位是 <strong>state</strong>，PNG 只是 leaf。先選 lane、看某 surface 的所有 state，再點開單張。</p>
-      <div class="side-block">
-        <div class="stats">
-          <div class="stat"><strong id="stat-surfaces">0</strong><span>Surface</span></div>
-          <div class="stat"><strong id="stat-scenes">0</strong><span>State / scene</span></div>
-          <div class="stat"><strong id="stat-visible">0</strong><span>目前可見 surface</span></div>
-          <div class="stat"><strong id="stat-shots">0</strong><span>Shot (light+dark)</span></div>
-        </div>
-      </div>
-      <div class="side-block">
-        <label>Lane（資產分層）</label>
-        <div class="lane-rail" id="lane-rail"></div>
-      </div>
-      <div class="filters side-block">
-        <div>
-          <label for="search">搜尋</label>
-          <input id="search" type="search" placeholder="surface / state / asset id">
-        </div>
-        <div>
-          <label for="feature">Feature</label>
-          <select id="feature"><option value="">全部</option></select>
-        </div>
-        <div>
-          <label for="facet">State facet</label>
-          <select id="facet"><option value="">全部 state</option></select>
-        </div>
-        <div>
-          <label for="eligibility">Eligibility</label>
-          <select id="eligibility">
-            <option value="">全部</option>
-            <option value="marketing">Marketing</option>
-            <option value="review">Review</option>
-            <option value="engineering">Engineering</option>
-          </select>
-        </div>
-        <div>
-          <label for="quality">Quality tier</label>
-          <select id="quality">
-            <option value="">全部</option>
-            <option value="hero">Hero</option>
-            <option value="marketing">Marketing</option>
-            <option value="keep">Keep</option>
-            <option value="weak">Weak</option>
-          </select>
-        </div>
-      </div>
-      <div class="side-block">
-        <label>導航（Feature）</label>
-        <div class="nav-list" id="feature-nav"></div>
-      </div>
-    </aside>
-    <main class="main" id="main"></main>
+  <div class="nav">
+    <div class="brand">KG UI Gallery <span class="tag" id="lane-tag"></span></div>
+    <div class="nav-actions">
+      <span class="counts" id="counts"></span>
+      <div class="seg" id="appearance"></div>
+    </div>
   </div>
-  <div class="overlay-back" id="overlay"><div class="leaf" id="leaf"></div></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="toolbar">
+    <input id="search" class="filter-input" type="search" placeholder="搜尋 surface / state / asset id">
+    <div class="chips" id="feature-chips"></div>
+  </div>
+  <div class="stats" id="stats"></div>
+  <main class="main" id="main"></main>
+  <div class="modal-overlay" id="overlay"><div class="modal" id="leaf"></div></div>
   <script>
     const MANIFEST = __MANIFEST__;
     const surfacesIndex = MANIFEST.surfaces || [];
     const shots = MANIFEST.items || [];
-    const storageKey = "kg-catalog-review-states";
-    const reviewStates = JSON.parse(localStorage.getItem(storageKey) || "{}");
 
-    // Escape free-text (state labels / surface names) before it lands in innerHTML
-    // so a title containing < or & renders as text instead of breaking markup.
     function esc(s) {
       return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     }
 
-    const FACET_ORDER = ["default","populated","selected","empty","loading","disabled","bounds","overflow","error","a11y"];
-    const LANES = [
-      { id: "", label: "All lanes" },
-      { id: "feature-surface", label: "Feature surface" },
-      { id: "building-block", label: "Building block" },
-      { id: "overlay", label: "Overlay" },
-      { id: "engineering-only", label: "Engineering-only" },
-      { id: "weak", label: "Weak · cull" },
+    // Three source-declared buckets + secondary engineering lane. 工程 (dev
+    // harness) is present but parked on the right and never the default view.
+    const LANE_TABS = [
+      { id: "feature-surface", label: "畫面" },
+      { id: "overlay", label: "浮層" },
+      { id: "building-block", label: "組件" },
+      { id: "engineering-only", label: "工程", eng: true },
     ];
+    const LANE_LABEL = Object.fromEntries(LANE_TABS.map((l) => [l.id, l.label]));
 
-    const state = { view: "gallery", search: "", lane: "", feature: "", facet: "", eligibility: "", quality: "", appearance: "light", focus: "" };
+    const state = { lane: "feature-surface", search: "", feature: "", appearance: "light", focus: "" };
 
     // shots grouped by surface, then into scenes (clusterID) pairing light+dark.
     const shotsBySurface = new Map();
@@ -288,6 +223,7 @@ _TEMPLATE = r"""<!doctype html>
     }
     const surfaceByKey = new Map(surfacesIndex.map((s) => [s.surfaceKey, s]));
 
+    const DEFAULTISH = new Set(["", "default", "preview", "normal"]);
     function scenesOf(surfaceKey) {
       const group = shotsBySurface.get(surfaceKey) || [];
       const byScene = new Map();
@@ -301,50 +237,28 @@ _TEMPLATE = r"""<!doctype html>
         scenes.push({
           clusterID,
           stateLabel: rep.stateLabel,
-          stateFacet: rep.stateFacet,
-          stateFacetRank: rep.stateFacetRank,
-          qualityTier: rep.qualityTier,
-          eligibility: rep.eligibility,
           light: sceneShots.find((x) => x.appearance === "light") || rep,
           dark: sceneShots.find((x) => x.appearance === "dark") || rep,
           shots: sceneShots,
         });
       }
-      scenes.sort((a, b) => a.stateFacetRank - b.stateFacetRank || a.stateLabel.localeCompare(b.stateLabel));
+      // The resting/default state first, then the rest alphabetically — a stable,
+      // source-truth ordering with no heuristic facet bucketing.
+      scenes.sort((a, b) => {
+        const da = DEFAULTISH.has(a.stateLabel.toLowerCase());
+        const db = DEFAULTISH.has(b.stateLabel.toLowerCase());
+        if (da !== db) return da ? -1 : 1;
+        return a.stateLabel.localeCompare(b.stateLabel);
+      });
       return scenes;
     }
 
-    function sceneStatus(scene) {
-      const states = scene.shots.map((s) => reviewStates[s.assetID] || s.reviewStatus || "");
-      if (states.includes("reject")) return "reject";
-      if (states.includes("shortlist")) return "shortlist";
-      if (states.includes("review")) return "review";
-      return "";
+    function laneSurfaceCount(laneId) {
+      return surfacesIndex.filter((s) => s.lane === laneId).length;
     }
 
-    function setSceneStatus(scene, next) {
-      for (const s of scene.shots) {
-        if (next) reviewStates[s.assetID] = next; else delete reviewStates[s.assetID];
-      }
-      localStorage.setItem(storageKey, JSON.stringify(reviewStates));
-      render();
-      if (overlay.classList.contains("open")) openLeaf(scene);
-    }
-
-    function laneOf(surface) {
-      return surface.lane;
-    }
-
-    // A surface passes lane filter; its scenes are filtered by facet/quality/search.
     function visibleScenes(surface) {
       let scenes = scenesOf(surface.surfaceKey);
-      if (state.facet) scenes = scenes.filter((sc) => sc.stateFacet === state.facet);
-      if (state.eligibility) scenes = scenes.filter((sc) => sc.eligibility === state.eligibility);
-      if (state.quality === "weak") {
-        scenes = scenes.filter((sc) => sc.qualityTier === "weak" || sceneStatus(sc) === "reject");
-      } else if (state.quality) {
-        scenes = scenes.filter((sc) => sc.qualityTier === state.quality);
-      }
       if (state.search) {
         const q = state.search;
         scenes = scenes.filter((sc) =>
@@ -354,17 +268,11 @@ _TEMPLATE = r"""<!doctype html>
       return scenes;
     }
 
-    function surfaceMatchesLane(surface) {
-      if (!state.lane) return true;
-      if (state.lane === "weak") return true; // weak handled at scene level
-      return surface.lane === state.lane;
-    }
-
     function visibleSurfaces() {
       const out = [];
       for (const surface of surfacesIndex) {
         if (state.focus && surface.surfaceKey !== state.focus) continue;
-        if (!surfaceMatchesLane(surface)) continue;
+        if (!state.focus && surface.lane !== state.lane) continue;
         if (state.feature && surface.feature !== state.feature) continue;
         const scenes = visibleScenes(surface);
         if (!scenes.length) continue;
@@ -375,41 +283,21 @@ _TEMPLATE = r"""<!doctype html>
 
     function badge(text, cls) { return `<span class="badge ${cls || ""}">${esc(text)}</span>`; }
 
-    // Render a shot at its true pixel aspect ratio (falls back to no lock if unknown).
     function shotImg(shot) {
       const ar = shot.width && shot.height ? ` style="aspect-ratio:${shot.width}/${shot.height}"` : "";
       return `<img loading="lazy" src="${shot.relPath}" alt=""${ar}>`;
     }
 
-    function facetRail(surface, scenes) {
-      const counts = {};
-      for (const s of scenes) counts[s.stateFacet] = (counts[s.stateFacet] || 0) + 1;
-      // Lane-aware coverage strip, three-state like the Coverage view: present
-      // (have it), gap (this lane expects it but it's absent — the real backlog),
-      // na (this lane doesn't require it, so absence is not a gap).
-      const expected = new Set(surface.expectedFacets || []);
-      return FACET_ORDER.map((f) => {
-        const n = counts[f] || 0;
-        if (n) return `<span class="facet-pip present"><strong>${f}</strong> ${n}</span>`;
-        if (expected.has(f)) return `<span class="facet-pip gap">${f} 缺</span>`;
-        return `<span class="facet-pip na">${f}</span>`;
-      }).join("");
-    }
-
     function sceneTile(surface, scene) {
-      const status = sceneStatus(scene);
       const tile = document.createElement("article");
-      tile.className = "scene" + (status === "reject" ? " rejected" : "") + (status === "shortlist" ? " shortlisted" : "");
+      tile.className = "scene";
       const both = state.appearance === "both";
       const imgs = both
         ? shotImg(scene.light) + shotImg(scene.dark)
         : shotImg(state.appearance === "dark" ? scene.dark : scene.light);
       tile.innerHTML = `
         <div class="scene-shots checker ${both ? "both" : ""}">${imgs}</div>
-        <div class="scene-cap">
-          <h5 title="${esc(scene.stateLabel)}">${esc(scene.stateLabel)}</h5>
-          <span class="facet-tag f-${scene.stateFacet}">${scene.stateFacet}</span>
-        </div>`;
+        <div class="scene-cap"><h5 title="${esc(scene.stateLabel)}">${esc(scene.stateLabel)}</h5></div>`;
       tile.onclick = () => openLeaf(scene, surface);
       return tile;
     }
@@ -419,23 +307,17 @@ _TEMPLATE = r"""<!doctype html>
       const card = document.createElement("section");
       card.className = "surface" + (state.focus === surface.surfaceKey ? " focused" : "");
       card.id = `surface-${surface.surfaceKey}`;
-      const badges = [
-        badge(surface.lane, "lane-" + surface.lane),
-        surface.eligibility === "marketing" ? badge("marketing", "elig-marketing") : "",
-        surface.heroCandidate ? badge("hero", "hero") : "",
-        surface.newScenes ? badge(`+${surface.newScenes} new`, "") : "",
-      ].filter(Boolean).join("");
       const head = document.createElement("div");
       head.className = "surface-head";
       head.innerHTML = `
         <div class="surface-title">
           <span class="crumb">${esc(surface.feature)} › ${esc(surface.surfaceGroup)}</span>
           <h4>${esc(surface.surface)}</h4>
-          <div class="badges">${badges}</div>
+          <div class="badges">${badge(LANE_LABEL[surface.lane] || surface.lane, "lane-" + surface.lane)}</div>
         </div>
         <div class="surface-meta">
           ${scenes.length}/${allScenes.length} state · ${surface.shotCount} shot
-          <br><button class="focus-btn">${state.focus === surface.surfaceKey ? "退出 focus" : "Focus 比較"}</button>
+          <br><button class="btn focus-btn">${state.focus === surface.surfaceKey ? "退出 focus" : "Focus 比較"}</button>
         </div>`;
       head.querySelector(".focus-btn").onclick = (e) => {
         e.stopPropagation();
@@ -444,10 +326,6 @@ _TEMPLATE = r"""<!doctype html>
         render();
       };
       card.appendChild(head);
-      const rail = document.createElement("div");
-      rail.className = "facet-rail";
-      rail.innerHTML = facetRail(surface, allScenes);
-      card.appendChild(rail);
       const matrix = document.createElement("div");
       matrix.className = "matrix";
       for (const scene of scenes) matrix.appendChild(sceneTile(surface, scene));
@@ -457,43 +335,36 @@ _TEMPLATE = r"""<!doctype html>
 
     function openLeaf(scene, surface) {
       surface = surface || surfaceByKey.get(scene.light.surfaceKey);
-      const status = sceneStatus(scene);
       const leaf = document.getElementById("leaf");
       leaf.innerHTML = `
-        <div class="leaf-head">
+        <div class="modal-head">
           <div>
             <span class="crumb">${esc(surface.feature)} › ${esc(surface.surfaceGroup)} › ${esc(surface.surface)}</span>
             <h3>${esc(scene.stateLabel)}</h3>
-            <div class="badges">${badge(scene.stateFacet)}${badge(scene.qualityTier, scene.qualityTier === "weak" ? "weak" : scene.qualityTier === "hero" ? "hero" : "")}${badge(surface.lane, "lane-" + surface.lane)}</div>
+            <div class="badges">${badge(LANE_LABEL[surface.lane] || surface.lane, "lane-" + surface.lane)}</div>
           </div>
-          <button class="leaf-close">關閉 ✕</button>
+          <button class="btn" data-act="close">關閉 ✕</button>
         </div>
-        <div class="leaf-shots">
-          <figure class="leaf-shot"><a class="shot-frame checker" href="${scene.light.relPath}" target="_blank" rel="noreferrer"><img src="${scene.light.relPath}" alt=""></a><figcaption><span>Light</span><span>${scene.light.width}×${scene.light.height}</span></figcaption></figure>
-          <figure class="leaf-shot"><a class="shot-frame checker" href="${scene.dark.relPath}" target="_blank" rel="noreferrer"><img src="${scene.dark.relPath}" alt=""></a><figcaption><span>Dark</span><span>${scene.dark.width}×${scene.dark.height}</span></figcaption></figure>
+        <div class="modal-shots">
+          <figure class="modal-shot"><a class="frame checker" href="${scene.light.relPath}" target="_blank" rel="noreferrer"><img src="${scene.light.relPath}" alt=""></a><figcaption><span>Light</span><span>${scene.light.width}×${scene.light.height}</span></figcaption></figure>
+          <figure class="modal-shot"><a class="frame checker" href="${scene.dark.relPath}" target="_blank" rel="noreferrer"><img src="${scene.dark.relPath}" alt=""></a><figcaption><span>Dark</span><span>${scene.dark.width}×${scene.dark.height}</span></figcaption></figure>
         </div>
-        <div class="leaf-actions">
-          <div class="group">
-            <button data-act="shortlist" class="${status === "shortlist" ? "sel" : ""}">留</button>
-            <button data-act="review" class="${status === "review" ? "sel" : ""}">再看</button>
-            <button data-act="reject" class="${status === "reject" ? "sel" : ""}">砍</button>
-          </div>
-          <button data-act="copy">Copy ID</button>
-          <button data-act="permalink">Permalink</button>
-          <span class="leaf-id">${scene.light.assetID}</span>
+        <div class="modal-actions">
+          <button class="btn" data-act="copy">Copy ID</button>
+          <button class="btn" data-act="permalink">Permalink</button>
+          <span class="modal-id">${esc(scene.light.assetID)}</span>
         </div>`;
-      leaf.querySelectorAll('.leaf-actions [data-act]').forEach((btn) => {
+      leaf.querySelectorAll('[data-act]').forEach((btn) => {
         const act = btn.dataset.act;
         btn.onclick = async () => {
+          if (act === "close") return closeLeaf();
           if (act === "copy") { await navigator.clipboard.writeText(scene.light.assetID); btn.textContent = "已複製"; return; }
           if (act === "permalink") {
             const url = `${location.origin}${location.pathname}#surface-${scene.light.surfaceKey}`;
             await navigator.clipboard.writeText(url); location.hash = `surface-${scene.light.surfaceKey}`; btn.textContent = "已複製"; return;
           }
-          setSceneStatus(scene, status === act ? "" : act);
         };
       });
-      leaf.querySelector(".leaf-close").onclick = closeLeaf;
       overlay.classList.add("open");
     }
     function closeLeaf() { overlay.classList.remove("open"); }
@@ -501,258 +372,112 @@ _TEMPLATE = r"""<!doctype html>
     overlay.onclick = (e) => { if (e.target === overlay) closeLeaf(); };
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLeaf(); });
 
-    function mountControls() {
-      const featureSel = document.getElementById("feature");
-      for (const f of Object.keys(MANIFEST.featureCounts || {}).sort()) {
-        const o = document.createElement("option"); o.value = f; o.textContent = f; featureSel.appendChild(o);
-      }
-      featureSel.onchange = (e) => { state.feature = e.target.value; render(); };
-
-      const facetSel = document.getElementById("facet");
-      for (const f of FACET_ORDER.filter((x) => (MANIFEST.stateFacetCounts || {})[x])) {
-        const o = document.createElement("option"); o.value = f; o.textContent = `${f} (${MANIFEST.stateFacetCounts[f]})`; facetSel.appendChild(o);
-      }
-      facetSel.onchange = (e) => { state.facet = e.target.value; render(); };
-      document.getElementById("eligibility").onchange = (e) => { state.eligibility = e.target.value; render(); };
-      document.getElementById("quality").onchange = (e) => { state.quality = e.target.value; render(); };
-      document.getElementById("search").oninput = (e) => { state.search = e.target.value.trim().toLowerCase(); render(); };
-
-      const rail = document.getElementById("lane-rail");
-      const laneCounts = MANIFEST.laneCounts || {};
-      const weakScenes = MANIFEST.qualityTierCounts ? (MANIFEST.qualityTierCounts.weak || 0) : 0;
-      for (const lane of LANES) {
+    function mountTabs() {
+      const tabs = document.getElementById("tabs");
+      tabs.innerHTML = "";
+      for (const lane of LANE_TABS) {
         const btn = document.createElement("button");
-        btn.className = "lane-btn";
-        const count = lane.id === "" ? surfacesIndex.length + " surface" : lane.id === "weak" ? weakScenes + " shot" : (laneCounts[lane.id] || 0) + " shot";
-        btn.innerHTML = `<span>${lane.label}</span><small>${count}</small>`;
-        btn.dataset.value = lane.id;
-        btn.onclick = () => {
-          state.lane = lane.id;
-          state.focus = "";
-          if (lane.id === "weak") state.quality = "weak";
-          else if (state.quality === "weak") state.quality = "";
-          document.getElementById("quality").value = state.quality;
-          render();
-        };
-        rail.appendChild(btn);
+        btn.className = "tab" + (lane.eng ? " eng" : "") + (state.lane === lane.id && !state.focus ? " active" : "");
+        btn.innerHTML = `${esc(lane.label)} <span class="n">${laneSurfaceCount(lane.id)}</span>`;
+        btn.onclick = () => { state.lane = lane.id; state.focus = ""; state.feature = ""; render(); };
+        tabs.appendChild(btn);
       }
-
-      document.getElementById("stat-surfaces").textContent = String(surfacesIndex.length);
-      document.getElementById("stat-scenes").textContent = String(MANIFEST.sceneCount || 0);
-      document.getElementById("stat-shots").textContent = String(MANIFEST.totalImages || 0);
     }
 
-    function appearanceToggle() {
-      const wrap = document.createElement("div");
-      wrap.className = "appearance-toggle";
+    function mountAppearance() {
+      const wrap = document.getElementById("appearance");
+      wrap.innerHTML = "";
       for (const ap of [["light", "Light"], ["dark", "Dark"], ["both", "Both"]]) {
         const b = document.createElement("button");
+        b.className = "seg-btn" + (state.appearance === ap[0] ? " active" : "");
         b.textContent = ap[1];
-        b.className = state.appearance === ap[0] ? "active" : "";
         b.onclick = () => { state.appearance = ap[0]; render(); };
         wrap.appendChild(b);
       }
-      return wrap;
     }
 
-    function viewToggle() {
-      const wrap = document.createElement("div");
-      wrap.className = "appearance-toggle";
-      for (const v of [["gallery", "Gallery"], ["coverage", "Coverage"]]) {
-        const b = document.createElement("button");
-        b.textContent = v[1];
-        b.className = state.view === v[0] ? "active" : "";
-        b.onclick = () => { state.view = v[0]; state.focus = ""; render(); };
-        wrap.appendChild(b);
+    function mountFeatureChips(groups) {
+      const wrap = document.getElementById("feature-chips");
+      wrap.innerHTML = "";
+      // Features present in the current lane (drives narrowing within a bucket).
+      const counts = new Map();
+      for (const s of surfacesIndex) {
+        if (s.lane !== state.lane) continue;
+        counts.set(s.feature, (counts.get(s.feature) || 0) + 1);
       }
-      return wrap;
+      const features = [...counts.keys()].sort();
+      const mkChip = (id, label, n, active) => {
+        const c = document.createElement("button");
+        c.className = "chip" + (active ? " active" : "");
+        c.innerHTML = `${esc(label)}${n != null ? ` <span class="n">${n}</span>` : ""}`;
+        c.onclick = () => { state.feature = id; state.focus = ""; render(); };
+        return c;
+      };
+      wrap.appendChild(mkChip("", "全部", null, !state.feature));
+      for (const f of features) wrap.appendChild(mkChip(f, f, counts.get(f), state.feature === f));
     }
 
-    // Surfaces in scope for the coverage matrix: lane / feature / search only
-    // (facet & quality filters are intentionally ignored — the matrix IS the
-    // facet view). Built straight off the surface index's facetSceneCounts.
-    function coverageSurfaces() {
-      const q = state.search;
-      return surfacesIndex.filter((s) => {
-        if (state.lane && state.lane !== "weak" && s.lane !== state.lane) return false;
-        if (state.feature && s.feature !== state.feature) return false;
-        if (q && !(s.surface + " " + s.feature + " " + s.surfaceGroup).toLowerCase().includes(q)) return false;
-        return true;
-      });
-    }
-
-    function renderCoverage(main) {
-      const surfaces = coverageSurfaces();
-      const facets = FACET_ORDER;
-      const byFeature = new Map();
-      for (const s of surfaces) {
-        if (!byFeature.has(s.feature)) byFeature.set(s.feature, []);
-        byFeature.get(s.feature).push(s);
-      }
-      if (!surfaces.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "目前沒有符合條件的 surface。";
-        main.appendChild(empty);
-        return;
-      }
-      const legend = document.createElement("div");
-      legend.className = "cov-legend";
-      legend.innerHTML = `每格 = scene 數。<strong class="cov-k-gap">紅</strong> = 該 lane 期望卻缺的 state;灰點 = 該 lane 不要求(非缺口);「缺」欄對 building-block / engineering-only 顯示 <strong>—</strong>(不設覆蓋目標)。點格子跳到該 surface。`;
-      main.appendChild(legend);
-      for (const feature of [...byFeature.keys()].sort()) {
-        const rows = byFeature.get(feature).sort((a, b) =>
-          (Number(b.coverageTracked) - Number(a.coverageTracked))
-          || (b.coverageGap - a.coverageGap)
-          || (b.facetsPresent.length - a.facetsPresent.length)
-          || a.surface.localeCompare(b.surface));
-        const section = document.createElement("section");
-        section.className = "feature-section";
-        const header = document.createElement("div");
-        header.className = "feature-header";
-        header.innerHTML = `<h3>${esc(feature)}</h3><span>${rows.length} surface</span>`;
-        section.appendChild(header);
-        const table = document.createElement("table");
-        table.className = "cov-table";
-        const head = ["<th class=\"cov-rowhead\">surface</th>"]
-          .concat(facets.map((f) => `<th class="cov-fhead">${f}</th>`))
-          .concat(["<th class=\"cov-fhead\">缺</th>"]);
-        const thead = document.createElement("thead");
-        thead.innerHTML = `<tr>${head.join("")}</tr>`;
-        table.appendChild(thead);
-        const tbody = document.createElement("tbody");
-        for (const s of rows) {
-          const expectedSet = new Set(s.expectedFacets || []);
-          const tr = document.createElement("tr");
-          if (!s.coverageTracked) tr.className = "cov-eng";
-          const rowhead = document.createElement("td");
-          rowhead.className = "cov-rowhead cov-link";
-          rowhead.innerHTML = `<span class="cov-crumb">${esc(s.surfaceGroup)}</span><br>${esc(s.surface)}`;
-          rowhead.onclick = () => jumpToSurface(s.surfaceKey);
-          tr.appendChild(rowhead);
-          for (const f of facets) {
-            const n = (s.facetSceneCounts || {})[f] || 0;
-            const td = document.createElement("td");
-            if (n) {
-              td.className = "cov-cell cov-has";
-              td.textContent = String(n);
-              td.onclick = () => jumpToSurface(s.surfaceKey, f);
-            } else if (expectedSet.has(f)) {
-              td.className = "cov-cell cov-gap-real";
-              td.textContent = "缺";
-            } else {
-              td.className = "cov-cell cov-gap";
-              td.textContent = "·";
-            }
-            tr.appendChild(td);
-          }
-          const gap = document.createElement("td");
-          if (s.coverageTracked) {
-            gap.className = "cov-cell cov-gapcount"
-              + (s.coverageGap === 0 ? " cov-gapok" : "")
-              + (s.coverageGap >= 3 ? " cov-gaphot" : "");
-            gap.textContent = String(s.coverageGap);
-          } else {
-            gap.className = "cov-cell cov-gapcount cov-gapna";
-            gap.textContent = "—";
-          }
-          tr.appendChild(gap);
-          tbody.appendChild(tr);
-        }
-        table.appendChild(tbody);
-        section.appendChild(table);
-        main.appendChild(section);
-      }
-    }
-
-    function jumpToSurface(surfaceKey, facet) {
-      state.view = "gallery";
-      state.focus = surfaceKey;
-      state.facet = facet || "";
-      document.getElementById("facet").value = state.facet;
-      if (facet) state.appearance = "both";
-      render();
-    }
-
-    function syncLaneButtons() {
-      document.querySelectorAll("#lane-rail .lane-btn").forEach((b) => b.classList.toggle("active", b.dataset.value === state.lane));
+    function mountStats(groups) {
+      const visSurfaces = groups.length;
+      const visScenes = groups.reduce((n, g) => n + g.scenes.length, 0);
+      const visShots = groups.reduce((n, g) => n + g.scenes.reduce((m, sc) => m + sc.shots.length, 0), 0);
+      const cells = [
+        [visSurfaces, "Surface"],
+        [visScenes, "State"],
+        [visShots, "Shot"],
+      ];
+      const el = document.getElementById("stats");
+      el.innerHTML = cells.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
     }
 
     function render() {
-      syncLaneButtons();
+      const laneLabel = state.focus ? "Focus compare" : (LANE_LABEL[state.lane] || state.lane);
+      document.getElementById("lane-tag").textContent = laneLabel;
+      mountTabs();
+      mountAppearance();
       const main = document.getElementById("main");
       main.innerHTML = "";
 
-      if (state.view === "coverage") {
-        const covSurfaces = coverageSurfaces();
-        document.getElementById("stat-visible").textContent = String(covSurfaces.length);
-        const laneLabel = (LANES.find((l) => l.id === state.lane) || LANES[0]).label;
-        const top = document.createElement("div");
-        top.className = "topbar";
-        top.innerHTML = `<div><h2>Coverage · ${laneLabel}</h2><div class="sub">${covSurfaces.length} surface · 缺口 = 該 lane 期望卻缺的 state（building-block / engineering-only 不設目標）</div></div>`;
-        top.appendChild(viewToggle());
-        main.appendChild(top);
-        renderCoverage(main);
-        mountFeatureNav([]);
-        return;
-      }
-
       const groups = visibleSurfaces();
-      document.getElementById("stat-visible").textContent = String(groups.length);
-
-      const top = document.createElement("div");
-      top.className = "topbar";
-      const laneLabel = (LANES.find((l) => l.id === state.lane) || LANES[0]).label;
-      const sceneTotal = groups.reduce((n, g) => n + g.scenes.length, 0);
-      top.innerHTML = `<div><h2>${state.focus ? "Focus compare" : laneLabel}</h2><div class="sub">${groups.length} surface · ${sceneTotal} state${state.focus ? " · 單一 surface 並排 light/dark" : ""}</div></div>`;
-      const toggles = document.createElement("div");
-      toggles.style.cssText = "display:flex;gap:10px;align-items:center";
-      toggles.appendChild(viewToggle());
-      toggles.appendChild(appearanceToggle());
-      top.appendChild(toggles);
-      main.appendChild(top);
+      if (!state.focus) mountFeatureChips(groups); else document.getElementById("feature-chips").innerHTML = "";
+      mountStats(groups);
+      document.getElementById("counts").textContent =
+        `${surfacesIndex.length} surface · ${MANIFEST.sceneCount || 0} state · ${MANIFEST.totalImages || 0} shot`;
 
       if (!groups.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = "目前沒有符合條件的 surface。調整 lane 或清掉 filter。";
+        empty.textContent = "目前沒有符合條件的 surface。換一個 tab 或清掉搜尋。";
         main.appendChild(empty);
-        mountFeatureNav([]);
         return;
       }
 
-      // group surfaces by feature
+      // group surfaces by feature, then by surfaceGroup (variants cluster).
       const byFeature = new Map();
       for (const g of groups) {
         if (!byFeature.has(g.surface.feature)) byFeature.set(g.surface.feature, []);
         byFeature.get(g.surface.feature).push(g);
       }
-      const featureOrder = [...byFeature.keys()].sort();
-      for (const feature of featureOrder) {
+      for (const feature of [...byFeature.keys()].sort()) {
         const section = document.createElement("section");
         section.className = "feature-section";
         section.id = `feature-${feature.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
         const fGroups = byFeature.get(feature);
         const fScenes = fGroups.reduce((n, g) => n + g.scenes.length, 0);
-        const fHero = fGroups.filter((g) => g.surface.heroCandidate).length;
-        const fWeak = fGroups.filter((g) => g.surface.lane === "engineering-only").length;
         const header = document.createElement("div");
         header.className = "feature-header";
-        header.innerHTML = `<h3>${esc(feature)}</h3><span>${fGroups.length} surface · ${fScenes} state · ${fHero} hero · ${fWeak} eng-only</span>`;
+        header.innerHTML = `<h3>${esc(feature)}</h3><span>${fGroups.length} surface · ${fScenes} state</span>`;
         section.appendChild(header);
         const stack = document.createElement("div");
         stack.className = "surface-stack";
-        // Sub-group surfaces by surfaceGroup so a group's variants cluster together
-        // (e.g. all "Card Document" surfaces). Single-surface groups stay flat.
         const byGroup = new Map();
         for (const g of fGroups) {
           if (!byGroup.has(g.surface.surfaceGroup)) byGroup.set(g.surface.surfaceGroup, []);
           byGroup.get(g.surface.surfaceGroup).push(g);
         }
-        const groupOrder = [...byGroup.keys()].sort();
-        for (const groupName of groupOrder) {
+        for (const groupName of [...byGroup.keys()].sort()) {
           const gSurfaces = byGroup.get(groupName);
-          gSurfaces.sort((a, b) => a.surface.lane.localeCompare(b.surface.lane) || a.surface.surface.localeCompare(b.surface.surface));
+          gSurfaces.sort((a, b) => a.surface.surface.localeCompare(b.surface.surface));
           if (gSurfaces.length > 1) {
             const gScenes = gSurfaces.reduce((n, g) => n + g.scenes.length, 0);
             const sub = document.createElement("div");
@@ -765,7 +490,6 @@ _TEMPLATE = r"""<!doctype html>
         section.appendChild(stack);
         main.appendChild(section);
       }
-      mountFeatureNav(featureOrder.map((f) => ({ feature: f, count: byFeature.get(f).length })));
 
       requestAnimationFrame(() => {
         if (location.hash.startsWith("#surface-")) {
@@ -775,19 +499,6 @@ _TEMPLATE = r"""<!doctype html>
       });
     }
 
-    function mountFeatureNav(features) {
-      const nav = document.getElementById("feature-nav");
-      nav.innerHTML = "";
-      for (const f of features) {
-        const a = document.createElement("a");
-        a.className = "nav-link";
-        a.href = `#feature-${f.feature.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-        a.innerHTML = `<span>${esc(f.feature)}</span><small>${f.count} surface</small>`;
-        nav.appendChild(a);
-      }
-    }
-
-    mountControls();
     render();
   </script>
 </body>
