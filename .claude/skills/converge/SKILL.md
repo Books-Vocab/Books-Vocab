@@ -1,134 +1,280 @@
 ---
 name: converge
-description: "Branch/worktree convergence：A=cleanup 全收斂，B=promote 單分支升格。核心=白名單進 main → 黑名單 rebase → sync remote → 清殘影。"
+description: "Branch/worktree convergence：A=cleanup 全收斂（all black 保留 / all white 刪光），B=promote 單分支升格，組合式全量收斂一次 merge 多個。核心=白名單進 main → 黑名單 rebase → sync remote → 清殘影。"
 user-invocable: true
-version: 1.0.0
+version: 2.0.0
 ---
 
 # Converge
 
-兩種模式，同一個目標：**讓 main 是最新 shared baseline，所有活分支都基於它。**
+讓 main 成為最新 shared baseline，所有活分支都基於它。
 
 ---
 
-## Mode A — Cleanup（全收斂）
+## 三種模式
 
-白名單全部進 main，黑名單保留但 rebase 到新 main，已完成分支全清。
+| 模式 | 白名單 | 黑名單 | 結束後 |
+|------|--------|--------|--------|
+| **A all black** | 無（全部保留） | 全部 | 全部 rebase 到 main，全部保留 |
+| **A all white** | 全部（全部進 main） | 無 | 全部 merge 進 main，全部刪除 |
+| **B promote** | 指定的 branch | 其餘 | 白名單 merge 進 main，黑名單 rebase 保留 |
+| **組合式全量** | 全部一次性 merge | 無 | 一次 push + 最少 rebase |
 
-### 步驟
+---
+
+## 通用前置步驟
+
+每次 converge 前必做：
 
 ```bash
-# 1. 盤現狀
 git fetch --all --prune
 git branch -vv
 git worktree list
-git status
+git status --short
+```
 
-# 2. 白名單合併（逐條）
-git checkout main
-git merge <white-branch>      # 或 gh pr merge <pr-number> --squash / --rebase / --merge
-git push origin main
+檢查每個 worktree 的 dirty work：
 
-# 3. 黑名單 rebase
-git checkout <black-branch>
-git rebase origin/main
-git push --force-with-lease   # 若有 remote
-
-# 4. 清已完成分支殘影
-git push origin --delete <white-branch>    # remote
-git branch -D <white-branch>               # local
-git worktree remove <white-worktree>       # 若有 worktree
-
-# 5. 驗收
-git branch -vv
-git worktree list
-git status
+```bash
+for wt in $(git worktree list --porcelain | grep '^worktree ' | cut -d' ' -f2-); do
+  echo "=== $(basename $wt) ==="
+  git -C "$wt" status --short
+done
 ```
 
 ---
 
-## Mode B — Promote（單分支升格）
+## Mode A — all black（全部保留，不 merge）
 
-在 A 已清完的狀態下，選一條活分支，把它的 commits 拉進 main（不刪分支）。
-
-### 步驟
+目標：所有分支基於最新 main，內容不進 main。
 
 ```bash
-# 1. 確認基線
-git fetch --all --prune
-git checkout main
-
-# 2. 拉進目標分支的 commits
-git merge <target-branch>     # 或 cherry-pick 指定 commits
+# 1. main 有 ahead commits 先 push
 git push origin main
 
-# 3. 所有其他活分支 rebase
-git checkout <other-branch>
-git rebase origin/main
-git push --force-with-lease
+# 2. 並行 snapshot（如果有 dirty work）
+for wt in <worktree-paths>; do
+  git -C "$wt" add -A
+  git -C "$wt" commit -m "<prefix>: snapshot — <desc> (converge pre-rebase)"
+done
 
-# 4. 目標分支保留（不刪），但可選 rebase 讓它也追上
-git checkout <target-branch>
-git rebase origin/main
-git push --force-with-lease
+# 3. 並行 rebase 全部 branches → main
+for wt in <worktree-paths>; do
+  git -C "$wt" fetch origin main
+  git -C "$wt" rebase origin/main
+  git -C "$wt" push origin HEAD --force-with-lease
+done
 
-# 5. 驗收
+# 4. 驗收
 git branch -vv
 git worktree list
+git status --short
 ```
 
 ---
 
-## 輸出要求
+## Mode A — all white（全部進 main，全部刪除）
 
-每次 converge 結束必須報告：
+目標：所有分支內容進 main，remote + local + worktree 全清。
 
-1. Mode（A cleanup / B promote）
-2. 進了 main 的內容（branch / commits / PR #）
-3. 黑名單/其他分支的新 base（`git rev-parse origin/main`）
-4. 刪了哪些 remote branch / local branch / worktree
-5. 還活著的 branch 列表
-6. `git status` 是否乾淨
+```bash
+# 1. main push
+git push origin main
+
+# 2. 並行 snapshot 所有 worktree（**必做**，否則 dirty work 會丟失）
+for wt in <worktree-paths>; do
+  git -C "$wt" add -A
+  git -C "$wt" commit -m "<prefix>: snapshot — <desc> (converge pre-cleanup)"
+done
+
+# 3. main 上一次過 merge 全部 branches
+git checkout main
+for branch in <all-branches>; do
+  git merge "$branch" --no-edit
+done
+git push origin main
+
+# 4. 清殘影（順序：remote → worktree → local）
+# 4a. remote
+git push origin --delete <branch1> <branch2> <branch3>
+
+# 4b. worktree
+git worktree remove <path1>
+git worktree remove <path2>
+git worktree remove <path3>
+# 若有孤兒（.git 連結壞掉）：git worktree prune --verbose
+
+# 4c. local
+git branch -D <branch1> <branch2> <branch3>
+
+# 5. 驗收
+git branch -vv          # 只剩 main
+git worktree list       # 只剩 main + deploy
+git status --short      # 乾淨
+```
 
 ---
 
-## 實戰踩坑
+## Mode B — promote（單分支升格，其餘保留）
 
-### 1. 清殘影順序不能錯
+目標：指定 branch merge 進 main，其餘 rebase 到新 main。
 
-**錯誤：**先 `git branch -D` 再 `git worktree remove` → branch 刪不掉（還綁著 worktree）
+```bash
+# 1. main push
+git push origin main
 
-**正確：**`git worktree remove <path>` → `git branch -D <branch>` → `git push origin --delete <branch>`
+# 2. snapshot 目標 branch（如果 dirty）
+git -C <target-worktree> add -A
+git -C <target-worktree> commit -m "<prefix>: snapshot — <desc> (converge pre-promote)"
+
+# 3. merge 目標 branch
+git checkout main
+git merge <target-branch> --no-edit
+git push origin main
+
+# 4. 所有其他 branch rebase → 新 main
+for wt in <other-worktrees>; do
+  git -C "$wt" fetch origin main
+  git -C "$wt" rebase origin/main
+  git -C "$wt" push origin HEAD --force-with-lease
+done
+
+# 5. 目標 branch 也 rebase（保留不刪）
+git -C <target-worktree> fetch origin main
+git -C <target-worktree> rebase origin/main
+git -C <target-worktree> push origin HEAD --force-with-lease
+
+# 6. 驗收
+git branch -vv
+git worktree list
+git status --short
+```
+
+---
+
+## 組合式全量收斂（最高效）
+
+**適用：**所有 branches 都要進 main，不刪除。
+
+**核心：**一次 merge 全部 + 一次 push + 最少 rebase。
+
+```bash
+# Phase 0: 盤現況
+git fetch --all --prune
+git branch -vv
+git worktree list
+
+# Phase 1: 並行 snapshot
+git -C <wt1> add -A && git -C <wt1> commit -m "..."
+git -C <wt2> add -A && git -C <wt2> commit -m "..."
+
+# Phase 2: 並行 rebase 全部 → current main（減少 merge conflict）
+git -C <wt1> fetch origin main && git -C <wt1> rebase origin/main && git -C <wt1> push origin HEAD --force-with-lease
+git -C <wt2> fetch origin main && git -C <wt2> rebase origin/main && git -C <wt2> push origin HEAD --force-with-lease
+
+# Phase 3: main 上一次過 merge 全部
+git checkout main
+git merge <branch1> <branch2> <branch3> --no-edit   # octopus merge
+git push origin main
+
+# Phase 4: 並行 rebase 全部 → 最終 main（fast-forward）
+git -C <wt1> fetch origin main && git -C <wt1> rebase origin/main && git -C <wt1> push origin HEAD --force-with-lease
+git -C <wt2> fetch origin main && git -C <wt2> rebase origin/main && git -C <wt2> push origin HEAD --force-with-lease
+
+# Phase 5: 驗收
+git branch -vv
+git worktree list
+```
+
+**成本對比：**
+
+| 方式 | push main | rebase 輪次 |
+|------|-----------|-------------|
+| 逐個 B（Round 3+4） | N 次 | 2N 次 |
+| **組合式** | **1 次** | **2 次** |
+
+---
+
+## 輸出報告模板
+
+每次 converge 結束必報告：
+
+```
+## Converge — <Mode>
+
+**main:** `<hash>`
+
+**進了 main 的內容：**
+- branch / commits / PR #
+
+**Snapshot 已提交：**
+- <worktree>: <hash> — <desc>
+
+**已 rebase + remote sync：**
+| Branch | HEAD | 狀態 |
+|--------|------|------|
+| ... | ... | ahead N / = main |
+
+**已刪除：**
+- remote: ...
+- local: ...
+- worktree: ...
+
+**還活著的 branch:** ...
+**git status:** 乾淨 / 有 untracked ...
+```
+
+---
+
+## 實戰踩坑（11 條）
+
+### 1. 清殘影順序
+
+**all white 正確順序：**remote → worktree → local branch
+
+錯誤：先 `git branch -D` → branch 刪不掉（還綁著 worktree）
 
 ### 2. 沒有 upstream 的 branch
 
-很多 worktree branch 沒設 upstream，`git push` 會噴 fatal。
+`git push` 會噴 fatal。**預設命令：**`git push origin HEAD --force-with-lease`
 
-**預設命令：**`git push origin HEAD --force-with-lease`
+### 3. 孤兒 worktree
 
-### 3. 孤兒 worktree（.git 連結壞掉）
+`.git` 連結壞掉時 `git worktree remove` 報 fatal。**修復：**`git worktree prune --verbose`
 
-worktree 的 `.git` 檔案可能因外部操作消失，`git worktree remove` 會報 fatal。
+### 4. 不能跨 worktree checkout
 
-**修復：**`git worktree prune --verbose` 自動清孤兒，再 `rm -rf <path>`。
+在 worktree A 裡不能 `git checkout main`。**修復：**`cd <target-worktree>` 或 `git -C <path>`
 
-### 4. 不能跨 worktree checkout branch
+### 5. remote branch 不存在
 
-在 worktree A 裡面不能 `git checkout main`，因為 main 已被另一個 worktree 使用。
+`git push origin --delete` 報 `remote ref does not exist`。**修復：**跳過繼續清 local + worktree
 
-**修復：**一律 `cd` 到目標 worktree 的目錄再操作，或 `git -C <path>`。
+### 6. 熱檔案多 worktree 漂移
 
-### 5. remote branch 可能根本不存在
+`ICloudDownloadManager.swift`、`UITestFixtureSeed.swift` 會在多個 worktree 同時被改。**修復：**改完就 commit，不留 dirty work 過夜
 
-`git push origin --delete <branch>` 可能報 `remote ref does not exist`（branch 從未推過 remote）。
+### 7. main 上有 dirty work 會擋 merge
 
-**修復：**remote 刪除失敗就跳過，繼續清 local + worktree。
+merge 前必須 `git status` 確認乾淨，否則 `error: Your local changes would be overwritten`
 
-### 6. 同一個檔案在多個 worktree 漂移
+### 8. `git rebase origin/main` 顯示 up to date 但有 commits
 
-`ICloudDownloadManager.swift` 之類的熱檔案會在多個 worktree 同時被改但沒 commit，導致每輪 converge 都要 snapshot。
+branch 的 commits 內容已經在 main 中（不同 hash），rebase 會 drop。**無害，直接 merge 即可。**
 
-**修復：**無法自動化，只能靠紀律 — 改完就 commit，不要留 dirty work 過夜。
+### 9. all white 時 worktree 有 dirty work 不處理就刪 = 丟失
+
+必須先 snapshot + merge 進 main，再清殘影。不要用 `git worktree remove --force` 硬幹。
+
+### 10. octopus merge 遇 conflict 會直接失敗
+
+`git merge A B C` 若有任何兩個 branch 衝突，git 不支援 octopus conflict 解決。**修復：**fallback 到逐個 merge
+
+### 11. converge 後 branch 又長 dirty work = 循環
+
+如果有人在 worktree 持續工作，每次 converge 都會發現新 dirty。**修復：**
+- 紀律：converge 前停手
+- 或接受「不完美收斂」，最後一次 snapshot 留在 branch 上
 
 ---
 
@@ -139,4 +285,5 @@ worktree 的 `.git` 檔案可能因外部操作消失，`git worktree remove` �
 - dirty 時：**立即 commit snapshot**，不 stash（stash 會丟身份資訊）
 - **force-push 只用 `--force-with-lease`**，不用 `-f`
 - **刪 remote branch 前先確認它存在**，不存在就跳過
+- **all white 清 worktree 前先 snapshot**，否則 dirty work 會丟失
 - **merge 後若測試失敗，revert 或 hotfix，不讓 main 壞著**
