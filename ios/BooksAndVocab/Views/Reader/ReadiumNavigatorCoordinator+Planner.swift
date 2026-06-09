@@ -7,7 +7,6 @@ struct BridgePlanner {
     var lastClearHighlightTrigger: UUID?
     var lastRemoveWordId: UUID?
     var lastNavigateId: UUID?
-    var lastVocabCount: Int = 0
     var lastVocabWordsSet: Set<String> = []
     var lastBookUniqueWordsCount: Int?
     var lastPreferences: EPUBPreferences?
@@ -55,10 +54,9 @@ struct BridgePlanner {
         let added = currentSet.subtracting(lastVocabWordsSet)
         let removed = lastVocabWordsSet.subtracting(currentSet)
 
-        defer {
-            lastVocabCount = currentSet.count
-            lastVocabWordsSet = currentSet
-        }
+        // 注意：callee（commandsForAddedVocabulary）會讀 lastVocabWordsSet 重算 addedWords，
+        // 故 defer 在 callee 跑完後才更新 —— callee 觀察到的是「更新前」的舊集合（刻意）。
+        defer { lastVocabWordsSet = currentSet }
 
         // 首次拿到 bookUniqueWords：以新 filter 權威重 mark 全集（即使 set 未變）。
         if didLoadBookWords {

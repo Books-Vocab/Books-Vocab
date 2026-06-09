@@ -37,6 +37,8 @@ struct VocabHighlightBindingSwitchTests {
         #expect(markedWords(in: swapped) == Set(["charlie", "delta"]))
         // clear 必須在 mark 之前
         #expect(clearPrecedesMark(in: swapped))
+        // 互換只走 clearAll + markVocabWords，不得夾雜逐字 removeVocabWord
+        #expect(removedWords(in: swapped).isEmpty)
     }
 
     @Test func pureRemovalDoesNotClearAll() {
