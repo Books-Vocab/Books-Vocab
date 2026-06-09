@@ -117,8 +117,17 @@ ios_test_build_input_paths() {
 ios_test_build_cache_key() {
   local xcode_version
   xcode_version="$(xcodebuild -version 2>/dev/null || true)"
+  # Key on platform+arch, NOT the specific device name/UDID. build-for-testing
+  # products are per (platform, arch, configuration) and identical across
+  # simulators of the same platform, so a pool of leased devices shares ONE warm
+  # cache instead of each device fragmenting its own. A genuinely different
+  # platform (e.g. Mac Catalyst via --destination) still gets a distinct key.
+  local platform_token
+  platform_token="$(printf '%s' "$DESTINATION" | sed -n 's/.*platform=\([^,]*\).*/\1/p' | tr '[:upper:] ' '[:lower:]-')"
+  [[ -n "$platform_token" ]] || platform_token="unknown"
   {
-    printf 'destination=%s\n' "$DESTINATION"
+    printf 'platform=%s\n' "$platform_token"
+    printf 'arch=%s\n' "$(uname -m)"
     printf 'scope=%s\n' "$TEST_SCOPE"
     printf 'scheme=%s\n' "$TEST_SCHEME"
     printf 'xcode=%s\n' "$xcode_version"
