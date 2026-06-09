@@ -7,7 +7,8 @@
 #
 # How it works:
 #   1. Spin-waits to acquire an exclusive lock (shlock, macOS built-in)
-#   2. Runs xcodebuild (shared DerivedData → incremental builds)
+#   2. Runs xcodebuild against ONE shared DerivedData anchored at the main repo
+#      (incremental reuse across worktrees; bounded size; no path-hashed orphans)
 #   3. Releases lock via trap on exit
 #
 # Safe for concurrent calls — second caller blocks until first finishes.
@@ -33,6 +34,25 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksBrowser.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
+# DerivedData policy: one shared, bounded cache anchored at the MAIN repo
+# (resolved via git-common-dir, so every worktree maps to the same path). This
+# avoids both failure modes:
+#   - global default location → a new path-hashed orphan per worktree (110G leak)
+#   - worktree-local cache    → zero cross-worktree reuse, ModuleCache rebuilt
+#                               from scratch in every worktree
+# Concurrent corruption is a non-issue: all builds serialize on the global
+# shlock above. Override with KG_IOS_BUILD_DERIVED_DATA_ROOT. If git-common-dir
+# can't be resolved, fall back to worktree-local so the build never breaks.
+if [[ -n "${KG_IOS_BUILD_DERIVED_DATA_ROOT:-}" ]]; then
+  DERIVED_DATA_ROOT="$KG_IOS_BUILD_DERIVED_DATA_ROOT"
+else
+  GIT_COMMON_DIR="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$GIT_COMMON_DIR" && -d "$GIT_COMMON_DIR" ]]; then
+    DERIVED_DATA_ROOT="$(dirname "$GIT_COMMON_DIR")/.cache/ios-build-derived-data"
+  else
+    DERIVED_DATA_ROOT="$PROJECT_ROOT/.cache/ios-build-derived-data"
+  fi
+fi
 
 if [[ ! -d "$XCODEPROJ" ]]; then
   echo "error: $XCODEPROJ not found" >&2
@@ -83,6 +103,7 @@ trap cleanup EXIT
 LOCK_WAIT_MS=$(( $(ios_build_now_ms) - LOCK_WAIT_START_MS ))
 
 echo "[ios_build] lock acquired by $CALLER (pid=$$) lockWaitMs=$LOCK_WAIT_MS — building..."
+echo "[ios_build] derivedDataRoot=$DERIVED_DATA_ROOT"
 START=$(date +%s)
 START_MS="$(ios_build_now_ms)"
 BOOT_MS=0
@@ -108,6 +129,7 @@ xcodebuild \
   -project "$XCODEPROJ" \
   -scheme BooksBrowser \
   -destination "$DESTINATION" \
+  -derivedDataPath "$DERIVED_DATA_ROOT" \
   -resultBundlePath "$RESULT_BUNDLE" \
   -quiet build \
   >"$TMPOUT" 2>&1
