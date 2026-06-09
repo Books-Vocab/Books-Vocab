@@ -11,24 +11,21 @@
 
 import XCTest
 
-final class ShellSmokeUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
+final class ShellSmokeUITests: UITestCase {
     @MainActor
     func testAllTabsVisibleOnLaunch() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp(extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"])
+        captureStep("shell-launch", app: app)
         AppPage(app: app).assertAllTabsVisible()
+        captureStep("shell-tabs-visible", app: app)
     }
 
     /// Walk every tab through the shell. Each entry must (1) select the tab,
     /// (2) keep the tab bar alive (no crash), and (3) show a navigation bar.
     @MainActor
     func testEachTabEntersWithNavigationChrome() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp(extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"])
+        captureStep("shell-launch", app: app)
 
         let shell = AppPage(app: app)
         shell.assertAllTabsVisible()
@@ -42,6 +39,7 @@ final class ShellSmokeUITests: XCTestCase {
 
         for entry in tabs {
             entry.tab.tapWhenReady()
+            captureStep("shell-tab-\(entry.name)", app: app)
             XCTAssertTrue(
                 entry.tab.isSelected,
                 "Tab \(entry.name) did not become selected after tap"

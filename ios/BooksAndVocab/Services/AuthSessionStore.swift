@@ -69,6 +69,17 @@ final class AuthSessionStore: AuthSessionStoring {
     }
 
     func loadSession() -> PersistedAuthSession {
+        if AppRuntimeOptions.shouldUseIsolatedAuthSession() {
+            clearSession()
+            return PersistedAuthSession(
+                userId: nil,
+                displayName: nil,
+                userEmail: nil,
+                avatarURL: nil,
+                token: nil
+            )
+        }
+
         let userId = defaults.string(forKey: Keys.userId)
         let displayName = defaults.string(forKey: Keys.displayName)
         let userEmail = defaults.string(forKey: Keys.userEmail)

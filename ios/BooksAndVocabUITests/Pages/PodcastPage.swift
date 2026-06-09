@@ -44,6 +44,10 @@ struct PodcastPage {
         app.buttons["podcast.player.playPauseButton"]
     }
 
+    var pauseButton: XCUIElement {
+        app.buttons["podcast.player.pauseButton"]
+    }
+
     var loginSheet: XCUIElement {
         app.descendants(matching: .any)["auth.loginSheet"]
     }

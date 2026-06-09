@@ -49,7 +49,11 @@ struct PodcastControlsView: View {
                             .background(skin.palette.brandHero, in: Circle())
                     }
                     .accessibilityLabel(L10n.string(viewModel.state == .playing ? "podcast.controls.playpause.pause" : "podcast.controls.playpause.play"))
-                    .accessibilityIdentifier("podcast.player.playPauseButton")
+                    .accessibilityIdentifier(
+                        viewModel.state == .playing
+                            ? "podcast.player.pauseButton"
+                            : "podcast.player.playPauseButton"
+                    )
 
                     Button { viewModel.skip(seconds: 15) } label: {
                         Image(systemName: "goforward.15")
