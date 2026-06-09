@@ -84,7 +84,7 @@ run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式�
 #         SMOKE_BASE_URL（預設 ${PUBLIC_WEB_BASE_URL}）
 verify_post_deploy() {
   local deploy_sha="$1"
-  local base_url="${SMOKE_BASE_URL:-$PUBLIC_WEB_BASE_URL}"
+  local base_url="${SMOKE_BASE_URL:-${PUBLIC_WEB_BASE_URL:-https://wordnexus.lol}}"
   local curl_bin="${CURL_BIN:-curl}"
   local rc=0
 
