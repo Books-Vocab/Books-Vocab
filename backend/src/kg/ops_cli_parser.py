@@ -102,7 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--bucket", choices=["day", "week", "month"], default="day", help="分桶粒度（預設 day）")
     p.add_argument("--range", choices=["24h", "7d", "30d", "month", "all"], default="30d", help="時間範圍（預設 30d）")
     p.add_argument("--uid", default="all", help="限定單一用戶（預設 all）")
-    p.add_argument("--fill-zero", dest="fill_zero", action="store_true", help="補齊區間內零值桶（時間軸連續、斷層顯式化）")
+    p.add_argument(
+        "--fill-zero",
+        dest="fill_zero",
+        action="store_true",
+        help="補齊區間內零值桶（時間軸連續、斷層顯式化）；長範圍建議配 --bucket week/month，否則 day 桶會產生大片零牆",
+    )
     p.set_defaults(func=cmd_timeseries)
 
     p = sub.add_parser("trends", parents=[jp], help="全域監控趨勢（errors/active/tokens 逐日；errors=業務拒絕, llm-fail=真火）")
