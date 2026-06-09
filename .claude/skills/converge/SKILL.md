@@ -95,7 +95,8 @@ git worktree list
 ## 鐵律
 
 - **先 fetch**，永遠先看 origin/main 的真實狀態
-- **merge main 前確認 main 是乾淨的**（無 uncommitted changes）
+- **merge / rebase 前確認 working tree 乾淨**（`git status`）— rebase 不允許 dirty tree
+- dirty 時：**stash → rebase → stash pop**，或先 commit 再 rebase 後 amend
 - **force-push 只用 `--force-with-lease`**，不用 `-f`
 - **刪 remote branch 前確認 PR 已合併或不再需要**
 - **merge 後若測試失敗，revert 或 hotfix，不讓 main 壞著**
