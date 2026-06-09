@@ -5,11 +5,13 @@
 #   ./ops/ios_test.sh                             # run ALL tests in BooksBrowserTests
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
 #   ./ops/ios_test.sh -g "notebook"               # grep: run tests matching pattern
-#   ./ops/ios_test.sh --file BooksBrowserTests.swift
+#   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --launch-benchmark
 #   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
+#   ./ops/ios_test.sh --device <name|UDID>        # target a specific simulator (parallel agents)
+#   ./ops/ios_test.sh --destination '<xcodebuild destination>'   # full -destination override
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -23,8 +25,11 @@ set -euo pipefail
 LOCK_FILE="/tmp/kg-ios-build.lock"
 TIMEOUT=600
 POLL_INTERVAL=3
-DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro Max'
-SIMULATOR_BOOT_SELECTOR='iPhone 17 Pro Max'
+DEFAULT_SIMULATOR='iPhone 17 Pro Max'
+DESTINATION=''            # resolved after arg parsing (see device resolution below)
+DESTINATION_OVERRIDE=''   # set by --destination (full xcodebuild destination string)
+DEVICE_OVERRIDE="${KG_IOS_TEST_DEVICE:-}"  # set by --device (name or UDID); enables per-agent simulators
+SIMULATOR_BOOT_SELECTOR=''
 GREP_PATTERN=""
 TEST_FILE=""
 TEST_SCOPE="unit"
@@ -44,6 +49,8 @@ while [[ $# -gt 0 ]]; do
     --ui) TEST_SCOPE="ui"; shift ;;
     --all-targets|--scheme) TEST_SCOPE="all"; shift ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
+    --device) DEVICE_OVERRIDE="$2"; shift 2 ;;        # name or UDID; pick a specific simulator
+    --destination) DESTINATION_OVERRIDE="$2"; shift 2 ;;  # full xcodebuild -destination override
     --list) LIST_ONLY=1; shift ;;   # dry-run: print resolved -only-testing flags, no xcodebuild
     --prepare-cache) TEST_CACHE_ACTION="prepare"; shift ;;
     --cache-status) TEST_CACHE_ACTION="status"; shift ;;
@@ -54,6 +61,26 @@ while [[ $# -gt 0 ]]; do
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
+
+# Resolve the simulator destination. Precedence: --destination (full override)
+# > --device (name|UDID) > default. A UDID-shaped value targets `id=`, anything
+# else `name=`. SIMULATOR_BOOT_SELECTOR feeds `simulator ensure-booted` and
+# accepts a name or UDID directly. This makes the script target-agnostic so
+# parallel agents can each run on their own leased simulator.
+if [[ -n "$DESTINATION_OVERRIDE" ]]; then
+  DESTINATION="$DESTINATION_OVERRIDE"
+  SIMULATOR_BOOT_SELECTOR="${DEVICE_OVERRIDE:-$DEFAULT_SIMULATOR}"
+elif [[ -n "$DEVICE_OVERRIDE" ]]; then
+  SIMULATOR_BOOT_SELECTOR="$DEVICE_OVERRIDE"
+  if [[ "$DEVICE_OVERRIDE" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+    DESTINATION="platform=iOS Simulator,id=$DEVICE_OVERRIDE"
+  else
+    DESTINATION="platform=iOS Simulator,name=$DEVICE_OVERRIDE"
+  fi
+else
+  DESTINATION="platform=iOS Simulator,name=$DEFAULT_SIMULATOR"
+  SIMULATOR_BOOT_SELECTOR="$DEFAULT_SIMULATOR"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -211,7 +238,20 @@ if [[ -n "$TEST_FILE" ]]; then
   else
     FILE_PATH="$TEST_DIR/$TEST_FILE"
   fi
-  [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE" >&2; exit 1; }
+  # Tolerant resolution: agents routinely pass a type/suite name ("FooTests")
+  # instead of the on-disk filename ("FooTests.swift"), since Swift convention
+  # makes them identical bar the extension. Fall back to appending .swift, then
+  # to a stem search under the test dir, before failing.
+  if [[ ! -f "$FILE_PATH" ]]; then
+    if [[ "$FILE_PATH" != *.swift && -f "$FILE_PATH.swift" ]]; then
+      FILE_PATH="$FILE_PATH.swift"
+    else
+      stem="$(basename "$TEST_FILE")"; stem="${stem%.swift}"
+      match="$(find "$TEST_DIR" -type f -name "$stem.swift" 2>/dev/null | head -1)"
+      [[ -n "$match" ]] && FILE_PATH="$match"
+    fi
+  fi
+  [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE (tried .swift suffix and stem search under $TEST_DIR)" >&2; exit 1; }
   while IFS= read -r flag; do
     [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
   done < <(discover_file_only_flags "$FILE_PATH" "" "$TEST_TARGET")
