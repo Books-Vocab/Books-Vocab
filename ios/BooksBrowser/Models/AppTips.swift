@@ -1,6 +1,6 @@
 //
 //  AppTips.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import SwiftUI

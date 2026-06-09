@@ -1,6 +1,6 @@
 //
 //  CompactTimeFormatting.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  詞彙複習進度的緊湊時間標籤格式化 —
 //  WordRowPresentation 與 WordDetailPresentation 共用，避免兩處邏輯 drift。

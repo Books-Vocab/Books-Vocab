@@ -1,6 +1,6 @@
 //
 //  NotebookStackMetrics.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Notebook 立體堆卡（`NotebookStackedCoverView`）的 magic number 集中地。
 //  對應 `docs/sop/ui-design.md` 規則：不可在 view 寫 magic number，

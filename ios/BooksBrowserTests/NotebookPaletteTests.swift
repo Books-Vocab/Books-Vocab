@@ -1,6 +1,6 @@
 //
 //  NotebookPaletteTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  鎖 NotebookPalette.darken HSB 計算正確性。
 //

@@ -1,6 +1,6 @@
 //
 //  ReaderMetrics.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Reader feature 專用版面參數(panel handle、settings sheet inset、option padding 等)。
 //  從 AppSkin.Metrics 遷出 —— 純幾何常數,語意原生於 Reader feature。

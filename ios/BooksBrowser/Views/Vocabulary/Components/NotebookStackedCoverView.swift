@@ -1,6 +1,6 @@
 //
 //  NotebookStackedCoverView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Editorial 立體堆卡 — 彩色封面 + cream 紙頁內頁的 notebook 隱喻。
 //  下層 ghost 用 `AppColors.paperLight/Sepia/SepiaDeep` 三階 cream 紙頁，

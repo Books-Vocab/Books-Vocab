@@ -1,6 +1,6 @@
 //
 //  ReviewModeSyncTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Spec for review-mode 後端化 Phase A2: 複習模式 mode + 自訂 SRS 參數從純
 //  UserDefaults 升級為三層(UserDefaults + iCloud KVS + 單一 mode_updated_at LWW)。

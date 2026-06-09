@@ -1,6 +1,6 @@
 //
 //  SubscriptionPresentation.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import StoreKit

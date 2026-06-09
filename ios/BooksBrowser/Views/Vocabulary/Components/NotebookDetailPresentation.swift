@@ -1,6 +1,6 @@
 //
 //  NotebookDetailPresentation.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  NotebookListView 的 detail/review 呈現分支 — 唯一的 today-review
 //  呈現入口（見 TodayReviewPhaseView 註解）。

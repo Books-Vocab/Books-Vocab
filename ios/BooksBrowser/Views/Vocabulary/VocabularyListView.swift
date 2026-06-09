@@ -1,6 +1,6 @@
 //
 //  VocabularyListView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Created by 陳亮宇 on 2026/2/24.
 //

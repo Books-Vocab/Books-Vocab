@@ -56,7 +56,7 @@
 			<key>NSUbiquitousContainerSupportedFolderLevels</key>
 			<string>Any</string>
 			<key>NSUbiquitousContainerName</key>
-			<string>BooksBrowser</string>
+			<string>Books &amp; Vocab</string>
 		</dict>
 	</dict>
 	<key>UIBackgroundModes</key>

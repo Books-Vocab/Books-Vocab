@@ -1,6 +1,6 @@
 //
 //  AppCrashReporting.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Sentry crash + error reporting bootstrap.
 //  No-op until the sentry-cocoa SPM package is added to the project

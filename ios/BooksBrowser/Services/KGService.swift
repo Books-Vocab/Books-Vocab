@@ -1,6 +1,6 @@
 //
 //  KGService.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Knowledge Graph API client — communicates with the KG FastAPI server.
 //

@@ -1,6 +1,6 @@
 //
 //  BackgroundSyncActor.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Created for safe off-main-thread SwiftData operations during sync.
 //

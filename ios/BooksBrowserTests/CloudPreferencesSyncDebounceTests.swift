@@ -1,6 +1,6 @@
 //
 //  CloudPreferencesSyncDebounceTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Spec for PR #625 synchronize() storm regression fix (Track 7 throttle).
 //

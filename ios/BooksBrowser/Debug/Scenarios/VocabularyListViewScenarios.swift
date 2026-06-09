@@ -1,6 +1,6 @@
 //
 //  VocabularyListViewScenarios.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Catalog scenarios for `VocabularyListView` (a notebook's recorded vocab list).
 //

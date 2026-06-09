@@ -1,6 +1,6 @@
 //
 //  CardMarkdownParserTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Characterization tests for two zero-test pure-logic types in the Vocabulary
 //  card rendering pipeline:

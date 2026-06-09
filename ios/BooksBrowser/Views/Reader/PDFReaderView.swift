@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  PDFReaderView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  PDFKit 原生渲染 + 詞彙捕捉整合
 //

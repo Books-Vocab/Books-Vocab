@@ -1,6 +1,6 @@
 //
 //  VocabularyExporterPOSTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Guards that partOfSpeech is actually emitted in every export format.
 //  Regression: CSV header advertised "Part of Speech" but the value was

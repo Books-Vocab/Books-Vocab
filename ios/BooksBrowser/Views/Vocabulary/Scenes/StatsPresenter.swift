@@ -1,6 +1,6 @@
 //
 //  StatsPresenter.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  學習統計儀表板場景。
 //

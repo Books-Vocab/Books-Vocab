@@ -1,6 +1,6 @@
 //
 //  KGService+Notebook.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Notebook CRUD API calls
 

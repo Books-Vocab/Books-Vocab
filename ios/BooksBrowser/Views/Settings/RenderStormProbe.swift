@@ -1,6 +1,6 @@
 //
 //  RenderStormProbe.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  DEBUG-only diagnostic for SwiftUI body re-evaluation storms.
 //  Filter Xcode console by category "RenderStorm" — emits at most one

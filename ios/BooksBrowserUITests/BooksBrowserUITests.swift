@@ -1,6 +1,6 @@
 //
 //  BooksBrowserUITests.swift
-//  BooksBrowserUITests
+//  Books & Vocab UI Tests
 //
 //  Created by 陳亮宇 on 2026/2/24.
 //

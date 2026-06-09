@@ -1,6 +1,6 @@
 //
 //  ListSectionCard.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  扁平列表的共用卡片容器（VStack(spacing:0) + cardBackground fill + cardBorder
 //  stroke）。podcast 集數列表與單字列表共同骨架。divider 由 caller 在 ForEach

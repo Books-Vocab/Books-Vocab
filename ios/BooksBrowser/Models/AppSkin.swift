@@ -1,6 +1,6 @@
 //
 //  AppSkin.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  全 app 共用的 feature-level UI Token 層（顏色、字型、圓角、間距、metrics）。
 //  ─────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 //
 //  PodcastHomeView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  播客首頁 — 獨立頂層 section（軸 B Phase 3）。
 //

@@ -1,6 +1,6 @@
 //
 //  NetworkUtils.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  共用網路工具：統一 URLSession（8s timeout）+ exponential backoff retry
 //

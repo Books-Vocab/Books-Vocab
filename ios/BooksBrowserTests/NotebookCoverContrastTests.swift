@@ -1,6 +1,6 @@
 //
 //  NotebookCoverContrastTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  D1 editorial cover composition AA contrast 鎖回歸:
 //  - light mode: primaryText `#37352F` 對 Morandi 12 色 cover ≥ 4.5:1

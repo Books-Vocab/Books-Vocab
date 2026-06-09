@@ -1,6 +1,6 @@
 //
 //  ReviewClockSyncTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Spec for pause-clock 後端化 Phase 2: pause review clock 從純 UserDefaults
 //  升級為三層(UserDefaults + iCloud KVS + 單一 updated_at LWW)。is_paused 與

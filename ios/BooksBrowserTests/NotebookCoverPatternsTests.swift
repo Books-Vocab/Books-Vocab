@@ -1,6 +1,6 @@
 //
 //  NotebookCoverPatternsTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Pins the `NotebookCoverPattern` enum's public surface. Raw values are
 //  persisted to `coverPattern: String?` on notebook / podcast-series rows

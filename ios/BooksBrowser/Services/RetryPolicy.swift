@@ -1,6 +1,6 @@
 //
 //  RetryPolicy.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Retry behavior config for KG authenticated requests.
 //

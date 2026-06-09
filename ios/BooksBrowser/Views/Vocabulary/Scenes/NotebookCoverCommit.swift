@@ -1,6 +1,6 @@
 //
 //  NotebookCoverCommit.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Notebook 封面圖（device-local，不上 server）的「提交 / 回滾」原子操作。
 //

@@ -1,6 +1,6 @@
 //
 //  GraphWebView+JSEscape.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Graph WKWebView 注入 JSON 至單引號 JS 字串字面值前的跳脫。
 //  集中為單一定義，避免各 Coordinator 各寫一份導致跳脫順序 drift（injection-safety）。

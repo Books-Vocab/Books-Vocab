@@ -1,6 +1,6 @@
 //
 //  CardCopyContextMenu.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  卡片區塊「長按 → 複製」的共用互動。Example / Meaning / Source 三個
 //  CardDocument*Block 原本各自重複「@State copyTrigger + contextMenu 複製按鈕 +
