@@ -13,7 +13,7 @@ final class NetworkMonitor: @unchecked Sendable {
     static let shared = NetworkMonitor()
 
     private let monitor = NWPathMonitor()
-    private let monitorQueue = DispatchQueue(label: "com.wordnexus.NetworkMonitor")
+    private let monitorQueue = DispatchQueue(label: BrandIdentity.networkMonitorQueueLabel)
 
     /// 目前是否有網路連線（Wi-Fi / Cellular / Ethernet）
     var isConnected: Bool = true

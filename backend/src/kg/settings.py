@@ -7,8 +7,12 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
+DEFAULT_PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
+_GOOGLE_WEB_CALLBACK_PATH = "/auth/web/google/callback"
+_APPLE_WEB_CALLBACK_PATH = "/auth/web/apple/callback"
+
 _DEFAULT_CORS: tuple[str, ...] = (
-    "https://wordnexus.lol",
+    DEFAULT_PUBLIC_WEB_BASE_URL,
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 )
@@ -18,11 +22,12 @@ _DEFAULT_CORS: tuple[str, ...] = (
 class KGSettings:
     data_dir: Path
     jwt_secret: str
+    public_web_base_url: str = DEFAULT_PUBLIC_WEB_BASE_URL
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 60 * 24 * 7
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_redirect_uri: str = "https://wordnexus.lol/auth/web/google/callback"
+    google_redirect_uri: str = DEFAULT_PUBLIC_WEB_BASE_URL + _GOOGLE_WEB_CALLBACK_PATH
     chrome_extension_id: str = ""
     apple_bundle_id: str = "com.Max0228.BooksAndVocab"
     apple_service_id: str = "com.Max0228.BooksAndVocab.web"
@@ -95,6 +100,10 @@ class KGSettings:
     def app_store_notifications_file(self) -> Path:
         return self.data_dir / "app_store_notifications.ndjson"
 
+    @property
+    def apple_redirect_uri(self) -> str:
+        return self.public_web_base_url.rstrip("/") + _APPLE_WEB_CALLBACK_PATH
+
 
 def _env_truthy(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
@@ -152,11 +161,15 @@ def load_settings() -> KGSettings:
     return KGSettings(
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
         jwt_secret=jwt_secret,
+        public_web_base_url=os.getenv("PUBLIC_WEB_BASE_URL", DEFAULT_PUBLIC_WEB_BASE_URL).rstrip("/"),
         embedding_model=os.getenv("EMBEDDING_MODEL", "gemini-embedding-2-preview"),
         embedding_dim=_env_int("EMBEDDING_DIM", 3072),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
-        google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "https://wordnexus.lol/auth/web/google/callback"),
+        google_redirect_uri=os.getenv(
+            "GOOGLE_REDIRECT_URI",
+            DEFAULT_PUBLIC_WEB_BASE_URL + _GOOGLE_WEB_CALLBACK_PATH,
+        ),
         chrome_extension_id=os.getenv("CHROME_EXTENSION_ID", ""),
         apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksAndVocab"),
         apple_service_id=os.getenv("APPLE_SERVICE_ID", "com.Max0228.BooksAndVocab.web"),
