@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from contextvars import ContextVar
-from types import SimpleNamespace
+from dataclasses import replace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient

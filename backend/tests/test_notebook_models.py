@@ -14,7 +14,6 @@ from kg.api_models.notebook import (
     NotebookUpdateRequest,
 )
 
-
 # --- cover_pattern whitelist ---
 
 @pytest.mark.parametrize("pattern", sorted(VALID_COVER_PATTERNS))

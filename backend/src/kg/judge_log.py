@@ -154,7 +154,7 @@ def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) 
             ).fetchall()
     result = []
     for row in rows:
-        d = dict(zip(_LOG_COLS, row))
+        d = dict(zip(_LOG_COLS, row, strict=True))
         d["accepted"] = bool(d["accepted"])
         result.append(d)
     return result

@@ -29,16 +29,6 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 
 _mem_log = install_memory_log_handler(maxlen=1000)
 
-from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
-from .app_lifespan import AppLifespanDependencies, build_app_lifespan_from_dependencies
-from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
-from .app_middleware import AppMiddlewareDependencies, _anon_rate_limit_key, install_app_middlewares_from_dependencies
-from .app_exception_handlers import (
-    AppExceptionHandlerDependencies,
-    _redact_validation_body,
-    _redact_validation_payload,
-    install_app_exception_handlers_from_dependencies,
-)
 from .api_compat import *  # noqa: F401,F403 - stable kg.api compatibility surface
 from .api_compat import (
     _build_entitlements_response,
@@ -46,6 +36,14 @@ from .api_compat import (
     _current_admin_grant_record,
     _default_subscription_payload,
 )
+from .app_exception_handlers import (
+    AppExceptionHandlerDependencies,
+    install_app_exception_handlers_from_dependencies,
+)
+from .app_lifespan import AppLifespanDependencies, build_app_lifespan_from_dependencies
+from .app_middleware import AppMiddlewareDependencies, install_app_middlewares_from_dependencies
+from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
+from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
 from .rate_limit import api_limiter, translate_limiter
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings

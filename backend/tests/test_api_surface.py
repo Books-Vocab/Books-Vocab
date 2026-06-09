@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt as pyjwt
 import pytest
-from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.auth as auth_router_mod
 import kg.routers.vocab as vocab_router_mod
+from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, _swap_settings, make_jwt
 from kg.api import app
 from kg.graph import LinkKind
 from kg.settings import KGSettings

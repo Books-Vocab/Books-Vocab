@@ -7,12 +7,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.user as user_router_mod
+from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import _mem_log, app
 from kg.request_context import request_id_var
 from kg.settings import KGSettings

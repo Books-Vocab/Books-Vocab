@@ -14,8 +14,8 @@ from .graph import GraphStore
 from .graph_event_log import GraphEventStore, GraphSnapshotStore
 from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
-from .review_events import ReviewEventStore
 from .ops_shared import NOTEBOOK_FILE_SPECS
+from .review_events import ReviewEventStore
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ def _resolve_notebook_paths(
         raise ValueError(f"Invalid notebook_id: {notebook_id!r}")
     paths = [user_dir / tmpl.format(nb=notebook_id) for tmpl, _ in file_specs]
     if notebook_id == "default":
-        for (_, legacy_name), target in zip(file_specs, paths):
+        for (_, legacy_name), target in zip(file_specs, paths, strict=True):
             _migrate_legacy_file(user_dir / legacy_name, target)
     return paths
 

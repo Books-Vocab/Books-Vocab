@@ -18,7 +18,6 @@ from kg.admin_trends import (
     collect_trends,
 )
 
-
 # ---- _date_range -----------------------------------------------------------
 
 def test_date_range_length_matches_window_days():

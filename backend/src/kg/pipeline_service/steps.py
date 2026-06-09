@@ -48,8 +48,8 @@ async def _step_enrich(
         logger.info("[%s] All cards already enriched", uid)
         return 0
 
-    from ..enrich import enrich_cards_stream
     from ..deps_quota import _is_pro
+    from ..enrich import enrich_cards_stream
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
 
@@ -109,8 +109,8 @@ async def _step_embed_and_judge(
     notebook_id: str = "default",
 ) -> int:
     """Combined embed + judge step. Replaces _step_embed + _step_link."""
-    from ..judge import Judge
     from ..deps_quota import _is_pro
+    from ..judge import Judge
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
     is_pro = _is_pro(user)

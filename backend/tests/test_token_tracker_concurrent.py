@@ -25,7 +25,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def _reset_token_tracker(tmp_path, monkeypatch) -> module:  # type: ignore[name-defined]
+def _reset_token_tracker(tmp_path, monkeypatch):
     """Point token_tracker at a fresh DB under tmp_path and clear singleton."""
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import kg.token_tracker as tt

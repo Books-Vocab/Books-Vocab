@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import tarfile
 from collections.abc import Callable
 from datetime import UTC, datetime
