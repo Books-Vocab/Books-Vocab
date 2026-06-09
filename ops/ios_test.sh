@@ -1023,7 +1023,7 @@ count_executed_tests_xcresult() {
   local n
   [[ -n "$RESULT_BUNDLE" && -d "$RESULT_BUNDLE" ]] || return 1
   n="$("$SCRIPT_DIR/ios_diagnostics.py" --kind test --xcresult "$RESULT_BUNDLE" --json 2>/dev/null \
-    | jq -r '.counts.tests // empty' 2>/dev/null)"
+    | jq -r '.counts.effectiveTests // (.counts.passedTests + .counts.failedTests + .counts.expectedFailures) // empty' 2>/dev/null)"
   [[ "$n" =~ ^[0-9]+$ ]] || return 1
   echo "$n"
 }
@@ -1068,6 +1068,34 @@ populate_timing_breakdown() {
 
 print_timing_summary() {
   echo "[ios_test] timings cacheStatus=$CACHE_STATUS uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} deviceRunLockWaitMs=$DEVICE_RUN_LOCK_WAIT_MS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS appLaunchAverageMs=$APP_LAUNCH_AVERAGE_MS appLaunchSamples=$APP_LAUNCH_SAMPLES invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
+}
+
+emit_ui_runner_lifecycle() {
+  [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
+  local device="${SIMULATOR_BOOT_SELECTOR:-}" safe_device screenshot_path
+  [[ -n "$device" ]] || return 0
+
+  echo "[ios_test][ui-lifecycle] destination=$DESTINATION device=$device" >&2
+  xcrun simctl list devices available 2>/dev/null \
+    | grep -F "$device" \
+    | sed 's/^/[ios_test][ui-lifecycle] device-state /' >&2 || true
+  xcrun simctl spawn "$device" launchctl print user/501/com.apple.testmanagerd 2>/dev/null \
+    | awk '
+        /state =|pid =|runs =|last exit code =|active count =/ {
+          gsub(/^[[:space:]]+/, "", $0)
+          print "[ios_test][ui-lifecycle] testmanagerd " $0
+        }
+      ' >&2 || echo "[ios_test][ui-lifecycle] testmanagerd unavailable" >&2
+  xcrun simctl spawn "$device" /bin/ps -axo pid,ppid,stat,comm,args 2>/dev/null \
+    | grep -E 'BooksAndVocab|UITests-Runner|testmanagerd' \
+    | sed 's/^/[ios_test][ui-lifecycle] process /' >&2 || echo "[ios_test][ui-lifecycle] process none" >&2
+  safe_device="$(printf '%s' "$device" | tr -c '[:alnum:]._- ' '_')"
+  screenshot_path="${TMPDIR:-/tmp}/kg_ios_ui_lifecycle_${safe_device}_$$.png"
+  if xcrun simctl io "$device" screenshot "$screenshot_path" >/dev/null 2>&1; then
+    echo "[ios_test][ui-lifecycle] screenshot=$screenshot_path" >&2
+  else
+    echo "[ios_test][ui-lifecycle] screenshot unavailable" >&2
+  fi
 }
 
 # Machine-readable verdict file — survives even when stdout/stderr is piped
@@ -1157,6 +1185,7 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     echo ""
     echo "[ios_test] ✗ FALSE GREEN: xcodebuild reported TEST SUCCEEDED but 0 tests executed" >&2
     echo "[ios_test]   (likely a stale/bogus -only-testing test ID matched nothing) — $CALLER" >&2
+    emit_ui_runner_lifecycle
     echo "RESULT=fail reason=false-green-0-executed caller=$CALLER log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
     write_json_verdict "fail" "1" "false-green-0-executed" "0"
     rm -f "$TMPOUT"
@@ -1176,6 +1205,7 @@ elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
   echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "fail" "1" "tests-failed" ""
   print_timing_summary
+  emit_ui_runner_lifecycle
   echo "[ios_test] ✗ tests failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
@@ -1194,6 +1224,7 @@ else
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
   print_timing_summary
+  emit_ui_runner_lifecycle
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2

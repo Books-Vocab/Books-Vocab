@@ -798,6 +798,12 @@ grep -q -- '--kind test' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test reads xcresult test-results" || fail_t "ios_test missing --kind test diagnostics"
 grep -q 'count_executed_tests_xcresult' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test counts executed tests from xcresult first" || fail_t "ios_test missing xcresult executed-count path"
+grep -q 'effectiveTests' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test treats skipped-only xcresult summaries as non-executed" || fail_t "ios_test still counts skipped-only summaries as executed"
+grep -q 'emit_ui_runner_lifecycle' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q '\[ios_test\]\[ui-lifecycle\]' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'screenshot=' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test emits UI runner lifecycle diagnostics on abnormal UI outcomes" || fail_t "ios_test missing UI runner lifecycle diagnostics"
 grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'build-for-testing' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
