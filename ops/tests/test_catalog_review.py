@@ -22,6 +22,9 @@ load_module("catalog_review_taxonomy", ROOT / "ops" / "catalog_review_taxonomy.p
 manifest_module = load_module("catalog_review_manifest", ROOT / "ops" / "catalog_review_manifest.py")
 profile_module = load_module("catalog_review_profile", ROOT / "ops" / "catalog_review_profile.py")
 state_module = load_module("catalog_review_state", ROOT / "ops" / "catalog_review_state.py")
+renderer_module = load_module("catalog_review_renderer", ROOT / "ops" / "catalog_review_renderer.py")
+load_module("catalog_review_sync", ROOT / "ops" / "catalog_review_sync.py")
+render_entry_module = load_module("render_catalog_review", ROOT / "ops" / "render_catalog_review.py")
 build_asset_id = manifest_module.build_asset_id
 REVIEW_CLI = ROOT / "ops" / "catalog_review_cli.py"
 
@@ -539,9 +542,82 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
     review_state = json.loads((tmp_path / "out" / "review_state.json").read_text(encoding="utf-8"))
     assert review_state["entries"][expected_asset_id]["status"] == "review"
     review_html = (tmp_path / "out" / "review.html").read_text(encoding="utf-8")
-    assert "KG UI Asset Gallery" in review_html
-    assert "Feature" in review_html
-    assert "Eligibility" in review_html
+    assert "KG UI Gallery" in review_html
+    # three-bucket lane model is the gallery's primary segmentation
+    assert "畫面" in review_html and "浮層" in review_html and "組件" in review_html
+    # the heuristic curation layer is NOT surfaced in the gallery view
+    assert "Eligibility" not in review_html
+    assert "Quality tier" not in review_html
+
+
+def test_render_html_is_three_bucket_and_curation_free():
+    """The gallery view surfaces only the source-declared axes (feature → surface
+    → state → shot + three-bucket lane). The heuristic curation layer that still
+    lives in the manifest for the CLI workflow (eligibility / qualityTier / hero /
+    promise / coverage facets / review-state) must NOT leak into the rendered UI."""
+    manifest = {
+        "surfaces": [
+            {"surfaceKey": "reader-foo", "surface": "Foo", "surfaceGroup": "G",
+             "feature": "Reader", "lane": "feature-surface", "shotCount": 2},
+        ],
+        "items": [
+            {"surfaceKey": "reader-foo", "clusterID": "c", "stateLabel": "Default",
+             "relPath": "a.png", "width": 10, "height": 20, "assetID": "id1", "appearance": "light"},
+            {"surfaceKey": "reader-foo", "clusterID": "c", "stateLabel": "Default",
+             "relPath": "b.png", "width": 10, "height": 20, "assetID": "id2", "appearance": "dark"},
+        ],
+        "featureCounts": {"Reader": 1}, "sceneCount": 1, "totalImages": 2,
+        "laneCounts": {"feature-surface": 2},
+    }
+    html = renderer_module.render_html(manifest)
+    assert "__MANIFEST__" not in html                      # data hole filled
+    # three-bucket lane labels + /admin design tokens present
+    for token in ["畫面", "浮層", "組件", "工程", "KG UI Gallery", "JetBrains+Mono", "--ink: #2a2520"]:
+        assert token in html, f"missing {token}"
+    # curation UI must be absent from the gallery chrome
+    for banned in ["Eligibility", "Quality tier", "Coverage", "qualityTier",
+                   "stateFacet", "facet-rail", "再看"]:
+        assert banned not in html, f"curation leak: {banned}"
+
+
+def test_render_html_escapes_breakout_sequences():
+    """The manifest is embedded inside a <script>; </script> and the JS line
+    separators U+2028/U+2029 inside string values must be neutralised so the
+    payload can't break out of the tag or the JS string parser."""
+    sep_2028, sep_2029 = chr(0x2028), chr(0x2029)
+    manifest = {
+        "surfaces": [], "items": [], "featureCounts": {}, "sceneCount": 0, "totalImages": 0,
+        "laneCounts": {}, "evil": "</script><b>" + sep_2028 + sep_2029,
+    }
+    html = renderer_module.render_html(manifest)
+    assert "</script><b>" not in html                      # tag-breakout neutralised
+    assert "\\u003c/script\\u003e\\u003cb\\u003e" in html    # evil payload < > escaped
+    assert sep_2028 not in html and sep_2029 not in html    # raw separators gone
+    assert "\\u2028" in html and "\\u2029" in html           # escaped forms present
+
+
+def test_gallery_requires_source_declared_when_index_present(tmp_path: Path):
+    """Presence-gated fail-loud: an index present means it's the source of truth
+    and must be complete; a no-index source is explicit legacy mode (no enforce)."""
+    require = render_entry_module._require_source_declared
+    src = tmp_path / "src"
+    src.mkdir()
+    items = [{"category": "Foo", "sourceDeclared": True},
+             {"category": "Bar", "sourceDeclared": False}]
+
+    # no index file → legacy fallback, never raises
+    require(items, src)
+
+    # index present but a rendered category is undeclared → drift → raise, named
+    (src / "catalog_index.json").write_text(json.dumps({"version": 1, "surfaces": {}}), encoding="utf-8")
+    try:
+        require(items, src)
+        raise AssertionError("expected SystemExit for undeclared surface")
+    except SystemExit as exc:
+        assert "Bar" in str(exc) and "Foo" not in str(exc)
+
+    # index present and every rendered category declared → passes
+    require([{"category": "Foo", "sourceDeclared": True}], src)
 
 
 def test_catalog_review_cli_gaps_query(tmp_path: Path):
