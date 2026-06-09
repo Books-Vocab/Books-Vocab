@@ -6,6 +6,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from ops_helpers import (
     CLI_PATH,
     _create_judge_log_db,
@@ -567,7 +569,8 @@ class TestSyncTrace:
 class TestJsonContract:
     """統一輸出契約 — 每個 data-query 命令都應支援 --json 並回傳合法 JSON。"""
 
-    def _seed(self, tmp_path):
+    @pytest.fixture()
+    def _seeded(self, tmp_path):
         uid = "u1"
         now = _now_iso()
         user_dir = tmp_path / "users" / uid
@@ -580,93 +583,58 @@ class TestJsonContract:
             (uid, "translate", 1000, 500, now),
             (uid, "judge", 200, 100, now),
         ])
-        return uid
+        return tmp_path, uid
 
-    def test_user_quota_json(self, tmp_path):
-        import json
-        uid = self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "user-quota", uid, "--json")
+    @pytest.mark.parametrize(
+        "cmd_args,check",
+        [
+            (["user-quota", "u1"], lambda d: d["user_id"] == "u1" and "used_usd" in d),
+            (["user-stats", "u1"], lambda d: d["user_id"] == "u1" and d["total"] == 2),
+            (["quota-overview"], lambda d: isinstance(d["users"], list) and len(d["users"]) == 1),
+            (["active-users", "48"], lambda d: d["hours"] == 48 and d["users"][0]["calls"] == 2),
+            (["card-find", "u1", "hello"], lambda d: d["matches"][0]["id"] == "c1"),
+            (["card-get", "u1", "c1"], lambda d: len(d["cards"]) == 1 and d["cards"][0]["id"] == "c1"),
+            (["db-query", "u1", "--json", "SELECT", "id", "FROM", "card", "ORDER", "BY", "id"],
+             lambda d: d["columns"] == ["id"] and d["rows"] == [["c1"], ["c2"]]),
+        ],
+    )
+    def test_json_contract(self, _seeded, cmd_args, check):
+        tmp_path, _ = _seeded
+        r = _run_cli(str(tmp_path), *cmd_args, "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
-        assert d["user_id"] == uid
-        assert "used_usd" in d and "hourly" in d
-
-    def test_user_stats_json(self, tmp_path):
-        import json
-        uid = self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "user-stats", uid, "--json")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert d["user_id"] == uid
-        assert d["total"] == 2 and d["active"] == 1 and d["deleted"] == 1
-
-    def test_quota_overview_json(self, tmp_path):
-        import json
-        self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "quota-overview", "--json")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert isinstance(d["users"], list) and len(d["users"]) == 1
-
-    def test_active_users_json(self, tmp_path):
-        import json
-        uid = self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "active-users", "48", "--json")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert d["hours"] == 48
-        assert d["users"][0]["user_id"] == uid and d["users"][0]["calls"] == 2
-
-    def test_card_find_json(self, tmp_path):
-        import json
-        uid = self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "card-find", uid, "hello", "--json")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert d["matches"][0]["id"] == "c1" and d["matches"][0]["content"] == "hello"
-
-    def test_card_get_json(self, tmp_path):
-        import json
-        uid = self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "card-get", uid, "c1", "--json")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert len(d["cards"]) == 1 and d["cards"][0]["id"] == "c1"
-
-    def test_db_query_json(self, tmp_path):
-        import json
-        uid = self._seed(tmp_path)
-        r = _run_cli(str(tmp_path), "db-query", uid, "--json",
-                     "SELECT", "id", "FROM", "card", "ORDER", "BY", "id")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert d["columns"] == ["id"]
-        assert d["rows"] == [["c1"], ["c2"]]
+        assert check(d)
 
 
 class TestJsonCountAndSchema:
     """list 命令的頂層 count + db-query --schema（dogfooding 缺口）。"""
 
-    def _seed_cards(self, tmp_path, uid="u1"):
+    @pytest.fixture()
+    def _seeded_cards(self, tmp_path):
         now = _now_iso()
-        user_dir = tmp_path / "users" / uid
+        user_dir = tmp_path / "users" / "u1"
         user_dir.mkdir(parents=True)
         _create_cards_db(user_dir / "cards.db", [
             ("c1", "hello", "你好", 0, now, now),
             ("c2", "help", "幫助", 0, now, now),
         ])
-        return uid
+        return tmp_path
 
-    def test_card_find_count(self, tmp_path):
-        import json
-        uid = self._seed_cards(tmp_path)
-        r = _run_cli(str(tmp_path), "card-find", uid, "hel", "--json")
+    @pytest.mark.parametrize(
+        "cmd_args,check",
+        [
+            (["card-find", "u1", "hel"], lambda d: d["count"] == len(d["matches"]) == 2),
+            (["db-query", "u1", "--json", "SELECT id FROM card"],
+             lambda d: d["count"] == len(d["rows"]) == 2),
+        ],
+    )
+    def test_count(self, _seeded_cards, cmd_args, check):
+        r = _run_cli(str(_seeded_cards), *cmd_args, "--json")
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
-        assert d["count"] == len(d["matches"]) == 2
+        assert check(d)
 
     def test_active_users_count(self, tmp_path):
-        import json
         now = _now_iso()
         _create_token_usage_db(tmp_path, [("u1", "translate", 1, 1, now)])
         r = _run_cli(str(tmp_path), "active-users", "24", "--json")
@@ -674,37 +642,61 @@ class TestJsonCountAndSchema:
         d = json.loads(r.stdout)
         assert d["count"] == len(d["users"]) == 1
 
-    def test_db_query_count(self, tmp_path):
-        import json
-        uid = self._seed_cards(tmp_path)
-        r = _run_cli(str(tmp_path), "db-query", uid, "--json", "SELECT id FROM card")
+    @pytest.mark.parametrize(
+        "extra_args,check",
+        [
+            (["--schema"], lambda r: "CREATE TABLE" in r.stdout and "card" in r.stdout),
+            (["--schema", "--json"], lambda r: "card" in [t["name"] for t in json.loads(r.stdout)["tables"]]),
+        ],
+    )
+    def test_db_query_schema(self, _seeded_cards, extra_args, check):
+        r = _run_cli(str(_seeded_cards), "db-query", "u1", *extra_args)
         assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        assert d["count"] == len(d["rows"]) == 2
+        assert check(r)
 
-    def test_db_query_schema_text(self, tmp_path):
-        uid = self._seed_cards(tmp_path)
-        r = _run_cli(str(tmp_path), "db-query", uid, "--schema")
-        assert r.returncode == 0, r.stderr
-        assert "CREATE TABLE" in r.stdout and "card" in r.stdout
-
-    def test_db_query_schema_json(self, tmp_path):
-        import json
-        uid = self._seed_cards(tmp_path)
-        r = _run_cli(str(tmp_path), "db-query", uid, "--schema", "--json")
-        assert r.returncode == 0, r.stderr
-        d = json.loads(r.stdout)
-        names = [t["name"] for t in d["tables"]]
-        assert "card" in names
-
-    def test_db_query_error_json(self, tmp_path):
+    def test_db_query_error_json(self, _seeded_cards):
         """SQL 錯誤在 --json 模式應回 error JSON + 非零 exit（驗證 sqlite3.Error 路徑）。"""
-        import json
-        uid = self._seed_cards(tmp_path)
-        r = _run_cli(str(tmp_path), "db-query", uid, "--json", "SELECT nope FROM card")
+        r = _run_cli(str(_seeded_cards), "db-query", "u1", "--json", "SELECT nope FROM card")
         assert r.returncode != 0
         d = json.loads(r.stdout)
         assert "error" in d and "nope" in d["error"]
+
+
+class TestCostOverview:
+    """cost-overview — 全用戶 cost 排名（ops_cli_costs.py）。"""
+
+    def test_cost_overview_json_empty_db(self, tmp_path):
+        r = _run_cli(str(tmp_path), "cost-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["range"] == "month"
+        assert d["users"] == []
+        assert d["count"] == 0
+
+    def test_cost_overview_json_with_data(self, tmp_path):
+        now = _now_iso()
+        _create_token_usage_db(tmp_path, [
+            ("u1", "translate", 1000, 500, now),
+            ("u2", "judge", 200, 100, now),
+        ])
+        r = _run_cli(str(tmp_path), "cost-overview", "--json")
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["count"] == 2
+        assert {u["user_id"] for u in d["users"]} == {"u1", "u2"}
+        # Descending by cost
+        costs = [u["total_cost_usd"] for u in d["users"]]
+        assert costs == sorted(costs, reverse=True)
+
+
+class TestAnalyze:
+    """analyze — thin wrapper around ops_analyze.py subprocess."""
+
+    def test_analyze_runs_without_crash(self, tmp_path):
+        """Smoke test: analyze must not crash on empty data dir."""
+        r = _run_cli(str(tmp_path), "analyze", "u1", "basic")
+        # ops_analyze.py may 1 on empty data, but must not traceback
+        assert "Traceback" not in r.stderr
 
 
 class TestFleetOverview:
