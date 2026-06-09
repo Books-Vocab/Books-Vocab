@@ -2,17 +2,7 @@
 # ios_ops_simulator.sh — sourceable simulator status/screenshot commands for ios_ops.sh.
 
 simulator_now_ms() {
-  if python3 - <<'PY' >/dev/null 2>&1; then
-import time
-print(int(time.time() * 1000))
-PY
-    python3 - <<'PY'
-import time
-print(int(time.time() * 1000))
-PY
-  else
-    perl -MTime::HiRes=time -e 'printf "%.0f\n", time()*1000'
-  fi
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time()*1000'
 }
 
 file_size_bytes() {

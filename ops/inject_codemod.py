@@ -13,8 +13,8 @@ under Debug/Readium/PDFReader paths, structs already annotated, `#Preview {}`
 blocks, and bodies starting with if/switch/return (logged for manual Phase B).
 
 Usage:
-    python3 ops/inject_codemod.py --dry-run --report
-    python3 ops/inject_codemod.py --apply [--scope Welcome]
+    ./ops/inject_codemod.py --dry-run --report
+    ./ops/inject_codemod.py --apply [--scope Welcome]
 """
 
 from __future__ import annotations

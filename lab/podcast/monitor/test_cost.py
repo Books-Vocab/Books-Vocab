@@ -10,7 +10,7 @@ resolves to the longest (most specific) matching key regardless of order.
 cost.py is stdlib-only, so no extra --with deps are needed.
 
 Run:
-    cd lab/podcast && uv run pytest monitor/test_cost.py -v
+    cd lab/podcast && uv run --with pytest python -m pytest monitor/test_cost.py -v
 """
 from __future__ import annotations
 

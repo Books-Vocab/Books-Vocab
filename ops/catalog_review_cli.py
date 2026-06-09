@@ -1,4 +1,4 @@
-#!/usr/bin/env -S /Users/chenliangyu/.local/bin/uv run --python 3.13 python
+#!/usr/bin/env -S uv run --python 3.13 python
 from __future__ import annotations
 
 from catalog_review_cli_maintenance import cmd_doctor, cmd_doctor_shortcut, cmd_repair, cmd_verify

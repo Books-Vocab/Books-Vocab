@@ -3,7 +3,7 @@
 Run via the backend uv env (has pytest + boto3); the script itself takes an
 injected S3 client so these tests stub it with unittest.mock — no moto needed.
 
-    uv run --project backend pytest ops/tests/test_podcast_backfill_disk.py -v
+    uv run --project backend python -m pytest ops/tests/test_podcast_backfill_disk.py -v
 """
 from __future__ import annotations
 
