@@ -70,7 +70,7 @@ final class BooksAndVocabUITests: XCTestCase {
         settings.assertIsPresented()
 
         let _ = settings.dismiss()
-        settings.navBar.assertDoesNotExist()
+        settings.closeButton.assertDoesNotExist()
     }
 
     @MainActor
