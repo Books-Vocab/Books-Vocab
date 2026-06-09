@@ -143,6 +143,8 @@ struct BookManifestStore {
         if incoming.originalFileName == nil, let original = existing.originalFileName {
             result.originalFileName = original
         }
+        // 保留既有 dateAdded；只有 existing 完全缺值時才用 incoming（新書首寫）。
+        result.dateAdded = existing.dateAdded
         return result
     }
 
