@@ -34,7 +34,7 @@ struct FixtureDatasetStoreTests {
                 "showAutoSync": true
               },
               "kg": {
-                "serverURL": TestBrandIdentity.publicBaseURL,
+                "serverURL": "\(TestBrandIdentity.publicBaseURL)",
                 "isConnected": true,
                 "connectionPulse": false,
                 "serverCardCount": 240,
