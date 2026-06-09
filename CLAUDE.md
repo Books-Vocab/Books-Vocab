@@ -22,27 +22,27 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 
 ```
 # 唯讀查詢
-uv run ops/ops_cli.py <subcommand> [args]
+(cd backend && uv run python ops_cli.py <subcommand> [args])
 
 # 寫入（dry-run 預設，--commit 才落地）
-uv run ops/ops_edit.py <subcommand> [args]
+(cd backend && uv run python ops_edit.py <subcommand> [args])
 ```
 
-不確定有哪些子指令 → `uv run ops/ops_cli.py --help` / `uv run ops/ops_edit.py --help`。完整子指令表與安全契約在 `devops` skill 內。
+不確定有哪些子指令 → `(cd backend && uv run python ops_cli.py --help)` / `(cd backend && uv run python ops_edit.py --help)`。生產資料操作仍優先走 `./ops/devops_kg_safe.sh ops-cli|ops-edit ...`;完整子指令表與安全契約在 `devops` skill 內。
 
 ## llm_eval 工具（always-on）
 
 LLM prompt 評估 / 語料管理統一入口：
 
 ```
-uv run lab/llm_eval/cli.py <subcommand> [args]
+cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 ```
 
 子指令：`eval` / `prompts` / `datasets` / `providers` / `corpus-build` / `gold-queue`。`--help` 查完整用法。**禁止讀 llm_eval/*.py 原始碼後自行拼 API 呼叫**。
 
 ## 對話啟動流程
 
-1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合。
+1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合；若任務是新對話接手、找入口、跨 docs/ops/iOS/backend/podcast/release,優先觸發 `kg-router`。
 2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 3. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
 4. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
@@ -58,10 +58,13 @@ uv run lab/llm_eval/cli.py <subcommand> [args]
 - **coverage debt**:`./ops/docs_registry_coverage.py` 看哪些 linted docs 尚未進 registry,並分成 `active_unregistered`(應補進控制面)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt);`--strict` 只卡 active-doc 覆蓋 debt,不等同日常 gate。
 - **同步流程權威**:背景 doc-sync agent 讀 `docs/sop/doc_sync.md`;人工維護/狗食流程讀 `docs/sop/docs_dogfood.md`。
 
-## Skill 系統(KG 專屬 7 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 10 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
+| `kg-router` | 新對話接手 / 找入口 / 跨 docs、ops、iOS、backend、podcast、release 的任務 | 冷啟動路由：讀 capability matrix / docs registry / product+tech index,再載入最小必要 skill |
+| `kg-docs-control-plane` | docs impact / docs lint / registry / verified_against / agent-facing surface 同步 | 文檔控制面判讀與 gate |
+| `kg-receipt` | handoff / receipt / 驗證證據 / 任務收尾格式 | 固定輸出完成證據與下一輪接手資訊 |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
@@ -76,7 +79,7 @@ uv run lab/llm_eval/cli.py <subcommand> [args]
 - 觸發條件符合就**立即** `Skill()` 調用,不問使用者。多個同時符合則全部載入。
 - **所有 Agent() 一律 `run_in_background: true`。無例外。**
 
-## 鐵律(全域,8 條,不可繞過)
+## 鐵律(全域,9 條,不可繞過)
 
 1. **TDD** — failing test → 紅 → 最小實作 → 綠。不可跳過。
 2. **驗證先於宣稱** — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
@@ -87,6 +90,7 @@ uv run lab/llm_eval/cli.py <subcommand> [args]
 7. **生產禁用指令** — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。
 8. **禁止 iOS raw 中文字串** — `Text("中文")` / `Button("中文")` / `.navigationTitle("中文")` 由 `ops/i18n_lint.sh` 擋。所有 user-facing 字串走 `L10n.string(_:)` / `L10n.format(_:_:)`。豁免用行內 `// i18n-allow: <reason>`(品牌名、人名、ASCII-only 技術 ID)。詳見 `docs/sop/i18n_lint.md`。
     - **(待 Phase 3.1 後生效)** Static `DateFormatter` / `RelativeDateTimeFormatter` / `NumberFormatter` 走 `LocaleAwareFormatter`。lint 現以 baseline 模式追蹤,strict 模式由 Phase 7.1 Xcode Run Script 啟用。
+9. **工具摩擦優先修工具** — 當 agent 使用既有工具完成工作流時遇到挫折、不順、輸出不自解、help 失準、入口漂移或會誘導繞路,先第一性原理判斷工具/文件/skill 哪裡壞。小問題可記入 receipt 的 tooling debt 並回到原目標；中大型問題或會導致誤判/繞過工具的問題,立即停下來修工具並驗證,再回到原本任務。
 
 ## Commit / PR 政策
 
