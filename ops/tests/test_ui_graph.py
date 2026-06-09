@@ -106,6 +106,28 @@ def test_reverse_user_surfaces_collect_surface_names_from_user_nodes():
     assert ui_graph.reverse_user_surfaces(g, pill) == ["Card Detail Surface", "Card Surface"]
 
 
+def test_discover_catalog_index_only_uses_records_json_sibling(tmp_path):
+    fixture_dir = tmp_path / "fixture"
+    fixture_dir.mkdir()
+    records_path = fixture_dir / "records.json"
+    records_path.write_text("{}")
+    assert ui_graph.discover_catalog_index(records_json=str(records_path), project_root=tmp_path) is None
+    catalog_path = fixture_dir / "catalog_index.json"
+    catalog_path.write_text(json.dumps({"version": 1, "surfaces": {}}))
+    assert ui_graph.discover_catalog_index(records_json=str(records_path), project_root=tmp_path) == catalog_path
+
+
+def test_auto_discovered_catalog_index_never_blocks_core_graph_when_malformed(tmp_path):
+    fixture_dir = tmp_path / "fixture"
+    fixture_dir.mkdir()
+    records_path = fixture_dir / "records.json"
+    records_path.write_text("{}")
+    (fixture_dir / "catalog_index.json").write_text("{bad json")
+    catalog, resolved = ui_graph.load_catalog_index(records_json=str(records_path))
+    assert catalog == {}
+    assert resolved is None
+
+
 def test_payload_schema_and_counts():
     g = _graph()
     ui_graph.attach_catalog_surfaces(g, _catalog_index())

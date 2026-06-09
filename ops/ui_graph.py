@@ -132,17 +132,16 @@ def attach_catalog_surfaces(graph: dict, catalog_index: dict, *, stderr=sys.stde
     graph["surfaceMeta"] = surface_meta
 
 
-def discover_catalog_index(*, records_json: str | None = None) -> Path | None:
+def discover_catalog_index(
+    *,
+    records_json: str | None = None,
+    project_root: Path = PROJECT_ROOT,
+) -> Path | None:
     if records_json:
         sibling = Path(records_json).with_name("catalog_index.json")
         if sibling.is_file():
             return sibling
-    snapshots = sorted(
-        PROJECT_ROOT.glob("build/snapshots/*/catalog_index.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    return snapshots[0] if snapshots else None
+    return None
 
 
 def load_catalog_index(
@@ -151,7 +150,8 @@ def load_catalog_index(
     records_json: str | None = None,
     stderr=sys.stderr,
 ) -> tuple[dict, Path | None]:
-    candidate = Path(catalog_index_path) if catalog_index_path else discover_catalog_index(records_json=records_json)
+    explicit = catalog_index_path is not None
+    candidate = Path(catalog_index_path) if explicit else discover_catalog_index(records_json=records_json)
     if candidate is None:
         return {}, None
     if not candidate.is_file():
@@ -159,12 +159,21 @@ def load_catalog_index(
     try:
         data = json.loads(candidate.read_text())
     except ValueError as exc:
-        raise SystemExit(f"[ui_graph] catalog index is not valid JSON: {candidate}: {exc}") from exc
+        if explicit:
+            raise SystemExit(f"[ui_graph] catalog index is not valid JSON: {candidate}: {exc}") from exc
+        print(f"[ui_graph] warning: ignoring malformed auto-discovered catalog index {candidate}: {exc}", file=stderr)
+        return {}, None
     if not isinstance(data, dict):
-        raise SystemExit(f"[ui_graph] catalog index root must be an object: {candidate}")
+        if explicit:
+            raise SystemExit(f"[ui_graph] catalog index root must be an object: {candidate}")
+        print(f"[ui_graph] warning: ignoring auto-discovered catalog index with non-object root: {candidate}", file=stderr)
+        return {}, None
     surfaces = data.get("surfaces", {})
     if not isinstance(surfaces, dict):
-        raise SystemExit(f"[ui_graph] catalog index surfaces must be an object: {candidate}")
+        if explicit:
+            raise SystemExit(f"[ui_graph] catalog index surfaces must be an object: {candidate}")
+        print(f"[ui_graph] warning: ignoring auto-discovered catalog index with non-object surfaces: {candidate}", file=stderr)
+        return {}, None
     print(f"[ui_graph] catalog surfaces <- {candidate}", file=stderr)
     return data, candidate
 
@@ -304,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     src.add_argument("--build", action="store_true", help="run an isolated clean build, then scan (default)")
     src.add_argument("--store-path", help="scan an existing IndexStore DataStore, skip build")
     src.add_argument("--records-json", help="read pre-captured kgindex records JSON, skip build+scan")
-    p.add_argument("--catalog-index", help="catalog_index.json path (default: sibling of --records-json, else latest build/snapshots/*/catalog_index.json)")
+    p.add_argument("--catalog-index", help="catalog_index.json path (default: sibling of --records-json only)")
     p.add_argument("--source-root", default=DEFAULT_SOURCE_ROOT, help=f"source-root substring (default: {DEFAULT_SOURCE_ROOT})")
     p.add_argument("--kinds", default=",".join(DEFAULT_KINDS), help=f"node kinds (default: {','.join(DEFAULT_KINDS)})")
     p.add_argument("--type", dest="type_name", help="focus a single type: show its deps + users")
