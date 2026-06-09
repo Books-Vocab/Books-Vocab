@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "sourceRoot": "ios/BooksBrowser/",
+  "symbols": [
+    {
+      "kind": "struct",
+      "name": "ProdOrphanNoRefs",
+      "usr": "s:orphan1",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Orphan1.swift", "line": 5 },
+      "refs": []
+    },
+    {
+      "kind": "class",
+      "name": "ProdOrphanDebugOnly",
+      "usr": "s:orphan2",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Orphan2.swift", "line": 8 },
+      "refs": [
+        { "path": "/repo/ios/BooksBrowser/Debug/CatalogScene.swift", "line": 120, "roles": ["reference"] },
+        { "path": "/repo/ios/BooksBrowser/Debug/Scenarios/Foo.swift", "line": 30, "roles": ["call"] }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "ProdOrphanTestOnly",
+      "usr": "s:orphan3",
+      "def": { "path": "/repo/ios/BooksBrowser/Models/Orphan3.swift", "line": 3 },
+      "refs": [
+        { "path": "/repo/ios/BooksBrowserTests/Orphan3Tests.swift", "line": 12, "roles": ["reference"] }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "NotOrphanSameFile",
+      "usr": "s:keep1",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Keep1.swift", "line": 10 },
+      "refs": [
+        { "path": "/repo/ios/BooksBrowser/Views/Keep1.swift", "line": 42, "roles": ["reference"] }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "NotOrphanOtherProd",
+      "usr": "s:keep2",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Keep2.swift", "line": 4 },
+      "refs": [
+        { "path": "/repo/ios/BooksBrowser/Views/Consumer.swift", "line": 77, "roles": ["reference"] },
+        { "path": "/repo/ios/BooksBrowser/Debug/CatalogScene.swift", "line": 200, "roles": ["reference"] }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DebugDefIgnored",
+      "usr": "s:debugdef",
+      "def": { "path": "/repo/ios/BooksBrowser/Debug/Helpers/DebugThing.swift", "line": 6 },
+      "refs": []
+    },
+    {
+      "kind": "extension",
+      "name": "WrongKindExtension",
+      "usr": "s:wrongkind",
+      "def": { "path": "/repo/ios/BooksBrowser/Views/Ext.swift", "line": 1 },
+      "refs": []
+    }
+  ]
+}
