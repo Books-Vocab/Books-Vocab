@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: a281cba6
+verified_against: 291303f1
 -->
 # BooksBrowser iOS 開發技能
 
@@ -159,6 +159,48 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - 若 Xcode 回 `build.db database is locked` / `unable to attach DB`，runner 會在同一把 repo lock 內短暫等待並重試，避免把 infrastructure lock 誤判成測試失敗。
 - 若要把 build-for-testing 成本拆出日常迭代回路，先跑 `./ops/ios_ops.sh test --prepare-cache --unit` 或 `--ui`，後續 scoped `test` 會優先重用 `.xctestrun`；`--cache-status --json` 會回 `kg.ios.test-cache.v1`，含 `productsReady` / `xctestrunPath` / `timings.bootMs/buildForTestingMs`。
 - 若要讓 agent/human 在第一屏就看懂時間分布與 release readiness，不要只翻 raw log：`./ops/ios_ops.sh runs --json` 會保留每次 build/test/archive 的 `options` / `cache` / `timings`；`./ops/ios_ops.sh snapshot --json` 會再把它們收斂成 `summary.timings.build|test|archive|simulator`，並把 `doctor/workflow` 聚合成 `summary.counts.readiness*` / `workflow*`；文字模式固定在 `[ios][summary]` 後緊接 `[ios][timing] build ...` / `[ios][timing] test ...` / `[ios][timing] archive ...` / `[ios][timing] simulator ...`。
+
+### 何謂「正常」：退出碼 / cacheStatus / 秒數基準（agent 判讀用）
+
+數字為 2026-06-09 dogfood 實測（Apple Silicon、iOS 26.4 sim、`--file` 跑單一綠燈套件除非註明），供 agent 判斷一個 run 是否正常、卡在哪。**先看 `lockWaitMs` 排除排隊，再看執行段。**
+
+**退出碼（exit code）— 三者語意不同，別一律當「失敗」：**
+
+| exit | 意義 | verdict result |
+|---|---|---|
+| `0` | 測試全綠 | `ok` |
+| `1` | 測試有紅 / false-green（編譯成功但 0 test 執行）| `fail` |
+| `65` | **建置/編譯失敗**（xcodebuild 原生碼，與「測試紅」可區分）| `inconclusive` |
+| 其他非零 | inconclusive（infra 異常等）；絕不會以 0 偽綠收場 | `inconclusive` |
+
+看到 `65` = 程式碼編不過，去看 `[ios][error] category=compiler` 那行真錯誤，**不是** runner 壞。
+
+**`cache.status` — 自我描述，不用再交叉比對 `buildForTestingMs`：**
+
+| status | 意義 |
+|---|---|
+| `miss` | 此 key 無暖快取，本次會建置 |
+| `prepared` | **本 run 親自做了 build-for-testing**（`buildForTestingMs` 大）|
+| `hit` | 重用暖快取（含「等鎖後 double-check 命中、跳過重建」的並行等待者，`buildForTestingMs=0`）|
+| `rebuild-after-failure` | 命中後測試失敗，回頭重建一次再跑 |
+
+**秒數基準（ms；超出範圍才需懷疑）：**
+
+| 階段 | 正常範圍 | 備註 |
+|---|---|---|
+| `bootMs`（暖 sim）| 300–600 | cold boot 才會數秒；`ensure-booted` 已吃掉這層 |
+| `buildForTestingMs`（冷建）| 80,000–100,000 | 單次 build-for-testing；warm hit 時為 `0` |
+| `testInvocationMs`（單套件）| 10,000–15,000 | 多數是 harness 開銷，非斷言本身 |
+| `testInvocationMs`（full unit 1121 tests）| ~38,000 | full 套件總 `totalMs` ~100s |
+| `testBodyMs` | 10–40 | 真正跑斷言的時間極小，**不要**拿它當整體效能 |
+| `xcresultSessionMs` / `xcresultHarnessOverheadMs` | 8,000–25,000 | xcresult 解析/harness 固定開銷，warm hit 的 wall time 多半卡這裡 |
+| warm `hit` run `totalMs` | 11,000–35,000 | 編譯為 0，但仍有 boot+harness+xcresult 開銷,**10–35s 是正常的** |
+| 編譯失敗 `totalMs` | 50,000–90,000 | 失敗在 build 階段,exit 65 |
+
+**並行（多 agent）正常樣態：**
+- 每個 `--lease` run 各租**不同** `kg-pool-*` 模擬器；N 個同時冷啟時，**恰一個** `cache=prepared`（建置者，`lockWaitMs`≈0），其餘 `cache=hit` 且 **`lockWaitMs ≈ 建置者的 buildForTestingMs`（~80s）— 這是等鎖,正常,不是卡死**。建置者放鎖後等待者靠 sentinel + double-check 跳過重建直接跑測試。
+- 暖快取下 N 並行：全 `hit`、`lockWaitMs=0`、`totalMs` 差距小（真重疊）。
+- 每個 run 原子 append 一行到 `<主repo>/.cache/ios-run-metrics.jsonl`（含全部 `timings` + `result` + `cache` + `caller`）。設 `WORKTREE_BRANCH=<標籤>` 可讓該行 `caller` 自帶標籤,便於並行歸戶。並發寫入無交錯損壞。
 
 ### iOS 測試效能經驗固化
 
