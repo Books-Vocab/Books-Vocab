@@ -33,6 +33,23 @@ git diff --stat origin/main..<branch>
 - 哪些是黑名單
 - 哪些是非黑名單白名單
 
+### Step 0.5 — 為活分支建立本輪 snapshot
+
+若某條 branch / worktree 還在持續修改，不要直接把當下狀態當成收斂對象。
+
+每輪先記錄：
+
+- branch
+- worktree
+- current head
+- dirty or clean
+- 本輪 snapshot commit
+- last promoted commit
+- last rebased base
+
+這輪只處理這個 snapshot。  
+之後新長出的 commit 或 dirty work，不回頭追，留給下一輪。
+
 ### Step 1 — 保存所有工作
 
 #### 1.1 預設：先 commit
@@ -41,6 +58,12 @@ git diff --stat origin/main..<branch>
 git add <files...>
 git commit -m "<prefix>: <message>"
 ```
+
+活 branch 的 dirty work 也一樣。
+
+- 不直接拿 dirty worktree 做 rebase
+- 不直接拿 dirty worktree 做 promote
+- 先 commit，讓 work identity 與 snapshot 都落地
 
 #### 1.2 黑名單工作掛在 `main`
 
@@ -80,6 +103,12 @@ git cherry-pick <commit...>
 git merge --squash <branch>
 ```
 
+如果白名單 branch 仍在持續長：
+
+- 只收它本輪 snapshot 之前、已明確成熟的前綴
+- 不追逐這輪之後新長出的 commit
+- 必要時改走 `Workflow 2`
+
 若主 checkout 的 `main` 需要對齊 remote，再做：
 
 ```bash
@@ -104,6 +133,12 @@ git fetch --prune
 ```bash
 git -C <worktree> rebase origin/main
 ```
+
+若該黑名單是活 branch：
+
+- 只 rebase 到它本輪 snapshot
+- 本輪 rebase 完後又新增的 commit，不算這輪範圍
+- 若 promote 過它的一部分前綴，看到 `skipped previously applied commit` 通常是正確結果
 
 若有 remote / PR：
 
@@ -154,6 +189,12 @@ git -C <branch-worktree> status --short --branch
 dirty work 不是這輪 promote 的對象。  
 它可以留在活 branch 上，後續再保存。
 
+若 dirty work 其實也想納入本輪：
+
+- 先在原 branch commit
+- 把這個 commit 視為新的 snapshot 邊界
+- 再從這個 snapshot 判斷哪些 commits 要 promote
+
 ### Step 1 — 建 integration worktree
 
 ```bash
@@ -203,6 +244,12 @@ git -C <active-branch-worktree> rebase main
 - 這些 commits 已被主線吸收
 - branch 只剩未吸收增量
 
+若 branch 在你 promote 期間又有人繼續提交：
+
+- 不把這些新 commit 拉進本輪 promote
+- 只把 branch rebase 到新 `main`
+- 讓這些新 commit 自動成為下一輪輸入
+
 ### Step 6 — 刪掉 integration 容器
 
 ```bash
@@ -231,3 +278,13 @@ git branch -D <integration-branch>
 - 該 branch 是另一個 agent 的主戰場
 - 你只想 promote 其中一部分 commits
 
+### 持續維護時怎麼想
+
+- 你維護的是「已收斂前綴 + 剩餘增量」
+- 不是「把一條一直在動的 branch 一次追到乾淨」
+- 每輪只要讓：
+  - `main` 吃進成熟前綴
+  - 黑名單站回最新 `main`
+  - 新增量保留到下一輪
+
+這輪就算成功
