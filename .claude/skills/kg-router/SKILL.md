@@ -26,7 +26,7 @@ version: 1.0.0
 | 成本 / 帳單 / drift | `billing` skill |
 | 用戶資料、圖譜、額度深度分析 | `data-analysis` skill |
 | bug / test failure / 異常行為 | `app-debug` skill |
-| branch/worktree 收斂 | `cleanup` 或 `promote` skill |
+| branch/worktree 收斂 | `converge` skill（`cleanup` / `promote` 為 mode alias） |
 | iOS build/test/release readiness | `./ops/ios_ops.sh commands --json`，再讀 `docs/sop/ios.md` |
 | docs impact / lint / registry | `kg-docs-control-plane` skill |
 | release version/changelog/tag | `./ops/release.sh status` |

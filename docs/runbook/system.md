@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/
-verified_against: 94bb8f24
+verified_against: f1eccc51
 -->
 # System Runbook
 
@@ -49,10 +49,13 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 4. Record incident summary and update runbook docs.
 
 ### C) Convergence Maintenance
-1. Treat `cleanup` as Workflow 1: user defines blacklist, absorb all non-blacklist work into `main`, push/sync remote, then rebase every blacklist branch onto the new `main`.
-2. Treat `promote` as Workflow 2: lift only the chosen committed snapshot from an active branch into `main`, then rebase the original branch onto the new `main`.
-3. Preserve work identity before any `main` reset or sync; if blacklisted work is sitting on `main`, extract it to a branch/worktree first.
-4. `promote` may delete its temporary integration container, but does not automatically delete the original branch/worktree.
+1. Use the single `converge` methodology; `cleanup` and `promote` are mode aliases, not separate systems.
+2. Establish a `T0 snapshot barrier` first: preserve every hot branch/worktree snapshot before any sync/reset/rebase.
+3. Assemble the target final state offline in one integration/final worktree; validate there instead of re-reading hot branches during the main flow.
+4. Execute a **short cutover** as one serialized sequence: push `main`, fetch/prune, rebase surviving branches onto the new `main`, push survivor remotes, then clean white shadows or temporary integration containers.
+5. Any dirty work or new commits that appear after `T0` belong to the next round, not the current cutover.
+6. Preserve work identity before any `main` reset or sync; if blacklisted work is sitting on `main`, extract it to a branch/worktree first.
+7. `promote` mode may delete only its temporary integration container; the original branch/worktree stays unless the user explicitly asks otherwise.
 
 ## Operational Definition of Done
 - `preflight` succeeded.
@@ -63,6 +66,6 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 ## Hard Stop Conditions
 - Missing SSH key or unreachable host.
 - No backup path before deploy/migration.
-- `ops/branch_audit.sh` reports `merged-pr-but-ahead`, `orphan-ahead`, or `stale-ahead` during cleanup; PR state is metadata, commit reachability is the source of truth.
+- `ops/branch_audit.sh` reports `merged-pr-but-ahead`, `orphan-ahead`, or `stale-ahead` during convergence; PR state is metadata, commit reachability is the source of truth.
 - Any convergence attempt would reset `main` before preserving blacklisted work identity.
 - Any command resembles destructive wildcard cleanup.
