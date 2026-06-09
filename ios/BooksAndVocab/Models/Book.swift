@@ -72,19 +72,27 @@ final class Book {
 
     /// iCloud Books 目錄（nil 表示 iCloud 不可用，不快取 nil 以便下次重試）
     static var iCloudBooksDirectory: URL? {
-        _iCloudDirLock.withLock { cached in
-            if let c = cached { return c }
-            guard let containerURL = FileManager.default.url(
-                forUbiquityContainerIdentifier: nil
-            ) else { return nil }
-            let dir = containerURL.appendingPathComponent("Documents/Books")
-            do {
-                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            } catch {
-                AppLog.book.warning("Failed to create iCloud Books directory: \(error.localizedDescription)")
-            }
+        // Fast path: cached value, no I/O.
+        if let cached = _iCloudDirLock.withLock({ $0 }) { return cached }
+
+        // Slow path: derive directory outside the lock (ubiquity container lookup + createDirectory
+        // may block; OSAllocatedUnfairLock is a spinlock, unsuitable for blocking I/O).
+        guard let containerURL = FileManager.default.url(
+            forUbiquityContainerIdentifier: nil
+        ) else { return nil }
+        let dir = containerURL.appendingPathComponent("Documents/Books")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            AppLog.book.warning("Failed to create iCloud Books directory: \(error.localizedDescription)")
+        }
+        AppLog.book.info("Books directory: iCloud (\(dir.path))")
+
+        // Write-if-still-nil: two threads may both reach here; first writer wins,
+        // second returns the already-cached value. createDirectory is idempotent.
+        return _iCloudDirLock.withLock { cached in
+            if let existing = cached { return existing }
             cached = dir
-            AppLog.book.info("Books directory: iCloud (\(dir.path))")
             return dir
         }
     }

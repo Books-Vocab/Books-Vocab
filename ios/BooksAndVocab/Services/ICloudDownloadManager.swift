@@ -272,4 +272,11 @@ final class ICloudDownloadManager {
             }
         }
     }
+
+    #if DEBUG
+    /// 測試用：直接寫入 fileStates，讓 reset() 的副作用（清空）可被觀察。
+    func setFileStateForTesting(_ state: ICloudFileState, for fileName: String) {
+        fileStates[fileName] = state
+    }
+    #endif
 }
