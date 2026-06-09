@@ -12,6 +12,7 @@
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
 #   ./ops/ios_test.sh --device <name|UDID>        # target a specific simulator (parallel agents)
 #   ./ops/ios_test.sh --destination '<xcodebuild destination>'   # full -destination override
+#   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -29,6 +30,8 @@ DEFAULT_SIMULATOR='iPhone 17 Pro Max'
 DESTINATION=''            # resolved after arg parsing (see device resolution below)
 DESTINATION_OVERRIDE=''   # set by --destination (full xcodebuild destination string)
 DEVICE_OVERRIDE="${KG_IOS_TEST_DEVICE:-}"  # set by --device (name or UDID); enables per-agent simulators
+AUTO_LEASE="${KG_IOS_TEST_AUTOLEASE:-0}"   # --lease: claim a pool simulator for this run, release on exit
+LEASED_DEVICE=''                            # udid of an auto-leased simulator, released in cleanup
 SIMULATOR_BOOT_SELECTOR=''
 GREP_PATTERN=""
 TEST_FILE=""
@@ -51,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --device) DEVICE_OVERRIDE="$2"; shift 2 ;;        # name or UDID; pick a specific simulator
     --destination) DESTINATION_OVERRIDE="$2"; shift 2 ;;  # full xcodebuild -destination override
+    --lease) AUTO_LEASE=1; shift ;;                   # claim a pool simulator for this run (parallel agents)
     --list) LIST_ONLY=1; shift ;;   # dry-run: print resolved -only-testing flags, no xcodebuild
     --prepare-cache) TEST_CACHE_ACTION="prepare"; shift ;;
     --cache-status) TEST_CACHE_ACTION="status"; shift ;;
@@ -377,38 +381,79 @@ cleanup() {
   if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
     kill "$CURRENT_XCODE_PID" 2>/dev/null || true
   fi
-  rm -f "$LOCK_FILE"
+  release_build_lock   # ownership-guarded; only removes the lock if we still hold it
+  if [[ -n "${LEASED_DEVICE:-}" ]]; then
+    "$IOS_OPS" simulator release --device "$LEASED_DEVICE" >/dev/null 2>&1 || true
+    LEASED_DEVICE=''
+  fi
   if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
     rm -f "${TMPOUT:-}"
   fi
 }
 
-echo "[ios_test] caller=$CALLER waiting for lock..."
-WAITED=0
-LOCK_WAIT_START_MS="$(ios_test_now_ms)"
-while ! shlock -f "$LOCK_FILE" -p $$; do
-  HOLDER_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
-  if [[ -n "$HOLDER_PID" ]] && ! kill -0 "$HOLDER_PID" 2>/dev/null; then
-    # Re-check the lock still holds the SAME dead PID before stealing — another
-    # waiter may have acquired it fresh between our cat and rm (steal only our
-    # observed dead lock, never a live one).
-    if [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$HOLDER_PID" ]]; then
-      echo "[ios_test] stale lock (pid=$HOLDER_PID dead), stealing"
-      rm -f "$LOCK_FILE"
+# Fine-grained build lock (shared /tmp/kg-ios-build.lock with ios_build.sh).
+# Held ONLY around build-for-testing — the sole writer of the shared DerivedData
+# — and released before test execution. Parallel agents running
+# test-without-building read immutable, content-keyed cache products on their own
+# leased simulators, so they no longer queue behind each other's test runs (which
+# was measured at 246s/309s lockWait for 3 concurrent runs). See
+# docs/reference/ios_deriveddata_policy.md.
+LOCK_HELD=0
+LOCK_WAIT_MS=0
+acquire_build_lock() {
+  [[ "$LOCK_HELD" -eq 1 ]] && return 0
+  echo "[ios_test] caller=$CALLER waiting for build lock..."
+  local waited=0 lock_wait_start_ms holder_pid
+  lock_wait_start_ms="$(ios_test_now_ms)"
+  while ! shlock -f "$LOCK_FILE" -p $$; do
+    holder_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+      # Re-check the lock still holds the SAME dead PID before stealing — another
+      # waiter may have acquired it fresh between our cat and rm (steal only our
+      # observed dead lock, never a live one).
+      if [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$holder_pid" ]]; then
+        echo "[ios_test] stale lock (pid=$holder_pid dead), stealing"
+        rm -f "$LOCK_FILE"
+      fi
+      continue
     fi
-    continue
-  fi
-  sleep "$POLL_INTERVAL"
-  WAITED=$((WAITED + POLL_INTERVAL))
-  if [[ $WAITED -ge $TIMEOUT ]]; then
-    echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for lock" >&2
+    sleep "$POLL_INTERVAL"
+    waited=$((waited + POLL_INTERVAL))
+    if [[ $waited -ge $TIMEOUT ]]; then
+      echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for build lock" >&2
+      exit 1
+    fi
+  done
+  LOCK_HELD=1
+  LOCK_WAIT_MS=$(( LOCK_WAIT_MS + ($(ios_test_now_ms) - lock_wait_start_ms) ))
+  echo "[ios_test] build lock acquired lockWaitMs=$LOCK_WAIT_MS"
+}
+release_build_lock() {
+  [[ "$LOCK_HELD" -eq 1 ]] || return 0
+  # Only remove the lock if we still own it — another agent may have acquired it
+  # after we released, and we must never delete someone else's lock.
+  [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$LOCK_FILE"
+  LOCK_HELD=0
+}
+trap cleanup EXIT INT TERM
+
+# Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease
+# / KG_IOS_TEST_AUTOLEASE only when no explicit device/destination was given —
+# explicit targeting always wins. Done after the trap is armed so the lease is
+# always released on exit, and after the validation gates so we never lease for
+# a run that would have errored out anyway.
+if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE" ]]; then
+  LEASED_DEVICE="$("$IOS_OPS" simulator lease 2>/dev/null | tail -1)"
+  if [[ -z "$LEASED_DEVICE" ]]; then
+    echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
     exit 1
   fi
-done
-trap cleanup EXIT INT TERM
-LOCK_WAIT_MS=$(( $(ios_test_now_ms) - LOCK_WAIT_START_MS ))
+  echo "[ios_test] leased simulator udid=$LEASED_DEVICE"
+  DESTINATION="platform=iOS Simulator,id=$LEASED_DEVICE"
+  SIMULATOR_BOOT_SELECTOR="$LEASED_DEVICE"
+fi
 
-echo "[ios_test] lock acquired lockWaitMs=$LOCK_WAIT_MS — scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
+echo "[ios_test] caller=$CALLER scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
 START=$(date +%s)
 START_MS="$(ios_test_now_ms)"
 BOOT_MS=0
@@ -635,6 +680,19 @@ rebuild_test_cache() {
   local build_log="$1" build_result_bundle="$2"
   local build_start_ms build_end_ms
   mkdir -p "$DERIVED_DATA_ROOT"
+  # Acquire the build lock ONLY for the write to shared DerivedData, and release
+  # the moment the build finishes — test execution runs unlocked.
+  acquire_build_lock
+  # Double-checked locking: another agent may have built this exact (content-keyed)
+  # cache while we waited for the lock. If the products are now ready, skip the
+  # rebuild — both to avoid redundant work and, critically, to avoid overwriting
+  # products another agent may already be reading during its unlocked test run.
+  local _xctestrun
+  _xctestrun="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" 2>/dev/null || true)"
+  if [[ -n "$_xctestrun" ]] && ios_test_cached_products_ready "$_xctestrun"; then
+    release_build_lock
+    return 0
+  fi
   build_start_ms="$(ios_test_now_ms)"
   xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
@@ -649,6 +707,10 @@ rebuild_test_cache() {
     >"$build_log" 2>&1
   build_end_ms="$(ios_test_now_ms)"
   BUILD_FOR_TESTING_MS=$(( build_end_ms - build_start_ms ))
+  # Last statement keeps the function's exit status at 0, matching prior
+  # behavior (callers detect build failure via missing .xctestrun artifacts,
+  # not this return code).
+  release_build_lock
 }
 
 ensure_xctestrun_ready_or_fail() {
