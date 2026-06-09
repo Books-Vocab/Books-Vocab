@@ -6,7 +6,7 @@ scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 2026-06-09
+verified_against: 291303f1
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -94,6 +94,14 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 - **用法**:`./ops/ios_test.sh --unit --lease`(自動租/釋)或 `--device <udid|name>` / `--destination '<...>'`。
 
 不變式:同一 content-key 的 test 產物建一次、就緒後不覆寫(sentinel + double-check 保證),故無鎖的並行 test 執行讀唯讀產物安全。build 仍全域序列化(CPU-bound,單機正解)。
+
+### 並行硬化(2026-06-09 dogfood 揪出並修)
+1. **退出碼可區分**:建置失敗保留 xcodebuild 原生 `65`(原本被 inconclusive 分支無條件 normalize 成 `1`,且 verdict 檔寫 65 行程卻 exit 1,自相矛盾)。現在 `65`=建置/編譯失敗、`1`=測試紅、`0`=綠。
+2. **`cacheStatus` 對等待者誠實**:等鎖後 double-check 命中、跳過重建的並行等待者標 `hit`(原本誤標 `prepared`,與真建置者混淆)。靠 `REBUILD_DID_BUILD` 旗標判別,非靠 `buildForTestingMs`。
+3. **並行 metrics 歸戶無 race**:verdict JSON 固定路徑為多 agent 共用,`append_run_metric` 讀回時會被並行 run 覆寫(實測:緊密並發下同一 caller 兩筆、另一 caller 零筆)。改為 metric 取 **per-process 私有快照**(`$$`),固定路徑仍更新給 `ios_ops runs`。
+
+### 並行 dogfood 實證(2026-06-09)
+4 並發冷啟(共用空 cache):恰 1 個建置(`cache=prepared`,build 78827ms,`lockWaitMs=11`)+ 3 個等待者(`lockWaitMs` 78661/81679/81770 ≈ 建置時間,`buildForTestingMs=0`,sentinel 跳過重建);4/4 不同模擬器。4 並發暖快取:全 `hit`、`lockWaitMs=0`、`totalMs` 差 2666ms(真重疊)。8 並發寫 metrics 零交錯損壞。退出碼/cacheStatus/歸戶三項修正均經實機重驗。秒數基準與退出碼/cacheStatus 對照表見 [`docs/sop/ios.md`](../sop/ios.md) 「何謂正常」小節。
 
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
