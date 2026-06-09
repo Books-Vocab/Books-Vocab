@@ -72,8 +72,14 @@ extension VocabularyContextStore {
         }
     }
 
-    static func lookedUpWords(from vocabulary: [VocabularyEntry]) -> [String] {
-        vocabulary.filter(\.shouldAppearInReader).flatMap { entry in
+    static func lookedUpWords(from vocabulary: [VocabularyEntry], notebookId: String? = nil) -> [String] {
+        vocabulary.filter { entry in
+            guard entry.shouldAppearInReader else { return false }
+            if let notebookId {
+                return entry.notebookId == notebookId
+            }
+            return true
+        }.flatMap { entry in
             var all = Set([entry.word.lowercased()] + entry.inflections.map { $0.lowercased() })
             if let root = entry.rootForm?.lowercased() { all.insert(root) }
             return Array(all)

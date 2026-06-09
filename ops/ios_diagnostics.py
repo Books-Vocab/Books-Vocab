@@ -514,8 +514,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         if not log_path:
             raise SystemExit(f"✗ failed to read xcresult and no --log fallback was provided: {exc}") from exc
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-        summary = parse_log(text, limit=args.limit)
+        if log_path.exists():
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+            summary = parse_log(text, limit=args.limit)
+        else:
+            summary = parse_log("", limit=args.limit)
+            summary["source"] = "raw-log-missing"
+            summary["result"] = "unknown"
+            summary["logError"] = f"log file not found: {log_path}"
         summary["xcresultError"] = str(exc)
     summary = apply_result_override(summary, args.result)
     summary["artifacts"] = {
