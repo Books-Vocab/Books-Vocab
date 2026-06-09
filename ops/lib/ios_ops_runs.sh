@@ -13,6 +13,7 @@ emit_run_verdict_json() {
         --arg jsonVerdictFile "$json_file" \
         --argjson logExists "$(path_exists_json_bool file "$(jq -r '.artifacts.log // ""' "$json_file")")" \
         --argjson xcresultExists "$(path_exists_json_bool dir "$(jq -r '.artifacts.xcresult // ""' "$json_file")")" \
+        --argjson uiContactSheetExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiContactSheet // ""' "$json_file")")" \
         '{
           kind:$kind,
           status:(.status // .result // "unknown"),
@@ -31,7 +32,10 @@ emit_run_verdict_json() {
             log:(.artifacts.log // null),
             logExists:$logExists,
             xcresult:(.artifacts.xcresult // null),
-            xcresultExists:$xcresultExists
+            xcresultExists:$xcresultExists,
+            uiContactSheet:(.artifacts.uiContactSheet // null),
+            uiContactSheetExists:$uiContactSheetExists,
+            uiScreenshotDir:(.artifacts.uiScreenshotDir // null)
           }
         }' "$json_file"
       return
