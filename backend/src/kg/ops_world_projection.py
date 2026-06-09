@@ -17,7 +17,6 @@ from .ops_edit_shared import user_dir_for, users_file
 from .ops_shared import data_dir
 from .user_store import load_users_from
 
-
 SCHEMA = "kg.ops_world_state.v1"
 
 

@@ -17,8 +17,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from conftest import _DummyEmbeddingStore, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
+
+from conftest import _DummyEmbeddingStore, _swap_settings, make_jwt
 
 os.environ.setdefault("KG_DATA_DIR", "/tmp/kg_test_default")
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-ci-at-least-32-bytes")

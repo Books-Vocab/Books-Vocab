@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
@@ -22,9 +22,9 @@ from .api_models import (
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
 from .types import StoredUserRecord, SubscriptionRecord, UsersPayload
 
-UsersLoader: TypeAlias = Callable[[], UsersPayload]
-UsersSaver: TypeAlias = Callable[[UsersPayload], None]
-EntitlementsBuilder: TypeAlias = Callable[[StoredUserRecord | None], EntitlementsResponse]
+type UsersLoader = Callable[[], UsersPayload]
+type UsersSaver = Callable[[UsersPayload], None]
+type EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 
 # Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
 # three ingest paths (sync / notification / reconcile). `source` and

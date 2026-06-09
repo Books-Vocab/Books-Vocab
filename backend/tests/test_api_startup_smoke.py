@@ -6,12 +6,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
 
 import kg.admin_test_matrix as admin_test_matrix_mod
 import kg.api as api_mod
 import kg.deps as deps_mod
+from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
 from kg.settings import KGSettings
 

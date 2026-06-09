@@ -32,10 +32,10 @@ Redirect::
 """
 from __future__ import annotations
 
-import warnings
 import os
 import sys
 import time
+import warnings
 
 from .providers import REGISTRY, LLMProvider
 

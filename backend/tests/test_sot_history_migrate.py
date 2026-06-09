@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from kg.graph_event_log import GraphEventStore, GraphEventType, GraphSnapshotStore

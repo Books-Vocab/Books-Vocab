@@ -22,16 +22,15 @@ from pathlib import Path
 
 import jwt as pyjwt
 import pytest
-from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_settings
 from fastapi import HTTPException
 
+from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_settings
 from kg.api_models import AuthVerifyRequest
 from kg.auth_handlers import auth_verify_response
 from kg.auth_service import resolve_and_link_user
 from kg.user_context import resolve_current_user
 from kg.user_handlers import delete_user_account_response
 from kg.user_store import parse_datetime as _parse_datetime
-
 
 # --------------------------------------------------------------------------- #
 # Shared fixtures / helpers

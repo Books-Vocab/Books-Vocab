@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC
 from types import SimpleNamespace
 
 import pytest
@@ -896,7 +895,7 @@ class _PartialFailingGraph:
 
     def cleanup_for_card(self, card_id, *, remove_blocked=False, source="auto"):
         if card_id == self._fail_for:
-            raise RuntimeError("graph cleanup blew up for %s" % card_id)
+            raise RuntimeError(f"graph cleanup blew up for {card_id}")
         self.cleaned.append(card_id)
         return {"deprecated": 1, "candidates_removed": 0}
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypeAlias, TypedDict
+from typing import Any, TypedDict
 
 
 class UserRecord(TypedDict, total=False):
@@ -58,8 +58,8 @@ class StoredUserRecord(TypedDict, total=False):
     _linked_to: str
 
 
-UsersPayload: TypeAlias = dict[str, Any]
-CardsById: TypeAlias = dict[str, Any]
+type UsersPayload = dict[str, Any]
+type CardsById = dict[str, Any]
 
 
 class QuotaState(TypedDict):
