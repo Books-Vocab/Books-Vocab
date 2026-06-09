@@ -63,6 +63,10 @@ struct BooksAndVocabApp: App {
         _modelContainer = State(initialValue: outcome.container)
         _startupFailure = State(initialValue: outcome.failure)
 
+        #if os(iOS)
+        UITestFixtureSeed.injectIfNeeded(into: outcome.container, arguments: runtimeArguments)
+        #endif
+
         // Always recover orphan book files (idempotent — skips files with existing records)
         if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
             AppOrphanBookRecovery.run(container: outcome.container)
