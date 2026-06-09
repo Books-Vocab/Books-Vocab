@@ -33,7 +33,12 @@ else
 fi
 BIN="$CACHE_ROOT/release/kgindex"
 
-newest_src="$(find "$SPM_ROOT/Sources" "$SPM_ROOT/Package.swift" -type f -name '*.swift' -o -name 'Package.swift' 2>/dev/null \
+# Parenthesize the -o so -type f guards both name clauses (BSD find precedence).
+# Staleness is monotonic: rebuilds when any source is newer than the cached binary.
+# The cache is shared across worktrees and keyed only by mtime, so it serves the
+# NEWEST-built kgindex to every worktree — correct because the tool is forward-
+# compatible. To force a specific build, set KG_KGINDEX_BINARY.
+newest_src="$(find "$SPM_ROOT/Sources" "$SPM_ROOT/Package.swift" -type f \( -name '*.swift' -o -name 'Package.swift' \) 2>/dev/null \
   | xargs stat -f '%m' 2>/dev/null | sort -rn | head -1 || true)"
 bin_mtime="$(stat -f '%m' "$BIN" 2>/dev/null || echo 0)"
 
