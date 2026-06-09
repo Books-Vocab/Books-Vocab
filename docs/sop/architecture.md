@@ -7,9 +7,9 @@ scope:
   - backend/src/kg/
 verified_against: 84f6998e
 -->
-# BooksBrowser Architecture (Offline-First & Multi-User)
+# Books & Vocab Architecture (Offline-First & Multi-User)
 
-BooksBrowser 採用**後端權威、離線優先**的資料架構。已後端化的跨裝置 domain state 以 Knowledge Graph (KG) 伺服器為權威來源；尚未後端化的共享 state 依本文資料權威邊界分階段遷移。iOS 的 `SwiftData` 應收斂為本機投影、離線 cache 與 outbox 執行基礎，不再作為跨裝置 Single Source of Truth 的長期架構。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後端化的跨裝置 domain state 以 Knowledge Graph (KG) 伺服器為權威來源；尚未後端化的共享 state 依本文資料權威邊界分階段遷移。iOS 的 `SwiftData` 應收斂為本機投影、離線 cache 與 outbox 執行基礎，不再作為跨裝置 Single Source of Truth 的長期架構。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
 
 本機仍必須保存資料，因為核心場景包含離線閱讀、離線查詞、離線複習與低延遲 UI。但本機保存的語意分三類：
 
@@ -315,7 +315,7 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 
 ### Motion Layer
 
-除了色彩、字體與材質，BooksBrowser 現在也把 motion 視為設計系統的一部分。
+除了色彩、字體與材質，Books & Vocab 現在也把 motion 視為設計系統的一部分。
 
 - 動畫語意層集中在 `BooksBrowser/Models/AppMetrics.swift` 的 `AppMotion`
 - 共享 transition 也集中在同一檔案，避免 feature 各自發明不同進出方式
