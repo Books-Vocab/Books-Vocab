@@ -142,6 +142,26 @@ _TEMPLATE = r"""<!doctype html>
     }
     .btn:hover { border-color: var(--ink); color: var(--ink); }
     .btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .graph-summary { margin: 0 0 11px; padding: 10px 11px; border: 1px solid var(--border-l); border-radius: 3px; background: #f7f4ee; }
+    .graph-summary-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+    .graph-summary-head strong { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-light); }
+    .graph-summary-head span { font-family: var(--mono); font-size: 10px; color: var(--sub); }
+    .graph-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .fact {
+      display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 8px;
+      border: 1px solid var(--border); border-radius: 2px; background: var(--surface);
+      font-family: var(--mono); font-size: 10px; color: var(--ink-light);
+    }
+    .fact strong { font-weight: 700; color: var(--ink); }
+    .fact.status-linked { background: #edf4ea; border-color: #cadabe; color: #395a38; }
+    .fact.status-ambiguous, .fact.status-unresolved, .fact.status-graph-missing { background: #fbf1e7; border-color: #e6ccb1; color: #805221; }
+    .fact.status-no-backing { background: #f2efea; border-color: #d8d0c2; color: #685f52; }
+    .graph-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .graph-block { min-width: 0; }
+    .graph-block h5 { margin: 0 0 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--sub); }
+    .graph-block p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--ink-light); }
+    .graph-block ul { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.45; color: var(--ink-light); }
+    .graph-block li { margin: 0; }
     /* state tiles */
     .matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
     .surface.focused .matrix { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
@@ -168,6 +188,7 @@ _TEMPLATE = r"""<!doctype html>
     .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; max-width: 1100px; width: 100%; max-height: 92vh; overflow: auto; padding: 20px 22px; }
     .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
     .modal-head h3 { margin: 2px 0 0; font-size: 18px; font-weight: 500; color: var(--ink); }
+    .modal-graph { margin-bottom: 14px; }
     .modal-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
     .modal-shot { border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
     .modal-shot .frame { display: flex; justify-content: center; align-items: center; padding: 8px; }
@@ -175,7 +196,9 @@ _TEMPLATE = r"""<!doctype html>
     .modal-shot figcaption { padding: 6px 10px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); display: flex; justify-content: space-between; background: var(--surface); border-top: 1px solid var(--border-l); }
     .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .modal-id { font-family: var(--mono); font-size: 11px; color: var(--sub); margin-left: auto; }
-    @media (max-width: 900px) { .modal-shots { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) {
+      .modal-shots, .graph-lists { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -282,6 +305,59 @@ _TEMPLATE = r"""<!doctype html>
     }
 
     function badge(text, cls) { return `<span class="badge ${cls || ""}">${esc(text)}</span>`; }
+    function fact(text, cls) { return `<span class="fact ${cls || ""}">${text}</span>`; }
+
+    function graphStatusLabel(status) {
+      return {
+        "linked": "linked",
+        "ambiguous": "ambiguous",
+        "unresolved": "unresolved",
+        "no-backing": "no backing",
+        "graph-missing": "graph missing",
+      }[status] || status || "graph missing";
+    }
+
+    function graphInfo(surface) {
+      return surface.graph || {
+        status: surface.backing ? "graph-missing" : "no-backing",
+        depCount: 0, userCount: 0, dependentSurfaceCount: 0, externalIn: 0,
+        deps: [], directUsers: [], dependentSurfaces: [], health: []
+      };
+    }
+
+    function graphSummary(surface) {
+      const graph = graphInfo(surface);
+      const health = (graph.health || []).map((h) => fact(esc(h), `status-${esc(h)}`)).join("");
+      const healthRow = health ? `<div class="graph-facts">${health}</div>` : "";
+      const deps = (graph.deps && graph.deps.length) ? `<ul>${graph.deps.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : "<p>—</p>";
+      const impacts = (graph.dependentSurfaces && graph.dependentSurfaces.length) ? `<ul>${graph.dependentSurfaces.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : "<p>—</p>";
+      return `
+        <div class="graph-summary">
+          <div class="graph-summary-head">
+            <strong>結構</strong>
+            <span>${esc(graphStatusLabel(graph.status))}</span>
+          </div>
+          <div class="graph-facts">
+            ${fact(`backing <strong>${esc(surface.backing || "—")}</strong>`)}
+            ${fact(`depends <strong>${graph.depCount || 0}</strong>`)}
+            ${fact(`users <strong>${graph.userCount || 0}</strong>`)}
+            ${fact(`impacts <strong>${graph.dependentSurfaceCount || 0}</strong>`)}
+            ${fact(`external <strong>${graph.externalIn || 0}</strong>`)}
+            ${fact(`status <strong>${esc(graphStatusLabel(graph.status))}</strong>`, `status-${esc(graph.status || "graph-missing")}`)}
+          </div>
+          ${healthRow}
+          <div class="graph-lists">
+            <div class="graph-block">
+              <h5>Depends</h5>
+              ${deps}
+            </div>
+            <div class="graph-block">
+              <h5>Impacts</h5>
+              ${impacts}
+            </div>
+          </div>
+        </div>`;
+    }
 
     function shotImg(shot) {
       const ar = shot.width && shot.height ? ` style="aspect-ratio:${shot.width}/${shot.height}"` : "";
@@ -326,6 +402,7 @@ _TEMPLATE = r"""<!doctype html>
         render();
       };
       card.appendChild(head);
+      card.insertAdjacentHTML("beforeend", graphSummary(surface));
       const matrix = document.createElement("div");
       matrix.className = "matrix";
       for (const scene of scenes) matrix.appendChild(sceneTile(surface, scene));
@@ -345,6 +422,7 @@ _TEMPLATE = r"""<!doctype html>
           </div>
           <button class="btn" data-act="close">關閉 ✕</button>
         </div>
+        <div class="modal-graph">${graphSummary(surface)}</div>
         <div class="modal-shots">
           <figure class="modal-shot"><a class="frame checker" href="${scene.light.relPath}" target="_blank" rel="noreferrer"><img src="${scene.light.relPath}" alt=""></a><figcaption><span>Light</span><span>${scene.light.width}×${scene.light.height}</span></figcaption></figure>
           <figure class="modal-shot"><a class="frame checker" href="${scene.dark.relPath}" target="_blank" rel="noreferrer"><img src="${scene.dark.relPath}" alt=""></a><figcaption><span>Dark</span><span>${scene.dark.width}×${scene.dark.height}</span></figcaption></figure>
@@ -421,10 +499,14 @@ _TEMPLATE = r"""<!doctype html>
       const visSurfaces = groups.length;
       const visScenes = groups.reduce((n, g) => n + g.scenes.length, 0);
       const visShots = groups.reduce((n, g) => n + g.scenes.reduce((m, sc) => m + sc.shots.length, 0), 0);
+      const linked = groups.filter((g) => graphInfo(g.surface).status === "linked").length;
+      const risky = groups.filter((g) => graphInfo(g.surface).status !== "linked").length;
       const cells = [
         [visSurfaces, "Surface"],
         [visScenes, "State"],
         [visShots, "Shot"],
+        [linked, "Graph Linked"],
+        [risky, "Graph Risk"],
       ];
       const el = document.getElementById("stats");
       el.innerHTML = cells.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");

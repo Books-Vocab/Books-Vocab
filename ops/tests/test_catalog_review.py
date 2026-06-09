@@ -680,7 +680,20 @@ def test_render_html_is_three_bucket_and_curation_free():
     manifest = {
         "surfaces": [
             {"surfaceKey": "reader-foo", "surface": "Foo", "surfaceGroup": "G",
-             "feature": "Reader", "lane": "feature-surface", "shotCount": 2},
+             "feature": "Reader", "lane": "feature-surface", "shotCount": 2,
+             "backing": "FooView",
+             "graph": {
+                 "status": "linked",
+                 "matchedNodeCount": 1,
+                 "depCount": 2,
+                 "userCount": 1,
+                 "dependentSurfaceCount": 1,
+                 "externalIn": 0,
+                 "deps": ["BarView", "BazView"],
+                 "directUsers": ["ReaderShell"],
+                 "dependentSurfaces": ["Reader Home"],
+                 "health": [],
+             }},
         ],
         "items": [
             {"surfaceKey": "reader-foo", "clusterID": "c", "stateLabel": "Default",
@@ -696,6 +709,8 @@ def test_render_html_is_three_bucket_and_curation_free():
     # three-bucket lane labels + /admin design tokens present
     for token in ["畫面", "浮層", "組件", "工程", "KG UI Gallery", "JetBrains+Mono", "--ink: #2a2520"]:
         assert token in html, f"missing {token}"
+    for token in ["結構", "backing", "depends", "impacts", "FooView"]:
+        assert token in html, f"missing graph token {token}"
     # curation UI must be absent from the gallery chrome
     for banned in ["Eligibility", "Quality tier", "Coverage", "qualityTier",
                    "stateFacet", "facet-rail", "再看"]:
@@ -704,6 +719,71 @@ def test_render_html_is_three_bucket_and_curation_free():
     # listener after the rewrite, so state.search was read but never assigned).
     assert 'getElementById("search").addEventListener' in html
     assert "state.search = " in html
+
+
+def test_render_catalog_review_surfaces_graph_summary_in_html(tmp_path: Path):
+    source_root = tmp_path / "snapshots"
+    image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    image_dir.mkdir(parents=True)
+    _make_rgba_png(image_dir / "Signed_out.png", 40, 30, corner_alpha=255)
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({
+            "version": 1,
+            "surfaces": {
+                "Settings View": {
+                    "kind": "featureScreen",
+                    "feature": "settings",
+                    "screen": "settings",
+                    "backing": "SettingsPresenter",
+                },
+                "Settings Account Detail": {
+                    "kind": "featureScreen",
+                    "feature": "settings",
+                    "screen": "settingsAccountDetail",
+                    "backing": "SettingsAccountDetailView",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    (source_root / "ui_graph.json").write_text(
+        json.dumps({
+            "schema": "kg.ui.graph.v1",
+            "nodes": [
+                {"usr": "s:settings", "name": "SettingsPresenter", "kind": "struct", "surface": ["Settings View"], "externalIn": 1},
+                {"usr": "s:plan", "name": "SettingsPlanComparisonTable", "kind": "struct", "surface": [], "externalIn": 0},
+                {"usr": "s:detail", "name": "SettingsAccountDetailView", "kind": "struct", "surface": ["Settings Account Detail"], "externalIn": 0},
+            ],
+            "edges": [
+                {"from": "s:settings", "to": "s:plan"},
+                {"from": "s:detail", "to": "s:settings"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    output_root = tmp_path / "out"
+    render = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ops" / "render_catalog_review.py"),
+            str(source_root),
+            "--output-root",
+            str(output_root),
+            "--profile",
+            str(ROOT / "ops" / "catalog_review_profile.json"),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert render.returncode == 0, render.stderr
+    review_html = (output_root / "review.html").read_text(encoding="utf-8")
+    assert "SettingsPresenter" in review_html
+    assert "SettingsPlanComparisonTable" in review_html
+    assert "Settings Account Detail" in review_html
+    assert "結構" in review_html
 
 
 def test_render_html_escapes_breakout_sequences():
