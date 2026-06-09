@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
-from conftest import TEST_JWT_SECRET, _swap_settings
+from conftest import TEST_GOOGLE_REDIRECT_URI, TEST_JWT_SECRET, _swap_settings
 from kg.api import app
 from kg.settings import KGSettings
 
@@ -30,7 +30,7 @@ def web_auth_env(tmp_path):
         jwt_secret=TEST_JWT_SECRET,
         google_client_id="test-google-client-id",
         google_client_secret="test-google-client-secret",
-        google_redirect_uri="https://wordnexus.lol/auth/web/google/callback",
+        google_redirect_uri=TEST_GOOGLE_REDIRECT_URI,
         chrome_extension_id="test-extension-id-abc",
     )
     _swap_settings(test_settings)

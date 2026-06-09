@@ -71,7 +71,7 @@ struct QuotaStoreTests {
 
     private func makeResponse(headers: [String: String]) -> HTTPURLResponse {
         HTTPURLResponse(
-            url: URL(string: "https://wordnexus.lol/api/health")!,
+            url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!,
             statusCode: 200,
             httpVersion: nil,
             headerFields: headers

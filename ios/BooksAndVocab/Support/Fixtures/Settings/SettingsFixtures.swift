@@ -159,7 +159,7 @@ enum SettingsFixtures {
                     showAutoSync: true
                 ),
                 kg: .init(
-                    serverURL: "https://wordnexus.lol",
+                    serverURL: BrandIdentity.publicBaseURL,
                     isConnected: true,
                     connectionPulse: false,
                     serverCardCount: 128,
@@ -214,7 +214,7 @@ enum SettingsFixtures {
                     showAutoSync: true
                 ),
                 kg: .init(
-                    serverURL: "https://wordnexus.lol",
+                    serverURL: BrandIdentity.publicBaseURL,
                     isConnected: false,
                     connectionPulse: true,
                     serverCardCount: 0,
@@ -269,7 +269,7 @@ enum SettingsFixtures {
                     showAutoSync: true
                 ),
                 kg: .init(
-                    serverURL: "https://wordnexus.lol",
+                    serverURL: BrandIdentity.publicBaseURL,
                     isConnected: true,
                     connectionPulse: false,
                     serverCardCount: 128,
@@ -324,7 +324,7 @@ enum SettingsFixtures {
                     showAutoSync: true
                 ),
                 kg: .init(
-                    serverURL: "https://wordnexus.lol",
+                    serverURL: BrandIdentity.publicBaseURL,
                     isConnected: true,
                     connectionPulse: false,
                     serverCardCount: 128,

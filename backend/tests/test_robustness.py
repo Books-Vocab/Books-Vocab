@@ -27,7 +27,7 @@ def _future_iso(days: int = 30) -> str:
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
+from conftest import TEST_JWT_SECRET, TEST_PRO_PRODUCT_ID, _swap_settings, make_jwt
 
 # ---------------------------------------------------------------------------
 # Import kg modules ONCE. SQLModel's MetaData is a process singleton;
@@ -177,7 +177,7 @@ class TestBatchA_UsersJsonLock:
         r = client.post(
             "/api/billing/app-store/sync",
             json={
-                "product_id": "com.wordnexus.pro.monthly",
+                "product_id": TEST_PRO_PRODUCT_ID,
                 "transaction_id": "tx-1",
                 "original_transaction_id": "otx-1",
                 "environment": "production",
@@ -205,7 +205,7 @@ class TestBatchA_UsersJsonLock:
         client.post(
             "/api/billing/app-store/sync",
             json={
-                "product_id": "com.wordnexus.pro.monthly",
+                "product_id": TEST_PRO_PRODUCT_ID,
                 "transaction_id": "tx-1",
                 "original_transaction_id": "otx-1",
                 "environment": "sandbox",
@@ -222,7 +222,7 @@ class TestBatchA_UsersJsonLock:
             "/api/billing/app-store/notifications",
             json={
                 "notification_type": "EXPIRED",
-                "product_id": "com.wordnexus.pro.monthly",
+                "product_id": TEST_PRO_PRODUCT_ID,
                 "transaction_id": "tx-2",
                 "original_transaction_id": "otx-1",
                 "environment": "production",

@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.billing as billing_router_mod
-from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
+from conftest import TEST_JWT_SECRET, TEST_PRO_PRODUCT_ID, _swap_settings, make_jwt
 from kg.api import app
 from kg.settings import KGSettings
 
@@ -137,7 +137,7 @@ def _transaction_payload(
         expires_at = now_ms - 1000
     payload = {
         "bundleId": app.state.kg_settings.apple_bundle_id,
-        "productId": "com.wordnexus.pro.monthly",
+        "productId": TEST_PRO_PRODUCT_ID,
         "transactionId": transaction_id,
         "originalTransactionId": original_transaction_id,
         "environment": environment,
@@ -159,7 +159,7 @@ def test_signed_sync_verifies_jws_and_persists_subscription(signed_app_store_env
     r = env.client.post(
         "/api/billing/app-store/sync",
         json={
-            "product_id": "com.wordnexus.pro.monthly",
+            "product_id": TEST_PRO_PRODUCT_ID,
             "environment": "sandbox",
             "price_display": "$1.00/month",
             "signed_transaction_info": signed_transaction,
@@ -170,7 +170,7 @@ def test_signed_sync_verifies_jws_and_persists_subscription(signed_app_store_env
     body = r.json()["pro"]
     assert body["is_active"] is True
     assert body["status"] == "trial"
-    assert body["product_id"] == "com.wordnexus.pro.monthly"
+    assert body["product_id"] == TEST_PRO_PRODUCT_ID
 
     saved = json.loads(Path(env.users_file).read_text())
     assert saved[env.user_id]["subscription"]["transaction_id"] == "tx-signed-1"
@@ -187,7 +187,7 @@ def test_signed_notification_verifies_nested_jws_and_updates_subscription(signed
     sync_response = env.client.post(
         "/api/billing/app-store/sync",
         json={
-            "product_id": "com.wordnexus.pro.monthly",
+            "product_id": TEST_PRO_PRODUCT_ID,
             "environment": "sandbox",
             "signed_transaction_info": sync_signed_transaction,
         },
@@ -203,7 +203,7 @@ def test_signed_notification_verifies_nested_jws_and_updates_subscription(signed
     signed_renewal_info = _sign_jws(
         {
             "bundleId": app.state.kg_settings.apple_bundle_id,
-            "productId": "com.wordnexus.pro.monthly",
+            "productId": TEST_PRO_PRODUCT_ID,
             "originalTransactionId": "otx-signed-2",
             "autoRenewStatus": 0,
         },
@@ -258,7 +258,7 @@ def test_reconcile_uses_app_store_server_lookup_and_updates_subscription(signed_
     assert r.status_code == 200, r.text
     body = r.json()["pro"]
     assert body["is_active"] is True
-    assert body["product_id"] == "com.wordnexus.pro.monthly"
+    assert body["product_id"] == TEST_PRO_PRODUCT_ID
 
 
 def test_signed_sync_rejects_bundle_id_mismatch(signed_app_store_env):
@@ -275,7 +275,7 @@ def test_signed_sync_rejects_bundle_id_mismatch(signed_app_store_env):
     r = env.client.post(
         "/api/billing/app-store/sync",
         json={
-            "product_id": "com.wordnexus.pro.monthly",
+            "product_id": TEST_PRO_PRODUCT_ID,
             "environment": "sandbox",
             "signed_transaction_info": signed_transaction,
         },
@@ -301,7 +301,7 @@ def test_expired_receipt_rejected(signed_app_store_env):
     r = env.client.post(
         "/api/billing/app-store/sync",
         json={
-            "product_id": "com.wordnexus.pro.monthly",
+            "product_id": TEST_PRO_PRODUCT_ID,
             "environment": "sandbox",
             "signed_transaction_info": signed_transaction,
         },
@@ -325,7 +325,7 @@ def test_refund_event_invalidates_entitlement(signed_app_store_env):
     sync_resp = env.client.post(
         "/api/billing/app-store/sync",
         json={
-            "product_id": "com.wordnexus.pro.monthly",
+            "product_id": TEST_PRO_PRODUCT_ID,
             "environment": "sandbox",
             "signed_transaction_info": active_signed,
         },

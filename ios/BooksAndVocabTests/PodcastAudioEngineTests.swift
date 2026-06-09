@@ -86,13 +86,13 @@ struct PodcastAudioEngineTests {
     // MARK: - sourceToken derivation
 
     @Test func sourceToken_extractsSeriesAndEpisodeFromPodcastMediaURL() {
-        let url = URL(string: "https://wordnexus.lol/api/podcast-media/flow_950f1a7d/ep_03/audio.mp3")!
+        let url = URL(string: "\(TestBrandIdentity.publicBaseURL)/api/podcast-media/flow_950f1a7d/ep_03/audio.mp3")!
         #expect(PodcastAudioEngine.sourceToken(from: url) == "flow_950f1a7d/ep_03")
     }
 
     @Test func sourceToken_dropsQueryString() {
         // Breadcrumb must stay PII-free — any query (signed URL token, etc.) is dropped.
-        let url = URL(string: "https://wordnexus.lol/api/podcast-media/series_x/ep_01/a.mp3?token=secret")!
+        let url = URL(string: "\(TestBrandIdentity.publicBaseURL)/api/podcast-media/series_x/ep_01/a.mp3?token=secret")!
         #expect(PodcastAudioEngine.sourceToken(from: url) == "series_x/ep_01")
     }
 
@@ -106,7 +106,7 @@ struct PodcastAudioEngineTests {
     @Test func sourceToken_fallbackOnPodcastMediaURLTooShort() {
         // `podcast-media` present but not enough trailing components for
         // `<series>/<episode>` → fall back rather than index out of bounds.
-        let url = URL(string: "https://wordnexus.lol/api/podcast-media/only_series")!
+        let url = URL(string: "\(TestBrandIdentity.publicBaseURL)/api/podcast-media/only_series")!
         #expect(PodcastAudioEngine.sourceToken(from: url) == "only_series")
     }
 
