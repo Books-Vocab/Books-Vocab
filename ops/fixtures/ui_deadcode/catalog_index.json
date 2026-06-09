@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "surfaces": {
+    "Card Surface": {
+      "kind": "buildingBlock",
+      "feature": "vocabulary",
+      "backing": "Card"
+    },
+    "Card Detail Surface": {
+      "kind": "overlay",
+      "feature": "vocabulary",
+      "backing": "Card"
+    },
+    "Screen Surface": {
+      "kind": "featureScreen",
+      "feature": "reader",
+      "screen": "reader",
+      "backing": "Screen"
+    },
+    "Inline Surface": {
+      "kind": "engineering",
+      "feature": "misc"
+    },
+    "Unknown Backing Surface": {
+      "kind": "buildingBlock",
+      "feature": "misc",
+      "backing": "DoesNotExist"
+    }
+  }
+}
