@@ -161,10 +161,10 @@ enum SyncScenarios {
         pos: String,
         translation: String,
         action: PendingAction
-    ) -> PendingVocabPresenterState.RowItem {
+    ) -> SyncPresenterState.RowItem {
         let id = UUID()
         let isDelete = action == .delete
-        return PendingVocabPresenterState.RowItem(
+        return SyncPresenterState.RowItem(
             id: id,
             row: WordRow.ViewData(
                 id: id,
