@@ -2,7 +2,7 @@
 name: cleanup
 description: "Legacy name, new role: blacklist-driven convergence maintainer. 唯一任務是把非黑名單工作持續收斂到 main，push/sync remote，並讓黑名單永遠 rebase 在最新 main 上。"
 user-invocable: true
-version: 4.0.0
+version: 4.1.0
 ---
 
 # Cleanup
@@ -33,6 +33,8 @@ agent 唯一目標：
 也就是說，這是一個**可反覆執行的 convergence loop**，不是一次性 cleanup。
 
 > 一句話契約：先定黑名單 → 保存所有工作與 work identity → 收白名單進 `main` → push/sync remote → rebase 黑名單。
+
+> 活黑名單補充契約：每輪只收斂到各分支的**已保存快照**；本輪之後新長出的 commits 或 dirty work，自動進下一輪。
 
 ---
 
@@ -90,6 +92,13 @@ agent 唯一目標：
 - `main` 不承載暫時保留的分歧
 - 已成熟的內容應盡快升格為 shared baseline
 - 剩下的工作都站在這個 baseline 上繼續長
+
+### 4. 活分支維護的是 snapshot，不是 moving HEAD
+
+- 不直接追逐正在持續變動的 branch HEAD
+- 每輪先把 dirty work 保存成 commit，形成 branch 的本輪 snapshot
+- promote / rebase 都只針對這個 snapshot
+- 這一步之後新長出的 commits，留給下一輪
 
 ---
 
@@ -149,7 +158,15 @@ git worktree add <path> <blacklist-branch>
 這不是 optional housekeeping。  
 只要 `main` 前進，黑名單就要同步到新 `main`。
 
-### Rule 5 — 一次性容器用完即刪
+### Rule 5 — 不追逐本輪之後的新變動
+
+若 branch / worktree 在你操作期間又出現新 commit 或新 dirty work：
+
+- 不回頭重做本輪
+- 只回報「本輪快照已處理到哪裡」
+- 把新變動留給下一輪
+
+### Rule 6 — 一次性容器用完即刪
 
 integration worktree / temporary branch / final branch 都是一次性容器。  
 用完就刪，不允許留下第二真相。
@@ -174,6 +191,7 @@ integration worktree / temporary branch / final branch 都是一次性容器。
 每輪回報至少要有：
 
 - 黑名單清單
+- 每條活分支的 snapshot commit
 - 收進 `main` 的白名單內容
 - 黑名單的新 base
 - preserved work mapping
