@@ -1,5 +1,4 @@
 import Testing
-import Observation
 @testable import BooksBrowser
 
 @MainActor
@@ -24,42 +23,48 @@ struct TodayReviewCacheWindowTests {
         #expect(state.nextCardForTesting != nil)
     }
 
-    /// Regression — P0 infinite re-eval / review brick (commit 7ecb7ff5 made the
-    /// render-path card lookup `mutating`). The render read
-    /// (presenterState → currentCardState/nextCardState → cardCache) MUST NOT mutate
-    /// any `@Observable` property: `cardCache` is an `@Observable` stored property, and
-    /// a mutating lookup fires a per-render mutation (even on a cache hit, even when
-    /// storage is unchanged) → SwiftUI body reads+writes the same property → infinite
-    /// `TodayReviewView.body` re-eval that froze the whole app. `withObservationTracking`
-    /// invokes onChange iff a property accessed during `apply` is mutated.
-    @Test func renderReadDoesNotMutateObservableState() async throws {
-        let entries = (0..<5).map { index -> VocabularyEntry in
-            let entry = VocabularyEntry(
-                word: "word-\(index)",
-                translation: "translation-\(index)",
-                context: "A sample sentence for word \(index).",
-                bookTitle: "Sample"
-            )
-            entry.markSynced()
-            return entry
-        }
+    /// Regression guard for the P0 review brick (commit 7ecb7ff5): the render-path
+    /// card lookup must stay a PURE, non-`mutating` read. The original bug made the
+    /// lookup `mutating` and stored onto the `@Observable cardCache` from the render
+    /// path, so every `TodayReviewView.body` read wrote the same observed property →
+    /// infinite re-eval that froze the whole app.
+    ///
+    /// Scope note (learned the hard way via a revert check): the *exact* hit-path
+    /// failure — a spurious observation notification on an unchanged store — is NOT
+    /// observable from a unit test. `withObservationTracking` only arms `onChange`
+    /// for mutations that happen *after* its `apply` closure returns, but the buggy
+    /// mutation fires *during* the render read (the synthesized `_modify` accessor
+    /// runs `willSet`/`didSet` inline). A `withObservationTracking`-based assertion
+    /// therefore passes whether or not the bug is present (false green). So this locks
+    /// the enforceable invariant instead — the render lookup neither writes storage
+    /// nor builds on a miss — and the behavioral proof is the on-device run (press
+    /// 複習 → no freeze). If a refactor makes the render lookup store again, the
+    /// `storage` count assertions below go red.
+    @Test func renderLookupIsPureAndDoesNotStore() {
+        var cache = TodayReviewCardCache()
+        let entry = VocabularyEntry(
+            word: "lucid",
+            translation: "清晰",
+            context: "A lucid sentence.",
+            bookTitle: "Sample"
+        )
+        entry.markSynced()
 
-        let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
-        try await Task.sleep(for: .milliseconds(120))  // let prewarm populate the window
+        // Render-path lookup on an empty cache: a miss must NOT build-and-store
+        // (that store is what the @Observable property would notify on, per render).
+        let before = cache.storage.count
+        let miss = cache.cached(for: entry)
+        #expect(miss == nil)
+        #expect(cache.storage.count == before, "render lookup miss wrote to the observed cache")
 
-        var mutated = false
-        withObservationTracking {
-            _ = state.presenterState   // exercises currentCardState + nextCardState
-        } onChange: {
-            mutated = true
-        }
-        try await Task.sleep(for: .milliseconds(20))
-
-        #expect(mutated == false, "render-path read mutated @Observable state → infinite re-eval loop")
-        // Render reads must be pure: the cache window is unchanged by reading.
-        let before = state.preparedCardCache.count
-        _ = state.presenterState
-        _ = state.presenterState
-        #expect(state.preparedCardCache.count == before)
+        // Action-path build (allowed to store) then a hit: still no duplication, and
+        // repeated render-path reads stay pure.
+        cache.rebuild(for: entry)
+        #expect(cache.storage.count == before + 1)
+        let hit1 = cache.cached(for: entry)
+        let hit2 = cache.cached(for: entry)
+        #expect(hit1 != nil)
+        #expect(hit2 != nil)
+        #expect(cache.storage.count == before + 1, "render lookup hit mutated the observed cache")
     }
 }
