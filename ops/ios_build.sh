@@ -81,8 +81,20 @@ destination_simulator_name() {
   sed -n 's/.*name=\([^,]*\).*/\1/p' <<<"$DESTINATION" | head -1
 }
 
+# Progress baseline: compile-event count from last successful build.
+# Stored next to DerivedData (shared across worktrees, same cache root).
+# First run has no baseline → raw counts only; after first build % is shown.
+BUILD_PROGRESS_BASELINE="$DERIVED_DATA_ROOT/kg_build.events_baseline"
+
+# shellcheck source=lib/ios_build_progress.sh
+source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+
 # --- Lock acquire (shlock spin-wait) ---
-cleanup() { rm -f "$LOCK_FILE"; }
+MONITOR_PID=""
+cleanup() {
+  rm -f "$LOCK_FILE"
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null || true
+}
 
 echo "[ios_build] caller=$CALLER waiting for lock..."
 WAITED=0
@@ -124,15 +136,20 @@ if destination_is_simulator; then
   SIMULATOR_BOOT_SELECTOR="$(destination_simulator_name)"
   if [[ -n "$SIMULATOR_BOOT_SELECTOR" ]]; then
     BOOT_START_MS="$(ios_build_now_ms)"
-    "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR" >/dev/null
+    echo "[ios_build] simulator ensure-booted — device=\"$SIMULATOR_BOOT_SELECTOR\" (up to ~30s if cold-starting from scratch)..."
+    "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR"
     BOOT_END_MS="$(ios_build_now_ms)"
     BOOT_MS=$(( BOOT_END_MS - BOOT_START_MS ))
-    echo "[ios_build] simulator ensure-booted device=\"$SIMULATOR_BOOT_SELECTOR\" bootMs=$BOOT_MS"
   fi
 fi
 
 set +e
 XCODEBUILD_START_MS="$(ios_build_now_ms)"
+BUILD_START_S=$(date +%s)
+# -quiet is intentionally omitted: without it xcodebuild emits one line per
+# compiled file (SwiftCompile/CompileC), which the progress monitor counts to
+# show %. All output still goes to $TMPOUT — stdout stays clean.
+MONITOR_PID=$(start_build_monitor "$TMPOUT" "$BUILD_PROGRESS_BASELINE" "[ios_build]" "$BUILD_START_S")
 xcodebuild \
   -project "$XCODEPROJ" \
   -scheme BooksAndVocab \
@@ -140,11 +157,15 @@ xcodebuild \
   -derivedDataPath "$DERIVED_DATA_ROOT" \
   -resultBundlePath "$RESULT_BUNDLE" \
   "${EXTRA_SETTINGS[@]+"${EXTRA_SETTINGS[@]}"}" \
-  -quiet build \
+  build \
   >"$TMPOUT" 2>&1
 EXIT_CODE=$?
+kill "$MONITOR_PID" 2>/dev/null || true
+wait "$MONITOR_PID" 2>/dev/null || true
+MONITOR_PID=""
 XCODEBUILD_END_MS="$(ios_build_now_ms)"
 XCODEBUILD_MS=$(( XCODEBUILD_END_MS - XCODEBUILD_START_MS ))
+COMPILE_EVENT_COUNT=$(count_compile_events "$TMPOUT")
 set -e
 
 ELAPSED=$(( $(date +%s) - START ))
@@ -199,10 +220,16 @@ write_json_verdict() {
   type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
 }
 if [[ $EXIT_CODE -eq 0 ]]; then
+  # Persist compile-event count as the baseline for future % estimates.
+  # Written only on success so a failed partial build never poisons the baseline.
+  if [[ "$COMPILE_EVENT_COUNT" -gt 0 ]]; then
+    mkdir -p "$DERIVED_DATA_ROOT"
+    echo "$COMPILE_EVENT_COUNT" > "$BUILD_PROGRESS_BASELINE"
+  fi
   echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "ok" "0"
   echo "[ios_build] timings lockWaitMs=$LOCK_WAIT_MS bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
-  echo "[ios_build] ✓ build succeeded (${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
+  echo "[ios_build] ✓ build succeeded (${ELAPSED}s, ${COMPILE_EVENT_COUNT} compile events) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 else
   echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
   write_json_verdict "fail" "$EXIT_CODE"
