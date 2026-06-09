@@ -532,8 +532,10 @@ handle_cache_action() {
         build_log="$(mktemp)"
         build_result_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
         build_result_bundle="$build_result_dir/BuildForTesting.xcresult"
-        rebuild_test_cache "$build_log" "$build_result_bundle"
-        build_exit=$?
+        # Guard with `|| build_exit=$?`: this runs under `set -e`, so a non-zero
+        # return would abort before we can build the error payload below.
+        build_exit=0
+        rebuild_test_cache "$build_log" "$build_result_bundle" || build_exit=$?
         if [[ "$build_exit" -eq 0 ]]; then
           xctestrun_path="$(ios_test_find_xctestrun "$derived_root" || true)"
           products_ready=false
@@ -685,8 +687,7 @@ rebuild_test_cache() {
   # products — written while still holding the lock so the sentinel is atomic
   # with the build from a concurrent agent's view. An interrupted build never
   # reaches here (cleanup runs instead), so no sentinel is written and the next
-  # agent rebuilds. Callers still detect failure via missing .xctestrun, so the
-  # function's exit status stays 0 as before.
+  # agent rebuilds.
   if [[ "$build_rc" -eq 0 ]]; then
     _xctestrun="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" 2>/dev/null || true)"
     if [[ -n "$_xctestrun" ]] && ios_test_cached_products_ready "$_xctestrun"; then
@@ -694,6 +695,11 @@ rebuild_test_cache() {
     fi
   fi
   release_build_lock
+  # Propagate the real build-for-testing exit code. A compile failure (build_rc
+  # != 0) MUST surface here so callers print the build log (the actual compiler
+  # diagnostics) instead of the misleading "no .xctestrun artifact" message —
+  # fail loud, no silent fallback.
+  return "$build_rc"
 }
 
 ensure_xctestrun_ready_or_fail() {
