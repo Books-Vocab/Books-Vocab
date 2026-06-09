@@ -107,6 +107,8 @@ TEST_CACHE_ROOT="${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived
 
 # shellcheck source=lib/ios_test_discovery.sh
 source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
+# shellcheck source=lib/ios_build_progress.sh
+source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -611,10 +613,10 @@ lease_json=""
 boot_simulator_if_needed() {
   local boot_start_ms boot_end_ms
   boot_start_ms="$(ios_test_now_ms)"
-  "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR" >/dev/null
+  echo "[ios_test] simulator ensure-booted — device=\"$SIMULATOR_BOOT_SELECTOR\" (up to ~30s if cold-starting from scratch)..."
+  "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR"
   boot_end_ms="$(ios_test_now_ms)"
   BOOT_MS=$(( boot_end_ms - boot_start_ms ))
-  echo "[ios_test] simulator ensure-booted device=\"$SIMULATOR_BOOT_SELECTOR\" bootMs=$BOOT_MS"
 }
 
 ui_test_launch_args_json() {
@@ -809,7 +811,13 @@ rebuild_test_cache() {
   # mid-build below can never leave an old sentinel pointing at fresh-but-partial
   # products.
   rm -f "$DERIVED_DATA_ROOT/$IOS_TEST_CACHE_SENTINEL" 2>/dev/null || true
+  # Separate baseline from ios_build.sh because build-for-testing also compiles
+  # test targets and has a higher event count (~1390 vs ~1100 for a plain build).
+  local bft_baseline="$DERIVED_DATA_ROOT/kg_build_for_testing.events_baseline"
   build_start_ms="$(ios_test_now_ms)"
+  local bft_start_s bft_monitor_pid
+  bft_start_s=$(date +%s)
+  bft_monitor_pid=$(start_build_monitor "$build_log" "$bft_baseline" "[ios_test][build-for-testing]" "$bft_start_s")
   xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
     -scheme "$TEST_SCHEME" \
@@ -822,8 +830,16 @@ rebuild_test_cache() {
     -resultBundlePath "$build_result_bundle" \
     >"$build_log" 2>&1
   build_rc=$?
+  kill "$bft_monitor_pid" 2>/dev/null || true
+  wait "$bft_monitor_pid" 2>/dev/null || true
   build_end_ms="$(ios_test_now_ms)"
   BUILD_FOR_TESTING_MS=$(( build_end_ms - build_start_ms ))
+  local bft_compile_count
+  bft_compile_count=$(count_compile_events "$build_log")
+  echo "[ios_test][build-for-testing] finished (${BUILD_FOR_TESTING_MS}ms, ${bft_compile_count} compile events, exit=$build_rc)"
+  if [[ "$build_rc" -eq 0 && "$bft_compile_count" -gt 0 ]]; then
+    echo "$bft_compile_count" > "$bft_baseline"
+  fi
   # Mark the cache complete ONLY when the build exited 0 AND produced ready
   # products — written while still holding the lock so the sentinel is atomic
   # with the build from a concurrent agent's view. An interrupted build never
