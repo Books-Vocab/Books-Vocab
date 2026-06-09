@@ -36,6 +36,7 @@ import kgindex_records  # noqa: E402  (ops/lib shared module)
 SCHEMA = "kg.ui.graph.v1"
 DEFAULT_KINDS = ("struct", "class")
 DEFAULT_SOURCE_ROOT = "ios/BooksBrowser/"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 # --------------------------------------------------------------------------- #
@@ -88,6 +89,76 @@ def build_graph(records: dict, *, kinds: tuple[str, ...] = DEFAULT_KINDS) -> dic
 def resolve_name(graph: dict, name: str) -> list[str]:
     """USRs of nodes whose name matches (exact). Multiple = same name, distinct types."""
     return sorted(u for u, n in graph["nodes"].items() if n["name"] == name)
+
+
+def attach_catalog_surfaces(graph: dict, catalog_index: dict, *, stderr=sys.stderr) -> None:
+    """Annotate graph nodes with catalog surfaces linked by backing type name."""
+    surfaces = catalog_index.get("surfaces", {}) if isinstance(catalog_index, dict) else {}
+    surface_nodes: dict[str, list[str]] = {}
+    for node in graph["nodes"].values():
+        node["surface"] = []
+
+    if not isinstance(surfaces, dict):
+        graph["surfaceNodes"] = surface_nodes
+        return
+
+    for surface_name, entry in sorted(surfaces.items()):
+        if not isinstance(entry, dict):
+            continue
+        backing = entry.get("backing")
+        if not backing:
+            surface_nodes[surface_name] = []
+            continue
+        matches = resolve_name(graph, backing)
+        surface_nodes[surface_name] = matches
+        if not matches:
+            print(f"[ui_graph] catalog surface {surface_name!r} backing {backing!r} did not resolve to any scanned node", file=stderr)
+            continue
+        if len(matches) > 1:
+            print(f"[ui_graph] catalog surface {surface_name!r} backing {backing!r} resolved ambiguously to {len(matches)} nodes", file=stderr)
+        for usr in matches:
+            graph["nodes"][usr]["surface"].append(surface_name)
+
+    for node in graph["nodes"].values():
+        node["surface"].sort()
+    graph["surfaceNodes"] = surface_nodes
+
+
+def discover_catalog_index(*, records_json: str | None = None) -> Path | None:
+    if records_json:
+        sibling = Path(records_json).with_name("catalog_index.json")
+        if sibling.is_file():
+            return sibling
+    snapshots = sorted(
+        PROJECT_ROOT.glob("build/snapshots/*/catalog_index.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return snapshots[0] if snapshots else None
+
+
+def load_catalog_index(
+    *,
+    catalog_index_path: str | None = None,
+    records_json: str | None = None,
+    stderr=sys.stderr,
+) -> tuple[dict, Path | None]:
+    candidate = Path(catalog_index_path) if catalog_index_path else discover_catalog_index(records_json=records_json)
+    if candidate is None:
+        return {}, None
+    if not candidate.is_file():
+        raise SystemExit(f"[ui_graph] catalog index not found: {candidate}")
+    try:
+        data = json.loads(candidate.read_text())
+    except ValueError as exc:
+        raise SystemExit(f"[ui_graph] catalog index is not valid JSON: {candidate}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"[ui_graph] catalog index root must be an object: {candidate}")
+    surfaces = data.get("surfaces", {})
+    if not isinstance(surfaces, dict):
+        raise SystemExit(f"[ui_graph] catalog index surfaces must be an object: {candidate}")
+    print(f"[ui_graph] catalog surfaces <- {candidate}", file=stderr)
+    return data, candidate
 
 
 def _names(graph: dict, usrs) -> list[str]:
@@ -191,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     src.add_argument("--build", action="store_true", help="run an isolated clean build, then scan (default)")
     src.add_argument("--store-path", help="scan an existing IndexStore DataStore, skip build")
     src.add_argument("--records-json", help="read pre-captured kgindex records JSON, skip build+scan")
+    p.add_argument("--catalog-index", help="catalog_index.json path (default: sibling of --records-json, else latest build/snapshots/*/catalog_index.json)")
     p.add_argument("--source-root", default=DEFAULT_SOURCE_ROOT, help=f"source-root substring (default: {DEFAULT_SOURCE_ROOT})")
     p.add_argument("--kinds", default=",".join(DEFAULT_KINDS), help=f"node kinds (default: {','.join(DEFAULT_KINDS)})")
     p.add_argument("--type", dest="type_name", help="focus a single type: show its deps + users")
@@ -204,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
         records_json=args.records_json, store_path=args.store_path, label="ui_graph",
     )
     graph = build_graph(records, kinds=kinds)
+    catalog_index, _ = load_catalog_index(
+        catalog_index_path=args.catalog_index,
+        records_json=args.records_json,
+    )
+    attach_catalog_surfaces(graph, catalog_index)
 
     if args.json:
         print(json.dumps(build_payload(graph, source_root), indent=2, ensure_ascii=False))
