@@ -13,21 +13,16 @@
 
 import XCTest
 
-final class PodcastNavigationUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
+final class PodcastNavigationUITests: UITestCase {
     @MainActor
     func testEpisodeTapDoesNotPopToRoot() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
         // 1. podcast series 卡片：accessibilityLabel = "<title>, podcast"
         let series = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS[c] %@", ", podcast"))
             .firstMatch
-        guard series.waitForExistence(timeout: 15) else {
+        guard series.waitUntilExists(timeout: 15) else {
             throw XCTSkip("無 podcast 測試資料（fresh container），無法 runtime 驗證 pop-to-root")
         }
         series.tap()
@@ -37,7 +32,7 @@ final class PodcastNavigationUITests: XCTestCase {
         let episode = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS[c] %@", "Two Words"))
             .firstMatch
-        guard episode.waitForExistence(timeout: 10) else {
+        guard episode.waitUntilExists(timeout: 10) else {
             throw XCTSkip("集數列表未載入預期集數，跳過（資料不符）")
         }
 
@@ -47,7 +42,7 @@ final class PodcastNavigationUITests: XCTestCase {
         // 4. 等可能的 pop-to-root 動畫，斷言集數仍在畫面。
         //    修復前：BookshelfView NavigationStack 重建 → 集數列表被 pop → episode 消失。
         //    修復後：path-bound stack 保留 path → 集數列表常駐 → episode 仍在。
-        Thread.sleep(forTimeInterval: 2.5)
+        XCTAssertTrue(app.waitForNavigationToSettle(timeout: 3))
         XCTAssertTrue(
             episode.exists,
             "點集數後集數從畫面消失 → pop-to-root 回書架（path-bound 修法失效）"
