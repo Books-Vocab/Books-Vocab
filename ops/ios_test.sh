@@ -49,7 +49,14 @@ LAUNCH_BENCHMARK=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -g|--grep) GREP_PATTERN="$2"; shift 2 ;;
-    --file) TEST_FILE="$2"; shift 2 ;;
+    --file)
+      # 重複 --file 只會保留最後一個、靜默丟棄其餘 → 曾誘發 false-green（以為跑了多檔，
+      # 其實只跑最後一檔）。改為明確報錯：多檔請用 --grep '<A>|<B>' 或分多次跑。
+      if [[ -n "$TEST_FILE" ]]; then
+        echo "[ios_test] error: --file 只能指定一次（重複會靜默覆蓋）。多檔請用 --grep '<A>|<B>' 或分多次執行。" >&2
+        exit 2
+      fi
+      TEST_FILE="$2"; shift 2 ;;
     --unit) TEST_SCOPE="unit"; shift ;;
     --ui) TEST_SCOPE="ui"; shift ;;
     --all-targets|--scheme) TEST_SCOPE="all"; shift ;;

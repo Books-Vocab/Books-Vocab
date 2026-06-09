@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: 8aaece8d
+verified_against: 1d23758d
 -->
 # Vocabulary Feature Boundary
 
@@ -134,6 +134,7 @@ verified_against: 8aaece8d
 | `Components/ProgressCapsule.swift` | 44 | `struct ProgressCapsule: View`，通用進度 capsule（fill / track / label） |
 | `Components/SelectionToolbar.swift` | 63 | `struct SelectionToolbar: View`，多選模式底部封存／刪除工具列 |
 | `Components/PressableInteraction.swift` | 37 | `PressableStyle` / `LiftableButtonStyle` ButtonStyle（按壓縮放/抬升回饋 + `.pressable` / `.liftable` 便捷取用） |
+| `NotebookBindingList.swift` | 54 | `struct NotebookBindingList: View`（presentational，置於 Vocabulary/ 根）。單字本選擇清單，Reader（`ReaderNotebookPicker`，書綁定）與 Podcast（`PodcastNotebookPicker`，系列綁定）共用。`notebooks`/`selectedNotebookId`/`onSelect` 純資料注入；**刻意不標示「預設」** —— 所有單字本平權，每個容器（book/series）綁定即真相、無 magic 預設本。見 `NotebookBindable` |
 
 ### Overlay Layer
 
@@ -170,6 +171,7 @@ verified_against: 8aaece8d
 - `KGVocabCoordinator`：Books & Vocab 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
 - Presentation models（`Presentation/`）：純值類型，可跨 layer 傳遞，但不持有 mutable state
+- **容器↔單字本綁定 scope**（`NotebookBindable`，`ios/BooksAndVocab/Models/NotebookBindable.swift`）：每本書（`Book`）/ 每個 podcast 系列（`PodcastSeries`）綁定**恰好一本真實單字本**，開啟時以最近使用的真實本 seed 固化（`ensureBoundNotebook` + `canSeedBinding` gate：seed 須在 live 清單內已 settle，擋未同步 `"default"` sentinel）。固化後選詞 / highlight / cache scope 一律認 `resolvedNotebookId` 綁定本，**不再隨全域 active 漂移、無 magic 預設本**。`preferredNotebookId` 為純本機偏好；`resolvedNotebookId` 的 `?? activeNotebookId` 僅防禦性 last-resort（未經開啟流程就讀取），非主路徑。綁定本被刪除時由各 picker 的 `sanitizeStaleBoundNotebook` 清 nil、下次開啟 re-seed
 
 ## 共用依賴
 

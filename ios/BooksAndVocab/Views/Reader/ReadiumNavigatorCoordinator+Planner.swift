@@ -7,7 +7,6 @@ struct BridgePlanner {
     var lastClearHighlightTrigger: UUID?
     var lastRemoveWordId: UUID?
     var lastNavigateId: UUID?
-    var lastVocabCount: Int = 0
     var lastVocabWordsSet: Set<String> = []
     var lastBookUniqueWordsCount: Int?
     var lastPreferences: EPUBPreferences?
@@ -41,34 +40,60 @@ struct BridgePlanner {
         return [.dom(.clearActiveHighlight)]
     }
 
+    /// 以 set 內容（非 count）權威判斷底線變化。換綁定單字本時新舊字數可能相同
+    /// 但內容互換，舊版只看 count 會漏更新 —— 改用 added/removed 差集驅動：
+    /// - 純新增 → markVocabWords / markNewVocabWord（增量，不整片清）
+    /// - 純移除 → removeVocabWord（少量）或 clearAll+remark（大量）
+    /// - 內容互換（同時有新增與移除）→ clearAllVocabHighlights + markVocabWords 權威重畫
     private mutating func commandsForVocabularyHighlights(
         lookedUpWords: [String],
         bookUniqueWords: Set<String>?
     ) -> [BridgeCommand] {
-        let previousCount = lastVocabCount
-        let currentCount = lookedUpWords.count
         let currentSet = Set(lookedUpWords)
         let didLoadBookWords = (bookUniqueWords != nil && lastBookUniqueWordsCount == nil)
-        var commands: [BridgeCommand] = []
+        let added = currentSet.subtracting(lastVocabWordsSet)
+        let removed = lastVocabWordsSet.subtracting(currentSet)
 
-        if currentCount < previousCount {
-            let removedWords = lastVocabWordsSet.subtracting(currentSet)
-            commands.append(contentsOf: commandsForRemovedVocabulary(
-                newCount: currentCount,
-                removedWords: removedWords,
-                remainingWords: currentSet,
-                bookUniqueWords: bookUniqueWords
-            ))
-        } else if currentCount > previousCount || didLoadBookWords {
-            commands.append(contentsOf: commandsForAddedVocabulary(
+        // 注意：callee（commandsForAddedVocabulary）會讀 lastVocabWordsSet 重算 addedWords，
+        // 故 defer 在 callee 跑完後才更新 —— callee 觀察到的是「更新前」的舊集合（刻意）。
+        defer { lastVocabWordsSet = currentSet }
+
+        // 首次拿到 bookUniqueWords：以新 filter 權威重 mark 全集（即使 set 未變）。
+        if didLoadBookWords {
+            return commandsForAddedVocabulary(
                 lookedUpWords: lookedUpWords,
-                didLoadBookWords: didLoadBookWords,
+                didLoadBookWords: true,
                 bookUniqueWords: bookUniqueWords
-            ))
+            )
         }
 
-        lastVocabCount = currentCount
-        lastVocabWordsSet = currentSet
+        if added.isEmpty && removed.isEmpty { return [] }
+
+        // 純新增：增量 mark（保留單字即時標記的 markNewVocabWord 路徑）。
+        if removed.isEmpty {
+            return commandsForAddedVocabulary(
+                lookedUpWords: Array(added),
+                didLoadBookWords: false,
+                bookUniqueWords: bookUniqueWords
+            )
+        }
+
+        // 純移除：少量逐字移除、大量整片清後重 mark。
+        if added.isEmpty {
+            return commandsForRemovedVocabulary(
+                newCount: currentSet.count,
+                removedWords: removed,
+                remainingWords: currentSet,
+                bookUniqueWords: bookUniqueWords
+            )
+        }
+
+        // 內容互換（換綁定 notebook）：權威清空 + 重 mark 當前綁定本的有效字。
+        var commands: [BridgeCommand] = [.dom(.clearAllVocabHighlights)]
+        let validWords = filterValidWords(currentSet, bookWords: bookUniqueWords)
+        if !validWords.isEmpty {
+            commands.append(.dom(.markVocabWords(validWords)))
+        }
         return commands
     }
 
