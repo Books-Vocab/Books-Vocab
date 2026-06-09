@@ -1,84 +1,101 @@
 ---
 name: converge
-description: "Branch/worktree convergence skill：先立 T0 snapshot barrier，離線組 final state，再用極短 cutover 推進 main 並重掛存活分支。"
+description: "Branch/worktree convergence：A=cleanup 全收斂，B=promote 單分支升格。核心=白名單進 main → 黑名單 rebase → sync remote → 清殘影。"
 user-invocable: true
 version: 1.0.0
 ---
 
 # Converge
 
-`converge` 是 branch/worktree 收斂的**單一 canonical skill**。
+兩種模式，同一個目標：**讓 main 是最新 shared baseline，所有活分支都基於它。**
 
-它服務兩種需求：
+---
 
-- `mode=cleanup`：吸收所有非黑名單工作進 `main`
-- `mode=promote`：只吸收活 branch 的指定已提交子集進 `main`
+## Mode A — Cleanup（全收斂）
 
-`cleanup` / `promote` 只是語意入口。  
-真正的方法論只有一套：**T0 snapshot barrier → offline integration → short cutover → post-cutover reconcile**。
+白名單全部進 main，黑名單保留但 rebase 到新 main，已完成分支全清。
 
-## 什麼時候用
+### 步驟
 
-- 你要收斂 branch / worktree / PR 到新 `main`
-- branch 還在活，但其中一部分已值得成為 shared baseline
-- 你要避免在 hot branch 上追逐 moving HEAD
-- 你要把最終變動壓縮到極短 cutover，而不是邊驗證邊改 live branch
+```bash
+# 1. 盤現狀
+git fetch --all --prune
+git branch -vv
+git worktree list
+git status
 
-## Mode 選擇
+# 2. 白名單合併（逐條）
+git checkout main
+git merge <white-branch>      # 或 gh pr merge <pr-number> --squash / --rebase / --merge
+git push origin main
 
-### `cleanup`
+# 3. 黑名單 rebase
+git checkout <black-branch>
+git rebase origin/main
+git push --force-with-lease   # 若有 remote
 
-適用於：
+# 4. 清已完成分支殘影
+git push origin --delete <white-branch>    # remote
+git branch -D <white-branch>               # local
+git worktree remove <white-worktree>       # 若有 worktree
 
-- 使用者先定黑名單
-- 其餘白名單都應收進 `main`
-- 白名單殘影應清掉
-- 黑名單應保留並 rebase 到新 `main`
+# 5. 驗收
+git branch -vv
+git worktree list
+git status
+```
 
-### `promote`
+---
 
-適用於：
+## Mode B — Promote（單分支升格）
 
-- 某條 branch 還在持續修改
-- 但其中一部分**已提交 commits**要先成為 shared baseline
-- 原 branch / worktree 要繼續活著
-- 除非使用者明確要求，不自動清原 branch / worktree
+在 A 已清完的狀態下，選一條活分支，把它的 commits 拉進 main（不刪分支）。
 
-## 核心契約
+### 步驟
 
-1. **先立 T0，再做其他事**
-   - 先盤 live state
-   - 先把本輪要處理的 dirty work 保存成 snapshot
-   - T0 之後的新 dirty / new commit 一律進下一輪
+```bash
+# 1. 確認基線
+git fetch --all --prune
+git checkout main
 
-2. **不要在主流程追逐 hot branch**
-   - 驗證與整合都在離線 integration/final worktree 做
-   - cutover 前不回頭重新讀活 branch working tree
+# 2. 拉進目標分支的 commits
+git merge <target-branch>     # 或 cherry-pick 指定 commits
+git push origin main
 
-3. **cutover 要極短且序列化**
-   - push `main`
-   - fetch/prune
-   - rebase survivors
-   - force-push survivors（若有 remote）
-   - 清理白名單殘影或 integration 容器
+# 3. 所有其他活分支 rebase
+git checkout <other-branch>
+git rebase origin/main
+git push --force-with-lease
 
-4. **commit reachability 是真相**
-   - PR state 只是 metadata
-   - `./ops/branch_audit.sh --json` 是 machine-readable authority
+# 4. 目標分支保留（不刪），但可選 rebase 讓它也追上
+git checkout <target-branch>
+git rebase origin/main
+git push --force-with-lease
 
-## Read Order
+# 5. 驗收
+git branch -vv
+git worktree list
+```
 
-1. 先讀本檔：理解 mode 與 methodology
-2. 再讀 [methodology.md](./methodology.md)：完整執行手冊
-3. 動手前跑 [checklists.md](./checklists.md)
-4. 遇到相似情境時讀 [casebook.md](./casebook.md)
+---
 
-## 最小輸出契約
+## 輸出要求
 
-- mode：`cleanup` 或 `promote`
-- T0 時間點與各分支 snapshot commit
-- 收進 `main` 的內容
-- short cutover 做了哪些序列化步驟
-- surviving branch 是否已 rebase 到新 `main`
-- 哪些 branch/worktree 被保留、哪些被清掉
-- 哪些變更因為發生在 T0 之後，被明確留到下一輪
+每次 converge 結束必須報告：
+
+1. Mode（A cleanup / B promote）
+2. 進了 main 的內容（branch / commits / PR #）
+3. 黑名單/其他分支的新 base（`git rev-parse origin/main`）
+4. 刪了哪些 remote branch / local branch / worktree
+5. 還活著的 branch 列表
+6. `git status` 是否乾淨
+
+---
+
+## 鐵律
+
+- **先 fetch**，永遠先看 origin/main 的真實狀態
+- **merge main 前確認 main 是乾淨的**（無 uncommitted changes）
+- **force-push 只用 `--force-with-lease`**，不用 `-f`
+- **刪 remote branch 前確認 PR 已合併或不再需要**
+- **merge 後若測試失敗，revert 或 hotfix，不讓 main 壞著**
