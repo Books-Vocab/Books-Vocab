@@ -15,6 +15,10 @@ def _records():
     return json.loads((FIXTURES / "records_graph.json").read_text())
 
 
+def _catalog_index():
+    return json.loads((FIXTURES / "catalog_index.json").read_text())
+
+
 def _graph():
     return ui_graph.build_graph(_records())  # default kinds struct,class
 
@@ -63,8 +67,30 @@ def test_graph_orphans_are_zero_inbound_nodes():
     assert ui_graph.graph_orphans(g) == ["Lonely", "Screen"]
 
 
+def test_catalog_surfaces_attach_to_nodes_by_backing_name():
+    g = _graph()
+    ui_graph.attach_catalog_surfaces(g, _catalog_index())
+    card = ui_graph.resolve_name(g, "Card")[0]
+    screen = ui_graph.resolve_name(g, "Screen")[0]
+    lonely = ui_graph.resolve_name(g, "Lonely")[0]
+    assert g["nodes"][card]["surface"] == ["Card Detail Surface", "Card Surface"]
+    assert g["nodes"][screen]["surface"] == ["Screen Surface"]
+    assert g["nodes"][lonely]["surface"] == []
+
+
+def test_catalog_surface_index_tracks_backing_nodes():
+    g = _graph()
+    ui_graph.attach_catalog_surfaces(g, _catalog_index())
+    card = ui_graph.resolve_name(g, "Card")[0]
+    assert g["surfaceNodes"]["Card Surface"] == [card]
+    assert g["surfaceNodes"]["Card Detail Surface"] == [card]
+    assert g["surfaceNodes"]["Inline Surface"] == []
+    assert g["surfaceNodes"]["Unknown Backing Surface"] == []
+
+
 def test_payload_schema_and_counts():
     g = _graph()
+    ui_graph.attach_catalog_surfaces(g, _catalog_index())
     payload = ui_graph.build_payload(g, "ios/BooksBrowser/")
     assert payload["schema"] == "kg.ui.graph.v1"
     assert payload["nodeCount"] == 4
@@ -72,6 +98,9 @@ def test_payload_schema_and_counts():
     assert "generated_at" in payload
     froms = {e["from"] for e in payload["edges"]}
     assert "s:Screen" in froms and "s:Card" in froms
+    nodes = {node["name"]: node for node in payload["nodes"]}
+    assert nodes["Card"]["surface"] == ["Card Detail Surface", "Card Surface"]
+    assert nodes["Lonely"]["surface"] == []
 
 
 def test_dot_export_contains_edges():
