@@ -1,7 +1,7 @@
 import XCTest
 
-/// Page Object for the Reader (book reading) scene.
-struct ReaderPage {
+/// Page Object for the Knowledge Graph scene.
+struct KnowledgeGraphPage {
     let app: XCUIApplication
 
     // MARK: - Chrome
@@ -10,20 +10,16 @@ struct ReaderPage {
         app.navigationBars.buttons.firstMatch
     }
 
-    var translationPanel: XCUIElement {
-        app.otherElements["reader.translationPanel"]
-    }
-
-    var settingsPanel: XCUIElement {
-        app.otherElements["reader.settingsPanel"]
+    var webView: XCUIElement {
+        app.webViews.firstMatch
     }
 
     // MARK: - Actions
 
     @discardableResult
-    func goBack(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
+    func goBack(file: StaticString = #filePath, line: UInt = UInt(#line)) -> NotebookPage {
         backButton.tapWhenReady(file: file, line: line)
-        return BookshelfPage(app: app)
+        return NotebookPage(app: app)
     }
 
     // MARK: - Assertions
