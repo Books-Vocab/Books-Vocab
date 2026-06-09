@@ -25,8 +25,9 @@ def _future_iso(days: int = 30) -> str:
     return (datetime.now(tz=UTC) + timedelta(days=days)).isoformat()
 
 import pytest
-from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from fastapi.testclient import TestClient
+
+from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 
 # ---------------------------------------------------------------------------
 # Import kg modules ONCE. SQLModel's MetaData is a process singleton;

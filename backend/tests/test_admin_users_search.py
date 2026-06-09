@@ -5,7 +5,6 @@ import pytest
 
 from conftest import ADMIN_TOKEN
 
-
 _USERS_SEED = {
     "_meta": {},
     "uid-alice-001": {

@@ -8,8 +8,8 @@ from fastapi import HTTPException
 from openai import OpenAIError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
-from .exceptions import ExternalServiceError, KGError
 from .deps_quota import _is_pro
+from .exceptions import ExternalServiceError, KGError
 from .llm.providers import provider_for
 from .service_factories import create_async_client
 from .tracked_llm import TrackedLLM

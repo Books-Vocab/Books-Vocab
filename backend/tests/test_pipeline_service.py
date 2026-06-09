@@ -409,7 +409,7 @@ def test_step_embed_and_judge_touches_cards_after_creating_links():
 
             def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
                 results = {}
-                for cid, word, meaning in candidates:
+                for cid, _word, _meaning in candidates:
                     results[cid] = SimpleNamespace(link="shares_usage", confidence=0.9, reason="test")
                 return results
 

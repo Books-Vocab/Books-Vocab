@@ -1,8 +1,8 @@
 import json
 import os
 
-from kg.graph import GraphStore
 import kg.graph.persistence as persistence
+from kg.graph import GraphStore
 
 
 def test_atomic_json_write_fsyncs_before_rename(tmp_path, monkeypatch):

@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from kg.api import app
 from conftest import TEST_JWT_SECRET, _swap_settings
+from kg.api import app
 from kg.settings import KGSettings
 
 ADMIN_TOKEN = "test-admin-token-orphan"

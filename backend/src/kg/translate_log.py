@@ -231,4 +231,4 @@ def get_log(
     with _lock:
         conn = _get_conn()
         rows = conn.execute(sql, tuple(params)).fetchall()
-    return [dict(zip(cols, row)) for row in rows]
+    return [dict(zip(cols, row, strict=True)) for row in rows]

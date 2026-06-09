@@ -14,7 +14,6 @@ from datetime import UTC, datetime, timedelta
 from kg.demo_review_synth import CardReviewState, synthesize_review_events
 from kg.review_events import ReviewEventStore, pull_review_events, push_review_events
 
-
 _UNSET = object()
 
 
@@ -330,7 +329,7 @@ def test_streak_after_resets_on_lapse_and_counts_consecutive_good():
 
 def test_interval_before_chains_from_previous_after():
     events = synthesize_review_events(_state(review_count=5))
-    for prev, cur in zip(events, events[1:]):
+    for prev, cur in zip(events, events[1:], strict=False):
         assert cur.interval_before == prev.interval_after
 
 
@@ -364,7 +363,7 @@ def test_next_review_after_equals_reviewed_plus_interval():
 def test_next_review_before_chains_and_first_is_none():
     events = synthesize_review_events(_state(review_count=4))
     assert events[0].next_review_before is None
-    for prev, cur in zip(events, events[1:]):
+    for prev, cur in zip(events, events[1:], strict=False):
         assert cur.next_review_before == prev.next_review_after
 
 

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 SPEC_SCHEMA = "kg.ops_world_expectation.v1"
 DIFF_SCHEMA = "kg.ops_world_diff.v1"
 
