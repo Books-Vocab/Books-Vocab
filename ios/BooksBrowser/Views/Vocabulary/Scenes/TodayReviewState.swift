@@ -15,11 +15,9 @@ final class TodayReviewState {
 
     // MARK: - Card Navigation
 
-    var queue: [VocabularyEntry]
+    private var session: TodayReviewSessionState<VocabularyEntry>
     private var queuePersistenceIDs: [String]
     private var queueBaselines: [TodayReviewSessionSnapshotStore.ReviewBaseline]
-    var currentIndex = 0
-    var revealStage: TodayReviewRevealStage = .front
     var linkedCardStack: [VocabularyEntry] = []
     var tappedLink: KGCardLinkSummary?
     var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
@@ -99,7 +97,7 @@ final class TodayReviewState {
             userId: currentUserID
         )
         let _msRestore = PerfChannel.ms(since: _tRestore)
-        queue = ordered
+        session = TodayReviewSessionState(queue: ordered)
         queuePersistenceIDs = ordered.map(ReviewSessionPersistence.persistenceID(for:))
         queueBaselines = ordered.map(ReviewSessionPersistence.makeBaseline(from:))
         sessionStartTime = restored?.sessionStartTime ?? Date()
@@ -107,10 +105,12 @@ final class TodayReviewState {
         linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
         let _msLookup = PerfChannel.ms(since: _tLookup)
         if let restored {
-            queue = restored.queue
+            session = TodayReviewSessionState(
+                queue: restored.queue,
+                currentIndex: restored.currentIndex
+            )
             queuePersistenceIDs = restored.persistenceIDs
             queueBaselines = restored.baselines
-            currentIndex = restored.currentIndex
             scoring.restore(
                 submittedAnswers: restored.submittedAnswers,
                 rememberedCount: restored.rememberedCount,
@@ -126,13 +126,16 @@ final class TodayReviewState {
 
     // MARK: - Computed (State Projection)
 
+    var queue: [VocabularyEntry] { session.queue }
+    var currentIndex: Int { session.currentIndex }
+    var revealStage: TodayReviewRevealStage { session.revealStage }
+
     var currentEntry: VocabularyEntry? {
-        guard currentIndex < queue.count else { return nil }
-        return queue[currentIndex]
+        session.currentEntry
     }
 
     var progressText: String {
-        "\(min(currentIndex + 1, queue.count)) / \(queue.count)"
+        session.progressText
     }
 
     var presenterState: TodayReviewPresenterState {
@@ -141,10 +144,10 @@ final class TodayReviewState {
             currentCard: currentCardState,
             nextCard: nextCardState,
             revealStage: revealStage,
-            canShuffle: queue.count - currentIndex > 1,
-            canGoPrevious: currentIndex > 0,
-            canGoNext: currentIndex < queue.count - 1,
-            remainingCount: max(queue.count - currentIndex - 1, 0),
+            canShuffle: session.canShuffle,
+            canGoPrevious: session.canGoPrevious,
+            canGoNext: session.canGoNext,
+            remainingCount: session.remainingCount,
             forgotCount: forgotCount,
             rememberedCount: rememberedCount,
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
@@ -250,21 +253,17 @@ final class TodayReviewState {
     }
 
     func advanceReveal() {
-        revealStage.advance()
+        _ = session.advanceReveal()
     }
 
     func retractReveal() {
-        revealStage.retract()
+        _ = session.retractReveal()
     }
 
     func shuffleQueue() {
-        let remaining = queue.count - currentIndex
-        guard remaining > 1 else { return }
+        guard session.canShuffle else { return }
         withAnimation(AppMotion.reviewNavigationSpring) {
-            var tail = Array(queue[currentIndex...])
-            tail.shuffle()
-            queue.replaceSubrange(currentIndex..., with: tail)
-            revealStage = .front
+            _ = session.shuffleRemaining()
         }
         syncQueueMetadata()
         prewarmCardWindow()
@@ -273,10 +272,9 @@ final class TodayReviewState {
     }
 
     func goPrevious() {
-        guard currentIndex > 0 else { return }
+        guard session.canGoPrevious else { return }
         withAnimation(AppMotion.reviewNavigationSpring) {
-            revealStage = .front
-            currentIndex -= 1
+            _ = session.goPrevious()
         }
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
@@ -286,10 +284,9 @@ final class TodayReviewState {
     }
 
     func goNext() {
-        guard currentIndex < queue.count - 1 else { return }
+        guard session.canGoNext else { return }
         withAnimation(AppMotion.reviewNavigationSpring) {
-            revealStage = .front
-            currentIndex += 1
+            _ = session.goNext()
         }
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
@@ -361,7 +358,7 @@ final class TodayReviewState {
             // and the cancelled task tears down naturally.
             while !Task.isCancelled {
                 guard let self, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
-                guard self.currentIndex < self.queue.count else {
+                guard !self.session.isComplete else {
                     self.stopAutoPlay()
                     return
                 }
@@ -375,10 +372,9 @@ final class TodayReviewState {
                 try? await Task.sleep(for: self.autoplaySpeed.stayDelay)
                 guard !Task.isCancelled, self.isAutoPlaying, !self.isAutoPlayPaused else { return }
 
-                if self.currentIndex < self.queue.count - 1 {
+                if !self.session.isComplete, self.session.canGoNext {
                     withAnimation(AppMotion.reviewNavigationSpring) {
-                        self.revealStage = .front
-                        self.currentIndex += 1
+                        _ = self.session.advanceAfterSubmission()
                     }
                     self.prewarmCardWindow()
                 } else {
@@ -416,8 +412,7 @@ final class TodayReviewState {
             totalCards: queue.count
         ))
 
-        revealStage = .front
-        currentIndex += 1
+        let didComplete = session.advanceAfterSubmission()
         PerfLog.review.mark("submit.advance", "idx=\(currentIndex - 1)->\(currentIndex)")
         // Persist AFTER advancing so the crash-recovery snapshot reflects the next
         // card. (Previously this ran pre-increment and only became correct via the
@@ -427,7 +422,7 @@ final class TodayReviewState {
         PerfLog.review.measure("submit.snapshot") { persistSnapshot() }
         PerfLog.review.measure("submit.prewarm") { prewarmCardWindow() }
 
-        finishSessionIfComplete()
+        finishSessionIfComplete(completed: didComplete)
     }
 
     /// Batched, deferred persistence — the SINGLE point where review results reach
@@ -465,8 +460,8 @@ final class TodayReviewState {
     /// that advanced past the end). All paths that can reach the end-of-queue
     /// (normal final submit + repeated submit on the already-scored last card)
     /// funnel through here so the completion contract stays single-sourced.
-    private func finishSessionIfComplete() {
-        guard currentIndex >= queue.count else { return }
+    private func finishSessionIfComplete(completed: Bool? = nil) {
+        guard completed ?? session.isComplete else { return }
         ReviewSessionStore.clear(userID: currentUserID)
         // NOTE: the crash-recovery snapshot is deliberately NOT cleared here. With
         // persistence deferred to dismiss, the snapshot is the only record of the
@@ -588,15 +583,14 @@ final class TodayReviewState {
     }
 
     private func advancePastAlreadyScoredCard() {
-        revealStage = .front
         // Always advance, including past the last card: when the user
         // re-submits on an already-scored final card we must push currentIndex
         // to queue.count so currentEntry becomes nil and the session reaches its
         // completion state. Previously this guarded `< queue.count - 1`, which
         // pinned the last card forever and the completion teardown never ran.
-        currentIndex += 1
+        let didComplete = session.advanceAfterSubmission()
         prewarmCardWindow()
         persistSnapshot()
-        finishSessionIfComplete()
+        finishSessionIfComplete(completed: didComplete)
     }
 }
