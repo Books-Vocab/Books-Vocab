@@ -28,13 +28,12 @@ orphan found, or on build/scan failure | 2 usage error.
 from __future__ import annotations
 
 import argparse
-import datetime
 import json
-import os
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import kgindex_records  # noqa: E402  (ops/lib shared module)
 
 SCHEMA = "kg.ui.deadcode.v1"
 # struct + class is the trustworthy gate set (proven clean on a post-cleanup tree).
@@ -55,9 +54,6 @@ ALWAYS_USED_NAMES = frozenset({"CodingKeys"})
 # slashes to keep the same anchoring.
 DEFAULT_NONPROD_MARKERS = ("/Debug/", "Tests/")
 DEFAULT_SOURCE_ROOT = "ios/BooksBrowser/"
-
-OPS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = OPS_DIR.parent
 
 
 # --------------------------------------------------------------------------- #
@@ -115,78 +111,12 @@ def classify_orphans(
 
 
 # --------------------------------------------------------------------------- #
-# Records acquisition (build + kgindex)  — side-effecting
-# --------------------------------------------------------------------------- #
-def _run_kgindex(store_path: str, source_root: str, kinds: tuple[str, ...]) -> dict:
-    binary = subprocess.run(
-        ["bash", str(OPS_DIR / "lib" / "kgindex_build.sh")],
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    proc = subprocess.run(
-        [binary, store_path, source_root, "--kinds", ",".join(kinds)],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    return json.loads(proc.stdout)
-
-
-def _verdict_field(path: Path, key: str) -> str | None:
-    if not path.is_file():
-        return None
-    for tok in path.read_text().split():
-        if tok.startswith(key + "="):
-            return tok[len(key) + 1 :]
-    return None
-
-
-def acquire_records_via_build(source_root: str, kinds: tuple[str, ...]) -> dict:
-    """Run an isolated clean iOS build, then kgindex over its IndexStore.
-
-    Isolation (KG_IOS_BUILD_DERIVED_DATA_ROOT) avoids the shared cache, whose
-    cross-worktree records double-count USR references and make ref counts
-    untrustworthy for orphan detection.
-    """
-    tmp_dd = Path(tempfile.mkdtemp(prefix="kg-ui-deadcode-dd."))
-    try:
-        env = dict(os.environ, KG_IOS_BUILD_DERIVED_DATA_ROOT=str(tmp_dd))
-        print(f"[ui_deadcode] isolated build -> {tmp_dd}", file=sys.stderr)
-        # Redirect the build's stdout to stderr: ios_build.sh prints [ios_build]
-        # progress to stdout, which would otherwise corrupt our --json output.
-        rc = subprocess.run(
-            ["./ops/ios_ops.sh", "build"], cwd=PROJECT_ROOT, env=env, stdout=sys.stderr
-        ).returncode
-        verdict = Path(os.environ.get("TMPDIR", "/tmp")) / "kg_ios_build_verdict"
-        result = _verdict_field(verdict, "RESULT")
-        if rc != 0 or result != "ok":
-            raise SystemExit(
-                f"[ui_deadcode] build failed (rc={rc}, RESULT={result}); see {verdict}"
-            )
-        store = tmp_dd / "Index.noindex" / "DataStore"
-        if not store.is_dir():
-            raise SystemExit(f"[ui_deadcode] IndexStore not found at {store}")
-        return _run_kgindex(str(store), source_root, kinds)
-    finally:
-        # best-effort cleanup of the isolated DerivedData; a leak is harmless
-        # (mkdtemp path) but we surface a nonzero rm rather than swallow silently.
-        rc = subprocess.run(["rm", "-rf", str(tmp_dd)], check=False).returncode
-        if rc != 0:
-            print(f"[ui_deadcode] warning: failed to remove {tmp_dd} (rc={rc})", file=sys.stderr)
-
-
-# --------------------------------------------------------------------------- #
 # Reporting
 # --------------------------------------------------------------------------- #
-def _utc_now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def build_payload(records: dict, orphans: list[dict], source_root: str) -> dict:
     return {
         "schema": SCHEMA,
-        "generated_at": _utc_now(),
+        "generated_at": kgindex_records.utc_now(),
         "sourceRoot": source_root,
         "scanned": len(records.get("symbols", [])),
         "orphanCount": len(orphans),
@@ -224,15 +154,10 @@ def main(argv: list[str] | None = None) -> int:
 
     kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
 
-    if args.records_json:
-        records = json.loads(Path(args.records_json).read_text())
-        source_root = records.get("sourceRoot", args.source_root)
-    elif args.store_path:
-        records = _run_kgindex(args.store_path, args.source_root, kinds)
-        source_root = args.source_root
-    else:
-        records = acquire_records_via_build(args.source_root, kinds)
-        source_root = args.source_root
+    records, source_root = kgindex_records.acquire(
+        args.source_root, kinds,
+        records_json=args.records_json, store_path=args.store_path, label="ui_deadcode",
+    )
 
     orphans = classify_orphans(records, kinds=kinds)
     payload = build_payload(records, orphans, source_root)
