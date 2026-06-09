@@ -56,6 +56,8 @@ const {
   parseInlineMarks,
   VALID_THEMES,
   DEFAULT_THEME,
+  PUBLIC_WEB_ORIGIN,
+  LOGIN_PATH,
   NOTEBOOK_PALETTE,
   NOTEBOOK_COVER_PATTERNS,
   ACTIVE_NOTEBOOK_KEY,
@@ -997,10 +999,10 @@ test('isVocabMutatingKind tolerates non-string / unknown input', () => {
 
 test('isTrustedExternalOrigin accepts the KG https origin', () => {
   assert.equal(
-    isTrustedExternalOrigin('https://wordnexus.lol/login'),
+    isTrustedExternalOrigin(`${PUBLIC_WEB_ORIGIN}${LOGIN_PATH}`),
     true,
   );
-  assert.equal(isTrustedExternalOrigin('https://wordnexus.lol/'), true);
+  assert.equal(isTrustedExternalOrigin(`${PUBLIC_WEB_ORIGIN}/`), true);
 });
 
 test('isTrustedExternalOrigin rejects look-alike and insecure origins', () => {
@@ -1034,7 +1036,7 @@ test('isTrustedExternalOrigin rejects subdomain phishing look-alikes', () => {
 
 test('safeUrl passes http and https URLs through unchanged', () => {
   assert.equal(safeUrl('http://example.com/path'), 'http://example.com/path');
-  assert.equal(safeUrl('https://wordnexus.lol/x?y=1#z'), 'https://wordnexus.lol/x?y=1#z');
+  assert.equal(safeUrl(`${PUBLIC_WEB_ORIGIN}/x?y=1#z`), `${PUBLIC_WEB_ORIGIN}/x?y=1#z`);
 });
 
 test('safeUrl passes chrome-extension:// URLs through unchanged', () => {
@@ -1086,7 +1088,7 @@ test('safeUrl normalizes (percent-encodes) the returned URL — no raw quotes su
     'https://x.com/%22onmouseover=alert(1)',
   );
   // Clean URLs are unaffected (normalize to themselves).
-  assert.equal(safeUrl('https://wordnexus.lol/a/b'), 'https://wordnexus.lol/a/b');
+  assert.equal(safeUrl(`${PUBLIC_WEB_ORIGIN}/a/b`), `${PUBLIC_WEB_ORIGIN}/a/b`);
 });
 
 // ---------------------------------------------------------------------------
