@@ -8,38 +8,11 @@
 //  與全層 hairline border 共同帶入「桌上隨手疊」的 editorial 手感。
 //
 //  本檔只負責「視覺堆疊」；metadata、使用中 pill、context menu、整體 rotation
-//  （含 pill 隨轉）由外層 `NotebookCard` 持有。Press feedback 由
-//  `NotebookDeckButtonStyle` 透過 `\.isDeckPressed` environment 注入。
+//  （含 pill 隨轉）由外層 `NotebookCard` 持有。
 //
 
 import SwiftUI
 import Inject
-
-// MARK: - Press state environment
-
-/// `NotebookDeckButtonStyle` → `NotebookStackedCoverView` 的 press 訊號通道。
-/// 用 environment 而非 binding，因為按壓狀態是 SwiftUI 自動驅動的；
-/// view tree 內任何後代都可讀，不需自己穿 binding。
-private struct IsDeckPressedKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
-/// Reduce-motion 旗標：由 `NotebookDeckButtonStyle` 從 a11y env 傳入，
-/// 讓 stacked cover 內部統一決定是否關掉 offset/scale 動效。
-private struct DeckReduceMotionKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
-extension EnvironmentValues {
-    var isDeckPressed: Bool {
-        get { self[IsDeckPressedKey.self] }
-        set { self[IsDeckPressedKey.self] = newValue }
-    }
-    var deckReduceMotion: Bool {
-        get { self[DeckReduceMotionKey.self] }
-        set { self[DeckReduceMotionKey.self] = newValue }
-    }
-}
 
 // MARK: - Stacked cover view
 
@@ -62,8 +35,6 @@ struct NotebookStackedCoverView: View {
 
     @Environment(\.appSkin) private var skin
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.isDeckPressed) private var isPressed
-    @Environment(\.deckReduceMotion) private var reduceMotion
 
     var body: some View {
         // ghost 數 = layerCount - 1（頂層另外處理）
@@ -105,9 +76,6 @@ struct NotebookStackedCoverView: View {
                 .stroke(skin.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
             )
             .appElevation(.z2)
-            .offset(y: isPressed && !reduceMotion ? NotebookStackMetrics.pressedTopOffsetY : 0)
-            .scaleEffect(isPressed && !reduceMotion ? AppMotion.TapFeedback.scaleDown : 1.0,
-                         anchor: .center)
             // ⚠️ Top cover 不在這裡套 rotation —
             // rotation 在 `NotebookCard.coverArea` 外層套，包 pill overlay 一起轉
             // （避免 pill 脫離卡片邊界）。
@@ -129,9 +97,6 @@ struct NotebookStackedCoverView: View {
         let baseInset = NotebookStackMetrics.layerInsetX * CGFloat(depth)
         let baseDy = NotebookStackMetrics.layerOffsetY * CGFloat(depth)
         let jitter = NotebookStackMetrics.seedJitter(seed: seed, depth: depth)
-        let pressBoost = isPressed && !reduceMotion
-            ? NotebookStackMetrics.pressedGhostOffsetY * CGFloat(depth)
-            : 0
 
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
             .fill(NotebookStackMetrics.ghostPaperColor(depth: depth, scheme: colorScheme))
@@ -141,37 +106,11 @@ struct NotebookStackedCoverView: View {
                     .stroke(skin.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
             )
             .padding(.horizontal, baseInset + jitter.dx)
-            .offset(y: baseDy + pressBoost)
+            .offset(y: baseDy)
             // 從 .bottom 錨點旋轉：底部錨定、頂部微張，模擬桌上隨手疊
             .rotationEffect(.degrees(jitter.angle), anchor: .bottom)
-            .appElevation(isPressed ? .z2 : .z1)
+            .appElevation(.z1)
             .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Button style
-
-/// 整張 Notebook 卡 press-in 物理感的單一承載點。
-/// - 注入 `\.isDeckPressed` 給 label，讓 `NotebookStackedCoverView` 自己決定怎麼動
-/// - opacity dip 套在整 label（含 metadata）形成統一壓感
-/// - 動畫：press-in `TapFeedback.animation`、release `AppMotion.cardDeckRelease`
-/// - Haptic：`.sensoryFeedback(.selection, ...)` 僅 press-in 時觸發一次
-/// - Reduce Motion：保留 opacity dip + haptic，offset/scale 由 cover view 內部自關
-struct NotebookDeckButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .environment(\.isDeckPressed, configuration.isPressed)
-            .environment(\.deckReduceMotion, reduceMotion)
-            .opacity(configuration.isPressed ? AppMotion.TapFeedback.opacityDip : 1.0)
-            .animation(
-                configuration.isPressed ? AppMotion.TapFeedback.animation : AppMotion.cardDeckRelease,
-                value: configuration.isPressed
-            )
-            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, newValue in
-                newValue  // 僅在進入 pressed 時觸發
-            }
     }
 }
 
