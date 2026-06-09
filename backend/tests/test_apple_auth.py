@@ -26,7 +26,7 @@ def _reset_cache():
 FAKE_KID = "test-kid-1"
 FAKE_JWK = {"kid": FAKE_KID, "n": "AQAB", "e": "AQAB"}
 FAKE_JWKS_RESPONSE = {"keys": [FAKE_JWK]}
-AUDIENCE = "com.Max0228.BooksAndVocab"
+AUDIENCE = "com.Max0228.BooksBrowser"
 FAKE_PEM = b"-----FAKE PEM-----"
 
 

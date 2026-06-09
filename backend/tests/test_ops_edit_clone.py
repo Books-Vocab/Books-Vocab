@@ -132,9 +132,9 @@ def _seed_target(data_dir: Path) -> None:
 def _write_users_json(data_dir: Path) -> None:
     (data_dir / "users.json").write_text(json.dumps({
         SRC: {"provider": "apple", "email": "max970228@gmail.com", "config": {}},
-        TGT: {"provider": "google", "email": "booksbrowsertest@gmail.com",
+        TGT: {"provider": "google", "email": "booksvocabtest@gmail.com",
               "subscription": {"plan": "free"}},
-        "_email_index": {"max970228@gmail.com": SRC, "booksbrowsertest@gmail.com": TGT},
+        "_email_index": {"max970228@gmail.com": SRC, "booksvocabtest@gmail.com": TGT},
     }, ensure_ascii=False), encoding="utf-8")
 
 
@@ -211,7 +211,7 @@ def test_clone_preserves_target_identity(tmp_path):
     _edit(str(tmp_path), "clone-demo", SRC, TGT, "--commit", "--json")
     users = json.loads((tmp_path / "users.json").read_text())
     assert users[TGT]["provider"] == "google"
-    assert users[TGT]["email"] == "booksbrowsertest@gmail.com"
+    assert users[TGT]["email"] == "booksvocabtest@gmail.com"
     assert users[TGT]["subscription"] == {"plan": "free"}
     assert users[SRC]["email"] == "max970228@gmail.com"   # 來源身份亦不動
 
