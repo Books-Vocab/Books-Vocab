@@ -95,6 +95,7 @@ def attach_catalog_surfaces(graph: dict, catalog_index: dict, *, stderr=sys.stde
     """Annotate graph nodes with catalog surfaces linked by backing type name."""
     surfaces = catalog_index.get("surfaces", {}) if isinstance(catalog_index, dict) else {}
     surface_nodes: dict[str, list[str]] = {}
+    surface_meta: dict[str, dict] = {}
     for node in graph["nodes"].values():
         node["surface"] = []
 
@@ -106,6 +107,12 @@ def attach_catalog_surfaces(graph: dict, catalog_index: dict, *, stderr=sys.stde
         if not isinstance(entry, dict):
             continue
         backing = entry.get("backing")
+        surface_meta[surface_name] = {
+            "backing": backing,
+            "kind": entry.get("kind"),
+            "feature": entry.get("feature"),
+            "screen": entry.get("screen"),
+        }
         if not backing:
             surface_nodes[surface_name] = []
             continue
@@ -122,6 +129,7 @@ def attach_catalog_surfaces(graph: dict, catalog_index: dict, *, stderr=sys.stde
     for node in graph["nodes"].values():
         node["surface"].sort()
     graph["surfaceNodes"] = surface_nodes
+    graph["surfaceMeta"] = surface_meta
 
 
 def discover_catalog_index(*, records_json: str | None = None) -> Path | None:
@@ -165,6 +173,10 @@ def _names(graph: dict, usrs) -> list[str]:
     return sorted(graph["nodes"][u]["name"] for u in usrs)
 
 
+def resolve_surface(graph: dict, surface_name: str) -> list[str]:
+    return list(graph.get("surfaceNodes", {}).get(surface_name, ()))
+
+
 def forward_deps(graph: dict, usr: str) -> list[str]:
     """Names of nodes that `usr` depends on (uses)."""
     return _names(graph, graph["deps"].get(usr, ()))
@@ -173,6 +185,13 @@ def forward_deps(graph: dict, usr: str) -> list[str]:
 def reverse_users(graph: dict, usr: str) -> list[str]:
     """Names of nodes that depend on `usr` (impact set if `usr` changes)."""
     return _names(graph, graph["users"].get(usr, ()))
+
+
+def reverse_user_surfaces(graph: dict, usr: str) -> list[str]:
+    names = set()
+    for user_usr in graph["users"].get(usr, ()):
+        names.update(graph["nodes"][user_usr].get("surface", ()))
+    return sorted(names)
 
 
 def graph_orphans(graph: dict) -> list[str]:
@@ -244,6 +263,29 @@ def print_focus(graph: dict, name: str) -> None:
             print(f"  + {ext} reference(s) from non-node containers (enum/protocol/stdlib)")
 
 
+def print_surface_focus(graph: dict, surface_name: str) -> None:
+    surface_meta = graph.get("surfaceMeta", {}).get(surface_name)
+    if surface_meta is None:
+        print(f"no surface named {surface_name!r}")
+        return
+    usrs = resolve_surface(graph, surface_name)
+    backing = surface_meta.get("backing")
+    if not usrs:
+        if backing:
+            print(f"surface {surface_name!r} has backing {backing!r}, but it did not resolve to any scanned node")
+        else:
+            print(f"surface {surface_name!r} has no declared backing type")
+        return
+    for usr in usrs:
+        node = graph["nodes"][usr]
+        loc = node.get("def") or {}
+        deps = forward_deps(graph, usr)
+        dependent_surfaces = reverse_user_surfaces(graph, usr)
+        print(f"surface {surface_name} -> {node['kind']} {node['name']}  ({loc.get('path','?')}:{loc.get('line','?')})")
+        print(f"  depends on ({len(deps)}): {', '.join(deps) or '—'}")
+        print(f"  depended on by surface(s) ({len(dependent_surfaces)}): {', '.join(dependent_surfaces) or '—'}")
+
+
 def print_human(payload: dict, graph: dict) -> None:
     print(f"UI dependency graph — {payload['nodeCount']} nodes, {payload['edgeCount']} edges "
           f"under {payload['sourceRoot']}")
@@ -266,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--source-root", default=DEFAULT_SOURCE_ROOT, help=f"source-root substring (default: {DEFAULT_SOURCE_ROOT})")
     p.add_argument("--kinds", default=",".join(DEFAULT_KINDS), help=f"node kinds (default: {','.join(DEFAULT_KINDS)})")
     p.add_argument("--type", dest="type_name", help="focus a single type: show its deps + users")
+    p.add_argument("--surface", help="focus a single catalog surface: show its backing type deps + dependent surfaces")
     p.add_argument("--json", action="store_true", help="emit the full graph as JSON (schema kg.ui.graph.v1)")
     p.add_argument("--dot", action="store_true", help="emit Graphviz DOT")
     args = p.parse_args(argv)
@@ -286,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(build_payload(graph, source_root), indent=2, ensure_ascii=False))
     elif args.dot:
         print(to_dot(graph))
+    elif args.surface:
+        print_surface_focus(graph, args.surface)
     elif args.type_name:
         print_focus(graph, args.type_name)
     else:

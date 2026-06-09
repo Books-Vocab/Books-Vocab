@@ -27,6 +27,9 @@ check "--dot emits expected edge" "$?"
 uv run "$CLI" --records-json "$FIXTURE" --type Card 2>/dev/null | grep -q 'used by (1): Screen'
 check "--type focus shows reverse users (impact set)" "$?"
 
+uv run "$CLI" --records-json "$FIXTURE" --surface "Card Surface" 2>/dev/null | grep -q 'depended on by surface(s) (1): Screen Surface'
+check "--surface focus shows dependent catalog surfaces" "$?"
+
 set +e; uv run "$CLI" --records-json /no/such/file.json >/dev/null 2>&1; rc=$?; set -e
 [[ "$rc" -ne 0 ]]; check "missing --records-json file fails loud (nonzero)" "$?"
 

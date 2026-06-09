@@ -88,6 +88,24 @@ def test_catalog_surface_index_tracks_backing_nodes():
     assert g["surfaceNodes"]["Unknown Backing Surface"] == []
 
 
+def test_resolve_surface_uses_catalog_surface_index():
+    g = _graph()
+    ui_graph.attach_catalog_surfaces(g, _catalog_index())
+    card = ui_graph.resolve_name(g, "Card")[0]
+    assert ui_graph.resolve_surface(g, "Card Surface") == [card]
+    assert ui_graph.resolve_surface(g, "Inline Surface") == []
+    assert ui_graph.resolve_surface(g, "DoesNotExist") == []
+
+
+def test_reverse_user_surfaces_collect_surface_names_from_user_nodes():
+    g = _graph()
+    ui_graph.attach_catalog_surfaces(g, _catalog_index())
+    card = ui_graph.resolve_name(g, "Card")[0]
+    pill = ui_graph.resolve_name(g, "Pill")[0]
+    assert ui_graph.reverse_user_surfaces(g, card) == ["Screen Surface"]
+    assert ui_graph.reverse_user_surfaces(g, pill) == ["Card Detail Surface", "Card Surface"]
+
+
 def test_payload_schema_and_counts():
     g = _graph()
     ui_graph.attach_catalog_surfaces(g, _catalog_index())
