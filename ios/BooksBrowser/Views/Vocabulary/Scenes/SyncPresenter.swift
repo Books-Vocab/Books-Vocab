@@ -2,6 +2,14 @@ import SwiftUI
 import Inject
 
 struct SyncPresenterState {
+    struct RowItem: Identifiable {
+        let id: UUID
+        let row: WordRow.ViewData
+        let actionSystemImage: String
+        let actionTone: WordRow.ViewData.Tone
+        let actionAccessibilityLabel: String
+    }
+
     let isLoggedIn: Bool
     let isConnected: Bool
     let phase: SyncPhase
@@ -11,7 +19,7 @@ struct SyncPresenterState {
     let deleteCount: Int
     let steps: [PipelineStep]
     let summaryText: String
-    let pendingRows: [PendingVocabPresenterState.RowItem]
+    let pendingRows: [RowItem]
 
     init(
         isLoggedIn: Bool,
@@ -23,7 +31,7 @@ struct SyncPresenterState {
         deleteCount: Int,
         steps: [PipelineStep],
         summaryText: String,
-        pendingRows: [PendingVocabPresenterState.RowItem] = []
+        pendingRows: [RowItem] = []
     ) {
         self.isLoggedIn = isLoggedIn
         self.isConnected = isConnected
