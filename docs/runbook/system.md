@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/
-verified_against: 84f6998e
+verified_against: 94bb8f24
 -->
 # System Runbook
 
@@ -15,7 +15,7 @@ Provide one stable operations system so any agent can safely execute tasks from:
 
 ## Startup Checklist
 1. Run `ops/devops_kg_safe.sh preflight`
-2. Before cleanup / branch convergence, run `ops/branch_audit.sh`
+2. Before cleanup / promote / branch convergence, run `ops/branch_audit.sh`
 3. Before touching unfamiliar control-plane surfaces, run `ops/capability_matrix.py --json`
 
 ## Allowed Production Entrypoints
@@ -43,6 +43,12 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 3. If health fails post-deploy, rollback to previous artifact/snapshot.
 4. Record incident summary and update runbook docs.
 
+### C) Convergence Maintenance
+1. Treat `cleanup` as Workflow 1: user defines blacklist, absorb all non-blacklist work into `main`, push/sync remote, then rebase every blacklist branch onto the new `main`.
+2. Treat `promote` as Workflow 2: lift only the chosen committed snapshot from an active branch into `main`, then rebase the original branch onto the new `main`.
+3. Preserve work identity before any `main` reset or sync; if blacklisted work is sitting on `main`, extract it to a branch/worktree first.
+4. `promote` may delete its temporary integration container, but does not automatically delete the original branch/worktree.
+
 ## Operational Definition of Done
 - `preflight` succeeded.
 - Backup exists and path recorded.
@@ -53,4 +59,5 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 - Missing SSH key or unreachable host.
 - No backup path before deploy/migration.
 - `ops/branch_audit.sh` reports `merged-pr-but-ahead`, `orphan-ahead`, or `stale-ahead` during cleanup; PR state is metadata, commit reachability is the source of truth.
+- Any convergence attempt would reset `main` before preserving blacklisted work identity.
 - Any command resembles destructive wildcard cleanup.

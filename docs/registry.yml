@@ -503,6 +503,7 @@ documents:
       - CLAUDE.md
       - .claude/skills/devops/
       - .claude/skills/cleanup/
+      - .claude/skills/promote/
 
   - id: sop.review_discipline
     path: docs/sop/review_discipline.md
