@@ -127,6 +127,19 @@ import Playbook
         #expect(missing.isEmpty, "featureScreen surface(s) missing a ScreenID: \(missing)")
     }
 
+    @Test func featureScreenSurfacesAllDeclareBacking() async throws {
+        // kind == .featureScreen implies a non-nil backing production view type.
+        // The compiler already forces this (the `screen()` factory takes a required
+        // `any View.Type`), so this test pins the surface→type contract against the
+        // factory ever being loosened — the gallery / IndexStore consumers map
+        // surface→type from this declaration instead of a hand-maintained name table.
+        let missing = CatalogScene.Manifest.featureScreenSurfaces
+            .filter { $0.backing == nil }
+            .map(\.category)
+            .sorted()
+        #expect(missing.isEmpty, "featureScreen surface(s) missing a backing type: \(missing)")
+    }
+
     @Test func everyScreenIsCoveredExceptPending() async throws {
         // The coverage contract: every ScreenID has a featureScreen surface,
         // except those explicitly tracked as P3 debt in Manifest.pendingCoverage.
@@ -175,6 +188,9 @@ import Playbook
             #expect(entry?["feature"] == surface.feature.rawValue)
             // featureScreens carry their screen id; other kinds omit it
             #expect(entry?["screen"] == surface.screen?.rawValue)
+            // backing production view type: featureScreens always carry it, other
+            // kinds only when declared. Mirrors indexJSONData's String(describing:).
+            #expect(entry?["backing"] == surface.backing.map { String(describing: $0) })
         }
     }
 }
