@@ -238,7 +238,6 @@ struct CatalogScene: View {
                 register: SettingsAccountSectionScenarios.register
             ),
             .init(id: "review_calendar_presenter", surfaces: [overlay("Review Calendar Presenter", .review)], register: ReviewCalendarScenarios.register),
-            .init(id: "pending_vocab_presenter", surfaces: [eng("Pending Vocab Presenter", .review)], register: PendingVocabPresenterScenarios.register),
             .init(id: "app_startup_recovery", surfaces: [screen("Startup Recovery", .misc, .appStartupRecovery)], register: AppStartupRecoveryScenarios.register),
             .init(id: "vocabulary_list_view", surfaces: [screen("Vocabulary List View", .vocabulary, .vocabularyList)], register: VocabularyListViewScenarios.register),
             .init(id: "stats_view", surfaces: [screen("Stats View", .review, .stats)], register: StatsViewScenarios.register),
