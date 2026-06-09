@@ -169,6 +169,19 @@ def _walk_test_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return flat
 
 
+def _test_node_messages(node: dict[str, Any]) -> list[str]:
+    messages: list[str] = []
+    for child in _as_list(node.get("children")):
+        if not isinstance(child, dict):
+            continue
+        if str(child.get("nodeType") or "") != "Failure Message":
+            continue
+        message = str(child.get("name") or child.get("details") or "").strip()
+        if message:
+            messages.append(message)
+    return messages
+
+
 def _parse_duration_seconds(value: Any) -> float | None:
     if value is None:
         return None
@@ -271,10 +284,29 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
     failed = int(summary_payload.get("failedTests") or 0)
     skipped = int(summary_payload.get("skippedTests") or 0)
     expected = int(summary_payload.get("expectedFailures") or 0)
+    effective = passed + failed + expected
     result_text = str(summary_payload.get("result") or "").lower()
-    result = "fail" if failed or result_text == "failed" else "pass" if result_text == "passed" else "unknown"
+    integrity_error = total > 0 and effective == 0
+    result = "fail" if failed or result_text == "failed" or integrity_error else "pass" if result_text == "passed" and effective > 0 else "unknown"
 
     diagnostics: list[dict[str, Any]] = []
+    if integrity_error:
+        message = (
+            "xcresult reported zero effective test executions "
+            f"(total={total}, passed={passed}, failed={failed}, skipped={skipped}, expectedFailures={expected}, result={result_text or 'unknown'}); "
+            "skipped/unknown tests are not a valid pass"
+        )
+        diagnostics.append(
+            {
+                "severity": "error",
+                "category": "test-result-integrity",
+                "file": None,
+                "line": None,
+                "column": None,
+                "message": message,
+                "raw": message,
+            }
+        )
     for item in _as_list(summary_payload.get("testFailures")):
         if not isinstance(item, dict):
             continue
@@ -298,6 +330,26 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
     if tests_payload:
         nodes = tests_payload.get("testNodes") if isinstance(tests_payload, dict) else None
         all_test_nodes = _walk_test_nodes([n for n in (nodes or []) if isinstance(n, dict)])
+    if integrity_error and all_test_nodes:
+        for node in all_test_nodes:
+            if str(node.get("nodeType") or "") != "Test Case":
+                continue
+            if str(node.get("result") or "").lower() != "skipped":
+                continue
+            name = str(node.get("nodeIdentifier") or node.get("name") or "skipped test")
+            details = "; ".join(_test_node_messages(node))
+            message = f"{name}: {details}".strip(": ")
+            diagnostics.append(
+                {
+                    "severity": "error",
+                    "category": "test-skipped",
+                    "file": None,
+                    "line": None,
+                    "column": None,
+                    "message": message,
+                    "raw": message,
+                }
+            )
     if not diagnostics and all_test_nodes:
         for node in all_test_nodes:
             if str(node.get("result") or "").lower() != "failed":
@@ -342,13 +394,14 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
         "source": "xcresult-test-results",
         "result": result,
         "counts": {
-            "errors": failed,
+            "errors": failed + (1 if integrity_error else 0),
             "warnings": 0,
             "swift6": 0,
             "storekit": 0,
             "spm": 0,
             "signing": 0,
             "tests": total,
+            "effectiveTests": effective,
             "passedTests": passed,
             "failedTests": failed,
             "skippedTests": skipped,
@@ -415,8 +468,14 @@ def read_xcresult_metrics(path: Path) -> list[dict[str, Any]]:
 
 
 def apply_result_override(summary: dict[str, Any], override: str | None) -> dict[str, Any]:
-    if override:
+    counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+    has_errors = int(counts.get("errors") or 0) > 0
+    if override == "fail":
+        summary["result"] = "fail"
+    elif override == "pass" and summary.get("result") != "fail" and not has_errors:
         summary["result"] = override
+    elif override == "unknown" and summary.get("result") not in ("pass", "fail"):
+        summary["result"] = "unknown"
     return summary
 
 

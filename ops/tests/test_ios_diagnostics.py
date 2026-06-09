@@ -88,6 +88,16 @@ def test_result_override_handles_quiet_xcodebuild_logs(tmp_path, capsys):
     assert payload["result"] == "pass"
 
 
+def test_result_override_does_not_hide_xcresult_integrity_failures():
+    mod = _load_module()
+    summary = {
+        "result": "fail",
+        "counts": {"errors": 1},
+    }
+
+    assert mod.apply_result_override(summary, "pass")["result"] == "fail"
+
+
 def test_parse_xcresult_test_results_uses_official_summary_and_failures():
     mod = _load_module()
     summary_payload = {
@@ -117,6 +127,45 @@ def test_parse_xcresult_test_results_uses_official_summary_and_failures():
     assert parsed["timings"]["xcresultSessionMs"] is None
     assert parsed["diagnostics"][0]["category"] == "test"
     assert "testSyncFails" in parsed["diagnostics"][0]["message"]
+
+
+def test_parse_xcresult_test_results_rejects_skipped_only_unknown_summary():
+    mod = _load_module()
+    parsed = mod.parse_xcresult_test_results(
+        {
+            "result": "Unknown",
+            "totalTestCount": 1,
+            "passedTests": 0,
+            "failedTests": 0,
+            "skippedTests": 1,
+            "expectedFailures": 0,
+            "testFailures": [],
+        },
+        {
+            "testNodes": [
+                {
+                    "nodeType": "Test Case",
+                    "name": "PodcastPlaybackPerfUITests/testProbe()",
+                    "result": "Skipped",
+                    "children": [
+                        {
+                            "nodeType": "Failure Message",
+                            "name": "Test skipped - player not reached",
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert parsed["result"] == "fail"
+    assert parsed["counts"]["tests"] == 1
+    assert parsed["counts"]["effectiveTests"] == 0
+    assert parsed["counts"]["errors"] == 1
+    assert parsed["diagnostics"][0]["category"] == "test-result-integrity"
+    assert "skipped/unknown tests are not a valid pass" in parsed["diagnostics"][0]["message"]
+    assert parsed["diagnostics"][1]["category"] == "test-skipped"
+    assert "player not reached" in parsed["diagnostics"][1]["message"]
 
 
 def test_format_text_includes_test_counts():
