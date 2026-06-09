@@ -10,9 +10,9 @@
 - 已看 `gh pr list` / `branch_audit`
 - 已確認哪些 branch 是活分支、哪些只是靜態殘影
 - 已決定這輪每條活分支的 snapshot 邊界
-- 已確認這輪是：
-  - `Blacklist-Driven Convergence`
-  - 或 `Promote Active Branch`
+- 已確認這輪入口是：
+  - `cleanup`
+  - 或 `promote`
 
 ---
 
@@ -34,6 +34,7 @@
 - 若 branch 有 dirty work，是否已先 commit 成 snapshot？
 - 是否已改用 integration worktree？
 - 是否明確承諾「不碰 branch 本體」？
+- 是否明確承諾「只清 integration 容器，不清原 branch / worktree」？
 
 ---
 
