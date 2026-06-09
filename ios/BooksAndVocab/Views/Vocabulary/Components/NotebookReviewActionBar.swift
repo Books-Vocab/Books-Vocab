@@ -74,6 +74,7 @@ struct NotebookReviewActionBar: View {
             }
             .buttonStyle(.plain)
             .disabled(!canCreate)
+            .accessibilityIdentifier("notebook.addButton")
             .accessibilityLabel("新增單字本".localized)
         }
         .padding(.horizontal, AppSpacing.s3)

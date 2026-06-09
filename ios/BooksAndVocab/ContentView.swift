@@ -89,13 +89,17 @@ struct ContentView: View {
             #if os(iOS)
             BookshelfView()
                 .tabItem { Label(L10n.string(AppPrimarySection.bookshelf.titleKey), systemImage: AppPrimarySection.bookshelf.systemImage) }
+                .accessibilityIdentifier("tab.bookshelf")
             #endif
             PodcastHomeView()
                 .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage) }
+                .accessibilityIdentifier("tab.podcasts")
             NotebookListView()
                 .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage) }
+                .accessibilityIdentifier("tab.notebooks")
             OverviewTab()
                 .tabItem { Label(L10n.string(AppPrimarySection.overview.titleKey), systemImage: AppPrimarySection.overview.systemImage) }
+                .accessibilityIdentifier("tab.overview")
         }
         #endif
     }

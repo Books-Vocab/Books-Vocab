@@ -192,6 +192,7 @@ struct PodcastHomeView: View {
                     PodcastSeriesCard(series: series, coverHeight: coverHeight)
                 }
                 .buttonStyle(.bookshelfCard)
+                .accessibilityIdentifier("podcast.series.\(series.remoteId)")
                 .accessibilityLabel("\(series.title), podcast")
                 .transition(.bookshelfCard)
                 .contextMenu {

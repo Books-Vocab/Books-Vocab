@@ -186,6 +186,7 @@ struct BookshelfView: View {
                     coordinator.presentImporter()
                 }
                 .buttonStyle(.appAction(.outline))
+                .accessibilityIdentifier("bookshelf.emptyState.importButton")
                 .fixedSize(horizontal: false, vertical: true)
 
                 if !authManager.isDemoMode && !authManager.isLoggedIn {
@@ -231,6 +232,7 @@ struct BookshelfView: View {
                         BookCard(book: book, coverHeight: coverHeight)
                     }
                     .buttonStyle(.bookshelfCard)
+                    .accessibilityIdentifier("book.card.\(book.id.uuidString)")
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityHint(BookshelfCopy.readBookHint)
                     .transition(.bookshelfCard)
