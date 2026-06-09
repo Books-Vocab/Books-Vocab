@@ -124,33 +124,3 @@ struct ShimmerLine: View {
             .onAppear { shimmerPhase = true }
     }
 }
-
-// MARK: - VocabularySyncBadge
-
-struct VocabularySyncBadge: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let status: Int
-    let successTone: Color
-    let destructiveTone: Color
-
-    var body: some View {
-        Group {
-            switch VocabularySyncState(rawValue: status) ?? .pending {
-            case .synced:
-                Label("已同步".localized, systemImage: "checkmark.circle")
-                    .font(appSkin.typography.caption)
-                    .foregroundStyle(successTone)
-            case .failed:
-                Label("同步失敗".localized, systemImage: "exclamationmark.circle")
-                    .font(appSkin.typography.caption)
-                    .foregroundStyle(destructiveTone)
-            case .pending:
-                Label("待同步".localized, systemImage: "clock")
-                    .font(appSkin.typography.caption)
-                    .foregroundStyle(appSkin.palette.secondaryText)
-            }
-        }
-        .enableInjection()
-    }
-}
