@@ -131,6 +131,13 @@ cd lab/llm_eval
 PYTHONPATH=../../backend/src uv run --extra dev pytest -q tests/
 ```
 
+## CLI
+
+```bash
+cd lab/llm_eval
+uv run python scripts/cli.py --help
+```
+
 ## 如何新增 eval
 
 1. 在 `prompts/` 新增 `.md` + 更新 `manifest.yaml`

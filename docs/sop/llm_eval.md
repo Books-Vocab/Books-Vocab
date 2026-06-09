@@ -76,5 +76,6 @@ for model, summary in results.items():
 
 ```bash
 cd lab/llm_eval
-uv run --extra dev pytest -q tests/   # 跑測試
+uv run python scripts/cli.py --help      # 查 CLI
+PYTHONPATH=../../backend/src uv run --extra dev pytest -q tests/   # 跑測試
 ```

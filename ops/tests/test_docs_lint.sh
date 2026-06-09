@@ -44,6 +44,26 @@ grep -q "docs/registry.yml" CLAUDE.md
 grep -q "ops/docs_impact.py" CLAUDE.md
 grep -q "ops/docs_lint.sh" CLAUDE.md
 grep -q "ops/docs_registry_coverage.py" CLAUDE.md
+grep -q "cd backend && uv run python ops_cli.py" CLAUDE.md
+grep -q "cd backend && uv run python ops_cli.py" AGENTS.md
+grep -q "uv run python scripts/cli.py" CLAUDE.md
+grep -q "uv run python scripts/cli.py" AGENTS.md
+if grep -q "uv run ops/ops_cli.py" CLAUDE.md AGENTS.md; then
+  echo "startup docs still reference missing ops/ops_cli.py" >&2
+  exit 1
+fi
+if grep -q "uv run backend/ops_cli.py" CLAUDE.md AGENTS.md; then
+  echo "startup docs still reference root-relative backend/ops_cli.py without backend project context" >&2
+  exit 1
+fi
+if grep -q "uv run lab/llm_eval/cli.py" CLAUDE.md AGENTS.md; then
+  echo "startup docs still reference missing lab/llm_eval/cli.py" >&2
+  exit 1
+fi
+if grep -q "uv run llm-eval" CLAUDE.md AGENTS.md .claude/skills/kg-router/SKILL.md ops/capability_matrix.py; then
+  echo "startup docs still reference unavailable llm-eval console script" >&2
+  exit 1
+fi
 
 ./ops/docs_lint.sh --help > /tmp/kg_docs_lint_help.out
 if grep -q '^!/usr/bin/env bash' /tmp/kg_docs_lint_help.out; then
