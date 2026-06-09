@@ -132,9 +132,9 @@ struct CatalogScene: View {
             .init(
                 id: "reader",
                 surfaces: [
-                    overlay("Reader · Translation", .reader),
-                    overlay("Reader · TOC", .reader),
-                    overlay("Reader · Settings", .reader),
+                    overlay("Reader · Translation", .reader, TranslationPanel.self),
+                    overlay("Reader · TOC", .reader, TOCView.self),
+                    overlay("Reader · Settings", .reader, ReaderSettingsPresenter.self),
                 ],
                 register: ReaderScenarios.register
             ),
@@ -160,7 +160,7 @@ struct CatalogScene: View {
             ),
             .init(
                 id: "word_detail",
-                surfaces: [overlay("Word Detail · Sheet", .vocabulary), block("Word Detail · Card Document", .vocabulary)],
+                surfaces: [overlay("Word Detail · Sheet", .vocabulary, WordDetailSheet.self), block("Word Detail · Card Document", .vocabulary)],
                 register: WordDetailScenarios.register
             ),
             .init(
@@ -175,7 +175,7 @@ struct CatalogScene: View {
                 register: BannerScenarios.register
             ),
             .init(id: "sync", surfaces: [block("Sync", .review)], register: SyncScenarios.register),
-            .init(id: "paywall", surfaces: [overlay("Paywall", .monetization)], register: PaywallScenarios.register),
+            .init(id: "paywall", surfaces: [overlay("Paywall", .monetization, SubscriptionPaywallSheet.self)], register: PaywallScenarios.register),
             .init(id: "word_edit", surfaces: [block("Word Edit", .vocabulary)], register: WordEditScenarios.register),
             .init(id: "archived_vocab", surfaces: [block("Archived Vocab", .vocabulary)], register: ArchivedVocabScenarios.register),
             .init(id: "collocation_explain", surfaces: [block("Collocation Explain", .vocabulary)], register: CollocationExplainScenarios.register),
@@ -185,17 +185,17 @@ struct CatalogScene: View {
             .init(id: "forecast", surfaces: [block("Vocab Forecast", .review)], register: VocabForecastScenarios.register),
             .init(
                 id: "notebook_filter_chip",
-                surfaces: [overlay("Notebook Filter Chip · Picker", .notebook)],
+                surfaces: [overlay("Notebook Filter Chip · Picker", .notebook, NotebookFilterPickerSheet.self)],
                 register: NotebookFilterChipScenarios.register
             ),
             .init(id: "notebook_review_action_bar", surfaces: [block("Notebook Review Action Bar", .notebook)], register: NotebookReviewActionBarScenarios.register),
             .init(id: "selection_toolbar", surfaces: [block("Selection Toolbar", .vocabulary)], register: SelectionToolbarScenarios.register),
             .init(id: "podcast_hero", surfaces: [block("Podcast Hero", .podcast)], register: PodcastSeriesHeroScenarios.register),
             .init(id: "podcast_shelf", surfaces: [block("Podcast Shelf", .podcast)], register: PodcastShelfScenarios.register),
-            .init(id: "podcast_settings_popover", surfaces: [overlay("Podcast Settings Popover", .podcast)], register: PodcastSettingsPopoverScenarios.register),
-            .init(id: "login_sheet", surfaces: [overlay("Login Sheet", .monetization)], register: LoginSheetScenarios.register),
-            .init(id: "vocab_highlight_picker", surfaces: [overlay("Vocab Highlight Picker", .vocabulary)], register: VocabHighlightPickerScenarios.register),
-            .init(id: "delete_account_sheet", surfaces: [overlay("Delete Account Sheet", .settings)], register: DeleteAccountSheetScenarios.register),
+            .init(id: "podcast_settings_popover", surfaces: [overlay("Podcast Settings Popover", .podcast, PodcastSettingsPopover.self)], register: PodcastSettingsPopoverScenarios.register),
+            .init(id: "login_sheet", surfaces: [overlay("Login Sheet", .monetization, LoginSheet.self)], register: LoginSheetScenarios.register),
+            .init(id: "vocab_highlight_picker", surfaces: [overlay("Vocab Highlight Picker", .vocabulary, VocabHighlightColorPresetPicker.self)], register: VocabHighlightPickerScenarios.register),
+            .init(id: "delete_account_sheet", surfaces: [overlay("Delete Account Sheet", .settings, SettingsDeleteAccountSheet.self)], register: DeleteAccountSheetScenarios.register),
             .init(id: "translation_lang_settings", surfaces: [screen("Translation Language Settings", .settings, .translationLanguageSettings, TranslationLanguageSettingsView.self)], register: TranslationLanguageSettingsScenarios.register),
             .init(id: "bookcard", surfaces: [block("Book Card", .bookshelf)], register: BookCardScenarios.register),
             .init(
@@ -218,8 +218,8 @@ struct CatalogScene: View {
                 register: VocabShellComponentsScenarios.register
             ),
             .init(id: "notebook_cover", surfaces: [block("Notebook Cover", .notebook)], register: NotebookCoverScenarios.register),
-            .init(id: "link_reason_sheet", surfaces: [overlay("Link Reason Sheet", .vocabulary)], register: LinkReasonSheetScenarios.register),
-            .init(id: "reader_notebook_picker", surfaces: [overlay("Reader Notebook Picker", .reader)], register: ReaderNotebookPickerScenarios.register),
+            .init(id: "link_reason_sheet", surfaces: [overlay("Link Reason Sheet", .vocabulary, LinkReasonSheet.self)], register: LinkReasonSheetScenarios.register),
+            .init(id: "reader_notebook_picker", surfaces: [overlay("Reader Notebook Picker", .reader, ReaderNotebookPicker.self)], register: ReaderNotebookPickerScenarios.register),
             .init(id: "subscription_views", surfaces: [block("Subscription Views · Gate Card", .monetization)], register: SubscriptionViewsScenarios.register),
             .init(id: "podcast_continue_card", surfaces: [block("Podcast Continue Card", .podcast)], register: PodcastContinueCardScenarios.register),
             .init(
@@ -250,7 +250,7 @@ struct CatalogScene: View {
                 ],
                 register: SettingsAccountSectionScenarios.register
             ),
-            .init(id: "review_calendar_presenter", surfaces: [overlay("Review Calendar Presenter", .review)], register: ReviewCalendarScenarios.register),
+            .init(id: "review_calendar_presenter", surfaces: [overlay("Review Calendar Presenter", .review, ReviewCalendarPresenter.self)], register: ReviewCalendarScenarios.register),
             .init(id: "app_startup_recovery", surfaces: [screen("Startup Recovery", .misc, .appStartupRecovery, AppStartupRecoveryView.self)], register: AppStartupRecoveryScenarios.register),
             .init(id: "vocabulary_list_view", surfaces: [screen("Vocabulary List View", .vocabulary, .vocabularyList, VocabularyListView.self)], register: VocabularyListViewScenarios.register),
             .init(id: "stats_view", surfaces: [screen("Stats View", .review, .stats, StatsPresenter.self)], register: StatsViewScenarios.register),
