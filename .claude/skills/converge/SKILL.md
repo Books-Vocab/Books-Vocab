@@ -92,11 +92,51 @@ git worktree list
 
 ---
 
+## 實戰踩坑
+
+### 1. 清殘影順序不能錯
+
+**錯誤：**先 `git branch -D` 再 `git worktree remove` → branch 刪不掉（還綁著 worktree）
+
+**正確：**`git worktree remove <path>` → `git branch -D <branch>` → `git push origin --delete <branch>`
+
+### 2. 沒有 upstream 的 branch
+
+很多 worktree branch 沒設 upstream，`git push` 會噴 fatal。
+
+**預設命令：**`git push origin HEAD --force-with-lease`
+
+### 3. 孤兒 worktree（.git 連結壞掉）
+
+worktree 的 `.git` 檔案可能因外部操作消失，`git worktree remove` 會報 fatal。
+
+**修復：**`git worktree prune --verbose` 自動清孤兒，再 `rm -rf <path>`。
+
+### 4. 不能跨 worktree checkout branch
+
+在 worktree A 裡面不能 `git checkout main`，因為 main 已被另一個 worktree 使用。
+
+**修復：**一律 `cd` 到目標 worktree 的目錄再操作，或 `git -C <path>`。
+
+### 5. remote branch 可能根本不存在
+
+`git push origin --delete <branch>` 可能報 `remote ref does not exist`（branch 從未推過 remote）。
+
+**修復：**remote 刪除失敗就跳過，繼續清 local + worktree。
+
+### 6. 同一個檔案在多個 worktree 漂移
+
+`ICloudDownloadManager.swift` 之類的熱檔案會在多個 worktree 同時被改但沒 commit，導致每輪 converge 都要 snapshot。
+
+**修復：**無法自動化，只能靠紀律 — 改完就 commit，不要留 dirty work 過夜。
+
+---
+
 ## 鐵律
 
 - **先 fetch**，永遠先看 origin/main 的真實狀態
 - **merge / rebase 前確認 working tree 乾淨**（`git status`）— rebase 不允許 dirty tree
-- dirty 時：**stash → rebase → stash pop**，或先 commit 再 rebase 後 amend
+- dirty 時：**立即 commit snapshot**，不 stash（stash 會丟身份資訊）
 - **force-push 只用 `--force-with-lease`**，不用 `-f`
-- **刪 remote branch 前確認 PR 已合併或不再需要**
+- **刪 remote branch 前先確認它存在**，不存在就跳過
 - **merge 後若測試失敗，revert 或 hotfix，不讓 main 壞著**
