@@ -1,6 +1,6 @@
 //
 //  AppColors.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  ⚠️  使用範圍：Reader 功能 + 全域 UI（ErrorBanner、App tint）
 //  ─────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  TranslationVocabPresenter.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  TranslationPanel 的 Vocab-style 渲染器。
 //  與 Glass presenter 共用相同的內容狀態與操作語意，

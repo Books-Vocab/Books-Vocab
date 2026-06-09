@@ -1,6 +1,6 @@
 //
 //  AppMetricsTokenTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Pins the raw numeric values of the design-system tokens in `AppMetrics.swift`
 //  (`AppSpacing` 8pt grid, `AppRadius` scale, `AppElevation` depth language).

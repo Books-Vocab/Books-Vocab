@@ -1,6 +1,6 @@
 //
 //  AppBootstrap.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  SwiftData ModelContainer bootstrap + 失敗恢復路徑。
 //  從 BooksBrowserApp 拆出 — 集中管理 store schema、retry、fallback、purge。

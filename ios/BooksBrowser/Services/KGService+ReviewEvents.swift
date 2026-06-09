@@ -1,6 +1,6 @@
 //
 //  KGService+ReviewEvents.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import Foundation

@@ -1,6 +1,6 @@
 //
 //  NotebookListView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  單字本書架 — 生詞庫 tab 的入口頁
 

@@ -1,6 +1,6 @@
 //
 //  KGVocabEmptyState.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  KGVocabView 空狀態文案/圖示的純解析。從 View 抽出後：
 //   1. title / description / systemImage 三欄共用「整本空 > 搜尋中 > 篩選中 > 預設」

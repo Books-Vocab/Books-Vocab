@@ -1,6 +1,6 @@
 //
 //  AppSurface.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  共用的卡片、標籤與按鈕樣式。
 //  設計語言：極簡知識美學 - 純白紙張 + 微投影 + Ghost 按鈕

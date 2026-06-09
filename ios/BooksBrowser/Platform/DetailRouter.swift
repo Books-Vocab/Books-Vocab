@@ -1,6 +1,6 @@
 //
 //  DetailRouter.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一 detail 呈現路由 — compact sheet vs regular inspector
 //

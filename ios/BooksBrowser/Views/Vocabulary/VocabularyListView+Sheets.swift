@@ -1,6 +1,6 @@
 //
 //  VocabularyListView+Sheets.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import SwiftUI

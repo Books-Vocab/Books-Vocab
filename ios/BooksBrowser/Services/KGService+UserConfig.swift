@@ -1,6 +1,6 @@
 //
 //  KGService+UserConfig.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import Foundation

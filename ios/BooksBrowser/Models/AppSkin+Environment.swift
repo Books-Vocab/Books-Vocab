@@ -1,6 +1,6 @@
 //
 //  AppSkin+Environment.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  AppSkin 的 SwiftUI Environment 注入點 —— EnvironmentKey + EnvironmentValues + View.appSkin()。
 //

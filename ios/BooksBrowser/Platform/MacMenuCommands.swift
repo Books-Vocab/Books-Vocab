@@ -1,6 +1,6 @@
 //
 //  MacMenuCommands.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Mac Catalyst 頂部選單列 + ⌘ 快捷鍵。整檔 Catalyst-only —— iPhone/iPad 不編譯,
 //  避免 iPad 外接鍵盤冒出多餘 menu。menu label 全走 L10n(i18n_lint 擋不到 CommandMenu)。

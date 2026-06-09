@@ -1,6 +1,6 @@
 //
 //  BackgroundSyncActorTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Regression coverage for the PR #533 sync-down gap: `KGCard.source`
 //  was decoded but never consumed by `BackgroundSyncActor`, so cards

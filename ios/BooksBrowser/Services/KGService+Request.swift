@@ -1,6 +1,6 @@
 //
 //  KGService+Request.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Authenticated HTTP middleware — token attach, retry, Sentry breadcrumbs.
 //

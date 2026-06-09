@@ -1,6 +1,6 @@
 //
 //  TodayReviewPhaseView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  TodayReview 四態包裝層：loading / empty / error / session。
 //  對齊 StatsPresenter / NotebookListView 採用的 VocabSceneShell pattern。

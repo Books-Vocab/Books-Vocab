@@ -1,6 +1,6 @@
 //
 //  KGService+Graph.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import Foundation

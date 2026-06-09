@@ -1,6 +1,6 @@
 //
 //  AppMetrics.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一的間距、圓角與陰影參數 (Design System Tokens)
 //

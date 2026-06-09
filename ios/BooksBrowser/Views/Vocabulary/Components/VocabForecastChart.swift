@@ -1,6 +1,6 @@
 //
 //  VocabForecastChart.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Bar chart for review schedule forecast.
 //

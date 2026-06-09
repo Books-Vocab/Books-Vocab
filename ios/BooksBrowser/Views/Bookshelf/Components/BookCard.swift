@@ -1,7 +1,7 @@
 #if os(iOS)
 //
 //  BookCard.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import SwiftUI

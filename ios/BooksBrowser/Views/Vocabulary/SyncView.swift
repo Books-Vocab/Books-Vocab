@@ -1,6 +1,6 @@
 //
 //  SyncView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Thin sync scene container — environment/query wiring only.
 //

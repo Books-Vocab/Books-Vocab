@@ -1,6 +1,6 @@
 //
 //  AppStartupRecovery.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Startup 失敗後使用者出口：retry / clearLocalCache / supportMail。
 //  與 Views/Startup/AppStartupRecoveryView.swift 對稱（後者是 UI，本檔是 actions）。

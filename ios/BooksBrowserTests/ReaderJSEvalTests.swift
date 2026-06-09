@@ -1,6 +1,6 @@
 //
 //  ReaderJSEvalTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Spec for Phase 0 (reader observability): JS eval result classification.
 //

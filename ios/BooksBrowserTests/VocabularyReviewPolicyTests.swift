@@ -1,6 +1,6 @@
 //
 //  VocabularyReviewPolicyTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  鎖 SRS（間隔複習）排程核心的純函式行為。
 //  涵蓋三個目標:

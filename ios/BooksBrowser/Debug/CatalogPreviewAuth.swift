@@ -1,6 +1,6 @@
 //
 //  CatalogPreviewAuth.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Shared DEBUG-only `AuthManaging` mock for the Playbook catalog.
 //

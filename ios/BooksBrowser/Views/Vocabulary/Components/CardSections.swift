@@ -1,6 +1,6 @@
 //
 //  CardSections.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  共用卡片 Section 元件 — 渲染與業務邏輯完全分離
 //  每個元件只接收「展示用資料」，無 @Query / @State / 副作用

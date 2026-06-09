@@ -1,6 +1,6 @@
 //
 //  AppOrphanBookRecovery.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Store reset 後掃描磁碟與 DB 對齊 — 為磁碟上有檔但 DB 沒記錄的書補建 Book。
 //  與 AppBootstrap 解耦：bootstrap 關心「拿到 container」，本檔關心「磁碟 vs DB 對齊」。

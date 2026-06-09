@@ -1,6 +1,6 @@
 //
 //  NotebookEditSheet.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  新建 / 編輯單字本的 sheet
 

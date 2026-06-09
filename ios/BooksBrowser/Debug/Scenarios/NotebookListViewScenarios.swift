@@ -1,6 +1,6 @@
 //
 //  NotebookListViewScenarios.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Catalog scenarios for `NotebookListView` (the app's notebook home screen).
 //

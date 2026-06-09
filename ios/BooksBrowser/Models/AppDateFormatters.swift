@@ -1,6 +1,6 @@
 //
 //  AppDateFormatters.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  統一的 DateFormatter / ISO8601DateFormatter 定義，避免重複建立。
 //

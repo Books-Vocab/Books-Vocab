@@ -1,6 +1,6 @@
 //
 //  NotebookStatsCalculator.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Pure 統計與篩選 — NotebookListView 與 NotebookSortOption 共用。
 //  搬離 View 後可獨立 unit test，覆蓋 due/unlearned/reviewed/pending/lastActivity 分支。

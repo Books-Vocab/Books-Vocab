@@ -1,6 +1,6 @@
 //
 //  KGUserConfigReviewClockDecodeTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Phase 3: KGUserConfig 後端契約 — review_clock 欄位 JSON decode + 向後相容。
 //  對標 KGServiceTests 的 wire-model decode pinning(authenticatedDecode 的 seam)。

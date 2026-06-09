@@ -1,6 +1,6 @@
 //
 //  HealthSnapshotTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  鎖 health 探活映射：KGHealthResponse.snapshot 只更新連線狀態 + 卡數，
 //  絕不涉及時間欄位。這是「健康檢查不得覆寫 lastSyncDate（最後同步時間）」

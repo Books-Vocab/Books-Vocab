@@ -1,6 +1,6 @@
 //
 //  KGUserConfigReviewModeDecodeTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Phase A3: KGUserConfig 後端契約 — review_mode 欄位 JSON decode + 向後相容。
 //  wire format 為後端 snake_case(custom_*);對標 KGUserConfigReviewClockDecodeTests。

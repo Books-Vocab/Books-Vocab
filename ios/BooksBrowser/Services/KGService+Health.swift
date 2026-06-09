@@ -1,6 +1,6 @@
 //
 //  KGService+Health.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Health check + quota polling.
 //

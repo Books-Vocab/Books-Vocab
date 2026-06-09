@@ -1,6 +1,6 @@
 //
 //  KGVocabView.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Typography-driven knowledge base browser.
 //  Clean white cards, generous spacing, ghost buttons, typography-driven hierarchy.

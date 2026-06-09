@@ -1,6 +1,6 @@
 //
 //  AppCompactActionButtonStyle.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  Inline 小尺寸主行動按鈕（不撐滿寬度，配 capsule 形狀），
 //  取代散落各處的 `.buttonStyle(.borderedProminent).controlSize(.small)`，

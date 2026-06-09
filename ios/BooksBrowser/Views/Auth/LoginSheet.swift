@@ -1,6 +1,6 @@
 //
 //  LoginSheet.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  獨立登入 sheet，供空狀態 / Guest 面板呼叫。
 //

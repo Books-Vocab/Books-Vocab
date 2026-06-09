@@ -1,6 +1,6 @@
 //
 //  AppTipsLocalizationTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Tip 結構不易直接 unit-test render 出來的字串(Text 內部沒公開 API),
 //  但 Phase 2 把所有 Tip property 改成走 L10n.string,因此驗證 L10n

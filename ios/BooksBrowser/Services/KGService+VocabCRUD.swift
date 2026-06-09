@@ -1,6 +1,6 @@
 //
 //  KGService+VocabCRUD.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 
 import Foundation

@@ -1,6 +1,6 @@
 //
 //  CatalogCoverageTests.swift
-//  BooksBrowserTests
+//  Books & Vocab Tests
 //
 //  Regression guard for the DEBUG Playbook catalog. `CatalogScene.buildPlaybook()`
 //  is the single source registering every KG SwiftUI surface for the in-app

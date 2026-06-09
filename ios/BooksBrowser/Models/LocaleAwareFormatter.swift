@@ -1,6 +1,6 @@
 //
 //  LocaleAwareFormatter.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  AppLanguage-aware date / relative / number formatter cache.
 //

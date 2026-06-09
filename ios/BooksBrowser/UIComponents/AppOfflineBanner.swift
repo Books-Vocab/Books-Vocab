@@ -1,6 +1,6 @@
 //
 //  AppOfflineBanner.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  全 app 持久離線指示 banner — 訂閱 NetworkMonitor.shared.isConnected，
 //  斷線時於畫面頂部顯示薄 banner，恢復連線時自動消失。

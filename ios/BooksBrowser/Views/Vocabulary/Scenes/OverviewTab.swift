@@ -1,6 +1,6 @@
 //
 //  OverviewTab.swift
-//  BooksBrowser
+//  Books & Vocab
 //
 //  頂層總覽 tab — 篩選器 + 統計儀表板。
 
