@@ -396,7 +396,7 @@ _TEMPLATE = r"""<!doctype html>
       }
     }
 
-    function mountFeatureChips(groups) {
+    function mountFeatureChips() {
       const wrap = document.getElementById("feature-chips");
       wrap.innerHTML = "";
       // Features present in the current lane (drives narrowing within a bucket).
@@ -439,7 +439,7 @@ _TEMPLATE = r"""<!doctype html>
       main.innerHTML = "";
 
       const groups = visibleSurfaces();
-      if (!state.focus) mountFeatureChips(groups); else document.getElementById("feature-chips").innerHTML = "";
+      if (!state.focus) mountFeatureChips(); else document.getElementById("feature-chips").innerHTML = "";
       mountStats(groups);
       document.getElementById("counts").textContent =
         `${surfacesIndex.length} surface · ${MANIFEST.sceneCount || 0} state · ${MANIFEST.totalImages || 0} shot`;
@@ -498,6 +498,14 @@ _TEMPLATE = r"""<!doctype html>
         }
       });
     }
+
+    // Wire the search input ONCE: it lives in the static chrome (not rebuilt by
+    // render(), which only touches #main / chrome counts), so a single listener
+    // keeps input focus while typing and re-filters on every keystroke.
+    document.getElementById("search").addEventListener("input", (e) => {
+      state.search = e.target.value.trim().toLowerCase();
+      render();
+    });
 
     render();
   </script>

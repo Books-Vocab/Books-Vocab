@@ -578,6 +578,10 @@ def test_render_html_is_three_bucket_and_curation_free():
     for banned in ["Eligibility", "Quality tier", "Coverage", "qualityTier",
                    "stateFacet", "facet-rail", "再看"]:
         assert banned not in html, f"curation leak: {banned}"
+    # the search box must be wired to state-filtering (regression: it had no
+    # listener after the rewrite, so state.search was read but never assigned).
+    assert 'getElementById("search").addEventListener' in html
+    assert "state.search = " in html
 
 
 def test_render_html_escapes_breakout_sequences():
