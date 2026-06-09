@@ -66,12 +66,12 @@ struct PodcastSyncTests {
     @Test func audio_url_format() {
         // Authenticated endpoint replaces the public StaticFiles path.
         let url = PodcastSyncService.audioURL(seriesId: "flow_950f1a7d", episodeNumber: 1)
-        #expect(url == "https://wordnexus.lol/api/podcasts/flow_950f1a7d/1/audio")
+        #expect(url == "\(TestBrandIdentity.publicBaseURL)/api/podcasts/flow_950f1a7d/1/audio")
     }
 
     @Test func subtitle_url_format() {
         let url = PodcastSyncService.subtitleURL(seriesId: "flow_950f1a7d", episodeNumber: 1)
-        #expect(url == "https://wordnexus.lol/api/podcasts/flow_950f1a7d/1/subtitle")
+        #expect(url == "\(TestBrandIdentity.publicBaseURL)/api/podcasts/flow_950f1a7d/1/subtitle")
     }
 
     @Test func cover_response_validation_requires_http_success_png_type_and_magic() {
@@ -104,7 +104,7 @@ struct PodcastSyncTests {
 
     private func httpResponse(status: Int, contentType: String) -> HTTPURLResponse {
         HTTPURLResponse(
-            url: URL(string: "https://wordnexus.lol/api/podcasts/a/cover")!,
+            url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/podcasts/a/cover")!,
             statusCode: status,
             httpVersion: nil,
             headerFields: ["Content-Type": contentType]

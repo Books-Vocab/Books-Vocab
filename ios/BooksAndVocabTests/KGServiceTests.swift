@@ -394,7 +394,7 @@ struct KGServiceTests {
 
     /// `attachRequestID` injects a fresh 16-char hex `X-Request-ID` when none exists.
     @Test func attach_request_id_generates_16_char_id() {
-        var request = URLRequest(url: URL(string: "https://wordnexus.lol/api/health")!)
+        var request = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!)
         let id = RequestObservation.attachRequestID(to: &request)
         #expect(id.count == 16)
         #expect(request.value(forHTTPHeaderField: "X-Request-ID") == id)
@@ -403,7 +403,7 @@ struct KGServiceTests {
 
     /// An already-present request id is preserved (idempotent on retry).
     @Test func attach_request_id_preserves_existing() {
-        var request = URLRequest(url: URL(string: "https://wordnexus.lol/api/health")!)
+        var request = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!)
         request.setValue("preset-id-1234", forHTTPHeaderField: "X-Request-ID")
         let id = RequestObservation.attachRequestID(to: &request)
         #expect(id == "preset-id-1234")
@@ -411,8 +411,8 @@ struct KGServiceTests {
 
     /// Two calls on independent requests yield distinct ids.
     @Test func attach_request_id_is_unique_per_request() {
-        var r1 = URLRequest(url: URL(string: "https://wordnexus.lol/a")!)
-        var r2 = URLRequest(url: URL(string: "https://wordnexus.lol/b")!)
+        var r1 = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/a")!)
+        var r2 = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/b")!)
         let id1 = RequestObservation.attachRequestID(to: &r1)
         let id2 = RequestObservation.attachRequestID(to: &r2)
         #expect(id1 != id2)
@@ -420,7 +420,7 @@ struct KGServiceTests {
 
     /// `responseRequestID` echoes back the server's id when present, else falls back.
     @Test func response_request_id_prefers_server_echo() {
-        let url = URL(string: "https://wordnexus.lol/api/health")!
+        let url = URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!
         let withEcho = HTTPURLResponse(
             url: url, statusCode: 200, httpVersion: nil,
             headerFields: ["X-Request-ID": "server-echo-99"]
@@ -429,14 +429,14 @@ struct KGServiceTests {
     }
 
     @Test func response_request_id_falls_back_when_header_absent() {
-        let url = URL(string: "https://wordnexus.lol/api/health")!
+        let url = URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!
         let noEcho = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [:])!
         #expect(RequestObservation.responseRequestID(from: noEcho, fallback: "local-fallback") == "local-fallback")
     }
 
     /// Pin the Authorization header format `authenticatedRequest` builds: `Bearer <token>`.
     @Test func authorization_header_uses_bearer_scheme() {
-        var request = URLRequest(url: URL(string: "https://wordnexus.lol/api/health")!)
+        var request = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!)
         let token = "abc.def.ghi"
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc.def.ghi")
@@ -445,14 +445,14 @@ struct KGServiceTests {
     /// A request carrying a body gets `Content-Type: application/json`; a bodyless request
     /// does not — mirrors the `if body != nil` branch in `authenticatedRequest`.
     @Test func content_type_header_set_only_when_body_present() {
-        var withBody = URLRequest(url: URL(string: "https://wordnexus.lol/api/vocab")!)
+        var withBody = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/vocab")!)
         let body: Data? = Data("{}".utf8)
         if body != nil {
             withBody.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         #expect(withBody.value(forHTTPHeaderField: "Content-Type") == "application/json")
 
-        var noBody = URLRequest(url: URL(string: "https://wordnexus.lol/api/health")!)
+        var noBody = URLRequest(url: URL(string: "\(TestBrandIdentity.publicBaseURL)/api/health")!)
         let none: Data? = nil
         if none != nil {
             noBody.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -465,7 +465,7 @@ struct KGServiceTests {
     /// `KGService.composeRequestURL` (used by `authenticatedRequest`) builds the request
     /// URL. Pin that query items survive into the final URL.
     @Test func query_items_compose_into_request_url() throws {
-        let base = URL(string: "https://wordnexus.lol")!
+        let base = URL(string: TestBrandIdentity.publicBaseURL)!
         let url = try #require(KGService.composeRequestURL(
             baseURL: base,
             path: "api/cards",
@@ -482,11 +482,11 @@ struct KGServiceTests {
     /// An empty/nil queryItems array leaves the URL clean — `composeRequestURL` skips
     /// query assignment when `queryItems` is empty.
     @Test func empty_query_items_leave_url_unchanged() throws {
-        let base = URL(string: "https://wordnexus.lol")!
+        let base = URL(string: TestBrandIdentity.publicBaseURL)!
         let url = try #require(KGService.composeRequestURL(
             baseURL: base, path: "api/health", queryItems: nil
         ))
-        #expect(url.absoluteString == "https://wordnexus.lol/api/health")
+        #expect(url.absoluteString == "\(TestBrandIdentity.publicBaseURL)/api/health")
         #expect(url.query == nil)
     }
 
@@ -496,7 +496,7 @@ struct KGServiceTests {
     /// query strings as x-www-form-urlencoded where `+` means a space — corrupting the
     /// timestamp to `...183209 00:00` and 400-ing every pull.
     @Test func plus_in_query_value_is_percent_encoded_to_survive_form_decoding() throws {
-        let base = URL(string: "https://wordnexus.lol")!
+        let base = URL(string: TestBrandIdentity.publicBaseURL)!
         let cursor = "2026-06-06T07:02:00.183209+00:00"
         let url = try #require(KGService.composeRequestURL(
             baseURL: base,

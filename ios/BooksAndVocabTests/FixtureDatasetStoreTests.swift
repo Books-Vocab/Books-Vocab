@@ -34,7 +34,7 @@ struct FixtureDatasetStoreTests {
                 "showAutoSync": true
               },
               "kg": {
-                "serverURL": "https://wordnexus.lol",
+                "serverURL": TestBrandIdentity.publicBaseURL,
                 "isConnected": true,
                 "connectionPulse": false,
                 "serverCardCount": 240,
