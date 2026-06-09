@@ -59,6 +59,8 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Optional run-metrics logging — additive, must never break the release.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
+# shellcheck source=lib/ios_build_progress.sh
+source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 XCODEPROJ="$ROOT/ios/BooksAndVocab.xcodeproj"
 EXPORT_OPTS="$ROOT/ios/ExportOptions.plist"
 # Pin archive DerivedData to one shared cache anchored at the main repo (see
@@ -215,6 +217,11 @@ ARCHIVE_LOG="$(mktemp "${TMPDIR:-/tmp}/kg_ios_release_archive.XXXXXX").log"
 RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_release_result.XXXXXX")"
 RESULT_BUNDLE="$RESULT_DIR/Archive.xcresult"
 set +e
+# Compile-progress monitor: archive compiles the whole app, so the same
+# SwiftCompile-counting monitor used by ios_build.sh applies. Baseline is
+# release-specific (Release config differs from Debug build counts).
+ARCHIVE_BASELINE="$DERIVED_DATA_ROOT/kg_archive.events_baseline"
+ARCHIVE_MONITOR_PID=$(start_build_monitor "$ARCHIVE_LOG" "$ARCHIVE_BASELINE" "[release][archive]" "$START_ARCHIVE")
 xcodebuild archive \
   -project "$XCODEPROJ" -scheme "$SCHEME" -configuration "$CONFIGURATION" \
   -destination 'generic/platform=iOS' \
@@ -224,7 +231,13 @@ xcodebuild archive \
   "${auth[@]}" \
   >"$ARCHIVE_LOG" 2>&1
 ARCHIVE_EXIT=$?
+kill "$ARCHIVE_MONITOR_PID" 2>/dev/null || true
+wait "$ARCHIVE_MONITOR_PID" 2>/dev/null || true
 set -e
+if [[ $ARCHIVE_EXIT -eq 0 ]]; then
+  _ac=$(count_compile_events "$ARCHIVE_LOG")
+  [[ "$_ac" -gt 0 ]] && echo "$_ac" > "$ARCHIVE_BASELINE"
+fi
 ARCHIVE_ELAPSED=$(( $(date +%s) - START_ARCHIVE ))
 ARCHIVE_MS="$(( $(now_ms) - START_ARCHIVE_MS ))"
 DIAGNOSTICS="$SCRIPT_DIR/ios_diagnostics.py"
@@ -249,9 +262,24 @@ echo "[release] ✓ archive succeeded (${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcr
 echo "[release] ▶ export ipa …"
 START_EXPORT_MS="$(now_ms)"
 rm -rf "$EXPORT_DIR"
+EXPORT_LOG="$(mktemp "${TMPDIR:-/tmp}/kg_ios_release_export.XXXXXX").log"
+set +e
+EXPORT_MONITOR_PID=$(start_tick_monitor "$EXPORT_LOG" "[release][export]" "$(date +%s)")
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" -exportPath "$EXPORT_DIR" \
-  -exportOptionsPlist "$EXPORT_OPTS"
+  -exportOptionsPlist "$EXPORT_OPTS" \
+  >"$EXPORT_LOG" 2>&1
+EXPORT_EXIT=$?
+kill "$EXPORT_MONITOR_PID" 2>/dev/null || true
+wait "$EXPORT_MONITOR_PID" 2>/dev/null || true
+set -e
+if [[ $EXPORT_EXIT -ne 0 ]]; then
+  cat "$EXPORT_LOG" >&2
+  TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
+  write_json_verdict "ok" "0" "ok" "fail" "skipped"
+  echo "[release] ✗ export failed (exit $EXPORT_EXIT) log=$EXPORT_LOG" >&2
+  exit "$EXPORT_EXIT"
+fi
 shopt -s nullglob; ipas=("$EXPORT_DIR"/*.ipa); shopt -u nullglob
 IPA="${ipas[0]:-}"
 EXPORT_MS="$(( $(now_ms) - START_EXPORT_MS ))"

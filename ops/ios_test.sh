@@ -725,7 +725,7 @@ should_rebuild_after_test_without_building_failure() {
 
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
-  local xcode_pid last_line current_line heartbeat_at now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
+  local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
   acquire_test_device_lock
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" xcodebuild test-without-building \
@@ -745,24 +745,34 @@ run_xcodebuild_test_without_building_once() {
   last_line=0
   log_missing=0
   heartbeat_at=$(date +%s)
+  tick_at=$(date +%s)
   while kill -0 "$xcode_pid" 2>/dev/null; do
     if ! current_line="$(test_log_line_count "$TMPOUT")"; then
       log_missing=1
       echo "[ios_test] warning: xcodebuild log path disappeared while test was running: $TMPOUT" >&2
       break
     fi
+    emitted_this_loop=0
     if [[ "$current_line" -gt "$last_line" ]]; then
       emit_new_test_output "$((last_line + 1))" "$current_line"
       last_line="$current_line"
+      emitted_this_loop=1
     fi
 
     now=$(date +%s)
     if [[ $((now - heartbeat_at)) -ge 30 ]]; then
+      # Detail heartbeat every 30s: which test is currently running.
       elapsed=$((now - START))
       recent_event="$(last_test_event)"
       [[ -n "$recent_event" ]] || recent_event="xcodebuild still running"
       echo "[ios_test] … still running (${elapsed}s, pid=$xcode_pid, log=$TMPOUT) — last: $recent_event"
       heartbeat_at="$now"
+      tick_at="$now"
+    elif [[ "$emitted_this_loop" -eq 0 && $((now - tick_at)) -ge 3 ]]; then
+      # Short keep-alive tick every 3s, but only when no test output was printed
+      # this loop (a slow/hung single test) — so it never floods a fast run.
+      printf '[ios_test] ··· %ds\n' "$((now - START))"
+      tick_at="$now"
     fi
     sleep 2
   done
