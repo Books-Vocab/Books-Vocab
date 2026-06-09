@@ -117,7 +117,7 @@ git checkout <previous-sha>      # 例：git checkout c2f2a27
 
 **Step 2：DB migration 已執行 / 資料已被破壞 → 還原 data 備份**
 
-`cmd_backup`（full deploy 自動執行）會把 `$REMOTE_DIR/data` 打包成 `~/kg/backups/data_<YYYYMMDD_HHMM>.tar.gz` 並產生 `.sha256`。
+`cmd_backup`（full deploy 自動執行）會先把 `$REMOTE_DIR/data` rsync 到本地 `~/kg/backups/data_<YYYYMMDD_HHMM>/`、跑 SQLite integrity check，再打包成 `~/kg/backups/data_<YYYYMMDD_HHMM>.tar.gz` 並產生 `.sha256`。deploy backup 會排除 `data/_ops_backups/` 與 `data/_ops_world_backups/`，避免把寫入工具產生的備份再備份一次。
 
 ```bash
 # 1. 找最新的可信備份
