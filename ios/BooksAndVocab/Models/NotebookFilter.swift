@@ -19,11 +19,19 @@ struct NotebookFilter: Equatable {
     static let storageKey = "notebookFilterSelectedIds"
 
     func save() {
-        UserDefaults.standard.set(Array(selectedIds), forKey: Self.storageKey)
+        save(to: .standard)
+    }
+
+    func save(to defaults: UserDefaults) {
+        defaults.set(Array(selectedIds), forKey: Self.storageKey)
     }
 
     static func load() -> NotebookFilter {
-        let ids = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
+        load(from: .standard)
+    }
+
+    static func load(from defaults: UserDefaults) -> NotebookFilter {
+        let ids = defaults.stringArray(forKey: storageKey) ?? []
         return NotebookFilter(selectedIds: Set(ids))
     }
 }
