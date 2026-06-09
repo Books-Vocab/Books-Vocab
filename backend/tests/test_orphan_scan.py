@@ -410,13 +410,16 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
     # mtime, mimicking a concurrent writer touching the file between the
     # snapshot and the rewrite.
     #
-    # fix() reads ``graph_path`` twice via Path.stat:
-    #   1. mtime SNAPSHOT (before the rewrite loop)
-    #   2. mtime GUARD comparison (inside the rewrite loop)
-    # To exercise the guard, the snapshot (#1) must observe the original mtime
-    # and the guard (#2) the bumped one — so bump only from the 2nd call onward.
-    # Note: Python 3.13+ Path.exists() no longer delegates to Path.stat(), so
-    # only direct .stat() calls are counted here.
+    # fix() touches ``graph_path`` via Path.stat in order:
+    #   Python 3.13           Python 3.14
+    #   1. exists() → stat    1. exists() → os.path.exists()
+    #   2. stat() snapshot    2. stat() snapshot
+    #   3. exists() → stat    3. exists() → os.path.exists()
+    #   4. stat() guard       4. stat() guard
+    #   5. atomic_write exists
+    # To exercise the guard, the snapshot must observe the original mtime and
+    # the guard the bumped one.  Bump from the 3rd call onward — this covers
+    # both Python 3.13 (guard = #4) and 3.14 (guard = #2) without branching.
     real_stat = Path.stat
     stat_calls = {"n": 0}
 
@@ -424,7 +427,7 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
         result = real_stat(self, *a, **kw)
         if self == graph_path:
             stat_calls["n"] += 1
-            if stat_calls["n"] >= 2:
+            if stat_calls["n"] >= 3:
                 class _FakeStat:
                     def __init__(self, base, bumped_ns):
                         self._base = base
