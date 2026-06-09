@@ -29,9 +29,18 @@ struct CardDocumentView: View {
             "cardDocument.body",
             "blocks=\(document.blocks.count) compact=\(compact)"
         )
+        // Composite ForEach key `"\(offset)-\(caseTag)"` so a slot whose case
+        // changes across cards (the card subtree is now reused in place after the
+        // per-card `.id` was removed) is delete-old + insert-new, never an in-place
+        // case morph that would strand the previous block's measured height /
+        // CoreText layout for a frame. The offset prefix prevents same-type blocks
+        // at different positions from colliding.
+        let keyedBlocks = document.blocks.enumerated().map { offset, block in
+            (key: "\(offset)-\(block.caseTag)", block: block)
+        }
         VStack(alignment: .leading, spacing: blockSpacing) {
-            ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
-                switch block {
+            ForEach(keyedBlocks, id: \.key) { keyed in
+                switch keyed.block {
                 case .hero(let hero):
                     CardDocumentHeroBlock(hero: hero)
                         .padding(blockPadding)
@@ -252,7 +261,12 @@ struct CardDocumentCollocationsBlock: View {
             CardSectionLabel(title: "搭配".localized, systemImage: "text.word.spacing")
 
             CollocationFlowLayout(spacing: appSkin.metrics.cardBlockInnerGap, maxRows: compact ? 2 : nil) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                // Identify pills by content, not position: the FlowLayout still
+                // places subviews in source order (unchanged), so offscreen-place
+                // logic is unaffected — this only stops an offscreen pill from being
+                // reused into a new card's onscreen pill, which would carry over a
+                // stale contextMenu closure bound to the old item.
+                ForEach(items, id: \.self) { item in
                     collocationPill(item)
                 }
             }
