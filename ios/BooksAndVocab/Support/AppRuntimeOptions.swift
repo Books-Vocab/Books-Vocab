@@ -26,4 +26,8 @@ enum AppRuntimeOptions {
     static func shouldSkipNonessentialStartupWork(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
         launchProfile(arguments: arguments) == .uiSmoke
     }
+
+    static func shouldUseIsolatedAuthSession(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        isUITesting(arguments: arguments) && arguments.contains("-isolatedAuthSession")
+    }
 }

@@ -20,4 +20,12 @@ struct AppRuntimeOptionsTests {
         #expect(AppRuntimeOptions.launchProfile(arguments: arguments) == .uiSmoke)
         #expect(AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: arguments) == true)
     }
+
+    @Test func isolatedAuthSessionRequiresUITestingAndExplicitArgument() {
+        #expect(AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: ["BooksAndVocab", "-isolatedAuthSession"]) == false)
+        #expect(AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: ["BooksAndVocab", "-ui-testing"]) == false)
+
+        let arguments = ["BooksAndVocab", "-ui-testing", "-isolatedAuthSession"]
+        #expect(AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: arguments) == true)
+    }
 }

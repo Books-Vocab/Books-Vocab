@@ -2,15 +2,18 @@
 # ios_ops_logs.sh — sourceable runtime log commands for ios_ops.sh.
 
 cmd_logs() {
-  local since="5m" predicate="$DEFAULT_LOG_PREDICATE" limit=200 limit_num json=0 follow=0 limit_explicit=0
+  local since="5m" predicate="$DEFAULT_LOG_PREDICATE" limit=200 limit_num json=0 follow=0 limit_explicit=0 simulator=0 device="booted" debug=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --since) since="${2:?--since needs value}"; shift 2 ;;
       --predicate) predicate="${2:?--predicate needs value}"; shift 2 ;;
       --limit) limit="${2:?--limit needs value}"; limit_explicit=1; shift 2 ;;
+      --simulator) simulator=1; shift ;;
+      --device) device="${2:?--device needs value}"; shift 2 ;;
+      --debug) debug=1; shift ;;
       --follow|-f) follow=1; shift ;;
       --json) json=1; shift ;;
-      -h|--help) echo "Usage: ./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--json]"; return 0 ;;
+      -h|--help) echo "Usage: ./ops/ios_ops.sh logs [--since 5m | --follow] [--predicate <predicate>] [--limit 200] [--simulator [--device booted|<udid>]] [--debug] [--json]"; return 0 ;;
       *) echo "✗ unknown logs option: $1" >&2; return 1 ;;
     esac
   done
@@ -32,11 +35,11 @@ cmd_logs() {
     return
   fi
   if (( json )); then
-    cmd_logs_json "$since" "$predicate" "$limit_num"
+    cmd_logs_json "$since" "$predicate" "$limit_num" "$simulator" "$device" "$debug"
     return
   fi
-  echo "[ios][logs] since=$since predicate=$predicate" >&2
-  cmd_logs_text "$since" "$predicate" "$limit_num"
+  echo "[ios][logs] since=$since predicate=$predicate simulator=$simulator device=$device debug=$debug" >&2
+  cmd_logs_text "$since" "$predicate" "$limit_num" "$simulator" "$device" "$debug"
 }
 
 run_log_stream_compact() {
@@ -139,7 +142,7 @@ cmd_logs_follow_json() {
 }
 
 run_log_show_compact() {
-  local since="$1" predicate="$2"
+  local since="$1" predicate="$2" simulator="${3:-0}" device="${4:-booted}" debug="${5:-0}"
   if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
     echo "fixture log failure" >&2
     return 42
@@ -152,14 +155,22 @@ run_log_show_compact() {
 LOG
     return 0
   fi
-  /usr/bin/log show --style compact --last "$since" --predicate "$predicate"
+  local args=(log show --style compact --last "$since" --predicate "$predicate")
+  if (( debug )); then
+    args=(log show --debug --info --style compact --last "$since" --predicate "$predicate")
+  fi
+  if (( simulator )); then
+    xcrun simctl spawn "$device" "${args[@]}"
+  else
+    /usr/bin/"${args[@]}"
+  fi
 }
 
 cmd_logs_text() {
-  local since="$1" predicate="$2" limit="$3" tmp err rc
+  local since="$1" predicate="$2" limit="$3" simulator="${4:-0}" device="${5:-booted}" debug="${6:-0}" tmp err rc
   tmp="$(mktemp)"
   err="$(mktemp)"
-  if run_log_show_compact "$since" "$predicate" >"$tmp" 2>"$err"; then
+  if run_log_show_compact "$since" "$predicate" "$simulator" "$device" "$debug" >"$tmp" 2>"$err"; then
     rc=0
   else
     rc=$?
@@ -175,7 +186,7 @@ cmd_logs_text() {
 }
 
 run_log_show_ndjson() {
-  local since="$1" predicate="$2"
+  local since="$1" predicate="$2" simulator="${3:-0}" device="${4:-booted}" debug="${5:-0}"
   if [[ "${KG_IOS_OPS_LOG_FAIL_FIXTURE:-}" == "1" ]]; then
     echo "fixture log failure" >&2
     return 42
@@ -188,15 +199,23 @@ run_log_show_ndjson() {
 NDJSON
     return 0
   fi
-  /usr/bin/log show --style ndjson --last "$since" --predicate "$predicate"
+  local args=(log show --style ndjson --last "$since" --predicate "$predicate")
+  if (( debug )); then
+    args=(log show --debug --info --style ndjson --last "$since" --predicate "$predicate")
+  fi
+  if (( simulator )); then
+    xcrun simctl spawn "$device" "${args[@]}"
+  else
+    /usr/bin/"${args[@]}"
+  fi
 }
 
 cmd_logs_json() {
-  local since="$1" predicate="$2" limit="$3" generated_at tmp err rc
+  local since="$1" predicate="$2" limit="$3" simulator="${4:-0}" device="${5:-booted}" debug="${6:-0}" generated_at tmp err rc
   generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   tmp="$(mktemp)"
   err="$(mktemp)"
-  if run_log_show_ndjson "$since" "$predicate" >"$tmp" 2>"$err"; then
+  if run_log_show_ndjson "$since" "$predicate" "$simulator" "$device" "$debug" >"$tmp" 2>"$err"; then
     rc=0
   else
     rc=$?
@@ -212,7 +231,7 @@ cmd_logs_json() {
     --arg generatedAt "$generated_at" \
     --arg since "$since" \
     --arg predicate "$predicate" \
-    --arg source "/usr/bin/log show --style ndjson" \
+    --arg source "$([[ "$simulator" == "1" ]] && printf 'xcrun simctl spawn %s log show --style ndjson' "$device" || printf '/usr/bin/log show --style ndjson')" \
     --arg noise "$LOG_NOISE_REGEX" \
     --argjson limit "$limit" \
     '

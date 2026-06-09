@@ -169,6 +169,7 @@ final class PerfChannel: @unchecked Sendable {
         PerfChannel.lastBreadcrumb = d.isEmpty ? label.description : "\(label.description) \(d)"
         if PerfLog.signpostsEnabled { signposter.emitEvent(label, "\(d, privacy: .public)") }
         if d.isEmpty { log.debug("\(label)") } else { log.debug("\(label) \(d, privacy: .public)") }
+        NSLog("[KG_PERF][%@] %@%@", category.rawValue, label.description, d.isEmpty ? "" : " \(d)")
         #else
         if PerfLog.signpostsEnabled { signposter.emitEvent(label) }
         #endif
