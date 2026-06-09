@@ -21,6 +21,28 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _require_source_declared(items: list[dict], source_root: Path) -> None:
+    """Fail loud when a surface isn't in the iOS source-of-truth taxonomy.
+
+    The gallery's whole premise is that every lane is *declared* by the iOS
+    `CatalogScene` manifest (emitted as `catalog_index.json`), never guessed from
+    pixels/regex. If a category renders without a declared entry, the gallery
+    would silently fall back to heuristics — exactly the guessing this system
+    retired. Refuse to render instead, naming the offenders, so the fix is to
+    declare the surface in source, not to let a guess leak into the gallery.
+    """
+    undeclared = sorted({item["category"] for item in items if not item.get("sourceDeclared")})
+    if undeclared:
+        listed = "\n  - ".join(undeclared)
+        raise SystemExit(
+            f"catalog gallery: {len(undeclared)} surface(s) missing from "
+            f"catalog_index.json (source-of-truth taxonomy) under {source_root}:\n"
+            f"  - {listed}\n"
+            "Declare each in ios CatalogScene.swift (re-render snapshots) — the "
+            "gallery does not guess lanes from pixels/regex."
+        )
+
+
 def main() -> int:
     args = parse_args()
     source_root = args.source_root.resolve()
@@ -30,6 +52,7 @@ def main() -> int:
 
     profile = load_profile(args.profile.resolve())
     items = collect_items(source_root, profile)
+    _require_source_declared(items, source_root)
     existing_state = load_review_state(state_path)
     review_state = build_review_state(items, profile, existing_state)
     state_path.write_text(json.dumps(review_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
