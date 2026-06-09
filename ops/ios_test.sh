@@ -482,6 +482,7 @@ run_xcodebuild_test_once() {
     -project "$XCODEPROJ" \
     -scheme "$TEST_SCHEME" \
     -destination "$DESTINATION" \
+    -derivedDataPath "$DERIVED_DATA_ROOT" \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
