@@ -639,7 +639,7 @@ cmd_backup() {
   local dest="$BACKUP_DIR/data_$date_str"
   mkdir -p "$BACKUP_DIR"
 
-  info "備份 $REMOTE_DIR/data → $dest（排除 data/_ops_backups 與 data/_ops_world_backups）"
+  info "備份 $REMOTE_DIR/data → ${dest}（排除 data/_ops_backups 與 data/_ops_world_backups）"
 
   # 找最近一份備份目錄當增量基準（未變的 db 走硬連結，只傳當日有寫入的）
   local prev
