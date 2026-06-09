@@ -165,20 +165,56 @@ func rolesStrings(_ roles: SymbolRole) -> [String] {
 
 // MARK: - Container resolution (ref site → nearest enclosing type)
 
-let typeKinds: Set<IndexSymbolKind> = [.struct, .class, .enum, .protocol, .extension]
+// Nominal types we stop the walk at. Extensions are handled specially: a member of
+// `extension Foo` has childOf → the EXTENSION symbol (kind .extension, name "Foo",
+// but a DISTINCT USR from Foo's nominal def). For a USR-keyed dependency graph that
+// would split Foo's main decl and its extensions into separate nodes and drop real
+// edges (bodies often live in extensions). So we collapse an extension to its
+// extended nominal type by name lookup (preferring a definition under sourceRoot).
+let nominalKinds: Set<IndexSymbolKind> = [.struct, .class, .enum, .protocol]
 
 struct ContainerRecord: Encodable { let usr: String; let name: String; let kind: String }
 
-// Memoized walk: a method/accessor/property symbol → its nearest enclosing type.
-// Returns nil for symbols with no type ancestor (free functions, top-level code).
+// name → nominal type definition (collapses extensions onto the extended type).
+var nominalByNameCache: [String: ContainerRecord?] = [:]
+@MainActor
+func nominalByName(_ name: String) -> ContainerRecord? {
+    if let cached = nominalByNameCache[name] { return cached }
+    var external: ContainerRecord? = nil
+    var result: ContainerRecord? = nil
+    for occ in db.canonicalOccurrences(ofName: name) where occ.roles.contains(.definition) {
+        let s = occ.symbol
+        guard nominalKinds.contains(s.kind) else { continue }
+        let rec = ContainerRecord(usr: s.usr, name: s.name, kind: kindString(s.kind))
+        if occ.location.path.contains(sourceRoot) { result = rec; break }  // prefer local
+        if external == nil { external = rec }
+    }
+    let resolved = result ?? external
+    nominalByNameCache[name] = resolved
+    return resolved
+}
+
+// Memoized walk: a method/accessor/property symbol → its nearest enclosing nominal
+// type. Returns nil for symbols with no type ancestor (free functions, top-level).
 var containerCache: [String: ContainerRecord?] = [:]
+var resolveInProgress = Set<String>()
 @MainActor
 func resolveEnclosingType(usr: String, name: String, kind: IndexSymbolKind) -> ContainerRecord? {
-    if typeKinds.contains(kind) {
+    if nominalKinds.contains(kind) {
         return ContainerRecord(usr: usr, name: name, kind: kindString(kind))
     }
+    if kind == .extension {
+        // collapse onto the extended nominal; fall back to the extension symbol if
+        // the nominal is not indexed (e.g. an extension of a stdlib/SwiftUI type).
+        return nominalByName(name) ?? ContainerRecord(usr: usr, name: name, kind: "extension")
+    }
     if let cached = containerCache[usr] { return cached }
-    containerCache[usr] = nil  // cycle guard (memoize before recursing)
+    if resolveInProgress.contains(usr) {
+        // childOf cycle (not expected in valid Swift) — surface, don't silently swallow.
+        FileHandle.standardError.write("kgindex: warning: childOf cycle at \(usr)\n".data(using: .utf8)!)
+        return nil
+    }
+    resolveInProgress.insert(usr)
     var result: ContainerRecord? = nil
     outer: for occ in db.occurrences(ofUSR: usr, roles: [.definition, .declaration]) {
         for rel in occ.relations where rel.roles.contains(.childOf) {
@@ -188,6 +224,7 @@ func resolveEnclosingType(usr: String, name: String, kind: IndexSymbolKind) -> C
             }
         }
     }
+    resolveInProgress.remove(usr)
     containerCache[usr] = result
     return result
 }
