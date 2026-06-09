@@ -118,15 +118,29 @@ struct CatalogScene: View {
         private static func eng(_ c: String, _ f: Feature, _ backing: (any View.Type)? = nil) -> CatalogSurface {
             .init(category: c, kind: .engineering, feature: f, screen: nil, backing: backing)
         }
-        /// Map a dynamic category list (e.g. macCatalyst-gated) to building blocks.
-        private static func blocks(_ categories: [String], _ f: Feature) -> [CatalogSurface] {
-            categories.map { block($0, f) }
+        /// Map a dynamic (category, backing) list (e.g. macCatalyst-gated) to
+        /// building blocks, carrying each surface's source-declared backing type.
+        private static func blocks(_ surfaces: [(category: String, backing: any View.Type)], _ f: Feature) -> [CatalogSurface] {
+            surfaces.map { block($0.category, f, $0.backing) }
         }
 
         /// Screens we intend to cover but haven't authored a surface for yet.
         /// `CatalogCoverageTests` allows exactly these ScreenIDs to be missing.
         /// Now empty: every ScreenID has a featureScreen surface (P3 complete).
         static let pendingCoverage: Set<ScreenID> = []
+
+        /// buildingBlock / engineering surfaces that legitimately declare **no**
+        /// `backing` view type, each for a structural reason that makes a single
+        /// concrete metatype impossible. Keeps the "every other non-screen surface
+        /// declares backing" guard honest — analogous to `pendingCoverage`, an
+        /// explicit, test-enforced exception set rather than a silent gap.
+        static let surfacesExemptFromBacking: Set<String> = [
+            "Podcast Shelf",              // generic PodcastShelf<Content> — no single metatype
+            "Banners · Review",           // generic VocabReviewBanner<FilterContent>
+            "Review Fold · Segment",      // generic ReviewFoldSurface<Content>
+            "Vocab Shell · Tab Selector", // generic VocabTabSelector<ID: Hashable>
+            "Review Fold · Paper Fold",   // PaperFoldModifier is a ViewModifier, not a View
+        ]
 
         static let entries: [ManifestEntry] = [
             .init(
@@ -140,113 +154,113 @@ struct CatalogScene: View {
             ),
             .init(
                 id: "notebooks",
-                surfaces: [block("Notebooks · Card", .notebook)],
+                surfaces: [block("Notebooks · Card", .notebook, NotebookCard.self)],
                 register: NotebooksScenarios.register
             ),
             .init(
                 id: "notebook_list",
-                surfaces: [block("Notebooks · Stack", .notebook)],
+                surfaces: [block("Notebooks · Stack", .notebook, NotebookCard.self)],
                 register: NotebookListScenarios.register
             ),
             .init(
                 id: "vocabulary",
                 surfaces: [
-                    block("Vocabulary · Overview", .vocabulary),
-                    block("Vocabulary · Knowledge Graph", .vocabulary),
-                    block("Vocabulary · Linked Card", .vocabulary),
-                    block("Vocabulary · Add Link", .vocabulary),
+                    block("Vocabulary · Overview", .vocabulary, OverviewTab.self),
+                    block("Vocabulary · Knowledge Graph", .vocabulary, KnowledgeGraphPresenter.self),
+                    block("Vocabulary · Linked Card", .vocabulary, LinkedCardOverlayStack.self),
+                    block("Vocabulary · Add Link", .vocabulary, AddLinkSheet.self),
                 ],
                 register: VocabScenarios.register
             ),
             .init(
                 id: "word_detail",
-                surfaces: [overlay("Word Detail · Sheet", .vocabulary, WordDetailSheet.self), block("Word Detail · Card Document", .vocabulary)],
+                surfaces: [overlay("Word Detail · Sheet", .vocabulary, WordDetailSheet.self), block("Word Detail · Card Document", .vocabulary, CardDocumentView.self)],
                 register: WordDetailScenarios.register
             ),
             .init(
                 id: "podcast_player",
-                surfaces: [block("Podcast · Episode Row", .podcast)],
+                surfaces: [block("Podcast · Episode Row", .podcast, PodcastEpisodeRow.self)],
                 register: PodcastPlayerScenarios.register
             ),
-            .init(id: "notebook_edit", surfaces: [block("Notebook Edit", .notebook)], register: NotebookEditSheetScenarios.register),
+            .init(id: "notebook_edit", surfaces: [block("Notebook Edit", .notebook, NotebookEditSheet.self)], register: NotebookEditSheetScenarios.register),
             .init(
                 id: "banners",
-                surfaces: [block("Banners · Review", .misc), block("Banners · Demo", .misc)],
+                surfaces: [block("Banners · Review", .misc), block("Banners · Demo", .misc, DemoBanner.self)],
                 register: BannerScenarios.register
             ),
-            .init(id: "sync", surfaces: [block("Sync", .review)], register: SyncScenarios.register),
+            .init(id: "sync", surfaces: [block("Sync", .review, SyncPresenter.self)], register: SyncScenarios.register),
             .init(id: "paywall", surfaces: [overlay("Paywall", .monetization, SubscriptionPaywallSheet.self)], register: PaywallScenarios.register),
-            .init(id: "word_edit", surfaces: [block("Word Edit", .vocabulary)], register: WordEditScenarios.register),
-            .init(id: "archived_vocab", surfaces: [block("Archived Vocab", .vocabulary)], register: ArchivedVocabScenarios.register),
-            .init(id: "collocation_explain", surfaces: [block("Collocation Explain", .vocabulary)], register: CollocationExplainScenarios.register),
-            .init(id: "kg_empty", surfaces: [block("KG Empty State", .vocabulary)], register: KGVocabEmptyStateScenarios.register),
-            .init(id: "heatmap", surfaces: [block("Vocab Heatmap", .review)], register: VocabActivityHeatmapScenarios.register),
-            .init(id: "calendar_grid", surfaces: [block("Vocab Calendar", .review)], register: VocabCalendarGridScenarios.register),
-            .init(id: "forecast", surfaces: [block("Vocab Forecast", .review)], register: VocabForecastScenarios.register),
+            .init(id: "word_edit", surfaces: [block("Word Edit", .vocabulary, WordEditSheet.self)], register: WordEditScenarios.register),
+            .init(id: "archived_vocab", surfaces: [block("Archived Vocab", .vocabulary, ArchivedVocabSheet.self)], register: ArchivedVocabScenarios.register),
+            .init(id: "collocation_explain", surfaces: [block("Collocation Explain", .vocabulary, CollocationExplainSheet.self)], register: CollocationExplainScenarios.register),
+            .init(id: "kg_empty", surfaces: [block("KG Empty State", .vocabulary, AppEmptyStateContent.self)], register: KGVocabEmptyStateScenarios.register),
+            .init(id: "heatmap", surfaces: [block("Vocab Heatmap", .review, VocabActivityHeatmap.self)], register: VocabActivityHeatmapScenarios.register),
+            .init(id: "calendar_grid", surfaces: [block("Vocab Calendar", .review, VocabCalendarGrid.self)], register: VocabCalendarGridScenarios.register),
+            .init(id: "forecast", surfaces: [block("Vocab Forecast", .review, VocabForecastChart.self)], register: VocabForecastScenarios.register),
             .init(
                 id: "notebook_filter_chip",
                 surfaces: [overlay("Notebook Filter Chip · Picker", .notebook, NotebookFilterPickerSheet.self)],
                 register: NotebookFilterChipScenarios.register
             ),
-            .init(id: "notebook_review_action_bar", surfaces: [block("Notebook Review Action Bar", .notebook)], register: NotebookReviewActionBarScenarios.register),
-            .init(id: "selection_toolbar", surfaces: [block("Selection Toolbar", .vocabulary)], register: SelectionToolbarScenarios.register),
-            .init(id: "podcast_hero", surfaces: [block("Podcast Hero", .podcast)], register: PodcastSeriesHeroScenarios.register),
+            .init(id: "notebook_review_action_bar", surfaces: [block("Notebook Review Action Bar", .notebook, NotebookReviewActionBar.self)], register: NotebookReviewActionBarScenarios.register),
+            .init(id: "selection_toolbar", surfaces: [block("Selection Toolbar", .vocabulary, SelectionToolbar.self)], register: SelectionToolbarScenarios.register),
+            .init(id: "podcast_hero", surfaces: [block("Podcast Hero", .podcast, PodcastSeriesHero.self)], register: PodcastSeriesHeroScenarios.register),
             .init(id: "podcast_shelf", surfaces: [block("Podcast Shelf", .podcast)], register: PodcastShelfScenarios.register),
             .init(id: "podcast_settings_popover", surfaces: [overlay("Podcast Settings Popover", .podcast, PodcastSettingsPopover.self)], register: PodcastSettingsPopoverScenarios.register),
             .init(id: "login_sheet", surfaces: [overlay("Login Sheet", .monetization, LoginSheet.self)], register: LoginSheetScenarios.register),
             .init(id: "vocab_highlight_picker", surfaces: [overlay("Vocab Highlight Picker", .vocabulary, VocabHighlightColorPresetPicker.self)], register: VocabHighlightPickerScenarios.register),
             .init(id: "delete_account_sheet", surfaces: [overlay("Delete Account Sheet", .settings, SettingsDeleteAccountSheet.self)], register: DeleteAccountSheetScenarios.register),
             .init(id: "translation_lang_settings", surfaces: [screen("Translation Language Settings", .settings, .translationLanguageSettings, TranslationLanguageSettingsView.self)], register: TranslationLanguageSettingsScenarios.register),
-            .init(id: "bookcard", surfaces: [block("Book Card", .bookshelf)], register: BookCardScenarios.register),
+            .init(id: "bookcard", surfaces: [block("Book Card", .bookshelf, BookCard.self)], register: BookCardScenarios.register),
             .init(
                 id: "vocab_components",
                 surfaces: [
-                    block("Vocab Components · Tone Chip", .vocabulary),
-                    block("Vocab Components · Empty State", .vocabulary),
-                    block("Vocab Components · Review Progress Bar", .vocabulary),
+                    block("Vocab Components · Tone Chip", .vocabulary, VocabToneChip.self),
+                    block("Vocab Components · Empty State", .vocabulary, VocabEmptyStateContent.self),
+                    block("Vocab Components · Review Progress Bar", .vocabulary, VocabReviewProgressBar.self),
                 ],
                 register: VocabComponentScenarios.register
             ),
             .init(
                 id: "vocab_shell_components",
                 surfaces: [
-                    block("Vocab Shell · Metric Hero Card", .vocabulary),
-                    block("Vocab Shell · Sort Pill", .vocabulary),
+                    block("Vocab Shell · Metric Hero Card", .vocabulary, VocabMetricHeroCard.self),
+                    block("Vocab Shell · Sort Pill", .vocabulary, VocabSortPill.self),
                     block("Vocab Shell · Tab Selector", .vocabulary),
-                    block("Vocab Shell · Review CTA Pill", .vocabulary),
+                    block("Vocab Shell · Review CTA Pill", .vocabulary, VocabReviewCTAPill.self),
                 ],
                 register: VocabShellComponentsScenarios.register
             ),
-            .init(id: "notebook_cover", surfaces: [block("Notebook Cover", .notebook)], register: NotebookCoverScenarios.register),
+            .init(id: "notebook_cover", surfaces: [block("Notebook Cover", .notebook, NotebookCoverView.self)], register: NotebookCoverScenarios.register),
             .init(id: "link_reason_sheet", surfaces: [overlay("Link Reason Sheet", .vocabulary, LinkReasonSheet.self)], register: LinkReasonSheetScenarios.register),
             .init(id: "reader_notebook_picker", surfaces: [overlay("Reader Notebook Picker", .reader, ReaderNotebookPicker.self)], register: ReaderNotebookPickerScenarios.register),
-            .init(id: "subscription_views", surfaces: [block("Subscription Views · Gate Card", .monetization)], register: SubscriptionViewsScenarios.register),
-            .init(id: "podcast_continue_card", surfaces: [block("Podcast Continue Card", .podcast)], register: PodcastContinueCardScenarios.register),
+            .init(id: "subscription_views", surfaces: [block("Subscription Views · Gate Card", .monetization, ProAccessGateCard.self)], register: SubscriptionViewsScenarios.register),
+            .init(id: "podcast_continue_card", surfaces: [block("Podcast Continue Card", .podcast, PodcastContinueCard.self)], register: PodcastContinueCardScenarios.register),
             .init(
                 id: "podcast_shelf_cards",
-                surfaces: [block("Podcast Series Card", .podcast), block("Podcast Continue Rail Card", .podcast)],
+                surfaces: [block("Podcast Series Card", .podcast, PodcastSeriesCard.self), block("Podcast Continue Rail Card", .podcast, PodcastContinueRailCard.self)],
                 register: PodcastShelfCardsScenarios.register
             ),
             .init(
                 id: "settings_actions",
                 surfaces: [
-                    block("Settings Actions · Plan Table", .settings),
+                    block("Settings Actions · Plan Table", .settings, SettingsPlanComparisonTable.self),
                 ],
                 register: SettingsActionsScenarios.register
             ),
             .init(
                 id: "settings_sections",
                 surfaces: [
-                    block("Settings Sections · Review", .settings),
-                    block("Settings Sections · Preferences", .settings),
+                    block("Settings Sections · Review", .settings, SettingsReviewSection.self),
+                    block("Settings Sections · Preferences", .settings, SettingsPreferencesSection.self),
                 ],
                 register: SettingsSectionsScenarios.register
             ),
             .init(
                 id: "account_section",
                 surfaces: [
-                    block("Account Section · Section", .settings),
-                    block("Account Section · Auth Summary", .settings),
+                    block("Account Section · Section", .settings, SettingsAccountSection.self),
+                    block("Account Section · Auth Summary", .settings, SettingsAuthSummary.self),
                 ],
                 register: SettingsAccountSectionScenarios.register
             ),
@@ -262,23 +276,23 @@ struct CatalogScene: View {
             .init(id: "notebook_list_view", surfaces: [screen("Notebook List View", .notebook, .notebookList, NotebookListView.self)], register: NotebookListViewScenarios.register),
             .init(id: "podcast_episode_list_view", surfaces: [screen("Podcast Episode List View", .podcast, .podcastEpisodeList, PodcastEpisodeListView.self)], register: PodcastEpisodeListViewScenarios.register),
             .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer, PodcastPlayerView.self)], register: PodcastPlayerViewScenarios.register),
-            .init(id: "editorial_cover", surfaces: [block("Notebook Cover · Editorial", .notebook)], register: NotebookCardEditorialCoverScenarios.register),
-            .init(id: "kg_vocab_row", surfaces: [eng("KG Vocab Row", .vocabulary)], register: KGVocabRowScenarios.register),
-            .init(id: "podcast_sentence_cells", surfaces: [block("Podcast · Transcript Column", .podcast), block("Podcast · Bubble Cell", .podcast)], register: PodcastSentenceCellsScenarios.register),
+            .init(id: "editorial_cover", surfaces: [block("Notebook Cover · Editorial", .notebook, EditorialCoverComposition.self)], register: NotebookCardEditorialCoverScenarios.register),
+            .init(id: "kg_vocab_row", surfaces: [eng("KG Vocab Row", .vocabulary, KGVocabRow.self)], register: KGVocabRowScenarios.register),
+            .init(id: "podcast_sentence_cells", surfaces: [block("Podcast · Transcript Column", .podcast, PodcastTranscriptColumn.self), block("Podcast · Bubble Cell", .podcast, PodcastBubbleCell.self)], register: PodcastSentenceCellsScenarios.register),
             // `surfaces` 透過 enum 計算屬性同步 macCatalyst gating:非 Catalyst 時
             // register 為 no-op,manifest 亦回報空 categories,使覆蓋測試對稱。
-            .init(id: "today_review_shortcut_chips", surfaces: blocks(TodayReviewShortcutScenarios.manifestCategories, .review), register: TodayReviewShortcutScenarios.register),
+            .init(id: "today_review_shortcut_chips", surfaces: blocks(TodayReviewShortcutScenarios.manifestSurfaces, .review), register: TodayReviewShortcutScenarios.register),
             .init(
                 id: "review_fold_surface",
                 surfaces: [
-                    eng("Review Fold · Chevron Pill", .review),
+                    eng("Review Fold · Chevron Pill", .review, ReviewFoldChevronPill.self),
                     eng("Review Fold · Paper Fold", .review),
                     eng("Review Fold · Segment", .review),
                 ],
                 register: ReviewFoldScenarios.register
             ),
             .init(id: "settings_account_detail", surfaces: [screen("Settings Account Detail", .settings, .settingsAccountDetail, SettingsAccountDetailView.self)], register: SettingsAccountDetailScenarios.register),
-            .init(id: "settings_subscription_section", surfaces: [block("Settings Subscription Section", .settings)], register: SettingsSubscriptionSectionScenarios.register),
+            .init(id: "settings_subscription_section", surfaces: [block("Settings Subscription Section", .settings, SettingsSubscriptionSection.self)], register: SettingsSubscriptionSectionScenarios.register),
             .init(id: "today_review_phase_view", surfaces: [screen("Today Review Phase", .review, .todayReviewPhase, TodayReviewPhaseView.self)], register: TodayReviewPhaseScenarios.register),
             // backing = ReaderView (the non-generic production reader screen), not the
             // generic ReaderViewPresenter<…> the scene renders directly: a generic type
