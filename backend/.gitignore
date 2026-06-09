@@ -22,3 +22,4 @@ VERSION
 .DS_Store
 build.log
 build_*.log
+.coverage
