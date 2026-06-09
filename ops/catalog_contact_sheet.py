@@ -1,4 +1,4 @@
-#!/usr/bin/env -S /Users/chenliangyu/.local/bin/uv run --with pillow --python 3.13 python
+#!/usr/bin/env -S uv run --with pillow --python 3.13 python
 # /// script
 # requires-python = ">=3.13"
 # dependencies = ["pillow"]

@@ -3,7 +3,7 @@
 Run via the backend uv env (has pytest); the script takes an injected S3 client
 so these tests use a small dict-backed FakeS3 — no moto, no network.
 
-    uv run --project backend pytest ops/tests/test_podcast_cover_publish.py -v
+    uv run --project backend python -m pytest ops/tests/test_podcast_cover_publish.py -v
 """
 from __future__ import annotations
 

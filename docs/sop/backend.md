@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/
-verified_against: 746dafaa
+verified_against: 98cac27d
 -->
 # KG Backend Dev Guide
 
@@ -50,7 +50,7 @@ verified_against: 746dafaa
 
 ```bash
 cd backend
-uv run pytest -q
+uv run python -m pytest -q
 ```
 
 不要在 `backend/` 下裸跑 `pytest`：系統 PATH 上有 Homebrew 的
@@ -59,23 +59,25 @@ uv run pytest -q
 `backend/.python-version`（鎖 3.13）+ `pyproject.toml` 的
 `requires-python = ">=3.13,<3.14"` 確保用對解譯器。
 
-#### 若 `uv run pytest` 仍誤用 Python 3.14
+#### 為何 backend pytest 一律走 `python -m`
 
 症狀：`test_observability_alerts.py` 約 11 個假性失敗、warning 路徑出現
 `/opt/homebrew/lib/python3.14/...`。根因是 `.venv/bin/` 下的 console script
 （如 `pytest`）shebang 寫死了已失效的絕對 interpreter 路徑（venv 曾在
 worktree 間複製/搬移），kernel exec 失敗 → `pytest` 沿 PATH 落到 Homebrew 3.14。
+這是 generated console script 的結構性限制，不是 `pytest` 本身可修的行為；
+因此 repo 內的 canonical backend 測試入口固定使用 module form。
 
-修法（重建 venv 內所有 console script，不需動 repo）：
+若你已經遇到壞掉的 console script，可用下列方式重建：
 
 ```bash
 cd backend && uv sync --reinstall
 ```
 
-或直接以明確寫法跑測試，繞過 console-script shebang：
+平常跑測試則直接使用：
 
 ```bash
-backend/.venv/bin/python -m pytest -q
+cd backend && uv run python -m pytest -q
 ```
 
 ### 查部署 / migration / env

@@ -38,8 +38,9 @@ kg-server = "uvicorn:main"
 # `uv sync` (uv installs the default `dev` group automatically) but excluded
 # from the runtime wheel.
 #
-# Interpreter-mismatch background — `uv run pytest` once silently fell back to
-# a Homebrew Python 3.14 (`/opt/homebrew/bin/pytest`, no `kg` / `sentry-sdk`):
+# Interpreter-mismatch background — the console-script form once silently fell
+# back to a Homebrew Python 3.14 (`/opt/homebrew/bin/pytest`, no `kg` /
+# `sentry-sdk`):
 # `import sentry_sdk` inside `kg.observability_alerts` failed, `_sentry_sdk`
 # resolved to `None`, every `_emit` short-circuited at the `_sentry_sdk is None`
 # guard — surfacing as ~11 flaky-looking failures whose stubs never recorded a
@@ -50,12 +51,14 @@ kg-server = "uvicorn:main"
 #   2. Stale console-script shebangs — `.venv/bin/pytest` is a generated
 #      script whose `#!` line hard-codes an absolute interpreter path. If the
 #      venv was copied/moved between worktrees, that path goes dead, the kernel
-#      fails to exec it, and `pytest` resolves from PATH instead. Fix by
-#      rebuilding scripts: `cd backend && uv sync --reinstall`.
+#      fails to exec it, and `pytest` resolves from PATH instead. Repo policy:
+#      backend test entrypoints use module form (`python -m pytest`) rather
+#      than the fragile console-script form. If you need to repair an existing
+#      broken venv, rebuild scripts with `cd backend && uv sync --reinstall`.
 #
 # Correct way to run the suite (always uses backend/.venv cpython-3.13):
-#   cd backend && uv run pytest -q
-# Equivalent explicit form (bypasses console-script shebangs entirely):
+#   cd backend && uv run python -m pytest -q
+# Equivalent explicit form:
 #   backend/.venv/bin/python -m pytest -q
 [dependency-groups]
 dev = [

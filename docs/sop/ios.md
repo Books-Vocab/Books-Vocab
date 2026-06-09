@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 291303f1
+verified_against: 98cac27d
 -->
 # BooksBrowser iOS 開發技能
 
@@ -430,7 +430,7 @@ Apple/Google SSO
 - **不可注入(仍需 full build)**：stored property 增減、`@State` 初始值、function signature 改動、`enum` case 新增、`@Observable` macro 生成的 code(偶有時延)、Readium C++/ObjC++ bridging 改動、`UIViewRepresentable`
 
 **自動化工具**：
-- 新增 leaf view 後若忘加三件套,跑 `python3 ops/inject_codemod.py --apply` 自動補(idempotent)
+- 新增 leaf view 後若忘加三件套,跑 `./ops/inject_codemod.py --apply` 自動補(idempotent)
 - `ops/injection_lint.sh --strict` 守門:三規則 — (R1) 合格 View 必有 `@ObserveInjection`;(R2) 同檔 `@ObserveInjection` 數 == `.enableInjection()` 數;(R3) 有 `@ObserveInjection` 必有 `import Inject`
 - 已知例外:body 為 `if` / `switch` 根 expression 時,codemod 跳過 — 手工包 `Group { ... }.enableInjection()`(現有 9 個 case 已處理完)
 

@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/tests/
-verified_against: 746dafaa
+verified_against: 98cac27d
 -->
 # KG Backend Testing Strategy
 
@@ -48,7 +48,7 @@ verified_against: 746dafaa
 
 ```bash
 cd backend
-pytest -q
+uv run python -m pytest -q
 ```
 
 > `pytest.ini` 已設定只收集 `tests/`，避免手動腳本 (`test_api.py`, `test_option_b.py`) 混入測試流程。
@@ -60,7 +60,7 @@ pytest -q
 - UI:
   - `GET /admin/tests?token=<ADMIN_TOKEN>`
 - API:
-  - `POST /api/admin/tests/run?token=<ADMIN_TOKEN>`：執行 `pytest tests -vv --maxfail=0 --disable-warnings`
+  - `POST /api/admin/tests/run?token=<ADMIN_TOKEN>`：執行 `python -m pytest tests -vv --maxfail=0 --disable-warnings`
   - `GET /api/admin/tests/last?token=<ADMIN_TOKEN>`：讀取最近一次執行結果
 
 回傳資料包含：
@@ -76,9 +76,9 @@ pytest -q
 
 ## CI Recommendation
 - PR gate:
-  - `pytest -q`
+  - `uv run python -m pytest -q`
 - Nightly:
-  - `pytest -q -k "not slow"`（目前皆可快速執行）
+  - `uv run python -m pytest -q -k "not slow"`（目前皆可快速執行）
 - Optional future:
   - coverage gate (`--cov=src/kg --cov-fail-under=85`)
 
