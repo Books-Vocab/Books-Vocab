@@ -637,7 +637,7 @@ struct BooksBrowserTests {
 
         #expect(result != nil)
         #expect(result?.kind == "synonym")
-        #expect(result?.original.isHidden == false)
+        #expect(result?.link.isHidden == false)
         #expect(entry.graphLinksByKind["synonym"]?.first?.isHidden == true)
     }
 
@@ -649,7 +649,7 @@ struct BooksBrowserTests {
         let result = entry.mutateLink(id: "link-1") { _ in nil }
 
         #expect(result != nil)
-        #expect(result?.original.id == "link-1")
+        #expect(result?.link.id == "link-1")
         // group should be cleaned up
         #expect(entry.graphLinksByKind["synonym"] == nil)
     }
@@ -711,10 +711,10 @@ struct BooksBrowserTests {
 
         // Simulate API failure → rollback using originals
         if let rA = resultA {
-            _ = a.mutateLink(id: "link-1") { _ in rA.original }
+            _ = a.mutateLink(id: "link-1") { _ in rA.link }
         }
         if let rB = resultB {
-            _ = b.mutateLink(id: "link-1") { _ in rB.original }
+            _ = b.mutateLink(id: "link-1") { _ in rB.link }
         }
 
         #expect(a.graphLinksByKind["synonym"]?.first?.isHidden == false)
@@ -749,10 +749,10 @@ struct BooksBrowserTests {
 
         // API failure → rollback to hidden
         if let rA = resultA {
-            _ = a.mutateLink(id: "link-1") { _ in rA.original }
+            _ = a.mutateLink(id: "link-1") { _ in rA.link }
         }
         if let rB = resultB {
-            _ = b.mutateLink(id: "link-1") { _ in rB.original }
+            _ = b.mutateLink(id: "link-1") { _ in rB.link }
         }
 
         #expect(a.graphLinksByKind["synonym"]?.first?.isHidden == true)
@@ -777,10 +777,10 @@ struct BooksBrowserTests {
 
         // Rollback via insertLink
         if let rA = resultA {
-            a.insertLink(rA.original, kind: rA.kind)
+            a.insertLink(rA.link, kind: rA.kind)
         }
         if let rB = resultB {
-            b.insertLink(rB.original, kind: rB.kind)
+            b.insertLink(rB.link, kind: rB.kind)
         }
 
         #expect(a.graphLinksByKind["synonym"]?.count == 1)

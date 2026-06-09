@@ -17,7 +17,7 @@ struct VocabularyGraphLinkMutationTests {
         #expect(VocabularyGraphLinkMutation.beginManualLink(from: source, to: target) == nil)
     }
 
-    @Test func commitManualLink_replacesPlaceholderWithResolvedLink() {
+    @Test func commitManualLink_replacesPlaceholderWithResolvedLink() throws {
         let source = makeEntry(cardId: "from-card", word: "source")
         let target = makeEntry(cardId: "to-card", word: "target")
         let pending = try #require(VocabularyGraphLinkMutation.beginManualLink(from: source, to: target))
@@ -44,7 +44,7 @@ struct VocabularyGraphLinkMutationTests {
         #expect(resolved.isPending == false)
     }
 
-    @Test func rollbackManualLink_removesPlaceholder() {
+    @Test func rollbackManualLink_removesPlaceholder() throws {
         let source = makeEntry(cardId: "from-card", word: "source")
         let target = makeEntry(cardId: "to-card", word: "target")
         let pending = try #require(VocabularyGraphLinkMutation.beginManualLink(from: source, to: target))
