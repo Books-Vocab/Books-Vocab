@@ -5,11 +5,17 @@ update_trigger: code-change
 scope:
   - backend/ops_edit.py
   - backend/ops_cli.py
+  - backend/src/kg/ops_cli_app.py
+  - backend/src/kg/ops_cli_parser.py
+  - backend/src/kg/ops_cli_queries.py
+  - backend/src/kg/ops_edit_app.py
+  - backend/src/kg/ops_edit_commands.py
+  - backend/src/kg/ops_edit_parser.py
   - backend/src/kg/ops_edit_shared.py
   - backend/src/kg/ops_world_projection.py
   - backend/src/kg/ops_world_expectation.py
   - ops/capture_profile.py
-verified_against: 9597529e
+verified_against: 6c68bc07
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -19,13 +25,13 @@ verified_against: 9597529e
 
 ## 1. 讀寫雙面對齊契約(加可斷言欄位前必讀)
 
-兩面**物理隔離但不共用 query 層、無 schema version**:
+兩面**物理隔離、無 schema version；public wrapper 與實作模組已拆開**:
 
-- 寫面 `ops_edit.py` 走 app per-user store(`CardStore`/`NotebookStore`/`GraphStore`,`ops_edit.py:41-45,102-108`),複用 NFC/dedup/graph merge,不重刻。
-- 讀面 `ops_cli.py` 走 `connect_ro` + **各函式自寫 SELECT**(`ops_cli.py:118-120,165-167`),無共用 query module。
-- state-diff 的投影面 `project_user_world`(`ops_world_projection.py`)是**第三條獨立讀盤路徑**——cards 走 `_load_cards` 動態 SELECT(`:67-80`),graph 走 `_load_graphs` 直讀 `graph_*.json` **繞 GraphStore 快取**(`:103-140`)。
+- 寫面 `backend/ops_edit.py` 現在只是 thin wrapper；真正的 command dispatch 在 `backend/src/kg/ops_edit_app.py` + `ops_edit_parser.py` + `ops_edit_commands.py`。實際落地仍走 app per-user store（`CardStore` / `NotebookStore` / `GraphStore`），複用 NFC/dedup/graph merge，不重刻資料寫路徑。
+- 讀面 `backend/ops_cli.py` 也是 thin wrapper；真正的 readonly control plane 在 `backend/src/kg/ops_cli_app.py`，再拆成 `ops_cli_parser.py` / `ops_cli_queries.py` / `ops_cli_observability.py` / `ops_cli_costs.py` / `ops_cli_shared.py`。query 已不再塞在單一大檔，但仍是獨立於寫面的讀取邏輯。
+- state-diff 的投影面 `project_user_world`（`ops_world_projection.py`）仍是**第三條獨立讀盤路徑**：cards 走 `_load_cards` 動態 SELECT，graph 走 `_load_graphs` 直讀 `graph_*.json`，刻意繞過 GraphStore 快取。
 
-**後果(結構限制,非 bug)**:寫面寫進 DB 的欄位,讀面/投影面**不保證撈得到**。三面各自演進,加欄位會 silent drift。
+**後果(結構限制,非 bug)**:寫面寫進 DB 的欄位,讀面/投影面**不保證撈得到**。現在雖然已把 CLI/EDIT monolith 拆成模組,但三面仍各自演進；新增欄位若沒同步到 readonly query 與 projection,照樣會 silent drift。
 
 **verbatim-safe 判準**——一個欄位可被「導出 expectation 並斷言」**當且僅當**:
 
@@ -35,7 +41,7 @@ verified_against: 9597529e
 
 寫進 DB **不充分**,projection 必須也撈得到。否則導出的 expectation 會對真讀盤產生 false `missing-key` mismatch。
 
-`project_user_world._load_cards` 當前 surface(`ops_world_projection.py:67-80`,PRAGMA 動態裁剪):
+`project_user_world._load_cards` 當前 surface（PRAGMA 動態裁剪）:
 `id / content / meaning / notebook_id / mode / review_count / review_streak / lapse_count / review_interval_hours / next_review_at / last_reviewed_at / source`。
 
 **踩過的坑(回歸測試已固化)**:
@@ -65,11 +71,11 @@ verified_against: 9597529e
 
 | # | 限制 | 現況 | 證據 / 須知 |
 |---|------|------|------------|
-| ① | 跨檔交易 + 單帳號快照含 identity | **已補** | 單帳號 backup 內嵌該 uid 的 `users.json` record + scoped email_index(`ops_edit_shared.py:178-210`),`restore` 能一起回復 config/identity。原「users.json 不在 tar」破口已關。 |
-| ② | 整世界 snapshot/restore | **已補** | `world-snapshot`/`world-restore`(`ops_edit.py:1790-1884`),`backup_world` 含 `users.json`(`ops_edit_shared.py:214-238`),落 `_ops_world_backups/`。 |
-| ③ | 讀寫不對齊 | **仍在(結構)** | 寫面 store / 讀面自寫 SELECT / 投影面第三路徑,無共用 query、無 schema version。見 §1。state-diff 必經 `project_user_world` 自定義投影。 |
-| ④ | 冪等語意不一致 | **仍在(刻意)** | `link-add` 冪等但**不更新** confidence/kind/reason(`ops_edit.py:958-983`,`--if-exists update` 才更新);`seed` 是 upsert 覆蓋核心欄(`:1155-1182`);`clone-demo` 全覆蓋先清後換(`:1714-1720`)。三種重跑語意不同,造景前要知道你在用哪種。 |
-| ⑤ | graph = per-notebook JSON + 快取 | **仍在(設計)** | `_load_graphs` 直讀 `graph_*.json` 繞快取(`ops_world_projection.py:103-140`)。任何 graph 斷言/驗證**必讀磁碟**,不可信 GraphStore in-memory 態。 |
+| ① | 跨檔交易 + 單帳號快照含 identity | **已補** | 單帳號 backup 內嵌該 uid 的 `users.json` record + scoped email_index；`restore` 能一起回復 config/identity。原「users.json 不在 tar」破口已關。 |
+| ② | 整世界 snapshot/restore | **已補** | `world-snapshot` / `world-restore` 已進 control plane；`backup_world` 含 `users.json`，落 `_ops_world_backups/`。 |
+| ③ | 讀寫不對齊 | **仍在(結構)** | 寫面 store / 讀面模組化 query / 投影面第三路徑，仍無共用 schema version。見 §1。state-diff 必經 `project_user_world` 自定義投影。 |
+| ④ | 冪等語意不一致 | **仍在(刻意)** | `link-add` 冪等但**不更新** confidence/kind/reason，只有 `--if-exists update` 會覆寫；`seed` 是 upsert 覆蓋核心欄；`clone-demo` 是全覆蓋先清後換。三種重跑語意不同，造景前要知道你在用哪種。 |
+| ⑤ | graph = per-notebook JSON + 快取 | **仍在(設計)** | `_load_graphs` 直讀 `graph_*.json` 繞快取。任何 graph 斷言/驗證**必讀磁碟**，不可信 GraphStore in-memory 態。 |
 | ⑥ | clone-demo 綁來源真實內容 | **仍在(本質)** | byte-clone 來源 vocab 層,可重現需 `--expect-source-fingerprint` 鎖來源 uid,否則來源漂移會改 clone 結果。 |
 
 ③④⑤⑥ 不是待修 bug,是**疊 scenario/replay 層時要繞開或顯式處理**的已知地形。補坑優先序由實際 world-reset 需求決定,不為補而補。
