@@ -14,9 +14,11 @@ Provide one stable operations system so any agent can safely execute tasks from:
 - project subfolder (project-only view)
 
 ## Startup Checklist
-1. Run `ops/devops_kg_safe.sh preflight`
-2. Before cleanup / promote / branch convergence, run `ops/branch_audit.sh`
-3. Before touching unfamiliar control-plane surfaces, run `ops/capability_matrix.py --json`
+1. For a new or cross-surface task, trigger `kg-router`.
+2. Run `ops/devops_kg_safe.sh preflight` before production work.
+3. Before cleanup / promote / branch convergence, run `ops/branch_audit.sh`.
+4. Before touching unfamiliar control-plane surfaces, run `ops/capability_matrix.py --json`.
+5. If a typed tool is confusing or nudges agents toward bypassing it, classify the friction; fix medium/large tool issues before continuing the original workflow.
 
 ## Allowed Production Entrypoints
 - KG API: `ops/devops_kg_safe.sh`
@@ -24,6 +26,9 @@ Provide one stable operations system so any agent can safely execute tasks from:
 - Compatibility status wrapper: `ops/status_all.sh`
 - Branch convergence audit: `ops/branch_audit.sh`
 - Capability contract: `ops/capability_matrix.py`
+- Cold-start routing: `.claude/skills/kg-router`
+- Docs control-plane flow: `.claude/skills/kg-docs-control-plane`
+- Completion receipt flow: `.claude/skills/kg-receipt`
 
 Do not bypass these entrypoints unless explicitly required and reviewed.
 

@@ -46,6 +46,18 @@ def test_json_schema_exposes_tiers_and_surfaces(capsys):
         and "external-upload" in surface["sideEffect"]
         for surface in payload["surfaces"]
     )
+    required_router_surfaces = {
+        "docs.impact",
+        "docs.lint.gate",
+        "docs.registry.coverage",
+        "release.status",
+        "release.publish",
+        "podcast.ops.status",
+        "podcast.ops.reconcile",
+        "llm_eval.cli",
+    }
+    exposed = {surface["key"] for surface in payload["surfaces"]}
+    assert required_router_surfaces <= exposed
 
 
 def test_tier_filter_only_returns_requested_tier(capsys):
