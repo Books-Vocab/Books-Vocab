@@ -55,7 +55,8 @@ verified_against: 8aaece8d
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/TodayReviewState.swift` | 551 | `@Observable @MainActor final class TodayReviewState`，複習狀態機；恢復 per-user shuffle order、洗牌後同步 session snapshot |
+| `Scenes/TodayReviewState.swift` | 551 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration，queue+reveal 導航委派 `TodayReviewSessionState` |
+| `Scenes/TodayReviewSessionState.swift` | 64 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定 |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
 
 ### Presentation Models（UI 資料轉換）
@@ -145,7 +146,8 @@ verified_against: 8aaece8d
 
 ## State 邊界
 
-- `TodayReviewState`：複習 session 狀態機，僅 `TodayReviewView` 持有，不外洩
+- `TodayReviewState`：複習 scene owner，負責 orchestration；僅 `TodayReviewView` 持有，不外洩
+- `TodayReviewSessionState`：純 session/navigation state，僅 `TodayReviewState` 持有
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
 - `KGVocabCoordinator`：KG 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
