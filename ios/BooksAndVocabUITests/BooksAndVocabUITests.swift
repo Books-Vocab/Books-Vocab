@@ -2,7 +2,7 @@
 //  BooksAndVocabUITests.swift
 //  Books & Vocab UI Tests
 //
-//  Created by 陳亮宇 on 2026/2/24.
+//  Core user-journey coverage using Page Object pattern.
 //
 
 import XCTest
@@ -12,25 +12,43 @@ final class BooksAndVocabUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    // MARK: - Launch & Shell
+
     @MainActor
-    func testLaunchShowsPrimaryTabs() throws {
+    func testLaunchShowsAllTabs() throws {
         let app = makeConfiguredApp()
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["書庫"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["單字本"].waitForExistence(timeout: 5))
+        let shell = AppPage(app: app)
+        shell.assertAllTabsVisible()
     }
 
     @MainActor
-    func testBookshelfSettingsSheetOpens() throws {
+    func testTabNavigationCyclesThroughAllSections() throws {
         let app = makeConfiguredApp()
         app.launch()
 
-        let settingsButton = app.buttons["bookshelf.settingsButton"]
-        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
-        settingsButton.tap()
+        let shell = AppPage(app: app)
 
-        XCTAssertTrue(app.navigationBars["設定"].waitForExistence(timeout: 5))
+        // Bookshelf
+        let bookshelf = shell.goToBookshelf()
+        bookshelf.assertIsActive()
+
+        // Podcasts
+        let podcasts = shell.goToPodcasts()
+        podcasts.assertIsActive()
+
+        // Notebooks
+        let notebooks = shell.goToNotebooks()
+        notebooks.assertIsActive()
+
+        // Overview
+        let overview = shell.goToOverview()
+        overview.assertIsActive()
+
+        // Return to bookshelf — should still be valid
+        let bookshelf2 = shell.goToBookshelf()
+        bookshelf2.assertIsActive()
     }
 
     @MainActor
@@ -38,5 +56,41 @@ final class BooksAndVocabUITests: XCTestCase {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             makeConfiguredApp().launch()
         }
+    }
+
+    // MARK: - Bookshelf Flows
+
+    @MainActor
+    func testBookshelfSettingsSheetOpensAndCloses() throws {
+        let app = makeConfiguredApp()
+        app.launch()
+
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        let settings = bookshelf.tapSettings()
+        settings.assertIsPresented()
+
+        let _ = settings.dismiss()
+        settings.navBar.assertDoesNotExist()
+    }
+
+    @MainActor
+    func testBookshelfEmptyStateVisibleWhenNoBooks() throws {
+        let app = makeConfiguredApp()
+        app.launchArguments += ["-resetContainer"]
+        app.launch()
+
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        bookshelf.assertEmptyStateVisible()
+    }
+
+    // MARK: - Notebook Flows
+
+    @MainActor
+    func testNotebookTabShowsAddButton() throws {
+        let app = makeConfiguredApp()
+        app.launch()
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        notebooks.assertIsActive()
     }
 }

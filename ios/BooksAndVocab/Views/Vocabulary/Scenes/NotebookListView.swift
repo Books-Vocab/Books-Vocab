@@ -215,6 +215,7 @@ struct NotebookListContent: View {
                                         actions: notebookCardActions(for: notebook)
                                     )
                                 }
+                                .accessibilityIdentifier("notebook.card.\(notebook.remoteId)")
                                 .transition(.listSwap)
                             }
                         }
