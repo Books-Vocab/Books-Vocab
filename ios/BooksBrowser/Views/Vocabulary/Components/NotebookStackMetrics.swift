@@ -36,10 +36,6 @@ enum NotebookStackMetrics {
     static let layerOffsetY: CGFloat = AppSpacing.s1          // 4pt
     /// 每層水平單側 inset（下層比上層各縮 dx）
     static let layerInsetX: CGFloat = AppSpacing.s1           // 4pt
-    /// Press-in 時頂層向上抽出的位移
-    static let pressedTopOffsetY: CGFloat = -14
-    /// Press-in 時每深一層額外下沉 1pt（強化視差，總幅 ≤ 2pt）
-    static let pressedGhostOffsetY: CGFloat = 1
 
     // MARK: - Editorial imperfection（rotation + dx jitter）
 
