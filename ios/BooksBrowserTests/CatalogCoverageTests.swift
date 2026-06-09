@@ -140,6 +140,44 @@ import Playbook
         #expect(missing.isEmpty, "featureScreen surface(s) missing a backing type: \(missing)")
     }
 
+    @Test func buildingBlockSurfacesDeclareBackingUnlessExempt() async throws {
+        // Completes the surface→type source declaration: every buildingBlock /
+        // engineering surface must name its production view, except the explicitly
+        // enumerated structural exceptions (generic components / ViewModifiers with
+        // no single concrete metatype). A new component added without backing — and
+        // not consciously exempted — turns this red, so the gallery / IndexStore
+        // never silently fall back to guessing that surface's type.
+        let missing = CatalogScene.Manifest.surfaces
+            .filter { $0.kind == .buildingBlock || $0.kind == .engineering }
+            .filter { $0.backing == nil }
+            .map(\.category)
+            .filter { !CatalogScene.Manifest.surfacesExemptFromBacking.contains($0) }
+            .sorted()
+        #expect(
+            missing.isEmpty,
+            "buildingBlock/engineering surface(s) missing a backing type (and not in surfacesExemptFromBacking): \(missing)"
+        )
+    }
+
+    @Test func backingExemptSurfacesAreActuallyBackingless() async throws {
+        // Keep the exempt set honest: each listed category must exist AND genuinely
+        // carry no backing. If someone later gives one a concrete backing (e.g. a
+        // generic gets a non-generic wrapper), this turns red until it's removed
+        // from the exempt set — the exception list can never silently lie.
+        let byCategory = Dictionary(
+            CatalogScene.Manifest.surfaces.map { ($0.category, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for category in CatalogScene.Manifest.surfacesExemptFromBacking.sorted() {
+            let surface = byCategory[category]
+            #expect(surface != nil, "surfacesExemptFromBacking lists an unknown category: \(category)")
+            #expect(
+                surface?.backing == nil,
+                "Exempt category now declares a backing — remove it from surfacesExemptFromBacking: \(category)"
+            )
+        }
+    }
+
     @Test func everyScreenIsCoveredExceptPending() async throws {
         // The coverage contract: every ScreenID has a featureScreen surface,
         // except those explicitly tracked as P3 debt in Manifest.pendingCoverage.
