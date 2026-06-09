@@ -15,10 +15,11 @@ import IndexStoreDB
 // Design notes:
 // - libIndexStore.dylib is discovered via `xcode-select -p`, never hardcoded, so
 //   it survives Xcode upgrades.
-// - Enumeration is file-driven (walk *.swift under sourceRoot → symbols(inFilePath:))
-//   rather than forEachSymbolName over the whole index (which includes tens of
-//   thousands of stdlib/UIKit names). Calls are sequential, never nested inside a
-//   read-transaction closure, to avoid LMDB MDB_BAD_RSLOT.
+// - Enumeration is two-pass and flat: PASS 1 drains the symbol-name table
+//   (forEachSymbolName) into an array; PASS 2 resolves canonical definitions and
+//   then references via occurrences(ofUSR:). Reference queries run in a flat loop
+//   AFTER the name enumeration fully drains — never nested inside a read-txn
+//   closure — to avoid LMDB MDB_BAD_RSLOT.
 
 func fail(_ msg: String, code: Int32 = 1) -> Never {
     FileHandle.standardError.write((msg + "\n").data(using: .utf8)!)
@@ -48,15 +49,20 @@ guard positional.count == 2 else {
 let storePath = positional[0]
 let sourceRoot = positional[1]
 
-let kindMap: [String: IndexSymbolKind] = [
-    "struct": .struct, "class": .class, "enum": .enum, "protocol": .protocol,
-    "func": .function, "extension": .extension,
+// Each user-facing kind maps to the SET of IndexSymbolKinds it covers, so the
+// input vocabulary matches the output `kindString` exactly. "func" deliberately
+// enrolls the three method kinds too — otherwise `--kinds func` would silently
+// return only free functions while the output still labels methods "func".
+let kindMap: [String: [IndexSymbolKind]] = [
+    "struct": [.struct], "class": [.class], "enum": [.enum], "protocol": [.protocol],
+    "func": [.function, .instanceMethod, .staticMethod, .classMethod],
+    "extension": [.extension],
 ]
 var wantedKinds = Set<IndexSymbolKind>()
 for token in kindsArg.split(separator: ",") {
     let key = token.trimmingCharacters(in: .whitespaces)
-    guard let k = kindMap[key] else { fail("unknown kind: \(key) (valid: \(kindMap.keys.sorted().joined(separator: ",")))", code: 2) }
-    wantedKinds.insert(k)
+    guard let ks = kindMap[key] else { fail("unknown kind: \(key) (valid: \(kindMap.keys.sorted().joined(separator: ",")))", code: 2) }
+    wantedKinds.formUnion(ks)
 }
 
 // MARK: - IndexStore open
@@ -92,25 +98,24 @@ do {
     fail("failed to open IndexStore: \(error)")
 }
 
-// MARK: - File-driven enumeration
+// MARK: - Enumeration
 
-// Collect *.swift paths under sourceRoot from the index's known unit main files.
-// We derive candidate files from the symbols' definition locations rather than a
-// filesystem walk so we only touch files the index actually covers.
+// Filter compiler-synthesized symbols. #Preview and @Model macros emit names like
+// `$s…PreviewRegistry…` and `_SwiftDataNoType`, all of which start with `_`/`$`.
+// We match ONLY that prefix — not a broad `contains("Preview")` — so real user
+// types such as `BookPreviewView` are NOT dropped. This keeps the extractor
+// neutral; any further filtering is policy and belongs in ui_deadcode.py.
 func isSynthetic(_ name: String) -> Bool {
-    if name.hasPrefix("_") || name.hasPrefix("$") { return true }
-    if name.contains("Preview") { return true }   // #Preview / @Model macro synthetics
-    return false
+    name.hasPrefix("_") || name.hasPrefix("$")
 }
 
 struct Def { let kind: IndexSymbolKind; let name: String; let usr: String; let path: String; let line: Int }
 
-// Gather candidate source files: enumerate all definition occurrences once via
-// the symbol-name table (PASS 1, no nested txns), keep only files under sourceRoot.
-var candidateFiles = Set<String>()
+// PASS 1 — drain the symbol-name table into an array (no nested read txns).
 var names: [String] = []
 db.forEachSymbolName { name in names.append(name); return true }
 
+// PASS 2 — resolve canonical definitions of wanted kinds under sourceRoot.
 var defs: [Def] = []
 var seenUSR = Set<String>()
 for name in names {
@@ -123,11 +128,9 @@ for name in names {
         guard path.contains(sourceRoot) else { continue }
         guard !seenUSR.contains(sym.usr) else { continue }
         seenUSR.insert(sym.usr)
-        candidateFiles.insert(path)
         defs.append(Def(kind: sym.kind, name: sym.name, usr: sym.usr, path: path, line: occ.location.line))
     }
 }
-_ = candidateFiles  // reserved for future file-scoped queries; kept for clarity
 
 func kindString(_ k: IndexSymbolKind) -> String {
     switch k {
