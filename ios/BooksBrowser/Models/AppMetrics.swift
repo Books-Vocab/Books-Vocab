@@ -106,11 +106,6 @@ enum AppMotion {
         /// 對應的動畫曲線
         static let animation = Animation.interactiveSpring(response: 0.18, dampingFraction: 0.7)
     }
-
-    /// Notebook deck card release / cancel 回彈
-    /// 給 `NotebookDeckButtonStyle` 在 `isPressed` false 時用；
-    /// 比 `TapFeedback.animation` 略長、阻尼略高，營造卡片落回紙堆的物理感。
-    static let cardDeckRelease = Animation.spring(response: 0.28, dampingFraction: 0.85)
 }
 
 extension AnyTransition {
