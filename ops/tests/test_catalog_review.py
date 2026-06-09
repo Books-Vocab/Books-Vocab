@@ -154,6 +154,7 @@ def test_collect_items_consumes_catalog_index_ground_truth(tmp_path: Path):
     assert item["lane"] == "feature-surface"
     assert item["feature"] == "Podcast"
     assert item["screen"] == "podcastPlayer"
+    assert item["backing"] == ""
 
 
 def test_collect_items_survives_malformed_index_entry(tmp_path: Path):
@@ -174,6 +175,7 @@ def test_collect_items_survives_malformed_index_entry(tmp_path: Path):
     assert item["assetKind"] == "screen"      # heuristic fallback for the bad entry
     assert item["sourceDeclared"] is False
     assert item["screen"] == ""
+    assert item["backing"] == ""
 
 
 def test_collect_items_falls_back_to_heuristics_without_index(tmp_path: Path):
@@ -189,6 +191,126 @@ def test_collect_items_falls_back_to_heuristics_without_index(tmp_path: Path):
     assert item["assetKind"] == "screen"
     assert item["surfaceRole"] == "feature-surface"
     assert item["screen"] == ""
+    assert item["backing"] == ""
+
+
+def test_collect_items_preserve_declared_backing_name(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({
+            "version": 1,
+            "surfaces": {
+                "Settings View": {
+                    "kind": "featureScreen",
+                    "feature": "settings",
+                    "screen": "settings",
+                    "backing": "SettingsPresenter",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    items = manifest_module.collect_items(source_root, profile)
+    item = next(i for i in items if i["category"] == "Settings View")
+    assert item["backing"] == "SettingsPresenter"
+
+
+def test_build_manifest_enriches_surfaces_with_ui_graph_summary(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({
+            "version": 1,
+            "surfaces": {
+                "Settings View": {
+                    "kind": "featureScreen",
+                    "feature": "settings",
+                    "screen": "settings",
+                    "backing": "SettingsPresenter",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    (source_root / "ui_graph.json").write_text(
+        json.dumps({
+            "schema": "kg.ui.graph.v1",
+            "nodes": [
+                {"usr": "s:settings", "name": "SettingsPresenter", "kind": "struct", "surface": ["Settings View"], "externalIn": 1},
+                {"usr": "s:plan", "name": "SettingsPlanComparisonTable", "kind": "struct", "surface": [], "externalIn": 0},
+                {"usr": "s:detail", "name": "SettingsAccountDetailView", "kind": "struct", "surface": ["Settings Account Detail"], "externalIn": 0},
+            ],
+            "edges": [
+                {"from": "s:settings", "to": "s:plan"},
+                {"from": "s:detail", "to": "s:settings"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    items = manifest_module.collect_items(source_root, profile)
+    manifest = manifest_module.build_manifest(items, profile, source_root=source_root)
+    surface = next(s for s in manifest["surfaces"] if s["surface"] == "Settings View")
+    assert surface["backing"] == "SettingsPresenter"
+    assert surface["graph"]["status"] == "linked"
+    assert surface["graph"]["depCount"] == 1
+    assert surface["graph"]["userCount"] == 1
+    assert surface["graph"]["externalIn"] == 1
+    assert surface["graph"]["dependentSurfaceCount"] == 1
+    assert surface["graph"]["deps"] == ["SettingsPlanComparisonTable"]
+    assert surface["graph"]["dependentSurfaces"] == ["Settings Account Detail"]
+    assert surface["graph"]["health"] == []
+
+
+def test_build_manifest_marks_missing_graph_linkage_states(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Shelf"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Default.png", 40, 30, corner_alpha=0)
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({
+            "version": 1,
+            "surfaces": {
+                "Podcast Shelf": {
+                    "kind": "buildingBlock",
+                    "feature": "podcast",
+                },
+                "Podcast Hero": {
+                    "kind": "buildingBlock",
+                    "feature": "podcast",
+                    "backing": "PodcastSeriesHero",
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    items = manifest_module.collect_items(source_root, profile)
+    items.append({
+        **items[0],
+        "category": "Podcast Hero",
+        "surface": "Podcast Hero",
+        "surfaceKey": "podcast-podcast-hero",
+        "surfaceGroup": "Podcast",
+        "surfaceGroupKey": "podcast-podcast",
+        "stateLabel": "Default",
+        "clusterID": "podcast-hero--default--00",
+        "assetID": "podcast-hero--default--asset",
+        "backing": "PodcastSeriesHero",
+    })
+    manifest = manifest_module.build_manifest(items, profile, source_root=source_root)
+    shelf = next(s for s in manifest["surfaces"] if s["surface"] == "Podcast Shelf")
+    hero = next(s for s in manifest["surfaces"] if s["surface"] == "Podcast Hero")
+    assert shelf["graph"]["status"] == "no-backing"
+    assert shelf["graph"]["health"] == ["no-backing"]
+    assert hero["graph"]["status"] == "graph-missing"
+    assert hero["graph"]["health"] == ["graph-missing"]
 
 
 def _surface_item(surface, lane, surface_role, cluster, facet, **extra):

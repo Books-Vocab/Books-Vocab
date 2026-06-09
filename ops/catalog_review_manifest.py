@@ -164,6 +164,108 @@ def load_catalog_index(source_root: Path) -> dict[str, dict]:
     return {category: entry for category, entry in surfaces.items() if isinstance(entry, dict)}
 
 
+def load_ui_graph(source_root: Path) -> dict:
+    """Read optional ui_graph sidecar emitted next to snapshot artifacts."""
+    graph_path = source_root / "ui_graph.json"
+    if not graph_path.is_file():
+        return {}
+    try:
+        data = json.loads(graph_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    if data.get("schema") != "kg.ui.graph.v1":
+        return {}
+    if not isinstance(data.get("nodes"), list) or not isinstance(data.get("edges"), list):
+        return {}
+    return data
+
+
+def enrich_surface_index_with_graph(surfaces: list[dict], items: list[dict], graph_payload: dict) -> list[dict]:
+    first_item_by_surface: dict[str, dict] = {}
+    for item in items:
+        first_item_by_surface.setdefault(item["surface"], item)
+
+    nodes = {
+        node["usr"]: node
+        for node in graph_payload.get("nodes", [])
+        if isinstance(node, dict) and isinstance(node.get("usr"), str) and isinstance(node.get("name"), str)
+    }
+    deps: dict[str, set[str]] = {usr: set() for usr in nodes}
+    users: dict[str, set[str]] = {usr: set() for usr in nodes}
+    for edge in graph_payload.get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+        a = edge.get("from")
+        b = edge.get("to")
+        if a not in nodes or b not in nodes:
+            continue
+        deps[a].add(b)
+        users[b].add(a)
+
+    surface_nodes: dict[str, list[dict]] = {}
+    for node in nodes.values():
+        for surface_name in node.get("surface", []):
+            if isinstance(surface_name, str):
+                surface_nodes.setdefault(surface_name, []).append(node)
+
+    enriched: list[dict] = []
+    for surface in surfaces:
+        item = first_item_by_surface.get(surface["surface"], {})
+        backing = item.get("backing", "")
+        matches = surface_nodes.get(surface["surface"], [])
+        dependent_surfaces: set[str] = set()
+        dep_names: set[str] = set()
+        user_names: set[str] = set()
+        external_in = 0
+        for node in matches:
+            usr = node["usr"]
+            external_in += int(node.get("externalIn", 0) or 0)
+            dep_names.update(nodes[dep_usr]["name"] for dep_usr in deps.get(usr, ()) if dep_usr in nodes)
+            for user_usr in users.get(usr, ()):
+                user_names.add(nodes[user_usr]["name"])
+                for surface_name in nodes[user_usr].get("surface", []):
+                    if surface_name != surface["surface"]:
+                        dependent_surfaces.add(surface_name)
+
+        if not backing:
+            status = "no-backing"
+        elif not graph_payload:
+            status = "graph-missing"
+        elif not matches:
+            status = "unresolved"
+        elif len(matches) > 1:
+            status = "ambiguous"
+        else:
+            status = "linked"
+
+        health: list[str] = []
+        if status != "linked":
+            health.append(status)
+        if status == "linked" and not user_names and external_in == 0:
+            health.append("isolated")
+        if len(dependent_surfaces) >= 3:
+            health.append("high-impact")
+
+        enriched_surface = dict(surface)
+        enriched_surface["backing"] = backing
+        enriched_surface["graph"] = {
+            "status": status,
+            "matchedNodeCount": len(matches),
+            "depCount": len(dep_names),
+            "userCount": len(user_names),
+            "dependentSurfaceCount": len(dependent_surfaces),
+            "externalIn": external_in,
+            "deps": sorted(dep_names),
+            "directUsers": sorted(user_names),
+            "dependentSurfaces": sorted(dependent_surfaces),
+            "health": health,
+        }
+        enriched.append(enriched_surface)
+    return enriched
+
+
 def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr878") -> list[dict]:
     index = load_catalog_index(source_root)
     items: list[dict] = []
@@ -211,12 +313,20 @@ def collect_items(source_root: Path, profile: dict, *, release_marker: str = "pr
     return items
 
 
-def build_manifest(items: list[dict], profile: dict, *, state_file: str | None = None, review_state: dict | None = None) -> dict:
+def build_manifest(
+    items: list[dict],
+    profile: dict,
+    *,
+    state_file: str | None = None,
+    review_state: dict | None = None,
+    source_root: Path | None = None,
+) -> dict:
     counts = Counter(item["promise"] for item in items)
     category_counts = Counter(item["category"] for item in items)
     eligibility_counts = Counter(item["eligibility"] for item in items)
     indexes = build_manifest_indexes(items)
-    surfaces = build_surface_index(items)
+    graph_payload = load_ui_graph(source_root) if source_root else {}
+    surfaces = enrich_surface_index_with_graph(build_surface_index(items), items, graph_payload)
     state_entries = review_state.get("entries", {}) if review_state else {}
     items_with_state = []
     for item in items:
