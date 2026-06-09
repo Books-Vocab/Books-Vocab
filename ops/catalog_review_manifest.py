@@ -142,8 +142,11 @@ def read_png_transparent_margin(path: Path) -> bool:
 def load_catalog_index(source_root: Path) -> dict[str, dict]:
     """Read the source-of-truth taxonomy index emitted by the iOS snapshot run.
 
-    Returns ``{category: {kind, feature, screen}}`` keyed by the raw category
-    string (which matches ``normalize_label(category_dir)``). An empty dict when
+    Returns ``{category: {kind, feature, screen, backing}}`` keyed by the raw
+    category string (which matches ``normalize_label(category_dir)``); ``backing``
+    is the source-declared production view type (absent for inline-composed
+    surfaces). The full entry dict is preserved; unknown keys ride along inert.
+    An empty dict when
     the file is absent or malformed — the gallery then falls back to the
     pixel/regex heuristics, so legacy/un-blessed artifacts still render."""
     index_path = source_root / "catalog_index.json"
