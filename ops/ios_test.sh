@@ -48,6 +48,10 @@ LAUNCH_BENCHMARK=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      sed -n '1,24p' "$0" | sed 's/^#//; s/^ //'
+      exit 0
+      ;;
     -g|--grep) GREP_PATTERN="$2"; shift 2 ;;
     --file)
       # 重複 --file 只會保留最後一個、靜默丟棄其餘 → 曾誘發 false-green（以為跑了多檔，
