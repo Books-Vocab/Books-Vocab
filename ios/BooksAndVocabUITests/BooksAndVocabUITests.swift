@@ -7,17 +7,13 @@
 
 import XCTest
 
-final class BooksAndVocabUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
+final class BooksAndVocabUITests: UITestCase {
 
     // MARK: - Launch & Shell
 
     @MainActor
     func testLaunchShowsAllTabs() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
         let shell = AppPage(app: app)
         shell.assertAllTabsVisible()
@@ -25,8 +21,7 @@ final class BooksAndVocabUITests: XCTestCase {
 
     @MainActor
     func testTabNavigationCyclesThroughAllSections() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
         let shell = AppPage(app: app)
 
@@ -54,7 +49,7 @@ final class BooksAndVocabUITests: XCTestCase {
     @MainActor
     func testLaunchPerformance() throws {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            makeConfiguredApp().launch()
+            makeConfiguredApp(perfLog: "render,scroll").launch()
         }
     }
 
@@ -62,8 +57,7 @@ final class BooksAndVocabUITests: XCTestCase {
 
     @MainActor
     func testBookshelfSettingsSheetOpensAndCloses() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
         let bookshelf = AppPage(app: app).goToBookshelf()
         let settings = bookshelf.tapSettings()
@@ -75,9 +69,7 @@ final class BooksAndVocabUITests: XCTestCase {
 
     @MainActor
     func testBookshelfEmptyStateVisibleWhenNoBooks() throws {
-        let app = makeConfiguredApp()
-        app.launchArguments += ["-resetContainer"]
-        app.launch()
+        let app = launchApp(profile: .clean)
 
         let bookshelf = AppPage(app: app).goToBookshelf()
         bookshelf.assertEmptyStateVisible()
@@ -87,8 +79,7 @@ final class BooksAndVocabUITests: XCTestCase {
 
     @MainActor
     func testNotebookTabShowsAddButton() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
         let notebooks = AppPage(app: app).goToNotebooks()
         notebooks.assertIsActive()
@@ -98,10 +89,10 @@ final class BooksAndVocabUITests: XCTestCase {
 
     @MainActor
     func testOverviewTabShowsNavigationTitle() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
         let _ = AppPage(app: app).goToOverview()
+        XCTAssertTrue(app.waitForNavigationToSettle())
         let navTitle = app.navigationBars.staticTexts["總覽"]
         navTitle.assertExists()
     }
@@ -110,20 +101,18 @@ final class BooksAndVocabUITests: XCTestCase {
 
     @MainActor
     func testPodcastTabIsAccessible() throws {
-        let app = makeConfiguredApp()
-        app.launch()
+        let app = launchApp()
 
-        let podcasts = AppPage(app: app).goToPodcasts()
-        podcasts.assertIsActive()
+        let _ = AppPage(app: app).goToPodcasts()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+        XCTAssertEqual(currentTabSummary(in: app), "播客")
     }
 
     // MARK: - Bookshelf → Reader Flow
 
     @MainActor
     func testBookshelfToReaderNavigation() throws {
-        let app = makeConfiguredApp()
-        app.launchArguments += ["-seedFixture:bookshelf:withBooksLibrary"]
-        app.launch()
+        let app = launchApp(extraArgs: ["-seedFixture:bookshelf:withBooksLibrary"])
 
         let bookshelf = AppPage(app: app).goToBookshelf()
         guard let reader = bookshelf.tapFirstBook() else {
