@@ -56,6 +56,17 @@ grep -q 'ios_diagnostics.py' "$IR" \
 grep -q -- '--xcresult' "$IR" && grep -q -- '--log' "$IR" \
   && ok "archive feeds xcresult + log to diagnostics" || fail_t "archive diagnostics missing xcresult/log"
 
+# ── 6. upload diagnostics：altool 長時間無輸出時仍有 keep-alive tick ───────
+section "Upload diagnostics"
+grep -q 'kg_ios_release_upload.*log' "$IR" \
+  && ok "upload preserves raw log path"      || fail_t "upload missing raw log path"
+grep -q 'start_tick_monitor "$UPLOAD_LOG" "\[release\]\[upload\]"' "$IR" \
+  && ok "upload starts keep-alive monitor"   || fail_t "upload missing keep-alive monitor"
+grep -q 'UPLOAD_EXIT=\$?' "$IR" && grep -q 'upload failed (exit \$UPLOAD_EXIT)' "$IR" \
+  && ok "upload captures and reports altool exit code" || fail_t "upload exit handling missing"
+grep -q 'write_json_verdict "ok" "0" "ok" "ok" "fail"' "$IR" \
+  && ok "upload failure writes machine-readable verdict" || fail_t "upload failure verdict missing"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
