@@ -5,6 +5,7 @@ set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 IR="$WORKSPACE/ops/ios_release.sh"
+PROGRESS_LIB="$WORKSPACE/ops/lib/ios_build_progress.sh"
 
 pass=0; fail=0
 ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
@@ -66,6 +67,18 @@ grep -q 'UPLOAD_EXIT=\$?' "$IR" && grep -q 'upload failed (exit \$UPLOAD_EXIT)' 
   && ok "upload captures and reports altool exit code" || fail_t "upload exit handling missing"
 grep -q 'write_json_verdict "ok" "0" "ok" "ok" "fail"' "$IR" \
   && ok "upload failure writes machine-readable verdict" || fail_t "upload failure verdict missing"
+tick_probe="$(
+  perl -e 'alarm 5; exec @ARGV' bash -lc '
+    source "'"$PROGRESS_LIB"'"
+    log="$(mktemp "${TMPDIR:-/tmp}/kg_ios_tick_probe.XXXXXX.log")"
+    pid="$(start_tick_monitor "$log" "[probe]" "$(date +%s)")"
+    printf "pid=%s\n" "$pid"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  ' 2>/dev/null
+)"
+echo "$tick_probe" | grep -qE '^pid=[0-9]+$' \
+  && ok "upload tick monitor returns PID from command substitution" || fail_t "upload tick monitor command substitution hung/failed: $tick_probe"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

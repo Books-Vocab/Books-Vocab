@@ -38,6 +38,7 @@ struct PodcastControlsView: View {
                             .contentShape(Rectangle())
                     }
                     .accessibilityLabel(L10n.string("podcast.controls.rewind15"))
+                    .accessibilityIdentifier("podcast.player.rewind15Button")
 
                     // 主 play／pause：brandHero 奶黃 capsule CTA — 對齊整體設計語言
                     Button { viewModel.togglePlayPause() } label: {
@@ -48,6 +49,7 @@ struct PodcastControlsView: View {
                             .background(skin.palette.brandHero, in: Circle())
                     }
                     .accessibilityLabel(L10n.string(viewModel.state == .playing ? "podcast.controls.playpause.pause" : "podcast.controls.playpause.play"))
+                    .accessibilityIdentifier("podcast.player.playPauseButton")
 
                     Button { viewModel.skip(seconds: 15) } label: {
                         Image(systemName: "goforward.15")
@@ -57,6 +59,7 @@ struct PodcastControlsView: View {
                             .contentShape(Rectangle())
                     }
                     .accessibilityLabel(L10n.string("podcast.controls.forward15"))
+                    .accessibilityIdentifier("podcast.player.forward15Button")
                 }
 
                 HStack {
@@ -68,6 +71,7 @@ struct PodcastControlsView: View {
                     .buttonStyle(.appCompactAction(.neutral))
                     .accessibilityLabel(L10n.string("podcast.controls.cycleRate"))
                     .accessibilityValue(viewModel.rateDisplayText)
+                    .accessibilityIdentifier("podcast.player.rateButton")
                 }
             }
         }
