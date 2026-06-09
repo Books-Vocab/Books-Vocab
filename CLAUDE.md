@@ -58,7 +58,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 - **coverage debt**:`./ops/docs_registry_coverage.py` 看哪些 linted docs 尚未進 registry,並分成 `active_unregistered`(應補進控制面)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt);`--strict` 只卡 active-doc 覆蓋 debt,不等同日常 gate。
 - **同步流程權威**:背景 doc-sync agent 讀 `docs/sop/doc_sync.md`;人工維護/狗食流程讀 `docs/sop/docs_dogfood.md`。
 
-## Skill 系統(KG 專屬 10 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 9 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
@@ -69,8 +69,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `cleanup` | `cleanup` / `/cleanup` / 「收尾」 | **Workflow 1**。使用者先定黑名單；agent 唯一目標是把其他全部白名單收進 `main`、push/sync remote，並讓黑名單永遠 rebase 在最新 `main` 上。 |
-| `promote` | `promote` / 「先把這條活 branch 的已提交部分拉進 main」 | **Workflow 2**。把活 branch 的指定已提交 commits 先升格進 `main`，再讓原 branch rebase 到新 `main` 繼續活著；除非明確要求，不自動清 branch/worktree。 |
+| `converge` | `cleanup` / `/cleanup` / `promote` / 「收尾」 / 「先把這條活 branch 的已提交部分拉進 main」 | branch/worktree 收斂單一 skill。先立 `T0 snapshot barrier`，在離線 integration/final worktree 完成驗證與整合，再用**極短 cutover**推進 `main`。`cleanup` = 吸收所有非黑名單工作；`promote` = 只升格指定已提交子集。 |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
