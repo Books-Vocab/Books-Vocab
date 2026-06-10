@@ -225,7 +225,8 @@ else
     log "recording 'Animation Hitches'+'Time Profiler' trace（time-limit ${TIMEOUT}s，flips=$FLIPS deck=$DECK）…"
     # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
     # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
-    # rm 防 --out 重用時讀到上一輪殘留（與 verdict 檔同款 stale 防護）。
+    # 下行 rm 的對象是 device_info.json（非上方 trace）：防 --out 重用時
+    # 讀到上一輪殘留（與 verdict 檔同款 stale 防護）。
     rm -f "$OUT/device_info.json"
     xcrun devicectl device info details --device "$UDID" \
       --json-output "$OUT/device_info.json" >/dev/null 2>&1 || true
@@ -251,13 +252,17 @@ else
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
     XCTRACE_PID=$!
     xctrace_rc=0
-    kg_probe_wait_pid "$XCTRACE_PID" $((TIMEOUT + 600)) "review_flip_probe.xctrace" || xctrace_rc=$?
+    # 餘裕涵蓋 time-limit 錄滿後的 distill（11G trace 曾蒸餾 >120s 被砍成
+    # 無 template 死 bundle）。watchdog 與 verdict reason 共用同一常數，
+    # 改值不會讓 reason 說謊。
+    XCTRACE_GRACE=$((TIMEOUT + 600))
+    kg_probe_wait_pid "$XCTRACE_PID" "$XCTRACE_GRACE" "review_flip_probe.xctrace" || xctrace_rc=$?
     XCTRACE_PID=""
     case "$xctrace_rc" in
       0) ;;
       3)
         log "hint: xctrace 逾時未結（裝置是否解鎖插線？）console: $CONSOLE"
-        fail_invalid "xctrace_watchdog_timeout:$((TIMEOUT + 600))s"
+        fail_invalid "xctrace_watchdog_timeout:${XCTRACE_GRACE}s"
         ;;
       *)
         log "hint: console: $CONSOLE"
