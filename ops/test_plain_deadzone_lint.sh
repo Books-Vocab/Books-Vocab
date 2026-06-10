@@ -69,6 +69,24 @@ struct Dirty: View {
                 HStack { Text("a"); Spacer(); Text("b") }
             }
             .buttonStyle(PlainButtonStyle())
+
+            // Multi-trailing-closure modifier between the label and the style:
+            // the chain walk must not stop at `message:`.
+            Button(action: { confirmTap() }) {
+                HStack { Text("a"); Spacer(); Text("b") }
+            }
+            .alert("sure?", isPresented: $confirming) {
+                Button("ok") { tap() }
+            } message: {
+                Text("details")
+            }
+            .buttonStyle(.plain)
+
+            // A string literal containing the marker text must NOT exempt.
+            Button(action: { tap() }) {
+                HStack { Text("deadzone-allow: not a real marker"); Spacer(minLength: 2) }
+            }
+            .buttonStyle(.plain)
         }
     }
 }
@@ -121,6 +139,21 @@ struct Clean: View {
                 HStack { Text("a"); Spacer() }
             }
             .buttonStyle(.plain)
+
+            // A gap that only exists inside string copy is not a gap.
+            Button(action: { tap() }) {
+                Text("call Spacer( with maxWidth: .infinity, says the docs")
+            }
+            .buttonStyle(.plain)
+
+            // Commented-out dirty buttons must be invisible to the scanner.
+            // Button(action: { tap() }) { HStack { Spacer() } }.buttonStyle(.plain)
+            /*
+            Button(action: { tap() }) {
+                HStack { Text("a"); Spacer(); Text("b") }
+            }
+            .buttonStyle(.plain)
+            */
         }
     }
 }
@@ -170,13 +203,15 @@ if run --strict >/dev/null 2>&1; then fail_t "--strict exited 0 despite findings
 else ok "--strict exits non-zero with findings"; fi
 
 dirty_count="$(echo "$out" | grep -c 'Dirty.swift' || true)"
-if [[ "$dirty_count" -eq 4 ]]; then ok "all 4 dirty buttons flagged"
-else fail_t "expected 4 Dirty.swift findings, got $dirty_count"; echo "$out" | sed 's/^/    /'; fi
+if [[ "$dirty_count" -eq 6 ]]; then ok "all 6 dirty buttons flagged"
+else fail_t "expected 6 Dirty.swift findings, got $dirty_count"; echo "$out" | sed 's/^/    /'; fi
 
 echo "$out" | grep -q 'Spacer()'                 && ok "trailing-closure Spacer gap caught"  || fail_t "missed trailing-closure Spacer gap"
-echo "$out" | grep -q 'Spacer(minLength'         && ok "label:-closure Spacer gap caught"    || fail_t "missed label:-closure Spacer gap"
+echo "$out" | grep -q 'Spacer(minLength: 0'      && ok "label:-closure Spacer gap caught"    || fail_t "missed label:-closure Spacer gap"
 echo "$out" | grep -q 'maxWidth: .infinity'      && ok "maxWidth-infinity gap caught"        || fail_t "missed maxWidth-infinity gap"
 echo "$out" | grep -q 'PlainButtonStyle()'       && ok "PlainButtonStyle() spelling caught"  || fail_t "missed PlainButtonStyle() spelling"
+echo "$out" | grep -q 'confirmTap'               && ok "chain survives multi-trailing-closure modifier" || fail_t "chain walk stopped at message: closure"
+echo "$out" | grep -q 'Spacer(minLength: 2'      && ok "marker inside string literal does not exempt"   || fail_t "string-literal marker falsely exempted"
 
 # ── 4. Clean shapes, exemption, exclusions produce no findings ────────────────
 section "Clean / exemption / exclusions"

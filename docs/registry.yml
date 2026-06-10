@@ -69,6 +69,10 @@ documents:
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
+      - "!ops/plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_lint.py"
+      - "!ops/test_plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
 
@@ -96,6 +100,10 @@ documents:
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
+      - "!ops/plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_lint.py"
+      - "!ops/test_plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
       - backend/
@@ -134,6 +142,10 @@ documents:
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
+      - "!ops/plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_lint.py"
+      - "!ops/test_plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
 
@@ -677,6 +689,10 @@ documents:
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
+      - "!ops/plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_lint.py"
+      - "!ops/test_plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
 
@@ -708,6 +724,7 @@ documents:
       - ios/BooksAndVocab/Support/UITestFixtureSeed.swift
       - ops/ios_test.sh
       - ops/catalog_contact_sheet.py
+      - ops/plain_deadzone_lint.sh
 
   - id: sop.deploy
     path: docs/sop/deploy.md
@@ -734,6 +751,10 @@ documents:
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
+      - "!ops/plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_lint.py"
+      - "!ops/test_plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
       - backend/
@@ -766,6 +787,10 @@ documents:
       - "!ops/ui_token_lint.sh"
       - "!ops/ui_token_lint.py"
       - "!ops/test_ui_token_lint.sh"
+      - "!ops/plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_lint.py"
+      - "!ops/test_plain_deadzone_lint.sh"
+      - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - "!ops/gen_web_components.py"
       - docs/runbook/

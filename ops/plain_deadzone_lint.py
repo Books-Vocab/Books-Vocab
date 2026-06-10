@@ -16,9 +16,16 @@ Detection (single-file, structural):
   2. Flag when the chain has `.buttonStyle(.plain)` / `PlainButtonStyle()`,
      the label region contains a transparency gap (`Spacer(` or
      `maxWidth: .infinity`), and neither label nor chain has `.contentShape(`.
-  `Button("title") { action }` labels are solid text — never flagged. Gaps
-  hidden inside cross-file label components are out of scope here (covered by
-  the one-off audit; see docs).
+  `Button("title") { action }` labels are solid text — never flagged.
+
+Known out-of-scope (accepted false-negative surface, documented by review):
+  - Gaps hidden inside cross-file label components (covered by the one-off
+    audit; the lint is single-file by design).
+  - Conditional styles (`.buttonStyle(flag ? PlainButtonStyle() : ...)`).
+  - `#if` blocks interleaved in a modifier chain truncate the chain walk.
+  - Non-literal titled inits (`Button(L10n.string(.x)) { action }`) treat the
+    action closure as the label — harmless unless an action body contains a
+    gap pattern.
 
 Modes (mirrors ops/ui_token_lint.py):
   --report          Print findings with file:line, exit 0. Local discovery.
@@ -53,8 +60,6 @@ BASELINE_FILE = Path(
     os.environ.get("KG_DEADZONE_BASELINE", ROOT / "ops" / "plain_deadzone_baseline.txt")
 )
 
-ALLOW_MARKER = "deadzone-allow:"
-
 SKIP_PATH_FRAGMENTS = ("/Debug/",)
 SKIP_NAME_GLOBS = ("*Preview*.swift", "*Tests*.swift")
 
@@ -63,6 +68,10 @@ PLAIN_STYLE_RX = re.compile(
 )
 GAP_RX = re.compile(r"\bSpacer\([^)]*\)?|maxWidth:\s*\.infinity")
 CONTENT_SHAPE = ".contentShape("
+# Comment-form only, so a string literal merely *containing* the marker text
+# cannot exempt a real dead zone.
+ALLOW_RX = re.compile(r"//\s*deadzone-allow:")
+MULTI_TRAILING_RX = re.compile(r"\w+\s*:")
 
 _WS = re.compile(r"\s+")
 
@@ -230,6 +239,19 @@ def parse_button(stripped: str, pos: int) -> ButtonSite | None:
         k = skip_ws(stripped, j)
         if k < n and stripped[k] == "{":
             j = match_balanced(stripped, k, "{", "}")
+            # Multi-trailing-closure modifiers (`.alert("t", isPresented:) {…}
+            # message: {…}`) continue with `name: {…}` segments; consume them
+            # so the walk still sees a .buttonStyle further down the chain.
+            while True:
+                k = skip_ws(stripped, j)
+                m2 = MULTI_TRAILING_RX.match(stripped, k)
+                if not m2:
+                    break
+                k2 = skip_ws(stripped, m2.end())
+                if k2 < n and stripped[k2] == "{":
+                    j = match_balanced(stripped, k2, "{", "}")
+                else:
+                    break
         i = j
     chain = stripped[chain_start:i]
     return ButtonSite(pos, i, args, label, chain)
@@ -276,14 +298,14 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
             continue
         if CONTENT_SHAPE in site.label or CONTENT_SHAPE in site.chain:
             continue
-        if ALLOW_MARKER in text[site.start : site.end]:
+        if ALLOW_RX.search(text[site.start : site.end]):
             continue
-        # Line of the allow marker check above is the original text; the
-        # marker may also sit at the end of the Button's first line, whose
-        # comment region extends past site.start — check that full line too.
+        # The marker may also sit in a comment at the end of the Button's
+        # first line, whose tail extends past site.start — check the full
+        # original line too.
         lineno = stripped.count("\n", 0, site.start) + 1
         lines = text.splitlines()
-        if lineno <= len(lines) and ALLOW_MARKER in lines[lineno - 1]:
+        if lineno <= len(lines) and ALLOW_RX.search(lines[lineno - 1]):
             continue
         style = PLAIN_STYLE_RX.search(site.chain)
         first_line = lines[lineno - 1].strip() if lineno <= len(lines) else "Button"
