@@ -14,14 +14,23 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
+// .serialized: tests mutate AppLanguageStore.shared singleton.
+@Suite(.serialized) @MainActor
 struct AppLanguageStoreBundleCacheTests {
 
     @Test func stringBundleDoesNotReresolveForStableLanguage() {
         let store = AppLanguageStore.shared
+        // 暖滿全部語言：cache 永久保留，先把每語言的首次解析都吃掉，
+        // 封死「並行 suite 的 setLanguage 首碰某語言 → count +1」的跨
+        // suite 視窗（.serialized 只序列化本 suite 內）。
+        for language in AppLanguage.allCases {
+            store.setLanguage(language)
+            _ = store.stringBundle
+        }
         store.setLanguage(.english)
         defer { store.setLanguage(.system) }
 
-        _ = store.stringBundle // prime（首讀允許解析一次）
+        _ = store.stringBundle // prime（已暖，不應再解析）
         let primed = store.bundleResolutionCount
         _ = store.stringBundle
         _ = store.stringBundle

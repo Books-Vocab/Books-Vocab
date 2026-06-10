@@ -163,8 +163,9 @@ final class AppLanguageStore: ObservableObject {
     /// 但 `path(forResource:)` 的字串/檔案系統解析沒有——device time-profile
     /// (2026-06-10) 顯示 L10n.lookup 在複習卡 settle 重評時每字串都付這筆,
     /// 一幀內呼叫數十次。key 是 resolve 後的具體語言,.system 的系統語言
-    /// 變更會落到不同 key,不會黏住舊值。lock 防 L10n 從非主執行緒讀取
-    /// 時 dict 競寫。
+    /// 變更會落到不同 key,不會黏住舊值。lock 只保護 dict 競寫;
+    /// `effectiveLanguage`(讀 @Published selection)在鎖外,其跨執行緒
+    /// 讀取語意與改動前相同(pre-existing,非本快取引入)。
     private let bundleCacheLock = NSLock()
     private var bundleCache: [AppLanguage: Bundle] = [:]
 
