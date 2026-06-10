@@ -1033,7 +1033,7 @@ boot_simulator_if_needed
 DERIVED_DATA_ROOT="$(ios_test_derived_data_root)"
 # LRU liveness: mark this key as in-use even on the unlocked cache-hit path,
 # so a concurrent builder's eviction never removes products mid-read.
-[[ -d "$DERIVED_DATA_ROOT" ]] && touch "$DERIVED_DATA_ROOT" 2>/dev/null
+[[ -d "$DERIVED_DATA_ROOT" ]] && touch "$DERIVED_DATA_ROOT" 2>/dev/null || true
 XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
 while :; do
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"

@@ -826,6 +826,9 @@ cmd_catalog_snapshots_json() {
       base_xctestrun="$(catalog_find_xctestrun "$derived_data_root")"
       if catalog_cached_products_ready "$derived_data_root" "$base_xctestrun"; then
         cache_status="hit"
+        # LRU liveness：hit 讀者必須 touch 自己的 key，否則並行 rebuild 的
+        # eviction 可能把正在讀的產物抽走（無共用鎖，靠 mtime+min-age 保護）。
+        touch "$derived_data_root" 2>/dev/null || true
         : >"$xcode_log"
         : >"$xcode_err"
         if [[ "$scope_requested" -eq 1 || -n "$dataset_b64" ]]; then
@@ -1260,6 +1263,8 @@ cmd_catalog_prepare_json() {
 
   if catalog_cached_products_ready "$derived_data_root" "$base_xctestrun"; then
     cache_status="hit"
+    # LRU liveness：同上，hit 讀者 touch 續命。
+    touch "$derived_data_root" 2>/dev/null || true
     : >"$xcode_log"
     : >"$xcode_err"
   elif [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then

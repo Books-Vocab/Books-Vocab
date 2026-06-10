@@ -36,8 +36,9 @@ kg_ios_cache_evict() {
   [[ -d "$cache_root" ]] || return 0
 
   # 標記現用 key 為最新（即使本輪是 cache hit 也要續命）。
+  # || true：caller 全是 set -e，touch 失敗（權限/唯讀 FS）不可殺整個 run。
   [[ -n "$current_key" && -d "$cache_root/$current_key" ]] \
-    && touch "$cache_root/$current_key" 2>/dev/null
+    && touch "$cache_root/$current_key" 2>/dev/null || true
 
   local now min_age_secs
   now="$(date +%s)"
@@ -54,8 +55,10 @@ kg_ios_cache_evict() {
   )
 
   local kept=0 evicted=0 freed_kb=0
-  local rank=0 mtime path name age_secs age_h size_kb verb
-  for line in "${entries[@]}"; do
+  local rank=0 mtime path name age_secs age_h size_kb verb fresh_mtime
+  # ${entries[@]+...}：macOS /bin/bash 3.2 在 set -u 下對空陣列展開會炸
+  # unbound variable（空 root 是真實狀態：--clean-cache 後、災後手動清空）。
+  for line in ${entries[@]+"${entries[@]}"}; do
     mtime="${line%% *}"
     path="${line#* }"
     name="$(basename "$path")"
@@ -63,6 +66,17 @@ kg_ios_cache_evict() {
     age_secs=$(( now - mtime ))
 
     if [[ "$name" == "$current_key" ]] || (( rank <= keep )) || (( age_secs < min_age_secs )); then
+      kept=$(( kept + 1 ))
+      continue
+    fi
+
+    # Stale-snapshot guard：快照取得後、刪除前，並行 run 可能已 touch/重建
+    # 這條 key（無鎖 catalog 路徑的真實視窗）。刪前重驗 mtime，變新就放過。
+    fresh_mtime="$(stat -f '%m' "$path" 2>/dev/null || echo "")"
+    if [[ -z "$fresh_mtime" ]]; then
+      continue  # 已被別人刪掉
+    fi
+    if (( now - fresh_mtime < min_age_secs )); then
       kept=$(( kept + 1 ))
       continue
     fi
