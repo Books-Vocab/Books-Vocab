@@ -95,8 +95,8 @@ struct TodayReviewCardSlotTests {
         }
     }
 
-    /// goPrevious i→i-1：原 active slot 變 preview 且內容 index 不變（仍是卡 i），
-    /// 新 active slot 換內容（卡 i-1）—— 退場側才付 content diff。
+    /// goPrevious i→i-1：原 active slot 變 preview 且內容 index 不變（仍是卡 i，
+    /// 零 diff），新 active slot 換內容（i+1→i-1）—— content diff 落在新 active 側。
     @Test func previousFlipsRolesAndKeepsOutgoingContentStable() {
         let queueCount = 5
         var session = TodayReviewSessionState(queue: Array(0..<queueCount), currentIndex: queueCount - 1)
