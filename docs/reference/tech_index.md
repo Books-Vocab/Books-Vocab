@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 12fe7be6
+verified_against: 58f682e1
 -->
 # Technical Reference Index
 
@@ -155,6 +155,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
 | `i18n_lint.sh` | iOS 字串在地化掃描(`--report` / `--baseline` / `--baseline-check` / `--strict`),擋 raw 中文、static formatter、`.xcstrings needs_review`。詳見 `docs/sop/i18n_lint.md` |
+| `plain_deadzone_lint.sh` | iOS `.plain` Button 透明死區守門(同 `ui_token_lint` 四模式)。結構式掃 Button label 含 `Spacer`/`maxWidth: .infinity` 且無 `.contentShape` 者(`.plain` hit-test 穿透透明像素,row 中段點不到——Settings flow 抓到的 production bug class,PR #904)。行內豁免 `// deadzone-allow: <reason>`;regression `ops/test_plain_deadzone_lint.sh`(`test_ops.sh plain-deadzone`) |
 | `inject_codemod.py` | iOS InjectionNext 三件套自動注入(`import Inject` / `@ObserveInjection` / `.enableInjection()`)。`--dry-run` / `--apply` / `--scope <subdir>` |
 | `injection_lint.sh` | iOS hot reload 覆蓋率守門(同 `i18n_lint` 四模式)。三規則:View struct 有 `@ObserveInjection`、per-file arity、`import Inject` 共存性。詳見 `docs/sop/ios.md §Hot Reload` |
 
