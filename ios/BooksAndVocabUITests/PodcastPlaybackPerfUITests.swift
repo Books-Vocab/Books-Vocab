@@ -6,17 +6,13 @@ final class PodcastPlaybackPerfUITests: UITestCase {
 
     @MainActor
     func testPodcastPlaybackProbeSustainsRealAudioPlayback() throws {
-        let podcastFixtureRoot = "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts"
         let app = launchIsolatedApp(
             fixtures: [.podcastPlayablePreview],
-            extraEnvironment: [
-                "KG_UI_TEST_PODCAST_AUDIO": "\(podcastFixtureRoot)/ep_1_flash.m4a",
-                "KG_UI_TEST_PODCAST_SUBTITLE": "\(podcastFixtureRoot)/ep_1_flash.srt",
-                "KG_UI_TEST_PODCAST_DURATION": "1034.6",
+            extraEnvironment: PodcastFixture.assetEnvironment.merging([
                 "KG_UI_TEST_PODCAST_SERIES_TITLE": "Atomic Habits",
                 "KG_UI_TEST_PODCAST_EPISODE_TITLE": "Actual Lab Episode",
                 "KG_UI_TEST_PODCAST_HOST": "Lab Podcast"
-            ],
+            ]) { _, new in new },
             perfLog: "audio"
         )
         captureStep("launch", app: app)
@@ -90,8 +86,8 @@ final class PodcastPlaybackPerfUITests: UITestCase {
         captureStep("playback-sustained", app: app)
         attachText(
             """
-            fixtureAudio=\(podcastFixtureRoot)/ep_1_flash.m4a
-            fixtureSubtitle=\(podcastFixtureRoot)/ep_1_flash.srt
+            fixtureAudio=\(PodcastFixture.root)/ep_1_flash.m4a
+            fixtureSubtitle=\(PodcastFixture.root)/ep_1_flash.srt
             initialElapsed=\(initialElapsed)
             latestElapsed=\(latestElapsed)
             elapsedAdvance=\(latestElapsed - initialElapsed)
