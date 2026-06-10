@@ -6,6 +6,7 @@
 #   ./ops/ios_build.sh --timeout 300             # custom lock wait (default: 600s)
 #   ./ops/ios_build.sh --extra-settings KEY=VAL  # pass extra xcodebuild settings (repeatable)
 #   ./ops/ios_build.sh --swift6                  # shorthand: SWIFT_STRICT_CONCURRENCY=complete
+#   ./ops/ios_build.sh --configuration Release   # build configuration (default: Debug)
 #
 # How it works:
 #   1. Spin-waits to acquire an exclusive lock (shlock, macOS built-in)

@@ -85,6 +85,7 @@ final class ReviewProbeMetrics: ReviewProbeMetricsRecording {
         fileHandle = nil
         flips = []
         pendingFlip = nil
+        _ = recorder?.stop() // CADisplayLink 強持有 target — 不 stop 直接斷參照 = leak
         recorder = nil
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
