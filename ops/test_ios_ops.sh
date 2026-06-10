@@ -550,7 +550,9 @@ mkdir -p "${TMPDIR:-/tmp}/Test.xcresult"
 : > "${TMPDIR:-/tmp}/test.log"
 mkdir -p "${TMPDIR:-/tmp}/ui-steps"
 : > "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png"
-jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiScreenshotDir:$screenshotDir}}' >"$json"
+: > "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png"
+: > "${TMPDIR:-/tmp}/ui-steps/review_manifest.json"
+jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg quick4 "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png" --arg manifest "${TMPDIR:-/tmp}/ui-steps/review_manifest.json" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiQuick4Sheet:$quick4,uiVisualReviewManifest:$manifest,uiScreenshotDir:$screenshotDir}}' >"$json"
 echo "test stub stdout"
 SH
 cat > "$delegate_tmp/archive_stub.sh" <<'SH'
@@ -567,13 +569,15 @@ echo "archive stub stdout"
 SH
 chmod +x "$delegate_tmp/build_stub.sh" "$delegate_tmp/test_stub.sh" "$delegate_tmp/archive_stub.sh"
 build_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_BUILD_DELEGATE="$delegate_tmp/build_stub.sh" bash "$IOS_OPS" build --json 2>"$delegate_tmp/build_stderr")"
-echo "$build_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="build" and .result=="ok" and .caller=="stub-build" and .timings.totalMs==33 and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
+echo "$build_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="build" and .result=="ok" and .caller=="stub-build" and .timings.totalMs==33 and .uiVisualReview==null and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
   && ok "build --json emits machine-readable run report" || fail_t "build --json invalid: $build_direct_json"
 grep -q 'build stub stdout' "$delegate_tmp/build_stderr" \
   && ok "build --json redirects delegate stdout to stderr" || fail_t "build --json missing delegate output forwarding"
 test_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --json 2>"$delegate_tmp/test_stderr")"
-echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .artifacts.uiContactSheetExists==true and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
+echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .artifacts.uiContactSheetExists==true and .artifacts.uiQuick4SheetExists==true and .artifacts.uiVisualReviewManifestExists==true and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
   && ok "test --json emits machine-readable run report" || fail_t "test --json invalid: $test_direct_json"
+echo "$test_direct_json" | jq -e '.uiVisualReview.contactSheet==.artifacts.uiContactSheet and .uiVisualReview.contactSheetExists==true and .uiVisualReview.quick4Sheet==.artifacts.uiQuick4Sheet and .uiVisualReview.quick4SheetExists==true and .uiVisualReview.visualReviewManifest==.artifacts.uiVisualReviewManifest and .uiVisualReview.visualReviewManifestExists==true and .uiVisualReview.screenshotDir==.artifacts.uiScreenshotDir' >/dev/null \
+  && ok "test --json exposes uiVisualReview block" || fail_t "test --json missing uiVisualReview block: $test_direct_json"
 grep -q 'test stub stdout' "$delegate_tmp/test_stderr" \
   && ok "test --json redirects delegate stdout to stderr" || fail_t "test --json missing delegate output forwarding"
 test_cache_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --cache-status --json)"
@@ -614,7 +618,7 @@ jq -nc --arg log "$runs_tmp/archive.log" --arg xcresult "$runs_tmp/Archive.xcres
 runs_json="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs --json)"
 echo "$runs_json" | jq -e '.schema=="kg.ios.runs.v1" and .summary.verdict=="warn" and .summary.counts.errors==0 and .summary.counts.warnings==2 and .summary.counts.failedTests==0 and .summary.counts.missing==0 and .summary.counts.malformed==0 and .summary.counts.failing==0 and .build.result=="ok" and .build.caller=="fixture with spaces" and .test.executed=="12" and .archive.result=="ok" and .archive.timings.totalMs==13510 and .archive.timings.archiveMs==12000 and .archive.artifacts.logExists==true and .archive.artifacts.xcresultExists==true and .build.artifacts.logExists==true and .test.artifacts.xcresultExists==true and .build.diagnostics.schema=="kg.ios.diagnostics.v1" and .archive.diagnostics.schema=="kg.ios.diagnostics.v1" and .build.diagnostics.counts.warnings==1 and .archive.diagnostics.counts.warnings==1 and .build.timings.totalMs==3120 and .build.timings.lockWaitMs==90 and .test.timings.lockWaitMs==140 and .test.cache.status=="hit" and .test.options.uiLaunchProfile=="standard" and .test.timings.appLaunchAverageMs==1450 and .test.timings.appLaunchSamples==5' >/dev/null \
   && ok "runs --json parses latest build/test/archive verdicts (incl lockWaitMs passthrough)" || fail_t "runs --json invalid: $runs_json"
-echo "$runs_json" | jq -e 'all([.build,.test,.archive][]; has("kind") and has("status") and has("result") and has("exit") and has("reason") and has("caller") and has("elapsed") and has("executed") and has("options") and has("cache") and has("timings") and has("verdictFile") and has("jsonVerdictFile") and has("artifacts") and has("diagnostics"))' >/dev/null \
+echo "$runs_json" | jq -e 'all([.build,.test,.archive][]; has("kind") and has("status") and has("result") and has("exit") and has("reason") and has("caller") and has("elapsed") and has("executed") and has("options") and has("cache") and has("timings") and has("verdictFile") and has("jsonVerdictFile") and has("artifacts") and has("uiVisualReview") and has("diagnostics"))' >/dev/null \
   && ok "runs --json uses stable verdict object keys" || fail_t "runs --json missing stable keys: $runs_json"
 runs_text="$(TMPDIR="$runs_tmp" bash "$IOS_OPS" runs)"
 printf '%s\n' "$runs_text" | grep -q '^\[ios\]\[runs\] summary verdict=warn errors=0 warnings=2 failedTests=0 missing=0 malformed=0 failing=0' \
@@ -827,6 +831,33 @@ grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
 grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
+# Functional regression: fake UI step screenshots must yield the full visual
+# review trio — full contact sheet + quick4 sheet + selection manifest — and
+# generated sheets must never re-enter the manifest as fake steps.
+ui_steps_tmp="$(mktemp -d)"
+ui_step_png_b64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+for ui_step_name in 01-launch 02-bookshelf 03-series-detail 04-episode-list 05-player-open 06-play-tapped 07-playback-started 08-playback-sustained; do
+  printf '%s' "$ui_step_png_b64" | base64 -d >"$ui_steps_tmp/$ui_step_name.png"
+done
+bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  UI_TEST_SCREENSHOT_DIR="'"$ui_steps_tmp"'"
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  export_ui_step_attachments_from_xcresult() { :; }
+  eval "$(sed -n "/^build_ui_step_contact_sheet()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  build_ui_step_contact_sheet
+' >"$ui_steps_tmp/snippet.log" 2>&1 || true
+if [[ -s "$ui_steps_tmp/contact_sheet.png" && -s "$ui_steps_tmp/quick4_contact_sheet.png" && -s "$ui_steps_tmp/review_manifest.json" ]] \
+  && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null; then
+  ok "ios_test builds full + quick4 contact sheets and manifest from step screenshots"
+  rm -rf "$ui_steps_tmp"
+else
+  # keep $ui_steps_tmp as the debug artifact — the failure message points at it
+  fail_t "ios_test ui-step visual review trio missing in $ui_steps_tmp: $(tail -3 "$ui_steps_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
+fi
 ios_test_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
 touch "$ios_test_xctestrun_tmp/Build/Products/BooksAndVocabUnitTests_BooksAndVocabUnitTests_iphonesimulator26.4-arm64.xctestrun"
