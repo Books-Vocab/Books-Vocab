@@ -69,9 +69,19 @@ struct TodayReviewSessionSnapshotStore {
     /// `load`/`save`/`clear` share one FIFO: a save followed by a load always
     /// observes the saved value. Crash window: a snapshot enqueued but not yet
     /// written is lost if the process dies first — bounded by one background
-    /// encode (~ms), and the deferred DB flush re-covers restored answers.
+    /// encode (~ms). A loss costs at most that one flip's answer (the user
+    /// re-answers one card after restore); it is NOT covered by the restore
+    /// reflush, which only repairs answers whose snapshot survived but whose
+    /// DB flush never confirmed.
     private static let queue = DispatchQueue(label: "kg.review.snapshotStore", qos: .utility)
     private static var cache: [String: Snapshot]?
+
+    /// Test-only: drop the in-memory cache so the next access re-decodes from
+    /// UserDefaults. Without this, tests that seed the defaults key directly
+    /// (e.g. legacy-migration blobs) are silently masked by a warm cache.
+    static func _invalidateCacheForTesting() {
+        queue.sync { cache = nil }
+    }
 
     static func load(for userId: String) -> Snapshot? {
         queue.sync {
