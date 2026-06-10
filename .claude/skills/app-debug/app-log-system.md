@@ -14,7 +14,7 @@ iOS app 的常駐效能 / 行為觀測門面。**一次建好、長期重用、�
 
 `PerfLog.<category>`,category 來自 `enum PerfCategory`:`render` `layout` `scroll` `underline` `audio` `sync` `reader` `startup` `general`。不夠就**加 case**(rawValue 即 console category 字串與 `KG_PERF_LOG` token)。
 
-subsystem = `<bundleId>.perf`(預設 `com.wordnexus.BooksBrowser.perf`),與一般 AppLog 隔離。
+subsystem = `<bundleId>.perf`(預設 `com.Max0228.BooksBrowser.perf`),與一般 AppLog 隔離。
 
 ## API
 
