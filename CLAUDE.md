@@ -140,6 +140,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | 逐項 review 落地(派 review agent / PASS 判準 / block 處理) | `docs/sop/review_discipline.md` — 鐵律 4 落地 |
 | 找 iOS UI 死碼 / 孤兒元件(刪元件 / cleanup / 重構前盤點) | `./ops/ui_deadcode.py`(IndexStore-based;default struct,class 可信 gate)— 見 `docs/reference/tech_index.md` |
 | 查 iOS UI 元件依賴 / 改某 view 的 impact / 哪個 catalog surface 吃到它 | `./ops/ui_graph.py --type <Name>` 或 `./ops/ui_graph.py --surface <Catalog Surface>`(type→type 依賴圖;`--json`/`--dot`)— 見 `docs/reference/tech_index.md` |
+| 查 UI 品質機制全景 / 我改的檔該跑哪些 UI gate | `./ops/ui_quality_plane.py list` / `impact --files <paths...>`(機器可讀 SoT `ops/ui_quality_plane.yml`:六層機制×entrypoint×gate×verdict)— 見 `docs/reference/tech_index.md` |
 
 ## Doc Tier 契約
 

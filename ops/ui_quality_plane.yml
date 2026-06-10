@@ -1,0 +1,201 @@
+version: 1
+description: >
+  KG UI quality control plane. Machine-readable map of every UI/UX quality
+  mechanism: what layer it guards, how to run it, what triggers it, and where
+  its verdict lands. Query with ops/ui_quality_plane.py (list | impact |
+  validate). Triggers are path hints — semantic judgment stays with the agent,
+  same contract as docs/registry.yml.
+
+mechanisms:
+  - id: value.design_system
+    layer: static-value
+    entrypoint: ops/verify_design_system.sh
+    gate: ci
+    triggers:
+      - design-system/
+      - ios/BooksAndVocab/Models/AppColors.swift
+      - ios/BooksAndVocab/Models/AppTheme.swift
+      - ios/BooksAndVocab/Models/AppMetrics.swift
+      - ios/BooksAndVocab/Models/AppFonts.swift
+      - ios/BooksAndVocab/Models/AppSkin+BaseValues.swift
+      - ios/BooksAndVocab/Models/DesignTokens.swift
+      - ios/BooksAndVocab/UIComponents/AppTagMetrics.swift
+      - ios/BooksAndVocab/UIComponents/AppSurface.swift
+      - chrome-extension/shared/tokens.css
+      - chrome-extension/shared/kg-components.css
+      - backend/static/kg-tokens.css
+      - backend/static/kg-components.css
+      - ops/token_drift_check.py
+      - ops/gen_web_tokens.py
+      - ops/gen_web_components.py
+      - ops/gen_figma_sets.py
+      - ops/component_fidelity_check.py
+    verdict: >
+      Exit code; per-guard PASS/FAIL on stdout. Umbrella over token drift,
+      generated-CSS staleness, Figma sidecar, Style Dictionary byte-check,
+      component fidelity, extension shared tests.
+    docs:
+      - docs/sop/ui-design.md
+    notes: "Hard gate in .github/workflows/design-system.yml; best-effort in .githooks/pre-commit."
+
+  - id: static.ui_token
+    layer: static-code
+    entrypoint: ops/ui_token_lint.sh
+    gate: test_ops
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: >
+      --baseline-check exit code against ops/ui_token_baseline.txt (known debt);
+      new raw padding/shadow/radius/color/font literals fail. Inline escape
+      `// token-allow: <reason>`.
+    docs:
+      - docs/sop/ui-design.md
+    regression: ui-token
+
+  - id: static.plain_deadzone
+    layer: static-code
+    entrypoint: ops/plain_deadzone_lint.sh
+    gate: test_ops
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: >
+      --baseline-check exit code against ops/plain_deadzone_baseline.txt
+      (empty baseline = zero tolerance). Inline escape `// deadzone-allow: <reason>`.
+    docs:
+      - docs/sop/ui_flow_evidence.md
+    regression: plain-deadzone
+
+  - id: static.i18n
+    layer: static-code
+    entrypoint: ops/i18n_lint.sh
+    gate: manual
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: >
+      Exit code; raw user-facing Chinese string findings on stdout. Inline
+      escape `// i18n-allow: <reason>`. Formatter checks run in baseline mode.
+    docs:
+      - docs/sop/i18n_lint.md
+
+  - id: static.catalyst
+    layer: static-code
+    entrypoint: ops/catalyst_lint.sh
+    gate: manual
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: "--strict exit code; flags .popover() inside .toolbar {} (Catalyst crash)."
+    docs:
+      - docs/sop/ios.md
+
+  - id: static.injection
+    layer: static-code
+    entrypoint: ops/injection_lint.sh
+    gate: xcode
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: "Exit code; InjectionNext coverage rules (R1/R2/R3). Runs as Xcode Run Script phase."
+    docs:
+      - docs/sop/ios.md
+
+  - id: structure.ui_deadcode
+    layer: structure
+    entrypoint: ops/ui_deadcode.py
+    gate: manual
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: >
+      Orphan UI type list on stdout (IndexStore-backed). class findings are a
+      trusted gate; struct findings advisory. Run before deleting/refactoring components.
+    docs:
+      - docs/reference/tech_index.md
+    regression: ui-deadcode
+
+  - id: structure.ui_graph
+    layer: structure
+    entrypoint: ops/ui_graph.py
+    gate: manual
+    triggers:
+      - "ios/BooksAndVocab/**/*.swift"
+    verdict: "--type/--surface dependency queries (--json/--dot); impact analysis before UI changes."
+    docs:
+      - docs/reference/tech_index.md
+    regression: ui-graph
+
+  - id: snapshot.catalog
+    layer: state-snapshot
+    entrypoint: ops/ios_ops.sh
+    gate: manual
+    triggers:
+      - ios/BooksAndVocab/Debug/
+      - ios/BooksAndVocab/Views/
+      - ios/BooksAndVocab/UIComponents/
+      - ops/render_catalog_review.py
+      - ops/catalog_review_cli.py
+      - ops/catalog_review_manifest.py
+      - ops/catalog_review_renderer.py
+      - ops/catalog_review_sync.py
+      - ops/catalog_contact_sheet.py
+    verdict: >
+      `ios_ops.sh catalog snapshots` writes build/snapshots/catalog-full-<UTC>/
+      (surface PNGs light+dark, catalog_index.json, review_manifest.json,
+      review.html). Coverage gaps via `catalog_review_cli.py gaps`.
+    docs:
+      - docs/reference/catalog_scope.md
+      - docs/sop/ios.md
+
+  - id: snapshot.catalog_coverage
+    layer: state-snapshot
+    entrypoint: ios/BooksAndVocabTests/CatalogCoverageTests.swift
+    gate: ios-test
+    triggers:
+      - ios/BooksAndVocab/Debug/CatalogScene.swift
+      - ios/BooksAndVocab/Views/
+    verdict: >
+      XCTest: every ScreenID maps to exactly one featureScreen surface; no
+      duplicate/undeclared taxonomy. Red at `ios_ops.sh test`.
+    docs:
+      - docs/reference/catalog_scope.md
+
+  - id: behavior.uitest_flows
+    layer: behavior
+    entrypoint: ops/ios_test.sh
+    gate: manual
+    triggers:
+      - ios/BooksAndVocab/
+      - ios/BooksAndVocabUITests/
+    verdict: >
+      `ios_test.sh --ui [--file <Flow>UITests] --lease` emits
+      kg.ios.run-verdict.v1 JSON: pass/fail, uiVideo (mp4), step screenshots,
+      contact/quick4 sheets, review_manifest.json, device UDID.
+    docs:
+      - docs/sop/ui_flow_evidence.md
+      - docs/sop/ios.md
+    regression: ios-ops
+
+  - id: perf.review_flip_probe
+    layer: perf
+    entrypoint: ops/review_flip_probe.sh
+    gate: manual
+    triggers:
+      - ios/BooksAndVocab/Views/Vocabulary/
+    verdict: >
+      Single-line RESULT=pass|fail|invalid in $TMPDIR/kg_review_probe_verdict;
+      per-flip JSONL metrics; exit 0/1/2 (invalid != fail). Simulator or real
+      device (--device <udid>, optional --instruments xctrace).
+    docs:
+      - docs/sop/ios.md
+    regression: review-flip-probe
+
+  - id: xplat.chrome_parity
+    layer: cross-platform
+    entrypoint: ops/chrome_parity.sh
+    gate: manual
+    triggers:
+      - chrome-extension/
+      - design-system/tokens.json
+    verdict: >
+      Side-by-side Chrome|iOS contact sheet per PARITY case; --audit adds
+      diff.png/zoom.png/palette.txt/metrics.json (RMSE/SSIM/pHash) under
+      chrome-extension/tools/audit/.
+    docs:
+      - docs/reference/feature_boundary/chrome.md
