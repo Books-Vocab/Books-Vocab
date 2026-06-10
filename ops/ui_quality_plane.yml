@@ -4,7 +4,11 @@ description: >
   mechanism: what layer it guards, how to run it, what triggers it, and where
   its verdict lands. Query with ops/ui_quality_plane.py (list | impact |
   validate). Triggers are path hints — semantic judgment stays with the agent,
-  same contract as docs/registry.yml.
+  same contract as docs/registry.yml. `gate` = where violations against the
+  REAL tree are enforced (ci = hard CI gate, ios-test = fails ios_ops.sh test,
+  xcode = build-phase script, test_ops = enforced inside the ops suite,
+  manual = an agent/human must run it); tool-regression coverage lives in the
+  separate `regression` field (test_ops group) and does NOT count as a gate.
 
 mechanisms:
   - id: value.design_system
@@ -30,6 +34,7 @@ mechanisms:
       - ops/gen_web_components.py
       - ops/gen_figma_sets.py
       - ops/component_fidelity_check.py
+      - ops/verify_design_system.sh
     verdict: >
       Exit code; per-guard PASS/FAIL on stdout. Umbrella over token drift,
       generated-CSS staleness, Figma sidecar, Style Dictionary byte-check,
@@ -41,8 +46,9 @@ mechanisms:
   - id: static.ui_token
     layer: static-code
     entrypoint: ops/ui_token_lint.sh
-    gate: test_ops
+    gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
     verdict: >
       --baseline-check exit code against ops/ui_token_baseline.txt (known debt);
@@ -55,8 +61,9 @@ mechanisms:
   - id: static.plain_deadzone
     layer: static-code
     entrypoint: ops/plain_deadzone_lint.sh
-    gate: test_ops
+    gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
     verdict: >
       --baseline-check exit code against ops/plain_deadzone_baseline.txt
@@ -70,6 +77,7 @@ mechanisms:
     entrypoint: ops/i18n_lint.sh
     gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
     verdict: >
       Exit code; raw user-facing Chinese string findings on stdout. Inline
@@ -82,6 +90,7 @@ mechanisms:
     entrypoint: ops/catalyst_lint.sh
     gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
     verdict: "--strict exit code; flags .popover() inside .toolbar {} (Catalyst crash)."
     docs:
@@ -90,10 +99,11 @@ mechanisms:
   - id: static.injection
     layer: static-code
     entrypoint: ops/injection_lint.sh
-    gate: xcode
+    gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
-    verdict: "Exit code; InjectionNext coverage rules (R1/R2/R3). Runs as Xcode Run Script phase."
+    verdict: "Exit code; InjectionNext coverage rules (R1/R2/R3) via --strict. No automated hook today — run by hand; see docs/sop/ios.md §Hot Reload."
     docs:
       - docs/sop/ios.md
 
@@ -102,6 +112,7 @@ mechanisms:
     entrypoint: ops/ui_deadcode.py
     gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
     verdict: >
       Orphan UI type list on stdout (IndexStore-backed). class findings are a
@@ -115,6 +126,7 @@ mechanisms:
     entrypoint: ops/ui_graph.py
     gate: manual
     triggers:
+      - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
     verdict: "--type/--surface dependency queries (--json/--dot); impact analysis before UI changes."
     docs:
@@ -178,6 +190,9 @@ mechanisms:
     gate: manual
     triggers:
       - ios/BooksAndVocab/Views/Vocabulary/
+      - ios/BooksAndVocab/Support/ReviewProbe/
+      - ops/review_flip_probe.sh
+      - ops/lib/review_probe_lib.sh
     verdict: >
       Single-line RESULT=pass|fail|invalid in $TMPDIR/kg_review_probe_verdict;
       per-flip JSONL metrics; exit 0/1/2 (invalid != fail). Simulator or real
