@@ -118,6 +118,7 @@ extension ReaderSettingsPresenter {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, AppSpacing.s2)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -165,6 +166,7 @@ extension ReaderSettingsPresenter {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
                                 }
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -277,6 +279,7 @@ extension ReaderSettingsPresenter {
                 .padding(.horizontal, ReaderMetrics.settingsControlHorizontalPadding)
                 .padding(.vertical, ReaderMetrics.settingsControlVerticalPadding)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

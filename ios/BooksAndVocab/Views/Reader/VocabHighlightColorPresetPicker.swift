@@ -41,6 +41,7 @@ struct VocabHighlightColorPresetPicker: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.string(preset.titleKey))
