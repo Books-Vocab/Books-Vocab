@@ -286,4 +286,4 @@ branch 的 commits 內容已經在 main 中（不同 hash），rebase 會 drop�
 - **force-push 只用 `--force-with-lease`**，不用 `-f`
 - **刪 remote branch 前先確認它存在**，不存在就跳過
 - **all white 清 worktree 前先 snapshot**，否則 dirty work 會丟失
-- **merge 後若測試失敗，revert 或 hotfix，不讓 main 壞著**
+- **驗證以 build gate 為準，耗時測試問過再跑**：merge 完成後跑 `ios_ops.sh build` 當 gate（編譯綠即可推進），**不自主跑耗時測試**（UI/all-targets）。流程順序固定：先 push + 清乾淨殘影，**再問使用者要不要跑測試**。若使用者要跑且測試失敗 → revert 或 hotfix，不讓 main 壞著。
