@@ -16,13 +16,16 @@ struct ReviewFoldSurface<Content: View>: View {
     @Environment(\.appSkin) private var appSkin
 
     let position: FoldSegmentPosition
+    /// 邊框線條透明度 — 預設為 active 值；常駐 slot（Phase 3a）以
+    /// `TodayReviewCardSlotLayout.borderOpacity` 內插（preview 0.45 → active 0.72）。
+    var borderOpacity: Double = TodayReviewMetrics.cardBorderActiveOpacity
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         content()
             .background(appSkin.palette.cardBackground.opacity(0.985))
             .clipShape(shape)
-            .overlay(shape.stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
+            .overlay(shape.stroke(appSkin.palette.cardBorder.opacity(borderOpacity), lineWidth: 1))
             .overlay(alignment: .top) {
                 if position != .top && position != .single {
                     Rectangle()

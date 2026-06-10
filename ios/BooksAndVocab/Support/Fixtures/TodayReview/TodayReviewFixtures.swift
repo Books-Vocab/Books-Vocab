@@ -254,10 +254,18 @@ enum TodayReviewFixtures {
 
 private enum TodayReviewFixtureAdapter {
     static func makeState(from seed: TodayReviewSessionSeed) -> TodayReviewPresenterState {
-        .init(
+        let current = seed.currentCard.map(makeCurrentCard(from:))
+        let next = seed.nextCard.map(makeCurrentCard(from:))
+        // 靜態 fixture 不攜帶真實 queue index — slot 指派只消費 parity 與
+        // 「下一張是否存在」，固定 currentIndex=0 渲染結果與真 session 等價。
+        let queueCount = current == nil ? 0 : (next == nil ? 1 : 2)
+        let slots = TodayReviewCardSlotModel.make(currentIndex: 0, queueCount: queueCount) { index in
+            index == 0 ? current : next
+        }
+        return .init(
             progressText: seed.progressText,
-            currentCard: seed.currentCard.map(makeCurrentCard(from:)),
-            nextCard: seed.nextCard.map(makeCurrentCard(from:)),
+            currentCard: current,
+            slots: slots,
             revealStage: seed.revealStage,
             canShuffle: seed.canShuffle,
             canGoPrevious: seed.canGoPrevious,
