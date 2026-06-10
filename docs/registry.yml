@@ -226,6 +226,18 @@ documents:
       - ops/docs_impact.py
       - ops/docs_registry_coverage.py
 
+  - id: reference.ios_deriveddata_policy
+    path: docs/reference/ios_deriveddata_policy.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - deriveddata_path_changed
+      - ios_build_cache_changed
+    sources:
+      - ops/ios_build.sh
+      - ops/ios_test.sh
+      - ops/ios_clean_derived_data.sh
+
   - id: reference.feature_boundary.bookshelf
     path: docs/reference/feature_boundary/bookshelf.md
     kind: reference
