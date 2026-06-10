@@ -2,7 +2,7 @@
 
 iOS app 的常駐效能 / 行為觀測門面。**一次建好、長期重用、零 RELEASE 成本**。是 `instrumented-iteration.md` 的工具層。
 
-實作:`ios/BooksBrowser/Services/PerfLog.swift`(SoT,改前先讀)。
+實作:`ios/BooksAndVocab/Services/PerfLog.swift`(SoT,改前先讀)。
 
 ## 三個業界訊號,一個門面
 
