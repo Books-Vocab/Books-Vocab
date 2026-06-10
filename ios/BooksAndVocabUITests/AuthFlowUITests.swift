@@ -163,6 +163,12 @@ final class AuthFlowUITests: UITestCase {
         }
         captureStep("signedin-player-ready", app: app)
 
+        // 全螢幕 player 蓋住 tab bar — 先退回 episode list 才能切 tab。
+        try step("signedin-player-back", app: app) {
+            app.navigationBars.buttons.firstMatch.tapWhenReady()
+            XCTAssertTrue(app.waitForNavigationToSettle())
+        }
+
         // 3. Settings 顯示帳號區（logged-in panel + 登出按鈕）。
         try step("signedin-settings-account", app: app) {
             AppPage(app: app).goToBookshelf()
