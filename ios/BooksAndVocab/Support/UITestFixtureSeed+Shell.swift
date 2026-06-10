@@ -78,7 +78,7 @@ extension UITestFixtureSeed {
             // earlier fixture (e.g. podcast playablePreview) already did, so
             // combining fixtures never triggers the account-switch wipe.
             if !AuthManager.shared.isLoggedIn {
-                AuthManager.shared.login(userId: "ui-shell-user", token: "ui-shell-user-token")
+                seedLogin(userId: "ui-shell-user", token: "ui-shell-user-token")
             }
             AppLog.app.info("UI-test fixture seeded: shell.navigation (\(entries.count) entries)")
         } catch {
