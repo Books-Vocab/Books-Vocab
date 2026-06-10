@@ -19,12 +19,19 @@ extension UITestFixtureSeed {
     /// fixtures are untouched.
     @MainActor
     static func seedReader(_ id: String, into container: ModelContainer) {
+        // 模擬器限定：convertRealTextToEPUB 會把 fixture EPUB 寫進「真實」
+        // Books 目錄（容器 guard 罩不到的磁碟平面）。真機上殘留檔案會在下次
+        // 正常啟動被 orphan recovery 收編進使用者真實書庫——一律拒絕。
+        #if targetEnvironment(simulator)
         switch id {
         case "realBookLibrary":
             seedReaderRealBookLibrary(into: container)
         default:
             AppLog.app.warning("Unknown reader fixture ID: \(id)")
         }
+        #else
+        AppLog.app.error("UITestFixtureSeed: refused reader fixture on device — it writes the real Books directory")
+        #endif
     }
 
     private static let readerNotebookId = "ui-reader-notebook"

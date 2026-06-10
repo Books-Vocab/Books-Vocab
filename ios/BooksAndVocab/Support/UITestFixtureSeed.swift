@@ -13,7 +13,10 @@ enum UITestFixtureSeed {
         // 資料安全防線（2026-06-10 事故）：fixture 會 wipe+seed VocabularyEntry。
         // 在真機上對真實 on-disk store 動手 = 清掉使用者整個本地單字庫，
         // 故只允許全 in-memory 容器（bootstrap 在 -ui-testing 下必須提供）。
-        guard container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
+        // !isEmpty：空配置容器 allSatisfy 恆真（fail-open），雖經查無實際
+        // 產生路徑，仍以廉價保險封死。
+        guard !container.configurations.isEmpty,
+              container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
             AppLog.app.error("UITestFixtureSeed: refused — container has persistent store(s); fixtures may only seed the ephemeral UI-testing container")
             return
         }
