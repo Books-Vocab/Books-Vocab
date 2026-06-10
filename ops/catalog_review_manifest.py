@@ -344,6 +344,12 @@ def build_manifest(
         "stateFile": state_file,
         "totalImages": len(items),
         "sceneCount": len({item["clusterID"] for item in items}),
+        # Ordered device list for the gallery's device toggle. Canonical spec
+        # device (iPhone) first so single-device consumers keep today's default.
+        "devices": sorted(
+            {item["device"] for item in items},
+            key=lambda d: (not d.startswith("iPhone"), d),
+        ),
         "promiseCounts": dict(counts),
         "categoryCounts": dict(category_counts),
         "eligibilityCounts": dict(eligibility_counts),

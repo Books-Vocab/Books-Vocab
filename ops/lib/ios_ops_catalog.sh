@@ -629,8 +629,17 @@ catalog_extract_timing_ms_from_log() {
   sed -n "s/^ - timing\\.${metric}: //p" "$log_path" | tail -n 1
 }
 
+# Device variant count = entries in the Swift test's `devices:` array (dark
+# variants are separate entries). Printed by CatalogSnapshotTests as
+# `resolved.deviceVariantCount`; absent in legacy logs → caller falls back to 2.
+catalog_extract_device_variant_count_from_log() {
+  local log_path="$1"
+  [[ -f "$log_path" ]] || return 1
+  sed -n 's/^ - resolved\.deviceVariantCount: //p' "$log_path" | tail -n 1
+}
+
 catalog_inspect_pngs_json() {
-  local out_root="$1" expected_scenarios="${2:-}"
+  local out_root="$1" expected_scenarios="${2:-}" device_variants="${3:-2}"
   local inspector="$ROOT/ops/catalog_png_inspect.swift"
   local paths=() report_json expected_png_count="" count_matches="false"
   while IFS= read -r path; do
@@ -640,10 +649,11 @@ catalog_inspect_pngs_json() {
   if ((${#paths[@]} == 0)); then
     jq -n \
       --argjson expectedScenarios "${expected_scenarios:-null}" \
+      --argjson deviceVariants "${device_variants}" \
       '{
         status:"error",
         expectedScenarioCount:$expectedScenarios,
-        expectedPngCount:(if $expectedScenarios == null then null else ($expectedScenarios * 2) end),
+        expectedPngCount:(if $expectedScenarios == null then null else ($expectedScenarios * $deviceVariants) end),
         actualPngCount:0,
         pngCountMatches:false,
         uniformImageCount:0,
@@ -659,7 +669,7 @@ catalog_inspect_pngs_json() {
 
   report_json="$(swift "$inspector" "${paths[@]}")" || return $?
   if [[ -n "$expected_scenarios" ]]; then
-    expected_png_count=$(( expected_scenarios * 2 ))
+    expected_png_count=$(( expected_scenarios * device_variants ))
     if [[ "$expected_png_count" -eq "${#paths[@]}" ]]; then
       count_matches="true"
     fi
@@ -738,7 +748,7 @@ cmd_catalog_snapshots_json() {
   local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" dataset_path="${5:-}" reuse_build_only="${6:-0}" persist_workspace_artifact="${7:-0}"
   local generated_at mode container_data snapshot_source xcode_log xcode_err rc test_cmd
   local sim_payload sim_rc=0 copy_rc=0 pngs_json payload resolved_device container_source
-  local validation_json expected_scenario_count="" command_wall_ms=0 test_body_ms=0 playbook_build_ms=0 snapshot_run_ms=0 startup_overhead_ms=0
+  local validation_json expected_scenario_count="" device_variant_count="" command_wall_ms=0 test_body_ms=0 playbook_build_ms=0 snapshot_run_ms=0 startup_overhead_ms=0
   local wrapper_start_ms wrapper_wall_ms=0 sim_status_ms=0 container_lookup_ms=0 copy_ms=0 artifact_index_ms=0 validation_ms=0
   local phase_start_ms phase_end_ms
   local fixture_root="" derived_data_root="" base_xctestrun="" run_xctestrun=""
@@ -994,9 +1004,12 @@ cmd_catalog_snapshots_json() {
     startup_overhead_ms=0
   fi
 
+  device_variant_count="$(catalog_extract_device_variant_count_from_log "$xcode_log" || true)"
+  [[ "$device_variant_count" =~ ^[0-9]+$ ]] || device_variant_count=2
+
   phase_start_ms="$(catalog_now_ms)"
-  catalog_trace_phase "validation" "start" "expectedScenarios=${expected_scenario_count:-<empty>}"
-  validation_json="$(catalog_inspect_pngs_json "$out_root" "$expected_scenario_count")"
+  catalog_trace_phase "validation" "start" "expectedScenarios=${expected_scenario_count:-<empty>} deviceVariants=$device_variant_count"
+  validation_json="$(catalog_inspect_pngs_json "$out_root" "$expected_scenario_count" "$device_variant_count")"
   phase_end_ms="$(catalog_now_ms)"
   validation_ms=$(( phase_end_ms - phase_start_ms ))
   catalog_trace_phase "validation" "done" "wallMs=$validation_ms status=$(jq -r '.status' <<<"$validation_json")"
