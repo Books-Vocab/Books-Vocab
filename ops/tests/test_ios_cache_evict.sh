@@ -171,6 +171,28 @@ KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=6 \
 [[ -d "$root/old2" ]] && ok "mtime 變新的條目不被淘汰" || fail_t "mtime 變新的條目被淘汰"
 [[ ! -d "$root/old1" ]] && ok "仍舊的條目照常淘汰" || fail_t "仍舊條目未淘汰"
 
+# ── 12. stale-snapshot guard 的 keep 分支（stat shadow 注入）────────────────
+# 快照 stat 走 xargs（exec 真 binary，shadow 攔不到）、刪前重驗直呼 stat
+# （shell function 可 shadow）→ 對 victim 回傳「現在」，模擬快照後被並行
+# run touch 的 key，必須走 keep 分支不被刪。
+section "stale-snapshot guard keep branch (stat shadow)"
+root="$(fresh_root 12)"
+build_entry "$root" n1 10; build_entry "$root" n2 20; build_entry "$root" n3 30
+build_entry "$root" victim 500
+build_entry "$root" goner 600
+stat() {
+  if [[ "${3:-}" == "$root/victim" ]]; then
+    command date +%s
+  else
+    command stat "$@"
+  fi
+}
+KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=6 \
+  kg_ios_cache_evict "$root" n1 2>/dev/null
+unset -f stat
+[[ -d "$root/victim" ]] && ok "重驗時 mtime 變新的 key 走 keep 分支" || fail_t "keep 分支未生效，victim 被刪"
+[[ ! -d "$root/goner" ]] && ok "重驗仍舊的 key 照常淘汰" || fail_t "goner 未被淘汰"
+
 echo ""
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]] || exit 1
