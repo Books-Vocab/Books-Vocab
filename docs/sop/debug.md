@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 98cac27d
+verified_against: f0d37ca4
 -->
 # 伺服器排障指南
 
