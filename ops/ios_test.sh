@@ -59,6 +59,11 @@ while [[ $# -gt 0 ]]; do
     -g|--grep)
       # 重複 -g 累積成 OR regex（歷史 footgun：後者無聲覆蓋前者 → 以為跑了
       # 兩個測試實際只跑一個）。pattern 是 awk ERE，頂層 | 即聯集。
+      # 空 pattern 直接拒絕：累積後的空 alternative 會匹配一切（silent broadening）。
+      if [[ -z "$2" ]]; then
+        echo "[ios_test] error: -g/--grep 不接受空 pattern" >&2
+        exit 2
+      fi
       if [[ -n "$GREP_PATTERN" ]]; then
         GREP_PATTERN="$GREP_PATTERN|$2"
       else
@@ -67,9 +72,9 @@ while [[ $# -gt 0 ]]; do
       shift 2 ;;
     --file)
       # 重複 --file 只會保留最後一個、靜默丟棄其餘 → 曾誘發 false-green（以為跑了多檔，
-      # 其實只跑最後一檔）。改為明確報錯：多檔請用 --grep '<A>|<B>' 或分多次跑。
+      # 其實只跑最後一檔）。檔名不是 regex、沒有聯集載體，故報錯而非像 -g 那樣累積。
       if [[ -n "$TEST_FILE" ]]; then
-        echo "[ios_test] error: --file 只能指定一次（重複會靜默覆蓋）。多檔請用 --grep '<A>|<B>' 或分多次執行。" >&2
+        echo "[ios_test] error: --file 只能指定一次（重複會靜默覆蓋）。多檔請改用重複 -g <方法名>（自動 OR）或 --grep '<A>|<B>'，或分多次執行。" >&2
         exit 2
       fi
       TEST_FILE="$2"; shift 2 ;;
