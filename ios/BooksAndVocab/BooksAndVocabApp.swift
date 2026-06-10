@@ -241,6 +241,15 @@ struct BooksAndVocabApp: App {
                         AppLog.kg.info("Post-login sync triggered")
                         await kgService.backgroundSync(container: modelContainer)
                         await kgService.fetchQuota()
+                        // Rebuild the Apple-ID-scoped book library on login. Books
+                        // bind to the Apple ID (CloudStore/CloudKit + per-Apple-ID
+                        // files), not the app account, so any prior logout that
+                        // dropped rows — or a not-yet-synced CloudKit store — would
+                        // otherwise leave the bookshelf empty until the next cold
+                        // start. AppOrphanBookRecovery is idempotent (only files
+                        // already on disk get rows; nothing is resurrected from a
+                        // deleted file), so running it here is safe.
+                        AppOrphanBookRecovery.run(container: modelContainer)
                         // Poke main context so @Query picks up background actor's save
                         try? modelContainer.mainContext.save()
                         if let error = kgService.lastBackgroundSyncError {
