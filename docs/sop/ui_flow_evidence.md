@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: 448f66d9
+verified_against: 5b490881
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
