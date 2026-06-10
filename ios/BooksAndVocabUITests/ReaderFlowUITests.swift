@@ -45,8 +45,11 @@ final class ReaderFlowUITests: UITestCase {
 
     @MainActor
     func testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages() throws {
+        // authSignedIn 先行：翻譯面板對訪客刻意走 guest 模式（隱藏詞庫翻譯內容），
+        // 詞庫命中路徑需要已登入 session（fixture 層解，不在測試裡點登入 —
+        // docs/sop/ui_flow_evidence.md 已知 seam）。
         let app = launchIsolatedApp(
-            fixtures: [.readerRealBookLibrary],
+            fixtures: [.authSignedIn, .readerRealBookLibrary],
             extraEnvironment: Self.fixtureEnvironment,
             perfLog: "reader"
         )
