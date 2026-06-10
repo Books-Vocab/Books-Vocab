@@ -6,7 +6,7 @@ scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 291303f1
+verified_against: 5c63c6fc
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -109,6 +109,24 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 ### 並行 dogfood 實證(2026-06-09)
 4 並發冷啟(共用空 cache):恰 1 個建置(`cache=prepared`,build 78827ms,`lockWaitMs=11`)+ 3 個等待者(`lockWaitMs` 78661/81679/81770 ≈ 建置時間,`buildForTestingMs=0`,sentinel 跳過重建);4/4 不同模擬器。4 並發暖快取:全 `hit`、`lockWaitMs=0`、`totalMs` 差 2666ms(真重疊)。8 並發寫 metrics 零交錯損壞。退出碼/cacheStatus/歸戶三項修正均經實機重驗。秒數基準與退出碼/cacheStatus 對照表見 [`docs/sop/ios.md`](../sop/ios.md) 「何謂正常」小節。
 
+## Keyed cache 自動 eviction（2026-06-10）
+
+**動機**：`ios-test-derived-data/<content-key>` 與 `ios-catalog-derived-data/<key>` 是 content-keyed——source 一改 key 就換，舊 key 永不重用也從未清理，2026-06-10 累積 94G+31G 兩度塞爆磁碟（xcodebuild exit=73 `No space left on device`）。單一共享快取（build / release）是增量重用、不增長，**不在此政策範圍**。
+
+**機制**（`ops/lib/ios_cache_evict.sh`，`kg_ios_cache_evict <root> <current_key>`）：
+- 保留 = mtime 最新 `KG_IOS_CACHE_KEEP`（預設 3）條 ∪ current key ∪ `KG_IOS_CACHE_EVICT_MIN_AGE_HOURS`（預設 6h）內用過的條目；其餘按最舊優先 `rm -rf`。
+- 只動 cache root 第一層**目錄**；log 全走 **stderr**（catalog caller stdout 是純 JSON）。
+- `KG_IOS_CACHE_EVICT_DRY_RUN=1` 只報告不刪。
+
+**接點與並發安全**：
+| caller | 時機 | 並發保護 |
+|---|---|---|
+| `ios_test.sh` `rebuild_test_cache` | 取得 build lock 後、build 前 | 持鎖互斥寫者；無鎖讀者（test-without-building）靠 resolve 時 `touch` 續命 + min-age 視窗 |
+| `ios_ops_catalog.sh` `catalog_rebuild_scoped_cache` | scoped rebuild 的 mkdir 後、build 前 | 無共用鎖；靠各 run 自己 key 被 touch + min-age 視窗 |
+| `ios_clean_derived_data.sh` | 手動 sweep（dry-run 預設，`--apply` 才刪） | current_key 留空，靠 keep-N + min-age |
+
+**不變式**：current key 永不被淘汰；任何 6 小時內活動過的 key 永不被淘汰——並行 run（即使讀的是舊 key）在 run 開始時已 touch 自己的 key，不會被別人的 build 中途抽走產物。回歸測試：`./ops/test_ops.sh ios-cache-evict`。
+
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
 - 產物落在 `kg/.cache/ios-build-derived-data`（1.3G）；全域預設**零新孤兒**。
@@ -116,7 +134,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 - 清掉舊孤兒後可用空間 24Gi → **124Gi**。
 
 ## 維運
-- 清舊孤兒 / 壞模擬器：`./ops/ios_clean_derived_data.sh`（預設 dry-run，`--apply` 才刪，`--days N` 控年齡門檻）。
+- 清舊孤兒 / keyed cache / 壞模擬器：`./ops/ios_clean_derived_data.sh`（預設 dry-run，`--apply` 才刪，`--days N` 控全域孤兒年齡門檻；keyed cache 淘汰參數見上節 env var）。
 - 換 Xcode 版本後若 incremental 行為異常：刪 `kg/.cache/ios-build-derived-data` 重新冷編即可（純可重建）。
 
 ## Agent 守則
