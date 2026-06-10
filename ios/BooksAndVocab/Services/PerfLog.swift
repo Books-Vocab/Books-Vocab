@@ -60,6 +60,7 @@ enum PerfCategory: String, CaseIterable, Sendable {
     case reader      // Readium navigator / highlight render timing
     case startup     // cold-launch / bootstrap spans
     case review      // today-review flip → submit → prewarm → next-card render timing
+    case auth        // login gate shown / auth state transitions (low-frequency domain marks)
     case general     // uncategorized ad-hoc measurements
 }
 
@@ -73,6 +74,7 @@ enum PerfLog {
     static let reader    = PerfChannel(.reader)
     static let startup   = PerfChannel(.startup)
     static let review    = PerfChannel(.review)
+    static let auth      = PerfChannel(.auth)
     static let general   = PerfChannel(.general)
 
     /// Perf signals get their own subsystem suffix so they isolate cleanly from

@@ -143,6 +143,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         )
         sessionStore.persistToken(tokenStr)
         self.isLoggedIn = true
+        PerfLog.auth.mark("auth.state.login")
     }
 
     /// Manual/debug login via a raw custom token (userId == token), surfaced only in
@@ -183,6 +184,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
             self.avatarURL = nil
             self.sessionStore.clearSession()
             self.isLoggedIn = false
+            PerfLog.auth.mark("auth.state.logout", "reason=\(reason)")
 
             if let container {
                 await localDataCleaner.clearLocalData(container: container, reason: reason)

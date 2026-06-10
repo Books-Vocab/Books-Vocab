@@ -196,6 +196,7 @@ struct BookshelfView: View {
                         Label(copy.loginActionTitle, systemImage: "person.crop.circle")
                     }
                     .buttonStyle(.appAction(.outline))
+                    .accessibilityIdentifier("bookshelf.emptyState.loginButton")
 
                     Button(action: {
                         authManager.enterDemoMode(modelContainer: modelContext.container)
