@@ -16,8 +16,9 @@ final class ShellSmokeUITests: UITestCase {
     func testAllTabsVisibleOnLaunch() throws {
         let app = launchIsolatedApp()
         captureStep("shell-launch", app: app)
-        AppPage(app: app).assertAllTabsVisible()
-        captureStep("shell-tabs-visible", app: app)
+        try step("shell-tabs-visible", app: app) {
+            AppPage(app: app).assertAllTabsVisible()
+        }
     }
 
     /// Walk every tab through the shell. Each entry must (1) select the tab,
@@ -38,20 +39,21 @@ final class ShellSmokeUITests: UITestCase {
         ]
 
         for entry in tabs {
-            entry.tab.tapWhenReady()
-            captureStep("shell-tab-\(entry.name)", app: app)
-            XCTAssertTrue(
-                entry.tab.isSelected,
-                "Tab \(entry.name) did not become selected after tap"
-            )
-            XCTAssertTrue(
-                app.tabBars.firstMatch.waitForExistence(timeout: 3),
-                "Tab bar vanished after entering \(entry.name) — possible crash"
-            )
-            XCTAssertTrue(
-                app.navigationBars.firstMatch.waitForExistence(timeout: 5),
-                "No navigation bar present on \(entry.name) tab"
-            )
+            try step("shell-tab-\(entry.name)", app: app) {
+                entry.tab.tapWhenReady()
+                XCTAssertTrue(
+                    entry.tab.isSelected,
+                    "Tab \(entry.name) did not become selected after tap"
+                )
+                XCTAssertTrue(
+                    app.tabBars.firstMatch.waitForExistence(timeout: 3),
+                    "Tab bar vanished after entering \(entry.name) — possible crash"
+                )
+                XCTAssertTrue(
+                    app.navigationBars.firstMatch.waitForExistence(timeout: 5),
+                    "No navigation bar present on \(entry.name) tab"
+                )
+            }
         }
     }
 }

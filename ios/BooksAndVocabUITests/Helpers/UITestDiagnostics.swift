@@ -22,12 +22,14 @@ class UITestCase: XCTestCase {
     func launchApp(
         profile: UITestLaunchProfile = .standard,
         extraArgs: [String] = [],
+        fixtures: [UITestFixture] = [],
         extraEnvironment: [String: String] = [:],
         perfLog: String? = nil
     ) -> XCUIApplication {
         let app = makeConfiguredApp(
             profile: profile,
             extraArgs: extraArgs,
+            fixtures: fixtures,
             extraEnvironment: extraEnvironment,
             perfLog: perfLog
         )
@@ -39,14 +41,34 @@ class UITestCase: XCTestCase {
     @discardableResult
     func launchIsolatedApp(
         extraArgs: [String] = [],
+        fixtures: [UITestFixture] = [],
         extraEnvironment: [String: String] = [:],
         perfLog: String? = nil
     ) -> XCUIApplication {
         launchApp(
             extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"] + extraArgs,
+            fixtures: fixtures,
             extraEnvironment: extraEnvironment,
             perfLog: perfLog
         )
+    }
+
+    @discardableResult
+    func step<T>(
+        _ name: String,
+        app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line),
+        _ action: () throws -> T
+    ) throws -> T {
+        do {
+            let value = try action()
+            captureStep(name, app: app, file: file, line: line)
+            return value
+        } catch {
+            captureStep("\(name)-failed", app: app, file: file, line: line)
+            throw error
+        }
     }
 
     func attachDiagnostics(
@@ -87,6 +109,10 @@ class UITestCase: XCTestCase {
                 activity.add(XCTAttachment(string: "\(url.path): \(error)").named("Screenshot Write Error"))
             }
         }
+    }
+
+    func attachText(_ text: String, named name: String) {
+        add(XCTAttachment(string: text).named(name))
     }
 
     func currentTabSummary(in app: XCUIApplication) -> String {
