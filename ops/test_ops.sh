@@ -38,6 +38,7 @@ DEFAULT_TESTS=(
   ui-token
   plain-deadzone
   ui-quality-plane
+  visual-regression
   docs-lint
   ios-ops
   ios-cache-evict
@@ -95,6 +96,7 @@ run_one() {
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
+    visual-regression)  ./ops/tests/test_visual_regression.sh ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh

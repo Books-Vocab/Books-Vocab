@@ -186,6 +186,27 @@ mechanisms:
       - docs/sop/ios.md
     regression: review-flip-probe
 
+  - id: visual.catalog_regression
+    layer: visual-regression
+    entrypoint: ops/visual_regression.py
+    gate: manual
+    triggers:
+      - ios/BooksAndVocab/Views/
+      - ios/BooksAndVocab/UIComponents/
+      - ios/BooksAndVocab/Models/AppColors.swift
+      - ios/BooksAndVocab/Models/AppTheme.swift
+      - ios/BooksAndVocab/Models/AppMetrics.swift
+      - ios/BooksAndVocab/Models/AppFonts.swift
+    verdict: >
+      pHash diff between two catalog snapshot roots (--auto pairs the two
+      newest usable roots; default threshold 1.0 — run-to-run noise is 0,
+      real scenario changes land >= 1e4). Exit 1 lists changed/removed
+      surfaces with per-pair distances; added surfaces are informational.
+      Regenerate the current root first: ./ops/ios_ops.sh catalog snapshots.
+    docs:
+      - docs/reference/catalog_scope.md
+    regression: visual-regression
+
   - id: xplat.chrome_parity
     layer: cross-platform
     entrypoint: ops/chrome_parity.sh
