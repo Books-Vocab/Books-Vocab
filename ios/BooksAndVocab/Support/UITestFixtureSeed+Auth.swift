@@ -89,6 +89,9 @@ extension UITestFixtureSeed {
             )
             episode2.series = series
             episode2.audioAvailable = true
+            episode2.localAudioPath = audioURL.path
+            episode2.subtitleAvailable = true
+            episode2.inlineSubtitle = subtitle
             episode2.previewAvailable = false
 
             context.insert(series)
