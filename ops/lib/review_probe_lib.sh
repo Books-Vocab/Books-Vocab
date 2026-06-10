@@ -22,7 +22,12 @@ kg_probe_wait_pid() {
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      [[ -n "$early_cmd" ]] && return 2
+      if [[ -n "$early_cmd" ]]; then
+        # 競態窗：同輪 poll 內「early 檢查未到 → 程序印出 marker 後退出 →
+        # kill -0 失敗」。死後補查一次，完整 run 不可誤判成早死。
+        if eval "$early_cmd"; then return 0; fi
+        return 2
+      fi
       rc=0
       wait "$pid" 2>/dev/null || rc=$?
       [[ "$rc" -eq 0 ]] && return 0

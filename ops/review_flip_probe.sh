@@ -134,9 +134,11 @@ fi
 # rc=2 launch process 早死、rc=3 逾時（pid 已被 kill）。收斂留在 caller
 # （sim 失敗路徑還要 terminate app）。heartbeat 內建。
 wait_for_marker() {
+  # early_cmd 用單引號字面值：$CONSOLE 延後到 eval 時才展開（lib 內可見
+  # 同名 global），路徑含引號/空白不會把 grep 弄啞或注入。
   KG_PROBE_POLL_SECS="${KG_PROBE_POLL_SECS:-2}" kg_probe_wait_pid \
     "$LAUNCH_PID" "$TIMEOUT" "review_flip_probe.marker" \
-    "grep -q 'KG_REVIEW_PROBE \\(done\\|abort\\)' '$CONSOLE' 2>/dev/null"
+    'grep -q "KG_REVIEW_PROBE \(done\|abort\)" "$CONSOLE" 2>/dev/null'
 }
 
 # rc → 精準 reason（launch 早死 ≠ 逾時，除錯方向完全不同）。
