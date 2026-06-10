@@ -34,11 +34,14 @@ public enum DesignTokens {
     }
     public enum Motion {
         public enum Duration {
+            public static let breathing: Double = 2.8
             public static let chip: Double = 0.18
             public static let control: Double = 0.14
+            public static let indicator: Double = 0.25
             public static let progress: Double = 0.1
             public static let pulse: Double = 1.4
             public static let quick: Double = 0.15
+            public static let subtleBreath: Double = 2.4
         }
         public enum Easing {
             public static let chip: String = "ease-out"
@@ -49,6 +52,14 @@ public enum DesignTokens {
             public static let quick: String = "ease-out"
         }
         public enum Spring {
+            public enum Button {
+                public static let damping: CGFloat = 0.7
+                public static let response: CGFloat = 0.35
+            }
+            public enum CelebrationBounce {
+                public static let damping: CGFloat = 0.55
+                public static let response: CGFloat = 0.4
+            }
             public enum ContentReveal {
                 public static let damping: CGFloat = 0.82
                 public static let response: CGFloat = 0.35
@@ -56,6 +67,10 @@ public enum DesignTokens {
             public enum Emphasized {
                 public static let damping: CGFloat = 0.8
                 public static let response: CGFloat = 0.35
+            }
+            public enum FeedbackButton {
+                public static let damping: CGFloat = 0.72
+                public static let response: CGFloat = 0.22
             }
             public enum ModalSwap {
                 public static let damping: CGFloat = 0.85
@@ -65,9 +80,41 @@ public enum DesignTokens {
                 public static let damping: CGFloat = 0.65
                 public static let response: CGFloat = 0.25
             }
+            public enum Relaxed {
+                public static let damping: CGFloat = 0.8
+                public static let response: CGFloat = 0.4
+            }
+            public enum ReviewNavigation {
+                public static let damping: CGFloat = 0.86
+                public static let response: CGFloat = 0.32
+            }
+            public enum ReviewReveal {
+                public static let damping: CGFloat = 0.88
+                public static let response: CGFloat = 0.42
+            }
+            public enum SheetContentAppear {
+                public static let damping: CGFloat = 0.78
+                public static let response: CGFloat = 0.3
+            }
             public enum Standard {
                 public static let damping: CGFloat = 0.75
                 public static let response: CGFloat = 0.3
+            }
+            public enum SwipeFling {
+                public static let damping: CGFloat = 1
+                public static let response: CGFloat = 0.18
+            }
+            public enum SwipeSnapBack {
+                public static let damping: CGFloat = 0.82
+                public static let response: CGFloat = 0.4
+            }
+            public enum SwipeTracking {
+                public static let damping: CGFloat = 0.86
+                public static let response: CGFloat = 0.14
+            }
+            public enum TapFeedback {
+                public static let damping: CGFloat = 0.7
+                public static let response: CGFloat = 0.18
             }
         }
         public enum TapFeedback {

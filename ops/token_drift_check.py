@@ -178,7 +178,7 @@ def parse_motion(dt: dict | None = None) -> dict[str, dict]:
         if val is not None:
             out[m.group(1)] = {"duration": val}
     for m in re.finditer(
-            r"static let (\w+)\s*(?::\s*Animation)?\s*=\s*(?:Animation)?\.spring\(response:\s*"
+            r"static let (\w+)\s*(?::\s*Animation)?\s*=\s*(?:Animation)?\.(?:interactiveSpring|spring)\(response:\s*"
             r"([-\w.]+),\s*dampingFraction:\s*([-\w.]+)", body):
         resp = _swift_num(m.group(2), dt)
         damp = _swift_num(m.group(3), dt)
