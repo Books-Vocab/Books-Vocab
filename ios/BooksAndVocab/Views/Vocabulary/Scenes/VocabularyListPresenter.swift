@@ -25,7 +25,8 @@ struct VocabularyListPresenter<Content: View>: View {
                 VocabSearchField(
                     text: $searchText,
                     prompt: "搜尋單字".localized,
-                    isFocused: $searchFocused
+                    isFocused: $searchFocused,
+                    accessibilityID: "vocab.searchField"
                 )
                 .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
                 .padding(.vertical, appSkin.metrics.pageSectionVerticalInset)
