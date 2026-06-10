@@ -38,6 +38,7 @@ DEFAULT_TESTS=(
   ui-token
   docs-lint
   ios-ops
+  ios-cache-evict
   review-flip-probe
   ios-test-discovery
   chrome-bundle
@@ -97,6 +98,7 @@ run_one() {
       ./ops/test_ios_ops.sh &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ios_diagnostics.py
       ;;
+    ios-cache-evict)    ./ops/tests/test_ios_cache_evict.sh ;;
     review-flip-probe)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_review_flip_probe_report.py
       ;;

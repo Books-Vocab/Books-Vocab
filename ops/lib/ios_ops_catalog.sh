@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ios_ops_catalog.sh — sourceable catalog snapshot export commands for ios_ops.sh.
 
+# shellcheck source=ios_cache_evict.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ios_cache_evict.sh"
+
 CATALOG_SCHEME="BooksAndVocabCatalogSnapshots"
 CATALOG_LAST_BUILD_WALL_MS=0
 CATALOG_LAST_COMMAND_WALL_MS=0
@@ -449,6 +452,10 @@ catalog_rebuild_scoped_cache() {
   local start_ms end_ms rc
   rm -rf "$derived_data_root"
   mkdir -p "$derived_data_root"
+  # Keyed catalog caches grow unbounded (31G on 2026-06-10). No shared lock
+  # here — concurrent runs are protected by the min-age window plus each
+  # run's own key being touched. Logs go to stderr; stdout stays pure JSON.
+  kg_ios_cache_evict "$(dirname "$derived_data_root")" "$(basename "$derived_data_root")"
   start_ms="$(catalog_now_ms)"
   if catalog_run_xcodebuild_heartbeat "build-for-testing" "$log_path" "$err_path" 0 -- \
     xcodebuild build-for-testing \
