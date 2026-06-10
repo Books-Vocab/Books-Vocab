@@ -63,7 +63,9 @@ struct TodayReviewPresenterState {
 
     let progressText: String
     let currentCard: CurrentCard?
-    let nextCard: CurrentCard?
+    /// 常駐雙 slot 投影（Phase 3a）— 固定長度 `TodayReviewCardSlotLayout.slotCount`，
+    /// 內容純推導自 currentIndex / queueCount；取代舊 `nextCard` 雙軌預覽。
+    let slots: [TodayReviewCardSlotModel]
     let revealStage: TodayReviewRevealStage
     let canShuffle: Bool
     let canGoPrevious: Bool
@@ -97,7 +99,10 @@ struct TodayReviewPresenter: View {
     @State var swipeOffset: CGFloat = 0
     @State var containerWidth: CGFloat = 393
     @State var dismissPhase: DismissPhase = .idle
-    @State var suppressTransition = false
+    // 首插入升起動畫（取代舊 `.reviewCardPromote` insertion transition）：
+    // 0 = promote 起始姿態（scale 0.96 / yOff 22），1 = identity。只屬於
+    // active role；onAppear 以 spring 推到 1，之後恆 1（slot 常駐不再插入）。
+    @State var introProgress: CGFloat = 0
     @State var flingHapticTrigger = 0
     @State private var celebrationTriggered = false
     @State private var lastAutoplaySpokenCardKey: String?
@@ -125,7 +130,7 @@ struct TodayReviewPresenter: View {
     // "un-fold" the previous card's back. Suppress the reveal spring for exactly
     // the advance frame (set true in onChange(currentCardKey), cleared next
     // runloop) so PaperFoldModifier.progress snaps to 0 without rewinding. Same
-    // single-frame main-thread gate the fling uses for suppressTransition.
+    // single-frame main-thread gate pattern the fling settle uses.
     @State var suppressFoldAnimation = false
     // Spring settle budget for reviewRevealSpring (response 0.42, damping 0.88).
     // Mirrors the 0.8s safety window the swipe deck uses for settle.frames.
@@ -343,58 +348,23 @@ struct TodayReviewPresenter: View {
         if dismissPhase != .idle || swipeOffset != 0 {
             PerfLog.review.mark(
                 "compose.active",
-                "w=\(card.word) dismiss=\(dismissPhase == .idle ? "idle" : "out") supp=\(suppressTransition) off=\(Int(swipeOffset))"
+                "w=\(card.word) dismiss=\(dismissPhase == .idle ? "idle" : "out") supp=\(suppressFoldAnimation) off=\(Int(swipeOffset))"
             )
         }
 
+        // Phase 3a 常駐雙 slot：結構永不變 —— depth-2 殼層 + slot0 + slot1 恆在
+        // view tree。推進（fling settle / previous / shuffle / autoplay）只翻 role
+        // 與 transform 值，settle 幀零 _makeView。promote 機制見 TodayReviewCardSlot.swift。
         return ZStack(alignment: .top) {
-            // 牌堆 — 不隨 .id() 銷毀重建
-            cardStackLayers()
-                .frame(height: frontCardHeight)
+            // depth-2 殼層 — 純裝飾常駐節點（隊尾以 opacity 隱藏，不結構移除）。
+            deckDepthShell()
 
-            // 互動卡片
-            VStack(spacing: 0) {
-                frontFoldSurface(card)
-                    .overlay(alignment: .topTrailing) {
-                        frontCardChrome(card, interactive: true)
-                    }
-
-                // 永遠存在於 view tree — 繞過 .id() + conditional insertion
-                // 首次渲染不走 .transition() 的 SwiftUI 結構性限制。
-                // PaperFoldModifier(Animatable) 直接驅動摺疊動畫。
-                // frame(height:0) 使摺疊時不佔 layout 空間，
-                // 但 minHeight 內部約束使 view 仍以完整尺寸渲染（fold 視覺正確）。
-                answerFoldSurface(currentCard, availableHeight: availableHeight)
-                    .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
-                    .modifier(PaperFoldModifier(progress: state.revealStage.showsAnswer ? 1 : 0))
-                    .frame(height: state.revealStage.showsAnswer ? nil : 0, alignment: .top)
-                    .allowsHitTesting(state.revealStage.showsAnswer)
-            }
-            .geometryGroup()
-            .animation((dismissPhase == .idle && !suppressFoldAnimation) ? AppMotion.reviewRevealSpring : nil,
-                       value: state.revealStage.showsAnswer)
-            // No per-card `.id`: the skeleton (ReviewFoldSurface×2 / frontCardChrome /
-            // PaperFoldModifier / geometryGroup) is reused in place across cards —
-            // advancing only diffs content, never tears down + rebuilds the heavy
-            // subtree (the measured ~70ms settle.frames hitch). Without per-card
-            // insert/remove, `.reviewCardPromote` now plays once on the session's
-            // first real insertion (correct, not degraded); fling still routes
-            // through `.identity` (suppressTransition == true) untouched.
-            .transition(suppressTransition ? .identity : .reviewCardPromote)
-            .offset(x: swipeOffset)
-            .rotationEffect(
-                .degrees(Double(swipeOffset) / screenWidth * TodayReviewMetrics.swipeMaxRotation),
-                anchor: .bottom
-            )
-            .opacity(cardOpacity)
-            .simultaneousGesture(swipeDragGesture)
-            #if targetEnvironment(macCatalyst)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard isCardInteractive, state.revealStage == .front else { return }
-                onAdvanceReveal()
-            }
-            #endif
+            cardSlotView(slot: 0, availableHeight: availableHeight)
+            cardSlotView(slot: 1, availableHeight: availableHeight)
+        }
+        .onAppear {
+            guard introProgress < 1 else { return }
+            withAnimation(AppMotion.reviewRevealSpring) { introProgress = 1 }
         }
     }
 
