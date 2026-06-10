@@ -214,7 +214,7 @@ section "--report exit 0"
 if run --report >/dev/null 2>&1; then ok "--report exits 0 with findings present"
 else fail_t "--report exited non-zero"; fi
 
-# ── 3. --strict fails and finds exactly the six dirty buttons ─────────────────
+# ── 3. --strict fails and flags every dirty button (count pinned below) ───────
 section "--strict detection"
 out="$(run --strict 2>&1 || true)"
 if run --strict >/dev/null 2>&1; then fail_t "--strict exited 0 despite findings"
