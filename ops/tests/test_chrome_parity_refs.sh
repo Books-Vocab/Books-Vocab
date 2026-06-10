@@ -32,11 +32,12 @@ for f in chrome-extension/tools/compare.mjs chrome-extension/tools/parity-audit.
 done
 
 section "No stale Desktop-ref plumbing"
-if grep -rn "IOS_REF_DIR\|IOS截圖參考" chrome-extension/tools/*.mjs ops/chrome_parity.sh >/dev/null 2>&1; then
-  fail_t "IOS_REF_DIR / Desktop reference folder still referenced"
-else
-  ok "Desktop reference folder fully retired"
-fi
+grep -rn "IOS_REF_DIR\|IOS截圖參考\|IMG_89" chrome-extension/tools/*.mjs ops/chrome_parity.sh >/dev/null 2>&1
+case $? in
+  1) ok "Desktop reference folder fully retired" ;;
+  0) fail_t "IOS_REF_DIR / Desktop reference folder still referenced" ;;
+  *) fail_t "grep guard errored (paths moved?)" ;;
+esac
 
 echo ""
 echo "chrome-parity-refs: $pass passed, $fail failed"

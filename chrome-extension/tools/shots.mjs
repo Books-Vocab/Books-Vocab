@@ -41,8 +41,9 @@ const withTimeout = (p, ms, label) =>
 
 // -------------------------------------------------------------------------
 // Mock vocab — raw payload shape (pre-normalizeVocabItem). Mirrors the fields
-// the iOS reference shots show: a varied review-state list (IMG_8954) and a
-// rich detail document with example / 搭配 / 變化形 / 知識連結 (IMG_8955).
+// the iOS catalog references show: a varied review-state list (Vocabulary List
+// View) and a rich detail document with example / 搭配 / 變化形 / 知識連結
+// (Word Detail Presenter).
 // Timestamps are relative to now so the review chips + row progress vary.
 // -------------------------------------------------------------------------
 const HOUR = 3600e3;

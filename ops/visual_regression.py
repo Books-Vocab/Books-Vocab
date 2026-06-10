@@ -11,10 +11,11 @@ current snapshot root and reports added / removed / changed surfaces.
   ops/visual_regression.py --baseline <root> --current <root> [opts]
   ops/visual_regression.py --auto    # newest usable root vs the previous one
 
-Calibration (catalog-full-20260608-* roots): identical render = 0, run-to-run
-noise = 0 (deterministic), small pixel perturbation ~5e-4, a real scenario
-difference ~1.5e4-3.5e4. The default threshold (1.0) sits orders of magnitude
-above noise and below any real change.
+Calibration samples (catalog-full-20260608-* roots): identical render = 0,
+run-to-run noise = 0 (deterministic), small pixel perturbation ~5e-4; sampled
+real differences ranged from ~3e2 (subtle layout shift) to ~3.5e4 (different
+scenario). The default threshold (1.0) sits orders of magnitude above noise
+and below every observed real change.
 
 Exit: 0 = no changed/removed (added alone is informational), 1 = visual
 regression candidates found, 2 = setup/usage error.
@@ -49,10 +50,14 @@ def repo_root() -> Path:
 
 
 def usable_roots(snapshots: Path) -> list[Path]:
+    # Only full catalog runs qualify: build/snapshots also hosts side artifacts
+    # (e.g. gallery-admin-preview) with a usable manifest but a curated subset
+    # of surfaces — pairing against one yields bogus removed/changed noise.
+    # catalog-full-<UTC> naming makes lexicographic order chronological.
     roots = []
     if not snapshots.is_dir():
         return roots
-    for manifest in sorted(snapshots.glob("*/review_manifest.json")):
+    for manifest in sorted(snapshots.glob("catalog-full-*/review_manifest.json")):
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

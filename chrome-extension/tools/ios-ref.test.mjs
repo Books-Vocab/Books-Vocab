@@ -40,9 +40,12 @@ function makeShot(root, deviceDir, surface, scenario) {
   return png;
 }
 
-test('slugify replaces spaces only, preserving middots and parens', () => {
+test('slugify mirrors playbook Snapshot normalization', () => {
   assert.equal(slugify('Populated · mixed sync states'), 'Populated_·_mixed_sync_states');
   assert.equal(slugify('Edit · empty name (save disabled)'), 'Edit_·_empty_name_(save_disabled)');
+  // `.`/`:`/`/` normalize to `_` like whitespace does.
+  assert.equal(slugify('Bare card (no links / progress)'), 'Bare_card_(no_links___progress)');
+  assert.equal(slugify('Run v1.2: a/b'), 'Run_v1_2__a_b');
 });
 
 test('KG_CATALOG_ROOT env override wins', () => {
