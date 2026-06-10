@@ -33,10 +33,9 @@ final class RenderStormProbe {
     /// throttled summary every ~1s. >5 evals/sec is flagged as a storm.
     func tick(_ label: String) {
         let now = DispatchTime.now()
-        if windowStart[label] == nil { windowStart[label] = now }
+        let start = windowStart[label] ?? now
+        windowStart[label] = start
         count[label, default: 0] += 1
-
-        let start = windowStart[label]!
         let elapsed = Double(now.uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000_000
         guard elapsed >= 1.0 else { return }
 
