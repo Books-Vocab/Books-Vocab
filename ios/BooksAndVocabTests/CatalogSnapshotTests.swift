@@ -100,14 +100,19 @@ private let catalogSnapshotCompileFlagEnabled = false
         .compactMap { $0 }
         .joined(separator: " | ")
 
+        // 寬版規格參考（web 重寫的 responsive 標準答案）。Gallery/parity
+        // 端以 review_manifest 的 devices 欄位區分，iPhone 仍為首選裝置。
+        let deviceVariants: [SnapshotDevice] = [
+            SnapshotDevice.iPhone15Pro(.portrait),
+            SnapshotDevice.iPhone15Pro(.portrait).style(.dark),
+            SnapshotDevice.iPadPro11(.landscape),
+            SnapshotDevice.iPadPro11(.landscape).style(.dark)
+        ]
         let snapshot = Snapshot(
             directory: outputDirectory,
             clean: true,
             format: .png,
-            devices: [
-                SnapshotDevice.iPhone15Pro(.portrait),
-                SnapshotDevice.iPhone15Pro(.portrait).style(.dark)
-            ]
+            devices: deviceVariants
         )
 
         let snapshotRunStart = CFAbsoluteTimeGetCurrent()
@@ -135,6 +140,7 @@ private let catalogSnapshotCompileFlagEnabled = false
              - scopeFile.present: \(fileScope != nil)
              - resolved.categories: \(resolvedCategories.joined(separator: " | "))
              - resolved.scenarioCount: \(resolvedScenarioCount)
+             - resolved.deviceVariantCount: \(deviceVariants.count)
              - timing.playbookBuildMs: \(playbookBuildMs)
              - timing.snapshotRunMs: \(snapshotRunMs)
              - timing.testBodyMs: \(testBodyMs)

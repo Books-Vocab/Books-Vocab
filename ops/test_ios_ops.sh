@@ -343,6 +343,19 @@ echo "$uniform_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="warn" a
 uniform_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_UNIFORM=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots 2>/dev/null || true)"
 echo "$uniform_text" | grep -q '\[ios\]\[catalog\].*status=warn.*pngCount=2' && echo "$uniform_text" | grep -q 'warn key=catalog-validation' \
   && ok "catalog text surfaces validation warnings distinctly from errors" || fail_t "catalog uniform text invalid: $uniform_text"
+# --- multi-device validation: expectedPng must scale with device variant count ---
+variant_log="$catalog_tmp/variant.log"
+printf ' - resolved.deviceVariantCount: 4\n' >"$variant_log"
+variant_count="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_extract_device_variant_count_from_log "'"$variant_log"'"')"
+[[ "$variant_count" == "4" ]] \
+  && ok "catalog log parser extracts resolved.deviceVariantCount" || fail_t "deviceVariantCount parse wrong: $variant_count"
+variant_empty_dir="$(mktemp -d)"
+variant_json="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_inspect_pngs_json "'"$variant_empty_dir"'" 3 4')"
+echo "$variant_json" | jq -e '.expectedPngCount==12' >/dev/null \
+  && ok "catalog validation scales expectedPng by device variant count (3 scenarios x 4 variants)" || fail_t "variant-aware expectedPng wrong: $variant_json"
+variant_default_json="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_inspect_pngs_json "'"$variant_empty_dir"'" 3')"
+echo "$variant_default_json" | jq -e '.expectedPngCount==6' >/dev/null \
+  && ok "catalog validation defaults to 2 appearance variants when count absent (legacy logs)" || fail_t "legacy expectedPng default wrong: $variant_default_json"
 transparent_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_TRANSPARENT=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null || true)"
 echo "$transparent_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" and .validation.status=="error" and .validation.uniformImageCount==2 and .validation.transparentImageCount==2 and (.validation.transparentImages|length)==2 and (any(.validation.errors[]; .=="fully-transparent-image-detected")) and (any(.errors[]; .key=="catalog-validation" and .error=="fully-transparent-image-detected")) and .review.status=="ok"' >/dev/null \
   && ok "catalog snapshots treats fully transparent images as fatal validation error" || fail_t "catalog transparent validation invalid: $transparent_json"
