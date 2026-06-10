@@ -146,7 +146,11 @@ wait_for_marker() {
 }
 
 LAUNCH_PID=""
-cleanup() { [[ -n "$LAUNCH_PID" ]] && kill "$LAUNCH_PID" 2>/dev/null || true; }
+XCTRACE_PID=""
+cleanup() {
+  [[ -n "$LAUNCH_PID" ]] && kill "$LAUNCH_PID" 2>/dev/null || true
+  [[ -n "$XCTRACE_PID" ]] && kill "$XCTRACE_PID" 2>/dev/null || true
+}
 trap cleanup EXIT
 # infra 失敗（install/cp 等 set -e 早退）不可帶原始 rc 退出 —— rc=1 會與
 # 「fail=門檻未過、數據有效」撞號。一律收斂成 invalid + exit 2。
@@ -199,10 +203,28 @@ else
       --json-output "$OUT/device_info.json" >/dev/null 2>&1 || true
     HW_UDID="$(jq -r '.result.hardwareProperties.udid // empty' "$OUT/device_info.json" 2>/dev/null || true)"
     [[ -n "$HW_UDID" ]] || fail_invalid "hardware_udid_unresolved:$UDID"
+    # xctrace 對鎖屏裝置不報錯而是無限懸掛（實測 13 分鐘無輸出），
+    # --time-limit 只管「錄製開始後」——前置等待必須自己 watchdog。
+    # 寬限 = time-limit + 120s（launch + trace 落盤餘裕）。
     xcrun xctrace record --template 'Animation Hitches' --device "$HW_UDID" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
-      --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 \
-      || { log "hint: console: $CONSOLE"; fail_invalid "xctrace_record_failed"; }
+      --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
+    XCTRACE_PID=$!
+    xctrace_deadline=$((SECONDS + TIMEOUT + 120))
+    while kill -0 "$XCTRACE_PID" 2>/dev/null; do
+      if ((SECONDS >= xctrace_deadline)); then
+        kill "$XCTRACE_PID" 2>/dev/null || true
+        sleep 5
+        kill -9 "$XCTRACE_PID" 2>/dev/null || true
+        XCTRACE_PID=""
+        log "hint: xctrace 逾時未結（裝置是否解鎖插線？）console: $CONSOLE"
+        fail_invalid "xctrace_watchdog_timeout:$((TIMEOUT + 120))s"
+      fi
+      sleep 5
+    done
+    wait "$XCTRACE_PID" \
+      || { XCTRACE_PID=""; log "hint: console: $CONSOLE"; fail_invalid "xctrace_record_failed"; }
+    XCTRACE_PID=""
     # TOC 先存檔：hitch 表的 export schema 待首個真機 trace 後固化解析。
     xcrun xctrace export --input "$TRACE" --toc >"$OUT/trace_toc.xml" 2>/dev/null || true
     log "trace saved: $TRACE"
