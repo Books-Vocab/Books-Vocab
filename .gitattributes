@@ -1,0 +1,9 @@
+# Append-only "case registry" files: every converge-conflict on these has been
+# the same union pattern (two branches each add a sibling enum/switch case at the
+# same anchor). `merge=union` auto-keeps both sides' added lines, killing the
+# manual resolution slog. Build gate is the backstop: if two sides ever edit the
+# SAME existing line, union concatenates both → won't compile → caught immediately.
+# Scope: exactly these three files (NOT the UITestFixtureSeed+*.swift extensions).
+ios/BooksAndVocab/Services/PerfLog.swift              merge=union
+ios/BooksAndVocab/Support/UITestFixtureSeed.swift     merge=union
+ios/BooksAndVocabUITests/Helpers/UITestAppLaunch.swift merge=union
