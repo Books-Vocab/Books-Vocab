@@ -8,7 +8,9 @@ struct ReviewProbeFlipSummary: Codable, Equatable, Sendable {
     let durMs: Double
     let fps: Double
     let maxGapMs: Double
-    /// maxGap 結束幀相對視窗起點的 offset（對齊 settle.frames 的 maxGapAt）。
+    /// maxGap 結束幀相對視窗「首幀 timestamp」的 offset。注意與 settle.frames
+    /// 的 maxGapAt 有 ~1 frame + sampler setup 的原點偏移（彼處原點是 sampler
+    /// 建立時刻）—— maxGap/stalls 跨工具可比，maxGapAt 對 timeline 時要記得。
     let maxGapAtMs: Double
     /// gap > 33ms 的幀數 — 與歷史資料同義（@60fps 掉 2 幀）。
     let stalls: Int

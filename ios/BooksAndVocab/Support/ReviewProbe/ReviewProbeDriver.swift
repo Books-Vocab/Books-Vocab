@@ -47,6 +47,9 @@ final class ReviewProbeDriver {
 
     private(set) var flipsCompleted = 0
     private(set) var finished = false
+    /// 防併發重入：舊 .task 被取消但還停在 await 間隙時，view re-appear 的
+    /// 新 .task 可通過 `!finished` guard —— 用 running 旗標擋住雙 run。
+    private var running = false
 
     init(plan: ReviewProbePlan) {
         self.plan = plan
@@ -55,7 +58,9 @@ final class ReviewProbeDriver {
     /// 跑完整個量測迴圈。idempotent：view re-appear 重觸發 `.task` 時，
     /// 已完成的 run 不會重啟。
     func run(session: ReviewProbeSessionDriving) async {
-        guard !finished else { return }
+        guard !finished, !running else { return }
+        running = true
+        defer { running = false }
         emit("KG_REVIEW_PROBE start flips=\(plan.flipCount)")
         metrics?.startRun()
         await sleep(plan.warmup)
@@ -78,7 +83,13 @@ final class ReviewProbeDriver {
                 consecutiveFailures = 0
                 emit("KG_REVIEW_PROBE flip i=\(flipsCompleted) fb=\(remember ? "R" : "F")")
                 await sleep(plan.settleWindow)
-                metrics?.endFlip()
+                if Task.isCancelled {
+                    // 取消發生在 settle 視窗中途：截短的視窗寫進 JSONL 會以
+                    // 失真的 durMs/median 污染逐 flip 資料 —— 丟棄不記。
+                    metrics?.cancelFlip()
+                } else {
+                    metrics?.endFlip()
+                }
                 await sleep(plan.interFlipRemainder)
             } else {
                 metrics?.cancelFlip()

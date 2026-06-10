@@ -12,13 +12,13 @@ import Testing
 @Suite("ReviewProbeGapAccumulator")
 struct ReviewProbeGapAccumulatorTests {
     /// 60Hz 完美節奏：無 stall、maxGap ≈ 16.7ms、hitch = 0。
-    @Test func perfectCadenceHasNoStallsAndNoHitch() {
+    @Test func perfectCadenceHasNoStallsAndNoHitch() throws {
         var acc = ReviewProbeGapAccumulator()
         let frame = 1.0 / 60.0
         for i in 0..<60 {
             acc.feed(timestamp: Double(i) * frame)
         }
-        let summary = try! #require(acc.summary())
+        let summary = try #require(acc.summary())
         #expect(summary.frames == 60)
         #expect(summary.stalls == 0)
         #expect(summary.maxGapMs > 16.0 && summary.maxGapMs < 17.5)
@@ -28,7 +28,7 @@ struct ReviewProbeGapAccumulatorTests {
 
     /// 注入一個 70ms gap：maxGap=70、stalls=1、maxGapAt 指到正確位置、
     /// hitch = 70 − budget（budget = max(2×median, 17) = 33.3）。
-    @Test func singleStallIsAttributedAndQuantified() {
+    @Test func singleStallIsAttributedAndQuantified() throws {
         var acc = ReviewProbeGapAccumulator()
         let frame = 1.0 / 60.0
         var t = 0.0
@@ -41,7 +41,7 @@ struct ReviewProbeGapAccumulatorTests {
         for i in 1...29 {
             acc.feed(timestamp: t + Double(i) * frame)
         }
-        let summary = try! #require(acc.summary())
+        let summary = try #require(acc.summary())
         #expect(abs(summary.maxGapMs - 70.0) < 0.001)
         #expect(summary.stalls == 1)
         // maxGapAt = gap 結束那一幀相對視窗起點的 offset（29 幀 × 16.7ms + 70ms）
@@ -51,16 +51,31 @@ struct ReviewProbeGapAccumulatorTests {
         #expect(summary.topGapsMs.first == summary.maxGapMs)
     }
 
-    /// 120Hz（ProMotion）節奏下 budget 自校準：16.7ms 的 gap 不算 hitch 雜訊。
-    @Test func budgetSelfCalibratesAt120Hz() {
+    /// 120Hz（ProMotion）下 budget = max(2×8.33, 17) = 17ms floor 真驗證：
+    /// 16.7ms gap（一次 60Hz 節拍）→ hitch 0；30ms gap → hitch = 30−17。
+    @Test func budgetSelfCalibratesAt120Hz() throws {
         var acc = ReviewProbeGapAccumulator()
         let frame = 1.0 / 120.0
-        for i in 0..<120 {
-            acc.feed(timestamp: Double(i) * frame)
+        var t = 0.0
+        for i in 0..<60 {
+            t = Double(i) * frame
+            acc.feed(timestamp: t)
         }
-        let summary = try! #require(acc.summary())
-        #expect(summary.stalls == 0)
-        #expect(summary.hitchMs == 0)
+        t += 0.0167 // 一次 60Hz 節拍 — 低於 17ms floor，不算 hitch
+        acc.feed(timestamp: t)
+        for _ in 0..<60 {
+            t += frame
+            acc.feed(timestamp: t)
+        }
+        t += 0.030 // 30ms gap — 超 floor，hitch = 30 − 17
+        acc.feed(timestamp: t)
+        for _ in 0..<10 {
+            t += frame
+            acc.feed(timestamp: t)
+        }
+        let summary = try #require(acc.summary())
+        #expect(summary.stalls == 0) // 兩個 gap 都 < 33ms
+        #expect(abs(summary.hitchMs - 13.0) < 0.1)
     }
 
     @Test func fewerThanTwoFramesYieldsNoSummary() {
@@ -279,9 +294,10 @@ struct ReviewProbeDriverMetricsTests {
         #expect(spy.calls == ["startRun", "begin:0:R", "cancel", "begin:0:R", "end", "finish:false"])
     }
 
-    @Test func abortMarksFinishAborted() async {
+    @Test func abortSequencesExactlyOneFinish() async {
         let session = MockSession(cards: 5)
-        let driver = ReviewProbeDriver(plan: .standard(flipCount: 1))
+        let plan = ReviewProbePlan.standard(flipCount: 1)
+        let driver = ReviewProbeDriver(plan: plan)
         let spy = SpyMetrics()
         driver.metrics = spy
         driver.emit = { _ in }
@@ -290,6 +306,39 @@ struct ReviewProbeDriverMetricsTests {
 
         await driver.run(session: session)
 
-        #expect(spy.calls.last == "finish:true")
+        // 8 次 begin/cancel（maxConsecutiveFailures）後恰好一次 finish:true
+        let expected = ["startRun"]
+            + Array(repeating: ["begin:0:R", "cancel"], count: plan.maxConsecutiveFailures).flatMap(\.self)
+            + ["finish:true"]
+        #expect(spy.calls == expected)
+    }
+
+    /// 取消落在 settle 視窗中途：該 flip 的截短量測視窗必須丟棄（cancel），
+    /// 不可寫成正常 flip 行污染逐 flip 資料。
+    @Test func cancellationDuringSettleWindowDiscardsThatWindow() async {
+        let session = MockSession(cards: 5)
+        let plan = ReviewProbePlan.standard(flipCount: 3)
+        let driver = ReviewProbeDriver(plan: plan)
+        let spy = SpyMetrics()
+        driver.metrics = spy
+        driver.emit = { _ in }
+        driver.flingHandler = { _, _ in
+            session.flingSucceeded()
+            return true
+        }
+
+        let holder = TaskHolder()
+        driver.sleep = { duration in
+            if duration == plan.settleWindow { holder.task?.cancel() }
+        }
+        holder.task = Task { await driver.run(session: session) }
+        await holder.task?.value
+
+        #expect(spy.calls == ["startRun", "begin:0:R", "cancel", "finish:true"])
+    }
+
+    @MainActor
+    final class TaskHolder {
+        var task: Task<Void, Never>?
     }
 }
