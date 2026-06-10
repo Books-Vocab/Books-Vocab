@@ -11,8 +11,13 @@ and the suggested disposition for each is asserted. No git, no IO -- pure.
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
@@ -25,6 +30,7 @@ SPEC.loader.exec_module(MODULE)
 
 classify = MODULE.classify
 suggest_disposition = MODULE.suggest_disposition
+unsafe_to_drop = MODULE.unsafe_to_drop
 State = MODULE.State
 Mark = MODULE.Mark
 
@@ -188,3 +194,159 @@ def test_every_state_has_a_suggestion():
     for st in State:
         mark = suggest_disposition(st, _facts())
         assert isinstance(mark, Mark)
+
+
+# ============================================================================
+# integration: the mutation subcommands (teardown / gc) against a real scratch
+# git repo. These cover the IO + mutation layers the pure tests can't — exactly
+# the gap that let a `facts['state']` KeyError ship. git-backed, opt-skipped if
+# git is absent.
+# ============================================================================
+pytestmark_git = pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
+
+
+def _git(args, cwd):
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), check=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    ).stdout.strip()
+
+
+def _local_branches(repo):
+    return set(_git(["for-each-ref", "--format=%(refname:short)", "refs/heads"], repo).split())
+
+
+def _remote_branches(repo):
+    out = _git(["ls-remote", "--heads", "origin"], repo)
+    return {ln.split("refs/heads/")[-1] for ln in out.splitlines() if ln}
+
+
+@pytest.fixture
+def scratch(tmp_path):
+    """A repo with: base on main, a bare origin, branch `landed` (its patch in
+    main, ref pushed to origin) checked out in a worktree, branch `unlanded`
+    (commit not in main), and three detached worktrees: contained / dirty /
+    uncontained. Chdir into it for the duration."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init", "-q", "-b", "main"], repo)
+    _git(["config", "user.email", "t@t"], repo)
+    _git(["config", "user.name", "t"], repo)
+    (repo / "f").write_text("base\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "base"], repo)
+
+    remote = tmp_path / "remote.git"
+    _git(["init", "-q", "--bare", str(remote)], repo)
+    _git(["remote", "add", "origin", str(remote)], repo)
+    _git(["push", "-q", "origin", "main"], repo)
+
+    # landed: commit on a branch, then ff main onto it (patch contained), keep ref + push.
+    _git(["checkout", "-q", "-b", "landed"], repo)
+    (repo / "x").write_text("x\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "X"], repo)
+    _git(["push", "-q", "-u", "origin", "landed"], repo)
+    _git(["checkout", "-q", "main"], repo)
+    _git(["merge", "-q", "landed"], repo)  # ff: main now contains landed's commit
+
+    # unlanded: commit not in main
+    _git(["checkout", "-q", "-b", "unlanded"], repo)
+    (repo / "y").write_text("y\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "Y"], repo)
+    uncontained_sha = _git(["rev-parse", "HEAD"], repo)
+    _git(["checkout", "-q", "main"], repo)
+
+    _git(["worktree", "add", "-q", str(tmp_path / "wt-landed"), "landed"], repo)
+    _git(["worktree", "add", "-q", "--detach", str(tmp_path / "wt-contained"), "main"], repo)
+    _git(["worktree", "add", "-q", "--detach", str(tmp_path / "wt-uncontained"), uncontained_sha], repo)
+    _git(["worktree", "add", "-q", "--detach", str(tmp_path / "wt-dirty"), "main"], repo)
+    (tmp_path / "wt-dirty" / "dirt").write_text("dirt\n")
+
+    prev = Path.cwd()
+    os.chdir(repo)
+    try:
+        yield tmp_path, repo
+    finally:
+        os.chdir(prev)
+
+
+@pytestmark_git
+def test_teardown_commit_deletes_local_and_remote_keeps_worktree(scratch):
+    tmp_path, repo = scratch
+    assert "landed" in _local_branches(repo)
+    assert "landed" in _remote_branches(repo)
+
+    rc = MODULE.main(["teardown", "--branches", "landed", "--commit", "--no-fetch"])
+    assert rc == 0
+
+    assert "landed" not in _local_branches(repo)          # local branch deleted
+    assert "landed" not in _remote_branches(repo)         # remote branch deleted (the botched step)
+    assert (tmp_path / "wt-landed").is_dir()              # worktree KEPT
+    # worktree is now detached (HEAD is not a symbolic branch ref)
+    head = subprocess.run(["git", "symbolic-ref", "-q", "HEAD"],
+                          cwd=tmp_path / "wt-landed", stdout=subprocess.PIPE).returncode
+    assert head != 0
+
+
+@pytestmark_git
+def test_teardown_refuses_unlanded_and_executes_nothing(scratch):
+    tmp_path, repo = scratch
+    rc = MODULE.main(["teardown", "--branches", "unlanded", "--commit", "--no-fetch"])
+    assert rc == MODULE.EXIT_USAGE                        # refused before any write
+    assert "unlanded" in _local_branches(repo)            # untouched
+
+
+@pytestmark_git
+def test_teardown_missing_branch_is_refused_not_crash(scratch):
+    rc = MODULE.main(["teardown", "--branches", "ghost", "--commit", "--no-fetch"])
+    assert rc != 0
+
+
+@pytestmark_git
+def test_gc_prunes_contained_keeps_dirty_and_uncontained(scratch):
+    tmp_path, repo = scratch
+    rc = MODULE.main(["gc", "--commit", "--no-fetch"])
+    assert rc == 0
+    assert not (tmp_path / "wt-contained").exists()       # contained+clean -> pruned
+    assert (tmp_path / "wt-dirty").is_dir()               # dirty -> kept
+    assert (tmp_path / "wt-uncontained").is_dir()         # uncontained -> kept
+
+
+# ----- unsafe_to_drop: the teardown/gc safety predicate -----------------------
+# Returns a reason string when dropping the card (delete branch / prune worktree)
+# would lose work, else None. This is the guard that makes `teardown` and `gc`
+# refuse to destroy unlanded/uncommitted work — the hole that an advisory-only
+# plan left open.
+
+def test_drop_safe_when_branch_fully_landed_and_clean():
+    # unmerged == 0 (all patches in main), not dirty -> safe to delete branch.
+    assert unsafe_to_drop(_facts(ahead=3, unmerged=0, dirty=False)) is None
+
+
+def test_drop_unsafe_when_branch_has_unmerged_commits():
+    reason = unsafe_to_drop(_facts(ahead=2, unmerged=2, dirty=False))
+    assert reason is not None and "2" in reason
+
+
+def test_drop_unsafe_when_dirty():
+    # dirty dominates even if patches landed: uncommitted work would vanish.
+    reason = unsafe_to_drop(_facts(ahead=0, unmerged=0, dirty=True))
+    assert reason is not None and "dirty" in reason.lower()
+
+
+def test_drop_safe_when_detached_contained_in_base():
+    # detached worktree whose HEAD is an ancestor of base -> nothing lost.
+    f = _facts(name=None, detached=True, contained=True, worktree="/tmp/wt/x")
+    assert unsafe_to_drop(f) is None
+
+
+def test_drop_unsafe_when_detached_not_contained():
+    # detached HEAD carries commits not in base: pruning would orphan them.
+    f = _facts(name=None, detached=True, contained=False, worktree="/tmp/wt/x")
+    reason = unsafe_to_drop(f)
+    assert reason is not None and "contain" in reason.lower()
+
+
+def test_drop_unsafe_when_detached_dirty_even_if_contained():
+    f = _facts(name=None, detached=True, contained=True, dirty=True, worktree="/tmp/wt/x")
+    reason = unsafe_to_drop(f)
+    assert reason is not None and "dirty" in reason.lower()
