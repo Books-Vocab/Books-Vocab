@@ -50,15 +50,8 @@ extension KGService {
 
     static func getServerURL() -> String {
         #if DEBUG
-        // UI-test seam (ephemeral, per-launch): fixtures that inject a fake
-        // auth session must never reach the real backend — a real 401 (e.g.
-        // api/health) triggers session invalidation + clearLocalData and
-        // destroys the seeded world mid-test. An env override (vs the
-        // persisted debug-server UserDefaults) leaves no cross-suite state.
-        if AppRuntimeOptions.isUITesting(),
-           let override = ProcessInfo.processInfo.environment["KG_UI_TEST_SERVER_URL"],
-           !override.isEmpty {
-            return normalizeServerURL(override)
+        if let override = uiTestServerURLOverride() {
+            return override
         }
         switch getDebugServerMode() {
         case .remote:
@@ -92,6 +85,29 @@ extension KGService {
 
     static func useLocalServer() {
         UserDefaults.standard.set(DebugServerMode.local.rawValue, forKey: DebugServerKeys.mode)
+    }
+
+    /// UI-test seam (ephemeral, per-launch): fixtures that inject a fake auth
+    /// session must never reach the real backend — a real 401 (e.g. api/health)
+    /// triggers session invalidation + clearLocalData, and a real catalog sync
+    /// reconciles seeded series away. An env override (vs the persisted
+    /// debug-server UserDefaults) leaves no cross-suite state. Injectable
+    /// args/env keep this pure and unit-testable; consumers that pin their own
+    /// base URL (e.g. `PodcastSyncService.baseURL`) must also honor it.
+    static func uiTestServerURLOverride(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        guard AppRuntimeOptions.isUITesting(arguments: arguments),
+              let override = environment["KG_UI_TEST_SERVER_URL"]
+        else { return nil }
+        // Trim BEFORE the empty check: a whitespace-only override must read as
+        // "no override", not fall through normalizeServerURL's empty-string
+        // fallback to the local dev server (which would silently de-hermeticize
+        // the test world on a machine with a backend on 127.0.0.1:8000).
+        let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return normalizeServerURL(trimmed)
     }
 
     private static func normalizeServerURL(_ url: String) -> String {

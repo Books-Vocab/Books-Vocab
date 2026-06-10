@@ -53,6 +53,7 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
+            PerfLog.reader.mark("reader.translation.shown", "source=library")
             AppLog.reader.debug("從生詞庫載入: \(normalizedWord) → \(existing.word)")
             return
         }
@@ -90,6 +91,7 @@ extension ReaderTranslationHandler {
                     translationStatus = nil
                     translationErrorMessage = nil
                 }
+                PerfLog.reader.mark("reader.translation.shown", "source=network")
                 await Task.yield()
                 if let selection = wordSelection {
                     autoSaveToVocabulary(

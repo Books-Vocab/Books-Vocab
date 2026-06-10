@@ -48,13 +48,15 @@ struct VocabSearchField: View {
     @Binding var text: String
     let prompt: String
     var isFocused: FocusState<Bool>.Binding? = nil
+    var accessibilityID: String = ""
 
     var body: some View {
         AppSearchField(
             text: $text,
             prompt: prompt,
             style: .vocab(appSkin),
-            isFocused: isFocused
+            isFocused: isFocused,
+            accessibilityID: accessibilityID
         )
         .enableInjection()
     }
