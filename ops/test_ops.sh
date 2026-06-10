@@ -36,6 +36,7 @@ DEFAULT_TESTS=(
   log-assert
   python-entrypoints
   ui-token
+  plain-deadzone
   docs-lint
   ios-ops
   ios-cache-evict
@@ -90,6 +91,7 @@ run_one() {
       ;;
     python-entrypoints) ./ops/tests/test_python_entrypoints.sh ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
+    plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh
