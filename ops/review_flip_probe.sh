@@ -222,6 +222,9 @@ else
     if [[ "$DECK" != "40" ]]; then
       log "warn: --instruments 模式不支援 --deck-size 下發（xctrace 無 env 通道），deck 固定 40"
     fi
+    # 同一限制波及 KG_UI_TEST_SERVER_URL 啞端點（資料隔離第三防線）；實害低：
+    # probe scene 不掛 sync handler，且 Release 不讀此 env（#if DEBUG only）。
+    log "warn: --instruments 模式無 env 通道，KG_UI_TEST_SERVER_URL 啞端點不下發"
     # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
     # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
     # rm 防 --out 重用時讀到上一輪殘留（與 verdict 檔同款 stale 防護）。
