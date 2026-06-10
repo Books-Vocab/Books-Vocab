@@ -199,6 +199,44 @@ printf '%s\n' "$FLAGS" | grep -qF "makeFixture" && fail_t "plain helper makeFixt
 has_flag "$FLAGS" "HotelTests/hotelMultiLine()" && ok "hotelMultiLine → HotelTests (no cross-container bleed)" || fail_t "multiline arm dropped in HotelTests"
 printf '%s\n' "$FLAGS" | grep -qF "GolfTests/hotelMultiLine" && fail_t "hotelMultiLine WRONGLY under GolfTests (arm bled across container)" || ok "no arm bleed across struct boundary"
 
+# ── 11. ios_test.sh -g 旗標 E2E（--list 在碰鎖/xcodebuild 前退出，可安全跑）──
+# 多個 -g 必須累積成 OR（歷史 bug：後者無聲覆蓋前者 → 以為跑兩個實際跑一個）。
+section "ios_test.sh multi -g accumulation (--list)"
+IOS_TEST="$WORKSPACE/ops/ios_test.sh"
+LIST_A="$("$IOS_TEST" -g alphaOne --list 2>/dev/null)" || LIST_A=""
+LIST_B="$("$IOS_TEST" -g bravoOne --list 2>/dev/null)" || LIST_B=""
+LIST_AB="$("$IOS_TEST" -g alphaOne -g bravoOne --list 2>/dev/null)" || LIST_AB=""
+if [[ -z "$LIST_A" || -z "$LIST_B" ]]; then
+  # 真實 test dir 沒有 fixture 名 → 改用兩個一定存在的真模式自我發現
+  PAT_A="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | head -1 | sed 's/func //')"
+  PAT_B="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | tail -1 | sed 's/func //')"
+else
+  PAT_A=alphaOne; PAT_B=bravoOne
+fi
+if [[ -n "$PAT_A" && -n "$PAT_B" && "$PAT_A" != "$PAT_B" ]]; then
+  N_A="$("$IOS_TEST" -g "$PAT_A" --list 2>/dev/null | grep -c only-testing || true)"
+  N_B="$("$IOS_TEST" -g "$PAT_B" --list 2>/dev/null | grep -c only-testing || true)"
+  OUT_AB="$("$IOS_TEST" -g "$PAT_A" -g "$PAT_B" --list 2>/dev/null)"
+  N_AB="$(grep -c only-testing <<<"$OUT_AB" || true)"
+  if (( N_A >= 1 && N_B >= 1 && N_AB >= N_A && N_AB >= N_B && N_AB >= 2 )); then
+    ok "multi -g 累積（$PAT_A:$N_A + $PAT_B:$N_B → 合併:$N_AB）"
+  else
+    fail_t "multi -g 未累積（$PAT_A:$N_A, $PAT_B:$N_B, 合併:$N_AB）"
+  fi
+  grep -q "$PAT_A" <<<"$OUT_AB" && grep -q "$PAT_B" <<<"$OUT_AB" \
+    && ok "合併輸出同時含兩個 pattern 的測試" || fail_t "合併輸出缺其中一個 pattern"
+else
+  fail_t "找不到兩個可用的真實測試名（PAT_A='$PAT_A' PAT_B='$PAT_B'）"
+fi
+
+# ── 12. 零匹配錯誤訊息必須講清楚匹配語意（只對方法名，不對 @Suite/檔名）──────
+section "zero-match error message semantics"
+ZERO_ERR="$("$IOS_TEST" -g zzz_no_such_test_zzz --list 2>&1 >/dev/null)" && ZERO_RC=0 || ZERO_RC=$?
+[[ "$ZERO_RC" -ne 0 ]] && ok "零匹配 exit 非 0" || fail_t "零匹配竟 exit 0"
+grep -q "方法名" <<<"$ZERO_ERR" && grep -q "Suite" <<<"$ZERO_ERR" \
+  && ok "錯誤訊息說明只匹配方法名、不匹配 @Suite/類名" \
+  || fail_t "錯誤訊息未說明匹配語意: $ZERO_ERR"
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
