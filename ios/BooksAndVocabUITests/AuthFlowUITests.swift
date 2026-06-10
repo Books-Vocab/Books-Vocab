@@ -23,7 +23,11 @@ final class AuthFlowUITests: UITestCase {
     private static let fixtureEnvironment: [String: String] = [
         "KG_UI_TEST_PODCAST_AUDIO": "\(podcastFixtureRoot)/ep_1_flash.m4a",
         "KG_UI_TEST_PODCAST_SUBTITLE": "\(podcastFixtureRoot)/ep_1_flash.srt",
-        "KG_UI_TEST_PODCAST_DURATION": "1034.6"
+        "KG_UI_TEST_PODCAST_DURATION": "1034.6",
+        // 假 token 不可打真 backend：api/health 的 401 會觸發
+        // logout(reason: healthcheck_401) + clearLocalData，把 fixture 世界
+        // 整個清掉。指向不可達位址 → connection refused（非 401）→ 不登出。
+        "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
     ]
 
     // MARK: - 訪客態：閘門行為

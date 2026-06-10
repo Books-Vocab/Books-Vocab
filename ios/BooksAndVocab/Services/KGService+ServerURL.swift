@@ -50,6 +50,16 @@ extension KGService {
 
     static func getServerURL() -> String {
         #if DEBUG
+        // UI-test seam (ephemeral, per-launch): fixtures that inject a fake
+        // auth session must never reach the real backend — a real 401 (e.g.
+        // api/health) triggers session invalidation + clearLocalData and
+        // destroys the seeded world mid-test. An env override (vs the
+        // persisted debug-server UserDefaults) leaves no cross-suite state.
+        if AppRuntimeOptions.isUITesting(),
+           let override = ProcessInfo.processInfo.environment["KG_UI_TEST_SERVER_URL"],
+           !override.isEmpty {
+            return normalizeServerURL(override)
+        }
         switch getDebugServerMode() {
         case .remote:
             return deployedServerURL
