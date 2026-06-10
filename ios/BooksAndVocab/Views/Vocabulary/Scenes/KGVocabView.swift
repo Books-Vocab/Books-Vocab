@@ -73,6 +73,11 @@ struct KGVocabView: View {
         VocabSceneShell(phase: buildScenePhase(classified: c)) {
             contentView(classified: c, filteredEntries: filtered)
         }
+        // Low-frequency search evidence mark: fires once per (debounced) query
+        // change, with the freshly filtered result count from this body eval.
+        .onChange(of: searchText) { _, newValue in
+            PerfLog.search.mark("search.results.shown", "query=\(newValue) count=\(filtered.count)")
+        }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
         .onChange(of: coordinator.selectedEntry) { _, entry in

@@ -99,6 +99,7 @@ struct CardDocumentHeroBlock: View {
                             .tracking(AppFonts.Tracking.h2Tight)
                             .foregroundStyle(appSkin.palette.primaryText)
                             .minimumScaleFactor(0.85)
+                            .accessibilityIdentifier("cardDocument.hero.word")
 
                         if let pos = hero.partOfSpeech {
                             Text(pos)
