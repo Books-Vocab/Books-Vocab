@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: 5b490881
+verified_against: 58f682e1
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -51,7 +51,7 @@ verified_against: 5b490881
 - 全螢幕 podcast player **蓋住 tab bar**：從 player 進入其他 flow 前必須先 back out（見 `AuthFlowUITests` 的 `signedin-player-back` 步驟），否則 tab 點擊 silently 失敗。
 - **`launchIsolatedApp` 預設網路封閉**（hermetic）：自動注入不可達 `KG_UI_TEST_SERVER_URL`，否則 catalog sync 會打真生產 server 把 seeded series reconcile-tombstone 掉（Auth flow 紅燈根因）、假 token 的 401 會 wipe local data。真的需要 server 的測試自帶該 env var 覆蓋。
 - **Subagent 等待紀律**：把 build/test 丟 `run_in_background` 後結束 turn = 永遠收不到完成通知（三個 fan-out agent 全踩過）。長命令一律前景跑（timeout 拉滿）或前景 `until [[ -f <verdict> ]]; do sleep 5; done` 等；工作未完不准結束 turn。
-- **`.plain` Button 中段透明死區 = 真陽性**：`buttonStyle(.plain)` 的 hit-test 會穿透透明像素，row 內 `Spacer()` 空白區點了沒反應；XCUITest `tap()` 永遠打 AX activation point（row 正中），剛好踩死區 → 決定性紅燈（Settings flow 抓到的 production bug）。修法 = Button label 加 `.contentShape(Rectangle())`，不是改測試去點文字。鑑別流程：AX frame + activation point（Session log）疊到截圖上驗座標 → 座標正確仍零反應 → 手動點同位置重現 → 死區即 app bug。
+- **`.plain` Button 中段透明死區 = 真陽性**：`buttonStyle(.plain)` 的 hit-test 會穿透透明像素，row 內 `Spacer()` 空白區點了沒反應；XCUITest `tap()` 永遠打 AX activation point（row 正中），剛好踩死區 → 決定性紅燈（Settings flow 抓到的 production bug）。修法 = Button label 加 `.contentShape(Rectangle())`，不是改測試去點文字。鑑別流程：AX frame + activation point（Session log）疊到截圖上驗座標 → 座標正確仍零反應 → 手動點同位置重現 → 死區即 app bug。此 bug class 已由 `ops/plain_deadzone_lint.sh` 守門（baseline 為空，新增即 regress）；遇疑似死區先跑 `--report`。
 - 登入閘門後的 UI（如詞庫搜尋框）→ fixture 注入 signed-in session，且 `KG_UI_TEST_SERVER_URL` 指向不可達位址（connection refused 不登出；真 backend 401 會 logout + clearLocalData 清掉 fixture 世界，同 auth flow seam）。
 - `typeText` 逐字輸入碰 debounce（搜尋 300ms）：字間隔偶爾 > debounce 會 commit 中間查詢（`complemen`→`complement` 各一發 mark）——斷言最終結果集，勿斷言 perf mark 次數。
 - LazyVStack 列表 fold 以下的 row 不在 a11y 樹：未過濾長列表的 baseline 斷言用 prefix `anyRow`（`identifier BEGINSWITH`），指定 row 斷言只用在過濾後的短結果集。
