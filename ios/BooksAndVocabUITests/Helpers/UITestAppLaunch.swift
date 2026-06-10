@@ -14,6 +14,7 @@ enum UITestFixture: Equatable {
     case settingsCleanPreferences
     case shellNavigation
     case searchVocabNotebook
+    case readerRealBookLibrary
 
     var launchArgument: String {
         switch self {
@@ -33,6 +34,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:shell:navigation"
         case .searchVocabNotebook:
             return "-seedFixture:search:vocabNotebook"
+        case .readerRealBookLibrary:
+            return "-seedFixture:reader:realBookLibrary"
         }
     }
 }
