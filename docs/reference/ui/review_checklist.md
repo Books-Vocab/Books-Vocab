@@ -4,7 +4,7 @@ authority: derived
 update_trigger: manual
 scope:
   - ios/BooksAndVocab/
-verified_against: 84f6998e
+verified_against: f0d37ca4
 -->
 # UI Review Checklist
 

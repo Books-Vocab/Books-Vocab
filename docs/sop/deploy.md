@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 84f6998e
+verified_against: f0d37ca4
 -->
 # 後端部署指南
 
