@@ -9,16 +9,22 @@
  * ({surface, scenario, appearance}) instead of by IMG_*.PNG filename, so the
  * reference set regenerates from source instead of going stale on a Desktop.
  *
- * Root selection mirrors ops/catalog_review_entry.py choose_blessed_artifact:
- * usable roots (totalImages > 0) only, newest name wins. Override with
- * KG_CATALOG_ROOT.
+ * Root selection: `catalog-full-*` dirs only (side artifacts like
+ * gallery-admin-preview carry a usable manifest but not the full surface
+ * set), usable (totalImages > 0), newest name wins — the timestamped naming
+ * makes lexicographic order chronological. Override with KG_CATALOG_ROOT.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Catalog directory slugs: spaces become underscores, everything else kept. */
+/**
+ * Catalog directory slugs — mirrors playbook-ui Snapshot's filename
+ * normalization: `.`/`:`/`/`, whitespace, and control characters all become
+ * `_` (observed: "Bare card (no links / progress)" →
+ * "Bare_card_(no_links___progress).png"); everything else is kept.
+ */
 export function slugify(name) {
-  return name.replaceAll(' ', '_');
+  return name.replace(/[.:/\s\p{Cc}]/gu, '_');
 }
 
 /**
@@ -33,6 +39,10 @@ export function resolveCatalogRoot({ env = process.env, repoRoot } = {}) {
   const usable = [];
   for (const entry of readdirSync(snapshots, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
+    // Only full catalog runs qualify — build/snapshots also hosts side
+    // artifacts (e.g. gallery-admin-preview) that carry a usable manifest
+    // but not the full surface set.
+    if (!entry.name.startsWith('catalog-full-')) continue;
     const manifestPath = join(snapshots, entry.name, 'review_manifest.json');
     if (!existsSync(manifestPath)) continue;
     try {
@@ -48,6 +58,9 @@ export function resolveCatalogRoot({ env = process.env, repoRoot } = {}) {
 }
 
 function deviceDirs(root) {
+  // The catalog is single-device by design (one iPhone, portrait, light+dark).
+  // If a second device ever lands, the sorted-first pick below must grow an
+  // explicit device selector instead.
   const dirs = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
