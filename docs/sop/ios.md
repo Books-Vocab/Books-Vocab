@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 98cac27d
+verified_against: 655dea9c
 -->
 # Books & Vocab iOS 開發技能
 
@@ -158,6 +158,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
 - 測試結束第一屏會列 `[ios][issues] source=xcresult-test-results` 與 `[ios][tests] tests=... passed=... failed=...`；false-green 執行數優先取官方 `.xcresult`，raw log 只作 fallback。
 - 失敗或 inconclusive 時保留完整 xcodebuild log 與 `.xcresult`，stdout 會印出 log / xcresult path；成功時 verdict 也記錄 log / xcresult path。
+- UI scope（`--ui` / `--all-targets`）跑完自動產出視覺證據三件套：full `contact_sheet.png` + `quick4_contact_sheet.png`（evenly:4 一列四格）+ `review_manifest.json`（schema `kg.visual-review.sheet.v1`），全部落在 step screenshot 暫存目錄；`test --json` 的 `kg.ios.run.v1` 直接回 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest + exists bools}`（非 UI run 為 `null`），UI flow 收尾直接 Read 圖回報，不要只貼 test passed。
 - 若 Xcode 回 `build.db database is locked` / `unable to attach DB`，runner 會在同一把 repo lock 內短暫等待並重試，避免把 infrastructure lock 誤判成測試失敗。
 - 若要把 build-for-testing 成本拆出日常迭代回路，先跑 `./ops/ios_ops.sh test --prepare-cache --unit` 或 `--ui`，後續 scoped `test` 會優先重用 `.xctestrun`；`--cache-status --json` 會回 `kg.ios.test-cache.v1`，含 `productsReady` / `xctestrunPath` / `timings.bootMs/buildForTestingMs`。
 - 若要讓 agent/human 在第一屏就看懂時間分布與 release readiness，不要只翻 raw log：`./ops/ios_ops.sh runs --json` 會保留每次 build/test/archive 的 `options` / `cache` / `timings`；`./ops/ios_ops.sh snapshot --json` 會再把它們收斂成 `summary.timings.build|test|archive|simulator`，並把 `doctor/workflow` 聚合成 `summary.counts.readiness*` / `workflow*`；文字模式固定在 `[ios][summary]` 後緊接 `[ios][timing] build ...` / `[ios][timing] test ...` / `[ios][timing] archive ...` / `[ios][timing] simulator ...`。
@@ -568,7 +569,8 @@ BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
 # 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 review.html(detached server 佔 port、headless lazy-paint 全白)。
 ./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --appearance both --cols 2  # 一張看完某 surface 全 state × light/dark
 ./ops/catalog_contact_sheet.py "$BLESSED" --lane feature-surface --facet empty                   # 一張看完所有出貨畫面的 empty state
-# UITest 後快速看跳轉旅程：取首尾與中間代表步驟，避免一次讀 8+ 張原圖。
+# UITest 後快速看跳轉旅程：UI scope 的 ios_test.sh 已自動產 quick4_contact_sheet.png（test --json 的 uiVisualReview.quick4Sheet），
+# 手動跑只在需要自訂 take/zoom 時：
 ./ops/catalog_contact_sheet.py /tmp/kg_ios_ui_steps.xxxxxx --source uitest --take evenly:4 --cols 4 --manifest-out auto
 # 任意 PNG 目錄也可用同一工具，方便臨時視覺 debug / before-after 對照。
 ./ops/catalog_contact_sheet.py /tmp/screens --source images --contains player --take first,last
