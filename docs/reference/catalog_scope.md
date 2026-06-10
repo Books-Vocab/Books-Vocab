@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 230f6c16
+verified_against: f0d37ca4
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
