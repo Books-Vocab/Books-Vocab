@@ -56,6 +56,12 @@ struct ContentView: View {
             primaryNavigation
         }
         .appOfflineBanner()
+        // KG_PERF shell-domain mark (docs/sop/ui_flow_evidence.md piece 5):
+        // one low-frequency event per tab switch, on both iOS TabView and the
+        // Catalyst sidebar (single selection source of truth).
+        .onChange(of: selectedSection) { _, section in
+            PerfLog.shell.mark("tab.selected", "section=\(section.rawValue)")
+        }
         .animatePhaseChange(authManager.isDemoMode)
         .macWindowChrome()
         .enableInjection()
@@ -85,21 +91,27 @@ struct ContentView: View {
         }
         .navigationSplitViewStyle(.balanced)
         #else
-        TabView {
+        // selection binding: same @State the Catalyst sidebar drives — keeps one
+        // source of truth and lets PerfLog.shell observe tab switches (below).
+        TabView(selection: $selectedSection) {
             #if os(iOS)
             BookshelfView()
                 .tabItem { Label(L10n.string(AppPrimarySection.bookshelf.titleKey), systemImage: AppPrimarySection.bookshelf.systemImage) }
                 .accessibilityIdentifier("tab.bookshelf")
+                .tag(AppPrimarySection.bookshelf)
             #endif
             PodcastHomeView()
                 .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage) }
                 .accessibilityIdentifier("tab.podcasts")
+                .tag(AppPrimarySection.podcasts)
             NotebookListView()
                 .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage) }
                 .accessibilityIdentifier("tab.notebooks")
+                .tag(AppPrimarySection.notebooks)
             OverviewTab()
                 .tabItem { Label(L10n.string(AppPrimarySection.overview.titleKey), systemImage: AppPrimarySection.overview.systemImage) }
                 .accessibilityIdentifier("tab.overview")
+                .tag(AppPrimarySection.overview)
         }
         #endif
     }

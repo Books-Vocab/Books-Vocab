@@ -19,6 +19,14 @@ import XCTest
 final class ShellNavigationFlowUITests: UITestCase {
     private let shellNotebookId = "ui-shell-notebook"
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Walks all four tabs with real-content waits + a cross-tab stack
+        // round-trip — needs more than the harness default 60s allowance
+        // (ops/ios_test.sh -default-test-execution-time-allowance 60, max 120).
+        executionTimeAllowance = 120
+    }
+
     @MainActor
     func testTabSwitchingRendersRealContentAndPreservesState() throws {
         let app = launchIsolatedApp(
