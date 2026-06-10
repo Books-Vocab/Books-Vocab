@@ -163,6 +163,9 @@ struct AppSearchField: View {
     let prompt: String
     let style: AppSearchFieldStyle
     var isFocused: FocusState<Bool>.Binding? = nil
+    /// UI-test hook: applied to the inner TextField (and `.clear` suffix on the
+    /// clear button) so flows can target the field by identifier. Empty = unset.
+    var accessibilityID: String = ""
 
     var body: some View {
         HStack(spacing: AppSpacing.s2) {
@@ -174,6 +177,7 @@ struct AppSearchField: View {
                 .platformTextInputConfig()
                 .font(style.textFont)
                 .foregroundStyle(style.textColor)
+                .accessibilityIdentifier(accessibilityID)
 
             if !text.isEmpty {
                 Button {
@@ -185,6 +189,7 @@ struct AppSearchField: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.string("search.clear"))
+                .accessibilityIdentifier(accessibilityID.isEmpty ? "" : "\(accessibilityID).clear")
             }
         }
         .padding(.horizontal, AppSpacing.s3)
