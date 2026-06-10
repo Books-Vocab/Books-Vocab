@@ -30,6 +30,8 @@ usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# 等待原語 / lockState 判讀 / verdict 行格式（ops/tests/test_review_probe.sh 單測）
+source "$SCRIPT_DIR/lib/review_probe_lib.sh"
 BUNDLE_ID="com.Max0228.BooksBrowser"
 APP_NAME="BooksAndVocab.app"
 JSONL_NAME="kg_review_probe.jsonl"
@@ -84,8 +86,8 @@ log() { echo "[review_flip_probe] $*"; }
 
 write_verdict() {
   local result="$1" detail="$2"
-  printf 'RESULT=%s %s console=%s jsonl=%s out=%s\n' \
-    "$result" "$detail" "$CONSOLE" "$JSONL" "$OUT" >"$VERDICT_FILE"
+  kg_probe_write_verdict "$VERDICT_FILE" "$result" \
+    "$detail" "console=$CONSOLE" "jsonl=$JSONL" "out=$OUT"
 }
 
 # reason 必須無空白（verdict KEY=value 行經空白切分解析；路徑另以
@@ -128,21 +130,24 @@ fi
 
 # ---------- run ----------
 
+# 等 console marker。kg_probe_wait_pid 統一原語：rc=0 marker 到、
+# rc=2 launch process 早死、rc=3 逾時（pid 已被 kill）。收斂留在 caller
+# （sim 失敗路徑還要 terminate app）。heartbeat 內建。
 wait_for_marker() {
-  local deadline=$((SECONDS + TIMEOUT))
-  while ((SECONDS < deadline)); do
-    if grep -q 'KG_REVIEW_PROBE \(done\|abort\)' "$CONSOLE" 2>/dev/null; then
-      return 0
-    fi
-    # launch process 早死（app 秒 crash / 啟動失敗）→ 立刻報，
-    # 不空轉滿 timeout 誤導操作者去查逾時。
-    if [[ -n "$LAUNCH_PID" ]] && ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
-      log "launch process 已退出（app crash / 啟動失敗？）— 看 $CONSOLE"
-      return 1
-    fi
-    sleep 2
-  done
-  return 1
+  KG_PROBE_POLL_SECS="${KG_PROBE_POLL_SECS:-2}" kg_probe_wait_pid \
+    "$LAUNCH_PID" "$TIMEOUT" "review_flip_probe.marker" \
+    "grep -q 'KG_REVIEW_PROBE \\(done\\|abort\\)' '$CONSOLE' 2>/dev/null"
+}
+
+# rc → 精準 reason（launch 早死 ≠ 逾時，除錯方向完全不同）。
+fail_invalid_for_wait_rc() {
+  local rc="$1"
+  if [[ "$rc" -eq 2 ]]; then
+    log "launch process 已退出（app crash / 啟動失敗？）— 看 $CONSOLE"
+    fail_invalid "launch_process_died"
+  fi
+  log "hint: 翻卡是否真的在跑？裝置是否解鎖？console: $CONSOLE"
+  fail_invalid "probe_timeout:${TIMEOUT}s"
 }
 
 LAUNCH_PID=""
@@ -176,17 +181,31 @@ if [[ "$MODE" == "simulator" ]]; then
     >"$CONSOLE" 2>&1 &
   LAUNCH_PID=$!
 
-  if ! wait_for_marker; then
-    xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
-    log "hint: console: $CONSOLE"
-    fail_invalid "timeout_or_launch_death:${TIMEOUT}s"
-  fi
+  wait_rc=0
+  wait_for_marker || wait_rc=$?
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+  if [[ "$wait_rc" -ne 0 ]]; then
+    LAUNCH_PID=""
+    fail_invalid_for_wait_rc "$wait_rc"
+  fi
 
   CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)"
   [[ -f "$CONTAINER/Documents/$JSONL_NAME" ]] || fail_invalid "jsonl_missing_in_container"
   cp "$CONTAINER/Documents/$JSONL_NAME" "$JSONL"
 else
+  # 鎖屏 preflight：xctrace 對鎖機不報錯而是無限懸掛、devicectl 行為也不一。
+  # 秒級先驗，鎖著直接精準拒絕；查詢失敗（unknown）不擋——靠 watchdog 兜底，
+  # 不可因 preflight 自身故障誤殺好機。
+  rm -f "$OUT/lock_state.json"
+  xcrun devicectl device info lockState --device "$UDID" \
+    --json-output "$OUT/lock_state.json" >/dev/null 2>&1 || true
+  case "$(kg_probe_passcode_required "$OUT/lock_state.json")" in
+    true)
+      log "hint: 裝置鎖屏中 — 解鎖（建議暫設自動鎖定=永不）後重跑"
+      fail_invalid "device_locked"
+      ;;
+    unknown) log "warn: lockState 查詢失敗（繼續跑，watchdog 兜底）" ;;
+  esac
   log "installing on device $UDID…"
   xcrun devicectl device install app --device "$UDID" "$APP"
   if [[ "$INSTRUMENTS" -eq 1 ]]; then
@@ -199,32 +218,35 @@ else
     fi
     # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
     # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
+    # rm 防 --out 重用時讀到上一輪殘留（與 verdict 檔同款 stale 防護）。
+    rm -f "$OUT/device_info.json"
     xcrun devicectl device info details --device "$UDID" \
       --json-output "$OUT/device_info.json" >/dev/null 2>&1 || true
     HW_UDID="$(jq -r '.result.hardwareProperties.udid // empty' "$OUT/device_info.json" 2>/dev/null || true)"
     [[ -n "$HW_UDID" ]] || fail_invalid "hardware_udid_unresolved:$UDID"
     # xctrace 對鎖屏裝置不報錯而是無限懸掛（實測 13 分鐘無輸出），
     # --time-limit 只管「錄製開始後」——前置等待必須自己 watchdog。
-    # 寬限 = time-limit + 120s（launch + trace 落盤餘裕）。
+    # 寬限 = time-limit + 120s（launch + trace 落盤餘裕）。heartbeat 內建。
+    # 刻意不在錄製中輪詢 devicectl processes 提早偵測 launch 失敗：
+    # 量測期間對裝置發查詢會污染被量測系統，preflight + watchdog 已足。
     xcrun xctrace record --template 'Animation Hitches' --device "$HW_UDID" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
     XCTRACE_PID=$!
-    xctrace_deadline=$((SECONDS + TIMEOUT + 120))
-    while kill -0 "$XCTRACE_PID" 2>/dev/null; do
-      if ((SECONDS >= xctrace_deadline)); then
-        kill "$XCTRACE_PID" 2>/dev/null || true
-        sleep 5
-        kill -9 "$XCTRACE_PID" 2>/dev/null || true
-        XCTRACE_PID=""
+    xctrace_rc=0
+    kg_probe_wait_pid "$XCTRACE_PID" $((TIMEOUT + 120)) "review_flip_probe.xctrace" || xctrace_rc=$?
+    XCTRACE_PID=""
+    case "$xctrace_rc" in
+      0) ;;
+      3)
         log "hint: xctrace 逾時未結（裝置是否解鎖插線？）console: $CONSOLE"
         fail_invalid "xctrace_watchdog_timeout:$((TIMEOUT + 120))s"
-      fi
-      sleep 5
-    done
-    wait "$XCTRACE_PID" \
-      || { XCTRACE_PID=""; log "hint: console: $CONSOLE"; fail_invalid "xctrace_record_failed"; }
-    XCTRACE_PID=""
+        ;;
+      *)
+        log "hint: console: $CONSOLE"
+        fail_invalid "xctrace_record_failed"
+        ;;
+    esac
     # TOC 先存檔：hitch 表的 export schema 待首個真機 trace 後固化解析。
     xcrun xctrace export --input "$TRACE" --toc >"$OUT/trace_toc.xml" 2>/dev/null || true
     log "trace saved: $TRACE"
@@ -235,9 +257,11 @@ else
       --device "$UDID" -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
     LAUNCH_PID=$!
 
-    if ! wait_for_marker; then
-      log "hint: 裝置是否解鎖插線？console: $CONSOLE"
-      fail_invalid "timeout_or_launch_death:${TIMEOUT}s"
+    wait_rc=0
+    wait_for_marker || wait_rc=$?
+    if [[ "$wait_rc" -ne 0 ]]; then
+      LAUNCH_PID=""
+      fail_invalid_for_wait_rc "$wait_rc"
     fi
     kill "$LAUNCH_PID" 2>/dev/null || true
     LAUNCH_PID=""
