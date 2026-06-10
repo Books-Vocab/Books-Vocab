@@ -39,6 +39,7 @@ DEFAULT_TESTS=(
   plain-deadzone
   ui-quality-plane
   visual-regression
+  catalog-review
   docs-lint
   ios-ops
   ios-cache-evict
@@ -97,6 +98,11 @@ run_one() {
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     visual-regression)  ./ops/tests/test_visual_regression.sh ;;
+    catalog-review)
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
+        ops/tests/test_catalog_review.py \
+        ops/tests/test_catalog_review_entry.py
+      ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh

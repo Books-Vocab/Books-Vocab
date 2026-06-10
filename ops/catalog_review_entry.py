@@ -22,8 +22,12 @@ def load_manifest(path: Path) -> dict:
 
 
 def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
+    # build/snapshots also hosts bypass artifacts (gallery-admin-preview carries
+    # a usable manifest, catalog-converged-final exists too). Only
+    # catalog-full-<UTC> roots are review artifacts; the prefix also makes
+    # lexicographic order == chronological order for choose_blessed_artifact.
     artifacts: list[dict] = []
-    for manifest_path in sorted(snapshot_root.glob("*/review_manifest.json")):
+    for manifest_path in sorted(snapshot_root.glob("catalog-full-*/review_manifest.json")):
         manifest = load_manifest(manifest_path)
         total_images = manifest.get("totalImages", 0)
         artifacts.append({

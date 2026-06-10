@@ -79,6 +79,46 @@ def test_choose_blessed_artifact_prefers_usable_over_empty_newer_artifact(tmp_pa
     assert blessed["isUsable"] is True
 
 
+def test_collect_review_artifacts_ignores_bypass_roots(tmp_path: Path):
+    # build/snapshots also hosts bypass artifacts (gallery-admin-preview with a
+    # usable manifest, catalog-converged-final); only catalog-full-<UTC> roots
+    # are review artifacts — everything else must be invisible to this tool.
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "gallery-admin-preview", total_images=616, continue_count=10, weak_count=5)
+    write_manifest(tmp_path, "catalog-converged-final", total_images=10, continue_count=1, weak_count=1)
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+
+    assert [item["name"] for item in artifacts] == ["catalog-full-20260608-003356"]
+
+
+def test_choose_blessed_artifact_not_hijacked_by_usable_bypass_root(tmp_path: Path):
+    # 'g' > 'c' lexicographically — without the prefix filter a usable
+    # gallery-admin-preview steals blessed from the real latest catalog-full.
+    write_manifest(tmp_path, "catalog-full-20260608-131808", total_images=978, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "gallery-admin-preview", total_images=616, continue_count=10, weak_count=5)
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+    blessed = entry_module.choose_blessed_artifact(artifacts)
+
+    assert blessed["name"] == "catalog-full-20260608-131808"
+
+
+def test_prune_artifacts_never_touch_bypass_roots(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-131808", total_images=978, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "gallery-admin-preview", total_images=616, continue_count=10, weak_count=5)
+    write_manifest(tmp_path, "gallery-empty", total_images=0, continue_count=0, weak_count=0)
+
+    entry_module.prune_stale_artifacts(tmp_path, dry_run=False)
+    result = entry_module.prune_superseded_artifacts(tmp_path, dry_run=False)
+
+    assert result["blessed"]["name"] == "catalog-full-20260608-131808"
+    assert (tmp_path / "gallery-admin-preview").exists()
+    assert (tmp_path / "gallery-empty").exists()
+    assert not (tmp_path / "catalog-full-20260608-003356").exists()
+
+
 def test_prune_stale_artifacts_removes_empty_review_roots(tmp_path: Path):
     write_manifest(tmp_path, "catalog-full-empty", total_images=0, continue_count=0, weak_count=0)
     write_manifest(tmp_path, "catalog-full-usable", total_images=10, continue_count=2, weak_count=1)
