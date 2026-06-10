@@ -308,12 +308,19 @@ struct BackgroundSyncActorTests {
 
     // MARK: - clearUserData (logout / account-switch isolation)
     //
-    // Regression coverage for the multi-account leak: the local clear path
-    // deleted vocab / review / notebook but left PodcastSeries /
-    // PodcastEpisode / PodcastProgress — and `Book` — behind, so account B
-    // saw account A's followed series, playback progress, *and imported books
-    // with reading position/progress*. `clearUserData` must wipe all eight
-    // user-scoped @Model types in one pass.
+    // Regression coverage for the multi-account leak: the local clear path must
+    // wipe the app-account-scoped @Model types — vocab / review / notebook /
+    // PodcastSeries / PodcastEpisode / PodcastProgress — in one pass, so account
+    // B can't see account A's cards, followed series, or playback progress.
+    //
+    // `Book` is DELIBERATELY EXEMPT: it lives in the CloudKit-backed CloudStore
+    // and its files sit in the per-Apple-ID iCloud/Documents container, so the
+    // library is scoped to the Apple ID, not the app account. Clearing Book rows
+    // on logout deleted them locally (and risked propagating the delete to
+    // CloudKit) while the disk files persisted and the cold-start reconciler
+    // rebuilt the rows anyway — fake isolation that only stranded the user with
+    // an empty bookshelf after re-login. So `clearUserData` must LEAVE Book rows
+    // intact (user decision 2026-06-10: library binds to Apple ID).
 
     /// Seed N user-scoped books with reading position + progress set, so the
     /// test proves the leaked private state (locator / progression) is cleared.
@@ -593,7 +600,7 @@ struct BackgroundSyncActorTests {
         #expect(records.first?.word == "gamma")
     }
 
-    @Test func clearUserData_removes_all_books() async throws {
+    @Test func clearUserData_preserves_books() async throws {
         let container = try makeContainer()
         try seedBooks(container, count: 3)
 
@@ -604,11 +611,13 @@ struct BackgroundSyncActorTests {
         let actor = BackgroundSyncActor(modelContainer: container)
         try await actor.clearUserData(reason: "account-switch")
 
+        // Book is Apple-ID-scoped (CloudStore/CloudKit) — logout/account-switch
+        // must NOT delete the library rows. They survive untouched.
         let after = ModelContext(container)
-        #expect(try after.fetchCount(FetchDescriptor<Book>()) == 0)
+        #expect(try after.fetchCount(FetchDescriptor<Book>()) == 3)
     }
 
-    @Test func clearUserData_wipes_books_alongside_other_models() async throws {
+    @Test func clearUserData_clears_account_scoped_but_keeps_books() async throws {
         let container = try makeContainer()
         try seedSyncedEntries(container, count: 2)
         try seedPodcastData(
@@ -623,12 +632,13 @@ struct BackgroundSyncActorTests {
         let actor = BackgroundSyncActor(modelContainer: container)
         try await actor.clearUserData(reason: "account-switch")
 
-        // All user-scoped models gone in one pass — no model type stranded.
+        // App-account-scoped models gone in one pass — no model type stranded.
         let after = ModelContext(container)
         #expect(try after.fetchCount(FetchDescriptor<VocabularyEntry>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<PodcastSeries>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<PodcastEpisode>()) == 0)
         #expect(try after.fetchCount(FetchDescriptor<PodcastProgress>()) == 0)
-        #expect(try after.fetchCount(FetchDescriptor<Book>()) == 0)
+        // Book is Apple-ID-scoped — deliberately preserved across the clear.
+        #expect(try after.fetchCount(FetchDescriptor<Book>()) == 2)
     }
 }

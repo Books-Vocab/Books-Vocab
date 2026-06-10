@@ -168,17 +168,25 @@ actor BackgroundSyncActor {
         return PullResult(orphanCleanupBlocked: orphanCleanupBlocked)
     }
 
-    /// Deletes ALL per-user local SwiftData state — vocabulary, review records,
-    /// notebooks, podcast (series / episode / progress), and books. This is the
+    /// Deletes the app-account-scoped local SwiftData state — vocabulary, review
+    /// records, notebooks, podcast (series / episode / progress). This is the
     /// single local-cleanup entry point for logout and account switch, so it must
-    /// cover every user-scoped @Model: leaving any model behind leaks account A's
-    /// data into account B's session (e.g. followed podcast series + playback
-    /// progress, and imported books with reading position/progress, survived the
-    /// switch before this covered them).
+    /// cover every app-account-scoped @Model: leaving any behind leaks account A's
+    /// data into account B's session (followed podcast series + playback progress
+    /// survived the switch before this covered them).
+    ///
+    /// `Book` is DELIBERATELY EXEMPT. The library lives in the CloudKit-backed
+    /// CloudStore and its files sit in the per-Apple-ID iCloud/Documents
+    /// container, so it is scoped to the Apple ID, not the app account. Deleting
+    /// Book rows here removed them locally (and risked propagating the delete to
+    /// CloudKit across devices) while the disk files persisted and the cold-start
+    /// reconciler rebuilt the rows on next launch anyway — fake isolation that
+    /// only left the user staring at an empty bookshelf after re-login. The
+    /// library binds to the Apple ID and is left intact across logout / switch
+    /// (user decision 2026-06-10).
     ///
     /// Scope: SwiftData @Model rows only. On-disk book files (Documents/Books,
-    /// iCloud Documents/Books) are deliberately NOT removed — that storage is
-    /// per-Apple-ID, not per-app-account, and touching it is a separate concern.
+    /// iCloud Documents/Books) are likewise NOT removed.
     ///
     /// Podcast deletion notes:
     /// - `PodcastSeries.episodes` is a `.cascade` relationship, so deleting a
@@ -190,7 +198,7 @@ actor BackgroundSyncActor {
     /// - `PodcastProgress` is an independent @Model (no relationship) and must
     ///   be deleted on its own.
     func clearUserData(reason: String) throws {
-        AppLog.sync.info("Clearing all local user data (vocab + review + notebook + podcast + books)... reason=\(reason)")
+        AppLog.sync.info("Clearing app-account-scoped local data (vocab + review + notebook + podcast; Book is Apple-ID-scoped and preserved)... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
@@ -217,16 +225,11 @@ actor BackgroundSyncActor {
         for p in progress {
             modelContext.delete(p)
         }
-        // `Book` is a user-scoped @Model (title/author/cover + reading position
-        // & progression). It has no relationships, so a flat fetch+delete is
-        // correct. Disk book files (Documents/Books, iCloud) are intentionally
-        // left untouched — that is per-Apple-ID storage, out of scope here.
-        let books = try modelContext.fetch(FetchDescriptor<Book>())
-        for book in books {
-            modelContext.delete(book)
-        }
+        // `Book` is intentionally NOT deleted — see the doc comment: the library
+        // is Apple-ID-scoped (CloudStore/CloudKit + per-Apple-ID files), so it
+        // survives logout / account-switch.
         try modelContext.save()
-        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks + \(series.count) podcast series + \(episodes.count) orphan episodes + \(progress.count) podcast progress + \(books.count) books. reason=\(reason)")
+        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks + \(series.count) podcast series + \(episodes.count) orphan episodes + \(progress.count) podcast progress (Book preserved: Apple-ID-scoped). reason=\(reason)")
     }
 
     /// Returns the number of synced entries in the local store.
