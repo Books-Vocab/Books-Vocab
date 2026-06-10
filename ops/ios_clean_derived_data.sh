@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
 # ios_clean_derived_data.sh — reclaim stale Xcode build artifacts.
 #
-# Two leak sources are swept:
+# Three leak sources are swept:
 #   1. Path-hashed BooksAndVocab-* dirs under the global default DerivedData
 #      location (Xcode GUI / any xcodebuild run that did NOT pass an explicit
 #      -derivedDataPath). ops/ios_build.sh now keeps DerivedData inside the
 #      worktree, so new global orphans should stop appearing — this catches
 #      GUI builds and anything pre-dating that fix.
-#   2. Simulator devices whose runtime is gone (`simctl delete unavailable`).
+#   2. Keyed DerivedData caches (.cache/ios-test-derived-data,
+#      .cache/ios-catalog-derived-data) — same LRU eviction the build paths
+#      run automatically (lib/ios_cache_evict.sh), exposed for manual sweeps.
+#      Honors KG_IOS_CACHE_KEEP / KG_IOS_CACHE_EVICT_MIN_AGE_HOURS.
+#   3. Simulator devices whose runtime is gone (`simctl delete unavailable`).
 #
 # Default: dry-run. Pass --apply to actually delete. --days N (default 7)
 # only removes global DerivedData dirs untouched for N+ days.
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/ios_cache_evict.sh
+source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 
 APPLY=0
 DAYS=7
@@ -38,7 +47,15 @@ if [[ -d "$DERIVED_DATA_GLOBAL" ]]; then
   done < <(find "$DERIVED_DATA_GLOBAL" -maxdepth 1 -name 'BooksAndVocab-*' -type d -mtime "+$DAYS" 2>/dev/null)
 fi
 
-# 2. Simulators whose runtime no longer exists.
+# 2. Keyed in-repo caches — current_key 留空（手動 sweep 沒有「本 run 在用」
+#    的概念），靠 keep-N + min-age 視窗保護進行中的 run；--apply 才真刪。
+for keyed_root in \
+  "${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived-data}" \
+  "${KG_IOS_OPS_CATALOG_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-catalog-derived-data}"; do
+  KG_IOS_CACHE_EVICT_DRY_RUN=$(( 1 - APPLY )) kg_ios_cache_evict "$keyed_root" ""
+done
+
+# 3. Simulators whose runtime no longer exists.
 if [[ $APPLY -eq 1 ]]; then
   xcrun simctl delete unavailable 2>/dev/null || true
   echo "[ios_clean] simctl delete unavailable done"
