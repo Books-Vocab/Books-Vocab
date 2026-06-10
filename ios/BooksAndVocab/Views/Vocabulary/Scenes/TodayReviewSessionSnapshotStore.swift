@@ -60,58 +60,86 @@ struct TodayReviewSessionSnapshotStore {
 
     // MARK: - Public API
 
+    /// Per-flip submit calls `save()` synchronously inside the SwiftUI
+    /// transaction. The old full decode→mutate→encode→defaults-write roundtrip
+    /// measured ~65ms of main-thread stall per flip on device Release
+    /// (review_flip_probe time-profile). This store is the single funnel for
+    /// the defaults key, so a queue-confined cache kills the repeated decode
+    /// and the serial queue moves encode + write off the caller's thread.
+    /// `load`/`save`/`clear` share one FIFO: a save followed by a load always
+    /// observes the saved value. Crash window: a snapshot enqueued but not yet
+    /// written is lost if the process dies first — bounded by one background
+    /// encode (~ms), and the deferred DB flush re-covers restored answers.
+    private static let queue = DispatchQueue(label: "kg.review.snapshotStore", qos: .utility)
+    private static var cache: [String: Snapshot]?
+
     static func load(for userId: String) -> Snapshot? {
-        guard let snapshot = readStore()[userId] else { return nil }
+        queue.sync {
+            guard let snapshot = loadedStore()[userId] else { return nil }
 
-        guard Date().timeIntervalSince(snapshot.updatedAt) <= maxAge else {
-            clear(for: userId)
-            return nil
+            guard Date().timeIntervalSince(snapshot.updatedAt) <= maxAge else {
+                var store = loadedStore()
+                store.removeValue(forKey: userId)
+                writeStore(store)
+                return nil
+            }
+
+            return snapshot
         }
-
-        return snapshot
     }
 
     static func save(_ snapshot: Snapshot) {
-        var store = readStore()
-        store[snapshot.userId] = snapshot
-        writeStore(store)
+        queue.async {
+            var store = loadedStore()
+            store[snapshot.userId] = snapshot
+            writeStore(store)
+        }
     }
 
     /// Passing `nil` clears every user's snapshot; passing a `userId` clears only that user's.
     static func clear(for userId: String?) {
-        guard let userId else {
-            UserDefaults.standard.removeObject(forKey: defaultsKey)
-            return
-        }
+        queue.async {
+            guard let userId else {
+                cache = [:]
+                UserDefaults.standard.removeObject(forKey: defaultsKey)
+                return
+            }
 
-        var store = readStore()
-        guard store[userId] != nil else { return }
-        store.removeValue(forKey: userId)
-        writeStore(store)
+            var store = loadedStore()
+            guard store[userId] != nil else { return }
+            store.removeValue(forKey: userId)
+            writeStore(store)
+        }
     }
 
-    // MARK: - Persistence
+    // MARK: - Persistence (queue-confined: only call on `queue`)
 
-    /// Reads the per-user snapshot map. Transparently migrates the legacy
+    /// Returns the per-user snapshot map, decoding from defaults once and
+    /// serving the cache thereafter. Transparently migrates the legacy
     /// single-`Snapshot` payload (pre per-user keying) into the new dictionary.
-    private static func readStore() -> [String: Snapshot] {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return [:] }
+    private static func loadedStore() -> [String: Snapshot] {
+        if let cache { return cache }
 
-        if let store = try? JSONDecoder().decode([String: Snapshot].self, from: data) {
-            return store
+        let store: [String: Snapshot]
+        if let data = UserDefaults.standard.data(forKey: defaultsKey) {
+            if let decoded = try? JSONDecoder().decode([String: Snapshot].self, from: data) {
+                store = decoded
+            } else if let legacy = try? JSONDecoder().decode(Snapshot.self, from: data) {
+                store = [legacy.userId: legacy]
+                writeStore(store)
+            } else {
+                store = [:]
+            }
+        } else {
+            store = [:]
         }
 
-        // Migration: legacy payload stored a bare Snapshot keyed by `defaultsKey`.
-        if let legacy = try? JSONDecoder().decode(Snapshot.self, from: data) {
-            let migrated = [legacy.userId: legacy]
-            writeStore(migrated)
-            return migrated
-        }
-
-        return [:]
+        cache = store
+        return store
     }
 
     private static func writeStore(_ store: [String: Snapshot]) {
+        cache = store
         if store.isEmpty {
             UserDefaults.standard.removeObject(forKey: defaultsKey)
             return
