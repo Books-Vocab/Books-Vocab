@@ -109,6 +109,8 @@ TEST_CACHE_ROOT="${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived
 source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
 # shellcheck source=lib/ios_build_progress.sh
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# shellcheck source=lib/ios_cache_evict.sh
+source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -806,6 +808,10 @@ rebuild_test_cache() {
   # Acquire the build lock ONLY for the write to shared DerivedData, and release
   # the moment the build finishes — test execution runs unlocked.
   acquire_build_lock
+  # Keyed caches grow unbounded (one full DerivedData per config hash; 94G on
+  # 2026-06-10 → exit=73 disk full). Evict under the build lock — unlocked
+  # readers are protected by resolve-time touch + the min-age window.
+  kg_ios_cache_evict "$TEST_CACHE_ROOT" "$(basename "$DERIVED_DATA_ROOT")"
   # Double-checked locking: another agent may have built this exact (content-keyed)
   # cache while we waited for the lock. If the products are now ready, skip the
   # rebuild — both to avoid redundant work and, critically, to avoid overwriting
@@ -1011,6 +1017,9 @@ ATTEMPT=1
 EXIT_CODE=0
 boot_simulator_if_needed
 DERIVED_DATA_ROOT="$(ios_test_derived_data_root)"
+# LRU liveness: mark this key as in-use even on the unlocked cache-hit path,
+# so a concurrent builder's eviction never removes products mid-read.
+[[ -d "$DERIVED_DATA_ROOT" ]] && touch "$DERIVED_DATA_ROOT" 2>/dev/null
 XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
 while :; do
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
