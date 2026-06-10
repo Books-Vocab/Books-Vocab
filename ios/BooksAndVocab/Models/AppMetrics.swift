@@ -34,30 +34,30 @@ enum AppMotion {
     static let progressLinear = Animation.linear(duration: DesignTokens.Motion.Duration.progress)
     static let standardSpring = Animation.spring(response: DesignTokens.Motion.Spring.Standard.response, dampingFraction: DesignTokens.Motion.Spring.Standard.damping)
     static let emphasizedSpring = Animation.spring(response: DesignTokens.Motion.Spring.Emphasized.response, dampingFraction: DesignTokens.Motion.Spring.Emphasized.damping)
-    static let relaxedSpring = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    static let relaxedSpring = Animation.spring(response: DesignTokens.Motion.Spring.Relaxed.response, dampingFraction: DesignTokens.Motion.Spring.Relaxed.damping)
     static let systemSpring = Animation.spring()
     static let modalSwapSpring = Animation.spring(response: DesignTokens.Motion.Spring.ModalSwap.response, dampingFraction: DesignTokens.Motion.Spring.ModalSwap.damping)
-    static let buttonSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0)
-    static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)
-    static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
-    static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
+    static let buttonSpring = Animation.spring(response: DesignTokens.Motion.Spring.Button.response, dampingFraction: DesignTokens.Motion.Spring.Button.damping, blendDuration: 0)
+    static let breathing = Animation.easeInOut(duration: DesignTokens.Motion.Duration.breathing).repeatForever(autoreverses: true)
+    static let reviewRevealSpring = Animation.spring(response: DesignTokens.Motion.Spring.ReviewReveal.response, dampingFraction: DesignTokens.Motion.Spring.ReviewReveal.damping)
+    static let reviewNavigationSpring = Animation.spring(response: DesignTokens.Motion.Spring.ReviewNavigation.response, dampingFraction: DesignTokens.Motion.Spring.ReviewNavigation.damping)
 
     // Swipe gesture
-    static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
+    static let swipeSnapBackSpring = Animation.spring(response: DesignTokens.Motion.Spring.SwipeSnapBack.response, dampingFraction: DesignTokens.Motion.Spring.SwipeSnapBack.damping)
 
     // MARK: - Micro-interaction Springs
     /// 卡片甩出畫面（臨界阻尼、極短時長 — 瞬間飛離，露出已預渲染的下一張，消除中間等待）
-    static let swipeFlingSpring = Animation.spring(response: 0.18, dampingFraction: 1.0)
+    static let swipeFlingSpring = Animation.spring(response: DesignTokens.Motion.Spring.SwipeFling.response, dampingFraction: DesignTokens.Motion.Spring.SwipeFling.damping)
     /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
-    static let feedbackButtonSpring = Animation.spring(response: 0.22, dampingFraction: 0.72)
+    static let feedbackButtonSpring = Animation.spring(response: DesignTokens.Motion.Spring.FeedbackButton.response, dampingFraction: DesignTokens.Motion.Spring.FeedbackButton.damping)
     /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）
-    static let swipeTrackingSpring = Animation.interactiveSpring(response: 0.14, dampingFraction: 0.86)
+    static let swipeTrackingSpring = Animation.interactiveSpring(response: DesignTokens.Motion.Spring.SwipeTracking.response, dampingFraction: DesignTokens.Motion.Spring.SwipeTracking.damping)
 
     // --- Visual polish tokens ---
     static let pressFeedback: Animation = .spring(response: DesignTokens.Motion.Spring.Press.response, dampingFraction: DesignTokens.Motion.Spring.Press.damping)
     static let contentReveal: Animation = .spring(response: DesignTokens.Motion.Spring.ContentReveal.response, dampingFraction: DesignTokens.Motion.Spring.ContentReveal.damping)
-    static let celebrationBounce: Animation = .spring(response: 0.4, dampingFraction: 0.55)
-    static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
+    static let celebrationBounce: Animation = .spring(response: DesignTokens.Motion.Spring.CelebrationBounce.response, dampingFraction: DesignTokens.Motion.Spring.CelebrationBounce.damping)
+    static let sheetContentAppear: Animation = .spring(response: DesignTokens.Motion.Spring.SheetContentAppear.response, dampingFraction: DesignTokens.Motion.Spring.SheetContentAppear.damping)
 
     // Semantic motion tokens for shared interaction patterns.
     // 每個語意 token 對應唯一一條曲線，不設同值別名。
@@ -88,12 +88,12 @@ enum AppMotion {
 
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
-    static let indicatorTransition = Animation.easeOut(duration: 0.25)
+    static let indicatorTransition = Animation.easeOut(duration: DesignTokens.Motion.Duration.indicator)
 
     // MARK: - Continuous / Loading Motion
 
     /// 微脈動 — 用於 empty state、loading 等需要「呼吸感」但不搶焦的元素
-    static let subtleBreath = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
+    static let subtleBreath = Animation.easeInOut(duration: DesignTokens.Motion.Duration.subtleBreath).repeatForever(autoreverses: true)
 
     // MARK: - Tap Feedback Triplet (scale + opacity + haptic)
     // 「按下去」物理感的三件套常量，供 PressableInteraction / ButtonStyle 內部使用
@@ -104,7 +104,7 @@ enum AppMotion {
         /// 按下時的透明度（opacity dip）
         static let opacityDip: Double = DesignTokens.Motion.TapFeedback.opacityDip
         /// 對應的動畫曲線
-        static let animation = Animation.interactiveSpring(response: 0.18, dampingFraction: 0.7)
+        static let animation = Animation.interactiveSpring(response: DesignTokens.Motion.Spring.TapFeedback.response, dampingFraction: DesignTokens.Motion.Spring.TapFeedback.damping)
     }
 }
 
