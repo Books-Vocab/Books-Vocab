@@ -39,6 +39,12 @@ enum UITestFixtureSeed {
                 seedSettings(id, into: container)
             case "shell":
                 seedShell(id, into: container)
+            case "search":
+                seedSearch(id, into: container)
+            case "reader":
+                seedReader(id, into: container)
+            case "notebook":
+                seedNotebook(id, into: container)
             default:
                 AppLog.app.warning("Unknown UI-test fixture domain: \(domain)")
             }

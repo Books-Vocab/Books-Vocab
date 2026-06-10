@@ -114,6 +114,7 @@ struct NotebookReviewActionBar: View {
                     }
                 }
             }
+            .accessibilityIdentifier("notebook.reviewCTA")
             .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalReview)"))
         } else if dueCount > 0 {
             Button(action: onReviewDue) {
@@ -128,6 +129,7 @@ struct NotebookReviewActionBar: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("notebook.reviewCTA")
             .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(dueCount)"))
         } else if unlearnedCount > 0 {
             Button(action: onReviewUnlearned) {
@@ -142,6 +144,7 @@ struct NotebookReviewActionBar: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("notebook.reviewCTA")
             .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(unlearnedCount)"))
         }
     }

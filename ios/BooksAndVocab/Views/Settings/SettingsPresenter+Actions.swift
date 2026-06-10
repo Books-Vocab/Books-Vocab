@@ -31,6 +31,10 @@ struct SettingsNavigationRow<Trailing: View>: View {
                 }
             }
             .appHoverRowTint()
+            // .plain button hit-testing falls through transparent pixels, so
+            // without an explicit shape only the label/value text is tappable
+            // and the whole middle of the row (the Spacer gap) is dead.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .enableInjection()
@@ -68,6 +72,8 @@ struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
             .padding(.horizontal, appSkin.spacing.cardPadding)
             .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
             .appHoverRowTint()
+            // Same dead-middle-of-the-row hole as SettingsNavigationRow.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .enableInjection()

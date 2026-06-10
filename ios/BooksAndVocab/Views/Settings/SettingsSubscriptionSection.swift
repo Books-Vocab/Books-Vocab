@@ -76,6 +76,10 @@ struct SettingsSubscriptionSection: View {
                         systemImage: "arrow.right.circle.fill",
                         isLoading: state.isRefreshing
                     )
+                    // .plain hit-testing falls through the Spacer gap between
+                    // the title and the trailing chevron — same dead zone as
+                    // SettingsNavigationRow.
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(state.isRefreshing)

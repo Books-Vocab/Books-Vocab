@@ -246,6 +246,7 @@ struct KGVocabRow: View {
         }
         .appHoverRowTint(cornerRadius: KGVocabRowChrome.hoverCornerRadius)
         .padding(.horizontal, AppSpacing.s1)
+        .accessibilityIdentifier("vocab.row.\(entry.word)")
         .transition(.listSwap)
     }
 }
