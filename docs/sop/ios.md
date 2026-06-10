@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 655dea9c
+verified_against: 1cb400cb
 -->
 # Books & Vocab iOS 開發技能
 
@@ -70,6 +70,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ./ops/ios_ops.sh snapshot --json --skip-xcode # 快速模式:不拉 Xcode destination/simulator inventory
 ./ops/ios_ops.sh snapshot --json --skip-simulator # 快速模式:不拉 booted simulator/app process
 ./ops/ios_ops.sh snapshot --json --include-logs --log-limit 50 # 同上,再內嵌 runtime logs
+./ops/ios_ops.sh review-probe --simulator --flips 30 # review-flip 自主量測 rig（passthrough review_flip_probe.sh；--device <udid> / --release / --instruments；exit 0 pass / 1 fail / 2 invalid / 64 usage）
 ./ops/ios_ops.sh commands --json        # 自描述 CLI catalog:side-effect / schema / delegate
 ```
 
