@@ -34,6 +34,11 @@ struct PodcastPage {
             .firstMatch
     }
 
+    /// Episode row by full AX identifier (e.g. `PodcastFixture.episode2RowID`).
+    func episodeRow(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
     // MARK: - Player
 
     var playerSettingsButton: XCUIElement {
