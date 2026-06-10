@@ -54,5 +54,18 @@ enum UITestFixtureSeed {
         }
     }
 
+    /// 非容器寫入面的 auth 防線：`AuthManager.login` 經 AuthSessionStore 直寫
+    /// 真實 UserDefaults + Keychain。真機上跑 signedIn 類 fixture 會用假 token
+    /// 蓋掉使用者真 session——下次正常啟動 401 → 自動 logout + clearLocalData，
+    /// 2026-06-10 事故經另一儲存平面重演。與 settings/reader fixture 同款
+    /// simulator gate；fixture 一律經此 helper，不得直呼 login。
+    @MainActor
+    static func seedLogin(userId: String, token: String) {
+        #if targetEnvironment(simulator)
+        AuthManager.shared.login(userId: userId, token: token)
+        #else
+        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session (userId: \(userId))")
+        #endif
+    }
 }
 #endif

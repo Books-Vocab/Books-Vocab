@@ -26,12 +26,18 @@ extension UITestFixtureSeed {
 
     @MainActor
     private static func seedAuthSignedInSession() {
+        // 整段 simulator-gate（不只 login）：displayName/userEmail setter 也會
+        // 被 login() 持久化進真實 UserDefaults，真機上一併拒絕。
+        #if targetEnvironment(simulator)
         let auth = AuthManager.shared
         // Profile first — login() persists the current displayName/userEmail.
         auth.displayName = "UI Auth Tester"
         auth.userEmail = "ui-auth-tester@example.com"
         auth.login(userId: "ui-auth-user", token: "ui-auth-user-token")
         AppLog.app.info("UI-test fixture seeded: auth.signedIn")
+        #else
+        AppLog.app.error("UITestFixtureSeed: refused auth.signedIn on physical device — would overwrite the real Keychain session")
+        #endif
     }
 
     @MainActor

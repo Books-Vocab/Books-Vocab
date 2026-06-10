@@ -54,7 +54,7 @@ extension UITestFixtureSeed {
             context.insert(series)
             context.insert(episode)
             try context.save()
-            AuthManager.shared.login(userId: "ui-podcast-free", token: "ui-podcast-free-token")
+            seedLogin(userId: "ui-podcast-free", token: "ui-podcast-free-token")
             AppLog.app.info("UI-test fixture seeded: podcast.playablePreview")
         } catch {
             AppLog.app.error("Failed to seed podcast fixture: \(error)")
