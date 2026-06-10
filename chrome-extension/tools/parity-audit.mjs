@@ -12,29 +12,25 @@
  *   tools/audit/summary.json          all cases in one file
  *
  * Usage:  node tools/parity-audit.mjs [--only <case-substring>]
- * Env:    IOS_REF_DIR  iOS reference PNG folder (default: ~/Desktop/IOS截圖參考)
+ * Env:    KG_CATALOG_ROOT  catalog snapshot root override (default: newest
+ *         usable build/snapshots/catalog-full-<UTC> — see ios-ref.mjs)
  */
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
+
+import { PARITY } from './parity-manifest.mjs';
+import { resolveCatalogRoot, resolveRef } from './ios-ref.mjs';
 
 const EXT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = resolve(EXT_DIR, '..');
 const SHOTS = join(EXT_DIR, 'tools', 'shots');
 const OUT = join(EXT_DIR, 'tools', 'audit');
-const IOS_REF = process.env.IOS_REF_DIR || join(homedir(), 'Desktop', 'IOS截圖參考');
+const CATALOG_ROOT = resolveCatalogRoot({ repoRoot: REPO_ROOT });
 const onlyIdx = process.argv.indexOf('--only');
 const ONLY = onlyIdx >= 0 ? process.argv[onlyIdx + 1] : null;
-
-const PARITY = [
-  { case: 'sidepanel-content-light', ref: 'IMG_8954.PNG', note: '單字本列表 (light)' },
-  { case: 'sidepanel-content-dark', ref: 'IMG_8954.PNG', note: '單字本列表 (dark)' },
-  { case: 'sidepanel-content-sepia', ref: 'IMG_8954.PNG', note: '單字本列表 (sepia)' },
-  { case: 'sidepanel-detail-light', ref: 'IMG_8955.PNG', note: '單字詳情' },
-  { case: 'options-settings-light', ref: 'IMG_8957.PNG', note: '設定頁（已登入/Pro）' },
-];
 
 const magick = (args, opts = {}) =>
   execFileSync('magick', args, { stdio: opts.stdio || 'pipe', encoding: opts.encoding || 'utf8' });
@@ -112,11 +108,15 @@ function buildZoom(ref, shot, outDir, w, h) {
   magick(['montage', ...tiles, '-tile', '1x', '-geometry', '+0+16', '-background', '#222222', join(outDir, 'zoom.png')]);
 }
 
+function refLabel(ref) {
+  return `${ref.surface} / ${ref.scenario} (${ref.appearance})`;
+}
+
 function auditCase(item) {
   const shot = join(SHOTS, `${item.case}.png`);
-  const ref = join(IOS_REF, item.ref);
+  const ref = resolveRef(CATALOG_ROOT, item.ref);
   if (!existsSync(shot)) throw new Error(`missing shot: ${shot}`);
-  if (!existsSync(ref)) throw new Error(`missing iOS ref: ${ref}`);
+  if (!ref) throw new Error(`missing catalog ref for ${item.case}: ${refLabel(item.ref)}`);
 
   const outDir = join(OUT, item.case);
   rmSync(outDir, { recursive: true, force: true });
@@ -134,7 +134,7 @@ function auditCase(item) {
   const metrics = {
     case: item.case,
     note: item.note,
-    reference: item.ref,
+    reference: refLabel(item.ref),
     dimensions: d,
     rmse: parseMetric(metric(refNorm, shotNorm, 'RMSE')),
     mae: parseMetric(metric(refNorm, shotNorm, 'MAE')),
@@ -153,12 +153,14 @@ function auditCase(item) {
 }
 
 function main() {
-  if (!existsSync(IOS_REF)) {
-    console.error(`iOS ref dir not found: ${IOS_REF}`);
+  if (!CATALOG_ROOT) {
+    console.error('no usable catalog snapshot root under build/snapshots');
+    console.error('generate one: ./ops/ios_ops.sh catalog snapshots  (or set KG_CATALOG_ROOT)');
     process.exit(1);
   }
   mkdirSync(OUT, { recursive: true });
-  const cases = ONLY ? PARITY.filter((p) => p.case.includes(ONLY)) : PARITY;
+  const refCases = PARITY.filter((p) => p.ref);
+  const cases = ONLY ? refCases.filter((p) => p.case.includes(ONLY)) : refCases;
   if (cases.length === 0) {
     console.error(`no parity case matches --only ${ONLY}`);
     process.exit(1);
