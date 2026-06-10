@@ -23,12 +23,13 @@ enum AppBootstrap {
     ]
 
     @MainActor
-    static func run() -> Outcome {
+    static func run(arguments: [String] = ProcessInfo.processInfo.arguments) -> Outcome {
         // UI-test / probe 隔離（2026-06-10 事故）：fixture 會 wipe+seed
         // VocabularyEntry，掛真用戶 on-disk store 等於清掉整個本地單字庫；
         // CloudKit 一併斷開，真機跑 probe 不得污染 iCloud。fixture seed 端
         // 另有 in-memory guard（UITestFixtureSeed），雙層互為防線。
-        if AppRuntimeOptions.isUITesting() {
+        // arguments 注入縫供單元測試釘住這一層（預設讀真實 ProcessInfo）。
+        if AppRuntimeOptions.isUITesting(arguments: arguments) {
             let ephemeral = makeFallbackModelContainer()
             AuthManager.shared.modelContainer = ephemeral
             AppLog.app.info("UI-testing: ephemeral in-memory ModelContainer (no CloudKit)")

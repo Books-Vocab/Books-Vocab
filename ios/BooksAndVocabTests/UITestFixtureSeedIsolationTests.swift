@@ -12,6 +12,9 @@ import Testing
 ///
 /// 契約（雙層防禦的 seed 層）：fixture seeding 只允許對「全 in-memory」容器
 /// 動手；任何 persistent 配置一律拒絕且不得改動任何資料。
+/// .serialized：每案例各建 SwiftData 容器，平行跑會在共享 entity 註冊上
+/// 互踩（實測 signal abrt）；序列化讓容器生命週期不重疊。
+@Suite(.serialized)
 @MainActor
 struct UITestFixtureSeedIsolationTests {
     private static let seedArguments = ["-ui-testing", "-seedFixture:todayReview:deck"]
@@ -48,6 +51,52 @@ struct UITestFixtureSeedIsolationTests {
             .map(\.word)
         #expect(words == ["irreplaceable"], "persistent store 不可被 wipe/seed，實際: \(words.count) 筆")
         #expect(!words.contains { $0.hasPrefix("probeword") })
+    }
+
+    /// 混合配置（部分 persistent）必須整體拒絕——allSatisfy 語意核心。
+    @Test func seedRefusesMixedConfigurationContainer() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("seed-guard-mixed-\(UUID().uuidString).store")
+        defer {
+            for suffix in ["", "-shm", "-wal"] {
+                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            }
+        }
+        // 拆分鏡像 app 真實形狀（vocab 三件組一個 store、Book 另一個）——
+        // 有關聯的模型不可跨 store 拆，亂拆 container init 會 throw。
+        let memoryConfig = ModelConfiguration(
+            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self]),
+            isStoredInMemoryOnly: true
+        )
+        let diskConfig = ModelConfiguration(
+            schema: Schema([Book.self]),
+            url: url,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, Book.self]),
+            configurations: memoryConfig, diskConfig
+        )
+
+        UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+
+        let count = try container.mainContext.fetchCount(FetchDescriptor<VocabularyEntry>())
+        #expect(count == 0, "混合配置容器必須整體拒絕 seeding")
+    }
+
+    /// 第一層防線（bootstrap）：-ui-testing 必須拿到全 in-memory 容器。
+    /// 回歸症狀若無此測會以「seed 靜默拒絕→deck=0」的下游困惑形式出現。
+    @Test @MainActor func bootstrapUITestingYieldsEphemeralContainer() throws {
+        let previous = AuthManager.shared.modelContainer
+        defer { AuthManager.shared.modelContainer = previous }
+
+        let outcome = AppBootstrap.run(arguments: ["-ui-testing"])
+
+        let configs = outcome.container.configurations
+        let allInMemory = configs.allSatisfy { $0.isStoredInMemoryOnly }
+        #expect(!configs.isEmpty)
+        #expect(allInMemory)
+        #expect(outcome.failure == nil)
     }
 
     @Test func seedSeedsEphemeralStore() throws {

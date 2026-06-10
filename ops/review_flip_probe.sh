@@ -177,7 +177,11 @@ if [[ "$MODE" == "simulator" ]]; then
   log "installing on simulator $UDID…"
   xcrun simctl install "$UDID" "$APP"
   log "launching probe (flips=$FLIPS deck=$DECK timeout=${TIMEOUT}s)…"
+  # KG_UI_TEST_SERVER_URL=啞端點：第三層防線，fixture 世界永不打真後端。
+  # 注意 override 是 #if DEBUG（Release 編譯掉）——Release run 的防線是
+  # ephemeral 容器 + ReviewProbeScene 不掛 sync handler；此 env 蓋 Debug。
   SIMCTL_CHILD_KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
+    SIMCTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
     xcrun simctl launch --console-pty --terminate-running-process \
     "$UDID" "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" \
     >"$CONSOLE" 2>&1 &
@@ -254,7 +258,9 @@ else
     log "trace saved: $TRACE"
   else
     log "launching probe (flips=$FLIPS deck=$DECK timeout=${TIMEOUT}s)…"
+    # server URL 啞端點防線同 sim 路徑（#if DEBUG 語意見上）。
     DEVICECTL_CHILD_KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
+      DEVICECTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
       xcrun devicectl device process launch --console --terminate-existing \
       --device "$UDID" -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
     LAUNCH_PID=$!

@@ -68,7 +68,11 @@ struct BooksAndVocabApp: App {
         #endif
 
         // Always recover orphan book files (idempotent — skips files with existing records)
-        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
+        // -ui-testing 下跳過：它對「真實 Books 目錄」reconcile（manifest 有
+        // 磁碟寫入），且跑在 fixture seed 之後——會把真機使用者的真書/髒模擬器
+        // 殘留收編進 ephemeral 容器，破壞 fixture 決定性與截圖隱私。
+        if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments),
+           !AppRuntimeOptions.isUITesting(arguments: runtimeArguments) {
             AppOrphanBookRecovery.run(container: outcome.container)
         }
 
