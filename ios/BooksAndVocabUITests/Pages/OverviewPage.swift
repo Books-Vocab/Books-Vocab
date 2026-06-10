@@ -4,6 +4,15 @@ import XCTest
 struct OverviewPage {
     let app: XCUIApplication
 
+    // MARK: - Content
+
+    /// Rendered stats dashboard (only present when the summary computed from
+    /// synced entries + review records is non-empty — i.e. real content phase,
+    /// not loading / empty / logged-out).
+    var statsContent: XCUIElement {
+        app.descendants(matching: .any)["overview.statsContent"].firstMatch
+    }
+
     // MARK: - Assertions
 
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {

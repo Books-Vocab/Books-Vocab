@@ -12,6 +12,7 @@ enum UITestFixture: Equatable {
     case authTieredCatalog
     case authSignedIn
     case settingsCleanPreferences
+    case shellNavigation
 
     var launchArgument: String {
         switch self {
@@ -27,6 +28,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:auth:signedIn"
         case .settingsCleanPreferences:
             return "-seedFixture:settings:cleanPreferences"
+        case .shellNavigation:
+            return "-seedFixture:shell:navigation"
         }
     }
 }
