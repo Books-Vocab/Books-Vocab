@@ -29,6 +29,7 @@ DEFAULT_TESTS=(
   deploy-smoke
   infra-health
   branch-audit
+  converge-board
   review-audit
   capability-matrix
   ui-deadcode
@@ -78,6 +79,9 @@ run_one() {
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
+    converge-board)
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_converge_board.py
+      ;;
     review-audit)       ./ops/tests/test_review_audit.sh ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_capability_matrix.py

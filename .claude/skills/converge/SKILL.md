@@ -22,6 +22,58 @@ version: 2.0.0
 
 ---
 
+## 溝通協定（Board Protocol）
+
+把每條 branch/worktree 當成看板上的一張**卡（card）**，對每張卡標一個**處置（disposition）**，工具調查、agent 執行、receipt 留痕。這是上面三種模式的統一溝通語彙——「all 白」「B, <branch>」就是在這套協定下標卡。
+
+### 一輪的形狀（固定四步）
+
+1. **調查 board** — `uv run python ops/converge_board.py board`：一鍵分類所有卡，取代每輪手刻 bash 重判 ahead/behind/dirty/patch-是否已在-main/有無 origin/checked-out 在哪/是否 live。工具**唯讀 git、fetch-first**（main 會在你手下被平行推進）。
+2. **標記 disposition** — 使用者（或 agent 依工具的建議欄）對每張卡標白/黑/B/凍/存。標完用 `plan --marks "..."` 乾跑預覽每卡會做哪些 git 動作（**不執行**），確認無誤。
+3. **執行 assemble → gate → cutover** — 所有要進 main 的工作**組裝成單一 candidate**（白吸收、B 落地已提交子集），末端**一次** build-gate「要推的那個 commit」（在乾淨臨時 worktree 編，非 dirty working tree，見下方「Build gate 編 commit」），綠了再**極短 cutover** 推 main，然後 rebase/sync/刪殘影。
+4. **紀錄 receipt** — `receipt --round-at <ts> --before b.json --after a.json ...` 吐固定一輪 markdown（board-before 每卡 state、每卡 disposition、candidate sha、gate verdict、main before→after、pushed/deleted/kept）。**時間從外部傳入，工具不碰 now()**（KG 慣例）。讓下輪與使用者看得見歷史。
+
+### State taxonomy（`converge_board.py` 的 7 個 canonical state）
+
+| state | 意義 | 典型建議 |
+|-------|------|----------|
+| `CURRENT` | == main（0 unique、clean） | 黑（rebase no-op）/ 留 |
+| `MERGED` | patch 已全進 main 但 ref 還停在舊 tip（冗餘） | 白（已在 main，吸收+刪冗餘 ref） |
+| `AHEAD` | 乾淨、有 unique 已提交工作、在 main 之上 | B 或 白 |
+| `DIRTY` | worktree 有未提交改動（**壓倒性優先**，蓋過所有已提交分桶） | 存（先 snapshot） |
+| `DIVERGED` | local 已 rebase 但 origin tracking ref 落後，待 force-push sync | 黑（含 origin sync） |
+| `STALE_BASE` | behind main，需先 rebase 才能乾淨落地 | 黑（rebase） |
+| `ORPHAN` | detached worktree 無 branch | 清 worktree |
+
+precedence：`ORPHAN`（無 branch 可動）> `DIRTY`（有未提交）> 已提交分桶（`MERGED`/`STALE_BASE`/`DIVERGED`/`AHEAD`）。live-agent 啟發式：worktree 有 unique 已提交且 HEAD 是近期 commit → 仍歸 `AHEAD`，但建議 **凍**（不動 live agent）。
+
+### Disposition 語彙
+
+| mark | 別名 | 語意 | 對 branch | 對 main | 對 worktree |
+|------|------|------|-----------|---------|-------------|
+| **白** | white / W | 吸收進 main + 刪 branch | **刪**（local+remote） | 前進（組裝進 candidate） | **預設保留**（除非明說刪） |
+| **黑** | black / K | rebase 到最新 main + 保留 | 保留、rebase | **不前進** | 不動（有 origin 則 sync） |
+| **B** | promote | 已提交工作落地 + 保留 + sync | 保留、rebase | 前進（組裝進 candidate） | 不動 |
+| **凍** | freeze / F | 完全不動（live agent / 沒好） | 不動 | 不動 | 不動 |
+| **存** | snap / S | **修飾詞**：dirty 先 snapshot commit 再執行底下處置 | — | — | snapshot commit（不 stash） |
+| （清） | clean / 清 | 清 orphan worktree | — | — | `git worktree remove` / prune |
+
+語法：批量 `all 白` / `all 黑`；逐卡 `B, <branch>` / `白, <branch>`；鏈式依序執行。`存` 套在任一前面，如 `存白, <branch>` = 先 snapshot 再白。CLI 對應：`plan --marks "all=black"`、`plan --marks "feat-x=B,docs-y=white"`（mark 接受 white/W/白、black/K/黑、B/promote、freeze/F/凍、snap/S/存、clean/清）。
+
+### 執行不變量（鐵律落地，不可繞）
+
+- **fetch-first** — 每輪第一步 `git fetch` + porcelain；信當下 porcelain，不信注入的舊 status snapshot。main 會在你手下被平行 commit 推進，just-in-time rebase。
+- **dirty 先 snapshot，永不 stash** — dirty 卡（含被任何非凍處置選中的 dirty worktree）先 `git add -A && commit` snapshot，**絕不 stash**（會丟使用者身份/未提交 work）。
+- **single-candidate-gate** — 所有要進 main 的工作組裝成**單一 candidate**，末端**一次** build-gate（編 commit 非 dirty working tree），不分段 gate。
+- **never-clobber-main-dirty** — 不覆寫 main worktree 的 dirty；gate 在臨時乾淨 worktree 編。
+- **白刪 branch 留 worktree** — 白 = 刪 branch（local+remote），worktree **預設保留**（除非明說）。
+- **B/黑 要 rebase + sync 保留的 branch** — 保留的 branch 落地後 rebase 到新 main，有 origin tracking 則 `--force-with-lease` sync。
+- **force-push 只用 `--force-with-lease`**；刪 remote 前先確認存在，不存在跳過。
+
+調查引擎：`ops/converge_board.py`（`board` / `plan` / `receipt`，唯讀 git，schema `kg.converge.board.v1`，pure 層全 7 state 有單元測試 `ops/tests/test_converge_board.py` / `test_ops.sh converge-board`）。執行細節（assemble/gate/cutover/清殘影）見下方各模式 recipe；build-gate 與 `merge=union` 自動化見「高效配方」段，與本協定交叉引用。
+
+---
+
 ## 高效配方（先認形狀，再動手）
 
 別逐步探索 —— `branch -vv` 的 ahead/behind + commit subject 通常一眼就定形狀。對症下藥：
