@@ -322,6 +322,10 @@ final class PodcastPlayerViewModel {
         playbackAnchor = PodcastPlaybackClock.makeAnchor(
             mediaTime: currentTime, now: nowRef(), rate: Double(playbackRate)
         )
+        PerfLog.audio.mark(
+            "podcast.player.play.started",
+            "time=\(Self.debugClock(currentTime)) duration=\(Self.debugClock(duration)) rate=\(playbackRate)"
+        )
     }
 
     func pause() {
@@ -329,6 +333,10 @@ final class PodcastPlayerViewModel {
         state = .paused
         playbackAnchor = PodcastPlaybackClock.makeAnchor(
             mediaTime: currentTime, now: nowRef(), rate: 0
+        )
+        PerfLog.audio.mark(
+            "podcast.player.pause",
+            "time=\(Self.debugClock(currentTime)) duration=\(Self.debugClock(duration))"
         )
     }
 
@@ -365,6 +373,10 @@ final class PodcastPlayerViewModel {
         // The engine's seek-completion tick re-anchors with the real rate via
         // handleTimeUpdate once playback genuinely resumes.
         playbackAnchor = PodcastPlaybackClock.makeAnchor(mediaTime: time, now: nowRef(), rate: 0)
+        PerfLog.audio.mark(
+            "podcast.player.seek",
+            "target=\(Self.debugClock(time)) autoResume=\(shouldResume)"
+        )
     }
 
     func skip(seconds: Double) {
@@ -381,6 +393,10 @@ final class PodcastPlayerViewModel {
         let effective = state == .playing ? Double(next) : 0
         playbackAnchor = PodcastPlaybackClock.anchorAfterRateChange(
             old: playbackAnchor, now: nowRef(), newRate: effective, duration: duration
+        )
+        PerfLog.audio.mark(
+            "podcast.player.rate.changed",
+            "rate=\(next) effective=\(effective) time=\(Self.debugClock(currentTime))"
         )
     }
 
@@ -421,6 +437,11 @@ final class PodcastPlayerViewModel {
         sleepTimerSource?.cancel()
         sleepTimerSource = nil
         sleepTimerFiredTick &+= 1
+    }
+
+    private static func debugClock(_ value: TimeInterval) -> String {
+        guard value.isFinite, !value.isNaN else { return "nan" }
+        return String(format: "%.2f", value)
     }
 
     // MARK: - Word Tap
