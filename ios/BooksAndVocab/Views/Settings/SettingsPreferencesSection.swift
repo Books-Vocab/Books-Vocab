@@ -46,7 +46,9 @@ struct SettingsPreferencesSection: View {
                         text: "\(state.translationSource) → \(state.translationTarget)",
                         color: appSkin.palette.secondaryText
                     )
+                    .accessibilityIdentifier("settings.preferences.translationLanguageValue")
                 }
+                .accessibilityIdentifier("settings.preferences.translationLanguageRow")
 
                 SettingsDivider()
 
@@ -83,7 +85,9 @@ struct SettingsPreferencesSection: View {
                         text: state.selectedReviewMode,
                         color: appSkin.palette.secondaryText
                     )
+                    .accessibilityIdentifier("settings.preferences.reviewRhythmValue")
                 }
+                .accessibilityIdentifier("settings.preferences.reviewRhythmRow")
 
                 if state.showAutoSync {
                     SettingsDivider()

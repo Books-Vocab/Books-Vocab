@@ -155,6 +155,9 @@ final class SettingsCoordinator: SettingsCoordinating {
         var s = reviewSettingsStore.settings
         if isPaused { s.pauseProgress() } else { s.resumeProgress() }
         reviewSettingsStore.update(s)
+        // Semantic perf mark: the optimistic local write is the moment the pause
+        // state becomes effective for the UI (backend push is best-effort after).
+        PerfLog.settings.mark("reviewClock.pause", "isPaused=\(isPaused)")
 
         guard authManager.isLoggedIn else { return true }
 
@@ -189,6 +192,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     ) async -> Bool {
         let snapshot = reviewSettingsStore.reviewModeSnapshot   // 寫之前快照,rollback 用
         reviewSettingsStore.update(newSettings)
+        PerfLog.settings.mark("reviewMode.changed", "mode=\(newSettings.mode.rawValue)")
 
         guard authManager.isLoggedIn else { return true }
 
@@ -279,6 +283,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         translationTargetLang = target
         TranslationLanguage.currentSource = source
         TranslationLanguage.currentTarget = target
+        PerfLog.settings.mark("translation.changed", "source=\(source.rawValue) target=\(target.rawValue)")
 
         guard authManager.isLoggedIn else { return true }
         do {
