@@ -11,7 +11,7 @@ scope:
   - ios/BooksAndVocab/AppStartupRecovery.swift
   - ios/BooksAndVocab/Services/BookMetadataRepairService.swift
   - ios/BooksAndVocab/Services/BookMetadataExtracting.swift
-verified_against: a462e161
+verified_against: 81d7fa27
 -->
 # Bookshelf Feature Boundary
 
@@ -58,6 +58,7 @@ verified_against: a462e161
 - `BookshelfCoordinator`：書架導航與 sheet 狀態（匯入 / 詳情 / 批次刪除確認），由 `BookshelfView` 持有，不外洩
 - 書籍資料來源於 SwiftData `@Query` + `@Environment(\.modelContext)`，不放 coordinator（播客 series 已遷至 `PodcastHomeView`）
 - 匯入進度狀態走 `ImportProgressCallback`（app shell 層），不放 feature
+- **帳號生命週期**：書庫綁 **Apple ID 非 app 帳號**（`Book` 在 `CloudStore` CloudKit，檔案在 per-Apple-ID iCloud/Documents）。登出 / account-switch 的 `clearUserData`（`BackgroundSyncActor`）**刻意不刪 Book 行**——清掉只會讓重登後書架空白（檔案仍在、冷啟動 `AppOrphanBookRecovery` reconciler 又補回），且本地 delete 可能反向傳播到 CloudKit。登入轉換（`BooksAndVocabApp` post-login）另呼叫一次 `AppOrphanBookRecovery.run` 作安全網，即時補建任何被清空 / 尚未 CloudKit-sync 的列（2026-06-10）
 
 ## 共用依賴
 

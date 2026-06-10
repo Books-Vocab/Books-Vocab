@@ -51,7 +51,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | `Notebook` metadata | iOS `LocalStore` projection；backend `/api/notebooks/*` + `notebooks.db` | **大致後端權威化** | 自訂 cover photo 仍是本機 file path；遠端 cover asset 尚未成為權威 |
 | `PodcastSeries` / `PodcastEpisode` catalog | iOS `LocalStore` cache；backend `/api/podcasts*` + object storage metadata | **catalog 已後端權威化** | `PodcastSeries.isFollowed` 仍是本機欄位 |
 | `PodcastProgress` | iOS `CloudStore` CloudKit；backend `podcast_progress.db` LWW | **後端已有權威面，但 iOS 仍未退 CloudKit** | 需要補推/觀測/再 local-only 退場，不能一步刪 CloudKit |
-| `Book` metadata / reading progress | iOS `CloudStore` CloudKit `Book` | **未後端化** | 無 backend library API、無 `remoteBookId`、無 position outbox |
+| `Book` metadata / reading progress | iOS `CloudStore` CloudKit `Book` | **未後端化；綁 Apple ID 非 app 帳號** | 無 backend library API、無 `remoteBookId`、無 position outbox；登出 / account-switch **不清** Book 行（`clearUserData` 刻意排除，2026-06-10），與 per-Apple-ID 檔案範疇對齊 |
 | Book 原始檔 / converted EPUB / originals | iCloud container `Documents/Books` 或 local `Documents/Books` / `Originals` | **未後端化** | 無 object storage asset manifest、upload/download/quota/privacy policy |
 | Reader settings | `ReaderSettings` UserDefaults + iCloud KVS | **未後端化** | font/size/line-height/scroll/underline 尚無 server config domain |
 | Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation`（含 `updated_at`） | **三層後端化**（Feature C；source/target 共用單一 group `updated_at` 整組 LWW + server cold-start wins、只寫本地不回寫 KVS） | 對標其他 group：backend 真 LWW 待 `serverTranslationLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威 |
@@ -229,7 +229,8 @@ Operational observability：
 
 > **注意：執行緒安全 & 帳號隔離**
 > - 所有與後端同步並寫入 SwiftData 的操作，都會使用獨立的背景 `ModelContext` 來執行，避免 UI 卡頓
-> - 帳號切換時，`AuthManager.logout()` 會自動呼叫 `KGService.clearLocalData()` 以清除舊帳號的 SwiftData，確保完全隔離
+> - 帳號切換時，`AuthManager.logout()` 會自動呼叫 `clearLocalData()` 清除**app-account-scoped** 的 SwiftData（vocab / review / notebook / podcast series·episode·progress），確保隔離
+> - **例外：`Book` 刻意不清**。書庫綁 Apple ID（`CloudStore` CloudKit + per-Apple-ID 檔案）而非 app 帳號；清 Book 行只會讓重登後書架空白（檔案仍在、冷啟動 reconciler 又補回），故 `clearUserData` 排除 Book。登入轉換另呼叫 `AppOrphanBookRecovery.run` 即時補建被清空的列（2026-06-10）
 
 ---
 
