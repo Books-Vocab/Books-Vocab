@@ -11,6 +11,7 @@ enum UITestFixture: Equatable {
     case podcastPlayablePreview
     case authTieredCatalog
     case authSignedIn
+    case settingsCleanPreferences
 
     var launchArgument: String {
         switch self {
@@ -24,6 +25,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:auth:tieredCatalog"
         case .authSignedIn:
             return "-seedFixture:auth:signedIn"
+        case .settingsCleanPreferences:
+            return "-seedFixture:settings:cleanPreferences"
         }
     }
 }
