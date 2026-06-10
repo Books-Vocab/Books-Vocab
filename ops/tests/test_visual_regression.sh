@@ -20,6 +20,7 @@ fi
 VR=("$UV_BIN" run --no-project --python 3.13 python ops/visual_regression.py)
 
 command -v magick >/dev/null 2>&1 || { echo "✗ test 需要 ImageMagick (magick)" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "✗ test 需要 jq" >&2; exit 1; }
 
 pass=0
 fail=0
@@ -106,10 +107,13 @@ else
 fi
 
 section "--auto root pairing"
-OUT="$(KG_VISREG_SNAPSHOTS="$TMP" "${VR[@]}" --auto --json 2>/dev/null)"; RC=$?
+# usable manifest + lexicographically after catalog-full-*: must NOT be paired.
+make_root "$TMP/gallery-admin-preview"
+draw_a "$TMP/gallery-admin-preview/Dev portrait/Surface_One/Same.png"
+OUT="$(KG_VISREG_SNAPSHOTS="$TMP" "${VR[@]}" --auto --json 2>/dev/null)"
 if jq -e '.baseline | endswith("catalog-full-20260101-000000")' <<<"$OUT" >/dev/null 2>&1 \
   && jq -e '.current | endswith("catalog-full-20260201-000000")' <<<"$OUT" >/dev/null 2>&1; then
-  ok "--auto pairs newest as current, previous as baseline"
+  ok "--auto pairs newest catalog-full as current, skipping side artifacts"
 else
   fail_t "--auto pairing wrong: $OUT"
 fi
