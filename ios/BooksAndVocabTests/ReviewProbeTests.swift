@@ -12,27 +12,35 @@ import Testing
 
 @Suite("ReviewProbeOptions")
 struct ReviewProbeOptionsTests {
+    private let base = ["-ui-testing"]
+
     @Test func parsesFlipCount() {
-        let plan = ReviewProbeOptions.plan(arguments: ["-reviewProbe", "30"])
+        let plan = ReviewProbeOptions.plan(arguments: base + ["-reviewProbe", "30"])
         #expect(plan?.flipCount == 30)
     }
 
+    /// probe 必須與 fixture seeding 同場啟用 — 沒帶 -ui-testing 一律不啟動，
+    /// 擋住「對 live container 真實卡片 submit」的 dev footgun。
+    @Test func requiresUITestingFlag() {
+        #expect(ReviewProbeOptions.plan(arguments: ["-reviewProbe", "30"]) == nil)
+    }
+
     @Test func absentArgumentMeansInactive() {
-        #expect(ReviewProbeOptions.plan(arguments: ["-skipWelcome"]) == nil)
+        #expect(ReviewProbeOptions.plan(arguments: base + ["-skipWelcome"]) == nil)
         #expect(ReviewProbeOptions.plan(arguments: []) == nil)
     }
 
     @Test func invalidCountMeansInactive() {
-        #expect(ReviewProbeOptions.plan(arguments: ["-reviewProbe", "abc"]) == nil)
-        #expect(ReviewProbeOptions.plan(arguments: ["-reviewProbe", "0"]) == nil)
-        #expect(ReviewProbeOptions.plan(arguments: ["-reviewProbe", "-5"]) == nil)
-        #expect(ReviewProbeOptions.plan(arguments: ["-reviewProbe", "501"]) == nil)
-        #expect(ReviewProbeOptions.plan(arguments: ["-reviewProbe"]) == nil)
+        #expect(ReviewProbeOptions.plan(arguments: base + ["-reviewProbe", "abc"]) == nil)
+        #expect(ReviewProbeOptions.plan(arguments: base + ["-reviewProbe", "0"]) == nil)
+        #expect(ReviewProbeOptions.plan(arguments: base + ["-reviewProbe", "-5"]) == nil)
+        #expect(ReviewProbeOptions.plan(arguments: base + ["-reviewProbe", "501"]) == nil)
+        #expect(ReviewProbeOptions.plan(arguments: base + ["-reviewProbe"]) == nil)
     }
 
     @Test func environmentOverridesCadence() {
         let plan = ReviewProbeOptions.plan(
-            arguments: ["-reviewProbe", "10"],
+            arguments: base + ["-reviewProbe", "10"],
             environment: [
                 "KG_REVIEW_PROBE_REVEAL_MS": "1200",
                 "KG_REVIEW_PROBE_INTERFLIP_MS": "2000",
@@ -42,12 +50,17 @@ struct ReviewProbeOptionsTests {
         #expect(plan?.interFlip == .milliseconds(2000))
     }
 
-    /// inter-flip 下限 900ms：settle.frames 取樣窗 800ms，視窗重疊會污染逐 flip 數據。
-    @Test func interFlipIsClampedAboveSettleWindow() {
+    /// 兩個 cadence 下限：interFlip ≥ 900ms（settle 視窗 800ms）、
+    /// revealHold ≥ 900ms（reveal spring settle 0.85s）— 視窗重疊會污染數據。
+    @Test func cadenceOverridesAreClampedAboveSettleWindows() {
         let plan = ReviewProbeOptions.plan(
-            arguments: ["-reviewProbe", "10"],
-            environment: ["KG_REVIEW_PROBE_INTERFLIP_MS": "200"]
+            arguments: base + ["-reviewProbe", "10"],
+            environment: [
+                "KG_REVIEW_PROBE_REVEAL_MS": "200",
+                "KG_REVIEW_PROBE_INTERFLIP_MS": "200",
+            ]
         )
+        #expect(plan?.revealHold == .milliseconds(900))
         #expect(plan?.interFlip == .milliseconds(900))
     }
 
@@ -152,6 +165,24 @@ struct ReviewProbeDriverTests {
         #expect(emitted().contains { $0.hasPrefix("KG_REVIEW_PROBE abort") })
     }
 
+    /// .task 被取消（view teardown）的殘缺 run 不可發 done — 發 abort
+    /// reason=cancelled，外部 collector 才不會把它當成功。
+    @Test func cancelledRunEmitsAbortNotDone() async {
+        let session = MockSession(cards: 10)
+        let (driver, emitted) = makeDriver(plan: .standard(flipCount: 5))
+        driver.flingHandler = { _, _ in
+            session.flingSucceeded()
+            return true
+        }
+
+        let task = Task { await driver.run(session: session) }
+        task.cancel()
+        await task.value
+
+        #expect(emitted().contains { $0.hasPrefix("KG_REVIEW_PROBE abort reason=cancelled") })
+        #expect(!emitted().contains { $0.hasPrefix("KG_REVIEW_PROBE done") })
+    }
+
     /// view re-appear 會重跑 .task — run 必須 idempotent，不可重啟已完成的量測。
     @Test func runIsIdempotentAfterFinish() async {
         let session = MockSession(cards: 10)
@@ -183,6 +214,11 @@ struct ReviewProbeDeckFixtureTests {
         #expect(words == words.sorted())
         #expect(Set(words).count == 40)
         #expect(deck.allSatisfy { $0.reviewMode == .recognition })
+    }
+
+    @Test func nonPositiveSizeClampsToOneCard() {
+        #expect(UITestFixtureSeed.makeReviewProbeDeck(size: 0).count == 1)
+        #expect(UITestFixtureSeed.makeReviewProbeDeck(size: -3).count == 1)
     }
 
     @Test func seedingClearsExistingEntriesAndInsertsDeck() throws {

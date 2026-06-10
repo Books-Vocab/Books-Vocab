@@ -14,7 +14,9 @@ struct ReviewProbeScene: View {
     @State private var entries: [VocabularyEntry]?
 
     init(plan: ReviewProbePlan) {
-        _driver = State(initialValue: ReviewProbeDriver(plan: plan))
+        let driver = ReviewProbeDriver(plan: plan)
+        driver.metrics = ReviewProbeMetrics(plan: plan)
+        _driver = State(initialValue: driver)
     }
 
     var body: some View {
@@ -23,7 +25,10 @@ struct ReviewProbeScene: View {
                 TodayReviewView(
                     entries: entries,
                     allEntries: entries,
-                    currentUserID: "review-probe",
+                    // per-run 唯一 ID：上一次 abort 留下的 session snapshot /
+                    // 洗牌順序（UserDefaults，按 userID 鍵）永遠 restore-miss，
+                    // 跨 run 不互相污染（殘 key 極小，probe 裝置可忽略）。
+                    currentUserID: "review-probe-\(UUID().uuidString)",
                     onClose: { driver.emit("KG_REVIEW_PROBE closed") }
                 )
                 .environment(\.reviewProbeDriver, driver)
