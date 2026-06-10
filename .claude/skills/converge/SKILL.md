@@ -22,6 +22,23 @@ version: 2.0.0
 
 ---
 
+## 高效配方（先認形狀，再動手）
+
+別逐步探索 —— `branch -vv` 的 ahead/behind + commit subject 通常一眼就定形狀。對症下藥：
+
+**形狀 A：一個 integration superset + N 個 raw 子集**（常見於多 agent 平行做 flow，其中一條是整合 branch）
+1. `fetch && branch -vv && worktree list && git status --porcelain`（**一次拿全**；dirty 同呼叫掃各 worktree）。**信 porcelain 當下真相，不信注入的舊 status snapshot。**
+2. 看 ahead/behind + subject 認形狀：superset ahead 最多、raw 子集 ahead 少且 subject 同主題 → superset 假設成形。
+3. merge superset → main（已 union 過的整合 branch 通常零衝突）。
+4. 每個 raw 子集：`git diff main..<branch> -- <該 branch 唯一檔>` **空 = 冗餘 → 刪**（merge 它反而把舊 baseline 共用檔 regress 回 main）。
+5. build gate → push（head commit 進 base 會讓對應 PR **自動翻 MERGED**）→ 清殘影 → 問測試。
+
+**判 containment 一律走 tree-diff，禁用 `git cherry`/patch-id**（rebase 過必失準，全噴 `+` 是噪音）。取證取「決定性的那一個」（唯一檔 diff 是否空），不要倒整份 `diff --stat` / `grep '^+'` —— diffstat 的刪除總量已說完故事。
+
+**衝突自動化已落地**：`UITestFixtureSeed.swift` / `PerfLog.swift` / `UITestAppLaunch.swift` 在 `.gitattributes` 設 `merge=union`（append-only case registry，自動聯集兩側新增行，build gate 當 backstop）。本地另開 `git config rerere.enabled true` 重播解法。沒有 integrator 整合的多條 raw branch 仍可能衝突，但這三檔已自動化。
+
+---
+
 ## 通用前置步驟
 
 每次 converge 前必做：
