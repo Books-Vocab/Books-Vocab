@@ -12,6 +12,10 @@ struct ReviewProbeScene: View {
     @Environment(\.modelContext) private var modelContext
     @State private var driver: ReviewProbeDriver
     @State private var entries: [VocabularyEntry]?
+    // per-run 唯一：上一次 abort 留下的 session snapshot / 洗牌順序
+    // （UserDefaults，按 userID 鍵）永遠 restore-miss。@State 存一次，
+    // 不隨 body re-eval 重生。
+    @State private var probeUserID = "review-probe-\(UUID().uuidString)"
 
     init(plan: ReviewProbePlan) {
         let driver = ReviewProbeDriver(plan: plan)
@@ -25,10 +29,7 @@ struct ReviewProbeScene: View {
                 TodayReviewView(
                     entries: entries,
                     allEntries: entries,
-                    // per-run 唯一 ID：上一次 abort 留下的 session snapshot /
-                    // 洗牌順序（UserDefaults，按 userID 鍵）永遠 restore-miss，
-                    // 跨 run 不互相污染（殘 key 極小，probe 裝置可忽略）。
-                    currentUserID: "review-probe-\(UUID().uuidString)",
+                    currentUserID: probeUserID,
                     onClose: { driver.emit("KG_REVIEW_PROBE closed") }
                 )
                 .environment(\.reviewProbeDriver, driver)

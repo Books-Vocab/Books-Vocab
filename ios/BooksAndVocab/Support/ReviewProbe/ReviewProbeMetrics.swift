@@ -79,6 +79,13 @@ final class ReviewProbeMetrics: ReviewProbeMetricsRecording {
     }
 
     func startRun() {
+        // 可重入安全：重置上一輪殘留（舊 handle 未 close 會被覆蓋洩漏；
+        // flips 殘留會跨 run 混算）。
+        try? fileHandle?.close()
+        fileHandle = nil
+        flips = []
+        pendingFlip = nil
+        recorder = nil
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             FileManager.default.createFile(atPath: fileURL.path, contents: nil)
@@ -97,13 +104,13 @@ final class ReviewProbeMetrics: ReviewProbeMetricsRecording {
     }
 
     func endFlip() {
-        guard let pending = pendingFlip, let summary = recorder?.stop() else {
-            pendingFlip = nil
-            recorder = nil
-            return
-        }
-        pendingFlip = nil
+        // 無條件先 stop：CADisplayLink 強持有 target，guard 短路跳過 stop()
+        // 會讓 recorder 永不釋放、每幀 callback 永跑（latent leak）。
+        let summary = recorder?.stop()
         recorder = nil
+        let pending = pendingFlip
+        pendingFlip = nil
+        guard let pending, let summary else { return }
         flips.append(summary)
         appendLine(flipLine(index: pending.index, remember: pending.remember, summary: summary))
     }
