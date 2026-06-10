@@ -5,10 +5,15 @@
 # Renders every UI *case* of the extension in real headless Chrome (zero
 # install — reuses the chrome_verify transport: CDP over --remote-debugging-pipe
 # + Extensions.loadUnpacked), drives each surface into its target state with an
-# in-page mock, captures it at 1179×2556 (iPhone @3x — same dims as the iOS
-# reference PNGs), then composites each Chrome shot beside the iOS shot it should
-# mirror into ONE contact sheet. With --audit, also emits per-case diff,
-# zoomed crop strips, palette summaries, and numeric metrics.
+# in-page mock, captures it at 1179×2556 (iPhone @3x — same dims as Catalog
+# snapshot PNGs), then composites each Chrome shot beside the iOS Catalog
+# surface it should mirror into ONE contact sheet. With --audit, also emits
+# per-case diff, zoomed crop strips, palette summaries, and numeric metrics.
+#
+# iOS references come from the Catalog snapshot system (source-SoT, regenerable
+# via `./ops/ios_ops.sh catalog snapshots`), addressed by {surface, scenario,
+# appearance} in chrome-extension/tools/parity-manifest.mjs — no hand-shot
+# reference folder.
 #
 # The contact sheet is only the overview. Use --audit whenever precise parity
 # matters: inspect diff.png for pixel displacement, zoom.png for close reading,
@@ -22,8 +27,9 @@
 #   (all git-ignored — regenerable)
 #
 # Usage:  ops/chrome_parity.sh [--audit] [--verbose] [--only <case-substring>]
-# Env:    CHROME_BIN   override Chrome/Chromium binary
-#         IOS_REF_DIR  iOS reference PNG folder (default: ~/Desktop/IOS截圖參考)
+# Env:    CHROME_BIN       override Chrome/Chromium binary
+#         KG_CATALOG_ROOT  catalog snapshot root override (default: newest
+#                          usable build/snapshots/catalog-full-*/)
 set -euo pipefail
 
 usage() {
