@@ -10,13 +10,14 @@
 # Options:
 #   --flips N       翻卡次數（預設 30）
 #   --deck-size N   fixture 卡組大小（預設 40；sim 走 SIMCTL_CHILD_、device 走
-#                   DEVICECTL_CHILD_ 下發；--instruments 模式無 env 通道，固定 40）
+#                   DEVICECTL_CHILD_、--instruments 走 xctrace --env 下發）
 #   --min-flips N   verdict 有效性下限（預設 = --flips）
 #   --timeout SECS  等 done/abort marker 的上限（預設 60 + 4×flips）
 #   --release       Release configuration（Debug 量測有 observation/最佳化噪音；
 #                   Release 才是使用者真相）
-#   --instruments   （device only）xctrace 'Animation Hitches' 包住整個 run —
-#                   render-server 側的 hitch 真相，trace 存 artifacts 目錄。
+#   --instruments   （device only）xctrace 'Animation Hitches' + Time Profiler
+#                   包住整個 run — render-server 側 hitch 真相 + hitch 區間內
+#                   主執行緒堆疊，同 trace 對時；trace 存 artifacts 目錄。
 #                   此模式無 console marker，完成以 time-limit + JSONL 為準。
 #   --skip-build    跳過 build，直接用上次產物
 #   --out DIR       artifacts 目錄（預設 mktemp）
@@ -218,13 +219,10 @@ else
     # xctrace 包住整個 run：render-server 側 hitch 真相。無 console 串流，
     # 完成判定 = time-limit 跑滿 + JSONL summary（verdict 一律以 JSONL 為準）。
     TRACE="$OUT/review_flip_probe.trace"
-    log "recording 'Animation Hitches' trace（time-limit ${TIMEOUT}s，flips=$FLIPS）…"
-    if [[ "$DECK" != "40" ]]; then
-      log "warn: --instruments 模式不支援 --deck-size 下發（xctrace 無 env 通道），deck 固定 40"
-    fi
-    # 同一限制波及 KG_UI_TEST_SERVER_URL 啞端點（資料隔離第三防線）；實害低：
-    # probe scene 不掛 sync handler，且 Release 不讀此 env（#if DEBUG only）。
-    log "warn: --instruments 模式無 env 通道，KG_UI_TEST_SERVER_URL 啞端點不下發"
+    # xctrace 對既存 trace bundle 直接 abort（要求 --append-run）；--out 重用
+    # 或前輪中斷殘影都會觸發 → 錄前一律清（per-run scratch，無保留價值）。
+    rm -rf "$TRACE"
+    log "recording 'Animation Hitches'+'Time Profiler' trace（time-limit ${TIMEOUT}s，flips=$FLIPS deck=$DECK）…"
     # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
     # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
     # rm 防 --out 重用時讀到上一輪殘留（與 verdict 檔同款 stale 防護）。
@@ -235,21 +233,31 @@ else
     [[ -n "$HW_UDID" ]] || fail_invalid "hardware_udid_unresolved:$UDID"
     # xctrace 對鎖屏裝置不報錯而是無限懸掛（實測 13 分鐘無輸出），
     # --time-limit 只管「錄製開始後」——前置等待必須自己 watchdog。
-    # 寬限 = time-limit + 120s（launch + trace 落盤餘裕）。heartbeat 內建。
+    # 寬限 = time-limit + 600s：錄製結束後 xctrace 要把 raw .atrc 蒸餾成
+    # trace DB，時長隨錄製長度放大（實測 180s 錄製 → raw 11G、蒸餾 >120s；
+    # +120s 餘裕曾在此處砍掉收尾，產出無 template 的死 bundle，export 直接
+    # Document Missing Template Error，整輪作廢）。heartbeat 內建。
     # 刻意不在錄製中輪詢 devicectl processes 提早偵測 launch 失敗：
     # 量測期間對裝置發查詢會污染被量測系統，preflight + watchdog 已足。
+    # --env：xctrace 對 launched process 原生支援（曾誤判「無 env 通道」而
+    # 略過 deck-size 與啞端點下發——錯誤已修，與 devicectl 路徑語意對齊）。
+    # --instrument 'Time Profiler' 疊在 Hitches template 上：同一 trace 內
+    # hitch 區間 + 區間內主執行緒堆疊互相對時，一次 run 榨乾兩層證據。
     xcrun xctrace record --template 'Animation Hitches' --device "$HW_UDID" \
+      --instrument 'Time Profiler' \
+      --env KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
+      --env KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
     XCTRACE_PID=$!
     xctrace_rc=0
-    kg_probe_wait_pid "$XCTRACE_PID" $((TIMEOUT + 120)) "review_flip_probe.xctrace" || xctrace_rc=$?
+    kg_probe_wait_pid "$XCTRACE_PID" $((TIMEOUT + 600)) "review_flip_probe.xctrace" || xctrace_rc=$?
     XCTRACE_PID=""
     case "$xctrace_rc" in
       0) ;;
       3)
         log "hint: xctrace 逾時未結（裝置是否解鎖插線？）console: $CONSOLE"
-        fail_invalid "xctrace_watchdog_timeout:$((TIMEOUT + 120))s"
+        fail_invalid "xctrace_watchdog_timeout:$((TIMEOUT + 600))s"
         ;;
       *)
         log "hint: console: $CONSOLE"
