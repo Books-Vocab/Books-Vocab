@@ -695,6 +695,20 @@ documents:
       - ios/ExportOptions.plist
       - ios/BooksAndVocab/Products.storekit
 
+  - id: sop.ui_flow_evidence
+    path: docs/sop/ui_flow_evidence.md
+    kind: sop
+    authority: derived
+    triggers:
+      - uitest_evidence_contract_changed
+      - ui_fixture_seed_changed
+      - perf_mark_convention_changed
+    sources:
+      - ios/BooksAndVocabUITests/
+      - ios/BooksAndVocab/Support/UITestFixtureSeed.swift
+      - ops/ios_test.sh
+      - ops/catalog_contact_sheet.py
+
   - id: sop.deploy
     path: docs/sop/deploy.md
     kind: sop
