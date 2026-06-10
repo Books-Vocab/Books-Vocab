@@ -9,6 +9,8 @@ enum UITestFixture: Equatable {
     case raw(String)
     case bookshelf(String)
     case podcastPlayablePreview
+    case authTieredCatalog
+    case authSignedIn
 
     var launchArgument: String {
         switch self {
@@ -18,6 +20,10 @@ enum UITestFixture: Equatable {
             return "-seedFixture:bookshelf:\(id)"
         case .podcastPlayablePreview:
             return "-seedFixture:podcast:playablePreview"
+        case .authTieredCatalog:
+            return "-seedFixture:auth:tieredCatalog"
+        case .authSignedIn:
+            return "-seedFixture:auth:signedIn"
         }
     }
 }

@@ -23,11 +23,15 @@ struct LoginSheet: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("取消".localized) { dismiss() }
+                            .accessibilityIdentifier("auth.loginSheet.cancelButton")
                     }
                 }
         }
         .onChange(of: authManager.isLoggedIn) { _, isLoggedIn in
             if isLoggedIn { dismiss() }
+        }
+        .onAppear {
+            PerfLog.auth.mark("auth.gate.login.shown")
         }
         .enableInjection()
     }
