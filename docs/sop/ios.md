@@ -568,6 +568,10 @@ BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
 # 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 review.html(detached server 佔 port、headless lazy-paint 全白)。
 ./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --appearance both --cols 2  # 一張看完某 surface 全 state × light/dark
 ./ops/catalog_contact_sheet.py "$BLESSED" --lane feature-surface --facet empty                   # 一張看完所有出貨畫面的 empty state
+# UITest 後快速看跳轉旅程：取首尾與中間代表步驟，避免一次讀 8+ 張原圖。
+./ops/catalog_contact_sheet.py /tmp/kg_ios_ui_steps.xxxxxx --source uitest --take evenly:4 --cols 4 --manifest-out auto
+# 任意 PNG 目錄也可用同一工具，方便臨時視覺 debug / before-after 對照。
+./ops/catalog_contact_sheet.py /tmp/screens --source images --contains player --take first,last
 # → 印出合成 PNG 路徑, 直接 Read 該檔。caveat: stateFacet 由 title 推導會誤標(見 catalog memory), 看圖驗 facet 別只信 label。
 
 # 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
