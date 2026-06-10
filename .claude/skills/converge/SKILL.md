@@ -30,7 +30,7 @@ version: 2.0.0
 
 1. **調查 board** — `uv run python ops/converge_board.py board`：一鍵分類所有卡，取代每輪手刻 bash 重判 ahead/behind/dirty/patch-是否已在-main/有無 origin/checked-out 在哪/是否 live。工具**唯讀 git、fetch-first**（main 會在你手下被平行推進）。
 2. **標記 disposition** — 使用者（或 agent 依工具的建議欄）對每張卡標白/黑/B/凍/存。標完用 `plan --marks "..."` 乾跑預覽每卡會做哪些 git 動作（**不執行**），確認無誤。
-3. **執行 assemble → gate → cutover** — 所有要進 main 的工作**組裝成單一 candidate**（白吸收、B 落地已提交子集），末端**一次** build-gate「要推的那個 commit」（在乾淨臨時 worktree 編，非 dirty working tree，見下方「Build gate 編 commit」），綠了再**極短 cutover** 推 main，然後 rebase/sync/刪殘影。
+3. **執行 assemble → gate → cutover** — 所有要進 main 的工作**組裝成單一 candidate**（白吸收、B 落地已提交子集），末端**一次** build-gate「要推的那個 commit」（在乾淨臨時 worktree 編，非 dirty working tree，見下方「Build gate 編 commit」），綠了再**極短 cutover** 推 main，然後 rebase/sync/刪殘影。**白卡的 branch 收尾用 executor 不手刻**：`converge_board.py teardown --branches a,b [--commit]`（detach 佔用 worktree→刪 local→刪 remote→`ls-remote` 核對;dry-run 預設，拒絕任何未落地 base 的 branch）——手刻 cutover 曾靜默漏掉 `git push origin --delete`，executor 把那步結構化。worktree 清理用 `converge_board.py gc [--commit]`（只 prune `ancestor-of-base 且 clean` 的 detached，dirty/未落地一律拒絕）。
 4. **紀錄 receipt** — `receipt --round-at <ts> --before b.json --after a.json ...` 吐固定一輪 markdown（board-before 每卡 state、每卡 disposition、candidate sha、gate verdict、main before→after、pushed/deleted/kept）。**時間從外部傳入，工具不碰 now()**（KG 慣例）。讓下輪與使用者看得見歷史。
 
 ### State taxonomy（`converge_board.py` 的 7 個 canonical state）
@@ -66,11 +66,12 @@ precedence：`ORPHAN`（無 branch 可動）> `DIRTY`（有未提交）> 已提�
 - **dirty 先 snapshot，永不 stash** — dirty 卡（含被任何非凍處置選中的 dirty worktree）先 `git add -A && commit` snapshot，**絕不 stash**（會丟使用者身份/未提交 work）。
 - **single-candidate-gate** — 所有要進 main 的工作組裝成**單一 candidate**，末端**一次** build-gate（編 commit 非 dirty working tree），不分段 gate。
 - **never-clobber-main-dirty** — 不覆寫 main worktree 的 dirty；gate 在臨時乾淨 worktree 編。
-- **白刪 branch 留 worktree** — 白 = 刪 branch（local+remote），worktree **預設保留**（除非明說）。
+- **白刪 branch 留 worktree** — 白 = 刪 branch（local+remote），worktree **預設保留**（除非明說）。收尾走 `teardown` executor，**不手刻**（手刻會漏 remote）。
 - **B/黑 要 rebase + sync 保留的 branch** — 保留的 branch 落地後 rebase 到新 main，有 origin tracking 則 `--force-with-lease` sync。
-- **force-push 只用 `--force-with-lease`**；刪 remote 前先確認存在，不存在跳過。
+- **force-push 只用 `--force-with-lease`**；刪 remote 前先確認存在，不存在跳過（`teardown` 已內建 `ls-remote` 探測 + idempotent skip）。
+- **drop 前過安全守衛** — 刪 branch / prune worktree 前必過 `unsafe_to_drop`：dirty、branch 有未落地 commit、detached HEAD 不在 base 祖先 → 拒絕。`teardown`/`gc` 已內建,手動操作也照此判準。
 
-調查引擎：`ops/converge_board.py`（`board` / `plan` / `receipt`，唯讀 git，schema `kg.converge.board.v1`，pure 層全 7 state 有單元測試 `ops/tests/test_converge_board.py` / `test_ops.sh converge-board`）。執行細節（assemble/gate/cutover/清殘影）見下方各模式 recipe；build-gate 與 `merge=union` 自動化見「高效配方」段，與本協定交叉引用。
+調查＋執行引擎：`ops/converge_board.py`（讀:`board` / `plan` / `receipt`;寫(dry-run 預設、`--commit` 落地):`teardown` / `gc`;schema `kg.converge.board.v1`,pure 層全 7 state + `unsafe_to_drop` 有單元測試、teardown/gc 有真 git scratch-repo integration test `ops/tests/test_converge_board.py` / `test_ops.sh converge-board`）。執行細節（assemble/gate/cutover/清殘影）見下方各模式 recipe；build-gate 與 `merge=union` 自動化見「高效配方」段,與本協定交叉引用。
 
 ---
 
