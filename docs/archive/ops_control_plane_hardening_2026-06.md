@@ -1,13 +1,15 @@
 <!-- doc-meta
-tier: reference
-authority: derived
-update_trigger: planning
+tier: archive
+authority: frozen
+update_trigger: none
 scope:
   - ops/
   - docs/
-verified_against: 84f6998e
+verified_against: frozen
 -->
 # Ops Control Plane Hardening Plan
+
+> 歸檔於 2026-06-10：所有編號項目皆已落地（35 ✅）。唯一未勾項「持續把高頻 raw `run` 用法轉成 typed subcommand」為持續性紀律，由 CLAUDE.md 鐵律 9（工具摩擦優先修工具）承接，不留在 plan 內追蹤。
 
 目標:把 `ops/` 從「可用腳本集合」收斂成 agent 可依賴的控制平面。原則是優先組合官方/既有完整實作,KG 只補統一入口、輸出契約、side-effect gate 與 regression。
 
