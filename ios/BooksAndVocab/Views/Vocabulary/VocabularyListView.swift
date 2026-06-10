@@ -83,6 +83,7 @@ struct VocabularyListView: View {
             }
             try? await Task.sleep(for: Metrics.searchDebounce)
             debouncedSearchText = searchText
+            PerfLog.search.mark("search.query.committed", "query=\(searchText)")
         }
         .onChange(of: coordinator.activeReviewSession) { _, session in
             if let session, let detailRouter {

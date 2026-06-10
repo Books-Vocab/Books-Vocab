@@ -250,6 +250,7 @@ struct ReaderView: View {
             await MainActor.run {
                 publication = result.publication
                 readerState.isLoading = false
+                PerfLog.reader.mark("reader.opened", "title=\(book.title)")
                 handler.loadLookedUpWords(
                     from: allVocabulary,
                     notebookId: book.resolvedNotebookId

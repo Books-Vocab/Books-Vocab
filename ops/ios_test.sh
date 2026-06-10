@@ -436,6 +436,8 @@ RESULT_BUNDLE=""
 UI_TEST_SCREENSHOT_DIR=""
 UI_TEST_CONTACT_SHEET=""
 UI_TEST_SCREENSHOT_MANIFEST=""
+UI_TEST_VIDEO=""
+UI_TEST_VIDEO_PID=""
 TEST_DEVICE_LOCK_HELD=0
 TEST_DEVICE_LOCK_FILE=""
 DEVICE_RUN_LOCK_WAIT_MS=0
@@ -455,6 +457,9 @@ EOF
 cleanup() {
   if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
     kill "$CURRENT_XCODE_PID" 2>/dev/null || true
+  fi
+  if [[ -n "${UI_TEST_VIDEO_PID:-}" ]] && kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null; then
+    kill -INT "$UI_TEST_VIDEO_PID" 2>/dev/null || true
   fi
   release_test_device_lock
   release_build_lock   # ownership-guarded; only removes the lock if we still hold it
@@ -751,6 +756,7 @@ run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
   local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
   acquire_test_device_lock
+  start_ui_test_recording
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" \
   KG_UI_TEST_SCREENSHOT_DIR="$UI_TEST_SCREENSHOT_DIR" \
@@ -809,6 +815,7 @@ run_xcodebuild_test_without_building_once() {
   TEST_INVOCATION_MS=$(( xcode_end_ms - xcode_start_ms ))
   XCODEBUILD_MS=$(( BUILD_FOR_TESTING_MS + TEST_INVOCATION_MS ))
   CURRENT_XCODE_PID=""
+  stop_ui_test_recording
   release_test_device_lock
   if ! current_line="$(test_log_line_count "$TMPOUT")"; then
     [[ "$log_missing" -eq 1 ]] && write_missing_test_log_marker "$TMPOUT" || true
@@ -928,8 +935,64 @@ prepare_ui_step_screenshot_dir() {
   UI_TEST_CONTACT_SHEET=""
   UI_TEST_QUICK4_SHEET=""
   UI_TEST_SCREENSHOT_MANIFEST=""
+  UI_TEST_VIDEO=""
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
   UI_TEST_SCREENSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_steps.XXXXXX")"
+}
+
+# Explicit simulator UDID for this run, when one exists: leased pool sim, or a
+# --device/--destination that carries `id=`. Name-based default destinations
+# return 1 (no recording / no device field) — `simctl io booted` would be
+# ambiguous with several pool sims booted.
+resolve_run_device_udid() {
+  if [[ -n "${LEASED_DEVICE:-}" ]]; then
+    printf '%s\n' "$LEASED_DEVICE"
+    return 0
+  fi
+  case "${DESTINATION:-}" in
+    *"id="*) printf '%s\n' "${DESTINATION##*id=}"; return 0 ;;
+  esac
+  return 1
+}
+
+# Screen recording around the UI-scope test invocation. The mp4 lands next to
+# the step screenshots so the whole visual-evidence trio+video shares one dir.
+start_ui_test_recording() {
+  [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "${UI_TEST_SCREENSHOT_DIR:-}" ]] || return 0
+  local udid
+  if ! udid="$(resolve_run_device_udid)"; then
+    echo "[ios_test][ui-video] skip: no explicit simulator udid (use --lease or --device <udid>)"
+    return 0
+  fi
+  UI_TEST_VIDEO="$UI_TEST_SCREENSHOT_DIR/run_recording.mp4"
+  xcrun simctl io "$udid" recordVideo --codec h264 --force "$UI_TEST_VIDEO" >/dev/null 2>&1 &
+  UI_TEST_VIDEO_PID=$!
+  echo "[ios_test][ui-video] recording udid=$udid pid=$UI_TEST_VIDEO_PID out=$UI_TEST_VIDEO"
+}
+
+stop_ui_test_recording() {
+  [[ -n "${UI_TEST_VIDEO_PID:-}" ]] || return 0
+  if kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null; then
+    # simctl finalizes the mp4 container on SIGINT; give it a bounded window
+    # before escalating, else a wedged recorder would hang the verdict path.
+    kill -INT "$UI_TEST_VIDEO_PID" 2>/dev/null || true
+    local waited=0
+    while kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null && [[ "$waited" -lt 100 ]]; do
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null && kill -9 "$UI_TEST_VIDEO_PID" 2>/dev/null || true
+  fi
+  wait "$UI_TEST_VIDEO_PID" 2>/dev/null || true
+  UI_TEST_VIDEO_PID=""
+  if [[ -n "${UI_TEST_VIDEO:-}" && -s "${UI_TEST_VIDEO:-}" ]]; then
+    echo "[ios_test][ui-video] saved $UI_TEST_VIDEO"
+  else
+    if [[ -n "${UI_TEST_VIDEO:-}" ]]; then
+      echo "[ios_test][ui-video] warning: recording missing or empty out=$UI_TEST_VIDEO" >&2
+    fi
+    UI_TEST_VIDEO=""
+  fi
 }
 
 build_ui_step_contact_sheet() {
@@ -1264,6 +1327,8 @@ write_json_verdict() {
     --arg uiQuick4Sheet "$UI_TEST_QUICK4_SHEET" \
     --arg uiVisualReviewManifest "$UI_TEST_SCREENSHOT_MANIFEST" \
     --arg uiScreenshotDir "$UI_TEST_SCREENSHOT_DIR" \
+    --arg uiVideo "$UI_TEST_VIDEO" \
+    --arg device "$(resolve_run_device_udid 2>/dev/null || true)" \
     --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
     --argjson deviceRunLockWaitMs "${DEVICE_RUN_LOCK_WAIT_MS:-0}" \
     --argjson bootMs "$BOOT_MS" \
@@ -1291,6 +1356,7 @@ write_json_verdict() {
       },
       elapsed:$elapsed,
       executed:(if $executed == "" then null else $executed end),
+      device:(if $device == "" then null else $device end),
       timings:{
         lockWaitMs:$lockWaitMs,
         deviceRunLockWaitMs:$deviceRunLockWaitMs,
@@ -1313,7 +1379,8 @@ write_json_verdict() {
         uiContactSheet:(if $uiContactSheet == "" then null else $uiContactSheet end),
         uiQuick4Sheet:(if $uiQuick4Sheet == "" then null else $uiQuick4Sheet end),
         uiVisualReviewManifest:(if $uiVisualReviewManifest == "" then null else $uiVisualReviewManifest end),
-        uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end)
+        uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end),
+        uiVideo:(if $uiVideo == "" then null else $uiVideo end)
       }
     }' >"$VERDICT_JSON_PRIVATE" || true
   cp -f "$VERDICT_JSON_PRIVATE" "$VERDICT_JSON_FILE" 2>/dev/null || true

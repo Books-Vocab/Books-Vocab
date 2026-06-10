@@ -65,6 +65,7 @@ struct TranslationVocabPresenter: View {
                       ? appSkin.typography.translationTitle
                       : appSkin.typography.detailWord)
                 .foregroundStyle(appSkin.palette.primaryText)
+                .accessibilityIdentifier("reader.translationPanel.word")
 
             Button(action: onSpeak) {
                 Image(systemName: "speaker.wave.2")
@@ -148,6 +149,7 @@ struct TranslationVocabPresenter: View {
             Text(translation)
                 .font(appSkin.typography.translationTitle)
                 .foregroundStyle(appSkin.palette.translationText)
+                .accessibilityIdentifier("reader.translationPanel.translation")
 
             if state.isExpanded {
                 explanationSection
@@ -332,6 +334,7 @@ struct TranslationVocabPresenter: View {
                 label: L10n.string("vocab.chromeIcon.translation.dismiss"),
                 action: onDismiss
             )
+            .accessibilityIdentifier("reader.translationPanel.dismissButton")
         }
         .padding(.top, appSkin.spacing.tinyGap)
     }

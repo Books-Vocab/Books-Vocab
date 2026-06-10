@@ -92,7 +92,16 @@ struct PodcastProgressPushState {
 // MARK: - Service extensions
 
 extension PodcastSyncService {
-    private static var progressBaseURL: String { AppURLs.domain }
+    /// Mirrors `PodcastSyncService.baseURL` (private to its file): pinned to
+    /// the public backend, except under the UI-test override — progress sync
+    /// must stay hermetic in an isolated test world like every other request.
+    private static var progressBaseURL: String {
+        #if DEBUG
+        return KGService.uiTestServerURLOverride() ?? AppURLs.domain
+        #else
+        return AppURLs.domain
+        #endif
+    }
 
     /// Decompose ``{seriesId}_ep_{NN}`` back into its components.
     /// Returns ``nil`` when the suffix marker (`_ep_`) is missing or the

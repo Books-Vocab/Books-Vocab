@@ -93,6 +93,7 @@ extension ReaderViewPresenter {
                         .font(appSkin.typography.iconSmall)
                     Text(String(format: "%.1f%%", state.totalProgression * 100))
                         .font(appSkin.typography.monoLabel)
+                        .accessibilityIdentifier("reader.header.progressBadge")
                 }
                 .foregroundStyle(appSkin.palette.secondaryText)
                 .padding(.horizontal, ReaderPresentationMetrics.Header.compactProgressInsetHorizontal)

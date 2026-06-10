@@ -16,6 +16,7 @@ emit_run_verdict_json() {
         --argjson uiContactSheetExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiContactSheet // ""' "$json_file")")" \
         --argjson uiQuick4SheetExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiQuick4Sheet // ""' "$json_file")")" \
         --argjson uiVisualReviewManifestExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiVisualReviewManifest // ""' "$json_file")")" \
+        --argjson uiVideoExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiVideo // ""' "$json_file")")" \
         '{
           kind:$kind,
           status:(.status // .result // "unknown"),
@@ -25,6 +26,7 @@ emit_run_verdict_json() {
           caller:(.caller // null),
           elapsed:(.elapsed // null),
           executed:(.executed // null),
+          device:(.device // null),
           options:(.options // null),
           cache:(.cache // null),
           timings:(.timings // null),
@@ -41,11 +43,14 @@ emit_run_verdict_json() {
             uiQuick4SheetExists:$uiQuick4SheetExists,
             uiVisualReviewManifest:(.artifacts.uiVisualReviewManifest // null),
             uiVisualReviewManifestExists:$uiVisualReviewManifestExists,
-            uiScreenshotDir:(.artifacts.uiScreenshotDir // null)
+            uiScreenshotDir:(.artifacts.uiScreenshotDir // null),
+            uiVideo:(.artifacts.uiVideo // null),
+            uiVideoExists:$uiVideoExists
           },
           uiVisualReview:(
             if (.artifacts.uiScreenshotDir // .artifacts.uiContactSheet
-                // .artifacts.uiQuick4Sheet // .artifacts.uiVisualReviewManifest) == null
+                // .artifacts.uiQuick4Sheet // .artifacts.uiVisualReviewManifest
+                // .artifacts.uiVideo) == null
             then null
             else {
               screenshotDir:(.artifacts.uiScreenshotDir // null),
@@ -54,7 +59,9 @@ emit_run_verdict_json() {
               quick4Sheet:(.artifacts.uiQuick4Sheet // null),
               quick4SheetExists:$uiQuick4SheetExists,
               visualReviewManifest:(.artifacts.uiVisualReviewManifest // null),
-              visualReviewManifestExists:$uiVisualReviewManifestExists
+              visualReviewManifestExists:$uiVisualReviewManifestExists,
+              video:(.artifacts.uiVideo // null),
+              videoExists:$uiVideoExists
             }
             end
           )
@@ -73,6 +80,7 @@ emit_run_verdict_json() {
         caller:null,
         elapsed:null,
         executed:null,
+        device:null,
         options:null,
         cache:null,
         timings:null,
@@ -96,6 +104,7 @@ emit_run_verdict_json() {
         caller:null,
         elapsed:null,
         executed:null,
+        device:null,
         options:null,
         cache:null,
         timings:null,
@@ -146,6 +155,7 @@ emit_run_verdict_json() {
       caller:(if $caller == "" then null else $caller end),
       elapsed:(if $elapsed == "" then null else $elapsed end),
       executed:(if $executed == "" then null else $executed end),
+      device:null,
       options:$options,
       cache:$cache,
       timings:$timings,

@@ -107,7 +107,17 @@ struct PodcastEpisodeDetail: Codable {
 // MARK: - Sync Service
 
 final class PodcastSyncService {
-    private static let baseURL = AppURLs.domain
+    /// Podcast assets are only hosted on the public backend, so this stays
+    /// pinned to `AppURLs.domain` even in debug-local server mode. The single
+    /// exception is the UI-test override: an isolated test world must never
+    /// sync against the real catalog (reconcile would tombstone seeded series).
+    private static var baseURL: String {
+        #if DEBUG
+        return KGService.uiTestServerURLOverride() ?? AppURLs.domain
+        #else
+        return AppURLs.domain
+        #endif
+    }
 
     // 同檔案以外的 extension（如 PodcastProgressSync.swift）需要 access；
     // 改 internal 不對外暴露，僅在 module 內可見。
