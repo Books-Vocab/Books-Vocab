@@ -37,6 +37,10 @@ import os
 import tempfile
 from pathlib import Path
 
+# Sheets this tool writes back into the scanned directory; never re-ingest
+# them as input shots on a later pass over the same dir.
+GENERATED_SHEET_NAMES = {"contact_sheet.png", "quick4_contact_sheet.png"}
+
 
 def plan_grid(n, cols, cell_w, cell_h, label_h, gap, pad):
     """Canvas size + per-cell top-left positions for an n-item grid.
@@ -148,11 +152,12 @@ def apply_take(items, take):
                 count = max(1, int(token.split(":", 1)[1]))
             except ValueError:
                 continue
-            if count == 1:
+            span = min(count, n)
+            if span <= 1:
                 add(0)
             else:
-                for i in range(min(count, n)):
-                    add(round(i * (n - 1) / (min(count, n) - 1)))
+                for i in range(span):
+                    add(round(i * (n - 1) / (span - 1)))
         elif token.startswith("every:"):
             try:
                 step = max(1, int(token.split(":", 1)[1]))
@@ -303,9 +308,8 @@ def _ui_step_label(path: Path) -> tuple[int, str]:
 
 def build_ui_step_manifest(root: Path) -> dict:
     items = []
-    generated = {"contact_sheet.png"}
     paths = sorted(
-        (p for p in root.glob("*.png") if p.name not in generated),
+        (p for p in root.glob("*.png") if p.name not in GENERATED_SHEET_NAMES),
         key=lambda p: (_ui_step_label(p)[0], p.name),
     )
     for fallback_rank, path in enumerate(paths, start=1):
@@ -378,7 +382,7 @@ def _resolve_source(root, source="auto"):
             raise SystemExit(f"manifest not found: {cand}")
 
     if source in {"auto", "uitest"} and root.is_dir():
-        pngs = sorted(root.glob("*.png"))
+        pngs = sorted(p for p in root.glob("*.png") if p.name not in GENERATED_SHEET_NAMES)
         if pngs:
             return SourceBundle(
                 manifest=build_ui_step_manifest(root),
@@ -392,7 +396,7 @@ def _resolve_source(root, source="auto"):
         if root.is_file() and root.suffix.lower() == ".png":
             return build_images_manifest([root], root=root.parent)
         if root.is_dir():
-            pngs = sorted(p for p in root.rglob("*.png") if p.name != "contact_sheet.png")
+            pngs = sorted(p for p in root.rglob("*.png") if p.name not in GENERATED_SHEET_NAMES)
             if pngs:
                 return build_images_manifest(pngs, root=root)
         if source == "images":
