@@ -9,7 +9,8 @@
 #   ./ops/review_flip_probe.sh --device <udid> [opts]
 # Options:
 #   --flips N       翻卡次數（預設 30）
-#   --deck-size N   fixture 卡組大小（預設 40；device 模式僅支援預設，env 無法下發）
+#   --deck-size N   fixture 卡組大小（預設 40；sim 走 SIMCTL_CHILD_、device 走
+#                   DEVICECTL_CHILD_ 下發；--instruments 模式無 env 通道，固定 40）
 #   --min-flips N   verdict 有效性下限（預設 = --flips）
 #   --timeout SECS  等 done/abort marker 的上限（預設 60 + 4×flips）
 #   --release       Release configuration（Debug 量測有 observation/最佳化噪音；
@@ -147,6 +148,14 @@ wait_for_marker() {
 LAUNCH_PID=""
 cleanup() { [[ -n "$LAUNCH_PID" ]] && kill "$LAUNCH_PID" 2>/dev/null || true; }
 trap cleanup EXIT
+# infra 失敗（install/cp 等 set -e 早退）不可帶原始 rc 退出 —— rc=1 會與
+# 「fail=門檻未過、數據有效」撞號。一律收斂成 invalid + exit 2。
+on_unexpected_error() {
+  local rc=$?
+  [[ -f "$VERDICT_FILE" ]] || write_verdict invalid "reason=unexpected_infra_error_rc=$rc"
+  exit 2
+}
+trap on_unexpected_error ERR
 
 if [[ "$MODE" == "simulator" ]]; then
   log "ensuring simulator booted…"
@@ -181,10 +190,13 @@ else
     # 完成判定 = time-limit 跑滿 + JSONL summary（verdict 一律以 JSONL 為準）。
     TRACE="$OUT/review_flip_probe.trace"
     log "recording 'Animation Hitches' trace（time-limit ${TIMEOUT}s，flips=$FLIPS）…"
+    if [[ "$DECK" != "40" ]]; then
+      log "warn: --instruments 模式不支援 --deck-size 下發（xctrace 無 env 通道），deck 固定 40"
+    fi
     xcrun xctrace record --template 'Animation Hitches' --device "$UDID" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 \
-      || fail_invalid "xctrace_record_failed（console: $CONSOLE）"
+      || { log "hint: console: $CONSOLE"; fail_invalid "xctrace_record_failed"; }
     # TOC 先存檔：hitch 表的 export schema 待首個真機 trace 後固化解析。
     xcrun xctrace export --input "$TRACE" --toc >"$OUT/trace_toc.xml" 2>/dev/null || true
     log "trace saved: $TRACE"
