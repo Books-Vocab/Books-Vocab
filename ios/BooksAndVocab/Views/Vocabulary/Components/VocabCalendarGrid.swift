@@ -121,6 +121,9 @@ struct VocabCalendarGrid: View {
                 RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
                     .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 0.5)
             )
+            // Unselected zero-activity cells paint only Color.clear fills, so
+            // .plain hit-testing would fall through everywhere but the digits.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
