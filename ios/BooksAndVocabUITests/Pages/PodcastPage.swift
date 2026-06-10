@@ -48,6 +48,18 @@ struct PodcastPage {
         app.buttons["podcast.player.pauseButton"]
     }
 
+    var elapsedTimeLabel: XCUIElement {
+        app.staticTexts["podcast.player.elapsedTime"]
+    }
+
+    var durationTimeLabel: XCUIElement {
+        app.staticTexts["podcast.player.durationTime"]
+    }
+
+    var seekBar: XCUIElement {
+        app.otherElements["podcast.player.seekBar"]
+    }
+
     var loginSheet: XCUIElement {
         app.descendants(matching: .any)["auth.loginSheet"]
     }

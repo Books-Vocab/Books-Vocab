@@ -22,10 +22,12 @@ struct PodcastControlsView: View {
                 Text(formatTime(activeTime))
                     .font(skin.typography.monoLabel)
                     .foregroundStyle(skin.palette.tertiaryText)
+                    .accessibilityIdentifier("podcast.player.elapsedTime")
                 Spacer()
                 Text(formatTime(viewModel.duration))
                     .font(skin.typography.monoLabel)
                     .foregroundStyle(skin.palette.tertiaryText)
+                    .accessibilityIdentifier("podcast.player.durationTime")
             }
             ZStack {
                 HStack(spacing: skin.spacing.controlGap) {
@@ -139,6 +141,7 @@ struct PodcastControlsView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(L10n.string("podcast.controls.seek"))
             .accessibilityValue("\(formatTime(activeTime)) / \(formatTime(viewModel.duration))")
+            .accessibilityIdentifier("podcast.player.seekBar")
         }
         .frame(height: PodcastPlayerMetrics.seekBarHitArea)
         .animation(AppMotion.swipeTrackingSpring, value: isDragging)

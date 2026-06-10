@@ -5,6 +5,23 @@ private let uiTestAppArgumentsEnvKey = "KG_UI_TEST_APP_ARGS_JSON"
 private let uiTestLaunchProfileEnvKey = "KG_UI_TEST_LAUNCH_PROFILE"
 private let uiTestPerfLogEnvKey = "KG_PERF_LOG"
 
+enum UITestFixture: Equatable {
+    case raw(String)
+    case bookshelf(String)
+    case podcastPlayablePreview
+
+    var launchArgument: String {
+        switch self {
+        case .raw(let value):
+            return value
+        case .bookshelf(let id):
+            return "-seedFixture:bookshelf:\(id)"
+        case .podcastPlayablePreview:
+            return "-seedFixture:podcast:playablePreview"
+        }
+    }
+}
+
 enum UITestLaunchProfile: String {
     case standard
     case clean
@@ -55,13 +72,14 @@ struct UITestLaunchConfiguration {
 func makeConfiguredApp(
     profile: UITestLaunchProfile = .standard,
     extraArgs: [String] = [],
+    fixtures: [UITestFixture] = [],
     extraEnvironment: [String: String] = [:],
     perfLog: String? = nil
 ) -> XCUIApplication {
     let app = XCUIApplication()
     let configuration = UITestLaunchConfiguration(
         profile: profile,
-        extraArgs: extraArgs,
+        extraArgs: extraArgs + fixtures.map(\.launchArgument),
         extraEnvironment: extraEnvironment,
         perfLog: perfLog
     )
