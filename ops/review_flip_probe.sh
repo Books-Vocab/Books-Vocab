@@ -204,7 +204,7 @@ else
     log "launching probe (flips=$FLIPS deck=$DECK timeout=${TIMEOUT}s)…"
     DEVICECTL_CHILD_KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
       xcrun devicectl device process launch --console --terminate-existing \
-      --device "$UDID" "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
+      --device "$UDID" -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
     LAUNCH_PID=$!
 
     if ! wait_for_marker; then
@@ -225,6 +225,9 @@ fi
 # ---------- verdict ----------
 
 log "parsing → verdict…"
+# ERR trap 在 set +e 下仍會對 pipeline 失敗觸發（bash 語意），parser 以
+# rc=1 報 fail 會被搶答成 invalid+exit 2 —— 此後全是顯式 rc 處理，卸掉。
+trap - ERR
 set +e
 "$SCRIPT_DIR/review_flip_probe_report.py" --jsonl "$JSONL" --min-flips "$MIN_FLIPS" \
   | tee "$OUT/verdict.json"
