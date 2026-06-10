@@ -4,7 +4,9 @@
 # Usage:
 #   ./ops/ios_test.sh                             # run ALL tests in BooksAndVocabTests
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
-#   ./ops/ios_test.sh -g "notebook"               # grep: run tests matching pattern
+#   ./ops/ios_test.sh -g "notebook"               # grep: run tests whose METHOD name matches
+#                                                 # (matches func/@Test names only, NOT @Suite/file
+#                                                 #  names; repeat -g to OR patterns together)
 #   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --launch-benchmark
@@ -49,10 +51,20 @@ LAUNCH_BENCHMARK=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '1,24p' "$0" | sed 's/^#//; s/^ //'
+      # 印整段 header comment（到第一個非 # 行為止），不再硬編行號（曾因
+      # header 增行而把尾段 usage 默默截掉）。
+      awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
       exit 0
       ;;
-    -g|--grep) GREP_PATTERN="$2"; shift 2 ;;
+    -g|--grep)
+      # 重複 -g 累積成 OR regex（歷史 footgun：後者無聲覆蓋前者 → 以為跑了
+      # 兩個測試實際只跑一個）。pattern 是 awk ERE，頂層 | 即聯集。
+      if [[ -n "$GREP_PATTERN" ]]; then
+        GREP_PATTERN="$GREP_PATTERN|$2"
+      else
+        GREP_PATTERN="$2"
+      fi
+      shift 2 ;;
     --file)
       # 重複 --file 只會保留最後一個、靜默丟棄其餘 → 曾誘發 false-green（以為跑了多檔，
       # 其實只跑最後一檔）。改為明確報錯：多檔請用 --grep '<A>|<B>' 或分多次跑。
@@ -319,6 +331,8 @@ elif [[ -n "$GREP_PATTERN" ]]; then
   done < <(discover_only_flags "$TEST_DIR" "$GREP_PATTERN" "$TEST_TARGET")
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests matching pattern '$GREP_PATTERN'" >&2
+    echo "[ios_test] 注意：-g 只匹配測試「方法名」（func/@Test），不匹配 @Suite/struct/class 名與檔名。" >&2
+    echo "[ios_test] 想跑整個 suite → 用 --file <TypeName>；確認方法名 → --list 搭配更寬的 pattern。" >&2
     exit 1
   fi
   echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests for pattern '$GREP_PATTERN' ($TEST_TARGET)"
