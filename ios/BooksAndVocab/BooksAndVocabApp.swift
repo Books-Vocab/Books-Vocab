@@ -24,7 +24,7 @@ struct BooksAndVocabApp: App {
     @State var startupFailure: AppStartupFailure?
     let authManager = AuthManager.shared
     let kgService = KGService()
-    let subscriptionManager = SubscriptionManager.shared
+    let subscriptionManager: any SubscriptionManaging
     #if os(iOS)
     let readiumService: any ReadiumServing = ReadiumService.shared
     let bookshelfImportService: any BookshelfImporting
@@ -43,6 +43,17 @@ struct BooksAndVocabApp: App {
         if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
             AppCrashReporting.bootstrap()
         }
+
+        #if DEBUG
+        if AppRuntimeOptions.isUITesting(arguments: runtimeArguments),
+           runtimeArguments.contains("-seedFixture:entitlements:pro") {
+            subscriptionManager = UITestSubscriptionManager.proAccess()
+        } else {
+            subscriptionManager = SubscriptionManager.shared
+        }
+        #else
+        subscriptionManager = SubscriptionManager.shared
+        #endif
 
         #if os(iOS)
         AppFonts.ensureSerifCJKAvailable()

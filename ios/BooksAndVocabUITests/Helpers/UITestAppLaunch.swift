@@ -11,6 +11,7 @@ enum UITestFixture: Equatable {
     case podcastPlayablePreview
     case authTieredCatalog
     case authSignedIn
+    case entitlementsProAccess
     case settingsCleanPreferences
     case shellNavigation
     case searchVocabNotebook
@@ -29,6 +30,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:auth:tieredCatalog"
         case .authSignedIn:
             return "-seedFixture:auth:signedIn"
+        case .entitlementsProAccess:
+            return "-seedFixture:entitlements:pro"
         case .settingsCleanPreferences:
             return "-seedFixture:settings:cleanPreferences"
         case .shellNavigation:
