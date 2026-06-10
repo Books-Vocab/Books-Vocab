@@ -10,6 +10,14 @@ enum UITestFixtureSeed {
     static func injectIfNeeded(into container: ModelContainer, arguments: [String]) {
         guard AppRuntimeOptions.isUITesting(arguments: arguments) else { return }
 
+        // 資料安全防線（2026-06-10 事故）：fixture 會 wipe+seed VocabularyEntry。
+        // 在真機上對真實 on-disk store 動手 = 清掉使用者整個本地單字庫，
+        // 故只允許全 in-memory 容器（bootstrap 在 -ui-testing 下必須提供）。
+        guard container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
+            AppLog.app.error("UITestFixtureSeed: refused — container has persistent store(s); fixtures may only seed the ephemeral UI-testing container")
+            return
+        }
+
         for arg in arguments {
             guard arg.hasPrefix("-seedFixture:") else { continue }
             let remainder = arg.dropFirst("-seedFixture:".count)
