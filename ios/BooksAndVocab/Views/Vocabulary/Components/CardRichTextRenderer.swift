@@ -24,6 +24,30 @@ enum CardRichTextRenderer {
         try? NSRegularExpression(pattern: pattern)
     }
 
+    /// 動態 pattern（per-phrase：phraseMatch / tailPhraseMatch / stem fallback）
+    /// 的編譯快取。ICU regex compile 是真機 settle 窗口 time-profile 抓到的
+    /// 熱點之一（uregex_open ~5% burst 樣本）；同一張卡的 pattern 在
+    /// truncation cache miss 時會重複編譯，cache 後同 pattern 只編一次。
+    /// NSCache：thread-safe、記憶體壓力自動淘汰。
+    private static let compiledPatternCache: NSCache<NSString, NSRegularExpression> = {
+        let cache = NSCache<NSString, NSRegularExpression>()
+        cache.countLimit = 128
+        return cache
+    }()
+
+    private static func cachedRegex(
+        _ pattern: String,
+        options: NSRegularExpression.Options = []
+    ) -> NSRegularExpression? {
+        let key = "\(options.rawValue)\u{1F}\(pattern)" as NSString
+        if let hit = compiledPatternCache.object(forKey: key) { return hit }
+        guard let compiled = try? NSRegularExpression(pattern: pattern, options: options) else {
+            return nil
+        }
+        compiledPatternCache.setObject(compiled, forKey: key)
+        return compiled
+    }
+
     private static let inlinePattern = regex("\\*\\*(.+?)\\*\\*|`([^`]+)`")
     private static let markedWordPattern = regex("\\*\\*.+?\\*\\*")
     /// 移除所有 **word** 標記，只留詞本身（用於截斷前的清理）
@@ -264,7 +288,7 @@ enum CardRichTextRenderer {
                 let stem = String(firstWord.prefix(stemLen))
                 let stemEsc = NSRegularExpression.escapedPattern(for: stem)
                 let stemPat = "(?<![\\w\\p{L}])\(stemEsc)\\w*(?![\\w\\p{L}])"
-                if let stemRegex = try? NSRegularExpression(pattern: stemPat, options: .caseInsensitive),
+                if let stemRegex = cachedRegex(stemPat, options: .caseInsensitive),
                    let stemMatch = stemRegex.firstMatch(in: stripped, range: NSRange(location: 0, length: nsStripped.length)) {
                     let actualWord = nsStripped.substring(with: stemMatch.range)
                     let marked = nsStripped.substring(to: stemMatch.range.location)
@@ -364,7 +388,7 @@ enum CardRichTextRenderer {
     ) -> NSTextCheckingResult? {
         guard let phrasePattern = flexiblePhrasePattern(for: phrase) else { return nil }
         let pattern = "(?<![\\w\\p{L}])\(phrasePattern)(?![\\w\\p{L}])"
-        return try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        return cachedRegex(pattern, options: .caseInsensitive)?
             .firstMatch(in: text, range: range)
     }
 
@@ -380,7 +404,7 @@ enum CardRichTextRenderer {
         else { return nil }
 
         let pattern = "(?<![\\w\\p{L}])\(tailPattern)(?![\\w\\p{L}])"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+        guard let regex = cachedRegex(pattern, options: .caseInsensitive) else {
             return nil
         }
 
