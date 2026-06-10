@@ -111,6 +111,10 @@ struct LoginSheet: View {
             }
         }
         .animatePhaseChange(authManager.isAuthenticating)
+        // `.contain` keeps this identifier on the container element itself;
+        // without it SwiftUI propagates the identifier onto every child and
+        // shadows the buttons' own identifiers (breaks identifier queries).
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("auth.loginSheet")
     }
 
