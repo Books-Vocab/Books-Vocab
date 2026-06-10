@@ -52,6 +52,7 @@ struct SettingsReviewSection: View {
                 Toggle("", isOn: pauseBinding)
                     .labelsHidden()
                     .toggleStyle(SwitchToggleStyle(tint: appSkin.palette.accent))
+                    .accessibilityIdentifier("settings.review.pauseToggle")
             }
             .padding(.horizontal, appSkin.spacing.cardPadding)
             .padding(.vertical, appSkin.spacing.controlVerticalPadding)
@@ -116,6 +117,7 @@ struct SettingsReviewSection: View {
             .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.review.modeTile.\(mode.rawValue)")
     }
 
     // MARK: - Custom Params Section

@@ -87,6 +87,7 @@ struct SettingsAccountSection: View {
                 .buttonStyle(.pressable)
                 .appSettingsButtonChrome()
                 .accessibilityLabel(SettingsAccountCopy.googleLoginAccessibility)
+                .accessibilityIdentifier("settings.account.googleLoginButton")
 
                 Button(action: actions.loginWithApple) {
                     SettingsAuthButton(title: "以 Apple 繼續") {
@@ -96,6 +97,7 @@ struct SettingsAccountSection: View {
                 .buttonStyle(.pressable)
                 .appSettingsButtonChrome()
                 .accessibilityLabel(SettingsAccountCopy.appleLoginAccessibility)
+                .accessibilityIdentifier("settings.account.appleLoginButton")
 
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
