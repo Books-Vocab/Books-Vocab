@@ -87,7 +87,7 @@ def should_skip(path: Path) -> bool:
     return any(path.match(g) for g in SKIP_NAME_GLOBS)
 
 
-def blank_comments_and_strings(text: str) -> str:
+def blank_comments_and_strings(text: str, keep_comments: bool = False) -> str:
     """Replace comment bodies and string-literal contents with spaces.
 
     Keeps every newline (so line numbers survive) and keeps the quote
@@ -95,6 +95,10 @@ def blank_comments_and_strings(text: str) -> str:
     its leading `"`). Handles `//`, nested `/* */`, `"` with `\\` escapes,
     `\"\"\"` multiline strings, and `\\(...)` interpolation (blanked with the
     rest of the string so stray braces inside can't break brace matching).
+
+    With `keep_comments=True` only strings are blanked (comments are skipped
+    over but left intact) — that variant is what the allow-marker search runs
+    on, so a marker is honored only in a real comment, never in string copy.
     """
     out = list(text)
     i, n = 0, len(text)
@@ -109,7 +113,8 @@ def blank_comments_and_strings(text: str) -> str:
         if c == "/" and i + 1 < n and text[i + 1] == "/":
             j = text.find("\n", i)
             j = n if j == -1 else j
-            blank(i, j)
+            if not keep_comments:
+                blank(i, j)
             i = j
         elif c == "/" and i + 1 < n and text[i + 1] == "*":
             depth, j = 1, i + 2
@@ -122,7 +127,8 @@ def blank_comments_and_strings(text: str) -> str:
                     j += 2
                 else:
                     j += 1
-            blank(i, j)
+            if not keep_comments:
+                blank(i, j)
             i = j
         elif c == '"':
             triple = text.startswith('"""', i)
@@ -227,15 +233,21 @@ def parse_button(stripped: str, pos: int) -> ButtonSite | None:
         return None  # no in-file label (e.g. `Button("x", action: f)`)
 
     # Modifier chain: `.name`, optional `(...)`, optional trailing `{...}`.
-    chain_start = i
+    # Only the `.name(...)` segments enter the semantic chain text — trailing
+    # closure BODIES are walked past but excluded, so a `.contentShape` or
+    # `.buttonStyle` buried inside `.overlay {…}` / `.alert {…} message: {…}`
+    # can neither exempt nor plain-mark the button it doesn't apply to.
+    chain_parts: list[str] = []
     while True:
         j = skip_ws(stripped, i)
         m = CHAIN_STEP_RX.match(stripped, j)
         if not m:
             break
+        seg_start = j
         j = m.end()
         if j < n and stripped[j] == "(":
             j = match_balanced(stripped, j, "(", ")")
+        chain_parts.append(stripped[seg_start:j])
         k = skip_ws(stripped, j)
         if k < n and stripped[k] == "{":
             j = match_balanced(stripped, k, "{", "}")
@@ -253,7 +265,7 @@ def parse_button(stripped: str, pos: int) -> ButtonSite | None:
                 else:
                     break
         i = j
-    chain = stripped[chain_start:i]
+    chain = " ".join(chain_parts)
     return ButtonSite(pos, i, args, label, chain)
 
 
@@ -286,6 +298,9 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
     if "buttonStyle" not in text:
         return []
     stripped = blank_comments_and_strings(text)
+    # Strings blanked, comments kept: the only text the allow-marker search
+    # trusts — string copy spelling out `// deadzone-allow:` cannot exempt.
+    commented = blank_comments_and_strings(text, keep_comments=True)
     findings: list[Finding] = []
     for m in BUTTON_RX.finditer(stripped):
         site = parse_button(stripped, m.start())
@@ -298,15 +313,16 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
             continue
         if CONTENT_SHAPE in site.label or CONTENT_SHAPE in site.chain:
             continue
-        if ALLOW_RX.search(text[site.start : site.end]):
+        if ALLOW_RX.search(commented, site.start, site.end):
             continue
         # The marker may also sit in a comment at the end of the Button's
         # first line, whose tail extends past site.start — check the full
-        # original line too.
+        # line too.
         lineno = stripped.count("\n", 0, site.start) + 1
-        lines = text.splitlines()
-        if lineno <= len(lines) and ALLOW_RX.search(lines[lineno - 1]):
+        commented_lines = commented.splitlines()
+        if lineno <= len(commented_lines) and ALLOW_RX.search(commented_lines[lineno - 1]):
             continue
+        lines = text.splitlines()
         style = PLAIN_STYLE_RX.search(site.chain)
         first_line = lines[lineno - 1].strip() if lineno <= len(lines) else "Button"
         snippet = f"{first_line} | gap: {gap.group(0)} | style: {style.group(0)})"
