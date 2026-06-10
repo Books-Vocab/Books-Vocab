@@ -155,8 +155,28 @@ final class AppLanguageStore: ObservableObject {
         selection.locale
     }
 
+    /// 實際走 `Bundle.main.path(forResource:)` 解析的次數。測試以此釘住
+    /// 快取契約（穩定語言下重複讀取不得重解析）。
+    private(set) var bundleResolutionCount = 0
+
+    /// 每語言解析一次後永久快取。`Bundle(path:)` 本身有 NSBundle 內部快取，
+    /// 但 `path(forResource:)` 的字串/檔案系統解析沒有——device time-profile
+    /// (2026-06-10) 顯示 L10n.lookup 在複習卡 settle 重評時每字串都付這筆,
+    /// 一幀內呼叫數十次。key 是 resolve 後的具體語言,.system 的系統語言
+    /// 變更會落到不同 key,不會黏住舊值。lock 防 L10n 從非主執行緒讀取
+    /// 時 dict 競寫。
+    private let bundleCacheLock = NSLock()
+    private var bundleCache: [AppLanguage: Bundle] = [:]
+
     var stringBundle: Bundle {
-        bundle(for: effectiveLanguage)
+        let language = effectiveLanguage
+        bundleCacheLock.lock()
+        defer { bundleCacheLock.unlock() }
+        if let cached = bundleCache[language] { return cached }
+        bundleResolutionCount += 1
+        let resolved = bundle(for: language)
+        bundleCache[language] = resolved
+        return resolved
     }
 
     var formatLocale: Locale {
