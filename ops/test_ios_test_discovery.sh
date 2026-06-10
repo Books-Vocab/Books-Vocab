@@ -202,29 +202,29 @@ printf '%s\n' "$FLAGS" | grep -qF "GolfTests/hotelMultiLine" && fail_t "hotelMul
 # ── 11. ios_test.sh -g 旗標 E2E（--list 在碰鎖/xcodebuild 前退出，可安全跑）──
 # 多個 -g 必須累積成 OR（歷史 bug：後者無聲覆蓋前者 → 以為跑兩個實際跑一個）。
 section "ios_test.sh multi -g accumulation (--list)"
+# ios_test.sh 的 TEST_DIR 硬編真實 test 目錄（吃不到本檔的 $FIX fixture），
+# 故直接從真實測試自我發現兩個方法名。注意：只認 XCTest 風格 `func testXxx`；
+# 若全數遷移到 Swift Testing 命名，這裡會找不到名而 fail（屆時改抓 @Test func）。
 IOS_TEST="$WORKSPACE/ops/ios_test.sh"
-LIST_A="$("$IOS_TEST" -g alphaOne --list 2>/dev/null)" || LIST_A=""
-LIST_B="$("$IOS_TEST" -g bravoOne --list 2>/dev/null)" || LIST_B=""
-LIST_AB="$("$IOS_TEST" -g alphaOne -g bravoOne --list 2>/dev/null)" || LIST_AB=""
-if [[ -z "$LIST_A" || -z "$LIST_B" ]]; then
-  # 真實 test dir 沒有 fixture 名 → 改用兩個一定存在的真模式自我發現
-  PAT_A="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | head -1 | sed 's/func //')"
-  PAT_B="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | tail -1 | sed 's/func //')"
-else
-  PAT_A=alphaOne; PAT_B=bravoOne
-fi
+PAT_A="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | head -1 | sed 's/func //')"
+PAT_B="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | tail -1 | sed 's/func //')"
 if [[ -n "$PAT_A" && -n "$PAT_B" && "$PAT_A" != "$PAT_B" ]]; then
-  N_A="$("$IOS_TEST" -g "$PAT_A" --list 2>/dev/null | grep -c only-testing || true)"
-  N_B="$("$IOS_TEST" -g "$PAT_B" --list 2>/dev/null | grep -c only-testing || true)"
-  OUT_AB="$("$IOS_TEST" -g "$PAT_A" -g "$PAT_B" --list 2>/dev/null)"
-  N_AB="$(grep -c only-testing <<<"$OUT_AB" || true)"
-  if (( N_A >= 1 && N_B >= 1 && N_AB >= N_A && N_AB >= N_B && N_AB >= 2 )); then
-    ok "multi -g 累積（$PAT_A:$N_A + $PAT_B:$N_B → 合併:$N_AB）"
+  LIST_A="$("$IOS_TEST" -g "$PAT_A" --list 2>/dev/null)" || LIST_A=""
+  LIST_B="$("$IOS_TEST" -g "$PAT_B" --list 2>/dev/null)" || LIST_B=""
+  OUT_AB="$("$IOS_TEST" -g "$PAT_A" -g "$PAT_B" --list 2>/dev/null)" || OUT_AB=""
+  # 強斷言：合併輸出必須是兩個單獨輸出的聯集超集（防舊覆蓋 bug 用計數巧合矇混）。
+  superset=1
+  while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    grep -qF -- "$flag" <<<"$OUT_AB" || { superset=0; break; }
+  done < <(printf '%s\n%s\n' "$LIST_A" "$LIST_B" | grep only-testing)
+  N_A="$(grep -c only-testing <<<"$LIST_A" || true)"
+  N_B="$(grep -c only-testing <<<"$LIST_B" || true)"
+  if (( N_A >= 1 && N_B >= 1 && superset == 1 )); then
+    ok "multi -g 累積且合併輸出 ⊇ 兩單獨輸出聯集（$PAT_A:$N_A + $PAT_B:$N_B）"
   else
-    fail_t "multi -g 未累積（$PAT_A:$N_A, $PAT_B:$N_B, 合併:$N_AB）"
+    fail_t "multi -g 未累積（$PAT_A:$N_A, $PAT_B:$N_B, superset=$superset）"
   fi
-  grep -q "$PAT_A" <<<"$OUT_AB" && grep -q "$PAT_B" <<<"$OUT_AB" \
-    && ok "合併輸出同時含兩個 pattern 的測試" || fail_t "合併輸出缺其中一個 pattern"
 else
   fail_t "找不到兩個可用的真實測試名（PAT_A='$PAT_A' PAT_B='$PAT_B'）"
 fi
