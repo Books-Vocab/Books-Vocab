@@ -66,6 +66,8 @@ struct TodayReviewView: View {
 
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    // 自主量測 probe（-reviewProbe）— 一般啟動恆為 nil，.task 直接 return。
+    @Environment(\.reviewProbeDriver) private var reviewProbeDriver
 
     @State private var isHelpPresented = false
     @State private var showAddLink = false
@@ -156,6 +158,12 @@ struct TodayReviewView: View {
                 reviewSettings: reviewSettingsStore.settings,
                 onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
             )
+        }
+        .task {
+            // probe 迴圈讀 reference 型 state（永遠新鮮）；fling 由 presenter
+            // 註冊的 handler 走真實評分路徑。driver.run 對重複觸發 idempotent。
+            guard let reviewProbeDriver else { return }
+            await reviewProbeDriver.run(session: state)
         }
         .overlay {
             LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
