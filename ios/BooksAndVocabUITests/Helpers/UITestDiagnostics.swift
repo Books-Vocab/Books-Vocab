@@ -116,10 +116,9 @@ class UITestCase: XCTestCase {
     }
 
     func currentTabSummary(in app: XCUIApplication) -> String {
-        let selected = app.tabBars.buttons.allElementsBoundByIndex.first(where: { button in
-            let value = String(describing: button.value ?? "")
-            return value.localizedCaseInsensitiveContains("selected") || value == "1"
-        })
+        // 用 Selected accessibility trait 判定；iOS 26.4 起 button.value
+        // 不再帶 "selected"/"1" 字串，嗅探 value 會誤報 <no selected tab>。
+        let selected = app.tabBars.buttons.allElementsBoundByIndex.first(where: \.isSelected)
         return selected?.label ?? "<no selected tab>"
     }
 
