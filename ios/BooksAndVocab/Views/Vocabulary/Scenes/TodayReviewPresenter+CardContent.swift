@@ -33,6 +33,7 @@ extension TodayReviewPresenter {
             .frame(minHeight: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .disabled(state.revealStage.showsAnswer || !isCardInteractive)
+            .accessibilityIdentifier("todayReview.card.front")
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
             .accessibilityHint(state.revealStage.showsAnswer ? "" : "點一下翻轉卡片".localized)
         }
@@ -138,7 +139,11 @@ extension TodayReviewPresenter {
             // 避免折疊→展開時 intrinsic 高度跳動。
             Group {
                 if backContentMounted {
+                    // Identifier on the MOUNTED branch only: UI tests read
+                    // `todayReview.card.back`.exists as the real flip-state
+                    // signal (the folded stub deliberately carries none).
                     combinedAnswerContent(currentCard, availableHeight: availableHeight)
+                        .accessibilityIdentifier("todayReview.card.back")
                 } else {
                     let _ = PerfLog.review.mark("back.stub", "w=\(card.word)")
                     Color.clear

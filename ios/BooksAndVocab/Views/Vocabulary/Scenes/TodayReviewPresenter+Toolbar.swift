@@ -14,6 +14,7 @@ extension TodayReviewPresenter {
                     Capsule(style: .continuous)
                         .fill(appSkin.palette.mutedFill)
                 )
+                .accessibilityIdentifier("todayReview.progressLabel")
 
             Button {
                 guard isCardInteractive else { return }
@@ -319,6 +320,7 @@ extension TodayReviewPresenter {
                 .frame(minWidth: TodayReviewMetrics.actionMinWidth)
             }
             .buttonStyle(.vocabAction(.destructive))
+            .accessibilityIdentifier("todayReview.feedback.forgot")
             .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if forgotButtonGlow > 0 {
@@ -343,6 +345,7 @@ extension TodayReviewPresenter {
                 .frame(minWidth: TodayReviewMetrics.actionMinWidth)
             }
             .buttonStyle(.vocabAction(.success))
+            .accessibilityIdentifier("todayReview.feedback.remembered")
             .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if rememberedButtonGlow > 0 {
