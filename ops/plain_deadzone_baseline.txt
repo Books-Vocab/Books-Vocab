@@ -2,9 +2,3 @@
 # Line-number-free finding keys: <relpath>::deadzone::<normalized-snippet>.
 # Regenerate after a sanctioned sweep:  bash ops/plain_deadzone_lint.sh --baseline
 
-Views/Reader/ReaderSettingsPresenter+Vocab.swift::deadzone::Button { onSelectUnderlineOpacity(option.value) } label: { | gap: maxWidth: .infinity | style: .buttonStyle(.plain)
-Views/Reader/ReaderSettingsPresenter+Vocab.swift::deadzone::Button { | gap: maxWidth: .infinity | style: .buttonStyle(.plain)
-Views/Reader/ReaderSettingsPresenter+Vocab.swift::deadzone::return Button { onSelectTheme(theme) } label: { | gap: maxWidth: .infinity | style: .buttonStyle(.plain)
-Views/Reader/VocabHighlightColorPresetPicker.swift::deadzone::Button { | gap: maxWidth: .infinity | style: .buttonStyle(.plain)
-Views/Vocabulary/Components/VocabCalendarGrid.swift::deadzone::return Button { | gap: maxWidth: .infinity | style: .buttonStyle(.plain)
-Views/Vocabulary/Scenes/StatsPresenter.swift::deadzone::Button { showCalendar = true } label: { | gap: Spacer() | style: .buttonStyle(.plain)

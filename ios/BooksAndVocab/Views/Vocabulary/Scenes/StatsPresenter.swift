@@ -465,6 +465,9 @@ struct StatsPresenter: View {
                         .font(appSkin.typography.iconSmall)
                         .foregroundStyle(appSkin.palette.quaternaryText)
                 }
+                // .plain hit-testing falls through the Spacer gap between the
+                // header and the chevron — same dead zone as SettingsNavigationRow.
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
