@@ -45,10 +45,19 @@ class UITestCase: XCTestCase {
         extraEnvironment: [String: String] = [:],
         perfLog: String? = nil
     ) -> XCUIApplication {
-        launchApp(
+        // Hermetic by default: an isolated world must never reach the real
+        // backend — a live catalog sync reconciles seeded series away, and a
+        // fake token's 401 wipes local data. An unreachable address fails with
+        // connection-refused (not 401), so nothing is torn down. Callers that
+        // genuinely need a server pass their own KG_UI_TEST_SERVER_URL.
+        var environment = extraEnvironment
+        if environment["KG_UI_TEST_SERVER_URL"] == nil {
+            environment["KG_UI_TEST_SERVER_URL"] = "http://127.0.0.1:9"
+        }
+        return launchApp(
             extraArgs: ["-appLaunchProfile", "ui-smoke", "-isolatedAuthSession"] + extraArgs,
             fixtures: fixtures,
-            extraEnvironment: extraEnvironment,
+            extraEnvironment: environment,
             perfLog: perfLog
         )
     }
