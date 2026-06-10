@@ -118,7 +118,7 @@ struct TodayReviewPresenter: View {
     @State var backContentMounted = false
     // Generation token: cancels a pending deferred-unmount when the user
     // re-reveals before the collapse settles, or when the card advances.
-    @State private var backMountGeneration = 0
+    @State var backMountGeneration = 0
     // With the per-card `.id` gone the answer subtree is reused across cards, so
     // the advance frame would otherwise feed the showsAnswer:true→false falling
     // edge into the reveal-collapse spring — the new front card would visually
@@ -126,7 +126,7 @@ struct TodayReviewPresenter: View {
     // the advance frame (set true in onChange(currentCardKey), cleared next
     // runloop) so PaperFoldModifier.progress snaps to 0 without rewinding. Same
     // single-frame main-thread gate the fling uses for suppressTransition.
-    @State private var suppressFoldAnimation = false
+    @State var suppressFoldAnimation = false
     // Spring settle budget for reviewRevealSpring (response 0.42, damping 0.88).
     // Mirrors the 0.8s safety window the swipe deck uses for settle.frames.
     private static let revealSettleSeconds: Double = 0.85
@@ -234,13 +234,18 @@ struct TodayReviewPresenter: View {
                 // the front-render subtraction probe). Suppress the reveal-collapse
                 // spring for this single advance frame so the reused fold subtree
                 // snaps progress→0 instead of rewinding the previous card's reveal.
+                // fling 路徑已在 completeFling 的 transaction 內「推進前」放閘
+                // （幽靈背面樹修復），此處冪等補收其他推進路徑；guard 避免對
+                // 已放下的閘重複寫 @State（多餘 invalidation）。
                 backMountGeneration += 1
-                backContentMounted = false
-                suppressFoldAnimation = true
-                DispatchQueue.main.async { suppressFoldAnimation = false }
+                if backContentMounted { backContentMounted = false }
+                if !suppressFoldAnimation {
+                    suppressFoldAnimation = true
+                    DispatchQueue.main.async { suppressFoldAnimation = false }
+                }
             }
             .onChange(of: state.progressText) { _, _ in
-                lastAutoplaySpokenCardKey = nil
+                if lastAutoplaySpokenCardKey != nil { lastAutoplaySpokenCardKey = nil }
             }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
             .animation(AppMotion.panelState, value: isHelpPresented)
