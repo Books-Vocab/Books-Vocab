@@ -168,6 +168,10 @@ struct BooksAndVocabApp: App {
                 failure: startupFailure,
                 actions: makeStartupRecoveryActions()
             )
+        } else if let reviewProbePlan = ReviewProbeOptions.active {
+            // Today Review 自主量測 probe（-reviewProbe N）— root 直掛 review
+            // 畫面跑 deterministic flip 迴圈。production 啟動恆為 nil。
+            ReviewProbeScene(plan: reviewProbePlan)
         } else {
             ContentView()
                 .modifier(AutoSyncMonitor())

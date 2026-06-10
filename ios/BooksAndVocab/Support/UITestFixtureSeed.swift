@@ -23,6 +23,8 @@ enum UITestFixtureSeed {
                 seedBookshelf(id, into: container)
             case "podcast":
                 seedPodcast(id, into: container)
+            case "todayReview":
+                seedTodayReview(id, into: container)
             default:
                 AppLog.app.warning("Unknown UI-test fixture domain: \(domain)")
             }
