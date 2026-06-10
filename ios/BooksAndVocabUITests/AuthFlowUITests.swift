@@ -14,29 +14,13 @@
 import XCTest
 
 final class AuthFlowUITests: UITestCase {
-    private static let seriesCardID = "podcast.series.ui-auth-series"
-    private static let episode1RowID = "podcast.episode.ui-auth-series_ep_01"
-    private static let episode2RowID = "podcast.episode.ui-auth-series_ep_02"
-    private static let podcastFixtureRoot =
-        "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts"
-
-    private static let fixtureEnvironment: [String: String] = [
-        "KG_UI_TEST_PODCAST_AUDIO": "\(podcastFixtureRoot)/ep_1_flash.m4a",
-        "KG_UI_TEST_PODCAST_SUBTITLE": "\(podcastFixtureRoot)/ep_1_flash.srt",
-        "KG_UI_TEST_PODCAST_DURATION": "1034.6",
-        // 假 token 不可打真 backend：api/health 的 401 會觸發
-        // logout(reason: healthcheck_401) + clearLocalData，把 fixture 世界
-        // 整個清掉。指向不可達位址 → connection refused（非 401）→ 不登出。
-        "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
-    ]
-
     // MARK: - 訪客態：閘門行為
 
     @MainActor
     func testGuestGateLocksPodcastAndRoutesEntryPointsToLoginSheet() throws {
         let app = launchIsolatedApp(
             fixtures: [.authTieredCatalog],
-            extraEnvironment: Self.fixtureEnvironment,
+            extraEnvironment: PodcastFixture.tieredCatalogEnvironment,
             perfLog: "auth"
         )
         captureStep("guest-launch", app: app)
@@ -69,16 +53,16 @@ final class AuthFlowUITests: UITestCase {
         try step("guest-podcast-catalog", app: app) {
             AppPage(app: app).goToPodcasts()
             XCTAssertTrue(app.waitForNavigationToSettle())
-            guard podcast.seriesCard(id: "ui-auth-series").waitUntilExists(timeout: 15) else {
+            guard podcast.seriesCard(id: PodcastFixture.seriesID).waitUntilExists(timeout: 15) else {
                 captureStep("no-series-card", app: app)
                 XCTFail("auth tieredCatalog fixture 未種出 series — 訪客瀏覽前提不成立")
                 return
             }
         }
         try step("guest-episode-list", app: app) {
-            podcast.seriesCard(id: "ui-auth-series").tapWhenReady()
+            podcast.seriesCard(id: PodcastFixture.seriesID).tapWhenReady()
             XCTAssertTrue(app.waitForNavigationToSettle())
-            guard episodeRow(Self.episode1RowID, in: app).waitUntilExists(timeout: 10) else {
+            guard podcast.episodeRow(PodcastFixture.episode1RowID).waitUntilExists(timeout: 10) else {
                 captureStep("no-episode-row", app: app)
                 XCTFail("episode list 未顯示 fixture 集數")
                 return
@@ -87,7 +71,7 @@ final class AuthFlowUITests: UITestCase {
 
         // 4. 訪客 tap 集數（含 preview 集）→ LoginSheet 彈出、絕不進 player。
         try step("guest-episode1-gated", app: app) {
-            episodeRow(Self.episode1RowID, in: app).tapWhenReady()
+            podcast.episodeRow(PodcastFixture.episode1RowID).tapWhenReady()
             auth.assertLoginSheetPresented()
             assertPlayerNotEntered(podcast: podcast, app: app)
         }
@@ -97,14 +81,14 @@ final class AuthFlowUITests: UITestCase {
             assertPlayerNotEntered(podcast: podcast, app: app)
         }
         try step("guest-episode2-gated", app: app) {
-            episodeRow(Self.episode2RowID, in: app).tapWhenReady()
+            podcast.episodeRow(PodcastFixture.episode2RowID).tapWhenReady()
             auth.assertLoginSheetPresented()
             assertPlayerNotEntered(podcast: podcast, app: app)
         }
         try step("guest-episode2-gate-dismissed", app: app) {
             auth.cancelLoginSheet()
             auth.assertLoginSheetGone()
-            episodeRow(Self.episode2RowID, in: app).assertExists(
+            podcast.episodeRow(PodcastFixture.episode2RowID).assertExists(
                 timeout: 5
             )
         }
@@ -116,7 +100,7 @@ final class AuthFlowUITests: UITestCase {
     func testSignedInSessionHidesLoginGateAndLogoutRestoresGuest() throws {
         let app = launchIsolatedApp(
             fixtures: [.authTieredCatalog, .authSignedIn],
-            extraEnvironment: Self.fixtureEnvironment,
+            extraEnvironment: PodcastFixture.tieredCatalogEnvironment,
             perfLog: "auth"
         )
         captureStep("signedin-launch", app: app)
@@ -140,14 +124,14 @@ final class AuthFlowUITests: UITestCase {
         try step("signedin-episode1-opens-player", app: app) {
             AppPage(app: app).goToPodcasts()
             XCTAssertTrue(app.waitForNavigationToSettle())
-            guard podcast.seriesCard(id: "ui-auth-series").waitUntilExists(timeout: 15) else {
+            guard podcast.seriesCard(id: PodcastFixture.seriesID).waitUntilExists(timeout: 15) else {
                 captureStep("no-series-card", app: app)
                 XCTFail("auth tieredCatalog fixture 未種出 series")
                 return
             }
-            podcast.seriesCard(id: "ui-auth-series").tapWhenReady()
+            podcast.seriesCard(id: PodcastFixture.seriesID).tapWhenReady()
             XCTAssertTrue(app.waitForNavigationToSettle())
-            episodeRow(Self.episode1RowID, in: app).tapWhenReady(timeout: 10)
+            podcast.episodeRow(PodcastFixture.episode1RowID).tapWhenReady(timeout: 10)
             XCTAssertTrue(app.waitForNavigationToSettle())
         }
         if auth.loginSheet.waitUntilExists(timeout: 1) {
@@ -209,10 +193,6 @@ final class AuthFlowUITests: UITestCase {
     }
 
     // MARK: - Helpers
-
-    private func episodeRow(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
 
     /// 閘門守門斷言：鎖定列 tap 後絕不進 player。
     private func assertPlayerNotEntered(
