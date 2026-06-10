@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 84f6998e
+verified_against: f0d37ca4
 -->
 # i18n Lint
 
@@ -17,7 +17,7 @@ verified_against: 84f6998e
 |------|------|
 | `--report`(預設) | 印出 findings,exit 0。本機 ad-hoc 查看用 |
 | `--baseline` | 把當前命中數寫入 `ops/i18n_baseline.txt`,當 watermark |
-| `--baseline-check` | 對照 baseline,findings 超過即 fail(CI 用) |
+| `--baseline-check` | 對照 baseline,findings 或 `localized_calls` 超過即 fail(CI 用) |
 | `--strict` | 任何 finding 即 fail。除 legacy 三項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」 |
 
 ## 掃描範圍
@@ -35,6 +35,20 @@ verified_against: 84f6998e
 
 4. **`.xcstrings` needs_review**:
    `Localizable.xcstrings` 內 `state=needs_review` 且 value 空的 entry。
+
+5. **`.localized` usage 計數**(`localized_calls`,debt watermark):
+   掃 Swift 檔內 `.localized` 呼叫數,**不計入 `total`**,而是獨立 watermark。用來追蹤 `.localized`-style 在地化欠債在 review-flip 等 surface 不再增長(只能持平或下降)。
+
+## Baseline 檔格式
+
+`ops/i18n_baseline.txt` 由 `--baseline` 寫入,為 key=value 形式:
+
+```
+findings=<total>
+localized_calls=<count>
+```
+
+`--baseline-check` 讀 `findings=` 與 `localized_calls=` 兩個 watermark,任一超過即 fail。為相容舊格式,若檔案是純整數(無 `findings=` 行),fallback 當成 `findings` watermark,且跳過 `localized_calls` 檢查(直到下次重跑 `--baseline` 升級格式)。
 
 ## 豁免規則 (Exemptions)
 
