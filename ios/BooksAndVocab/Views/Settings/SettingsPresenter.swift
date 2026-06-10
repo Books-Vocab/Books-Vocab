@@ -215,6 +215,9 @@ struct SettingsPresenter: View {
                 }
             }
             .appHoverRowTint()
+            // .plain hit-testing falls through the Spacer gap inside
+            // AppKeyValueRow — same dead zone as SettingsNavigationRow.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(summary.isSyncing)
