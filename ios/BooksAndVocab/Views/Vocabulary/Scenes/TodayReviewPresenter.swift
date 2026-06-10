@@ -178,14 +178,20 @@ struct TodayReviewPresenter: View {
                                 .padding(.top, TodayReviewMetrics.cardTopInset)
                                 .padding(.bottom, TodayReviewMetrics.cardBottomInset)
 
-                            if state.revealStage == .front {
-                                revealExpandZone(
-                                    title: L10n.string("點一下展開"),
-                                    minHeight: max(geo.size.height * TodayReviewMetrics.frontHeightRatio, 180),
-                                    action: onAdvanceReveal
-                                )
-                                .allowsHitTesting(isCardInteractive)
-                            }
+                            // expandZone 常駐（settle 白工 1c）：條件 `if` 在每次
+                            // 推進的 settle 幀做結構 insert（含 transition machinery
+                            // 的 _makeView）；改為常駐節點，front/answer 切換只是
+                            // 高度/透明度/命中/a11y 的值 diff。
+                            let zoneActive = state.revealStage == .front
+                            revealExpandZone(
+                                title: L10n.string("點一下展開"),
+                                minHeight: max(geo.size.height * TodayReviewMetrics.frontHeightRatio, 180),
+                                action: onAdvanceReveal
+                            )
+                            .frame(height: zoneActive ? nil : 0)
+                            .opacity(zoneActive ? 1 : 0)
+                            .allowsHitTesting(zoneActive && isCardInteractive)
+                            .accessibilityHidden(!zoneActive)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
