@@ -18,10 +18,15 @@ struct SettingsAccountSection: View {
                 if state.isLoggedIn {
                     loggedInView
                         .transition(.modalSwap)
+                        // `.contain` keeps the identifier on the container —
+                        // otherwise it propagates onto children and shadows
+                        // `settings.account.logoutButton`.
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("settings.account.loggedInView")
                 } else {
                     loginView
                         .transition(.modalSwap)
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("settings.account.loginView")
                 }
             }
