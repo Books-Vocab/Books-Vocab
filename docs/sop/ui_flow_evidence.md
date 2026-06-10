@@ -49,6 +49,7 @@ verified_against: 655dea9c
 - `ios_test --file` 多檔語法有 footgun（見 notebook-binding 修復），單檔最穩。
 - UI smoke 預設 `--ui-launch-profile ui-smoke`；要完整 startup baseline 明示 `standard`。
 - 全螢幕 podcast player **蓋住 tab bar**：從 player 進入其他 flow 前必須先 back out（見 `AuthFlowUITests` 的 `signedin-player-back` 步驟），否則 tab 點擊 silently 失敗。
+- **`launchIsolatedApp` 預設網路封閉**（hermetic）：自動注入不可達 `KG_UI_TEST_SERVER_URL`，否則 catalog sync 會打真生產 server 把 seeded series reconcile-tombstone 掉（Auth flow 紅燈根因）、假 token 的 401 會 wipe local data。真的需要 server 的測試自帶該 env var 覆蓋。
 - **Subagent 等待紀律**：把 build/test 丟 `run_in_background` 後結束 turn = 永遠收不到完成通知（三個 fan-out agent 全踩過）。長命令一律前景跑（timeout 拉滿）或前景 `until [[ -f <verdict> ]]; do sleep 5; done` 等；工作未完不准結束 turn。
 
 ## 驗收（收斂層對抗驗證）
