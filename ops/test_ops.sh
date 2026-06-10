@@ -38,6 +38,7 @@ DEFAULT_TESTS=(
   ui-token
   docs-lint
   ios-ops
+  review-flip-probe
   ios-test-discovery
   chrome-bundle
   script-help
@@ -95,6 +96,9 @@ run_one() {
     ios-ops)
       ./ops/test_ios_ops.sh &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ios_diagnostics.py
+      ;;
+    review-flip-probe)
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_review_flip_probe_report.py
       ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;
