@@ -19,6 +19,14 @@ struct ReviewProbePlan: Equatable, Sendable {
     /// fling 連續被拒（dismissPhase 非 idle / handler 未註冊）達此數即放棄，
     /// 發 abort marker，不無限空轉。
     var maxConsecutiveFailures: Int
+    /// 逐 flip 幀取樣視窗 — 對齊 settle.frames 的 800ms（fling 起算），
+    /// 取 850ms 含尾端緩衝。recorder 在 fling 前開、此視窗結束時關。
+    var settleWindow: Duration = .milliseconds(850)
+
+    /// fling 成功後：先睡滿取樣視窗（關 recorder），再睡這段補足 interFlip。
+    var interFlipRemainder: Duration {
+        max(.zero, interFlip - settleWindow)
+    }
 
     static func standard(flipCount: Int) -> ReviewProbePlan {
         ReviewProbePlan(
@@ -42,11 +50,19 @@ enum ReviewProbeOptions {
     /// 單格數據互相污染 — env override 一律 clamp 到 900ms 以上。
     static let minInterFlipMs = 900
 
+    /// reveal spring settle 0.85s — revealHold override 低於此會讓 reveal 視窗
+    /// 疊進 fling 視窗，與 interFlip clamp 同理。
+    static let minRevealHoldMs = 900
+
     static func plan(
         arguments: [String],
         environment: [String: String] = [:]
     ) -> ReviewProbePlan? {
-        guard let idx = arguments.firstIndex(of: argumentName),
+        // 綁 -ui-testing：probe 必須與 fixture seeding 同場啟用。沒有這個 gate，
+        // 單帶 -reviewProbe 會對 live container 的真實使用者卡片 submit
+        //（SRS 排程 + deferred flush 落 DB）—— dev footgun，直接擋掉。
+        guard AppRuntimeOptions.isUITesting(arguments: arguments),
+              let idx = arguments.firstIndex(of: argumentName),
               arguments.indices.contains(idx + 1),
               let count = Int(arguments[idx + 1]),
               (1...maxFlipCount).contains(count)
@@ -54,7 +70,7 @@ enum ReviewProbeOptions {
 
         var plan = ReviewProbePlan.standard(flipCount: count)
         if let ms = environment["KG_REVIEW_PROBE_REVEAL_MS"].flatMap(Int.init), ms > 0 {
-            plan.revealHold = .milliseconds(ms)
+            plan.revealHold = .milliseconds(max(ms, minRevealHoldMs))
         }
         if let ms = environment["KG_REVIEW_PROBE_INTERFLIP_MS"].flatMap(Int.init), ms > 0 {
             plan.interFlip = .milliseconds(max(ms, minInterFlipMs))
