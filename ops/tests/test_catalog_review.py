@@ -1610,3 +1610,45 @@ def test_catalog_review_doctor_projected_modes_keep_repair_plan_non_blocking(tmp
     hero_shortcut_payload = json.loads(hero_shortcut.stdout)
     assert hero_shortcut_payload["mode"] == "hero-first"
     assert hero_shortcut_payload["health"]["recommendedOperatorAction"] == "repair-first"
+
+
+def test_multi_device_manifest_devices_and_cluster_identity(tmp_path: Path):
+    """Multi-device snapshots: scene identity (clusterID) stays device-free so the
+    same state pairs light/dark *within* each device, while the manifest exposes an
+    ordered ``devices`` list (canonical iPhone first) for the gallery's device toggle."""
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    for device_dir in (
+        "iPhone 15 Pro portrait",
+        "iPhone 15 Pro portrait (dark)",
+        "iPad Pro 11 landscape",
+        "iPad Pro 11 landscape (dark)",
+    ):
+        image_dir = source_root / device_dir / "Settings_View"
+        image_dir.mkdir(parents=True)
+        (image_dir / "Signed_out.png").write_bytes(b"png")
+
+    items = manifest_module.collect_items(source_root, profile)
+    assert len(items) == 4
+    assert {item["device"] for item in items} == {"iPhone 15 Pro portrait", "iPad Pro 11 landscape"}
+    assert len({item["clusterID"] for item in items}) == 1  # device-free scene identity
+    assert len({item["assetID"] for item in items}) == 4    # per-shot identity stays unique
+
+    manifest = manifest_module.build_manifest(items, profile)
+    assert manifest["devices"] == ["iPhone 15 Pro portrait", "iPad Pro 11 landscape"]
+
+
+def test_render_html_consumes_devices_for_device_toggle(tmp_path: Path):
+    """The gallery template must consume MANIFEST.devices and scope scene pairing
+    to the selected device — otherwise a second device's shots silently shadow the
+    first device's light/dark pairs inside the same cluster."""
+    manifest = {
+        "schema": "kg.catalog.review.v1",
+        "devices": ["iPhone 15 Pro portrait", "iPad Pro 11 landscape"],
+        "surfaces": [],
+        "items": [],
+    }
+    html = renderer_module.render_html(manifest)
+    assert "MANIFEST.devices" in html
+    assert 'id="device-seg"' in html
+    assert "state.device" in html

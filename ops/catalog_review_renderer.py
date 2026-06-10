@@ -206,6 +206,7 @@ _TEMPLATE = r"""<!doctype html>
     <div class="brand">KG UI Gallery <span class="tag" id="lane-tag"></span></div>
     <div class="nav-actions">
       <span class="counts" id="counts"></span>
+      <div class="seg" id="device-seg"></div>
       <div class="seg" id="appearance"></div>
     </div>
   </div>
@@ -236,7 +237,15 @@ _TEMPLATE = r"""<!doctype html>
     ];
     const LANE_LABEL = Object.fromEntries(LANE_TABS.map((l) => [l.id, l.label]));
 
-    const state = { lane: "feature-surface", search: "", feature: "", appearance: "light", focus: "" };
+    // Ordered device list (manifest-provided; derived from shots for older
+    // manifests). Scene pairing is scoped to ONE device at a time — without the
+    // scope a second device's shots silently shadow the first device's
+    // light/dark pair inside the same cluster.
+    const DEVICES = (MANIFEST.devices && MANIFEST.devices.length)
+      ? MANIFEST.devices
+      : [...new Set(shots.map((s) => s.device))];
+
+    const state = { lane: "feature-surface", search: "", feature: "", appearance: "light", focus: "", device: DEVICES[0] || "" };
 
     // shots grouped by surface, then into scenes (clusterID) pairing light+dark.
     const shotsBySurface = new Map();
@@ -248,7 +257,8 @@ _TEMPLATE = r"""<!doctype html>
 
     const DEFAULTISH = new Set(["", "default", "preview", "normal"]);
     function scenesOf(surfaceKey) {
-      const group = shotsBySurface.get(surfaceKey) || [];
+      const group = (shotsBySurface.get(surfaceKey) || [])
+        .filter((s) => !state.device || s.device === state.device);
       const byScene = new Map();
       for (const s of group) {
         if (!byScene.has(s.clusterID)) byScene.set(s.clusterID, []);
@@ -462,6 +472,19 @@ _TEMPLATE = r"""<!doctype html>
       }
     }
 
+    function mountDeviceSeg() {
+      const wrap = document.getElementById("device-seg");
+      wrap.innerHTML = "";
+      if (DEVICES.length < 2) return; // single-device snapshot: keep chrome unchanged
+      for (const dev of DEVICES) {
+        const b = document.createElement("button");
+        b.className = "seg-btn" + (state.device === dev ? " active" : "");
+        b.textContent = dev;
+        b.onclick = () => { state.device = dev; render(); };
+        wrap.appendChild(b);
+      }
+    }
+
     function mountAppearance() {
       const wrap = document.getElementById("appearance");
       wrap.innerHTML = "";
@@ -516,6 +539,7 @@ _TEMPLATE = r"""<!doctype html>
       const laneLabel = state.focus ? "Focus compare" : (LANE_LABEL[state.lane] || state.lane);
       document.getElementById("lane-tag").textContent = laneLabel;
       mountTabs();
+      mountDeviceSeg();
       mountAppearance();
       const main = document.getElementById("main");
       main.innerHTML = "";
