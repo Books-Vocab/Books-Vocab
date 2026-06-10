@@ -448,6 +448,46 @@ struct BooksAndVocabTests {
         #expect(decoded.flushed == true)
     }
 
+    /// Store-layer legacy migration: a bare `Snapshot` blob (pre per-user
+    /// keying) seeded directly into the defaults key must load per-user and be
+    /// re-persisted as the dictionary shape. Seeds UserDefaults underneath the
+    /// store, so the warm in-memory cache must be invalidated first — without
+    /// that, the cache silently masks the seeded blob and the decode/migration
+    /// path never runs.
+    @Test func legacyBareSnapshotBlobMigratesToPerUserStore() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        defer { TodayReviewSessionSnapshotStore.clear(for: nil) }
+
+        let baseline = TodayReviewSessionSnapshotStore.ReviewBaseline(
+            reviewIntervalHours: 24, nextReviewAt: Date(), lastReviewedAt: nil,
+            reviewCount: 0, lapseCount: 0, reviewStreak: 0, lastReviewFeedbackRaw: 0
+        )
+        let legacy = TodayReviewSessionSnapshotStore.Snapshot(
+            userId: "user-legacy",
+            sessionStartTime: Date(),
+            currentIndex: 1,
+            queue: [.init(persistenceID: "card-legacy", baseline: baseline)],
+            submissions: [:],
+            updatedAt: Date()
+        )
+        let blob = try JSONEncoder().encode(legacy)
+        // Drain the async clear() above BEFORE seeding underneath the store —
+        // otherwise the queued clear can run after the direct set and delete
+        // the seeded blob. queue.sync doubles as the drain barrier.
+        TodayReviewSessionSnapshotStore._invalidateCacheForTesting()
+        UserDefaults.standard.set(blob, forKey: "kg.review.activeSession.v1")
+        TodayReviewSessionSnapshotStore._invalidateCacheForTesting()
+
+        let restored = try #require(TodayReviewSessionSnapshotStore.load(for: "user-legacy"))
+        #expect(restored.userId == "user-legacy")
+        #expect(restored.queue.first?.persistenceID == "card-legacy")
+
+        // Migration must have re-persisted the dictionary shape: a cold
+        // re-decode (cache dropped again) still finds the per-user entry.
+        TodayReviewSessionSnapshotStore._invalidateCacheForTesting()
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-legacy") != nil)
+    }
+
     /// New answers persisted by submit() start unflushed; once the DB flush
     /// succeeds the snapshot is rewritten with flushed=true so restore won't
     /// re-flush. Verified at the scoring layer (markFlushed).
