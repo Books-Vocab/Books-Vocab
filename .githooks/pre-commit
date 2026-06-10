@@ -9,7 +9,7 @@
 set -euo pipefail
 
 REPO="$(git rev-parse --show-toplevel)"
-PATTERN='^(design-system/|ops/(gen_web_tokens|gen_web_components|gen_figma_sets|token_drift_check|component_fidelity_check|verify_design_system)\.(py|sh)|ios/BooksBrowser/(Models|UIComponents)/|chrome-extension/shared/|backend/static/(kg-(tokens|components|component-structures)\.css|review-gradient\.js))'
+PATTERN='^(design-system/|ops/(gen_web_tokens|gen_web_components|gen_figma_sets|token_drift_check|component_fidelity_check|verify_design_system)\.(py|sh)|ios/BooksAndVocab/(Models|UIComponents)/|chrome-extension/shared/|backend/static/(kg-(tokens|components|component-structures)\.css|review-gradient\.js))'
 
 if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE "$PATTERN"; then
   exit 0
