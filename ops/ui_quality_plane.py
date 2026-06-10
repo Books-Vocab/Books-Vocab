@@ -147,10 +147,12 @@ def parse_plane(path: Path) -> tuple[str, list[dict]]:
 
 
 def trigger_matches(file: str, trigger: str) -> bool:
-    if trigger.endswith("/"):
-        return file.startswith(trigger)
+    # Same precedence as ops/docs_impact.py source_matches: glob first, then
+    # dir prefix, then exact file.
     if any(ch in trigger for ch in "*?["):
         return fnmatch.fnmatch(file, trigger)
+    if trigger.endswith("/"):
+        return file.startswith(trigger)
     return file == trigger
 
 
@@ -233,13 +235,27 @@ def cmd_list(mechanisms: list[dict], as_json: bool) -> int:
 
 
 def changed_since(ref: str) -> list[str]:
-    out = subprocess.run(
-        ["git", "diff", "--name-only", f"{ref}...HEAD"],
-        check=True,
-        stdout=subprocess.PIPE,
-        text=True,
-    ).stdout
-    return [line.strip() for line in out.splitlines() if line.strip()]
+    # Mirrors ops/docs_impact.py changed_paths_since: committed range plus
+    # index, worktree, and untracked changes — "what should I run before
+    # committing" must see uncommitted edits too.
+    def run_git(args: list[str]) -> str:
+        return subprocess.run(
+            ["git", *args],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).stdout
+
+    output = "\n".join(
+        [
+            run_git(["diff", "--name-only", "--diff-filter=ACMR", f"{ref}..HEAD"]),
+            run_git(["diff", "--name-only", "--diff-filter=ACMR", "--cached"]),
+            run_git(["diff", "--name-only", "--diff-filter=ACMR"]),
+            run_git(["ls-files", "--others", "--exclude-standard"]),
+        ]
+    )
+    return sorted({line.strip() for line in output.splitlines() if line.strip()})
 
 
 def cmd_impact(mechanisms: list[dict], files: list[str], as_json: bool) -> int:
