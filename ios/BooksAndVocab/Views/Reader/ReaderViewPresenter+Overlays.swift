@@ -45,8 +45,12 @@ extension ReaderViewPresenter {
 
             if state.chrome.overlay == .translation {
                 overlayPanelChrome(translationPanel, placement: placement)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("reader.translationPanel")
             } else if state.chrome.overlay == .settings {
                 overlayPanelChrome(settingsPanel, placement: placement)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("reader.settingsPanel")
             }
         }
         .animation(AppMotion.panelState, value: state.chrome.overlay)
