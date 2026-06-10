@@ -104,12 +104,12 @@ final class NotebookReviewFlowUITests: UITestCase {
         // ── 5. Grade remembered: the queue really advances ──────────────────
         review.tapRemembered()
         XCTAssertTrue(
-            review.progressLabel.waitUntilLabelContains("2 / \(Self.deckSize)", timeout: 6),
+            review.waitForProgress("2 / \(Self.deckSize)"),
             "評分後 progress 必須前進到 2 / \(Self.deckSize)，實際：\(review.progressText)"
         )
         try step("graded-remembered", app: app) {
             XCTAssertTrue(
-                review.rememberedButton.waitUntilLabelContains("·1", timeout: 5),
+                review.waitUntilLabel(of: review.rememberedButton, contains: "·1"),
                 "記得計數應顯示 ·1，實際 label：\(review.rememberedButton.label)"
             )
         }
@@ -129,12 +129,12 @@ final class NotebookReviewFlowUITests: UITestCase {
         // ── 7. Grade forgot: independent counter + further advance ──────────
         review.tapForgot()
         XCTAssertTrue(
-            review.progressLabel.waitUntilLabelContains("3 / \(Self.deckSize)", timeout: 6),
+            review.waitForProgress("3 / \(Self.deckSize)"),
             "第二次評分後 progress 必須前進到 3 / \(Self.deckSize)，實際：\(review.progressText)"
         )
         try step("graded-forgot", app: app) {
             XCTAssertTrue(
-                review.forgotButton.waitUntilLabelContains("·1", timeout: 5),
+                review.waitUntilLabel(of: review.forgotButton, contains: "·1"),
                 "忘記計數應顯示 ·1，實際 label：\(review.forgotButton.label)"
             )
         }
