@@ -21,12 +21,26 @@ struct NotebookPage {
             .firstMatch
     }
 
+    /// Today-review CTA pill in the action bar. The due / unlearned / combined
+    /// branches share one identifier — only one renders at a time.
+    var reviewCTAButton: XCUIElement {
+        app.descendants(matching: .any)
+            .matching(identifier: "notebook.reviewCTA")
+            .firstMatch
+    }
+
     // MARK: - Actions
 
     @discardableResult
     func tapAdd(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         addButton.tapWhenReady(file: file, line: line)
         return self
+    }
+
+    @discardableResult
+    func startReview(file: StaticString = #filePath, line: UInt = UInt(#line)) -> TodayReviewPage {
+        reviewCTAButton.tapWhenReady(file: file, line: line)
+        return TodayReviewPage(app: app)
     }
 
     // MARK: - Assertions
