@@ -29,7 +29,7 @@ verified_against: 448f66d9
 ./ops/ios_ops.sh test --ui --file <Flow>UITests.swift --lease --json   # 一律 --lease（pool 預設 3 台，KG_IOS_SIM_POOL_SIZE 可調）
 ```
 
-- JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest}`；`null` = 沒有視覺證據 = 不算完成。
+- JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程 `run_recording.mp4`（UI scope + 可解析 UDID 時自動錄），畫面行為爭議時抽幀看 tap 當下；頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 
