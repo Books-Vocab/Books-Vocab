@@ -915,37 +915,14 @@ build_ui_step_contact_sheet() {
 
   UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_SCREENSHOT_DIR/review_manifest.json"
   UI_TEST_CONTACT_SHEET="$UI_TEST_SCREENSHOT_DIR/contact_sheet.png"
-  if ! uv run --python 3.13 python - "$UI_TEST_SCREENSHOT_DIR" "$UI_TEST_SCREENSHOT_MANIFEST" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-root = Path(sys.argv[1])
-manifest = Path(sys.argv[2])
-items = []
-for rank, path in enumerate(sorted(root.glob("*.png")), start=1):
-    stem = path.stem
-    label = stem.split("-", 1)[1] if "-" in stem else stem
-    items.append({
-        "assetID": stem,
-        "relPath": path.name,
-        "surface": "UITest Step",
-        "lane": "ui-test",
-        "stateFacet": "step",
-        "stateFacetRank": rank,
-        "stateLabel": label,
-        "feature": "UITest",
-        "appearance": "light",
-    })
-manifest.write_text(json.dumps({"items": items}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-PY
-  then
-    echo "[ios_test][ui-steps] warning: failed to write contact sheet manifest dir=$UI_TEST_SCREENSHOT_DIR" >&2
-    return 0
-  fi
-
   if "$SCRIPT_DIR/catalog_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
-      --appearance light --cols 3 --cell-width 260 --out "$UI_TEST_CONTACT_SHEET" --json >/dev/null 2>&1; then
+      --source uitest \
+      --appearance light \
+      --cols 3 \
+      --cell-width 260 \
+      --out "$UI_TEST_CONTACT_SHEET" \
+      --manifest-out "$UI_TEST_SCREENSHOT_MANIFEST" \
+      --json >/dev/null 2>&1; then
     echo "[ios_test][ui-steps] screenshots=$UI_TEST_SCREENSHOT_DIR contactSheet=$UI_TEST_CONTACT_SHEET"
   else
     echo "[ios_test][ui-steps] warning: failed to build contact sheet dir=$UI_TEST_SCREENSHOT_DIR" >&2
