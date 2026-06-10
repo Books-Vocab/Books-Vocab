@@ -69,4 +69,25 @@ struct AppPage {
         notebookTab.assertExists(file: file, line: line)
         overviewTab.assertExists(file: file, line: line)
     }
+
+    /// Shell chrome must survive entering a section: tab bar alive (no crash)
+    /// and a navigation bar present. Carries over ShellSmokeUITests' intent.
+    func assertNavigationChrome(
+        on sectionName: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertTrue(
+            app.tabBars.firstMatch.waitForExistence(timeout: 3),
+            "Tab bar vanished after entering \(sectionName) — possible crash",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            app.navigationBars.firstMatch.waitForExistence(timeout: 5),
+            "No navigation bar present on \(sectionName)",
+            file: file,
+            line: line
+        )
+    }
 }
