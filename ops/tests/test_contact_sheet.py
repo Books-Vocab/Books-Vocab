@@ -89,6 +89,38 @@ def test_select_items_ids_intersect_other_filters():
     assert [s["assetID"] for s in sel] == ["x1"]
 
 
+def test_apply_take_evenly_and_named_positions():
+    mod = _load()
+    items = [{"assetID": f"x{i}"} for i in range(1, 9)]
+    assert [it["assetID"] for it in mod.apply_take(items, "evenly:4")] == [
+        "x1", "x3", "x6", "x8"
+    ]
+    assert [it["assetID"] for it in mod.apply_take(items, "first,middle,last")] == [
+        "x1", "x4", "x8"
+    ]
+    assert [it["assetID"] for it in mod.apply_take(items, "2,4,nope,99")] == [
+        "x2", "x4"
+    ]
+
+
+def test_build_ui_step_manifest_orders_numeric_steps(tmp_path):
+    mod = _load()
+    png_header = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00" * 8
+        + (100).to_bytes(4, "big")
+        + (200).to_bytes(4, "big")
+    )
+    for name in ("08-playback-sustained.png", "01-launch.png", "03-series-detail.png"):
+        (tmp_path / name).write_bytes(png_header)
+    manifest = mod.build_ui_step_manifest(tmp_path)
+    assert manifest["source"] == "uitest"
+    assert [item["assetID"] for item in manifest["items"]] == [
+        "01-launch", "03-series-detail", "08-playback-sustained"
+    ]
+    assert manifest["items"][1]["stateLabel"] == "series-detail"
+
+
 def test_resolve_crop_box_presets():
     mod = _load()
     assert mod.resolve_crop_box(100, 200, None) == (0, 0, 100, 200)
