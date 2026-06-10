@@ -45,6 +45,7 @@ struct TranslationLanguageSettingsView: View {
                                 sourceLang = lang
                                 Task { await commit(source: lang, target: targetLang, savingID: lang.id, rollback: { sourceLang = previous }) }
                             }
+                            .accessibilityIdentifier("settings.translation.source.\(lang.id)")
                         }
                     }
                     .settingsCard()
@@ -65,6 +66,7 @@ struct TranslationLanguageSettingsView: View {
                                 targetLang = lang
                                 Task { await commit(source: sourceLang, target: lang, savingID: lang.id, rollback: { targetLang = previous }) }
                             }
+                            .accessibilityIdentifier("settings.translation.target.\(lang.id)")
                         }
                     }
                     .settingsCard()

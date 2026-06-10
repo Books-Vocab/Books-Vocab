@@ -24,6 +24,15 @@
 import XCTest
 
 final class SettingsFlowUITests: UITestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // This flow walks four pushed sections end-to-end; cold isolated-session
+        // launch (~25-30s) plus AX-snapshot queries can brush the harness default
+        // 60s allowance. 120s is the harness maximum (ios_test.sh passes
+        // -maximum-test-execution-time-allowance 120).
+        executionTimeAllowance = 120
+    }
+
     @MainActor
     func testSettingsFlowAppliesRealPreferenceChanges() throws {
         let app = launchIsolatedApp(
