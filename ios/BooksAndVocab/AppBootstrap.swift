@@ -24,6 +24,17 @@ enum AppBootstrap {
 
     @MainActor
     static func run() -> Outcome {
+        // UI-test / probe 隔離（2026-06-10 事故）：fixture 會 wipe+seed
+        // VocabularyEntry，掛真用戶 on-disk store 等於清掉整個本地單字庫；
+        // CloudKit 一併斷開，真機跑 probe 不得污染 iCloud。fixture seed 端
+        // 另有 in-memory guard（UITestFixtureSeed），雙層互為防線。
+        if AppRuntimeOptions.isUITesting() {
+            let ephemeral = makeFallbackModelContainer()
+            AuthManager.shared.modelContainer = ephemeral
+            AppLog.app.info("UI-testing: ephemeral in-memory ModelContainer (no CloudKit)")
+            return Outcome(container: ephemeral, failure: nil)
+        }
+
         // 一次性自癒：清除舊版寫入的非法 review-event pull watermark，避免後端 400
         // 造成的背景同步死鎖（必須早於任何 sync 觸發）。
         KGService.migrateReviewEventBoundaryIfNeeded()
