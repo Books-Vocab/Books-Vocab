@@ -31,9 +31,22 @@ version: 2.0.0
 2. 看 ahead/behind + subject 認形狀：superset ahead 最多、raw 子集 ahead 少且 subject 同主題 → superset 假設成形。
 3. merge superset → main（已 union 過的整合 branch 通常零衝突）。
 4. 每個 raw 子集：`git diff main..<branch> -- <該 branch 唯一檔>` **空 = 冗餘 → 刪**（merge 它反而把舊 baseline 共用檔 regress 回 main）。
-5. build gate → push（head commit 進 base 會讓對應 PR **自動翻 MERGED**）→ 清殘影 → 問測試。
+5. **build gate 編「commit」不編 working tree**（下方）→ push（head commit 進 base 會讓對應 PR **自動翻 MERGED**）→ 清殘影 → 問測試。push/刪必須是「已讀到綠燈 verdict」之後的**獨立 call**，不可與讀 verdict 同一呼叫。
 
 **判 containment 一律走 tree-diff，禁用 `git cherry`/patch-id**（rebase 過必失準，全噴 `+` 是噪音）。取證取「決定性的那一個」（唯一檔 diff 是否空），不要倒整份 `diff --stat` / `grep '^+'` —— diffstat 的刪除總量已說完故事。
+
+### Build gate 編 commit，不編 dirty working tree
+
+main worktree 是使用者的即時工作桌，常帶**未提交的 WIP**。直接 `ios_ops.sh build` 會把使用者的 dirty 一起編 → false-red 算到 converge 頭上，逼你花一輪歸責（實戰踩過：`suppressFoldAnimation` 私有跨檔錯其實是使用者 WIP）。**不能 stash**（會丟使用者身份/work）。正解是在乾淨臨時 worktree 編「要推的那個 commit」：
+
+```bash
+gate=$(mktemp -d)/converge-gate
+git worktree add --detach "$gate" HEAD        # HEAD = 已 merge 好、要推的 commit
+( cd "$gate" && ./ops/ios_ops.sh build )      # shlock + git-common-dir 共享 DerivedData，多 worktree 安全、cache 仍 warm
+git worktree remove "$gate"                    # 編完即移
+```
+
+綠 = 這次 converge sound（與使用者 WIP 紅不紅無關）；紅 = 真的是被收的 commit 壞了，revert/hotfix。**fetch + porcelain 永遠第一步**（main 會在你手下被平行 commit 推進），且**永不 stash、永不 clobber main 的 dirty**。
 
 **衝突自動化已落地**：`UITestFixtureSeed.swift` / `PerfLog.swift` / `UITestAppLaunch.swift` 在 `.gitattributes` 設 `merge=union`（append-only case registry，自動聯集兩側新增行，build gate 當 backstop）。本地另開 `git config rerere.enabled true` 重播解法。沒有 integrator 整合的多條 raw branch 仍可能衝突，但這三檔已自動化。
 
@@ -303,4 +316,4 @@ branch 的 commits 內容已經在 main 中（不同 hash），rebase 會 drop�
 - **force-push 只用 `--force-with-lease`**，不用 `-f`
 - **刪 remote branch 前先確認它存在**，不存在就跳過
 - **all white 清 worktree 前先 snapshot**，否則 dirty work 會丟失
-- **驗證以 build gate 為準，耗時測試問過再跑**：merge 完成後跑 `ios_ops.sh build` 當 gate（編譯綠即可推進），**不自主跑耗時測試**（UI/all-targets）。流程順序固定：先 push + 清乾淨殘影，**再問使用者要不要跑測試**。若使用者要跑且測試失敗 → revert 或 hotfix，不讓 main 壞著。
+- **驗證以 build gate 為準，耗時測試問過再跑**：merge 完成後跑 build 當 gate（編譯綠即可推進），**不自主跑耗時測試**（UI/all-targets）。**gate 必須編「要推的 commit」而非 main 的 dirty working tree**——在 `git worktree add --detach` 的乾淨臨時 worktree 編（見「高效配方 › Build gate 編 commit」），否則使用者未提交的 WIP 會造成 false-red。流程順序固定：先 push + 清乾淨殘影，**再問使用者要不要跑測試**；push/刪是讀到綠燈 verdict 後的獨立動作。若使用者要跑且測試失敗 → revert 或 hotfix，不讓 main 壞著。
