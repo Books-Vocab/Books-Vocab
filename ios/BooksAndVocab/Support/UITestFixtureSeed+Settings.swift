@@ -26,10 +26,18 @@ extension UITestFixtureSeed {
     /// zh-Hant simulator (see `AppPage` tab labels).
     @MainActor
     private static func seedCleanPreferences() {
+        // 模擬器限定：這條走 production store 真實寫入路徑（UserDefaults +
+        // iCloud KVS + LWW 時間戳），in-memory 容器 guard 罩不到。真機上執行
+        // = 覆寫使用者真實複習設定/翻譯語言並跨裝置傳播（與 2026-06-10
+        // SwiftData wipe 事故同類、不同儲存平面），一律拒絕。
+        #if targetEnvironment(simulator)
         ReviewSettingsStore.shared.update(.default)
         TranslationLanguage.currentSource = .en
         TranslationLanguage.currentTarget = .zhHant
         AppLog.app.info("UI-test fixture seeded: settings.cleanPreferences")
+        #else
+        AppLog.app.error("UITestFixtureSeed: refused settings.cleanPreferences on device — it writes real UserDefaults/iCloud KVS")
+        #endif
     }
 }
 #endif
