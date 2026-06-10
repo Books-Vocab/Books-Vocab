@@ -18,9 +18,11 @@ struct SettingsAccountSection: View {
                 if state.isLoggedIn {
                     loggedInView
                         .transition(.modalSwap)
+                        .accessibilityIdentifier("settings.account.loggedInView")
                 } else {
                     loginView
                         .transition(.modalSwap)
+                        .accessibilityIdentifier("settings.account.loginView")
                 }
             }
             .settingsCard()
@@ -155,6 +157,7 @@ struct SettingsAccountSection: View {
             .buttonStyle(.appAction(.destructive))
             .padding(appSkin.spacing.cardPadding)
             .accessibilityLabel(SettingsAccountCopy.logoutTitle)
+            .accessibilityIdentifier("settings.account.logoutButton")
         }
     }
 
