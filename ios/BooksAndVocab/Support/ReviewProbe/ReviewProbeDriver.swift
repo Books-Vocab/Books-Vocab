@@ -14,7 +14,11 @@ protocol ReviewProbeSessionDriving: AnyObject {
 extension TodayReviewState: ReviewProbeSessionDriving {
     var probeHasCurrentCard: Bool { currentEntry != nil }
     var probeIsShowingFront: Bool { revealStage == .front }
-    func probeRevealCurrentCard() { advanceReveal() }
+    /// 鏡像 `performReviewIntent(.reveal)` 的動畫包法（同 spring）—— 不直呼
+    /// 該方法是因為它需要 container/reviewSettings，probe 的 reveal 不該觸碰。
+    func probeRevealCurrentCard() {
+        withAnimation(AppMotion.reviewRevealSpring) { advanceReveal() }
+    }
 }
 
 /// 驅動「reveal → 評分 fling」迴圈的協調者。
@@ -34,6 +38,9 @@ final class ReviewProbeDriver {
     /// （dismissPhase 非 idle），driver 會等 interFlip 後重試。
     var flingHandler: ((_ direction: CGFloat, _ remember: Bool) -> Bool)?
 
+    /// 逐 flip 幀取樣 + JSONL 落檔（ReviewProbeMetrics）。nil = 只發 marker。
+    var metrics: ReviewProbeMetricsRecording?
+
     /// 測試注入點：marker 輸出與 sleep。
     var emit: (String) -> Void = { NSLog("%@", $0) }
     var sleep: (Duration) async -> Void = { try? await Task.sleep(for: $0) }
@@ -50,6 +57,7 @@ final class ReviewProbeDriver {
     func run(session: ReviewProbeSessionDriving) async {
         guard !finished else { return }
         emit("KG_REVIEW_PROBE start flips=\(plan.flipCount)")
+        metrics?.startRun()
         await sleep(plan.warmup)
 
         var consecutiveFailures = 0
@@ -63,24 +71,38 @@ final class ReviewProbeDriver {
             }
 
             let remember = plan.remember(at: flipsCompleted)
+            // recorder 在 fling 前開 — 視窗涵蓋 fling 起點，對齊 settle.frames。
+            metrics?.beginFlip(index: flipsCompleted, remember: remember)
             if let handler = flingHandler, handler(remember ? 1 : -1, remember) {
                 flipsCompleted += 1
                 consecutiveFailures = 0
                 emit("KG_REVIEW_PROBE flip i=\(flipsCompleted) fb=\(remember ? "R" : "F")")
+                await sleep(plan.settleWindow)
+                metrics?.endFlip()
+                await sleep(plan.interFlipRemainder)
             } else {
+                metrics?.cancelFlip()
                 consecutiveFailures += 1
                 if consecutiveFailures >= plan.maxConsecutiveFailures {
                     emit("KG_REVIEW_PROBE abort reason=fling_unavailable failures=\(consecutiveFailures)")
                     finished = true
+                    metrics?.finishRun(aborted: true)
                     return
                 }
+                await sleep(plan.interFlip)
             }
-
-            await sleep(plan.interFlip)
         }
 
         finished = true
-        emit("KG_REVIEW_PROBE done flips=\(flipsCompleted)")
+        if Task.isCancelled {
+            // view teardown / identity 變更取消了 .task —— 不可與正常結束
+            // 同 marker，外部 collector 才不會把殘缺 run 當成功。
+            metrics?.finishRun(aborted: true)
+            emit("KG_REVIEW_PROBE abort reason=cancelled flips=\(flipsCompleted)")
+        } else {
+            metrics?.finishRun(aborted: false)
+            emit("KG_REVIEW_PROBE done flips=\(flipsCompleted)")
+        }
     }
 }
 

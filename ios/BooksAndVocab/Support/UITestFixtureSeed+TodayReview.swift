@@ -20,13 +20,14 @@ extension UITestFixtureSeed {
             for entry in try context.fetch(FetchDescriptor<VocabularyEntry>()) {
                 context.delete(entry)
             }
-            let size = ProcessInfo.processInfo.environment["KG_UI_TEST_REVIEW_DECK_SIZE"]
+            let requested = ProcessInfo.processInfo.environment["KG_UI_TEST_REVIEW_DECK_SIZE"]
                 .flatMap(Int.init) ?? 40
-            for entry in makeReviewProbeDeck(size: size) {
+            let deck = makeReviewProbeDeck(size: requested)
+            for entry in deck {
                 context.insert(entry)
             }
             try context.save()
-            AppLog.app.info("UI-test fixture seeded: todayReview.deck size=\(size)")
+            AppLog.app.info("UI-test fixture seeded: todayReview.deck size=\(deck.count)")
         } catch {
             AppLog.app.error("Failed to seed todayReview fixture: \(error)")
         }
