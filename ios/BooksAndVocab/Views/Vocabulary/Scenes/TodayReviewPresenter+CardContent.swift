@@ -16,13 +16,25 @@ extension TodayReviewPresenter {
 
     // MARK: Front Surface
 
-    func frontFoldSurface(_ card: CardPresentation) -> some View {
+    /// 卡正面摺頁面。Phase 3a 起由常駐 slot 呼叫：`showsAnswer` / `interactive`
+    /// 是 per-slot 投影值（preview slot 恆 false），`borderOpacity` 由
+    /// `TodayReviewCardSlotLayout.borderOpacity` 內插（0.45 → 0.72），promote
+    /// 翻面時邊框零 pop。`todayReview.card.front` a11y 識別子只掛在 active slot。
+    func frontFoldSurface(
+        _ card: CardPresentation,
+        showsAnswer: Bool,
+        interactive: Bool,
+        borderOpacity: Double
+    ) -> some View {
         let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
-        if let clock = TodayReviewState.flingClock {
+        if interactive, let clock = TodayReviewState.flingClock {
             PerfLog.review.mark("front.gap", "w=\(card.word) \(PerfChannel.ms(since: clock))ms (fling->current-front body)")
             TodayReviewState.flingClock = nil
         }
-        return ReviewFoldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
+        return ReviewFoldSurface(
+            position: showsAnswer ? .top : .single,
+            borderOpacity: borderOpacity
+        ) {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -32,10 +44,10 @@ extension TodayReviewPresenter {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(minHeight: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
-            .disabled(state.revealStage.showsAnswer || !isCardInteractive)
-            .accessibilityIdentifier("todayReview.card.front")
+            .disabled(showsAnswer || !interactive || !isCardInteractive)
+            .accessibilityIdentifier(interactive ? "todayReview.card.front" : "")
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
-            .accessibilityHint(state.revealStage.showsAnswer ? "" : "點一下翻轉卡片".localized)
+            .accessibilityHint(showsAnswer || !interactive ? "" : "點一下翻轉卡片".localized)
         }
     }
 
@@ -122,7 +134,14 @@ extension TodayReviewPresenter {
 
     // MARK: Combined Answer Surface
 
-    func answerFoldSurface(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
+    /// 答案摺頁面。`mounted` 是 per-slot 投影（active slot 才掛
+    /// `backContentMounted` 閘；preview slot 恆 stub）— 閘語意不變，見
+    /// TodayReviewPresenter.updateBackContentMount。
+    func answerFoldSurface(
+        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        availableHeight: CGFloat,
+        mounted: Bool
+    ) -> some View {
         let card = currentCard.card
         let answerText = card.reviewMode == .production ? card.word : card.translation
         return ReviewFoldSurface(position: .bottom) {
@@ -135,10 +154,10 @@ extension TodayReviewPresenter {
             // finishes, so the fold folds the REAL content (not an empty box).
             // See TodayReviewPresenter.updateBackContentMount for the falling-edge
             // defer + generation guard.
-            // stub 用 answerCardHeight 撐 minHeight，與真內容 :191 同源，
+            // stub 用 answerCardHeight 撐 minHeight，與真內容同源，
             // 避免折疊→展開時 intrinsic 高度跳動。
             Group {
-                if backContentMounted {
+                if mounted {
                     // Identifier on the MOUNTED branch only: UI tests read
                     // `todayReview.card.back`.exists as the real flip-state
                     // signal (the folded stub deliberately carries none).

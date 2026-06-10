@@ -2,67 +2,128 @@ import SwiftUI
 
 private let flingSafetyNetTimeout: Duration = .milliseconds(800)
 
-// MARK: - Swipe Deck (card stack + swipe gesture)
+// MARK: - Swipe Deck (resident card slots + swipe gesture)
 
 extension TodayReviewPresenter {
 
-    func cardStackLayers() -> some View {
-        ZStack(alignment: .top) {
-            if state.remainingCount >= 2 { stackCard(depth: 2) }
-            if state.remainingCount >= 1 { stackCard(depth: 1) }
-        }
-        .drawingGroup(opaque: false)
+    // MARK: Resident Slots（Phase 3a — 結構常駐，值驅動）
+
+    /// depth-2 殼層：純裝飾常駐節點。隊尾（remainingCount < 2）以 opacity 0 隱藏，
+    /// 不做 `if` 結構移除 —— settle 幀不付 insert/remove。
+    func deckDepthShell() -> some View {
+        let progress = dismissProgress
+        let effectiveDepth = 2 * (1.0 - progress)
+        let scale: CGFloat = 1.0 - effectiveDepth * TodayReviewCardSlotLayout.stackDepthScaleStep
+        let yOff: CGFloat = effectiveDepth * TodayReviewCardSlotLayout.stackDepthYStep
+        let rotation = stackRotations[1] * Double(1.0 - progress)
+        // 舊 stackCard depth-2 公式：0.35 → 0.72（升至 depth-1 位）。
+        let baseOpacity = 0.35
+        let raisedOpacity = TodayReviewMetrics.cardBorderActiveOpacity
+        let opacity = state.remainingCount >= 2
+            ? baseOpacity + (raisedOpacity - baseOpacity) * Double(progress)
+            : 0
+
+        return RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+            .fill(appSkin.palette.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                    .stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
+            )
+            .appElevation(.z1)
+            .frame(height: frontCardHeight)
+            .scaleEffect(scale)
+            .offset(y: yOff)
+            .rotationEffect(.degrees(rotation), anchor: .center)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
-    func stackCard(depth: Int) -> some View {
-        let progress = dismissProgress
-        let effectiveDepth = CGFloat(depth) * (1.0 - progress)
-        let scale: CGFloat = 1.0 - effectiveDepth * 0.025
-        let yOff: CGFloat = effectiveDepth * 5
-        let rotation = stackRotations[depth - 1] * Double(1.0 - progress)
-        let baseOpacity = depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35
-        let targetOpacity: Double = depth == 1 ? 1.0 : TodayReviewMetrics.cardBorderActiveOpacity
-        let opacity = baseOpacity + (targetOpacity - baseOpacity) * Double(progress)
-
-        return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
-                .fill(appSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
-                        .stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
+    /// 固定 identity 的卡 slot — 完整卡骨架（frontFoldSurface + chrome +
+    /// answerFold stub）永久存活於全尺寸；姿態 = `f(role, dismissProgress)`
+    /// 純值（TodayReviewCardSlotLayout.transform）。promote 時只有 role 翻面
+    /// （hit-testing / a11y / 邊框值 diff），無結構 diff。
+    // TODO(A/B 量測): 舊 cardStackLayers 對 deck 預覽包 .drawingGroup(opaque:false)。
+    // slot 常駐後保守先移除（rasterize 互動卡會改變 gesture/a11y/fold 渲染行為）;
+    // 若 device probe 顯示 preview 合成成本回升，A=per-slot 固定 .drawingGroup、
+    // B=維持移除，以 settle.frames/fling.frames 對比定案。
+    @ViewBuilder
+    func cardSlotView(slot: Int, availableHeight: CGFloat) -> some View {
+        if slot < state.slots.count, let content = state.slots[slot].card {
+            let role = state.slots[slot].assignment.role
+            let isActive = role == .active
+            let transform = TodayReviewCardSlotLayout.transform(
+                role: role,
+                swipeOffset: isActive ? swipeOffset : 0,
+                dismissProgress: dismissProgress,
+                stackRotation: stackRotations[0],
+                screenWidth: screenWidth,
+                introProgress: introProgress
+            )
+            let borderOpacity = TodayReviewCardSlotLayout.borderOpacity(role: role, dismissProgress: dismissProgress)
+            let slotShowsAnswer = isActive && state.revealStage.showsAnswer
+            let _ = { if role == .preview, dismissProgress > 0 || dismissPhase != .idle {
+                PerfLog.review.mark(
+                    "stack.preview",
+                    "w=\(content.card.word) scale=\(String(format: "%.3f", transform.scale)) op=\(String(format: "%.2f", transform.opacity)) prog=\(String(format: "%.2f", dismissProgress))"
                 )
-                .appElevation(.z1)
+            } }()
 
-            if depth == 1, let nextCard = state.nextCard {
-                let _ = { if progress > 0 || dismissPhase != .idle {
-                    PerfLog.review.mark(
-                        "stack.preview",
-                        "w=\(nextCard.card.word) scale=\(String(format: "%.3f", scale)) op=\(String(format: "%.2f", opacity)) prog=\(String(format: "%.2f", progress))"
-                    )
-                } }()
-                reviewCardFront(nextCard.card)
-                    .overlay(alignment: .topTrailing) {
-                        // 與作用中卡片共用 chrome 渲染（裝飾、不可點）— fling 飛出期間
-                        // 背後預覽即帶完整喇叭 / 詳情圖示，完成時 swap 不再 pop。
-                        frontCardChrome(nextCard.card, interactive: false)
-                    }
-                    .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                frontFoldSurface(
+                    content.card,
+                    showsAnswer: slotShowsAnswer,
+                    interactive: isActive,
+                    borderOpacity: borderOpacity
+                )
+                .overlay(alignment: .topTrailing) {
+                    // chrome 常駐於每個 slot（裝飾），只有 active 可點 —
+                    // promote 時 chrome 不換樹、無「裸卡 pop」。
+                    frontCardChrome(content.card, interactive: isActive)
+                }
+
+                // 永遠存在於 view tree — PaperFoldModifier(Animatable) 直接驅動
+                // 摺疊動畫。frame(height:0) 使摺疊時不佔 layout 空間，但 minHeight
+                // 內部約束使 view 仍以完整尺寸渲染（fold 視覺正確）。preview slot
+                // 恆摺疊（slotShowsAnswer == false）。
+                answerFoldSurface(
+                    content,
+                    availableHeight: availableHeight,
+                    mounted: isActive && backContentMounted
+                )
+                .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
+                .modifier(PaperFoldModifier(progress: slotShowsAnswer ? 1 : 0))
+                .frame(height: slotShowsAnswer ? nil : 0, alignment: .top)
+                .allowsHitTesting(slotShowsAnswer)
             }
+            .geometryGroup()
+            .animation((dismissPhase == .idle && !suppressFoldAnimation) ? AppMotion.reviewRevealSpring : nil,
+                       value: slotShowsAnswer)
+            // 姿態 = 純值 diff（modifier 結構固定）。順序對齊舊雙軌：
+            // scale → offset → rotation → opacity；rotation anchor 在 role 翻面
+            // 時切換（active=.bottom / preview=.center），翻面瞬間角度恆 0，無跳動。
+            .scaleEffect(transform.scale)
+            .offset(x: transform.xOffset, y: transform.yOffset)
+            .rotationEffect(.degrees(transform.rotationDegrees), anchor: isActive ? .bottom : .center)
+            .opacity(transform.opacity)
+            .zIndex(isActive ? 2 : 1)
+            // promote 的本體：hit-testing gate 翻面（preview 純裝飾不可點）。
+            .allowsHitTesting(isActive)
+            .accessibilityHidden(!isActive)
+            .simultaneousGesture(swipeDragGesture)
+            #if targetEnvironment(macCatalyst)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard isActive, isCardInteractive, state.revealStage == .front else { return }
+                onAdvanceReveal()
+            }
+            #endif
         }
-        .frame(height: frontCardHeight)
-        .scaleEffect(scale)
-        .offset(y: yOff)
-        .rotationEffect(.degrees(rotation), anchor: .center)
-        .opacity(opacity)
     }
 
     // MARK: Swipe Gesture + Fling Animation
 
     var screenWidth: CGFloat { containerWidth }
-
-    var cardOpacity: Double {
-        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - TodayReviewMetrics.swipeOpacityFloor)
-    }
 
     /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
     var dismissProgress: CGFloat {
@@ -137,7 +198,6 @@ extension TodayReviewPresenter {
             TodayReviewState.flingClock = .now()
             PerfLog.review.measure("fling.transaction") {
                 withTransaction(noAnim) {
-                    suppressTransition = true
                     frozenSwipeIntensity = 0
                     swipeOffset = 0
                     stackRotations = [.random(in: -1...1), .random(in: -1...1)]
@@ -151,14 +211,16 @@ extension TodayReviewPresenter {
                     backMountGeneration += 1
                     backContentMounted = false
                     suppressFoldAnimation = true
+                    // promote（Phase 3a）：callback() 推進 currentIndex → slot role
+                    // 在本 no-anim transaction 內翻面。incoming slot 的 transform 已被
+                    // fling 動畫推到 active 值、內容 index 不變 → settle 幀零內容 diff，
+                    // 只有 hit-testing / a11y / 邊框值翻面。模型推進時序與舊雙軌完全
+                    // 相同（submit 仍在 fling 完成時刻，非樂觀預推）。
                     callback()
                     dismissPhase = .idle
                 }
             }
             DispatchQueue.main.async {
-                // suppressTransition 與 suppressFoldAnimation 同一個 async 收
-                // （原本分兩處 → settle 後多一次 body 重評）。
-                suppressTransition = false
                 suppressFoldAnimation = false
                 PerfLog.review.mark("suppress.reset", "at=\(PerfChannel.ms(since: _flingStart))ms (fling.start->suppressOff)")
             }
