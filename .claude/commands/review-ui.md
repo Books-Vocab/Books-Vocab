@@ -29,7 +29,7 @@ git diff --cached --name-only -- 'ios/**/*.swift'
 
 2. **缺失 .strings key 偵測**
    - 收集所有使用 `.localized` 或 `L10n.string(...)` / `L10n.format(...)` 的 key
-   - 比對 `ios/BooksBrowser/en.lproj/Localizable.strings` 和 `ios/BooksBrowser/zh-Hant.lproj/Localizable.strings`
+   - 比對 `ios/BooksAndVocab/en.lproj/Localizable.strings` 和 `ios/BooksAndVocab/zh-Hant.lproj/Localizable.strings`
    - 缺失的 key → 補入兩個 .strings 檔（en 需要英文翻譯，zh-Hant 用 identity mapping）
    - 同步補入 `ja.lproj`、`ko.lproj`、`zh-Hans.lproj`（值暫用中文原文，標記 TODO）
 
