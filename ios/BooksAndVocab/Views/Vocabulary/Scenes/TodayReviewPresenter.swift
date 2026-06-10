@@ -188,7 +188,7 @@ struct TodayReviewPresenter: View {
                                 minHeight: max(geo.size.height * TodayReviewMetrics.frontHeightRatio, 180),
                                 action: onAdvanceReveal
                             )
-                            .frame(height: zoneActive ? nil : 0)
+                            .frame(height: zoneActive ? nil : 0, alignment: .top)
                             .opacity(zoneActive ? 1 : 0)
                             .allowsHitTesting(zoneActive && isCardInteractive)
                             .accessibilityHidden(!zoneActive)
