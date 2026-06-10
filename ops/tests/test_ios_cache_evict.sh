@@ -132,6 +132,45 @@ err="$(build_entry "$root" old2 600; KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_
 [[ -z "$out" ]] && ok "stdout 乾淨" || fail_t "stdout 不乾淨: $out"
 grep -q "\[ios_cache\] eviction" <<<"$err" && ok "stderr 有 summary 行" || fail_t "stderr 缺 summary: $err"
 
+# ── 9. 空 root（存在但空）在 set -euo pipefail bash 3.2 下不炸 ─────────────
+# 真實狀態：--clean-cache 後 / 災後手動清空。caller 全是 set -euo pipefail；
+# macOS /bin/bash 3.2 對空陣列 "${arr[@]}" 展開在 set -u 下報 unbound variable。
+section "empty root under set -euo pipefail (bash 3.2)"
+root="$(fresh_root 9)"
+if /bin/bash -c "set -euo pipefail; source '$LIB'; kg_ios_cache_evict '$root' ''" 2>/dev/null; then
+  ok "空 root + set -euo + /bin/bash 不炸"
+else
+  fail_t "空 root 在 set -euo pipefail 下 crash"
+fi
+
+# ── 10. current_key 留空（ios_clean 手動 sweep 的生產呼叫形態）──────────────
+section "empty current_key (manual sweep form)"
+root="$(fresh_root 10)"
+build_entry "$root" n1 10; build_entry "$root" n2 20; build_entry "$root" n3 30
+build_entry "$root" old 500
+if /bin/bash -c "set -euo pipefail; source '$LIB'; kg_ios_cache_evict '$root' ''" 2>/dev/null; then
+  ok "current_key='' 不炸"
+else
+  fail_t "current_key='' crash"
+fi
+[[ ! -d "$root/old" && -d "$root/n1" ]] && ok "current_key='' 淘汰行為正確" || fail_t "current_key='' 淘汰行為錯誤"
+
+# ── 11. stale-snapshot guard：刪除前 mtime 重驗 ─────────────────────────────
+# 模擬：別的 run 在快照後 touch 了一條本該被淘汰的 key → 必須放過。
+# 注入法：用 wrapper 在 du 被呼叫前攔不到，改為直接驗證「touch 成新的條目不會被刪」
+# —— 在 evict 前把 old2 touch 成現在，等價於並行 run 的續命動作。
+section "stale-snapshot guard (re-stat before rm)"
+root="$(fresh_root 11)"
+build_entry "$root" n1 10; build_entry "$root" n2 20; build_entry "$root" n3 30
+build_entry "$root" old1 500
+build_entry "$root" old2 600
+# 快照語意在函式內不可中斷，改驗最終不變式：mtime 新的條目（無論何時變新）不被刪。
+touch "$root/old2"
+KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=6 \
+  kg_ios_cache_evict "$root" n1 2>/dev/null
+[[ -d "$root/old2" ]] && ok "mtime 變新的條目不被淘汰" || fail_t "mtime 變新的條目被淘汰"
+[[ ! -d "$root/old1" ]] && ok "仍舊的條目照常淘汰" || fail_t "仍舊條目未淘汰"
+
 echo ""
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]] || exit 1
