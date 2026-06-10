@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: 541dfe73
+verified_against: 448f66d9
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -55,6 +55,9 @@ verified_against: 541dfe73
 - 登入閘門後的 UI（如詞庫搜尋框）→ fixture 注入 signed-in session，且 `KG_UI_TEST_SERVER_URL` 指向不可達位址（connection refused 不登出；真 backend 401 會 logout + clearLocalData 清掉 fixture 世界，同 auth flow seam）。
 - `typeText` 逐字輸入碰 debounce（搜尋 300ms）：字間隔偶爾 > debounce 會 commit 中間查詢（`complemen`→`complement` 各一發 mark）——斷言最終結果集，勿斷言 perf mark 次數。
 - LazyVStack 列表 fold 以下的 row 不在 a11y 樹：未過濾長列表的 baseline 斷言用 prefix `anyRow`（`identifier BEGINSWITH`），指定 row 斷言只用在過濾後的短結果集。
+- Reader 翻譯面板對訪客**刻意走 guest 模式**（`TranslationPanelContentMode` 先檢查 `!isLoggedIn`，遮蔽詞庫翻譯內容）→ 詞庫命中（零網路）的翻譯 flow 必須組合 `.authSignedIn` fixture，不是測試裡登入。
+- Reader 選詞的確定性 tap target：Readium WebView 內多詞段落的 staticText 中心點落在哪個詞不可控；用 `EPUBConverter().convertTXT`（每行一個 `<p>`）讓真實章節的**單字行**（如章首 "Introduction"）成為 exact-label staticText，tap 中心即該詞（`UITestFixtureSeed+Reader.swift`）。
+- Reader 詞庫 highlight / 翻譯 scope 認 `book.preferredNotebookId` 綁定本：fixture 須同時種 notebook（synced）+ `book.preferredNotebookId` + `entry.notebookId` 三者一致，缺一則 library-hit / 底線不出現。
 
 ## 驗收（收斂層對抗驗證）
 
