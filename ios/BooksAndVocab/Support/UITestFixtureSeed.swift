@@ -48,6 +48,8 @@ enum UITestFixtureSeed {
                 seedReader(id, into: container)
             case "notebook":
                 seedNotebook(id, into: container)
+            case "entitlements":
+                break
             default:
                 AppLog.app.warning("Unknown UI-test fixture domain: \(domain)")
             }

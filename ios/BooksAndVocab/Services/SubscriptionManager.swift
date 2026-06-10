@@ -40,6 +40,7 @@ protocol SubscriptionManaging: AnyObject {
     func loadProducts() async
     func purchasePro(using kgService: any KGServing, authManager: any AuthManaging) async
     func restorePurchases(using kgService: any KGServing, authManager: any AuthManaging) async
+    func listenForTransactionUpdates(using kgService: any KGServing, authManager: any AuthManaging)
 }
 
 extension SubscriptionManaging {
