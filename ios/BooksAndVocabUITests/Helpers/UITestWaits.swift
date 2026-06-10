@@ -43,6 +43,17 @@ extension XCUIElement {
         )
     }
 
+    /// Wait until the element's accessibility value equals `value` (e.g. a SwiftUI
+    /// Toggle's switch value flipping "0" → "1" after async state propagation).
+    @discardableResult
+    func waitUntilValueEquals(_ value: String, timeout: TimeInterval = 5) -> Bool {
+        UITestWaits.wait(
+            for: NSPredicate(format: "exists == true AND value == %@", value),
+            on: self,
+            timeout: timeout
+        )
+    }
+
     func assertExists(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         XCTAssertTrue(waitUntilExists(timeout: timeout), "Expected element to exist: \(self.description)", file: file, line: line)
     }
