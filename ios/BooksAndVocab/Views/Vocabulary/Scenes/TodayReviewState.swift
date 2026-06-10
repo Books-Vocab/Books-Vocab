@@ -139,7 +139,7 @@ final class TodayReviewState {
         TodayReviewPresenterState(
             progressText: progressText,
             currentCard: currentCardState,
-            nextCard: nextCardState,
+            slots: slotModels,
             revealStage: revealStage,
             canShuffle: session.canShuffle,
             canGoPrevious: session.canGoPrevious,
@@ -170,6 +170,14 @@ final class TodayReviewState {
         let nextIndex = currentIndex + 1
         guard nextIndex < queue.count else { return nil }
         return cachedOrBuildCard(for: queue[nextIndex])
+    }
+
+    /// 常駐雙 slot 投影（Phase 3a）— 指派純推導自 (currentIndex, queue.count)，
+    /// 內容走與 current/next 相同的 render-safe cache 路徑（非 mutating）。
+    private var slotModels: [TodayReviewCardSlotModel] {
+        TodayReviewCardSlotModel.make(currentIndex: currentIndex, queueCount: queue.count) { index in
+            cachedOrBuildCard(for: queue[index])
+        }
     }
 
     var nextCardForTesting: TodayReviewPresenterState.CurrentCard? {

@@ -98,12 +98,3 @@ enum TodayReviewMetrics {
     static let autoplaySpeedPillHeight: CGFloat = 28
     static let autoplaySpeedPillHorizontalPadding: CGFloat = AppSpacing.s3
 }
-
-extension AnyTransition {
-    /// 複習卡疊層升起 —— insertion 微縮放 + 下移；removal 無轉場（卡片直接抽離）。
-    static let reviewCardPromote: AnyTransition = .asymmetric(
-        insertion: .scale(scale: TodayReviewMetrics.promoteScale)
-            .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
-        removal: .identity
-    )
-}
