@@ -89,6 +89,8 @@ struct TodayReviewPresenter: View {
     @Environment(\.appSkin) var appSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.speechService) var speechService
+    // 自主量測 probe（-reviewProbe）— 一般啟動恆為 nil，.task 直接 return。
+    @Environment(\.reviewProbeDriver) private var reviewProbeDriver
 
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State var frozenSwipeIntensity: Double = 0
@@ -242,6 +244,21 @@ struct TodayReviewPresenter: View {
             }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
             .animation(AppMotion.panelState, value: isHelpPresented)
+        }
+        .task {
+            // probe 的 fling 入口 = 評分按鈕的同一條路徑（flingCard → suppress /
+            // settle 全套機械）。閉包只讀寫 @State（live storage）與穩定的
+            // callback let，無 stale-struct 問題 — 與 swipeDragGesture 同模式。
+            guard let reviewProbeDriver else { return }
+            reviewProbeDriver.flingHandler = { direction, remember in
+                guard dismissPhase == .idle else { return false }
+                flingCard(
+                    direction: direction,
+                    source: "probe",
+                    callback: remember ? onRemembered : onForgot
+                )
+                return true
+            }
         }
         .enableInjection()
     }
