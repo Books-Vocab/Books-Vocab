@@ -19,8 +19,17 @@ Subcommands:
   board               (default) gather facts, classify, render the board
   plan --marks "..."  dry-run: given dispositions, print the git action plan
                       per card (NEVER executes -- a safety preview)
+  teardown --branches a,b [--commit]
+                      white-mode branch teardown executor: detach holding
+                      worktree -> delete local -> delete remote -> verify clean.
+                      dry-run default; refuses any branch not landed in base.
+  gc [--commit]       prune detached worktrees that are clean AND contained in
+                      base; refuses dirty / uncontained ones. dry-run default.
   receipt             given before/after board JSON + round metadata, emit the
                       fixed one-round markdown record (time passed in, not now())
+
+teardown / gc are the only writing subcommands; both are dry-run unless --commit,
+and every write is gated by the pure `unsafe_to_drop` predicate.
 
 States (canonical):
   CURRENT     == main (0 unique, clean): identical baseline
@@ -39,7 +48,7 @@ Dispositions (board marks):
   snap / S     modifier: snapshot-commit dirty work first, then the disposition
   clean        prune an orphan worktree
 
-Exit codes: 0 ok | 64 usage error.
+Exit codes: 0 ok | 64 usage error | 1 partial failure (teardown/gc --commit).
 """
 
 from __future__ import annotations
@@ -174,6 +183,32 @@ def suggest_disposition(state: State, facts: dict[str, Any]) -> Mark:
     return Mark.FREEZE             # unreachable; defensive
 
 
+def unsafe_to_drop(facts: dict[str, Any]) -> str | None:
+    """Guard for *destructive* dispositions (teardown a branch / gc a worktree):
+    return a human reason when dropping the card would LOSE work, else None.
+
+    Pure. Three ways a drop loses work, in precedence:
+      dirty            uncommitted changes (would vanish; snapshot first, never stash)
+      branch unmerged  committed work not yet in base (cherry '+' > 0)
+      detached !contained  detached HEAD is not an ancestor of base (orphans commits)
+
+    A clean branch with unmerged==0 (all patches landed in main, even rebased
+    under new hashes) is safe to delete. A clean detached worktree whose HEAD is
+    contained in base is safe to prune. Everything else is refused — this is the
+    predicate that turns the advisory plan into a tool that cannot destroy work.
+    """
+    if facts.get("dirty"):
+        return "dirty: uncommitted changes (snapshot first; never stash)"
+    if facts.get("detached"):
+        if not facts.get("contained", False):
+            return "detached HEAD not contained in base (carries commits not in main)"
+        return None
+    unmerged = int(facts.get("unmerged", 0))
+    if unmerged > 0:
+        return f"{unmerged} commit(s) not yet in base (not landed — would be lost)"
+    return None
+
+
 # ----------------------------------------------------------------------------
 # IO layer — read-only git. NEVER mutates.
 # ----------------------------------------------------------------------------
@@ -231,6 +266,21 @@ def _cherry_unmerged(base: str, branch: str) -> int:
     if rc != 0:
         return 0
     return sum(1 for ln in out.splitlines() if ln.startswith("+"))
+
+
+def _is_ancestor(rev: str, base: str) -> bool:
+    """True if `rev` is an ancestor of `base` (i.e. fully contained in base).
+    Used to decide a detached worktree carries no commits absent from base."""
+    if not rev:
+        return False
+    rc, _ = _git_ok(["merge-base", "--is-ancestor", rev, base])
+    return rc == 0
+
+
+def _remote_branch_exists(name: str, remote: str = "origin") -> bool:
+    """Read-only: True if `<remote>` still carries a branch named `name`."""
+    rc, out = _git_ok(["ls-remote", "--heads", remote, name])
+    return rc == 0 and bool(out.strip())
 
 
 def _worktree_map() -> dict[str, dict[str, Any]]:
@@ -343,11 +393,14 @@ def gather_facts(
             "origin_behind": origin_behind,
             "worktree": wt_path,
             "head_recent": head_recent,
+            # branch "landed in base" == cherry says no unique patch remains.
+            "contained": unmerged == 0,
         })
 
     # detached worktrees (orphans)
     for rec in detached:
         wt_path = rec["path"]
+        head_full = rec.get("head", "")
         cards.append({
             "name": None,
             "is_main": False,
@@ -360,8 +413,11 @@ def gather_facts(
             "origin_ahead": 0,
             "origin_behind": 0,
             "worktree": wt_path,
-            "head": rec.get("head", "")[:8],
+            "head": head_full[:8],
             "head_recent": _head_recent(wt_path, live_window_seconds),
+            # detached "contained" == HEAD is an ancestor of base; a detached
+            # worktree carrying commits absent from base must NOT be pruned blindly.
+            "contained": _is_ancestor(head_full, base),
         })
 
     return cards
@@ -615,6 +671,140 @@ def MARK_ALIASES_BY_VALUE(value: str) -> Mark:
     return Mark.FREEZE
 
 
+# ----------------------------------------------------------------------------
+# mutation layer — the ONLY git WRITES in this module, reached solely through
+# `teardown` / `gc`. Both are dry-run by default; `--commit` executes. Every
+# write is gated by the pure `unsafe_to_drop` predicate, so the tool cannot
+# delete a branch / prune a worktree that still holds unlanded or dirty work.
+# ----------------------------------------------------------------------------
+def _exec_step(label: str, gargs: list[str], cwd: Path | None, commit: bool) -> bool:
+    """Print (dry-run) or run (commit) one git step. Returns True on success."""
+    shown = "git " + " ".join(gargs) + (f"   (in {cwd})" if cwd else "")
+    if not commit:
+        print(f"   {shown}   # {label}")
+        return True
+    rc, out = _git_ok(gargs, cwd=cwd)
+    print(f"   {'✓' if rc == 0 else '✗'} {shown}   # {label}")
+    if rc != 0 and out:
+        print(f"      {out}")
+    return rc == 0
+
+
+def cmd_teardown(args: argparse.Namespace) -> int:
+    """White-mode branch teardown: detach holding worktree -> delete local ->
+    delete remote -> verify remote clean. Refuses any branch not fully landed in
+    base (this is the step that, hand-rolled, silently dropped the remote delete)."""
+    if not args.no_fetch:
+        fetch_origin()
+    base = args.base
+    root = repo_root()
+    facts = gather_facts(base=base, live_window_seconds=args.live_window)
+    by_name = {f["name"]: f for f in facts if f.get("name")}
+    targets = [t.strip() for t in (args.branches or "").split(",") if t.strip()]
+    if not targets:
+        print("✗ teardown needs --branches a,b", file=sys.stderr)
+        return EXIT_USAGE
+
+    refused: list[tuple[str, str]] = []
+    safe: list[dict[str, Any]] = []
+    for name in targets:
+        f = by_name.get(name)
+        if f is None:
+            refused.append((name, "no such local branch"))
+        elif f.get("is_main"):
+            refused.append((name, "refusing to tear down the base branch"))
+        elif (reason := unsafe_to_drop(f)) is not None:
+            refused.append((name, reason))
+        else:
+            safe.append(f)
+
+    mode = "EXECUTE" if args.commit else "dry-run"
+    print(f"# converge teardown ({mode}, base={base})\n")
+    for name, why in refused:
+        print(f"✗ REFUSE {name}: {why}")
+    if refused and not args.force:
+        print(
+            f"\n✗ {len(refused)} card(s) refused; nothing executed. Land/snapshot "
+            "them, or pass --force to tear down only the safe ones.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    failures = 0
+    for f in safe:
+        name = f["name"]
+        wt = f.get("worktree")
+        print(f"\n## teardown {name}  [{classify(f).value}]")
+        if wt and not _exec_step("detach worktree HEAD (keep worktree)",
+                                 ["switch", "--detach"], Path(wt), args.commit):
+            failures += 1
+        if not _exec_step("delete local branch", ["branch", "-D", name], root, args.commit):
+            failures += 1
+        # remote delete is idempotent: only act when origin still carries it.
+        if args.commit:
+            if _remote_branch_exists(name):
+                if not _exec_step("delete remote branch",
+                                  ["push", "origin", "--delete", name], root, True):
+                    failures += 1
+            else:
+                print("   (remote branch absent — skip remote delete)")
+        else:
+            _exec_step("delete remote branch IF present on origin",
+                       ["push", "origin", "--delete", name], root, False)
+
+    if args.commit and safe:
+        still = [f["name"] for f in safe if _remote_branch_exists(f["name"])]
+        if still:
+            failures += 1
+            print(f"\n✗ remote still carries: {', '.join(still)}")
+        else:
+            print(f"\n✓ remote verified clean for: {', '.join(f['name'] for f in safe)}")
+    if not args.commit:
+        print("\n# dry-run only — re-run with --commit to execute.")
+    return EXIT_OK if failures == 0 else 1
+
+
+def cmd_gc(args: argparse.Namespace) -> int:
+    """Prune detached worktrees that are clean AND contained in base. Refuses
+    (keeps + reports) any detached worktree that is dirty or carries commits not
+    in base. Branch worktrees are never auto-pruned — that is teardown's job."""
+    if not args.no_fetch:
+        fetch_origin()
+    base = args.base
+    facts = gather_facts(base=base, live_window_seconds=args.live_window)
+    orphans = [f for f in facts if f.get("detached") and f.get("worktree")]
+    mode = "EXECUTE" if args.commit else "dry-run"
+    print(f"# converge gc ({mode}, base={base}) — prune contained+clean detached worktrees only\n")
+    if not orphans:
+        print("(no detached worktrees)")
+        return EXIT_OK
+
+    failures = pruned = kept = 0
+    for f in orphans:
+        wt = f["worktree"]
+        label = f"{f.get('head', '')}  {wt}"
+        if (reason := unsafe_to_drop(f)) is not None:
+            kept += 1
+            print(f"  KEEP   {label}\n         ↳ {reason}")
+            continue
+        if not args.commit:
+            pruned += 1
+            print(f"  PRUNE  {label}   (git worktree remove {wt})")
+            continue
+        rc, out = _git_ok(["worktree", "remove", wt])
+        if rc == 0:
+            pruned += 1
+            print(f"  ✓ PRUNED {label}")
+        else:
+            failures += 1
+            print(f"  ✗ FAIL   {label}\n         {out}")
+    if args.commit:
+        _git_ok(["worktree", "prune"])
+    tail = "" if args.commit else " (dry-run; --commit to execute)"
+    print(f"\n# {pruned} prunable, {kept} kept{tail}")
+    return EXIT_OK if failures == 0 else 1
+
+
 def cmd_receipt(args: argparse.Namespace) -> int:
     before = json.loads(Path(args.before).read_text())
     after = json.loads(Path(args.after).read_text())
@@ -674,6 +864,30 @@ def build_parser() -> argparse.ArgumentParser:
              "(white/W/白, black/K/黑, B/promote, freeze/F/凍, snap/S/存, clean/清)",
     )
     pl.set_defaults(func=cmd_plan)
+
+    td = sub.add_parser(
+        "teardown",
+        help="white-mode branch teardown: detach worktree -> del local -> del "
+             "remote -> verify (refuses any branch not landed in base)",
+    )
+    add_common(td)
+    td.add_argument("--branches", required=True,
+                    help="comma list of local branches to tear down (already landed in base)")
+    td.add_argument("--commit", action="store_true",
+                    help="execute (default: dry-run preview)")
+    td.add_argument("--force", action="store_true",
+                    help="tear down the safe branches even if some targets are refused")
+    td.set_defaults(func=cmd_teardown)
+
+    gc = sub.add_parser(
+        "gc",
+        help="prune detached worktrees that are clean AND contained in base "
+             "(refuses dirty / uncontained ones)",
+    )
+    add_common(gc)
+    gc.add_argument("--commit", action="store_true",
+                    help="execute (default: dry-run preview)")
+    gc.set_defaults(func=cmd_gc)
 
     r = sub.add_parser("receipt", help="emit the one-round markdown record (time passed in)")
     r.add_argument("--round-at", required=True, help="round timestamp (passed in, NOT now())")
