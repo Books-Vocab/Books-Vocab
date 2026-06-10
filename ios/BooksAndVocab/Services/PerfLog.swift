@@ -62,6 +62,7 @@ enum PerfCategory: String, CaseIterable, Sendable {
     case review      // today-review flip → submit → prewarm → next-card render timing
     case auth        // login gate shown / auth state transitions (low-frequency domain marks)
     case settings    // low-frequency settings semantic events (review clock pause / mode / translation changes)
+    case shell       // root tab-bar navigation (tab selected / section entered)
     case general     // uncategorized ad-hoc measurements
 }
 
@@ -77,6 +78,7 @@ enum PerfLog {
     static let review    = PerfChannel(.review)
     static let auth      = PerfChannel(.auth)
     static let settings  = PerfChannel(.settings)
+    static let shell     = PerfChannel(.shell)
     static let general   = PerfChannel(.general)
 
     /// Perf signals get their own subsystem suffix so they isolate cleanly from
