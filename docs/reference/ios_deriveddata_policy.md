@@ -6,7 +6,7 @@ scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 5c63c6fc
+verified_against: 7b385ee5
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -125,7 +125,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | `ios_ops_catalog.sh` `catalog_rebuild_scoped_cache` | scoped rebuild 的 mkdir 後、build 前 | 無共用鎖；靠各 run 自己 key 被 touch + min-age 視窗 |
 | `ios_clean_derived_data.sh` | 手動 sweep（dry-run 預設，`--apply` 才刪） | current_key 留空，靠 keep-N + min-age |
 
-**不變式**：current key 永不被淘汰；任何 6 小時內活動過的 key 永不被淘汰——並行 run（即使讀的是舊 key）在 run 開始時已 touch 自己的 key，不會被別人的 build 中途抽走產物。回歸測試：`./ops/test_ops.sh ios-cache-evict`。
+**不變式**：current key 永不被淘汰；任何 6 小時內活動過的 key 永不被淘汰。讀者續命點：`ios_test.sh` 在 resolve 後 touch、catalog 兩條 cache-hit 路徑在 hit 判定時 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。另有刪除前 mtime 重驗（stale-snapshot guard）：快照後才被 touch 的 key 一律放過。回歸測試：`./ops/test_ops.sh ios-cache-evict`。
 
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
