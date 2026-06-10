@@ -91,7 +91,8 @@ verified_against: 1d23758d
 | `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，Books & Vocab 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
 | `Scenes/TodayReviewView.swift` | 414 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage`；scene 組裝、sheet/shortcut chrome、外部 env wiring |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
-| `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
+| `Scenes/TodayReviewSwipeDeck.swift` | 246 | swipe deck：常駐雙 card slot 組裝（`cardSlotView`/`deckDepthShell`）+ swipe gesture + fling settle 機械 |
+| `Scenes/TodayReviewCardSlot.swift` | 163 | Phase 3a 常駐雙 slot 純邏輯：`TodayReviewCardSlotLayout`（role 指派 + transform/borderOpacity 純函數）+ `TodayReviewCardSlotModel`；promote = settle transaction 內翻 role、零內容 diff |
 | `Scenes/TodayReviewPreviewData.swift` | 253 | preview 資料 |
 | `Scenes/TodayReviewMetrics.swift` | 103 | TodayReview feature-local 版面 metrics(`static let`,~44 個) |
 | `Scenes/TodayReviewSessionSnapshotStore.swift` | 122 | `TodayReviewState` session snapshot 持久化 |
