@@ -94,6 +94,33 @@ struct TodayReviewPage {
         progressLabel.assertExists(file: file, line: line)
     }
 
+    // MARK: - Waits
+
+    /// Poll-based label wait that re-resolves the element query each iteration.
+    ///
+    /// `waitUntilLabelContains` (XCTNSPredicateExpectation) can keep reading a
+    /// STALE accessibility snapshot while the grading fling / card-advance
+    /// animations run — observed timing out on "3 / 8" while the live label
+    /// already showed it. Explicit RunLoop polling is the same pattern
+    /// `PodcastPlaybackPerfUITests` uses for its elapsed-time clock.
+    func waitUntilLabel(
+        of element: XCUIElement,
+        contains substring: String,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists, element.label.contains(substring) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && element.label.contains(substring)
+    }
+
+    /// Wait until the top-bar progress capsule reads `"k / N"`-style `text`.
+    func waitForProgress(_ text: String, timeout: TimeInterval = 8) -> Bool {
+        waitUntilLabel(of: progressLabel, contains: text, timeout: timeout)
+    }
+
     // MARK: - Helpers
 
     private func element(_ identifier: String) -> XCUIElement {
