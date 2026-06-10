@@ -901,6 +901,7 @@ EOF
 prepare_ui_step_screenshot_dir() {
   UI_TEST_SCREENSHOT_DIR=""
   UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
   UI_TEST_SCREENSHOT_MANIFEST=""
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
   UI_TEST_SCREENSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_steps.XXXXXX")"
@@ -927,6 +928,25 @@ build_ui_step_contact_sheet() {
   else
     echo "[ios_test][ui-steps] warning: failed to build contact sheet dir=$UI_TEST_SCREENSHOT_DIR" >&2
     UI_TEST_CONTACT_SHEET=""
+    UI_TEST_SCREENSHOT_MANIFEST=""
+    return 0
+  fi
+
+  # Quick visual summary — four evenly-spaced steps in one row, large cells —
+  # so agents can eyeball the flow without opening the full sheet.
+  UI_TEST_QUICK4_SHEET="$UI_TEST_SCREENSHOT_DIR/quick4_contact_sheet.png"
+  if "$SCRIPT_DIR/catalog_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
+      --source uitest \
+      --appearance light \
+      --take evenly:4 \
+      --cols 4 \
+      --cell-width 380 \
+      --out "$UI_TEST_QUICK4_SHEET" \
+      --json >/dev/null 2>&1; then
+    echo "[ios_test][ui-steps] quick4=$UI_TEST_QUICK4_SHEET"
+  else
+    echo "[ios_test][ui-steps] warning: failed to build quick4 sheet dir=$UI_TEST_SCREENSHOT_DIR" >&2
+    UI_TEST_QUICK4_SHEET=""
   fi
 }
 
@@ -1213,6 +1233,8 @@ write_json_verdict() {
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
     --arg uiContactSheet "$UI_TEST_CONTACT_SHEET" \
+    --arg uiQuick4Sheet "$UI_TEST_QUICK4_SHEET" \
+    --arg uiVisualReviewManifest "$UI_TEST_SCREENSHOT_MANIFEST" \
     --arg uiScreenshotDir "$UI_TEST_SCREENSHOT_DIR" \
     --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
     --argjson deviceRunLockWaitMs "${DEVICE_RUN_LOCK_WAIT_MS:-0}" \
@@ -1261,6 +1283,8 @@ write_json_verdict() {
         log:$log,
         xcresult:$xcresult,
         uiContactSheet:(if $uiContactSheet == "" then null else $uiContactSheet end),
+        uiQuick4Sheet:(if $uiQuick4Sheet == "" then null else $uiQuick4Sheet end),
+        uiVisualReviewManifest:(if $uiVisualReviewManifest == "" then null else $uiVisualReviewManifest end),
         uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end)
       }
     }' >"$VERDICT_JSON_PRIVATE" || true

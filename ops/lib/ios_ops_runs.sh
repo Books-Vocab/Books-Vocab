@@ -14,6 +14,8 @@ emit_run_verdict_json() {
         --argjson logExists "$(path_exists_json_bool file "$(jq -r '.artifacts.log // ""' "$json_file")")" \
         --argjson xcresultExists "$(path_exists_json_bool dir "$(jq -r '.artifacts.xcresult // ""' "$json_file")")" \
         --argjson uiContactSheetExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiContactSheet // ""' "$json_file")")" \
+        --argjson uiQuick4SheetExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiQuick4Sheet // ""' "$json_file")")" \
+        --argjson uiVisualReviewManifestExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiVisualReviewManifest // ""' "$json_file")")" \
         '{
           kind:$kind,
           status:(.status // .result // "unknown"),
@@ -35,8 +37,27 @@ emit_run_verdict_json() {
             xcresultExists:$xcresultExists,
             uiContactSheet:(.artifacts.uiContactSheet // null),
             uiContactSheetExists:$uiContactSheetExists,
+            uiQuick4Sheet:(.artifacts.uiQuick4Sheet // null),
+            uiQuick4SheetExists:$uiQuick4SheetExists,
+            uiVisualReviewManifest:(.artifacts.uiVisualReviewManifest // null),
+            uiVisualReviewManifestExists:$uiVisualReviewManifestExists,
             uiScreenshotDir:(.artifacts.uiScreenshotDir // null)
-          }
+          },
+          uiVisualReview:(
+            if (.artifacts.uiScreenshotDir // .artifacts.uiContactSheet
+                // .artifacts.uiQuick4Sheet // .artifacts.uiVisualReviewManifest) == null
+            then null
+            else {
+              screenshotDir:(.artifacts.uiScreenshotDir // null),
+              contactSheet:(.artifacts.uiContactSheet // null),
+              contactSheetExists:$uiContactSheetExists,
+              quick4Sheet:(.artifacts.uiQuick4Sheet // null),
+              quick4SheetExists:$uiQuick4SheetExists,
+              visualReviewManifest:(.artifacts.uiVisualReviewManifest // null),
+              visualReviewManifestExists:$uiVisualReviewManifestExists
+            }
+            end
+          )
         }' "$json_file"
       return
     fi
@@ -57,7 +78,8 @@ emit_run_verdict_json() {
         timings:null,
         verdictFile:$verdictFile,
         jsonVerdictFile:$jsonVerdictFile,
-        artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
+        artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false},
+        uiVisualReview:null
       }'
       return
     fi
@@ -79,7 +101,8 @@ emit_run_verdict_json() {
         timings:null,
         verdictFile:$verdictFile,
         jsonVerdictFile:($verdictFile + ".json"),
-        artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false}
+        artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false},
+        uiVisualReview:null
       }'
     return
   fi
@@ -133,7 +156,8 @@ emit_run_verdict_json() {
         logExists:$logExists,
         xcresult:(if $xcresult == "" then null else $xcresult end),
         xcresultExists:$xcresultExists
-      }
+      },
+      uiVisualReview:null
     }'
 }
 

@@ -139,3 +139,37 @@ def test_resolve_crop_box_fractional_and_clamps():
     assert mod.resolve_crop_box(100, 200, "0.5,0.5,1,1") == (50, 100, 100, 200)
     # degenerate (zero-area) request falls back to full frame, not an empty box
     assert mod.resolve_crop_box(100, 200, "0,0,0,0") == (0, 0, 100, 200)
+
+
+def _write_minimal_png(path: Path, width: int = 100, height: int = 200):
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00" * 8
+        + width.to_bytes(4, "big")
+        + height.to_bytes(4, "big")
+    )
+
+
+def test_build_ui_step_manifest_excludes_generated_sheets(tmp_path):
+    mod = _load()
+    for name in ("01-launch.png", "02-player.png",
+                 "contact_sheet.png", "quick4_contact_sheet.png"):
+        _write_minimal_png(tmp_path / name)
+    manifest = mod.build_ui_step_manifest(tmp_path)
+    assert [item["assetID"] for item in manifest["items"]] == [
+        "01-launch", "02-player"
+    ]
+
+
+def test_images_source_excludes_generated_sheets(tmp_path):
+    mod = _load()
+    for name in ("01-launch.png", "contact_sheet.png", "quick4_contact_sheet.png"):
+        _write_minimal_png(tmp_path / name)
+    bundle = mod._resolve_source(tmp_path, "images")
+    assert [item["relPath"] for item in bundle.manifest["items"]] == ["01-launch.png"]
+
+
+def test_apply_take_evenly_single_item_no_crash():
+    mod = _load()
+    items = [{"assetID": "only"}]
+    assert mod.apply_take(items, "evenly:4") == items
