@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# ///
 """review_flip_probe_report.py — review-flip probe JSONL 解析 + 預登門檻 verdict。
 
 輸入：app 端 ReviewProbeMetrics 落的 JSONL（header + flip… + summary）。
@@ -67,13 +70,24 @@ def evaluate(parsed: ParsedRun, thresholds: dict, min_flips: int) -> dict:
     reasons: list[str] = verdict["reasons"]
 
     # ---- validity gates（殘缺 run 不下效能結論）----
+    if parsed.header is None:
+        # 不知 build config / thermal 的 pass 是弱證據 — 證據紀律上視為殘缺。
+        reasons.append("invalid: no header record (build/thermal provenance unknown)")
+        return verdict
     if parsed.summary is None:
         reasons.append("invalid: no summary record (run did not finish writing)")
         return verdict
     if parsed.summary.get("aborted"):
         reasons.append("invalid: run aborted (see console markers for reason)")
         return verdict
-    n = int(parsed.summary.get("n", 0))
+    # 欄位型別錯誤 = app 落了殘缺資料 → invalid，絕不可流為 fail（假效能結論）。
+    try:
+        n = int(parsed.summary.get("n", 0))
+        p95 = float(parsed.summary.get("max_gap_p95_ms", 0.0))
+        stalls = int(parsed.summary.get("stalls_total", 0))
+    except (TypeError, ValueError) as exc:
+        reasons.append(f"invalid: malformed summary field ({exc})")
+        return verdict
     if n < min_flips:
         reasons.append(f"invalid: n={n} < min_flips={min_flips}")
         return verdict
@@ -82,8 +96,6 @@ def evaluate(parsed: ParsedRun, thresholds: dict, min_flips: int) -> dict:
         return verdict
 
     # ---- pre-registered performance gates ----
-    p95 = float(parsed.summary.get("max_gap_p95_ms", 0.0))
-    stalls = int(parsed.summary.get("stalls_total", 0))
     if p95 >= thresholds["max_gap_p95_ms"]:
         reasons.append(
             f"fail: max_gap_p95_ms={p95:.1f} >= {thresholds['max_gap_p95_ms']:.1f}"

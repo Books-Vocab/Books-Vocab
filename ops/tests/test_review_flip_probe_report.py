@@ -129,6 +129,21 @@ class TestEvaluate:
         verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=1)
         assert verdict["result"] == "invalid"
 
+    def test_missing_header_is_invalid(self):
+        # 不知 build config 的 pass 是弱證據 — header 缺失視為殘缺 run。
+        parsed = parse_jsonl(_lines(_flip(0, 17.0), _summary(1, 17.0, 0)))
+        verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=1)
+        assert verdict["result"] == "invalid"
+
+    def test_malformed_summary_field_is_invalid_never_fail(self):
+        # app 落殘缺欄位（type 錯）絕不可流為 fail（假效能結論）。
+        parsed = parse_jsonl(
+            _lines(_header(), _flip(0, 17.0), _summary(1, 17.0, 0, max_gap_p95_ms=None))
+        )
+        verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=1)
+        assert verdict["result"] == "invalid"
+        assert any("malformed summary field" in r for r in verdict["reasons"])
+
     def test_verdict_carries_observed_numbers(self):
         parsed = parse_jsonl(
             _lines(_header(), _flip(0, 58.2, stalls=1), _summary(1, 58.2, 1))
