@@ -141,12 +141,25 @@ extension TodayReviewPresenter {
                     frozenSwipeIntensity = 0
                     swipeOffset = 0
                     stackRotations = [.random(in: -1...1), .random(in: -1...1)]
+                    // 幽靈背面樹（device trace 證據：settle burst 內
+                    // CardDocumentExampleBlock/CardRichTextRenderer 樣本）：
+                    // 從背面送出時 backContentMounted 仍 true，callback() 推進
+                    // currentIndex 後 settle 幀會替「新卡」完整建出背面樹，下一幀
+                    // 又被 onChange(currentCardKey) 放閘拆毀——同幀建、次幀拆的
+                    // 純白工。閘必須在推進「前」放下；onChange 仍在（冪等，收
+                    // previous/shuffle 等其他推進路徑）。
+                    backMountGeneration += 1
+                    backContentMounted = false
+                    suppressFoldAnimation = true
                     callback()
                     dismissPhase = .idle
                 }
             }
             DispatchQueue.main.async {
+                // suppressTransition 與 suppressFoldAnimation 同一個 async 收
+                // （原本分兩處 → settle 後多一次 body 重評）。
                 suppressTransition = false
+                suppressFoldAnimation = false
                 PerfLog.review.mark("suppress.reset", "at=\(PerfChannel.ms(since: _flingStart))ms (fling.start->suppressOff)")
             }
         }

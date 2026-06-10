@@ -453,7 +453,13 @@ final class TodayReviewState {
         // restored to the already-answered card. Now correct synchronously, which
         // matters more since the DB flush itself is deferred to dismiss.)
         PerfLog.review.measure("submit.snapshot") { persistSnapshot() }
-        PerfLog.review.measure("submit.prewarm") { prewarmCardWindow() }
+        // prewarm 移出 settle transaction：promoted 卡已被上一輪 lookahead
+        // 覆蓋，此呼叫只延伸視窗；同步做會在 settle 幀內 mutate @Observable
+        // cardCache → 再一次 body 失效。miss 由 cachedOrBuildCard fallback 兜底。
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            PerfLog.review.measure("submit.prewarm") { self.prewarmCardWindow() }
+        }
 
         finishSessionIfComplete(completed: didComplete)
     }
