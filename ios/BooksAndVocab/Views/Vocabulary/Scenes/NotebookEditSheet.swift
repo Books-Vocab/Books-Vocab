@@ -238,8 +238,11 @@ struct NotebookEditSheet: View {
         }
 
         let filename = "notebook_cover_\(UUID().uuidString).jpg"
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("NotebookCovers", isDirectory: true)
+        guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            photoError = NotebookEditCopy.photoErrorMessage(.saveFailed)
+            return
+        }
+        let dir = documentsURL.appendingPathComponent("NotebookCovers", isDirectory: true)
         let fileURL = dir.appendingPathComponent(filename)
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
