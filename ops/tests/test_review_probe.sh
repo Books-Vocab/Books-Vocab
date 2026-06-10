@@ -60,13 +60,23 @@ check "rc==1" "$rc" "1"
 note "case 6: heartbeat 落在 stderr 且含 elapsed"
 sleep 60 & pid=$!
 hb="$TMP/hb.log"
-rc=0; kg_probe_wait_pid "$pid" 3 "c6-label" "test -f '$TMP/never'" 2>"$hb" || rc=$?
+# timeout 與 hb 拉開（5 vs 1）：排程停滯下 elapsed 跳格也不會先觸 timeout
+rc=0; kg_probe_wait_pid "$pid" 5 "c6-label" "test -f '$TMP/never'" 2>"$hb" || rc=$?
 kill -9 "$pid" 2>/dev/null || true
 if grep -q 'c6-label' "$hb" && grep -q 'elapsed=' "$hb"; then
   ok "heartbeat 行存在且含 label/elapsed"
 else
   bad "heartbeat 缺失: $(cat "$hb")"
 fi
+
+note "case 6b: pid 死後 marker 已到 → rc=0 非 2（死後補查競態窗）"
+# 有狀態 early_cmd：第一次呼叫（loop top）回 1 並留痕，第二次（死後補查）回 0
+# —— 精準注入「early 檢查未到 → 程序退出 → marker 其實已寫」的時序。
+ec_flaky() { if [[ -f "$TMP/c6b_seen" ]]; then return 0; fi; touch "$TMP/c6b_seen"; return 1; }
+sleep 0.1 & pid=$!
+sleep 0.5   # 確保 pid 已死，loop top 第一次 early 檢查必走「未到」分支
+rc=0; kg_probe_wait_pid "$pid" 20 "c6b" "ec_flaky" 2>/dev/null || rc=$?
+check "rc==0（非 launch_process_died 誤判）" "$rc" "0"
 
 note "case 7: lockState 判讀 — 鎖著"
 cat >"$TMP/locked.json" <<'EOF'
