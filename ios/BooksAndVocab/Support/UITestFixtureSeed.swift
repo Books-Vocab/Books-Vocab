@@ -29,6 +29,8 @@ enum UITestFixtureSeed {
                 seedAuth(id, into: container)
             case "settings":
                 seedSettings(id, into: container)
+            case "shell":
+                seedShell(id, into: container)
             default:
                 AppLog.app.warning("Unknown UI-test fixture domain: \(domain)")
             }
