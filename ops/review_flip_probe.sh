@@ -193,7 +193,13 @@ else
     if [[ "$DECK" != "40" ]]; then
       log "warn: --instruments 模式不支援 --deck-size 下發（xctrace 無 env 通道），deck 固定 40"
     fi
-    xcrun xctrace record --template 'Animation Hitches' --device "$UDID" \
+    # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
+    # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
+    xcrun devicectl device info details --device "$UDID" \
+      --json-output "$OUT/device_info.json" >/dev/null 2>&1 || true
+    HW_UDID="$(jq -r '.result.hardwareProperties.udid // empty' "$OUT/device_info.json" 2>/dev/null || true)"
+    [[ -n "$HW_UDID" ]] || fail_invalid "hardware_udid_unresolved:$UDID"
+    xcrun xctrace record --template 'Animation Hitches' --device "$HW_UDID" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 \
       || { log "hint: console: $CONSOLE"; fail_invalid "xctrace_record_failed"; }
