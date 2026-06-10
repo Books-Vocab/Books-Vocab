@@ -45,4 +45,15 @@ struct ServerURLOverrideTests {
             ) == nil
         )
     }
+
+    /// Whitespace-only 不可掉進 normalizeServerURL 的空字串 fallback
+    ///（= 本機 dev server），否則垃圾 override 會靜默打洞 hermetic 世界。
+    @Test func whitespaceOnlyOverrideIsNil() {
+        #expect(
+            KGService.uiTestServerURLOverride(
+                arguments: ["-ui-testing"],
+                environment: ["KG_UI_TEST_SERVER_URL": "  \n"]
+            ) == nil
+        )
+    }
 }

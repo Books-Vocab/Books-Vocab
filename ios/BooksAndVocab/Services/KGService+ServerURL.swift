@@ -99,9 +99,15 @@ extension KGService {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {
         guard AppRuntimeOptions.isUITesting(arguments: arguments),
-              let override = environment["KG_UI_TEST_SERVER_URL"],
-              !override.isEmpty else { return nil }
-        return normalizeServerURL(override)
+              let override = environment["KG_UI_TEST_SERVER_URL"]
+        else { return nil }
+        // Trim BEFORE the empty check: a whitespace-only override must read as
+        // "no override", not fall through normalizeServerURL's empty-string
+        // fallback to the local dev server (which would silently de-hermeticize
+        // the test world on a machine with a backend on 127.0.0.1:8000).
+        let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return normalizeServerURL(trimmed)
     }
 
     private static func normalizeServerURL(_ url: String) -> String {
