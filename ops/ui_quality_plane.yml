@@ -194,8 +194,11 @@ mechanisms:
       - chrome-extension/
       - design-system/tokens.json
     verdict: >
-      Side-by-side Chrome|iOS contact sheet per PARITY case; --audit adds
-      diff.png/zoom.png/palette.txt/metrics.json (RMSE/SSIM/pHash) under
-      chrome-extension/tools/audit/.
+      Side-by-side Chrome|iOS contact sheet per parity-manifest.mjs case; iOS
+      refs resolve from the newest usable Catalog snapshot root via
+      ios-ref.mjs ({surface, scenario, appearance}; KG_CATALOG_ROOT override).
+      --audit adds diff.png/zoom.png/palette.txt/metrics.json (RMSE/SSIM/pHash)
+      under chrome-extension/tools/audit/.
     docs:
       - docs/reference/feature_boundary/chrome.md
+    regression: chrome-parity-refs
