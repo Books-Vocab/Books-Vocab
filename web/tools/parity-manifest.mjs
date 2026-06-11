@@ -106,4 +106,42 @@ export const PARITY = [
     ref: { surface: 'Notebook List View', scenario: 'Single notebook', appearance: 'dark' },
     note: '單字本 single (dark)',
   },
+  // Reader chrome（R1）— ReaderChromeScenarios.swift 6 態，皆 light appearance
+  // （catalog 在 light 渲染；reader paper sepia 帶在 fixture，與 appearance 軸正交）。
+  {
+    case: 'reader-reading-compact-light',
+    params: { surface: 'reader', scenario: 'reading-compact', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Reading · Compact Header', appearance: 'light' },
+    note: 'Reader compact header (light)',
+  },
+  {
+    case: 'reader-reading-expanded-light',
+    params: { surface: 'reader', scenario: 'reading-expanded', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Reading · Expanded Header', appearance: 'light' },
+    note: 'Reader expanded header (light)',
+  },
+  {
+    case: 'reader-loading-render-light',
+    params: { surface: 'reader', scenario: 'loading-render', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Loading · Render', appearance: 'light' },
+    note: 'Reader loading render (light)',
+  },
+  {
+    case: 'reader-loading-vocab-light',
+    params: { surface: 'reader', scenario: 'loading-vocab', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Loading · Mark Vocab', appearance: 'light' },
+    note: 'Reader loading mark-vocab (light)',
+  },
+  {
+    case: 'reader-reading-translation-light',
+    params: { surface: 'reader', scenario: 'reading-translation', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Reading · Translation Overlay', appearance: 'light' },
+    note: 'Reader translation overlay chrome (light) — panel 屬 R2',
+  },
+  {
+    case: 'reader-error-open-failed-light',
+    params: { surface: 'reader', scenario: 'error-open-failed', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Error · Open Failed', appearance: 'light' },
+    note: 'Reader error open-failed (light)',
+  },
 ];
