@@ -84,6 +84,10 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=reader&scenario=error-open-failed')).toEqual({
       surface: 'reader',
       scenario: 'error-open-failed',
+      appearance: 'light',
+    })
+  })
+
   it('routes today-review surface with its own scenario taxonomy', () => {
     expect(resolveHarnessConfig('?surface=today-review&scenario=production-back&appearance=dark')).toEqual({
       surface: 'today-review',
@@ -93,6 +97,10 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=today-review&scenario=back')).toEqual({
       surface: 'today-review',
       scenario: 'back',
+      appearance: 'light',
+    })
+  })
+
   it('routes podcast surface with its own scenario taxonomy', () => {
     expect(resolveHarnessConfig('?surface=podcast&scenario=preview-player&appearance=dark')).toEqual({
       surface: 'podcast',
@@ -111,10 +119,18 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=reader&scenario=populated')).toEqual({
       surface: 'reader',
       scenario: 'reading-compact',
+      appearance: 'light',
+    })
+  })
+
   it('today-review defaults to its first scenario (front) when scenario belongs to another surface', () => {
     expect(resolveHarnessConfig('?surface=today-review&scenario=logged-out')).toEqual({
       surface: 'today-review',
       scenario: 'front',
+      appearance: 'light',
+    })
+  })
+
   it('podcast defaults to its first scenario (preview-player) when scenario belongs to another surface', () => {
     expect(resolveHarnessConfig('?surface=podcast&scenario=logged-out')).toEqual({
       surface: 'podcast',
