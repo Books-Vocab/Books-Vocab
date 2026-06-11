@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: 2fb279ae
+verified_against: dfc5401f
 -->
 # Settings Feature Boundary
 
@@ -47,7 +47,7 @@ verified_against: 2fb279ae
 | `SettingsAccountSection.swift` | 376 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號區塊 |
 | `SettingsSubscriptionSection.swift` | 126 | `struct SettingsSubscriptionSection: View`，訂閱區塊 |
 | `SettingsReviewSection.swift` | 332 | `struct SettingsReviewSection: View`，複習設定區塊；含 review progress pause/freeze toggle |
-| `SettingsPreferencesSection.swift` | 92 | `struct SettingsPreferencesSection: View`，偏好設定區塊 |
+| `SettingsPreferencesSection.swift` | 92 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）|
 
 ### Sheet / Detail Views
 

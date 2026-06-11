@@ -123,6 +123,7 @@ ops-edit user-config-set <uid> [--translation-source L] [--translation-target L]
                          [--custom-minimum-interval-hours H]
                          [--custom-maximum-interval-hours H]
                          [--active-notebook <id|name>]           # settings/active notebook 行銷造景
+                         [--auto-link on|off]                    # judge pipeline 自動連結開關
 ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover] [--sort-order N]
 ops-edit notebook-delete <uid> <id|name> [--cascade]             # 軟刪(default 不可刪;非空須 --cascade 一併軟刪卡,否則拒絕)
 ops-edit link-add <uid> <from> <to> --kind contrasts_with|shares_usage --confidence C --reason R [--notebook] [--if-exists keep|update]
