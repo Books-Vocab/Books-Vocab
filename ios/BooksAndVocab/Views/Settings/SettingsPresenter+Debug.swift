@@ -1,11 +1,18 @@
 import SwiftUI
 
-extension SettingsPresenter {
+// MARK: - DEBUG Backend Section
 
-    // MARK: - DEBUG Backend Section
+// child View struct（原 SettingsPresenter extension function）；不得改回內聯
+// — 見 SettingsOtherSection.swift 檔頭的 stack 約束。
+#if DEBUG
+struct SettingsDebugBackendSection: View {
+    @Environment(\.appSkin) var appSkin
 
-    #if DEBUG
-    func debugBackendSection(kg: SettingsPresenterState.KGSection, debugLocalServerURL: Binding<String>) -> some View {
+    let kg: SettingsPresenterState.KGSection
+    let debugLocalServerURL: Binding<String>
+    let actions: SettingsPresenterActions
+
+    var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "DEBUG 後端".localized, icon: "hammer")
 
@@ -108,5 +115,5 @@ extension SettingsPresenter {
             }
         }
     }
-    #endif
 }
+#endif

@@ -1,6 +1,8 @@
 import SwiftUI
 
-extension SettingsPresenter {
+// quota row 掛在 SettingsOtherSection（child View struct）；不得搬回
+// SettingsPresenter — 見 SettingsOtherSection.swift 檔頭的 stack 約束。
+extension SettingsOtherSection {
 
     // MARK: - Quota Row
 
