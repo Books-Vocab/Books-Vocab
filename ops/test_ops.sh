@@ -43,6 +43,7 @@ DEFAULT_TESTS=(
   catalog-review
   docs-lint
   ios-ops
+  ios-run-verdict
   ios-cache-evict
   review-probe
   review-flip-probe
@@ -120,6 +121,7 @@ run_one() {
         ops/tests/test_ios_diagnostics.py \
         ops/tests/test_ios_coverage.py
       ;;
+    ios-run-verdict)    ./ops/tests/test_ios_run_verdict.sh ;;
     ios-cache-evict)    ./ops/tests/test_ios_cache_evict.sh ;;
     review-probe)       ./ops/tests/test_review_probe.sh ;;
     review-flip-probe)
