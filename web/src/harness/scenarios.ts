@@ -8,6 +8,16 @@ export const SURFACE_SCENARIOS = {
   bookshelf: ['populated', 'single', 'empty'],
   settings: ['subscribed-active', 'logged-out', 'pricing-unavailable'],
   notebook: ['populated', 'single'],
+  // Reader chrome — 對齊 ReaderChromeScenarios.swift 6 態（paper 色帶在 fixture，
+  // 與 light/dark appearance 軸正交）。首位 reading-compact = 預設 scenario。
+  reader: [
+    'reading-compact',
+    'reading-expanded',
+    'loading-render',
+    'loading-vocab',
+    'reading-translation',
+    'error-open-failed',
+  ],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS
