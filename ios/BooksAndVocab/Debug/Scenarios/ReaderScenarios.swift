@@ -125,6 +125,16 @@ enum ReaderScenarios {
                 }
                 .environmentObject(AppAppearanceStore.preview)
             }
+            Scenario("Bounds (max)", layout: .fill) {
+                AppThemeContainer {
+                    ReaderSettingsPanelPreviewHarness(
+                        initialFontSizeText: "2.0x",
+                        canDecreaseFontSize: true,
+                        canIncreaseFontSize: false
+                    )
+                }
+                .environmentObject(AppAppearanceStore.preview)
+            }
         }
     }
 }
