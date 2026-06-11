@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: dfc5401f
+verified_against: cdfabee2
 -->
 # Settings Feature Boundary
 
@@ -28,9 +28,8 @@ verified_against: dfc5401f
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresenter.swift` | 196 | `struct SettingsPresenter: View`，主佈局 |
+| `SettingsPresenter.swift` | 143 | `struct SettingsPresenter: View`，主佈局；`otherSection` 委派 `SettingsOtherSection`、debug 區委派 `SettingsDebugBackendSection`（真機 Debug stack overflow 修復：section 拆獨立 struct，避免 inline body 撐爆 1MB main stack）|
 | `SettingsPresenter+Components.swift` | 645 | 可復用元件庫：`SettingsSectionHeader` / `SettingsRow` / `SettingsNavigationRow` / `SettingsCardNavigationRow` / `SettingsActionRowLabel` 等（最大檔案）|
-| `SettingsPresenter+Quota.swift` | 52 | quota 相關 UI extension |
 | `SettingsPresenter+Preview.swift` | 352 | preview 資料 |
 
 ### Presentation Models（UI 資料轉換）
@@ -48,6 +47,8 @@ verified_against: dfc5401f
 | `SettingsSubscriptionSection.swift` | 126 | `struct SettingsSubscriptionSection: View`，訂閱區塊 |
 | `SettingsReviewSection.swift` | 332 | `struct SettingsReviewSection: View`，複習設定區塊；含 review progress pause/freeze toggle |
 | `SettingsPreferencesSection.swift` | 145 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）|
+| `SettingsOtherSection.swift` | 183 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）|
+| `SettingsDebugBackendSection.swift` | 128 | `struct SettingsDebugBackendSection: View`（DEBUG only），debug backend 切換區塊（前身 `SettingsPresenter+Debug.swift`，改 inline extension → 獨立 struct）|
 
 ### Sheet / Detail Views
 
@@ -64,6 +65,7 @@ verified_against: dfc5401f
 - **新增設定項目** → 對應 Section View（`SettingsAccountSection` / `SettingsReviewSection` / `SettingsPreferencesSection`）
 - **新增設定區塊** → 新增 `Settings*Section.swift` + 在 `SettingsPresenter.swift` 加入
 - **新增可復用 UI 元件** → `SettingsPresenter+Components.swift`
+- **section body 一律拆獨立 `View` struct，不要 inline 回 `SettingsPresenter.body`** → 真機 main thread stack 僅 1MB，Debug `-Onone` 下 inline section 會把 body 型別尺寸撐爆觸 `EXC_BAD_ACCESS`；`SettingsStackBudgetTests`（`MemoryLayout<Body>.size` 門檻 20KB/16KB）為 re-inline 回歸防線
 - **新增 sheet** → 新增 `*Sheet.swift` + 在 `SettingsCoordinator` 加 navigation state + 在 `SettingsView` 加 `.sheet` modifier
 - **新增 Presentation model** → `SettingsPresentation.swift` 擴充，或新增專屬 Presentation 檔案
 - **新增訂閱相關 UI** → `SubscriptionPresentation.swift` + `SettingsSubscriptionSection.swift`
