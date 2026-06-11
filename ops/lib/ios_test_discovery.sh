@@ -27,7 +27,9 @@
 #     Plain member helper funcs (`func increment()`, `func save(...)`) are NOT
 #     attributed — this is what keeps helpers out of the -only-testing set.
 #     Each test func is attributed to the most recent container seen above it.
-#   - `<grep_pattern>` (case-insensitive, empty = match all) filters func names.
+#   - `<grep_pattern>` (case-insensitive, empty = match all) filters by func
+#     name OR container (suite) name: a pattern matching a container selects
+#     ALL test funcs attributed to it. File names are never matched.
 #
 # No Xcode, no PTY, no external deps beyond coreutils — drivable from fixtures.
 
@@ -37,7 +39,11 @@ _discover_file() {
   awk -v pattern="$pattern" -v target="$target" '
     function emit(fn, is_swift) {
       if (container == "") return
-      if (pattern != "" && tolower(fn) !~ tolower(pattern)) return
+      # Pattern matches the func name OR its enclosing container (suite) name —
+      # `-g <SuiteName>` runs the whole suite instead of wasting a build+test
+      # round on "no tests matching" (2026-06-11 friction fix). Helper funcs
+      # are still excluded upstream: only attributed test funcs reach emit().
+      if (pattern != "" && tolower(fn) !~ tolower(pattern) && tolower(container) !~ tolower(pattern)) return
       # Swift Testing requires the func signature `name()` in the -only-testing
       # identifier; XCTest uses the bare method name. Emitting the XCTest form for
       # a @Test func makes xcodebuild match 0 tests → "TEST SUCCEEDED" with nothing

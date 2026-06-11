@@ -177,27 +177,31 @@ cmd_delegate_with_optional_json() {
     return
   fi
 
-  local rc=0 payload
+  # Pin a per-invocation verdict path and read back exactly that file: the
+  # fixed path is a machine-wide LATEST pointer that a concurrent session can
+  # overwrite between our delegate's write and our read (multi-session race).
+  local rc=0 payload pinned_verdict
+  pinned_verdict="${KG_IOS_VERDICT_FILE:-$(verdict_file_for "$kind").$(date +%s)-$$}"
   if ((${#forwarded[@]})); then
-    if "$delegate" "${forwarded[@]}" >&2; then
+    if KG_IOS_VERDICT_FILE="$pinned_verdict" "$delegate" "${forwarded[@]}" >&2; then
       rc=0
     else
       rc=$?
     fi
-  elif "$delegate" >&2; then
+  elif KG_IOS_VERDICT_FILE="$pinned_verdict" "$delegate" >&2; then
     rc=0
   else
     rc=$?
   fi
-  payload="$(emit_single_run_json "$kind" "$(verdict_file_for "$kind")")"
+  payload="$(emit_single_run_json "$kind" "$pinned_verdict")"
   printf '%s\n' "$payload"
   return "$rc"
 }
 
 emit_archive_json() {
   local file json_file
-  file="$(verdict_file_for archive)"
-  json_file="$(verdict_json_file_for archive)"
+  file="${1:-$(verdict_file_for archive)}"
+  json_file="$file.json"
 
   if [[ -f "$json_file" ]] && jq -e . "$json_file" >/dev/null 2>&1; then
     cat "$json_file"
@@ -254,19 +258,22 @@ cmd_archive_with_optional_json() {
     return
   fi
 
-  local rc=0 payload
+  # Same per-invocation pinning as cmd_delegate_with_optional_json — never
+  # read a latest pointer another session may have overwritten.
+  local rc=0 payload pinned_verdict
+  pinned_verdict="${KG_IOS_VERDICT_FILE:-$(verdict_file_for archive).$(date +%s)-$$}"
   if ((${#forwarded[@]})); then
-    if "$delegate" "${forwarded[@]}" >&2; then
+    if KG_IOS_VERDICT_FILE="$pinned_verdict" "$delegate" "${forwarded[@]}" >&2; then
       rc=0
     else
       rc=$?
     fi
-  elif "$delegate" >&2; then
+  elif KG_IOS_VERDICT_FILE="$pinned_verdict" "$delegate" >&2; then
     rc=0
   else
     rc=$?
   fi
-  payload="$(emit_archive_json)"
+  payload="$(emit_archive_json "$pinned_verdict")"
   printf '%s\n' "$payload"
   return "$rc"
 }

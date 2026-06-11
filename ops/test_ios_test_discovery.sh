@@ -189,6 +189,27 @@ section "Case-insensitive pattern"
 ONLY_FOX="$(discover_only_flags "$FIX" "FOXTROT")"
 has_flag "$ONLY_FOX" "FoxtrotTests/testFoxtrotOne" && ok "uppercase pattern matches" || fail_t "lost case-insensitivity"
 
+# ── 9b. pattern matches suite/container names too（2026-06-11 摩擦修復：以
+#        suite 名跑整個 suite 不該再吐 no-tests-matching 浪費一輪 build+test）──
+section "Suite/container-name pattern"
+ONLY_BRAVO="$(discover_only_flags "$FIX" "BravoTests")"
+has_flag "$ONLY_BRAVO" "BravoTests/bravoOne()" \
+  && ok "suite-name pattern 'BravoTests' runs its tests" || fail_t "suite-name pattern dropped bravoOne"
+printf '%s\n' "$ONLY_BRAVO" | grep -qF "alphaOne" \
+  && fail_t "suite-name pattern 'BravoTests' leaked AlphaTests funcs" || ok "suite-name pattern excludes other suites"
+# case-insensitive container match + XCTest class container
+ONLY_FOXC="$(discover_only_flags "$FIX" "foxtrottests")"
+has_flag "$ONLY_FOXC" "FoxtrotTests/testFoxtrotOne" \
+  && ok "lowercase suite-name matches XCTest class container" || fail_t "class-container suite-name match failed"
+has_flag "$ONLY_FOXC" "FoxtrotTests/testFoxtrotTwo" \
+  && ok "suite-name match covers ALL funcs of the container" || fail_t "suite-name match missed testFoxtrotTwo"
+# plain helper funcs must stay excluded even when their container matches
+ONLY_ECHO="$(discover_only_flags "$FIX" "EchoTests")"
+has_flag "$ONLY_ECHO" "EchoTests/echoThree()" \
+  && ok "suite-name match includes @Test-on-prev-line funcs" || fail_t "suite-name match missed echoThree"
+printf '%s\n' "$ONLY_ECHO" | grep -qF "makeHelper" \
+  && fail_t "suite-name match leaked plain helper makeHelper" || ok "suite-name match still excludes plain helpers"
+
 # ── 10. parameterized @Test(arguments:) single + multiline ───────────────────
 section "Parameterized @Test(arguments:) discovery"
 has_flag "$FLAGS" "GolfTests/golfSingleLine()" && ok "golfSingleLine (single-line args) → GolfTests" || fail_t "single-line @Test(arguments:) dropped"
@@ -235,13 +256,29 @@ EMPTY_ERR="$("$IOS_TEST" -g '' --list 2>&1 >/dev/null)" && EMPTY_RC=0 || EMPTY_R
 [[ "$EMPTY_RC" -eq 2 ]] && ok "空 pattern exit 2" || fail_t "空 pattern rc=$EMPTY_RC（應 2）"
 grep -q "空 pattern" <<<"$EMPTY_ERR" && ok "錯誤訊息明示拒絕原因" || fail_t "錯誤訊息缺拒絕原因: $EMPTY_ERR"
 
-# ── 12. 零匹配錯誤訊息必須講清楚匹配語意（只對方法名，不對 @Suite/檔名）──────
+# ── 12. 零匹配錯誤訊息必須講清楚匹配語意（方法名＋suite/容器名，不對檔名）────
 section "zero-match error message semantics"
 ZERO_ERR="$("$IOS_TEST" -g zzz_no_such_test_zzz --list 2>&1 >/dev/null)" && ZERO_RC=0 || ZERO_RC=$?
 [[ "$ZERO_RC" -ne 0 ]] && ok "零匹配 exit 非 0" || fail_t "零匹配竟 exit 0"
-grep -q "方法名" <<<"$ZERO_ERR" && grep -q "Suite" <<<"$ZERO_ERR" \
-  && ok "錯誤訊息說明只匹配方法名、不匹配 @Suite/類名" \
+grep -q "方法名" <<<"$ZERO_ERR" && grep -q "容器名" <<<"$ZERO_ERR" && grep -q "檔名" <<<"$ZERO_ERR" \
+  && ok "錯誤訊息說明匹配方法名＋suite/容器名、不匹配檔名" \
   || fail_t "錯誤訊息未說明匹配語意: $ZERO_ERR"
+
+# ── 12b. -g 用 suite 名 E2E（--list；歷史摩擦：suite 名 → no tests matching
+#         浪費一輪 ~270s build+test）。從真實測試自我發現一個 @Suite/struct 名。──
+section "ios_test.sh -g suite-name (--list)"
+SUITE_NAME="$(grep -rhoE '^(@Suite[^A-Za-z]*)?(final )?(struct|class) [A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | grep -oE '[A-Za-z0-9_]+$' | head -1)"
+if [[ -n "$SUITE_NAME" ]]; then
+  SUITE_LIST="$("$IOS_TEST" -g "$SUITE_NAME" --list 2>/dev/null)" || SUITE_LIST=""
+  N_SUITE="$(grep -c "only-testing:BooksAndVocabTests/$SUITE_NAME/" <<<"$SUITE_LIST" || true)"
+  if (( N_SUITE >= 1 )); then
+    ok "-g '$SUITE_NAME'（suite 名）resolve 出 $N_SUITE 個 selector"
+  else
+    fail_t "-g '$SUITE_NAME'（suite 名）零 selector：$SUITE_LIST"
+  fi
+else
+  fail_t "找不到可用的真實 suite 名"
+fi
 
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
