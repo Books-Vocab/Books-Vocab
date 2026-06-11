@@ -373,8 +373,29 @@ struct CatalogScene: View {
         return filteredPlaybook(from: pb, using: filter)
     }
 
-    static func filter(groups: [String], scenarios: [String]) -> Filter {
+    /// Malformed scenario scope entries (missing the `/` category separator).
+    /// Surfaces in test failure output, so the message must be self-explanatory
+    /// for `ops/ios_ops.sh catalog snapshots --scenario` users.
+    struct ScenarioFormatError: Error, CustomStringConvertible {
+        let invalidEntries: [String]
+
+        var description: String {
+            """
+            Invalid catalog scenario scope entr\(invalidEntries.count == 1 ? "y" : "ies"): \(invalidEntries.map { "\"\($0)\"" }.joined(separator: ", "))
+            Expected format: <Category>/<Scenario Title>, e.g. "Settings/Subscribed Active".
+            """
+        }
+    }
+
+    static func filter(groups: [String], scenarios: [String]) throws -> Filter {
         let normalizedGroups = Set(groups.map(normalizeCategoryOrScenarioName))
+        // 不能 compactMap 靜默吞掉格式錯的 scenario：scenarios 全滅時 filter 變空,
+        // filteredPlaybook 會把空 filter 當「無 scope」跑全量;部分滅則靜默縮窄
+        // scope。兩者都是使用者打錯字卻拿到貌似成功的結果,一律 fail-fast。
+        let invalidEntries = scenarios.filter { descriptor(from: $0) == nil }
+        guard invalidEntries.isEmpty else {
+            throw ScenarioFormatError(invalidEntries: invalidEntries)
+        }
         let normalizedScenarios = Set(scenarios.compactMap { descriptor(from: $0) })
         return .init(groups: normalizedGroups, scenarios: normalizedScenarios)
     }
