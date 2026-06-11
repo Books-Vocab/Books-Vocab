@@ -65,7 +65,9 @@ async function main() {
           viewport: { width: 393, height: 852 },
           deviceScaleFactor: 3,
         });
-        const url = `${base}/?scenario=${p.params.scenario}&appearance=${p.params.appearance}`;
+        // params 逐鍵序列化（surface 可省略 = bookshelf 向後相容預設）
+        const qs = new URLSearchParams(p.params).toString();
+        const url = `${base}/?${qs}`;
         await page.goto(url, { waitUntil: 'networkidle' });
         // woff2 faces must be live before capture, or text falls back mid-shot.
         await page.evaluate(() => document.fonts.ready);
