@@ -313,6 +313,11 @@ cleanup_tmp() {
   return "$rc"
 }
 
+# LATEST-pointer path for a verdict kind. Writers (ios_build.sh / ios_test.sh /
+# ios_release.sh) write a per-invocation unique file
+# `<this path>.<epochTs>-<pid>(.json)` and copy it here (last-writer-wins).
+# `runs`/`snapshot` read this pointer ("most recent run on this machine");
+# anything that must identify its OWN run pins KG_IOS_VERDICT_FILE instead.
 verdict_file_for() {
   local kind="$1" base="${TMPDIR:-/tmp}"
   case "$kind" in

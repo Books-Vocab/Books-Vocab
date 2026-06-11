@@ -27,8 +27,9 @@ DO_UPLOAD=0
 TIMEOUT=600
 POLL_INTERVAL=3
 LOCK_FILE="/tmp/kg-ios-build.lock"  # 與 ios_build.sh 共用
-VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_archive_verdict"
-VERDICT_JSON_FILE="$VERDICT_FILE.json"
+# VERDICT_FILE / VERDICT_JSON_FILE：per-invocation 唯一路徑（多 session 競態防護），
+# 固定路徑 kg_ios_archive_verdict(.json) 只是 latest pointer。由
+# lib/ios_run_verdict.sh 的 kg_ios_verdict_init 設定（見下方 source）。
 LOCK_WAIT_MS=0
 ARCHIVE_MS=0
 EXPORT_MS=0
@@ -61,6 +62,10 @@ METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
 # shellcheck source=lib/ios_build_progress.sh
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# shellcheck source=lib/ios_run_verdict.sh
+source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
+kg_ios_verdict_init archive "$ROOT"
+echo "[release] verdict=$VERDICT_FILE (latest pointer: $VERDICT_LATEST_FILE)"
 XCODEPROJ="$ROOT/ios/BooksAndVocab.xcodeproj"
 EXPORT_OPTS="$ROOT/ios/ExportOptions.plist"
 # Pin archive DerivedData to one shared cache anchored at the main repo (see
@@ -102,6 +107,10 @@ write_json_verdict() {
     --arg status "$status" \
     --arg exit "$exit_code" \
     --arg caller "$CALLER" \
+    --arg cwd "$ROOT" \
+    --arg verdictFile "$VERDICT_FILE" \
+    --argjson ts "$(date +%s)" \
+    --argjson pid "$$" \
     --arg keyId "$KEY_ID" \
     --arg archivePath "$ARCHIVE" \
     --arg archiveLog "$ARCHIVE_LOG" \
@@ -123,6 +132,7 @@ write_json_verdict() {
       status:$status,
       exit:$exit,
       caller:$caller,
+      invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
       options:{
         keyId:$keyId,
         uploadRequested:($uploadRequested == 1)
@@ -160,6 +170,7 @@ write_json_verdict() {
       }
     }' >"$VERDICT_JSON_FILE" || true
   type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
+  kg_ios_verdict_publish
 }
 
 # ---- build number guard（僅上傳前；archive 不受限但傳會被 Apple 拒重）----
@@ -248,12 +259,12 @@ else
   echo "[release] diagnostics unavailable: $DIAGNOSTICS" >&2
 fi
 if [[ $ARCHIVE_EXIT -ne 0 ]]; then
-  echo "RESULT=fail EXIT=$ARCHIVE_EXIT caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "RESULT=fail EXIT=$ARCHIVE_EXIT caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
   write_json_verdict "fail" "$ARCHIVE_EXIT" "fail" "skipped" "skipped"
   echo "[release] ✗ archive failed (exit $ARCHIVE_EXIT, ${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" >&2
   exit "$ARCHIVE_EXIT"
 fi
-echo "RESULT=ok EXIT=0 caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+echo "RESULT=ok EXIT=0 caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
 echo "[release] ✓ archive succeeded (${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE"
 
 # ---- export ipa ----
