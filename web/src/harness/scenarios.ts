@@ -18,6 +18,14 @@ export const SURFACE_SCENARIOS = {
     'reading-translation',
     'error-open-failed',
   ],
+  // Selection Toolbar — 對齊 SelectionToolbarScenarios.swift 3 態（vocab 多選
+  // 底欄；selectionCount 0 全灰 disabled，>0 啟用 archive+delete）。首位
+  // selection-multiple = 預設 scenario。
+  'selection-toolbar': ['selection-multiple', 'selection-single', 'selection-none'],
+  // Reader Selection Tile — 對齊 ReaderSelectionTileScenarios.swift 3 態
+  // （chrome tile：selected mutedFill+primaryText / unselected pageBackground+
+  // secondaryText / 並排對比）。首位 selection-pair = 預設 scenario。
+  'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS
