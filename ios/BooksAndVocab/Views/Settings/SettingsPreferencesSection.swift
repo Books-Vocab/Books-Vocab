@@ -105,15 +105,41 @@ struct SettingsPreferencesSection: View {
                         .tint(appSkin.palette.accent)
                     }
                 }
+
+                if state.showAutoLink {
+                    SettingsDivider()
+
+                    AppKeyValueRow(
+                        icon: "point.3.connected.trianglepath.dotted",
+                        label: "自動連結".localized,
+                        style: .settings(appSkin)
+                    ) {
+                        Toggle("", isOn: Binding(
+                            get: { state.autoLinkEnabled },
+                            set: { actions.toggleAutoLink($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(appSkin.palette.accent)
+                        .accessibilityIdentifier("settings.preferences.autoLinkToggle")
+                    }
+                }
             }
             .settingsCard()
 
-            SettingsSectionFooter(
-                state.showAutoSync
-                    ? "切換後會立即套用到 app 介面。開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。".localized
-                    : "切換後會立即套用到 app 介面。".localized
-            )
+            SettingsSectionFooter(footerText)
         }
         .enableInjection()
+    }
+
+    /// 沿用既有兩段 footer 文案（含自動同步說明的組合 key 不拆，保留既有翻譯），
+    /// 顯示自動連結 toggle 時追加一句說明。
+    private var footerText: String {
+        var text = state.showAutoSync
+            ? "切換後會立即套用到 app 介面。開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。".localized
+            : "切換後會立即套用到 app 介面。".localized
+        if state.showAutoLink {
+            text += "關閉自動連結後，新單字不再自動建立知識圖譜連結；重新開啟會繼續處理累積的單字。".localized
+        }
+        return text
     }
 }
