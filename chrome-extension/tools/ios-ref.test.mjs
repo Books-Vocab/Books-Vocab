@@ -25,10 +25,12 @@ test('every PARITY ref is null or fully addressed {surface, scenario, appearance
   }
 });
 
-function makeRoot(base, name, { totalImages = 1 } = {}) {
+function makeRoot(base, name, { totalImages = 1, devices } = {}) {
   const root = join(base, name);
   mkdirSync(root, { recursive: true });
-  writeFileSync(join(root, 'review_manifest.json'), JSON.stringify({ totalImages }));
+  const manifest = { totalImages };
+  if (devices) manifest.devices = devices;
+  writeFileSync(join(root, 'review_manifest.json'), JSON.stringify(manifest));
   return root;
 }
 
@@ -91,6 +93,43 @@ test('resolveRef builds light and dark paths from device dirs', () => {
     const ref = { surface: 'Vocabulary List View', scenario: 'Populated · mixed sync states' };
     assert.equal(resolveRef(root, { ...ref, appearance: 'light' }), light);
     assert.equal(resolveRef(root, { ...ref, appearance: 'dark' }), dark);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('multi-device root: default stays canonical iPhone even though iPad sorts first', () => {
+  const base = mkdtempSync(join(tmpdir(), 'kg-iosref-multidev-'));
+  try {
+    const root = makeRoot(base, 'catalog-full-20260610-000000', {
+      totalImages: 4,
+      devices: ['iPhone 15 Pro portrait', 'iPad Pro 11 landscape'],
+    });
+    const ref = { surface: 'Bookshelf View', scenario: 'Single book' };
+    const phoneLight = makeShot(root, 'iPhone 15 Pro portrait', ref.surface, ref.scenario);
+    makeShot(root, 'iPhone 15 Pro portrait (dark)', ref.surface, ref.scenario);
+    const padLight = makeShot(root, 'iPad Pro 11 landscape', ref.surface, ref.scenario);
+    const padDark = makeShot(root, 'iPad Pro 11 landscape (dark)', ref.surface, ref.scenario);
+    // default = manifest devices[0] (canonical), NOT lexicographic first (iPad)
+    assert.equal(resolveRef(root, { ...ref, appearance: 'light' }), phoneLight);
+    // explicit device opt-in selects the iPad variant
+    assert.equal(resolveRef(root, { ...ref, appearance: 'light', device: 'iPad Pro 11 landscape' }), padLight);
+    assert.equal(resolveRef(root, { ...ref, appearance: 'dark', device: 'iPad Pro 11 landscape' }), padDark);
+    // unknown device = null, never a silent fallback to the wrong device
+    assert.equal(resolveRef(root, { ...ref, appearance: 'light', device: 'iPad Pro 13' }), null);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('multi-device root without manifest devices falls back to iPhone-prefixed dir', () => {
+  const base = mkdtempSync(join(tmpdir(), 'kg-iosref-legacy-'));
+  try {
+    const root = makeRoot(base, 'catalog-full-20260610-000000', { totalImages: 4 });
+    const ref = { surface: 'Bookshelf View', scenario: 'Single book' };
+    const phoneLight = makeShot(root, 'iPhone 15 Pro portrait', ref.surface, ref.scenario);
+    makeShot(root, 'iPad Pro 11 landscape', ref.surface, ref.scenario);
+    assert.equal(resolveRef(root, { ...ref, appearance: 'light' }), phoneLight);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

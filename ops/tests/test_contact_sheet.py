@@ -173,3 +173,30 @@ def test_apply_take_evenly_single_item_no_crash():
     mod = _load()
     items = [{"assetID": "only"}]
     assert mod.apply_take(items, "evenly:4") == items
+
+
+def test_select_items_device_defaults_to_canonical_and_filters_explicitly():
+    """Multi-device manifests: default sheet selection sticks to the canonical
+    device (manifest devices[0]) so state rows don't interleave iPhone/iPad
+    twins; --device picks another device; 'all' disables the filter."""
+    mod = _load()
+    manifest = {
+        "devices": ["iPhone 15 Pro portrait", "iPad Pro 11 landscape"],
+        "items": [
+            {"surface": "A", "appearance": "light", "lane": "feature-surface",
+             "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "d",
+             "feature": "F", "device": "iPhone 15 Pro portrait"},
+            {"surface": "A", "appearance": "light", "lane": "feature-surface",
+             "stateFacet": "default", "stateFacetRank": 0, "stateLabel": "d",
+             "feature": "F", "device": "iPad Pro 11 landscape"},
+        ],
+    }
+    default_sel = mod.select_items(manifest, appearance="light")
+    assert [s["device"] for s in default_sel] == ["iPhone 15 Pro portrait"]
+    pad_sel = mod.select_items(manifest, appearance="light", device="iPad Pro 11 landscape")
+    assert [s["device"] for s in pad_sel] == ["iPad Pro 11 landscape"]
+    all_sel = mod.select_items(manifest, appearance="light", device="all")
+    assert len(all_sel) == 2
+    # single-device legacy manifests (no devices field) keep today's behavior
+    legacy = {"items": [dict(manifest["items"][0])]}
+    assert len(mod.select_items(legacy, appearance="light")) == 1
