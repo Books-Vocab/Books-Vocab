@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/
-verified_against: f0d37ca4
+verified_against: 41aafedc
 -->
 # UI State Matrix
 
@@ -307,7 +307,10 @@ Preview matrix 已補齊：
 
 | State | 觸發條件 | 目前 UI | 狀態 |
 |------|----------|--------|------|
-| Idle empty（無書 + 無 podcast） | `books.isEmpty && podcastSeries.isEmpty` | `emptyState` ScrollView：`AppEmptyStateContent` + EPUB 指南 TipView + 匯入 CTA + 登入 / Demo 雙 CTA | 已覆蓋 |
+| Idle empty（無書 + 無 podcast） | `books.isEmpty && podcastSeries.isEmpty` + `CloudKitMirroringMonitor.phase ∈ {settled, localOnly}` | `emptyState` ScrollView：`AppEmptyStateContent`（真「尚無書籍」）+ EPUB 指南 TipView + 匯入 CTA + 登入 / Demo 雙 CTA | 已覆蓋 |
+| CloudKit 還原確認中 | `books.isEmpty` + `phase == .waitingFirstEvent` | emptyState 內 `cloudRestoreStatus`：`ProgressView` + `正在確認 iCloud 書庫…`（`bookshelf.emptyState.cloudStatus`） | 已覆蓋 |
+| CloudKit 還原中 | `books.isEmpty` + `phase == .restoring` | emptyState 內 `cloudRestoreStatus`：`ProgressView` + `正在從 iCloud 取回書庫…`（`bookshelf.emptyState.cloudStatus`） | 已覆蓋 |
+| CloudKit 同步失敗 | `books.isEmpty` + `phase == .failed(msg)` | emptyState 內 `cloudRestoreStatus`：`Label` + `exclamationmark.icloud` + `iCloud 書庫同步異常・<msg>` | 已覆蓋 |
 | Books + podcast 並存 | 任一非空 | `bookGrid` LazyVGrid（書先、podcast series 後）+ pull-to-refresh | 已覆蓋 |
 | Import loading overlay | `coordinator.isLoading == true` | scrim + linear `ProgressView`（`loadingProgress` 有值）或 indeterminate spinner + `loadingMessage` | 已覆蓋 |
 | Import error alert | `coordinator.showError == true` | system alert，title `匯入錯誤・<diagnosis>` | 已覆蓋 |
@@ -350,6 +353,7 @@ Preview matrix 已補齊：
 - Import 流程的 alert + persistent banner 雙層配置是目前 cross-surface 最成熟的 error pattern
 - 殘留缺口集中在「背景同步沒有可見訊號」：podcast sync running / failed、warmFollowedSeriesAudio 失敗皆靜默
 - iCloud 下載六態齊全（current / downloading / notDownloaded / failed），`.failed` 已有專屬可重試徽章，與「沒下過」明確區分
+- **空書架 CloudKit 還原三分化已補齊**（`CloudKitMirroringMonitor.phase`）：本地 0 列不再一律講「尚無書籍」——還原確認中 / 還原中顯示 ProgressView 提示、同步失敗顯示 `exclamationmark.icloud` 警示，只有 `settled`（首次 import 成功收尾）/ `localOnly` 才渲染真空 emptyState
 
 ---
 
