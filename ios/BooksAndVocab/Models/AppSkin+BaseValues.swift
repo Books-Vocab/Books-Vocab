@@ -26,7 +26,7 @@ extension AppSkin {
 
     private static func buildTypography() -> Typography {
         Typography(
-            // Serif tokens — 標題 (Athelas + STSongti-TC)
+            // Serif tokens — 標題 (Crimson Pro + STSongti-TC)
             displayTitle: AppFonts.serif(size: 24, bold: true),
             sectionTitle: AppFonts.serif(size: 18, bold: true),
             detailWord: AppFonts.systemMono(size: 27, weight: .semibold),

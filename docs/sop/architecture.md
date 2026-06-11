@@ -303,7 +303,7 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 
 系統透過 CSS 與 JS 注入到 Readium，實行極簡的 Notion-inspired 視覺：
 
-- **字體 (Typography)**: 英文 `Athelas` + `Biotif`，中文 `STSongti-SC`。
+- **字體 (Typography)**: 英文 `Crimson Pro`（bundled, SIL OFL）+ `Biotif`，中文 `STSongti-SC`。
 - **透明度控制**: `ReaderSettings` 面板調節 `--vocab-opacity` CSS Variable。
 - **介面隱形化**: 底線用柔和 `linear-gradient`，高亮用低對比度邊框 + 4% Alpha 底色。
 

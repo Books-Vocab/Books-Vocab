@@ -325,7 +325,7 @@
     "family": {
       "serif": {
         "$type": "fontFamily",
-        "$value": "'Athelas', 'STSongti TC', 'Noto Serif TC', Georgia, serif"
+        "$value": "'CrimsonPro', 'Songti TC', 'Noto Serif TC', Georgia, serif"
       },
       "sans": {
         "$type": "fontFamily",
@@ -341,7 +341,7 @@
       },
       "display": {
         "$type": "fontFamily",
-        "$value": "'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif"
+        "$value": "'CormorantGaramond', 'CrimsonPro', 'Noto Serif TC', 'Songti TC', Georgia, serif"
       }
     },
     "scale": {

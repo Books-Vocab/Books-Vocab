@@ -1023,3 +1023,9 @@
 "還原中…" = "復元中…";
 "同步異常" = "同期エラー";
 "iCloud 書庫" = "iCloud ライブラリ";
+
+/* i18n: reader font picker display names (brand / type-style labels) */
+"reader.font.garamond" = "Garamond";
+"reader.font.crimsonPro" = "Crimson Pro";
+"reader.font.sans" = "サンセリフ";
+"reader.font.mono" = "等幅";
