@@ -1,0 +1,226 @@
+/* ============================================================
+   Books & Vocab Web Component Primitives  (HAND-AUTHORED — this dist/ file IS the source.
+   Bundled into EVERY web surface — chrome-extension (shared/kg-components.css)
+   AND backend/static — via ops/gen_web_tokens.py. The base classes here
+   (.kg-btn / .kg-card / .kg-chip) are owned SOLELY by this file; each surface's
+   own CSS only defines BEM-scoped LAYOUT classes (.kg-list-card / .kg-popup__btn)
+   that compose with these primitives, so there is no collision. A surface
+   redefining a base class is a bug. ONE vocabulary, iOS-tracked.)
+
+   Consumes kg-tokens.css. Encodes the iOS "Mochi 北極星五條" as reusable web
+   classes so every surface (chrome-extension, backend public pages, future 官網)
+   shares one editorial visual language with the app — instead of each page
+   hand-rolling its own buttons/cards/chips and drifting.
+
+   北極星 mapping:
+     1 單色頁面、無 chrome 分隔   → .kg-surface (page/toolbar/content share --page-bg)
+     2 border 退場、divider 進場  → divider is the section separator; .kg-card keeps
+                                   only iOS's resting hairline (cardBorder×0.7), --flat drops it
+     3 shadow 收 z0/z1           → .kg-card = hairline + z1; --flat = z0 no border; z2+ overlay
+     4 單一強調色策略            → .kg-btn = brand-hero CTA, .kg-btn--accent = passive
+     5 互動 motion 收斂          → tap-feedback triplet on buttons; non-buttons only
+                                   animate bg/opacity; all gated by reduced-motion
+   ============================================================ */
+
+/* --- Base / reset (北極星 1: single-surface page) --------------------------- */
+
+.kg-surface,
+.kg-surface *,
+.kg-surface *::before,
+.kg-surface *::after {
+  box-sizing: border-box;
+}
+
+/* The `hidden` attribute must stay authoritative. A class that sets `display`
+   (e.g. .kg-list, .kg-detail-panel) is an author rule that otherwise beats the
+   UA `[hidden] { display: none }`, leaving the element visible while marked
+   hidden — an opaque `position:fixed` panel then covers the whole surface.
+   !important lets the attribute win regardless of class specificity / order. */
+[hidden] { display: none !important; }
+
+.kg-surface {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* --- Type scale utilities (serif headings / sans body — mirrors AppFonts) --- */
+
+.kg-hero    { font-family: var(--font-serif); font-size: var(--text-hero); line-height: var(--leading-display); font-weight: 700; } /* iOS hero .semibold→isBold→Athelas-Bold 700; ships untracked (Tracking.tight unused on iOS) */
+.kg-h1      { font-family: var(--font-serif); font-size: var(--text-h1); line-height: var(--leading-heading); font-weight: 700; } /* iOS h1 .medium→isBold→700 */
+.kg-h2      { font-family: var(--font-serif); font-size: var(--text-h2); line-height: var(--leading-heading); letter-spacing: var(--tracking-h2-tight); font-weight: 700; } /* iOS h2 .medium→isBold→700 (h2-tight tracking IS used on iOS) */
+.kg-body    { font-size: var(--text-body); line-height: var(--leading-body); }
+.kg-subhead { font-size: var(--text-subhead); line-height: var(--leading-body); color: var(--text-secondary); }
+.kg-caption { font-size: var(--text-caption); line-height: var(--leading-caption); color: var(--text-tertiary); }
+.kg-label   { font-size: var(--text-caption); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-uppercase); font-weight: 700; }
+
+/* --- Card (北極星 2: iOS resting hairline / 3: z1 resting) ------------------ */
+/* Mirrors iOS AppSectionCardStyle.themed: fill + cardBorder×0.7 hairline + z1. */
+
+.kg-card {
+  background: var(--card-bg);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  border-radius: var(--radius-card);
+  padding: var(--card-padding);
+  box-shadow: var(--elevation-z1);
+  transition: transform var(--motion-control), box-shadow var(--motion-control);
+}
+
+/* z0 flush variant — pure background separation, no border, no shadow (iOS .flat). */
+.kg-card--flat { border-color: transparent; box-shadow: var(--elevation-z0); }
+
+/* Card is a button-like surface → scale lift is allowed (Motion Contract);
+   mirrors iOS .appHoverLift (scale 1.02). */
+.kg-card--interactive { cursor: pointer; }
+.kg-card--interactive:hover { transform: scale(1.02); box-shadow: var(--elevation-z2); }
+.kg-card--interactive:active { transform: scale(var(--press-scale)); }
+
+/* --- Divider (北極星 2: divider 進場, replaces border) ---------------------- */
+
+.kg-divider {
+  height: var(--sp-hairline);
+  border: 0;
+  background: var(--divider);
+  margin: var(--divider-air) 0;
+}
+
+/* --- Buttons -------------------------------------------------------------- */
+/* Shared shape + the tap-feedback triplet (北極星 5). Haptic has no web
+   equivalent, so feedback is visual-only: scale-down + opacity-dip on :active. */
+
+.kg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 700;                /* ElmsSans ships 400/700 only — 600 would faux-bold (scan #7) */
+  line-height: 1.4;
+  border: none;
+  border-radius: var(--radius-md);  /* iOS AppActionButtonStyle uses AppRadius.md(8), not the control(6) semantic */
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--motion-quick), background var(--motion-quick), transform var(--motion-control);
+}
+.kg-btn:active { transform: scale(var(--press-scale)); opacity: var(--press-opacity); }
+.kg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.kg-btn:disabled:active { transform: none; }
+
+/* Primary CTA — the ONE brand colour (北極星 4: 奶黃 brand-hero). */
+.kg-btn--primary { background: var(--brand-hero); color: var(--on-brand-hero); }
+.kg-btn--primary:hover { opacity: 0.92; }
+
+/* App Store CTA — the primary brand-hero pill carrying an own-authored Apple
+   glyph + a 下載於 / App Store lockup. NOT Apple's licensed badge image (we
+   don't have it and won't fake it); license-clean + honest. Still the ONE CTA. */
+.kg-btn--appstore { background: var(--brand-hero); color: var(--on-brand-hero); gap: var(--sp-2); padding: var(--sp-2) var(--sp-5); min-height: 2.75rem; border-radius: var(--radius-control); }
+.kg-btn--appstore:hover { opacity: 0.92; }
+.kg-btn__lockup { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; }
+.kg-btn__lockup small { font-size: var(--text-caption2); letter-spacing: var(--tracking-uppercase); opacity: 0.85; }
+.kg-btn__lockup b { font-size: var(--text-subhead); font-weight: 700; }
+.appstore-glyph { width: 1.4em; height: 1.4em; fill: currentColor; flex: none; }
+
+/* Accent — passive / link-ish (Morandi grey-blue). Outlined, not filled, so it
+   never competes with the CTA. */
+.kg-btn--accent {
+  background: transparent;
+  color: var(--accent);
+  border: var(--sp-hairline) solid var(--accent);
+}
+.kg-btn--accent:hover { background: var(--accent-subtle); }
+
+/* Ghost — chrome / tertiary action, greyscale tint. */
+.kg-btn--ghost { background: transparent; color: var(--tint); }
+.kg-btn--ghost:hover { background: var(--muted-fill); }
+
+/* Destructive — confirm-delete etc. */
+.kg-btn--destructive { background: transparent; color: var(--destructive); border: var(--sp-hairline) solid var(--destructive); }
+.kg-btn--destructive:hover { background: var(--destructive-bg); }
+
+/* --- Chip / tag — mirrors iOS AppTag: caption text, Capsule pill, tone@0.08/0.18
+   fill, 10×5 padding (AppTagMetrics). ------------------------------------------ */
+
+.kg-chip {
+  display: inline-block;
+  font-size: var(--text-caption);
+  line-height: 1.3;
+  font-weight: 700;                /* iOS .semibold(600); ElmsSans ships 400/700 only, so 700 */
+  color: var(--accent);
+  background: var(--tag-fill);
+  padding: var(--chip-padding-v) var(--chip-padding-h);
+  border-radius: var(--radius-pill);
+}
+/* tone variants — iOS AppTag fills at tone@0.08/0.18; --tint reuses --muted-fill
+   (greyscale @0.04–0.07), a minor alpha delta (no dedicated tint-fill token). */
+.kg-chip--tint { color: var(--tint); background: var(--muted-fill); }
+.kg-chip--success { color: var(--success); background: var(--success-bg); }
+.kg-chip--warning { color: var(--warning); background: var(--warning-bg); }
+
+/* --- Input (stage-bg field, accent focus ring) ---------------------------- */
+
+.kg-input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--sp-hairline) solid var(--card-border);  /* iOS search field shows a resting hairline (cardBorder), not transparent */
+  border-radius: var(--radius-control);
+  background: var(--stage-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);  /* iOS AppSearchField text = body(17), not subhead */
+  outline: none;
+  transition: border-color var(--motion-quick);
+}
+.kg-input::placeholder { color: var(--text-tertiary); }
+.kg-input:focus { border-color: var(--accent); }
+
+/* --- Banner / inline message (semantic *-bg + colored text) ---------------- */
+
+.kg-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);  /* iOS AppBanner v=8 (AppBannerMetrics.verticalPadding); was sp-3(12) — control-spacing drift */
+  border-radius: var(--radius-card); /* web inline message card; iOS AppBanner is a full-width bottom-border bar — intentional web-context divergence */
+  font-size: var(--text-caption);    /* iOS AppBanner/AppToast text = caption(12), not subhead(15) */
+  line-height: var(--leading-body);
+}
+.kg-banner--info        { background: var(--info-bg); color: var(--info); }
+.kg-banner--success     { background: var(--success-bg); color: var(--success); }
+.kg-banner--warning     { background: var(--warning-bg); color: var(--warning); }
+.kg-banner--destructive { background: var(--destructive-bg); color: var(--destructive); }
+
+/* --- Interaction utilities ------------------------------------------------- */
+/* Flat clickable rows: non-button interaction → ONLY tint the background,
+   never transform (北極星 5 / mirrors iOS .appHoverRowTint). */
+
+.kg-row-hover { transition: background var(--motion-quick); cursor: pointer; }
+.kg-row-hover:hover { background: var(--muted-fill); }
+
+/* Link — accent, underline on hover only. */
+.kg-link { color: var(--accent); text-decoration: none; }
+.kg-link:hover { text-decoration: underline; }
+
+/* --- Elevation utilities (the ONLY shadow vocabulary) ---------------------- */
+
+.kg-z0 { box-shadow: var(--elevation-z0); }
+.kg-z1 { box-shadow: var(--elevation-z1); }
+.kg-z2 { box-shadow: var(--elevation-z2); }
+.kg-z3 { box-shadow: var(--elevation-z3); }
+.kg-z4 { box-shadow: var(--elevation-z4); }
+
+/* --- Reduced motion (web equivalent of accessibilityReduceMotion) ---------- */
+/* Durations already collapse via tokens; here we drop transforms so lifts/press
+   become instant state changes rather than motion. */
+
+@media (prefers-reduced-motion: reduce) {
+  .kg-card--interactive:hover,
+  .kg-card--interactive:active,
+  .kg-btn:active { transform: none; }
+}
