@@ -12,6 +12,7 @@
 #   ./ops/ios_test.sh --launch-benchmark
 #   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
+#   ./ops/ios_test.sh --coverage [--coverage-fail-under <percent>]
 #   ./ops/ios_test.sh --device <name|UDID>        # target a specific simulator (parallel agents)
 #   ./ops/ios_test.sh --destination '<xcodebuild destination>'   # full -destination override
 #   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
@@ -47,6 +48,9 @@ TEST_CACHE_ACTION=""
 JSON_MODE=0
 UI_LAUNCH_PROFILE="${KG_IOS_TEST_UI_LAUNCH_PROFILE:-}"
 LAUNCH_BENCHMARK=0
+COVERAGE_ENABLED=0
+COVERAGE_FAIL_UNDER=""
+COVERAGE_TARGET="${KG_IOS_TEST_COVERAGE_TARGET:-BooksAndVocab}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -92,9 +96,27 @@ while [[ $# -gt 0 ]]; do
     --json) JSON_MODE=1; shift ;;
     --ui-launch-profile) UI_LAUNCH_PROFILE="$2"; shift 2 ;;
     --launch-benchmark) LAUNCH_BENCHMARK=1; shift ;;
+    --coverage) COVERAGE_ENABLED=1; shift ;;
+    --coverage-fail-under) COVERAGE_ENABLED=1; COVERAGE_FAIL_UNDER="$2"; shift 2 ;;
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
+
+if [[ -n "$COVERAGE_FAIL_UNDER" && ! "$COVERAGE_FAIL_UNDER" =~ ^([0-9]+)(\.[0-9]+)?$ ]]; then
+  echo "[ios_test] error: --coverage-fail-under must be numeric percent (0..100)" >&2
+  exit 2
+fi
+if [[ -n "$COVERAGE_FAIL_UNDER" ]]; then
+  awk -v value="$COVERAGE_FAIL_UNDER" 'BEGIN { exit !(value >= 0 && value <= 100) }' || {
+    echo "[ios_test] error: --coverage-fail-under must be between 0 and 100" >&2
+    exit 2
+  }
+fi
+
+COVERAGE_XCODEBUILD_ARGS=()
+if [[ "$COVERAGE_ENABLED" -eq 1 ]]; then
+  COVERAGE_XCODEBUILD_ARGS=(-enableCodeCoverage YES)
+fi
 
 # Resolve the simulator destination. Precedence: --destination (full override)
 # > --device (name|UDID) > default. A UDID-shaped value targets `id=`, anything
@@ -168,6 +190,7 @@ ios_test_build_cache_key() {
     printf 'arch=%s\n' "$(uname -m)"
     printf 'scope=%s\n' "$TEST_SCOPE"
     printf 'scheme=%s\n' "$TEST_SCHEME"
+    printf 'coverage=%s\n' "$COVERAGE_ENABLED"
     printf 'xcode=%s\n' "$xcode_version"
     # Hash all inputs in a single shasum process instead of one fork per file
     # (~5.3s -> ~0.05s for ~556 files). Paths are already sorted+unique and
@@ -763,6 +786,7 @@ run_xcodebuild_test_without_building_once() {
   xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$DESTINATION" \
+    ${COVERAGE_XCODEBUILD_ARGS[@]+"${COVERAGE_XCODEBUILD_ARGS[@]}"} \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
@@ -869,6 +893,7 @@ rebuild_test_cache() {
     -project "$XCODEPROJ" \
     -scheme "$TEST_SCHEME" \
     -destination "$DESTINATION" \
+    ${COVERAGE_XCODEBUILD_ARGS[@]+"${COVERAGE_XCODEBUILD_ARGS[@]}"} \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
@@ -1268,6 +1293,37 @@ print_timing_summary() {
   echo "[ios_test] timings cacheStatus=$CACHE_STATUS uiLaunchProfile=${UI_LAUNCH_PROFILE:-standard} deviceRunLockWaitMs=$DEVICE_RUN_LOCK_WAIT_MS bootMs=$BOOT_MS buildForTestingMs=$BUILD_FOR_TESTING_MS testInvocationMs=$TEST_INVOCATION_MS testBodyMs=$TEST_BODY_MS xcresultSessionMs=$XCRESULT_SESSION_MS xcresultHarnessOverheadMs=$XCRESULT_HARNESS_OVERHEAD_MS appLaunchAverageMs=$APP_LAUNCH_AVERAGE_MS appLaunchSamples=$APP_LAUNCH_SAMPLES invocationOverheadMs=$INVOCATION_OVERHEAD_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
 }
 
+COVERAGE_JSON='null'
+COVERAGE_VERDICT="not-requested"
+COVERAGE_REASON=""
+populate_coverage_summary() {
+  [[ "$COVERAGE_ENABLED" -eq 1 ]] || return 0
+  local coverage_args=("$SCRIPT_DIR/ios_coverage.py" "--xcresult" "$RESULT_BUNDLE" "--target" "$COVERAGE_TARGET" "--json")
+  if [[ -n "$COVERAGE_FAIL_UNDER" ]]; then
+    coverage_args+=("--fail-under-lines" "$COVERAGE_FAIL_UNDER")
+  fi
+  local coverage_out coverage_rc=0
+  if coverage_out="$(uv run --python 3.13 python "${coverage_args[@]}" 2>/dev/null)"; then
+    coverage_rc=0
+  else
+    coverage_rc=$?
+  fi
+  if jq -e . >/dev/null 2>&1 <<<"$coverage_out"; then
+    COVERAGE_JSON="$(jq -c . <<<"$coverage_out")"
+    COVERAGE_VERDICT="$(jq -r '.verdict // "error"' <<<"$COVERAGE_JSON")"
+  else
+    COVERAGE_JSON="$(jq -nc --arg schema "kg.ios.coverage.v1" --arg error "coverage parser emitted invalid JSON" '{schema:$schema,verdict:"error",summary:{target:null,lineCoverage:null,coveredLines:null,executableLines:null},thresholds:{lineCoverage:{failUnder:null}},targets:[],errors:[{key:"coverage-unavailable",status:"error",error:$error}]}')"
+    COVERAGE_VERDICT="error"
+  fi
+  case "$COVERAGE_VERDICT" in
+    pass) COVERAGE_REASON="" ;;
+    fail) COVERAGE_REASON="coverage-fail-under" ;;
+    *) COVERAGE_REASON="coverage-unavailable" ;;
+  esac
+  jq -r '"[ios][coverage] verdict=\(.verdict) target=\(.summary.target // "unknown") lineCoverage=\(.summary.lineCoverage // "unknown") coveredLines=\(.summary.coveredLines // "unknown") executableLines=\(.summary.executableLines // "unknown") failUnder=\(.thresholds.lineCoverage.failUnder // "none")"' <<<"$COVERAGE_JSON"
+  return "$coverage_rc"
+}
+
 emit_ui_runner_lifecycle() {
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
   local device="${SIMULATOR_BOOT_SELECTOR:-}" safe_device screenshot_path
@@ -1343,6 +1399,7 @@ write_json_verdict() {
     --argjson invocationOverheadMs "$INVOCATION_OVERHEAD_MS" \
     --argjson totalMs "$TOTAL_MS" \
     --arg cacheStatus "$CACHE_STATUS" \
+    --argjson coverage "$COVERAGE_JSON" \
     '{
       schema:$schema,
       kind:$kind,
@@ -1373,6 +1430,7 @@ write_json_verdict() {
         totalMs:$totalMs
       },
       cache:{status:$cacheStatus},
+      coverage:$coverage,
       artifacts:{
         log:$log,
         xcresult:$xcresult,
@@ -1391,6 +1449,7 @@ write_json_verdict() {
 
 populate_timing_breakdown
 build_ui_step_contact_sheet
+populate_coverage_summary || true
 
 # Extract summary from xcresult if available
 if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
@@ -1403,6 +1462,18 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     echo "RESULT=fail reason=false-green-0-executed caller=$CALLER log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
     write_json_verdict "fail" "1" "false-green-0-executed" "0"
     rm -f "$TMPOUT"
+    exit 1
+  fi
+  if [[ "$COVERAGE_ENABLED" -eq 1 && "$COVERAGE_VERDICT" != "pass" ]]; then
+    echo ""
+    echo "[ios_test] ✗ coverage gate failed: $COVERAGE_REASON" >&2
+    PRESERVE_TMPOUT=1
+    echo "RESULT=fail reason=$COVERAGE_REASON caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+    write_json_verdict "fail" "1" "$COVERAGE_REASON" "$EXECUTED"
+    print_timing_summary
+    echo "[ios_test] ✗ tests passed but coverage failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
+    echo "[ios_test] full log preserved: $TMPOUT" >&2
+    echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
     exit 1
   fi
   echo ""
