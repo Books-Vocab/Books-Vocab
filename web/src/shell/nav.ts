@@ -16,7 +16,7 @@ import { DEFAULT_TAB_ID, SHELL_TABS } from './tabs'
  *   notebook  → vocabulary（點單字本卡 → 該本單字列表）
  *   notebook  → today-review（今日複習 CTA → 複習卡）
  *   podcast   → 直接是 player（web 無 podcast 列表 surface）
- * overview tab 維持灰態 placeholder（web 尚無統計 surface，不偽造）。
+ *   overview  → 直接是統計儀表板（StatsPresenter；無下一層可達邊）
  */
 
 /** stack 內一個畫面 = 一個 surface + 該 surface 的合法 scenario。 */

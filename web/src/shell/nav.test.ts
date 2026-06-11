@@ -19,8 +19,8 @@ describe('initialNavState', () => {
     expect(stackDepth(s)).toBe(1)
     expect(currentScreen(s)).toEqual({ surface: 'bookshelf', scenario: SURFACE_SCENARIOS.bookshelf[0] })
     expect(s.stacks.notebooks?.[0].surface).toBe('notebook')
-    // placeholder tab（podcasts/overview 之一）無 stack
-    expect(s.stacks.overview).toBeUndefined()
+    // overview 已是 surface-tab（統計儀表板）→ 預放 root 畫面
+    expect(s.stacks.overview?.[0].surface).toBe('overview')
   })
 
   it('URL surface 命中 surface-tab → 選該 tab 並用 URL scenario 覆寫 root', () => {
@@ -52,9 +52,15 @@ describe('selectTab', () => {
     expect(stackDepth(s)).toBe(2)
   })
 
-  it('placeholder tab 不可選（no-op）', () => {
+  it('overview 已是 surface-tab → 可選並切換 tab', () => {
     const s = initialNavState()
-    expect(selectTab(s, 'overview')).toEqual(s)
+    const next = selectTab(s, 'overview')
+    expect(next.tabId).toBe('overview')
+    expect(currentScreen(next)?.surface).toBe('overview')
+  })
+
+  it('未知 tab 不可選（no-op）', () => {
+    const s = initialNavState()
     expect(selectTab(s, 'unknown')).toEqual(s)
   })
 })
