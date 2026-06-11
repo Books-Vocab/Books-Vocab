@@ -177,6 +177,10 @@ struct BookshelfView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("bookshelf.emptyState")
 
+                // 空 ≠ 真空：CloudKit 還原/失敗時明說，0 列才不會被誤讀成
+                // 「沒有書」（2026-06-11 書庫透明化）。settled / localOnly 不渲染。
+                cloudRestoreStatus
+
                 TipView(EPUBGuideTip()) { action in
                     if action.id == EPUBGuideTip.guideActionID {
                         openURL(AppURLs.guide)
@@ -221,6 +225,34 @@ struct BookshelfView: View {
             await performSync()
         }
 #endif
+    }
+
+    private var cloudMonitor: CloudKitMirroringMonitor { .shared }
+
+    @ViewBuilder
+    private var cloudRestoreStatus: some View {
+        switch cloudMonitor.phase {
+        case .waitingFirstEvent, .restoring:
+            HStack(spacing: AppSpacing.s2) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(cloudMonitor.phase == .restoring
+                     ? BookshelfCopy.cloudRestoringHint
+                     : BookshelfCopy.cloudCheckingHint)
+                    .font(AppFonts.caption(weight: .medium))
+                    .foregroundStyle(appTheme.palette.secondaryText)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("bookshelf.emptyState.cloudStatus")
+        case .failed(let message):
+            Label(BookshelfCopy.cloudSyncErrorHint(message), systemImage: "exclamationmark.icloud")
+                .font(AppFonts.caption(weight: .medium))
+                .foregroundStyle(appTheme.palette.warning)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("bookshelf.emptyState.cloudStatus")
+        case .settled, .localOnly:
+            EmptyView()
+        }
     }
 
     // MARK: - 書籍網格
