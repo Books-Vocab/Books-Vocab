@@ -96,8 +96,17 @@ extension KGService {
         )
     }
 
-    func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
-        let payload = entries.map { entry in
+    /// `batchAdd` 的 VocabularyEntry → 線上 payload 映射。
+    ///
+    /// 抽成 static 純函式讓測試與 production 共用同一份邏輯（比照
+    /// `SyncCoordinator.locallyResolvableDeletes` 的 dead-test 防護範式）。
+    /// `langPayloadEnabled` 以參數注入：`KGFeatureFlags` 是 compile-time
+    /// 常量，無法在測試中翻轉；production call site 用預設值。
+    static func vocabPayload(
+        for entries: [VocabularyEntry],
+        langPayloadEnabled: Bool = KGFeatureFlags.vocabularyLangPayloadEnabled
+    ) -> [KGVocabEntry] {
+        entries.map { entry in
             // iOS captures always originate from the reader, so the source
             // is a book. `bookTitle` is filled at capture time by
             // `ReaderVocabularyContext` — only omit `source` when it is
@@ -112,7 +121,7 @@ extension KGService {
             // row predates Phase 5 (sourceLang == nil).
             let sourceLangPayload: String?
             let targetLangPayload: String?
-            if KGFeatureFlags.vocabularyLangPayloadEnabled {
+            if langPayloadEnabled {
                 sourceLangPayload = entry.sourceLang ?? TranslationLanguage.currentSource.rawValue
                 targetLangPayload = entry.targetLang ?? TranslationLanguage.currentTarget.rawValue
             } else {
@@ -129,6 +138,10 @@ extension KGService {
                 target_lang: targetLangPayload
             )
         }
+    }
+
+    func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
+        let payload = Self.vocabPayload(for: entries)
         return try await authenticatedDecode(
             KGAddResponse.self,
             path: "api/vocab",
