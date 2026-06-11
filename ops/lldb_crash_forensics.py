@@ -31,12 +31,14 @@ import lldb
 # signal stop），只對致命集合 dump，避免每次啟動都噴檔案。
 _FATAL_SIGNALS = {4, 6, 8, 10, 11}  # SIGILL, SIGABRT, SIGFPE, SIGBUS, SIGSEGV
 
+_DEFAULT_DUMP_DIR = "/tmp/kg_lldb_forensics"
+
 # (pid, stop_id) 去重：同一次 stop 可能多次進 handle_stop（多 thread）。
 _seen_stops = set()
 
 
 def _dump_dir():
-    d = os.environ.get("KG_LLDB_DUMP_DIR", "/tmp/kg_lldb_forensics")
+    d = os.environ.get("KG_LLDB_DUMP_DIR", _DEFAULT_DUMP_DIR)
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -236,7 +238,7 @@ def __lldb_init_module(debugger, internal_dict):
             "target stop-hook add -P lldb_crash_forensics.KGCrashStopHook", res)
         if res.Succeeded():
             print("[kg-forensics] armed: auto-dump on crash → %s (manual: kgdump)"
-                  % os.environ.get("KG_LLDB_DUMP_DIR", "/tmp/kg_lldb_forensics"))
+                  % os.environ.get("KG_LLDB_DUMP_DIR", _DEFAULT_DUMP_DIR))
         else:
             # ~/.lldbinit 在 target 建立前 source 時可能落到 dummy target；新
             # target 會繼承 dummy target 的 stop-hook（lldb 行為），這裡僅提示。
