@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: dbdf0836
+verified_against: ab8c3c1c
 -->
 # Books & Vocab iOS 開發技能
 
@@ -260,6 +260,16 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - **dump 內容**：stop reason、stack region（bounds/size/headroom）、**全量 frame 表含 fp 差分 frame size**（stack overflow 直接點名誰吃 stack）、frame 0 registers、其他 thread top frames。`LATEST.txt` 恆指最新。
 - **判讀備忘**：`___chkstk_darwin` + `EXC_BAD_ACCESS code=2` + 位址貼近 region base = stack overflow；真機 main thread stack **1MB**、sim（macOS process）**8MB** —— sim 永遠測不出真機 stack overflow。breakpoint stop 不會觸發 dump；任意 stop 點可 `kgdump` 手動取證。
 - **測試**：`ops/tests/test_lldb_crash_forensics.sh`（自動 dump / 全量 frame / fp 差分 / breakpoint 不誤觸 / kgdump）。
+
+**debugger 不在場**（直跑 app / TestFlight / 使用者日用）時 crash 落 `.ips` 在裝置上，lldb 管線抓不到 —— 走 `ops/ios_device_logs.sh`（pymobiledevice3 經 uvx，免安裝）：
+
+- `crashes`（列裝置 `.ips`）→ `pull-crashes --parse`（拉本 app 的 .ips + remote `crash parse-latest` 直接吐可讀 stack；Debug build 的 `.debug.dylib` frame 自帶函式名）。
+- 平台事實：iOS 會把**已讀過的 .ips retire 進 `/Retired/`**，而 pymobiledevice3 的 ls/pull/parse-latest enumerate 都不遞迴 —— 工具已固化 `crashes` 帶 depth 2、`pull-crashes` 雙掃 top-level + `/Retired`、`--parse` 自動 fallback，別繞工具裸呼叫然後誤判「沒有 crash」。
+- `syslog [--proc] [--duration]`：真機 live log 串流，**含 debug 級與 stdout**（unified log 不持久化 debug 級，事後撈必空 —— 這是唯一即時通道）。
+- `collect`：拉 `.logarchive`，事後 `log show --archive` 撈真機 default+ 級。
+- 陷阱：`ios_ops.sh logs` 非 sim 路徑跑的是 Mac 本機 `/usr/bin/log show`（Catalyst 用），**讀不到 iPhone**；真機 log 一律走本工具。
+- sim 對應面：sim crash 的 `.ips` 直接落 Mac `~/Library/Logs/DiagnosticReports/`（無需工具）；sim 容器檔案用 `ios_device_files.sh --simulator`。
+- **測試**：`ops/tests/test_ios_device_logs.sh`（`test_ops.sh ios-device-logs`）。
 
 ## 發版 / TestFlight（`ops/ios_release.sh`）
 
