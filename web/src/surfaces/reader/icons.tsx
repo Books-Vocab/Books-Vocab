@@ -121,3 +121,65 @@ export const TranslateIcon = glyph(
     '<path d="M5.4 9.8 7 6.4l1.6 3.4M5.8 8.7h2.4" stroke="#fff" stroke-width="1.3"/>' +
     '<path d="M13.4 13.6h5M15.9 13v.6M16.9 14.2a4.5 4.5 0 0 1-3.5 3M14.8 14.8a4.5 4.5 0 0 0 3.6 2.8" stroke="#fff" stroke-width="1.2"/>',
 )
+
+/* ============================================================
+   Reader 面板群 glyphs（R3）— TOC / Settings / Notebook Picker 專屬 SF symbol。
+   注意：WarningTriangleFillIcon / XmarkIcon / ChevronDownIcon 已由 R2 區段定義，
+   R3 共用同一份（整合 branch 已驗證），此處不重複宣告。
+   ============================================================ */
+
+/** SF `text.book.closed` — TOC loading 卡圖示（書 + 文字線）。 */
+export const TextBookClosedIcon = glyph(
+  '<rect x="4.5" y="3.5" width="13" height="17" rx="1.6" fill="currentColor" stroke="none" opacity="0.16"/>' +
+    '<rect x="4.5" y="3.5" width="13" height="17" rx="1.6"/>' +
+    '<path d="M4.5 17.4h13"/>' +
+    '<path d="M7.4 7.5h7M7.4 10.6h7M7.4 13.7h4.5" stroke-width="1.3"/>',
+)
+
+/** SF `list.bullet.rectangle` — TOC empty 卡圖示（外框 + 條目）。 */
+export const ListBulletRectIcon = glyph(
+  '<rect x="3.5" y="5" width="17" height="14" rx="2.2"/>' +
+    '<path d="M9 9h7.5M9 12h7.5M9 15h7.5" stroke-width="1.4"/>' +
+    '<circle cx="6.3" cy="9" r="0.85" fill="currentColor" stroke="none"/>' +
+    '<circle cx="6.3" cy="12" r="0.85" fill="currentColor" stroke="none"/>' +
+    '<circle cx="6.3" cy="15" r="0.85" fill="currentColor" stroke="none"/>',
+)
+
+/** SF `checkmark` — Notebook 選中 / 列表勾。 */
+export const CheckmarkIcon = glyph('<path d="M4.5 12.5 9.5 18 19.5 6.5"/>')
+
+/** SF `text.line.spacing` — 行距 chip。 */
+export const LineSpacingIcon = glyph(
+  '<path d="M3 6h13M3 12h13M3 18h13" stroke-width="1.4"/>' +
+    '<path d="M20 5.5v13M17.5 8 20 5.5 22.5 8M17.5 16 20 18.5 22.5 16" stroke-width="1.4"/>',
+)
+
+/** SF `book.pages` — 閱讀模式 chip。 */
+export const BookPagesIcon = glyph(
+  '<path d="M5 5.5h7.5a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2z"/>' +
+    '<path d="M14.5 7.5a2 2 0 0 1 2-2H19v12.5h-2.5a2 2 0 0 0-2 2"/>',
+)
+
+/** SF `sun.max` — Light theme tile。 */
+export const SunIcon = glyph(
+  '<circle cx="12" cy="12" r="4"/>' +
+    '<path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6" stroke-width="1.4"/>',
+)
+
+/** SF `book` (open) — Sepia theme tile。 */
+export const BookOpenIcon = glyph(
+  '<path d="M12 6.5C10 5 7 4.5 4.5 5v13C7 17.5 10 18 12 19.5 14 18 17 17.5 19.5 18V5C17 4.5 14 5 12 6.5z" fill="currentColor" stroke="none"/>' +
+    '<path d="M12 6.5v13" stroke="#ffffff" stroke-width="0.9"/>',
+)
+
+/** SF `moon.stars` — Dark theme tile。 */
+export const MoonStarsIcon = glyph(
+  '<path d="M19 14.5A7.2 7.2 0 0 1 9.5 5a5.2 5.2 0 0 0-1 .3 7.5 7.5 0 1 0 9.6 10 5.4 5.4 0 0 0 .9-.8z"/>' +
+    '<path d="M17.5 4l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4L15.6 6l1.4-.5z" fill="currentColor" stroke="none"/>',
+)
+
+/** SF `globe` — Notebook「跟隨全域設定」前綴。 */
+export const GlobeIcon = glyph(
+  '<circle cx="12" cy="12" r="8.2"/>' +
+    '<path d="M3.8 12h16.4M12 3.8c2.4 2.2 3.7 5.2 3.7 8.2S14.4 18 12 20.2C9.6 18 8.3 15 8.3 12S9.6 6 12 3.8zM5 7.2c2 1.1 4.4 1.7 7 1.7s5-0.6 7-1.7M5 16.8c2-1.1 4.4-1.7 7-1.7s5 .6 7 1.7" stroke-width="1.2"/>',
+)

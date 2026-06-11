@@ -669,3 +669,755 @@
 .translation-chrome-btn[data-tone='destructive'] {
   color: var(--destructive);
 }
+
+/* ============================================================
+   R3 面板群（TOC / Settings / Notebook Picker）
+   各面板 catalog 以 .fill 渲染 → web full-bleed 還原（非 docked）。
+   幾何對齊 iOS：見各段 px 註解（catalog 1179×2556 dpr3，÷3 得 pt）。
+   ============================================================ */
+.rpanel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* --- inline navbar（NavigationStack inline title）---
+   TOC / Notebook 共用。systemGroupedBackground (#F2F2F7) 底；title 為「白字材質」
+   （PNG 實測 #FFF 落在灰底上，近隱形）。status bar 59 + inline bar 44；title 垂直
+   中心 ≈ 81.7pt（measured y=245/3）。 */
+.rpanel-toc,
+.rpanel-notebook {
+  background: #f2f2f7; /* iOS systemGroupedBackground light */
+}
+
+[data-theme='dark'] .rpanel-toc,
+[data-theme='dark'] .rpanel-notebook {
+  background: #1c1c1e; /* systemGroupedBackground dark */
+}
+
+.rpanel-nav {
+  position: relative;
+  height: 103px; /* status 59 + inline bar 44 */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 10px; /* title baseline → center ≈ 81.7pt */
+}
+
+.rpanel-nav-title {
+  /* inline title：白字材質（PNG 實測 #FFF）。CJK 落 sans。 */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+[data-theme='dark'] .rpanel-nav-title {
+  color: var(--text-primary);
+}
+
+.rpanel-nav-action {
+  position: absolute;
+  right: 16px;
+  bottom: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  /* topBarTrailing「完成」= subhead semibold，accent。 */
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* ============================================================
+   TOC
+   ============================================================ */
+.rpanel-toc-body {
+  position: absolute;
+  top: 103px; /* navbar 下 */
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* loaded：insetGrouped List（16pt 邊距，10pt 圓角，分隔線 inset 至文字） */
+.rpanel-toc-list {
+  margin: 44px 16px 0; /* 列表頂端離 navbar；insetGrouped 側邊距 16 */
+  padding: 0;
+  list-style: none;
+  background: var(--card-bg);
+  border-radius: 10px; /* insetGrouped corner */
+  overflow: hidden;
+}
+
+.rpanel-toc-row {
+  display: flex;
+  align-items: center;
+  min-height: 52px; /* measured 行高 ~52pt */
+  padding: 0 16px; /* 文字 leading inset */
+  position: relative;
+}
+
+.rpanel-toc-row + .rpanel-toc-row::before {
+  /* hairline 分隔線，inset 至文字 leading（16pt） */
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 0.34px; /* dpr3 1 物理 px */
+  background: rgba(60, 60, 67, 0.18); /* iOS separator light */
+}
+
+[data-theme='dark'] .rpanel-toc-row + .rpanel-toc-row::before {
+  background: rgba(84, 84, 88, 0.4);
+}
+
+.rpanel-toc-row-text {
+  /* AppFonts.body() = sans 17 regular，primaryText */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* loading / empty / failed 狀態卡 wrapper（置中於 body） */
+.rpanel-state-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px; /* pageHorizontalPadding */
+  box-sizing: border-box;
+}
+
+/* AppStateMessageCard（loading / failed）：左對齊 icon+title row + desc + accessory，
+   full-width 白卡。pad ~20/20，radius card，z1。 */
+.rpanel-message-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: var(--card-bg);
+  border: 0.5px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elevation-z1);
+  box-sizing: border-box;
+}
+
+.rpanel-message-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rpanel-message-icon {
+  line-height: 0;
+  flex: none;
+}
+
+.rpanel-message-icon.is-info {
+  color: var(--info); /* SF symbol multicolor → info 藍 近似 */
+}
+
+.rpanel-message-title {
+  /* serif h（sectionTitle）= serif 18 bold，primaryText */
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  -webkit-text-stroke: 0.4px currentColor;
+}
+
+.rpanel-message-desc {
+  margin: 0;
+  /* body = sans 17 regular，secondaryText */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.rpanel-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
+  border-top-color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+/* AppEmptyStateCard（empty）：置中 hero icon + serif 粗標題 + desc。 */
+.rpanel-empty-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 24px;
+  background: var(--card-bg);
+  border: 0.5px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elevation-z1);
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.rpanel-empty-icon {
+  color: var(--text-tertiary); /* hero(40) tertiary */
+  line-height: 0;
+}
+
+.rpanel-empty-title {
+  margin: 0;
+  /* h2 serif 22 bold，primaryText */
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  -webkit-text-stroke: 0.5px currentColor;
+}
+
+.rpanel-empty-desc {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Notebook Picker（insetGrouped List + NotebookBindingList row）
+   ============================================================ */
+.rpanel-notebook-body {
+  position: absolute;
+  top: 103px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* 跟隨全域設定 inset 卡（snapshot 頂部）：globe + 兩行 + 選中 checkmark。
+   card top ≈ 149pt（body 起 103px + 46px gap → margin-top ~46px）。 */
+.rnotebook-global-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 46px 16px 0;
+  /* PNG 實測 card 高 ≈ 69pt（globe 22 + 兩行文字），原 18px padding 致 web 高 84pt
+     → 列表整體下移 16pt。收 v-padding 至 13px 對齊 ref 卡高（10px 會略過頭 −12px）。 */
+  padding: 13px 20px;
+  background: var(--card-bg);
+  border-radius: 10px;
+}
+
+.rnotebook-global-icon {
+  flex: none;
+  color: var(--text-secondary); /* globe = secondaryText */
+  line-height: 0;
+}
+
+.rnotebook-global-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rnotebook-global-title {
+  /* body = sans 17 regular，primaryText（snapshot 較大 ~20，用 18） */
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.rnotebook-global-sub {
+  /* subhead/caption secondary */
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* Section header「單字本」（caption medium，secondaryText）— insetGrouped header
+   缩排至列表 leading + 上留白。header baseline ≈ 253pt。 */
+.rnotebook-section-header {
+  margin: 24px 0 6px;
+  padding: 0 32px; /* 16 card inset + 16 content leading 對齊 */
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.rnotebook-list {
+  margin: 0 16px;
+  padding: 0;
+  list-style: none;
+  background: var(--card-bg);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.rnotebook-row {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* AppSpacing.s2 */
+  /* measured 單行 pitch ≈ 62.5pt（sep 間距 187px/dpr3）。box-sizing border-box →
+     min-height 含 padding，避免列被內容壓縮致 14 列累積漂移。 */
+  min-height: 62px;
+  padding: 11px 16px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.rnotebook-row:not([data-first])::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px; /* 分隔線 inset 至列內容 leading（16）；色條後再縮 */
+  right: 0;
+  height: 0.34px;
+  background: rgba(60, 60, 67, 0.18);
+}
+
+[data-theme='dark'] .rnotebook-row:not([data-first])::before {
+  background: rgba(84, 84, 88, 0.4);
+}
+
+.rnotebook-bar {
+  flex: none;
+  width: 4px;
+  height: 32px; /* AppSpacing.s7 */
+  border-radius: var(--radius-xs);
+  background: var(--accent); /* color: nil 落 accent */
+}
+
+.rnotebook-name-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rnotebook-name {
+  /* AppFonts.body() = sans 17 regular，primaryText，tail 截斷 */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rnotebook-default {
+  /* isDefault 副標：caption secondary（snapshot 實測「預設」灰字） */
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.rnotebook-check {
+  flex: none;
+  color: var(--accent); /* checkmark subhead semibold accent */
+  line-height: 0;
+}
+
+/* ============================================================
+   Settings 面板（ReaderSettingsPresenter +Vocab layout）
+   VocabCard 貼底升起；catalog .fill → 頂端可見 page-bg 邊。
+   ============================================================ */
+.rpanel-settings {
+  background: var(--page-bg);
+}
+
+.rsettings-card {
+  position: absolute;
+  top: 64px; /* measured card top ≈ 67.7pt（shift-sweep 證實 ±vertical 對 RMSE 近無影響，殘差=字體渲染） */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
+  box-shadow: var(--elevation-z2);
+}
+
+.rsettings-handle {
+  flex: none;
+  align-self: center;
+  width: 48px; /* ReaderMetrics.settingsHandleWidth */
+  height: 5px; /* settingsHandleHeight */
+  margin: 12px 0 14px; /* handleTopInset 12 / handleBottomInset 14 */
+  border-radius: 999px;
+  /* quaternaryText × panelHandleOpacity 0.24 */
+  background: color-mix(in srgb, var(--text-quaternary) 24%, transparent);
+}
+
+.rsettings-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  /* vocabHeaderBlock：contentTopInset 0 → padding-top 0；horizontal 18；bottom 16 */
+  padding: 0 18px 16px;
+}
+
+.rsettings-header-title {
+  /* sectionTitle = AppFonts.serif(18, bold)，primaryText（Songti 不合成粗體，補 stroke） */
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  -webkit-text-stroke: 0.45px currentColor;
+}
+
+.rsettings-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; /* VocabChromeIconButton 32 */
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rsettings-scroll {
+  flex: 1;
+  overflow: hidden;
+  /* PNG 實測：web 內容（1.0x 中心 204pt）比 ref（217pt）高 13pt，即 header→content
+     間距偏緊。補 13px top inset 把整段內容下移對齊 ref。 */
+  padding: 13px 18px 20px; /* settingsHorizontalInset 18 / settingsBottomInset 20 */
+}
+
+.rsettings-section {
+  padding-top: 0;
+}
+
+.rsettings-section-title {
+  /* AppSectionBlock title = caption（sans 12），下方 VStack spacing 10 至 content */
+  margin: 0 0 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* --- 字級 stepper row --- */
+.rsettings-font-row {
+  display: flex;
+  align-items: center;
+}
+
+.rsettings-stepper {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px; /* AppMetrics.iconButtonSize */
+  height: 52px;
+  border-radius: var(--radius-card);
+  background: var(--page-bg);
+  /* settingsAdjustSmall/Large = AppFonts.sans bold */
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.rsettings-stepper[data-size='small'] {
+  font-size: 15px; /* settingsAdjustSmall */
+}
+
+.rsettings-stepper[data-size='large'] {
+  font-size: 28px; /* settingsAdjustLarge */
+}
+
+.rsettings-stepper.is-disabled {
+  /* 灰化：bounds min/max 的不可用 stepper（PNG 實測淡灰字 + 淡底）。 */
+  color: var(--text-quaternary);
+  opacity: 0.45;
+}
+
+.rsettings-font-size {
+  flex: 1;
+  text-align: center;
+  /* settingsFontSizeDisplay = AppFonts.mono(28, bold)，primaryText */
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rsettings-divider {
+  /* 群組內 Divider：VStack(spacing: s4=16) 環繞 → 上下各 16 */
+  height: 0.34px;
+  margin: 16px 0;
+  background: var(--divider);
+}
+
+.rsettings-air-divider {
+  /* AppAirDivider：dividerAirMargin 16 上下 */
+  height: 0.34px;
+  margin: 16px 0;
+  background: var(--divider);
+}
+
+/* --- 行距 slider row --- */
+.rsettings-line-row,
+.rsettings-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* AppSpacing.s3 */
+}
+
+.rsettings-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* vocabLabelChip：mutedFill capsule，secondaryText，caption；pad h10 v8 */
+  padding: 8px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.rsettings-slider {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--progress-track); /* track */
+}
+
+.rsettings-slider-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--text-primary); /* tint = primaryText */
+}
+
+.rsettings-slider-knob {
+  position: absolute;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transform: translate(-50%, -50%);
+}
+
+.rsettings-line-value {
+  flex: none;
+  width: 34px; /* vocabValueReadoutWidth */
+  text-align: right;
+  /* monoBodyStrong = mono 14 bold，secondaryText */
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* --- 閱讀模式 toggle --- */
+.rsettings-mode-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+  max-width: 200px;
+}
+
+.rsettings-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-control);
+  /* ReaderSelectionTile（idle）：透明底、無框 */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.rsettings-tile.is-selected {
+  /* selected：cardBg fill + 細框 + 微浮（PNG 實測白塊浮起） */
+  background: var(--card-bg);
+  border: 0.5px solid var(--card-border);
+  box-shadow: var(--elevation-z1);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* --- 字體 menu --- */
+.rsettings-font-menu {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-radius: var(--radius-control);
+  background: var(--page-bg); /* vocabControlSurface fill = pageBackground */
+}
+
+.rsettings-font-menu-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rsettings-font-menu-caption {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.rsettings-font-menu-name {
+  /* translationTitle ≈ serif 20，primaryText */
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.rsettings-font-menu-trailing {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+}
+
+.rsettings-font-tone {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-quaternary);
+}
+
+/* --- theme tiles --- */
+.rsettings-theme-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.rsettings-theme-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-control);
+  /* idle tile：muted 底 */
+  background: var(--page-bg);
+}
+
+.rsettings-theme-tile.is-selected {
+  background: var(--card-bg);
+  border: 0.5px solid var(--border-strong);
+  box-shadow: var(--elevation-z1);
+}
+
+.rsettings-theme-icon {
+  color: var(--text-secondary);
+  line-height: 0;
+}
+
+.rsettings-theme-name {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.rsettings-theme-name.is-selected {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rsettings-theme-swatch {
+  height: 8px;
+  border-radius: 999px;
+}
+
+/* --- 生字標記 --- */
+.rsettings-sub-label {
+  display: block;
+  margin-bottom: 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rsettings-color-row,
+.rsettings-opacity-row {
+  display: flex;
+  gap: 8px;
+}
+
+.rsettings-color-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 8px;
+  border-radius: var(--radius-control);
+  background: var(--page-bg);
+}
+
+.rsettings-color-tile.is-selected {
+  background: var(--card-bg);
+  border: 0.5px solid var(--border-strong);
+  box-shadow: var(--elevation-z1);
+}
+
+.rsettings-color-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.rsettings-color-name {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.rsettings-color-tile.is-selected .rsettings-color-name {
+  color: var(--text-primary);
+}
+
+.rsettings-opacity-tile {
+  flex: 1;
+  padding: 12px 0;
+}
