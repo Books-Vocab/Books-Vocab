@@ -570,6 +570,9 @@ BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
 # 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 review.html(detached server 佔 port、headless lazy-paint 全白)。
 ./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --appearance both --cols 2  # 一張看完某 surface 全 state × light/dark
 ./ops/catalog_contact_sheet.py "$BLESSED" --lane feature-surface --facet empty                   # 一張看完所有出貨畫面的 empty state
+# multi-device root（2026-06-10 起含 iPad）預設只出 canonical device（manifest devices[0]＝iPhone），不會 iPhone/iPad 交錯；
+# 看 iPad 寬版用 --device "iPad Pro 11 landscape"，全裝置混排用 --device all；--ids 顯式選圖時不吃此預設。
+./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --device "iPad Pro 11 landscape"
 # UITest 後快速看跳轉旅程：UI scope 的 ios_test.sh 已自動產 quick4_contact_sheet.png（test --json 的 uiVisualReview.quick4Sheet），
 # 手動跑只在需要自訂 take/zoom 時：
 ./ops/catalog_contact_sheet.py /tmp/kg_ios_ui_steps.xxxxxx --source uitest --take evenly:4 --cols 4 --manifest-out auto
