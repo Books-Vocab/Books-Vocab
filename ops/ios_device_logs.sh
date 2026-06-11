@@ -76,6 +76,7 @@ cmd_collect() {
     done
     # pymobiledevice3 把 archive 內容直接攤進給定目錄（目錄本身就是 bundle）；
     # 沒有 .logarchive 副檔名時 log show / Console.app 一律拒讀
+    out="${out%/}"
     case "$out" in *.logarchive) ;; *) out="$out.logarchive" ;; esac
     [ "$DRY_RUN" = "1" ] || mkdir -p "$out"
     local args=(syslog collect "$out")
