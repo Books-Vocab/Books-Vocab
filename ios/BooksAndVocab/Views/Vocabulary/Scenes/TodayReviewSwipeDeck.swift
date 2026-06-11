@@ -6,12 +6,14 @@ private let flingSafetyNetTimeout: Duration = .milliseconds(800)
 
 extension TodayReviewPresenter {
 
-    // MARK: Resident Slots（Phase 3a — 結構常駐，值驅動）
+    // MARK: Resident Slots（Phase 4 — 三 slot 結構常駐，值驅動）
 
     /// depth-2 殼層：純裝飾常駐節點，**恆駐 depth-2 不升頂**（Phase 4）——
     /// fling 期間 underPreview 從 depth-2 升走時，殼層原地補位，深度堆疊
     /// 視覺零空窗。只在 i+3 存在（remainingCount >= 3）時可見，暗示第四層；
-    /// 可見性翻面瞬間恆被 depth-2 的 underPreview 卡完全遮蔽，無可見 diff。
+    /// 可見性翻面瞬間被 depth-2 的 underPreview 卡遮蔽 —— 該卡半透明
+    /// （idle layer opacity ≈ 0.44）且 rotation 與殼層不同，仍有微量透出，
+    /// 為已知取捨（量級遠小於修掉的 depth-1 整卡 pop；殘餘 hitch 候選點）。
     /// 卡不足以 opacity 0 隱藏，不做 `if` 結構移除 —— settle 幀不付 insert/remove。
     func deckDepthShell() -> some View {
         let effectiveDepth: CGFloat = 2
