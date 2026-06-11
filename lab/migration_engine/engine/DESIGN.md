@@ -60,8 +60,9 @@ Each codex rule is `token + named delta`, never a bare magic number. Examples fr
 v1 (see the YAML for full provenance):
 
 - `hairline_physical_px`: any iOS hairline → `0.34px` (= `--sp-hairline / dpr3`), not `1px`.
-- `bold_weight_700_floor` / `semibold_chip_700`: iOS medium/semibold/bold → `font-weight:700`
-  (ElmsSans ships 400/700 only; 600 would faux-bold and is rejected).
+- `bold_weight_700_floor`: iOS medium/bold → `font-weight:700` (ElmsSans ships 400/700 only).
+- `semibold_chip_600`: iOS `.semibold` → `font-weight:600` (Inter/SF ships a real 600 face;
+  the v1 holdout re-exposed notebook + vocabulary shipping 600, correcting the prior `_700` claim).
 - `songti_bold_stroke_sim`: small dense serif CJK titles get `-webkit-text-stroke:0.5px`
   (Chromium can't load Songti Bold) — but NOT on large titles (counter-evidence logged).
 - `large_title_nav_anchor`: large-title top = `118px` (= statusBar 59 + inlineBar 44 + rowInset 15).
