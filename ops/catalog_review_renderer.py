@@ -3,20 +3,27 @@ from __future__ import annotations
 import json
 
 
-def render_html(manifest: dict) -> str:
-    payload = json.dumps(manifest, ensure_ascii=False)
+def _embed_json(data) -> str:
+    payload = json.dumps(data, ensure_ascii=False)
     # The payload is embedded inside a <script> tag, so neutralise sequences that
     # could break out of it or out of the JS string parser (</script>, U+2028/9).
     # These chars only ever appear inside JSON string values, so the \uXXXX
     # escapes round-trip to identical data when parsed.
-    payload = (
+    return (
         payload.replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
         .replace(" ", "\\u2028")
         .replace(" ", "\\u2029")
     )
-    return _TEMPLATE.replace("__MANIFEST__", payload)
+
+
+def render_html(manifest: dict, ui_test_videos: list[dict] | None = None) -> str:
+    html = _TEMPLATE.replace("__MANIFEST__", _embed_json(manifest))
+    return html.replace(
+        "__UITEST_VIDEOS__",
+        _embed_json(ui_test_videos) if ui_test_videos else "null",
+    )
 
 
 # A single self-contained template with one data hole (``__MANIFEST__``). Token
@@ -182,6 +189,13 @@ _TEMPLATE = r"""<!doctype html>
     .scene-cap { padding: 6px 9px; border-top: 1px solid var(--border-l); }
     .scene-cap h5 { margin: 0; font-size: 11px; font-weight: 400; line-height: 1.25; color: var(--ink-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .empty { border: 1px dashed var(--border); border-radius: 3px; padding: 20px; color: var(--sub); font-size: 13px; background: var(--surface); }
+    .uitest-videos-wrap { max-width: 1320px; margin: 0 auto; padding: 12px 20px 0; }
+    .uitest-videos-wrap summary { cursor: pointer; font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-light); padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }
+    .uitest-videos-wrap summary small { color: var(--sub); text-transform: none; letter-spacing: 0; margin-left: 8px; }
+    .uitest-video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; padding: 14px 0 4px; }
+    .uitest-video-card { margin: 0; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); overflow: hidden; }
+    .uitest-video-card video { display: block; width: 100%; max-height: 540px; background: #000; }
+    .uitest-video-card figcaption { padding: 6px 10px; font-family: var(--mono); font-size: 10px; letter-spacing: .04em; color: var(--sub); display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border-l); }
     /* leaf modal */
     .modal-overlay { position: fixed; inset: 0; background: rgba(42,37,32,.5); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 100; }
     .modal-overlay.open { display: flex; }
@@ -216,12 +230,17 @@ _TEMPLATE = r"""<!doctype html>
     <div class="chips" id="feature-chips"></div>
   </div>
   <div class="stats" id="stats"></div>
+  <section id="uitest-videos"></section>
   <main class="main" id="main"></main>
   <div class="modal-overlay" id="overlay"><div class="modal" id="leaf"></div></div>
   <script>
     const MANIFEST = __MANIFEST__;
     const surfacesIndex = MANIFEST.surfaces || [];
     const shots = MANIFEST.items || [];
+    // UITest run recordings archived by ios_test.sh (build/snapshots/uitest-
+    // videos/, hard-linked into this root at sync time). Page data outside the
+    // shot taxonomy — mounted once, never rebuilt by render().
+    const UITEST_VIDEOS = __UITEST_VIDEOS__;
 
     function esc(s) {
       return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -613,6 +632,25 @@ _TEMPLATE = r"""<!doctype html>
       render();
     });
 
+    function mountUITestVideos() {
+      const host = document.getElementById("uitest-videos");
+      if (!UITEST_VIDEOS || !UITEST_VIDEOS.length) { host.remove(); return; }
+      const cards = UITEST_VIDEOS.map((v) => `
+        <figure class="uitest-video-card">
+          <video controls preload="metadata" src="${esc(v.src)}"></video>
+          <figcaption>
+            <span>${esc(v.recordedAtUtc || "?")} · ${esc(v.scope || "?")}</span>
+            <span>${esc(v.caller || "?")} · ${v.sizeBytes ? (v.sizeBytes / 1048576).toFixed(1) : "?"} MB</span>
+          </figcaption>
+        </figure>`).join("");
+      host.innerHTML = `
+        <details class="uitest-videos-wrap">
+          <summary>UITest 錄影 <small>${UITEST_VIDEOS.length} 段 · 最新在前 · 每段=一次 --ui 全程錄影</small></summary>
+          <div class="uitest-video-grid">${cards}</div>
+        </details>`;
+    }
+
+    mountUITestVideos();
     render();
   </script>
 </body>
