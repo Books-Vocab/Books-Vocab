@@ -174,15 +174,28 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     @ObservationIgnored
     private(set) var pendingLocalDataCleanup: Task<Void, Never>?
 
-    /// Post-login 首次 sync 的前置 gate — 等 logout 排程的本地清理收尾。
-    /// 無 pending cleanup 時立即返回（正常冷啟登入不被拖慢）。
+    // 每次 logout 排程新 cleanup 時遞增。wait 以此偵測「懸掛期間又有新
+    // logout」—— 單次 await 只跟得到進場當下的 handle（TOCTOU），舊 cleanup
+    // 完成後 sync 即恢復、與 chain 出的新 cleanup 並行。
+    @ObservationIgnored
+    private var localDataCleanupGeneration = 0
+
+    /// Sync 開跑前的前置 gate — 等 logout 排程的本地清理收尾。
+    /// 無 pending cleanup 時立即返回（正常冷啟登入不被拖慢）；
+    /// 懸掛期間若又發生 logout，re-check 直到鏈上最後一個 cleanup 完成。
     func waitForPendingLocalDataCleanup() async {
-        await pendingLocalDataCleanup?.value
+        while true {
+            let generation = localDataCleanupGeneration
+            guard let pending = pendingLocalDataCleanup else { return }
+            await pending.value
+            if localDataCleanupGeneration == generation { return }
+        }
     }
 
     func logout(modelContainer: ModelContainer? = nil, reason: String = "user_logout") {
         AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
+        localDataCleanupGeneration += 1
         pendingLocalDataCleanup = Task { [previousCleanup = pendingLocalDataCleanup] in
             // Clear session state UP FRONT, before awaiting clearLocalData. The cleanup hops to
             // BackgroundSyncActor — a real suspension that yields the MainActor. Doing the nils
