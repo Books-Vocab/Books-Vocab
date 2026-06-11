@@ -22,6 +22,12 @@ const WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = join(WEB_DIR, 'tools', 'shots');
 const PORT = 4179;
 const NO_BUILD = process.argv.includes('--no-build');
+// Optional `--only <substr>` filter: capture only cases whose name contains the
+// substring. Lets you iterate on one surface without shooting the whole set.
+const ONLY = (() => {
+  const i = process.argv.indexOf('--only');
+  return i >= 0 ? process.argv[i + 1] : null;
+})();
 
 function build() {
   console.error('building web/ …');
@@ -42,39 +48,74 @@ async function waitForServer(url, timeoutMs = 15000) {
   throw new Error(`preview server did not come up at ${url}`);
 }
 
-async function main() {
-  if (!NO_BUILD) build();
-  mkdirSync(SHOTS, { recursive: true });
+// vite preview binds the IPv6 loopback; `localhost` resolves to it, 127.0.0.1 does not.
+const BASE = `http://localhost:${PORT}`;
 
+function spawnServer() {
   // spawn the vite binary directly — an npx/npm wrapper doesn't reliably
   // forward SIGTERM, leaving a zombie server holding the strict port.
-  const server = spawn(join(WEB_DIR, 'node_modules', '.bin', 'vite'),
+  return spawn(join(WEB_DIR, 'node_modules', '.bin', 'vite'),
     ['preview', '--port', String(PORT), '--strictPort'], {
       cwd: WEB_DIR,
       stdio: 'ignore',
     });
-  try {
-    // vite preview binds the IPv6 loopback; `localhost` resolves to it, 127.0.0.1 does not.
-    const base = `http://localhost:${PORT}`;
-    await waitForServer(base);
+}
 
+async function main() {
+  if (!NO_BUILD) build();
+  mkdirSync(SHOTS, { recursive: true });
+
+  const cases = ONLY ? PARITY.filter((p) => p.case.includes(ONLY)) : PARITY;
+  if (cases.length === 0) throw new Error(`--only "${ONLY}" matched no cases`);
+
+  // `vite preview` occasionally dies mid-run on large dist sets (observed:
+  // ERR_CONNECTION_REFUSED after ~12 shots). Re-spawn on demand so a crash
+  // costs one retry, not the whole run.
+  let server = spawnServer();
+  await waitForServer(BASE);
+
+  async function ensureServer() {
+    try {
+      const res = await fetch(BASE);
+      if (res.ok) return;
+    } catch {
+      // fall through to relaunch
+    }
+    try { server.kill(); } catch { /* already gone */ }
+    server = spawnServer();
+    await waitForServer(BASE);
+  }
+
+  try {
     const browser = await chromium.launch();
     try {
-      for (const p of PARITY) {
-        const page = await browser.newPage({
-          viewport: { width: 393, height: 852 },
-          deviceScaleFactor: 3,
-        });
+      for (const p of cases) {
         // params 逐鍵序列化（surface 可省略 = bookshelf 向後相容預設）
         const qs = new URLSearchParams(p.params).toString();
-        const url = `${base}/?${qs}`;
-        await page.goto(url, { waitUntil: 'networkidle' });
-        // woff2 faces must be live before capture, or text falls back mid-shot.
-        await page.evaluate(() => document.fonts.ready);
-        await page.locator('[data-harness="phone-frame"]').screenshot({
-          path: join(SHOTS, `${p.case}.png`),
-        });
-        await page.close();
+        const url = `${BASE}/?${qs}`;
+        let lastErr;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const page = await browser.newPage({
+            viewport: { width: 393, height: 852 },
+            deviceScaleFactor: 3,
+          });
+          try {
+            await page.goto(url, { waitUntil: 'networkidle' });
+            // woff2 faces must be live before capture, or text falls back mid-shot.
+            await page.evaluate(() => document.fonts.ready);
+            await page.locator('[data-harness="phone-frame"]').screenshot({
+              path: join(SHOTS, `${p.case}.png`),
+            });
+            await page.close();
+            lastErr = null;
+            break;
+          } catch (err) {
+            lastErr = err;
+            await page.close().catch(() => {});
+            await ensureServer();
+          }
+        }
+        if (lastErr) throw lastErr;
         console.error(`✓ ${p.case}`);
       }
     } finally {

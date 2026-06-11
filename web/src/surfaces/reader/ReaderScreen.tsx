@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
-import { READER_FIXTURES, WARM_NEUTRAL } from './fixtures'
-import type { ReaderFixture } from './fixtures'
+import { READER_FIXTURES, WARM_NEUTRAL, translationFixtureFor } from './fixtures'
+import type { ReaderFixture, ReaderChromeScenarioId } from './fixtures'
+import { TranslationPanel } from './TranslationPanel'
 import {
   BookClosedIcon,
   ChevronLeftIcon,
@@ -141,8 +142,33 @@ function ExpandedHeader({ bookTitle }: { bookTitle: string }) {
   )
 }
 
+/** 獨立 Translation panel 場景（layout .fill）：scrim + bottom-sheet panel，無
+ *  reader 本體。對齊 Catalog「Reader · Translation」6 態。 */
+function TranslationScene({ scenario }: { scenario: string }) {
+  const panel = translationFixtureFor(scenario)!
+  return (
+    <div className="reader reader-translation-scene">
+      <div className="reader-stack">
+        {/* 獨立場景：full-frame 不透明底板（catalog .fill 的 scrim-over-white ≈ #f9f9f9）。
+            這塊「實體」背板（非僅 CSS background）讓整個 frame 都有 opaque painted 內容，
+            避開 headless Chromium dpr3 對「上方留空 + 底部浮 bottom-sheet」的 composited-
+            layer 誤繪（footer 重影到頂端）；chrome 場景靠 PaperBody 已自然滿足此條件。 */}
+        <div className="reader-translation-backdrop" />
+        <div className="reader-bottom-overlay" data-overlay="translation">
+          <TranslationPanel panel={panel} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function ReaderScreen({ scenario }: { scenario: ScenarioId<'reader'> }) {
-  const fixture = READER_FIXTURES[scenario]
+  // translation-* scenarios = 獨立 panel 場景（scrim + panel，無 chrome）。
+  if (translationFixtureFor(scenario)) {
+    return <TranslationScene scenario={scenario} />
+  }
+  // scenario 已排除 translation-* → 必為 chrome 6 態之一。
+  const fixture = READER_FIXTURES[scenario as ReaderChromeScenarioId]
   return (
     <div className="reader" style={{ '--reader-paper': fixture.paperColor } as CSSProperties}>
       <div className="reader-stack">
@@ -155,8 +181,15 @@ export function ReaderScreen({ scenario }: { scenario: ScenarioId<'reader'> }) {
         {/* 頂部 underline 進度卡（loading 期） */}
         {fixture.underlineProgress !== null && <UnderlineProgress progress={fixture.underlineProgress} />}
 
-        {/* bottom overlay 掛載點 — R2 translation panel / R3 面板群疊於此 */}
-        <div className="reader-bottom-overlay" data-overlay={fixture.overlay} />
+        {/* bottom overlay 掛載點 — R2 translation panel 疊於 dimmed paper 上 */}
+        <div className="reader-bottom-overlay" data-overlay={fixture.overlay}>
+          {fixture.overlay === 'translation' && fixture.panel && (
+            <>
+              <div className="reader-scrim" />
+              <TranslationPanel panel={fixture.panel} />
+            </>
+          )}
+        </div>
 
         {/* top header（compact / expanded） */}
         {fixture.header === 'expanded' ? (
