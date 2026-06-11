@@ -1,0 +1,671 @@
+/* Reader surface（chrome）— 幾何逐一對齊 iOS ReaderViewPresenter +
+   ReaderPresentationMetrics + ReaderChromePreviewScene。px 註解標 iOS 來源常數，
+   diff 迭代時別改丟對應。
+
+   軸取捨：reader paper 永遠 sepia 調（fixture 帶 --reader-paper），與 data-theme
+   (light/dark) 正交。chrome 白卡/文字色吃 data-theme（catalog 6 態皆 light
+   appearance，故 R1 對拍只 light；dark 為未來軸）。
+
+   量測定讞（catalog PNG 1179×2556 dpr3，÷3 得 pt）：
+   - 本體 placeholder 首塊 top = 360px → 120pt（= Preview.topInset）。
+   - compact 進度膠囊 white-top = 73.7pt、height ≈ 30.7pt；右緣 366pt（outer 20）。
+   - expanded toolbar bottom = 113pt、top ≈ 74pt（safe-area 66 + outerTop 8）。
+   header 頂部統一以 66pt safe-area-equiv 內推，再吃 outerTopInset=8。 */
+
+.reader {
+  position: relative;
+  height: 100%;
+  background: var(--reader-paper); /* state.paperColor 底色 */
+  /* translationLight = rgb(0.54,0.50,0.44) = #8a8070（serif 譯文 brown，sepia 調，
+     與 light/dark 軸正交，故釘死非吃 data-theme）。 */
+  --reader-translation: #8a8070;
+}
+
+.reader-stack {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* ============================================================
+   本體：synthetic paper（三段 gradient + 8 placeholder blocks）
+   ============================================================ */
+.reader-paper {
+  position: absolute;
+  inset: 0;
+  /* LinearGradient top→bottom：paperTop 0.96 / paperMid 0.88 / warmNeutral floor 0.08。
+     疊在 .reader 的 --reader-paper 底色上 → 等效 iOS opacity fade。 */
+  background: linear-gradient(
+    to bottom,
+    var(--reader-paper-top),
+    var(--reader-paper-mid),
+    var(--reader-paper-floor)
+  );
+}
+
+.reader-blocks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px; /* Preview.blockSpacing */
+  padding: 120px 28px 60px; /* topInset 120 / horizontalInset 28 / bottomInset 60 */
+  box-sizing: border-box;
+}
+
+.reader-block {
+  flex: none;
+  height: 10px; /* blockHeightShort */
+  border-radius: 4px; /* blockCornerRadius */
+  /* Color.primary.opacity(0.12) base；primary = text-primary（#37352f light）。 */
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+.reader-block[data-tall] {
+  height: 12px; /* blockHeightTall（index % 3 == 0） */
+}
+
+.reader-block[data-emphasis] {
+  /* index == 2：textBlockEmphasisOpacity 0.22 */
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+}
+
+/* ============================================================
+   error 本體：置中「無法開啟書籍」卡
+   ============================================================ */
+.reader-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px; /* pageHorizontalPadding */
+  box-sizing: border-box;
+}
+
+.reader-error-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px; /* AppEmptyStateStyle.spacing */
+  padding: 30px 18px; /* cardPadding 18 + verticalPadding 12 → 30 上下 */
+  background: var(--card-bg);
+  border: 0.7px solid var(--card-border); /* themed borderOpacity 0.7 */
+  border-radius: var(--radius-card); /* AppRadius.md = 8 */
+  box-shadow: var(--elevation-z1);
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.reader-error-icon {
+  /* hero(40) light serif glyph，tertiaryText */
+  color: var(--text-tertiary);
+  line-height: 0;
+}
+
+.reader-error-title {
+  margin: 0;
+  /* AppFonts.h2(semibold) = serif 22 bold */
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  -webkit-text-stroke: 0.5px currentColor; /* Songti 不合成粗體，補字重 */
+}
+
+.reader-error-desc {
+  margin: 0;
+  /* AppFonts.body() = sans 17 regular，secondaryText */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   loading 卡（置中）：spinner + phase 文字
+   ============================================================ */
+.reader-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px; /* loadingOuterInset */
+  box-sizing: border-box;
+}
+
+.reader-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px; /* Overlay.loadingSpacing */
+  /* vocab card：cardBg + cardBorder 1 + z1 + radius card；
+     content pad h=28 v=20 + card pad 18 → 視覺 ~38/46。 */
+  padding: 38px 46px; /* loadingVerticalInset 20 + cardPadding 18 / horizontalInset 28 + 18 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elevation-z1);
+  min-width: 160px;
+}
+
+.reader-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  /* UIActivityIndicator 風格：12 輻條漸層環，近似為細圈 spinner（靜態快照不轉）。 */
+  border: 2px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
+  border-top-color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+.reader-loading-text {
+  /* body.weight(.semibold) = sans 17 semibold，primaryText */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   頂部 underline 進度卡（loading 期）：track + fill + 百分比
+   ============================================================ */
+.reader-underline {
+  position: absolute;
+  top: 66px; /* safe-area-equiv；卡內再吃 outer top 8 → white-top ≈ 73.7pt */
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  padding-top: 8px; /* Overlay.topInset */
+}
+
+.reader-underline-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px; /* progressOverlayContent HStack spacing */
+  /* vocab card pad h=16 v=10 + cardPadding 18 視覺合併 → ~22/34；對拍以 PNG 收斂 */
+  padding: 14px 22px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elevation-z1);
+}
+
+.reader-underline-track {
+  position: relative;
+  width: 80px; /* progressBarWidth */
+  height: 3px; /* progressBarHeight */
+  border-radius: 999px;
+  background: var(--muted-fill); /* trackColor = mutedFill */
+}
+
+.reader-underline-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent); /* fillColor = accent */
+}
+
+.reader-underline-pct {
+  /* monoLabel = mono 10 bold，secondaryText；width 30 右對齊 */
+  width: 30px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   chrome icon button（VocabChromeIconButton）：32pt 白卡 + control radius
+   ============================================================ */
+.reader-chrome-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; /* chromeButtonSize */
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control); /* AppRadius.control = 6 */
+  background: var(--card-bg);
+  color: var(--text-secondary); /* iconMedium secondaryText */
+  cursor: pointer;
+}
+
+/* ============================================================
+   compact header：右上進度膠囊 + ellipsis
+   ============================================================ */
+.reader-header-compact {
+  position: absolute;
+  top: 66px; /* safe-area-equiv */
+  right: 20px; /* outerHorizontalInset */
+  padding-top: 8px; /* outerTopInset */
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Header.compactSpacing */
+}
+
+.reader-progress-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* progressBadge HStack spacing */
+  /* VocabChromeSurface：cardBg fill、border .clear、control radius；
+     pad h=10 v=8（compactProgressInset） */
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  color: var(--text-secondary); /* iconSmall + monoLabel secondaryText */
+  box-shadow: var(--elevation-z1);
+}
+
+.reader-progress-num {
+  /* monoLabel = mono 10 bold */
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-header-compact .reader-chrome-btn {
+  /* compact ellipsis 也有 z1 陰影（PNG 實測有浮起感） */
+  box-shadow: var(--elevation-z1);
+}
+
+/* ============================================================
+   expanded header：flat 白卡 toolbar（書庫 + 居中書名 + 4 鈕）
+   ============================================================ */
+.reader-header-expanded {
+  position: absolute;
+  top: 66px; /* safe-area-equiv */
+  left: 20px; /* outerHorizontalInset */
+  right: 20px;
+  padding-top: 8px; /* outerTopInset */
+}
+
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* expanded HStack spacing */
+  /* flatVocab：cardBg、無 border、無 elevation、radius card；pad h=14 v=10 */
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-sizing: border-box;
+}
+
+.reader-toolbar-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* backButton HStack spacing */
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.reader-toolbar-back-label {
+  /* body.weight(.semibold) = sans 17 semibold；窄欄會折成「書/庫」直排（PNG 實測） */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.05;
+  white-space: normal;
+  width: 1em; /* 逼出 CJK 直排折行，對齊 iOS 窄欄行為 */
+  word-break: break-all;
+}
+
+.reader-toolbar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  /* caption = sans 12 bold，tertiaryText；單行 tail 截斷 */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px; /* readerTitleMaxWidth（compact） */
+  margin: 0 auto;
+}
+
+.reader-toolbar-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* toolbarButtons HStack spacing */
+}
+
+/* ============================================================
+   bottom overlay 掛載點 — R2 translation panel / R3 面板群疊於此
+   ============================================================ */
+.reader-bottom-overlay {
+  position: absolute;
+  inset: 0;
+  /* translation panel 掛載：scrim（絕對鋪滿）+ bottom-sheet panel（flex 底對齊）。
+     用 flex justify-content:flex-end 把 panel 推到底，而非 absolute bottom:0 —
+     後者疊上 box-shadow 的 promoted layer 會觸發 headless Chromium 的 composited-
+     layer 誤繪（footer 重影到頂端）。flex 靜態流不促成獨立層，重影消失。 */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.reader-bottom-overlay > * {
+  pointer-events: auto;
+}
+
+/* ============================================================
+   Translation panel（R2）— TranslationVocabPresenter bottom-sheet
+   ============================================================ */
+
+/* scrim（chrome reading-translation overlay）：PNG 實測 ref 對 paper 幾乎不 dim
+   （clean paper 244,237,222 ≈ 未壓暗的 paperSepiaDeep）。translationPanelScrimOpacity
+   0.12 是「scrim 色 over 透明」在獨立場景的 alpha，疊在不透明 paper 上時視覺幾近 0。
+   故 chrome 場景只下極輕 dim（~0.025 黑），對齊 ref。 */
+.reader-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.025);
+}
+
+/* 獨立 panel 場景底色：catalog「Reader · Translation」.fill 場景 = scrim(black α0.12)
+   疊在「透明」backdrop 上。對拍引擎（parity-core normalizedCopy）對 catalog PNG 跑
+   `-alpha off`，把透明區的 raw RGB 暴露為 *純黑*（scrim 黑去 alpha）→ 故對拍 ref 是
+   「白卡疊純黑底」。web 端無 alpha，必須以 solid black 底匹配 ref 的 -alpha-off 表徵。 */
+.reader-translation-scene {
+  background: #000;
+}
+
+/* full-frame 實體黑底背板（見 ReaderScreen TranslationScene 註）。 */
+.reader-translation-backdrop {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+
+/* panel 卡：白卡、上圓角、底齊螢幕；水平 16pt（scene .padding(.horizontal)）。
+   由 .reader-bottom-overlay 的 flex flex-end 推到底，故 position:relative（非 absolute）。 */
+.translation-panel {
+  position: relative;
+  z-index: 1; /* 疊在 scrim 之上 */
+  margin: 0 16px; /* TranslationPanelPreviewScene .padding(.horizontal) = 16 */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: var(--card-bg);
+  border-top-left-radius: var(--radius-card); /* AppRadius.md = 8（continuous） */
+  border-top-right-radius: var(--radius-card);
+  box-shadow: var(--elevation-z2); /* Mochi #3：z3→z2 收 floating 感 */
+  box-sizing: border-box;
+}
+
+/* 大卡（句子展開態）：撐高到 0.84 viewport（LargePanelModifier）。 */
+.translation-panel[data-large] {
+  height: 84%;
+  flex: none;
+}
+
+.translation-panel[data-large] .translation-content {
+  flex: 1;
+}
+
+/* drag handle：32×4pt capsule，quaternaryText 0.24，top 10 / bottom 12。 */
+.translation-handle {
+  flex: none;
+  align-self: center;
+  width: 32px; /* panelHandleWidth */
+  height: 4px; /* panelHandleHeight */
+  margin-top: 10px; /* panelHandleTopInset */
+  margin-bottom: 12px; /* panelHandleBottomInset */
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-quaternary) 24%, transparent); /* panelHandleOpacity */
+}
+
+.translation-content {
+  flex: none; /* 預設 auto 高（collapsed/expanded 隨內容）；large 才 flex:1 撐高 */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 不用統一 gap：iOS hero→body=s3(12)、body 內 translation→footer=tinyGap(4)，
+     兩段不同；用各自 margin 表達（PNG 實測收斂）。 */
+  padding: 2px 18px 20px; /* contentTopInset≈2 / inset 18 / bottom 20（grid-search 收斂） */
+  box-sizing: border-box;
+}
+
+/* hero：word（mono）+ speaker + spacer + adj. chip，firstTextBaseline 對齊。
+   margin-bottom = hero→body：iOS s3(12) + 大字行盒餘量 → 實測 ~14。 */
+.translation-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px; /* AppSpacing.s2 */
+  margin-bottom: 18px; /* hero→body：s3(12) + iOS 大字行盒餘量（grid-search 收斂） */
+}
+
+.translation-word {
+  /* detailWord = systemMono 27 semibold，primaryText。 */
+  font-family: var(--font-mono);
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 1.1; /* 收緊行盒，glyph 貼齊上緣（對齊 iOS firstTextBaseline 位置） */
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.translation-speaker {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  /* iconTiny thin，secondaryText。 */
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.translation-hero-spacer {
+  flex: 1;
+}
+
+/* adj. chip（VocabToneChip）：caption(12 bold)、accent 字、accent 8% 底、capsule。 */
+.translation-pos-chip {
+  flex: none;
+  align-self: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 6px 10px; /* chipVerticalPadding 6 / chipHorizontalPadding 10 */
+  border-radius: 999px;
+  background: var(--accent-subtle); /* accent.opacity(0.12) ≈ 視覺與 0.08 接近，用既有 token */
+}
+
+/* 譯文：serif 21 bold，translation brown。 */
+.translation-text {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--reader-translation);
+  -webkit-text-stroke: 0.4px currentColor; /* Songti 不合成粗體，補字重（先量再用） */
+}
+
+/* ---- 語境解釋段 ---- */
+.translation-explanation {
+  display: flex;
+  flex-direction: column;
+}
+
+/* CardSectionDivider hairline，上下 microGap(6) 間距。 */
+.translation-divider {
+  height: 0.34px; /* hairline */
+  margin: 6px 0; /* AppSpacing.microGap */
+  background: var(--card-border);
+}
+
+/* 「語境解釋」label：text.bubble + caption(12 bold) quaternary，bottom gap 8。 */
+.translation-explanation-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px; /* translationExplanationHeaderGap */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-quaternary);
+}
+
+.translation-explanation-label svg {
+  flex: none;
+}
+
+/* explanation body：sans 15，secondaryText，lineSpacing 7，top inset 4。 */
+.translation-explanation-body {
+  margin: 0;
+  padding-top: 4px; /* translationExplanationContentTopInset */
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  /* lineSpacing 7pt over 15pt → ≈ 1.47 */
+  line-height: 1.47;
+  color: var(--text-secondary);
+}
+
+/* 大卡：explanation 撐滿剩餘高度（ScrollView frame maxHeight .infinity）。 */
+.translation-panel[data-large] .translation-explanation {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- state message card（loading / error）---- */
+.translation-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px; /* cardPadding */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-sizing: border-box;
+}
+
+.translation-state-head {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* AppSpacing.s2 */
+}
+
+/* loading/error 圖示：accent fill（translate / warning.fill）。 */
+.translation-state-icon {
+  display: inline-flex;
+  color: var(--accent);
+  line-height: 0;
+}
+
+.translation-state-title {
+  /* body.weight(.semibold) ≈ sans 17 semibold，primaryText。 */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.translation-state-desc {
+  margin: 0;
+  /* description = sans 15 semibold，secondaryText（PNG 實測偏粗）。 */
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.translation-loading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.translation-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+/* ---- footer toolbar ---- */
+.translation-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px; /* AppSpacing.s1 */
+  /* body→footer 間距：iOS tinyGap(4) + bottom-sheet footer 下沉餘量（PNG 實測 ~18）。 */
+  margin-top: 28px;
+  /* VocabChromeIconButton 觸控目標 44pt 下限 → footer 行高 44pt（視覺鈕仍 32pt）。 */
+  min-height: 44px;
+}
+
+/* 大卡（句子展開態）：footer auto top-margin 把它釘在卡底，撐開上方解釋區。 */
+.translation-panel[data-large] .translation-footer {
+  margin-top: auto;
+}
+
+/* 已加入：caption(12 bold) success + checkmark.circle.fill。 */
+.translation-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
+}
+
+.translation-saved svg {
+  flex: none;
+  color: var(--success);
+}
+
+/* timer：monoLabel = mono 10 bold，quaternaryText。 */
+.translation-timer {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-quaternary);
+  white-space: nowrap;
+  margin-left: 8px; /* inlineGap（saved 後） */
+}
+
+.translation-loading-row .translation-timer {
+  margin-left: 0;
+}
+
+.translation-footer-spacer {
+  flex: 1;
+}
+
+/* footer chrome 按鈕：32pt 白卡（沿用 .reader-chrome-btn）；destructive tone。 */
+.translation-chrome-btn {
+  box-shadow: none;
+}
+
+.translation-chrome-btn[data-tone='destructive'] {
+  color: var(--destructive);
+}

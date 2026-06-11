@@ -1,0 +1,305 @@
+/* Podcast player surface — 幾何常數逐一對齊 iOS PodcastPlayerScene /
+   PodcastControlsView / PodcastTranscriptColumn / PodcastPlayerAccessSurface：
+   playerContent VStack(spacing:0) = transcript(maxH∞, pad h=pageHorizontal=20) →
+   previewBanner(pad h=20, bottom=inlineGap=8) → controls(pad h=20, bottom=20)。
+   bubble：column pad v=sectionGap14 h=cardPadding18 / cell pad h=s3(12)
+   v=compactRowVerticalPadding(10) / radius=card(8) / vstack gap=inlineGap(8) /
+   bg=tint.opacity(.08|.18) border tint.opacity(.08|.22) / font=uiSans（token 15，
+   catalog effective size 實測 21px，見 .pc-bubble-text）。
+   seek：track h=5 / thumb 16 / accent fill。transport：play disc 56 brandHero /
+   skip symbol 30 / rate=appCompactAction(.neutral) pill。
+   px 註解標 iOS 來源常數，diff 迭代時別改丟對應。 */
+
+.podcast {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+}
+
+/* ============================ Player ============================ */
+
+.pc-player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* nav region：status bar + inline player nav（settings gear）。measured：
+     padding-top 124 為 parity 最佳（diff-RMSE 收斂，非單看 bubble fill top——圓角
+     使 fill-top 取樣偏移）。再上/下移皆抬升 RMSE。 */
+  padding-top: 124px;
+  box-sizing: border-box;
+}
+
+/* --- transcript column（PodcastTranscriptColumn，scroll offset 0）--- */
+.pc-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden; /* 快照面：不滾動，截到什麼算什麼 */
+  padding: 0 20px; /* playerContent pageHorizontalPadding=20 */
+}
+
+.pc-transcript-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* LazyVStack spacing = inlineGap */
+  padding: 14px 18px; /* column pad v=sectionGap14 h=cardPadding18 */
+}
+
+/* 一個氣泡：左對齊（slot 0），hug content（VStack(alignment:.leading) → 氣泡
+   只到最寬行寬，不撐滿）；Spacer(minLength:48) 限制最寬 = 容器 − 48。 */
+.pc-bubble {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: calc(100% - 48px); /* HStack Spacer(minLength:48) */
+  border-radius: var(--radius-card); /* card = 8 */
+  padding: 10px 12px; /* cell v=compactRowVerticalPadding(10) h=s3(12) */
+  /* tint = PodcastSpeakerTint slot 2 = warning（單一講者 SRT 落 slot 2，catalog
+     PNG 實測 light bubble #EFEBE2 / dark #28241C ⇒ warning@0.08 over page，非
+     accent）。bg = tint.opacity(0.08)、border = tint.opacity(0.08)/0.8px。 */
+  background: color-mix(in srgb, var(--warning) 8%, var(--page-bg));
+  border: 0.8px solid color-mix(in srgb, var(--warning) 8%, var(--page-bg));
+  box-sizing: border-box;
+}
+
+.pc-bubble-active {
+  /* active 句：bg .18 / border .22 / 1px（實測 light #E3DBCB / dark #3B3220） */
+  background: color-mix(in srgb, var(--warning) 18%, var(--page-bg));
+  border: 1px solid color-mix(in srgb, var(--warning) 22%, var(--page-bg));
+}
+
+.pc-bubble-text {
+  margin: 0;
+  /* uiSubtitleFont = AppFonts.uiSans(ElmsSans-Regular, 15)。但 catalog 字幕以較大
+     effective content size 呈現：ref glyph band ~46px@3x、line1「Welcome back to」
+     (3 詞) 寬 547px。以 measured 21px（非 token 15）+ line-height 1.37 對齊字高與
+     ref baseline gap(86px/3≈28.7px)，0.3px tracking 微調 advance 使換行點對齊 ref
+     （「Welcome back to / Deep Work…」）。字級/行距/tracking 皆 parity-sweep 收斂值。 */
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.37;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+}
+
+.pc-bubble-active .pc-bubble-text {
+  color: var(--text-primary);
+}
+
+.pc-word {
+  position: relative;
+}
+
+/* playback 逐字底線（PodcastUnderlineGeometry）：active word 下方 accent 色帶。
+   字底偏移 3pt、capsule。用 box-shadow-free 下邊框近似。 */
+.pc-word-active {
+  box-shadow: inset 0 -2.4px 0 var(--accent);
+  border-radius: 1px;
+}
+
+/* --- preview banner（PodcastPlayerPreviewBanner）--- */
+.pc-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* inlineGap */
+  margin: 0 20px 8px; /* pad h=pageHorizontal20；bottom=inlineGap8 */
+  padding: 8px 18px; /* v=inlineGap8 h=cardPadding18 */
+  border-radius: var(--radius-md); /* AppRadius.md = 8 */
+  background: var(--brand-hero);
+  box-sizing: border-box;
+}
+
+.pc-banner-lock {
+  flex: none;
+  color: var(--on-brand-hero);
+}
+
+.pc-banner-msg {
+  flex: 1;
+  min-width: 0;
+  /* caption = sans 12 bold；onBrandHero */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-brand-hero);
+}
+
+/* appCompactAction(.primary) pill — primary 在 banner 上 = onBrandHero text。
+   實測 banner 右側「升級 Pro」為深色字、無明顯填色（與 banner 同色族）。 */
+.pc-banner-cta {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-brand-hero);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+}
+
+/* --- controls（PodcastControlsView，VStack spacing=8）--- */
+.pc-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* controlsClusterSpacing = 8 */
+  /* bottom = controlsBottomPadding(20) + home-indicator safe area(34)。catalog
+     實測 ref play disc 底 2393 vs 純 20pt 會落 2495（+34pt 安全區），故補 54pt。 */
+  padding: 0 20px 54px;
+  box-sizing: border-box;
+}
+
+/* seek bar：track(h5) + accent fill + thumb(16 card-bg circle)。hit area 20。 */
+.pc-seek {
+  position: relative;
+  height: 20px; /* seekBarHitArea */
+  display: flex;
+  align-items: center;
+}
+
+.pc-seek-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 5px; /* seekBarTrackHeight */
+  border-radius: 999px;
+  background: var(--progress-track);
+}
+
+.pc-seek-fill {
+  position: absolute;
+  left: 0;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.pc-seek-thumb {
+  position: absolute;
+  width: 16px; /* seekBarThumbSize */
+  height: 16px;
+  margin-left: -8px; /* seekBarThumbOffset */
+  border-radius: 50%;
+  background: var(--card-bg);
+  box-shadow: var(--elevation-z1);
+}
+
+/* 時鐘列（monoLabel = mono 10 bold，tertiaryText） */
+.pc-clock {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+/* transport：ZStack — center cluster（skip · play · skip）疊 rate pill 靠右 */
+.pc-transport {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px; /* play disc */
+}
+
+.pc-transport-center {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* controlGap */
+}
+
+/* 15s skip ghost：symbolLarge(30) primaryText，無背景，44pt tap target */
+.pc-skip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-primary);
+}
+
+/* 主 play：brandHero 56 disc，onBrandHero glyph */
+.pc-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--brand-hero);
+  color: var(--on-brand-hero);
+}
+
+/* rate pill：appCompactAction(.neutral) — buttonIdleFill capsule、secondaryText */
+.pc-rate {
+  position: absolute;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--button-idle-fill);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+}
+
+/* ============================ Locked gate ============================ */
+/* PodcastPlayerLockedGateView：VStack(spacing=sectionGap14) 垂直＋水平置中。
+   lock(symbolHero accent) → 標題(sectionTitle serif18) → 說明(caption sans12) →
+   sign-in CTA(appAction(.primary) maxWidth280)。 */
+.pc-gate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px; /* sectionGap */
+  padding: 20px; /* pageHorizontalPadding */
+  text-align: center;
+}
+
+.pc-gate-lock {
+  color: var(--accent);
+}
+
+.pc-gate-title {
+  margin: 0;
+  /* sectionTitle = AppFonts.serif(18, bold) */
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pc-gate-body {
+  margin: 0;
+  /* caption = sans 12 bold；secondaryText */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* appAction(.primary)：tint fill（light #37352F / dark #e6e6e3）、label 反白。
+   maxWidth 280。 */
+.pc-gate-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* Label imageTitleSpacing */
+  width: 280px;
+  max-width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--radius-md); /* appAction radius */
+  background: var(--tint);
+  color: var(--page-bg);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  box-sizing: border-box;
+}

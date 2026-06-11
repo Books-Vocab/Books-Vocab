@@ -1,0 +1,501 @@
+/* Today Review surface — 幾何常數逐一對齊 iOS TodayReviewPresenter / TodayReviewMetrics：
+   topBar pad h=20 / top=10 / bottom=6；card h-inset=s2(8) top/bottom=s2(8)；
+   fold padding=28 / foldSectionSpacing=24 / frontHintBottomInset=22；
+   frontMinHeight=120 / answerMinHeight=188；toolbar h=20 v=12；
+   feedback actionMinWidth=92；chevronButtonSize=30。px 註解標 iOS 來源常數。
+   measured 註解 = 直接量 Catalog PNG（1179×2556 / dpr3，pt=px/3），不信 token。 */
+
+.today-review {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  /* iOS CJK serif = Songti TC（answer 翻譯 / 釋義 / 例句）。生成 token 的
+     '--font-serif' 用了不存在的 'STSongti TC'（拼錯）+ 'Noto Serif TC'（實際裝的是
+     Noto Serif CJK TC），CJK 因此 fallback 到非 Songti 字形，抬升 parity RMSE。
+     此處 surface-local 修正字名（正確 'Songti TC'）讓 CJK 落到與 iOS 同源字形。 */
+  --font-serif: 'Athelas', 'Songti TC', 'Noto Serif CJK TC', Georgia, serif;
+}
+
+/* ── Top Bar ──────────────────────────────────────────────────────
+   measured：progress pill glyph 中心 ≈ y71pt。Catalog 無 status bar，
+   topBar 直接從頂起算（top inset 10 + 內容）。pill 與 chrome 同列居中。 */
+.tr-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* HStack spacing = s3 */
+  padding: 69px 20px 6px; /* measured：progress pill 文字頂 ≈ 258px(dpr3)=86pt → top 69px；h=20 / bottom=6 */
+}
+
+/* progress pill — monoLabel(10 bold) on mutedFill capsule，chip pad h=10 v=5(loose) */
+.tr-progress-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  background: var(--muted-fill);
+  border-radius: var(--radius-pill);
+  padding: 7px 14px; /* measured：pill 高 ≈ 50px(dpr3)≈16.7pt → v≈7；h≈14 */
+}
+
+/* 洗牌 pill — shuffle icon + caption(12)，同 mutedFill capsule */
+.tr-shuffle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* HStack spacing 6 */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  border-radius: var(--radius-pill);
+  padding: 7px 14px;
+}
+
+.tr-topbar-spacer {
+  flex: 1;
+}
+
+/* chrome icon button — VocabChromeIconButton：44pt HIG 觸控框，外觀為 idle-fill 圓角方塊。
+   measured：右上兩顆 ≈ 86×86px(dpr3)≈28.7pt 視覺方塊。 */
+.tr-chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md); /* 8 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+  box-sizing: border-box;
+}
+
+/* topBar 的 play/close chrome 在 PNG 為描邊白方塊（card-bg + hairline border）。 */
+
+/* ── Card stage ───────────────────────────────────────────────────
+   GeometryReader 區：card 置頂（alignment .top），h-inset=s2(8)，top-inset=s2(8)。
+   measured：active 卡頂 ≈ y134pt（topBar 結束後 cardTopInset 8 + deck shell 露出）。 */
+.tr-content {
+  flex: 1;
+  overflow: hidden;
+  padding: 8px 8px 0; /* cardHorizontalInset / cardTopInset = s2 */
+}
+
+.tr-stage {
+  position: relative;
+}
+
+/* deck shell（depth-1 / depth-2 底卡暗示）— 同卡骨架，縮放 + 下移 + 降透明度。
+   iOS：depth1 scale .975 y+5 opacity≈.93；depth2 scale .95 y+10。以 inset 近似縮放
+   （置中縮放 → 左右 inset），measured 對齊 PNG 露出的兩道淺邊。 */
+.tr-deck-shell {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 200px;
+  background: color-mix(in srgb, var(--card-bg) 98.5%, transparent);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card); /* 8 */
+  box-shadow: var(--elevation-z1);
+}
+
+.tr-deck-1 {
+  transform: translateY(5px) scale(0.975);
+  opacity: 0.93;
+}
+
+.tr-deck-2 {
+  transform: translateY(10px) scale(0.95);
+  opacity: 0.86;
+}
+
+/* active card — ReviewFoldSurface：cardBackground.opacity(.985) + cardBorder stroke + z1。
+   single（front）一段；folded（back）= top 段 + answer 段（中間摺縫 foldJoinRadius 4）。 */
+.tr-card {
+  position: relative;
+  z-index: 1;
+  background: color-mix(in srgb, var(--card-bg) 98.5%, transparent);
+  border: 1px solid var(--card-border); /* borderOpacity active≈.72 已含在 --card-border alpha */
+  border-radius: var(--radius-card); /* 8 */
+  box-shadow: var(--elevation-z1);
+}
+
+.tr-card-single {
+  /* promote 起姿態：active slot scale .96 y+22 → snapshot 為 settled（identity）。 */
+  min-height: 138px; /* frontMinHeight 120 + fold padding 影響後的 measured 卡高 */
+}
+
+/* folded：top 段下緣為摺縫（join radius 4），answer 段獨立 stroke。以單一容器 +
+   內部分隔近似；摺縫 chevron pill 騎在接合處。 */
+.tr-card-folded {
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.tr-fold-top {
+  position: relative;
+  background: color-mix(in srgb, var(--card-bg) 98.5%, transparent);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card) var(--radius-card) 4px 4px; /* top: card 8 / bottom: foldJoinRadius 4 */
+  box-shadow: var(--elevation-z1);
+}
+
+/* ── Front body（reviewCardFront）─────────────────────────────────
+   VStack(spacing foldSectionSpacing 24)；padding foldPadding 28 + top foldHintBottomInset 22。 */
+.tr-front-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px; /* foldSectionSpacing */
+  padding: 28px; /* foldPadding */
+  padding-top: 89px; /* measured：single front word 頂對齊 iOS 195pt（585px）；foldPadding+hint 之上另含卡內上緣留白 */
+  min-height: 120px; /* frontMinHeight */
+  box-sizing: border-box;
+}
+
+/* folded front 段：word 對齊 iOS 203.7pt（611px），但卡高需維持讓下方 answer 卡
+   translation 落在 343pt。故 top 收、bottom 補（卡高不變，word 上移）。 */
+.tr-card-folded .tr-fold-top .tr-front-body {
+  padding-top: 72px; /* measured：folded word 落點對齊 iOS 203.7pt 附近 */
+  padding-bottom: 72px; /* 維持 answer translation 落點 343pt */
+}
+
+/* folded（已揭示）的 front prompt 去強調為 muted grey —— measured：iOS folded
+   front word 主色 #9B9A97（tertiary），非 primary 黑。recognition word /
+   production translation / 詞性 / cloze 例句皆轉淡。 */
+.tr-card-folded .tr-front-word,
+.tr-card-folded .tr-front-translation {
+  color: var(--text-tertiary);
+}
+.tr-card-folded .tr-pos {
+  color: var(--text-quaternary);
+}
+.tr-card-folded .tr-front-example {
+  color: var(--text-tertiary);
+}
+
+/* single 卡（front）右側為 chrome 保留空間（frontChromeReserveWidth = 44*2 + inlineGap 8）。 */
+.tr-card-single .tr-front-body {
+  padding-right: 96px; /* 44*2 + 8 trailing reserve */
+}
+
+.tr-front-prompt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px; /* AppSpacing.s2 */
+  flex-wrap: wrap;
+}
+
+/* recognition front word — systemMono(30 semibold)（≤12 字）。 */
+.tr-front-word {
+  font-family: var(--font-mono);
+  font-size: 30px; /* counterFontSizeXLarge */
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+
+/* production front prompt — body(17) semibold，primaryTextMuted。 */
+.tr-front-translation {
+  font-family: var(--font-sans);
+  font-size: 17px; /* body */
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+/* 詞性 adj. — body(17) tertiary。 */
+.tr-pos {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* production front cloze 例句 — example(italic) secondary，blank 為 highlight 遮蔽。 */
+.tr-front-example {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 16px; /* example */
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* front chrome（喇叭 / 詳情）— overlay 右上，padding reviewCardPadding 28。 */
+.tr-front-chrome {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 8px; /* inlineGap */
+  padding: 28px; /* reviewCardPadding */
+}
+
+.tr-card-single .tr-front-chrome {
+  padding-top: 89px; /* 對齊 front-body top */
+}
+
+.tr-front-chrome .tr-chrome-btn {
+  width: 44px;
+  height: 44px;
+}
+
+/* folded 時 front 仍為 ReviewFoldSurface .top 段：保留 frontMinHeight 與 padding
+   （iOS 靜態快照 fold 全開 progress=1，front 段以正常尺寸呈現，只是下緣為摺縫）。
+   measured：folded front word 頂 ≈ 611px(dpr3)=203.7pt，與 single front 同源。
+   production folded front 仍帶 cloze 例句（與 single 同），故不縮字級、不收 gap。 */
+.tr-front-chrome-folded {
+  padding-top: 72px; /* 對齊 folded front-body top */
+}
+
+/* chevron pill（ReviewFoldChevronPill）— 騎在 top/answer 摺縫，48×30 外框內含
+   34×18 capsule。offset y = -chevronButtonSize/2 = -15。 */
+.tr-chevron-pill {
+  position: relative;
+  z-index: 2;
+  width: 34px;
+  height: 18px;
+  margin: -9px auto -9px; /* 騎在摺縫上下各露一半 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--divider) 58%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+}
+
+/* ── Answer body（combinedAnswerContent）─────────────────────────
+   ReviewFoldSurface .bottom：獨立 stroke 卡，VStack(spacing 24)，padding 28。 */
+.tr-fold-bottom {
+  background: color-mix(in srgb, var(--card-bg) 98.5%, transparent);
+  border: 1px solid var(--card-border);
+  border-radius: 4px 4px var(--radius-card) var(--radius-card); /* top: foldJoinRadius 4 / bottom: card 8 */
+  box-shadow: var(--elevation-z1);
+}
+
+.tr-answer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px; /* foldSectionSpacing */
+  padding: 28px; /* foldPadding */
+  min-height: 188px; /* answerMinHeight */
+  box-sizing: border-box;
+}
+
+/* tier label row — HStack(spacing 6) trailing。VocabTierLabel = warning 色小字。 */
+.tr-tier-row {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 14px;
+}
+
+.tr-tier {
+  font-family: var(--font-sans);
+  font-size: 11px; /* caption2 */
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--warning);
+}
+
+/* recognition 答案 = serif 翻譯（reviewWord ≈ serif 28 bold）。
+   measured：28px RMSE 最低（30px 過大、行寬反而抬升 glyph-edge 誤差）。 */
+.tr-answer-word-serif {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  /* 不加 text-stroke：measured 顯示 stroke（0.6/0.3）反而比 Songti 字形更粗、抬 RMSE；
+     font-weight:700 + Songti cascade 已是最接近 iOS 的字重。 */
+}
+
+/* production 答案 = mono 英文單字（systemMono 28 semibold，≤12 字）。 */
+.tr-answer-word-mono {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+/* CardSectionDivider — hairline，full width。 */
+.tr-answer-divider {
+  height: 0.34px; /* dpr3 hairline */
+  background: var(--divider);
+}
+
+/* ── Link strip（reviewLinkStrip）─────────────────────────────────
+   HStack：paperclip + groups + spacer + plus。 */
+.tr-linkstrip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px; /* inlineGap */
+}
+
+.tr-linkstrip-clip {
+  color: var(--text-tertiary);
+  padding-top: 2px; /* answerHintTopPadding */
+  flex: none;
+}
+
+.tr-linkstrip-groups {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tr-linkstrip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px; /* AppSpacing.s1 */
+  flex-wrap: wrap;
+}
+
+.tr-link-label {
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  color: var(--text-tertiary);
+}
+
+.tr-link-item-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.tr-link-item {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600; /* monoEmphasis */
+  color: var(--text-primary);
+}
+
+.tr-link-sep {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-quaternary);
+}
+
+.tr-link-overflow {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-quaternary);
+}
+
+.tr-linkstrip-add {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* ── Answer example / explanation ────────────────────────────────
+   例句 = example(serif italic 16) secondary，highlight mark；釋義 = body/caption。 */
+.tr-answer-example {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 16px; /* example serif italic；measured 16px wrap 行數與 iOS 最接近 */
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.tr-ex-mark {
+  background: var(--accent-subtle);
+  font-weight: 600;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* cloze blank — 遮蔽空格（無底色，等寬底線感）。 */
+.tr-ex-blank {
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.tr-answer-explanation {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px; /* measured：釋義段 ≈ 13pt */
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.tr-expand-hint {
+  display: block;
+  text-align: center;
+  margin-top: 14px; /* measured：hint 距卡底 ≈ 14pt */
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  color: color-mix(in srgb, var(--text-quaternary) 72%, transparent); /* dimTextOpacity .72 */
+}
+
+/* ── Bottom toolbar ───────────────────────────────────────────────
+   pageBackground + z2 up elevation；padding h=20 v=12。前進/評分列。 */
+.tr-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px; /* toolbarVerticalInset / toolbarHorizontalInset */
+  background: var(--page-bg);
+  box-shadow: var(--elevation-z2);
+}
+
+.tr-nav {
+  display: flex;
+  gap: 8px; /* inlineGap */
+}
+
+.tr-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-secondary);
+}
+
+.tr-feedback {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px; /* sectionHeaderGap */
+}
+
+/* vocabAction button — 圓角填色膠囊，destructive / success 淡底 + 同色字。 */
+.tr-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px; /* AppSpacing.s1 */
+  min-width: 92px; /* actionMinWidth */
+  height: 56px; /* measured：按鈕高 ≈ 168px(dpr3) ≈ 56pt */
+  padding: 0 18px;
+  border-radius: var(--radius-control); /* 6 */
+  font-family: var(--font-sans);
+  font-size: 17px; /* body */
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.tr-feedback-forgot {
+  background: var(--destructive-bg);
+  color: var(--destructive);
+}
+
+.tr-feedback-remembered {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.tr-feedback-count {
+  font-family: var(--font-mono);
+  font-size: 10px; /* monoLabel */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
