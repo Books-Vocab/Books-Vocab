@@ -19,27 +19,3 @@ body {
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
 }
-
-/* --- Phase-1 token probe (replaced by real surfaces) --- */
-
-.token-probe {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-5);
-}
-
-.token-probe-title {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--text-h1);
-  font-weight: 500;
-  line-height: var(--leading-heading);
-  color: var(--text-primary);
-}
-
-.token-probe-body {
-  margin: 0;
-  font-size: var(--text-caption);
-  color: var(--text-tertiary);
-}
