@@ -1,0 +1,61 @@
+/* ============================================================
+   KG Web @font-face — surface-local, NOT part of the shared token CSS.
+   Font *families* are declared as tokens (--font-sans/serif/italic/mono in
+   kg-tokens.css); the woff2 URLs are surface-specific, so each web surface
+   ships its own @font-face (same convention as chrome-extension/shared/
+   fonts.css). Athelas (--font-serif primary) is an Apple OS font — resolved
+   natively on Apple-platform browsers, which are the parity acceptance
+   baseline; elsewhere the token cascade falls through to Noto Serif TC.
+   ============================================================ */
+
+/* --- Sans (ElmsSans) ------------------------------------------------------- */
+
+@font-face {
+  font-family: 'ElmsSans';
+  src: url('/fonts/ElmsSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ElmsSans';
+  src: url('/fonts/ElmsSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Serif italic / display (CormorantGaramond) ----------------------------- */
+
+@font-face {
+  font-family: 'CormorantGaramond';
+  src: url('/fonts/CormorantGaramond-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CormorantGaramond';
+  src: url('/fonts/CormorantGaramond-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CormorantGaramond';
+  src: url('/fonts/CormorantGaramond-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CormorantGaramond';
+  src: url('/fonts/CormorantGaramond-Italic.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: italic;
+  font-display: swap;
+}
