@@ -34,6 +34,13 @@ struct SettingsBookSyncStateTests {
         #expect(state?.detail == "CKError 引導測試")
     }
 
+    /// 空錯誤訊息 normalize 成 nil（防渲染空 caption 行；monitor 端另有 fallback）。
+    @Test func failedWithEmptyMessageDropsDetail() {
+        let state = SettingsPresenterState.BookSyncState.from(phase: .failed(""))
+        #expect(state?.text == L10n.string("同步異常"))
+        #expect(state?.detail == nil)
+    }
+
     @Test func settledShowsSynced() {
         let state = SettingsPresenterState.BookSyncState.from(phase: .settled)
         #expect(state?.text == L10n.string("已同步"))

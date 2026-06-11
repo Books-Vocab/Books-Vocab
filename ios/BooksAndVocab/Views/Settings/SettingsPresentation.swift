@@ -119,7 +119,13 @@ extension SettingsPresenterState.BookSyncState {
         case .restoring:
             return .init(text: L10n.string("還原中…"), detail: nil, tone: .progress)
         case .failed(let message):
-            return .init(text: L10n.string("同步異常"), detail: message, tone: .warning)
+            // 空字串 normalize 成 nil，避免渲染空 caption 行
+            //（monitor 端有 fallback 文案，此為防禦線）。
+            return .init(
+                text: L10n.string("同步異常"),
+                detail: message.isEmpty ? nil : message,
+                tone: .warning
+            )
         case .settled:
             return .init(text: L10n.string("已同步"), detail: nil, tone: .success)
         }
