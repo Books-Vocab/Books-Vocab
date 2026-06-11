@@ -93,6 +93,15 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=today-review&scenario=back')).toEqual({
       surface: 'today-review',
       scenario: 'back',
+  it('routes podcast surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=podcast&scenario=preview-player&appearance=dark')).toEqual({
+      surface: 'podcast',
+      scenario: 'preview-player',
+      appearance: 'dark',
+    })
+    expect(resolveHarnessConfig('?surface=podcast&scenario=locked-gate')).toEqual({
+      surface: 'podcast',
+      scenario: 'locked-gate',
       appearance: 'light',
     })
   })
@@ -106,6 +115,10 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=today-review&scenario=logged-out')).toEqual({
       surface: 'today-review',
       scenario: 'front',
+  it('podcast defaults to its first scenario (preview-player) when scenario belongs to another surface', () => {
+    expect(resolveHarnessConfig('?surface=podcast&scenario=logged-out')).toEqual({
+      surface: 'podcast',
+      scenario: 'preview-player',
       appearance: 'light',
     })
   })
