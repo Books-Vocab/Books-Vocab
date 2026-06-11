@@ -151,6 +151,16 @@ async def _step_embed_and_judge(
             logger.info("[%s] Embedded %d cards, added to pending judge", uid, len(newly_embedded))
 
     # ── Phase 2: Judge pending cards ──
+    # Per-user auto_link 開關(user config 的 auto_link group):關閉時不消費
+    # pending_judge——新卡仍照常 embed 並入列(上方 Phase 1),重新開啟後下一輪
+    # pipeline 續判,不丟失。缺省/壞型別 fallback enabled=True 向後相容,語意
+    # 對齊 user_handlers._build_user_config_response。
+    user_config = user.get("config")
+    auto_link_cfg = user_config.get("auto_link") if isinstance(user_config, dict) else None
+    if isinstance(auto_link_cfg, dict) and not auto_link_cfg.get("enabled", True):
+        logger.info("[%s] Auto-link disabled by user config; judge skipped", uid)
+        return 0
+
     pending = graph.pop_pending_judge()
     if not pending:
         logger.info("[%s] No pending cards to judge", uid)
