@@ -24,6 +24,24 @@
   font-display: swap;
 }
 
+/* --- Serif primary (CrimsonPro — variable, SIL OFL) ------------------------- */
+
+@font-face {
+  font-family: 'CrimsonPro';
+  src: url('../fonts/CrimsonPro.woff2') format('woff2');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CrimsonPro';
+  src: url('../fonts/CrimsonPro-Italic.woff2') format('woff2');
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* --- Serif (CormorantGaramond) — brand voice, mirrors website -------------- */
 
 @font-face {

@@ -24,12 +24,15 @@
 @font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-SemiBold.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: 'CormorantGaramond'; src: url('/static/fonts/CormorantGaramond-Italic.woff2') format('woff2'); font-weight: 400 600; font-style: italic; font-display: swap; }
+@font-face { font-family: 'CrimsonPro'; src: url('/static/fonts/CrimsonPro.woff2') format('woff2'); font-weight: 200 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'CrimsonPro'; src: url('/static/fonts/CrimsonPro-Italic.woff2') format('woff2'); font-weight: 200 900; font-style: italic; font-display: swap; }
 
 /* --- Site-local tokens ----------------------------------------------------- */
-/* Web heading serif: lead with the self-hosted brand serif, then the iOS
-   system serif (unavailable on web), then a CJK serif for 中文 headings. */
+/* Web heading serif: lead with the CormorantGaramond display serif, then the
+   self-hosted CrimsonPro text serif (replaces the old Apple-OS Athelas), then a
+   CJK serif for 中文 headings. */
 :root {
-  --site-serif: 'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif;
+  --site-serif: 'CormorantGaramond', 'CrimsonPro', 'Noto Serif TC', 'Songti TC', Georgia, serif;
   --site-measure: 42rem;          /* prose column width */
   --site-nav-h: 56px;
 }
@@ -152,7 +155,7 @@ body.kg-surface {
 .site-page h1 {
   font-family: var(--site-serif);
   font-size: var(--text-hero); line-height: var(--leading-display);
-  font-weight: 700;                       /* match iOS Athelas-Bold heft (scan #5) */
+  font-weight: 700;                       /* match iOS CrimsonPro-Bold heft (scan #5) */
   color: var(--text-primary);
   margin-bottom: var(--sp-3);
 }
