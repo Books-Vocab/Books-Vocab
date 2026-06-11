@@ -46,10 +46,13 @@ async function main() {
   if (!NO_BUILD) build();
   mkdirSync(SHOTS, { recursive: true });
 
-  const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-    cwd: WEB_DIR,
-    stdio: 'ignore',
-  });
+  // spawn the vite binary directly — an npx/npm wrapper doesn't reliably
+  // forward SIGTERM, leaving a zombie server holding the strict port.
+  const server = spawn(join(WEB_DIR, 'node_modules', '.bin', 'vite'),
+    ['preview', '--port', String(PORT), '--strictPort'], {
+      cwd: WEB_DIR,
+      stdio: 'ignore',
+    });
   try {
     // vite preview binds the IPv6 loopback; `localhost` resolves to it, 127.0.0.1 does not.
     const base = `http://localhost:${PORT}`;

@@ -12,6 +12,7 @@ export function BookCard({ book }: { book: BookFixture }) {
     <article className="book-card">
       <div className="book-card-cover">
         <div className="book-card-placeholder">
+          {/* measured：iOS 為 AppFonts.h1(28pt) 字級的 SF symbol 渲染框，PNG 實測 ≈34pt 寬 */}
           <BookIcon size={34} className="book-card-placeholder-icon" />
           <span className="book-card-placeholder-title">{book.title}</span>
           {book.format !== 'epub' && (

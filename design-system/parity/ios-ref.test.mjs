@@ -17,11 +17,14 @@ import { PARITY as CHROME_PARITY } from '../../chrome-extension/tools/parity-man
 import { PARITY as WEB_PARITY } from '../../web/tools/parity-manifest.mjs';
 
 const MANIFESTS = [
-  ['chrome', CHROME_PARITY],
-  ['web', WEB_PARITY],
+  // requiresParams: web cases carry `params` driving the harness capture URL
+  // (?scenario/?appearance); a typo would silently fall back to the harness
+  // defaults and shoot the wrong scenario without ever failing.
+  ['chrome', CHROME_PARITY, { requiresParams: false }],
+  ['web', WEB_PARITY, { requiresParams: true }],
 ];
 
-for (const [consumer, PARITY] of MANIFESTS) {
+for (const [consumer, PARITY, { requiresParams }] of MANIFESTS) {
   test(`${consumer}: every PARITY ref is null or fully addressed {surface, scenario, appearance}`, () => {
     assert.ok(PARITY.length > 0);
     const ids = new Set();
@@ -32,6 +35,12 @@ for (const [consumer, PARITY] of MANIFESTS) {
       assert.equal(typeof p.ref.surface, 'string', `${p.case}: ref.surface`);
       assert.equal(typeof p.ref.scenario, 'string', `${p.case}: ref.scenario`);
       assert.ok(['light', 'dark'].includes(p.ref.appearance), `${p.case}: ref.appearance`);
+    }
+    if (requiresParams) {
+      for (const p of PARITY) {
+        assert.equal(typeof p.params?.scenario, 'string', `${p.case}: params.scenario`);
+        assert.ok(['light', 'dark'].includes(p.params?.appearance), `${p.case}: params.appearance`);
+      }
     }
   });
 }

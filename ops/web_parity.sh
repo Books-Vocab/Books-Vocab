@@ -29,6 +29,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+usage() {
+  cat <<'USAGE'
+Usage: ops/web_parity.sh [--audit] [--only <case-substring>] [--no-build]
+  --audit      also run the per-case drill-down audit (diff/zoom/palette/metrics)
+  --only SUB   restrict the audit to cases whose name contains SUB
+  --no-build   skip the vite build (use when web/dist is fresh)
+Env: KG_CATALOG_ROOT  catalog snapshot root override (worktrees have an empty build/)
+USAGE
+}
+
 AUDIT=0
 ONLY=""
 NO_BUILD=0
@@ -37,7 +47,8 @@ while [[ $# -gt 0 ]]; do
     --audit) AUDIT=1 ;;
     --only) ONLY="${2:?--only needs a case substring}"; shift ;;
     --no-build) NO_BUILD=1 ;;
-    *) echo "unknown arg: $1" >&2; exit 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
