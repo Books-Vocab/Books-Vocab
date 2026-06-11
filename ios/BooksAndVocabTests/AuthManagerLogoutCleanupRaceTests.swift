@@ -12,31 +12,37 @@ import Testing
 ///
 /// 契約：`waitForPendingLocalDataCleanup()` 必須懸掛到 logout 排程的 cleanup
 /// 完成為止 —— post-login sync（BooksAndVocabApp onChange(isLoggedIn)）以它為
-/// 前置 gate，保證 full sync 讀到的是已清空的 boundary。
+/// 前置 gate，保證 full sync 讀到的是已清空的 boundary。連續多次 logout 時
+/// cleanup 必須 chain（後一次等前一次收尾），否則兩個 cleanup 並行互踩，
+/// gate 只追最新 handle 會漏等仍 in-flight 的前一次。
 @MainActor
 struct AuthManagerLogoutCleanupRaceTests {
 
-    /// clearLocalData 進場後懸掛在閘門上，直到測試顯式放行 —— 模擬慢速 cleanup
-    /// 與快速重登的競態窗口。事件順序記錄在 MainActor 上供確定性斷言。
+    /// 每次 clearLocalData 進場領一個遞增 run 編號並懸掛在自己的閘門上，直到
+    /// 測試顯式 release(run) —— 模擬慢速 cleanup 與快速重登的競態窗口，並支援
+    /// 多次 cleanup 的順序斷言。事件順序記錄在 MainActor 上供確定性斷言。
     private final class GatedCleaner: LocalDataClearing, @unchecked Sendable {
         @MainActor private(set) var events: [String] = []
-        @MainActor private var gateContinuation: CheckedContinuation<Void, Never>?
-        @MainActor private var startedContinuation: CheckedContinuation<Void, Never>?
-        @MainActor private var hasStarted = false
+        @MainActor private var nextRun = 0
+        @MainActor private var gates: [Int: CheckedContinuation<Void, Never>] = [:]
+        @MainActor private var startWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+        @MainActor private var startedRuns: Set<Int> = []
 
         func clearLocalData(container: ModelContainer, reason: String) async {
-            await MainActor.run {
-                events.append("cleanup_started")
-                hasStarted = true
-                startedContinuation?.resume()
-                startedContinuation = nil
+            let run: Int = await MainActor.run {
+                nextRun += 1
+                let run = nextRun
+                events.append("cleanup_\(run)_started")
+                startedRuns.insert(run)
+                startWaiters.removeValue(forKey: run)?.resume()
+                return run
             }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 Task { @MainActor in
-                    gateContinuation = continuation
+                    gates[run] = continuation
                 }
             }
-            await MainActor.run { events.append("cleanup_finished") }
+            await MainActor.run { events.append("cleanup_\(run)_finished") }
         }
 
         @MainActor
@@ -45,18 +51,17 @@ struct AuthManagerLogoutCleanupRaceTests {
         }
 
         @MainActor
-        func waitUntilStarted() async {
-            if hasStarted { return }
-            await withCheckedContinuation { startedContinuation = $0 }
+        func waitUntilStarted(_ run: Int) async {
+            if startedRuns.contains(run) { return }
+            await withCheckedContinuation { startWaiters[run] = $0 }
         }
 
         @MainActor
-        func release() async {
-            // gateContinuation 由 clearLocalData 內的 Task hop 設置；輪詢到位後放行。
-            while gateContinuation == nil { await Task.yield() }
-            events.append("cleanup_released")
-            gateContinuation?.resume()
-            gateContinuation = nil
+        func release(_ run: Int) async {
+            // gates[run] 由 clearLocalData 內的 Task hop 設置；輪詢到位後放行。
+            while gates[run] == nil { await Task.yield() }
+            events.append("cleanup_\(run)_released")
+            gates.removeValue(forKey: run)?.resume()
         }
     }
 
@@ -108,7 +113,7 @@ struct AuthManagerLogoutCleanupRaceTests {
         let manager = makeManager(priorUserId: "user-a", cleaner: cleaner)
 
         manager.logout(reason: "race_test")
-        await cleaner.waitUntilStarted()
+        await cleaner.waitUntilStarted(1)
 
         // 模擬競態窗口中的快速重登 + post-login gate。
         manager.login(userId: "user-a", token: "fresh-token")
@@ -117,13 +122,13 @@ struct AuthManagerLogoutCleanupRaceTests {
             cleaner.record("wait_finished")
         }
 
-        await cleaner.release()
+        await cleaner.release(1)
         await waiter.value
 
         #expect(cleaner.events == [
-            "cleanup_started",
-            "cleanup_released",
-            "cleanup_finished",
+            "cleanup_1_started",
+            "cleanup_1_released",
+            "cleanup_1_finished",
             "wait_finished"
         ], "wait 必須排在 cleanup 完成之後，實際順序：\(cleaner.events)")
     }
@@ -138,17 +143,42 @@ struct AuthManagerLogoutCleanupRaceTests {
         #expect(cleaner.events.isEmpty)
     }
 
-    /// 連續兩次 logout：wait 跟的是**最新**一次排程的 cleanup。
-    @Test func waitTracksLatestLogoutCleanup() async {
+    /// 連續兩次 logout（logout₁ → 重登 → logout₂ → 重登）：cleanup 必須 chain ——
+    /// cleanup₂ 不得在 cleanup₁ 完成前動工（兩個並行 cleanup 各持獨立
+    /// BackgroundSyncActor，互踩會重演 000287：後完成的把新 session 拉回的
+    /// 資料再清一遍）；且 gate 雖只追最新 handle，chain 保證等到 handle₂
+    /// 即隱含 cleanup₁ 也已收尾。
+    @Test func secondLogoutCleanupWaitsForFirstToFinish() async {
         let cleaner = GatedCleaner()
         let manager = makeManager(priorUserId: "user-a", cleaner: cleaner)
 
         manager.logout(reason: "first")
-        await cleaner.waitUntilStarted()
-        await cleaner.release()
-        await manager.waitForPendingLocalDataCleanup()
+        await cleaner.waitUntilStarted(1)
 
-        let finishedBeforeSecond = cleaner.events.filter { $0 == "cleanup_finished" }.count
-        #expect(finishedBeforeSecond == 1)
+        // cleanup₁ 仍懸掛中：快速重登 → 再登出 → 再重登。
+        manager.login(userId: "user-a", token: "t1")
+        manager.logout(reason: "second")
+        manager.login(userId: "user-a", token: "t2")
+
+        let waiter = Task { @MainActor in
+            await manager.waitForPendingLocalDataCleanup()
+            cleaner.record("wait_finished")
+        }
+
+        await cleaner.release(1)
+        // chain 契約：cleanup₂ 要等 cleanup₁ 完成才 started。
+        await cleaner.waitUntilStarted(2)
+        await cleaner.release(2)
+        await waiter.value
+
+        #expect(cleaner.events == [
+            "cleanup_1_started",
+            "cleanup_1_released",
+            "cleanup_1_finished",
+            "cleanup_2_started",
+            "cleanup_2_released",
+            "cleanup_2_finished",
+            "wait_finished"
+        ], "cleanup 必須 chain、wait 必須殿後，實際順序：\(cleaner.events)")
     }
 }
