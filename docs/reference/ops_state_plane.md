@@ -15,7 +15,7 @@ scope:
   - backend/src/kg/ops_world_projection.py
   - backend/src/kg/ops_world_expectation.py
   - ops/capture_profile.py
-verified_against: 6c68bc07
+verified_against: dfc5401f
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -63,7 +63,7 @@ verified_against: 6c68bc07
 
 **steps transform 的覆蓋邊界**(`ops_world_expectation._derive_config`,`:80-97`):
 - **能導**:`user-config-set --review-clock paused|running` → `review_clock.is_paused`。
-- **刻意不導**:`--active-notebook`(name→id 解析,`:84` 註解)、`--sort-order`(projection 無 surface)。這些 step 仍會真執行落地,只是不進導出的 expectation——靠 real-parity 的真讀盤側驗證,不靠靜態斷言。
+- **刻意不導**:`--active-notebook`(name→id 解析,`:84` 註解)、`--sort-order`(projection 無 surface)、`--auto-link`(trivially derivable 但目前無 scenario 斷言需求;要導時擴 `_derive_config` 即可)。這些 step 仍會真執行落地,只是不進導出的 expectation——靠 real-parity 的真讀盤側驗證,不靠靜態斷言。
 
 要擴 scenario 能力,**擴 `materialize.steps[]` + `derive_expectation` 的 transform 建模**,不另起爐灶。
 

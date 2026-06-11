@@ -63,7 +63,7 @@ allowed-tools: Bash, Read, Grep
 ```bash
 ops-cli user-quota <uid>                  # 24h 額度 + 逐時明細
 ops-cli user-stats <uid>                  # 單字庫統計
-ops-cli user-config <uid>                 # user config 唯讀（translation/review_clock/review_mode/vocab_ui active notebook）
+ops-cli user-config <uid>                 # user config 唯讀（translation/review_clock/review_mode/vocab_ui active notebook/auto_link）
 ops-cli quota-overview                     # 全用戶 24h 額度總覽
 ops-cli active-users [hours]              # 近 N 小時活躍用戶
 ops-cli card-find <uid> <substring>       # byte-exact 子字串搜尋 card.content（免寫 SQL；ASCII case-insensitive；repr 顯示，trailing comma/空白可見）
@@ -123,6 +123,7 @@ ops-edit user-config-set <uid> [--translation-source L] [--translation-target L]
                          [--custom-minimum-interval-hours H]
                          [--custom-maximum-interval-hours H]
                          [--active-notebook <id|name>]           # settings/active notebook 行銷造景
+                         [--auto-link on|off]                    # judge pipeline 自動連結開關
 ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover] [--sort-order N]
 ops-edit notebook-delete <uid> <id|name> [--cascade]             # 軟刪(default 不可刪;非空須 --cascade 一併軟刪卡,否則拒絕)
 ops-edit link-add <uid> <from> <to> --kind contrasts_with|shares_usage --confidence C --reason R [--notebook] [--if-exists keep|update]
