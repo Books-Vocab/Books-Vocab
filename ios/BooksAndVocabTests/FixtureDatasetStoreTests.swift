@@ -153,5 +153,88 @@ struct FixtureDatasetStoreTests {
             #expect(todayReviewModel.state.progressText == "4 / 12")
         }
     }
+
+    @Test @MainActor func externalDatasetOverridesNotebookAndPodcastSeeds() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v1",
+          "datasetID": "test-notebook-podcast",
+          "notebook": {
+            "populated": {
+              "notebooks": [
+                {
+                  "remoteId": "default",
+                  "name": "外部單字本",
+                  "isDefault": true,
+                  "sortOrder": 0,
+                  "entries": [
+                    { "word": "serendipity", "translation": "機緣巧合" }
+                  ]
+                },
+                {
+                  "remoteId": "nb-external",
+                  "name": "外部第二本",
+                  "sortOrder": 1,
+                  "entries": []
+                }
+              ]
+            }
+          },
+          "podcast": {
+            "shelf_continue": {
+              "series": {
+                "remoteId": "s-external",
+                "title": "External Series",
+                "hostNames": ["Ava Chen"],
+                "colorHex": "#112233",
+                "coverPattern": "waves"
+              },
+              "episodes": [
+                { "episodeNumber": 1, "title": "External Episode", "durationSec": 900, "lastPlayedTime": 300 },
+                { "episodeNumber": 2, "title": "Unstarted Episode" }
+              ]
+            }
+          }
+        }
+        """
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            #expect(FixtureDatasetStore.debugSummary() == "test-notebook-podcast @ testing-override")
+
+            let notebookSeed = FixtureDatasetStore.notebookSeed(for: .populated)
+            #expect(notebookSeed?.notebooks.count == 2)
+            #expect(notebookSeed?.notebooks.first?.name == "外部單字本")
+
+            let notebookModel = NotebookFixtures.renderModel(for: .populated)
+            #expect(notebookModel.notebooks.map(\.name) == ["外部單字本", "外部第二本"])
+            #expect(notebookModel.container != nil)
+
+            let podcastSeed = FixtureDatasetStore.podcastSeed(for: .shelfContinue)
+            #expect(podcastSeed?.series.title == "External Series")
+
+            let podcastModel = PodcastFixtures.renderModel(for: .shelfContinue)
+            #expect(podcastModel.series.title == "External Series")
+            #expect(podcastModel.items.count == 2)
+            #expect(podcastModel.items[0].progress?.lastPlayedTime == 300)
+            #expect(podcastModel.items[1].progress == nil)
+        }
+    }
+
+    @Test @MainActor func notebookAndPodcastFallBackToEmbeddedRecipes() throws {
+        try FixtureDatasetStore.withTestingData(nil) {
+            let notebookModel = NotebookFixtures.renderModel(for: .populated)
+            #expect(notebookModel.notebooks.count == 3)
+            #expect(notebookModel.notebooks.first?.isDefault == true)
+
+            let singleModel = NotebookFixtures.renderModel(for: .single)
+            #expect(singleModel.notebooks.count == 1)
+
+            let podcastModel = PodcastFixtures.renderModel(for: .shelfContinue)
+            #expect(podcastModel.items.count == 4)
+
+            let singleShelf = PodcastFixtures.renderModel(for: .shelfSingle)
+            #expect(singleShelf.items.count == 1)
+        }
+    }
 }
 #endif

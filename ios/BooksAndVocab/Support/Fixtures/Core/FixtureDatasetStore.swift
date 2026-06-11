@@ -9,6 +9,8 @@ struct FixtureDatasetDocument: Decodable {
     let settings: [String: SettingsFixtureSeed]
     let bookshelf: [String: BookshelfFixtureSeed]
     let todayReview: [String: TodayReviewSessionSeed]
+    let notebook: [String: NotebookFixtureSeed]
+    let podcast: [String: PodcastFixtureSeed]
 
     private enum CodingKeys: String, CodingKey {
         case schema
@@ -16,6 +18,8 @@ struct FixtureDatasetDocument: Decodable {
         case settings
         case bookshelf
         case todayReview
+        case notebook
+        case podcast
     }
 
     init(
@@ -23,13 +27,17 @@ struct FixtureDatasetDocument: Decodable {
         datasetID: String? = nil,
         settings: [String: SettingsFixtureSeed] = [:],
         bookshelf: [String: BookshelfFixtureSeed] = [:],
-        todayReview: [String: TodayReviewSessionSeed] = [:]
+        todayReview: [String: TodayReviewSessionSeed] = [:],
+        notebook: [String: NotebookFixtureSeed] = [:],
+        podcast: [String: PodcastFixtureSeed] = [:]
     ) {
         self.schema = schema
         self.datasetID = datasetID
         self.settings = settings
         self.bookshelf = bookshelf
         self.todayReview = todayReview
+        self.notebook = notebook
+        self.podcast = podcast
     }
 
     init(from decoder: Decoder) throws {
@@ -39,6 +47,8 @@ struct FixtureDatasetDocument: Decodable {
         settings = try container.decodeIfPresent([String: SettingsFixtureSeed].self, forKey: .settings) ?? [:]
         bookshelf = try container.decodeIfPresent([String: BookshelfFixtureSeed].self, forKey: .bookshelf) ?? [:]
         todayReview = try container.decodeIfPresent([String: TodayReviewSessionSeed].self, forKey: .todayReview) ?? [:]
+        notebook = try container.decodeIfPresent([String: NotebookFixtureSeed].self, forKey: .notebook) ?? [:]
+        podcast = try container.decodeIfPresent([String: PodcastFixtureSeed].self, forKey: .podcast) ?? [:]
     }
 }
 
@@ -67,6 +77,23 @@ enum FixtureDatasetStore {
         return document.todayReview[fixtureID.rawValue]
     }
 
+    static func notebookSeed(for fixtureID: NotebookFixtureID) -> NotebookFixtureSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.notebook[fixtureID.rawValue]
+    }
+
+    static func podcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.podcast[fixtureID.rawValue]
+    }
+
+    /// Decode a dataset document without going through the ambient load chain.
+    /// Used by contract tests (and any tooling) to fail loudly on malformed
+    /// datasets instead of relying on the silent embedded-recipe fallback.
+    static func decode(_ data: Data) throws -> FixtureDatasetDocument {
+        try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
+    }
+
     static func debugSummary() -> String {
         switch loadState() {
         case .absent:
@@ -87,7 +114,7 @@ enum FixtureDatasetStore {
     private static func loadState() -> LoadState {
         guard let source = loadSource() else { return .absent }
         do {
-            let document = try makeDecoder().decode(FixtureDatasetDocument.self, from: source.data)
+            let document = try decode(source.data)
             return .loaded(document, source: source.description)
         } catch {
             return .invalid(source: source.description, error: String(reflecting: error))
