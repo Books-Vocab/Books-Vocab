@@ -85,15 +85,33 @@ struct KGVocabPayloadTests {
     }
 
     /// Flag on + pre-Phase-5 本地列（sourceLang == nil）→ fallback 到
-    /// TranslationLanguage.currentSource/Target。只讀不寫全域，避免測試污染。
+    /// TranslationLanguage.currentSource/Target。顯式設定全域再斷言字面值
+    /// （snapshot/restore 比照 VocabularyEntryLangCaptureTests）：若只斷言
+    /// 「payload == 當下全域」會是半套套邏輯——實作誤讀其他來源而值恰好
+    /// 相同時測試照樣通過。
     @Test func flag_on_falls_back_to_current_languages_for_legacy_rows() {
+        let prevSource = TranslationLanguage.currentSource
+        let prevTarget = TranslationLanguage.currentTarget
+        let prevSourceTs = TranslationLanguage.sourceUpdatedAt
+        let prevTargetTs = TranslationLanguage.targetUpdatedAt
+        defer {
+            TranslationLanguage.restore(
+                source: prevSource,
+                sourceUpdatedAt: prevSourceTs,
+                target: prevTarget,
+                targetUpdatedAt: prevTargetTs
+            )
+        }
+        TranslationLanguage.currentSource = .ja
+        TranslationLanguage.currentTarget = .zhHant
+
         let entry = makeEntry()
         entry.sourceLang = nil
         entry.targetLang = nil
 
         let payload = KGService.vocabPayload(for: [entry], langPayloadEnabled: true)
-        #expect(payload[0].source_lang == TranslationLanguage.currentSource.rawValue)
-        #expect(payload[0].target_lang == TranslationLanguage.currentTarget.rawValue)
+        #expect(payload[0].source_lang == "ja")
+        #expect(payload[0].target_lang == TranslationLanguage.zhHant.rawValue)
     }
 
     // MARK: - source（書籍出處）組裝
