@@ -663,7 +663,7 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
 
     review_state = json.loads((tmp_path / "out" / "review_state.json").read_text(encoding="utf-8"))
     assert review_state["entries"][expected_asset_id]["status"] == "review"
-    review_html = (tmp_path / "out" / "review.html").read_text(encoding="utf-8")
+    review_html = (tmp_path / "out" / "UIreview.html").read_text(encoding="utf-8")
     assert "KG UI Gallery" in review_html
     # three-bucket lane model is the gallery's primary segmentation
     assert "畫面" in review_html and "浮層" in review_html and "組件" in review_html
@@ -779,7 +779,7 @@ def test_render_catalog_review_surfaces_graph_summary_in_html(tmp_path: Path):
         check=False,
     )
     assert render.returncode == 0, render.stderr
-    review_html = (output_root / "review.html").read_text(encoding="utf-8")
+    review_html = (output_root / "UIreview.html").read_text(encoding="utf-8")
     assert "SettingsPresenter" in review_html
     assert "SettingsPlanComparisonTable" in review_html
     assert "Settings Account Detail" in review_html
@@ -945,7 +945,7 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     manifest_after_mark = json.loads((output_root / "review_manifest.json").read_text(encoding="utf-8"))
     assert manifest_after_mark["stateCounts"]["shortlist"] == 1
     assert manifest_after_mark["items"][0]["reviewStatus"] == "shortlist"
-    review_html = (output_root / "review.html").read_text(encoding="utf-8")
+    review_html = (output_root / "UIreview.html").read_text(encoding="utf-8")
     assert '"stateCounts": {"shortlist": 1}' in review_html
 
     listed = subprocess.run(
@@ -1682,7 +1682,7 @@ def test_render_html_embeds_uitest_videos():
 def test_write_review_outputs_links_sibling_uitest_videos(tmp_path: Path):
     """write_review_outputs hard-links the archived recordings listed in the
     sibling build/snapshots/uitest-videos/index.json into <root>/uitest-videos/
-    so review.html stays self-contained for both file:// and the http server
+    so UIreview.html stays self-contained for both file:// and the http server
     (which serves --directory <root> and cannot reach ../)."""
     snapshots = tmp_path / "snapshots"
     archive = snapshots / "uitest-videos"
@@ -1711,7 +1711,7 @@ def test_write_review_outputs_links_sibling_uitest_videos(tmp_path: Path):
     sync_module.write_review_outputs(root, manifest, {"entries": {}})
     linked = root / "uitest-videos" / "20260611-120000-ui.mp4"
     assert linked.is_file() and linked.read_bytes() == b"fake-mp4"
-    html = (root / "review.html").read_text(encoding="utf-8")
+    html = (root / "UIreview.html").read_text(encoding="utf-8")
     assert "uitest-videos/20260611-120000-ui.mp4" in html
     # the persisted manifest stays a pure shot manifest — recordings are page data
     persisted = json.loads((root / "review_manifest.json").read_text(encoding="utf-8"))
@@ -1725,6 +1725,28 @@ def test_write_review_outputs_without_video_archive_is_clean(tmp_path: Path):
     root.mkdir()
     manifest = {"schema": "kg.catalog.review.v1", "surfaces": [], "items": []}
     sync_module.write_review_outputs(root, manifest, {"entries": {}})
-    html = (root / "review.html").read_text(encoding="utf-8")
+    html = (root / "UIreview.html").read_text(encoding="utf-8")
     assert "UITEST_VIDEOS = null" in html
     assert not (root / "uitest-videos").exists()
+
+
+def test_review_html_path_prefers_new_name_with_legacy_fallback(tmp_path: Path):
+    """The review page is UIreview.html (renamed 2026-06); roots generated
+    before the rename only carry review.html. Writers always target the new
+    name; readers (permalinks, serve, mark rewrite) must resolve a legacy root
+    to its existing file instead of pointing at a non-existent UIreview.html."""
+    artifacts_module = load_module(
+        "catalog_review_cli_artifacts", ROOT / "ops" / "catalog_review_cli_artifacts.py"
+    )
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    assert artifacts_module.review_html_path(fresh).name == "UIreview.html"
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / "review.html").write_text("old", encoding="utf-8")
+    assert artifacts_module.review_html_path(legacy).name == "review.html"
+    both = tmp_path / "both"
+    both.mkdir()
+    (both / "review.html").write_text("old", encoding="utf-8")
+    (both / "UIreview.html").write_text("new", encoding="utf-8")
+    assert artifacts_module.review_html_path(both).name == "UIreview.html"
