@@ -26,6 +26,81 @@
   position: relative;
 }
 
+/* 單一畫面容器（surface + 透明導航 overlay）。surface 本體完全不動，導航元素
+   全部疊在 overlay 層 → surface 維持 pixel-neutral。 */
+.shell-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* 導航 overlay：滿版透明層，本身不吃事件（pointer-events:none），只有其內的
+   按鈕（back / 熱區）重新開啟事件，故不遮擋 surface 視覺、不攔截非熱區點擊。 */
+.shell-nav-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.shell-nav-overlay > * {
+  pointer-events: auto;
+}
+
+/* 左上角 back chevron（push/pop 導航）。半透明 card-bg 圓底，疊在 nav header 左側。 */
+.shell-back {
+  position: absolute;
+  top: 10px;
+  left: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--card-bg) 78%, transparent);
+  color: var(--tint);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 透明點擊熱區：無視覺、只承接點擊（誠實導航圖的 UI 投影）。位置/尺寸對齊
+   surface 對應視覺區，但 background 透明 → 不改任何像素。 */
+.shell-hot {
+  position: absolute;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* bookshelf：書格滾動區（nav header 之下整片）→ 開書。 */
+.shell-hot-bookgrid {
+  top: 96px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* notebook：頂部 review action bar（今日複習 CTA 列）→ today-review。 */
+.shell-hot-nb-review {
+  top: 96px;
+  left: 0;
+  right: 0;
+  height: 56px;
+}
+
+/* notebook：卡片列表區（review bar 之下）→ 該本單字列表（vocabulary）。 */
+.shell-hot-nb-cards {
+  top: 152px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
 /* 未重寫 tab 的灰態 placeholder。 */
 .shell-placeholder {
   display: flex;
