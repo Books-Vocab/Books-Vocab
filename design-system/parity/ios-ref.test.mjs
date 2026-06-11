@@ -1,7 +1,10 @@
 /**
  * ios-ref.test.mjs — catalog-backed iOS reference resolution for parity tooling.
  *
- * Run: node --test chrome-extension/tools/ios-ref.test.mjs
+ * Also asserts the manifest contract for every parity consumer (chrome
+ * extension + web app) — manifest shape is a lib-level invariant.
+ *
+ * Run: node --test design-system/parity/ios-ref.test.mjs
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,20 +13,37 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { slugify, resolveCatalogRoot, resolveRef } from './ios-ref.mjs';
-import { PARITY } from './parity-manifest.mjs';
+import { PARITY as CHROME_PARITY } from '../../chrome-extension/tools/parity-manifest.mjs';
+import { PARITY as WEB_PARITY } from '../../web/tools/parity-manifest.mjs';
 
-test('every PARITY ref is null or fully addressed {surface, scenario, appearance}', () => {
-  assert.ok(PARITY.length > 0);
-  const ids = new Set();
-  for (const p of PARITY) {
-    assert.ok(p.case && !ids.has(p.case), `duplicate or missing case: ${p.case}`);
-    ids.add(p.case);
-    if (p.ref === null) continue;
-    assert.equal(typeof p.ref.surface, 'string', `${p.case}: ref.surface`);
-    assert.equal(typeof p.ref.scenario, 'string', `${p.case}: ref.scenario`);
-    assert.ok(['light', 'dark'].includes(p.ref.appearance), `${p.case}: ref.appearance`);
-  }
-});
+const MANIFESTS = [
+  // requiresParams: web cases carry `params` driving the harness capture URL
+  // (?scenario/?appearance); a typo would silently fall back to the harness
+  // defaults and shoot the wrong scenario without ever failing.
+  ['chrome', CHROME_PARITY, { requiresParams: false }],
+  ['web', WEB_PARITY, { requiresParams: true }],
+];
+
+for (const [consumer, PARITY, { requiresParams }] of MANIFESTS) {
+  test(`${consumer}: every PARITY ref is null or fully addressed {surface, scenario, appearance}`, () => {
+    assert.ok(PARITY.length > 0);
+    const ids = new Set();
+    for (const p of PARITY) {
+      assert.ok(p.case && !ids.has(p.case), `duplicate or missing case: ${p.case}`);
+      ids.add(p.case);
+      if (p.ref === null) continue;
+      assert.equal(typeof p.ref.surface, 'string', `${p.case}: ref.surface`);
+      assert.equal(typeof p.ref.scenario, 'string', `${p.case}: ref.scenario`);
+      assert.ok(['light', 'dark'].includes(p.ref.appearance), `${p.case}: ref.appearance`);
+    }
+    if (requiresParams) {
+      for (const p of PARITY) {
+        assert.equal(typeof p.params?.scenario, 'string', `${p.case}: params.scenario`);
+        assert.ok(['light', 'dark'].includes(p.params?.appearance), `${p.case}: params.appearance`);
+      }
+    }
+  });
+}
 
 function makeRoot(base, name, { totalImages = 1, devices } = {}) {
   const root = join(base, name);
