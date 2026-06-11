@@ -84,6 +84,15 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=reader&scenario=error-open-failed')).toEqual({
       surface: 'reader',
       scenario: 'error-open-failed',
+  it('routes today-review surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=today-review&scenario=production-back&appearance=dark')).toEqual({
+      surface: 'today-review',
+      scenario: 'production-back',
+      appearance: 'dark',
+    })
+    expect(resolveHarnessConfig('?surface=today-review&scenario=back')).toEqual({
+      surface: 'today-review',
+      scenario: 'back',
       appearance: 'light',
     })
   })
@@ -93,6 +102,10 @@ describe('resolveHarnessConfig', () => {
     expect(resolveHarnessConfig('?surface=reader&scenario=populated')).toEqual({
       surface: 'reader',
       scenario: 'reading-compact',
+  it('today-review defaults to its first scenario (front) when scenario belongs to another surface', () => {
+    expect(resolveHarnessConfig('?surface=today-review&scenario=logged-out')).toEqual({
+      surface: 'today-review',
+      scenario: 'front',
       appearance: 'light',
     })
   })
