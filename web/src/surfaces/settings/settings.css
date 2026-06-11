@@ -30,7 +30,6 @@
   font-family: var(--font-serif);
   font-size: 17px;
   font-weight: 700;
-  -webkit-text-stroke: 0.5px currentColor;
   /* measured：Catalog light 的 inline title 渲染為比背景亮的白字
      srgb(250,249,247)（nav bar 材質效果，非 primaryText）；dark 仍近 primary。 */
   color: #faf9f7;
@@ -185,7 +184,9 @@
 
 .settings-account-name {
   /* measured：Catalog 渲染 name cap-height 對應 ≈21px（非 sectionTitle 18），
-     單行截斷（截斷是 render 行為非 data） */
+     單行截斷（截斷是 render 行為非 data）。
+     註：第三刀對拍 iOS cap-height ≈86 image-px（量級偏大），但 bump 至 23/26px
+     在 pixel-RMSE 全數回退（serif AA halo 放大 > cap-height 對齊收益），維持 21px。 */
   font-family: var(--font-serif);
   font-size: 21px;
   font-weight: 700;
@@ -332,7 +333,6 @@
   font-size: 24px;
   font-weight: 700;
   line-height: 33px; /* measured：iOS title 行高 ~33 */
-  -webkit-text-stroke: 0.5px currentColor;
   color: var(--text-primary);
 }
 
