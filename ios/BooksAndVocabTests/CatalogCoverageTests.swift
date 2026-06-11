@@ -71,7 +71,7 @@ import Playbook
 
     @Test func filteredPlaybookByGroupKeepsOnlyRequestedStore() async throws {
         let playbook = CatalogScene.buildPlaybook(
-            filter: CatalogScene.filter(groups: ["Book Card"], scenarios: [])
+            filter: try CatalogScene.filter(groups: ["Book Card"], scenarios: [])
         )
         #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Book Card"])
         #expect((playbook.stores.first?.scenarios.count ?? 0) > 0)
@@ -79,10 +79,40 @@ import Playbook
 
     @Test func filteredPlaybookByScenarioKeepsOnlyRequestedScenario() async throws {
         let playbook = CatalogScene.buildPlaybook(
-            filter: CatalogScene.filter(groups: [], scenarios: ["Today Review/Front"])
+            filter: try CatalogScene.filter(groups: [], scenarios: ["Today Review/Front"])
         )
         #expect(Set(playbook.stores.map { $0.category.rawValue }) == ["Today Review"])
         #expect(playbook.stores.first?.scenarios.map { $0.title.rawValue } == ["Front"])
+    }
+
+    @Test func filterFailsFastOnScenarioMissingCategorySeparator() async throws {
+        // `-KG_CATALOG_SCENARIOS "Plan Picker"`（忘了 `Settings/` 前綴）過去被
+        // descriptor(from:) 的 compactMap 靜默吞掉 → filter 變空 → filteredPlaybook
+        // 把空 filter 當「無 scope」靜默跑全量 playbook。必須 fail-fast，
+        // 訊息含壞條目本身與格式提示 `<Category>/<Scenario Title>`。
+        do {
+            _ = try CatalogScene.filter(groups: [], scenarios: ["Plan Picker"])
+            Issue.record("filter must throw on scenario entries missing the <Category>/<Scenario Title> separator")
+        } catch {
+            let message = String(describing: error)
+            #expect(message.contains("Plan Picker"))
+            #expect(message.contains("<Category>/<Scenario Title>"))
+        }
+    }
+
+    @Test func filterFailsFastWhenAnyScenarioEntryIsMalformed() async throws {
+        // 部分條目打錯同樣不可靜默縮窄 scope（用戶以為兩個都會跑）。
+        do {
+            _ = try CatalogScene.filter(
+                groups: [],
+                scenarios: ["Today Review/Front", "Plan Picker"]
+            )
+            Issue.record("filter must throw when any scenario entry is malformed, not silently drop it")
+        } catch {
+            let message = String(describing: error)
+            #expect(message.contains("Plan Picker"))
+            #expect(!message.contains("Today Review/Front"))
+        }
     }
 
     // MARK: - Taxonomy contract (source-of-truth guards)
