@@ -1030,3 +1030,8 @@
 "vocab.highlight.color.blue" = "藍色";
 "vocab.highlight.color.sage" = "鼠尾草";
 "vocab.highlight.color.rose" = "玫瑰";
+
+/* Bookshelf — CloudKit 還原狀態線（2026-06-11 書庫透明化） */
+"正在確認 iCloud 書庫…" = "正在確認 iCloud 書庫…";
+"正在從 iCloud 取回書庫…" = "正在從 iCloud 取回書庫…";
+"iCloud 書庫同步異常・%@" = "iCloud 書庫同步異常・%@";

@@ -49,6 +49,10 @@ final class CloudKitMirroringMonitor {
         case settled
     }
 
+    // @ObservationIgnored 不變式：configure() 只能在 view tree 掛載前呼叫
+    // （AppBootstrap.run / AppStartupRecovery 換 container 重掛整棵樹），
+    // 掛載後改值不會觸發重繪。若未來出現「執行期切換 CloudKit」需求，
+    // 先拿掉 ignored 再說。
     @ObservationIgnored
     private var cloudKitEnabled = false
     private var hasImportSucceeded = false
