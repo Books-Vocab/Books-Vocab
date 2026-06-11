@@ -33,7 +33,8 @@ const magick = (args, opts = {}) =>
 
 /**
  * Pair every manifest case's shot with its Catalog reference and build one
- * contact sheet. Returns the sheet path (null when nothing composited).
+ * contact sheet. Returns the sheet path; exits non-zero when there are no
+ * shots or nothing composites (CLI tool semantics).
  *
  * @param {object} cfg
  * @param {Array}  cfg.parity     manifest entries {case, ref, note}
