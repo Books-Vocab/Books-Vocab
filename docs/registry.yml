@@ -757,7 +757,7 @@ documents:
       - perf_mark_convention_changed
     sources:
       - ios/BooksAndVocabUITests/
-      - ios/BooksAndVocab/Support/UITestFixtureSeed.swift
+      - ios/BooksAndVocab/Support/UITestFixtureSeed*.swift
       - ops/ios_test.sh
       - ops/catalog_contact_sheet.py
       - ops/plain_deadzone_lint.sh
