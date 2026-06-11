@@ -38,6 +38,12 @@ echo "$OUT" | grep -q -- "--age-limit 2" || fail "--age-limit 未透傳"
 OUT=$("$TOOL" collect --out /tmp/kg_la_test.logarchive --dry-run)
 echo "$OUT" | grep -q "/tmp/kg_la_test.logarchive.logarchive" && fail "collect 重複附加 .logarchive"
 echo "$OUT" | grep -q "/tmp/kg_la_test.logarchive" || fail "collect 丟失既有 .logarchive 路徑"
+# trailing slash → 先剝再判，不得產出隱藏 dot-bundle（/tmp/x/.logarchive）
+OUT=$("$TOOL" collect --out /tmp/kg_la_test/ --dry-run)
+echo "$OUT" | grep -q "/tmp/kg_la_test/.logarchive" && fail "trailing slash 產出 dot-bundle"
+echo "$OUT" | grep -q "/tmp/kg_la_test.logarchive" || fail "trailing slash 未正規化成 .logarchive"
+OUT=$("$TOOL" collect --out /tmp/kg_la_test.logarchive/ --dry-run)
+echo "$OUT" | grep -q "logarchive/.logarchive\|logarchive.logarchive" && fail "帶斜線的既有副檔名被雙層巢狀"
 
 # crashes → crash ls，depth 2（iOS 會把已讀 .ips retire 進 /Retired/，depth 1 誤判沒 crash）
 OUT=$("$TOOL" crashes --dry-run)
