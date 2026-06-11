@@ -12,7 +12,7 @@ struct FixtureDatasetDocument: Decodable {
     let notebook: [String: NotebookFixtureSeed]
     let podcast: [String: PodcastFixtureSeed]
 
-    private enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case schema
         case datasetID
         case settings
@@ -20,6 +20,13 @@ struct FixtureDatasetDocument: Decodable {
         case todayReview
         case notebook
         case podcast
+    }
+
+    /// Single source of truth for the top-level key set. Keyed decoding
+    /// silently ignores unknown keys, so contract tests diff a dataset's raw
+    /// keys against this to fail loudly on domain-level typos.
+    static var knownTopLevelKeys: Set<String> {
+        Set(CodingKeys.allCases.map(\.rawValue))
     }
 
     init(
@@ -126,9 +133,9 @@ enum FixtureDatasetStore {
             return (testingOverrideData, "testing-override")
         }
 
-        // Empty value counts as absent: the test harness exports the env var
-        // unconditionally (empty when no --dataset), and an empty string must
-        // not shadow the staged-file fallback below.
+        // Empty value counts as absent (defensive): `Data(base64Encoded: "")`
+        // is empty Data, not nil, so a stray empty export would otherwise
+        // shadow the staged-file fallback below and land in `.invalid`.
         if let rawValue = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey],
            !rawValue.isEmpty,
            let data = Data(base64Encoded: rawValue) {
