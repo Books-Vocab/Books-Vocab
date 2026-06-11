@@ -35,6 +35,7 @@ export const SURFACE_SCENARIOS = {
   // secondaryText / 並排對比）。首位 selection-pair = 預設 scenario。
   'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
   vocabulary: ['populated', 'single', 'empty'],
+  'today-review': ['front', 'back', 'production-front', 'production-back'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS
