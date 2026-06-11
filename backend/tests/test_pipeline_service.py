@@ -620,3 +620,99 @@ def test_step_embed_and_judge_runs_judge_concurrently():
         "Looks like _step_embed_and_judge is still sequential."
     )
     assert len(fake_judge.calls) >= 5, f"Expected at least 5 judge calls, got {len(fake_judge.calls)}"
+
+
+# ── auto_link 開關(user config auto_link group)──────────────────────────
+
+
+def test_step_embed_and_judge_skips_judge_when_auto_link_disabled():
+    """auto_link.enabled=False → Phase 2 不消費 pending_judge:待判集合保留、
+    judge LLM 不建構、不產生連結。重新開啟後下一輪 pipeline 可續判。"""
+    from kg.pipeline_service import _step_embed_and_judge
+
+    ids = ["c1", "c2"]
+    similar_map = {"c1": [("c2", 0.9)]}
+    cards = _CardsForLink(ids)
+    graph = _GraphWithPending(["c1"])
+
+    async def run():
+        import kg.judge as judge_mod
+        orig = judge_mod.Judge
+
+        class ExplodingJudge:
+            def __init__(self, llm, **kwargs):
+                raise AssertionError("Judge must not be constructed when auto_link is disabled")
+
+        judge_mod.Judge = ExplodingJudge
+        try:
+            user = {
+                "id": "u_al_off", "dir": None,
+                "config": {"auto_link": {"enabled": False, "updated_at": 1.0}},
+            }
+            return await _step_embed_and_judge(
+                "u_al_off", user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
+                client_factory=lambda provider: None,
+                logger=_FakeLogger(),
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = orig
+
+    created = asyncio.run(run())
+
+    assert created == 0
+    assert graph._pending == ["c1"], (
+        f"pending_judge must be preserved when auto_link disabled, got {graph._pending}"
+    )
+    assert graph.batch_links_called is False
+
+
+def test_step_embed_and_judge_still_embeds_when_auto_link_disabled():
+    """關閉 auto_link 只擋 judge:新卡仍照常 embed 並加入 pending_judge 待判集合。"""
+    from kg.pipeline_service import _step_embed_and_judge
+
+    ids = ["c1", "c2"]
+
+    class _EmbeddingsMissingThenAdd(_EmbeddingsWithSimilar):
+        def __init__(self):
+            super().__init__({})
+            self._added: set[str] = set()
+            self.add_batch_called = False
+
+        def has(self, card_id):
+            return card_id in self._added
+
+        def add_batch(self, items):
+            self.add_batch_called = True
+            self._added.update(cid for cid, _ in items)
+
+    embeddings = _EmbeddingsMissingThenAdd()
+    cards = _CardsForLink(ids)
+    graph = _GraphWithPending([])
+
+    async def run():
+        user = {
+            "id": "u_al_embed", "dir": None,
+            "config": {"auto_link": {"enabled": False, "updated_at": 1.0}},
+        }
+        return await _step_embed_and_judge(
+            "u_al_embed", user,
+            card_store_factory=lambda d: cards,
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+            client_factory=lambda provider: None,
+            logger=_FakeLogger(),
+            link_kind_enum=lambda v: v,
+        )
+
+    created = asyncio.run(run())
+
+    assert created == 0
+    assert embeddings.add_batch_called, "embed must still run when auto_link disabled"
+    assert sorted(graph._pending) == sorted(ids), (
+        f"newly embedded cards must queue into pending_judge, got {graph._pending}"
+    )
+    assert graph.batch_links_called is False
