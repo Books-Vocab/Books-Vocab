@@ -45,6 +45,22 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('falls back symmetrically: settings scenario on bookshelf surface → bookshelf default', () => {
+    expect(resolveHarnessConfig('?surface=bookshelf&scenario=logged-out')).toEqual({
+      surface: 'bookshelf',
+      scenario: 'populated',
+      appearance: 'light',
+    })
+  })
+
+  it('re-evaluates scenario against the fallback surface（未知 surface + 他 surface 合法 scenario）', () => {
+    expect(resolveHarnessConfig('?surface=nope&scenario=logged-out')).toEqual({
+      surface: 'bookshelf',
+      scenario: 'populated',
+      appearance: 'light',
+    })
+  })
+
   it('falls back to defaults on unknown values (capture URLs are generated; never hard-fail)', () => {
     expect(resolveHarnessConfig('?surface=nope&scenario=nope&appearance=sepia')).toEqual({
       surface: 'bookshelf',
