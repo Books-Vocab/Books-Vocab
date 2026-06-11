@@ -6,6 +6,13 @@ from pathlib import Path
 
 from catalog_review_renderer import render_html
 
+# Review page filename SoT (renamed from review.html, 2026-06). Writers always
+# emit the new name; readers resolving older roots go through
+# catalog_review_cli_artifacts.review_html_path, which falls back to the
+# legacy name when only it exists.
+REVIEW_HTML_NAME = "UIreview.html"
+LEGACY_REVIEW_HTML_NAME = "review.html"
+
 
 def hydrate_manifest(manifest: dict, review_state: dict) -> dict:
     state_entries = review_state.get("entries", {})
@@ -65,7 +72,7 @@ def write_review_outputs(root: Path, manifest: dict, review_state: dict) -> None
         encoding="utf-8",
     )
     ui_test_videos = sync_uitest_videos(root)
-    (root / "review.html").write_text(
+    (root / REVIEW_HTML_NAME).write_text(
         render_html(hydrated, ui_test_videos=ui_test_videos),
         encoding="utf-8",
     )

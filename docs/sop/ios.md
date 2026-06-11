@@ -222,7 +222,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - **cache-miss 不是 test failure**:`catalog snapshots --reuse-build` 命中 stale/缺失 cache 時頂層 `status:"cache-miss"`(非 `error`)、`errors[].catalog-cache` 帶可行動 hint、stderr 印一行提示。看到 `cache-miss` 就跑 `catalog prepare` 或拿掉 `--reuse-build`,不要當成程式碼壞掉去追。
 - **uniform image 改走 warning 語意**:`uniform-image-detected` 現在只會讓 `validation.status:"warn"` 與頂層 `status:"warn"`，不再把已成功產出的 PNG 誤判成 fatal `error`。真正 fatal 的仍是 `png-count-mismatch`、degenerate dimensions、xcodebuild/test/copy 失敗。
 - **失敗也會搶救 PNG**:full run 失敗時 wrapper 仍把 simulator container 內已生成的截圖 salvage 回本地。`artifacts.containerPngCount` = container 內實際張數,`copy.salvaged=true` + `errors[].catalog-salvage`(info note)代表「有生成但 run 失敗已救回」;`containerPngCount==0` 才是真的沒生成。別再手動進 container 撈圖。
-- **snapshot 會順手生 review/graph sidecar**:`catalog snapshots` 成功複製 PNG 後，會在同一個 `out_root` 自動生成 `catalog.html`（自由縮放 SVG 心智圖，與 CLI `tree/node/node-url` 共用 `nodePath`）、`review_manifest.json`（含 `tree` 欄位）以及 `ui_graph.json`（`kg.ui.graph.v1`，把 `CatalogSurface.backing` 接到 type→type 依賴圖）。`review.html` 會直接把這份 graph 摘要上浮到每個 surface 卡：`backing`、`depends`、`impacts`、graph status/health。graph sidecar 生成失敗只記 warning / degrade 結構欄位，不會遮蔽 raw PNG 與 gallery 本體。
+- **snapshot 會順手生 review/graph sidecar**:`catalog snapshots` 成功複製 PNG 後，會在同一個 `out_root` 自動生成 `catalog.html`（自由縮放 SVG 心智圖，與 CLI `tree/node/node-url` 共用 `nodePath`）、`review_manifest.json`（含 `tree` 欄位）以及 `ui_graph.json`（`kg.ui.graph.v1`，把 `CatalogSurface.backing` 接到 type→type 依賴圖）。`UIreview.html` 會直接把這份 graph 摘要上浮到每個 surface 卡：`backing`、`depends`、`impacts`、graph status/health。graph sidecar 生成失敗只記 warning / degrade 結構欄位，不會遮蔽 raw PNG 與 gallery 本體。
 
 ### 日常 warm-loop 建議
 
@@ -567,7 +567,7 @@ BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
 ./ops/catalog_review_cli.py "$BLESSED" gaps --lane feature-surface --missing loading  # 缺特定 state 的出貨畫面
 
 # Agent 要「看」畫面: 把多張合成一張 contact sheet, 一次 Read 取代 N 次 Read(省 image token)。
-# 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 review.html(detached server 佔 port、headless lazy-paint 全白)。
+# 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 UIreview.html(detached server 佔 port、headless lazy-paint 全白)。
 ./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --appearance both --cols 2  # 一張看完某 surface 全 state × light/dark
 ./ops/catalog_contact_sheet.py "$BLESSED" --lane feature-surface --facet empty                   # 一張看完所有出貨畫面的 empty state
 # multi-device root（2026-06-10 起含 iPad）預設只出 canonical device（manifest devices[0]＝iPhone），不會 iPhone/iPad 交錯；
