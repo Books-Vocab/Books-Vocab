@@ -296,6 +296,11 @@ struct CatalogScene: View {
             .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer, PodcastPlayerView.self)], register: PodcastPlayerViewScenarios.register),
             .init(id: "editorial_cover", surfaces: [block("Notebook Cover · Editorial", .notebook, EditorialCoverComposition.self)], register: NotebookCardEditorialCoverScenarios.register),
             .init(id: "kg_vocab_row", surfaces: [eng("KG Vocab Row", .vocabulary, KGVocabRow.self)], register: KGVocabRowScenarios.register),
+            // KGVocabView is never presented standalone in production (VocabularyListView
+            // hosts it), so it's an engineering surface, not a featureScreen — see the
+            // ScreenID note above. Catalogues the active-search state the parent-screen
+            // scenarios can't reach (parent owns searchText behind a debounce task).
+            .init(id: "kg_vocab_search", surfaces: [eng("KG Vocab Presenter", .vocabulary, KGVocabView.self)], register: KGVocabSearchScenarios.register),
             .init(id: "podcast_sentence_cells", surfaces: [block("Podcast · Transcript Column", .podcast, PodcastTranscriptColumn.self), block("Podcast · Bubble Cell", .podcast, PodcastBubbleCell.self)], register: PodcastSentenceCellsScenarios.register),
             // `surfaces` 透過 enum 計算屬性同步 macCatalyst gating:非 Catalyst 時
             // register 為 no-op,manifest 亦回報空 categories,使覆蓋測試對稱。
