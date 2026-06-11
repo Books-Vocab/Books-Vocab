@@ -1,0 +1,179 @@
+/* Reader 引擎 spike 樣式（非 parity）。沿用既有 reader token 語彙讓視覺與 parity
+   版同源；幾何為原型級別，非像素對齊。 */
+
+.rlive {
+  position: relative;
+  height: 100%;
+  background: #f3ecdc; /* sepia paper（對齊 parity reader paper 調性） */
+  overflow: hidden;
+}
+
+.rlive-host {
+  position: absolute;
+  inset: 56px 0 0; /* 頂部讓出 chrome */
+}
+
+/* 翻頁熱區：左右半屏透明按鈕（中段，避開 chrome / TOC） */
+.rlive-tap {
+  position: absolute;
+  top: 56px;
+  bottom: 0;
+  width: 30%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+.rlive-tap-prev {
+  left: 0;
+}
+.rlive-tap-next {
+  right: 0;
+}
+
+/* 頂部 chrome */
+.rlive-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: color-mix(in srgb, #f3ecdc 90%, transparent);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.rlive-chrome-btn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(55, 53, 47, 0.12);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: #6b6a65;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.rlive-title {
+  flex: 1;
+  font-family: 'CrimsonPro', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #37352f;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rlive-progress {
+  flex: none;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b6a65;
+  font-variant-numeric: tabular-nums;
+}
+
+/* TOC 面板 */
+.rlive-toc {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  bottom: 0;
+  width: 78%;
+  max-width: 320px;
+  background: #fffdf8;
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.12);
+  z-index: 6;
+  overflow-y: auto;
+}
+
+.rlive-toc-head {
+  padding: 16px;
+  font-family: 'CrimsonPro', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #37352f;
+  border-bottom: 0.5px solid rgba(55, 53, 47, 0.12);
+}
+
+.rlive-toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rlive-toc-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 0.5px solid rgba(55, 53, 47, 0.08);
+  background: transparent;
+  font-family: 'ElmsSans', -apple-system, sans-serif;
+  font-size: 15px;
+  color: #37352f;
+  cursor: pointer;
+}
+
+.rlive-toc-list button:hover {
+  background: rgba(55, 53, 47, 0.04);
+}
+
+/* 選詞浮層 */
+.rlive-selection {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  transform: translate(-50%, calc(-100% - 12px));
+  max-width: 260px;
+  padding: 12px 14px;
+  background: #fffdf8;
+  border: 0.5px solid rgba(55, 53, 47, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  z-index: 8;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rlive-selection-word {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 18px;
+  font-weight: 600;
+  color: #37352f;
+}
+
+.rlive-selection-ctx {
+  font-family: 'ElmsSans', -apple-system, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b6a65;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rlive-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  text-align: center;
+  font-family: 'ElmsSans', -apple-system, sans-serif;
+  font-size: 15px;
+  color: #b3261e;
+  z-index: 9;
+}
