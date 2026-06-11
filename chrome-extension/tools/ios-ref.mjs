@@ -57,26 +57,49 @@ export function resolveCatalogRoot({ env = process.env, repoRoot } = {}) {
   return join(snapshots, usable[usable.length - 1]);
 }
 
-function deviceDirs(root) {
-  // The catalog is single-device by design (one iPhone, portrait, light+dark).
-  // If a second device ever lands, the sorted-first pick below must grow an
-  // explicit device selector instead.
+function manifestDevices(root) {
+  try {
+    const manifest = JSON.parse(readFileSync(join(root, 'review_manifest.json'), 'utf8'));
+    return Array.isArray(manifest.devices) ? manifest.devices : [];
+  } catch {
+    return [];
+  }
+}
+
+function deviceDirs(root, { device } = {}) {
+  // The catalog shoots multiple devices since 2026-06 (iPhone canonical +
+  // iPad wide-layout reference). Selection order: explicit `device` (null on
+  // miss — never a silent wrong-device fallback) → manifest devices[0]
+  // (canonical-first ordering) → iPhone-prefixed dir (legacy manifests) →
+  // lexicographic first (single-device roots).
   const dirs = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
-  const light = dirs.filter((name) => !name.endsWith(' (dark)')).sort()[0] ?? null;
+  const bases = dirs.filter((name) => !name.endsWith(' (dark)')).sort();
+  let light;
+  if (device) {
+    light = bases.includes(device) ? device : null;
+  } else {
+    const canonical = manifestDevices(root).find((name) => bases.includes(name));
+    light = canonical
+      ?? bases.find((name) => name.startsWith('iPhone'))
+      ?? bases[0]
+      ?? null;
+  }
   if (!light) return { light: null, dark: null };
   const dark = dirs.includes(`${light} (dark)`) ? `${light} (dark)` : null;
   return { light, dark };
 }
 
 /**
- * Resolve {surface, scenario, appearance} to an absolute PNG path inside the
- * catalog root, or null when the device dir / surface / scenario is missing.
+ * Resolve {surface, scenario, appearance, device?} to an absolute PNG path
+ * inside the catalog root, or null when the device dir / surface / scenario
+ * is missing. `device` is the light-variant dir name (e.g. "iPad Pro 11
+ * landscape"); omitted = canonical device (manifest order, iPhone first).
  */
-export function resolveRef(root, { surface, scenario, appearance = 'light' }) {
+export function resolveRef(root, { surface, scenario, appearance = 'light', device: deviceName }) {
   if (!root || !existsSync(root)) return null;
-  const { light, dark } = deviceDirs(root);
+  const { light, dark } = deviceDirs(root, { device: deviceName });
   const device = appearance === 'dark' ? dark : light;
   if (!device) return null;
   const png = join(root, device, slugify(surface), `${slugify(scenario)}.png`);
