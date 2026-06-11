@@ -3,7 +3,7 @@
  * case list, shared by compare.mjs and parity-audit.mjs (previously two
  * drifting copies).
  *
- * `ref` addresses the iOS counterpart by Catalog taxonomy (see ios-ref.mjs);
+ * `ref` addresses the iOS counterpart by Catalog taxonomy (see design-system/parity/ios-ref.mjs);
  * null = Chrome-only state with no iOS counterpart. The iOS app has no sepia
  * theme outside the reader, so sepia cases pair against the light reference.
  */

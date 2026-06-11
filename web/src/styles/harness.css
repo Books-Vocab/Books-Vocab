@@ -1,0 +1,21 @@
+/* Harness chrome — everything OUTSIDE .phone-frame is capture rig, not app UI. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #2b2b2b; /* neutral rig backdrop, never captured */
+}
+
+.phone-frame {
+  position: relative;
+  width: 393px;
+  height: 852px;
+  overflow: hidden;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
