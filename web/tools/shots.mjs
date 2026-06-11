@@ -22,6 +22,11 @@ const WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = join(WEB_DIR, 'tools', 'shots');
 const PORT = 4179;
 const NO_BUILD = process.argv.includes('--no-build');
+// --only <substr>: restrict capture to cases whose name contains <substr>.
+// Fewer page loads = faster iteration and dodges the long-run preview-server
+// flake when re-shooting a single surface. Mirrors web_parity.sh's --only.
+const onlyIdx = process.argv.indexOf('--only');
+const ONLY = onlyIdx >= 0 ? process.argv[onlyIdx + 1] : null;
 
 function build() {
   console.error('building web/ …');
@@ -61,6 +66,7 @@ async function main() {
     const browser = await chromium.launch();
     try {
       for (const p of PARITY) {
+        if (ONLY && !p.case.includes(ONLY)) continue;
         const page = await browser.newPage({
           viewport: { width: 393, height: 852 },
           deviceScaleFactor: 3,
