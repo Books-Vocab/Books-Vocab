@@ -127,6 +127,89 @@ async function main() {
     check('review session completion state appears', (await page.locator('.tr-complete').count()) === 1);
     check('review completion progress 12 / 12', (await page.locator('.tr-progress-pill').textContent()) === '12 / 12');
 
+    // ── Notebook ──────────────────────────────────────────────────
+    await page.goto(`${BASE}/?surface=notebook&scenario=populated&appearance=light`, { waitUntil: 'load' });
+
+    const nbCardCount = () => page.locator('.nb-card').count();
+    check('notebook initial shows 3 cards', (await nbCardCount()) === 3);
+    check('notebook no sheet/menu before interaction',
+      (await page.locator('.nb-sheet-scrim').count()) === 0 && (await page.locator('.nb-menu-scrim').count()) === 0);
+
+    // 新增 notebook：plus pill → sheet → 輸入 → 建立 → 列表 +1（新卡出現）。
+    await page.locator('.nb-pill-button').click();
+    check('notebook add pill opens sheet', (await page.locator('.nb-sheet-scrim').count()) === 1);
+    await page.fill('.nb-sheet-input', '旅行筆記');
+    await page.locator('.nb-sheet-submit').click();
+    check('notebook add appends card → 4', (await nbCardCount()) === 4);
+    check('notebook add sheet closed after submit', (await page.locator('.nb-sheet-scrim').count()) === 0);
+    check('notebook new card name visible',
+      (await page.locator('.nb-card[data-name="旅行筆記"]').count()) === 1);
+
+    // more 選單：點某卡 overlay → 選單浮現。
+    await page.locator('.nb-card[data-name="經典文學"] .nb-card-more').click();
+    check('notebook more menu appears', (await page.locator('.nb-menu-scrim').count()) === 1);
+    // 編輯 → 改名 sheet → 真輸入 → 儲存 → 卡名更新（舊名消失、新名出現）。
+    await page.locator('.nb-menu-item').first().click();
+    check('notebook edit opens rename sheet', (await page.locator('.nb-sheet-scrim').count()) === 1);
+    await page.fill('.nb-sheet-input', '世界文學');
+    await page.locator('.nb-sheet-submit').click();
+    check('notebook rename updates card name',
+      (await page.locator('.nb-card[data-name="世界文學"]').count()) === 1 &&
+      (await page.locator('.nb-card[data-name="經典文學"]').count()) === 0);
+
+    // 刪除：開「科普閱讀」more → 刪除 → 列表 -1，且 filter pill 仍在（>=2 本）。
+    await page.locator('.nb-card[data-name="科普閱讀"] .nb-card-more').click();
+    await page.locator('.nb-menu-item-destructive').click();
+    check('notebook delete removes card → 3', (await nbCardCount()) === 3);
+    check('notebook 科普閱讀 gone', (await page.locator('.nb-card[data-name="科普閱讀"]').count()) === 0);
+
+    // populated（3 本）→ filter + plus 兩個 tool pill；single（1 本）→ 只剩 plus。
+    // filter pill 由 store.showFilter（cards.length >= 2）即時推導。
+    check('notebook populated has filter + plus tool pills', (await page.locator('.nb-pill-tool').count()) === 2);
+    await page.goto(`${BASE}/?surface=notebook&scenario=single&appearance=light`, { waitUntil: 'load' });
+    check('notebook single one card', (await nbCardCount()) === 1);
+    check('notebook single → only plus pill (no filter)', (await page.locator('.nb-pill-tool').count()) === 1);
+
+    // ── Bookshelf ─────────────────────────────────────────────────
+    await page.goto(`${BASE}/?surface=bookshelf&scenario=populated&appearance=light`, { waitUntil: 'load' });
+
+    const bookCount = () => page.locator('.book-card').count();
+    check('bookshelf initial shows 5 books', (await bookCount()) === 5);
+    check('bookshelf no sheet/menu before interaction',
+      (await page.locator('.bs-sheet-scrim').count()) === 0 && (await page.locator('.bs-menu-scrim').count()) === 0);
+
+    // 匯入入口：affordance → 匯入 sheet stub（檔案 picker 視覺）。
+    await page.locator('.bookshelf-import-affordance').click();
+    check('bookshelf import affordance opens sheet', (await page.locator('.bs-sheet-scrim').count()) === 1);
+    check('bookshelf import sheet shows picker stub', (await page.locator('.bs-import-picker').count()) === 1);
+    await page.locator('.bs-sheet-close').click();
+    check('bookshelf import sheet closes', (await page.locator('.bs-sheet-scrim').count()) === 0);
+
+    // 書卡 more → 改名 → 真輸入 → 儲存 → 標題更新。
+    await page.locator('.book-card-more[data-title="Deep Work"]').click();
+    check('bookshelf more menu appears', (await page.locator('.bs-menu-scrim').count()) === 1);
+    await page.locator('.bs-menu-item').first().click();
+    check('bookshelf rename opens sheet', (await page.locator('.bs-sheet-scrim').count()) === 1);
+    await page.fill('.bs-sheet-input', 'Deep Focus');
+    await page.locator('.bs-sheet-submit').click();
+    check('bookshelf rename updates title',
+      (await page.locator('.book-card-more[data-title="Deep Focus"]').count()) === 1 &&
+      (await page.locator('.book-card-more[data-title="Deep Work"]').count()) === 0);
+
+    // 刪除：逐一刪到空 → empty scenario 視覺出現。
+    const titles = ['Atomic Habits', 'Deep Focus', 'Flow', 'Meditations', 'On Writing Well'];
+    for (const t of titles) {
+      await page.locator(`.book-card-more[data-title="${t}"]`).click();
+      await page.locator('.bs-menu-item-destructive').click();
+    }
+    check('bookshelf delete-all empties grid', (await bookCount()) === 0);
+    check('bookshelf empty state visible after delete-all',
+      (await page.locator('.bookshelf-empty').count()) === 1 &&
+      (await page.locator('.bookshelf-empty-import').count()) === 1);
+    // empty state 匯入鈕也能開 sheet。
+    await page.locator('.bookshelf-empty-import').click();
+    check('bookshelf empty import button opens sheet', (await page.locator('.bs-sheet-scrim').count()) === 1);
+
     await ctx.close();
   } finally {
     await browser.close();
