@@ -12,8 +12,8 @@
 }
 
 /* --- Large-title nav（UINavigationBar large title 幾何）---
-   status bar 59 + inline bar 44 = 103；Catalog PNG 實測 glyph top ≈ 119pt，
-   故再加 large-title 列內距 13。 */
+   status bar 59 + inline bar 44 = 103；measured：Catalog PNG 實測 glyph top
+   ≈ 119pt，故再加 large-title 列內距 13。 */
 .bookshelf-nav {
   padding: 116px 20px 0;
 }
@@ -40,7 +40,10 @@
 
 .bookshelf-grid {
   display: grid;
-  /* GridItem.adaptive(min 150, max 200) @ 353pt 內容寬 → 2 欄 164.5 */
+  /* GridItem.adaptive(min 150, max 200) — 353pt 內容寬 → 2 欄 164.5。
+     注意語意差：SwiftUI adaptive 用 min 算欄數、CSS auto-fill 用 max 算欄數，
+     寫 minmax(150px,200px) 會塌成單欄（實測退化）；故 max 上限刻意不落 CSS，
+     harness 寬度超過 ~424pt 時再另行處理。 */
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 24px; /* AppShellMetrics.sectionSpacing */
   padding: 8px 20px 0; /* top = AppSpacing.s2 */
@@ -48,6 +51,7 @@
 
 .bookshelf-guide-link {
   margin-top: 24px; /* AppSpacing.s6 */
+  margin-bottom: 32px; /* AppSpacing.s7 */
   padding: 8px 0; /* AppSpacing.s2 */
   font-size: var(--text-caption2);
   line-height: var(--leading-caption);
@@ -108,7 +112,7 @@
   bottom: 6px;
   display: grid;
   place-items: center;
-  width: 25px; /* glyph 13 + inner padding 6×2 */
+  width: 25px; /* measured：glyph 13 + inner padding 6×2（badgePadding） */
   height: 25px;
   border-radius: 50%;
   color: #fff; /* AppBookshelfMetrics.badgeForeground（恒白，不隨主題） */

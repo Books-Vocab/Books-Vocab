@@ -6,6 +6,7 @@ import './bookshelf.css'
 
 /**
  * 鏡像 ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift 的靜態快照面：
+ * （中文文案逐字取自 BookshelfCopy.swift——iOS 端改文案時此處須同步）
  * large-title nav（「書庫」Athelas/Songti 34 bold）+ 書格（2 欄 adaptive、
  * 間距 24）或空狀態（book glyph + 三行文案 + outline 匯入鈕）。
  * Catalog 參考快照不含 toolbar glyph 與 login/demo CTA（preview auth 已登入），
@@ -28,7 +29,7 @@ function BookGrid({ books }: { books: ReturnType<typeof bookshelfFixture> }) {
     <main className="bookshelf-scroll">
       <div className="bookshelf-grid">
         {books.map((book) => (
-          <BookCard key={book.title} book={book} />
+          <BookCard key={`${book.title}-${book.format}`} book={book} />
         ))}
       </div>
       <a className="bookshelf-guide-link" href="#guide">
@@ -42,6 +43,7 @@ function EmptyShelf() {
   return (
     <main className="bookshelf-scroll bookshelf-empty">
       <div className="bookshelf-empty-content">
+        {/* measured：iOS 為 symbol(size:48,.ultraLight)，PNG 實測 glyph ≈52pt 框 */}
         <BookIcon size={52} strokeWidth={0.9} className="bookshelf-empty-icon" />
         <p className="bookshelf-empty-title">尚無書籍</p>
         <p className="bookshelf-empty-description">匯入電子書開始閱讀（EPUB・TXT・MD・PDF）</p>
