@@ -29,19 +29,21 @@ from pathlib import Path
 VAR_PX = {
     "--sp-1": "4px", "--sp-2": "8px", "--sp-3": "12px", "--sp-4": "16px",
     "--sp-5": "20px", "--sp-6": "24px", "--sp-7": "32px",
+    "--sp-micro": "2px", "--sp-tiny": "3px", "--sp-hairline": "1px",
     "--radius-md": "8px", "--radius-lg": "12px", "--radius-pill": "999px",
     "--radius-card": "8px",
 }
-# props the engine intentionally does not model in v0 (layout-helper / leaf-level)
-# — excluded from the MISS denominator so the score reflects what v0 *targets*.
+# props the engine intentionally does not model (leaf type metrics that need per-glyph
+# measurement, not structure) — excluded from the MISS denominator so the score reflects
+# what the engine *targets*. v1 PROMOTED display / justify-content / gap INTO scope: the
+# child-tree IR now derives them structurally, so they are scored, not skipped.
 OUT_OF_SCOPE_PROPS = {
-    "box-sizing",            # engine could add; cosmetic, tracked as v1 backlog
-    "justify-content",       # leaf alignment, needs child tree
-    "display",               # only counts when stack present; hand inline-flex variants
-    "font-variant-numeric",  # leaf .monospacedDigit(), needs child tree
-    "gap",                   # child-spacing on inline content the v0 root can't see
-    "-webkit-text-stroke",   # songti L2, not in this slice's source
-    "line-height",           # leaf type metric, v1
+    "box-sizing",            # rendering reset, not a layout intent the IR expresses
+    "font-variant-numeric",  # leaf .monospacedDigit() type metric
+    "-webkit-text-stroke",   # songti bold-sim L2, per-glyph measured
+    "line-height",           # leaf type metric (UIKit line box), measured
+    "margin",                # page-anchor positioning (e.g. chevron rides the fold seam)
+    "position", "z-index",   # stacking-context anchors, page-local not platform delta
 }
 
 
