@@ -87,7 +87,7 @@ private let catalogSnapshotCompileFlagEnabled = false
         let scenarios = Self.parseListEnv("KG_CATALOG_SCENARIOS")
             .ifEmpty(Self.parseListArgument("-KG_CATALOG_SCENARIOS"))
             .ifEmpty(fileScope?.scenarios ?? [])
-        let filter = CatalogScene.filter(groups: groups, scenarios: scenarios)
+        let filter = try CatalogScene.filter(groups: groups, scenarios: scenarios)
         let playbookBuildStart = CFAbsoluteTimeGetCurrent()
         let playbook = CatalogScene.buildPlaybook(filter: filter)
         let playbookBuildMs = Self.elapsedMilliseconds(since: playbookBuildStart)
