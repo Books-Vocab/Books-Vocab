@@ -275,7 +275,7 @@ echo "$prepare_catalog_hit_json" | jq -e '.schema=="kg.ios.catalog.prepare.v1" a
   && ok "catalog prepare reuses ready cache without rebuilding" || fail_t "catalog prepare hit invalid: $prepare_catalog_hit_json"
 catalog_persist_root="$catalog_tmp/workspace-snapshots"
 catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_PERSIST_ROOT="$catalog_persist_root" TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json)"
-echo "$catalog_json" | jq -e --arg root "$catalog_tmp/build/snapshots" --arg persistRoot "$catalog_persist_root" '.schema=="kg.ios.catalog.v1" and .action=="snapshots" and .status=="ok" and .mode=="fixture" and .artifacts.root==$root and .artifacts.pngCount==2 and (.artifacts.paths|length)==2 and (.scope.groups|length)==0 and (.scope.scenarios|length)==0 and all(.artifacts.paths[]; startswith($root)) and (.validation.status=="ok") and .validation.actualPngCount==2 and .validation.uniformImageCount==0 and .validation.transparentImageCount==0 and .validation.minPixelWidth==16 and .validation.maxPixelWidth==16 and .validation.minPixelHeight==16 and .validation.maxPixelHeight==16 and (.validation.images|length)==2 and (.validation.transparentImages|length)==0 and (.validation.warnings|length)==0 and .cache.status=="not-applicable" and .cache.key==null and .cache.root==null and (.test.command|contains("CatalogSnapshotTests")) and .test.exitCode==0 and .copy.exitCode==0 and .copy.containerDataPath=="/tmp/kg-sim-fixture/container" and .review.status=="ok" and (.review.reviewHtml|endswith("/review.html")) and (.review.reviewManifest|endswith("/review_manifest.json")) and (.review.reviewState|endswith("/review_state.json")) and .workspaceArtifact.status=="ok" and (.workspaceArtifact.root==$persistRoot) and (.workspaceArtifact.name|startswith("catalog-full-")) and (.workspaceArtifact.artifactRoot|startswith($persistRoot)) and (.workspaceArtifact.reviewHtml|endswith("/review.html")) and (.workspaceArtifact.reviewManifest|endswith("/review_manifest.json")) and (.workspaceArtifact.reviewState|endswith("/review_state.json")) and .flags.compileTimeFlag=="KG_RUN_CATALOG_SNAPSHOTS"' >/dev/null \
+echo "$catalog_json" | jq -e --arg root "$catalog_tmp/build/snapshots" --arg persistRoot "$catalog_persist_root" '.schema=="kg.ios.catalog.v1" and .action=="snapshots" and .status=="ok" and .mode=="fixture" and .artifacts.root==$root and .artifacts.pngCount==2 and (.artifacts.paths|length)==2 and (.scope.groups|length)==0 and (.scope.scenarios|length)==0 and all(.artifacts.paths[]; startswith($root)) and (.validation.status=="ok") and .validation.actualPngCount==2 and .validation.uniformImageCount==0 and .validation.transparentImageCount==0 and .validation.minPixelWidth==16 and .validation.maxPixelWidth==16 and .validation.minPixelHeight==16 and .validation.maxPixelHeight==16 and (.validation.images|length)==2 and (.validation.transparentImages|length)==0 and (.validation.warnings|length)==0 and .cache.status=="not-applicable" and .cache.key==null and .cache.root==null and (.test.command|contains("CatalogSnapshotTests")) and .test.exitCode==0 and .copy.exitCode==0 and .copy.containerDataPath=="/tmp/kg-sim-fixture/container" and .review.status=="ok" and (.review.reviewHtml|endswith("/UIreview.html")) and (.review.reviewManifest|endswith("/review_manifest.json")) and (.review.reviewState|endswith("/review_state.json")) and .workspaceArtifact.status=="ok" and (.workspaceArtifact.root==$persistRoot) and (.workspaceArtifact.name|startswith("catalog-full-")) and (.workspaceArtifact.artifactRoot|startswith($persistRoot)) and (.workspaceArtifact.reviewHtml|endswith("/UIreview.html")) and (.workspaceArtifact.reviewManifest|endswith("/review_manifest.json")) and (.workspaceArtifact.reviewState|endswith("/review_state.json")) and .flags.compileTimeFlag=="KG_RUN_CATALOG_SNAPSHOTS"' >/dev/null \
   && ok "catalog snapshots --json exports fixture PNG artifacts" || fail_t "catalog snapshots --json invalid: $catalog_json"
 [[ -f "$(echo "$catalog_json" | jq -r '.review.reviewHtml')" ]] && [[ -f "$(echo "$catalog_json" | jq -r '.review.reviewManifest')" ]] && [[ -f "$(echo "$catalog_json" | jq -r '.review.reviewState')" ]] \
   && ok "catalog snapshots auto-generates review sidecar" || fail_t "catalog review sidecar missing: $catalog_json"
@@ -380,6 +380,41 @@ catalog_json_clean="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS"
 echo "$catalog_json_clean" | jq -e '.schema=="kg.ios.catalog.v1"' >/dev/null \
   && ok "catalog snapshots --json stdout remains single valid JSON despite stderr observability" || fail_t "catalog snapshots stdout not clean JSON: $catalog_json_clean"
 rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"
+
+section "UITest video archive surface"
+IOS_TEST_VIDEO_ARCHIVE_LIB="$WORKSPACE/ops/lib/ios_test_video_archive.sh"
+[[ -f "$IOS_TEST_VIDEO_ARCHIVE_LIB" ]] && ok "ios_test_video_archive.sh exists" || fail_t "ios_test_video_archive.sh missing"
+bash -n "$IOS_TEST_VIDEO_ARCHIVE_LIB" 2>/dev/null && ok "ios_test_video_archive.sh syntax" || fail_t "ios_test_video_archive.sh syntax"
+grep -q 'source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test sources video archive lib" || fail_t "ios_test does not source video archive lib"
+# Archive must run after the recording is finalized (post contact sheet) and
+# before any verdict write, so artifacts.uiVideo points at the stable copy.
+awk '/^build_ui_step_contact_sheet$/{cs=NR} /^archive_ui_test_recording$/{ar=NR} /write_json_verdict "/{if (!v) v=NR} END{exit (cs && ar && v && cs<ar && ar<v) ? 0 : 1}' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test archives recording after contact sheet and before verdict writes" || fail_t "archive_ui_test_recording call missing or misordered"
+va_tmp="$(mktemp -d)"
+va_dest="$va_tmp/uitest-videos"
+printf 'fake-mp4-bytes' >"$va_tmp/run_recording.mp4"
+va_path="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/run_recording.mp4" "'"$va_dest"'" ui test-caller 20260611-120000')"
+[[ "$va_path" == "$va_dest/20260611-120000-ui.mp4" && -s "$va_path" && ! -e "$va_tmp/run_recording.mp4" ]] \
+  && ok "archive moves recording to timestamped dest and echoes path" || fail_t "archive basic move wrong: path=$va_path"
+jq -e '.schema=="kg.ios.uitest-videos.v1" and (.videos|length)==1 and .videos[0].file=="20260611-120000-ui.mp4" and .videos[0].scope=="ui" and .videos[0].caller=="test-caller" and .videos[0].sizeBytes>0' "$va_dest/index.json" >/dev/null \
+  && ok "archive writes index.json entry with metadata" || fail_t "archive index wrong: $(cat "$va_dest/index.json" 2>/dev/null)"
+printf 'fake-mp4-bytes-2' >"$va_tmp/run_recording.mp4"
+va_path2="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/run_recording.mp4" "'"$va_dest"'" ui test-caller 20260611-120000')"
+[[ "$va_path2" == "$va_dest/20260611-120000-ui-2.mp4" && -s "$va_path2" ]] \
+  && ok "archive disambiguates same-timestamp collisions" || fail_t "archive collision handling wrong: $va_path2"
+jq -e '(.videos|length)==2 and .videos[0].file=="20260611-120000-ui-2.mp4"' "$va_dest/index.json" >/dev/null \
+  && ok "archive index keeps newest-first ordering" || fail_t "archive index ordering wrong: $(cat "$va_dest/index.json")"
+printf 'fake-mp4-bytes-3' >"$va_tmp/run_recording.mp4"
+va_path3="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; KG_UITEST_VIDEO_KEEP=2 uitest_video_archive "'"$va_tmp"'/run_recording.mp4" "'"$va_dest"'" all test-caller 20260611-130000')"
+[[ -s "$va_path3" && ! -e "$va_dest/20260611-120000-ui.mp4" ]] \
+  && ok "archive prunes oldest beyond KG_UITEST_VIDEO_KEEP" || fail_t "archive prune wrong: kept=$(ls "$va_dest")"
+jq -e '(.videos|length)==2 and .videos[0].file=="20260611-130000-all.mp4" and .videos[1].file=="20260611-120000-ui-2.mp4"' "$va_dest/index.json" >/dev/null \
+  && ok "archive prune drops pruned entries from index" || fail_t "archive prune index wrong: $(cat "$va_dest/index.json")"
+va_noop="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/missing.mp4" "'"$va_tmp"'/never-created" ui test-caller 20260611-140000')" || fail_t "archive no-op should return 0"
+[[ -z "$va_noop" && ! -e "$va_tmp/never-created" ]] \
+  && ok "archive is a no-op for missing/empty recordings" || fail_t "archive no-op created artifacts: '$va_noop'"
+rm -rf "$va_tmp"
 
 section "Doctor release readiness surface"
 doctor_body="$(awk '/^doctor_readiness\(\)/,/^}/' "$IOS_OPS_RELEASE_LIB")"

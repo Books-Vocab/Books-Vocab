@@ -128,6 +128,8 @@ source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 # shellcheck source=lib/ios_cache_evict.sh
 source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
+# shellcheck source=lib/ios_test_video_archive.sh
+source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -995,6 +997,23 @@ stop_ui_test_recording() {
   fi
 }
 
+# Move the finalized recording out of the mktemp dir into the repo archive
+# (build/snapshots/uitest-videos/) and repoint UI_TEST_VIDEO so the verdict's
+# artifacts.uiVideo references the stable copy instead of a path the OS will
+# reclaim. The catalog review page embeds the archive via its index.json.
+archive_ui_test_recording() {
+  [[ -n "${UI_TEST_VIDEO:-}" && -s "${UI_TEST_VIDEO:-}" ]] || return 0
+  local archived
+  if archived="$(uitest_video_archive "$UI_TEST_VIDEO" \
+      "$PROJECT_ROOT/build/snapshots/uitest-videos" \
+      "$TEST_SCOPE" "$CALLER")" && [[ -n "$archived" ]]; then
+    UI_TEST_VIDEO="$archived"
+    echo "[ios_test][ui-video] archived $archived"
+  else
+    echo "[ios_test][ui-video] warning: archive failed, keeping tmp path $UI_TEST_VIDEO" >&2
+  fi
+}
+
 build_ui_step_contact_sheet() {
   [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
   if ! compgen -G "$UI_TEST_SCREENSHOT_DIR/*.png" >/dev/null; then
@@ -1391,6 +1410,7 @@ write_json_verdict() {
 
 populate_timing_breakdown
 build_ui_step_contact_sheet
+archive_ui_test_recording
 
 # Extract summary from xcresult if available
 if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
