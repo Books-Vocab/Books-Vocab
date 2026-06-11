@@ -24,7 +24,7 @@
 
 .settings-nav-title {
   margin: 0;
-  /* serifInline — Athelas-Bold 17；CJK 落 Songti cascade。
+  /* serifInline — CrimsonPro-Bold 17；CJK 落 Songti cascade。
      Chromium 拿不到 Songti Bold face（bookshelf 已定讞），同一 text-stroke
      近似；量級由 parity audit 收斂。 */
   font-family: var(--font-serif);
