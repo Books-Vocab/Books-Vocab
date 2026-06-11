@@ -1014,3 +1014,8 @@
 "vocab.highlight.color.blue" = "ブルー";
 "vocab.highlight.color.sage" = "セージ";
 "vocab.highlight.color.rose" = "ローズ";
+
+"確認中…" = "確認中…";
+"還原中…" = "復元中…";
+"同步異常" = "同期エラー";
+"iCloud 書庫" = "iCloud ライブラリ";
