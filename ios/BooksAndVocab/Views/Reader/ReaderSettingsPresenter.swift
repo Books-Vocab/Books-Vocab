@@ -43,7 +43,7 @@ struct ReaderSettingsPresenter: View {
     var fontToneLabel: String {
         switch bindings.font.wrappedValue {
         case .serif: "classic"
-        case .athelas: "reader"
+        case .crimsonPro: "reader"
         case .sans: "clean"
         case .mono: "coded"
         @unknown default: bindings.font.wrappedValue.rawValue

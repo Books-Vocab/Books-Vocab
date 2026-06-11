@@ -13,19 +13,37 @@ import Foundation
 
 /// 閱讀字體型別
 enum ReaderFont: String, CaseIterable, Identifiable {
-    case serif   = "Garamond"
-    case athelas = "Athelas"
-    case sans    = "Sans"
-    case mono    = "Mono"
+    case serif      = "Garamond"
+    case crimsonPro = "CrimsonPro"
+    case sans       = "Sans"
+    case mono       = "Mono"
 
     var id: String { self.rawValue }
 
+    /// Decode a persisted rawValue, mapping legacy keys to their current case.
+    /// 舊儲存值 "Athelas"（Apple OS 字體，已替換為 Crimson Pro）必須能解到 .crimsonPro，
+    /// 否則既有使用者的閱讀字體設定會默默退回預設。
+    static func decode(_ raw: String) -> ReaderFont? {
+        if raw == "Athelas" { return .crimsonPro }  // legacy alias
+        return ReaderFont(rawValue: raw)
+    }
+
     var family: FontFamily {
         switch self {
-        case .serif:   return FontFamily("Cormorant Garamond")
-        case .athelas: return FontFamily("Athelas")
-        case .sans:    return FontFamily("Elms Sans")
-        case .mono:    return FontFamily("Space Mono")
+        case .serif:      return FontFamily("Cormorant Garamond")
+        case .crimsonPro: return FontFamily("Crimson Pro")
+        case .sans:       return FontFamily("Elms Sans")
+        case .mono:       return FontFamily("Space Mono")
+        }
+    }
+
+    /// 字體選單顯示名（走 L10n；品牌名為 ASCII 字面，鍵以中性 key 命名以利翻譯覆寫）
+    var displayName: String {
+        switch self {
+        case .serif:      return L10n.string("reader.font.garamond")
+        case .crimsonPro: return L10n.string("reader.font.crimsonPro")
+        case .sans:       return L10n.string("reader.font.sans")
+        case .mono:       return L10n.string("reader.font.mono")
         }
     }
 }
@@ -171,7 +189,7 @@ final class ReaderSettings {
     private init() {
         // 優先從 iCloud KVS 讀取，fallback 到 UserDefaults
         if let raw = cloud.string(forKey: kFont) ?? defaults.string(forKey: kFont),
-           let value = ReaderFont(rawValue: raw) {
+           let value = ReaderFont.decode(raw) {
             self.font = value
         }
 
@@ -248,7 +266,7 @@ final class ReaderSettings {
             // else didSet re-writes to cloud and forces an echo flush. Mirrors
             // AppLanguage.swift / AppAppearanceMode.swift `value != selection`.
             case kFont:
-                if let raw = cloud.string(forKey: key), let value = ReaderFont(rawValue: raw), value != font { font = value }
+                if let raw = cloud.string(forKey: key), let value = ReaderFont.decode(raw), value != font { font = value }
             case kFontSize:
                 if let value = cloud.double(forKey: key), value != fontSize { fontSize = value }
             case kLineHeight:

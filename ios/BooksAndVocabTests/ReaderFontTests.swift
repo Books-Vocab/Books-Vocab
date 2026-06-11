@@ -17,8 +17,28 @@ struct ReaderFontTests {
         #expect(ReaderFont.serif.rawValue == "Garamond")
     }
 
-    @Test func athelasRawValue() {
-        #expect(ReaderFont.athelas.rawValue == "Athelas")
+    @Test func crimsonProRawValue() {
+        #expect(ReaderFont.crimsonPro.rawValue == "CrimsonPro")
+    }
+
+    // MARK: - Legacy persisted-value migration
+    //
+    // 舊使用者把閱讀字體存成 "Athelas"（Apple OS 字體）。換成 bundled Crimson Pro
+    // 後，舊 rawValue 必須仍 decode 到 .crimsonPro，否則設定默默退回預設。
+
+    @Test func legacyAthelasDecodesToCrimsonPro() {
+        #expect(ReaderFont.decode("Athelas") == .crimsonPro)
+    }
+
+    @Test func decodePassesThroughCurrentRawValues() {
+        #expect(ReaderFont.decode("CrimsonPro") == .crimsonPro)
+        #expect(ReaderFont.decode("Garamond") == .serif)
+        #expect(ReaderFont.decode("Sans") == .sans)
+        #expect(ReaderFont.decode("Mono") == .mono)
+    }
+
+    @Test func decodeUnknownReturnsNil() {
+        #expect(ReaderFont.decode("Nonsense") == nil)
     }
 
     @Test func sansRawValue() {

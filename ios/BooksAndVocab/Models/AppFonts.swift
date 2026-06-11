@@ -3,7 +3,7 @@
 //  Books & Vocab
 //
 //  統一的字體排印 (Design System Tokens)
-//  Serif:  Athelas (EN) + STSongti-TC (CJK cascade)  — 標題用
+//  Serif:  Crimson Pro (EN) + STSongti-TC (CJK cascade)  — 標題用
 //  Sans:   ElmsSans (EN) + PingFang TC (CJK cascade)  — 內文用
 //  Mono:   ElmsSans (EN) + system monospaced (CJK fallback)
 //
@@ -89,9 +89,9 @@ enum AppFonts {
         }
     }
 
-    /// Serif: Athelas + per-locale CJK serif cascade
+    /// Serif: Crimson Pro + per-locale CJK serif cascade
     static func serif(size: CGFloat, bold: Bool = false) -> Font {
-        let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
+        let primary = bold ? "CrimsonProRoman-Bold" : "CrimsonProRoman-Regular"
         let fallback = cjkSerifFallbackName(bold: bold)
         let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
         let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
@@ -256,9 +256,9 @@ enum AppFonts {
     // MARK: - UIKit Fonts (for Appearance API)
 
     #if os(iOS)
-    /// UIKit serif font — Athelas + STSongti-TC cascade
+    /// UIKit serif font — Crimson Pro + STSongti-TC cascade
     static func uiSerif(size: CGFloat, bold: Bool = false) -> UIFont {
-        let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
+        let primary = bold ? "CrimsonProRoman-Bold" : "CrimsonProRoman-Regular"
         let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
         let base = UIFontDescriptor(fontAttributes: [.name: primary])
         let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
