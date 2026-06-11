@@ -11,6 +11,7 @@ scope:
   - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
   - ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift
   - ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift
+  - ios/BooksAndVocab/Services/AuthManager.swift
   - ios/BooksAndVocab/Services/BackgroundSyncActor.swift
   - ios/BooksAndVocab/Services/KGService+Sync.swift
   - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
@@ -23,7 +24,7 @@ scope:
   - backend/src/kg/vocab_handlers/crud.py
   - chrome-extension/background.js
   - chrome-extension/shared/vocab-outbox.js
-verified_against: 746dafaa
+verified_against: 61e4f75b
 -->
 # Sync Lifecycle
 
@@ -125,8 +126,19 @@ batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/
 
 `KGService.backgroundSync` 是共用 resync 入口，由以下觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。其執行序：
 
+0. **logout-cleanup gate**（claim 鎖成功後、任何 sync 工作前）— `await sessionInvalidator.waitForPendingLocalDataCleanup()`。詳見下節「logout-cleanup gate 不變式」。
 1. vocab pull / push（本文上述狀態流轉）
 2. **podcast catalog**（Phase 3，序執行於 vocab pull 後）— `PodcastSyncService.syncAll` 併入 backgroundSync，使 podcast catalog 共用上述所有觸發；自我防禦、不 throw，失敗僅記 log 不影響 vocab。**不變式**：空 server list（`/api/podcasts` 回 `[]`）視為非權威，reconcile **不**對 series/episode 下 tombstone（避免 S3 index 短暫讀不到時 mass soft-delete）。詳見 `docs/reference/feature_boundary/podcast.md §同步觸發`。
+
+## logout-cleanup gate 不變式（重登↔sync 競態防線）
+
+`AuthManager.logout` 排程的本地清理（`clearLocalData`）會跳 `BackgroundSyncActor`、是真實 suspension。快速「登出→重登」時，若 sync 在 cleanup 收尾前動工，會搶用尚未清乾淨的 sync boundary 跑 incremental（後端全部 skip → 本地空庫卻自認最新），且拉回的資料又被 resume 的 cleanup 再清一遍 —— 2026-06-09 帳號 000287 單字本事故根因。防線：
+
+- **單點 gate（不變式）**：sync 動任何工作前必先等 logout cleanup 鏈收尾。gate 只在 `backgroundSync` claim 鎖成功後的**唯一入口**生效（`await sessionInvalidator.waitForPendingLocalDataCleanup()`），因此**四個觸發點（post-login / scenePhase→active / ⌘R menu / Settings 手動）全部**自動經過同一道 gate；call site 不再各自重複 gate。無 pending cleanup 時 gate 立即返回（正常冷啟登入不被拖慢）。
+- **cleanup 鏈化（不變式）**：連續 logout 時 `pendingLocalDataCleanup` 保留前一個 handle 並 chain（新 cleanup `await previousCleanup?.value` 才動工），故同一時間至多一個 cleanup 跑、零互踩。gate 只 await 最新 handle 即隱含前序全部收尾。
+- **generation re-check（防 TOCTOU）**：`waitForPendingLocalDataCleanup` 進場記 `localDataCleanupGeneration`，await 完若 generation 已被新 logout 遞增則重 loop，直到鏈上最後一個 cleanup 完成 —— 單次 await 只跟得到進場當下 handle，re-check 補住懸掛期間又 logout 的窗口。
+- **gate 期間被擋的是同一次 sync（不變式）**：sync 被 gate 擋下等待，等待結束後**是同一次 sync 繼續往下跑**（非取消後補跑），因此「等 cleanup」與「跳過這次 sync 待下次補跑」語意等價，**不會漏 sync**。
+- **Accepted residual**：gate 通過後、sync 真正動工前，caller（非 MainActor 的 `backgroundSync`）resume 有一次 executor hop；logout 恰落在此窗口仍會與新 cleanup 並行。徹底閉合需 sync 內部 generation re-check/abort（另案），現靠空庫安全網 + 帳號切換清 boundary 緩解。
 
 ## 知識圖譜變更的傳播（server 端 touch barrier）
 

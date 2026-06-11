@@ -19,6 +19,7 @@ documents:
       - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
       - ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift
       - ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift
+      - ios/BooksAndVocab/Services/AuthManager.swift
       - ios/BooksAndVocab/Services/BackgroundSyncActor.swift
       - ios/BooksAndVocab/Services/KGService+Sync.swift
       - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
