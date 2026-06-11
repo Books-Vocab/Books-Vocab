@@ -2,17 +2,7 @@ import SwiftUI
 
 struct SettingsPresenter: View {
     @ObserveInjection private var inject
-    @Environment(\.appTheme) var appTheme
     @Environment(\.appSkin) var appSkin
-    @Environment(\.quotaStore) var quotaStore
-
-    private struct ExternalActionItem: Identifiable {
-        let icon: String
-        let label: String
-        let action: () -> Void
-
-        var id: String { label }
-    }
 
     let state: SettingsPresenterState
     let translationSourceLang: Binding<TranslationLanguage>
@@ -32,16 +22,6 @@ struct SettingsPresenter: View {
     @State private var showSubscriptionDetail = false
     @State private var showTranslationLanguage = false
     @State private var showReviewSection = false
-    @State private var syncRotation: Double = 0
-
-    private var externalActionItems: [ExternalActionItem] {
-        [
-            .init(icon: "hand.raised", label: "隱私政策", action: actions.openPrivacyPolicy),
-            .init(icon: "doc.text", label: "服務條款", action: actions.openTermsOfService),
-            .init(icon: "questionmark.circle", label: "支援", action: actions.openSupport),
-            .init(icon: "star", label: "為 App 評分", action: actions.requestAppRating)
-        ]
-    }
 
     var body: some View {
         NavigationStack {
@@ -59,7 +39,11 @@ struct SettingsPresenter: View {
                     // DEBUG 後端切換
                     #if DEBUG
                     if let kg = state.kg, let debugLocalServerURL {
-                        debugBackendSection(kg: kg, debugLocalServerURL: debugLocalServerURL)
+                        SettingsDebugBackendSection(
+                            kg: kg,
+                            debugLocalServerURL: debugLocalServerURL,
+                            actions: actions
+                        )
                     }
                     #endif
                 }
@@ -144,90 +128,14 @@ struct SettingsPresenter: View {
 
     // MARK: - Section 3: 其他
 
+    // child View struct（原 computed property）；不得改回內聯 —
+    // 見 SettingsOtherSection.swift 檔頭的 stack 約束。
     private var otherSection: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "其他".localized, icon: "ellipsis.circle")
-
-            VStack(spacing: 0) {
-                // 同步狀態 (only when logged in)
-                if let syncSummary = state.syncSummary {
-                    syncSummaryRow(syncSummary)
-                    SettingsDivider()
-                }
-
-                // 今日額度 (always when logged in)
-                if state.auth.isLoggedIn {
-                    quotaRow
-                    SettingsDivider()
-                }
-
-                ForEach(Array(externalActionItems.enumerated()), id: \.element.id) { index, item in
-                    externalActionRow(item)
-
-                    if index < externalActionItems.count - 1 {
-                        SettingsDivider()
-                    }
-                }
-            }
-            .settingsCard()
-
-            // Version footer
-            Text("\("版本".localized) \(state.about.version)")
-                .font(appSkin.typography.caption)
-                .foregroundStyle(appSkin.palette.tertiaryText)
-                .frame(maxWidth: .infinity)
-                .padding(.top, appSkin.spacing.tinyGap)
-        }
-    }
-
-    // MARK: - Sync Summary Row
-
-    private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
-        Button {
-            actions.resync()
-        } label: {
-            AppKeyValueRow(
-                icon: "arrow.triangle.2.circlepath",
-                label: "同步狀態".localized,
-                style: .settings(appSkin)
-            ) {
-                if summary.isSyncing {
-                    HStack(spacing: appSkin.spacing.inlineGap) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.accent)
-                            .rotationEffect(.degrees(syncRotation))
-                            .onAppear {
-                                withAnimation(AppMotion.breathing) {
-                                    syncRotation = 360
-                                }
-                            }
-                            .onDisappear { syncRotation = 0 }
-                        Text("同步中…".localized)
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.secondaryText)
-                    }
-                } else {
-                    SettingsStatusSummaryValue(
-                        text: summary.summaryText,
-                        color: summary.isConnected ? appSkin.palette.success : appTheme.palette.warning
-                    )
-                }
-            }
-            .appHoverRowTint()
-            // .plain hit-testing falls through the Spacer gap inside
-            // AppKeyValueRow — same dead zone as SettingsNavigationRow.
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(summary.isSyncing)
-    }
-
-    private func externalActionRow(_ item: ExternalActionItem) -> some View {
-        SettingsNavigationRow(
-            icon: item.icon,
-            label: item.label.localized,
-            action: item.action
+        SettingsOtherSection(
+            syncSummary: state.syncSummary,
+            isLoggedIn: state.auth.isLoggedIn,
+            version: state.about.version,
+            actions: actions
         )
     }
 }
