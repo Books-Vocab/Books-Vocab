@@ -5,6 +5,9 @@ enum TodayReviewFixtureID: String, CaseIterable {
     case back = "back"
     case completed = "completed"
     case autoplay = "autoplay"
+    case autoplayPaused = "autoplayPaused"
+    case productionFront = "productionFront"
+    case productionBack = "productionBack"
     case longContent = "longContent"
 
     var key: FixtureKey {
@@ -101,6 +104,25 @@ enum TodayReviewFixtures {
         FixtureRecipe(key: TodayReviewFixtureID.autoplay.key, surfaces: sharedSurfaces, tags: ["autoplay"]) {
             seed(revealStage: .back, showFirstRunHint: false, isAutoPlaying: true, isAutoPlayPaused: false)
         },
+        // Autoplay paused: same playing session as `.autoplay` but the user has
+        // tapped pause, so the toolbar swaps play↔pause affordance and the
+        // autoplay progress bar freezes. Web parity needs the paused control state
+        // distinct from the actively-advancing one.
+        FixtureRecipe(key: TodayReviewFixtureID.autoplayPaused.key, surfaces: sharedSurfaces, tags: ["autoplay"]) {
+            seed(revealStage: .back, showFirstRunHint: false, isAutoPlaying: true, isAutoPlayPaused: true)
+        },
+        // Production mode (front): prompt side shows the L1 translation plus a
+        // cloze example, asking the learner to recall the English word — a wholly
+        // different prompt layout from recognition's word-first front.
+        FixtureRecipe(key: TodayReviewFixtureID.productionFront.key, surfaces: sharedSurfaces, tags: ["production"]) {
+            productionSeed(revealStage: .front)
+        },
+        // Production mode (back): answer side reveals the English word (vs.
+        // recognition revealing the translation), exercising the production
+        // answer-card heading + back-document subset.
+        FixtureRecipe(key: TodayReviewFixtureID.productionBack.key, surfaces: sharedSurfaces, tags: ["production"]) {
+            productionSeed(revealStage: .back)
+        },
         // Stress: answer card whose context / explanation / examples overflow the
         // fixed answer-card height, plus a 5-link group to push the link strip past
         // its inline cap. Catalog/preview only — not part of the blessed snapshot set.
@@ -172,6 +194,59 @@ enum TodayReviewFixtures {
             showFirstRunHint: showFirstRunHint
         )
     }
+
+    /// Production-mode session seed. Mirrors `seed(...)` but swaps in a
+    /// production card so the prompt asks for the English word given the
+    /// translation + cloze example.
+    private static func productionSeed(revealStage: TodayReviewRevealStage) -> TodayReviewSessionSeed {
+        .init(
+            progressText: "3 / 12",
+            currentCard: productionCardSeed,
+            nextCard: nextCardSeed,
+            revealStage: revealStage,
+            canShuffle: true,
+            canGoPrevious: true,
+            canGoNext: true,
+            remainingCount: 9,
+            forgotCount: 1,
+            rememberedCount: 2,
+            rememberedFeedbackTrigger: 0,
+            forgotFeedbackTrigger: 0,
+            isAutoPlaying: false,
+            isAutoPlayPaused: false,
+            autoplayProgress: 0.25,
+            autoplaySpeed: .normal,
+            autoplaySoundEnabled: true,
+            showFirstRunHint: false
+        )
+    }
+
+    /// Production card: front prompts with translation + a cloze example, back
+    /// reveals the English word. Carries an example so the production front
+    /// renders its cloze block (`card.examples.first`).
+    private static let productionCardSeed = TodayReviewCardSeed(
+        word: "ubiquitous",
+        translation: "無所不在的；普遍存在的",
+        context: "Smartphones have become ubiquitous in modern classrooms.",
+        explanation: "形容某事物到處都有、無處不在,常用於描述科技或現象的普及。",
+        partOfSpeech: "adj.",
+        bookTitle: "The Shallows",
+        chapterTitle: "A Medium of the Most General Nature",
+        dateAdded: Date(timeIntervalSince1970: 1_736_000_500),
+        difficultyTier: "intermediate",
+        reviewMode: .production,
+        reviewExamples: [
+            "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell.",
+        ],
+        rootForm: "ubiquitous",
+        inflections: ["ubiquitously", "ubiquity"],
+        graphLinksByKind: [
+            "shares_usage": [
+                .init(id: "prod-1", cardId: "pc-1", word: "pervasive", kind: "shares_usage", label: "相關", confidence: 0.83, reason: "都描述普遍存在", hidden: false),
+                .init(id: "prod-2", cardId: "pc-2", word: "omnipresent", kind: "shares_usage", label: "相關", confidence: 0.80, reason: "都指無所不在", hidden: false),
+            ]
+        ]
+    )
 
     private static let currentCardSeed = TodayReviewCardSeed(
         word: "meticulous",
