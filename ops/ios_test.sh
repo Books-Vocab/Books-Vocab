@@ -4,9 +4,11 @@
 # Usage:
 #   ./ops/ios_test.sh                             # run ALL tests in BooksAndVocabTests
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
-#   ./ops/ios_test.sh -g "notebook"               # grep: run tests whose METHOD name matches
-#                                                 # (matches func/@Test names only, NOT @Suite/file
-#                                                 #  names; repeat -g to OR patterns together)
+#   ./ops/ios_test.sh -g "notebook"               # grep: run tests whose METHOD name OR
+#                                                 # suite/container name (@Suite struct / class)
+#                                                 # matches — `-g FooTests` runs the whole suite.
+#                                                 # File names are NOT matched; repeat -g to OR
+#                                                 # patterns together.
 #   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --launch-benchmark
@@ -152,6 +154,8 @@ source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 # shellcheck source=lib/ios_test_video_archive.sh
 source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"
+# shellcheck source=lib/ios_run_verdict.sh
+source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -361,8 +365,8 @@ elif [[ -n "$GREP_PATTERN" ]]; then
   done < <(discover_only_flags "$TEST_DIR" "$GREP_PATTERN" "$TEST_TARGET")
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests matching pattern '$GREP_PATTERN'" >&2
-    echo "[ios_test] 注意：-g 只匹配測試「方法名」（func/@Test），不匹配 @Suite/struct/class 名與檔名。" >&2
-    echo "[ios_test] 想跑整個 suite → 用 --file <TypeName>；確認方法名 → --list 搭配更寬的 pattern。" >&2
+    echo "[ios_test] 注意：-g 匹配測試「方法名」（func/@Test）與「suite/容器名」（@Suite struct/class），不匹配檔名。" >&2
+    echo "[ios_test] 確認名稱 → --list 搭配更寬的 pattern；單一檔案 → --file <TypeName>（.swift 可省）。" >&2
     exit 1
   fi
   echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests for pattern '$GREP_PATTERN' ($TEST_TARGET)"
@@ -495,7 +499,6 @@ cleanup() {
   if [[ "$PRESERVE_TMPOUT" -eq 0 ]]; then
     rm -f "${TMPOUT:-}"
   fi
-  rm -f "${VERDICT_JSON_PRIVATE:-}"
 }
 
 # Fine-grained build lock (shared /tmp/kg-ios-build.lock with ios_build.sh).
@@ -1375,16 +1378,15 @@ emit_ui_runner_lifecycle() {
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_test.sh | tail`, where the pipeline's exit code is tail's, not the
 # script's). Read this instead of trusting a piped `$?`.
-VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_test_verdict"   # fixed "latest" path read by `ios_ops runs`
-VERDICT_JSON_FILE="$VERDICT_FILE.json"
-# Per-process private verdict JSON, used as the run-metrics source. The fixed
-# paths above are SHARED across concurrent agents, so reading the fixed JSON back
-# for the metric races: a parallel run can clobber it between our write and our
-# read, producing duplicated / mis-attributed metric lines (observed: two lines
-# for one caller, zero for another under tight concurrency). The metric is
-# sourced from this private copy; the fixed path is still updated for `runs`
-# (last-writer-wins is acceptable for a "latest" pointer).
-VERDICT_JSON_PRIVATE="$VERDICT_JSON_FILE.$$"
+#
+# Per-invocation UNIQUE path (multi-session race guard): VERDICT_FILE is
+# `kg_ios_test_verdict.<epochTs>-<pid>` (or KG_IOS_VERDICT_FILE when a wrapper
+# pins it), so a session can never mistake another session's verdict for its
+# own AND the run-metrics source has no concurrent writer (the old
+# fixed-path-then-private-copy dance is gone). The historical fixed path stays
+# as a last-writer-wins LATEST pointer for `ios_ops runs`. See
+# ops/lib/ios_run_verdict.sh.
+kg_ios_verdict_init test "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
   jq -nc \
@@ -1394,6 +1396,10 @@ write_json_verdict() {
     --arg exit "$exit_code" \
     --arg reason "$reason" \
     --arg caller "$CALLER" \
+    --arg cwd "$PROJECT_ROOT" \
+    --arg verdictFile "$VERDICT_FILE" \
+    --argjson ts "$(date +%s)" \
+    --argjson pid "$$" \
     --arg uiLaunchProfile "$UI_LAUNCH_PROFILE" \
     --arg elapsed "${ELAPSED}s" \
     --arg executed "$executed" \
@@ -1428,6 +1434,7 @@ write_json_verdict() {
       exit:$exit,
       reason:(if $reason == "" then null else $reason end),
       caller:$caller,
+      invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
       options:{
         uiLaunchProfile:(if $uiLaunchProfile == "" then null else $uiLaunchProfile end)
       },
@@ -1460,11 +1467,11 @@ write_json_verdict() {
         uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end),
         uiVideo:(if $uiVideo == "" then null else $uiVideo end)
       }
-    }' >"$VERDICT_JSON_PRIVATE" || true
-  cp -f "$VERDICT_JSON_PRIVATE" "$VERDICT_JSON_FILE" 2>/dev/null || true
-  # Source the metric from the private copy (no concurrent writer) so per-run
+    }' >"$VERDICT_JSON_FILE" || true
+  # The per-invocation JSON has no concurrent writer, so per-run metric
   # attribution is correct even when many agents finish at once.
-  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_PRIVATE"
+  type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
+  kg_ios_verdict_publish
 }
 
 populate_timing_breakdown
@@ -1480,7 +1487,7 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     echo "[ios_test] ✗ FALSE GREEN: xcodebuild reported TEST SUCCEEDED but 0 tests executed" >&2
     echo "[ios_test]   (likely a stale/bogus -only-testing test ID matched nothing) — $CALLER" >&2
     emit_ui_runner_lifecycle
-    echo "RESULT=fail reason=false-green-0-executed caller=$CALLER log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+    echo "RESULT=fail reason=false-green-0-executed caller=$CALLER log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
     write_json_verdict "fail" "1" "false-green-0-executed" "0"
     rm -f "$TMPOUT"
     exit 1
@@ -1489,7 +1496,7 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     echo ""
     echo "[ios_test] ✗ coverage gate failed: $COVERAGE_REASON" >&2
     PRESERVE_TMPOUT=1
-    echo "RESULT=fail reason=$COVERAGE_REASON caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+    echo "RESULT=fail reason=$COVERAGE_REASON caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
     write_json_verdict "fail" "1" "$COVERAGE_REASON" "$EXECUTED"
     print_timing_summary
     echo "[ios_test] ✗ tests passed but coverage failed (${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
@@ -1498,7 +1505,7 @@ if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
     exit 1
   fi
   echo ""
-  echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "RESULT=ok executed=$EXECUTED caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
   write_json_verdict "ok" "0" "" "$EXECUTED"
   print_timing_summary
   echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
@@ -1508,7 +1515,7 @@ elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
   grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20 || true
   echo ""
   PRESERVE_TMPOUT=1
-  echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "RESULT=fail reason=tests-failed caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
   write_json_verdict "fail" "1" "tests-failed" ""
   print_timing_summary
   emit_ui_runner_lifecycle
@@ -1527,7 +1534,7 @@ else
   # distinguish "build broke" (65) from "tests failed" (1). Only coerce a
   # spurious 0 up to 1 so an inconclusive run can never exit green.
   [[ "$EXIT_CODE" -eq 0 ]] && EXIT_CODE=1
-  echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
   write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
   print_timing_summary
   emit_ui_runner_lifecycle
