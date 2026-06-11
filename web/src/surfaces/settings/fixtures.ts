@@ -96,10 +96,11 @@ export const SETTINGS_FIXTURES: Record<ScenarioId<'settings'>, SettingsFixture> 
  *  外觀/語言是 Menu picker（上下 chevron）、翻譯語言/複習節奏是
  *  navigation row（右 chevron）——由 nav 旗標切 trailing 形態。 */
 export const PREFERENCE_ROWS = [
-  { label: '外觀', value: '跟隨系統', nav: false },
-  { label: '翻譯語言', value: 'English → 繁體中文', nav: true },
-  { label: '語言', value: '繁體中文', nav: false },
-  { label: '複習節奏', value: '寬鬆', nav: true },
+  { label: '外觀', value: '跟隨系統', nav: false, iconSize: 15 },
+  // 翻譯語言 icon 是「甲乙丙」字樣 glyph，視覺尺寸大於一般 SF symbol
+  { label: '翻譯語言', value: 'English → 繁體中文', nav: true, iconSize: 22 },
+  { label: '語言', value: '繁體中文', nav: false, iconSize: 15 },
+  { label: '複習節奏', value: '寬鬆', nav: true, iconSize: 15 },
 ] as const
 
 /** 其他區外部連結列（SettingsPresenter.swift externalActionItems）。

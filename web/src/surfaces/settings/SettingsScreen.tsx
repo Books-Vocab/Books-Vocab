@@ -1,10 +1,10 @@
 import type { ScenarioId } from '../../harness/scenarios'
+import appIconUrl from '../../assets/app_icon.png'
 import { SETTINGS_FIXTURES, PREFERENCE_ROWS, EXTERNAL_ROWS } from './fixtures'
 import type { LoggedInAccount, LoggedOutAccount } from './fixtures'
 import {
   AppearanceIcon,
   AppleLogoIcon,
-  BooksHeroIcon,
   CheckCircleFillIcon,
   ChevronRightIcon,
   DocTextIcon,
@@ -46,7 +46,7 @@ const EXTERNAL_ICONS = {
 function SectionHeader({ icon: Icon, label }: { icon: typeof PersonCircleIcon; label: string }) {
   return (
     <h2 className="settings-section-header">
-      <Icon size={13} />
+      <Icon size={15} />
       {label}
     </h2>
   )
@@ -108,9 +108,8 @@ function LoggedOutCard({ account }: { account: LoggedOutAccount }) {
   return (
     <div className="settings-card settings-login-card">
       <div className="settings-login-hero">
-        <span className="settings-login-appicon">
-          <BooksHeroIcon size={44} strokeWidth={1.4} />
-        </span>
+        {/* 實際 app icon 資產（ios AppIconImage.imageset），非自繪 mock */}
+        <img className="settings-login-appicon" src={appIconUrl} alt="" width={64} height={64} />
         <p className="settings-login-title">{account.heroTitle}</p>
         <p className="settings-login-subtitle">{account.heroSubtitle}</p>
       </div>
@@ -162,7 +161,7 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
                   {i > 0 && <div className="settings-divider is-inset" />}
                   <div className="settings-row">
                     <span className="settings-row-icon">
-                      <Icon size={row.label === '翻譯語言' ? 22 : 13} />
+                      <Icon size={row.iconSize} />
                     </span>
                     <span className="settings-row-label">{row.label}</span>
                     <span className="settings-row-value">{row.value}</span>
@@ -180,7 +179,7 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
                 <div className="settings-divider is-inset" />
                 <div className="settings-row">
                   <span className="settings-row-icon">
-                    <SyncIcon size={13} />
+                    <SyncIcon size={15} />
                   </span>
                   <span className="settings-row-label">自動同步</span>
                   <span
@@ -188,9 +187,8 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
                     data-on={fixture.autoSync}
                     role="switch"
                     aria-checked={fixture.autoSync}
-                  >
-                    <span className="settings-toggle-knob" />
-                  </span>
+                    aria-label="自動同步"
+                  />
                 </div>
               </div>
             )}
@@ -205,7 +203,7 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
               <>
                 <div className="settings-row">
                   <span className="settings-row-icon">
-                    <SyncIcon size={13} />
+                    <SyncIcon size={15} />
                   </span>
                   <span className="settings-row-label">同步狀態</span>
                   <span className="settings-sync-status">
@@ -223,7 +221,7 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
                   {i > 0 && <div className="settings-divider is-inset" />}
                   <div className="settings-row">
                     <span className="settings-row-icon">
-                      <Icon size={13} />
+                      <Icon size={15} />
                     </span>
                     <span className="settings-row-label">{label}</span>
                     <ChevronRightIcon className="settings-chevron" size={10} strokeWidth={1.2} />
