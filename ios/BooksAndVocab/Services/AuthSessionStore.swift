@@ -157,6 +157,10 @@ final class AuthSessionStore: AuthSessionStoring {
 /// In-memory session store for `-isolatedAuthSession` UI-test runs。
 /// 真 store 只在建立時被清一次（殘留淨空），之後所有讀寫都留在記憶體 ——
 /// process 結束即蒸發，下一個（任意模式的）host app 啟動讀到的是干淨真 store。
+///
+/// 並發不變量：`session` 無同步保護，正確性依賴「`AuthSessionStoring` 只被
+/// `@MainActor AuthManager` 呼叫」。若未來新增非 MainActor caller，必須先給
+/// 本類加隔離（@MainActor 或鎖）。
 final class EphemeralAuthSessionStore: AuthSessionStoring {
     private var session = PersistedAuthSession(
         userId: nil, displayName: nil, userEmail: nil, avatarURL: nil, token: nil
