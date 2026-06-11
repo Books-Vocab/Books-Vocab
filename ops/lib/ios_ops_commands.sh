@@ -25,10 +25,10 @@ cmd_commands_json() {
         key:"test",
         aliases:[],
         sideEffect:"local-test",
-        command:"./ops/ios_ops.sh test [ios_test.sh args...] [--json] | ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>] [--json] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
+        command:"./ops/ios_ops.sh test [ios_test.sh args...] [--json] | ./ops/ios_ops.sh test --coverage [--coverage-fail-under <percent>] [--json] | ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>] [--json] | ./ops/ios_ops.sh test --cache-status [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --prepare-cache [--unit|--ui|--all-targets] [--json] | ./ops/ios_ops.sh test --clean-cache [--unit|--ui|--all-targets] [--json]",
         delegate:"./ops/ios_test.sh",
-        purpose:"scoped iOS verification, UI launch benchmarking, plus explicit reusable test-cache lifecycle control",
-        jsonSchemas:["kg.ios.run.v1","kg.ios.test-cache.v1","kg.ios.diagnostics.v1"]
+        purpose:"scoped iOS verification, optional xccov line coverage gate, UI launch benchmarking, plus explicit reusable test-cache lifecycle control",
+        jsonSchemas:["kg.ios.run.v1","kg.ios.test-cache.v1","kg.ios.diagnostics.v1","kg.ios.coverage.v1"]
       },
       {
         key:"archive",

@@ -30,6 +30,7 @@ emit_run_verdict_json() {
           options:(.options // null),
           cache:(.cache // null),
           timings:(.timings // null),
+          coverage:(.coverage // null),
           verdictFile:$verdictFile,
           jsonVerdictFile:$jsonVerdictFile,
           artifacts:{
@@ -84,6 +85,7 @@ emit_run_verdict_json() {
         options:null,
         cache:null,
         timings:null,
+        coverage:null,
         verdictFile:$verdictFile,
         jsonVerdictFile:$jsonVerdictFile,
         artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false},
@@ -108,6 +110,7 @@ emit_run_verdict_json() {
         options:null,
         cache:null,
         timings:null,
+        coverage:null,
         verdictFile:$verdictFile,
         jsonVerdictFile:($verdictFile + ".json"),
         artifacts:{log:null,logExists:false,xcresult:null,xcresultExists:false},
@@ -159,6 +162,7 @@ emit_run_verdict_json() {
       options:$options,
       cache:$cache,
       timings:$timings,
+      coverage:null,
       verdictFile:$verdictFile,
       jsonVerdictFile:$jsonVerdictFile,
       artifacts:{
