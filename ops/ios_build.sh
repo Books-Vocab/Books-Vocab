@@ -186,8 +186,14 @@ fi
 # Machine-readable verdict file — survives even when stdout/stderr is piped
 # (e.g. `ios_build.sh | tail`, where the pipeline's exit code is tail's 0, not
 # the build's). Read this instead of trusting a piped `$?`.
-VERDICT_FILE="${TMPDIR:-/tmp}/kg_ios_build_verdict"
-VERDICT_JSON_FILE="$VERDICT_FILE.json"
+#
+# Per-invocation UNIQUE path (multi-session race guard): VERDICT_FILE is
+# `kg_ios_build_verdict.<epochTs>-<pid>` (or KG_IOS_VERDICT_FILE when a wrapper
+# pins it); the historical fixed path stays as a last-writer-wins LATEST
+# pointer for `ios_ops runs`. See ops/lib/ios_run_verdict.sh.
+# shellcheck source=lib/ios_run_verdict.sh
+source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
+kg_ios_verdict_init build "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2"
   jq -nc \
@@ -196,6 +202,10 @@ write_json_verdict() {
     --arg result "$result" \
     --arg exit "$exit_code" \
     --arg caller "$CALLER" \
+    --arg cwd "$PROJECT_ROOT" \
+    --arg verdictFile "$VERDICT_FILE" \
+    --argjson ts "$(date +%s)" \
+    --argjson pid "$$" \
     --arg elapsed "${ELAPSED}s" \
     --arg log "$TMPOUT" \
     --arg xcresult "$RESULT_BUNDLE" \
@@ -211,6 +221,7 @@ write_json_verdict() {
       exit:$exit,
       reason:null,
       caller:$caller,
+      invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
       elapsed:$elapsed,
       executed:null,
       timings:{
@@ -222,6 +233,7 @@ write_json_verdict() {
       artifacts:{log:$log,xcresult:$xcresult}
     }' >"$VERDICT_JSON_FILE" || true
   type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
+  kg_ios_verdict_publish
 }
 if [[ $EXIT_CODE -eq 0 ]]; then
   # Persist compile-event count as the baseline for future % estimates.
@@ -230,12 +242,12 @@ if [[ $EXIT_CODE -eq 0 ]]; then
     mkdir -p "$DERIVED_DATA_ROOT"
     echo "$COMPILE_EVENT_COUNT" > "$BUILD_PROGRESS_BASELINE"
   fi
-  echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "RESULT=ok EXIT=0 caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
   write_json_verdict "ok" "0"
   echo "[ios_build] timings lockWaitMs=$LOCK_WAIT_MS bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
   echo "[ios_build] ✓ build succeeded (${ELAPSED}s, ${COMPILE_EVENT_COUNT} compile events) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
 else
-  echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE" > "$VERDICT_FILE"
+  echo "RESULT=fail EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
   write_json_verdict "fail" "$EXIT_CODE"
   echo "[ios_build] timings lockWaitMs=$LOCK_WAIT_MS bootMs=$BOOT_MS xcodebuildMs=$XCODEBUILD_MS totalMs=$TOTAL_MS"
   echo "[ios_build] ✗ build failed (exit $EXIT_CODE, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE" >&2
