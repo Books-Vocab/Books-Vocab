@@ -126,7 +126,11 @@ enum FixtureDatasetStore {
             return (testingOverrideData, "testing-override")
         }
 
+        // Empty value counts as absent: the test harness exports the env var
+        // unconditionally (empty when no --dataset), and an empty string must
+        // not shadow the staged-file fallback below.
         if let rawValue = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey],
+           !rawValue.isEmpty,
            let data = Data(base64Encoded: rawValue) {
             return (data, "env:\(fixtureDatasetEnvKey)")
         }
