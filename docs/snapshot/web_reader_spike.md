@@ -4,8 +4,9 @@ authority: derived
 update_trigger: manual
 scope:
   - web/src/surfaces/reader-live/
+  - web/src/shell/AppShell.tsx
   - web/src/App.tsx
-verified_against: a0e90a86
+verified_against: 52842ea1
 -->
 # Web Reader 引擎 Spike — 選型結論與原型能力邊界
 
@@ -83,3 +84,40 @@ verified_against: a0e90a86
 
 - 新增 `epubjs@0.3.93`（dependencies）。lazy chunk 78KB gzip，僅 spike 路徑載入。
 - `npm audit`：epub.js 舊 transitive deps 報 2 high（非 spike 引入、不進主路徑）；生產化前評估升級或替換。
+
+---
+
+## 7. Phase 1 生產化落地（2026-06-12）
+
+spike 升級為**殼層內真閱讀體驗**。新本體 `web/src/surfaces/reader-live/LiveReaderScreen.tsx`
+（spike `ReaderLiveScreen.tsx` 保留為原型，未刪），epub.js 真渲染嵌進 parity reader chrome。
+
+### 入口
+- 殼層內 bookshelf 點書（`?shell=1` → `.shell-hot-bookgrid` → open-book push → reader screen
+  深 >1）即掛 Live Reader，取代靜態 parity chrome。Live Reader 自帶「書庫」chrome →
+  抑制殼層 overlay（見 `AppShell.tsx` `isLiveReader`）。
+- spike 路徑 `?surface=reader-live` 維持不變（原型對照）。
+
+### 已落地能力（playwright headless 當下驗證，2026-06-12）
+| 能力 | 狀態 | 證據 |
+|---|---|---|
+| 點書 → 真書閱讀 | ✅ | open-book → `.live-reader` mount，title="Children's Literature" |
+| epub.js 渲染嵌 parity chrome | ✅ | expanded header（書庫/書名/TOC/設定鈕）沿用 `reader.css`，progress 膠囊用 `.reader-progress-badge` |
+| 翻頁（左右半屏熱區 + 鍵盤←→） | ✅ | tap-next → 換頁（cover→"THE CONTENTS SECTION IV…"） |
+| 選詞 → TranslationPanel | ✅ | 真實 parity `TranslationPanel`（內容 **mock**，見 `mockTranslation.ts`）；word="SECTION" → mock 譯文 |
+| TOC 真跳轉 | ✅ | epub.js navigation 章節清單 → `rendition.display(href)`，沿用 `rpanel-toc` 視覺殼 |
+| 設定字級即時生效 | ✅ | iOS 檔位 0.75…2.0 step 0.125；+1 步 → iframe body 19px→21.4px，文字 "1.125x" |
+| serif/sans 即時切換 | ✅ | CrimsonPro ↔ ElmsSans，`registerCss` 重套，computed font-family 變更 |
+
+### 像素中立 gate
+全 63 parity shot **byte-identical**（before/after RMSE=0）。parity bundle `index-BotrPX5Y.js`
+恆定 107.66KB gzip；Live Reader 為獨立 lazy chunk（4.0KB gzip），epub.js 不進 parity bundle。
+
+### 與 iOS 已知差異 / phase-2 待辦
+- **翻譯內容為 mock**（前端字典 fixture，誠實標注）。phase-2 接 backend `/api/vocab` + translate
+  + LLM，panel 殼層不需改。
+- **字體 phase-1 僅 serif/sans 兩檔**（iOS 有 Garamond/Mono 共 4 檔）；行距 slider / 主題（light/sepia/dark）/
+  捲動模式 / 生字 highlight 重畫 / locator 持久化未接（仍為 spike §4 列的 M 量級工作）。
+- **選詞 iframe sandbox 警告**（`Blocked script execution in about:srcdoc`）= spike §3 已記錄的
+  benign 架構訊號；選詞走父 context 監聽，不受影響。
+- TOC 對齊 epub 真實 nav（本測試書僅 1 條目）；非 parity 4 態 fixture。

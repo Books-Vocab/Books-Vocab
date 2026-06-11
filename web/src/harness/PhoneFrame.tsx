@@ -1,4 +1,6 @@
-import type { HarnessConfig } from './scenarios'
+import { useState } from 'react'
+import type { Appearance, HarnessConfig } from './scenarios'
+import { AppearanceContext } from './appearance'
 import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
 import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
 import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
@@ -51,6 +53,10 @@ export function PhoneFrame({
   shell?: boolean
   crop?: boolean
 }) {
+  // 互動層：data-theme 由本地 state 驅動，**初值 = config.appearance**，故 parity
+  // capture 的首次渲染與靜態版逐位元相同；只有 Settings 外觀 picker 觸發後才變。
+  const [appearance, setAppearance] = useState<Appearance>(config.appearance)
+
   // shell=false（預設、parity capture rig 唯一路徑）：原樣渲染單一 surface，
   // data-* 屬性與 DOM 結構完全不變。shell=true（?shell=1 opt-in）：surface
   // 裝進底部 tab bar 殼，僅多掛 data-shell 標記供殼層樣式作用。
@@ -61,16 +67,18 @@ export function PhoneFrame({
   // 安全區 → 元件高 = 64pt = 192px@dpr3）。shots.mjs 再以 manifest 的 `crop` 選擇器
   // 截元件 DOM 自身。預設不啟用，既有 capture 行為與 DOM 完全不變。
   return (
-    <div
-      className="phone-frame"
-      data-theme={config.appearance}
-      data-surface={config.surface}
-      data-scenario={config.scenario}
-      data-harness="phone-frame"
-      data-shell={shell ? '1' : undefined}
-      data-crop={crop ? 'component' : undefined}
-    >
-      {shell ? <AppShell config={config} /> : <SurfaceView config={config} />}
-    </div>
+    <AppearanceContext.Provider value={{ appearance, setAppearance }}>
+      <div
+        className="phone-frame"
+        data-theme={appearance}
+        data-surface={config.surface}
+        data-scenario={config.scenario}
+        data-harness="phone-frame"
+        data-shell={shell ? '1' : undefined}
+        data-crop={crop ? 'component' : undefined}
+      >
+        {shell ? <AppShell config={config} /> : <SurfaceView config={config} />}
+      </div>
+    </AppearanceContext.Provider>
   )
 }

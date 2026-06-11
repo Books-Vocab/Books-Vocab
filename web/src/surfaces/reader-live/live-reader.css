@@ -1,0 +1,141 @@
+/* Live Reader（生產化 phase 1）版面膠水 — 把 epub.js 渲染嵌進 parity reader chrome。
+   視覺類別（header / progress badge / translation panel / rpanel / rsettings）全部
+   沿用 reader.css；本檔只負責 live 引擎的 layout（paper / host / 翻頁熱區 / overlay
+   定位 / 字體 toggle）。非 parity 路徑，不進對拍 gate。 */
+
+.live-reader {
+  position: relative;
+  height: 100%;
+  background: #faf6f0; /* paperSepia（對齊 parity reader fixtures.PAPER_SEPIA） */
+  overflow: hidden;
+}
+
+/* paper 本體 — epub.js 掛載容器，頂部讓出 header 區。 */
+.live-reader-paper {
+  position: absolute;
+  inset: 0;
+  background: #faf6f0;
+}
+
+.live-reader-host {
+  position: absolute;
+  inset: 96px 12px 24px; /* 頂部讓出 expanded header（top 66 + toolbar）；底部留白 */
+}
+
+/* 翻頁熱區（左右半屏透明按鈕，避開 header 與 progress 膠囊） */
+.live-reader-tap {
+  position: absolute;
+  top: 110px;
+  bottom: 0;
+  width: 28%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+.live-reader-tap-prev {
+  left: 0;
+}
+.live-reader-tap-next {
+  right: 0;
+}
+
+/* expanded header 定位（reader.css 的 .reader-header-expanded 已 absolute top:66/left/right；
+   live header 只疊高 z-index 確保在 host 上方）。 */
+.live-reader-header {
+  z-index: 5;
+}
+
+/* compact 進度膠囊容器（避免與 header 重疊，放在 header 下方右側） */
+.live-reader-progress {
+  position: absolute;
+  top: 120px;
+  right: 20px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* --- 通用 overlay scrim --- */
+.live-reader-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* bottom-sheet 型 overlay（設定）：把面板推到底升起。 */
+.live-reader-overlay-bottom {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+/* TOC 面板：左側抽屜，沿用 rpanel-toc 視覺，限寬。 */
+.live-reader-panel-toc {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 82%;
+  max-width: 320px;
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.14);
+  overflow-y: auto;
+}
+
+/* TOC 列改成可點 button（沿用 rpanel-toc-row-text 字樣，補互動樣式）。 */
+.live-reader-toc-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.live-reader-toc-btn:hover {
+  opacity: 0.6;
+}
+
+/* Settings 面板：bottom-sheet 升起；override parity .rsettings-card 的 full-frame
+   定位為 sheet 高度（live 是浮動面板，非 parity full-bleed 場景）。 */
+.live-reader-overlay-bottom .rpanel-settings {
+  position: relative;
+  background: transparent;
+  height: auto;
+}
+.live-reader-overlay-bottom .rsettings-card {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  max-height: 60%;
+}
+
+/* 字體 serif/sans toggle（沿用 rsettings-tile 視覺殼） */
+.live-reader-font-toggle {
+  display: flex;
+  gap: 8px;
+}
+.live-reader-font-toggle .rsettings-tile {
+  flex: 1;
+  cursor: pointer;
+  border: none;
+}
+
+/* 翻譯面板 overlay 定位（沿用 reader.css .reader-bottom-overlay 行為） */
+.live-reader-translation {
+  z-index: 12;
+}
+
+.live-reader-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  text-align: center;
+  font-family: 'ElmsSans', -apple-system, sans-serif;
+  font-size: 15px;
+  color: #b3261e;
+  z-index: 9;
+}

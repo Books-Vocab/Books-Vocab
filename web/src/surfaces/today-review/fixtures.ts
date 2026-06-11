@@ -109,3 +109,24 @@ export const TODAY_REVIEW_FIXTURES: Record<ScenarioId<'today-review'>, TodayRevi
   'production-front': { ...BASE, reveal: 'front', card: PRODUCTION_CARD },
   'production-back': { ...BASE, reveal: 'back', card: PRODUCTION_CARD },
 }
+
+/**
+ * 互動 session 佇列 — 進度膠囊「3 / 12」= 第 3 張 / 共 12 張，故當前 scenario 卡
+ * 之後仍有 9 張可推進（答對/答錯 → 下一張）。為 fixtures 資料層，再多卡也只是
+ * mirror 兩種 mode 的 seed 卡輪替；最後一張答完 → 完成態。
+ *
+ * parity 契約：互動 session 由 scenario 的 currentIndex=2 / reveal seed 起算，第一張
+ * 顯示卡 === scenario fixture 的 card，初始 DOM 不變。
+ */
+export const SESSION_TOTAL = 12
+export const SESSION_START_INDEX = 2 // 「3 / 12」→ 0-based index 2
+
+/** 接在 scenario 當前卡之後的後續卡（index 3…11，9 張），交替 recognition/production。 */
+const FOLLOW_ON: ReviewCard[] = Array.from({ length: SESSION_TOTAL - SESSION_START_INDEX - 1 }, (_, i) =>
+  i % 2 === 0 ? PRODUCTION_CARD : RECOGNITION_CARD,
+)
+
+/** 由 scenario 推導完整 session 佇列：[scenario.card, ...FOLLOW_ON]（共 10 張，index 2…11）。 */
+export function sessionQueue(scenario: ScenarioId<'today-review'>): ReviewCard[] {
+  return [TODAY_REVIEW_FIXTURES[scenario].card, ...FOLLOW_ON]
+}
