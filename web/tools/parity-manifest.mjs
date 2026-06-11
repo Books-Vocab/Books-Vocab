@@ -5,8 +5,9 @@
  *
  * `ref` addresses the iOS counterpart by Catalog taxonomy (see
  * design-system/parity/ios-ref.mjs); `params` drives the harness URL
- * (?scenario/?appearance — web/src/harness/scenarios.ts) so capture and
- * reference stay addressed by one entry.
+ * (?surface/?scenario/?appearance — web/src/harness/scenarios.ts) so capture
+ * and reference stay addressed by one entry. `params.surface` 省略 = bookshelf
+ * （harness 的向後相容預設）。
  */
 export const PARITY = [
   {
@@ -44,5 +45,41 @@ export const PARITY = [
     params: { scenario: 'empty', appearance: 'dark' },
     ref: { surface: 'Bookshelf View', scenario: 'Empty shelf', appearance: 'dark' },
     note: '書架 empty (dark)',
+  },
+  {
+    case: 'settings-subscribed-light',
+    params: { surface: 'settings', scenario: 'subscribed-active', appearance: 'light' },
+    ref: { surface: 'Settings', scenario: 'Subscribed Active', appearance: 'light' },
+    note: '設定 subscribed (light)',
+  },
+  {
+    case: 'settings-logged-out-light',
+    params: { surface: 'settings', scenario: 'logged-out', appearance: 'light' },
+    ref: { surface: 'Settings', scenario: 'Logged Out', appearance: 'light' },
+    note: '設定 logged-out (light)',
+  },
+  {
+    case: 'settings-pricing-light',
+    params: { surface: 'settings', scenario: 'pricing-unavailable', appearance: 'light' },
+    ref: { surface: 'Settings', scenario: 'Pricing Unavailable', appearance: 'light' },
+    note: '設定 pricing-unavailable (light)',
+  },
+  {
+    case: 'settings-subscribed-dark',
+    params: { surface: 'settings', scenario: 'subscribed-active', appearance: 'dark' },
+    ref: { surface: 'Settings', scenario: 'Subscribed Active', appearance: 'dark' },
+    note: '設定 subscribed (dark)',
+  },
+  {
+    case: 'settings-logged-out-dark',
+    params: { surface: 'settings', scenario: 'logged-out', appearance: 'dark' },
+    ref: { surface: 'Settings', scenario: 'Logged Out', appearance: 'dark' },
+    note: '設定 logged-out (dark)',
+  },
+  {
+    case: 'settings-pricing-dark',
+    params: { surface: 'settings', scenario: 'pricing-unavailable', appearance: 'dark' },
+    ref: { surface: 'Settings', scenario: 'Pricing Unavailable', appearance: 'dark' },
+    note: '設定 pricing-unavailable (dark)',
   },
 ];
