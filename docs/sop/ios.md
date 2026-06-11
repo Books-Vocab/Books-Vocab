@@ -251,6 +251,16 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - 看到 tool failure / inconclusive / false green 先修 runner 或 invocation,不要將就。
 - 長 UI permutations 正常會跑數分鐘;依 heartbeat 判斷進度,不要因短期無 test case output 就殺掉。
 
+## 真機 / 本機 crash 自動取證（lldb stop-hook）
+
+**問題**：Xcode debugger 攔截 crash 時 iOS 不落 `.ips`，backtrace 只存在於 Xcode UI —— agent 的觀測介面淪為使用者截圖 + 人肉轉貼。**管線**：`ops/lldb_crash_forensics.py` 以 lldb stop-hook 在任何 exception / 致命 signal stop **自動**寫全量取證檔到 `/tmp/kg_lldb_forensics/`（`KG_LLDB_DUMP_DIR` 可覆寫），agent 直接讀檔。
+
+- **安裝（一次）**：`ops/install_lldb_forensics.sh`（idempotent 寫 `~/.lldbinit`；`--uninstall` 移除）。之後所有 lldb session —— 含 Xcode debug session —— 自動生效（dummy-target stop-hook 繼承已驗證）。
+- **既有 paused session**（事發當下沒裝）：lldb console 跑 `command script import <repo>/ops/lldb_crash_forensics.py` 再 `kgdump`。
+- **dump 內容**：stop reason、stack region（bounds/size/headroom）、**全量 frame 表含 fp 差分 frame size**（stack overflow 直接點名誰吃 stack）、frame 0 registers、其他 thread top frames。`LATEST.txt` 恆指最新。
+- **判讀備忘**：`___chkstk_darwin` + `EXC_BAD_ACCESS code=2` + 位址貼近 region base = stack overflow；真機 main thread stack **1MB**、sim（macOS process）**8MB** —— sim 永遠測不出真機 stack overflow。breakpoint stop 不會觸發 dump；任意 stop 點可 `kgdump` 手動取證。
+- **測試**：`ops/tests/test_lldb_crash_forensics.sh`（自動 dump / 全量 frame / fp 差分 / breakpoint 不誤觸 / kgdump）。
+
 ## 發版 / TestFlight（`ops/ios_release.sh`）
 
 App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基建，**無需手動匯入 Apple Distribution 憑證**（cert/profile 已一次性建置，含重建步驟見 `~/.secrets/apple/README.md`）。
