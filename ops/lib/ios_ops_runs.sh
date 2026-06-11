@@ -3,8 +3,10 @@
 
 emit_run_verdict_json() {
   local kind="$1" file="$2"
-  local json_file
-  json_file="$(verdict_json_file_for "$kind")"
+  # JSON verdict always lives at "<text verdict>.json" — derive it from the
+  # CALLER-CHOSEN text path so per-invocation pinned verdicts (multi-session
+  # race guard) read their own JSON, never the machine-wide latest pointer.
+  local json_file="$file.json"
   if [[ -f "$json_file" ]]; then
     if jq -e . "$json_file" >/dev/null 2>&1; then
       jq -c \
