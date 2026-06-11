@@ -55,6 +55,18 @@ enum VocabularyListViewScenarios {
                     loggedIn: true
                 )
             }
+            // Toolbar sync chrome active: a `.running` SyncCoordinator drives the
+            // toolbar glyph's pulse + the pending-add fixtures drive the badge count,
+            // so the web counterpart has a baseline for the "syncing · N pending"
+            // toolbar state. Every other scenario injects the env-default `.ready`
+            // coordinator, so this is the only one that exercises `isSyncing == true`.
+            Scenario("Syncing · pending badge + active sync", layout: .fill) {
+                VocabularyListViewScene(
+                    entries: VocabularyListViewFixtures.syncing,
+                    loggedIn: true,
+                    syncPhase: .running
+                )
+            }
             Scenario("Logged out", layout: .fill) {
                 VocabularyListViewScene(
                     entries: [],
@@ -128,6 +140,19 @@ private enum VocabularyListViewFixtures {
             )
         }
     }
+
+    /// Synced words (render in the knowledge list) plus two pending-add entries
+    /// (drive the toolbar pending badge → "2"). Paired with `syncPhase: .running`
+    /// in its scenario so both the badge count and the active-sync glyph render.
+    static var syncing: [VocabularyEntry] {
+        [
+            synced(word: "serendipity", translation: "機緣巧合"),
+            synced(word: "ephemeral", translation: "短暫的", partOfSpeech: "adj."),
+            synced(word: "petrichor", translation: "雨後泥土香"),
+            pendingAdd(word: "quintessential", translation: "典型的"),
+            pendingAdd(word: "ineffable", translation: "難以言喻的"),
+        ]
+    }
 }
 
 // MARK: - Scene harness
@@ -138,8 +163,9 @@ private enum VocabularyListViewFixtures {
 private struct VocabularyListViewScene: View {
     let container: ModelContainer
     let auth: CatalogPreviewAuth
+    let syncCoordinator: SyncCoordinator
 
-    init(entries: [VocabularyEntry], loggedIn: Bool) {
+    init(entries: [VocabularyEntry], loggedIn: Bool, syncPhase: SyncPhase = .ready) {
         let container = try! ModelContainer(
             for: VocabularyEntry.self, Notebook.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -157,6 +183,13 @@ private struct VocabularyListViewScene: View {
 
         self.container = container
         self.auth = CatalogPreviewAuth(isLoggedIn: loggedIn)
+        // Pin the toolbar's `isSyncing` to what the scenario declares. The env
+        // default is a fresh `.ready` coordinator; setting `.phase` directly
+        // (no real pipeline kicked off) renders the active-sync glyph state
+        // deterministically without any network/SwiftData side effect.
+        let coordinator = SyncCoordinator()
+        coordinator.phase = syncPhase
+        self.syncCoordinator = coordinator
     }
 
     var body: some View {
@@ -167,6 +200,7 @@ private struct VocabularyListViewScene: View {
             }
             .modelContainer(container)
             .environment(\.authManager, auth)
+            .environment(\.syncCoordinator, syncCoordinator)
         }
         .environmentObject(AppAppearanceStore.preview)
     }
