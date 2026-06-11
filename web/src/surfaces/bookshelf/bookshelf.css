@@ -12,10 +12,10 @@
 }
 
 /* --- Large-title nav（UINavigationBar large title 幾何）---
-   status bar 59 + inline bar 44 = 103；measured：Catalog PNG 實測 glyph top
-   ≈ 119pt，故再加 large-title 列內距 13。 */
+   status bar 59 + inline bar 44 = 103；measured：對拍 row-profile 實測 iOS
+   glyph top = 123.3pt，103 + 列內距 15 釘齊。 */
 .bookshelf-nav {
-  padding: 116px 20px 0;
+  padding: 118px 20px 0;
 }
 
 .bookshelf-nav-title {
@@ -138,9 +138,12 @@
 }
 
 .book-card-progress-label {
-  /* AppFonts.monoNumbers(10) — ElmsSans mono cascade */
+  /* AppFonts.monoNumbers(10) — ElmsSans mono cascade。
+     line-height 必須釘 12px：繼承 --leading-body(1.5) 會把 progress 列撐到
+     15px，卡片 pitch 比 iOS 多 3pt（row-profile 實測 332 vs 329）。 */
   font-family: var(--font-mono);
   font-size: 10px;
+  line-height: 12px;
   color: var(--text-tertiary);
 }
 
