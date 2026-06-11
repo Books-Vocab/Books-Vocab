@@ -10,13 +10,13 @@ import type { ScenarioId } from '../../harness/scenarios'
  *              Bounds(max)，bounds-max = PR #929）+ ReaderSettingsPresenter+Vocab.swift。
  *   Notebook — ReaderNotebookPickerScenarios.swift + NotebookBindingList.swift。
  *
- * Notebook 對拍策略（2026-06-11，與 R1 一致）：web 是 **catalog snapshot 的像素重建**，
- * 非 live app。指定對拍 ref = catalog-full-20260608-131808 的 Reader Notebook Picker
- * snapshot，其捕捉時點早於 2026-06-09 的 NotebookBindingList strict-binding 改版
- * （commit 1d23758d 移除 follow-global 列 + 每列「預設」副標）。為過 parity gate（RMSE
- * ≤0.12）必須對齊 snapshot 像素，故 web 還原 snapshot 形態（含「跟隨全域設定」卡 +
- * 「預設」副標）。current iOS source 已演進；待 catalog 重捕後再隨之收斂（追蹤於 PR body）。
- */
+ * Notebook 對拍策略（2026-06-11 更新，與 R1 一致）：web 是 **catalog snapshot 的像素
+ * 重建**，非 live app。對拍 ref = catalog-full-20260611-130335，已含 2026-06-09 的
+ * NotebookBindingList strict-binding 改版（commit 1d23758d 移除 follow-global 列 +
+ * 每列「預設」副標）。故 web 已隨之收斂至 strict-binding 形態：**無**頂部「跟隨全域
+ * 設定」卡、**無** isDefault「預設」副標，僅 section header「單字本」+ insetGrouped
+ * 列（色條 + 名稱 + 綁定列 accent checkmark）。`isDefault` 欄位保留於 fixture data
+ * 僅為對齊 iOS sampleNotebooks seed，渲染面不再消費。 */
 
 // ============================================================
 // TOC
