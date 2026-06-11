@@ -53,7 +53,8 @@ def _frame_name(frame):
 
 def _frame_table(thread):
     """全量 frame 表。frame i 的 size ≈ fp(i+1) - fp(i)（stack 向下長，
-    caller fp 較高）；frame 0 另列 fp0 - sp。fp 缺失（0）標 '?'。"""
+    caller fp 較高）；frame 0 在 fp1 缺失時 fallback 用 fp0 - sp。
+    fp 缺失（0）或差分不合理（負值 / >64MB，如 async frame）標 '?'。"""
     lines = ["  idx  fp                 size(B)  function (module)"]
     n = thread.GetNumFrames()
     fps = []
@@ -195,9 +196,15 @@ class KGCrashStopHook:
         key = (process.GetProcessID(), process.GetStopID())
         if key in _seen_stops:
             return True
-        _seen_stops.add(key)
-        path = _write_dump(process, thread, "auto")
-        stream.Print("[kg-forensics] crash dump written: %s\n" % path)
+        # 失敗必須出聲：取證工具在唯一需要它的時刻靜默失敗 = 最壞結局。
+        # lldb 會吞 stop-hook 內未捕捉的 Python 例外（實測零 traceback），
+        # 所以這裡自己抓、自己印。成功才記 _seen_stops（失敗保留重試資格）。
+        try:
+            path = _write_dump(process, thread, "auto")
+            _seen_stops.add(key)
+            stream.Print("[kg-forensics] crash dump written: %s\n" % path)
+        except Exception as e:  # noqa: BLE001 — 取證面，任何失敗都要可見
+            stream.Print("[kg-forensics] dump FAILED: %r\n" % e)
         return True
 
 
@@ -208,19 +215,31 @@ def kgdump(debugger, command, exe_ctx, result, internal_dict):
     if not (process and process.IsValid() and process.GetState() == lldb.eStateStopped):
         result.SetError("kgdump: no stopped process")
         return
-    path = _write_dump(process, thread, "manual")
+    try:
+        path = _write_dump(process, thread, "manual")
+    except Exception as e:  # noqa: BLE001 — 取證面，任何失敗都要可見
+        result.SetError("kgdump FAILED: %r" % e)
+        return
     result.AppendMessage("[kg-forensics] dump written: %s" % path)
 
 
 def __lldb_init_module(debugger, internal_dict):
-    debugger.HandleCommand(
-        "command script add -f lldb_crash_forensics.kgdump kgdump")
-    res = lldb.SBCommandReturnObject()
-    debugger.GetCommandInterpreter().HandleCommand(
-        "target stop-hook add -P lldb_crash_forensics.KGCrashStopHook", res)
-    if res.Succeeded():
-        print("[kg-forensics] armed: auto-dump on crash → %s (manual: kgdump)" % _dump_dir())
-    else:
-        # ~/.lldbinit 在 target 建立前 source 時可能落到 dummy target；新 target
-        # 會繼承 dummy target 的 stop-hook（lldb 行為），這裡僅提示。
-        print("[kg-forensics] stop-hook add: %s (kgdump 仍可用)" % (res.GetError() or "?").strip())
+    # ~/.lldbinit 全域生效：這裡任何例外會在「每個」lldb session（含其他
+    # 專案、Xcode）啟動時噴 traceback，所以整段防禦化；也不在 import 期
+    # 建 dump dir（lazy，留到真的要寫時）。--overwrite 讓重複 import
+    # （已裝 ~/.lldbinit 後又在 paused session 手動 import）不報錯。
+    try:
+        debugger.HandleCommand(
+            "command script add --overwrite -f lldb_crash_forensics.kgdump kgdump")
+        res = lldb.SBCommandReturnObject()
+        debugger.GetCommandInterpreter().HandleCommand(
+            "target stop-hook add -P lldb_crash_forensics.KGCrashStopHook", res)
+        if res.Succeeded():
+            print("[kg-forensics] armed: auto-dump on crash → %s (manual: kgdump)"
+                  % os.environ.get("KG_LLDB_DUMP_DIR", "/tmp/kg_lldb_forensics"))
+        else:
+            # ~/.lldbinit 在 target 建立前 source 時可能落到 dummy target；新
+            # target 會繼承 dummy target 的 stop-hook（lldb 行為），這裡僅提示。
+            print("[kg-forensics] stop-hook add: %s (kgdump 仍可用)" % (res.GetError() or "?").strip())
+    except Exception as e:  # noqa: BLE001
+        print("[kg-forensics] init failed: %r" % e)
