@@ -1,0 +1,120 @@
+/* Settings surface — Phase 1 骨架樣式（只立結構，不做幾何對齊）。
+   Phase 2 以 Catalog 參考圖 + SettingsPresenter 常數逐項釘齊，
+   px 註解屆時標 iOS 來源。 */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+}
+
+.settings-nav {
+  padding: 60px 20px 0;
+}
+
+.settings-nav-title {
+  margin: 0;
+  font-size: var(--text-body);
+  text-align: center;
+  color: var(--text-quaternary);
+}
+
+.settings-scroll {
+  flex: 1;
+  overflow: hidden; /* 快照面：不滾動，截到什麼算什麼（同 Catalog） */
+}
+
+.settings-section {
+  padding: 0 20px;
+  margin-top: 24px;
+}
+
+.settings-section-header {
+  margin: 0 0 8px;
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+
+.settings-card {
+  background: var(--surface-bg, #fff);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.settings-row-label {
+  color: var(--text-primary);
+}
+
+.settings-row-value {
+  color: var(--text-tertiary);
+}
+
+.settings-footnote {
+  margin: 8px 0 0;
+  font-size: var(--text-caption);
+  color: var(--text-quaternary);
+}
+
+.settings-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+}
+
+.settings-account-row,
+.settings-subscription-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-signout {
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--muted-fill);
+  color: #b3261e;
+  cursor: pointer;
+}
+
+.settings-login-card {
+  align-items: center;
+  text-align: center;
+}
+
+.settings-login-button {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: var(--muted-fill);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.settings-toggle {
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  background: var(--muted-fill);
+}
+
+.settings-toggle[data-on='true'] {
+  background: var(--accent, #4a6b8a);
+}
