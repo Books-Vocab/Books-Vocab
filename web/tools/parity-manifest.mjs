@@ -145,21 +145,29 @@ export const PARITY = [
     note: 'Reader error open-failed (light)',
   },
   // Selection Toolbar（R4）— SelectionToolbarScenarios.swift 3 態（vocab 多選底欄）。
+  // 元件級 scene：iOS catalog 自 0611 起把 SelectionToolbar 以 intrinsic 高度
+  // 緊裁切擷取（1179×192 = 64pt，純元件、無 in-app safe-area）。故 web 也以
+  // `crop` 選元件 DOM 擷取（`?crop=component` 令 surface 收掉 44.7pt safe-area
+  // padding，元件還原至同等 64pt intrinsic bounds），令 ref/shot 同界對比，
+  // 不再把 192px 元件硬拉到全 2556px frame（拉伸即量測框架失配，舊 RMSE 0.87）。
   {
     case: 'selection-toolbar-multiple-light',
-    params: { surface: 'selection-toolbar', scenario: 'selection-multiple', appearance: 'light' },
+    params: { surface: 'selection-toolbar', scenario: 'selection-multiple', appearance: 'light', crop: 'component' },
+    crop: '.selection-toolbar-surface',
     ref: { surface: 'Selection Toolbar', scenario: 'Multiple selected', appearance: 'light' },
     note: 'Selection toolbar multiple selected (light)',
   },
   {
     case: 'selection-toolbar-single-light',
-    params: { surface: 'selection-toolbar', scenario: 'selection-single', appearance: 'light' },
+    params: { surface: 'selection-toolbar', scenario: 'selection-single', appearance: 'light', crop: 'component' },
+    crop: '.selection-toolbar-surface',
     ref: { surface: 'Selection Toolbar', scenario: 'Single selected', appearance: 'light' },
     note: 'Selection toolbar single selected (light)',
   },
   {
     case: 'selection-toolbar-none-light',
-    params: { surface: 'selection-toolbar', scenario: 'selection-none', appearance: 'light' },
+    params: { surface: 'selection-toolbar', scenario: 'selection-none', appearance: 'light', crop: 'component' },
+    crop: '.selection-toolbar-surface',
     ref: { surface: 'Selection Toolbar', scenario: 'No selection (disabled)', appearance: 'light' },
     note: 'Selection toolbar disabled (light)',
   },

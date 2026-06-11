@@ -37,6 +37,31 @@
   box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.06);
 }
 
+/* 元件級 crop（?crop=component → phone-frame[data-crop=component]）：iOS catalog
+   自 0611 起把 SelectionToolbar 以 intrinsic 高緊裁切擷取（1179×192 = 64pt，
+   非全幅 2556 透明底）。緊裁切 scene 結構（measured，÷3 得 pt）：
+     y0–23（8pt）  = transparent → parity `-alpha off` 壓黑（card 上方留白）
+     y24–191（56pt）= 不透明白卡，content（icon band y56–90、label y128–152）
+                     縱向置中，卡內無下方 home-indicator 安全區。
+   web crop 還原此結構：截 `.selection-toolbar-surface`（含黑頂帶），surface
+   收掉全幅 852pt 黑底、改 height:auto；頂部留 8pt 黑帶（padding-top）；card 改
+   static 貼合、內容縱向置中（align-items:center）、卸掉 44.7pt safe-area。
+   兩端均回 ~64pt intrinsic 同界對比，不再把 192px 元件硬拉 2556px frame。 */
+.phone-frame[data-crop='component'][data-surface='selection-toolbar'] {
+  height: auto;
+}
+.phone-frame[data-crop='component'] .selection-toolbar-surface {
+  height: auto;
+  padding-top: 8px; /* iOS 緊裁切 scene 上方 8pt 透明→黑留白 */
+}
+.phone-frame[data-crop='component'] .selection-toolbar {
+  position: static; /* 不再 pin bottom；貼合元件 intrinsic bounds */
+  align-items: center; /* 內容縱向置中於卡內（對齊 iOS scene） */
+  height: 56px; /* iOS card 高 56pt（192px ref − 8pt 黑帶 = 168px = 56pt） */
+  padding-top: 0;
+  padding-bottom: 0; /* 卸掉 s2=8 / 44.7pt safe-area；置中由 align-items 負責 */
+}
+
 .selection-toolbar-btn {
   flex: 1; /* maxWidth: .infinity → 各佔半寬等分 */
   display: inline-flex;
