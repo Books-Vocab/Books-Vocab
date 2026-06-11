@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: dfc5401f
+verified_against: 4e9c5b10
 -->
 # Implemented Product Surface
 
@@ -29,7 +29,7 @@ verified_against: dfc5401f
 - **Graph thumbnail** + health blob
 - **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習;**跨裝置同步** UserDefaults + iCloud KV(updatedAt LWW 整組原子)+ 登入經 `GET/PUT /api/user/config` 的 `review_clock` push/fetch、push 失敗 rollback、server cold-start wins,對標翻譯語言) + autoplay 聲音開關（首次預設開啟、記住上次選擇、答案揭露後才朗讀單字）+ **複習模式 + 自訂 SRS 參數跨裝置同步**（mode/relaxed-intensive-custom 與 5 個自訂間隔參數三層 UserDefaults + iCloud KV(updatedAt LWW 整組原子) + 登入經 `review_mode` push/fetch、push 失敗 rollback、server cold-start wins，對標 pause clock，確保跨裝置 SRS 間隔一致） + 洗牌順序持久化（per-user + queue fingerprint，KG card id 優先、local UUID fallback，新卡附加尾端）
 - **Stats overview**: `StatsPresenter` full state matrix
-- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle；設定首頁「複習節奏」列在 progress paused 時顯示 `已凍結 · <模式>`，detail 仍由既有「暫停進度」toggle 控制；**「自動連結」toggle**（登入顯示）控制 backend judge pipeline 是否自動建立知識圖譜連結——關閉時新單字仍 enrich+embed 並排入待判集合、重開續判不丟失；本地 UserDefaults 快取 + 後端 `auto_link` group（`updated_at` 真 LWW，push 失敗 rollback 含原時戳）
+- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle；設定首頁「複習節奏」列在 progress paused 時顯示 `已凍結 · <模式>`，detail 仍由既有「暫停進度」toggle 控制；**「自動連結」toggle**（登入顯示）控制 backend judge pipeline 是否自動建立知識圖譜連結——關閉時新單字仍 enrich+embed 並排入待判集合、重開續判不丟失；本地 UserDefaults 快取 + 後端 `auto_link` group（`updated_at` 真 LWW，push 失敗 rollback 含原時戳）；**iCloud 書庫同步狀態列**（CloudKitMirroringMonitor.phase 投影：確認中／還原中／同步異常帶錯誤描述／已同步；書庫綁 Apple ID 故不掛登入 gate，localOnly 整列隱藏）
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
 - **AppStartupRecoveryView** 三層 recovery
 - **App-intent / background sync** + preview matrix
