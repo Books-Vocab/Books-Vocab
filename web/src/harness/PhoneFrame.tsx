@@ -3,6 +3,8 @@ import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
 import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
 import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
 import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
+import { SelectionToolbarScreen } from '../surfaces/selection/SelectionToolbarScreen'
+import { SelectionTileScreen } from '../surfaces/selection/SelectionTileScreen'
 
 /**
  * 393×852pt stage — iPhone 15 Pro portrait, the same logical size the iOS
@@ -23,6 +25,10 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <NotebookScreen scenario={config.scenario} />
     case 'reader':
       return <ReaderScreen scenario={config.scenario} />
+    case 'selection-toolbar':
+      return <SelectionToolbarScreen scenario={config.scenario} />
+    case 'selection-tile':
+      return <SelectionTileScreen scenario={config.scenario} />
   }
 }
 

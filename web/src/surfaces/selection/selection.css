@@ -1,0 +1,129 @@
+/* Selection surfaces（Selection Toolbar + Reader Selection Tile）— 幾何逐一
+   對齊 iOS SelectionToolbar / ReaderSelectionTile（VocabChromeSurface）。
+   px 註解標 iOS 來源常數（measured = catalog PNG 1179×2556 dpr3 ÷3 親測），
+   diff 迭代時別改丟對應。
+
+   軸：兩 surface 皆 light appearance（catalog 在 light 渲染）。token 一律走
+   kg-tokens.css 的 CSS 變數（--card-bg / --muted-fill / --card-border /
+   --divider / --text-* / --destructive / --radius-control / --elevation-z2）。 */
+
+/* ============================================================
+   Selection Toolbar — 全寬白卡底欄（card pinned bottom）
+   ============================================================ */
+.selection-toolbar-surface {
+  position: relative;
+  height: 100%;
+  /* catalog scene 以透明底擷取；parity normalize `-alpha off` 把透明區壓成黑，
+     故 web 也以黑底還原（measured：ios-normalized avg srgb(27,27,27)）。半透明
+     token（muted-fill 等）在此黑底上 composite，與 iOS 一致。 */
+  background: #000;
+}
+
+.selection-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-start; /* 內容貼卡頂；下方 44.7pt 為 home-indicator 安全區 */
+  gap: 14px; /* sectionGap（兩鈕 HStack spacing；各 flex:1 故視覺間距小） */
+  /* card 高 90pt（measured）：內容帶 9.7→45.3pt，下方 44.7pt safe-area。
+     pageHorizontalInset=20、s2=8 top vertical。 */
+  padding: 8px 20px 44.7px; /* top s2=8 / h pageHorizontalInset=20 / bottom safe-area 44.7pt */
+  background: var(--card-bg); /* cardBackground */
+  box-sizing: border-box;
+  /* appElevation(.z2, direction: .up) — 陰影朝上。z2 = 0 4px 10px rgba(0,0,0,.06)，
+     方向朝上故 y 取負。 */
+  box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.selection-toolbar-btn {
+  flex: 1; /* maxWidth: .infinity → 各佔半寬等分 */
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px; /* spacing.microGap — VStack(icon, label) 間距 */
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  /* default tone = quaternaryText（disabled 或 archive 常態） */
+  color: var(--text-quaternary);
+}
+
+.selection-toolbar-btn:disabled {
+  cursor: default;
+}
+
+/* delete（enabled）= destructive 紅；archive 永遠 quaternaryText。 */
+.selection-toolbar-btn[data-tone='destructive'] {
+  color: var(--destructive);
+}
+
+.selection-toolbar-label {
+  /* typography.caption = sans 12（caption）；label 跟 icon 同色。 */
+  font-family: var(--font-sans);
+  font-size: 12px; /* --text-caption */
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Reader Selection Tile — chrome tile（VocabChromeSurface）
+   catalog 以 intrinsic 高擷取，normalize 後縱向拉伸 → tile 帶填滿 frame。
+   ============================================================ */
+.selection-tile-surface {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 同 toolbar：透明 scene → normalize 壓黑。selected tile 的 mutedFill
+     （rgba(0,0,0,0.04)）在黑底上 ≈ 黑（與 iOS 一致，只露邊框+文字）；
+     unselected 的 pageBackground 為不透明 → 仍是亮米白 pill。 */
+  background: #000;
+}
+
+.selection-tile-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px; /* AppSpacing.s3 — HStack(spacing: s3) */
+  /* normalize 後 pill 佔 y181.7–670pt、置中（center 425.8 ≈ frame 426）。
+     height = 670 − 181.7 = 488.3pt（measured，縱向拉伸帶）。 */
+  height: 488px;
+}
+
+.selection-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px; /* measured 單 tile 寬（已選/未選 = 2 CJK + s3 padding 兩側） */
+  box-sizing: border-box;
+  border-radius: 6px; /* radii.control = --radius-control（AppRadius.sm） */
+  border: 1px solid var(--divider); /* unselected: divider×0.6（見 [data-selected]）*/
+  /* unselected: pageBackground + secondaryText */
+  background: var(--page-bg);
+  color: var(--text-secondary);
+}
+
+/* unselected 邊框 = divider.opacity(settingsDividerOpacity=0.6)。--divider 已是
+   rgba(0,0,0,0.06)，再 ×0.6 → 用 color-mix 取 60% 不透明度。 */
+.selection-tile:not([data-selected]) {
+  border-color: color-mix(in srgb, var(--divider) 60%, transparent);
+}
+
+/* selected: mutedFill + cardBorder + primaryText */
+.selection-tile[data-selected] {
+  background: var(--muted-fill);
+  border-color: var(--card-border);
+  color: var(--text-primary);
+}
+
+.selection-tile-label {
+  /* body 17（Text 預設）；padding(s3) 已由 tile 寬度/置中吸收 */
+  font-family: var(--font-sans);
+  font-size: 17px; /* --text-body */
+  line-height: 1.1;
+  white-space: nowrap;
+}
