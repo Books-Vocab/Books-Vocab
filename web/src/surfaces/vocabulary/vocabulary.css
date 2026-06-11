@@ -1,0 +1,295 @@
+/* Vocabulary surface — 幾何常數逐一對齊 iOS VocabularyListView / KGVocabPresenter /
+   WordRow。pageHorizontalInset=20（AppShellMetrics）；search field / stat segment /
+   sort pill / CTA pill 的尺寸以 catalog PNG row-profile 實測（標 measured）為準，
+   token 規格僅作交叉驗證。px 註解標 iOS 來源常數或 measured pt，diff 迭代別改丟。 */
+
+.vocabulary {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+}
+
+/* --- Large-title nav（UINavigationBar large title）---
+   沿用 bookshelf/notebook 的 large-title 幾何：status bar 59 + inline bar 44 = 103，
+   + 列內距 15 = 118（measured glyph top ≈123pt）。標題純 CJK，Songti cascade。 */
+.vc-nav {
+  padding: 118px 20px 0; /* pageHorizontalInset = 20 */
+}
+
+.vc-nav-title {
+  margin: 0;
+  /* AppFonts.uiSerif(34, bold)；Chromium 不合成 Songti Bold → text-stroke 補字重
+     （bookshelf/notebook 定讞 0.7px）。 */
+  font-family: var(--font-serif);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 41px;
+  color: var(--text-primary);
+  padding-bottom: 6px;
+  /* measured：populated/empty 的 title 偏黑 → stroke 0.7 過墨抬 RMSE，收 0.5 對齊
+     reference 的較輕字重（Songti regular 觀感）。 */
+  -webkit-text-stroke: 0.5px currentColor;
+}
+
+.vc-scroll {
+  flex: 1;
+  overflow: hidden; /* 快照面不滾動 */
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px; /* pageHorizontalInset = 20 */
+}
+
+/* --- VocabSearchField ---
+   measured：box 寬 354pt（content 19.3→373.7）、高 ~41pt（172.3→213.7）、
+   fill = muted-fill（measured rgb(239,238,235) ≈ page×0.96）。圓角 capsule-ish。 */
+.vc-search {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* inlineGap */
+  height: 41px;
+  margin-top: 4px; /* measured nav-bottom(6 pad) → search-top 間距收斂 */
+  padding: 0 13px;
+  border-radius: var(--radius-lg); /* AppRadius.lg = 12 */
+  background: var(--muted-fill);
+  box-sizing: border-box;
+}
+
+.vc-search-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.vc-search-prompt {
+  /* AppSearchField prompt — body(17) tertiary */
+  font-family: var(--font-sans);
+  font-size: 17px;
+  color: var(--text-tertiary);
+}
+
+/* --- 三態 stat segment（VocabFilterChipBar，未選態）---
+   measured：容器 top 227pt（search-bottom 213.7 + ~13）、高 ~39pt、寬 354pt、
+   fill = stage-bg（measured rgb(251,250,248) = #fbfaf8）。三等分，每格
+   label（caption 12）+ count pill（mutedFill capsule，monoLabel 數字）。 */
+.vc-segment {
+  display: flex;
+  align-items: center;
+  height: 39px;
+  margin-top: 13px; /* measured search→segment 間距 */
+  padding: 0 4px;
+  border-radius: var(--radius-lg);
+  background: var(--stage-bg);
+  box-sizing: border-box;
+}
+
+.vc-stat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* label ↔ count pill */
+}
+
+.vc-stat-label {
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.vc-stat-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--button-idle-fill);
+  font-family: var(--font-mono);
+  font-size: 11px; /* monoLabel-ish */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  box-sizing: border-box;
+}
+
+/* --- chip/sort 列（HStack Spacer + sort pill + CTA pill）---
+   measured：sort pill 248.3→329.7（寬 ~81）、CTA pill 337.7→373（寬 ~35，右切齊
+   page edge 373）。row 垂直 273→292（pill 高 ~19）。間距：segment-bottom 266 → 273。 */
+.vc-sortbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px; /* inlineGap */
+  margin-top: 7px; /* measured segment→sortbar */
+  margin-bottom: 16px; /* measured sortbar→card（273+pill→308.7 card top）*/
+}
+
+/* VocabSortPill — mutedFill capsule，caption，secondary。 */
+.vc-sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px; /* AppSpacing.s1 */
+  padding: 5px 10px; /* compactChip v=5 h=10 */
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* 未學複習 CTA pill — brandHero capsule + onBrandHero（sparkles + count）。 */
+.vc-cta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px; /* microGap */
+  padding: 5px 10px; /* compactChip v=5 h=10 */
+  border-radius: var(--radius-pill);
+  background: var(--brand-hero);
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  font-weight: 600;
+  color: var(--on-brand-hero);
+}
+
+.vc-cta-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- VocabListCard（白卡）---
+   measured：card top 308.7pt、寬 354pt（19.3→373.7）、card-bg 白、radius card(8)、
+   1px card-border。 */
+.vc-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-card); /* 8 */
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* --- KGVocabRow 列表 ---
+   row 高 measured ~73.6pt（dividers 308.7→381.7→455.3→529.3）。row 內 listRow
+   horizontalInset ~20pt（measured content start 49pt = card 20 + row 20-ish... 取
+   16 對齊）；divider hairline，leading inset 對齊 word 起點。 */
+.vc-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.vc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* inlineGap：main ↔ trailing detail */
+  min-height: 73.6px; /* measured row pitch */
+  padding: 4px 20px; /* vertical s1；horizontal listRowHorizontalInset */
+  box-sizing: border-box;
+}
+
+.vc-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* wordRowVerticalGap */
+}
+
+.vc-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px; /* wordRowBaselineGap */
+}
+
+.vc-row-word {
+  /* AppFonts.mono(18, bold) — rowWord。SF Mono cascade，tabular。 */
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.vc-row-pos {
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.vc-row-translation {
+  font-family: var(--font-sans);
+  font-size: 17px; /* body */
+  line-height: 1.3;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.vc-row-detail {
+  flex: none;
+  /* monoLabel — mono(10, bold) detail（首輪 12h）secondary。CJK「首輪」落 sans
+     cascade，數字 mono；以 12 取得與 PNG 一致觀感（10 偏小，measured 收斂）。 */
+  font-family: var(--font-mono);
+  font-size: 11px; /* measured：reference 約 monoLabel 級，13 偏大且偏低，收 11 */
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.vc-row-divider {
+  height: 0.34px; /* hairline = 1 物理 px（dpr3）*/
+  margin-left: 20px; /* listDividerInset 對齊 word 起點 */
+  background: var(--divider);
+}
+
+/* --- in-card empty state（VocabEmptyStateContent）---
+   measured：card top 308.7pt；icon → title → desc →（zero-data）CTA 直排置中。 */
+.vc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px; /* sectionGap */
+  padding: 40px 20px; /* listEmptyStateVerticalInset 上下，listRowHorizontalInset 左右 */
+}
+
+.vc-empty-icon {
+  color: var(--text-tertiary);
+}
+
+.vc-empty-title {
+  /* serif(18, bold) 區段標題語級 */
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.vc-empty-desc {
+  margin: -6px 0 0;
+  /* reference desc 近滿卡寬（2 行），不夾 max-width，靠 card 內 padding 自然斷行 */
+  font-family: var(--font-sans);
+  font-size: 15px; /* subhead */
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.vc-empty-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 12px 20px;
+  width: 100%;
+  justify-content: center;
+  border-radius: var(--radius-md); /* 8 */
+  border: 1px solid var(--card-border);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 17px; /* body */
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  box-sizing: border-box;
+}

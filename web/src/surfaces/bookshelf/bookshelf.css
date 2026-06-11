@@ -30,10 +30,10 @@
   padding-bottom: 6px;
   /* Chromium 對 Songti/STSongti TC 拿不到 Bold face（weight:700、PostScript 名
      'STSongti-TC-Bold'、display 名 'Songti TC Bold' 三者皆渲染 Regular，已實測
-     指紋定讞），也不做 synthetic bold；iOS 是 STSongti-TC-Bold。用 text-stroke
-     近似補字重，量級由 parity audit 收斂。標題為純 CJK，Latin（Athelas-Bold
-     真粗體）不在此 surface 的標題出現。 */
-  -webkit-text-stroke: 0.7px currentColor;
+     指紋定讞），也不做 synthetic bold；iOS 是 STSongti-TC-Bold。
+     measured（第三刀 A/B）：舊 0.7px text-stroke 把 title ink coverage 從 17%
+     吹脹到 24%（灰邊 AA）反抬 RMSE，全 6 case 回退；移除 stroke 後 coverage
+     16.9% ≈ iOS 17.5%，殘差僅剩 glyph 亮度（Songti regular vs iOS bold，字形級）。 */
 }
 
 .bookshelf-scroll {
@@ -211,7 +211,10 @@
   flex-direction: column;
   align-items: center;
   gap: 6px; /* AppEmptyStateStyle.bookshelf spacing */
-  margin-top: 120px; /* Spacer(minLength: 120) */
+  /* measured（第三刀 hero 錨點對拍）：iOS hero icon top=918 image-px vs web
+     舊 120px 僅 882（高 36px=12 CSS px）；Spacer(minLength 120) 在 iOS 非滾動快照
+     實際撐得更低。bump 132px 對齊 hero 垂直錨點。 */
+  margin-top: 132px;
   text-align: center;
 }
 

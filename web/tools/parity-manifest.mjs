@@ -106,4 +106,227 @@ export const PARITY = [
     ref: { surface: 'Notebook List View', scenario: 'Single notebook', appearance: 'dark' },
     note: '單字本 single (dark)',
   },
+  // Reader chrome（R1）— ReaderChromeScenarios.swift 6 態，皆 light appearance
+  // （catalog 在 light 渲染；reader paper sepia 帶在 fixture，與 appearance 軸正交）。
+  {
+    case: 'reader-reading-compact-light',
+    params: { surface: 'reader', scenario: 'reading-compact', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Reading · Compact Header', appearance: 'light' },
+    note: 'Reader compact header (light)',
+  },
+  {
+    case: 'reader-reading-expanded-light',
+    params: { surface: 'reader', scenario: 'reading-expanded', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Reading · Expanded Header', appearance: 'light' },
+    note: 'Reader expanded header (light)',
+  },
+  {
+    case: 'reader-loading-render-light',
+    params: { surface: 'reader', scenario: 'loading-render', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Loading · Render', appearance: 'light' },
+    note: 'Reader loading render (light)',
+  },
+  {
+    case: 'reader-loading-vocab-light',
+    params: { surface: 'reader', scenario: 'loading-vocab', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Loading · Mark Vocab', appearance: 'light' },
+    note: 'Reader loading mark-vocab (light)',
+  },
+  {
+    case: 'reader-reading-translation-light',
+    params: { surface: 'reader', scenario: 'reading-translation', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Reading · Translation Overlay', appearance: 'light' },
+    note: 'Reader translation overlay chrome (light) — panel 屬 R2',
+  },
+  {
+    case: 'reader-error-open-failed-light',
+    params: { surface: 'reader', scenario: 'error-open-failed', appearance: 'light' },
+    ref: { surface: 'Reader View · Chrome', scenario: 'Error · Open Failed', appearance: 'light' },
+    note: 'Reader error open-failed (light)',
+  },
+  // Selection Toolbar（R4）— SelectionToolbarScenarios.swift 3 態（vocab 多選底欄）。
+  {
+    case: 'selection-toolbar-multiple-light',
+    params: { surface: 'selection-toolbar', scenario: 'selection-multiple', appearance: 'light' },
+    ref: { surface: 'Selection Toolbar', scenario: 'Multiple selected', appearance: 'light' },
+    note: 'Selection toolbar multiple selected (light)',
+  },
+  {
+    case: 'selection-toolbar-single-light',
+    params: { surface: 'selection-toolbar', scenario: 'selection-single', appearance: 'light' },
+    ref: { surface: 'Selection Toolbar', scenario: 'Single selected', appearance: 'light' },
+    note: 'Selection toolbar single selected (light)',
+  },
+  {
+    case: 'selection-toolbar-none-light',
+    params: { surface: 'selection-toolbar', scenario: 'selection-none', appearance: 'light' },
+    ref: { surface: 'Selection Toolbar', scenario: 'No selection (disabled)', appearance: 'light' },
+    note: 'Selection toolbar disabled (light)',
+  },
+  // Reader Selection Tile（R4，stacked on PR #929）— ReaderSelectionTileScenarios.swift
+  // 3 態（chrome tile：selected mutedFill / unselected pageBackground / 並排對比）。
+  {
+    case: 'selection-tile-pair-light',
+    params: { surface: 'selection-tile', scenario: 'selection-pair', appearance: 'light' },
+    ref: { surface: 'Reader Selection Tile', scenario: 'Selected vs Unselected', appearance: 'light' },
+    note: 'Reader selection tile selected-vs-unselected (light)',
+  },
+  {
+    case: 'selection-tile-selected-light',
+    params: { surface: 'selection-tile', scenario: 'selection-selected', appearance: 'light' },
+    ref: { surface: 'Reader Selection Tile', scenario: 'Selected', appearance: 'light' },
+    note: 'Reader selection tile selected (light)',
+  },
+  {
+    case: 'selection-tile-unselected-light',
+    params: { surface: 'selection-tile', scenario: 'selection-unselected', appearance: 'light' },
+    ref: { surface: 'Reader Selection Tile', scenario: 'Unselected', appearance: 'light' },
+    note: 'Reader selection tile unselected (light)',
+  },
+  // Translation panel（R2）— ReaderScenarios.swift「Reader · Translation」6 態
+  // （layout .fill = scrim + bottom-sheet panel，gorgeous / adj.）。皆 light。
+  {
+    case: 'reader-translation-expanded-light',
+    params: { surface: 'reader', scenario: 'translation-expanded', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Expanded', appearance: 'light' },
+    note: 'Translation panel expanded (light)',
+  },
+  {
+    case: 'reader-translation-collapsed-light',
+    params: { surface: 'reader', scenario: 'translation-collapsed', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Collapsed', appearance: 'light' },
+    note: 'Translation panel collapsed (light)',
+  },
+  {
+    case: 'reader-translation-loading-light',
+    params: { surface: 'reader', scenario: 'translation-loading', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Loading', appearance: 'light' },
+    note: 'Translation panel loading (light)',
+  },
+  {
+    case: 'reader-translation-error-light',
+    params: { surface: 'reader', scenario: 'translation-error', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Error', appearance: 'light' },
+    note: 'Translation panel translation-error (light)',
+  },
+  {
+    case: 'reader-translation-explain-only-light',
+    params: { surface: 'reader', scenario: 'translation-explain-only', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Explain Only', appearance: 'light' },
+    note: 'Translation panel explain-only (light)',
+  },
+  {
+    case: 'reader-translation-explanation-error-light',
+    params: { surface: 'reader', scenario: 'translation-explanation-error', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Explanation Error', appearance: 'light' },
+    note: 'Translation panel explanation-error (light)',
+  },
+  {
+    case: 'vocabulary-populated-light',
+    params: { surface: 'vocabulary', scenario: 'populated', appearance: 'light' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Populated · mixed sync states', appearance: 'light' },
+    note: '單字列表 populated (light)',
+  },
+  {
+    case: 'vocabulary-single-light',
+    params: { surface: 'vocabulary', scenario: 'single', appearance: 'light' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Single card', appearance: 'light' },
+    note: '單字列表 single (light)',
+  },
+  {
+    case: 'vocabulary-empty-light',
+    params: { surface: 'vocabulary', scenario: 'empty', appearance: 'light' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Empty · zero data', appearance: 'light' },
+    note: '單字列表 empty (light)',
+  },
+  {
+    case: 'vocabulary-populated-dark',
+    params: { surface: 'vocabulary', scenario: 'populated', appearance: 'dark' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Populated · mixed sync states', appearance: 'dark' },
+    note: '單字列表 populated (dark)',
+  },
+  {
+    case: 'vocabulary-single-dark',
+    params: { surface: 'vocabulary', scenario: 'single', appearance: 'dark' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Single card', appearance: 'dark' },
+    note: '單字列表 single (dark)',
+  },
+  {
+    case: 'vocabulary-empty-dark',
+    params: { surface: 'vocabulary', scenario: 'empty', appearance: 'dark' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Empty · zero data', appearance: 'dark' },
+    note: '單字列表 empty (dark)',
+  },
+  {
+    case: 'today-review-front-light',
+    params: { surface: 'today-review', scenario: 'front', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Front', appearance: 'light' },
+    note: '今日複習 recognition front (light)',
+  },
+  {
+    case: 'today-review-back-light',
+    params: { surface: 'today-review', scenario: 'back', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Back', appearance: 'light' },
+    note: '今日複習 recognition back (light)',
+  },
+  {
+    case: 'today-review-production-front-light',
+    params: { surface: 'today-review', scenario: 'production-front', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Production · Front', appearance: 'light' },
+    note: '今日複習 production front (light)',
+  },
+  {
+    case: 'today-review-production-back-light',
+    params: { surface: 'today-review', scenario: 'production-back', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Production · Back', appearance: 'light' },
+    note: '今日複習 production back (light)',
+  },
+  {
+    case: 'today-review-front-dark',
+    params: { surface: 'today-review', scenario: 'front', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Front', appearance: 'dark' },
+    note: '今日複習 recognition front (dark)',
+  },
+  {
+    case: 'today-review-back-dark',
+    params: { surface: 'today-review', scenario: 'back', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Back', appearance: 'dark' },
+    note: '今日複習 recognition back (dark)',
+  },
+  {
+    case: 'today-review-production-front-dark',
+    params: { surface: 'today-review', scenario: 'production-front', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Production · Front', appearance: 'dark' },
+    note: '今日複習 production front (dark)',
+  },
+  {
+    case: 'today-review-production-back-dark',
+    params: { surface: 'today-review', scenario: 'production-back', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Production · Back', appearance: 'dark' },
+    note: '今日複習 production back (dark)',
+  },
+  {
+    case: 'podcast-player-light',
+    params: { surface: 'podcast', scenario: 'preview-player', appearance: 'light' },
+    ref: { surface: 'Podcast Player View', scenario: 'Preview episode · player', appearance: 'light' },
+    note: '播客播放器 preview (light)',
+  },
+  {
+    case: 'podcast-locked-light',
+    params: { surface: 'podcast', scenario: 'locked-gate', appearance: 'light' },
+    ref: { surface: 'Podcast Player View', scenario: 'Locked · sign-in gate', appearance: 'light' },
+    note: '播客 locked gate (light)',
+  },
+  {
+    case: 'podcast-player-dark',
+    params: { surface: 'podcast', scenario: 'preview-player', appearance: 'dark' },
+    ref: { surface: 'Podcast Player View', scenario: 'Preview episode · player', appearance: 'dark' },
+    note: '播客播放器 preview (dark)',
+  },
+  {
+    case: 'podcast-locked-dark',
+    params: { surface: 'podcast', scenario: 'locked-gate', appearance: 'dark' },
+    ref: { surface: 'Podcast Player View', scenario: 'Locked · sign-in gate', appearance: 'dark' },
+    note: '播客 locked gate (dark)',
+  },
 ];
