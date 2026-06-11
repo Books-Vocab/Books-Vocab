@@ -114,7 +114,9 @@ run_one() {
       ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
-      "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ios_diagnostics.py
+      "$UV_BIN" run --project backend python -m pytest -q \
+        ops/tests/test_ios_diagnostics.py \
+        ops/tests/test_ios_coverage.py
       ;;
     ios-cache-evict)    ./ops/tests/test_ios_cache_evict.sh ;;
     review-probe)       ./ops/tests/test_review_probe.sh ;;
