@@ -27,11 +27,18 @@ struct AuthManagerLogoutCleanupRaceTests {
         @MainActor private var gates: [Int: CheckedContinuation<Void, Never>] = [:]
         @MainActor private var startWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
         @MainActor private var startedRuns: Set<Int> = []
+        @MainActor private var finishedRuns: Set<Int> = []
 
         func clearLocalData(container: ModelContainer, reason: String) async {
             let run: Int = await MainActor.run {
                 nextRun += 1
                 let run = nextRun
+                // 結構性 overlap 偵測：進場時存在已 started 未 finished 的前序 run
+                // = 兩個 cleanup 並行（chain 失效）。以獨立事件入列，讓全等斷言
+                // 的紅燈不依賴 finished/started 入隊競速（review 9d613057 nit）。
+                if startedRuns.contains(where: { !finishedRuns.contains($0) }) {
+                    events.append("overlap")
+                }
                 events.append("cleanup_\(run)_started")
                 startedRuns.insert(run)
                 startWaiters.removeValue(forKey: run)?.resume()
@@ -42,7 +49,10 @@ struct AuthManagerLogoutCleanupRaceTests {
                     gates[run] = continuation
                 }
             }
-            await MainActor.run { events.append("cleanup_\(run)_finished") }
+            await MainActor.run {
+                finishedRuns.insert(run)
+                events.append("cleanup_\(run)_finished")
+            }
         }
 
         @MainActor
@@ -180,5 +190,37 @@ struct AuthManagerLogoutCleanupRaceTests {
             "cleanup_2_finished",
             "wait_finished"
         ], "cleanup 必須 chain、wait 必須殿後，實際順序：\(cleaner.events)")
+    }
+
+    /// gate 懸掛期間又發生 logout（chain 出 cleanup₂）：wait 不得在 cleanup₁
+    /// 完成時就放行（單次快照 TOCTOU —— sync 會與 cleanup₂ 並行，重演 000287
+    /// 形態），必須 re-check 並繼續等到鏈上最後一個 cleanup 收尾。
+    @Test func waitFollowsCleanupChainedWhileSuspended() async {
+        let cleaner = GatedCleaner()
+        let manager = makeManager(priorUserId: "user-a", cleaner: cleaner)
+
+        manager.logout(reason: "first")
+        await cleaner.waitUntilStarted(1)
+        manager.login(userId: "user-a", token: "t1")
+
+        let waiter = Task { @MainActor in
+            await manager.waitForPendingLocalDataCleanup()
+            cleaner.record("wait_finished")
+        }
+        // 讓 waiter 先懸掛到 cleanup₁ 上，再於懸掛期間二次 logout。
+        await Task.yield()
+
+        manager.logout(reason: "second")
+        manager.login(userId: "user-a", token: "t2")
+
+        await cleaner.release(1)
+        await cleaner.waitUntilStarted(2)
+        await cleaner.release(2)
+        await waiter.value
+
+        #expect(cleaner.events.last == "wait_finished",
+                "wait 必須等完 chain 上最後一個 cleanup，實際順序：\(cleaner.events)")
+        #expect(!cleaner.events.contains("overlap"),
+                "cleanup 不得並行，實際順序：\(cleaner.events)")
     }
 }
