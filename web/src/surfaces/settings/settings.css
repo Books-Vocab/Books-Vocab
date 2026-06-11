@@ -128,8 +128,14 @@
   margin-left: 6px;
 }
 
+/* 無 value 的 navigation 列（外部連結列）：chevron 推到 trailing edge */
+.settings-row-label + .settings-chevron {
+  margin-left: auto;
+}
+
 .settings-divider {
-  height: 0.34px; /* iOS hairline = 1 物理 px（dpr3）；CSS 1px 會渲染 3px */
+  height: 0.34px; /* iOS hairline = 1 物理 px（dpr3）；CSS 1px 會渲染 3px。
+                     僅保證 capture rig（Playwright dsf=3）；低 dpr 瀏覽器渲染不保證 */
   background: var(--divider);
 }
 
