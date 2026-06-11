@@ -151,3 +151,21 @@ def test_prune_superseded_artifacts_keeps_latest_blessed(tmp_path: Path):
 def test_extract_directory_from_command():
     command = "/usr/bin/python3 -m http.server 8787 --directory /tmp/catalog-full-20260608-020244"
     assert entry_module.extract_directory_from_command(command) == "/tmp/catalog-full-20260608-020244"
+
+
+def test_resolve_review_html_mirrors_cli_artifacts_three_states(tmp_path: Path):
+    """entry.py keeps a deliberate import-free twin of
+    catalog_review_cli_artifacts.review_html_path; this pins the twin to the
+    same three-state behaviour so a future rename can't drift one side only."""
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    assert entry_module.resolve_review_html(fresh).name == "UIreview.html"
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / "review.html").write_text("old", encoding="utf-8")
+    assert entry_module.resolve_review_html(legacy).name == "review.html"
+    both = tmp_path / "both"
+    both.mkdir()
+    (both / "review.html").write_text("old", encoding="utf-8")
+    (both / "UIreview.html").write_text("new", encoding="utf-8")
+    assert entry_module.resolve_review_html(both).name == "UIreview.html"
