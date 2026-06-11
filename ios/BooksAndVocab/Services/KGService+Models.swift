@@ -78,10 +78,19 @@ struct KGVocabUIConfig: Codable {
     let updated_at: Double?
 }
 
+/// Per-user 自動連結開關(對應後端 AutoLinkConfig 的 auto_link group)。enabled 控制
+/// backend judge pipeline 是否自動建立知識圖譜連結;關閉時新單字仍照常 enrich+embed
+/// 並排入待判集合,重新開啟後續判。updated_at(epoch 秒)驅動跨裝置 LWW。
+struct KGAutoLinkConfig: Codable {
+    let enabled: Bool
+    let updated_at: Double?
+}
+
 /// User config request/response
 struct KGUserConfig: Codable {
     let translation: KGTranslationConfig?
     let review_clock: KGReviewClockConfig?
     let review_mode: KGReviewModeConfig?
     let vocab_ui: KGVocabUIConfig?
+    let auto_link: KGAutoLinkConfig?
 }

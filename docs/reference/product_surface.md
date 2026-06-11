@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: dbdf0836
+verified_against: dfc5401f
 -->
 # Implemented Product Surface
 
@@ -29,7 +29,7 @@ verified_against: dbdf0836
 - **Graph thumbnail** + health blob
 - **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習;**跨裝置同步** UserDefaults + iCloud KV(updatedAt LWW 整組原子)+ 登入經 `GET/PUT /api/user/config` 的 `review_clock` push/fetch、push 失敗 rollback、server cold-start wins,對標翻譯語言) + autoplay 聲音開關（首次預設開啟、記住上次選擇、答案揭露後才朗讀單字）+ **複習模式 + 自訂 SRS 參數跨裝置同步**（mode/relaxed-intensive-custom 與 5 個自訂間隔參數三層 UserDefaults + iCloud KV(updatedAt LWW 整組原子) + 登入經 `review_mode` push/fetch、push 失敗 rollback、server cold-start wins，對標 pause clock，確保跨裝置 SRS 間隔一致） + 洗牌順序持久化（per-user + queue fingerprint，KG card id 優先、local UUID fallback，新卡附加尾端）
 - **Stats overview**: `StatsPresenter` full state matrix
-- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle；設定首頁「複習節奏」列在 progress paused 時顯示 `已凍結 · <模式>`，detail 仍由既有「暫停進度」toggle 控制
+- **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle；設定首頁「複習節奏」列在 progress paused 時顯示 `已凍結 · <模式>`，detail 仍由既有「暫停進度」toggle 控制；**「自動連結」toggle**（登入顯示）控制 backend judge pipeline 是否自動建立知識圖譜連結——關閉時新單字仍 enrich+embed 並排入待判集合、重開續判不丟失；本地 UserDefaults 快取 + 後端 `auto_link` group（`updated_at` 真 LWW，push 失敗 rollback 含原時戳）
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
 - **AppStartupRecoveryView** 三層 recovery
 - **App-intent / background sync** + preview matrix
@@ -163,7 +163,7 @@ verified_against: dbdf0836
 
 - **Safe wrapper**(`ops/devops_kg_safe.sh`): 生產維護統一入口。除 `deploy/status/health/logs/ops-cli/ops-edit` 外，現在把高頻 host/container 唯讀診斷也 typed 化成 `caddy-status` / `caddyfile` / `docker-ps` / `docker-logs [n]` / `disk-usage` / `memory-usage` / `docker-stats`，降低 agent 直接使用 `run "<cmd>"` 的需求；對這些已 typed 的常見查詢，raw `run` 會回覆「use typed command」。`run/container-run/migrate-run` 保留為例外逃生口，不是預設查詢面。
 - Smart deploy: auto fast/full path + rsync `--delete` stale files
-- ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`world-state <uid>` 以穩定 schema `kg.ops_world_state.v1` 投影 `users.json config + notebooks/cards + disk graph`；`world-diff <uid> <spec.json>` 以 expectation schema `kg.ops_world_expectation.v1` 比對 actual world-state，輸出穩定 mismatch path，供 scenario diff/verify；`user-config-set` + `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景；`world-snapshot` / `world-restore` 提供整個 data_dir world 級快照與回滾）
+- ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`world-state <uid>` 以穩定 schema `kg.ops_world_state.v1` 投影 `users.json config + notebooks/cards + disk graph`；`world-diff <uid> <spec.json>` 以 expectation schema `kg.ops_world_expectation.v1` 比對 actual world-state，輸出穩定 mismatch path，供 scenario diff/verify；`user-config-set`（含 `--auto-link on|off` 自動連結開關）+ `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景；`world-snapshot` / `world-restore` 提供整個 data_dir world 級快照與回滾）
 - capture profile 編排層（`ops/capture_profile.py`；marketing screenshot 主入口 orchestrator。把 `ops_edit` 真資料造景、`ios_ops.sh catalog snapshots --dataset-file ...`、`frame_catalog_screenshots.py` 的外框橋接、以及 `render_screenshots.py` 最終宣傳圖渲染收進同一個 recipe。profile 內以 `shots[]` 同時描述 `sourceScenario + appearance + copy.title/subtitle + outputName`，因此改資料、改文案、改 shot mapping 都不必動 iOS code 或 renderer 常數；`materialize.expectationFile` 可選掛 `world-diff` 驗證，`run --commit` 會在 snapshot 前 fail loud。`run` 預設 dry-run materialize、不寫 demo 帳號；若 `--reuse-build` 遇 stale cache，會自動 `catalog prepare` 再重試 snapshot。`derive-expectation` 可從 `seedFile + steps` 自動再生 expectation spec(取代手寫、`--check` 做 drift guard)，消除 scenario expectation 的手維護漂移）
 - container-script (本地腳本上傳執行)
 - `ops_analyze.py` one-command deep graph analysis levels 1-6

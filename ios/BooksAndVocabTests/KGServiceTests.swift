@@ -314,7 +314,8 @@ struct KGServiceTests {
             translation: KGTranslationConfig(source_lang: "en", target_lang: "fr", updated_at: 7),
             review_clock: nil,
             review_mode: nil,
-            vocab_ui: KGVocabUIConfig(active_notebook_id: "nb-7", updated_at: 42)
+            vocab_ui: KGVocabUIConfig(active_notebook_id: "nb-7", updated_at: 42),
+            auto_link: KGAutoLinkConfig(enabled: false, updated_at: 9)
         )
         let encoded = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(KGUserConfig.self, from: encoded)

@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: f0d37ca4
+verified_against: dfc5401f
 -->
 # Books & Vocab Architecture (Offline-First & Multi-User)
 
@@ -87,6 +87,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | `language` | `app_language`、`updated_at` | `AppLanguageStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 selection，不保存系統解析結果 |
 | `podcast` | `followed_series_ids`、`updated_at` | `PodcastSeries.isFollowed` local SwiftData | LWW 或 per-series timestamp；server list 用於排序與 cross-platform follow |
 | `vocab_ui` | `active_notebook_id`、`updated_at` | `activeNotebookId` UserDefaults | LWW；server 必須拒絕已刪 notebook，client 保留本機 fallback |
+| `auto_link` | `enabled`、`updated_at` | `AutoLinkSettingsStore` UserDefaults（無 iCloud KVS 層）| **真 LWW（已落地）**：新 group 無 cold-start-only 歷史包袱，server `updated_at` 較新即套；push 失敗 rollback 含原時戳 |
 
 分階段實作時，先擴充後端 response 以向後相容方式回傳 optional domains，再讓 iOS 依 domain-level `updated_at` merge。每個 domain 的 PATCH 必須是 partial update，不能用缺欄位覆蓋既有 server config；client 也不能在 fetch 失敗時把本機舊值重新 PUT 成權威。
 

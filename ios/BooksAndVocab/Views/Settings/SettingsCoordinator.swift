@@ -61,6 +61,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 applyServerTranslationConfig(config.translation)
                 applyServerReviewClock(config.review_clock)
                 applyServerReviewMode(config.review_mode)
+                applyServerAutoLink(config.auto_link)
             } catch {
                 // Non-fatal: local + iCloud KV remain the fallback authority for
                 // translation / review_clock / review_mode config, so we log rather than report to Sentry.
@@ -138,6 +139,47 @@ final class SettingsCoordinator: SettingsCoordinating {
                 updatedAt: mode.updated_at
             )
         )
+    }
+
+    /// Reconcile server auto-link 開關與本地快取。與 translation / review_* 的
+    /// cold-start-only 政策不同:auto_link 是新 group、無 iCloud KV 層與歷史包袱,
+    /// 直接走真 LWW(store.applyServer 內比較 updated_at,server 較新才套)。
+    private func applyServerAutoLink(_ autoLink: KGAutoLinkConfig?) {
+        guard let autoLink else { return }
+        AutoLinkSettingsStore.shared.applyServer(
+            enabled: autoLink.enabled,
+            updatedAt: autoLink.updated_at
+        )
+    }
+
+    /// 切換自動連結:樂觀寫本地,登入則 push 後端;push 失敗 rollback(含原時戳,
+    /// 避免 rollback 被 LWW 當成新寫入)。回 true=已存(或免存的 guest),false=遠端失敗。
+    @discardableResult
+    func updateAutoLink(
+        enabled: Bool,
+        autoLinkStore: AutoLinkSettingsStore,
+        authManager: any AuthManaging,
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
+    ) async -> Bool {
+        let prevEnabled = autoLinkStore.isEnabled
+        let prevUpdatedAt = autoLinkStore.updatedAt
+
+        autoLinkStore.setEnabled(enabled)
+        PerfLog.settings.mark("autoLink.toggled", "enabled=\(enabled)")
+
+        guard authManager.isLoggedIn else { return true }
+
+        do {
+            _ = try await kgService.updateAutoLinkConfig(
+                KGAutoLinkConfig(enabled: enabled, updated_at: autoLinkStore.updatedAt)
+            )
+            return true
+        } catch {
+            autoLinkStore.restore(enabled: prevEnabled, updatedAt: prevUpdatedAt)
+            reportConfigSaveFailure(error, label: "updateAutoLinkConfig", toastCoordinator: toastCoordinator)
+            return false
+        }
     }
 
     /// 切換複習時鐘暫停:樂觀寫本地+iCloud,登入則 push 後端;push 失敗 rollback 三層
