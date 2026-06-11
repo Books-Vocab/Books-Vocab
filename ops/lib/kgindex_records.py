@@ -59,14 +59,21 @@ def acquire_via_build(source_root: str, kinds: tuple[str, ...], *, label: str = 
     """
     tmp_dd = Path(tempfile.mkdtemp(prefix=f"kg-{label}-dd."))
     try:
-        env = dict(os.environ, KG_IOS_BUILD_DERIVED_DATA_ROOT=str(tmp_dd))
+        # Pin a per-invocation verdict path: the fixed kg_ios_build_verdict is
+        # only a machine-wide LATEST pointer that a concurrent session can
+        # overwrite between our build and our read (multi-session race).
+        verdict = tmp_dd / "kg_ios_build_verdict"
+        env = dict(
+            os.environ,
+            KG_IOS_BUILD_DERIVED_DATA_ROOT=str(tmp_dd),
+            KG_IOS_VERDICT_FILE=str(verdict),
+        )
         print(f"[{label}] isolated build -> {tmp_dd}", file=sys.stderr)
         # Redirect the build's stdout to stderr: ios_build.sh prints [ios_build]
         # progress to stdout, which would otherwise corrupt the caller's --json.
         rc = subprocess.run(
             ["./ops/ios_ops.sh", "build"], cwd=PROJECT_ROOT, env=env, stdout=sys.stderr
         ).returncode
-        verdict = Path(os.environ.get("TMPDIR", "/tmp")) / "kg_ios_build_verdict"
         result = verdict_field(verdict, "RESULT")
         if rc != 0 or result != "ok":
             raise SystemExit(f"[{label}] build failed (rc={rc}, RESULT={result}); see {verdict}")

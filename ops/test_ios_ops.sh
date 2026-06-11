@@ -576,12 +576,22 @@ delegate_tmp="$(mktemp -d)"
 cat > "$delegate_tmp/build_stub.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-verdict="${TMPDIR:-/tmp}/kg_ios_build_verdict"
+# Per-invocation verdict contract: honor the wrapper's pinned path, keep the
+# historical fixed path as a latest pointer (last-writer-wins).
+latest="${TMPDIR:-/tmp}/kg_ios_build_verdict"
+verdict="${KG_IOS_VERDICT_FILE:-$latest.$(date +%s)-$$}"
 json="$verdict.json"
 printf 'RESULT=ok EXIT=0 caller=stub-build elapsed=1s log=%s/build.log xcresult=%s/Build.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
 mkdir -p "${TMPDIR:-/tmp}/Build.xcresult"
 : > "${TMPDIR:-/tmp}/build.log"
 jq -nc --arg log "${TMPDIR:-/tmp}/build.log" --arg xcresult "${TMPDIR:-/tmp}/Build.xcresult" '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-build",elapsed:"1s",executed:null,timings:{bootMs:11,xcodebuildMs:22,totalMs:33},artifacts:{log:$log,xcresult:$xcresult}}' >"$json"
+cp -f "$verdict" "$latest"
+cp -f "$json" "$latest.json"
+# RACE FIXTURE: a concurrent session finishes right after us and wins the
+# latest pointer. The wrapper MUST still report OUR run (caller=stub-build),
+# never the foreign one — this is the multi-session verdict race regression.
+printf 'RESULT=fail EXIT=1 caller=foreign-session elapsed=9s log=/dev/null xcresult=/dev/null\n' >"$latest"
+jq -nc '{schema:"kg.ios.run-verdict.v1",kind:"build",status:"fail",result:"fail",exit:"1",reason:null,caller:"foreign-session",elapsed:"9s",executed:null,timings:{},artifacts:{log:"/dev/null",xcresult:"/dev/null"}}' >"$latest.json"
 echo "build stub stdout"
 SH
 cat > "$delegate_tmp/test_stub.sh" <<'SH'
@@ -591,7 +601,8 @@ if printf '%s\n' "$@" | grep -qx -- '--cache-status'; then
   jq -nc '{schema:"kg.ios.test-cache.v1",scope:"unit",status:"ok",cache:{status:"hit"}}'
   exit 0
 fi
-verdict="${TMPDIR:-/tmp}/kg_ios_test_verdict"
+latest="${TMPDIR:-/tmp}/kg_ios_test_verdict"
+verdict="${KG_IOS_VERDICT_FILE:-$latest.$(date +%s)-$$}"
 json="$verdict.json"
 printf 'RESULT=ok EXIT=0 caller=stub-test elapsed=2s executed=7 log=%s/test.log xcresult=%s/Test.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
 mkdir -p "${TMPDIR:-/tmp}/Test.xcresult"
@@ -602,18 +613,29 @@ mkdir -p "${TMPDIR:-/tmp}/ui-steps"
 : > "${TMPDIR:-/tmp}/ui-steps/review_manifest.json"
 : > "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4"
 jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg quick4 "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png" --arg manifest "${TMPDIR:-/tmp}/ui-steps/review_manifest.json" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" --arg video "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4" --arg device "STUB-UDID-1234" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",device:$device,options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiQuick4Sheet:$quick4,uiVisualReviewManifest:$manifest,uiScreenshotDir:$screenshotDir,uiVideo:$video}}' >"$json"
+cp -f "$verdict" "$latest"
+cp -f "$json" "$latest.json"
+# RACE FIXTURE: concurrent session clobbers the latest pointer after our run.
+printf 'RESULT=fail EXIT=1 caller=foreign-session elapsed=9s log=/dev/null xcresult=/dev/null\n' >"$latest"
+jq -nc '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"fail",result:"fail",exit:"1",reason:null,caller:"foreign-session",elapsed:"9s",executed:null,timings:{},artifacts:{log:"/dev/null",xcresult:"/dev/null"}}' >"$latest.json"
 echo "test stub stdout"
 SH
 cat > "$delegate_tmp/archive_stub.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-verdict="${TMPDIR:-/tmp}/kg_ios_archive_verdict"
+latest="${TMPDIR:-/tmp}/kg_ios_archive_verdict"
+verdict="${KG_IOS_VERDICT_FILE:-$latest.$(date +%s)-$$}"
 json="$verdict.json"
 mkdir -p "${TMPDIR:-/tmp}/Archive.xcresult" "${TMPDIR:-/tmp}/export"
 : > "${TMPDIR:-/tmp}/archive.log"
 : > "${TMPDIR:-/tmp}/export/BooksAndVocab.ipa"
 printf 'RESULT=ok EXIT=0 caller=stub-archive archive=%s/BooksAndVocab.xcarchive log=%s/archive.log xcresult=%s/Archive.xcresult\n' "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" "${TMPDIR:-/tmp}" >"$verdict"
 jq -nc --arg archive "${TMPDIR:-/tmp}/BooksAndVocab.xcarchive" --arg log "${TMPDIR:-/tmp}/archive.log" --arg xcresult "${TMPDIR:-/tmp}/Archive.xcresult" --arg exportDir "${TMPDIR:-/tmp}/export" --arg ipa "${TMPDIR:-/tmp}/export/BooksAndVocab.ipa" '{schema:"kg.ios.archive.v1",status:"ok",exit:"0",caller:"stub-archive",options:{keyId:"TCXVHFRXMS",uploadRequested:false},archive:{status:"ok",elapsed:"12s",path:$archive,log:$log,xcresult:$xcresult},export:{status:"ok",directory:$exportDir,ipa:$ipa},upload:{status:"skipped",requested:false,completed:false}}' >"$json"
+cp -f "$verdict" "$latest"
+cp -f "$json" "$latest.json"
+# RACE FIXTURE: concurrent session clobbers the latest pointer after our run.
+printf 'RESULT=fail EXIT=1 caller=foreign-session archive=/dev/null log=/dev/null xcresult=/dev/null\n' >"$latest"
+jq -nc '{schema:"kg.ios.archive.v1",status:"fail",exit:"1",caller:"foreign-session",options:{keyId:null,uploadRequested:false},archive:{status:"fail",elapsed:null,path:null,log:null,xcresult:null},export:{status:"skipped",directory:null,ipa:null},upload:{status:"skipped",requested:false,completed:false}}' >"$latest.json"
 echo "archive stub stdout"
 SH
 chmod +x "$delegate_tmp/build_stub.sh" "$delegate_tmp/test_stub.sh" "$delegate_tmp/archive_stub.sh"
