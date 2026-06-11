@@ -132,9 +132,12 @@ struct SettingsPresenter: View {
 
     // MARK: - Section 3: 其他
 
+    // child View struct（原 computed property）；不得改回內聯 —
+    // 見 SettingsOtherSection.swift 檔頭的 stack 約束。
     private var otherSection: some View {
         SettingsOtherSection(
             syncSummary: state.syncSummary,
+            bookSync: state.bookSync,
             isLoggedIn: state.auth.isLoggedIn,
             version: state.about.version,
             actions: actions

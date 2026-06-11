@@ -63,6 +63,22 @@ private let catalogSnapshotCompileFlagEnabled = false
         playbook.stores.reduce(into: 0) { $0 += $1.scenarios.count }
     }
 
+    /// Scope 匹配零 scenario 時的 fail-fast。沒有這條,空 playbook 會在下游以
+    /// 「catalog_index.json 不存在」(NSCocoaErrorDomain Code=4,輸出目錄從未建立)
+    /// 冒出,完全看不出是 scope 打錯(category 名大小寫敏感,如 `Settings`≠`settings`)。
+    private struct EmptyScopeError: Error, CustomStringConvertible {
+        let groups: [String]
+        let scenarios: [String]
+
+        var description: String {
+            """
+            catalog scope matched zero scenarios (category names are case-sensitive). \
+            groups=\(groups) scenarios=\(scenarios). \
+            Valid groups: \(CatalogScene.Manifest.categoryNames.sorted().joined(separator: ", "))
+            """
+        }
+    }
+
     /// Render every scenario registered by `CatalogScene.buildPlaybook()` to PNG
     /// at `<NSTemporaryDirectory>/kg-catalog-snapshots/<device>/<category>/<scenario>.png`.
     ///
@@ -93,6 +109,9 @@ private let catalogSnapshotCompileFlagEnabled = false
         let playbookBuildMs = Self.elapsedMilliseconds(since: playbookBuildStart)
         let resolvedCategories = playbook.stores.map { $0.category.rawValue }.sorted()
         let resolvedScenarioCount = Self.scopedScenarioCount(in: playbook)
+        if resolvedScenarioCount == 0, !(groups.isEmpty && scenarios.isEmpty) {
+            throw EmptyScopeError(groups: groups, scenarios: scenarios)
+        }
         let scopeSummary = [
             groups.isEmpty ? nil : "groups=\(groups.joined(separator: ", "))",
             scenarios.isEmpty ? nil : "scenarios=\(scenarios.joined(separator: ", "))",

@@ -138,6 +138,12 @@ struct BookshelfView: View {
             }
             .settingsSheet(isPresented: $coordinator.showSettings)
             .loginGateSheet($loginGate)
+            .onAppear {
+                // probe rig：見 AppRuntimeOptions.shouldOpenSettingsOnLaunch。
+                if AppRuntimeOptions.shouldOpenSettingsOnLaunch() {
+                    coordinator.showSettings = true
+                }
+            }
         }
         // 匯入書籍 ⌘I(Mac menu)— 對應 toolbar importButton。
         .focusedSceneValue(\.importBook, ImportBookAction { coordinator.presentImporter() })
