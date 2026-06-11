@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from filelock import FileLock
 
 from .api_models import (
+    AutoLinkConfig,
     DeleteAccountResponse,
     EntitlementsResponse,
     HealthResponse,
@@ -70,11 +71,21 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     else:
         vocab_ui = VocabUIConfig()
 
+    al_data = config.get("auto_link")
+    if isinstance(al_data, dict):
+        auto_link = AutoLinkConfig(
+            enabled=bool(al_data.get("enabled", True)),
+            updated_at=al_data.get("updated_at"),
+        )
+    else:
+        auto_link = AutoLinkConfig()
+
     return UserConfigResponse(
         translation=translation,
         review_clock=review_clock,
         review_mode=review_mode,
         vocab_ui=vocab_ui,
+        auto_link=auto_link,
     )
 
 
@@ -118,6 +129,13 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         config["vocab_ui"] = {
             "active_notebook_id": vu.active_notebook_id,
             "updated_at": vu.updated_at,
+        }
+    # Auto-link(judge pipeline 自動連結)開關。單一 updated_at 驅動整組 LWW。
+    # 只在 client 有送時更新(None = 不動既有);缺省讀取端 fallback enabled=True。
+    if req.auto_link is not None:
+        config["auto_link"] = {
+            "enabled": req.auto_link.enabled,
+            "updated_at": req.auto_link.updated_at,
         }
 
 

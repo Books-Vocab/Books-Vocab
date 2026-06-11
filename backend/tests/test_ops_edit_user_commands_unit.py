@@ -34,6 +34,7 @@ def _make_args(**kwargs) -> argparse.Namespace:
         "custom_minimum_interval_hours": None,
         "custom_maximum_interval_hours": None,
         "active_notebook": None,
+        "auto_link": None,
         "backup": None,
     }
     defaults.update(kwargs)
@@ -135,6 +136,28 @@ class TestUserConfigSet:
         rm = users["u1"]["config"]["review_mode"]
         assert rm["mode"] == "intensive"
         assert rm["custom_initial_interval_hours"] == 6
+
+    def test_commit_auto_link_off(self, tmp_path, monkeypatch, capsys):
+        self._setup_user(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        rc = user_cmd.cmd_user_config_set(
+            _make_args(auto_link="off", commit=True)
+        )
+        assert rc == 0
+        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
+        al = users["u1"]["config"]["auto_link"]
+        assert al["enabled"] is False
+        assert al["updated_at"] is not None
+
+    def test_commit_auto_link_on(self, tmp_path, monkeypatch, capsys):
+        self._setup_user(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        rc = user_cmd.cmd_user_config_set(
+            _make_args(auto_link="on", commit=True)
+        )
+        assert rc == 0
+        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
+        assert users["u1"]["config"]["auto_link"]["enabled"] is True
 
     def test_no_updates_raises(self, tmp_path, monkeypatch):
         self._setup_user(tmp_path)

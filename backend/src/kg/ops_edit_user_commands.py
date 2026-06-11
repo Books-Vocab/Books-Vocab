@@ -117,9 +117,12 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
         resolved_nb_id = _resolve_notebook_id(ctx.user_dir, args.active_notebook)
         updates["vocab_ui"] = {"active_notebook_id": resolved_nb_id}
 
+    if args.auto_link is not None:
+        updates["auto_link"] = {"enabled": args.auto_link == "on"}
+
     if not updates:
         raise EditError(
-            "user-config-set 需至少一個 translation/review_clock/review_mode/vocab_ui 相關旗標"
+            "user-config-set 需至少一個 translation/review_clock/review_mode/vocab_ui/auto_link 相關旗標"
         )
 
     plan = {"updates": updates}
@@ -206,6 +209,16 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
                     "updated_at": vocab_ui.updated_at,
                 }
 
+            if "auto_link" in updates:
+                auto_link = AutoLinkConfig(
+                    enabled=updates["auto_link"]["enabled"],
+                    updated_at=now_epoch,
+                )
+                config["auto_link"] = {
+                    "enabled": auto_link.enabled,
+                    "updated_at": auto_link.updated_at,
+                }
+
             record["config"] = config
             users[args.uid] = record
             return config
@@ -244,6 +257,10 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
             vu = config.get("vocab_ui", {}) if isinstance(config.get("vocab_ui"), dict) else {}
             if vu.get("active_notebook_id") != resolved_nb_id:
                 mismatches.append("vocab_ui.active_notebook_id")
+        if "auto_link" in updates:
+            al = config.get("auto_link", {}) if isinstance(config.get("auto_link"), dict) else {}
+            if al.get("enabled") != updates["auto_link"]["enabled"]:
+                mismatches.append("auto_link.enabled")
         return {"ok": not mismatches, "mismatched": mismatches}
 
     return ctx.run(action="user-config-set", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)

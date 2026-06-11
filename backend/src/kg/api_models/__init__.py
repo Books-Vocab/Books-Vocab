@@ -27,7 +27,7 @@ from kg.api_models.billing import (
 )
 from kg.api_models.cards import CardLinkSummaryResponse, CardResponse
 from kg.api_models.common import VocabSource, _normalize_context
-from kg.api_models.graph import GraphLinkResponse, ManualLinkRequest
+from kg.api_models.graph import AutoLinkConfig, GraphLinkResponse, ManualLinkRequest
 from kg.api_models.notebook import (
     VALID_COVER_PATTERNS,
     NotebookCreateRequest,
@@ -87,6 +87,7 @@ __all__ = [
     "AppStoreNotificationResponse",
     "AppStoreReconcileRequest",
     "AppStoreSyncRequest",
+    "AutoLinkConfig",
     "ArchiveWordRequest",
     "ArchiveWordResponse",
     "AuthVerifyRequest",
