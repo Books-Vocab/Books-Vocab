@@ -21,6 +21,8 @@ on:
       - 'backend/static/kg-components.css'
       - 'backend/static/kg-component-structures.css'
       - 'backend/static/review-gradient.js'
+      - 'web/src/styles/kg-tokens.css'
+      - 'web/src/styles/kg-components.css'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/design-system.yml'
