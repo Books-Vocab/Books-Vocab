@@ -23,7 +23,7 @@ manifest_module = load_module("catalog_review_manifest", ROOT / "ops" / "catalog
 profile_module = load_module("catalog_review_profile", ROOT / "ops" / "catalog_review_profile.py")
 state_module = load_module("catalog_review_state", ROOT / "ops" / "catalog_review_state.py")
 renderer_module = load_module("catalog_review_renderer", ROOT / "ops" / "catalog_review_renderer.py")
-load_module("catalog_review_sync", ROOT / "ops" / "catalog_review_sync.py")
+sync_module = load_module("catalog_review_sync", ROOT / "ops" / "catalog_review_sync.py")
 render_entry_module = load_module("render_catalog_review", ROOT / "ops" / "render_catalog_review.py")
 build_asset_id = manifest_module.build_asset_id
 REVIEW_CLI = ROOT / "ops" / "catalog_review_cli.py"
@@ -1652,3 +1652,79 @@ def test_render_html_consumes_devices_for_device_toggle(tmp_path: Path):
     assert "MANIFEST.devices" in html
     assert 'id="device-seg"' in html
     assert "state.device" in html
+
+
+def test_render_html_embeds_uitest_videos():
+    """UITest run recordings are page data: render_html embeds the archive index
+    entries (with page-relative src) into the UITEST_VIDEOS hole so the gallery
+    can offer a recordings section alongside the shot lanes."""
+    manifest = {"schema": "kg.catalog.review.v1", "surfaces": [], "items": []}
+    videos = [
+        {
+            "file": "20260611-120000-ui.mp4",
+            "src": "uitest-videos/20260611-120000-ui.mp4",
+            "recordedAtUtc": "2026-06-11T12:00:00Z",
+            "scope": "ui",
+            "caller": "test-caller",
+            "sizeBytes": 1234,
+        }
+    ]
+    html = renderer_module.render_html(manifest, ui_test_videos=videos)
+    assert "20260611-120000-ui.mp4" in html
+    assert "UITEST_VIDEOS" in html
+    assert "<video" in html
+
+    bare = renderer_module.render_html(manifest)
+    assert "20260611-120000-ui.mp4" not in bare
+    assert "UITEST_VIDEOS = null" in bare
+
+
+def test_write_review_outputs_links_sibling_uitest_videos(tmp_path: Path):
+    """write_review_outputs hard-links the archived recordings listed in the
+    sibling build/snapshots/uitest-videos/index.json into <root>/uitest-videos/
+    so review.html stays self-contained for both file:// and the http server
+    (which serves --directory <root> and cannot reach ../)."""
+    snapshots = tmp_path / "snapshots"
+    archive = snapshots / "uitest-videos"
+    archive.mkdir(parents=True)
+    (archive / "20260611-120000-ui.mp4").write_bytes(b"fake-mp4")
+    (archive / "index.json").write_text(
+        json.dumps(
+            {
+                "schema": "kg.ios.uitest-videos.v1",
+                "videos": [
+                    {
+                        "file": "20260611-120000-ui.mp4",
+                        "recordedAtUtc": "2026-06-11T12:00:00Z",
+                        "scope": "ui",
+                        "caller": "test-caller",
+                        "sizeBytes": 8,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    root = snapshots / "catalog-full-20260611-130000"
+    root.mkdir()
+    manifest = {"schema": "kg.catalog.review.v1", "surfaces": [], "items": []}
+    sync_module.write_review_outputs(root, manifest, {"entries": {}})
+    linked = root / "uitest-videos" / "20260611-120000-ui.mp4"
+    assert linked.is_file() and linked.read_bytes() == b"fake-mp4"
+    html = (root / "review.html").read_text(encoding="utf-8")
+    assert "uitest-videos/20260611-120000-ui.mp4" in html
+    # the persisted manifest stays a pure shot manifest — recordings are page data
+    persisted = json.loads((root / "review_manifest.json").read_text(encoding="utf-8"))
+    assert "uiTestVideos" not in persisted
+
+
+def test_write_review_outputs_without_video_archive_is_clean(tmp_path: Path):
+    """No sibling archive (or an unreadable index) must not break review output
+    and must not fabricate an empty recordings dir."""
+    root = tmp_path / "catalog-full-20260611-130000"
+    root.mkdir()
+    manifest = {"schema": "kg.catalog.review.v1", "surfaces": [], "items": []}
+    sync_module.write_review_outputs(root, manifest, {"entries": {}})
+    html = (root / "review.html").read_text(encoding="utf-8")
+    assert "UITEST_VIDEOS = null" in html
+    assert not (root / "uitest-videos").exists()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from catalog_review_renderer import render_html
@@ -25,10 +26,46 @@ def hydrate_manifest(manifest: dict, review_state: dict) -> dict:
     return next_manifest
 
 
+def sync_uitest_videos(root: Path) -> list[dict]:
+    """Mirror the UITest recording archive (sibling build/snapshots/uitest-videos/,
+    written by ios_test.sh) into <root>/uitest-videos/ and return page entries.
+
+    Hard links (copy fallback) keep the review root self-contained: the http
+    server serves --directory <root> and cannot reach ../, and a blessed root
+    stays browsable even after the shared archive prunes older runs. Missing or
+    unreadable archive = no recordings section, never an error.
+    """
+    index_path = root.parent / "uitest-videos" / "index.json"
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    entries = []
+    for video in index.get("videos", []):
+        name = video.get("file", "")
+        source = index_path.parent / name
+        if not name or "/" in name or not source.is_file():
+            continue
+        local_dir = root / "uitest-videos"
+        local_dir.mkdir(exist_ok=True)
+        target = local_dir / name
+        if not target.exists():
+            try:
+                os.link(source, target)
+            except OSError:
+                target.write_bytes(source.read_bytes())
+        entries.append({**video, "src": f"uitest-videos/{name}"})
+    return entries
+
+
 def write_review_outputs(root: Path, manifest: dict, review_state: dict) -> None:
     hydrated = hydrate_manifest(manifest, review_state)
     (root / "review_manifest.json").write_text(
         json.dumps(hydrated, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    (root / "review.html").write_text(render_html(hydrated), encoding="utf-8")
+    ui_test_videos = sync_uitest_videos(root)
+    (root / "review.html").write_text(
+        render_html(hydrated, ui_test_videos=ui_test_videos),
+        encoding="utf-8",
+    )
