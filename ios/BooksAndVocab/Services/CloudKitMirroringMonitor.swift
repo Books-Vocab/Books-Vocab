@@ -137,7 +137,9 @@ final class CloudKitMirroringMonitor {
         }
     }
 
-    private static func mapType(_ type: NSPersistentCloudKitContainer.EventType) -> MirroringEventSnapshot.EventType {
+    // nonisolated：notification handler 在任意 queue 上做 Event → snapshot
+    // 映射（純函式無狀態），不得被 class 的 @MainActor 隔離拖下水（swift6 警告）。
+    private nonisolated static func mapType(_ type: NSPersistentCloudKitContainer.EventType) -> MirroringEventSnapshot.EventType {
         switch type {
         case .setup: return .setup
         case .import: return .import
