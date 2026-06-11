@@ -55,12 +55,14 @@ uv run python lab/migration_engine/engine/eval_holdout.py \
    resolution — extract the call site and bind the generic content tree into the component
    IR. (Highest-value structural gap remaining.)
 
-2. **`nb-pill` + `vc-sort-pill` font-weight DEVIATE (hand 600 vs engine 700).** The engine
-   applies `semibold_chip_700` faithfully (iOS `.semibold` → 700, ElmsSans ships 400/700
-   only), but both hand surfaces wrote `font-weight: 600`. This is the **codex-stale
-   divergence** flagged in V0_REPORT §2 — the holdout is doing its anti-overfit job by
-   re-exposing it on a *second* surface (vocabulary), strengthening the case. Reconciliation
-   is owned by the codex line (not touched here). Counts as 2 of the 4 misses.
+2. **`nb-pill` + `vc-sort-pill` font-weight — RECONCILED (was DEVIATE: hand 600 vs engine 700).**
+   The holdout re-exposed the **codex-stale divergence** flagged in V0_REPORT §2 on a *second*
+   surface (vocabulary), strengthening the case that the prior `semibold_chip_700` claim was
+   wrong: KG web ships the Inter/SF stack (real 600 face), not ElmsSans, so iOS `.semibold`
+   stays **600** and does not collapse to 700. Fixed the codex line — rule renamed
+   `semibold_chip_600` (`codex/l2_rules.yaml`) and `generate_css.py` now emits `font-weight: 600`
+   for semibold. Both prior misses now **hit** (nb-pill 80→90%, vc-sort-pill 90→100%, aggregate
+   94.4%). 2 of the 4 v1 misses resolved.
 
 3. **`tr-chevron-pill` display DEVIATE (hand `flex` vs engine `inline-flex`).** The chevron
    is a leaf-wrapping capsule, so the engine emits `inline-flex` (correct for a pill). The

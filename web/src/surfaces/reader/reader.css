@@ -908,54 +908,17 @@
   bottom: 0;
 }
 
-/* 跟隨全域設定 inset 卡（snapshot 頂部）：globe + 兩行 + 選中 checkmark。
-   card top ≈ 149pt（body 起 103px + 46px gap → margin-top ~46px）。 */
-.rnotebook-global-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 46px 16px 0;
-  /* PNG 實測 card 高 ≈ 69pt（globe 22 + 兩行文字），原 18px padding 致 web 高 84pt
-     → 列表整體下移 16pt。收 v-padding 至 13px 對齊 ref 卡高（10px 會略過頭 −12px）。 */
-  padding: 13px 20px;
-  background: var(--card-bg);
-  border-radius: 10px;
-}
-
-.rnotebook-global-icon {
-  flex: none;
-  color: var(--text-secondary); /* globe = secondaryText */
-  line-height: 0;
-}
-
-.rnotebook-global-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.rnotebook-global-title {
-  /* body = sans 17 regular，primaryText（snapshot 較大 ~20，用 18） */
-  font-family: var(--font-sans);
-  font-size: 18px;
-  font-weight: 400;
-  color: var(--text-primary);
-}
-
-.rnotebook-global-sub {
-  /* subhead/caption secondary */
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text-secondary);
-}
+/* strict-binding 改版後（catalog-full-20260611-130335）：移除頂部「跟隨全域設定」
+   inset 卡，列表直接跟在 section header 下。section header「單字本」baseline
+   ≈ 125pt、card top ≈ 148.7pt（measured）。body top=103px → header margin-top
+   推至 ~268px 令文字落 ~118pt、card 起 148.7pt。 */
 
 /* Section header「單字本」（caption medium，secondaryText）— insetGrouped header
-   缩排至列表 leading + 上留白。header baseline ≈ 253pt。 */
+   缩排至列表 leading + 上留白。 */
 .rnotebook-section-header {
-  margin: 24px 0 6px;
+  /* DOM px = pt（frame 393×852pt，capture 3x）。body top=103px；header text 落
+     ~118pt（22px margin → top 125、文字基線略上）。 */
+  margin: 16px 0 0;
   padding: 0 32px; /* 16 card inset + 16 content leading 對齊 */
   font-family: var(--font-sans);
   font-size: 13px;
@@ -964,7 +927,7 @@
 }
 
 .rnotebook-list {
-  margin: 0 16px;
+  margin: 10.5px 16px 0; /* header→card gap：card top 落 ~148.7pt（shift-sweep 微調 +1.5px） */
   padding: 0;
   list-style: none;
   background: var(--card-bg);
@@ -1023,14 +986,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.rnotebook-default {
-  /* isDefault 副標：caption secondary（snapshot 實測「預設」灰字） */
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text-secondary);
 }
 
 .rnotebook-check {

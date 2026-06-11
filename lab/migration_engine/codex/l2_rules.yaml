@@ -74,24 +74,27 @@ rules:
       - web/src/surfaces/podcast/podcast.css:123
     ios_ref: "AppFonts isBold path; ElmsSans-Bold / Athelas-Bold"
 
-  - name: semibold_chip_700
+  - name: semibold_chip_600
     summary: >-
-      iOS `.semibold(600)` on chips/labels/row-words → 700 web for the same
-      ElmsSans-400/700-only reason. Tracked separately from bold_weight because the
-      iOS intent is 600 (kept in comments) even though the web floor is identical.
-    rule: "font-weight = 700  (delta: semibold_no_600 = iOS 600 → 700)"
+      iOS `.semibold(600)` on chips/labels/row-words → web `font-weight: 600`
+      (1:1, no collapse). KG web ships the Inter/SF sans stack, which carries a
+      real 600 face — unlike bold_weight_700_floor's ElmsSans-400/700-only
+      constraint — so semibold stays 600 instead of collapsing to 700.
+    rule: "font-weight = 600  (delta: none — iOS .semibold 600 → web 600)"
     confidence: high
     provenance:
       - web/src/surfaces/notebook/notebook.css:87
       - web/src/surfaces/podcast/podcast.css:133
       - web/src/surfaces/reader/reader.css:170
-      - web/src/surfaces/selection/selection.css:67
+      - web/src/surfaces/selection/selection.css:85
       - web/src/surfaces/today-review/today-review.css:50
       - web/src/surfaces/vocabulary/vocabulary.css:96
     note: >-
-      Both bold_weight_700_floor and semibold_chip_700 emit literal 700; they are
-      distinct *iOS intents* (bold vs semibold) that share a web floor. The engine
-      keeps the iOS intent in the generated comment for round-trip fidelity.
+      Corrects the prior `semibold_chip_700` claim (iOS 600 → web 700): the engine
+      v1 holdout re-exposed the real surfaces shipping `font-weight: 600` on two
+      independent surfaces (notebook + vocabulary), confirming KG web does not
+      apply the ElmsSans 700-collapse to semibold. semibold and bold are now
+      distinct *web floors* (600 vs 700), not just distinct iOS intents.
 
   - name: songti_bold_stroke_sim
     summary: >-

@@ -85,8 +85,13 @@ SKIN_SPACING_PX = {
 # symbolic metric constants (e.g. TodayReviewMetrics.chevronButtonSize) → px.
 METRIC_PX = {"TodayReviewMetrics.chevronButtonSize": 30}
 
-# L2 weight collapse: every iOS bold-ish weight → 700 (ElmsSans ships 400/700 only).
-WEIGHT_700 = {"medium", "semibold", "bold"}
+# L2 weight mapping.
+#  - bold_weight_700_floor: iOS .medium/.bold → 700 (ElmsSans-400/700-only floor).
+#  - semibold_chip_600: iOS .semibold → web 600 (Inter/SF ships a real 600 face;
+#    the holdout re-exposed notebook + vocabulary shipping 600, so semibold does
+#    NOT collapse to 700). See codex/l2_rules.yaml.
+WEIGHT_700 = {"medium", "bold"}
+WEIGHT_600 = {"semibold"}
 
 
 class Decl:
@@ -178,9 +183,10 @@ def _resolve_font(role: str, weight_override: str | None) -> list[Decl]:
         Decl("font-size", f"{spec['size']}px", "L1:token", f"{role}={spec['size']}px"),
     ]
     eff_weight = weight_override or spec["weight"]
-    if eff_weight in WEIGHT_700:
-        rule = "semibold_chip_700" if eff_weight == "semibold" else "bold_weight_700_floor"
-        out.append(Decl("font-weight", "700", f"L2:{rule}", f"iOS .{eff_weight} → 700"))
+    if eff_weight in WEIGHT_600:
+        out.append(Decl("font-weight", "600", "L2:semibold_chip_600", f"iOS .{eff_weight} → 600"))
+    elif eff_weight in WEIGHT_700:
+        out.append(Decl("font-weight", "700", "L2:bold_weight_700_floor", f"iOS .{eff_weight} → 700"))
     return out
 
 
