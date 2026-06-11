@@ -166,10 +166,24 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         login(userId: customToken, token: customToken)
     }
 
+    // logout 排程的本地清理 Task。fire-and-forget 但保留 handle：使用者在
+    // cleanup 完成前快速重登時，post-login sync 必須先 await 它收尾，否則
+    // sync 會搶用尚未被清的 sync boundary（incremental 跳過後端全部卡 →
+    // 本地空庫但自認最新），且拉回的資料會被 resume 的 cleanup 再清一遍
+    // （2026-06-09 000287 單字本事故根因）。
+    @ObservationIgnored
+    private(set) var pendingLocalDataCleanup: Task<Void, Never>?
+
+    /// Post-login 首次 sync 的前置 gate — 等 logout 排程的本地清理收尾。
+    /// 無 pending cleanup 時立即返回（正常冷啟登入不被拖慢）。
+    func waitForPendingLocalDataCleanup() async {
+        await pendingLocalDataCleanup?.value
+    }
+
     func logout(modelContainer: ModelContainer? = nil, reason: String = "user_logout") {
         AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
-        Task {
+        pendingLocalDataCleanup = Task {
             // Clear session state UP FRONT, before awaiting clearLocalData. The cleanup hops to
             // BackgroundSyncActor — a real suspension that yields the MainActor. Doing the nils
             // + clearSession() after that await (the old order) opened a TOCTOU window: a
