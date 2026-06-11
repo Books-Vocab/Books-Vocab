@@ -195,8 +195,9 @@ extension KGService {
         defer { releaseBackgroundSync() }
 
         // 每輪開始即重置 error-tracking 欄位：四個 trigger（post-login / scenePhase
-        // / ⌘R menu / Settings 手動）共用此全域欄位，但只有 App 層 scenePhase 兩處
-        // read-then-clear。claim 鎖已序列化整段（同時間僅一輪執行），於 claim 成功後、
+        // / ⌘R menu / Settings 手動）共用此全域欄位，read-then-clear consumer 有
+        // 三處（App 層 scenePhase 兩處 + ExplicitSync）。claim 鎖已序列化整段
+        // （同時間僅一輪執行），於 claim 成功後、
         // cleanup gate 懸掛前清空 —— gate 可懸掛數秒，期間被 skip 的 trigger 會立即
         // read-then-clear，必須讀不到上一輪 stale 值（典型：logout-401 留下的「登入
         // 已過期」在重登成功後反彈成過期 toast）。失敗時下方會再 set 為本輪正確值。
