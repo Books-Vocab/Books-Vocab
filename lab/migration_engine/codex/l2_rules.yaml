@@ -1,0 +1,244 @@
+# L2 platform-difference codex — v1
+#
+# The non-isomorphic deltas between SwiftUI render and Chromium render, measured
+# during the 63-case pixel-parity rewrite (web/src/surfaces/*). Each rule expresses
+# the web output as `token + named delta`, NOT a bare magic number. A rule only
+# enters the codex when its evidence spans >=2 surfaces (single-surface evidence is
+# suspected overfit and stays in `candidates:` below).
+#
+# Provenance lines are file:line into web/src/surfaces (verified by audit/extract.py;
+# re-derive with audit/measured_values.json). iOS-side values cross-checked against
+# ios/BooksAndVocab/Models/{AppMetrics,AppFonts,AppSkin}.swift + DesignTokens.swift.
+#
+# confidence:
+#   high   — measured, >=3 surfaces, mechanism understood (font face / dpr / native ctrl)
+#   medium — measured, 2 surfaces, OR mechanism understood but geometry single-surface
+#   low    — recurs but mechanism not yet pinned; carry, don't trust blindly
+#
+# rule expression grammar (informal, consumed by engine/L2 applier):
+#   <css_prop> = <token-or-base>  [<op> <delta>]
+#   delta carries a `name` so the engine emits it as an annotated constant, never raw.
+
+version: 1
+unit_contract:
+  # The pixel-mapping invariant the whole engine rests on. At the parity capture
+  # density (393pt logical -> 1179px device, displayScaleFactor=3), one SwiftUI
+  # *point* of layout == one CSS *px*. So token pt values map 1:1 to px (this is why
+  # 70% of literals are pure token lookups). The exception is sub-point hairlines
+  # (see rule hairline_physical_px): iOS draws 1 *physical* px = 1/3 pt = 0.34 CSS px.
+  name: pt_equals_px
+  statement: "1 SwiftUI pt == 1 CSS px at dpr=3 parity density (393pt→1179px)."
+  confidence: high
+  provenance:
+    - web/src/surfaces/bookshelf/bookshelf.css:5   # "px 註解標 iOS 來源常數"
+    - web/src/surfaces/settings/settings.css:136   # dpr3 reasoning
+
+rules:
+  - name: hairline_physical_px
+    summary: >-
+      iOS hairline dividers/strokes are 1 *physical* px (cardBorder geometry); at
+      dpr=3 that is 0.34 CSS px, not the 1px --sp-hairline token. CSS `1px` would
+      render a 3-physical-px line and visibly thicken every divider.
+    rule: "height|border-width = 0.34px  (delta: hairline_dpr3 = --sp-hairline / 3)"
+    delta:
+      name: hairline_dpr3
+      value: 0.34
+      derivation: "ceil(1 logical px) -> 1 physical px / dpr(3) = 0.333… -> 0.34"
+    confidence: high
+    provenance:
+      - web/src/surfaces/notebook/notebook.css:111
+      - web/src/surfaces/reader/reader.css:518
+      - web/src/surfaces/settings/settings.css:136
+      - web/src/surfaces/today-review/today-review.css:329
+      - web/src/surfaces/vocabulary/vocabulary.css:241
+    ios_ref: "AppMetrics.hairline / Space.Scale.hairline; SettingsDivider, card hairlines"
+
+  - name: bold_weight_700_floor
+    summary: >-
+      iOS `.semibold`/`.bold`/`.medium`→isBold all resolve to one heavy face.
+      ElmsSans ships only 400/700 (no 600), and Chromium will faux-bold 600 → reject.
+      So every iOS bold-ish weight collapses to CSS font-weight 700.
+    rule: "font-weight = 700  (delta: weight_collapse = {iOS .medium/.semibold/.bold} → 700)"
+    delta:
+      name: weight_collapse_700
+      maps: { medium: 700, semibold: 700, bold: 700 }
+    confidence: high
+    provenance:
+      - web/src/styles/kg-components.css:54     # hero .semibold→700
+      - web/src/surfaces/bookshelf/bookshelf.css:27
+      - web/src/surfaces/notebook/notebook.css:31
+      - web/src/surfaces/reader/reader.css:113
+      - web/src/surfaces/settings/settings.css:32
+      - web/src/surfaces/today-review/today-review.css:35
+      - web/src/surfaces/vocabulary/vocabulary.css:26
+      - web/src/surfaces/podcast/podcast.css:123
+    ios_ref: "AppFonts isBold path; ElmsSans-Bold / Athelas-Bold"
+
+  - name: semibold_chip_700
+    summary: >-
+      iOS `.semibold(600)` on chips/labels/row-words → 700 web for the same
+      ElmsSans-400/700-only reason. Tracked separately from bold_weight because the
+      iOS intent is 600 (kept in comments) even though the web floor is identical.
+    rule: "font-weight = 700  (delta: semibold_no_600 = iOS 600 → 700)"
+    confidence: high
+    provenance:
+      - web/src/surfaces/notebook/notebook.css:87
+      - web/src/surfaces/podcast/podcast.css:133
+      - web/src/surfaces/reader/reader.css:170
+      - web/src/surfaces/selection/selection.css:67
+      - web/src/surfaces/today-review/today-review.css:50
+      - web/src/surfaces/vocabulary/vocabulary.css:96
+    note: >-
+      Both bold_weight_700_floor and semibold_chip_700 emit literal 700; they are
+      distinct *iOS intents* (bold vs semibold) that share a web floor. The engine
+      keeps the iOS intent in the generated comment for round-trip fidelity.
+
+  - name: songti_bold_stroke_sim
+    summary: >-
+      iOS large serif titles use STSongti-TC-Bold for CJK, but Chromium renders
+      Songti/STSongti at Regular regardless of weight:700 (no Bold face, no synthetic
+      bold). A thin -webkit-text-stroke (0.5–0.7px) simulates the bold ink coverage.
+      NOTE: on the bookshelf large title the stroke was *reverted* (inflated coverage
+      17%→24%, raised RMSE) — apply only where the serif glyph band is small/dense.
+    rule: "-webkit-text-stroke = 0.5px currentColor  (delta: songti_bold_sim, range 0.5–0.7)"
+    delta:
+      name: songti_bold_sim
+      range: [0.5, 0.7]
+      applies_when: "serif title + CJK fallback + iOS weight>=700; small glyph band"
+    confidence: medium
+    provenance:
+      - web/src/surfaces/reader/reader.css:116
+      - web/src/surfaces/vocabulary/vocabulary.css:32
+    counter_evidence:
+      - web/src/surfaces/bookshelf/bookshelf.css:31   # stroke reverted (large title)
+
+  - name: text_body_17
+    summary: >-
+      The body type anchor. iOS AppFonts.body = 17pt → --text-body 17px. Inputs and
+      body text bind to it, NOT subhead(15). Pure token, recorded here because it is
+      a load-bearing scale anchor the engine must not drift to 15/16.
+    rule: "font-size = var(--text-body)  (= 17px; pure L1 token)"
+    confidence: high
+    provenance:
+      - web/src/styles/kg-tokens.css:18
+      - web/src/styles/kg-components.css:46    # .kg-surface body
+      - web/src/styles/kg-components.css:176   # .kg-input body, not subhead
+    kind: token_anchor
+
+  - name: songti_effective_font_size_bump
+    summary: >-
+      Where a Songti/serif glyph must match an iOS rendered cap-height, the web
+      font-size is bumped above the nominal token because CoreText Songti and
+      Chromium Songti have different effective em→ink ratios. Measured 21px (vs token
+      15) on podcast subtitle / reader translation / settings status.
+    rule: "font-size = 21px  (delta: songti_effective_bump = nominal 15 → 21 for cap-height match)"
+    delta:
+      name: songti_effective_bump
+      observed: { nominal_token: 15, web_px: 21 }
+    confidence: medium
+    provenance:
+      - web/src/surfaces/podcast/podcast.css:78
+      - web/src/surfaces/reader/reader.css:503
+      - web/src/surfaces/settings/settings.css:191
+
+  - name: large_title_nav_anchor
+    summary: >-
+      UINavigationBar large-title vertical anchor. status bar 59 + inline bar 44 =
+      103, + in-row inset 15 → glyph top lands at the measured 118px top padding.
+      Recurs across bookshelf/notebook/vocabulary large-title surfaces.
+    rule: "padding-top = 118px  (delta: large_title_top = statusBar(59)+inlineBar(44)+rowInset(15))"
+    delta:
+      name: large_title_top
+      derivation: "59 + 44 + 15 = 118"
+    confidence: high
+    provenance:
+      - web/src/surfaces/bookshelf/bookshelf.css:19
+      - web/src/surfaces/notebook/notebook.css:21
+      - web/src/surfaces/vocabulary/vocabulary.css:17
+    paired_with:
+      name: largetitle_line_height_41
+      rule: "line-height = 41px (UIKit largeTitle line box for 34pt)"
+      provenance:
+        - web/src/surfaces/bookshelf/bookshelf.css:28
+        - web/src/surfaces/notebook/notebook.css:32
+        - web/src/surfaces/vocabulary/vocabulary.css:27
+
+  - name: nav_row_height_44
+    summary: >-
+      UIKit standard nav/control bar + toolbar row height = 44pt → 44px. Recurs on
+      podcast/reader/today-review toolbar rows (height) and play/control hit targets
+      (width 44).
+    rule: "height|width = 44px  (delta: uikit_control_row = standard 44pt bar)"
+    delta: { name: uikit_control_row, value: 44 }
+    confidence: high
+    provenance:
+      - web/src/surfaces/podcast/podcast.css:217
+      - web/src/surfaces/reader/reader.css:620
+      - web/src/surfaces/today-review/today-review.css:68
+      - web/src/surfaces/podcast/podcast.css:216   # width 44 hit target
+      - web/src/surfaces/today-review/today-review.css:67
+
+  - name: outline_button_py_13
+    summary: >-
+      AppActionButtonStyle .outline vertical padding = 13pt → 13px (subhead semibold,
+      radius md, 30% border). Distinct from the 12pt control padding grid; recurs on
+      import / action buttons across surfaces.
+    rule: "padding-block = 13px  (delta: action_button_py = 13, off the 4-grid)"
+    delta: { name: action_button_py, value: 13 }
+    confidence: medium
+    provenance:
+      - web/src/surfaces/bookshelf/bookshelf.css:252   # .bookshelf-empty-import
+      - web/src/surfaces/reader/reader.css:920         # .rnotebook-global-card
+      - web/src/surfaces/settings/settings.css:88      # .settings-row
+      - web/src/surfaces/vocabulary/vocabulary.css:52  # .vc-search
+
+  - name: uiswitch_on_solid_capsule
+    summary: >-
+      The custom-styled iOS UISwitch(on) renders in both Catalog themes as a SOLID
+      accent capsule with NO visible knob. Web reproduces it as a 51×31 (native
+      UISwitch geometry) pill, accent fill when on, and intentionally draws no knob.
+      Geometry is single-surface (settings only — it's the one native toggle), but
+      the *knob-suppression behavior* is a measured render fact, so it is codified
+      with medium confidence and a single-surface geometry caveat.
+    rule: >-
+      toggle: width 51px height 31px radius var(--radius-pill);
+      on → background var(--accent); knob: none  (delta: uiswitch_no_knob)
+    delta:
+      name: uiswitch_no_knob
+      geometry: { width: 51, height: 31 }
+    confidence: medium
+    provenance:
+      - web/src/surfaces/settings/settings.css:405
+      - web/src/surfaces/settings/settings.css:415   # measured: solid capsule, no knob
+    caveat: "geometry single-surface (native control); behavior is the cross-cut rule"
+
+  - name: light_nav_title_material_srgb
+    summary: >-
+      Under iOS nav-bar material the light-theme large title reads as srgb(250,249,247)
+      — the material effect, NOT primaryText (#37352f). Settings nav title matches
+      this measured value rather than the text-primary token.
+    rule: "color = rgb(250,249,247)  (delta: nav_material_tint, light only; dark stays ~primary)"
+    delta:
+      name: nav_material_tint
+      light: "rgb(250,249,247)"
+      dark: "≈ text-primary"
+    confidence: medium
+    provenance:
+      - web/src/surfaces/settings/settings.css:34
+    caveat: >-
+      single measured occurrence today; promote to >=2 surfaces when another
+      material-over-title surface is rewritten (reader chrome is a candidate).
+
+# Suspected-overfit holding pen: recurs but mechanism unclear, or single-surface
+# measured anchors that are page-specific (not platform deltas). The engine must NOT
+# emit these from the codex; they belong to the page, and the L3 holdout loop should
+# try to RE-DERIVE them — a rule that can't be re-derived without the orphan is overfit.
+candidates:
+  - { name: line_height_1_37, prop: line-height, value: 1.37, surfaces: 1,
+      note: "podcast subtitle cap-height pairing with songti_effective_bump; page-local" }
+  - { name: empty_state_hero_top, prop: margin-top, values: [120, 132], surfaces: 1,
+      note: "Spacer(minLength 120) non-scrolling snapshot anchor; bumped to 132 measured" }
+  - { name: settings_section_top_154, prop: padding-top, value: 154, surfaces: 1,
+      note: "nav 103 + 51; nav-bar extra content inset 9pt — settings-specific" }
+  - { name: divider_inset_50, prop: margin-left, value: 50, surfaces: 1,
+      note: "SettingsDivider leading inset icon22+gap12+pad18; could generalize to a row-inset rule" }
