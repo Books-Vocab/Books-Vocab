@@ -63,7 +63,7 @@ allowed-tools: Bash, Read, Grep
 ```bash
 ops-cli user-quota <uid>                  # 24h 額度 + 逐時明細
 ops-cli user-stats <uid>                  # 單字庫統計
-ops-cli user-config <uid>                 # user config 唯讀（translation/review_clock/review_mode/vocab_ui active notebook）
+ops-cli user-config <uid>                 # user config 唯讀（translation/review_clock/review_mode/vocab_ui active notebook/auto_link）
 ops-cli quota-overview                     # 全用戶 24h 額度總覽
 ops-cli active-users [hours]              # 近 N 小時活躍用戶
 ops-cli card-find <uid> <substring>       # byte-exact 子字串搜尋 card.content（免寫 SQL；ASCII case-insensitive；repr 顯示，trailing comma/空白可見）
