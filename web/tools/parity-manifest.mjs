@@ -221,4 +221,40 @@ export const PARITY = [
     ref: { surface: 'Reader · Translation', scenario: 'Explanation Error', appearance: 'light' },
     note: 'Translation panel explanation-error (light)',
   },
+  {
+    case: 'vocabulary-populated-light',
+    params: { surface: 'vocabulary', scenario: 'populated', appearance: 'light' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Populated · mixed sync states', appearance: 'light' },
+    note: '單字列表 populated (light)',
+  },
+  {
+    case: 'vocabulary-single-light',
+    params: { surface: 'vocabulary', scenario: 'single', appearance: 'light' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Single card', appearance: 'light' },
+    note: '單字列表 single (light)',
+  },
+  {
+    case: 'vocabulary-empty-light',
+    params: { surface: 'vocabulary', scenario: 'empty', appearance: 'light' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Empty · zero data', appearance: 'light' },
+    note: '單字列表 empty (light)',
+  },
+  {
+    case: 'vocabulary-populated-dark',
+    params: { surface: 'vocabulary', scenario: 'populated', appearance: 'dark' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Populated · mixed sync states', appearance: 'dark' },
+    note: '單字列表 populated (dark)',
+  },
+  {
+    case: 'vocabulary-single-dark',
+    params: { surface: 'vocabulary', scenario: 'single', appearance: 'dark' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Single card', appearance: 'dark' },
+    note: '單字列表 single (dark)',
+  },
+  {
+    case: 'vocabulary-empty-dark',
+    params: { surface: 'vocabulary', scenario: 'empty', appearance: 'dark' },
+    ref: { surface: 'Vocabulary List View', scenario: 'Empty · zero data', appearance: 'dark' },
+    note: '單字列表 empty (dark)',
+  },
 ];
