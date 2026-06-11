@@ -63,7 +63,7 @@ struct TodayReviewPresenterState {
 
     let progressText: String
     let currentCard: CurrentCard?
-    /// 常駐雙 slot 投影（Phase 3a）— 固定長度 `TodayReviewCardSlotLayout.slotCount`，
+    /// 常駐三 slot 投影（Phase 4）— 固定長度 `TodayReviewCardSlotLayout.slotCount`，
     /// 內容純推導自 currentIndex / queueCount；取代舊 `nextCard` 雙軌預覽。
     let slots: [TodayReviewCardSlotModel]
     let revealStage: TodayReviewRevealStage

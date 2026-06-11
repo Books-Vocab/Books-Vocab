@@ -141,7 +141,8 @@ struct TodayReviewCardSlotTests {
     /// 只落在升為 active 的原 under 後繼 slot。
     @Test func previousRotatesRolesAndKeepsDemotedContentStable() {
         let queueCount = 7
-        var session = TodayReviewSessionState(queue: Array(0..<queueCount), currentIndex: queueCount - 3)
+        // 從末卡起退，涵蓋 demoted preview 翻 hidden 的隊尾 clamp 路徑。
+        var session = TodayReviewSessionState(queue: Array(0..<queueCount), currentIndex: queueCount - 1)
 
         while session.canGoPrevious {
             let before = session.currentIndex
