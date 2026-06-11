@@ -53,6 +53,28 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('routes notebook surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=notebook&scenario=populated&appearance=dark')).toEqual({
+      surface: 'notebook',
+      scenario: 'populated',
+      appearance: 'dark',
+    })
+    expect(resolveHarnessConfig('?surface=notebook&scenario=single')).toEqual({
+      surface: 'notebook',
+      scenario: 'single',
+      appearance: 'light',
+    })
+  })
+
+  it('notebook defaults to its first scenario (populated) when scenario belongs to another surface', () => {
+    // settings 的 'logged-out' 不是 notebook 的合法 scenario → notebook 預設
+    expect(resolveHarnessConfig('?surface=notebook&scenario=logged-out')).toEqual({
+      surface: 'notebook',
+      scenario: 'populated',
+      appearance: 'light',
+    })
+  })
+
   it('re-evaluates scenario against the fallback surface（未知 surface + 他 surface 合法 scenario）', () => {
     expect(resolveHarnessConfig('?surface=nope&scenario=logged-out')).toEqual({
       surface: 'bookshelf',
