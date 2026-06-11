@@ -172,11 +172,11 @@ public enum DesignTokens {
     }
     public enum Typography {
         public enum Family {
-            public static let display: String = "'CormorantGaramond', 'Athelas', 'Noto Serif TC', 'Songti TC', Georgia, serif"
+            public static let display: String = "'CormorantGaramond', 'CrimsonPro', 'Noto Serif TC', 'Songti TC', Georgia, serif"
             public static let italic: String = "'CormorantGaramond', Georgia, serif"
             public static let mono: String = "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace"
             public static let sans: String = "'ElmsSans', 'PingFang TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-            public static let serif: String = "'Athelas', 'STSongti TC', 'Noto Serif TC', Georgia, serif"
+            public static let serif: String = "'CrimsonPro', 'Songti TC', 'Noto Serif TC', Georgia, serif"
         }
         public enum Leading {
             public static let body: CGFloat = 1.5
