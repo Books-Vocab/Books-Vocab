@@ -93,6 +93,12 @@ SWIFT
 # The func name does NOT start with `test`, so it is ONLY discoverable via the
 # @Test attribute. The multiline `@Test(arguments: [ \n ... \n ])` must arm the
 # next `func` across the intervening argument rows (the historical drop bug).
+#
+# Signature contract: Swift Testing -only-testing IDs must carry the FULL
+# parameter-label signature (`golfSingleLine(_:)`, `golfLabeled(input:)`).
+# Emitting `golfSingleLine()` for a parameterized func makes xcodebuild match
+# 0 tests → "TEST SUCCEEDED" with nothing run (the 2026-06-11 silent FALSE
+# GREEN only caught by the post-run zero-tests guard).
 cat > "$FIX/ParamTests.swift" <<'SWIFT'
 import Testing
 
@@ -107,6 +113,27 @@ struct GolfTests {
         (3, 4.0),
     ])
     func golfMultiLine(_ a: Int, _ b: Double) {}
+
+    // Labeled parameter — ID must carry the label, not `_`.
+    @Test(arguments: ["a", "b"])
+    func golfLabeled(input: String) {}
+
+    // External/internal label pair — ID carries the EXTERNAL label.
+    @Test(arguments: [1])
+    func golfExtInt(for value: Int) {}
+
+    // Nested commas inside a tuple type must not split the label list.
+    @Test(arguments: [((1, "x"), 2)])
+    func golfTuple(_ pair: (Int, String), count: Int) {}
+
+    // Param list spans lines — signature unknowable from the func line alone;
+    // must degrade to a SUITE-level selector (safe superset), never a bare
+    // name / wrong signature (both zero-match).
+    @Test(arguments: [1])
+    func golfMultiLineParams(
+        _ n: Int,
+        label other: Int
+    ) {}
 
     // Display-name form on its own line above the func.
     @Test("a display name")
@@ -209,15 +236,30 @@ has_flag "$ONLY_ECHO" "EchoTests/echoThree()" \
   && ok "suite-name match includes @Test-on-prev-line funcs" || fail_t "suite-name match missed echoThree"
 printf '%s\n' "$ONLY_ECHO" | grep -qF "makeHelper" \
   && fail_t "suite-name match leaked plain helper makeHelper" || ok "suite-name match still excludes plain helpers"
+# 交叉地雷迴歸（兩 reviewer 點名）：suite 名 pattern 必須也覆蓋多行參數列的
+# suite-level fallback。fallback 分支若自帶只比對 fn 的行內判斷，
+# `-g GolfTests` 會無聲漏掉 golfMultiLineParams（partial silent miss）；
+# emit() 與 fallback 共用 match_fn_or_container() 後此處必綠。
+ONLY_GOLF="$(discover_only_flags "$FIX" "golftests")"
+has_flag "$ONLY_GOLF" "GolfTests" \
+  && ok "suite-name pattern reaches multiline-params suite fallback" || fail_t "suite-name pattern dropped multiline-params fallback (fn-only check drift)"
+has_flag "$ONLY_GOLF" "GolfTests/golfSingleLine(_:)" \
+  && ok "suite-name pattern keeps parameterized signatures" || fail_t "suite-name pattern dropped parameterized signature func"
 
 # ── 10. parameterized @Test(arguments:) single + multiline ───────────────────
 section "Parameterized @Test(arguments:) discovery"
-has_flag "$FLAGS" "GolfTests/golfSingleLine()" && ok "golfSingleLine (single-line args) → GolfTests" || fail_t "single-line @Test(arguments:) dropped"
-has_flag "$FLAGS" "GolfTests/golfMultiLine()" && ok "golfMultiLine (multiline args) → GolfTests" || fail_t "multiline @Test(arguments:) dropped"
+has_flag "$FLAGS" "GolfTests/golfSingleLine(_:)" && ok "golfSingleLine → (_:) signature" || fail_t "single-line @Test(arguments:) lacks (_:) signature"
+has_flag "$FLAGS" "GolfTests/golfMultiLine(_:_:)" && ok "golfMultiLine → (_:_:) signature" || fail_t "multiline @Test(arguments:) lacks (_:_:) signature"
+has_flag "$FLAGS" "GolfTests/golfLabeled(input:)" && ok "golfLabeled → (input:) signature" || fail_t "labeled param lost its label"
+has_flag "$FLAGS" "GolfTests/golfExtInt(for:)" && ok "golfExtInt → (for:) external label" || fail_t "external/internal label pair mishandled"
+has_flag "$FLAGS" "GolfTests/golfTuple(_:count:)" && ok "golfTuple → (_:count:) (tuple comma not split)" || fail_t "nested tuple comma split the label list"
+printf '%s\n' "$FLAGS" | grep -qF "golfSingleLine()" && fail_t "parameterized func WRONGLY emitted bare () (xcodebuild matches 0 tests = false green)" || ok "no bare () emitted for parameterized funcs"
+has_flag "$FLAGS" "GolfTests" && ok "golfMultiLineParams (params span lines) → suite-level fallback" || fail_t "multiline-params func did not fall back to suite-level selector"
+printf '%s\n' "$FLAGS" | grep -qF "golfMultiLineParams" && fail_t "multiline-params func emitted a guessed (wrong) func selector" || ok "no guessed selector for multiline-params func"
 has_flag "$FLAGS" "GolfTests/golfDisplayName()" && ok "golfDisplayName (@Test display name) → GolfTests" || fail_t "@Test(display-name) dropped"
 has_flag "$FLAGS" "GolfTests/golfSameLine()" && ok "golfSameLine (@Test func after multiline arm) → GolfTests" || fail_t "same-line @Test regressed after multiline arm"
 printf '%s\n' "$FLAGS" | grep -qF "makeFixture" && fail_t "plain helper makeFixture leaked" || ok "plain helper makeFixture excluded"
-has_flag "$FLAGS" "HotelTests/hotelMultiLine()" && ok "hotelMultiLine → HotelTests (no cross-container bleed)" || fail_t "multiline arm dropped in HotelTests"
+has_flag "$FLAGS" "HotelTests/hotelMultiLine(_:)" && ok "hotelMultiLine → HotelTests (no cross-container bleed)" || fail_t "multiline arm dropped in HotelTests"
 printf '%s\n' "$FLAGS" | grep -qF "GolfTests/hotelMultiLine" && fail_t "hotelMultiLine WRONGLY under GolfTests (arm bled across container)" || ok "no arm bleed across struct boundary"
 
 # ── 11. ios_test.sh -g 旗標 E2E（--list 在碰鎖/xcodebuild 前退出，可安全跑）──
