@@ -210,7 +210,7 @@ extension ReaderSettingsPresenter {
     func vocabFontMenu() -> some View {
         Menu {
             ForEach(ReaderFont.allCases) { font in
-                Button(font.rawValue) { bindings.font.wrappedValue = font }
+                Button(font.displayName) { bindings.font.wrappedValue = font }
             }
         } label: {
             vocabControlSurface {
@@ -219,7 +219,7 @@ extension ReaderSettingsPresenter {
                         Text("字體".localized)
                             .font(appSkin.typography.caption)
                             .foregroundStyle(appSkin.palette.tertiaryText)
-                        Text(bindings.font.wrappedValue.rawValue)
+                        Text(bindings.font.wrappedValue.displayName)
                             .font(appSkin.typography.translationTitle)
                             .foregroundStyle(appSkin.palette.primaryText)
                     }
