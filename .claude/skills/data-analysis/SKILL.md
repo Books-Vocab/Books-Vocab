@@ -19,7 +19,7 @@ allowed-tools: Bash, Read, Grep, Agent
 |------|------|----------|
 | `ops-cli user-quota <uid>` | 24h 額度 + 逐時明細 | 快速查看消耗 |
 | `ops-cli user-stats <uid>` | 單字庫基本統計 | 快速查看卡片數 |
-| `ops-cli user-config <uid>` | user config（translation/review_*/vocab_ui） | 查 active notebook / 複習設定 / 翻譯語言 |
+| `ops-cli user-config <uid>` | user config（translation/review_*/vocab_ui/auto_link） | 查 active notebook / 複習設定 / 翻譯語言 / 自動連結開關 |
 | `ops-cli quota-overview` | 全用戶額度對比 | 跨用戶分析 |
 | `container-script` | 自訂分析腳本 | 深度分析（見下方方法論） |
 | `graph_analysis.py` | 本地圖譜分析（需本地 data） | 開發時用 |
@@ -31,7 +31,7 @@ uid 支援模糊匹配：`00287` 自動 resolve 為完整 ID。
 ```
 /app/data/
 ├── token_usage.db                    # 全用戶 token 消耗紀錄
-├── users.json                        # 用戶 metadata + per-user config（translation/review_clock/review_mode/vocab_ui active notebook）
+├── users.json                        # 用戶 metadata + per-user config（translation/review_clock/review_mode/vocab_ui active notebook/auto_link）
 └── users/<uid>/
     ├── cards.db                      # 單字卡（content, meaning, difficulty, review stats）
     ├── graph_<notebook>.json         # 知識圖譜（links array）

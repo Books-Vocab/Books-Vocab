@@ -65,7 +65,9 @@ extension SettingsView {
                     for: reviewSettingsStore.settings
                 ),
                 autoSyncEnabled: autoSyncSettingsStore.isEnabled,
-                showAutoSync: authManager.isLoggedIn
+                showAutoSync: authManager.isLoggedIn,
+                autoLinkEnabled: autoLinkSettingsStore.isEnabled,
+                showAutoLink: authManager.isLoggedIn
             ),
             kg: authManager.isLoggedIn
                 ? .init(
@@ -155,6 +157,17 @@ extension SettingsView {
                     exportURL = url
                 } else {
                     toastCoordinator.error("匯出失敗".localized)
+                }
+            },
+            toggleAutoLink: { enabled in
+                Task {
+                    await coordinator.updateAutoLink(
+                        enabled: enabled,
+                        autoLinkStore: autoLinkSettingsStore,
+                        authManager: authManager,
+                        kgService: kgService,
+                        toastCoordinator: toastCoordinator
+                    )
                 }
             }
         )
