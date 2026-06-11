@@ -8,8 +8,9 @@ import Testing
 /// `backgroundSync` 有四個觸發點（post-login / scenePhase→active / ⌘R /
 /// Settings 手動同步）。gate 若只放在個別 call site，重登後立刻切前景或手動
 /// 同步仍會落在 logout cleanup 窗口內、以未清的 boundary 跑 incremental sync。
-/// 契約：gate 在 `backgroundSync` 入口單點生效 —— 任何 sync 工作（含 offline
-/// 早退之前）都必須先 `await sessionInvalidator.waitForPendingLocalDataCleanup()`。
+/// 契約：gate 在 `backgroundSync` 入口單點生效，先於任何 sync phase。
+/// （本測試在連網環境跑：實際斷言的是「gate 被呼叫且先於 sync 工作」；
+/// gate 相對 offline 早退的順序只在離線機器上可被此測試觀測。）
 @MainActor
 struct KGServiceBackgroundSyncGateTests {
 

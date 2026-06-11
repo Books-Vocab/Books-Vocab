@@ -34,8 +34,10 @@ struct AuthManagerLogoutCleanupRaceTests {
                 nextRun += 1
                 let run = nextRun
                 // 結構性 overlap 偵測：進場時存在已 started 未 finished 的前序 run
-                // = 兩個 cleanup 並行（chain 失效）。以獨立事件入列，讓全等斷言
-                // 的紅燈不依賴 finished/started 入隊競速（review 9d613057 nit）。
+                // = 兩個 cleanup 並行（chain 失效）。無 false positive（正確實作
+                // 的 happens-before 鏈保證絕不入列）；發生 overlap 即必記錄，但
+                // unchained 錯誤實作在極端調度下可能恰好不重疊（review 67c1e824
+                // nit 的紅燈強化，覆蓋 false-positive 方向）。
                 if startedRuns.contains(where: { !finishedRuns.contains($0) }) {
                     events.append("overlap")
                 }
