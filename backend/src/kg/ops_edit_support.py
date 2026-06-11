@@ -35,6 +35,7 @@ from typing import Any
 from filelock import FileLock
 
 from kg.api_models.common import VocabSource
+from kg.api_models.graph import AutoLinkConfig
 from kg.api_models.notebook import VocabUIConfig
 from kg.api_models.review import ReviewClockConfig, ReviewModeConfig
 from kg.api_models.translate import TranslationLanguageConfig
