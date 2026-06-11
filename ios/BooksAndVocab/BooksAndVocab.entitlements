@@ -14,6 +14,15 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- 釘死 CloudKit 環境為 Production（2026-06-11 書庫絞殺案根治）：
+	     日用機 = 開發機，Xcode Debug（dev-signed 預設 Development）與
+	     App Store build（Production）混裝會讓 NSPersistentCloudKitContainer
+	     每次切換 purge+reimport CloudStore，疊上 reconciler 去重 export 形成
+	     刪除放大。統一 Production 後環境切換物理上消失。
+	     代價：未來新增 CloudKit-mirrored @Model 時，schema 初始化需暫時改回
+	     Development（sim 跑一次）再從 CloudKit Console deploy 到 Production。 -->
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Production</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
 		<string>iCloud.$(CFBundleIdentifier)</string>
