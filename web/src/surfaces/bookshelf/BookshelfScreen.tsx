@@ -12,7 +12,7 @@ import './bookshelf.css'
  * Catalog 參考快照不含 toolbar glyph 與 login/demo CTA（preview auth 已登入），
  * web 對拍面同樣不渲染。
  */
-export function BookshelfScreen({ scenario }: { scenario: ScenarioId }) {
+export function BookshelfScreen({ scenario }: { scenario: ScenarioId<'bookshelf'> }) {
   const books = bookshelfFixture(scenario)
   return (
     <div className="bookshelf">
