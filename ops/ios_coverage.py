@@ -17,11 +17,30 @@ DEFAULT_TARGET = "BooksAndVocab"
 
 
 @dataclass(frozen=True)
+class CoverageFile:
+    name: str
+    path: str | None
+    line_coverage: float | None
+    covered_lines: int | None
+    executable_lines: int | None
+
+    @property
+    def line_percent(self) -> float | None:
+        if self.line_coverage is not None:
+            value = self.line_coverage * 100 if self.line_coverage <= 1 else self.line_coverage
+            return round(value, 2)
+        if self.covered_lines is not None and self.executable_lines:
+            return round((self.covered_lines / self.executable_lines) * 100, 2)
+        return None
+
+
+@dataclass(frozen=True)
 class CoverageTarget:
     name: str
     line_coverage: float | None
     covered_lines: int | None
     executable_lines: int | None
+    files: tuple[CoverageFile, ...] = ()
 
     @property
     def line_percent(self) -> float | None:
@@ -77,6 +96,32 @@ def as_float(value: Any) -> float | None:
         return None
 
 
+def parse_files(raw_files: Any) -> tuple[CoverageFile, ...]:
+    if not isinstance(raw_files, list):
+        return ()
+    files: list[CoverageFile] = []
+    for item in raw_files:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        path = item.get("path")
+        if not isinstance(name, str) or not name:
+            if isinstance(path, str) and path:
+                name = Path(path).name
+            else:
+                continue
+        files.append(
+            CoverageFile(
+                name=name,
+                path=path if isinstance(path, str) and path else None,
+                line_coverage=as_float(item.get("lineCoverage")),
+                covered_lines=as_int(item.get("coveredLines")),
+                executable_lines=as_int(item.get("executableLines")),
+            )
+        )
+    return tuple(files)
+
+
 def parse_targets(payload: dict[str, Any]) -> list[CoverageTarget]:
     raw_targets = payload.get("targets")
     if not isinstance(raw_targets, list):
@@ -94,6 +139,7 @@ def parse_targets(payload: dict[str, Any]) -> list[CoverageTarget]:
                 line_coverage=as_float(item.get("lineCoverage")),
                 covered_lines=as_int(item.get("coveredLines")),
                 executable_lines=as_int(item.get("executableLines")),
+                files=parse_files(item.get("files")),
             )
         )
     return targets
@@ -129,7 +175,30 @@ def format_target(target: CoverageTarget) -> dict[str, Any]:
         "lineCoverage": target.line_percent,
         "coveredLines": target.covered_lines,
         "executableLines": target.executable_lines,
+        "fileCount": len(target.files),
     }
+
+
+def format_file(file: CoverageFile) -> dict[str, Any]:
+    return {
+        "name": file.name,
+        "path": file.path,
+        "lineCoverage": file.line_percent,
+        "coveredLines": file.covered_lines,
+        "executableLines": file.executable_lines,
+    }
+
+
+def lowest_files(target: CoverageTarget, limit: int) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    candidates = [
+        file
+        for file in target.files
+        if file.line_percent is not None and file.executable_lines is not None and file.executable_lines > 0
+    ]
+    candidates.sort(key=lambda file: (file.line_percent or 0, -(file.executable_lines or 0), file.path or file.name))
+    return [format_file(file) for file in candidates[:limit]]
 
 
 def parse_threshold(value: str | None) -> float | None:
@@ -142,6 +211,16 @@ def parse_threshold(value: str | None) -> float | None:
     if threshold < 0 or threshold > 100:
         raise argparse.ArgumentTypeError("--fail-under-lines must be between 0 and 100")
     return threshold
+
+
+def parse_nonnegative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be an integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be non-negative")
+    return parsed
 
 
 def make_error_payload(args: argparse.Namespace, message: str) -> dict[str, Any]:
@@ -158,6 +237,8 @@ def make_error_payload(args: argparse.Namespace, message: str) -> dict[str, Any]
             "lineCoverage": None,
             "coveredLines": None,
             "executableLines": None,
+            "fileCount": 0,
+            "lowestFiles": [],
         },
         "thresholds": {"lineCoverage": {"failUnder": parse_threshold(args.fail_under_lines)}},
         "targets": [],
@@ -198,6 +279,8 @@ def make_payload(args: argparse.Namespace, payload: dict[str, Any]) -> tuple[dic
             "lineCoverage": selected.line_percent,
             "coveredLines": selected.covered_lines,
             "executableLines": selected.executable_lines,
+            "fileCount": len(selected.files),
+            "lowestFiles": lowest_files(selected, args.max_low_files),
         },
         "thresholds": {"lineCoverage": {"failUnder": threshold}},
         "targets": [format_target(target) for target in targets],
@@ -226,6 +309,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--xcresult", required=True, help="Path to Test.xcresult")
     parser.add_argument("--target", default=DEFAULT_TARGET, help="Target to report, default: BooksAndVocab")
     parser.add_argument("--fail-under-lines", help="Fail if selected target line coverage is below this percent")
+    parser.add_argument(
+        "--max-low-files",
+        type=parse_nonnegative_int,
+        default=10,
+        help="Maximum lowest-coverage files to include in summary, default: 10",
+    )
     parser.add_argument("--fixture-xccov-json", help="Test-only xccov JSON fixture path")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     args = parser.parse_args(argv)

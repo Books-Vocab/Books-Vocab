@@ -1312,7 +1312,7 @@ populate_coverage_summary() {
     COVERAGE_JSON="$(jq -c . <<<"$coverage_out")"
     COVERAGE_VERDICT="$(jq -r '.verdict // "error"' <<<"$COVERAGE_JSON")"
   else
-    COVERAGE_JSON="$(jq -nc --arg schema "kg.ios.coverage.v1" --arg error "coverage parser emitted invalid JSON" '{schema:$schema,verdict:"error",summary:{target:null,lineCoverage:null,coveredLines:null,executableLines:null},thresholds:{lineCoverage:{failUnder:null}},targets:[],errors:[{key:"coverage-unavailable",status:"error",error:$error}]}')"
+    COVERAGE_JSON="$(jq -nc --arg schema "kg.ios.coverage.v1" --arg error "coverage parser emitted invalid JSON" '{schema:$schema,verdict:"error",summary:{target:null,lineCoverage:null,coveredLines:null,executableLines:null,fileCount:0,lowestFiles:[]},thresholds:{lineCoverage:{failUnder:null}},targets:[],errors:[{key:"coverage-unavailable",status:"error",error:$error}]}')"
     COVERAGE_VERDICT="error"
   fi
   case "$COVERAGE_VERDICT" in
@@ -1320,7 +1320,8 @@ populate_coverage_summary() {
     fail) COVERAGE_REASON="coverage-fail-under" ;;
     *) COVERAGE_REASON="coverage-unavailable" ;;
   esac
-  jq -r '"[ios][coverage] verdict=\(.verdict) target=\(.summary.target // "unknown") lineCoverage=\(.summary.lineCoverage // "unknown") coveredLines=\(.summary.coveredLines // "unknown") executableLines=\(.summary.executableLines // "unknown") failUnder=\(.thresholds.lineCoverage.failUnder // "none")"' <<<"$COVERAGE_JSON"
+  jq -r '"[ios][coverage] verdict=\(.verdict) target=\(.summary.target // "unknown") lineCoverage=\(.summary.lineCoverage // "unknown") coveredLines=\(.summary.coveredLines // "unknown") executableLines=\(.summary.executableLines // "unknown") fileCount=\(.summary.fileCount // 0) failUnder=\(.thresholds.lineCoverage.failUnder // "none")"' <<<"$COVERAGE_JSON"
+  jq -r '(.summary.lowestFiles // [])[0:3][] | "[ios][coverage][low] file=\(.path // .name) lineCoverage=\(.lineCoverage // "unknown") coveredLines=\(.coveredLines // "unknown") executableLines=\(.executableLines // "unknown")"' <<<"$COVERAGE_JSON"
   return "$coverage_rc"
 }
 
