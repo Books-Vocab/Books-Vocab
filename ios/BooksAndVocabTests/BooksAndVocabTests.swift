@@ -1280,11 +1280,13 @@ struct BooksAndVocabTests {
 
     @Test @MainActor
     func batchDeleteClassification_notFoundConvergesLocally_notMarkedFailed() throws {
-        // Full-fidelity regression guard: replays the EXACT classification loop
-        // from startSync's batch-delete happy path over real VocabularyEntry +
-        // ModelContext. Asserts a not_found word is LOCALLY DELETED (intent met),
-        // a deleted_words word is locally deleted, and a genuinely-unresolved word
-        // (in neither list = real server anomaly) is markSyncFailed for retry.
+        // Full-fidelity regression guard over real VocabularyEntry + ModelContext:
+        // calls the SAME `applyBatchDeleteResponse` static helper that startSync's
+        // batch-delete happy path delegates to（曾是手抄 mirror loop——抽共用後
+        // 消除 dead-test 風險，比照 triggerPipelinesIsolated）。Asserts a
+        // not_found word is LOCALLY DELETED (intent met), a deleted_words word
+        // is locally deleted, and a genuinely-unresolved word (in neither list
+        // = real server anomaly) is markSyncFailed for retry.
         let container = try ModelContainer(
             for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -1310,17 +1312,13 @@ struct BooksAndVocabTests {
             not_found: ["gamma"]
         )
 
-        // --- Production classification loop (mirror of SyncCoordinator) ---
-        let resolvableSet = SyncCoordinator.locallyResolvableDeletes(from: response)
-        for entry in entries {
-            if resolvableSet.contains(entry.word) {
-                ctx.delete(entry)
-            } else {
-                entry.markSyncFailed()
-            }
-        }
+        let outcome = SyncCoordinator.applyBatchDeleteResponse(
+            response: response, entries: entries, modelContext: ctx
+        )
         try ctx.save()
-        // --- end mirror ---
+
+        #expect(outcome.deleted == 2)            // alpha + gamma 皆本地收斂
+        #expect(outcome.failedWords == ["omega"])
 
         let remainingWords = try ctx.fetch(FetchDescriptor<VocabularyEntry>()).map(\.word)
 
