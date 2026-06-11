@@ -7,6 +7,12 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# ~/.lldbinit 是全機長壽設定：必須指向 main repo，不能指向 worktree
+# （worktree 被 converge 清掉後，每個 lldb session 啟動都會報 import error）。
+if COMMON_DIR="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
+    MAIN_ROOT="$(dirname "$COMMON_DIR")"
+    [ -f "$MAIN_ROOT/ops/lldb_crash_forensics.py" ] && REPO="$MAIN_ROOT"
+fi
 MODULE="$REPO/ops/lldb_crash_forensics.py"
 INIT="$HOME/.lldbinit"
 MARKER_BEGIN="# >>> kg-crash-forensics >>>"
@@ -17,6 +23,12 @@ MARKER_END="# <<< kg-crash-forensics <<<"
 remove_block() {
     [ -f "$INIT" ] || return 0
     if grep -qF "$MARKER_BEGIN" "$INIT"; then
+        # END marker 遺失時 awk 的 skip 永不復位，會把 BEGIN 之後的使用者
+        # 設定全部靜默刪掉 —— 寧可中止要求人工處理。
+        if ! grep -qF "$MARKER_END" "$INIT"; then
+            echo "ERROR: $INIT 有 BEGIN marker 但無 END marker，拒絕自動改寫（請人工修復 marker block）"
+            exit 1
+        fi
         tmp="$(mktemp)"
         awk -v b="$MARKER_BEGIN" -v e="$MARKER_END" '
             $0 == b {skip=1; next}

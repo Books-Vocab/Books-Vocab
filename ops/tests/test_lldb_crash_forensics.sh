@@ -78,10 +78,42 @@ KG_LLDB_DUMP_DIR="$DUMPS2" xcrun lldb -b "$TMP/crasher" \
 grep -q "BP_DUMPS=0" "$TMP/lldb2.log" || fail "breakpoint stop 觸發了自動 dump（應為 0）"
 grep -q "MANUAL_DUMPS=1" "$TMP/lldb2.log" || fail "kgdump 手動 dump 失敗（應為 1）"
 
+# --- case 3: 致命 signal（SIGABRT）分支也要自動 dump ---
+cat > "$TMP/aborter.c" <<'EOF'
+#include <stdlib.h>
+int main(void) { abort(); return 0; }
+EOF
+cc -O0 -o "$TMP/aborter" "$TMP/aborter.c" || { echo "FAIL: aborter compile"; exit 1; }
+DUMPS3="$TMP/dumps3"
+mkdir -p "$DUMPS3"
+KG_LLDB_DUMP_DIR="$DUMPS3" xcrun lldb -b "$TMP/aborter" \
+    -o "command script import $MODULE" \
+    -o "run" > "$TMP/lldb3.log" 2>&1
+ABORT_DUMPS=$(find "$DUMPS3" -name "*.txt" ! -name "LATEST*" | wc -l | tr -d ' ')
+[ "$ABORT_DUMPS" -ge 1 ] || fail "SIGABRT 未觸發自動 dump（_FATAL_SIGNALS 分支回歸）"
+
+# --- case 4: dump 寫不出去必須出聲（不可靜默失敗）---
+# 用普通檔案擋路讓 dump dir 不可建（os.makedirs 必失敗）
+touch "$TMP/blocker"
+KG_LLDB_DUMP_DIR="$TMP/blocker/sub" xcrun lldb -b "$TMP/crasher" \
+    -o "command script import $MODULE" \
+    -o "run" > "$TMP/lldb4.log" 2>&1 || true
+grep -q "kg-forensics.*FAILED" "$TMP/lldb4.log" || fail "dump 失敗時未在 console 出聲（靜默失敗回歸）"
+
+# --- case 5: 安裝器 marker 邊界 —— END 遺失時拒絕改寫，不吃掉使用者設定 ---
+FAKE_HOME="$TMP/fakehome"
+mkdir -p "$FAKE_HOME"
+printf '# user stuff before\n# >>> kg-crash-forensics >>>\ncommand script import /old/path.py\n# user stuff after (END marker 遺失)\n' > "$FAKE_HOME/.lldbinit"
+if HOME="$FAKE_HOME" "$REPO/ops/install_lldb_forensics.sh" >/dev/null 2>&1; then
+    fail "END marker 遺失時安裝器應拒絕改寫"
+fi
+grep -q "user stuff after" "$FAKE_HOME/.lldbinit" || fail "安裝器吃掉了 marker 後的使用者設定"
+
 if [ "$FAIL" -eq 0 ]; then
     echo "PASS: lldb_crash_forensics 全部斷言通過"
 else
-    echo "=== lldb1.log tail ==="; tail -20 "$TMP/lldb1.log"
-    echo "=== lldb2.log tail ==="; tail -20 "$TMP/lldb2.log"
+    for log in "$TMP"/lldb*.log; do
+        echo "=== $(basename "$log") tail ==="; tail -15 "$log"
+    done
     exit 1
 fi
