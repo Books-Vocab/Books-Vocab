@@ -144,4 +144,42 @@ export const PARITY = [
     ref: { surface: 'Reader View · Chrome', scenario: 'Error · Open Failed', appearance: 'light' },
     note: 'Reader error open-failed (light)',
   },
+  // Translation panel（R2）— ReaderScenarios.swift「Reader · Translation」6 態
+  // （layout .fill = scrim + bottom-sheet panel，gorgeous / adj.）。皆 light。
+  {
+    case: 'reader-translation-expanded-light',
+    params: { surface: 'reader', scenario: 'translation-expanded', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Expanded', appearance: 'light' },
+    note: 'Translation panel expanded (light)',
+  },
+  {
+    case: 'reader-translation-collapsed-light',
+    params: { surface: 'reader', scenario: 'translation-collapsed', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Collapsed', appearance: 'light' },
+    note: 'Translation panel collapsed (light)',
+  },
+  {
+    case: 'reader-translation-loading-light',
+    params: { surface: 'reader', scenario: 'translation-loading', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Loading', appearance: 'light' },
+    note: 'Translation panel loading (light)',
+  },
+  {
+    case: 'reader-translation-error-light',
+    params: { surface: 'reader', scenario: 'translation-error', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Error', appearance: 'light' },
+    note: 'Translation panel translation-error (light)',
+  },
+  {
+    case: 'reader-translation-explain-only-light',
+    params: { surface: 'reader', scenario: 'translation-explain-only', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Explain Only', appearance: 'light' },
+    note: 'Translation panel explain-only (light)',
+  },
+  {
+    case: 'reader-translation-explanation-error-light',
+    params: { surface: 'reader', scenario: 'translation-explanation-error', appearance: 'light' },
+    ref: { surface: 'Reader · Translation', scenario: 'Explanation Error', appearance: 'light' },
+    note: 'Translation panel explanation-error (light)',
+  },
 ];
