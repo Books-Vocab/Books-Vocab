@@ -75,6 +75,27 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('routes today-review surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=today-review&scenario=production-back&appearance=dark')).toEqual({
+      surface: 'today-review',
+      scenario: 'production-back',
+      appearance: 'dark',
+    })
+    expect(resolveHarnessConfig('?surface=today-review&scenario=back')).toEqual({
+      surface: 'today-review',
+      scenario: 'back',
+      appearance: 'light',
+    })
+  })
+
+  it('today-review defaults to its first scenario (front) when scenario belongs to another surface', () => {
+    expect(resolveHarnessConfig('?surface=today-review&scenario=logged-out')).toEqual({
+      surface: 'today-review',
+      scenario: 'front',
+      appearance: 'light',
+    })
+  })
+
   it('re-evaluates scenario against the fallback surface（未知 surface + 他 surface 合法 scenario）', () => {
     expect(resolveHarnessConfig('?surface=nope&scenario=logged-out')).toEqual({
       surface: 'bookshelf',
