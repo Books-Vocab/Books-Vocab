@@ -6,6 +6,7 @@
    diff 迭代時別改丟對應。 */
 
 .notebook {
+  position: relative; /* sheet / menu 浮層的定位錨（事後掛載，不改首屏像素） */
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -121,6 +122,7 @@
 
 /* --- NotebookCard（HStack book-row，72pt 高）--- */
 .nb-card {
+  position: relative; /* more overlay 鈕的定位錨（透明，不改首屏像素） */
   display: flex;
   height: 72px;
   background: var(--card-bg);
@@ -284,4 +286,229 @@
 
 [data-theme='dark'] .nb-card-progress-fill {
   background: var(--nb-cover-dark);
+}
+
+/* ============================================================
+   互動層 — 只新增「互動後」可見的東西（more 選單 / sheet 浮層），並把改成
+   <button> 的元素 UA chrome 歸零，確保 parity 首屏與靜態版逐位元相同。
+   ============================================================ */
+
+/* 新增 pill 由 <span> 改 <button>：清 UA chrome，幾何完全沿用 .nb-pill（notebook.css
+   上方已定義 inline-flex / min-width / padding / radius / font）。 */
+.nb-pill-button {
+  margin: 0;
+  border: none;
+  background: var(--button-idle-fill); /* 與 .nb-pill-tool 同底；button reset 覆寫後補回 */
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 卡片 more 觸發 — 透明 overlay 鈕蓋整卡，無視覺 chrome（glyph 隱形）。
+   pixel-neutral：不渲染任何可見像素，僅承接點擊。 */
+.nb-card-more {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* glyph 預設不可見（避免污染首屏像素）；hover 時於右上角淡入作 affordance。 */
+.nb-card-more-glyph {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--motion-quick, 0.18s ease-out);
+}
+
+.nb-card-more:hover .nb-card-more-glyph,
+.nb-card-more:focus-visible .nb-card-more-glyph {
+  opacity: 0.9;
+}
+
+/* --- more 選單浮層（互動後才出現，首屏無此 DOM）--- */
+.nb-menu-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  animation: nb-scrim-in 0.2s ease-out;
+}
+
+.nb-menu {
+  margin: 0 12px calc(16px + 34px); /* bottom 含 home-indicator 安全區 */
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+  animation: nb-sheet-in 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.nb-menu-title {
+  margin: 4px 8px 8px;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.nb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 8px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.nb-menu-item:hover {
+  background: var(--muted-fill);
+}
+
+.nb-menu-item-destructive {
+  color: var(--danger, #d6453d);
+}
+
+/* --- 新增 / 編輯 sheet 浮層（互動後才出現，首屏無此 DOM）--- */
+.nb-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  animation: nb-scrim-in 0.2s ease-out;
+}
+
+.nb-sheet {
+  background: var(--card-bg);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding: 8px 16px calc(16px + 34px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+  animation: nb-sheet-in 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.nb-sheet-grabber {
+  align-self: center;
+  width: 36px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--divider);
+}
+
+.nb-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nb-sheet-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.nb-sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--button-idle-fill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.nb-sheet-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  background: var(--muted-fill);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  outline: none;
+}
+
+.nb-sheet-input:focus {
+  border-color: var(--brand-hero);
+}
+
+.nb-sheet-submit {
+  width: 100%;
+  margin: 0;
+  padding: 13px;
+  border: none;
+  border-radius: 12px;
+  background: var(--brand-hero);
+  color: var(--on-brand-hero);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.nb-sheet-submit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@keyframes nb-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nb-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
