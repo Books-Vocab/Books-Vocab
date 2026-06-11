@@ -38,7 +38,7 @@ verified_against: 4e9c5b10
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresentation.swift` | 164 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
+| `SettingsPresentation.swift` | 170 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
 | `SubscriptionPresentation.swift` | 142 | `enum SubscriptionPresentation`，訂閱狀態 UI 模型 |
 
 ### Section Views（各設定區塊）
