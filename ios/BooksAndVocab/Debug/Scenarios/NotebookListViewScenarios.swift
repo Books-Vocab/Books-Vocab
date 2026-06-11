@@ -35,27 +35,17 @@ enum NotebookListViewScenarios {
     }
 }
 
-// MARK: - Fixtures
-
-private enum NotebookListFixture {
-    case populated
-    case single
-}
-
 // MARK: - Scene harness
 
 private struct NotebookListViewScene: View {
     let container: ModelContainer
     let auth: CatalogPreviewAuth
 
-    init(fixture: NotebookListFixture) {
-        let container = try! ModelContainer(
+    init(fixture: NotebookFixtureID) {
+        container = NotebookFixtures.renderModel(for: fixture).container ?? (try! ModelContainer(
             for: Notebook.self, VocabularyEntry.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        Self.seed(fixture, into: container.mainContext)
-        try? container.mainContext.save()
-        self.container = container
+        ))
         self.auth = CatalogPreviewAuth(isLoggedIn: true)
     }
 
@@ -69,49 +59,5 @@ private struct NotebookListViewScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    // MARK: Seeding
-
-    private static func notebook(_ remoteId: String, _ name: String, order: Int, isDefault: Bool = false) -> Notebook {
-        let nb = Notebook(remoteId: remoteId, name: name, isDefault: isDefault)
-        nb.sortOrder = order
-        nb.syncStatus = 1
-        return nb
-    }
-
-    private static func entry(_ word: String, _ translation: String, notebookId: String) -> VocabularyEntry {
-        let e = VocabularyEntry(
-            word: word,
-            translation: translation,
-            context: "A sentence using \(word).",
-            explanation: "A short gloss for \(word).",
-            partOfSpeech: "n.",
-            bookTitle: "Sample Book",
-            chapterTitle: "第一章"
-        )
-        e.notebookId = notebookId
-        e.isArchived = false
-        e.syncStatus = VocabularySyncState.synced.rawValue
-        e.actionType = VocabularySyncAction.add.rawValue
-        return e
-    }
-
-    private static func seed(_ fixture: NotebookListFixture, into context: ModelContext) {
-        let defaultNb = notebook("default", "我的單字本", order: 0, isDefault: true)
-        context.insert(defaultNb)
-        context.insert(entry("serendipity", "機緣巧合", notebookId: "default"))
-        context.insert(entry("ephemeral", "短暫的", notebookId: "default"))
-        context.insert(entry("petrichor", "雨後泥土香", notebookId: "default"))
-
-        guard fixture == .populated else { return }
-
-        let classics = notebook("nb-classics", "經典文學", order: 1)
-        context.insert(classics)
-        context.insert(entry("melancholy", "憂鬱", notebookId: "nb-classics"))
-        context.insert(entry("sublime", "崇高的", notebookId: "nb-classics"))
-
-        let science = notebook("nb-science", "科普閱讀", order: 2)
-        context.insert(science)
-        context.insert(entry("entropy", "熵", notebookId: "nb-science"))
-    }
 }
 #endif
