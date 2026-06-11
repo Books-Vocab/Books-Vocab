@@ -257,4 +257,52 @@ export const PARITY = [
     ref: { surface: 'Vocabulary List View', scenario: 'Empty · zero data', appearance: 'dark' },
     note: '單字列表 empty (dark)',
   },
+  {
+    case: 'today-review-front-light',
+    params: { surface: 'today-review', scenario: 'front', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Front', appearance: 'light' },
+    note: '今日複習 recognition front (light)',
+  },
+  {
+    case: 'today-review-back-light',
+    params: { surface: 'today-review', scenario: 'back', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Back', appearance: 'light' },
+    note: '今日複習 recognition back (light)',
+  },
+  {
+    case: 'today-review-production-front-light',
+    params: { surface: 'today-review', scenario: 'production-front', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Production · Front', appearance: 'light' },
+    note: '今日複習 production front (light)',
+  },
+  {
+    case: 'today-review-production-back-light',
+    params: { surface: 'today-review', scenario: 'production-back', appearance: 'light' },
+    ref: { surface: 'Today Review', scenario: 'Production · Back', appearance: 'light' },
+    note: '今日複習 production back (light)',
+  },
+  {
+    case: 'today-review-front-dark',
+    params: { surface: 'today-review', scenario: 'front', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Front', appearance: 'dark' },
+    note: '今日複習 recognition front (dark)',
+  },
+  {
+    case: 'today-review-back-dark',
+    params: { surface: 'today-review', scenario: 'back', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Back', appearance: 'dark' },
+    note: '今日複習 recognition back (dark)',
+  },
+  {
+    case: 'today-review-production-front-dark',
+    params: { surface: 'today-review', scenario: 'production-front', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Production · Front', appearance: 'dark' },
+    note: '今日複習 production front (dark)',
+  },
+  {
+    case: 'today-review-production-back-dark',
+    params: { surface: 'today-review', scenario: 'production-back', appearance: 'dark' },
+    ref: { surface: 'Today Review', scenario: 'Production · Back', appearance: 'dark' },
+    note: '今日複習 production back (dark)',
+  },
 ];
