@@ -194,6 +194,13 @@ extension KGService {
         }
         defer { releaseBackgroundSync() }
 
+        // 先等 logout 排程的本地清理收尾，再動任何 sync 工作。否則快速
+        // 「登出→重登」會讓 sync 搶用尚未被清的 sync boundary（incremental
+        // 跳過後端全部卡 → 本地空庫但自認最新），且拉回的資料會被 resume 的
+        // cleanup 再清一遍 —— 2026-06-09 000287 單字本事故根因。放在入口
+        // 單點守住全部四個觸發點（post-login / scenePhase / ⌘R / Settings）。
+        await sessionInvalidator.waitForPendingLocalDataCleanup()
+
         // 每輪開始即重置 error-tracking 欄位：四個 trigger（post-login / scenePhase
         // / ⌘R menu / Settings 手動）共用此全域欄位，但只有 App 層 scenePhase 兩處
         // read-then-clear。claim 鎖已序列化整段（同時間僅一輪執行），於 claim 成功後、

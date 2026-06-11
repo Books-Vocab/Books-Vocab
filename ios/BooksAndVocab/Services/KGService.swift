@@ -21,8 +21,9 @@ final class KGService: KGServing, LocalDataClearing {
     @ObservationIgnored
     let authSession: any AuthSessionProviding
 
+    // internal：KGService+Sync extension（backgroundSync 入口 gate）需要存取。
     @ObservationIgnored
-    private let sessionInvalidator: any SessionInvalidating
+    let sessionInvalidator: any SessionInvalidating
 
     @ObservationIgnored
     let userConfigClient: any KGUserConfigRemoteHandling
