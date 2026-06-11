@@ -144,4 +144,43 @@ export const PARITY = [
     ref: { surface: 'Reader View · Chrome', scenario: 'Error · Open Failed', appearance: 'light' },
     note: 'Reader error open-failed (light)',
   },
+  // Selection Toolbar（R4）— SelectionToolbarScenarios.swift 3 態（vocab 多選底欄）。
+  {
+    case: 'selection-toolbar-multiple-light',
+    params: { surface: 'selection-toolbar', scenario: 'selection-multiple', appearance: 'light' },
+    ref: { surface: 'Selection Toolbar', scenario: 'Multiple selected', appearance: 'light' },
+    note: 'Selection toolbar multiple selected (light)',
+  },
+  {
+    case: 'selection-toolbar-single-light',
+    params: { surface: 'selection-toolbar', scenario: 'selection-single', appearance: 'light' },
+    ref: { surface: 'Selection Toolbar', scenario: 'Single selected', appearance: 'light' },
+    note: 'Selection toolbar single selected (light)',
+  },
+  {
+    case: 'selection-toolbar-none-light',
+    params: { surface: 'selection-toolbar', scenario: 'selection-none', appearance: 'light' },
+    ref: { surface: 'Selection Toolbar', scenario: 'No selection (disabled)', appearance: 'light' },
+    note: 'Selection toolbar disabled (light)',
+  },
+  // Reader Selection Tile（R4，stacked on PR #929）— ReaderSelectionTileScenarios.swift
+  // 3 態（chrome tile：selected mutedFill / unselected pageBackground / 並排對比）。
+  {
+    case: 'selection-tile-pair-light',
+    params: { surface: 'selection-tile', scenario: 'selection-pair', appearance: 'light' },
+    ref: { surface: 'Reader Selection Tile', scenario: 'Selected vs Unselected', appearance: 'light' },
+    note: 'Reader selection tile selected-vs-unselected (light)',
+  },
+  {
+    case: 'selection-tile-selected-light',
+    params: { surface: 'selection-tile', scenario: 'selection-selected', appearance: 'light' },
+    ref: { surface: 'Reader Selection Tile', scenario: 'Selected', appearance: 'light' },
+    note: 'Reader selection tile selected (light)',
+  },
+  {
+    case: 'selection-tile-unselected-light',
+    params: { surface: 'selection-tile', scenario: 'selection-unselected', appearance: 'light' },
+    ref: { surface: 'Reader Selection Tile', scenario: 'Unselected', appearance: 'light' },
+    note: 'Reader selection tile unselected (light)',
+  },
 ];
