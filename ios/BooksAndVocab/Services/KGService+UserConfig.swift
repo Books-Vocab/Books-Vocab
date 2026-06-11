@@ -144,6 +144,17 @@ extension KGService {
         return config
     }
 
+    func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
+        let config = try await userConfigClient.updateAutoLinkConfig(
+            baseURL: baseURL,
+            token: token,
+            autoLink: autoLink
+        )
+        AppLog.kg.info("Updated auto_link config successfully")
+        return config
+    }
+
     func deleteAccount() async throws {
         try await authenticatedVoid(path: "api/user/account", method: "DELETE")
     }

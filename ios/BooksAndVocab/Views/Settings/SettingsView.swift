@@ -21,6 +21,7 @@ struct SettingsView: View {
     @EnvironmentObject var appearanceStore: AppAppearanceStore
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
     @Environment(\.autoSyncSettingsStore) var autoSyncSettingsStore
+    @Environment(\.autoLinkSettingsStore) var autoLinkSettingsStore
     @State var coordinator = SettingsCoordinator()
     @State var exportURL: URL?
     /// Predicate 對應 shouldAppearInKnowledgeList — 僅用於 displayCardCount

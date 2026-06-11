@@ -62,6 +62,9 @@ struct SettingsPresenterState {
         let selectedReviewMode: String
         let autoSyncEnabled: Bool
         let showAutoSync: Bool
+        // 預設值讓既有建構處(fixtures / scenarios)免改;登入才顯示(語意在後端 pipeline)。
+        var autoLinkEnabled: Bool = true
+        var showAutoLink: Bool = false
     }
 
     struct SyncSummaryState {
@@ -121,4 +124,6 @@ struct SettingsPresenterActions {
     let resync: () -> Void
     let toggleAutoSync: (Bool) -> Void
     let exportVocabularyCSV: () -> Void
+    // 預設 no-op 讓既有建構處(preview / scenarios)免改。
+    var toggleAutoLink: (Bool) -> Void = { _ in }
 }
