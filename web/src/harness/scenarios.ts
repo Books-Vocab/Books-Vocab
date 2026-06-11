@@ -36,6 +36,7 @@ export const SURFACE_SCENARIOS = {
   'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
+  podcast: ['preview-player', 'locked-gate'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS
