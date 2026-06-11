@@ -78,7 +78,7 @@ catalog_persist_workspace_artifact_json() {
     --arg root "$workspace_root" \
     --arg name "$artifact_name" \
     --arg artifactRoot "$artifact_root" \
-    --arg reviewHtml "$artifact_root/review.html" \
+    --arg reviewHtml "$artifact_root/UIreview.html" \
     --arg reviewManifest "$artifact_root/review_manifest.json" \
     --arg reviewState "$artifact_root/review_state.json" \
     '{
@@ -503,7 +503,7 @@ catalog_render_review_json() {
   local catalog_index="$out_root/catalog_index.json"
   local ui_graph_json="$out_root/ui_graph.json"
   local profile="$ROOT/ops/catalog_review_profile.json"
-  local review_html="$out_root/review.html"
+  local review_html="$out_root/UIreview.html"
   local review_manifest="$out_root/review_manifest.json"
   local review_state="$out_root/review_state.json"
   local render_output=""

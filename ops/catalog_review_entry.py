@@ -17,6 +17,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_ROOT = ROOT / "build" / "snapshots"
 
 
+def resolve_review_html(root: Path) -> Path:
+    # Filename SoT lives in catalog_review_sync.REVIEW_HTML_NAME; this script
+    # stays import-free by design (standalone uv entrypoint), so it mirrors the
+    # same resolution: prefer UIreview.html, fall back to the pre-rename
+    # review.html that older blessed roots still carry.
+    preferred = root / "UIreview.html"
+    legacy = root / "review.html"
+    if not preferred.exists() and legacy.exists():
+        return legacy
+    return preferred
+
+
 def load_manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -200,7 +212,7 @@ def cmd_current(_: argparse.Namespace) -> int:
         "blessed": {
             "name": blessed["name"],
             "root": blessed_root,
-            "reviewHtml": str(blessed["root"] / "review.html"),
+            "reviewHtml": str(resolve_review_html(blessed["root"])),
             "reviewManifest": str(blessed["root"] / "review_manifest.json"),
             "totalImages": blessed["totalImages"],
             "promiseCounts": blessed["promiseCounts"],
@@ -306,8 +318,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         "blessed": {
             "name": blessed["name"],
             "root": str(blessed["root"]),
-            "reviewHtml": str(blessed["root"] / "review.html"),
-            "url": f"http://127.0.0.1:{args.port}/review.html",
+            "reviewHtml": str(resolve_review_html(blessed["root"])),
+            "url": f"http://127.0.0.1:{args.port}/{resolve_review_html(blessed['root']).name}",
             "totalImages": blessed["totalImages"],
         },
     }

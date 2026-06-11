@@ -31,7 +31,7 @@ verified_against: f0d37ca4
 
 **lane 真相修正**：gallery 的 engineering-only lane 曾因 stale profile eligibility 壓過 declared kind 而誤標（Selection Toolbar 等被當 engineering）；已修 `classify_lane` 讓 declared 權威（commit b9691720）。現 eng lane = 真正的 5 個工程內構件。
 
-**多裝置拍攝（2026-06-10 起）**：`CatalogSnapshotTests` 的 device 清單 = iPhone 15 Pro portrait + iPad Pro 11 landscape（各 light/dark，共 4 變體；iPad 是 web 重寫 responsive 的寬版標準答案）。輸出依 device dir 自動分層；`review_manifest.json` 帶 `devices` 欄位（iPhone 首位＝預設），`review.html` 以 device 切換鈕分裝置瀏覽（scene 的 light/dark 配對 scoped 在單一裝置內）；ops 驗證的 expectedPng = scenarios × deviceVariantCount（Swift 端印 `resolved.deviceVariantCount`，舊 log fallback 2）。
+**多裝置拍攝（2026-06-10 起）**：`CatalogSnapshotTests` 的 device 清單 = iPhone 15 Pro portrait + iPad Pro 11 landscape（各 light/dark，共 4 變體；iPad 是 web 重寫 responsive 的寬版標準答案）。輸出依 device dir 自動分層；`review_manifest.json` 帶 `devices` 欄位（iPhone 首位＝預設），`UIreview.html` 以 device 切換鈕分裝置瀏覽（scene 的 light/dark 配對 scoped 在單一裝置內）；ops 驗證的 expectedPng = scenarios × deviceVariantCount（Swift 端印 `resolved.deviceVariantCount`，舊 log fallback 2）。
 
 ### 計數契約（可復現）
 **「必要組件」= 有自身 sourceFile + 多於一個可區分狀態 + 使用者可指名的具名視圖物件**。凡「以 scenario 覆蓋為畫面狀態」「折入母視圖狀態」者**不計入組件數**，僅作母視圖的 state 列出。主表中被計數者標 `[組件]`，折入者標 `(折入狀態)`。
