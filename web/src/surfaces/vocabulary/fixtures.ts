@@ -20,6 +20,15 @@ import type { ScenarioId } from '../../harness/scenarios'
  * 在 web 列表（與 catalog PNG 一致：只 4 row）。
  */
 
+/**
+ * Row review state — 對齊 iOS WordRowPresentation.reviewState（三態 chip bar
+ * 的過濾鍵）：unlearned（未學習）/ due（待複習）/ reviewed（已複習）。Catalog
+ * seed 全 unlearned，故靜態 parity 渲染只有 unlearned row；此欄位驅動互動化的
+ * segment chip 過濾（點某一態 → 只留該態 row），seed 為 due/reviewed 時走
+ * no-match 空狀態（與 iOS 篩選空狀態同語意）。
+ */
+export type RowReviewState = 'unlearned' | 'due' | 'reviewed'
+
 export interface VocabRowFixture {
   /** mono 18 bold 單字。 */
   word: string
@@ -29,6 +38,10 @@ export interface VocabRowFixture {
   translation: string
   /** 右側 monoLabel detailLabel（unlearned seed 皆「首輪 12h」）。 */
   detail: string
+  /** review 三態（chip 過濾鍵）；Catalog seed 全 'unlearned'。 */
+  reviewState: RowReviewState
+  /** row 點擊展開的 in-place detail（iOS WordDetailPresenter 的 web 精簡資料）。 */
+  expansion: { explanation: string; example: string }
 }
 
 export interface VocabFixture {
@@ -51,17 +64,34 @@ export interface VocabFixture {
 /** 未學卡 detailLabel：reviewIntervalHours 預設 12h → compactHourLabel = "12h"。 */
 const FIRST_ROUND = '首輪 12h'
 
-function unlearned(word: string, partOfSpeech: string, translation: string): VocabRowFixture {
-  return { word, partOfSpeech, translation, detail: FIRST_ROUND }
+function unlearned(
+  word: string,
+  partOfSpeech: string,
+  translation: string,
+  expansion: VocabRowFixture['expansion'],
+): VocabRowFixture {
+  return { word, partOfSpeech, translation, detail: FIRST_ROUND, reviewState: 'unlearned', expansion }
 }
 
 // VocabularyListViewFixtures.populated 的 synced 子集（pendingAdd quintessential
 // 不進 knowledge list）→ 4 row，皆 unlearned。
 const POPULATED_ROWS: VocabRowFixture[] = [
-  unlearned('serendipity', 'n.', '機緣巧合'),
-  unlearned('ephemeral', 'adj.', '短暫的'),
-  unlearned('petrichor', 'n.', '雨後泥土香'),
-  unlearned('ineffable', 'adj.', '難以言喻的'),
+  unlearned('serendipity', 'n.', '機緣巧合', {
+    explanation: '意外發現美好事物的能力或運氣，常帶正面、浪漫的語感。',
+    example: 'Finding that café was pure serendipity.',
+  }),
+  unlearned('ephemeral', 'adj.', '短暫的', {
+    explanation: '形容存在或持續時間極短、稍縱即逝的事物。',
+    example: 'Fame can be ephemeral, vanishing as fast as it came.',
+  }),
+  unlearned('petrichor', 'n.', '雨後泥土香', {
+    explanation: '久旱後初雨打在乾土上散發的特殊泥土氣味。',
+    example: 'The petrichor rose as the first drops hit the dust.',
+  }),
+  unlearned('ineffable', 'adj.', '難以言喻的', {
+    explanation: '美好或強烈到無法用言語形容、難以表達的感受。',
+    example: 'She felt an ineffable joy watching the sunrise.',
+  }),
 ]
 
 export const VOCABULARY_FIXTURES: Record<ScenarioId<'vocabulary'>, VocabFixture> = {
@@ -76,7 +106,7 @@ export const VOCABULARY_FIXTURES: Record<ScenarioId<'vocabulary'>, VocabFixture>
   single: {
     stats: { unlearned: 1, due: 0, reviewed: 0 },
     ctaCount: 1,
-    rows: [unlearned('serendipity', 'n.', '機緣巧合')],
+    rows: [POPULATED_ROWS[0]],
   },
   // Empty · zero data：登入但整本 notebook 無卡 → hasNoEntries CTA「重新整理」。
   // 三態全 0；無 CTA pill（unlearned+due == 0）。
