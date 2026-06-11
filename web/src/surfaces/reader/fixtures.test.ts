@@ -25,18 +25,18 @@ describe('READER_FIXTURES', () => {
 
   it('all fixtures use the canonical book title', () => {
     for (const f of Object.values(READER_FIXTURES)) {
-      expect(f.bookTitle).toBe('The Left Hand of Darkness')
+      expect(f!.bookTitle).toBe('The Left Hand of Darkness')
     }
   })
 
   it('loading states show the loading card (isWebViewReady=false) with the top underline progress', () => {
-    const render = READER_FIXTURES['loading-render']
+    const render = READER_FIXTURES['loading-render']!
     expect(render.isWebViewReady).toBe(false)
     expect(render.loadingPhase).toBe('渲染頁面…')
     expect(render.underlineProgress).toBeCloseTo(0.42)
     expect(render.paperColor).toBe(PAPER_SEPIA_DEEP)
 
-    const vocab = READER_FIXTURES['loading-vocab']
+    const vocab = READER_FIXTURES['loading-vocab']!
     expect(vocab.isWebViewReady).toBe(false)
     expect(vocab.loadingPhase).toBe('標記生字…')
     expect(vocab.underlineProgress).toBeCloseTo(0.68)
@@ -44,7 +44,7 @@ describe('READER_FIXTURES', () => {
   })
 
   it('reading-compact is ready, no overlay, progress badge visible (totalProgression > 0)', () => {
-    const f = READER_FIXTURES['reading-compact']
+    const f = READER_FIXTURES['reading-compact']!
     expect(f.isWebViewReady).toBe(true)
     expect(f.header).toBe('compact')
     expect(f.overlay).toBe('none')
@@ -53,14 +53,14 @@ describe('READER_FIXTURES', () => {
   })
 
   it('reading-expanded uses the flat toolbar header', () => {
-    const f = READER_FIXTURES['reading-expanded']
+    const f = READER_FIXTURES['reading-expanded']!
     expect(f.header).toBe('expanded')
     expect(f.totalProgression).toBeCloseTo(0.81)
     expect(f.paperColor).toBe(PAPER_SEPIA)
   })
 
   it('reading-translation keeps compact chrome behind the (R2) translation overlay', () => {
-    const f = READER_FIXTURES['reading-translation']
+    const f = READER_FIXTURES['reading-translation']!
     expect(f.header).toBe('compact')
     expect(f.overlay).toBe('translation')
     expect(f.totalProgression).toBeCloseTo(0.37)
@@ -68,7 +68,7 @@ describe('READER_FIXTURES', () => {
   })
 
   it('error-open-failed shows the error card and hides the progress badge (totalProgression == 0)', () => {
-    const f = READER_FIXTURES['error-open-failed']
+    const f = READER_FIXTURES['error-open-failed']!
     expect(f.showsErrorCard).toBe(true)
     expect(f.totalProgression).toBe(0)
     expect(f.header).toBe('compact')
@@ -88,7 +88,7 @@ describe('READER_FIXTURES', () => {
   })
 
   it('reading-translation panel mirrors the Reading · Translation Overlay ref (resilient, expanded)', () => {
-    const p = READER_FIXTURES['reading-translation'].panel!
+    const p = READER_FIXTURES['reading-translation']!.panel!
     expect(p.word).toBe('resilient')
     expect(p.partOfSpeech).toBe('adj.')
     expect(p.translation).toBe('有韌性的；能快速恢復的')
