@@ -200,3 +200,12 @@ def test_select_items_device_defaults_to_canonical_and_filters_explicitly():
     # single-device legacy manifests (no devices field) keep today's behavior
     legacy = {"items": [dict(manifest["items"][0])]}
     assert len(mod.select_items(legacy, appearance="light")) == 1
+    # explicit assetIDs pin a device already — ids path skips the canonical
+    # default (an iPad assetID must not vanish into "no items match")
+    manifest["items"][0]["assetID"] = "phone-1"
+    manifest["items"][1]["assetID"] = "pad-1"
+    by_ids = mod.select_items(manifest, appearance="light", ids=["pad-1"])
+    assert [s_["assetID"] for s_ in by_ids] == ["pad-1"]
+    # but an explicit device still filters the ids selection
+    assert mod.select_items(manifest, appearance="light", ids=["pad-1"],
+                            device="iPhone 15 Pro portrait") == []

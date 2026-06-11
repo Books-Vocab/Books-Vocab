@@ -87,10 +87,15 @@ def select_items(manifest, *, surface=None, lane=None, facet=None, feature=None,
     Multi-device manifests: `device` defaults to the canonical device
     (manifest `devices[0]`) so state rows don't interleave iPhone/iPad twins;
     pass a device name to montage another device, or "all" to disable the
-    filter. Legacy manifests without `devices` are unaffected."""
+    filter. Explicit `ids` skip the default (an assetID already pins one
+    device's shot) but still honour an explicit `device`. Legacy manifests
+    without `devices` are unaffected."""
     if device is None:
-        devices = manifest.get("devices") or []
-        device = devices[0] if devices else None
+        if ids:
+            device = "all"
+        else:
+            devices = manifest.get("devices") or []
+            device = devices[0] if devices else None
 
     def keep(it):
         if device and device != "all" and it.get("device") != device:
