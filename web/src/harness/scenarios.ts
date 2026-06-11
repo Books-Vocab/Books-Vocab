@@ -8,8 +8,10 @@ export const SURFACE_SCENARIOS = {
   bookshelf: ['populated', 'single', 'empty'],
   settings: ['subscribed-active', 'logged-out', 'pricing-unavailable'],
   notebook: ['populated', 'single'],
-  // Reader chrome — 對齊 ReaderChromeScenarios.swift 6 態（paper 色帶在 fixture，
-  // 與 light/dark appearance 軸正交）。首位 reading-compact = 預設 scenario。
+  // Reader chrome（R1）+ Translation panel（R2）。chrome 6 態對齊
+  // ReaderChromeScenarios.swift（paper 色帶在 fixture，與 light/dark 軸正交）；
+  // translation 6 態對齊 ReaderScenarios.swift「Reader · Translation」（layout .fill =
+  // scrim + bottom-sheet panel，無 reader 本體）。首位 reading-compact = 預設。
   reader: [
     'reading-compact',
     'reading-expanded',
@@ -17,6 +19,12 @@ export const SURFACE_SCENARIOS = {
     'loading-vocab',
     'reading-translation',
     'error-open-failed',
+    'translation-expanded',
+    'translation-collapsed',
+    'translation-loading',
+    'translation-error',
+    'translation-explain-only',
+    'translation-explanation-error',
   ],
   // Selection Toolbar — 對齊 SelectionToolbarScenarios.swift 3 態（vocab 多選
   // 底欄；selectionCount 0 全灰 disabled，>0 啟用 archive+delete）。首位
