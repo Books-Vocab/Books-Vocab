@@ -85,3 +85,54 @@ def test_ios_coverage_keeps_tests_out_of_default_app_target_selection() -> None:
     payload = json.loads(proc.stdout)
     assert payload["summary"]["target"] == "BooksAndVocab"
     assert payload["summary"]["lineCoverage"] == 50.0
+
+
+def test_ios_coverage_reports_lowest_covered_files_for_selected_target() -> None:
+    fixture = {
+        "targets": [
+            {
+                "name": "BooksAndVocab",
+                "lineCoverage": 0.75,
+                "coveredLines": 75,
+                "executableLines": 100,
+                "files": [
+                    {
+                        "name": "High.swift",
+                        "path": "/repo/ios/BooksAndVocab/High.swift",
+                        "lineCoverage": 0.9,
+                        "coveredLines": 90,
+                        "executableLines": 100,
+                    },
+                    {
+                        "name": "Low.swift",
+                        "path": "/repo/ios/BooksAndVocab/Low.swift",
+                        "lineCoverage": 0.2,
+                        "coveredLines": 2,
+                        "executableLines": 10,
+                    },
+                    {
+                        "name": "NoExecutableLines.swift",
+                        "path": "/repo/ios/BooksAndVocab/NoExecutableLines.swift",
+                        "lineCoverage": 0,
+                        "coveredLines": 0,
+                        "executableLines": 0,
+                    },
+                ],
+            }
+        ]
+    }
+
+    proc = run_coverage(fixture, "--max-low-files", "1")
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["summary"]["fileCount"] == 3
+    assert payload["summary"]["lowestFiles"] == [
+        {
+            "name": "Low.swift",
+            "path": "/repo/ios/BooksAndVocab/Low.swift",
+            "lineCoverage": 20.0,
+            "coveredLines": 2,
+            "executableLines": 10,
+        }
+    ]
