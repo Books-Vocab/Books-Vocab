@@ -97,4 +97,26 @@ struct CloudKitMirroringMonitorTests {
         #expect(monitor.phase == .waitingFirstEvent)
         #expect(!monitor.emptyMeansEmpty)
     }
+
+    /// setup 失敗（典型：裝置未登入 iCloud）必須可見，不得停在 waiting。
+    @Test func setupFailureSurfacesError() {
+        let monitor = makeMonitor()
+        monitor.apply(MirroringEventSnapshot(type: .setup, endedAt: Date(), succeeded: false, errorDescription: "no iCloud account"))
+        guard case .failed(let message) = monitor.phase else {
+            Issue.record("expected .failed, got \(monitor.phase)")
+            return
+        }
+        #expect(message.contains("iCloud"))
+    }
+
+    /// settled 為終態（刻意設計）：首次 import 成功後本地已有雲端資料，
+    /// 0 列＝真空成立；後續 import 失敗只留 AppLog 取證線，不把書架
+    /// 退回不確定態。本測試釘住此契約。
+    @Test func importFailureAfterSettledStaysSettled() {
+        let monitor = makeMonitor()
+        monitor.apply(importEvent(ended: true))
+        monitor.apply(importEvent(ended: true, succeeded: false, error: "CKErrorDomain 4"))
+        #expect(monitor.phase == .settled)
+        #expect(monitor.emptyMeansEmpty)
+    }
 }

@@ -1014,3 +1014,8 @@
 "vocab.highlight.color.blue" = "ブルー";
 "vocab.highlight.color.sage" = "セージ";
 "vocab.highlight.color.rose" = "ローズ";
+
+/* Bookshelf — CloudKit 還原狀態線（2026-06-11 書庫透明化） */
+"正在確認 iCloud 書庫…" = "iCloud ライブラリを確認中…";
+"正在從 iCloud 取回書庫…" = "iCloud からライブラリを復元中…";
+"iCloud 書庫同步異常・%@" = "iCloud ライブラリ同期エラー・%@";
