@@ -27,7 +27,7 @@ const POPULATED: BookFixture[] = [
   book('On Writing Well', 'William Zinsser', 'md', '2週前'),
 ]
 
-export function bookshelfFixture(scenario: ScenarioId): BookFixture[] {
+export function bookshelfFixture(scenario: ScenarioId<'bookshelf'>): BookFixture[] {
   switch (scenario) {
     case 'empty':
       return []
