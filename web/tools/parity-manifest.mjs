@@ -106,4 +106,28 @@ export const PARITY = [
     ref: { surface: 'Notebook List View', scenario: 'Single notebook', appearance: 'dark' },
     note: '單字本 single (dark)',
   },
+  {
+    case: 'podcast-player-light',
+    params: { surface: 'podcast', scenario: 'preview-player', appearance: 'light' },
+    ref: { surface: 'Podcast Player View', scenario: 'Preview episode · player', appearance: 'light' },
+    note: '播客播放器 preview (light)',
+  },
+  {
+    case: 'podcast-locked-light',
+    params: { surface: 'podcast', scenario: 'locked-gate', appearance: 'light' },
+    ref: { surface: 'Podcast Player View', scenario: 'Locked · sign-in gate', appearance: 'light' },
+    note: '播客 locked gate (light)',
+  },
+  {
+    case: 'podcast-player-dark',
+    params: { surface: 'podcast', scenario: 'preview-player', appearance: 'dark' },
+    ref: { surface: 'Podcast Player View', scenario: 'Preview episode · player', appearance: 'dark' },
+    note: '播客播放器 preview (dark)',
+  },
+  {
+    case: 'podcast-locked-dark',
+    params: { surface: 'podcast', scenario: 'locked-gate', appearance: 'dark' },
+    ref: { surface: 'Podcast Player View', scenario: 'Locked · sign-in gate', appearance: 'dark' },
+    note: '播客 locked gate (dark)',
+  },
 ];
