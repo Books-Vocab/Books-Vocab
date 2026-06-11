@@ -26,7 +26,8 @@ def render_html(manifest: dict, ui_test_videos: list[dict] | None = None) -> str
     )
 
 
-# A single self-contained template with one data hole (``__MANIFEST__``). Token
+# A single self-contained template with two data holes (``__MANIFEST__`` and
+# ``__UITEST_VIDEOS__``). Token
 # replacement (not an f-string) keeps the JS/CSS braces literal.
 #
 # This is a *UI-management* browser, not a marketing-asset curator: the only

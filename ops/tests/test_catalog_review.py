@@ -1671,8 +1671,9 @@ def test_render_html_embeds_uitest_videos():
     ]
     html = renderer_module.render_html(manifest, ui_test_videos=videos)
     assert "20260611-120000-ui.mp4" in html
-    assert "UITEST_VIDEOS" in html
-    assert "<video" in html
+    # the hole must be filled with the entries array, not left as the sentinel
+    assert "UITEST_VIDEOS = [" in html
+    assert "__UITEST_VIDEOS__" not in html
 
     bare = renderer_module.render_html(manifest)
     assert "20260611-120000-ui.mp4" not in bare
