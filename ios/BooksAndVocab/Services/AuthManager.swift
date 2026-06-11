@@ -183,7 +183,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     func logout(modelContainer: ModelContainer? = nil, reason: String = "user_logout") {
         AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
-        pendingLocalDataCleanup = Task {
+        pendingLocalDataCleanup = Task { [previousCleanup = pendingLocalDataCleanup] in
             // Clear session state UP FRONT, before awaiting clearLocalData. The cleanup hops to
             // BackgroundSyncActor — a real suspension that yields the MainActor. Doing the nils
             // + clearSession() after that await (the old order) opened a TOCTOU window: a
@@ -199,6 +199,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
             self.sessionStore.clearSession()
             self.isLoggedIn = false
             PerfLog.auth.mark("auth.state.logout", "reason=\(reason)")
+
+            // Chain：等前一次 logout 的 cleanup 收尾再動工。連續「登出→重登→登出」
+            // 時兩個 cleanup 各持獨立 BackgroundSyncActor、零序列化 —— 並行互踩會
+            // 讓後完成的把新 session 拉回的資料再清一遍（000287 同類事故）；chain 也
+            // 讓 gate 只 await 最新 handle 即隱含前序 cleanup 全部收尾。
+            await previousCleanup?.value
 
             if let container {
                 await localDataCleaner.clearLocalData(container: container, reason: reason)
