@@ -12,6 +12,7 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,8 +21,19 @@ import { PARITY } from './parity-manifest.mjs';
 
 const WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = join(WEB_DIR, 'tools', 'shots');
-const PORT = 4179;
 const NO_BUILD = process.argv.includes('--no-build');
+
+/** Ask the OS for a free TCP port, then immediately release it. */
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close((err) => (err ? reject(err) : resolve(port)));
+    });
+    srv.on('error', reject);
+  });
+}
 
 function build() {
   console.error('building web/ …');
@@ -46,16 +58,22 @@ async function main() {
   if (!NO_BUILD) build();
   mkdirSync(SHOTS, { recursive: true });
 
+  // Probe a free port so parallel worktree runs never collide.
+  // SHOTS_PORT env var allows manual override (e.g. for debugging).
+  const port = process.env.SHOTS_PORT
+    ? Number(process.env.SHOTS_PORT)
+    : await getFreePort();
+
   // spawn the vite binary directly — an npx/npm wrapper doesn't reliably
   // forward SIGTERM, leaving a zombie server holding the strict port.
   const server = spawn(join(WEB_DIR, 'node_modules', '.bin', 'vite'),
-    ['preview', '--port', String(PORT), '--strictPort'], {
+    ['preview', '--port', String(port), '--strictPort'], {
       cwd: WEB_DIR,
       stdio: 'ignore',
     });
   try {
     // vite preview binds the IPv6 loopback; `localhost` resolves to it, 127.0.0.1 does not.
-    const base = `http://localhost:${PORT}`;
+    const base = `http://localhost:${port}`;
     await waitForServer(base);
 
     const browser = await chromium.launch();
