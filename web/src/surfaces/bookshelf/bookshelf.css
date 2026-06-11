@@ -13,7 +13,8 @@
 
 /* --- Large-title nav（UINavigationBar large title 幾何）---
    status bar 59 + inline bar 44 = 103；measured：對拍 row-profile 實測 iOS
-   glyph top = 123.3pt，103 + 列內距 15 釘齊。 */
+   glyph top = 123.3pt，103 + 列內距 15 = 118 釘齊（剩餘 5.3pt 是 41px
+   line box 內 34px 字面上方的 ascent gap，由 line-height 自然提供）。 */
 .bookshelf-nav {
   padding: 118px 20px 0;
 }
@@ -167,10 +168,11 @@
   font-size: var(--text-caption);
   font-weight: 700;
   line-height: 16px;
-  /* row-profile 實測 web 標題 ink 比 iOS 高 ~1pt：margin-top 1px 下移、
-     min-height 31px 補償，使 author/date 之後的列距不動。 */
-  margin-top: 1px;
-  min-height: 31px;
+  /* row-profile 實測 web 標題 ink 比 iOS 高 ~1pt：relative top 1px 純 ink
+     下移，零 layout 副作用（不限行數，author/date 列距不動）。 */
+  position: relative;
+  top: 1px;
+  min-height: 32px;
   color: var(--text-primary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
