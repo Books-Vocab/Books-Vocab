@@ -8,6 +8,35 @@ export const SURFACE_SCENARIOS = {
   bookshelf: ['populated', 'single', 'empty'],
   settings: ['subscribed-active', 'logged-out', 'pricing-unavailable'],
   notebook: ['populated', 'single'],
+  // Reader chrome（R1）+ Translation panel（R2）。chrome 6 態對齊
+  // ReaderChromeScenarios.swift（paper 色帶在 fixture，與 light/dark 軸正交）；
+  // translation 6 態對齊 ReaderScenarios.swift「Reader · Translation」（layout .fill =
+  // scrim + bottom-sheet panel，無 reader 本體）。首位 reading-compact = 預設。
+  reader: [
+    'reading-compact',
+    'reading-expanded',
+    'loading-render',
+    'loading-vocab',
+    'reading-translation',
+    'error-open-failed',
+    'translation-expanded',
+    'translation-collapsed',
+    'translation-loading',
+    'translation-error',
+    'translation-explain-only',
+    'translation-explanation-error',
+  ],
+  // Selection Toolbar — 對齊 SelectionToolbarScenarios.swift 3 態（vocab 多選
+  // 底欄；selectionCount 0 全灰 disabled，>0 啟用 archive+delete）。首位
+  // selection-multiple = 預設 scenario。
+  'selection-toolbar': ['selection-multiple', 'selection-single', 'selection-none'],
+  // Reader Selection Tile — 對齊 ReaderSelectionTileScenarios.swift 3 態
+  // （chrome tile：selected mutedFill+primaryText / unselected pageBackground+
+  // secondaryText / 並排對比）。首位 selection-pair = 預設 scenario。
+  'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
+  vocabulary: ['populated', 'single', 'empty'],
+  'today-review': ['front', 'back', 'production-front', 'production-back'],
+  podcast: ['preview-player', 'locked-gate'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS

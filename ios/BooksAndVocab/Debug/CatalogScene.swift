@@ -141,6 +141,7 @@ struct CatalogScene: View {
             "Vocab Shell · Tab Selector", // generic VocabTabSelector<ID: Hashable>
             "Review Fold · Paper Fold",   // PaperFoldModifier is a ViewModifier, not a View
             "Vocab Scene Shell",          // generic VocabSceneShell<Content> — no single metatype
+            "Reader Selection Tile",      // generic ReaderSelectionTile<Content> — no single metatype
         ]
 
         static let entries: [ManifestEntry] = [
@@ -252,6 +253,7 @@ struct CatalogScene: View {
             .init(id: "notebook_cover", surfaces: [block("Notebook Cover", .notebook, NotebookCoverView.self)], register: NotebookCoverScenarios.register),
             .init(id: "link_reason_sheet", surfaces: [overlay("Link Reason Sheet", .vocabulary, LinkReasonSheet.self)], register: LinkReasonSheetScenarios.register),
             .init(id: "reader_notebook_picker", surfaces: [overlay("Reader Notebook Picker", .reader, ReaderNotebookPicker.self)], register: ReaderNotebookPickerScenarios.register),
+            .init(id: "reader_selection_tile", surfaces: [block("Reader Selection Tile", .reader)], register: ReaderSelectionTileScenarios.register),
             .init(id: "subscription_views", surfaces: [block("Subscription Views · Gate Card", .monetization, ProAccessGateCard.self)], register: SubscriptionViewsScenarios.register),
             .init(id: "podcast_continue_card", surfaces: [block("Podcast Continue Card", .podcast, PodcastContinueCard.self)], register: PodcastContinueCardScenarios.register),
             .init(
@@ -296,6 +298,11 @@ struct CatalogScene: View {
             .init(id: "podcast_player_view", surfaces: [screen("Podcast Player View", .podcast, .podcastPlayer, PodcastPlayerView.self)], register: PodcastPlayerViewScenarios.register),
             .init(id: "editorial_cover", surfaces: [block("Notebook Cover · Editorial", .notebook, EditorialCoverComposition.self)], register: NotebookCardEditorialCoverScenarios.register),
             .init(id: "kg_vocab_row", surfaces: [eng("KG Vocab Row", .vocabulary, KGVocabRow.self)], register: KGVocabRowScenarios.register),
+            // KGVocabView is never presented standalone in production (VocabularyListView
+            // hosts it), so it's an engineering surface, not a featureScreen — see the
+            // ScreenID note above. Catalogues the active-search state the parent-screen
+            // scenarios can't reach (parent owns searchText behind a debounce task).
+            .init(id: "kg_vocab_search", surfaces: [eng("KG Vocab Presenter", .vocabulary, KGVocabView.self)], register: KGVocabSearchScenarios.register),
             .init(id: "podcast_sentence_cells", surfaces: [block("Podcast · Transcript Column", .podcast, PodcastTranscriptColumn.self), block("Podcast · Bubble Cell", .podcast, PodcastBubbleCell.self)], register: PodcastSentenceCellsScenarios.register),
             // `surfaces` 透過 enum 計算屬性同步 macCatalyst gating:非 Catalyst 時
             // register 為 no-op,manifest 亦回報空 categories,使覆蓋測試對稱。
