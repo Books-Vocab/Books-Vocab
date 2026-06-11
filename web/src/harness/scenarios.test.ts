@@ -75,6 +75,28 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('routes reader surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=reader&scenario=reading-expanded&appearance=light')).toEqual({
+      surface: 'reader',
+      scenario: 'reading-expanded',
+      appearance: 'light',
+    })
+    expect(resolveHarnessConfig('?surface=reader&scenario=error-open-failed')).toEqual({
+      surface: 'reader',
+      scenario: 'error-open-failed',
+      appearance: 'light',
+    })
+  })
+
+  it('reader defaults to its first scenario (reading-compact) when scenario belongs to another surface', () => {
+    // notebook 的 'populated' 不是 reader 的合法 scenario → reader 預設
+    expect(resolveHarnessConfig('?surface=reader&scenario=populated')).toEqual({
+      surface: 'reader',
+      scenario: 'reading-compact',
+      appearance: 'light',
+    })
+  })
+
   it('re-evaluates scenario against the fallback surface（未知 surface + 他 surface 合法 scenario）', () => {
     expect(resolveHarnessConfig('?surface=nope&scenario=logged-out')).toEqual({
       surface: 'bookshelf',
