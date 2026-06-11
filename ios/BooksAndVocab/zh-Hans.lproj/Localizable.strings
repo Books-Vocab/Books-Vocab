@@ -1015,3 +1015,8 @@
 "vocab.highlight.color.blue" = "蓝色";
 "vocab.highlight.color.sage" = "鼠尾草";
 "vocab.highlight.color.rose" = "玫瑰";
+
+"確認中…" = "确认中…";
+"還原中…" = "还原中…";
+"同步異常" = "同步异常";
+"iCloud 書庫" = "iCloud 书库";
