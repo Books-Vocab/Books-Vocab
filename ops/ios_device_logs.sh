@@ -74,14 +74,17 @@ cmd_collect() {
             *) echo "ERROR: collect 不認得參數 $1" >&2; return 64 ;;
         esac
     done
+    # pymobiledevice3 把 archive 內容直接攤進給定目錄（目錄本身就是 bundle）；
+    # 沒有 .logarchive 副檔名時 log show / Console.app 一律拒讀
+    case "$out" in *.logarchive) ;; *) out="$out.logarchive" ;; esac
     [ "$DRY_RUN" = "1" ] || mkdir -p "$out"
     local args=(syslog collect "$out")
     [ -n "$age" ] && args+=(--age-limit "$age")
     [ -n "$UDID" ] && args+=(--udid "$UDID")
     run_cmd uvx pymobiledevice3 "${args[@]}" || return 1
     [ "$DRY_RUN" = "1" ] && return 0
-    echo "logarchive 已拉到 $out；讀法："
-    echo "  log show --archive $out/system_logs.logarchive --predicate 'subsystem BEGINSWITH \"com.Max0228.BooksBrowser\"' --info --debug --last 1h"
+    echo "logarchive 已拉到 $out；讀法（log 是 zsh builtin，必須用絕對路徑）："
+    echo "  /usr/bin/log show --archive $out --predicate 'process == \"BooksAndVocab\"' --info --debug --last 1h"
 }
 
 cmd_crashes() {
