@@ -29,7 +29,7 @@ SwiftUI 失效粒度、re-render storm、hitch、layout/動畫 glitch 這類,**�
 
 1. **Instrument** — 用 app log system 加 log,一條 log = 一個假設。
 2. **Predict** — 看真實輸出**之前**寫下可證偽預測:精確行格式 / 次數 / 次序 + 成功簽名 + **≥2 個失敗簽名,每個映射到下一步**(= 決策樹)。
-3. **Capture** — 使用者跑 device 貼真實 log(或自己抓)。
+3. **Capture** — 自己抓,不靠使用者貼:sim 用 `ops/ios_ops.sh logs`;**真機 live(含 debug 級/stdout)用 `ops/ios_device_logs.sh syslog`**,事後撈用 `collect`(.logarchive);debugger 不在場的真機 crash 用 `ops/ios_device_logs.sh pull-crashes --parse`,debugger 在場讀 `/tmp/kg_lldb_forensics/LATEST.txt`。
 4. **Verify** — 逐條比對。全中 → 模型成立,前進。任一不中 → 模型錯,**該條不中直接定位**是哪個假設崩。
 5. 迭代。
 
