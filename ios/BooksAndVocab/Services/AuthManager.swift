@@ -64,7 +64,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     init(
         verifier: any AuthVerifying = AuthBackendVerifier(),
         localDataCleaner: any LocalDataClearing = LocalDataCleanerService(),
-        sessionStore: any AuthSessionStoring = AuthSessionStore()
+        sessionStore: any AuthSessionStoring = AuthSessionStore.makeSessionStore()
     ) {
         self.verifier = verifier
         self.localDataCleaner = localDataCleaner
