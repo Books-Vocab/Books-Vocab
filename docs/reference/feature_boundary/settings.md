@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: dfc5401f
+verified_against: 4e9c5b10
 -->
 # Settings Feature Boundary
 
@@ -28,16 +28,17 @@ verified_against: dfc5401f
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresenter.swift` | 196 | `struct SettingsPresenter: View`，主佈局 |
+| `SettingsPresenter.swift` | 142 | `struct SettingsPresenter: View`，主佈局。**Stack 約束**：section 一律 child View struct，不得寫成 computed property 內聯回 body（Debug build 內聯 frame 鏈曾在真機 1MB main stack 上 overflow，2026-06-11 定讞；見 `SettingsOtherSection.swift` 檔頭）|
 | `SettingsPresenter+Components.swift` | 645 | 可復用元件庫：`SettingsSectionHeader` / `SettingsRow` / `SettingsNavigationRow` / `SettingsCardNavigationRow` / `SettingsActionRowLabel` 等（最大檔案）|
-| `SettingsPresenter+Quota.swift` | 52 | quota 相關 UI extension |
+| `SettingsPresenter+Quota.swift` | 54 | quota 相關 UI（extension 掛 `SettingsOtherSection`）|
+| `SettingsPresenter+Debug.swift` | 119 | `SettingsDebugBackendSection` child struct（DEBUG 後端切換）|
 | `SettingsPresenter+Preview.swift` | 352 | preview 資料 |
 
 ### Presentation Models（UI 資料轉換）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresentation.swift` | 124 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示 |
+| `SettingsPresentation.swift` | 164 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
 | `SubscriptionPresentation.swift` | 142 | `enum SubscriptionPresentation`，訂閱狀態 UI 模型 |
 
 ### Section Views（各設定區塊）
@@ -48,6 +49,7 @@ verified_against: dfc5401f
 | `SettingsSubscriptionSection.swift` | 126 | `struct SettingsSubscriptionSection: View`，訂閱區塊 |
 | `SettingsReviewSection.swift` | 332 | `struct SettingsReviewSection: View`，複習設定區塊；含 review progress pause/freeze toggle |
 | `SettingsPreferencesSection.swift` | 145 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）|
+| `SettingsOtherSection.swift` | 173 | `struct SettingsOtherSection: View`，「其他」區塊（後端同步狀態列、**iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）、今日額度、外部連結、版本 footer）|
 
 ### Sheet / Detail Views
 
