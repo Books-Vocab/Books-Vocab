@@ -23,7 +23,7 @@
 
 .nb-nav-title {
   margin: 0;
-  /* AppFonts.uiSerif(34, bold) — Athelas-Bold；CJK 落 Songti cascade。
+  /* AppFonts.uiSerif(34, bold) — CrimsonPro-Bold；CJK 落 Songti cascade。
      Chromium 不合成 Songti Bold（bookshelf 已定讞），text-stroke 近似補字重，
      量級由 parity audit 收斂。標題為純 CJK。 */
   font-family: var(--font-serif);

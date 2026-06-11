@@ -3,9 +3,10 @@
    Font *families* are declared as tokens (--font-sans/serif/italic/mono in
    kg-tokens.css); the woff2 URLs are surface-specific, so each web surface
    ships its own @font-face (same convention as chrome-extension/shared/
-   fonts.css). Athelas (--font-serif primary) is an Apple OS font — resolved
-   natively on Apple-platform browsers, which are the parity acceptance
-   baseline; elsewhere the token cascade falls through to Noto Serif TC.
+   fonts.css). CrimsonPro (--font-serif primary) is bundled here as a variable
+   woff2 (SIL OFL, /fonts/CrimsonPro-OFL.txt) — it replaces the old Apple-OS
+   Athelas, so the serif now resolves identically on every browser instead of
+   only Apple platforms; the CJK cascade still falls through to Songti TC.
    ============================================================ */
 
 /* --- Sans (ElmsSans) ------------------------------------------------------- */
@@ -23,6 +24,24 @@
   src: url('/fonts/ElmsSans-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
+  font-display: swap;
+}
+
+/* --- Serif primary (CrimsonPro — variable, SIL OFL) ------------------------- */
+
+@font-face {
+  font-family: 'CrimsonPro';
+  src: url('/fonts/CrimsonPro.woff2') format('woff2');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CrimsonPro';
+  src: url('/fonts/CrimsonPro-Italic.woff2') format('woff2');
+  font-weight: 200 900;
+  font-style: italic;
   font-display: swap;
 }
 
