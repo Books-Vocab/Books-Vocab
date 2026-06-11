@@ -27,6 +27,12 @@
   line-height: 41px; /* UIKit largeTitle line height */
   color: var(--text-primary);
   padding-bottom: 6px;
+  /* Chromium 對 Songti/STSongti TC 拿不到 Bold face（weight:700、PostScript 名
+     'STSongti-TC-Bold'、display 名 'Songti TC Bold' 三者皆渲染 Regular，已實測
+     指紋定讞），也不做 synthetic bold；iOS 是 STSongti-TC-Bold。用 text-stroke
+     近似補字重，量級由 parity audit 收斂。標題為純 CJK，Latin（Athelas-Bold
+     真粗體）不在此 surface 的標題出現。 */
+  -webkit-text-stroke: 0.7px currentColor;
 }
 
 .bookshelf-scroll {
@@ -161,7 +167,10 @@
   font-size: var(--text-caption);
   font-weight: 700;
   line-height: 16px;
-  min-height: 32px;
+  /* row-profile 實測 web 標題 ink 比 iOS 高 ~1pt：margin-top 1px 下移、
+     min-height 31px 補償，使 author/date 之後的列距不動。 */
+  margin-top: 1px;
+  min-height: 31px;
   color: var(--text-primary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
