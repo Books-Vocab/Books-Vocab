@@ -51,7 +51,7 @@
 
 /* --- Type scale utilities (serif headings / sans body — mirrors AppFonts) --- */
 
-.kg-hero    { font-family: var(--font-serif); font-size: var(--text-hero); line-height: var(--leading-display); font-weight: 700; } /* iOS hero .semibold→isBold→Athelas-Bold 700; ships untracked (Tracking.tight unused on iOS) */
+.kg-hero    { font-family: var(--font-serif); font-size: var(--text-hero); line-height: var(--leading-display); font-weight: 700; } /* iOS hero .semibold→isBold→CrimsonPro-Bold 700; ships untracked (Tracking.tight unused on iOS) */
 .kg-h1      { font-family: var(--font-serif); font-size: var(--text-h1); line-height: var(--leading-heading); font-weight: 700; } /* iOS h1 .medium→isBold→700 */
 .kg-h2      { font-family: var(--font-serif); font-size: var(--text-h2); line-height: var(--leading-heading); letter-spacing: var(--tracking-h2-tight); font-weight: 700; } /* iOS h2 .medium→isBold→700 (h2-tight tracking IS used on iOS) */
 .kg-body    { font-size: var(--text-body); line-height: var(--leading-body); }

@@ -12,10 +12,10 @@
   background: var(--page-bg);
   color: var(--text-primary);
   /* iOS CJK serif = Songti TC（answer 翻譯 / 釋義 / 例句）。生成 token 的
-     '--font-serif' 用了不存在的 'STSongti TC'（拼錯）+ 'Noto Serif TC'（實際裝的是
-     Noto Serif CJK TC），CJK 因此 fallback 到非 Songti 字形，抬升 parity RMSE。
-     此處 surface-local 修正字名（正確 'Songti TC'）讓 CJK 落到與 iOS 同源字形。 */
-  --font-serif: 'Athelas', 'Songti TC', 'Noto Serif CJK TC', Georgia, serif;
+     '--font-serif' 已修正為 'Songti TC'，但其 CJK fallback 寫 'Noto Serif TC'；
+     parity render 機實際裝的是 'Noto Serif CJK TC'，故此處 surface-local override
+     仍把 CJK fallback 對齊到實裝字名，讓 CJK 落到與 iOS 同源字形。 */
+  --font-serif: 'CrimsonPro', 'Songti TC', 'Noto Serif CJK TC', Georgia, serif;
 }
 
 /* ── Top Bar ──────────────────────────────────────────────────────
