@@ -60,11 +60,31 @@
   color: var(--text-tertiary);
 }
 
-.vc-search-prompt {
-  /* AppSearchField prompt — body(17) tertiary */
+/* 真輸入框：去 native chrome，視覺與舊靜態 prompt 完全一致（body 17）。初始空輸入
+   時 placeholder「搜尋單字」由 ::placeholder 著 tertiary，與舊 <span> prompt 同像素。 */
+.vc-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
   font-family: var(--font-sans);
   font-size: 17px;
+  color: var(--text-primary);
+  -webkit-appearance: none;
+  appearance: none;
+  /* input 內建 line 度量比 flex-centered <span> 低 ~1pt（measured 3 device px @dpr3）。
+     上提 1px 讓初始空輸入 placeholder 落點與舊靜態 prompt 逐像素重合（parity）。 */
+  position: relative;
+  top: -1px;
+}
+
+.vc-search-input::placeholder {
+  /* AppSearchField prompt — body(17) tertiary；opacity 1 防瀏覽器淡化 */
   color: var(--text-tertiary);
+  opacity: 1;
 }
 
 /* --- 三態 stat segment（VocabFilterChipBar，未選態）---
@@ -82,12 +102,31 @@
   box-sizing: border-box;
 }
 
+/* chip = 可點選 button：reset native chrome，未選態與舊靜態像素一致。 */
 .vc-stat {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px; /* label ↔ count pill */
+  height: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 選中態：muted-fill 底（VocabFilterChipBar selected）。互動後才出現，不影響靜態。 */
+.vc-stat-selected {
+  background: var(--muted-fill);
+}
+.vc-stat-selected .vc-stat-label {
+  color: var(--text-primary);
 }
 
 .vc-stat-label {
@@ -177,13 +216,54 @@
   flex-direction: column;
 }
 
+.vc-row-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+/* row = 可點選 button：reset native chrome，收合態與舊靜態 <div> 像素一致。 */
 .vc-row {
   display: flex;
   align-items: center;
   gap: 8px; /* inlineGap：main ↔ trailing detail */
+  width: 100%;
   min-height: 73.6px; /* measured row pitch */
   padding: 4px 20px; /* vertical s1；horizontal listRowHorizontalInset */
   box-sizing: border-box;
+  border: none;
+  background: transparent;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 展開 detail panel — row 點擊後就地揭示（釋義 + 例句）。互動後才存在，不影響靜態。 */
+.vc-row-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 20px 16px;
+  box-sizing: border-box;
+}
+
+.vc-detail-explanation {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.vc-detail-example {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
 }
 
 .vc-row-main {

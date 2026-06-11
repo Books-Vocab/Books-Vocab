@@ -122,6 +122,7 @@
   border: 1px solid var(--card-border); /* borderOpacity active≈.72 已含在 --card-border alpha */
   border-radius: var(--radius-card); /* 8 */
   box-shadow: var(--elevation-z1);
+  cursor: pointer; /* 整卡可點翻面 */
 }
 
 .tr-card-single {
@@ -467,7 +468,8 @@
   gap: 14px; /* sectionHeaderGap */
 }
 
-/* vocabAction button — 圓角填色膠囊，destructive / success 淡底 + 同色字。 */
+/* vocabAction button — 圓角填色膠囊，destructive / success 淡底 + 同色字。
+   span role=button（見 TSX 註解）：維持原靜態渲染，僅加 cursor 表互動。 */
 .tr-feedback-btn {
   display: inline-flex;
   align-items: center;
@@ -481,6 +483,7 @@
   font-size: 17px; /* body */
   font-weight: 600;
   box-sizing: border-box;
+  cursor: pointer;
 }
 
 .tr-feedback-forgot {
@@ -497,5 +500,43 @@
   font-family: var(--font-mono);
   font-size: 10px; /* monoLabel */
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 完成態（走完佇列）──────────────────────────────────────────────
+   互動後才出現，不在任何 parity scenario 的初始 DOM 中。 */
+.tr-complete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 80px 28px;
+  text-align: center;
+}
+
+.tr-complete-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.tr-complete-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tr-complete-stats {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
