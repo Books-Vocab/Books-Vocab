@@ -43,9 +43,8 @@ struct RepoFixtureDatasetsContractTests {
             // Keyed decoding ignores unknown top-level keys, so a domain-level
             // typo ("podcasts") silently drops the whole domain — exactly the
             // failure class this suite exists to close.
-            let knownTopLevel: Set<String> = ["schema", "datasetID", "settings", "bookshelf", "todayReview", "notebook", "podcast"]
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-            let unknownTopLevel = Set(topLevel.keys).subtracting(knownTopLevel)
+            let unknownTopLevel = Set(topLevel.keys).subtracting(FixtureDatasetDocument.knownTopLevelKeys)
             #expect(
                 unknownTopLevel.isEmpty,
                 "\(stem): unknown top-level keys \(unknownTopLevel.sorted()) would be silently ignored"

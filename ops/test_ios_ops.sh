@@ -1019,6 +1019,45 @@ grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '--launch-benchmark' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_UI_TEST_APP_ARGS_JSON' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test can inject UI app launch profiles into XCUIApplication" || fail_t "ios_test missing UI launch-profile injection"
+
+section "ios_test fixture dataset flag (--dataset/--dataset-file)"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --dataset marketing_demo -g Foo 2>&1 || true)"
+[[ "$ds_out" == *"requires --ui"* ]] \
+  && ok "ios_test rejects --dataset outside --ui scope" || fail_t "ios_test --dataset scope guard: $ds_out"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset a --dataset-file b 2>&1 || true)"
+[[ "$ds_out" == *"either --dataset or --dataset-file"* ]] \
+  && ok "ios_test rejects --dataset + --dataset-file together" || fail_t "ios_test dataset exclusivity guard: $ds_out"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset definitely-not-a-dataset 2>&1 || true)"
+[[ "$ds_out" == *"dataset file not found"* ]] \
+  && ok "ios_test rejects missing named dataset" || fail_t "ios_test missing-dataset guard: $ds_out"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset marketing_demo --list 2>&1 || true)"
+[[ "$ds_out" == *"cannot be combined with --list"* ]] \
+  && ok "ios_test rejects --dataset with --list (no staging would run)" || fail_t "ios_test dataset/--list guard: $ds_out"
+# staging function：真 plist roundtrip，含 base64 特殊字元（+/=）經 PlistBuddy 內插
+ds_staged_value="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^stage_fixture_dataset_xctestrun()/,/^}/p" "$1")"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    base="$tmp/base.xctestrun"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$base" >/dev/null 2>&1
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables dict" "$base"
+    UI_FIXTURE_DATASET_B64="aGVsbG8+Pz8rLz1aWg=="
+    staged="$tmp/base_dataset_test.scoped.xctestrun"
+    stage_fixture_dataset_xctestrun "$base" "$staged"
+    /usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64" "$staged"
+  ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
+)"
+[[ "$ds_staged_value" == "aGVsbG8+Pz8rLz1aWg==" ]] \
+  && ok "ios_test dataset staging upserts KG_FIXTURE_DATASET_B64 into xctestrun copy (base64 +/= safe)" \
+  || fail_t "ios_test dataset staging roundtrip: got '$ds_staged_value'"
+grep -q 'STAGED_DATASET_XCTESTRUN="\${xctestrun_path%' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'rm -f "\${STAGED_DATASET_XCTESTRUN:-}"' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test staged dataset xctestrun is parent-shell tracked + cleaned in trap" \
+  || fail_t "ios_test staged dataset cleanup wiring missing (subshell assignment regression?)"
 grep -Eq 'TEST \(EXECUTE \)\?SUCCEEDED|TEST\( EXECUTE\)\? SUCCEEDED|TEST\( EXECUTE\)\?SUCCEEDED|TEST \(EXECUTE\)\? FAILED|TEST\( EXECUTE\)\?FAILED' "$WORKSPACE/ops/ios_test.sh" \
   || grep -qE 'TEST\( EXECUTE\)\? SUCCEEDED|TEST \(EXECUTE \)\? SUCCEEDED|TEST \(EXECUTE \)\? FAILED' "$WORKSPACE/ops/ios_test.sh"
 if [[ $? -eq 0 ]]; then

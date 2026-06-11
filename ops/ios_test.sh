@@ -336,6 +336,11 @@ if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
     echo "[ios_test] error: --dataset/--dataset-file requires --ui" >&2
     exit 1
   fi
+  # --list / cache action 不會執行 staging，silent ignore 會誤導「dataset 已生效」。
+  if [[ "$LIST_ONLY" -eq 1 || -n "$TEST_CACHE_ACTION" ]]; then
+    echo "[ios_test] error: --dataset/--dataset-file cannot be combined with --list or cache actions (dataset only applies to an actual test run)" >&2
+    exit 1
+  fi
   if [[ ! -f "$UI_FIXTURE_DATASET_FILE" ]]; then
     echo "[ios_test] error: dataset file not found: $UI_FIXTURE_DATASET_FILE" >&2
     exit 1
@@ -814,28 +819,31 @@ should_rebuild_after_test_without_building_failure() {
 # xctestrun 的 TestingEnvironmentVariables 才是 runner env 的注入面（catalog
 # pipeline 同法）。複製 base xctestrun 再 upsert，不污染共享 build cache 原檔；
 # 副本必須與原檔同目錄（__TESTROOT__ 相對於 xctestrun 所在目錄解析）。
+# 不可經 command substitution 呼叫：cleanup trap 靠父 shell 的
+# STAGED_DATASET_XCTESTRUN 刪檔，subshell 賦值傳不回來（曾為死碼）。
 stage_fixture_dataset_xctestrun() {
-  local base_path="$1"
-  # .scoped.xctestrun 字尾使 ios_test_find_xctestrun 永不撿到 staged 副本
-  # （即使 cleanup 被 SIGKILL 跳過，殘留檔也不會污染後續 run 的 discovery）。
-  local staged_path="${base_path%.xctestrun}_dataset_$$.scoped.xctestrun"
+  local base_path="$1" staged_path="$2"
   cp "$base_path" "$staged_path" || return 1
   local key=':TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64'
   if ! /usr/libexec/PlistBuddy -c "Set $key $UI_FIXTURE_DATASET_B64" "$staged_path" 2>/dev/null; then
     /usr/libexec/PlistBuddy -c "Add $key string $UI_FIXTURE_DATASET_B64" "$staged_path" || return 1
   fi
-  STAGED_DATASET_XCTESTRUN="$staged_path"
-  printf '%s\n' "$staged_path"
 }
 
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
   local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
   if [[ -n "$UI_FIXTURE_DATASET_B64" ]]; then
-    if ! xctestrun_path="$(stage_fixture_dataset_xctestrun "$xctestrun_path")"; then
+    # 父 shell 先賦值 STAGED_DATASET_XCTESTRUN 再 cp：即使 staging 半途失敗，
+    # cleanup trap 也能刪掉殘檔。.scoped.xctestrun 字尾使 ios_test_find_xctestrun
+    # 永不撿到副本（SIGKILL 漏刪也不污染後續 discovery）；同 PID retry 時 cp
+    # 覆寫同名檔，不累積。
+    STAGED_DATASET_XCTESTRUN="${xctestrun_path%.xctestrun}_dataset_$$.scoped.xctestrun"
+    if ! stage_fixture_dataset_xctestrun "$xctestrun_path" "$STAGED_DATASET_XCTESTRUN"; then
       echo "[ios_test] error: failed to stage fixture dataset into xctestrun" >&2
       return 1
     fi
+    xctestrun_path="$STAGED_DATASET_XCTESTRUN"
     echo "[ios_test] fixture dataset staged: $(basename "$xctestrun_path") (KG_FIXTURE_DATASET_B64 ← ${UI_FIXTURE_DATASET_FILE})"
   fi
   acquire_test_device_lock
