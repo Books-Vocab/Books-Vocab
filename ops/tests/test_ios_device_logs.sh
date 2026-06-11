@@ -28,10 +28,16 @@ echo "$OUT" | grep -q -- "-o /tmp/x.log" || fail "--out 未透傳成 -o"
 if "$TOOL" syslog --duration abc --dry-run >/dev/null 2>&1; then fail "--duration 非數字應非零退出"; fi
 
 # collect → syslog collect 到輸出目錄 + --age-limit 透傳
+# pymobiledevice3 把 archive 內容直接攤進給定目錄（目錄本身就是 bundle），
+# 不帶 .logarchive 副檔名時 log show / Console.app 都讀不了 → 必須自動補
 OUT=$("$TOOL" collect --out /tmp/kg_la_test --age-limit 2 --dry-run)
 echo "$OUT" | grep -q "syslog collect" || fail "collect 未走 syslog collect"
-echo "$OUT" | grep -q "/tmp/kg_la_test" || fail "collect 未帶輸出目錄"
+echo "$OUT" | grep -q "/tmp/kg_la_test.logarchive" || fail "collect 未把輸出目錄正規化成 .logarchive 結尾"
 echo "$OUT" | grep -q -- "--age-limit 2" || fail "--age-limit 未透傳"
+# 已帶副檔名 → 不重複附加
+OUT=$("$TOOL" collect --out /tmp/kg_la_test.logarchive --dry-run)
+echo "$OUT" | grep -q "/tmp/kg_la_test.logarchive.logarchive" && fail "collect 重複附加 .logarchive"
+echo "$OUT" | grep -q "/tmp/kg_la_test.logarchive" || fail "collect 丟失既有 .logarchive 路徑"
 
 # crashes → crash ls，depth 2（iOS 會把已讀 .ips retire 進 /Retired/，depth 1 誤判沒 crash）
 OUT=$("$TOOL" crashes --dry-run)
