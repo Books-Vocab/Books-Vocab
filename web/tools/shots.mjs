@@ -79,20 +79,33 @@ async function main() {
     const browser = await chromium.launch();
     try {
       for (const p of PARITY) {
-        const page = await browser.newPage({
+        // Use a fresh BrowserContext per case so Playwright tears down all TCP
+        // sockets to the vite preview server on context.close().  Reusing a
+        // single context (or just calling page.close()) leaves keep-alive
+        // connections open in the server's socket pool; after ~9 cases the pool
+        // fills and new connections get ECONNREFUSED.
+        const ctx = await browser.newContext({
           viewport: { width: 393, height: 852 },
           deviceScaleFactor: 3,
         });
-        // params 逐鍵序列化（surface 可省略 = bookshelf 向後相容預設）
-        const qs = new URLSearchParams(p.params).toString();
-        const url = `${base}/?${qs}`;
-        await page.goto(url, { waitUntil: 'networkidle' });
-        // woff2 faces must be live before capture, or text falls back mid-shot.
-        await page.evaluate(() => document.fonts.ready);
-        await page.locator('[data-harness="phone-frame"]').screenshot({
-          path: join(SHOTS, `${p.case}.png`),
-        });
-        await page.close();
+        try {
+          const page = await ctx.newPage();
+          // params 逐鍵序列化（surface 可省略 = bookshelf 向後相容預設）
+          const qs = new URLSearchParams(p.params).toString();
+          const url = `${base}/?${qs}`;
+          // 'load' is sufficient and avoids the long networkidle polling window
+          // that compounds with accumulated keep-alive sockets.
+          await page.goto(url, { waitUntil: 'load' });
+          // woff2 faces must be live before capture, or text falls back mid-shot.
+          await page.evaluate(() => document.fonts.ready);
+          await page.locator('[data-harness="phone-frame"]').screenshot({
+            path: join(SHOTS, `${p.case}.png`),
+          });
+        } finally {
+          // context.close() drains all sockets for this context immediately,
+          // keeping the server connection count bounded across all cases.
+          await ctx.close();
+        }
         console.error(`✓ ${p.case}`);
       }
     } finally {
