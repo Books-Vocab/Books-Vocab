@@ -7,6 +7,7 @@
 export const SURFACE_SCENARIOS = {
   bookshelf: ['populated', 'single', 'empty'],
   settings: ['subscribed-active', 'logged-out', 'pricing-unavailable'],
+  notebook: ['populated', 'single'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS
