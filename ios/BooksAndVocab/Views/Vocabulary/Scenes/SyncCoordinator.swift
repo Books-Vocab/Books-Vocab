@@ -168,19 +168,11 @@ final class SyncCoordinator: SyncCoordinating {
                         let words = entries.map(\.word)
                         do {
                             let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
-                            // Locally converge both server-deleted AND not_found words.
-                            // not_found = 已不存在於 server，刪除意圖已達成，必須本地移除，
-                            // 否則永遠 failed+delete → 每次 sync 回 not_found → 卡死。
-                            let resolvableSet = Self.locallyResolvableDeletes(from: response)
-                            for entry in entries {
-                                if resolvableSet.contains(entry.word) {
-                                    modelContext.delete(entry)
-                                    deleted += 1
-                                } else {
-                                    entry.markSyncFailed()
-                                    failedWords.append(entry.word)
-                                }
-                            }
+                            let outcome = Self.applyBatchDeleteResponse(
+                                response: response, entries: entries, modelContext: modelContext
+                            )
+                            deleted += outcome.deleted
+                            failedWords.append(contentsOf: outcome.failedWords)
                             self.updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                         } catch {
                             // Batch failed — fallback to per-word delete
@@ -236,18 +228,7 @@ final class SyncCoordinator: SyncCoordinating {
                             entries.forEach { $0.prepareForRetryAttempt() }
                             let response = try await kgService.batchAdd(entries: entries, notebookId: nbId)
 
-                            for entry in entries {
-                                // 後端以『原始』submitted word 為 cardIds key（created 與
-                                // duplicate 皆回填 id），故 entry.word 字面配對必中。回傳
-                                // cardId = 卡片確實存在 server（權威確認）→ 直接 markSynced
-                                // 出列，不再依賴 pull-merge 用 content 比對（會被後端清洗
-                                // strip 尾標點/首字小寫破壞，例 "chateau," 永遠對不上
-                                // "chateau" → 卡在佇列重送）。無 cardId（異常）才保持 pending。
-                                if let cardId = response.cardIds[entry.word] {
-                                    entry.kgCardId = cardId
-                                    entry.markSynced()
-                                }
-                            }
+                            Self.convergeAddedEntries(response: response, entries: entries)
                             totalCreated += response.created
                             totalSkipped += response.skipped
                         } catch {
@@ -464,6 +445,64 @@ final class SyncCoordinator: SyncCoordinating {
         from response: KGBatchDeleteResponse
     ) -> Set<String> {
         Set(response.deleted_words).union(response.not_found)
+    }
+
+    /// startSync batch-delete happy path 的回應分類收斂。抽成 static 函式讓
+    /// 測試與 production 共用同一份邏輯（消除測試手抄 mirror loop 的
+    /// dead-test 風險，比照 `triggerPipelinesIsolated`）。
+    ///
+    /// 本地收斂集合 = `deleted_words ∪ not_found`（`locallyResolvableDeletes`）：
+    /// not_found = 已不存在於 server，刪除意圖已達成，必須本地移除，否則
+    /// 永遠 failed+delete → 每次 sync 回 not_found → 卡死的隱形重試迴圈。
+    /// 不在集合內（含 `failed` bucket = server graph 操作已回滾、卡片仍在）
+    /// → markSyncFailed 保留重試（sync_lifecycle.md 不變式 1/2，#720）。
+    static func applyBatchDeleteResponse(
+        response: KGBatchDeleteResponse,
+        entries: [VocabularyEntry],
+        modelContext: ModelContext
+    ) -> (deleted: Int, failedWords: [String]) {
+        let resolvableSet = locallyResolvableDeletes(from: response)
+        var deleted = 0
+        var failedWords: [String] = []
+        for entry in entries {
+            if resolvableSet.contains(entry.word) {
+                modelContext.delete(entry)
+                deleted += 1
+            } else {
+                entry.markSyncFailed()
+                failedWords.append(entry.word)
+            }
+        }
+        return (deleted, failedWords)
+    }
+
+    /// startSync add-path 的 batchAdd 回應收斂。抽成 static 純函式讓測試與
+    /// production 共用同一份邏輯（比照 `locallyResolvableDeletes`）。
+    ///
+    /// 後端以『原始』submitted word 為 cardIds key（created 與 duplicate 皆
+    /// 回填 id），故 `entry.word` byte-exact 配對必中（sync_lifecycle.md
+    /// 不變式 6）。回傳 cardId = 卡片確實存在 server（權威確認）→ 直接
+    /// markSynced 出列，不再依賴 pull-merge 用 content 比對（會被後端清洗
+    /// strip 尾標點/首字小寫破壞，例 "chateau," 永遠對不上 "chateau" →
+    /// 卡在佇列重送）。無 cardId（異常）才保持 pending，下次重試。
+    ///
+    /// 回傳未收斂的 entries（正常情況為空）供觀測；呼叫端不需特別處理，
+    /// 它們維持 pending+add 自然進下一輪。
+    @discardableResult
+    static func convergeAddedEntries(
+        response: KGAddResponse,
+        entries: [VocabularyEntry]
+    ) -> [VocabularyEntry] {
+        var unresolved: [VocabularyEntry] = []
+        for entry in entries {
+            if let cardId = response.cardIds[entry.word] {
+                entry.kgCardId = cardId
+                entry.markSynced()
+            } else {
+                unresolved.append(entry)
+            }
+        }
+        return unresolved
     }
 
     /// Per-notebook isolated trigger pipeline 呼叫迴圈。
