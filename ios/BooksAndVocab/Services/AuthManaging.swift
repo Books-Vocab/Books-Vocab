@@ -10,6 +10,10 @@ protocol AuthSessionProviding: AnyObject {
 @MainActor
 protocol SessionInvalidating: AnyObject {
     func logout(modelContainer: ModelContainer?, reason: String)
+    /// logout 排程的本地清理（SwiftData + sync boundary）收尾 gate。
+    /// sync 開跑前必先 await，避免搶用尚未被清的 boundary（000287 事故）。
+    /// 無 pending cleanup 時立即返回。
+    func waitForPendingLocalDataCleanup() async
 }
 
 protocol LocalDataClearing: AnyObject {

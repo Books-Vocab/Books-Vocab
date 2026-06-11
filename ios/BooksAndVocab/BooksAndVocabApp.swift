@@ -238,12 +238,8 @@ struct BooksAndVocabApp: App {
                     // Trigger sync immediately after login (scenePhase won't re-fire .active)
                     guard !wasLoggedIn, isNowLoggedIn, !authManager.isDemoMode else { return }
                     Task {
-                        // Gate：先等 logout 排程的本地清理收尾，再跑首次 sync。
-                        // 否則快速「登出→重登」會讓 sync 搶用尚未被清的 boundary
-                        // （incremental 跳過後端全部卡 → 本地空庫但自認最新），且
-                        // 拉回的資料會被 resume 的 cleanup 清掉（2026-06-09
-                        // 000287 單字本事故根因）。
-                        await authManager.waitForPendingLocalDataCleanup()
+                        // logout-cleanup gate 在 KGService.backgroundSync 入口單點生效
+                        // （四個 sync 觸發點共用），call site 不再各自 await。
                         AppLog.kg.info("Post-login sync triggered")
                         await kgService.backgroundSync(container: modelContainer)
                         await kgService.fetchQuota()
