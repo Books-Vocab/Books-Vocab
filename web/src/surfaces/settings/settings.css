@@ -31,13 +31,21 @@
   font-size: 17px;
   font-weight: 700;
   -webkit-text-stroke: 0.5px currentColor;
+  /* measured：Catalog light 的 inline title 渲染為比背景亮的白字
+     srgb(250,249,247)（nav bar 材質效果，非 primaryText）；dark 仍近 primary。 */
+  color: #faf9f7;
+}
+
+[data-theme='dark'] .settings-nav-title {
   color: var(--text-primary);
 }
 
 .settings-scroll {
   flex: 1;
   overflow: hidden; /* 快照面：不滾動，截到什麼算什麼（同 Catalog） */
-  padding: 12px 20px 48px; /* pageTopPadding / pageHorizontalPadding / pageBottomPadding */
+  /* measured：iOS 首 section header top = 154pt（nav 103 之下 51）；
+     pageTopPadding 12 不足，差額 9pt 是 iOS nav bar 的內容額外 inset。 */
+  padding: 21px 20px 48px;
   display: flex;
   flex-direction: column;
   gap: 24px; /* AppShellMetrics.sectionSpacing */
@@ -56,9 +64,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  /* SettingsSectionHeader — caption 12 semibold + iconSmall */
+  /* SettingsSectionHeader — measured：Catalog 渲染字高比 caption 12 大一階，
+     釘 14（zoom 對拍）；iconSmall 同步 15。 */
   font-family: var(--font-sans);
-  font-size: var(--text-caption);
+  font-size: 14px;
   font-weight: 700;
   line-height: var(--leading-caption);
   color: var(--text-secondary);
@@ -67,7 +76,7 @@
 .settings-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-md); /* AppRadius.md 8 — .settingsCard */
+  border-radius: var(--radius-lg); /* measured：Catalog 卡角弧 ≈12，非 md 8 */
   /* elevation z0：無陰影 */
 }
 
@@ -90,39 +99,37 @@
 }
 
 .settings-row-label {
-  font-size: var(--text-body); /* body 15 */
+  /* AppFonts.body 15 — 注意 --text-body token 是 17（iOS 系統 body），
+     Settings 列用 15；line-height 釘 22 防 --leading-body(1.5) 撐高列。 */
+  font-size: 15px;
+  line-height: 22px;
   color: var(--text-primary);
 }
 
 .settings-row-value {
   margin-left: auto;
-  font-size: var(--text-body);
+  /* measured：iOS value 是 caption 12 semibold（小而黑），非 body 15 */
+  font-size: var(--text-caption);
+  font-weight: 700;
   color: var(--text-secondary);
   white-space: nowrap;
 }
 
-.settings-chevron {
+.settings-chevron,
+.settings-picker-chevrons {
   flex: none;
   color: var(--text-tertiary); /* SettingsTrailingChevronIcon — iconTiny 10 thin */
 }
 
-.settings-row .settings-chevron:last-child,
-.settings-picker-chevrons {
-  margin-left: 0;
-}
-
+/* trailing HStack spacing 6：value 與 chevron／picker 箭頭之間 */
 .settings-row-value + .settings-chevron,
-.settings-row-value + .settings-picker-chevrons {
-  margin-left: 6px; /* trailing HStack spacing */
-}
-
-.settings-picker-chevrons {
-  flex: none;
-  color: var(--text-tertiary);
+.settings-row-value + .settings-picker-chevrons,
+.settings-pill + .settings-chevron {
+  margin-left: 6px;
 }
 
 .settings-divider {
-  height: 1px;
+  height: 0.34px; /* iOS hairline = 1 物理 px（dpr3）；CSS 1px 會渲染 3px */
   background: var(--divider);
 }
 
@@ -161,7 +168,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 2px; /* name/email 行距（列高由 avatar 46 主導，block 須 <46） */
 }
 
 .settings-account-name-line {
@@ -171,10 +178,12 @@
 }
 
 .settings-account-name {
-  /* sectionTitle 18 serif bold，單行截斷（截斷是 render 行為非 data） */
+  /* measured：Catalog 渲染 name cap-height 對應 ≈21px（非 sectionTitle 18），
+     單行截斷（截斷是 render 行為非 data） */
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 700;
+  line-height: 24px; /* 釘死：name24+gap2+email14=40 < avatar46，列高=72（iOS） */
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -198,6 +207,7 @@
 
 .settings-account-email {
   font-size: var(--text-caption);
+  line-height: 14px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -231,9 +241,10 @@
 }
 
 .settings-subscription-title {
-  /* sectionTitle 18 serif bold(+medium) */
-  font-family: var(--font-serif);
-  font-size: 18px;
+  /* measured：Catalog 渲染為 sans bold ~15（非 serif sectionTitle）——
+     「Pro 已啟用」無襯線特徵 */
+  font-family: var(--font-sans);
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -262,10 +273,6 @@
   background: var(--success-bg);
 }
 
-.settings-pill + .settings-chevron {
-  margin-left: 6px;
-}
-
 /* --- 登出鈕（.appAction(.destructive)）--- */
 
 .settings-signout-frame {
@@ -278,6 +285,7 @@
   font-family: var(--font-sans);
   font-size: var(--text-subhead);
   font-weight: 700;
+  line-height: 17px; /* measured：iOS 鈕高 ≈43 = 13×2 + 17 */
   color: var(--destructive);
   background: var(--destructive-bg);
   border: 1px solid color-mix(in srgb, var(--destructive) 22%, transparent);
@@ -300,18 +308,15 @@
   flex-direction: column;
   align-items: center;
   gap: 10px; /* accountHeroSpacing */
-  padding: 10px 0;
+  /* measured：iOS hero 無額外上下 padding（divider 序列反推 hero 高 169pt） */
+  padding: 0;
   text-align: center;
 }
 
 .settings-login-appicon {
-  display: grid;
-  place-items: center;
   width: 64px;
   height: 64px;
   border-radius: 14px;
-  background: var(--muted-fill);
-  color: var(--text-secondary);
 }
 
 .settings-login-title {
@@ -320,13 +325,15 @@
   font-family: var(--font-serif);
   font-size: 24px;
   font-weight: 700;
+  line-height: 33px; /* measured：iOS title 行高 ~33 */
   -webkit-text-stroke: 0.5px currentColor;
   color: var(--text-primary);
 }
 
 .settings-login-subtitle {
   margin: -6px 0 0; /* title/subtitle gap s1=4（hero gap 10 − 6） */
-  font-size: var(--text-body);
+  font-size: 15px; /* body 15（--text-body=17 是 iOS 系統 body，非此處字級） */
+  line-height: 20px;
   color: var(--text-secondary);
 }
 
@@ -334,6 +341,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px; /* accountActionSpacing */
+  margin-top: 2px; /* measured：iOS divider→鈕頂 17（卡 gap 14 + 2 + border） */
 }
 
 .settings-login-button {
@@ -344,9 +352,9 @@
   background: var(--page-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
-  padding: 16px 18px;
+  padding: 17px 18px; /* measured：iOS 鈕高 58 = 17×2 + label 22 + border2 */
   font-family: var(--font-sans);
-  font-size: var(--text-body);
+  font-size: 15px; /* body 15 */
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
@@ -398,21 +406,8 @@
   background: var(--accent);
 }
 
-.settings-toggle-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
-}
-
-.settings-toggle[data-on='true'] .settings-toggle-knob {
-  left: auto;
-  right: 2px;
-}
+/* measured：Catalog 兩主題的 UISwitch(on) 均渲染為純色膠囊、無可見 knob
+   （自訂樣式）；web 同步不畫 knob。 */
 
 /* --- 同步狀態 value --- */
 
