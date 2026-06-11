@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: dfc5401f
+verified_against: 41aafedc
 -->
 # Implemented Product Surface
 
@@ -19,7 +19,7 @@ verified_against: dfc5401f
 ## iOS (`ios/BooksAndVocab`)
 
 - **Auth flows**: Apple/Google SSO
-- **Bookshelf + reader**: EPUB/TXT/MD/PDF multi-format import + batch select + classified error diagnosis + import progress callback + 書庫下拉刷新（iOS/iPadOS pull-to-refresh）／Mac toolbar 同步鈕觸發帳號背景同步（詞庫/複習/KG，非書本清單；成功彈確認 toast、失敗 warning，經 `ExplicitSync` 與 ⌘R 共用同一回饋政策）
+- **Bookshelf + reader**: EPUB/TXT/MD/PDF multi-format import + batch select + classified error diagnosis + import progress callback + 書庫下拉刷新（iOS/iPadOS pull-to-refresh）／Mac toolbar 同步鈕觸發帳號背景同步（詞庫/複習/KG，非書本清單；成功彈確認 toast、失敗 warning，經 `ExplicitSync` 與 ⌘R 共用同一回饋政策）+ **書架空狀態 CloudKit 還原透明化**（本地 0 列 ≠ 沒有書：`CloudKitMirroringMonitor` 監聽 mirroring 事件，雲端還原中顯示 ProgressView「正在從 iCloud 取回書庫…」、同步失敗顯示 `exclamationmark.icloud` 警示，只有首次 import 成功收尾後才把 0 本書講成「尚無書籍」）
 - **Reader vocabulary highlight controls**: Reader settings「生字標記」可調 highlight 顏色（paper/blue/sage/rose）與濃度；偏好存於 `ReaderSettings.vocabHighlightPreferences`，Reader Readium CSS 與 Podcast 字幕詞庫 highlight 共用同一組設定。
 - **每本書/每個 podcast 系列強制綁定恰好一本真實單字本**（`NotebookBindable`，Book/PodcastSeries 共用）：開啟時以最近使用的真實單字本 seed 固化綁定（seed gate `canSeedBinding` 須指向 live 清單內已 settle 的本，擋未同步 `"default"` sentinel），之後選詞 / highlight / cache scope 一律認綁定本，**不再隨全域 active 漂移、無 magic 預設本概念**；`ReaderNotebookPicker` 移除「跟隨全域設定」、`NotebookBindingList` 不再標示「預設」，所有單字本平權。綁定為本機偏好（server 不下發 `preferredNotebookId`，reconcile upsert 不覆寫）；綁定的本被刪除時自動清除、下次開啟 re-seed。
 - **Translation/explanation**: context sentence extraction
