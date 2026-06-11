@@ -512,7 +512,7 @@ enum FooScenarios {
 
 ### Catalog Snapshot Export（PlaybookSnapshot → PNG batch）
 
-`BooksAndVocabTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把目前 catalog 註冊的全部 scenarios × 2 appearances（iPhone15Pro portrait light/dark）渲染成 PNG，並在 root 旁吐 `catalog_index.json`（taxonomy ground truth），**不用人工逐頁截**。（scenario 數隨 source 變動，不在此手記；以 `CatalogScene.Manifest` 為準。）
+`BooksAndVocabTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把目前 catalog 註冊的全部 scenarios × 4 device variants（iPhone 15 Pro portrait + iPad Pro 11 landscape，各 light/dark；iPad 為 web 重寫 responsive 寬版規格）渲染成 PNG，validation 以 `resolved.deviceVariantCount`（舊 log fallback 2）乘 scenario 數核對張數，並在 root 旁吐 `catalog_index.json`（taxonomy ground truth），**不用人工逐頁截**。（scenario 數隨 source 變動，不在此手記；以 `CatalogScene.Manifest` 為準。）
 
 **若目標是行銷 / App Store 素材，優先從 capture profile 進，不要直接手拼 snapshot 與 renderer 命令**：
 

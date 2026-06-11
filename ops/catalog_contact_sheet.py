@@ -74,15 +74,27 @@ class SourceBundle:
 
 
 def select_items(manifest, *, surface=None, lane=None, facet=None, feature=None,
-                 appearance="light", ids=None, contains=None, limit=None):
+                 appearance="light", ids=None, contains=None, limit=None,
+                 device=None):
     """Filter manifest items to montage.
 
     Without `ids`: ordered by surface then canonical state rank (so a surface's
     states read left-to-right in lifecycle order). With `ids` (explicit assetID
     list): selects exactly those, in the REQUESTED order — the free-composition
     path — still honouring the other filters (so `--ids ... --appearance light`
-    drops the dark twins). Unknown ids are silently skipped."""
+    drops the dark twins). Unknown ids are silently skipped.
+
+    Multi-device manifests: `device` defaults to the canonical device
+    (manifest `devices[0]`) so state rows don't interleave iPhone/iPad twins;
+    pass a device name to montage another device, or "all" to disable the
+    filter. Legacy manifests without `devices` are unaffected."""
+    if device is None:
+        devices = manifest.get("devices") or []
+        device = devices[0] if devices else None
+
     def keep(it):
+        if device and device != "all" and it.get("device") != device:
+            return False
         if appearance and appearance != "both" and it.get("appearance") != appearance:
             return False
         if surface and it.get("surface") != surface:
@@ -430,6 +442,8 @@ def main():
     ap.add_argument("--facet")
     ap.add_argument("--feature")
     ap.add_argument("--contains", help="substring filter across labels, ids, relPath, feature, surface")
+    ap.add_argument("--device", help='device dir name (e.g. "iPad Pro 11 landscape"); '
+                    'default = canonical device (manifest devices[0]); "all" disables the filter')
     ap.add_argument("--id", help="single shot by assetID (detail view)")
     ap.add_argument("--ids", help="comma-separated assetIDs — free composition, kept in this order")
     ap.add_argument("--take", help="compact selection: evenly:4 | first,last | 1,3,8 | every:2")
@@ -462,7 +476,7 @@ def main():
     items = select_items(manifest, surface=args.surface, lane=args.lane,
                          facet=args.facet, feature=args.feature,
                          appearance=appearance, ids=ids, contains=args.contains,
-                         limit=args.limit)
+                         limit=args.limit, device=args.device)
     items = apply_take(items, args.take)
     if not items:
         raise SystemExit("no items match the filter")

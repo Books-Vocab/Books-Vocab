@@ -149,8 +149,9 @@ mechanisms:
       - ops/catalog_contact_sheet.py
     verdict: >
       `ios_ops.sh catalog snapshots` writes build/snapshots/catalog-full-<UTC>/
-      (surface PNGs light+dark, catalog_index.json, review_manifest.json,
-      review.html). Coverage gaps via `catalog_review_cli.py gaps`.
+      (surface PNGs per device variant — iPhone 15 Pro portrait + iPad Pro 11
+      landscape, each light+dark; catalog_index.json, review_manifest.json with
+      `devices` field, review.html with device toggle). Coverage gaps via `catalog_review_cli.py gaps`.
     docs:
       - docs/reference/catalog_scope.md
       - docs/sop/ios.md
