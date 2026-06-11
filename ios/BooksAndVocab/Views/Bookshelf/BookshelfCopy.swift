@@ -37,5 +37,12 @@ enum BookshelfCopy {
     static func importErrorTitle(diagnosis: String?) -> String {
         diagnosis.map { L10n.format("匯入錯誤・%@", $0) } ?? L10n.string("匯入錯誤")
     }
+
+    // 空書架 ≠ 真空：CloudKit 還原狀態線（CloudKitMirroringMonitor.phase）。
+    static var cloudCheckingHint: String { L10n.string("正在確認 iCloud 書庫…") }
+    static var cloudRestoringHint: String { L10n.string("正在從 iCloud 取回書庫…") }
+    static func cloudSyncErrorHint(_ message: String) -> String {
+        L10n.format("iCloud 書庫同步異常・%@", message)
+    }
 }
 #endif
