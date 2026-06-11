@@ -140,6 +140,7 @@ struct CatalogScene: View {
             "Review Fold · Segment",      // generic ReviewFoldSurface<Content>
             "Vocab Shell · Tab Selector", // generic VocabTabSelector<ID: Hashable>
             "Review Fold · Paper Fold",   // PaperFoldModifier is a ViewModifier, not a View
+            "Vocab Scene Shell",          // generic VocabSceneShell<Content> — no single metatype
         ]
 
         static let entries: [ManifestEntry] = [
@@ -229,6 +230,24 @@ struct CatalogScene: View {
                     block("Vocab Shell · Review CTA Pill", .vocabulary, VocabReviewCTAPill.self),
                 ],
                 register: VocabShellComponentsScenarios.register
+            ),
+            .init(
+                id: "vocab_shell_chrome",
+                surfaces: [
+                    block("Vocab Shell · Search Field", .vocabulary, VocabSearchField.self),
+                    block("Vocab Shell · Toolbar Glyph", .vocabulary, VocabToolbarGlyph.self),
+                    block("Vocab Shell · Chrome Icon Button", .vocabulary, VocabChromeIconButton.self),
+                    block("Vocab Shell · Section Header", .vocabulary, VocabSectionHeader.self),
+                    block("Vocab Shell · Slider Row", .vocabulary, VocabSliderRow.self),
+                    block("Vocab Shell · Accessory Icon Button", .vocabulary, VocabAccessoryIconButton.self),
+                    block("Vocab Shell · Inline Action Button", .vocabulary, VocabInlineActionButton.self),
+                ],
+                register: VocabShellChromeScenarios.register
+            ),
+            .init(
+                id: "vocab_scene_shell",
+                surfaces: [block("Vocab Scene Shell", .vocabulary)],
+                register: VocabSceneShellScenarios.register
             ),
             .init(id: "notebook_cover", surfaces: [block("Notebook Cover", .notebook, NotebookCoverView.self)], register: NotebookCoverScenarios.register),
             .init(id: "link_reason_sheet", surfaces: [overlay("Link Reason Sheet", .vocabulary, LinkReasonSheet.self)], register: LinkReasonSheetScenarios.register),
