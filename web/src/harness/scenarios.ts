@@ -56,6 +56,14 @@ export const SURFACE_SCENARIOS = {
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],
+  // Overview（統計儀表板）— 對齊 StatsViewScenarios.swift 2 態（Stats View）。
+  //   populated：graph card（catalog 內 WKWebView no-op → loading spinner）+ 連續/
+  //     最長學習雙卡（10/10 天）+ 學習日曆 heatmap（trailing「J」叢集）+ 複習預測
+  //     section header（chart 本體在 2556 fold 之下被 capture 裁掉）。fixture 凍結
+  //     0608 catalog 的 now-relative 渲染輸出（streak=10、heatmap trailing 叢集），
+  //     非重算日期邏輯——參考 PNG 已凍結，故 fixture 鏡射其像素輸出而非 seed。
+  //   empty：尚無學習資料置中空卡（chart.bar.xaxis）。
+  overview: ['populated', 'empty'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS
