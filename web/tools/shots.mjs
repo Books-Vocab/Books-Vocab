@@ -112,25 +112,34 @@ async function main() {
         const url = `${BASE}/?${qs}`;
         let lastErr;
         for (let attempt = 0; attempt < 3; attempt++) {
-          const page = await browser.newPage({
+          // Fresh BrowserContext per attempt so Playwright tears down all TCP
+          // sockets on ctx.close(). Reusing a context (or just page.close())
+          // leaves keep-alive connections in the server's socket pool; after
+          // ~9 cases the pool fills and new connections get ECONNREFUSED.
+          const ctx = await browser.newContext({
             viewport: { width: 393, height: 852 },
             deviceScaleFactor: 3,
           });
           try {
-            await page.goto(url, { waitUntil: 'networkidle' });
+            const page = await ctx.newPage();
+            // 'load' is sufficient and avoids the long networkidle polling
+            // window that compounds with accumulated keep-alive sockets.
+            await page.goto(url, { waitUntil: 'load' });
             // woff2 faces must be live before capture, or text falls back mid-shot.
             await page.evaluate(() => document.fonts.ready);
             await page.locator('[data-harness="phone-frame"]').screenshot({
               path: join(SHOTS, `${p.case}.png`),
             });
-            await page.close();
             lastErr = null;
-            break;
           } catch (err) {
             lastErr = err;
-            await page.close().catch(() => {});
             await ensureServer();
+          } finally {
+            // ctx.close() drains this context's sockets immediately, keeping
+            // the server connection count bounded across all cases.
+            await ctx.close().catch(() => {});
           }
+          if (!lastErr) break;
         }
         if (lastErr) throw lastErr;
         console.error(`✓ ${p.case}`);
