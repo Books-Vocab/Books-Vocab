@@ -34,6 +34,7 @@ export const SURFACE_SCENARIOS = {
   // （chrome tile：selected mutedFill+primaryText / unselected pageBackground+
   // secondaryText / 並排對比）。首位 selection-pair = 預設 scenario。
   'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
+  vocabulary: ['populated', 'single', 'empty'],
 } as const
 
 export type SurfaceId = keyof typeof SURFACE_SCENARIOS

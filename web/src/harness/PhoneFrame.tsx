@@ -6,6 +6,7 @@ import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
 import { SelectionToolbarScreen } from '../surfaces/selection/SelectionToolbarScreen'
 import { SelectionTileScreen } from '../surfaces/selection/SelectionTileScreen'
 import { AppShell } from '../shell/AppShell'
+import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 
 /**
  * 393×852pt stage — iPhone 15 Pro portrait, the same logical size the iOS
@@ -30,6 +31,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <SelectionToolbarScreen scenario={config.scenario} />
     case 'selection-tile':
       return <SelectionTileScreen scenario={config.scenario} />
+    case 'vocabulary':
+      return <VocabularyScreen scenario={config.scenario} />
   }
 }
 
