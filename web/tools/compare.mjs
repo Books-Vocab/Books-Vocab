@@ -1,6 +1,6 @@
 /**
- * Visual-parity compositor — Chrome wrapper around the shared parity engine
- * (design-system/parity/parity-core.mjs). Pairs each Chrome shot (from
+ * Visual-parity compositor — web-app wrapper around the shared parity engine
+ * (design-system/parity/parity-core.mjs). Pairs each web shot (from
  * shots.mjs) with the iOS Catalog reference it should mirror, then tiles all
  * pairs into ONE contact sheet (tools/compare/contact.png).
  *
@@ -15,12 +15,12 @@ import { fileURLToPath } from 'node:url';
 import { PARITY } from './parity-manifest.mjs';
 import { composeContactSheet } from '../../design-system/parity/parity-core.mjs';
 
-const EXT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 composeContactSheet({
   parity: PARITY,
-  shotsDir: join(EXT_DIR, 'tools', 'shots'),
-  outDir: join(EXT_DIR, 'tools', 'compare'),
-  repoRoot: resolve(EXT_DIR, '..'),
-  shotLabel: 'chrome',
+  shotsDir: join(WEB_DIR, 'tools', 'shots'),
+  outDir: join(WEB_DIR, 'tools', 'compare'),
+  repoRoot: resolve(WEB_DIR, '..'),
+  shotLabel: 'web',
 });
