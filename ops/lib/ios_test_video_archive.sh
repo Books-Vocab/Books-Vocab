@@ -18,6 +18,7 @@ uitest_video_archive() {
   # Guard the knob: 0 would prune the file we just archived while still
   # echoing its path, and a non-numeric value would poison the jq slice.
   [[ "$keep" =~ ^[0-9]+$ && "$keep" -ge 1 ]] || keep=10
+  keep=$((10#$keep))  # "010" passes the regex but is not valid JSON for --argjson
   [[ -s "$video" ]] || return 0
   [[ -n "$stamp" ]] || stamp="$(date -u +%Y%m%d-%H%M%S)"
   mkdir -p "$dest_root" || return 1
