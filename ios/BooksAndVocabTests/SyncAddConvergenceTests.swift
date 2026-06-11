@@ -1,0 +1,143 @@
+import Foundation
+import Testing
+@testable import BooksAndVocab
+
+/// Pins `SyncCoordinator.convergeAddedEntries(response:entries:)` — startSync
+/// add-path 的 cardIds 回填收斂，production 與測試共用同一份邏輯（比照
+/// `locallyResolvableDeletes` / `triggerPipelinesIsolated` 的 dead-test 防護範式）。
+///
+/// 契約來源 `docs/reference/sync_lifecycle.md`「本地新增上傳成功」：
+/// - 不變式 4：收斂依據是回傳的 cardId（卡片確實存在 server 的權威確認），
+///   不靠 pull-merge 的 content 字面比對。
+/// - 不變式 6：`cardIds` 的 key 是 client submitted word 的 byte-exact echo；
+///   iOS 以 `entry.word` 逐字節查找，任何 normalization 都會 silent miss。
+/// - 無 cardId 回傳（異常）的 entry 保持 `pending + add`，下次重試。
+@Suite("SyncAddConvergence")
+@MainActor
+struct SyncAddConvergenceTests {
+
+    private func makePendingAdd(_ word: String) -> VocabularyEntry {
+        let entry = VocabularyEntry(
+            word: word,
+            translation: "t",
+            context: "ctx",
+            bookTitle: "B"
+        )
+        entry.restorePendingEntry()
+        return entry
+    }
+
+    private func makeResponse(cardIds: [String: String]) -> KGAddResponse {
+        KGAddResponse(
+            created: cardIds.count,
+            skipped: 0,
+            duplicates: [],
+            cardIds: cardIds
+        )
+    }
+
+    // MARK: - 命中收斂（created 與 duplicate 同路徑）
+
+    @Test("cardIds 命中 → 回填 kgCardId 並 markSynced 出列")
+    func hit_backfills_cardId_and_marks_synced() {
+        let entry = makePendingAdd("ephemeral")
+        let response = makeResponse(cardIds: ["ephemeral": "card-1"])
+
+        SyncCoordinator.convergeAddedEntries(response: response, entries: [entry])
+
+        #expect(entry.kgCardId == "card-1")
+        #expect(entry.isSynced)
+        #expect(!entry.shouldUploadOnNextSync)
+    }
+
+    @Test("duplicate（已存在 server）同樣回填收斂 — 與 created 走同一路徑")
+    func duplicate_word_also_converges() {
+        let entry = makePendingAdd("apple")
+        // 後端對 duplicate 也回填 cardId（sync_lifecycle.md 轉移 2）
+        let response = KGAddResponse(
+            created: 0,
+            skipped: 1,
+            duplicates: ["apple"],
+            cardIds: ["apple": "card-dup"]
+        )
+
+        SyncCoordinator.convergeAddedEntries(response: response, entries: [entry])
+
+        #expect(entry.kgCardId == "card-dup")
+        #expect(entry.isSynced)
+    }
+
+    // MARK: - 無 cardId（異常）→ 保持 pending 重試
+
+    @Test("cardIds 無此 word → 保持 pending+add，不回填、不收斂")
+    func miss_stays_pending_for_retry() {
+        let entry = makePendingAdd("orphan")
+        let response = makeResponse(cardIds: ["other": "card-x"])
+
+        let unresolved = SyncCoordinator.convergeAddedEntries(
+            response: response, entries: [entry]
+        )
+
+        #expect(entry.kgCardId == nil)
+        #expect(entry.isPendingAdd)
+        #expect(entry.shouldUploadOnNextSync)
+        #expect(unresolved.map(\.word) == ["orphan"])
+    }
+
+    /// 不變式 6 的反向釘死：iOS 端是 byte-exact 查找。若後端違約對 key 做
+    /// 清洗（"chateau," → "chateau"），client 端的正確行為是 MISS（保持
+    /// pending 暴露違約），絕不是模糊比對硬收斂——模糊收斂會把 contract
+    /// 破口藏起來（#720 同族問題）。
+    @Test("後端違約清洗 key 時 byte-exact 查找必 miss — 不做模糊比對")
+    func normalized_key_does_not_converge_byte_exact_lookup() {
+        let entry = makePendingAdd("chateau,")
+        let response = makeResponse(cardIds: ["chateau": "card-clean"])
+
+        SyncCoordinator.convergeAddedEntries(response: response, entries: [entry])
+
+        #expect(entry.kgCardId == nil)
+        #expect(entry.isPendingAdd, "清洗後的 key 不得與原始 word 配對")
+    }
+
+    // MARK: - 混合批次
+
+    @Test("混合批次：命中各自收斂、未命中各自保留，互不影響")
+    func mixed_batch_converges_independently() {
+        let hit = makePendingAdd("alpha")
+        let miss = makePendingAdd("beta")
+        let response = makeResponse(cardIds: ["alpha": "card-a"])
+
+        let unresolved = SyncCoordinator.convergeAddedEntries(
+            response: response, entries: [hit, miss]
+        )
+
+        #expect(hit.isSynced)
+        #expect(hit.kgCardId == "card-a")
+        #expect(miss.isPendingAdd)
+        #expect(unresolved.map(\.word) == ["beta"])
+    }
+
+    @Test("空 entries → no-op，回傳空 unresolved")
+    func empty_entries_is_noop() {
+        let unresolved = SyncCoordinator.convergeAddedEntries(
+            response: makeResponse(cardIds: [:]), entries: []
+        )
+        #expect(unresolved.isEmpty)
+    }
+
+    // MARK: - retry 路徑：failed+add 也能被收斂
+
+    /// prepareForRetryAttempt 把 failed 轉回 pending 後才上傳，但防禦性釘住：
+    /// 即使 entry 處於 failed+add，收斂（server 權威確認卡片存在）仍應成立。
+    @Test("failed+add 命中 cardIds 同樣收斂為 synced")
+    func failed_add_converges_on_hit() {
+        let entry = makePendingAdd("retry-word")
+        entry.markSyncFailed()
+        let response = makeResponse(cardIds: ["retry-word": "card-r"])
+
+        SyncCoordinator.convergeAddedEntries(response: response, entries: [entry])
+
+        #expect(entry.isSynced)
+        #expect(entry.kgCardId == "card-r")
+    }
+}
