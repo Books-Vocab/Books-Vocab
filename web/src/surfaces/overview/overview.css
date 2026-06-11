@@ -1,0 +1,356 @@
+/* Overview（統計儀表板）surface — iOS StatsPresenter 的 web 重寫。
+   幾何錨點皆為 0608 catalog PNG 實測（pt = px@1x，render @3x）。
+   token 走 kg-tokens（chart-highlight = #f0ca89，serif = CrimsonPro）。 */
+
+.overview {
+  width: 100%;
+  height: 100%;
+  background: var(--page-bg);
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+}
+
+/* catalog scene 走 .fill（無 nav bar）：頂部僅留 .fill 上 inset。
+   measured：graph card top ≈ 75.3pt（PNG y=226/3）；含 pageTopInset 16pt。 */
+.ov-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 14px; /* sectionGap */
+  padding: 75.3px 20px 0; /* top measured · page-h-inset 20pt(s5) */
+  box-sizing: border-box;
+}
+
+/* --- 通用卡片（VocabCard：白底 radius-card(8) 1px border）--- */
+.ov-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card); /* 8 */
+  box-sizing: border-box;
+}
+
+/* === Graph entry card ===
+   VocabCard(padding:0)：header padding = cardBlockPadding 24pt；body 1:1 aspect。 */
+.ov-graph-card {
+  overflow: hidden;
+}
+
+.ov-graph-header {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* inlineGap */
+  padding: 24px; /* cardBlockPadding */
+}
+
+.ov-graph-icon {
+  color: var(--chart-highlight);
+  flex: none;
+}
+
+/* caption = sans 12pt bold；CJK 走 sans CJK fallback。primaryText。 */
+.ov-graph-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+}
+
+.ov-graph-spacer {
+  flex: 1 1 auto;
+}
+
+.ov-chevron {
+  color: var(--text-quaternary);
+  flex: none;
+}
+
+/* body 1:1（aspectRatio 1）：寬 = card 內寬（content 353pt − 2×1 border）。 */
+.ov-graph-body {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ProgressView .small spinner — 灰色細環旋轉（catalog 靜態截圖中為某一相位）。 */
+.ov-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--text-quaternary);
+  border-top-color: transparent;
+  opacity: 0.55;
+}
+
+/* === Streak 雙卡 ===
+   HStack spacing = sectionGap 14pt；VocabCard cardPadding 18pt。
+   measured：左卡 60→567、右卡 611→1119（gap 44px≈14.7pt）。 */
+.ov-streak-row {
+  display: flex;
+  gap: 14px;
+}
+
+.ov-stat-card {
+  flex: 1 1 0;
+  padding: 18px; /* cardPadding */
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* microGap */
+  min-width: 0;
+}
+
+.ov-stat-head {
+  display: flex;
+  align-items: center;
+  gap: 6px; /* microGap */
+}
+
+.ov-stat-icon {
+  color: var(--text-tertiary);
+  flex: none;
+}
+
+.ov-stat-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+/* numericHero = serif(CrimsonPro) 38pt bold；unit「天」= caption tertiary，
+   firstTextBaseline 對齊。 */
+.ov-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px; /* AppSpacing.microGap */
+}
+
+.ov-stat-num {
+  font-family: var(--font-serif);
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.ov-stat-unit {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+/* === Section header（共用：學習日曆 / 複習預測）===
+   sectionHeader：iconSmall 12pt + caption 12pt，tertiaryText，microGap 6。 */
+.ov-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.ov-section-icon {
+  color: var(--text-tertiary);
+  flex: none;
+}
+
+.ov-section-spacer {
+  flex: 1 1 auto;
+}
+
+/* === Heatmap section ===
+   VStack spacing = inlineGap 8pt（header → card）。 */
+.ov-heat-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* inlineGap */
+}
+
+.ov-heat-section .ov-chevron {
+  margin-left: auto;
+}
+
+.ov-heat-card {
+  padding: 18px; /* cardPadding */
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* microGap（grid → legend）*/
+}
+
+.ov-heat-grid-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* weekday labels（monoLabel 10pt bold，quaternary）：每格高 = cell 13 + spacing 3。 */
+.ov-heat-labels {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: 6px; /* microGap */
+  flex: none;
+}
+
+.ov-heat-label-cell {
+  height: 16px; /* cellSize 13 + cellSpacing 3 */
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-quaternary);
+}
+
+/* trailing 欄右對齊：spacer 吃掉左側留白（過往空欄不渲染）。 */
+.ov-heat-spacer {
+  flex: 1 1 auto;
+}
+
+.ov-heat-cols {
+  display: flex;
+  gap: 3px; /* cellSpacing */
+  flex: none;
+}
+
+.ov-heat-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px; /* cellSpacing */
+}
+
+/* 外框格 13×13 維持等距；dot 居中（level≥3 = 1.15× → 15px）。 */
+.ov-heat-cell {
+  width: 13px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ov-heat-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* levelColor：1=mutedFill、2=chartHighlight@0.35、3=@0.6(大)、4=實心(大)。 */
+.ov-heat-dot-l1 {
+  background: var(--muted-fill);
+}
+.ov-heat-dot-l2 {
+  background: color-mix(in srgb, var(--chart-highlight) 35%, transparent);
+}
+.ov-heat-dot-l3 {
+  background: color-mix(in srgb, var(--chart-highlight) 60%, transparent);
+  width: 15px;
+  height: 15px;
+}
+.ov-heat-dot-l4 {
+  background: var(--chart-highlight);
+  width: 15px;
+  height: 15px;
+}
+
+/* legend：少 + 4 dots + 多（microGap 6）。 */
+.ov-heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-heat-legend-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-quaternary);
+}
+
+/* === Forecast section ===
+   VStack spacing = inlineGap 8pt。 */
+.ov-forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ov-section-header-row {
+  display: flex;
+  align-items: center;
+}
+
+/* VocabTabSelector：stage-bg track 圓角，選中項白 pill。tabSelectorHeight 32pt。 */
+.ov-tab-selector {
+  display: flex;
+  align-items: center;
+  background: var(--stage-bg);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.ov-tab-option {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  padding: 0 14px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.ov-tab-option-selected {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-z1);
+}
+
+/* forecast 白卡本體在 fold 之下被裁掉 → 只露頂緣（高度由 fold 截斷）。 */
+.ov-forecast-card {
+  height: 160px;
+}
+
+/* === Empty state（VocabSceneShell.empty → 置中空卡）===
+   measured：card 72→1107（inset 24pt）、垂直置中、含 icon + 標題 + 描述。 */
+.ov-empty-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.ov-empty-card {
+  width: 100%;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.ov-empty-icon {
+  color: var(--text-tertiary);
+}
+
+/* empty 標題 = serif（AppStateMessageContent title），18pt 左右。 */
+.ov-empty-title {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ov-empty-desc {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  margin: 0;
+  max-width: 280px;
+}
