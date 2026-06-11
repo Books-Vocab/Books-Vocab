@@ -68,18 +68,25 @@ final class AuthSessionStore: AuthSessionStoring {
         self.keychain = keychain
     }
 
-    func loadSession() -> PersistedAuthSession {
-        if AppRuntimeOptions.shouldUseIsolatedAuthSession() {
-            clearSession()
-            return PersistedAuthSession(
-                userId: nil,
-                displayName: nil,
-                userEmail: nil,
-                avatarURL: nil,
-                token: nil
-            )
+    /// Composition root：依啟動引數決定 session store 實作。
+    /// `-isolatedAuthSession`（須同時 `-ui-testing`）→ ephemeral store：
+    /// 建立時清掉真 store 殘留，之後 load/persist 全程 in-memory、真
+    /// UserDefaults + keychain 零寫入。先前 isolated 只擋 loadSession、
+    /// persist 仍落真盤 —— UI-test fixture 經 AuthManager.login 寫入的假
+    /// session 殘留給後續 unit-test host app 打生產（2026-06-11 401 事故）。
+    static func makeSessionStore(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        defaults: UserDefaults = .standard,
+        keychain: KeychainHelping = KeychainHelper.standard
+    ) -> any AuthSessionStoring {
+        let persistent = AuthSessionStore(defaults: defaults, keychain: keychain)
+        if AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: arguments) {
+            return EphemeralAuthSessionStore(purging: persistent)
         }
+        return persistent
+    }
 
+    func loadSession() -> PersistedAuthSession {
         let userId = defaults.string(forKey: Keys.userId)
         let displayName = defaults.string(forKey: Keys.displayName)
         let userEmail = defaults.string(forKey: Keys.userEmail)
@@ -144,6 +151,47 @@ final class AuthSessionStore: AuthSessionStoring {
         AppLog.auth.error("Keychain \(operation, privacy: .public) failed: \(error.diagnosticMessage, privacy: .public)")
         AppCrashReporting.record(error, context: "auth.keychain.\(operation)")
         keychainFailureObserver?(error)
+    }
+}
+
+/// In-memory session store for `-isolatedAuthSession` UI-test runs。
+/// 真 store 只在建立時被清一次（殘留淨空），之後所有讀寫都留在記憶體 ——
+/// process 結束即蒸發，下一個（任意模式的）host app 啟動讀到的是干淨真 store。
+final class EphemeralAuthSessionStore: AuthSessionStoring {
+    private var session = PersistedAuthSession(
+        userId: nil, displayName: nil, userEmail: nil, avatarURL: nil, token: nil
+    )
+
+    init(purging persistent: AuthSessionStore) {
+        persistent.clearSession()
+    }
+
+    func loadSession() -> PersistedAuthSession { session }
+
+    func persistProfile(userId: String?, displayName: String?, userEmail: String?, avatarURL: URL?) {
+        session = PersistedAuthSession(
+            userId: userId,
+            displayName: displayName,
+            userEmail: userEmail,
+            avatarURL: avatarURL,
+            token: session.token
+        )
+    }
+
+    func persistToken(_ token: String?) {
+        session = PersistedAuthSession(
+            userId: session.userId,
+            displayName: session.displayName,
+            userEmail: session.userEmail,
+            avatarURL: session.avatarURL,
+            token: token
+        )
+    }
+
+    func clearSession() {
+        session = PersistedAuthSession(
+            userId: nil, displayName: nil, userEmail: nil, avatarURL: nil, token: nil
+        )
     }
 }
 

@@ -29,6 +29,13 @@ extension UITestFixtureSeed {
         // 整段 simulator-gate（不只 login）：displayName/userEmail setter 也會
         // 被 login() 持久化進真實 UserDefaults，真機上一併拒絕。
         #if targetEnvironment(simulator)
+        // Seed guard：非 isolated session（如 unit-test host app、漏帶旗標的
+        // UI test）拒絕 seed —— 否則假 session 經真 AuthManager.login 落盤，
+        // 殘留給後續正常模式啟動的 host app 拿去打生產（2026-06-11 401 事故）。
+        guard AppRuntimeOptions.shouldUseIsolatedAuthSession() else {
+            AppLog.app.error("UITestFixtureSeed: refused auth.signedIn without -isolatedAuthSession — fake session would persist into the real store")
+            return
+        }
         let auth = AuthManager.shared
         // Profile first — login() persists the current displayName/userEmail.
         auth.displayName = "UI Auth Tester"
