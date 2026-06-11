@@ -1033,6 +1033,9 @@ ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset definitely-not-a-dataset 2
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset marketing_demo --list 2>&1 || true)"
 [[ "$ds_out" == *"cannot be combined with --list"* ]] \
   && ok "ios_test rejects --dataset with --list (no staging would run)" || fail_t "ios_test dataset/--list guard: $ds_out"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset marketing_demo --cache-status 2>&1 || true)"
+[[ "$ds_out" == *"cannot be combined with --list or cache actions"* ]] \
+  && ok "ios_test rejects --dataset with cache actions (no staging would run)" || fail_t "ios_test dataset/cache-action guard: $ds_out"
 # staging function：真 plist roundtrip，含 base64 特殊字元（+/=）經 PlistBuddy 內插
 ds_staged_value="$(
   bash -c '
