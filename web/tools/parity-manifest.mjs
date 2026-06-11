@@ -82,4 +82,28 @@ export const PARITY = [
     ref: { surface: 'Settings', scenario: 'Pricing Unavailable', appearance: 'dark' },
     note: '設定 pricing-unavailable (dark)',
   },
+  {
+    case: 'notebook-populated-light',
+    params: { surface: 'notebook', scenario: 'populated', appearance: 'light' },
+    ref: { surface: 'Notebook List View', scenario: 'Populated · multiple notebooks', appearance: 'light' },
+    note: '單字本 populated (light)',
+  },
+  {
+    case: 'notebook-single-light',
+    params: { surface: 'notebook', scenario: 'single', appearance: 'light' },
+    ref: { surface: 'Notebook List View', scenario: 'Single notebook', appearance: 'light' },
+    note: '單字本 single (light)',
+  },
+  {
+    case: 'notebook-populated-dark',
+    params: { surface: 'notebook', scenario: 'populated', appearance: 'dark' },
+    ref: { surface: 'Notebook List View', scenario: 'Populated · multiple notebooks', appearance: 'dark' },
+    note: '單字本 populated (dark)',
+  },
+  {
+    case: 'notebook-single-dark',
+    params: { surface: 'notebook', scenario: 'single', appearance: 'dark' },
+    ref: { surface: 'Notebook List View', scenario: 'Single notebook', appearance: 'dark' },
+    note: '單字本 single (dark)',
+  },
 ];
