@@ -75,6 +75,27 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('routes podcast surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=podcast&scenario=preview-player&appearance=dark')).toEqual({
+      surface: 'podcast',
+      scenario: 'preview-player',
+      appearance: 'dark',
+    })
+    expect(resolveHarnessConfig('?surface=podcast&scenario=locked-gate')).toEqual({
+      surface: 'podcast',
+      scenario: 'locked-gate',
+      appearance: 'light',
+    })
+  })
+
+  it('podcast defaults to its first scenario (preview-player) when scenario belongs to another surface', () => {
+    expect(resolveHarnessConfig('?surface=podcast&scenario=logged-out')).toEqual({
+      surface: 'podcast',
+      scenario: 'preview-player',
+      appearance: 'light',
+    })
+  })
+
   it('re-evaluates scenario against the fallback surface（未知 surface + 他 surface 合法 scenario）', () => {
     expect(resolveHarnessConfig('?surface=nope&scenario=logged-out')).toEqual({
       surface: 'bookshelf',
