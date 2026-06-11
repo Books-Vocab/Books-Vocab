@@ -32,6 +32,7 @@ enum AppBootstrap {
         if AppRuntimeOptions.isUITesting(arguments: arguments) {
             let ephemeral = makeFallbackModelContainer()
             AuthManager.shared.modelContainer = ephemeral
+            CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: false)
             AppLog.app.info("UI-testing: ephemeral in-memory ModelContainer (no CloudKit)")
             return Outcome(container: ephemeral, failure: nil)
         }
@@ -58,16 +59,22 @@ enum AppBootstrap {
                 configurations: localConfig, cloudConfig
             )
             AuthManager.shared.modelContainer = container
+            CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: true)
+            CloudKitMirroringMonitor.shared.start()
             runMigrationIfNeeded(container: container)
             AppLog.app.info("ModelContainer initialized — models: \(fullModelTypes.map { String(describing: $0) }.joined(separator: ", "))")
             return Outcome(container: container, failure: nil)
         } catch {
             AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — attempting store reset")
 
-            if let retryContainer = retryAfterStoreReset(localConfig: localConfig, cloudConfig: cloudConfig) {
-                AuthManager.shared.modelContainer = retryContainer
+            if let retry = retryAfterStoreReset(localConfig: localConfig, cloudConfig: cloudConfig) {
+                AuthManager.shared.modelContainer = retry.container
+                CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: retry.cloudKitEnabled)
+                if retry.cloudKitEnabled {
+                    CloudKitMirroringMonitor.shared.start()
+                }
                 AppLog.app.warning("ModelContainer recovered after store reset — user data will re-sync from server")
-                return Outcome(container: retryContainer, failure: nil)
+                return Outcome(container: retry.container, failure: nil)
             }
 
             AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
@@ -75,6 +82,7 @@ enum AppBootstrap {
             // 仍把 fallback 交給 AuthManager，使降級後的記憶體 store 在帳號切換時
             // 一樣可被 clearLocalData 清除（與上方兩條成功路徑對齊，避免 nil 時靜默跳過清理）。
             AuthManager.shared.modelContainer = fallback
+            CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: false)
             return Outcome(
                 container: fallback,
                 failure: AppStartupFailure.storageInitialization(error: error)
@@ -126,8 +134,12 @@ enum AppBootstrap {
         }
     }
 
-    /// 刪除本機 SwiftData store 後重建 ModelContainer（CloudKit store 從 iCloud 恢復）
-    private static func retryAfterStoreReset(localConfig: ModelConfiguration, cloudConfig: ModelConfiguration) -> ModelContainer? {
+    /// 刪除本機 SwiftData store 後重建 ModelContainer（CloudKit store 從 iCloud 恢復）。
+    /// 回傳 cloudKitEnabled 供 CloudKitMirroringMonitor 判斷「mirroring 事件
+    /// 永遠不會來」的 local-only 降級路徑。
+    private static func retryAfterStoreReset(
+        localConfig: ModelConfiguration, cloudConfig: ModelConfiguration
+    ) -> (container: ModelContainer, cloudKitEnabled: Bool)? {
         for storeURL in [localConfig.url, cloudConfig.url] {
             let storePaths = [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")]
             for path in storePaths {
@@ -141,7 +153,7 @@ enum AppBootstrap {
             for: Schema(fullModelTypes),
             configurations: localConfig, cloudConfig
         ) {
-            return container
+            return (container, true)
         }
 
         // Second try: all local, no CloudKit (iOS 26 CloudKit schema validation may fail)
@@ -151,10 +163,13 @@ enum AppBootstrap {
             schema: Schema(fullModelTypes),
             cloudKitDatabase: .none
         )
-        return try? ModelContainer(
+        if let container = try? ModelContainer(
             for: Schema(fullModelTypes),
             configurations: localOnlyConfig
-        )
+        ) {
+            return (container, false)
+        }
+        return nil
     }
 
     private static func makeFallbackModelContainer() -> ModelContainer {
