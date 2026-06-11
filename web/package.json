@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:interaction": "node tools/interaction.mjs",
     "typecheck": "tsc -b",
     "interactive-check": "node tools/interactive-check.mjs"
   },

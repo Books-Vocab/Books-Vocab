@@ -1,6 +1,6 @@
 import type { ScenarioId } from '../../harness/scenarios'
-import { TODAY_REVIEW_FIXTURES } from './fixtures'
-import type { ExampleSegment, ReviewCard, ReviewLink, TodayReviewFixture } from './fixtures'
+import type { ExampleSegment, ReviewCard, ReviewLink, RevealStage } from './fixtures'
+import { useTodayReviewStore } from './store'
 import {
   ArrowUpRightIcon,
   ChevronLeftIcon,
@@ -23,6 +23,11 @@ import './today-review.css'
  *   topBar（progress pill + 洗牌 pill + spacer + autoplay + close）
  *   → card stage（deck shell + active card；back 時摺頁展開答案卡）
  *   → bottomToolbar（忘記 / 記得 或 nav）
+ *
+ * 互動化（fixtures 當資料層，store 薄 session 狀態）：點卡翻面（front↔back 摺頁
+ * reveal，對齊 iOS ReviewFoldSurface 摺/展，CSS transition 等效手感）；答對/答錯
+ * 推進佇列至下一張；走完佇列 → 完成態。parity 契約：初始狀態（index seed / reveal
+ * = scenario）下 DOM 與靜態 PNG 逐像素一致；互動僅在使用者操作後改變 DOM。
  */
 
 /** front prompt 右上 chrome（喇叭 / 詳情）。recognition 與 production 共用。 */
@@ -114,8 +119,16 @@ function CardAnswer({ card }: { card: ReviewCard }) {
   )
 }
 
-function CardStage({ fixture }: { fixture: TodayReviewFixture }) {
-  const isBack = fixture.reveal === 'back'
+function CardStage({
+  card,
+  reveal,
+  onFlip,
+}: {
+  card: ReviewCard
+  reveal: RevealStage
+  onFlip: () => void
+}) {
+  const isBack = reveal === 'back'
   return (
     <div className="tr-stage">
       {/* deck shell（depth-2 暗示）+ preview（depth-1）— front 時於 active 卡後露邊。 */}
@@ -126,10 +139,17 @@ function CardStage({ fixture }: { fixture: TodayReviewFixture }) {
         </>
       )}
 
-      {/* active card — front 單卡；back 摺頁（front 縮頂 + chevron + answer 卡）。 */}
-      <div className={`tr-card ${isBack ? 'tr-card-folded' : 'tr-card-single'}`}>
+      {/* active card — front 單卡；back 摺頁（front 縮頂 + chevron + answer 卡）。
+          整卡可點翻面（front→展開、back→收合），對齊 iOS 點卡 reveal 手感。 */}
+      <div
+        className={`tr-card ${isBack ? 'tr-card-folded' : 'tr-card-single'}`}
+        onClick={onFlip}
+        role="button"
+        tabIndex={0}
+        aria-label={isBack ? '收合答案' : '展開答案'}
+      >
         <div className="tr-fold-top">
-          <CardFront card={fixture.card} />
+          <CardFront card={card} />
           {!isBack && <FrontChrome />}
           {isBack && (
             <div className="tr-front-chrome tr-front-chrome-folded">
@@ -142,7 +162,7 @@ function CardStage({ fixture }: { fixture: TodayReviewFixture }) {
           <>
             <div className="tr-chevron-pill"><ChevronUpIcon size={13} /></div>
             <div className="tr-fold-bottom">
-              <CardAnswer card={fixture.card} />
+              <CardAnswer card={card} />
             </div>
           </>
         )}
@@ -153,7 +173,30 @@ function CardStage({ fixture }: { fixture: TodayReviewFixture }) {
   )
 }
 
-function BottomToolbar({ fixture }: { fixture: TodayReviewFixture }) {
+/** 完成態 — 走完佇列後的收尾卡（對齊 iOS TodayReview 完成 summary 精神）。 */
+function CompletionStage({ forgot, remembered }: { forgot: number; remembered: number }) {
+  return (
+    <div className="tr-stage">
+      <div className="tr-complete">
+        <span className="tr-complete-check"><CheckmarkIcon size={40} /></span>
+        <span className="tr-complete-title">今日複習完成</span>
+        <p className="tr-complete-stats">
+          記得 {remembered} · 忘記 {forgot}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function BottomToolbar({
+  forgotCount,
+  rememberedCount,
+  onGrade,
+}: {
+  forgotCount: number
+  rememberedCount: number
+  onGrade: (g: 'forgot' | 'remembered') => void
+}) {
   return (
     <div className="tr-toolbar">
       <div className="tr-nav">
@@ -161,15 +204,27 @@ function BottomToolbar({ fixture }: { fixture: TodayReviewFixture }) {
         <span className="tr-nav-btn"><ChevronRightIcon size={22} /></span>
       </div>
       <div className="tr-feedback">
-        <span className="tr-feedback-btn tr-feedback-forgot">
+        {/* span role=button（非 <button>）：避免 button 內建 line 度量造成的基線/光柵差，
+            保證初始 DOM 與靜態 PNG 逐像素一致（parity gate RMSE=0）。 */}
+        <span
+          className="tr-feedback-btn tr-feedback-forgot"
+          role="button"
+          tabIndex={0}
+          onClick={() => onGrade('forgot')}
+        >
           <XmarkBoldIcon size={17} />
           <span>忘記</span>
-          {fixture.forgotCount > 0 && <span className="tr-feedback-count">·{fixture.forgotCount}</span>}
+          {forgotCount > 0 && <span className="tr-feedback-count">·{forgotCount}</span>}
         </span>
-        <span className="tr-feedback-btn tr-feedback-remembered">
+        <span
+          className="tr-feedback-btn tr-feedback-remembered"
+          role="button"
+          tabIndex={0}
+          onClick={() => onGrade('remembered')}
+        >
           <CheckmarkIcon size={17} />
           <span>記得</span>
-          {fixture.rememberedCount > 0 && <span className="tr-feedback-count">·{fixture.rememberedCount}</span>}
+          {rememberedCount > 0 && <span className="tr-feedback-count">·{rememberedCount}</span>}
         </span>
       </div>
     </div>
@@ -177,11 +232,11 @@ function BottomToolbar({ fixture }: { fixture: TodayReviewFixture }) {
 }
 
 export function TodayReviewScreen({ scenario }: { scenario: ScenarioId<'today-review'> }) {
-  const fixture = TODAY_REVIEW_FIXTURES[scenario]
+  const store = useTodayReviewStore(scenario)
   return (
     <div className="today-review">
       <header className="tr-topbar">
-        <span className="tr-progress-pill">{fixture.progressText}</span>
+        <span className="tr-progress-pill">{store.progressText}</span>
         <span className="tr-shuffle-pill">
           <ShuffleIcon size={13} />
           <span>洗牌</span>
@@ -192,10 +247,18 @@ export function TodayReviewScreen({ scenario }: { scenario: ScenarioId<'today-re
       </header>
 
       <div className="tr-content">
-        <CardStage fixture={fixture} />
+        {store.done ? (
+          <CompletionStage forgot={store.forgotCount} remembered={store.rememberedCount} />
+        ) : (
+          <CardStage card={store.currentCard} reveal={store.reveal} onFlip={store.flip} />
+        )}
       </div>
 
-      <BottomToolbar fixture={fixture} />
+      <BottomToolbar
+        forgotCount={store.forgotCount}
+        rememberedCount={store.rememberedCount}
+        onGrade={store.grade}
+      />
     </div>
   )
 }
