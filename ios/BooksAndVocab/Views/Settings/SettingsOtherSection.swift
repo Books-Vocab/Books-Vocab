@@ -1,0 +1,183 @@
+//
+//  SettingsOtherSection.swift
+//  Books & Vocab
+//
+//  「其他」section（同步狀態 / 今日額度 / 外部連結 / 版本 footer）。
+//
+//  獨立 View struct 不是風格選擇，是真機 stack 預算約束：iOS main thread
+//  stack 只有 1MB，Debug -Onone 下 SwiftUI 巨型泛型 frame 不會被優化掉。
+//  本 section 原本是 SettingsPresenter 的 computed property，整棵樹 inline
+//  進 body 單次求值，光 otherSection 鏈就吃掉 ~150KB、並把 ScrollView/VStack
+//  的 content 泛型撐成 255KB/113KB frame，設定 sheet 一開就 stack overflow
+//  （EXC_BAD_ACCESS code=2 撞 guard page；取證 dump 2026-06-11）。拆成
+//  struct 後 body 只構造小型 struct 值，子樹由 SwiftUI 另一輪 attribute
+//  update 求值，單一 frame 不再揹整棵樹。Simulator main thread 是 8MB，
+//  永遠測不出這條——不要因為 sim 沒事就把 section 收回 computed property。
+//
+
+import SwiftUI
+
+struct SettingsOtherSection: View {
+    @Environment(\.appTheme) var appTheme
+    @Environment(\.appSkin) var appSkin
+    @Environment(\.quotaStore) var quotaStore
+
+    private struct ExternalActionItem: Identifiable {
+        let icon: String
+        let label: String
+        let action: () -> Void
+
+        var id: String { label }
+    }
+
+    let syncSummary: SettingsPresenterState.SyncSummaryState?
+    let isLoggedIn: Bool
+    let version: String
+    let actions: SettingsPresenterActions
+
+    @State private var syncRotation: Double = 0
+
+    private var externalActionItems: [ExternalActionItem] {
+        [
+            .init(icon: "hand.raised", label: "隱私政策", action: actions.openPrivacyPolicy),
+            .init(icon: "doc.text", label: "服務條款", action: actions.openTermsOfService),
+            .init(icon: "questionmark.circle", label: "支援", action: actions.openSupport),
+            .init(icon: "star", label: "為 App 評分", action: actions.requestAppRating)
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "其他".localized, icon: "ellipsis.circle")
+
+            VStack(spacing: 0) {
+                // 同步狀態 (only when logged in)
+                if let syncSummary {
+                    syncSummaryRow(syncSummary)
+                    SettingsDivider()
+                }
+
+                // 今日額度 (always when logged in)
+                if isLoggedIn {
+                    quotaRow
+                    SettingsDivider()
+                }
+
+                ForEach(Array(externalActionItems.enumerated()), id: \.element.id) { index, item in
+                    externalActionRow(item)
+
+                    if index < externalActionItems.count - 1 {
+                        SettingsDivider()
+                    }
+                }
+            }
+            .settingsCard()
+
+            // Version footer
+            Text("\("版本".localized) \(version)")
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.top, appSkin.spacing.tinyGap)
+        }
+    }
+
+    // MARK: - Sync Summary Row
+
+    private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
+        Button {
+            actions.resync()
+        } label: {
+            AppKeyValueRow(
+                icon: "arrow.triangle.2.circlepath",
+                label: "同步狀態".localized,
+                style: .settings(appSkin)
+            ) {
+                if summary.isSyncing {
+                    HStack(spacing: appSkin.spacing.inlineGap) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.accent)
+                            .rotationEffect(.degrees(syncRotation))
+                            .onAppear {
+                                withAnimation(AppMotion.breathing) {
+                                    syncRotation = 360
+                                }
+                            }
+                            .onDisappear { syncRotation = 0 }
+                        Text("同步中…".localized)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.secondaryText)
+                    }
+                } else {
+                    SettingsStatusSummaryValue(
+                        text: summary.summaryText,
+                        color: summary.isConnected ? appSkin.palette.success : appTheme.palette.warning
+                    )
+                }
+            }
+            .appHoverRowTint()
+            // .plain hit-testing falls through the Spacer gap inside
+            // AppKeyValueRow — same dead zone as SettingsNavigationRow.
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(summary.isSyncing)
+    }
+
+    private func externalActionRow(_ item: ExternalActionItem) -> some View {
+        SettingsNavigationRow(
+            icon: item.icon,
+            label: item.label.localized,
+            action: item.action
+        )
+    }
+
+    // MARK: - Quota Row
+
+    private var quotaRow: some View {
+        VStack(spacing: 0) {
+            AppKeyValueRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized, style: .settings(appSkin)) {
+                SettingsStatusValue(
+                    text: quotaStore.isExhausted
+                        ? quotaStore.resetText
+                        : "\(Int(quotaStore.fraction * 100))%",
+                    color: quotaTextColor
+                )
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: AppRadius.hairline, style: .continuous)
+                        .fill(quotaBarColor.opacity(0.15))
+
+                    RoundedRectangle(cornerRadius: AppRadius.hairline, style: .continuous)
+                        .fill(quotaBarColor)
+                        .frame(width: geo.size.width * quotaStore.fraction)
+                        .animateSpring(quotaStore.fraction)
+                }
+            }
+            .frame(height: 3)
+            .padding(.horizontal, appSkin.spacing.cardPadding)
+            .padding(.bottom, appSkin.spacing.tinyGap)
+        }
+    }
+
+    private var quotaBarColor: Color {
+        switch quotaStore.level {
+        case .normal:    return appSkin.palette.success
+        case .warning:   return appTheme.palette.warning
+        case .critical:  return appSkin.palette.destructive
+        case .exhausted: return appSkin.palette.destructive
+        }
+    }
+
+    private var quotaTextColor: Color {
+        switch quotaStore.level {
+        case .normal:    return appSkin.palette.secondaryText
+        case .warning:   return appTheme.palette.warning
+        case .critical:  return appSkin.palette.destructive
+        case .exhausted: return appSkin.palette.destructive
+        }
+    }
+}

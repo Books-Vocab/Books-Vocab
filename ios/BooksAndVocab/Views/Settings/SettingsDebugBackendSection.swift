@@ -1,11 +1,27 @@
+//
+//  SettingsDebugBackendSection.swift
+//  Books & Vocab
+//
+//  DEBUG 後端切換 section（遠端/本地站選擇 + 本地 URL + 觀測事件預覽）。
+//
+//  獨立 View struct 同 SettingsOtherSection 的 stack 預算約束：真機 Debug
+//  build 1MB main stack，section 樹必須以小型 struct 值進 SettingsPresenter
+//  body，不可收回 computed property / 回傳 some View 的方法 inline 展開。
+//  本 section 只進 DEBUG build——而 DEBUG-on-device 正是 stack overflow
+//  會發生的唯一組態，所以它和正式 section 一樣受此約束。
+//
+
+#if DEBUG
 import SwiftUI
 
-extension SettingsPresenter {
+struct SettingsDebugBackendSection: View {
+    @Environment(\.appSkin) var appSkin
 
-    // MARK: - DEBUG Backend Section
+    let kg: SettingsPresenterState.KGSection
+    let debugLocalServerURL: Binding<String>
+    let actions: SettingsPresenterActions
 
-    #if DEBUG
-    func debugBackendSection(kg: SettingsPresenterState.KGSection, debugLocalServerURL: Binding<String>) -> some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "DEBUG 後端".localized, icon: "hammer")
 
@@ -108,5 +124,5 @@ extension SettingsPresenter {
             }
         }
     }
-    #endif
 }
+#endif
