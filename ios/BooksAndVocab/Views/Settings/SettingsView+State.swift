@@ -104,6 +104,8 @@ extension SettingsView {
                     summaryText: syncSummaryText
                 )
                 : nil,
+            // 書庫綁 Apple ID 不綁 app 帳號 — 不掛 isLoggedIn gate。
+            bookSync: .from(phase: CloudKitMirroringMonitor.shared.phase),
             about: .init(
                 version: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "-",
                 developerName: "陳亮宇" // i18n-allow: 人名

@@ -73,6 +73,22 @@ struct SettingsPresenterState {
         let summaryText: String
     }
 
+    /// CloudKit 書庫同步狀態列（CloudKitMirroringMonitor.phase 的 UI 投影）。
+    /// 書庫綁 Apple ID 不綁 app 帳號 — 顯示與登入無關；nil = 整列隱藏
+    /// （localOnly：container 沒接 CloudKit，顯示同步狀態是誤導）。
+    struct BookSyncState: Equatable {
+        enum Tone {
+            case progress
+            case success
+            case warning
+        }
+
+        let text: String
+        /// failed 時的錯誤描述（observability 要求可見，與 monitor 契約一致）。
+        let detail: String?
+        let tone: Tone
+    }
+
     struct AboutSection {
         let version: String
         let developerName: String
@@ -87,8 +103,33 @@ struct SettingsPresenterState {
     let kg: KGSection?
     let subscription: SubscriptionSection?
     let syncSummary: SyncSummaryState?
+    // 預設值讓既有建構處(fixtures / scenarios)免改。
+    var bookSync: BookSyncState? = nil
     let about: AboutSection
     let danger: DangerSection?
+}
+
+extension SettingsPresenterState.BookSyncState {
+    static func from(phase: CloudKitMirroringMonitor.Phase) -> SettingsPresenterState.BookSyncState? {
+        switch phase {
+        case .localOnly:
+            return nil
+        case .waitingFirstEvent:
+            return .init(text: L10n.string("確認中…"), detail: nil, tone: .progress)
+        case .restoring:
+            return .init(text: L10n.string("還原中…"), detail: nil, tone: .progress)
+        case .failed(let message):
+            // 空字串 normalize 成 nil，避免渲染空 caption 行
+            //（monitor 端有 fallback 文案，此為防禦線）。
+            return .init(
+                text: L10n.string("同步異常"),
+                detail: message.isEmpty ? nil : message,
+                tone: .warning
+            )
+        case .settled:
+            return .init(text: L10n.string("已同步"), detail: nil, tone: .success)
+        }
+    }
 }
 
 extension SettingsPresenterState.PreferencesSection {
