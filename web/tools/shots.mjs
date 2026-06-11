@@ -127,7 +127,13 @@ async function main() {
             await page.goto(url, { waitUntil: 'load' });
             // woff2 faces must be live before capture, or text falls back mid-shot.
             await page.evaluate(() => document.fonts.ready);
-            await page.locator('[data-harness="phone-frame"]').screenshot({
+            // 元件級 case（manifest 帶 `crop` 選擇器）：截元件 DOM 自身的
+            // intrinsic bounds，對齊 iOS catalog 對該元件的緊裁切 scene；
+            // 其餘 case 截全幅 phone-frame（1179×2556）。
+            const target = p.crop
+              ? page.locator(p.crop)
+              : page.locator('[data-harness="phone-frame"]');
+            await target.screenshot({
               path: join(SHOTS, `${p.case}.png`),
             });
             lastErr = null;

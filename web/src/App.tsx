@@ -23,5 +23,9 @@ export function App() {
   // ?shell=1 opt-in：把 surface 裝進 app 殼層（底部 tab bar）。預設不啟用，
   // 既有 ?surface=&scenario=&appearance= 行為與 parity capture 完全不變。
   const shell = new URLSearchParams(search).get('shell') === '1'
-  return <PhoneFrame config={config} shell={shell} />
+  // ?crop=component opt-in：元件級 parity case 把 surface 切到「純元件」呈現
+  // （收掉 in-app safe-area / 全幅留白），令元件 intrinsic bounds 對齊 iOS
+  // catalog 的緊裁切 scene。預設不啟用，既有 capture 行為完全不變。
+  const crop = new URLSearchParams(search).get('crop') === 'component'
+  return <PhoneFrame config={config} shell={shell} crop={crop} />
 }

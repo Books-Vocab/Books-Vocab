@@ -44,7 +44,15 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
   }
 }
 
-export function PhoneFrame({ config, shell = false }: { config: HarnessConfig; shell?: boolean }) {
+export function PhoneFrame({
+  config,
+  shell = false,
+  crop = false,
+}: {
+  config: HarnessConfig
+  shell?: boolean
+  crop?: boolean
+}) {
   // 互動層：data-theme 由本地 state 驅動，**初值 = config.appearance**，故 parity
   // capture 的首次渲染與靜態版逐位元相同；只有 Settings 外觀 picker 觸發後才變。
   const [appearance, setAppearance] = useState<Appearance>(config.appearance)
@@ -52,6 +60,12 @@ export function PhoneFrame({ config, shell = false }: { config: HarnessConfig; s
   // shell=false（預設、parity capture rig 唯一路徑）：原樣渲染單一 surface，
   // data-* 屬性與 DOM 結構完全不變。shell=true（?shell=1 opt-in）：surface
   // 裝進底部 tab bar 殼，僅多掛 data-shell 標記供殼層樣式作用。
+  //
+  // crop=true（?crop=component opt-in）：元件級 parity case。掛 data-crop="component"
+  // 讓 surface CSS 卸掉 in-app safe-area / 全幅留白，把元件還原至 iOS catalog
+  // 緊裁切 scene 的 intrinsic bounds（如 SelectionToolbar 收掉 44.7pt home-indicator
+  // 安全區 → 元件高 = 64pt = 192px@dpr3）。shots.mjs 再以 manifest 的 `crop` 選擇器
+  // 截元件 DOM 自身。預設不啟用，既有 capture 行為與 DOM 完全不變。
   return (
     <AppearanceContext.Provider value={{ appearance, setAppearance }}>
       <div
@@ -61,6 +75,7 @@ export function PhoneFrame({ config, shell = false }: { config: HarnessConfig; s
         data-scenario={config.scenario}
         data-harness="phone-frame"
         data-shell={shell ? '1' : undefined}
+        data-crop={crop ? 'component' : undefined}
       >
         {shell ? <AppShell config={config} /> : <SurfaceView config={config} />}
       </div>
