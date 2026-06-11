@@ -763,7 +763,7 @@ cmd_catalog_snapshots_json() {
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   catalog_prepare_output_root "$out_root"
   resolved_device="$(catalog_resolve_destination_device_udid "$destination")"
-  if [[ -n "$resolved_device" && -z "$groups_csv" && -z "$scenarios_csv" ]]; then
+  if [[ -n "$resolved_device" ]]; then
     catalog_write_scope_file "$resolved_device" "$groups_csv" "$scenarios_csv"
   fi
 
