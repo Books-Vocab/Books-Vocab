@@ -40,15 +40,25 @@ struct AuthSessionStoreIsolationTests {
         }
     }
 
-    private func makeDefaults() -> UserDefaults {
+    /// 用後必 `purge()`（defer）—— 否則每跑一次在 host app 容器留一個
+    /// isolation-tests-<UUID>.plist 殘檔。
+    private struct ScratchDefaults {
+        let defaults: UserDefaults
+        let suite: String
+        func purge() { defaults.removePersistentDomain(forName: suite) }
+    }
+
+    private func makeDefaults() -> ScratchDefaults {
         let suite = "isolation-tests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
-        return defaults
+        return ScratchDefaults(defaults: defaults, suite: suite)
     }
 
     @Test func isolatedStorePersistsNothingToRealStores() {
-        let defaults = makeDefaults()
+        let scratch = makeDefaults()
+        defer { scratch.purge() }
+        let defaults = scratch.defaults
         let keychain = SpyKeychain()
         let store = AuthSessionStore.makeSessionStore(
             arguments: Self.isolatedArgs, defaults: defaults, keychain: keychain
@@ -69,8 +79,10 @@ struct AuthSessionStoreIsolationTests {
     }
 
     @Test func isolatedStoreRoundTripsInMemory() {
+        let scratch = makeDefaults()
+        defer { scratch.purge() }
         let store = AuthSessionStore.makeSessionStore(
-            arguments: Self.isolatedArgs, defaults: makeDefaults(), keychain: SpyKeychain()
+            arguments: Self.isolatedArgs, defaults: scratch.defaults, keychain: SpyKeychain()
         )
 
         store.persistProfile(
@@ -90,7 +102,9 @@ struct AuthSessionStoreIsolationTests {
     }
 
     @Test func isolatedStorePurgesRealStoreResidueOnCreation() {
-        let defaults = makeDefaults()
+        let scratch = makeDefaults()
+        defer { scratch.purge() }
+        let defaults = scratch.defaults
         let keychain = SpyKeychain()
         // 預埋先前 run 的殘留。
         defaults.set("stale-user", forKey: "KGUserId")
@@ -107,7 +121,9 @@ struct AuthSessionStoreIsolationTests {
     }
 
     @Test func normalStorePersistsToRealStores() {
-        let defaults = makeDefaults()
+        let scratch = makeDefaults()
+        defer { scratch.purge() }
+        let defaults = scratch.defaults
         let keychain = SpyKeychain()
         let store = AuthSessionStore.makeSessionStore(
             arguments: Self.normalArgs, defaults: defaults, keychain: keychain
@@ -124,7 +140,7 @@ struct AuthSessionStoreIsolationTests {
     /// Seed guard：unit-test host app（無 -ui-testing / -isolatedAuthSession 引數）
     /// 下 seedAuth("signedIn") 必須拒絕 —— 否則假 session 經真 AuthManager.login
     /// 落盤，殘留打生產。
-    @Test func signedInSeedRefusesOutsideIsolatedSession() throws {
+    @Test func signedInSeedRefusesOutsideIsolatedSession() async throws {
         // 行為斷言對「seed 前後不變」：shared 的絕對值取決於 sim 容器歷史殘留，
         // 不可斷言。unit-test process 無 -ui-testing 引數 → guard 必須拒絕 seed。
         let userIdBefore = AuthManager.shared.userId
@@ -139,5 +155,12 @@ struct AuthSessionStoreIsolationTests {
                 "unit-test 環境（非 isolated session）seedAuth(signedIn) 不得改動真 AuthManager")
         #expect(AuthManager.shared.token == tokenBefore)
         #expect(AuthManager.shared.isLoggedIn == loggedInBefore)
+
+        // 復原：guard 一旦回歸，上面的 seed 會把假 session 經真 store 落盤
+        // （重演 401 殘留）。紅燈時不只報錯，還原狀態避免污染 sim 與後續測試。
+        if AuthManager.shared.userId != userIdBefore {
+            AuthManager.shared.logout(reason: "isolation_test_recovery")
+            await AuthManager.shared.waitForPendingLocalDataCleanup()
+        }
     }
 }

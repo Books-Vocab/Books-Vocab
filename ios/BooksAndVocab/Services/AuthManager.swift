@@ -183,6 +183,11 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     /// Sync 開跑前的前置 gate — 等 logout 排程的本地清理收尾。
     /// 無 pending cleanup 時立即返回（正常冷啟登入不被拖慢）；
     /// 懸掛期間若又發生 logout，re-check 直到鏈上最後一個 cleanup 完成。
+    ///
+    /// Accepted residual：返回後 caller（非 MainActor 的 backgroundSync）resume
+    /// 有一次 executor hop —— logout 落在 gate 通過後、sync 動工前仍會 sync 與
+    /// 新 cleanup 並行。徹底閉合需 sync 內部 generation re-check/abort（另案）；
+    /// 現靠空庫安全網 + 帳號切換清 boundary 緩解。
     func waitForPendingLocalDataCleanup() async {
         while true {
             let generation = localDataCleanupGeneration

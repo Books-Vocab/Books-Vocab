@@ -194,19 +194,20 @@ extension KGService {
         }
         defer { releaseBackgroundSync() }
 
+        // 每輪開始即重置 error-tracking 欄位：四個 trigger（post-login / scenePhase
+        // / ⌘R menu / Settings 手動）共用此全域欄位，但只有 App 層 scenePhase 兩處
+        // read-then-clear。claim 鎖已序列化整段（同時間僅一輪執行），於 claim 成功後、
+        // cleanup gate 懸掛前清空 —— gate 可懸掛數秒，期間被 skip 的 trigger 會立即
+        // read-then-clear，必須讀不到上一輪 stale 值（典型：logout-401 留下的「登入
+        // 已過期」在重登成功後反彈成過期 toast）。失敗時下方會再 set 為本輪正確值。
+        lastBackgroundSyncError = nil
+
         // 先等 logout 排程的本地清理收尾，再動任何 sync 工作。否則快速
         // 「登出→重登」會讓 sync 搶用尚未被清的 sync boundary（incremental
         // 跳過後端全部卡 → 本地空庫但自認最新），且拉回的資料會被 resume 的
         // cleanup 再清一遍 —— 2026-06-09 000287 單字本事故根因。放在入口
         // 單點守住全部四個觸發點（post-login / scenePhase / ⌘R / Settings）。
         await sessionInvalidator.waitForPendingLocalDataCleanup()
-
-        // 每輪開始即重置 error-tracking 欄位：四個 trigger（post-login / scenePhase
-        // / ⌘R menu / Settings 手動）共用此全域欄位，但只有 App 層 scenePhase 兩處
-        // read-then-clear。claim 鎖已序列化整段（同時間僅一輪執行），於 claim 成功後、
-        // offline guard 前清空，可消除跨-trigger 殘留 → 避免 consumer 讀到上一輪 stale
-        // 值造成的 analytics 誤判與舊 toast 重彈。失敗時下方會再 set 為本輪正確值。
-        lastBackgroundSyncError = nil
 
         // 離線時跳過整個背景同步，不產生無意義的錯誤日誌
         guard NetworkMonitor.shared.isConnected else {

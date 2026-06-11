@@ -33,6 +33,12 @@ extension UITestFixtureSeed {
         // UI test）拒絕 seed —— 否則假 session 經真 AuthManager.login 落盤，
         // 殘留給後續正常模式啟動的 host app 拿去打生產（2026-06-11 401 事故）。
         guard AppRuntimeOptions.shouldUseIsolatedAuthSession() else {
+            // UI test 帶 -ui-testing 卻漏 -isolatedAuthSession = launch helper 用錯，
+            // 大聲失敗（否則 test 以訪客態繼續跑，下游 assert 難診斷）；
+            // unit-test host app（無 -ui-testing）則靜默拒絕即可。
+            if AppRuntimeOptions.isUITesting() {
+                assertionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
+            }
             AppLog.app.error("UITestFixtureSeed: refused auth.signedIn without -isolatedAuthSession — fake session would persist into the real store")
             return
         }
