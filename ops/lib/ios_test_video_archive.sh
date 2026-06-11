@@ -6,8 +6,8 @@
 # lib moves the finalized mp4 into build/snapshots/uitest-videos/ with a
 # timestamped name, maintains index.json (kg.ios.uitest-videos.v1, newest
 # first), and prunes to KG_UITEST_VIDEO_KEEP (default 10) so the archive
-# can't grow unbounded. The catalog review page reads index.json to embed
-# the recordings.
+# can't grow unbounded. catalog_review_sync.py reads index.json and mirrors
+# the recordings into each review root for the UIreview.html gallery.
 
 # uitest_video_archive <video_path> <dest_root> <scope> <caller> [timestamp]
 # Echoes the archived path. Missing/empty recording is a silent no-op (the
@@ -15,9 +15,12 @@
 uitest_video_archive() {
   local video="$1" dest_root="$2" scope="$3" caller="$4" stamp="${5:-}"
   local keep="${KG_UITEST_VIDEO_KEEP:-10}"
+  # Guard the knob: 0 would prune the file we just archived while still
+  # echoing its path, and a non-numeric value would poison the jq slice.
+  [[ "$keep" =~ ^[0-9]+$ && "$keep" -ge 1 ]] || keep=10
   [[ -s "$video" ]] || return 0
   [[ -n "$stamp" ]] || stamp="$(date -u +%Y%m%d-%H%M%S)"
-  mkdir -p "$dest_root"
+  mkdir -p "$dest_root" || return 1
 
   local base="$stamp-$scope" name suffix=1
   name="$base.mp4"
@@ -25,7 +28,10 @@ uitest_video_archive() {
     suffix=$((suffix + 1))
     name="$base-$suffix.mp4"
   done
-  mv "$video" "$dest_root/$name"
+  # The function body runs inside an if-condition command substitution, so
+  # set -e is suppressed: a failed mv must return explicitly or the caller
+  # would log "archived <path>" for a file that does not exist.
+  mv "$video" "$dest_root/$name" || return 1
 
   local size recorded_at index="$dest_root/index.json" tmp_index
   size="$(wc -c <"$dest_root/$name" | tr -d ' ')"
