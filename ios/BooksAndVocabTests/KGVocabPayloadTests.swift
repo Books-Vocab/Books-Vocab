@@ -111,7 +111,7 @@ struct KGVocabPayloadTests {
 
         let payload = KGService.vocabPayload(for: [entry], langPayloadEnabled: true)
         #expect(payload[0].source_lang == "ja")
-        #expect(payload[0].target_lang == TranslationLanguage.zhHant.rawValue)
+        #expect(payload[0].target_lang == "zh-Hant")
     }
 
     // MARK: - source（書籍出處）組裝
