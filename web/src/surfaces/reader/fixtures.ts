@@ -22,8 +22,47 @@ export const WARM_NEUTRAL = '#9e9082'
 
 /** header 形態 — 對齊 iOS ReaderChromeState.header。 */
 export type ReaderHeader = 'compact' | 'expanded'
-/** bottom overlay 形態 — translation 是 R2 scope，本刀只佔位（chrome 不變）。 */
+/** bottom overlay 形態 — translation 疊 TranslationPanel（R2）。 */
 export type ReaderOverlay = 'none' | 'translation'
+
+/** ReaderSkin translation brown（iOS SoT）：
+ *  translationLight = rgb(0.54, 0.50, 0.44) = #8a8070（serif 譯文色）。 */
+export const TRANSLATION_BROWN = '#8a8070'
+
+/**
+ * TranslationPanel 內容態 — 鏡像 TranslationPanelPresenterState.contentMode ×
+ * explanationContentMode（TranslationPanelPresenter+State.swift）。
+ * iPhone = .bottomSheet：drag handle、contentTopInset=0、bottom-flush。
+ *   - translation：hero 譯文（+ 可選 explanation 段）+ footer chevron
+ *   - explanationOnly：純 explanation 段（無 hero 譯文、無 chevron）
+ *   - loading / translationError / explanationError：state message card
+ */
+export interface TranslationPanelData {
+  word: string
+  /** 詞性 chip（adj. 等）；null 隱藏。 */
+  partOfSpeech: string | null
+  /** 譯文（serif brown）；loading/error/explainOnly 時為 null。 */
+  translation: string | null
+  /** 展開語境解釋（divider + 「語境解釋」label + body / loading / error）。 */
+  isExpanded: boolean
+  explanation: string | null
+  /** 句子模式：純解釋、無譯文 hero、footer 出高度切換鈕（chevron up/down）。 */
+  isExplanationOnly: boolean
+  /** 大卡（撐高 0.84 viewport）— 句子展開態。 */
+  isPanelLarge: boolean
+  /** 翻譯失敗：取代譯文的 state message card（「翻譯暫時失敗」+ desc）。 */
+  translationError: string | null
+  /** 語境解釋失敗：explanation 段內的 error message card。 */
+  explanationError: string | null
+  /** 整體 loading（翻譯中）：取代 body 的 loading state card。 */
+  isLoading: boolean
+  /** 狀態文字（loading 卡標題覆寫）；null 用預設「翻譯中...」。 */
+  statusMessage: string | null
+  /** footer「已加入」green check（isSaved && isLoggedIn）。 */
+  isSaved: boolean
+  /** footer timer（0.0s 等）；null 隱藏。 */
+  timerText: string | null
+}
 
 export interface ReaderFixture {
   /** state.paperColor — 本體 gradient 起始色（top/mid），floor 固定 warmNeutral。 */
@@ -41,10 +80,16 @@ export interface ReaderFixture {
   bookTitle: string
   /** 顯示「無法開啟書籍」error 卡（取代本體 placeholder blocks）。 */
   showsErrorCard: boolean
+  /** overlay==='translation' 時疊在 reader 本體上的 panel 內容（含 scrim）；
+   *  其餘態為 null（無 panel）。 */
+  panel: TranslationPanelData | null
 }
 
+/** chrome 6 態 id（reader surface 扣掉 translation-* 後的子集）。 */
+export type ReaderChromeScenarioId = Exclude<ScenarioId<'reader'>, TranslationScenarioId>
+
 /** ReaderChromeScenarios.swift 6 態，逐欄對齊 catalog seed。 */
-export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
+export const READER_FIXTURES: Record<ReaderChromeScenarioId, ReaderFixture> = {
   // Loading · Render — paperSepiaDeep；isWebViewReady=false（置中 loading 卡）+
   // underlineProgress=0.42（頂部進度卡）；compact header（18.0% 膠囊）。
   'loading-render': {
@@ -57,6 +102,7 @@ export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
     totalProgression: 0.18,
     bookTitle: 'The Left Hand of Darkness',
     showsErrorCard: false,
+    panel: null,
   },
   // Loading · Mark Vocab — paperSepia；loading 卡「標記生字…」+ underline 0.68。
   'loading-vocab': {
@@ -69,6 +115,7 @@ export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
     totalProgression: 0.18,
     bookTitle: 'The Left Hand of Darkness',
     showsErrorCard: false,
+    panel: null,
   },
   // Reading · Compact Header — paperSepia；ready，compact 膠囊 37.0% + ellipsis。
   'reading-compact': {
@@ -81,6 +128,7 @@ export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
     totalProgression: 0.37,
     bookTitle: 'The Left Hand of Darkness',
     showsErrorCard: false,
+    panel: null,
   },
   // Reading · Expanded Header — paperSepia；flat toolbar（書庫 + 書名 + 4 鈕）。
   'reading-expanded': {
@@ -93,9 +141,11 @@ export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
     totalProgression: 0.81,
     bookTitle: 'The Left Hand of Darkness',
     showsErrorCard: false,
+    panel: null,
   },
   // Reading · Translation Overlay — paperSepiaDeep；compact + translation overlay。
-  // panel 本體屬 R2，本刀只還原其後 chrome（compact 膠囊 37.0%）。
+  // R2：panel（resilient，expanded）疊在 dimmed paper 上。對拍 ref =
+  // Reader View · Chrome / Reading · Translation Overlay（word resilient）。
   'reading-translation': {
     paperColor: PAPER_SEPIA_DEEP,
     isWebViewReady: true,
@@ -106,6 +156,21 @@ export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
     totalProgression: 0.37,
     bookTitle: 'The Left Hand of Darkness',
     showsErrorCard: false,
+    panel: {
+      word: 'resilient',
+      partOfSpeech: 'adj.',
+      translation: '有韌性的；能快速恢復的',
+      isExpanded: true,
+      explanation: '在這段語境中指角色面對壓力後仍迅速回到穩定狀態。',
+      isExplanationOnly: false,
+      isPanelLarge: false,
+      translationError: null,
+      explanationError: null,
+      isLoading: false,
+      statusMessage: null,
+      isSaved: true,
+      timerText: '0.0s',
+    },
   },
   // Error · Open Failed — paperSepiaDeep；totalProgression=0（膠囊隱藏，僅 ellipsis）+
   // 置中「無法開啟書籍」卡。
@@ -119,5 +184,92 @@ export const READER_FIXTURES: Record<ScenarioId<'reader'>, ReaderFixture> = {
     totalProgression: 0,
     bookTitle: 'The Left Hand of Darkness',
     showsErrorCard: true,
+    panel: null,
   },
+}
+
+/**
+ * 獨立 Translation panel 6 態（layout .fill = scrim + bottom-sheet panel，無
+ * reader 本體）。逐欄對齊 ReaderScenarios.swift「Reader · Translation」+
+ * TranslationPanelPreviewScene（word gorgeous / adj. / 譯文「華麗的；令人驚豔的」）。
+ */
+export type TranslationScenarioId =
+  | 'translation-expanded'
+  | 'translation-collapsed'
+  | 'translation-loading'
+  | 'translation-error'
+  | 'translation-explain-only'
+  | 'translation-explanation-error'
+
+const GORGEOUS_TRANSLATION = '華麗的；令人驚豔的'
+const GORGEOUS_EXPLANATION =
+  '常用來描述外觀、氣氛或令人印象深刻的事物，語氣通常偏正面且帶有審美色彩。'
+
+/** 6 態共用的基線（gorgeous / adj. / isSaved / 0.0s timer），各態覆寫差異欄。 */
+function baseGorgeous(): TranslationPanelData {
+  return {
+    word: 'gorgeous',
+    partOfSpeech: 'adj.',
+    translation: GORGEOUS_TRANSLATION,
+    isExpanded: false,
+    explanation: null,
+    isExplanationOnly: false,
+    isPanelLarge: false,
+    translationError: null,
+    explanationError: null,
+    isLoading: false,
+    statusMessage: null,
+    isSaved: true,
+    timerText: '0.0s',
+  }
+}
+
+export const TRANSLATION_FIXTURES: Record<TranslationScenarioId, TranslationPanelData> = {
+  // Expanded — 譯文 + 展開語境解釋（divider + 「語境解釋」+ body）。harness 預設
+  // explanation 文案。footer chevron.up（已展開）。
+  'translation-expanded': {
+    ...baseGorgeous(),
+    isExpanded: true,
+    explanation: GORGEOUS_EXPLANATION,
+  },
+  // Collapsed — 譯文 only，無解釋段；footer chevron.down（可展開）。
+  'translation-collapsed': {
+    ...baseGorgeous(),
+    isExpanded: false,
+  },
+  // Loading — 翻譯中：取代 body 的 loading state card（translate 圖示 +
+  // 「Added to Vocabulary」status + spinner + timer）。無譯文 hero。
+  'translation-loading': {
+    ...baseGorgeous(),
+    translation: null,
+    isLoading: true,
+    statusMessage: 'Added to Vocabulary',
+  },
+  // Error — 翻譯失敗：state message card「翻譯暫時失敗」+ desc。footer 無 chevron。
+  'translation-error': {
+    ...baseGorgeous(),
+    translation: null,
+    translationError: '翻譯服務逾時，請稍後再試。',
+  },
+  // Explain Only — 句子模式：純解釋段（無譯文 hero）+ footer 高度切換 chevron。
+  // ref scenario isPanelLarge 預設 false（小卡，非撐高）。
+  'translation-explain-only': {
+    ...baseGorgeous(),
+    isExpanded: true,
+    isExplanationOnly: true,
+    isPanelLarge: false,
+    explanation: GORGEOUS_EXPLANATION,
+  },
+  // Explanation Error — 展開態，譯文在但解釋段顯示 error card。
+  'translation-explanation-error': {
+    ...baseGorgeous(),
+    isExpanded: true,
+    explanation: null,
+    explanationError: '語境分析暫時不可用。',
+  },
+}
+
+/** scenario id → 獨立 panel fixture；非 translation-* id 回 null（走 chrome 路徑）。 */
+export function translationFixtureFor(scenario: string): TranslationPanelData | null {
+  return (TRANSLATION_FIXTURES as Record<string, TranslationPanelData>)[scenario] ?? null
 }
