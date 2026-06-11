@@ -133,7 +133,10 @@ def cmd_user_config(args: argparse.Namespace) -> None:
         emit_json({"user_id": uid, "config": flat})
         return
 
-    tr, rc, rm, vu = flat["translation"], flat["review_clock"], flat["review_mode"], flat["vocab_ui"]
+    tr, rc, rm, vu, al = (
+        flat["translation"], flat["review_clock"], flat["review_mode"],
+        flat["vocab_ui"], flat["auto_link"],
+    )
     print(f"User: {uid}")
     print_table(
         ["Group", "Field", "Value"],
@@ -152,6 +155,8 @@ def cmd_user_config(args: argparse.Namespace) -> None:
             ["review_mode", "updated_at", str(rm["updated_at"])],
             ["vocab_ui", "active_notebook_id", str(vu["active_notebook_id"])],
             ["vocab_ui", "updated_at", str(vu["updated_at"])],
+            ["auto_link", "enabled", str(al["enabled"])],
+            ["auto_link", "updated_at", str(al["updated_at"])],
         ],
     )
 

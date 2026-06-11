@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 from kg.api_models import (
+    AutoLinkConfig,
     ReviewClockConfig,
     ReviewModeConfig,
     TranslationLanguageConfig,
@@ -379,6 +380,89 @@ class TestUpdateUserConfigVocabUIRoundTrip:
         assert resp.vocab_ui.active_notebook_id == "nb-99"
         assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
         assert store["u1"]["config"]["vocab_ui"]["active_notebook_id"] == "nb-99"
+
+
+class TestMergeUserConfigAutoLink:
+    """auto_link 後端化:judge pipeline 自動連結開關(enabled + updated_at 驅動跨裝置
+    LWW)。預設 enabled=True 向後相容:既有帳號無此 group 視同開啟。"""
+
+    def test_merge_disabled(self):
+        config = {}
+        req = UserConfigRequest(
+            auto_link=AutoLinkConfig(enabled=False, updated_at=1717668000.0)
+        )
+        _merge_user_config(config, req)
+        assert config["auto_link"] == {
+            "enabled": False,
+            "updated_at": 1717668000.0,
+        }
+
+    def test_none_preserves_existing(self):
+        existing = {"enabled": False, "updated_at": 1.0}
+        config = {"auto_link": dict(existing)}
+        _merge_user_config(config, UserConfigRequest(auto_link=None))
+        assert config["auto_link"] == existing
+
+    def test_independent_of_other_config(self):
+        config = {}
+        req = UserConfigRequest(
+            vocab_ui=VocabUIConfig(active_notebook_id="nb-9", updated_at=4.0),
+            auto_link=AutoLinkConfig(enabled=False, updated_at=5.0),
+        )
+        _merge_user_config(config, req)
+        assert config["vocab_ui"]["active_notebook_id"] == "nb-9"
+        assert config["auto_link"]["enabled"] is False
+
+
+class TestBuildUserConfigAutoLink:
+
+    def test_build_includes_auto_link(self):
+        config = {"auto_link": {"enabled": False, "updated_at": 3.0}}
+        resp = _build_user_config_response(config)
+        assert resp.auto_link is not None
+        assert resp.auto_link.enabled is False
+        assert resp.auto_link.updated_at == 3.0
+
+    def test_build_defaults_enabled_when_absent(self):
+        # 向後相容:既有帳號 config 無 auto_link → 預設開啟。
+        resp = _build_user_config_response({})
+        assert resp.auto_link is not None
+        assert resp.auto_link.enabled is True
+        assert resp.auto_link.updated_at is None
+
+    def test_non_dict_auto_link_returns_default(self):
+        for bad_value in [42, "broken", True, [], None]:
+            resp = _build_user_config_response({"auto_link": bad_value})
+            assert resp.auto_link is not None, f"Failed for auto_link={bad_value!r}"
+            assert resp.auto_link.enabled is True
+
+
+class TestUpdateUserConfigAutoLinkRoundTrip:
+
+    def test_persists_auto_link_alongside_translation(self, tmp_path):
+        import copy
+
+        store = {"u1": {"config": {"translation": {"source_lang": "en", "target_lang": "ja"}}}}
+
+        def load_users():
+            return copy.deepcopy(store)
+
+        def save_users(updated):
+            store.clear()
+            store.update(copy.deepcopy(updated))
+
+        req = UserConfigRequest(
+            auto_link=AutoLinkConfig(enabled=False, updated_at=5.0)
+        )
+        resp = update_user_config_response(
+            req, {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+        assert resp.auto_link.enabled is False
+        assert resp.translation.target_lang == "ja"  # 既有 translation 不被破壞
+        assert store["u1"]["config"]["auto_link"]["enabled"] is False
 
 
 # ===========================================================================

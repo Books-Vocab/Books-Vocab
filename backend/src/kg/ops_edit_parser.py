@@ -110,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--custom-minimum-interval-hours", type=float)
     p.add_argument("--custom-maximum-interval-hours", type=float)
     p.add_argument("--active-notebook", help="notebook id 或 name")
+    p.add_argument("--auto-link", choices=["on", "off"], help="judge pipeline 自動連結開關")
     p.set_defaults(func=cmd_user_config_set)
 
     p = sub.add_parser("link-add", parents=[jp, cp], help="連結兩張卡(知識圖譜)")

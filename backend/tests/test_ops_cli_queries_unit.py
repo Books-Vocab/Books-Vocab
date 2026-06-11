@@ -6,6 +6,7 @@ exercise, closing the coverage gap for the query-oriented CLI commands.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -130,6 +131,26 @@ class TestUserConfig:
         with pytest.raises(SystemExit) as ei:
             q.cmd_user_config(_make_args(uid="ghost", json=False))
         assert ei.value.code == 1
+
+    def test_auto_link_defaults_enabled(self, tmp_path, monkeypatch, capsys):
+        # 向後相容:config 無 auto_link group → 投影預設 enabled=True。
+        _seed_user(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        q.cmd_user_config(_make_args(uid="u1"))
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["config"]["auto_link"] == {"enabled": True, "updated_at": None}
+
+    def test_auto_link_disabled_surfaced(self, tmp_path, monkeypatch, capsys):
+        _seed_user(tmp_path)
+        users_file = tmp_path / "users.json"
+        users_file.write_text(
+            '{"u1": {"config": {"auto_link": {"enabled": false, "updated_at": 5.0}},'
+            ' "email": "u1@test.com"}}'
+        )
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        q.cmd_user_config(_make_args(uid="u1"))
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["config"]["auto_link"] == {"enabled": False, "updated_at": 5.0}
 
 
 # ── cmd_world_state ──────────────────────────────────────────────────────

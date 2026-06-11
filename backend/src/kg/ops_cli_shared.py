@@ -73,6 +73,9 @@ def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
     vocab_ui = config.get("vocab_ui")
     if not isinstance(vocab_ui, dict):
         vocab_ui = {}
+    auto_link = config.get("auto_link")
+    if not isinstance(auto_link, dict):
+        auto_link = {}
     return {
         "translation": {
             "source_lang": translation.get("source_lang", "en"),
@@ -95,5 +98,9 @@ def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
         "vocab_ui": {
             "active_notebook_id": vocab_ui.get("active_notebook_id", "default"),
             "updated_at": vocab_ui.get("updated_at"),
+        },
+        "auto_link": {
+            "enabled": bool(auto_link.get("enabled", True)),
+            "updated_at": auto_link.get("updated_at"),
         },
     }
