@@ -12,10 +12,10 @@
 }
 
 /* --- Large-title nav（UINavigationBar large title 幾何）---
-   status bar 59 + inline bar 44 = 103；measured：Catalog PNG 實測 glyph top
-   ≈ 119pt，故再加 large-title 列內距 13。 */
+   status bar 59 + inline bar 44 = 103；measured：對拍 row-profile 實測 iOS
+   glyph top = 123.3pt，103 + 列內距 15 釘齊。 */
 .bookshelf-nav {
-  padding: 116px 20px 0;
+  padding: 118px 20px 0;
 }
 
 .bookshelf-nav-title {
@@ -27,6 +27,12 @@
   line-height: 41px; /* UIKit largeTitle line height */
   color: var(--text-primary);
   padding-bottom: 6px;
+  /* Chromium 對 Songti/STSongti TC 拿不到 Bold face（weight:700、PostScript 名
+     'STSongti-TC-Bold'、display 名 'Songti TC Bold' 三者皆渲染 Regular，已實測
+     指紋定讞），也不做 synthetic bold；iOS 是 STSongti-TC-Bold。用 text-stroke
+     近似補字重，量級由 parity audit 收斂。標題為純 CJK，Latin（Athelas-Bold
+     真粗體）不在此 surface 的標題出現。 */
+  -webkit-text-stroke: 0.7px currentColor;
 }
 
 .bookshelf-scroll {
@@ -138,9 +144,12 @@
 }
 
 .book-card-progress-label {
-  /* AppFonts.monoNumbers(10) — ElmsSans mono cascade */
+  /* AppFonts.monoNumbers(10) — ElmsSans mono cascade。
+     line-height 必須釘 12px：繼承 --leading-body(1.5) 會把 progress 列撐到
+     15px，卡片 pitch 比 iOS 多 3pt（row-profile 實測 332 vs 329）。 */
   font-family: var(--font-mono);
   font-size: 10px;
+  line-height: 12px;
   color: var(--text-tertiary);
 }
 
@@ -158,7 +167,10 @@
   font-size: var(--text-caption);
   font-weight: 700;
   line-height: 16px;
-  min-height: 32px;
+  /* row-profile 實測 web 標題 ink 比 iOS 高 ~1pt：margin-top 1px 下移、
+     min-height 31px 補償，使 author/date 之後的列距不動。 */
+  margin-top: 1px;
+  min-height: 31px;
   color: var(--text-primary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
