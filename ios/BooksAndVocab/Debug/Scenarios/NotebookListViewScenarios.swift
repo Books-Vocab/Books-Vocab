@@ -16,8 +16,8 @@ import SwiftData
 /// its `.task(id: authManager.isLoggedIn)` runs a cold-start reconcile (sync /
 /// network). We disable catalog tasks through `CatalogTaskPolicy` so the seeded
 /// notebook list shows deterministically, inject a logged-in `CatalogPreviewAuth`
-/// (the list chrome + create affordance are auth-gated), and seed a fresh
-/// in-memory store inside a `@MainActor` View body.
+/// (the list chrome + create affordance are auth-gated), and source the seeded
+/// in-memory store from `NotebookFixtures` (dataset-overridable).
 ///
 /// The zero-notebooks empty state is intentionally not catalogued here: it is
 /// gated on `coordinator.hasLoadedOnce`, which only flips after the reconcile
@@ -42,10 +42,12 @@ private struct NotebookListViewScene: View {
     let auth: CatalogPreviewAuth
 
     init(fixture: NotebookFixtureID) {
-        container = NotebookFixtures.renderModel(for: fixture).container ?? (try! ModelContainer(
-            for: Notebook.self, VocabularyEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        ))
+        guard let container = NotebookFixtures.renderModel(for: fixture).container else {
+            // DEBUG-only surface: crash loud so the snapshot run goes red
+            // instead of silently rendering an empty notebook list.
+            preconditionFailure("NotebookFixtures.renderModel(\(fixture)) failed to build a container")
+        }
+        self.container = container
         self.auth = CatalogPreviewAuth(isLoggedIn: true)
     }
 
