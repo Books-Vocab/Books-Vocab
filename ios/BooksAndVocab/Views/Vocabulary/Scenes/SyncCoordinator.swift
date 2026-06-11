@@ -236,18 +236,7 @@ final class SyncCoordinator: SyncCoordinating {
                             entries.forEach { $0.prepareForRetryAttempt() }
                             let response = try await kgService.batchAdd(entries: entries, notebookId: nbId)
 
-                            for entry in entries {
-                                // 後端以『原始』submitted word 為 cardIds key（created 與
-                                // duplicate 皆回填 id），故 entry.word 字面配對必中。回傳
-                                // cardId = 卡片確實存在 server（權威確認）→ 直接 markSynced
-                                // 出列，不再依賴 pull-merge 用 content 比對（會被後端清洗
-                                // strip 尾標點/首字小寫破壞，例 "chateau," 永遠對不上
-                                // "chateau" → 卡在佇列重送）。無 cardId（異常）才保持 pending。
-                                if let cardId = response.cardIds[entry.word] {
-                                    entry.kgCardId = cardId
-                                    entry.markSynced()
-                                }
-                            }
+                            Self.convergeAddedEntries(response: response, entries: entries)
                             totalCreated += response.created
                             totalSkipped += response.skipped
                         } catch {
@@ -464,6 +453,35 @@ final class SyncCoordinator: SyncCoordinating {
         from response: KGBatchDeleteResponse
     ) -> Set<String> {
         Set(response.deleted_words).union(response.not_found)
+    }
+
+    /// startSync add-path 的 batchAdd 回應收斂。抽成 static 純函式讓測試與
+    /// production 共用同一份邏輯（比照 `locallyResolvableDeletes`）。
+    ///
+    /// 後端以『原始』submitted word 為 cardIds key（created 與 duplicate 皆
+    /// 回填 id），故 `entry.word` byte-exact 配對必中（sync_lifecycle.md
+    /// 不變式 6）。回傳 cardId = 卡片確實存在 server（權威確認）→ 直接
+    /// markSynced 出列，不再依賴 pull-merge 用 content 比對（會被後端清洗
+    /// strip 尾標點/首字小寫破壞，例 "chateau," 永遠對不上 "chateau" →
+    /// 卡在佇列重送）。無 cardId（異常）才保持 pending，下次重試。
+    ///
+    /// 回傳未收斂的 entries（正常情況為空）供觀測；呼叫端不需特別處理，
+    /// 它們維持 pending+add 自然進下一輪。
+    @discardableResult
+    static func convergeAddedEntries(
+        response: KGAddResponse,
+        entries: [VocabularyEntry]
+    ) -> [VocabularyEntry] {
+        var unresolved: [VocabularyEntry] = []
+        for entry in entries {
+            if let cardId = response.cardIds[entry.word] {
+                entry.kgCardId = cardId
+                entry.markSynced()
+            } else {
+                unresolved.append(entry)
+            }
+        }
+        return unresolved
     }
 
     /// Per-notebook isolated trigger pipeline 呼叫迴圈。
