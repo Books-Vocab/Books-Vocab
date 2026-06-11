@@ -47,6 +47,7 @@ DEFAULT_TESTS=(
   review-probe
   review-flip-probe
   lldb-forensics
+  ios-device-files
   ios-test-discovery
   chrome-bundle
   chrome-parity-refs
@@ -125,6 +126,7 @@ run_one() {
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_review_flip_probe_report.py
       ;;
     lldb-forensics)     ./ops/tests/test_lldb_crash_forensics.sh ;;
+    ios-device-files)   ./ops/tests/test_ios_device_files.sh ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;
     chrome-parity-refs) ./ops/tests/test_chrome_parity_refs.sh ;;
