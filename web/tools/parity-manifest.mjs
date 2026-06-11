@@ -329,6 +329,34 @@ export const PARITY = [
     ref: { surface: 'Podcast Player View', scenario: 'Locked · sign-in gate', appearance: 'dark' },
     note: '播客 locked gate (dark)',
   },
+  // Overview（統計儀表板）— StatsViewScenarios.swift（Stats View），populated/empty
+  // × light/dark。populated fixture 凍結 0608 catalog 的 now-relative 渲染輸出
+  // （streak=10、heatmap trailing 叢集、graph card loading spinner、forecast header
+  // 之下 chart 被 capture 裁掉），非重算日期邏輯。
+  {
+    case: 'overview-populated-light',
+    params: { surface: 'overview', scenario: 'populated', appearance: 'light' },
+    ref: { surface: 'Stats View', scenario: 'Populated', appearance: 'light' },
+    note: '總覽統計 populated (light)',
+  },
+  {
+    case: 'overview-empty-light',
+    params: { surface: 'overview', scenario: 'empty', appearance: 'light' },
+    ref: { surface: 'Stats View', scenario: 'Empty', appearance: 'light' },
+    note: '總覽統計 empty (light)',
+  },
+  {
+    case: 'overview-populated-dark',
+    params: { surface: 'overview', scenario: 'populated', appearance: 'dark' },
+    ref: { surface: 'Stats View', scenario: 'Populated', appearance: 'dark' },
+    note: '總覽統計 populated (dark)',
+  },
+  {
+    case: 'overview-empty-dark',
+    params: { surface: 'overview', scenario: 'empty', appearance: 'dark' },
+    ref: { surface: 'Stats View', scenario: 'Empty', appearance: 'dark' },
+    note: '總覽統計 empty (dark)',
+  },
   // Reader 面板群（R3）— TOC（ReaderScenarios.swift · Reader · TOC，4 態）。
   {
     case: 'reader-toc-loaded-light',

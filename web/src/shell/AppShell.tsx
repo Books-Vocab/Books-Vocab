@@ -7,6 +7,7 @@ import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
 import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
+import { OverviewScreen } from '../surfaces/overview/OverviewScreen'
 import { ChevronLeftIcon } from './icons'
 import {
   currentScreen,
@@ -66,6 +67,8 @@ function renderScreen(screen: Screen) {
       return <TodayReviewScreen scenario={screen.scenario} />
     case 'podcast':
       return <PodcastScreen scenario={screen.scenario} />
+    case 'overview':
+      return <OverviewScreen scenario={screen.scenario} />
     // selection-* 為元件級 scene，無 app 殼層入口（不會進 nav stack）。
     case 'selection-toolbar':
     case 'selection-tile':

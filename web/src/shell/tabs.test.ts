@@ -8,19 +8,18 @@ describe('SHELL_TABS', () => {
     expect(SHELL_TABS.map((t) => t.label)).toEqual(['書庫', '播客', '單字本', '總覽'])
   })
 
-  it('surface tabs route to real web surfaces; overview 維持灰態', () => {
+  it('全四 tab 皆路由到真實 web surface（overview 統計儀表板已重寫，無 placeholder）', () => {
     const surfaceTabs = SHELL_TABS.filter((t) => t.kind === 'surface')
-    expect(surfaceTabs.map((t) => t.id)).toEqual(['bookshelf', 'podcasts', 'notebooks'])
-    // bookshelf→bookshelf、podcasts→podcast(player)、notebooks→notebook surface
+    expect(surfaceTabs.map((t) => t.id)).toEqual(['bookshelf', 'podcasts', 'notebooks', 'overview'])
+    // bookshelf→bookshelf、podcasts→podcast(player)、notebooks→notebook、overview→overview
     expect(surfaceTabs.map((t) => (t.kind === 'surface' ? t.surface : null))).toEqual([
       'bookshelf',
       'podcast',
       'notebook',
-    ])
-    // overview（統計儀表板）web 尚無 surface → 唯一 placeholder
-    expect(SHELL_TABS.filter((t) => t.kind === 'placeholder').map((t) => t.id)).toEqual([
       'overview',
     ])
+    // 四 tab 全真實化 → 無 placeholder tab
+    expect(SHELL_TABS.filter((t) => t.kind === 'placeholder')).toEqual([])
   })
 
   it('每個 surface tab 的目標 surface 都有合法 scenario taxonomy', () => {
