@@ -133,6 +133,7 @@ struct SettingsPresenter: View {
     private var otherSection: some View {
         SettingsOtherSection(
             syncSummary: state.syncSummary,
+            bookSync: state.bookSync,
             isLoggedIn: state.auth.isLoggedIn,
             version: state.about.version,
             actions: actions

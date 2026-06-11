@@ -1047,3 +1047,8 @@
 "vocab.highlight.color.blue" = "Blue";
 "vocab.highlight.color.sage" = "Sage";
 "vocab.highlight.color.rose" = "Rose";
+
+"確認中…" = "Checking…";
+"還原中…" = "Restoring…";
+"同步異常" = "Sync issue";
+"iCloud 書庫" = "iCloud Library";
