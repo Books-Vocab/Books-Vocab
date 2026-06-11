@@ -10,6 +10,12 @@ import { makeGlyph, makeFilledGlyph } from '../../shared/glyph'
 /** SF `play.fill` — 主 play CTA（brandHero disc）。三角形略偏右視覺置中。 */
 export const PlayFillIcon = makeFilledGlyph('<path d="M7 4.8v14.4l11.2-7.2z"/>')
 
+/** SF `pause.fill` — 播放中時 play disc 切換為暫停。雙豎條。 */
+export const PauseFillIcon = makeFilledGlyph(
+  '<rect x="6.5" y="5" width="3.6" height="14" rx="1"/>' +
+    '<rect x="13.9" y="5" width="3.6" height="14" rx="1"/>',
+)
+
 /**
  * SF `gobackward.15` / `goforward.15` — 15s skip ghost 按鈕。圓弧 + 箭頭 + 內嵌
  * 「15」。`mirror` 翻轉成 forward。`15` 以小字 path 近似 SF 的內嵌數字。

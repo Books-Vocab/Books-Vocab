@@ -1,0 +1,59 @@
+/* Podcast 互動層樣式 — 把改成 <button> 的 transport 控制 UA chrome 歸零，
+   讓 parity 首屏與靜態版逐位元相同；只新增互動後的微動畫。 */
+
+/* 隱藏 demo <audio>（無 controls 屬性本就不可見，這裡雙保險不佔版面）。 */
+audio[data-pc-audio] {
+  display: none;
+}
+
+/* transport 控制由 <span> 改 <button>：清 UA chrome，幾何/底色仍沿用 podcast.css
+   的 .pc-skip / .pc-play / .pc-rate。注意**不**統一設 background（play=brandHero、
+   rate=button-idle-fill 必須保留），只清 border/font/appearance；背景以各自選擇器補。 */
+.pc-control-btn {
+  margin: 0;
+  border: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  /* 不用 `font: inherit` 簡寫——它會把 font-size/weight 重設成繼承值，蓋掉
+     podcast.css 為 .pc-rate 指定的 12px/600（→ 17px/400 drift）。font 屬性一律
+     交給各自選擇器（.pc-skip / .pc-play / .pc-rate）。 */
+}
+
+/* skip 無底色（podcast.css 未給 background）→ 顯式透明，蓋掉 UA buttonface。 */
+button.pc-skip {
+  padding: 0;
+  background: transparent;
+}
+/* play disc：保留 brandHero（podcast.css），只清 padding。 */
+button.pc-play {
+  padding: 0;
+}
+/* rate pill：保留 button-idle-fill 與 6/12 padding（podcast.css）。
+   - box-sizing：原 <span> content-box；<button> UA border-box 會縮窄 → 釘 content-box。
+   - line-height：原 <span> 繼承祖先 line-height（25.5px）撐高文字行盒；<button> UA 的
+     `line-height: normal` 較矮 → 膠囊高度差 1px、capsule 邊框環飄。釘 inherit 還原。 */
+button.pc-rate {
+  box-sizing: content-box;
+  line-height: inherit;
+}
+
+/* seek bar：互動後 pointer 操作；不畫額外視覺。touch 拖曳不選字。 */
+.pc-seek[role='slider'] {
+  touch-action: none;
+  cursor: pointer;
+}
+
+/* play disc 點擊回饋（互動後才可見，不影響首屏）。 */
+.pc-play.pc-control-btn {
+  transition: transform var(--motion-control, 0.18s ease-out);
+}
+.pc-play.pc-control-btn:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-play.pc-control-btn {
+    transition: none;
+  }
+}
