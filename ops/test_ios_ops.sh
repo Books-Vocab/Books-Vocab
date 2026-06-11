@@ -388,9 +388,9 @@ bash -n "$IOS_TEST_VIDEO_ARCHIVE_LIB" 2>/dev/null && ok "ios_test_video_archive.
 grep -q 'source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test sources video archive lib" || fail_t "ios_test does not source video archive lib"
 # Archive must run after the recording is finalized (post contact sheet) and
-# before the verdict writes, so artifacts.uiVideo points at the stable copy.
-awk '/^build_ui_step_contact_sheet$/{seen=1} /^archive_ui_test_recording$/{if(seen) found=1} END{exit found?0:1}' "$WORKSPACE/ops/ios_test.sh" \
-  && ok "ios_test archives recording after contact sheet build" || fail_t "archive_ui_test_recording call missing or misordered"
+# before any verdict write, so artifacts.uiVideo points at the stable copy.
+awk '/^build_ui_step_contact_sheet$/{cs=NR} /^archive_ui_test_recording$/{ar=NR} /write_json_verdict "/{if (!v) v=NR} END{exit (cs && ar && v && cs<ar && ar<v) ? 0 : 1}' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test archives recording after contact sheet and before verdict writes" || fail_t "archive_ui_test_recording call missing or misordered"
 va_tmp="$(mktemp -d)"
 va_dest="$va_tmp/uitest-videos"
 printf 'fake-mp4-bytes' >"$va_tmp/run_recording.mp4"

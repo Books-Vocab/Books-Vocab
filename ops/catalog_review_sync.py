@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import sys
 from pathlib import Path
 
 from catalog_review_renderer import render_html
@@ -43,9 +45,14 @@ def sync_uitest_videos(root: Path) -> list[dict]:
     unreadable archive = no recordings section, never an error.
     """
     index_path = root.parent / "uitest-videos" / "index.json"
+    if not index_path.is_file():
+        return []
     try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as error:
+        # Absent archive is the normal no-recordings case; an existing but
+        # unreadable index is corruption worth surfacing, not silence.
+        print(f"[catalog-review] warning: unreadable {index_path}: {error}", file=sys.stderr)
         return []
     entries = []
     for video in index.get("videos", []):
@@ -60,7 +67,7 @@ def sync_uitest_videos(root: Path) -> list[dict]:
             try:
                 os.link(source, target)
             except OSError:
-                target.write_bytes(source.read_bytes())
+                shutil.copy2(source, target)  # cross-device fallback; streams
         entries.append({**video, "src": f"uitest-videos/{name}"})
     return entries
 
