@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import type { Appearance, HarnessConfig, SurfaceId } from '../harness/scenarios'
 import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
 import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
@@ -22,6 +22,15 @@ import {
 } from './nav'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import './shell.css'
+
+// Live Reader（epub.js 真渲染）— dynamic import，epub.js 不進 parity bundle。
+// 殼層內點書（open-book push → reader screen 在書庫 tab 深 >1）才掛載真閱讀器，
+// 取代靜態 parity reader chrome；既有 ?surface=reader 對拍路徑零改動。
+const LiveReaderScreen = lazy(() =>
+  import('../surfaces/reader-live/LiveReaderScreen').then((m) => ({
+    default: m.LiveReaderScreen,
+  })),
+)
 
 /**
  * Web app 殼層 — 像素對齊 iOS TabView（ContentView.swift）的底部 tab bar，並把
@@ -134,6 +143,10 @@ export function AppShell({ config }: { config: HarnessConfig }) {
   const activeTab = SHELL_TABS.find((t) => t.id === nav.tabId) ?? SHELL_TABS[0]
   const screen = currentScreen(nav)
   const canGoBack = stackDepth(nav) > 1
+  // 點書開啟的 reader 畫面（書庫 tab push 後 depth>1）→ 掛 Live Reader 真閱讀器，
+  // 取代靜態 parity chrome。Live Reader 自帶「書庫」返回鈕 + chrome，故抑制殼層
+  // overlay（back chevron + 熱區），避免雙層導航重疊。
+  const isLiveReader = !!screen && screen.surface === 'reader' && canGoBack
 
   function handleHot(intent: NavIntent) {
     if (!screen) return
@@ -146,10 +159,17 @@ export function AppShell({ config }: { config: HarnessConfig }) {
       <div className="shell-content">
         {activeTab.kind === 'surface' && screen ? (
           <div className="shell-screen" data-screen-surface={screen.surface}>
-            {renderScreen(screen)}
-            {/* 透明 overlay 導航層：back chevron + 點擊熱區。不碰 surface DOM。 */}
-            <div className="shell-nav-overlay">
-              {canGoBack && (
+            {isLiveReader ? (
+              <Suspense fallback={null}>
+                <LiveReaderScreen onBack={() => setNav((s) => pop(s))} />
+              </Suspense>
+            ) : (
+              renderScreen(screen)
+            )}
+            {/* 透明 overlay 導航層：back chevron + 點擊熱區。不碰 surface DOM。
+                Live Reader 自帶 chrome → 不疊殼層 overlay。 */}
+            <div className="shell-nav-overlay" data-hidden={isLiveReader ? '' : undefined}>
+              {canGoBack && !isLiveReader && (
                 <button
                   type="button"
                   className="shell-back"
@@ -159,7 +179,7 @@ export function AppShell({ config }: { config: HarnessConfig }) {
                   <ChevronLeftIcon size={20} />
                 </button>
               )}
-              {hotZonesFor(screen.surface).map((zone) => (
+              {!isLiveReader && hotZonesFor(screen.surface).map((zone) => (
                 <button
                   key={zone.intent}
                   type="button"
