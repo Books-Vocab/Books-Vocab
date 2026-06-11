@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: dbdf0836
+verified_against: cdfabee2
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -226,8 +226,8 @@ verified_against: dbdf0836
 - `[組件]` **Account Auth Summary row**（`SettingsAccountSection.swift`）— avatar/initials/person-fallback/Pro/free — KEEP
 - `[組件]` **Subscription summary row**（`SettingsAccountSection.swift`）— Pro/free-CTA/pricing-unavailable — **NEW**
 - `[組件]` **Preferences Section**（`SettingsPreferencesSection.swift`）— auto-sync hidden/on/off/appearance/language menu — KEEP
-- `[組件]` **Sync status row**（`SettingsPresenter.swift`）— connected/warning/syncing — **NEW**
-- `[組件]` **Quota row**（`SettingsPresenter+Quota.swift`）— has/exhausted/loading — **NEW**
+- `[組件]` **Sync status row**（`SettingsOtherSection.swift`）— connected/warning/syncing — **NEW**
+- `[組件]` **Quota row**（`SettingsOtherSection.swift`）— has/exhausted/loading — **NEW**
 
 #### V30. Settings Account Detail — `screen` — KEEP
 `Settings/SettingsAccountDetailView.swift` — logged-in / deleting
