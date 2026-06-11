@@ -31,6 +31,7 @@ struct SettingsOtherSection: View {
     }
 
     let syncSummary: SettingsPresenterState.SyncSummaryState?
+    let bookSync: SettingsPresenterState.BookSyncState?
     let isLoggedIn: Bool
     let version: String
     let actions: SettingsPresenterActions
@@ -54,6 +55,12 @@ struct SettingsOtherSection: View {
                 // 同步狀態 (only when logged in)
                 if let syncSummary {
                     syncSummaryRow(syncSummary)
+                    SettingsDivider()
+                }
+
+                // iCloud 書庫同步（綁 Apple ID，與登入無關；localOnly 時為 nil）
+                if let bookSync {
+                    bookSyncRow(bookSync)
                     SettingsDivider()
                 }
 
@@ -123,6 +130,43 @@ struct SettingsOtherSection: View {
         }
         .buttonStyle(.plain)
         .disabled(summary.isSyncing)
+    }
+
+    // MARK: - iCloud 書庫同步列
+
+    private func bookSyncRow(_ sync: SettingsPresenterState.BookSyncState) -> some View {
+        VStack(spacing: 0) {
+            AppKeyValueRow(
+                icon: "icloud",
+                label: "iCloud 書庫".localized,
+                style: .settings(appSkin)
+            ) {
+                SettingsStatusSummaryValue(
+                    text: sync.text,
+                    color: bookSyncColor(sync.tone)
+                )
+            }
+
+            if let detail = sync.detail {
+                Text(detail)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appTheme.palette.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(3)
+                    .padding(.horizontal, appSkin.spacing.cardPadding)
+                    .padding(.bottom, appSkin.spacing.tinyGap)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings.bookSync")
+    }
+
+    private func bookSyncColor(_ tone: SettingsPresenterState.BookSyncState.Tone) -> Color {
+        switch tone {
+        case .progress: return appSkin.palette.secondaryText
+        case .success:  return appSkin.palette.success
+        case .warning:  return appTheme.palette.warning
+        }
     }
 
     private func externalActionRow(_ item: ExternalActionItem) -> some View {

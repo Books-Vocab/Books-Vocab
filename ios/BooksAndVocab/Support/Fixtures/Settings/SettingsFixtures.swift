@@ -84,11 +84,25 @@ struct SettingsFixtureSeed: Codable {
         let isDeletingAccount: Bool
     }
 
+    struct BookSync: Codable {
+        enum Tone: String, Codable {
+            case progress
+            case success
+            case warning
+        }
+
+        let text: String
+        let detail: String?
+        let tone: Tone
+    }
+
     let auth: Auth
     let preferences: Preferences
     let kg: KG?
     let subscription: Subscription?
     let syncSummary: SyncSummary?
+    // var + default：讓既有 seed 建構處免改（同 SettingsPresenterState.bookSync）。
+    var bookSync: BookSync? = nil
     let about: About
     let danger: Danger?
     let manualLoginUserId: String?
@@ -185,6 +199,7 @@ enum SettingsFixtures {
                     isRefreshing: false
                 ),
                 syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 3 分鐘前"),
+                bookSync: .init(text: "已同步", detail: nil, tone: .success),
                 about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
                 danger: .init(isDeletingAccount: false),
                 manualLoginUserId: nil,
@@ -350,6 +365,7 @@ enum SettingsFixtures {
                     isRefreshing: false
                 ),
                 syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 10 分鐘前"),
+                bookSync: .init(text: "同步異常", detail: "iCloud 帳號暫時無法使用（CKError.notAuthenticated）", tone: .warning),
                 about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
                 danger: .init(isDeletingAccount: false),
                 manualLoginUserId: nil,
@@ -478,9 +494,20 @@ private enum SettingsFixtureAdapter {
             syncSummary: seed.syncSummary.map {
                 .init(isConnected: $0.isConnected, isSyncing: $0.isSyncing, summaryText: $0.summaryText)
             },
+            bookSync: seed.bookSync.map {
+                .init(text: $0.text, detail: $0.detail, tone: makeBookSyncTone($0.tone))
+            },
             about: .init(version: seed.about.version, developerName: seed.about.developerName),
             danger: seed.danger.map { .init(isDeletingAccount: $0.isDeletingAccount) }
         )
+    }
+
+    private static func makeBookSyncTone(_ tone: SettingsFixtureSeed.BookSync.Tone) -> SettingsPresenterState.BookSyncState.Tone {
+        switch tone {
+        case .progress: return .progress
+        case .success:  return .success
+        case .warning:  return .warning
+        }
     }
 
     private static func makeDebugSection(from kg: SettingsFixtureSeed.KG) -> SettingsPresenterState.KGSection.DebugSection? {

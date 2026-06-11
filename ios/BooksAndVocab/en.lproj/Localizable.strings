@@ -1052,3 +1052,7 @@
 "正在確認 iCloud 書庫…" = "Checking your iCloud library…";
 "正在從 iCloud 取回書庫…" = "Restoring your library from iCloud…";
 "iCloud 書庫同步異常・%@" = "iCloud library sync issue · %@";
+"確認中…" = "Checking…";
+"還原中…" = "Restoring…";
+"同步異常" = "Sync issue";
+"iCloud 書庫" = "iCloud Library";
