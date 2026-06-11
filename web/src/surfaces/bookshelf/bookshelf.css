@@ -21,7 +21,7 @@
 
 .bookshelf-nav-title {
   margin: 0;
-  /* AppFonts.uiSerif(34, bold) — Athelas-Bold；CJK 落 Songti cascade */
+  /* AppFonts.uiSerif(34, bold) — CrimsonPro-Bold；CJK 落 Songti cascade */
   font-family: var(--font-serif);
   font-size: 34px;
   font-weight: 700;
