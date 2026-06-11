@@ -1,0 +1,239 @@
+/* Bookshelf surface — 幾何常數逐一對齊 iOS：
+   AppShellMetrics.pageHorizontalPadding=20 / sectionSpacing=24
+   AppBookshelfMetrics: coverHeight 210 / coverRadius 10 / progressBar 4
+   LayoutMode.compact: grid adaptive(150–200) → 393pt 兩欄
+   px 註解標 iOS 來源常數，diff 迭代時別改丟對應。 */
+
+.bookshelf {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+}
+
+/* --- Large-title nav（UINavigationBar large title 幾何）---
+   status bar 59 + inline bar 44 = 103；measured：Catalog PNG 實測 glyph top
+   ≈ 119pt，故再加 large-title 列內距 13。 */
+.bookshelf-nav {
+  padding: 116px 20px 0;
+}
+
+.bookshelf-nav-title {
+  margin: 0;
+  /* AppFonts.uiSerif(34, bold) — Athelas-Bold；CJK 落 Songti cascade */
+  font-family: var(--font-serif);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 41px; /* UIKit largeTitle line height */
+  color: var(--text-primary);
+  padding-bottom: 6px;
+}
+
+.bookshelf-scroll {
+  flex: 1;
+  overflow: hidden; /* 快照面：不滾動，截到什麼算什麼（同 Catalog） */
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- 書格 --- */
+
+.bookshelf-grid {
+  display: grid;
+  /* GridItem.adaptive(min 150, max 200) — 353pt 內容寬 → 2 欄 164.5。
+     注意語意差：SwiftUI adaptive 用 min 算欄數、CSS auto-fill 用 max 算欄數，
+     寫 minmax(150px,200px) 會塌成單欄（實測退化）；故 max 上限刻意不落 CSS，
+     harness 寬度超過 ~424pt 時再另行處理。 */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 24px; /* AppShellMetrics.sectionSpacing */
+  padding: 8px 20px 0; /* top = AppSpacing.s2 */
+}
+
+.bookshelf-guide-link {
+  margin-top: 24px; /* AppSpacing.s6 */
+  margin-bottom: 32px; /* AppSpacing.s7 */
+  padding: 8px 0; /* AppSpacing.s2 */
+  font-size: var(--text-caption2);
+  line-height: var(--leading-caption);
+  text-align: center;
+  text-decoration: none;
+  color: var(--text-quaternary);
+}
+
+/* --- BookCard --- */
+
+.book-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* AppSpacing.s2 */
+  min-width: 0;
+}
+
+.book-card-cover {
+  position: relative;
+  height: 210px; /* AppBookshelfMetrics.coverHeightCompact */
+  border-radius: 10px; /* coverCornerRadius */
+  background: var(--muted-fill);
+}
+
+.book-card-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* AppSpacing.s2 */
+  padding: 0 12px; /* placeholderTitleHorizontalPadding */
+}
+
+.book-card-placeholder-icon {
+  color: var(--text-tertiary);
+}
+
+.book-card-placeholder-title {
+  font-size: var(--text-caption2);
+  line-height: var(--leading-caption);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.book-card-format-pill {
+  font-size: var(--text-caption2);
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  padding: 2px 4px; /* microGap / s1 */
+  border-radius: var(--radius-sm);
+}
+
+.book-card-cloud-badge {
+  position: absolute;
+  right: 6px; /* badgePadding */
+  bottom: 6px;
+  display: grid;
+  place-items: center;
+  width: 25px; /* measured：glyph 13 + inner padding 6×2（badgePadding） */
+  height: 25px;
+  border-radius: 50%;
+  color: #fff; /* AppBookshelfMetrics.badgeForeground（恒白，不隨主題） */
+  /* .ultraThinMaterial 近似 — 暗部 diff 偏差由 parity audit 收斂 */
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+/* --- 進度條（0% = 只剩 track；% 占位隱形維持寬度） --- */
+
+.book-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px; /* progressBarSpacing */
+}
+
+.book-card-progress-track {
+  flex: 1;
+  height: 4px; /* progressBarHeight */
+  border-radius: 999px;
+  background: var(--muted-fill);
+}
+
+.book-card-progress-label {
+  /* AppFonts.monoNumbers(10) — ElmsSans mono cascade */
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* --- 卡片 metadata --- */
+
+.book-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px; /* AppSpacing.tinyGap */
+}
+
+.book-card-title {
+  margin: 0;
+  /* AppFonts.caption(.medium) → ElmsSans-Bold 12；兩行保留高度 */
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 16px;
+  min-height: 32px;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-card-author,
+.book-card-date {
+  margin: 0;
+  font-size: var(--text-caption2);
+  line-height: var(--leading-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-card-author {
+  color: var(--text-tertiary);
+}
+
+.book-card-date {
+  color: var(--text-quaternary);
+  min-height: 1.3em; /* 無日期時單空格占位（等高卡片契約） */
+}
+
+/* --- 空狀態 --- */
+
+.bookshelf-empty {
+  align-items: stretch;
+  padding: 0 20px;
+}
+
+.bookshelf-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px; /* AppEmptyStateStyle.bookshelf spacing */
+  margin-top: 120px; /* Spacer(minLength: 120) */
+  text-align: center;
+}
+
+.bookshelf-empty-icon {
+  color: var(--text-quaternary);
+}
+
+.bookshelf-empty-title {
+  margin: 0;
+  /* AppFonts.subhead(.medium) → ElmsSans-Bold 15 */
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.bookshelf-empty-description,
+.bookshelf-empty-guidance {
+  margin: 0;
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.bookshelf-empty-guidance {
+  opacity: 0.7;
+}
+
+.bookshelf-empty-import {
+  margin-top: 16px; /* VStack spacing s4 */
+  /* AppActionButtonStyle .outline：subhead semibold、py 13、radius md、border 30% */
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  color: var(--text-primary);
+  background: transparent;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
+  cursor: pointer;
+}

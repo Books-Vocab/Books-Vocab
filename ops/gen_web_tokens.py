@@ -10,6 +10,8 @@ Outputs (GENERATED — never hand-edit):
   chrome-extension/shared/kg-components.css bundled copy of hand-authored primitives
   backend/static/kg-tokens.css             bundled copy for the public 官網
   backend/static/kg-components.css         bundled copy of the same primitives
+  web/src/styles/kg-tokens.css             bundled copy for the web app pilot
+  web/src/styles/kg-components.css         bundled copy of the same primitives
 
 Modes:
   (default)  write all outputs
@@ -32,6 +34,8 @@ DIST_TOKENS = REPO / "design-system" / "dist" / "kg-tokens.css"
 DIST_COMPONENTS = REPO / "design-system" / "dist" / "kg-components.css"
 EXT_TOKENS = REPO / "chrome-extension" / "shared" / "tokens.css"
 EXT_COMPONENTS = REPO / "chrome-extension" / "shared" / "kg-components.css"
+WEB_TOKENS = REPO / "web" / "src" / "styles" / "kg-tokens.css"
+WEB_COMPONENTS = REPO / "web" / "src" / "styles" / "kg-components.css"
 BACKEND_STATIC = REPO / "backend" / "static"
 BACKEND_TOKENS = BACKEND_STATIC / "kg-tokens.css"
 BACKEND_COMPONENTS = BACKEND_STATIC / "kg-components.css"
@@ -239,6 +243,8 @@ def main() -> int:
         (EXT_COMPONENTS, components_css),
         (BACKEND_TOKENS, tokens_css),
         (BACKEND_COMPONENTS, components_css),
+        (WEB_TOKENS, tokens_css),
+        (WEB_COMPONENTS, components_css),
     ]
 
     if args.check:
