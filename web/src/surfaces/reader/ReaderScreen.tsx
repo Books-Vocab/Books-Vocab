@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { READER_FIXTURES, WARM_NEUTRAL, translationFixtureFor } from './fixtures'
-import type { ReaderFixture, ReaderChromeScenarioId } from './fixtures'
+import type { ReaderFixture } from './fixtures'
 import { TranslationPanel } from './TranslationPanel'
 import {
   BookClosedIcon,
@@ -12,6 +12,10 @@ import {
   TextformatSizeIcon,
   WarningTriangleIcon,
 } from './icons'
+import { readerPanelKind } from './panel-fixtures'
+import { TocPanel } from './TocPanel'
+import { SettingsPanel } from './SettingsPanel'
+import { NotebookPickerPanel } from './NotebookPickerPanel'
 import './reader.css'
 
 /**
@@ -167,8 +171,15 @@ export function ReaderScreen({ scenario }: { scenario: ScenarioId<'reader'> }) {
   if (translationFixtureFor(scenario)) {
     return <TranslationScene scenario={scenario} />
   }
-  // scenario 已排除 translation-* → 必為 chrome 6 態之一。
-  const fixture = READER_FIXTURES[scenario as ReaderChromeScenarioId]
+  // R3 面板群（toc-/settings-/notebook- 前綴）：catalog 以 .fill 渲染，故 full-bleed
+  // 還原獨立面板（非 docked 在 chrome 上）。chrome scenario 才走下方 ZStack 骨架。
+  const panel = readerPanelKind(scenario)
+  if (panel === 'toc') return <TocPanel scenario={scenario} />
+  if (panel === 'settings') return <SettingsPanel scenario={scenario} />
+  if (panel === 'notebook') return <NotebookPickerPanel scenario={scenario} />
+
+  // translation / panel 分支已先 return；剩餘必為 chrome scenario，故 fixture 必存在。
+  const fixture = READER_FIXTURES[scenario]!
   return (
     <div className="reader" style={{ '--reader-paper': fixture.paperColor } as CSSProperties}>
       <div className="reader-stack">

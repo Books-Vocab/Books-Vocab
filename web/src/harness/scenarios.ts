@@ -8,10 +8,14 @@ export const SURFACE_SCENARIOS = {
   bookshelf: ['populated', 'single', 'empty'],
   settings: ['subscribed-active', 'logged-out', 'pricing-unavailable'],
   notebook: ['populated', 'single'],
-  // Reader chrome（R1）+ Translation panel（R2）。chrome 6 態對齊
-  // ReaderChromeScenarios.swift（paper 色帶在 fixture，與 light/dark 軸正交）；
-  // translation 6 態對齊 ReaderScenarios.swift「Reader · Translation」（layout .fill =
-  // scrim + bottom-sheet panel，無 reader 本體）。首位 reading-compact = 預設。
+  // Reader surface — chrome（R1，6 態）+ Translation panel（R2）+ 面板群（R3）。
+  //   chrome：對齊 ReaderChromeScenarios.swift（paper 色帶在 fixture，與 light/dark
+  //     appearance 軸正交）。首位 reading-compact = 預設 scenario。
+  //   translation（R2，6 態）：對齊 ReaderScenarios.swift「Reader · Translation」
+  //     （layout .fill = scrim + bottom-sheet panel，無 reader 本體）。
+  //   R3 面板（toc-/settings-/notebook- 前綴）：對齊 ReaderScenarios.swift（TOC /
+  //     Settings）與 ReaderNotebookPickerScenarios.swift。各面板 catalog 以 .fill
+  //     佈局渲染，故 web 也 full-bleed 還原（非 docked 在 live chrome 上）。
   reader: [
     'reading-compact',
     'reading-expanded',
@@ -19,12 +23,27 @@ export const SURFACE_SCENARIOS = {
     'loading-vocab',
     'reading-translation',
     'error-open-failed',
+    // Translation panel（R2，ReaderScenarios.swift · Reader · Translation 6 態）
     'translation-expanded',
     'translation-collapsed',
     'translation-loading',
     'translation-error',
     'translation-explain-only',
     'translation-explanation-error',
+    // TOC（ReaderScenarios.swift · Reader · TOC 4 態）
+    'toc-loaded',
+    'toc-loading',
+    'toc-empty',
+    'toc-failed',
+    // Settings（ReaderScenarios.swift · Reader · Settings 3 態，bounds-max = PR #929）
+    'settings-normal',
+    'settings-bounds-min',
+    'settings-bounds-max',
+    // Notebook picker（ReaderNotebookPickerScenarios.swift 4 態）
+    'notebook-follow-global',
+    'notebook-one-bound',
+    'notebook-stress',
+    'notebook-empty',
   ],
   // Selection Toolbar — 對齊 SelectionToolbarScenarios.swift 3 態（vocab 多選
   // 底欄；selectionCount 0 全灰 disabled，>0 啟用 archive+delete）。首位
