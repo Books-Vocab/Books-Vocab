@@ -3,3 +3,5 @@ dist/
 shots/
 *.local
 *.tsbuildinfo
+tools/compare/
+tools/audit/
