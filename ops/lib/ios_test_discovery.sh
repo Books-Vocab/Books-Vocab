@@ -37,18 +37,70 @@
 _discover_file() {
   local file="$1" pattern="$2" target="${3:-BooksAndVocabTests}"
   awk -v pattern="$pattern" -v target="$target" '
-    function emit(fn, is_swift) {
+    # SINGLE source of truth for `-g` pattern semantics, shared by emit() and
+    # the multiline-params suite-level fallback below — any third matching
+    # expression is drift. Pattern matches the func name OR its enclosing
+    # container (suite) name, case-insensitively; empty pattern matches all.
+    # `-g <SuiteName>` therefore runs the whole suite instead of wasting a
+    # build+test round on "no tests matching" (2026-06-11 friction fix).
+    # Helper funcs are still excluded upstream: only attributed test funcs
+    # reach either call site.
+    function match_fn_or_container(fn, container) {
+      if (pattern == "") return 1
+      return (tolower(fn) ~ tolower(pattern) || tolower(container) ~ tolower(pattern))
+    }
+    function emit(fn, is_swift, sig) {
       if (container == "") return
-      # Pattern matches the func name OR its enclosing container (suite) name —
-      # `-g <SuiteName>` runs the whole suite instead of wasting a build+test
-      # round on "no tests matching" (2026-06-11 friction fix). Helper funcs
-      # are still excluded upstream: only attributed test funcs reach emit().
-      if (pattern != "" && tolower(fn) !~ tolower(pattern) && tolower(container) !~ tolower(pattern)) return
-      # Swift Testing requires the func signature `name()` in the -only-testing
-      # identifier; XCTest uses the bare method name. Emitting the XCTest form for
-      # a @Test func makes xcodebuild match 0 tests → "TEST SUCCEEDED" with nothing
-      # run (silent FALSE GREEN). Append "()" only for Swift Testing funcs.
-      print "-only-testing:" target "/" container "/" fn (is_swift ? "()" : "")
+      if (!match_fn_or_container(fn, container)) return
+      # Swift Testing requires the FULL func signature in the -only-testing
+      # identifier: `name()` for zero-param funcs, `name(_:)` / `name(label:)`
+      # for parameterized @Test(arguments:) funcs. XCTest uses the bare method
+      # name. Emitting the wrong arity (historically a hardcoded "()") makes
+      # xcodebuild match 0 tests → "TEST SUCCEEDED" with nothing run — a silent
+      # FALSE GREEN only caught by the post-run zero-tests guard in ios_test.sh.
+      print "-only-testing:" target "/" container "/" fn (is_swift ? sig : "")
+    }
+    # `(label1:label2:)` from the raw parameter-list text (between the func
+    # declaration parens). Splits on TOP-LEVEL commas only — depth-tracked over
+    # ( [ < so tuple types `(Int, String)`, generics and default-value calls do
+    # not split a parameter; `>` preceded by `-` (function-type arrow) is not a
+    # depth closer. Each parameter contributes its EXTERNAL label (first token
+    # before whitespace/colon; `_` for unlabeled).
+    function sig_from_params(params,   i, c, d, n, piece, sig) {
+      gsub(/^[ \t]+|[ \t]+$/, "", params)
+      if (params == "") return "()"
+      d = 0; n = length(params); piece = ""; sig = "("
+      for (i = 1; i <= n; i++) {
+        c = substr(params, i, 1)
+        if (c == "(" || c == "[" || c == "<") d++
+        else if (c == ")" || c == "]") d--
+        else if (c == ">" && d > 0 && substr(params, i - 1, 1) != "-") d--
+        if (c == "," && d == 0) { sig = sig param_label(piece) ":"; piece = "" }
+        else piece = piece c
+      }
+      return sig param_label(piece) ":)"
+    }
+    function param_label(piece) {
+      gsub(/^[ \t]+/, "", piece)
+      sub(/[ \t:].*$/, "", piece)
+      return piece
+    }
+    # Parameter-list text of a single-line func declaration → PARAMS_OUT.
+    # Returns 1 when the list closes on this line; 0 when it spans lines
+    # (no test in this repo does — helpers with multiline params are not
+    # tests — but the caller still degrades to a suite-level selector rather
+    # than guessing a wrong signature).
+    function extract_params(line,   tmp, i, c, d, n) {
+      tmp = line
+      if (!sub(/^.*func[ \t]+[A-Za-z0-9_]+[ \t]*\(/, "(", tmp)) return 0
+      d = 0; n = length(tmp); PARAMS_OUT = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(tmp, i, 1)
+        if (c == "(") { d++; if (d == 1) continue }
+        else if (c == ")") { d--; if (d == 0) return 1 }
+        PARAMS_OUT = PARAMS_OUT c
+      }
+      return 0
     }
     {
       line = $0
@@ -104,7 +156,20 @@ _discover_file() {
         # a bare `func testXxx` with no @Test is XCTest.
         is_swift = (same_line_test || pending_test)
         is_test = (is_swift || fn ~ /^test/)
-        if (is_test) emit(fn, is_swift)
+        if (is_test) {
+          if (is_swift) {
+            if (extract_params(line)) {
+              emit(fn, 1, sig_from_params(PARAMS_OUT))
+            } else if (container != "" && match_fn_or_container(fn, container)) {
+              # Param list spans lines — signature unknowable from this line.
+              # Fall back to the SUITE-level selector: a safe superset that
+              # always matches, never a silent zero-match.
+              print "-only-testing:" target "/" container
+            }
+          } else {
+            emit(fn, 0, "")
+          }
+        }
         pending_test = 0
         next
       }
