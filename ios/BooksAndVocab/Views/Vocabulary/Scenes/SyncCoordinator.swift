@@ -168,19 +168,11 @@ final class SyncCoordinator: SyncCoordinating {
                         let words = entries.map(\.word)
                         do {
                             let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
-                            // Locally converge both server-deleted AND not_found words.
-                            // not_found = 已不存在於 server，刪除意圖已達成，必須本地移除，
-                            // 否則永遠 failed+delete → 每次 sync 回 not_found → 卡死。
-                            let resolvableSet = Self.locallyResolvableDeletes(from: response)
-                            for entry in entries {
-                                if resolvableSet.contains(entry.word) {
-                                    modelContext.delete(entry)
-                                    deleted += 1
-                                } else {
-                                    entry.markSyncFailed()
-                                    failedWords.append(entry.word)
-                                }
-                            }
+                            let outcome = Self.applyBatchDeleteResponse(
+                                response: response, entries: entries, modelContext: modelContext
+                            )
+                            deleted += outcome.deleted
+                            failedWords.append(contentsOf: outcome.failedWords)
                             self.updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                         } catch {
                             // Batch failed — fallback to per-word delete
@@ -453,6 +445,35 @@ final class SyncCoordinator: SyncCoordinating {
         from response: KGBatchDeleteResponse
     ) -> Set<String> {
         Set(response.deleted_words).union(response.not_found)
+    }
+
+    /// startSync batch-delete happy path 的回應分類收斂。抽成 static 函式讓
+    /// 測試與 production 共用同一份邏輯（消除測試手抄 mirror loop 的
+    /// dead-test 風險，比照 `triggerPipelinesIsolated`）。
+    ///
+    /// 本地收斂集合 = `deleted_words ∪ not_found`（`locallyResolvableDeletes`）：
+    /// not_found = 已不存在於 server，刪除意圖已達成，必須本地移除，否則
+    /// 永遠 failed+delete → 每次 sync 回 not_found → 卡死的隱形重試迴圈。
+    /// 不在集合內（含 `failed` bucket = server graph 操作已回滾、卡片仍在）
+    /// → markSyncFailed 保留重試（sync_lifecycle.md 不變式 1/2，#720）。
+    static func applyBatchDeleteResponse(
+        response: KGBatchDeleteResponse,
+        entries: [VocabularyEntry],
+        modelContext: ModelContext
+    ) -> (deleted: Int, failedWords: [String]) {
+        let resolvableSet = locallyResolvableDeletes(from: response)
+        var deleted = 0
+        var failedWords: [String] = []
+        for entry in entries {
+            if resolvableSet.contains(entry.word) {
+                modelContext.delete(entry)
+                deleted += 1
+            } else {
+                entry.markSyncFailed()
+                failedWords.append(entry.word)
+            }
+        }
+        return (deleted, failedWords)
     }
 
     /// startSync add-path 的 batchAdd 回應收斂。抽成 static 純函式讓測試與
