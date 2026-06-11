@@ -11,6 +11,7 @@ import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
 import { PodcastScreen } from '../surfaces/podcast/PodcastScreen'
+import { OverviewScreen } from '../surfaces/overview/OverviewScreen'
 
 /**
  * 393×852pt stage — iPhone 15 Pro portrait, the same logical size the iOS
@@ -41,6 +42,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <TodayReviewScreen scenario={config.scenario} />
     case 'podcast':
       return <PodcastScreen scenario={config.scenario} />
+    case 'overview':
+      return <OverviewScreen scenario={config.scenario} />
   }
 }
 

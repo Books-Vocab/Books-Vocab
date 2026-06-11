@@ -114,6 +114,27 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('routes overview surface with its own scenario taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=overview&scenario=populated&appearance=dark')).toEqual({
+      surface: 'overview',
+      scenario: 'populated',
+      appearance: 'dark',
+    })
+    expect(resolveHarnessConfig('?surface=overview&scenario=empty')).toEqual({
+      surface: 'overview',
+      scenario: 'empty',
+      appearance: 'light',
+    })
+  })
+
+  it('overview defaults to its first scenario (populated) when scenario belongs to another surface', () => {
+    expect(resolveHarnessConfig('?surface=overview&scenario=logged-out')).toEqual({
+      surface: 'overview',
+      scenario: 'populated',
+      appearance: 'light',
+    })
+  })
+
   it('reader defaults to its first scenario (reading-compact) when scenario belongs to another surface', () => {
     // notebook 的 'populated' 不是 reader 的合法 scenario → reader 預設
     expect(resolveHarnessConfig('?surface=reader&scenario=populated')).toEqual({

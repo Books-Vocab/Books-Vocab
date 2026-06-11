@@ -110,6 +110,7 @@
   --transition-panel-reveal: transform 0.3s ease-out, opacity 0.25s ease-out;
   --press-scale: 0.97;
   --press-opacity: 0.92;
+  --chart-highlight: #f0ca89;
   --swatch-light: #f7f6f3;
   --swatch-dark: #191919;
   --swatch-sepia: #f5f1eb;
