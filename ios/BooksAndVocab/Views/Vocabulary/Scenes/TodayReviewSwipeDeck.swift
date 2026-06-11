@@ -8,20 +8,17 @@ extension TodayReviewPresenter {
 
     // MARK: Resident Slots（Phase 3a — 結構常駐，值驅動）
 
-    /// depth-2 殼層：純裝飾常駐節點。隊尾（remainingCount < 2）以 opacity 0 隱藏，
-    /// 不做 `if` 結構移除 —— settle 幀不付 insert/remove。
+    /// depth-2 殼層：純裝飾常駐節點，**恆駐 depth-2 不升頂**（Phase 4）——
+    /// fling 期間 underPreview 從 depth-2 升走時，殼層原地補位，深度堆疊
+    /// 視覺零空窗。只在 i+3 存在（remainingCount >= 3）時可見，暗示第四層；
+    /// 可見性翻面瞬間恆被 depth-2 的 underPreview 卡完全遮蔽，無可見 diff。
+    /// 卡不足以 opacity 0 隱藏，不做 `if` 結構移除 —— settle 幀不付 insert/remove。
     func deckDepthShell() -> some View {
-        let progress = dismissProgress
-        let effectiveDepth = 2 * (1.0 - progress)
+        let effectiveDepth: CGFloat = 2
         let scale: CGFloat = 1.0 - effectiveDepth * TodayReviewCardSlotLayout.stackDepthScaleStep
         let yOff: CGFloat = effectiveDepth * TodayReviewCardSlotLayout.stackDepthYStep
-        let rotation = stackRotations[1] * Double(1.0 - progress)
-        // 舊 stackCard depth-2 公式：0.35 → 0.72（升至 depth-1 位）。
-        let baseOpacity = 0.35
-        let raisedOpacity = TodayReviewMetrics.cardBorderActiveOpacity
-        let opacity = state.remainingCount >= 2
-            ? baseOpacity + (raisedOpacity - baseOpacity) * Double(progress)
-            : 0
+        let rotation = deckShellRotation
+        let opacity = state.remainingCount >= 3 ? 0.35 : 0
 
         return RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
             .fill(appSkin.palette.cardBackground)
@@ -56,7 +53,7 @@ extension TodayReviewPresenter {
                 role: role,
                 swipeOffset: isActive ? swipeOffset : 0,
                 dismissProgress: dismissProgress,
-                stackRotation: stackRotations[0],
+                stackRotation: slot < stackRotations.count ? stackRotations[slot] : 0,
                 screenWidth: screenWidth,
                 introProgress: introProgress
             )
@@ -106,7 +103,9 @@ extension TodayReviewPresenter {
             .offset(x: transform.xOffset, y: transform.yOffset)
             .rotationEffect(.degrees(transform.rotationDegrees), anchor: isActive ? .bottom : .center)
             .opacity(transform.opacity)
-            .zIndex(isActive ? 2 : 1)
+            // zIndex 按 role 排深度（殼層預設 0 恆最底）。三 slot 制下不可用
+            // 宣告順序當 tie-breaker：slot index 與深度的對應每次推進都在輪替。
+            .zIndex(role == .active ? 3 : (role == .preview ? 2 : 1))
             // promote 的本體：hit-testing gate 翻面（preview 純裝飾不可點）。
             .allowsHitTesting(isActive)
             .accessibilityHidden(!isActive)
@@ -200,7 +199,13 @@ extension TodayReviewPresenter {
                 withTransaction(noAnim) {
                     frozenSwipeIntensity = 0
                     swipeOffset = 0
-                    stackRotations = [.random(in: -1...1), .random(in: -1...1)]
+                    // 只重隨機被回收的舊 active slot（settle 後換內容、沉到
+                    // depth-2）—— 存活的 preview/underPreview slot rotation 持久，
+                    // 角色輪替跨 settle 連續不跳動。
+                    if let recycled = state.slots.firstIndex(where: { $0.assignment.role == .active }),
+                       recycled < stackRotations.count {
+                        stackRotations[recycled] = .random(in: -1...1)
+                    }
                     // 幽靈背面樹（device trace 證據：settle burst 內
                     // CardDocumentExampleBlock/CardRichTextRenderer 樣本）：
                     // 從背面送出時 backContentMounted 仍 true，callback() 推進
@@ -211,11 +216,13 @@ extension TodayReviewPresenter {
                     backMountGeneration += 1
                     backContentMounted = false
                     suppressFoldAnimation = true
-                    // promote（Phase 3a）：callback() 推進 currentIndex → slot role
-                    // 在本 no-anim transaction 內翻面。incoming slot 的 transform 已被
-                    // fling 動畫推到 active 值、內容 index 不變 → settle 幀零內容 diff，
-                    // 只有 hit-testing / a11y / 邊框值翻面。模型推進時序與舊雙軌完全
-                    // 相同（submit 仍在 fling 完成時刻，非樂觀預推）。
+                    // promote（Phase 4）：callback() 推進 currentIndex → slot role
+                    // 在本 no-anim transaction 內三向輪替。preview→active 與
+                    // underPreview→preview 兩個存活 slot 的 transform 已被 fling
+                    // 動畫推到目標值、內容 index 不變 → settle 幀零內容 diff；
+                    // 唯一內容 diff 落在被回收、沉到 depth-2 的舊 active slot
+                    // （被殼層位置遮蔽）。模型推進時序與舊雙軌完全相同
+                    // （submit 仍在 fling 完成時刻，非樂觀預推）。
                     callback()
                     dismissPhase = .idle
                 }

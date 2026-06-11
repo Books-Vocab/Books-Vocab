@@ -106,10 +106,16 @@ struct TodayReviewPresenter: View {
     @State var flingHapticTrigger = 0
     @State private var celebrationTriggered = false
     @State private var lastAutoplaySpokenCardKey: String?
+    // Per-slot 隨機微旋轉（index 對齊 slot）。slot 存活期間持久 —— 角色輪替
+    // （underPreview→preview→active）時 rotation 連續不跳動；只有 settle 回收
+    // 舊 active slot（換內容、沉到最深層）時重隨機該一格（completeFling）。
     @State var stackRotations: [Double] = [
+        .random(in: -1.0...1.0),
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
     ]
+    // depth-2 殼層（第四層暗示）自己的持久旋轉 —— 殼層恆駐，不參與輪替。
+    @State var deckShellRotation: Double = .random(in: -1.0...1.0)
 
     // Back-content mount gate. Decoupled from `showsAnswer` so the heavy back
     // tree (CardDocumentView / CardRichTextRenderer / VocabTierLabel /
@@ -352,15 +358,17 @@ struct TodayReviewPresenter: View {
             )
         }
 
-        // Phase 3a 常駐雙 slot：結構永不變 —— depth-2 殼層 + slot0 + slot1 恆在
+        // Phase 4 常駐三 slot：結構永不變 —— depth-2 殼層 + slot0/1/2 恆在
         // view tree。推進（fling settle / previous / shuffle / autoplay）只翻 role
-        // 與 transform 值，settle 幀零 _makeView。promote 機制見 TodayReviewCardSlot.swift。
+        // 與 transform 值，settle 幀零 _makeView、深度堆疊零空窗。
+        // promote / 連續堆疊機制見 TodayReviewCardSlot.swift。
         return ZStack(alignment: .top) {
-            // depth-2 殼層 — 純裝飾常駐節點（隊尾以 opacity 隱藏，不結構移除）。
+            // depth-2 殼層 — 純裝飾常駐節點（卡不足以 opacity 隱藏，不結構移除）。
             deckDepthShell()
 
             cardSlotView(slot: 0, availableHeight: availableHeight)
             cardSlotView(slot: 1, availableHeight: availableHeight)
+            cardSlotView(slot: 2, availableHeight: availableHeight)
         }
         .onAppear {
             guard introProgress < 1 else { return }
