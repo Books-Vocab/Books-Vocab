@@ -329,4 +329,74 @@ export const PARITY = [
     ref: { surface: 'Podcast Player View', scenario: 'Locked · sign-in gate', appearance: 'dark' },
     note: '播客 locked gate (dark)',
   },
+  // Reader 面板群（R3）— TOC（ReaderScenarios.swift · Reader · TOC，4 態）。
+  {
+    case: 'reader-toc-loaded-light',
+    params: { surface: 'reader', scenario: 'toc-loaded', appearance: 'light' },
+    ref: { surface: 'Reader · TOC', scenario: 'Loaded', appearance: 'light' },
+    note: 'Reader TOC loaded (light)',
+  },
+  {
+    case: 'reader-toc-loading-light',
+    params: { surface: 'reader', scenario: 'toc-loading', appearance: 'light' },
+    ref: { surface: 'Reader · TOC', scenario: 'Loading', appearance: 'light' },
+    note: 'Reader TOC loading (light)',
+  },
+  {
+    case: 'reader-toc-empty-light',
+    params: { surface: 'reader', scenario: 'toc-empty', appearance: 'light' },
+    ref: { surface: 'Reader · TOC', scenario: 'Empty', appearance: 'light' },
+    note: 'Reader TOC empty (light)',
+  },
+  {
+    case: 'reader-toc-failed-light',
+    params: { surface: 'reader', scenario: 'toc-failed', appearance: 'light' },
+    ref: { surface: 'Reader · TOC', scenario: 'Failed', appearance: 'light' },
+    note: 'Reader TOC failed (light)',
+  },
+  // Settings（ReaderScenarios.swift · Reader · Settings，3 態；bounds-max = PR #929）。
+  {
+    case: 'reader-settings-normal-light',
+    params: { surface: 'reader', scenario: 'settings-normal', appearance: 'light' },
+    ref: { surface: 'Reader · Settings', scenario: 'Normal', appearance: 'light' },
+    note: 'Reader Settings normal (light)',
+  },
+  {
+    case: 'reader-settings-bounds-min-light',
+    params: { surface: 'reader', scenario: 'settings-bounds-min', appearance: 'light' },
+    ref: { surface: 'Reader · Settings', scenario: 'Bounds (min)', appearance: 'light' },
+    note: 'Reader Settings bounds-min 0.75x (light)',
+  },
+  {
+    case: 'reader-settings-bounds-max-light',
+    params: { surface: 'reader', scenario: 'settings-bounds-max', appearance: 'light' },
+    ref: { surface: 'Reader · Settings', scenario: 'Bounds (max)', appearance: 'light' },
+    note: 'Reader Settings bounds-max 2.0x (light, PR #929)',
+  },
+  // Notebook Picker（ReaderNotebookPickerScenarios.swift，4 態）。對齊當前 source
+  // （NotebookBindingList，無 follow-global 列 / 無「預設」副標）。
+  {
+    case: 'reader-notebook-follow-global-light',
+    params: { surface: 'reader', scenario: 'notebook-follow-global', appearance: 'light' },
+    ref: { surface: 'Reader Notebook Picker', scenario: 'With notebooks · follow global', appearance: 'light' },
+    note: 'Reader Notebook picker, none bound (light)',
+  },
+  {
+    case: 'reader-notebook-one-bound-light',
+    params: { surface: 'reader', scenario: 'notebook-one-bound', appearance: 'light' },
+    ref: { surface: 'Reader Notebook Picker', scenario: 'With notebooks · one bound', appearance: 'light' },
+    note: 'Reader Notebook picker, one bound (light)',
+  },
+  {
+    case: 'reader-notebook-stress-light',
+    params: { surface: 'reader', scenario: 'notebook-stress', appearance: 'light' },
+    ref: { surface: 'Reader Notebook Picker', scenario: 'Many notebooks (stress)', appearance: 'light' },
+    note: 'Reader Notebook picker, many (light)',
+  },
+  {
+    case: 'reader-notebook-empty-light',
+    params: { surface: 'reader', scenario: 'notebook-empty', appearance: 'light' },
+    ref: { surface: 'Reader Notebook Picker', scenario: 'Empty — no notebooks', appearance: 'light' },
+    note: 'Reader Notebook picker, empty (light)',
+  },
 ];

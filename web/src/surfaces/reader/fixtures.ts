@@ -85,11 +85,10 @@ export interface ReaderFixture {
   panel: TranslationPanelData | null
 }
 
-/** chrome 6 態 id（reader surface 扣掉 translation-* 後的子集）。 */
-export type ReaderChromeScenarioId = Exclude<ScenarioId<'reader'>, TranslationScenarioId>
-
-/** ReaderChromeScenarios.swift 6 態，逐欄對齊 catalog seed。 */
-export const READER_FIXTURES: Record<ReaderChromeScenarioId, ReaderFixture> = {
+/** ReaderChromeScenarios.swift 6 態，逐欄對齊 catalog seed。
+ *  reader surface 另含 R3 面板 scenario（toc-/settings-/notebook- 前綴），不入此表
+ *  （由 panel-fixtures.ts 驅動）→ Partial。chrome scenario 完整覆蓋 6 態（見 fixtures.test）。 */
+export const READER_FIXTURES: Partial<Record<ScenarioId<'reader'>, ReaderFixture>> = {
   // Loading · Render — paperSepiaDeep；isWebViewReady=false（置中 loading 卡）+
   // underlineProgress=0.42（頂部進度卡）；compact header（18.0% 膠囊）。
   'loading-render': {
