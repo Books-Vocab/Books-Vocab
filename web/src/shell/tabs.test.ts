@@ -8,16 +8,17 @@ describe('SHELL_TABS', () => {
     expect(SHELL_TABS.map((t) => t.label)).toEqual(['書庫', '播客', '單字本', '總覽'])
   })
 
-  it('surface tabs route to real web surfaces; placeholders 為灰態', () => {
+  it('surface tabs route to real web surfaces; overview 維持灰態', () => {
     const surfaceTabs = SHELL_TABS.filter((t) => t.kind === 'surface')
-    expect(surfaceTabs.map((t) => t.id)).toEqual(['bookshelf', 'notebooks'])
-    // bookshelf→bookshelf surface、notebooks→notebook surface
+    expect(surfaceTabs.map((t) => t.id)).toEqual(['bookshelf', 'podcasts', 'notebooks'])
+    // bookshelf→bookshelf、podcasts→podcast(player)、notebooks→notebook surface
     expect(surfaceTabs.map((t) => (t.kind === 'surface' ? t.surface : null))).toEqual([
       'bookshelf',
+      'podcast',
       'notebook',
     ])
+    // overview（統計儀表板）web 尚無 surface → 唯一 placeholder
     expect(SHELL_TABS.filter((t) => t.kind === 'placeholder').map((t) => t.id)).toEqual([
-      'podcasts',
       'overview',
     ])
   })

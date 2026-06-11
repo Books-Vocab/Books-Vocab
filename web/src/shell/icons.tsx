@@ -53,3 +53,6 @@ export const CharacterBookClosedIcon = glyph(
 export const ChartBarIcon = glyph(
   '<path d="M4 5.5h9"/><path d="M4 12h13"/><path d="M4 18.5h6"/>',
 )
+
+/** SF `chevron.left` — back chevron（push/pop 導航）。 */
+export const ChevronLeftIcon = glyph('<path d="M14.5 5.5 8 12l6.5 6.5"/>')
