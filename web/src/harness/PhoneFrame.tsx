@@ -1,4 +1,5 @@
 import type { HarnessConfig } from './scenarios'
+import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
 
 /**
  * 393×852pt stage — iPhone 15 Pro portrait, the same logical size the iOS
@@ -16,20 +17,7 @@ export function PhoneFrame({ config }: { config: HarnessConfig }) {
       data-scenario={config.scenario}
       data-harness="phone-frame"
     >
-      <TokenProbe config={config} />
-    </div>
-  )
-}
-
-/** Placeholder surface proving the token + font pipeline end to end.
- *  Replaced by the Bookshelf surface in the next slice. */
-function TokenProbe({ config }: { config: HarnessConfig }) {
-  return (
-    <div className="token-probe">
-      <h1 className="token-probe-title">書架</h1>
-      <p className="token-probe-body">
-        scenario: {config.scenario} / appearance: {config.appearance}
-      </p>
+      <BookshelfScreen scenario={config.scenario} />
     </div>
   )
 }
