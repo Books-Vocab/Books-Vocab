@@ -381,6 +381,41 @@ echo "$catalog_json_clean" | jq -e '.schema=="kg.ios.catalog.v1"' >/dev/null \
   && ok "catalog snapshots --json stdout remains single valid JSON despite stderr observability" || fail_t "catalog snapshots stdout not clean JSON: $catalog_json_clean"
 rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"
 
+section "UITest video archive surface"
+IOS_TEST_VIDEO_ARCHIVE_LIB="$WORKSPACE/ops/lib/ios_test_video_archive.sh"
+[[ -f "$IOS_TEST_VIDEO_ARCHIVE_LIB" ]] && ok "ios_test_video_archive.sh exists" || fail_t "ios_test_video_archive.sh missing"
+bash -n "$IOS_TEST_VIDEO_ARCHIVE_LIB" 2>/dev/null && ok "ios_test_video_archive.sh syntax" || fail_t "ios_test_video_archive.sh syntax"
+grep -q 'source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test sources video archive lib" || fail_t "ios_test does not source video archive lib"
+# Archive must run after the recording is finalized (post contact sheet) and
+# before the verdict writes, so artifacts.uiVideo points at the stable copy.
+awk '/^build_ui_step_contact_sheet$/{seen=1} /^archive_ui_test_recording$/{if(seen) found=1} END{exit found?0:1}' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test archives recording after contact sheet build" || fail_t "archive_ui_test_recording call missing or misordered"
+va_tmp="$(mktemp -d)"
+va_dest="$va_tmp/uitest-videos"
+printf 'fake-mp4-bytes' >"$va_tmp/run_recording.mp4"
+va_path="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/run_recording.mp4" "'"$va_dest"'" ui test-caller 20260611-120000')"
+[[ "$va_path" == "$va_dest/20260611-120000-ui.mp4" && -s "$va_path" && ! -e "$va_tmp/run_recording.mp4" ]] \
+  && ok "archive moves recording to timestamped dest and echoes path" || fail_t "archive basic move wrong: path=$va_path"
+jq -e '.schema=="kg.ios.uitest-videos.v1" and (.videos|length)==1 and .videos[0].file=="20260611-120000-ui.mp4" and .videos[0].scope=="ui" and .videos[0].caller=="test-caller" and .videos[0].sizeBytes>0' "$va_dest/index.json" >/dev/null \
+  && ok "archive writes index.json entry with metadata" || fail_t "archive index wrong: $(cat "$va_dest/index.json" 2>/dev/null)"
+printf 'fake-mp4-bytes-2' >"$va_tmp/run_recording.mp4"
+va_path2="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/run_recording.mp4" "'"$va_dest"'" ui test-caller 20260611-120000')"
+[[ "$va_path2" == "$va_dest/20260611-120000-ui-2.mp4" && -s "$va_path2" ]] \
+  && ok "archive disambiguates same-timestamp collisions" || fail_t "archive collision handling wrong: $va_path2"
+jq -e '(.videos|length)==2 and .videos[0].file=="20260611-120000-ui-2.mp4"' "$va_dest/index.json" >/dev/null \
+  && ok "archive index keeps newest-first ordering" || fail_t "archive index ordering wrong: $(cat "$va_dest/index.json")"
+printf 'fake-mp4-bytes-3' >"$va_tmp/run_recording.mp4"
+va_path3="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; KG_UITEST_VIDEO_KEEP=2 uitest_video_archive "'"$va_tmp"'/run_recording.mp4" "'"$va_dest"'" all test-caller 20260611-130000')"
+[[ -s "$va_path3" && ! -e "$va_dest/20260611-120000-ui.mp4" ]] \
+  && ok "archive prunes oldest beyond KG_UITEST_VIDEO_KEEP" || fail_t "archive prune wrong: kept=$(ls "$va_dest")"
+jq -e '(.videos|length)==2 and .videos[0].file=="20260611-130000-all.mp4" and .videos[1].file=="20260611-120000-ui-2.mp4"' "$va_dest/index.json" >/dev/null \
+  && ok "archive prune drops pruned entries from index" || fail_t "archive prune index wrong: $(cat "$va_dest/index.json")"
+va_noop="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/missing.mp4" "'"$va_tmp"'/never-created" ui test-caller 20260611-140000')" || fail_t "archive no-op should return 0"
+[[ -z "$va_noop" && ! -e "$va_tmp/never-created" ]] \
+  && ok "archive is a no-op for missing/empty recordings" || fail_t "archive no-op created artifacts: '$va_noop'"
+rm -rf "$va_tmp"
+
 section "Doctor release readiness surface"
 doctor_body="$(awk '/^doctor_readiness\(\)/,/^}/' "$IOS_OPS_RELEASE_LIB")"
 for key in project organizer testflight asc_version signing storekit sentry; do
