@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from catalog_review_sync import hydrate_manifest
+from catalog_review_sync import (
+    LEGACY_REVIEW_HTML_NAME,
+    REVIEW_HTML_NAME,
+    hydrate_manifest,
+)
 
 
 def load_json(path: Path) -> dict:
@@ -21,7 +25,13 @@ def resolve_paths(root: Path) -> tuple[Path, Path]:
 
 
 def review_html_path(root: Path) -> Path:
-    return root / "review.html"
+    # Roots generated before the 2026-06 rename only carry review.html; resolve
+    # reads (permalinks / serve / mark rewrite) to the file that actually exists.
+    preferred = root / REVIEW_HTML_NAME
+    legacy = root / LEGACY_REVIEW_HTML_NAME
+    if not preferred.exists() and legacy.exists():
+        return legacy
+    return preferred
 
 
 def build_artifact_refs(root: Path) -> dict[str, str]:
