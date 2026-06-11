@@ -4,9 +4,11 @@
 # Usage:
 #   ./ops/ios_test.sh                             # run ALL tests in BooksAndVocabTests
 #   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
-#   ./ops/ios_test.sh -g "notebook"               # grep: run tests whose METHOD name matches
-#                                                 # (matches func/@Test names only, NOT @Suite/file
-#                                                 #  names; repeat -g to OR patterns together)
+#   ./ops/ios_test.sh -g "notebook"               # grep: run tests whose METHOD name OR
+#                                                 # suite/container name (@Suite struct / class)
+#                                                 # matches — `-g FooTests` runs the whole suite.
+#                                                 # File names are NOT matched; repeat -g to OR
+#                                                 # patterns together.
 #   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --launch-benchmark
@@ -363,8 +365,8 @@ elif [[ -n "$GREP_PATTERN" ]]; then
   done < <(discover_only_flags "$TEST_DIR" "$GREP_PATTERN" "$TEST_TARGET")
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests matching pattern '$GREP_PATTERN'" >&2
-    echo "[ios_test] 注意：-g 只匹配測試「方法名」（func/@Test），不匹配 @Suite/struct/class 名與檔名。" >&2
-    echo "[ios_test] 想跑整個 suite → 用 --file <TypeName>；確認方法名 → --list 搭配更寬的 pattern。" >&2
+    echo "[ios_test] 注意：-g 匹配測試「方法名」（func/@Test）與「suite/容器名」（@Suite struct/class），不匹配檔名。" >&2
+    echo "[ios_test] 確認名稱 → --list 搭配更寬的 pattern；單一檔案 → --file <TypeName>（.swift 可省）。" >&2
     exit 1
   fi
   echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests for pattern '$GREP_PATTERN' ($TEST_TARGET)"
