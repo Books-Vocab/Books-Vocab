@@ -2,6 +2,7 @@ import type { HarnessConfig } from './scenarios'
 import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
 import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
 import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
+import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
 
 /**
  * 393×852pt stage — iPhone 15 Pro portrait, the same logical size the iOS
@@ -20,6 +21,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <SettingsScreen scenario={config.scenario} />
     case 'notebook':
       return <NotebookScreen scenario={config.scenario} />
+    case 'reader':
+      return <ReaderScreen scenario={config.scenario} />
   }
 }
 
