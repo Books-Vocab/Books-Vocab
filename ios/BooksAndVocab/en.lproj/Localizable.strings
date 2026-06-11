@@ -800,7 +800,7 @@
 "背景同步部分失敗：%@" = "Background sync partially failed: %@";
 "自動同步" = "Auto-sync";
 "自動連結" = "Auto-link";
-"關閉自動連結後，新單字不再自動建立知識圖譜連結；重新開啟會繼續處理累積的單字。" = "With auto-link off, new words are no longer linked into the knowledge graph automatically; turning it back on resumes processing the backlog.";
+"關閉自動連結後，新單字不再自動建立知識圖譜連結；重新開啟會繼續處理累積的單字。" = " With auto-link off, new words are no longer linked into the knowledge graph automatically; turning it back on resumes processing the backlog.";
 "自動播放" = "Auto-play";
 "自訂圖片" = "Custom image";
 "處理中..." = "Processing...";

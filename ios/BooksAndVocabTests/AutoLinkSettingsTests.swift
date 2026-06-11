@@ -55,6 +55,24 @@ struct AutoLinkSettingsTests {
         #expect(store.updatedAt == 300.0)
     }
 
+    @Test func applyServerNilTimestampAppliesWhenLocalNeverWritten() {
+        // local 從未寫過 + server 也從未寫過（ts nil）→ 套值、時戳維持 nil
+        // （之後任何帶時戳的 server 值仍可套用）。
+        let store = AutoLinkSettingsStore(defaults: .makeSuite())
+        store.applyServer(enabled: false, updatedAt: nil)
+        #expect(store.isEnabled == false)
+        #expect(store.updatedAt == nil)
+    }
+
+    @Test func applyServerEqualTimestampIsIgnored() {
+        // tie（serverTs == local）→ 本地留（嚴格大於才套）。
+        let store = AutoLinkSettingsStore(defaults: .makeSuite())
+        store.setEnabled(false, updatedAt: 300.0)
+        store.applyServer(enabled: true, updatedAt: 300.0)
+        #expect(store.isEnabled == false)
+        #expect(store.updatedAt == 300.0)
+    }
+
     @Test func restoreRevertsValueAndTimestamp() {
         // rollback 不可被當成新寫入（時戳必須還原，否則 LWW 會誤判 rollback 較新）。
         let defaults = UserDefaults.makeSuite()
