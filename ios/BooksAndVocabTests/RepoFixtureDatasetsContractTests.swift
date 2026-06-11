@@ -33,17 +33,46 @@ struct RepoFixtureDatasetsContractTests {
 
     @Test func everyRepoDatasetDecodesAndMatchesKnownFixtureIDs() throws {
         for url in try Self.datasetURLs() {
-            let document = try FixtureDatasetStore.decode(Data(contentsOf: url))
+            let data = try Data(contentsOf: url)
+            let document = try FixtureDatasetStore.decode(data)
             let stem = url.deletingPathExtension().lastPathComponent
 
             #expect(document.schema == "kg.fixture.dataset.v1", "\(stem): unexpected schema")
             #expect(document.datasetID == stem, "\(stem): datasetID must match filename")
+
+            // Keyed decoding ignores unknown top-level keys, so a domain-level
+            // typo ("podcasts") silently drops the whole domain — exactly the
+            // failure class this suite exists to close.
+            let knownTopLevel: Set<String> = ["schema", "datasetID", "settings", "bookshelf", "todayReview", "notebook", "podcast"]
+            let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let unknownTopLevel = Set(topLevel.keys).subtracting(knownTopLevel)
+            #expect(
+                unknownTopLevel.isEmpty,
+                "\(stem): unknown top-level keys \(unknownTopLevel.sorted()) would be silently ignored"
+            )
 
             expectKnownKeys(document.settings.keys, SettingsFixtureID.self, domain: "settings", dataset: stem)
             expectKnownKeys(document.bookshelf.keys, BookshelfFixtureID.self, domain: "bookshelf", dataset: stem)
             expectKnownKeys(document.todayReview.keys, TodayReviewFixtureID.self, domain: "todayReview", dataset: stem)
             expectKnownKeys(document.notebook.keys, NotebookFixtureID.self, domain: "notebook", dataset: stem)
             expectKnownKeys(document.podcast.keys, PodcastFixtureID.self, domain: "podcast", dataset: stem)
+
+            // Duplicate identities render undefined (ForEach ids / notebookId
+            // joins derive from them), so they must be unique within a seed.
+            for (fixtureKey, seed) in document.podcast {
+                let numbers = seed.episodes.map(\.episodeNumber)
+                #expect(
+                    Set(numbers).count == numbers.count,
+                    "\(stem): podcast.\(fixtureKey) has duplicate episodeNumber values"
+                )
+            }
+            for (fixtureKey, seed) in document.notebook {
+                let ids = seed.notebooks.map(\.remoteId)
+                #expect(
+                    Set(ids).count == ids.count,
+                    "\(stem): notebook.\(fixtureKey) has duplicate notebook remoteId values"
+                )
+            }
         }
     }
 
