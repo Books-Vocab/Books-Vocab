@@ -635,6 +635,31 @@
       "mae": 0.0337361,
       "ssim": 0.0563999
     },
+    "account-section-logged-out-light": {
+      "rmse": 0.169043,
+      "mae": 0.0343631,
+      "ssim": 0.0435299
+    },
+    "account-section-logged-out-auth-error-light": {
+      "rmse": 0.180762,
+      "mae": 0.0405942,
+      "ssim": 0.0564834
+    },
+    "account-section-subscribed-active-light": {
+      "rmse": 0.141641,
+      "mae": 0.0251319,
+      "ssim": 0.0339227
+    },
+    "account-section-subscription-loading-light": {
+      "rmse": 0.132314,
+      "mae": 0.0213809,
+      "ssim": 0.0282988
+    },
+    "account-section-pricing-unavailable-light": {
+      "rmse": 0.139482,
+      "mae": 0.0240255,
+      "ssim": 0.0320694
+    },
     "review-fold-chevron-collapse-handle-light": {
       "rmse": 0.0489451,
       "mae": 0.00243565,
@@ -779,6 +804,21 @@
       "rmse": 0.105607,
       "mae": 0.0185694,
       "ssim": 0.0334222
+    },
+    "settings-preferences-with-auto-sync-light": {
+      "rmse": 0.17095,
+      "mae": 0.0372638,
+      "ssim": 0.0486878
+    },
+    "settings-preferences-auto-sync-off-light": {
+      "rmse": 0.167965,
+      "mae": 0.036062,
+      "ssim": 0.0472813
+    },
+    "settings-preferences-logged-out-light": {
+      "rmse": 0.139234,
+      "mae": 0.0239207,
+      "ssim": 0.0327945
     },
     "settings-review-intensive-light": {
       "rmse": 0.0967144,

@@ -91,11 +91,12 @@ export const SURFACE_SCENARIOS = {
   // Section (transparent full-frame, settings auth/subscription rows).
   'book-card': ['placeholder-epub', 'pdf-badge', 'progress-mid', 'progress-complete', 'long-title', 'a11y3'],
   'subscription-gate-card': ['happy-path', 'long-copy-stress', 'narrow-width-320pt', 'dynamic-type-accessibility3'],
-  // NOTE: account-section deferred — iOS scene = ScrollView{ section.padding() } is
-  // TOP-aligned + ScrollView safe-area top inset (~59pt status bar); web agent
-  // centered/top-stuck it without the safe-area offset → 全 5 case RMSE 0.33–0.36
-  // (>0.25 ceiling, systematic ~60pt vertical shift). Fix = top-align + safe-area
-  // top inset, re-derive. dir held in /tmp/deferred_hold/account-section.
+  // account-section（transparent .fill full-frame）：iOS catalog 在真實裝置幀渲染，
+  // ScrollView 內容落在 in-app chrome 之下。逐列掃 ios-normalized：header glyph top
+  // ≈240 capture px、card top ≈320（與 settings-preferences 同 catalog 同位）。修正前
+  // 全 5 case RMSE 0.33–0.36（單位混淆：把 capture px 當 CSS px），改 surface 頂部
+  // inset 75 CSS px（=225 capture px）對齊後過 ceiling。SoT: SettingsAccountSection.swift。
+  'account-section': ['logged-out', 'logged-out-auth-error', 'subscribed-active', 'subscription-loading', 'pricing-unavailable'],
   // Composite layer (batch-5): Review Fold trio（皆 .fill transparent full-frame，
   // sampleCard/segment over transparent，shots transparent:true）。SoT:
   // ReviewFoldScenarios.swift（Chevron Pill / Paper Fold / Segment）。

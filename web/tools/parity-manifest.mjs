@@ -906,7 +906,13 @@ export const PARITY = [
     ref: { surface: 'Subscription Views · Gate Card', scenario: 'Dynamic Type · accessibility3', appearance: 'light' },
     note: 'Gate card a11y3 — headphones; AppFonts 固定字級不隨 Dynamic Type 縮放 (light)',
   },
-  // account-section deferred (see scenarios.ts note): top-aligned + safe-area top inset fix pending.
+  // ── account-section ── transparent .fill full-frame；surface 頂部 inset 75 CSS px（=225
+  //    capture px，header glyph 對齊 ref；單位混淆修正：勿用 capture px 當 CSS px）。
+  { case: 'account-section-logged-out-light', params: { surface: 'account-section', scenario: 'logged-out', appearance: 'light' }, transparent: true, ref: { surface: 'Account Section · Section', scenario: 'Logged Out', appearance: 'light' }, note: 'Account section · 未登入（登入卡 hero）' },
+  { case: 'account-section-logged-out-auth-error-light', params: { surface: 'account-section', scenario: 'logged-out-auth-error', appearance: 'light' }, transparent: true, ref: { surface: 'Account Section · Section', scenario: 'Logged Out · Auth Error', appearance: 'light' }, note: 'Account section · 未登入 + auth error' },
+  { case: 'account-section-subscribed-active-light', params: { surface: 'account-section', scenario: 'subscribed-active', appearance: 'light' }, transparent: true, ref: { surface: 'Account Section · Section', scenario: 'Subscribed · Pro Active', appearance: 'light' }, note: 'Account section · Pro 訂閱中' },
+  { case: 'account-section-subscription-loading-light', params: { surface: 'account-section', scenario: 'subscription-loading', appearance: 'light' }, transparent: true, ref: { surface: 'Account Section · Section', scenario: 'Subscription Loading', appearance: 'light' }, note: 'Account section · 訂閱載入中' },
+  { case: 'account-section-pricing-unavailable-light', params: { surface: 'account-section', scenario: 'pricing-unavailable', appearance: 'light' }, transparent: true, ref: { surface: 'Account Section · Section', scenario: 'Pricing Unavailable · Upgrade CTA', appearance: 'light' }, note: 'Account section · 價格不可用 + 升級 CTA' },
   // ── Composite layer batch-5 ── Review Fold trio（.fill transparent full-frame，
   //    sampleCard/segment over transparent，shots transparent:true，無 component crop）
   { case: 'review-fold-chevron-collapse-handle-light', params: { surface: 'review-fold-chevron', scenario: 'collapse-handle', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Chevron Pill', scenario: 'Collapse handle', appearance: 'light' }, note: 'ReviewFoldChevronPill 裸 capsule（chevron.compact.down，muted-fill + hairline border），置中 padding 40' },
@@ -953,12 +959,12 @@ export const PARITY = [
   { case: 'word-detail-card-full-light', params: { surface: 'word-detail-card', scenario: 'full', appearance: 'light', crop: 'component' }, crop: '.word-detail-card', ref: { surface: 'Word Detail · Card Document', scenario: 'Full', appearance: 'light' }, note: 'Word detail card · full（詞 + 翻譯 + 例句 + collocations）' },
   { case: 'word-detail-card-compact-light', params: { surface: 'word-detail-card', scenario: 'compact', appearance: 'light', crop: 'component' }, crop: '.word-detail-card', ref: { surface: 'Word Detail · Card Document', scenario: 'Compact', appearance: 'light' }, note: 'Word detail card · compact' },
   { case: 'word-detail-card-no-example-light', params: { surface: 'word-detail-card', scenario: 'no-example', appearance: 'light', crop: 'component' }, crop: '.word-detail-card', ref: { surface: 'Word Detail · Card Document', scenario: 'No example / collocations', appearance: 'light' }, note: 'Word detail card · 無例句/collocations' },
-  // ── Composite layer batch-8 ── Settings Review（full-frame transparent）+ Subscription（component crop .settings-subscription-surface）
-  // NOTE: settings-preferences 全 3 態 deferred — transparent .fill scene 的 ScrollView 有
-  //   safe-area + nav-bar 頂部 inset（量得卡頂 ~315px / 105pt），agent 誤建為純 top-align
-  //   padding 24 → 系統性垂直偏移（RMSE 0.32–0.33）。與 account-section 同類「transparent
-  //   settings-section .fill safe-area inset」根因，併為幾何叢集後續一次解（settings-review
-  //   為 opaque+nav 結構故已對齊過關，preferences 為 transparent 需不同 inset 模型）。fixtures 保留 3 態。
+  // ── Composite layer batch-8 ── Settings Preferences/Review（full-frame transparent）+ Subscription（component crop .settings-subscription-surface）
+  // settings-preferences：transparent .fill scene 的 ScrollView in-app chrome 透明 inset（magick
+  //   -trim 量得 content 頂緣 231px）→ surface padding-top 231 對齊（修正先前 top-align padding 24 偏移）。
+  { case: 'settings-preferences-with-auto-sync-light', params: { surface: 'settings-preferences', scenario: 'with-auto-sync', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Preferences', scenario: '含自動同步', appearance: 'light' }, note: 'Settings preferences · 含自動同步列' },
+  { case: 'settings-preferences-auto-sync-off-light', params: { surface: 'settings-preferences', scenario: 'auto-sync-off', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Preferences', scenario: '自動同步關閉', appearance: 'light' }, note: 'Settings preferences · 自動同步關閉' },
+  { case: 'settings-preferences-logged-out-light', params: { surface: 'settings-preferences', scenario: 'logged-out', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Preferences', scenario: '未登入 / 無同步列', appearance: 'light' }, note: 'Settings preferences · 未登入（無同步列）' },
   { case: 'settings-review-intensive-light', params: { surface: 'settings-review', scenario: 'intensive', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Review', scenario: '密集模式', appearance: 'light' }, note: 'Settings review · 密集模式' },
   { case: 'settings-review-relaxed-light', params: { surface: 'settings-review', scenario: 'relaxed', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Review', scenario: '寬鬆模式', appearance: 'light' }, note: 'Settings review · 寬鬆模式' },
   { case: 'settings-review-frozen-light', params: { surface: 'settings-review', scenario: 'frozen', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Review', scenario: '已凍結進度', appearance: 'light' }, note: 'Settings review · 已凍結進度' },
