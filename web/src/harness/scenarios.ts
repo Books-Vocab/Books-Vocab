@@ -53,6 +53,127 @@ export const SURFACE_SCENARIOS = {
   // （chrome tile：selected mutedFill+primaryText / unselected pageBackground+
   // secondaryText / 並排對比）。首位 selection-pair = 預設 scenario。
   'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
+  // Vocab Shell 原語層（atom）— 對齊 VocabShellComponentsScenarios.swift。
+  //   sort-pill（3 態）：arrow.up.arrow.down + 當前排序 label（複習優先/字母序/
+  //     難度），muted-fill Capsule。catalog scene 畫布透明、layout .compressed
+  //     intrinsic 裁切，故 web 走 crop=component + transparent capture。
+  'vocab-sort-pill': ['default', 'alphabetical', 'difficulty'],
+  // Vocab Shell/Components primitive (atom) layer — all透明 catalog component scenes,
+  // crop=component capture. SoT: VocabShellChromeScenarios / VocabShellComponentsScenarios /
+  // VocabComponentScenarios. See each surface dir for fidelity notes.
+  'vocab-accessory-icon-button': ['default'],
+  'vocab-slider-row': ['interactive'],
+  'vocab-tone-chip': ['variants', 'long-text'],
+  'vocab-chrome-icon-button': ['close', 'toned-filter'],
+  'vocab-inline-action-button': ['accent-default', 'toned'],
+  'vocab-search-field': ['empty', 'with-query'],
+  'vocab-section-header': ['title-only', 'icon-trailing'],
+  'vocab-review-progress-bar': ['ratios', 'detail-only', 'over-100'],
+  'vocab-review-cta-pill': ['both-types', 'due-only', 'unlearned-only'],
+  'vocab-tab-selector': ['no-counts', 'with-counts', 'zero-counts'],
+  'vocab-toolbar-glyph': ['plain', 'with-badge', 'badge-stress'],
+  'vocab-empty-state': ['card-no-action', 'card-with-action', 'content-basic', 'content-guidance-action'],
+  // Vocab Highlight Picker — Reader 螢光標記顏色選擇器（4 preset selected 態；dark deferred）
+  'vocab-highlight-picker': ['paper-selected', 'blue-selected', 'sage-selected', 'rose-selected'],
+  // Vocab Scene Shell — Vocabulary 統一四態容器（loading/loadingSkeleton/empty/error/
+  // content）。.fill 不透明全幀（vocabCanvasBackground = pageBackground）。
+  'vocab-scene-shell': [
+    'loading-spinner', 'loading-skeleton', 'empty-cta', 'empty-no-action', 'error-retry', 'content',
+  ],
+  // Composite layer (batch-2): collocation sheet (.fill transparent full-frame) /
+  // KG empty state (.fill opaque full-frame).
+  // NOTE: banner-review deferred (task #8) — opaque card on transparent tight-crop is
+  // hypersensitive to card-edge scaling; web card height vs ref (serif/CJK line-metric
+  // delta) pushed RMSE to 0.26 (> 0.25 ceiling). Re-derive with font-metric height tuning.
+  'collocation-explain': ['loaded-short', 'loaded-long', 'loaded-with-delete'],
+  // LinkReasonSheet (.fill opaque page-bg full-frame): card-link 解釋 sheet —
+  // paperclip header + mono word + divider + reason body + 2× ghost button footer.
+  'link-reason-sheet': ['medium-reason', 'short-reason', 'long-reason', 'no-hide', 'empty-reason'],
+  // NotebookEditSheet (.fill opaque grouped Form): create/edit 單字本 sheet —
+  // cover preview + name field + 12 色圈 + 6 pattern tile + 自訂圖片。
+  'notebook-edit': ['create-blank', 'color-pattern', 'color-only', 'long-name', 'empty-name'],
+  // ── wf-surface-batch（並行授權）7 surface ──
+  'word-edit': ['populated', 'empty-explanation', 'long-content-stress', 'long-word-title'],
+  'vocab-calendar': ['active-month', 'day-selected', 'heavy-intensity', 'no-activity', 'current-month'],
+  'vocab-forecast': ['7-day', '14-day', 'compact', 'sparse'],
+  'vocab-heatmap': ['dense-graded', 'empty', 'no-thresholds', 'short-range', 'sparse'],
+  'review-banner': ['review-both', 'review-due', 'review-unlearned', 'review-large', 'demo-default'],
+  'vocab-add-link': ['with-candidates', 'no-candidates'],
+  'vocab-linked-card': ['single-card', 'stacked-3-deep'],
+
+  // ── wf-surface-batch corrected batch-2 (6 surface) ──
+  'word-detail-sheet': ['rich-entry', 'minimal-entry'],
+  'paywall': ['admin-granted', 'inactive', 'pro-active-renewing', 'pro-cancelled-but-active'],
+  'delete-account-sheet': ['idle', 'deleting'],
+  'translation-language-settings': ['english-to-traditional-chinese', 'japanese-to-english', 'french-to-simplified-chinese', 'korean-to-japanese'],
+  'archived-vocab': ['populated', 'single-card', 'empty', 'long-list'],
+  'settings-account-detail': ['subscribed-active', 'deleting-account', 'logged-out', 'long-name-email-stress'],
+
+  // ── wf-surface-batch corrected batch-3/4 (8 surface) ──
+  'podcast-shelf': ['continue-full', 'single-card', 'long-shelf-title', 'a11y3'],
+  'notebook-cover-editorial': ['grid-default', 'grid-active', 'grid-empty', 'grid-long-name', 'hero-default', 'hero-active'],
+  'vocab-presenter-search': ['matches', 'single-match', 'no-match'],
+  'podcast-episode-list': ['populated', 'empty'],
+  'podcast-home': ['populated', 'single', 'no-continue', 'empty'],
+  'vocab-knowledge-graph': ['with-data', 'settings-open', 'empty', 'no-links'],
+  'knowledge-graph-view': ['logged-out-empty-graph'],
+  'pdf-reader-unavailable': ['file-unavailable'],
+  'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
+  // Composite layer (batch-3): Sync (.fill opaque full-frame, bookshelf pattern) /
+  // Notebooks·Card (opaque component crop, editorial book-row) / KG Vocab Row
+  // (WordRow molecule, transparent component crop, varying width).
+  sync: ['ready', 'running', 'completed', 'partial', 'full'],
+  'notebooks-card': ['grid-two', 'hero-fresh', 'hero-long-name', 'hero-heavy'],
+  'kg-vocab-row': ['default', 'highlighted'],
+  // Composite layer (batch-4): Book Card (transparent component crop, bookshelf cell) /
+  // Subscription Gate Card (opaque component crop, ProAccessGateCard) / Account
+  // Section (transparent full-frame, settings auth/subscription rows).
+  'book-card': ['placeholder-epub', 'pdf-badge', 'progress-mid', 'progress-complete', 'long-title', 'a11y3'],
+  'subscription-gate-card': ['happy-path', 'long-copy-stress', 'narrow-width-320pt', 'dynamic-type-accessibility3'],
+  // account-section（transparent .fill full-frame）：iOS catalog 在真實裝置幀渲染，
+  // ScrollView 內容落在 in-app chrome 之下。逐列掃 ios-normalized：header glyph top
+  // ≈240 capture px、card top ≈320（與 settings-preferences 同 catalog 同位）。修正前
+  // 全 5 case RMSE 0.33–0.36（單位混淆：把 capture px 當 CSS px），改 surface 頂部
+  // inset 75 CSS px（=225 capture px）對齊後過 ceiling。SoT: SettingsAccountSection.swift。
+  'account-section': ['logged-out', 'logged-out-auth-error', 'subscribed-active', 'subscription-loading', 'pricing-unavailable'],
+  // Composite layer (batch-5): Review Fold trio（皆 .fill transparent full-frame，
+  // sampleCard/segment over transparent，shots transparent:true）。SoT:
+  // ReviewFoldScenarios.swift（Chevron Pill / Paper Fold / Segment）。
+  'review-fold-chevron': ['collapse-handle', 'on-card-backdrop'],
+  'review-fold-paper': ['expanded', 'three-quarter', 'half', 'quarter', 'nearly-folded'],
+  'review-fold-segment': ['single', 'stacked-group'],
+  // Composite layer (batch-6): Podcast cards — Continue Card（component crop transparent，
+  // 5 action 投影）+ Episode Row（full-frame transparent，單一 variants 列表）+ Series Card
+  // （component crop transparent，封面+host）。SoT: PodcastContinueCard/Row/SeriesCard scenarios。
+  'podcast-continue-card': ['in-progress', 'fresh', 'completed', 'free-preview', 'gated'],
+  'podcast-episode-row': ['variants'],
+  'podcast-series-card': ['normal', 'long-host', 'narrow', 'a11y3'],
+  // Composite layer (batch-7): Notebook Cover（component crop transparent，封面 pattern/色）+
+  // Notebooks Stack（full-frame：single 透明 / grid 不透明）+ Word Detail Card（component
+  // crop 不透明 page-bg，CardDocument）。SoT: NotebookCover/NotebookList/WordDetail scenarios。
+  'notebook-cover': ['all-patterns-blue', 'color-swatches', 'solid-no-pattern', 'long-name-truncate', 'shows-name-false', 'image-fallback'],
+  'notebooks-stack': [
+    'state-active', 'state-inactive', 'd1-cover-basic', 'depth-100', 'd1-empty',
+    // batch expansion（dots/null pattern、light、全幀，複用既有元件）
+    'depth-0', 'd1-large-card-count', 'd1-large-due-count', 'd2-grid-height',
+    'editorial-different-seeds', 'editorial-spine-rotation', 'stress-happy-2up',
+  ],
+  'word-detail-card': ['full', 'compact', 'no-example'],
+  // Composite layer (batch-8): Settings sections — Preferences/Review（full-frame transparent，
+  // section over transparent）+ Subscription（component crop transparent，ProAccess section）。
+  'settings-preferences': ['with-auto-sync', 'auto-sync-off', 'logged-out'],
+  'settings-review': ['intensive', 'relaxed', 'frozen', 'custom'],
+  'settings-subscription': ['pro-active', 'loading', 'pricing-unavailable', 'inactive-free'],
+  // Composite layer (batch-9): Podcast Bubble Cell（component crop transparent，字幕泡泡）+
+  // Podcast Hero（full-frame transparent，series hero）+ Rail Card（component crop transparent）。
+  'podcast-bubble-cell': ['highlighted-active', 'idle-non-current', 'right-aligned-speaker', 'vocab-highlighted'],
+  'podcast-hero': ['full-meta', 'long-title-multi-host', 'fresh-no-meta', 'episodes-only', 'a11y3'],
+  'podcast-rail-card': ['resume', 'no-progress', 'long-title', 'large-numbers', 'a11y3'],
+  // Composite layer (batch-10): Account Auth Summary（full-frame transparent 垂直置中）+
+  // Login Sheet（full-frame opaque page）+ Welcome（full-frame opaque onboarding）。
+  'account-auth-summary': ['initials-free', 'initials-pro', 'long-name-email-overflow'],
+  'login-sheet': ['default', 'authenticating', 'error'],
+  'welcome': ['step-1-capture', 'step-2-link', 'step-3-review', 'step-3-dark'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

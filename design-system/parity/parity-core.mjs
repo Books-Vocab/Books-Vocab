@@ -20,14 +20,72 @@
  * fixed layout order + printed legend instead.
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { mkdirSync, existsSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { cpus } from 'node:os';
+import { promisify } from 'node:util';
 
 import { resolveCatalogRoot, resolveRef } from './ios-ref.mjs';
 
-const magick = (args, opts = {}) =>
-  execFileSync('magick', args, { stdio: opts.stdio || 'pipe', encoding: opts.encoding || 'utf8' });
+const pExecFile = promisify(execFile);
+
+// async magick — every ImageMagick call is non-blocking so the per-case audit
+// fans out across cores instead of serializing one `magick` at a time (the old
+// execFileSync pinned the whole 193-case run to a single core). 64 MiB buffer
+// covers the largest montage stdout; magick writes images to files, not stdout.
+const magick = async (args) => {
+  const { stdout } = await pExecFile('magick', args, { maxBuffer: 64 * 1024 * 1024 });
+  return stdout;
+};
+
+// Default fan-out: leave 2 cores for the OS / node loop. PARITY_CONCURRENCY
+// overrides (e.g. =1 to serialize for deterministic logs, or higher on big hosts).
+const CONCURRENCY = Math.max(
+  1,
+  Number(process.env.PARITY_CONCURRENCY) || Math.max(1, cpus().length - 2),
+);
+
+/**
+ * Bounded-concurrency parallel map with live progress. `fn(item, index)` runs
+ * for every item with at most `concurrency` in flight; `onDone(completed, total,
+ * item, result)` fires as each finishes (out of order). Results keep input order.
+ */
+async function pmap(items, concurrency, fn, onDone) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  let completed = 0;
+  const worker = async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+      completed += 1;
+      if (onDone) onDone(completed, items.length, items[i], results[i]);
+    }
+  };
+  const lanes = Math.max(1, Math.min(concurrency, items.length || 1));
+  await Promise.all(Array.from({ length: lanes }, worker));
+  return results;
+}
+
+/**
+ * Live progress reporter — prints `[done/total] (elapsed · eta · rate) label`
+ * to stderr on every completion, so a long fan-out is never silent. nowMs is
+ * injected (Date.now is unavailable in some sandboxes); callers pass () => Date.now().
+ */
+function makeProgress(total, label, nowMs = () => Date.now()) {
+  const start = nowMs();
+  const fmt = (ms) => `${(ms / 1000).toFixed(0)}s`;
+  return (done, _total, _item, line = '') => {
+    const elapsed = nowMs() - start;
+    const rate = done / Math.max(1, elapsed / 1000);
+    const eta = rate > 0 ? (total - done) / rate * 1000 : 0;
+    const head = `[${String(done).padStart(String(total).length)}/${total}] ` +
+      `${fmt(elapsed)} elapsed · ~${fmt(eta)} left · ${rate.toFixed(1)}/s`;
+    process.stderr.write(`${head}  ${label}${line ? ' ' + line : ''}\n`);
+  };
+}
 
 // ---------------------------------------------------------------- compose --
 
@@ -43,7 +101,7 @@ const magick = (args, opts = {}) =>
  * @param {string} cfg.repoRoot   repo root for catalog auto-discovery
  * @param {string} cfg.shotLabel  name of the non-iOS side ('chrome' / 'web')
  */
-export function composeContactSheet({ parity, shotsDir, outDir, repoRoot, shotLabel }) {
+export async function composeContactSheet({ parity, shotsDir, outDir, repoRoot, shotLabel, nowMs }) {
   if (!existsSync(shotsDir) || readdirSync(shotsDir).length === 0) {
     console.error(`no shots found in ${shotsDir} — run the shots step first`);
     process.exit(1);
@@ -55,41 +113,43 @@ export function composeContactSheet({ parity, shotsDir, outDir, repoRoot, shotLa
     console.error('  generate one: ./ops/ios_ops.sh catalog snapshots  (or set KG_CATALOG_ROOT)');
   }
 
-  const cells = []; // pair PNGs feeding the contact sheet, in manifest order
-  const legend = [];
+  const present = parity.filter((p) => {
+    if (existsSync(join(shotsDir, `${p.case}.png`))) return true;
+    console.error(`⚠ missing shot: ${p.case}`);
+    return false;
+  });
 
-  for (const p of parity) {
+  // Pair montages are independent per case → fan out across cores with live
+  // progress (was a silent serial loop). Results keep manifest order for the sheet.
+  console.error(`pairing ${present.length} cases  (concurrency ${CONCURRENCY})`);
+  const tick = makeProgress(present.length, 'paired', nowMs);
+  const paired = await pmap(present, CONCURRENCY, async (p) => {
     const shot = join(shotsDir, `${p.case}.png`);
-    if (!existsSync(shot)) { console.error(`⚠ missing shot: ${p.case}`); continue; }
     const pairPng = join(outDir, `${p.case}.png`);
-    // prepareRef applies component cropping (refCrop cases) so the sheet pairs
-    // the cropped ref beside the cropped web shot (apples-to-apples preview).
-    const refPath = p.ref && catalogRoot ? prepareRef(p, catalogRoot, outDir) : null;
+    const refPath = p.ref && catalogRoot ? await prepareRef(p, catalogRoot, outDir) : null;
     if (p.ref && catalogRoot && !refPath) {
       console.error(`⚠ catalog ref missing for ${p.case}: ${p.ref.surface} / ${p.ref.scenario} (${p.ref.appearance})`);
     }
-
     if (refPath) {
-      // shot | iOS, equal height, grey gutter between.
-      magick(['montage', shot, refPath, '-tile', '2x1', '-geometry', '+12+0',
+      await magick(['montage', shot, refPath, '-tile', '2x1', '-geometry', '+12+0',
         '-background', '#9aa0a6', pairPng]);
-      legend.push(`${cells.length + 1}. ${p.case}  ⟷  iOS ${p.ref.surface} / ${p.ref.scenario} (${p.ref.appearance})   — ${p.note}`);
-    } else {
-      // shot-only: single image, no pairing.
-      magick(['convert', shot, '-bordercolor', '#9aa0a6', '-border', '6', pairPng]);
-      legend.push(`${cells.length + 1}. ${p.case}  (no iOS ref)   — ${p.note}`);
+      return { pairPng, legend: `${p.case}  ⟷  iOS ${p.ref.surface} / ${p.ref.scenario} (${p.ref.appearance})   — ${p.note}` };
     }
-    cells.push(pairPng);
-  }
+    await magick(['convert', shot, '-bordercolor', '#9aa0a6', '-border', '6', pairPng]);
+    return { pairPng, legend: `${p.case}  (no iOS ref)   — ${p.note}` };
+  }, (done, total, _p, _r) => tick(done, total, _p));
 
+  const cells = paired.map((r) => r.pairPng);
+  const legend = paired.map((r, i) => `${i + 1}. ${r.legend}`);
   if (cells.length === 0) { console.error('nothing to composite'); process.exit(1); }
 
   // One contact sheet — equal-height cells (x760), 2 columns, grey gutter.
   const sheet = join(outDir, 'contact.png');
-  magick(['montage', ...cells, '-tile', '2x', '-geometry', 'x760+10+10',
+  console.error('tiling contact sheet …');
+  await magick(['montage', ...cells, '-tile', '2x', '-geometry', 'x760+10+10',
     '-background', '#222222', sheet]);
 
-  const dims = magick(['identify', '-format', '%wx%h', sheet]).toString();
+  const dims = (await magick(['identify', '-format', '%wx%h', sheet])).toString();
   console.error('\nContact sheet:', sheet, `(${dims})`);
   console.error('Cell order (left→right, top→bottom):');
   for (const l of legend) console.error('  ' + l);
@@ -99,16 +159,17 @@ export function composeContactSheet({ parity, shotsDir, outDir, repoRoot, shotLa
 
 // ------------------------------------------------------------------ audit --
 
-function dims(path) {
-  const [w, h] = magick(['identify', '-format', '%w %h', path]).trim().split(/\s+/).map(Number);
+async function dims(path) {
+  const [w, h] = (await magick(['identify', '-format', '%w %h', path])).trim().split(/\s+/).map(Number);
   return { w, h };
 }
 
-function metric(ref, shot, name) {
+async function metric(ref, shot, name) {
   try {
-    execFileSync('magick', ['compare', '-metric', name, ref, shot, 'null:'], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-      encoding: 'utf8',
+    // `magick compare` exits non-zero when the images differ (the normal case)
+    // and writes the metric to stderr — so a rejection here is expected, not an error.
+    await pExecFile('magick', ['compare', '-metric', name, ref, shot, 'null:'], {
+      maxBuffer: 16 * 1024 * 1024,
     });
     return '0';
   } catch (err) {
@@ -126,26 +187,26 @@ function parseMetric(raw) {
   };
 }
 
-function average(path) {
-  return magick(['convert', path, '-scale', '1x1!', '-depth', '8', '-format', '%[pixel:p{0,0}]', 'info:']).trim();
+async function average(path) {
+  return (await magick(['convert', path, '-scale', '1x1!', '-depth', '8', '-format', '%[pixel:p{0,0}]', 'info:'])).trim();
 }
 
-function histogram(path) {
-  return magick([
+async function histogram(path) {
+  return (await magick([
     'convert', path,
     '-resize', '160x',
     '-colors', '8',
     '-depth', '8',
     '-format', '%c',
     'histogram:info:-',
-  ]).trim();
+  ])).trim();
 }
 
-function normalizedCopy(src, out, w, h) {
+async function normalizedCopy(src, out, w, h) {
   // -alpha off: Catalog PNGs carry an alpha channel, Playwright shots don't.
   // `-compose difference` would difference alpha too (255−255=0 → a fully
   // transparent diff.png) and skew metrics; both sides flatten to opaque RGB.
-  magick(['convert', src, '-resize', `${w}x${h}!`, '-alpha', 'off', out]);
+  await magick(['convert', src, '-resize', `${w}x${h}!`, '-alpha', 'off', out]);
 }
 
 /**
@@ -168,17 +229,17 @@ function normalizedCopy(src, out, w, h) {
  *   crop that selection-toolbar already ships (PR #958); here the Catalog refs
  *   are still full-frame, so the engine does the equivalent crop at audit time.
  */
-function refComponentBbox(refPng) {
-  const geom = magick([
+async function refComponentBbox(refPng) {
+  const geom = (await magick([
     'convert', refPng, '-alpha', 'off', '-colorspace', 'Gray',
     '-threshold', '6%', '-format', '%@', 'info:',
-  ]).trim();
+  ])).trim();
   const m = geom.match(/^(\d+)x(\d+)\+(\d+)\+(\d+)$/);
   if (!m) return null;
   const [, w, h] = m.map(Number);
   // A trim that returns the full canvas = no transparent margin = not a
   // component scene; treat as no-op so this stays safe to flag broadly.
-  const [fw, fh] = magick(['identify', '-format', '%w %h', refPng]).trim().split(/\s+/).map(Number);
+  const [fw, fh] = (await magick(['identify', '-format', '%w %h', refPng])).trim().split(/\s+/).map(Number);
   if (w === fw && h === fh) return null;
   return geom;
 }
@@ -189,17 +250,17 @@ function refComponentBbox(refPng) {
  * artifacts so downstream steps treat it like any other ref. Returns the path
  * to use (cropped or original), or null if the ref is missing.
  */
-function prepareRef(item, catalogRoot, outDir) {
+async function prepareRef(item, catalogRoot, outDir) {
   const ref = resolveRef(catalogRoot, item.ref);
   if (!ref) return null;
   if (item.refCrop !== 'panel') return ref;
-  const bbox = refComponentBbox(ref);
+  const bbox = await refComponentBbox(ref);
   if (!bbox) return ref; // no transparent margin — nothing to crop
   // Case-keyed name: composeContactSheet shares one outDir across cases, so a
   // fixed filename would collide; auditCase has a per-case outDir but the keyed
   // name is harmless there too.
   const cropped = join(outDir, `${item.case}.ios-component.png`);
-  magick(['convert', ref, '-crop', bbox, '+repage', cropped]);
+  await magick(['convert', ref, '-crop', bbox, '+repage', cropped]);
   return cropped;
 }
 
@@ -216,25 +277,25 @@ function cropRows(w, h) {
     .map((r) => ({ ...r, geometry: `${w}x${r.height}+0+${r.y}` }));
 }
 
-function buildZoom(ref, shot, outDir, w, h, shotLabel) {
-  const tiles = [];
-  for (const row of cropRows(w, h)) {
+async function buildZoom(ref, shot, outDir, w, h, shotLabel) {
+  const rows = cropRows(w, h);
+  const tiles = await Promise.all(rows.map(async (row) => {
     const refCrop = join(outDir, `${row.name}-ios.png`);
     const shotCrop = join(outDir, `${row.name}-${shotLabel}.png`);
     const pair = join(outDir, `${row.name}-pair.png`);
-    magick(['convert', ref, '-crop', row.geometry, '+repage', '-resize', '200%', refCrop]);
-    magick(['convert', shot, '-crop', row.geometry, '+repage', '-resize', '200%', shotCrop]);
-    magick(['montage', shotCrop, refCrop, '-tile', '2x1', '-geometry', '+16+0', '-background', '#9aa0a6', pair]);
-    tiles.push(pair);
-  }
-  magick(['montage', ...tiles, '-tile', '1x', '-geometry', '+0+16', '-background', '#222222', join(outDir, 'zoom.png')]);
+    await magick(['convert', ref, '-crop', row.geometry, '+repage', '-resize', '200%', refCrop]);
+    await magick(['convert', shot, '-crop', row.geometry, '+repage', '-resize', '200%', shotCrop]);
+    await magick(['montage', shotCrop, refCrop, '-tile', '2x1', '-geometry', '+16+0', '-background', '#9aa0a6', pair]);
+    return pair;
+  }));
+  await magick(['montage', ...tiles, '-tile', '1x', '-geometry', '+0+16', '-background', '#222222', join(outDir, 'zoom.png')]);
 }
 
 function refLabel(ref) {
   return `${ref.surface} / ${ref.scenario} (${ref.appearance})`;
 }
 
-function auditCase(item, { shotsDir, outRoot, catalogRoot, shotLabel }) {
+async function auditCase(item, { shotsDir, outRoot, catalogRoot, shotLabel, metricsOnly = false }) {
   const shot = join(shotsDir, `${item.case}.png`);
   if (!existsSync(shot)) throw new Error(`missing shot: ${shot}`);
 
@@ -243,36 +304,59 @@ function auditCase(item, { shotsDir, outRoot, catalogRoot, shotLabel }) {
   mkdirSync(outDir, { recursive: true });
 
   // prepareRef may write a component-cropped ref into outDir (refCrop cases).
-  const ref = prepareRef(item, catalogRoot, outDir);
+  const ref = await prepareRef(item, catalogRoot, outDir);
   if (!ref) throw new Error(`missing catalog ref for ${item.case}: ${refLabel(item.ref)}`);
 
-  const d = dims(shot);
+  const d = await dims(shot);
   const refNorm = join(outDir, 'ios-normalized.png');
   const shotNorm = join(outDir, `${shotLabel}-normalized.png`);
-  normalizedCopy(ref, refNorm, d.w, d.h);
-  normalizedCopy(shot, shotNorm, d.w, d.h);
+  // Both normalized copies are independent — produce them concurrently; every
+  // downstream magick call (diff/zoom/metrics) depends on both, so we join first.
+  await Promise.all([
+    normalizedCopy(ref, refNorm, d.w, d.h),
+    normalizedCopy(shot, shotNorm, d.w, d.h),
+  ]);
 
-  magick(['convert', refNorm, shotNorm, '-compose', 'difference', '-composite', '-auto-level', join(outDir, 'diff.png')]);
-  buildZoom(refNorm, shotNorm, outDir, d.w, d.h, shotLabel);
+  // metricsOnly: skip the diagnostic imagery (diff heatmap, zoom crop strips,
+  // palette histogram) and phash — they are ~75% of the magick work and are
+  // only needed for visual drill-down, not for the verdict gate (rmse/mae/ssim).
+  // The MEASURED numbers are byte-identical to a full audit; this only drops
+  // artifacts a human reads. Run full `--audit` (no --metrics-only) to get them.
+  const artifacts = metricsOnly ? Promise.resolve() : Promise.all([
+    magick(['convert', refNorm, shotNorm, '-compose', 'difference', '-composite', '-auto-level', join(outDir, 'diff.png')]),
+    buildZoom(refNorm, shotNorm, outDir, d.w, d.h, shotLabel),
+  ]);
+
+  // The 3 gated metrics + phash + 2 averages all read the same two normalized
+  // PNGs and are mutually independent → run them concurrently within the case.
+  const [rmse, mae, ssim, phash, avgShot, avgIos] = await Promise.all([
+    metric(refNorm, shotNorm, 'RMSE'),
+    metric(refNorm, shotNorm, 'MAE'),
+    metric(refNorm, shotNorm, 'SSIM'),
+    metricsOnly ? Promise.resolve(null) : metric(refNorm, shotNorm, 'PHASH'),
+    average(shotNorm),
+    average(refNorm),
+  ]);
 
   const metrics = {
     case: item.case,
     note: item.note,
     reference: refLabel(item.ref),
     dimensions: d,
-    rmse: parseMetric(metric(refNorm, shotNorm, 'RMSE')),
-    mae: parseMetric(metric(refNorm, shotNorm, 'MAE')),
-    ssim: parseMetric(metric(refNorm, shotNorm, 'SSIM')),
-    phash: parseMetric(metric(refNorm, shotNorm, 'PHASH')),
-    average: {
-      [shotLabel]: average(shotNorm),
-      ios: average(refNorm),
-    },
+    rmse: parseMetric(rmse),
+    mae: parseMetric(mae),
+    ssim: parseMetric(ssim),
+    phash: phash === null ? null : parseMetric(phash),
+    average: { [shotLabel]: avgShot, ios: avgIos },
   };
   writeFileSync(join(outDir, 'metrics.json'), JSON.stringify(metrics, null, 2) + '\n');
-  writeFileSync(join(outDir, 'palette.txt'),
-    `# ${item.case}\n\n## Average\n${shotLabel}: ${metrics.average[shotLabel]}\nios:    ${metrics.average.ios}\n\n` +
-    `## ${shotLabel} dominant colors\n${histogram(shotNorm)}\n\n## iOS dominant colors\n${histogram(refNorm)}\n`);
+  if (!metricsOnly) {
+    const [histShot, histIos] = await Promise.all([histogram(shotNorm), histogram(refNorm)]);
+    writeFileSync(join(outDir, 'palette.txt'),
+      `# ${item.case}\n\n## Average\n${shotLabel}: ${metrics.average[shotLabel]}\nios:    ${metrics.average.ios}\n\n` +
+      `## ${shotLabel} dominant colors\n${histShot}\n\n## iOS dominant colors\n${histIos}\n`);
+  }
+  await artifacts;
   return metrics;
 }
 
@@ -281,7 +365,7 @@ function auditCase(item, { shotsDir, outRoot, catalogRoot, shotLabel }) {
  * (optionally filtered by `only` substring). Writes per-case artifacts under
  * outDir/<case>/ and an aggregate outDir/summary.json.
  */
-export function runParityAudit({ parity, shotsDir, outDir, repoRoot, shotLabel, only = null }) {
+export async function runParityAudit({ parity, shotsDir, outDir, repoRoot, shotLabel, only = null, metricsOnly = false, nowMs }) {
   const catalogRoot = resolveCatalogRoot({ repoRoot });
   if (!catalogRoot) {
     console.error('no usable catalog snapshot root under build/snapshots');
@@ -296,17 +380,26 @@ export function runParityAudit({ parity, shotsDir, outDir, repoRoot, shotLabel, 
     process.exit(1);
   }
 
-  const summary = [];
-  for (const item of cases) {
-    const result = auditCase(item, { shotsDir, outRoot: outDir, catalogRoot, shotLabel });
-    summary.push(result);
-    const rmse = result.rmse.normalized ?? result.rmse.value;
-    const mae = result.mae.normalized ?? result.mae.value;
-    const ssim = result.ssim.normalized ?? result.ssim.value;
-    console.error(`✓ ${item.case}  RMSE=${rmse}  MAE=${mae}  SSIM=${ssim}`);
-  }
+  console.error(`auditing ${cases.length} cases  (concurrency ${CONCURRENCY}${metricsOnly ? ', metrics-only' : ''})`);
+  const tick = makeProgress(cases.length, 'measured', nowMs);
+  // Fan out across cores with bounded concurrency; results keep manifest order.
+  // The progress tick (elapsed/eta/rate) fires on every completion so the run is
+  // never silent. Per-case RMSE/MAE/SSIM is still printed for the audit record —
+  // MEASURED, not judged; parity-verdict.mjs decides pass/fail vs the baseline.
+  const summary = await pmap(
+    cases,
+    CONCURRENCY,
+    (item) => auditCase(item, { shotsDir, outRoot: outDir, catalogRoot, shotLabel, metricsOnly }),
+    (done, total, item, result) => {
+      const r = result.rmse.normalized ?? result.rmse.value;
+      const m = result.mae.normalized ?? result.mae.value;
+      const s = result.ssim.normalized ?? result.ssim.value;
+      tick(done, total, item, `· ${item.case}  RMSE=${r} MAE=${m} SSIM=${s}`);
+    },
+  );
+
   writeFileSync(join(outDir, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
-  console.error(`\nAudit artifacts: ${outDir}/<case>/{diff,zoom,palette,metrics}`);
-  console.error(`Summary: ${outDir}/summary.json`);
+  console.error(`\nAudit artifacts: ${outDir}/<case>/{${metricsOnly ? 'metrics' : 'diff,zoom,palette,metrics'}}`);
+  console.error(`Summary: ${outDir}/summary.json  (measured, not judged — run the verdict gate for pass/fail)`);
   return summary;
 }

@@ -1,0 +1,265 @@
+/* Auth · Login Sheet — iOS LoginSheet（Views/Auth/LoginSheet.swift）的 web 鏡像。
+   token 一律走 design-system 變數，不寫 literal（除結構 flex / capsule /
+   line-height:1，及 hero icon 品牌插畫固有色 — 該圖為固定 raster brand asset
+   AppIconImage，色彩非 theming token）。
+
+   iOS view tree（content）：
+     VStack(spacing s6=24)[
+       Spacer()
+       VStack(spacing s2=8)[ AppHeroIcon(80×80, radius appIcon=18) ·
+                             Text(displayTitle serif 24 bold / primaryText) ·
+                             Text(body sans 15 / secondaryText) ]
+       Spacer()
+       VStack(spacing controlGap=10)[ Google button · Apple button ]
+         .padding(.h s4=16).padding(.bottom s6=24)
+       (error) VocabStateMessageCard .padding(.h s4=16)
+     ]
+     .overlay( if isAuthenticating: pageBackground@0.85 + VStack(spacing 10)[
+                 ProgressView · Text(caption sans 12 bold / secondaryText) ] )
+
+   loginButtonLabel：HStack(spacing s2=8)[ badge(socialBadgeSize 22) · Text(body 15
+     medium / primaryText) · Spacer · chevron.right(iconTiny 10 thin / tertiaryText) ]
+     .padding(.h s4=16).padding(.v s2=8)、bg cardBackground、radius card=8、
+     border cardBorder 1px。
+       Google badge：Text("G" caption 12 bold / primaryText)、圓、bg cardBackground、
+         border cardBorder 1px。
+       Apple badge：apple.logo(iconTiny 10 / pageBackground=白)、圓、bg appleBlack。
+
+   error card（VocabStateMessageCard → AppStateMessageCard .vocab(skin)）：
+     AppSectionCard(padding 0) 包 AppStateMessageContent(.padding(.h 14, .v 12))、
+     bg cardBackground、radius control=6、border cardBorder 1px。
+     Content：VStack(align leading, spacing s2=8)[
+       HStack(firstTextBaseline, spacing s2=8)[ exclamationmark.triangle.fill(
+         iconSmall symbol 12 / accent) · Text(body 15 semibold / primaryText) · Spacer ]
+       Text(description caption sans 12 bold / secondaryText) ]
+
+   catalog scene layout = .fill（全裝置幀 1179×2556，corner srgba(255,255,255,1)
+   不透明 = NavigationStack/sheet system background 白）：Playbook .fill 不顯 nav
+   chrome（ref 三圖頂部皆無 nav title / 取消鈕）。故 web 走**全 phone-frame 捕捉**
+   （非 crop=component），surface 撐滿 393×852、不透明白底、無 transparent flag。 */
+
+/* surface = 撐滿 phone-frame（.fill），白系統底（非 page-bg）。content VStack 含
+   上下 Spacer → 三段（hero / buttons / error）由 space-between 撐開、外距 0。 */
+.login-sheet-surface {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--card-bg); /* system background 白（sheet 預設底，非 page-bg） */
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* content VStack(spacing s6=24)：Spacer · hero · Spacer · buttons · (error)。
+   兩個 Spacer 以 flex:1 spacer 元素鏡像；buttons 之後 error 為最後段。 */
+.login-sheet-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6); /* VStack spacing 24 */
+}
+
+.login-sheet-spacer {
+  flex: 1 1 0;
+}
+
+/* Hero VStack(spacing s2=8)[icon · title · subtitle]，水平置中。 */
+.login-sheet-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2); /* spacing 8 */
+}
+
+/* AppHeroIcon — 80×80、radius appIcon=18（品牌 raster asset，色彩固有非 token）。 */
+.login-sheet-hero-icon {
+  flex: none;
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-app-icon);
+  display: block;
+}
+
+/* Text("解鎖完整功能") — displayTitle(serif 24 bold) / primaryText。 */
+.login-sheet-hero-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-display-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text("AI 翻譯・…") — body(sans 15 = --text-subhead) / secondaryText。 */
+.login-sheet-hero-subtitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Auth buttons VStack(spacing controlGap=10).padding(.h s4).padding(.bottom s6)。 */
+.login-sheet-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--control-gap); /* controlGap 10 */
+  padding-inline: var(--sp-4); /* .padding(.horizontal, s4=16) */
+  padding-bottom: var(--sp-6); /* .padding(.bottom, s6=24) */
+}
+
+/* loginButtonLabel — HStack(spacing s2)[badge · title · Spacer · chevron]，
+   .padding(.h s4).padding(.v s2)、card chrome。 */
+.login-sheet-button {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* HStack spacing 8 */
+  box-sizing: border-box;
+  padding: var(--sp-2) var(--sp-4); /* .v s2=8 / .h s4=16 */
+  border-radius: var(--radius-card); /* radii.card = 8 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+/* badge frame — socialBadgeSize 22、圓。 */
+.login-sheet-badge {
+  flex: none;
+  width: 22px; /* AppSettingsMetrics.socialBadgeSize */
+  height: 22px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* Google badge：bg cardBackground + border cardBorder 1px、Text("G" caption 12 bold)。 */
+.login-sheet-badge--google {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+.login-sheet-badge-letter {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption sans 12 bold */
+  font-weight: 700;
+  line-height: 1; /* iOS Text 緊排 */
+  color: var(--text-primary);
+}
+
+/* Apple badge：bg appleBlack、apple.logo 白（pageBackground 前景在白底等同白）。 */
+.login-sheet-badge--apple {
+  background: var(--apple-black);
+  color: var(--card-bg); /* foregroundStyle(pageBackground)≈白 logo on black */
+}
+
+/* Text(title) — body.weight(.medium)(sans 15 medium) / primaryText（label 預設色）。 */
+.login-sheet-button-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body 15 */
+  font-weight: 500; /* .weight(.medium) */
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+
+.login-sheet-button-spacer {
+  flex: 1 1 auto;
+}
+
+/* chevron.right — iconTiny(10 thin) / tertiaryText。 */
+.login-sheet-button-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* error card — AppStateMessageCard .vocab(skin)：bg cardBackground、radius
+   control=6、border cardBorder 1px、Content .padding(.h 14,.v 12)。
+   外層 .padding(.horizontal, s4=16)。 */
+.login-sheet-error-wrap {
+  padding-inline: var(--sp-4); /* .padding(.horizontal, s4=16) */
+}
+
+.login-sheet-error-card {
+  box-sizing: border-box;
+  border-radius: var(--radius-control); /* radii.control = 6 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  padding: 12px 14px; /* style.verticalPadding 12 / horizontalPadding 14（.vocab 固有值） */
+}
+
+/* AppStateMessageContent — VStack(align leading, spacing s2=8)。 */
+.login-sheet-error-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2); /* style.spacing = s2 = 8 */
+}
+
+/* HStack(firstTextBaseline, spacing s2)[icon · title · Spacer]。 */
+.login-sheet-error-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2); /* AppSpacing.s2 = 8 */
+}
+
+/* exclamationmark.triangle.fill — iconSmall(symbol 12 medium) / accent。 */
+.login-sheet-error-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+/* Text(title "登入暫時失敗") — body 15 semibold / primaryText。 */
+.login-sheet-error-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body 15 */
+  font-weight: 600; /* .semibold */
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+
+.login-sheet-error-head-spacer {
+  flex: 1 1 auto;
+}
+
+/* Text(description) — caption(sans 12 bold) / secondaryText。 */
+.login-sheet-error-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+  font-weight: 700; /* caption = AppFonts.sans(size:12,bold:true) */
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+}
+
+/* authenticating overlay — pageBackground@0.85 蓋滿、VStack(spacing controlGap=10)
+   [ProgressView · Text(caption 12 bold / secondaryText)] 置中。 */
+.login-sheet-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--control-gap); /* controlGap 10 */
+  background: color-mix(in srgb, var(--page-bg) 85%, transparent);
+}
+
+/* ProgressView(.regular) — system spinner，iOS ≈ 20pt secondaryLabel 旋轉環。 */
+.login-sheet-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--text-secondary) 35%, transparent);
+  border-top-color: var(--text-secondary);
+}
+
+.login-sheet-overlay-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+  font-weight: 700;
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+}
+
+/* full phone-frame 捕捉、不透明白底（system background）→ 無 transparent flag。 */
+.phone-frame[data-surface='login-sheet'] {
+  background: var(--card-bg);
+}

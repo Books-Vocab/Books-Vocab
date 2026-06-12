@@ -1,0 +1,133 @@
+/* Notebook Cover · Editorial — iOS EditorialCoverComposition（NotebookCard.swift）
+   的 web 鏡像。token 一律走 design-system 變數；coverColor / rule / spine 為
+   fixture data 衍生色（inline style，HSB darken runtime 推導）。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface 自身 = cover frame + scene .padding(s4=16) 的 intrinsic box。
+   surface 與 phone-frame 在 crop=component 下透明，omitBackground 截圖 →
+   web 與 ref 同為 cover-over-transparent。 */
+
+/* scene = AppThemeContainer{ cover.frame.clipShape.padding(s4=16) }。
+   intrinsic box，供 crop 截取（grid 168+32=200、hero 320+32=352 寬）。 */
+.nce-component-surface {
+  display: inline-block;
+  box-sizing: border-box;
+  padding: var(--sp-4); /* AppSpacing.s4 = 16（scene .padding(s4)） */
+}
+
+/* cover = ZStack[ fill(coverColor*0.35) → composition ]，
+   .frame(grid 168×224 / hero 320×200)
+   .clipShape(RoundedRectangle(AppRadius.lg=12, .continuous)) */
+.nce-cover {
+  position: relative;
+  box-sizing: border-box;
+  border-radius: var(--radius-lg); /* AppRadius.lg = 12 */
+  overflow: hidden;
+}
+.nce-cover--grid {
+  width: 168px;
+  height: 224px;
+}
+.nce-cover--hero {
+  width: 320px;
+  height: 200px;
+}
+
+/* RoundedRectangle().fill(coverColor.opacity(0.35)) 底層 */
+.nce-cover-fill {
+  position: absolute;
+  inset: 0;
+}
+
+/* D3 spine — grid only & isActive：Rectangle(darken(cover,0.4)) width 3pt，貼左緣 */
+.nce-spine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+/* Name + rule（top-leading）— GeometryReader 鋪滿 cover frame，內
+   VStack(.leading, spacing s2=8).padding(outerPadding) */
+.nce-namebox {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* VStack spacing AppSpacing.s2 = 8 */
+  box-sizing: border-box;
+}
+.nce-cover--grid .nce-namebox {
+  padding: var(--sp-2); /* outerPadding grid = AppSpacing.s2 = 8 */
+}
+.nce-cover--hero .nce-namebox {
+  padding: var(--sp-3); /* outerPadding hero = AppSpacing.s3 = 12 */
+}
+
+/* Text(name).font(serif(grid 22 / hero 32, bold)).primaryText
+   .lineLimit(2).truncationMode(.tail) */
+.nce-name {
+  font-family: var(--font-serif);
+  font-weight: 700; /* serif(bold:true) → CrimsonPro-Bold */
+  color: var(--text-primary); /* skin.palette.primaryText = #37352f（light） */
+  line-height: var(--leading-heading); /* 1.2 */
+  /* lineLimit(2) + tail truncate */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.nce-cover--grid .nce-name {
+  font-size: 22px; /* AppFonts.serif(size: 22) */
+}
+.nce-cover--hero .nce-name {
+  font-size: 32px; /* AppFonts.serif(size: 32) */
+}
+
+/* Rectangle(darken(cover,0.3)).frame(width geo.size.width*0.25,
+   height dividerStandard=1)。geo = cover frame（GeometryReader 在 padding 外）。 */
+.nce-rule {
+  height: 1px; /* AppMetrics.dividerStandard = 1 */
+  flex-shrink: 0;
+}
+.nce-cover--grid .nce-rule {
+  width: 42px; /* 168 * 0.25 */
+}
+.nce-cover--hero .nce-rule {
+  width: 80px; /* 320 * 0.25 */
+}
+
+/* N 詞 bottom-trailing：VStack{ Spacer; HStack{ Spacer; Text } }.padding(outerPadding) */
+.nce-countbox {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+.nce-cover--grid .nce-countbox {
+  padding: var(--sp-2); /* outerPadding grid = 8 */
+}
+.nce-cover--hero .nce-countbox {
+  padding: var(--sp-3); /* outerPadding hero = 12 */
+}
+
+/* Text("\(n) 詞").font(monoLabel = AppFonts.mono(size:10, bold:true))
+   .monospacedDigit().secondaryText */
+.nce-count {
+  font-family: var(--font-mono);
+  font-size: 10px; /* monoLabel size 10 */
+  font-weight: 700; /* mono(bold:true) */
+  font-variant-numeric: tabular-nums; /* monospacedDigit */
+  color: var(--text-secondary); /* skin.palette.secondaryText = #6b6a65（light） */
+  white-space: nowrap;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='notebook-cover-editorial'] {
+  background: transparent;
+}

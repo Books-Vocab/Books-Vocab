@@ -1,0 +1,1234 @@
+{
+  "cases": {
+    "bookshelf-populated-light": {
+      "rmse": 0.0564653,
+      "mae": 0.00611418,
+      "ssim": 0.01447
+    },
+    "bookshelf-single-light": {
+      "rmse": 0.0496798,
+      "mae": 0.00380592,
+      "ssim": 0.0070222
+    },
+    "bookshelf-empty-light": {
+      "rmse": 0.0801502,
+      "mae": 0.0117211,
+      "ssim": 0.0299221
+    },
+    "bookshelf-populated-dark": {
+      "rmse": 0.0617024,
+      "mae": 0.00784781,
+      "ssim": 0.0179745
+    },
+    "bookshelf-single-dark": {
+      "rmse": 0.0504601,
+      "mae": 0.00415874,
+      "ssim": 0.00778446
+    },
+    "bookshelf-empty-dark": {
+      "rmse": 0.0778027,
+      "mae": 0.0112742,
+      "ssim": 0.0300504
+    },
+    "settings-subscribed-light": {
+      "rmse": 0.114422,
+      "mae": 0.0253759,
+      "ssim": 0.0640609
+    },
+    "settings-logged-out-light": {
+      "rmse": 0.107351,
+      "mae": 0.0223583,
+      "ssim": 0.0571123
+    },
+    "settings-pricing-light": {
+      "rmse": 0.118772,
+      "mae": 0.0278396,
+      "ssim": 0.0682337
+    },
+    "settings-subscribed-dark": {
+      "rmse": 0.102382,
+      "mae": 0.0238864,
+      "ssim": 0.0639635
+    },
+    "settings-logged-out-dark": {
+      "rmse": 0.104534,
+      "mae": 0.0233444,
+      "ssim": 0.0598461
+    },
+    "settings-pricing-dark": {
+      "rmse": 0.107043,
+      "mae": 0.0267018,
+      "ssim": 0.0698773
+    },
+    "notebook-populated-light": {
+      "rmse": 0.0671621,
+      "mae": 0.00793546,
+      "ssim": 0.0203326
+    },
+    "notebook-single-light": {
+      "rmse": 0.0611487,
+      "mae": 0.00595144,
+      "ssim": 0.0126465
+    },
+    "notebook-populated-dark": {
+      "rmse": 0.0701311,
+      "mae": 0.00880726,
+      "ssim": 0.0236046
+    },
+    "notebook-single-dark": {
+      "rmse": 0.0645004,
+      "mae": 0.00663516,
+      "ssim": 0.0146417
+    },
+    "reader-reading-compact-light": {
+      "rmse": 0.0169287,
+      "mae": 0.00398755,
+      "ssim": 0.00406374
+    },
+    "reader-reading-expanded-light": {
+      "rmse": 0.0337718,
+      "mae": 0.00551242,
+      "ssim": 0.00948383
+    },
+    "reader-loading-render-light": {
+      "rmse": 0.0590151,
+      "mae": 0.0236096,
+      "ssim": 0.0198577
+    },
+    "reader-loading-vocab-light": {
+      "rmse": 0.0559682,
+      "mae": 0.0222859,
+      "ssim": 0.0198804
+    },
+    "reader-reading-translation-light": {
+      "rmse": 0.100475,
+      "mae": 0.0411512,
+      "ssim": 0.0400246
+    },
+    "reader-error-open-failed-light": {
+      "rmse": 0.0625816,
+      "mae": 0.00758297,
+      "ssim": 0.0161462
+    },
+    "selection-toolbar-multiple-light": {
+      "rmse": 0.0517005,
+      "mae": 0.00724046,
+      "ssim": 0.0176452
+    },
+    "selection-toolbar-single-light": {
+      "rmse": 0.0517005,
+      "mae": 0.00724046,
+      "ssim": 0.0176452
+    },
+    "selection-toolbar-none-light": {
+      "rmse": 0.043418,
+      "mae": 0.00634907,
+      "ssim": 0.0173883
+    },
+    "selection-tile-pair-light": {
+      "rmse": 0.0594793,
+      "mae": 0.00674184,
+      "ssim": 0.01488
+    },
+    "selection-tile-selected-light": {
+      "rmse": 0.0162629,
+      "mae": 0.00143554,
+      "ssim": 0.00568449
+    },
+    "selection-tile-unselected-light": {
+      "rmse": 0.0572125,
+      "mae": 0.00530615,
+      "ssim": 0.00919538
+    },
+    "vocab-sort-pill-default-light": {
+      "rmse": 0.0744571,
+      "mae": 0.0149176,
+      "ssim": 0.0486226
+    },
+    "vocab-sort-pill-alphabetical-light": {
+      "rmse": 0.0711738,
+      "mae": 0.0133719,
+      "ssim": 0.0412709
+    },
+    "vocab-sort-pill-difficulty-light": {
+      "rmse": 0.0649148,
+      "mae": 0.0111673,
+      "ssim": 0.0369493
+    },
+    "reader-translation-expanded-light": {
+      "rmse": 0.168445,
+      "mae": 0.0549827,
+      "ssim": 0.126923
+    },
+    "reader-translation-collapsed-light": {
+      "rmse": 0.175704,
+      "mae": 0.0487605,
+      "ssim": 0.0918705
+    },
+    "reader-translation-loading-light": {
+      "rmse": 0.175107,
+      "mae": 0.0437442,
+      "ssim": 0.0796067
+    },
+    "reader-translation-error-light": {
+      "rmse": 0.178198,
+      "mae": 0.0503433,
+      "ssim": 0.0968339
+    },
+    "reader-translation-explain-only-light": {
+      "rmse": 0.180837,
+      "mae": 0.057534,
+      "ssim": 0.127118
+    },
+    "reader-translation-explanation-error-light": {
+      "rmse": 0.179688,
+      "mae": 0.0540293,
+      "ssim": 0.108897
+    },
+    "vocabulary-populated-light": {
+      "rmse": 0.119727,
+      "mae": 0.0239008,
+      "ssim": 0.047133
+    },
+    "vocabulary-single-light": {
+      "rmse": 0.0912499,
+      "mae": 0.0139913,
+      "ssim": 0.0252304
+    },
+    "vocabulary-empty-light": {
+      "rmse": 0.118661,
+      "mae": 0.0248187,
+      "ssim": 0.0492291
+    },
+    "vocabulary-populated-dark": {
+      "rmse": 0.115352,
+      "mae": 0.0237935,
+      "ssim": 0.0502865
+    },
+    "vocabulary-single-dark": {
+      "rmse": 0.091869,
+      "mae": 0.0149294,
+      "ssim": 0.0289738
+    },
+    "vocabulary-empty-dark": {
+      "rmse": 0.111811,
+      "mae": 0.0244536,
+      "ssim": 0.0523472
+    },
+    "today-review-front-light": {
+      "rmse": 0.0826581,
+      "mae": 0.0170429,
+      "ssim": 0.0264622
+    },
+    "today-review-back-light": {
+      "rmse": 0.134492,
+      "mae": 0.0365351,
+      "ssim": 0.0679696
+    },
+    "today-review-production-front-light": {
+      "rmse": 0.0726499,
+      "mae": 0.0158126,
+      "ssim": 0.0335233
+    },
+    "today-review-production-back-light": {
+      "rmse": 0.127677,
+      "mae": 0.0342716,
+      "ssim": 0.073106
+    },
+    "today-review-front-dark": {
+      "rmse": 0.0768236,
+      "mae": 0.0188277,
+      "ssim": 0.0338228
+    },
+    "today-review-back-dark": {
+      "rmse": 0.122153,
+      "mae": 0.0351635,
+      "ssim": 0.0743852
+    },
+    "today-review-production-front-dark": {
+      "rmse": 0.0660012,
+      "mae": 0.0162252,
+      "ssim": 0.03857
+    },
+    "today-review-production-back-dark": {
+      "rmse": 0.115253,
+      "mae": 0.0323377,
+      "ssim": 0.0779944
+    },
+    "podcast-player-light": {
+      "rmse": 0.109662,
+      "mae": 0.0274173,
+      "ssim": 0.0613861
+    },
+    "podcast-locked-light": {
+      "rmse": 0.0762117,
+      "mae": 0.00942239,
+      "ssim": 0.0150197
+    },
+    "podcast-player-dark": {
+      "rmse": 0.130253,
+      "mae": 0.0310533,
+      "ssim": 0.0647803
+    },
+    "podcast-locked-dark": {
+      "rmse": 0.0804614,
+      "mae": 0.00997922,
+      "ssim": 0.0157113
+    },
+    "overview-populated-light": {
+      "rmse": 0.0663407,
+      "mae": 0.0109425,
+      "ssim": 0.0296307
+    },
+    "overview-empty-light": {
+      "rmse": 0.0656868,
+      "mae": 0.00913249,
+      "ssim": 0.0205328
+    },
+    "overview-populated-dark": {
+      "rmse": 0.0662585,
+      "mae": 0.0114111,
+      "ssim": 0.0306116
+    },
+    "overview-empty-dark": {
+      "rmse": 0.05827,
+      "mae": 0.00886352,
+      "ssim": 0.0220436
+    },
+    "reader-toc-loaded-light": {
+      "rmse": 0.0565333,
+      "mae": 0.00506994,
+      "ssim": 0.0131589
+    },
+    "reader-toc-loading-light": {
+      "rmse": 0.0578651,
+      "mae": 0.0216729,
+      "ssim": 0.0139083
+    },
+    "reader-toc-empty-light": {
+      "rmse": 0.0758682,
+      "mae": 0.0238512,
+      "ssim": 0.0206485
+    },
+    "reader-toc-failed-light": {
+      "rmse": 0.0603243,
+      "mae": 0.0219622,
+      "ssim": 0.013279
+    },
+    "reader-settings-normal-light": {
+      "rmse": 0.125338,
+      "mae": 0.0402811,
+      "ssim": 0.0581706
+    },
+    "reader-settings-bounds-min-light": {
+      "rmse": 0.125537,
+      "mae": 0.0402679,
+      "ssim": 0.0582792
+    },
+    "reader-settings-bounds-max-light": {
+      "rmse": 0.122895,
+      "mae": 0.0394847,
+      "ssim": 0.0575653
+    },
+    "reader-notebook-follow-global-light": {
+      "rmse": 0.038285,
+      "mae": 0.00300674,
+      "ssim": 0.00944303
+    },
+    "reader-notebook-one-bound-light": {
+      "rmse": 0.0386147,
+      "mae": 0.00305752,
+      "ssim": 0.00957496
+    },
+    "reader-notebook-stress-light": {
+      "rmse": 0.129599,
+      "mae": 0.0292715,
+      "ssim": 0.0686337
+    },
+    "reader-notebook-empty-light": {
+      "rmse": 0.0116685,
+      "mae": 0.000419548,
+      "ssim": 0.00142979
+    },
+    "vocab-accessory-icon-button-default-light": {
+      "rmse": 0.0667527,
+      "mae": 0.0065367,
+      "ssim": 0.0178119
+    },
+    "vocab-slider-row-interactive-light": {
+      "rmse": 0.0215874,
+      "mae": 0.0016752,
+      "ssim": 0.00949234
+    },
+    "vocab-tone-chip-variants-light": {
+      "rmse": 0.0776679,
+      "mae": 0.0143702,
+      "ssim": 0.0312137
+    },
+    "vocab-tone-chip-long-text-light": {
+      "rmse": 0.0750853,
+      "mae": 0.0226944,
+      "ssim": 0.0308051
+    },
+    "vocab-chrome-icon-button-close-light": {
+      "rmse": 0.0238635,
+      "mae": 0.00183445,
+      "ssim": 0.0047299
+    },
+    "vocab-chrome-icon-button-toned-filter-light": {
+      "rmse": 0.0316958,
+      "mae": 0.00235566,
+      "ssim": 0.00509253
+    },
+    "vocab-inline-action-button-accent-default-light": {
+      "rmse": 0.0900806,
+      "mae": 0.0174709,
+      "ssim": 0.0528699
+    },
+    "vocab-inline-action-button-toned-light": {
+      "rmse": 0.0384804,
+      "mae": 0.00624027,
+      "ssim": 0.0322126
+    },
+    "vocab-search-field-empty-light": {
+      "rmse": 0.0511228,
+      "mae": 0.0066304,
+      "ssim": 0.015468
+    },
+    "vocab-search-field-with-query-light": {
+      "rmse": 0.0423118,
+      "mae": 0.00482377,
+      "ssim": 0.0180925
+    },
+    "vocab-section-header-title-only-light": {
+      "rmse": 0.0425781,
+      "mae": 0.00348713,
+      "ssim": 0.0095145
+    },
+    "vocab-section-header-icon-trailing-light": {
+      "rmse": 0.0587199,
+      "mae": 0.00649439,
+      "ssim": 0.0159589
+    },
+    "vocab-review-progress-bar-ratios-light": {
+      "rmse": 0.0832499,
+      "mae": 0.0154947,
+      "ssim": 0.0424796
+    },
+    "vocab-review-progress-bar-detail-only-light": {
+      "rmse": 0.0682968,
+      "mae": 0.0116632,
+      "ssim": 0.0493597
+    },
+    "vocab-review-progress-bar-over-100-light": {
+      "rmse": 0.0775678,
+      "mae": 0.0150012,
+      "ssim": 0.0441271
+    },
+    "vocab-review-cta-pill-both-types-light": {
+      "rmse": 0.127139,
+      "mae": 0.0217012,
+      "ssim": 0.0449387
+    },
+    "vocab-review-cta-pill-due-only-light": {
+      "rmse": 0.109547,
+      "mae": 0.0174963,
+      "ssim": 0.0408007
+    },
+    "vocab-review-cta-pill-unlearned-only-light": {
+      "rmse": 0.0889661,
+      "mae": 0.011743,
+      "ssim": 0.0303915
+    },
+    "vocab-tab-selector-no-counts-light": {
+      "rmse": 0.108995,
+      "mae": 0.01675,
+      "ssim": 0.0474175
+    },
+    "vocab-tab-selector-with-counts-light": {
+      "rmse": 0.155088,
+      "mae": 0.0305266,
+      "ssim": 0.06562
+    },
+    "vocab-tab-selector-zero-counts-light": {
+      "rmse": 0.153889,
+      "mae": 0.0299299,
+      "ssim": 0.0644892
+    },
+    "vocab-toolbar-glyph-plain-light": {
+      "rmse": 0.0799274,
+      "mae": 0.0154554,
+      "ssim": 0.0353506
+    },
+    "vocab-toolbar-glyph-with-badge-light": {
+      "rmse": 0.096818,
+      "mae": 0.0202183,
+      "ssim": 0.051099
+    },
+    "vocab-toolbar-glyph-badge-stress-light": {
+      "rmse": 0.108743,
+      "mae": 0.024191,
+      "ssim": 0.0604474
+    },
+    "vocab-empty-state-card-no-action-light": {
+      "rmse": 0.173617,
+      "mae": 0.0331559,
+      "ssim": 0.0312863
+    },
+    "vocab-empty-state-card-with-action-light": {
+      "rmse": 0.176208,
+      "mae": 0.0352087,
+      "ssim": 0.0385944
+    },
+    "vocab-empty-state-content-basic-light": {
+      "rmse": 0.0419389,
+      "mae": 0.00439732,
+      "ssim": 0.0129257
+    },
+    "vocab-empty-state-content-guidance-action-light": {
+      "rmse": 0.0612758,
+      "mae": 0.010152,
+      "ssim": 0.0345897
+    },
+    "vocab-scene-shell-loading-spinner-light": {
+      "rmse": 0.0403827,
+      "mae": 0.00350561,
+      "ssim": 0.00731478
+    },
+    "vocab-scene-shell-loading-skeleton-light": {
+      "rmse": 0.0509054,
+      "mae": 0.0315876,
+      "ssim": 0.0507463
+    },
+    "vocab-scene-shell-empty-cta-light": {
+      "rmse": 0.0787298,
+      "mae": 0.0115923,
+      "ssim": 0.0265344
+    },
+    "vocab-scene-shell-empty-no-action-light": {
+      "rmse": 0.060897,
+      "mae": 0.00738999,
+      "ssim": 0.0156898
+    },
+    "vocab-scene-shell-error-retry-light": {
+      "rmse": 0.0709438,
+      "mae": 0.00939997,
+      "ssim": 0.0144004
+    },
+    "vocab-scene-shell-content-light": {
+      "rmse": 0.0260486,
+      "mae": 0.00269292,
+      "ssim": 0.0127424
+    },
+    "vocab-highlight-picker-paper-selected-light": {
+      "rmse": 0.136335,
+      "mae": 0.0217024,
+      "ssim": 0.0201855
+    },
+    "vocab-highlight-picker-blue-selected-light": {
+      "rmse": 0.133198,
+      "mae": 0.0208132,
+      "ssim": 0.0194682
+    },
+    "vocab-highlight-picker-sage-selected-light": {
+      "rmse": 0.133261,
+      "mae": 0.0208062,
+      "ssim": 0.0195049
+    },
+    "vocab-highlight-picker-rose-selected-light": {
+      "rmse": 0.134317,
+      "mae": 0.0211265,
+      "ssim": 0.0196717
+    },
+    "collocation-explain-loaded-short-light": {
+      "rmse": 0.114888,
+      "mae": 0.0177711,
+      "ssim": 0.0276238
+    },
+    "collocation-explain-loaded-long-light": {
+      "rmse": 0.138242,
+      "mae": 0.0323327,
+      "ssim": 0.0683911
+    },
+    "collocation-explain-loaded-with-delete-light": {
+      "rmse": 0.117987,
+      "mae": 0.0193675,
+      "ssim": 0.0310163
+    },
+    "kg-empty-state-multi-filter-light": {
+      "rmse": 0.0735467,
+      "mae": 0.00915168,
+      "ssim": 0.0206564
+    },
+    "link-reason-sheet-medium-reason-light": {
+      "rmse": 0.101043,
+      "mae": 0.0182276,
+      "ssim": 0.0404022
+    },
+    "link-reason-sheet-short-reason-light": {
+      "rmse": 0.0661099,
+      "mae": 0.00732086,
+      "ssim": 0.0150468
+    },
+    "link-reason-sheet-long-reason-light": {
+      "rmse": 0.147838,
+      "mae": 0.0411687,
+      "ssim": 0.0916867
+    },
+    "link-reason-sheet-no-hide-light": {
+      "rmse": 0.0960473,
+      "mae": 0.0165127,
+      "ssim": 0.0364182
+    },
+    "link-reason-sheet-empty-reason-light": {
+      "rmse": 0.06934,
+      "mae": 0.00749675,
+      "ssim": 0.0140973
+    },
+    "notebook-edit-create-blank-light": {
+      "rmse": 0.085773,
+      "mae": 0.02793,
+      "ssim": 0.0384481
+    },
+    "notebook-edit-color-pattern-light": {
+      "rmse": 0.0953888,
+      "mae": 0.0309298,
+      "ssim": 0.0459019
+    },
+    "notebook-edit-color-only-light": {
+      "rmse": 0.103563,
+      "mae": 0.0326452,
+      "ssim": 0.0433476
+    },
+    "notebook-edit-long-name-light": {
+      "rmse": 0.127307,
+      "mae": 0.0482761,
+      "ssim": 0.0649298
+    },
+    "notebook-edit-empty-name-light": {
+      "rmse": 0.0914846,
+      "mae": 0.0301717,
+      "ssim": 0.0397269
+    },
+    "word-edit-populated-light": {
+      "rmse": 0.0738006,
+      "mae": 0.0107835,
+      "ssim": 0.0176048
+    },
+    "word-edit-empty-explanation-light": {
+      "rmse": 0.0402909,
+      "mae": 0.00537215,
+      "ssim": 0.00815805
+    },
+    "word-edit-long-content-stress-light": {
+      "rmse": 0.205423,
+      "mae": 0.0637798,
+      "ssim": 0.100268
+    },
+    "word-edit-long-word-title-light": {
+      "rmse": 0.0862852,
+      "mae": 0.0137144,
+      "ssim": 0.0228456
+    },
+    "vocab-calendar-active-month-light": {
+      "rmse": 0.162128,
+      "mae": 0.0425847,
+      "ssim": 0.073622
+    },
+    "vocab-calendar-day-selected-light": {
+      "rmse": 0.162006,
+      "mae": 0.0425688,
+      "ssim": 0.0736821
+    },
+    "vocab-calendar-heavy-intensity-light": {
+      "rmse": 0.173242,
+      "mae": 0.0477598,
+      "ssim": 0.0805292
+    },
+    "vocab-calendar-no-activity-light": {
+      "rmse": 0.0692655,
+      "mae": 0.0102518,
+      "ssim": 0.0308012
+    },
+    "vocab-calendar-current-month-light": {
+      "rmse": 0.0744441,
+      "mae": 0.0153909,
+      "ssim": 0.0453498
+    },
+    "vocab-forecast-7-day-light": {
+      "rmse": 0.0549567,
+      "mae": 0.00436439,
+      "ssim": 0.0165686
+    },
+    "vocab-forecast-14-day-light": {
+      "rmse": 0.0694892,
+      "mae": 0.00710298,
+      "ssim": 0.0262652
+    },
+    "vocab-forecast-compact-light": {
+      "rmse": 0.0904577,
+      "mae": 0.0105879,
+      "ssim": 0.042407
+    },
+    "vocab-forecast-sparse-light": {
+      "rmse": 0.0314347,
+      "mae": 0.00157011,
+      "ssim": 0.00501839
+    },
+    "vocab-heatmap-dense-graded-light": {
+      "rmse": 0.043645,
+      "mae": 0.0030702,
+      "ssim": 0.00892748
+    },
+    "vocab-heatmap-sparse-light": {
+      "rmse": 0.0312335,
+      "mae": 0.00165457,
+      "ssim": 0.00471638
+    },
+    "vocab-heatmap-no-thresholds-light": {
+      "rmse": 0.0312335,
+      "mae": 0.00165457,
+      "ssim": 0.00471638
+    },
+    "vocab-heatmap-empty-light": {
+      "rmse": 0.0312335,
+      "mae": 0.00165457,
+      "ssim": 0.00471638
+    },
+    "vocab-heatmap-short-range-light": {
+      "rmse": 0.0540516,
+      "mae": 0.00480557,
+      "ssim": 0.0138652
+    },
+    "review-banner-demo-default-light": {
+      "rmse": 0.0175218,
+      "mae": 0.00107047,
+      "ssim": 0.00218735
+    },
+    "vocab-add-link-with-candidates-light": {
+      "rmse": 0.0593476,
+      "mae": 0.00718395,
+      "ssim": 0.0159803
+    },
+    "vocab-add-link-no-candidates-light": {
+      "rmse": 0.0593476,
+      "mae": 0.00718395,
+      "ssim": 0.0159803
+    },
+    "vocab-linked-card-single-card-light": {
+      "rmse": 0.16831,
+      "mae": 0.0301433,
+      "ssim": 0.027566
+    },
+    "vocab-linked-card-stacked-3-deep-light": {
+      "rmse": 0.159295,
+      "mae": 0.0318132,
+      "ssim": 0.0347561
+    },
+    "kg-empty-state-no-entries-logged-out-light": {
+      "rmse": 0.0714704,
+      "mae": 0.0094862,
+      "ssim": 0.0220269
+    },
+    "kg-empty-state-no-entries-cta-light": {
+      "rmse": 0.0818814,
+      "mae": 0.012318,
+      "ssim": 0.0297848
+    },
+    "kg-empty-state-search-no-match-light": {
+      "rmse": 0.0602768,
+      "mae": 0.00648887,
+      "ssim": 0.0151489
+    },
+    "kg-empty-state-single-filter-due-light": {
+      "rmse": 0.0735371,
+      "mae": 0.0091473,
+      "ssim": 0.0209067
+    },
+    "sync-completed-light": {
+      "rmse": 0.138906,
+      "mae": 0.0301177,
+      "ssim": 0.0468158
+    },
+    "sync-full-light": {
+      "rmse": 0.103932,
+      "mae": 0.0280413,
+      "ssim": 0.0557619
+    },
+    "sync-partial-light": {
+      "rmse": 0.145727,
+      "mae": 0.0396259,
+      "ssim": 0.074638
+    },
+    "sync-ready-light": {
+      "rmse": 0.217902,
+      "mae": 0.0662191,
+      "ssim": 0.0556399
+    },
+    "sync-running-light": {
+      "rmse": 0.0895904,
+      "mae": 0.0192275,
+      "ssim": 0.043291
+    },
+    "notebooks-card-grid-two-light": {
+      "rmse": 0.0996083,
+      "mae": 0.0238748,
+      "ssim": 0.0669331
+    },
+    "notebooks-card-hero-fresh-light": {
+      "rmse": 0.033159,
+      "mae": 0.00376927,
+      "ssim": 0.0125221
+    },
+    "notebooks-card-hero-long-name-light": {
+      "rmse": 0.0726307,
+      "mae": 0.013675,
+      "ssim": 0.0461995
+    },
+    "notebooks-card-hero-heavy-light": {
+      "rmse": 0.0551245,
+      "mae": 0.00871654,
+      "ssim": 0.0309886
+    },
+    "kg-vocab-row-default-light": {
+      "rmse": 0.091626,
+      "mae": 0.0212447,
+      "ssim": 0.0639399
+    },
+    "kg-vocab-row-highlighted-light": {
+      "rmse": 0.0706986,
+      "mae": 0.0145786,
+      "ssim": 0.0689718
+    },
+    "book-card-placeholder-epub-light": {
+      "rmse": 0.0926955,
+      "mae": 0.0145982,
+      "ssim": 0.0262937
+    },
+    "book-card-pdf-badge-light": {
+      "rmse": 0.097773,
+      "mae": 0.0174534,
+      "ssim": 0.0358281
+    },
+    "book-card-progress-mid-light": {
+      "rmse": 0.112375,
+      "mae": 0.0223308,
+      "ssim": 0.0392728
+    },
+    "book-card-progress-complete-light": {
+      "rmse": 0.123004,
+      "mae": 0.0266111,
+      "ssim": 0.0442547
+    },
+    "book-card-long-title-light": {
+      "rmse": 0.138361,
+      "mae": 0.0411192,
+      "ssim": 0.0953025
+    },
+    "book-card-a11y3-light": {
+      "rmse": 0.112375,
+      "mae": 0.0223308,
+      "ssim": 0.0392728
+    },
+    "subscription-gate-card-happy-path-light": {
+      "rmse": 0.172226,
+      "mae": 0.0454457,
+      "ssim": 0.0745013
+    },
+    "subscription-gate-card-long-copy-stress-light": {
+      "rmse": 0.220254,
+      "mae": 0.0776218,
+      "ssim": 0.133171
+    },
+    "subscription-gate-card-narrow-width-320pt-light": {
+      "rmse": 0.157268,
+      "mae": 0.038033,
+      "ssim": 0.0632722
+    },
+    "subscription-gate-card-dynamic-type-accessibility3-light": {
+      "rmse": 0.147138,
+      "mae": 0.0337361,
+      "ssim": 0.0563999
+    },
+    "account-section-logged-out-light": {
+      "rmse": 0.169043,
+      "mae": 0.0343631,
+      "ssim": 0.0435299
+    },
+    "account-section-logged-out-auth-error-light": {
+      "rmse": 0.180762,
+      "mae": 0.0405942,
+      "ssim": 0.0564834
+    },
+    "account-section-subscribed-active-light": {
+      "rmse": 0.141641,
+      "mae": 0.0251319,
+      "ssim": 0.0339227
+    },
+    "account-section-subscription-loading-light": {
+      "rmse": 0.132314,
+      "mae": 0.0213809,
+      "ssim": 0.0282988
+    },
+    "account-section-pricing-unavailable-light": {
+      "rmse": 0.139482,
+      "mae": 0.0240255,
+      "ssim": 0.0320694
+    },
+    "review-fold-chevron-collapse-handle-light": {
+      "rmse": 0.0489451,
+      "mae": 0.00243565,
+      "ssim": 0.00163222
+    },
+    "review-fold-chevron-on-card-backdrop-light": {
+      "rmse": 0.167452,
+      "mae": 0.0303649,
+      "ssim": 0.0278339
+    },
+    "review-fold-paper-expanded-light": {
+      "rmse": 0.162855,
+      "mae": 0.0285054,
+      "ssim": 0.0254407
+    },
+    "review-fold-paper-quarter-light": {
+      "rmse": 0.191308,
+      "mae": 0.0369544,
+      "ssim": 0.0210453
+    },
+    "review-fold-paper-nearly-folded-light": {
+      "rmse": 0.0899344,
+      "mae": 0.0081657,
+      "ssim": 0.00625657
+    },
+    "review-fold-segment-single-light": {
+      "rmse": 0.183456,
+      "mae": 0.0346287,
+      "ssim": 0.0243876
+    },
+    "review-fold-segment-stacked-group-light": {
+      "rmse": 0.175341,
+      "mae": 0.0332021,
+      "ssim": 0.0287584
+    },
+    "podcast-continue-card-in-progress-light": {
+      "rmse": 0.154402,
+      "mae": 0.0337447,
+      "ssim": 0.0691156
+    },
+    "podcast-continue-card-fresh-light": {
+      "rmse": 0.100201,
+      "mae": 0.0154303,
+      "ssim": 0.0285242
+    },
+    "podcast-continue-card-completed-light": {
+      "rmse": 0.101263,
+      "mae": 0.0157157,
+      "ssim": 0.0292127
+    },
+    "podcast-continue-card-free-preview-light": {
+      "rmse": 0.107915,
+      "mae": 0.017982,
+      "ssim": 0.0332457
+    },
+    "podcast-continue-card-gated-light": {
+      "rmse": 0.104078,
+      "mae": 0.0173518,
+      "ssim": 0.0331021
+    },
+    "podcast-episode-row-variants-light": {
+      "rmse": 0.200652,
+      "mae": 0.0491429,
+      "ssim": 0.0557952
+    },
+    "podcast-series-card-normal-light": {
+      "rmse": 0.0743826,
+      "mae": 0.0151006,
+      "ssim": 0.0597534
+    },
+    "podcast-series-card-long-host-light": {
+      "rmse": 0.0876747,
+      "mae": 0.0224407,
+      "ssim": 0.0845364
+    },
+    "podcast-series-card-a11y3-light": {
+      "rmse": 0.0669269,
+      "mae": 0.0108443,
+      "ssim": 0.0425911
+    },
+    "notebook-cover-all-patterns-blue-light": {
+      "rmse": 0.0889906,
+      "mae": 0.0210029,
+      "ssim": 0.0752215
+    },
+    "notebook-cover-solid-no-pattern-light": {
+      "rmse": 0.0261551,
+      "mae": 0.00173484,
+      "ssim": 0.00583802
+    },
+    "notebook-cover-long-name-truncate-light": {
+      "rmse": 0.207498,
+      "mae": 0.0810209,
+      "ssim": 0.154089
+    },
+    "notebook-cover-shows-name-false-light": {
+      "rmse": 0.0784903,
+      "mae": 0.0186652,
+      "ssim": 0.0736156
+    },
+    "notebook-cover-image-fallback-light": {
+      "rmse": 0.0764162,
+      "mae": 0.0131601,
+      "ssim": 0.0371212
+    },
+    "notebooks-stack-state-active-light": {
+      "rmse": 0.0439218,
+      "mae": 0.00247459,
+      "ssim": 0.00862367
+    },
+    "notebooks-stack-state-inactive-light": {
+      "rmse": 0.0433851,
+      "mae": 0.00235834,
+      "ssim": 0.0083705
+    },
+    "notebooks-stack-d1-cover-basic-light": {
+      "rmse": 0.0259941,
+      "mae": 0.00148482,
+      "ssim": 0.00445212
+    },
+    "notebooks-stack-depth-100-light": {
+      "rmse": 0.0433851,
+      "mae": 0.00235834,
+      "ssim": 0.0083705
+    },
+    "notebooks-stack-d1-empty-light": {
+      "rmse": 0.0413128,
+      "mae": 0.00203341,
+      "ssim": 0.00726594
+    },
+    "notebooks-stack-depth-0-light": {
+      "rmse": 0.0413128,
+      "mae": 0.00203341,
+      "ssim": 0.00726594
+    },
+    "notebooks-stack-d1-large-card-count-light": {
+      "rmse": 0.0466179,
+      "mae": 0.00293653,
+      "ssim": 0.00964023
+    },
+    "notebooks-stack-d1-large-due-count-light": {
+      "rmse": 0.0300519,
+      "mae": 0.00192559,
+      "ssim": 0.00529861
+    },
+    "notebooks-stack-d2-grid-height-light": {
+      "rmse": 0.0214254,
+      "mae": 0.00109289,
+      "ssim": 0.00332663
+    },
+    "notebooks-stack-editorial-different-seeds-light": {
+      "rmse": 0.0259941,
+      "mae": 0.00148482,
+      "ssim": 0.00445212
+    },
+    "notebooks-stack-editorial-spine-rotation-light": {
+      "rmse": 0.0439218,
+      "mae": 0.00247459,
+      "ssim": 0.00862367
+    },
+    "notebooks-stack-stress-happy-2up-light": {
+      "rmse": 0.0212105,
+      "mae": 0.00107339,
+      "ssim": 0.00322712
+    },
+    "word-detail-card-full-light": {
+      "rmse": 0.135122,
+      "mae": 0.0319521,
+      "ssim": 0.0699098
+    },
+    "word-detail-card-compact-light": {
+      "rmse": 0.119952,
+      "mae": 0.0265076,
+      "ssim": 0.0590772
+    },
+    "word-detail-card-no-example-light": {
+      "rmse": 0.105607,
+      "mae": 0.0185694,
+      "ssim": 0.0334222
+    },
+    "settings-preferences-with-auto-sync-light": {
+      "rmse": 0.17095,
+      "mae": 0.0372638,
+      "ssim": 0.0486878
+    },
+    "settings-preferences-auto-sync-off-light": {
+      "rmse": 0.167965,
+      "mae": 0.036062,
+      "ssim": 0.0472813
+    },
+    "settings-preferences-logged-out-light": {
+      "rmse": 0.139234,
+      "mae": 0.0239207,
+      "ssim": 0.0327945
+    },
+    "settings-review-intensive-light": {
+      "rmse": 0.0967144,
+      "mae": 0.0240257,
+      "ssim": 0.0450967
+    },
+    "settings-review-relaxed-light": {
+      "rmse": 0.0964675,
+      "mae": 0.0239121,
+      "ssim": 0.0449212
+    },
+    "settings-review-frozen-light": {
+      "rmse": 0.0979011,
+      "mae": 0.0235215,
+      "ssim": 0.0405943
+    },
+    "settings-review-custom-light": {
+      "rmse": 0.124782,
+      "mae": 0.0365205,
+      "ssim": 0.0721827
+    },
+    "settings-subscription-pro-active-light": {
+      "rmse": 0.16003,
+      "mae": 0.0414527,
+      "ssim": 0.0861403
+    },
+    "settings-subscription-loading-light": {
+      "rmse": 0.15957,
+      "mae": 0.0400971,
+      "ssim": 0.0799807
+    },
+    "settings-subscription-pricing-unavailable-light": {
+      "rmse": 0.166756,
+      "mae": 0.0480985,
+      "ssim": 0.102043
+    },
+    "settings-subscription-inactive-free-light": {
+      "rmse": 0.174769,
+      "mae": 0.0489154,
+      "ssim": 0.093828
+    },
+    "podcast-bubble-cell-highlighted-active-light": {
+      "rmse": 0.142296,
+      "mae": 0.0456944,
+      "ssim": 0.0932758
+    },
+    "podcast-bubble-cell-idle-non-current-light": {
+      "rmse": 0.137052,
+      "mae": 0.0423003,
+      "ssim": 0.0844401
+    },
+    "podcast-bubble-cell-right-aligned-speaker-light": {
+      "rmse": 0.10789,
+      "mae": 0.0348998,
+      "ssim": 0.096622
+    },
+    "podcast-bubble-cell-vocab-highlighted-light": {
+      "rmse": 0.143332,
+      "mae": 0.0471107,
+      "ssim": 0.0896849
+    },
+    "podcast-hero-full-meta-light": {
+      "rmse": 0.160865,
+      "mae": 0.0378067,
+      "ssim": 0.0473688
+    },
+    "podcast-hero-long-title-multi-host-light": {
+      "rmse": 0.165282,
+      "mae": 0.0420429,
+      "ssim": 0.061566
+    },
+    "podcast-hero-fresh-no-meta-light": {
+      "rmse": 0.153879,
+      "mae": 0.0336204,
+      "ssim": 0.0385136
+    },
+    "podcast-hero-episodes-only-light": {
+      "rmse": 0.156067,
+      "mae": 0.03417,
+      "ssim": 0.0371847
+    },
+    "podcast-hero-a11y3-light": {
+      "rmse": 0.160186,
+      "mae": 0.0367808,
+      "ssim": 0.0435692
+    },
+    "podcast-rail-card-resume-light": {
+      "rmse": 0.223766,
+      "mae": 0.0808991,
+      "ssim": 0.130925
+    },
+    "podcast-rail-card-no-progress-light": {
+      "rmse": 0.242403,
+      "mae": 0.0934671,
+      "ssim": 0.147484
+    },
+    "podcast-rail-card-long-title-light": {
+      "rmse": 0.225544,
+      "mae": 0.0830005,
+      "ssim": 0.137331
+    },
+    "podcast-rail-card-large-numbers-light": {
+      "rmse": 0.220517,
+      "mae": 0.075044,
+      "ssim": 0.113124
+    },
+    "podcast-rail-card-a11y3-light": {
+      "rmse": 0.219509,
+      "mae": 0.0743714,
+      "ssim": 0.109766
+    },
+    "account-auth-summary-initials-free-light": {
+      "rmse": 0.0301416,
+      "mae": 0.00262608,
+      "ssim": 0.00791566
+    },
+    "account-auth-summary-initials-pro-light": {
+      "rmse": 0.0437296,
+      "mae": 0.00474046,
+      "ssim": 0.0105799
+    },
+    "account-auth-summary-long-name-email-overflow-light": {
+      "rmse": 0.0500127,
+      "mae": 0.00638938,
+      "ssim": 0.0159945
+    },
+    "login-sheet-default-light": {
+      "rmse": 0.108638,
+      "mae": 0.0177384,
+      "ssim": 0.0324334
+    },
+    "login-sheet-authenticating-light": {
+      "rmse": 0.0342878,
+      "mae": 0.00974899,
+      "ssim": 0.0163825
+    },
+    "login-sheet-error-light": {
+      "rmse": 0.121591,
+      "mae": 0.0231841,
+      "ssim": 0.0447795
+    },
+    "welcome-step-1-capture-light": {
+      "rmse": 0.204447,
+      "mae": 0.0652245,
+      "ssim": 0.0711235
+    },
+    "welcome-step-2-link-light": {
+      "rmse": 0.203647,
+      "mae": 0.0645791,
+      "ssim": 0.06993
+    },
+    "welcome-step-3-review-light": {
+      "rmse": 0.205114,
+      "mae": 0.0658842,
+      "ssim": 0.0706437
+    },
+    "welcome-step-3-dark-light": {
+      "rmse": 0.205114,
+      "mae": 0.0658842,
+      "ssim": 0.0706437
+    }
+  }
+}

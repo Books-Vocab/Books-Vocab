@@ -75,6 +75,20 @@ describe('resolveHarnessConfig', () => {
     })
   })
 
+  it('routes vocab-sort-pill surface (Vocab Shell primitive) with its 3-state taxonomy', () => {
+    expect(resolveHarnessConfig('?surface=vocab-sort-pill&scenario=difficulty&appearance=light')).toEqual({
+      surface: 'vocab-sort-pill',
+      scenario: 'difficulty',
+      appearance: 'light',
+    })
+    // unknown scenario → first scenario (default)
+    expect(resolveHarnessConfig('?surface=vocab-sort-pill&scenario=bogus')).toEqual({
+      surface: 'vocab-sort-pill',
+      scenario: 'default',
+      appearance: 'light',
+    })
+  })
+
   it('routes reader surface with its own scenario taxonomy', () => {
     expect(resolveHarnessConfig('?surface=reader&scenario=reading-expanded&appearance=light')).toEqual({
       surface: 'reader',

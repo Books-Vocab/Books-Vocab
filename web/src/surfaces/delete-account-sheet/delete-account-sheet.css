@@ -1,0 +1,290 @@
+/* SettingsDeleteAccountSheet — iOS 刪除帳號確認 sheet 的 web 鏡像。
+   token 走 design-system 變數；iOS 系統色（白卡 / toggle off 灰膠囊）為非品牌色，行內
+   token-allow。
+
+   token 對照（appSkin → web）：
+     body = sans 15            → --text-subhead
+     caption = sans 12 bold    → --text-caption + 700（section header / confirm 提示）
+     displayTitle = serif 24 b → --font-serif 24 / 700（hero title）
+     symbolHero = symbol 44 l  → hero icon 44px
+     iconMedium = symbol 14 m  → consequence row / button icon 14px
+     sheetSectionSpacing 20    → --sp-5（VStack 主間距）
+     sheetPaddingCompact 20    → --sp-5（content padding）
+     sectionGap 14             → --section-gap（header↔card）
+     rowContentSpacing 12      → --sp-3（consequence rows）
+     controlGap 10             → 10px（hero stack / ack row v / action gap / row icon gap）
+     inlineGap 8               → --inline-gap（hero top inset）
+     microGap 6                → 6px（confirm prompt↔field）
+     cardPadding 18            → 18px（card 內距）
+     radii.card 8              → --radius-card（cards / action button）
+     radii.control 6          → --radius-control（textfield）
+   色：pageBackground #F7F6F3 / destructive #B5403A / destructiveBg=destructive@10% /
+       primaryText #37352F / secondaryText #6B6A65 / tertiaryText #8A8983 /
+       cardBorder rgba(0,0,0,.09) / divider rgba(0,0,0,.06)。
+
+   catalog scene = .fill opaque（pageBackground 不透明）→ 全 phone-frame 不透明捕捉，無
+   transparent flag。 */
+
+.das-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--page-bg);
+  font-family: var(--font-sans);
+}
+
+/* inline nav bar：status 59 + bar 44 = 103pt。取消 leading、標題置中（inline，極淡 disabled
+   態），標題在 catalog 量測近乎隱沒於 bg → 以極淡色渲染。 */
+.das-nav {
+  flex: none;
+  position: relative;
+  height: 103px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 11px;
+}
+.das-nav-cancel {
+  position: absolute;
+  left: 16px;
+  bottom: 11px;
+  font-size: var(--text-body); /* nav button = system body 17 */
+  /* 取消鈕 isDeleting=false 時為 accent 字；catalog 量測偏淡 → 仍以極淡色近似 */
+  color: #c9c8c3; /* token-allow: nav bar 在 grouped-less sheet 量測近 bg 之淡字 */
+}
+.das-nav-title {
+  font-size: var(--text-subhead); /* inline title 量測近隱形，以淡字近似 */
+  font-weight: 600;
+  color: #d3d2cd; /* token-allow: ref 量測標題近 #F7F6F3 bg（近隱形） */
+}
+
+.das-scroll {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+/* VStack(spacing sheetSectionSpacing=20) + .padding(sheetPaddingCompact=20) */
+.das-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5); /* sheetSectionSpacing = 20 */
+  padding: var(--sp-5); /* sheetPaddingCompact = 20 */
+  box-sizing: border-box;
+}
+
+/* hero：VStack(spacing controlGap=10) maxWidth ∞ + .padding(.top inlineGap=8) */
+.das-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px; /* controlGap */
+  padding-top: var(--inline-gap); /* 8 */
+  text-align: center;
+}
+.das-hero-icon {
+  color: var(--destructive);
+}
+/* displayTitle = serif 24 bold */
+.das-hero-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-display-title); /* 24 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+/* body = sans 15 secondaryText centered, lineSpacing(4) → line-height calc(1.2em + 4px) */
+.das-hero-desc {
+  font-size: var(--text-subhead); /* body = sans 15 */
+  color: var(--text-secondary);
+  line-height: calc(1.2em + 4px);
+  max-width: 100%;
+}
+
+/* section = VStack(spacing sectionGap=14)[header, card] */
+.das-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap); /* 14 */
+}
+
+/* SettingsSectionHeader：Label(icon+title) caption(sans 12 bold)/secondaryText，
+   .padding(.leading s1=4) */
+.das-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: var(--sp-1); /* s1 = 4 */
+  font-size: var(--text-caption); /* caption = sans 12 */
+  font-weight: 700; /* caption bold */
+  color: var(--text-secondary);
+}
+.das-header-icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* 通用 card：radius card=8 */
+.das-card {
+  border-radius: var(--radius-card); /* 8 */
+  overflow: hidden;
+}
+
+/* consequences card：VStack(spacing rowContentSpacing=12) .padding(cardPadding=18)
+   destructiveBg 底 + destructive@22% 1pt 描邊 */
+.das-card--consequences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3); /* rowContentSpacing = 12 */
+  padding: 18px; /* cardPadding */
+  background: var(--destructive-bg); /* destructive @ 10% */
+  border: 1px solid rgba(181, 64, 58, 0.22); /* token-allow: destructive(#B5403A)@22% 描邊 */
+  box-sizing: border-box;
+}
+/* consequenceRow：HStack(.top, spacing controlGap=10)[icon(w22) + body text] */
+.das-consequence-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px; /* controlGap */
+}
+.das-consequence-icon {
+  flex: none;
+  width: 22px;
+  display: flex;
+  justify-content: center;
+}
+.das-consequence-glyph {
+  color: var(--destructive);
+}
+.das-consequence-text {
+  font-size: var(--text-subhead); /* body = sans 15 */
+  color: var(--text-primary);
+  line-height: var(--leading-heading);
+}
+
+/* settingsCard = AppSectionCard(padding 0, style .settings)：cardBackground 白 + cardBorder
+   1pt 描邊 + radius card=8 */
+.das-card--settings {
+  background: var(--card-bg); /* cardBackground = #fff */
+  border: 1px solid var(--card-border);
+  box-sizing: border-box;
+}
+
+/* ack row：Toggle .padding(.h cardPadding=18, .v controlGap=10)；switch off=灰膠囊 */
+.das-ack-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px; /* v controlGap=10, h cardPadding=18 */
+}
+.das-ack-title {
+  flex: 1 1 auto;
+  font-size: var(--text-subhead); /* body = sans 15 */
+  color: var(--text-primary);
+  line-height: var(--leading-heading);
+}
+/* SwitchToggleStyle off → iOS 系統灰膠囊 51×31 */
+.das-toggle {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  background: #e9e9ea; /* token-allow: iOS UISwitch off track 系統灰 */
+}
+.das-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff; /* token-allow: iOS UISwitch knob 白 */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); /* token-allow: knob 系統陰影 */
+}
+
+/* SettingsDivider(leadingInset 0)：divider 全寬 0.5pt（hairline） */
+.das-divider {
+  height: 0.5px; /* AppMetrics.dividerStandard hairline */
+  background: var(--divider);
+}
+
+/* confirm card：VStack(.leading, spacing microGap=6)[prompt caption + textfield] .settingsCard */
+.das-card--confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* microGap */
+  padding: 18px; /* card 內 .padding(cardPadding) 包 prompt+field 區（TextField 另含自身 padding） */
+}
+/* confirmationPrompt = caption(sans 12 bold)/tertiaryText */
+.das-confirm-prompt {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+  line-height: var(--leading-heading);
+}
+/* TextField：.padding(cardPadding=18) pageBackground 底 + cardBorder 描邊 radius control=6。
+   未輸入 → placeholder「DELETE」灰字。 */
+.das-textfield {
+  padding: 18px; /* cardPadding */
+  background: var(--page-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control); /* 6 */
+  font-size: var(--text-body); /* TextField 文字 = system body 17 */
+  color: var(--text-tertiary); /* placeholder 灰 */
+  box-sizing: border-box;
+}
+
+/* action stack：VStack(spacing controlGap=10)[destructive 鈕, neutral 鈕] */
+.das-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px; /* controlGap */
+}
+/* AppActionButtonStyle：subhead semibold 文字 + .padding(.h s4=16 .v 13) + radius md=8 + 1pt 描邊
+   maxWidth ∞。delete 鈕 disabled → opacity 0.55。 */
+.das-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px; /* HStack(spacing controlGap=10)[icon + label] */
+  width: 100%;
+  padding: 13px var(--sp-4); /* v actionButtonVerticalPadding=13, h s4=16 */
+  border-radius: var(--radius-card); /* md = 8 */
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  box-sizing: border-box;
+  cursor: default;
+}
+.das-btn-label {
+  font-size: var(--text-subhead); /* subhead semibold */
+  font-weight: 600;
+}
+.das-btn-icon {
+  flex: none;
+}
+/* destructive tone：fg destructive、bg destructive@10%、border destructive@22% */
+.das-btn--destructive {
+  color: var(--destructive);
+  background: var(--destructive-bg);
+  border-color: rgba(181, 64, 58, 0.22); /* token-allow: destructive@22% */
+  opacity: 0.55; /* disabled(!canDelete) → .opacity(0.55) */
+}
+/* neutral tone：fg primaryText、bg cardBackground、border cardBorder */
+.das-btn--neutral {
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border-color: var(--card-border);
+}
+/* ProgressView(.small) — deleting 態旋轉指示器（destructive 色） */
+.das-spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(181, 64, 58, 0.25); /* token-allow: destructive@25% track */
+  border-top-color: var(--destructive);
+}

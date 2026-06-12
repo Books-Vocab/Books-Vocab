@@ -1,0 +1,126 @@
+/* PodcastBubbleCell — iOS PodcastTranscriptColumn.swift `PodcastBubbleCell` 的 web 鏡像。
+   token 一律走 design-system 變數（accent/success tint、text-primary/secondary、
+   radius-card、sp-*、font-sans/mono、vocab-highlight-paper），不寫 literal
+   （除 structural flex 與 capsule/band 結構值）。
+
+   tint：per-row 以 inline `--pbc-tint` 注入（slot0=--accent, slot1=--success）。
+   active(=isHighlighted) 與 idle 以 .pbc-stack--active / --idle 切換不透明度家族。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   `?crop=component` 令 surface + phone-frame 透明、shots `transparent:true`
+   omitBackground 截圖 → web 與 ref 同為 bubble-over-transparent。 */
+
+/* surface = BubbleCellScene wrapper .padding(AppSpacing.s4=16) 的緊裹 box */
+.podcast-bubble-cell-surface {
+  display: inline-flex;
+  padding: var(--sp-4); /* iOS .padding(AppSpacing.s4) = 16 */
+  box-sizing: border-box;
+}
+
+/* HStack(alignment:.bottom, spacing:0) + Spacer(minLength:48) 對側
+   row 用固定寬度模擬 transcript column 列寬（catalog ref ≈ 393pt 列寬，
+   .padding(16) 後內容寬約 361pt；以 column 視覺寬釘住氣泡最大寬 + Spacer 推擠）。 */
+.pbc-row {
+  display: flex;
+  align-items: flex-end; /* HStack(alignment:.bottom) */
+  width: 361px; /* 393(列寬) - 2*16(scene padding)；驅動 Spacer(minLength:48) 推擠 */
+  box-sizing: border-box;
+}
+.pbc-row--left {
+  justify-content: flex-start; /* Spacer 在右 */
+}
+.pbc-row--right {
+  justify-content: flex-end; /* Spacer 在左 */
+}
+
+/* VStack(alignment: alignRight ? .trailing : .leading, spacing: tinyGap=4) */
+.pbc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1); /* tinyGap = 4 */
+  max-width: calc(100% - 48px); /* Spacer(minLength:48) 對側保底 */
+  box-sizing: border-box;
+}
+.pbc-row--left .pbc-stack {
+  align-items: flex-start;
+}
+.pbc-row--right .pbc-stack {
+  align-items: flex-end;
+}
+
+/* Text(speaker).font(AppFonts.mono(11, bold)).foregroundStyle(tint.opacity(active?0.88:0.58))
+   注意：AppFonts.mono primary = ElmsSans-Bold（mono 系統字僅為 cascade fallback），
+   ASCII speaker 名實際以 sans-bold 渲染 → 用 --font-sans，font-size = 11。 */
+.pbc-speaker {
+  font-family: var(--font-sans);
+  font-size: var(--text-speaker-label); /* 11 */
+  font-weight: 700;
+  line-height: 1; /* badge tight，防 web 預設 leading 撐高 */
+  color: var(--pbc-tint);
+}
+.pbc-stack--active .pbc-speaker {
+  opacity: 0.88;
+}
+.pbc-stack--idle .pbc-speaker {
+  opacity: 0.58;
+}
+
+/* bubbleContent 容器：RoundedRect(radius card=8) fill tint.opacity(bg) + stroke。
+   border 用 box-shadow inset 以承載 active 0.22/1px vs idle 0.08/0.8px，
+   避免 border 佔位改變 layout。 */
+.pbc-bubble {
+  border-radius: var(--radius-card); /* card = 8 */
+  box-sizing: border-box;
+}
+.pbc-stack--active .pbc-bubble {
+  background: color-mix(in srgb, var(--pbc-tint) 18%, transparent); /* tint.opacity(0.18) */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pbc-tint) 22%, transparent); /* stroke 0.22 / 1px */
+}
+.pbc-stack--idle .pbc-bubble {
+  background: color-mix(in srgb, var(--pbc-tint) 8%, transparent); /* tint.opacity(0.08) */
+  box-shadow: inset 0 0 0 0.8px color-mix(in srgb, var(--pbc-tint) 8%, transparent); /* stroke 0.08 / 0.8px */
+}
+
+/* text(sans 17).padding(.h s3=12 .v compactRowVerticalPadding=10) */
+.pbc-text {
+  margin: 0;
+  padding: var(--compact-row-padding-v) var(--sp-3); /* v=10 (compactRowVerticalPadding), h=12 (s3) */
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* sans 17 */
+  line-height: var(--leading-body);
+  /* UITextView 不自動換成單詞行；保留正常 wrapping */
+}
+.pbc-stack--active .pbc-text {
+  color: var(--text-primary); /* active → primaryText */
+}
+.pbc-stack--idle .pbc-text {
+  color: var(--text-secondary); /* idle → secondaryText */
+}
+
+/* per-word inline；vocab 命中詞掛底色帶（paper 螢光筆）。
+   iOS：band 高 = lineHeight * bandFraction(0.32)、貼字底（rect.maxY）、
+   寬 = word.width + 4（左右各 +2）、color = paper.opacity(0.22)。
+   web 以 ::after 絕對定位於字底，左右各延伸 2px。 */
+.pbc-word {
+  position: relative;
+}
+.pbc-word--vocab::after {
+  content: '';
+  position: absolute;
+  left: -2px; /* +2 左 */
+  right: -2px; /* +2 右 → 共 width+4 */
+  bottom: 0;
+  height: calc(1em * var(--leading-body) * 0.32); /* lineHeight * bandFraction */
+  border-radius: var(--radius-xs); /* AppRadius.xs = 4 */
+  background: color-mix(in srgb, var(--vocab-highlight-paper) 22%, transparent); /* opacity 0.22 */
+  z-index: 0;
+}
+.pbc-word > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='podcast-bubble-cell'] {
+  background: transparent;
+}

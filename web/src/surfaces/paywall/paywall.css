@@ -1,0 +1,361 @@
+/* SubscriptionPaywallSheet — iOS 訂閱 paywall sheet 的 web 鏡像。
+   token 走 design-system 變數。literal 例外（行內 token-allow）：
+   nav status+bar 高 103pt（iPhone 15 Pro inline nav）、nav title 近隱形色（ref 量測
+   ≈white on page-bg）、structural（flex/box-sizing/line-height:1）、success@0.2 border
+   （iOS borderTone = success.opacity(0.2)）。
+   color tokens：success #3b7a3b / accent #4d7396 / primaryText #37352f / page-bg #f7f6f3
+   均 ÷255 量測對齊 ref，皆走品牌 token。
+
+   catalog scene = `.fill` 不透明（page-bg 填滿全幅）→ 全 phone-frame 不透明捕捉，
+   無 transparent flag、無 crop。 */
+
+.paywall-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--page-bg);
+  font-family: var(--font-sans);
+}
+
+/* inline nav bar：status 59 + bar 44 = 103pt，title 置中偏下、serif、近隱形。 */
+.pw-nav {
+  flex: none;
+  height: 103px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 11px;
+}
+.pw-nav-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-body); /* inline title ~17 */
+  font-weight: 600;
+  color: #fbfaf9; /* token-allow: ref 量測 inline title ≈ white on page-bg（近隱形） */
+}
+
+/* ScrollView — 由 nav 下方撐滿，內容自頂排（catalog 截首屏） */
+.pw-scroll {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 內層 VStack(alignment .leading, spacing sheetSectionSpacing=20).padding(sheetPaddingCompact=20) */
+.pw-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-5); /* sheetSectionSpacing 20 */
+  padding: var(--sp-5); /* sheetPaddingCompact 20 */
+  box-sizing: border-box;
+}
+.pw-content-marketing {
+  align-items: flex-start;
+}
+
+/* Hero icon — symbolHero(44 light)；inactive 左對齊 accent，active 系列置中。 */
+.pw-hero-icon {
+  flex: none;
+  color: var(--accent); /* inactive sparkles = accent */
+}
+.pw-hero-icon-success {
+  color: var(--success);
+}
+.pw-hero-icon-accent {
+  color: var(--accent);
+}
+
+/* active hero VStack(spacing controlGap=10) 置中，.padding(.top inlineGap=8) */
+.pw-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--control-gap); /* controlGap 10 */
+  padding-top: var(--sp-2); /* inlineGap 8 */
+  align-self: stretch;
+}
+
+/* displayTitle — serif 24 bold / primaryText，leading-heading 1.2 */
+.pw-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-display-title); /* 24 */
+  font-weight: 700;
+  line-height: var(--leading-heading); /* 1.2 */
+  color: var(--text-primary);
+}
+.pw-title-center {
+  text-align: center;
+}
+
+/* summary — body(sans 15)/secondaryText；inactive lineSpacing 6（左）、active 4（中） */
+.pw-summary {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body = sans 15 */
+  color: var(--text-secondary);
+}
+.pw-summary-lead6 {
+  line-height: calc(1.2em + 6px); /* lineSpacing 6 */
+}
+.pw-summary-lead4 {
+  line-height: calc(1.2em + 4px); /* lineSpacing 4 */
+}
+.pw-summary-center {
+  text-align: center;
+}
+
+/* SettingsSubscriptionInfoBlock — VStack(alignment .leading, spacing microGap=6) */
+.pw-info-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--micro-gap); /* 6 */
+  align-self: stretch;
+}
+/* inactive titleFont = sectionTitle(serif 18 bold) */
+.pw-info-title-large {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+/* active titleFont = caption(sans 12 bold) */
+.pw-info-title-small {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-primary);
+}
+/* subtitle — caption(sans 12 bold)/secondaryText, lineSpacing 3 */
+.pw-info-subtitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: calc(var(--text-caption) + 3px);
+  color: var(--text-secondary);
+}
+/* detail — caption(sans 12 bold)/tertiaryText, lineSpacing 3 */
+.pw-info-detail {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: calc(var(--text-caption) + 3px);
+  color: var(--text-tertiary);
+}
+
+/* SettingsFeaturePanel — cardPadding 18 + cardBg + radius card 8 + border 1px。
+   active list border = success@0.2；marketing/compare border = cardBorder。 */
+.pw-feature-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3); /* rowContentSpacing 12 */
+  padding: var(--card-padding); /* 18 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card); /* 8 */
+  align-self: stretch;
+  box-sizing: border-box;
+}
+.pw-feature-panel-success {
+  /* token-allow: iOS borderTone = success.opacity(0.2) */
+  border-color: color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+/* feature row — HStack(.top, spacing controlGap=10)[icon · text · Spacer] */
+.pw-feature-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--control-gap); /* controlGap 10 */
+}
+.pw-feature-icon {
+  flex: none;
+  margin-top: 1px;
+}
+.pw-feature-icon-success {
+  color: var(--success);
+}
+.pw-feature-icon-accent {
+  color: var(--accent);
+}
+.pw-feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--micro-gap); /* microGap 6 */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* title — body(sans 15)/primaryText；有 desc 時 medium */
+.pw-feature-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* 15 */
+  color: var(--text-primary);
+}
+.pw-feature-title-medium {
+  font-weight: 500;
+}
+/* desc — caption(sans 12 bold)/tertiaryText */
+.pw-feature-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary);
+}
+
+/* SettingsPlanComparisonTable — panel 內 VStack(spacing 0) */
+.pw-compare {
+  gap: 0;
+}
+.pw-compare-header {
+  display: flex;
+  align-items: center;
+  gap: var(--control-gap); /* controlGap 10 */
+}
+/* 功能 header — caption/tertiaryText */
+.pw-compare-feature {
+  flex: 1 1 auto;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.pw-compare-col {
+  flex: none;
+  width: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pw-compare-col-free {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.pw-compare-col-pro {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--accent);
+}
+/* divider — divider@0.5 1px、上下 padding microGap 6 */
+.pw-compare-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--divider) 50%, transparent);
+  margin: var(--micro-gap) 0; /* .padding(.vertical microGap=6) */
+}
+.pw-compare-row {
+  display: flex;
+  align-items: center;
+  gap: var(--control-gap); /* controlGap 10 */
+}
+/* row title — body(sans 15)/primaryText */
+.pw-compare-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body 15 */
+  color: var(--text-primary);
+}
+.pw-mark-check {
+  flex: none;
+}
+.pw-mark-success {
+  color: var(--success);
+}
+.pw-mark-accent {
+  color: var(--accent);
+}
+/* label mark — caption(sans 12 bold)；free=secondaryText / pro=accent */
+.pw-mark-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+}
+.pw-mark-secondary {
+  color: var(--text-secondary);
+}
+.pw-mark-accent-text {
+  color: var(--accent);
+}
+
+/* 按鈕區 — VStack(spacing controlGap=10) */
+.pw-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--control-gap); /* controlGap 10 */
+  align-self: stretch;
+}
+
+/* VocabActionButtonStyle — label HStack[icon? · title · Spacer · trailing?]
+   font caption(12 bold)、padding h actionButtonHorizontalPadding 16 / v 13、radius control 6。
+   primary: fg page-bg / bg primaryText / border primaryText
+   neutral: fg primaryText / bg cardBg / border cardBorder */
+.pw-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  gap: var(--control-gap); /* controlGap 10 */
+  padding: var(--action-button-padding-v) var(--sp-4); /* 13 / 16 */
+  border-radius: var(--radius-control); /* 6 */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  cursor: default;
+}
+.pw-btn-primary {
+  color: var(--page-bg);
+  background: var(--text-primary);
+  border: 1px solid var(--text-primary);
+}
+.pw-btn-neutral {
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+.pw-btn-label {
+  flex: none;
+}
+.pw-btn-spacer {
+  flex: 1 1 auto;
+}
+/* trailing arrow.up.forward — iconSmall 12 / quaternaryText */
+.pw-btn-trailing {
+  flex: none;
+  color: var(--text-quaternary);
+}
+
+/* footerNote / 自動續訂揭露 — caption(sans 12 bold)/tertiaryText */
+.pw-footer-note {
+  margin: 0;
+  align-self: stretch;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary);
+}
+
+/* legal links footer — HStack(spacing controlGap=10)[隱私政策 · 服務條款 · Spacer]
+   caption(sans 12 bold)/tertiaryText */
+.pw-legal {
+  display: flex;
+  align-items: center;
+  gap: var(--control-gap); /* controlGap 10 */
+  align-self: stretch;
+}
+.pw-legal-link,
+.pw-legal-sep {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary);
+}

@@ -1,0 +1,169 @@
+/* BookCard — iOS BookCard.swift 的 web 鏡像。
+   token 一律走 design-system 變數；唯結構性（flex/999px capsule/box-sizing）與
+   parity-measured 收斂常數（沿用 bookshelf BookCard 既證值）為 literal。
+
+   catalog component scene 畫布透明（corner srgba 0,0,0,0）：crop 目標 = card
+   intrinsic box（width 180 + scene wrapper .padding(24)），surface 與 phone-frame
+   在 crop=component 下透明，shots omitBackground → web 與 ref 同為
+   card-over-transparent。 */
+
+/* surface = card(width 180) + scene wrapper .padding(24) 的緊裹 box（供 crop 截取） */
+.book-card-component-surface {
+  display: inline-flex;
+  padding: 24px; /* rig 慣例 scene wrapper .padding(24) */
+  box-sizing: border-box;
+}
+
+/* iOS BookCard .frame(width: 180) */
+.book-card-component-surface .book-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2); /* AppSpacing.s2 */
+  width: 180px; /* iOS .frame(width: 180) */
+  min-width: 0;
+}
+
+/* --- 封面（placeholder + bottomTrailing iCloud 徽章） --- */
+
+.book-card-component-surface .book-card-cover {
+  position: relative;
+  height: var(--cover-height-compact); /* AppBookshelfMetrics.coverHeightCompact */
+  border-radius: var(--cover-corner-radius); /* coverCornerRadius */
+  background: var(--muted-fill);
+}
+
+.book-card-component-surface .book-card-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2); /* AppSpacing.s2 */
+  padding: 0 var(--placeholder-title-padding-h); /* placeholderTitleHorizontalPadding */
+}
+
+.book-card-component-surface .book-card-placeholder-icon {
+  color: var(--text-tertiary);
+}
+
+.book-card-component-surface .book-card-placeholder-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2); /* AppFonts.caption2() 11 */
+  line-height: var(--leading-caption);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.book-card-component-surface .book-card-format-pill {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2);
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+  /* .padding(.h AppSpacing.s1=4, .v AppSpacing.microGap=Scale.micro=2) */
+  padding: var(--sp-micro) var(--sp-1);
+  border-radius: var(--radius-sm); /* AppRadius.sm */
+}
+
+.book-card-component-surface .book-card-cloud-badge {
+  position: absolute;
+  right: var(--badge-padding); /* AppBookshelfMetrics.badgePadding */
+  bottom: var(--badge-padding);
+  display: grid;
+  place-items: center;
+  width: 25px; /* measured：glyph 13 + inner padding 6×2（badgePadding） */
+  height: 25px;
+  border-radius: 50%;
+  color: #fff; /* AppBookshelfMetrics.badgeForeground（恒白，不隨主題；i18n-allow 非適用） */
+  /* .ultraThinMaterial 近似 — 暗部 diff 偏差由 parity audit 收斂 */
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+/* --- 進度條（track + accent fill；0% = 只剩 track，% 占位隱形維持寬度） --- */
+
+.book-card-component-surface .book-card-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--badge-padding); /* progressBarSpacing 6 == badgePadding 6（皆 microGap 6） */
+}
+
+.book-card-component-surface .book-card-progress-track {
+  position: relative;
+  flex: 1;
+  height: var(--progress-bar-height-card); /* AppBookshelfMetrics.progressBarHeight 4 */
+  border-radius: 999px;
+  background: var(--muted-fill);
+  overflow: hidden;
+}
+
+.book-card-component-surface .book-card-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.book-card-component-surface .book-card-progress-label {
+  /* AppFonts.monoNumbers(10) — mono cascade。line-height 必須 1：繼承
+     --leading-* 會把 progress 列撐高、卡片 pitch 比 iOS 多。 */
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+
+/* --- 元資料（VStack spacing tinyGap） --- */
+
+.book-card-component-surface .book-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-tiny); /* AppSpacing.tinyGap 3 */
+  min-width: 0;
+}
+
+.book-card-component-surface .book-card-title {
+  margin: 0;
+  /* AppFonts.caption(.medium) → sans bold 12；兩行保留高度（lineLimit 2 reservesSpace） */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 16px; /* measured：兩行保留 32px = 16×2 */
+  /* row-profile 實測 web 標題 ink 比 iOS 高 ~1px：純 ink 下移，零 layout 副作用。 */
+  position: relative;
+  top: 1px;
+  min-height: 32px; /* 兩行保留占位（reservesSpace: true） */
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-card-component-surface .book-card-author,
+.book-card-component-surface .book-card-date {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2); /* AppFonts.caption2() 11 */
+  line-height: var(--leading-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-card-component-surface .book-card-author {
+  color: var(--text-tertiary);
+}
+
+.book-card-component-surface .book-card-date {
+  color: var(--text-quaternary);
+  min-height: 1.3em; /* 無日期時單空格占位（等高卡片契約） */
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='book-card'] {
+  background: transparent;
+}

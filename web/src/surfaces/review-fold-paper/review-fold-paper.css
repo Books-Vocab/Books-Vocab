@@ -1,0 +1,93 @@
+/* Review Fold · Paper Fold — iOS PaperFoldModifier on ReviewFoldScenarios.sampleCard
+   的 web 鏡像。token 一律走 design-system 變數，不寫 literal（結構值除外）。
+
+   iOS scene（foldedCard，layout = .fill）：
+     AppThemeContainer { sampleCard.modifier(PaperFoldModifier(progress)).padding(40) }
+   sampleCard = VStack(spacing 8)[
+     Text(.title3.semibold = sys 20) / primaryText
+     Text(.subheadline = sys 15) / secondaryText
+     Text(.footnote = sys 13) / tertiaryText]
+     .frame(maxWidth:.infinity, .leading)
+     .padding(24 = --sp-6)
+     .background(RoundedRectangle(radii.card = AppRadius.md = --radius-card=8) fill cardBackground)
+     .overlay(RoundedRectangle stroke cardBorder 1px)
+   （注意：sampleCard 無 .appElevation；陰影僅 ReviewFoldSurface 才有。）
+
+   PaperFoldModifier（anchor=.top，progress 1→0）：scaleY(max(progress,0.02)) ·
+   rotation3DEffect((1-progress)*-88°, axis X, perspective 0.86) · opacity(progress) ·
+   offset(y:(1-progress)*-12)。transform 於 TSX 以 inline style 計算（progress 為 fixture
+   驅動的動畫狀態量，非 design token；旋轉/縮放/位移幾何屬 motion 契約）。
+
+   perspective：SwiftUI rotation3DEffect 的 perspective p（=0.86）為 m34 縮放因子，CSS
+   perspective(d) 則 d 越小透視越強。以卡片自身寬度近似 d = cardWidth / p。card 寬 =
+   frame 393 - padding(40)*2 = 313px → d ≈ 313/0.86 ≈ 364px。anchor .top → transform-origin
+   與 perspective-origin 皆 center top。
+
+   catalog scene = .fill（1179×2556，畫布透明 corner alpha≈0）：card+padding(40) 於整
+   frame 內**垂直置中**。故走全 phone-frame 透明捕捉（無 crop=component）：surface 撐滿
+   393×852、justify center、padding 40；phone-frame + surface 透明，shots transparent:true。 */
+
+/* surface 撐滿 phone-frame（.fill），內容垂直置中、水平內縮 scene padding 40（--sp-8） */
+.review-fold-paper-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-8);
+  box-sizing: border-box;
+}
+
+/* perspective container（anchor .top）：透視原點對齊卡片頂緣中央 */
+.review-fold-paper-stage {
+  perspective: 364px;
+  perspective-origin: center top;
+}
+
+/* sampleCard：VStack(spacing 8) + padding 24 + radius card + bg + border 1px
+   transform / opacity 由 inline style 設（scaleY · rotateX · translateY · opacity） */
+.review-fold-paper-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  box-sizing: border-box;
+  padding: var(--sp-6);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  transform-origin: center top;
+  will-change: transform, opacity;
+}
+
+/* Text(.title3.weight(.semibold)) — system sans 20 / primaryText */
+.review-fold-paper-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-title3);
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+
+/* Text(.subheadline) — system sans 15 / secondaryText */
+.review-fold-paper-subtitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+}
+
+/* Text(.footnote) — system sans 13 / tertiaryText */
+.review-fold-paper-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-footnote);
+  line-height: var(--leading-body);
+  color: var(--text-tertiary);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布）：phone-frame 透明，
+   shots transparent:true omitBackground → 內容-over-transparent，與 ref 對等 */
+.phone-frame[data-surface='review-fold-paper'] {
+  background: transparent;
+}

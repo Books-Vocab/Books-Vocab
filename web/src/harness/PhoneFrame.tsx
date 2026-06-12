@@ -7,6 +7,70 @@ import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
 import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
 import { SelectionToolbarScreen } from '../surfaces/selection/SelectionToolbarScreen'
 import { SelectionTileScreen } from '../surfaces/selection/SelectionTileScreen'
+import { VocabSortPillScreen } from '../surfaces/vocab-shell/VocabSortPillScreen'
+import { VocabAccessoryIconButtonScreen } from '../surfaces/vocab-accessory-icon-button/VocabAccessoryIconButtonScreen'
+import { VocabSliderRowScreen } from '../surfaces/vocab-slider-row/VocabSliderRowScreen'
+import { VocabToneChipScreen } from '../surfaces/vocab-tone-chip/VocabToneChipScreen'
+import { VocabChromeIconButtonScreen } from '../surfaces/vocab-chrome-icon-button/VocabChromeIconButtonScreen'
+import { VocabInlineActionButtonScreen } from '../surfaces/vocab-inline-action-button/VocabInlineActionButtonScreen'
+import { VocabSearchFieldScreen } from '../surfaces/vocab-search-field/VocabSearchFieldScreen'
+import { VocabSectionHeaderScreen } from '../surfaces/vocab-section-header/VocabSectionHeaderScreen'
+import { VocabReviewProgressBarScreen } from '../surfaces/vocab-review-progress-bar/VocabReviewProgressBarScreen'
+import { VocabReviewCTAPillScreen } from '../surfaces/vocab-review-cta-pill/VocabReviewCTAPillScreen'
+import { VocabTabSelectorScreen } from '../surfaces/vocab-tab-selector/VocabTabSelectorScreen'
+import { VocabToolbarGlyphScreen } from '../surfaces/vocab-toolbar-glyph/VocabToolbarGlyphScreen'
+import { VocabEmptyStateScreen } from '../surfaces/vocab-empty-state/VocabEmptyStateScreen'
+import { VocabSceneShellScreen } from '../surfaces/vocab-scene-shell/VocabSceneShellScreen'
+import { VocabHighlightPickerScreen } from '../surfaces/vocab-highlight-picker/VocabHighlightPickerScreen'
+import { CollocationExplainScreen } from '../surfaces/collocation-explain/CollocationExplainScreen'
+import { LinkReasonSheetScreen } from '../surfaces/link-reason-sheet/LinkReasonSheetScreen'
+import { NotebookEditSheetScreen } from '../surfaces/notebook-edit/NotebookEditSheetScreen'
+import { WordEditScreen } from '../surfaces/word-edit/WordEditScreen'
+import { VocabCalendarScreen } from '../surfaces/vocab-calendar/VocabCalendarScreen'
+import { VocabForecastScreen } from '../surfaces/vocab-forecast/VocabForecastScreen'
+import { VocabHeatmapScreen } from '../surfaces/vocab-heatmap/VocabHeatmapScreen'
+import { ReviewBannerScreen } from '../surfaces/review-banner/ReviewBannerScreen'
+import { VocabAddLinkScreen } from '../surfaces/vocab-add-link/VocabAddLinkScreen'
+import { VocabLinkedCardScreen } from '../surfaces/vocab-linked-card/VocabLinkedCardScreen'
+import { WordDetailSheetScreen } from '../surfaces/word-detail-sheet/WordDetailSheetScreen'
+import { PaywallScreen } from '../surfaces/paywall/PaywallScreen'
+import { DeleteAccountSheetScreen } from '../surfaces/delete-account-sheet/DeleteAccountSheetScreen'
+import { TranslationLanguageSettingsScreen } from '../surfaces/translation-language-settings/TranslationLanguageSettingsScreen'
+import { ArchivedVocabScreen } from '../surfaces/archived-vocab/ArchivedVocabScreen'
+import { SettingsAccountDetailScreen } from '../surfaces/settings-account-detail/SettingsAccountDetailScreen'
+import { PodcastShelfScreen } from '../surfaces/podcast-shelf/PodcastShelfScreen'
+import { NotebookCoverEditorialScreen } from '../surfaces/notebook-cover-editorial/NotebookCoverEditorialScreen'
+import { VocabPresenterSearchScreen } from '../surfaces/vocab-presenter-search/VocabPresenterSearchScreen'
+import { PodcastEpisodeListScreen } from '../surfaces/podcast-episode-list/PodcastEpisodeListScreen'
+import { PodcastHomeScreen } from '../surfaces/podcast-home/PodcastHomeScreen'
+import { VocabKnowledgeGraphScreen } from '../surfaces/vocab-knowledge-graph/VocabKnowledgeGraphScreen'
+import { KnowledgeGraphViewScreen } from '../surfaces/knowledge-graph-view/KnowledgeGraphViewScreen'
+import { PdfReaderUnavailableScreen } from '../surfaces/pdf-reader-unavailable/PdfReaderUnavailableScreen'
+import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScreen'
+import { SyncScreen } from '../surfaces/sync/SyncScreen'
+import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScreen'
+import { KGVocabRowScreen } from '../surfaces/kg-vocab-row/KGVocabRowScreen'
+import { BookCardScreen } from '../surfaces/book-card/BookCardScreen'
+import { SubscriptionGateCardScreen } from '../surfaces/subscription-gate-card/SubscriptionGateCardScreen'
+import { ReviewFoldChevronScreen } from '../surfaces/review-fold-chevron/ReviewFoldChevronScreen'
+import { ReviewFoldPaperScreen } from '../surfaces/review-fold-paper/ReviewFoldPaperScreen'
+import { ReviewFoldSegmentScreen } from '../surfaces/review-fold-segment/ReviewFoldSegmentScreen'
+import { PodcastContinueCardScreen } from '../surfaces/podcast-continue-card/PodcastContinueCardScreen'
+import { PodcastEpisodeRowScreen } from '../surfaces/podcast-episode-row/PodcastEpisodeRowScreen'
+import { PodcastSeriesCardScreen } from '../surfaces/podcast-series-card/PodcastSeriesCardScreen'
+import { NotebookCoverScreen } from '../surfaces/notebook-cover/NotebookCoverScreen'
+import { NotebooksStackScreen } from '../surfaces/notebooks-stack/NotebooksStackScreen'
+import { WordDetailCardScreen } from '../surfaces/word-detail-card/WordDetailCardScreen'
+import { SettingsPreferencesScreen } from '../surfaces/settings-preferences/SettingsPreferencesScreen'
+import { SettingsReviewScreen } from '../surfaces/settings-review/SettingsReviewScreen'
+import { SettingsSubscriptionScreen } from '../surfaces/settings-subscription/SettingsSubscriptionScreen'
+import { PodcastBubbleCellScreen } from '../surfaces/podcast-bubble-cell/PodcastBubbleCellScreen'
+import { PodcastHeroScreen } from '../surfaces/podcast-hero/PodcastHeroScreen'
+import { PodcastRailCardScreen } from '../surfaces/podcast-rail-card/PodcastRailCardScreen'
+import { AccountAuthSummaryScreen } from '../surfaces/account-auth-summary/AccountAuthSummaryScreen'
+import { AccountSectionScreen } from '../surfaces/account-section/AccountSectionScreen'
+import { LoginSheetScreen } from '../surfaces/login-sheet/LoginSheetScreen'
+import { WelcomeScreen } from '../surfaces/welcome/WelcomeScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -36,6 +100,134 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <SelectionToolbarScreen scenario={config.scenario} />
     case 'selection-tile':
       return <SelectionTileScreen scenario={config.scenario} />
+    case 'vocab-sort-pill':
+      return <VocabSortPillScreen scenario={config.scenario} />
+    case 'vocab-accessory-icon-button':
+      return <VocabAccessoryIconButtonScreen scenario={config.scenario} />
+    case 'vocab-slider-row':
+      return <VocabSliderRowScreen scenario={config.scenario} />
+    case 'vocab-tone-chip':
+      return <VocabToneChipScreen scenario={config.scenario} />
+    case 'vocab-chrome-icon-button':
+      return <VocabChromeIconButtonScreen scenario={config.scenario} />
+    case 'vocab-inline-action-button':
+      return <VocabInlineActionButtonScreen scenario={config.scenario} />
+    case 'vocab-search-field':
+      return <VocabSearchFieldScreen scenario={config.scenario} />
+    case 'vocab-section-header':
+      return <VocabSectionHeaderScreen scenario={config.scenario} />
+    case 'vocab-review-progress-bar':
+      return <VocabReviewProgressBarScreen scenario={config.scenario} />
+    case 'vocab-review-cta-pill':
+      return <VocabReviewCTAPillScreen scenario={config.scenario} />
+    case 'vocab-tab-selector':
+      return <VocabTabSelectorScreen scenario={config.scenario} />
+    case 'vocab-toolbar-glyph':
+      return <VocabToolbarGlyphScreen scenario={config.scenario} />
+    case 'vocab-empty-state':
+      return <VocabEmptyStateScreen scenario={config.scenario} />
+    case 'vocab-scene-shell':
+      return <VocabSceneShellScreen scenario={config.scenario} />
+    case 'vocab-highlight-picker':
+      return <VocabHighlightPickerScreen scenario={config.scenario} />
+    case 'collocation-explain':
+      return <CollocationExplainScreen scenario={config.scenario} />
+    case 'link-reason-sheet':
+      return <LinkReasonSheetScreen scenario={config.scenario} />
+    case 'notebook-edit':
+      return <NotebookEditSheetScreen scenario={config.scenario} />
+    case 'word-edit':
+      return <WordEditScreen scenario={config.scenario} />
+    case 'vocab-calendar':
+      return <VocabCalendarScreen scenario={config.scenario} />
+    case 'vocab-forecast':
+      return <VocabForecastScreen scenario={config.scenario} />
+    case 'vocab-heatmap':
+      return <VocabHeatmapScreen scenario={config.scenario} />
+    case 'review-banner':
+      return <ReviewBannerScreen scenario={config.scenario} />
+    case 'vocab-add-link':
+      return <VocabAddLinkScreen scenario={config.scenario} />
+    case 'vocab-linked-card':
+      return <VocabLinkedCardScreen scenario={config.scenario} />
+    case 'word-detail-sheet':
+      return <WordDetailSheetScreen scenario={config.scenario} />
+    case 'paywall':
+      return <PaywallScreen scenario={config.scenario} />
+    case 'delete-account-sheet':
+      return <DeleteAccountSheetScreen scenario={config.scenario} />
+        case 'translation-language-settings':
+      return <TranslationLanguageSettingsScreen scenario={config.scenario} />
+    case 'archived-vocab':
+      return <ArchivedVocabScreen scenario={config.scenario} />
+        case 'settings-account-detail':
+      return <SettingsAccountDetailScreen scenario={config.scenario} />
+    case 'podcast-shelf':
+      return <PodcastShelfScreen scenario={config.scenario} />
+    case 'notebook-cover-editorial':
+      return <NotebookCoverEditorialScreen scenario={config.scenario} />
+    case 'vocab-presenter-search':
+      return <VocabPresenterSearchScreen scenario={config.scenario} />
+    case 'podcast-episode-list':
+      return <PodcastEpisodeListScreen scenario={config.scenario} />
+    case 'podcast-home':
+      return <PodcastHomeScreen scenario={config.scenario} />
+    case 'vocab-knowledge-graph':
+      return <VocabKnowledgeGraphScreen scenario={config.scenario} />
+    case 'knowledge-graph-view':
+      return <KnowledgeGraphViewScreen scenario={config.scenario} />
+    case 'pdf-reader-unavailable':
+      return <PdfReaderUnavailableScreen scenario={config.scenario} />
+    case 'kg-empty-state':
+      return <KgEmptyStateScreen scenario={config.scenario} />
+    case 'sync':
+      return <SyncScreen scenario={config.scenario} />
+    case 'notebooks-card':
+      return <NotebooksCardScreen scenario={config.scenario} />
+    case 'kg-vocab-row':
+      return <KGVocabRowScreen scenario={config.scenario} />
+    case 'book-card':
+      return <BookCardScreen scenario={config.scenario} />
+    case 'subscription-gate-card':
+      return <SubscriptionGateCardScreen scenario={config.scenario} />
+    case 'review-fold-chevron':
+      return <ReviewFoldChevronScreen scenario={config.scenario} />
+    case 'review-fold-paper':
+      return <ReviewFoldPaperScreen scenario={config.scenario} />
+    case 'review-fold-segment':
+      return <ReviewFoldSegmentScreen scenario={config.scenario} />
+    case 'podcast-continue-card':
+      return <PodcastContinueCardScreen scenario={config.scenario} />
+    case 'podcast-episode-row':
+      return <PodcastEpisodeRowScreen scenario={config.scenario} />
+    case 'podcast-series-card':
+      return <PodcastSeriesCardScreen scenario={config.scenario} />
+    case 'notebook-cover':
+      return <NotebookCoverScreen scenario={config.scenario} />
+    case 'notebooks-stack':
+      return <NotebooksStackScreen scenario={config.scenario} />
+    case 'word-detail-card':
+      return <WordDetailCardScreen scenario={config.scenario} />
+    case 'settings-preferences':
+      return <SettingsPreferencesScreen scenario={config.scenario} />
+    case 'settings-review':
+      return <SettingsReviewScreen scenario={config.scenario} />
+    case 'settings-subscription':
+      return <SettingsSubscriptionScreen scenario={config.scenario} />
+    case 'podcast-bubble-cell':
+      return <PodcastBubbleCellScreen scenario={config.scenario} />
+    case 'podcast-hero':
+      return <PodcastHeroScreen scenario={config.scenario} />
+    case 'podcast-rail-card':
+      return <PodcastRailCardScreen scenario={config.scenario} />
+    case 'account-auth-summary':
+      return <AccountAuthSummaryScreen scenario={config.scenario} />
+    case 'account-section':
+      return <AccountSectionScreen scenario={config.scenario} />
+    case 'login-sheet':
+      return <LoginSheetScreen scenario={config.scenario} />
+    case 'welcome':
+      return <WelcomeScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':

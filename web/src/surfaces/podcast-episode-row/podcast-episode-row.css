@@ -1,0 +1,156 @@
+/* Podcast · Episode Row — iOS PodcastEpisodeRow.swift 的 web 鏡像。
+   token 一律走 design-system 變數，不寫 visual literal。
+
+   Row 節奏（對齊 WordRow）：
+     HStack(.top, spacing wordRowHorizontalGap=10 → --word-row-gap)
+     .padding(.vertical compactRowVerticalPadding=10 → --compact-row-padding-v)
+     .padding(.horizontal cardPadding=18 → --card-padding)
+   leading VStack(.leading, spacing wordRowVerticalGap=4 → --sp-1)
+     title  = sectionTitle(serif 18 bold)/primaryText（audio✗→tertiaryText），lineLimit 2
+     meta   = HStack(spacing metadataGap=4 → --sp-1) monoLabel(mono 10 bold)
+     progress = ProgressCapsule(height 3 → --sp-tiny，fill accent，track black .07 → --progress-bar-background)
+                .padding(.top tinyGap=4 → --sp-1)
+   trailing accessory（iconSmall 12 medium）.padding(.top accessoryTopInset=2 → --sp-micro）
+
+   Scene = .fill（1179×2556，corner srgba 0,0,0,0 透明）：VStack(spacing 0)[5 rows]
+     .padding(.vertical 系統預設 16 → --sp-4) .background(pageBackground)。
+   → 全 phone-frame 透明捕捉：surface 撐滿、垂直置中；page-bg 帶在 stack 上；phone-frame 透明。*/
+
+/* surface 撐滿 phone-frame，內容垂直置中（.fill scene 角透明） */
+.podcast-episode-row-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* VStack(spacing 0)[rows].padding(.vertical 16).background(pageBackground)，撐滿寬 */
+.podcast-episode-row-stack {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding-block: var(--sp-4);
+  background: var(--page-bg);
+  box-sizing: border-box;
+}
+
+/* HStack(.top, spacing 10) + vertical 10 / horizontal cardPadding 18 */
+.podcast-episode-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--word-row-gap);
+  padding-block: var(--compact-row-padding-v);
+  padding-inline: var(--card-padding);
+  box-sizing: border-box;
+}
+
+/* leading VStack(.leading, spacing 4).frame(maxWidth:∞,.leading) */
+.podcast-episode-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+
+/* Text(title) — sectionTitle(serif 18 bold)/primaryText，lineLimit 2 */
+.podcast-episode-row-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* audioAvailable=false → tertiaryText（"Pending Upload"） */
+.podcast-episode-row-title[data-muted='1'] {
+  color: var(--text-tertiary);
+}
+
+/* metadataLine — HStack(spacing 4)，monoLabel(mono 10 bold) line-height:1（iOS Text 緊湊） */
+.podcast-episode-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Ep N → secondaryText */
+.podcast-episode-row-ep {
+  color: var(--text-secondary);
+}
+
+/* "·" 分隔 → quaternaryText */
+.podcast-episode-row-sep {
+  color: var(--text-quaternary);
+}
+
+/* date / duration → tertiaryText */
+.podcast-episode-row-date,
+.podcast-episode-row-duration {
+  color: var(--text-tertiary);
+}
+
+/* captions.bubble.fill — iconTiny(10 thin)/success */
+.podcast-episode-row-captions {
+  flex: none;
+  color: var(--success);
+}
+
+/* ProgressCapsule(height 3, track black .07).padding(.top 4)，撐滿寬 */
+.podcast-episode-row-progress {
+  position: relative;
+  width: 100%;
+  height: var(--sp-tiny);
+  margin-top: var(--sp-1);
+  border-radius: 999px;
+  background: var(--progress-track); /* AppTheme.progressBarBackground = black .07 */
+  overflow: hidden;
+}
+
+/* fill capsule — accent */
+.podcast-episode-row-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* trailingAccessory（iconSmall 12 medium）.padding(.top accessoryTopInset 2） */
+.podcast-episode-row-accessory {
+  flex: none;
+  margin-top: var(--sp-micro);
+}
+
+.accessory-play {
+  color: var(--accent);
+}
+
+.accessory-completed {
+  color: var(--success);
+}
+
+.accessory-locked {
+  color: var(--text-tertiary);
+}
+
+.accessory-unavailable {
+  color: var(--text-quaternary);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 角透明）：phone-frame 透明、shots transparent */
+.phone-frame[data-surface='podcast-episode-row'] {
+  background: transparent;
+}
