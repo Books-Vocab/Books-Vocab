@@ -27,6 +27,7 @@ final class Node {
     var modifiers: [[String: Any]] = []
     var children: [Node] = []
     var unparsed: [String] = []
+    var scoped: [String] = []   // visual modifiers deliberately out of component scope (in denominator)
     init(_ kind: String) { self.kind = kind }
 
     func json() -> [String: Any] {
@@ -38,6 +39,7 @@ final class Node {
             "modifiers": modifiers,
             "children": children.map { $0.json() },
             "unparsed": unparsed,
+            "scoped": scoped,
         ]
     }
 }
@@ -118,38 +120,50 @@ func parseColor(_ e: ExprSyntax) -> (token: String, opacity: Double?) {
 // modifier resolution
 // ---------------------------------------------------------------------------
 
-enum ModResult { case mod([String: Any]); case skip; case unparsed }
+enum ModResult { case mod([String: Any]); case skip; case scoped(String); case unparsed }
 
-// no-visual modifiers: silently dropped (don't pollute `unparsed`). These carry no
-// geometry/color the web CSS reproduces (lifecycle, a11y, text-fitting, layout hints).
-// Modifiers WITH visual effect but not yet implemented (overlay/stroke/clipShape/shadow/
-// blur/opacity/mask/scaleEffect/…) are intentionally NOT here — they degrade to honest
-// `unparsed` so the coverage meter still counts them as work to do.
-let IGNORE: Set<String> = [
+// NON_VISUAL — genuinely no CSS analog (lifecycle, a11y, text-fitting, layout hints,
+// environment/identity). Dropped silently AND excluded from the coverage denominator:
+// these are not transpilation work, so counting them would understate capability.
+let NON_VISUAL: Set<String> = [
     // injection / lifecycle / events
-    "enableInjection", "observeInjection", "appElevation", "task", "onAppear", "onDisappear",
+    "enableInjection", "observeInjection", "task", "onAppear", "onDisappear",
     "onTapGesture", "onChange", "onReceive", "onSubmit", "refreshable", "gesture",
-    // accessibility
+    // accessibility (+ haptics + scene plumbing)
     "accessibilityAddTraits", "accessibilityLabel", "accessibilityIdentifier",
     "accessibilityHint", "accessibilityElement", "accessibilityValue", "accessibilityHidden",
-    "help",
+    "accessibilityAction", "help", "sensoryFeedback", "focusedSceneValue",
     // text fitting / typographic micro-hints (no box geometry)
     "lineLimit", "multilineTextAlignment", "truncationMode", "minimumScaleFactor",
     "lineSpacing", "textCase", "kerning", "tracking", "allowsTightening",
     // layout / interaction hints (no painted geometry)
     "fixedSize", "layoutPriority", "zIndex", "allowsHitTesting", "contentShape",
     "ignoresSafeArea", "focused", "focusable", "submitLabel", "keyboardType",
-    // environment / identity / styling-handles
-    "environment", "environmentObject", "id", "tag", "tint", "buttonStyle", "labelStyle",
-    "listRowSeparator", "listRowInsets", "listRowBackground", "scrollIndicators",
-    "scrollContentBackground", "animation", "transition", "disabled", "animatePhaseChange",
-    // navigation / screen-level chrome: NOT a component's own box — handled by the web
-    // shell layer, not by per-component transpilation. Scoped out of component coverage.
+    "safeAreaInset",
+    // environment / identity / state-handles / animation (no static geometry)
+    "environment", "environmentObject", "id", "tag", "buttonStyle", "labelStyle",
+    "animation", "transition", "disabled", "animatePhaseChange", "animateSpring",
+    "animateContentFade", "appHoverLift", "appHoverRowTint",
+]
+
+// SCOPED_OUT — HAS visual effect (color/geometry/sub-view chrome) but deliberately not
+// transpiled at the component level (navigation/screen chrome handled by the web shell;
+// presented surfaces are separate components). CRITICAL: these ARE counted in the
+// coverage denominator (as `scoped`), so moving a modifier here can NEVER inflate the
+// metric — only true resolution raises coverage. This kills the IGNORE-shrink gameability
+// the #962/5d073d59 review flagged. They stay distinct from `unparsed` so the
+// implement-next histogram isn't polluted by deliberate scope decisions.
+let SCOPED_OUT: Set<String> = [
+    // control/list surface tints — real color, scoped to a later phase
+    "tint", "scrollContentBackground", "listRowBackground", "listRowSeparator",
+    "listRowInsets", "scrollIndicators", "appElevation",
+    // navigation / screen-level chrome (web shell layer)
     "navigationTitle", "inlineNavigationBarTitle", "largeNavigationBarTitle",
     "navigationBarTitleDisplayMode", "navigationDestination", "navigationBarBackButtonHidden",
-    "navigationBarHidden", "toolbar", "toolbarBackground", "toolbarColorScheme",
-    "sensoryFeedback", "contextMenu", "focusedSceneValue", "searchable", "toastSheet",
-    "sheet", "fullScreenCover", "alert", "confirmationDialog", "popover",
+    "navigationBarHidden", "toolbar", "toolbarBackground", "toolbarColorScheme", "searchable",
+    // presented surfaces (each its own component tree)
+    "contextMenu", "toastSheet", "sheet", "fullScreenCover", "alert",
+    "confirmationDialog", "popover",
 ]
 
 func edgeName(_ e: ExprSyntax) -> String? {
@@ -157,8 +171,31 @@ func edgeName(_ e: ExprSyntax) -> String? {
     return m.declName.baseName.text
 }
 
+// `.stroke(color, lineWidth: w)` args → a stroke modifier (generate emits it as border).
+func strokeModFromArgs(_ args: LabeledExprListSyntax) -> [String: Any]? {
+    let argList = Array(args)
+    guard let c = argList.first?.expression else { return nil }
+    let (token, opacity) = parseColor(c)
+    var mod: [String: Any] = ["name": "stroke", "token": token, "raw": ".stroke"]
+    if let o = opacity { mod["opacity"] = o }
+    for a in argList where a.label?.text == "lineWidth" {
+        mod["line_width"] = a.expression.trimmedDescription
+    }
+    return mod
+}
+
+// find a `.stroke(...)` call in the outer chain of an expr (e.g. inside an .overlay).
+func findStrokeCall(_ e: ExprSyntax) -> FunctionCallExprSyntax? {
+    guard let call = e.as(FunctionCallExprSyntax.self),
+          let ma = call.calledExpression.as(MemberAccessExprSyntax.self) else { return nil }
+    if ma.declName.baseName.text == "stroke" { return call }
+    if let base = ma.base { return findStrokeCall(base) }
+    return nil
+}
+
 func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: ClosureExprSyntax?) -> ModResult {
-    if IGNORE.contains(name) { return .skip }
+    if NON_VISUAL.contains(name) { return .skip }
+    if SCOPED_OUT.contains(name) { return .scoped(name) }
     let argList = Array(args)
 
     switch name {
@@ -241,8 +278,51 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
         }
         return .mod(mod)
 
+    case "fill":
+        // shape fill (Circle().fill(c), Rectangle().fill(c)) → background color.
+        guard let a0 = argList.first?.expression else { return .unparsed }
+        let (token, opacity) = parseColor(a0)
+        var mod: [String: Any] = ["name": "background", "token": token, "raw": ".fill(\(a0.trimmedDescription))"]
+        if let o = opacity { mod["opacity"] = o }
+        return .mod(mod)
+
+    case "stroke":
+        // shape stroke (Circle().stroke(c, lineWidth: w)) → border.
+        if let m = strokeModFromArgs(args) { return .mod(m) }
+        return .unparsed
+
+    case "clipShape":
+        // clip → border-radius only (no fill). Reuses generate's background shape/radius
+        // path with no token, so it emits just border-radius. Only AppRadius.* tokens map
+        // (literal cornerRadius has no CSS var → honest degrade).
+        guard let a0 = argList.first?.expression else { return .unparsed }
+        let txt = a0.trimmedDescription
+        var mod: [String: Any] = ["name": "background", "raw": ".clipShape(\(txt))"]
+        if txt.hasPrefix("Capsule") {
+            mod["shape"] = "capsule"
+        } else if txt.hasPrefix("RoundedRectangle"), let r = cap(txt, "AppRadius\\.([A-Za-z0-9]+)") {
+            mod["radius"] = "AppRadius.\(r)"
+        } else {
+            return .unparsed
+        }
+        return .mod(mod)
+
+    case "overlay":
+        // common border idiom: .overlay(Shape().stroke(c, lineWidth: w)) → border.
+        // an overlay of a sub-view (badge / divider) needs an overlay-layer model — not
+        // yet supported, so it degrades honestly.
+        var ovExpr = argList.first?.expression
+        if ovExpr == nil, let t = trailing, let first = t.statements.first { ovExpr = exprOf(first) }
+        if let e = ovExpr, let strokeCall = findStrokeCall(e),
+           let m = strokeModFromArgs(strokeCall.arguments) {
+            var border = m
+            border["raw"] = ".overlay(stroke)"
+            return .mod(border)
+        }
+        return .unparsed
+
     default:
-        return .unparsed  // visual-but-unimplemented (overlay/clipShape/stroke/…) — honest degrade
+        return .unparsed  // visual-but-unimplemented — honest degrade
     }
 }
 
@@ -262,6 +342,7 @@ func lower(_ expr: ExprSyntax) -> Node {
         switch parseModifier(mname, call.arguments, call.trailingClosure) {
         case .mod(let m): node.modifiers.append(m)
         case .skip: break
+        case .scoped(let nm): node.scoped.append(".\(nm)")
         // record ONLY the modifier itself, not the whole chain — appending
         // call.trimmedDescription would re-swallow the already-parsed base subtree
         // (massive duplicate pollution) and lump the chain into one opaque blob.
@@ -276,11 +357,14 @@ func lower(_ expr: ExprSyntax) -> Node {
         return constructorNode(ref.baseName.text, call.arguments, call.trailingClosure)
     }
 
-    // bare identifier — almost always a sub-view reference in body position:
-    //   `content`      → @ViewBuilder injection point (decorated container)
-    //   `coverView` / `progressBar` / `SomeView` → a computed-property sub-view → child.
-    // Treating these as `unparsed` was the top loss source (they're structurable, not
-    // unknown). Cross-component inlining of the referent is a later phase.
+    // bare identifier in body/ViewBuilder position. `content` is the @ViewBuilder
+    // injection point; other identifiers (`coverView`, `progressBar`, `SomeView`) are
+    // computed-property sub-views → child. KNOWN DEBT: this is unsound in the general
+    // case (a non-View identifier would also become a phantom `child`), but the Swift
+    // type system forbids non-View identifiers in bare ViewBuilder-statement position,
+    // so it's empirically dormant (corpus scan: 0 spurious children). `child` nodes are
+    // absent from the coverage denominator, so this cannot inflate the metric either.
+    // Do NOT reuse lower() in argument position without re-adding a View-name guard.
     if let ref = expr.as(DeclReferenceExprSyntax.self) {
         let name = ref.baseName.text
         if name == "content" { return Node("container") }

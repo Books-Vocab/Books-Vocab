@@ -72,7 +72,8 @@ def compute() -> dict:
     files = sorted(CORPUS.rglob("*.swift"))
     n_files = len(files)
     n_structs = n_contract_ok = 0
-    n_resolved_mods = n_unparsed = 0
+    n_resolved_mods = n_unparsed = n_scoped = 0
+    scoped_hist: Counter[str] = Counter()
     file_errors: list[tuple[str, str]] = []
     unparsed_hist: Counter[str] = Counter()
     dirtiest: list[tuple[int, str, str]] = []
@@ -88,18 +89,22 @@ def compute() -> dict:
         for s in ir.get("structs", []):
             n_structs += 1
             root = s.get("root", {})
-            su = sm = 0
+            su = sm = sc = 0
             for n in walk_nodes(root):
                 su += len(n.get("unparsed", []) or [])
                 sm += len(n.get("modifiers", []) or [])
+                sc += len(n.get("scoped", []) or [])
                 for u in n.get("unparsed", []) or []:
                     unparsed_hist[classify_unparsed(u)] += 1
+                for sk in n.get("scoped", []) or []:
+                    scoped_hist[sk] += 1
                 for m in n.get("modifiers", []) or []:
                     tok = m.get("token")
                     if isinstance(tok, str) and ("{" in tok or "}" in tok):
                         junk_tokens.append(f"{s.get('name')}: {m.get('name')} token={tok[:40]!r}")
             n_unparsed += su
             n_resolved_mods += sm
+            n_scoped += sc
             if su:
                 dirtiest.append((su, s.get("name", "?"), str(f.relative_to(ROOT))))
         if not errs:
@@ -107,14 +112,19 @@ def compute() -> dict:
         else:
             contract_violations.append(f"{f.name}: {errs[0]}")
 
-    total_decor = n_resolved_mods + n_unparsed
+    # denominator = everything the system SHOULD eventually transpile = resolved +
+    # unparsed (not-yet) + scoped (visual, deliberately out of component scope). NON_VISUAL
+    # modifiers (a11y/lifecycle/…) are NOT here — they have no CSS analog. Folding `scoped`
+    # in is the honesty fix: moving a modifier to SCOPED_OUT can no longer raise coverage.
+    total_decor = n_resolved_mods + n_unparsed + n_scoped
     return {
         "files": n_files, "dump_failed": len(file_errors), "structs": n_structs,
         "contract_ok": n_contract_ok, "resolved": n_resolved_mods, "unparsed": n_unparsed,
+        "scoped": n_scoped,
         "node_coverage": (n_resolved_mods / total_decor) if total_decor else 0.0,
-        "histogram": dict(unparsed_hist), "errors": file_errors,
-        "dirtiest": dirtiest, "contract_violations": contract_violations,
-        "junk_tokens": junk_tokens,
+        "histogram": dict(unparsed_hist), "scoped_histogram": dict(scoped_hist),
+        "errors": file_errors, "dirtiest": dirtiest,
+        "contract_violations": contract_violations, "junk_tokens": junk_tokens,
     }
 
 
@@ -144,12 +154,20 @@ def main(argv: list[str]) -> int:
     print(f"files dump-failed    : {len(file_errors)}")
     print(f"View structs parsed  : {n_structs}")
     print(f"contract-valid files : {n_contract_ok}/{n_files - len(file_errors)}")
+    n_scoped = r["scoped"]
+    denom = n_resolved_mods + n_unparsed + n_scoped
     print(f"resolved modifiers   : {n_resolved_mods}")
-    print(f"unparsed decorations : {n_unparsed}")
-    print(f"NODE COVERAGE        : {node_cov*100:.1f}%   (1 - unparsed_rate)")
+    print(f"unparsed decorations : {n_unparsed}  (visual, not-yet-implemented)")
+    print(f"scoped-out (in denom): {n_scoped}  (visual, deliberately out of component scope)")
+    print(f"denominator          : {denom}  (resolved + unparsed + scoped; NON_VISUAL excluded)")
+    print(f"NODE COVERAGE        : {node_cov*100:.1f}%   = resolved / denominator (honest)")
     print()
     print(f"--- unparsed histogram (top {top_n}; = implement-next priority) ---")
     for name, cnt in unparsed_hist.most_common(top_n):
+        print(f"  {cnt:4d}  {name}")
+    print()
+    print("--- scoped-out histogram (in denominator; deliberate scope decisions) ---")
+    for name, cnt in Counter(r["scoped_histogram"]).most_common(12):
         print(f"  {cnt:4d}  {name}")
     print()
     print("--- dirtiest structs (top 12) ---")
