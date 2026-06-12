@@ -7,3 +7,9 @@
 ios/BooksAndVocab/Services/PerfLog.swift              merge=union
 ios/BooksAndVocab/Support/UITestFixtureSeed.swift     merge=union
 ios/BooksAndVocabUITests/Helpers/UITestAppLaunch.swift merge=union
+
+# JS/MJS tooling carries non-ASCII glyphs in comments and CLI output (✓ ✗ ⟷ …);
+# without this git's content heuristic flags them "binary" and refuses line diffs.
+# Force text so parity/coverage tools stay reviewable.
+*.mjs text
+*.js  text

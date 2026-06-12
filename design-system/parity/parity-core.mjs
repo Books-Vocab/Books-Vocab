@@ -303,10 +303,13 @@ export function runParityAudit({ parity, shotsDir, outDir, repoRoot, shotLabel, 
     const rmse = result.rmse.normalized ?? result.rmse.value;
     const mae = result.mae.normalized ?? result.mae.value;
     const ssim = result.ssim.normalized ?? result.ssim.value;
-    console.error(`✓ ${item.case}  RMSE=${rmse}  MAE=${mae}  SSIM=${ssim}`);
+    // "·" = measured (an artifact was produced). This is NOT a pass — the verdict
+    // is decided by parity-verdict.mjs against the committed baseline. Do not
+    // read this line as green.
+    console.error(`· ${item.case}  RMSE=${rmse}  MAE=${mae}  SSIM=${ssim}`);
   }
   writeFileSync(join(outDir, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
   console.error(`\nAudit artifacts: ${outDir}/<case>/{diff,zoom,palette,metrics}`);
-  console.error(`Summary: ${outDir}/summary.json`);
+  console.error(`Summary: ${outDir}/summary.json  (measured, not judged — run the verdict gate for pass/fail)`);
   return summary;
 }
