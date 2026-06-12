@@ -70,6 +70,8 @@
   --tone-chip-padding-v: 6px;
   --row-padding-v: 9px;
   --micro-gap: 6px;
+  --word-row-gap: 10px;
+  --compact-row-padding-v: 10px;
   --action-button-padding-v: 13px;
   --progress-bar-width: 104px;
   --progress-bar-height: 5px;

@@ -80,6 +80,12 @@ export const SURFACE_SCENARIOS = {
   // delta) pushed RMSE to 0.26 (> 0.25 ceiling). Re-derive with font-metric height tuning.
   'collocation-explain': ['loaded-short', 'loaded-long', 'loaded-with-delete'],
   'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
+  // Composite layer (batch-3): Sync (.fill opaque full-frame, bookshelf pattern) /
+  // Notebooks·Card (opaque component crop, editorial book-row) / KG Vocab Row
+  // (WordRow molecule, transparent component crop, varying width).
+  sync: ['ready', 'running', 'completed', 'partial', 'full'],
+  'notebooks-card': ['grid-two', 'hero-fresh', 'hero-long-name', 'hero-heavy'],
+  'kg-vocab-row': ['default', 'highlighted'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

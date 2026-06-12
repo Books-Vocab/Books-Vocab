@@ -1,0 +1,456 @@
+/* Sync surface — 鏡像 ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift
+   （+SyncPresenter+Header.swift / +ActionArea.swift）。catalog scene layout = .fill
+   （1179×2556 全裝置幀、corner srgba(247,246,243,1)=page-bg → opaque 全幀捕捉，
+   無 crop、無 transparent；同 bookshelf pattern）。
+
+   結構：VStack(spacing 0)[ ScrollView{ VStack(spacing heroSectionSpacing=16)[
+     headerView(.padding top syncOverlayInset=32) + (pendingListSection) + (stepsSection)
+     + (summaryCard) ] .padding(.h overlayHorizontalInset=20, .b overlayVerticalInset=20) }
+     + actionArea(.padding .h 20 .b 20, bg pageBackground) ]
+   .navigationTitle("同步") inline。
+
+   token 來源（VERIFY 自 AppSkin+BaseValues / AppMetrics / DesignTokens）：
+     heroSectionSpacing 16 = --sp-4 / syncOverlayInset 32 = --sp-7
+     overlayHorizontalInset 20 = --page-h-padding(=--sp-5) / overlayVerticalInset 20 = --sp-5
+     listRowHorizontalInset 16 = --sp-4 / topBarBottomInset 6 = --micro-gap
+     statusHeroGap 12 = --sp-3 / heroDescriptionHorizontalInset 40 = --sp-8
+     timelineRowGap 12 = --sp-3 / timelineDetailGap 2 = --sp-micro / sectionGap(row v-pad) 14 = --section-gap
+     inlineGap 8 = --sp-2 / cardPadding 18 = --card-padding / s2 8 = --sp-2 / s3 12 = --sp-3
+     wordRowHorizontalGap 10 / wordRowVerticalGap 4 = --sp-1 / wordRowBaselineGap 6 = --micro-gap
+     compactRowVerticalPadding 10 / accessoryTopOffset 10 / chromeButtonSize 32 = --chrome-button-size
+     tone-chip pad 10/6 = --tone-chip-padding-* / actionButton pad .h16=--sp-4 .v13=--action-button-padding-v
+   字級：sectionTitle serif18 bold / body sans15(--text-subhead) / caption sans12 bold(--text-caption)
+     monoLabel mono10 bold(--text-mono-label) / rowWord mono18 semibold(--text-row-word)
+     symbolHero symbol44 light / iconSmall symbol12 / iconToolbar symbol15
+   measured（Completed.png@dpr3）：nav title 同步 y≈222–270px、card 左緣 58px(≈20pt)、
+     hero green 頂 ≈448px(≈149pt)、bottom 完成 pill content-width 居中。 */
+
+.sync {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+  box-sizing: border-box;
+}
+
+/* inline UINavigationBar：status bar 59pt + inline bar 44pt = 103pt。
+   title「同步」serif？— navigationTitle 用系統字、inline 字級≈17 semibold；
+   palette 為 quaternary-ish 淺色（PNG 量得幾乎與 bg 同階，僅微亮）。 */
+.sync-nav {
+  flex: none;
+  height: 103px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 11px; /* 讓 baseline 落在 inline bar 垂直中 */
+}
+
+.sync-nav-title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 17px; /* UINavigationBar inline title */
+  font-weight: 600;
+  line-height: 1;
+  /* PNG 量測：title ink 幾乎等於 page-bg（極淺）— inline title 在此 preview 主題
+     下趨近隱形，取 quaternary 最接近的低對比階。 */
+  color: var(--text-quaternary);
+  opacity: 0.5;
+}
+
+/* ScrollView 內容容器 */
+.sync-scroll {
+  flex: 1 1 auto;
+  overflow: hidden; /* 快照面不滾動 */
+  display: flex;
+  flex-direction: column;
+}
+
+.sync-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4); /* heroSectionSpacing 16 */
+  padding: 0 var(--page-h-padding) var(--sp-5); /* .h overlayHorizontalInset 20, .b overlayVerticalInset 20 */
+  box-sizing: border-box;
+}
+
+/* === Header（VocabStatusHero）=== */
+.sync-header {
+  padding-top: var(--sp-7); /* syncOverlayInset 32 */
+}
+
+.sync-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3); /* statusHeroGap 12 */
+}
+
+/* symbolHero symbol 44 light */
+.sync-hero-icon {
+  flex: none;
+  line-height: 0;
+}
+
+/* sectionTitle serif 18 bold */
+.sync-hero-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* body sans 15 / secondaryText，multiline center，.padding(.h heroDescriptionHorizontalInset 40) */
+.sync-hero-desc {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 0 var(--sp-8); /* 40 */
+}
+
+/* hero badges HStack(spacing inlineGap 8) — ready scenario 的 新增/刪除 chip */
+.sync-hero-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* VocabToneChip：caption sans12 bold / tone color, bg tone.opacity(0.08), capsule,
+   .padding(.h Spacing.chip=10, .v Spacing.chip=6) */
+.sync-tone-chip {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+  padding: var(--tone-chip-padding-v) var(--tone-chip-padding-h);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.sync-tone-chip[data-tone='success'] {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+}
+.sync-tone-chip[data-tone='destructive'] {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+}
+
+/* === Card chrome（VocabCard / AppSectionCard .vocab(skin)）===
+   padding 由內容自管（VocabCard padding:0），bg cardBackground, radius card 8,
+   border cardBorder.opacity(0.7) 1px, elevation z1 */
+.sync-card {
+  flex: none;
+  box-sizing: border-box;
+  background: var(--card-bg);
+  border-radius: var(--radius-card);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  box-shadow: var(--elevation-z1);
+  overflow: hidden;
+}
+
+/* === Pending list（ready scenario）===
+   每 row：HStack(alignment top, spacing s3=12)[ WordRow + accessory ]
+   .padding(.h cardPadding 18) */
+.sync-pending-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3); /* s3 12 */
+  padding: 0 var(--card-padding); /* 18 */
+}
+
+/* WordRow：VStack(spacing wordRowVerticalGap 4)[ baselineHStack(spacing 6)[word + pos] + translation ]
+   .padding(.vertical compactRowVerticalPadding 10) */
+.sync-wordrow {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1); /* wordRowVerticalGap 4 */
+  padding: 10px 0; /* compactRowVerticalPadding — 8pt grid 例外，無語意 token */
+}
+
+.sync-wordrow-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--micro-gap); /* wordRowBaselineGap 6 */
+}
+
+/* rowWord systemMono 18 semibold */
+.sync-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-row-word);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+.sync-word[data-tone='destructive'] {
+  color: var(--destructive);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+/* partOfSpeech caption sans12 bold / tertiaryText */
+.sync-pos {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* translation body sans15 / secondaryText */
+.sync-translation {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+}
+
+/* VocabAccessoryIconButton：iconToolbar symbol15, frame chromeButtonSize 32×32,
+   bg mutedFill, radius tiny(=sm 6). .padding(.top accessoryTopOffset 10) */
+.sync-accessory {
+  flex: none;
+  margin-top: 10px; /* accessoryTopOffset — 無語意 token */
+  width: var(--chrome-button-size);
+  height: var(--chrome-button-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm); /* radii.tiny = sm = 6 */
+  background: var(--muted-fill);
+}
+.sync-accessory[data-tone='secondary'] {
+  color: var(--text-secondary);
+}
+.sync-accessory[data-tone='destructive'] {
+  color: var(--destructive);
+}
+
+/* Divider — 1px, .padding(.leading cardPadding 18) */
+.sync-divider {
+  height: 1px;
+  background: var(--divider);
+  margin-left: var(--card-padding); /* 18 */
+}
+
+/* === Steps（stepsSection）===
+   VStack(spacing 0)[ stepRow + Divider(.leading syncOverlayInset 32) ]
+   外層 .padding(.h listRowHorizontalInset 16, .v topBarBottomInset 6) */
+.sync-steps {
+  display: flex;
+  flex-direction: column;
+  padding: var(--micro-gap) var(--sp-4); /* .v 6, .h 16 */
+}
+
+.sync-step-divider {
+  height: 1px;
+  background: var(--divider);
+  margin-left: var(--sp-7); /* syncOverlayInset 32 */
+}
+
+/* VocabTimelineRow：HStack(spacing timelineRowGap 12)[ symbol(width 20) + VStack ]
+   .padding(.vertical sectionGap 14) */
+.sync-timeline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3); /* timelineRowGap 12 */
+  padding: var(--section-gap) 0; /* 14 */
+}
+
+/* statusSymbol .frame(width 20) */
+.sync-step-symbol {
+  flex: none;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.sync-step-symbol[data-status='done'] {
+  color: var(--success);
+}
+.sync-step-symbol[data-status='error'] {
+  color: var(--destructive);
+}
+.sync-step-symbol[data-status='waiting'] {
+  color: var(--text-quaternary);
+}
+.sync-step-symbol[data-status='running'] {
+  color: var(--text-secondary);
+}
+
+.sync-step-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-micro); /* timelineDetailGap 2 */
+}
+
+/* HStack[ title + Spacer + trailing ] */
+.sync-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* title body sans15 medium */
+.sync-step-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 500;
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+.sync-step-title[data-tone='waiting'] {
+  color: var(--text-tertiary);
+}
+
+/* trailing HStack(spacing s2 8)[ "1/2" monoLabel ] */
+.sync-step-trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* monoLabel mono10 bold / secondaryText */
+.sync-step-progress {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1; /* mono badge tight box */
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* detail caption sans12 bold */
+.sync-step-detail {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+.sync-step-detail[data-tone='error'] {
+  color: var(--destructive);
+}
+
+/* === Summary card（AppStateMessageCard .vocab(skin)）===
+   AppSectionCard(padding:0) 內 content .padding(.h 14, .v 12)；自帶 bg+border+clip。
+   content VStack(spacing s2 8)[ HStack(firstBaseline, spacing s2)[icon + title + Spacer]
+   + description ]，radius control(=sm 6). icon iconSmall symbol12 / accent。 */
+.sync-summary {
+  flex: none;
+  box-sizing: border-box;
+  /* AppStateMessageStyle .vocab：verticalPadding 12 / horizontalPadding 14（divider-air 之外的獨立 literal，無語意 token） */
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border-radius: var(--radius-control); /* 6 */
+  border: 1px solid var(--card-border);
+}
+
+.sync-summary-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* icon iconSmall symbol12 / accent */
+.sync-summary-icon {
+  flex: none;
+  color: var(--accent);
+  align-self: center;
+  line-height: 0;
+}
+
+/* title body sans15 semibold / primaryText */
+.sync-summary-title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+
+/* description caption sans12 bold / secondaryText，先一段間距 s2 8 */
+.sync-summary-desc {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* === Action area（VStack(spacing s2 8)）===
+   .padding(.h overlayHorizontalInset 20, .b overlayVerticalInset 20), bg pageBackground */
+.sync-action {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: 0 var(--page-h-padding) var(--sp-5); /* .h 20 .b 20 */
+  background: var(--page-bg);
+}
+
+/* VocabActionButtonStyle：caption sans12 bold label, radius control 6,
+   .padding(.h actionButton 16, .v 13). Label(text + icon) center. */
+.sync-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  box-sizing: border-box;
+  padding: var(--action-button-padding-v) var(--sp-4); /* .v 13 .h 16 */
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ready/running/failed：Label/Text(.frame(maxWidth:.infinity)) 在 label 內 → 全幅 */
+.sync-action-button[data-width='fill'] {
+  width: 100%;
+}
+/* completed：Button("完成").frame(maxWidth:.infinity) 在 buttonStyle 外 → 背景僅內容寬、居中 */
+.sync-action-button[data-width='hug'] {
+  align-self: center;
+}
+
+/* primary：fg pageBackground / bg primaryText / border primaryText */
+.sync-action-button[data-style='primary'] {
+  color: var(--page-bg);
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+}
+/* neutral：fg primaryText / bg cardBackground / border cardBorder */
+.sync-action-button[data-style='neutral'] {
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border-color: var(--card-border);
+}
+/* warning：fg warning / bg warning.opacity(0.12) / border warning.opacity(0.22) */
+.sync-action-button[data-style='warning'] {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 22%, transparent);
+}
+
+.sync-action-button-icon {
+  flex: none;
+  line-height: 0;
+}

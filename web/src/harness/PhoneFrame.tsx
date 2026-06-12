@@ -22,6 +22,9 @@ import { VocabToolbarGlyphScreen } from '../surfaces/vocab-toolbar-glyph/VocabTo
 import { VocabEmptyStateScreen } from '../surfaces/vocab-empty-state/VocabEmptyStateScreen'
 import { CollocationExplainScreen } from '../surfaces/collocation-explain/CollocationExplainScreen'
 import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScreen'
+import { SyncScreen } from '../surfaces/sync/SyncScreen'
+import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScreen'
+import { KGVocabRowScreen } from '../surfaces/kg-vocab-row/KGVocabRowScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -81,6 +84,12 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <CollocationExplainScreen scenario={config.scenario} />
     case 'kg-empty-state':
       return <KgEmptyStateScreen scenario={config.scenario} />
+    case 'sync':
+      return <SyncScreen scenario={config.scenario} />
+    case 'notebooks-card':
+      return <NotebooksCardScreen scenario={config.scenario} />
+    case 'kg-vocab-row':
+      return <KGVocabRowScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':

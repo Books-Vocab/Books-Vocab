@@ -167,6 +167,7 @@ public enum DesignTokens {
             public static let chromeButtonSize: CGFloat = 32
             public static let compactChipPaddingH: CGFloat = 6
             public static let compactChipPaddingV: CGFloat = 3
+            public static let compactRowPaddingV: CGFloat = 10
             public static let dividerAir: CGFloat = 16
             public static let emptyStateStack: CGFloat = 14
             public static let inlineGap: CGFloat = 8
@@ -186,6 +187,7 @@ public enum DesignTokens {
             public static let toneChipPaddingV: CGFloat = 6
             public static let toolbarBadgePaddingH: CGFloat = 5
             public static let toolbarBadgePaddingV: CGFloat = 2
+            public static let wordRowGap: CGFloat = 10
         }
     }
     public enum Typography {
