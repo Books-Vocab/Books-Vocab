@@ -25,6 +25,13 @@ import { VocabHighlightPickerScreen } from '../surfaces/vocab-highlight-picker/V
 import { CollocationExplainScreen } from '../surfaces/collocation-explain/CollocationExplainScreen'
 import { LinkReasonSheetScreen } from '../surfaces/link-reason-sheet/LinkReasonSheetScreen'
 import { NotebookEditSheetScreen } from '../surfaces/notebook-edit/NotebookEditSheetScreen'
+import { WordEditScreen } from '../surfaces/word-edit/WordEditScreen'
+import { VocabCalendarScreen } from '../surfaces/vocab-calendar/VocabCalendarScreen'
+import { VocabForecastScreen } from '../surfaces/vocab-forecast/VocabForecastScreen'
+import { VocabHeatmapScreen } from '../surfaces/vocab-heatmap/VocabHeatmapScreen'
+import { ReviewBannerScreen } from '../surfaces/review-banner/ReviewBannerScreen'
+import { VocabAddLinkScreen } from '../surfaces/vocab-add-link/VocabAddLinkScreen'
+import { VocabLinkedCardScreen } from '../surfaces/vocab-linked-card/VocabLinkedCardScreen'
 import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScreen'
 import { SyncScreen } from '../surfaces/sync/SyncScreen'
 import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScreen'
@@ -115,6 +122,20 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <LinkReasonSheetScreen scenario={config.scenario} />
     case 'notebook-edit':
       return <NotebookEditSheetScreen scenario={config.scenario} />
+    case 'word-edit':
+      return <WordEditScreen scenario={config.scenario} />
+    case 'vocab-calendar':
+      return <VocabCalendarScreen scenario={config.scenario} />
+    case 'vocab-forecast':
+      return <VocabForecastScreen scenario={config.scenario} />
+    case 'vocab-heatmap':
+      return <VocabHeatmapScreen scenario={config.scenario} />
+    case 'review-banner':
+      return <ReviewBannerScreen scenario={config.scenario} />
+    case 'vocab-add-link':
+      return <VocabAddLinkScreen scenario={config.scenario} />
+    case 'vocab-linked-card':
+      return <VocabLinkedCardScreen scenario={config.scenario} />
     case 'kg-empty-state':
       return <KgEmptyStateScreen scenario={config.scenario} />
     case 'sync':

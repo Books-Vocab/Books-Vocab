@@ -1,0 +1,166 @@
+/* review-banner — iOS VocabReviewBanner + DemoBanner 的 web 鏡像。
+   token 走 design-system 變數。px 註解標 iOS 來源常數：
+     VocabReviewBanner: cardPadding 18 / inlineGap 8 / VStack AppSpacing.microGap 2 /
+       Spacer minLength skin.spacing.microGap 6 / radii.card 8(md)
+       title = skin.typography.sectionTitle = AppFonts.serif(18, bold) / primaryText
+       stats = AppFonts.caption(12) / secondaryText；HStack(spacing s1=4)
+       CTA = AppCompactActionButtonStyle(.primary)：caption(12 semibold) / fg onBrandHero /
+         bg+border brandHero / capsule / pad .h s3=12 .v s2=8
+     DemoBanner: caption(12) / fg secondaryText / 結束 semibold accent /
+       pad .h pageHorizontalPadding(s5=20) .v s2=8 / bg accent.opacity(0.08)
+
+   兩組 scene 透明性不同：
+     review-*（.fillH）→ 透明畫布 + 白卡，ref 緊裁切成 1179×342（=393×114pt），alpha-mean 0.595
+       → component-isolated scene：crop=component + transparent:true，crop 選擇器 .rb-component-surface
+     demo-*（.fill）→ 不透明全幀 pageBackground，alpha-mean 1 → full phone-frame，不加 transparent */
+
+/* ===== Review Banner（.fillH 元件 scene，crop=component） ===== */
+
+/* crop 目標 = 內容 + scene .padding(s4=16) 的 intrinsic box。
+   catalog ref 寬 1179/dpr3 = 393pt → surface 固定該寬度，使白卡撐滿（HStack fillH）。 */
+.rb-component-surface {
+  display: inline-block;
+  width: 393px;
+  box-sizing: border-box;
+  padding: var(--sp-4); /* AppThemeContainer { VStack[banner, Spacer].padding(s4=16) } */
+}
+
+/* HStack(alignment:.center, spacing inlineGap 8)[VStack · Spacer · CTA]
+   .padding(cardPadding 18) + card 白底 radius card(8) */
+.rb-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* inlineGap = 8 */
+  padding: 18px; /* cardPadding = AppShellMetrics.cardPadding 18（無對應 sp token，照抄常數） */
+  border-radius: var(--radius-card); /* radii.card = md = 8 */
+  background: var(--card-bg);
+}
+
+/* VStack(alignment:.leading, spacing: AppSpacing.microGap=2)[title · stats]
+   注意：此處用 static AppSpacing.microGap（=2），非 skin.spacing.microGap（=6，
+   後者僅供 Spacer minLength）。 */
+.rb-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px; /* AppSpacing.microGap = DesignTokens.Space.Scale.micro = 2（無對應 sp token） */
+  min-width: 0;
+}
+
+/* Text("今日複習") — sectionTitle = serif 18 bold / primaryText / lineLimit 1 */
+.rb-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: var(--leading-heading); /* 1.2 */
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* statsText HStack(spacing s1=4)：caption(12) / secondaryText / lineLimit 1
+   skin.typography.caption = AppFonts.sans(size: 12, bold: true) → font-weight 700 */
+.rb-stats {
+  display: flex;
+  gap: var(--sp-1); /* s1 = 4 */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700; /* caption token bold:true */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Spacer(minLength: microGap 6) — flex 推開 CTA */
+.rb-spacer {
+  flex: 1 1 auto;
+  min-width: 6px;
+}
+
+/* CTA = AppCompactActionButtonStyle(.primary)：Label(text, systemImage)
+   caption(12 semibold) / fg onBrandHero / bg+border brandHero / capsule
+   .padding(.h s3=12 .v s2=8)。Label imageTitleSpacing ≈ 4。 */
+.rb-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1); /* Label icon↔title 間距 ≈ 4 */
+  flex: 0 0 auto;
+  padding: var(--sp-2) var(--sp-3); /* .v s2=8 / .h s3=12 */
+  border-radius: 999px; /* Capsule */
+  background: var(--brand-hero); /* #FCDE9A */
+  border: 1px solid var(--brand-hero);
+  color: var(--on-brand-hero); /* #1C1A17，fg + icon currentColor */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 600; /* semibold */
+  white-space: nowrap;
+}
+
+.rb-cta-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+/* iOS SF caption(12 semibold) 內在行高 ≈ 1.19 → 連同 .v s2=8 pad + 1px×2 border
+   使膠囊外高達到 ref 量測 32pt（line-height 1 只給 30pt，pill 偏矮且垂直中心偏低）。 */
+.rb-cta-label {
+  line-height: 1.19;
+}
+
+/* ===== Demo Banner（.fill 不透明全幀 scene） ===== */
+
+.rb-demo-surface {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--page-bg); /* DemoBannerContent VStack(0)[strip, Spacer].background(pageBackground) */
+}
+
+/* DemoBanner：HStack(s2)[icon + label · Spacer · 結束]
+   fg secondaryText / pad .h pageHorizontalPadding 20 .v s2=8 / bg accent.opacity(0.08)
+   strip 背景延伸至 status bar（safe-area top 59）。 */
+.rb-demo-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* s2 = 8 */
+  padding: 8px var(--sp-5) 8px; /* .v s2=8 / .h pageHorizontalPadding s5=20 */
+  padding-top: calc(59px + var(--sp-2)); /* status bar 59 + .v s2=8（strip bg 吃滿安全區） */
+  background: var(--accent-subtle-08); /* accent.opacity(0.08)，見下方 token-allow */
+  color: var(--text-secondary); /* foregroundStyle secondaryText */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+}
+
+/* accent.opacity(0.08) — DS 僅有 accent-subtle(0.12)，此處需 0.08。
+   token-allow: 由 --accent 派生（light #4D7396 → rgba(77,115,150,0.08)），非裸視覺 literal。 */
+.rb-demo-surface {
+  --accent-subtle-08: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.rb-demo-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary); /* play.circle.fill 隨 secondaryText（caption medium） */
+}
+
+.rb-demo-label {
+  font-weight: 500; /* AppFonts.caption(weight: .medium) */
+  white-space: nowrap;
+}
+
+.rb-demo-spacer {
+  flex: 1 1 auto;
+}
+
+/* Button("結束") .font caption(semibold) .foregroundStyle accent */
+.rb-demo-exit {
+  font-weight: 600; /* semibold */
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* ===== 透明捕捉：review-* 為 .fillH 元件 scene（component-isolated 透明畫布）。
+   crop=component 下 phone-frame 透明、shots 以 crop 選擇器截 .rb-component-surface 自身
+   → web 與 ref 同為卡片-over-transparent（manifest crop:'component' + transparent:true）。
+   demo-default 為 .fill 不透明全幀 → 不在此列，phone-frame 維持預設背景。 ===== */
+.phone-frame[data-crop='component'][data-surface='review-banner'] {
+  background: transparent;
+}

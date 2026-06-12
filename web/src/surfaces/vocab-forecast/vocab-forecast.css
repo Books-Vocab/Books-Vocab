@@ -1,0 +1,125 @@
+/* VocabForecast — iOS VocabForecastChart.swift 的 web 鏡像（複習排程預測長條圖）。
+   token 一律走 design-system 變數（chart-highlight、divider、text-tertiary、
+   font-mono、radius-xs=4 以 sp-1 表示、sp-2=inlineGap）。bar 透明度 0.35 為 iOS
+   .opacity(0.35) 衍生視覺值（非靜態色 token），以 inline / 子 selector 套。
+
+   catalog 4 scene 皆 .fillH（全裝置寬）且畫布透明（alpha-mean≈0.04~0.12）：
+   manifest transparent:true，phone-frame 背景透明、全寬截圖。 */
+
+/* scene = .frame(maxWidth:.infinity).padding(16)，撐滿裝置寬 */
+.vocab-forecast-surface {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-4); /* .padding() = 16 */
+}
+
+/* GeometryReader 內容區：frame(height:160)，ZStack(.bottom) */
+.vocab-forecast-chart {
+  position: relative;
+  height: 160px; /* .frame(height: 160) */
+  width: 100%;
+}
+
+/* baseline：Rectangle(divider).frame(height:1).offset(y:-labelHeight)
+   ZStack(.bottom) 對齊底，再上移 labelHeight */
+.vocab-forecast-baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--vf-label-height);
+  height: 1px;
+  background: var(--divider);
+}
+
+/* HStack(alignment:.bottom, spacing:0)，撐滿 GeometryReader 高度 */
+.vocab-forecast-bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end; /* .bottom */
+}
+
+/* barColumn = VStack(spacing:0).frame(maxWidth:.infinity)
+   三段：count label / bar area / date label */
+.vocab-forecast-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* bar area .frame(maxWidth:.infinity) 內 bar 置中 */
+}
+
+/* count label：Text(count).font(monoLabel=mono 10 bold).fg(tertiaryText).frame(height:14)
+   或 Spacer(height: compact?0:14) */
+.vocab-forecast-count {
+  height: var(--vf-count-height);
+  line-height: var(--vf-count-height);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vocab-forecast-count-spacer {
+  color: transparent;
+}
+
+/* bar area：VStack{ Spacer(minLength 0); bar }.frame(height: chartHeight) → 底對齊 */
+.vocab-forecast-bararea {
+  height: var(--vf-chart-height);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* Spacer 上推 → bar 貼底 */
+  align-items: center; /* .frame(maxWidth:.infinity) → bar 水平置中 */
+}
+
+/* bar：RoundedRectangle(cornerRadius: xs=4).frame(width: columnWidth*0.5, height: barHeight)
+   width 以容器 50% 表示（columnWidth*0.5；column flex 等寬 → 50% = barWidth） */
+.vocab-forecast-bar {
+  width: 50%;
+  border-radius: var(--sp-1); /* AppRadius.xs = 4 */
+  /* index != 0：chartHighlight.opacity(0.35) */
+  background: var(--chart-highlight);
+  opacity: 0.35;
+}
+/* index == 0：實心 chartHighlight */
+.vocab-forecast-bar[data-highlight='1'] {
+  opacity: 1;
+}
+
+/* date label：Text(...).font(monoLabel=mono 10 bold).fg(quaternaryText).frame(height:16)
+   quaternaryText → --text-quaternary（light #9b9a93）。catalog 量測 darkest glyph
+   (154,153,146) ≈ #9B9A93，與 quaternaryText 完全吻合（非 tertiary #8A8983）。 */
+.vocab-forecast-date {
+  height: var(--vf-label-height); /* 16 */
+  line-height: var(--vf-label-height);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-quaternary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* lineLimit(1) 窄欄截斷 → "…"（compact 30 欄寬不足） */
+  text-align: center;
+  width: 100%;
+  min-width: 0;
+}
+
+/* compact（>14 bucket）：無 count label（height 0）。date label 文字（今天/1週/+29d）
+   在 ~13pt 窄欄被 lineLimit(1) 截斷成 "…"（catalog 三點），靠 text-overflow:ellipsis 還原。 */
+.vocab-forecast-surface[data-compact='1'] .vocab-forecast-count {
+  height: 0;
+}
+
+/* 元件級 crop：.fillH 全寬透明畫布（對齊 catalog 透明 canvas）。
+   crop=component → shots.mjs 截 .vocab-forecast-surface（width:100%=393pt × 192pt
+   intrinsic：chart 160 + padding 32），phone-frame omitBackground 透明截圖。 */
+.phone-frame[data-crop='component'][data-surface='vocab-forecast'] {
+  background: transparent;
+}

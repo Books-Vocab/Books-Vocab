@@ -610,6 +610,121 @@
       "mae": 0.0301717,
       "ssim": 0.0397269
     },
+    "word-edit-populated-light": {
+      "rmse": 0.0738006,
+      "mae": 0.0107835,
+      "ssim": 0.0176048
+    },
+    "word-edit-empty-explanation-light": {
+      "rmse": 0.0402909,
+      "mae": 0.00537215,
+      "ssim": 0.00815805
+    },
+    "word-edit-long-content-stress-light": {
+      "rmse": 0.205423,
+      "mae": 0.0637798,
+      "ssim": 0.100268
+    },
+    "word-edit-long-word-title-light": {
+      "rmse": 0.0862852,
+      "mae": 0.0137144,
+      "ssim": 0.0228456
+    },
+    "vocab-calendar-active-month-light": {
+      "rmse": 0.162128,
+      "mae": 0.0425847,
+      "ssim": 0.073622
+    },
+    "vocab-calendar-day-selected-light": {
+      "rmse": 0.162006,
+      "mae": 0.0425688,
+      "ssim": 0.0736821
+    },
+    "vocab-calendar-heavy-intensity-light": {
+      "rmse": 0.173242,
+      "mae": 0.0477598,
+      "ssim": 0.0805292
+    },
+    "vocab-calendar-no-activity-light": {
+      "rmse": 0.0692655,
+      "mae": 0.0102518,
+      "ssim": 0.0308012
+    },
+    "vocab-calendar-current-month-light": {
+      "rmse": 0.0744441,
+      "mae": 0.0153909,
+      "ssim": 0.0453498
+    },
+    "vocab-forecast-7-day-light": {
+      "rmse": 0.0549567,
+      "mae": 0.00436439,
+      "ssim": 0.0165686
+    },
+    "vocab-forecast-14-day-light": {
+      "rmse": 0.0694892,
+      "mae": 0.00710298,
+      "ssim": 0.0262652
+    },
+    "vocab-forecast-compact-light": {
+      "rmse": 0.0904577,
+      "mae": 0.0105879,
+      "ssim": 0.042407
+    },
+    "vocab-forecast-sparse-light": {
+      "rmse": 0.0314347,
+      "mae": 0.00157011,
+      "ssim": 0.00501839
+    },
+    "vocab-heatmap-dense-graded-light": {
+      "rmse": 0.043645,
+      "mae": 0.0030702,
+      "ssim": 0.00892748
+    },
+    "vocab-heatmap-sparse-light": {
+      "rmse": 0.0312335,
+      "mae": 0.00165457,
+      "ssim": 0.00471638
+    },
+    "vocab-heatmap-no-thresholds-light": {
+      "rmse": 0.0312335,
+      "mae": 0.00165457,
+      "ssim": 0.00471638
+    },
+    "vocab-heatmap-empty-light": {
+      "rmse": 0.0312335,
+      "mae": 0.00165457,
+      "ssim": 0.00471638
+    },
+    "vocab-heatmap-short-range-light": {
+      "rmse": 0.0540516,
+      "mae": 0.00480557,
+      "ssim": 0.0138652
+    },
+    "review-banner-demo-default-light": {
+      "rmse": 0.0175218,
+      "mae": 0.00107047,
+      "ssim": 0.00218735
+    },
+    "vocab-add-link-with-candidates-light": {
+      "rmse": 0.0593476,
+      "mae": 0.00718395,
+      "ssim": 0.0159803
+    },
+    "vocab-add-link-no-candidates-light": {
+      "rmse": 0.0593476,
+      "mae": 0.00718395,
+      "ssim": 0.0159803
+    },
+    "vocab-linked-card-single-card-light": {
+      "rmse": 0.16831,
+      "mae": 0.0301433,
+      "ssim": 0.027566
+    },
+    "vocab-linked-card-stacked-3-deep-light": {
+      "rmse": 0.159295,
+      "mae": 0.0318132,
+      "ssim": 0.0347561
+    },
     "kg-empty-state-no-entries-logged-out-light": {
       "rmse": 0.0714704,
       "mae": 0.0094862,
