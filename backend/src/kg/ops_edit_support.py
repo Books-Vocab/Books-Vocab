@@ -19,15 +19,15 @@ NFC 正規化 / unique index / graph filelock merge 都是它們的 SoT,本檔�
 
 from __future__ import annotations
 
-import argparse
-import csv
+import argparse  # noqa: F401 - re-exported for ops_edit_* command modules
+import csv  # noqa: F401 - re-exported for ops_edit_* command modules
 import hashlib
 import json
 import shutil
 import sqlite3
-import sys
+import sys  # noqa: F401 - re-exported for ops_edit_* command modules
 import tarfile
-import tempfile
+import tempfile  # noqa: F401 - re-exported for ops_edit_* command modules
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -35,30 +35,33 @@ from typing import Any
 from filelock import FileLock
 
 from kg.api_models.common import VocabSource
-from kg.api_models.graph import AutoLinkConfig
-from kg.api_models.notebook import VocabUIConfig
-from kg.api_models.review import ReviewClockConfig, ReviewModeConfig
-from kg.api_models.translate import TranslationLanguageConfig
+from kg.api_models.graph import AutoLinkConfig  # noqa: F401 - re-exported for ops_edit_* command modules
+from kg.api_models.notebook import VocabUIConfig  # noqa: F401 - re-exported for ops_edit_* command modules
+from kg.api_models.review import (  # noqa: F401 - re-exported for ops_edit_* command modules
+    ReviewClockConfig,
+    ReviewModeConfig,
+)
+from kg.api_models.translate import TranslationLanguageConfig  # noqa: F401 - re-exported for ops_edit_* command modules
 from kg.cards import CardStore
 from kg.cards.model import Card
-from kg.demo_review_synth import CardReviewState, synthesize_many
-from kg.graph.models import LinkKind
+from kg.demo_review_synth import CardReviewState, synthesize_many  # noqa: F401 - synthesize_many re-exported
+from kg.graph.models import LinkKind  # noqa: F401 - re-exported for ops_edit_* command modules
 from kg.notebook import NotebookStore
-from kg.review_events import ReviewEventStore
 from kg.ops_edit_shared import (
-    EditContext,
+    EditContext,  # noqa: F401 - re-exported for ops_edit_* command modules
     EditError,
-    assert_safe_uid,
-    backup_world,
-    emit,
-    list_user_backups,
-    world_backup_root,
-    user_dir_for,
+    assert_safe_uid,  # noqa: F401 - re-exported for ops_edit_* command modules
+    backup_world,  # noqa: F401 - re-exported for ops_edit_* command modules
+    emit,  # noqa: F401 - re-exported for ops_edit_* command modules
+    list_user_backups,  # noqa: F401 - re-exported for ops_edit_* command modules
+    user_dir_for,  # noqa: F401 - re-exported for ops_edit_* command modules
     users_file,
     users_lock_file,
+    world_backup_root,
 )
-from kg.ops_world_projection import project_user_world
-from kg.ops_shared import data_dir
+from kg.ops_shared import data_dir  # noqa: F401 - re-exported for ops_edit_* command modules
+from kg.ops_world_projection import project_user_world  # noqa: F401 - re-exported for ops_edit_* command modules
+from kg.review_events import ReviewEventStore
 from kg.user_store import load_users_from, parse_datetime, save_users_to
 
 _VALID_REVIEW_STATES = ("new", "due", "reviewed")

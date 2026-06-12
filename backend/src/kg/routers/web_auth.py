@@ -14,6 +14,7 @@ on success.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 from pathlib import Path
@@ -41,6 +42,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _OAUTH_STATE_COOKIE = "oauth_state"
 _OAUTH_STATE_TTL_SECONDS = 600  # 10 min
 _OAUTH_STATE_PATH = "/auth/web/"
+_GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS = (0.2, 0.5)
 
 
 def _set_state_cookie(response: Response, nonce: str, *, samesite: str = "lax") -> None:
@@ -70,6 +72,22 @@ def _verify_state(request: Request, provided: str | None) -> None:
     expected = request.cookies.get(_OAUTH_STATE_COOKIE)
     if not expected or not provided or not secrets.compare_digest(expected, provided):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+
+async def _exchange_google_code(data: dict[str, str]) -> httpx.Response:
+    attempts = len(_GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS) + 1
+    last_exc: httpx.HTTPError | None = None
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for attempt in range(attempts):
+            try:
+                return await client.post(GOOGLE_TOKEN_URL, data=data)
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt == attempts - 1:
+                    break
+                await asyncio.sleep(_GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS[attempt])
+    assert last_exc is not None
+    raise last_exc
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -151,14 +169,13 @@ async def google_callback(
     # Exchange code for tokens. Network failures (DNS, connect, timeout, read)
     # all subclass httpx.HTTPError; surface them as a 502 instead of a bare 500.
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(GOOGLE_TOKEN_URL, data={
-                "code": code,
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "redirect_uri": settings.google_redirect_uri,
-                "grant_type": "authorization_code",
-            })
+        resp = await _exchange_google_code({
+            "code": code,
+            "client_id": settings.google_client_id,
+            "client_secret": settings.google_client_secret,
+            "redirect_uri": settings.google_redirect_uri,
+            "grant_type": "authorization_code",
+        })
     except httpx.HTTPError as exc:
         logger.warning("Google token exchange request failed: %s", exc, exc_info=True)
         raise HTTPException(  # noqa: B904

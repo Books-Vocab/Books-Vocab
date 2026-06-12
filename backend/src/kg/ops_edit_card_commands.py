@@ -1,6 +1,29 @@
 from __future__ import annotations
 
-from .ops_edit_support import *  # noqa: F403
+from .ops_edit_support import (
+    _CARD_UPDATABLE_FIELDS,
+    _VALID_REVIEW_STATES,
+    UTC,
+    Any,
+    EditContext,
+    EditError,
+    Path,
+    _as_utc,
+    _card_brief,
+    _card_store,
+    _graph_store,
+    _notebook_store,
+    _resolve_card_id,
+    _resolve_notebook_id,
+    _review_fields,
+    _split_multi,
+    argparse,
+    csv,
+    data_dir,
+    datetime,
+    json,
+)
+
 
 def cmd_card_add(args: argparse.Namespace) -> int:
     dd = data_dir()

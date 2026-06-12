@@ -10,7 +10,7 @@ from kg.error_signals import JUDGE_AUTO_REJECT_WHERE, PIPELINE_FAILURE_WHERE
 from kg.ops_shared import connect_ro, data_dir, emit_json, print_table, provider_column_expr, resolve_uid
 from kg.quota_service import token_cost_usd
 
-from .ops_cli_shared import _bucket_key_from_date, _cutoff_iso, _enumerate_buckets, _parse_day
+from .ops_cli_shared import _bucket_key_from_date, _enumerate_buckets, _parse_day
 
 
 def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str, *, where: str = "", count: str = "COUNT(*)") -> dict[str, int]:

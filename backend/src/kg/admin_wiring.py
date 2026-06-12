@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Cookie, Header, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
@@ -338,7 +339,7 @@ def create_admin_handlers_from_dependencies(
         from .admin_trends import collect_trends
         return collect_trends(window_days=days)
 
-    def admin_log_retention_run():
+    async def admin_log_retention_run():
         """Manually trigger log-retention pruners across all 4 log DBs.
 
         Response shape merges the nested per-DB report with flat
@@ -346,7 +347,7 @@ def create_admin_handlers_from_dependencies(
         consumers (cron-style monitors / dashboards) that prefer a flat map.
         """
         from .log_retention import run_all
-        report = run_all()
+        report = await run_in_threadpool(run_all)
         return {
             **report,
             "pipeline_deleted": report["pipeline_log"]["deleted"],

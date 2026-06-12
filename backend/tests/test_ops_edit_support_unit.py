@@ -4,9 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import tarfile
-from datetime import UTC, datetime, timedelta
-from io import BytesIO
-from pathlib import Path
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +12,6 @@ import pytest
 import kg.ops_edit_support as support
 from kg.cards import CardStore
 from kg.notebook import NotebookStore
-
 
 # ── _split_multi ─────────────────────────────────────────────────────────
 

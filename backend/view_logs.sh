@@ -1,5 +1,8 @@
-#!/bin/bash
-# 連線到 AWS Lightsail 並持續查看 Docker 的即時 Log
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "連線到 AWS Lightsail 查看即時日誌中 (按 Ctrl+C 退出)..."
-ssh -i ~/.ssh/lightsail_default.pem ubuntu@13.193.212.134 "cd ~/knowledge_graph_api && docker compose logs -f"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TAIL_LINES="${1:-80}"
+
+echo "透過 safe wrapper 查看生產日誌 tail=${TAIL_LINES}..."
+exec "$ROOT/ops/devops_kg_safe.sh" logs "$TAIL_LINES"
