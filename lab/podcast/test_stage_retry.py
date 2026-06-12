@@ -111,3 +111,54 @@ def test_retry_exhausts(monkeypatch):
     ok, _ = pipeline._run_claude_with_retry(["claude"], None, "Architect", _Log(), 1500)
     assert ok is False
     assert calls["n"] == 3  # 耗盡 _STAGE_RETRY_ATTEMPTS
+
+
+# ─── Agent profile / Kimi env ───
+
+def test_kimi_profile_env_uses_existing_shell_contract(monkeypatch, tmp_path):
+    key_file = tmp_path / "kimi.env"
+    key_file.write_text(" kimi-test-key \n")
+    monkeypatch.setenv("PODCAST_KIMI_KEY_FILE", str(key_file))
+    monkeypatch.delenv("PODCAST_KIMI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+
+    pipeline.configure_agent(profile="kimi")
+    env = pipeline._agent_subprocess_env()
+
+    assert pipeline.AGENT_PROFILE == "kimi"
+    assert pipeline.MODEL == "kimi-for-coding"
+    assert env["ANTHROPIC_BASE_URL"] == "https://api.kimi.com/coding"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "kimi-test-key"
+    assert env["ANTHROPIC_MODEL"] == "kimi-for-coding"
+    assert env["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "kimi-for-coding"
+
+
+def test_kimi_profile_missing_key_fails_before_spawn(monkeypatch, tmp_path):
+    monkeypatch.setenv("PODCAST_KIMI_KEY_FILE", str(tmp_path / "missing.env"))
+    monkeypatch.delenv("PODCAST_KIMI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    pipeline.configure_agent(profile="kimi")
+
+    with pytest.raises(RuntimeError, match="Kimi API key"):
+        pipeline._agent_subprocess_env()
+
+
+def test_claude_profile_keeps_legacy_model_env(monkeypatch):
+    monkeypatch.setenv("PODCAST_CLAUDE_MODEL", "sonnet")
+    monkeypatch.delenv("PODCAST_AGENT_MODEL", raising=False)
+
+    pipeline.configure_agent(profile="claude")
+
+    assert pipeline.AGENT_PROFILE == "claude"
+    assert pipeline.MODEL == "sonnet"
+    assert "ANTHROPIC_BASE_URL" not in pipeline._agent_subprocess_env()
+
+
+def test_agent_sidecar_round_trip(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    pipeline.configure_agent(profile="kimi", model="kimi-for-coding")
+    pipeline.write_agent_sidecars(ws)
+
+    assert pipeline.read_agent_sidecars(ws) == ("kimi", "kimi-for-coding")

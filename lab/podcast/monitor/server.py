@@ -60,6 +60,8 @@ from workspace_status import (  # noqa: E402
     reconcile_workspaces, disk_status, audio_episode_numbers,
 )
 
+ALLOWED_AGENT_PROFILES = ("claude", "kimi")
+
 # Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
 # almost certainly someone uploading the wrong file by accident. Protects
 # the 2GB VPS from getting wedged by a runaway multipart body.
@@ -70,6 +72,30 @@ WORKSPACES_DIR = ROOT / "workspaces"
 STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_STAGING = ROOT / "monitor" / ".uploads"
 UPLOAD_STAGING.mkdir(parents=True, exist_ok=True)
+
+
+def _pipeline_env(agent_profile: str = "", agent_model: str = "") -> dict[str, str]:
+    env = {"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"}
+    if agent_profile:
+        env["PODCAST_AGENT_PROFILE"] = agent_profile
+    if agent_model:
+        env["PODCAST_AGENT_MODEL"] = agent_model
+    return env
+
+
+def _append_agent_args(cmd: list[str], agent_profile: str = "", agent_model: str = "") -> None:
+    if agent_profile:
+        cmd += ["--agent-profile", agent_profile]
+    if agent_model:
+        cmd += ["--agent-model", agent_model]
+
+
+def _validate_agent_profile(agent_profile: str) -> None:
+    if agent_profile and agent_profile not in ALLOWED_AGENT_PROFILES:
+        raise HTTPException(
+            422,
+            f"unknown agent_profile {agent_profile!r}; allowed: {', '.join(ALLOWED_AGENT_PROFILES)}",
+        )
 
 
 def _staging_dest(safe_name: str) -> Path:
@@ -821,7 +847,7 @@ def rerun_stage(
             cwd=ROOT,
             # Producer-triggered reruns inherit dashboard's verbose setting; user
             # already opted into events.jsonl by being here.
-            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            env=_pipeline_env(),
             metadata={"workspace": ws_name, "stage": stage, "episode": episode},
             workspace=ws_name,
         )
@@ -877,7 +903,7 @@ def approve_gate(ws_name: str, gate: str = Query(...)):
             label=f"produce:{ws_name}:{gate}",
             kind="pipeline",
             cwd=ROOT,
-            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            env=_pipeline_env(),
             metadata={"workspace": ws_name, "gate": gate},
             workspace=ws_name,
         )
@@ -908,7 +934,7 @@ def resume_workspace(ws_name: str):
             label=f"resume:{ws_name}",
             kind="pipeline",
             cwd=ROOT,
-            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            env=_pipeline_env(),
             metadata={"workspace": ws_name},
             workspace=ws_name,
         )
@@ -924,6 +950,8 @@ async def start_pipeline(
     epub: UploadFile = File(...),
     parallel: int = Form(3, ge=1, le=10),
     tts_model: str = Form(""),
+    agent_profile: str = Form(""),
+    agent_model: str = Form(""),
 ):
     """Receive an EPUB upload, save to staging, spawn pipeline.py.
     Returns job_id immediately; the new workspace name appears in the
@@ -936,6 +964,7 @@ async def start_pipeline(
         raise HTTPException(415, "expected .epub file")
     if tts_model and tts_model not in ALLOWED_TTS_MODELS:
         raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
+    _validate_agent_profile(agent_profile)
     # Strip leading dots/hyphens so `....epub` doesn't land as a hidden file.
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
     # Per-call uuid token (not just a timestamp) so concurrent uploads of the
@@ -972,18 +1001,21 @@ async def start_pipeline(
     cmd = ["uv", "run", "pipeline.py", str(dest), "--parallel", str(parallel)]
     if tts_model:
         cmd += ["--tts-model", tts_model]
+    _append_agent_args(cmd, agent_profile, agent_model)
     try:
         job = jobs.spawn(
             cmd,
             label=f"pipeline:{safe_name}",
             kind="pipeline",
             cwd=ROOT,
-            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            env=_pipeline_env(agent_profile, agent_model),
             metadata={
                 "epub": safe_name,
                 "parallel": parallel,
                 "bytes": written,
                 "tts_model": tts_model or None,
+                "agent_profile": agent_profile or None,
+                "agent_model": agent_model or None,
                 # Staged input path(s) for the orphan-staging reaper: while this
                 # job is running/pending the file is its in-place argv input and
                 # must not be swept; once finished it becomes a reclaimable orphan.
@@ -1007,6 +1039,8 @@ async def start_saga(
     spoiler_mode: str = Form(...),
     parallel: int = Form(3, ge=1, le=10),
     tts_model: str = Form(""),
+    agent_profile: str = Form(""),
+    agent_model: str = Form(""),
 ):
     """Receive >=2 EPUB uploads + a saga title + spoiler policy, stage every
     file, then spawn `pipeline.py <epub>... --saga <title> --spoiler-mode <m>
@@ -1031,6 +1065,7 @@ async def start_saga(
         raise HTTPException(400, err)
     if tts_model and tts_model not in ALLOWED_TTS_MODELS:
         raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
+    _validate_agent_profile(agent_profile)
     for up in epubs:
         if not up.filename or not up.filename.lower().endswith(".epub"):
             raise HTTPException(400, "all saga files must be .epub")
@@ -1080,18 +1115,21 @@ async def start_saga(
     ]
     if tts_model:
         cmd += ["--tts-model", tts_model]
+    _append_agent_args(cmd, agent_profile, agent_model)
     try:
         job = jobs.spawn(
             cmd,
             label=title,
             kind="pipeline",
             cwd=ROOT,
-            env={"PODCAST_VERBOSE": "1", "PODCAST_NO_DASHBOARD": "1"},
+            env=_pipeline_env(agent_profile, agent_model),
             metadata={
                 "saga": title,
                 "books": len(staged),
                 "parallel": parallel,
                 "tts_model": tts_model or None,
+                "agent_profile": agent_profile or None,
+                "agent_model": agent_model or None,
                 # Every staged book is an in-place argv input for the running
                 # pipeline; record all so the reaper protects them as a set.
                 "_staging_paths": [str(p) for p in staged],
