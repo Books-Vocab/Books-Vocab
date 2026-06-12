@@ -30,7 +30,12 @@ sys.path.insert(0, str(ENG))
 from ir_contract import validate_ir  # noqa: E402
 
 BIN = ROOT / "lab/swift_ast_dumper/.build/debug/swift-ast-dumper"
+# Two scopes: SYMBOLS is the whole app (custom modifiers are defined app-wide in
+# UIComponents/, Platform/, …); CORPUS is the View layer we actually score. The dumper
+# builds its symbol table from SYMBOLS and emits only structs whose path matches EMIT.
+SYMBOLS = ROOT / "ios/BooksAndVocab"
 CORPUS = ROOT / "ios/BooksAndVocab/Views"
+EMIT = "/Views/"
 
 # unparsed strings are raw source fragments; classify by leading `.modifier(` or mark
 # as a non-modifier expression (a bare view call / control-flow the lowerer punted on).
@@ -53,23 +58,30 @@ def walk_nodes(node: dict):
         yield from walk_nodes(c)
 
 
-def dump_file(path: Path) -> dict | None:
+def dump_corpus(files: list[Path]) -> dict:
+    """One invocation over the WHOLE app file set — required so cross-file custom-modifier
+    definitions (an `extension View` func / `ViewModifier` struct in another file) are in
+    the symbol table when a usage site is lowered. `--emit` restricts the *measured*
+    structs to the View corpus. Returns {structs:[…], skipped:[…]}."""
     try:
-        out = subprocess.run([str(BIN), str(path)], capture_output=True, text=True, timeout=60)
+        out = subprocess.run([str(BIN), *map(str, files), "--emit", EMIT],
+                             capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
-        return {"__error__": "timeout"}
+        return {"__error__": "timeout", "structs": [], "skipped": []}
     if out.returncode != 0:
-        return {"__error__": out.stderr.strip()[:200] or f"exit {out.returncode}"}
+        return {"__error__": out.stderr.strip()[:300] or f"exit {out.returncode}",
+                "structs": [], "skipped": []}
     try:
         return json.loads(out.stdout)
     except json.JSONDecodeError as e:
-        return {"__error__": f"bad json: {e}"}
+        return {"__error__": f"bad json: {e}", "structs": [], "skipped": []}
 
 
 def compute() -> dict:
     """Run the dumper over the whole corpus and aggregate the loss metrics. Returns a
     dict consumed by both main() (pretty print) and the regression gate."""
-    files = sorted(CORPUS.rglob("*.swift"))
+    symbol_files = sorted(SYMBOLS.rglob("*.swift"))   # app-wide → symbol table
+    files = sorted(CORPUS.rglob("*.swift"))           # measured corpus (reported count)
     n_files = len(files)
     n_structs = n_contract_ok = 0
     n_resolved_mods = n_unparsed = n_scoped = 0
@@ -80,37 +92,41 @@ def compute() -> dict:
     contract_violations: list[str] = []
     junk_tokens: list[str] = []  # honesty invariant: a mod token must never be raw closure text
 
-    for f in files:
-        ir = dump_file(f)
-        if ir is None or "__error__" in ir:
-            file_errors.append((str(f.relative_to(ROOT)), (ir or {}).get("__error__", "none")))
-            continue
-        errs = validate_ir(ir)
-        for s in ir.get("structs", []):
-            n_structs += 1
-            root = s.get("root", {})
-            su = sm = sc = 0
-            for n in walk_nodes(root):
-                su += len(n.get("unparsed", []) or [])
-                sm += len(n.get("modifiers", []) or [])
-                sc += len(n.get("scoped", []) or [])
-                for u in n.get("unparsed", []) or []:
-                    unparsed_hist[classify_unparsed(u)] += 1
-                for sk in n.get("scoped", []) or []:
-                    scoped_hist[sk] += 1
-                for m in n.get("modifiers", []) or []:
-                    tok = m.get("token")
-                    if isinstance(tok, str) and ("{" in tok or "}" in tok):
-                        junk_tokens.append(f"{s.get('name')}: {m.get('name')} token={tok[:40]!r}")
-            n_unparsed += su
-            n_resolved_mods += sm
-            n_scoped += sc
-            if su:
-                dirtiest.append((su, s.get("name", "?"), str(f.relative_to(ROOT))))
-        if not errs:
-            n_contract_ok += 1
-        else:
-            contract_violations.append(f"{f.name}: {errs[0]}")
+    ir = dump_corpus(symbol_files)
+    if "__error__" in ir:
+        file_errors.append(("<corpus>", ir["__error__"]))
+    for sk in ir.get("skipped", []):
+        file_errors.append((sk, "unreadable"))
+    errs = validate_ir(ir)
+    if errs:
+        contract_violations.extend(errs[:20])
+    for s in ir.get("structs", []):
+        n_structs += 1
+        src = s.get("source", "?")
+        try:
+            src = str(Path(src).relative_to(ROOT))
+        except ValueError:
+            pass
+        root = s.get("root", {})
+        su = sm = sc = 0
+        for n in walk_nodes(root):
+            su += len(n.get("unparsed", []) or [])
+            sm += len(n.get("modifiers", []) or [])
+            sc += len(n.get("scoped", []) or [])
+            for u in n.get("unparsed", []) or []:
+                unparsed_hist[classify_unparsed(u)] += 1
+            for sk in n.get("scoped", []) or []:
+                scoped_hist[sk] += 1
+            for m in n.get("modifiers", []) or []:
+                tok = m.get("token")
+                if isinstance(tok, str) and ("{" in tok or "}" in tok):
+                    junk_tokens.append(f"{s.get('name')}: {m.get('name')} token={tok[:40]!r}")
+        n_unparsed += su
+        n_resolved_mods += sm
+        n_scoped += sc
+        if su:
+            dirtiest.append((su, s.get("name", "?"), src))
+    n_contract_ok = n_structs if not contract_violations else 0
 
     # denominator = everything the system SHOULD eventually transpile = resolved +
     # unparsed (not-yet) + scoped (visual, deliberately out of component scope). NON_VISUAL
@@ -153,7 +169,8 @@ def main(argv: list[str]) -> int:
     print(f"files                : {n_files}")
     print(f"files dump-failed    : {len(file_errors)}")
     print(f"View structs parsed  : {n_structs}")
-    print(f"contract-valid files : {n_contract_ok}/{n_files - len(file_errors)}")
+    contract_state = "OK" if not contract_violations else f"{len(contract_violations)} VIOLATION(S)"
+    print(f"IR contract          : {contract_state}  ({n_structs} structs validated)")
     n_scoped = r["scoped"]
     denom = n_resolved_mods + n_unparsed + n_scoped
     print(f"resolved modifiers   : {n_resolved_mods}")
