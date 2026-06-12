@@ -41,7 +41,8 @@ class _FakeLog:
 
 def test_publish_is_last_stage_after_subtitle():
     assert pipeline.STAGES[-1] == "publish"
-    assert pipeline.STAGES.index("publish") == pipeline.STAGES.index("subtitle") + 1
+    assert pipeline.STAGES.index("cover") == pipeline.STAGES.index("subtitle") + 1
+    assert pipeline.STAGES.index("publish") == pipeline.STAGES.index("cover") + 1
 
 
 def test_publish_not_gated():
