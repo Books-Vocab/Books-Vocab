@@ -8,6 +8,18 @@ import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
 import { SelectionToolbarScreen } from '../surfaces/selection/SelectionToolbarScreen'
 import { SelectionTileScreen } from '../surfaces/selection/SelectionTileScreen'
 import { VocabSortPillScreen } from '../surfaces/vocab-shell/VocabSortPillScreen'
+import { VocabAccessoryIconButtonScreen } from '../surfaces/vocab-accessory-icon-button/VocabAccessoryIconButtonScreen'
+import { VocabSliderRowScreen } from '../surfaces/vocab-slider-row/VocabSliderRowScreen'
+import { VocabToneChipScreen } from '../surfaces/vocab-tone-chip/VocabToneChipScreen'
+import { VocabChromeIconButtonScreen } from '../surfaces/vocab-chrome-icon-button/VocabChromeIconButtonScreen'
+import { VocabInlineActionButtonScreen } from '../surfaces/vocab-inline-action-button/VocabInlineActionButtonScreen'
+import { VocabSearchFieldScreen } from '../surfaces/vocab-search-field/VocabSearchFieldScreen'
+import { VocabSectionHeaderScreen } from '../surfaces/vocab-section-header/VocabSectionHeaderScreen'
+import { VocabReviewProgressBarScreen } from '../surfaces/vocab-review-progress-bar/VocabReviewProgressBarScreen'
+import { VocabReviewCTAPillScreen } from '../surfaces/vocab-review-cta-pill/VocabReviewCTAPillScreen'
+import { VocabTabSelectorScreen } from '../surfaces/vocab-tab-selector/VocabTabSelectorScreen'
+import { VocabToolbarGlyphScreen } from '../surfaces/vocab-toolbar-glyph/VocabToolbarGlyphScreen'
+import { VocabEmptyStateScreen } from '../surfaces/vocab-empty-state/VocabEmptyStateScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -39,6 +51,30 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <SelectionTileScreen scenario={config.scenario} />
     case 'vocab-sort-pill':
       return <VocabSortPillScreen scenario={config.scenario} />
+    case 'vocab-accessory-icon-button':
+      return <VocabAccessoryIconButtonScreen scenario={config.scenario} />
+    case 'vocab-slider-row':
+      return <VocabSliderRowScreen scenario={config.scenario} />
+    case 'vocab-tone-chip':
+      return <VocabToneChipScreen scenario={config.scenario} />
+    case 'vocab-chrome-icon-button':
+      return <VocabChromeIconButtonScreen scenario={config.scenario} />
+    case 'vocab-inline-action-button':
+      return <VocabInlineActionButtonScreen scenario={config.scenario} />
+    case 'vocab-search-field':
+      return <VocabSearchFieldScreen scenario={config.scenario} />
+    case 'vocab-section-header':
+      return <VocabSectionHeaderScreen scenario={config.scenario} />
+    case 'vocab-review-progress-bar':
+      return <VocabReviewProgressBarScreen scenario={config.scenario} />
+    case 'vocab-review-cta-pill':
+      return <VocabReviewCTAPillScreen scenario={config.scenario} />
+    case 'vocab-tab-selector':
+      return <VocabTabSelectorScreen scenario={config.scenario} />
+    case 'vocab-toolbar-glyph':
+      return <VocabToolbarGlyphScreen scenario={config.scenario} />
+    case 'vocab-empty-state':
+      return <VocabEmptyStateScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':
