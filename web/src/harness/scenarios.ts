@@ -73,6 +73,11 @@ export const SURFACE_SCENARIOS = {
   'vocab-tab-selector': ['no-counts', 'with-counts', 'zero-counts'],
   'vocab-toolbar-glyph': ['plain', 'with-badge', 'badge-stress'],
   'vocab-empty-state': ['card-no-action', 'card-with-action', 'content-basic', 'content-guidance-action'],
+  // Vocab Scene Shell — Vocabulary 統一四態容器（loading/loadingSkeleton/empty/error/
+  // content）。.fill 不透明全幀（vocabCanvasBackground = pageBackground）。
+  'vocab-scene-shell': [
+    'loading-spinner', 'loading-skeleton', 'empty-cta', 'empty-no-action', 'error-retry', 'content',
+  ],
   // Composite layer (batch-2): collocation sheet (.fill transparent full-frame) /
   // KG empty state (.fill opaque full-frame).
   // NOTE: banner-review deferred (task #8) — opaque card on transparent tight-crop is
