@@ -8,6 +8,9 @@ import type {
   AuthVerifyResponse,
   CardResponse,
   EntitlementsResponse,
+  NotebookCreateRequest,
+  NotebookResponse,
+  NotebookUpdateRequest,
   PodcastProgressListResponse,
   PodcastProgressRequest,
   PodcastProgressResponse,
@@ -41,6 +44,42 @@ export class AuthClient {
       body: req,
       anonymous: true, // no bearer yet — this call mints it
     })
+  }
+}
+
+// ── notebook ─────────────────────────────────────────────────────────────────
+export class NotebookClient {
+  constructor(private readonly t: Transport) {}
+
+  /** GET /api/notebooks — list notebooks (optionally since cursor). */
+  list(opts: { since?: string } = {}): Promise<NotebookResponse[]> {
+    return this.t.request<NotebookResponse[]>('/api/notebooks', {
+      query: { since: opts.since },
+    })
+  }
+
+  /** POST /api/notebooks — create a notebook. */
+  create(req: NotebookCreateRequest): Promise<NotebookResponse> {
+    return this.t.request<NotebookResponse>('/api/notebooks', {
+      method: 'POST',
+      body: req,
+    })
+  }
+
+  /** PATCH /api/notebooks/{id} — update a notebook. */
+  update(id: string, req: NotebookUpdateRequest): Promise<NotebookResponse> {
+    return this.t.request<NotebookResponse>(`/api/notebooks/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: req,
+    })
+  }
+
+  /** DELETE /api/notebooks/{id} — delete a notebook. */
+  delete(id: string): Promise<{ deleted: string; cardsDeleted: number }> {
+    return this.t.request<{ deleted: string; cardsDeleted: number }>(
+      `/api/notebooks/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    )
   }
 }
 

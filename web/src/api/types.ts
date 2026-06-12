@@ -100,6 +100,36 @@ export interface QuotaResponse {
   reset_seconds: number
 }
 
+// ── notebook (api_models/notebook.py) ──────────────────────────────────────
+
+/** GET /api/notebooks — api_models/notebook.py::NotebookResponse. */
+export interface NotebookResponse {
+  id: string
+  name: string
+  color: string | null
+  coverPattern: string | null
+  sortOrder: number
+  isDefault: boolean
+  isDeleted: boolean
+  cardCount: number
+  updatedAt: string | null
+}
+
+/** POST /api/notebooks — api_models/notebook.py::NotebookCreateRequest. */
+export interface NotebookCreateRequest {
+  name: string
+  color?: string | null
+  cover_pattern?: string | null
+}
+
+/** PATCH /api/notebooks/{id} — api_models/notebook.py::NotebookUpdateRequest. */
+export interface NotebookUpdateRequest {
+  name?: string | null
+  color?: string | null
+  sort_order?: number | null
+  cover_pattern?: string | null
+}
+
 // ── vocabulary (api_models/cards.py + vocab.py) ────────────────────────────
 
 /** api_models/common.py::VocabSource (string enum; opaque). */
