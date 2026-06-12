@@ -237,6 +237,7 @@ Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`user-config <ui
 | 過渡 fallback | `PODCAST_BUCKET` unset → backend 回 disk `data/podcasts/`,且 `audio.m4a` → `audio.mp3` 探測 |
 | 音頻格式 | AAC/M4A 128k `+faststart`(`TTS_OUTPUT_FORMAT=m4a`,`TTS_AAC_BITRATE=128k`) |
 | TTS model 凍結 | `POST /api/pipeline/start[-saga]` 選填 `tts_model`(白名單 `tts_config.ALLOWED_TTS_MODELS`,非法 422)→ `pipeline.py --tts-model` 寫 `<ws>/.tts_model` sidecar → `stage_synthesize` 讀回注入 `TTS_MODEL` env(單一還原點,涵蓋 /start·/resume·/approve·CLI)。`<ws>/.script_tts_family`(scriptwrite 寫**實際** family = `resolve_tts_family`,非寫死 3.1;palette 由 `pipeline.inject_tts_palette` 依 family 注入,SoT `tts_tags.TAG_CONCEPTS`)供 synth 階段比對,跨 family 記 informational(synth 端 `sanitize_tags_for_family` 兜底)。詳見 `docs/sop/podcast_pipeline.md §3` |
+| Workflow provenance | `lab/podcast/workflow_versions/<v>/` 固化 prompts/stage contract/validator policy;`pipeline.py --workflow-version v1|v2` 建立 workspace 時寫 `<ws>/workflow_manifest.json`(`pipeline_commit`、prompt fingerprints、agent/TTS model、validator versions、stage contracts)。每個 stage 寫 `<ws>/stage_provenance/<stage>.json`(input/output artifact hash、prompt hash、model、validator result、approval marker),腳本相關 stage 另寫 `scripts/ep_N_lineage.json` before/after hash。resume 以 manifest 的 `workflow_version` 為準,衝突 CLI flag loud-fail。 |
 
 ## Cost & Billing(2026-06)
 
