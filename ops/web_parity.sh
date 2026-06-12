@@ -73,6 +73,9 @@ fi
 
 shot_args=()
 [[ "$NO_BUILD" == 1 ]] && shot_args+=(--no-build)
+# --only scopes BOTH capture and audit to matching cases (shots.mjs supports it):
+# without forwarding here, --only re-shot all 67 cases just to audit a few.
+[[ -n "$ONLY" ]] && shot_args+=(--only "$ONLY")
 node web/tools/shots.mjs "${shot_args[@]+"${shot_args[@]}"}"
 
 node web/tools/compare.mjs

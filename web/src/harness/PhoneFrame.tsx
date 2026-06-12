@@ -7,6 +7,7 @@ import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
 import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
 import { SelectionToolbarScreen } from '../surfaces/selection/SelectionToolbarScreen'
 import { SelectionTileScreen } from '../surfaces/selection/SelectionTileScreen'
+import { VocabSortPillScreen } from '../surfaces/vocab-shell/VocabSortPillScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -36,6 +37,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <SelectionToolbarScreen scenario={config.scenario} />
     case 'selection-tile':
       return <SelectionTileScreen scenario={config.scenario} />
+    case 'vocab-sort-pill':
+      return <VocabSortPillScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':

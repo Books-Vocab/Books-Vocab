@@ -53,6 +53,11 @@ export const SURFACE_SCENARIOS = {
   // （chrome tile：selected mutedFill+primaryText / unselected pageBackground+
   // secondaryText / 並排對比）。首位 selection-pair = 預設 scenario。
   'selection-tile': ['selection-pair', 'selection-selected', 'selection-unselected'],
+  // Vocab Shell 原語層（atom）— 對齊 VocabShellComponentsScenarios.swift。
+  //   sort-pill（3 態）：arrow.up.arrow.down + 當前排序 label（複習優先/字母序/
+  //     難度），muted-fill Capsule。catalog scene 畫布透明、layout .compressed
+  //     intrinsic 裁切，故 web 走 crop=component + transparent capture。
+  'vocab-sort-pill': ['default', 'alphabetical', 'difficulty'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],
