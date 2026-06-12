@@ -520,6 +520,26 @@
       "mae": 0.00269292,
       "ssim": 0.0127424
     },
+    "vocab-highlight-picker-paper-selected-light": {
+      "rmse": 0.136335,
+      "mae": 0.0217024,
+      "ssim": 0.0201855
+    },
+    "vocab-highlight-picker-blue-selected-light": {
+      "rmse": 0.133198,
+      "mae": 0.0208132,
+      "ssim": 0.0194682
+    },
+    "vocab-highlight-picker-sage-selected-light": {
+      "rmse": 0.133261,
+      "mae": 0.0208062,
+      "ssim": 0.0195049
+    },
+    "vocab-highlight-picker-rose-selected-light": {
+      "rmse": 0.134317,
+      "mae": 0.0211265,
+      "ssim": 0.0196717
+    },
     "collocation-explain-loaded-short-light": {
       "rmse": 0.114888,
       "mae": 0.0177711,
@@ -1007,7 +1027,7 @@
     },
     "account-auth-summary-long-name-email-overflow-light": {
       "rmse": 0.0500127,
-      "mae": 0.00638939,
+      "mae": 0.00638938,
       "ssim": 0.0159945
     },
     "login-sheet-default-light": {

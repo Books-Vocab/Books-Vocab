@@ -73,6 +73,8 @@ export const SURFACE_SCENARIOS = {
   'vocab-tab-selector': ['no-counts', 'with-counts', 'zero-counts'],
   'vocab-toolbar-glyph': ['plain', 'with-badge', 'badge-stress'],
   'vocab-empty-state': ['card-no-action', 'card-with-action', 'content-basic', 'content-guidance-action'],
+  // Vocab Highlight Picker — Reader 螢光標記顏色選擇器（4 preset selected 態；dark deferred）
+  'vocab-highlight-picker': ['paper-selected', 'blue-selected', 'sage-selected', 'rose-selected'],
   // Vocab Scene Shell — Vocabulary 統一四態容器（loading/loadingSkeleton/empty/error/
   // content）。.fill 不透明全幀（vocabCanvasBackground = pageBackground）。
   'vocab-scene-shell': [
